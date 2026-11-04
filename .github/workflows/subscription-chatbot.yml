@@ -51,7 +51,7 @@ env:
 
 jobs:
   contracts:
-    name: Fundacao - midia real e publicacao
+    name: API, motor, arquivos reais e publicacao
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -64,13 +64,94 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends ffmpeg
-      - name: Validar arquivos reais, integridade e backup antes de migrar
+      - name: Validar autorizacao, duracao, duplicacao e contratos existentes
         run: |
           python -m pytest -q -ra \
-            tests/unit/test_subscription_chatbot_media.py \
-            tests/unit/test_subscription_chatbot_release.py \
-            tests/unit/test_subscription_devices_release.py
+            tests/unit/test_subscription_chatbot*.py \
+            tests/unit/test_subscription_devices.py \
+            tests/unit/test_subscription_device_rules.py \
+            tests/unit/test_subscription_device_audio.py \
+            tests/unit/test_subscription_devices_release.py \
+            tests/unit/test_subscription_workspace.py \
+            tests/unit/test_appointment_consent_release.py \
+            tests/unit/test_manual_start_times_release.py \
+            tests/unit/test_plan_permissions.py \
+            tests/unit/test_plan_routing.py \
+            tests/unit/test_qr_channels.py \
+            tests/unit/test_qr_channels_control.py \
+            tests/unit/test_qr_channels_scope.py \
+            tests/unit/test_qr_single_connection.py \
+            tests/unit/test_qr_admin_identity.py
 
+  bridge:
+    name: Ponte - lifecycle, efeitos e isolamento do legado
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Dependencias do transporte publicado
+        run: npm install --prefix qr-bridge --ignore-scripts --no-audit --no-fund
+      - name: Transporte afetado com sockets, eventos e providers sinteticos
+        run: |
+          node --check qr-bridge/src/channel-session.mjs
+          node --check qr-bridge/src/channel-manager.mjs
+          node --check qr-bridge/src/channel-routes.mjs
+          node --check qr-bridge/src/device-runtime.mjs
+          node --check qr-bridge/src/chatbot-runtime.mjs
+          node --check qr-bridge/src/chatbot-message.mjs
+          node --check qr-bridge/src/chatbot-input.mjs
+          node --check qr-bridge/src/chatbot-network.mjs
+          node --check qr-bridge/src/chatbot-media-upload.mjs
+          # The complete suite was compared against production 2037d8ec:
+          # the same 49 existing failures are in audio-inbound-routing and
+          # panel-ui VM fixtures. This gate covers the changed transport and
+          # its actual shared consumers; it does not suppress new failures.
+          node --test \
+            qr-bridge/test/chatbot-*.test.mjs \
+            qr-bridge/test/device-*.test.mjs \
+            qr-bridge/test/channel-*.test.mjs \
+            qr-bridge/test/bridge-auth.test.mjs \
+            qr-bridge/test/canonical-prepare.test.mjs \
+            qr-bridge/test/connected-features.test.mjs \
+            qr-bridge/test/connected-store.test.mjs \
+            qr-bridge/test/connection-notice-startup.test.mjs \
+            qr-bridge/test/core.test.mjs \
+            qr-bridge/test/e2ee-retry-hardening.test.mjs \
+            qr-bridge/test/encrypted-retry-store.test.mjs \
+            qr-bridge/test/legacy-central.test.mjs \
+            qr-bridge/test/reliable-encrypted-integration.test.mjs \
+            qr-bridge/test/reliable-send.test.mjs \
+            qr-bridge/test/send-capacity.test.mjs \
+            qr-bridge/test/wizard-journey.test.mjs
+
+  dom:
+    name: Formulario, estados, acessibilidade e navegacao
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+      - name: Componentes reais com API sintetica
+        run: |
+          node --check app/static/orion-subscription-chatbot.js
+          node --check app/static/orion-subscription-devices.js
+          node --check app/static/orion-suite.js
+          node --test \
+            ui-tests/subscription-chatbot.test.mjs \
+            ui-tests/subscription-devices.test.mjs \
+            ui-tests/subscription-workspace.test.mjs \
+            ui-tests/channels.test.mjs \
+            ui-tests/channels-pairing.test.mjs \
+            ui-tests/single-business-context.test.mjs \
+            ui-tests/member-account-settings.test.mjs \
+            ui-tests/plan-permissions.test.mjs \
+            ui-tests/orion-suite.test.mjs
 
   postgres:
     name: PostgreSQL - migracao, RLS, concorrencia e quotas
@@ -107,6 +188,10 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install -c requirements.lock '.[test]'
+      - name: Instalar o decoder real de midia
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
       - name: Provisionar os tres papeis no banco descartavel
         env:
           PGPASSWORD: ci-only-chatbot-postgres
@@ -121,6 +206,7 @@ jobs:
       - name: Validar contratos reais sem saida para provedores
         run: |
           python - <<'PY'
+          import glob
           import ipaddress
           import socket
           import pytest
@@ -136,7 +222,7 @@ jobs:
               except (ValueError, TypeError):
                   allowed = False
               if not allowed:
-                  raise AssertionError('External network forbidden in device qualification')
+                  raise AssertionError('External network forbidden in chatbot qualification')
           def connect(sock, address):
               loopback(address)
               return original_connect(sock, address)
@@ -151,7 +237,46 @@ jobs:
           socket.socket.connect_ex = connect_ex
           socket.getaddrinfo = getaddrinfo
           raise SystemExit(pytest.main(['-q', '-ra',
-              'tests/integration/test_subscription_chatbot_release_postgres.py',
+              *sorted(glob.glob('tests/integration/test_subscription_chatbot*_postgres.py')),
+              'tests/integration/test_subscription_devices_postgres.py',
               'tests/integration/test_subscription_devices_release_postgres.py',
+              'tests/integration/test_subscription_workspace_postgres.py',
+              'tests/integration/test_qr_single_connection_postgres.py',
+              'tests/integration/test_qr_channels_postgres.py',
+              'tests/integration/test_qr_channels_transaction_postgres.py',
           ]))
           PY
+
+  browser:
+    name: Navegadores - ${{ matrix.engine }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [chromium, webkit]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Instalar o navegador de teste
+        run: |
+          python -m pip install -r tests/e2e/requirements.txt pytest
+          python -m playwright install --with-deps ${{ matrix.engine }}
+      - name: Fluxos no painel real - celular, tablet, desktop e dois temas
+        run: |
+          python -m pytest -q -ra --maxfail=1 \
+            tests/e2e/browser_subscription_chatbot.py \
+            tests/e2e/browser_subscription_devices.py \
+            tests/e2e/browser_subscription_workspace.py -k '${{ matrix.engine }}'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: subscription-chatbot-${{ matrix.engine }}
+          path: |
+            test-artifacts/subscription-chatbot/
+            test-artifacts/subscription-devices/
+            test-artifacts/subscription-workspace/
+          if-no-files-found: warn
+          retention-days: 7

@@ -1,0 +1,160 @@
+/* Chatbot workspace: layout with the shared Orion components and tokens. */
+.os-chatbot{min-width:0;width:100%}
+.os-chatbot [hidden],.os-chatbot-dialog [hidden]{display:none!important}
+.os-chatbot .os-form-message:empty,.os-chatbot-dialog .os-form-message:empty{display:none}
+.os-chatbot-heading{align-items:flex-start}
+.os-chatbot-heading .os-actions{margin-top:0;flex-wrap:wrap}
+.os-chatbot-feedback{margin:0 0 20px;overflow-wrap:anywhere}
+.os-chatbot-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-bottom:24px}
+.os-chatbot-metric{padding:20px}
+.os-chatbot-metric strong{display:block;margin-top:8px;font:600 28px/36px var(--os-display);color:var(--os-text);font-variant-numeric:tabular-nums}
+.os-chatbot-metric span{color:var(--os-muted);font-size:13px}
+.os-chatbot-filters{margin-bottom:24px}
+.os-chatbot-filter-form{display:grid;gap:18px}
+.os-chatbot-filter-primary{display:grid;grid-template-columns:minmax(200px,2fr) repeat(2,minmax(140px,1fr));gap:16px;align-items:end}
+.os-chatbot-filter-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.os-chatbot .os-field,.os-chatbot-dialog .os-field{min-width:0}
+.os-chatbot .os-field>label,.os-chatbot-dialog .os-field>label{display:block;margin-bottom:7px;font-size:13px;font-weight:500}
+.os-chatbot .os-help,.os-chatbot-dialog .os-help{display:block;margin-top:6px;font-size:12px;line-height:18px;color:var(--os-muted)}
+.os-chatbot-filter-advanced>summary{display:flex;align-items:center;gap:8px;padding:6px 0;color:var(--os-text);font-size:13px;cursor:pointer;list-style:none}
+.os-chatbot-filter-advanced>summary::-webkit-details-marker{display:none}
+.os-chatbot-filter-advanced>summary>.os-icon{width:16px;height:16px;transition:transform .2s}
+.os-chatbot-filter-advanced[open]>summary>.os-icon{transform:rotate(180deg)}
+.os-chatbot-filter-advanced>div{padding-top:16px}
+.os-chatbot-filter-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.os-chatbot-results-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:0 0 16px}
+.os-chatbot-results-heading p{color:var(--os-muted);font-size:13px}
+.os-chatbot-list{display:grid;gap:16px}
+.os-chatbot-card{padding:0;overflow:hidden}
+.os-chatbot-card-header{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;padding:20px 24px}
+.os-chatbot-card-title{min-width:0}
+.os-chatbot-card-title h2{font-size:18px;line-height:26px;overflow-wrap:anywhere}
+.os-chatbot-card-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px;color:var(--os-muted);font-size:12px}
+.os-chatbot-card-meta .os-badge{font-size:11px;line-height:16px;padding:3px 9px}
+.os-chatbot-card-subtitle{margin-top:10px!important;color:var(--os-muted);font-size:13px;line-height:20px;overflow-wrap:anywhere}
+.os-chatbot-card-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:0 24px 20px}
+.os-chatbot-card-actions>.os-button{min-height:34px;padding:6px 10px;font-size:12px}
+.os-chatbot-card-details{border-top:1px solid var(--os-border)}
+.os-chatbot-card-details>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 24px;color:var(--os-muted);font-size:13px;cursor:pointer;list-style:none}
+.os-chatbot-card-details>summary::-webkit-details-marker{display:none}
+.os-chatbot-card-details>summary>.os-icon{width:16px;height:16px;transition:transform .2s}
+.os-chatbot-card-details[open]>summary>.os-icon{transform:rotate(180deg)}
+.os-chatbot-card-content{display:grid;gap:16px;padding:4px 24px 24px}
+.os-chatbot-keywords{display:flex;gap:7px;flex-wrap:wrap}
+.os-chatbot-keywords>span{padding:3px 8px;border:1px solid var(--os-border);border-radius:7px;background:var(--os-bg);font-size:12px;overflow-wrap:anywhere}
+.os-chatbot-preview{padding:16px;border:1px solid var(--os-border);border-radius:12px;background:var(--os-bg);color:var(--os-text);font-size:14px;line-height:22px;white-space:pre-wrap;overflow-wrap:anywhere}
+.os-chatbot-preview code,.os-chatbot-raw{font:400 12px/20px ui-monospace,SFMono-Regular,Consolas,monospace}
+.os-chatbot-raw{margin:0;max-height:320px;padding:16px;border:1px solid var(--os-border);border-radius:12px;background:var(--os-bg);color:var(--os-text);overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere}
+.os-chatbot-preview-switch{display:flex;gap:6px;flex-wrap:wrap}
+.os-chatbot-preview-switch>.os-button{min-height:30px;padding:4px 10px;font-size:12px}
+.os-chatbot-details-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;font-size:13px}
+.os-chatbot-details-grid dt{color:var(--os-muted);font-size:12px;margin-bottom:4px}
+.os-chatbot-details-grid dd{margin:0;overflow-wrap:anywhere}
+.os-chatbot-pagination{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:20px;color:var(--os-muted);font-size:13px}
+.os-chatbot-dialog{width:min(680px,calc(100vw - 32px));max-width:calc(100vw - 32px)}
+.os-chatbot-dialog h2,.os-chatbot-dialog h3{font-family:var(--os-display);color:var(--os-text)}
+.os-chatbot-dialog h2{font-size:20px;line-height:28px;margin:0}
+.os-chatbot-dialog h3{font-size:16px;line-height:24px;margin:0}
+.os-chatbot-dialog p{color:var(--os-muted);line-height:1.6}
+.os-chatbot-dialog .os-form{margin-top:20px}
+.os-chatbot-dialog .os-form-actions{margin-top:22px;flex-wrap:wrap}
+.os-chatbot-dialog .os-notice{margin:0}
+.os-chatbot-dialog .os-check{display:flex;align-items:flex-start;gap:9px;line-height:22px;min-height:24px}
+.os-chatbot-dialog .os-check input{flex:0 0 18px;width:18px;height:18px;margin:2px 0 0;accent-color:var(--os-primary)}
+.os-chatbot-dialog .os-check>span{min-width:0}
+.os-chatbot-dialog .os-close{position:absolute;right:16px;top:16px}
+.os-chatbot-dialog .os-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+.os-dialog.os-sheet.os-chatbot-editor{width:min(840px,100vw);max-width:100vw;height:100dvh;max-height:100dvh;padding:0;overflow:hidden;box-sizing:border-box}
+.os-chatbot-editor[open]{display:flex;flex-direction:column}
+.os-chatbot-editor-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:22px 24px;border-bottom:1px solid var(--os-border);background:var(--os-card);flex:0 0 auto}
+.os-chatbot-editor-header p{margin:6px 0 0;font-size:13px}
+.os-chatbot-editor-header .os-close{position:static;flex:0 0 32px;width:32px;height:32px}
+.os-chatbot-editor-form{display:flex;flex-direction:column;flex:1;min-height:0;margin:0!important}
+.os-chatbot-editor-body{display:grid;align-content:start;gap:22px;overflow-y:auto;min-height:0;flex:1;padding:24px}
+.os-chatbot-editor-section{display:grid;gap:18px;padding:20px;border:1px solid var(--os-border);border-radius:16px;background:var(--os-card);min-width:0}
+.os-chatbot-editor-section>p{margin:0;font-size:13px}
+.os-chatbot-editor-footer{display:flex;align-items:center;justify-content:flex-end;gap:12px;flex-wrap:wrap;padding:16px 24px;border-top:1px solid var(--os-border);background:var(--os-card);flex:0 0 auto}
+.os-chatbot-editor-footer .os-help{margin:0;flex:1 1 200px}
+.os-chatbot-editor-footer .os-form-message{flex:1 1 100%;margin:0}
+.os-chatbot-type-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.os-chatbot-type-grid>.os-button{min-height:42px;padding:9px 6px;font-size:12px;white-space:normal}
+.os-chatbot-step-list,.os-chatbot-menu-sections{display:grid;gap:14px}
+.os-chatbot-step{display:grid;gap:16px;padding:18px;border:1px solid var(--os-border);border-radius:14px;background:var(--os-bg);min-width:0}
+.os-chatbot-step-header,.os-chatbot-menu-header{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.os-chatbot-step-header strong{font:600 15px/22px var(--os-display)}
+.os-chatbot-step-header .os-actions,.os-chatbot-menu-header .os-actions{gap:5px}
+.os-chatbot-step-header .os-button,.os-chatbot-menu-header .os-button{min-height:30px;padding:5px 8px;font-size:12px}
+.os-chatbot-step-body{display:grid;gap:16px;min-width:0}
+.os-chatbot-step-delay{max-width:240px}
+.os-chatbot-editor-tools{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.os-chatbot-editor-tools>.os-button{min-height:30px;padding:4px 9px;font-size:12px}
+.os-chatbot-menu-section{display:grid;gap:14px;padding:16px;border:1px solid var(--os-border);border-radius:12px;background:var(--os-card);min-width:0}
+.os-chatbot-menu-rows{display:grid;gap:12px}
+.os-chatbot-menu-row{position:relative;display:block;padding-top:14px;border-top:1px solid var(--os-border)}
+.os-chatbot-menu-row>.os-button{position:absolute;right:0;top:14px}
+.os-chatbot-menu-row-fields>h3{padding-right:95px}
+.os-chatbot-menu-row-fields{display:grid;gap:12px;min-width:0}
+.os-chatbot-asset{display:grid;gap:10px;padding:14px;border:1px dashed var(--os-border);border-radius:12px;background:var(--os-bg)}
+.os-chatbot-asset .os-actions{flex-wrap:wrap}
+.os-chatbot-transfer-list{display:grid;gap:10px;max-height:300px;overflow:auto;padding:2px}
+.os-chatbot-transfer-item{display:flex;align-items:flex-start;gap:10px;padding:12px;border:1px solid var(--os-border);border-radius:10px;background:var(--os-card);font-size:13px;overflow-wrap:anywhere}
+.os-chatbot-transfer-item input{width:17px;height:17px;margin:2px 0 0;accent-color:var(--os-primary)}
+.os-chatbot-transfer-item>span{min-width:0}
+.os-chatbot-transfer-item small{display:block;margin-top:3px;color:var(--os-muted)}
+.os-chatbot-dialog [data-sc-transfer-preview]{display:grid;gap:12px}
+.os-chatbot-dialog [data-sc-transfer-preview]:empty{display:none}
+.os-chatbot-preview-counts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.os-chatbot-preview-counts>div{padding:12px;border:1px solid var(--os-border);border-radius:10px;background:var(--os-card);font-size:12px;color:var(--os-muted)}
+.os-chatbot-preview-counts strong{display:block;color:var(--os-text);font-size:20px;line-height:28px}
+.os-chatbot-backups{display:grid;gap:12px}
+.os-chatbot-backup{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px;border:1px solid var(--os-border);border-radius:12px;background:var(--os-card)}
+.os-chatbot-backup>div:first-child{min-width:0}
+.os-chatbot-backup strong{display:block;font-size:14px;overflow-wrap:anywhere}
+.os-chatbot-backup small{display:block;margin-top:4px;color:var(--os-muted);font-size:12px}
+.os-chatbot-backup .os-actions{flex-wrap:wrap;justify-content:flex-end}
+.os-chatbot-restore-modes{display:grid;gap:10px}
+.os-chatbot-restore-mode{display:flex;align-items:flex-start;gap:10px;padding:14px;border:1px solid var(--os-border);border-radius:12px;background:var(--os-card);font-size:13px;line-height:20px}
+.os-chatbot-restore-mode input{flex:0 0 18px;width:18px;height:18px;margin:3px 0 0;accent-color:var(--os-primary)}
+.os-chatbot-restore-mode strong,.os-chatbot-restore-mode small{display:block}
+.os-chatbot-restore-mode small{margin-top:4px;color:var(--os-muted)}
+.os-chatbot [tabindex="-1"]:focus,.os-chatbot-dialog [tabindex="-1"]:focus{outline:none}
+.os-chatbot [aria-busy="true"],.os-chatbot-dialog[aria-busy="true"]{cursor:progress}
+@media(max-width:1100px){.os-chatbot-filter-primary{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.os-chatbot-filter-primary>.os-field:first-child{grid-column:1/-1}.os-chatbot-filter-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:640px){
+ .os-chatbot-heading{flex-direction:column;gap:16px}
+ .os-chatbot-heading .os-actions{width:100%;gap:8px}
+ .os-chatbot-heading .os-actions>.os-button{flex:1 1 auto}
+ .os-chatbot-metrics{gap:8px;margin-bottom:18px}
+ .os-chatbot-metric{padding:12px}
+ .os-chatbot-metric strong{font-size:22px;line-height:28px}
+ .os-chatbot-metric span{font-size:11px;line-height:16px}
+ .os-chatbot-filter-primary,.os-chatbot-filter-grid{grid-template-columns:minmax(0,1fr)}
+ .os-chatbot-filter-actions>.os-button{flex:1 1 auto}
+ .os-chatbot-results-heading{align-items:flex-start;flex-direction:column;gap:10px}
+ .os-chatbot-card-header{padding:18px 16px;gap:10px}
+ .os-chatbot-card-title h2{font-size:17px;line-height:24px}
+ .os-chatbot-card-actions{padding:0 16px 18px;gap:8px}
+ .os-chatbot-card-actions>.os-button{flex:1 1 auto}
+ .os-chatbot-card-details>summary{padding:13px 16px}
+ .os-chatbot-card-content{padding:2px 16px 18px}
+ .os-chatbot-details-grid{grid-template-columns:minmax(0,1fr)}
+ .os-chatbot-pagination{flex-wrap:wrap}
+ .os-chatbot-dialog .os-form-grid{grid-template-columns:minmax(0,1fr)}
+ .os-chatbot-editor-header{padding:18px 16px}
+ .os-chatbot-editor-body{padding:16px;gap:16px}
+ .os-chatbot-editor-section{padding:16px;gap:16px}
+ .os-chatbot-editor-footer{padding:14px 16px calc(14px + env(safe-area-inset-bottom,0px));gap:8px}
+ .os-chatbot-editor-footer .os-help{flex-basis:100%}
+ .os-chatbot-editor-footer>.os-button{flex:1 1 auto}
+ .os-chatbot-type-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .os-chatbot-step{padding:14px}
+ .os-chatbot-step-header{align-items:flex-start;flex-direction:column;gap:8px}
+ .os-chatbot-menu-section{padding:12px}
+ .os-chatbot-preview-counts{gap:6px}
+ .os-chatbot-preview-counts>div{padding:9px}
+ .os-chatbot-backup{align-items:flex-start;flex-direction:column;gap:12px}
+ .os-chatbot-backup .os-actions{justify-content:flex-start;width:100%}
+ .os-chatbot-backup .os-actions>.os-button{flex:1 1 auto}
+ .os-chatbot-dialog .os-form-actions>.os-button{flex:1 1 auto}
+}
+@media(prefers-reduced-motion:reduce){.os-chatbot-filter-advanced>summary>.os-icon,.os-chatbot-card-details>summary>.os-icon{transition:none}}

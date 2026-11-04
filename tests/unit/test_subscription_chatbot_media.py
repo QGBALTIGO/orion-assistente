@@ -48,6 +48,34 @@ def test_image_has_real_jpeg_pixels_and_private_metadata_removed():
     assert result.thumbnail_sha256 == sha256(result.thumbnail).hexdigest()
 
 
+@pytest.mark.parametrize("format", ["JPEG", "PNG"])
+def test_comment_metadata_cannot_survive_in_main_image_or_thumbnail(format):
+    image = Image.new("RGB", (180, 120), "blue")
+    stream = io.BytesIO()
+    if format == "JPEG":
+        image.save(stream, format=format, comment=b"synthetic-private-comment")
+    else:
+        metadata = PngImagePlugin.PngInfo()
+        metadata.add_text("comment", "synthetic-private-comment")
+        image.save(stream, format=format, pnginfo=metadata)
+    result = media.prepare_media(stream.getvalue(), "image")
+    for data in (result.data, result.thumbnail):
+        assert b"synthetic-private-comment" not in data
+        with Image.open(io.BytesIO(data)) as output:
+            assert not output.info.get("comment") and not output.info.get("exif")
+
+
+def test_narrow_normalized_image_can_be_decoded_again_for_archive_import():
+    first = media.prepare_media(photo((16, 4096)), "image")
+    assert (first.width, first.height) == (6, 1600)
+    second = media.prepare_media(first.data, "image")
+    assert (second.width, second.height) == (6, 1600)
+    assert second.size == len(second.data) and second.sha256 == sha256(second.data).hexdigest()
+    with Image.open(io.BytesIO(second.data)) as decoded:
+        decoded.load()
+        assert decoded.size == (6, 1600)
+
+
 def test_sticker_keeps_transparency_and_512_canvas():
     result = media.prepare_media(photo(), "sticker")
     assert result.mime == "image/webp" and result.duration_ms is None
@@ -172,11 +200,69 @@ def test_storage_is_private_immutable_and_not_a_catalog_photo(bucket):
     with pytest.raises(HTTPException) as error:
         media.get_media(uuid4(), asset, result.size, result.sha256)
     assert error.value.status_code == 404
-    with pytest.raises(HTTPException):
-        media.put_media(tenant, asset, result)
-    # A failed overwrite must never remove the original object.
+    media.put_media(tenant, asset, result)
+    # A retry verifies identical bytes without rewriting or removing the object.
+    assert len(bucket.writes) == 2
     assert bucket.deleted == []
     assert media.get_media(tenant, asset, result.size, result.sha256) == result.data
+
+
+def test_partial_storage_retry_completes_only_missing_thumbnail(bucket):
+    tenant, asset = uuid4(), uuid4()
+    result = media.prepare_media(photo(), "image")
+    original, thumbnail = media._key(tenant, asset, "original"), media._key(tenant, asset, "thumbnail")
+    bucket.values[original] = result.data
+    media.put_media(tenant, asset, result)
+    assert [write["Key"] for write in bucket.writes] == [thumbnail]
+    assert bucket.deleted == [] and bucket.values[original] == result.data
+    media.put_media(tenant, asset, result)
+    assert len(bucket.writes) == 1
+
+
+def test_preexisting_different_content_is_never_overwritten_or_deleted(bucket):
+    tenant, asset = uuid4(), uuid4()
+    result = media.prepare_media(photo(), "image")
+    original = media._key(tenant, asset, "original")
+    bucket.values[original] = b"x" * result.size
+    with pytest.raises(HTTPException) as error:
+        media.put_media(tenant, asset, result)
+    assert error.value.status_code == 409
+    assert bucket.values[original] == b"x" * result.size
+    assert bucket.deleted == [] and bucket.writes == []
+
+
+def test_thumbnail_conflict_compensates_only_the_original_created_by_this_attempt(bucket):
+    tenant, asset = uuid4(), uuid4()
+    result = media.prepare_media(photo(), "image")
+    original, thumbnail = media._key(tenant, asset, "original"), media._key(tenant, asset, "thumbnail")
+    bucket.values[thumbnail] = b"x" * len(result.thumbnail)
+    with pytest.raises(HTTPException) as error:
+        media.put_media(tenant, asset, result)
+    assert error.value.status_code == 409
+    assert bucket.deleted == [original] and original not in bucket.values
+    assert bucket.values[thumbnail] == b"x" * len(result.thumbnail)
+
+
+@pytest.mark.parametrize("preexisting", [False, True])
+def test_storage_failure_cleans_up_only_keys_created_by_this_attempt(bucket, monkeypatch, preexisting):
+    tenant, asset = uuid4(), uuid4()
+    result = media.prepare_media(photo(), "image")
+    original, thumbnail = media._key(tenant, asset, "original"), media._key(tenant, asset, "thumbnail")
+    if preexisting:
+        bucket.values[original] = result.data
+    actual_put = bucket.put_object
+
+    def fail_thumbnail(**kwargs):
+        if kwargs["Key"] == thumbnail:
+            raise ClientError({"Error": {"Code": "InternalError"}}, "PutObject")
+        actual_put(**kwargs)
+
+    monkeypatch.setattr(bucket, "put_object", fail_thumbnail)
+    with pytest.raises(HTTPException) as error:
+        media.put_media(tenant, asset, result)
+    assert error.value.status_code == 503
+    assert bucket.deleted == ([] if preexisting else [original])
+    assert (original in bucket.values) == preexisting
 
 
 @pytest.mark.parametrize("corrupt", ["size", "hash", "extra"])

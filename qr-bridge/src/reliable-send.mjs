@@ -6,6 +6,26 @@
  */
 import {isVerifiedPilotLid,withVerifiedPilotDevices} from './pilot-recipient.mjs';
 
+/** The typed Chatbot builder owns content validation. This helper owns the
+ * exact same cache-before-relay invariant for non-text native protocols. */
+export async function sendStoredProtocol({jid,recipientProof,makeMessage,relay,store,
+  isCurrent=()=>true,assertAuthorized=async()=>{},onPrepared=()=>{},onRelayAttempt=()=>{}}){
+  if(typeof jid!=='string'||(!/^[1-9]\d{7,14}@s\.whatsapp\.net$/.test(jid)&&!isVerifiedPilotLid(recipientProof,jid))||
+      typeof makeMessage!=='function'||typeof relay!=='function'||!store?.save)throw Error('invalid_native_transport');
+  await assertAuthorized();if(!isCurrent())throw Error('chatbot_operation_superseded');
+  const msg=await makeMessage(jid);
+  await assertAuthorized();if(!isCurrent())throw Error('chatbot_operation_superseded');
+  if(!msg?.key?.id||!msg?.message||msg.key.remoteJid!==jid||msg.key.fromMe!==true)throw Error('invalid_native_message');
+  if(store.save(msg.key,msg.message)!==true)throw Error('unable_to_cache_native_message');
+  onPrepared(msg);
+  await withVerifiedPilotDevices(recipientProof,async()=>{
+    await assertAuthorized();if(!isCurrent())throw Error('chatbot_operation_superseded');
+    onRelayAttempt(msg);
+    return relay(jid,msg.message,{messageId:msg.key.id,useUserDevicesCache:isVerifiedPilotLid(recipientProof,jid)});
+  });
+  return msg;
+}
+
 export async function sendStoredText({jid,recipientProof,text,makeMessage,relay,store,onPrepared=()=>{},onAccepted=()=>{},freshDevices=false,isCurrent=()=>true,maxTextChars=1200,preserveWhitespace=false}){
   if(typeof jid!=="string" || (!/^[1-9]\d{7,14}@s\.whatsapp\.net$/.test(jid)&&!isVerifiedPilotLid(recipientProof,jid))){
     throw Error("Invalid recipient JID");

@@ -5,7 +5,7 @@ import {makePanel,jsonResponse} from './panel-harness.mjs';
 import {fullState} from './onboarding-harness.mjs';
 
 const profile='subscription_services';
-const utility=['dispositivos','novidades','ajuda','member'];
+const utility=['dispositivos','chatbot','novidades','ajuda','member'];
 const subscriptionPlan=(code='none',extra={})=>{
   const value=planState(code,{workspace_profile:profile,revision:'subscription-'+code,...extra});
   return {...value,features:[...value.features,'devices.manage'],permissions:{...value.permissions,'devices.manage':true}};
@@ -18,7 +18,7 @@ const visible=node=>!node.hidden&&!node.classList.contains('hidden');
 
 function assertSubscriptionShell(h,devices=true){
   assert.deepEqual([...h.document.querySelectorAll('#osNav [data-os-route]')]
-    .map(node=>node.dataset.osRoute),devices?utility:utility.slice(1));
+    .map(node=>node.dataset.osRoute),devices?utility:utility.slice(2));
   assert.deepEqual([...h.document.querySelectorAll('#osNav .os-nav-section')]
     .map(node=>node.textContent),['Gestão','Ajuda e conta']);
   assert.equal(h.document.querySelector('#osSidebarContext .os-side-site'),null);

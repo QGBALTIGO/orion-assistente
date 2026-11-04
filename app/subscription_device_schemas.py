@@ -265,6 +265,12 @@ class DeviceEvent(StrictModel):
     audio: AudioMetadata | None = None
     state: dict | str | None = None
     avatar_url: str | None = Field(default=None, max_length=2048)
+    chatbot_revision: int | None = Field(default=None, strict=True, ge=1)
+    ingress_order: int | None = Field(default=None, strict=True, ge=1, le=9007199254740991)
+    origin: Literal["contact", "owner_command"] = "contact"
+    selection_id: str | None = Field(default=None, min_length=1, max_length=160,
+                                     pattern=r"^[A-Za-z0-9:_-]+$")
+    quoted_message_id: str | None = Field(default=None, min_length=1, max_length=200)
 
     @field_validator("phone")
     @classmethod
@@ -284,6 +290,12 @@ class DeviceEvent(StrictModel):
         if self.kind == "call" and (not self.call_id or not self.call_from
                 or not re.fullmatch(r"[1-9][0-9]{6,30}(?::[0-9]{1,3})?@(?:s\.whatsapp\.net|lid)", self.call_from)):
             raise ValueError("Ligação individual inválida")
+        if (self.selection_id is None) != (self.quoted_message_id is None):
+            raise ValueError("Seleção exige a identidade da mensagem original")
+        if self.selection_id is not None and (self.kind != "text" or self.origin != "contact"):
+            raise ValueError("Seleção individual inválida")
+        if self.origin == "owner_command" and (self.kind != "text" or not (self.text or "").startswith("!")):
+            raise ValueError("Comando do aparelho inválido")
         return self
 
 
@@ -292,6 +304,8 @@ class EffectRequest(StrictModel):
     device_id: UUID | None = None
     generation: UUID | None = None
     settings_revision: int | None = Field(default=None, strict=True, ge=1)
+    chatbot_revision: int | None = Field(default=None, strict=True, ge=1)
+    recheck: bool = Field(default=False, strict=True)
 
     @model_validator(mode="after")
     def complete_scope(self):

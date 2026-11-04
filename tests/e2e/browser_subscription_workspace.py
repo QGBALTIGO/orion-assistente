@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parents[2]
 ARTIFACTS = ROOT / "test-artifacts" / "subscription-workspace"
 SIZES = [(390, 844), (768, 1024), (1440, 900)]
 PROFILE = "subscription_services"
-ALLOWED_ROUTES = ["dispositivos", "novidades", "ajuda", "member"]
+ALLOWED_ROUTES = ["dispositivos", "chatbot", "novidades", "ajuda", "member"]
 IDENTITY = {"name": "Empresa sintética de assinaturas", "contact_phone": "+5511900000001"}
 
 
@@ -122,7 +122,7 @@ def open_navigation(page):
 
 
 def assert_shell(page, width):
-    expect(page.locator("#osNav [data-os-route]")).to_have_count(4)
+    expect(page.locator("#osNav [data-os-route]")).to_have_count(5)
     assert page.locator("#osNav [data-os-route]").evaluate_all(
         "nodes => nodes.map(node => node.dataset.osRoute)"
     ) == ALLOWED_ROUTES
@@ -139,7 +139,7 @@ def assert_shell(page, width):
       forbidden: [...document.querySelectorAll('#page-suite [data-os-route]')]
         .filter(node => node.getClientRects().length && getComputedStyle(node).visibility !== 'hidden')
         .map(node => node.dataset.osRoute)
-        .filter(route => !['dispositivos','novidades','ajuda','member'].includes(route))
+        .filter(route => !['dispositivos','chatbot','novidades','ajuda','member'].includes(route))
     })""")
     assert measured["viewport"] == width and measured["scroll"] <= width + 1, measured
     assert not measured["forbidden"], measured

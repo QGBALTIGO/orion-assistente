@@ -1,0 +1,665 @@
+{
+  "schema_version": 1,
+  "base": "/api/v1/tenants/{tenant_id}/subscription-whatsapp/chatbot",
+  "feature": "chatbot.manage",
+  "read_only_backup_feature": "account.manage",
+  "ui_route": "chatbot",
+  "enums": {
+    "match_mode": [
+      "equal",
+      "like",
+      "array"
+    ],
+    "response_kind": [
+      "sequence",
+      "list"
+    ],
+    "action_type": [
+      "text",
+      "template",
+      "sticker",
+      "shortvideo",
+      "carousel",
+      "url",
+      "nested_reply",
+      "nested_list"
+    ],
+    "restore_mode": [
+      "add_missing",
+      "merge",
+      "exact"
+    ],
+    "job_status": [
+      "queued",
+      "running",
+      "succeeded",
+      "failed"
+    ],
+    "asset_kind": [
+      "image",
+      "sticker",
+      "video",
+      "ptv",
+      "document"
+    ]
+  },
+  "list_response": {
+    "items": [
+      {
+        "id": "30000000-0000-4000-8000-000000000001",
+        "creation_order": 1,
+        "revision": 1,
+        "device_id": null,
+        "device_name": "Todos os Dispositivos",
+        "enabled": true,
+        "match_mode": "equal",
+        "keyword": "Olá",
+        "response_kind": "sequence",
+        "response_types": [
+          "text"
+        ],
+        "preview": "Olá, {name}!",
+        "action_count": 1,
+        "total_delay_seconds": 1,
+        "created_at": "2026-11-04T00:00:00Z",
+        "updated_at": "2026-11-04T00:00:00Z"
+      }
+    ],
+    "counts": {
+      "total": 1,
+      "active": 1,
+      "inactive": 0
+    },
+    "filtered_total": 1,
+    "page": 1,
+    "per_page": 20,
+    "total_pages": 1,
+    "chatbot_revision": 1,
+    "devices": [
+      {
+        "id": "20000000-0000-4000-8000-000000000001",
+        "name": "Dispositivo de teste",
+        "status": "connected"
+      }
+    ],
+    "templates": [],
+    "capabilities": {
+      "manage": true,
+      "test_response": true,
+      "read_url_tags": true,
+      "import": true,
+      "export": true,
+      "backups": true,
+      "restore": true,
+      "actions": {
+        "text": true,
+        "template": true,
+        "sticker": true,
+        "shortvideo": true,
+        "carousel": true,
+        "url": true,
+        "nested_reply": true,
+        "nested_list": true
+      }
+    },
+    "limits": {
+      "rules": 2000,
+      "keyword_chars": 255,
+      "sequence_actions": 30,
+      "sequence_delay_seconds": 30,
+      "action_delay_seconds": 15,
+      "list_sections": 10,
+      "list_rows": 10,
+      "list_row_delay_seconds": 5,
+      "import_bytes": 10485760
+    },
+    "tags": [
+      {
+        "key": "name",
+        "label": "Nome do contato"
+      },
+      {
+        "key": "phone_number",
+        "label": "Telefone do contato"
+      },
+      {
+        "key": "my_name",
+        "label": "Nome do negócio"
+      },
+      {
+        "key": "my_email",
+        "label": "E-mail da conta"
+      },
+      {
+        "key": "my_contact_number",
+        "label": "Contato comercial"
+      }
+    ],
+    "pending_job": null
+  },
+  "catalog_response": {
+    "chatbot_revision": 1,
+    "devices": [
+      {
+        "id": "20000000-0000-4000-8000-000000000001",
+        "name": "Dispositivo de teste",
+        "status": "connected"
+      }
+    ],
+    "templates": [],
+    "rules": [
+      {
+        "id": "30000000-0000-4000-8000-000000000001",
+        "keyword": "Olá",
+        "device_id": null,
+        "enabled": true,
+        "response_kind": "sequence",
+        "revision": 1
+      }
+    ],
+    "capabilities": {
+      "manage": true,
+      "test_response": true,
+      "read_url_tags": true,
+      "import": true,
+      "export": true,
+      "backups": true,
+      "restore": true,
+      "actions": {
+        "text": true,
+        "template": true,
+        "sticker": true,
+        "shortvideo": true,
+        "carousel": true,
+        "url": true,
+        "nested_reply": true,
+        "nested_list": true
+      }
+    },
+    "limits": {
+      "rules": 2000,
+      "keyword_chars": 255,
+      "sequence_actions": 30,
+      "sequence_delay_seconds": 30,
+      "action_delay_seconds": 15,
+      "list_sections": 10,
+      "list_rows": 10,
+      "list_row_delay_seconds": 5,
+      "import_bytes": 10485760
+    },
+    "tags": [
+      {
+        "key": "name",
+        "label": "Nome do contato"
+      },
+      {
+        "key": "phone_number",
+        "label": "Telefone do contato"
+      },
+      {
+        "key": "my_name",
+        "label": "Nome do negócio"
+      },
+      {
+        "key": "my_email",
+        "label": "E-mail da conta"
+      },
+      {
+        "key": "my_contact_number",
+        "label": "Contato comercial"
+      }
+    ]
+  },
+  "detail_response": {
+    "rule": {
+      "id": "30000000-0000-4000-8000-000000000001",
+      "creation_order": 1,
+      "revision": 1,
+      "device_id": null,
+      "enabled": true,
+      "match_mode": "equal",
+      "keyword": "Olá",
+      "response": {
+        "kind": "sequence",
+        "actions": [
+          {
+            "id": "40000000-0000-4000-8000-000000000001",
+            "type": "text",
+            "delay_seconds": 1,
+            "text": "Olá, {name}!"
+          }
+        ]
+      },
+      "created_at": "2026-11-04T00:00:00Z",
+      "updated_at": "2026-11-04T00:00:00Z"
+    },
+    "chatbot_revision": 1
+  },
+  "rule_defaults": {
+    "device_id": null,
+    "enabled": true,
+    "match_mode": "equal",
+    "keyword": "Olá",
+    "response": {
+      "kind": "sequence",
+      "actions": [
+        {
+          "id": "40000000-0000-4000-8000-000000000001",
+          "type": "text",
+          "delay_seconds": 1,
+          "text": "Olá, {name}!"
+        }
+      ]
+    }
+  },
+  "actions": {
+    "text": {
+      "id": "40000000-0000-4000-8000-000000000001",
+      "type": "text",
+      "delay_seconds": 1,
+      "text": "Olá, {name}!"
+    },
+    "template": {
+      "id": "40000000-0000-4000-8000-000000000001",
+      "type": "template",
+      "delay_seconds": 1,
+      "template_id": "90000000-0000-4000-8000-000000000001"
+    },
+    "sticker": {
+      "id": "40000000-0000-4000-8000-000000000001",
+      "type": "sticker",
+      "delay_seconds": 1,
+      "template_id": "90000000-0000-4000-8000-000000000001"
+    },
+    "shortvideo": {
+      "id": "40000000-0000-4000-8000-000000000001",
+      "type": "shortvideo",
+      "delay_seconds": 1,
+      "template_id": "90000000-0000-4000-8000-000000000001"
+    },
+    "url": {
+      "id": "40000000-0000-4000-8000-000000000001",
+      "type": "url",
+      "delay_seconds": 1,
+      "url": "https://example.com/reply",
+      "method": "POST",
+      "custom_template": "",
+      "as_file": false
+    },
+    "nested_reply": {
+      "id": "40000000-0000-4000-8000-000000000001",
+      "type": "nested_reply",
+      "delay_seconds": 1,
+      "rule_id": "30000000-0000-4000-8000-000000000001"
+    },
+    "nested_list": {
+      "id": "40000000-0000-4000-8000-000000000001",
+      "type": "nested_list",
+      "delay_seconds": 1,
+      "rule_id": "30000000-0000-4000-8000-000000000001"
+    },
+    "carousel": {
+      "id": "40000000-0000-4000-8000-000000000001",
+      "type": "carousel",
+      "delay_seconds": 1,
+      "body": "Conheça as opções",
+      "cards": [
+        {
+          "id": "b0000000-0000-4000-8000-000000000001",
+          "title": "Opção 1",
+          "body": "Descrição da opção",
+          "image_url": "https://example.com/card1.jpg",
+          "button_text": "Ver opção"
+        },
+        {
+          "id": "b0000000-0000-4000-8000-000000000002",
+          "title": "Opção 2",
+          "body": "",
+          "image_url": "https://example.com/card2.jpg",
+          "button_text": "Ver opção"
+        },
+        {
+          "id": "b0000000-0000-4000-8000-000000000003",
+          "title": "Opção 3",
+          "body": "",
+          "image_url": "https://example.com/card3.jpg",
+          "button_text": "Ver opção"
+        }
+      ]
+    }
+  },
+  "list_definition": {
+    "kind": "list",
+    "title": "Atendimento",
+    "description": "Escolha uma opção",
+    "footer": "",
+    "button_text": "Ver opções",
+    "sections": [
+      {
+        "id": "c0000000-0000-4000-8000-000000000001",
+        "title": "Opções",
+        "rows": [
+          {
+            "id": "d0000000-0000-4000-8000-000000000001",
+            "title": "Informações",
+            "description": "",
+            "action": {
+              "id": "40000000-0000-4000-8000-000000000001",
+              "type": "text",
+              "delay_seconds": 1,
+              "text": "Olá, {name}!"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "requests": {
+    "create": {
+      "method": "POST",
+      "path": "/rules",
+      "body": {
+        "expected_chatbot_revision": 1,
+        "idempotency_key": "a0000000-0000-4000-8000-000000000001",
+        "rule": {
+          "device_id": null,
+          "enabled": true,
+          "match_mode": "equal",
+          "keyword": "Olá",
+          "response": {
+            "kind": "sequence",
+            "actions": [
+              {
+                "id": "40000000-0000-4000-8000-000000000001",
+                "type": "text",
+                "delay_seconds": 1,
+                "text": "Olá, {name}!"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "update": {
+      "method": "PUT",
+      "path": "/rules/{id}",
+      "body": {
+        "expected_revision": 1,
+        "expected_chatbot_revision": 1,
+        "idempotency_key": "a0000000-0000-4000-8000-000000000001",
+        "rule": {
+          "device_id": null,
+          "enabled": true,
+          "match_mode": "equal",
+          "keyword": "Olá",
+          "response": {
+            "kind": "sequence",
+            "actions": [
+              {
+                "id": "40000000-0000-4000-8000-000000000001",
+                "type": "text",
+                "delay_seconds": 1,
+                "text": "Olá, {name}!"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "enabled": {
+      "method": "PATCH",
+      "path": "/rules/{id}/enabled",
+      "body": {
+        "expected_revision": 1,
+        "expected_chatbot_revision": 1,
+        "idempotency_key": "a0000000-0000-4000-8000-000000000001",
+        "enabled": false
+      }
+    },
+    "duplicate": {
+      "method": "POST",
+      "path": "/rules/{id}/duplicate",
+      "body": {
+        "expected_revision": 1,
+        "expected_chatbot_revision": 1,
+        "idempotency_key": "a0000000-0000-4000-8000-000000000001"
+      }
+    },
+    "delete": {
+      "method": "DELETE",
+      "path": "/rules/{id}",
+      "body": {
+        "expected_revision": 1,
+        "expected_chatbot_revision": 1,
+        "idempotency_key": "a0000000-0000-4000-8000-000000000001"
+      }
+    },
+    "delete_all": {
+      "method": "POST",
+      "path": "/delete-all",
+      "body": {
+        "expected_chatbot_revision": 1,
+        "idempotency_key": "a0000000-0000-4000-8000-000000000001",
+        "confirm": true
+      }
+    },
+    "test_response": {
+      "method": "POST",
+      "path": "/rules/{id}/test",
+      "body": {
+        "expected_revision": 1,
+        "expected_chatbot_revision": 1,
+        "idempotency_key": "a0000000-0000-4000-8000-000000000001",
+        "device_id": "20000000-0000-4000-8000-000000000001",
+        "phone": "5511999999999"
+      }
+    },
+    "url_tags": {
+      "method": "POST",
+      "path": "/url-tags",
+      "body": {
+        "expected_chatbot_revision": 1,
+        "idempotency_key": "a0000000-0000-4000-8000-000000000001",
+        "device_id": "20000000-0000-4000-8000-000000000001",
+        "url": "https://example.com/reply",
+        "method": "POST"
+      }
+    },
+    "export": {
+      "method": "POST",
+      "path": "/exports",
+      "body": {
+        "ids": [
+          "30000000-0000-4000-8000-000000000001"
+        ],
+        "format": "zip"
+      }
+    },
+    "import_preview": {
+      "method": "POST",
+      "path": "/imports/preview",
+      "body": {
+        "filename": "orion-chatbot.zip",
+        "content_base64": "<base64>",
+        "device_id": null,
+        "mode": "add_missing"
+      }
+    },
+    "restore_preview": {
+      "method": "POST",
+      "path": "/backups/{id}/preview",
+      "body": {
+        "mode": "add_missing",
+        "device_id": null
+      }
+    },
+    "apply_preview": {
+      "method": "POST",
+      "path": "/previews/{id}/apply",
+      "body": {
+        "expected_chatbot_revision": 1,
+        "idempotency_key": "a0000000-0000-4000-8000-000000000001",
+        "confirmation": null
+      }
+    },
+    "exact_apply": {
+      "method": "POST",
+      "path": "/previews/{id}/apply",
+      "body": {
+        "expected_chatbot_revision": 1,
+        "idempotency_key": "a0000000-0000-4000-8000-000000000001",
+        "confirmation": "RESTORE"
+      }
+    },
+    "jobs": {
+      "method": "GET",
+      "path": "/jobs/{id}"
+    }
+  },
+  "preview_response": {
+    "preview": {
+      "id": "60000000-0000-4000-8000-000000000001",
+      "chatbot_revision": 1,
+      "source": "import",
+      "mode": "add_missing",
+      "expires_at": "2026-11-04T00:15:00Z",
+      "counts": {
+        "create": 1,
+        "update": 0,
+        "delete": 0,
+        "skip": 0,
+        "template_clones": 0,
+        "media_copies": 0
+      },
+      "warnings": [],
+      "can_apply": true
+    },
+    "chatbot_revision": 1
+  },
+  "job_response": {
+    "job": {
+      "id": "50000000-0000-4000-8000-000000000001",
+      "kind": "restore",
+      "status": "queued",
+      "counts": {
+        "create": 1,
+        "update": 0,
+        "delete": 0,
+        "skip": 0,
+        "template_clones": 0,
+        "media_copies": 0
+      },
+      "safety_backup_id": null,
+      "result": null,
+      "error": null,
+      "created_at": "2026-11-04T00:00:00Z",
+      "finished_at": null,
+      "source": "import"
+    }
+  },
+  "export_response": {
+    "export": {
+      "id": "50000000-0000-4000-8000-000000000001",
+      "filename": "orion-chatbot.zip",
+      "url": "/api/v1/tenants/10000000-0000-4000-8000-000000000001/subscription-whatsapp/chatbot/exports/50000000-0000-4000-8000-000000000001",
+      "expires_at": "2026-11-04T00:15:00Z"
+    }
+  },
+  "backups_response": {
+    "items": [
+      {
+        "id": "70000000-0000-4000-8000-000000000001",
+        "source": "scheduled",
+        "created_at": "2026-11-04T00:00:00Z",
+        "revision": 1,
+        "rules_count": 1,
+        "list_rows_count": 0,
+        "size": 1024,
+        "status": "ready",
+        "download_url": "/api/v1/tenants/10000000-0000-4000-8000-000000000001/subscription-whatsapp/chatbot/backups/70000000-0000-4000-8000-000000000001/download"
+      }
+    ],
+    "page": 1,
+    "per_page": 20,
+    "total": 1,
+    "total_pages": 1
+  },
+  "private": {
+    "snapshot": {
+      "chatbot": {
+        "revision": 1
+      }
+    },
+    "descriptor": {
+      "operation_id": "50000000-0000-4000-8000-000000000001",
+      "type": "chatbot_action",
+      "chatbot_revision": 1,
+      "delay_seconds": 1,
+      "action_type": "text",
+      "due_at": "2026-11-04T00:00:01Z"
+    },
+    "permit": {
+      "authorized": true,
+      "operation_id": "50000000-0000-4000-8000-000000000001",
+      "type": "chatbot_action",
+      "device_id": "20000000-0000-4000-8000-000000000001",
+      "generation": "e0000000-0000-4000-8000-000000000001",
+      "settings_revision": 1,
+      "chatbot_revision": 1,
+      "rule_id": "30000000-0000-4000-8000-000000000001",
+      "rule_revision": 1,
+      "payload": {
+        "phone": "5511999999999",
+        "delay_seconds": 1,
+        "action": {
+          "type": "text",
+          "text": "Olá, Cliente de teste!"
+        }
+      }
+    },
+    "asset": {
+      "id": "80000000-0000-4000-8000-000000000001",
+      "kind": "image",
+      "mime": "image/jpeg",
+      "size": 1024,
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "width": 640,
+      "height": 480,
+      "duration_ms": null,
+      "file_name": "imagem.jpg",
+      "thumbnail": null
+    },
+    "http_result_path": "/internal/qr/channels/{channel_id}/device/chatbot/http-result",
+    "carousel_image_path": "/internal/qr/channels/{channel_id}/device/chatbot/carousel-image",
+    "asset_path": "/internal/qr/channels/{channel_id}/device/chatbot/assets/{asset_id}/content?variant=original",
+    "scope_headers": [
+      "X-Orion-Device-Id",
+      "X-Orion-Device-Generation",
+      "X-Orion-Device-Revision",
+      "X-Orion-Device-Effect",
+      "X-Orion-Chatbot-Revision"
+    ],
+    "carousel_card_header": "X-Orion-Chatbot-Card",
+    "recheck": "POST /effects/authorize with recheck:true, chatbot_revision and existing full scope; never increments attempts."
+  },
+  "chosen_semantics": {
+    "matching": "NFKD, casefold, remove combining marks, collapse whitespace; equal is full string; like and array terms are substrings. Specific matches win before wildcards; newest creation_order wins within each group.",
+    "windows": "Per tenant/device/rule/phone; reservation at match admission; rolling 24h/14d/1h, local calendar date for ***, **** always. Ambiguous failures do not reset the reservation.",
+    "inactive_references": "May be inspected in the catalog; automatic execution never traverses inactive or deleted rules.",
+    "import": "Only the versioned Orion format is supported. No unverified BotBot file compatibility.",
+    "unknown_delivery": "Read-only reconciliation; never automatically repeat ambiguous sends or HTTP requests.",
+    "source_limits": "Graph expansion and configured delays are validated before save/import; never silently discard later actions."
+  },
+  "error_codes": [
+    "CHATBOT_CONFLICT",
+    "CHATBOT_NOT_FOUND",
+    "CHATBOT_INVALID_GRAPH",
+    "CHATBOT_CAPABILITY_UNAVAILABLE",
+    "CHATBOT_PREVIEW_EXPIRED",
+    "CHATBOT_PREVIEW_STALE",
+    "CHATBOT_IMPORT_INVALID",
+    "CHATBOT_RESTORE_CONFIRMATION",
+    "CHATBOT_BUSY",
+    "CHATBOT_EFFECT_REVOKED"
+  ]
+}

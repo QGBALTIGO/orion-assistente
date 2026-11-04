@@ -98,15 +98,16 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
     const assertCurrent=async()=>{await validate(c);if(generation!==c.generation)throw Error('channel_socket_replaced');};
     const isCurrent=()=>current(c)&&generation===c.generation;
     const notices=new WeakMap();
-    const deviceScope=payload=>{
+    const deviceScope=(payload,method)=>{
       if(!c.device||payload?.device_id!==c.device.id||payload.generation!==c.device.generation||payload.settings_revision!==c.device.settings_revision)
         throw Error('device_operation_superseded');
+      if(method!=='deviceEvent'&&payload.chatbot_revision!==undefined&&payload.chatbot_revision!==c.device.chatbot?.revision)throw Error('chatbot_operation_superseded');
     };
     async function deviceRequest(method,payload){
-      await assertCurrent();deviceScope(payload);
+      await assertCurrent();deviceScope(payload,method);
       if(typeof broker[method]!=='function')throw Error('device_broker_unavailable');
       const result=await broker[method](c.id,c.key,{owner,fence:c.fence},payload);
-      await assertCurrent();deviceScope(payload);
+      try{await assertCurrent();deviceScope(payload,method);}catch(error){if(Buffer.isBuffer(result))result.fill(0);throw error;}
       return result;
     }
     async function notice(payload){
@@ -147,6 +148,14 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
         },
         deviceEffectsPending:payload=>deviceRequest('deviceEffectsPending',payload),
         deviceTranscribe:payload=>deviceRequest('deviceTranscribe',payload),
+        deviceChatbotAsset:payload=>deviceRequest('deviceChatbotAsset',payload),
+        deviceChatbotCarouselImage:payload=>deviceRequest('deviceChatbotCarouselImage',payload),
+        deviceChatbotHttpResult:async payload=>{
+          if(payload.reconcile!==true)return deviceRequest('deviceChatbotHttpResult',payload);
+          await assertCurrent();
+          if(!c.device||payload.device_id!==c.device.id||payload.generation!==c.device.generation||typeof broker.deviceChatbotHttpResult!=='function')throw Error('chatbot_receipt_refused');
+          return broker.deviceChatbotHttpResult(c.id,c.key,{owner,fence:c.fence},payload);
+        },
         allowedSender:phone=>c.allowed.has(phone),
         assistantEnabled:()=>c.assistant===true,
         audioEnabled:()=>audioEnabled()===true&&c.assistant===true,

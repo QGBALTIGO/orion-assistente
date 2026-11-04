@@ -26,6 +26,7 @@ from app.inbox_runtime import process_inbox_message,scan_inbox
 from app.email_outbox import process_email_outbox,scan_email_outbox
 from app.account_erasure import erase_due_account_logins
 from app.appointment_notifications import process_notification as process_appointment_notification, scan_notifications as scan_appointment_notifications, cleanup_notification_payloads
+from app.subscription_chatbot_worker import process_subscription_chatbot_restore, scan_subscription_chatbot, backup_subscription_chatbots
 
 
 async def infrastructure_ping(ctx: dict) -> str:
@@ -125,6 +126,8 @@ async def startup_plan_permissions(ctx):
     await wait_for_appointment_consent(Settings.from_environment())
     from scripts.wait_for_subscription_devices_schema import wait_for_schema as wait_for_subscription_devices
     await wait_for_subscription_devices(Settings.from_environment())
+    from scripts.wait_for_subscription_chatbot_schema import wait_for_schema as wait_for_subscription_chatbot
+    await wait_for_subscription_chatbot(Settings.from_environment())
     ctx['plan_permissions_ready'] = True
     logging.getLogger(__name__).info('orion_plan_permissions_0050_worker_ready')
     if os.getenv('ORION_REVIEW_QA_VERIFY_7364') == '1':
@@ -205,7 +208,7 @@ async def startup_plan_permissions(ctx):
 
 class WorkerSettings:
     on_startup = startup_plan_permissions
-    functions = [func(process_appointment_notification,name='process_appointment_notification'),infrastructure_ping,process_inbound_event,process_message_outbox,process_calendar_outbox,process_due_appointment,reconcile_asaas_job,process_automation_job,reconcile_automation_job,process_inbox_message,process_email_outbox]
+    functions = [func(process_appointment_notification,name='process_appointment_notification'),infrastructure_ping,process_inbound_event,process_message_outbox,process_calendar_outbox,process_due_appointment,reconcile_asaas_job,process_automation_job,reconcile_automation_job,process_inbox_message,process_email_outbox,process_subscription_chatbot_restore]
     cron_jobs = [cron(cleanup_notification_payloads, minute={13}, second={10}),cron(scan_appointment_notifications, minute=set(range(60)), second=set(range(0,60,5))),
                  cron(recover_events, minute={0,5,10,15,20,25,30,35,40,45,50,55}, second=0),
                  cron(scan_calendar_outbox, minute=set(range(60)), second=10),
@@ -215,6 +218,8 @@ class WorkerSettings:
                  cron(scan_automations, minute=set(range(60)), second=20),
                  cron(scan_inbox,minute=set(range(60)),second={5,35}),
                  cron(scan_email_outbox,minute=set(range(60)),second={0,15,30,45}),
+                 cron(scan_subscription_chatbot,minute=set(range(60)),second={7,37}),
+                 cron(backup_subscription_chatbots,minute={2,17,32,47},second=22),
                  # Retention-aware, irreversible login removal after 30 days.
                  cron(erase_due_account_logins,minute={17},second=12)]
     redis_settings = RedisSettings.from_dsn(os.getenv("REDIS_URL", "redis://localhost:6379/0"))

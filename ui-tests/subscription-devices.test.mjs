@@ -18,7 +18,7 @@ test('only the subscription profile gets the Devices route; every other module s
     configureWindow(window){Object.defineProperty(window.document,'hidden',{value:false,configurable:true});window.eval(connectSource);window.eval(deviceSource);},
     respond:path=>path===base?listing():defaultResponse(path)});
   t.after(()=>h.close());await flush();
-  assert.deepEqual([...h.document.querySelectorAll('#osNav [data-os-route]')].map(node=>node.dataset.osRoute),['dispositivos','novidades','ajuda','member']);
+  assert.deepEqual([...h.document.querySelectorAll('#osNav [data-os-route]')].map(node=>node.dataset.osRoute),['dispositivos','chatbot','novidades','ajuda','member']);
   assert.equal(h.document.querySelector('#page-suite').dataset.osCurrentRoute,'dispositivos');
   assert.ok(h.document.querySelector('[data-sd-card]'));
   assert.equal(writes(h).length,0);

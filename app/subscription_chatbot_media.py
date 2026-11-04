@@ -89,10 +89,14 @@ def _rgb(image: Image.Image) -> Image.Image:
 
 def _jpeg(image: Image.Image, *, edge: int, limit: int) -> bytes:
     photo = _rgb(image)
+    # Pillow carries COM/PNG "comment" through convert()/thumbnail() and uses
+    # it as a JPEG save default even with exif=b"". Drop every inherited field.
+    photo.info.clear()
     photo.thumbnail((edge, edge), Image.Resampling.LANCZOS)
     for quality in (85, 75, 65, 50):
         output = io.BytesIO()
-        photo.save(output, format="JPEG", quality=quality, optimize=True, exif=b"")
+        photo.save(output, format="JPEG", quality=quality, optimize=True, exif=b"",
+                   comment=b"", xmp=b"", icc_profile=b"")
         if output.tell() <= limit:
             return output.getvalue()
     raise _error(413, "CHATBOT_MEDIA_TOO_LARGE", "A imagem ultrapassa o tamanho permitido.")
@@ -103,7 +107,7 @@ def _photo(raw: bytes, *, sticker: bool) -> PreparedMedia:
         formats = ("JPEG", "PNG", "WEBP", "GIF") if sticker else ("JPEG", "PNG", "WEBP")
         with Image.open(io.BytesIO(raw), formats=formats) as source:
             if (source.width * source.height > MAX_IMAGE_PIXELS
-                    or min(source.size) < 16 or max(source.size) > 16_384):
+                    or min(source.size) < 1 or max(source.size) > 16_384):
                 raise _error(413, "CHATBOT_MEDIA_DIMENSIONS", "As dimensões da imagem não são permitidas.")
             frame_count = getattr(source, "n_frames", 1)
             if frame_count > 1 and not sticker:
@@ -314,17 +318,30 @@ def put_media(tenant: UUID, asset: UUID, prepared: PreparedMedia) -> None:
     written = []
     try:
         for key, data, mime, checksum in variants:
-            client.put_object(Bucket=bucket, Key=key, Body=data, ContentType=mime,
-                              CacheControl="private, no-store", ContentDisposition="attachment",
-                              Metadata={"sha256": checksum}, IfNoneMatch="*")
-            written.append(key)
-    except (ClientError, BotoCoreError, OSError):
+            try:
+                client.put_object(Bucket=bucket, Key=key, Body=data, ContentType=mime,
+                                  CacheControl="private, no-store", ContentDisposition="attachment",
+                                  Metadata={"sha256": checksum}, IfNoneMatch="*")
+            except ClientError as error:
+                if (error.response.get("Error", {}).get("Code") not in {"PreconditionFailed", "412"}
+                        and error.response.get("ResponseMetadata", {}).get("HTTPStatusCode") != 412):
+                    raise
+                # Storage may have committed before the registry transaction
+                # lost its lease. Retry is idempotent only for identical bytes.
+                # A pre-existing object never enters this call's cleanup list.
+                get_media(tenant, asset, len(data), checksum,
+                          "original" if key == original else "thumbnail")
+            else:
+                written.append(key)
+    except (ClientError, BotoCoreError, OSError, HTTPException) as error:
         # Only compensate keys this invocation created, never a pre-existing asset.
         for key in written:
             try:
                 client.delete_object(Bucket=bucket, Key=key)
             except (ClientError, BotoCoreError, OSError):
                 pass
+        if isinstance(error, HTTPException):
+            raise
         raise _error(503, "CHATBOT_MEDIA_STORAGE", "Não foi possível guardar a mídia.") from None
 
 

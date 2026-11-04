@@ -12,11 +12,15 @@ import {createCipheriv,createDecipheriv,createHmac,hkdfSync,randomBytes} from "n
 
 export function makeEncryptedRetryStore({
  directory,secret,serialize=JSON.stringify,deserialize=JSON.parse,
- now=Date.now,ttlMs=48*60*60*1000,max=2000
+ now=Date.now,ttlMs=48*60*60*1000,max=2000,maxPayloadBytes=96*1024,maxTotalBytes
 }){
   if(!directory?.startsWith("/data/") && !process.env.ORION_RETRY_TEST_MODE)
     throw Error("Encrypted cache directory must be private /data");
   if(typeof secret!=="string" || secret.length<32)throw Error("Retry store encryption secret too short");
+  if(!Number.isSafeInteger(maxPayloadBytes)||maxPayloadBytes<1024||maxPayloadBytes>1024*1024)
+    throw Error("Invalid encrypted cache payload limit");
+  if(maxTotalBytes!==undefined&&(!Number.isSafeInteger(maxTotalBytes)||maxTotalBytes<1024))
+    throw Error("Invalid encrypted cache total limit");
   const key=Buffer.from(hkdfSync("sha256",Buffer.from(secret),
     Buffer.from("orion/baileys/message-retry/v1"),Buffer.from("aes-256-gcm"),32));
   fs.mkdirSync(directory,{recursive:true,mode:0o700});
@@ -26,21 +30,24 @@ export function makeEncryptedRetryStore({
   }
   function prune(){
     const list=fs.readdirSync(directory).filter(x=>/^[a-f0-9]{64}\.enc$/.test(x));
-    const sorted=list.map(name=>({name,mtime:fs.statSync(path.join(directory,name)).mtimeMs})).sort((a,b)=>a.mtime-b.mtime);
+    const sorted=list.map(name=>{const stat=fs.statSync(path.join(directory,name));return {name,mtime:stat.mtimeMs,size:stat.size};}).sort((a,b)=>a.mtime-b.mtime);
     for(const entry of [...sorted]){
       if(entry.mtime<now()-ttlMs){
         fs.rmSync(path.join(directory,entry.name),{force:true});
         sorted.splice(sorted.indexOf(entry),1);
       }
     }
-    while(sorted.length>max){const oldest=sorted.shift();fs.rmSync(path.join(directory,oldest.name),{force:true})}
+    let total=sorted.reduce((sum,entry)=>sum+entry.size,0);
+    while(sorted.length>max||(maxTotalBytes!==undefined&&total>maxTotalBytes)){
+      const oldest=sorted.shift();total-=oldest.size;fs.rmSync(path.join(directory,oldest.name),{force:true});
+    }
   }
   function save(keyData,message){
     if(!keyData?.id || !message || typeof message!=="object")return false;
     try{
       const id=String(keyData.id);
       const payload=Buffer.from(serialize({expires:now()+ttlMs,message}),"utf8");
-      if(payload.length>96*1024)return false;
+      if(payload.length>maxPayloadBytes)return false;
       const iv=randomBytes(12);
       const cipher=createCipheriv("aes-256-gcm",key,iv);
       cipher.setAAD(Buffer.from("orion-retry-v1"));
@@ -62,7 +69,8 @@ export function makeEncryptedRetryStore({
         try{fs.fsyncSync(directoryFd)}finally{fs.closeSync(directoryFd)}
       }finally{fs.rmSync(tmp,{force:true})}
       prune();
-      return true;
+      // A limit must never report a durable pre-relay copy after evicting it.
+      return fs.existsSync(target);
     }catch{
       return false;
     }
