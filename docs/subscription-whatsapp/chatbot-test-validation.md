@@ -54,3 +54,26 @@ do commit exato, deploy saudável e conferência posterior no painel publicado.
 
 Os resultados finais do CI e da publicação serão registrados após a execução;
 este documento não afirma que essas verificações já ocorreram.
+
+## Ajustes encontrados pelo primeiro CI
+
+O primeiro head da PR 250 passou em Python (936), Node (300), DOM (196) e
+Chromium (25 cenários). A execução revelou três problemas nas fixtures e na
+descoberta de testes, corrigidos antes da publicação:
+
+- O nome do E2E terminava em `_test.py`, portanto a suíte geral também tentou
+  coletá-lo sem o runner Playwright. O arquivo foi renomeado para
+  `browser_subscription_chatbot_simulator.py`, mantendo execução explícita no
+  gate de navegadores. Não foi alterada a descoberta global nem adicionada
+  dependência de navegador aos testes gerais.
+- O interceptor de rede do WebKit classificou um Blob criado pela própria
+  página como origem externa. O artefato registrou somente esse Blob local e
+  nenhum erro JavaScript. A fixture passa a reconhecer exclusivamente Blobs
+  da origem local do servidor de teste, mantendo o bloqueio de origens remotas
+  e a asserção de decodificação real do JPEG.
+- O cenário PostgreSQL de substituição de dispositivo mantinha uma conexão
+  no bridge falso depois de remover seu lease no banco descartável. A fixture
+  foi alinhada ao estado desconectado; a autorização da API permaneceu intacta.
+
+Esses ajustes não modificam o comportamento de produção. O novo commit deve
+executar novamente os gates antes do merge.

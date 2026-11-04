@@ -61,6 +61,9 @@ async def simulator_case(chatbot_case):
             lease_expires_at=NULL WHERE tenant_id=:t"""), {"t": c.tenant})
         await db.execute(text("UPDATE subscription_devices SET status='disconnected' WHERE tenant_id=:t"),
                          {"t": c.tenant})
+    # Keep the synthetic transport consistent with the released SQL lease.
+    # A disconnected device must not retain a fake live socket during remove.
+    c.bridge.connections.clear()
     yield c
 
 

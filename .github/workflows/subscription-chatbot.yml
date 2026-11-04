@@ -271,7 +271,7 @@ jobs:
         run: |
           python -m pytest -q -ra --maxfail=1 \
             tests/e2e/browser_subscription_chatbot.py \
-            tests/e2e/browser_subscription_chatbot_test.py \
+            tests/e2e/browser_subscription_chatbot_simulator.py \
             tests/e2e/browser_subscription_devices.py \
             tests/e2e/browser_subscription_workspace.py -k '${{ matrix.engine }}'
       - uses: actions/upload-artifact@v4

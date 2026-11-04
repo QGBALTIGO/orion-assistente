@@ -18,7 +18,7 @@ from urllib.parse import parse_qs, urlencode, urlsplit
 from uuid import uuid4
 
 from PIL import Image
-from playwright.sync_api import expect
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError, expect
 import pytest
 
 from app.subscription_chatbot_test_schemas import SimulateRequest
@@ -208,6 +208,10 @@ def setup_page(browser, fixture_url, size=(1440, 900), theme="light"):
 
     def local_only(route):
         url = urlsplit(route.request.url)
+        # WebKit routes local Blob reads through this guard; Chromium does not.
+        # Compare the embedded origin, never allow arbitrary Blob origins.
+        if url.scheme == "blob":
+            url = urlsplit(url.path)
         if (url.scheme, url.netloc) != (origin.scheme, origin.netloc):
             external.append(route.request.url)
             return route.abort()
@@ -300,7 +304,13 @@ def test_local_conversation_menu_media_fullscreen_reload_and_rule_shortcut(brows
         expect(preview).to_have_attribute("src", re.compile(r"^blob:"))
         preview.scroll_into_view_if_needed()
         expect(preview).to_be_visible()
-        page.wait_for_function("() => {const image=document.querySelector('[data-sct-media-content] img');return image?.complete&&image.naturalWidth===320;}")
+        try:
+            page.wait_for_function("() => {const image=document.querySelector('[data-sct-media-content] img');return image?.complete&&image.naturalWidth===320;}")
+        except PlaywrightTimeoutError as error:
+            state = preview.evaluate("image=>({src:image.currentSrc,complete:image.complete,width:image.naturalWidth,height:image.naturalHeight})")
+            raise AssertionError("Private fixture JPEG did not decode: " + json.dumps({
+                "image": state, "external_requests": external, "page_errors": errors,
+            }, ensure_ascii=False)) from error
         assert_layout(page, width)
         page.screenshot(path=str(ARTIFACTS / f"{label}-media.png"), animations="disabled")
         keyword(page, "externo").click()
