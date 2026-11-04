@@ -76,9 +76,9 @@ def test_public_mutation_body_cannot_inject_trusted_audit_fields(fields):
 def test_terminal_readonly_expired_and_future_actions_are_factual():
     now = datetime.now(timezone.utc)
     future = {"status": "confirmed", "start_at": now + timedelta(seconds=1)}
-    assert allowed_actions(future, can_write=True, now=now) == ["cancel", "reschedule"]
+    assert allowed_actions(future, can_write=True, now=now) == ["cancel", "reschedule", "add_services"]
     assert allowed_actions(future, can_write=False, now=now) == []
-    assert allowed_actions({**future, "start_at": now}, can_write=True, now=now) == ["cancel", "reschedule", "complete", "no_show"]
+    assert allowed_actions({**future, "start_at": now}, can_write=True, now=now) == ["cancel", "reschedule", "add_services", "complete", "no_show"]
     for status in ("completed", "no_show", "cancelled"):
         assert allowed_actions({**future, "status": status}, can_write=True, now=now) == []
     assert allowed_actions({**future, "status": "hold", "hold_expires_at": now}, can_write=True, now=now) == []

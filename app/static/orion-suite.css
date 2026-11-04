@@ -389,6 +389,18 @@ html:has(.os-appointment-sheet[open]){overflow:hidden}
 .os-appointment-services strong{font-weight:500;overflow-wrap:anywhere}
 .os-appointment-services small{color:var(--os-muted);font-size:12px}
 .os-appointment-services>li>span{white-space:nowrap}
+.os-appointment-origin{font-size:11px;line-height:16px;color:var(--os-muted);white-space:normal}
+#osBookingWalkIn[hidden],#osBookingPhone[hidden],#osBookingClock[hidden],#osBookingSlotField[hidden],#osBookingCompleted[hidden],#osBookingMessages[hidden],#osExtraPreview[hidden],#osExtraConflict[hidden]{display:none!important}
+.os-extra-options{min-width:0;margin:0;padding:0;border:0}
+.os-extra-options legend{font:500 14px/20px var(--os-font);margin-bottom:8px}
+.os-extra-options .os-check{align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--os-border)}
+.os-extra-options .os-check:last-child{border-bottom:0}
+.os-extra-options .os-check input{margin-top:3px}
+.os-extra-options .os-check>span{display:grid;gap:3px;min-width:0}
+.os-extra-options .os-check strong{font-weight:500;overflow-wrap:anywhere}
+.os-extra-conflict{display:grid;gap:12px;padding:14px;border:1px solid var(--os-border);border-radius:12px;background:var(--os-card)}
+.os-extra-conflict .os-help{margin:0}
+.os-appointment-section-title:has([data-os-action="appointment-extras"]){flex-wrap:wrap}
 .os-appointment-totals{display:grid;gap:10px;background:var(--os-card);border:1px solid var(--os-border);border-radius:12px;padding:14px 16px;margin-top:20px!important}
 .os-appointment-totals>div{display:flex;align-items:baseline;justify-content:space-between;gap:16px;font-size:13px;line-height:20px}
 .os-appointment-totals dd{font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}

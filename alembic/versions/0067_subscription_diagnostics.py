@@ -1,8 +1,8 @@
 """Private diagnostic intentions, explicit confirmation and fenced proxy probes."""
 from alembic import op
 
-revision = "0066_subscription_diagnostics"
-down_revision = "0065_subscription_sent_messages"
+revision = "0067_subscription_diagnostics"
+down_revision = "0066_appointment_operations"
 branch_labels = None
 depends_on = None
 

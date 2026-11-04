@@ -2,11 +2,19 @@
 
 ## Base, escopo e limites
 
-Base publicada: PR 252, commit `f58730ac8e380bd2c12286c69c1db3873d3cbf0f`,
+Base publicada inicial: PR 252, commit `f58730ac8e380bd2c12286c69c1db3873d3cbf0f`,
 árvore `28ac47dc292556b77b80fbc80607077265011a41`. O commit local equivalente
 é `f7063173988ae8b84883fd42d1e52fdbd4a092ea`; os hashes de commit diferem,
 mas a árvore é idêntica. A qualificação compara o conteúdo publicado e o novo
 patch, sem tomar a branch `main` antiga como produção.
+
+Durante a qualificação, a PR 254 avançou a produção para
+`7d2aa7fc5af1bacb5fc9b973e9dcc9efdeeadb13`, árvore
+`47facc617bf47fd08f473b8276a83c5f6275bac0`, com os recursos de Agenda e a
+migração `0066_appointment_operations`. Essa passa a ser a base da revisão
+integrada. O conteúdo publicado da Agenda é preservado, e Diagnósticos passa
+para `0067_subscription_diagnostics`, dependente da 0066 já publicada. A prova
+anterior sobre a base PR 252 é histórica, não uma qualificação da integração.
 
 Módulo restrito a `servico_assinaturas`, com permissão `diagnostics.manage`.
 A observação, seus limites e o efeito automático inesperado da referência estão
@@ -181,10 +189,45 @@ em 11,06 s; backend, PostgreSQL e browsers permaneceram inalterados neste ajuste
 O próximo head deve concluir novamente todos os gates; nenhuma evidência de
 revisão intermediária substitui essa qualificação.
 
+### Integração da atualização publicada da Agenda
+
+O head `133eada3b29f0c7938fd2fe253b476e3c0a1ab8f`, árvore
+`4033512c90c4d4d230c147361e469ac95bb5fed7`, recebeu a correção de recuperação
+e de cleanup, mas nenhum workflow iniciou. A referência direta de produção
+mostrou que a PR 254 havia sido mesclada às 19:52:41 UTC, enquanto a metadata
+da PR 253 ainda exibia a base antiga. O conflito foi tratado sobre a árvore
+publicada `47facc617bf47fd08f473b8276a83c5f6275bac0`.
+
+O merge preserva as rotas, regras, consumidores, interface e testes da Agenda.
+O painel conserva `error.detail`, necessário ao fluxo de serviços extras,
+junto da evidência limitada de rejeição de Diagnósticos. A migração publicada
+`0066_appointment_operations.py` mantém exatamente o blob
+`74520f1a8c27fa03dccd35e02fc2fcc4f2d492cb`. Somente Diagnósticos foi renumerado
+para 0067, e o grafo Alembic contém um único head.
+
+O backup de Diagnósticos usa `subscription-diagnostics-0067` e registra a
+revisão anterior `0066_appointment_operations`. Os releases anteriores
+reconhecem ambas as revisões sem repetir DDL. O predeploy e o startup do worker
+exigem a prontidão de Agenda antes de Diagnósticos. A barreira de Diagnósticos
+também incorpora o catálogo da Agenda; quatro testes PG adicionais verificam
+a recusa quando um desses guards anteriores estiver ausente.
+
+A união dos testes DOM de Agenda e Diagnósticos concluiu 351 aprovações em
+12,53 s. A união dos dois gates Python concluiu 1.721 aprovações em 69,71 s:
+46 arquivos únicos, flags sintéticas combinadas e rede externa bloqueada.
+Houve seis avisos antigos de lifespan e um de TestClient/httpx já exercitado
+pelos testes da Agenda. Os 239 testes unitários de release/startup passaram; foram coletados
+89 casos PG nos três arquivos diretamente relacionados (51 funcionais de
+Diagnósticos, 17 de release de Diagnósticos e 21 de release da Agenda).
+A coleta não equivale à execução real. A qualificação remota deve abranger os
+seis gates de assinaturas, os cinco de Agenda e todos os workflows gerais
+acionados pelo diff contra a nova base, inclusive fresh-devices pela alteração
+real no startup do worker.
+
 ## Gates obrigatórios do CI
 
 O workflow `subscription-chatbot.yml` inclui os seis grupos anteriores e os
-novos caminhos de Diagnósticos, a migração 0066, os scripts de release, os testes
+novos caminhos de Diagnósticos, a migração 0067, os scripts de release, os testes
 PG, o componente DOM e os fluxos reais de navegador.
 
 - Python: contratos públicos/privados, dispositivos, chatbot, templates,
@@ -195,7 +238,8 @@ PG, o componente DOM e os fluxos reais de navegador.
   empresa e nicho, logout, confirmação/cancelamento e escapes de conteúdo.
 - PostgreSQL: banco descartável com papéis `app_migrator`, `app_support` e
   `app_runtime`; nenhuma rede externa. Conferir ausência de escritas em GET,
-  efeitos únicos sob concorrência, RLS/ACLs e catálogo da 0066.
+  efeitos únicos sob concorrência, RLS/ACLs e catálogo da 0067, preservando o
+  contrato da 0066 de Agenda.
 - Chrome oficial e WebKit: três tamanhos, dois temas, seleção/Atualizar sem
   admissão, preview, cancelamento, confirmação, resultados, resposta perdida
   e recuperação; conferir limites horizontais e verticais dos diálogos.
@@ -214,6 +258,6 @@ dependem dos gates acima. A PR deve registrar head, checkout de merge sintético
 
 A publicação usa a branch `security/prelaunch-hardening-20261030`. É necessário
 conferir a mesma revisão nos serviços API, worker e ponte; backup privado
-verificado e migração 0065 → 0066; barreira de catálogo pronta; e navegação no
+verificado e migração 0066 → 0067; barreira de catálogo pronta; e navegação no
 Chrome autorizado. A conferência ao vivo será somente leitura, sem confirmar
 mensagem ou iniciar probe real. Campanhas (etapa 07) permanece fora deste patch.

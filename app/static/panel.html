@@ -1675,7 +1675,7 @@ async function api(url,method="GET",data){
  if(!response.ok){
    const json=await response.json().catch(()=>({}));
    if(response.status===401&&requestAuthEpoch===authEpoch&&requestCsrf===csrf&&url!=="/auth/login"&&url!=="/auth/me")await checkSessionAfterUnauthorized(requestAuthEpoch,requestCsrf);
-   const error=Error(errorMessage(json,response.status));error.status=response.status;
+   const error=Error(errorMessage(json,response.status));error.status=response.status;error.detail=json?.detail;
    const rejection=json?.detail?.rejection;
    if(response.status===409&&method==="POST"&&/\/subscription-whatsapp\/diagnostics\/[^/]+\/(?:test-messages\/prepare|proxy-tests)$/.test(url)&&json?.detail?.code==="DIAGNOSTIC_CONTEXT_CHANGED"&&rejection?.reason==="stale_device_version"){
      error.code="DIAGNOSTIC_CONTEXT_CHANGED";

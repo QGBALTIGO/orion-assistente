@@ -120,6 +120,10 @@ def main():
     result = sent_messages_wait()
     if result:
         return result
+    from scripts.wait_for_appointment_operations_schema import main as appointment_operations_wait
+    result = appointment_operations_wait()
+    if result:
+        return result
     from scripts.wait_for_subscription_diagnostics_schema import main as diagnostics_wait
     return diagnostics_wait()
 

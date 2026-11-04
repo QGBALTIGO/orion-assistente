@@ -5,9 +5,9 @@ import json
 import asyncpg
 from scripts import wait_for_agenda_schema as previous
 from scripts.wait_for_agenda_schema import Settings, Stop, SAFE_ERRORS
-from scripts.wait_for_subscription_sent_messages_schema import CONTRACT_QUERY as PREVIOUS_CONTRACT
+from scripts.wait_for_appointment_operations_schema import CONTRACT_QUERY as PREVIOUS_CONTRACT
 
-SCHEMA_MARKER = "0066_subscription_diagnostics"
+SCHEMA_MARKER = "0067_subscription_diagnostics"
 
 CONTRACT_QUERY = """
  SELECT COALESCE((""" + PREVIOUS_CONTRACT + """),false)

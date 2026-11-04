@@ -226,7 +226,8 @@ Não aceita campos extras, exceção bruta, URL, host escolhido ou credenciais.
 
 ## Persistência e códigos
 
-Migração `0066_subscription_diagnostics`, após0065. Tabela
+Migração `0067_subscription_diagnostics`, após `0066_appointment_operations`
+já publicada pela PR 254. A migração da Agenda permanece intacta. Tabela
 `subscription_diagnostic_requests`: tenant/device/generation/revision/actor,
 kind/key/fingerprint, snapshot/confirmation_version imutáveis, prazos, lifecycle,
 effect_id único opcional, claim próprio de proxy e resultado limitado.

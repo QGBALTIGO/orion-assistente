@@ -335,7 +335,7 @@ async def session_response(session,role):
                 "customer":row["customer_name"],"professional":row["professional_name"],
                 "services":[item["name_snapshot"] for item in row["items"]],
                 "start_at":row["start_at"],"end_at":row["end_at"],
-                "duration_min":sum(x["duration_snapshot_min"] for x in row["items"]),
+                "duration_min":row.get("reserved_duration_min",sum(x["duration_snapshot_min"] for x in row["items"])),
                 "timezone":row["timezone"],"protocol":row["protocol"],
                 "status":row["status"],"updated_at":row["updated_at"],
                 "can_change":change,"can_review":False,"review":None,

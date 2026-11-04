@@ -1,4 +1,4 @@
-"""Publish 0066 only after verified private backup and previous schema checks.
+"""Publish 0067 only after verified private backup and previous schema checks.
 
 No devices, chatbot rules, messages or provider calls are created by this
 additive migration. Ordinary application workers never run the migration.
@@ -17,8 +17,8 @@ from scripts.apply_variable_combo_migration import migrated_version
 from scripts.backup_and_migrate_commissions import connection_values, storage_values, perform_backup
 from scripts.wait_for_subscription_diagnostics_schema import CONTRACT_QUERY
 
-PREVIOUS = "0065_subscription_sent_messages"
-TARGET = "0066_subscription_diagnostics"
+PREVIOUS = "0066_appointment_operations"
+TARGET = "0067_subscription_diagnostics"
 
 
 def schema_ready(raw):
@@ -43,18 +43,18 @@ def main():
         if current != PREVIOUS:
             print("orion_subscription_diagnostics_unreviewed_source_revision", file=sys.stderr)
             return 3
-        from scripts.backup_and_migrate_subscription_sent_messages import schema_ready as previous_ready
+        from scripts.backup_and_migrate_appointment_operations import schema_ready as previous_ready
         if not previous_ready(raw):
             print("orion_subscription_diagnostics_source_schema_invalid", file=sys.stderr)
             return 3
-        with tempfile.TemporaryDirectory(prefix="orion-subscription-diagnostics-0066-") as folder:
+        with tempfile.TemporaryDirectory(prefix="orion-subscription-diagnostics-0067-") as folder:
             perform_backup(url, storage_values(), Path(folder) / "backup.dump",
-                           backup_context="subscription-diagnostics-0066",
+                           backup_context="subscription-diagnostics-0067",
                            schema_revision=PREVIOUS, preserve_ownership=True)
         current = migrated_version(raw)
         if current == TARGET:
             return 0 if schema_ready(raw) else 3
-        if current != PREVIOUS:
+        if current != PREVIOUS or not previous_ready(raw):
             return 3
         subprocess.run([sys.executable, "-m", "alembic", "upgrade", TARGET],
                        env={**os.environ, "ORION_MIGRATION_SWITCH_ROLE": "1"},

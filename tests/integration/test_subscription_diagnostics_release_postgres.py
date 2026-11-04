@@ -4,16 +4,20 @@ import pytest
 
 from test_subscription_devices_release_postgres import isolated_settings
 from scripts import backup_and_migrate_subscription_diagnostics as release
+from scripts import backup_and_migrate_appointment_operations as previous_release
 from scripts import wait_for_subscription_diagnostics_schema as barrier
+from scripts import wait_for_appointment_operations_schema as previous_barrier
 
 pytestmark = pytest.mark.integration
 
 
 def test_diagnostic_release_validates_real_rls_keys_claims_and_immutable_preview(isolated_settings):
+    assert previous_release.schema_ready(isolated_settings.migration_url)
     assert release.schema_ready(isolated_settings.migration_url)
 
 
 async def test_runtime_reads_only_catalogs_while_support_updates_only_lifecycle(isolated_settings):
+    assert await previous_barrier.probe_schema(isolated_settings.runtime, 3)
     assert await barrier.probe_schema(isolated_settings.runtime, 3)
     db = await asyncpg.connect(isolated_settings.runtime.dsn, timeout=3, command_timeout=3,
         server_settings={"default_transaction_read_only": "on", "search_path": "pg_catalog"})
@@ -24,6 +28,9 @@ async def test_runtime_reads_only_catalogs_while_support_updates_only_lifecycle(
           has_any_column_privilege(current_user,'public.subscription_diagnostic_requests','INSERT') AS can_insert,
           has_any_column_privilege(current_user,'public.subscription_diagnostic_requests','UPDATE') AS can_update,
           has_table_privilege(current_user,'public.subscription_diagnostic_requests','DELETE') AS can_delete,
+          has_column_privilege(current_user,'public.appointments','booking_mode','SELECT') AS booking_mode,
+          has_column_privilege(current_user,'public.appointment_items','added_duration_min','UPDATE') AS added_duration,
+          has_table_privilege(current_user,'public.alembic_version','SELECT') AS revision,
           has_table_privilege('app_support','public.subscription_diagnostic_requests','SELECT') AS support_read,
           has_table_privilege('app_support','public.subscription_diagnostic_requests','INSERT') AS support_append,
           has_table_privilege('app_support','public.subscription_diagnostic_requests','UPDATE') AS support_table_update,
@@ -36,10 +43,24 @@ async def test_runtime_reads_only_catalogs_while_support_updates_only_lifecycle(
         """)
         assert dict(result) == {"role": "app_runtime", "readonly": "on", "ledger": False,
             "can_insert": False, "can_update": False, "can_delete": False,
+            "booking_mode": True, "added_duration": True, "revision": False,
             "support_read": True, "support_append": True, "support_table_update": False,
             "support_snapshot_update": False, "support_confirmation_update": False,
             "support_key_update": False, "support_lifecycle_update": True,
             "support_claim_update": True, "support_delete": False}
+    finally:
+        db.terminate()
+
+
+@pytest.mark.parametrize("guard", ["ck_appointment_booking_mode", "ck_appointment_item_extra_metadata",
+    "appointments_no_overlap", "orion_due_auto_completions"])
+async def test_diagnostics_requires_published_agenda_contract_without_altering_schema(isolated_settings, guard):
+    db = await asyncpg.connect(isolated_settings.runtime.dsn, timeout=3, command_timeout=3,
+        server_settings={"default_transaction_read_only": "on", "search_path": "pg_catalog"})
+    try:
+        query = barrier.SCHEMA_QUERY.replace(guard, "missing_diagnostic_predecessor_guard")
+        assert query != barrier.SCHEMA_QUERY
+        assert (await db.fetchrow(query))["schema_ready"] is False
     finally:
         db.terminate()
 

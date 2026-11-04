@@ -3,7 +3,7 @@ from fastapi import HTTPException
 from sqlalchemy import text
 from app import appointment_access as access
 from app.appointment_lifecycle import check_expected_updated_at,metadata
-from app.booking_service import acquire_professional_lock,read_appointment,load_bundle,check_slot,history
+from app.booking_service import acquire_professional_lock,read_appointment,load_bundle,check_slot,history,rescheduling_items
 from app.database import tenant_transaction
 
 
@@ -33,6 +33,7 @@ async def propose_if_required(db,tenant,appointment,payload,context):
         now=(await db.execute(text('SELECT clock_timestamp()'))).scalar_one()
         if row['start_at']<=now:raise HTTPException(409,'O atendimento já começou')
         shop,items=await load_bundle(db,tenant,row['professional_id'],[x['service_id'] for x in current['items']])
+        items,_=await rescheduling_items(db,tenant,appointment,items)
         await check_slot(db,tenant,row['professional_id'],shop,items,payload.start_at,now,ignore_appointment=appointment)
         from datetime import timedelta
         expires=min(now+timedelta(hours=24),row['start_at']-timedelta(minutes=60))
