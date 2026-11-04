@@ -1,0 +1,74 @@
+name: QA - prepare WhatsApp integration tree
+on:
+  push:
+    branches: [qa/whatsapp-transport-apply-20261104]
+    paths: ['.github/workflows/prepare-whatsapp-integration.yml']
+permissions:
+  contents: write
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      HEAD: 46f33d6ab39da60b5e600a44bdd87b0f697e31e6
+      PROD: 81cf127c51c3fae015568d16d79724ebe0f00db8
+      EXPECTED_TREE: bd4915991953ead3510db7eed4716edfe9cefbd0
+      META_LIVE_SEND: '0'
+      QR_AI_ENABLED: '0'
+      INBOX_SEND_ENABLED: '0'
+      ORION_NOTIFY_SELF_ON_LINK: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Reconciliar somente o conflito revisado
+        run: |
+          cp .github/qa/resolve-whatsapp-integration.py /tmp/resolve-whatsapp-integration.py
+          git checkout --detach "$HEAD"
+          git config user.name 'Orion validation'
+          git config user.email 'validation@example.invalid'
+          git merge --no-commit --no-ff "$PROD" || test "$(git diff --name-only --diff-filter=U)" = 'qr-bridge/src/device-network.mjs'
+          python /tmp/resolve-whatsapp-integration.py
+          git add qr-bridge/src/device-network.mjs qr-bridge/src/device-proxy-probe.mjs qr-bridge/test/device-proxy-probe.test.mjs qr-bridge/test/device-diagnostics.test.mjs tests/integration/test_subscription_diagnostics_postgres.py
+          git diff --cached --check
+          test "$(git write-tree)" = "$EXPECTED_TREE"
+      - name: Validacao independente de todos os transportes combinados
+        run: |
+          npm ci --prefix qr-bridge --ignore-scripts --no-audit --no-fund
+          mapfile -t tests < <(find qr-bridge/test -name '*.test.mjs' ! -name 'panel-ui.test.mjs' | sort)
+          node --test "${tests[@]}" > /tmp/whatsapp-integrated.log 2>&1
+      - name: Registrar objetos Git exatos, sem modificar refs ou workflows
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import json, os, subprocess, urllib.request
+          from pathlib import Path
+          def git(*args): return subprocess.check_output(['git', *args],text=True).strip()
+          def request(endpoint, data):
+              req=urllib.request.Request('https://api.github.com/repos/QGBALTIGO/orion-assistente/'+endpoint,data=json.dumps(data).encode(),headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'},method='POST')
+              with urllib.request.urlopen(req,timeout=30) as response: return json.load(response)
+          known=set()
+          for ref in (os.environ['HEAD'],os.environ['PROD']):
+              known.update(line.split()[2] for line in git('ls-tree','-r',ref).splitlines())
+          entries=[]
+          for file in git('diff','--cached','--name-only',os.environ['HEAD']).splitlines():
+              mode,sha,_=git('ls-files','--stage',file).split('\t')[0].split()
+              if sha not in known:
+                  result=request('git/blobs',{'content':Path(file).read_text(),'encoding':'utf-8'})
+                  assert result['sha']==sha, file
+              entries.append({'path':file,'mode':mode,'type':'blob','sha':sha})
+          tree=request('git/trees',{'base_tree':git('rev-parse',os.environ['HEAD']+'^{tree}'),'tree':entries})
+          assert tree['sha']==os.environ['EXPECTED_TREE'],tree['sha']
+          print('VALIDATED_INTEGRATION_TREE='+tree['sha'])
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: whatsapp-integrated-transport
+          path: /tmp/whatsapp-integrated.log
+          retention-days: 7
