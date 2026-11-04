@@ -1,0 +1,271 @@
+diff --git a/qr-bridge/src/channel-broker.mjs b/qr-bridge/src/channel-broker.mjs
+index d981dcba05a4f81771d042bdefb5fadcd4b02db1..7475d0be6d10ac56602b034778193625ea73612f 100644
+--- a/qr-bridge/src/channel-broker.mjs
++++ b/qr-bridge/src/channel-broker.mjs
+@@ -43,7 +43,8 @@ export function createChannelBroker({apiUrl,fetchImpl=fetch,env=process.env}){
+     const controller=new AbortController(),abort=()=>controller.abort(),timer=setTimeout(abort,deviceAudio?125000:audio?35000:chatbot?30000:operation==='ai/reply'?19000:5000);
+     signal?.addEventListener('abort',abort,{once:true});
+     try{
+-      const response=await fetchImpl(target,{method,redirect:'error',signal:controller.signal,
++      let response;
++      try{response=await fetchImpl(target,{method,redirect:'error',signal:controller.signal,
+         headers:{'Content-Type':audio?mediaType:carouselImage?'application/octet-stream':'application/json','X-Orion-Channel-Key':key,
+           ...(owner?{'X-Orion-Channel-Owner':owner,'X-Orion-Channel-Fence':String(fence)}:{}),
+           ...(audio?{'X-Orion-Phone':phone}:{}),
+@@ -52,6 +53,16 @@ export function createChannelBroker({apiUrl,fetchImpl=fetch,env=process.env}){
+             ...(device.chatbot_revision?{'X-Orion-Chatbot-Revision':String(device.chatbot_revision)}:{})}:{}),
+           ...(carouselImage?{'X-Orion-Chatbot-Card':String(cardIndex)}:{})},
+         ...(method==='GET'?{}:{body:raw?body:JSON.stringify(body)})});
++      }catch(error){
++        if(signal?.aborted)throw Error('channel_request_aborted');
++        // Only a transport failure is transient. Invalid successful responses,
++        // rejected credentials, changed fences and malformed JSON remain fatal.
++        const code=error?.cause?.code||error?.code;
++        if(controller.signal.aborted||['ECONNRESET','ECONNREFUSED','ETIMEDOUT','EAI_AGAIN','ENOTFOUND',
++            'UND_ERR_CONNECT_TIMEOUT','UND_ERR_SOCKET'].includes(code)||error instanceof TypeError&&error.message==='fetch failed')
++          throw Object.assign(Error('channel_broker_temporarily_unavailable'),{code:'CHANNEL_BROKER_TEMPORARILY_UNAVAILABLE'});
++        throw error;
++      }
+       if(!response.ok||controller.signal.aborted){const error=Error('channel_broker_refused');error.status=response.status;throw error;}
+       return binary?await readPrivateAsset(response,binary,controller.signal):await response.json();
+     }finally{clearTimeout(timer);signal?.removeEventListener('abort',abort);}
+ diff --git a/qr-bridge/src/channel-manager.mjs b/qr-bridge/src/channel-manager.mjs
+index a31d20cef99bf30589245255221e5080f2141da4..c13910c9f29efd21938a4e112fc6dbb7c0680b55 100644
+--- a/qr-bridge/src/channel-manager.mjs
++++ b/qr-bridge/src/channel-manager.mjs
+@@ -1,3 +1,4 @@
++import {isTransientLeaseFailure} from './lease-failure.mjs';
+ import {makeBoundedCache} from './bounded-cache.mjs';
+ import {safetyControl} from './inbound-event.mjs';
+ /** Per-channel lifecycle; SQL broker owns the distributed fence, not this Map. */
+@@ -75,18 +76,26 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
+       requireCurrent(c);acceptLease(c,result,started);return c;
+     }catch(error){
+       if(c.device&&([401,403,404,423].includes(error?.status)||['device_identity_changed','device_profile_changed'].includes(error?.message)))try{resumeStore?.forget(c.id,c.key);}catch{}
+-      retire(c);throw error;
++      // Fail the operation closed, but do not destroy a still-valid fenced
++      // socket because the control plane briefly timed out. The original
++      // expiry timer remains authoritative and is never extended here.
++      if(!current(c)||!isTransientLeaseFailure(error))retire(c);
++      throw error;
+     }
+   }
+-  function renewLater(c){
++  function renewLater(c,retry=false){
+     c.renewal=timer(async()=>{
+       if(!current(c))return retire(c);
+       const started=clock();
+       try{
+         const result=await broker.lease(c.id,c.key,'renew',owner,c.fence);
+-        requireCurrent(c);acceptLease(c,result,started,{renew:true});renewLater(c);
+-      }catch{retire(c);}
+-    },Math.max(100,Math.min(8000,(c.deadline-clock())/3)));
++        requireCurrent(c);acceptLease(c,result,started,{renew:true});c.renewFailures=0;renewLater(c);
++      }catch(error){
++        if(current(c)&&isTransientLeaseFailure(error)){c.renewFailures=(c.renewFailures||0)+1;renewLater(c,true);}
++        else retire(c);
++      }
++    },Math.max(100,Math.min(retry?Math.min(4000,1000*2**Math.min((c.renewFailures||1)-1,2)):8000,
++      retry?c.deadline-clock():(c.deadline-clock())/3)));
+   }
+   function disconnected(c,generation,reason){
+     if(!current(c)||generation!==c.generation)return;
+diff --git a/qr-bridge/src/lease-failure.mjs b/qr-bridge/src/lease-failure.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..f55fb4caa37b218c3bf3accbf37ac55909edbc40
+--- /dev/null
++++ b/qr-bridge/src/lease-failure.mjs
+@@ -0,0 +1,6 @@
++/** A temporary broker outage is not a revocation. No caller may extend a
++ * lease or authorize an operation from this classification alone. */
++export function isTransientLeaseFailure(error){
++  if(error?.code==='CHANNEL_BROKER_TEMPORARILY_UNAVAILABLE')return true;
++  return error?.message==='channel_broker_refused'&&[429,500,502,503,504].includes(error.status);
++}
+diff --git a/qr-bridge/src/retry-identity.mjs b/qr-bridge/src/retry-identity.mjs
+index 0c229bf14cf3f09e5f3c0e8927561f55034ee0de..d6619765eec471fd3dc5ddbc51605cf6f35a84cb 100644
+--- a/qr-bridge/src/retry-identity.mjs
++++ b/qr-bridge/src/retry-identity.mjs
+@@ -1,9 +1,13 @@
+ /** Provider retries are not authorization by message id alone. The peer and
+- * direction are persisted with the proto; PN/LID aliases require live proof.
++ * direction are persisted with the proto; aliases come only from the SDK's
++ * authenticated identity mapping or a verified provider lookup, never payload.
+  */
+ export function privateRetryPeer(value){
+-  const match=typeof value==='string'&&value.match(/^(\d{8,20})(?::\d+)?@(s\.whatsapp\.net|lid)$/);
+-  return match?match[1]+'@'+match[2]:null;
++  if(typeof value!=='string'||value.length>128)return null;
++  const pn=value.match(/^([1-9]\d{7,14})(?::\d{1,5})?@s\.whatsapp\.net$/);
++  if(pn)return pn[1]+'@s.whatsapp.net';
++  const lid=value.match(/^(\d{1,30})(?::\d{1,5})?@lid$/);
++  return lid?lid[1]+'@lid':null;
+ }
+ export function retryIdentity(key){
+   return {id:String(key?.id||''),peer:privateRetryPeer(key?.remoteJid),fromMe:key?.fromMe===true};
+@@ -14,31 +18,53 @@ export function retryIdentityMatches(stored,key){
+   return true;
+ }
+ export function sameRetryIdentity(a,b){return a?.id===b?.id&&a?.peer===b?.peer&&a?.fromMe===b?.fromMe;}
++
+ export async function readAuthorizedRetry(store,key,{socket,isCurrent=()=>true,assertCurrent=async()=>{}}={}){
++  let timer;
++  const timeout=new Promise(resolve=>{timer=setTimeout(()=>resolve(null),5000);timer.unref?.();});
++  const bounded=work=>Promise.race([Promise.resolve().then(work),timeout]);
+   try{
+     const requested=privateRetryPeer(key?.remoteJid);
+     if(!isCurrent()||!requested||key?.fromMe!==true)return undefined;
+-    // The SDK encrypts to participant when supplied. A private retry cannot
+-    // redirect an otherwise correctly bound message to an unrelated account.
++    const row=store.entry?.(key);
++    if(!row?.identity?.peer||row.identity.fromMe!==true||row.identity.id!==key.id)return undefined;
++    await assertCurrent();if(!isCurrent())return undefined;
++    const proofs=new Map();
++    async function samePeer(a,b){
++      if(!a||!b)return false;
++      if(a===b)return true;
++      const pn=[a,b].find(x=>x.endsWith('@s.whatsapp.net')),lid=[a,b].find(x=>x.endsWith('@lid'));
++      if(!pn||!lid)return false;
++      const proofKey=pn+'\0'+lid;
++      if(proofs.has(proofKey))return proofs.get(proofKey);
++      const work=(async()=>{
++        const mapping=socket?.signalRepository?.lidMapping;
++        const mappedLid=typeof mapping?.getLIDForPN==='function'?await bounded(()=>mapping.getLIDForPN(pn)):null;
++        const mappedPn=typeof mapping?.getPNForLID==='function'?await bounded(()=>mapping.getPNForLID(lid)):null;
++        // A contradictory mapping is not permission to try an unrelated number.
++        if(mappedLid!=null&&privateRetryPeer(mappedLid)!==lid||mappedPn!=null&&privateRetryPeer(mappedPn)!==pn)return false;
++        if(mappedLid!=null||mappedPn!=null)return true;
++        // Compatibility with pinned v6, whose onWhatsApp still returns LID.
++        // v7 uses the persistent mapping above and needs no phone-online query.
++        if(typeof socket?.onWhatsApp!=='function')return false;
++        const found=await bounded(()=>socket.onWhatsApp(pn.split('@')[0]));
++        return Array.isArray(found)&&found.length===1&&found[0]?.exists===true&&
++          privateRetryPeer(found[0].jid)===pn&&privateRetryPeer(found[0].lid)===lid;
++      })();
++      proofs.set(proofKey,work);return work;
++    }
++    if(!await samePeer(row.identity.peer,requested))return undefined;
+     if(key.participant!==undefined){
+       const participant=privateRetryPeer(key.participant);
++      if(!participant)return undefined;
+       const own=[privateRetryPeer(socket?.user?.id),privateRetryPeer(socket?.user?.lid)].filter(Boolean);
+-      if(!participant||(participant!==requested&&!own.includes(participant)))return undefined;
++      // The private recipient's verified PN/LID companion is valid. Merely
++      // comparing strings rejects that recovery even when its identity matches.
++      if(!own.includes(participant)&&!await samePeer(participant,requested))return undefined;
+     }
+-    const row=store.entry?.(key);
+-    if(!row?.identity?.peer||row.identity.fromMe!==true||row.identity.id!==key.id)return undefined;
+-    await assertCurrent();if(!isCurrent())return undefined;
+-    if(row.identity.peer===requested)return row.message;
+-    const peers=[row.identity.peer,requested],pn=peers.find(x=>x.endsWith('@s.whatsapp.net')),lid=peers.find(x=>x.endsWith('@lid'));
+-    if(!pn||!lid||typeof socket?.onWhatsApp!=='function')return undefined;
+-    const phone=pn.split('@')[0];let timer;
+-    let found;
+-    try{found=await Promise.race([socket.onWhatsApp(phone),new Promise(resolve=>{timer=setTimeout(()=>resolve(null),5000);timer.unref?.();})]);}
+-    finally{clearTimeout(timer);}
+     await assertCurrent();if(!isCurrent())return undefined;
+-    // Never relabel a numeric LID as a telephone or trust fields in the retry.
+-    if(!Array.isArray(found)||found.length!==1||found[0]?.exists!==true||
+-        privateRetryPeer(found[0].jid)!==pn||privateRetryPeer(found[0].lid)!==lid)return undefined;
+-    return row.message;
++    const fresh=store.entry?.(key);
++    return fresh&&sameRetryIdentity(row.identity,fresh.identity)?fresh.message:undefined;
+   }catch{return undefined;}
++  finally{clearTimeout(timer);}
+ }
+diff --git a/qr-bridge/test/channel-manager.test.mjs b/qr-bridge/test/channel-manager.test.mjs
+index 59ea71cdbd3b7a847a91784ca46356f49b07bff3..58cb660af2331e7ddf9d82fdb73ed17f6219c8ef 100644
+--- a/qr-bridge/test/channel-manager.test.mjs
++++ b/qr-bridge/test/channel-manager.test.mjs
+@@ -680,3 +680,58 @@ test('source automation requests transactional typing, manual sends do not',asyn
+   assert.equal(manual.accepted,true);
+   assert.equal(seen.at(-1).typing,false);
+ });
++
++// Regression: control-plane availability must not destroy a still-fenced socket.
++for(const status of [429,502,503,504])test(`offline-hardening: transient ${status} rejects an operation without discarding the valid session`,async t=>{
++  const f=fixture(t),a=f.add(),m=f.manager();await m.start(a.id,a.key);
++  const session=f.made[0],lease=f.broker.lease;
++  f.broker.lease=async()=>{throw Object.assign(Error('channel_broker_refused'),{status});};
++  await assert.rejects(session.ctx.assertCurrent());
++  assert.equal(session.closed,false,'temporary API error must not destroy valid auth/socket');
++  assert.equal(m.size,1);
++  await assert.rejects(m.send(a.id,a.key,{to:phone,text:'synthetic',operation_id:randomUUID()}));
++  assert.equal(session.sends.length,0,'no authorization bypass during an outage');
++  f.broker.lease=lease;await session.ctx.assertCurrent();
++  assert.equal(f.made.length,1,'recovery reuses the existing socket, not a new QR/session');
++});
++test('offline-hardening: failed renewal retries within the original lease and preserves its deadline',async t=>{
++  const f=fixture(t),a=f.add(),m=f.manager();await m.start(a.id,a.key);
++  const session=f.made[0],lease=f.broker.lease;let fail=true,renewals=0;
++  f.broker.lease=async(...args)=>{if(args[2]==='renew'){renewals++;if(fail)throw Object.assign(Error('channel_broker_refused'),{status:503});}return lease(...args);};
++  await f.advance(8000);assert.equal(session.closed,false);assert.equal(renewals,1);
++  fail=false;await f.advance(1000);assert.equal(renewals,2);assert.equal(session.closed,false);
++  assert.equal(f.made.length,1);await session.ctx.assertCurrent();
++});
++test('offline-hardening: an outage never extends a lease past its real expiry',async t=>{
++  const f=fixture(t),a=f.add(),m=f.manager();await m.start(a.id,a.key);
++  const session=f.made[0];f.broker.lease=async()=>{throw Object.assign(Error('channel_broker_refused'),{status:503});};
++  await f.advance(8000);assert.equal(session.closed,false);
++  await f.advance(22000);assert.equal(session.closed,true);assert.equal(m.size,0);
++  assert.equal(session.ctx.isCurrent(),false);
++});
++for(const status of [401,403,404,409,423])test(`offline-hardening: explicit ${status} revocation or fence refusal still closes immediately`,async t=>{
++  const f=fixture(t),a=f.add(),m=f.manager();await m.start(a.id,a.key);
++  const session=f.made[0];f.broker.lease=async()=>{throw Object.assign(Error('channel_broker_refused'),{status});};
++  await assert.rejects(session.ctx.assertCurrent());assert.equal(session.closed,true);assert.equal(m.size,0);
++});
++
++// Transport errors are classified without converting revocation or bad data
++// into a successful authorization or a renewed lease.
++for(const code of ['ECONNRESET','ECONNREFUSED','ETIMEDOUT','EAI_AGAIN','ENOTFOUND'])test('broker sanitizes temporary network failure '+code,async()=>{
++  const broker=createChannelBroker({apiUrl:'http://api.railway.internal',fetchImpl:async()=>{
++    throw Object.assign(new TypeError('fetch failed'),{cause:{code}});
++  }});
++  await assert.rejects(broker.lease(randomUUID(),'synthetic-key-not-a-production-secret','check',randomUUID(),1),
++    error=>error.code==='CHANNEL_BROKER_TEMPORARILY_UNAVAILABLE'&&error.message==='channel_broker_temporarily_unavailable'&&!error.cause);
++});
++test('broker never relabels malformed successful JSON as temporary transport failure',async()=>{
++  const broker=createChannelBroker({apiUrl:'http://api.railway.internal',fetchImpl:async()=>({ok:true,status:200,
++    json:async()=>{throw new SyntaxError('synthetic invalid response');}})});
++  await assert.rejects(broker.lease(randomUUID(),'synthetic-key-not-a-production-secret','check',randomUUID(),1),
++    error=>error instanceof SyntaxError&&error.code!=='CHANNEL_BROKER_TEMPORARILY_UNAVAILABLE');
++});
++test('broker preserves a rejected credential as HTTP 403',async()=>{
++  const broker=createChannelBroker({apiUrl:'http://api.railway.internal',fetchImpl:async()=>({ok:false,status:403})});
++  await assert.rejects(broker.lease(randomUUID(),'synthetic-key-not-a-production-secret','check',randomUUID(),1),
++    error=>error.status===403&&error.message==='channel_broker_refused'&&error.code!=='CHANNEL_BROKER_TEMPORARILY_UNAVAILABLE');
++});
+diff --git a/qr-bridge/test/retry-identity.test.mjs b/qr-bridge/test/retry-identity.test.mjs
+index 1af1b09f9886fa7ec696b1fc1dc61cd90a13b9f2..1d1d190b26f477a8e11f6d6a59ebeaaddd3537f0 100644
+--- a/qr-bridge/test/retry-identity.test.mjs
++++ b/qr-bridge/test/retry-identity.test.mjs
+@@ -38,3 +38,27 @@ test('encrypted records are bound to id and session directory, not just a shared
+  sa.save({...key,id:'second'},{conversation:'second'});const second=fs.readdirSync(a).find(x=>x!==name);
+  fs.copyFileSync(path.join(a,name),path.join(a,second));assert.equal(sa.get({...key,id:'second'}),undefined);
+ });
++
++for(const persistent of [false,true])test(`offline-hardening: verified PN/LID participant alias recovers ${persistent?'persisted':'memory'} message with a synthetic provider proof`,async t=>{
++  const root=fs.mkdtempSync(path.join(os.tmpdir(),'orion-retry-alias-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
++  const create=()=>persistent?makeEncryptedRetryStore({directory:root,secret:'synthetic-key-'.repeat(4)}):makeMessageRetryStore();
++  let store=create();store.save(key,msg);if(persistent)store=create();
++  const socket={onWhatsApp:async value=>{assert.equal(value,pn.split('@')[0]);return [{exists:true,jid:pn,lid}];}};
++  assert.deepEqual(await readAuthorizedRetry(store,{...key,participant:lid.replace('@',':3@')},{socket}),msg);
++});
++test('offline-hardening: provider mapping resolves retry aliases without depending on a new network lookup',async()=>{
++  const store=makeMessageRetryStore();store.save(key,msg);
++  const socket={onWhatsApp:()=>assert.fail('persisted provider identity should not need phone-online resolution'),signalRepository:{lidMapping:{
++    getLIDForPN:async value=>value===pn?lid:null,getPNForLID:async value=>value===lid?pn:null}}};
++  assert.deepEqual(await readAuthorizedRetry(store,{...key,remoteJid:lid,participant:pn.replace('@',':2@')},{socket}),msg);
++});
++test('offline-hardening: contradictory provider mappings cannot authorize another recipient',async()=>{
++  const store=makeMessageRetryStore();store.save(key,msg);
++  const socket={signalRepository:{lidMapping:{getLIDForPN:async()=>lid,getPNForLID:async()=>other}}};
++  assert.equal(await readAuthorizedRetry(store,{...key,remoteJid:lid},{socket}),undefined);
++});
++test('offline-hardening: an unrelated participant cannot obtain a correctly addressed message',async()=>{
++  const store=makeMessageRetryStore();store.save(key,msg);
++  const socket={signalRepository:{lidMapping:{getLIDForPN:async value=>value===pn?lid:null,getPNForLID:async value=>value===lid?pn:null}}};
++  assert.equal(await readAuthorizedRetry(store,{...key,remoteJid:lid,participant:other},{socket}),undefined);
++});
