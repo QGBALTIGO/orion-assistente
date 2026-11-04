@@ -159,7 +159,7 @@ Depois do merge da árvore qualificada, verificar backup e catálogo 0068, start
 da API e do worker, deploy dos três serviços no mesmo commit e o formulário no
 painel publicado. Consultas ao vivo não criam grupos, campanhas ou envios reais.
 A observação de Mensagens Programadas só começa depois dessa conclusão.
-# Revisão de continuidade — limites numéricos da API
+## Revisão de continuidade — limites numéricos da API
 
 A retomada conferiu a árvore `c14036ae5a96f86e9c27383f8a0c9f7cc43c77b8`
 da PR 258 e encontrou dois limites de entrada ausentes. A versão de autorização
@@ -170,10 +170,39 @@ desse tipo em produção.
 
 A versão agora aceita de zero até `2**63-1`. As duas rotas de listagem aceitam
 páginas de 1 a 10.000, seguindo o limite já publicado de Chatbot e Mensagens
-Enviadas. Seis casos HTTP demonstram rejeição 422 antes de consulta ou mutação,
-e dois casos preservam as extremidades válidas da versão. Os seis casos de
+Enviadas. A paginação inválida é rejeitada antes de abrir a transação; a versão
+inválida é rejeitada após a autorização inicial e antes da mutação. Seis casos
+HTTP demonstram a resposta 422, e dois preservam as extremidades válidas da versão. Os seis casos de
 rejeição falharam antes da correção. Após o ajuste, **182 testes de API,
 política, runtime e integração passaram em 1,37 s**, sem envios externos.
 
 Esta correção exige qualificação do novo commit; os resultados da árvore
 anterior não são apresentados como testes executados da nova revisão.
+
+## Segunda atualização da produção — transporte HTTPS opcional
+
+A revisão `96243421789550418c33bc70f25deef45676f69a`, árvore
+`4780eaa99d48d468d95cfb4592fa5c4dd7220969`, executou **1.825 testes Python,
+338 PostgreSQL, 345 DOM e 74 Chrome aprovados**. O checkout observado foi
+`7532442daeb45aae58762f63547154f2d1664c2f`, sobre `01d99bb`. Esses resultados
+são intermediários: durante a execução, a produção avançou para
+`a2f84ea6781a08ad8a97baa5ffce951ae60f3bdc`, árvore
+`8e6ce62d8f3b566ee57584ed52482552e5112962`.
+
+Os nove arquivos publicados dessa atualização foram incorporados. O transporte
+HTTPS opcional e autenticado conserva os pins de SSH, o destino TCP fixo e a
+supervisão de API, SSH e HTTPS. O download da imagem segue somente redirects
+HTTPS e verifica os hashes publicados do arquivo comprimido e do executável
+antes de executá-lo. A composição de Campanhas preserva a fronteira limpa de
+`execve` e o probe de catálogo antes de qualquer processo de serviço. As cinco
+variáveis de transporte são excluídas tanto do probe quanto da API.
+
+A comparação de AST confirmou que todas as funções e classes do supervisor
+correspondem à produção `a2f84ea`, exceto `main`, que conserva a barreira de
+catálogo. Dockerfile, documentação de ingress, configurações Hostinger e o
+novo arquivo de testes HTTPS têm os mesmos blobs da produção. Passaram
+**158 testes focados em 0,91 s**, sem falhas ou skips. Os testes de transporte
+usam processos, sinais, relógio e saúde sintéticos; não abrem conexão externa.
+O workflow dedicado inclui `test_https_transport.py` nos paths e no comando
+Python. A nova árvore ainda exige os seis gates e a comparação geral sobre a
+base atual antes da publicação.

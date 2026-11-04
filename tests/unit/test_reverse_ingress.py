@@ -88,11 +88,11 @@ class Harness:
         self.on_sleep(self)
         assert self.now < 100, "A fake lifecycle must end without a busy loop"
 
-    def stop(self, process, number=signal.SIGTERM):
+    def stop(self, process, number=signal.SIGTERM, *, timeout=ingress.SHUTDOWN_SECONDS):
         if process is not None:
             assert all(path.exists() for path in self.paths)
             self.stop_order.append(process.name)
-        ingress.stop_process(process, number, kill_group=lambda _: pytest.fail("No real process group"))
+        ingress.stop_process(process, number, timeout=timeout, kill_group=lambda _: pytest.fail("No real process group"))
 
     def run(self, environment, **overrides):
         arguments = dict(popen=self.popen, health=self.health, monotonic=lambda: self.now,
@@ -270,7 +270,7 @@ def test_config_and_tempfiles_never_expose_private_material_in_repr(environment)
     assert not Path(identity).parent.exists()
 
 
-@pytest.mark.parametrize("name", sorted(start_api.SSH_KEYS))
+@pytest.mark.parametrize("name", ["ORION_ORIGIN_SSH_HOST", "ORION_ORIGIN_SSH_PRIVATE_KEY", "ORION_ORIGIN_SSH_KNOWN_HOSTS"])
 def test_partial_config_fails_before_any_process(environment, name):
     environment.pop(name)
     with pytest.raises(RuntimeError, match="all three SSH settings"):

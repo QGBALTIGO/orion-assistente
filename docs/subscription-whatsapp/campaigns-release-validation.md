@@ -96,6 +96,15 @@ Eles verificam a fronteira limpa antes do probe, a ausência de SSH no ambiente
 do probe e a interrupção antes de servir quando ele falha. O gate Python do
 CI passa a incluir também os dois arquivos de testes de ingress.
 
+Na atualização seguinte da produção, `a2f84ea`, foram incorporados os nove
+arquivos do transporte HTTPS opcional, incluindo os hashes verificados do
+download da imagem. A composição preservou as funções publicadas e o probe
+somente leitura em `main`. As duas variáveis HTTPS passaram a integrar a mesma
+exclusão de ambiente já aplicada às três de SSH. **158 testes focados passaram
+em 0,91 s**, sem falhas ou skips, acrescentando `test_https_transport.py` aos
+quatro arquivos da verificação anterior. Esse arquivo também integra o gate
+Python e seus paths de disparo.
+
 Comando executado no ambiente Python de testes:
 
 ```sh
@@ -141,7 +150,7 @@ externa e exige PostgreSQL/Redis descartáveis.
 
 Para qualificar a revisão final ainda são necessários os resultados executados
 de PG, ponte, DOM e navegadores, o gate Python completo e a comparação dos
-workflows gerais com a produção efetiva 01d99bb. O baseline observado contém falhas
+workflows gerais com a produção efetiva a2f84ea. O baseline observado contém falhas
 históricas explícitas; esta nota não declara o conjunto geral verde. Backup,
 migração, deploy e verificação somente de leitura em produção permanecem para
 a fase de publicação autorizada da revisão qualificada.

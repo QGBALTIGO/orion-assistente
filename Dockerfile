@@ -22,6 +22,19 @@ RUN apt-get update \
     && pg_dump --version | grep -E '^pg_dump \(PostgreSQL\) 16\.' \
     && pg_restore --version | grep -E '^pg_restore \(PostgreSQL\) 16\.' \
     && rm -rf /var/lib/apt/lists/*
+# Fixed upstream release and digest, independent of a mutable image tag.
+# The production Railway service uses Linux amd64.
+RUN curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --tlsv1.2 \
+       --http1.1 --retry 5 --retry-all-errors --retry-delay 2 \
+       --connect-timeout 15 --max-time 90 \
+       https://github.com/jpillora/chisel/releases/download/v1.12.0/chisel_1.12.0_linux_amd64.gz \
+       -o /tmp/orion-chisel.gz \
+    && echo 'f3f180f1d93aa72cce4e6386f98cc06569a0146fbd65eb4423cf83e6434bcfe6  /tmp/orion-chisel.gz' | sha256sum -c - \
+    && gzip -dc /tmp/orion-chisel.gz > /usr/local/bin/chisel \
+    && echo '811362311f13ac4bdc42fe4e7650aca618a68e3a40f930de88536d18b14d2b52  /usr/local/bin/chisel' | sha256sum -c - \
+    && chmod 0755 /usr/local/bin/chisel \
+    && /usr/local/bin/chisel --version | grep -F '1.12.0' \
+    && rm /tmp/orion-chisel.gz
 COPY pyproject.toml requirements.lock ./
 COPY app/ ./app/
 COPY alembic/ ./alembic/
