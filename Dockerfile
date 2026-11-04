@@ -17,7 +17,8 @@ RUN apt-get update \
        -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
     && echo 'deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main' > /etc/apt/sources.list.d/pgdg.list \
     && apt-get update \
-    && apt-get install -y --no-install-recommends postgresql-client-16 \
+    && apt-get install -y --no-install-recommends postgresql-client-16 ffmpeg \
+    && ffmpeg -version >/dev/null && ffprobe -version >/dev/null \
     && pg_dump --version | grep -E '^pg_dump \(PostgreSQL\) 16\.' \
     && pg_restore --version | grep -E '^pg_restore \(PostgreSQL\) 16\.' \
     && rm -rf /var/lib/apt/lists/*

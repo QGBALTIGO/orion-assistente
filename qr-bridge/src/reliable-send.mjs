@@ -6,15 +6,15 @@
  */
 import {isVerifiedPilotLid,withVerifiedPilotDevices} from './pilot-recipient.mjs';
 
-export async function sendStoredText({jid,recipientProof,text,makeMessage,relay,store,onPrepared=()=>{},onAccepted=()=>{},freshDevices=false,isCurrent=()=>true}){
+export async function sendStoredText({jid,recipientProof,text,makeMessage,relay,store,onPrepared=()=>{},onAccepted=()=>{},freshDevices=false,isCurrent=()=>true,maxTextChars=1200,preserveWhitespace=false}){
   if(typeof jid!=="string" || (!/^[1-9]\d{7,14}@s\.whatsapp\.net$/.test(jid)&&!isVerifiedPilotLid(recipientProof,jid))){
     throw Error("Invalid recipient JID");
   }
-  if(typeof text!=="string" || !text.trim() || text.length>1200)throw Error("Invalid text");
+  if(!Number.isSafeInteger(maxTextChars)||maxTextChars<1||maxTextChars>32000||typeof preserveWhitespace!=='boolean'||typeof text!=="string" || !text.trim() || text.length>maxTextChars)throw Error("Invalid text");
   if(typeof makeMessage!=="function" || typeof relay!=="function" || !store?.save){
     throw Error("Reliable send not configured");
   }
-  const msg=await makeMessage(jid,text.trim());
+  const msg=await makeMessage(jid,preserveWhitespace?text:text.trim());
   if(!isCurrent())throw Error('A conexão mudou antes do envio. Nenhuma mensagem foi enviada.');
   if(!msg?.key?.id || !msg?.message)throw Error("Failed to build WhatsApp message");
   // Cache MUST be available before first network packet leaves this socket.

@@ -1,0 +1,642 @@
+{
+  "contract_version": 1,
+  "feature": "devices.manage",
+  "workspace_profile": "subscription_services",
+  "base": "/api/v1/tenants/{tenant_id}/subscription-whatsapp/devices",
+  "weekdays": "0=Monday through 6=Sunday; disabled rows retained as editor defaults; intervals are local and end-exclusive",
+  "settings_defaults": {
+    "name": "WhatsApp",
+    "timezone": "America/Sao_Paulo",
+    "test_phone_e164": null,
+    "webhook": {
+      "enabled": false,
+      "url": null,
+      "disable_on_failure": true
+    },
+    "proxy": {
+      "enabled": false,
+      "url": null,
+      "username": null,
+      "password_configured": false
+    },
+    "transcription": {
+      "enabled": false,
+      "max_minutes": 2,
+      "template": "{name}\n{transcript}\n{footer}",
+      "footer": "",
+      "reply_enabled": false
+    },
+    "calls": {
+      "reject_enabled": false,
+      "reply_enabled": false,
+      "reply_message": "Não podemos atender ligações agora. Por favor, envie uma mensagem.",
+      "whitelist": [],
+      "schedule_enabled": false,
+      "days": [
+        {
+          "weekday": 0,
+          "enabled": false,
+          "start": "09:00",
+          "break_start": null,
+          "break_end": null,
+          "end": "18:00"
+        },
+        {
+          "weekday": 1,
+          "enabled": false,
+          "start": "09:00",
+          "break_start": null,
+          "break_end": null,
+          "end": "18:00"
+        },
+        {
+          "weekday": 2,
+          "enabled": false,
+          "start": "09:00",
+          "break_start": null,
+          "break_end": null,
+          "end": "18:00"
+        },
+        {
+          "weekday": 3,
+          "enabled": false,
+          "start": "09:00",
+          "break_start": null,
+          "break_end": null,
+          "end": "18:00"
+        },
+        {
+          "weekday": 4,
+          "enabled": false,
+          "start": "09:00",
+          "break_start": null,
+          "break_end": null,
+          "end": "18:00"
+        },
+        {
+          "weekday": 5,
+          "enabled": false,
+          "start": "09:00",
+          "break_start": null,
+          "break_end": null,
+          "end": "18:00"
+        },
+        {
+          "weekday": 6,
+          "enabled": false,
+          "start": "09:00",
+          "break_start": null,
+          "break_end": null,
+          "end": "18:00"
+        }
+      ],
+      "holiday_off": false
+    },
+    "business_hours": {
+      "enabled": false,
+      "days": [
+        {
+          "weekday": 0,
+          "enabled": false,
+          "start": "09:00",
+          "break_start": null,
+          "break_end": null,
+          "end": "18:00"
+        },
+        {
+          "weekday": 1,
+          "enabled": false,
+          "start": "09:00",
+          "break_start": null,
+          "break_end": null,
+          "end": "18:00"
+        },
+        {
+          "weekday": 2,
+          "enabled": false,
+          "start": "09:00",
+          "break_start": null,
+          "break_end": null,
+          "end": "18:00"
+        },
+        {
+          "weekday": 3,
+          "enabled": false,
+          "start": "09:00",
+          "break_start": null,
+          "break_end": null,
+          "end": "18:00"
+        },
+        {
+          "weekday": 4,
+          "enabled": false,
+          "start": "09:00",
+          "break_start": null,
+          "break_end": null,
+          "end": "18:00"
+        },
+        {
+          "weekday": 5,
+          "enabled": false,
+          "start": "09:00",
+          "break_start": null,
+          "break_end": null,
+          "end": "18:00"
+        },
+        {
+          "weekday": 6,
+          "enabled": false,
+          "start": "09:00",
+          "break_start": null,
+          "break_end": null,
+          "end": "18:00"
+        }
+      ],
+      "holiday_off": false,
+      "block_replies_outside_hours": false,
+      "outside_message": "",
+      "break_message": ""
+    }
+  },
+  "list_response": {
+    "items": [
+      {
+        "id": "12121212-1212-4121-8121-121212121212",
+        "name": "WhatsApp",
+        "revision": 1,
+        "status": "disabled",
+        "phone": null,
+        "phone_verified": false,
+        "profile": {
+          "name": null,
+          "avatar_url": null,
+          "updated_at": null
+        },
+        "connected_at": null,
+        "last_seen_at": null,
+        "metrics": {
+          "available": false,
+          "scope": "orion_events",
+          "tracking_since": null,
+          "timezone": "America/Sao_Paulo",
+          "today": 0,
+          "last_7_days": 0,
+          "last_30_days": 0,
+          "total": 0
+        },
+        "capabilities": {
+          "connect": true,
+          "qr": false,
+          "pair": false,
+          "restart": false,
+          "relink": false,
+          "remove": true,
+          "settings": true,
+          "diagnostics": true
+        },
+        "last_error": null,
+        "features": {
+          "transcription": false,
+          "call_blocking": false
+        },
+        "pending_operation": null
+      }
+    ],
+    "usage": {
+      "used": 1,
+      "limit": 1
+    },
+    "can_create": false,
+    "capabilities": {
+      "manage": true,
+      "transcription": false,
+      "transcription_max_minutes": 30,
+      "proxy": false,
+      "webhook": false
+    }
+  },
+  "detail_response": {
+    "device": {
+      "id": "12121212-1212-4121-8121-121212121212",
+      "name": "WhatsApp",
+      "revision": 1,
+      "status": "disabled",
+      "phone": null,
+      "phone_verified": false,
+      "profile": {
+        "name": null,
+        "avatar_url": null,
+        "updated_at": null
+      },
+      "connected_at": null,
+      "last_seen_at": null,
+      "metrics": {
+        "available": false,
+        "scope": "orion_events",
+        "tracking_since": null,
+        "timezone": "America/Sao_Paulo",
+        "today": 0,
+        "last_7_days": 0,
+        "last_30_days": 0,
+        "total": 0
+      },
+      "capabilities": {
+        "connect": true,
+        "qr": false,
+        "pair": false,
+        "restart": false,
+        "relink": false,
+        "remove": true,
+        "settings": true,
+        "diagnostics": true
+      },
+      "last_error": null,
+      "features": {
+        "transcription": false,
+        "call_blocking": false
+      },
+      "pending_operation": null
+    }
+  },
+  "settings_response": {
+    "revision": 1,
+    "settings": {
+      "name": "WhatsApp",
+      "timezone": "America/Sao_Paulo",
+      "test_phone_e164": null,
+      "webhook": {
+        "enabled": false,
+        "url": null,
+        "disable_on_failure": true
+      },
+      "proxy": {
+        "enabled": false,
+        "url": null,
+        "username": null,
+        "password_configured": false
+      },
+      "transcription": {
+        "enabled": false,
+        "max_minutes": 2,
+        "template": "{name}\n{transcript}\n{footer}",
+        "footer": "",
+        "reply_enabled": false
+      },
+      "calls": {
+        "reject_enabled": false,
+        "reply_enabled": false,
+        "reply_message": "Não podemos atender ligações agora. Por favor, envie uma mensagem.",
+        "whitelist": [],
+        "schedule_enabled": false,
+        "days": [
+          {
+            "weekday": 0,
+            "enabled": false,
+            "start": "09:00",
+            "break_start": null,
+            "break_end": null,
+            "end": "18:00"
+          },
+          {
+            "weekday": 1,
+            "enabled": false,
+            "start": "09:00",
+            "break_start": null,
+            "break_end": null,
+            "end": "18:00"
+          },
+          {
+            "weekday": 2,
+            "enabled": false,
+            "start": "09:00",
+            "break_start": null,
+            "break_end": null,
+            "end": "18:00"
+          },
+          {
+            "weekday": 3,
+            "enabled": false,
+            "start": "09:00",
+            "break_start": null,
+            "break_end": null,
+            "end": "18:00"
+          },
+          {
+            "weekday": 4,
+            "enabled": false,
+            "start": "09:00",
+            "break_start": null,
+            "break_end": null,
+            "end": "18:00"
+          },
+          {
+            "weekday": 5,
+            "enabled": false,
+            "start": "09:00",
+            "break_start": null,
+            "break_end": null,
+            "end": "18:00"
+          },
+          {
+            "weekday": 6,
+            "enabled": false,
+            "start": "09:00",
+            "break_start": null,
+            "break_end": null,
+            "end": "18:00"
+          }
+        ],
+        "holiday_off": false
+      },
+      "business_hours": {
+        "enabled": false,
+        "days": [
+          {
+            "weekday": 0,
+            "enabled": false,
+            "start": "09:00",
+            "break_start": null,
+            "break_end": null,
+            "end": "18:00"
+          },
+          {
+            "weekday": 1,
+            "enabled": false,
+            "start": "09:00",
+            "break_start": null,
+            "break_end": null,
+            "end": "18:00"
+          },
+          {
+            "weekday": 2,
+            "enabled": false,
+            "start": "09:00",
+            "break_start": null,
+            "break_end": null,
+            "end": "18:00"
+          },
+          {
+            "weekday": 3,
+            "enabled": false,
+            "start": "09:00",
+            "break_start": null,
+            "break_end": null,
+            "end": "18:00"
+          },
+          {
+            "weekday": 4,
+            "enabled": false,
+            "start": "09:00",
+            "break_start": null,
+            "break_end": null,
+            "end": "18:00"
+          },
+          {
+            "weekday": 5,
+            "enabled": false,
+            "start": "09:00",
+            "break_start": null,
+            "break_end": null,
+            "end": "18:00"
+          },
+          {
+            "weekday": 6,
+            "enabled": false,
+            "start": "09:00",
+            "break_start": null,
+            "break_end": null,
+            "end": "18:00"
+          }
+        ],
+        "holiday_off": false,
+        "block_replies_outside_hours": false,
+        "outside_message": "",
+        "break_message": ""
+      }
+    },
+    "capabilities": {
+      "transcription": false,
+      "transcription_max_minutes": 30,
+      "proxy": false,
+      "webhook": false
+    },
+    "applied_revision": 1,
+    "restart_required": false
+  },
+  "create_request": {
+    "name": "WhatsApp",
+    "idempotency_key": "34343434-3434-4343-8343-343434343434"
+  },
+  "create_response": {
+    "device": {
+      "id": "12121212-1212-4121-8121-121212121212",
+      "name": "WhatsApp",
+      "revision": 1,
+      "status": "disabled",
+      "phone": null,
+      "phone_verified": false,
+      "profile": {
+        "name": null,
+        "avatar_url": null,
+        "updated_at": null
+      },
+      "connected_at": null,
+      "last_seen_at": null,
+      "metrics": {
+        "available": false,
+        "scope": "orion_events",
+        "tracking_since": null,
+        "timezone": "America/Sao_Paulo",
+        "today": 0,
+        "last_7_days": 0,
+        "last_30_days": 0,
+        "total": 0
+      },
+      "capabilities": {
+        "connect": true,
+        "qr": false,
+        "pair": false,
+        "restart": false,
+        "relink": false,
+        "remove": true,
+        "settings": true,
+        "diagnostics": true
+      },
+      "last_error": null,
+      "features": {
+        "transcription": false,
+        "call_blocking": false
+      },
+      "pending_operation": null
+    }
+  },
+  "settings_write_contract": {
+    "body": {
+      "expected_revision": 1,
+      "settings": "Same shape as settings_defaults, except proxy.password_configured is read-only and omitted."
+    },
+    "proxy_secret": "proxy.password may be provided to replace; omit password to preserve; clear_password:true clears. Neither password nor secret value is returned.",
+    "reply_template_fields": [
+      "name",
+      "transcript",
+      "footer"
+    ],
+    "max_transcription_minutes": "1..30; enabling requires the isolated decoder/provider and explicit tenant/global quota. Complete transcription is split into ordered transport-sized messages, never silently truncated."
+  },
+  "action_request": {
+    "expected_revision": 1,
+    "idempotency_key": "56565656-5656-4565-8565-565656565656",
+    "action": "connect"
+  },
+  "actions": [
+    "connect",
+    "restart",
+    "relink",
+    "remove"
+  ],
+  "operation_response": {
+    "operation": {
+      "id": "78787878-7878-4787-8787-787878787878",
+      "device_id": "12121212-1212-4121-8121-121212121212",
+      "action": "connect",
+      "status": "pending",
+      "error": null
+    },
+    "device": {
+      "id": "12121212-1212-4121-8121-121212121212",
+      "name": "WhatsApp",
+      "revision": 1,
+      "status": "disabled",
+      "phone": null,
+      "phone_verified": false,
+      "profile": {
+        "name": null,
+        "avatar_url": null,
+        "updated_at": null
+      },
+      "connected_at": null,
+      "last_seen_at": null,
+      "metrics": {
+        "available": false,
+        "scope": "orion_events",
+        "tracking_since": null,
+        "timezone": "America/Sao_Paulo",
+        "today": 0,
+        "last_7_days": 0,
+        "last_30_days": 0,
+        "total": 0
+      },
+      "capabilities": {
+        "connect": true,
+        "qr": false,
+        "pair": false,
+        "restart": false,
+        "relink": false,
+        "remove": true,
+        "settings": true,
+        "diagnostics": true
+      },
+      "last_error": null,
+      "features": {
+        "transcription": false,
+        "call_blocking": false
+      },
+      "pending_operation": null
+    }
+  },
+  "operation_statuses": [
+    "pending",
+    "running",
+    "succeeded",
+    "failed",
+    "uncertain"
+  ],
+  "remove_success": "operation.status=succeeded and device=null; reload list to see usage.used=0. Uncertain results never disappear or retry automatically.",
+  "qr_response": {
+    "device_id": "12121212-1212-4121-8121-121212121212",
+    "revision": 1,
+    "image": null,
+    "expires_in_ms": 0
+  },
+  "pair_request": {
+    "expected_revision": 1,
+    "phone": "5567999999901"
+  },
+  "pair_response": {
+    "device_id": "12121212-1212-4121-8121-121212121212",
+    "revision": 1,
+    "status": "pairing",
+    "code": "ABCD-EFGH",
+    "expires_in_ms": 90000
+  },
+  "endpoints": [
+    [
+      "GET",
+      "",
+      "list_response; reads registry + bounded runtime snapshot per active item; no session mutation"
+    ],
+    [
+      "POST",
+      "",
+      "create_request ->201 create_response; same-key replay200"
+    ],
+    [
+      "GET",
+      "/{device_id}",
+      "detail_response; read-only runtime refresh"
+    ],
+    [
+      "GET",
+      "/{device_id}/settings",
+      "settings_response"
+    ],
+    [
+      "PUT",
+      "/{device_id}/settings",
+      "settings_write_contract -> settings_response with new revision"
+    ],
+    [
+      "GET",
+      "/{device_id}/qr",
+      "qr_response"
+    ],
+    [
+      "POST",
+      "/{device_id}/pair",
+      "pair_request -> pair_response"
+    ],
+    [
+      "POST",
+      "/{device_id}/actions",
+      "action_request ->202 operation_response; only explicitly requested actions"
+    ],
+    [
+      "GET",
+      "/{device_id}/operations/{operation_id}",
+      "operation_response; reconciliation never repeats a provider action"
+    ],
+    [
+      "GET",
+      "/{device_id}/diagnostics",
+      "sanitized per-device connection data; no global diagnostics or Telegram alerts"
+    ]
+  ],
+  "error_example": {
+    "detail": {
+      "code": "DEVICE_CONFLICT",
+      "message": "O dispositivo mudou. Atualize antes de continuar.",
+      "refresh": true
+    }
+  },
+  "error_codes": {
+    "DEVICE_CONFLICT": 409,
+    "DEVICE_LIMIT_REACHED": 409,
+    "DEVICE_CAPABILITY_UNAVAILABLE": 409,
+    "DEVICE_NOT_FOUND": 404,
+    "DEVICE_BRIDGE_UNAVAILABLE": 503,
+    "WORKSPACE_FEATURE_UNAVAILABLE": 403
+  },
+  "side_effect_defaults": "Creating and reading never connects, sends, enables transcription, enables chatbot, or consumes ASR quota. All behavior toggles start false.",
+  "transcription_semantics": "enabled sends the complete formatted transcription; reply_enabled only enables future chatbot rule matching, with no legacy AI fallback.",
+  "generation_semantics": "Immutable UUID per logical device; relink rotates the encrypted bridge auth epoch, restart preserves it; remove and create generate a new device id and generation."
+}

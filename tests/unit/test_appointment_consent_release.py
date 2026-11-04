@@ -158,5 +158,7 @@ def test_worker_requires_both_schema_barriers(monkeypatch, manual_result, consen
     monkeypatch.setattr(worker_barrier.Settings, "from_environment", lambda: barrier.Settings("synthetic"))
     monkeypatch.setattr(manual, "main", lambda: calls.append("manual") or manual_result)
     monkeypatch.setattr(barrier, "main", lambda: calls.append("consent") or consent_result)
+    from scripts import wait_for_subscription_devices_schema as devices_barrier
+    monkeypatch.setattr(devices_barrier, "main", lambda: 0)
     assert worker_barrier.main()==expected
     assert calls==(["manual"] if manual_result else ["manual","consent"])
