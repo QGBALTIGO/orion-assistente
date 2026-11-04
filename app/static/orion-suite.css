@@ -2879,3 +2879,6 @@ html:has(.os-professional-history[open]){overflow:hidden}
 .os-appointment-comms .os-summary-row small{margin-top:6px}
 .os-appointment-comms .os-comm-review:last-child,.os-appointment-comms .os-comm-notification:last-child{border:0;padding-bottom:0}
 @media(max-width:540px){.os-appointment-comms .os-comm-notification,.os-appointment-comms .os-comm-review{grid-template-columns:minmax(0,1fr);gap:8px}.os-appointment-comms .os-form-actions>.os-button{width:100%;min-height:44px}}
+
+/* Subscription businesses have no site shortcut: keep the regular padding without its reserved height. */
+.os-sidebar-context.os-sidebar-context--subscription{min-height:0}
