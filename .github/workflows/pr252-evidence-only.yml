@@ -1,0 +1,199 @@
+name: PR252 - evidence-only CI comparison
+on:
+  push:
+    branches: [qa/pr252-regression-evidence-20261104]
+    paths: [.github/workflows/pr252-evidence-only.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - name: Compare existing CI without executing application code
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          python3 - <<'PYCODE'
+          """Read existing CI logs only. Never run application code or modify a repository."""
+          import collections
+          import datetime
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import time
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+          REPO = 'QGBALTIGO/orion-assistente'
+          API = f'https://api.github.com/repos/{REPO}'
+          BASE_HEAD = 'a0f87f4068b20ba14b83c5b6fbc9d2fb9c4d18fb'
+          HEAD = 'aaa6fa694633f2f05bf60014286d6b0f14fbb762'
+          PAIRS = [(41861913761, 41879362061), (41861913641, 41879361622)]
+          MAX_BYTES = 48 * 1024 * 1024
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  return None
+          opener = urllib.request.build_opener(NoRedirect)
+          def read_limited(response):
+              value = response.read(MAX_BYTES + 1)
+              if len(value) > MAX_BYTES:
+                  raise ValueError('response exceeds audit size limit')
+              return value
+          def api_bytes(path, log=False):
+              request = urllib.request.Request(API + path, headers={
+                  'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                  'Accept': 'application/vnd.github+json',
+                  'X-GitHub-Api-Version': '2022-11-28',
+                  'User-Agent': 'orion-pr252-read-only-ci-audit',
+              })
+              try:
+                  with opener.open(request, timeout=60) as response:
+                      return read_limited(response)
+              except urllib.error.HTTPError as exc:
+                  if not log or exc.code not in (301, 302, 303, 307, 308):
+                      raise RuntimeError(f'GitHub HTTP {exc.code}') from None
+                  location = exc.headers.get('Location', '')
+                  parsed = urllib.parse.urlparse(location)
+                  host = parsed.hostname or ''
+                  if parsed.scheme != 'https' or not any(host == suffix or host.endswith('.' + suffix)
+                          for suffix in ('github.com', 'githubusercontent.com', 'blob.core.windows.net', 'actions.githubusercontent.com')):
+                      raise RuntimeError('unapproved log download host')
+                  # Deliberately do not forward Authorization to the signed download host.
+                  with urllib.request.urlopen(urllib.request.Request(location, headers={'User-Agent': 'orion-ci-audit'}), timeout=90) as response:
+                      return read_limited(response)
+          def get(path):
+              return json.loads(api_bytes(path))
+          def jobs(run_id):
+              result = []
+              page = 1
+              while True:
+                  data = get(f'/actions/runs/{run_id}/jobs?filter=latest&per_page=100&page={page}')
+                  result.extend(data['jobs'])
+                  if len(result) >= data['total_count']:
+                      return result
+                  page += 1
+                  if page > 5:
+                      raise RuntimeError('too many jobs')
+          def parse_log(raw):
+              text = raw.decode('utf-8-sig', errors='replace')
+              text = re.sub(r'\x1b\[[0-9;]*[A-Za-z]', '', text)
+              lines = [re.sub(r'^\d{4}-\d\d-\d\dT\S+\s*', '', line) for line in text.splitlines()]
+              pytest = sorted(set(m.group(1) + ' ' + m.group(2) for line in lines
+                  if (m := re.match(r'^(FAILED|ERROR)\s+((?:tests|ui-tests|qr-transcriber|[A-Za-z0-9_./-]+\.py).+?)(?: - |$)', line))))
+              tap = []
+              for i, line in enumerate(lines):
+                  match = re.match(r'^\s*not ok \d+ - (.+)$', line)
+                  if not match:
+                      continue
+                  title = match.group(1).strip()
+                  location = ''
+                  for following in lines[i + 1:i + 18]:
+                      loc = re.search(r"location:\s*['\"]?([^'\"]+)", following)
+                      if loc:
+                          location = re.sub(r':\d+(?::\d+)?$', '', loc.group(1).strip())
+                          location = re.sub(r'^.*?/orion-assistente/orion-assistente/', '', location)
+                          break
+                      if re.match(r'^\s*(?:not )?ok \d+ - ', following):
+                          break
+                  tap.append((location + '::' if location else '') + title)
+              totals = {}
+              for line in lines:
+                  if re.match(r'^# (tests|pass|fail|cancelled|skipped|todo) \d+\s*$', line):
+                      key, val = re.match(r'^# (\w+) (\d+)', line).groups()
+                      totals['tap_' + key] = int(val)
+                  if re.search(r'\d+ (?:passed|failed|error|errors)(?:,| in |\b)', line) and re.search(r'\bin \d', line):
+                      if re.match(r'^[=\s]*\d+ ', line):
+                          totals['pytest_summary'] = line.strip('= ')
+              failures = collections.Counter(pytest)
+              failures.update(tap)
+              classified = bool(failures)
+              if 'tap_fail' in totals:
+                  classified = totals['tap_fail'] == len(tap)
+              summary = totals.get('pytest_summary', '')
+              if summary:
+                  reported = sum(int(m.group(1)) for m in re.finditer(r'(\d+) (?:failed|errors?)\b', summary))
+                  classified = reported == len(pytest)
+              return {'sha256': hashlib.sha256(raw).hexdigest(), 'bytes': len(raw), 'failures': dict(sorted(failures.items())),
+                      'totals': totals, 'classified': classified}
+          assert parse_log(b'2026-11-04T00:00:00Z not ok 3 - example\n2026-11-04T00:00:00Z   location: "/home/runner/work/orion-assistente/orion-assistente/qr-bridge/test/x.test.mjs:9:1"\n2026-11-04T00:00:00Z # fail 1')['failures'] == {'qr-bridge/test/x.test.mjs::example': 1}
+          assert parse_log(b'FAILED tests/a.py::test_x - AssertionError\nERROR tests/b.py::test_y - RuntimeError\n1 failed, 2 passed, 1 error in 1.5s')['classified']
+          out = Path('ci-comparison')
+          out.mkdir(exist_ok=True)
+          report = {'repository': REPO, 'head': HEAD, 'baseline_head': BASE_HEAD, 'pairs': [], 'qualified': False}
+          for sha in (HEAD, '435095dc1dc5d67a00f9667da47f3d1fac24d971', '7164ce5ca9e4c795910ca5255f510f625dad0a11', '569b49af495b421be17e7ab112147745b4f666fb'):
+              data = get('/git/commits/' + sha)
+              report.setdefault('trees', {})[sha] = data['tree']['sha']
+          assert report['trees'][HEAD] == report['trees']['435095dc1dc5d67a00f9667da47f3d1fac24d971']
+          assert report['trees']['7164ce5ca9e4c795910ca5255f510f625dad0a11'] == report['trees']['569b49af495b421be17e7ab112147745b4f666fb']
+          deadline = time.monotonic() + 14 * 60
+          while True:
+              pending = []
+              runs = {}
+              for base_id, current_id in PAIRS:
+                  for run_id, expected in ((base_id, BASE_HEAD), (current_id, HEAD)):
+                      data = get(f'/actions/runs/{run_id}')
+                      if data['head_sha'] != expected:
+                          raise RuntimeError('CI head changed')
+                      runs[run_id] = data
+                      if data['status'] != 'completed':
+                          pending.append(run_id)
+              if not pending or time.monotonic() >= deadline:
+                  break
+              print('Awaiting existing CI runs: ' + ','.join(map(str, pending)), flush=True)
+              time.sleep(30)
+          for base_id, current_id in PAIRS:
+              base_jobs = {job['name']: job for job in jobs(base_id)}
+              current_jobs = {job['name']: job for job in jobs(current_id)}
+              comparison = {'baseline_run': base_id, 'candidate_run': current_id, 'workflow': runs[current_id]['path'], 'jobs': []}
+              for name in sorted(set(base_jobs) | set(current_jobs)):
+                  base, candidate = base_jobs.get(name), current_jobs.get(name)
+                  row = {'name': name, 'baseline_job': base['id'] if base else None, 'candidate_job': candidate['id'] if candidate else None,
+                         'baseline_conclusion': base.get('conclusion') if base else None,
+                         'candidate_conclusion': candidate.get('conclusion') if candidate else None}
+                  if not base or not candidate or candidate['status'] != 'completed':
+                      row['verdict'] = 'incomplete'
+                  elif candidate['conclusion'] == 'success':
+                      row['verdict'] = 'pass'
+                  elif candidate['conclusion'] in ('failure', 'cancelled', 'timed_out'):
+                      for label, job in (('baseline', base), ('candidate', candidate)):
+                          try:
+                              row[label] = parse_log(api_bytes(f'/actions/jobs/{job["id"]}/logs', log=True))
+                          except Exception as exc:
+                              row[label] = {'error': type(exc).__name__ + ': ' + str(exc)[:100], 'failures': {}, 'classified': False}
+                      before = collections.Counter(row['baseline']['failures'])
+                      after = collections.Counter(row['candidate']['failures'])
+                      row['new_failures'] = dict(after - before)
+                      row['resolved_failures'] = dict(before - after)
+                      row['verdict'] = ('no_new_failures' if row['baseline']['classified'] and row['candidate']['classified'] and not row['new_failures']
+                                        and candidate['conclusion'] == 'failure' else 'needs_review')
+                  else:
+                      row['verdict'] = 'unchanged_skipped' if candidate['conclusion'] == base.get('conclusion') == 'skipped' else 'needs_review'
+                  comparison['jobs'].append(row)
+                  print(json.dumps({k: row[k] for k in ('name', 'baseline_conclusion', 'candidate_conclusion', 'verdict')}, ensure_ascii=False), flush=True)
+              report['pairs'].append(comparison)
+          report['qualified'] = all(job['verdict'] in ('pass', 'no_new_failures', 'unchanged_skipped') for pair in report['pairs'] for job in pair['jobs'])
+          report['finished_at'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+          (out / 'comparison.json').write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding='utf-8')
+          summary = ['# PR252 — comparação de testes existentes', '', f'Head: `{HEAD}`', '', '| Workflow / grupo | Base | Candidato | Veredito |', '|---|---|---|---|']
+          for pair in report['pairs']:
+              for row in pair['jobs']:
+                  summary.append(f'| {pair["workflow"]} / {row["name"]} | {row["baseline_conclusion"]} | {row["candidate_conclusion"]} | {row["verdict"]} |')
+          summary += ['', 'Logs completos não são publicados: o JSON contém apenas identidades de testes, contagens, hashes e metadados de CI.', '', f'Comparação qualificada: **{report["qualified"]}**. Este resultado não realiza merge ou deploy.']
+          (out / 'summary.md').write_text('\n'.join(summary), encoding='utf-8')
+          Path(os.environ['GITHUB_STEP_SUMMARY']).write_text('\n'.join(summary), encoding='utf-8')
+          if not report['qualified']:
+              raise SystemExit(1)
+          PYCODE
+      - name: Upload sanitized comparison evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr252-regression-evidence
+          path: ci-comparison/
+          if-no-files-found: error
+          retention-days: 7
