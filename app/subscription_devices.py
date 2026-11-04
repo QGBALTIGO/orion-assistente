@@ -631,8 +631,8 @@ async def finish_control(channel_id: UUID, payload: ControlFinish, request: Requ
 
 
 async def _finish_control(db, row, transport, operation, status, error):
-    await db.execute(text("""UPDATE subscription_device_operations SET status=:status,error_code=:error,
-        finished_at=CASE WHEN :status='uncertain' THEN NULL ELSE clock_timestamp() END WHERE id=:o"""),
+    await db.execute(text("""UPDATE subscription_device_operations SET status=CAST(:status AS varchar),error_code=:error,
+        finished_at=CASE WHEN CAST(:status AS varchar)='uncertain' THEN NULL ELSE clock_timestamp() END WHERE id=:o"""),
         {"o": operation["id"], "status": status, "error": error})
     if status == "succeeded" and operation["action"] == "remove":
         await db.execute(text("""UPDATE qr_channels SET enabled=false,assistant_enabled=false,revision=revision+1,
