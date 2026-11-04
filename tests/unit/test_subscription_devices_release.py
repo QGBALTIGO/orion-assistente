@@ -155,6 +155,8 @@ async def test_probe_rejects_privileged_or_wrong_database_role(monkeypatch, role
 def test_worker_must_cross_every_read_only_schema_barrier(monkeypatch, results, expected):
     from scripts import wait_for_manual_start_times_schema as hours
     from scripts import wait_for_appointment_consent_schema as consent_wait
+    from scripts import wait_for_subscription_chatbot_schema as chatbot_wait
+    monkeypatch.setattr(chatbot_wait, "main", lambda: 0)
     events = []
 
     async def ready(_):

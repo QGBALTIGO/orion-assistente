@@ -15,8 +15,8 @@ não observado ou testado.
 
 | Ordem | Módulo | Estado |
 |---|---|---|
-| 01 | Dispositivos | Implementação e validação; ainda não publicado |
-| 02 | Chatbot | Não iniciado |
+| 01 | Dispositivos | Publicado — PR 248, produção `976fa7a095b053e5589bab52eb058187ebba858c` |
+| 02 | Chatbot | Implementado — PR 249 em qualificação para publicação |
 | 03 | Testar Chatbot | Não iniciado |
 | 04 | Templates | Não iniciado |
 | 05 | Mensagens Enviadas | Não iniciado |
@@ -36,6 +36,9 @@ não observado ou testado.
 | 19 | Link e QR do WhatsApp | Não iniciado |
 
 ## Método e fontes
+
+O registro detalhado da etapa 02 está em [chatbot-observation.md](chatbot-observation.md).
+A qualificação técnica está em [chatbot-validation.md](chatbot-validation.md).
 
 Observação feita no Chrome conectado do usuário em 2026-11-03
 (America/Cuiaba), pela extensão autorizada. Nenhum envio, reinício, exclusão,

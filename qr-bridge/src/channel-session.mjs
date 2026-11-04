@@ -8,7 +8,8 @@ import {resolveMessagePhone,normalizeFromJid,freshQR} from './core.mjs';
 import {shouldIngestUpsert,timestampMs} from './linked-session-health.mjs';
 import {deliveryFromAck} from './message-retry-store.mjs';
 import {makeEncryptedRetryStore} from './encrypted-retry-store.mjs';
-import {sendStoredText} from './reliable-send.mjs';
+import {sendStoredText,sendStoredProtocol} from './reliable-send.mjs';
+import {buildChatbotContent} from './chatbot-message.mjs';
 import {makePilotDeviceCache,resolvePilotRecipient} from './pilot-recipient.mjs';
 import {makeAssistantTyping} from './assistant-typing.mjs';
 import {withAssistantAudio} from './ai-audio.mjs';
@@ -36,7 +37,8 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
   let state='connecting',qrValue=null,qrAt=0,closed=false,queue=Promise.resolve(),identityQueue=Promise.resolve(),pending=0,noticeTimer=null,opened=false,pairAttempt=null,pairTimer=null;
   const seen=new Set(),metadata=new Map(),typingByPhone=new Map(),typingLeases=new Set(),abort=new AbortController();
   const retryStore=makeEncryptedRetryStore({directory:privateDirectory(path.join(context.directory,'retry-proto')),secret:context.secret,
-    serialize:value=>JSON.stringify(value,mod.BufferJSON.replacer),deserialize:value=>JSON.parse(value,mod.BufferJSON.reviver),now});
+    serialize:value=>JSON.stringify(value,mod.BufferJSON.replacer),deserialize:value=>JSON.parse(value,mod.BufferJSON.reviver),now,
+    ...(context.deviceSnapshot?.()?{maxPayloadBytes:512*1024,maxTotalBytes:96*1024*2000}:{})});
   const deviceCache=makePilotDeviceCache();
   let deviceRuntime=null;
   const overflowNotices=new Map(),overflowEpoch=new Map();
@@ -118,10 +120,33 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
       relay:async(jid,body,options)=>{await guarded();if(!sendCurrent())throw Error('channel_operation_superseded');return client.relayMessage(jid,body,options);}});
     return {id:sent?.key?.id};
   }
+  async function relayChatbot(phone,action,{isCurrent:operationCurrent=()=>true,assertAuthorized,signal,
+    loadAsset,prepareCarouselImage,onRelayAttempt,fetchImage}={}){
+    const sendCurrent=()=>{try{return current()&&operationCurrent()===true&&!signal?.aborted;}catch{return false;}};
+    const authorize=async()=>{await guarded();if(!sendCurrent()||typeof assertAuthorized!=='function')throw Error('chatbot_operation_superseded');await assertAuthorized();if(!sendCurrent())throw Error('chatbot_operation_superseded');};
+    await authorize();const self=normalizeFromJid(client.user?.id);
+    if(state!=='connected'||!context.deviceSnapshot?.()||!self||phone===self||!/^\d{8,15}$/.test(phone))throw Error('channel_send_denied');
+    const exists=await client.onWhatsApp(phone);await authorize();
+    if(!exists?.some(row=>row.exists&&normalizeFromJid(row.jid)===phone))throw Object.assign(Error('channel_recipient_unverified'),{code:'recipient_identity_unverified'});
+    const proof=await resolvePilotRecipient({phone,pilotPhone:phone,enabled:false,socket:client,deviceCache,isCurrent:sendCurrent});await authorize();
+    let built;
+    try{
+      const sent=await sendStoredProtocol({jid:proof.jid,recipientProof:proof,store:retryStore,isCurrent:sendCurrent,
+        assertAuthorized:authorize,onRelayAttempt,
+        makeMessage:async jid=>{
+          built=await buildChatbotContent(action,{sdk:mod,jid,loadAsset,prepareCarouselImage,fetchImage,signal,
+            upload:(...args)=>client.waUploadToServer(...args),logger:silent,assertCurrent:authorize,isCurrent:sendCurrent,mediaOptions:proxyTransport?.download});
+          return mod.generateWAMessageFromContent(jid,built.content,{userJid:client.user.id,messageId:mod.generateMessageIDV2(client.user.id),timestamp:new Date(now())});
+        },
+        relay:(jid,body,options)=>client.relayMessage(jid,body,options)});
+      return {id:sent.key.id};
+    }finally{built?.dispose();}
+  }
   if(deviceSnapshot)deviceRuntime=createDeviceRuntime(context,{client,downloadMediaMessage:mod.downloadMediaMessage,logger:silent,
     now,openedAt,schedule,cancel,downloadOptions:proxyTransport.download,
     capacity:context.deviceSendCapacity,
-    sendText:(phone,text,options)=>relayText(phone,text,{...options,device:true}),...deviceOptions.runtimeOptions});
+    sendText:(phone,text,options)=>relayText(phone,text,{...options,device:true}),sendChatbot:relayChatbot,
+    isGeneratedMessage:key=>!!retryStore.get(key),...deviceOptions.runtimeOptions});
   const groupSetting=(name,fallback,max)=>{const raw=process.env[name],value=Number(raw);
     return raw!==undefined&&Number.isSafeInteger(value)&&value>=0&&value<=max?value:fallback;};
   const settleMs=groupSetting('QR_AI_GROUP_WAIT_MS',350,2000);
