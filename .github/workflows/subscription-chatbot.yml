@@ -1,0 +1,157 @@
+name: Orion - chatbot de assinaturas
+
+on:
+  pull_request:
+    paths:
+      - 'app/subscription_device*.py'
+      - 'app/subscription_chatbot*.py'
+      - 'app/qr_channels.py'
+      - 'app/plan_catalog.py'
+      - 'app/plan_permissions.py'
+      - 'app/plan_routing.py'
+      - 'app/workspace_policy.py'
+      - 'app/main.py'
+      - 'app/worker.py'
+      - 'app/static/orion-subscription-devices.*'
+      - 'app/static/orion-subscription-chatbot.*'
+      - 'app/static/orion-suite.js'
+      - 'app/static/panel.html'
+      - 'alembic/versions/0063_subscription_chatbot.py'
+      - 'qr-bridge/**'
+      - 'scripts/*subscription_devices*'
+      - 'scripts/*subscription_chatbot*'
+      - 'scripts/backup_and_migrate_*.py'
+      - 'scripts/predeploy_one_click_links.py'
+      - 'scripts/wait_for_single_whatsapp_schema.py'
+      - 'tests/**/test_subscription_device*.py'
+      - 'tests/**/test_subscription_chatbot*.py'
+      - 'tests/fixtures/subscription_chatbot_contract.json'
+      - 'tests/e2e/browser_subscription_chatbot.py'
+      - 'ui-tests/*subscription*'
+      - 'Dockerfile'
+      - '.github/workflows/subscription-chatbot.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: subscription-chatbot-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CAKTO_BILLING_LIVE_ENABLED: '0'
+  ORION_DIRECT_PAYMENTS_ENABLED: '0'
+  META_LIVE_SEND: '0'
+  QR_AI_ENABLED: '0'
+  INBOX_SEND_ENABLED: '0'
+  MARKETING_EXECUTION_ENABLED: '0'
+  ORION_NOTIFY_SELF_ON_LINK: '0'
+  QR_BRIDGE_URL: ''
+
+jobs:
+  contracts:
+    name: Fundacao - midia real e publicacao
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -c requirements.lock '.[test]'
+      - name: Mesmo decoder do runtime, sem provedor pago
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+      - name: Validar arquivos reais, integridade e backup antes de migrar
+        run: |
+          python -m pytest -q -ra \
+            tests/unit/test_subscription_chatbot_media.py \
+            tests/unit/test_subscription_chatbot_release.py \
+            tests/unit/test_subscription_devices_release.py
+
+
+  postgres:
+    name: PostgreSQL - migracao, RLS, concorrencia e quotas
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: orion_chatbot_ci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-only-chatbot-postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d orion_chatbot_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 15
+      redis:
+        image: redis:7
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 15
+    env:
+      APP_DATABASE_URL: postgresql+asyncpg://app_runtime:ci-chatbot-runtime@127.0.0.1:5432/orion_chatbot_ci
+      MIGRATION_DATABASE_URL: postgresql+psycopg://app_migrator:ci-chatbot-migrator@127.0.0.1:5432/orion_chatbot_ci
+      SUPPORT_DATABASE_URL: postgresql+asyncpg://app_support:ci-chatbot-support@127.0.0.1:5432/orion_chatbot_ci
+      SUPPORT_API_TOKEN: synthetic-chatbot-ci-token-at-least-32-characters
+      REQUIRE_POSTGRES_TESTS: '1'
+      REQUIRE_REDIS_TESTS: '1'
+      REDIS_URL: redis://127.0.0.1:6379/15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -c requirements.lock '.[test]'
+      - name: Provisionar os tres papeis no banco descartavel
+        env:
+          PGPASSWORD: ci-only-chatbot-postgres
+        run: |
+          psql -h 127.0.0.1 -U postgres -d orion_chatbot_ci -v ON_ERROR_STOP=1 \
+            -v db_name=orion_chatbot_ci \
+            -v runtime_password=ci-chatbot-runtime \
+            -v migrator_password=ci-chatbot-migrator \
+            -v support_password=ci-chatbot-support \
+            -f infra/postgres/init/001-roles.sql
+          python -m alembic upgrade head
+      - name: Validar contratos reais sem saida para provedores
+        run: |
+          python - <<'PY'
+          import ipaddress
+          import socket
+          import pytest
+          original_connect = socket.socket.connect
+          original_connect_ex = socket.socket.connect_ex
+          original_getaddrinfo = socket.getaddrinfo
+          def loopback(address):
+              host = address[0] if isinstance(address, tuple) else address
+              if host == 'localhost':
+                  return
+              try:
+                  allowed = ipaddress.ip_address(host).is_loopback
+              except (ValueError, TypeError):
+                  allowed = False
+              if not allowed:
+                  raise AssertionError('External network forbidden in device qualification')
+          def connect(sock, address):
+              loopback(address)
+              return original_connect(sock, address)
+          def connect_ex(sock, address):
+              loopback(address)
+              return original_connect_ex(sock, address)
+          def getaddrinfo(host, *args, **kwargs):
+              if host is not None:
+                  loopback((host, 0))
+              return original_getaddrinfo(host, *args, **kwargs)
+          socket.socket.connect = connect
+          socket.socket.connect_ex = connect_ex
+          socket.getaddrinfo = getaddrinfo
+          raise SystemExit(pytest.main(['-q', '-ra',
+              'tests/integration/test_subscription_chatbot_release_postgres.py',
+              'tests/integration/test_subscription_devices_release_postgres.py',
+          ]))
+          PY

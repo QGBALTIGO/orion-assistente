@@ -105,7 +105,11 @@ def main():
     if result:
         return result
     from scripts.wait_for_subscription_devices_schema import main as devices_wait
-    return devices_wait()
+    result = devices_wait()
+    if result:
+        return result
+    from scripts.wait_for_subscription_chatbot_schema import main as chatbot_wait
+    return chatbot_wait()
 
 
 if __name__ == "__main__":
