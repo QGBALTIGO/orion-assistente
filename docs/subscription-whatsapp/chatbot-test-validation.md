@@ -77,3 +77,22 @@ descoberta de testes, corrigidos antes da publicação:
 
 Esses ajustes não modificam o comportamento de produção. O novo commit deve
 executar novamente os gates antes do merge.
+
+## Segunda rodada
+
+O head `f8bacbee3e45bfaba305bcfdd70fd4f64a61f441` passou nos seis jobs do
+[run 41838357914](https://github.com/QGBALTIGO/orion-assistente/actions/runs/41838357914):
+936 Python, 300 Node, 196 DOM, 109 PostgreSQL, 25 Chromium e 25 WebKit —
+**1.591 execuções aprovadas**. Os 17 cenários PostgreSQL novos e a decodificação
+da imagem no WebKit foram confirmados sem remover assertions.
+
+Nos gates compartilhados, os nomes e diagnósticos das falhas de Node,
+Planos, cadastro/histórico e Campos coincidiram com o head da PR 249.
+O gate de acesso profissional repetiu o assert antigo de schema 0058.
+Esses testes não foram alterados para ocultar falhas anteriores.
+
+O pytest geral do FATIA voltou a coletar normalmente, mas o passo foi
+interrompido pelo limite de 12 minutos enquanto ainda avançava. A execução
+anterior completa havia levado 578,98 segundos; o limite do mesmo passo
+foi ampliado para 20 minutos para obter o resumo final com a suíte ampliada.
+O comando, a seleção de testes e as assertions permanecem iguais.
