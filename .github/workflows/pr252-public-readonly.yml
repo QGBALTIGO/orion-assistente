@@ -1,0 +1,79 @@
+name: PR252 - public read-only release verification
+on:
+  push:
+    branches: [qa/pr252-regression-evidence-20261104]
+    paths: [.github/workflows/pr252-public-readonly.yml]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Read-only health, exact assets and anonymous guard
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import datetime, hashlib, json, os, time
+          from pathlib import Path
+          import urllib.error, urllib.request
+          REPO='QGBALTIGO/orion-assistente'
+          COMMIT='f58730ac8e380bd2c12286c69c1db3873d3cbf0f'
+          ORIGIN='https://orionagenda.pro'
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  return None
+          opener=urllib.request.build_opener(NoRedirect)
+          assets=['orion-subscription-sent-messages.js','orion-subscription-sent-messages.css']
+          expected={}
+          for name in assets:
+              req=urllib.request.Request(f'https://api.github.com/repos/{REPO}/contents/app/static/{name}?ref={COMMIT}',headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'})
+              with opener.open(req,timeout=30) as response:
+                  expected[name]=json.load(response)['sha']
+          def read_public(path):
+              req=urllib.request.Request(ORIGIN+path,headers={'User-Agent':'Orion-release-read-only-check','Accept':'*/*'})
+              try:
+                  with opener.open(req,timeout=25) as response:
+                      body=response.read(2*1024*1024+1)
+                      if len(body)>2*1024*1024: raise ValueError('oversized public response')
+                      return response.status,body,dict(response.headers)
+              except urllib.error.HTTPError as exc:
+                  return exc.code,b'',{}
+          report={'commit':COMMIT,'origin':ORIGIN,'read_only':True,'authenticated_browser_test':False,'checks':[],'passed':False}
+          for attempt in range(20):
+              checks=[]
+              try:
+                  status,body,headers=read_public('/health')
+                  healthy=status==200 and json.loads(body).get('status')=='ok'
+                  checks.append({'path':'/health','status':status,'passed':healthy})
+                  for name in assets:
+                      status,body,headers=read_public('/panel-assets/'+name)
+                      actual=hashlib.sha1(b'blob '+str(len(body)).encode()+b'\0'+body).hexdigest()
+                      checks.append({'path':'/panel-assets/'+name,'status':status,'expected_blob':expected[name],'actual_blob':actual,'nosniff':headers.get('X-Content-Type-Options',headers.get('x-content-type-options')),'passed':status==200 and actual==expected[name]})
+                  path='/api/v1/tenants/00000000-0000-0000-0000-000000000000/subscription-whatsapp/sent-messages'
+                  status,body,headers=read_public(path)
+                  checks.append({'path':'synthetic-tenant/sent-messages','status':status,'passed':status in (401,403)})
+                  report['checks']=checks
+                  report['passed']=all(item['passed'] for item in checks)
+                  print(json.dumps({'attempt':attempt+1,'checks':checks},ensure_ascii=False),flush=True)
+              except Exception as exc:
+                  report['error']=type(exc).__name__
+                  print('Read-only request failed: '+type(exc).__name__,flush=True)
+              if report['passed']: break
+              time.sleep(15)
+          report['checked_at']=datetime.datetime.now(datetime.timezone.utc).isoformat()
+          out=Path('public-release-proof');out.mkdir(exist_ok=True)
+          (out/'verification.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
+          Path(os.environ['GITHUB_STEP_SUMMARY']).write_text('# PR252 public read-only verification\n\n'+json.dumps(report,indent=2)+'\n\nNo WhatsApp messages, customer data or authenticated session were used. This does not replace an authenticated browser check.',encoding='utf-8')
+          if not report['passed']: raise SystemExit(1)
+          PY
+      - name: Save read-only verification
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr252-public-release-proof
+          path: public-release-proof/
+          if-no-files-found: error
+          retention-days: 7
