@@ -46,7 +46,7 @@ def test_bulk_remains_a_reviewed_ancestor_after_the_published_schedules():
     config.set_main_option("path_separator", "os")
     config.set_main_option("script_location", str(root / "alembic"))
     migrations = ScriptDirectory.from_config(config)
-    assert migrations.get_heads() == ["0071_subscription_direct"]
+    assert migrations.get_heads() == ["0072_subscription_group_add"]
     assert release.TARGET == barrier.SCHEMA_MARKER == "0070_subscription_bulk"
     assert release.PREVIOUS == previous_release.TARGET == "0069_subscription_schedules"
     assert migrations.get_revision(release.TARGET).down_revision == release.PREVIOUS

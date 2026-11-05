@@ -27,6 +27,7 @@ from app.email_outbox import process_email_outbox,scan_email_outbox
 from app.account_erasure import erase_due_account_logins
 from app.appointment_notifications import process_notification as process_appointment_notification, scan_notifications as scan_appointment_notifications, cleanup_notification_payloads
 from app.subscription_chatbot_worker import process_subscription_chatbot_restore, scan_subscription_chatbot, backup_subscription_chatbots
+from app.subscription_group_add_worker import process_subscription_group_add, process_subscription_group_add_receipt, scan_subscription_group_add
 
 
 async def infrastructure_ping(ctx: dict) -> str:
@@ -144,6 +145,8 @@ async def startup_plan_permissions(ctx):
     await wait_for_bulk_messages(Settings.from_environment())
     from scripts.wait_for_subscription_direct_schema import wait_for_schema as wait_for_direct_messages
     await wait_for_direct_messages(Settings.from_environment())
+    from scripts.wait_for_subscription_group_add_schema import wait_for_schema as wait_for_group_add
+    await wait_for_group_add(Settings.from_environment())
     ctx['plan_permissions_ready'] = True
     logging.getLogger(__name__).info('orion_plan_permissions_0050_worker_ready')
     if os.getenv('ORION_REVIEW_QA_VERIFY_7364') == '1':
@@ -224,8 +227,9 @@ async def startup_plan_permissions(ctx):
 
 class WorkerSettings:
     on_startup = startup_plan_permissions
-    functions = [func(process_appointment_notification,name='process_appointment_notification'),infrastructure_ping,process_inbound_event,process_message_outbox,process_calendar_outbox,process_due_appointment,reconcile_asaas_job,process_automation_job,reconcile_automation_job,process_inbox_message,process_email_outbox,process_subscription_chatbot_restore]
-    cron_jobs = [cron(cleanup_notification_payloads, minute={13}, second={10}),cron(scan_appointment_notifications, minute=set(range(60)), second=set(range(0,60,5))),
+    functions = [func(process_appointment_notification,name='process_appointment_notification'),infrastructure_ping,process_inbound_event,process_message_outbox,process_calendar_outbox,process_due_appointment,reconcile_asaas_job,process_automation_job,reconcile_automation_job,process_inbox_message,process_email_outbox,process_subscription_chatbot_restore,func(process_subscription_group_add,name='process_subscription_group_add',keep_result=0,max_tries=1,timeout=25),func(process_subscription_group_add_receipt,name='process_subscription_group_add_receipt',keep_result=0,max_tries=1,timeout=40)]
+    cron_jobs = [cron(scan_subscription_group_add,minute=set(range(60)),second=set(range(0,60,3))),
+                 cron(cleanup_notification_payloads, minute={13}, second={10}),cron(scan_appointment_notifications, minute=set(range(60)), second=set(range(0,60,5))),
                  cron(recover_events, minute={0,5,10,15,20,25,30,35,40,45,50,55}, second=0),
                  cron(scan_calendar_outbox, minute=set(range(60)), second=10),
                  cron(scan_due_appointments, minute=set(range(60)), second={0,10,20,30,40,50}),

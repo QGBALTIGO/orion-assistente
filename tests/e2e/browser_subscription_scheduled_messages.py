@@ -310,7 +310,18 @@ def test_pending_release_review_and_both_cancel_scopes_preserve_occurrences(brow
             assert len(value["runs"]) == 1 and value["runs"][0]["schedule"]["bucket"] == "history"
             assert writes(value)[0]["data"]["action"] == verb
             assert writes(value)[0]["data"]["run_id"] == (RUN_ID if verb == "cancel_run" else None)
-            action(page, "acknowledge").click()
+            if verb == "cancel_run":
+                # The dialog closes before the detail's asynchronous runs refresh.
+                # Finish that read before replacing its synthetic account/session.
+                with page.expect_response(lambda response: response.request.method == "GET"
+                        and response.url == fixture_url + SCHEDULES_BASE + "/" + SCHEDULE_ID + "/runs?page=1") as runs:
+                    action(page, "acknowledge").click()
+                assert runs.value.status == 200
+                runs.value.finished()
+                expect(page.locator('.os-sc-runs [data-sc-row="' + RUN_ID + '"]')).to_be_visible()
+                expect(page.locator('.os-sc-runs [data-sc-pagination="runs"]')).to_be_visible()
+            else:
+                action(page, "acknowledge").click()
             expect(page.locator("[data-sc-dialog]")).to_have_count(0)
         assert not external, external
         assert not errors, errors

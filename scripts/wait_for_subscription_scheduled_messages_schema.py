@@ -254,6 +254,16 @@ INDEX_CONTRACT = """
          WHERE strpos(lower(pg_catalog.pg_get_expr(i.indpred,i.indrelid)),required.fragment)=0)))
 """
 
+# 0072 adds only the CRM creation timestamp for its observed date filters.
+# Old 0069-0071 schemas keep their exact original column set. Both reviewed,
+# RLS-protected 0072 relations must exist before this extension is accepted.
+GROUP_ADD_CUSTOMER_DATE_SCHEMA = """SELECT NOT EXISTS(
+ SELECT 1 FROM (VALUES ('subscription_group_add_batches'),('subscription_group_add_items')) expected(name)
+ WHERE NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class c
+   WHERE c.oid=pg_catalog.to_regclass('public.'||expected.name) AND c.relkind='r'
+     AND c.relrowsecurity AND c.relforcerowsecurity
+     AND pg_catalog.pg_get_userbyid(c.relowner)='app_migrator'))"""
+
 CUSTOMER_CATALOG_CONTRACT = """
  SELECT EXISTS(SELECT 1 FROM pg_catalog.pg_class c
    WHERE c.oid=pg_catalog.to_regclass('public.customers')
@@ -262,7 +272,8 @@ CUSTOMER_CATALOG_CONTRACT = """
      AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_attribute a
        WHERE a.attrelid=c.oid AND a.attnum>0 AND NOT a.attisdropped AND (
          pg_catalog.has_column_privilege('app_support',c.oid,a.attnum,'SELECT') <>
-           (a.attname::text=ANY(""" + _literal(SUPPORT_CUSTOMER_COLUMNS) + """))
+           (a.attname::text=ANY(""" + _literal(SUPPORT_CUSTOMER_COLUMNS) + """)
+             OR a.attname='created_at' AND (""" + GROUP_ADD_CUSTOMER_DATE_SCHEMA + """))
          OR pg_catalog.has_column_privilege('app_support',c.oid,a.attnum,'SELECT WITH GRANT OPTION,INSERT,UPDATE,REFERENCES')))
      AND EXISTS(SELECT 1 FROM pg_catalog.pg_policy p WHERE p.polrelid=c.oid
        AND p.polname='customers_subscription_schedule_support' AND p.polcmd='r' AND p.polpermissive

@@ -13,6 +13,7 @@ on:
       - 'app/subscription_bulk*.py'
       - 'app/subscription_direct*.py'
       - 'app/subscription_group_contacts*.py'
+      - 'app/subscription_group_add*.py'
       - 'app/qr_channels.py'
       - 'app/plan_catalog.py'
       - 'app/plan_permissions.py'
@@ -30,6 +31,7 @@ on:
       - 'app/static/orion-subscription-bulk-messages.*'
       - 'app/static/orion-subscription-direct-messages.*'
       - 'app/static/orion-subscription-group-contacts.*'
+      - 'app/static/orion-subscription-group-add.*'
       - 'app/static/orion-suite.js'
       - 'app/static/panel.html'
       - 'alembic/versions/0063_subscription_chatbot.py'
@@ -41,6 +43,7 @@ on:
       - 'alembic/versions/0069_subscription_scheduled_messages.py'
       - 'alembic/versions/0070_subscription_bulk_messages.py'
       - 'alembic/versions/0071_subscription_direct_messages.py'
+      - 'alembic/versions/0072_subscription_group_add.py'
       - 'qr-bridge/**'
       - 'scripts/*subscription_devices*'
       - 'scripts/*subscription_chatbot*'
@@ -51,6 +54,7 @@ on:
       - 'scripts/*subscription_scheduled_messages*'
       - 'scripts/*subscription_bulk*'
       - 'scripts/*subscription_direct*'
+      - 'scripts/*subscription_group_add*'
       - 'scripts/backup_and_migrate_*.py'
       - 'scripts/predeploy_one_click_links.py'
       - 'scripts/wait_for_single_whatsapp_schema.py'
@@ -58,6 +62,7 @@ on:
       - 'scripts/reverse_ingress.py'
       - 'scripts/wait_for_appointment_operations_schema.py'
       - 'tests/**/test_subscription_device*.py'
+      - 'tests/unit/test_subscription_connection_health.py'
       - 'tests/**/test_subscription_chatbot*.py'
       - 'tests/**/test_subscription_template*.py'
       - 'tests/**/test_subscription_sent_messages*.py'
@@ -67,6 +72,7 @@ on:
       - 'tests/**/test_subscription_bulk*.py'
       - 'tests/**/test_subscription_direct*.py'
       - 'tests/**/test_subscription_group_contacts*.py'
+      - 'tests/**/test_subscription_group_add*.py'
       - 'tests/unit/test_start_api.py'
       - 'tests/unit/test_reverse_ingress.py'
       - 'tests/unit/test_https_transport.py'
@@ -81,6 +87,7 @@ on:
       - 'tests/fixtures/subscription_bulk*.json'
       - 'tests/fixtures/subscription_direct*.json'
       - 'tests/fixtures/subscription_group_contacts*.json'
+      - 'tests/fixtures/subscription_group_add*.json'
       - 'tests/e2e/browser_subscription_chatbot*.py'
       - 'tests/e2e/browser_subscription_templates.py'
       - 'tests/e2e/browser_subscription_sent_messages.py'
@@ -94,6 +101,8 @@ on:
       - 'tests/e2e/subscription_direct_messages_fixture.py'
       - 'tests/e2e/browser_subscription_group_contacts.py'
       - 'tests/e2e/subscription_group_contacts_fixture.py'
+      - 'tests/e2e/browser_subscription_group_add.py'
+      - 'tests/e2e/subscription_group_add_fixture.py'
       - 'tests/e2e/browser_subscription_guidance.py'
       - 'tests/e2e/subscription_guidance_fixture.py'
       - 'ui-tests/*subscription*'
@@ -171,7 +180,9 @@ jobs:
             tests/unit/test_subscription_bulk*.py \
             tests/unit/test_subscription_direct*.py \
             tests/unit/test_subscription_group_contacts*.py \
+            tests/unit/test_subscription_group_add*.py \
             tests/unit/test_subscription_devices.py \
+            tests/unit/test_subscription_connection_health.py \
             tests/unit/test_subscription_device_rules.py \
             tests/unit/test_subscription_device_audio.py \
             tests/unit/test_subscription_devices_release.py \
@@ -209,6 +220,7 @@ jobs:
           node --check qr-bridge/src/channel-routes.mjs
           node --check qr-bridge/src/device-runtime.mjs
           node --check qr-bridge/src/device-group-contacts.mjs
+          node --check qr-bridge/src/device-group-add.mjs
           node --check qr-bridge/src/device-diagnostics.mjs
           for source in qr-bridge/src/campaign-*.mjs qr-bridge/src/scheduled-*.mjs qr-bridge/src/bulk-*.mjs; do
             node --check "$source"
@@ -237,6 +249,10 @@ jobs:
             qr-bridge/test/connected-features.test.mjs \
             qr-bridge/test/connected-store.test.mjs \
             qr-bridge/test/connection-notice-startup.test.mjs \
+            qr-bridge/test/paired-auth-state.test.mjs \
+            qr-bridge/test/pn-lid-session-transition.test.mjs \
+            qr-bridge/test/interactive-mode.test.mjs \
+            qr-bridge/test/wa-version-policy.test.mjs \
             qr-bridge/test/core.test.mjs \
             qr-bridge/test/e2ee-retry-hardening.test.mjs \
             qr-bridge/test/encrypted-retry-store.test.mjs \
@@ -268,6 +284,7 @@ jobs:
           node --check app/static/orion-subscription-bulk-messages.js
           node --check app/static/orion-subscription-direct-messages.js
           node --check app/static/orion-subscription-group-contacts.js
+          node --check app/static/orion-subscription-group-add.js
           node --check app/static/orion-subscription-devices.js
           node --check app/static/orion-suite.js
           node --test \
@@ -282,6 +299,7 @@ jobs:
             ui-tests/subscription-bulk-messages.test.mjs \
             ui-tests/subscription-direct-messages.test.mjs \
             ui-tests/subscription-group-contacts.test.mjs \
+            ui-tests/subscription-group-add.test.mjs \
             ui-tests/subscription-devices.test.mjs \
             ui-tests/subscription-workspace.test.mjs \
             ui-tests/channels.test.mjs \
@@ -396,9 +414,11 @@ jobs:
           socket.socket.connect = connect
           socket.socket.connect_ex = connect_ex
           socket.getaddrinfo = getaddrinfo
-          # Validate the group contact import contract first. A failed gate
-          # stops at its first error; a passing gate still runs every suite.
-          raise SystemExit(pytest.main(['-q', '-ra', '--maxfail=1',
+          # Validate group addition and migration before existing imports and
+          # collect every failure. Any failure keeps the entire gate nonzero.
+          raise SystemExit(pytest.main(['-q', '-ra',
+              *sorted(glob.glob('tests/integration/test_subscription_group_add*_postgres.py'),
+                  key=lambda path: ('release' not in path, path)),
               *sorted(glob.glob('tests/integration/test_subscription_group_contacts*_postgres.py')),
               *sorted(glob.glob('tests/integration/test_subscription_direct*_postgres.py'),
                   key=lambda path: ('release' not in path, path)),
@@ -433,6 +453,28 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Usar arquivo Ubuntu para dependencias do WebKit
+        if: matrix.engine == 'webkit'
+        run: |
+          # The Azure mirror downloaded fonts at about 39 KB/s in run 42111981290.
+          # Use the same official archive as API/PG, retaining suites and signing keys.
+          sudo python3 - <<'PY'
+          from pathlib import Path
+          sources = [Path('/etc/apt/sources.list'),
+                     *Path('/etc/apt/sources.list.d').glob('*.list'),
+                     *Path('/etc/apt/sources.list.d').glob('*.sources')]
+          for source in sources:
+              if not source.is_file():
+                  continue
+              original = updated = source.read_bytes()
+              for uri in (b'mirror+file:/etc/apt/apt-mirrors.txt',
+                          b'http://azure.archive.ubuntu.com/ubuntu',
+                          b'https://azure.archive.ubuntu.com/ubuntu'):
+                  updated = updated.replace(uri, b'https://archive.ubuntu.com/ubuntu')
+              if updated != original:
+                  source.write_bytes(updated)
+                  print('Ubuntu archive fallback:', source)
+          PY
       - name: Instalar o navegador de teste
         run: |
           # The synthetic server validates the real DTOs and renders a real JPEG.
@@ -471,6 +513,7 @@ jobs:
       - name: Fluxos no painel real - celular, tablet, desktop e dois temas
         run: |
           python -m pytest -q -ra --maxfail=1 \
+            tests/e2e/browser_subscription_group_add.py \
             tests/e2e/browser_subscription_group_contacts.py \
             tests/e2e/browser_subscription_guidance.py \
             tests/e2e/browser_subscription_chatbot.py \
@@ -489,6 +532,7 @@ jobs:
         with:
           name: subscription-chatbot-${{ matrix.engine }}
           path: |
+            test-artifacts/subscription-group-add/
             test-artifacts/subscription-group-contacts/
             test-artifacts/subscription-guidance/
             test-artifacts/subscription-chatbot/

@@ -123,7 +123,9 @@ async def test_options_group_and_member_reads_are_pure_and_keep_missing_names(gr
     assert "generation" not in value and "settings_revision" not in value
 
 
-@pytest.mark.parametrize("status", ["stopped", "disconnected", "connecting"])
+# Persisted states are constrained by 0062. "stopped" is a bridge DTO state
+# normalized to "disconnected" before storage, and remains a unit-test input.
+@pytest.mark.parametrize("status", ["error", "disconnected", "connecting"])
 async def test_offline_options_and_both_reads_never_call_bridge_or_change_local_data(group_contacts_case, status):
     c = group_contacts_case
     async with c.ctx.migration.begin() as db:

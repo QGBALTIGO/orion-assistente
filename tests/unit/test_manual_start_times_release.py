@@ -177,6 +177,8 @@ def test_existing_worker_predeploy_waits_for_both_releases(monkeypatch, manual_r
     monkeypatch.setattr(scheduled_wait, "main", lambda: 0)
     from scripts import wait_for_subscription_direct_schema as direct_wait
     monkeypatch.setattr(direct_wait, "main", lambda: 0)
+    from scripts import wait_for_subscription_group_add_schema as group_add_wait
+    monkeypatch.setattr(group_add_wait, "main", lambda: 0)
     from scripts import wait_for_subscription_bulk_schema as bulk_wait
     monkeypatch.setattr(bulk_wait, "main", lambda: calls.append("bulk") or 0)
     monkeypatch.setattr(templates_wait, "main", lambda: 0)

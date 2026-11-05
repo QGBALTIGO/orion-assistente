@@ -1,0 +1,720 @@
+{
+  "contract_version": 1,
+  "ids": {
+    "tenant_id": "00000000-0000-4000-8000-000000000001",
+    "account_id": "00000000-0000-4000-8000-000000000002",
+    "device_id": "00000000-0000-4000-8000-000000000016",
+    "batch_id": "00000000-0000-4000-8000-000000000071",
+    "idempotency_key": "00000000-0000-4000-8000-000000000072"
+  },
+  "options": {
+    "devices": [
+      {
+        "id": "00000000-0000-4000-8000-000000000016",
+        "name": "Dispositivo sintético",
+        "status": "connected",
+        "available": true,
+        "blocked_reason": null,
+        "version": "533908d71f1289517235dfc2c66119226c105c11f0f6293d78cf678c32c30b2b"
+      }
+    ],
+    "groups": [
+      {
+        "id": "00000000-0000-4000-8000-000000000116",
+        "name": "Lista local sintética",
+        "version": 2,
+        "member_count": 2,
+        "blocked_count": 1,
+        "archived": false
+      }
+    ],
+    "timezone": "America/Sao_Paulo",
+    "limits": {
+      "recipients": 5000,
+      "preview_seconds": 300,
+      "interval_seconds": 3,
+      "search_utf16": 255,
+      "preview_token_characters": 360000
+    },
+    "generated_at": "2026-11-05T20:00:00+00:00"
+  },
+  "options_disconnected": {
+    "devices": [
+      {
+        "id": "00000000-0000-4000-8000-000000000016",
+        "name": "Dispositivo sintético",
+        "status": "disconnected",
+        "available": false,
+        "blocked_reason": "Conecte um dispositivo desta empresa para consultar ou adicionar membros.",
+        "version": "533908d71f1289517235dfc2c66119226c105c11f0f6293d78cf678c32c30b2b"
+      }
+    ],
+    "groups": [
+      {
+        "id": "00000000-0000-4000-8000-000000000116",
+        "name": "Lista local sintética",
+        "version": 2,
+        "member_count": 2,
+        "blocked_count": 1,
+        "archived": false
+      }
+    ],
+    "timezone": "America/Sao_Paulo",
+    "limits": {
+      "recipients": 5000,
+      "preview_seconds": 300,
+      "interval_seconds": 3,
+      "search_utf16": 255,
+      "preview_token_characters": 360000
+    },
+    "generated_at": "2026-11-05T20:00:00+00:00"
+  },
+  "groups": {
+    "device": {
+      "id": "00000000-0000-4000-8000-000000000016",
+      "name": "Dispositivo sintético",
+      "status": "connected",
+      "available": true,
+      "blocked_reason": null,
+      "version": "533908d71f1289517235dfc2c66119226c105c11f0f6293d78cf678c32c30b2b"
+    },
+    "items": [
+      {
+        "id": "120363000000000017@g.us",
+        "name": "Grupo de destino",
+        "member_count": 14,
+        "can_add": true,
+        "blocked_reason": null
+      },
+      {
+        "id": "120363000000000018@g.us",
+        "name": "Grupo sem administração",
+        "member_count": 8,
+        "can_add": false,
+        "blocked_reason": "Você precisa ser administrador do grupo de destino."
+      },
+      {
+        "id": "120363000000000019@g.us",
+        "name": "Grupo de origem",
+        "member_count": 6,
+        "can_add": true,
+        "blocked_reason": null
+      }
+    ],
+    "total": 3
+  },
+  "preview_request_contacts": {
+    "device_id": "00000000-0000-4000-8000-000000000016",
+    "destination_group_id": "120363000000000017@g.us",
+    "source": "contacts",
+    "contact_group_id": null,
+    "without_group": false,
+    "search": "",
+    "created_from": null,
+    "created_to": null,
+    "source_group_id": null
+  },
+  "preview_request_group": {
+    "device_id": "00000000-0000-4000-8000-000000000016",
+    "destination_group_id": "120363000000000017@g.us",
+    "source": "group",
+    "contact_group_id": null,
+    "without_group": false,
+    "search": "",
+    "created_from": null,
+    "created_to": null,
+    "source_group_id": "120363000000000019@g.us"
+  },
+  "preview_contacts": {
+    "device": {
+      "id": "00000000-0000-4000-8000-000000000016",
+      "name": "Dispositivo sintético",
+      "status": "connected",
+      "available": true,
+      "blocked_reason": null,
+      "version": "533908d71f1289517235dfc2c66119226c105c11f0f6293d78cf678c32c30b2b"
+    },
+    "destination": {
+      "id": "120363000000000017@g.us",
+      "name": "Grupo de destino",
+      "member_count": 14,
+      "is_admin": true,
+      "blocked_reason": null
+    },
+    "source": "contacts",
+    "filters": {
+      "contact_group_id": null,
+      "without_group": false,
+      "search": "",
+      "created_from": null,
+      "created_to": null,
+      "source_group_id": null
+    },
+    "source_group": null,
+    "members": [
+      {
+        "phone": "+551199990001",
+        "name": "Contato Um",
+        "status": "ready",
+        "blocked_reason": null
+      },
+      {
+        "phone": "+551199990002",
+        "name": "",
+        "status": "ready",
+        "blocked_reason": null
+      },
+      {
+        "phone": "+551199990003",
+        "name": "Contato existente",
+        "status": "already_member",
+        "blocked_reason": "Já está no grupo."
+      },
+      {
+        "phone": "+551199990004",
+        "name": "Contato bloqueado",
+        "status": "blocked",
+        "blocked_reason": "A autorização deste contato foi revogada."
+      }
+    ],
+    "counts": {
+      "total": 4,
+      "ready": 2,
+      "already_member": 1,
+      "blocked": 1,
+      "unavailable": 0,
+      "duplicates": 1
+    },
+    "preview_token": "synthetic-group-add-preview-v1.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "expires_at": "2026-11-05T20:05:00+00:00",
+    "generated_at": "2026-11-05T20:00:00+00:00"
+  },
+  "preview_group": {
+    "device": {
+      "id": "00000000-0000-4000-8000-000000000016",
+      "name": "Dispositivo sintético",
+      "status": "connected",
+      "available": true,
+      "blocked_reason": null,
+      "version": "533908d71f1289517235dfc2c66119226c105c11f0f6293d78cf678c32c30b2b"
+    },
+    "destination": {
+      "id": "120363000000000017@g.us",
+      "name": "Grupo de destino",
+      "member_count": 14,
+      "is_admin": true,
+      "blocked_reason": null
+    },
+    "source": "group",
+    "filters": {
+      "contact_group_id": null,
+      "without_group": false,
+      "search": "",
+      "created_from": null,
+      "created_to": null,
+      "source_group_id": "120363000000000019@g.us"
+    },
+    "source_group": {
+      "id": "120363000000000019@g.us",
+      "name": "Grupo de origem",
+      "member_count": 6
+    },
+    "members": [
+      {
+        "phone": "+551199990001",
+        "name": "Contato Um",
+        "status": "ready",
+        "blocked_reason": null
+      },
+      {
+        "phone": "+551199990002",
+        "name": "",
+        "status": "ready",
+        "blocked_reason": null
+      },
+      {
+        "phone": "+551199990003",
+        "name": "Contato existente",
+        "status": "already_member",
+        "blocked_reason": "Já está no grupo."
+      },
+      {
+        "phone": "+551199990004",
+        "name": "Contato bloqueado",
+        "status": "blocked",
+        "blocked_reason": "A autorização deste contato foi revogada."
+      }
+    ],
+    "counts": {
+      "total": 4,
+      "ready": 2,
+      "already_member": 1,
+      "blocked": 1,
+      "unavailable": 1,
+      "duplicates": 1
+    },
+    "preview_token": "synthetic-group-add-preview-v1.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "expires_at": "2026-11-05T20:05:00+00:00",
+    "generated_at": "2026-11-05T20:00:00+00:00"
+  },
+  "preview_no_destination": {
+    "device": {
+      "id": "00000000-0000-4000-8000-000000000016",
+      "name": "Dispositivo sintético",
+      "status": "connected",
+      "available": true,
+      "blocked_reason": null,
+      "version": "533908d71f1289517235dfc2c66119226c105c11f0f6293d78cf678c32c30b2b"
+    },
+    "destination": null,
+    "source": "contacts",
+    "filters": {
+      "contact_group_id": null,
+      "without_group": false,
+      "search": "",
+      "created_from": null,
+      "created_to": null,
+      "source_group_id": null
+    },
+    "source_group": null,
+    "members": [
+      {
+        "phone": "+551199990001",
+        "name": "Contato Um",
+        "status": "ready",
+        "blocked_reason": null
+      },
+      {
+        "phone": "+551199990002",
+        "name": "",
+        "status": "ready",
+        "blocked_reason": null
+      },
+      {
+        "phone": "+551199990003",
+        "name": "Contato existente",
+        "status": "ready",
+        "blocked_reason": null
+      },
+      {
+        "phone": "+551199990004",
+        "name": "Contato bloqueado",
+        "status": "blocked",
+        "blocked_reason": "A autorização deste contato foi revogada."
+      }
+    ],
+    "counts": {
+      "total": 4,
+      "ready": 3,
+      "already_member": 0,
+      "blocked": 1,
+      "unavailable": 0,
+      "duplicates": 1
+    },
+    "preview_token": null,
+    "expires_at": null,
+    "generated_at": "2026-11-05T20:00:00+00:00"
+  },
+  "preview_no_admin": {
+    "device": {
+      "id": "00000000-0000-4000-8000-000000000016",
+      "name": "Dispositivo sintético",
+      "status": "connected",
+      "available": true,
+      "blocked_reason": null,
+      "version": "533908d71f1289517235dfc2c66119226c105c11f0f6293d78cf678c32c30b2b"
+    },
+    "destination": {
+      "id": "120363000000000018@g.us",
+      "name": "Grupo sem administração",
+      "member_count": 8,
+      "is_admin": false,
+      "blocked_reason": "Você precisa ser administrador do grupo de destino."
+    },
+    "source": "contacts",
+    "filters": {
+      "contact_group_id": null,
+      "without_group": false,
+      "search": "",
+      "created_from": null,
+      "created_to": null,
+      "source_group_id": null
+    },
+    "source_group": null,
+    "members": [
+      {
+        "phone": "+551199990001",
+        "name": "Contato Um",
+        "status": "ready",
+        "blocked_reason": null
+      },
+      {
+        "phone": "+551199990002",
+        "name": "",
+        "status": "ready",
+        "blocked_reason": null
+      },
+      {
+        "phone": "+551199990003",
+        "name": "Contato existente",
+        "status": "already_member",
+        "blocked_reason": "Já está no grupo."
+      },
+      {
+        "phone": "+551199990004",
+        "name": "Contato bloqueado",
+        "status": "blocked",
+        "blocked_reason": "A autorização deste contato foi revogada."
+      }
+    ],
+    "counts": {
+      "total": 4,
+      "ready": 2,
+      "already_member": 1,
+      "blocked": 1,
+      "unavailable": 0,
+      "duplicates": 1
+    },
+    "preview_token": null,
+    "expires_at": null,
+    "generated_at": "2026-11-05T20:00:00+00:00"
+  },
+  "create_request": {
+    "idempotency_key": "00000000-0000-4000-8000-000000000072",
+    "preview_token": "synthetic-group-add-preview-v1.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "phones": [
+      "+551199990001",
+      "+551199990002"
+    ]
+  },
+  "batch_created": {
+    "batch": {
+      "id": "00000000-0000-4000-8000-000000000071",
+      "idempotency_key": "00000000-0000-4000-8000-000000000072",
+      "device": {
+        "id": "00000000-0000-4000-8000-000000000016",
+        "name": "Dispositivo sintético"
+      },
+      "destination": {
+        "id": "120363000000000017@g.us",
+        "name": "Grupo de destino"
+      },
+      "source": "contacts",
+      "status": "pending",
+      "version": 1,
+      "interval_seconds": 3,
+      "total": 2,
+      "progress": {
+        "pending": 2,
+        "running": 0,
+        "added": 0,
+        "already_member": 0,
+        "not_added": 0,
+        "unknown": 0,
+        "cancelled": 0
+      },
+      "created_at": "2026-11-05T20:00:00+00:00",
+      "started_at": null,
+      "finished_at": null,
+      "error_code": null
+    },
+    "members": [
+      {
+        "id": "00000000-0000-4000-8000-000000000081",
+        "ordinal": 1,
+        "phone": "+551199990001",
+        "name": "Contato Um",
+        "status": "pending",
+        "error_code": null,
+        "started_at": null,
+        "finished_at": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000082",
+        "ordinal": 2,
+        "phone": "+551199990002",
+        "name": "",
+        "status": "pending",
+        "error_code": null,
+        "started_at": null,
+        "finished_at": null
+      }
+    ],
+    "replayed": false
+  },
+  "batch_progress": {
+    "batch": {
+      "id": "00000000-0000-4000-8000-000000000071",
+      "idempotency_key": "00000000-0000-4000-8000-000000000072",
+      "device": {
+        "id": "00000000-0000-4000-8000-000000000016",
+        "name": "Dispositivo sintético"
+      },
+      "destination": {
+        "id": "120363000000000017@g.us",
+        "name": "Grupo de destino"
+      },
+      "source": "contacts",
+      "status": "running",
+      "version": 3,
+      "interval_seconds": 3,
+      "total": 2,
+      "progress": {
+        "pending": 0,
+        "running": 1,
+        "added": 1,
+        "already_member": 0,
+        "not_added": 0,
+        "unknown": 0,
+        "cancelled": 0
+      },
+      "created_at": "2026-11-05T20:00:00+00:00",
+      "started_at": "2026-11-05T20:00:00+00:00",
+      "finished_at": null,
+      "error_code": null
+    },
+    "members": [
+      {
+        "id": "00000000-0000-4000-8000-000000000081",
+        "ordinal": 1,
+        "phone": "+551199990001",
+        "name": "Contato Um",
+        "status": "added",
+        "error_code": null,
+        "started_at": "2026-11-05T20:00:00+00:00",
+        "finished_at": "2026-11-05T20:00:01+00:00"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000082",
+        "ordinal": 2,
+        "phone": "+551199990002",
+        "name": "",
+        "status": "running",
+        "error_code": null,
+        "started_at": "2026-11-05T20:00:04+00:00",
+        "finished_at": null
+      }
+    ],
+    "replayed": false
+  },
+  "batch_completed": {
+    "batch": {
+      "id": "00000000-0000-4000-8000-000000000071",
+      "idempotency_key": "00000000-0000-4000-8000-000000000072",
+      "device": {
+        "id": "00000000-0000-4000-8000-000000000016",
+        "name": "Dispositivo sintético"
+      },
+      "destination": {
+        "id": "120363000000000017@g.us",
+        "name": "Grupo de destino"
+      },
+      "source": "contacts",
+      "status": "completed",
+      "version": 5,
+      "interval_seconds": 3,
+      "total": 2,
+      "progress": {
+        "pending": 0,
+        "running": 0,
+        "added": 2,
+        "already_member": 0,
+        "not_added": 0,
+        "unknown": 0,
+        "cancelled": 0
+      },
+      "created_at": "2026-11-05T20:00:00+00:00",
+      "started_at": "2026-11-05T20:00:00+00:00",
+      "finished_at": "2026-11-05T20:00:05+00:00",
+      "error_code": null
+    },
+    "members": [
+      {
+        "id": "00000000-0000-4000-8000-000000000081",
+        "ordinal": 1,
+        "phone": "+551199990001",
+        "name": "Contato Um",
+        "status": "added",
+        "error_code": null,
+        "started_at": "2026-11-05T20:00:00+00:00",
+        "finished_at": "2026-11-05T20:00:05+00:00"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000082",
+        "ordinal": 2,
+        "phone": "+551199990002",
+        "name": "",
+        "status": "added",
+        "error_code": null,
+        "started_at": "2026-11-05T20:00:00+00:00",
+        "finished_at": "2026-11-05T20:00:05+00:00"
+      }
+    ],
+    "replayed": false
+  },
+  "batch_unknown": {
+    "batch": {
+      "id": "00000000-0000-4000-8000-000000000071",
+      "idempotency_key": "00000000-0000-4000-8000-000000000072",
+      "device": {
+        "id": "00000000-0000-4000-8000-000000000016",
+        "name": "Dispositivo sintético"
+      },
+      "destination": {
+        "id": "120363000000000017@g.us",
+        "name": "Grupo de destino"
+      },
+      "source": "contacts",
+      "status": "unknown",
+      "version": 3,
+      "interval_seconds": 3,
+      "total": 2,
+      "progress": {
+        "pending": 0,
+        "running": 0,
+        "added": 0,
+        "already_member": 0,
+        "not_added": 0,
+        "unknown": 1,
+        "cancelled": 1
+      },
+      "created_at": "2026-11-05T20:00:00+00:00",
+      "started_at": "2026-11-05T20:00:00+00:00",
+      "finished_at": "2026-11-05T20:00:15+00:00",
+      "error_code": "GROUP_ADD_OUTCOME_UNKNOWN"
+    },
+    "members": [
+      {
+        "id": "00000000-0000-4000-8000-000000000081",
+        "ordinal": 1,
+        "phone": "+551199990001",
+        "name": "Contato Um",
+        "status": "unknown",
+        "error_code": "GROUP_ADD_OUTCOME_UNKNOWN",
+        "started_at": "2026-11-05T20:00:00+00:00",
+        "finished_at": "2026-11-05T20:00:15+00:00"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000082",
+        "ordinal": 2,
+        "phone": "+551199990002",
+        "name": "",
+        "status": "cancelled",
+        "error_code": "GROUP_ADD_STOPPED",
+        "started_at": null,
+        "finished_at": "2026-11-05T20:00:15+00:00"
+      }
+    ],
+    "replayed": false
+  },
+  "batch_partial": {
+    "batch": {
+      "id": "00000000-0000-4000-8000-000000000071",
+      "idempotency_key": "00000000-0000-4000-8000-000000000072",
+      "device": {
+        "id": "00000000-0000-4000-8000-000000000016",
+        "name": "Dispositivo sintético"
+      },
+      "destination": {
+        "id": "120363000000000017@g.us",
+        "name": "Grupo de destino"
+      },
+      "source": "contacts",
+      "status": "partial",
+      "version": 5,
+      "interval_seconds": 3,
+      "total": 2,
+      "progress": {
+        "pending": 0,
+        "running": 0,
+        "added": 1,
+        "already_member": 0,
+        "not_added": 1,
+        "unknown": 0,
+        "cancelled": 0
+      },
+      "created_at": "2026-11-05T20:00:00+00:00",
+      "started_at": "2026-11-05T20:00:00+00:00",
+      "finished_at": "2026-11-05T20:00:05+00:00",
+      "error_code": null
+    },
+    "members": [
+      {
+        "id": "00000000-0000-4000-8000-000000000081",
+        "ordinal": 1,
+        "phone": "+551199990001",
+        "name": "Contato Um",
+        "status": "added",
+        "error_code": null,
+        "started_at": "2026-11-05T20:00:00+00:00",
+        "finished_at": "2026-11-05T20:00:05+00:00"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000082",
+        "ordinal": 2,
+        "phone": "+551199990002",
+        "name": "",
+        "status": "not_added",
+        "error_code": "GROUP_ADD_PROVIDER_REFUSED",
+        "started_at": "2026-11-05T20:00:00+00:00",
+        "finished_at": "2026-11-05T20:00:05+00:00"
+      }
+    ],
+    "replayed": false
+  },
+  "batch_recovered": {
+    "batch": {
+      "id": "00000000-0000-4000-8000-000000000071",
+      "idempotency_key": "00000000-0000-4000-8000-000000000072",
+      "device": {
+        "id": "00000000-0000-4000-8000-000000000016",
+        "name": "Dispositivo sintético"
+      },
+      "destination": {
+        "id": "120363000000000017@g.us",
+        "name": "Grupo de destino"
+      },
+      "source": "contacts",
+      "status": "completed",
+      "version": 5,
+      "interval_seconds": 3,
+      "total": 2,
+      "progress": {
+        "pending": 0,
+        "running": 0,
+        "added": 2,
+        "already_member": 0,
+        "not_added": 0,
+        "unknown": 0,
+        "cancelled": 0
+      },
+      "created_at": "2026-11-05T20:00:00+00:00",
+      "started_at": "2026-11-05T20:00:00+00:00",
+      "finished_at": "2026-11-05T20:00:05+00:00",
+      "error_code": null
+    },
+    "members": [
+      {
+        "id": "00000000-0000-4000-8000-000000000081",
+        "ordinal": 1,
+        "phone": "+551199990001",
+        "name": "Contato Um",
+        "status": "added",
+        "error_code": null,
+        "started_at": "2026-11-05T20:00:00+00:00",
+        "finished_at": "2026-11-05T20:00:05+00:00"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000082",
+        "ordinal": 2,
+        "phone": "+551199990002",
+        "name": "",
+        "status": "added",
+        "error_code": null,
+        "started_at": "2026-11-05T20:00:00+00:00",
+        "finished_at": "2026-11-05T20:00:05+00:00"
+      }
+    ],
+    "replayed": true
+  }
+}
