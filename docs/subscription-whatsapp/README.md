@@ -23,8 +23,8 @@ não observado ou testado.
 | 06 | Diagnósticos | Publicado e conferido ao vivo em 2026-11-04 — PR 253, produção `81cf127c51c3fae015568d16d79724ebe0f00db8` |
 | 07 | Campanhas | Publicado e conferido ao vivo em 2026-11-05 — PR 258, produção `23b78bf42086766694a992474f078c2a4ed0a2eb`; etapa encerrada após aprovação WebKit da base posterior PR 259, conforme o [registro de validação](campaigns-validation.md) |
 | 08 | Mensagens Programadas | Publicado e conferido ao vivo em 2026-11-05 — PR 260, produção `da3a0086a038f0f84024cc38c5960d3a2935ffbe`; etapa encerrada com ajuste editorial da PR 261 (`149c43fba44b3f93bdcd90920751d79dc231d32a`), conforme o [registro de validação](scheduled-messages-validation.md) |
-| 09 | Mensagem em Massa | Observada no Chrome; implementação e validação em andamento, sem publicação. [Observação](bulk-messages-observation.md) e [contrato](bulk-messages-contract.md) |
-| 10 | Atribuições de Chat | Não iniciado |
+| 09 | Mensagem em Massa | Publicado e conferido ao vivo em 2026-11-05 — PR 262, produção `d17cb67a29fca8293299ac3b2b969601b540075a`; etapa encerrada, conforme o [registro de validação](bulk-messages-validation.md) |
+| 10 | Atribuições de Chat | Bloqueada na referência: plano sem acesso e criação retorna 403. Sem implementação ou publicação; [registro de observação](chat-assignments-observation.md) |
 | 11 | Enviar Mensagem | Não iniciado |
 | 12 | Transcrição de Áudio | Não iniciado |
 | 13 | Aquecimento | Não iniciado |
@@ -86,6 +86,43 @@ permaneceu saudável na revisão funcional da PR 260, pois seus arquivos não
 mudaram. A nova frase e a lista foram conferidas no Chrome, sem erros, antes
 de iniciar a etapa 09.
 
+A etapa 09 foi publicada pela [PR 262](https://github.com/QGBALTIGO/orion-assistente/pull/262),
+preservando a árvore qualificada `505fd9e7b588dac70bd5c325b5c8d9e063aa47d1`.
+Os seis gates do [workflow dedicado 42043961467](https://github.com/QGBALTIGO/orion-assistente/actions/runs/42043961467)
+passaram: 2.559 casos Python, 537 PostgreSQL, 485 DOM, 488 da ponte,
+105 no Chrome e 105 no WebKit, totalizando 4.279 execuções de teste.
+Nos 64 jobs gerais, houve 49 aprovações, 13 falhas anteriores comparadas,
+um timeout de FATIA e um cancelamento durante a preparação de
+transport-hardening. Essas duas execuções incompletas não comprovam uma
+comparação funcional concluída; o repositório inteiro não está aprovado.
+Os limites e as contrapartes estão no [registro de validação](bulk-messages-validation.md).
+
+API, worker e ponte confirmaram o mesmo merge `d17cb67a29fca8293299ac3b2b969601b540075a`,
+em `SUCCESS` e online com 1/1 réplica, sem alertas atuais. O backup privado
+foi verificado antes da migração 0069 → 0070, e as barreiras da API e do
+worker confirmaram `0070_subscription_bulk`. O primeiro build do worker
+falhou no download do Chisel por HTTP 504; uma única reconstrução da mesma
+origem, sem mudança de configuração, terminou com sucesso. Não ficaram
+deployments pendentes nem alterações preparadas na Railway.
+
+A conferência no Chrome conectado incluiu histórico, totais, bancada,
+intervalo padrão de 10 segundos e limites de 10–60, abas Grupos/Contatos/Entrada
+manual, alternância Texto/Template e captura no tema escuro do Orion. O
+formulário foi fechado e o histórico voltou a ser exibido, sem avisos ou
+erros capturados no console, sem criar ou confirmar lote e sem envio real.
+A execução foi validada nos ambientes sintéticos; a conferência de produção
+foi de leitura e preparação visual. A etapa 10 começou após esse encerramento.
+
+A etapa 10 permanece bloqueada na observação. O BotBot exibe a lista com
+aviso de indisponibilidade no plano e o link visível de criação retorna
+HTTP 403. As fontes gratuitas acessíveis não esclarecem os campos, o destino
+nem o efeito de uma atribuição. Os controles existentes no Orion foram
+mapeados, mas não comprovam o comportamento da referência. Nenhum complemento
+foi contratado e a etapa 11 não foi iniciada, respeitando a ordem definida.
+O [registro de observação](chat-assignments-observation.md) separa os fatos
+confirmados das decisões que ainda dependem de evidência ou de uma mudança
+explícita no escopo solicitado.
+
 ## Método e fontes
 
 O registro detalhado da etapa 02 está em [chatbot-observation.md](chatbot-observation.md).
@@ -102,6 +139,10 @@ A qualificação da etapa 06 está em [diagnostics-validation.md](diagnostics-va
 A observação da etapa 08 está em [scheduled-messages-observation.md](scheduled-messages-observation.md).
 O contrato da etapa 08 está em [scheduled-messages-contract.md](scheduled-messages-contract.md).
 A qualificação e a conferência de produção da etapa 08 estão em [scheduled-messages-validation.md](scheduled-messages-validation.md).
+A observação da etapa 09 está em [bulk-messages-observation.md](bulk-messages-observation.md).
+O contrato da etapa 09 está em [bulk-messages-contract.md](bulk-messages-contract.md).
+A qualificação e a conferência de produção da etapa 09 estão em [bulk-messages-validation.md](bulk-messages-validation.md).
+A observação bloqueada e o mapeamento inicial da etapa 10 estão em [chat-assignments-observation.md](chat-assignments-observation.md).
 
 Observação iniciada no Chrome conectado do usuário em 2026-11-03
 (America/Cuiaba) e continuada em 2026-11-04, pela extensão autorizada.
