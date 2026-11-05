@@ -304,4 +304,3 @@ async def test_owner_audio_preview_keeps_its_independent_provider_budget(lease_t
     result = await qr_ai.run_locked(uuid4(), "5567999999999", "", "preview:audio", "preview-id",
                                     preview=True, prepare=transcript)
     assert result["step"] == "preview" and result["input_kind"] == "audio"
-
