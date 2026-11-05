@@ -82,6 +82,13 @@ Para contatos locais, suas referências e versões são revalidadas antes da
 execução. Revogação local de autorização, resultados incertos anteriores e
 contexto do proprietário/dispositivo são conferidos nas duas origens.
 
+Os filtros de criação usam o timestamp real do cadastro. A migração 0072
+acrescenta exclusivamente a leitura da coluna `customers.created_at` ao
+conjunto de colunas já autorizado para esse catálogo. As políticas de nicho
+e RLS permanecem; não se concede leitura da tabela inteira, escrita ou
+delegação. As barreiras de catálogo verificam essa extensão e sua ausência
+em esquemas anteriores.
+
 Limites de quantidade e tamanho são limites explícitos do Orion. Uma
 resposta acima desses limites deve falhar de forma clara, sem truncar a
 audiência silenciosamente. Os exemplos sintéticos compartilhados entre
@@ -96,3 +103,26 @@ O CI geral será registrado separadamente, com as falhas anteriores e os
 limites de execuções incompletas. A conferência em produção deve usar somente
 leituras e preparação visual; as alterações de participantes serão
 exercitadas com dados sintéticos.
+
+### Revisões da candidata antes da publicação
+
+A primeira configuração de CI não incluía os 41 casos DOM novos; a segunda
+candidata corrigiu a lista e a publicação das capturas. Na segunda rodada,
+API (3.007), DOM (661) e ponte (637) passaram. PostgreSQL passou os 48 casos
+de release e encontrou a falta de leitura de `customers.created_at` no
+primeiro caso funcional. Isso foi tratado como falha da candidata, não como
+aprovação da suíte ou falha herdada.
+
+Durante a qualificação, a PR271 entrou na produção com melhorias de
+preservação da sessão. Sua implementação foi integrada integralmente.
+O fixture dos cinco casos de sessão real da etapa 17 ainda apresentava
+credenciais incompletas: falhou antes da correção e passou ao usar a
+inicialização de credenciais do SDK, mantendo as guardas do produto. A
+composição integrada de transporte passou 446 casos localmente.
+
+A candidata seguinte reúne a integração, a leitura estreita do timestamp e
+os testes de privilégio correspondentes. O gate PostgreSQL passa a coletar
+todas as falhas na mesma execução, mantendo código de saída não zero para
+qualquer falha e o bloqueio de saída para provedores. As rodadas anteriores
+continuam registradas separadamente; a publicação exige os seis gates
+completos da árvore integrada.

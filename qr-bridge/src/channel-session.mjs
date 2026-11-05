@@ -34,6 +34,8 @@ import {createDeviceProxy} from './device-network.mjs';
 import {currentDiagnosticMessage} from './device-diagnostic-message.mjs';
 import {createDeviceGroupContacts} from './device-group-contacts.mjs';
 import {createGroupAddSocket} from './device-group-add.mjs';
+import {classifyPairedAuth} from './paired-auth-state.mjs';
+import {chatbotInteractiveMode} from './interactive-mode.mjs';
 
 export async function createBaileysChannelSession(context,{loadBaileys=()=>import('@whiskeysockets/baileys'),selectVersion=selectWaWebVersion,now=Date.now,typingFactory=makeAssistantTyping,intakeOptions={},schedule=setTimeout,cancel=clearTimeout,deviceOptions={}}={}){
   if(context.legacyTransport===true)throw Error('legacy_requires_existing_socket');
@@ -63,7 +65,13 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
     isCurrent:()=>context.isCurrent()===true});
   const savedCreds=store.get('creds');
   if(!savedCreds&&fs.readdirSync(path.join(context.directory,'auth')).some(name=>name.endsWith('.enc')))throw Error('channel_auth_unavailable');
+  if(context.resumeOnly===true&&!savedCreds)throw Error('channel_auth_unavailable');
   const creds=savedCreds||mod.initAuthCreds();
+  const authState=()=>classifyPairedAuth(creds,mod);
+  const restoredState=authState();
+  // The SDK leaves registered=false after a successful QR pair. Its signed
+  // companion account is the restore criterion; a flag is never authority.
+  if(!['paired','unlinked'].includes(restoredState)||(context.resumeOnly===true&&restoredState!=='paired'))throw Error('channel_auth_unavailable');
   // Never pair a replacement identity after a partial/corrupted restore.
   if(!savedCreds)store.set('creds',creds);
   const pendingKeys=store.get('auth-key-transaction');
@@ -72,11 +80,10 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
     for(const row of pendingKeys)store.set(row.id,row.value);
     store.set('auth-key-transaction',null);
   }
-  if(context.resumeOnly===true&&creds.registered!==true)throw Error('channel_auth_unavailable');
   // A new link may require a provider restart before its first open. Carry
-  // only this process's new-link intent; restored registered auth never arms it.
+  // only this process's new-link intent; restored paired auth never arms it.
   const newLinkNotice=context.newLinkNotice||{pending:false};
-  if(context.notifySelf===true&&context.resumeOnly!==true&&creds.registered!==true)newLinkNotice.pending=true;
+  if(context.notifySelf===true&&context.resumeOnly!==true&&restoredState==='unlinked')newLinkNotice.pending=true;
   const notifyNewLink=context.notifySelf===true&&context.resumeOnly!==true&&newLinkNotice.pending===true;
   let state='connecting',qrValue=null,qrAt=0,closed=false,queue=Promise.resolve(),identityQueue=Promise.resolve(),pending=0,noticeTimer=null,opened=false,pairAttempt=null,pairTimer=null;
   const seen=new Set(),metadata=new Map(),typingByPhone=new Map(),typingLeases=new Set(),abort=new AbortController();
@@ -137,7 +144,7 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
   }
   function pairingResult(attempt){
     const expires=Math.floor(attempt.expiresAt-now());
-    if(pairAttempt!==attempt||!attempt.code||expires<=0||creds.registered===true||state==='connected')throw Error('channel_pairing_unavailable');
+    if(pairAttempt!==attempt||!attempt.code||expires<=0||['paired','invalid'].includes(authState())||creds.registered===true||state==='connected')throw Error('channel_pairing_unavailable');
     return {status:'pairing',code:attempt.code,expires_in_ms:Math.min(90000,expires)};
   }
   function overflowNotice(message,normalized){
@@ -249,8 +256,10 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
     const recipient=exists?.find(row=>row.exists&&normalizeFromJid(row.jid)===phone);
     if(!recipient)throw messagePreflightError(Array.isArray(exists)&&exists.some(row=>row?.exists===false&&normalizeFromJid(row.jid)===phone)
       ?'RECIPIENT_NOT_REGISTERED':'RECIPIENT_IDENTITY_UNVERIFIED');
-    const proof=await resolvePilotRecipient({phone,pilotPhone:phone,enabled:!device&&context.verifiedLid?.()===true,
-      socket:client,deviceCache,isCurrent:current});await authorize();
+    // Confirmed self diagnostics have their own exact current-self grant;
+    // the external-recipient resolver deliberately refuses a self address.
+    const proof=await resolvePilotRecipient({phone,pilotPhone:phone,enabled:!(diagnostic&&phone===self)&&context.verifiedLid?.()===true,
+      socket:client,deviceCache,isCurrent:sendCurrent});await authorize();
     const sent=await sendStoredText({jid:proof.jid,recipientProof:proof,text,store:retryStore,freshDevices:true,isCurrent:sendCurrent,maxTextChars,preserveWhitespace:device,
       makeMessage:(jid,body)=>mod.generateWAMessage(jid,{text:body},{userJid:client.user.id,logger:silent,messageId:mod.generateMessageIDV2(client.user.id)}),
       relay:async(jid,body,options)=>{
@@ -273,7 +282,7 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
     const exists=await client.onWhatsApp(phone);await authorize();
     if(!exists?.some(row=>row.exists&&normalizeFromJid(row.jid)===phone))throw messagePreflightError(Array.isArray(exists)&&exists.some(row=>row?.exists===false&&normalizeFromJid(row.jid)===phone)
       ?'RECIPIENT_NOT_REGISTERED':'RECIPIENT_IDENTITY_UNVERIFIED');
-    const proof=await resolvePilotRecipient({phone,pilotPhone:phone,enabled:false,socket:client,deviceCache,isCurrent:sendCurrent});await authorize();
+    const proof=await resolvePilotRecipient({phone,pilotPhone:phone,enabled:context.verifiedLid?.()===true,socket:client,deviceCache,isCurrent:sendCurrent});await authorize();
     let built;
     try{
       const sent=await sendStoredProtocol({jid:proof.jid,recipientProof:proof,store:retryStore,isCurrent:sendCurrent,
@@ -282,7 +291,7 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
         makeMessage:async jid=>{
           built=await buildChatbotContent(action,{sdk:mod,jid,loadAsset,prepareCarouselImage,fetchImage,signal,
             upload:(...args)=>client.waUploadToServer(...args),logger:silent,assertCurrent:authorize,isCurrent:sendCurrent,mediaOptions:proxyTransport?.download,
-            interactiveMode:deviceOptions.interactiveMode??(process.env.QR_NATIVE_INTERACTIVE_ENABLED==='1'?'native':'text_fallback')});
+            interactiveMode:deviceOptions.interactiveMode??chatbotInteractiveMode(action,{tenantId:context.tenantId,deviceId:context.deviceSnapshot?.()?.id})});
           return mod.generateWAMessageFromContent(jid,built.content,{userJid:client.user.id,messageId:mod.generateMessageIDV2(client.user.id),timestamp:new Date(now())});
         },
         relay:(jid,body,options)=>client.relayMessage(jid,body,options)});
@@ -344,7 +353,15 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
   client.ev.on('creds.update',()=>{write(()=>store.set('creds',creds)).catch(()=>{diagnostics.record('auth_write_failed');close();});});
   client.ev.on('connection.update',event=>{
     if(!current())return close();
-    if(event.qr){expirePairing();qrValue=event.qr;qrAt=now();if(!pairAttempt)state='qr_ready';}
+    if(event.qr){
+      // A resumed identity must never drift into a new QR login. Keep the
+      // encrypted account intact for inspection and require explicit action.
+      if(context.resumeOnly===true||['paired','invalid'].includes(authState())||(!pairAttempt&&authState()==='pending')){
+        const policy={code:null,reason:'auth_state_unavailable',action:'inspect_session_state',retry:false,delayMs:null};
+        health.disconnected(policy,1);close();context.onDisconnected(policy);return;
+      }
+      expirePairing();qrValue=event.qr;qrAt=now();if(!pairAttempt)state='qr_ready';
+    }
     if(event.connection==='open'){
       // Restore readiness synchronously before publishing a connected state
       // or permitting an unrelated automatic send. New links create no queue.
@@ -498,12 +515,12 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
       await client.logout();return {remote_logout:true};
     },
     phone:()=>state==='connected'?(normalizeFromJid(client.user?.id)||null):null,
-    supportsPairing:()=>current()&&context.resumeOnly!==true&&creds.registered!==true&&state!=='connected'&&typeof client.requestPairingCode==='function',
-    qr:()=>{expirePairing();return !pairAttempt&&['qr_ready','pair_expired'].includes(state)&&freshQR(qrAt,now())?
+    supportsPairing:()=>current()&&context.resumeOnly!==true&&authState()==='unlinked'&&state!=='connected'&&typeof client.requestPairingCode==='function',
+    qr:()=>{expirePairing();return !pairAttempt&&authState()==='unlinked'&&context.resumeOnly!==true&&['qr_ready','pair_expired'].includes(state)&&freshQR(qrAt,now())?
       {value:qrValue,expires_in_ms:Math.max(0,45000-(now()-qrAt))}:null;},
     async pair(phone){
       await guarded();expirePairing();
-      if(typeof phone!=='string'||phone!==phone.trim()||!/^[1-9]\d{7,14}$/.test(phone)||creds.registered===true||state==='connected'||
+      if(typeof phone!=='string'||phone!==phone.trim()||!/^[1-9]\d{7,14}$/.test(phone)||['paired','invalid'].includes(authState())||creds.registered===true||state==='connected'||
           context.resumeOnly===true||typeof client.requestPairingCode!=='function')throw Error('channel_pairing_unavailable');
       if(pairAttempt){
         if(pairAttempt.phone!==phone)throw Error('channel_pairing_in_progress');
@@ -511,6 +528,7 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
         if(pairAttempt.pending)return pairAttempt.promise;
         return pairingResult(pairAttempt);
       }
+      if(authState()!=='unlinked')throw Error('channel_pairing_unavailable');
       if(!qrValue||!freshQR(qrAt,now()))throw Error('channel_pairing_not_ready');
       const attempt={phone,expiresAt:now()+90000,pending:true,code:null,promise:null};
       pairAttempt=attempt;state='pairing';

@@ -62,6 +62,7 @@ on:
       - 'scripts/reverse_ingress.py'
       - 'scripts/wait_for_appointment_operations_schema.py'
       - 'tests/**/test_subscription_device*.py'
+      - 'tests/unit/test_subscription_connection_health.py'
       - 'tests/**/test_subscription_chatbot*.py'
       - 'tests/**/test_subscription_template*.py'
       - 'tests/**/test_subscription_sent_messages*.py'
@@ -181,6 +182,7 @@ jobs:
             tests/unit/test_subscription_group_contacts*.py \
             tests/unit/test_subscription_group_add*.py \
             tests/unit/test_subscription_devices.py \
+            tests/unit/test_subscription_connection_health.py \
             tests/unit/test_subscription_device_rules.py \
             tests/unit/test_subscription_device_audio.py \
             tests/unit/test_subscription_devices_release.py \
@@ -247,6 +249,10 @@ jobs:
             qr-bridge/test/connected-features.test.mjs \
             qr-bridge/test/connected-store.test.mjs \
             qr-bridge/test/connection-notice-startup.test.mjs \
+            qr-bridge/test/paired-auth-state.test.mjs \
+            qr-bridge/test/pn-lid-session-transition.test.mjs \
+            qr-bridge/test/interactive-mode.test.mjs \
+            qr-bridge/test/wa-version-policy.test.mjs \
             qr-bridge/test/core.test.mjs \
             qr-bridge/test/e2ee-retry-hardening.test.mjs \
             qr-bridge/test/encrypted-retry-store.test.mjs \
@@ -408,9 +414,9 @@ jobs:
           socket.socket.connect = connect
           socket.socket.connect_ex = connect_ex
           socket.getaddrinfo = getaddrinfo
-          # Validate group addition and migration before existing imports. A failed gate
-          # stops at its first error; a passing gate still runs every suite.
-          raise SystemExit(pytest.main(['-q', '-ra', '--maxfail=1',
+          # Validate group addition and migration before existing imports and
+          # collect every failure. Any failure keeps the entire gate nonzero.
+          raise SystemExit(pytest.main(['-q', '-ra',
               *sorted(glob.glob('tests/integration/test_subscription_group_add*_postgres.py'),
                   key=lambda path: ('release' not in path, path)),
               *sorted(glob.glob('tests/integration/test_subscription_group_contacts*_postgres.py')),

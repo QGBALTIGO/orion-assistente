@@ -219,7 +219,8 @@ async def test_dates_use_company_timezone_and_include_the_whole_selected_day(gro
         await db.execute(text("UPDATE tenants SET timezone='America/Sao_Paulo' WHERE id=:t"), {"t": c.tenant})
     dates = [datetime(2026, 10, 31, 2, 59, 59, tzinfo=timezone.utc), datetime(2026, 10, 31, 3, tzinfo=timezone.utc),
              datetime(2026, 11, 1, 2, 59, 59, tzinfo=timezone.utc), datetime(2026, 11, 1, 3, tzinfo=timezone.utc)]
-    phones = [f"+12025550{n:03d}" for n in range(101, 105)]
+    # CRM customers retain the published BR/PY constraint from 0052.
+    phones = [f"+55679001{n:05d}" for n in range(101, 105)]
     for phone, created in zip(phones, dates): await customer(c, phone, created=created)
     value = await preview(c, without_group=True, created_from="2026-10-31", created_to="2026-10-31")
     assert [row["phone"] for row in value["members"]] == phones[1:3]
@@ -229,17 +230,17 @@ async def test_catalog_above_one_thousand_is_complete_and_limit_is_not_silent_tr
     c = group_add_case
     async with c.ctx.migration.begin() as db:
         c.add_customers.extend((await db.execute(text("""INSERT INTO customers(tenant_id,name,whatsapp_e164)
-            SELECT :t,'Sintético '||n,'+1202'||lpad(n::text,9,'0') FROM generate_series(1,1024) n RETURNING id"""),
+            SELECT :t,'Sintético '||n,'+55679'||lpad(n::text,8,'0') FROM generate_series(1,1024) n RETURNING id"""),
             {"t": c.tenant})).scalars().all())
     value = await preview(c, without_group=True, destination_group_id=None)
     assert value["counts"]["total"] == 1024 and len(value["members"]) == 1024
     async with c.ctx.migration.begin() as db:
         c.add_customers.extend((await db.execute(text("""INSERT INTO customers(tenant_id,name,whatsapp_e164)
-            SELECT :t,'Sintético '||n,'+1202'||lpad(n::text,9,'0') FROM generate_series(1025,5000) n RETURNING id"""),
+            SELECT :t,'Sintético '||n,'+55679'||lpad(n::text,8,'0') FROM generate_series(1025,5000) n RETURNING id"""),
             {"t": c.tenant})).scalars().all())
     maximum = await preview(c, without_group=True)
     assert maximum["counts"]["ready"] == 5000 and len(maximum["preview_token"]) <= 360000
-    await customer(c, "+1202999999999")
+    await customer(c, "+5567999988888")
     too_many = await c.client.post(c.add_url+"/preview", json=preview_body(c, without_group=True))
     assert too_many.status_code == 422 and too_many.json()["detail"]["code"] == "GROUP_ADD_LIMIT"
     assert all(not rows for rows in (await snapshot(c)).values()) and c.add_calls == []

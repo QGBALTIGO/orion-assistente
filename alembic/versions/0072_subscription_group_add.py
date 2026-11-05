@@ -114,6 +114,9 @@ def upgrade():
                    "USING(tenant_id=(SELECT NULLIF(current_setting('app.tenant_id',true),'')::uuid))")
         op.execute(f"CREATE POLICY {table}_support ON public.{table} FOR ALL TO app_support USING(true) WITH CHECK(true)")
         op.execute(f"CREATE POLICY {table}_migrator ON public.{table} FOR ALL TO app_migrator USING(true) WITH CHECK(true)")
+    # Created From/To filters need the real CRM timestamp. Preserve the existing
+    # subscription-only RLS policy and every write restriction; grant one column.
+    op.execute("GRANT SELECT(created_at) ON public.customers TO app_support")
 
 
 def downgrade():

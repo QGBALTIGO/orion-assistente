@@ -6,7 +6,7 @@ import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {EventEmitter} from 'node:events';
 import {Readable} from 'node:stream';
-import {DEFAULT_CONNECTION_CONFIG} from '@whiskeysockets/baileys';
+import {DEFAULT_CONNECTION_CONFIG,initAuthCreds} from '@whiskeysockets/baileys';
 import {createGroupAddSocket,createDeviceGroupAdd,groupAddAdmin,groupAddLedger,validGroupAddRequest,GROUP_ADD_LIMITS} from '../src/device-group-add.mjs';
 import {createChannelManager} from '../src/channel-manager.mjs';
 import {createBaileysChannelSession} from '../src/channel-session.mjs';
@@ -405,7 +405,7 @@ async function realSession(t,{blocked=false}={}){
     journal.block('blocked-message','business_started');
   }
   const mod={DEFAULT_CONNECTION_CONFIG:{version:DEFAULT_CONNECTION_CONFIG.version},default:()=>client,BufferJSON:{},
-    initAuthCreds:()=>({registered:true}),Browsers:{windows:()=>['synthetic']},DisconnectReason:{loggedOut:401},
+    initAuthCreds,Browsers:{windows:()=>['synthetic']},DisconnectReason:{loggedOut:401},
     proto:{Message:{AppStateSyncKeyData:{fromObject:value=>value}}}};
   const session=await createBaileysChannelSession(context,{loadBaileys:async()=>mod,schedule:()=>1,cancel(){}});t.after(()=>session.close());
   client.ev.emit('connection.update',{connection:'open'});await tick();

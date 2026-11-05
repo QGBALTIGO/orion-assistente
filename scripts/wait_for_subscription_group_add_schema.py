@@ -102,6 +102,13 @@ SETTLEMENT_CONTRACT = """SELECT EXISTS(SELECT 1 FROM pg_catalog.pg_attribute a J
     AND a.attname='provider_settled' AND pg_catalog.pg_get_expr(d.adbin,d.adrelid)='false')
   AND EXISTS(SELECT 1 FROM pg_catalog.pg_index i WHERE i.indexrelid=
     pg_catalog.to_regclass('public.uq_subscription_group_add_active_device') AND i.indisunique)"""
+CUSTOMER_DATE_CONTRACT = """SELECT EXISTS(SELECT 1 FROM pg_catalog.pg_attribute a
+ WHERE a.attrelid=pg_catalog.to_regclass('public.customers') AND a.attname='created_at'
+   AND a.attnum>0 AND NOT a.attisdropped AND a.attnotnull
+   AND a.atttypid=pg_catalog.to_regtype('pg_catalog.timestamptz')
+   AND pg_catalog.has_column_privilege('app_support',a.attrelid,a.attnum,'SELECT')
+   AND NOT pg_catalog.has_column_privilege('app_support',a.attrelid,a.attnum,
+     'SELECT WITH GRANT OPTION,INSERT,UPDATE,REFERENCES'))"""
 # Exact state domains and the active-device predicate are admission boundaries.
 # Strip only parser-added text casts, whitespace and grouping parentheses;
 # extra values/operators remain visible and cannot pass this comparison.
@@ -126,7 +133,7 @@ EXACT_DOMAINS_CONTRACT = r"""WITH expected(table_name,constraint_name,expression
       'status=anyarray[''pending'',''running'']')"""
 CONTRACT_QUERY = "SELECT " + " AND ".join("COALESCE((" + query + "),false)" for query in (
     PREVIOUS_CONTRACT, TABLE_CONTRACT, COLUMN_CONTRACT, KEY_CONTRACT, FOREIGN_KEY_CONTRACT,
-    CHECK_CONTRACT, INDEX_CONTRACT, SETTLEMENT_CONTRACT, EXACT_DOMAINS_CONTRACT)) + " AS ready"
+    CHECK_CONTRACT, INDEX_CONTRACT, SETTLEMENT_CONTRACT, CUSTOMER_DATE_CONTRACT, EXACT_DOMAINS_CONTRACT)) + " AS ready"
 SCHEMA_QUERY = """SELECT current_user AS runtime_role,session_user AS authenticated_role,
   EXISTS(SELECT 1 FROM pg_catalog.pg_roles WHERE rolname=current_user
     AND NOT rolsuper AND NOT rolcreaterole AND NOT rolbypassrls) AS restricted_role,

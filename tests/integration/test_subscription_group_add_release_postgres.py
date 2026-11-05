@@ -26,7 +26,7 @@ def test_0072_catalog_preserves_0071_and_the_reviewed_group_membership_contract(
             with engine.connect() as db:
                 sections = {name: db.execute(text(getattr(barrier, name))).scalar() for name in (
                     "TABLE_CONTRACT", "COLUMN_CONTRACT", "KEY_CONTRACT", "FOREIGN_KEY_CONTRACT",
-                    "CHECK_CONTRACT", "INDEX_CONTRACT", "SETTLEMENT_CONTRACT", "EXACT_DOMAINS_CONTRACT")}
+                    "CHECK_CONTRACT", "INDEX_CONTRACT", "SETTLEMENT_CONTRACT", "CUSTOMER_DATE_CONTRACT", "EXACT_DOMAINS_CONTRACT")}
                 definitions = db.execute(text("""SELECT conname,pg_get_constraintdef(oid) AS definition
                     FROM pg_constraint WHERE conrelid IN
                     ('public.subscription_group_add_batches'::regclass,'public.subscription_group_add_items'::regclass)
@@ -48,6 +48,8 @@ async def test_runtime_can_probe_without_private_rows_and_support_cannot_rewrite
         assert await db.fetchval("SELECT session_user") == "app_runtime"
         assert await db.fetchval("SELECT current_setting('default_transaction_read_only')") == "on"
         assert not await db.fetchval("SELECT has_table_privilege(current_user,'public.alembic_version','SELECT')")
+        assert await db.fetchval("SELECT has_column_privilege('app_support','public.customers','created_at','SELECT')")
+        assert not await db.fetchval("SELECT has_table_privilege('app_support','public.customers','SELECT')")
         for table in (BATCH, ITEM):
             row = await db.fetchrow("""SELECT
                 has_any_column_privilege('app_runtime',$1,'SELECT,INSERT,UPDATE,REFERENCES') AS runtime_columns,
@@ -90,6 +92,29 @@ async def temporary_catalog_change(settings):
             await db.execute("ROLLBACK")
         finally:
             db.terminate()
+
+
+@pytest.mark.parametrize("mutation", [
+    "REVOKE SELECT(created_at) ON public.customers FROM app_support",
+    "GRANT SELECT(created_at) ON public.customers TO app_support WITH GRANT OPTION",
+    "GRANT UPDATE(created_at) ON public.customers TO app_support",
+])
+async def test_created_date_read_requires_exact_column_privilege_without_delegation_or_write(isolated_settings, mutation):
+    async with temporary_catalog_change(isolated_settings) as db:
+        await db.execute(mutation)
+        assert await db.fetchval(barrier.CONTRACT_QUERY) is False
+        assert await db.fetchval(previous_barrier.CONTRACT_QUERY) is False
+
+
+@pytest.mark.parametrize("missing", [BATCH, ITEM])
+async def test_predecessor_only_accepts_date_column_when_both_reviewed_group_add_tables_exist(isolated_settings, missing):
+    async with temporary_catalog_change(isolated_settings) as db:
+        await db.execute(f"ALTER TABLE public.{missing} RENAME TO synthetic_unpublished_group_add")
+        assert await db.fetchval(previous_barrier.CONTRACT_QUERY) is False
+        assert await db.fetchval(barrier.CONTRACT_QUERY) is False
+        await db.execute("REVOKE SELECT(created_at) ON public.customers FROM app_support")
+        assert await db.fetchval(previous_barrier.CONTRACT_QUERY) is True
+        assert await db.fetchval(barrier.CONTRACT_QUERY) is False
 
 
 @pytest.mark.parametrize("mutation", [

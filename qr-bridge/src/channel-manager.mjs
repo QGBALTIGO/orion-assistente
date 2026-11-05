@@ -13,6 +13,7 @@ import {deviceStorage,deviceControlLedger} from './device-storage.mjs';
 import {createDeviceDiagnostics} from './device-diagnostics.mjs';
 import {validGroupContactsRequest} from './device-group-contacts.mjs';
 import {createDeviceGroupAdd,validGroupAddRequest} from './device-group-add.mjs';
+import {chatbotInteractiveMode} from './interactive-mode.mjs';
 
 const sameKey=(a,b)=>typeof a==='string'&&typeof b==='string'&&a.length===b.length&&
   timingSafeEqual(Buffer.from(a),Buffer.from(b));
@@ -304,7 +305,7 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
     return {channel_id:id,status:phase,fence:c.fence,phone:verified?phone:null,phone_verified:verified,
       ...(c.health?{connection_health:c.health}:{}),
       capabilities:{text:true,audio:audioEnabled()===true&&c.assistant===true,reliable_send:true,typing:true,
-        interactive_mode:process.env.QR_NATIVE_INTERACTIVE_ENABLED==='1'?'native_unverified':'text_fallback',
+        interactive_mode:chatbotInteractiveMode({type:'list'},{tenantId:c.tenant,deviceId:c.device?.id})==='native'?'native_unverified':'text_fallback',
         pair:!c.legacyTransport&&typeof c.session?.pair==='function'&&c.session?.supportsPairing?.()===true}};
   }
   async function pair(id,key,{phone}){
