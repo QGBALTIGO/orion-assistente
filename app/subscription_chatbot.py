@@ -315,19 +315,21 @@ async def read_url_tags(tenant_id: UUID, request: Request, actor: Actor = Depend
                                        {"t": tenant_id, "id": job["id"], "a": actor.account_id})).scalar_one_or_none()
             if current != "running":
                 raise store.fail("CHATBOT_CONFLICT")
-    from app.subscription_chatbot_http import read_url_tags as probe
+    from app.subscription_chatbot_http import read_url_tags as probe, URL_TAG_ERRORS
     try:
         tags = await probe(payload.url, payload.method, request_id=job["id"], authorize=authorize)
         async with store.owner_transaction(tenant_id, actor) as db:
             await store.check_revision(db, tenant_id, payload.expected_chatbot_revision)
             result = await store.complete_job(db, job["id"], {"tags": tags})
     except HTTPException as error:
+        reported = error.detail.get("code") if isinstance(error.detail, dict) else None
+        error_code = ("CHATBOT_CONFLICT" if error.status_code in {401, 403, 409} else
+                      reported if reported in URL_TAG_ERRORS else "CHATBOT_URL_UNAVAILABLE")
         async with store.support_session_factory()() as db:
             async with db.begin():
                 result = (await db.execute(text("""UPDATE subscription_chatbot_jobs SET status='failed',
                     error_code=:code,finished_at=clock_timestamp() WHERE tenant_id=:t AND id=:id RETURNING *"""),
-                    {"t": tenant_id, "id": job["id"], "code": "CHATBOT_CONFLICT" if error.status_code in {401,403,409}
-                     else "CHATBOT_URL_UNAVAILABLE"})).mappings().one()
+                    {"t": tenant_id, "id": job["id"], "code": error_code})).mappings().one()
     return jsonable_encoder({"job": store.job_dto(result)})
 
 

@@ -11,7 +11,7 @@ const error=code=>Object.assign(Error(code),{code});
 const plain=value=>value!==null&&typeof value==='object'&&!Array.isArray(value)&&Object.getPrototypeOf(value)===Object.prototype;
 
 function boundedJSON(value){
-  if(!plain(value))throw error('CHATBOT_HTTP_JSON_INVALID');
+  if(!plain(value)&&!Array.isArray(value))throw error('CHATBOT_HTTP_JSON_INVALID');
   const stack=[[value,0]];let count=0;
   while(stack.length){
     const [item,depth]=stack.pop();

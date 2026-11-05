@@ -26,6 +26,36 @@
   const restoreLabels={add_missing:'Adicionar ausentes',merge:'Mesclar e atualizar',exact:'Snapshot exato'};
   const uncertain=error=>!Number(error?.status)||Number(error.status)>=500;
   const errorMessage=error=>[400,404,409,410,413,415,422,423,429].includes(Number(error?.status))&&typeof error?.message==='string'&&error.message.trim()&&!/^O servidor retornou HTTP /.test(error.message)?error.message.slice(0,1000):({401:'Sua sessão expirou. Entre novamente no Orion.',403:'Seu acesso não permite gerenciar o Chatbot desta empresa.',404:'Este registro não está mais disponível. Atualize a lista.',409:'Os dados mudaram. Confira a versão atual antes de continuar.',413:'O arquivo excede o tamanho permitido.',422:'Confira os campos informados antes de continuar.',429:'Aguarde um pouco antes de tentar novamente.',503:'Não foi possível confirmar a operação. Confira o estado antes de repetir.'}[Number(error?.status)]||'Não foi possível confirmar a resposta do servidor. Seus dados foram preservados.');
+  // Declarative JSON paths; kept in parity with subscription_chatbot_tags.py.
+  function validUrlTag(path){
+    if(typeof path!=='string'||!path||path.length>512)return false;
+    let position=0,segments=0;
+    const name=()=>{const match=/^[a-zA-Z_][a-zA-Z0-9_]{0,79}/.exec(path.slice(position));if(!match)return null;position+=match[0].length;return match[0];};
+    while(position<path.length){
+      if(++segments>16)return false;let value;
+      if(segments>1&&path[position]==='.'){position++;value=name();if(value===null)return false;}
+      else if(path[position]==='['){
+        position++;
+        if(path[position]==='"'){
+          const start=position++;let escaped=false,closed=false;
+          while(position<path.length){const char=path[position++];if(escaped){escaped=false;continue;}if(char==='\\'){escaped=true;continue;}if(char==='"'){closed=true;break;}}
+          if(!closed)return false;try{value=JSON.parse(path.slice(start,position));}catch{return false;}
+        }else{
+          const match=/^(?:0|[1-9][0-9]{0,3})/.exec(path.slice(position));if(!match)return false;position+=match[0].length;value=Number(match[0]);if(value>=8192)return false;
+        }
+        if(path[position++]!==']')return false;
+      }else if(segments===1){value=name();if(value===null)return false;}
+      else return false;
+      if(typeof value==='string'&&(!value||[...value].length>2048||['__proto__','prototype','constructor'].includes(value)||/[\u0000-\u001f\u007f{}\uD800-\uDFFF]/u.test(value)))return false;
+    }
+    return true;
+  }
+  function validUrlTemplate(value){
+    const pattern=/\{\{([^{}]*)\}\}/g;
+    for(const match of String(value).matchAll(pattern))if(!validUrlTag(match[1].trim()))return false;
+    return !/[{}]/.test(String(value).replace(pattern,''));
+  }
+  const validUrlTags=tags=>Array.isArray(tags)&&tags.length<=128&&new Set(tags).size===tags.length&&tags.every(validUrlTag);
   function formatText(value){
     return String(value??'').split(/(```[\s\S]*?```|`[^`\n]+`)/g).map(part=>{
       if(part.startsWith('```')&&part.endsWith('```'))return '<code>'+esc(part.slice(3,-3))+'</code>';
@@ -372,7 +402,7 @@
       const job=jobDTO(value,state.job?.id);if(context.kind&&job.kind!==context.kind||context.source&&job.source!==context.source||state.job&&(job.kind!==state.job.kind||job.source!==state.job.source))throw Error('invalid_job_scope');state.job=job;state.jobContext=context;state.pending={kind:'job',id:job.id};
       if(job.status==='queued'||job.status==='running'){refreshPending();scheduleJob();return;}
       if(job.status==='succeeded'){
-        if(job.kind==='url_tags'&&(!Array.isArray(job.result?.tags)||job.result.tags.some(tag=>typeof tag!=='string'||!/^[a-zA-Z_][a-zA-Z0-9_]{0,79}$/.test(tag))))throw Error('invalid_url_tags_result');
+        if(job.kind==='url_tags'&&(!validUrlTags(job.result?.tags)))throw Error('invalid_url_tags_result');
         if(job.kind==='test_response'&&(!Number.isSafeInteger(job.result?.accepted_messages)||job.result.accepted_messages<0))throw Error('invalid_test_result');
         if(context.exact&&!uuid(job.safety_backup_id))throw Error('missing_safety_backup');
       }
@@ -384,9 +414,9 @@
         dialogError(context.entry,message+(partial?' '+count(accepted)+' mensagem(ns) já foram aceitas pelo servidor. A entrega não está confirmada. Confira o WhatsApp antes de repetir o teste.':''));await load();return;
       }
       if(job.kind==='url_tags'){
-        const tags=job.result?.tags;if(!Array.isArray(tags)||tags.some(tag=>typeof tag!=='string'||!/^[a-zA-Z_][a-zA-Z0-9_]{0,79}$/.test(tag)))throw Error('invalid_url_tags_result');
+        const tags=job.result?.tags;if(!validUrlTags(tags))throw Error('invalid_url_tags_result');
         if(state.editor===context.editor){state.editor.urlTags.set(context.actionId,tags);renderEditor();}
-        closeDialog(context.entry,true);feedback(tags.length?'Tags consultadas. Confira os campos disponíveis na resposta de URL.':'A URL não retornou tags simples disponíveis.');
+        closeDialog(context.entry,true);feedback(tags.length?'Tags consultadas. Confira os campos disponíveis na resposta de URL.':'A URL não retornou campos de texto, número ou booleano preenchidos.');
       }else if(job.kind==='test_response'){
         const accepted=job.result?.accepted_messages;if(!Number.isSafeInteger(accepted)||accepted<0)throw Error('invalid_test_result');
         closeDialog(context.entry,true);feedback(count(accepted)+' mensagem(ns) aceita(s) pelo servidor para envio. A entrega depende do WhatsApp.');
@@ -465,7 +495,7 @@
         body=select(action.type==='nested_list'?'Lista de Opções':'Resposta existente',path+'.rule_id',action.rule_id,references.options,'required'+(!references.list.length?' disabled':''))+(target?.enabled===false?'<p class="os-notice">A resposta selecionada está inativa e não será executada enquanto permanecer assim.</p>':'')+'<p class="os-help">Referências removidas, ciclos e sequências que ultrapassem o atraso máximo são recusados ao salvar.</p>';
       }else if(action.type==='url'){
         const tags=state.editor.urlTags.get(action.id)||[];
-        body=input('URL',path+'.url',action.url,'url','required maxlength="2048" placeholder="https://…"')+select('Método',path+'.method',action.method,[['POST','POST'],['GET','GET']])+textarea('Resposta customizada (opcional)',path+'.custom_template',action.custom_template,32000,'Use {{campo}} para campos simples devolvidos pela URL. Em branco, usa o texto reply recebido.')+checkbox('Enviar como arquivo .txt',path+'.as_file',action.as_file)+'<div class="os-actions">'+button('Ler Tags da URL','read-url-tags','os-outline os-small','link','data-sc-path="'+path+'"'+(!allowed('read_url_tags')?' disabled':''))+'</div><p class="os-help">Ler as tags acessa a URL informada com dados de exemplo. Abrir este formulário não consulta a URL.</p>'+(tags.length?'<div class="os-chatbot-keywords">'+tags.map(tag=>'<span>'+esc('{{'+tag+'}}')+'</span>').join('')+'</div>':'');
+        body=input('URL',path+'.url',action.url,'url','required maxlength="2048" placeholder="https://…"')+select('Método',path+'.method',action.method,[['POST','POST'],['GET','GET']])+textarea('Resposta customizada (opcional)',path+'.custom_template',action.custom_template,32000,'Use {{campo}}, {{data.nome}} ou {{itens[0].nome}}. Para chaves com espaços, use {{["nome completo"]}}. Em branco, usa reply na raiz. Campos ausentes ou nulos não são enviados.')+checkbox('Enviar como arquivo .txt',path+'.as_file',action.as_file)+'<div class="os-actions">'+button('Ler Tags da URL','read-url-tags','os-outline os-small','link','data-sc-path="'+path+'"'+(!allowed('read_url_tags')?' disabled':''))+'</div><p class="os-help">Ler as tags acessa a URL informada com dados de exemplo. Abrir este formulário não consulta a URL.</p>'+(tags.length?'<div class="os-chatbot-keywords" data-sc-url-tags="'+esc(action.id)+'">'+tags.map(tag=>'<span>'+esc('{{'+tag+'}}')+'</span>').join('')+'</div>':'');
       }else if(action.type==='carousel'){
         body=textarea('Corpo principal',path+'.body',action.body,1024)+'<div class="os-chatbot-step-list">'+action.cards.map((card,index)=>{const p=path+'.cards.'+index;return '<section class="os-chatbot-menu-section"><h3>Card '+(index+1)+'</h3>'+input('Título',p+'.title',card.title,'text','required maxlength="60"')+textarea('Corpo'+(index===0?' (obrigatório)':' (opcional)'),p+'.body',card.body,1024)+input('URL da imagem',p+'.image_url',card.image_url,'url','required maxlength="2048" placeholder="https://…"')+input('Texto do botão',p+'.button_text',card.button_text,'text','required maxlength="20"')+'</section>';}).join('')+'</div>';
       }
@@ -499,7 +529,7 @@
       if(['nested_reply','nested_list'].includes(action.type)&&!referenceOptions(action.type,action.rule_id).list.some(item=>item.id===action.rule_id))throw Error('Selecione uma resposta existente e diferente da própria regra.');
       if(action.type==='url'){
         try{const url=new URL(action.url);if(!['http:','https:'].includes(url.protocol)||url.username||url.password)throw Error();}catch{throw Error('Informe uma URL HTTP ou HTTPS sem usuário ou senha.');}
-        if(/[{}]/.test(String(action.custom_template).replace(/\{\{[a-zA-Z_][a-zA-Z0-9_]{0,79}\}\}/g,'')))throw Error('Use tags simples como {{campo}} na resposta customizada da URL.');
+        if(!validUrlTemplate(action.custom_template))throw Error('Use tags como {{campo}}, {{data.nome}} ou {{itens[0].nome}}, sem expressões.');
       }
       if(action.type==='carousel'&&(!action.body.trim()||!action.cards[0]?.body.trim()||action.cards.length!==3))throw Error('Preencha o corpo principal e o corpo do primeiro card do carrossel.');
     }
@@ -599,7 +629,11 @@
       if(path==='restore_confirmation'){const preview=entry?.preview;if(preview)entry.element.querySelector('[data-sc-transfer-submit]').disabled=node.value!=='RESTORE'||Date.parse(preview.expires_at)<=Date.now()||!preview.can_apply||!allowed('restore');return;}
       if(entry?.kind==='editor'&&state.editor&&!state.editor.stale&&!node.dataset.scActionType){
         const value=node.type==='checkbox'?node.checked:node.type==='number'?Number(node.value):path==='device_id'?(node.value||null):node.value;
-        if(getPath(state.editor.definition,path)!==undefined){setPath(state.editor.definition,path,value);editorChange();if(path.endsWith('.delay_seconds'))updateDelaySummary();}
+        if(getPath(state.editor.definition,path)!==undefined){
+          const action=getPath(state.editor.definition,path.slice(0,path.lastIndexOf('.')));
+          if(action?.type==='url'&&(/\.(?:url|method)$/.test(path))&&getPath(state.editor.definition,path)!==value){state.editor.urlTags.delete(action.id);state.editor.entry.element.querySelector('[data-sc-url-tags="'+action.id+'"]')?.remove();}
+          setPath(state.editor.definition,path,value);editorChange();if(path.endsWith('.delay_seconds'))updateDelaySummary();
+        }
       }
     }
     function change(event){

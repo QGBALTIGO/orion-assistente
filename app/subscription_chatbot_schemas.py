@@ -20,7 +20,7 @@ CONTACT_TAGS = frozenset({"name", "phone_number", "my_name", "my_email", "my_con
 ACTION_TYPES = ("text", "template", "sticker", "shortvideo", "carousel", "url", "nested_reply", "nested_list")
 RESTORE_MODES = ("add_missing", "merge", "exact")
 TAG_PATTERN = re.compile(r"\{(name|phone_number|my_name|my_email|my_contact_number)\}")
-URL_TAG_PATTERN = re.compile(r"\{\{([a-zA-Z_][a-zA-Z0-9_]{0,79})\}\}")
+from app.subscription_chatbot_tags import URL_TAG_PATTERN, validate_template
 
 
 def clean_text(value, *, empty=False, maximum=32000):
@@ -85,10 +85,7 @@ class UrlAction(ActionBase):
     @classmethod
     def valid_template(cls, value):
         value = clean_text(value, empty=True)
-        residue = URL_TAG_PATTERN.sub("", value)
-        if "{" in residue or "}" in residue:
-            raise ValueError("Use tags simples no formato {{campo}}, sem expressões ou campos aninhados")
-        return value
+        return validate_template(value)
 
 
 class CarouselCard(StrictModel):
@@ -318,7 +315,7 @@ class HttpResult(StrictModel):
     generation: UUID
     settings_revision: int = Field(strict=True, ge=1)
     chatbot_revision: int = Field(strict=True, ge=1)
-    response_json: dict
+    response_json: dict | list
     reconcile: bool = Field(default=False, strict=True)
 
 

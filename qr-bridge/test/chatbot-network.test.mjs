@@ -56,7 +56,7 @@ test('private destinations, mixed DNS answers and redirect to internal metadata 
 test('JSON response bounds reject wrong types, encoding, truncation, depth and excessive bytes',async()=>{
   const cases=[{headers:{'content-type':'text/html'}}, {headers:{'content-encoding':'gzip'}},
     {headers:{'content-length':String(CHATBOT_HTTP_MAX_BYTES+1)}}, {headers:{'content-length':'100'}},
-    {chunks:[Buffer.alloc(CHATBOT_HTTP_MAX_BYTES+1,65)]}, {chunks:[Buffer.from('["not object"]')]},
+    {chunks:[Buffer.alloc(CHATBOT_HTTP_MAX_BYTES+1,65)]}, {chunks:[Buffer.from('"not a container"')]},
     {chunks:[Buffer.from([0xff,0xfe])]}, {chunks:[Buffer.from('{"x":'.repeat(18)+'{}'+'}'.repeat(18))]},
     {chunks:[Buffer.from('{"n":1e9999}')]}, {chunks:[Buffer.from('{"id":9007199254740993}')]},
     ...[{reply:'before\u0000after'},{reply:'\ud800'},{reply:'\udfff'},
@@ -104,5 +104,14 @@ test('private asset download rejects stream overflow and MIME substitution',asyn
   for(const headers of [{'content-type':'text/plain'},{'content-type':'image/jpeg'}]){
     const broker=createChannelBroker({apiUrl:'http://api.railway.internal/',fetchImpl:async()=>new Response(Buffer.from('oversized'),{headers})});
     await assert.rejects(broker.deviceChatbotAsset(randomUUID(),'synthetic-key-'.repeat(4),{owner:randomUUID(),fence:1},{...scope,asset}));
+  }
+});
+
+test('webhook response accepts root arrays without losing nested zero false or text',async()=>{
+  for(const method of ['GET','POST']){
+    const body=[{data:{name:'Ana',balance:0,active:false},reply:'{{not-evaluated}}'}];
+    const f=network({chunks:[Buffer.from('\ufeff'+JSON.stringify(body))]});
+    const result=await requestChatbotJSON({url:'https://hooks.example.com/respond',method,...f.options});
+    assert.deepEqual(result.json,body);assert.equal(f.calls.length,1);
   }
 });

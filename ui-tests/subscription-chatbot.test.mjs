@@ -199,3 +199,36 @@ test('URL tags work with synthetic data and no device, while opening still makes
 test('a partly accepted synthetic test reports the accepted count without claiming delivery or retrying',async t=>{
  const h=await makeChatbot({respond(path,method){if(path===base+'/rules/'+ruleId+'/test'&&method==='POST')return job('failed','test_response',{result:{accepted_messages:2},error:{code:'CHATBOT_DELIVERY_UNCONFIRMED',message:'A solicitação não foi concluída.'}});}});t.after(()=>h.close());await h.expand();h.click(act('test'));h.fill(field('test_phone'),'+55 11 99999-9999');h.submit(form('test'));await flush();const message=h.element(form('test')+' [data-sc-dialog-error]').textContent;assert.match(message,/2 mensagem\(ns\) já foram aceitas pelo servidor/);assert.match(message,/entrega não está confirmada/);assert.match(message,/Confira o WhatsApp antes de repetir/);assert.equal(writes(h).length,1);await h.tick(10000);assert.equal(writes(h).length,1);assert.equal(h.controller.getState().pending,null);assert.deepEqual(h.errors,[]);
 });
+
+const urlPathCases=JSON.parse(await readFile(new URL('../tests/fixtures/subscription_url_tag_paths.json',import.meta.url),'utf8'));
+for(const path of urlPathCases.valid){
+ test('URL editor saves declarative JSON path '+path,async t=>{
+  const h=await makeChatbot({respond(url,method,payload,server){if(url===base+'/rules'&&method==='POST')return updated(server,payload);}});t.after(()=>h.close());
+  createText(h);h.change(field('response.actions.0.type'),'url');h.fill(field('response.actions.0.url'),'https://api.example.com/test');
+  h.fill(field('response.actions.0.custom_template'),'{{ '+path+' }}');h.submit(form('editor'));await flush();
+  assert.equal(writes(h).length,1);assert.equal(writes(h)[0].data.rule.response.actions[0].custom_template,'{{ '+path+' }}');assert.deepEqual(h.errors,[]);
+ });
+}
+for(const path of urlPathCases.invalid.filter(x=>![' user','user '].includes(x))){
+ test('URL editor rejects unsafe path '+path.slice(0,50),async t=>{
+  const h=await makeChatbot();t.after(()=>h.close());createText(h);h.change(field('response.actions.0.type'),'url');h.fill(field('response.actions.0.url'),'https://api.example.com/test');
+  h.fill(field('response.actions.0.custom_template'),'{{'+path+'}}');h.submit(form('editor'));await flush();
+  assert.equal(writes(h).length,0);assert.match(h.element(form('editor')+' [data-sc-dialog-error]').textContent,/tags/);assert.deepEqual(h.errors,[]);
+ });
+}
+test('URL discovery displays nested paths and clears stale tags after destination changes',async t=>{
+ const tags=['data.nome','items[0].price','[0].reply','["nome completo"]'];
+ const h=await makeChatbot({respond(path,method){if(path.endsWith('/url-tags')&&method==='POST')return job('succeeded','url_tags',{result:{tags}});}});t.after(()=>h.close());
+ createText(h);h.change(field('response.actions.0.type'),'url');h.fill(field('response.actions.0.url'),'https://api.example.com/test');h.click(act('read-url-tags'));h.submit(form('url-tags'));await flush();
+ for(const path of tags)assert.ok(h.element(form('editor')).textContent.includes('{{'+path+'}}'));
+ assert.equal(writes(h).length,1);h.fill(field('response.actions.0.url'),'https://api.example.com/other');
+ assert.equal(h.document.querySelector('[data-sc-url-tags]'),null);assert.equal(writes(h).length,1);assert.deepEqual(h.errors,[]);
+});
+
+test('discovered quoted provider keys remain inert HTML text',async t=>{
+ const key='["<img src=x onerror=alert(1)>"]';
+ const h=await makeChatbot({respond(path,method){if(path.endsWith('/url-tags')&&method==='POST')return job('succeeded','url_tags',{result:{tags:[key]}});}});t.after(()=>h.close());
+ createText(h);h.change(field('response.actions.0.type'),'url');h.fill(field('response.actions.0.url'),'https://api.example.com/test');h.click(act('read-url-tags'));h.submit(form('url-tags'));await flush();
+ assert.equal(h.element('[data-sc-url-tags]').textContent,'{{'+key+'}}');assert.equal(h.document.querySelector('[data-sc-url-tags] img'),null);
+ h.change(field('response.actions.0.method'),'GET');assert.equal(h.document.querySelector('[data-sc-url-tags]'),null);assert.equal(writes(h).length,1);assert.deepEqual(h.errors,[]);
+});

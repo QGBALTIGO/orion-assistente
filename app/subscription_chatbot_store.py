@@ -26,7 +26,11 @@ MAX_GRAPH_BYTES = 10 * 1024 * 1024
 MAX_TENANT_MEDIA_BYTES = 256 * 1024 * 1024
 _media_cleanup = set()
 _media_writers = BoundedSemaphore(2)
+from app.subscription_chatbot_http import URL_TAG_ERRORS
+
+
 ERRORS = {
+    **URL_TAG_ERRORS,
     "CHATBOT_CONFLICT": "O Chatbot mudou. Atualize antes de continuar.",
     "CHATBOT_NOT_FOUND": "Resposta ou recurso não encontrado.",
     "CHATBOT_INVALID_GRAPH": "Revise as referências e os limites das respostas.",

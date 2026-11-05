@@ -580,3 +580,56 @@ async def test_media_lock_does_not_consume_pool1_and_survives_cancel_until_write
         await asyncio.gather(writing, return_exceptions=True)
         await asyncio.wait_for(asyncio.gather(*list(store._media_cleanup), return_exceptions=True), timeout=5)
         await limited_engine.dispose()
+
+
+@pytest.mark.parametrize("response_json,template,expected", [
+    ({"data":{"nome":"Ana","saldo":0,"ativo":False}},
+     "{{data.nome}}: {{data.saldo}} / {{data.ativo}}", "Ana: 0 / false"),
+    ([{"reply":"Resposta"}], "{{[0].reply}}", "Resposta"),
+    ({"nome completo":"Ana Silva","user.name":"literal"},
+     '{{["nome completo"]}} / {{["user.name"]}}', "Ana Silva / literal"),
+])
+async def test_nested_url_tags_derive_one_authorized_reply_and_reconcile_without_resend(
+        chatbot_case, response_json, template, expected):
+    c=chatbot_case
+    http={"id":str(uuid4()),"type":"url","url":"https://example.com/synthetic",
+          "method":"POST","custom_template":template,"as_file":False,"delay_seconds":1}
+    await rule_create(c,definition(response={"kind":"sequence","actions":[http]}))
+    effect,=chat_effects(await input_event(c))
+    assert (await grant(c,effect))["authorized"]
+    body={**scope(c),"operation_id":effect["operation_id"],"chatbot_revision":c.chat_revision,
+          "response_json":response_json}
+    result=await internal(c,"/chatbot/http-result",body)
+    assert result.status_code==200,result.text
+    child,=chat_effects(result.json())
+    permit=await grant(c,child)
+    assert permit["payload"]["phone"]=="5567999999901"
+    assert permit["payload"]["action"]["text"]==expected
+    replay=await internal(c,"/chatbot/http-result",{**body,"reconcile":True})
+    assert replay.status_code==200 and replay.json()["recorded"] is True
+    async with c.ctx.migration.connect() as db:
+        assert (await db.execute(text("SELECT count(*) FROM subscription_device_effects WHERE tenant_id=:t AND type='chatbot_action'"),{"t":c.tenant})).scalar_one()==2
+
+
+@pytest.mark.parametrize("code",["CHATBOT_URL_AUTH","CHATBOT_URL_METHOD","CHATBOT_URL_CONTENT_TYPE"])
+async def test_tag_discovery_stores_safe_error_and_idempotent_read_has_no_whatsapp_effect(chatbot_case,monkeypatch,code):
+    from app import subscription_chatbot_http
+    from fastapi import HTTPException
+    c=chatbot_case
+    calls=[]
+    async def probe(*args,**kwargs):
+        calls.append(1)
+        await kwargs["authorize"]()
+        raise HTTPException(422,{"code":code,"message":"external-secret-must-not-escape"})
+    monkeypatch.setattr(subscription_chatbot_http,"read_url_tags",probe)
+    payload={"expected_chatbot_revision":c.chat_revision,"idempotency_key":str(uuid4()),
+             "device_id":None,"url":"https://example.com/synthetic","method":"POST"}
+    result=await c.client.post(c.chat+"/url-tags",json=payload)
+    assert result.status_code==202,result.text
+    assert result.json()["job"]["status"]=="failed"
+    assert result.json()["job"]["error"]["code"]==code
+    assert "external-secret" not in result.text
+    replay=await c.client.post(c.chat+"/url-tags",json=payload)
+    assert replay.json()==result.json() and len(calls)==1
+    async with c.ctx.migration.connect() as db:
+        assert (await db.execute(text("SELECT count(*) FROM subscription_device_effects WHERE tenant_id=:t AND type='chatbot_action'"),{"t":c.tenant})).scalar_one()==0

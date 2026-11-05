@@ -1,0 +1,109 @@
+{
+  "valid": [
+    "reply",
+    "user.name",
+    "items[0].name",
+    "[0].reply",
+    "data.items[12].active",
+    "data[\"nome completo\"]",
+    "[\"user.name\"]",
+    "[\"pay-url\"]",
+    "[\"a\\\"b\"]",
+    "[\"🙂\"]",
+    "items[0][1]"
+  ],
+  "invalid": [
+    "",
+    " user",
+    "user ",
+    "user.",
+    "user..name",
+    "items[-1]",
+    "items[01]",
+    "items[8192]",
+    "items[*]",
+    "items[1:2]",
+    "items[name]",
+    "items[0]name",
+    "user.get()",
+    "a+b",
+    "a.__proto__",
+    "[\"constructor\"]",
+    "[\"a\\u0000b\"]",
+    "[\"a{b\"]",
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a",
+    "[\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"]"
+  ],
+  "responses": [
+    {
+      "body": {
+        "reply": "Olá",
+        "data": {
+          "nome": "Ana",
+          "saldo": 0,
+          "ativo": false,
+          "vazio": "",
+          "nulo": null
+        }
+      },
+      "tags": [
+        "reply",
+        "data.nome",
+        "data.saldo",
+        "data.ativo",
+        "data.vazio"
+      ],
+      "template": "{{ data.nome }} | {{data.saldo}} | {{data.ativo}} | {{data.vazio}}",
+      "expected": "Ana | 0 | false |"
+    },
+    {
+      "body": [
+        {
+          "nome": "Primeiro",
+          "url": "https://example.com/a?x=1&y=2"
+        },
+        {
+          "nome": "Segundo"
+        }
+      ],
+      "tags": [
+        "[0].nome",
+        "[0].url",
+        "[1].nome"
+      ],
+      "template": "{{[1].nome}}: {{[0].url}}",
+      "expected": "Segundo: https://example.com/a?x=1&y=2"
+    },
+    {
+      "body": {
+        "user.name": "literal",
+        "user": {
+          "name": "aninhado"
+        },
+        "pay-url": "https://example.com/p",
+        "nome completo": "Ana Silva"
+      },
+      "tags": [
+        "[\"user.name\"]",
+        "user.name",
+        "[\"pay-url\"]",
+        "[\"nome completo\"]"
+      ],
+      "template": "{{[\"user.name\"]}} / {{user.name}} / {{[\"nome completo\"]}}",
+      "expected": "literal / aninhado / Ana Silva"
+    },
+    {
+      "body": {
+        "text": "{{secret}}",
+        "secret": "NÃO EXPANDIR"
+      },
+      "tags": [
+        "text",
+        "secret"
+      ],
+      "template": "{{text}}",
+      "expected": "{{secret}}"
+    }
+  ]
+}
