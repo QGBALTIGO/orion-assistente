@@ -453,6 +453,28 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Usar arquivo Ubuntu para dependencias do WebKit
+        if: matrix.engine == 'webkit'
+        run: |
+          # The Azure mirror downloaded fonts at about 39 KB/s in run 42111981290.
+          # Use the same official archive as API/PG, retaining suites and signing keys.
+          sudo python3 - <<'PY'
+          from pathlib import Path
+          sources = [Path('/etc/apt/sources.list'),
+                     *Path('/etc/apt/sources.list.d').glob('*.list'),
+                     *Path('/etc/apt/sources.list.d').glob('*.sources')]
+          for source in sources:
+              if not source.is_file():
+                  continue
+              original = updated = source.read_bytes()
+              for uri in (b'mirror+file:/etc/apt/apt-mirrors.txt',
+                          b'http://azure.archive.ubuntu.com/ubuntu',
+                          b'https://azure.archive.ubuntu.com/ubuntu'):
+                  updated = updated.replace(uri, b'https://archive.ubuntu.com/ubuntu')
+              if updated != original:
+                  source.write_bytes(updated)
+                  print('Ubuntu archive fallback:', source)
+          PY
       - name: Instalar o navegador de teste
         run: |
           # The synthetic server validates the real DTOs and renders a real JPEG.

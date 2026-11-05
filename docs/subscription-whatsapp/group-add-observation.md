@@ -165,3 +165,32 @@ desmontar, mantendo as asserções de sinal abortado, resposta tardia, ausência
 de conteúdo privado e número de chamadas. Os 45 casos DOM de Programadas
 passaram localmente. Essa correção de teste não modifica as consultas SQL
 da candidata 4; a candidata seguinte deverá executar os seis gates completos.
+
+A quinta candidata, no workflow
+[`42112896390`](https://github.com/QGBALTIGO/orion-assistente/actions/runs/42112896390),
+aprovou API (3.023), DOM (661), ponte (707), Chromium (188) e PostgreSQL real
+(701), na árvore `9b7e10a73796015adbee4c97667a56a536d08d2d`. A execução de
+banco incluiu os 84 casos da etapa 17, resolvendo as 15 falhas SQL nessa
+revisão. O WebKit permaneceu instalando dependências, sem iniciar os testes.
+
+O log anterior de instalação do mesmo job mostrou fontes do Ubuntu sendo
+baixadas do espelho Azure a cerca de 39 KB/s, em um conjunto de 114 MB. A
+quinta rodada já consumira cerca de 14 minutos da janela total de 20 minutos
+apenas no preparo do WebKit. A sexta candidata aplica somente a esse motor a
+mesma normalização para `https://archive.ubuntu.com/ubuntu` já presente nos
+gates API e PostgreSQL. Suites, componentes, chaves, versões, comandos de
+teste, matriz e limites são preservados. O produto é idêntico ao da quinta
+candidata; sua qualificação será registrada em uma rodada própria.
+
+O FATIA geral da quinta rodada atingiu seu limite de 20 minutos no passo de
+testes, com último progresso de 12% e sem resumo final. Esse resultado é
+incompleto; a ausência de IDs finais não comprova aprovação nem que o
+impedimento seja anterior à mudança. Ele permanece separado dos 701 testes
+PostgreSQL efetivamente aprovados no gate dedicado.
+
+A comparação de timestamps mostrou progresso durante essa execução geral,
+sem uma única parada longa identificada: a última linha saiu cerca de 38
+segundos antes do encerramento. A mesma faixa inicial levou 899 segundos
+na terceira rodada e 1.175 na quinta. Isso documenta lentidão nessa faixa;
+os marcadores anônimos do modo quiet não identificam isoladamente um teste
+ou provam o resultado dos casos que ficaram sem resumo.
