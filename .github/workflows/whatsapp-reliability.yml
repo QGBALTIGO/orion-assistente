@@ -3,7 +3,7 @@ on:
   push:
     branches: [codex/whatsapp-reliability-20261105]
   pull_request:
-    paths: ['qr-bridge/**', 'app/qr_*.py', 'app/subscription_*.py', 'app/static/orion-subscription-*.js', 'tests/**', 'ui-tests/subscription-*.test.mjs', '.github/workflows/whatsapp-reliability.yml']
+    paths: ['qr-bridge/**', 'app/qr_*.py', 'app/inbox_*.py', 'app/subscription_*.py', 'app/static/orion-subscription-*.js', 'tests/**', 'ui-tests/subscription-*.test.mjs', '.github/workflows/whatsapp-reliability.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -48,6 +48,8 @@ jobs:
         run: node --test qr-bridge/test/connection-health.test.mjs qr-bridge/test/primary-transport-lease.test.mjs qr-bridge/test/interactive-fallback.test.mjs qr-bridge/test/assistant-parts.test.mjs qr-bridge/test/wa-version-policy.test.mjs qr-bridge/test/ingress-journal.test.mjs qr-bridge/test/ingress-health.test.mjs qr-bridge/test/device-runtime.test.mjs qr-bridge/test/assistant-ingress.test.mjs qr-bridge/test/audio-inbound-routing.test.mjs qr-bridge/test/conversation-intake.test.mjs qr-bridge/test/legacy-central.test.mjs qr-bridge/test/channel-manager.test.mjs qr-bridge/test/channel-session.test.mjs qr-bridge/test/pn-lid-session-transition.test.mjs qr-bridge/test/paired-auth-state.test.mjs
       - name: Native list and explicit URL-button delivery authority
         run: node --test qr-bridge/test/interactive-mode.test.mjs qr-bridge/test/url-button.test.mjs qr-bridge/test/bulk-runtime.test.mjs qr-bridge/test/chatbot-runtime.test.mjs
+      - name: Conversation-local composing, recording and final send authority
+        run: node --test qr-bridge/test/outgoing-presence.test.mjs qr-bridge/test/outgoing-presence-server.test.mjs qr-bridge/test/reliable-send.test.mjs qr-bridge/test/send-capacity.test.mjs qr-bridge/test/connection-notice-startup.test.mjs
       - run: npm audit --prefix qr-bridge --omit=dev --audit-level=high
       - run: docker build -t orion-whatsapp-reliability qr-bridge
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -98,9 +100,9 @@ jobs:
           if ((${#missing[@]})); then
             # Azure FFmpeg downloads exceeded 18 minutes in CI. Change only its
             # host; keep the existing Ubuntu suites, components and signing keys.
-            for source in /etc/apt/sources.list /etc/apt/sources.list.d/ubuntu.sources; do
+            for source in /etc/apt/sources.list /etc/apt/sources.list.d/ubuntu.sources /etc/apt/apt-mirrors.txt; do
               if [[ -f "$source" ]]; then
-                sudo sed -i 's#://azure\.archive\.ubuntu\.com/ubuntu#://archive.ubuntu.com/ubuntu#g' "$source"
+                sudo sed -i 's#https\?://azure\.archive\.ubuntu\.com/ubuntu#https://archive.ubuntu.com/ubuntu#g' "$source"
               fi
             done
             apt_options=(-o Acquire::Retries=1 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 -o DPkg::Lock::Timeout=30)
@@ -120,6 +122,8 @@ jobs:
           python -m pytest -q -ra tests/qualification/whatsapp_reliability_postgres.py tests/integration/test_qr_channels_postgres.py tests/integration/test_qr_channels_transaction_postgres.py tests/integration/test_qr_single_connection_postgres.py tests/integration/test_qr_revocation_quarantine_postgres.py tests/integration/test_qr_conversation_lock_redis.py tests/integration/test_qr_intake_revision_redis.py tests/integration/test_single_whatsapp_release_postgres.py tests/integration/test_professional_phone_release_pg.py tests/integration/test_subscription_ingress_recovery_postgres.py tests/integration/test_subscription_devices_postgres.py tests/unit/test_professional_phone_release.py tests/unit/test_qr_turn_ownership.py tests/unit/test_qr_batch_recovery.py tests/unit/test_whatsapp_pending_purpose.py tests/unit/test_subscription_connection_health.py tests/unit/test_subscription_relink_frozen_context.py tests/unit/test_subscription_devices.py tests/unit/test_subscription_device_rules.py tests/unit/test_subscription_device_audio.py tests/unit/test_subscription_devices_release.py tests/unit/test_qr_channels_human_pause.py tests/unit/test_appointment_message_templates.py --junitxml=/tmp/whatsapp-recovery.xml
       - name: URL-button review, frozen delivery and opt-out with real PostgreSQL
         run: python -m pytest -q -ra tests/unit/test_subscription_url_button.py tests/unit/test_subscription_url_button_transport.py tests/integration/test_subscription_direct_messages_postgres.py --junitxml=/tmp/whatsapp-url-button.xml
+      - name: Same-operation authorization after preparation with real PostgreSQL
+        run: python -m pytest -q -ra tests/unit/test_whatsapp_send_recheck.py tests/integration/test_whatsapp_send_recheck_postgres.py --junitxml=/tmp/whatsapp-send-recheck.xml
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
@@ -127,6 +131,7 @@ jobs:
           path: |
             /tmp/whatsapp-recovery.xml
             /tmp/whatsapp-url-button.xml
+            /tmp/whatsapp-send-recheck.xml
   panel:
     runs-on: ubuntu-24.04
     timeout-minutes: 8

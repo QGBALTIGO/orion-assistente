@@ -285,6 +285,32 @@ test('a human takeover refuses transport and uncertain operations are never auto
   assert.equal((await m.send(a.id,a.key,{to:phone,text:'synthetic',operation_id:operation})).accepted,false);
 });
 
+test('send recheck is strictly negotiated: old API keeps its one grant and new API rechecks the same frozen slot',async t=>{
+  for(const capability of [undefined,false,true,'true',1]){
+    const f=fixture(t),a=f.add(),permits=[];Object.assign(f.rows.get(a.id),{inbox_control:true,send_recheck:capability});
+    f.broker.authorizeSend=async(_id,_key,_lease,payload)=>{permits.push(payload);return {authorized:true,operation_id:payload.operation_id};};
+    f.broker.finishSend=async()=>({released:true});const m=f.manager();await m.start(a.id,a.key);
+    let options;f.made[0].send=async(_phone,_text,value)=>{options=value;await value.assertAuthorized?.();return {id:'stable-provider'};};
+    const operation_id=randomUUID(),result=await m.send(a.id,a.key,{to:phone,text:'Texto congelado',source:'manual',control_revision:3,operation_id});
+    assert.equal(result.accepted,true);assert.equal(options.pacing,capability===true);
+    assert.equal(f.made[0].ctx.supportsSendRecheck(),capability===true);
+    assert.equal(permits.length,capability===true?2:1);
+    assert.equal(Object.hasOwn(permits[0],'recheck'),false,'old strict request schema receives no new false/default field');
+    if(capability===true)assert.deepEqual(permits[1],{...permits[0],recheck:true});
+    await m.send(a.id,a.key,{to:phone,text:'Texto congelado',source:'manual',control_revision:3,operation_id});
+    assert.equal(permits.length,capability===true?2:1,'idempotent replay does not acquire another grant');
+  }
+});
+
+test('a recheck capability lost during a rolling update refuses before transport without falling back to an old claim',async t=>{
+  const f=fixture(t),a=f.add(),permits=[];Object.assign(f.rows.get(a.id),{inbox_control:true,send_recheck:true});
+  f.broker.authorizeSend=async(_id,_key,_lease,payload)=>{permits.push(payload);return {authorized:true,operation_id:payload.operation_id};};
+  const m=f.manager();await m.start(a.id,a.key);let relays=0;
+  f.made[0].send=async(_phone,_text,options)=>{delete f.rows.get(a.id).send_recheck;await options.assertAuthorized();relays++;return {id:'forbidden'};};
+  const result=await m.send(a.id,a.key,{to:phone,text:'Aviso',operation_id:randomUUID()});
+  assert.equal(result.accepted,false);assert.equal(relays,0);assert.equal(permits.length,1);
+});
+
 test('a verified no-send recipient preflight error refuses one operation instead of claiming an ambiguous send',async t=>{
   const f=fixture(t),a=f.add(),m=f.manager(),id=randomUUID();
   f.rows.get(a.id).inbox_control=true;

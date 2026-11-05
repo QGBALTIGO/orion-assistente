@@ -16,6 +16,7 @@ import {makeBookingIntakeGuard} from '../src/booking-intake-guard.mjs';
 import {allowAssistantRecipient,allowAssistantAudio,pilotNumber} from '../src/ai-pilot.mjs';
 import {makeConversationIntake} from '../src/conversation-intake.mjs';
 import {makeAssistantTyping} from '../src/assistant-typing.mjs';
+import {makeOutgoingPresence} from '../src/outgoing-presence.mjs';
 import {transcribeAssistantAudio} from '../src/ai-audio.mjs';
 import {createAssistantIngress} from '../src/assistant-ingress.mjs';
 import {BufferJSON} from '@whiskeysockets/baileys';
@@ -54,7 +55,7 @@ function harness({transcribe=async()=> 'Synthetic speech',audioEnabled=true,answ
     presenceCalls.push({type,jid});events.push(['typing',type,jid]);return presence(type,jid);
   };
   const context=vm.createContext({client,socket:client,mine:1,generation:1,status:'connected',
-    legacyCentral:legacyController||{configured:()=>false},
+    legacyCentral:{transportCurrent:()=>true,...(legacyController||{configured:()=>false})},socketOutgoingPresence:new WeakMap(),
     namesStore,namesSync:{changed(){nameChanges++;},start(){}},path,authDir:directory,createAssistantIngress,BufferJSON,
     normalizeFromJid:value=>String(value).match(/^(\d+)(?::\d+)?@s\.whatsapp\.net$/)?.[1]||null,
     primaryIngressDiagnostics:null,primaryIngressCanAutomate:null,stopPrimaryIngress(){},
@@ -64,7 +65,8 @@ function harness({transcribe=async()=> 'Synthetic speech',audioEnabled=true,answ
     refreshConnectedProfile:async()=>{},SMOKE_ID:'synthetic-smoke',APPOINTMENT_QA_ID:'synthetic-appointment',
     setTimeout:(fn,ms)=>({fn,ms,unref(){}}),clearTimeout(){},
     normalizeInbound,updateEvent,callEvent,safetyControl,queueControl,extractText,resolveMessagePhone,shouldIngestUpsert,timestampMs,makeConversationIntake,
-    makeAssistantTyping:options=>makeAssistantTyping({...options,...typingConfig}),
+    makeOutgoingPresence:options=>makeOutgoingPresence({...options,...typingConfig,
+      typingFactory:value=>makeAssistantTyping({...value,...typingConfig})}),
     shouldCacheLinkedSelfText,retryStore:makeMessageRetryStore(),retryDiagnostics:{persistedSelfTexts:0,persistFailures:0},
     pilotNumber:()=>pilotNumber(env),transport:{record:(...args)=>events.push(args)},retryMessages:{save(){}},seen,
     connectedStore:{record(){},settings:()=>({chatbot:multipleRecipients,transcription:multipleRecipients})},
@@ -490,9 +492,9 @@ test('real revised batch stops the old typing lease then shows only the single c
   const first=h.emit([h.message('OLD-TYPING',{text:'Quinta às três'})]);await tick();
   const correction=h.emit([h.message('NEW-TYPING',{text:'Não quinta, sexta'})]);await tick();
   time=100;for(const [key,timer] of [...timers])if(timer.at<=time){timers.delete(key);timer.fn();}
-  assert.deepEqual(h.presenceCalls.map(x=>x.type),['composing','paused']);
+  assert.deepEqual(h.presenceCalls.map(x=>x.type),['composing']);
   gate.resolve();await Promise.all([first,correction]);
-  assert.deepEqual(h.presenceCalls.map(x=>x.type),['composing','paused','composing','paused']);
+  assert.deepEqual(h.presenceCalls.map(x=>x.type),['composing','composing','paused']);
   assert.deepEqual(h.sent,['Resumo final corrigido.']);assert.equal(h.forwarded.length,2);
   assert.deepEqual(h.forwarded[1].message_ids,['OLD-TYPING','NEW-TYPING']);assert.equal(timers.size,0);
 });

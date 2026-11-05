@@ -29,6 +29,8 @@ A bridge monta `interactiveMessage.nativeFlowMessage` com um único `cta_url`. S
 
 O clique abre um site. Ele não é seleção de lista, não cria uma opção de negócio e não aciona uma chamada HTTP no servidor. O simulador e a revisão exibem uma prévia declarativa e escapada, sem visitar o endereço. Histórico e reenvio preservam o endereço e o conteúdo originais; resultado incerto não provoca um segundo envio automático.
 
+O novo formato também usa a presença direcionada de preparação e a revalidação final descritas em [Presença durante a preparação de mensagens](whatsapp-outgoing-presence-20261105.md). Essa qualificação posterior tem seu próprio conjunto de testes; os números abaixo descrevem a etapa inicial do botão.
+
 ## Qualificação
 
 Os testes cobrem limites de texto e Unicode, endereços inválidos e privados, conteúdo congelado, isolamento e revogação, cache anterior ao envio, revisão/confirmação, opt-out e a interface. A construção de protocolo e sua aceitação não comprovam a apresentação no destinatário.

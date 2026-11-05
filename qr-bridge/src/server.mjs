@@ -28,7 +28,7 @@ import {makeSendCapacity} from "./send-capacity.mjs";
 import {makeConversationIntake} from "./conversation-intake.mjs";
 import {createAssistantIngress} from './assistant-ingress.mjs';
 import {withIngressHealth} from './ingress-health.mjs';
-import {makeAssistantTyping} from "./assistant-typing.mjs";
+import {makeOutgoingPresence} from './outgoing-presence.mjs';
 import {inspectLookup,inspectDelivery} from "./recipient-diagnostics.mjs";
 import {resolveTransactionalRecipient} from "./transactional-recipient.mjs";
 import {makeDurableInbox} from "./durable-inbox.mjs";
@@ -96,6 +96,7 @@ try {
 } catch {}
 let authBackup={state:'pending_owner'},authBackupDirectory=null;
 const socketDeviceCaches=new WeakMap();
+const socketOutgoingPresence=new WeakMap();
 let newLinkNoticeAuthDir=null;
 let stopping=false,resumeTimer=null;
 let socket=null,generation=0,timer=null,attempts=0,sessionRecoveryAttempts=0,status="starting",
@@ -108,6 +109,7 @@ function stopPrimaryTransport(reason){
   ++generation;clearTimeout(timer);timer=null;
   pauseContactNames();
   const previous=socket;socket=null;
+  socketOutgoingPresence.get(previous||{})?.close();
   qr='';qrAt=0;pairingCode='';pairAt=0;connectedSince=0;
   status='stopped';
   lastError=reason==='lease_lost'?'Aguardando a responsabilidade exclusiva pela sessão do WhatsApp.':null;
@@ -355,6 +357,8 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
   const handledBookingProtocols=new Set();
   const bookingAdmission=makeBookingIntakeGuard();
   const intakeCurrent=()=>mine===generation&&socket===client&&status==='connected';
+  const typingPresence=makeOutgoingPresence({socket:client,isConnected:()=>intakeCurrent()&&legacyCentral.transportCurrent()});
+  socketOutgoingPresence.set(client,typingPresence);
   let assistantIngress=null,ingressIdentity=null,ingressFault=null,ingressTimer=null,replayRunning=false;
   let opaqueAdmissionAt=Date.now(),opaqueAdmissionCount=0;
   const ingressDiagnostics=()=>ingressFault?{state:'unavailable',error_code:'assistant_ingress_unavailable',
@@ -363,8 +367,8 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
   if(legacyCentral.configured()){
     primaryIngressDiagnostics=ingressDiagnostics;
     primaryIngressCanAutomate=()=>!ingressFault&&assistantIngress?.canAutomate()===true;
-    stopPrimaryIngress=()=>{clearTimeout(ingressTimer);ingressTimer=null;assistantIngress?.abandon();};
   }
+  stopPrimaryIngress=()=>{clearTimeout(ingressTimer);ingressTimer=null;assistantIngress?.abandon();typingPresence.close();};
   function ensureAssistantIngress(){
     if(!legacyCentral.configured())return null;
     const scope=legacyCentral.ingressScope();
@@ -396,8 +400,6 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
     }catch{ingressFault=true;transport.record('assistant_ingress_unavailable');}
     finally{replayRunning=false;scheduleIngressRecovery();}
   }
-  const typingPresence=makeAssistantTyping({socket:client,pilotPhone:pilotNumber,isConnected:intakeCurrent,
-    isAllowed:phone=>allowAssistantRecipient(phone,connectedStore.settings())});
   const groupSetting=(name,fallback,max)=>{
     const raw=process.env[name],value=Number(raw);
     return raw!==undefined&&Number.isSafeInteger(value)&&value>=0&&value<=max?value:fallback;
@@ -438,7 +440,8 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
       const current=()=>authorized()&&(!assistantIngress||(!ingressFault&&assistantIngress.canConsume(ids)));
       if(assistantIngress)await assistantIngress.waitForAdmission(ids,{isCurrent:()=>!ingressFault&&authorized()});
       if(!current())return;
-      const outcome=await typingPresence.run({phone,chatJid:entries[0]?.jid,isCurrent:current},async typing=>{
+      const typing=typingPresence.begin({phone,chatJid:entries[0]?.jid,isCurrent:current});let outcome;
+      try{outcome=await (async()=>{
       if(legacyCentral.configured()){
         if(!allowAssistantRecipient(phone,connectedStore.settings()))return;
         return legacyCentral.forward({phone,message_id:traceId,message_ids:batch.messages.map(item=>item.id),
@@ -471,7 +474,7 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
         transport.record(sent?.accepted?'ai_relay_returned':'ai_send_unconfirmed',traceId);
         return sent;
       }catch(error){if(revisionEnabled)summaryReviewRequired.set(phone,true);transport.record('ai_send_failed',traceId);throw error;}
-      });
+      })();}finally{typing.stop();}
       if(assistantIngress&&!(outcome?.state==='superseded'&&outcome?.not_committed===true)){
         const confirmed=current()&&(outcome?.accepted===true||
           (outcome?.state==='committed_no_reply'&&outcome.not_committed===false)||
@@ -828,15 +831,20 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
               authDir,
               client,
               sendText:async (jid,text)=>{
-                return sendStoredText({
+                const phone=normalizeFromJid(jid),noticeCurrent=()=>mine===generation&&status==='connected'&&socket===client&&
+                  legacyCentral.transportCurrent()&&normalizeFromJid(client.user?.id)===phone;
+                return typingPresence.run({phone,chatJid:jid,isCurrent:noticeCurrent,assertAuthorized:()=>legacyCentral.assertTransportCurrent(),
+                  action:{type:'text',text}},async({beforeSend})=>{
+                await beforeSend();return sendStoredText({
                   jid,text,store:retryStore,freshDevices:true,
-                  isCurrent:()=>mine===generation&&status==="connected"&&socket===client,
+                  isCurrent:noticeCurrent,assertAuthorized:()=>legacyCentral.assertTransportCurrent(),
                   makeMessage:async (recipient,messageText)=>generateWAMessage(
                     recipient,{text:messageText},{
                       userJid:client.user?.id,logger,
                       messageId:generateMessageIDV2(client.user?.id)
                     }),
-                  relay:(recipient,message,opts)=>client.relayMessage(recipient,message,opts)
+                  relay:async(recipient,message,opts)=>{await legacyCentral.assertTransportCurrent();if(!noticeCurrent())throw Error('connection_notice_revoked');return client.relayMessage(recipient,message,opts);}
+                });
                 });
               },
               isCurrent:()=>mine===generation&&status==="connected"&&socket===client,
@@ -856,7 +864,7 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
       }
     }
     if(update.connection==="close"){
-      if(legacyCentral.configured())stopPrimaryIngress();
+      stopPrimaryIngress();
       pauseContactNames({purge:Number(update.lastDisconnect?.error?.output?.statusCode)===DisconnectReason.loggedOut});
       qr="";qrAt=0;pairingCode="";pairAt=0;
       connectedSince=0;pendingNotificationsReceived=false;inboundSinceConnect=false;
@@ -1062,15 +1070,22 @@ async function send(phone,text,options={}){
   if(legacyCentral.configured())return legacyCentral.automatic(phone,text,options);
   return sendLegacyRaw(phone,text,options);
 }
-async function sendLegacyRaw(phone,text,{waitForCapacity=false,isCurrent=()=>true,transactionalTyping=false,source='automation'}={}){
+async function sendLegacyRaw(phone,text,{waitForCapacity=false,isCurrent=()=>true,transactionalTyping=false,source='automation',assertAuthorized,pacing=true}={}){
   const target=validPhone(phone);
   if(status!=="connected"||!socket)throw Error("O WhatsApp não está conectado");
   if(typeof text!=="string"||!text.trim()||text.length>1200)
     throw Error("Mensagem deve ter entre 1 e 1200 caracteres");
   const selectedSocket=socket;
   const selectedGeneration=generation;
-  const current=()=>socket===selectedSocket&&generation===selectedGeneration&&status==='connected'&&isCurrent();
+  let authorized=true;
+  const current=()=>authorized&&socket===selectedSocket&&generation===selectedGeneration&&status==='connected'&&isCurrent();
+  const authorize=async()=>{
+    if(!current()||!legacyCentral.transportCurrent())throw Error('A conexão ou autorização mudou antes do envio. Nenhuma mensagem foi enviada.');
+    if(typeof assertAuthorized==='function')try{await assertAuthorized();}catch(error){authorized=false;throw error;}
+    if(!current()||!legacyCentral.transportCurrent())throw Error('A conexão ou autorização mudou antes do envio. Nenhuma mensagem foi enviada.');
+  };
   await sendCapacity.acquire({wait:waitForCapacity,isCurrent:current});
+  await authorize();
   if(!current())throw Error('A conexão ou autorização mudou antes do envio. Nenhuma mensagem foi enviada.');
   let result;
   // Transactional notices must address the WhatsApp-verified PN, not a
@@ -1095,32 +1110,27 @@ async function sendLegacyRaw(phone,text,{waitForCapacity=false,isCurrent=()=>tru
   // Preserve independently verified pilot LID routing. Other appointment
   // notices use the PN that the provider itself confirmed.
   const destination=verifiedRecipient&&kind==='pn'?verifiedRecipient.jid:jid;
-  let presenceLease=null;
-  try{
-    if(transactionalTyping){
-      // Only an admitted, destination-authorized transactional notice sends
-      // composing. Never emit it while a queue is waiting or a chat is revoked.
-      presenceLease=makeAssistantTyping({
-        socket:selectedSocket,pilotPhone:()=>target,isConnected:current,
-        isAllowed:recipient=>recipient===target,
-        transactional:true,maxPauseMs:1400
-      }).begin({phone:target,chatJid:destination,isCurrent:current});
-      await presenceLease.beforeReply(text);
-      if(!current())throw Error('A conexão mudou antes do envio. Nenhuma mensagem foi enviada.');
-    }
+  // An appointment may use the PN normalized by the provider's answer to the
+  // original authorized lookup. Presence/FIFO follow that proved recipient;
+  // the business authorization remains bound to the original frozen grant.
+  const presencePhone=normalizeFromJid(destination)||target;
+  await authorize();
+  return socketOutgoingPresence.get(selectedSocket).run({phone:presencePhone,chatJid:destination,isCurrent:current,
+    assertAuthorized:authorize,action:{type:'text',text},pacing},async({beforeSend})=>{
+  await beforeSend();
   // An appointment is a transactional message: its exact encrypted retry
   // source MUST exist before the first network send, regardless of the
   // older optional global reliability flag.
   if(requiresPreRelayCache({reliable,source})){
     result=await sendStoredText({
       jid:destination,recipientProof,text:text.trim(),store:retryStore,freshDevices,
-      isCurrent:current,
+      isCurrent:current,assertAuthorized:authorize,
       makeMessage:async (recipient,messageText)=>generateWAMessage(
         recipient,{text:messageText},{
           userJid:selectedSocket.user?.id,logger,
           messageId:generateMessageIDV2(selectedSocket.user?.id)
         }),
-      relay:(recipient,message,opts)=>selectedSocket.relayMessage(recipient,message,opts),
+      relay:async(recipient,message,opts)=>{await authorize();return selectedSocket.relayMessage(recipient,message,opts);},
       onPrepared:msg=>{
         retryDiagnostics.prepared++;
         deliveryReceipts.set(msg.key.id,"pending");
@@ -1130,6 +1140,7 @@ async function sendLegacyRaw(phone,text,{waitForCapacity=false,isCurrent=()=>tru
       }
     });
   }else{
+    await authorize();
     result=await selectedSocket.sendMessage(destination,{text:text.trim()});
     if(result?.key?.id&&result?.message)retryStore.save(result.key,result.message);
   }
@@ -1146,7 +1157,7 @@ async function sendLegacyRaw(phone,text,{waitForCapacity=false,isCurrent=()=>tru
   // sendMessage resolve quando a biblioteca entrega ao transporte, não
   // quando o iPhone consegue descriptografar. Apenas receipts validam isso.
   return {accepted:true,delivery:deliveryReceipts.get(result.key.id)||"pending",id,trace:transport.tag(result.key.id)};
-  }finally{presenceLease?.stop();}
+  });
 }
 
 const server=http.createServer(async(req,res)=>{

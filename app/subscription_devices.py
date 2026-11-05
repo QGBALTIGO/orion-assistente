@@ -964,20 +964,38 @@ async def authorize_effect(channel_id: UUID, payload: EffectRequest, request: Re
             from app.subscription_diagnostics import authorize_diagnostic_effect
             return await authorize_diagnostic_effect(db, row, effect, owner, fence, payload)
         denied = {"authorized": False, "operation_id": str(effect["id"])}
-        eligible = effect["status"] == "pending" or (effect["type"] == "webhook" and effect["status"] == "failed" and effect["attempts"] < 3)
+        recheck = payload.recheck
+        if recheck:
+            # Only the original still-running text attempt can renew its final
+            # read-only proof. Rechecking never claims, retries or reserves a
+            # cooldown, including when policy is withdrawn during preparation.
+            eligible = (effect["type"] == "send_text" and effect["status"] == "running"
+                and effect["claimed_owner"] == owner and effect["claimed_fence"] == fence)
+        else:
+            eligible = effect["status"] == "pending" or (effect["type"] == "webhook" and effect["status"] == "failed" and effect["attempts"] < 3)
         if not eligible or effect["due_at"] > datetime.now(timezone.utc):
             return denied
         from app.subscription_sent_messages import message_authority
         if not await message_authority(db, row, effect):
             return denied
         if not _current_effect(row, effect) or not await _policy_still_allows(db, row, effect):
-            await db.execute(text("UPDATE subscription_device_effects SET status='not_sent',finished_at=clock_timestamp(),error_code='policy_changed' WHERE id=:o"), {"o": effect["id"]})
+            if not recheck:
+                await db.execute(text("UPDATE subscription_device_effects SET status='not_sent',finished_at=clock_timestamp(),error_code='policy_changed' WHERE id=:o"), {"o": effect["id"]})
             return denied
         if effect["previous_effect"]:
             previous = (await db.execute(text("SELECT status FROM subscription_device_effects WHERE id=:o AND tenant_id=:t"),
                                         {"o": effect["previous_effect"], "t": row["tenant_id"]})).scalar_one_or_none()
             if previous != "accepted":
                 return denied
+        if recheck:
+            revoked = (await db.execute(text("""SELECT COALESCE((SELECT revoked FROM subscription_campaign_permissions
+                WHERE tenant_id=:t AND phone=:phone),false)"""),
+                {"t": row["tenant_id"], "phone": effect["payload"].get("phone")})).scalar_one()
+            if revoked:
+                return denied
+            return jsonable_encoder({"authorized": True, "operation_id": effect["id"], "type": effect["type"],
+                "device_id": row["id"], "generation": row["generation"], "settings_revision": row["revision"],
+                "payload": effect["payload"]})
         if not await _reserve_cooldown(db, row, effect):
             await db.execute(text("UPDATE subscription_device_effects SET status='not_sent',finished_at=clock_timestamp(),error_code='notice_cooldown' WHERE id=:o"), {"o": effect["id"]})
             return denied

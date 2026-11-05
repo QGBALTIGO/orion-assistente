@@ -52,3 +52,12 @@ test("destinatários e texto inválidos são rejeitados",async()=>{
   await assert.rejects(sendStoredText({jid,text:"",store:{save:()=>true},
     makeMessage:async()=>{},relay:async()=>{}}),/text/);
 });
+
+test('a fresh authorization failure after asynchronous text construction prevents cache and relay',async()=>{
+  const store=makeMessageRetryStore();let authorized=true,relays=0;
+  await assert.rejects(sendStoredText({jid,text:'same immutable body',store,
+    assertAuthorized:async()=>{if(!authorized)throw Error('purpose_expired');},
+    makeMessage:async()=>{authorized=false;return {key:{id:'not-cached',remoteJid:jid},message:{conversation:'same immutable body'}};},
+    relay:async()=>{relays++;}}),/purpose_expired/);
+  assert.equal(store.size(),0);assert.equal(relays,0);
+});
