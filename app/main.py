@@ -61,6 +61,7 @@ from app.communication_api import router as communication_router
 from app.workflow_drafts import router as workflow_drafts_router
 from app.orion_pwa_api import router as orion_pwa_router
 from app.plan_routing import include_plan_router, enforce_endpoint_plan
+from app.ingress import AuthenticatedIngressMiddleware
 
 app = FastAPI(
     title="Orion Barbearias",
@@ -70,6 +71,7 @@ app = FastAPI(
     docs_url=None,
     redoc_url=None,
 )
+app.add_middleware(AuthenticatedIngressMiddleware)
 
 
 @app.on_event("startup")
