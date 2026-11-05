@@ -4,7 +4,7 @@ import {makeSuite,planState,tenantA,tenantB,flush,deferred} from './harness.mjs'
 
 const feature='whatsapp_guidance.view';
 const article='[data-os-guidance="warmup"]';
-const business=(overrides={})=>({id:tenantA,name:'Empresa sintética',role:'owner',workspace_profile:'subscription_services',...overrides});
+const business=(overrides={})=>({id:tenantA,name:'Empresa sintética',role:'owner',status:'active',workspace_profile:'subscription_services',...overrides});
 const access=(overrides={})=>planState('elite',{
   workspace_profile:'subscription_services',revision:'guidance-active',
   features:['account.manage','business.setup','devices.manage',feature],
@@ -34,6 +34,19 @@ test('active subscription owner sees the native knowledge article and four manua
   assert.equal(page.querySelector('form,input,select,textarea,progress,[role="progressbar"],iframe,video,audio,img'),null);
   assert.ok([...page.querySelectorAll('button')].every(button=>button.hasAttribute('data-os-route')));
   onlyPermissionReads(h);
+});
+
+test('active subscription company without a commercial plan keeps the guide and device shortcut',async t=>{
+  const value=access({code:'none',name:'Sem acesso ativo',source:'none',active:false,status:'no_access',revision:'guidance-no-commercial-plan',limits:{max_professionals:0,active_professionals:0,excess_professionals:0}});
+  const h=await setup(t,{permissions:value});
+  assert.equal(value.active,false);assert.equal(value.status,'no_access');
+  assert.equal(h.bridge.tenants[0].status,'active');assert.equal(value.permissions[feature],true);
+  assert.ok(h.document.querySelector(article));
+  assert.ok(h.document.querySelector('#osNav [data-os-route="aquecimento"]'));
+  assert.equal(h.document.querySelector('#page-suite').dataset.osCurrentRoute,'aquecimento');
+  const shortcut=h.document.querySelector(article+' [data-os-route="dispositivos"]');
+  assert.ok(shortcut);assert.equal(shortcut.disabled,false);assert.equal(shortcut.hidden,false);
+  assert.equal(shortcut.textContent,'Meus Dispositivos');onlyPermissionReads(h);
 });
 
 test('volume and timing examples are labeled as nonofficial guidance rather than earned account capacity',async t=>{
@@ -88,8 +101,8 @@ test('the article returns to the existing knowledge base without creating a seco
 for(const scenario of [
   {name:'standard business even with a forged guidance flag',plan:{workspace_profile:'standard'},tenant:{workspace_profile:'standard'},fallback:'plano'},
   {name:'subscription without the feature',plan:{permissions:{'account.manage':true,'business.setup':true,'devices.manage':true}},fallback:'novidades'},
-  {name:'inactive subscription even with a stale true flag',plan:{active:false,status:'inactive'},fallback:'novidades'},
-  {name:'subscription with missing active confirmation',plan:{active:undefined},fallback:'novidades'},
+  {name:'paused company even with an active commercial plan and stale true flag',tenant:{status:'paused'},fallback:'novidades'},
+  {name:'company without confirmed active status',tenant:{status:undefined},fallback:'novidades'},
   {name:'viewer membership even with a stale owner feature',tenant:{role:'viewer'},fallback:'novidades'},
   {name:'editor membership even with a stale owner feature',tenant:{role:'editor'},fallback:'novidades'},
 ])test('Aquecimento denies '+scenario.name,async t=>{
@@ -121,13 +134,13 @@ test('feature revocation removes an open article and its device shortcut',async 
   assert.equal(h.document.querySelector('#page-suite').dataset.osCurrentRoute,'novidades');onlyPermissionReads(h);
 });
 
-test('account change clears the previous guide while the next account permissions are pending',async t=>{
+test('account change clears the guide and keeps the next paused company closed despite a stale grant',async t=>{
   const pending=deferred();let next=false;
   const h=await setup(t,{permissions:()=>next?pending.promise:{effective_plan:access()}});assert.ok(h.document.querySelector(article));
-  next=true;h.window.OrionSuite.sync({user:{role:'member',email:'another@example.invalid'},tenantId:tenantB,tenants:[business({id:tenantB})]});await flush();
+  next=true;h.window.OrionSuite.sync({user:{role:'member',email:'another@example.invalid'},tenantId:tenantB,tenants:[business({id:tenantB,status:'paused'})]});await flush();
   assert.equal(h.document.querySelector(article),null);
   assert.equal(h.document.querySelector('#osNav [data-os-route="aquecimento"]'),null);
-  pending.resolve({effective_plan:access({active:false,status:'inactive',revision:'next-inactive'})});await flush();
+  pending.resolve({effective_plan:access({revision:'next-paused-company'})});await flush();
   assert.equal(h.document.querySelector(article),null);
   assert.equal(h.document.querySelector('#page-suite').dataset.osCurrentRoute,'novidades');onlyPermissionReads(h);
 });

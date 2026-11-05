@@ -71,6 +71,8 @@ def test_platform_workspace_keeps_its_existing_authority_even_if_profile_niche_m
 def test_whatsapp_guidance_is_available_for_active_subscription_company(grant):
     state = plan_permissions.derive_plan(snapshot(grant=grant), NOW)
     assert state["workspace_profile"] == "subscription_services"
+    # Commercial entitlement activity is distinct from the active company.
+    assert state["active"] is (grant != "none")
     assert state["permissions"]["whatsapp_guidance.view"] is True
     assert state["permissions"]["plan.manage"] is False
 
