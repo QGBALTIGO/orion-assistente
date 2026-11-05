@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="2.973" timestamp="2026-11-05T13:57:13.631909-04:00" hostname="DESKTOP-3Q48M6B"><testcase classname="tests.integration.test_qr_revocation_quarantine_postgres" name="test_state_revocation_quarantines_both_previous_and_new_owner_until_old_deadline" time="2.269"><failure message="Failed: DID NOT RAISE HTTPException">tests\integration\test_qr_revocation_quarantine_postgres.py:34: in test_state_revocation_quarantines_both_previous_and_new_owner_until_old_deadline
+    with pytest.raises(HTTPException) as denied:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE HTTPException</failure></testcase></testsuite></testsuites>

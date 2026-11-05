@@ -22,6 +22,7 @@ O nicho escolhe regras e conteúdo; não deve escolher outra identidade criptogr
 | Recuperação sobrescrevendo o estado do responsável seguinte | Verificar a posse e restaurar o estado eram comandos Redis separados | Comparação de token e restauração/ajuste do estado na mesma operação Lua |
 | Lote com uma mensagem repetida descartava também mensagens novas | `any(done)` encerrava todo o lote | Partes autenticadas vinculam ID e texto; somente as partes novas são processadas. Cliente antigo recebe esclarecimento, sem divisão ambígua por quebras de linha |
 | Socket principal fora do controle distribuído de responsabilidade | O adaptador protegia envios de aplicação, mas a sessão e as tentativas internas do SDK já podiam estar abertas | Lease SQL antes do socket, backup e autenticação; guardas no repositório Signal e armazenamento; perda da lease invalida geração e encerra transporte |
+| Revogação liberava uma sessão antes de o processo antigo observar a mudança | Alterar a configuração zerava a concessão; outro processo podia assumir as mesmas credenciais durante o prazo local ainda válido | Autorização revogada imediatamente; reserva interna bloqueia qualquer novo responsável até o prazo original, sem prolongá-lo nem permitir autenticação com a identidade reservada |
 | Encerramento sem coordenação completa da bridge | SIGTERM/SIGINT não tinham drenagem central que fechasse todos os sockets e tarefas | Encerramento limitado a oito segundos, fechamento de gerenciadores e timers, preservação dos arquivos e evidências de envios incertos |
 | Recuperação uniforme para motivos diferentes | Logout, substituição e falha transitória podiam alimentar a mesma política | Categorias explícitas, intervalos progressivos e orçamento finito; código 500 permite duas tentativas com o estado intacto antes de revisão; abertura breve não reinicia indefinidamente o orçamento |
 | Estado conectado salvo podia parecer atual após parar de reportar | Último evento de abertura era usado sem informação suficiente de prontidão | Sinais passivos de WebSocket, atividade, interrupção, recuperação, tentativa e ação; snapshot sem atualização por 90 segundos aparece indisponível |
@@ -136,12 +137,13 @@ Estado antes da publicação: **em homologação**. As execuções abaixo têm c
 | --- | --- |
 | Transporte Node, excluindo somente o fixture de painel já identificado como falho na base | 802 casos; 797 aprovados, zero falhas, cinco verificações POSIX/symlink não executadas no Windows. TLS/OpenSSL executado |
 | Comparação completa de unidades WhatsApp por identidade | Candidato com 5.117 aprovados, 46 falhas, dez skips e sete erros de preparação. Todos os 44 casos adicionados aprovados; nenhuma falha nova, remoção de caso ou novo skip. A suíte global continua reprovada por falhas herdadas |
-| P0 com PostgreSQL e Redis reais e dados sintéticos isolados | 41/41 aprovados, incluindo RLS, lease, expiração, perda da autoridade, Lua real e dois cenários em processos separados |
+| P0 com PostgreSQL e Redis reais e dados sintéticos isolados | 41/41 aprovados, incluindo RLS, lease, expiração, perda da autoridade, Lua real e dois cenários em processos separados; repetição após a correção de quarentena com 46/46, incluindo cinco casos novos de revogação e validação |
 | Recuperação de tarefas pendentes com PostgreSQL real | 9/9 aprovados; timeout/resultado incerto, autorização revogada e reconciliação sem novo envio |
 | Preview de áudio | 16/16 aprovados |
 | Revisão independente de regressões críticas da bridge | 104/104 aprovados |
 | Painel de dispositivos e estados de conexão | 25/25 testes DOM aprovados antes do commit |
 | Dependências de produção | `npm audit`: zero avisos conhecidos, sem mudança de versão ou lockfile |
+| Primeira qualificação Linux no commit `580e32e` | Transporte completo com 881 casos, 862 aprovados e as mesmas 19 falhas herdadas do fixture de painel; 41 casos adicionais aprovados, zero skips/cancelamentos; Docker, auditoria, painel 25/25 e gate de 93 casos aprovados. A correção posterior da quarentena exige nova execução no novo commit |
 | Execução ampla de 257 integrações PostgreSQL | Incompleta: limite local de 1.200 segundos. Não equivale a uma aprovação ampla |
 
 Os testes de subprocesso encerram um responsável SQL sintético, demonstram rejeição do sucessor antes de expirar a concessão, nova fence depois da transferência e bloqueio do responsável antigo, enquanto outro canal permanece utilizável. Não desligam um telefone real nem comprovam retorno de uma sessão Baileys real.
