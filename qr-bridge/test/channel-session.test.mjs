@@ -4,9 +4,12 @@ import {EventEmitter} from 'node:events';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {randomUUID} from 'node:crypto';
+import {randomUUID,createHash} from 'node:crypto';
 import {createBaileysChannelSession} from '../src/channel-session.mjs';
+import * as sdk from '@whiskeysockets/baileys';
 import {DEFAULT_CONNECTION_CONFIG} from '@whiskeysockets/baileys';
+import {encryptedChannelStore} from '../src/channel-storage.mjs';
+import {makePairedAuthFixture} from './helpers/paired-auth-fixture.mjs';
 
 process.env.ORION_RETRY_TEST_MODE='1';
 test('provider phone is the confirmed PN only after open; LIDs are never relabeled as phone numbers',async t=>{
@@ -17,7 +20,7 @@ test('provider phone is the confirmed PN only after open; LIDs are never relabel
 });
 
 const phone='5567999999901',self='5567999999902',flush=()=>new Promise(r=>setImmediate(r));
-async function session(t,{audio=false,assistant=true,typingFactory,notifySelf=false,schedule,cancel,registered=false,resumeOnly=false}={}){
+async function session(t,{audio=false,assistant=true,typingFactory,notifySelf=false,schedule,cancel,registered=false,resumeOnly=false,savedAuth}={}){
   const directory=fs.mkdtempSync(path.join(os.tmpdir(),'orion-channel-socket-'));fs.chmodSync(directory,0o700);
   t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
   let alive=true,now=100000;const messages=[],sent=[],notices=[];let config;
@@ -30,12 +33,17 @@ async function session(t,{audio=false,assistant=true,typingFactory,notifySelf=fa
     onInbound:async value=>{notices.push(value);return Object.freeze({revision:notices.length});},
     transcribe:async()=> 'Áudio transcrito sintético',
     onConnected(){},onDisconnected(){},onReceipt:async()=>{},onMessage:async value=>{messages.push(value);return {state:'committed_no_reply',not_committed:false};}};
+  if(registered||savedAuth){const auth=path.join(directory,'auth');fs.mkdirSync(auth,{mode:0o700});
+    const initial=savedAuth||makePairedAuthFixture({phone:self}).creds;if(registered)initial.registered=true;
+    encryptedChannelStore({directory:auth,secret:context.secret,serialize:value=>JSON.stringify(value,sdk.BufferJSON.replacer)}).set('creds',initial);}
   const mod={
+    ...sdk,
+    fetchLatestWaWebVersion:async()=>({version:DEFAULT_CONNECTION_CONFIG.version,isLatest:false}),
     DEFAULT_CONNECTION_CONFIG:{version:DEFAULT_CONNECTION_CONFIG.version},
-    default:options=>{config=options;return client;},BufferJSON:{},initAuthCreds:()=>({synthetic:'private-auth',registered}),
+    default:options=>{config=options;return client;},BufferJSON:sdk.BufferJSON,initAuthCreds:sdk.initAuthCreds,
     generateMessageIDV2:()=> 'provider-id',generateWAMessage:async(jid,{text})=>({key:{id:'provider-id',remoteJid:jid,fromMe:true},message:{conversation:text}}),
     downloadMediaMessage:async()=>Buffer.from('OggS synthetic media'),
-    Browsers:{windows:()=>['synthetic']},DisconnectReason:{loggedOut:401},proto:{Message:{AppStateSyncKeyData:{fromObject:v=>v}}}};
+    Browsers:{windows:()=>['synthetic']},DisconnectReason:{loggedOut:401},proto:sdk.proto};
   const open=()=>createBaileysChannelSession(context,{now:()=>now,loadBaileys:async()=>mod,intakeOptions:{settleMs:0,maxGroupMs:0},...(typingFactory?{typingFactory}:{}),...(schedule?{schedule,cancel}:{})});
   const result=await open();
   t.after(()=>result.close());
@@ -164,10 +172,65 @@ for(const resumeOnly of [false,true])test(`registered managed ${resumeOnly?'resu
   assert.equal(s.context.newLinkNotice.pending,false);
 });
 
+const authHashes=directory=>fs.readdirSync(path.join(directory,'auth')).sort().map(name=>[name,
+  createHash('sha256').update(fs.readFileSync(path.join(directory,'auth',name))).digest('hex')]);
+
+for(const resumeOnly of [false,true])test(`actual SDK QR account with registered=false and no LID survives ${resumeOnly?'resume':'start'} without changing encrypted auth or arming a notice`,async t=>{
+  const timers=[],creds=makePairedAuthFixture({phone:self}).creds;
+  assert.equal(creds.registered,false);assert.equal(creds.me.lid,undefined);
+  const s=await session(t,{savedAuth:creds,resumeOnly,notifySelf:true,schedule:fn=>{timers.push(fn);return timers.length;},cancel(){}});
+  const before=authHashes(s.context.directory);s.result.close();s.context.resumeOnly=true;
+  const reopened=await s.open();t.after(()=>reopened.close());
+  assert.deepEqual(authHashes(s.context.directory),before);assert.equal(s.config.auth.creds.registered,false);
+  assert.equal(reopened.supportsPairing(),false);s.client.requestPairingCode=()=>assert.fail('Paired auth cannot request a replacement code');
+  await assert.rejects(reopened.pair(phone),/pairing_unavailable/);
+  s.client.ev.emit('connection.update',{connection:'open'});await flush();await flush();
+  assert.equal(timers.length,0);assert.equal(s.sent.length,0);assert.equal(s.context.newLinkNotice.pending,false);
+});
+
+test('a provider QR during paired resume stops before exposing a new QR and preserves signed auth',async t=>{
+  const s=await session(t,{savedAuth:makePairedAuthFixture({phone:self}).creds,resumeOnly:true}),disconnected=[];
+  s.context.onDisconnected=value=>disconnected.push(value);const before=authHashes(s.context.directory);
+  s.client.ev.emit('connection.update',{qr:'replacement-qr'});
+  assert.equal(s.result.qr(),null);assert.equal(s.result.status(),'stopped');assert.equal(disconnected[0].retry,false);
+  assert.equal(disconnected[0].action,'inspect_session_state');assert.deepEqual(authHashes(s.context.directory),before);
+  assert.equal(s.sent.length,0);
+});
+
+for(const mutation of ['registered_only','missing_identity','tampered_account'])test(`resume rejects ${mutation} without writing auth or constructing another socket`,async t=>{
+  const s=await session(t,{savedAuth:makePairedAuthFixture({phone:self}).creds});s.result.close();s.context.resumeOnly=true;
+  const creds=s.config.auth.creds;
+  if(mutation==='registered_only'){delete creds.me;delete creds.account;creds.registered=true;}
+  if(mutation==='missing_identity')delete creds.signedIdentityKey;
+  if(mutation==='tampered_account'){
+    const signature=typeof creds.account.accountSignature==='string'?Buffer.from(creds.account.accountSignature,'base64'):Buffer.from(creds.account.accountSignature);
+    signature[0]^=1;creds.account.accountSignature=signature;
+  }
+  encryptedChannelStore({directory:path.join(s.context.directory,'auth'),secret:s.context.secret,
+    serialize:value=>JSON.stringify(value,sdk.BufferJSON.replacer)}).set('creds',creds);
+  const before=authHashes(s.context.directory);s.mod.default=()=>assert.fail('Incomplete auth cannot create a native socket');
+  await assert.rejects(s.open(),/channel_auth_unavailable/);assert.deepEqual(authHashes(s.context.directory),before);
+});
+
+test('a missing credential record on resume cannot create a new identity',async t=>{
+  const s=await session(t);s.result.close();s.context.resumeOnly=true;
+  for(const name of fs.readdirSync(path.join(s.context.directory,'auth')))fs.unlinkSync(path.join(s.context.directory,'auth',name));
+  s.mod.initAuthCreds=()=>assert.fail('No initAuthCreds on resume');s.mod.default=()=>assert.fail('No new socket');
+  await assert.rejects(s.open(),/channel_auth_unavailable/);assert.deepEqual(fs.readdirSync(path.join(s.context.directory,'auth')),[]);
+});
+
+test('a provisional native pairing request shares its active code but cannot expose a QR or start a new attempt after expiry',async t=>{
+  const s=await session(t);let calls=0;
+  s.client.requestPairingCode=async()=>{calls++;Object.assign(s.config.auth.creds,{me:{id:phone+'@s.whatsapp.net',name:'~'},pairingCode:'ABCDEFGH'});return 'ABCDEFGH';};
+  s.client.ev.emit('connection.update',{qr:'initial'});const first=await s.result.pair(phone);
+  assert.equal(s.result.supportsPairing(),false);assert.deepEqual(await s.result.pair(phone),first);
+  s.setTime(191000);assert.equal(s.result.qr(),null);await assert.rejects(s.result.pair(phone));assert.equal(calls,1);
+});
+
 test('a fresh managed link retains its notice intent through the provider restart, without persisting the intent',async t=>{
   const timers=[],s=await session(t,{notifySelf:true,assistant:false,schedule:fn=>{timers.push(fn);return timers.length;},cancel(){}});
   assert.equal(s.context.newLinkNotice.pending,true);
-  s.config.auth.creds.registered=true;s.client.ev.emit('creds.update');await flush();s.result.close();
+  Object.assign(s.config.auth.creds,makePairedAuthFixture({phone:self}).creds,{registered:true});s.client.ev.emit('creds.update');await flush();s.result.close();
   const reopened=await s.open();t.after(()=>reopened.close());
   assert.equal(s.config.auth.creds.registered,true);s.client.ev.emit('connection.update',{connection:'open'});await flush();
   assert.equal(timers.length,1);await timers.shift()();assert.equal(s.sent.length,1);assert.equal(s.context.newLinkNotice.pending,false);
@@ -493,10 +556,10 @@ test('a single large decorative batch does not discard its final useful message'
 
 test('creds.update immediately followed by close persists updated keys before reconnect',async t=>{
   const s=await session(t);
-  s.config.auth.creds.registered=true;s.config.auth.creds.nextPreKeyId=733;
+  Object.assign(s.config.auth.creds,makePairedAuthFixture({phone:self}).creds);s.config.auth.creds.nextPreKeyId=733;
   s.client.ev.emit('creds.update');s.result.close();
   const reopened=await s.open();t.after(()=>reopened.close());
-  assert.equal(s.config.auth.creds.registered,true);
+  assert.equal(s.config.auth.creds.registered,false);
   assert.equal(s.config.auth.creds.nextPreKeyId,733);
 });
 

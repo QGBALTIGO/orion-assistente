@@ -11,7 +11,9 @@ import {SMOKE_ID,APPOINTMENT_QA_ID} from '../src/consented-live-qa.mjs';
 import {fenceSignalRepository} from '../src/signal-fence.mjs';
 import {disconnectPolicy,sustainedRecovery} from '../src/connection-health.mjs';
 import {createWaVersionPolicy} from '../src/wa-version-policy.mjs';
-import {DEFAULT_CONNECTION_CONFIG} from '@whiskeysockets/baileys';
+import {DEFAULT_CONNECTION_CONFIG,Curve,proto,initAuthCreds} from '@whiskeysockets/baileys';
+import {classifyPairedAuth} from '../src/paired-auth-state.mjs';
+import {makePairedAuthFixture} from './helpers/paired-auth-fixture.mjs';
 
 const source=fs.readFileSync(new URL('../src/server.mjs',import.meta.url),'utf8').replace(/\r\n/g,'\n');
 const connectStart=source.indexOf('async function connect(){');
@@ -32,7 +34,8 @@ test('global open preserves provider PN and never fabricates a phone from a LID'
 function harness(options={}){
   const {registered=true}=options,flag=Object.hasOwn(options,'flag')?options.flag:'1';
   const sockets=[],notices=[],timers=new Map();let serial=0;
-  const auth={creds:{registered},keys:{async set(){}}};
+  const restored=registered?makePairedAuthFixture().creds:initAuthCreds();restored.registered=registered;
+  const auth={creds:restored,keys:{async set(){}}};
   const context=vm.createContext({
     SMOKE_ID,APPOINTMENT_QA_ID,stopPrimaryIngress(){},replayAssistantIngress:async()=>{},
     ensureAssistantIngress:()=>({pending:()=>[]}),ingressFault:null,
@@ -47,7 +50,7 @@ function harness(options={}){
     clearTimeout:id=>timers.delete(id),setTimeout:(fn,ms)=>{const id=++serial;timers.set(id,{fn,ms});return id;},
     useDurableAuthState:()=>({state:auth,saveCreds(){}}),
     KEY:'synthetic-only-bridge-secret-1234567890',authBackup:{state:'verified_existing'},authBackupDirectory:'/synthetic/preserved-auth',
-    BufferJSON:{},proto:{},initAuthCreds(){},makeBoundedCache:()=>({}),
+    BufferJSON:{},proto,Curve,classifyPairedAuth,initAuthCreds,makeBoundedCache:()=>({}),
     process:{env:{QR_WA_VERSION_AUTO:'0',...(flag===undefined?{}:{ORION_NOTIFY_SELF_ON_LINK:flag})}},
     transport:{record(){}},NodeCache:class {},makePilotDeviceCache:()=>({}),socketDeviceCaches:new WeakMap(),
     makeCacheableSignalKeyStore:value=>value,logger:{},DEFAULT_CONNECTION_CONFIG:{version:DEFAULT_CONNECTION_CONFIG.version,makeSignalRepository(){}},
@@ -74,6 +77,21 @@ for(const flag of [undefined,'0','1'])test(`global startup with registered auth 
   h.sockets[0].ev.emit('connection.update',{connection:'open'});await flush();
   assert.equal(h.timers.size,0);assert.equal(h.notices.length,0);assert.equal(h.context.newLinkNoticeAuthDir,null);
   assert.equal(h.auth.creds.registered,true);
+});
+
+test('a restored real SDK QR account with registered=false and no LID never re-arms the primary notice',async()=>{
+  const h=harness({registered:true,flag:'1'});h.auth.creds=makePairedAuthFixture().creds;
+  assert.equal(h.auth.creds.registered,false);assert.equal(h.auth.creds.me.lid,undefined);
+  await h.connect();h.sockets[0].ev.emit('connection.update',{connection:'open'});await flush();await h.runTimers(2500);
+  assert.equal(h.context.newLinkNoticeAuthDir,null);assert.equal(h.notices.length,0);assert.equal(h.timers.size,0);
+});
+
+test('provisional or incomplete primary auth never invents a new-link notice intent',async()=>{
+  for(const creds of [{...initAuthCreds(),registered:true},{...initAuthCreds(),me:{id:'5567999999901@s.whatsapp.net',name:'~'},pairingCode:'SYNTHETIC'}]){
+    const h=harness({registered:false,flag:'1'});h.auth.creds=creds;await h.connect();
+    h.sockets[0].ev.emit('connection.update',{connection:'open'});await flush();await h.runTimers(2500);
+    assert.equal(h.context.newLinkNoticeAuthDir,null);assert.equal(h.notices.length,0);
+  }
 });
 
 for(const flag of [undefined,'0','1'])test(`a fresh global link preserves the existing confirmation opt-in ${flag??'default'}`,async()=>{

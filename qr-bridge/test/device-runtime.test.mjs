@@ -11,7 +11,7 @@ import {createChannelResumeStore} from '../src/channel-resume.mjs';
 import {deviceStorage} from '../src/device-storage.mjs';
 import {channelDirectory,encryptedChannelStore} from '../src/channel-storage.mjs';
 import {createChannelBroker} from '../src/channel-broker.mjs';
-import {DEFAULT_CONNECTION_CONFIG,BufferJSON} from '@whiskeysockets/baileys';
+import {DEFAULT_CONNECTION_CONFIG,BufferJSON,initAuthCreds} from '@whiskeysockets/baileys';
 import {createIngressJournal} from '../src/ingress-journal.mjs';
 
 process.env.ORION_RETRY_TEST_MODE='1';
@@ -52,7 +52,7 @@ async function fixture(t){
       signalRepository:{lidMapping:{getPNForLID:lid=>behavior.lookupCall(lid)}},
       rejectCall:async(id,from)=>{rejections.push({id,from});},logout:async()=>{},
       relayMessage:async(jid,body)=>{sends.push({jid,text:body.conversation});await behavior.send();}};
-    const mod={default:options=>{config=options;return client;},DEFAULT_CONNECTION_CONFIG:{version:DEFAULT_CONNECTION_CONFIG.version},BufferJSON,initAuthCreds:()=>({registered:true}),
+    const mod={default:options=>{config=options;return client;},DEFAULT_CONNECTION_CONFIG:{version:DEFAULT_CONNECTION_CONFIG.version},BufferJSON,initAuthCreds,
       Browsers:{windows:()=>['synthetic']},DisconnectReason:{loggedOut:401},proto:{Message:{AppStateSyncKeyData:{fromObject:value=>value}}},
       generateMessageIDV2:()=> 'provider-'+(++serial),generateWAMessage:async(jid,{text},options)=>{await behavior.prepare();return {key:{id:options.messageId,remoteJid:jid},message:{conversation:text}};},
       downloadMediaMessage:async message=>{downloadSources.push(message);const buffer=Buffer.from('OggS synthetic audio');downloads.push(buffer);return buffer;}};
@@ -512,6 +512,17 @@ test('a confirmed diagnostic effect alone can address the verified current self 
   const claims=f.authorizations.filter(value=>!value.recheck).length;
   f.session.close();await f.open();await f.poll();assert.equal(f.sends.length,1);assert.equal(f.finished.at(-1).state,'accepted');
   assert.equal(f.authorizations.filter(value=>!value.recheck).length,claims+1,'A new session reconciles the durable reserved effect, without relaying it');
+});
+
+test('verified external LID policy preserves only the separately confirmed self diagnostic route',async t=>{
+  const f=await fixture(t);f.context.verifiedLid=()=>true;
+  f.client.user={id:self+':7@s.whatsapp.net',lid:'100000000000001:7@lid'};
+  f.client.getUSyncDevices=()=>assert.fail('Self diagnostic is authorized by the current self grant, never an external recipient proof');
+  await pollEffect(f,diagnosticEffect(f));assert.equal(f.sends.length,1);assert.equal(f.sends[0].jid,self+'@s.whatsapp.net');
+  assert.equal(f.finished.at(-1).state,'accepted');
+  await pollEffect(f,diagnosticEffect(f,{recipient:phone,mode:'explicit'}));
+  assert.equal(f.sends.length,1,'An external diagnostic with no LID proof must not fall back to PN');
+  assert.notEqual(f.finished.at(-1).state,'accepted');
 });
 
 test('ordinary send_text and generic/public send options retain their self-send prohibition',async t=>{
