@@ -303,6 +303,7 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
     return {channel_id:id,status:phase,fence:c.fence,phone:verified?phone:null,phone_verified:verified,
       ...(c.health?{connection_health:c.health}:{}),
       capabilities:{text:true,audio:audioEnabled()===true&&c.assistant===true,reliable_send:true,typing:true,
+        url_button:!!c.device&&typeof c.session?.supportsUrlButton==='function'&&c.session.supportsUrlButton()===true,
         interactive_mode:chatbotInteractiveMode({type:'list'},{tenantId:c.tenant,deviceId:c.device?.id})==='native'?'native_unverified':'text_fallback',
         pair:!c.legacyTransport&&typeof c.session?.pair==='function'&&c.session?.supportsPairing?.()===true}};
   }

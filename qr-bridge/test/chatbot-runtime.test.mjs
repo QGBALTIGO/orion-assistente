@@ -88,6 +88,17 @@ function verifiedRecipient(f){
   f.behavior.onWhatsApp=async pn=>{calls.push(['lookup',pn]);return [{exists:true,jid:pn+'@s.whatsapp.net',lid:recipientLid}];};
   f.client.getUSyncDevices=async(...args)=>{calls.push(['usync',...args]);return [];};return calls;
 }
+test('an explicit URL-button Chatbot action keeps its scoped grant, verified recipient and native protocol with fallback defaults',async t=>{
+  const f=await fixture(t);verifiedRecipient(f);
+  const action={type:'url_button',text:'Olá, acesse o sistema.',footer:'Orion',button_text:'Acessar meu sistema',url:'https://orionagenda.pro/'};
+  const item=f.effect(action);f.behavior.event=async row=>row.message_id==='explicit-url-button'?[item]:[];
+  f.receive('explicit-url-button');await until(()=>f.finished.length===1);
+  assert.equal(f.finished[0].state,'accepted');assert.equal(f.sends.length,1);assert.equal(f.sends[0].jid,recipientLid);
+  const value=f.sends[0].proto.interactiveMessage;
+  assert.equal(value.body.text,action.text);assert.equal(value.nativeFlowMessage.buttons[0].name,'cta_url');
+  assert.deepEqual(JSON.parse(value.nativeFlowMessage.buttons[0].buttonParamsJson),{display_text:action.button_text,url:action.url});
+  assert.equal(f.sends[0].proto.extendedTextMessage,null);assert.equal(f.httpCalls.length,0);assert.ok(f.authorizations.length>=5);
+});
 for(const kind of ['send_text','chatbot_text','chatbot_list','native_list'])test(`digital ${kind} uses a fresh exact LID proof and the same encrypted recovery proto`,async t=>{
   const f=await fixture(t,{native:kind==='native_list'}),calls=verifiedRecipient(f);
   const item=kind==='send_text'?f.deviceEffect('send_text',{phone,text:'Texto confirmado'}):f.effect(kind==='chatbot_text'?

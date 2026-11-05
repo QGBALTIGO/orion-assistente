@@ -68,7 +68,7 @@ async function fixture(t){
   function reviseDevice(){state={...state,settings_revision:state.settings_revision+1};session.deviceSettingsChanged();}
   function reviseChatbot(){state={...state,chatbot:{revision:state.chatbot.revision+1}};session.deviceSettingsChanged();}
   await open();t.after(()=>{instances.forEach(item=>item.close());fs.rmSync(root,{recursive:true,force:true});});
-  return {root,events,sends,finished,authorizations,lookups,assets,permits,behavior,effect,open,poll,reviseDevice,reviseChatbot,
+  return {root,context,events,sends,finished,authorizations,lookups,assets,permits,behavior,effect,open,poll,reviseDevice,reviseChatbot,
     revoke(){alive=false;},get state(){return state;},get session(){return session;},get client(){return client;}};
 }
 
@@ -84,6 +84,38 @@ test('bulk text traverses the native protocol with final scoped rechecks and one
   assert.equal(f.sends[0].proto.extendedTextMessage.text.length,1000);assert.equal(f.finished[0].state,'accepted');
   assert.ok(f.authorizations.length>=5);assert.ok(f.authorizations.slice(1).every(row=>row.recheck===true));
   assert.ok(f.authorizations.every(row=>row.device_id===f.state.id&&row.generation===f.state.generation&&row.chatbot_revision===undefined));
+});
+
+const cta={type:'url_button',text:'Acesse o sistema.',footer:'Orion',button_text:'Acessar meu sistema',url:'https://orionagenda.pro/'};
+function ctaLid(f){
+  const lid='100000000000002@lid';f.context.verifiedLid=()=>true;
+  f.client.user={id:self+':7@s.whatsapp.net',lid:'100000000000001:7@lid'};
+  f.behavior.lookup=async pn=>[{exists:true,jid:pn+'@s.whatsapp.net',lid}];
+  f.client.getUSyncDevices=async()=>[];return lid;
+}
+test('an explicitly confirmed direct URL button uses verified LID and exact encrypted proto without fetching the link',async t=>{
+  const f=await fixture(t),lid=ctaLid(f),item=f.effect(cta);
+  f.behavior.pending=async()=>({effects:[item],reconcile:[]});await f.poll();
+  assert.equal(f.sends.length,1);assert.equal(f.sends[0].jid,lid);assert.equal(f.finished[0].state,'accepted');
+  const value=f.sends[0].proto.interactiveMessage;assert.equal(value.body.text,cta.text);assert.equal(value.footer.text,cta.footer);
+  assert.deepEqual(JSON.parse(value.nativeFlowMessage.buttons[0].buttonParamsJson),{display_text:cta.button_text,url:cta.url});
+  assert.equal(value.nativeFlowMessage.buttons[0].name,'cta_url');assert.equal(f.assets.length,0);assert.ok(f.authorizations.length>=5);
+  f.session.close();await f.open();await f.poll();assert.equal(f.sends.length,1,'Accepted CTA cannot be sent again after restart');
+});
+test('URL-button proof failure, forbidden URL and a changed confirmed destination never fall back or relay',async t=>{
+  for(const mode of ['missing_lid','private_url','changed_grant']){
+    const f=await fixture(t);ctaLid(f);const item=f.effect({...cta,...(mode==='private_url'?{url:'https://127.0.0.1/'}:{})});
+    if(mode==='missing_lid')f.behavior.lookup=async pn=>[{exists:true,jid:pn+'@s.whatsapp.net'}];
+    if(mode==='changed_grant')f.behavior.lookup=async pn=>{f.permits.get(item.operation_id).payload.action.url='https://other.example.com/';return [{exists:true,jid:pn+'@s.whatsapp.net',lid:'100000000000002@lid'}];};
+    f.behavior.pending=async()=>({effects:[item],reconcile:[]});await f.poll();
+    assert.equal(f.sends.length,0);assert.equal(f.finished[0].state,'not_sent');assert.equal(f.assets.length,0);
+  }
+});
+test('an ambiguous URL-button relay remains uncertain and is never automatically repeated',async t=>{
+  const f=await fixture(t);ctaLid(f);const item=f.effect(cta);
+  f.behavior.pending=async()=>({effects:[item],reconcile:[]});f.behavior.send=async()=>{throw Error('lost provider acknowledgement');};
+  await f.poll();assert.equal(f.sends.length,1);assert.equal(f.finished[0].state,'uncertain');
+  f.session.close();await f.open();await f.poll();assert.equal(f.sends.length,1);assert.equal(f.finished.length,1);
 });
 
 test('accepted receipt survives lost finish and restart without claim, lookup or send repetition',async t=>{

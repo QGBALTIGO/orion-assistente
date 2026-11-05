@@ -147,6 +147,9 @@ def compile_messages(root, graph, scope, facts, http_context, base, *, selected_
         message = {"id": str(uuid4()), "delay_seconds": item["delay_seconds"]}
         if kind == "text":
             message.update(type="text", text=action["text"])
+        elif kind == "url_button":
+            message.update(type="url_button", **{key: action[key] for key in ("text", "footer", "button_text", "url")},
+                notice="O botão abre um site externo. O link não é acessado nem enviado pela simulação.")
         elif kind == "list":
             source = graph[0].get(action["_test_rule_id"])
             if not eligible(source, scope["device_id"]):

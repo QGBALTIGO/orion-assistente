@@ -24,6 +24,7 @@ ERRORS.update({
     "DIRECT_LIMIT": "A mensagem ou a seleção ultrapassa os limites permitidos.",
     "DIRECT_TEMPLATE_INVALID": "Para salvar como template, use somente as cinco tags disponíveis na biblioteca.",
     "DIRECT_ASSET_INVALID": "Selecione um arquivo validado desta empresa, com o nome devolvido pelo upload.",
+    "DIRECT_FORMAT_UNAVAILABLE": "Este dispositivo não está pronto para mensagens com botão. Confira a conexão e tente novamente.",
 })
 
 
@@ -59,6 +60,12 @@ async def capture_review(db, tenant, actor, message, key):
     if message["kind"] == "text":
         prepared = {item["row_key"]: {"plan": [{"type": "text", "text": message["text"]}]}
                     for item in definition["items"]}
+    elif message["kind"] == "url_button":
+        try:
+            plan = policy.url_button_plan(message)
+        except ValueError:
+            raise fail("DIRECT_INVALID", 422) from None
+        prepared = {item["row_key"]: {"plan": plan} for item in definition["items"]}
     elif message["kind"] == "media":
         asset = await library.ready_asset(db, tenant, UUID(message["asset_id"]))
         limits = library.MEDIA_TYPES.get(asset["kind"])

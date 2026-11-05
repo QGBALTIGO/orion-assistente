@@ -21,6 +21,7 @@
       "shortvideo",
       "carousel",
       "url",
+      "url_button",
       "nested_reply",
       "nested_list"
     ],
@@ -98,6 +99,7 @@
         "shortvideo": true,
         "carousel": true,
         "url": true,
+        "url_button": true,
         "nested_reply": true,
         "nested_list": true
       }
@@ -172,6 +174,7 @@
         "shortvideo": true,
         "carousel": true,
         "url": true,
+        "url_button": true,
         "nested_reply": true,
         "nested_list": true
       }
@@ -285,6 +288,15 @@
       "method": "POST",
       "custom_template": "",
       "as_file": false
+    },
+    "url_button": {
+      "id": "40000000-0000-4000-8000-000000000001",
+      "type": "url_button",
+      "delay_seconds": 1,
+      "text": "Acesse o sistema de {my_name}.",
+      "footer": "Site externo",
+      "button_text": "Acessar meu sistema",
+      "url": "https://orionagenda.pro/"
     },
     "nested_reply": {
       "id": "40000000-0000-4000-8000-000000000001",

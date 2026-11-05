@@ -37,6 +37,7 @@ export function syntheticServer(){
   const record=(path,payload,op)=>{const entry={path,payload:copy(payload),operation:copy(op)};server.requests.set(op.idempotency_key,entry);return publicOperation(entry);};
   server.updateProgress=detail=>{const rows=detail.recipients.items,total=rows.length,count=kind=>rows.filter(row=>row.status===kind).length,processed=rows.filter(row=>!['pending','running'].includes(row.status)).length;detail.send.progress={total,processed,pending:count('pending')+count('running'),sent:count('sent'),failed:count('failed'),uncertain:count('uncertain'),cancelled:count('cancelled'),percent:total?Math.round(processed/total*1000)/10:0};};
   function content(message){
+    if(message.kind==='url_button')return {kind:'url_button',warnings:[],template:null,message_preview:{type:'url_button',template_name:null,text:message.text,caption:null,followup:null,parts:[{type:'url_button',text:message.text,footer:message.footer,button_text:message.button_text,url:message.url}]}};
     const template=options.templates.find(t=>t.id===message.template_id),asset=server.assets.get(message.asset_id);
     const kind=message.kind==='template'?template?.kind:message.kind==='media'?asset?.kind:'text';assert.ok(kind);
     let body=message.kind==='text'?message.text:message.kind==='media'?message.caption:'Conteúdo sintético '+kind;
@@ -76,9 +77,10 @@ export function syntheticServer(){
     }
     if(prior){if(prior.path!==path||JSON.stringify(prior.payload)!==JSON.stringify(payload))throw failure(409,{code:'DIRECT_IDEMPOTENCY_CONFLICT'});return {...publicOperation(prior),replayed:true};}
     if(suffix==='/review'){
-      keys(payload,['idempotency_key','message']);const m=payload.message,optional=m.save_template?['save_template']:[],union=m.kind==='text'?['text']:m.kind==='media'?['asset_id','file_name','caption']:['template_id'];keys(m,['kind','device_id','recipients',...union,...optional]);
+      keys(payload,['idempotency_key','message']);const m=payload.message,optional=m.save_template?['save_template']:[],union=m.kind==='text'?['text']:m.kind==='media'?['asset_id','file_name','caption']:m.kind==='url_button'?['text','footer','button_text','url']:['template_id'];keys(m,['kind','device_id','recipients',...union,...optional]);
       const device=options.devices.find(d=>d.id===m.device_id&&d.available);assert.ok(device);
       if(m.kind==='text')assert.ok(m.text.trim()&&m.text.length<=1000);if(m.kind==='media'){assert.equal(m.recipients.mode,'phone');assert.ok(server.assets.has(m.asset_id));assert.ok(m.caption.length<=1000);}
+      if(m.kind==='url_button'){assert.ok(m.text.trim()&&m.text.length<=1024);assert.ok(m.footer.length<=60);assert.ok(m.button_text.trim()&&m.button_text.length<=20);assert.ok(m.url.startsWith('https://'));assert.equal(m.save_template,undefined);}
       if(m.save_template)assert.ok(m.save_template.name.trim()&&m.save_template.name.length<=100);
       const selected=m.recipients.mode==='phone'?[m.recipients.phone]:m.recipients.contact_keys.map(key=>key.slice(6));
       keys(m.recipients,m.recipients.mode==='phone'?['mode','phone','contact_keys']:['mode','contact_keys']);assert.ok(selected.length>=1&&selected.length<=10);assert.equal(new Set(selected).size,selected.length);for(const digits of selected)assert.match(digits,/^[1-9]\d{7,14}$/);

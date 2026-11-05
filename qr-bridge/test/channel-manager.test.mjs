@@ -47,6 +47,19 @@ test('status reports the scoped native-list mode as unverified only for its exac
   }
   assert.equal(f.made.length,1);assert.equal(f.made[0].sends.length,0);
 });
+test('URL-button support is negotiated from the current device session, absent on old/custom/legacy transports',async t=>{
+  const f=fixture(t),a=f.add(),device={id:randomUUID(),generation:randomUUID(),settings_revision:1,settings:{},capabilities:{}};
+  Object.assign(f.rows.get(a.id),{device,assistant_enabled:false,allowed_senders:[]});const m=f.manager();await m.start(a.id,a.key);
+  const session=f.made[0];assert.equal((await m.deviceStatus(a.id,a.key)).capabilities.url_button,false);
+  session.supportsUrlButton=()=>true;
+  let value=await m.deviceStatus(a.id,a.key);assert.equal(value.capabilities.url_button,true);
+  assert.equal(value.device_id,device.id);assert.equal(value.generation,device.generation);assert.equal(value.settings_revision,1);
+  session.supportsUrlButton=()=>false;assert.equal((await m.deviceStatus(a.id,a.key)).capabilities.url_button,false);
+  session.supportsUrlButton=()=>true;f.rows.get(a.id).revoked=true;
+  await assert.rejects(m.deviceStatus(a.id,a.key));assert.equal(session.closed,true);
+  const legacy=f.add();f.rows.get(legacy.id).legacy_transport=true;await m.start(legacy.id,legacy.key);
+  f.made[1].supportsUrlButton=()=>true;assert.equal((await m.status(legacy.id,legacy.key)).capabilities.url_button,false);
+});
 test('assistant-off inbound is journaled before interaction and never forwarded',async t=>{
   const f=fixture(t),a=f.add(),calls=[];Object.assign(f.rows.get(a.id),{inbox_control:true,assistant_enabled:false});
   f.broker.journal=async(id,key,lease,payload)=>{calls.push('journal');assert.equal(id,a.id);assert.equal(payload.text,'Mensagem humana');return {recorded:true};};

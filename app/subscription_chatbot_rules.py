@@ -218,6 +218,14 @@ def compile_plan(rule_id, rules, templates, facts, http_context, *, selected_act
             return result
         if kind == "text":
             transport = {"type": "text", "text": render_contact(action["text"], facts)}
+        elif kind == "url_button":
+            from app.subscription_chatbot_schemas import button_destination
+            transport = {"type": "url_button", "url": button_destination(action["url"])}
+            for key, maximum in (("text", 1024), ("footer", 60), ("button_text", 20)):
+                transport[key] = render_contact(action.get(key, ""), facts, maximum=maximum)
+            from app.subscription_chatbot_schemas import UrlButtonContent
+            transport = {"type": "url_button", **UrlButtonContent.model_validate({
+                key: transport[key] for key in ("text", "footer", "button_text", "url")}).model_dump()}
         elif kind in {"template", "sticker", "shortvideo"}:
             template = templates[str(action["template_id"])]
             text = render_contact(template.get("body", template.get("text", "")), facts)

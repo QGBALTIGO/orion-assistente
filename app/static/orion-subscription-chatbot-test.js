@@ -41,6 +41,9 @@
       if(asset.thumbnail_url!==null&&asset.thumbnail_url!==undefined&&(!string(asset.thumbnail_url,16384)||mime(asset.thumbnail_mime)!=='image/jpeg'||!positive(asset.thumbnail_size)||asset.thumbnail_size>100000))throw Error('invalid_thumbnail');
     }else if(value.type==='location'){
       if(!Number.isFinite(value.latitude)||!Number.isFinite(value.longitude)||Math.abs(value.latitude)>90||Math.abs(value.longitude)>180)throw Error('invalid_location');
+    }else if(value.type==='url_button'){
+      if(!string(value.text,1024)||!value.text.trim()||!string(value.footer,60)||!string(value.button_text,20)||!value.button_text.trim()||!string(value.url,2048)||!string(value.notice,4096))throw Error('invalid_url_button');
+      try{const url=new URL(value.url);if(url.protocol!=='https:'||url.username||url.password||url.hash||/[{}\\\u0000-\u0020\u007f]|%7[bd]/i.test(value.url))throw Error();}catch{throw Error('invalid_url_button');}
     }else if(value.type==='carousel'){
       if(!string(value.body,4096)||!string(value.notice,4096)||!Array.isArray(value.cards)||!value.cards.length||value.cards.length>10||value.cards.some(card=>!object(card)||['title','body','button_text'].some(key=>!string(card[key],4096))||card.image_status!=='not_requested'))throw Error('invalid_carousel');
     }else if(value.type==='external_request'){
@@ -176,6 +179,7 @@
       if(value.type==='media')return '<div class="os-chatbot-test-media"><span class="os-chatbot-test-media-label">'+esc(mediaTypes[value.kind].label)+'</span><div data-sct-media-content><p class="os-chatbot-test-rich-notice">Carregando arquivo…</p></div>'+(value.caption?'<p>'+esc(value.caption)+'</p>':'')+'</div>';
       if(value.type==='location')return '<div class="os-chatbot-test-location"><strong>Localização</strong><p>Latitude: '+esc(value.latitude)+'<br>Longitude: '+esc(value.longitude)+'</p></div>';
       if(value.type==='carousel')return '<div class="os-chatbot-test-carousel"><p>'+esc(value.body)+'</p><div class="os-chatbot-test-carousel-cards">'+value.cards.map(card=>'<section><strong>'+esc(card.title)+'</strong><p>'+esc(card.body)+'</p>'+(card.button_text?'<span class="os-chatbot-test-declared-button">'+esc(card.button_text)+'</span>':'')+'</section>').join('')+'</div><p class="os-chatbot-test-rich-notice">'+esc(value.notice)+'</p></div>';
+      if(value.type==='url_button')return '<p>'+esc(value.text)+'</p>'+(value.footer?'<small>'+esc(value.footer)+'</small>':'')+'<span class="os-chatbot-test-declared-button">'+esc(value.button_text)+'</span><p><code>'+esc(value.url)+'</code></p><p class="os-chatbot-test-rich-notice">'+esc(value.notice)+'</p>';
       if(value.type==='external_request')return '<div class="os-chatbot-test-external"><strong>'+esc(value.method)+' · URL</strong><code>'+esc(value.url)+'</code><p>'+esc(value.text)+'</p>'+(value.custom_template?'<p>'+esc(value.custom_template)+'</p>':'')+(value.as_file?'<small>Retorno configurado como arquivo de texto.</small>':'')+'</div>';
       return '';
     }

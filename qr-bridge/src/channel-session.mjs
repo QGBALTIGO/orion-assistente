@@ -501,6 +501,8 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
       await client.logout();return {remote_logout:true};
     },
     phone:()=>state==='connected'?(normalizeFromJid(client.user?.id)||null):null,
+    // Format support is separate from connection readiness or send authority.
+    supportsUrlButton:()=>true,
     supportsPairing:()=>current()&&context.resumeOnly!==true&&authState()==='unlinked'&&state!=='connected'&&typeof client.requestPairingCode==='function',
     qr:()=>{expirePairing();return !pairAttempt&&authState()==='unlinked'&&context.resumeOnly!==true&&['qr_ready','pair_expired'].includes(state)&&freshQR(qrAt,now())?
       {value:qrValue,expires_in_ms:Math.max(0,45000-(now()-qrAt))}:null;},

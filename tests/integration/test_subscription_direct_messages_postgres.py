@@ -4,6 +4,7 @@ Inherited fixtures require disposable loopback PostgreSQL/Redis. WhatsApp and
 private object storage remain synthetic; no real recipient or provider is used.
 """
 import asyncio
+from contextlib import asynccontextmanager
 from copy import deepcopy
 from uuid import UUID, uuid4
 
@@ -17,6 +18,7 @@ from app import subscription_direct_messages as api
 from app import subscription_bulk_store as bulk_store
 from app import subscription_chatbot_media as media
 from app import subscription_chatbot_store as chatbot_store
+from app import qr_channels, subscription_chatbot_rules, subscription_device_audio
 from app.catalog_api import support_session_factory
 from app.database import tenant_transaction
 from app.plan_routing import include_plan_router
@@ -137,6 +139,97 @@ async def test_read_prepare_and_confirm_are_private_and_do_not_send_or_create_co
         hidden = await c.client.get(c.bulk+"/"+row["send_id"])
         assert hidden.status_code == 404
         assert (await c.client.get(c.bulk)).json()["active_batches_total"] == 0
+
+
+@asynccontextmanager
+async def url_button_transport(c, monkeypatch):
+    state = {"capable": True, "calls": 0}
+    async def control(row, action, method, payload=None):
+        assert str(row["id"]) == str(c.row["id"]) and action == "device/status" and method == "GET" and payload is None
+        # The fake transport executes the real private /lease/check, acquiring
+        # tenant/device locks. The deadline fails if the owner route kept them.
+        result = await asyncio.wait_for(c.bridge.transport(row, action, method, payload), timeout=3)
+        state["calls"] += 1
+        return {**result, "channel_id": str(row["id"]), "status": "connected",
+            "fence": c.bridge.connections[str(row["id"])]["fence"],
+            "capabilities": {"url_button": True} if state["capable"] else {}}
+    async def denied(*args, **kwargs):
+        pytest.fail("CTA attempted transcription or an external request")
+    def denied_sync(*args, **kwargs):
+        pytest.fail("CTA fetched media or compiled a hidden rule")
+    with monkeypatch.context() as patch:
+        patch.setattr(qr_channels, "_bridge_control", control)
+        patch.setattr(subscription_device_audio, "transcribe_audio", denied)
+        patch.setattr(subscription_chatbot_rules, "compile_plan", denied_sync)
+        patch.setattr(media, "get_media", denied_sync)
+        yield state
+
+
+async def test_url_button_review_confirm_claim_and_receipt_keep_exact_frozen_link_without_flow_changes(direct_case, monkeypatch):
+    c = direct_case
+    source = message(c, kind="url_button", text="*Sistema sintético*\nTexto literal {name}",
+        footer="Site externo", button_text="Acessar meu sistema", url="https://orionagenda.pro/?origin=synthetic")
+    action = {"type": "url_button", **{key: source[key] for key in ("text", "footer", "button_text", "url")}}
+    before = await snapshot(c)
+    async with url_button_transport(c, monkeypatch) as status:
+        prepared = await review(c, source)
+        assert prepared["preview"]["kind"] == "url_button"
+        assert prepared["preview"]["items"][0]["message_preview"]["parts"] == [action]
+        replies = await asyncio.gather(confirm(c, prepared), confirm(c, prepared))
+        assert [r.status_code for r in replies] == [202, 202], [r.text for r in replies]
+        assert sorted(r.json()["replayed"] for r in replies) == [False, True]
+        assert replies[0].json()["result"] == replies[1].json()["result"]
+        row = replies[0].json()["result"]["send"]
+        attempt, = await poll(c)
+        permit = await grant(c, attempt)
+        assert permit["authorized"] and permit["type"] == "bulk_action"
+        assert permit["payload"]["action"] == action
+        assert (await grant(c, attempt, recheck=True))["payload"]["action"] == action
+        await finish(c, attempt)
+        assert (await detail(c, row))["send"]["progress"]["sent"] == 1
+        assert await poll(c) == [] and not (await grant(c, attempt))["authorized"]
+        assert status["calls"] >= 2
+    after = await snapshot(c)
+    assert after["subscription_chatbot_templates"] == before["subscription_chatbot_templates"]
+    assert after["customers"] == before["customers"]
+    assert after["subscription_campaign_permissions"] == before["subscription_campaign_permissions"]
+    recipient, = after["subscription_bulk_recipients"]
+    assert recipient["plan"] == [action] and recipient["template_id"] is None
+    effects = await ledger(c)
+    assert len(effects) == 1 and effects[0]["payload"]["action"] == action and effects[0]["attempts"] == 1
+    result = await c.client.get(c.history+"/"+attempt["operation_id"])
+    assert result.status_code == 200 and result.json()["item"]["origin"]["code"] == "direct", result.text
+    item = result.json()["item"]
+    assert item["status"] == "sent" and action["url"] in item["sent"]["text"]
+    assert item["actions"] == [] and not item["resend"]["eligible"]
+
+
+async def test_url_button_optout_after_review_prevents_confirm_and_no_effect_is_created(direct_case, monkeypatch):
+    c = direct_case
+    async with url_button_transport(c, monkeypatch):
+        prepared = await review(c, message(c, kind="url_button", text="Mensagem sintética", footer="",
+            button_text="Acessar", url="https://orionagenda.pro/"))
+        await event(c, text="Não quero mensagens promocionais", phone=PHONE)
+        before = await snapshot(c)
+        assert any(row["phone"] == PHONE and row["revoked"] for row in before["subscription_campaign_permissions"])
+        rejected = await confirm(c, prepared)
+    assert rejected.status_code == 409, rejected.text
+    assert await snapshot(c) == before and await ledger(c) == []
+    assert before["subscription_bulk_batches"] == before["subscription_bulk_recipients"] == []
+
+
+@pytest.mark.parametrize("phase", ["review", "confirm"])
+async def test_url_button_older_transport_is_rejected_before_review_or_confirmation_admission(direct_case, monkeypatch, phase):
+    c = direct_case
+    source = message(c, kind="url_button", text="Mensagem sintética", footer="", button_text="Acessar", url="https://orionagenda.pro/")
+    async with url_button_transport(c, monkeypatch) as state:
+        prepared = await review(c, source) if phase == "confirm" else None
+        state["capable"] = False
+        before = await snapshot(c)
+        rejected = await confirm(c, prepared) if prepared else await c.client.post(c.direct+"/review", json=review_payload(c, source))
+    assert rejected.status_code == 409 and rejected.json()["detail"]["code"] == "DIRECT_FORMAT_UNAVAILABLE", rejected.text
+    assert await snapshot(c) == before and await ledger(c) == []
+    assert before["subscription_bulk_batches"] == before["subscription_bulk_recipients"] == []
 
 
 async def test_ten_contacts_work_but_eleven_never_persist_a_partial_review(direct_case):
