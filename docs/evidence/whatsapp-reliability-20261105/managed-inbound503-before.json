@@ -1,0 +1,12 @@
+{
+  "status": "gap_reproduced",
+  "synthetic_broker_error": 503,
+  "failed_event_attempts": 1,
+  "failed_event_admissions": 0,
+  "retry_after_recovery_poll": false,
+  "retry_on_same_socket_duplicate": false,
+  "replay_after_session_restart": false,
+  "new_event_after_recovery_admitted": true,
+  "network_calls": 0,
+  "production_calls": 0
+}

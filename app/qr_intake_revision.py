@@ -181,6 +181,8 @@ def write_started():
 
 
 async def assert_current():
+    from app.qr_conversation_lock import assert_current as conversation_current
+    await conversation_current()
     # Managed authority is mandatory even outside a revision-bound turn and
     # regardless of the legacy pilot's optional revision flag.
     await qr_channel_scope.assert_current()
@@ -200,6 +202,8 @@ async def assert_current():
 
 async def check_before_write():
     await assert_current()
+    from app.qr_conversation_lock import mark_write
+    mark_write()
     context = _turn.get()
     if context is not None and enabled():
         context.write_started = True

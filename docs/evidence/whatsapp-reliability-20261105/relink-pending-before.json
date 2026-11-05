@@ -1,0 +1,8 @@
+{
+  "physical_phone_changed": true,
+  "logical_generation_unchanged": true,
+  "settings_revision_unchanged": true,
+  "old_pending_visible_after_relink": true,
+  "old_pending_authorized_after_new_phone": true,
+  "provider_calls": 0
+}

@@ -188,6 +188,13 @@ async def test_assistant_activation_is_separate_and_invalidates_old_fence(channe
     assert result["enabled"] is True and result["assistant_enabled"] is True
     with pytest.raises(HTTPException):
         await lease(c, row, owner, "check", held["fence"])
+    # A remote revocation does not prove that this process's old socket has
+    # observed it. Preserve the original slot until its local lease expires.
+    with pytest.raises(HTTPException):
+        await lease(c, row, owner)
+    async with c.migration.begin() as db:
+        await db.execute(text("UPDATE qr_channels SET lease_expires_at=clock_timestamp()-interval '1 second' WHERE id=:id"),
+                         {"id": row["id"]})
     fresh = await lease(c, row, owner)
     assert (await channels.authenticated_channel(request(row, owner, fresh["fence"]), phone="5567999999901")).assistant_enabled is True
 

@@ -1,4 +1,7 @@
 import {makeBoundedCache} from './bounded-cache.mjs';
+import {fenceSignalRepository} from './signal-fence.mjs';
+import {makeConnectionHealth,disconnectPolicy} from './connection-health.mjs';
+import {selectWaWebVersion} from './wa-version-policy.mjs';
 import {makeTransportDiagnostics} from './transport-diagnostics.mjs';
 import {readAuthorizedRetry} from './retry-identity.mjs';
 /** A Baileys instance per context; shared helpers, no copy of the legacy server.
@@ -7,6 +10,7 @@ import {readAuthorizedRetry} from './retry-identity.mjs';
  */
 import path from 'node:path';
 import fs from 'node:fs';
+import {createHmac} from 'node:crypto';
 import {encryptedChannelStore,privateDirectory} from './channel-storage.mjs';
 import {resolveMessagePhone,normalizeFromJid,freshQR} from './core.mjs';
 import {shouldIngestUpsert,timestampMs} from './linked-session-health.mjs';
@@ -14,6 +18,7 @@ import {deliveryFromAck} from './message-retry-store.mjs';
 import {makeEncryptedRetryStore} from './encrypted-retry-store.mjs';
 import {sendStoredText,sendStoredProtocol} from './reliable-send.mjs';
 import {buildChatbotContent} from './chatbot-message.mjs';
+import {saveFallbackSelection,resolveFallbackSelection} from './selection-fallback.mjs';
 import {makePilotDeviceCache,resolvePilotRecipient} from './pilot-recipient.mjs';
 import {makeAssistantTyping} from './assistant-typing.mjs';
 import {withAssistantAudio} from './ai-audio.mjs';
@@ -21,12 +26,15 @@ import {makeConversationIntake} from './conversation-intake.mjs';
 import {sendConnectionNoticeOnce} from './connection-alert.mjs';
 import {normalizeInbound,priorityText,updateEvent,callEvent,queueControl} from './inbound-event.mjs';
 import {createDeviceRuntime} from './device-runtime.mjs';
+import {createIngressJournal} from './ingress-journal.mjs';
+import {createAssistantIngress} from './assistant-ingress.mjs';
+import {withIngressHealth} from './ingress-health.mjs';
 import {messagePreflightError} from './device-message-failure.mjs';
 import {createDeviceProxy} from './device-network.mjs';
 import {currentDiagnosticMessage} from './device-diagnostic-message.mjs';
 import {createDeviceGroupContacts} from './device-group-contacts.mjs';
 
-export async function createBaileysChannelSession(context,{loadBaileys=()=>import('@whiskeysockets/baileys'),now=Date.now,typingFactory=makeAssistantTyping,intakeOptions={},schedule=setTimeout,cancel=clearTimeout,deviceOptions={}}={}){
+export async function createBaileysChannelSession(context,{loadBaileys=()=>import('@whiskeysockets/baileys'),selectVersion=selectWaWebVersion,now=Date.now,typingFactory=makeAssistantTyping,intakeOptions={},schedule=setTimeout,cancel=clearTimeout,deviceOptions={}}={}){
   if(context.legacyTransport===true)throw Error('legacy_requires_existing_socket');
   await context.assertCurrent();
   const mod=await loadBaileys();await context.assertCurrent();
@@ -36,8 +44,22 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
       console.info(JSON.stringify({component:'orion-managed-transport',...event}));
   }});
   const silent=diagnostics.logger;
+  let deviceRuntime=null,assistantIngress=null,assistantIdentity=null,assistantFault=null,assistantTimer=null,assistantReplaying=false;
+  const assistantJobs=new Set();
+  const ingressDiagnostics=()=>deviceRuntime?.diagnostics()?.ingress||(assistantFault?
+    {...(assistantIngress?.diagnostics()||{}),state:'unavailable',error_code:'assistant_ingress_unavailable'}:assistantIngress?.diagnostics());
+  const health=makeConnectionHealth({now,schedule,cancel,previous:context.previousConnectionHealth,
+    readiness:value=>withIngressHealth(value,ingressDiagnostics()),scope:{channel_id:context.channelId,tenant_id:context.tenantId,
+    owner:context.owner,fence:context.fence,generation:context.deviceSnapshot?.()?.generation},
+    isSyncPending:()=>client.ev.isBuffering?.()===true,
+    emit:event=>{console.info(JSON.stringify(event));context.onConnectionHealth?.(health.snapshot());},onStale:reason=>{
+      if(!current()||state!=='connected')return;
+      const policy={...disconnectPolicy(408),reason};health.disconnected(policy,1);close();context.onDisconnected(policy);
+    }});
+  health.connecting();
   const store=encryptedChannelStore({directory:privateDirectory(path.join(context.directory,'auth')),secret:context.secret,
-    serialize:value=>JSON.stringify(value,mod.BufferJSON.replacer),deserialize:value=>JSON.parse(value,mod.BufferJSON.reviver)});
+    serialize:value=>JSON.stringify(value,mod.BufferJSON.replacer),deserialize:value=>JSON.parse(value,mod.BufferJSON.reviver),
+    isCurrent:()=>context.isCurrent()===true});
   const savedCreds=store.get('creds');
   if(!savedCreds&&fs.readdirSync(path.join(context.directory,'auth')).some(name=>name.endsWith('.enc')))throw Error('channel_auth_unavailable');
   const creds=savedCreds||mod.initAuthCreds();
@@ -60,11 +82,45 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
   const retryStore=makeEncryptedRetryStore({directory:privateDirectory(path.join(context.directory,'retry-proto')),secret:context.secret,
     serialize:value=>JSON.stringify(value,mod.BufferJSON.replacer),deserialize:value=>JSON.parse(value,mod.BufferJSON.reviver),now,
     ...(context.deviceSnapshot?.()?{maxPayloadBytes:512*1024,maxTotalBytes:96*1024*2000}:{})});
+  const selectionStore=context.deviceSnapshot?.()?makeEncryptedRetryStore({
+    directory:privateDirectory(path.join(context.directory,'selection-fallback')),secret:context.secret,
+    serialize:JSON.stringify,deserialize:JSON.parse,now,max:2000,maxPayloadBytes:8192,maxTotalBytes:8*1024*1024}):null;
   const deviceCache=makePilotDeviceCache();
-  let deviceRuntime=null;
   const overflowNotices=new Map(),overflowEpoch=new Map();
   const current=()=>!closed&&context.isCurrent();
   const guarded=async()=>{if(!current())throw Error('channel_socket_replaced');await context.assertCurrent();if(!current())throw Error('channel_socket_replaced');};
+  const selfIdentity=()=>{
+    const self=normalizeFromJid(client.user?.id);
+    return self?createHmac('sha256',context.secret).update('orion:managed-assistant-session:v1\0'+self).digest('hex'):null;
+  };
+  function assistantStorageFailure(){
+    assistantFault='assistant_ingress_unavailable';
+    const policy={code:null,reason:'ingress_storage_unavailable',action:'inspect_ingress_storage',retry:false,delayMs:null};
+    health.disconnected(policy,1);close();context.onDisconnected(policy);
+  }
+  function ensureAssistantIngress(){
+    const identity=selfIdentity();if(!identity)throw Error('assistant_ingress_identity_unavailable');
+    if(assistantIngress&&assistantIdentity===identity)return assistantIngress;
+    assistantIngress?.abandon();assistantIdentity=identity;
+    assistantIngress=createAssistantIngress({directory:path.join(context.directory,'incoming-assistant'),secret:context.secret,
+      scope:{tenant_id:context.tenantId,channel_id:context.channelId,session_digest:identity},now,
+      isCurrent:()=>current()&&selfIdentity()===identity,
+      serialize:value=>JSON.stringify(value,mod.BufferJSON.replacer),deserialize:value=>JSON.parse(value,mod.BufferJSON.reviver)});
+    return assistantIngress;
+  }
+  function scheduleAssistantReplay(){
+    if(!current()||assistantFault||assistantTimer||!assistantIngress?.diagnostics().pending)return;
+    assistantTimer=schedule(()=>{assistantTimer=null;void replayAssistantIngress();},5000);assistantTimer?.unref?.();
+  }
+  async function replayAssistantIngress(){
+    if(!current()||assistantFault||assistantReplaying)return;
+    assistantReplaying=true;
+    try{
+      const journal=ensureAssistantIngress(),entries=journal.pending().filter(entry=>!assistantJobs.has(entry.id)).slice(0,8);
+      if(entries.length)receive({messages:entries.map(entry=>entry.message.raw),type:'notify'},new Map(entries.map(entry=>[entry.id,entry])));
+    }catch{assistantStorageFailure();}
+    finally{assistantReplaying=false;scheduleAssistantReplay();}
+  }
   function expirePairing(){
     if(pairAttempt&&now()>=pairAttempt.expiresAt){
       cancel(pairTimer);pairTimer=null;
@@ -135,7 +191,13 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
   const proxyTransport=deviceSnapshot?await (deviceOptions.createProxy||createDeviceProxy)(deviceSnapshot.settings.proxy,
     {secret:deviceSnapshot.proxy_secret?.password,signal:abort.signal,assertCurrent:guarded,...deviceOptions.proxyOptions}):null;
   await guarded();
+  const webVersion=await selectVersion({auto:process.env.QR_WA_VERSION_AUTO!=='0',
+    bundledVersion:mod.DEFAULT_CONNECTION_CONFIG?.version,fetchVersion:mod.fetchLatestWaWebVersion});
+  await guarded();health.protocolVersion(webVersion.version,webVersion.source);
   const client=makeSocket({auth,logger:silent,browser:mod.Browsers.windows('Chrome'),
+    version:webVersion.version,
+    ...(typeof mod.DEFAULT_CONNECTION_CONFIG?.makeSignalRepository==='function'?{
+      makeSignalRepository:fenceSignalRepository(mod.DEFAULT_CONNECTION_CONFIG.makeSignalRepository,current)}:{}),
     printQRInTerminal:false,markOnlineOnConnect:false,syncFullHistory:false,userDevicesCache:deviceCache,maxMsgRetryCount:5,
     msgRetryCounterCache:context.retryCounterCache||makeBoundedCache({max:10000,ttlMs:600000,now}),
     placeholderResendCache:makeBoundedCache({max:5000,ttlMs:600000,now}),
@@ -145,13 +207,15 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
       const message=await readAuthorizedRetry(retryStore,key,{socket:client,isCurrent:current,assertCurrent:guarded});
       diagnostics.record('get_message',key?.id,{cached:!!message});return message;
     }});
-  const close=()=>{if(closed)return;closed=true;state='stopped';qrValue=null;pairAttempt=null;cancel(pairTimer);cancel(noticeTimer);abort.abort();deviceRuntime?.close();proxyTransport?.close();for(const lease of typingLeases)lease.stop();typingLeases.clear();client.ev.removeAllListeners();try{client.end(undefined);}catch{}};
+  health.watch(client.ws);
+  const close=()=>{if(closed)return;closed=true;state='stopped';qrValue=null;pairAttempt=null;cancel(pairTimer);cancel(noticeTimer);cancel(assistantTimer);assistantIngress?.abandon();abort.abort();health.stop();deviceRuntime?.close();proxyTransport?.close();for(const lease of typingLeases)lease.stop();typingLeases.clear();client.ev.removeAllListeners();try{client.end(undefined);}catch{}};
   const groupContacts=createDeviceGroupContacts({...deviceOptions.groupContactsOptions,client,isCurrent:current,
     isConnected:()=>state==='connected',deviceSnapshot:()=>context.deviceSnapshot?.(),schedule,cancel});
-  async function relayText(phone,text,{isCurrent:operationCurrent=()=>true,maxTextChars=1200,device=false,
+  async function relayText(phone,text,{isCurrent:operationCurrent=()=>true,maxTextChars=1200,device=false,source='automation',
     diagnostic=null,assertAuthorized,onRelayAttempt}={}){
     await guarded();const self=normalizeFromJid(client.user?.id);
-    const sendCurrent=()=>{try{return current()&&operationCurrent()===true;}catch{return false;}};
+    const sendCurrent=()=>{try{return current()&&operationCurrent()===true&&
+      (device||source==='manual'||!assistantIngress||assistantIngress.canAutomate());}catch{return false;}};
     const checkDiagnostic=()=>{
       const own=normalizeFromJid(client.user?.id);
       if(!own||!diagnostic&&phone===own)throw Error('channel_send_denied');
@@ -200,45 +264,85 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
     try{
       const sent=await sendStoredProtocol({jid:proof.jid,recipientProof:proof,store:retryStore,isCurrent:sendCurrent,
         assertAuthorized:authorize,onRelayAttempt,
+        onPrepared:message=>{if(built?.selectionIds)saveFallbackSelection(selectionStore,message,phone,built.selectionIds);},
         makeMessage:async jid=>{
           built=await buildChatbotContent(action,{sdk:mod,jid,loadAsset,prepareCarouselImage,fetchImage,signal,
-            upload:(...args)=>client.waUploadToServer(...args),logger:silent,assertCurrent:authorize,isCurrent:sendCurrent,mediaOptions:proxyTransport?.download});
+            upload:(...args)=>client.waUploadToServer(...args),logger:silent,assertCurrent:authorize,isCurrent:sendCurrent,mediaOptions:proxyTransport?.download,
+            interactiveMode:deviceOptions.interactiveMode??(process.env.QR_NATIVE_INTERACTIVE_ENABLED==='1'?'native':'text_fallback')});
           return mod.generateWAMessageFromContent(jid,built.content,{userJid:client.user.id,messageId:mod.generateMessageIDV2(client.user.id),timestamp:new Date(now())});
         },
         relay:(jid,body,options)=>client.relayMessage(jid,body,options)});
       return {id:sent.key.id};
     }finally{built?.dispose();}
   }
-  if(deviceSnapshot)deviceRuntime=createDeviceRuntime(context,{client,downloadMediaMessage:mod.downloadMediaMessage,logger:silent,
-    now,openedAt,schedule,cancel,downloadOptions:proxyTransport.download,
-    capacity:context.deviceSendCapacity,
-    sendText:(phone,text,options)=>relayText(phone,text,{...options,device:true}),sendChatbot:relayChatbot,
-    isGeneratedMessage:key=>!!retryStore.get(key),...deviceOptions.runtimeOptions});
+  if(deviceSnapshot){
+    const ingressFailure=(code,backlog)=>{
+      const policy={code:null,reason:'ingress_storage_unavailable',action:'inspect_ingress_storage',retry:false,delayMs:null};
+      health.disconnected(policy,1);
+      context.onConnectionHealth?.({...health.snapshot(),ingress:backlog||null,ingress_error:code});
+      close();context.onDisconnected(policy);
+    };
+    let ingressJournal;
+    try{
+      // Explicit relink rotates auth epoch, not logical device generation.
+      // Preserve old journals separately; never replay them into a new login.
+      const authEpoch=path.basename(context.directory);
+      if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(authEpoch))throw Error('invalid_device_auth_epoch');
+      ingressJournal=createIngressJournal({directory:privateDirectory(path.join(context.deviceDirectory,'incoming',authEpoch)),
+      secret:context.secret,now,isCurrent:current,
+      serialize:value=>JSON.stringify(value,mod.BufferJSON.replacer),deserialize:value=>JSON.parse(value,mod.BufferJSON.reviver)});}
+    catch(error){ingressFailure('ingress_journal_unavailable',null);throw error;}
+    deviceRuntime=createDeviceRuntime(context,{client,downloadMediaMessage:mod.downloadMediaMessage,logger:silent,
+      now,openedAt,schedule,cancel,downloadOptions:proxyTransport.download,
+      capacity:context.deviceSendCapacity,
+      sendText:(phone,text,options)=>relayText(phone,text,{...options,device:true}),sendChatbot:relayChatbot,
+      isGeneratedMessage:key=>!!retryStore.get(key),
+      resolveSelection:(message,phone)=>resolveFallbackSelection(selectionStore,message,phone),...deviceOptions.runtimeOptions,
+      ingressJournal,onIngressError:ingressFailure});
+  }
   const groupSetting=(name,fallback,max)=>{const raw=process.env[name],value=Number(raw);
     return raw!==undefined&&Number.isSafeInteger(value)&&value>=0&&value<=max?value:fallback;};
   const settleMs=groupSetting('QR_AI_GROUP_WAIT_MS',350,2000);
   const intake=makeConversationIntake({settleMs,maxGroupMs:Math.max(settleMs,groupSetting('QR_AI_GROUP_MAX_WAIT_MS',1200,5000)),
     ...intakeOptions,
-    onRejected:async batch=>{const first=metadata.get(batch.messageIds[0]);if(first)context.onRejected?.({phone:first.phone});},
+    retryUnconsumedNoticeFailures:true,
+    onRejected:async batch=>{const first=metadata.get(batch.messageIds[0]);if(first)context.onRejected?.({phone:first.phone});
+      try{for(const id of batch.messageIds)if(assistantIngress?.active(id))assistantIngress.review(id);}catch{assistantStorageFailure();}},
     consume:async batch=>{
       const entries=batch.messages.map(item=>metadata.get(item.id)),first=entries[0];
-      const batchCurrent=()=>current()&&batch.isCurrent()&&!!first&&entries.every(item=>item?.phone===first.phone&&context.allowedSender(item.phone));
+      const ids=batch.messages.map(item=>item.id),journal=assistantIngress,identity=assistantIdentity;
+      const rawCurrent=()=>current()&&batch.isCurrent()&&!!first&&selfIdentity()===identity&&entries.every(item=>item?.identity===identity&&item.phone===first.phone&&context.allowedSender(item.phone));
+      const batchCurrent=()=>rawCurrent()&&!assistantFault&&journal?.canConsume(ids)===true;
+      if(journal&&!await journal.waitForAdmission(ids,{isCurrent:rawCurrent}))return {state:'superseded',not_committed:true};
       if(!batchCurrent())return {state:'superseded',not_committed:true};
       await guarded();
-      return context.onMessage({phone:first.phone,message_id:batch.messages[0].id,message_ids:batch.messages.map(item=>item.id),
-        text:batch.text,intake_revision:batch.intakeRevision,
+      const outcome=await context.onMessage({phone:first.phone,message_id:batch.messages[0].id,message_ids:ids,
+        text:batch.text,parts:batch.messages.map(item=>({message_id:item.id,text:item.text})),intake_revision:batch.intakeRevision,
         ...(entries.some(item=>item.event)?{envelope:entries.findLast(item=>item.event)?.event}:{})},{noticeProofs:entries.map(item=>item.proof),isCurrent:batchCurrent,
         beforeReply:value=>entries.at(-1)?.lease?.beforeReply(value)});
+      if(!(outcome?.state==='superseded'&&outcome?.not_committed===true)){
+        const confirmed=outcome?.accepted===true||outcome?.state==='committed_no_reply'&&outcome.not_committed===false||
+          outcome?.state==='policy_skipped'&&outcome.not_committed===true;
+        for(const id of ids)if(journal.active(id)){if(confirmed)journal.complete(id);else journal.review(id);}
+      }
+      return outcome;
     }});
   client.ev.on('creds.update',()=>{write(()=>store.set('creds',creds)).catch(()=>{diagnostics.record('auth_write_failed');close();});});
   client.ev.on('connection.update',event=>{
     if(!current())return close();
     if(event.qr){expirePairing();qrValue=event.qr;qrAt=now();if(!pairAttempt)state='qr_ready';}
     if(event.connection==='open'){
+      // Restore readiness synchronously before publishing a connected state
+      // or permitting an unrelated automatic send. New links create no queue.
+      if(!deviceRuntime&&fs.existsSync(path.join(context.directory,'incoming-assistant'))){
+        try{ensureAssistantIngress();}catch{assistantStorageFailure();return;}
+      }
+      health.connected();
       state='connected';qrValue=null;pairAttempt=null;cancel(pairTimer);pairTimer=null;
       if(!opened){opened=true;
         void Promise.resolve().then(()=>context.onConnected()).then(()=>{
           if(deviceRuntime){void deviceRuntime.onConnected().catch(()=>{});return;}
+          if(assistantIngress)void replayAssistantIngress();
           if(!notifyNewLink||!current())return;
           noticeTimer=schedule(async()=>{
             try{
@@ -257,7 +361,8 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
     }
     if(event.connection==='close'){
       const code=event.lastDisconnect?.error?.output?.statusCode;
-      close();context.onDisconnected(code===mod.DisconnectReason.loggedOut?'logged_out':'disconnected');
+      const policy=disconnectPolicy(code);health.disconnected(policy,1);
+      close();context.onDisconnected(policy);
     }
   });
   client.ev.on('messages.update',updates=>{
@@ -273,20 +378,35 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
         message:{protocolMessage:{type:0,key}}}]});
   });
   client.ev.on('call',calls=>{if(deviceRuntime){deviceRuntime.calls(calls);return;}for(const call of (calls||[]).slice(0,20)){const event=callEvent(call,now);if(event)receive({messages:[event],type:'notify'});}});
-  function receive({messages=[],type}){
+  function receive({messages=[],type},replayEntries=new Map()){
     if(deviceRuntime){deviceRuntime.receive({messages,type});return;}
     for(const message of messages){
-      const id=message.key?.id,at=timestampMs(message.messageTimestamp);
+      const id=message.key?.id,at=timestampMs(message.messageTimestamp),replayEntry=replayEntries.get(id),sourceType=replayEntry?.message.type||type;
       if(!current()||message.key?.fromMe||typeof id!=='string'||!/^[a-zA-Z0-9._:-]{1,160}$/.test(id)||seen.has(id)||
-          !shouldIngestUpsert(type,message.messageTimestamp,now())||!at||at<openedAt-1000)continue;
+          !shouldIngestUpsert(sourceType,message.messageTimestamp,now())||!at||at<now()-900000||at>now()+60000||
+          (!replayEntry&&sourceType!=='append'&&at<openedAt-1000))continue;
        const normalized=normalizeInbound(message),text=normalized.text,media=message.message?.audioMessage||message.message?.ephemeralMessage?.message?.audioMessage;
        if(normalized.silent)continue;
-       const overflow=pending>=32;
-       if(pending>=40){overflowNotice(message,normalized);continue;}
-      seen.add(id);if(seen.size>2000)seen.delete(seen.values().next().value);
       const peer=String(message.key.remoteJid||'');
       if(!/^\d{8,20}(?::\d+)?@(s\.whatsapp\.net|lid)$/.test(peer))continue;
-      if(overflow)overflowEpoch.set(peer,(overflowEpoch.get(peer)||0)+1);
+      const knownPhone=normalizeFromJid(peer),self=normalizeFromJid(client.user?.id);
+      if(knownPhone&&(!context.allowedSender(knownPhone)||knownPhone===self))continue;
+      let journal,admission,identity;
+      try{
+        journal=ensureAssistantIngress();identity=assistantIdentity;
+        if(assistantJobs.has(id))continue;
+        if(replayEntry)admission=replayEntry;
+        else{const captured=journal.append(message,sourceType,at);admission=captured.entry;
+          if(!captured.fresh){scheduleAssistantReplay();continue;}}
+        if(admission.state!=='pending'||!journal.pending().some(entry=>entry.id===id))continue;
+        // A bounded safety lane still registers handoff/opt-out/corrections
+        // during a normal-work burst. It grants no domain or send authority.
+        const priority=priorityText(text)||normalized.event.control||['edited','deleted'].includes(normalized.event.kind)||
+          typeof text==='string'&&/\b(?:espera|aguarde|pera|corrigir|corrigindo|n[aã]o\s+confirme)\b/i.test(text);
+        if(pending>=32&&(!priority||pending>=40)){scheduleAssistantReplay();continue;}
+      }catch{assistantStorageFailure();return;}
+      // Only durable pending admission may acquire a volatile seen/job marker.
+      seen.add(id);if(seen.size>2000)seen.delete(seen.values().next().value);assistantJobs.add(id);
       const ingressEpoch=overflowEpoch.get(peer)||0;
       // Only identity resolution is ordered here. Never wait for ASR or an AI
       // reply before registering a newer authenticated message's revision.
@@ -294,23 +414,32 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
       const identityTask=identityQueue.catch(()=>{}).then(async()=>{
         await guarded();const phone=await resolveMessagePhone(message.key,client);await guarded();
         const self=normalizeFromJid(client.user?.id);
-        if(!phone||!self||!context.allowedSender(phone)||phone===self)return null;
-         const entry={phone,...(normalized.special?{event:normalized.event}:{})};metadata.set(id,entry);
-        const entryCurrent=()=>current()&&context.allowedSender(phone)&&(overflowEpoch.get(peer)||0)===ingressEpoch;
+        if(!current()||selfIdentity()!==identity)return null;
+        if(!phone)throw Error('assistant_identity_unresolved');
+        if(!self||!context.allowedSender(phone)||phone===self){journal.exclude(id);return null;}
+         const entry={phone,identity,...(normalized.special?{event:normalized.event}:{})};metadata.set(id,entry);
+        const entryCurrent=()=>current()&&selfIdentity()===identity&&context.allowedSender(phone)&&(overflowEpoch.get(peer)||0)===ingressEpoch;
          // Even rejected input registers its revision before consuming more
          // work. It revokes stale inference and records handoff/opt-out in the
          // journal. The rejected prefix never reaches the domain consumer.
          const proofTask=Promise.resolve(context.onInbound({phone,message_id:id,text:text||'',kind:media?'audio':text?'text':'unsupported',
-           ...(normalized.special?{envelope:normalized.event}:{})})).then(proof=>{entry.proof=proof;return proof;});
+           ...(normalized.special?{envelope:normalized.event}:{})})).then(async proof=>{
+             await guarded();if(!entryCurrent()||!Number.isSafeInteger(proof?.revision)||proof.revision<1)throw Error('assistant_notice_unconfirmed');
+             journal.admitted(id);entry.proof=proof;return proof;
+           });
          void proofTask.catch(()=>{});
-         if(overflow&&!priorityText(text)&&!normalized.event.control){
-           context.onRejected?.({phone});void proofTask.catch(()=>{}).finally(()=>{metadata.delete(id);pending--;});return true;
-         }
         const task=intake.submit({conversationKey:context.channelId+':'+phone,messageId:id,isCurrent:entryCurrent,
            notice:async()=>{const proof=await proofTask;await guarded();return proof;},
           prepare:async({signal})=>{
             await guarded();
-            if(context.assistantEnabled?.()===false||(!normalized.special&&!text?.trim()&&context.audioEnabled?.()!==true))return {skip:true};
+            if(!entryCurrent())return {skip:true};
+            if(context.assistantEnabled?.()===false||(!normalized.special&&!text?.trim()&&context.audioEnabled?.()!==true)){
+              journal.exclude(id);return {skip:true};
+            }
+            if(journal.diagnostics().blocked){journal.review(id,'policy_denied');return {skip:true};}
+            // This persisted boundary forbids any ASR/domain replay following
+            // a crash or an uncertain result. Only the live attempt can finish.
+            journal.begin([id]);
             let typing=typingByPhone.get(phone);
             if(!typing){typing=typingFactory({socket:client,pilotPhone:()=>phone,isConnected:()=>state==='connected'&&current(),
               isAllowed:value=>context.allowedSender(value)&&context.assistantEnabled?.()!==false});typingByPhone.set(phone,typing);}
@@ -324,14 +453,25 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
           }});
         // The identity queue returns immediately; only this message's cleanup
         // waits for ordered consumption (including an explicit zero-write carry).
-        void task.then(result=>{if(result?.state==='overloaded'){overflowEpoch.set(peer,(overflowEpoch.get(peer)||0)+1);context.onRejected?.({phone});}},()=>{}).finally(()=>{entry.lease?.stop();typingLeases.delete(entry.lease);metadata.delete(id);pending--;});
+        void task.then(result=>{
+          if(!current()||selfIdentity()!==identity){journal.abandon();return;}
+          try{
+            if(journal.active(id))journal.review(id);
+            else if(['revision_failed','overloaded','duplicate'].includes(result?.state))seen.delete(id);
+          }catch{assistantStorageFailure();}
+        },()=>{if(current()&&selfIdentity()===identity)try{if(journal.active(id))journal.review(id);}catch{assistantStorageFailure();}})
+          .finally(()=>{entry.lease?.stop();typingLeases.delete(entry.lease);metadata.delete(id);pending--;assistantJobs.delete(id);scheduleAssistantReplay();});
         return true;
       });
-      identityQueue=identityTask;identityTask.then(accepted=>{if(!accepted)pending--;},()=>{pending--;});
+      identityQueue=identityTask;identityTask.then(accepted=>{if(!accepted){pending--;assistantJobs.delete(id);seen.delete(id);scheduleAssistantReplay();}},()=>{
+        pending--;assistantJobs.delete(id);seen.delete(id);scheduleAssistantReplay();
+      });
     }
   }
   client.ev.on('messages.upsert',receive);
   return {close,groupContacts,status:()=>{expirePairing();return state;},
+    connectionHealth:()=>health.snapshot(),
+    ingressDiagnostics,
     deviceSettingsChanged:()=>deviceRuntime?.sync(),
     deviceDiagnostics:()=>deviceRuntime?.diagnostics()||null,
     async logout({authorize}={}){

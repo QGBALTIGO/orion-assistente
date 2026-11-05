@@ -4,11 +4,21 @@
 import {randomUUID,createHmac} from 'node:crypto';
 import {channelId} from './channel-storage.mjs';
 
-export function createLegacyCentral({env=process.env,fetchImpl=fetch,start,send,status,sessionDigest,rawSend,now=Date.now}){
+export function createLegacyCentral({env=process.env,fetchImpl=fetch,start,send,status,sessionDigest,rawSend,now=Date.now,onTransportLeaseLost=()=>{},publicHealth=null,outgoingReady=()=>true}){
   let context=null,identity=null,starting=null;
   const configured=()=>env.QR_LEGACY_CENTRAL_ENABLED==='1';
   const matching=()=>identity&&typeof sessionDigest==='function'&&sessionDigest()===identity.session_digest;
-  const active=()=>configured()&&context?.isCurrent()===true&&matching();
+  const active=()=>configured()&&context?.isCurrent()===true&&status()==='connected'&&matching();
+  // Ownership is acquired before opening Baileys. A connected physical
+  // identity is required for business effects, but not to reserve its writer.
+  const transportCurrent=()=>!configured()||context?.isCurrent()===true;
+  async function assertTransportCurrent(){
+    if(!configured())return;
+    const expected=context;
+    if(!expected||!transportCurrent())throw Error('legacy_transport_lease_unavailable');
+    await expected.assertCurrent();
+    if(context!==expected||!transportCurrent())throw Error('legacy_transport_lease_unavailable');
+  }
   async function resume(){
     if(!configured())return {ready:false,configured:false};
     if(starting)return starting;
@@ -42,14 +52,17 @@ export function createLegacyCentral({env=process.env,fetchImpl=fetch,start,send,
     await value.assertCurrent();
     if(context&&context!==value&&context.isCurrent())throw Error('legacy_socket_already_adopted');
     context=value;
-    // The manager may retire this adapter; it must never close the main socket.
-    return {status:()=>status()==='connected'&&matching()?'connected':'connecting',qr:()=>null,
-      close(){if(context===value)context=null;},
+    // Retirement also fences native retries and Signal writes, not only
+    // application sends. Credentials remain on disk for the next owner.
+    return {status:()=>['connected','degraded'].includes(status())&&matching()?
+      (publicHealth?.()?.state||status()):'connecting',qr:()=>null,
+      connectionHealth:()=>publicHealth?.(),
+      close(){if(context===value){context=null;onTransportLeaseLost();}},
       async send(phone,text,{isCurrent=()=>true,transactionalTyping=false,source='automation'}={}){
-        if(context!==value||!value.isCurrent()||!matching()||!(value.allowedSender(phone)||source==='appointment')||!isCurrent())throw Error('legacy_send_revoked');
+        if(context!==value||!value.isCurrent()||!matching()||!(value.allowedSender(phone)||source==='appointment')||!isCurrent()||!outgoingReady(source))throw Error('legacy_send_revoked');
         await value.assertCurrent();
         const result=await rawSend(phone,text,{waitForCapacity:true,transactionalTyping,source,isCurrent:()=>
-          context===value&&value.isCurrent()&&matching()&&(value.allowedSender(phone)||source==='appointment')&&isCurrent()});
+          context===value&&value.isCurrent()&&matching()&&(value.allowedSender(phone)||source==='appointment')&&isCurrent()&&outgoingReady(source)});
         const id=result?.accepted===true&&typeof result.id==='string'?result.id.replace(/^out:/,''):null;
         if(!id)throw Error('legacy_send_unknown');
         return {id};
@@ -66,13 +79,18 @@ export function createLegacyCentral({env=process.env,fetchImpl=fetch,start,send,
   }
   async function automatic(phone,text,options={}){
     await resume();
-    if(!active())throw Error('legacy_send_not_ready');
+    if(!active()||!outgoingReady('automation'))throw Error('legacy_send_not_ready');
     return send(identity.channel_id,env.QR_BRIDGE_TOKEN,{to:phone,text,operation_id:randomUUID(),
-      source:'automation',isCurrent:options.isCurrent||(()=>true)});
+      source:'automation',isCurrent:()=>outgoingReady('automation')&&(options.isCurrent?.()??true)});
   }
   async function receipt(id,delivery){if(active())await context.onReceipt(id,delivery);}
   function allowed(phone){return active()&&context.allowedSender(phone);}
-  function health(){return {configured:configured(),ready:active(),connected:status()==='connected',
-    observed_at:now(),session_preserved:Boolean(matching())};}
-  return {configured,resume,attach,inbound,forward,automatic,receipt,allowed,health};
+  function ingressScope(){
+    if(!active())return null;
+    return Object.freeze({tenant_id:identity.tenant_id,channel_id:identity.channel_id,session_digest:identity.session_digest});
+  }
+  function health(){const connection=publicHealth?.();return {configured:configured(),owned:configured()&&transportCurrent(),
+    ready:active()&&(!publicHealth||connection?.state==='connected'),connected:status()==='connected',
+    ...(connection?{connection_health:connection}:{}),observed_at:now(),session_preserved:Boolean(matching())};}
+  return {configured,resume,attach,inbound,forward,automatic,receipt,allowed,ingressScope,health,transportCurrent,assertTransportCurrent};
 }

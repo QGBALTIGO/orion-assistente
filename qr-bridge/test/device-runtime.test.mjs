@@ -9,8 +9,10 @@ import {createBaileysChannelSession} from '../src/channel-session.mjs';
 import {createChannelManager} from '../src/channel-manager.mjs';
 import {createChannelResumeStore} from '../src/channel-resume.mjs';
 import {deviceStorage} from '../src/device-storage.mjs';
-import {channelDirectory} from '../src/channel-storage.mjs';
+import {channelDirectory,encryptedChannelStore} from '../src/channel-storage.mjs';
 import {createChannelBroker} from '../src/channel-broker.mjs';
+import {DEFAULT_CONNECTION_CONFIG,BufferJSON} from '@whiskeysockets/baileys';
+import {createIngressJournal} from '../src/ingress-journal.mjs';
 
 process.env.ORION_RETRY_TEST_MODE='1';
 const phone='5567999999901',self='5567999999902';
@@ -23,19 +25,19 @@ function snapshot(){return {id:randomUUID(),generation:randomUUID(),settings_rev
 function temp(t,prefix){const dir=fs.mkdtempSync(path.join(os.tmpdir(),prefix));fs.chmodSync(dir,0o700);t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));return dir;}
 
 async function fixture(t){
-  const root=temp(t,'orion-device-runtime-'),directory=path.join(root,'auth'),deviceDirectory=path.join(root,'device');
+  const root=temp(t,'orion-device-runtime-'),directory=path.join(root,randomUUID()),deviceDirectory=path.join(root,'device');
   fs.mkdirSync(directory,{mode:0o700});fs.mkdirSync(deviceDirectory,{mode:0o700});
-  let state=snapshot(),alive=true,serial=0,current,client,config;
-  const events=[],sends=[],finished=[],authorizations=[],audioCalls=[],downloads=[],rejections=[],webhooks=[],tasks=new Map(),permits=new Map(),instances=[];
+  let state=snapshot(),alive=true,serial=0,current,client,config,clock=1000000;
+  const events=[],sends=[],finished=[],authorizations=[],audioCalls=[],downloads=[],downloadSources=[],rejections=[],webhooks=[],disconnections=[],tasks=new Map(),permits=new Map(),instances=[];
   const behavior={event:async()=>[],transcribe:async()=>({text:'voz',truncated:false,effects:[]}),send:async()=>{},finish:async()=>{},
-    pending:async()=>({effects:[],reconcile:[]}),webhook:async()=>{},lookupCall:async()=>null,prepare:async()=>{}};
+    pending:async()=>({effects:[],reconcile:[]}),webhook:async()=>{},lookupCall:async()=>null,prepare:async()=>{},admission:async()=>null,capacity:async()=>{}};
   const context={channelId:randomUUID(),tenantId:randomUUID(),directory,deviceDirectory,secret:'synthetic-device-secret-'.repeat(3),
     deviceSnapshot:()=>state,isCurrent:()=>alive,assertCurrent:async()=>{if(!alive)throw Error('revoked');},
     allowedSender:()=>false,assistantEnabled:()=>false,audioEnabled:()=>false,notifySelf:false,
     onInbound:()=>assert.fail('Device must not reach interaction/journal'),onMessage:()=>assert.fail('Device must not reach AI'),
     onReceipt:()=>assert.fail('Device must not reach legacy receipts'),transcribe:()=>assert.fail('Device must not reach legacy audio'),
-    onConnected(){},onDisconnected(){},
-    deviceEvent:async payload=>{events.push(payload);return {effects:await behavior.event(payload),recorded:true};},
+    onConnected(){},onDisconnected(policy){disconnections.push(policy);},
+    deviceEvent:async payload=>{events.push(payload);return await behavior.admission(payload)||{effects:await behavior.event(payload),duplicate:false};},
     deviceEffectAuthorize:async payload=>{
       authorizations.push(payload);const data=permits.get(payload.operation_id);if(!data)throw Error('not authorized');
       return {authorized:true,...payload,...data};
@@ -50,21 +52,22 @@ async function fixture(t){
       signalRepository:{lidMapping:{getPNForLID:lid=>behavior.lookupCall(lid)}},
       rejectCall:async(id,from)=>{rejections.push({id,from});},logout:async()=>{},
       relayMessage:async(jid,body)=>{sends.push({jid,text:body.conversation});await behavior.send();}};
-    const mod={default:options=>{config=options;return client;},BufferJSON:{},initAuthCreds:()=>({registered:true}),
+    const mod={default:options=>{config=options;return client;},DEFAULT_CONNECTION_CONFIG:{version:DEFAULT_CONNECTION_CONFIG.version},BufferJSON,initAuthCreds:()=>({registered:true}),
       Browsers:{windows:()=>['synthetic']},DisconnectReason:{loggedOut:401},proto:{Message:{AppStateSyncKeyData:{fromObject:value=>value}}},
       generateMessageIDV2:()=> 'provider-'+(++serial),generateWAMessage:async(jid,{text},options)=>{await behavior.prepare();return {key:{id:options.messageId,remoteJid:jid},message:{conversation:text}};},
-      downloadMediaMessage:async()=>{const buffer=Buffer.from('OggS synthetic audio');downloads.push(buffer);return buffer;}};
-    current=await createBaileysChannelSession(context,{loadBaileys:async()=>mod,now:()=>1000000,schedule,cancel,
-      deviceOptions:{runtimeOptions:{capacity:{acquire:async()=>{}},postWebhook:async payload=>{webhooks.push(payload);return behavior.webhook(payload);}}}});
+      downloadMediaMessage:async message=>{downloadSources.push(message);const buffer=Buffer.from('OggS synthetic audio');downloads.push(buffer);return buffer;}};
+    current=await createBaileysChannelSession(context,{loadBaileys:async()=>mod,now:()=>clock,schedule,cancel,
+      deviceOptions:{runtimeOptions:{capacity:{acquire:options=>behavior.capacity(options)},postWebhook:async payload=>{webhooks.push(payload);return behavior.webhook(payload);}}}});
     instances.push(current);client.ev.emit('connection.update',{connection:'open'});await until(()=>events.some(e=>e.kind==='status'));return current;
   }
   function effect(type,payload,extra={}){const operation_id=randomUUID();permits.set(operation_id,{type,payload,...extra});return {operation_id,type};}
-  function receive(id,body='hello',key={}){client.ev.emit('messages.upsert',{type:'notify',messages:[{key:{id,fromMe:false,remoteJid:phone+'@s.whatsapp.net',...key},
-    messageTimestamp:1000,message:typeof body==='string'?{conversation:body}:body,pushName:'Synthetic contact'}]});}
+  function receive(id,body='hello',key={},at=clock){client.ev.emit('messages.upsert',{type:'notify',messages:[{key:{id,fromMe:false,remoteJid:phone+'@s.whatsapp.net',...key},
+    messageTimestamp:at/1000,message:typeof body==='string'?{conversation:body}:body,pushName:'Synthetic contact'}]});}
   await open();t.after(()=>instances.forEach(session=>session.close()));
-  return {context,events,sends,finished,authorizations,audioCalls,downloads,rejections,webhooks,behavior,effect,receive,open,permits,
+  return {context,get directory(){return context.directory;},get deviceDirectory(){return context.deviceDirectory;},events,sends,finished,authorizations,audioCalls,downloads,downloadSources,rejections,webhooks,disconnections,behavior,effect,receive,open,permits,
     get session(){return current;},get client(){return client;},get config(){return config;},get snapshot(){return state;},
     update(patch={}){state={...structuredClone(state),...patch,settings_revision:state.settings_revision+1};current.deviceSettingsChanged();},
+    setTime(value){clock=value;},
     revoke(){alive=false;current.close();},async poll(){const task=[...tasks.values()].find(item=>item.ms===5000);assert.ok(task);await task.fn();}};
 }
 
@@ -80,6 +83,259 @@ test('device ingress has no pilot allowlist, but defaults never invoke AI, ASR, 
     messageTimestamp:1000,message:{conversation:'hello'},pushName:prefix+'🙂 trailing'}]});
   await until(()=>f.events.some(e=>e.message_id==='unicode-name'));
   assert.equal(f.events.find(e=>e.message_id==='unicode-name').name,prefix+'🙂','The schema limit counts Unicode characters, without splitting an emoji');
+});
+test('subscription offline append recovers a thirty-second outage with a stable dedupe ID and five-minute bound',async t=>{
+  const f=await fixture(t);
+  const message={key:{id:'offline-during-outage',remoteJid:phone+'@s.whatsapp.net',fromMe:false},messageTimestamp:970,
+    message:{conversation:'Solicitação durante a queda'}};
+  f.client.ev.emit('messages.upsert',{type:'append',messages:[message]});await until(()=>f.events.some(row=>row.message_id===message.key.id));
+  const first=f.events.find(row=>row.message_id===message.key.id);assert.equal(first.occurred_at,new Date(970000).toISOString());
+  f.client.ev.emit('messages.upsert',{type:'append',messages:[message,{...message,key:{...message.key,id:'too-old'},messageTimestamp:699}]});
+  await tick();await tick();assert.equal(f.events.filter(row=>row.kind==='text').length,1);
+  f.session.close();await f.open();f.client.ev.emit('messages.upsert',{type:'append',messages:[message]});
+  await until(()=>f.events.filter(row=>row.message_id===message.key.id).length===2);
+  assert.equal(f.events.filter(row=>row.message_id===message.key.id)[1].event_id,first.event_id,
+    'The existing SQL unique device/provider-event fence receives the same durable identity after restart');
+  assert.equal(f.sends.length,0,'Recovery never bypasses backend effect admission');
+});
+
+const broker503=()=>Object.assign(Error('synthetic dependency outage'),{status:503});
+function storedIngress(f){
+  return encryptedChannelStore({directory:incomingDirectory(f),secret:f.context.secret,
+    serialize:value=>JSON.stringify(value,BufferJSON.replacer),deserialize:value=>JSON.parse(value,BufferJSON.reviver)}).get('incoming-admission-v1');
+}
+const incomingDirectory=f=>path.join(f.deviceDirectory,'incoming',path.basename(f.directory));
+
+test('incoming is encrypted before broker admission and retries a 503 with the same event/time/order',async t=>{
+  const f=await fixture(t);let unavailable=true;
+  f.behavior.event=async event=>{if(event.kind!=='text')return [];
+    const retained=storedIngress(f);assert.equal(retained.entries.length,1);assert.equal(retained.entries[0].message.key.id,event.message_id);
+    if(unavailable)throw broker503();return [];
+  };
+  f.receive('durable-503','Private synthetic incoming payload');
+  await until(()=>f.events.some(event=>event.message_id==='durable-503'));await tick();await tick();
+  assert.equal(f.session.deviceDiagnostics().ingress.pending,1);assert.equal(f.session.connectionHealth().state,'degraded');
+  const before=f.events.find(event=>event.message_id==='durable-503');
+  for(const file of fs.readdirSync(incomingDirectory(f))){
+    assert.equal(fs.readFileSync(path.join(incomingDirectory(f),file)).includes(Buffer.from('Private synthetic incoming payload')),false);
+  }
+  unavailable=false;await f.poll();await until(()=>f.session.deviceDiagnostics().ingress.pending===0);
+  const attempts=f.events.filter(event=>event.message_id==='durable-503');assert.equal(attempts.length,2);
+  for(const key of ['event_id','occurred_at','ingress_order'])assert.equal(attempts[1][key],before[key]);
+  f.receive('durable-503');await tick();await tick();assert.equal(f.events.filter(event=>event.message_id==='durable-503').length,2);
+  assert.equal(f.sends.length,0);assert.equal(f.session.connectionHealth().state,'connected');
+});
+
+test('session restart replays retained incoming without another provider upsert',async t=>{
+  const f=await fixture(t);f.behavior.event=async event=>{if(event.kind==='text')throw broker503();return [];};
+  f.receive('restart-local-incoming');await until(()=>f.events.some(event=>event.message_id==='restart-local-incoming'));await tick();
+  const first=f.events.find(event=>event.message_id==='restart-local-incoming');
+  f.session.close();f.behavior.event=async()=>[];await f.open();
+  await until(()=>f.events.filter(event=>event.message_id==='restart-local-incoming').length===2);
+  await until(()=>f.session.deviceDiagnostics().ingress.pending===0);
+  const replay=f.events.filter(event=>event.message_id==='restart-local-incoming')[1];
+  assert.equal(replay.event_id,first.event_id);assert.equal(replay.occurred_at,first.occurred_at);assert.equal(replay.ingress_order,first.ingress_order);
+  assert.equal(f.sends.length,0);
+});
+
+test('lost admission response replays the SQL event identity then leaves effects to the existing ledger',async t=>{
+  const f=await fixture(t),effect=f.effect('send_text',{phone,text:'synthetic current response'}),committed=new Set();
+  f.behavior.admission=async event=>{
+    if(event.kind!=='text')return null;
+    if(!committed.has(event.event_id)){committed.add(event.event_id);throw Error('synthetic response lost after SQL commit');}
+    return {effects:[],duplicate:true};
+  };
+  f.receive('commit-lost');await until(()=>committed.size===1);await tick();await tick();
+  assert.equal(f.session.deviceDiagnostics().ingress.pending,1);assert.equal(f.sends.length,0);
+  await f.poll();await until(()=>f.session.deviceDiagnostics().ingress.pending===0);
+  assert.equal(committed.size,1);assert.equal(f.events.filter(event=>event.message_id==='commit-lost').length,2);
+  f.behavior.pending=async()=>({effects:[effect],reconcile:[]});await f.poll();await until(()=>f.finished.length===1);
+  await f.poll();assert.equal(f.sends.length,1);assert.equal(f.session.deviceDiagnostics().ingress.entries,0);
+});
+
+test('a failed incoming preserves contact order while another contact continues',async t=>{
+  const f=await fixture(t),other='5567999999903',admitted=[];let unavailable=true;
+  f.behavior.event=async event=>{if(event.kind!=='text')return [];
+    if(event.message_id==='ordered-first'&&unavailable)throw broker503();admitted.push(event.message_id);return [];
+  };
+  f.receive('ordered-first');f.receive('ordered-second');f.receive('independent-contact','Oi',{remoteJid:other+'@s.whatsapp.net'});
+  await until(()=>admitted.includes('independent-contact'));assert.equal(admitted.includes('ordered-second'),false);
+  unavailable=false;await f.poll();await until(()=>f.session.deviceDiagnostics().ingress.pending===0);
+  assert.ok(admitted.indexOf('ordered-first')<admitted.indexOf('ordered-second'));assert.equal(f.sends.length,0);
+});
+
+test('expired retained incoming blocks event-return and polled effects but fresh controls and another device continue',async t=>{
+  const f=await fixture(t);f.behavior.event=async event=>{if(event.kind==='text')throw broker503();return [];};
+  f.receive('expires-retained','PARAR');await until(()=>f.events.some(event=>event.message_id==='expires-retained'));await tick();
+  const original=storedIngress(f).entries[0];f.setTime(1300001);await f.poll();
+  await until(()=>f.session.deviceDiagnostics().ingress.blocked===1);
+  const retained=storedIngress(f).entries[0];assert.equal(retained.at,original.at);assert.equal(retained.order,original.order);
+  assert.equal(retained.blocked_reason,'expired');assert.equal(f.session.connectionHealth().state,'needs_attention');
+  const effect=f.effect('send_text',{phone,text:'must await operator review'});
+  f.behavior.event=async event=>event.kind==='text'?[effect]:[];f.behavior.pending=async()=>({effects:[effect],reconcile:[]});
+  f.receive('fresh-control','PARAR');await until(()=>f.events.some(event=>event.message_id==='fresh-control'));
+  await until(()=>f.session.deviceDiagnostics().ingress.pending===0);await f.poll();
+  assert.equal(f.authorizations.length,0);assert.equal(f.sends.length,0);assert.equal(f.session.deviceDiagnostics().ingress.blocked,1);
+  const g=await fixture(t),allowed=g.effect('send_text',{phone,text:'Independent device response'});
+  g.behavior.event=async event=>event.kind==='text'?[allowed]:[];g.receive('unaffected-device');await until(()=>g.sends.length===1);
+});
+
+test('settings change retains old incoming as blocked and never rebinds it to the new revision',async t=>{
+  const f=await fixture(t);f.behavior.event=async event=>{if(event.kind==='text')throw broker503();return [];};
+  f.receive('prior-settings');await until(()=>f.events.some(event=>event.message_id==='prior-settings'));await tick();
+  const previous=storedIngress(f).entries[0];f.update();
+  await until(()=>f.session.deviceDiagnostics().ingress.blocked===1);f.behavior.event=async()=>[];await f.poll();
+  assert.equal(f.events.filter(event=>event.message_id==='prior-settings').length,1);
+  const retained=storedIngress(f).entries[0];assert.equal(retained.scope.settings_revision,previous.scope.settings_revision);
+  assert.equal(retained.blocked_reason,'scope_changed');assert.equal(retained.at,previous.at);
+  f.receive('current-settings','PARAR');await until(()=>f.events.some(event=>event.message_id==='current-settings'));
+  assert.equal(f.events.find(event=>event.message_id==='current-settings').settings_revision,f.snapshot.settings_revision);
+});
+
+test('a retained foreign tenant namespace can never reach the device broker',async t=>{
+  const f=await fixture(t);f.session.close();
+  const journal=createIngressJournal({directory:incomingDirectory(f),secret:f.context.secret,
+    serialize:value=>JSON.stringify(value,BufferJSON.replacer),deserialize:value=>JSON.parse(value,BufferJSON.reviver),now:()=>1000000});
+  journal.append({id:'message:foreign-namespace',scope:{tenant_id:randomUUID(),channel_id:f.context.channelId,
+    device_id:f.snapshot.id,generation:f.snapshot.generation,settings_revision:f.snapshot.settings_revision},at:1000000,order:1,
+    message:{key:{id:'foreign-namespace',fromMe:false,remoteJid:phone+'@s.whatsapp.net'},messageTimestamp:1000,message:{conversation:'foreign synthetic'}}});
+  await f.open();await until(()=>f.session.deviceDiagnostics().ingress.blocked===1);
+  assert.equal(f.events.some(event=>event.message_id==='foreign-namespace'),false);
+  assert.equal(storedIngress(f).entries[0].blocked_reason,'scope_changed');assert.equal(f.authorizations.length,0);
+});
+
+test('unresolved identity remains durable and retries after mapping without blocking another contact',async t=>{
+  const f=await fixture(t),lid='123456789012345@lid';let mapped=false;
+  f.behavior.lookupCall=async()=>mapped?phone+'@s.whatsapp.net':null;
+  f.receive('identity-later','Oi',{remoteJid:lid});f.receive('identity-independent','Oi',{remoteJid:'5567999999903@s.whatsapp.net'});
+  await until(()=>f.events.some(event=>event.message_id==='identity-independent'));await tick();await tick();
+  assert.equal(f.events.some(event=>event.message_id==='identity-later'),false);assert.equal(f.session.deviceDiagnostics().ingress.pending,1);
+  mapped=true;await f.poll();await until(()=>f.session.deviceDiagnostics().ingress.pending===0);
+  assert.equal(f.events.find(event=>event.message_id==='identity-later').phone,phone);
+});
+
+test('invalid broker admission does not acknowledge retained source and a stale-event refusal is retained for review',async t=>{
+  const f=await fixture(t);let stale=false;
+  f.behavior.admission=async event=>event.kind==='text'?(stale?{effects:[],duplicate:false,ignored:'stale_event'}:{effects:[]}):null;
+  f.receive('invalid-admission');await until(()=>f.events.some(event=>event.message_id==='invalid-admission'));await tick();await tick();
+  assert.equal(f.session.deviceDiagnostics().ingress.pending,1);stale=true;await f.poll();
+  await until(()=>f.session.deviceDiagnostics().ingress.blocked===1);assert.equal(storedIngress(f).entries[0].blocked_reason,'expired');
+  assert.equal(f.sends.length,0);
+});
+
+test('audio source proto survives encrypted incoming replay before normal ASR authorization',async t=>{
+  const f=await fixture(t);f.snapshot.settings.transcription={...f.snapshot.settings.transcription,enabled:true,max_minutes:30,reply_enabled:true};
+  const effect=f.effect('transcribe',{phone,message_id:'audio-local-replay',max_bytes:25_000_000,max_seconds:1800});let unavailable=true;
+  f.behavior.event=async event=>{if(event.kind!=='audio')return [];if(unavailable)throw broker503();return [effect];};
+  f.receive('audio-local-replay',{audioMessage:{fileLength:100,seconds:10,mimetype:'audio/ogg',mediaKey:Buffer.from('synthetic-media-secret')}});
+  await until(()=>f.events.some(event=>event.message_id==='audio-local-replay'));await tick();assert.equal(f.downloads.length,0);
+  f.session.close();unavailable=false;await f.open();await until(()=>f.audioCalls.length===1);
+  assert.equal(Buffer.isBuffer(f.downloadSources[0].message.audioMessage.mediaKey),true);
+  assert.equal(f.downloadSources[0].message.audioMessage.mediaKey.toString(),'synthetic-media-secret');
+  assert.equal(f.session.deviceDiagnostics().ingress.pending,0);
+});
+
+test('audio admission committed with a lost response retains source on the real duplicate-empty-effects contract',async t=>{
+  const f=await fixture(t);f.snapshot.settings.transcription={...f.snapshot.settings.transcription,enabled:true,max_minutes:30,reply_enabled:true};
+  const committed=new Set();
+  f.behavior.admission=async event=>{
+    if(event.kind!=='audio')return null;
+    if(!committed.has(event.event_id)){committed.add(event.event_id);throw Error('SQL committed; synthetic response lost');}
+    // device_event ON CONFLICT returns no source-dependent ASR effect. Its
+    // normal effects/pending endpoint deliberately excludes transcribe.
+    return {effects:[],duplicate:true};
+  };
+  f.receive('audio-commit-lost',{audioMessage:{fileLength:100,seconds:10,mimetype:'audio/ogg',mediaKey:Buffer.from('retained-audio-source')}});
+  await until(()=>committed.size===1);await tick();await tick();await f.poll();
+  await until(()=>f.session.deviceDiagnostics().ingress.blocked===1);
+  assert.equal(f.audioCalls.length,0);assert.equal(f.downloads.length,0);assert.equal(committed.size,1);
+  let retained=storedIngress(f).entries[0];assert.equal(retained.blocked_reason,'business_started');
+  assert.equal(retained.message.message.audioMessage.mediaKey.toString(),'retained-audio-source');
+  f.session.close();await f.open();await f.poll();retained=storedIngress(f).entries[0];
+  assert.equal(retained.blocked_reason,'business_started');assert.equal(f.events.filter(event=>event.message_id==='audio-commit-lost').length,2);
+  assert.equal(f.audioCalls.length,0);assert.equal(f.sends.length,0);
+});
+
+test('audio interruption after admission retains source and never restarts ambiguous paid ASR',async t=>{
+  const f=await fixture(t);f.snapshot.settings.transcription={...f.snapshot.settings.transcription,enabled:true,max_minutes:30,reply_enabled:true};
+  const effect=f.effect('transcribe',{phone,message_id:'audio-business-started',max_bytes:25_000_000,max_seconds:1800}),barrier=deferred();
+  f.behavior.event=async event=>event.kind==='audio'?[effect]:[];
+  f.behavior.transcribe=async()=>{await barrier.promise;return {text:'synthetic completed speech',truncated:false,effects:[]};};
+  f.receive('audio-business-started',{audioMessage:{fileLength:100,seconds:10,mimetype:'audio/ogg',mediaKey:Buffer.from('retain-across-crash')}});
+  await until(()=>f.audioCalls.length===1);assert.equal(f.session.deviceDiagnostics().ingress.active,1);
+  f.session.close();assert.equal(f.session.deviceDiagnostics().ingress.blocked,1);barrier.resolve();await tick();await tick();
+  await f.open();await f.poll();assert.equal(f.audioCalls.length,1);assert.equal(f.session.deviceDiagnostics().ingress.blocked,1);
+  assert.equal(storedIngress(f).entries[0].message.message.audioMessage.mediaKey.toString(),'retain-across-crash');
+});
+
+test('healthy audio plus text bursts admit following controls before source ASR without quarantining valid audio',async t=>{
+  const f=await fixture(t);f.snapshot.settings.transcription={...f.snapshot.settings.transcription,enabled:true,max_minutes:30,reply_enabled:true};
+  const effect=f.effect('transcribe',{phone,message_id:'burst-audio',max_bytes:25_000_000,max_seconds:1800});
+  f.behavior.event=async event=>event.kind==='audio'?[effect]:[];
+  f.receive('burst-audio',{audioMessage:{fileLength:100,seconds:10,mimetype:'audio/ogg'}});f.receive('burst-text','correction');
+  f.receive('burst-other','other',{remoteJid:'5567999999903@s.whatsapp.net'});
+  await until(()=>f.audioCalls.length===1);await until(()=>f.session.deviceDiagnostics().ingress.entries===0);
+  assert.equal(f.events.filter(event=>event.kind==='text').length,2);assert.equal(f.session.deviceDiagnostics().ingress.blocked,0);
+  assert.equal(f.session.connectionHealth().state,'connected');
+});
+
+test('explicit auth-epoch reset preserves old incoming journal without replaying it under the new login',async t=>{
+  const f=await fixture(t);f.session.close();
+  const storage=deviceStorage(temp(t,'orion-device-relink-'),f.snapshot,f.context.secret);
+  f.context.deviceDirectory=storage.directory;f.context.directory=storage.authDirectory();await f.open();
+  f.behavior.event=async event=>{if(event.kind==='text')throw broker503();return [];};
+  f.receive('old-login-input');await until(()=>f.events.some(event=>event.message_id==='old-login-input'));await tick();
+  const oldDirectory=incomingDirectory(f),oldFiles=fs.readdirSync(oldDirectory),oldAt=storedIngress(f).entries[0].at;
+  f.session.close();f.context.directory=storage.reset();assert.notEqual(incomingDirectory(f),oldDirectory);
+  assert.equal(fs.existsSync(path.join(oldDirectory,oldFiles[0])),true,'Reset auth must retain the previous admission evidence');
+  f.behavior.event=async()=>[];await f.open();await f.poll();await tick();
+  assert.equal(f.events.filter(event=>event.message_id==='old-login-input').length,1);
+  assert.equal(f.session.deviceDiagnostics().ingress.entries,0);
+  const retained=encryptedChannelStore({directory:oldDirectory,secret:f.context.secret,
+    serialize:value=>JSON.stringify(value,BufferJSON.replacer),deserialize:value=>JSON.parse(value,BufferJSON.reviver)}).get('incoming-admission-v1');
+  assert.equal(retained.entries[0].at,oldAt);assert.equal(retained.entries[0].message.key.id,'old-login-input');
+  f.receive('new-login-input');await until(()=>f.events.some(event=>event.message_id==='new-login-input'));
+});
+
+test('pending opt-out prevents a previously waiting send from authorizing before replay',async t=>{
+  const f=await fixture(t),effect=f.effect('send_text',{phone,text:'must not overtake pending optout'}),barrier=deferred();let unavailable=true,capacityEntered=false;
+  f.behavior.capacity=async()=>{capacityEntered=true;await barrier.promise;};
+  f.behavior.pending=async()=>({effects:[effect],reconcile:[]});const polling=f.poll();await until(()=>capacityEntered);
+  f.behavior.event=async event=>{if(event.kind==='text'&&unavailable)throw broker503();return [];};
+  f.receive('pending-optout','PARAR');await until(()=>f.events.some(event=>event.message_id==='pending-optout'));await tick();await tick();
+  assert.equal(f.session.deviceDiagnostics().ingress.pending,1);unavailable=false;barrier.resolve();await polling;
+  assert.equal(f.authorizations.length,0);assert.equal(f.sends.length,0,'No authorization/send may overtake an unadmitted control');
+  f.behavior.pending=async()=>({effects:[],reconcile:[]});await f.poll();await until(()=>f.session.deviceDiagnostics().ingress.pending===0);
+  assert.equal(f.sends.length,0);
+});
+
+test('a newly blocked incoming fences an already prepared native send before relay',async t=>{
+  const f=await fixture(t),effect=f.effect('send_text',{phone:'5567999999903',text:'prepared before review required'}),barrier=deferred();let preparing=false;
+  f.behavior.event=async event=>{if(event.message_id==='older-optout')throw broker503();return event.kind==='text'?[effect]:[];};
+  f.behavior.prepare=async()=>{preparing=true;await barrier.promise;};
+  f.receive('prepared-send','trigger',{remoteJid:'5567999999903@s.whatsapp.net'});await until(()=>preparing);
+  f.receive('older-optout','PARAR');await until(()=>f.events.some(event=>event.message_id==='older-optout'));await tick();f.setTime(1300001);await f.poll();
+  await until(()=>f.session.deviceDiagnostics().ingress.blocked===1);barrier.resolve();await tick();await tick();
+  assert.equal(f.sends.length,0,'Final native relay guard also sees blocked incoming');
+});
+
+test('incoming storage failure closes only the native channel with terminal policy before any broker event',async t=>{
+  const f=await fixture(t),rename=fs.renameSync;
+  fs.renameSync=(from,to)=>{if(to.startsWith(path.join(f.deviceDirectory,'incoming')+path.sep))throw Error('synthetic storage unavailable');return rename(from,to);};
+  try{f.receive('cannot-persist');}finally{fs.renameSync=rename;}
+  assert.equal(f.client.ended,true);assert.equal(f.events.some(event=>event.message_id==='cannot-persist'),false);
+  assert.equal(f.disconnections.at(-1).retry,false);assert.equal(f.disconnections.at(-1).reason,'ingress_storage_unavailable');
+  assert.equal(f.session.deviceDiagnostics().ingress_error,'ingress_journal_unavailable');
+  assert.equal(f.session.connectionHealth().state,'needs_attention');
+});
+
+test('corrupted retained incoming fails boot closed and preserves the encrypted evidence',async t=>{
+  const f=await fixture(t);f.behavior.event=async event=>{if(event.kind==='text')throw broker503();return [];};
+  f.receive('before-corruption');await until(()=>f.events.some(event=>event.message_id==='before-corruption'));await tick();f.session.close();
+  const directory=incomingDirectory(f),file=path.join(directory,fs.readdirSync(directory).find(value=>value.endsWith('.enc')));
+  fs.writeFileSync(file,'synthetic-corrupt-retained-record');await assert.rejects(f.open(),/ingress_journal_corrupt/);
+  assert.equal(fs.readFileSync(file,'utf8'),'synthetic-corrupt-retained-record');assert.equal(f.client.ended,true);
+  assert.equal(f.disconnections.at(-1).retry,false);assert.equal(f.sends.length,0);
 });
 
 test('only the server-derived current effect may send outside the pilot policy, once across restart',async t=>{

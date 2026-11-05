@@ -27,6 +27,9 @@ from app.catalog_schemas import StrictModel
 from app.tenant_access import resolve_tenant_access
 
 LEASE_SECONDS = 30
+# Retired writers may still hold their old local deadline until the next
+# broker check. This internal owner reserves that slot without authorizing I/O.
+REVOKED_LEASE_OWNER = UUID(int=0)
 BASE = "/api/v1/tenants/{tenant_id}/qr-channels"
 INTERNAL = "/internal/qr/channels/{channel_id}"
 SAFE_FIELDS = ("id", "tenant_id", "owner_account_id", "provider", "label", "enabled", "assistant_enabled", "revision")
@@ -84,6 +87,13 @@ class ChannelState(StrictModel):
 class LeaseRequest(StrictModel):
     owner: UUID
     fence: int | None = Field(default=None, strict=True, ge=1)
+
+    @field_validator("owner")
+    @classmethod
+    def actual_process_owner(cls, value):
+        if value == REVOKED_LEASE_OWNER:
+            raise ValueError("Instância de conexão inválida")
+        return value
 
 
 class ChannelCommand(StrictModel):
@@ -357,14 +367,20 @@ async def change_state(tenant_id: UUID, channel_id: UUID, payload: ChannelState,
                 raise HTTPException(403, "A conexão preservada exige o administrador autenticado")
             if payload.assistant_enabled is True and not current["allowed_senders"]:
                 raise HTTPException(409, "O atendimento privado ainda precisa de uma política autorizada")
+            # Deny API effects now, but do not admit another auth writer before
+            # the old socket's local deadline. One stable SQL clock keeps the
+            # paired owner/expiry columns consistent at the expiry boundary.
             row = (await db.execute(text("""UPDATE qr_channels SET enabled=COALESCE(:enabled,enabled),
                 assistant_enabled=COALESCE(:assistant,assistant_enabled),revision=revision+1,
-                fence=fence+1,lease_owner=NULL,lease_expires_at=NULL,updated_at=clock_timestamp()
+                fence=fence+1,
+                lease_owner=CASE WHEN lease_expires_at>statement_timestamp() THEN CAST(:retired AS uuid) ELSE NULL END,
+                lease_expires_at=CASE WHEN lease_expires_at>statement_timestamp() THEN lease_expires_at ELSE NULL END,
+                updated_at=clock_timestamp()
                 WHERE tenant_id=:tenant AND id=:id AND owner_account_id=:account AND revision=:revision
                 RETURNING id,tenant_id,owner_account_id,provider,label,enabled,assistant_enabled,revision,allowed_senders"""),
                 {"tenant": tenant_id, "id": channel_id, "account": actor.account_id,
                  "revision": payload.expected_revision, "enabled": payload.enabled,
-                 "assistant": payload.assistant_enabled})).mappings().one_or_none()
+                 "assistant": payload.assistant_enabled, "retired": REVOKED_LEASE_OWNER})).mappings().one_or_none()
             if not row:
                 raise HTTPException(409, "Canal alterado ou indisponível")
     return jsonable_encoder(_connection_dto(dict(row), True))
@@ -393,13 +409,16 @@ async def _lock_membership(db, channel_id):
 
 
 def _current(row, owner, fence):
-    if (row["lease_owner"] != owner or row["fence"] != fence or not row["lease_expires_at"]
+    if (owner == REVOKED_LEASE_OWNER or row["lease_owner"] == REVOKED_LEASE_OWNER
+            or row["lease_owner"] != owner or row["fence"] != fence or not row["lease_expires_at"]
             or row["lease_expires_at"] <= row["server_now"]):
         raise HTTPException(409, "Posse do canal expirada")
 
 
 async def lease_operation(db, channel_id, credential, payload, operation):
     enabled()
+    if payload.owner == REVOKED_LEASE_OWNER:
+        raise HTTPException(401, "Instância de conexão inválida")
     if operation not in {"claim", "renew", "release", "check", "inspect", "receipt"}:
         raise HTTPException(404)
     async with db.begin():
@@ -441,7 +460,7 @@ async def lease_operation(db, channel_id, credential, payload, operation):
                 "owner_account_id": str(row["owner_account_id"]), "provider": row["provider"],
                 "owner": str(payload.owner), "fence": row["fence"], "expires_in_ms": remaining,
                 "allowed_senders": row["allowed_senders"], "assistant_enabled": row["assistant_enabled"],
-                "legacy_transport": legacy,
+                "legacy_transport": legacy, "incoming_parts": True,
                 "verified_self_phone":qr_legacy.verified_self_phone(row) if legacy else None,
                 **({"device": await device_lease_snapshot(db, row)} if device else {}),
                 **({"inbox_control": True} if central or os.getenv("INBOX_CONTROL_ENABLED", "0") == "1" else {})}

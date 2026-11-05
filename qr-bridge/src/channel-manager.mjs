@@ -1,4 +1,6 @@
 import {makeBoundedCache} from './bounded-cache.mjs';
+import {assistantParts} from './assistant-parts.mjs';
+import {disconnectPolicy,sustainedRecovery} from './connection-health.mjs';
 import {safetyControl} from './inbound-event.mjs';
 /** Per-channel lifecycle; SQL broker owns the distributed fence, not this Map. */
 import {randomUUID,timingSafeEqual} from 'node:crypto';
@@ -23,7 +25,7 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
     audioEnabled=()=>process.env.QR_AI_AUDIO_ENABLED==='1',verifiedLid=()=>process.env.QR_PILOT_USE_VERIFIED_LID==='1',resumeStore=null,diagnosticOptions={}}){
   if(!channelId(owner))throw Error('invalid_channel_owner');
   if(!Number.isInteger(maxChannels)||maxChannels<1||maxChannels>50)throw Error('invalid_channel_capacity');
-  const contexts=new Map(),stopping=new Set(),deviceControls=new Set();let resuming=false;
+  const contexts=new Map(),stopping=new Set(),deviceControls=new Set(),lastHealth=new Map();let resuming=false,closed=false;
   const timer=(fn,ms)=>{const t=schedule(fn,ms);t?.unref?.();return t;};
   const current=c=>!c.stopped&&contexts.get(c.id)===c&&clock()<c.deadline;
   const diagnostics=createDeviceDiagnostics({broker,root,owner,clock,...diagnosticOptions,appliedToSession:(id,grant)=>{
@@ -50,6 +52,7 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
     }
     c.deviceKind=hasDevice;c.device=hasDevice?structuredClone(result.device):null;
     c.tenant=result.tenant_id;c.fence=result.fence;c.allowed=new Set(result.allowed_senders);c.assistant=result.assistant_enabled;
+    c.incomingParts=result.incoming_parts===true;
     if(c.legacyTransport!==undefined&&c.legacyTransport!==(result.legacy_transport===true))throw Error('channel_transport_changed');
     c.legacyTransport=result.legacy_transport===true;
     c.inboxControl=hasDevice?false:c.inboxControl===true||result.inbox_control===true||process.env.INBOX_CONTROL_ENABLED==='1';
@@ -64,6 +67,8 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
     c.stopped=true;c.generation++;
     cancel(c.expiry);cancel(c.renewal);cancel(c.reconnect);
     try{c.session?.close();}catch{}
+    if(c.health){lastHealth.delete(c.id);lastHealth.set(c.id,{...c.health});
+      while(lastHealth.size>maxChannels*4)lastHealth.delete(lastHealth.keys().next().value);}
     c.session=null;
     if(contexts.get(c.id)===c)contexts.delete(c.id);
   }
@@ -91,14 +96,22 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
   }
   function disconnected(c,generation,reason){
     if(!current(c)||generation!==c.generation)return;
+    if(sustainedRecovery(c.health)){c.attempts=0;c.sessionRecoveryAttempts=0;}
+    const original=typeof reason==='object'&&reason?reason:null;
+    const policy=original?original.retry===false?original:disconnectPolicy(original.code,c.attempts,{random,sessionAttempts:c.sessionRecoveryAttempts}):
+      reason==='logged_out'?disconnectPolicy(401):disconnectPolicy(null,c.attempts,{random});
+    if(policy.code===500)c.sessionRecoveryAttempts++;
+    c.health={...(c.health||{}),state:policy.retry?'reconnecting':'needs_attention',
+      disconnect_code:policy.code??null,reason:original?.reason||policy.reason,action:policy.action??null,
+      interrupted_at:c.health?.interrupted_at??Date.now(),reconnect_at:policy.retry?Date.now()+policy.delayMs:null,reconnect_attempts:c.attempts+1};
     if(c.device&&typeof broker.deviceEvent==='function')void broker.deviceEvent(c.id,c.key,{owner,fence:c.fence},
       {device_id:c.device.id,generation:c.device.generation,settings_revision:c.device.settings_revision,
-        event_id:'status:'+randomUUID(),kind:'status',occurred_at:new Date().toISOString(),state:reason==='logged_out'?'logged_out':'disconnected'}).catch(()=>{});
-    try{c.session?.close();}catch{}c.session=null;c.generation++;
-    if(reason==='logged_out'){try{resumeStore?.forget(c.id,c.key);}catch{}retire(c);return;}
-    if(c.attempts>=8){retire(c);return;}
+        event_id:'status:'+randomUUID(),kind:'status',occurred_at:new Date().toISOString(),
+        state:{status:policy.reason==='logged_out'?'logged_out':policy.retry?'reconnecting':'needs_attention',connection_health:c.health}}).catch(()=>{});
+    const health=c.health;try{c.session?.close();}catch{}c.health=health;c.session=null;c.generation++;
+    if(!policy.retry){try{resumeStore?.forget(c.id,c.key);}catch{}retire(c);return;}
     cancel(c.reconnect);
-    c.reconnect=timer(()=>connect(c).catch(()=>{}),reconnectDelay(c.attempts++,random));
+    c.attempts++;c.reconnect=timer(()=>connect(c).catch(()=>{}),policy.delayMs);
   }
   async function connect(c){
     await validate(c);
@@ -136,6 +149,8 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
     try{
       const session=await createSession({channelId:c.id,tenantId:c.tenant,owner,fence:c.fence,
         directory:c.directory,secret:c.key,assertCurrent,isCurrent,
+        previousConnectionHealth:c.health,
+        onConnectionHealth:value=>{if(isCurrent())c.health=value;},
         retryCounterCache:c.retryCounterCache||(c.retryCounterCache=makeBoundedCache({max:10000,ttlMs:600000})),resumeOnly:c.resumeOnly,
         notifySelf:!c.device&&!c.resumeOnly&&!c.legacyTransport&&process.env.ORION_NOTIFY_SELF_ON_LINK!=='0',
         newLinkNotice:c.newLinkNotice,
@@ -182,7 +197,7 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
           return result.text.trim();
         },
         onConnected:()=>{if(!isCurrent())return;
-          resumeStore?.remember({id:c.id,tenant:c.tenant,key:c.key,...(c.device?{device_id:c.device.id,generation:c.device.generation,device_proxy_fingerprint:proxyFingerprint(c.device)}:{})});c.attempts=0;c.connectedAt=new Date().toISOString();},
+          resumeStore?.remember({id:c.id,tenant:c.tenant,key:c.key,...(c.device?{device_id:c.device.id,generation:c.device.generation,device_proxy_fingerprint:proxyFingerprint(c.device)}:{})});c.connectedAt=new Date().toISOString();},
         onDisconnected:reason=>disconnected(c,generation,reason),
         onReceipt:async(id,delivery)=>{
           if(!['delivered','read'].includes(delivery))return;
@@ -198,6 +213,7 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
           const ids=payload.message_ids??[payload.message_id];
           if(!Array.isArray(ids)||ids.length<1||ids.length>6||ids[0]!==payload.message_id||new Set(ids).size!==ids.length||
               ids.some(id=>typeof id!=='string'||!/^[a-zA-Z0-9._:-]{1,160}$/.test(id)))throw Error('invalid_channel_batch');
+          const parts=assistantParts(payload.parts,ids,payload.text);
           let proofs=noticeProofs??(noticeProof?[noticeProof]:[]);
           if(!noticeProofs&&ids.length===1&&!(notices.get(proofs[0])?.phone===payload.phone&&notices.get(proofs[0])?.id===ids[0]))
             proofs=[await notice(payload)];
@@ -209,13 +225,14 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
           const stillCurrent=()=>{try{return isCurrent()&&batchCurrent()===true;}catch{return false;}};
           if(!stillCurrent()){c.summaryReview.set(payload.phone,true);return {state:'superseded',not_committed:true};}
           await assertCurrent();
-          if(!c.assistant)return;
+          if(!c.assistant)return {state:'policy_skipped',not_committed:true};
           if(typeof payload.text!=='string'||!payload.text.trim()||payload.text.length>1500)throw Error('invalid_channel_inbound');
           // Never accept tenant, owner, channel or model routing from content.
           observed.forEach(item=>{item.state='inflight';});
           try{
             const result=await broker.forward(c.id,c.key,{owner,fence:c.fence},
               {phone:payload.phone,message_id:payload.message_id,message_ids:ids,text:payload.text,intake_revision:revision,
+                ...(parts&&c.incomingParts?{parts}:{}),
                 require_summary_review:c.summaryReview.get(payload.phone)!==false,
                 ...(payload.envelope?{envelope:payload.envelope}:{})});
             if(result?.step==='superseded'&&result.answer===null&&result.not_committed===true){
@@ -228,8 +245,9 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
               c.summaryReview.set(payload.phone,true);return {state:'superseded_after_write',not_committed:false};
             }
             if(!stillCurrent()){c.summaryReview.set(payload.phone,true);return;}
-            if(result?.answer==null)return;
-            if(typeof result.answer!=='string'||!result.answer.trim()||result.answer.length>1200)throw Error('invalid_channel_reply');
+            if(result&&typeof result==='object'&&Object.hasOwn(result,'answer')&&result.answer===null)
+              return {state:'committed_no_reply',not_committed:false};
+            if(typeof result?.answer!=='string'||!result.answer.trim()||result.answer.length>1200)throw Error('invalid_channel_reply');
             if(typeof beforeReply==='function')await beforeReply(result.answer);
             await assertCurrent();
             if(!stillCurrent()){c.summaryReview.set(payload.phone,true);return;}
@@ -246,6 +264,7 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
       else disconnected(c,generation,'error');throw error;}
   }
   async function start(id,key,{resumeOnly=false,expectedTenant=null,expectedDevice=null}={}){
+    if(closed)throw Error('channel_manager_stopped');
     if(!channelId(id)||typeof key!=='string'||key.length<32||key.length>256)throw Error('invalid_channel');
     if(stopping.has(id))throw Error('channel_stopping');
     if(resumeOnly&&!resumeStore?.list().some(row=>row.id===id&&row.key===key&&row.tenant===expectedTenant))
@@ -253,7 +272,7 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
     const existing=contexts.get(id);
     if(existing){if(!sameKey(existing.key,key))throw Error('channel_unauthorized');await existing.starting;await validate(existing,key);return status(id,key);}
     if(contexts.size>=maxChannels)throw Error('channel_capacity');
-    const c={id,key,resumeOnly,deadline:0,fence:0,stopped:false,generation:0,attempts:0,sent:new Map(),summaryReview:new Map(),newLinkNotice:{pending:false},
+    const c={id,key,resumeOnly,deadline:0,fence:0,stopped:false,generation:0,attempts:0,sessionRecoveryAttempts:0,sent:new Map(),summaryReview:new Map(),newLinkNotice:{pending:false},
       capacity:makeSendCapacity({now:clock})};contexts.set(id,c);
     c.starting=(async()=>{
       const started=clock(),lease=await broker.lease(id,key,'claim',owner);
@@ -272,12 +291,18 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
   }
   async function status(id,key){
     const c=contexts.get(id);
-    if(!c){await broker.lease(id,key,'inspect',owner);return {channel_id:id,status:'stopped',capabilities:{pair:false}};}
+    if(!c){await broker.lease(id,key,'inspect',owner);const health=lastHealth.get(id);
+      return {channel_id:id,status:health?.state==='needs_attention'?'needs_attention':'stopped',
+        ...(health?{connection_health:health}:{}),capabilities:{pair:false}};}
     await validate(c,key);
-    const phase=c.session?.status?.()||'connecting',phone=phase==='connected'?c.session?.phone?.():null;
+    const liveHealth=c.session?.connectionHealth?.();if(liveHealth)c.health=liveHealth;
+    const phase=c.health?.state==='degraded'?'degraded':c.session?.status?.()||(c.health?.state==='reconnecting'?'reconnecting':'connecting'),
+      phone=['connected','degraded'].includes(phase)?c.session?.phone?.():null;
     const verified=typeof phone==='string'&&/^[1-9][0-9]{7,14}$/.test(phone);
     return {channel_id:id,status:phase,fence:c.fence,phone:verified?phone:null,phone_verified:verified,
+      ...(c.health?{connection_health:c.health}:{}),
       capabilities:{text:true,audio:audioEnabled()===true&&c.assistant===true,reliable_send:true,typing:true,
+        interactive_mode:process.env.QR_NATIVE_INTERACTIVE_ENABLED==='1'?'native_unverified':'text_fallback',
         pair:!c.legacyTransport&&typeof c.session?.pair==='function'&&c.session?.supportsPairing?.()===true}};
   }
   async function pair(id,key,{phone}){
@@ -378,7 +403,9 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
     if(!c){
       const row=await broker.lease(id,key,'inspect',owner);
       if(row?.channel_id!==id||row.provider!=='baileys'||row.legacy_transport===true||!validDeviceSnapshot(row.device))throw Error('device_unavailable');
-      return {...scopeOf(row.device),status:'stopped',phone:null,phone_verified:false,capabilities:{pair:false},applied_revision:null};
+      const health=lastHealth.get(id);
+      return {...scopeOf(row.device),status:health?.state==='needs_attention'?'needs_attention':'stopped',
+        ...(health?{connection_health:health}:{}),phone:null,phone_verified:false,capabilities:{pair:false},applied_revision:null};
     }
     const value=await status(id,key);
     if(!c.device)throw Error('device_unavailable');
@@ -496,7 +523,7 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
         await c.starting;await validate(c,key);resumeStore?.forget(id,key);retire(c);
         try{await broker.lease(id,key,'release',owner,c.fence);}catch{}
       }finally{stopping.delete(id);}},
-    close(){diagnostics.close();for(const c of contexts.values())retire(c);},
+    close(){closed=true;diagnostics.close();for(const c of contexts.values())retire(c);},
     get size(){return contexts.size;}};
 }
 function publicSend(id,record){return {operation_id:id,state:record.state,accepted:record.accepted===true,delivery:record.delivery};}

@@ -68,7 +68,11 @@ export function useDurableAuthState(directory,{secret,sdk,isCurrent=()=>true,bac
       const bytes=JSON.stringify({orion_auth_v:2,iv:iv.toString('base64'),tag:cipher.getAuthTag().toString('base64'),data:data.toString('base64')});
       fd=fs.openSync(tmp,'wx',0o600);fs.writeFileSync(fd,bytes);fs.fsyncSync(fd);fs.closeSync(fd);fd=undefined;
       guard();fs.renameSync(tmp,target);
-      const parent=fs.openSync(dir,'r');try{fs.fsyncSync(parent);}finally{fs.closeSync(parent);}
+      // Windows cannot open a directory for fsync. The file itself is still
+      // fsynced and renamed atomically; Linux deployment also fsyncs the name.
+      if(process.platform!=='win32'){
+        const parent=fs.openSync(dir,'r');try{fs.fsyncSync(parent);}finally{fs.closeSync(parent);}
+      }
     }finally{plain.fill(0);if(fd!==undefined)fs.closeSync(fd);fs.rmSync(tmp,{force:true});}
   }
   const fileFor=(type,id)=>{

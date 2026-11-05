@@ -1,6 +1,7 @@
 /** Encaminha apenas mensagem privada recém-recebida para a API Orion autorizada. */
 import {cleanContactProfile} from './contact-names.mjs';
-export async function forwardAssistant({apiUrl,token,phone,messageId,messageIds,text,intakeRevision,requireSummaryReview,profile,envelope,isCurrent=()=>true,fetchImpl=fetch}){
+import {assistantParts} from './assistant-parts.mjs';
+export async function forwardAssistant({apiUrl,token,phone,messageId,messageIds,text,parts,intakeRevision,requireSummaryReview,profile,envelope,isCurrent=()=>true,fetchImpl=fetch}){
   if(typeof token!=="string"||token.length<32)throw Error("bridge_key_missing");
   if(typeof phone!=="string"||!/^55[1-9]\d(?:9\d{8}|[2-5]\d{7})$/.test(phone))throw Error("invalid_recipient");
   if(typeof messageId!=="string"||! /^[a-zA-Z0-9._:-]{1,160}$/.test(messageId))throw Error("invalid_message_id");
@@ -12,6 +13,7 @@ export async function forwardAssistant({apiUrl,token,phone,messageId,messageIds,
     throw Error("invalid_message_ids");
   if(intakeRevision!==undefined&&(!Number.isSafeInteger(intakeRevision)||intakeRevision<1))
     throw Error("invalid_intake_revision");
+  const safeParts=assistantParts(parts,messageIds??[messageId],text);
   if(requireSummaryReview!==undefined&&typeof requireSummaryReview!=='boolean')
     throw Error('invalid_summary_review');
   const contactProfile=cleanContactProfile(profile);
@@ -23,6 +25,7 @@ export async function forwardAssistant({apiUrl,token,phone,messageId,messageIds,
   const timeout=setTimeout(()=>controller.abort(),19000);
   try{
     const payload={phone,message_id:messageId,text,...(envelope?{envelope}:{}),
+      ...(safeParts?{parts:safeParts}:{}),
       ...(intakeRevision===undefined?{}:{intake_revision:intakeRevision}),
       ...(requireSummaryReview===undefined?{}:{require_summary_review:requireSummaryReview}),
       ...(messageIds?.length>1?{message_ids:messageIds}:{})};

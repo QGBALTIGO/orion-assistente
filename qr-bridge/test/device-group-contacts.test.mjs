@@ -6,6 +6,7 @@ import {Readable} from 'node:stream';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import {DEFAULT_CONNECTION_CONFIG} from '@whiskeysockets/baileys';
 import {createDeviceGroupContacts,GROUP_CONTACTS_LIMITS,validGroupContactsRequest} from '../src/device-group-contacts.mjs';
 import {createChannelManager} from '../src/channel-manager.mjs';
 import {createChannelRoutes} from '../src/channel-routes.mjs';
@@ -255,7 +256,8 @@ for(const mode of ['credential','fence','generation','settings','disconnected'])
   });
 
 test('real session adapter exposes reads only after open and guards its socket independently of manager authorization',async t=>{
-  const directory=temp(t),deviceDirectory=path.join(directory,'device');fs.mkdirSync(deviceDirectory,{mode:0o700});
+  const root=temp(t),directory=path.join(root,randomUUID()),deviceDirectory=path.join(root,'device');
+  fs.mkdirSync(directory,{mode:0o700});fs.mkdirSync(deviceDirectory,{mode:0o700});
   const device=snapshot(),events=[],effects=[],tasks=new Map();let serial=0,alive=true,reads=0;
   const client={ev:new EventEmitter(),user:{id:PHONE+'@s.whatsapp.net'},end(){},
     groupFetchAllParticipating:async()=>{reads++;return {[GROUP]:metadata([])};},groupMetadata:async()=>metadata([]),
@@ -265,7 +267,8 @@ test('real session adapter exposes reads only after open and guards its socket i
     allowedSender:()=>false,assistantEnabled:()=>false,audioEnabled:()=>false,onConnected(){},onDisconnected(){},
     deviceEvent:async row=>{events.push(row);return {effects:[]};},deviceEffectsPending:async()=>({effects:[],reconcile:[]}),
     deviceEffectAuthorize:()=>{effects.push('authorize');assert.fail('No outbound effect');},deviceEffectFinish:()=>assert.fail('No effect finish')};
-  const mod={default:()=>client,BufferJSON:{},initAuthCreds:()=>({registered:true}),Browsers:{windows:()=>['synthetic']},
+  const mod={DEFAULT_CONNECTION_CONFIG:{version:DEFAULT_CONNECTION_CONFIG.version},
+    default:()=>client,BufferJSON:{},initAuthCreds:()=>({registered:true}),Browsers:{windows:()=>['synthetic']},
     DisconnectReason:{loggedOut:401},proto:{Message:{AppStateSyncKeyData:{fromObject:value=>value}}}};
   const session=await createBaileysChannelSession(context,{loadBaileys:async()=>mod,schedule:(fn,ms)=>{const id=++serial;tasks.set(id,{fn,ms});return id;},cancel:id=>tasks.delete(id)});
   t.after(()=>session.close());

@@ -6,6 +6,7 @@ O preview usa estado isolado e nunca grava reserva nem envia mensagens externas.
 import asyncio
 import hashlib
 import json
+import logging
 import math
 import os
 import re
@@ -35,6 +36,7 @@ from app import qr_presentation as presentation
 from app import qr_commerce
 from app import qr_intake_revision
 from app import qr_channel_scope
+from app import qr_conversation_lock
 from app import qr_cancellation
 from app.communication_events import EventMetadata
 from app.qr_service_context import resolve_service_reply
@@ -131,11 +133,17 @@ def _summary(state: dict, when: str | datetime, business: dict, catalog: list[di
                             if str(item["id"]) in state["services"]) else "fixed")
 
 
+class IncomingPart(StrictModel):
+    message_id: str = Field(min_length=1, max_length=160, pattern=r"^[a-zA-Z0-9._:-]+$")
+    text: str = Field(min_length=1, max_length=1500)
+
+
 class Incoming(StrictModel):
     phone: str = Field(pattern=r"^55[1-9][0-9](?:9[0-9]{8}|[2-5][0-9]{7})$")
     message_id: str = Field(min_length=1, max_length=160, pattern=r"^[a-zA-Z0-9._:-]+$")
     text: str = Field(min_length=1, max_length=1500)
     message_ids: list[str] | None = Field(default=None, min_length=1, max_length=6)
+    parts: list[IncomingPart] | None = Field(default=None, min_length=1, max_length=6)
     intake_revision: int | None = Field(default=None, ge=1, le=9007199254740991, strict=True)
     require_summary_review: bool = Field(default=False, strict=True)
     profile: WhatsAppProfile | None = None
@@ -147,6 +155,11 @@ class Incoming(StrictModel):
             if (self.message_ids[0] != self.message_id or len(set(self.message_ids)) != len(self.message_ids)
                     or any(not re.fullmatch(r"[a-zA-Z0-9._:-]{1,160}", x) for x in self.message_ids)):
                 raise ValueError("Identificadores do grupo inválidos")
+        if self.parts is not None:
+            if ([part.message_id for part in self.parts] != (self.message_ids or [self.message_id])
+                    or any(not part.text.strip() for part in self.parts)
+                    or "\n".join(part.text for part in self.parts) != self.text):
+                raise ValueError("Partes do grupo não correspondem à mensagem")
         return self
 
 
@@ -2684,6 +2697,19 @@ for i,key in ipairs(KEYS) do
 end
 return 1
 """
+_STATE_RESTORE_OWNED_SCRIPT = """
+if redis.call('GET',KEYS[4])~=ARGV[10] then return 0 end
+for i=1,3 do
+ local key=KEYS[i]
+ local offset=(i-1)*3
+ local present=tonumber(ARGV[offset+1])
+ local ttl=tonumber(ARGV[offset+3])
+ if present==1 and ttl==-1 then redis.call('SET',key,ARGV[offset+2])
+ elseif present==1 and ttl>0 then redis.call('SET',key,ARGV[offset+2],'PX',ttl)
+ else redis.call('DEL',key) end
+end
+return 1
+"""
 
 
 def _provisional_keys(key: str):
@@ -2707,7 +2733,13 @@ async def _restore_provisional_state(redis, key: str, snapshot):
     for index in (0, 2, 4):
         value, ttl = rows[index:index+2]
         args.extend((int(value is not None), value if value is not None else "", ttl - elapsed if ttl >= 0 else ttl))
-    await redis.eval(_STATE_RESTORE_SCRIPT, 3, *_provisional_keys(key), *args)
+    fence = qr_conversation_lock.ownership()
+    if fence is None:
+        await redis.eval(_STATE_RESTORE_SCRIPT, 3, *_provisional_keys(key), *args)
+    else:
+        lock_key, token = fence
+        if await redis.eval(_STATE_RESTORE_OWNED_SCRIPT, 4, *_provisional_keys(key), lock_key, *args, token) != 1:
+            raise HTTPException(409, "A posse desta conversa mudou durante a recuperação")
 
 
 async def _require_pending_review(redis, key: str):
@@ -2719,14 +2751,14 @@ async def _require_pending_review(redis, key: str):
     if isinstance(state, dict) and state.get("step") in {"confirm", "reschedule_confirm", "cancel_confirm"}:
         state["confirmation_requires_review"] = True
         state["confirmation_message_id"] = None
-        await redis.set(key, json.dumps(state), ex=_remaining_state_ttl(state))
+        await qr_conversation_lock.set_cleanup(redis, key, json.dumps(state), ex=_remaining_state_ttl(state))
     try:
         commerce = json.loads(await redis.get(key + ":commerce") or "null")
     except (TypeError, ValueError):
         commerce = None
     if isinstance(commerce, dict) and commerce.get("pending"):
         commerce["last_message_id"] = None
-        await redis.set(key + ":commerce", json.dumps(commerce), ex=STATE_TTL)
+        await qr_conversation_lock.set_cleanup(redis, key + ":commerce", json.dumps(commerce), ex=STATE_TTL)
 
 
 from app.plan_execution import requires_plan
@@ -2737,7 +2769,8 @@ async def run_locked(tenant: UUID, phone: str, body: str, namespace: str,
                      message_id: str | None = None, preview: bool = False,
                      prepare=None, reset: bool = False, message_ids: list[str] | None = None,
                      intake_revision: int | None = None, require_summary_review: bool = False,
-                     event_meta: dict | None = None):
+                     event_meta: dict | None = None, parts: list[IncomingPart] | None = None,
+                     processing_deadline: float | None = None):
     from redis.asyncio import from_url
     from app import qr_operation_receipt, inbox_control
     channel = qr_channel_scope.current()
@@ -2747,19 +2780,58 @@ async def run_locked(tenant: UUID, phone: str, body: str, namespace: str,
         await qr_channel_scope.assert_current()
     redis = from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"),
                      socket_connect_timeout=3, socket_timeout=20)
-    lock = redis.lock(f"orion:qr:ai:lock:{tenant}:{namespace}", timeout=90, blocking_timeout=4)
+    lock = redis.lock(f"orion:qr:ai:lock:{tenant}:{namespace}", timeout=qr_conversation_lock.LOCK_SECONDS, blocking_timeout=4)
     revision_token = None
     provisional_snapshot = None
     state_key = f"orion:qr:ai:{tenant}:{namespace}"
     try:
-        async with lock:
+        async with qr_conversation_lock.hold(lock, deadline=processing_deadline, preview=preview):
             ids = message_ids or ([message_id] if message_id else [])
             keys = [f"orion:qr:ai:done:{tenant}:{namespace}:{item}" for item in ids]
             legacy_keys = [] if preview or channel is not None and not channel.legacy_transport else [f"orion:qr:ai:done:{tenant}:{item}" for item in ids]
-            if any([await redis.exists(key) for key in keys + legacy_keys]):
+            known = [bool(await redis.exists(key)) or bool(legacy_keys and await redis.exists(legacy_keys[index]))
+                     for index, key in enumerate(keys)]
+            if known and all(known):
                 return {"answer": None, "step": "duplicate"}
+            if any(known):
+                # A merged string cannot safely be split by newlines: one
+                # original message can itself contain several lines. Only the
+                # authenticated, exactly validated parts retain that boundary.
+                if parts is None:
+                    return {"answer": "Recebi uma parte repetida da conversa. Envie novamente apenas o pedido que ainda falta.",
+                            "step": "partial_duplicate"}
+                if ([part.message_id for part in parts] != ids
+                        or "\n".join(part.text for part in parts) != body):
+                    raise HTTPException(422, "Partes do grupo inválidas")
+                fresh = [part for part, done in zip(parts, known) if not done]
+                ids, body = [part.message_id for part in fresh], "\n".join(part.text for part in fresh)
+                message_id = ids[0]
+                keys = [f"orion:qr:ai:done:{tenant}:{namespace}:{item}" for item in ids]
+                legacy_keys = [] if preview or channel is not None and not channel.legacy_transport else [f"orion:qr:ai:done:{tenant}:{item}" for item in ids]
             if not preview and qr_intake_revision.enabled():
                 revision_token = qr_intake_revision.bind(tenant, phone, ids, intake_revision, redis)
+
+            async def recover_interrupted():
+                # A revoked owner cannot restore over the next owner's state.
+                # Started writes stay uncertain even with the ingress flag off.
+                wrote = qr_intake_revision.write_started() or qr_conversation_lock.write_started()
+                try:
+                    async with asyncio.timeout(qr_conversation_lock.CLEANUP_SECONDS):
+                        if (channel is not None or wrote) and await qr_conversation_lock.owns_lock():
+                            if not wrote:
+                                await _restore_provisional_state(redis, state_key, provisional_snapshot)
+                            else:
+                                # Consume before optional proposal repair: a
+                                # failed state read cannot authorize a replay.
+                                async with redis.pipeline(transaction=True) as pipe:
+                                    for key in keys:
+                                        pipe.set(key, "1", ex=604800, nx=True)
+                                    await pipe.execute()
+                                await _require_pending_review(redis, state_key)
+                except Exception as cleanup_error:
+                    logging.getLogger(__name__).warning("qr_conversation_cleanup_incomplete type=%s",
+                                                       type(cleanup_error).__name__)
+
             try:
                 await qr_intake_revision.assert_current()
                 if not preview and message_id:
@@ -2829,33 +2901,33 @@ async def run_locked(tenant: UUID, phone: str, body: str, namespace: str,
                     await _restore_provisional_state(redis, state_key, provisional_snapshot)
                     return result
                 await _require_pending_review(redis, f"orion:qr:ai:{tenant}:{namespace}")
-            except HTTPException:
-                if channel is not None:
-                    if not qr_intake_revision.write_started():
-                        await _restore_provisional_state(redis, state_key, provisional_snapshot)
-                    else:
-                        # Lease loss after a write began is uncertain, never a
-                        # permission to replay that message's domain operation.
-                        await _require_pending_review(redis, state_key)
-                        async with redis.pipeline(transaction=True) as pipe:
-                            for key in keys:
-                                pipe.set(key, "1", ex=604800, nx=True)
-                            await pipe.execute()
+            except (Exception, asyncio.CancelledError):
+                await recover_interrupted()
                 raise
-            if keys:
-                async with redis.pipeline(transaction=True) as pipe:
-                    for key in keys + legacy_keys:
-                        pipe.set(key, "1", ex=604800, nx=True)
-                    await pipe.execute()
+            try:
+                if keys:
+                    async with redis.pipeline(transaction=True) as pipe:
+                        for key in keys + legacy_keys:
+                            pipe.set(key, "1", ex=604800, nx=True)
+                        await pipe.execute()
+            except (Exception, asyncio.CancelledError):
+                await recover_interrupted()
+                raise
             return result
     finally:
         if revision_token is not None:
             qr_intake_revision.reset(revision_token)
-        await redis.aclose()
+        try:
+            async with asyncio.timeout(qr_conversation_lock.CLEANUP_SECONDS):
+                await redis.aclose()
+        except Exception as cleanup_error:
+            logging.getLogger(__name__).warning("qr_conversation_close_incomplete type=%s",
+                                               type(cleanup_error).__name__)
 
 
 @router.post("/internal/qr/ai/reply", include_in_schema=False)
 async def qr_reply(payload: Incoming, request: Request):
+    processing_deadline = monotonic() + qr_conversation_lock.PROCESSING_SECONDS
     configured = os.getenv("QR_BRIDGE_TOKEN", "")
     given = request.headers.get("x-orion-bridge-key", "")
     if len(configured) < 32 or not secrets.compare_digest(configured, given):
@@ -2889,6 +2961,8 @@ async def qr_reply(payload: Incoming, request: Request):
 
     return await run_locked(tenant, payload.phone, payload.text, payload.phone, payload.message_id,
                             message_ids=payload.message_ids, intake_revision=payload.intake_revision,
+                            parts=payload.parts,
+                            processing_deadline=processing_deadline,
                             require_summary_review=payload.require_summary_review,
                             prepare=remember_profile if payload.profile else None,
                             **({'event_meta':payload.envelope.model_dump(exclude_none=True)} if payload.envelope else {}))
@@ -2973,6 +3047,7 @@ async def managed_qr_interaction(channel_id: UUID, payload: qr_intake_revision.N
 
 @router.post("/internal/qr/channels/{channel_id}/ai/reply", include_in_schema=False)
 async def managed_qr_reply(channel_id: UUID, payload: Incoming, request: Request):
+    processing_deadline = monotonic() + qr_conversation_lock.PROCESSING_SECONDS
     from app.qr_channels import authenticated_channel
     identity = await authenticated_channel(request, phone=payload.phone)
     if not identity.assistant_enabled or not await _managed_assistant_ready(identity):
@@ -3009,6 +3084,8 @@ async def managed_qr_reply(channel_id: UUID, payload: Incoming, request: Request
         result = await run_locked(identity.tenant_id, payload.phone, payload.text,
             identity.conversation_namespace(payload.phone), payload.message_id,
             message_ids=ids, intake_revision=payload.intake_revision,
+            parts=payload.parts,
+            processing_deadline=processing_deadline,
             require_summary_review=payload.require_summary_review,
             **({'event_meta':payload.envelope.model_dump(exclude_none=True)} if payload.envelope else {}))
         if inbox_control.enabled():

@@ -72,8 +72,10 @@ export function makeEncryptedRetryStore({
         }finally{fs.closeSync(fd)}
         fs.renameSync(tmp,target);
         // Persist the filename as well as the ciphertext on Linux volumes.
-        const directoryFd=fs.openSync(directory,"r");
-        try{fs.fsyncSync(directoryFd)}finally{fs.closeSync(directoryFd)}
+        if(process.platform!=='win32'){
+          const directoryFd=fs.openSync(directory,"r");
+          try{fs.fsyncSync(directoryFd)}finally{fs.closeSync(directoryFd)}
+        }
       }finally{fs.rmSync(tmp,{force:true})}
       prune();
       // A limit must never report a durable pre-relay copy after evicting it.

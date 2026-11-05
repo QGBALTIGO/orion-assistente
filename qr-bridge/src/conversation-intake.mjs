@@ -7,7 +7,7 @@ export function makeConversationIntake({consume,onRejected=async()=>{},settleMs=
   maxMessages=6,maxTextChars=1500,maxPending=20,maxConversations=100,
   maxSeen=2000,seenTtlMs=86400000,prepareTimeoutMs=40000,
   now=Date.now,sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms)),
-  isDuplicate=()=>false}={}){
+  isDuplicate=()=>false,retryUnconsumedNoticeFailures=false}={}){
   if(typeof consume!=='function'||typeof onRejected!=='function'||typeof isDuplicate!=='function'||
       !Number.isSafeInteger(settleMs)||settleMs<0||settleMs>2000||
       !Number.isSafeInteger(maxGroupMs)||maxGroupMs<settleMs||maxGroupMs>5000||
@@ -17,7 +17,8 @@ export function makeConversationIntake({consume,onRejected=async()=>{},settleMs=
       !Number.isSafeInteger(maxConversations)||maxConversations<1||maxConversations>1000||
       !Number.isSafeInteger(maxSeen)||maxSeen<maxPending||maxSeen>100000||
       !Number.isSafeInteger(seenTtlMs)||seenTtlMs<1||
-      !Number.isSafeInteger(prepareTimeoutMs)||prepareTimeoutMs<1||prepareTimeoutMs>120000)
+      !Number.isSafeInteger(prepareTimeoutMs)||prepareTimeoutMs<1||prepareTimeoutMs>120000||
+      typeof retryUnconsumedNoticeFailures!=='boolean')
     throw Error('Invalid conversation intake configuration');
   const conversations=new Map(),seen=new Map(),active=new Set();
   function prune(){
@@ -53,7 +54,14 @@ export function makeConversationIntake({consume,onRejected=async()=>{},settleMs=
     }catch{return {state:current(entry)?'prepare_failed':'stale'};}
     finally{clearTimeout(timer);}
   }
-  function finish(entries,state){for(const entry of entries){active.delete(entry.dedupe);delete entry.preparedResult;entry.resolve({state});}}
+  function finish(entries,state){for(const entry of entries){
+    active.delete(entry.dedupe);
+    // Explicit admission recovery only: a failed notice ran no preparation or
+    // consumer. Never release a claim that reached either boundary.
+    if(retryUnconsumedNoticeFailures&&state==='revision_failed'&&entry.noticeFailed===true&&
+        !entry.preparedResult&&!entry.consumeStarted)seen.delete(entry.dedupe);
+    delete entry.preparedResult;entry.resolve({state});
+  }}
   async function settle(state,started){
     // Debounce short bursts, but a continuous stream cannot extend this window.
     for(;;){
@@ -86,14 +94,19 @@ export function makeConversationIntake({consume,onRejected=async()=>{},settleMs=
         if(state.incomplete)failed=failed||'needs_clarification';
         if(text.length>maxTextChars)failed=failed||'needs_clarification';
         if(batch.some(entry=>!current(entry)))failed='stale';
+        if(retryUnconsumedNoticeFailures&&failed!=='stale'&&batch.some(entry=>entry.noticeFailed))failed='revision_failed';
         if(failed){
-          try{await onRejected(Object.freeze({conversationKey:key,reason:failed,
-            messageIds:Object.freeze(batch.map(entry=>entry.messageId)),isCurrent:()=>batch.every(current)}));}catch{}
+          // The opt-in caller has a durable admission queue. Do not introduce
+          // an ambiguous rejection send before releasing a failed notice.
+          if(!(retryUnconsumedNoticeFailures&&failed==='revision_failed'))
+            try{await onRejected(Object.freeze({conversationKey:key,reason:failed,
+              messageIds:Object.freeze(batch.map(entry=>entry.messageId)),isCurrent:()=>batch.every(current)}));}catch{}
           finish(batch,failed);
         }
         else if(!prepared.length)finish(batch,'skipped');
         else{
           try{
+            batch.forEach(entry=>{entry.consumeStarted=true;});
             const revision=Math.max(0,...batch.map(entry=>entry.revision||0));
             const outcome=await consume(Object.freeze({conversationKey:key,text,
               messages:Object.freeze(prepared.map(item=>Object.freeze(item))),
@@ -145,10 +158,10 @@ export function makeConversationIntake({consume,onRejected=async()=>{},settleMs=
       const entry={messageId,dedupe,prepare:prepareMessage,isCurrent,at:state.lastAt};
       if(notice)entry.notice=Promise.resolve().then(notice).then(result=>{
         if(result?.skip===true)return {skip:true};
-        if(!Number.isSafeInteger(result?.revision)||result.revision<1)return {failed:true};
+        if(!Number.isSafeInteger(result?.revision)||result.revision<1){entry.noticeFailed=true;return {failed:true};}
         entry.revision=result.revision;state.revision=Math.max(state.revision,result.revision);
         return result;
-      },()=>({failed:true}));
+      },()=>{entry.noticeFailed=true;return {failed:true};});
       const promise=new Promise(resolve=>{entry.resolve=resolve;state.queue.push(entry);});
       if(!state.running){state.running=true;void drain(conversationKey,state);}
       return promise;

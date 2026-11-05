@@ -27,7 +27,7 @@ test('fresh identity is durable before the first socket and every native key typ
   for(const name of fs.readdirSync(dir)){
     const bytes=fs.readFileSync(path.join(dir,name),'utf8');
     assert.equal(JSON.parse(bytes).orion_auth_v,2);assert.doesNotMatch(bytes,/ratchet-state|sender-state|advSecretKey|signedIdentityKey/);
-    assert.equal(fs.statSync(path.join(dir,name)).mode&0o777,0o600);
+    if(process.platform!=='win32')assert.equal(fs.statSync(path.join(dir,name)).mode&0o777,0o600);
   }
 });
 
@@ -92,7 +92,7 @@ test('key deletion remains a tombstone and cannot revive an old prekey',async t=
   assert.equal((await useDurableAuthState(dir,{secret,sdk}).state.keys.get('pre-key',['12']))['12'],null);
 });
 
-test('symlink credentials and unexpected auth paths fail closed',async t=>{
+test('symlink credentials and unexpected auth paths fail closed',{skip:process.platform==='win32'?'Windows file symlink permission is unavailable in this test environment':false},async t=>{
   const {root,dir}=fixture(t);fs.mkdirSync(dir);const elsewhere=path.join(root,'original');fs.writeFileSync(elsewhere,'{}');
   fs.symlinkSync(elsewhere,path.join(dir,'creds.json'));
   assert.throws(()=>useDurableAuthState(dir,{secret,sdk}));assert.equal(fs.readFileSync(elsewhere,'utf8'),'{}');

@@ -34,36 +34,65 @@ export function validDeviceSnapshot(value){
 }
 
 export function createDeviceRuntime(context,{client,downloadMediaMessage,logger,sendText,sendChatbot,isGeneratedMessage=()=>false,
+  resolveSelection=()=>null,ingressJournal,onIngressError=()=>{},
   now=Date.now,openedAt=now(),schedule=setTimeout,cancel=clearTimeout,
   postWebhook=postDeviceWebhook,downloadOptions={},capacity=makeSendCapacity({now}),pollMs=5000,chatbotOptions={}}={}){
   const initial=context.deviceSnapshot?.();if(!validDeviceSnapshot(initial))throw Error('invalid_device_snapshot');
+  if(!ingressJournal||!['append','pending','ack','begin','complete','block','diagnostics'].every(key=>typeof ingressJournal[key]==='function'))throw Error('device_ingress_journal_required');
   const directory=privateDirectory(path.join(context.deviceDirectory,'effects'));
   const ledger=sendLedger(directory,context.secret);
   const seen=new Set(),inflight=new Set(),controllers=new Set(),sent=new Map();
+  const incoming=new Set(),replayWaiters=new Set(),admissionWaiters=new Set();let ingressError=null;
   let closed=false,connected=false,pending=0,audioBusy=false,webhookBusy=false,poll=null,polling=false,audioTail=Promise.resolve(),ingressOrder=0;
   const current=expected=>!closed&&context.isCurrent()&&same(expected,context.deviceSnapshot());
   const guard=async expected=>{if(!current(expected))throw Error('device_operation_superseded');await context.assertCurrent();if(!current(expected))throw Error('device_operation_superseded');};
+  const ingressBlocked=()=>{const backlog=ingressJournal.diagnostics();return ingressError!==null||backlog.pending>0||backlog.blocked>0;};
+  const effectCurrent=expected=>current(expected)&&!ingressBlocked();
+  const guardEffect=async expected=>{await guard(expected);if(ingressBlocked())throw Error('device_ingress_review_required');};
+  function journalFailure(error){
+    ingressError=error?.message==='ingress_journal_full'?'ingress_journal_full':'ingress_journal_unavailable';
+    try{onIngressError(ingressError,ingressJournal.diagnostics());}catch{}
+  }
+  function journalBlock(id,reason){try{ingressJournal.block(id,reason);}catch(error){journalFailure(error);}}
+  const ingressScope=expected=>({tenant_id:context.tenantId,channel_id:context.channelId,...scope(expected)});
+  const sameIngressScope=(entry,expected)=>Object.entries(ingressScope(expected)).every(([key,value])=>entry.scope[key]===value);
+  function wakeReplay(){for(const resolve of replayWaiters)resolve();replayWaiters.clear();}
+  const waitForReplay=()=>new Promise(resolve=>replayWaiters.add(resolve));
+  function wakeAdmission(){for(const resolve of admissionWaiters)resolve();admissionWaiters.clear();}
+  const waitForAdmission=()=>new Promise(resolve=>admissionWaiters.add(resolve));
   const remember=id=>{if(seen.has(id))return false;seen.add(id);if(seen.size>2000)seen.delete(seen.values().next().value);return true;};
   function controller(expected){
     const abort=new AbortController();controllers.add({abort,expected});return abort;
   }
   function releaseController(abort){for(const entry of controllers)if(entry.abort===abort)controllers.delete(entry);}
-  function sync(){for(const entry of controllers)if(!current(entry.expected))entry.abort.abort();chatbot.sync();campaigns.sync();schedules.sync();bulk.sync();}
+  function sync(){for(const entry of controllers)if(!effectCurrent(entry.expected))entry.abort.abort();chatbot.sync();campaigns.sync();schedules.sync();bulk.sync();wakeReplay();pumpIngress();}
   async function finish(expected,operation_id,state,extra={}){
     try{await context.deviceEffectFinish({...scope(expected),operation_id,state,...extra});}catch{/* The durable grant stays conservative if acknowledgement is lost. */}
   }
-  async function event(expected,data,sourceMessage){
+  async function event(expected,data,sourceMessage,onAdmitted,deferEffects=false){
     await guard(expected);
     const result=await context.deviceEvent({...scope(expected),...data});
     await guard(expected);
     if(!result||!Array.isArray(result.effects)||result.effects.length>32)throw Error('invalid_device_effects');
-    await effects(result.effects,{expected,message:sourceMessage});return result;
+    if(onAdmitted){
+      if(result.ignored==='stale_event'){const error=Error('incoming_expired');error.ingressReason='expired';throw error;}
+      if(result.ignored!==undefined||typeof result.duplicate!=='boolean')throw Error('invalid_device_admission');
+      // Admission and effect execution are separate. A lost/ambiguous effect
+      // acknowledgement must never cause the incoming event to be replayed.
+      onAdmitted(result);
+    }
+    if(deferEffects)return result;
+    return {...result,...await effects(result.effects,{expected,message:sourceMessage})};
   }
   async function effects(items,{expected=context.deviceSnapshot(),message}={}){
+    if(ingressBlocked())return {source_consumed:false,source_deferred:ingressJournal.diagnostics().blocked===0&&!ingressError};
+    let consumed=false,deferred=false;
     for(const item of items||[]){
-      if(!knownEffect(item)||!current(expected))continue;
-      await execute(item,{expected,message});
+      if(!knownEffect(item))continue;
+      if(!effectCurrent(expected)){if(item.type==='transcribe'&&current(expected)&&ingressJournal.diagnostics().pending>0)deferred=true;continue;}
+      const result=await execute(item,{expected,message});if(result?.source_consumed===true)consumed=true;if(result?.source_deferred===true)deferred=true;
     }
+    return {source_consumed:consumed,source_deferred:deferred};
   }
   async function reconcile(items,expected){
     await chatbot.reconcile(items,expected);
@@ -84,6 +113,7 @@ export function createDeviceRuntime(context,{client,downloadMediaMessage,logger,
     }
   }
   async function execute(item,{expected,message}={}){
+    if(!effectCurrent(expected))return;
     if(isChatbotEffect(item))return chatbot.execute(item,{expected});
     if(isCampaignEffect(item))return campaigns.execute(item,{expected});
     if(isScheduledEffect(item))return schedules.execute(item,{expected});
@@ -100,13 +130,13 @@ export function createDeviceRuntime(context,{client,downloadMediaMessage,logger,
       await previous;audioBusy=true;
     }
     try{
-      await guard(expected);
+      await guardEffect(expected);
       // Backpressure happens before claiming the SQL effect, so a waiting
       // process crash does not turn a definitely-unsent part into uncertainty.
-      if(item.type==='send_text')await capacity.acquire({wait:true,isCurrent:()=>current(expected)});
-      await guard(expected);
+      if(item.type==='send_text')await capacity.acquire({wait:true,isCurrent:()=>effectCurrent(expected)});
+      await guardEffect(expected);
       permit=await context.deviceEffectAuthorize({...scope(expected),operation_id:id});
-      await guard(expected);
+      await guardEffect(expected);
       if(permit?.authorized!==true||permit.operation_id!==id||permit.type!==item.type||
           permit.device_id!==expected.id||permit.generation!==expected.generation||permit.settings_revision!==expected.settings_revision||
           !permit.payload||typeof permit.payload!=='object'||Array.isArray(permit.payload))throw Error('device_effect_refused');
@@ -121,20 +151,21 @@ export function createDeviceRuntime(context,{client,downloadMediaMessage,logger,
           const old=reserved.record;
           await finish(expected,id,old.accepted?'accepted':old.state==='refused'?'not_sent':'uncertain',
             {...(old.provider_id?{provider_id:old.provider_id}:{}),
-              ...(!old.accepted&&safeMessageFailureCode(old.error_code)?{error_code:old.error_code}:{})});return;
+              ...(!old.accepted&&safeMessageFailureCode(old.error_code)?{error_code:old.error_code}:{})});
+          return {source_consumed:item.type==='transcribe'&&old.accepted===true};
         }
       }
       abort=controller(expected);
       if(item.type==='send_text'){
         if(!phonePattern.test(data.phone)||typeof data.text!=='string'||!data.text.trim()||data.text.length>DEVICE_TEXT_MAX_CHARS)throw Error('device_effect_invalid');
         const recheck=async()=>{
-          await guard(expected);
+          await guardEffect(expected);
           const fresh=await context.deviceEffectAuthorize({...scope(expected),operation_id:id,recheck:true});
-          await guard(expected);
+          await guardEffect(expected);
           if(diagnosticMessagePermit(fresh,expected,id).fingerprint!==diagnostic.fingerprint)throw Error('diagnostic_message_refused');
         };
-        await guard(expected);if(!diagnostic)attempted=true;
-        const result=await sendText(data.phone,data.text,{isCurrent:()=>current(expected)&&!abort.signal.aborted,maxTextChars:DEVICE_TEXT_MAX_CHARS,
+        await guardEffect(expected);if(!diagnostic)attempted=true;
+        const result=await sendText(data.phone,data.text,{isCurrent:()=>effectCurrent(expected)&&!abort.signal.aborted,maxTextChars:DEVICE_TEXT_MAX_CHARS,
           ...(diagnostic?{diagnostic,assertAuthorized:recheck,onRelayAttempt:()=>{attempted=true;}}:{})});
         if(!messageId(result?.id))throw Error('device_send_unknown');
         ledger.save(id,{...reserved.record,state:'accepted',accepted:true,provider_id:result.id});
@@ -142,32 +173,34 @@ export function createDeviceRuntime(context,{client,downloadMediaMessage,logger,
         await finish(expected,id,'accepted',{provider_id:result.id});
       }else if(item.type==='reject_call'){
         if(!messageId(data.call_id)||typeof data.call_from!=='string'||!privateJid.test(data.call_from)||typeof client.rejectCall!=='function')throw Error('device_effect_invalid');
-        await guard(expected);attempted=true;await client.rejectCall(data.call_id,data.call_from);
+        await guardEffect(expected);attempted=true;await client.rejectCall(data.call_id,data.call_from);
         ledger.save(id,{...reserved.record,state:'accepted',accepted:true});await finish(expected,id,'accepted');
       }else if(item.type==='transcribe'){
         if(!message||data.message_id!==message.key?.id||!phonePattern.test(data.phone)||expected.settings.transcription?.enabled!==true||
             expected.capabilities.transcription_available!==true||data.max_seconds>expected.settings.transcription.max_minutes*60||
             data.max_seconds>expected.capabilities.transcription_max_seconds||data.max_bytes>expected.capabilities.transcription_max_bytes)throw Error('device_audio_unavailable');
         const result=await withDeviceAudio(message,{client,downloadMediaMessage,logger,signal:abort.signal,downloadOptions,
-          maxBytes:data.max_bytes,maxSeconds:data.max_seconds,assertCurrent:()=>guard(expected)},async payload=>{
-          await guard(expected);attempted=true;
+          maxBytes:data.max_bytes,maxSeconds:data.max_seconds,assertCurrent:()=>guardEffect(expected)},async payload=>{
+          await guardEffect(expected);attempted=true;
           return context.deviceTranscribe({...scope(expected),operation_id:id,phone:data.phone,...payload});
         });
         if(!result||result.truncated!==false||typeof result.text!=='string'||!result.text.trim()||result.text.length>240000||[...result.text].length>120000||
             !Array.isArray(result.effects)||result.effects.length>32)throw Error('device_audio_unavailable');
-        await guard(expected);ledger.save(id,{...reserved.record,state:'accepted',accepted:true});
+        await guardEffect(expected);ledger.save(id,{...reserved.record,state:'accepted',accepted:true});
         await finish(expected,id,'accepted');await effects(result.effects,{expected});
         // Only explicit server-derived Chatbot effects can follow ASR.
         // The transcript never enters legacy AI or appointment intake.
+        return {source_consumed:true};
       }else if(item.type==='webhook'){
         if(expected.settings.webhook?.enabled!==true||expected.capabilities.webhook!==true||
             typeof data.url!=='string'||typeof data.body!=='object'||!messageId(data.event_id))throw Error('device_webhook_unavailable');
-        await guard(expected);attempted=true;
+        await guardEffect(expected);attempted=true;
         await postWebhook({url:data.url,payload:data.body,eventId:data.event_id,signal:abort.signal,
-          isCurrent:()=>current(expected),assertCurrent:()=>guard(expected)});
+          isCurrent:()=>effectCurrent(expected),assertCurrent:()=>guardEffect(expected)});
         await finish(expected,id,'accepted');
       }
     }catch(error){
+      if(item.type==='transcribe'&&!permit&&current(expected)&&!ingressError&&ingressJournal.diagnostics().pending>0&&ingressJournal.diagnostics().blocked===0)return {source_deferred:true};
       const definitelyUnsent=!attempted||item.type==='send_text'&&knownMessagePreflight(error)!==null;
       const state=definitelyUnsent?'not_sent':'uncertain';
       const error_code=item.type==='send_text'?messageFailureCode(error,{beforeSend:definitelyUnsent,current:current(expected)}):
@@ -187,7 +220,10 @@ export function createDeviceRuntime(context,{client,downloadMediaMessage,logger,
     cancel(poll);if(closed||!connected)return;
     poll=schedule(async()=>{
       if(polling||closed||!connected)return nextPoll();polling=true;
-      try{const expected=context.deviceSnapshot();await guard(expected);
+      try{wakeReplay();wakeAdmission();pumpIngress();const expected=context.deviceSnapshot();await guard(expected);
+        // Give retained controls/opt-outs precedence over automatic outbox
+        // admission. Blocked input requires explicit operator review.
+        const backlog=ingressJournal.diagnostics();if(backlog.pending>0||backlog.blocked>0||ingressError)return;
         const result=await context.deviceEffectsPending(scope(expected));await guard(expected);
         if(Array.isArray(result?.reconcile)&&result.reconcile.length<=32)await reconcile(result.reconcile,expected);
         if(Array.isArray(result?.effects)&&result.effects.length<=32)await effects(result.effects,{expected});
@@ -204,31 +240,112 @@ export function createDeviceRuntime(context,{client,downloadMediaMessage,logger,
     for(const message of messages){
       const key=message?.key,at=timestampMs(message?.messageTimestamp),expected=context.deviceSnapshot();
       if(!current(expected)||![false,true].includes(key?.fromMe)||!messageId(key?.id)||!privateJid.test(key?.remoteJid||'')||
-          !at||at<openedAt-1000||at<now()-900000||at>now()+60000||pending+ingress.pending()>=32)continue;
+          !at||(type!=='append'&&at<openedAt-1000)||at<now()-300000||at>now()+60000)continue;
       const input=normalizeChatbotInput(message,{isGeneratedMessage});
-      if(!input||(input.origin==='owner_command'&&!Number.isSafeInteger(expected.chatbot?.revision))||!remember('message:'+key.id))continue;
-      // Assigned before the first async PN/LID resolution or ASR request.
+      if(!input||(input.origin==='owner_command'&&!Number.isSafeInteger(expected.chatbot?.revision))||seen.has('message:'+key.id))continue;
+      const self=normalizeFromJid(client.user?.id);
+      if(key.fromMe===false&&self&&normalizeFromJid(key.remoteJid)===self)continue;
+      // Persistence precedes the seen marker, PN/LID resolution, memory-slot
+      // admission and every broker request. Source proto retains media keys.
       ingressOrder=Math.max(ingressOrder+1,Math.floor(now())*1000);
-      ingress.enqueue({message,expected,at,input,order:ingressOrder});
+      try{ingressJournal.append({id:'message:'+key.id,scope:ingressScope(expected),at,order:ingressOrder,message});}
+      catch(error){journalFailure(error);return;}
+      remember('message:'+key.id);pumpIngress();
     }
   }
-  const chatbot=createChatbotRuntime(context,{ledger,capacity,sendChatbot,currentDevice:current,guardDevice:guard,
+  const chatbot=createChatbotRuntime(context,{ledger,capacity,sendChatbot,currentDevice:effectCurrent,guardDevice:guardEffect,
     onEffects:effects,now,schedule,cancel,onAccepted:(id,data)=>{sent.set(id,data);if(sent.size>2000)sent.delete(sent.keys().next().value);},...chatbotOptions});
-  const campaigns=createCampaignRuntime(context,{ledger,capacity,sendChatbot,currentDevice:current,guardDevice:guard,
+  const campaigns=createCampaignRuntime(context,{ledger,capacity,sendChatbot,currentDevice:effectCurrent,guardDevice:guardEffect,
     onEffects:effects,now,onAccepted:(id,data)=>{sent.set(id,data);if(sent.size>2000)sent.delete(sent.keys().next().value);}});
-  const schedules=createScheduledRuntime(context,{ledger,capacity,sendChatbot,currentDevice:current,guardDevice:guard,
+  const schedules=createScheduledRuntime(context,{ledger,capacity,sendChatbot,currentDevice:effectCurrent,guardDevice:guardEffect,
     onEffects:effects,now,onAccepted:(id,data)=>{sent.set(id,data);if(sent.size>2000)sent.delete(sent.keys().next().value);}});
-  const bulk=createBulkRuntime(context,{ledger,capacity,sendChatbot,currentDevice:current,guardDevice:guard,
+  const bulk=createBulkRuntime(context,{ledger,capacity,sendChatbot,currentDevice:effectCurrent,guardDevice:guardEffect,
     onEffects:effects,now,onAccepted:(id,data)=>{sent.set(id,data);if(sent.size>2000)sent.delete(sent.keys().next().value);}});
-  const ingress=createOrderedIngress({schedule,cancel,isCurrent:item=>current(item.expected),
-    resolveIdentity:async({expected,message})=>{await guard(expected);const phone=await resolveMessagePhone(message.key,client);await guard(expected);
-      const self=normalizeFromJid(client.user?.id);return phonePattern.test(phone||'')&&self&&phone!==self?phone:null;},
-    run:async({expected,message,at,input,order},phone)=>{
-      await guard(expected);const audio=input.origin==='contact'?deviceAudioMetadata(message):null;
-      await event(expected,{event_id:'msg:'+digest(message.key.id).slice(0,40),kind:audio?'audio':'text',occurred_at:new Date(at).toISOString(),
-        phone,message_id:message.key.id,name:name(message.pushName),...input,ingress_order:order,
-        ...(Number.isSafeInteger(expected.chatbot?.revision)?{chatbot_revision:expected.chatbot.revision}:{}),...(audio?{audio}:{})},message);
+  const ingress=createOrderedIngress({schedule,cancel,isCurrent:item=>current(item.expected),onSettled:item=>incoming.delete(item.entry.id),
+    resolveIdentity:async({entry,expected,message})=>{
+      await guard(expected);const phone=await resolveMessagePhone(message.key,client);await guard(expected);
+      const self=normalizeFromJid(client.user?.id);
+      if(phonePattern.test(phone||'')&&self&&phone!==self)return phone;
+      if(phone&&phone===self)journalBlock(entry.id,'policy_denied');
+      // Unresolved identity stays durable. onSettled frees its active marker
+      // after the bounded lookup, so the next poll can safely retry it.
+      return null;
+    },
+    run:async({entry,expected,message,at,input,order},phone)=>{
+      let admitted=false,audioActive=false,completed=false;
+      try{while(current(expected)&&connected&&!ingressError){
+        if(at<now()-300000){journalBlock(entry.id,'expired');return;}
+        try{
+          await guard(expected);const audio=input.origin==='contact'?deviceAudioMetadata(message):null;
+          const resolved=input.origin==='contact'&&!input.selection_id?resolveSelection(message,phone)||input:input;
+          const result=await event(expected,{event_id:'msg:'+digest(message.key.id).slice(0,40),kind:audio?'audio':'text',occurred_at:new Date(at).toISOString(),
+            phone,message_id:message.key.id,name:name(message.pushName),...resolved,ingress_order:order,
+            ...(Number.isSafeInteger(expected.chatbot?.revision)?{chatbot_revision:expected.chatbot.revision}:{}),...(audio?{audio}:{})},message,response=>{
+              try{
+                if(audio){
+                  // A duplicate confirms SQL admission, but its empty effects
+                  // cannot recover the source-dependent ASR grant. Preserve
+                  // source for review rather than inventing an ASR retry.
+                  if(response.duplicate===true){journalBlock(entry.id,'business_started');admitted=true;return;}
+                  if(ingressJournal.begin([entry.id])!==true)throw Error('incoming_audio_claim_missing');
+                  audioActive=true;
+                }else if(ingressJournal.ack(entry.id)!==true)throw Error('incoming_ack_missing');
+                admitted=true;
+              }
+              catch(error){journalFailure(error);throw error;}
+            },!!audio);
+          if(audioActive){
+            // Keep admission ordering independent from source-consuming ASR.
+            // A following control must reach SQL before any automatic effect.
+            audioActive=false;void consumeAudio(entry,expected,message,result).catch(()=>{});
+          }
+          return;
+        }catch(error){
+          if(admitted||!current(expected)||ingressError)return;
+          if(error?.ingressReason){journalBlock(entry.id,error.ingressReason);return;}
+          if(Number.isInteger(error?.status)&&error.status>=400&&error.status<500&&![408,429].includes(error.status)){
+            journalBlock(entry.id,[401,403,404,423].includes(error.status)?'authorization_revoked':'broker_refused');return;
+          }
+          // The event ID is stable and SQL admission idempotent. Wait for the
+          // normal poll rather than retrying a possibly executed send/effect.
+          await waitForReplay();
+        }
+      }}finally{
+        if(audioActive&&!completed&&current(expected))journalBlock(entry.id,'business_started');
+        incoming.delete(entry.id);wakeAdmission();pumpIngress();
+      }
     }});
+  async function consumeAudio(entry,expected,message,result){
+    let completed=false,items=result.effects;
+    try{while(current(expected)&&connected&&!ingressError){
+      const backlog=ingressJournal.diagnostics();
+      if(backlog.blocked>0||entry.at<now()-300000)return;
+      if(backlog.pending>0){await waitForAdmission();continue;}
+      const outcome=await effects(items,{expected,message});
+      const asrExpected=expected.settings.transcription?.enabled===true&&expected.capabilities.transcription_available===true;
+      if(outcome.source_consumed===true||!asrExpected){
+        try{if(ingressJournal.complete(entry.id)!==true)throw Error('incoming_audio_completion_missing');completed=true;}
+        catch(error){journalFailure(error);}return;
+      }
+      if(outcome.source_deferred===true){items=items.filter(item=>item.type==='transcribe');continue;}
+      return;
+    }}finally{if(!completed&&current(expected))journalBlock(entry.id,'business_started');wakeAdmission();}
+  }
+  function pumpIngress(){
+    if(closed||!connected||!context.isCurrent()||ingressError)return;
+    let entries;try{entries=ingressJournal.pending();}catch(error){journalFailure(error);return;}
+    for(const entry of entries){
+      const expected=context.deviceSnapshot();ingressOrder=Math.max(ingressOrder,entry.order);
+      if(!sameIngressScope(entry,expected)){incoming.delete(entry.id);journalBlock(entry.id,'scope_changed');continue;}
+      if(incoming.has(entry.id))continue;
+      if(entry.at<now()-300000){journalBlock(entry.id,'expired');continue;}
+      if(pending+ingress.pending()>=32)return;
+      const input=normalizeChatbotInput(entry.message,{isGeneratedMessage});
+      if(!input||(input.origin==='owner_command'&&!Number.isSafeInteger(expected.chatbot?.revision))){journalBlock(entry.id,'policy_denied');continue;}
+      incoming.add(entry.id);
+      if(!ingress.enqueue({entry,expected,message:entry.message,at:entry.at,input,order:entry.order}))incoming.delete(entry.id);
+    }
+  }
   function calls(values){
     for(const call of (Array.isArray(values)?values:[]).slice(0,20)){
       const expected=context.deviceSnapshot();
@@ -244,7 +361,7 @@ export function createDeviceRuntime(context,{client,downloadMediaMessage,logger,
     }
   }
   async function onConnected(){
-    connected=true;nextPoll();const expected=context.deviceSnapshot();
+    connected=true;pumpIngress();nextPoll();const expected=context.deviceSnapshot();
     await guard(expected);const phone=normalizeFromJid(client.user?.id);if(!phone)return;
     let avatar_url=null;
     if(typeof client.profilePictureUrl==='function'){
@@ -262,6 +379,7 @@ export function createDeviceRuntime(context,{client,downloadMediaMessage,logger,
     }
   }
   return {receive,calls,receipts,onConnected,sync,effects,
-    diagnostics:()=>({pending:pending+ingress.pending(),inflight:inflight.size+chatbot.pending()+campaigns.pending()+schedules.pending()+bulk.pending(),audio_busy:audioBusy}),
-    close(){if(closed)return;closed=true;connected=false;cancel(poll);ingress.close();chatbot.close();campaigns.close();schedules.close();bulk.close();for(const entry of controllers)entry.abort.abort();controllers.clear();sent.clear();seen.clear();}};
+    diagnostics:()=>({pending:pending+ingress.pending(),inflight:inflight.size+chatbot.pending()+campaigns.pending()+schedules.pending()+bulk.pending(),audio_busy:audioBusy,
+      ingress:ingressJournal.diagnostics(),ingress_error:ingressError}),
+    close(){if(closed)return;closed=true;connected=false;cancel(poll);wakeReplay();wakeAdmission();ingressJournal.abandon?.();ingress.close();chatbot.close();campaigns.close();schedules.close();bulk.close();for(const entry of controllers)entry.abort.abort();controllers.clear();sent.clear();seen.clear();incoming.clear();}};
 }

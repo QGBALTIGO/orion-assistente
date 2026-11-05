@@ -43,6 +43,17 @@ test('assistant-off inbound is journaled before interaction and never forwarded'
   await f.made[0].ctx.onInbound({phone,message_id:'journal-1',text:'Mensagem humana',kind:'text'});
   assert.deepEqual(calls,['journal','interaction']);assert.equal(f.forwards.length,0);assert.equal(f.made[0].ctx.assistantEnabled(),false);
 });
+test('optional per-message parts are negotiated from the lease during a rolling API update',async t=>{
+  const f=fixture(t),a=f.add(),m=f.manager();let capable=false;
+  const lease=f.broker.lease;f.broker.lease=async(...args)=>({...await lease(...args),...(capable?{incoming_parts:true}:{})});
+  await m.start(a.id,a.key);const ctx=f.made[0].ctx;
+  for(const [id,enabled] of [['old-api',false],['new-api',true]]){
+    capable=enabled;const proof=await ctx.onInbound({phone,message_id:id,text:'Texto completo'});
+    await ctx.onMessage({phone,message_id:id,text:'Texto completo',parts:[{message_id:id,text:'Texto completo'}]},{noticeProof:proof});
+  }
+  assert.equal(f.forwards[0].payload.parts,undefined);
+  assert.deepEqual(f.forwards[1].payload.parts,[{message_id:'new-api',text:'Texto completo'}]);assert.equal(f.made.length,1);
+});
 
 test('central booking sends to an out-of-allowlist professional only after broker receipt grant',async t=>{
   const f=fixture(t),a=f.add(),attempts=[];f.rows.get(a.id).inbox_control=true;
@@ -136,6 +147,26 @@ function connectionNoticeFlag(t,value){
   t.after(()=>{if(previous===undefined)delete process.env.ORION_NOTIFY_SELF_ON_LINK;else process.env.ORION_NOTIFY_SELF_ON_LINK=previous;});
   if(value===undefined)delete process.env.ORION_NOTIFY_SELF_ON_LINK;else process.env.ORION_NOTIFY_SELF_ON_LINK=value;
 }
+
+test('only a confirmed own null answer yields the explicit silent-completion proof',async t=>{
+  const f=fixture(t),a=f.add(),m=f.manager();await m.start(a.id,a.key);const ctx=f.made[0].ctx;
+  for(const [index,result] of [undefined,null,{}, {answer:null}].entries()){
+    f.broker.forward=async()=>result;const message_id='silent-'+index;
+    const proof=await ctx.onInbound({phone,message_id,text:'Olá'});
+    const turn=()=>ctx.onMessage({phone,message_id,text:'Olá'},{noticeProof:proof});
+    if(result?.answer===null)assert.deepEqual(await turn(),{state:'committed_no_reply',not_committed:false});
+    else await assert.rejects(turn(),/invalid_channel_reply/);
+  }
+  assert.equal(f.made[0].sends.length,0);
+});
+
+test('a silent backend answer after batch authority loss does not claim known completion',async t=>{
+  const f=fixture(t),a=f.add(),m=f.manager();await m.start(a.id,a.key);const ctx=f.made[0].ctx;let current=true;
+  f.broker.forward=async()=>{current=false;return {answer:null};};
+  const proof=await ctx.onInbound({phone,message_id:'late-null',text:'Olá'});
+  assert.equal(await ctx.onMessage({phone,message_id:'late-null',text:'Olá'},{noticeProof:proof,isCurrent:()=>current}),undefined);
+  assert.equal(f.made[0].sends.length,0);
+});
 
 test('code pairing is explicit and scoped to the current started channel, never the global alias',async t=>{
   const f=fixture(t),a=f.add(),b=f.add(),m=f.manager(),calls=[];
