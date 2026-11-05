@@ -13,6 +13,8 @@
   const clean=(value,max,required=false)=>typeof value==='string'&&value.length<=max&&!/[\u0000-\u001f\u007f]/.test(value)&&![...value].some(char=>{const point=char.codePointAt(0);return point>=0xd800&&point<=0xdfff;})&&(!required||!!value.trim());
   const remoteId=value=>clean(value,47,true)&&/^[0-9]{5,20}(?:-[0-9]{1,20})?@g\.us$/.test(value);
   const errorCode=error=>error?.code||error?.detail?.code;
+  const readableDevice=device=>device?.available===true&&device.status==='connected';
+  const deviceStatuses={disabled:'Não conectado',stopped:'Desconectado',starting:'Preparando conexão',connecting:'Preparando conexão',reconnecting:'Reconectando',qr_ready:'Pronto para conectar',qr_delayed:'Aguardando QR Code',qr_expired:'QR Code expirou',pairing:'Aguardando confirmação no WhatsApp',pair_expired:'Código expirou',pair_failed:'Vínculo não confirmado',connected:'Conectado',disconnected:'Desconectado',logged_out:'Desvinculado',error:'Precisa de atenção',unavailable:'Estado indisponível',removing:'Exclusão em andamento'};
   const roleLabels={owner:'Proprietário',admin:'Administrador',member:'Membro'};
   const shortName=value=>{let result='';for(const char of value){if(result.length+char.length>100)break;result+=char;}return result;};
   const button=(label,action,disabled=false,kind='os-outline')=>'<button type="button" class="os-button '+kind+'" data-gc-action="'+action+'" '+(disabled?'disabled':'')+'>'+esc(label)+'</button>';
@@ -87,12 +89,16 @@
       return labels[errorCode(error)]||'Não foi possível concluir esta consulta. Atualize os dados e tente novamente.';
     }
     function handleReadError(error){if([401,403].includes(error?.status)){revoke();return;}if(error?.name!=='AbortError')state.error=errorText(error);}
-    function canSave(){return writable()&&editable()&&!state.loading&&!expired()&&state.preview.device.available&&state.selected.size>0&&(state.target==='new'?clean(state.name.trim(),100,true):state.options?.groups.some(row=>row.id===state.target&&!row.archived));}
+    function canSave(){return writable()&&editable()&&!state.loading&&!expired()&&readableDevice(state.preview.device)&&state.selected.size>0&&(state.target==='new'?clean(state.name.trim(),100,true):state.options?.groups.some(row=>row.id===state.target&&!row.archived));}
     function select(label,name,items,value,disabled=false){return '<div class="os-field"><label for="osGc'+name+'">'+esc(label)+'</label><select id="osGc'+name+'" data-gc-field="'+name+'" data-orion-field="native" '+(disabled?'disabled':'')+'>'+items.map(row=>'<option value="'+esc(row[0])+'" '+(row[0]===value?'selected':'')+' '+(row[2]?'disabled':'')+'>'+esc(row[1])+'</option>').join('')+'</select></div>';}
+    function connectionNotice(device){
+      const message=device.blocked_reason||(device.status==='disconnected'||device.status==='stopped'?'O WhatsApp está desconectado. Conecte o dispositivo para consultar os grupos.':'O dispositivo precisa estar conectado e disponível para consultar os grupos.');
+      return '<div class="os-notice" role="status" data-gc-device-state><p><strong>'+esc(device.name)+' · '+esc(deviceStatuses[device.status]||'Estado indisponível')+'</strong><br>'+esc(message)+'</p>'+(bridge.canOpenDevices?.()===true?'<div class="os-actions"><button type="button" class="os-button os-outline" data-os-route="dispositivos">Dispositivos</button></div>':'')+'</div>';
+    }
     function formHTML(){
-      const options=state.options,off=!editable(),devices=options.devices,groups=state.groups;
-      let html='<form class="os-form os-section-stack" data-gc-form><section class="os-card os-form"><div class="os-form-grid">'+select('Dispositivo','device_id',[['','Selecione um dispositivo'],...devices.map(row=>[row.id,row.name+(row.available?'':' · indisponível'),!row.available])],state.deviceId,off||state.loading==='options')+select('Grupo do WhatsApp','group_id',[['','Selecione um grupo'],...groups.map(row=>[row.id,row.name])],state.groupId,off||!state.deviceId||state.loading==='groups')+'</div><div class="os-form-actions">'+button('Carregar membros','load-members',off||!state.groupId||!!state.loading,'')+'</div>'+
-        (!devices.length?'<p class="os-help">Nenhum dispositivo disponível. Confira Dispositivos antes de carregar os grupos.</p>':state.deviceId&&!groups.length&&!state.loading?'<p class="os-help" data-gc-empty>Nenhum grupo disponível neste dispositivo.</p>':'')+'</section>';
+      const options=state.options,off=!editable(),devices=options.devices,groups=state.groups,device=devices.find(row=>row.id===state.deviceId),readable=readableDevice(device);
+      let html='<form class="os-form os-section-stack" data-gc-form><section class="os-card os-form"><div class="os-form-grid">'+select('Dispositivo','device_id',[['','Selecione um dispositivo'],...devices.map(row=>[row.id,row.name+' · '+(deviceStatuses[row.status]||'Estado indisponível'),!readableDevice(row)])],state.deviceId,off||state.loading==='options')+select('Grupo do WhatsApp','group_id',[['','Selecione um grupo'],...groups.map(row=>[row.id,row.name])],state.groupId,off||!readable||state.loading==='groups')+'</div><div class="os-form-actions">'+button('Carregar membros','load-members',off||!readable||!state.groupId||!!state.loading,'')+'</div>'+
+        (device&&!readable?connectionNotice(device):!devices.length?'<p class="os-help">Nenhum dispositivo disponível. Confira Dispositivos antes de carregar os grupos.</p>':readable&&!groups.length&&!state.loading?'<p class="os-help" data-gc-empty>Nenhum grupo disponível neste dispositivo.</p>':'')+'</section>';
       if(state.loading==='groups'||state.loading==='members')html+=notice(state.loading==='groups'?'Carregando grupos…':'Carregando membros…');
       if(state.preview){const preview=state.preview,disabled=off||expired();
         html+='<section class="os-card os-form" aria-labelledby="osGcMembers"><header class="os-card-header"><div><h2 id="osGcMembers">'+esc(preview.group.name)+'</h2><p data-gc-count>'+state.selected.size+' de '+preview.members.length+' contatos selecionados.</p><p class="os-help">'+preview.total+' membros encontrados · '+preview.unavailable_count+' sem número disponível · '+preview.duplicate_count+' repetidos.</p></div></header>'+
@@ -122,20 +128,20 @@
     }
     async function loadOptions(){
       if(!editable())return;state.epoch++;abortReads();clearPreview();state.options=null;state.groups=[];state.deviceId='';state.groupId='';state.target='new';state.name='';state.error='';state.loading='options';const epoch=state.epoch;render();
-      try{const value=optionsDTO(await request('/options','GET',undefined,'options'));if(!valid(epoch))return;state.options=value;if(value.devices.length===1)state.deviceId=value.devices[0].available?value.devices[0].id:'';}
+      try{const value=optionsDTO(await request('/options','GET',undefined,'options'));if(!valid(epoch))return;state.options=value;if(value.devices.length===1)state.deviceId=value.devices[0].id;}
       catch(error){if(valid(epoch))handleReadError(error);}
       finally{if(valid(epoch)){state.loading='';render();}}
-      if(current(epoch)&&state.deviceId)await loadGroups();
+      if(current(epoch)&&readableDevice(state.options?.devices.find(row=>row.id===state.deviceId)))await loadGroups();
     }
     async function loadGroups(){
-      if(!editable()||!state.deviceId)return;const epoch=state.epoch,id=state.deviceId;state.loading='groups';state.error='';render();
-      try{const value=groupsDTO(await request('/groups?'+new URLSearchParams({device_id:id}),'GET',undefined,'groups'),id);if(!valid(epoch)||id!==state.deviceId)return;if(!value.device.available)throw Object.assign(Error('Unavailable'),{code:'GROUP_CONTACTS_DEVICE_UNAVAILABLE'});state.groups=value.items;}
+      if(!editable()||!readableDevice(state.options?.devices.find(row=>row.id===state.deviceId)))return;const epoch=state.epoch,id=state.deviceId;state.loading='groups';state.error='';render();
+      try{const value=groupsDTO(await request('/groups?'+new URLSearchParams({device_id:id}),'GET',undefined,'groups'),id);if(!valid(epoch)||id!==state.deviceId)return;if(!readableDevice(value.device))throw Object.assign(Error('Unavailable'),{code:'GROUP_CONTACTS_DEVICE_UNAVAILABLE'});state.groups=value.items;}
       catch(error){if(valid(epoch)&&id===state.deviceId)handleReadError(error);}
       finally{if(valid(epoch)&&id===state.deviceId){state.loading='';render();}}
     }
     async function loadMembers(){
-      if(!editable()||!state.deviceId||!state.groups.some(group=>group.id===state.groupId)||state.loading)return;clearPreview();state.error='';state.loading='members';const epoch=state.epoch,read=state.memberRead,deviceId=state.deviceId,groupId=state.groupId;render();
-      try{const value=membersDTO(await request('/members?'+new URLSearchParams({device_id:deviceId,group_id:groupId}),'GET',undefined,'members'),deviceId,groupId);if(!valid(epoch)||read!==state.memberRead)return;if(!value.device.available)throw Object.assign(Error('Unavailable'),{code:'GROUP_CONTACTS_DEVICE_UNAVAILABLE'});state.preview=value;state.selected=new Set(value.members.map(row=>row.phone));if(state.target==='new')state.name=shortName('Grupo: '+value.group.name);expiryTimer=setTimeout(()=>{if(current(epoch)&&state.preview===value)render();},Math.min(2147483647,Math.max(0,Date.parse(value.expires_at)-Date.now()+10)));}
+      if(!editable()||!readableDevice(state.options?.devices.find(row=>row.id===state.deviceId))||!state.groups.some(group=>group.id===state.groupId)||state.loading)return;clearPreview();state.error='';state.loading='members';const epoch=state.epoch,read=state.memberRead,deviceId=state.deviceId,groupId=state.groupId;render();
+      try{const value=membersDTO(await request('/members?'+new URLSearchParams({device_id:deviceId,group_id:groupId}),'GET',undefined,'members'),deviceId,groupId);if(!valid(epoch)||read!==state.memberRead)return;if(!readableDevice(value.device))throw Object.assign(Error('Unavailable'),{code:'GROUP_CONTACTS_DEVICE_UNAVAILABLE'});state.preview=value;state.selected=new Set(value.members.map(row=>row.phone));if(state.target==='new')state.name=shortName('Grupo: '+value.group.name);expiryTimer=setTimeout(()=>{if(current(epoch)&&state.preview===value)render();},Math.min(2147483647,Math.max(0,Date.parse(value.expires_at)-Date.now()+10)));}
       catch(error){if(valid(epoch)&&read===state.memberRead)handleReadError(error);}
       finally{if(valid(epoch)&&read===state.memberRead){state.loading='';render();}}
     }
@@ -172,7 +178,7 @@
     async function change(event){
       if(!current()){revoke();return;}if(!editable())return;const node=event.target,name=node.dataset.gcField;
       if(name==='device_id'){
-        if(node.value&&!state.options?.devices.some(row=>row.id===node.value&&row.available))return;
+        if(node.value&&!state.options?.devices.some(row=>row.id===node.value&&readableDevice(row)))return;
         state.epoch++;abortReads();clearPreview();state.deviceId=node.value;state.groupId='';state.groups=[];state.target='new';state.name='';state.loading='';state.error='';render();if(state.deviceId)await loadGroups();return;
       }
       if(name==='group_id'){

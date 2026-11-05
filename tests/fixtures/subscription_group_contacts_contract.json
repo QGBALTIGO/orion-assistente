@@ -127,5 +127,35 @@
       "existing_count": 0,
       "restored_count": 0
     }
+  },
+  "options_disconnected": {
+    "devices": [
+      {
+        "id": "00000000-0000-4000-8000-000000000016",
+        "name": "Dispositivo sintético",
+        "status": "disconnected",
+        "available": false,
+        "blocked_reason": "Conecte um dispositivo desta empresa para consultar seus grupos.",
+        "version": "533908d71f1289517235dfc2c66119226c105c11f0f6293d78cf678c32c30b2b"
+      }
+    ],
+    "groups": [
+      {
+        "id": "00000000-0000-4000-8000-000000000116",
+        "name": "Lista local sintética",
+        "version": 2,
+        "member_count": 2,
+        "blocked_count": 1,
+        "archived": false
+      }
+    ],
+    "limits": {
+      "groups": 100,
+      "members_per_group": 5000,
+      "remote_groups": 1000,
+      "preview_seconds": 300,
+      "group_name_utf16": 100
+    },
+    "generated_at": "2026-11-05T18:00:00+00:00"
   }
 }

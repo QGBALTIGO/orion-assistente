@@ -19,6 +19,27 @@ test('initial loading lists the one device and its groups with GET only, without
   assert.equal(writes(h).length,0);assert.deepEqual(h.external,[]);assert.deepEqual(h.errors,[]);
 });
 
+test('the real offline options contract shows its connection reason and never reads WhatsApp until refreshed online',async t=>{
+  assert.ok(contract.options_disconnected,'The producer-tested options_disconnected contract is required');
+  const server=syntheticServer();Object.assign(server.options,copy(contract.options_disconnected));
+  const h=await setup(t,{server,canOpenDevices:true}),offline=contract.options_disconnected.devices[0];
+  assert.equal(offline.status,'disconnected');assert.equal(offline.available,false);
+  assert.match(h.element('[data-gc-device-state]').textContent,/Desconectado/);
+  assert.ok(h.element('[data-gc-device-state]').textContent.includes(offline.blocked_reason));
+  assert.ok(h.document.querySelector('[data-gc-device-state] [data-os-route="dispositivos"]'));
+  assert.equal(h.element(field('group_id')).disabled,true);assert.equal(h.element(action('load-members')).disabled,true);
+  assert.deepEqual(h.calls.map(call=>[call.path,call.method]),[[base+'/options','GET']]);assert.equal(writes(h).length,0);
+  Object.assign(server.options,copy(contract.options));h.click(action('refresh'));await flush();
+  assert.equal(h.document.querySelector('[data-gc-device-state]'),null);assert.equal(h.element(field('group_id')).disabled,false);
+  assert.equal(h.calls.filter(call=>call.path.includes('/groups?')).length,1);assert.equal(writes(h).length,0);assert.deepEqual(h.errors,[]);
+});
+
+test('a stale true availability flag cannot start a read from a disconnected device',async t=>{
+  const server=syntheticServer();Object.assign(server.options.devices[0],{status:'disconnected',available:true,blocked_reason:null});
+  const h=await setup(t,{server});assert.equal(h.calls.length,1,'A disconnected device must not trigger a groups request');
+  assert.match(h.element('[data-gc-device-state]').textContent,/Desconectado/);assert.equal(h.element(field('group_id')).disabled,true);assert.equal(h.calls[0].path,base+'/options');assert.equal(writes(h).length,0);
+});
+
 test('loading selects every available number, shows actual roles and leaves missing names uninvented',async t=>{
   const h=await setup(t);await loadMembers(h);
   assert.deepEqual(selected(h),contract.members.members.map(row=>row.phone));assert.equal(h.element('[data-gc-select-all]').checked,true);
@@ -174,6 +195,24 @@ test('foreign account or tenant recovery is discarded without querying another p
 test('acknowledging a successful import starts a fresh read-only extraction and clears the completed identity',async t=>{
   const h=await setup(t);await loadMembers(h);h.click(action('import'));await flush();h.click(action('new'));await flush();
   assert.equal(saved(h),undefined);assert.equal(h.document.querySelector('[data-gc-member]'),null);assert.equal(h.document.querySelector('[data-gc-result]'),null);assert.equal(h.element(field('group_id')).value,'');assert.equal(writes(h).length,1);assert.equal(h.server.imports.length,1);
+});
+
+test('Suite shows the offline device shortcut only with its own permission and opens the existing route',{timeout:10000},async t=>{
+  assert.ok(contract.options_disconnected);
+  for(const devicesAllowed of [true,false]){
+    const server=syntheticServer();Object.assign(server.options,copy(contract.options_disconnected));const loaded=deferred(),mounts=[];
+    const permissions=planState('none',{workspace_profile:'subscription_services',status:'no_access',features:['account.manage','business.setup','group_contacts.manage',...(devicesAllowed?['devices.manage']:[])],permissions:{'account.manage':true,'business.setup':true,'group_contacts.manage':true,'devices.manage':devicesAllowed}});
+    const h=await makeSuite({initialRoute:'extrator-contatos',permissions,bridge:{tenants:[{id:tenantA,name:'Empresa sintética',role:'owner',status:'active',workspace_profile:'subscription_services'}]},configureWindow:window=>{
+      Object.defineProperty(window.crypto,'subtle',{value:webcrypto.subtle,configurable:true});window.TextEncoder=TextEncoder;window.eval(source);
+      window.OrionSubscriptionDevices={mount:bridge=>{mounts.push(bridge.tenantId);bridge.host.textContent='Dispositivos sintéticos';},unmount(){},clearContext(){}};
+    },respond:(path,method,payload)=>{if(path.startsWith(base)){loaded.resolve();return server.execute(path,method,payload);}return defaultResponse(path);}});t.after(()=>h.close());
+    await loaded.promise;await flush();assert.match(h.document.querySelector('[data-gc-device-state]').textContent,/Desconectado/);
+    assert.deepEqual(h.calls.filter(call=>call.path.startsWith(base)).map(call=>[call.path,call.method]),[[base+'/options','GET']]);
+    const shortcut=h.document.querySelector('[data-gc-device-state] [data-os-route="dispositivos"]');
+    if(devicesAllowed){assert.ok(shortcut);shortcut.click();await flush();assert.equal(h.document.querySelector('#page-suite').dataset.osCurrentRoute,'dispositivos');assert.deepEqual(mounts,[tenantA]);}
+    else{assert.equal(shortcut,null);assert.equal(h.document.querySelector('#osNav [data-os-route="dispositivos"]'),null);}
+    assert.equal(h.calls.some(call=>call.method!=='GET'),false);assert.deepEqual(h.errors,[]);
+  }
 });
 
 test('Suite exposes extraction only for an active subscription owner with its flag, including no commercial plan',{timeout:10000},async t=>{

@@ -45,7 +45,7 @@ async def options(tenant_id: UUID, response: Response, actor: Actor = Depends(au
 
 async def read_groups(tenant, actor, identity, *, selected_group=None):
     async with store.owner_transaction(tenant, actor) as db:
-        original, transport = await store.scope(db, tenant, identity, actor)
+        original, transport = await store.scope(db, tenant, identity, actor, require_connected=True)
         if selected_group is not None:
             try:
                 selected_group = schemas.group_id(selected_group)
@@ -70,7 +70,7 @@ async def read_groups(tenant, actor, identity, *, selected_group=None):
             or selected_group is not None and result.group.id != selected_group):
         raise store.fail("GROUP_CONTACTS_CONTEXT_CHANGED")
     async with store.owner_transaction(tenant, actor) as db:
-        current, _ = await store.scope(db, tenant, identity, actor)
+        current, _ = await store.scope(db, tenant, identity, actor, require_connected=True)
         if store.device_version(current) != store.device_version(original):
             raise store.fail("GROUP_CONTACTS_CONTEXT_CHANGED")
         device = store.public_device(current)
