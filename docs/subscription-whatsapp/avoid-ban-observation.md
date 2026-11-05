@@ -77,9 +77,9 @@ automáticos serão registrados separadamente; resultados pendentes não
 serão apresentados como aprovações. Não se exige repetir testes de banco
 ou transporte inalterados como condição artificial para este artigo.
 
-A implementação e as verificações focadas estão concluídas; a publicação
-está em preparação. A etapa 15 só
-começa após a publicação e a conferência ao vivo desta etapa.
+A implementação e as verificações focadas foram concluídas antes da
+publicação. A etapa 15 só começou após a conferência ao vivo registrada
+a seguir.
 
 ## Verificação focada concluída
 
@@ -98,5 +98,32 @@ claro foram inspecionadas, sem defeito visual material. Sintaxe JavaScript
 e `git diff --check` aprovados.
 
 São dados sintéticos e emulação de viewport, sem contatos ou envios reais.
-A candidata e a publicação serão registradas na PR, e a conferência real
-será acrescentada após a atualização dos serviços.
+A candidata, a publicação e a conferência real estão registradas a seguir.
+
+
+## Publicação e conferência ao vivo
+
+A [PR 266](https://github.com/QGBALTIGO/orion-assistente/pull/266) publicou
+`f33b373ea0273296d0dc7b8e02c75353a9b648cc`, com a mesma árvore
+`df08ad4824580d7a8f1988279269f64e756be7f7` da candidata
+`f9b4827358c33323bb85a241551ce98123007127`. A liberação usou o critério
+focado descrito acima; os resultados completos de CI automático eram
+pendentes e não foram apresentados como aprovados.
+
+API `3361e1a1-4ff0-4856-9790-0e948a23c606` e worker
+`e1a4f766-054b-4f48-87a0-5f1fc3465a1e` confirmaram o merge, SUCCESS e
+online 1/1, com barreiras 0071. Os cinco serviços estavam saudáveis no
+corte de 17:31:37 UTC, sem alertas nem operações pendentes. A ponte
+permaneceu compatível na revisão anterior, com a nova tentativa ignorada
+pelos watchpaths; não houve mudança de schema ou infraestrutura.
+
+**Conferência no Chrome conectado concluída até 17:33:25 UTC:** o menu
+Evitar Banimento apareceu na empresa real sem plano comercial; o artigo
+exibiu as dez orientações e exemplos; os três atalhos abriram Dispositivos,
+Aquecimento e Diagnósticos, retornando ao guia a cada vez. O console não
+registrou erros, e a captura confirmou o visual nativo no tema escuro.
+Foram apenas leituras e navegação, sem executar diagnóstico, conectar
+número, alterar configuração ou enviar mensagens.
+
+A etapa 14 foi encerrada após essa conferência. A observação de Resolver
+Banimento começou somente em seguida.

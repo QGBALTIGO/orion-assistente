@@ -199,3 +199,26 @@ A etapa 13 foi encerrada após essa conferência. A observação da etapa 14
 começou em seguida, com as limitações de CI do corretivo registradas
 explicitamente, sem confundir a qualificação completa da base com a
 validação focada da correção.
+
+### Adendo posterior: CI completo da correção
+
+Às 17:27:59 UTC, a execução 42071502657 da PR 265 terminou com os seis
+grupos aprovados: API 2.768, PostgreSQL 588, DOM 575, ponte 488,
+Chromium 130 e WebKit 130, total **4.679 execuções aprovadas**. Todos os
+checkouts confirmaram `654e55080436933636589ab62054b47f9fafae0c`, com a
+mesma árvore `bb36994122bf6dddf2aca53c6649d26107bfd2fa` publicada. Não
+houve falhas ou skips; cada navegador desmarcou somente os 130 casos do
+outro motor. Esse resultado é posterior à publicação focada e não altera
+a cronologia ou os limites registrados no momento daquela decisão.
+
+
+### Adendo final do CI geral da correção
+
+No corte de 17:38:15 UTC, os 50 jobs gerais da PR 265 estavam encerrados:
+37 sucessos, 12 falhas herdadas verificadas e uma execução inconclusiva.
+Esta última foi o FATIA pytest (job 127400353399, run 42071502844), encerrado
+pelo limite de 20 minutos, com último progresso em 13% e sem resumo final.
+Não houve cancelamentos. Para Campos/WebKit, a comparação usou a última
+base completa da candidata 2 da PR 263. Nenhuma nova regressão foi
+identificada entre os 12 resultados comparáveis; o timeout não demonstra
+aprovação nem equivalência funcional. A suíte geral não está toda verde.

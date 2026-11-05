@@ -200,15 +200,71 @@ test('Evitar Banimento omits device and diagnostics shortcuts when their own per
   onlyPermissionReads(h);
 });
 
-test('the new guide route shares the subscription, active-company and feature boundaries',async t=>{
-  for(const scenario of [
+const resolveArticle='[data-os-guidance="resolve-ban"]';
+const resolveAccess=(overrides={})=>access({code:null,name:'Sem plano ativo',source:'none',active:false,status:'no_access',revision:'resolve-ban-no-commercial-plan',...overrides});
+
+test('Resolver Banimento is a read-only native two-step guide with seven official topics without a commercial plan',async t=>{
+  const value=resolveAccess(),h=await setup(t,{initialRoute:'resolver-banimento',permissions:value});
+  assert.equal(value.active,false);assert.equal(h.bridge.tenants[0].status,'active');
+  const page=h.document.querySelector(resolveArticle);assert.ok(page);
+  assert.ok(page.classList.contains('os-help-article'));assert.ok(page.querySelector('.os-help-prose'));
+  assert.equal(page.querySelector('h1').textContent,'Resolver Banimento');
+  assert.equal(h.document.title,'Resolver Banimento · Orion');
+  assert.equal(new URL(h.window.location.href).searchParams.get('aba'),'resolver-banimento');
+  assert.ok(h.document.querySelector('#osNav [data-os-route="resolver-banimento"]'));
+  const steps=[...page.querySelectorAll('[data-os-guidance-step]')];
+  assert.deepEqual(steps.map(node=>node.dataset.osGuidanceStep),['1','2']);
+  for(const section of steps)assert.equal(section.querySelector('h2').id,section.getAttribute('aria-labelledby'));
+  assert.equal(page.querySelector('[aria-labelledby="osResolveBanReasons"]').querySelectorAll('li').length,4);
+  assert.equal(steps[0].querySelector('[data-os-route]'),null);
+  assert.equal(steps[1].querySelector('[data-os-route="dispositivos"]').textContent,'Meus Dispositivos');
+  assert.equal(page.querySelector('form,input,select,textarea,progress,[role="progressbar"],iframe,video,audio,img'),null);
+  assert.ok([...page.querySelectorAll('button')].every(button=>button.hasAttribute('data-os-route')));
+  const sources=[...page.querySelectorAll('[aria-labelledby="osResolveBanOfficial"] a[href]')];
+  assert.deepEqual(sources.map(link=>link.href),[
+    'https://faq.whatsapp.com/465883178708358',
+    'https://faq.whatsapp.com/723378546580115/',
+    'https://faq.whatsapp.com/1848531392146538/',
+    'https://faq.whatsapp.com/1297640017664693/',
+    'https://faq.whatsapp.com/465883178708358',
+    'https://faq.whatsapp.com/1217634902127718/',
+    'https://whatsappbusiness.com/policy/',
+  ]);
+  for(const link of sources){assert.equal(link.target,'_blank');assert.equal(link.rel,'noopener noreferrer');}
+  onlyPermissionReads(h);
+});
+
+test('Resolver Banimento opens the existing devices route and returns without starting a connection or appeal',async t=>{
+  const mounts=[];
+  const h=await setup(t,{initialRoute:'resolver-banimento',permissions:resolveAccess(),configureWindow:window=>{
+    window.OrionSubscriptionDevices={mount:bridge=>{mounts.push({tenantId:bridge.tenantId});bridge.host.textContent='Consulta sintética';},unmount(){},clearContext(){}};
+  }});
+  h.click(resolveArticle+' [data-os-route="dispositivos"]');await flush();
+  assert.equal(h.document.querySelector('#page-suite').dataset.osCurrentRoute,'dispositivos');
+  assert.equal(h.document.querySelector(resolveArticle),null);
+  assert.deepEqual(mounts,[{tenantId:tenantA}]);
+  h.click('#osNav [data-os-route="resolver-banimento"]');await flush();
+  assert.ok(h.document.querySelector(resolveArticle));onlyPermissionReads(h);
+});
+
+test('Resolver Banimento remains readable while omitting the device shortcut without its permission',async t=>{
+  const value=resolveAccess();delete value.permissions['devices.manage'];value.features=value.features.filter(item=>item!=='devices.manage');
+  const h=await setup(t,{initialRoute:'resolver-banimento',permissions:value});
+  assert.ok(h.document.querySelector(resolveArticle));
+  assert.equal(h.document.querySelector(resolveArticle+' [data-os-route="dispositivos"]'),null);
+  assert.equal(h.document.querySelector('#osNav [data-os-route="dispositivos"]'),null);
+  onlyPermissionReads(h);
+});
+
+test('the added guide routes share the subscription, active-company and feature boundaries',async t=>{
+  for(const [route,selector] of [['evitar-banimento',avoidArticle],['resolver-banimento',resolveArticle]])for(const scenario of [
     {plan:{workspace_profile:'standard'},tenant:{workspace_profile:'standard'},fallback:'plano'},
     {plan:{active:true,status:'active'},tenant:{status:'paused'},fallback:'novidades'},
     {plan:{permissions:{'account.manage':true,'business.setup':true,'devices.manage':true,'diagnostics.manage':true}},fallback:'novidades'},
   ]){
-    const h=await setup(t,{initialRoute:'evitar-banimento',permissions:avoidAccess(scenario.plan),bridge:{tenants:[business(scenario.tenant)]}});
-    assert.equal(h.document.querySelector(avoidArticle),null);
-    assert.equal(h.document.querySelector('#osNav [data-os-route="evitar-banimento"]'),null);
+    const h=await setup(t,{initialRoute:route,permissions:avoidAccess(scenario.plan),bridge:{tenants:[business(scenario.tenant)]}});
+    assert.equal(h.document.querySelector(selector),null);
+    assert.equal(h.document.querySelector('#osNav [data-os-route="'+route+'"]'),null);
     assert.equal(h.document.querySelector('#page-suite').dataset.osCurrentRoute,scenario.fallback);
     assert.equal(h.calls.some(call=>call.method!=='GET'||call.path.includes('/subscription-whatsapp/')),false);
     assert.deepEqual(h.errors,[]);

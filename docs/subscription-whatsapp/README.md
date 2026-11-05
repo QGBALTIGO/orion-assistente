@@ -34,8 +34,8 @@ equivalência integral quando há comportamento ainda não observado ou testado.
 | 11 | Enviar Mensagem | Publicado e conferido ao vivo em 2026-11-05 — PR 263, produção `32a90c0fd003c5fbac70c1bd541bf9ce20171040`; etapa encerrada, conforme o [registro de validação](direct-messages-validation.md) |
 | 12 | Transcrição de Áudio | Transcrição e métricas existentes preservadas; carteira e recargas pendentes, sem compra ou nova implementação. [Registro de observação](transcription-observation.md) |
 | 13 | Aquecimento | Publicado e conferido ao vivo em 2026-11-05 — PR 264 e correção PR 265, produção `d2c1d279a1da03909785f54faac5ce6e1873bbcb`; etapa encerrada. [Observação](warmup-observation.md) · [Validação](warmup-validation.md) |
-| 14 | Evitar Banimento | Guia e três atalhos observados; adaptação e validação focada em andamento. [Observação](avoid-ban-observation.md) |
-| 15 | Resolver Banimento | Não iniciado |
+| 14 | Evitar Banimento | Publicado e conferido ao vivo em 2026-11-05 — PR 266, produção `f33b373ea0273296d0dc7b8e02c75353a9b648cc`; etapa encerrada. [Observação e validação](avoid-ban-observation.md) |
+| 15 | Resolver Banimento | Guia implementado e fontes oficiais revisadas; validação focada e publicação em andamento. [Observação e validação](resolve-ban-observation.md) |
 | 16 | Extrator de contatos de grupos | Não iniciado |
 | 17 | Adicionar contatos ao grupo | Não iniciado |
 | 18 | Verificador de números WhatsApp | Não iniciado |
