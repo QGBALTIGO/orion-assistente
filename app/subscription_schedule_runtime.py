@@ -354,6 +354,7 @@ async def admit_due_schedules(db, device):
     live = (await db.execute(text("""SELECT id FROM (
         SELECT id FROM subscription_schedule_recipients WHERE tenant_id=:t AND admitted_at IS NOT NULL AND status='running'
         UNION ALL SELECT id FROM subscription_campaign_recipients WHERE tenant_id=:t AND admitted_at IS NOT NULL AND status='running'
+        UNION ALL SELECT id FROM subscription_bulk_recipients WHERE tenant_id=:t AND admitted_at IS NOT NULL AND status='running'
         ) live LIMIT 1"""), {"t": tenant})).scalar_one_or_none()
     if live is not None:
         return []
@@ -361,6 +362,7 @@ async def admit_due_schedules(db, device):
         count(*) FILTER(WHERE admitted_at>CAST(:now AS timestamptz)-interval '60 seconds') AS recent FROM (
           SELECT finished_at,admitted_at FROM subscription_schedule_recipients WHERE tenant_id=:t AND admitted_at IS NOT NULL
           UNION ALL SELECT finished_at,admitted_at FROM subscription_campaign_recipients WHERE tenant_id=:t AND admitted_at IS NOT NULL
+          UNION ALL SELECT finished_at,admitted_at FROM subscription_bulk_recipients WHERE tenant_id=:t AND admitted_at IS NOT NULL
         ) pace"""), {"t": tenant, "now": now})).mappings().one()
     if not admission_ready(now, pace["finished"], None, 10, pace["recent"]):
         return []
@@ -399,7 +401,7 @@ async def admit_due_schedules(db, device):
               AND r.device_id=:d AND r.status='pending' AND r.admitted_at IS NULL
               AND NOT EXISTS(SELECT 1 FROM subscription_device_effects e WHERE e.tenant_id=r.tenant_id
                 AND e.device_id=r.device_id AND e.payload->>'phone'=r.phone
-                AND e.type IN ('send_text','chatbot_action','campaign_action','scheduled_action')
+                AND e.type IN ('send_text','chatbot_action','campaign_action','scheduled_action','bulk_action')
                 AND e.status IN ('pending','running','uncertain') AND e.expires_at>:now)
             ORDER BY r.ordinal,r.id LIMIT 1 FOR UPDATE OF r"""),
             {"t": tenant, "schedule": schedule["id"], "run": run["id"], "hash": run["run_version"],

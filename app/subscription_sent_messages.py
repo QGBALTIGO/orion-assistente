@@ -53,6 +53,7 @@ BLOCK_MESSAGES = {
     "MESSAGE_COOLDOWN": "O intervalo de avisos deste contato ainda está em vigor.",
     "MESSAGE_INVALID_RECIPIENT": "O destinatário não permite um novo envio.",
     "MESSAGE_CAMPAIGN_CONTROLLED": "Esta tentativa pertence a uma campanha. Consulte o acompanhamento em Campanhas.",
+    "MESSAGE_BULK_CONTROLLED": "Esta tentativa pertence a um lote. Consulte o acompanhamento em Mensagem em Massa.",
     "MESSAGE_SCHEDULE_CONTROLLED": "Esta tentativa pertence a um agendamento. Consulte o acompanhamento em Mensagens Programadas.",
 }
 FAILURE_MESSAGES = {
@@ -65,7 +66,7 @@ FAILURE_MESSAGES = {
     "chatbot_predecessor_failed": "A mensagem anterior da sequência não foi enviada.",
     "CHATBOT_PREDECESSOR_UNAVAILABLE": "A mensagem anterior da sequência ficou indisponível.",
 }
-MESSAGE_SQL = "(e.type='send_text' OR e.type IN ('chatbot_action','campaign_action','scheduled_action') AND e.payload->'action'->>'type'<>'http' AND e.payload->'action'->>'type' IN ('text','list','image','sticker','video','ptv','audio','document','location','carousel'))"
+MESSAGE_SQL = "(e.type='send_text' OR e.type IN ('chatbot_action','campaign_action','scheduled_action','bulk_action') AND e.payload->'action'->>'type'<>'http' AND e.payload->'action'->>'type' IN ('text','list','image','sticker','video','ptv','audio','document','location','carousel'))"
 
 
 def fail(code, status=409):
@@ -143,6 +144,7 @@ HISTORY_SQL = """
  WHEN h.status='uncertain' OR h.status='running' AND h.expires_at<=:now THEN 'MESSAGE_OUTCOME_UNCERTAIN'
  WHEN h.type='campaign_action' THEN 'MESSAGE_CAMPAIGN_CONTROLLED'
  WHEN h.type='scheduled_action' THEN 'MESSAGE_SCHEDULE_CONTROLLED'
+ WHEN h.type='bulk_action' THEN 'MESSAGE_BULK_CONTROLLED'
  WHEN h.has_resend THEN 'MESSAGE_ALREADY_RETRIED'
  WHEN NOT COALESCE(((h.status='not_sent' AND h.provider_id IS NULL AND h.error_code IN
    ('TRANSPORT_UNAVAILABLE_BEFORE_SEND','MESSAGE_PREPARATION_FAILED','MESSAGE_EXPIRED_BEFORE_SEND',
@@ -175,7 +177,7 @@ HISTORY_SQL = """
  WHEN EXISTS(SELECT 1 FROM subscription_device_effects busy WHERE busy.tenant_id=h.tenant_id
    AND busy.device_id=h.device_id AND busy.payload->>'phone'=h.payload->>'phone' AND busy.id<>h.id
    AND busy.expires_at>:now AND busy.status IN ('pending','running','uncertain')
-   AND busy.type IN ('send_text','chatbot_action','campaign_action','scheduled_action')) THEN 'MESSAGE_CONTACT_BUSY'
+   AND busy.type IN ('send_text','chatbot_action','campaign_action','scheduled_action','bulk_action')) THEN 'MESSAGE_CONTACT_BUSY'
  WHEN h.type='send_text' AND h.purpose IN ('absence','call_reply') AND h.payload->>'phone'<>:test_phone
    AND EXISTS(SELECT 1 FROM subscription_device_cooldowns cd WHERE cd.tenant_id=h.tenant_id
      AND cd.device_id=h.device_id AND cd.phone=h.payload->>'phone' AND cd.reserved_at>:now-interval '24 hours'
@@ -287,9 +289,10 @@ def item_dto(row, now, *, detail=False):
               "call_reply": ("call_reply", "Resposta a ligação"),
               "campaign_action": ("campaign", "Campanha"),
               "scheduled_action": ("scheduled", "Mensagem programada"),
+              "bulk_action": ("bulk", "Mensagem em massa"),
               "diagnostic_test": ("diagnostic_test", "Teste de diagnóstico")}.get(row["purpose"],
               {"test_response": ("test_response", "Teste de resposta"), "owner_command": ("owner_command", "Comando do aparelho")}.get(row.get("run_origin"), ("chatbot", "Chatbot")))
-    blocked = {"campaign_action": "MESSAGE_CAMPAIGN_CONTROLLED", "scheduled_action": "MESSAGE_SCHEDULE_CONTROLLED"}.get(row["type"], row.get("resend_block"))
+    blocked = {"campaign_action": "MESSAGE_CAMPAIGN_CONTROLLED", "scheduled_action": "MESSAGE_SCHEDULE_CONTROLLED", "bulk_action": "MESSAGE_BULK_CONTROLLED"}.get(row["type"], row.get("resend_block"))
     eligible = blocked is None and status == "failed"
     runtime = row.get("device_runtime") or {}
     device_phone = runtime.get("phone") if runtime.get("phone_verified") is True else None
@@ -374,7 +377,7 @@ async def list_messages(tenant_id: UUID, response: Response, actor: Actor = Depe
               CASE purpose WHEN 'chatbot_reply' THEN 'Chatbot' WHEN 'transcription_reply' THEN 'Transcrição'
                 WHEN 'absence' THEN 'Fora do horário' WHEN 'call_reply' THEN 'Resposta a ligação'
                 WHEN 'diagnostic_test' THEN 'Teste de diagnóstico' WHEN 'campaign_action' THEN 'Campanha'
-                WHEN 'scheduled_action' THEN 'Mensagem programada' ELSE '' END,
+                WHEN 'scheduled_action' THEN 'Mensagem programada' WHEN 'bulk_action' THEN 'Mensagem em massa' ELSE '' END,
               CASE run_origin WHEN 'test_response' THEN 'Teste de resposta' WHEN 'owner_command' THEN 'Comando do aparelho' ELSE '' END,
               CASE message_type WHEN 'text' THEN 'texto' WHEN 'list' THEN 'lista' WHEN 'image' THEN 'imagem'
                 WHEN 'sticker' THEN 'figurinha' WHEN 'video' THEN 'vídeo' WHEN 'ptv' THEN 'recado de vídeo'
@@ -632,15 +635,15 @@ async def message_authority(db, device, effect):
     runs, but no later message can overtake that explicit attempt. An expired
     uncertain attempt never blocks unrelated future input forever.
     """
-    if effect["type"] not in {"send_text", "chatbot_action", "campaign_action", "scheduled_action"}:
+    if effect["type"] not in {"send_text", "chatbot_action", "campaign_action", "scheduled_action", "bulk_action"}:
         return True
     tenant = device["tenant_id"]
     phone = effect["payload"].get("phone")
     older = (await db.execute(text("""SELECT e.id FROM subscription_device_effects e
       LEFT JOIN subscription_sent_message_resends retry ON e.tenant_id=retry.tenant_id AND e.id=retry.new_effect_id
       WHERE e.tenant_id=:t AND e.device_id=:d AND e.payload->>'phone'=:phone AND e.id<>:id
-        AND (retry.new_effect_id IS NOT NULL OR e.type IN ('campaign_action','scheduled_action'))
-        AND (e.type NOT IN ('campaign_action','scheduled_action') OR e.event_id<>:event)
+        AND (retry.new_effect_id IS NOT NULL OR e.type IN ('campaign_action','scheduled_action','bulk_action'))
+        AND (e.type NOT IN ('campaign_action','scheduled_action','bulk_action') OR e.event_id<>:event)
         AND e.created_at<=:created AND e.status IN ('pending','running','uncertain')
         AND e.expires_at>clock_timestamp() LIMIT 1"""),
       {"t": tenant, "d": device["id"], "phone": phone, "id": effect["id"], "event": effect["event_id"], "created": effect["created_at"]})).scalar_one_or_none()

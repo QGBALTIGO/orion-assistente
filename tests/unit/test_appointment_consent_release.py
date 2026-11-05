@@ -148,8 +148,10 @@ async def test_worker_probe_rejects_privileged_database_identity(monkeypatch):
     assert closed == [True]
 
 
-@pytest.mark.parametrize("manual_result,consent_result,expected", [(1,0,1),(0,1,1),(0,0,0)])
-def test_worker_requires_both_schema_barriers(monkeypatch, manual_result, consent_result, expected):
+@pytest.mark.parametrize("manual_result,consent_result,bulk_result,expected", [
+    (1, 0, 0, 1), (0, 1, 0, 1), (0, 0, 0, 0), (0, 0, 3, 3),
+])
+def test_worker_requires_both_schema_barriers(monkeypatch, manual_result, consent_result, bulk_result, expected):
     from scripts import wait_for_manual_start_times_schema as manual
     calls=[]
     async def ready(_):
@@ -173,6 +175,10 @@ def test_worker_requires_both_schema_barriers(monkeypatch, manual_result, consen
     monkeypatch.setattr(campaigns_wait, "main", lambda: 0)
     from scripts import wait_for_subscription_scheduled_messages_schema as scheduled_wait
     monkeypatch.setattr(scheduled_wait, "main", lambda: 0)
+    from scripts import wait_for_subscription_bulk_schema as bulk_wait
+    monkeypatch.setattr(bulk_wait, "main", lambda: calls.append("bulk") or bulk_result)
     monkeypatch.setattr(templates_wait, "main", lambda: 0)
     assert worker_barrier.main()==expected
-    assert calls==(["manual"] if manual_result else ["manual","consent"])
+    assert calls == (["manual"] if manual_result else
+                     ["manual", "consent"] if consent_result else
+                     ["manual", "consent", "bulk"])

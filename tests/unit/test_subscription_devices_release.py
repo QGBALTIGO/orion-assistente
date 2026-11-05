@@ -168,6 +168,8 @@ def test_worker_must_cross_every_read_only_schema_barrier(monkeypatch, results, 
     monkeypatch.setattr(campaigns_wait, "main", lambda: 0)
     from scripts import wait_for_subscription_scheduled_messages_schema as scheduled_wait
     monkeypatch.setattr(scheduled_wait, "main", lambda: 0)
+    from scripts import wait_for_subscription_bulk_schema as bulk_wait
+    monkeypatch.setattr(bulk_wait, "main", lambda: 0)
     monkeypatch.setattr(templates_wait, "main", lambda: 0)
     events = []
 

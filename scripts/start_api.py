@@ -30,8 +30,8 @@ def runtime_environment(source):
 
 def wait_for_campaigns_schema(environment):
     # The pre-deploy is the only process allowed to migrate. This child checks
-    # 0069 and every predecessor using runtime-only, read-only catalogs.
-    subprocess.run([sys.executable, "-m", "scripts.wait_for_subscription_scheduled_messages_schema"],
+    # 0070 and every predecessor using runtime-only, read-only catalogs.
+    subprocess.run([sys.executable, "-m", "scripts.wait_for_subscription_bulk_schema"],
                    env=environment, check=True, timeout=95)
 
 

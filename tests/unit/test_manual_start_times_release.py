@@ -150,12 +150,14 @@ async def test_worker_probe_rejects_privileged_database_identity(monkeypatch):
 
 @pytest.mark.parametrize("manual_result", [0, 1])
 def test_existing_worker_predeploy_waits_for_both_releases(monkeypatch, manual_result):
+    calls = []
+
     async def ready(_):
         return {"ok": True, "status": "single_whatsapp_schema_ready"}
 
     monkeypatch.setattr(worker_barrier, "wait_for_schema", ready)
     monkeypatch.setattr(worker_barrier.Settings, "from_environment", lambda: barrier.Settings("synthetic"))
-    monkeypatch.setattr(barrier, "main", lambda: manual_result)
+    monkeypatch.setattr(barrier, "main", lambda: calls.append("manual") or manual_result)
     from scripts import wait_for_appointment_consent_schema as consent_barrier
     monkeypatch.setattr(consent_barrier, "main", lambda: 0)
     from scripts import wait_for_subscription_devices_schema as devices_barrier
@@ -173,5 +175,8 @@ def test_existing_worker_predeploy_waits_for_both_releases(monkeypatch, manual_r
     monkeypatch.setattr(campaigns_wait, "main", lambda: 0)
     from scripts import wait_for_subscription_scheduled_messages_schema as scheduled_wait
     monkeypatch.setattr(scheduled_wait, "main", lambda: 0)
+    from scripts import wait_for_subscription_bulk_schema as bulk_wait
+    monkeypatch.setattr(bulk_wait, "main", lambda: calls.append("bulk") or 0)
     monkeypatch.setattr(templates_wait, "main", lambda: 0)
     assert worker_barrier.main() == manual_result
+    assert calls == (["manual"] if manual_result else ["manual", "bulk"])
