@@ -144,3 +144,73 @@ test('account change clears the guide and keeps the next paused company closed d
   assert.equal(h.document.querySelector(article),null);
   assert.equal(h.document.querySelector('#page-suite').dataset.osCurrentRoute,'novidades');onlyPermissionReads(h);
 });
+
+const avoidArticle='[data-os-guidance="avoid-ban"]';
+function avoidAccess(overrides={}){
+  const value=access();
+  return {...value,code:null,name:'Sem plano ativo',source:'none',active:false,status:'no_access',revision:'avoid-ban-no-commercial-plan',
+    features:[...value.features,'diagnostics.manage'],permissions:{...value.permissions,'diagnostics.manage':true},...overrides};
+}
+
+test('Evitar Banimento is a native ten-topic guide for an active company without a commercial plan',async t=>{
+  const value=avoidAccess(),h=await setup(t,{initialRoute:'evitar-banimento',permissions:value});
+  assert.equal(value.active,false);assert.equal(h.bridge.tenants[0].status,'active');
+  const page=h.document.querySelector(avoidArticle);assert.ok(page);
+  assert.ok(page.classList.contains('os-help-article'));assert.ok(page.querySelector('.os-help-prose'));
+  assert.equal(page.querySelector('h1').textContent,'Evitar Banimento');
+  assert.equal(h.document.title,'Evitar Banimento · Orion');
+  assert.equal(new URL(h.window.location.href).searchParams.get('aba'),'evitar-banimento');
+  assert.ok(h.document.querySelector('#osNav [data-os-route="evitar-banimento"]'));
+  const sections=[...page.querySelectorAll('[data-os-guidance-tip]')];
+  assert.deepEqual(sections.map(node=>node.dataset.osGuidanceTip),Array.from({length:10},(_,index)=>String(index+1)));
+  for(const section of sections)assert.equal(section.querySelector('h2').id,section.getAttribute('aria-labelledby'));
+  assert.deepEqual([...page.querySelectorAll('[data-os-guidance-tip] [data-os-route]')].map(node=>node.dataset.osRoute),['dispositivos','aquecimento','diagnosticos']);
+  assert.equal(page.querySelectorAll('[data-os-guidance-tip="8"] ol li').length,3);
+  assert.equal(page.querySelector('form,input,select,textarea,progress,[role="progressbar"],iframe,video,audio,img'),null);
+  assert.ok([...page.querySelectorAll('button')].every(button=>button.hasAttribute('data-os-route')));
+  const sources=[...page.querySelectorAll('a[href]')];
+  assert.deepEqual(sources.map(link=>link.href),['https://whatsappbusiness.com/policy/','https://www.whatsapp.com/legal/messaging-guidelines']);
+  for(const link of sources){assert.equal(link.target,'_blank');assert.equal(link.rel,'noopener noreferrer');}
+  onlyPermissionReads(h);
+});
+
+test('the three Evitar Banimento shortcuts navigate to their existing routes without starting operations',async t=>{
+  const mounts=[];
+  const module=route=>({mount:bridge=>{mounts.push({route,tenantId:bridge.tenantId});bridge.host.textContent='Consulta sintética';},unmount(){},clearContext(){}});
+  const h=await setup(t,{initialRoute:'evitar-banimento',permissions:avoidAccess(),configureWindow:window=>{
+    window.OrionSubscriptionDevices=module('dispositivos');window.OrionSubscriptionDiagnostics=module('diagnosticos');
+  }});
+  for(const route of ['dispositivos','aquecimento','diagnosticos']){
+    h.click(avoidArticle+' [data-os-route="'+route+'"]');await flush();
+    assert.equal(h.document.querySelector('#page-suite').dataset.osCurrentRoute,route);
+    assert.equal(h.document.querySelector(avoidArticle),null);
+    if(route==='aquecimento')assert.ok(h.document.querySelector(article));
+    h.click('#osNav [data-os-route="evitar-banimento"]');await flush();
+    assert.ok(h.document.querySelector(avoidArticle));
+  }
+  assert.deepEqual(mounts,[{route:'dispositivos',tenantId:tenantA},{route:'diagnosticos',tenantId:tenantA}]);
+  onlyPermissionReads(h);
+});
+
+test('Evitar Banimento omits device and diagnostics shortcuts when their own permissions are missing',async t=>{
+  const value=avoidAccess();
+  for(const feature of ['devices.manage','diagnostics.manage']){delete value.permissions[feature];value.features=value.features.filter(item=>item!==feature);}
+  const h=await setup(t,{initialRoute:'evitar-banimento',permissions:value});assert.ok(h.document.querySelector(avoidArticle));
+  assert.deepEqual([...h.document.querySelectorAll(avoidArticle+' [data-os-guidance-tip] [data-os-route]')].map(node=>node.dataset.osRoute),['aquecimento']);
+  onlyPermissionReads(h);
+});
+
+test('the new guide route shares the subscription, active-company and feature boundaries',async t=>{
+  for(const scenario of [
+    {plan:{workspace_profile:'standard'},tenant:{workspace_profile:'standard'},fallback:'plano'},
+    {plan:{active:true,status:'active'},tenant:{status:'paused'},fallback:'novidades'},
+    {plan:{permissions:{'account.manage':true,'business.setup':true,'devices.manage':true,'diagnostics.manage':true}},fallback:'novidades'},
+  ]){
+    const h=await setup(t,{initialRoute:'evitar-banimento',permissions:avoidAccess(scenario.plan),bridge:{tenants:[business(scenario.tenant)]}});
+    assert.equal(h.document.querySelector(avoidArticle),null);
+    assert.equal(h.document.querySelector('#osNav [data-os-route="evitar-banimento"]'),null);
+    assert.equal(h.document.querySelector('#page-suite').dataset.osCurrentRoute,scenario.fallback);
+    assert.equal(h.calls.some(call=>call.method!=='GET'||call.path.includes('/subscription-whatsapp/')),false);
+    assert.deepEqual(h.errors,[]);
+  }
+});

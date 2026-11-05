@@ -17,7 +17,7 @@ import pytest
 from browser_subscription_chatbot import ROOT, SIZES, assert_layout, browser, navigation  # noqa: F401
 from browser_subscription_chatbot_simulator import setup_page
 from browser_subscription_devices import DEVICE_BASE
-from subscription_guidance_fixture import Handler, base
+from subscription_guidance_fixture import Handler, base, DIAGNOSTICS_BASE
 
 ARTIFACTS = ROOT / "test-artifacts" / "subscription-guidance"
 BOOTSTRAP_PATHS = {
@@ -26,6 +26,7 @@ BOOTSTRAP_PATHS = {
     base.BASE + "/management/permissions",
 }
 ARTICLE = 'article.os-help-article[data-os-guidance="warmup"]'
+AVOID_BAN_ARTICLE = 'article.os-help-article[data-os-guidance="avoid-ban"]'
 
 
 @pytest.fixture(scope="module")
@@ -164,4 +165,100 @@ def test_warmup_deep_link_requires_active_subscription_workspace_and_feature(
         assert not errors, errors
     finally:
         save_evidence(f"{browser[0]}-{case}", browser, size, theme, snapshot, requests, external, errors)
+        context.close()
+
+
+@pytest.mark.parametrize("size", SIZES, ids=lambda size: f"{size[0]}x{size[1]}")
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_avoid_ban_article_layout_and_read_only_shortcuts(browser, fixture_url, size, theme):
+    context, page, external, errors = setup_page(browser, fixture_url, size, theme)
+    requests, snapshot = record_requests(page), {}
+    label = f"avoid-ban-{browser[0]}-{size[0]}x{size[1]}-{theme}"
+    ARTIFACTS.mkdir(parents=True, exist_ok=True)
+    try:
+        with page.expect_response(lambda response: urlsplit(response.url).path == base.BASE + "/management/permissions"):
+            page.goto(fixture_url + "/panel?fixtureRole=owner&fixturePlan=none&fixtureDiagnostics=1&aba=evitar-banimento")
+        snapshot = report(page, fixture_url)
+        assert snapshot["state"]["active"] is True
+        assert snapshot["effective_plan"]["active"] is False
+        assert all(snapshot["effective_plan"]["permissions"][feature] is True for feature in
+                   ("whatsapp_guidance.view", "devices.manage", "diagnostics.manage"))
+        expect(page.locator("#page-suite")).to_have_attribute("data-os-current-route", "evitar-banimento")
+        article = page.locator(AVOID_BAN_ARTICLE)
+        expect(article.get_by_role("heading", name="Evitar Banimento", exact=True)).to_be_visible()
+        expect(page.locator('#osNav [data-os-route="evitar-banimento"]')).to_have_count(1)
+        expect(article.locator("[data-os-guidance-tip] h2")).to_have_count(10)
+        assert article.locator("[data-os-guidance-tip]").evaluate_all(
+            "nodes => nodes.map(node => node.dataset.osGuidanceTip)"
+        ) == [str(number) for number in range(1, 11)]
+        for route in ("dispositivos", "aquecimento", "diagnosticos"):
+            expect(article.locator(f'button[data-os-route="{route}"]')).to_be_visible()
+        expect(article.locator("form, input, textarea, select")).to_have_count(0)
+        official_links = article.locator('[aria-labelledby="osAvoidBanOfficial"] a')
+        expect(official_links).to_have_count(2)
+        assert official_links.evaluate_all(
+            "nodes => nodes.every(node => node.target === '_blank' && node.relList.contains('noopener') && node.relList.contains('noreferrer'))"
+        )
+        page.evaluate("document.fonts.ready")
+        assert_layout(page, size[0])
+        page.screenshot(path=str(ARTIFACTS / (label + ".png")), full_page=True, animations="disabled")
+        snapshot = report(page, fixture_url)
+        assert all(call["path"] in BOOTSTRAP_PATHS for call in snapshot["calls"]), snapshot
+
+        if theme == "light" and size[0] in {390, 1440}:
+            for route in ("dispositivos", "aquecimento", "diagnosticos"):
+                article.locator(f'button[data-os-route="{route}"]').click()
+                expect(page.locator("#page-suite")).to_have_attribute("data-os-current-route", route)
+                if route == "dispositivos":
+                    expect(page.locator(".os-devices-usage .os-badge")).to_have_text("0 de 1")
+                elif route == "aquecimento":
+                    expect(page.locator(ARTICLE)).to_be_visible()
+                else:
+                    expect(page.locator("[data-dg-empty]")).to_be_visible()
+                    expect(page.locator("[data-dg-error]")).to_have_count(0)
+                assert_layout(page, size[0])
+                navigation(page)
+                page.locator('#osNav [data-os-route="evitar-banimento"]').click()
+                expect(page.locator(AVOID_BAN_ARTICLE)).to_be_visible()
+                expect(page.locator("#page-suite")).to_have_attribute("data-os-current-route", "evitar-banimento")
+            snapshot = report(page, fixture_url)
+            assert {DEVICE_BASE, DIAGNOSTICS_BASE} <= {call["path"] for call in snapshot["calls"]}, snapshot
+            assert all(call["path"] in BOOTSTRAP_PATHS | {DEVICE_BASE, DIAGNOSTICS_BASE}
+                       for call in snapshot["calls"]), snapshot
+        assert snapshot["effective_plan"]["active"] is False
+        assert all(call["method"] == "GET" for call in requests), requests
+        assert not external, external
+        assert not errors, errors
+    finally:
+        save_evidence(label, browser, size, theme, snapshot, requests, external, errors)
+        context.close()
+
+
+@pytest.mark.parametrize("case,query,profile,active,granted", [
+    ("standard-with-stale-grant", "&fixtureProfile=standard", "standard", True, True),
+    ("missing-feature", "&fixtureGuidance=0", "subscription_services", True, False),
+    ("inactive-with-stale-grant", "&fixtureInactive=1", "subscription_services", False, True),
+])
+def test_avoid_ban_deep_link_requires_active_subscription_workspace_and_feature(
+    browser, fixture_url, case, query, profile, active, granted,
+):
+    size, theme = (1440, 900), "light"
+    context, page, external, errors = setup_page(browser, fixture_url, size, theme)
+    requests, snapshot = record_requests(page), {}
+    try:
+        page.goto(fixture_url + "/panel?fixtureRole=owner&fixturePlan=none&fixtureDiagnostics=1&aba=evitar-banimento" + query)
+        expect(page.locator("#page-suite")).to_have_attribute(
+            "data-os-current-route", "plano" if profile == "standard" else "novidades")
+        expect(page.locator(AVOID_BAN_ARTICLE)).to_have_count(0)
+        expect(page.locator('#osNav [data-os-route="evitar-banimento"]')).to_have_count(0)
+        snapshot = report(page, fixture_url)
+        assert snapshot["state"] == {"profile": profile, "active": active,
+                                     "feature_granted": granted, "role": "owner"}
+        assert snapshot["effective_plan"]["active"] is False
+        assert not any("/subscription-whatsapp/" in call["path"] for call in snapshot["calls"]), snapshot
+        assert all(call["method"] == "GET" for call in requests), requests
+        assert not external, external
+        assert not errors, errors
+    finally:
+        save_evidence(f"avoid-ban-{browser[0]}-{case}", browser, size, theme, snapshot, requests, external, errors)
         context.close()

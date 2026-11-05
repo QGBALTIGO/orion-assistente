@@ -142,9 +142,10 @@ intacta. As fixtures passam a representar empresa ativa sem plano, com
 `effective_plan.active === false`; os casos de empresa inativa continuam
 exercitando uma permissão antiga verdadeira para verificar o bloqueio.
 
-A etapa 13 permanece aberta até publicar essa correção e conferir o guia
-e o atalho no Chrome real. Nenhuma etapa posterior foi iniciada e nenhuma
-mensagem, compra ou configuração de cliente foi efetuada na conferência.
+A etapa 13 foi mantida aberta enquanto essa correção era preparada.
+Nenhuma etapa posterior foi iniciada antes da publicação e da nova
+conferência descritas a seguir. Nenhuma mensagem, compra ou configuração
+de cliente foi efetuada na conferência.
 
 ### Regressão local da correção
 
@@ -156,3 +157,45 @@ guia e Dispositivos verdadeiras. Os três bloqueios de acesso permanecem,
 sem mutações, pedidos externos ou erros de página. Os nove casos unitários
 de política também passaram, agora explicitando a diferença entre empresa
 ativa sem plano e empresa ativa com concessão Elite.
+
+## Correção publicada e encerramento da etapa 13
+
+A [PR 265](https://github.com/QGBALTIGO/orion-assistente/pull/265) publicou
+`d2c1d279a1da03909785f54faac5ce6e1873bbcb`, preservando a árvore
+`bb36994122bf6dddf2aca53c6649d26107bfd2fa` da candidata
+`a16f8ad1dfc9900be62c1adc0e99d6d196df0de8`.
+
+O corretivo de uma única condição funcional foi liberado com a regressão
+focada antes/depois: 15 DOM, nove Chromium e nove unitários de política,
+mais revisão independente do contrato e 2.768 testes de API aprovados no
+[CI 42071502657](https://github.com/QGBALTIGO/orion-assistente/actions/runs/42071502657).
+Os componentes de banco, ponte e backend não foram alterados. Os demais
+grupos automáticos continuaram em fila/execução e não foram contabilizados
+como aprovados no momento da publicação. Não foram cancelados, e nenhuma
+proteção de branch foi contornada. Posteriormente, o grupo DOM confirmou
+575 aprovações, incluindo o caso sem plano, no mesmo checkout
+`654e55080436933636589ab62054b47f9fafae0c` e árvore da candidata.
+
+O corte geral da correção, de 17:12:51–17:12:53 UTC, tinha 50 jobs:
+10 aprovados, cinco falhas herdadas comparadas, seis em execução e 29 na
+fila. Os 35 resultados incompletos não representam aprovações. Os adendos
+posteriores são separados desse corte; não se declara o repositório todo
+aprovado.
+
+API `3cd2191e-8e9a-4d1b-85b1-2dcda9f3b741` e worker
+`e5fbface-eaf2-4809-bc4c-59976f168efa` confirmaram o merge corrigido,
+SUCCESS e online 1/1, com barreiras 0071 aprovadas. A consulta de 17:15:24 UTC
+não mostrou operações pendentes nem alertas. A ponte permaneceu compatível
+na revisão anterior, com a nova tentativa ignorada por watchpaths.
+
+**Conferência final no Chrome conectado concluída até 17:15:47 UTC:**
+menu Aquecimento visível na empresa real sem plano comercial; artigo com
+os quatro passos, tabela e nota; botão Meus Dispositivos abriu a rota
+`dispositivos`; retorno pelo menu abriu o guia novamente; console sem
+erros. A captura conferiu o visual nativo no tema escuro. Foram apenas
+leituras e navegação, sem conectar, alterar configuração ou enviar mensagens.
+
+A etapa 13 foi encerrada após essa conferência. A observação da etapa 14
+começou em seguida, com as limitações de CI do corretivo registradas
+explicitamente, sem confundir a qualificação completa da base com a
+validação focada da correção.
