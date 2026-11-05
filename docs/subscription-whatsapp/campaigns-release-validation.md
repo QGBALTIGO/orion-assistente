@@ -1,9 +1,16 @@
 # Etapa 07 — publicação e validação de catálogo
 
-Estado: em qualificação. A migração e os 338 testes de PostgreSQL real passaram
-na revisão intermediária 427b0cff; a revisão integrada à produção 01d99bb ainda
-precisa de seus próprios resultados finais. Nenhuma operação de produção, envio,
-teste de proxy ou agendamento real foi executado por esta integração.
+Estado em 2026-11-05: **publicado pela PR258, com backup, migração, startup e
+deployments verificados; interface conferida ao vivo no Chrome**. A árvore
+publicada passou os seis gates dedicados, com 3.110 execuções aprovadas.
+O histórico intermediário abaixo é preservado; os resultados finais e os
+identificadores da publicação estão registrados ao final.
+
+A conferência da interface em produção não salvou grupos ou campanhas, não
+agendou e não enviou mensagens reais. A base posterior PR259 está publicada,
+saudável na conferência de infraestrutura e com a repetição específica do seu
+gate WebKit aprovada às 07:02:04 (`America/Cuiaba`). **A etapa 07 está encerrada;
+a etapa 08 passa à observação**, preservando os limites de evidência abaixo.
 
 ## Cadeia de publicação
 
@@ -62,7 +69,8 @@ A segunda entrada não contém as chaves e não repete a reexecução.
 O modo SSH publicado em 01d99bb mantém sua fronteira de `execve` diretamente
 para `scripts.reverse_ingress`. Depois dessa limpeza e da validação da
 configuração, a entrada do supervisor chama a mesma barreira com ambiente
-também sem as três chaves SSH. A supervisão da API e do túnel só começa depois
+também sem as chaves de transporte. A versão final inclui as cinco variáveis
+SSH/HTTPS nessa exclusão. A supervisão da API e do túnel só começa depois
 do sucesso; erro, timeout ou falha ao criar o processo interrompe a inicialização
 com um marcador finito. Argumentos de rede, pinning, workers e lifecycle do
 supervisor permanecem como publicados.
@@ -129,8 +137,9 @@ Eles verificam o catálogo sob as identidades reais e negam SELECT do runtime
 nas sete tabelas, mesmo com tenant configurado. As provas de alteração de
 grants, RLS, checks, FKs, chaves e índices usam transações no banco descartável
 de loopback, sempre revertidas. A fixture rejeita hosts externos. A execução foi
-no PostgreSQL descartável do CI; não há servidor PG/Docker disponível neste
-ambiente local. A árvore final integrada precisa repetir o gate completo.
+no PostgreSQL descartável do CI; não havia servidor PG/Docker disponível no
+ambiente local. A árvore final integrada repetiu o gate completo, com os 338
+casos aprovados, incluindo esses 51 de catálogo.
 
 ## Integração no CI
 
@@ -148,9 +157,133 @@ testes. O DOM usa `subscription-campaigns.test.mjs`; os dois navegadores usam
 `test-artifacts/subscription-campaigns/`. O gate de PG continua proibindo rede
 externa e exige PostgreSQL/Redis descartáveis.
 
-Para qualificar a revisão final ainda são necessários os resultados executados
-de PG, ponte, DOM e navegadores, o gate Python completo e a comparação dos
-workflows gerais com a produção efetiva a2f84ea. O baseline observado contém falhas
-históricas explícitas; esta nota não declara o conjunto geral verde. Backup,
-migração, deploy e verificação somente de leitura em produção permanecem para
-a fase de publicação autorizada da revisão qualificada.
+A revisão final executou os seis gates e a comparação dos workflows gerais
+com a produção efetiva `a2f84ea`. O baseline contém falhas históricas explícitas;
+esta nota não declara o conjunto geral verde. Backup, migração, deploy e
+conferência somente de leitura em produção foram observados após a qualificação,
+com as evidências abaixo.
+
+## Qualificação e identidade da árvore publicada
+
+O head `e5afccda2880d37121ab9467c36bfefe7095c5a4` e o checkout sintético
+`e2269ecac14e7970706ba586be1acfd1f612cba5` têm a árvore
+`503dcbec9eb05252460ed545acb64f1901061cd1`. O
+[run 41934922779](https://github.com/QGBALTIGO/orion-assistente/actions/runs/41934922779)
+aprovou 1.868 testes Python, 338 PostgreSQL, 411 da ponte, 345 DOM, 74 no Chrome
+oficial e 74 no WebKit: **3.110 execuções aprovadas**. O PostgreSQL inclui 33
+casos funcionais de Campanhas, 51 de release e 254 anteriores.
+
+A comparação geral concluiu 64 de 64 jobs lógicos, sem regressão nova
+identificada. Isso não elimina o passivo histórico: o candidato teve 169 falhas
+e 43 erros na suíte ampla, além de 19 falhas Node, coincidentes com o baseline
+em identificador, fase e multiplicidade. As demais causas históricas e os
+limites de comparação estão no
+[registro de validação](campaigns-validation.md#qualificação-final-da-pr258)
+e na [PR258](https://github.com/QGBALTIGO/orion-assistente/pull/258).
+
+O merge ocorreu em **2026-11-04 às 20:28:29 (`America/Cuiaba`)**, no commit
+`23b78bf42086766694a992474f078c2a4ed0a2eb`. O commit real tem os pais
+`a2f84ea6781a08ad8a97baa5ffce951ae60f3bdc` e
+`e5afccda2880d37121ab9467c36bfefe7095c5a4`, com a mesma árvore qualificada.
+A ref de produção foi conferida após o merge.
+
+## Publicação original: backup, migração e serviços
+
+Os horários desta seção são de **2026-11-04, em `America/Cuiaba` (UTC−4)**.
+Os três deployments concluíram com `SUCCESS` no commit `23b78bf`:
+
+| Serviço | Deployment | SUCCESS observado |
+| --- | --- | --- |
+| API | `88764537-918c-4f09-82c2-ad00c0dc5387` | 20:30:44 |
+| Worker | `b6ed0694-9ac3-467d-aa53-d6fd44619f95` | 20:32:29 |
+| Ponte WhatsApp | `51075974-ea74-4b3a-abf7-d33b93357ad6` | 20:29:13 |
+
+Os logs específicos de startup mostram a ordem necessária:
+
+1. Às **20:30:27**, `private_backup_archive_verified` foi registrado antes do
+   início da migração. O prefixo privado corresponde à release 0068 sobre 0067.
+2. O DDL avançou de `0067_subscription_diagnostics` para
+   `0068_subscription_campaigns`; às **20:30:29**, os marcadores
+   `orion_subscription_campaigns_schema_ready` e
+   `subscription_campaigns_schema_ready` confirmaram o catálogo.
+3. Às **20:30:37**, o probe da API registrou `ok=true`,
+   `status=subscription_campaigns_schema_ready` e
+   `schema_marker=0068_subscription_campaigns`, antes do Uvicorn. Os três
+   processos concluíram startup às **20:30:40**.
+4. Às **20:32:22**, o worker aprovou as barreiras 0066, 0067 e 0068, com
+   `ok=true` e `schema_marker=0068_subscription_campaigns`. O ARQ iniciou às
+   **20:32:29**. O marcador opcional
+   `orion_plan_permissions_0050_worker_ready` não apareceu no filtro limitado
+   e não é apresentado como evidência observada.
+
+A ponte registrou conexão e início do serviço privado às **20:29:11**. Cinco
+avisos sanitizados de adoção da sessão principal com HTTP409 ocorreram entre
+20:29:11 e 20:29:30. Não reapareceram na consulta limitada de 20:32:30 a
+20:41:26. A causa não foi estabelecida; não se afirma que eram anteriores à
+release. Nenhum envio ou teste real de sessão foi feito para investigá-los.
+
+Na conferência limitada às 20:41:26, API, worker e ponte estavam Online no mesmo
+commit; Redis e PostgreSQL também estavam Online, com uma réplica ativa cada,
+nenhum crash, trabalho pendente ou alerta ativo observado. Essa evidência de
+infraestrutura não substitui um teste de entrega de mensagem.
+
+## Conferência ao vivo e versão posterior
+
+Em **2026-11-05, das 06:50 às 06:53 (`America/Cuiaba`)**, o Chrome conectado
+do usuário permitiu conferir o menu, a lista vazia de Campanhas, o formulário,
+a alternância texto/template, os campos de dispositivo/agendamento/fuso/dias
+e a lista/formulário de grupos no painel publicado. O console capturado não
+apresentou avisos ou erros. Os formulários foram abandonados sem salvar e a
+tela voltou à lista original; não houve criação de dados, agendamento ou envio
+real. As capturas da lista e do formulário foram registradas fora do repositório.
+Na continuidade da conferência, a captura completa do formulário foi
+inspecionada visualmente, sem cortes ou elementos sobrepostos identificados;
+a tela retornou à lista sem salvar.
+
+A produção já contém a [PR259](https://github.com/QGBALTIGO/orion-assistente/pull/259),
+commit `19fbe9a98cc59dbc927f69517666f77ec2eb8d6b`, árvore
+`6ffd7381c77fcadfa2d64af65d91d5ded4b0eb6a`, cujo primeiro pai é `23b78bf`.
+Os arquivos próprios de Campanhas permaneceram iguais. Às **06:55:51 de
+2026-11-05 (`America/Cuiaba`)**, foram conferidos os deployments atuais:
+
+| Serviço | Deployment da PR259 | Estado observado |
+| --- | --- | --- |
+| API | `26a539e7-6ac0-4a30-8747-3fdf4e8e4a78` | SUCCESS / Online, 1 réplica ativa |
+| Worker | `d08e669e-b71c-423f-8851-4f47279a9027` | SUCCESS / Online, 1 réplica ativa |
+| Ponte WhatsApp | `9c3aa0bd-43ab-4217-afd8-1a6db4226a6c` | SUCCESS / Online, 1 réplica ativa |
+
+Os três correspondem a `19fbe9a`. Redis e PostgreSQL também estavam Online,
+sem réplicas em crash. Não havia trabalho pendente nem alertas de aviso/críticos
+na leitura. A conferência da nova base foi somente leitura; o backup e a migração
+0068 acima continuam associados à publicação original da PR258.
+
+Na validação da base posterior, houve erro de página capturado por `pageerror` em
+`/api/v1/account/business-identity` durante troca de perfil no cenário
+`test_filters_expiry_revocation_empty_and_other_niche_do_not_admit[webkit]`.
+A tentativa 2 foi cancelada. A falha e esse cancelamento permanecem como
+histórico; a causa da falha inicial não foi comprovada.
+
+A tentativa 3 do
+[run 41950107314](https://github.com/QGBALTIGO/orion-assistente/actions/runs/41950107314),
+job `127201760767`, terminou em **SUCCESS em 2026-11-05 às 07:02:04
+(`America/Cuiaba`)**, com **74 aprovados e 74 deselecionados em 392,13 segundos**.
+O checkout `0a59ddc7a67a0283e48aed6219ddfd00479b9616` tem a árvore
+`6ffd7381c77fcadfa2d64af65d91d5ded4b0eb6a`, idêntica à produção `19fbe9a`.
+Os deselecionados não são contados como testes executados. Somente o WebKit foi
+repetido; os resultados dos outros cinco jobs foram reaproveitados e não são
+apresentados como novas execuções dessa tentativa.
+
+Com essa evidência final, a publicação e a conferência ao vivo da etapa 07
+estão encerradas. Mensagens Programadas passa à observação após essa
+confirmação. Os registros da falha inicial e do cancelamento são preservados,
+sem atribuir uma causa não demonstrada nem ampliar as alegações para envio real.
+
+## Limite da equivalência com o BotBot
+
+A criação/edição completa de Campanhas na referência exige um complemento
+pago. O usuário recusou a compra; não comprar, ativar nem solicitar novamente
+aprovação desse complemento. Os fluxos inacessíveis continuam explicitamente
+não observados. Os testes sintéticos e a conferência da interface publicada
+validam o contrato do Orion, sem demonstrar paridade integral com a execução
+privada bloqueada da referência. Não houve compra nem tentativa de contornar
+essa restrição.

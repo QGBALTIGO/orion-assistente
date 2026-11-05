@@ -1,0 +1,466 @@
+{
+  "schedule_input": {
+    "title": "Aviso sintético de renovação",
+    "device_id": "7d7a1310-88af-4d4d-8d60-000000000010",
+    "group_ids": [
+      "7d7a1310-88af-4d4d-8d60-000000000020"
+    ],
+    "contact_keys": [
+      "phone:5567999999901"
+    ],
+    "all_contacts": false,
+    "start_date": "2030-01-10",
+    "start_time": "14:00",
+    "interval_seconds": 60,
+    "repeat_every_30_days": false,
+    "message_type": "text",
+    "text": "Olá, {name}. Sua renovação sintética está próxima.",
+    "template_id": null
+  },
+  "options_response": {
+    "devices": [
+      {
+        "id": "7d7a1310-88af-4d4d-8d60-000000000010",
+        "name": "Dispositivo sintético",
+        "status": "connected",
+        "available": true,
+        "blocked_reason": null
+      },
+      {
+        "id": "7d7a1310-88af-4d4d-8d60-000000000011",
+        "name": "Dispositivo sintético indisponível",
+        "status": "disconnected",
+        "available": false,
+        "blocked_reason": "Desconectado"
+      }
+    ],
+    "templates": [
+      {
+        "id": "7d7a1310-88af-4d4d-8d60-000000000030",
+        "name": "Template sintético text",
+        "kind": "text",
+        "revision": 1,
+        "available": true,
+        "blocked_reason": null
+      },
+      {
+        "id": "7d7a1310-88af-4d4d-8d60-000000000031",
+        "name": "Template sintético image",
+        "kind": "image",
+        "revision": 1,
+        "available": true,
+        "blocked_reason": null
+      },
+      {
+        "id": "7d7a1310-88af-4d4d-8d60-000000000032",
+        "name": "Template sintético video",
+        "kind": "video",
+        "revision": 1,
+        "available": true,
+        "blocked_reason": null
+      },
+      {
+        "id": "7d7a1310-88af-4d4d-8d60-000000000033",
+        "name": "Template sintético audio",
+        "kind": "audio",
+        "revision": 1,
+        "available": true,
+        "blocked_reason": null
+      },
+      {
+        "id": "7d7a1310-88af-4d4d-8d60-000000000034",
+        "name": "Template sintético document",
+        "kind": "document",
+        "revision": 1,
+        "available": true,
+        "blocked_reason": null
+      },
+      {
+        "id": "7d7a1310-88af-4d4d-8d60-000000000035",
+        "name": "Template sintético sticker",
+        "kind": "sticker",
+        "revision": 1,
+        "available": true,
+        "blocked_reason": null
+      },
+      {
+        "id": "7d7a1310-88af-4d4d-8d60-000000000036",
+        "name": "Template sintético ptv",
+        "kind": "ptv",
+        "revision": 1,
+        "available": true,
+        "blocked_reason": null
+      },
+      {
+        "id": "7d7a1310-88af-4d4d-8d60-000000000037",
+        "name": "Template sintético location",
+        "kind": "location",
+        "revision": 1,
+        "available": true,
+        "blocked_reason": null
+      }
+    ],
+    "groups": [
+      {
+        "id": "7d7a1310-88af-4d4d-8d60-000000000020",
+        "name": "Renovação sintética A",
+        "version": 1,
+        "member_count": 2
+      },
+      {
+        "id": "7d7a1310-88af-4d4d-8d60-000000000021",
+        "name": "Renovação sintética B",
+        "version": 1,
+        "member_count": 1
+      }
+    ],
+    "timezone": "America/Sao_Paulo",
+    "today": "2030-01-09",
+    "defaults": {
+      "start_date": "2030-01-10",
+      "start_time": "14:00",
+      "interval_seconds": 60,
+      "repeat_every_30_days": false,
+      "message_type": "text"
+    },
+    "limits": {
+      "title": 120,
+      "text_utf16": 1000,
+      "groups": 100,
+      "recipients": 10000,
+      "interval_seconds": [
+        10,
+        20,
+        30,
+        40,
+        50,
+        60
+      ],
+      "review_seconds": 120
+    },
+    "generated_at": "2030-01-09T12:00:00Z"
+  },
+  "contacts_response": {
+    "items": [
+      {
+        "key": "phone:5567999999901",
+        "phone_e164": "+5567999999901",
+        "name": "Contato sintético 1",
+        "available": true,
+        "blocked_reason": null,
+        "version": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      {
+        "key": "phone:5567999999902",
+        "phone_e164": "+5567999999902",
+        "name": "Contato sintético 2",
+        "available": true,
+        "blocked_reason": null,
+        "version": "2222222222222222222222222222222222222222222222222222222222222222"
+      },
+      {
+        "key": "phone:5567999999903",
+        "phone_e164": "+5567999999903",
+        "name": "Contato sintético 3",
+        "available": true,
+        "blocked_reason": null,
+        "version": "3333333333333333333333333333333333333333333333333333333333333333"
+      }
+    ],
+    "total": 3,
+    "page": 1,
+    "page_size": 30,
+    "pages": 1,
+    "timezone": "America/Sao_Paulo",
+    "generated_at": "2030-01-09T12:00:00Z"
+  },
+  "audience_response": {
+    "total": 2,
+    "direct": 1,
+    "from_groups": 2,
+    "duplicates": 1,
+    "blocked": 0,
+    "eligible": 2,
+    "generated_at": "2030-01-09T12:00:00Z",
+    "timezone": "America/Sao_Paulo",
+    "start_at": "2030-01-10T17:00:00Z",
+    "estimated_end_at": "2030-01-10T17:02:00Z"
+  },
+  "list_response": {
+    "items": [
+      {
+        "schedule_id": "7d7a1310-88af-4d4d-8d60-000000000001",
+        "run_id": "7d7a1310-88af-4d4d-8d60-000000000002",
+        "title": "Aviso sintético de renovação",
+        "version": 1,
+        "run_version": 1,
+        "occurrence_index": 0,
+        "series_status": "active",
+        "status": "pending",
+        "status_label": "Próximo",
+        "bucket": "active",
+        "active_filter": "upcoming",
+        "attention_reason": null,
+        "device": {
+          "id": "7d7a1310-88af-4d4d-8d60-000000000010",
+          "name": "Dispositivo sintético",
+          "status": "connected"
+        },
+        "scheduled_at": "2030-01-10T17:00:00Z",
+        "local_date": "2030-01-10",
+        "local_time": "14:00",
+        "timezone": "America/Sao_Paulo",
+        "interval_seconds": 60,
+        "repeat_every_30_days": false,
+        "estimated_end_at": "2030-01-10T17:02:00Z",
+        "progress": {
+          "total": 2,
+          "processed": 0,
+          "sent": 0,
+          "pending": 2,
+          "failed": 0,
+          "uncertain": 0,
+          "cancelled": 0,
+          "percent": 0
+        },
+        "actions": [
+          "edit",
+          "cancel_run",
+          "cancel_series"
+        ],
+        "created_at": "2030-01-09T12:00:00Z"
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "page_size": 30,
+    "pages": 1,
+    "timezone": "America/Sao_Paulo",
+    "generated_at": "2030-01-09T12:00:00Z",
+    "counts": {
+      "active": 1,
+      "past_due": 0,
+      "history": 0,
+      "all": 1,
+      "attention": 0,
+      "queued": 0,
+      "processing": 0,
+      "upcoming": 1
+    }
+  },
+  "detail_response": {
+    "schedule": {
+      "schedule_id": "7d7a1310-88af-4d4d-8d60-000000000001",
+      "run_id": "7d7a1310-88af-4d4d-8d60-000000000002",
+      "title": "Aviso sintético de renovação",
+      "version": 1,
+      "run_version": 1,
+      "occurrence_index": 0,
+      "series_status": "active",
+      "status": "pending",
+      "status_label": "Próximo",
+      "bucket": "active",
+      "active_filter": "upcoming",
+      "attention_reason": null,
+      "device": {
+        "id": "7d7a1310-88af-4d4d-8d60-000000000010",
+        "name": "Dispositivo sintético",
+        "status": "connected"
+      },
+      "scheduled_at": "2030-01-10T17:00:00Z",
+      "local_date": "2030-01-10",
+      "local_time": "14:00",
+      "timezone": "America/Sao_Paulo",
+      "interval_seconds": 60,
+      "repeat_every_30_days": false,
+      "estimated_end_at": "2030-01-10T17:02:00Z",
+      "progress": {
+        "total": 2,
+        "processed": 0,
+        "sent": 0,
+        "pending": 2,
+        "failed": 0,
+        "uncertain": 0,
+        "cancelled": 0,
+        "percent": 0
+      },
+      "actions": [
+        "edit",
+        "cancel_run",
+        "cancel_series"
+      ],
+      "created_at": "2030-01-09T12:00:00Z"
+    },
+    "definition": {
+      "title": "Aviso sintético de renovação",
+      "device_id": "7d7a1310-88af-4d4d-8d60-000000000010",
+      "group_ids": [
+        "7d7a1310-88af-4d4d-8d60-000000000020"
+      ],
+      "contact_keys": [
+        "phone:5567999999901"
+      ],
+      "all_contacts": false,
+      "start_date": "2030-01-10",
+      "start_time": "14:00",
+      "interval_seconds": 60,
+      "repeat_every_30_days": false,
+      "message_type": "text",
+      "text": "Olá, {name}. Sua renovação sintética está próxima.",
+      "template_id": null,
+      "timezone": "America/Sao_Paulo"
+    },
+    "message_preview": {
+      "type": "text",
+      "text": "Olá, {name}. Sua renovação sintética está próxima.",
+      "caption": null,
+      "followup": null,
+      "template_name": null,
+      "parts": [
+        {
+          "type": "text",
+          "text": "Olá, {name}. Sua renovação sintética está próxima."
+        }
+      ]
+    },
+    "groups": [
+      {
+        "id": "7d7a1310-88af-4d4d-8d60-000000000020",
+        "name": "Renovação sintética A",
+        "version": 1,
+        "member_count": 2
+      }
+    ],
+    "recipients": {
+      "items": [
+        {
+          "id": "7d7a1310-88af-4d4d-8d60-000000000050",
+          "ordinal": 1,
+          "name": "Contato sintético 1",
+          "phone": "+5567999999901",
+          "status": "pending",
+          "status_label": "Pendente",
+          "error_code": null,
+          "parts": []
+        },
+        {
+          "id": "7d7a1310-88af-4d4d-8d60-000000000051",
+          "ordinal": 2,
+          "name": "Contato sintético 2",
+          "phone": "+5567999999902",
+          "status": "pending",
+          "status_label": "Pendente",
+          "error_code": null,
+          "parts": []
+        }
+      ],
+      "total": 2,
+      "page": 1,
+      "page_size": 30,
+      "pages": 1,
+      "timezone": "America/Sao_Paulo",
+      "generated_at": "2030-01-09T12:00:00Z"
+    }
+  },
+  "review_request": {
+    "idempotency_key": "7d7a1310-88af-4d4d-8d60-000000000061",
+    "schedule": {
+      "title": "Aviso sintético de renovação",
+      "device_id": "7d7a1310-88af-4d4d-8d60-000000000010",
+      "group_ids": [
+        "7d7a1310-88af-4d4d-8d60-000000000020"
+      ],
+      "contact_keys": [
+        "phone:5567999999901"
+      ],
+      "all_contacts": false,
+      "start_date": "2030-01-10",
+      "start_time": "14:00",
+      "interval_seconds": 60,
+      "repeat_every_30_days": false,
+      "message_type": "text",
+      "text": "Olá, {name}. Sua renovação sintética está próxima.",
+      "template_id": null
+    }
+  },
+  "review_response": {
+    "request_id": "7d7a1310-88af-4d4d-8d60-000000000060",
+    "idempotency_key": "7d7a1310-88af-4d4d-8d60-000000000061",
+    "kind": "review_create",
+    "status": "prepared",
+    "schedule_id": null,
+    "run_id": null,
+    "replayed": false,
+    "created_at": "2030-01-09T12:00:00Z",
+    "expires_at": "2030-01-09T12:02:00Z",
+    "result": null,
+    "preview": {
+      "review_version": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "expires_at": "2030-01-09T12:02:00Z",
+      "title": "Aviso sintético de renovação",
+      "definition": {
+        "title": "Aviso sintético de renovação",
+        "device_id": "7d7a1310-88af-4d4d-8d60-000000000010",
+        "group_ids": [
+          "7d7a1310-88af-4d4d-8d60-000000000020"
+        ],
+        "contact_keys": [
+          "phone:5567999999901"
+        ],
+        "all_contacts": false,
+        "start_date": "2030-01-10",
+        "start_time": "14:00",
+        "interval_seconds": 60,
+        "repeat_every_30_days": false,
+        "message_type": "text",
+        "text": "Olá, {name}. Sua renovação sintética está próxima.",
+        "template_id": null,
+        "timezone": "America/Sao_Paulo"
+      },
+      "total": 2,
+      "eligible": 2,
+      "blocked": 0,
+      "duplicates": 1,
+      "direct": 1,
+      "from_groups": 2,
+      "device": {
+        "id": "7d7a1310-88af-4d4d-8d60-000000000010",
+        "name": "Dispositivo sintético",
+        "status": "connected"
+      },
+      "groups": [
+        {
+          "id": "7d7a1310-88af-4d4d-8d60-000000000020",
+          "name": "Renovação sintética A",
+          "version": 1,
+          "member_count": 2
+        }
+      ],
+      "message_preview": {
+        "type": "text",
+        "text": "Olá, {name}. Sua renovação sintética está próxima.",
+        "caption": null,
+        "followup": null,
+        "template_name": null,
+        "parts": [
+          {
+            "type": "text",
+            "text": "Olá, {name}. Sua renovação sintética está próxima."
+          }
+        ]
+      },
+      "schedule": {
+        "start_at": "2030-01-10T17:00:00Z",
+        "timezone": "America/Sao_Paulo",
+        "estimated_end_at": "2030-01-10T17:02:00Z",
+        "repeat_every_30_days": false
+      }
+    }
+  },
+  "confirm_request": {
+    "idempotency_key": "7d7a1310-88af-4d4d-8d60-000000000061",
+    "review_version": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "confirmation": "AGENDAR",
+    "consent_confirmed": true
+  }
+}

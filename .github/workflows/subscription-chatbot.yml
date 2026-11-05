@@ -9,6 +9,7 @@ on:
       - 'app/subscription_sent_messages*.py'
       - 'app/subscription_diagnostics*.py'
       - 'app/subscription_campaign*.py'
+      - 'app/subscription_schedule*.py'
       - 'app/qr_channels.py'
       - 'app/plan_catalog.py'
       - 'app/plan_permissions.py'
@@ -22,6 +23,7 @@ on:
       - 'app/static/orion-subscription-sent-messages.*'
       - 'app/static/orion-subscription-diagnostics.*'
       - 'app/static/orion-subscription-campaigns.*'
+      - 'app/static/orion-subscription-scheduled-messages.*'
       - 'app/static/orion-suite.js'
       - 'app/static/panel.html'
       - 'alembic/versions/0063_subscription_chatbot.py'
@@ -30,6 +32,7 @@ on:
       - 'alembic/versions/0066_appointment_operations.py'
       - 'alembic/versions/0067_subscription_diagnostics.py'
       - 'alembic/versions/0068_subscription_campaigns.py'
+      - 'alembic/versions/0069_subscription_scheduled_messages.py'
       - 'qr-bridge/**'
       - 'scripts/*subscription_devices*'
       - 'scripts/*subscription_chatbot*'
@@ -37,6 +40,7 @@ on:
       - 'scripts/*subscription_sent_messages*'
       - 'scripts/*subscription_diagnostics*'
       - 'scripts/*subscription_campaigns*'
+      - 'scripts/*subscription_scheduled_messages*'
       - 'scripts/backup_and_migrate_*.py'
       - 'scripts/predeploy_one_click_links.py'
       - 'scripts/wait_for_single_whatsapp_schema.py'
@@ -49,6 +53,7 @@ on:
       - 'tests/**/test_subscription_sent_messages*.py'
       - 'tests/**/test_subscription_diagnostics*.py'
       - 'tests/**/test_subscription_campaign*.py'
+      - 'tests/**/test_subscription_schedule*.py'
       - 'tests/unit/test_start_api.py'
       - 'tests/unit/test_reverse_ingress.py'
       - 'tests/unit/test_https_transport.py'
@@ -59,11 +64,14 @@ on:
       - 'tests/fixtures/subscription_sent_messages*.json'
       - 'tests/fixtures/subscription_diagnostics*.json'
       - 'tests/fixtures/subscription_campaigns*.json'
+      - 'tests/fixtures/subscription_scheduled_messages*.json'
       - 'tests/e2e/browser_subscription_chatbot*.py'
       - 'tests/e2e/browser_subscription_templates.py'
       - 'tests/e2e/browser_subscription_sent_messages.py'
       - 'tests/e2e/browser_subscription_diagnostics.py'
       - 'tests/e2e/browser_subscription_campaigns.py'
+      - 'tests/e2e/browser_subscription_scheduled_messages.py'
+      - 'tests/e2e/subscription_scheduled_messages_fixture.py'
       - 'ui-tests/*subscription*'
       - 'Dockerfile'
       - 'pyproject.toml'
@@ -111,6 +119,7 @@ jobs:
             tests/unit/test_subscription_sent_messages*.py \
             tests/unit/test_subscription_diagnostics*.py \
             tests/unit/test_subscription_campaign*.py \
+            tests/unit/test_subscription_schedule*.py \
             tests/unit/test_subscription_devices.py \
             tests/unit/test_subscription_device_rules.py \
             tests/unit/test_subscription_device_audio.py \
@@ -149,7 +158,7 @@ jobs:
           node --check qr-bridge/src/channel-routes.mjs
           node --check qr-bridge/src/device-runtime.mjs
           node --check qr-bridge/src/device-diagnostics.mjs
-          for source in qr-bridge/src/campaign-*.mjs; do
+          for source in qr-bridge/src/campaign-*.mjs qr-bridge/src/scheduled-*.mjs; do
             node --check "$source"
           done
           node --check qr-bridge/src/device-diagnostic-message.mjs
@@ -167,6 +176,7 @@ jobs:
           node --test \
             qr-bridge/test/chatbot-*.test.mjs \
             qr-bridge/test/campaign-*.test.mjs \
+            qr-bridge/test/scheduled-*.test.mjs \
             qr-bridge/test/device-*.test.mjs \
             qr-bridge/test/channel-*.test.mjs \
             qr-bridge/test/bridge-auth.test.mjs \
@@ -201,6 +211,7 @@ jobs:
           node --check app/static/orion-subscription-sent-messages.js
           node --check app/static/orion-subscription-diagnostics.js
           node --check app/static/orion-subscription-campaigns.js
+          node --check app/static/orion-subscription-scheduled-messages.js
           node --check app/static/orion-subscription-devices.js
           node --check app/static/orion-suite.js
           node --test \
@@ -210,6 +221,7 @@ jobs:
             ui-tests/subscription-sent-messages.test.mjs \
             ui-tests/subscription-diagnostics.test.mjs \
             ui-tests/subscription-campaigns.test.mjs \
+            ui-tests/subscription-scheduled-messages.test.mjs \
             ui-tests/subscription-devices.test.mjs \
             ui-tests/subscription-workspace.test.mjs \
             ui-tests/channels.test.mjs \
@@ -308,6 +320,7 @@ jobs:
               *sorted(glob.glob('tests/integration/test_subscription_sent_messages*_postgres.py')),
               *sorted(glob.glob('tests/integration/test_subscription_diagnostics*_postgres.py')),
               *sorted(glob.glob('tests/integration/test_subscription_campaigns*_postgres.py')),
+              *sorted(glob.glob('tests/integration/test_subscription_schedule*_postgres.py')),
               'tests/integration/test_subscription_devices_postgres.py',
               'tests/integration/test_subscription_devices_release_postgres.py',
               'tests/integration/test_subscription_workspace_postgres.py',
@@ -374,6 +387,7 @@ jobs:
             tests/e2e/browser_subscription_sent_messages.py \
             tests/e2e/browser_subscription_diagnostics.py \
             tests/e2e/browser_subscription_campaigns.py \
+            tests/e2e/browser_subscription_scheduled_messages.py \
             tests/e2e/browser_subscription_devices.py \
             tests/e2e/browser_subscription_workspace.py -k '${{ matrix.engine }}'
       - uses: actions/upload-artifact@v4
@@ -387,6 +401,7 @@ jobs:
             test-artifacts/subscription-sent-messages/
             test-artifacts/subscription-diagnostics/
             test-artifacts/subscription-campaigns/
+            test-artifacts/subscription-scheduled-messages/
             test-artifacts/subscription-devices/
             test-artifacts/subscription-workspace/
           if-no-files-found: warn

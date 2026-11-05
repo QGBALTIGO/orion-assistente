@@ -21,8 +21,8 @@ não observado ou testado.
 | 04 | Templates | Publicado e conferido ao vivo em 2026-11-04 — PR 251, produção `7164ce5ca9e4c795910ca5255f510f625dad0a11` |
 | 05 | Mensagens Enviadas | Publicado e conferido ao vivo em 2026-11-04 — PR 252, produção `f58730ac8e380bd2c12286c69c1db3873d3cbf0f` |
 | 06 | Diagnósticos | Publicado e conferido ao vivo em 2026-11-04 — PR 253, produção `81cf127c51c3fae015568d16d79724ebe0f00db8` |
-| 07 | Campanhas | Implementado na PR 258; qualificação da revisão final e publicação pendentes |
-| 08 | Mensagens Programadas | Não iniciado |
+| 07 | Campanhas | Publicado e conferido ao vivo em 2026-11-05 — PR 258, produção `23b78bf42086766694a992474f078c2a4ed0a2eb`; etapa encerrada após aprovação WebKit da base posterior PR 259, conforme o [registro de validação](campaigns-validation.md) |
+| 08 | Mensagens Programadas | Implementação e validação em andamento; [observação](scheduled-messages-observation.md) e [contrato](scheduled-messages-contract.md) registrados; [validação](scheduled-messages-validation.md) em andamento, ainda não publicado |
 | 09 | Mensagem em Massa | Não iniciado |
 | 10 | Atribuições de Chat | Não iniciado |
 | 11 | Enviar Mensagem | Não iniciado |

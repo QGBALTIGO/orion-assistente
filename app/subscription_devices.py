@@ -722,6 +722,7 @@ async def device_event(channel_id: UUID, payload: DeviceEvent, request: Request)
 async def pending_effects(channel_id: UUID, request: Request):
     from app import subscription_chatbot_engine as chatbot
     from app.subscription_campaigns import admit_due_campaigns, after_campaign_effect_finish
+    from app.subscription_schedule_runtime import admit_due_schedules, after_schedule_effect_finish
     async with _private_transaction(request) as (db, row, _, _, _):
         # An interrupted non-idempotent send is never retried automatically.
         # Webhooks carry a stable event id and may be retried up to three times.
@@ -731,11 +732,14 @@ async def pending_effects(channel_id: UUID, request: Request):
             WHERE device_id=:d AND status='running' AND authorized_at<clock_timestamp()-interval '180 seconds'
             RETURNING *"""), {"d": row["id"]})).mappings().all()
         for effect in interrupted:
-            if effect["type"] == "campaign_action":
+            if effect["type"] == "scheduled_action":
+                await after_schedule_effect_finish(db, row, effect, effect["status"])
+            elif effect["type"] == "campaign_action":
                 await after_campaign_effect_finish(db, row, effect, effect["status"])
             else:
                 await chatbot.after_effect_finish(db, row, effect, effect["status"])
         await chatbot.reap_unreachable(db, row)
+        await admit_due_schedules(db, row)
         await admit_due_campaigns(db, row)
         effects = (await db.execute(text("""SELECT e.* FROM subscription_device_effects e
             LEFT JOIN subscription_device_effects p ON p.tenant_id=e.tenant_id AND p.id=e.previous_effect
@@ -745,7 +749,7 @@ async def pending_effects(channel_id: UUID, request: Request):
             WHERE e.device_id=:d AND e.generation=:g AND e.settings_revision=:r AND e.due_at<=clock_timestamp()
               AND e.type<>'transcribe' AND e.expires_at>clock_timestamp()
               AND (e.status='pending' OR e.type='webhook' AND e.status='failed' AND e.attempts<3)
-              AND (e.type NOT IN ('chatbot_action','campaign_action') OR e.previous_effect IS NULL OR p.status='accepted')
+              AND (e.type NOT IN ('chatbot_action','campaign_action','scheduled_action') OR e.previous_effect IS NULL OR p.status='accepted')
               AND (e.type<>'chatbot_action' OR r.input_context->>'transcription_predecessor' IS NULL OR a.status='accepted')
             ORDER BY e.created_at,e.id LIMIT 25"""),
             {"d": row["id"], "g": row["generation"], "r": row["revision"]})).mappings().all()
@@ -753,7 +757,8 @@ async def pending_effects(channel_id: UUID, request: Request):
             FROM subscription_device_effects WHERE device_id=:d AND generation=:g
               AND type<>'webhook' AND status='uncertain'
             ORDER BY created_at,id LIMIT 25"""), {"d": row["id"], "g": row["generation"]})).mappings().all()
-        return jsonable_encoder({"effects": [campaign_effect_descriptor(effect) if effect["type"] == "campaign_action"
+        return jsonable_encoder({"effects": [scheduled_effect_descriptor(effect) if effect["type"] == "scheduled_action"
+                                             else campaign_effect_descriptor(effect) if effect["type"] == "campaign_action"
                                              else chatbot.descriptor(effect) for effect in effects],
                                  "reconcile": [{key: value for key, value in effect.items()
                                                 if key != "chatbot_revision" or value is not None} for effect in reconcile]})
@@ -761,6 +766,14 @@ async def pending_effects(channel_id: UUID, request: Request):
 
 def campaign_effect_descriptor(effect):
     return {"operation_id": effect["id"], "type": "campaign_action", "action_type": effect["payload"]["action"]["type"],
+            "device_id": effect["device_id"], "generation": effect["generation"],
+            "settings_revision": effect["settings_revision"], "due_at": effect["due_at"]}
+
+
+def scheduled_effect_descriptor(effect):
+    # Polling advertises only the operation. Recipient/content are released
+    # by the authenticated, current-generation authorization step.
+    return {"operation_id": effect["id"], "type": "scheduled_action", "action_type": effect["payload"]["action"]["type"],
             "device_id": effect["device_id"], "generation": effect["generation"],
             "settings_revision": effect["settings_revision"], "due_at": effect["due_at"]}
 
@@ -816,6 +829,9 @@ async def authorize_effect(channel_id: UUID, payload: EffectRequest, request: Re
         if payload.device_id is not None:
             _same_snapshot(row, payload.device_id, payload.generation, payload.settings_revision)
         effect = await _effect(db, row, payload.operation_id)
+        if effect["type"] == "scheduled_action":
+            from app.subscription_schedule_runtime import authorize_schedule_effect
+            return await authorize_schedule_effect(db, row, effect, owner, fence, payload)
         if effect["type"] == "campaign_action":
             from app.subscription_campaigns import authorize_campaign_effect
             return await authorize_campaign_effect(db, row, effect, owner, fence, payload)
@@ -888,7 +904,10 @@ async def finish_effect(channel_id: UUID, payload: EffectFinish, request: Reques
                     await db.execute(text("""UPDATE subscription_devices SET
                         settings=jsonb_set(settings,'{webhook,enabled}','false'::jsonb),revision=revision+1,
                         updated_at=clock_timestamp() WHERE id=:d"""), {"d": row["id"]})
-        if effect["type"] == "campaign_action":
+        if effect["type"] == "scheduled_action":
+            from app.subscription_schedule_runtime import after_schedule_effect_finish
+            children = await after_schedule_effect_finish(db, row, effect, state)
+        elif effect["type"] == "campaign_action":
             from app.subscription_campaigns import after_campaign_effect_finish
             children = await after_campaign_effect_finish(db, row, effect, state)
         else:

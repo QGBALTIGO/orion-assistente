@@ -129,7 +129,11 @@ def main():
     if result:
         return result
     from scripts.wait_for_subscription_campaigns_schema import main as campaigns_wait
-    return campaigns_wait()
+    result = campaigns_wait()
+    if result:
+        return result
+    from scripts.wait_for_subscription_scheduled_messages_schema import main as scheduled_messages_wait
+    return scheduled_messages_wait()
 
 
 if __name__ == "__main__":
