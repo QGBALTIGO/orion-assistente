@@ -7,6 +7,24 @@ const ids=()=>({id:randomUUID(),key:'synthetic-private-key-'.repeat(3),lease:{ow
   device:{device_id:randomUUID(),generation:randomUUID(),settings_revision:3,operation_id:randomUUID()},
   asset:{id:randomUUID(),size:4,mime:'text/plain; charset=utf-8'}});
 
+test('device polling advertises the implemented bulk protocol and keeps the existing private identity',async()=>{
+  const value=ids(),calls=[],broker=createChannelBroker({apiUrl:'http://orion-api.railway.internal',fetchImpl:async(url,options)=>{
+    calls.push({url,options});return Response.json({effects:[],reconcile:[]});}});
+  assert.deepEqual(await broker.deviceEffectsPending(value.id,value.key,value.lease,value.device),{effects:[],reconcile:[]});
+  const {url,options}=calls[0];
+  assert.equal(url.pathname,`/internal/qr/channels/${value.id}/device/effects/pending`);
+  assert.equal(url.search,'');assert.equal(options.method,'GET');assert.equal(options.body,undefined);
+  assert.equal(options.headers['X-Orion-Bulk-Protocol'],'1');
+  assert.equal(options.headers['X-Orion-Channel-Key'],value.key);
+  assert.equal(options.headers['X-Orion-Channel-Owner'],value.lease.owner);
+  assert.equal(options.headers['X-Orion-Channel-Fence'],'7');
+  assert.equal(options.headers['X-Orion-Device-Id'],value.device.device_id);
+  assert.equal(options.headers['X-Orion-Device-Generation'],value.device.generation);
+  assert.equal(options.headers['X-Orion-Device-Revision'],'3');
+  await broker.deviceEffectAuthorize(value.id,value.key,value.lease,value.device);
+  assert.equal(calls[1].options.headers['X-Orion-Bulk-Protocol'],undefined);
+});
+
 test('bulk asset request binds the exact private path, effect, device and lease',async()=>{
   const value=ids(),calls=[],broker=createChannelBroker({apiUrl:'http://orion-api.railway.internal',fetchImpl:async(url,options)=>{
     calls.push({url,options});return new Response('test',{headers:{'content-type':value.asset.mime,'content-length':'4'}});}});
@@ -18,6 +36,7 @@ test('bulk asset request binds the exact private path, effect, device and lease'
   assert.equal(url.searchParams.get('settings_revision'),'3');assert.equal(options.method,'GET');assert.equal(options.body,undefined);
   assert.equal(options.redirect,'error');assert.equal(options.headers['X-Orion-Device-Effect'],value.device.operation_id);
   assert.equal(options.headers['X-Orion-Channel-Owner'],value.lease.owner);assert.equal(options.headers['X-Orion-Chatbot-Revision'],undefined);
+  assert.equal(options.headers['X-Orion-Bulk-Protocol'],undefined);
   bytes.fill(0);
 });
 

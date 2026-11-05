@@ -52,6 +52,7 @@ export function createChannelBroker({apiUrl,fetchImpl=fetch,env=process.env}){
       const response=await fetchImpl(target,{method,redirect:'error',signal:controller.signal,
         headers:{'Content-Type':audio?mediaType:carouselImage?'application/octet-stream':'application/json','X-Orion-Channel-Key':key,
           ...(owner?{'X-Orion-Channel-Owner':owner,'X-Orion-Channel-Fence':String(fence)}:{}),
+          ...(operation==='device/effects/pending'?{'X-Orion-Bulk-Protocol':'1'}:{}),
           ...(audio?{'X-Orion-Phone':phone}:{}),
           ...(device?{'X-Orion-Device-Id':device.device_id,'X-Orion-Device-Generation':device.generation,
             'X-Orion-Device-Revision':String(device.settings_revision),...(device.operation_id?{'X-Orion-Device-Effect':device.operation_id}:{}),

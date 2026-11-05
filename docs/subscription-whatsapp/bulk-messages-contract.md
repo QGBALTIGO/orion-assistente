@@ -112,6 +112,11 @@ do Orion: a referência não foi observada durante um envio real.
   idempotente; não apaga histórico ou desfaz um envio aceito.
 - Efeitos encerrados fora do módulo, por configuração/remoção de dispositivo,
   são reconciliados em toda a empresa antes de verificar a fila compartilhada.
+- O poll privado anuncia `X-Orion-Bulk-Protocol: 1`. Somente a versão
+  reconhecida pode admitir Massa e receber seus descritores pendentes ou de
+  reconciliação. A ausência ou uma versão desconhecida mantém os módulos
+  anteriores e a limpeza/revogação, sem ocupar a fila com trabalho que uma
+  ponte antiga não sabe executar.
 
 Não se acrescenta uma ação de pausa/reinício com semântica presumida da
 referência. Acompanhamento e cancelamento preservam o padrão operacional do Orion.

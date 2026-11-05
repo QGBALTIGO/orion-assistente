@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
+from starlette.requests import Request
 
 from app.plan_permissions import derive_plan
 from app.plan_catalog import PLAN_FEATURES, RECOVERY_FEATURES
@@ -76,14 +77,23 @@ def test_pending_bulk_descriptor_contains_no_recipient_content_or_media_url():
 
 
 @pytest.mark.asyncio
-async def test_authenticated_poll_routes_interrupted_bulks_and_serial_admission(monkeypatch):
+@pytest.mark.parametrize("protocols,supported", [
+    ([], False), (["0"], False), (["2"], False), (["01"], False),
+    (["1 "], False), (["1,2"], False), (["1", "1"], False),
+    (["1", "2"], False), (["1"], True),
+])
+async def test_authenticated_poll_negotiates_bulk_without_skipping_cleanup_or_legacy_work(monkeypatch, protocols, supported):
     from contextlib import asynccontextmanager
     from app import subscription_devices as devices, subscription_campaigns as campaigns
     from app import subscription_chatbot_engine as chatbot, subscription_bulk_runtime as bulk
     calls = []
     row = {"id": uuid4(), "tenant_id": uuid4(), "generation": uuid4(), "revision": 1}
     pending = bulk_effect("pending")
+    scheduled = {**bulk_effect("pending"), "type": "scheduled_action"}
     interrupted = bulk_effect("uncertain")
+    receipts = [{"operation_id": uuid4(), "type": kind, "device_id": row["id"],
+                 "generation": row["generation"], "settings_revision": 1, "chatbot_revision": None}
+                for kind in ("bulk_action", "scheduled_action")]
     class Result:
         def __init__(self, rows): self.rows = rows
         def mappings(self): return self
@@ -92,7 +102,13 @@ async def test_authenticated_poll_routes_interrupted_bulks_and_serial_admission(
         def __init__(self): self.read = 0
         async def execute(self, query, values):
             self.read += 1
-            return Result([interrupted] if self.read == 1 else [pending] if self.read == 2 else [])
+            if self.read == 1:
+                return Result([interrupted])
+            assert values["bulk_supported"] is supported
+            assert "type<>'bulk_action' OR :bulk_supported" in str(query)
+            if self.read == 2:
+                return Result([pending, scheduled] if supported else [scheduled])
+            return Result(receipts if supported else receipts[1:])
     @asynccontextmanager
     async def transaction(_):
         yield DB(), row, {}, uuid4(), 1
@@ -100,17 +116,22 @@ async def test_authenticated_poll_routes_interrupted_bulks_and_serial_admission(
         assert device is row and effect is interrupted and status == "uncertain"
         calls.append("bulk-interrupted")
     async def chatbot_reap(db, device): calls.append("chatbot-reap")
-    async def outbound_admit(db, device): calls.append("outbound-admit")
+    async def outbound_admit(db, device, *, bulk_supported):
+        assert bulk_supported is supported
+        calls.append("outbound-admit")
     async def wrong_handler(*_): pytest.fail("Scheduled work reached the chatbot handler")
     monkeypatch.setattr(devices, "_private_transaction", transaction)
     monkeypatch.setattr(bulk, "after_bulk_effect_finish", interrupted_done)
     monkeypatch.setattr(devices, "admit_outbound_work", outbound_admit)
     monkeypatch.setattr(chatbot, "reap_unreachable", chatbot_reap)
     monkeypatch.setattr(chatbot, "after_effect_finish", wrong_handler)
-    value = await devices.pending_effects(uuid4(), object())
+    request = Request({"type": "http", "headers": [(b"x-orion-bulk-protocol", value.encode()) for value in protocols]})
+    value = await devices.pending_effects(uuid4(), request)
     assert calls == ["bulk-interrupted", "chatbot-reap", "outbound-admit"]
-    assert value["effects"][0]["type"] == "bulk_action" and value["reconcile"] == []
-    assert "payload" not in value["effects"][0] and "phone" not in value["effects"][0]
+    expected = ["bulk_action", "scheduled_action"] if supported else ["scheduled_action"]
+    assert [item["type"] for item in value["effects"]] == expected
+    assert [item["type"] for item in value["reconcile"]] == expected
+    assert all("payload" not in item and "phone" not in item for item in value["effects"])
 
 
 @pytest.mark.asyncio
@@ -142,7 +163,8 @@ async def test_bulk_authorization_always_uses_its_frozen_audience_authority(monk
     ["scheduled", "bulk", "campaign"],
     ["campaign", "scheduled", "bulk"],
 ])
-async def test_poll_reconciles_all_modules_before_honoring_database_fair_turns(monkeypatch, turns):
+@pytest.mark.parametrize("bulk_supported", [False, True])
+async def test_poll_reconciles_all_modules_before_honoring_supported_database_fair_turns(monkeypatch, turns, bulk_supported):
     from app import subscription_devices as devices, subscription_campaigns as campaigns
     from app import subscription_schedule_runtime as scheduled, subscription_bulk_runtime as bulk
     events = []
@@ -154,7 +176,7 @@ async def test_poll_reconciles_all_modules_before_honoring_database_fair_turns(m
 
     class DB:
         async def execute(self, query, values):
-            assert events == ["reaped"]
+            assert events == (["reaped"] if bulk_supported else ["reaped", "bulk-invalidated"])
             assert values == {"t": row["tenant_id"]}
             events.append("turns")
             return Result()
@@ -165,6 +187,10 @@ async def test_poll_reconciles_all_modules_before_honoring_database_fair_turns(m
         assert database is db and tenant == row["tenant_id"]
         events.append("reaped")
 
+    async def invalidate(database, tenant):
+        assert database is db and tenant == row["tenant_id"]
+        events.append("bulk-invalidated")
+
     def admit(name):
         async def run(database, candidate):
             assert database is db and candidate is row
@@ -172,11 +198,17 @@ async def test_poll_reconciles_all_modules_before_honoring_database_fair_turns(m
         return run
 
     monkeypatch.setattr(bulk, "reap_outbound_work", reap)
+    monkeypatch.setattr(bulk, "invalidate_bulk_contacts", invalidate)
     monkeypatch.setattr(bulk, "admit_bulk_messages", admit("bulk"))
     monkeypatch.setattr(campaigns, "admit_due_campaigns", admit("campaign"))
     monkeypatch.setattr(scheduled, "admit_due_schedules", admit("scheduled"))
-    await devices.admit_outbound_work(db, row)
-    assert events == ["reaped", "turns", *turns]
+    if bulk_supported:
+        await devices.admit_outbound_work(db, row, bulk_supported=True)
+    else:
+        await devices.admit_outbound_work(db, row)  # Callers must explicitly opt in.
+    cleanup = ["reaped"] if bulk_supported else ["reaped", "bulk-invalidated"]
+    admitted = [module for module in turns if module != "bulk" or bulk_supported]
+    assert events == [*cleanup, "turns", *admitted]
 
 
 @pytest.mark.asyncio

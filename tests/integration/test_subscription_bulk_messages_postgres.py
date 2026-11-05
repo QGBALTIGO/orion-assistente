@@ -110,9 +110,16 @@ async def cancel(c, row, *, key=None):
 
 async def poll(c):
     await renew(c)
-    response = await internal(c, "/effects/pending", method="GET")
+    response = await internal(c, "/effects/pending", method="GET", headers=poll_headers(c))
     assert response.status_code == 200, response.text
     return [effect for effect in response.json()["effects"] if effect["type"] == "bulk_action"]
+
+
+def poll_headers(c, protocol="1"):
+    headers = c.bridge.headers(c.row, live=True)
+    if protocol is not None:
+        headers["X-Orion-Bulk-Protocol"] = protocol
+    return headers
 
 
 async def ledger(c):
@@ -333,7 +340,7 @@ async def test_parallel_polls_serialize_bulk_campaign_and_scheduled_admission(bu
     await campaign(c)
     await scheduled_message(c)
     await renew(c)
-    responses = await asyncio.gather(*(internal(c, "/effects/pending", method="GET") for _ in range(3)))
+    responses = await asyncio.gather(*(internal(c, "/effects/pending", method="GET", headers=poll_headers(c)) for _ in range(3)))
     assert all(r.status_code == 200 for r in responses), [r.text for r in responses]
     effects = {r["operation_id"] for response in responses for r in response.json()["effects"]}
     assert len(effects) == 1
@@ -344,6 +351,74 @@ async def test_parallel_polls_serialize_bulk_campaign_and_scheduled_admission(bu
             UNION ALL SELECT id FROM subscription_schedule_recipients WHERE tenant_id=:t AND status='running'
             ) running"""), {"t": c.tenant})).scalar_one()
         assert live == 1
+
+
+@pytest.mark.parametrize("protocol", [None, "unknown"])
+@pytest.mark.parametrize("legacy_module", ["scheduled", "campaign"])
+async def test_old_or_unknown_bridge_protocol_cannot_admit_bulk_but_keeps_existing_modules(bulk_case, protocol, legacy_module):
+    c = bulk_case
+    pending = await batch(c)
+    await renew(c)
+    before = await internal(c, "/effects/pending", method="GET", headers=poll_headers(c, protocol))
+    assert before.status_code == 200 and before.json()["effects"] == [], before.text
+    assert before.json()["reconcile"] == [] and await ledger(c) == []
+    if legacy_module == "scheduled":
+        await scheduled_message(c)
+    else:
+        await campaign(c)
+    await renew(c)
+    response = await internal(c, "/effects/pending", method="GET", headers=poll_headers(c, protocol))
+    assert response.status_code == 200, response.text
+    effect, = response.json()["effects"]
+    assert effect["type"] == {"scheduled": "scheduled_action", "campaign": "campaign_action"}[legacy_module]
+    assert await ledger(c) == [] and (await detail(c, pending))["batch"]["status"] == "pending"
+    assert (await grant(c, effect))["authorized"]
+    await finish(c, effect)
+    table = {"scheduled": "subscription_schedule_recipients", "campaign": "subscription_campaign_recipients"}[legacy_module]
+    async with c.ctx.migration.begin() as db:
+        await db.execute(text(f"""UPDATE {table}
+            SET admitted_at=statement_timestamp()-interval '8 seconds',finished_at=statement_timestamp()-interval '7 seconds'
+            WHERE tenant_id=:t AND status='sent'"""), {"t": c.tenant})
+    ready, = await poll(c)  # The upgraded bridge may now execute the waiting bulk batch.
+    permit = await grant(c, ready)
+    assert permit["authorized"] and permit["batch_id"] == pending["batch_id"]
+
+
+async def test_old_bridge_poll_reaps_expired_admitted_bulk_without_admitting_the_next_batch(bulk_case):
+    c = bulk_case
+    old = await batch(c)
+    first, = await poll(c)
+    upcoming = await batch(c, [item(c, phone=OTHER_PHONE)])
+    async with c.ctx.migration.begin() as db:
+        await db.execute(text("""UPDATE subscription_device_effects SET expires_at=clock_timestamp()-interval '1 second'
+            WHERE tenant_id=:t AND id=:id"""), {"t": c.tenant, "id": UUID(first["operation_id"])})
+    await renew(c)
+    response = await internal(c, "/effects/pending", method="GET", headers=poll_headers(c, None))
+    assert response.status_code == 200 and response.json()["effects"] == [], response.text
+    saved, = await ledger(c)
+    assert (saved["status"], saved["attempts"], saved["error_code"]) == ("not_sent", 0, "BULK_EFFECT_EXPIRED")
+    assert (await detail(c, old))["batch"]["status"] == "failed"
+    assert (await detail(c, upcoming))["batch"]["status"] == "pending"
+
+
+async def test_old_bridge_poll_hides_bulk_reconcile_descriptor_but_preserves_uncertain_evidence(bulk_case):
+    c = bulk_case
+    row = await batch(c)
+    first, = await poll(c)
+    assert (await grant(c, first))["authorized"]
+    async with c.ctx.migration.begin() as db:
+        await db.execute(text("""UPDATE subscription_device_effects SET authorized_at=clock_timestamp()-interval '181 seconds'
+            WHERE tenant_id=:t AND id=:id"""), {"t": c.tenant, "id": UUID(first["operation_id"])})
+    await renew(c)
+    legacy = await internal(c, "/effects/pending", method="GET", headers=poll_headers(c, None))
+    assert legacy.status_code == 200 and legacy.json()["effects"] == [] and legacy.json()["reconcile"] == [], legacy.text
+    assert (await detail(c, row))["batch"]["status"] == "uncertain"
+    saved, = await ledger(c)
+    assert (saved["status"], saved["attempts"]) == ("uncertain", 1)
+    current = await internal(c, "/effects/pending", method="GET", headers=poll_headers(c))
+    assert current.status_code == 200 and current.json()["effects"] == [], current.text
+    assert [r["operation_id"] for r in current.json()["reconcile"]] == [first["operation_id"]]
+    assert await ledger(c) == [saved]
 
 
 async def test_duplicate_rows_keep_order_and_wait_interval_after_terminal_receipt(bulk_case):
@@ -669,7 +744,7 @@ async def test_external_terminal_effect_releases_shared_gate_without_rewriting_e
             SET admitted_at=statement_timestamp()-interval '8 seconds',finished_at=statement_timestamp()-interval '7 seconds'
             WHERE tenant_id=:t AND bulk_id=:bulk AND status='failed'"""), {"t": c.tenant, "bulk": UUID(old["batch_id"])})
     await renew(c)
-    response = await internal(c, "/effects/pending", method="GET")
+    response = await internal(c, "/effects/pending", method="GET", headers=poll_headers(c))
     assert response.status_code == 200, response.text
     upcoming, = response.json()["effects"]
     assert upcoming["type"] == {"bulk": "bulk_action", "scheduled": "scheduled_action", "campaign": "campaign_action"}[next_module]
