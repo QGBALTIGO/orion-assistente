@@ -1,0 +1,56 @@
+name: QA - URL tags baseline failures
+on:
+  push:
+    branches: [qa/url-api-webhook-tags-20261104]
+    paths: ['.github/workflows/url-tags-ci-compare.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Compare failed jobs against the published base
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import urllib.request,json,os,re,collections
+          from pathlib import Path
+          root='https://api.github.com/repos/QGBALTIGO/orion-assistente/'
+          def get(endpoint):
+              request=urllib.request.Request(root+endpoint,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
+              with urllib.request.urlopen(request,timeout=30) as response: return response.read()
+          def js(endpoint): return json.loads(get(endpoint))
+          revisions={'base':'23b78bf42086766694a992474f078c2a4ed0a2eb','candidate':'06bbbe727c16236cd18757a1ed97e28ea503f33e'}
+          wanted={400923985,399871712,398876786,399986915}
+          report={}
+          for name,sha in revisions.items():
+              runs=js('actions/runs?head_sha='+sha+'&event=pull_request&per_page=100')['workflow_runs']
+              selected={}
+              for run in runs:
+                  if run['workflow_id'] in wanted and run['workflow_id'] not in selected: selected[run['workflow_id']]=run
+              report[name]={}
+              for workflow,run in selected.items():
+                  jobs=js(f"actions/runs/{run['id']}/jobs?per_page=100")['jobs']
+                  records=[]
+                  for job in jobs:
+                      if job['conclusion']!='failure': continue
+                      text=get(f"actions/jobs/{job['id']}/logs").decode('utf-8',errors='replace')
+                      text=re.sub(r'\x1b\[[0-9;]*m','',text)
+                      stripped=[re.sub(r'^\S+Z\s*','',line) for line in text.splitlines()]
+                      failures=[line for line in stripped if re.match(r'^(?:FAILED|ERROR) tests/',line)]
+                      node=[line for line in stripped if re.match(r'^not ok [0-9]+ - ',line)]
+                      totals=[line for line in stripped if re.search(r'\b\d+ (?:failed|passed|errors)(?:,| in|\b)',line) and len(line)<300]
+                      cause=any('relation "wa_account_owner_live_idx" already exists' in line for line in stripped)
+                      records.append({'id':job['id'],'name':job['name'],'failed_steps':[s['name'] for s in job.get('steps',[]) if s['conclusion']=='failure'],'test_failures':failures,'node_failures':node,'summaries':totals[-5:],'duplicate_owner_index':cause})
+                  report[name][str(workflow)]={'run':run['id'],'head':run['head_sha'],'name':run['name'],'conclusion':run['conclusion'],'jobs':records}
+          print(json.dumps(report,ensure_ascii=False,indent=2))
+          Path('/tmp/url-tags-baseline-comparison.json').write_text(json.dumps(report,ensure_ascii=False,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: url-tags-baseline-comparison
+          path: /tmp/url-tags-baseline-comparison.json
+          retention-days: 7
