@@ -88,8 +88,8 @@ ao vivo. A etapa 17 começa depois desse encerramento.
 
 Em 2026-11-05, a implementação passou em 129 testes Python focados, incluindo
 52 novos casos do extrator e as regressões de autorização e Campanhas.
-Os 23 cenários PostgreSQL foram coletados, mas ainda aguardam execução no
-banco real do CI; coleta não é aprovação.
+Os 23 cenários PostgreSQL foram apenas coletados nessa rodada local; sua
+execução real posterior está discriminada na qualificação da PR 269 abaixo.
 
 A rodada final DOM passou 56 casos: 34 do extrator e 22 dos guias que
 compartilham a guarda de acesso. Esse total já contém os 34 casos executados
@@ -130,8 +130,8 @@ durante a leitura e a correção mantém a chave original. A suíte DOM de Massa
 passou 62 casos; os dois casos Chromium existentes de repetição/correção
 passaram sem alteração do E2E. A falha WebKit da PR 268 não tinha trace que
 permitisse atribuir conclusivamente o clique perdido a essa janela; ela
-continua registrada separadamente. Os seis grupos de qualificação devem
-validar a candidata que contém esta correção.
+continua registrada separadamente. A candidata final da PR 269 contém essa
+correção e foi qualificada pelos seis grupos registrados a seguir.
 
 ## Publicação da PR 269 e conferência real
 
@@ -188,17 +188,120 @@ proprietário, validade, geração e revisão. Uma desconexão isolada não exig
 nova leitura para salvar contatos já revisados; remoção, desativação ou troca
 de contexto continuam bloqueando a operação.
 
-O critério definido para este ajuste de estado é a validação focada do
-produtor/API, DOM integrado, Chromium e a conferência offline em produção.
+O critério de liberação deste ajuste de estado é a validação focada do
+produtor/API, DOM integrado e Chromium, seguida da conferência da tela
+publicada. O estado offline foi reproduzido com dados sintéticos; a
+conferência real final está registrada abaixo.
 Os 70 testes Python e 37 DOM passaram. O produtor real, reproduzido com a
 função anterior, falhou ao devolver disponibilidade para estado desconectado;
 com o predicado novo, seu DTO completo coincide com `options_disconnected`,
 consumido pelo teste DOM. Os 19 casos Chromium passaram, incluindo a recusa
 do DTO legado, somente GET/options quando offline e navegação pelo CTA.
 
-Os 29 cenários PostgreSQL do corretivo foram coletados e seguem para o CI;
-não são declarados aprovados localmente. O novo resultado amplo e o WebKit
-serão acompanhados separadamente. A consulta real dos grupos no Orion depende
-de uma sessão conectada; os testes do transporte e das importações usam dados
-sintéticos. O encerramento desta etapa ainda exige publicar o corretivo e
-conferir o estado desconectado na tela, antes de começar a etapa 17.
+### Qualificação da árvore integrada da PR 270
+
+A [PR 270](https://github.com/QGBALTIGO/orion-assistente/pull/270) foi integrada
+por merge normal em `a438a1416577cde1fb643e9c8a200ca90093e084`, sobre a base
+concorrente da [PR 267](https://github.com/QGBALTIGO/orion-assistente/pull/267),
+`de9d1b3b3099886a069f0aa2a761cbacd26908b3`. O checkout de teste
+`7f8dafd5c656b436f0db252f50ed292ad053e6c5` e o merge publicado têm a mesma
+árvore Git `5aaa2ef859a4c621009c2655b0c668f766404b31`, conferida localmente.
+A integração preserva as alterações de confiabilidade da base concorrente.
+
+A qualificação focada dessa árvore terminou com os seguintes resultados:
+
+| Grupo | Aprovados | Escopo |
+|---|---:|---|
+| Python | 276 | Extrator, dispositivos, saúde da conexão, revínculo, canais QR e verificações de publicação relacionadas |
+| Node | 279 | Ponte e compatibilidade com a base integrada |
+| DOM | 37 | Extrator, contrato real de opções offline, isolamento e navegação permissionada |
+| Chromium | 19 | Fluxos do extrator, layouts, estado offline, DTO legado incoerente e atalho Dispositivos |
+
+Essas rodadas qualificam o corretivo integrado; os 70 testes Python iniciais
+não são somados novamente. As **4.902 execuções dedicadas pertencem à PR 269**
+e não são apresentadas como uma nova execução ampla da PR 270.
+
+Os **29 cenários PostgreSQL foram somente coletados**, sem execução local
+real nesta qualificação. O [workflow dedicado 42094143383](https://github.com/QGBALTIGO/orion-assistente/actions/runs/42094143383)
+continuava com seis jobs em fila no corte de **2026-11-05 às 19:46:20 UTC**.
+No mesmo corte, o CI geral tinha sete sucessos, três falhas comparadas como
+herdadas, dois jobs em andamento e 43 em fila. As falhas de histórico de
+clientes no PostgreSQL, comunicações de agendamento no PostgreSQL e ponte
+completa mantiveram os mesmos casos de teste e causas da referência PR 269.
+O resultado amplo, incluindo PostgreSQL e WebKit desta revisão, permanece
+registrado separadamente; não se declara aprovação de todo o repositório.
+
+### Publicação do corretivo
+
+API e worker atingiram SUCCESS com o merge
+`a438a1416577cde1fb643e9c8a200ca90093e084` em 2026-11-05:
+
+| Serviço | Implantação | Estado e horário UTC |
+|---|---|---|
+| API | `c1d1cfa0-5767-4078-a48f-c6dc237d8cce` | SUCCESS às 19:37:45.822 |
+| Worker | `98646f31-9b50-476f-abf4-fd597f9bcd56` | SUCCESS às 19:36:59.875 |
+| Ponte | `e6d6a16c-37c0-4c64-9207-773d4bb76159` | SUCCESS, na revisão `de9d1b3b3099886a069f0aa2a761cbacd26908b3` |
+
+A ponte já publicada tem a mesma árvore `qr-bridge` do merge a438:
+`c3091aeece93349d3171df38eacfc54ebb04d339`. Por ausência de mudança nesse
+componente, o autodeploy da PR 270 foi marcado SKIPPED; a implantação SUCCESS
+acima permaneceu ativa. O ambiente exibiu os cinco serviços online, com
+uma réplica de uma, sem trabalho pendente e sem alertas.
+
+### Conferência real final no Chrome
+
+Na nova conferência, o dispositivo já apareceu conectado, sem acionamento
+manual de conexão ou revínculo nesta verificação. O extrator listou **três
+grupos reais**. A leitura do primeiro grupo apresentou **quatro membros**,
+com as colunas WhatsApp, Nome e Função, quatro contatos selecionados,
+zero números indisponíveis e zero duplicados.
+
+Desmarcar todos deixou a seleção em zero e o botão de salvar desabilitado.
+Selecionar uma linha mudou a contagem para um e habilitou o botão. O botão
+Salvar não foi acionado: nenhum contato real foi importado, nenhuma lista
+foi gravada e nenhuma mensagem foi enviada.
+
+A ação Atualizar descartou a prévia e a tabela retornou a zero linhas. A
+conferência terminou em **2026-11-05 às 19:44:54 UTC**, na rota
+`/painel?aba=extrator-contatos`, com `alerts=[]` e sem warnings ou erros no
+console. A captura final foi inspecionada no padrão visual nativo do Orion.
+Nomes e números privados não foram reproduzidos neste registro.
+
+A consulta anterior do BotBot usou outro grupo, com 77 membros. Portanto,
+a amostra real do Orion comprova leitura e seleção no contexto observado;
+não comprova igualdade dos dados dos provedores ou funcionamento em todos os
+grupos. O salvamento, a importação aditiva e suas regras de recuperação foram
+exercitados com dados sintéticos. O retorno de salvamento da referência
+continua não observado.
+
+A etapa 16 está encerrada como função publicada e com leitura real validada.
+Os limites de observação e a pendência do CI amplo permanecem explícitos;
+o encerramento permite iniciar a etapa 17 sem atribuir equivalência integral
+às mutações não observadas no BotBot.
+
+
+## CI amplo do corretivo — corte 2026-11-05 20:00:08 UTC
+
+O workflow `42094143383` terminou na mesma árvore integrada da PR270.
+Cinco grupos passaram: 2.838 API, 620 DOM, 575 ponte, 167 Chromium e 167
+WebKit. O grupo PostgreSQL parou com um aprovado e uma falha antes da ação: o
+novo fixture tentou persistir `status=stopped`, recusado pelo CHECK da migração
+0062. Esse é um estado da ponte, normalizado antes de chegar ao banco, e não
+um estado permitido de `subscription_devices`.
+
+A correção de fixture preparada com a etapa17 substitui esse parâmetro pelo
+estado persistido válido `error`, mantendo todas as asserções de bloqueio da
+consulta e de ausência de mutação. Os casos unitários para DTO `stopped`
+continuam. Não houve mudança no produto nem relaxamento do CHECK. Os 29
+cenários PostgreSQL e a suíte completa ainda precisam da execução real da
+próxima candidata; não se apresenta o CI270 como seis grupos aprovados.
+
+O corte terminal do CI geral, consultado às 20:25 UTC, contém 55 jobs de 20
+workflows disparados: 42 aprovados, 11 com falha e dois cancelados durante a
+preparação do WebKit. Dez jobs repetem as falhas anteriores registradas na
+PR269. O FATIA terminou com 168 falhas, 43 erros, 10.070 aprovados e dez
+ignorados; sua única nova identidade de falha, comparada à execução completa
+da PR266, é o mesmo fixture `stopped` acima. As 21 falhas antigas do fixture de
+Enviar Mensagem e duas verificações de release não aparecem nessa execução.
+Esses resultados posteriores ao merge não representam aprovação global do
+repositório nem uma qualificação prévia dos seis grupos da PR270.

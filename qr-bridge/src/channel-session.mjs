@@ -33,6 +33,7 @@ import {messagePreflightError} from './device-message-failure.mjs';
 import {createDeviceProxy} from './device-network.mjs';
 import {currentDiagnosticMessage} from './device-diagnostic-message.mjs';
 import {createDeviceGroupContacts} from './device-group-contacts.mjs';
+import {createGroupAddSocket} from './device-group-add.mjs';
 import {classifyPairedAuth} from './paired-auth-state.mjs';
 import {chatbotInteractiveMode} from './interactive-mode.mjs';
 
@@ -218,6 +219,19 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
   const close=()=>{if(closed)return;closed=true;state='stopped';qrValue=null;pairAttempt=null;cancel(pairTimer);cancel(noticeTimer);cancel(assistantTimer);assistantIngress?.abandon();abort.abort();health.stop();deviceRuntime?.close();proxyTransport?.close();for(const lease of typingLeases)lease.stop();typingLeases.clear();client.ev.removeAllListeners();try{client.end(undefined);}catch{}};
   const groupContacts=createDeviceGroupContacts({...deviceOptions.groupContactsOptions,client,isCurrent:current,
     isConnected:()=>state==='connected',deviceSnapshot:()=>context.deviceSnapshot?.(),schedule,cancel});
+  const groupMutationReady=()=>{
+      const runtime=deviceRuntime?.diagnostics(),readiness=health.snapshot();
+      if(!runtime||!runtime.ingress||runtime.ingress_error||runtime.ingress.pending>0||runtime.ingress.blocked>0||
+          ['full','unavailable'].includes(runtime.ingress.state)||readiness.ingress_storage_unavailable===true)
+        throw Object.assign(Error('group_add_unavailable'),{groupAddReason:'ingress_blocked'});
+      if(state!=='connected'||readiness.state!=='connected'||readiness.sync_pending===true||client.ws?.isOpen===false)
+        throw Object.assign(Error('group_add_unavailable'),{groupAddReason:'device_unavailable'});
+      return current();
+  };
+  const groupAdd=createGroupAddSocket({...deviceOptions.groupAddOptions,client,isCurrent:current,
+    isConnected:()=>state==='connected',deviceSnapshot:()=>context.deviceSnapshot?.(),schedule,cancel,
+    assertMutationReady:async()=>{await guarded();if(!groupMutationReady())throw Error('group_add_unavailable');},
+    mutationCurrent:groupMutationReady});
   async function relayText(phone,text,{isCurrent:operationCurrent=()=>true,maxTextChars=1200,device=false,source='automation',
     diagnostic=null,assertAuthorized,onRelayAttempt}={}){
     await guarded();const self=normalizeFromJid(client.user?.id);
@@ -486,7 +500,7 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
     }
   }
   client.ev.on('messages.upsert',receive);
-  return {close,groupContacts,status:()=>{expirePairing();return state;},
+  return {close,groupContacts,groupAdd,status:()=>{expirePairing();return state;},
     connectionHealth:()=>health.snapshot(),
     ingressDiagnostics,
     deviceSettingsChanged:()=>deviceRuntime?.sync(),

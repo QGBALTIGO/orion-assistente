@@ -1,6 +1,7 @@
 /** Only fixed private API paths; no destination is taken from a request/model. */
 import {channelId} from './channel-storage.mjs';
 import {DEVICE_AUDIO_MEDIA_TYPES} from './device-audio.mjs';
+import {validGroupAddRequest} from './device-group-add.mjs';
 
 async function readPrivateAsset(response,{size,mime},signal){
   const chunks=[];let total=0,reader;
@@ -115,6 +116,15 @@ export function createChannelBroker({apiUrl,fetchImpl=fetch,env=process.env}){
     deviceControlFinish:(id,key,payload)=>request(id,key,'device/control/finish',payload),
     deviceProxyAuthorize:(id,key,payload)=>request(id,key,'device/diagnostics/proxy/authorize',payload),
     deviceProxyFinish:(id,key,payload)=>request(id,key,'device/diagnostics/proxy/finish',payload),
-    deviceProxyReceipt:(id,key,payload)=>request(id,key,'device/diagnostics/proxy/receipt',payload)
+    deviceProxyReceipt:(id,key,payload)=>request(id,key,'device/diagnostics/proxy/receipt',payload),
+    deviceGroupAddAuthorize:(id,key,lease,{recheck,...payload})=>{
+      if(!validGroupAddRequest('add',payload)||typeof recheck!=='boolean'||!channelId(lease?.owner)||
+          !Number.isSafeInteger(lease?.fence)||lease.fence<1)throw Error('invalid_group_add_request');
+      return request(id,key,'device/group-add/authorize',{...payload,recheck},lease);
+    },
+    deviceGroupAddReceipt:(id,key,payload)=>{
+      if(!validGroupAddRequest('lookup',payload))throw Error('invalid_group_add_request');
+      return request(id,key,'device/group-add/receipt',payload);
+    }
   };
 }

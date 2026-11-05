@@ -74,6 +74,12 @@ function bounded(value){
   return value;
 }
 
+// Read-only projections shared by the separate group-add adapter. Display
+// roles from memberItems are never an authorization proof for a mutation.
+export {label as groupContactLabel,pn as groupContactPhone,peer as groupContactPeer,
+  groupItem as groupContactGroup,participating as groupContactGroups,
+  memberItems as groupContactMembers,bounded as boundedGroupContacts};
+
 export function createDeviceGroupContacts({client,isCurrent,isConnected,deviceSnapshot,
   schedule=setTimeout,cancel=clearTimeout,timeoutMs=GROUP_CONTACTS_LIMITS.timeout_ms}={}){
   if(!Number.isSafeInteger(timeoutMs)||timeoutMs<1||timeoutMs>GROUP_CONTACTS_LIMITS.timeout_ms)throw unavailable();
