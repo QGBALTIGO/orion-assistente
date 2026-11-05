@@ -26,6 +26,7 @@ O nicho escolhe regras e conteúdo; não deve escolher outra identidade criptogr
 | Encerramento sem coordenação completa da bridge | SIGTERM/SIGINT não tinham drenagem central que fechasse todos os sockets e tarefas | Encerramento limitado a oito segundos, fechamento de gerenciadores e timers, preservação dos arquivos e evidências de envios incertos |
 | Recuperação uniforme para motivos diferentes | Logout, substituição e falha transitória podiam alimentar a mesma política | Categorias explícitas, intervalos progressivos e orçamento finito; código 500 permite duas tentativas com o estado intacto antes de revisão; abertura breve não reinicia indefinidamente o orçamento |
 | Estado conectado salvo podia parecer atual após parar de reportar | Último evento de abertura era usado sem informação suficiente de prontidão | Sinais passivos de WebSocket, atividade, interrupção, recuperação, tentativa e ação; snapshot sem atualização por 90 segundos aparece indisponível |
+| Verificador de prontidão do WhatsApp rejeitava schemas posteriores à migração de telefones do Paraguai | Somente a revisão exata 0052 selecionava o CHECK com +595; schemas posteriores eram comparados com a regra antiga | Seleção pela ancestralidade exata das migrations conhecidas no código; aliases, revisões parciais e desconhecidas continuam recusados; RLS, privilégios e validação do CHECK mantidos |
 
 As chaves e sessões válidas não são apagadas para corrigir falhas transitórias. O prazo de processamento da resposta ao vivo é de 14 segundos desde a entrada na rota, incluindo verificações de autoridade e espera pela trava. O preview de áudio tem orçamento próprio de 60 segundos. Limpeza e fechamento têm limites próprios; o prazo de negócio não deve ser confundido com o tempo total de finalização sob uma dependência indisponível.
 
@@ -139,6 +140,7 @@ Estado antes da publicação: **em homologação**. As execuções abaixo têm c
 | Comparação completa de unidades WhatsApp por identidade | Candidato com 5.117 aprovados, 46 falhas, dez skips e sete erros de preparação. Todos os 44 casos adicionados aprovados; nenhuma falha nova, remoção de caso ou novo skip. A suíte global continua reprovada por falhas herdadas |
 | P0 com PostgreSQL e Redis reais e dados sintéticos isolados | 41/41 aprovados, incluindo RLS, lease, expiração, perda da autoridade, Lua real e dois cenários em processos separados; repetição após a correção de quarentena com 46/46, incluindo cinco casos novos de revogação e validação |
 | Recuperação de tarefas pendentes com PostgreSQL real | 9/9 aprovados; timeout/resultado incerto, autorização revogada e reconciliação sem novo envio |
+| Correção do verificador de prontidão | Falha reproduzida antes; 92 testes direcionados de unidade e PostgreSQL aprovados depois, incluindo todo o módulo de prontidão WhatsApp e execução a partir de outro diretório |
 | Preview de áudio | 16/16 aprovados |
 | Revisão independente de regressões críticas da bridge | 104/104 aprovados |
 | Painel de dispositivos e estados de conexão | 25/25 testes DOM aprovados antes do commit |
