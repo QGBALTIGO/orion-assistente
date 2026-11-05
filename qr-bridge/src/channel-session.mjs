@@ -24,6 +24,7 @@ import {createDeviceRuntime} from './device-runtime.mjs';
 import {messagePreflightError} from './device-message-failure.mjs';
 import {createDeviceProxy} from './device-network.mjs';
 import {currentDiagnosticMessage} from './device-diagnostic-message.mjs';
+import {createDeviceGroupContacts} from './device-group-contacts.mjs';
 
 export async function createBaileysChannelSession(context,{loadBaileys=()=>import('@whiskeysockets/baileys'),now=Date.now,typingFactory=makeAssistantTyping,intakeOptions={},schedule=setTimeout,cancel=clearTimeout,deviceOptions={}}={}){
   if(context.legacyTransport===true)throw Error('legacy_requires_existing_socket');
@@ -145,6 +146,8 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
       diagnostics.record('get_message',key?.id,{cached:!!message});return message;
     }});
   const close=()=>{if(closed)return;closed=true;state='stopped';qrValue=null;pairAttempt=null;cancel(pairTimer);cancel(noticeTimer);abort.abort();deviceRuntime?.close();proxyTransport?.close();for(const lease of typingLeases)lease.stop();typingLeases.clear();client.ev.removeAllListeners();try{client.end(undefined);}catch{}};
+  const groupContacts=createDeviceGroupContacts({...deviceOptions.groupContactsOptions,client,isCurrent:current,
+    isConnected:()=>state==='connected',deviceSnapshot:()=>context.deviceSnapshot?.(),schedule,cancel});
   async function relayText(phone,text,{isCurrent:operationCurrent=()=>true,maxTextChars=1200,device=false,
     diagnostic=null,assertAuthorized,onRelayAttempt}={}){
     await guarded();const self=normalizeFromJid(client.user?.id);
@@ -328,7 +331,7 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
     }
   }
   client.ev.on('messages.upsert',receive);
-  return {close,status:()=>{expirePairing();return state;},
+  return {close,groupContacts,status:()=>{expirePairing();return state;},
     deviceSettingsChanged:()=>deviceRuntime?.sync(),
     deviceDiagnostics:()=>deviceRuntime?.diagnostics()||null,
     async logout({authorize}={}){
