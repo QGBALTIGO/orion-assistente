@@ -89,8 +89,13 @@ export function createLegacyCentral({env=process.env,fetchImpl=fetch,start,send,
     if(!active())return null;
     return Object.freeze({tenant_id:identity.tenant_id,channel_id:identity.channel_id,session_digest:identity.session_digest});
   }
+  function nativeTestScope(){
+    const scope=ingressScope();
+    return scope&&channelId(context.owner)&&Number.isSafeInteger(context.fence)&&context.fence>=1?
+      Object.freeze({...scope,owner:context.owner,fence:context.fence}):null;
+  }
   function health(){const connection=publicHealth?.();return {configured:configured(),owned:configured()&&transportCurrent(),
     ready:active()&&(!publicHealth||connection?.state==='connected'),connected:status()==='connected',
     ...(connection?{connection_health:connection}:{}),observed_at:now(),session_preserved:Boolean(matching())};}
-  return {configured,resume,attach,inbound,forward,automatic,receipt,allowed,ingressScope,health,transportCurrent,assertTransportCurrent};
+  return {configured,resume,attach,inbound,forward,automatic,receipt,allowed,ingressScope,nativeTestScope,health,transportCurrent,assertTransportCurrent};
 }

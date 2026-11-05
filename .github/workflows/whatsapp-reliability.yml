@@ -16,6 +16,8 @@ env:
   INBOX_SEND_ENABLED: '0'
   MARKETING_EXECUTION_ENABLED: '0'
   ORION_NOTIFY_SELF_ON_LINK: '0'
+  QR_NATIVE_TEST_ENABLED: '0'
+  QR_NATIVE_TEST_PHONE: ''
   QR_BRIDGE_URL: ''
   PYTHONUTF8: '1'
 jobs:
@@ -50,6 +52,8 @@ jobs:
         run: node --test qr-bridge/test/interactive-mode.test.mjs qr-bridge/test/url-button.test.mjs qr-bridge/test/bulk-runtime.test.mjs qr-bridge/test/chatbot-runtime.test.mjs
       - name: Conversation-local composing, recording and final send authority
         run: node --test qr-bridge/test/outgoing-presence.test.mjs qr-bridge/test/outgoing-presence-server.test.mjs qr-bridge/test/reliable-send.test.mjs qr-bridge/test/send-capacity.test.mjs qr-bridge/test/connection-notice-startup.test.mjs qr-bridge/test/disconnect-evidence.test.mjs
+      - name: Isolated primary native list, URL button and fixed audio authority
+        run: node --test qr-bridge/test/native-test-canary.test.mjs qr-bridge/test/native-test-transport.test.mjs
       - run: npm audit --prefix qr-bridge --omit=dev --audit-level=high
       - run: docker build -t orion-whatsapp-reliability qr-bridge
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -112,6 +116,26 @@ jobs:
           timeout 10s psql --version
           timeout 10s ffmpeg -version
           timeout 10s ffprobe -version
+      - name: Decode the fixed two-second canary audio with real FFmpeg
+        run: |
+          audio=qr-bridge/src/fixtures/native-test-tone-2s.mp3
+          timeout 15s ffmpeg -nostdin -v error -xerror -err_detect explode -i "$audio" -f null -
+          timeout 10s ffprobe -v error -show_entries format=duration:stream=codec_name,sample_rate,channels -of json "$audio" > /tmp/whatsapp-canary-audio.json
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          audio = Path('qr-bridge/src/fixtures/native-test-tone-2s.mp3').read_bytes()
+          proof = json.loads(Path('/tmp/whatsapp-canary-audio.json').read_text())
+          assert len(audio) == 16704
+          assert hashlib.sha256(audio).hexdigest() == '04a38cec1b5110832117985ae2f61309ff9818db4f3350407fa206afedf23f17'
+          assert len(proof['streams']) == 1
+          stream = proof['streams'][0]
+          assert stream['codec_name'] == 'mp3' and stream['sample_rate'] == '16000' and stream['channels'] == 1
+          assert abs(float(proof['format']['duration']) - 2.088) < 0.02
+          proof['sha256'] = hashlib.sha256(audio).hexdigest()
+          proof['size_bytes'] = len(audio)
+          Path('/tmp/whatsapp-canary-audio.json').write_text(json.dumps(proof, indent=2))
+          PY
       - name: Separate synthetic database roles and current schema
         env: {PGPASSWORD: ci-postgres-only}
         run: |
@@ -132,6 +156,7 @@ jobs:
             /tmp/whatsapp-recovery.xml
             /tmp/whatsapp-url-button.xml
             /tmp/whatsapp-send-recheck.xml
+            /tmp/whatsapp-canary-audio.json
   panel:
     runs-on: ubuntu-24.04
     timeout-minutes: 8

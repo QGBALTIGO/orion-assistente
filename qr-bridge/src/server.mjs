@@ -18,13 +18,15 @@ import {databaseBackup} from './database-backup-store.mjs';
 import path, {join as joinPath} from "node:path";
 import fs from "node:fs";
 import {timingSafeEqual,randomUUID,createHmac} from "node:crypto";
-import makeWASocket,{DisconnectReason,Browsers,DEFAULT_CONNECTION_CONFIG,Curve,proto,initAuthCreds,fetchLatestWaWebVersion,makeCacheableSignalKeyStore,generateWAMessage,generateMessageIDV2,BufferJSON,downloadMediaMessage} from "@whiskeysockets/baileys";
+import makeWASocket,{DisconnectReason,Browsers,DEFAULT_CONNECTION_CONFIG,Curve,proto,initAuthCreds,fetchLatestWaWebVersion,makeCacheableSignalKeyStore,generateWAMessage,generateWAMessageFromContent,prepareWAMessageMedia,generateMessageIDV2,BufferJSON,downloadMediaMessage} from "@whiskeysockets/baileys";
 import QRCode from "qrcode";
 import {validPhone,normalizeFromJid,extractText,resolveMessagePhone,freshQR,formatPairingCode,connectionPhase,reconnectPlan} from "./core.mjs";
 import {sendConnectionNoticeOnce,noticeState} from "./connection-alert.mjs";
 import {makeMessageRetryStore,deliveryFromAck,advanceDelivery} from "./message-retry-store.mjs";
 import {makeEncryptedRetryStore} from "./encrypted-retry-store.mjs";
-import {sendStoredText} from "./reliable-send.mjs";
+import {sendStoredText,sendStoredProtocol} from "./reliable-send.mjs";
+import {buildChatbotContent} from './chatbot-message.mjs';
+import {createNativeTestCanary,loadNativeTestAsset} from './native-test-canary.mjs';
 import {makeSendCapacity} from "./send-capacity.mjs";
 import {makeConversationIntake} from "./conversation-intake.mjs";
 import {createAssistantIngress} from './assistant-ingress.mjs';
@@ -360,6 +362,13 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
   const intakeCurrent=()=>mine===generation&&socket===client&&status==='connected';
   const typingPresence=makeOutgoingPresence({socket:client,isConnected:()=>intakeCurrent()&&legacyCentral.transportCurrent()});
   socketOutgoingPresence.set(client,typingPresence);
+  const nativeCanary=createNativeTestCanary({directory:authDir,secret:KEY,env:process.env,
+    isCurrent:()=>intakeCurrent()&&legacyCentral.transportCurrent(),
+    isReady:()=>!ingressFault&&(!assistantIngress||assistantIngress.canAutomate()),
+    assertCurrent:()=>legacyCentral.assertTransportCurrent(),allowedSender:phone=>legacyCentral.allowed(phone),
+    getScope:()=>{const value=legacyCentral.nativeTestScope();return value?{...value,native_generation:mine}:null;},
+    resolvePhone:key=>resolveMessagePhone(key,client),isBusy:()=>inboundIntake.pending()>0||assistantQueues.size>0,
+    send:(phone,action,options)=>sendLegacyProtocol(phone,action,options)});
   let assistantIngress=null,ingressIdentity=null,ingressFault=null,ingressTimer=null,replayRunning=false;
   let opaqueAdmissionAt=Date.now(),opaqueAdmissionCount=0;
   const ingressDiagnostics=()=>ingressFault?{state:'unavailable',error_code:'assistant_ingress_unavailable',
@@ -539,6 +548,13 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
       // single-recipient pilot, PN/LID variants share this configured key; a LID
       // never supplies a telephone number. Authorization still occurs below.
       const conversationKey=String(mine)+':'+(pilotNumber()||remote[1]+'@'+remote[2]);
+      const nativeTicket=nativeCanary.observe(message,{type:sourceType,replay:!!replayEntry});
+      if(nativeCanary.recognizes(message)){
+        const task=nativeCanary.handle({message,type:sourceType,replay:!!replayEntry,ticket:nativeTicket})
+          .then(result=>transport.record('native_test_'+result.state,traceId,{type:result.kind}))
+          .catch(()=>transport.record('native_test_unavailable',traceId));
+        jobs.push(task);continue;
+      }
       const normalized=normalizeInbound(message);if(normalized.silent)continue;
       // Central booking confirmation is a separate deterministic lane.
       // Only a new private text containing a protocol enters it, independent
@@ -1070,6 +1086,30 @@ async function recipientInspection(value){
 async function send(phone,text,options={}){
   if(legacyCentral.configured())return legacyCentral.automatic(phone,text,options);
   return sendLegacyRaw(phone,text,options);
+}
+async function sendLegacyProtocol(phone,action,{isCurrent=()=>false,assertAuthorized,onPrepared=()=>{}}={}){
+  if(!['text','list','url_button','audio'].includes(action?.type)||typeof assertAuthorized!=='function')throw Error('native_test_unavailable');
+  const target=validPhone(phone),client=socket,mine=generation;
+  const current=()=>socket===client&&generation===mine&&status==='connected'&&isCurrent()===true&&legacyCentral.transportCurrent();
+  const authorize=async()=>{if(!current())throw Error('native_test_unavailable');await assertAuthorized();if(!current())throw Error('native_test_unavailable');};
+  await authorize();await sendCapacity.acquire({wait:true,isCurrent:current});await authorize();
+  const matches=await client.onWhatsApp(target);await authorize();
+  if(!Array.isArray(matches)||!matches.some(row=>row.exists===true&&normalizeFromJid(row.jid)===target))throw Error('native_test_unavailable');
+  const proof=await resolvePilotRecipient({phone:target,pilotPhone:target,enabled:process.env.QR_PILOT_USE_VERIFIED_LID==='1',
+    socket:client,deviceCache:socketDeviceCaches.get(client),isCurrent:current});await authorize();
+  let built;
+  try{return await socketOutgoingPresence.get(client).run({phone:target,chatJid:proof.jid,isCurrent:current,assertAuthorized:authorize,action},async({beforeSend})=>{
+    const sent=await sendStoredProtocol({jid:proof.jid,recipientProof:proof,store:retryStore,isCurrent:current,assertAuthorized:authorize,
+      onPrepared:msg=>{onPrepared(msg);retryDiagnostics.prepared++;deliveryReceipts.set(msg.key.id,'pending');deliveryStart.set(msg.key.id,Date.now());
+        transport.record('native_test_prepared',msg.key.id,{type:action.type,kind:proof.kind});},
+      makeMessage:async jid=>{
+        built=await buildChatbotContent(action,{sdk:{proto,prepareWAMessageMedia},
+          jid,loadAsset:loadNativeTestAsset,upload:(...args)=>client.waUploadToServer(...args),assertCurrent:authorize,isCurrent:current,logger,interactiveMode:'native'});
+        await beforeSend();return generateWAMessageFromContent(jid,built.content,{userJid:client.user.id,messageId:generateMessageIDV2(client.user.id)});
+      },relay:(jid,body,options)=>client.relayMessage(jid,body,options)});
+    retryDiagnostics.relayAccepted++;transport.record('native_test_relay_returned',sent.key.id,{type:action.type});
+    return {accepted:true,id:sent.key.id};
+  });}finally{built?.dispose();}
 }
 async function sendLegacyRaw(phone,text,{waitForCapacity=false,isCurrent=()=>true,transactionalTyping=false,source='automation',assertAuthorized,pacing=true}={}){
   const target=validPhone(phone);

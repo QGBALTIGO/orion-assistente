@@ -31,3 +31,15 @@ Foram inspecionados os cinco pontos produtivos: envio primário (incluindo fallb
 | PostgreSQL real de revalidação | 15 casos aprovados, incluindo opt-out, mudança de fence/revisão, prazo, operador revogado, corpo divergente e preservação da operação |
 
 Os conjuntos se sobrepõem. Esses resultados são locais; CI Linux, publicação, recibos e observação visual no cliente devem ser registrados separadamente. A implementação não habilita nenhuma regra ou campanha nova. Consentimento, opt-out, limites de envio e prevenção de duplicatas continuam obrigatórios; os tempos não são usados para contornar as proteções do WhatsApp.
+
+A integração local `e3d55a2` incorporou a atualização paralela `fc13f5e` e o diagnóstico seguro abaixo. Comparação completa: base com 1.149 casos, 1.125 aprovados, 19 falhas e cinco skips; conjunto integrado com 1.200 casos, 1.176 aprovados, as mesmas 19 falhas, os mesmos cinco skips e nenhum cancelamento. As 51 adições passaram. Isso qualifica essa etapa local específica; a extensão posterior do canário Orion precisa de nova execução.
+
+## Diagnóstico seguro de desconexões
+
+A observação da versão `8f9dd64` registrou dois eventos 500: principal às 21:34 UTC, recuperada em 2,472 segundos, e digital às 21:48 UTC, recuperada em 2,018 segundos. Os registros antigos preservaram o status, mas não a origem estruturada do erro. Portanto, não é possível atribuir retrospectivamente esses eventos a corrupção de sessão, rede, provedor ou saturação. A recuperação não prova estabilidade contínua.
+
+O complemento `disconnect-evidence.mjs` classifica somente a estrutura preservada em `Boom.data` pelo SDK 6.7.24: erro de stream, falha informada pelo provedor, erro de WebSocket, status genérico ou desconhecido. Condições e códigos de transporte vêm de listas fechadas; campos não reconhecidos permanecem desconhecidos ou nulos. O código 500 isolado continua desconhecido. O relatório dessa classificação é observação do erro recebido, não prova de causa raiz.
+
+O limite de log/saúde aplica uma segunda sanitização e copia somente quatro campos: `source`, `condition`, `provider_reason_numeric` e `websocket_code`. Não são lidos os textos e stacks das exceções, nem registrados nodes, atributos livres, endereços, credenciais ou conteúdo. São usados os callbacks de desconexão existentes, sem novo listener, probe, envio ou mudança da política de recuperação. Testes usam callbacks extraídos da versão fixada, `Boom` real, dados hostis e verificação de ausência de informação sensível.
+
+A integração posterior preserva a atualização paralela `fc13f5e` e exige nova qualificação do conjunto. Os testes locais acima e o CI histórico de `5ed235c` não substituem a validação desse novo conjunto. A janela mínima de 24 horas permanece em observação.

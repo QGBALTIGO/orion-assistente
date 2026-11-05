@@ -74,6 +74,15 @@ test('trusted ingress scope exists only for the current matching physical sessio
   const revoked=fixture();await revoked.central.resume();revoked.revoke();assert.equal(revoked.central.ingressScope(),null);
 });
 
+test('native canary scope is a read-only snapshot of the same actual owner/fence and matching preserved account',async()=>{
+  const f=fixture();assert.equal(f.central.nativeTestScope(),null);await f.central.resume();assert.equal(f.central.nativeTestScope(),null);
+  const actualOwner='30000000-0000-4000-8000-000000000001';Object.assign(f.context(),{owner:actualOwner,fence:7});
+  const before=f.calls.length,proof=f.central.nativeTestScope();assert.ok(Object.isFrozen(proof));
+  assert.deepEqual(proof,{tenant_id:tenant,channel_id:id,session_digest:'a'.repeat(64),owner:actualOwner,fence:7});assert.equal(f.calls.length,before);
+  f.replaceAccount();assert.equal(f.central.nativeTestScope(),null);
+  const revoked=fixture();await revoked.central.resume();Object.assign(revoked.context(),{owner:actualOwner,fence:7});revoked.revoke();assert.equal(revoked.central.nativeTestScope(),null);
+});
+
 test('public pending/review readiness stays separate from raw transport authorization',async()=>{
   let state='degraded';const f=fixture({}, {publicHealth:()=>({state,ingress_pending:1,ingress_blocked:0})});
   await f.central.resume();assert.equal(f.central.health().connected,true);assert.equal(f.central.health().ready,false);
