@@ -52,6 +52,7 @@ from app.subscription_campaigns import router as subscription_campaigns_router
 from app.subscription_scheduled_messages import router as subscription_scheduled_messages_router
 from app.subscription_bulk_messages import router as subscription_bulk_messages_router
 from app.subscription_direct_messages import router as subscription_direct_messages_router
+from app.subscription_group_contacts import router as subscription_group_contacts_router
 from app.automation_api import router as automation_router
 from app.qr_channel_audio import router as qr_channel_audio_router
 from app.media_api import router as media_router
@@ -154,6 +155,7 @@ include_plan_router(app, subscription_campaigns_router)
 include_plan_router(app, subscription_scheduled_messages_router)
 include_plan_router(app, subscription_bulk_messages_router)
 include_plan_router(app, subscription_direct_messages_router)
+include_plan_router(app, subscription_group_contacts_router)
 include_plan_router(app, automation_router)
 include_plan_router(app, qr_channel_audio_router)
 include_plan_router(app, media_router)
@@ -212,6 +214,7 @@ async def panel_asset(asset: str) -> FileResponse:
                "orion-subscription-scheduled-messages.css": "text/css", "orion-subscription-scheduled-messages.js": "text/javascript",
                "orion-subscription-bulk-messages.css": "text/css", "orion-subscription-bulk-messages.js": "text/javascript",
                "orion-subscription-direct-messages.css": "text/css", "orion-subscription-direct-messages.js": "text/javascript",
+               "orion-subscription-group-contacts.js": "text/javascript",
                "orion-connect.js": "text/javascript",
                "orion-automations.js": "text/javascript",
                "orion-inbox.js": "text/javascript", "orion-conversations.js": "text/javascript", "orion-flows.js": "text/javascript", "orion-inbox.css": "text/css"}

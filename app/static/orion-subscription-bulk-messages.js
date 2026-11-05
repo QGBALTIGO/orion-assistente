@@ -60,7 +60,7 @@
     const current=(epoch=state.epoch)=>state.alive&&epoch===state.epoch&&host.isConnected&&!state.revoked&&(typeof bridge.canAccess!=='function'||bridge.canAccess());
     const writable=()=>current()&&!!state.accountScope&&typeof crypto.randomUUID==='function'&&(typeof bridge.canWrite==='function'?bridge.canWrite():bridge.canWrite!==false);
     const locked=()=>state.busy||!!state.pending;
-    const canEdit=()=>writable()&&!state.busy&&(!state.pending||state.correcting);
+    const canEdit=()=>writable()&&!state.busy&&!state.loading&&(!state.pending||state.correcting);
     const query=values=>{const result=new URLSearchParams();for(const [key,value]of Object.entries(values))if(value!==''&&value!==null)result.set(key,String(value));return result.toString();};
     function persist(){if(!state.accountScope||!state.pending)return;const value={tenant_id:bridge.tenantId,account_scope:state.accountScope,...state.pending};try{history.replaceState({...history.state,[historyKey]:Object.fromEntries(recoveryFields.map(key=>[key,value[key]??null]))},'',location.href);}catch{}}
     function syncURL(){try{const url=new URL(location.href);url.searchParams.set('aba','massa');for(const key of ['batch_id','view','q','status','page'])url.searchParams.delete(key);if(state.view==='detail'&&state.target)url.searchParams.set('batch_id',state.target);history.replaceState({...history.state},'',url.pathname+url.search+url.hash);}catch{}}

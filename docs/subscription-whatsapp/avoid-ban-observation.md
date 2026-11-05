@@ -127,3 +127,19 @@ número, alterar configuração ou enviar mensagens.
 
 A etapa 14 foi encerrada após essa conferência. A observação de Resolver
 Banimento começou somente em seguida.
+# Adendo de CI — 2026-11-05, 17:58:01 UTC
+
+Os seis grupos dedicados da candidata `f9b4827358c33323bb85a241551ce98123007127`
+encerraram com sucesso no [run 42074943585](https://github.com/QGBALTIGO/orion-assistente/actions/runs/42074943585):
+2.768 API, 588 PostgreSQL, 579 DOM, 488 ponte, 139 Chromium e 139 WebKit,
+totalizando **4.701 execuções aprovadas** na mesma árvore. Esse resultado
+posterior não altera a cronologia da publicação focada registrada abaixo.
+
+A suíte geral terminou com 37 jobs aprovados e 13 falhos. O FATIA, pela
+primeira vez completo desde a etapa 11, revelou 21 falhas adicionais na
+fixture de API de Enviar Mensagem: o registro anterior de `app.main` aplicava
+a guarda real sobre um ator sintético incompleto. As 212 falhas/erros da
+última base completa permaneceram. A reprodução e a correção isolada dessa
+fixture, sem retirar asserções ou guardas do produto, estão no
+[registro específico](direct-api-fixture-validation.md). O CI dessa candidata
+continua registrado como falho na suíte geral; a correção é posterior.

@@ -1,0 +1,131 @@
+{
+  "options": {
+    "devices": [
+      {
+        "id": "00000000-0000-4000-8000-000000000016",
+        "name": "Dispositivo sintético",
+        "status": "connected",
+        "available": true,
+        "blocked_reason": null,
+        "version": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    ],
+    "groups": [
+      {
+        "id": "00000000-0000-4000-8000-000000000116",
+        "name": "Lista local sintética",
+        "version": 2,
+        "member_count": 2,
+        "blocked_count": 1,
+        "archived": false
+      }
+    ],
+    "limits": {
+      "groups": 100,
+      "members_per_group": 5000,
+      "remote_groups": 1000,
+      "preview_seconds": 300,
+      "group_name_utf16": 100
+    },
+    "generated_at": "2026-11-05T18:00:00Z"
+  },
+  "groups": {
+    "device": {
+      "id": "00000000-0000-4000-8000-000000000016",
+      "name": "Dispositivo sintético",
+      "status": "connected",
+      "available": true,
+      "blocked_reason": null,
+      "version": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "items": [
+      {
+        "id": "120363099000000001@g.us",
+        "name": "Grupo sintético",
+        "member_count": 5
+      },
+      {
+        "id": "120363099000000002@g.us",
+        "name": "Outro grupo sintético",
+        "member_count": 1
+      }
+    ],
+    "total": 2
+  },
+  "members": {
+    "preview_token": "synthetic-group-preview-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "expires_at": "2026-11-05T18:05:00Z",
+    "device": {
+      "id": "00000000-0000-4000-8000-000000000016",
+      "name": "Dispositivo sintético",
+      "status": "connected",
+      "available": true,
+      "blocked_reason": null,
+      "version": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "group": {
+      "id": "120363099000000001@g.us",
+      "name": "Grupo sintético",
+      "member_count": 5
+    },
+    "members": [
+      {
+        "phone": "+5567999999901",
+        "name": "Contato sintético 1",
+        "role": "owner"
+      },
+      {
+        "phone": "+5567999999902",
+        "name": "Contato sintético 2",
+        "role": "admin"
+      },
+      {
+        "phone": "+5567999999903",
+        "name": "",
+        "role": "member"
+      }
+    ],
+    "total": 5,
+    "unavailable_count": 1,
+    "duplicate_count": 1
+  },
+  "import_request": {
+    "idempotency_key": "00000000-0000-4000-8000-000000000216",
+    "preview_token": "synthetic-group-preview-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "phones": [
+      "+5567999999901",
+      "+5567999999902",
+      "+5567999999903"
+    ],
+    "target_group_id": null,
+    "expected_version": null,
+    "new_group_name": "Grupo: Grupo sintético"
+  },
+  "import_result": {
+    "request_id": "00000000-0000-4000-8000-000000000316",
+    "idempotency_key": "00000000-0000-4000-8000-000000000216",
+    "kind": "group_create",
+    "status": "succeeded",
+    "campaign_id": null,
+    "group_id": "00000000-0000-4000-8000-000000000117",
+    "replayed": false,
+    "created_at": "2026-11-05T18:00:00Z",
+    "expires_at": null,
+    "preview": null,
+    "result": {
+      "origin": "group_contacts",
+      "group": {
+        "id": "00000000-0000-4000-8000-000000000117",
+        "name": "Grupo: Grupo sintético",
+        "version": 1,
+        "member_count": 3,
+        "blocked_count": 0,
+        "archived": false
+      },
+      "selected_count": 3,
+      "added_count": 3,
+      "existing_count": 0,
+      "restored_count": 0
+    }
+  }
+}
