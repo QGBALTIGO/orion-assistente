@@ -36,7 +36,8 @@ class Handler(ChatbotHandler):
                     gc_calls=[], gc_requests={}, gc_previews={}, gc_imports=[], gc_effects=[],
                     gc_options=deepcopy(sample["options"]), gc_groups=deepcopy(sample["groups"]),
                     gc_members=deepcopy(sample["members"]), gc_next=None, gc_revoked=False,
-                    gc_recovery_failures=0,
+                    gc_recovery_failures=0, gc_device_calls=[],
+                    gc_devices_access=query.get("fixtureDevicesAccess") == ["1"],
                     gc_grant=query.get("fixtureGroupContacts") != ["0"], gc_plan=None,
                     gc_empty=query.get("fixtureEmpty") == ["1"],
                     company_status="paused" if query.get("fixtureInactive") == ["1"] else "active",
@@ -52,6 +53,10 @@ class Handler(ChatbotHandler):
                 if query.get("fixtureDisconnected") == ["1"]:
                     for device in session["gc_options"]["devices"]:
                         device.update(available=False, status="disconnected", blocked_reason="Conecte o dispositivo para consultar grupos.")
+                        if query.get("fixtureLegacyAvailability") == ["1"]:
+                            # Reproduce the old producer's inconsistent flag. The
+                            # shipped consumer must still require a connection.
+                            device.update(available=True, blocked_reason=None)
         session = self.session()
         if session and url.path == "/api/v1/account/businesses" and isinstance(value, list):
             value = [{**row, "workspace_profile": session["workspace_profile"],
@@ -64,8 +69,10 @@ class Handler(ChatbotHandler):
                 # Intentionally stale for standard/inactive/reader cases: the
                 # shell must enforce its own independent context boundary.
                 features.add(FEATURE)
+            if session["gc_devices_access"]:
+                features.add("devices.manage")
             plan["features"] = sorted(features)
-            plan["permissions"] = {key: key in features for key in {*plan["permissions"], FEATURE}}
+            plan["permissions"] = {key: key in features for key in {*plan["permissions"], FEATURE, "devices.manage"}}
             plan["revision"] = sha256(json.dumps(plan, sort_keys=True).encode()).hexdigest()
             session["gc_plan"] = plan
             return PlansHandler.body(self, {"effective_plan": plan}, status, mime, cookie)
@@ -92,10 +99,17 @@ class Handler(ChatbotHandler):
                 "operations": list(session["gc_requests"].values()),
                 "groups": session["gc_options"]["groups"], "local_members": session["gc_local_members"],
                 "effects": session["gc_effects"], "unexpected": session["unexpected"],
+                "device_calls": session["gc_device_calls"],
                 "effective_plan": session["gc_plan"],
                 "state": {"profile": session["workspace_profile"], "role": session["role"],
                           "active": session["company_status"] == "active", "granted": session["gc_grant"]},
             })
+        if session and path == base.BASE + "/subscription-whatsapp/devices" and session["gc_devices_access"]:
+            session["gc_device_calls"].append({"method": "GET", "path": path})
+            result = json.loads((ROOT / "tests/fixtures/subscription_devices_contract.json").read_text())["list_response"]
+            source = session["gc_options"]["devices"][0]
+            result["items"][0].update(id=source["id"], name=source["name"], status=source["status"])
+            return self.body(result)
         if not path.startswith(GROUP_CONTACTS_BASE):
             return super().do_GET()
         if session:

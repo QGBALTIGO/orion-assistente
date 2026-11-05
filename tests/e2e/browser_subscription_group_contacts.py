@@ -246,7 +246,11 @@ def test_group_contact_direct_route_requires_owner_active_company_workspace_and_
         context.close()
 
 
-@pytest.mark.parametrize("case,query", [("no-groups", "&fixtureEmpty=1"), ("disconnected", "&fixtureDisconnected=1")])
+@pytest.mark.parametrize("case,query", [
+    ("no-groups", "&fixtureEmpty=1"),
+    ("disconnected", "&fixtureDisconnected=1"),
+    ("disconnected-stale-flag", "&fixtureDisconnected=1&fixtureLegacyAvailability=1"),
+])
 def test_group_contact_empty_or_disconnected_state_never_imports(browser, fixture_url, case, query):
     size, theme = (390, 844), "light"
     context, page, external, errors = setup_page(browser, fixture_url, size, theme)
@@ -257,15 +261,45 @@ def test_group_contact_empty_or_disconnected_state_never_imports(browser, fixtur
             field(page, "device_id").select_option(contract()["options"]["devices"][0]["id"])
             expect(page.locator(HOST)).to_contain_text("Nenhum grupo")
         else:
-            expect(page.locator(HOST)).to_contain_text("dispositivo")
+            expect(page.locator("[data-gc-device-state]")).to_contain_text("Desconectado")
+            expect(action(page, "load-members")).to_be_disabled()
+            expect(page.locator(HOST + ' [data-os-route="dispositivos"]')).to_have_count(0)
         expect(page.locator("[data-gc-member]")).to_have_count(0)
         value = report(page, fixture_url)
         assert not value["imports"]
         assert all(row["method"] == "GET" for row in value["calls"])
+        if case != "no-groups":
+            assert [(row["method"], row["path"]) for row in value["calls"]] == [("GET", GROUP_CONTACTS_BASE + "/options")]
         assert_layout(page, size[0])
         assert_clean(external, errors)
     finally:
         save_evidence(f"{browser[0]}-{case}", browser, size, theme, value, external, errors)
+        context.close()
+
+
+def test_disconnected_device_opens_devices_only_with_its_permission(browser, fixture_url):
+    size, theme = (390, 844), "dark"
+    context, page, external, errors = setup_page(browser, fixture_url, size, theme)
+    value = {}
+    try:
+        open_extractor(page, fixture_url, "&fixtureDisconnected=1&fixtureDevicesAccess=1")
+        expect(page.locator("[data-gc-device-state]")).to_contain_text("Desconectado")
+        ARTIFACTS.mkdir(parents=True, exist_ok=True)
+        page.screenshot(path=str(ARTIFACTS / f"{browser[0]}-offline-extractor.png"), full_page=True)
+        page.locator(HOST).get_by_role("button", name="Dispositivos", exact=True).click()
+        expect(page.get_by_role("heading", name="Dispositivos", exact=True)).to_be_visible()
+        expect(page.locator("#osSubscriptionDevices")).to_contain_text("Desconectado")
+        assert "aba=dispositivos" in page.url
+        value = report(page, fixture_url)
+        assert [(row["method"], row["path"]) for row in value["calls"]] == [("GET", GROUP_CONTACTS_BASE + "/options")]
+        assert value["device_calls"] and all(row["method"] == "GET" for row in value["device_calls"])
+        assert not value["imports"]
+        assert_layout(page, size[0])
+        assert_clean(external, errors)
+        ARTIFACTS.mkdir(parents=True, exist_ok=True)
+        page.screenshot(path=str(ARTIFACTS / f"{browser[0]}-offline-devices-cta.png"), full_page=True)
+    finally:
+        save_evidence(f"{browser[0]}-offline-devices-cta", browser, size, theme, value, external, errors)
         context.close()
 
 

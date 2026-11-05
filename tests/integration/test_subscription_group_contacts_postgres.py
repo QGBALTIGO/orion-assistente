@@ -35,6 +35,11 @@ PHONE, RESTORED, UNSELECTED, INTERNATIONAL = (
 @pytest_asyncio.fixture
 async def group_contacts_case(campaign_case, monkeypatch):
     c = campaign_case
+    # Campaign eligibility also covers offline devices. This fixture exercises
+    # successful live reads, so its synthetic device must explicitly be connected.
+    async with c.ctx.migration.begin() as db:
+        await db.execute(text("UPDATE subscription_devices SET status='connected' WHERE tenant_id=:t AND id=:d"),
+                         {"t": c.tenant, "d": UUID(c.device["id"])})
     generic = [route for route in c.app.router.routes if "{resource}" in getattr(route, "path", "")]
     c.app.router.routes[:] = [route for route in c.app.router.routes if route not in generic]
     for router in (api.router, scheduled_api.router):
@@ -106,6 +111,7 @@ async def test_options_group_and_member_reads_are_pure_and_keep_missing_names(gr
     options = await c.client.get(c.extractor+"/options")
     assert options.status_code == 200 and options.json()["groups"] == []
     assert options.json()["devices"][0]["id"] == c.device["id"]
+    assert options.json()["devices"][0]["status"] == "connected" and options.json()["devices"][0]["available"] is True
     groups = await c.client.get(c.extractor+"/groups", params={"device_id": c.device["id"]})
     assert groups.status_code == 200 and groups.json()["total"] == 1
     value = await prepared(c)
@@ -115,6 +121,53 @@ async def test_options_group_and_member_reads_are_pure_and_keep_missing_names(gr
     assert {read["action"] for read in c.group_reads} == {"device/group-contacts/groups", "device/group-contacts/members"}
     assert c.bridge.calls == transport and await snapshot(c) == before
     assert "generation" not in value and "settings_revision" not in value
+
+
+@pytest.mark.parametrize("status", ["stopped", "disconnected", "connecting"])
+async def test_offline_options_and_both_reads_never_call_bridge_or_change_local_data(group_contacts_case, status):
+    c = group_contacts_case
+    async with c.ctx.migration.begin() as db:
+        await db.execute(text("UPDATE subscription_devices SET status=:s WHERE tenant_id=:t AND id=:d"),
+                         {"s": status, "t": c.tenant, "d": UUID(c.device["id"])})
+    before = await snapshot(c)
+    options = await c.client.get(c.extractor+"/options")
+    device = options.json()["devices"][0]
+    assert options.status_code == 200 and device["status"] == status and device["available"] is False
+    assert device["blocked_reason"] == store.ERRORS["GROUP_CONTACTS_DEVICE_UNAVAILABLE"]
+    for suffix, params in (("/groups", {"device_id": c.device["id"]}),
+            ("/members", {"device_id": c.device["id"], "group_id": REMOTE})):
+        response = await c.client.get(c.extractor+suffix, params=params)
+        assert response.status_code == 409 and response.json()["detail"]["code"] == "GROUP_CONTACTS_DEVICE_UNAVAILABLE"
+    assert c.group_reads == [] and await snapshot(c) == before
+
+
+@pytest.mark.parametrize("suffix", ["/groups", "/members"])
+async def test_disconnect_during_provider_read_rejects_success_without_a_preview(group_contacts_case, suffix):
+    c = group_contacts_case
+    async def disconnect():
+        async with c.ctx.migration.begin() as db:
+            await db.execute(text("UPDATE subscription_devices SET status='disconnected' WHERE tenant_id=:t AND id=:d"),
+                             {"t": c.tenant, "d": UUID(c.device["id"])})
+    c.after_group_read = disconnect
+    params = {"device_id": c.device["id"]}
+    if suffix == "/members": params["group_id"] = REMOTE
+    response = await c.client.get(c.extractor+suffix, params=params)
+    assert response.status_code == 409 and response.json()["detail"]["code"] == "GROUP_CONTACTS_DEVICE_UNAVAILABLE"
+    assert len(c.group_reads) == 1 and "preview_token" not in response.json()
+    after = await snapshot(c)
+    assert after["subscription_campaign_groups"] == after["subscription_campaign_requests"] == []
+
+
+async def test_valid_preview_can_be_imported_after_disconnect_without_another_provider_read(group_contacts_case):
+    c = group_contacts_case
+    value = await prepared(c)
+    async with c.ctx.migration.begin() as db:
+        await db.execute(text("UPDATE subscription_devices SET status='disconnected' WHERE tenant_id=:t AND id=:d"),
+                         {"t": c.tenant, "d": UUID(c.device["id"])})
+    reads = deepcopy(c.group_reads)
+    result = await saved(c, import_body(value, phones=[PHONE]))
+    assert result["result"]["origin"] == "group_contacts" and result["result"]["added_count"] == 1
+    assert c.group_reads == reads
 
 
 async def test_selected_subset_creates_local_group_and_shared_catalog_without_sending(group_contacts_case):

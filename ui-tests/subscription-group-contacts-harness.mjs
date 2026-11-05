@@ -76,14 +76,14 @@ export function syntheticServer(){
   };return server;
 }
 
-export async function makeGroupContacts({respond,historyState,wait=true,identity=accountKey,canWrite=true,server=syntheticServer(),configureWindow}={}){
+export async function makeGroupContacts({respond,historyState,wait=true,identity=accountKey,canWrite=true,canOpenDevices=false,server=syntheticServer(),configureWindow}={}){
   const errors=[],external=[],calls=[],signals=[],virtualConsole=new VirtualConsole();virtualConsole.on('jsdomError',error=>errors.push(error));
   const dom=new JSDOM('<!doctype html><html lang="pt-BR"><body><main><section id="osSubscriptionGroupContacts"></section></main></body></html>',{url:'https://orion.test/panel?aba=extrator-contatos',runScripts:'outside-only',pretendToBeVisual:true,virtualConsole});
   const {window}=dom,{document}=window;window.HTMLElement.prototype.scrollIntoView=()=>{};window.scrollTo=()=>{};
   window.fetch=async(...args)=>{external.push(args);throw Error('External request forbidden');};
   Object.defineProperty(window.crypto,'randomUUID',{value:randomUUID,configurable:true});Object.defineProperty(window.crypto,'subtle',{value:webcrypto.subtle,configurable:true});window.TextEncoder=TextEncoder;
-  if(historyState)window.history.replaceState(copy(historyState),'',window.location.href);const access={allowed:true,writable:canWrite};
-  const bridge={host:document.getElementById('osSubscriptionGroupContacts'),tenantId:tenantA,accountKey:identity,canAccess:()=>access.allowed,canWrite:()=>access.writable,async request(path,method='GET',payload,options){calls.push({path,method,data:payload?copy(payload):null});signals.push({path,method,signal:options?.signal});const custom=await respond?.(path,method,payload,server,options);if(custom!==undefined)return copy(custom);return copy(await server.execute(path,method,payload));}};
+  if(historyState)window.history.replaceState(copy(historyState),'',window.location.href);const access={allowed:true,writable:canWrite,devices:canOpenDevices};
+  const bridge={host:document.getElementById('osSubscriptionGroupContacts'),tenantId:tenantA,accountKey:identity,canAccess:()=>access.allowed,canWrite:()=>access.writable,canOpenDevices:()=>access.devices,async request(path,method='GET',payload,options){calls.push({path,method,data:payload?copy(payload):null});signals.push({path,method,signal:options?.signal});const custom=await respond?.(path,method,payload,server,options);if(custom!==undefined)return copy(custom);return copy(await server.execute(path,method,payload));}};
   window.eval(await readFile(new URL('../app/static/orion-fields.js',import.meta.url),'utf8'));window.eval(source);configureWindow?.(window);
   const controller=window.OrionSubscriptionGroupContacts.mount(bridge);if(wait)await controller.ready;
   function element(selector){const node=document.querySelector(selector);assert.ok(node,'Missing '+selector);return node;}

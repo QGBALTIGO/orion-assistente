@@ -50,7 +50,7 @@ def transport_scope(row):
     return {"device_id": str(row["id"]), "generation": str(row["generation"]), "settings_revision": row["revision"]}
 
 
-async def scope(db, tenant, identity, actor):
+async def scope(db, tenant, identity, actor, *, require_connected=False):
     try:
         row, transport = await devices._device(db, tenant, identity, actor=actor)
     except HTTPException as exc:
@@ -59,13 +59,16 @@ async def scope(db, tenant, identity, actor):
         if exc.status_code == 409:
             raise fail("GROUP_CONTACTS_CONTEXT_CHANGED") from None
         raise
-    if (row["status"] in {"disabled", "removing", "removed"} or not transport["enabled"]
+    if (row["status"] in {"disabled", "removing", "removed"} or require_connected and row["status"] != "connected"
+            or not transport["enabled"]
             or transport["allowed_senders"]):
         raise fail("GROUP_CONTACTS_DEVICE_UNAVAILABLE")
     return row, transport
 
 
 def public_device(row, *, available=True, blocked_reason=None):
+    available = bool(available and row["status"] == "connected")
+    blocked_reason = None if available else blocked_reason or ERRORS["GROUP_CONTACTS_DEVICE_UNAVAILABLE"]
     return {"id": row["id"], "name": row["name"], "status": row["status"], "available": available,
             "blocked_reason": blocked_reason, "version": device_version(row)}
 

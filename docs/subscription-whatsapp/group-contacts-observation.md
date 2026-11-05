@@ -132,3 +132,73 @@ passaram sem alteração do E2E. A falha WebKit da PR 268 não tinha trace que
 permitisse atribuir conclusivamente o clique perdido a essa janela; ela
 continua registrada separadamente. Os seis grupos de qualificação devem
 validar a candidata que contém esta correção.
+
+## Publicação da PR 269 e conferência real
+
+A [PR 269](https://github.com/QGBALTIGO/orion-assistente/pull/269) foi integrada
+normalmente no merge `5633a2ec596f1f7884b17f6c685f296318697fe9`. A candidata
+final `c8c0f463317ae0399ae650107da43046720cf7e8` e o checkout integrado
+`0e4a66cb422955068e0a1bebc3ff6a12e4b84fc1` possuem a mesma árvore Git
+`e58bbfed8bb86053a6fd9d12b4237ff50e0c6f78`, conferida também localmente.
+
+Os seis grupos do [workflow 42084882875](https://github.com/QGBALTIGO/orion-assistente/actions/runs/42084882875)
+passaram na primeira tentativa da candidata final: API 2.820, PostgreSQL 611,
+DOM 617, ponte 524, Chromium 165 e WebKit 165, totalizando **4.902 execuções
+aprovadas**. Os 23 novos cenários PostgreSQL integram os 611. A seleção de
+165 casos por navegador deixou os 165 do outro motor para o job correspondente.
+Não houve falhas, erros, skips ou repetição nesses seis jobs; a API teve seis
+warnings. Esses resultados pertencem à PR 269, antes do corretivo abaixo.
+
+A primeira candidata foi substituída antes de executar os testes dedicados.
+Para liberar a fila, seis workflows gerais dessa candidata antiga foram
+cancelados manualmente, preservando o histórico parcial. Nenhuma execução da
+candidata final foi cancelada. No corte geral de 19:06:31–19:06:33 UTC, havia
+45 sucessos, 11 falhas herdadas comparadas, um timeout de FATIA sem resumo
+final e dois jobs ainda ativos. O timeout não comprova a remoção global das
+21 falhas de fixture; a prova focada está no registro específico. Não se
+declara aprovação de todo o repositório.
+
+API `ecc343a5-9f77-4dc9-bafa-c378c1815937`, worker
+`d8a8da49-dcfd-4847-89f3-cfecb18b30b9` e ponte
+`5b598e24-7aa7-4fea-8e2b-31bb7b679c29` atingiram SUCCESS na mesma revisão.
+O ambiente mostrou os cinco serviços online com 1/1 réplica, sem alertas ou
+trabalho pendente. Não houve nova migração; o contrato continua em 0071.
+
+A conferência no Chrome conectado encontrou o menu e abriu a tela, mas a
+consulta automática de grupos mostrou indisponibilidade. A página
+Dispositivos confirmou que o aparelho cadastrado estava **Desconectado**.
+Não houve reconexão, envio ou importação real. O console não apresentou erros.
+Não há evidência de falha do transporte com uma sessão conectada.
+
+## Corretivo do estado desconectado
+
+A causa reproduzida é a diferença entre elegibilidade para Campanhas e
+capacidade de leitura imediata: a primeira admite aparelhos desconectados,
+enquanto a segunda exige sessão conectada. O extrator reutilizava a primeira
+indicação e iniciava uma leitura que a ponte corretamente recusava.
+
+O corretivo limita a disponibilidade de consulta ao estado `connected`,
+revalida essa condição antes e depois da chamada e apresenta o estado real
+na interface. O atalho Dispositivos usa sua própria permissão. O consumidor
+também recusa o DTO antigo incoerente com `available=true` e status offline.
+Campanhas, o transporte, SQL de produto e permissões não foram alterados.
+
+A importação local de uma prévia válida mantém as mesmas verificações de
+proprietário, validade, geração e revisão. Uma desconexão isolada não exige
+nova leitura para salvar contatos já revisados; remoção, desativação ou troca
+de contexto continuam bloqueando a operação.
+
+O critério definido para este ajuste de estado é a validação focada do
+produtor/API, DOM integrado, Chromium e a conferência offline em produção.
+Os 70 testes Python e 37 DOM passaram. O produtor real, reproduzido com a
+função anterior, falhou ao devolver disponibilidade para estado desconectado;
+com o predicado novo, seu DTO completo coincide com `options_disconnected`,
+consumido pelo teste DOM. Os 19 casos Chromium passaram, incluindo a recusa
+do DTO legado, somente GET/options quando offline e navegação pelo CTA.
+
+Os 29 cenários PostgreSQL do corretivo foram coletados e seguem para o CI;
+não são declarados aprovados localmente. O novo resultado amplo e o WebKit
+serão acompanhados separadamente. A consulta real dos grupos no Orion depende
+de uma sessão conectada; os testes do transporte e das importações usam dados
+sintéticos. O encerramento desta etapa ainda exige publicar o corretivo e
+conferir o estado desconectado na tela, antes de começar a etapa 17.

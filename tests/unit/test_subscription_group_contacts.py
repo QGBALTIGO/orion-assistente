@@ -3,10 +3,11 @@ from contextlib import asynccontextmanager
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 import json
+from pathlib import Path
 from uuid import UUID, uuid4
 
 from cryptography.fernet import Fernet
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 import httpx
 from pydantic import ValidationError
 import pytest
@@ -157,7 +158,7 @@ async def test_authorized_oversize_body_is_refused_before_any_write(monkeypatch)
     assert response.status_code == 413 and response.headers["cache-control"] == "no-store"
 
 
-async def install_reads(monkeypatch, *, provider=None, after=None):
+async def install_reads(monkeypatch, *, provider=None, before=None, after=None):
     boundaries, calls = [], []
     @asynccontextmanager
     async def boundary(tenant, actor):
@@ -165,12 +166,12 @@ async def install_reads(monkeypatch, *, provider=None, after=None):
         boundaries.append("enter")
         try: yield object()
         finally: boundaries.append("exit")
-    async def scope(db, tenant, identity, actor):
+    async def device(db, tenant, identity, *, actor=None):
         assert (tenant, identity, actor) == (TENANT, DEVICE, ACTOR)
         if len(calls) and after:
             if isinstance(after, Exception): raise after
-            return ROW | after, {"id": CHANNEL}
-        return dict(ROW), {"id": CHANNEL}
+            return ROW | after, {"id": CHANNEL, "enabled": True, "allowed_senders": []}
+        return ROW | (before or {}), {"id": CHANNEL, "enabled": True, "allowed_senders": []}
     async def bridge(transport, action, method, data):
         assert boundaries == ["enter", "exit"]
         calls.append((transport, action, method, data))
@@ -178,10 +179,91 @@ async def install_reads(monkeypatch, *, provider=None, after=None):
         return provider if provider is not None else members()
     async def clock(db): return NOW
     monkeypatch.setattr(store, "owner_transaction", boundary)
-    monkeypatch.setattr(store, "scope", scope)
+    monkeypatch.setattr(store.devices, "_device", device)
     monkeypatch.setattr(store.channels, "_bridge_control", bridge)
     monkeypatch.setattr(store, "clock", clock)
     return boundaries, calls
+
+
+CONTRACT_PATH = Path(__file__).resolve().parents[1] / "fixtures/subscription_group_contacts_contract.json"
+
+
+async def disconnected_options_from_real_producer(monkeypatch, *, status="disconnected"):
+    """Exercise the actual options endpoint and device DTO, not a handcrafted availability flag."""
+    contract = json.loads(CONTRACT_PATH.read_text())
+    tenant, owner, channel, generation = (UUID(f"00000000-0000-4000-8000-{n:012d}") for n in (1, 2, 3, 4))
+    actor = Actor("member", account_id=owner)
+    row = {"id": UUID(contract["options"]["devices"][0]["id"]), "tenant_id": tenant,
+        "owner_account_id": owner, "channel_id": channel, "generation": generation,
+        "revision": 2, "status": status, "name": "Dispositivo sintético"}
+
+    class Result:
+        def mappings(self): return self
+        def all(self): return [row]
+    class Database:
+        async def execute(self, statement, params):
+            assert "FROM subscription_devices" in str(statement)
+            assert params == {"t": tenant, "a": owner}
+            return Result()
+    @asynccontextmanager
+    async def owner_transaction(actual_tenant, actual_actor):
+        assert (actual_tenant, actual_actor) == (tenant, actor)
+        yield Database()
+    async def eligible(*args):
+        # A campaign may accept work before a device connects; live reads cannot.
+        return [{"id": row["id"], "available": True}]
+    async def groups(*args): return deepcopy(contract["options"]["groups"])
+    async def clock(*args): return NOW
+    monkeypatch.setattr(store, "owner_transaction", owner_transaction)
+    monkeypatch.setattr(store.campaigns, "device_options", eligible)
+    monkeypatch.setattr(store.campaigns, "group_summaries", groups)
+    monkeypatch.setattr(store, "clock", clock)
+    return await api.options(tenant, Response(), actor)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", ["stopped", "connecting", "qr", "pairing", "disconnected", "error", "disabled", "removing", "removed"])
+async def test_real_options_producer_does_not_offer_offline_devices_for_reads(monkeypatch, status):
+    value = await disconnected_options_from_real_producer(monkeypatch, status=status)
+    device = value["devices"][0]
+    assert device["status"] == status and device["available"] is False
+    assert device["blocked_reason"] == store.ERRORS["GROUP_CONTACTS_DEVICE_UNAVAILABLE"]
+    if status == "disconnected":
+        assert value == json.loads(CONTRACT_PATH.read_text())["options_disconnected"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", ["stopped", "connecting", "qr", "pairing", "disconnected", "error"])
+async def test_offline_groups_and_members_reads_stop_before_the_bridge(monkeypatch, status):
+    _, calls = await install_reads(monkeypatch, before={"status": status})
+    for selected_group in (None, REMOTE):
+        with pytest.raises(HTTPException) as error:
+            await api.read_groups(TENANT, ACTOR, DEVICE, selected_group=selected_group)
+        assert error.value.status_code == 409
+        assert error.value.detail["code"] == "GROUP_CONTACTS_DEVICE_UNAVAILABLE"
+    assert calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("selected_group", [None, REMOTE])
+async def test_disconnect_during_a_read_cannot_publish_groups_or_preview(monkeypatch, selected_group):
+    provider = members() if selected_group else {**store.transport_scope(ROW), "groups": [members()["group"]]}
+    _, calls = await install_reads(monkeypatch, provider=provider, after={"status": "disconnected"})
+    with pytest.raises(HTTPException) as error:
+        await api.read_groups(TENANT, ACTOR, DEVICE, selected_group=selected_group)
+    assert error.value.status_code == 409 and error.value.detail["code"] == "GROUP_CONTACTS_DEVICE_UNAVAILABLE"
+    assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_valid_preview_local_admission_survives_disconnect_without_a_bridge_read(monkeypatch, cipher):
+    token = preview()
+    _, calls = await install_reads(monkeypatch, before={"status": "disconnected"})
+    row, _ = await store.scope(object(), TENANT, DEVICE, ACTOR)
+    sealed = store.decode_preview(token, TENANT, ACTOR, NOW)
+    store.validate_preview_scope(sealed, row)
+    assert row["status"] == "disconnected" and sealed.members[0].phone == PHONE
+    assert calls == []
 
 
 @pytest.mark.asyncio
