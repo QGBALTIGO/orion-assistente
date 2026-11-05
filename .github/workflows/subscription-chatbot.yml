@@ -12,6 +12,7 @@ on:
       - 'app/subscription_schedule*.py'
       - 'app/subscription_bulk*.py'
       - 'app/subscription_direct*.py'
+      - 'app/subscription_group_contacts*.py'
       - 'app/qr_channels.py'
       - 'app/plan_catalog.py'
       - 'app/plan_permissions.py'
@@ -28,6 +29,7 @@ on:
       - 'app/static/orion-subscription-scheduled-messages.*'
       - 'app/static/orion-subscription-bulk-messages.*'
       - 'app/static/orion-subscription-direct-messages.*'
+      - 'app/static/orion-subscription-group-contacts.*'
       - 'app/static/orion-suite.js'
       - 'app/static/panel.html'
       - 'alembic/versions/0063_subscription_chatbot.py'
@@ -64,6 +66,7 @@ on:
       - 'tests/**/test_subscription_schedule*.py'
       - 'tests/**/test_subscription_bulk*.py'
       - 'tests/**/test_subscription_direct*.py'
+      - 'tests/**/test_subscription_group_contacts*.py'
       - 'tests/unit/test_start_api.py'
       - 'tests/unit/test_reverse_ingress.py'
       - 'tests/unit/test_https_transport.py'
@@ -77,6 +80,7 @@ on:
       - 'tests/fixtures/subscription_scheduled_messages*.json'
       - 'tests/fixtures/subscription_bulk*.json'
       - 'tests/fixtures/subscription_direct*.json'
+      - 'tests/fixtures/subscription_group_contacts*.json'
       - 'tests/e2e/browser_subscription_chatbot*.py'
       - 'tests/e2e/browser_subscription_templates.py'
       - 'tests/e2e/browser_subscription_sent_messages.py'
@@ -88,6 +92,8 @@ on:
       - 'tests/e2e/subscription_bulk_messages_fixture.py'
       - 'tests/e2e/browser_subscription_direct_messages.py'
       - 'tests/e2e/subscription_direct_messages_fixture.py'
+      - 'tests/e2e/browser_subscription_group_contacts.py'
+      - 'tests/e2e/subscription_group_contacts_fixture.py'
       - 'tests/e2e/browser_subscription_guidance.py'
       - 'tests/e2e/subscription_guidance_fixture.py'
       - 'ui-tests/*subscription*'
@@ -164,6 +170,7 @@ jobs:
             tests/unit/test_subscription_schedule*.py \
             tests/unit/test_subscription_bulk*.py \
             tests/unit/test_subscription_direct*.py \
+            tests/unit/test_subscription_group_contacts*.py \
             tests/unit/test_subscription_devices.py \
             tests/unit/test_subscription_device_rules.py \
             tests/unit/test_subscription_device_audio.py \
@@ -201,6 +208,7 @@ jobs:
           node --check qr-bridge/src/channel-manager.mjs
           node --check qr-bridge/src/channel-routes.mjs
           node --check qr-bridge/src/device-runtime.mjs
+          node --check qr-bridge/src/device-group-contacts.mjs
           node --check qr-bridge/src/device-diagnostics.mjs
           for source in qr-bridge/src/campaign-*.mjs qr-bridge/src/scheduled-*.mjs qr-bridge/src/bulk-*.mjs; do
             node --check "$source"
@@ -259,6 +267,7 @@ jobs:
           node --check app/static/orion-subscription-scheduled-messages.js
           node --check app/static/orion-subscription-bulk-messages.js
           node --check app/static/orion-subscription-direct-messages.js
+          node --check app/static/orion-subscription-group-contacts.js
           node --check app/static/orion-subscription-devices.js
           node --check app/static/orion-suite.js
           node --test \
@@ -272,6 +281,7 @@ jobs:
             ui-tests/subscription-scheduled-messages.test.mjs \
             ui-tests/subscription-bulk-messages.test.mjs \
             ui-tests/subscription-direct-messages.test.mjs \
+            ui-tests/subscription-group-contacts.test.mjs \
             ui-tests/subscription-devices.test.mjs \
             ui-tests/subscription-workspace.test.mjs \
             ui-tests/channels.test.mjs \
@@ -386,9 +396,10 @@ jobs:
           socket.socket.connect = connect
           socket.socket.connect_ex = connect_ex
           socket.getaddrinfo = getaddrinfo
-          # Validate the new direct-message schema/runtime contract first. A failed gate
+          # Validate the group contact import contract first. A failed gate
           # stops at its first error; a passing gate still runs every suite.
           raise SystemExit(pytest.main(['-q', '-ra', '--maxfail=1',
+              *sorted(glob.glob('tests/integration/test_subscription_group_contacts*_postgres.py')),
               *sorted(glob.glob('tests/integration/test_subscription_direct*_postgres.py'),
                   key=lambda path: ('release' not in path, path)),
               *sorted(glob.glob('tests/integration/test_subscription_bulk*_postgres.py'),
@@ -460,6 +471,7 @@ jobs:
       - name: Fluxos no painel real - celular, tablet, desktop e dois temas
         run: |
           python -m pytest -q -ra --maxfail=1 \
+            tests/e2e/browser_subscription_group_contacts.py \
             tests/e2e/browser_subscription_guidance.py \
             tests/e2e/browser_subscription_chatbot.py \
             tests/e2e/browser_subscription_chatbot_simulator.py \
@@ -477,6 +489,7 @@ jobs:
         with:
           name: subscription-chatbot-${{ matrix.engine }}
           path: |
+            test-artifacts/subscription-group-contacts/
             test-artifacts/subscription-guidance/
             test-artifacts/subscription-chatbot/
             test-artifacts/subscription-chatbot-test/

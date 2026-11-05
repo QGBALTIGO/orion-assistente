@@ -1291,6 +1291,7 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
 <script src="/panel-assets/orion-subscription-scheduled-messages.js"></script>
 <script src="/panel-assets/orion-subscription-bulk-messages.js"></script>
 <script src="/panel-assets/orion-subscription-direct-messages.js"></script>
+<script src="/panel-assets/orion-subscription-group-contacts.js"></script>
 <script src="/panel-assets/orion-communication.js"></script>
 <script src="/panel-assets/orion-automations.js"></script>
 <script src="/panel-assets/orion-flows.js"></script>
@@ -1699,6 +1700,10 @@ async function api(url,method="GET",data,options){
      error.code="SCHEDULE_CONFLICT";
      error.scheduleRejection=Object.fromEntries(["reason","idempotency_key","kind","schedule_id","run_id","expected_version","expected_run_version"].map(key=>[key,rejection[key]]));
    }
+   if(response.status===409&&method==="POST"&&/\/subscription-whatsapp\/group-contacts\/import$/.test(url)&&json?.detail?.code==="GROUP_CONTACTS_CONFLICT"&&rejection?.reason==="stale_group_version"){
+     error.code="GROUP_CONTACTS_CONFLICT";
+     error.groupContactsRejection=Object.fromEntries(["reason","idempotency_key","group_id","expected_version"].map(key=>[key,rejection[key]]));
+   }
    const directAdmission=method==="POST"&&/\/subscription-whatsapp\/direct-messages\/[^/]+\/actions$/.test(url);
    if(response.status===409&&directAdmission&&json?.detail?.code==="DIRECT_CONFLICT"&&rejection?.reason==="stale_version"){
      error.code="DIRECT_CONFLICT";
@@ -1960,7 +1965,7 @@ async function showApp(role="support",name="",email="",maintenance=null){
  const epoch=authEpoch;
  resetWizard();
  suiteTenantId="";businessRows=[];businessContextReady=false;businessContextError="";
- const url=new URL(location.href);url.searchParams.delete("empresa");history.replaceState({...window.OrionSubscriptionSentMessages?.navigationState?.(),...window.OrionSubscriptionDiagnostics?.navigationState?.(),...window.OrionSubscriptionDirectMessages?.navigationState?.(),...window.OrionSubscriptionBulkMessages?.navigationState?.(),...window.OrionSubscriptionScheduledMessages?.navigationState?.(),...window.OrionSubscriptionCampaigns?.navigationState?.()},"",url.pathname+url.search);
+ const url=new URL(location.href);url.searchParams.delete("empresa");history.replaceState({...window.OrionSubscriptionSentMessages?.navigationState?.(),...window.OrionSubscriptionDiagnostics?.navigationState?.(),...window.OrionSubscriptionGroupContacts?.navigationState?.(),...window.OrionSubscriptionDirectMessages?.navigationState?.(),...window.OrionSubscriptionBulkMessages?.navigationState?.(),...window.OrionSubscriptionScheduledMessages?.navigationState?.(),...window.OrionSubscriptionCampaigns?.navigationState?.()},"",url.pathname+url.search);
  suiteUser={role,name,email,maintenance};
  loginRole=role;
  const maintenanceActive=role==="member"&&maintenance?.active===true;

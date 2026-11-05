@@ -34,7 +34,9 @@ def confirmation(**changes):
 
 def client():
     app = FastAPI()
-    app.include_router(api.router)
+    for route in api.router.routes:
+        if route.path.startswith(api.BASE):
+            app.add_api_route(route.path, route.endpoint, methods=route.methods, status_code=route.status_code)
     app.dependency_overrides[authenticate] = lambda: ACTOR
     return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="https://test")
 

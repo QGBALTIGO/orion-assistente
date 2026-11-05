@@ -106,5 +106,24 @@ visualmente, sem cortes. Não foi repetida a bateria das etapas 13 e 14.
 
 Esses resultados qualificam o artigo, suas regras de acesso e a navegação;
 não comprovam remoção de banimento ou ação do WhatsApp sobre uma conta.
-O estado da publicação e a conferência ao vivo serão registrados após
-observar a revisão em produção.
+
+### Publicação e conferência ao vivo
+
+A [PR 268](https://github.com/QGBALTIGO/orion-assistente/pull/268) foi
+integrada no merge `784c31046420b406b655ee5913e39e102f971c76`, com a mesma
+árvore qualificada `a2d9ca777b185ff8194f3900bbfef5fa36c427ad`. API
+`bb64a946-168d-4dfd-8727-1cc7850a9572` e worker
+`e9fdc621-cb13-4610-a8d9-e6aea872932f` foram confirmados em SUCCESS/Online,
+com 1/1 réplica e a revisão do merge. Os cinco serviços estavam saudáveis,
+sem alertas ou operações pendentes. A ponte permaneceu na revisão anterior,
+com seu diretório inalterado e novo deployment SKIPPED pelo filtro de arquivos.
+
+Até 17:56:14 UTC de 2026-11-05, o Chrome conectado exibiu o novo menu e o
+artigo na empresa de assinaturas. Foram conferidos os dois passos, sete
+referências e atalho Meus Dispositivos, com retorno ao artigo. O console
+retornou `errors=[]`; a captura no tema escuro foi inspecionada. Nenhuma
+reconexão, recurso ao suporte, envio ou alteração de dados reais foi feita.
+
+A etapa foi encerrada por esse critério focado. O [CI automático amplo](https://github.com/QGBALTIGO/orion-assistente/actions/runs/42078777064)
+continuava em andamento; não se declara aprovação global. A observação da
+etapa 16 começa somente depois desta conferência ao vivo.
