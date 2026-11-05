@@ -3,6 +3,7 @@ import {readAuthorizedRetry} from './retry-identity.mjs';
 import {useDurableAuthState} from './durable-auth.mjs';
 import {fenceSignalRepository} from './signal-fence.mjs';
 import {makeConnectionHealth,disconnectPolicy,sustainedRecovery} from './connection-health.mjs';
+import {selectWaWebVersion} from './wa-version-policy.mjs';
 import {normalizeInbound,updateEvent,callEvent,safetyControl,queueControl} from './inbound-event.mjs';
 /**
  * Orion Linked Device — aparelho de teste único, transporte não oficial.
@@ -813,22 +814,12 @@ async function connect(){
         for(const category of Object.keys(data))transport.record('auth_keys_saved',null,{category,count:Object.keys(data[category]||{}).length});
       }catch(error){transport.record('auth_write_failed');throw error;}
     };
-    // Prefer the WhatsApp Web client revision instead of a months-old
-    // bundled default. Official fetch may fail; in that case use bundled
-    // Baileys version rather than blocking the QR forever.
-    let currentVersion;
-    if(process.env.QR_WA_VERSION_AUTO!=="0"){
-      try{
-        const result=await fetchLatestWaWebVersion({timeout:3500});
-        const v=result.version;
-        if(result.isLatest&&Array.isArray(v)&&v.length===3&&
-          v.every(x=>Number.isSafeInteger(x)&&x>0))currentVersion=v;
-      }catch{}
-    }
+    const webVersion=await selectWaWebVersion({auto:process.env.QR_WA_VERSION_AUTO!=='0',
+      bundledVersion:DEFAULT_CONNECTION_CONFIG.version,fetchVersion:fetchLatestWaWebVersion});
     if(mine!==generation||namesForConnection!==contactNames||selectedAuthDir!==authDir)return;
     await legacyCentral.assertTransportCurrent();
     if(stopping||mine!==generation||selectedAuthDir!==authDir||!legacyCentral.transportCurrent())return;
-    primaryHealth.protocolVersion(currentVersion||DEFAULT_CONNECTION_CONFIG.version);
+    primaryHealth.protocolVersion(webVersion.version,webVersion.source);
     const deviceCache=makePilotDeviceCache(makeBoundedCache({max:5000,ttlMs:300000}));
     const client=makeWASocket({
       userDevicesCache:deviceCache,
@@ -858,7 +849,7 @@ async function connect(){
         return content;
       },
       browser:Browsers.windows("Chrome"),
-      ...(currentVersion?{version:currentVersion}:{}),
+      version:webVersion.version,
       printQRInTerminal:false,markOnlineOnConnect:false,syncFullHistory:false,logger});
     socketDeviceCaches.set(client,deviceCache);
     // Do not announce a new link while merely restoring registered auth.

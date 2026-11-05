@@ -45,7 +45,7 @@ jobs:
           test "$candidate" -le 1
           python scripts/check_whatsapp_regression.py /tmp/whatsapp-baseline.tap /tmp/whatsapp-candidate.tap /tmp/whatsapp-regression.json
       - name: New recovery and real pinned protocol regressions must pass
-        run: node --test qr-bridge/test/connection-health.test.mjs qr-bridge/test/primary-transport-lease.test.mjs qr-bridge/test/interactive-fallback.test.mjs qr-bridge/test/assistant-parts.test.mjs
+        run: node --test qr-bridge/test/connection-health.test.mjs qr-bridge/test/primary-transport-lease.test.mjs qr-bridge/test/interactive-fallback.test.mjs qr-bridge/test/assistant-parts.test.mjs qr-bridge/test/wa-version-policy.test.mjs
       - run: npm audit --prefix qr-bridge --omit=dev --audit-level=high
       - run: docker build -t orion-whatsapp-reliability qr-bridge
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

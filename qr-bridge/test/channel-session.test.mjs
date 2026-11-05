@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {createBaileysChannelSession} from '../src/channel-session.mjs';
+import {DEFAULT_CONNECTION_CONFIG} from '@whiskeysockets/baileys';
 
 process.env.ORION_RETRY_TEST_MODE='1';
 test('provider phone is the confirmed PN only after open; LIDs are never relabeled as phone numbers',async t=>{
@@ -29,6 +30,7 @@ async function session(t,{audio=false,assistant=true,typingFactory,notifySelf=fa
     transcribe:async()=> 'Áudio transcrito sintético',
     onConnected(){},onDisconnected(){},onReceipt:async()=>{},onMessage:async value=>messages.push(value)};
   const mod={
+    DEFAULT_CONNECTION_CONFIG:{version:DEFAULT_CONNECTION_CONFIG.version},
     default:options=>{config=options;return client;},BufferJSON:{},initAuthCreds:()=>({synthetic:'private-auth',registered}),
     generateMessageIDV2:()=> 'provider-id',generateWAMessage:async(jid,{text})=>({key:{id:'provider-id',remoteJid:jid,fromMe:true},message:{conversation:text}}),
     downloadMediaMessage:async()=>Buffer.from('OggS synthetic media'),

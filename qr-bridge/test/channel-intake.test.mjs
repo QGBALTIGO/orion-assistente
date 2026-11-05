@@ -7,6 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {createChannelManager} from '../src/channel-manager.mjs';
 import {createBaileysChannelSession} from '../src/channel-session.mjs';
+import {DEFAULT_CONNECTION_CONFIG} from '@whiskeysockets/baileys';
 
 process.env.ORION_RETRY_TEST_MODE='1';
 const phone='5567999999901',self='5567999999902',tick=()=>new Promise(resolve=>setImmediate(resolve));
@@ -41,7 +42,7 @@ async function fixture(t){
         sendMessage:async()=>assert.fail('Direct send is forbidden'),
         relayMessage:async(jid,body)=>{sent.push({id:context.channelId,jid,text:body.conversation});}};
       clients.set(context.channelId,client);
-      const mod={default:()=>client,BufferJSON:{},initAuthCreds:()=>({}),Browsers:{windows:()=>['synthetic']},
+      const mod={default:()=>client,DEFAULT_CONNECTION_CONFIG:{version:DEFAULT_CONNECTION_CONFIG.version},BufferJSON:{},initAuthCreds:()=>({}),Browsers:{windows:()=>['synthetic']},
         DisconnectReason:{loggedOut:401},proto:{Message:{AppStateSyncKeyData:{fromObject:value=>value}}},
         downloadMediaMessage:async()=>Buffer.from('OggS synthetic'),generateMessageIDV2:()=> 'sent-'+(++serial),
         generateWAMessage:async(jid,{text})=>({key:{id:'sent-'+(++serial),remoteJid:jid},message:{conversation:text}})};

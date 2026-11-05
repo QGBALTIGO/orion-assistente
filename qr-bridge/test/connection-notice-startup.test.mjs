@@ -10,6 +10,8 @@ import {normalizeFromJid} from '../src/core.mjs';
 import {SMOKE_ID,APPOINTMENT_QA_ID} from '../src/consented-live-qa.mjs';
 import {fenceSignalRepository} from '../src/signal-fence.mjs';
 import {disconnectPolicy,sustainedRecovery} from '../src/connection-health.mjs';
+import {createWaVersionPolicy} from '../src/wa-version-policy.mjs';
+import {DEFAULT_CONNECTION_CONFIG} from '@whiskeysockets/baileys';
 
 const source=fs.readFileSync(new URL('../src/server.mjs',import.meta.url),'utf8').replace(/\r\n/g,'\n');
 const connectStart=source.indexOf('async function connect(){');
@@ -47,7 +49,8 @@ function harness(options={}){
     BufferJSON:{},proto:{},initAuthCreds(){},makeBoundedCache:()=>({}),
     process:{env:{QR_WA_VERSION_AUTO:'0',...(flag===undefined?{}:{ORION_NOTIFY_SELF_ON_LINK:flag})}},
     transport:{record(){}},NodeCache:class {},makePilotDeviceCache:()=>({}),socketDeviceCaches:new WeakMap(),
-    makeCacheableSignalKeyStore:value=>value,logger:{},DEFAULT_CONNECTION_CONFIG:{makeSignalRepository(){}},
+    makeCacheableSignalKeyStore:value=>value,logger:{},DEFAULT_CONNECTION_CONFIG:{version:DEFAULT_CONNECTION_CONFIG.version,makeSignalRepository(){}},
+    selectWaWebVersion:createWaVersionPolicy().select,fetchLatestWaWebVersion:async()=>({isLatest:false,version:DEFAULT_CONNECTION_CONFIG.version}),
     observeSignalRepository:fn=>fn,fenceSignalRepository,disconnectPolicy:(code,attempts,options)=>disconnectPolicy(code,attempts,{...options,random:()=>0.5}),sustainedRecovery,encryptionTargetDetails:()=>({}),retryStore:{get(){}},retryDiagnostics:{cacheHits:0,cacheMisses:0},
     Browsers:{windows:()=>['synthetic']},msgRetryCounterCache:{},
     makeWASocket:()=>{const socket={ev:new EventEmitter(),user:{id:'5567999999901@s.whatsapp.net'}};sockets.push(socket);return socket;},

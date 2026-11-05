@@ -11,6 +11,7 @@ import {createChannelResumeStore} from '../src/channel-resume.mjs';
 import {deviceStorage} from '../src/device-storage.mjs';
 import {channelDirectory} from '../src/channel-storage.mjs';
 import {createChannelBroker} from '../src/channel-broker.mjs';
+import {DEFAULT_CONNECTION_CONFIG} from '@whiskeysockets/baileys';
 
 process.env.ORION_RETRY_TEST_MODE='1';
 const phone='5567999999901',self='5567999999902';
@@ -50,7 +51,7 @@ async function fixture(t){
       signalRepository:{lidMapping:{getPNForLID:lid=>behavior.lookupCall(lid)}},
       rejectCall:async(id,from)=>{rejections.push({id,from});},logout:async()=>{},
       relayMessage:async(jid,body)=>{sends.push({jid,text:body.conversation});await behavior.send();}};
-    const mod={default:options=>{config=options;return client;},BufferJSON:{},initAuthCreds:()=>({registered:true}),
+    const mod={default:options=>{config=options;return client;},DEFAULT_CONNECTION_CONFIG:{version:DEFAULT_CONNECTION_CONFIG.version},BufferJSON:{},initAuthCreds:()=>({registered:true}),
       Browsers:{windows:()=>['synthetic']},DisconnectReason:{loggedOut:401},proto:{Message:{AppStateSyncKeyData:{fromObject:value=>value}}},
       generateMessageIDV2:()=> 'provider-'+(++serial),generateWAMessage:async(jid,{text},options)=>{await behavior.prepare();return {key:{id:options.messageId,remoteJid:jid},message:{conversation:text}};},
       downloadMediaMessage:async()=>{const buffer=Buffer.from('OggS synthetic audio');downloads.push(buffer);return buffer;}};

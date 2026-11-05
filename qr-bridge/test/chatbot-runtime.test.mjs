@@ -52,7 +52,7 @@ async function fixture(t,{native=false}={}){
         assert.deepEqual(await config.getMessage({id:options.messageId,remoteJid:jid,fromMe:true}),JSON.parse(JSON.stringify(proto,sdk.BufferJSON.replacer),sdk.BufferJSON.reviver));
         const item={jid,proto:sdk.proto.Message.decode(sdk.proto.Message.encode(proto).finish()),id:options.messageId};sends.push(item);await behavior.send(item);
       }};
-    const mod={...sdk,default:options=>{config=options;return client;},downloadMediaMessage:async()=>{const buffer=Buffer.from('OggS synthetic');downloads.push(buffer);return buffer;}};
+    const mod={...sdk,fetchLatestWaWebVersion:async()=>({version:sdk.DEFAULT_CONNECTION_CONFIG.version,isLatest:false}),default:options=>{config=options;return client;},downloadMediaMessage:async()=>{const buffer=Buffer.from('OggS synthetic');downloads.push(buffer);return buffer;}};
     session=await createBaileysChannelSession(context,{loadBaileys:async()=>mod,now:()=>clock,schedule,cancel,
       deviceOptions:{...(native?{interactiveMode:'native'}:{}),runtimeOptions:{capacity:{acquire:options=>behavior.capacity(options)},chatbotOptions:{httpRequest:async options=>{httpCalls.push(options);return behavior.http(options);},fetchImage:options=>behavior.fetchImage(options)}}}});
     instances.push(session);const before=events.length;client.ev.emit('connection.update',{connection:'open'});await until(()=>events.slice(before).some(row=>row.kind==='status'));return session;

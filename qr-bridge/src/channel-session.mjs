@@ -1,6 +1,7 @@
 import {makeBoundedCache} from './bounded-cache.mjs';
 import {fenceSignalRepository} from './signal-fence.mjs';
 import {makeConnectionHealth,disconnectPolicy} from './connection-health.mjs';
+import {selectWaWebVersion} from './wa-version-policy.mjs';
 import {makeTransportDiagnostics} from './transport-diagnostics.mjs';
 import {readAuthorizedRetry} from './retry-identity.mjs';
 /** A Baileys instance per context; shared helpers, no copy of the legacy server.
@@ -28,7 +29,7 @@ import {messagePreflightError} from './device-message-failure.mjs';
 import {createDeviceProxy} from './device-network.mjs';
 import {currentDiagnosticMessage} from './device-diagnostic-message.mjs';
 
-export async function createBaileysChannelSession(context,{loadBaileys=()=>import('@whiskeysockets/baileys'),now=Date.now,typingFactory=makeAssistantTyping,intakeOptions={},schedule=setTimeout,cancel=clearTimeout,deviceOptions={}}={}){
+export async function createBaileysChannelSession(context,{loadBaileys=()=>import('@whiskeysockets/baileys'),selectVersion=selectWaWebVersion,now=Date.now,typingFactory=makeAssistantTyping,intakeOptions={},schedule=setTimeout,cancel=clearTimeout,deviceOptions={}}={}){
   if(context.legacyTransport===true)throw Error('legacy_requires_existing_socket');
   await context.assertCurrent();
   const mod=await loadBaileys();await context.assertCurrent();
@@ -46,7 +47,6 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
       const policy={...disconnectPolicy(408),reason};health.disconnected(policy,1);close();context.onDisconnected(policy);
     }});
   health.connecting();
-  health.protocolVersion(mod.DEFAULT_CONNECTION_CONFIG?.version);
   const store=encryptedChannelStore({directory:privateDirectory(path.join(context.directory,'auth')),secret:context.secret,
     serialize:value=>JSON.stringify(value,mod.BufferJSON.replacer),deserialize:value=>JSON.parse(value,mod.BufferJSON.reviver),
     isCurrent:()=>context.isCurrent()===true});
@@ -150,7 +150,11 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
   const proxyTransport=deviceSnapshot?await (deviceOptions.createProxy||createDeviceProxy)(deviceSnapshot.settings.proxy,
     {secret:deviceSnapshot.proxy_secret?.password,signal:abort.signal,assertCurrent:guarded,...deviceOptions.proxyOptions}):null;
   await guarded();
+  const webVersion=await selectVersion({auto:process.env.QR_WA_VERSION_AUTO!=='0',
+    bundledVersion:mod.DEFAULT_CONNECTION_CONFIG?.version,fetchVersion:mod.fetchLatestWaWebVersion});
+  await guarded();health.protocolVersion(webVersion.version,webVersion.source);
   const client=makeSocket({auth,logger:silent,browser:mod.Browsers.windows('Chrome'),
+    version:webVersion.version,
     ...(typeof mod.DEFAULT_CONNECTION_CONFIG?.makeSignalRepository==='function'?{
       makeSignalRepository:fenceSignalRepository(mod.DEFAULT_CONNECTION_CONFIG.makeSignalRepository,current)}:{}),
     printQRInTerminal:false,markOnlineOnConnect:false,syncFullHistory:false,userDevicesCache:deviceCache,maxMsgRetryCount:5,

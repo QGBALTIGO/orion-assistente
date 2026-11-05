@@ -54,7 +54,7 @@ async function fixture(t){
           JSON.parse(JSON.stringify(proto,sdk.BufferJSON.replacer),sdk.BufferJSON.reviver));
         const item={jid,proto:sdk.proto.Message.decode(sdk.proto.Message.encode(proto).finish()),id:options.messageId};sends.push(item);await behavior.send(item);
       }};
-    session=await createBaileysChannelSession(context,{loadBaileys:async()=>({...sdk,default:options=>{config=options;return client;}}),
+    session=await createBaileysChannelSession(context,{loadBaileys:async()=>({...sdk,fetchLatestWaWebVersion:async()=>({version:sdk.DEFAULT_CONNECTION_CONFIG.version,isLatest:false}),default:options=>{config=options;return client;}}),
       now:()=>clock,schedule,cancel,deviceOptions:{runtimeOptions:{capacity:{acquire:options=>behavior.capacity(options)}}}});
     instances.push(session);const before=events.length;client.ev.emit('connection.update',{connection:'open'});
     await until(()=>events.slice(before).some(row=>row.kind==='status'));return session;

@@ -27,6 +27,7 @@ O nicho escolhe regras e conteúdo; não deve escolher outra identidade criptogr
 | Recuperação uniforme para motivos diferentes | Logout, substituição e falha transitória podiam alimentar a mesma política | Categorias explícitas, intervalos progressivos e orçamento finito; código 500 permite duas tentativas com o estado intacto antes de revisão; abertura breve não reinicia indefinidamente o orçamento |
 | Estado conectado salvo podia parecer atual após parar de reportar | Último evento de abertura era usado sem informação suficiente de prontidão | Sinais passivos de WebSocket, atividade, interrupção, recuperação, tentativa e ação; snapshot sem atualização por 90 segundos aparece indisponível |
 | Verificador de prontidão do WhatsApp rejeitava schemas posteriores à migração de telefones do Paraguai | Somente a revisão exata 0052 selecionava o CHECK com +595; schemas posteriores eram comparados com a regra antiga | Seleção pela ancestralidade exata das migrations conhecidas no código; aliases, revisões parciais e desconhecidas continuam recusados; RLS, privilégios e validação do CHECK mantidos |
+| Política de revisão Web divergente entre os caminhos | A sessão principal respeitava `QR_WA_VERSION_AUTO`; os dispositivos gerenciados ignoravam a flag e usavam sempre a revisão incluída no SDK | Seletor compartilhado, consulta oficial limitada a 3,5 segundos, versão obtida fixada durante o processo e fallback identificado com intervalo de 60 segundos. Biblioteca e estado criptográfico preservados |
 
 As chaves e sessões válidas não são apagadas para corrigir falhas transitórias. O prazo de processamento da resposta ao vivo é de 14 segundos desde a entrada na rota, incluindo verificações de autoridade e espera pela trava. O preview de áudio tem orçamento próprio de 60 segundos. Limpeza e fechamento têm limites próprios; o prazo de negócio não deve ser confundido com o tempo total de finalização sob uma dependência indisponível.
 
@@ -52,6 +53,8 @@ No período consultado, a sessão principal registrou dez encerramentos. Horári
 Houve publicações da bridge no mesmo período, mas as quedas das 10:59 e 13:02 ocorreram dentro do mesmo deployment. Assim, deployment não explica todas as desconexões. Nas métricas disponíveis de 24 horas, a memória variou aproximadamente de 0,075 a 0,222 GB, com limite próximo de 1 GB; a bridge não registrou deployment falho nesse recorte. Isso não demonstra que rede, bloqueio do event loop ou um incidente mais antigo estejam excluídos.
 
 Os seis cache misses encontrados no primeiro diagnóstico estavam todos classificados como **não rastreados como envios da aplicação**. Não são prova de que seis mensagens de clientes perderam seu conteúdo. Também havia eventos de descriptografia e destinatários não resolvidos; sem correlação com o conteúdo legível no aparelho, não se convertem esses contadores em uma taxa de falha de 90%.
+
+Na inspeção de serviços digitais havia um dispositivo habilitado, mas parado, com concessão expirada às 12:02 de 05/11. Depois de um relink e uma preparação de conexão às 11:36, foram registrados nove estados de desconexão e nenhuma nova confirmação de abertura; a abertura anterior era de 04/11 às 20:11. O sucesso da operação de preparar a conexão não comprova autenticação. Não se atribui esse histórico à divergência de versão Web sem o motivo do protocolo e uma tentativa autenticada. A inspeção não executou logout, relink ou exclusão de credenciais.
 
 ## Limites do protocolo que continuam relevantes
 
@@ -106,7 +109,7 @@ O teto de cache de protocolo de um dispositivo pode chegar a aproximadamente 187
 | `QR_AI_INTAKE_REVISION_ENABLED` | Controle das revisões de entrada; a guarda da trava continua necessária independentemente dessa flag |
 | `INBOX_CONTROL_ENABLED`, `INBOX_SEND_ENABLED` | Arbitragem com operadores e outbox humano; não ativar globalmente para executar um teste |
 | `QR_NATIVE_INTERACTIVE_ENABLED` | Opt-in de formatos nativos; padrão conservador em texto |
-| `QR_WA_VERSION_AUTO` | Política de revisão Web; correlacionar `web_version` com incidentes antes de alterá-la |
+| `QR_WA_VERSION_AUTO` | Política compartilhada de revisão Web; correlacionar `web_version` e `web_version_source` com incidentes antes de alterá-la |
 
 A revisão Web, o build, deployment, instância, responsável e fence entram nos diagnósticos. O painel recebe somente estado, datas, tentativa, motivo classificado e ação apropriada; não recebe chaves, tokens, conteúdo de mensagens ou identificadores de infraestrutura. O log passivo de saúde a cada 60 segundos distingue o processo vivo de uma sessão pronta.
 
@@ -136,7 +139,7 @@ Estado antes da publicação: **em homologação**. As execuções abaixo têm c
 
 | Execução | Resultado efetivamente observado |
 | --- | --- |
-| Transporte Node, excluindo somente o fixture de painel já identificado como falho na base | 802 casos; 797 aprovados, zero falhas, cinco verificações POSIX/symlink não executadas no Windows. TLS/OpenSSL executado |
+| Transporte Node, excluindo somente o fixture de painel já identificado como falho na base | 816 casos; 811 aprovados, zero falhas, cinco verificações POSIX/symlink não executadas no Windows. TLS/OpenSSL executado; inclui 14 casos novos da política de versão Web |
 | Comparação completa de unidades WhatsApp por identidade | Candidato com 5.117 aprovados, 46 falhas, dez skips e sete erros de preparação. Todos os 44 casos adicionados aprovados; nenhuma falha nova, remoção de caso ou novo skip. A suíte global continua reprovada por falhas herdadas |
 | P0 com PostgreSQL e Redis reais e dados sintéticos isolados | 41/41 aprovados, incluindo RLS, lease, expiração, perda da autoridade, Lua real e dois cenários em processos separados; repetição após a correção de quarentena com 46/46, incluindo cinco casos novos de revogação e validação |
 | Recuperação de tarefas pendentes com PostgreSQL real | 9/9 aprovados; timeout/resultado incerto, autorização revogada e reconciliação sem novo envio |

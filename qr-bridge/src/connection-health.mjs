@@ -31,12 +31,12 @@ export function makeConnectionHealth({now=Date.now,emit=()=>{},scope={},onStale=
   isSyncPending=()=>false,identity=runtimeIdentity(),previous}={}){
   let state='starting',lastActivityAt=null,interruptedAt=Number.isFinite(previous?.interrupted_at)?previous.interrupted_at:null,recoveredAt=null,connectedAt=null,
     disconnectCode=null,reason=null,reconnectAt=null,attempts=previous?.reconnect_attempts||0,action=null,stopped=false,
-    socket=null,timer=null,lastTick=null,lastSampleAt=null,staleSamples=0,syncSamples=0,observedFrames=0,webVersion=null;
+    socket=null,timer=null,lastTick=null,lastSampleAt=null,staleSamples=0,syncSamples=0,observedFrames=0,webVersion=null,webVersionSource=null;
   const context={...identity,...Object.fromEntries(Object.entries(scope).filter(([name,value])=>
     ['channel_id','tenant_id','owner','generation','fence'].includes(name)&&
     (uuid(value)||Number.isSafeInteger(value)&&value>=0)))};
   function record(event,extra={}){try{emit({component:'orion-whatsapp-lifecycle',...context,event,at:now(),
-    rss_bytes:process.memoryUsage().rss,uptime_seconds:Math.floor(process.uptime()),web_version:webVersion,...extra});}catch{}}
+    rss_bytes:process.memoryUsage().rss,uptime_seconds:Math.floor(process.uptime()),web_version:webVersion,web_version_source:webVersionSource,...extra});}catch{}}
   function activity(){if(!stopped){lastActivityAt=now();observedFrames++;staleSamples=0;if(state==='degraded'){state='connected';reason=null;record('transport_responsive');}}}
   function tick(){
     timer=null;if(stopped||!socket)return;
@@ -69,8 +69,8 @@ export function makeConnectionHealth({now=Date.now,emit=()=>{},scope={},onStale=
   function unwatch(){cancel(timer);timer=null;socket?.off?.('message',activity);socket?.off?.('pong',activity);socket=null;}
   return {
     watch,
-    protocolVersion(value){if(Array.isArray(value)&&value.length===3&&value.every(item=>Number.isSafeInteger(item)&&item>0)){
-      webVersion=[...value];record('protocol_selected');}},
+    protocolVersion(value,source){if(Array.isArray(value)&&value.length===3&&value.every(item=>Number.isSafeInteger(item)&&item>0)){
+      webVersion=[...value];webVersionSource=['latest_web','bundled_disabled','bundled_fallback'].includes(source)?source:null;record('protocol_selected');}},
     connecting(){unwatch();stopped=false;observedFrames=0;lastActivityAt=null;lastTick=null;staleSamples=0;
       state='connecting';reconnectAt=null;action=null;syncSamples=0;record('connecting');},
     connected(){state='connected';connectedAt=now();lastSampleAt=now();recoveredAt=interruptedAt===null?null:now();
@@ -81,7 +81,7 @@ export function makeConnectionHealth({now=Date.now,emit=()=>{},scope={},onStale=
       reconnectAt=policy.retry?now()+policy.delayMs:null;record('disconnected',{code:disconnectCode,reason,attempt,action,reconnect_at:reconnectAt});},
     snapshot(){return {state,last_activity_at:lastActivityAt,transport_observed:observedFrames>0,sync_pending:isSyncPending()===true,connected_at:connectedAt,
       interrupted_at:interruptedAt,recovered_at:recoveredAt,disconnect_code:disconnectCode,reason,reconnect_at:reconnectAt,
-      reconnect_attempts:attempts,action,web_version:webVersion,...context};},
+      reconnect_attempts:attempts,action,web_version:webVersion,web_version_source:webVersionSource,...context};},
     stop(cause='stopped'){if(stopped)return;stopped=true;unwatch();
       if(!['reconnecting','needs_attention'].includes(state))state='stopped';record('stopped',{reason:cause});}
   };
