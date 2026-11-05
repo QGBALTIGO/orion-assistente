@@ -27,28 +27,30 @@ export async function sendStoredProtocol({jid,recipientProof,makeMessage,relay,s
   return msg;
 }
 
-export async function sendStoredText({jid,recipientProof,text,makeMessage,relay,store,onPrepared=()=>{},onAccepted=()=>{},freshDevices=false,isCurrent=()=>true,maxTextChars=1200,preserveWhitespace=false}){
+export async function sendStoredText({jid,recipientProof,text,makeMessage,relay,store,onPrepared=()=>{},onAccepted=()=>{},freshDevices=false,isCurrent=()=>true,assertAuthorized=async()=>{},maxTextChars=1200,preserveWhitespace=false}){
   if(typeof jid!=="string" || (!/^[1-9]\d{7,14}@s\.whatsapp\.net$/.test(jid)&&!isVerifiedPilotLid(recipientProof,jid))){
     throw Error("Invalid recipient JID");
   }
   if(!Number.isSafeInteger(maxTextChars)||maxTextChars<1||maxTextChars>32000||typeof preserveWhitespace!=='boolean'||typeof text!=="string" || !text.trim() || text.length>maxTextChars)throw Error("Invalid text");
-  if(typeof makeMessage!=="function" || typeof relay!=="function" || !store?.save){
+  if(typeof makeMessage!=="function" || typeof relay!=="function" ||typeof assertAuthorized!=='function'|| !store?.save){
     throw Error("Reliable send not configured");
   }
+  await assertAuthorized();if(!isCurrent())throw Error('channel_operation_superseded');
   const msg=await makeMessage(jid,preserveWhitespace?text:text.trim());
+  await assertAuthorized();
   if(!isCurrent())throw Error('A conexão mudou antes do envio. Nenhuma mensagem foi enviada.');
   if(!msg?.key?.id || !msg?.message)throw Error("Failed to build WhatsApp message");
   // Cache MUST be available before first network packet leaves this socket.
   if(store.save(msg.key,msg.message)!==true)throw Error("Unable to cache outgoing message");
   onPrepared(msg);
   if(!isCurrent())throw Error('A conexão mudou antes do envio. Nenhuma mensagem foi enviada.');
-  await withVerifiedPilotDevices(recipientProof,()=>relay(jid,msg.message,{
+  await withVerifiedPilotDevices(recipientProof,async()=>{await assertAuthorized();if(!isCurrent())throw Error('channel_operation_superseded');return relay(jid,msg.message,{
     messageId:msg.key.id,
     // Disable potentially stale recipient-device cache only when requested.
     // A verified LID proof already refreshed and checked this socket's device
     // cache; consume that exact list rather than interpreting a second query.
     useUserDevicesCache:isVerifiedPilotLid(recipientProof,jid)||!freshDevices
-  }));
+  });});
   onAccepted(msg);
   return msg;
 }

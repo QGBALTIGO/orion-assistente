@@ -14,6 +14,13 @@ import {createWaVersionPolicy} from '../src/wa-version-policy.mjs';
 import {DEFAULT_CONNECTION_CONFIG,Curve,proto,initAuthCreds} from '@whiskeysockets/baileys';
 import {classifyPairedAuth} from '../src/paired-auth-state.mjs';
 import {makePairedAuthFixture} from './helpers/paired-auth-fixture.mjs';
+import {makeOutgoingPresence} from '../src/outgoing-presence.mjs';
+import {sendStoredText} from '../src/reliable-send.mjs';
+import {makeMessageRetryStore} from '../src/message-retry-store.mjs';
+import {generateWAMessage,generateMessageIDV2} from '@whiskeysockets/baileys';
+import {presenceClock} from './helpers/presence-clock.mjs';
+import {disconnectEvidence} from '../src/disconnect-evidence.mjs';
+import {Boom} from '@hapi/boom';
 
 const source=fs.readFileSync(new URL('../src/server.mjs',import.meta.url),'utf8').replace(/\r\n/g,'\n');
 const connectStart=source.indexOf('async function connect(){');
@@ -55,7 +62,7 @@ function harness(options={}){
     transport:{record(){}},NodeCache:class {},makePilotDeviceCache:()=>({}),socketDeviceCaches:new WeakMap(),
     makeCacheableSignalKeyStore:value=>value,logger:{},DEFAULT_CONNECTION_CONFIG:{version:DEFAULT_CONNECTION_CONFIG.version,makeSignalRepository(){}},
     selectWaWebVersion:createWaVersionPolicy().select,fetchLatestWaWebVersion:async()=>({isLatest:false,version:DEFAULT_CONNECTION_CONFIG.version}),
-    observeSignalRepository:fn=>fn,fenceSignalRepository,disconnectPolicy:(code,attempts,options)=>disconnectPolicy(code,attempts,{...options,random:()=>0.5}),sustainedRecovery,encryptionTargetDetails:()=>({}),retryStore:{get(){}},retryDiagnostics:{cacheHits:0,cacheMisses:0},
+    observeSignalRepository:fn=>fn,fenceSignalRepository,disconnectEvidence,disconnectPolicy:(code,attempts,options)=>disconnectPolicy(code,attempts,{...options,random:()=>0.5}),sustainedRecovery,encryptionTargetDetails:()=>({}),retryStore:{get(){}},retryDiagnostics:{cacheHits:0,cacheMisses:0},
     Browsers:{windows:()=>['synthetic']},msgRetryCounterCache:{},
     makeWASocket:()=>{const socket={ev:new EventEmitter(),user:{id:'5567999999901@s.whatsapp.net'}};sockets.push(socket);return socket;},
     normalizeFromJid,Date,console:{info(){},warn(){}},saveQueue:Promise.resolve(),
@@ -84,6 +91,22 @@ test('a restored real SDK QR account with registered=false and no LID never re-a
   assert.equal(h.auth.creds.registered,false);assert.equal(h.auth.creds.me.lid,undefined);
   await h.connect();h.sockets[0].ev.emit('connection.update',{connection:'open'});await flush();await h.runTimers(2500);
   assert.equal(h.context.newLinkNoticeAuthDir,null);assert.equal(h.notices.length,0);assert.equal(h.timers.size,0);
+});
+
+test('primary fresh-link notice uses the common targeted pacing and current self guard before reliable relay',async()=>{
+  const h=harness({registered:false,flag:'1'});await h.connect();h.auth.creds.registered=true;
+  const client=h.sockets[0],clock=presenceClock(),presence=[],relays=[],store=makeMessageRetryStore();
+  client.sendPresenceUpdate=async(type,jid)=>presence.push({type,jid});
+  client.relayMessage=async(jid,message,options)=>{assert.deepEqual(store.get({id:options.messageId,remoteJid:jid,fromMe:true}),message);relays.push({jid,message});};
+  const logger={child(){return this;},trace(){},debug(){},info(){},warn(){},error(){}};
+  const typingPresence=makeOutgoingPresence({socket:client,isConnected:()=>h.context.status==='connected'&&h.context.socket===client,
+    now:clock.now,schedule:clock.schedule,cancel:clock.cancel});
+  Object.assign(h.context,{typingPresence,sendStoredText,retryStore:store,generateWAMessage,generateMessageIDV2,logger});
+  h.context.sendConnectionNoticeOnce=async args=>{assert.equal(args.isCurrent(),true);await args.sendText('5567999999901@s.whatsapp.net','Conexão autorizada');return {state:'sent'};};
+  client.ev.emit('connection.update',{connection:'open'});await flush();const notified=h.runTimers(2500);
+  await clock.advance(799);assert.equal(relays.length,0);assert.deepEqual(presence.map(value=>value.type),['composing']);
+  await clock.advance(1);await notified;assert.equal(relays.length,1);assert.deepEqual(presence.map(value=>value.type),['composing','paused']);
+  assert.ok(presence.every(value=>value.jid==='5567999999901@s.whatsapp.net'));typingPresence.close();
 });
 
 test('provisional or incomplete primary auth never invents a new-link notice intent',async()=>{
@@ -167,4 +190,14 @@ test('rapid successful handshakes followed by repeated stream 500 exhaust the ex
   h.sockets[2].ev.emit('connection.update',{connection:'close',lastDisconnect:{error:{output:{statusCode:500}}}});
   assert.equal(h.sockets.length,3);assert.equal(h.context.status,'error');assert.equal(h.timers.size,0);
   assert.equal(h.auth.creds.registered,true);assert.equal(h.notices.length,0);
+});
+
+test('primary close passes only safe structured SDK evidence while preserving500 recovery behavior',async()=>{
+  const h=harness({registered:true}),observed=[];h.context.primaryHealth.disconnected=(...args)=>observed.push(args);
+  await h.connect();h.sockets[0].ev.emit('connection.update',{connection:'open'});
+  h.sockets[0].ev.emit('connection.update',{connection:'close',lastDisconnect:{error:new Boom('private provider text',
+    {statusCode:500,data:{tag:'stream:error',attrs:{code:'500',id:'private phone and token'},content:[{tag:'private reason'}]}})}});
+  assert.equal(observed.length,1);assert.equal(observed[0][0].reason,'session_recovery');assert.equal(observed[0][0].retry,true);
+  assert.deepEqual(observed[0][2],{source:'stream_error',condition:'unknown',provider_reason_numeric:500,websocket_code:null});
+  assert.doesNotMatch(JSON.stringify(observed),/private/);assert.equal(h.context.lastDisconnectCode,500);
 });

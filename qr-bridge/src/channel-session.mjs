@@ -17,10 +17,11 @@ import {shouldIngestUpsert,timestampMs} from './linked-session-health.mjs';
 import {deliveryFromAck} from './message-retry-store.mjs';
 import {makeEncryptedRetryStore} from './encrypted-retry-store.mjs';
 import {sendStoredText,sendStoredProtocol} from './reliable-send.mjs';
-import {buildChatbotContent} from './chatbot-message.mjs';
+import {buildChatbotContent,validateChatbotAsset} from './chatbot-message.mjs';
 import {saveFallbackSelection,resolveFallbackSelection} from './selection-fallback.mjs';
 import {makePilotDeviceCache,resolvePilotRecipient} from './pilot-recipient.mjs';
 import {makeAssistantTyping} from './assistant-typing.mjs';
+import {makeOutgoingPresence} from './outgoing-presence.mjs';
 import {withAssistantAudio} from './ai-audio.mjs';
 import {makeConversationIntake} from './conversation-intake.mjs';
 import {sendConnectionNoticeOnce} from './connection-alert.mjs';
@@ -36,8 +37,9 @@ import {createDeviceGroupContacts} from './device-group-contacts.mjs';
 import {createGroupAddSocket} from './device-group-add.mjs';
 import {classifyPairedAuth} from './paired-auth-state.mjs';
 import {chatbotInteractiveMode} from './interactive-mode.mjs';
+import {disconnectEvidence} from './disconnect-evidence.mjs';
 
-export async function createBaileysChannelSession(context,{loadBaileys=()=>import('@whiskeysockets/baileys'),selectVersion=selectWaWebVersion,now=Date.now,typingFactory=makeAssistantTyping,intakeOptions={},schedule=setTimeout,cancel=clearTimeout,deviceOptions={}}={}){
+export async function createBaileysChannelSession(context,{loadBaileys=()=>import('@whiskeysockets/baileys'),selectVersion=selectWaWebVersion,now=Date.now,presenceNow=()=>performance.now(),typingFactory=makeAssistantTyping,intakeOptions={},schedule=setTimeout,cancel=clearTimeout,deviceOptions={}}={}){
   if(context.legacyTransport===true)throw Error('legacy_requires_existing_socket');
   await context.assertCurrent();
   const mod=await loadBaileys();await context.assertCurrent();
@@ -86,7 +88,7 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
   if(context.notifySelf===true&&context.resumeOnly!==true&&restoredState==='unlinked')newLinkNotice.pending=true;
   const notifyNewLink=context.notifySelf===true&&context.resumeOnly!==true&&newLinkNotice.pending===true;
   let state='connecting',qrValue=null,qrAt=0,closed=false,queue=Promise.resolve(),identityQueue=Promise.resolve(),pending=0,noticeTimer=null,opened=false,pairAttempt=null,pairTimer=null;
-  const seen=new Set(),metadata=new Map(),typingByPhone=new Map(),typingLeases=new Set(),abort=new AbortController();
+  const seen=new Set(),metadata=new Map(),typingLeases=new Set(),abort=new AbortController();
   const retryStore=makeEncryptedRetryStore({directory:privateDirectory(path.join(context.directory,'retry-proto')),secret:context.secret,
     serialize:value=>JSON.stringify(value,mod.BufferJSON.replacer),deserialize:value=>JSON.parse(value,mod.BufferJSON.reviver),now,
     ...(context.deviceSnapshot?.()?{maxPayloadBytes:512*1024,maxTotalBytes:96*1024*2000}:{})});
@@ -216,7 +218,8 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
       diagnostics.record('get_message',key?.id,{cached:!!message});return message;
     }});
   health.watch(client.ws);
-  const close=()=>{if(closed)return;closed=true;state='stopped';qrValue=null;pairAttempt=null;cancel(pairTimer);cancel(noticeTimer);cancel(assistantTimer);assistantIngress?.abandon();abort.abort();health.stop();deviceRuntime?.close();proxyTransport?.close();for(const lease of typingLeases)lease.stop();typingLeases.clear();client.ev.removeAllListeners();try{client.end(undefined);}catch{}};
+  const outgoingPresence=makeOutgoingPresence({socket:client,isConnected:()=>state==='connected'&&current(),typingFactory,now:presenceNow,schedule,cancel});
+  const close=()=>{if(closed)return;closed=true;state='stopped';qrValue=null;pairAttempt=null;cancel(pairTimer);cancel(noticeTimer);cancel(assistantTimer);assistantIngress?.abandon();abort.abort();health.stop();deviceRuntime?.close();proxyTransport?.close();outgoingPresence.close();for(const lease of typingLeases)lease.stop();typingLeases.clear();client.ev.removeAllListeners();try{client.end(undefined);}catch{}};
   const groupContacts=createDeviceGroupContacts({...deviceOptions.groupContactsOptions,client,isCurrent:current,
     isConnected:()=>state==='connected',deviceSnapshot:()=>context.deviceSnapshot?.(),schedule,cancel});
   const groupMutationReady=()=>{
@@ -233,9 +236,10 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
     assertMutationReady:async()=>{await guarded();if(!groupMutationReady())throw Error('group_add_unavailable');},
     mutationCurrent:groupMutationReady});
   async function relayText(phone,text,{isCurrent:operationCurrent=()=>true,maxTextChars=1200,device=false,source='automation',
-    diagnostic=null,assertAuthorized,onRelayAttempt}={}){
+    diagnostic=null,assertAuthorized,onRelayAttempt,pacing=true}={}){
     await guarded();const self=normalizeFromJid(client.user?.id);
-    const sendCurrent=()=>{try{return current()&&operationCurrent()===true&&
+    let authorized=true;
+    const sendCurrent=()=>{try{return authorized&&current()&&operationCurrent()===true&&
       (device||source==='manual'||!assistantIngress||assistantIngress.canAutomate());}catch{return false;}};
     const checkDiagnostic=()=>{
       const own=normalizeFromJid(client.user?.id);
@@ -245,7 +249,7 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
     };
     const authorize=async()=>{
       await guarded();if(!sendCurrent())throw Error('channel_operation_superseded');checkDiagnostic();
-      if(diagnostic){await assertAuthorized();if(!sendCurrent())throw Error('channel_operation_superseded');checkDiagnostic();}
+      if(typeof assertAuthorized==='function'){try{await assertAuthorized();}catch(error){authorized=false;throw error;}if(!sendCurrent())throw Error('channel_operation_superseded');checkDiagnostic();}
     };
     if(!sendCurrent())throw Error('channel_operation_superseded');
     if(state!=='connected')throw messagePreflightError('TRANSPORT_UNAVAILABLE_BEFORE_SEND');
@@ -260,22 +264,26 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
     // the external-recipient resolver deliberately refuses a self address.
     const proof=await resolvePilotRecipient({phone,pilotPhone:phone,enabled:!(diagnostic&&phone===self)&&context.verifiedLid?.()===true,
       socket:client,deviceCache,isCurrent:sendCurrent});await authorize();
-    const sent=await sendStoredText({jid:proof.jid,recipientProof:proof,text,store:retryStore,freshDevices:true,isCurrent:sendCurrent,maxTextChars,preserveWhitespace:device,
+    return outgoingPresence.run({phone,chatJid:proof.jid,isCurrent:sendCurrent,assertAuthorized:authorize,action:{type:'text',text},pacing},async({beforeSend})=>{
+    await beforeSend();
+    const sent=await sendStoredText({jid:proof.jid,recipientProof:proof,text,store:retryStore,freshDevices:true,isCurrent:sendCurrent,assertAuthorized:authorize,maxTextChars,preserveWhitespace:device,
       makeMessage:(jid,body)=>mod.generateWAMessage(jid,{text:body},{userJid:client.user.id,logger:silent,messageId:mod.generateMessageIDV2(client.user.id)}),
       relay:async(jid,body,options)=>{
         await authorize();
         if(state!=='connected')throw messagePreflightError('TRANSPORT_UNAVAILABLE_BEFORE_SEND');
         // Both the intended self PN and the active device/lease are checked
         // after the last async preparation, immediately before the relay.
-        checkDiagnostic();if(diagnostic)onRelayAttempt();
+        checkDiagnostic();onRelayAttempt?.();
         return client.relayMessage(jid,body,options);
       }});
     return {id:sent?.key?.id};
+    });
   }
   async function relayChatbot(phone,action,{isCurrent:operationCurrent=()=>true,assertAuthorized,signal,
     loadAsset,prepareCarouselImage,onRelayAttempt,fetchImage}={}){
-    const sendCurrent=()=>{try{return current()&&operationCurrent()===true&&!signal?.aborted;}catch{return false;}};
-    const authorize=async()=>{await guarded();if(!sendCurrent()||typeof assertAuthorized!=='function')throw Error('chatbot_operation_superseded');await assertAuthorized();if(!sendCurrent())throw Error('chatbot_operation_superseded');};
+    let authorized=true;
+    const sendCurrent=()=>{try{return authorized&&current()&&operationCurrent()===true&&!signal?.aborted;}catch{return false;}};
+    const authorize=async()=>{await guarded();if(!sendCurrent()||typeof assertAuthorized!=='function')throw Error('chatbot_operation_superseded');try{await assertAuthorized();}catch(error){authorized=false;throw error;}if(!sendCurrent())throw Error('chatbot_operation_superseded');};
     await authorize();const self=normalizeFromJid(client.user?.id);
     if(state!=='connected')throw messagePreflightError('TRANSPORT_UNAVAILABLE_BEFORE_SEND');
     if(!context.deviceSnapshot?.()||!self||phone===self||!/^\d{8,15}$/.test(phone))throw Error('channel_send_denied');
@@ -283,8 +291,9 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
     if(!exists?.some(row=>row.exists&&normalizeFromJid(row.jid)===phone))throw messagePreflightError(Array.isArray(exists)&&exists.some(row=>row?.exists===false&&normalizeFromJid(row.jid)===phone)
       ?'RECIPIENT_NOT_REGISTERED':'RECIPIENT_IDENTITY_UNVERIFIED');
     const proof=await resolvePilotRecipient({phone,pilotPhone:phone,enabled:context.verifiedLid?.()===true,socket:client,deviceCache,isCurrent:sendCurrent});await authorize();
+    if(action?.type==='audio')validateChatbotAsset(action.asset,'audio');
     let built;
-    try{
+    try{return await outgoingPresence.run({phone,chatJid:proof.jid,isCurrent:sendCurrent,assertAuthorized:authorize,action,signal},async({beforeSend})=>{
       const sent=await sendStoredProtocol({jid:proof.jid,recipientProof:proof,store:retryStore,isCurrent:sendCurrent,
         assertAuthorized:authorize,onRelayAttempt,
         onPrepared:message=>{if(built?.selectionIds)saveFallbackSelection(selectionStore,message,phone,built.selectionIds);},
@@ -292,11 +301,12 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
           built=await buildChatbotContent(action,{sdk:mod,jid,loadAsset,prepareCarouselImage,fetchImage,signal,
             upload:(...args)=>client.waUploadToServer(...args),logger:silent,assertCurrent:authorize,isCurrent:sendCurrent,mediaOptions:proxyTransport?.download,
             interactiveMode:deviceOptions.interactiveMode??chatbotInteractiveMode(action,{tenantId:context.tenantId,deviceId:context.deviceSnapshot?.()?.id})});
+          await beforeSend();
           return mod.generateWAMessageFromContent(jid,built.content,{userJid:client.user.id,messageId:mod.generateMessageIDV2(client.user.id),timestamp:new Date(now())});
         },
         relay:(jid,body,options)=>client.relayMessage(jid,body,options)});
       return {id:sent.key.id};
-    }finally{built?.dispose();}
+    });}finally{built?.dispose();}
   }
   if(deviceSnapshot){
     const ingressFailure=(code,backlog)=>{
@@ -381,9 +391,12 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
               await sendConnectionNoticeOnce({authDir:path.join(context.directory,'auth'),client,isCurrent:current,
                 sendText:async(jid,text)=>{
                   await guarded();
-                  return sendStoredText({jid,text,store:retryStore,freshDevices:true,isCurrent:current,
+                  const phone=normalizeFromJid(jid),ownCurrent=()=>current()&&normalizeFromJid(client.user?.id)===phone;
+                  return outgoingPresence.run({phone,chatJid:jid,isCurrent:ownCurrent,assertAuthorized:guarded,action:{type:'text',text}},async({beforeSend})=>{
+                  await beforeSend();return sendStoredText({jid,text,store:retryStore,freshDevices:true,isCurrent:ownCurrent,assertAuthorized:guarded,
                     makeMessage:(to,body)=>mod.generateWAMessage(to,{text:body},{userJid:client.user.id,logger:silent,messageId:mod.generateMessageIDV2(client.user.id)}),
                     relay:async(to,body,options)=>{await guarded();return client.relayMessage(to,body,options);}});
+                  });
                 }});
             }catch{/* Preserve the receipt; never retry an ambiguous notice. */}
           },2500);noticeTimer?.unref?.();
@@ -392,7 +405,7 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
     }
     if(event.connection==='close'){
       const code=event.lastDisconnect?.error?.output?.statusCode;
-      const policy=disconnectPolicy(code);health.disconnected(policy,1);
+      const policy=disconnectPolicy(code);health.disconnected(policy,1,disconnectEvidence(event.lastDisconnect?.error));
       close();context.onDisconnected(policy);
     }
   });
@@ -471,10 +484,7 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
             // This persisted boundary forbids any ASR/domain replay following
             // a crash or an uncertain result. Only the live attempt can finish.
             journal.begin([id]);
-            let typing=typingByPhone.get(phone);
-            if(!typing){typing=typingFactory({socket:client,pilotPhone:()=>phone,isConnected:()=>state==='connected'&&current(),
-              isAllowed:value=>context.allowedSender(value)&&context.assistantEnabled?.()!==false});typingByPhone.set(phone,typing);}
-            entry.lease=typing.begin({phone,chatJid:peer,isCurrent:entryCurrent});typingLeases.add(entry.lease);
+            entry.lease=outgoingPresence.begin({phone,chatJid:peer,isCurrent:()=>entryCurrent()&&context.assistantEnabled?.()!==false});typingLeases.add(entry.lease);
              if(normalized.special)return {text:text||'[Evento de mensagem recebido]'};
              let body=text;
             if(!body?.trim())body=await withAssistantAudio(message,{client,downloadMediaMessage:mod.downloadMediaMessage,logger:silent,
@@ -515,6 +525,8 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
       await client.logout();return {remote_logout:true};
     },
     phone:()=>state==='connected'?(normalizeFromJid(client.user?.id)||null):null,
+    // Format support is separate from connection readiness or send authority.
+    supportsUrlButton:()=>true,
     supportsPairing:()=>current()&&context.resumeOnly!==true&&authState()==='unlinked'&&state!=='connected'&&typeof client.requestPairingCode==='function',
     qr:()=>{expirePairing();return !pairAttempt&&authState()==='unlinked'&&context.resumeOnly!==true&&['qr_ready','pair_expired'].includes(state)&&freshQR(qrAt,now())?
       {value:qrValue,expires_in_ms:Math.max(0,45000-(now()-qrAt))}:null;},

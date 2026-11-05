@@ -7,7 +7,7 @@ from pydantic import Field, field_validator, model_validator
 
 from app.catalog_schemas import StrictModel
 from app.subscription_bulk_schemas import BulkAction, ConfirmBulk, canonical_phone
-from app.subscription_chatbot_schemas import clean_text
+from app.subscription_chatbot_schemas import UrlButtonContent, clean_text
 from app.subscription_templates_schemas import safe_filename
 
 MAX_BODY = 32768
@@ -102,9 +102,15 @@ class TemplateMessage(DirectMessage):
     template_id: UUID
 
 
+class UrlButtonMessage(DirectMessage, UrlButtonContent):
+    # Immediate direct messages stay literal, including brace expressions.
+    # Only saved Chatbot actions apply the existing contact-template language.
+    kind: Literal["url_button"]
+
+
 class ReviewDirectMessage(StrictModel):
     idempotency_key: UUID
-    message: Annotated[TextMessage | MediaMessage | TemplateMessage, Field(discriminator="kind")]
+    message: Annotated[TextMessage | MediaMessage | TemplateMessage | UrlButtonMessage, Field(discriminator="kind")]
 
 
 class ConfirmDirectMessage(ConfirmBulk):

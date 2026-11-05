@@ -1,8 +1,10 @@
 """Versioned, strictly declarative configuration for the subscription chatbot."""
 from datetime import date
+import ipaddress
 import math
 import re
 from typing import Annotated, Literal, Union
+from urllib.parse import urlsplit
 from uuid import UUID, uuid4
 
 from pydantic import Field, field_validator, model_validator
@@ -17,7 +19,7 @@ MAX_RULES = 2000
 MAX_ASSETS = 500
 MAX_TEMPLATE_BYTES = 32000
 CONTACT_TAGS = frozenset({"name", "phone_number", "my_name", "my_email", "my_contact_number"})
-ACTION_TYPES = ("text", "template", "sticker", "shortvideo", "carousel", "url", "nested_reply", "nested_list")
+ACTION_TYPES = ("text", "template", "sticker", "shortvideo", "carousel", "url", "url_button", "nested_reply", "nested_list")
 RESTORE_MODES = ("add_missing", "merge", "exact")
 TAG_PATTERN = re.compile(r"\{(name|phone_number|my_name|my_email|my_contact_number)\}")
 from app.subscription_chatbot_tags import URL_TAG_PATTERN, validate_template
@@ -41,6 +43,43 @@ def contact_template(value):
     residue = TAG_PATTERN.sub("", value)
     if "{" in residue or "}" in residue:
         raise ValueError("Use somente as cinco tags de contato disponíveis")
+    return value
+
+
+def button_destination(value):
+    """A literal public link, never a URL template or a server request."""
+    try:
+        if (not isinstance(value, str) or not value or len(value.encode("utf-16-le")) // 2 > 2048
+                or re.search(r"[{}\\\x00-\x20\x7f\ud800-\udfff]|%7[bd]|%0[0-9a-f]|%1[0-9a-f]|%7f", value, re.IGNORECASE)):
+            raise ValueError()
+        parts = urlsplit(value)
+        host = (parts.hostname or "").encode("idna").decode("ascii").lower()
+        if (parts.scheme != "https" or not host or parts.username is not None or parts.password is not None
+                or parts.fragment or parts.port is not None and not 1 <= parts.port <= 65535 or "%" in host):
+            raise ValueError()
+        try:
+            address = ipaddress.ip_address(host)
+        except ValueError:
+            # Browsers reinterpret numeric final labels as IPv4. Refuse those
+            # alternate spellings instead of accepting a private normalized IP.
+            if (len(host) > 253 or "." not in host or host.endswith(".")
+                    or re.fullmatch(r"(?:[0-9]+|0x[0-9a-f]+)", host.rsplit(".", 1)[-1])
+                    or any(not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", label) for label in host.split("."))
+                    or re.search(r"(?:^|\.)(?:localhost|local|internal|test|invalid|onion)$", host)):
+                raise ValueError()
+        else:
+            if address.version == 4:
+                denied = ("0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16",
+                    "172.16.0.0/12", "192.0.0.0/24", "192.0.2.0/24", "192.88.99.0/24", "192.168.0.0/16",
+                    "198.18.0.0/15", "198.51.100.0/24", "203.0.113.0/24", "224.0.0.0/4", "240.0.0.0/4")
+                if any(address in ipaddress.ip_network(network) for network in denied):
+                    raise ValueError()
+            elif (address not in ipaddress.ip_network("2000::/3") or "." in host
+                    or any(address in ipaddress.ip_network(network) for network in
+                        ("2001::/23", "2001:db8::/32", "2002::/16", "3fff::/20"))):
+                raise ValueError()
+    except (ValueError, TypeError, UnicodeError):
+        raise ValueError("Use um link HTTPS público e fixo, sem usuário, senha, fragmento ou tags") from None
     return value
 
 
@@ -88,6 +127,35 @@ class UrlAction(ActionBase):
         return validate_template(value)
 
 
+class UrlButtonContent(StrictModel):
+    text: str = Field(min_length=1, max_length=1024)
+    footer: str = Field(default="", max_length=60)
+    button_text: str = Field(min_length=1, max_length=20)
+    url: str = Field(min_length=1, max_length=2048)
+
+    @field_validator("url")
+    @classmethod
+    def fixed_public_link(cls, value):
+        return button_destination(value)
+
+    @field_validator("text", "footer", "button_text")
+    @classmethod
+    def bounded_text(cls, value, info):
+        if info.field_name == "button_text" and re.search(r"[\x00-\x1f\x7f]", value):
+            raise ValueError("O texto do botão deve ocupar uma linha, sem caracteres de controle")
+        return clean_text(value, empty=info.field_name == "footer",
+                          maximum={"text": 1024, "footer": 60, "button_text": 20}[info.field_name])
+
+
+class UrlButtonAction(ActionBase, UrlButtonContent):
+    type: Literal["url_button"] = "url_button"
+
+    @field_validator("text", "footer", "button_text")
+    @classmethod
+    def known_contact_tags(cls, value):
+        return contact_template(value) if value else value
+
+
 class CarouselCard(StrictModel):
     id: UUID = Field(default_factory=uuid4)
     title: str = Field(min_length=1, max_length=60)
@@ -128,7 +196,7 @@ class CarouselAction(ActionBase):
         return self
 
 
-Action = Annotated[Union[TextAction, TemplateAction, ReferenceAction, UrlAction, CarouselAction], Field(discriminator="type")]
+Action = Annotated[Union[TextAction, TemplateAction, ReferenceAction, UrlAction, UrlButtonAction, CarouselAction], Field(discriminator="type")]
 
 
 class SequenceResponse(StrictModel):

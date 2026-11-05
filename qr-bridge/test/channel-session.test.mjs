@@ -10,17 +10,29 @@ import * as sdk from '@whiskeysockets/baileys';
 import {DEFAULT_CONNECTION_CONFIG} from '@whiskeysockets/baileys';
 import {encryptedChannelStore} from '../src/channel-storage.mjs';
 import {makePairedAuthFixture} from './helpers/paired-auth-fixture.mjs';
+import {presenceClock,presenceFlush} from './helpers/presence-clock.mjs';
+import {Boom} from '@hapi/boom';
 
 process.env.ORION_RETRY_TEST_MODE='1';
 test('provider phone is the confirmed PN only after open; LIDs are never relabeled as phone numbers',async t=>{
-  const s=await session(t);assert.equal(s.result.phone(),null);
+  const s=await session(t);assert.equal(s.result.phone(),null);assert.equal(s.result.supportsUrlButton(),true);
   s.client.ev.emit('connection.update',{connection:'open'});await flush();assert.equal(s.result.phone(),self);
   s.client.user.id='123456789:7@lid';assert.equal(s.result.phone(),null);
   s.client.user.id=self+':7@s.whatsapp.net';assert.equal(s.result.phone(),self);
 });
 
 const phone='5567999999901',self='5567999999902',flush=()=>new Promise(r=>setImmediate(r));
-async function session(t,{audio=false,assistant=true,typingFactory,notifySelf=false,schedule,cancel,registered=false,resumeOnly=false,savedAuth}={}){
+test('managed close records safe structured SDK evidence without changing the500 recovery policy or sending',async t=>{
+  const s=await session(t,{registered:true}),policies=[];s.context.onDisconnected=policy=>policies.push(policy);
+  s.client.ev.emit('connection.update',{connection:'open'});await flush();
+  s.client.ev.emit('connection.update',{connection:'close',lastDisconnect:{error:new Boom('private exception phone/token',
+    {statusCode:500,data:{reason:'500',location:'private peer'}})}});
+  assert.equal(policies.length,1);assert.equal(policies[0].reason,'session_recovery');assert.equal(policies[0].retry,true);
+  const health=s.result.connectionHealth();assert.equal(health.disconnect_code,500);
+  assert.deepEqual(health.disconnect_evidence,{source:'provider_failure',condition:'unknown',provider_reason_numeric:500,websocket_code:null});
+  assert.doesNotMatch(JSON.stringify(health),/private exception|private peer/);assert.equal(s.sent.length,0);
+});
+async function session(t,{audio=false,assistant=true,typingFactory,notifySelf=false,schedule,cancel,registered=false,resumeOnly=false,savedAuth,clock:virtualClock}={}){
   const directory=fs.mkdtempSync(path.join(os.tmpdir(),'orion-channel-socket-'));fs.chmodSync(directory,0o700);
   t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
   let alive=true,now=100000;const messages=[],sent=[],notices=[];let config;
@@ -44,7 +56,7 @@ async function session(t,{audio=false,assistant=true,typingFactory,notifySelf=fa
     generateMessageIDV2:()=> 'provider-id',generateWAMessage:async(jid,{text})=>({key:{id:'provider-id',remoteJid:jid,fromMe:true},message:{conversation:text}}),
     downloadMediaMessage:async()=>Buffer.from('OggS synthetic media'),
     Browsers:{windows:()=>['synthetic']},DisconnectReason:{loggedOut:401},proto:sdk.proto};
-  const open=()=>createBaileysChannelSession(context,{now:()=>now,loadBaileys:async()=>mod,intakeOptions:{settleMs:0,maxGroupMs:0},...(typingFactory?{typingFactory}:{}),...(schedule?{schedule,cancel}:{})});
+  const open=()=>createBaileysChannelSession(context,{now:()=>virtualClock?.now()??now,...(virtualClock?{presenceNow:virtualClock.now}:{}),loadBaileys:async()=>mod,intakeOptions:{settleMs:0,maxGroupMs:0},...(typingFactory?{typingFactory}:{}),...(schedule?{schedule,cancel}:{})});
   const result=await open();
   t.after(()=>result.close());
   return {result,client,messages,sent,notices,context,mod,open,get config(){return config;},setTime:value=>{now=value;},revoke:()=>{alive=false;},
@@ -483,8 +495,29 @@ test('closing during audio aborts ASR, erases downloaded bytes and never forward
 
 test('typing is scoped to a verified private sender and always stopped after the reply callback',async t=>{
   const events=[];const s=await session(t,{typingFactory:options=>({begin(meta){assert.equal(options.pilotPhone(),phone);assert.equal(meta.phone,phone);events.push('begin');return {beforeReply:async()=>events.push('reply'),stop:()=>events.push('stop')};}})});
+  s.client.ev.emit('connection.update',{connection:'open'});await flush();
   s.context.onMessage=async(_value,{beforeReply})=>{await beforeReply('answer');events.push('forward-done');return {accepted:true};};
   s.receive({});await flush();await flush();assert.deepEqual(events,['begin','reply','forward-done','stop']);
+});
+
+test('managed AI preparation and final reliable relay share one presence lease and credit elapsed inference',async t=>{
+  const clock=presenceClock(100000),s=await session(t,{clock,schedule:clock.schedule,cancel:clock.cancel,registered:true}),presence=[];
+  s.client.sendPresenceUpdate=async(type,jid)=>{presence.push({type,jid,at:clock.now()});};
+  s.client.ev.emit('connection.update',{connection:'open'});await flush();
+  let release;const inference=new Promise(resolve=>{release=resolve;});
+  s.context.onMessage=async(_value,{beforeReply})=>{await inference;await beforeReply('answer');const result=await s.result.send(phone,'answer',{source:'assistant'});return {...result,accepted:true};};
+  s.receive({id:'credited-AI'});await reached(()=>presence.length===1);await clock.advance(1200);release();
+  await reached(()=>s.sent.length===1);await flush();assert.equal(clock.now(),101200);
+  assert.deepEqual(presence.map(value=>value.type),['composing','paused']);assert.equal(s.result.ingressDiagnostics().blocked,0);
+});
+
+test('managed connection notice uses composing and bounded pacing solely for the authenticated self account',async t=>{
+  const clock=presenceClock(100000),s=await session(t,{clock,schedule:clock.schedule,cancel:clock.cancel,notifySelf:true}),presence=[];
+  s.client.sendPresenceUpdate=async(type,jid)=>presence.push({type,jid,at:clock.now()});
+  s.client.ev.emit('connection.update',{connection:'open'});await flush();await clock.advance(2500);await flush();
+  assert.equal(presence[0]?.type,'composing');assert.equal(s.sent.length,0);
+  await clock.advance(3000);await reached(()=>s.sent.length===1);
+  assert.ok(presence.every(value=>value.jid===self+'@s.whatsapp.net'));assert.equal(presence.at(-1).type,'paused');
 });
 
 test('verified LID/device proof belongs to this socket and uses the same reliable proto cache',async t=>{

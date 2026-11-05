@@ -47,6 +47,19 @@ test('status reports the scoped native-list mode as unverified only for its exac
   }
   assert.equal(f.made.length,1);assert.equal(f.made[0].sends.length,0);
 });
+test('URL-button support is negotiated from the current device session, absent on old/custom/legacy transports',async t=>{
+  const f=fixture(t),a=f.add(),device={id:randomUUID(),generation:randomUUID(),settings_revision:1,settings:{},capabilities:{}};
+  Object.assign(f.rows.get(a.id),{device,assistant_enabled:false,allowed_senders:[]});const m=f.manager();await m.start(a.id,a.key);
+  const session=f.made[0];assert.equal((await m.deviceStatus(a.id,a.key)).capabilities.url_button,false);
+  session.supportsUrlButton=()=>true;
+  let value=await m.deviceStatus(a.id,a.key);assert.equal(value.capabilities.url_button,true);
+  assert.equal(value.device_id,device.id);assert.equal(value.generation,device.generation);assert.equal(value.settings_revision,1);
+  session.supportsUrlButton=()=>false;assert.equal((await m.deviceStatus(a.id,a.key)).capabilities.url_button,false);
+  session.supportsUrlButton=()=>true;f.rows.get(a.id).revoked=true;
+  await assert.rejects(m.deviceStatus(a.id,a.key));assert.equal(session.closed,true);
+  const legacy=f.add();f.rows.get(legacy.id).legacy_transport=true;await m.start(legacy.id,legacy.key);
+  f.made[1].supportsUrlButton=()=>true;assert.equal((await m.status(legacy.id,legacy.key)).capabilities.url_button,false);
+});
 test('assistant-off inbound is journaled before interaction and never forwarded',async t=>{
   const f=fixture(t),a=f.add(),calls=[];Object.assign(f.rows.get(a.id),{inbox_control:true,assistant_enabled:false});
   f.broker.journal=async(id,key,lease,payload)=>{calls.push('journal');assert.equal(id,a.id);assert.equal(payload.text,'Mensagem humana');return {recorded:true};};
@@ -270,6 +283,32 @@ test('a human takeover refuses transport and uncertain operations are never auto
   assert.equal(result.accepted,false);assert.equal(f.made[0].sends.length,0);
   f.broker.authorizeSend=async()=>{throw Error('must_not_retry');};
   assert.equal((await m.send(a.id,a.key,{to:phone,text:'synthetic',operation_id:operation})).accepted,false);
+});
+
+test('send recheck is strictly negotiated: old API keeps its one grant and new API rechecks the same frozen slot',async t=>{
+  for(const capability of [undefined,false,true,'true',1]){
+    const f=fixture(t),a=f.add(),permits=[];Object.assign(f.rows.get(a.id),{inbox_control:true,send_recheck:capability});
+    f.broker.authorizeSend=async(_id,_key,_lease,payload)=>{permits.push(payload);return {authorized:true,operation_id:payload.operation_id};};
+    f.broker.finishSend=async()=>({released:true});const m=f.manager();await m.start(a.id,a.key);
+    let options;f.made[0].send=async(_phone,_text,value)=>{options=value;await value.assertAuthorized?.();return {id:'stable-provider'};};
+    const operation_id=randomUUID(),result=await m.send(a.id,a.key,{to:phone,text:'Texto congelado',source:'manual',control_revision:3,operation_id});
+    assert.equal(result.accepted,true);assert.equal(options.pacing,capability===true);
+    assert.equal(f.made[0].ctx.supportsSendRecheck(),capability===true);
+    assert.equal(permits.length,capability===true?2:1);
+    assert.equal(Object.hasOwn(permits[0],'recheck'),false,'old strict request schema receives no new false/default field');
+    if(capability===true)assert.deepEqual(permits[1],{...permits[0],recheck:true});
+    await m.send(a.id,a.key,{to:phone,text:'Texto congelado',source:'manual',control_revision:3,operation_id});
+    assert.equal(permits.length,capability===true?2:1,'idempotent replay does not acquire another grant');
+  }
+});
+
+test('a recheck capability lost during a rolling update refuses before transport without falling back to an old claim',async t=>{
+  const f=fixture(t),a=f.add(),permits=[];Object.assign(f.rows.get(a.id),{inbox_control:true,send_recheck:true});
+  f.broker.authorizeSend=async(_id,_key,_lease,payload)=>{permits.push(payload);return {authorized:true,operation_id:payload.operation_id};};
+  const m=f.manager();await m.start(a.id,a.key);let relays=0;
+  f.made[0].send=async(_phone,_text,options)=>{delete f.rows.get(a.id).send_recheck;await options.assertAuthorized();relays++;return {id:'forbidden'};};
+  const result=await m.send(a.id,a.key,{to:phone,text:'Aviso',operation_id:randomUUID()});
+  assert.equal(result.accepted,false);assert.equal(relays,0);assert.equal(permits.length,1);
 });
 
 test('a verified no-send recipient preflight error refuses one operation instead of claiming an ambiguous send',async t=>{

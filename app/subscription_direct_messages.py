@@ -9,6 +9,7 @@ from sqlalchemy import text
 from app.catalog_api import Actor, authenticate
 from app import subscription_direct_schemas as schemas
 from app import subscription_direct_store as store
+from app import subscription_url_button_transport as url_button_transport
 
 BASE = "/api/v1/tenants/{tenant_id}/subscription-whatsapp/direct-messages"
 router = APIRouter(tags=["Enviar Mensagem de assinaturas"])
@@ -66,11 +67,21 @@ async def recover_request(tenant_id: UUID, key: UUID, response: Response, actor:
 @router.post(BASE + "/review", status_code=201)
 async def review_direct(tenant_id: UUID, request: Request, response: Response, actor: Actor = Depends(authenticate)):
     payload = await payload_after_owner(tenant_id, actor, request, schemas.ReviewDirectMessage)
+    values = payload.model_dump(mode="json")
+    proof = None
+    if values["message"]["kind"] == "url_button":
+        async with store.owner_transaction(tenant_id, actor) as db:
+            existing = await store.existing_request(db, tenant_id, actor, payload.idempotency_key, "review", values)
+            if existing:
+                return output(response, store.operation_dto(existing, await store.clock(db), replayed=True))
+            expected = await url_button_transport.snapshot(db, tenant_id, actor, values["message"]["device_id"])
+        proof = await url_button_transport.compatible(expected)
     async with store.owner_transaction(tenant_id, actor) as db:
-        values = payload.model_dump(mode="json")
         existing = await store.existing_request(db, tenant_id, actor, payload.idempotency_key, "review", values)
         if existing:
             return output(response, store.operation_dto(existing, await store.clock(db), replayed=True))
+        if proof is not None:
+            await url_button_transport.revalidate(db, tenant_id, actor, values["message"]["device_id"], proof)
         snapshot = await store.capture_review(db, tenant_id, actor, values["message"], payload.idempotency_key)
         identity, now = uuid4(), await store.clock(db)
         snapshot["review_request_id"] = str(identity)
@@ -98,24 +109,46 @@ async def persist_confirmation(db, tenant, actor, intent, now):
 async def confirm_direct(tenant_id: UUID, request: Request, response: Response, actor: Actor = Depends(authenticate)):
     payload = await payload_after_owner(tenant_id, actor, request, schemas.ConfirmDirectMessage)
     async with store.owner_transaction(tenant_id, actor) as db:
-        intent = await store.request_row(db, tenant_id, actor, payload.idempotency_key)
-        if intent is None:
-            raise store.fail("DIRECT_NOT_FOUND", 404)
-        if intent["kind"] != "review" or intent["review_version"] != payload.review_version:
-            raise store.fail("DIRECT_IDEMPOTENCY_CONFLICT")
-        now = await store.clock(db)
+        intent, now = await confirmation_intent(db, tenant_id, actor, payload)
         if intent["status"] == "succeeded":
             return output(response, store.operation_dto(intent, now, replayed=True))
-        if intent["expires_at"] <= now:
-            raise store.fail("DIRECT_REVIEW_EXPIRED", 410)
-        current = await store.capture_review(db, tenant_id, actor, intent["snapshot"]["message"], payload.idempotency_key)
-        current["review_request_id"] = str(intent["id"])
-        if store.fingerprint(current) != intent["review_version"]:
+        message = intent["snapshot"]["message"]
+        if message["kind"] != "url_button":
+            return output(response, await complete_confirmation(db, tenant_id, actor, payload, intent, now))
+        expected = await url_button_transport.snapshot(db, tenant_id, actor, message["device_id"])
+    proof = await url_button_transport.compatible(expected)
+    async with store.owner_transaction(tenant_id, actor) as db:
+        intent, now = await confirmation_intent(db, tenant_id, actor, payload)
+        if intent["status"] == "succeeded":
+            return output(response, store.operation_dto(intent, now, replayed=True))
+        message = intent["snapshot"]["message"]
+        if message["kind"] != "url_button":
             raise store.fail("DIRECT_CONFLICT")
-        if not intent["snapshot"]["counts"]["eligible"]:
-            raise store.fail("DIRECT_NO_ELIGIBLE")
-        saved = await persist_confirmation(db, tenant_id, actor, intent, now)
-        return output(response, store.operation_dto(saved, now))
+        await url_button_transport.revalidate(db, tenant_id, actor, message["device_id"], proof)
+        return output(response, await complete_confirmation(db, tenant_id, actor, payload, intent, now))
+
+
+async def confirmation_intent(db, tenant, actor, payload):
+    intent = await store.request_row(db, tenant, actor, payload.idempotency_key)
+    if intent is None:
+        raise store.fail("DIRECT_NOT_FOUND", 404)
+    if intent["kind"] != "review" or intent["review_version"] != payload.review_version:
+        raise store.fail("DIRECT_IDEMPOTENCY_CONFLICT")
+    now = await store.clock(db)
+    if intent["status"] != "succeeded" and intent["expires_at"] <= now:
+        raise store.fail("DIRECT_REVIEW_EXPIRED", 410)
+    return intent, now
+
+
+async def complete_confirmation(db, tenant, actor, payload, intent, now):
+    current = await store.capture_review(db, tenant, actor, intent["snapshot"]["message"], payload.idempotency_key)
+    current["review_request_id"] = str(intent["id"])
+    if store.fingerprint(current) != intent["review_version"]:
+        raise store.fail("DIRECT_CONFLICT")
+    if not intent["snapshot"]["counts"]["eligible"]:
+        raise store.fail("DIRECT_NO_ELIGIBLE")
+    saved = await persist_confirmation(db, tenant, actor, intent, now)
+    return store.operation_dto(saved, now)
 
 
 @router.post(BASE + "/{send_id}/actions")

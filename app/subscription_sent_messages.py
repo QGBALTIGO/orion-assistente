@@ -30,9 +30,9 @@ router = APIRouter(tags=["Mensagens enviadas de assinaturas"], dependencies=[Dep
 PER_PAGE = 30
 LIST_TEXT_LIMIT = 2000
 DETAIL_TEXT_LIMIT = 120000
-MESSAGE_TYPES = {"text", "list", "image", "sticker", "video", "ptv", "audio", "document", "location", "carousel"}
+MESSAGE_TYPES = {"text", "list", "image", "sticker", "video", "ptv", "audio", "document", "location", "carousel", "url_button"}
 TYPE_LABELS = {"text": "Texto", "list": "Lista", "image": "Imagem", "sticker": "Figurinha", "video": "Vídeo",
-               "ptv": "Recado de vídeo", "audio": "Áudio", "document": "Documento", "location": "Localização", "carousel": "Carrossel"}
+               "ptv": "Recado de vídeo", "audio": "Áudio", "document": "Documento", "location": "Localização", "carousel": "Carrossel", "url_button": "Botão com link"}
 SAFE_RETRY_CODES = {"TRANSPORT_UNAVAILABLE_BEFORE_SEND", "MESSAGE_PREPARATION_FAILED", "MESSAGE_EXPIRED_BEFORE_SEND"}
 TAIL_CODES = {"chatbot_predecessor_failed", "CHATBOT_PREDECESSOR_UNAVAILABLE"}
 STATUS_OPTIONS = [{"value": "", "label": "Todos"}, {"value": "failed", "label": "Falharam"},
@@ -67,7 +67,7 @@ FAILURE_MESSAGES = {
     "chatbot_predecessor_failed": "A mensagem anterior da sequência não foi enviada.",
     "CHATBOT_PREDECESSOR_UNAVAILABLE": "A mensagem anterior da sequência ficou indisponível.",
 }
-MESSAGE_SQL = "(e.type='send_text' OR e.type IN ('chatbot_action','campaign_action','scheduled_action','bulk_action') AND e.payload->'action'->>'type'<>'http' AND e.payload->'action'->>'type' IN ('text','list','image','sticker','video','ptv','audio','document','location','carousel'))"
+MESSAGE_SQL = "(e.type='send_text' OR e.type IN ('chatbot_action','campaign_action','scheduled_action','bulk_action') AND e.payload->'action'->>'type'<>'http' AND e.payload->'action'->>'type' IN ('text','list','image','sticker','video','ptv','audio','document','location','carousel','url_button'))"
 
 
 def fail(code, status=409):
@@ -274,6 +274,9 @@ def item_dto(row, now, *, detail=False):
             *[" — ".join(filter(None, [r.get("title"), r.get("description")])) for s in action.get("sections", []) for r in s.get("rows", [])]]))
     if kind == "carousel":
         outgoing = "\n".join(filter(None, [action.get("body"), *[" — ".join(filter(None, [c.get("title"), c.get("body")])) for c in action.get("cards", [])]]))
+    if kind == "url_button":
+        outgoing = "\n".join(filter(None, [action.get("text"), action.get("footer"),
+            " · ".join(filter(None, [action.get("button_text"), action.get("url")]))]))
     if kind == "location":
         outgoing = f"{action.get('latitude')}, {action.get('longitude')}"
     outgoing, cut_out = _bounded(outgoing, limit)
@@ -494,6 +497,12 @@ async def frozen_payload(db, source, *, clone_tokens):
     if not isinstance(action, dict) or action.get("type") not in MESSAGE_TYPES:
         raise fail("MESSAGE_CONTENT_INVALID")
     kind, tenant = action["type"], source["tenant_id"]
+    if kind == "url_button":
+        from app.subscription_chatbot_schemas import UrlButtonContent
+        try:
+            UrlButtonContent.model_validate({key: value for key, value in action.items() if key != "type"})
+        except ValueError:
+            raise fail("MESSAGE_CONTENT_INVALID") from None
     if kind in {"image", "sticker", "video", "ptv", "audio", "document"}:
         action["asset"] = await _asset_snapshot(db, tenant, action.get("asset"), kind)
     result = None

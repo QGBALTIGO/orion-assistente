@@ -158,15 +158,21 @@ export function createDeviceRuntime(context,{client,downloadMediaMessage,logger,
       abort=controller(expected);
       if(item.type==='send_text'){
         if(!phonePattern.test(data.phone)||typeof data.text!=='string'||!data.text.trim()||data.text.length>DEVICE_TEXT_MAX_CHARS)throw Error('device_effect_invalid');
+        const canRecheck=diagnostic!==null||context.supportsSendRecheck?.()===true;
         const recheck=async()=>{
           await guardEffect(expected);
+          if(!diagnostic&&context.supportsSendRecheck?.()!==true)throw Error('device_effect_refused');
           const fresh=await context.deviceEffectAuthorize({...scope(expected),operation_id:id,recheck:true});
           await guardEffect(expected);
-          if(diagnosticMessagePermit(fresh,expected,id).fingerprint!==diagnostic.fingerprint)throw Error('diagnostic_message_refused');
+          if(diagnostic){if(diagnosticMessagePermit(fresh,expected,id).fingerprint!==diagnostic.fingerprint)throw Error('diagnostic_message_refused');}
+          else if(fresh?.authorized!==true||fresh.operation_id!==id||fresh.type!=='send_text'||fresh.device_id!==expected.id||
+            fresh.generation!==expected.generation||fresh.settings_revision!==expected.settings_revision||fresh.purpose!==permit.purpose||
+            digest(JSON.stringify(fresh.payload))!==digest(JSON.stringify(data)))throw Error('device_effect_refused');
         };
-        await guardEffect(expected);if(!diagnostic)attempted=true;
+        await guardEffect(expected);if(!canRecheck)attempted=true;
         const result=await sendText(data.phone,data.text,{isCurrent:()=>effectCurrent(expected)&&!abort.signal.aborted,maxTextChars:DEVICE_TEXT_MAX_CHARS,
-          ...(diagnostic?{diagnostic,assertAuthorized:recheck,onRelayAttempt:()=>{attempted=true;}}:{})});
+          pacing:canRecheck,...(diagnostic?{diagnostic}:{}),
+          ...(canRecheck?{assertAuthorized:recheck,onRelayAttempt:()=>{attempted=true;}}:{})});
         if(!messageId(result?.id))throw Error('device_send_unknown');
         ledger.save(id,{...reserved.record,state:'accepted',accepted:true,provider_id:result.id});
         sent.set(result.id,{operation_id:id,phone:data.phone});if(sent.size>2000)sent.delete(sent.keys().next().value);

@@ -79,7 +79,7 @@ def capabilities(can_manage):
     return {"manage": can_manage, "test_response": can_manage, "read_url_tags": can_manage,
             "import": can_manage, "export": True, "backups": True, "restore": can_manage,
             "actions": {"text": True, "template": True, "sticker": media,
-                        "shortvideo": media and video_available(), "carousel": media, "url": True,
+                        "shortvideo": media and video_available(), "carousel": media, "url": True, "url_button": True,
                         "nested_reply": True, "nested_list": True}}
 
 

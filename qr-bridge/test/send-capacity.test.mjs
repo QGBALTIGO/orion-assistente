@@ -6,6 +6,8 @@ import {makeSendCapacity} from '../src/send-capacity.mjs';
 import {sendStoredText} from '../src/reliable-send.mjs';
 import {requiresPreRelayCache} from '../src/pilot-send-policy.mjs';
 import {resolvePilotRecipient,makePilotDeviceCache} from '../src/pilot-recipient.mjs';
+import {makeOutgoingPresence} from '../src/outgoing-presence.mjs';
+import {normalizeFromJid} from '../src/core.mjs';
 
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 function clock(){
@@ -139,9 +141,9 @@ function serverSendHarness(c){
   };
   const deviceCaches=new WeakMap([[socket,makePilotDeviceCache()]]);
   const context={
-    legacyCentral:{configured:()=>false},
+    legacyCentral:{configured:()=>false,transportCurrent:()=>true},
     socket,generation:1,status:'connected',authorized:true,sendCapacity:capacity,
-    validPhone:input=>input,deliveryPolicy:()=>({reliable:true,freshDevices:true}),
+    validPhone:input=>input,normalizeFromJid,deliveryPolicy:()=>({reliable:true,freshDevices:true}),
     pilotNumber:()=>phone,process:{env:{QR_PILOT_USE_VERIFIED_LID:'1'}},
     resolvePilotRecipient,socketDeviceCaches:deviceCaches,sendStoredText,requiresPreRelayCache,
     async generateWAMessage(jid,message){calls.generate++;return {key:{id:'synthetic-id',remoteJid:jid},message}},
@@ -150,8 +152,12 @@ function serverSendHarness(c){
     retryDiagnostics:{prepared:0,relayAccepted:0},deliveryReceipts:new Map(),deliveryStart:new Map(),
     transport:{record(){},tag:()=> 'synthetic-trace'},pushMessage(){}
   };
+  const presences=new WeakMap();context.socketOutgoingPresence=presences;
+  const replaceTyping=typingFactory=>presences.set(socket,makeOutgoingPresence({socket,
+    isConnected:()=>context.socket===socket&&context.status==='connected',...(typingFactory?{typingFactory}:{})}));
+  replaceTyping();
   vm.runInNewContext(send+'\nglobalThis.sendUnderTest=send;',context);
-  return {context,capacity,calls,phone,send:(options)=>context.sendUnderTest(phone,'synthetic answer',options)};
+  return {context,capacity,calls,phone,replaceTyping,send:(options)=>context.sendUnderTest(phone,'synthetic answer',options)};
 }
 
 test('real server send holds sixth AI answer before lookup, generation, cache and one relay',async()=>{
@@ -217,10 +223,10 @@ test('pico de 100 atendimentos não cria 100 esperas, admite só fila limitada e
 test('envio transacional só simula digitando após admissão e cancela presença ao concluir',async()=>{
   const c=clock(),h=serverSendHarness(c);
   const stages=[];
-  h.context.makeAssistantTyping=()=>({begin:()=>({
-    beforeReply:async()=>{stages.push('composing');},
+  h.replaceTyping(()=>({begin:()=>{stages.push('composing');return {
+    beforeReply:async()=>{},
     stop:()=>stages.push('paused')
-  })});
+  };}}));
   const result=await h.send({waitForCapacity:true,transactionalTyping:true,isCurrent:()=>true});
   assert.equal(result.accepted,true);
   assert.deepEqual(stages,['composing','paused']);
@@ -230,7 +236,7 @@ test('envio transacional só simula digitando após admissão e cancela presenç
 test('fila lotada não envia presença transacional nem pacote criptografado',async()=>{
   const c=clock(),h=serverSendHarness(c);
   let typed=false;
-  h.context.makeAssistantTyping=()=>({begin:()=>{typed=true;return {beforeReply:async()=>{},stop(){}}}});
+  h.replaceTyping(()=>({begin:()=>{typed=true;return {beforeReply:async()=>{},stop(){}}}}));
   await fill(h.capacity);
   await assert.rejects(h.send({transactionalTyping:true}),/Aguarde um minuto/);
   assert.equal(typed,false);

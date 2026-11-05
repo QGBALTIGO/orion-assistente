@@ -310,7 +310,7 @@ def message_preview(plan, template):
     parts = []
     for action in plan:
         part = {"type": action["type"], "text": action.get("text") or action.get("caption") or ""}
-        for key in ("file_name", "latitude", "longitude"):
+        for key in ("file_name", "latitude", "longitude", "footer", "button_text", "url"):
             if key in action:
                 part[key] = action[key]
         parts.append(part)
@@ -325,7 +325,7 @@ def row_preview(row):
     return {"row_key": row["row_key"], "ordinal": row["ordinal"], "source": row["source"],
         "phone_e164": "+" + row["phone"], "name": row["name"],
         "device": {key: device.get(key) for key in ("id", "name", "phone_e164")},
-        "message_type": "template" if template else "media" if row["context"].get("media") else "text",
+        "message_type": "template" if template else "media" if row["context"].get("media") else "url_button" if row.get("plan") and row["plan"][0].get("type") == "url_button" else "text",
         "template": {key: template[key] for key in ("id", "name", "kind")} if template else None,
         "message_preview": message_preview(row["plan"], template), "available": not row["blocked"],
         "blocked_reason": ERRORS.get(row["blocked_reason"]) if row["blocked_reason"] else None,

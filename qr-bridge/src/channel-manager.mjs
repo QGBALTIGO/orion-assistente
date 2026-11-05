@@ -56,6 +56,7 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
     c.deviceKind=hasDevice;c.device=hasDevice?structuredClone(result.device):null;
     c.tenant=result.tenant_id;c.fence=result.fence;c.allowed=new Set(result.allowed_senders);c.assistant=result.assistant_enabled;
     c.incomingParts=result.incoming_parts===true;
+    c.sendRecheck=result.send_recheck===true;
     if(c.legacyTransport!==undefined&&c.legacyTransport!==(result.legacy_transport===true))throw Error('channel_transport_changed');
     c.legacyTransport=result.legacy_transport===true;
     c.inboxControl=hasDevice?false:c.inboxControl===true||result.inbox_control===true||process.env.INBOX_CONTROL_ENABLED==='1';
@@ -161,6 +162,7 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
         deviceDirectory:c.deviceStore?.directory,
         deviceSendCapacity:c.capacity,
         deviceSnapshot:()=>c.device,
+        supportsSendRecheck:()=>c.sendRecheck===true,
         deviceEvent:async payload=>{
           const result=await deviceRequest('deviceEvent',payload);
           if(payload.kind==='status'&&payload.state==='connected')c.profile={name:payload.name||null,avatar_url:payload.avatar_url||null};
@@ -305,6 +307,7 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
     return {channel_id:id,status:phase,fence:c.fence,phone:verified?phone:null,phone_verified:verified,
       ...(c.health?{connection_health:c.health}:{}),
       capabilities:{text:true,audio:audioEnabled()===true&&c.assistant===true,reliable_send:true,typing:true,
+        url_button:!!c.device&&typeof c.session?.supportsUrlButton==='function'&&c.session.supportsUrlButton()===true,
         interactive_mode:chatbotInteractiveMode({type:'list'},{tenantId:c.tenant,deviceId:c.device?.id})==='native'?'native_unverified':'text_fallback',
         pair:!c.legacyTransport&&typeof c.session?.pair==='function'&&c.session?.supportsPairing?.()===true}};
   }
@@ -343,13 +346,23 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
       await validate(c,key);
       if(!c.session||operationCurrent()!==true)throw Error('channel_not_connected_or_superseded');
       const slot={phone,operation_id,fingerprint,source,text,...(['assistant','manual'].includes(source)?{control_revision}:{} )};
-      if(c.inboxControl===true||control_revision!==undefined||source==='appointment'){
+      const needsPermit=c.inboxControl===true||control_revision!==undefined||source==='appointment';
+      if(needsPermit){
         if(typeof broker.authorizeSend!=='function')throw Error('inbox_control_unavailable');
         const permit=await broker.authorizeSend(c.id,c.key,{owner,fence:c.fence},slot);
         if(permit?.authorized!==true||permit.operation_id!==operation_id)throw Error('inbox_send_refused');
       }
+      const wireRecheck=c.sendRecheck===true;
+      const recheck=needsPermit&&(wireRecheck||source==='appointment')?async()=>{
+        await validate(c,key);if(operationCurrent()!==true)throw Error('channel_operation_superseded');
+        if(wireRecheck&&c.sendRecheck!==true)throw Error('send_recheck_unavailable');
+        const permit=await broker.authorizeSend(c.id,c.key,{owner,fence:c.fence},{...slot,...(wireRecheck?{recheck:true}:{})});
+        if(permit?.authorized!==true||permit.operation_id!==operation_id)throw Error('inbox_send_refused');
+        requireCurrent(c);if(operationCurrent()!==true)throw Error('channel_operation_superseded');
+      }:null;
       attempted=true;
-      const result=await c.session.send(phone,text,{isCurrent:operationCurrent,transactionalTyping:source==='automation'||source==='appointment',source});requireCurrent(c);
+      const result=await c.session.send(phone,text,{isCurrent:operationCurrent,transactionalTyping:source==='automation'||source==='appointment',source,
+        pacing:!needsPermit||!!recheck,...(recheck?{assertAuthorized:recheck}:{})});requireCurrent(c);
       if(typeof result?.id!=='string'||!/^[a-zA-Z0-9._:-]{1,160}$/.test(result.id))throw Error('channel_send_unknown');
       const record={fingerprint,state:'accepted',accepted:true,delivery:'unknown',provider_id:result.id};
       c.ledger.save(operation_id,record);c.sent.set(result.id,{operation:operation_id,fingerprint,phone});

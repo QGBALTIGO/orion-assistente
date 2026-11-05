@@ -58,10 +58,10 @@ export function createLegacyCentral({env=process.env,fetchImpl=fetch,start,send,
       (publicHealth?.()?.state||status()):'connecting',qr:()=>null,
       connectionHealth:()=>publicHealth?.(),
       close(){if(context===value){context=null;onTransportLeaseLost();}},
-      async send(phone,text,{isCurrent=()=>true,transactionalTyping=false,source='automation'}={}){
+      async send(phone,text,{isCurrent=()=>true,transactionalTyping=false,source='automation',assertAuthorized,pacing=true}={}){
         if(context!==value||!value.isCurrent()||!matching()||!(value.allowedSender(phone)||source==='appointment')||!isCurrent()||!outgoingReady(source))throw Error('legacy_send_revoked');
         await value.assertCurrent();
-        const result=await rawSend(phone,text,{waitForCapacity:true,transactionalTyping,source,isCurrent:()=>
+        const result=await rawSend(phone,text,{waitForCapacity:true,transactionalTyping,source,assertAuthorized,pacing,isCurrent:()=>
           context===value&&value.isCurrent()&&matching()&&(value.allowedSender(phone)||source==='appointment')&&isCurrent()&&outgoingReady(source)});
         const id=result?.accepted===true&&typeof result.id==='string'?result.id.replace(/^out:/,''):null;
         if(!id)throw Error('legacy_send_unknown');
@@ -89,8 +89,13 @@ export function createLegacyCentral({env=process.env,fetchImpl=fetch,start,send,
     if(!active())return null;
     return Object.freeze({tenant_id:identity.tenant_id,channel_id:identity.channel_id,session_digest:identity.session_digest});
   }
+  function nativeTestScope(){
+    const scope=ingressScope();
+    return scope&&channelId(context.owner)&&Number.isSafeInteger(context.fence)&&context.fence>=1?
+      Object.freeze({...scope,owner:context.owner,fence:context.fence}):null;
+  }
   function health(){const connection=publicHealth?.();return {configured:configured(),owned:configured()&&transportCurrent(),
     ready:active()&&(!publicHealth||connection?.state==='connected'),connected:status()==='connected',
     ...(connection?{connection_health:connection}:{}),observed_at:now(),session_preserved:Boolean(matching())};}
-  return {configured,resume,attach,inbound,forward,automatic,receipt,allowed,ingressScope,health,transportCurrent,assertTransportCurrent};
+  return {configured,resume,attach,inbound,forward,automatic,receipt,allowed,ingressScope,nativeTestScope,health,transportCurrent,assertTransportCurrent};
 }

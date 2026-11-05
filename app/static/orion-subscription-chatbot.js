@@ -22,7 +22,7 @@
   const checkbox=(label,path,value,help='',disabled=false)=>'<div><label class="os-check"><input type="checkbox" data-sc-field="'+path+'"'+(value?' checked':'')+(disabled?' disabled':'')+'><span>'+esc(label)+'</span></label>'+(help?'<small class="os-help">'+esc(help)+'</small>':'')+'</div>';
   const contactTags=[['{name}','Nome do contato que enviou a mensagem.'],['{phone_number}','Número de WhatsApp do contato.'],['{my_name}','Nome do seu negócio.'],['{my_email}','Seu e-mail no cadastro do Orion.'],['{my_contact_number}','Número de contato comercial do negócio.']];
   const matchLabels={equal:'Frase Exata',like:'Contém a Palavra',array:'Lista'};
-  const actionLabels={text:'Texto',template:'Template',sticker:'Figurinha',shortvideo:'Recado de Vídeo',carousel:'Carrossel',url:'URL, Servidor Externo ou Webhook',nested_reply:'Enviar outra resposta',nested_list:'Enviar uma lista de opções'};
+  const actionLabels={text:'Texto',template:'Template',sticker:'Figurinha',shortvideo:'Recado de Vídeo',carousel:'Carrossel',url:'URL, Servidor Externo ou Webhook',url_button:'Botão com link',nested_reply:'Enviar outra resposta',nested_list:'Enviar uma lista de opções'};
   const restoreLabels={add_missing:'Adicionar ausentes',merge:'Mesclar e atualizar',exact:'Snapshot exato'};
   const uncertain=error=>!Number(error?.status)||Number(error.status)>=500;
   const errorMessage=error=>[400,404,409,410,413,415,422,423,429].includes(Number(error?.status))&&typeof error?.message==='string'&&error.message.trim()&&!/^O servidor retornou HTTP /.test(error.message)?error.message.slice(0,1000):({401:'Sua sessão expirou. Entre novamente no Orion.',403:'Seu acesso não permite gerenciar o Chatbot desta empresa.',404:'Este registro não está mais disponível. Atualize a lista.',409:'Os dados mudaram. Confira a versão atual antes de continuar.',413:'O arquivo excede o tamanho permitido.',422:'Confira os campos informados antes de continuar.',429:'Aguarde um pouco antes de tentar novamente.',503:'Não foi possível confirmar a operação. Confira o estado antes de repetir.'}[Number(error?.status)]||'Não foi possível confirmar a resposta do servidor. Seus dados foram preservados.');
@@ -110,6 +110,7 @@
       if(!object(action)||!uuid(action.id)||!Object.hasOwn(actionLabels,action.type)||!Number.isInteger(action.delay_seconds)||action.delay_seconds<1||action.delay_seconds>(menu?5:15))throw Error('invalid_action_response');
       if(action.type==='text'&&typeof action.text!=='string'||['template','sticker','shortvideo'].includes(action.type)&&!uuid(action.template_id)||['nested_reply','nested_list'].includes(action.type)&&!uuid(action.rule_id))throw Error('invalid_action_response');
       if(action.type==='url'&&(typeof action.url!=='string'||typeof action.custom_template!=='string'||!['GET','POST'].includes(action.method)||typeof action.as_file!=='boolean'))throw Error('invalid_action_response');
+      if(action.type==='url_button'&&(['text','footer','button_text','url'].some(key=>typeof action[key]!=='string')||!fixedPublicLink(action.url)))throw Error('invalid_action_response');
       if(action.type==='carousel'&&(typeof action.body!=='string'||!Array.isArray(action.cards)||action.cards.length!==3||action.cards.some(card=>!object(card)||!uuid(card.id)||['title','body','image_url','button_text'].some(key=>typeof card[key]!=='string'))))throw Error('invalid_action_response');
     }
     function ruleDTO(value,id){
@@ -158,6 +159,7 @@
     function actionPreview(action){
       const label=actionLabels[action.type]||'Tipo indisponível';
       if(action.type==='text')return formatText(action.text);
+      if(action.type==='url_button')return formatText(action.text)+(action.footer?'\n'+esc(action.footer):'')+'\n'+esc(action.button_text)+' · '+esc(action.url);
       if(action.type==='url')return '<strong>'+label+'</strong>\n'+esc(action.method+' '+action.url)+(action.custom_template?'\n'+formatText(action.custom_template):'')+(action.as_file?'\nEnviar como arquivo .txt':'');
       if(['template','sticker','shortvideo'].includes(action.type)){const template=state.catalog?.templates.find(item=>item.id===action.template_id);return '<strong>'+label+'</strong>\n'+esc(template?.name||'Template indisponível');}
       if(['nested_reply','nested_list'].includes(action.type)){const rule=state.catalog?.rules.find(item=>item.id===action.rule_id);return '<strong>'+label+'</strong>\n'+esc(rule?.keyword||'Resposta indisponível')+(rule?.enabled===false?' · Inativa':'');}
@@ -173,6 +175,7 @@
       return response.actions.map((action,index)=>{
         let value='';
         if(action.type==='text')value=action.text;
+        else if(action.type==='url_button')value=[action.text,action.footer,action.button_text+' · '+action.url].filter(Boolean).join('\n');
         else if(action.type==='url')value=action.method+' '+action.url+(action.custom_template?'\n'+action.custom_template:'')+(action.as_file?'\nEnviar como arquivo .txt':'');
         else if(['template','sticker','shortvideo'].includes(action.type))value=state.catalog?.templates.find(item=>item.id===action.template_id)?.name||'Template indisponível';
         else if(['nested_reply','nested_list'].includes(action.type))value=state.catalog?.rules.find(item=>item.id===action.rule_id)?.keyword||'Resposta indisponível';
@@ -442,6 +445,7 @@
     function defaultAction(type='text',delay=1){
       const common={id:crypto.randomUUID(),type,delay_seconds:delay};
       if(type==='text')return {...common,text:''};
+      if(type==='url_button')return {...common,text:'',footer:'',button_text:'Acessar',url:''};
       if(['template','sticker','shortvideo'].includes(type))return {...common,template_id:''};
       if(['nested_reply','nested_list'].includes(type))return {...common,rule_id:''};
       if(type==='url')return {...common,url:'',method:'POST',custom_template:'',as_file:false};
@@ -487,6 +491,7 @@
       const delay=input('Atraso antes de enviar (segundos)',path+'.delay_seconds',action.delay_seconds,'number','required min="1" max="'+(menu?5:15)+'" step="1"',menu?'De 1 a 5 segundos para esta opção.':'De 1 a 15 segundos. A sequência inteira pode somar até 30 segundos.');
       let body='';
       if(action.type==='text')body=textarea('Resposta',path+'.text',action.text,32000)+button('Tags disponíveis','tags','os-ghost os-small','tag');
+      else if(action.type==='url_button')body=textarea('Mensagem',path+'.text',action.text,1024)+input('Texto do botão',path+'.button_text',action.button_text,'text','required maxlength="20"')+input('Link do botão',path+'.url',action.url,'url','required maxlength="2048" placeholder="https://…"')+input('Rodapé (opcional)',path+'.footer',action.footer,'text','maxlength="60"')+button('Tags disponíveis','tags','os-ghost os-small','tag')+'<p class="os-help">O botão abre um site externo. Use um link HTTPS fixo, sem tags. Nenhuma URL é consultada ao editar ou simular esta mensagem. A aparência depende da versão do WhatsApp.</p>';
       else if(['template','sticker','shortvideo'].includes(action.type)){
         const templates=templateOptions(action.type,action.template_id);
         body=select('Template',path+'.template_id',action.template_id,templates.options,'required'+(!templates.list.length?' disabled':''))+'<p class="os-help">'+(templates.list.length?'Somente templates disponíveis da sua empresa podem ser usados.':'Nenhum template compatível está cadastrado. Escolha outro tipo de resposta para continuar.')+'</p>';
@@ -520,11 +525,37 @@
       if(!String(value||'').trim())throw Error('Preencha '+label+'.');
       if(/[{}]/.test(String(value).replace(/\{(?:name|phone_number|my_name|my_email|my_contact_number)\}/g,'')))throw Error('Use somente as cinco tags disponíveis no texto da resposta.');
     }
+    function fixedPublicLink(value){
+      if(typeof value!=='string'||!value||value.length>2048||/[{}\\\u0000-\u0020\u007f]|%7[bd]|%0[0-9a-f]|%1[0-9a-f]|%7f/i.test(value))return false;
+      try{
+        const url=new URL(value),host=url.hostname.toLowerCase().replace(/^\[|\]$/g,'');
+        if(url.protocol!=='https:'||url.username||url.password||url.hash||url.port==='0')return false;
+        if(/^\d+\.\d+\.\d+\.\d+$/.test(host)){
+          const [a,b,c]=host.split('.').map(Number);
+          return !(a===0||a===10||a===127||a>=224||a===100&&b>=64&&b<=127||a===169&&b===254||a===172&&b>=16&&b<=31||a===192&&(b===0&&(c===0||c===2)||b===88&&c===99||b===168)||a===198&&(b===18||b===19||b===51&&c===100)||a===203&&b===0&&c===113);
+        }
+        if(host.includes(':')){
+          if(host.includes('.'))return false;
+          const number=source=>{const sides=source.split('::'),left=sides[0]?sides[0].split(':'):[],right=sides[1]?sides[1].split(':'):[],groups=sides.length===2?[...left,...Array(8-left.length-right.length).fill('0'),...right]:left;return groups.reduce((n,v)=>(n<<16n)+BigInt('0x'+v),0n);};
+          const n=number(host),inside=(base,bits)=>(n>>BigInt(128-bits))===(number(base)>>BigInt(128-bits));
+          return inside('2000::',3)&&!inside('2001::',23)&&!inside('2001:db8::',32)&&!inside('2002::',16)&&!inside('3fff::',20);
+        }
+        return host.length<=253&&host.includes('.')&&!host.endsWith('.')&&!/(?:^|\.)(?:localhost|local|internal|test|invalid|onion)$/.test(host)&&host.split('.').every(part=>/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(part));
+      }catch{return false;}
+    }
     function validateAction(action,menu=false){
       if(!uuid(action.id)||!Object.hasOwn(actionLabels,action.type))throw Error('Confira o tipo da resposta.');
       if(!Number.isInteger(action.delay_seconds)||action.delay_seconds<1||action.delay_seconds>(menu?5:15))throw Error('O atraso deve ser de 1 a '+(menu?5:15)+' segundos.');
       if(state.editor.definition.enabled&&!actionAllowed(action.type))throw Error('O tipo '+actionLabels[action.type]+' não está disponível para ativação.');
       if(action.type==='text')validateContactText(action.text,'o texto da resposta');
+      if(action.type==='url_button'){
+        for(const [key,maximum,label]of [['text',1024,'a mensagem'],['button_text',20,'o texto do botão'],['footer',60,'o rodapé']]){
+          if(typeof action[key]!=='string'||action[key].length>maximum||action[key].includes('\0')||/[\uD800-\uDFFF]/u.test([...action[key]].filter(char=>char.length===1).join('')))throw Error('Confira '+label+' e seu limite de '+maximum+' caracteres.');
+          if(key!=='footer'||action[key])validateContactText(action[key],label);
+        }
+        if(/[\u0000-\u001f\u007f]/.test(action.button_text))throw Error('O texto do botão deve ocupar uma linha, sem caracteres de controle.');
+        if(!fixedPublicLink(action.url))throw Error('Use um link HTTPS público e fixo, sem usuário, senha, fragmento ou tags.');
+      }
       if(['template','sticker','shortvideo'].includes(action.type)&&!templateOptions(action.type,action.template_id).list.some(item=>item.id===action.template_id&&item.available===true))throw Error('Selecione um template disponível da sua empresa.');
       if(['nested_reply','nested_list'].includes(action.type)&&!referenceOptions(action.type,action.rule_id).list.some(item=>item.id===action.rule_id))throw Error('Selecione uma resposta existente e diferente da própria regra.');
       if(action.type==='url'){

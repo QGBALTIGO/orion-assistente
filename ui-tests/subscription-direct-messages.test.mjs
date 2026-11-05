@@ -14,9 +14,9 @@ async function media(h,name='orientacoes.txt',caption='Legenda'){h.click('[data-
 async function cancel(h){h.click(action('cancel'));await flush();assert.equal(dialog(h).dataset.dmView,'cancel');h.click(action('confirm-cancel'));await flush();}
 function select(h,start,end){const node=h.element('#osDmText');node.focus();node.setSelectionRange(start,end);node.dispatchEvent(new h.window.Event('select',{bubbles:true}));}
 
-test('three native tabs load options without writes, history duplication or sensitive URL fields',async t=>{
-  const h=await setup(t);assert.equal(h.controller.getState().kind,'text');assert.equal(h.document.querySelectorAll('[role=tab]').length,3);
-  assert.deepEqual([...h.document.querySelectorAll('[role=tab]')].map(n=>n.textContent),['Texto','Mídia','Template']);
+test('four message tabs load options without writes, history duplication or sensitive URL fields',async t=>{
+  const h=await setup(t);assert.equal(h.controller.getState().kind,'text');assert.equal(h.document.querySelectorAll('[role=tab]').length,4);
+  assert.deepEqual([...h.document.querySelectorAll('[role=tab]')].map(n=>n.textContent),['Texto','Mídia','Template','Botão com link']);
   assert.equal(h.element(field('text')).maxLength,1000);assert.equal(h.element(field('phone')).type,'tel');assert.match(h.document.body.textContent,/Tags não são substituídas/);
   assert.equal(h.element(field('device_id')).multiple,false);assert.equal(h.document.querySelector('[data-dm-history]'),null);assert.equal(h.document.querySelector('table'),null);
   assert.equal(writes(h).length,0);assert.equal(h.calls.length,1);assert.equal(h.calls[0].path,base+'/options');assert.equal(h.window.location.search,'?aba=enviar-mensagem');

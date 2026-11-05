@@ -4,6 +4,7 @@ import re
 from uuid import UUID, uuid5
 
 from app.subscription_direct_schemas import literal_content
+from app.subscription_chatbot_schemas import UrlButtonContent
 from app.subscription_templates_schemas import LibraryTemplate, media_filename
 
 MEDIA_KINDS = frozenset({"image", "video", "audio", "document"})
@@ -46,6 +47,13 @@ def media_plan(message, descriptor):
     # converted to a follow-up text as it is in some saved library templates.
     return [{"type": kind, "asset": deepcopy(descriptor), "caption": caption,
              "file_name": filename}], warnings
+
+
+def url_button_plan(message):
+    # Revalidate the frozen direct content without interpolation or URL I/O.
+    value = UrlButtonContent.model_validate({key: message.get(key, "") for key in
+        ("text", "footer", "button_text", "url")}).model_dump()
+    return [{"type": "url_button", **value}]
 
 
 def optional_template(message, plan):

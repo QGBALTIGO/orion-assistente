@@ -4,7 +4,7 @@
 import {channelId,digest} from './channel-storage.mjs';
 import {messageFailureCode,safeMessageFailureCode} from './device-message-failure.mjs';
 
-const kinds=new Set(['text','image','sticker','video','ptv','audio','document','location']);
+const kinds=new Set(['text','image','sticker','video','ptv','audio','document','location','url_button']);
 const revision=value=>Number.isSafeInteger(value)&&value>=1;
 const sha=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);
 const phone=value=>typeof value==='string'&&/^[1-9]\d{7,14}$/.test(value);

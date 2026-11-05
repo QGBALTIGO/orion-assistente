@@ -121,7 +121,8 @@ def test_native_tabs_drafts_format_emoji_contacts_review_and_confirm(browser, fi
     label = f"{browser[0]}-{size[0]}x{size[1]}-{theme}"
     try:
         open_direct(page, fixture_url)
-        expect(page.locator("[data-dm-tab]")).to_have_count(3)
+        expect(page.locator("[data-dm-tab]")).to_have_count(4)
+        expect(page.locator("[data-dm-tab]")).to_have_text(["Texto", "Mídia", "Template", "Botão com link"])
         assert not writes(report(page, fixture_url))
         fill_text(page, text="Olá, {name}.\nConteúdo literal.", phone="+55 (67) 99999-9901")
         field(page, "text").evaluate("node => {node.focus();node.setSelectionRange(0,3);node.dispatchEvent(new Event('select',{bubbles:true}));}")
@@ -193,6 +194,81 @@ def test_native_tabs_drafts_format_emoji_contacts_review_and_confirm(browser, fi
         expect(field(page, "text")).to_have_value("")
         page.locator('[data-dm-tab="media"]').click()
         expect(page.locator("[data-dm-file-status]")).to_have_text("Nenhum arquivo preparado.")
+        assert not external, external
+        assert not errors, errors
+    finally:
+        context.close()
+
+
+@pytest.mark.parametrize("size", SIZES, ids=lambda size: f"{size[0]}x{size[1]}")
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_url_button_draft_literal_safe_preview_and_cancel_without_transport(browser, fixture_url, size, theme):
+    """Real form/rendering only; the fixture deliberately cannot confirm CTA."""
+    context, page, external, errors = setup_page(browser, fixture_url, size, theme)
+    try:
+        open_direct(page, fixture_url)
+        fill_text(page, text="Rascunho de texto separado")
+        tab = page.get_by_role("tab", name="Botão com link", exact=True)
+        tab.click()
+        expect(tab).to_have_attribute("aria-selected", "true")
+        for label in ("Texto do botão", "Link do botão", "Rodapé (opcional)"):
+            expect(page.locator("#osSubscriptionDirectMessages").get_by_text(label, exact=True)).to_be_visible()
+        expect(field(page, "text")).to_have_attribute("maxlength", "1024")
+        expect(field(page, "button_text")).to_have_attribute("maxlength", "20")
+        expect(field(page, "url")).to_have_attribute("type", "url")
+        expect(field(page, "url")).to_have_attribute("maxlength", "2048")
+        expect(field(page, "footer")).to_have_attribute("maxlength", "60")
+        expect(page.locator("[data-dm-save],[data-dm-file],[data-dm-field=template_id]")).to_have_count(0)
+        body = "Olá, {name}. <img src=x onerror='window.__dmXss=1'>"
+        footer = "<svg onload=window.__dmFooterXss=1>"
+        button_text = "<Abrir>"
+        url = "https://orionagenda.pro/acesso?origem=teste&modelo=%3Csvg%3E"
+        field(page, "device_id").select_option(uid(30))
+        field(page, "phone").fill("5567999999903")
+        for name, value in (("text", body), ("footer", footer), ("button_text", button_text), ("url", url)):
+            field(page, name).fill(value)
+        page.get_by_role("tab", name="Texto", exact=True).click()
+        expect(field(page, "text")).to_have_value("Rascunho de texto separado")
+        expect(field(page, "phone")).to_have_value("5567999999901")
+        tab.click()
+        expect(field(page, "device_id")).to_have_value(uid(30))
+        expect(field(page, "phone")).to_have_value("5567999999903")
+        for name, value in (("text", body), ("footer", footer), ("button_text", button_text), ("url", url)):
+            expect(field(page, name)).to_have_value(value)
+        assert not writes(report(page, fixture_url))
+        assert_layout(page, size[0])
+        prepare(page)
+        preview = page.locator("[data-dm-cta-preview]")
+        expect(preview).to_have_count(1)
+        expect(preview.locator("code")).to_have_text(url)
+        expect(preview.locator("strong")).to_have_text(button_text)
+        expect(preview.locator("small")).to_have_text(footer)
+        expect(page.locator("[data-dm-review-row]")).to_contain_text(body)
+        expect(preview.locator("a,img,svg,iframe,script")).to_have_count(0)
+        expect(page.locator("[data-dm-review-row] .os-dm-message img,[data-dm-review-row] .os-dm-message svg")).to_have_count(0)
+        assert page.evaluate("window.__dmXss || window.__dmFooterXss || null") is None
+        expect(page.locator("[data-dm-dialog]")).to_contain_text("Prévia sintética sem transporte habilitado.")
+        expect(action(page, "confirm")).to_be_disabled()
+        expect(page.locator("[data-dm-consent]")).not_to_be_checked()
+        assert_dialog_geometry(page, size)
+        screenshot(page, f"{browser[0]}-{size[0]}x{size[1]}-{theme}-url-button-preview")
+        prepared = report(page, fixture_url)
+        requests = writes(prepared)
+        assert len(requests) == 1 and requests[0]["path"] == DIRECT_BASE + "/review"
+        assert requests[0]["data"]["message"] == {"kind": "url_button", "device_id": uid(30),
+            "recipients": {"mode": "phone", "phone": "5567999999903", "contact_keys": []}, "text": body,
+            "footer": footer, "button_text": button_text, "url": url}
+        frozen = prepared["operations"][0]["operation"]["preview"]
+        assert (frozen["eligible"], frozen["blocked"]) == (0, 1)
+        assert frozen["items"][0]["message_preview"]["parts"] == [{"type": "url_button", "text": body,
+            "footer": footer, "button_text": button_text, "url": url}]
+        action(page, "cancel-review").click()
+        expect(page.locator("[data-dm-dialog]")).to_have_count(0)
+        expect(action(page, "review")).to_be_focused()
+        expect(field(page, "text")).to_have_value(body)
+        final = report(page, fixture_url)
+        assert writes(final) == requests
+        assert not final["confirmations"] and not final["saved_templates"] and not final["uploads"]
         assert not external, external
         assert not errors, errors
     finally:

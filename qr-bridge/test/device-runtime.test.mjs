@@ -45,7 +45,7 @@ async function fixture(t){
     deviceEffectFinish:async payload=>{await behavior.finish(payload);finished.push(payload);return {recorded:true};},
     deviceEffectsPending:async()=>behavior.pending(),
     deviceTranscribe:async payload=>{audioCalls.push(payload);return behavior.transcribe(payload);}};
-  const schedule=(fn,ms)=>{const id=++serial;tasks.set(id,{fn,ms});return id;},cancel=id=>tasks.delete(id);
+  const schedule=(fn,ms)=>{const id=++serial;tasks.set(id,{fn,ms,at:clock+ms});return id;},cancel=id=>tasks.delete(id);
   async function open(){
     client={ev:new EventEmitter(),user:{id:self+'@s.whatsapp.net',name:'Synthetic business'},end(){this.ended=true;},
       onWhatsApp:async pn=>[{exists:true,jid:pn+'@s.whatsapp.net'}],sendMessage:()=>assert.fail('No direct send'),
@@ -56,7 +56,7 @@ async function fixture(t){
       Browsers:{windows:()=>['synthetic']},DisconnectReason:{loggedOut:401},proto:{Message:{AppStateSyncKeyData:{fromObject:value=>value}}},
       generateMessageIDV2:()=> 'provider-'+(++serial),generateWAMessage:async(jid,{text},options)=>{await behavior.prepare();return {key:{id:options.messageId,remoteJid:jid},message:{conversation:text}};},
       downloadMediaMessage:async message=>{downloadSources.push(message);const buffer=Buffer.from('OggS synthetic audio');downloads.push(buffer);return buffer;}};
-    current=await createBaileysChannelSession(context,{loadBaileys:async()=>mod,now:()=>clock,schedule,cancel,
+    current=await createBaileysChannelSession(context,{loadBaileys:async()=>mod,now:()=>clock,presenceNow:()=>clock,schedule,cancel,
       deviceOptions:{runtimeOptions:{capacity:{acquire:options=>behavior.capacity(options)},postWebhook:async payload=>{webhooks.push(payload);return behavior.webhook(payload);}}}});
     instances.push(current);client.ev.emit('connection.update',{connection:'open'});await until(()=>events.some(e=>e.kind==='status'));return current;
   }
@@ -68,8 +68,38 @@ async function fixture(t){
     get session(){return current;},get client(){return client;},get config(){return config;},get snapshot(){return state;},
     update(patch={}){state={...structuredClone(state),...patch,settings_revision:state.settings_revision+1};current.deviceSettingsChanged();},
     setTime(value){clock=value;},
+    advance(ms){clock+=ms;for(const [id,task]of [...tasks])if(task.at<=clock){tasks.delete(id);void Promise.resolve().then(task.fn).catch(()=>{});}},
     revoke(){alive=false;current.close();},async poll(){const task=[...tasks.values()].find(item=>item.ms===5000);assert.ok(task);await task.fn();}};
 }
+
+test('generic send_text negotiates new pacing/recheck without breaking an old API or changing effect IDs',async t=>{
+  for(const capable of [false,true]){
+    const f=await fixture(t),presence=[];f.context.supportsSendRecheck=()=>capable;
+    f.client.sendPresenceUpdate=async type=>{presence.push(type);};
+    const item=f.effect('send_text',{phone,text:'Aviso autorizado'});f.behavior.event=async row=>row.kind==='text'?[item]:[];
+    f.receive('cap-'+capable);
+    if(capable){await until(()=>presence.length===1);assert.equal(f.sends.length,0);f.advance(800);}
+    await until(()=>f.finished.length===1);assert.equal(f.sends.length,1);assert.equal(f.finished[0].state,'accepted');
+    assert.equal(f.authorizations.some(value=>value.recheck===true),capable);
+    assert.ok(f.authorizations.every(value=>value.operation_id===item.operation_id));
+    assert.deepEqual(presence,['composing','paused']);
+  }
+});
+
+test('generic send_text final recheck rejects changed payload and current policy before any relay',async t=>{
+  for(const mode of ['payload','policy']){
+    const f=await fixture(t),presence=[];f.context.supportsSendRecheck=()=>true;
+    f.client.sendPresenceUpdate=async type=>{presence.push(type);};
+    const item=f.effect('send_text',{phone,text:'Mesmo aviso'}),authorize=f.context.deviceEffectAuthorize;let changed=false;
+    f.context.deviceEffectAuthorize=async payload=>{
+      const permit=await authorize(payload);if(changed&&payload.recheck)return mode==='policy'?{authorized:false}:{...permit,payload:{...permit.payload,text:'Alterado'}};
+      return permit;
+    };
+    f.behavior.event=async row=>row.kind==='text'?[item]:[];f.receive('changed-'+mode);await until(()=>presence.length===1);
+    changed=true;f.advance(800);await until(()=>f.finished.length===1);
+    assert.equal(f.sends.length,0);assert.equal(f.finished[0].state,'not_sent');assert.equal(f.finished[0].operation_id,item.operation_id);
+  }
+});
 
 test('device ingress has no pilot allowlist, but defaults never invoke AI, ASR, sends or unrelated recipients',async t=>{
   const f=await fixture(t);f.receive('private1');await until(()=>f.events.some(e=>e.message_id==='private1'));

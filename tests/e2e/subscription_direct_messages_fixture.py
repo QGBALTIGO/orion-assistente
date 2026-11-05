@@ -16,6 +16,7 @@ from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
 
 from app.subscription_direct_schemas import ReviewDirectMessage, ConfirmDirectMessage, DirectAction
+from app.subscription_direct_policy import url_button_plan
 from app.subscription_templates_schemas import UploadAsset, media_filename
 from browser_subscription_chatbot import Handler as ChatbotHandler, ROOT, base, now
 from scripts.plans_preview import Handler as PlansHandler
@@ -94,18 +95,29 @@ def preview(session, message):
     content = {"type": kind, "template_name": template["name"] if template else None,
         "text": body if kind == "text" else None, "caption": body if kind in {"image", "video", "document"} else None,
         "followup": followup, "parts": [part] + ([{"type": "text", "text": followup}] if followup else [])}
+    if message["kind"] == "url_button":
+        kind = "url_button"
+        # Keep this browser-only DTO declarative like the other formats above;
+        # importing a database store would require the API runtime on this runner.
+        parts = url_button_plan(message)
+        content = {"type": kind, "template_name": None, "text": parts[0]["text"],
+            "caption": None, "followup": None, "parts": parts}
     recipients = message["recipients"]
     digits = [recipients["phone"]] if recipients["mode"] == "phone" else [key[6:] for key in recipients["contact_keys"]]
     rows = []
     for ordinal, phone in enumerate(digits, 1):
         contact = next((item for item in session["dm_contacts"] if item["key"] == "phone:" + phone), None) if recipients["mode"] == "contacts" else None
-        available = contact is None or contact["available"]
+        # This loopback fixture can render a validated CTA review, but has no
+        # current real bridge capability proof. It never permits its send.
+        available = kind != "url_button" and (contact is None or contact["available"])
+        blocked_reason = ("Prévia sintética sem transporte habilitado." if kind == "url_button" else
+                          None if available else contact["blocked_reason"])
         rows.append({"row_key": str(uuid4()), "ordinal": ordinal, "source": "catalog" if contact else "manual",
             "phone_e164": "+" + phone, "name": contact["name"] if contact else "",
             "device": {key: device.get(key) for key in ("id", "name", "phone_e164")},
             "message_type": message["kind"], "template": deepcopy(template), "message_preview": deepcopy(content),
-            "available": available, "blocked_reason": None if available else contact["blocked_reason"],
-            "error_code": None if available else "DIRECT_OPTED_OUT"})
+            "available": available, "blocked_reason": blocked_reason,
+            "error_code": None if available else "DIRECT_DEVICE_UNAVAILABLE" if kind == "url_button" else "DIRECT_OPTED_OUT"})
     blocked = sum(not row["available"] for row in rows)
     return {"review_version": sha256(str(uuid4()).encode()).hexdigest(),
         "expires_at": (datetime.now(timezone.utc) + timedelta(seconds=120)).isoformat(),

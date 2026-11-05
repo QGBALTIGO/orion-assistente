@@ -16,13 +16,13 @@ const tick=()=>new Promise(resolve=>setImmediate(resolve));
 const defer=()=>{let resolve;const promise=new Promise(done=>{resolve=done;});return {promise,resolve};};
 async function until(predicate){for(let i=0;i<400;i++){if(predicate())return;await tick();}assert.fail('Expected Chatbot boundary was not reached');}
 
-async function fixture(t,{native=false}={}){
+async function fixture(t,{native=false,presence=false}={}){
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'orion-chatbot-runtime-'));fs.chmodSync(root,0o700);
   const directory=path.join(root,randomUUID()),deviceDirectory=path.join(root,'device');fs.mkdirSync(directory,{mode:0o700});fs.mkdirSync(deviceDirectory,{mode:0o700});
   let state={id:randomUUID(),generation:randomUUID(),settings_revision:1,settings:structuredClone(defaults),chatbot:{revision:1},
     capabilities:{proxy:true,webhook:true,transcription_available:true,transcription_max_bytes:25_000_000,transcription_max_seconds:1800,transcription_max_text_chars:120000}},
     alive=true,clock=1_000_000,serial=0,client,config,session;
-  const instances=[],timers=new Map(),events=[],sends=[],finished=[],authorizations=[],audioCalls=[],downloads=[],httpCalls=[],httpResults=[],permits=new Map();
+  const instances=[],timers=new Map(),events=[],sends=[],finished=[],authorizations=[],audioCalls=[],downloads=[],httpCalls=[],httpResults=[],permits=new Map(),presenceEvents=[];
   const behavior={event:async()=>[],finish:async()=>({effects:[]}),authorize:async()=>true,send:async()=>{},capacity:async()=>{},
     pending:async()=>({effects:[],reconcile:[]}),lookup:async()=>null,onWhatsApp:async pn=>[{exists:true,jid:pn+'@s.whatsapp.net'}],
     audio:async()=>({text:'Voz',truncated:false,effects:[]}),http:async()=>({json:{reply:'resposta secreta'}}),httpResult:async payload=>({recorded:true,operation_id:payload.operation_id,effects:[]}),
@@ -45,6 +45,7 @@ async function fixture(t,{native=false}={}){
   const schedule=(fn,ms)=>{const id=++serial;timers.set(id,{fn,at:clock+ms,ms});return id;},cancel=id=>timers.delete(id);
   async function open(){
     client={ev:new EventEmitter(),user:{id:self+'@s.whatsapp.net',name:'Synthetic business'},end(){},
+      ...(presence?{sendPresenceUpdate:async(type,jid)=>{presenceEvents.push({type,jid,at:clock});}}:{}),
       onWhatsApp:pn=>behavior.onWhatsApp(pn),signalRepository:{lidMapping:{getPNForLID:lid=>behavior.lookup(lid)}},
       sendMessage:()=>assert.fail('No direct or automatic send'),rejectCall:async()=>{},
       waUploadToServer:async()=>({mediaUrl:'https://mmg.whatsapp.net/synthetic',directPath:'/synthetic'}),
@@ -53,7 +54,7 @@ async function fixture(t,{native=false}={}){
         const item={jid,proto:sdk.proto.Message.decode(sdk.proto.Message.encode(proto).finish()),id:options.messageId};sends.push(item);await behavior.send(item);
       }};
     const mod={...sdk,fetchLatestWaWebVersion:async()=>({version:sdk.DEFAULT_CONNECTION_CONFIG.version,isLatest:false}),default:options=>{config=options;return client;},downloadMediaMessage:async()=>{const buffer=Buffer.from('OggS synthetic');downloads.push(buffer);return buffer;}};
-    session=await createBaileysChannelSession(context,{loadBaileys:async()=>mod,now:()=>clock,schedule,cancel,
+    session=await createBaileysChannelSession(context,{loadBaileys:async()=>mod,now:()=>clock,presenceNow:()=>clock,schedule,cancel,
       deviceOptions:{...(native?{interactiveMode:'native'}:{}),runtimeOptions:{capacity:{acquire:options=>behavior.capacity(options)},chatbotOptions:{httpRequest:async options=>{httpCalls.push(options);return behavior.http(options);},fetchImage:options=>behavior.fetchImage(options)}}}});
     instances.push(session);const before=events.length;client.ev.emit('connection.update',{connection:'open'});await until(()=>events.slice(before).some(row=>row.kind==='status'));return session;
   }
@@ -69,7 +70,7 @@ async function fixture(t,{native=false}={}){
   function advance(ms){clock+=ms;for(const [id,task]of [...timers])if(task.at<=clock){timers.delete(id);void Promise.resolve().then(task.fn).catch(()=>{});}}
   async function poll(){const task=[...timers.values()].find(row=>row.ms===5000);assert.ok(task);await task.fn();}
   await open();t.after(()=>{instances.forEach(item=>item.close());fs.rmSync(root,{recursive:true,force:true});});
-  return {root,context,events,sends,finished,authorizations,audioCalls,downloads,httpCalls,httpResults,permits,behavior,effect,deviceEffect,receive,open,revise,advance,poll,
+  return {root,context,events,sends,finished,authorizations,audioCalls,downloads,httpCalls,httpResults,permits,behavior,effect,deviceEffect,receive,open,revise,advance,poll,presence:presenceEvents,
     get state(){return state;},get client(){return client;},get session(){return session;},get now(){return clock;}};
 }
 
@@ -81,6 +82,42 @@ test('ingress to a native list uses a current effect, exact encrypted proto and 
   const incoming=f.events.find(row=>row.message_id==='native-list');assert.equal(incoming.origin,'contact');assert.equal(incoming.chatbot_revision,1);assert.ok(Number.isSafeInteger(incoming.ingress_order));
 });
 
+for(const type of ['list','url_button','text'])test(`current ${type} effect composes and paces before constructing/caching its exact provider protocol`,async t=>{
+  const f=await fixture(t,{native:true,presence:true});
+  const action=type==='list'?{type,title:'Menu',description:'Escolha',button_text:'Abrir',sections:[{rows:[{id:'one',title:'Uma'}]}]}:
+    type==='url_button'?{type,text:'Sistema',button_text:'Acessar',url:'https://orionagenda.pro/'}:{type,text:'Olá'};
+  const item=f.effect(action);f.behavior.event=async row=>row.kind==='text'?[item]:[];
+  f.receive('paced-'+type);await until(()=>f.presence.length===1);await tick();
+  assert.equal(f.presence[0].type,'composing');assert.equal(f.sends.length,0);
+  f.advance(799);await tick();assert.equal(f.sends.length,0);f.advance(1);await until(()=>f.finished.length===1);
+  assert.equal(f.sends.length,1);assert.equal(f.finished[0].state,'accepted');
+  assert.deepEqual(f.presence.map(value=>value.type),['composing','paused']);
+  assert.ok(f.presence.every(value=>value.jid===phone+'@s.whatsapp.net'));
+});
+
+test('audio records during actual asset preparation, credits that work and keeps recording off for malformed audio',{timeout:10000},async t=>{
+  const f=await fixture(t,{presence:true}),bytes=Buffer.from('synthetic MPEG audio');
+  const asset={id:randomUUID(),kind:'audio',mime:'audio/mpeg',size:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex'),
+    width:null,height:null,thumbnail:null,duration_ms:2000,file_name:'audio.mp3'};
+  const ready=defer(),complete=defer();f.behavior.asset=async()=>{await ready.promise;return Buffer.from(bytes);};
+  f.behavior.finish=async()=>{complete.resolve();return {effects:[]};};
+  const item=f.effect({type:'audio',asset});f.behavior.event=async row=>row.kind==='text'?[item]:[];
+  f.receive('paced-audio');await until(()=>f.presence.length===1);assert.equal(f.presence[0].type,'recording');
+  f.advance(2500);ready.resolve();await complete.promise;await tick();
+  assert.equal(f.sends.length,1);assert.ok(f.sends[0].proto.audioMessage);assert.equal(f.finished[0].state,'accepted');
+  assert.deepEqual(f.presence.map(value=>value.type),['recording','paused']);
+  const malformed=f.effect({type:'audio',asset:{...asset,mime:'video/mp4'}});f.behavior.event=async row=>row.kind==='text'?[malformed]:[];
+  f.receive('invalid-audio');await until(()=>f.finished.length===2);assert.equal(f.sends.length,1);assert.equal(f.presence.length,2);
+});
+
+test('opt-out/policy refusal during visible pacing prevents relay and never repeats the reserved effect',async t=>{
+  const f=await fixture(t,{presence:true}),item=f.effect({type:'text',text:'Aguardando autorização'});let allow=true;
+  f.behavior.authorize=async()=>allow;f.behavior.event=async row=>row.kind==='text'?[item]:[];
+  f.receive('paced-revoked');await until(()=>f.presence.length===1);allow=false;
+  f.advance(1000);await until(()=>f.finished.length===1);assert.equal(f.sends.length,0);assert.equal(f.finished[0].state,'not_sent');
+  await f.poll();await tick();assert.equal(f.sends.length,0);
+});
+
 const recipientLid='100000000000002@lid';
 function verifiedRecipient(f){
   const calls=[];f.context.verifiedLid=()=>true;
@@ -88,6 +125,17 @@ function verifiedRecipient(f){
   f.behavior.onWhatsApp=async pn=>{calls.push(['lookup',pn]);return [{exists:true,jid:pn+'@s.whatsapp.net',lid:recipientLid}];};
   f.client.getUSyncDevices=async(...args)=>{calls.push(['usync',...args]);return [];};return calls;
 }
+test('an explicit URL-button Chatbot action keeps its scoped grant, verified recipient and native protocol with fallback defaults',async t=>{
+  const f=await fixture(t);verifiedRecipient(f);
+  const action={type:'url_button',text:'Olá, acesse o sistema.',footer:'Orion',button_text:'Acessar meu sistema',url:'https://orionagenda.pro/'};
+  const item=f.effect(action);f.behavior.event=async row=>row.message_id==='explicit-url-button'?[item]:[];
+  f.receive('explicit-url-button');await until(()=>f.finished.length===1);
+  assert.equal(f.finished[0].state,'accepted');assert.equal(f.sends.length,1);assert.equal(f.sends[0].jid,recipientLid);
+  const value=f.sends[0].proto.interactiveMessage;
+  assert.equal(value.body.text,action.text);assert.equal(value.nativeFlowMessage.buttons[0].name,'cta_url');
+  assert.deepEqual(JSON.parse(value.nativeFlowMessage.buttons[0].buttonParamsJson),{display_text:action.button_text,url:action.url});
+  assert.equal(f.sends[0].proto.extendedTextMessage,null);assert.equal(f.httpCalls.length,0);assert.ok(f.authorizations.length>=5);
+});
 for(const kind of ['send_text','chatbot_text','chatbot_list','native_list'])test(`digital ${kind} uses a fresh exact LID proof and the same encrypted recovery proto`,async t=>{
   const f=await fixture(t,{native:kind==='native_list'}),calls=verifiedRecipient(f);
   const item=kind==='send_text'?f.deviceEffect('send_text',{phone,text:'Texto confirmado'}):f.effect(kind==='chatbot_text'?

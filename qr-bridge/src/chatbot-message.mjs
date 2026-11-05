@@ -4,6 +4,7 @@ import {createHash} from 'node:crypto';
 import {channelId} from './channel-storage.mjs';
 import {fetchChatbotImage} from './chatbot-network.mjs';
 import {awaitChatbotEncryptedMedia} from './chatbot-media-upload.mjs';
+import {urlButtonContent} from './url-button.mjs';
 
 const invalid=()=>Object.assign(Error('chatbot_message_invalid'),{code:'CHATBOT_MESSAGE_INVALID'});
 const plain=value=>!!value&&typeof value==='object'&&!Array.isArray(value);
@@ -100,6 +101,7 @@ export async function buildChatbotContent(action,{sdk,loadAsset,prepareCarouselI
     await guard();let content,selectionIds,textFallback=false;
     if(!['native','text_fallback'].includes(interactiveMode))throw invalid();
     if(action.type==='text')content={extendedTextMessage:{text:text(action.text,32000)}};
+    else if(action.type==='url_button')content=urlButtonContent(action);
     else if(action.type==='location'){
       if(!Number.isFinite(action.latitude)||!Number.isFinite(action.longitude)||Math.abs(action.latitude)>90||Math.abs(action.longitude)>180)throw invalid();
       content={locationMessage:{degreesLatitude:action.latitude,degreesLongitude:action.longitude}};
