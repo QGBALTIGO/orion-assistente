@@ -224,7 +224,7 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
           const stillCurrent=()=>{try{return isCurrent()&&batchCurrent()===true;}catch{return false;}};
           if(!stillCurrent()){c.summaryReview.set(payload.phone,true);return {state:'superseded',not_committed:true};}
           await assertCurrent();
-          if(!c.assistant)return;
+          if(!c.assistant)return {state:'policy_skipped',not_committed:true};
           if(typeof payload.text!=='string'||!payload.text.trim()||payload.text.length>1500)throw Error('invalid_channel_inbound');
           // Never accept tenant, owner, channel or model routing from content.
           observed.forEach(item=>{item.state='inflight';});
@@ -244,8 +244,9 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
               c.summaryReview.set(payload.phone,true);return {state:'superseded_after_write',not_committed:false};
             }
             if(!stillCurrent()){c.summaryReview.set(payload.phone,true);return;}
-            if(result?.answer==null)return;
-            if(typeof result.answer!=='string'||!result.answer.trim()||result.answer.length>1200)throw Error('invalid_channel_reply');
+            if(result&&typeof result==='object'&&Object.hasOwn(result,'answer')&&result.answer===null)
+              return {state:'committed_no_reply',not_committed:false};
+            if(typeof result?.answer!=='string'||!result.answer.trim()||result.answer.length>1200)throw Error('invalid_channel_reply');
             if(typeof beforeReply==='function')await beforeReply(result.answer);
             await assertCurrent();
             if(!stillCurrent()){c.summaryReview.set(payload.phone,true);return;}

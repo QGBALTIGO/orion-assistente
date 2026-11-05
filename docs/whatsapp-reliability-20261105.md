@@ -28,6 +28,8 @@ O nicho escolhe regras e conteúdo; não deve escolher outra identidade criptogr
 | Estado conectado salvo podia parecer atual após parar de reportar | Último evento de abertura era usado sem informação suficiente de prontidão | Sinais passivos de WebSocket, atividade, interrupção, recuperação, tentativa e ação; snapshot sem atualização por 90 segundos aparece indisponível |
 | Verificador de prontidão do WhatsApp rejeitava schemas posteriores à migração de telefones do Paraguai | Somente a revisão exata 0052 selecionava o CHECK com +595; schemas posteriores eram comparados com a regra antiga | Seleção pela ancestralidade exata das migrations conhecidas no código; aliases, revisões parciais e desconhecidas continuam recusados; RLS, privilégios e validação do CHECK mantidos |
 | Política de revisão Web divergente entre os caminhos | A sessão principal respeitava `QR_WA_VERSION_AUTO`; os dispositivos gerenciados ignoravam a flag e usavam sempre a revisão incluída no SDK | Seletor compartilhado, consulta oficial limitada a 3,5 segundos, versão obtida fixada durante o processo e fallback identificado com intervalo de 60 segundos. Biblioteca e estado criptográfico preservados |
+| Entrada de assinaturas desaparecia após falha na API | O ID era marcado como visto e a fila existia somente em memória; recuperação da API, reentrega e reinício não reapresentavam a entrada | Fila cifrada de admissão antes das consultas e do processamento; mesmo ID, horário, empresa, dispositivo e geração; confirmação somente após resposta válida de persistência. Resultado incerto de negócio/áudio fica retido para revisão |
+| Troca explícita de conta mantinha autorizações do número anterior | `relink` trocava as chaves de autenticação, mas preservava a revisão que validava efeitos pendentes e campanhas, lotes e agendamentos futuros | Uma nova operação explícita de `relink` avança a revisão de autoridade uma única vez antes do comando, limpa a identidade observada e invalida pendências comprovadamente não iniciadas. Contextos congelados antigos são recusados; reinício normal conserva revisão, sessão e pendências válidas |
 
 As chaves e sessões válidas não são apagadas para corrigir falhas transitórias. O prazo de processamento da resposta ao vivo é de 14 segundos desde a entrada na rota, incluindo verificações de autoridade e espera pela trava. O preview de áudio tem orçamento próprio de 60 segundos. Limpeza e fechamento têm limites próprios; o prazo de negócio não deve ser confundido com o tempo total de finalização sob uma dependência indisponível.
 
@@ -35,7 +37,7 @@ O corte que rejeitava mensagens anteriores à criação do socket também descar
 
 ## Desconexões observadas antes da publicação
 
-No período consultado, a sessão principal registrou dez encerramentos. Horários abaixo em **America/Cuiaba**. Os logs antigos não identificavam empresa, instância e fence em cada evento; algumas aberturas e quedas receberam timestamps quase iguais no mesmo lote de logs. Por isso, não é possível atribuir uma duração precisa de recuperação a todos os episódios.
+No recorte de 04/11 às 15h até 05/11 às 15h05, a sessão principal registrou doze encerramentos. Horários abaixo em **America/Cuiaba**. Os logs antigos não identificavam empresa, instância e fence em cada evento; algumas aberturas e quedas receberam timestamps quase iguais no mesmo lote de logs. Por isso, não é possível atribuir uma duração precisa de recuperação a todos os episódios.
 
 | Data e hora | Código |
 | --- | --- |
@@ -49,6 +51,8 @@ No período consultado, a sessão principal registrou dez encerramentos. Horári
 | 05/11/2026 10:18:53 | 500 |
 | 05/11/2026 10:59:00 | 428 |
 | 05/11/2026 13:02:14 | 428 |
+| 05/11/2026 13:53:02 | 500 |
+| 05/11/2026 14:47:51 | 500 |
 
 Houve publicações da bridge no mesmo período, mas as quedas das 10:59 e 13:02 ocorreram dentro do mesmo deployment. Assim, deployment não explica todas as desconexões. Nas métricas disponíveis de 24 horas, a memória variou aproximadamente de 0,075 a 0,222 GB, com limite próximo de 1 GB; a bridge não registrou deployment falho nesse recorte. Isso não demonstra que rede, bloqueio do event loop ou um incidente mais antigo estejam excluídos.
 
@@ -84,6 +88,18 @@ Templates do Orion são conteúdo salvo e regras de substituição; não equival
 
 ## Pendências e prevenção de abuso
 
+A reprodução isolada de indisponibilidade devolveu 503 na admissão de uma mensagem real do adaptador: duas consultas posteriores de efeitos, a reentrega do mesmo ID e o reinício não a recuperavam; uma nova mensagem funcionava. Isso também atingia comandos de opt-out e atendimento humano. A correção conserva o protocolo de origem com o codec BufferJSON do SDK em armazenamento AES-GCM já utilizado pelo projeto, com gravação atômica, fsync e guarda da responsabilidade pela sessão.
+
+A fila tem teto de 512 entradas e 8 MiB por namespace, sem eliminar entradas não confirmadas para abrir espaço. O horário original não é renovado: expiração, mudança de geração/configuração ou perda da finalidade exigem revisão. Falha de gravação, corrupção ou falta de capacidade encerram somente a conexão afetada e aparecem como necessidade de intervenção; não apagam a sessão nem geram QR automaticamente. O painel e as amostras passivas distinguem mensagens aguardando admissão de entradas retidas para revisão.
+
+Uma entrada pendente também impede que uma resposta automática já atrasada ultrapasse um opt-out ainda não admitido. Após a admissão, os efeitos de saída continuam sujeitos à fila SQL, autorização e ledger existentes. A fonte de áudio permanece cifrada até sua conclusão conhecida. Se a resposta de admissão do áudio se perder e a API devolver apenas a informação de duplicidade, ou se houver interrupção após começar trabalho com efeitos, a entrada fica para revisão; não se inventa uma nova transcrição ou um novo envio. Essa proteção começa quando o callback da aplicação recebe a mensagem; não cobre a lacuna anterior ao evento do SDK descrita acima.
+
+A rotação de autenticação de um dispositivo não muda seu UUID lógico. Por isso, o journal fica separado pela época de autenticação: reinícios da mesma sessão carregam a mesma fila; um `relink` explícito cria outra época e conserva o journal antigo fora do diretório de chaves removido. Ele exige revisão e retenção operacional, sem reapresentação automática na nova conta. Os limites de 512 entradas/8 MiB são por journal; épocas antigas retidas não equivalem a um teto global de disco. Eventos de chamada, estado e recibo continuam usando os mecanismos existentes; a nova fila protege as mensagens privadas admitidas pelo filtro de `messages.upsert`.
+
+Os atendimentos com IA da sessão principal gerenciada e dos canais gerenciados também guardam a entrada antes da identificação e da API. Só falhas de registro anteriores à preparação podem ser reapresentadas automaticamente. Preparação, transcrição ou turno iniciado ficam retidos em caso de resultado incerto. Uma confirmação positiva e atual do registro libera outras conversas para trabalhar; entrada ainda não admitida barra envios automáticos atrasados. A espera tem limite de dez segundos e preserva a idade original. O carregamento do journal existente ocorre antes de publicar prontidão na abertura da conexão.
+
+O comando determinístico de confirmação de agendamento da sessão principal segue uma rota separada: possui duas tentativas com o mesmo ID para falhas transitórias da API, mas não ganhou este journal local. Uma interrupção após a confirmação do SDK pode exigir conferência/reenvio pelo remetente nesse caminho. O comando de teste consentido `ORIONTESTE` também permanece separado. Não se afirma recuperação universal de todas as entradas ou de todos os pontos de falha.
+
 A autorização final reavalia empresa, canal, geração do dispositivo, configuração, responsável, fence, destinatário, conteúdo congelado, opt-out, finalidade, prazo e predecessor. Lembrete de agendamento passado, cancelado ou modificado perde a autorização. Atendimento humano e revisão de contato/configuração invalidam respostas antigas. Resultado de envio incerto mantém sua evidência e exige reconciliação; não retorna automaticamente a uma nova tentativa.
 
 Variáveis de assinatura aceitas são `{name}`, `{phone_number}`, `{my_name}`, `{my_email}` e `{my_contact_number}`. Falta de um fato usado na mensagem impede renderização; placeholders desconhecidos são rejeitados. Templates de agendamento removem blocos opcionais sem dados e rejeitam fatos obrigatórios não resolvidos.
@@ -96,7 +112,7 @@ O microbenchmark executou o Lua de entrada real do Redis em infraestrutura local
 
 Esse resultado demonstra atomicidade e isolamento desse componente. Ele envolve **zero conexões WhatsApp reais** e não mede capacidade do Baileys, fila SQL, mídia, IA ou infraestrutura Railway. O gerenciador atual admite dez contextos ativos por processo por padrão; não foi elevado arbitrariamente para milhares. Volume de sessões de 256 MB e memória de 1 GB exigem dimensionamento e medição por conexão antes de ampliar esse limite.
 
-O teto de cache de protocolo de um dispositivo pode chegar a aproximadamente 187,5 MiB, além do mapa de seleção. Teto individual não é reserva de capacidade: vários canais próximos desse limite excederiam o volume atual. Armazenamento cheio pode impedir novos envios antes do relay; acompanhar disco e retenção é requisito para ampliar a quantidade de números.
+O teto de cache de protocolo de um dispositivo pode chegar a aproximadamente 187,5 MiB, além de 8 MiB do mapa de seleção e 8 MiB da fila de admissão. Teto individual não é reserva de capacidade: vários canais próximos desse limite excederiam o volume atual. Armazenamento cheio pode impedir novos envios antes do relay; acompanhar disco e retenção é requisito para ampliar a quantidade de números. O perfil atual de serviços digitais admite um dispositivo por empresa; os canais privados de IA têm allowlist de até dez remetentes. Esses limites de produto também impedem afirmar capacidade irrestrita para milhares de clientes.
 
 ## Configurações e operação
 
@@ -110,6 +126,8 @@ O teto de cache de protocolo de um dispositivo pode chegar a aproximadamente 187
 | `INBOX_CONTROL_ENABLED`, `INBOX_SEND_ENABLED` | Arbitragem com operadores e outbox humano; não ativar globalmente para executar um teste |
 | `QR_NATIVE_INTERACTIVE_ENABLED` | Opt-in de formatos nativos; padrão conservador em texto |
 | `QR_WA_VERSION_AUTO` | Política compartilhada de revisão Web; correlacionar `web_version` e `web_version_source` com incidentes antes de alterá-la |
+| `RAILWAY_DEPLOYMENT_DRAINING_SECONDS=20` | Na bridge, prazo de encerramento maior que os oito segundos de drenagem do processo; aplicado na próxima publicação |
+| `RAILWAY_DEPLOYMENT_OVERLAP_SECONDS=0` | Na bridge, evita manter a versão antiga atendendo após a sucessora ficar pronta; a lease continua sendo a autoridade exclusiva |
 
 A revisão Web, o build, deployment, instância, responsável e fence entram nos diagnósticos. O painel recebe somente estado, datas, tentativa, motivo classificado e ação apropriada; não recebe chaves, tokens, conteúdo de mensagens ou identificadores de infraestrutura. O log passivo de saúde a cada 60 segundos distingue o processo vivo de uma sessão pronta.
 
@@ -129,6 +147,8 @@ O modo principal não gerenciado, com `QR_LEGACY_CENTRAL_ENABLED=0`, mantém com
 
 Primeiro verificar o motivo: 401 solicita nova autenticação por logout/revogação; 403 exige revisão da restrição; 411 exige compatibilidade; 440 exige resolver disputa da sessão. Falhas transitórias usam a sessão existente e o orçamento de recuperação. Código 500 não autoriza concluir corrupção nem apagar arquivos.
 
+`review_incoming_messages` exige conferir a entrada retida, o histórico SQL e eventuais efeitos/recibos antes de uma decisão humana. Não esvaziar a fila ou renovar timestamps para forçar respostas antigas. `inspect_ingress_storage` exige preservar uma cópia cifrada, verificar capacidade, permissões e integridade e corrigir a causa antes de retomar a mesma sessão. Retirar a conexão e criar outra não é procedimento de recuperação da fila. A implementação não oferece descarte automático de entradas incertas.
+
 Para transferir a sessão, pausar novos envios, encerrar o responsável antigo com drenagem e confirmar que ele perdeu a lease antes de iniciar o sucessor. Fazer backup cifrado do diretório inteiro de `/data`, incluindo marcadores, auth, chaves, estado de sincronização, caches de retry, mapas de seleção e ledgers; preservar o segredo separadamente. Restaurar uma cópia isolada e verificar integridade antes de ligar o socket. Nunca manter Railway e VPS ativos contra cópias da mesma sessão.
 
 As origens atualmente aceitas são da rede privada Railway. A migração efetiva exige uma configuração explícita de rede privada/TLS para VPS, com os mesmos testes de autorização e ausência de redirecionamentos. Não basta substituir a URL por uma origem arbitrária nem publicar a porta da bridge na internet.
@@ -143,12 +163,16 @@ Estado antes da publicação: **em homologação**. As execuções abaixo têm c
 | Comparação completa de unidades WhatsApp por identidade | Candidato com 5.117 aprovados, 46 falhas, dez skips e sete erros de preparação. Todos os 44 casos adicionados aprovados; nenhuma falha nova, remoção de caso ou novo skip. A suíte global continua reprovada por falhas herdadas |
 | P0 com PostgreSQL e Redis reais e dados sintéticos isolados | 41/41 aprovados, incluindo RLS, lease, expiração, perda da autoridade, Lua real e dois cenários em processos separados; repetição após a correção de quarentena com 46/46, incluindo cinco casos novos de revogação e validação |
 | Recuperação de tarefas pendentes com PostgreSQL real | 9/9 aprovados; timeout/resultado incerto, autorização revogada e reconciliação sem novo envio |
+| Admissão e troca de número com PostgreSQL real | 14/14 aprovados localmente: quatro novos casos de duplicidade/contrato de áudio, `relink` idempotente que invalida a autorização antiga e reinício que preserva pendências, além dos dez casos existentes do dispositivo. Nenhum socket ou provedor real é utilizado nesses casos |
 | Correção do verificador de prontidão | Falha reproduzida antes; 92 testes direcionados de unidade e PostgreSQL aprovados depois, incluindo todo o módulo de prontidão WhatsApp e execução a partir de outro diretório |
 | Preview de áudio | 16/16 aprovados |
 | Revisão independente de regressões críticas da bridge | 104/104 aprovados |
-| Painel de dispositivos e estados de conexão | 25/25 testes DOM aprovados antes do commit |
+| Painel de dispositivos e estados de conexão | 27/27 testes DOM aprovados antes do commit, incluindo fila pendente, revisão e armazenamento indisponível |
+| Transporte completo após a fila durável e os dois adaptadores de IA | 995 casos no Windows: 971 aprovados, as mesmas 19 falhas herdadas do painel, cinco verificações POSIX/symlink reservadas ao Linux e zero cancelamentos. Comparação por nome e multiplicidade: nenhuma nova falha |
+| Unidades de dispositivos, regras, áudio, prontidão, saúde e contexto após relink | 134 casos locais: 131 aprovados; três falham porque ffmpeg/ffprobe não estão instalados no ambiente Windows. A qualificação Linux instala os decodificadores reais e deve executar esses casos antes da publicação |
 | Dependências de produção | `npm audit`: zero avisos conhecidos, sem mudança de versão ou lockfile |
 | Primeira qualificação Linux no commit `580e32e` | Transporte completo com 881 casos, 862 aprovados e as mesmas 19 falhas herdadas do fixture de painel; 41 casos adicionais aprovados, zero skips/cancelamentos; Docker, auditoria, painel 25/25 e gate de 93 casos aprovados. A correção posterior da quarentena exige nova execução no novo commit |
+| Qualificação Linux de `09fb8c1`, anterior à correção da fila de admissão | Transporte sem o fixture de painel: 816/816; conjunto completo com 895 casos, 876 aprovados e as mesmas 19 falhas herdadas; 55 casos adicionais aprovados; PostgreSQL/Redis 166/166 (52 reais e 114 de unidade); painel 25/25; Docker e auditoria aprovados. Não qualifica as alterações posteriores de admissão |
 | Execução ampla de 257 integrações PostgreSQL | Incompleta: limite local de 1.200 segundos. Não equivale a uma aprovação ampla |
 
 Os testes de subprocesso encerram um responsável SQL sintético, demonstram rejeição do sucessor antes de expirar a concessão, nova fence depois da transferência e bloqueio do responsável antigo, enquanto outro canal permanece utilizável. Não desligam um telefone real nem comprovam retorno de uma sessão Baileys real.
@@ -164,3 +188,5 @@ A varredura automática Deep Scan não iniciou: `Deep Scan cannot safely start a
 - [Troubleshooting oficial do Baileys](https://github.com/WhiskeySockets/docs/blob/main/advanced/troubleshooting.mdx).
 - [Release fixada 6.7.24](https://github.com/WhiskeySockets/Baileys/releases/tag/v6.7.24).
 - [Defeito de buffer inicial relatado na versão 6.7.24](https://github.com/WhiskeySockets/Baileys/issues/2810). O relato upstream não comprova ocorrência no Orion.
+- [Encerramento e sobreposição de deployments no Railway](https://docs.railway.com/deployments/reference#singleton-deploys).
+- [Prazo de encerramento do Railway](https://docs.railway.com/deployments/deployment-teardown).

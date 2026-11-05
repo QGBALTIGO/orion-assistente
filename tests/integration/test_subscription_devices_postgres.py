@@ -168,7 +168,10 @@ async def action(case, name, *, key=None, expected=None):
     response = await case.client.post(case.prefix + f"/{case.device['id']}/actions", json={
         "action": name, "expected_revision": expected or case.device["revision"], "idempotency_key": str(key or uuid4())})
     assert response.status_code == 202, response.text
-    return response.json()
+    value = response.json()
+    if value.get("device"):
+        case.device["revision"] = value["device"]["revision"]
+    return value
 
 
 def scope(case, revision=None):

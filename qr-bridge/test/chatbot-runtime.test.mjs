@@ -18,7 +18,7 @@ async function until(predicate){for(let i=0;i<400;i++){if(predicate())return;awa
 
 async function fixture(t,{native=false}={}){
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'orion-chatbot-runtime-'));fs.chmodSync(root,0o700);
-  const directory=path.join(root,'auth'),deviceDirectory=path.join(root,'device');fs.mkdirSync(directory,{mode:0o700});fs.mkdirSync(deviceDirectory,{mode:0o700});
+  const directory=path.join(root,randomUUID()),deviceDirectory=path.join(root,'device');fs.mkdirSync(directory,{mode:0o700});fs.mkdirSync(deviceDirectory,{mode:0o700});
   let state={id:randomUUID(),generation:randomUUID(),settings_revision:1,settings:structuredClone(defaults),chatbot:{revision:1},
     capabilities:{proxy:true,webhook:true,transcription_available:true,transcription_max_bytes:25_000_000,transcription_max_seconds:1800,transcription_max_text_chars:120000}},
     alive=true,clock=1_000_000,serial=0,client,config,session;
@@ -32,7 +32,7 @@ async function fixture(t,{native=false}={}){
     allowedSender:()=>false,assistantEnabled:()=>false,audioEnabled:()=>false,notifySelf:false,
     onInbound:()=>assert.fail('Chatbot must not reach legacy intake'),onMessage:()=>assert.fail('Chatbot must not activate legacy AI'),
     onReceipt:()=>assert.fail('Chatbot must not use legacy receipts'),transcribe:()=>assert.fail('Chatbot must not use legacy ASR'),onConnected(){},onDisconnected(){},
-    deviceEvent:async payload=>{events.push(payload);return {recorded:true,effects:await behavior.event(payload)};},
+    deviceEvent:async payload=>{events.push(payload);return {duplicate:false,effects:await behavior.event(payload)};},
     deviceEffectAuthorize:async payload=>{
       authorizations.push(payload);if(await behavior.authorize(payload)!==true)return {authorized:false,retry_after_ms:1000};
       const grant=permits.get(payload.operation_id);if(!grant)return {authorized:false};return {authorized:true,...payload,...grant};
@@ -206,7 +206,7 @@ test('provider selections preserve selected ID and quoted menu reference while m
   assert.deepEqual(normalizeChatbotInput({key,message:{conversation:'orion:one'}}),{origin:'contact',text:'orion:one'});
 });
 
-test('arrival order is fixed before delayed PN resolution; one contact waits for ASR while another proceeds',async t=>{
+test('arrival order precedes delayed PN resolution and following controls admit before source ASR',async t=>{
   const f=await fixture(t),lookup=defer(),audio=defer();f.state.settings.transcription.enabled=true;
   const transcribe=f.deviceEffect('transcribe',{phone,message_id:'audio-first',max_seconds:120,max_bytes:25_000_000});
   f.behavior.lookup=()=>lookup.promise;f.behavior.audio=()=>audio.promise;f.behavior.event=async row=>row.kind==='audio'?[transcribe]:[];
@@ -214,7 +214,7 @@ test('arrival order is fixed before delayed PN resolution; one contact waits for
   f.receive('text-second','Depois');f.receive('different-contact','Outro contato',{remoteJid:other+'@s.whatsapp.net'});
   await tick();assert.equal(f.events.some(row=>row.message_id==='text-second'),false);
   lookup.resolve(phone+'@s.whatsapp.net');await until(()=>f.audioCalls.length===1&&f.events.some(row=>row.message_id==='different-contact'));
-  assert.equal(f.events.some(row=>row.message_id==='text-second'),false);
+  assert.equal(f.events.some(row=>row.message_id==='text-second'),true,'Following controls are admitted before ASR, preserving their original order');
   const first=f.events.find(row=>row.message_id==='audio-first');audio.resolve({text:'Reconhecido',truncated:false,effects:[]});
   await until(()=>f.events.some(row=>row.message_id==='text-second'));
   assert.ok(first.ingress_order<f.events.find(row=>row.message_id==='text-second').ingress_order);assert.equal(f.audioCalls.length,1);
@@ -290,4 +290,14 @@ test('bounded ordered ingress drops overflow without calling identity resolution
   assert.equal(ingress.enqueue(1),true);assert.equal(ingress.enqueue(2),true);assert.equal(ingress.enqueue(3),false);
   await tick();assert.deepEqual(resolved,[1]);ingress.close();first.resolve();await until(()=>ingress.pending()===0);
   assert.deepEqual(processed,[]);assert.deepEqual(resolved,[1]);
+});
+
+test('ordered ingress settles failed and timed-out identities without stopping later contacts',async()=>{
+  const timers=[],settled=[],processed=[];
+  const ingress=createOrderedIngress({schedule:fn=>{timers.push(fn);return fn;},cancel:()=>{},
+    resolveIdentity:async value=>{if(value==='timeout')return new Promise(()=>{});if(value==='failed')throw Error('synthetic identity error');return value;},
+    run:async value=>processed.push(value),onSettled:value=>settled.push(value)});
+  ingress.enqueue('timeout');ingress.enqueue('failed');ingress.enqueue('healthy');await tick();timers[0]();
+  await until(()=>ingress.pending()===0);assert.deepEqual(processed,['healthy']);assert.deepEqual(settled,['timeout','failed','healthy']);
+  ingress.close();
 });

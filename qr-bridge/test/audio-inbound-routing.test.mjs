@@ -17,10 +17,12 @@ import {allowAssistantRecipient,allowAssistantAudio,pilotNumber} from '../src/ai
 import {makeConversationIntake} from '../src/conversation-intake.mjs';
 import {makeAssistantTyping} from '../src/assistant-typing.mjs';
 import {transcribeAssistantAudio} from '../src/ai-audio.mjs';
+import {createAssistantIngress} from '../src/assistant-ingress.mjs';
+import {BufferJSON} from '@whiskeysockets/baileys';
 
 // Real inbound handler, intake and private forwarder. Network and speech
 // recognition are replaced, so this proves routing rather than ASR accuracy.
-const source=fs.readFileSync(new URL('../src/server.mjs',import.meta.url),'utf8');
+const source=fs.readFileSync(new URL('../src/server.mjs',import.meta.url),'utf8').replace(/\r\n/g,'\n');
 const start=source.indexOf('  const inboundMetadata=new Map();');
 const end=source.indexOf('  client.ev.on("connection.update"',start);
 assert.ok(start>0&&end>start);
@@ -32,12 +34,12 @@ process.env.ORION_CONTACT_TEST_MODE='1';
 const contactDirectories=[];
 after(()=>{for(const directory of contactDirectories)fs.rmSync(directory,{recursive:true,force:true});});
 
-function harness({transcribe=async()=> 'Synthetic speech',audioEnabled=true,answer=null,realAudio=false,legacyController,
-  revisionEnabled=false,forwardResponse,sendResponse,presence,typingConfig={maxPauseMs:0},
+function harness({transcribe=async()=> 'Synthetic speech',audioEnabled=true,answer=null,realAudio=false,legacyController,directory:reuseDirectory,
+  revisionEnabled=false,forwardResponse,sendResponse,presence,typingConfig={maxPauseMs:0},multipleRecipients=false,withConnection=false,
   centralEnabled=false,centralAnswer='Confirmação de agendamento'}={}){
   let listener,transcriptions=0,downloads=0;
-  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'orion-inbound-names-'));
-  contactDirectories.push(directory);
+  const directory=reuseDirectory||fs.mkdtempSync(path.join(os.tmpdir(),'orion-inbound-names-'));
+  if(!reuseDirectory)contactDirectories.push(directory);
   const namesStore=makeContactNames({directory,secret:'synthetic-local-contact-key-at-least-32-bytes'});
   namesStore.bindIdentity('5511999990000@s.whatsapp.net');
   let nameChanges=0;
@@ -45,19 +47,27 @@ function harness({transcribe=async()=> 'Synthetic speech',audioEnabled=true,answ
   const env={QR_AI_ENABLED:'1',QR_AI_AUDIO_ENABLED:audioEnabled?'1':'0',QR_AI_GROUP_WAIT_MS:'0',
     QR_AI_PILOT_NUMBER:phone,QR_AI_API_URL:'http://orion-assistente.railway.internal/internal/qr/ai/reply'};
   if(revisionEnabled)env.QR_AI_INTAKE_REVISION_ENABLED='1';
+  if(multipleRecipients)delete env.QR_AI_PILOT_NUMBER;
   if(centralEnabled)env.ORION_CENTRAL_CONFIRMATION_REPLY_ENABLED='1';
-  const handlers=new Map();const client={ev:{on(event,callback){assert.ok(['messages.upsert','messages.update','messages.delete','call'].includes(event));handlers.set(event,callback);if(event==='messages.upsert')listener=callback;}}};
+  const handlers=new Map();const client={user:{id:'5511999990000@s.whatsapp.net'},ev:{on(event,callback){assert.ok(['messages.upsert','messages.update','messages.delete','call','connection.update'].includes(event));handlers.set(event,callback);if(event==='messages.upsert')listener=callback;}}};
   if(presence)client.sendPresenceUpdate=(type,jid)=>{
     presenceCalls.push({type,jid});events.push(['typing',type,jid]);return presence(type,jid);
   };
   const context=vm.createContext({client,socket:client,mine:1,generation:1,status:'connected',
     legacyCentral:legacyController||{configured:()=>false},
-    namesStore,namesSync:{changed(){nameChanges++;}},
+    namesStore,namesSync:{changed(){nameChanges++;},start(){}},path,authDir:directory,createAssistantIngress,BufferJSON,
+    normalizeFromJid:value=>String(value).match(/^(\d+)(?::\d+)?@s\.whatsapp\.net$/)?.[1]||null,
+    primaryIngressDiagnostics:null,primaryIngressCanAutomate:null,stopPrimaryIngress(){},
+    primaryHealth:{connected(){events.push(['readiness',context.primaryIngressDiagnostics?.(),context.primaryIngressCanAutomate?.()]);}},
+    everConnected:false,qr:'',qrAt:0,pairingCode:'',pairAt:0,pairedNumber:'',lastError:null,
+    connectedSince:0,pendingNotificationsReceived:false,notifyNewLink:false,
+    refreshConnectedProfile:async()=>{},SMOKE_ID:'synthetic-smoke',APPOINTMENT_QA_ID:'synthetic-appointment',
+    setTimeout:(fn,ms)=>({fn,ms,unref(){}}),clearTimeout(){},
     normalizeInbound,updateEvent,callEvent,safetyControl,queueControl,extractText,resolveMessagePhone,shouldIngestUpsert,timestampMs,makeConversationIntake,
     makeAssistantTyping:options=>makeAssistantTyping({...options,...typingConfig}),
     shouldCacheLinkedSelfText,retryStore:makeMessageRetryStore(),retryDiagnostics:{persistedSelfTexts:0,persistFailures:0},
     pilotNumber:()=>pilotNumber(env),transport:{record:(...args)=>events.push(args)},retryMessages:{save(){}},seen,
-    connectedStore:{record(){},settings:()=>({chatbot:false,transcription:false})},
+    connectedStore:{record(){},settings:()=>({chatbot:multipleRecipients,transcription:multipleRecipients})},
     assistantAudioEnabled:()=>audioEnabled,
     allowAssistantRecipient:(p,s)=>allowAssistantRecipient(p,s,env),
     allowAssistantAudio:(p,s)=>allowAssistantAudio(p,s,env),
@@ -92,12 +102,13 @@ function harness({transcribe=async()=> 'Synthetic speech',audioEnabled=true,answ
       return {ok:true,json:async()=>forwardResponse?forwardResponse(payload,forwarded.length):({answer})};
     }}),console:{info(){},warn(){}}
   });
-  vm.runInContext(handlerSource,context);
+  vm.runInContext(withConnection?source.slice(start,source.indexOf('\n}\nasync function connect(){',end)):handlerSource,context);
   const message=(id,{text,remote=phone+'@s.whatsapp.net',senderPn,seconds=1,fileLength=20,pushName,fromMe=false}={})=>({
     key:{id,remoteJid:remote,fromMe,...(senderPn?{senderPn}:{})},pushName,messageTimestamp:Math.floor(Date.now()/1000),
     message:text===undefined?{audioMessage:{fileLength,seconds}}:{conversation:text}
   });
-  return {context,env,forwarded,inbox,sent,sentOptions,events,message,notices,presenceCalls,namesStore,centralCalls,
+  return {context,env,forwarded,inbox,sent,sentOptions,events,message,notices,presenceCalls,namesStore,centralCalls,directory,
+    recover:()=>context.replayAssistantIngress(),diagnostics:()=>context.primaryIngressDiagnostics?.(),
     get nameChanges(){return nameChanges;},
     emit:(messages,type='notify')=>listener({type,messages}),emitEvent:(event,value)=>handlers.get(event)(value),
     get transcriptions(){return transcriptions;},get downloads(){return downloads;}};
@@ -106,6 +117,7 @@ function harness({transcribe=async()=> 'Synthetic speech',audioEnabled=true,answ
 test('real adopted handler journals before processing and uses only the managed reply path',async()=>{
   const events=[],proofs=[];
   const legacyController={configured:()=>true,resume:async()=>{},allowed:p=>p===phone,
+    ingressScope:()=>({tenant_id:'10000000-0000-4000-8000-000000000001',channel_id:'20000000-0000-4000-8000-000000000001',session_digest:'a'.repeat(64)}),
     inbound:async payload=>{events.push(['journal',payload]);const proof={revision:proofs.length+1};proofs.push(proof);return proof;},
     forward:async(payload,options)=>{events.push(['managed',payload,options]);return {accepted:true};}};
   const h=harness({legacyController,answer:'This legacy answer must never be used'});
@@ -113,6 +125,130 @@ test('real adopted handler journals before processing and uses only the managed 
   assert.deepEqual(events.map(e=>e[0]),['journal','managed']);
   assert.equal(events[1][1].intake_revision,1);assert.equal(events[1][2].noticeProofs[0],proofs[0]);
   assert.equal(h.forwarded.length,0);assert.equal(h.sent.length,0);assert.equal(h.notices.length,0);
+});
+
+const admissionScope={tenant_id:'10000000-0000-4000-8000-000000000001',
+  channel_id:'20000000-0000-4000-8000-000000000001',session_digest:'a'.repeat(64)};
+function adopted({inbound,forward,allowed=p=>p===phone,scope=()=>admissionScope}={}){
+  let revision=0;const notices=[],turns=[];
+  return {notices,turns,configured:()=>true,resume:async()=>{},allowed,ingressScope:scope,
+    async inbound(payload){notices.push(payload);return inbound?inbound(payload):{revision:++revision};},
+    async forward(payload,options){turns.push(payload);return forward?forward(payload,options):{accepted:true};}};
+}
+
+test('legacy notice503 is encrypted before async admission and recovers the original ID/body/time once',async()=>{
+  let unavailable=true;const central=adopted({inbound:async()=>{assert.equal(h.diagnostics().pending,1);
+    if(unavailable)throw Error('503');return {revision:1};}}),h=harness({legacyController:central});
+  const raw=h.message('NOTICE-503',{text:'SYNTHETIC ORIGINAL PRIVATE TEXT'}),at=Date.now()-30000;
+  raw.messageTimestamp=Math.floor(at/1000);
+  await h.emit([raw]);assert.equal(h.diagnostics().pending,1);assert.equal(h.diagnostics().blocked,0);
+  assert.equal(central.turns.length,0);assert.equal(h.inbox.length,0);assert.equal(h.transcriptions,0);
+  const encrypted=fs.readdirSync(h.directory,{recursive:true}).filter(name=>name.endsWith('.enc'));
+  assert.ok(encrypted.length);for(const file of encrypted)
+    assert.equal(fs.readFileSync(path.join(h.directory,file)).includes(Buffer.from('SYNTHETIC ORIGINAL PRIVATE TEXT')),false);
+  await h.emit([{...raw,message:{conversation:'FORGED DUPLICATE'},messageTimestamp:Math.floor(Date.now()/1000)}]);
+  assert.equal(central.notices.length,1);
+  unavailable=false;await h.recover();assert.equal(central.turns.length,1);
+  assert.equal(central.turns[0].message_id,'NOTICE-503');assert.equal(central.turns[0].text,'SYNTHETIC ORIGINAL PRIVATE TEXT');
+  assert.equal(h.inbox[0].at,Math.floor(at/1000)*1000);assert.equal(h.diagnostics().entries,0);
+  await h.emit([raw]);assert.equal(central.turns.length,1);
+});
+
+test('legacy process restart replays only fresh pre-prepare audio with original BufferJSON payload',async()=>{
+  const unavailable=adopted({inbound:async()=>{throw Error('503');}}),first=harness({legacyController:unavailable});
+  const raw=first.message('RESTART-AUDIO');raw.message.audioMessage.fileSha256=Buffer.from([1,5,9]);
+  const at=Number(raw.messageTimestamp)*1000;await first.emit([raw]);assert.equal(first.transcriptions,0);
+  first.context.stopPrimaryIngress();first.context.generation++;
+  const central=adopted(),restored=harness({legacyController:central,directory:first.directory,
+    transcribe:async message=>{assert.deepEqual(message.message.audioMessage.fileSha256,Buffer.from([1,5,9]));return 'fala original';}});
+  await restored.recover();assert.equal(restored.transcriptions,1);assert.equal(central.turns.length,1);
+  assert.equal(restored.inbox[0].at,at);assert.equal(restored.diagnostics().entries,0);
+});
+
+for(const outcome of [undefined,null,{}, {accepted:false},{state:'superseded_after_write',not_committed:false}])
+  test(`legacy unknown business outcome ${JSON.stringify(outcome)} retains review and never replays`,async()=>{
+    const central=adopted({forward:async()=>outcome}),h=harness({legacyController:central});
+    const raw=h.message('UNCERTAIN',{text:'Pode confirmar'});await h.emit([raw]);
+    assert.equal(h.diagnostics().blocked,1);assert.equal(h.diagnostics().active,0);assert.equal(central.turns.length,1);
+    await h.recover();await h.emit([raw]);assert.equal(central.turns.length,1);assert.equal(h.diagnostics().blocked,1);
+    await h.emit([h.message('SAFETY-CONTROL',{text:'Não responda mais'})]);
+    assert.equal(central.notices.length,2);assert.equal(central.turns.length,1);assert.equal(h.sent.length,0);
+  });
+
+for(const outcome of [{state:'committed_no_reply',not_committed:false},{state:'policy_skipped',not_committed:true}])
+  test(`legacy explicit terminal ${outcome.state} completes the current durable input`,async()=>{
+    const central=adopted({forward:async()=>outcome}),h=harness({legacyController:central});
+    await h.emit([h.message('KNOWN-NO-REPLY',{text:'Olá'})]);assert.equal(h.diagnostics().entries,0);
+    assert.equal(h.sent.length,0);assert.equal(central.turns.length,1);
+  });
+
+test('legacy crash after preparation keeps encrypted input as review in the replacement process',async()=>{
+  const inference=deferred(),oldCentral=adopted({forward:async()=>{await inference.promise;return {accepted:true};}});
+  const old=harness({legacyController:oldCentral}),running=old.emit([old.message('STARTED',{text:'Pode confirmar'})]);
+  await tick();assert.equal(old.diagnostics().active,1);
+  old.context.stopPrimaryIngress();old.context.generation++;
+  const central=adopted(),replacement=harness({legacyController:central,directory:old.directory});
+  await replacement.recover();assert.equal(replacement.diagnostics().blocked,1);assert.equal(central.turns.length,0);
+  await replacement.emit([replacement.message('NEW-AFTER-CRASH',{text:'Outra mensagem'})]);
+  assert.equal(central.notices.length,1);assert.equal(central.turns.length,0);
+  inference.resolve();await running;assert.equal(replacement.diagnostics().blocked,1);
+});
+
+test('legacy open synchronously loads existing review before health publication or automated readiness',async()=>{
+  const old=harness({legacyController:adopted({forward:async()=>undefined})});
+  await old.emit([old.message('REVIEW-ON-OPEN',{text:'Pode confirmar'})]);old.context.stopPrimaryIngress();old.context.generation++;
+  const central=adopted(),replacement=harness({legacyController:central,directory:old.directory,withConnection:true});
+  replacement.emitEvent('connection.update',{connection:'open'});
+  const publication=replacement.events.find(event=>event[0]==='readiness');
+  assert.equal(publication[1].blocked,1);assert.equal(publication[2],false);
+  assert.equal(replacement.context.primaryIngressCanAutomate(),false);assert.equal(central.turns.length,0);
+});
+
+test('legacy healthy messages from two allowed conversations both execute without false review',async()=>{
+  const other='5511999999998',central=adopted({allowed:p=>[phone,other].includes(p)});
+  const h=harness({legacyController:central,multipleRecipients:true});
+  await h.emit([h.message('CONTACT-A',{text:'Primeiro'}),h.message('CONTACT-B',{text:'Segundo',remote:other+'@s.whatsapp.net'})]);
+  assert.equal(central.turns.length,2);assert.equal(h.diagnostics().entries,0);assert.equal(h.diagnostics().blocked,0);
+});
+
+test('legacy healthy sibling waits before inference until another contact503 notice recovers',async()=>{
+  const other='5511999999998';let unavailable=true,revision=0;
+  const central=adopted({allowed:p=>[phone,other].includes(p),inbound:async payload=>{
+    if(payload.phone===other&&unavailable)throw Error('503');return {revision:++revision};}});
+  const h=harness({legacyController:central,multipleRecipients:true});
+  const running=h.emit([h.message('HEALTHY-WAIT',{text:'Primeiro'}),h.message('SIBLING-503',{text:'Segundo',remote:other+'@s.whatsapp.net'})]);
+  await tick();assert.equal(central.turns.length,0);assert.equal(h.diagnostics().pending,1);assert.equal(h.diagnostics().blocked,0);
+  unavailable=false;await h.recover();await running;
+  assert.equal(central.turns.length,2);assert.equal(h.diagnostics().entries,0);assert.equal(h.diagnostics().blocked,0);
+});
+
+test('legacy a failed pending control prevents a delayed old reply and is not silently cleared',async()=>{
+  const inference=deferred();let attempted=0;
+  const central=adopted({inbound:async payload=>{if(payload.message_id==='STOP')throw Error('503');return {revision:1};},
+    forward:async(_payload,options)=>{await inference.promise;if(options.isCurrent())attempted++;return {accepted:attempted===1};}});
+  const h=harness({legacyController:central}),running=h.emit([h.message('OLD-TURN',{text:'SIM'})]);
+  await tick();const stopping=h.emit([h.message('STOP',{text:'Não responda mais'})]);
+  await tick();inference.resolve();await Promise.all([running,stopping]);
+  assert.equal(attempted,0);assert.equal(h.diagnostics().pending,1);assert.equal(h.diagnostics().blocked,1);
+  assert.equal(h.sent.length,0);
+});
+
+test('legacy unauthorized PN is excluded before journaling, unresolved LID remains retryable before prepare',async()=>{
+  const central=adopted(),h=harness({legacyController:central});
+  await h.emit([h.message('DENIED-PN',{text:'private',remote:'5511999999998@s.whatsapp.net'})]);
+  assert.equal(h.diagnostics().entries,0);assert.equal(central.notices.length,0);
+  const raw=h.message('OPAQUE-LID',{text:'Olá',remote:'123456789012345678@lid'});
+  await h.emit([raw]);assert.equal(h.diagnostics().pending,1);assert.equal(h.transcriptions,0);
+  h.context.client.signalRepository={lidMapping:{getPNForLID:async()=>phone+'@s.whatsapp.net'}};
+  await h.recover();assert.equal(central.turns.length,1);assert.equal(h.diagnostics().entries,0);
+});
+
+test('legacy expired input is retained for review and a new timestamp on the same ID cannot revive it',async()=>{
+  const central=adopted(),h=harness({legacyController:central}),raw=h.message('EXPIRED',{text:'Antigo'});
+  raw.messageTimestamp=Math.floor((Date.now()-16*60000)/1000);await h.emit([raw]);
+  assert.equal(h.diagnostics().blocked,1);assert.equal(central.notices.length,0);
+  raw.messageTimestamp=Math.floor(Date.now()/1000);await h.emit([raw]);await h.recover();
+  assert.equal(h.diagnostics().blocked,1);assert.equal(central.turns.length,0);
 });
 
 test('real inbound handler forwards a known WhatsApp profile without deriving a name from message text',async()=>{

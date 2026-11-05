@@ -15,9 +15,9 @@ function deferred(){let resolve;const promise=new Promise(done=>{resolve=done;})
 async function until(predicate){for(let i=0;i<100;i++){if(predicate())return;await tick();}assert.fail('Expected pipeline boundary was not reached');}
 async function fixture(t){
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'orion-managed-intake-'));fs.chmodSync(root,0o700);
-  const rows=new Map(),clients=new Map(),contexts=new Map(),notices=[],forwards=[],sent=[],revisions=new Map(),ids=new Map();let asr=0,serial=0;
+  const rows=new Map(),clients=new Map(),contexts=new Map(),sessions=new Map(),notices=[],forwards=[],sent=[],revisions=new Map(),ids=new Map();let asr=0,serial=0;
   const scope=(id,pn)=>id+':'+pn;
-  const behavior={asr:async()=> 'Pode confirmar',forward:async()=>({answer:'Resumo atualizado'})};
+  const behavior={asr:async()=> 'Pode confirmar',forward:async()=>({answer:'Resumo atualizado'}),notice:async()=>{}};
   const broker={
     async lease(id,key,operation,owner,fence){
       const row=rows.get(id);if(!row||row.key!==key||row.revoked)throw Error('denied');
@@ -27,6 +27,7 @@ async function fixture(t){
         assistant_enabled:row.assistant,allowed_senders:[phone]};
     },
     async interaction(id,_key,_lease,payload){
+      await behavior.notice(payload);
       const key=scope(id,payload.phone),dedupe=key+':'+payload.message_id;
       if(!ids.has(dedupe)){revisions.set(key,(revisions.get(key)||0)+1);ids.set(dedupe,revisions.get(key));}
       const revision=ids.get(dedupe);notices.push({id,...payload,revision});return {recorded:true,revision};
@@ -47,6 +48,7 @@ async function fixture(t){
         downloadMediaMessage:async()=>Buffer.from('OggS synthetic'),generateMessageIDV2:()=> 'sent-'+(++serial),
         generateWAMessage:async(jid,{text})=>({key:{id:'sent-'+(++serial),remoteJid:jid},message:{conversation:text}})};
       const session=await createBaileysChannelSession(context,{loadBaileys:async()=>mod,intakeOptions:{settleMs:0,maxGroupMs:0}});
+      sessions.set(context.channelId,session);
       client.ev.emit('connection.update',{connection:'open'});return session;
     }});
   t.after(()=>{manager.close();fs.rmSync(root,{recursive:true,force:true});});
@@ -55,7 +57,7 @@ async function fixture(t){
   function receive(id,messageId,body,extra={}){clients.get(id).ev.emit('messages.upsert',{type:'notify',messages:[{
     key:{id:messageId,remoteJid:phone+'@s.whatsapp.net',...extra},messageTimestamp:Date.now()/1000,
     message:typeof body==='string'?{conversation:body}:body}]});}
-  return {manager,add,receive,contexts,clients,rows,behavior,notices,forwards,sent,revisions,scope,get asr(){return asr;}};
+  return {manager,add,receive,contexts,clients,sessions,rows,behavior,notices,forwards,sent,revisions,scope,get asr(){return asr;}};
 }
 const audio={audioMessage:{fileLength:18,seconds:1,mimetype:'audio/ogg'}};
 
@@ -94,20 +96,39 @@ for(const result of ['unknown','after_write'])test(`managed ${result} never repl
     return {answer:'Confira o resultado anterior antes de alterar'};};
   f.receive(a.id,'old-audio',audio);await until(()=>f.forwards.length===1);
   f.receive(a.id,'new-correction','Pera, é quarta');await until(()=>f.notices.length===2);
-  inference.resolve();await until(()=>f.sent.length===1);
-  assert.equal(f.forwards.length,2);assert.equal(f.forwards[1].text,'Pera, é quarta');
-  assert.deepEqual(f.forwards[1].message_ids,['new-correction']);assert.equal(f.forwards[1].require_summary_review,true);
+  inference.resolve();await until(()=>f.sessions.get(a.id).connectionHealth().ingress_blocked>0);
+  await tick();await tick();assert.equal(f.forwards.length,1,'Unknown business outcome requires review before another turn');
+  assert.equal(f.notices.some(item=>item.message_id==='new-correction'),true,'Safety admission remains available during review');
+  assert.equal(f.sent.length,0);
   assert.equal(f.asr,1);assert.equal(f.sent.some(item=>item.text==='Pode confirmar'),false);
 });
 
-test('a known late response is suppressed and the next request requires summary review',async t=>{
+test('an unconfirmed late response is suppressed and retains the following request for review',async t=>{
   const f=await fixture(t),a=await f.add(),inference=deferred();
   f.behavior.forward=async()=>{if(f.forwards.length===1){await inference.promise;return {answer:'Resumo antigo invisível'};}
     return {answer:'Resumo atual para revisão'};};
   f.receive(a.id,'old-text','Pode confirmar');await until(()=>f.forwards.length===1);
   f.receive(a.id,'correction','Pera, é quarta');await until(()=>f.notices.length===2);inference.resolve();
-  await until(()=>f.sent.length===1);assert.equal(f.sent[0].text,'Resumo atual para revisão');
-  assert.equal(f.forwards[1].require_summary_review,true);assert.equal(f.forwards[1].text,'Pera, é quarta');
+  await until(()=>f.sessions.get(a.id).connectionHealth().ingress_blocked>0);await tick();await tick();
+  assert.equal(f.sent.length,0);assert.equal(f.forwards.length,1);assert.equal(f.notices.some(item=>item.message_id==='correction'),true);
+});
+
+test('pending unadmitted opt-out fences an already running manager inference before native relay',async t=>{
+  const f=await fixture(t),a=await f.add(),inference=deferred();let returned=false;
+  f.behavior.forward=async()=>{await inference.promise;returned=true;return {answer:'Must not overtake optout'};};
+  f.receive(a.id,'before-stop','Quero marcar');await until(()=>f.forwards.length===1);
+  f.behavior.notice=async payload=>{if(payload.message_id==='stop-outage')throw Object.assign(Error('synthetic notice503'),{status:503});};
+  f.receive(a.id,'stop-outage','PARAR');await until(()=>f.sessions.get(a.id).ingressDiagnostics().pending===1);await tick();await tick();
+  inference.resolve();await until(()=>returned);await until(()=>f.sessions.get(a.id).ingressDiagnostics().blocked===1);
+  assert.equal(f.sent.length,0);assert.equal(f.forwards.length,1);assert.equal(f.sessions.get(a.id).ingressDiagnostics().pending,1);
+});
+
+test('manager typed committed-no-reply proof completes journal and allows the next ordinary turn',async t=>{
+  const f=await fixture(t),a=await f.add();f.behavior.forward=async()=>({answer:null});
+  f.receive(a.id,'known-silent','PARAR');await until(()=>f.forwards.length===1);
+  await until(()=>f.sessions.get(a.id).ingressDiagnostics().entries===0);assert.equal(f.sent.length,0);
+  f.behavior.forward=async()=>({answer:'Current authorized summary'});f.receive(a.id,'next-after-silent','Novo pedido');
+  await until(()=>f.sent.length===1);assert.equal(f.forwards.length,2);assert.equal(f.sessions.get(a.id).ingressDiagnostics().blocked,0);
 });
 
 test('PN and trusted LID resolve to one ordered conversation while channels remain isolated',async t=>{

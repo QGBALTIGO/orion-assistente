@@ -17,7 +17,7 @@ async function until(predicate){for(let i=0;i<600;i++){if(predicate())return;awa
 
 async function fixture(t){
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'orion-scheduled-runtime-'));fs.chmodSync(root,0o700);
-  const directory=path.join(root,'auth'),deviceDirectory=path.join(root,'device');
+  const directory=path.join(root,randomUUID()),deviceDirectory=path.join(root,'device');
   fs.mkdirSync(directory,{mode:0o700});fs.mkdirSync(deviceDirectory,{mode:0o700});
   let state={id:randomUUID(),generation:randomUUID(),settings_revision:1,settings:structuredClone(defaults),chatbot:{revision:1},
     capabilities:{proxy:true,webhook:true,transcription_available:false,transcription_max_bytes:25_000_000,transcription_max_seconds:1800}},
@@ -32,7 +32,7 @@ async function fixture(t){
     onInbound:()=>assert.fail('Scheduled messages cannot activate legacy intake'),onMessage:()=>assert.fail('Scheduled messages cannot activate legacy AI'),
     onReceipt:()=>assert.fail('Scheduled messages cannot use legacy receipts'),transcribe:()=>assert.fail('Scheduled messages cannot transcribe'),
     onConnected(){},onDisconnected(){},
-    deviceEvent:async payload=>{events.push(payload);return {recorded:true,effects:[]};},
+    deviceEvent:async payload=>{events.push(payload);return {duplicate:false,effects:[]};},
     deviceEffectsPending:async()=>behavior.pending(),
     deviceEffectAuthorize:async payload=>{authorizations.push(payload);if(await behavior.authorize(payload)!==true)return{authorized:false};
       const grant=permits.get(payload.operation_id);return grant?{authorized:true,...payload,...grant}:{authorized:false};},

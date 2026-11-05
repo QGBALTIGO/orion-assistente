@@ -34,7 +34,8 @@ function harness(options={}){
   const sockets=[],notices=[],timers=new Map();let serial=0;
   const auth={creds:{registered},keys:{async set(){}}};
   const context=vm.createContext({
-    SMOKE_ID,APPOINTMENT_QA_ID,
+    SMOKE_ID,APPOINTMENT_QA_ID,stopPrimaryIngress(){},replayAssistantIngress:async()=>{},
+    ensureAssistantIngress:()=>({pending:()=>[]}),ingressFault:null,
     generation:0,socket:null,timer:null,attempts:0,sessionRecoveryAttempts:0,stopping:false,status:'starting',authDir:'/synthetic/preserved-auth',newLinkNoticeAuthDir:null,
     legacyCentral:{configured:()=>false,transportCurrent:()=>true,assertTransportCurrent:async()=>{}},
     primaryHealth:{connecting(){},connected(){},watch(){},disconnected(){},protocolVersion(){},snapshot:()=>({})},

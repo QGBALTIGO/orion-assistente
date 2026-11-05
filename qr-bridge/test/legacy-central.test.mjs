@@ -11,7 +11,7 @@ import {createHmac} from 'node:crypto';
 const id='10000000-0000-4000-8000-000000000001',tenant='20000000-0000-4000-8000-000000000001';
 const phone='5567999999901',key='synthetic-primary-key-0000000000000000000000000000';
 
-function fixture(changes={}){
+function fixture(changes={},options={}){
   const calls=[],env={QR_LEGACY_CENTRAL_ENABLED:'1',QR_CHANNEL_BROKER_URL:'http://api.railway.internal',
     QR_BRIDGE_TOKEN:key,QR_AI_PILOT_NUMBER:phone,...changes};
   let active=true,connected=true,currentDigest='a'.repeat(64),context,closeAdapter;
@@ -29,7 +29,7 @@ function fixture(changes={}){
       closeAdapter=await central.attach(context);
     },
     send:async(...args)=>{calls.push(['send',...args]);return {accepted:true};},
-    rawSend:async(...args)=>{calls.push(['raw',...args]);return {accepted:true,id:'out:SYNTHETIC'};}});
+    rawSend:async(...args)=>{calls.push(['raw',...args]);return {accepted:true,id:'out:SYNTHETIC'};},...options});
   return {central,calls,env,context:()=>context,adapter:()=>closeAdapter,revoke:()=>{active=false;},disconnect:()=>{connected=false;},replaceAccount:()=>{currentDigest='b'.repeat(64);}};
 }
 
@@ -64,6 +64,35 @@ test('a different physical account cannot use the adopted company or send on its
   assert.equal(f.central.allowed(phone),false);assert.equal(f.adapter().status(),'connecting');
   await assert.rejects(f.adapter().send(phone,'Sintético'),/revoked/);
   assert.equal(f.calls.some(c=>c[0]==='raw'),false);
+});
+
+test('trusted ingress scope exists only for the current matching physical session',async()=>{
+  const f=fixture();assert.equal(f.central.ingressScope(),null);await f.central.resume();
+  const scope=f.central.ingressScope();assert.ok(Object.isFrozen(scope));
+  assert.deepEqual(scope,{tenant_id:tenant,channel_id:id,session_digest:'a'.repeat(64)});
+  f.replaceAccount();assert.equal(f.central.ingressScope(),null);
+  const revoked=fixture();await revoked.central.resume();revoked.revoke();assert.equal(revoked.central.ingressScope(),null);
+});
+
+test('public pending/review readiness stays separate from raw transport authorization',async()=>{
+  let state='degraded';const f=fixture({}, {publicHealth:()=>({state,ingress_pending:1,ingress_blocked:0})});
+  await f.central.resume();assert.equal(f.central.health().connected,true);assert.equal(f.central.health().ready,false);
+  assert.equal(f.adapter().status(),'degraded');assert.equal(f.adapter().connectionHealth().ingress_pending,1);
+  assert.ok(f.central.ingressScope());await f.central.inbound({phone,message_id:'CONTROL',text:'pare'});
+  await f.central.forward({phone,message_id:'TURN',text:'teste'});
+  state='needs_attention';assert.equal(f.adapter().status(),'needs_attention');assert.equal(f.central.health().ready,false);
+  state='connected';assert.equal(f.central.health().ready,true);
+});
+
+test('legacy automated/appointment relay rechecks pending admission after its capacity wait',async()=>{
+  for(const source of ['automation','appointment','assistant']){
+    let ready=true,relay=0,release;const capacity=new Promise(resolve=>{release=resolve;});
+    const f=fixture({}, {outgoingReady:()=>ready,rawSend:async(_phone,_text,options)=>{
+      await capacity;if(!options.isCurrent())return {accepted:false};relay++;return {accepted:true,id:'out:SYNTHETIC'};}});
+    await f.central.resume();const running=f.adapter().send(phone,'Aviso',{source});
+    await Promise.resolve();ready=false;release();await assert.rejects(running,/unknown|revoked/);
+    assert.equal(relay,0);await assert.rejects(f.central.automatic(phone,'Outro aviso'),/not_ready/);
+  }
 });
 
 test('fenced manual transport delegates to the original reliable sender exactly once',async()=>{

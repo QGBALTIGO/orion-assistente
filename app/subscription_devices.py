@@ -144,18 +144,20 @@ def _safe_connection_health(value):
         return None
     states = {"starting", "connecting", "connected", "degraded", "reconnecting", "needs_attention", "stopped"}
     actions = {"reauthenticate", "inspect_provider_restriction", "inspect_client_compatibility",
-               "inspect_session_ownership", "inspect_session_state", "retry_connection"}
+               "inspect_session_ownership", "inspect_session_state", "retry_connection",
+               "inspect_ingress_storage", "review_incoming_messages", "wait_ingress_recovery"}
     reasons = {"logged_out", "forbidden", "multidevice_mismatch", "connection_replaced", "bad_session",
                "reconnect_exhausted", "restart_required", "network_timeout", "connection_closed",
                "provider_unavailable", "transport_interrupted", "socket_not_open", "event_loop_delayed",
-               "transport_unresponsive", "session_recovery", "session_recovery_exhausted", "sync_stalled"}
+               "transport_unresponsive", "session_recovery", "session_recovery_exhausted", "sync_stalled",
+               "ingress_storage_unavailable", "ingress_review_required", "ingress_pending"}
     if not isinstance(value.get("state"), str) or value["state"] not in states:
         return None
     action, reason = value.get("action"), value.get("reason")
     result = {"state": value["state"], "transport_observed": value.get("transport_observed") is True,
               "reason": reason if isinstance(reason, str) and reason in reasons else None,
               "action": action if isinstance(action, str) and action in actions else None}
-    for key in ("last_activity_at", "connected_at", "interrupted_at", "recovered_at", "reconnect_at"):
+    for key in ("last_activity_at", "connected_at", "interrupted_at", "recovered_at", "reconnect_at", "ingress_oldest_at"):
         result[key] = None
         raw = value.get(key)
         try:
@@ -170,6 +172,10 @@ def _safe_connection_health(value):
     code, attempts = value.get("disconnect_code"), value.get("reconnect_attempts")
     result["disconnect_code"] = code if type(code) is int and 100 <= code <= 999 else None
     result["reconnect_attempts"] = attempts if type(attempts) is int and 0 <= attempts <= 1000 else 0
+    for key in ("ingress_pending", "ingress_blocked"):
+        raw = value.get(key)
+        result[key] = raw if type(raw) is int and 0 <= raw <= 20000 else 0
+    result["ingress_storage_unavailable"] = value.get("ingress_storage_unavailable") is True
     return result
 
 
@@ -400,6 +406,22 @@ async def _reserve_control(db, row, action, key, request_payload=None):
         raise fail("DEVICE_CONFLICT")
     if action in {"restart", "relink", "pair"} and row["status"] == "disabled":
         raise fail("DEVICE_CAPABILITY_UNAVAILABLE")
+    if action == "relink":
+        # Explicit replacement of the physical account invalidates frozen
+        # dispatch authority, including jobs admitted in the future. Keep the
+        # logical device/history and uncertain receipts, but never carry an
+        # old account's consent snapshot into the replacement connection.
+        # The idempotency/pending checks above run before this single bump.
+        updated = (await db.execute(text("""UPDATE subscription_devices
+            SET revision=revision+1,runtime='{}'::jsonb,runtime_at=NULL,
+                status='disconnected',updated_at=clock_timestamp()
+            WHERE tenant_id=:t AND id=:d RETURNING *"""),
+            {"t": row["tenant_id"], "d": row["id"]})).mappings().one()
+        row.update(dict(updated))
+        await db.execute(text("""UPDATE subscription_device_effects
+            SET status='not_sent',finished_at=clock_timestamp(),error_code='device_relinked'
+            WHERE tenant_id=:t AND device_id=:d AND status='pending'"""),
+            {"t": row["tenant_id"], "d": row["id"]})
     operation = (await db.execute(text("""INSERT INTO subscription_device_operations
         (tenant_id,device_id,generation,settings_revision,idempotency_key,action,request_payload)
         VALUES(:t,:d,:g,:r,:key,:action,CAST(:payload AS jsonb)) RETURNING *"""),

@@ -28,7 +28,7 @@ export function disconnectPolicy(value,attempts=0,{random=Math.random,sessionAtt
 
 export function makeConnectionHealth({now=Date.now,emit=()=>{},scope={},onStale=()=>{},
   schedule=setTimeout,cancel=clearTimeout,sampleMs=5000,staleMs=90000,syncTimeoutMs=120000,
-  isSyncPending=()=>false,identity=runtimeIdentity(),previous}={}){
+  isSyncPending=()=>false,identity=runtimeIdentity(),previous,readiness=value=>value}={}){
   let state='starting',lastActivityAt=null,interruptedAt=Number.isFinite(previous?.interrupted_at)?previous.interrupted_at:null,recoveredAt=null,connectedAt=null,
     disconnectCode=null,reason=null,reconnectAt=null,attempts=previous?.reconnect_attempts||0,action=null,stopped=false,
     socket=null,timer=null,lastTick=null,lastSampleAt=null,staleSamples=0,syncSamples=0,observedFrames=0,webVersion=null,webVersionSource=null;
@@ -37,6 +37,10 @@ export function makeConnectionHealth({now=Date.now,emit=()=>{},scope={},onStale=
     (uuid(value)||Number.isSafeInteger(value)&&value>=0)))};
   function record(event,extra={}){try{emit({component:'orion-whatsapp-lifecycle',...context,event,at:now(),
     rss_bytes:process.memoryUsage().rss,uptime_seconds:Math.floor(process.uptime()),web_version:webVersion,web_version_source:webVersionSource,...extra});}catch{}}
+  function ready(value){
+    try{const result=readiness(value);if(result&&typeof result==='object'&&typeof result.state==='string')return result;}catch{}
+    return {...value,state:'needs_attention',reason:'ingress_storage_unavailable',action:'inspect_ingress_storage',ingress_storage_unavailable:true};
+  }
   function activity(){if(!stopped){lastActivityAt=now();observedFrames++;staleSamples=0;if(state==='degraded'){state='connected';reason=null;record('transport_responsive');}}}
   function tick(){
     timer=null;if(stopped||!socket)return;
@@ -54,7 +58,11 @@ export function makeConnectionHealth({now=Date.now,emit=()=>{},scope={},onStale=
       }
     }
     if(lastSampleAt===null||at-lastSampleAt>=60000){lastSampleAt=at;
-      record('health_sample',{state,last_activity_age_ms:lastActivityAt===null?null:Math.max(0,at-lastActivityAt),
+      const observed=ready({state});
+      record('health_sample',{state:observed.state,ingress_pending:observed.ingress_pending??null,
+        ingress_blocked:observed.ingress_blocked??null,ingress_oldest_at:observed.ingress_oldest_at??null,
+        ingress_storage_unavailable:observed.ingress_storage_unavailable===true,
+        last_activity_age_ms:lastActivityAt===null?null:Math.max(0,at-lastActivityAt),
         ws_open:socket.isOpen===true,ev_buffering:isSyncPending()===true,reconnect_attempts:attempts,event_loop_lag_ms:lag});}
     timer=schedule(tick,sampleMs);timer?.unref?.();
   }
@@ -79,9 +87,9 @@ export function makeConnectionHealth({now=Date.now,emit=()=>{},scope={},onStale=
     disconnected(policy,attempt){if(interruptedAt===null)interruptedAt=now();disconnectCode=policy.code??null;
       reason=policy.reason;action=policy.action??null;attempts=attempt;state=policy.retry?'reconnecting':'needs_attention';
       reconnectAt=policy.retry?now()+policy.delayMs:null;record('disconnected',{code:disconnectCode,reason,attempt,action,reconnect_at:reconnectAt});},
-    snapshot(){return {state,last_activity_at:lastActivityAt,transport_observed:observedFrames>0,sync_pending:isSyncPending()===true,connected_at:connectedAt,
+    snapshot(){return ready({state,last_activity_at:lastActivityAt,transport_observed:observedFrames>0,sync_pending:isSyncPending()===true,connected_at:connectedAt,
       interrupted_at:interruptedAt,recovered_at:recoveredAt,disconnect_code:disconnectCode,reason,reconnect_at:reconnectAt,
-      reconnect_attempts:attempts,action,web_version:webVersion,web_version_source:webVersionSource,...context};},
+      reconnect_attempts:attempts,action,web_version:webVersion,web_version_source:webVersionSource,...context});},
     stop(cause='stopped'){if(stopped)return;stopped=true;unwatch();
       if(!['reconnecting','needs_attention'].includes(state))state='stopped';record('stopped',{reason:cause});}
   };

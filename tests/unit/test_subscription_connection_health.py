@@ -36,6 +36,24 @@ def test_runtime_remains_compatible_without_new_health_fields():
     assert _safe_runtime({"status": "connected"})["status"] == "connected"
 
 
+def test_incoming_backlog_is_visible_without_journal_content_or_a_false_connected_state():
+    value = _safe_runtime({"status": "connected", "connection_health": {
+        "state": "needs_attention", "action": "review_incoming_messages", "reason": "ingress_review_required",
+        "ingress_pending": 2, "ingress_blocked": 1, "ingress_oldest_at": 1793898000000,
+        "ingress_storage_unavailable": False, "journal": {"body": "PRIVATE-MESSAGE"},
+        "error_code": "PRIVATE-FILESYSTEM-ERROR", "phone": "PRIVATE-PHONE"}})
+    assert value["status"] == "needs_attention"
+    health = value["connection_health"]
+    assert health["ingress_pending"] == 2 and health["ingress_blocked"] == 1
+    assert health["action"] == "review_incoming_messages"
+    assert health["ingress_oldest_at"] == datetime.fromtimestamp(1793898000, timezone.utc).isoformat()
+    assert "PRIVATE" not in json.dumps(value)
+    bad = _safe_connection_health({"state": "degraded", "ingress_pending": True,
+        "ingress_blocked": 10**100, "ingress_storage_unavailable": "true"})
+    assert bad["ingress_pending"] == bad["ingress_blocked"] == 0
+    assert bad["ingress_storage_unavailable"] is False
+
+
 @pytest.mark.parametrize("health", [None, [], "connected", {"state": []}, {"state": "invented"}])
 def test_invalid_health_cannot_manufacture_connected_state(health):
     assert _safe_connection_health(health) is None

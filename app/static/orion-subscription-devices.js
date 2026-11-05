@@ -114,6 +114,9 @@
       const notes=[];
       if(value.stale===true)notes.push('O estado está desatualizado. Ainda não foi possível confirmar a conexão.');
       if(value.action&&actions[value.action])notes.push(actions[value.action]);
+      if(value.ingress_storage_unavailable===true)notes.push('Não foi possível guardar novas mensagens com segurança. O suporte precisa conferir o armazenamento desta conexão.');
+      else if(Number.isSafeInteger(value.ingress_blocked)&&value.ingress_blocked>0)notes.push((value.ingress_blocked===1?'Uma mensagem recebida precisa':value.ingress_blocked+' mensagens recebidas precisam')+' de revisão pelo suporte. As respostas automáticas estão pausadas.');
+      else if(Number.isSafeInteger(value.ingress_pending)&&value.ingress_pending>0)notes.push((value.ingress_pending===1?'Uma mensagem recebida aguarda':value.ingress_pending+' mensagens recebidas aguardam')+' processamento. A recuperação está em andamento.');
       const interrupted=dateTime(value.interrupted_at,zone),next=dateTime(value.reconnect_at,zone);
       const activity=value.transport_observed===true?dateTime(value.last_activity_at,zone):'';
       if(interrupted&&value.state!=='connected')notes.push('Interrupção iniciada em '+interrupted+'.');

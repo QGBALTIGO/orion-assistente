@@ -43,7 +43,7 @@ export function normalizeChatbotInput(message,{isGeneratedMessage=()=>false}={})
 /** Arrival is admitted synchronously. Identity resolution keeps that arrival
  * order, then each resolved contact has its own queue through ASR and effects.
  * Other contacts do not wait for a slow transcription or configured delay. */
-export function createOrderedIngress({resolveIdentity,run,isCurrent=()=>true,limit=32,
+export function createOrderedIngress({resolveIdentity,run,isCurrent=()=>true,onSettled=()=>{},limit=32,
   lookupTimeoutMs=3000,schedule=setTimeout,cancel=clearTimeout}={}){
   const contacts=new Map();let identityTail=Promise.resolve(),pending=0,closed=false;
   async function lookup(input){
@@ -64,7 +64,7 @@ export function createOrderedIngress({resolveIdentity,run,isCurrent=()=>true,lim
       contacts.set(contact,task);
       void task.catch(()=>{}).finally(()=>{if(contacts.get(contact)===task)contacts.delete(contact);});
       return task;
-    }).catch(()=>{}).finally(()=>{pending--;});
+    }).catch(()=>{}).finally(()=>{pending--;try{onSettled(input);}catch{}});
     return true;
   }
   return {enqueue,pending:()=>pending,close(){closed=true;contacts.clear();}};
