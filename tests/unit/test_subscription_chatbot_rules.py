@@ -181,8 +181,8 @@ def test_url_actions_and_carousel_images_reject_non_public_destinations_without_
         CarouselAction.model_validate(value)
 
 
-@pytest.mark.parametrize("custom", ["{{user.name}}", "{{value[0]}}", "{{x()}}", "{name}", "{{{name}}}"])
-def test_url_response_template_accepts_only_flat_scalar_tags(custom):
+@pytest.mark.parametrize("custom", ["{{x()}}", "{name}", "{{{name}}}", "{{a..b}}", "{{items[-1]}}"])
+def test_url_response_template_rejects_expressions_and_malformed_paths(custom):
     with pytest.raises(ValidationError):
         UrlAction(url="https://example.com/reply", custom_template=custom)
     assert UrlAction(url="https://example.com/reply", custom_template="{{value}} — {{_status2}}").method == "POST"

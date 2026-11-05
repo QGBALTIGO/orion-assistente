@@ -294,23 +294,16 @@ def clone_response(response):
 
 
 def render_http_result(action, body):
-    """A flat scalar tag vocabulary; never eval, nested lookup or recursion."""
-    if not isinstance(body, dict):
-        raise ValueError("O servidor deve retornar um objeto JSON")
+    """Render the same safe paths offered by URL discovery, without evaluation."""
+    from app.subscription_chatbot_tags import render_template, validate_json
+    validate_json(body)
     custom = action.get("custom_template", "")
     if not custom:
-        result = body.get("reply")
+        result = body.get("reply") if isinstance(body, dict) else None
         if not isinstance(result, str):
-            raise ValueError("O servidor deve retornar reply como texto")
+            raise ValueError("O servidor deve retornar reply como texto ou usar uma resposta customizada")
     else:
-        def substitute(match):
-            value = body.get(match[1])
-            if value is None or isinstance(value, (dict, list)) or isinstance(value, float) and not math.isfinite(value):
-                raise ValueError("Tag ausente ou não escalar: " + match[1])
-            if not isinstance(value, (str, int, float, bool)):
-                raise ValueError("Tipo de tag inválido")
-            return str(value) if not isinstance(value, bool) else "true" if value else "false"
-        result = URL_TAG_PATTERN.sub(substitute, custom)
+        result = render_template(custom, body)
     return clean_text(result, maximum=512000)
 
 

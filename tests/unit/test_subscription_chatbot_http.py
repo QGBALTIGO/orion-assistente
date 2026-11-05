@@ -72,8 +72,8 @@ async def test_no_redirect_or_retry_of_post(endpoint, status):
     assert len(calls) == 1
 
 
-@pytest.mark.parametrize("body", [b'[]', b'{"x":NaN}', b'{"x":"\xff"}', b'{broken'])
-async def test_invalid_json_utf8_or_non_object_is_not_a_tag_result(endpoint, body):
+@pytest.mark.parametrize("body", [b'null', b'{"x":NaN}', b'{"x":"\xff"}', b'{broken'])
+async def test_invalid_json_utf8_or_scalar_root_is_not_a_tag_result(endpoint, body):
     _, _, result, authorize = endpoint
     result["body"] = body
     with pytest.raises(HTTPException) as error:
@@ -186,3 +186,38 @@ async def test_private_request_log_filter_does_not_hide_concurrent_httpx_or_http
     assert await task == ["reply"]
     assert "synthetic-url-secret" not in caplog.text and "synthetic-response-secret" not in caplog.text
     assert "other concurrent request visible" in caplog.text and "other concurrent transport visible" in caplog.text
+
+
+@pytest.mark.parametrize("body,expected", [
+    ({"data":{"name":"Não expor valor","active":False},"items":[{"price":0}]},
+     ["data.name","data.active","items[0].price"]),
+    ([{"reply":"Não expor resposta"}], ["[0].reply"]),
+    ({"nome completo":"Dado privado","pay-url":"https://example.com/private"},
+     ['["nome completo"]','["pay-url"]']),
+    ([], []),
+])
+@pytest.mark.parametrize("method", ["GET", "POST"])
+async def test_nested_paths_and_array_root_from_real_discovery_helper(endpoint, body, expected, method):
+    calls, _, result, authorize = endpoint
+    result["body"] = json.dumps(body).encode()
+    actual=await tags.read_url_tags("https://api.example.com/tags",method,request_id=uuid4(),authorize=authorize)
+    assert actual == expected and len(calls) == 1
+    assert "Não expor" not in json.dumps(actual)
+
+
+@pytest.mark.parametrize("status,mime,code", [
+    (401,"application/json","CHATBOT_URL_AUTH"),
+    (403,"application/json","CHATBOT_URL_AUTH"),
+    (405,"application/json","CHATBOT_URL_METHOD"),
+    (302,"application/json","CHATBOT_URL_REDIRECT"),
+    (200,"text/html","CHATBOT_URL_CONTENT_TYPE"),
+    (500,"application/json","CHATBOT_URL_RESPONSE"),
+])
+async def test_discovery_reports_safe_specific_failure_without_external_body(endpoint,status,mime,code):
+    calls,_,result,authorize=endpoint
+    result.update(status=status,body=b'provider secret sentinel',headers={"content-type":mime})
+    with pytest.raises(HTTPException) as exc:
+        await tags.read_url_tags("https://api.example.com/tags","POST",request_id=uuid4(),authorize=authorize)
+    assert exc.value.detail["code"] == code
+    assert "sentinel" not in str(exc.value.detail)
+    assert len(calls) == 1
