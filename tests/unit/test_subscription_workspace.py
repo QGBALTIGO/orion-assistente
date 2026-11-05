@@ -67,6 +67,29 @@ def test_platform_workspace_keeps_its_existing_authority_even_if_profile_niche_m
     assert state["source"] == "platform_admin"
 
 
+@pytest.mark.parametrize("grant", ["none", "elite"])
+def test_whatsapp_guidance_is_available_for_active_subscription_company(grant):
+    state = plan_permissions.derive_plan(snapshot(grant=grant), NOW)
+    assert state["workspace_profile"] == "subscription_services"
+    assert state["permissions"]["whatsapp_guidance.view"] is True
+    assert state["permissions"]["plan.manage"] is False
+
+
+@pytest.mark.parametrize("status", ["paused", "suspended", "canceled"])
+def test_whatsapp_guidance_closes_when_subscription_company_is_inactive(status):
+    state = plan_permissions.derive_plan(snapshot(grant="elite", tenant_status=status), NOW)
+    assert state["permissions"]["whatsapp_guidance.view"] is False
+    assert set(state["features"]) == {"account.manage", "business.setup"}
+
+
+@pytest.mark.parametrize("grant", ["none", "essencial", "profissional", "elite"])
+def test_standard_commercial_plan_does_not_grant_whatsapp_guidance(grant):
+    state = plan_permissions.derive_plan(snapshot(niche="barbearia", grant=grant), NOW)
+    assert state["workspace_profile"] == "standard"
+    assert state["permissions"]["whatsapp_guidance.view"] is False
+    assert set(state["features"]) == PLAN_FEATURES.get(grant, frozenset()) | RECOVERY_FEATURES
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("is_new", [False, True])
 async def test_operational_readiness_cannot_skip_subscription_niche_for_legacy_businesses(monkeypatch, is_new):

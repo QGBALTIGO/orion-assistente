@@ -5,7 +5,7 @@ from fastapi import HTTPException
 SUBSCRIPTION_NICHE = "servico_assinaturas"
 STANDARD_WORKSPACE = "standard"
 SUBSCRIPTION_WORKSPACE = "subscription_services"
-SUBSCRIPTION_WORKSPACE_FEATURES = frozenset({"account.manage", "business.setup", "devices.manage", "chatbot.manage", "templates.manage", "sent_messages.manage", "diagnostics.manage", "campaigns.manage", "scheduled_messages.manage", "bulk_messages.manage", "direct_messages.manage"})
+SUBSCRIPTION_WORKSPACE_FEATURES = frozenset({"account.manage", "business.setup", "devices.manage", "chatbot.manage", "templates.manage", "sent_messages.manage", "diagnostics.manage", "campaigns.manage", "scheduled_messages.manage", "bulk_messages.manage", "direct_messages.manage", "whatsapp_guidance.view"})
 
 
 def workspace_profile(niche, *, platform=False):
