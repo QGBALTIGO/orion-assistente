@@ -114,3 +114,21 @@ Enviar Mensagem, cuja dependência da ordem de importação foi revelada pelo
 CI geral anterior. A explicação, prova antes/depois e preservação das guardas
 de produção estão em [validação do fixture](direct-api-fixture-validation.md).
 Essa correção não altera a API de envio nem reclassifica execuções anteriores.
+
+### Correção de transição em Mensagem em Massa
+
+A candidata inicial da etapa 16 foi `ac977728cd33804c2e2b411e8de0358fa50ace8a`,
+árvore `2d476816716aaf6269d473ed4aa0481ebd280e89`. Antes de publicar, a revisão
+de uma falha WebKit anterior identificou um defeito independente comprovável:
+depois de Corrigir, o formulário de Massa permitia editar e revisar durante
+a consulta das opções, que substitui o DOM ao terminar. A guarda `canEdit`
+passou a exigir que essa consulta tenha terminado.
+
+Um teste DOM com resposta deliberadamente pendente falhou antes da correção
+e passou depois: campos e revisão ficam bloqueados, não há nova gravação
+durante a leitura e a correção mantém a chave original. A suíte DOM de Massa
+passou 62 casos; os dois casos Chromium existentes de repetição/correção
+passaram sem alteração do E2E. A falha WebKit da PR 268 não tinha trace que
+permitisse atribuir conclusivamente o clique perdido a essa janela; ela
+continua registrada separadamente. Os seis grupos de qualificação devem
+validar a candidata que contém esta correção.

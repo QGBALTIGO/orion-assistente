@@ -44,6 +44,30 @@ test('missing response allows only an explicit identical in-memory retry after a
 
 test('reload of a missing request never invents a payload or a new key',async t=>{const h=await makeBulk({historyState:{orionBulkRecovery:recovery()}});t.after(()=>h.close());assert.equal(dialog(h).dataset.bmView,'unknown');assert.equal(h.document.querySelector(action('retry-same')),null);assert.equal(h.document.querySelector(action('correct')),null);assert.equal(h.element(action('new')).disabled,true);assert.equal(saved(h).idempotency_key,recovery().idempotency_key);assert.equal(writes(h).length,0);});
 
+test('correction waits for refreshed options before editing or reviewing with the same key',{timeout:10000},async t=>{
+  const options=deferred(),started=deferred();let reject=true,holdOptions=false;
+  const h=await makeBulk({respond:async(path,method)=>{
+    if(path===base+'/review'&&method==='POST'&&reject){reject=false;throw failure(422);}
+    if(path===base+'/options'&&method==='GET'&&holdOptions){started.resolve();return options.promise;}
+  }});
+  t.after(()=>{options.resolve(copy(h.server.options));h.close();});
+  await stageManual(h);h.click(action('review'));await flush();h.click(action('recover'));await flush();
+  const original=copy(writes(h)[0].data);holdOptions=true;h.click(action('correct'));await started.promise;
+  assert.equal(h.element('#bulk').getAttribute('aria-busy'),'true');
+  assert.equal(h.element(action('review')).disabled,true);
+  assert.equal(h.element('[data-bm-row-text]').disabled,true);
+  assert.equal(h.element(field('interval_seconds')).disabled,true);
+  h.click(action('review'));assert.equal(writes(h).length,1);assert.equal(saved(h).idempotency_key,original.idempotency_key);
+  holdOptions=false;options.resolve(copy(h.server.options));await flush();
+  assert.equal(h.element('#bulk').getAttribute('aria-busy'),'false');
+  assert.equal(h.element(action('review')).disabled,false);assert.equal(h.element('[data-bm-row-text]').disabled,false);
+  h.fill('[data-bm-row-text]','Correção após consultar as opções');h.click(action('review'));await flush();
+  assert.equal(dialog(h).dataset.bmView,'review');assert.equal(writes(h).length,2);
+  assert.equal(writes(h)[1].data.idempotency_key,original.idempotency_key);
+  assert.equal(writes(h)[1].data.batch.items[0].text,'Correção após consultar as opções');
+  assert.equal(h.server.requests.size,1);assert.equal(h.server.confirmations.length,0);assert.deepEqual(h.errors,[]);
+});
+
 test('422 correction preserves the same key, and a late original review can still be recovered',async t=>{let rejected=false,original;const h=await makeBulk({respond:async(path,method,payload)=>{if(path===base+'/review'&&method==='POST'&&!rejected){rejected=true;original=copy(payload);throw failure(422);}}});t.after(()=>h.close());await stageManual(h);h.click(action('review'));await flush();h.click(action('recover'));await flush();h.click(action('correct'));await flush();assert.equal(h.controller.getState().correcting,true);h.fill('[data-bm-row-text]','Correção explícita');await h.server.execute(base+'/review','POST',original);h.click(action('review'));await flush();assert.equal(dialog(h).dataset.bmView,'unknown');assert.equal(writes(h)[1].data.idempotency_key,original.idempotency_key);h.click(action('recover'));await flush();assert.equal(dialog(h).dataset.bmView,'review');assert.match(dialog(h).textContent,/Texto literal/);assert.ok(!dialog(h).textContent.includes('Correção explícita'));});
 
 test('lost confirm preserves the key even if recovery still returns prepared and requires fresh consent',async t=>{let reject=true;const h=await makeBulk({respond:async(path,method)=>{if(reject&&path===base+'/confirm'&&method==='POST'){reject=false;throw failure(504);}}});t.after(()=>h.close());await review(h);await confirm(h);assert.equal(saved(h).confirming,true);h.click(action('recover'));await flush();assert.equal(dialog(h).dataset.bmView,'review');assert.equal(h.document.querySelector(action('cancel-review')),null);assert.equal(h.element('[data-bm-consent]').checked,false);assert.equal(h.element(field('confirmation')).value,'');await confirm(h);assert.equal(h.server.confirmations.length,1);assert.equal(writes(h)[1].data.idempotency_key,writes(h)[2].data.idempotency_key);});
