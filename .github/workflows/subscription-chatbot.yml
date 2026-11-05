@@ -218,6 +218,7 @@ jobs:
           node --check qr-bridge/src/channel-routes.mjs
           node --check qr-bridge/src/device-runtime.mjs
           node --check qr-bridge/src/device-group-contacts.mjs
+          node --check qr-bridge/src/device-group-add.mjs
           node --check qr-bridge/src/device-diagnostics.mjs
           for source in qr-bridge/src/campaign-*.mjs qr-bridge/src/scheduled-*.mjs qr-bridge/src/bulk-*.mjs; do
             node --check "$source"
@@ -277,6 +278,7 @@ jobs:
           node --check app/static/orion-subscription-bulk-messages.js
           node --check app/static/orion-subscription-direct-messages.js
           node --check app/static/orion-subscription-group-contacts.js
+          node --check app/static/orion-subscription-group-add.js
           node --check app/static/orion-subscription-devices.js
           node --check app/static/orion-suite.js
           node --test \
@@ -291,6 +293,7 @@ jobs:
             ui-tests/subscription-bulk-messages.test.mjs \
             ui-tests/subscription-direct-messages.test.mjs \
             ui-tests/subscription-group-contacts.test.mjs \
+            ui-tests/subscription-group-add.test.mjs \
             ui-tests/subscription-devices.test.mjs \
             ui-tests/subscription-workspace.test.mjs \
             ui-tests/channels.test.mjs \
@@ -501,6 +504,7 @@ jobs:
         with:
           name: subscription-chatbot-${{ matrix.engine }}
           path: |
+            test-artifacts/subscription-group-add/
             test-artifacts/subscription-group-contacts/
             test-artifacts/subscription-guidance/
             test-artifacts/subscription-chatbot/
