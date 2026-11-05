@@ -26,9 +26,9 @@ async def update_progress(db, batch, now, *, error=None):
         status = "cancelled"
     else:
         status = "partial"
-    await db.execute(text("""UPDATE subscription_group_add_batches SET status=:status,version=version+1,
-        finished_at=:finished,error_code=CASE WHEN :status<>'unknown' AND error_code='GROUP_ADD_OUTCOME_UNKNOWN'
-          THEN :error ELSE COALESCE(:error,error_code) END,next_item_at=:next
+    await db.execute(text("""UPDATE subscription_group_add_batches SET status=CAST(:status AS text),version=version+1,
+        finished_at=:finished,error_code=CASE WHEN CAST(:status AS text)<>'unknown' AND error_code='GROUP_ADD_OUTCOME_UNKNOWN'
+          THEN CAST(:error AS text) ELSE COALESCE(CAST(:error AS text),error_code) END,next_item_at=:next
         WHERE tenant_id=:t AND id=:id"""), {"t": batch["tenant_id"], "id": batch["id"], "status": status,
         "finished": None if status in ACTIVE else now, "error": error,
         "next": now + timedelta(seconds=schemas.INTERVAL_SECONDS)})
@@ -187,9 +187,9 @@ async def reap_interrupted():
                     {"t": row["tenant_id"], "id": row["batch_id"]})).mappings().one())
                 now = await store.clock(db)
                 changed = (await db.execute(text("""UPDATE subscription_group_add_items
-                    SET status='unknown',error_code='GROUP_ADD_OUTCOME_UNKNOWN',finished_at=:now
+                    SET status='unknown',error_code='GROUP_ADD_OUTCOME_UNKNOWN',finished_at=CAST(:now AS timestamptz)
                     WHERE tenant_id=:t AND id=:id AND status='running'
-                      AND dispatch_at<:now-interval '45 seconds' RETURNING id"""),
+                      AND dispatch_at<CAST(:now AS timestamptz)-interval '45 seconds' RETURNING id"""),
                     {"t": row["tenant_id"], "id": row["id"], "now": now})).scalar_one_or_none()
                 if changed is not None:
                     await cancel_pending(db, batch, now, "GROUP_ADD_STOPPED")

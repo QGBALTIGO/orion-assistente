@@ -126,3 +126,29 @@ todas as falhas na mesma execução, mantendo código de saída não zero para
 qualquer falha e o bloqueio de saída para provedores. As rodadas anteriores
 continuam registradas separadamente; a publicação exige os seis gates
 completos da árvore integrada.
+
+A terceira candidata foi qualificada no workflow
+[`42107534723`](https://github.com/QGBALTIGO/orion-assistente/actions/runs/42107534723),
+na árvore `faa27e7f30d36098526d5c7d33d09db5c2939deb`. API (3.023), DOM (661),
+ponte (707) e Chromium (188) passaram. O PostgreSQL completou 686 casos e
+falhou em 15: quatorze por inferência inconsistente do parâmetro de estado
+na atualização do lote e um pela inferência do parâmetro de tempo na
+recuperação de execução interrompida. As consultas recebem tipos explícitos
+na correção seguinte; estados, intervalo de três segundos e corte de 45
+segundos permanecem iguais. Esses resultados não qualificam a publicação.
+
+O WebKit dessa rodada concluiu 142 casos e falhou no teste anterior de
+liberação e cancelamento de Mensagens Programadas. A falha foi registrada
+como erro de acesso durante a troca de sessão de uma consulta de ocorrências;
+os 21 casos novos da etapa 17 haviam passado. O relatório da rodada e seus
+artefatos são preservados, e a candidata seguinte deve concluir todos os
+188 casos do navegador.
+
+Uma reprodução controlada em Chromium suspendeu a resposta HTTP de
+ocorrências: o diálogo já havia fechado, mas a consulta ainda estava
+pendente e a navegação seguinte a abortou. Aguardar a resposta 200 e a
+paginação aplicada eliminou essa interrupção, preservando a coleta integral
+de erros e o bloqueio de destinos externos. A mensagem específica do WebKit
+não foi reproduzida localmente; a correção de sincronização do teste ainda
+depende da nova rodada completa nesse motor. Nenhuma configuração de CORS
+ou tratamento de erro do produto foi alterado.
