@@ -22,7 +22,7 @@ não observado ou testado.
 | 05 | Mensagens Enviadas | Publicado e conferido ao vivo em 2026-11-04 — PR 252, produção `f58730ac8e380bd2c12286c69c1db3873d3cbf0f` |
 | 06 | Diagnósticos | Publicado e conferido ao vivo em 2026-11-04 — PR 253, produção `81cf127c51c3fae015568d16d79724ebe0f00db8` |
 | 07 | Campanhas | Publicado e conferido ao vivo em 2026-11-05 — PR 258, produção `23b78bf42086766694a992474f078c2a4ed0a2eb`; etapa encerrada após aprovação WebKit da base posterior PR 259, conforme o [registro de validação](campaigns-validation.md) |
-| 08 | Mensagens Programadas | Implementação e validação em andamento; [observação](scheduled-messages-observation.md) e [contrato](scheduled-messages-contract.md) registrados; [validação](scheduled-messages-validation.md) em andamento, ainda não publicado |
+| 08 | Mensagens Programadas | Publicado e conferido ao vivo em 2026-11-05 — PR 260, produção `da3a0086a038f0f84024cc38c5960d3a2935ffbe`; módulo principal validado, com acompanhamento editorial isolado descrito no [registro de validação](scheduled-messages-validation.md) |
 | 09 | Mensagem em Massa | Não iniciado |
 | 10 | Atribuições de Chat | Não iniciado |
 | 11 | Enviar Mensagem | Não iniciado |
@@ -65,6 +65,23 @@ filtros e os totais globais foram conferidos sem reenvio real. O histórico de
 áudio sem duração aparece como “Não informado”. A observação de Diagnósticos
 começou depois dessa confirmação.
 
+A etapa 08 foi publicada pela [PR 260](https://github.com/QGBALTIGO/orion-assistente/pull/260)
+com a árvore qualificada `830a9a262bb4b69a826739cc7457185fc2f7af88`.
+Os seis gates do [workflow dedicado 42027092137](https://github.com/QGBALTIGO/orion-assistente/actions/runs/42027092137)
+passaram: 2.257 casos Python, 439 PostgreSQL, 451 da ponte, 424 DOM,
+91 no Chrome e 91 no WebKit, totalizando 3.753 execuções de teste.
+O CI geral manteve 14 jobs com falhas históricas, sem novas identidades de
+falha no comparativo realizado; o limite da comparação da suíte FATIA com a
+PR 258, devido ao timeout da PR 259, está explícito no registro de validação.
+
+API, worker e ponte foram conferidos no mesmo commit, em `SUCCESS` e online
+com 1/1 réplica. Backup privado verificado, migração 0068 → 0069 e barreiras
+de catálogo precederam a execução. A lista e o formulário foram conferidos
+no Chrome conectado, incluindo os padrões de horário, intervalo, repetição,
+texto e seletor de template, sem salvar, revisar, agendar ou enviar mensagens.
+Um ajuste isolado no texto de ajuda do card Fila aguarda publicação de
+acompanhamento; não altera o contrato funcional. A etapa 09 não foi iniciada.
+
 ## Método e fontes
 
 O registro detalhado da etapa 02 está em [chatbot-observation.md](chatbot-observation.md).
@@ -78,6 +95,9 @@ A qualificação da etapa 05 está em [sent-messages-validation.md](sent-message
 A observação da etapa 06 está em [diagnostics-observation.md](diagnostics-observation.md).
 O contrato da etapa 06 está em [diagnostics-contract.md](diagnostics-contract.md).
 A qualificação da etapa 06 está em [diagnostics-validation.md](diagnostics-validation.md).
+A observação da etapa 08 está em [scheduled-messages-observation.md](scheduled-messages-observation.md).
+O contrato da etapa 08 está em [scheduled-messages-contract.md](scheduled-messages-contract.md).
+A qualificação e a conferência de produção da etapa 08 estão em [scheduled-messages-validation.md](scheduled-messages-validation.md).
 
 Observação iniciada no Chrome conectado do usuário em 2026-11-03
 (America/Cuiaba) e continuada em 2026-11-04, pela extensão autorizada.
