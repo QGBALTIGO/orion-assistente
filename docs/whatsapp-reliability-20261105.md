@@ -62,6 +62,22 @@ Na inspeção de serviços digitais havia um dispositivo habilitado, mas parado,
 
 ## Limites do protocolo que continuam relevantes
 
+### Incidente físico após a primeira publicação
+
+A primeira publicação foi a PR #267, commit `de9d1b3`, com a mesma árvore de arquivos qualificada em `dbce9c3`. API, worker e bridge iniciaram nessa versão. A sessão principal foi preservada. O teste do outbox foi entregue, e o usuário também confirmou legível o teste de texto de serviços digitais no mesmo chat do BaltigoFlix.
+
+O incidente permanece aberto: depois do cliente enviar `lista` pelo iPhone, a resposta automática apareceu como “aguardando mensagem”. O evento de entrada teve três falhas de sessão antes de ser recuperado; o processamento de negócio concluiu e a saída foi aceita, sem recibo de entrega no recorte examinado. O iPhone pediu retry e `getMessage` encontrou o conteúdo. A inspeção autenticada do cache cifrado confirmou que o teste legível e a resposta automática continham somente `extendedTextMessage.text`, sem lista nativa ou contexto extra. Não se atribui o problema ao formato nativo ou ao cache ausente.
+
+O terceiro teste manual, enviado depois da entrada do cliente, também recebeu recibo de entrega e confirmação de legibilidade pelo usuário. Portanto, não há evidência de uma falha permanente em todo envio PN. No navegador conectado autorizado, `lista` às 20:13 UTC produziu resposta automática legível em texto; `lista` na sessão principal às 20:14 UTC recebeu resposta textual do atendimento. Isso qualifica somente o WhatsApp Web nesses dois ensaios, sem substituir o sintoma relatado no iPhone.
+
+Um teste com o Signal real da 6.7.24 e identidades sintéticas reproduz uma transição de autor PN para LID em que o estado PN histórico continua existindo, mas sua resposta já não é válida na nova associação. O envio ao LID canônico confirmado utiliza o estado atual sem apagar ou copiar chaves. Existe controle negativo: separar aliases por si só não causa necessariamente falha. Esse teste demonstra um mecanismo compatível com a sequência observada; não substitui a confirmação no telefone.
+
+A correção adicional em qualificação passa a utilizar a prova contemporânea de LID e o snapshot validado de dispositivos também nas saídas gerenciadas. Uma identidade divergente ou não confirmada impede o envio antes do relay. A autorização de empresa, dispositivo, revisão, destinatário, finalidade e fence continua obrigatória. Não há mudança de algoritmo Signal, redefinição de chaves ou repetição automática da saída incerta.
+
+Também foi confirmada uma falha de retomada: uma sessão QR genuína, conectada e com identidade vinculada mantinha `registered=false`, comportamento da SDK. O pareamento QR grava `account`, `me` e identidades Signal; o sinal booleano é usado em outro caminho de pareamento. Exigir exclusivamente `registered=true` recusava essa sessão no próximo reinício. A correção deve reconhecer o pacote autenticado de vínculo, preservar as chaves e recusar credenciais novas ou incompletas, inclusive um booleano `true` sem vínculo. A abertura real no provedor continua sendo a confirmação da conexão.
+
+A conexão digital observada após o primeiro deployment ocorreu depois de comandos explícitos de `connect` e `relink` durante a transição de versões. Esses registros não foram tratados como prova de recuperação automática. A validação física da nova resposta e a janela de estabilidade precisam ser refeitas após a correção adicional. O Android também exige verificação física antes de atribuir aprovação a esse cliente.
+
 O SDK 6.7.24 perde a informação de domínio em parte da extração de dispositivos PN/LID. A validação do destinatário não permite deduzir telefone a partir de LID opaco. A atualização para 7.x não foi feita automaticamente: muda contratos e armazenamento e também exige qualificação dos caminhos de retry.
 
 Um teste com o event buffer real do SDK reproduziu `connection.update(open)` enquanto `messages.upsert` permanecia retido à espera do encerramento da sincronização inicial. A bridge passa a detectar esse estado depois de um prazo e duas observações passivas, reconectando somente o número afetado com orçamento finito. Não força `ev.flush()` nem altera o protocolo criptográfico. **Mensagens já confirmadas pelo SDK, mas retidas somente no buffer anterior ao evento de aplicação, não têm recuperação garantida por esta correção.** A ocorrência desse defeito específico na produção do Orion ainda exige correlação dos novos sinais.
@@ -85,6 +101,8 @@ Templates do Orion são conteúdo salvo e regras de substituição; não equival
 | Localização, respostas e citações | Payload validado e referências vinculadas à conversa | Não se reutiliza uma referência de outra empresa ou destinatário |
 
 `QR_NATIVE_INTERACTIVE_ENABLED=1` conserva o caminho nativo para homologação explícita. Um envio nativo aceito nunca provoca automaticamente um segundo envio em texto apenas porque sua exibição ainda não foi comprovada.
+
+`QR_NATIVE_LIST_SCOPES` permite homologar a lista interativa solicitada pelo usuário em pares exatos `tenant_uuid:device_uuid`, separados por vírgula. Configuração malformada é recusada por inteiro; não habilita carrosséis nem outro dispositivo/empresa. O diagnóstico continua `native_unverified` até que a exibição, abertura e seleção sejam comprovadas no destinatário. A alternativa em texto não é apresentada como equivalente visual da lista interativa.
 
 ## Pendências e prevenção de abuso
 
@@ -125,7 +143,10 @@ O teto de cache de protocolo de um dispositivo pode chegar a aproximadamente 187
 | `QR_AI_INTAKE_REVISION_ENABLED` | Controle das revisões de entrada; a guarda da trava continua necessária independentemente dessa flag |
 | `INBOX_CONTROL_ENABLED`, `INBOX_SEND_ENABLED` | Arbitragem com operadores e outbox humano; não ativar globalmente para executar um teste |
 | `QR_NATIVE_INTERACTIVE_ENABLED` | Opt-in de formatos nativos; padrão conservador em texto |
+| `QR_NATIVE_LIST_SCOPES` | Homologação somente de listas em pares exatos empresa:dispositivo; configuração inválida conserva a alternativa em texto |
 | `QR_WA_VERSION_AUTO` | Política compartilhada de revisão Web; correlacionar `web_version` e `web_version_source` com incidentes antes de alterá-la |
+| `QR_PILOT_USE_VERIFIED_LID=1` | Nome histórico da prova contemporânea de destinatário; a correção adicional também a aplica às saídas de dispositivos gerenciados. Não deduzir LID pelo telefone nem reenviar em PN depois de uma prova divergente |
+| `QR_FORCE_FRESH_DEVICES=1` | Consulta atual de dispositivos no caminho principal; a prova LID utiliza somente o snapshot recém-consultado e validado |
 | `RAILWAY_DEPLOYMENT_DRAINING_SECONDS=20` | Na bridge, prazo de encerramento maior que os oito segundos de drenagem do processo; aplicado na próxima publicação |
 | `RAILWAY_DEPLOYMENT_OVERLAP_SECONDS=0` | Na bridge, evita manter a versão antiga atendendo após a sucessora ficar pronta; a lease continua sendo a autoridade exclusiva |
 
@@ -155,7 +176,7 @@ As origens atualmente aceitas são da rede privada Railway. A migração efetiva
 
 ## Validação e observação
 
-Estado antes da publicação: **em homologação**. As execuções abaixo têm conjuntos que se sobrepõem; seus totais não devem ser somados.
+A PR #267 foi publicada; a correção adicional de retomada, identidade e lista está **em homologação**, com incidente físico ainda aberto. As execuções abaixo têm conjuntos que se sobrepõem; seus totais não devem ser somados.
 
 | Execução | Resultado efetivamente observado |
 | --- | --- |
@@ -174,6 +195,8 @@ Estado antes da publicação: **em homologação**. As execuções abaixo têm c
 | Primeira qualificação Linux no commit `580e32e` | Transporte completo com 881 casos, 862 aprovados e as mesmas 19 falhas herdadas do fixture de painel; 41 casos adicionais aprovados, zero skips/cancelamentos; Docker, auditoria, painel 25/25 e gate de 93 casos aprovados. A correção posterior da quarentena exige nova execução no novo commit |
 | Qualificação Linux de `09fb8c1`, anterior à correção da fila de admissão | Transporte sem o fixture de painel: 816/816; conjunto completo com 895 casos, 876 aprovados e as mesmas 19 falhas herdadas; 55 casos adicionais aprovados; PostgreSQL/Redis 166/166 (52 reais e 114 de unidade); painel 25/25; Docker e auditoria aprovados. Não qualifica as alterações posteriores de admissão |
 | Execução ampla de 257 integrações PostgreSQL | Incompleta: limite local de 1.200 segundos. Não equivale a uma aprovação ampla |
+| Qualificação final da primeira publicação, árvore `dbce9c3` preservada no merge `de9d1b3` | Linux: transporte completo 1.031 casos, 1.012 aprovados e as mesmas 19 falhas herdadas, zero falhas novas/skips/cancelamentos; gate crítico 345/345; PostgreSQL/Redis 301/301 (67 integrações reais e 234 unidades); painel 27/27; Docker e auditoria aprovados. Esse resultado não qualifica automaticamente o candidato posterior |
+| Retomada e lista do candidato adicional, antes da qualificação Linux | Helper de autenticação 26/26; conjunto focado de política/lista 107 aprovados e uma verificação POSIX não executada no Windows; painel 27/27; saúde da API 16/16. Abertura/seleção nativa real e legibilidade no iPhone ainda pendentes |
 
 Os testes de subprocesso encerram um responsável SQL sintético, demonstram rejeição do sucessor antes de expirar a concessão, nova fence depois da transferência e bloqueio do responsável antigo, enquanto outro canal permanece utilizável. Não desligam um telefone real nem comprovam retorno de uma sessão Baileys real.
 

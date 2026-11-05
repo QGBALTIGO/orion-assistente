@@ -36,6 +36,16 @@ def test_runtime_remains_compatible_without_new_health_fields():
     assert _safe_runtime({"status": "connected"})["status"] == "connected"
 
 
+def test_restored_auth_requires_inspection_instead_of_requesting_a_new_qr():
+    value = _safe_runtime({"status": "connected", "connection_health": {
+        "state": "needs_attention", "reason": "auth_state_unavailable",
+        "action": "inspect_session_state", "credentials": "PRIVATE-ACCOUNT"}})
+    assert value["status"] == "needs_attention"
+    assert value["connection_health"]["reason"] == "auth_state_unavailable"
+    assert value["connection_health"]["action"] == "inspect_session_state"
+    assert "PRIVATE" not in json.dumps(value)
+
+
 def test_incoming_backlog_is_visible_without_journal_content_or_a_false_connected_state():
     value = _safe_runtime({"status": "connected", "connection_health": {
         "state": "needs_attention", "action": "review_incoming_messages", "reason": "ingress_review_required",

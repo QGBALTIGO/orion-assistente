@@ -150,7 +150,7 @@ def _safe_connection_health(value):
                "reconnect_exhausted", "restart_required", "network_timeout", "connection_closed",
                "provider_unavailable", "transport_interrupted", "socket_not_open", "event_loop_delayed",
                "transport_unresponsive", "session_recovery", "session_recovery_exhausted", "sync_stalled",
-               "ingress_storage_unavailable", "ingress_review_required", "ingress_pending"}
+               "ingress_storage_unavailable", "ingress_review_required", "ingress_pending", "auth_state_unavailable"}
     if not isinstance(value.get("state"), str) or value["state"] not in states:
         return None
     action, reason = value.get("action"), value.get("reason")

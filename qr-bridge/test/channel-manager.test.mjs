@@ -35,6 +35,18 @@ test('channel status discloses only a connected verified PN, never a LID or a pr
   f.made[0].phone=()=>phone;f.made[0].status=()=> 'qr_ready';value=await m.status(a.id,a.key);
   assert.equal(value.phone,null);assert.equal(value.phone_verified,false);
 });
+test('status reports the scoped native-list mode as unverified only for its exact tenant/device',async t=>{
+  const priorScopes=process.env.QR_NATIVE_LIST_SCOPES,priorGlobal=process.env.QR_NATIVE_INTERACTIVE_ENABLED;
+  t.after(()=>{for(const [name,value] of [['QR_NATIVE_LIST_SCOPES',priorScopes],['QR_NATIVE_INTERACTIVE_ENABLED',priorGlobal]])
+    if(value===undefined)delete process.env[name];else process.env[name]=value;});
+  const f=fixture(t),a=f.add(),device={id:randomUUID(),generation:randomUUID(),settings_revision:1,settings:{},capabilities:{}};
+  Object.assign(f.rows.get(a.id),{device,assistant_enabled:false,allowed_senders:[]});
+  process.env.QR_NATIVE_INTERACTIVE_ENABLED='0';const m=f.manager();await m.start(a.id,a.key);
+  for(const [scope,mode] of [[a.tenant+':'+device.id,'native_unverified'],[randomUUID()+':'+device.id,'text_fallback'],[a.tenant+':'+randomUUID(),'text_fallback']]){
+    process.env.QR_NATIVE_LIST_SCOPES=scope;assert.equal((await m.status(a.id,a.key)).capabilities.interactive_mode,mode);
+  }
+  assert.equal(f.made.length,1);assert.equal(f.made[0].sends.length,0);
+});
 test('assistant-off inbound is journaled before interaction and never forwarded',async t=>{
   const f=fixture(t),a=f.add(),calls=[];Object.assign(f.rows.get(a.id),{inbox_control:true,assistant_enabled:false});
   f.broker.journal=async(id,key,lease,payload)=>{calls.push('journal');assert.equal(id,a.id);assert.equal(payload.text,'Mensagem humana');return {recorded:true};};

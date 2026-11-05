@@ -4,6 +4,7 @@ import {useDurableAuthState} from './durable-auth.mjs';
 import {fenceSignalRepository} from './signal-fence.mjs';
 import {makeConnectionHealth,disconnectPolicy,sustainedRecovery} from './connection-health.mjs';
 import {selectWaWebVersion} from './wa-version-policy.mjs';
+import {classifyPairedAuth} from './paired-auth-state.mjs';
 import {normalizeInbound,updateEvent,callEvent,safetyControl,queueControl} from './inbound-event.mjs';
 /**
  * Orion Linked Device — aparelho de teste único, transporte não oficial.
@@ -16,7 +17,7 @@ import {databaseBackup} from './database-backup-store.mjs';
 import path, {join as joinPath} from "node:path";
 import fs from "node:fs";
 import {timingSafeEqual,randomUUID,createHmac} from "node:crypto";
-import makeWASocket,{DisconnectReason,Browsers,DEFAULT_CONNECTION_CONFIG,proto,initAuthCreds,fetchLatestWaWebVersion,makeCacheableSignalKeyStore,generateWAMessage,generateMessageIDV2,BufferJSON,downloadMediaMessage} from "@whiskeysockets/baileys";
+import makeWASocket,{DisconnectReason,Browsers,DEFAULT_CONNECTION_CONFIG,Curve,proto,initAuthCreds,fetchLatestWaWebVersion,makeCacheableSignalKeyStore,generateWAMessage,generateMessageIDV2,BufferJSON,downloadMediaMessage} from "@whiskeysockets/baileys";
 import QRCode from "qrcode";
 import {validPhone,normalizeFromJid,extractText,resolveMessagePhone,freshQR,formatPairingCode,connectionPhase,reconnectPlan} from "./core.mjs";
 import {sendConnectionNoticeOnce,noticeState} from "./connection-alert.mjs";
@@ -974,9 +975,10 @@ async function connect(){
       version:webVersion.version,
       printQRInTerminal:false,markOnlineOnConnect:false,syncFullHistory:false,logger});
     socketDeviceCaches.set(client,deviceCache);
-    // Do not announce a new link while merely restoring registered auth.
+    // QR pairing leaves registered=false in the pinned SDK. Only genuinely
+    // unlinked auth arms a new notice; restoring a signed account stays silent.
     // The memory-only intent survives Baileys' post-pairing restartRequired.
-    if(state.creds.registered!==true&&process.env.ORION_NOTIFY_SELF_ON_LINK==="1")newLinkNoticeAuthDir=selectedAuthDir;
+    if(classifyPairedAuth(state.creds,{Curve,proto})==='unlinked'&&process.env.ORION_NOTIFY_SELF_ON_LINK==="1")newLinkNoticeAuthDir=selectedAuthDir;
     const notifyNewLink=newLinkNoticeAuthDir===selectedAuthDir;
     socket=client;installListeners(client,mine,saveCreds,notifyNewLink);
     primaryHealth.watch(client.ws);

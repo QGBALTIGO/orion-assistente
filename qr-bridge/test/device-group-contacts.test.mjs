@@ -6,7 +6,7 @@ import {Readable} from 'node:stream';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {DEFAULT_CONNECTION_CONFIG} from '@whiskeysockets/baileys';
+import {DEFAULT_CONNECTION_CONFIG,initAuthCreds} from '@whiskeysockets/baileys';
 import {createDeviceGroupContacts,GROUP_CONTACTS_LIMITS,validGroupContactsRequest} from '../src/device-group-contacts.mjs';
 import {createChannelManager} from '../src/channel-manager.mjs';
 import {createChannelRoutes} from '../src/channel-routes.mjs';
@@ -268,7 +268,7 @@ test('real session adapter exposes reads only after open and guards its socket i
     deviceEvent:async row=>{events.push(row);return {effects:[]};},deviceEffectsPending:async()=>({effects:[],reconcile:[]}),
     deviceEffectAuthorize:()=>{effects.push('authorize');assert.fail('No outbound effect');},deviceEffectFinish:()=>assert.fail('No effect finish')};
   const mod={DEFAULT_CONNECTION_CONFIG:{version:DEFAULT_CONNECTION_CONFIG.version},
-    default:()=>client,BufferJSON:{},initAuthCreds:()=>({registered:true}),Browsers:{windows:()=>['synthetic']},
+    default:()=>client,BufferJSON:{},initAuthCreds,Browsers:{windows:()=>['synthetic']},
     DisconnectReason:{loggedOut:401},proto:{Message:{AppStateSyncKeyData:{fromObject:value=>value}}}};
   const session=await createBaileysChannelSession(context,{loadBaileys:async()=>mod,schedule:(fn,ms)=>{const id=++serial;tasks.set(id,{fn,ms});return id;},cancel:id=>tasks.delete(id)});
   t.after(()=>session.close());

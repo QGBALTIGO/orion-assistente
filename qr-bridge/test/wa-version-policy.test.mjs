@@ -5,6 +5,7 @@ import * as sdk from '@whiskeysockets/baileys';
 import {createWaVersionPolicy} from '../src/wa-version-policy.mjs';
 import {createBaileysChannelSession} from '../src/channel-session.mjs';
 import {encryptedChannelStore} from '../src/channel-storage.mjs';
+import {makePairedAuthFixture} from './helpers/paired-auth-fixture.mjs';
 process.env.ORION_RETRY_TEST_MODE='1';
 const bundled=sdk.DEFAULT_CONNECTION_CONFIG.version,latest=[2,3000,bundled[2]+1];
 const deferred=()=>{let resolve;const promise=new Promise(done=>{resolve=done;});return {resolve,promise};};
@@ -56,7 +57,7 @@ function local(t,{registered=false}={}){
     onConnected(){},onDisconnected(){},onMessage(){},onReceipt:async()=>{}};
   if(registered){const auth=path.join(directory,'auth');fs.mkdirSync(auth,{mode:0o700});
     encryptedChannelStore({directory:auth,secret,serialize:value=>JSON.stringify(value,sdk.BufferJSON.replacer)})
-      .set('creds',{...sdk.initAuthCreds(),registered:true});}
+      .set('creds',makePairedAuthFixture().creds);}
   const fake={...sdk,default:options=>{configs.push(options);return {ev:new EventEmitter(),end(){},user:{id:'5567999999901@s.whatsapp.net'}};}};
   t.after(()=>{const target=path.resolve(directory);assert.ok(target.startsWith(path.resolve(os.tmpdir())+path.sep+'orion-web-version-'));fs.rmSync(target,{recursive:true,force:true});});
   return {context,fake,configs,revoke:()=>{current=false;}};

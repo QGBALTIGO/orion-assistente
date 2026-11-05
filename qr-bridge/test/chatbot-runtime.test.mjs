@@ -80,6 +80,58 @@ test('ingress to a native list uses a current effect, exact encrypted proto and 
   assert.equal(f.finished[0].state,'accepted');assert.ok(f.authorizations.length>=4);assert.ok(f.authorizations.slice(1).every(row=>row.recheck===true));
   const incoming=f.events.find(row=>row.message_id==='native-list');assert.equal(incoming.origin,'contact');assert.equal(incoming.chatbot_revision,1);assert.ok(Number.isSafeInteger(incoming.ingress_order));
 });
+
+const recipientLid='100000000000002@lid';
+function verifiedRecipient(f){
+  const calls=[];f.context.verifiedLid=()=>true;
+  f.client.user={id:self+':7@s.whatsapp.net',lid:'100000000000001:7@lid'};
+  f.behavior.onWhatsApp=async pn=>{calls.push(['lookup',pn]);return [{exists:true,jid:pn+'@s.whatsapp.net',lid:recipientLid}];};
+  f.client.getUSyncDevices=async(...args)=>{calls.push(['usync',...args]);return [];};return calls;
+}
+for(const kind of ['send_text','chatbot_text','chatbot_list','native_list'])test(`digital ${kind} uses a fresh exact LID proof and the same encrypted recovery proto`,async t=>{
+  const f=await fixture(t,{native:kind==='native_list'}),calls=verifiedRecipient(f);
+  const item=kind==='send_text'?f.deviceEffect('send_text',{phone,text:'Texto confirmado'}):f.effect(kind==='chatbot_text'?
+    {type:'text',text:'Resposta confirmada'}:{type:'list',title:'Menu',description:'Escolha',button_text:'Abrir',sections:[{rows:[{id:'ocb:first',title:'Primeira'}]}]});
+  f.behavior.event=async row=>row.kind==='text'?[item]:[];f.receive('lid-'+kind);await until(()=>f.finished.length===1);
+  assert.equal(f.finished[0].state,'accepted');assert.equal(f.sends.length,1);assert.equal(f.sends[0].jid,recipientLid);
+  assert.deepEqual(calls.filter(row=>row[0]==='usync'),[['usync',[self+':7@s.whatsapp.net',recipientLid],false,true]]);
+  assert.ok(calls.filter(row=>row[0]==='lookup').every(row=>row[1]===phone));
+  if(kind==='chatbot_list')assert.equal(f.sends[0].proto.listMessage,null);
+  if(kind==='native_list')assert.ok(f.sends[0].proto.listMessage);
+});
+
+for(const mode of ['missing_lid','normalized_pn','untrusted_devices','malformed_own_lid','revoked_after_usync'])test(`digital verified routing refuses ${mode} without falling back to PN`,async t=>{
+  const f=await fixture(t);verifiedRecipient(f);
+  if(mode==='missing_lid')f.behavior.onWhatsApp=async()=>[{exists:true,jid:phone+'@s.whatsapp.net'}];
+  if(mode==='normalized_pn')f.behavior.onWhatsApp=async()=>[{exists:true,jid:other+'@s.whatsapp.net',lid:recipientLid}];
+  if(mode==='untrusted_devices')f.client.getUSyncDevices=async()=>[{user:phone,device:2}];
+  if(mode==='malformed_own_lid')f.client.user.lid='100000000000001@lid';
+  if(mode==='revoked_after_usync')f.client.getUSyncDevices=async()=>{f.session.close();return [];};
+  const item=f.effect({type:'text',text:'Não pode usar PN como fallback'});f.behavior.event=async row=>row.kind==='text'?[item]:[];
+  f.receive('denied-'+mode);
+  if(mode==='revoked_after_usync'){await until(()=>f.authorizations.length>=2);for(let i=0;i<10;i++)await tick();}
+  else await until(()=>f.finished.length===1);
+  assert.equal(f.sends.length,0);
+  if(f.finished.length)assert.notEqual(f.finished[0].state,'accepted');
+});
+
+test('scoped native list uses verified LID while its carousel and another device keep text fallback',async t=>{
+  const priorScopes=process.env.QR_NATIVE_LIST_SCOPES,priorGlobal=process.env.QR_NATIVE_INTERACTIVE_ENABLED;
+  t.after(()=>{for(const [name,value] of [['QR_NATIVE_LIST_SCOPES',priorScopes],['QR_NATIVE_INTERACTIVE_ENABLED',priorGlobal]])
+    if(value===undefined)delete process.env[name];else process.env[name]=value;});
+  const f=await fixture(t);verifiedRecipient(f);
+  process.env.QR_NATIVE_INTERACTIVE_ENABLED='0';process.env.QR_NATIVE_LIST_SCOPES=f.context.tenantId+':'+f.state.id;
+  const list=()=>({type:'list',title:'Menu',description:'Escolha',button_text:'Abrir',sections:[{rows:[{id:'ocb:scoped',title:'Primeira'}]}]});
+  const item=f.effect(list());f.behavior.event=async row=>row.message_id==='scoped-menu'?[item]:[];
+  f.receive('scoped-menu');await until(()=>f.finished.length===1);
+  assert.equal(f.finished[0].state,'accepted');assert.equal(f.sends[0].jid,recipientLid);assert.ok(f.sends[0].proto.listMessage);
+  const carousel=f.effect({type:'carousel',body:'Informações',cards:Array.from({length:3},(_,i)=>({title:'Card '+i,body:'Detalhes',button_text:'Ver',selection_id:'ocb:card-'+i}))});
+  f.behavior.event=async row=>row.message_id==='scoped-carousel'?[carousel]:[];f.receive('scoped-carousel');await until(()=>f.finished.length===2);
+  assert.equal(f.finished[1].state,'accepted');assert.equal(f.sends[1].proto.interactiveMessage,null);assert.ok(f.sends[1].proto.extendedTextMessage);
+  const other=await fixture(t);verifiedRecipient(other);const otherList=other.effect(list());
+  other.behavior.event=async row=>row.kind==='text'?[otherList]:[];other.receive('other-device-menu');await until(()=>other.finished.length===1);
+  assert.equal(other.finished[0].state,'accepted');assert.equal(other.sends[0].proto.listMessage,null);assert.ok(other.sends[0].proto.extendedTextMessage);
+});
 test('default list fallback survives a valid-auth reconnect and quotes resolve only the same contact menu',async t=>{
   const f=await fixture(t),action=f.effect({type:'list',title:'Menu',description:'Escolha',button_text:'Abrir',
     sections:[{rows:[{id:'ocb:first',title:'Primeira'},{id:'ocb:second',title:'Segunda'}]}]});
