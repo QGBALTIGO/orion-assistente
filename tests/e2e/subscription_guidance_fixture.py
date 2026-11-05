@@ -25,6 +25,7 @@ class Handler(DeviceHandler):
                 base._sessions[cookie].update(
                     guidance_calls=[],
                     guidance_grant=query.get("fixtureGuidance") != ["0"],
+                    guidance_effective_plan=None,
                     company_status="paused" if query.get("fixtureInactive") == ["1"] else "active",
                 )
         session = self.session()
@@ -37,7 +38,7 @@ class Handler(DeviceHandler):
             plan = {**value["effective_plan"], "workspace_profile": session["workspace_profile"]}
             if session["workspace_profile"] == PROFILE:
                 features = {"account.manage", "business.setup"}
-                if plan["active"]:
+                if session["company_status"] == "active":
                     features.add("devices.manage")
             else:
                 features = set(plan["features"])
@@ -49,6 +50,7 @@ class Handler(DeviceHandler):
             plan["permissions"] = {key: key in features for key in
                                    {*plan["permissions"], GUIDANCE_FEATURE, "devices.manage"}}
             plan["revision"] = hashlib.sha256(json.dumps(plan, sort_keys=True).encode()).hexdigest()
+            session["guidance_effective_plan"] = plan
             # DeviceHandler's response projection is intentionally bypassed: the
             # test needs this explicit policy state, not its device-only grant.
             return PlansHandler.body(self, {"effective_plan": plan}, status, mime, cookie)
@@ -60,6 +62,7 @@ class Handler(DeviceHandler):
         if session and path == "/__fixture/guidance-report":
             return self.body({
                 "calls": session["guidance_calls"], "unexpected": session["unexpected"],
+                "effective_plan": session["guidance_effective_plan"],
                 "state": {"profile": session["workspace_profile"],
                           "active": session["company_status"] == "active",
                           "feature_granted": session["guidance_grant"],

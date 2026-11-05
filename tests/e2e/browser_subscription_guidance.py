@@ -73,7 +73,15 @@ def test_warmup_article_layout_and_read_only_navigation(browser, fixture_url, si
     label = f"{browser[0]}-{size[0]}x{size[1]}-{theme}"
     ARTIFACTS.mkdir(parents=True, exist_ok=True)
     try:
-        page.goto(fixture_url + "/panel?fixtureRole=owner&fixturePlan=elite&aba=aquecimento")
+        with page.expect_response(lambda response: urlsplit(response.url).path == base.BASE + "/management/permissions"):
+            page.goto(fixture_url + "/panel?fixtureRole=owner&fixturePlan=none&aba=aquecimento")
+        snapshot = report(page, fixture_url)
+        # Subscription workspace access follows the active company and feature
+        # grants. The commercial-plan flag is deliberately false, as in live use.
+        assert snapshot["state"]["active"] is True
+        assert snapshot["effective_plan"]["active"] is False
+        assert snapshot["effective_plan"]["permissions"]["whatsapp_guidance.view"] is True
+        assert snapshot["effective_plan"]["permissions"]["devices.manage"] is True
         expect(page.locator("#page-suite")).to_have_attribute("data-os-current-route", "aquecimento")
         article = page.locator(ARTICLE)
         expect(article).to_be_visible()
@@ -121,6 +129,7 @@ def test_warmup_article_layout_and_read_only_navigation(browser, fixture_url, si
             snapshot = report(page, fixture_url)
             assert any(call["path"] == DEVICE_BASE for call in snapshot["calls"]), snapshot
             assert all(call["path"] in BOOTSTRAP_PATHS | {DEVICE_BASE} for call in snapshot["calls"]), snapshot
+        assert snapshot["effective_plan"]["active"] is False
         assert all(call["method"] == "GET" for call in requests), requests
         assert not external, external
         assert not errors, errors

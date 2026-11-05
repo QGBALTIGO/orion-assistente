@@ -33,7 +33,7 @@ equivalência integral quando há comportamento ainda não observado ou testado.
 | 10 | Atribuições de Chat | Pendente: plano sem acesso e criação retorna 403. Sem implementação ou publicação; continuidade dos módulos acessíveis autorizada pelo usuário. [Registro de observação](chat-assignments-observation.md) |
 | 11 | Enviar Mensagem | Publicado e conferido ao vivo em 2026-11-05 — PR 263, produção `32a90c0fd003c5fbac70c1bd541bf9ce20171040`; etapa encerrada, conforme o [registro de validação](direct-messages-validation.md) |
 | 12 | Transcrição de Áudio | Transcrição e métricas existentes preservadas; carteira e recargas pendentes, sem compra ou nova implementação. [Registro de observação](transcription-observation.md) |
-| 13 | Aquecimento | Guia observado e implementado; validação de publicação em andamento. [Observação](warmup-observation.md) · [Validação](warmup-validation.md) |
+| 13 | Aquecimento | PR 264 publicada; conferência ao vivo encontrou condição de plano indevida no menu. Correção e nova validação em andamento antes de encerrar a etapa. [Observação](warmup-observation.md) · [Validação](warmup-validation.md) |
 | 14 | Evitar Banimento | Não iniciado |
 | 15 | Resolver Banimento | Não iniciado |
 | 16 | Extrator de contatos de grupos | Não iniciado |
