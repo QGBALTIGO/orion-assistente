@@ -687,6 +687,9 @@ async def device_event(channel_id: UUID, payload: DeviceEvent, request: Request)
              "kind": payload.kind, "at": payload.occurred_at, "payload": _json(data)})).scalar_one_or_none()
         if event_id is None:
             return {"effects": [], "duplicate": True}
+        if payload.kind == "text" and payload.origin == "contact":
+            from app.subscription_campaigns import record_campaign_optout
+            await record_campaign_optout(db, row, data, event_id)
         if payload.kind == "status":
             status_data = payload.state if isinstance(payload.state, dict) else {
                 "status": payload.state, "phone": payload.phone, "phone_verified": bool(payload.phone),
@@ -718,6 +721,7 @@ async def device_event(channel_id: UUID, payload: DeviceEvent, request: Request)
 @router.get(INTERNAL + "/effects/pending")
 async def pending_effects(channel_id: UUID, request: Request):
     from app import subscription_chatbot_engine as chatbot
+    from app.subscription_campaigns import admit_due_campaigns, after_campaign_effect_finish
     async with _private_transaction(request) as (db, row, _, _, _):
         # An interrupted non-idempotent send is never retried automatically.
         # Webhooks carry a stable event id and may be retried up to three times.
@@ -727,8 +731,12 @@ async def pending_effects(channel_id: UUID, request: Request):
             WHERE device_id=:d AND status='running' AND authorized_at<clock_timestamp()-interval '180 seconds'
             RETURNING *"""), {"d": row["id"]})).mappings().all()
         for effect in interrupted:
-            await chatbot.after_effect_finish(db, row, effect, effect["status"])
+            if effect["type"] == "campaign_action":
+                await after_campaign_effect_finish(db, row, effect, effect["status"])
+            else:
+                await chatbot.after_effect_finish(db, row, effect, effect["status"])
         await chatbot.reap_unreachable(db, row)
+        await admit_due_campaigns(db, row)
         effects = (await db.execute(text("""SELECT e.* FROM subscription_device_effects e
             LEFT JOIN subscription_device_effects p ON p.tenant_id=e.tenant_id AND p.id=e.previous_effect
             LEFT JOIN subscription_chatbot_runs r ON r.tenant_id=e.tenant_id AND r.id=e.chatbot_run_id
@@ -737,7 +745,7 @@ async def pending_effects(channel_id: UUID, request: Request):
             WHERE e.device_id=:d AND e.generation=:g AND e.settings_revision=:r AND e.due_at<=clock_timestamp()
               AND e.type<>'transcribe' AND e.expires_at>clock_timestamp()
               AND (e.status='pending' OR e.type='webhook' AND e.status='failed' AND e.attempts<3)
-              AND (e.type<>'chatbot_action' OR e.previous_effect IS NULL OR p.status='accepted')
+              AND (e.type NOT IN ('chatbot_action','campaign_action') OR e.previous_effect IS NULL OR p.status='accepted')
               AND (e.type<>'chatbot_action' OR r.input_context->>'transcription_predecessor' IS NULL OR a.status='accepted')
             ORDER BY e.created_at,e.id LIMIT 25"""),
             {"d": row["id"], "g": row["generation"], "r": row["revision"]})).mappings().all()
@@ -745,9 +753,16 @@ async def pending_effects(channel_id: UUID, request: Request):
             FROM subscription_device_effects WHERE device_id=:d AND generation=:g
               AND type<>'webhook' AND status='uncertain'
             ORDER BY created_at,id LIMIT 25"""), {"d": row["id"], "g": row["generation"]})).mappings().all()
-        return jsonable_encoder({"effects": [chatbot.descriptor(effect) for effect in effects],
+        return jsonable_encoder({"effects": [campaign_effect_descriptor(effect) if effect["type"] == "campaign_action"
+                                             else chatbot.descriptor(effect) for effect in effects],
                                  "reconcile": [{key: value for key, value in effect.items()
                                                 if key != "chatbot_revision" or value is not None} for effect in reconcile]})
+
+
+def campaign_effect_descriptor(effect):
+    return {"operation_id": effect["id"], "type": "campaign_action", "action_type": effect["payload"]["action"]["type"],
+            "device_id": effect["device_id"], "generation": effect["generation"],
+            "settings_revision": effect["settings_revision"], "due_at": effect["due_at"]}
 
 
 async def _effect(db, row, operation_id):
@@ -801,6 +816,9 @@ async def authorize_effect(channel_id: UUID, payload: EffectRequest, request: Re
         if payload.device_id is not None:
             _same_snapshot(row, payload.device_id, payload.generation, payload.settings_revision)
         effect = await _effect(db, row, payload.operation_id)
+        if effect["type"] == "campaign_action":
+            from app.subscription_campaigns import authorize_campaign_effect
+            return await authorize_campaign_effect(db, row, effect, owner, fence, payload)
         if effect["type"] == "chatbot_action":
             from app.subscription_chatbot_engine import authorize_effect as authorize_chatbot
             return await authorize_chatbot(db, row, effect, owner, fence, payload)
@@ -870,7 +888,11 @@ async def finish_effect(channel_id: UUID, payload: EffectFinish, request: Reques
                     await db.execute(text("""UPDATE subscription_devices SET
                         settings=jsonb_set(settings,'{webhook,enabled}','false'::jsonb),revision=revision+1,
                         updated_at=clock_timestamp() WHERE id=:d"""), {"d": row["id"]})
-        children = await after_effect_finish(db, row, effect, state)
+        if effect["type"] == "campaign_action":
+            from app.subscription_campaigns import after_campaign_effect_finish
+            children = await after_campaign_effect_finish(db, row, effect, state)
+        else:
+            children = await after_effect_finish(db, row, effect, state)
         return jsonable_encoder({"operation_id": effect["id"], "state": state, **({"effects": children} if children else {})})
 
 
@@ -947,17 +969,20 @@ async def device_audio(channel_id: UUID, request: Request):
             raise fail("DEVICE_CONFLICT")
         event = (await db.execute(text("SELECT payload FROM subscription_device_events WHERE tenant_id=:t AND id=:e"),
                                  {"t": row["tenant_id"], "e": effect["event_id"]})).scalar_one()
-        previous = None
-        for index, part in enumerate(transcription_parts(row["settings"], event, result["text"])):
-            previous = await _insert_effect(db, row, effect["event_id"], f"transcript:{index}",
-                {"type": "send_text", "purpose": "transcription_reply", "payload": {"phone": event["phone"], "text": part}},
-                previous=previous)
         duration = result.get("duration_seconds")
         if isinstance(duration, bool) or not isinstance(duration, (int, float)) or not math.isfinite(duration) or not 0 < duration <= minutes * 60:
             raise fail("DEVICE_CAPABILITY_UNAVAILABLE")
         await db.execute(text("""UPDATE subscription_device_effects SET status='accepted',finished_at=clock_timestamp(),
             audio_duration_seconds=:duration,audio_completed_at=clock_timestamp() WHERE id=:o"""),
             {"o": operation_id, "duration": duration})
+        if event.get("origin") == "contact":
+            from app.subscription_campaigns import record_campaign_optout
+            await record_campaign_optout(db, row, {**event, "kind": "text", "text": result["text"]}, effect["event_id"])
+        previous = None
+        for index, part in enumerate(transcription_parts(row["settings"], event, result["text"])):
+            previous = await _insert_effect(db, row, effect["event_id"], f"transcript:{index}",
+                {"type": "send_text", "purpose": "transcription_reply", "payload": {"phone": event["phone"], "text": part}},
+                previous=previous)
         # Matching uses only the authenticated ASR result. The formatted
         # transcription keeps its own independent enable switch and ledger.
         from app.subscription_chatbot_engine import complete_transcript

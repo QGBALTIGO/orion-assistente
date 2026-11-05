@@ -14,6 +14,7 @@ import {createChatbotRuntime,isChatbotEffect} from './chatbot-runtime.mjs';
 import {normalizeChatbotInput,createOrderedIngress} from './chatbot-input.mjs';
 import {knownMessagePreflight,messageFailureCode,safeMessageFailureCode} from './device-message-failure.mjs';
 import {diagnosticMessagePermit} from './device-diagnostic-message.mjs';
+import {createCampaignRuntime,isCampaignEffect} from './campaign-runtime.mjs';
 
 const privateJid=/^[1-9]\d{7,19}(?::\d+)?@(s\.whatsapp\.net|lid)$/;
 const phonePattern=/^[1-9]\d{7,14}$/;
@@ -21,7 +22,7 @@ const messageId=value=>typeof value==='string'&&/^[a-zA-Z0-9._:-]{1,160}$/.test(
 const name=value=>typeof value==='string'?Array.from(value.replace(/[\u0000-\u001f\u007f]/g,'').trim()).slice(0,100).join(''):null;
 const scope=snapshot=>({device_id:snapshot.id,generation:snapshot.generation,settings_revision:snapshot.settings_revision});
 const same=(a,b)=>a&&b&&a.id===b.id&&a.generation===b.generation&&a.settings_revision===b.settings_revision;
-const knownEffect=value=>isChatbotEffect(value)||(value&&channelId(value.operation_id)&&['send_text','reject_call','transcribe','webhook'].includes(value.type));
+const knownEffect=value=>isChatbotEffect(value)||isCampaignEffect(value)||(value&&channelId(value.operation_id)&&['send_text','reject_call','transcribe','webhook'].includes(value.type));
 
 export function validDeviceSnapshot(value){
   return !!(value&&typeof value==='object'&&!Array.isArray(value)&&channelId(value.id)&&channelId(value.generation)&&
@@ -45,7 +46,7 @@ export function createDeviceRuntime(context,{client,downloadMediaMessage,logger,
     const abort=new AbortController();controllers.add({abort,expected});return abort;
   }
   function releaseController(abort){for(const entry of controllers)if(entry.abort===abort)controllers.delete(entry);}
-  function sync(){for(const entry of controllers)if(!current(entry.expected))entry.abort.abort();chatbot.sync();}
+  function sync(){for(const entry of controllers)if(!current(entry.expected))entry.abort.abort();chatbot.sync();campaigns.sync();}
   async function finish(expected,operation_id,state,extra={}){
     try{await context.deviceEffectFinish({...scope(expected),operation_id,state,...extra});}catch{/* The durable grant stays conservative if acknowledgement is lost. */}
   }
@@ -64,8 +65,9 @@ export function createDeviceRuntime(context,{client,downloadMediaMessage,logger,
   }
   async function reconcile(items,expected){
     await chatbot.reconcile(items,expected);
+    await campaigns.reconcile(items,expected);
     for(const item of items||[]){
-      if(isChatbotEffect(item))continue;
+      if(isChatbotEffect(item)||item?.type==='campaign_action')continue;
       if(!channelId(item?.operation_id)||item.device_id!==expected.id||item.generation!==expected.generation||
           !Number.isSafeInteger(item.settings_revision)||item.settings_revision<1||!current(expected))continue;
       // A receipt is evidence only. No authorize, capacity grant, download,
@@ -79,6 +81,7 @@ export function createDeviceRuntime(context,{client,downloadMediaMessage,logger,
   }
   async function execute(item,{expected,message}={}){
     if(isChatbotEffect(item))return chatbot.execute(item,{expected});
+    if(isCampaignEffect(item))return campaigns.execute(item,{expected});
     const id=item.operation_id;if(inflight.has(id))return;
     // Pending reconciliation has no original encrypted media message. It may
     // never claim an ASR effect before the live event's own callback consumes it.
@@ -205,6 +208,8 @@ export function createDeviceRuntime(context,{client,downloadMediaMessage,logger,
   }
   const chatbot=createChatbotRuntime(context,{ledger,capacity,sendChatbot,currentDevice:current,guardDevice:guard,
     onEffects:effects,now,schedule,cancel,onAccepted:(id,data)=>{sent.set(id,data);if(sent.size>2000)sent.delete(sent.keys().next().value);},...chatbotOptions});
+  const campaigns=createCampaignRuntime(context,{ledger,capacity,sendChatbot,currentDevice:current,guardDevice:guard,
+    onEffects:effects,now,onAccepted:(id,data)=>{sent.set(id,data);if(sent.size>2000)sent.delete(sent.keys().next().value);}});
   const ingress=createOrderedIngress({schedule,cancel,isCurrent:item=>current(item.expected),
     resolveIdentity:async({expected,message})=>{await guard(expected);const phone=await resolveMessagePhone(message.key,client);await guard(expected);
       const self=normalizeFromJid(client.user?.id);return phonePattern.test(phone||'')&&self&&phone!==self?phone:null;},
@@ -247,6 +252,6 @@ export function createDeviceRuntime(context,{client,downloadMediaMessage,logger,
     }
   }
   return {receive,calls,receipts,onConnected,sync,effects,
-    diagnostics:()=>({pending:pending+ingress.pending(),inflight:inflight.size+chatbot.pending(),audio_busy:audioBusy}),
-    close(){if(closed)return;closed=true;connected=false;cancel(poll);ingress.close();chatbot.close();for(const entry of controllers)entry.abort.abort();controllers.clear();sent.clear();seen.clear();}};
+    diagnostics:()=>({pending:pending+ingress.pending(),inflight:inflight.size+chatbot.pending()+campaigns.pending(),audio_busy:audioBusy}),
+    close(){if(closed)return;closed=true;connected=false;cancel(poll);ingress.close();chatbot.close();campaigns.close();for(const entry of controllers)entry.abort.abort();controllers.clear();sent.clear();seen.clear();}};
 }

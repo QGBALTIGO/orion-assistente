@@ -294,7 +294,7 @@ async def active_execution(db, row, kind, now):
 
 async def contact_busy(db, row, phone, now, *, except_effect=None, before=None):
     return bool((await db.execute(text("""SELECT EXISTS(SELECT 1 FROM subscription_device_effects e
-      WHERE e.tenant_id=:t AND e.device_id=:d AND e.type IN ('send_text','chatbot_action')
+      WHERE e.tenant_id=:t AND e.device_id=:d AND e.type IN ('send_text','chatbot_action','campaign_action')
         AND e.payload->>'phone'=:phone AND e.status IN ('pending','running','uncertain')
         AND e.expires_at>:now AND (CAST(:except AS uuid) IS NULL OR e.id<>CAST(:except AS uuid))
         AND (CAST(:before AS timestamptz) IS NULL OR (e.created_at,e.id)<(CAST(:before AS timestamptz),CAST(:except AS uuid))))"""),

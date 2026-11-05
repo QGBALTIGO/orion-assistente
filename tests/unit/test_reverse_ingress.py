@@ -343,11 +343,58 @@ def test_direct_module_invocation_reexecs_before_processing_configuration(monkey
     monkeypatch.setattr(ingress.os, "environ", source)
     executed = []
     monkeypatch.setattr(ingress.os, "execve", lambda *args: executed.append(args))
+    monkeypatch.setattr(ingress, "wait_for_campaigns_schema", lambda _: pytest.fail("Must exec before schema child"))
     monkeypatch.setattr(ingress, "supervise", lambda _: pytest.fail("Must exec before supervising"))
     ingress.main()
     assert executed[0][1] == [ingress.sys.executable, "-m", "scripts.reverse_ingress"]
     assert not set(executed[0][2]) & start_api.ONE_TIME_KEYS
     assert "MIGRATION_DATABASE_URL" in source
+
+
+def test_clean_supervisor_checks_schema_once_before_api_or_ssh_children(environment, monkeypatch):
+    monkeypatch.setattr(ingress.os, "environ", environment)
+    events = []
+
+    def probe(command, **kwargs):
+        assert command == [ingress.sys.executable, "-m", "scripts.wait_for_subscription_campaigns_schema"]
+        assert kwargs["check"] is True and kwargs["timeout"] == 95
+        assert not set(kwargs["env"]) & (start_api.ONE_TIME_KEYS | start_api.SSH_KEYS)
+        assert kwargs["env"]["APP_DATABASE_URL"] == "synthetic-runtime"
+        assert kwargs["env"]["WEB_CONCURRENCY"] == "3"
+        assert events == []
+        events.append("schema-ready")
+
+    def supervise(source):
+        assert source == environment and not set(source) & start_api.ONE_TIME_KEYS
+        assert events == ["schema-ready"]
+        events.append("supervise")
+        return 0
+
+    monkeypatch.setattr(start_api.subprocess, "run", probe)
+    monkeypatch.setattr(ingress, "supervise", supervise)
+    with pytest.raises(SystemExit) as result:
+        ingress.main()
+    assert result.value.code == 0 and events == ["schema-ready", "supervise"]
+
+
+@pytest.mark.parametrize("failure", ["exit", "timeout", "spawn"])
+def test_schema_failure_prevents_supervision_without_exposing_details(environment, monkeypatch, capsys, failure):
+    monkeypatch.setattr(ingress.os, "environ", environment)
+    monkeypatch.setattr(ingress, "supervise", lambda _: pytest.fail("No API or tunnel before schema readiness"))
+
+    def probe(command, **kwargs):
+        if failure == "exit":
+            raise subprocess.CalledProcessError(1, command, stderr="synthetic-private-schema-detail")
+        if failure == "timeout":
+            raise subprocess.TimeoutExpired(command, kwargs["timeout"], stderr="synthetic-private-schema-detail")
+        raise OSError("synthetic-private-schema-detail")
+
+    monkeypatch.setattr(start_api.subprocess, "run", probe)
+    with pytest.raises(SystemExit) as result:
+        ingress.main()
+    assert result.value.code == 1
+    output = capsys.readouterr()
+    assert output.err == "Reverse ingress schema readiness failed\n" and output.out == ""
 
 
 def test_signal_handlers_are_restored_after_install(environment, monkeypatch):

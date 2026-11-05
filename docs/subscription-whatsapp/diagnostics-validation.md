@@ -293,3 +293,40 @@ conferir a mesma revisão nos serviços API, worker e ponte; backup privado
 verificado e migração 0066 → 0067; barreira de catálogo pronta; e navegação no
 Chrome autorizado. A conferência ao vivo será somente leitura, sem confirmar
 mensagem ou iniciar probe real. Campanhas (etapa 07) permanece fora deste patch.
+
+
+## Encerramento da etapa 06 e base da etapa 07
+
+A PR 253 foi mesclada em 04/11/2026 às 21:26:43 UTC no commit
+`81cf127c51c3fae015568d16d79724ebe0f00db8`. A árvore
+`46d4109b71afa2c986c6580ac994c0113725a17f` é exatamente a qualificada no checkout
+`ccd756be28f68747f2f0e4b38204196a851ccb39`, head
+`7271d5241ef516eef95f5e1afdea8fa90c70494b`, incluindo Agenda PR 254 e sidebar PR 256.
+
+Os seis grupos finais passaram: Python 1.416, PostgreSQL 254, ponte 375, DOM 290,
+Chromium 58 e WebKit 58. Os 62 jobs gerais foram comparados com a produção:
+47 sucessos, 12 grupos com falhas históricas de teste e três causas históricas
+fora dos testes. O pytest amplo teve 8.293 aprovados, 169 falhas, 43 erros e dez
+skips; os 202 IDs/212 ocorrências falhos coincidiram com a base. O Node amplo
+manteve 49 falhas históricas. Não se declara CI geral inteiramente verde.
+
+O onboarding teve uma instalação cancelada ao atingir o timeout de 20 minutos,
+antes de executar pytest. Uma repetição direcionada no mesmo head concluiu com
+32 aprovados (job 126873545202). O histórico da instalação foi preservado.
+Fresh-devices, ASR com WAV/OGG reais, workspace, Agenda e sidebar também executaram
+seus gates. As capturas dos dois engines no head final foram verificadas por
+SHA-256 e inspecionadas, incluindo confirmação mobile e status em tablet.
+
+API `da42f6bc-f7eb-458c-b46c-8482bc6221a6`, worker
+`a4293217-1407-4a2e-b926-de06d6a9b694` e ponte
+`f17df87d-0248-40db-9588-db867f2a757e` concluíram SUCCESS no merge 81cf127c.
+Backup da API verificado às 21:28:17 UTC; migração 0066 → 0067 às 21:28:18 UTC.
+O worker registrou os catálogos da Agenda e Diagnósticos antes do início do ARQ.
+O literal de log worker_ready não foi observado; não é apresentado como evidência.
+
+A conferência em produção terminou às 21:37:46 UTC. A tela abriu sem seleção
+automática e respondeu à seleção/Atualizar: dispositivo Parado, servidor
+Disponível (28 ms), conexão direta, testes de mensagem e proxy desabilitados
+nesse contexto. Sem erros novos de console e sem envios/probes. A captura de
+comprovação foi recortada antes do histórico de destinatários. Somente então
+começou a observação de Campanhas; esta atualização documental acompanha a etapa07.

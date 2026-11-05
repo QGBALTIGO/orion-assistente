@@ -585,6 +585,7 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
 <link rel="stylesheet" href="/panel-assets/orion-subscription-templates.css">
 <link rel="stylesheet" href="/panel-assets/orion-subscription-sent-messages.css">
 <link rel="stylesheet" href="/panel-assets/orion-subscription-diagnostics.css">
+<link rel="stylesheet" href="/panel-assets/orion-subscription-campaigns.css">
 <link rel="stylesheet" href="/panel-assets/orion-inbox.css">
 <style>
 #appView.ob-gated .content > .page,#appView.ob-gated #osConsultantFab{display:none!important}
@@ -1283,6 +1284,7 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
 <script src="/panel-assets/orion-subscription-templates.js"></script>
 <script src="/panel-assets/orion-subscription-sent-messages.js"></script>
 <script src="/panel-assets/orion-subscription-diagnostics.js"></script>
+<script src="/panel-assets/orion-subscription-campaigns.js"></script>
 <script src="/panel-assets/orion-communication.js"></script>
 <script src="/panel-assets/orion-automations.js"></script>
 <script src="/panel-assets/orion-flows.js"></script>
@@ -1681,6 +1683,11 @@ async function api(url,method="GET",data){
      error.code="DIAGNOSTIC_CONTEXT_CHANGED";
      error.diagnosticRejection=Object.fromEntries(["reason","idempotency_key","device_id","kind","expected_version"].map(key=>[key,rejection[key]]));
    }
+   const campaignAdmission=(method==="POST"&&/\/subscription-whatsapp\/campaigns\/[^/]+\/(?:review|actions)$/.test(url))||(method==="PATCH"&&/\/subscription-whatsapp\/campaigns\/[^/]+$/.test(url))||(["PATCH","DELETE"].includes(method)&&/\/subscription-whatsapp\/campaigns\/groups\/[^/]+$/.test(url))||(method==="POST"&&/\/subscription-whatsapp\/campaigns\/groups\/[^/]+\/permissions$/.test(url));
+   if(response.status===409&&campaignAdmission&&json?.detail?.code==="CAMPAIGN_CONFLICT"&&rejection?.reason==="stale_version"){
+     error.code="CAMPAIGN_CONFLICT";
+     error.campaignRejection=Object.fromEntries(["reason","idempotency_key","kind","campaign_id","group_id","expected_version"].map(key=>[key,rejection[key]]));
+   }
    throw error;
  }
  return response.status===204?null:response.json();
@@ -1932,7 +1939,7 @@ async function showApp(role="support",name="",email="",maintenance=null){
  const epoch=authEpoch;
  resetWizard();
  suiteTenantId="";businessRows=[];businessContextReady=false;businessContextError="";
- const url=new URL(location.href);url.searchParams.delete("empresa");history.replaceState({...window.OrionSubscriptionSentMessages?.navigationState?.(),...window.OrionSubscriptionDiagnostics?.navigationState?.()},"",url.pathname+url.search);
+ const url=new URL(location.href);url.searchParams.delete("empresa");history.replaceState({...window.OrionSubscriptionSentMessages?.navigationState?.(),...window.OrionSubscriptionDiagnostics?.navigationState?.(),...window.OrionSubscriptionCampaigns?.navigationState?.()},"",url.pathname+url.search);
  suiteUser={role,name,email,maintenance};
  loginRole=role;
  const maintenanceActive=role==="member"&&maintenance?.active===true;

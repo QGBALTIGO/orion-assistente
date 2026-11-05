@@ -156,6 +156,8 @@ async def test_probe_rejects_privileged_or_wrong_database_role(monkeypatch, role
 def test_worker_waits_for_all_six_contracts_and_stops_at_first_failure(monkeypatch, blocked):
     from scripts import wait_for_subscription_diagnostics_schema as diagnostics_wait
     monkeypatch.setattr(diagnostics_wait, "main", lambda: 0)
+    from scripts import wait_for_subscription_campaigns_schema as campaigns_wait
+    monkeypatch.setattr(campaigns_wait, "main", lambda: 0)
     from scripts import wait_for_manual_start_times_schema as hours
     from scripts import wait_for_appointment_consent_schema as notifications
     from scripts import wait_for_subscription_devices_schema as devices

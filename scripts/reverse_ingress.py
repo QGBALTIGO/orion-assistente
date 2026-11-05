@@ -1,7 +1,8 @@
 """Supervise one API master and an opt-in, pinned OpenSSH reverse tunnel.
 
 Only scripts.start_api should enter this module, after its execve credential
-boundary. No application imports, DB access, provider calls, or tunnel per worker.
+boundary. A read-only schema probe precedes supervision; there are no application
+imports, provider calls, or tunnel per worker.
 An optional pinned HTTPS transport carries SSH when direct port22 is unavailable.
 """
 from __future__ import annotations
@@ -23,7 +24,7 @@ import time
 
 from cryptography.hazmat.primitives import serialization
 
-from scripts.start_api import ONE_TIME_KEYS, SSH_KEYS, runtime_environment
+from scripts.start_api import ONE_TIME_KEYS, SSH_KEYS, runtime_environment, wait_for_campaigns_schema
 
 RETRY_SECONDS = 2.0
 POLL_SECONDS = 0.2
@@ -337,7 +338,14 @@ def main():
         os.execve(sys.executable, [sys.executable, "-m", "scripts.reverse_ingress"], environment)
         return
     try:
+        # Validate the opt-in settings before any child. The schema probe runs
+        # after the clean exec boundary and receives neither owner nor SSH keys.
+        configuration(environment)
+        wait_for_campaigns_schema({key: value for key, value in environment.items() if key not in SSH_KEYS})
         result = supervise(environment)
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
+        print("Reverse ingress schema readiness failed", file=sys.stderr)
+        result = 1
     except RuntimeError as error:
         print(str(error), file=sys.stderr)
         result = 1
