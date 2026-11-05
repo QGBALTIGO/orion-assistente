@@ -88,6 +88,8 @@ on:
       - 'tests/e2e/subscription_bulk_messages_fixture.py'
       - 'tests/e2e/browser_subscription_direct_messages.py'
       - 'tests/e2e/subscription_direct_messages_fixture.py'
+      - 'tests/e2e/browser_subscription_guidance.py'
+      - 'tests/e2e/subscription_guidance_fixture.py'
       - 'ui-tests/*subscription*'
       - 'Dockerfile'
       - 'pyproject.toml'
@@ -260,6 +262,7 @@ jobs:
           node --check app/static/orion-subscription-devices.js
           node --check app/static/orion-suite.js
           node --test \
+            ui-tests/subscription-guidance.test.mjs \
             ui-tests/subscription-chatbot.test.mjs \
             ui-tests/subscription-chatbot-test.test.mjs \
             ui-tests/subscription-templates.test.mjs \
@@ -457,6 +460,7 @@ jobs:
       - name: Fluxos no painel real - celular, tablet, desktop e dois temas
         run: |
           python -m pytest -q -ra --maxfail=1 \
+            tests/e2e/browser_subscription_guidance.py \
             tests/e2e/browser_subscription_chatbot.py \
             tests/e2e/browser_subscription_chatbot_simulator.py \
             tests/e2e/browser_subscription_templates.py \
@@ -473,6 +477,7 @@ jobs:
         with:
           name: subscription-chatbot-${{ matrix.engine }}
           path: |
+            test-artifacts/subscription-guidance/
             test-artifacts/subscription-chatbot/
             test-artifacts/subscription-chatbot-test/
             test-artifacts/subscription-templates/

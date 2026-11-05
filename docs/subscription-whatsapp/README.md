@@ -31,9 +31,9 @@ equivalência integral quando há comportamento ainda não observado ou testado.
 | 08 | Mensagens Programadas | Publicado e conferido ao vivo em 2026-11-05 — PR 260, produção `da3a0086a038f0f84024cc38c5960d3a2935ffbe`; etapa encerrada com ajuste editorial da PR 261 (`149c43fba44b3f93bdcd90920751d79dc231d32a`), conforme o [registro de validação](scheduled-messages-validation.md) |
 | 09 | Mensagem em Massa | Publicado e conferido ao vivo em 2026-11-05 — PR 262, produção `d17cb67a29fca8293299ac3b2b969601b540075a`; etapa encerrada, conforme o [registro de validação](bulk-messages-validation.md) |
 | 10 | Atribuições de Chat | Pendente: plano sem acesso e criação retorna 403. Sem implementação ou publicação; continuidade dos módulos acessíveis autorizada pelo usuário. [Registro de observação](chat-assignments-observation.md) |
-| 11 | Enviar Mensagem | Referência observada; implementação e qualificação em andamento, sem publicação. [Observação](direct-messages-observation.md) e [contrato](direct-messages-contract.md) |
-| 12 | Transcrição de Áudio | Não iniciado |
-| 13 | Aquecimento | Não iniciado |
+| 11 | Enviar Mensagem | Publicado e conferido ao vivo em 2026-11-05 — PR 263, produção `32a90c0fd003c5fbac70c1bd541bf9ce20171040`; etapa encerrada, conforme o [registro de validação](direct-messages-validation.md) |
+| 12 | Transcrição de Áudio | Transcrição e métricas existentes preservadas; carteira e recargas pendentes, sem compra ou nova implementação. [Registro de observação](transcription-observation.md) |
+| 13 | Aquecimento | Guia observado e implementado; validação de publicação em andamento. [Observação](warmup-observation.md) · [Validação](warmup-validation.md) |
 | 14 | Evitar Banimento | Não iniciado |
 | 15 | Resolver Banimento | Não iniciado |
 | 16 | Extrator de contatos de grupos | Não iniciado |
@@ -127,9 +127,45 @@ mapeados, mas não comprovam o comportamento da referência. Nenhum complemento
 foi contratado. O usuário autorizou explicitamente deixar essa etapa pendente
 e continuar, um módulo acessível por vez, até o final da lista, sem pagar nem
 pedir nova confirmação por bloqueios de plano. A observação de Enviar Mensagem,
-etapa 11, foi iniciada sob essa autorização, sem afirmar implementação ou
-publicação. O [registro de observação](chat-assignments-observation.md)
+etapa 11, foi iniciada sob essa autorização. O [registro de observação](chat-assignments-observation.md)
 preserva os fatos confirmados e as questões funcionais ainda desconhecidas.
+
+A etapa 11 foi publicada pela [PR 263](https://github.com/QGBALTIGO/orion-assistente/pull/263),
+com o merge `32a90c0fd003c5fbac70c1bd541bf9ce20171040` e a árvore qualificada
+`14d352c68feb56da64f0f6995c579dc89a172148`. Os seis gates do
+[workflow dedicado 42060576006](https://github.com/QGBALTIGO/orion-assistente/actions/runs/42060576006)
+passaram na candidata final: 2.759 casos Python, 588 PostgreSQL, 560 DOM,
+488 da ponte, 121 no Chrome e 121 no WebKit, totalizando **4.637 execuções**,
+sem falhas ou testes ignorados. A primeira candidata encontrou perda tardia
+de foco no WebKit; o módulo foi corrigido e a asserção original passou na
+execução integrada final. Resultados de candidatas diferentes não foram somados.
+
+O corte do CI geral às 16:14:57–16:15:01Z de 2026-11-05 continha 62 jobs:
+46 aprovados, 13 com falhas herdadas comparadas e 3 ativos. No adendo terminal
+às 16:26:43Z, havia 47 aprovados, as mesmas 13 falhas herdadas, um timeout de
+FATIA/pytest (20 minutos, progresso de 13%, sem resumo final) e o cancelamento
+do smoke FATIA/ASR, sem saída de inferência ou causa interna comprovada.
+Essas execuções incompletas não comprovam aprovação
+global. O [registro de validação](direct-messages-validation.md) preserva os
+dois momentos, as contrapartes e os limites da comparação.
+
+API e worker confirmaram o merge da etapa 11 em `SUCCESS`, online com 1/1
+réplica. A ponte permaneceu na revisão `d17cb67a29fca8293299ac3b2b969601b540075a`,
+também saudável: seu diretório tem a mesma árvore nas duas revisões e o novo
+deployment foi ignorado pelos watchpaths. O backup privado foi verificado
+antes do início da migração 0070 → 0071, e API e worker confirmaram
+`0071_subscription_direct`. Os cinco serviços estavam online, sem alertas
+ativos, operações pendentes ou alterações staged; não houve retry de build
+nem alteração de configuração nessa publicação.
+
+No Chrome conectado, `/painel?aba=enviar-mensagem` exibiu o novo menu e as
+abas Texto/Mídia/Template. Foram conferidos os campos, limites, biblioteca
+vazia e a exibição/ocultação do nome ao marcar Salvar como template.
+A tela foi deixada em Texto com mensagem e número vazios e a opção
+desmarcada; a leitura de erros retornou `errors=[]`. Não houve upload,
+revisão, confirmação, criação de template, alteração de contato ou envio real.
+A etapa 11 foi encerrada depois dessa conferência, preservando os limites
+de observação e de qualificação documentados.
 
 ## Método e fontes
 
@@ -153,7 +189,8 @@ A qualificação e a conferência de produção da etapa 09 estão em [bulk-mess
 A pendência, o mapeamento inicial e a autorização de continuidade da etapa 10 estão em [chat-assignments-observation.md](chat-assignments-observation.md).
 A observação da etapa 11 está em [direct-messages-observation.md](direct-messages-observation.md).
 O contrato da etapa 11 está em [direct-messages-contract.md](direct-messages-contract.md).
-A qualificação em andamento da etapa 11 está em [direct-messages-validation.md](direct-messages-validation.md).
+A qualificação, publicação e conferência ao vivo da etapa 11 estão em [direct-messages-validation.md](direct-messages-validation.md).
+A observação, o mapeamento existente e a pendência da carteira da etapa 12 estão em [transcription-observation.md](transcription-observation.md).
 
 Observação iniciada no Chrome conectado do usuário em 2026-11-03
 (America/Cuiaba) e continuada em 2026-11-04, pela extensão autorizada.
