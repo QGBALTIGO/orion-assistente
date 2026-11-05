@@ -19,9 +19,12 @@ CANCELLATION_CODES = policy.CANCELLATION_CODES
 TERMINAL = policy.TERMINAL
 
 
-async def feature_available(db, tenant):
+async def feature_available(db, tenant, *, origin="bulk"):
+    feature = store.ORIGIN_FEATURES.get(origin)
+    if feature is None:
+        return False
     try:
-        await store.shared.workspace(db, tenant, feature=store.FEATURE)
+        await store.shared.workspace(db, tenant, feature=feature)
     except HTTPException as exc:
         if exc.status_code == 403:
             return False
@@ -66,6 +69,24 @@ async def check_frozen_context(db, batch, recipient):
             raise store.fail("BULK_TEMPLATE_CHANGED")
     elif context.get("template") is not None:
         raise store.fail("BULK_CONTEXT_CHANGED")
+    media = context.get("media")
+    if media is not None:
+        if batch.get("origin", "bulk") != "direct" or recipient["template_id"] is not None:
+            raise store.fail("BULK_CONTEXT_CHANGED")
+        try:
+            asset_id = UUID(media["id"])
+        except (KeyError, TypeError, ValueError):
+            raise store.fail("BULK_TEMPLATE_CHANGED") from None
+        asset = (await db.execute(text("""SELECT * FROM subscription_chatbot_assets
+            WHERE tenant_id=:t AND id=:id AND status='ready'"""),
+            {"t": batch["tenant_id"], "id": asset_id})).mappings().one_or_none()
+        if asset is None or jsonable_encoder(store.shared.asset_descriptor(asset)) != media:
+            raise store.fail("BULK_TEMPLATE_CHANGED")
+        plan = recipient["plan"]
+        if (len(plan) != 1 or plan[0].get("asset") != media or plan[0].get("type") != media.get("kind")
+                or media.get("kind") not in {"image", "video", "audio", "document"}
+                or media.get("kind") == "audio" and plan[0].get("caption") != ""):
+            raise store.fail("BULK_CONTEXT_CHANGED")
 
 
 async def complete_batches(db, tenant, bulk_id=None, *, now=None):
@@ -251,12 +272,19 @@ independent of feature eligibility and never starts new work.
 
 async def admit_bulk_messages(db, device):
     tenant = device["tenant_id"]
-    if not await feature_available(db, tenant):
-        return []
     now = await store.clock(db)
     await reap_bulk(db, tenant, now)
     await invalidate_bulk_contacts(db, tenant)
-    if device["status"] != "connected":
+    allowed = [origin for origin in store.ORIGIN_FEATURES if await feature_available(db, tenant, origin=origin)]
+    denied = [origin for origin in store.ORIGIN_FEATURES if origin not in allowed]
+    if denied:
+        revoked = (await db.execute(text("""SELECT * FROM subscription_bulk_batches
+            WHERE tenant_id=:t AND origin=ANY(CAST(:origins AS varchar[]))
+              AND status IN ('pending','running') AND cancelled_at IS NULL"""),
+            {"t": tenant, "origins": denied})).mappings().all()
+        for batch in revoked:
+            await cancel_bulk_pending(db, dict(batch), "BULK_REVOKED")
+    if not allowed or device["status"] != "connected":
         return []
     live = (await db.execute(text("""SELECT id FROM (
         SELECT id FROM subscription_bulk_recipients WHERE tenant_id=:t AND admitted_at IS NOT NULL AND status='running'
@@ -278,9 +306,10 @@ async def admit_bulk_messages(db, device):
           WHERE r.tenant_id=b.tenant_id AND r.bulk_id=b.id AND r.run_version=b.run_version
             AND r.status='pending' AND r.admitted_at IS NULL ORDER BY r.ordinal,r.id LIMIT 1) head ON true
         WHERE b.tenant_id=:t AND b.status IN ('pending','running') AND b.cancelled_at IS NULL
+          AND b.origin=ANY(CAST(:origins AS varchar[]))
           AND COALESCE(b.next_admission_at,b.confirmed_at)<=:now AND head.device_id=:d
         ORDER BY COALESCE(b.next_admission_at,b.confirmed_at),b.id LIMIT 25"""),
-        {"t": tenant, "d": device["id"], "now": now})).mappings().all()
+        {"t": tenant, "d": device["id"], "now": now, "origins": allowed})).mappings().all()
     for raw in candidates:
         batch = dict(raw)
         if batch["owner_account_id"] != device["owner_account_id"]:
@@ -325,7 +354,7 @@ async def create_effects(db, device, batch, recipient, now):
         VALUES(:id,:t,:d,:g,:provider,'bulk',:now,CAST(:payload AS jsonb))"""),
         {"id": event_id, "t": tenant, "d": device["id"], "g": device["generation"],
          "provider": "bulk:" + str(recipient["id"]), "now": now,
-         "payload": store.encode({"kind": "bulk", "origin": "bulk", "phone": recipient["phone"],
+         "payload": store.encode({"kind": "bulk", "origin": batch.get("origin", "bulk"), "phone": recipient["phone"],
              "name": recipient["name"], "batch_id": batch["id"], "recipient_id": recipient["id"]})})
     ids, previous = [], None
     for index, action in enumerate(recipient["plan"]):
@@ -355,8 +384,6 @@ async def create_effects(db, device, batch, recipient, now):
 
 async def bulk_effect_authority(db, device, effect, now):
     """Read-only final authority, also used around each private asset read."""
-    if not await feature_available(db, device["tenant_id"]):
-        return "BULK_REVOKED", None
     if (effect["type"] != "bulk_action" or effect["purpose"] != "bulk_action"
             or effect["tenant_id"] != device["tenant_id"] or effect["device_id"] != device["id"]
             or effect["generation"] != device["generation"] or effect["settings_revision"] != device["revision"]
@@ -368,6 +395,8 @@ async def bulk_effect_authority(db, device, effect, now):
         batch = await store.batch_row(db, device["tenant_id"], effect["bulk_id"])
     except HTTPException:
         return "BULK_CONTEXT_CHANGED", None
+    if not await feature_available(db, device["tenant_id"], origin=batch.get("origin", "bulk")):
+        return "BULK_REVOKED", None
     recipient = (await db.execute(text("""SELECT * FROM subscription_bulk_recipients
         WHERE tenant_id=:t AND bulk_id=:bulk AND id=:id"""),
         {"t": device["tenant_id"], "bulk": batch["id"], "id": effect["bulk_recipient_id"]})).mappings().one_or_none()

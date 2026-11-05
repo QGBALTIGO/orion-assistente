@@ -51,7 +51,7 @@ def main() -> int:
     try:
         raw,url=connection_values()
         version=migrated_version(raw)
-        if version in {TARGET, "0060_manual_start_times", "0061_appointment_consent", "0062_subscription_devices", "0063_subscription_chatbot", "0064_subscription_templates", "0065_subscription_sent_messages", "0066_appointment_operations", "0067_subscription_diagnostics", "0068_subscription_campaigns", "0069_subscription_schedules", "0070_subscription_bulk"}:
+        if version in {TARGET, "0060_manual_start_times", "0061_appointment_consent", "0062_subscription_devices", "0063_subscription_chatbot", "0064_subscription_templates", "0065_subscription_sent_messages", "0066_appointment_operations", "0067_subscription_diagnostics", "0068_subscription_campaigns", "0069_subscription_schedules", "0070_subscription_bulk", "0071_subscription_direct"}:
             ok=schema_ready(raw)
             print("orion_prepaid_schema_ready" if ok else "orion_prepaid_schema_invalid",flush=True)
             return 0 if ok else 3

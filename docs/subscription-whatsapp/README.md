@@ -7,11 +7,17 @@ com componentes, tipografia, cores e navegação do Orion. A autorização é
 restrita ao nicho `servico_assinaturas`. Os demais nichos e o conector global
 da administração preservam suas regras.
 
-Cada módulo deve ser observado, implementado, validado e publicado antes de
-começar a investigação do próximo. Dependências internas pertencem à entrega
-do módulo que as necessita; uma opção gravada sem efeito não é uma função
-concluída. Não apresentar equivalência integral quando há comportamento ainda
-não observado ou testado.
+Os módulos acessíveis devem ser observados, implementados, validados e
+publicados um de cada vez. Em 2026-11-05, o usuário autorizou explicitamente
+manter Atribuições de Chat pendente e continuar até o fim dos módulos
+acessíveis, sem contratar acesso pago. Bloqueios de plano devem ser
+registrados como pendências e não exigem nova confirmação para prosseguir.
+Essa autorização permite avançar na sequência; não representa conclusão ou
+implementação de uma função bloqueada.
+
+Dependências internas pertencem à entrega do módulo que as necessita; uma
+opção gravada sem efeito não é uma função concluída. Não apresentar
+equivalência integral quando há comportamento ainda não observado ou testado.
 
 | Ordem | Módulo | Estado |
 |---|---|---|
@@ -24,8 +30,8 @@ não observado ou testado.
 | 07 | Campanhas | Publicado e conferido ao vivo em 2026-11-05 — PR 258, produção `23b78bf42086766694a992474f078c2a4ed0a2eb`; etapa encerrada após aprovação WebKit da base posterior PR 259, conforme o [registro de validação](campaigns-validation.md) |
 | 08 | Mensagens Programadas | Publicado e conferido ao vivo em 2026-11-05 — PR 260, produção `da3a0086a038f0f84024cc38c5960d3a2935ffbe`; etapa encerrada com ajuste editorial da PR 261 (`149c43fba44b3f93bdcd90920751d79dc231d32a`), conforme o [registro de validação](scheduled-messages-validation.md) |
 | 09 | Mensagem em Massa | Publicado e conferido ao vivo em 2026-11-05 — PR 262, produção `d17cb67a29fca8293299ac3b2b969601b540075a`; etapa encerrada, conforme o [registro de validação](bulk-messages-validation.md) |
-| 10 | Atribuições de Chat | Bloqueada na referência: plano sem acesso e criação retorna 403. Sem implementação ou publicação; [registro de observação](chat-assignments-observation.md) |
-| 11 | Enviar Mensagem | Não iniciado |
+| 10 | Atribuições de Chat | Pendente: plano sem acesso e criação retorna 403. Sem implementação ou publicação; continuidade dos módulos acessíveis autorizada pelo usuário. [Registro de observação](chat-assignments-observation.md) |
+| 11 | Enviar Mensagem | Referência observada; implementação e qualificação em andamento, sem publicação. [Observação](direct-messages-observation.md) e [contrato](direct-messages-contract.md) |
 | 12 | Transcrição de Áudio | Não iniciado |
 | 13 | Aquecimento | Não iniciado |
 | 14 | Evitar Banimento | Não iniciado |
@@ -113,15 +119,17 @@ erros capturados no console, sem criar ou confirmar lote e sem envio real.
 A execução foi validada nos ambientes sintéticos; a conferência de produção
 foi de leitura e preparação visual. A etapa 10 começou após esse encerramento.
 
-A etapa 10 permanece bloqueada na observação. O BotBot exibe a lista com
+A etapa 10 permanece pendente por bloqueio na referência. O BotBot exibe a lista com
 aviso de indisponibilidade no plano e o link visível de criação retorna
 HTTP 403. As fontes gratuitas acessíveis não esclarecem os campos, o destino
 nem o efeito de uma atribuição. Os controles existentes no Orion foram
 mapeados, mas não comprovam o comportamento da referência. Nenhum complemento
-foi contratado e a etapa 11 não foi iniciada, respeitando a ordem definida.
-O [registro de observação](chat-assignments-observation.md) separa os fatos
-confirmados das decisões que ainda dependem de evidência ou de uma mudança
-explícita no escopo solicitado.
+foi contratado. O usuário autorizou explicitamente deixar essa etapa pendente
+e continuar, um módulo acessível por vez, até o final da lista, sem pagar nem
+pedir nova confirmação por bloqueios de plano. A observação de Enviar Mensagem,
+etapa 11, foi iniciada sob essa autorização, sem afirmar implementação ou
+publicação. O [registro de observação](chat-assignments-observation.md)
+preserva os fatos confirmados e as questões funcionais ainda desconhecidas.
 
 ## Método e fontes
 
@@ -142,7 +150,10 @@ A qualificação e a conferência de produção da etapa 08 estão em [scheduled
 A observação da etapa 09 está em [bulk-messages-observation.md](bulk-messages-observation.md).
 O contrato da etapa 09 está em [bulk-messages-contract.md](bulk-messages-contract.md).
 A qualificação e a conferência de produção da etapa 09 estão em [bulk-messages-validation.md](bulk-messages-validation.md).
-A observação bloqueada e o mapeamento inicial da etapa 10 estão em [chat-assignments-observation.md](chat-assignments-observation.md).
+A pendência, o mapeamento inicial e a autorização de continuidade da etapa 10 estão em [chat-assignments-observation.md](chat-assignments-observation.md).
+A observação da etapa 11 está em [direct-messages-observation.md](direct-messages-observation.md).
+O contrato da etapa 11 está em [direct-messages-contract.md](direct-messages-contract.md).
+A qualificação em andamento da etapa 11 está em [direct-messages-validation.md](direct-messages-validation.md).
 
 Observação iniciada no Chrome conectado do usuário em 2026-11-03
 (America/Cuiaba) e continuada em 2026-11-04, pela extensão autorizada.

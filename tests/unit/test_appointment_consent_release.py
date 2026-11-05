@@ -175,6 +175,8 @@ def test_worker_requires_both_schema_barriers(monkeypatch, manual_result, consen
     monkeypatch.setattr(campaigns_wait, "main", lambda: 0)
     from scripts import wait_for_subscription_scheduled_messages_schema as scheduled_wait
     monkeypatch.setattr(scheduled_wait, "main", lambda: 0)
+    from scripts import wait_for_subscription_direct_schema as direct_wait
+    monkeypatch.setattr(direct_wait, "main", lambda: 0)
     from scripts import wait_for_subscription_bulk_schema as bulk_wait
     monkeypatch.setattr(bulk_wait, "main", lambda: calls.append("bulk") or bulk_result)
     monkeypatch.setattr(templates_wait, "main", lambda: 0)

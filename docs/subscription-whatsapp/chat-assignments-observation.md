@@ -2,7 +2,7 @@
 
 Data: 05/11/2026.
 
-**Estado: bloqueada por falta de acesso ao contrato funcional da referência.**
+**Estado: pendente por falta de acesso ao contrato funcional da referência.**
 A etapa 9, Mensagem em Massa, está encerrada na
 [PR 262](https://github.com/QGBALTIGO/orion-assistente/pull/262), merge
 `d17cb67a29fca8293299ac3b2b969601b540075a`. A etapa 10 não foi implementada
@@ -72,8 +72,17 @@ O reaproveitamento direto da Central também encontra diferenças concretas:
 
 ## Continuidade
 
-A sequência estrita solicitada exige concluir cada função antes da próxima.
-Sem esclarecer essas questões por uma referência acessível, a etapa 10
-permanece bloqueada e não se avança para a etapa 11. A restrição de não realizar
-compras permanece vigente. Não se presume que a Central existente corresponda
-ao comportamento do BotBot.
+Em 2026-11-05, o usuário autorizou explicitamente manter Atribuições de Chat
+pendente e continuar até o fim dos módulos acessíveis, sem pagar por
+complementos ou acesso e sem pedir nova confirmação por bloqueios de plano.
+A observação de Enviar Mensagem, etapa 11, foi iniciada sob essa autorização.
+Os módulos acessíveis seguem um de cada vez, com observação, implementação,
+validação e publicação antes de avançar ao próximo módulo acessível.
+
+A etapa 10 continua sem implementação ou publicação. A autorização de
+continuidade não esclarece os campos ou efeitos desconhecidos e não comprova
+equivalência funcional. As questões acima ficam registradas para quando
+houver uma referência acessível; essa pendência não impede o andamento dos
+demais módulos. Não se presume que a Central existente corresponda ao
+comportamento do BotBot. O início da observação da etapa 11 também não é
+uma declaração de implementação ou publicação dessa função.

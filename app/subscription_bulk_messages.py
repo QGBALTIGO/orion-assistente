@@ -44,7 +44,7 @@ async def payload_after_owner(tenant, actor, request, model):
 
 async def owned_batch(db, tenant, actor, identity, *, lock=False):
     row = await store.batch_row(db, tenant, identity, lock=lock)
-    if row["owner_account_id"] != actor.account_id:
+    if row["owner_account_id"] != actor.account_id or row.get("origin", "bulk") != "bulk":
         raise store.fail("BULK_NOT_FOUND", 404)
     return row
 

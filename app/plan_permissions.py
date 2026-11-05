@@ -97,7 +97,9 @@ def derive_plan(snapshot, now=None):
         # niche's operations while its own workspace is being prepared.
         features = sorted(SUBSCRIPTION_WORKSPACE_FEATURES)
         if snapshot.get("tenant_status") != "active":
-            features = [feature for feature in features if feature not in {"devices.manage", "chatbot.manage", "templates.manage", "sent_messages.manage", "diagnostics.manage", "campaigns.manage", "scheduled_messages.manage", "bulk_messages.manage"}]
+            # New subscription modules must also close when the company stops
+            # being active; only account recovery and setup remain available.
+            features = [feature for feature in features if feature in {"account.manage", "business.setup"}]
     maximum = CODES[code]["max_professionals"] if code else None
     result = {"code": code, "name": "Administração Orion" if platform else CODES[code]["name"] if code else "Sem plano ativo",
         "source": source, "status": status, "active": active, "valid_until": until,
