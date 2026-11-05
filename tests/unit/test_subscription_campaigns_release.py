@@ -40,13 +40,14 @@ def prepared(monkeypatch, versions):
     return events
 
 
-def test_campaigns_is_the_only_head_after_published_diagnostics_and_agenda():
+def test_campaigns_precedes_scheduled_messages_after_published_diagnostics_and_agenda():
     root = Path(__file__).resolve().parents[2]
     config = Config(str(root / "alembic.ini"))
     config.set_main_option("path_separator", "os")
     config.set_main_option("script_location", str(root / "alembic"))
     migrations = ScriptDirectory.from_config(config)
-    assert migrations.get_heads() == ["0068_subscription_campaigns"]
+    assert migrations.get_heads() == ["0069_subscription_schedules"]
+    assert migrations.get_revision("0069_subscription_schedules").down_revision == release.TARGET
     assert release.TARGET == barrier.SCHEMA_MARKER == "0068_subscription_campaigns"
     assert release.PREVIOUS == previous_release.TARGET == "0067_subscription_diagnostics"
     assert migrations.get_revision(release.TARGET).down_revision == release.PREVIOUS

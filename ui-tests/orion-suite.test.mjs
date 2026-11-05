@@ -192,7 +192,7 @@ test('legacy claimed generic invitation cannot be approved and can be revoked by
 
 test('actual panel API returns null for HTTP 204 without parsing JSON', async t => {
   const html = await readFile(new URL('../app/static/panel.html', import.meta.url), 'utf8');
-  const actual = html.match(/async function api\(url,method="GET",data\)\{[\s\S]*?\n\}/)?.[0];
+  const actual = html.match(/async function api\(url,method="GET",data,options\)\{[\s\S]*?\n\}/)?.[0];
   assert.ok(actual, 'read the real API adapter from panel.html');
   const dom = new JSDOM('', { url: 'https://orion.test/panel', runScripts: 'outside-only' }); t.after(() => dom.window.close());
   let options, jsonRead = false;
@@ -200,4 +200,42 @@ test('actual panel API returns null for HTTP 204 without parsing JSON', async t 
   dom.window.eval(`var authEpoch=1, csrf='test-csrf', suiteTenantId='test', businessContextError=''; function accountBusiness(){return {id:'test'};} function errorMessage(){return 'test error';} function showLogin(){}; ${actual}`);
   assert.equal(await dom.window.api('/api/v1/tenants/test/services/id', 'DELETE'), null);
   assert.equal(jsonRead, false); assert.equal(options.headers['X-Orion-CSRF'], 'test-csrf'); assert.equal(options.credentials, 'same-origin');
+});
+
+test('panel bootstrap retains the same scheduled request through URL normalization',async t=>{
+  const html=await readFile(new URL('../app/static/panel.html',import.meta.url),'utf8');
+  const prefix=html.match(/async function showApp\([^)]*\)\{[\s\S]*?(?=\n suiteUser=)/)?.[0];
+  assert.ok(prefix,'execute the actual bootstrap before account assignment');
+  const dom=new JSDOM('',{url:'https://orion.test/painel?aba=programadas&empresa=untrusted',runScripts:'outside-only'});
+  t.after(()=>dom.window.close());
+  dom.window.eval(await readFile(new URL('../app/static/orion-subscription-scheduled-messages.js',import.meta.url),'utf8'));
+  const record={tenant_id:tenantA,account_scope:'a'.repeat(64),idempotency_key:'11111111-1111-4111-8111-111111111111',kind:'review_create',schedule_id:null,run_id:null,confirming:false};
+  dom.window.history.replaceState({orionScheduleRecovery:{...record,private_content:'discard'},unrelated:'discard'},'');
+  dom.window.eval(`var authEpoch=1,suiteTenantId='',businessRows=[],businessContextReady=false,businessContextError='';function resetWizard(){};${prefix}\n}`);
+  await dom.window.showApp('member','Synthetic','synthetic@example.test');
+  assert.deepEqual(JSON.parse(JSON.stringify(dom.window.history.state)),{orionScheduleRecovery:record});
+  assert.equal(new URL(dom.window.location.href).searchParams.get('aba'),'programadas');
+  assert.equal(new URL(dom.window.location.href).searchParams.has('empresa'),false);
+});
+
+test('panel preserves read cancellation and only exposes the exact scheduled stale-version proof',async t=>{
+  const html=await readFile(new URL('../app/static/panel.html',import.meta.url),'utf8');
+  const actual=html.match(/async function api\(url,method="GET",data,options\)\{[\s\S]*?\n\}/)?.[0];
+  assert.ok(actual);
+  const dom=new JSDOM('',{url:'https://orion.test/painel',runScripts:'outside-only'});t.after(()=>dom.window.close());
+  dom.window.eval(`var authEpoch=1, csrf='test-csrf', suiteTenantId='test', businessContextError=''; function accountBusiness(){return {id:'test'};} function errorMessage(){return 'test error';} ${actual}`);
+  const signal=new dom.window.AbortController().signal;
+  dom.window.fetch=async(path,options)=>{assert.equal(options.signal,signal);return {ok:true,status:200,json:async()=>({items:[]})};};
+  await dom.window.api('/api/v1/tenants/test/subscription-whatsapp/scheduled-messages','GET',undefined,{signal});
+  const proof={reason:'stale_version',idempotency_key:'operation',kind:'review_edit',schedule_id:'schedule',run_id:'run',expected_version:1,expected_run_version:2};
+  dom.window.fetch=async(path,options)=>{assert.equal(options.signal,undefined);return {ok:false,status:409,json:async()=>({detail:{code:'SCHEDULE_CONFLICT',rejection:{...proof,unexpected:'private'}}})};};
+  const route='/api/v1/tenants/test/subscription-whatsapp/scheduled-messages/schedule/review';
+  await assert.rejects(dom.window.api(route,'POST',{}),error=>{
+    assert.equal(error.code,'SCHEDULE_CONFLICT');
+    assert.deepEqual(JSON.parse(JSON.stringify(error.scheduleRejection)),proof);
+    assert.equal(error.scheduleRejection.unexpected,undefined);return true;
+  });
+  await assert.rejects(dom.window.api('/api/v1/tenants/test/subscription-whatsapp/scheduled-messages/confirm','POST',{}),error=>{
+    assert.equal(error.scheduleRejection,undefined);assert.equal(error.code,undefined);return true;
+  });
 });

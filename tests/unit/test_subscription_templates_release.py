@@ -163,6 +163,8 @@ def test_worker_waits_for_all_five_contracts_and_stops_at_first_failure(monkeypa
     monkeypatch.setattr(diagnostics_wait, "main", lambda: 0)
     from scripts import wait_for_subscription_campaigns_schema as campaigns_wait
     monkeypatch.setattr(campaigns_wait, "main", lambda: 0)
+    from scripts import wait_for_subscription_scheduled_messages_schema as scheduled_wait
+    monkeypatch.setattr(scheduled_wait, "main", lambda: 0)
     events = []
 
     async def ready(_):

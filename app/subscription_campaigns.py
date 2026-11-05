@@ -156,6 +156,8 @@ async def mutate_group(tenant, actor, kind, payload, identity=None):
                     WHERE tenant_id=:t AND id=:id"""), {"t": tenant, "id": identity})
         from app.subscription_campaign_runtime import invalidate_audiences
         await invalidate_audiences(db, tenant)
+        from app.subscription_schedule_runtime import invalidate_schedule_contacts
+        await invalidate_schedule_contacts(db, tenant)
         result = await store.group_detail(db, tenant, identity)
         saved = await store.save_request(db, tenant, actor, payload.idempotency_key, kind, values, group_id=identity, result=result)
         return store.operation_dto(saved, await store.clock(db))

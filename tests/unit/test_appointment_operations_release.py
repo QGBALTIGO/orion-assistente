@@ -51,7 +51,7 @@ def test_unreviewed_source_cannot_run_backup_or_migration(monkeypatch, revision)
 
 
 @pytest.mark.parametrize("valid", [True, False])
-@pytest.mark.parametrize("revision", ["0066_appointment_operations", "0067_subscription_diagnostics", "0068_subscription_campaigns"])
+@pytest.mark.parametrize("revision", ["0066_appointment_operations", "0067_subscription_diagnostics", "0068_subscription_campaigns", "0069_subscription_schedules"])
 def test_restart_only_checks_already_published_contract(monkeypatch, valid, revision):
     events = prepared(monkeypatch, [revision])
     monkeypatch.setattr(release, "schema_ready", lambda _: valid)
@@ -80,6 +80,7 @@ def test_failed_backup_stops_ddl_and_hides_private_details(monkeypatch, capsys):
     (release.TARGET, True, 0), (release.TARGET, False, 3), ("unreviewed", True, 3),
     ("0067_subscription_diagnostics", True, 0), ("0067_subscription_diagnostics", False, 3),
     ("0068_subscription_campaigns", True, 0), ("0068_subscription_campaigns", False, 3),
+    ("0069_subscription_schedules", True, 0), ("0069_subscription_schedules", False, 3),
 ])
 def test_concurrent_revision_is_verified_or_rejected_without_overwrite(monkeypatch, revision, valid, expected):
     events = prepared(monkeypatch, [release.PREVIOUS, revision])
@@ -111,7 +112,7 @@ PRIOR_RELEASES = (
 
 @pytest.mark.parametrize("name", PRIOR_RELEASES)
 @pytest.mark.parametrize("valid", [True, False])
-@pytest.mark.parametrize("revision", ["0066_appointment_operations", "0067_subscription_diagnostics", "0068_subscription_campaigns"])
+@pytest.mark.parametrize("revision", ["0066_appointment_operations", "0067_subscription_diagnostics", "0068_subscription_campaigns", "0069_subscription_schedules"])
 def test_prior_releases_verify_own_contract_without_replaying_ddl(monkeypatch, name, valid, revision):
     module = importlib.import_module("scripts." + name)
     monkeypatch.setattr(module, "connection_values", lambda: ("synthetic", object()))
@@ -126,7 +127,7 @@ def test_prior_releases_verify_own_contract_without_replaying_ddl(monkeypatch, n
     assert module.main() == (0 if valid else 3)
 
 
-@pytest.mark.parametrize("revision", ["0066_appointment_operations", "0067_subscription_diagnostics", "0068_subscription_campaigns"])
+@pytest.mark.parametrize("revision", ["0066_appointment_operations", "0067_subscription_diagnostics", "0068_subscription_campaigns", "0069_subscription_schedules"])
 def test_registration_gate_recognizes_additive_revision_and_keeps_older_contracts(monkeypatch, revision):
     from scripts import backup_and_migrate_registration as registration
     from scripts import backup_and_migrate_short_links as short_links
@@ -146,8 +147,8 @@ def test_registration_gate_recognizes_additive_revision_and_keeps_older_contract
         monkeypatch.setattr(module, name, lambda _: True)
 
 
-@pytest.mark.parametrize("blocked", [None, 7, 8, 9])
-@pytest.mark.parametrize("revision", ["0066_appointment_operations", "0067_subscription_diagnostics", "0068_subscription_campaigns"])
+@pytest.mark.parametrize("blocked", [None, 7, 8, 9, 10])
+@pytest.mark.parametrize("revision", ["0066_appointment_operations", "0067_subscription_diagnostics", "0068_subscription_campaigns", "0069_subscription_schedules"])
 def test_api_predeploy_preserves_agenda_before_diagnostics_and_normal_startup(monkeypatch, blocked, revision):
     from scripts import predeploy_one_click_links as entry
     from scripts import backup_and_migrate_commissions as backup
@@ -160,7 +161,7 @@ def test_api_predeploy_preserves_agenda_before_diagnostics_and_normal_startup(mo
     monkeypatch.setattr(version, "migrated_version", lambda _: revision)
     monkeypatch.setattr(registration, "portal_schema_ready", lambda _: True)
     monkeypatch.setattr(registration, "professional_hardening_schema_ready", lambda _: True)
-    modules = (*PRIOR_RELEASES[1:], "backup_and_migrate_appointment_operations", "backup_and_migrate_subscription_diagnostics", "backup_and_migrate_subscription_campaigns")
+    modules = (*PRIOR_RELEASES[1:], "backup_and_migrate_appointment_operations", "backup_and_migrate_subscription_diagnostics", "backup_and_migrate_subscription_campaigns", "backup_and_migrate_subscription_scheduled_messages")
     for index, name in enumerate(modules):
         module = importlib.import_module("scripts." + name)
         monkeypatch.setattr(module, "main", lambda i=index: events.append(i) or int(i == blocked))
@@ -169,7 +170,8 @@ def test_api_predeploy_preserves_agenda_before_diagnostics_and_normal_startup(mo
     else:
         error = {7: "appointment_operations_schema_not_ready",
                  8: "subscription_diagnostics_schema_not_ready",
-                 9: "subscription_campaigns_schema_not_ready"}[blocked]
+                 9: "subscription_campaigns_schema_not_ready",
+                 10: "subscription_scheduled_messages_schema_not_ready"}[blocked]
         with pytest.raises(RuntimeError, match=error):
             entry.main()
     assert events == ["legacy-checks", *range(len(modules) if blocked is None else blocked + 1)]
@@ -227,11 +229,11 @@ async def test_probe_rejects_owner_assumption_and_unrestricted_roles(monkeypatch
     assert closed == [True]
 
 
-@pytest.mark.parametrize("blocked", [*range(9), None])
+@pytest.mark.parametrize("blocked", [*range(10), None])
 def test_worker_predeploy_stops_at_first_unready_contract(monkeypatch, blocked):
     names = ("manual_start_times", "appointment_consent", "subscription_devices",
              "subscription_chatbot", "subscription_templates", "subscription_sent_messages",
-             "appointment_operations", "subscription_diagnostics", "subscription_campaigns")
+             "appointment_operations", "subscription_diagnostics", "subscription_campaigns", "subscription_scheduled_messages")
     events = []
 
     async def ready(_):
@@ -247,12 +249,12 @@ def test_worker_predeploy_stops_at_first_unready_contract(monkeypatch, blocked):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("blocked", [*range(9), None])
+@pytest.mark.parametrize("blocked", [*range(10), None])
 async def test_arq_cannot_consume_jobs_before_all_readonly_contracts(monkeypatch, blocked):
     from app.worker import WorkerSettings
     names = ("plan_permissions", "appointment_consent", "subscription_devices",
              "subscription_chatbot", "subscription_templates", "subscription_sent_messages",
-             "appointment_operations", "subscription_diagnostics", "subscription_campaigns")
+             "appointment_operations", "subscription_diagnostics", "subscription_campaigns", "subscription_scheduled_messages")
     events = []
     context = {}
     for flag in ("ORION_REVIEW_QA_VERIFY_7364", "ORION_REVIEW_QA_SEND_7364"):

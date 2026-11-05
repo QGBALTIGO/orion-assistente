@@ -183,6 +183,38 @@ async def test_lost_feature_does_not_break_poll_and_authority_is_denied(monkeypa
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("state,expected", [
+    ("not_sent", "failed"), ("accepted", "sent"), ("uncertain", "uncertain"),
+    ("pending", "running"), ("running", "running"),
+])
+async def test_poll_projects_external_terminal_ledger_without_reopening_transport(state, expected):
+    item = effect(status=state, attempts=0 if state in {"pending", "not_sent"} else 1,
+        authorized_at=NOW if state == "running" else None,
+        finished_at=NOW if state not in {"pending", "running"} else None,
+        error_code="settings_changed" if state == "not_sent" else None)
+
+    class ReapingDB(DB):
+        async def execute(self, query, params=None):
+            sql = str(query)
+            if sql.startswith("UPDATE subscription_device_effects SET\n        status=CASE"):
+                self.calls.append((sql, params))
+                return Rows([])  # No expiry or interrupted claim; external closure is already durable.
+            if sql.startswith("SELECT r.id FROM subscription_campaign_recipients r"):
+                self.calls.append((sql, params))
+                assert params == {"t": TENANT}
+                assert "e.status IN ('pending','running')" in sql
+                return Rows([RECIPIENT] if state not in {"pending", "running"} else [])
+            return await super().execute(query, params)
+
+    db = ReapingDB(effects=[item])
+    before = deepcopy(item)
+    await runtime.reap_campaigns(db, TENANT, NOW)
+    assert item == before
+    assert db.recipient["status"] == expected
+    assert not any("INSERT" in sql for sql, _ in db.calls)
+
+
+@pytest.mark.asyncio
 async def test_slow_live_recipient_prevents_any_second_admission_even_after_original_interval(authority, monkeypatch):
     calls = []
     async def nothing(*args): pass
@@ -253,7 +285,8 @@ async def test_only_unambiguous_marketing_or_all_optout_writes_a_revocation(body
 @pytest.mark.asyncio
 @pytest.mark.parametrize("kind,accepted,expected", [("text", False, True), ("audio", True, True), ("audio", False, False)])
 async def test_audio_optout_is_bound_to_original_accepted_transcription_event(monkeypatch, kind, accepted, expected):
-    calls, invalidations = [], []
+    from app import subscription_schedule_runtime as scheduled
+    calls, invalidations, scheduled_invalidations = [], [], []
     body = "Não quero mais mensagens promocionais"
     class EventDB:
         async def execute(self, query, params=None):
@@ -270,8 +303,11 @@ async def test_audio_optout_is_bound_to_original_accepted_transcription_event(mo
             assert params["event"] == EVENT and params["phone"] == PHONE
             return Rows([PHONE])
     async def invalidate(db, tenant): invalidations.append(tenant)
+    async def invalidate_scheduled(db, tenant): scheduled_invalidations.append(tenant)
     monkeypatch.setattr(runtime, "invalidate_audiences", invalidate)
+    monkeypatch.setattr(scheduled, "invalidate_schedule_contacts", invalidate_scheduled)
     assert await runtime.record_campaign_optout(EventDB(), device(),
         {"kind": "text", "origin": "contact", "phone": PHONE, "text": body}, EVENT) is expected
     assert invalidations == ([TENANT] if expected else [])
+    assert scheduled_invalidations == ([TENANT] if expected else [])
     assert not any("transcribe_audio" in sql or "subscription_device_effects SET" in sql for sql, _ in calls)

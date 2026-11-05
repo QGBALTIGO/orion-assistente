@@ -50,7 +50,8 @@ def test_diagnostics_extends_published_agenda_as_the_only_migration_head():
     config.set_main_option("path_separator", "os")
     config.set_main_option("script_location", str(root / "alembic"))
     scripts = ScriptDirectory.from_config(config)
-    assert scripts.get_heads() == ["0068_subscription_campaigns"]
+    assert scripts.get_heads() == ["0069_subscription_schedules"]
+    assert scripts.get_revision("0069_subscription_schedules").down_revision == "0068_subscription_campaigns"
     assert scripts.get_revision("0068_subscription_campaigns").down_revision == release.TARGET
     assert release.TARGET == barrier.SCHEMA_MARKER == "0067_subscription_diagnostics"
     assert release.PREVIOUS == previous_release.TARGET == "0066_appointment_operations"
@@ -187,8 +188,8 @@ async def test_probe_rejects_privileged_or_wrong_database_role(monkeypatch, role
         await barrier.probe_schema(barrier.Settings("synthetic"), 3)
 
 
-@pytest.mark.parametrize("blocked", [*range(9), None])
-def test_worker_waits_for_agenda_then_diagnostics_and_stops_at_first_failure(monkeypatch, blocked):
+@pytest.mark.parametrize("blocked", [*range(10), None])
+def test_worker_waits_for_all_published_contracts_and_stops_at_first_failure(monkeypatch, blocked):
     from scripts import wait_for_manual_start_times_schema as hours
     from scripts import wait_for_appointment_consent_schema as notifications
     from scripts import wait_for_subscription_devices_schema as devices
@@ -197,6 +198,7 @@ def test_worker_waits_for_agenda_then_diagnostics_and_stops_at_first_failure(mon
     from scripts import wait_for_subscription_sent_messages_schema as sent_messages
     from scripts import wait_for_appointment_operations_schema as appointments
     from scripts import wait_for_subscription_campaigns_schema as campaigns
+    from scripts import wait_for_subscription_scheduled_messages_schema as scheduled
     events = []
 
     async def ready(_):
@@ -204,7 +206,7 @@ def test_worker_waits_for_agenda_then_diagnostics_and_stops_at_first_failure(mon
 
     monkeypatch.setattr(chain, "wait_for_schema", ready)
     monkeypatch.setattr(chain.Settings, "from_environment", lambda: barrier.Settings("synthetic"))
-    for index, module in enumerate((hours, notifications, devices, chatbot, templates, sent_messages, appointments, barrier, campaigns)):
+    for index, module in enumerate((hours, notifications, devices, chatbot, templates, sent_messages, appointments, barrier, campaigns, scheduled)):
         monkeypatch.setattr(module, "main", lambda i=index: events.append(i) or int(i == blocked))
     assert chain.main() == int(blocked is not None)
-    assert events == list(range(9 if blocked is None else blocked + 1))
+    assert events == list(range(10 if blocked is None else blocked + 1))

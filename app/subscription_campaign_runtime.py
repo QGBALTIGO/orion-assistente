@@ -176,6 +176,8 @@ async def record_campaign_optout(db, device, event_data, event_id):
         RETURNING phone"""), {"t": device["tenant_id"], "phone": phone, "event": event_id})).scalar_one_or_none()
     if changed is not None:
         await invalidate_audiences(db, device["tenant_id"])
+        from app.subscription_schedule_runtime import invalidate_schedule_contacts
+        await invalidate_schedule_contacts(db, device["tenant_id"])
     return changed is not None
 
 
@@ -189,6 +191,19 @@ async def reap_campaigns(db, tenant, now):
         RETURNING campaign_recipient_id"""), {"t": tenant, "now": now})).scalars().all()
     for identity in set(affected):
         await refresh_recipient(db, tenant, identity, now=now)
+    # Device settings/removal can finish effects outside this runtime. Project
+    # terminal ledgers before the shared Campaigns/Schedules live-sequence gate;
+    # real pending/running parts and their transport receipts remain untouched.
+    terminal = (await db.execute(text("""SELECT r.id FROM subscription_campaign_recipients r
+        WHERE r.tenant_id=:t AND r.status='running' AND r.admitted_at IS NOT NULL
+          AND EXISTS(SELECT 1 FROM subscription_device_effects e
+            WHERE e.tenant_id=r.tenant_id AND e.campaign_recipient_id=r.id)
+          AND NOT EXISTS(SELECT 1 FROM subscription_device_effects e
+            WHERE e.tenant_id=r.tenant_id AND e.campaign_recipient_id=r.id
+              AND e.status IN ('pending','running'))
+        ORDER BY r.admitted_at,r.id FOR UPDATE OF r"""), {"t": tenant})).scalars().all()
+    for identity in terminal:
+        await refresh_recipient(db, tenant, identity, now=now)
 
 
 async def admit_due_campaigns(db, device):
@@ -200,13 +215,20 @@ async def admit_due_campaigns(db, device):
     await invalidate_audiences(db, tenant)
     if device["status"] != "connected":
         return []
-    live = (await db.execute(text("""SELECT id FROM subscription_campaign_recipients
-        WHERE tenant_id=:t AND admitted_at IS NOT NULL AND status='running' LIMIT 1"""), {"t": tenant})).scalar_one_or_none()
+    live = (await db.execute(text("""SELECT id FROM (
+        SELECT id FROM subscription_campaign_recipients
+          WHERE tenant_id=:t AND admitted_at IS NOT NULL AND status='running'
+        UNION ALL SELECT id FROM subscription_schedule_recipients
+          WHERE tenant_id=:t AND admitted_at IS NOT NULL AND status='running'
+        ) active_sequences LIMIT 1"""), {"t": tenant})).scalar_one_or_none()
     if live is not None:
         return []
     pace = (await db.execute(text("""SELECT max(finished_at) AS finished,
         count(*) FILTER(WHERE admitted_at>CAST(:now AS timestamptz)-interval '60 seconds') AS recent
-        FROM subscription_campaign_recipients WHERE tenant_id=:t AND admitted_at IS NOT NULL"""),
+        FROM (SELECT finished_at,admitted_at FROM subscription_campaign_recipients
+          WHERE tenant_id=:t AND admitted_at IS NOT NULL
+          UNION ALL SELECT finished_at,admitted_at FROM subscription_schedule_recipients
+          WHERE tenant_id=:t AND admitted_at IS NOT NULL) admissions"""),
         {"t": tenant, "now": now})).mappings().one()
     if not policy.admission_ready(now, pace["finished"], None, 30, pace["recent"]):
         return []
@@ -241,7 +263,7 @@ async def admit_due_campaigns(db, device):
               AND r.status='pending' AND r.admitted_at IS NULL
               AND NOT EXISTS(SELECT 1 FROM subscription_device_effects e WHERE e.tenant_id=r.tenant_id
                 AND e.device_id=r.device_id AND e.payload->>'phone'=r.phone
-                AND e.type IN ('send_text','chatbot_action','campaign_action')
+                AND e.type IN ('send_text','chatbot_action','campaign_action','scheduled_action')
                 AND e.status IN ('pending','running','uncertain') AND e.expires_at>:now)
             ORDER BY r.ordinal,r.id LIMIT 1 FOR UPDATE OF r"""),
             {"t": tenant, "id": campaign["id"], "run": campaign["run_version"], "d": device["id"], "now": now})).mappings().one_or_none()

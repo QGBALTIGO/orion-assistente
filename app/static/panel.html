@@ -586,6 +586,7 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
 <link rel="stylesheet" href="/panel-assets/orion-subscription-sent-messages.css">
 <link rel="stylesheet" href="/panel-assets/orion-subscription-diagnostics.css">
 <link rel="stylesheet" href="/panel-assets/orion-subscription-campaigns.css">
+<link rel="stylesheet" href="/panel-assets/orion-subscription-scheduled-messages.css">
 <link rel="stylesheet" href="/panel-assets/orion-inbox.css">
 <style>
 #appView.ob-gated .content > .page,#appView.ob-gated #osConsultantFab{display:none!important}
@@ -1285,6 +1286,7 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
 <script src="/panel-assets/orion-subscription-sent-messages.js"></script>
 <script src="/panel-assets/orion-subscription-diagnostics.js"></script>
 <script src="/panel-assets/orion-subscription-campaigns.js"></script>
+<script src="/panel-assets/orion-subscription-scheduled-messages.js"></script>
 <script src="/panel-assets/orion-communication.js"></script>
 <script src="/panel-assets/orion-automations.js"></script>
 <script src="/panel-assets/orion-flows.js"></script>
@@ -1666,14 +1668,14 @@ async function checkSessionAfterUnauthorized(epoch,expectedCsrf){
    else showLogin();
  }
 }
-async function api(url,method="GET",data){
+async function api(url,method="GET",data,options){
  const scoped=url.match(/^\/api\/v1\/tenants\/([^/?]+)/);
  if(scoped&&(!accountBusiness()||decodeURIComponent(scoped[1])!==suiteTenantId))throw Error(businessContextError||"Não foi possível confirmar a empresa desta conta.");
  if(url.startsWith("/api/v1/qr/")&&!accountBusiness())throw Error(businessContextError||"Confirme o acesso à sua empresa antes de continuar.");
  const requestAuthEpoch=authEpoch,requestCsrf=csrf;
  const headers={"Accept":"application/json"};
  if(method!=="GET"){headers["Content-Type"]="application/json";headers["X-Orion-CSRF"]=csrf;}
- const response=await fetch(url,{method,headers,body:data===undefined?undefined:JSON.stringify(data),credentials:"same-origin",cache:"no-store"});
+ const response=await fetch(url,{method,headers,body:data===undefined?undefined:JSON.stringify(data),credentials:"same-origin",cache:"no-store",signal:options?.signal});
  if(!response.ok){
    const json=await response.json().catch(()=>({}));
    if(response.status===401&&requestAuthEpoch===authEpoch&&requestCsrf===csrf&&url!=="/auth/login"&&url!=="/auth/me")await checkSessionAfterUnauthorized(requestAuthEpoch,requestCsrf);
@@ -1687,6 +1689,11 @@ async function api(url,method="GET",data){
    if(response.status===409&&campaignAdmission&&json?.detail?.code==="CAMPAIGN_CONFLICT"&&rejection?.reason==="stale_version"){
      error.code="CAMPAIGN_CONFLICT";
      error.campaignRejection=Object.fromEntries(["reason","idempotency_key","kind","campaign_id","group_id","expected_version"].map(key=>[key,rejection[key]]));
+   }
+   const scheduleAdmission=method==="POST"&&/\/subscription-whatsapp\/scheduled-messages\/[^/]+\/(?:review|actions)$/.test(url);
+   if(response.status===409&&scheduleAdmission&&json?.detail?.code==="SCHEDULE_CONFLICT"&&rejection?.reason==="stale_version"){
+     error.code="SCHEDULE_CONFLICT";
+     error.scheduleRejection=Object.fromEntries(["reason","idempotency_key","kind","schedule_id","run_id","expected_version","expected_run_version"].map(key=>[key,rejection[key]]));
    }
    throw error;
  }
@@ -1939,7 +1946,7 @@ async function showApp(role="support",name="",email="",maintenance=null){
  const epoch=authEpoch;
  resetWizard();
  suiteTenantId="";businessRows=[];businessContextReady=false;businessContextError="";
- const url=new URL(location.href);url.searchParams.delete("empresa");history.replaceState({...window.OrionSubscriptionSentMessages?.navigationState?.(),...window.OrionSubscriptionDiagnostics?.navigationState?.(),...window.OrionSubscriptionCampaigns?.navigationState?.()},"",url.pathname+url.search);
+ const url=new URL(location.href);url.searchParams.delete("empresa");history.replaceState({...window.OrionSubscriptionSentMessages?.navigationState?.(),...window.OrionSubscriptionDiagnostics?.navigationState?.(),...window.OrionSubscriptionScheduledMessages?.navigationState?.(),...window.OrionSubscriptionCampaigns?.navigationState?.()},"",url.pathname+url.search);
  suiteUser={role,name,email,maintenance};
  loginRole=role;
  const maintenanceActive=role==="member"&&maintenance?.active===true;
