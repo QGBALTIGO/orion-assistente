@@ -1,6 +1,8 @@
 import {makeBoundedCache} from './bounded-cache.mjs';
 import {readAuthorizedRetry} from './retry-identity.mjs';
 import {useDurableAuthState} from './durable-auth.mjs';
+import {fenceSignalRepository} from './signal-fence.mjs';
+import {makeConnectionHealth,disconnectPolicy,sustainedRecovery} from './connection-health.mjs';
 import {normalizeInbound,updateEvent,callEvent,safetyControl,queueControl} from './inbound-event.mjs';
 /**
  * Orion Linked Device — aparelho de teste único, transporte não oficial.
@@ -52,7 +54,8 @@ import {runConsentedPairSmoke,SMOKE_ID,APPOINTMENT_QA_ID} from './consented-live
 const legacyCentral=createLegacyCentral({
   start:(id,key)=>channelRoutes.adopt(id,key),send:(id,key,payload)=>channelRoutes.send(id,key,payload),
   sessionDigest:()=>status==='connected'?createHmac('sha256',KEY).update('orion:preserved-primary-session:v1\0'+pairedNumber).digest('hex'):null,
-  status:()=>status,rawSend:(phone,text,options)=>sendLegacyRaw(phone,text,options)});
+  status:()=>visibleStatus(),rawSend:(phone,text,options)=>sendLegacyRaw(phone,text,options),
+  onTransportLeaseLost:()=>stopPrimaryTransport('lease_lost')});
 const channelRoutes=createChannelRoutes({sessionFactory:context=>context.legacyTransport?
   legacyCentral.attach(context):createBaileysChannelSession(context)});
 
@@ -62,6 +65,12 @@ const KEY=process.env.QR_BRIDGE_TOKEN || "";
 const transport=makeTransportDiagnostics({secret:KEY,
   emit:event=>console.info('Orion transport '+JSON.stringify(event))});
 const logger=transport.logger;
+const primaryHealth=makeConnectionHealth({emit:event=>console.info(JSON.stringify(event)),
+  isSyncPending:()=>socket?.ev?.isBuffering?.()===true,onStale:reason=>{
+  if(stopping||status!=='connected'||!socket)return;
+  try{socket.end(Object.assign(Error(reason),{output:{statusCode:408}}));}
+  catch{stopPrimaryTransport(reason);}
+}});
 // libsignal-node 6.x logs full SessionEntry objects including ratchet keys.
 // Redact those exact calls before any socket/session operation; keep normal logs.
 protectSignalSessionLogs();
@@ -78,16 +87,26 @@ try {
   const candidate=fs.readFileSync(ACTIVE_MARKER,"utf8").trim();
   if(candidate.startsWith(SESSION_DIR+"-renew-")&&candidate.startsWith("/data/"))authDir=candidate;
 } catch {}
-const authBackup=backupAuth({directory:authDir,backupDirectory:'/data/orion-auth-backups',
-  secret:KEY,label:'before-durable-auth-v2'});
-console.info('Orion auth backup '+JSON.stringify(authBackup));
+let authBackup={state:'pending_owner'},authBackupDirectory=null;
 const socketDeviceCaches=new WeakMap();
 let newLinkNoticeAuthDir=null;
-let socket=null,generation=0,timer=null,attempts=0,status="starting",
+let stopping=false,resumeTimer=null;
+let socket=null,generation=0,timer=null,attempts=0,sessionRecoveryAttempts=0,status="starting",
   connectStartedAt=Date.now(),lastQrAt=0,lastDisconnectCode=null,everConnected=false,
   pairingRequestedForGeneration=-1, pairPhone="",saveQueue=Promise.resolve(),
   notifiedGeneration=-1,
   qr="",qrAt=0,lastError=null,pairedNumber="",pairingCode="",pairAt=0,requesting=false;
+function stopPrimaryTransport(reason){
+  ++generation;clearTimeout(timer);timer=null;
+  pauseContactNames();
+  const previous=socket;socket=null;
+  qr='';qrAt=0;pairingCode='';pairAt=0;connectedSince=0;
+  status='stopped';
+  lastError=reason==='lease_lost'?'Aguardando a responsabilidade exclusiva pela sessão do WhatsApp.':null;
+  try{previous?.ev?.removeAllListeners();}catch{}
+  try{previous?.end(undefined);}catch{}
+  primaryHealth.stop(reason);
+}
 let durableInbox=makeDurableInbox({directory:authDir,secret:KEY});
 let connectedStore=makeConnectedStore({directory:authDir,secret:KEY});
 let contactNames=makeContactNames({directory:authDir,secret:KEY});
@@ -134,6 +153,7 @@ let encryptedRetry=makeEncryptedRetryStore({
 const retryStore={
   entry:key=>retryMessages.entry(key)||encryptedRetry.entry(key),
   save(key,message){
+    if(stopping||!legacyCentral.transportCurrent())return false;
     const memory=retryMessages.save(key,message);
     const encrypted=encryptedRetry.save(key,message);
     return memory && encrypted;
@@ -171,6 +191,8 @@ function pushMessage(item){
   persistInbox();
 }
 function visibleStatus(){
+  if(status==='connected'&&socket?.ws&&socket.ws.isOpen===false)return 'degraded';
+  if(status==='connected'&&primaryHealth.snapshot().state==='degraded')return 'degraded';
   if(status==="pairing"&&pairAt>0&&Date.now()-pairAt>=90000)
     return "pair_expired";
   return connectionPhase(status,qrAt,connectStartedAt);
@@ -178,6 +200,7 @@ function visibleStatus(){
 function stats(){
   const phase=visibleStatus();
   return {status:phase,hasQr:phase==="qr_ready"&&!!qr&&freshQR(qrAt),
+    connection_health:primaryHealth.snapshot(),
     lastError,disconnectCode:lastDisconnectCode,
     waitingSeconds:Math.floor((Date.now()-connectStartedAt)/1000),
     phone:status==="connected"?(pairedNumber||null):null,
@@ -363,13 +386,14 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
       if(legacyCentral.configured()){
         if(!allowAssistantRecipient(phone,connectedStore.settings()))return;
         return legacyCentral.forward({phone,message_id:traceId,message_ids:batch.messages.map(item=>item.id),
-          text:batch.text,intake_revision:batch.intakeRevision,...(entries.some(item=>item.event)?{envelope:entries.findLast(item=>item.event)?.event}:{})},
+          text:batch.text,parts:batch.messages.map(item=>({message_id:item.id,text:item.text})),intake_revision:batch.intakeRevision,...(entries.some(item=>item.event)?{envelope:entries.findLast(item=>item.event)?.event}:{})},
           {noticeProofs:entries.map(item=>item.noticeProof),isCurrent:current,beforeReply:value=>typing.beforeReply(value)});
       }
       transport.record('ai_forward',traceId,{count:batch.messages.length});
       let answer;
       try{answer=await forwardAssistant({apiUrl:process.env.QR_AI_API_URL,token:KEY,phone,
         messageId:traceId,messageIds:batch.messages.map(item=>item.id),text:batch.text,intakeRevision:batch.intakeRevision,
+        ...(process.env.QR_AI_PARTS_ENABLED==='1'?{parts:batch.messages.map(item=>({message_id:item.id,text:item.text}))}:{}),
         profile:namesStore.profile(phone),isCurrent:current,...(entries.some(item=>item.event)?{envelope:entries.findLast(item=>item.event)?.event}:{}),
         requireSummaryReview:revisionEnabled?summaryReviewRequired.get(phone)!==false:undefined});}
       catch(error){if(revisionEnabled)summaryReviewRequired.set(phone,true);transport.record('ai_forward_failed',traceId);throw error;}
@@ -644,7 +668,8 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
       console.info("Orion QR: pareamento disponível (conteúdo omitido)");
     }
     if(update.connection==="open"){
-      status="connected";everConnected=true;qr="";qrAt=0;pairingCode="";pairAt=0;attempts=0;
+      primaryHealth.connected();
+      status="connected";everConnected=true;qr="";qrAt=0;pairingCode="";pairAt=0;
        namesStore.bindIdentity(client.user);namesSync.start();
        try{connectedStore.setIdentity(client.user?.id)}catch{
          console.warn("Orion QR: configuração criptografada indisponível")
@@ -715,6 +740,10 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
       const code=Number(update.lastDisconnect?.error?.output?.statusCode);
       lastDisconnectCode=Number.isFinite(code)?code:null;
       console.info("Orion QR: conexão encerrada (código="+(lastDisconnectCode??"desconhecido")+")");
+      if(sustainedRecovery(primaryHealth.snapshot())){attempts=0;sessionRecoveryAttempts=0;}
+      const decision=disconnectPolicy(code,attempts,{sessionAttempts:sessionRecoveryAttempts});
+      if(code===500)sessionRecoveryAttempts++;
+      primaryHealth.disconnected(decision,attempts+1);
       if(code===DisconnectReason.loggedOut){
         if(newLinkNoticeAuthDir===authDir)newLinkNoticeAuthDir=null;
         status=everConnected?"logged_out":"pair_failed";
@@ -723,14 +752,19 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
           "O WhatsApp rejeitou o vínculo. Um novo código exige outra sessão.";
         return;
       }
+      if(!decision.retry){
+        status='error';socket=null;clearTimeout(timer);timer=null;
+        lastError=decision.reason==='connection_replaced'?'A sessão foi assumida por outra instância. Confira a responsabilidade da conexão.':
+          decision.reason==='reconnect_exhausted'?'As tentativas automáticas foram interrompidas. Confira a conexão antes de tentar novamente.':
+          'O WhatsApp exige uma verificação da sessão. As credenciais foram preservadas.';
+        return;
+      }
       status="reconnecting";
       lastError=code===DisconnectReason.restartRequired?
         "WhatsApp solicitou reinicialização após pareamento; restaurando sessão.":
         "Conexão interrompida; tentando restabelecer.";
-      const decision=reconnectPlan(code,attempts,DisconnectReason.loggedOut,
-        DisconnectReason.restartRequired);
       const delay=decision.delayMs;
-      if(code!==DisconnectReason.restartRequired)attempts++;
+      attempts++;
       timer=setTimeout(()=>{
         if(mine===generation){
           void saveQueue.finally(()=>connect().catch(()=>{}));
@@ -740,17 +774,30 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
   });
 }
 async function connect(){
+  if(stopping)return;
   const mine=++generation;
   pauseContactNames();
   const namesForConnection=contactNames,selectedAuthDir=authDir;
   clearTimeout(timer);timer=null;qr="";qrAt=0;pairingCode="";pairAt=0;
   status="connecting";connectStartedAt=Date.now();pairingRequestedForGeneration=-1;
+  primaryHealth.connecting();
   pendingNotificationsReceived=false;inboundSinceConnect=false;
   try{
+    // The primary socket shares the manager's SQL owner/fence. Reserve that
+    // owner before reading or mutating Signal state, including on startup.
+    if(legacyCentral.configured())await legacyCentral.resume();
+    await legacyCentral.assertTransportCurrent();
+    if(stopping||mine!==generation)return;
+    if(authBackupDirectory!==selectedAuthDir){
+      authBackup=backupAuth({directory:selectedAuthDir,backupDirectory:'/data/orion-auth-backups',
+        secret:KEY,label:'before-durable-auth-v2'});
+      authBackupDirectory=selectedAuthDir;
+      console.info('Orion auth backup '+JSON.stringify(authBackup));
+    }
     const {state,saveCreds}=useDurableAuthState(selectedAuthDir,{
       secret:KEY,sdk:{BufferJSON,proto,initAuthCreds},
       backupVerified:['created_verified','verified_existing'].includes(authBackup.state),
-      isCurrent:()=>mine===generation&&selectedAuthDir===authDir,
+      isCurrent:()=>!stopping&&mine===generation&&selectedAuthDir===authDir&&legacyCentral.transportCurrent(),
       onFailure:()=>{
         transport.record('auth_write_failed');
         if(mine!==generation)return;
@@ -779,18 +826,22 @@ async function connect(){
       }catch{}
     }
     if(mine!==generation||namesForConnection!==contactNames||selectedAuthDir!==authDir)return;
+    await legacyCentral.assertTransportCurrent();
+    if(stopping||mine!==generation||selectedAuthDir!==authDir||!legacyCentral.transportCurrent())return;
+    primaryHealth.protocolVersion(currentVersion||DEFAULT_CONNECTION_CONFIG.version);
     const deviceCache=makePilotDeviceCache(makeBoundedCache({max:5000,ttlMs:300000}));
     const client=makeWASocket({
       userDevicesCache:deviceCache,
       auth:{creds:state.creds,keys:makeCacheableSignalKeyStore(state.keys,logger)},
-      makeSignalRepository:observeSignalRepository(DEFAULT_CONNECTION_CONFIG.makeSignalRepository,jid=>{
+      makeSignalRepository:fenceSignalRepository(observeSignalRepository(DEFAULT_CONNECTION_CONFIG.makeSignalRepository,jid=>{
         if(mine===generation)transport.record('signal_encrypt_target',null,encryptionTargetDetails(jid,state.creds.me));
-      }),
+      }),()=>!stopping&&mine===generation&&selectedAuthDir===authDir&&legacyCentral.transportCurrent()),
       msgRetryCounterCache,
       maxMsgRetryCount:5,
       getMessage:async key=>{
         const content=await readAuthorizedRetry(retryStore,key,{socket:client,
-          isCurrent:()=>mine===generation&&socket===client&&status==='connected'});
+          isCurrent:()=>!stopping&&mine===generation&&socket===client&&status==='connected'&&legacyCentral.transportCurrent(),
+          assertCurrent:()=>legacyCentral.assertTransportCurrent()});
         // The library also sends its OWN retry-control messages. A cache
         // miss for one of those IDs is not proof that a customer-facing
         // outgoing message is missing. Report these separately, without IDs.
@@ -815,10 +866,13 @@ async function connect(){
     if(state.creds.registered!==true&&process.env.ORION_NOTIFY_SELF_ON_LINK==="1")newLinkNoticeAuthDir=selectedAuthDir;
     const notifyNewLink=newLinkNoticeAuthDir===selectedAuthDir;
     socket=client;installListeners(client,mine,saveCreds,notifyNewLink);
+    primaryHealth.watch(client.ws);
   }catch{
+    if(stopping||mine!==generation)return;
     status="error";lastError="Não foi possível iniciar o serviço do WhatsApp.";
+    const decision=disconnectPolicy(null,attempts++);primaryHealth.disconnected(decision,attempts);
     console.warn("Orion QR: erro genérico ao iniciar");
-    timer=setTimeout(()=>{if(mine===generation)connect().catch(()=>{})},20000);
+    if(decision.retry)timer=setTimeout(()=>{if(mine===generation)connect().catch(()=>{})},decision.delayMs);
   }
 }
 async function pair(number){
@@ -1023,7 +1077,7 @@ const server=http.createServer(async(req,res)=>{
       pauseContactNames();
       try{socket?.end(undefined)}catch{}
       await saveQueue;
-      await connect();
+      attempts=0;await connect();
       return reply(res,202,{status:"connecting"});
     }
     if(path==="/internal/disconnect"&&req.method==="POST"){
@@ -1106,7 +1160,7 @@ const server=http.createServer(async(req,res)=>{
       pauseContactNames();
       try{socket?.end(undefined)}catch{}
       await saveQueue;
-      await connect();
+      attempts=0;await connect();
       return reply(res,202,{status:"connecting"});
     }
     if(path==="/internal/chats"&&req.method==="GET"){
@@ -1162,11 +1216,31 @@ server.headersTimeout=10000;
 server.requestTimeout=15000;
 server.listen({port:PORT, host:"::", ipv6Only:false},()=>{
   console.info("Orion QR: serviço privado em IPv6/dual-stack, porta "+PORT);
-  connect().catch(()=>{});
   const resumeChannels=async()=>{
+    if(stopping)return;
     if(legacyCentral.configured())await legacyCentral.resume().catch(error=>console.warn('Orion QR: adoção da sessão principal pendente '+JSON.stringify({category:['legacy_adoption_not_ready','invalid_legacy_adoption','unsafe_legacy_broker'].includes(error?.message)?error.message:'unavailable',httpStatus:Number.isInteger(error?.status)&&error.status>=400&&error.status<=599?error.status:null})));
+    if(!stopping&&legacyCentral.transportCurrent()&&status==='stopped')void connect();
     await channelRoutes.resume().catch(()=>console.warn('Orion QR: retomada dos dispositivos pendente'));
   };
+  void connect();
   void resumeChannels();
-  setInterval(resumeChannels,legacyCentral.configured()?5000:30000).unref();
+  resumeTimer=setInterval(resumeChannels,legacyCentral.configured()?5000:30000);resumeTimer.unref();
 });
+
+// Stop admitting effects and fence sockets before draining HTTP requests.
+// A forced end never deletes credentials or changes an uncertain send to sent.
+let shutdownPromise;
+function shutdown(){
+  if(shutdownPromise)return shutdownPromise;
+  stopping=true;clearInterval(resumeTimer);stopPrimaryTransport('shutdown');channelRoutes.close();
+  shutdownPromise=(async()=>{
+    const closed=new Promise(resolve=>server.close(resolve));server.closeIdleConnections?.();
+    let deadline;
+    try{
+      await Promise.race([Promise.allSettled([closed,saveQueue,...assistantQueues.values()]),
+        new Promise(resolve=>{deadline=setTimeout(resolve,8000);})]);
+    }finally{clearTimeout(deadline);server.closeAllConnections?.();}
+  })();
+  return shutdownPromise;
+}
+for(const signal of ['SIGTERM','SIGINT'])process.once(signal,()=>{void shutdown().finally(()=>process.exit(0));});

@@ -43,6 +43,17 @@ test('assistant-off inbound is journaled before interaction and never forwarded'
   await f.made[0].ctx.onInbound({phone,message_id:'journal-1',text:'Mensagem humana',kind:'text'});
   assert.deepEqual(calls,['journal','interaction']);assert.equal(f.forwards.length,0);assert.equal(f.made[0].ctx.assistantEnabled(),false);
 });
+test('optional per-message parts are negotiated from the lease during a rolling API update',async t=>{
+  const f=fixture(t),a=f.add(),m=f.manager();let capable=false;
+  const lease=f.broker.lease;f.broker.lease=async(...args)=>({...await lease(...args),...(capable?{incoming_parts:true}:{})});
+  await m.start(a.id,a.key);const ctx=f.made[0].ctx;
+  for(const [id,enabled] of [['old-api',false],['new-api',true]]){
+    capable=enabled;const proof=await ctx.onInbound({phone,message_id:id,text:'Texto completo'});
+    await ctx.onMessage({phone,message_id:id,text:'Texto completo',parts:[{message_id:id,text:'Texto completo'}]},{noticeProof:proof});
+  }
+  assert.equal(f.forwards[0].payload.parts,undefined);
+  assert.deepEqual(f.forwards[1].payload.parts,[{message_id:'new-api',text:'Texto completo'}]);assert.equal(f.made.length,1);
+});
 
 test('central booking sends to an out-of-allowlist professional only after broker receipt grant',async t=>{
   const f=fixture(t),a=f.add(),attempts=[];f.rows.get(a.id).inbox_control=true;

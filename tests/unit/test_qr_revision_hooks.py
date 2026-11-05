@@ -22,6 +22,18 @@ class RevisionRedis(MemoryRedis):
             self.deadlines[key]=qr_ai.monotonic()+ttl/1000 if ttl is not None else None
         return result
     async def eval(self, script, nkeys, *args):
+        if script == qr_ai.qr_conversation_lock._OWNED_SET:
+            key, lock_key, token, value, expiry = args
+            if self.lock_tokens.get(lock_key) != token:
+                return 0
+            await self.set(key, value, ex=expiry)
+            return 1
+        if script == qr_ai._STATE_RESTORE_OWNED_SCRIPT:
+            assert nkeys == 4
+            if self.lock_tokens.get(args[3]) != args[-1]:
+                return 0
+            args = (*args[:3], *args[4:-1])
+            script, nkeys = qr_ai._STATE_RESTORE_SCRIPT, 3
         if script == qr_ai._STATE_SNAPSHOT_SCRIPT:
             assert nkeys == 3
             rows=[]

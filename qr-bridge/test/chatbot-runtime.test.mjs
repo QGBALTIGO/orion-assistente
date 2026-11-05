@@ -16,7 +16,7 @@ const tick=()=>new Promise(resolve=>setImmediate(resolve));
 const defer=()=>{let resolve;const promise=new Promise(done=>{resolve=done;});return {promise,resolve};};
 async function until(predicate){for(let i=0;i<400;i++){if(predicate())return;await tick();}assert.fail('Expected Chatbot boundary was not reached');}
 
-async function fixture(t){
+async function fixture(t,{native=false}={}){
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'orion-chatbot-runtime-'));fs.chmodSync(root,0o700);
   const directory=path.join(root,'auth'),deviceDirectory=path.join(root,'device');fs.mkdirSync(directory,{mode:0o700});fs.mkdirSync(deviceDirectory,{mode:0o700});
   let state={id:randomUUID(),generation:randomUUID(),settings_revision:1,settings:structuredClone(defaults),chatbot:{revision:1},
@@ -54,7 +54,7 @@ async function fixture(t){
       }};
     const mod={...sdk,default:options=>{config=options;return client;},downloadMediaMessage:async()=>{const buffer=Buffer.from('OggS synthetic');downloads.push(buffer);return buffer;}};
     session=await createBaileysChannelSession(context,{loadBaileys:async()=>mod,now:()=>clock,schedule,cancel,
-      deviceOptions:{runtimeOptions:{capacity:{acquire:options=>behavior.capacity(options)},chatbotOptions:{httpRequest:async options=>{httpCalls.push(options);return behavior.http(options);},fetchImage:options=>behavior.fetchImage(options)}}}});
+      deviceOptions:{...(native?{interactiveMode:'native'}:{}),runtimeOptions:{capacity:{acquire:options=>behavior.capacity(options)},chatbotOptions:{httpRequest:async options=>{httpCalls.push(options);return behavior.http(options);},fetchImage:options=>behavior.fetchImage(options)}}}});
     instances.push(session);const before=events.length;client.ev.emit('connection.update',{connection:'open'});await until(()=>events.slice(before).some(row=>row.kind==='status'));return session;
   }
   function effect(action,{target=phone,delay=0,due=clock,extra={}}={}){
@@ -74,11 +74,25 @@ async function fixture(t){
 }
 
 test('ingress to a native list uses a current effect, exact encrypted proto and only the authorized contact',async t=>{
-  const f=await fixture(t),action=f.effect({type:'list',title:'Menu',description:'Escolha',button_text:'Abrir',sections:[{title:'Opções',rows:[{id:'orion:one',title:'Uma',description:''}]}]});
+  const f=await fixture(t,{native:true}),action=f.effect({type:'list',title:'Menu',description:'Escolha',button_text:'Abrir',sections:[{title:'Opções',rows:[{id:'orion:one',title:'Uma',description:''}]}]});
   f.behavior.event=async row=>row.kind==='text'?[action]:[];f.receive('native-list');await until(()=>f.finished.length===1);
   assert.equal(f.sends.length,1);assert.equal(f.sends[0].jid,phone+'@s.whatsapp.net');assert.equal(f.sends[0].proto.listMessage.sections[0].rows[0].rowId,'orion:one');
   assert.equal(f.finished[0].state,'accepted');assert.ok(f.authorizations.length>=4);assert.ok(f.authorizations.slice(1).every(row=>row.recheck===true));
   const incoming=f.events.find(row=>row.message_id==='native-list');assert.equal(incoming.origin,'contact');assert.equal(incoming.chatbot_revision,1);assert.ok(Number.isSafeInteger(incoming.ingress_order));
+});
+test('default list fallback survives a valid-auth reconnect and quotes resolve only the same contact menu',async t=>{
+  const f=await fixture(t),action=f.effect({type:'list',title:'Menu',description:'Escolha',button_text:'Abrir',
+    sections:[{rows:[{id:'ocb:first',title:'Primeira'},{id:'ocb:second',title:'Segunda'}]}]});
+  f.behavior.event=async row=>row.message_id==='fallback-trigger'?[action]:[];
+  f.receive('fallback-trigger');await until(()=>f.finished.length===1);
+  assert.equal(f.sends[0].proto.listMessage,null);assert.match(f.sends[0].proto.extendedTextMessage.text,/citando esta mensagem/);
+  const quoted=f.sends[0].id;f.session.close();await f.open();
+  f.receive('fallback-answer',{extendedTextMessage:{text:'2',contextInfo:{stanzaId:quoted}}});
+  await until(()=>f.events.some(row=>row.message_id==='fallback-answer'));
+  const answer=f.events.find(row=>row.message_id==='fallback-answer');assert.equal(answer.selection_id,'ocb:second');assert.equal(answer.quoted_message_id,quoted);
+  assert.equal(answer.phone,phone);assert.equal(f.sends.length,1,'A selection is passed to the broker, never an automatic local action');
+  f.receive('unquoted-answer','2');await until(()=>f.events.some(row=>row.message_id==='unquoted-answer'));
+  assert.equal(f.events.find(row=>row.message_id==='unquoted-answer').selection_id,undefined);
 });
 
 test('audio, its caption and followup, then location traverse the authorized native runtime in receipt order',{timeout:10_000},async t=>{
@@ -99,7 +113,7 @@ test('audio, its caption and followup, then location traverse the authorized nat
 });
 
 test('carousel image decoder envelope is unwrapped and every normalized asset remains scoped to the effect',{timeout:10_000},async t=>{
-  const f=await fixture(t),completed=defer(),original=Buffer.from('synthetic normalized image'),thumbnail=Buffer.from('synthetic normalized thumbnail'),prepared=[],loaded=[],raw=[];
+  const f=await fixture(t,{native:true}),completed=defer(),original=Buffer.from('synthetic normalized image'),thumbnail=Buffer.from('synthetic normalized thumbnail'),prepared=[],loaded=[],raw=[];
   const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
   const descriptors=Array.from({length:3},()=>({id:randomUUID(),kind:'image',mime:'image/jpeg',size:original.length,sha256:hash(original),width:512,height:512,
     thumbnail:{mime:'image/jpeg',size:thumbnail.length,sha256:hash(thumbnail)}}));
@@ -120,7 +134,7 @@ test('carousel image decoder envelope is unwrapped and every normalized asset re
 });
 
 test('manual carousel resend uses private frozen images without fetching or preparing remote replacements',{timeout:10_000},async t=>{
-  const f=await fixture(t),done=defer(),original=Buffer.from('frozen private image'),thumbnail=Buffer.from('frozen private thumbnail'),loaded=[];
+  const f=await fixture(t,{native:true}),done=defer(),original=Buffer.from('frozen private image'),thumbnail=Buffer.from('frozen private thumbnail'),loaded=[];
   const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
   const assets=Array.from({length:3},()=>({id:randomUUID(),kind:'image',mime:'image/jpeg',size:original.length,sha256:hash(original),width:512,height:512,
     thumbnail:{mime:'image/jpeg',size:thumbnail.length,sha256:hash(thumbnail)}}));

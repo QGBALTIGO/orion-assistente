@@ -59,7 +59,7 @@ function verifyBytes(value,meta){
  * dispose() erases all original media and thumbnail buffers on every outcome. */
 export async function buildChatbotContent(action,{sdk,loadAsset,prepareCarouselImage,
   fetchImage=fetchChatbotImage,upload,assertCurrent=async()=>{},isCurrent=()=>true,signal,logger,jid,
-  mediaOptions={}}={}){
+  mediaOptions={},interactiveMode='native'}={}){
   const owned=[];
   const dispose=()=>{for(const buffer of owned)buffer.fill(0);owned.length=0;};
   const guard=async()=>{await assertCurrent();if(signal?.aborted||!isCurrent())throw Object.assign(Error('chatbot_revoked'),{code:'CHATBOT_REVOKED'});};
@@ -97,7 +97,8 @@ export async function buildChatbotContent(action,{sdk,loadAsset,prepareCarouselI
   }
   try{
     if(!plain(action)||typeof sdk?.proto?.Message?.fromObject!=='function')throw invalid();
-    await guard();let content;
+    await guard();let content,selectionIds,textFallback=false;
+    if(!['native','text_fallback'].includes(interactiveMode))throw invalid();
     if(action.type==='text')content={extendedTextMessage:{text:text(action.text,32000)}};
     else if(action.type==='location'){
       if(!Number.isFinite(action.latitude)||!Number.isFinite(action.longitude)||Math.abs(action.latitude)>90||Math.abs(action.longitude)>180)throw invalid();
@@ -115,9 +116,28 @@ export async function buildChatbotContent(action,{sdk,loadAsset,prepareCarouselI
       });
       content={listMessage:{title:text(action.title,60),description:text(action.description,1000),
         footerText:text(action.footer,60,{optional:true}),buttonText:text(action.button_text,20),listType:1,sections}};
+      if(interactiveMode==='text_fallback'){
+        let index=0;selectionIds=[];textFallback=true;
+        const rows=sections.flatMap(section=>[...(section.title?[section.title]:[]),...section.rows.map(row=>{
+          selectionIds.push(row.rowId);return `${++index}. ${row.title}${row.description?' — '+row.description:''}`;
+        })]);
+        content={extendedTextMessage:{text:[action.title,action.description,...rows,action.footer||'',
+          'Responda citando esta mensagem e informe o número da opção.'].filter(Boolean).join('\n\n')}};
+      }
     }else if(limits[action.type])content=await media(action.asset,action.type,action.caption,action.file_name);
     else if(action.type==='carousel'){
-      if(!Array.isArray(action.cards)||action.cards.length!==3||typeof prepareCarouselImage!=='function')throw invalid();
+      if(!Array.isArray(action.cards)||action.cards.length!==3||interactiveMode==='native'&&typeof prepareCarouselImage!=='function')throw invalid();
+      if(interactiveMode==='text_fallback'){
+        const ids=new Set();textFallback=true;
+        const cards=action.cards.map((card,index)=>{
+          if(!plain(card)||!chatbotSelectionId(card.selection_id)||ids.has(card.selection_id))throw invalid();ids.add(card.selection_id);
+          const title=text(card.title,60),body=text(card.body,1024,{optional:index!==0});text(card.button_text,20);
+          return `${index+1}. ${title}${body?'\n'+body:''}`;
+        });
+        // Carousel selections are evidence-only in the current domain model.
+        // Present its information without inviting a nonexistent action.
+        content={extendedTextMessage:{text:[text(action.body,1024),...cards].join('\n\n')}};
+      }else{
       const cards=[],ids=new Set();
       for(const [index,card] of action.cards.entries()){
         if(!plain(card)||!chatbotSelectionId(card.selection_id)||ids.has(card.selection_id))throw invalid();ids.add(card.selection_id);
@@ -141,7 +161,9 @@ export async function buildChatbotContent(action,{sdk,loadAsset,prepareCarouselI
       // This is the actual interactive carousel proto. Rendering depends on
       // WhatsApp client capabilities; there is intentionally no text fallback.
       content={interactiveMessage:{body:{text:text(action.body,1024)},carouselMessage:{cards,messageVersion:1}}};
+      }
     }else throw invalid();
-    await guard();return {content:sdk.proto.Message.fromObject(content),dispose};
+    await guard();return {content:sdk.proto.Message.fromObject(content),dispose,
+      ...(selectionIds?{selectionIds:Object.freeze(selectionIds)}:{}),wireMode:textFallback?'text_fallback':'native'};
   }catch(error){dispose();throw error;}
 }

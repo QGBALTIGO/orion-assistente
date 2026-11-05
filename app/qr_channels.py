@@ -441,7 +441,7 @@ async def lease_operation(db, channel_id, credential, payload, operation):
                 "owner_account_id": str(row["owner_account_id"]), "provider": row["provider"],
                 "owner": str(payload.owner), "fence": row["fence"], "expires_in_ms": remaining,
                 "allowed_senders": row["allowed_senders"], "assistant_enabled": row["assistant_enabled"],
-                "legacy_transport": legacy,
+                "legacy_transport": legacy, "incoming_parts": True,
                 "verified_self_phone":qr_legacy.verified_self_phone(row) if legacy else None,
                 **({"device": await device_lease_snapshot(db, row)} if device else {}),
                 **({"inbox_control": True} if central or os.getenv("INBOX_CONTROL_ENABLED", "0") == "1" else {})}

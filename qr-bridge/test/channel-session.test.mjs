@@ -210,6 +210,15 @@ test('actual socket factory uses per-channel auth and refuses group, self, histo
   s.receive({});await flush();await flush();assert.equal(s.messages.length,1);
   assert.equal(s.config.syncFullHistory,false);assert.equal(s.config.shouldSyncHistoryMessage(),false);
 });
+test('recent managed offline append from before reconnect is consumed once while old history stays excluded',async t=>{
+  const s=await session(t);s.setTime(1000000);
+  const message={key:{id:'recovered-managed',remoteJid:phone+'@s.whatsapp.net',fromMe:false},messageTimestamp:970,
+    message:{conversation:'Pedido recebido durante a interrupção'}};
+  s.client.ev.emit('messages.upsert',{type:'append',messages:[message]});await flush();await flush();
+  assert.equal(s.messages.length,1);assert.equal(s.messages[0].message_id,'recovered-managed');
+  s.client.ev.emit('messages.upsert',{type:'append',messages:[message,{...message,key:{...message.key,id:'too-old'},messageTimestamp:99}]});
+  await flush();await flush();assert.equal(s.messages.length,1);
+});
 
 test('exact outgoing proto is encrypted before relay and survives a new channel socket',async t=>{
   const s=await session(t);s.client.ev.emit('connection.update',{connection:'open'});

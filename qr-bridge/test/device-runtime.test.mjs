@@ -81,6 +81,20 @@ test('device ingress has no pilot allowlist, but defaults never invoke AI, ASR, 
   await until(()=>f.events.some(e=>e.message_id==='unicode-name'));
   assert.equal(f.events.find(e=>e.message_id==='unicode-name').name,prefix+'🙂','The schema limit counts Unicode characters, without splitting an emoji');
 });
+test('subscription offline append recovers a thirty-second outage with a stable dedupe ID and five-minute bound',async t=>{
+  const f=await fixture(t);
+  const message={key:{id:'offline-during-outage',remoteJid:phone+'@s.whatsapp.net',fromMe:false},messageTimestamp:970,
+    message:{conversation:'Solicitação durante a queda'}};
+  f.client.ev.emit('messages.upsert',{type:'append',messages:[message]});await until(()=>f.events.some(row=>row.message_id===message.key.id));
+  const first=f.events.find(row=>row.message_id===message.key.id);assert.equal(first.occurred_at,new Date(970000).toISOString());
+  f.client.ev.emit('messages.upsert',{type:'append',messages:[message,{...message,key:{...message.key,id:'too-old'},messageTimestamp:699}]});
+  await tick();await tick();assert.equal(f.events.filter(row=>row.kind==='text').length,1);
+  f.session.close();await f.open();f.client.ev.emit('messages.upsert',{type:'append',messages:[message]});
+  await until(()=>f.events.filter(row=>row.message_id===message.key.id).length===2);
+  assert.equal(f.events.filter(row=>row.message_id===message.key.id)[1].event_id,first.event_id,
+    'The existing SQL unique device/provider-event fence receives the same durable identity after restart');
+  assert.equal(f.sends.length,0,'Recovery never bypasses backend effect admission');
+});
 
 test('only the server-derived current effect may send outside the pilot policy, once across restart',async t=>{
   const f=await fixture(t),effect=f.effect('send_text',{phone,text:'Mensagem de ausência'});

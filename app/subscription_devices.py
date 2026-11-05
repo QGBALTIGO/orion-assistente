@@ -138,12 +138,54 @@ async def _metrics(db, row):
             "timezone": row["settings"]["timezone"], **dict(stats)}
 
 
+def _safe_connection_health(value):
+    """Keep diagnostic identifiers and arbitrary provider errors off the panel."""
+    if not isinstance(value, dict):
+        return None
+    states = {"starting", "connecting", "connected", "degraded", "reconnecting", "needs_attention", "stopped"}
+    actions = {"reauthenticate", "inspect_provider_restriction", "inspect_client_compatibility",
+               "inspect_session_ownership", "inspect_session_state", "retry_connection"}
+    reasons = {"logged_out", "forbidden", "multidevice_mismatch", "connection_replaced", "bad_session",
+               "reconnect_exhausted", "restart_required", "network_timeout", "connection_closed",
+               "provider_unavailable", "transport_interrupted", "socket_not_open", "event_loop_delayed",
+               "transport_unresponsive", "session_recovery", "session_recovery_exhausted", "sync_stalled"}
+    if not isinstance(value.get("state"), str) or value["state"] not in states:
+        return None
+    action, reason = value.get("action"), value.get("reason")
+    result = {"state": value["state"], "transport_observed": value.get("transport_observed") is True,
+              "reason": reason if isinstance(reason, str) and reason in reasons else None,
+              "action": action if isinstance(action, str) and action in actions else None}
+    for key in ("last_activity_at", "connected_at", "interrupted_at", "recovered_at", "reconnect_at"):
+        result[key] = None
+        raw = value.get(key)
+        try:
+            if type(raw) in {int, float} and 0 < raw <= 253402300799000:
+                result[key] = datetime.fromtimestamp(raw / 1000, timezone.utc).isoformat()
+            elif isinstance(raw, str) and len(raw) <= 40:
+                parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+                if parsed.tzinfo and parsed.year >= 1970:
+                    result[key] = parsed.astimezone(timezone.utc).isoformat()
+        except (ValueError, TypeError, OverflowError, OSError):
+            pass
+    code, attempts = value.get("disconnect_code"), value.get("reconnect_attempts")
+    result["disconnect_code"] = code if type(code) is int and 100 <= code <= 999 else None
+    result["reconnect_attempts"] = attempts if type(attempts) is int and 0 <= attempts <= 1000 else 0
+    return result
+
+
 def _safe_runtime(data):
     data = data if isinstance(data, dict) else {}
     status = data.get("status")
     valid = {"disabled", "stopped", "starting", "connecting", "reconnecting", "qr_ready", "qr_delayed", "qr_expired",
-             "pairing", "pair_expired", "pair_failed", "connected", "disconnected", "logged_out", "error", "unavailable"}
-    result = {"status": "qr_ready" if status == "qr" else status if status in valid else "disconnected"}
+             "pairing", "pair_expired", "pair_failed", "connected", "disconnected", "logged_out", "error", "unavailable",
+             "degraded", "needs_attention"}
+    result = {"status": "qr_ready" if status == "qr" else status if isinstance(status, str) and status in valid else "disconnected"}
+    health = _safe_connection_health(data.get("connection_health"))
+    if health:
+        result["connection_health"] = health
+        # A socket's last 'open' event cannot override a newer loss of readiness.
+        if result["status"] == "connected" and health["state"] in {"degraded", "reconnecting", "needs_attention", "stopped"}:
+            result["status"] = "disconnected" if health["state"] == "stopped" else health["state"]
     phone = data.get("phone")
     result["phone"] = phone if isinstance(phone, str) and re.fullmatch(r"[1-9][0-9]{7,14}", phone) else None
     result["phone_verified"] = bool(result["phone"] and data.get("phone_verified") is True)
@@ -180,7 +222,12 @@ async def device_dto(db, row):
     status = row["status"]
     if status not in {"disabled", "removing", "removed"}:
         recent = row["runtime_at"] and row["runtime_at"] > datetime.now(timezone.utc)-timedelta(seconds=90)
-        status = runtime["status"] if recent else "disconnected"
+        status = runtime["status"] if recent else "unavailable"
+    health = runtime.get("connection_health")
+    if status == "unavailable":
+        # Saved transport timestamps remain historical; never advertise a
+        # successful recovery from a process that has stopped reporting.
+        health = {**(health or {}), "state": "degraded", "action": "retry_connection", "stale": True}
     current = status == "connected"
     idle = status not in {"removing", "removed"}
     pending = (await db.execute(text("""SELECT * FROM subscription_device_operations
@@ -192,6 +239,7 @@ async def device_dto(db, row):
     return {"id": row["id"], "name": row["name"], "revision": row["revision"], "status": status,
         "phone": runtime["phone"], "phone_verified": runtime["phone_verified"], "profile": runtime["profile"],
         "connected_at": runtime["connected_at"], "last_seen_at": runtime["last_seen_at"],
+        "connection_health": health,
         "metrics": await _metrics(db, row),
         "features": {"transcription": row["settings"]["transcription"]["enabled"],
                      "call_blocking": row["settings"]["calls"]["reject_enabled"]},
@@ -225,7 +273,8 @@ async def _refresh(tenant_id, device_id, actor):
 async def _store_runtime(db, row, data):
     safe = _safe_runtime(data)
     applied = safe.get("applied_revision") == row["revision"]
-    stored_status = ("qr" if safe["status"].startswith("qr_") else "connecting"
+    stored_status = ("error" if safe["status"] == "needs_attention" else "disconnected" if safe["status"] == "degraded"
+        else "qr" if safe["status"].startswith("qr_") else "connecting"
         if safe["status"] in {"starting", "reconnecting", "connecting"} else safe["status"]
         if safe["status"] in {"disabled", "pairing", "connected", "error"} else "disconnected")
     await db.execute(text("""UPDATE subscription_devices SET runtime=CAST(:runtime AS jsonb),

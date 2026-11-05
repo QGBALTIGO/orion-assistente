@@ -34,6 +34,7 @@ export function validDeviceSnapshot(value){
 }
 
 export function createDeviceRuntime(context,{client,downloadMediaMessage,logger,sendText,sendChatbot,isGeneratedMessage=()=>false,
+  resolveSelection=()=>null,
   now=Date.now,openedAt=now(),schedule=setTimeout,cancel=clearTimeout,
   postWebhook=postDeviceWebhook,downloadOptions={},capacity=makeSendCapacity({now}),pollMs=5000,chatbotOptions={}}={}){
   const initial=context.deviceSnapshot?.();if(!validDeviceSnapshot(initial))throw Error('invalid_device_snapshot');
@@ -204,7 +205,7 @@ export function createDeviceRuntime(context,{client,downloadMediaMessage,logger,
     for(const message of messages){
       const key=message?.key,at=timestampMs(message?.messageTimestamp),expected=context.deviceSnapshot();
       if(!current(expected)||![false,true].includes(key?.fromMe)||!messageId(key?.id)||!privateJid.test(key?.remoteJid||'')||
-          !at||at<openedAt-1000||at<now()-900000||at>now()+60000||pending+ingress.pending()>=32)continue;
+          !at||(type!=='append'&&at<openedAt-1000)||at<now()-300000||at>now()+60000||pending+ingress.pending()>=32)continue;
       const input=normalizeChatbotInput(message,{isGeneratedMessage});
       if(!input||(input.origin==='owner_command'&&!Number.isSafeInteger(expected.chatbot?.revision))||!remember('message:'+key.id))continue;
       // Assigned before the first async PN/LID resolution or ASR request.
@@ -225,8 +226,9 @@ export function createDeviceRuntime(context,{client,downloadMediaMessage,logger,
       const self=normalizeFromJid(client.user?.id);return phonePattern.test(phone||'')&&self&&phone!==self?phone:null;},
     run:async({expected,message,at,input,order},phone)=>{
       await guard(expected);const audio=input.origin==='contact'?deviceAudioMetadata(message):null;
+      const resolved=input.origin==='contact'&&!input.selection_id?resolveSelection(message,phone)||input:input;
       await event(expected,{event_id:'msg:'+digest(message.key.id).slice(0,40),kind:audio?'audio':'text',occurred_at:new Date(at).toISOString(),
-        phone,message_id:message.key.id,name:name(message.pushName),...input,ingress_order:order,
+        phone,message_id:message.key.id,name:name(message.pushName),...resolved,ingress_order:order,
         ...(Number.isSafeInteger(expected.chatbot?.revision)?{chatbot_revision:expected.chatbot.revision}:{}),...(audio?{audio}:{})},message);
     }});
   function calls(values){

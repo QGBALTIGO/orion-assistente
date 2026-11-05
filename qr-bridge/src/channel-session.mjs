@@ -1,4 +1,6 @@
 import {makeBoundedCache} from './bounded-cache.mjs';
+import {fenceSignalRepository} from './signal-fence.mjs';
+import {makeConnectionHealth,disconnectPolicy} from './connection-health.mjs';
 import {makeTransportDiagnostics} from './transport-diagnostics.mjs';
 import {readAuthorizedRetry} from './retry-identity.mjs';
 /** A Baileys instance per context; shared helpers, no copy of the legacy server.
@@ -14,6 +16,7 @@ import {deliveryFromAck} from './message-retry-store.mjs';
 import {makeEncryptedRetryStore} from './encrypted-retry-store.mjs';
 import {sendStoredText,sendStoredProtocol} from './reliable-send.mjs';
 import {buildChatbotContent} from './chatbot-message.mjs';
+import {saveFallbackSelection,resolveFallbackSelection} from './selection-fallback.mjs';
 import {makePilotDeviceCache,resolvePilotRecipient} from './pilot-recipient.mjs';
 import {makeAssistantTyping} from './assistant-typing.mjs';
 import {withAssistantAudio} from './ai-audio.mjs';
@@ -35,8 +38,18 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
       console.info(JSON.stringify({component:'orion-managed-transport',...event}));
   }});
   const silent=diagnostics.logger;
+  const health=makeConnectionHealth({now,schedule,cancel,previous:context.previousConnectionHealth,scope:{channel_id:context.channelId,tenant_id:context.tenantId,
+    owner:context.owner,fence:context.fence,generation:context.deviceSnapshot?.()?.generation},
+    isSyncPending:()=>client.ev.isBuffering?.()===true,
+    emit:event=>{console.info(JSON.stringify(event));context.onConnectionHealth?.(health.snapshot());},onStale:reason=>{
+      if(!current()||state!=='connected')return;
+      const policy={...disconnectPolicy(408),reason};health.disconnected(policy,1);close();context.onDisconnected(policy);
+    }});
+  health.connecting();
+  health.protocolVersion(mod.DEFAULT_CONNECTION_CONFIG?.version);
   const store=encryptedChannelStore({directory:privateDirectory(path.join(context.directory,'auth')),secret:context.secret,
-    serialize:value=>JSON.stringify(value,mod.BufferJSON.replacer),deserialize:value=>JSON.parse(value,mod.BufferJSON.reviver)});
+    serialize:value=>JSON.stringify(value,mod.BufferJSON.replacer),deserialize:value=>JSON.parse(value,mod.BufferJSON.reviver),
+    isCurrent:()=>context.isCurrent()===true});
   const savedCreds=store.get('creds');
   if(!savedCreds&&fs.readdirSync(path.join(context.directory,'auth')).some(name=>name.endsWith('.enc')))throw Error('channel_auth_unavailable');
   const creds=savedCreds||mod.initAuthCreds();
@@ -59,6 +72,9 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
   const retryStore=makeEncryptedRetryStore({directory:privateDirectory(path.join(context.directory,'retry-proto')),secret:context.secret,
     serialize:value=>JSON.stringify(value,mod.BufferJSON.replacer),deserialize:value=>JSON.parse(value,mod.BufferJSON.reviver),now,
     ...(context.deviceSnapshot?.()?{maxPayloadBytes:512*1024,maxTotalBytes:96*1024*2000}:{})});
+  const selectionStore=context.deviceSnapshot?.()?makeEncryptedRetryStore({
+    directory:privateDirectory(path.join(context.directory,'selection-fallback')),secret:context.secret,
+    serialize:JSON.stringify,deserialize:JSON.parse,now,max:2000,maxPayloadBytes:8192,maxTotalBytes:8*1024*1024}):null;
   const deviceCache=makePilotDeviceCache();
   let deviceRuntime=null;
   const overflowNotices=new Map(),overflowEpoch=new Map();
@@ -135,6 +151,8 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
     {secret:deviceSnapshot.proxy_secret?.password,signal:abort.signal,assertCurrent:guarded,...deviceOptions.proxyOptions}):null;
   await guarded();
   const client=makeSocket({auth,logger:silent,browser:mod.Browsers.windows('Chrome'),
+    ...(typeof mod.DEFAULT_CONNECTION_CONFIG?.makeSignalRepository==='function'?{
+      makeSignalRepository:fenceSignalRepository(mod.DEFAULT_CONNECTION_CONFIG.makeSignalRepository,current)}:{}),
     printQRInTerminal:false,markOnlineOnConnect:false,syncFullHistory:false,userDevicesCache:deviceCache,maxMsgRetryCount:5,
     msgRetryCounterCache:context.retryCounterCache||makeBoundedCache({max:10000,ttlMs:600000,now}),
     placeholderResendCache:makeBoundedCache({max:5000,ttlMs:600000,now}),
@@ -144,7 +162,8 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
       const message=await readAuthorizedRetry(retryStore,key,{socket:client,isCurrent:current,assertCurrent:guarded});
       diagnostics.record('get_message',key?.id,{cached:!!message});return message;
     }});
-  const close=()=>{if(closed)return;closed=true;state='stopped';qrValue=null;pairAttempt=null;cancel(pairTimer);cancel(noticeTimer);abort.abort();deviceRuntime?.close();proxyTransport?.close();for(const lease of typingLeases)lease.stop();typingLeases.clear();client.ev.removeAllListeners();try{client.end(undefined);}catch{}};
+  health.watch(client.ws);
+  const close=()=>{if(closed)return;closed=true;state='stopped';qrValue=null;pairAttempt=null;cancel(pairTimer);cancel(noticeTimer);abort.abort();health.stop();deviceRuntime?.close();proxyTransport?.close();for(const lease of typingLeases)lease.stop();typingLeases.clear();client.ev.removeAllListeners();try{client.end(undefined);}catch{}};
   async function relayText(phone,text,{isCurrent:operationCurrent=()=>true,maxTextChars=1200,device=false,
     diagnostic=null,assertAuthorized,onRelayAttempt}={}){
     await guarded();const self=normalizeFromJid(client.user?.id);
@@ -197,9 +216,11 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
     try{
       const sent=await sendStoredProtocol({jid:proof.jid,recipientProof:proof,store:retryStore,isCurrent:sendCurrent,
         assertAuthorized:authorize,onRelayAttempt,
+        onPrepared:message=>{if(built?.selectionIds)saveFallbackSelection(selectionStore,message,phone,built.selectionIds);},
         makeMessage:async jid=>{
           built=await buildChatbotContent(action,{sdk:mod,jid,loadAsset,prepareCarouselImage,fetchImage,signal,
-            upload:(...args)=>client.waUploadToServer(...args),logger:silent,assertCurrent:authorize,isCurrent:sendCurrent,mediaOptions:proxyTransport?.download});
+            upload:(...args)=>client.waUploadToServer(...args),logger:silent,assertCurrent:authorize,isCurrent:sendCurrent,mediaOptions:proxyTransport?.download,
+            interactiveMode:deviceOptions.interactiveMode??(process.env.QR_NATIVE_INTERACTIVE_ENABLED==='1'?'native':'text_fallback')});
           return mod.generateWAMessageFromContent(jid,built.content,{userJid:client.user.id,messageId:mod.generateMessageIDV2(client.user.id),timestamp:new Date(now())});
         },
         relay:(jid,body,options)=>client.relayMessage(jid,body,options)});
@@ -210,7 +231,8 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
     now,openedAt,schedule,cancel,downloadOptions:proxyTransport.download,
     capacity:context.deviceSendCapacity,
     sendText:(phone,text,options)=>relayText(phone,text,{...options,device:true}),sendChatbot:relayChatbot,
-    isGeneratedMessage:key=>!!retryStore.get(key),...deviceOptions.runtimeOptions});
+    isGeneratedMessage:key=>!!retryStore.get(key),
+    resolveSelection:(message,phone)=>resolveFallbackSelection(selectionStore,message,phone),...deviceOptions.runtimeOptions});
   const groupSetting=(name,fallback,max)=>{const raw=process.env[name],value=Number(raw);
     return raw!==undefined&&Number.isSafeInteger(value)&&value>=0&&value<=max?value:fallback;};
   const settleMs=groupSetting('QR_AI_GROUP_WAIT_MS',350,2000);
@@ -223,7 +245,7 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
       if(!batchCurrent())return {state:'superseded',not_committed:true};
       await guarded();
       return context.onMessage({phone:first.phone,message_id:batch.messages[0].id,message_ids:batch.messages.map(item=>item.id),
-        text:batch.text,intake_revision:batch.intakeRevision,
+        text:batch.text,parts:batch.messages.map(item=>({message_id:item.id,text:item.text})),intake_revision:batch.intakeRevision,
         ...(entries.some(item=>item.event)?{envelope:entries.findLast(item=>item.event)?.event}:{})},{noticeProofs:entries.map(item=>item.proof),isCurrent:batchCurrent,
         beforeReply:value=>entries.at(-1)?.lease?.beforeReply(value)});
     }});
@@ -232,6 +254,7 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
     if(!current())return close();
     if(event.qr){expirePairing();qrValue=event.qr;qrAt=now();if(!pairAttempt)state='qr_ready';}
     if(event.connection==='open'){
+      health.connected();
       state='connected';qrValue=null;pairAttempt=null;cancel(pairTimer);pairTimer=null;
       if(!opened){opened=true;
         void Promise.resolve().then(()=>context.onConnected()).then(()=>{
@@ -254,7 +277,8 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
     }
     if(event.connection==='close'){
       const code=event.lastDisconnect?.error?.output?.statusCode;
-      close();context.onDisconnected(code===mod.DisconnectReason.loggedOut?'logged_out':'disconnected');
+      const policy=disconnectPolicy(code);health.disconnected(policy,1);
+      close();context.onDisconnected(policy);
     }
   });
   client.ev.on('messages.update',updates=>{
@@ -275,7 +299,8 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
     for(const message of messages){
       const id=message.key?.id,at=timestampMs(message.messageTimestamp);
       if(!current()||message.key?.fromMe||typeof id!=='string'||!/^[a-zA-Z0-9._:-]{1,160}$/.test(id)||seen.has(id)||
-          !shouldIngestUpsert(type,message.messageTimestamp,now())||!at||at<openedAt-1000)continue;
+          !shouldIngestUpsert(type,message.messageTimestamp,now())||!at||at<now()-900000||at>now()+60000||
+          (type!=='append'&&at<openedAt-1000))continue;
        const normalized=normalizeInbound(message),text=normalized.text,media=message.message?.audioMessage||message.message?.ephemeralMessage?.message?.audioMessage;
        if(normalized.silent)continue;
        const overflow=pending>=32;
@@ -329,6 +354,7 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
   }
   client.ev.on('messages.upsert',receive);
   return {close,status:()=>{expirePairing();return state;},
+    connectionHealth:()=>health.snapshot(),
     deviceSettingsChanged:()=>deviceRuntime?.sync(),
     deviceDiagnostics:()=>deviceRuntime?.diagnostics()||null,
     async logout({authorize}={}){
