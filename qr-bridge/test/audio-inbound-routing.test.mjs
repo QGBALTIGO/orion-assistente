@@ -17,6 +17,7 @@ import {allowAssistantRecipient,allowAssistantAudio,pilotNumber} from '../src/ai
 import {makeConversationIntake} from '../src/conversation-intake.mjs';
 import {makeAssistantTyping} from '../src/assistant-typing.mjs';
 import {makeOutgoingPresence} from '../src/outgoing-presence.mjs';
+import {disconnectEvidence} from '../src/disconnect-evidence.mjs';
 import {transcribeAssistantAudio} from '../src/ai-audio.mjs';
 import {createAssistantIngress} from '../src/assistant-ingress.mjs';
 import {BufferJSON} from '@whiskeysockets/baileys';
@@ -64,7 +65,7 @@ function harness({transcribe=async()=> 'Synthetic speech',audioEnabled=true,answ
     connectedSince:0,pendingNotificationsReceived:false,notifyNewLink:false,
     refreshConnectedProfile:async()=>{},SMOKE_ID:'synthetic-smoke',APPOINTMENT_QA_ID:'synthetic-appointment',
     setTimeout:(fn,ms)=>({fn,ms,unref(){}}),clearTimeout(){},
-    normalizeInbound,updateEvent,callEvent,safetyControl,queueControl,extractText,resolveMessagePhone,shouldIngestUpsert,timestampMs,makeConversationIntake,
+    normalizeInbound,updateEvent,callEvent,safetyControl,queueControl,extractText,resolveMessagePhone,shouldIngestUpsert,timestampMs,makeConversationIntake,disconnectEvidence,
     makeOutgoingPresence:options=>makeOutgoingPresence({...options,...typingConfig,
       typingFactory:value=>makeAssistantTyping({...value,...typingConfig})}),
     shouldCacheLinkedSelfText,retryStore:makeMessageRetryStore(),retryDiagnostics:{persistedSelfTexts:0,persistFailures:0},

@@ -3,6 +3,7 @@ import {readAuthorizedRetry} from './retry-identity.mjs';
 import {useDurableAuthState} from './durable-auth.mjs';
 import {fenceSignalRepository} from './signal-fence.mjs';
 import {makeConnectionHealth,disconnectPolicy,sustainedRecovery} from './connection-health.mjs';
+import {disconnectEvidence} from './disconnect-evidence.mjs';
 import {selectWaWebVersion} from './wa-version-policy.mjs';
 import {classifyPairedAuth} from './paired-auth-state.mjs';
 import {normalizeInbound,updateEvent,callEvent,safetyControl,queueControl} from './inbound-event.mjs';
@@ -874,7 +875,7 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
       if(sustainedRecovery(primaryHealth.snapshot())){attempts=0;sessionRecoveryAttempts=0;}
       const decision=disconnectPolicy(code,attempts,{sessionAttempts:sessionRecoveryAttempts});
       if(code===500)sessionRecoveryAttempts++;
-      primaryHealth.disconnected(decision,attempts+1);
+      primaryHealth.disconnected(decision,attempts+1,disconnectEvidence(update.lastDisconnect?.error));
       if(code===DisconnectReason.loggedOut){
         if(newLinkNoticeAuthDir===authDir)newLinkNoticeAuthDir=null;
         status=everConnected?"logged_out":"pair_failed";

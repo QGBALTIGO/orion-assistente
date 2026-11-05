@@ -11,6 +11,7 @@ import {DEFAULT_CONNECTION_CONFIG} from '@whiskeysockets/baileys';
 import {encryptedChannelStore} from '../src/channel-storage.mjs';
 import {makePairedAuthFixture} from './helpers/paired-auth-fixture.mjs';
 import {presenceClock,presenceFlush} from './helpers/presence-clock.mjs';
+import {Boom} from '@hapi/boom';
 
 process.env.ORION_RETRY_TEST_MODE='1';
 test('provider phone is the confirmed PN only after open; LIDs are never relabeled as phone numbers',async t=>{
@@ -21,6 +22,16 @@ test('provider phone is the confirmed PN only after open; LIDs are never relabel
 });
 
 const phone='5567999999901',self='5567999999902',flush=()=>new Promise(r=>setImmediate(r));
+test('managed close records safe structured SDK evidence without changing the500 recovery policy or sending',async t=>{
+  const s=await session(t,{registered:true}),policies=[];s.context.onDisconnected=policy=>policies.push(policy);
+  s.client.ev.emit('connection.update',{connection:'open'});await flush();
+  s.client.ev.emit('connection.update',{connection:'close',lastDisconnect:{error:new Boom('private exception phone/token',
+    {statusCode:500,data:{reason:'500',location:'private peer'}})}});
+  assert.equal(policies.length,1);assert.equal(policies[0].reason,'session_recovery');assert.equal(policies[0].retry,true);
+  const health=s.result.connectionHealth();assert.equal(health.disconnect_code,500);
+  assert.deepEqual(health.disconnect_evidence,{source:'provider_failure',condition:'unknown',provider_reason_numeric:500,websocket_code:null});
+  assert.doesNotMatch(JSON.stringify(health),/private exception|private peer/);assert.equal(s.sent.length,0);
+});
 async function session(t,{audio=false,assistant=true,typingFactory,notifySelf=false,schedule,cancel,registered=false,resumeOnly=false,savedAuth,clock:virtualClock}={}){
   const directory=fs.mkdtempSync(path.join(os.tmpdir(),'orion-channel-socket-'));fs.chmodSync(directory,0o700);
   t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));

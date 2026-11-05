@@ -36,6 +36,7 @@ import {currentDiagnosticMessage} from './device-diagnostic-message.mjs';
 import {createDeviceGroupContacts} from './device-group-contacts.mjs';
 import {classifyPairedAuth} from './paired-auth-state.mjs';
 import {chatbotInteractiveMode} from './interactive-mode.mjs';
+import {disconnectEvidence} from './disconnect-evidence.mjs';
 
 export async function createBaileysChannelSession(context,{loadBaileys=()=>import('@whiskeysockets/baileys'),selectVersion=selectWaWebVersion,now=Date.now,presenceNow=()=>performance.now(),typingFactory=makeAssistantTyping,intakeOptions={},schedule=setTimeout,cancel=clearTimeout,deviceOptions={}}={}){
   if(context.legacyTransport===true)throw Error('legacy_requires_existing_socket');
@@ -390,7 +391,7 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
     }
     if(event.connection==='close'){
       const code=event.lastDisconnect?.error?.output?.statusCode;
-      const policy=disconnectPolicy(code);health.disconnected(policy,1);
+      const policy=disconnectPolicy(code);health.disconnected(policy,1,disconnectEvidence(event.lastDisconnect?.error));
       close();context.onDisconnected(policy);
     }
   });

@@ -1,6 +1,7 @@
 /** Public transport observations only: never inspect frame bytes or send a
  * customer probe. An idle conversation is not an unhealthy connection. */
 import {randomUUID} from 'node:crypto';
+import {safeDisconnectEvidence} from './disconnect-evidence.mjs';
 
 const processInstance=randomUUID();
 const uuid=value=>typeof value==='string'&&/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(value)?value:null;
@@ -30,7 +31,7 @@ export function makeConnectionHealth({now=Date.now,emit=()=>{},scope={},onStale=
   schedule=setTimeout,cancel=clearTimeout,sampleMs=5000,staleMs=90000,syncTimeoutMs=120000,
   isSyncPending=()=>false,identity=runtimeIdentity(),previous,readiness=value=>value}={}){
   let state='starting',lastActivityAt=null,interruptedAt=Number.isFinite(previous?.interrupted_at)?previous.interrupted_at:null,recoveredAt=null,connectedAt=null,
-    disconnectCode=null,reason=null,reconnectAt=null,attempts=previous?.reconnect_attempts||0,action=null,stopped=false,
+    disconnectCode=null,disconnectDetails=null,reason=null,reconnectAt=null,attempts=previous?.reconnect_attempts||0,action=null,stopped=false,
     socket=null,timer=null,lastTick=null,lastSampleAt=null,staleSamples=0,syncSamples=0,observedFrames=0,webVersion=null,webVersionSource=null;
   const context={...identity,...Object.fromEntries(Object.entries(scope).filter(([name,value])=>
     ['channel_id','tenant_id','owner','generation','fence'].includes(name)&&
@@ -84,11 +85,12 @@ export function makeConnectionHealth({now=Date.now,emit=()=>{},scope={},onStale=
     connected(){state='connected';connectedAt=now();lastSampleAt=now();recoveredAt=interruptedAt===null?null:now();
       const outageMs=interruptedAt===null?null:Math.max(0,now()-interruptedAt);interruptedAt=null;reason=null;action=null;reconnectAt=null;attempts=0;
       record('connected',{outage_ms:outageMs});},
-    disconnected(policy,attempt){if(interruptedAt===null)interruptedAt=now();disconnectCode=policy.code??null;
+    disconnected(policy,attempt,evidence){if(interruptedAt===null)interruptedAt=now();disconnectCode=policy.code??null;
+      disconnectDetails=safeDisconnectEvidence(evidence);
       reason=policy.reason;action=policy.action??null;attempts=attempt;state=policy.retry?'reconnecting':'needs_attention';
-      reconnectAt=policy.retry?now()+policy.delayMs:null;record('disconnected',{code:disconnectCode,reason,attempt,action,reconnect_at:reconnectAt});},
+      reconnectAt=policy.retry?now()+policy.delayMs:null;record('disconnected',{code:disconnectCode,reason,attempt,action,reconnect_at:reconnectAt,disconnect_evidence:{...disconnectDetails}});},
     snapshot(){return ready({state,last_activity_at:lastActivityAt,transport_observed:observedFrames>0,sync_pending:isSyncPending()===true,connected_at:connectedAt,
-      interrupted_at:interruptedAt,recovered_at:recoveredAt,disconnect_code:disconnectCode,reason,reconnect_at:reconnectAt,
+      interrupted_at:interruptedAt,recovered_at:recoveredAt,disconnect_code:disconnectCode,disconnect_evidence:disconnectDetails?{...disconnectDetails}:null,reason,reconnect_at:reconnectAt,
       reconnect_attempts:attempts,action,web_version:webVersion,web_version_source:webVersionSource,...context});},
     stop(cause='stopped'){if(stopped)return;stopped=true;unwatch();
       if(!['reconnecting','needs_attention'].includes(state))state='stopped';record('stopped',{reason:cause});}

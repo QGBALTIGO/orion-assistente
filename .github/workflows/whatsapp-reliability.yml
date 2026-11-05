@@ -49,7 +49,7 @@ jobs:
       - name: Native list and explicit URL-button delivery authority
         run: node --test qr-bridge/test/interactive-mode.test.mjs qr-bridge/test/url-button.test.mjs qr-bridge/test/bulk-runtime.test.mjs qr-bridge/test/chatbot-runtime.test.mjs
       - name: Conversation-local composing, recording and final send authority
-        run: node --test qr-bridge/test/outgoing-presence.test.mjs qr-bridge/test/outgoing-presence-server.test.mjs qr-bridge/test/reliable-send.test.mjs qr-bridge/test/send-capacity.test.mjs qr-bridge/test/connection-notice-startup.test.mjs
+        run: node --test qr-bridge/test/outgoing-presence.test.mjs qr-bridge/test/outgoing-presence-server.test.mjs qr-bridge/test/reliable-send.test.mjs qr-bridge/test/send-capacity.test.mjs qr-bridge/test/connection-notice-startup.test.mjs qr-bridge/test/disconnect-evidence.test.mjs
       - run: npm audit --prefix qr-bridge --omit=dev --audit-level=high
       - run: docker build -t orion-whatsapp-reliability qr-bridge
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
