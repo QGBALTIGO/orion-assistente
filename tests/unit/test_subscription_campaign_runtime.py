@@ -286,7 +286,8 @@ async def test_only_unambiguous_marketing_or_all_optout_writes_a_revocation(body
 @pytest.mark.parametrize("kind,accepted,expected", [("text", False, True), ("audio", True, True), ("audio", False, False)])
 async def test_audio_optout_is_bound_to_original_accepted_transcription_event(monkeypatch, kind, accepted, expected):
     from app import subscription_schedule_runtime as scheduled
-    calls, invalidations, scheduled_invalidations = [], [], []
+    from app import subscription_bulk_runtime as bulk
+    calls, invalidations, scheduled_invalidations, bulk_invalidations = [], [], [], []
     body = "Não quero mais mensagens promocionais"
     class EventDB:
         async def execute(self, query, params=None):
@@ -304,10 +305,13 @@ async def test_audio_optout_is_bound_to_original_accepted_transcription_event(mo
             return Rows([PHONE])
     async def invalidate(db, tenant): invalidations.append(tenant)
     async def invalidate_scheduled(db, tenant): scheduled_invalidations.append(tenant)
+    async def invalidate_bulk(db, tenant): bulk_invalidations.append(tenant)
     monkeypatch.setattr(runtime, "invalidate_audiences", invalidate)
     monkeypatch.setattr(scheduled, "invalidate_schedule_contacts", invalidate_scheduled)
+    monkeypatch.setattr(bulk, "invalidate_bulk_contacts", invalidate_bulk)
     assert await runtime.record_campaign_optout(EventDB(), device(),
         {"kind": "text", "origin": "contact", "phone": PHONE, "text": body}, EVENT) is expected
     assert invalidations == ([TENANT] if expected else [])
     assert scheduled_invalidations == ([TENANT] if expected else [])
+    assert bulk_invalidations == ([TENANT] if expected else [])
     assert not any("transcribe_audio" in sql or "subscription_device_effects SET" in sql for sql, _ in calls)

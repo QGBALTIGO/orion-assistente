@@ -36,7 +36,7 @@ def main() -> int:
     try:
         raw, url = connection_values()
         current = migrated_version(raw)
-        if current in {TARGET, "0062_subscription_devices", "0063_subscription_chatbot", "0064_subscription_templates", "0065_subscription_sent_messages", "0066_appointment_operations", "0067_subscription_diagnostics", "0068_subscription_campaigns", "0069_subscription_schedules"}:
+        if current in {TARGET, "0062_subscription_devices", "0063_subscription_chatbot", "0064_subscription_templates", "0065_subscription_sent_messages", "0066_appointment_operations", "0067_subscription_diagnostics", "0068_subscription_campaigns", "0069_subscription_schedules", "0070_subscription_bulk"}:
             valid = schema_ready(raw)
             print("orion_appointment_consent_schema_ready" if valid else "orion_appointment_consent_schema_invalid", flush=True)
             return 0 if valid else 3
@@ -52,7 +52,7 @@ def main() -> int:
                            backup_context="appointment-consent-0061",
                            schema_revision=PREVIOUS, preserve_ownership=True)
         current = migrated_version(raw)
-        if current in {TARGET, "0062_subscription_devices", "0063_subscription_chatbot", "0064_subscription_templates", "0065_subscription_sent_messages", "0066_appointment_operations", "0067_subscription_diagnostics", "0068_subscription_campaigns", "0069_subscription_schedules"}:
+        if current in {TARGET, "0062_subscription_devices", "0063_subscription_chatbot", "0064_subscription_templates", "0065_subscription_sent_messages", "0066_appointment_operations", "0067_subscription_diagnostics", "0068_subscription_campaigns", "0069_subscription_schedules", "0070_subscription_bulk"}:
             return 0 if schema_ready(raw) else 3
         if current != PREVIOUS:
             return 3

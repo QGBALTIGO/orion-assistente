@@ -320,6 +320,20 @@ def test_pending_release_review_and_both_cancel_scopes_preserve_occurrences(brow
 
 def test_search_tabs_pagination_expiry_revocation_and_niche_boundary(browser, fixture_url):
     context, page, external, errors = setup_page(browser, fixture_url)
+
+    def navigate_ready_account(extra, route):
+        # An absent menu item also matches the initial, still-empty sidebar.
+        # Finish the account bootstrap before asserting denial or navigating
+        # again, so a discarded document cannot abort its identity response.
+        with page.expect_response(lambda response: response.url == fixture_url + "/api/v1/account/business-identity") as identity:
+            page.goto(fixture_url + "/panel?fixtureRole=owner&fixturePlan=elite&aba=programadas" + extra)
+        response = identity.value
+        assert response.status == 200
+        identity_data = response.json()
+        expect(page.locator("#memberBusinessName")).to_have_value(identity_data["name"])
+        expect(page.locator("#page-suite")).to_have_attribute("data-os-current-route", route)
+        expect(page.locator("#osPageBody .os-loading")).to_have_count(0)
+
     try:
         open_schedules(page, fixture_url)
         control(page, fixture_url, "many")
@@ -356,11 +370,13 @@ def test_search_tabs_pagination_expiry_revocation_and_niche_boundary(browser, fi
         expect(page.locator('#osNav [data-os-route="programadas"]')).to_have_count(0)
         assert writes(report(page, fixture_url)) == before
         assert page.evaluate("history.state.orionScheduleRecovery || null") is None
-        for extra in ("&fixtureProfile=standard", "&fixtureReadonly=1"):
-            page.goto(fixture_url + "/panel?fixtureRole=owner&fixturePlan=elite&aba=programadas" + extra)
+        for extra, route in (("&fixtureProfile=standard", "plano"), ("&fixtureReadonly=1", "novidades")):
+            navigate_ready_account(extra, route)
             expect(page.locator('#osNav [data-os-route="programadas"]')).to_have_count(0)
             assert report(page, fixture_url)["calls"] == []
-        open_schedules(page, fixture_url, "&fixtureEmpty=1")
+        navigate_ready_account("&fixtureEmpty=1", "programadas")
+        expect(page.locator("#osSubscriptionScheduledMessages")).to_be_visible()
+        expect(action(page, "new")).to_be_enabled()
         expect(page.locator("[data-sc-empty]")).to_be_visible()
         assert not writes(report(page, fixture_url))
         assert not external, external

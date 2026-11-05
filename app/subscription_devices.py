@@ -718,12 +718,46 @@ async def device_event(channel_id: UUID, payload: DeviceEvent, request: Request)
         return jsonable_encoder({"effects": await _event_effects(db, row["id"], event_id), "duplicate": False})
 
 
+async def admit_outbound_work(db, row, *, bulk_supported=False):
+    """Fair turns across modules; no caller chooses an audience or a send."""
+    from app.subscription_campaigns import admit_due_campaigns
+    from app.subscription_schedule_runtime import admit_due_schedules
+    from app.subscription_bulk_runtime import admit_bulk_messages, invalidate_bulk_contacts, reap_outbound_work
+    # Reconcile all modules first, including recipients of removed devices.
+    # A revoked module cannot leave a stale running row blocking another one.
+    await reap_outbound_work(db, row["tenant_id"])
+    if not bulk_supported:
+        # An older transport may still poll after newer work was admitted.
+        # Revocations and terminal receipts remain effective without admitting
+        # a bulk sequence that this caller cannot execute.
+        await invalidate_bulk_contacts(db, row["tenant_id"])
+    turns = (await db.execute(text("""SELECT module FROM (
+        SELECT 'campaign' AS module, max(admitted_at) AS last_admitted
+          FROM subscription_campaign_recipients WHERE tenant_id=:t
+        UNION ALL SELECT 'scheduled',max(admitted_at)
+          FROM subscription_schedule_recipients WHERE tenant_id=:t
+        UNION ALL SELECT 'bulk',max(admitted_at)
+          FROM subscription_bulk_recipients WHERE tenant_id=:t
+      ) AS admissions ORDER BY last_admitted ASC NULLS FIRST,module"""),
+      {"t": row["tenant_id"]})).scalars().all()
+    admit = {"campaign": admit_due_campaigns, "scheduled": admit_due_schedules,
+             "bulk": admit_bulk_messages}
+    for module in turns:
+        if module != "bulk" or bulk_supported:
+            await admit[module](db, row)
+
+
 @router.get(INTERNAL + "/effects/pending")
 async def pending_effects(channel_id: UUID, request: Request):
     from app import subscription_chatbot_engine as chatbot
-    from app.subscription_campaigns import admit_due_campaigns, after_campaign_effect_finish
-    from app.subscription_schedule_runtime import admit_due_schedules, after_schedule_effect_finish
+    from app.subscription_campaigns import after_campaign_effect_finish
+    from app.subscription_schedule_runtime import after_schedule_effect_finish
+    from app.subscription_bulk_runtime import after_bulk_effect_finish
     async with _private_transaction(request) as (db, row, _, _, _):
+        # This negotiates transport support after the existing authentication;
+        # it never grants authority to send. Missing, unknown or repeated
+        # versions keep old bridges on the published campaign/schedule path.
+        bulk_supported = request.headers.getlist("x-orion-bulk-protocol") == ["1"]
         # An interrupted non-idempotent send is never retried automatically.
         # Webhooks carry a stable event id and may be retried up to three times.
         interrupted = (await db.execute(text("""UPDATE subscription_device_effects SET
@@ -732,15 +766,16 @@ async def pending_effects(channel_id: UUID, request: Request):
             WHERE device_id=:d AND status='running' AND authorized_at<clock_timestamp()-interval '180 seconds'
             RETURNING *"""), {"d": row["id"]})).mappings().all()
         for effect in interrupted:
-            if effect["type"] == "scheduled_action":
+            if effect["type"] == "bulk_action":
+                await after_bulk_effect_finish(db, row, effect, effect["status"])
+            elif effect["type"] == "scheduled_action":
                 await after_schedule_effect_finish(db, row, effect, effect["status"])
             elif effect["type"] == "campaign_action":
                 await after_campaign_effect_finish(db, row, effect, effect["status"])
             else:
                 await chatbot.after_effect_finish(db, row, effect, effect["status"])
         await chatbot.reap_unreachable(db, row)
-        await admit_due_schedules(db, row)
-        await admit_due_campaigns(db, row)
+        await admit_outbound_work(db, row, bulk_supported=bulk_supported)
         effects = (await db.execute(text("""SELECT e.* FROM subscription_device_effects e
             LEFT JOIN subscription_device_effects p ON p.tenant_id=e.tenant_id AND p.id=e.previous_effect
             LEFT JOIN subscription_chatbot_runs r ON r.tenant_id=e.tenant_id AND r.id=e.chatbot_run_id
@@ -748,16 +783,21 @@ async def pending_effects(channel_id: UUID, request: Request):
                 AND a.id=CAST(r.input_context->>'transcription_predecessor' AS uuid)
             WHERE e.device_id=:d AND e.generation=:g AND e.settings_revision=:r AND e.due_at<=clock_timestamp()
               AND e.type<>'transcribe' AND e.expires_at>clock_timestamp()
+              AND (e.type<>'bulk_action' OR :bulk_supported)
               AND (e.status='pending' OR e.type='webhook' AND e.status='failed' AND e.attempts<3)
-              AND (e.type NOT IN ('chatbot_action','campaign_action','scheduled_action') OR e.previous_effect IS NULL OR p.status='accepted')
+              AND (e.type NOT IN ('chatbot_action','campaign_action','scheduled_action','bulk_action') OR e.previous_effect IS NULL OR p.status='accepted')
               AND (e.type<>'chatbot_action' OR r.input_context->>'transcription_predecessor' IS NULL OR a.status='accepted')
             ORDER BY e.created_at,e.id LIMIT 25"""),
-            {"d": row["id"], "g": row["generation"], "r": row["revision"]})).mappings().all()
+            {"d": row["id"], "g": row["generation"], "r": row["revision"],
+             "bulk_supported": bulk_supported})).mappings().all()
         reconcile = (await db.execute(text("""SELECT id AS operation_id,type,device_id,generation,settings_revision,chatbot_revision
             FROM subscription_device_effects WHERE device_id=:d AND generation=:g
               AND type<>'webhook' AND status='uncertain'
-            ORDER BY created_at,id LIMIT 25"""), {"d": row["id"], "g": row["generation"]})).mappings().all()
-        return jsonable_encoder({"effects": [scheduled_effect_descriptor(effect) if effect["type"] == "scheduled_action"
+              AND (type<>'bulk_action' OR :bulk_supported)
+            ORDER BY created_at,id LIMIT 25"""), {"d": row["id"], "g": row["generation"],
+                                                 "bulk_supported": bulk_supported})).mappings().all()
+        return jsonable_encoder({"effects": [bulk_effect_descriptor(effect) if effect["type"] == "bulk_action"
+                                             else scheduled_effect_descriptor(effect) if effect["type"] == "scheduled_action"
                                              else campaign_effect_descriptor(effect) if effect["type"] == "campaign_action"
                                              else chatbot.descriptor(effect) for effect in effects],
                                  "reconcile": [{key: value for key, value in effect.items()
@@ -774,6 +814,14 @@ def scheduled_effect_descriptor(effect):
     # Polling advertises only the operation. Recipient/content are released
     # by the authenticated, current-generation authorization step.
     return {"operation_id": effect["id"], "type": "scheduled_action", "action_type": effect["payload"]["action"]["type"],
+            "device_id": effect["device_id"], "generation": effect["generation"],
+            "settings_revision": effect["settings_revision"], "due_at": effect["due_at"]}
+
+
+def bulk_effect_descriptor(effect):
+    # Polling advertises only the operation. Recipient/content are released
+    # by the authenticated, current-generation authorization step.
+    return {"operation_id": effect["id"], "type": "bulk_action", "action_type": effect["payload"]["action"]["type"],
             "device_id": effect["device_id"], "generation": effect["generation"],
             "settings_revision": effect["settings_revision"], "due_at": effect["due_at"]}
 
@@ -829,6 +877,9 @@ async def authorize_effect(channel_id: UUID, payload: EffectRequest, request: Re
         if payload.device_id is not None:
             _same_snapshot(row, payload.device_id, payload.generation, payload.settings_revision)
         effect = await _effect(db, row, payload.operation_id)
+        if effect["type"] == "bulk_action":
+            from app.subscription_bulk_runtime import authorize_bulk_effect
+            return await authorize_bulk_effect(db, row, effect, owner, fence, payload)
         if effect["type"] == "scheduled_action":
             from app.subscription_schedule_runtime import authorize_schedule_effect
             return await authorize_schedule_effect(db, row, effect, owner, fence, payload)
@@ -904,7 +955,10 @@ async def finish_effect(channel_id: UUID, payload: EffectFinish, request: Reques
                     await db.execute(text("""UPDATE subscription_devices SET
                         settings=jsonb_set(settings,'{webhook,enabled}','false'::jsonb),revision=revision+1,
                         updated_at=clock_timestamp() WHERE id=:d"""), {"d": row["id"]})
-        if effect["type"] == "scheduled_action":
+        if effect["type"] == "bulk_action":
+            from app.subscription_bulk_runtime import after_bulk_effect_finish
+            children = await after_bulk_effect_finish(db, row, effect, state)
+        elif effect["type"] == "scheduled_action":
             from app.subscription_schedule_runtime import after_schedule_effect_finish
             children = await after_schedule_effect_finish(db, row, effect, state)
         elif effect["type"] == "campaign_action":

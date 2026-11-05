@@ -178,6 +178,8 @@ async def record_campaign_optout(db, device, event_data, event_id):
         await invalidate_audiences(db, device["tenant_id"])
         from app.subscription_schedule_runtime import invalidate_schedule_contacts
         await invalidate_schedule_contacts(db, device["tenant_id"])
+        from app.subscription_bulk_runtime import invalidate_bulk_contacts
+        await invalidate_bulk_contacts(db, device["tenant_id"])
     return changed is not None
 
 
@@ -220,6 +222,8 @@ async def admit_due_campaigns(db, device):
           WHERE tenant_id=:t AND admitted_at IS NOT NULL AND status='running'
         UNION ALL SELECT id FROM subscription_schedule_recipients
           WHERE tenant_id=:t AND admitted_at IS NOT NULL AND status='running'
+        UNION ALL SELECT id FROM subscription_bulk_recipients
+          WHERE tenant_id=:t AND admitted_at IS NOT NULL AND status='running'
         ) active_sequences LIMIT 1"""), {"t": tenant})).scalar_one_or_none()
     if live is not None:
         return []
@@ -228,6 +232,8 @@ async def admit_due_campaigns(db, device):
         FROM (SELECT finished_at,admitted_at FROM subscription_campaign_recipients
           WHERE tenant_id=:t AND admitted_at IS NOT NULL
           UNION ALL SELECT finished_at,admitted_at FROM subscription_schedule_recipients
+          WHERE tenant_id=:t AND admitted_at IS NOT NULL
+          UNION ALL SELECT finished_at,admitted_at FROM subscription_bulk_recipients
           WHERE tenant_id=:t AND admitted_at IS NOT NULL) admissions"""),
         {"t": tenant, "now": now})).mappings().one()
     if not policy.admission_ready(now, pace["finished"], None, 30, pace["recent"]):
@@ -263,7 +269,7 @@ async def admit_due_campaigns(db, device):
               AND r.status='pending' AND r.admitted_at IS NULL
               AND NOT EXISTS(SELECT 1 FROM subscription_device_effects e WHERE e.tenant_id=r.tenant_id
                 AND e.device_id=r.device_id AND e.payload->>'phone'=r.phone
-                AND e.type IN ('send_text','chatbot_action','campaign_action','scheduled_action')
+                AND e.type IN ('send_text','chatbot_action','campaign_action','scheduled_action','bulk_action')
                 AND e.status IN ('pending','running','uncertain') AND e.expires_at>:now)
             ORDER BY r.ordinal,r.id LIMIT 1 FOR UPDATE OF r"""),
             {"t": tenant, "id": campaign["id"], "run": campaign["run_version"], "d": device["id"], "now": now})).mappings().one_or_none()

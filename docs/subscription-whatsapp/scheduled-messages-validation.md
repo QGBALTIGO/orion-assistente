@@ -3,10 +3,10 @@
 Status em 2026-11-05: **módulo principal publicado, qualificado e conferido ao vivo**.
 A [PR 260](https://github.com/QGBALTIGO/orion-assistente/pull/260) foi integrada;
 produção `da3a0086a038f0f84024cc38c5960d3a2935ffbe`, árvore qualificada
-`830a9a262bb4b69a826739cc7457185fc2f7af88`. Um ajuste isolado no texto de ajuda
-do card Fila aguarda publicação de acompanhamento, conforme a última seção.
-A etapa 07 foi encerrada antes de iniciar a observação desta etapa, e a etapa
-09 permanece não iniciada.
+`830a9a262bb4b69a826739cc7457185fc2f7af88`. O ajuste isolado do texto de ajuda
+do card Fila foi publicado na PR 261 e também conferido, conforme a última seção.
+A etapa 07 foi encerrada antes desta observação; a etapa 09 somente foi
+iniciada após a conclusão da conferência descrita abaixo.
 
 ## Referência e limite da observação
 
@@ -281,12 +281,19 @@ observação ou a validação desta etapa, e nenhum complemento pago foi adquiri
 
 ## Acompanhamento editorial
 
-A implementação principal da PR 260 está publicada e validada. A conferência
-ao vivo motivou apenas um ajuste no texto de ajuda do card Fila. A alteração
-editorial passou por 45 testes DOM focados e pela verificação de sintaxe do
-Node. Sua publicação de acompanhamento está pendente sob responsabilidade
-do root; o número da PR, o commit e a data serão registrados quando existirem.
-Não se atribui a esse ajuste uma nova qualificação funcional integral nem se
-altera a evidência da árvore principal já qualificada.
+A [PR 261](https://github.com/QGBALTIGO/orion-assistente/pull/261) alterou somente
+uma frase do card Fila para “Aguardando o envio ou enviando”, além deste registro
+e do README. A substituição exata foi revisada; sintaxe e 45 testes DOM passaram.
+O merge `149c43fba44b3f93bdcd90920751d79dc231d32a` conservou a árvore revisada
+`36391408683510b62029c94077c85002a98c349e`. Essa validação focada não é
+apresentada como nova execução integral da qualificação da PR 260.
 
-A etapa 09 não foi iniciada.
+Às 13:01:40 UTC, API (`84cb3085-ae01-46bc-93b4-22063bc389fd`) e worker
+(`04e9ad34-081e-404f-b08f-2006ce8ed188`) estavam SUCCESS, online 1/1 na
+revisão 149c43f. A ponte conservou a revisão da3a008 saudável: seu deployment
+novo foi SKIPPED pelo filtro de caminhos, sem mudança em arquivos da ponte.
+Os cinco serviços estavam saudáveis, sem alertas nem trabalho pendente.
+
+O Chrome foi recarregado: texto novo, lista e contadores apareceram corretamente,
+e o console permaneceu sem avisos ou erros. A etapa 08 foi encerrada nessa
+conferência; a etapa 09 começou somente depois. Nenhum envio foi criado.

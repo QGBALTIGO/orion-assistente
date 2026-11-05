@@ -22,8 +22,8 @@ não observado ou testado.
 | 05 | Mensagens Enviadas | Publicado e conferido ao vivo em 2026-11-04 — PR 252, produção `f58730ac8e380bd2c12286c69c1db3873d3cbf0f` |
 | 06 | Diagnósticos | Publicado e conferido ao vivo em 2026-11-04 — PR 253, produção `81cf127c51c3fae015568d16d79724ebe0f00db8` |
 | 07 | Campanhas | Publicado e conferido ao vivo em 2026-11-05 — PR 258, produção `23b78bf42086766694a992474f078c2a4ed0a2eb`; etapa encerrada após aprovação WebKit da base posterior PR 259, conforme o [registro de validação](campaigns-validation.md) |
-| 08 | Mensagens Programadas | Publicado e conferido ao vivo em 2026-11-05 — PR 260, produção `da3a0086a038f0f84024cc38c5960d3a2935ffbe`; módulo principal validado, com acompanhamento editorial isolado descrito no [registro de validação](scheduled-messages-validation.md) |
-| 09 | Mensagem em Massa | Não iniciado |
+| 08 | Mensagens Programadas | Publicado e conferido ao vivo em 2026-11-05 — PR 260, produção `da3a0086a038f0f84024cc38c5960d3a2935ffbe`; etapa encerrada com ajuste editorial da PR 261 (`149c43fba44b3f93bdcd90920751d79dc231d32a`), conforme o [registro de validação](scheduled-messages-validation.md) |
+| 09 | Mensagem em Massa | Observada no Chrome; implementação e validação em andamento, sem publicação. [Observação](bulk-messages-observation.md) e [contrato](bulk-messages-contract.md) |
 | 10 | Atribuições de Chat | Não iniciado |
 | 11 | Enviar Mensagem | Não iniciado |
 | 12 | Transcrição de Áudio | Não iniciado |
@@ -79,8 +79,12 @@ com 1/1 réplica. Backup privado verificado, migração 0068 → 0069 e barreira
 de catálogo precederam a execução. A lista e o formulário foram conferidos
 no Chrome conectado, incluindo os padrões de horário, intervalo, repetição,
 texto e seletor de template, sem salvar, revisar, agendar ou enviar mensagens.
-Um ajuste isolado no texto de ajuda do card Fila aguarda publicação de
-acompanhamento; não altera o contrato funcional. A etapa 09 não foi iniciada.
+O ajuste isolado do texto de ajuda do card Fila foi publicado na PR 261,
+com substituição exata revisada, sintaxe e 45 testes DOM aprovados. API e
+worker confirmaram `149c43fba44b3f93bdcd90920751d79dc231d32a`; a ponte
+permaneceu saudável na revisão funcional da PR 260, pois seus arquivos não
+mudaram. A nova frase e a lista foram conferidas no Chrome, sem erros, antes
+de iniciar a etapa 09.
 
 ## Método e fontes
 

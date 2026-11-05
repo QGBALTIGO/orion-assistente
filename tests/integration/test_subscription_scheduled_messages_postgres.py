@@ -313,14 +313,30 @@ async def test_parallel_polls_and_campaigns_share_one_serial_admission(scheduled
     await schedule(c)
     await schedule(c)
     await campaign_schedule(c)
-    await asyncio.gather(poll(c), poll(c))
+    await renew(c)
+    responses = await asyncio.gather(*(internal(c, "/effects/pending", method="GET") for _ in range(2)))
+    assert all(response.status_code == 200 for response in responses), [response.text for response in responses]
+    advertised = {effect["operation_id"]: effect for response in responses for effect in response.json()["effects"]}
     async with c.ctx.migration.connect() as db:
-        running = (await db.execute(text("""SELECT count(*) FROM (
-            SELECT id FROM subscription_schedule_recipients WHERE tenant_id=:t AND status='running'
-            UNION ALL SELECT id FROM subscription_campaign_recipients WHERE tenant_id=:t AND status='running'
-            ) live"""), {"t": c.tenant})).scalar_one()
-        assert running == 1
-    assert len(await ledger(c)) == 1
+        running = (await db.execute(text("""SELECT id,'scheduled_action' AS type
+            FROM subscription_schedule_recipients WHERE tenant_id=:t AND status='running'
+            UNION ALL SELECT id,'campaign_action' AS type
+            FROM subscription_campaign_recipients WHERE tenant_id=:t AND status='running'"""),
+            {"t": c.tenant})).mappings().all()
+        effects = (await db.execute(text("""SELECT id,type,status,attempts,
+            schedule_recipient_id,campaign_recipient_id FROM subscription_device_effects
+            WHERE tenant_id=:t AND type IN ('scheduled_action','campaign_action')"""),
+            {"t": c.tenant})).mappings().all()
+    # Fair turns may choose either module. Both parallel polls must advertise
+    # exactly the one persisted effect for the sole admitted recipient.
+    assert len(running) == len(effects) == len(advertised) == 1
+    live, = running
+    effect, = effects
+    assert effect["type"] == live["type"] == advertised[str(effect["id"])]["type"]
+    assert (effect["status"], effect["attempts"]) == ("pending", 0)
+    recipient_key = "schedule_recipient_id" if live["type"] == "scheduled_action" else "campaign_recipient_id"
+    other_key = "campaign_recipient_id" if live["type"] == "scheduled_action" else "schedule_recipient_id"
+    assert effect[recipient_key] == live["id"] and effect[other_key] is None
 
 
 async def test_spacing_starts_after_last_sequence_finishes(scheduled_case):

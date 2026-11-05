@@ -79,6 +79,7 @@ def test_pending_scheduled_descriptor_contains_no_recipient_content_or_media_url
 @pytest.mark.asyncio
 async def test_authenticated_poll_routes_interrupted_schedules_and_serial_admission(monkeypatch):
     from contextlib import asynccontextmanager
+    from starlette.requests import Request
     from app import subscription_devices as devices, subscription_campaigns as campaigns
     from app import subscription_chatbot_engine as chatbot, subscription_schedule_runtime as scheduled
     calls = []
@@ -101,17 +102,17 @@ async def test_authenticated_poll_routes_interrupted_schedules_and_serial_admiss
         assert device is row and effect is interrupted and status == "uncertain"
         calls.append("scheduled-interrupted")
     async def chatbot_reap(db, device): calls.append("chatbot-reap")
-    async def scheduled_admit(db, device): calls.append("scheduled-admit")
-    async def campaign_admit(db, device): calls.append("campaign-admit")
+    async def outbound_admit(db, device, *, bulk_supported):
+        assert bulk_supported is False
+        calls.append("outbound-admit")
     async def wrong_handler(*_): pytest.fail("Scheduled work reached the chatbot handler")
     monkeypatch.setattr(devices, "_private_transaction", transaction)
     monkeypatch.setattr(scheduled, "after_schedule_effect_finish", interrupted_done)
-    monkeypatch.setattr(scheduled, "admit_due_schedules", scheduled_admit)
-    monkeypatch.setattr(campaigns, "admit_due_campaigns", campaign_admit)
+    monkeypatch.setattr(devices, "admit_outbound_work", outbound_admit)
     monkeypatch.setattr(chatbot, "reap_unreachable", chatbot_reap)
     monkeypatch.setattr(chatbot, "after_effect_finish", wrong_handler)
-    value = await devices.pending_effects(uuid4(), object())
-    assert calls == ["scheduled-interrupted", "chatbot-reap", "scheduled-admit", "campaign-admit"]
+    value = await devices.pending_effects(uuid4(), Request({"type": "http", "headers": []}))
+    assert calls == ["scheduled-interrupted", "chatbot-reap", "outbound-admit"]
     assert value["effects"][0]["type"] == "scheduled_action" and value["reconcile"] == []
     assert "payload" not in value["effects"][0] and "phone" not in value["effects"][0]
 
