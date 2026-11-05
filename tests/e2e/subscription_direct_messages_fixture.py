@@ -17,7 +17,6 @@ from uuid import uuid4
 
 from app.subscription_direct_schemas import ReviewDirectMessage, ConfirmDirectMessage, DirectAction
 from app.subscription_direct_policy import url_button_plan
-from app.subscription_bulk_store import message_preview
 from app.subscription_templates_schemas import UploadAsset, media_filename
 from browser_subscription_chatbot import Handler as ChatbotHandler, ROOT, base, now
 from scripts.plans_preview import Handler as PlansHandler
@@ -98,7 +97,11 @@ def preview(session, message):
         "followup": followup, "parts": [part] + ([{"type": "text", "text": followup}] if followup else [])}
     if message["kind"] == "url_button":
         kind = "url_button"
-        content = message_preview(url_button_plan(message), None)
+        # Keep this browser-only DTO declarative like the other formats above;
+        # importing a database store would require the API runtime on this runner.
+        parts = url_button_plan(message)
+        content = {"type": kind, "template_name": None, "text": parts[0]["text"],
+            "caption": None, "followup": None, "parts": parts}
     recipients = message["recipients"]
     digits = [recipients["phone"]] if recipients["mode"] == "phone" else [key[6:] for key in recipients["contact_keys"]]
     rows = []
