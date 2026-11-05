@@ -1,0 +1,41 @@
+name: URL, API and webhook tags
+on:
+  push:
+    branches: [fix/url-api-webhook-tags-20261104]
+permissions:
+  contents: read
+concurrency:
+  group: url-tags-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  baseline:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      META_LIVE_SEND: '0'
+      QR_AI_ENABLED: '0'
+      INBOX_SEND_ENABLED: '0'
+      MARKETING_EXECUTION_ENABLED: '0'
+      CAKTO_BILLING_LIVE_ENABLED: '0'
+      ORION_DIRECT_PAYMENTS_ENABLED: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Exact source and offline test dependencies
+        run: |
+          git bundle create /tmp/orion-url-tags.bundle HEAD
+          npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+          npm ci --prefix qr-bridge --ignore-scripts --no-audit --no-fund
+          tar -czf /tmp/orion-url-tags-deps.tar.gz ui-tests/node_modules qr-bridge/node_modules
+      - uses: actions/upload-artifact@v4
+        with:
+          name: url-tags-baseline
+          path: |
+            /tmp/orion-url-tags.bundle
+            /tmp/orion-url-tags-deps.tar.gz
+          retention-days: 3
