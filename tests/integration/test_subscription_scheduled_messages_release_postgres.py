@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 import asyncpg
 import pytest
 from sqlalchemy.engine import make_url
+from sqlalchemy import create_engine, text
 
 from test_subscription_devices_release_postgres import isolated_settings
 from scripts import backup_and_migrate_subscription_scheduled_messages as release
@@ -18,7 +19,26 @@ TABLES = ("subscription_schedules", "subscription_schedule_runs",
 
 def test_real_release_catalog_keeps_all_published_predecessors(isolated_settings):
     assert previous_release.schema_ready(isolated_settings.migration_url)
-    assert release.schema_ready(isolated_settings.migration_url)
+    if not release.schema_ready(isolated_settings.migration_url):
+        # Only schema metadata is reported. Diagnose the independent sections
+        # and PostgreSQL's normalized CHECK definitions before any drift test.
+        engine = create_engine(isolated_settings.migration_url)
+        try:
+            with engine.connect() as db:
+                sections = {name: db.execute(text(getattr(barrier, name))).scalar()
+                    for name in ("TABLE_CONTRACT", "COLUMN_CONTRACT", "KEY_CONTRACT",
+                        "FOREIGN_KEY_CONTRACT", "CHECK_CONTRACT", "INDEX_CONTRACT", "CUSTOMER_CATALOG_CONTRACT")}
+                missing = []
+                for table, name, fragments in barrier.CHECKS:
+                    definition = db.execute(text("""SELECT lower(pg_get_constraintdef(oid)) FROM pg_constraint
+                        WHERE conrelid=to_regclass(:table) AND conname=:name"""),
+                        {"table": "public."+table, "name": name}).scalar()
+                    absent = [fragment for fragment in fragments if not definition or fragment not in definition]
+                    if absent:
+                        missing.append({"constraint": name, "missing": absent, "definition": definition})
+            pytest.fail(str({"sections": sections, "missing_check_fragments": missing}))
+        finally:
+            engine.dispose()
 
 
 async def test_runtime_probe_is_readonly_and_never_needs_private_data(isolated_settings):
@@ -77,6 +97,14 @@ async def temporary_catalog_change(settings):
 
 
 @pytest.mark.parametrize('mutation', [
+    'REVOKE SELECT(whatsapp_e164) ON public.customers FROM app_support',
+    'GRANT SELECT ON public.customers TO app_support',
+    'GRANT SELECT(notes) ON public.customers TO app_support',
+    'GRANT UPDATE(name) ON public.customers TO app_support',
+    'GRANT SELECT(name) ON public.customers TO app_support WITH GRANT OPTION',
+    'ALTER POLICY customers_subscription_schedule_support ON public.customers USING(true)',
+    'DROP POLICY customers_subscription_schedule_support ON public.customers',
+    'CREATE POLICY customers_unscoped_support ON public.customers FOR SELECT TO app_support USING(true)',
     'GRANT SELECT ON public.subscription_schedules TO app_runtime',
     'GRANT SELECT(phone) ON public.subscription_schedule_recipients TO app_runtime',
     'GRANT UPDATE ON public.subscription_schedule_requests TO app_support',

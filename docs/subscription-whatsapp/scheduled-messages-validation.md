@@ -94,6 +94,40 @@ obrigatórios. Nenhuma migração ou teste desta etapa foi executado em produç�
 Estas contagens são rodadas, com sobreposição; não representam uma soma de
 casos únicos nem substituem o resultado final da integração contínua.
 
+## Primeira candidata no GitHub
+
+PR 260, commit `2c6cd476de074099699e0e100637f114849f95e8`, árvore
+`6eace88d5aeb0616bea7895a01b4c6b64f7ceb8a`. O workflow dedicado
+`42024268629` usou o merge ref `bd3ed34d9f7a344715b3460f9c7acfc2716c9e09`,
+com a mesma árvore e a base publicada `19fbe9a98cc59dbc927f69517666f77ec2eb8d6b`.
+
+- API/contratos: 2.257 passaram; ponte: 451 passaram; DOM: 423 passaram.
+- Chrome e WebKit: 68 passaram e um caso falhou em cada navegador na
+  recuperação após recarregar. O bootstrap do painel não preservava o estado
+  de recuperação de Programadas. A correção inclui esse estado na normalização
+  inicial e um teste que executa o trecho real do bootstrap com o módulo real.
+- Os seis casos de layout por navegador passaram. As 48 capturas de editor,
+  revisão e detalhe foram inspecionadas nos dois temas e em 390, 768 e 1440 px.
+  A falha de recuperação interrompeu os casos posteriores; eles ainda exigem
+  execução na candidata corrigida.
+- O PostgreSQL real de Dispositivos revelou ausência de acesso ao catálogo de
+  clientes pelo papel de suporte. A migração foi corrigida para conceder somente
+  SELECT nas sete colunas usadas, com política de leitura limitada a empresas
+  de assinaturas. A barreira exige esse contrato; os testes exercitam revogação,
+  ampliação indevida, proteção dos demais campos e isolamento por nicho.
+
+O PostgreSQL dedicado terminou com 309 testes aprovados e 121 falhas: 75
+causadas pelo grant ausente de clientes e 46 na verificação inicial do novo
+catálogo, antes dos testes de deriva. O catálogo predecessor passou. A nova
+candidata ajusta também o reconhecimento de `IS DISTINCT FROM` quando o
+PostgreSQL normaliza a coluna varchar com cast para text, e o teste inicial
+reporta apenas metadados das seções/fragmentos ausentes se o catálogo falhar.
+A próxima rodada começa pelo novo contrato e interrompe o gate no primeiro
+erro; quando aprovado, continua incluindo todas as suítes anteriores.
+
+Esta primeira candidata não foi publicada em produção. A nova revisão deve
+passar novamente pelos gates antes da publicação.
+
 ## Validação necessária para encerrar a etapa
 
 A revisão candidata precisa passar pelo workflow dedicado com PostgreSQL real,

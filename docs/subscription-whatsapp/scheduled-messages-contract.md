@@ -433,3 +433,15 @@ cancelamento; PostgreSQL real com RLS/grants/concorrência e catálogo; ponte co
 recibos/perda de resposta/revogação; DOM e Chrome/WebKit com os componentes reais.
 Registros financeiros, mensagens, agendamentos e destinatários reais não fazem
 parte dos testes. Falhas anteriores e limites da referência permanecem explícitos.
+
+## Catálogo existente de clientes e papel do banco
+
+As transações autenticadas do módulo usam `app_support`. A migração concede
+somente SELECT em `customers.id`, `tenant_id`, `whatsapp_e164`, `name`, `active`,
+`deleted_at` e `version`. A política `customers_subscription_schedule_support`
+restringe essa leitura ao nicho `servico_assinaturas` persistido em
+`business_onboarding`; as consultas continuam vinculadas explicitamente à
+empresa autorizada. O papel não recebe SELECT da tabela inteira, acesso a
+notas, escrita ou opção de conceder essas permissões a outros papéis. A
+barreira de inicialização verifica os grants e a política; os testes reais
+comparam uma empresa de assinaturas com uma empresa padrão.

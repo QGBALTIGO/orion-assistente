@@ -264,6 +264,16 @@ def upgrade():
                    "USING(tenant_id=(SELECT NULLIF(current_setting('app.tenant_id',true),'')::uuid))")
         op.execute(f"CREATE POLICY {table}_support ON public.{table} FOR ALL TO app_support USING(true) WITH CHECK(true)")
         op.execute(f"CREATE POLICY {table}_migrator ON public.{table} FOR ALL TO app_migrator USING(true) WITH CHECK(true)")
+    # The trusted owner/private scheduler transactions use app_support. Expose
+    # only the existing contact catalog fields, for subscription businesses;
+    # notes, financial fields and every customer write remain unavailable.
+    op.execute("GRANT SELECT(id,tenant_id,whatsapp_e164,name,active,deleted_at,version) "
+               "ON public.customers TO app_support")
+    op.execute("""CREATE POLICY customers_subscription_schedule_support
+        ON public.customers FOR SELECT TO app_support USING(
+          EXISTS(SELECT 1 FROM public.business_onboarding b
+            WHERE b.tenant_id=customers.tenant_id
+              AND b.configuration->>'niche'='servico_assinaturas'))""")
 
 
 def downgrade():

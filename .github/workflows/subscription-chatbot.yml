@@ -314,13 +314,16 @@ jobs:
           socket.socket.connect = connect
           socket.socket.connect_ex = connect_ex
           socket.getaddrinfo = getaddrinfo
-          raise SystemExit(pytest.main(['-q', '-ra',
+          # Validate the new schema/occurrence contract first. A failed gate
+          # stops at its first error; a passing gate still runs every suite.
+          raise SystemExit(pytest.main(['-q', '-ra', '--maxfail=1',
+              *sorted(glob.glob('tests/integration/test_subscription_schedule*_postgres.py'),
+                  key=lambda path: ('release' not in path, path)),
               *sorted(glob.glob('tests/integration/test_subscription_chatbot*_postgres.py')),
               *sorted(glob.glob('tests/integration/test_subscription_templates*_postgres.py')),
               *sorted(glob.glob('tests/integration/test_subscription_sent_messages*_postgres.py')),
               *sorted(glob.glob('tests/integration/test_subscription_diagnostics*_postgres.py')),
               *sorted(glob.glob('tests/integration/test_subscription_campaigns*_postgres.py')),
-              *sorted(glob.glob('tests/integration/test_subscription_schedule*_postgres.py')),
               'tests/integration/test_subscription_devices_postgres.py',
               'tests/integration/test_subscription_devices_release_postgres.py',
               'tests/integration/test_subscription_workspace_postgres.py',

@@ -1946,7 +1946,7 @@ async function showApp(role="support",name="",email="",maintenance=null){
  const epoch=authEpoch;
  resetWizard();
  suiteTenantId="";businessRows=[];businessContextReady=false;businessContextError="";
- const url=new URL(location.href);url.searchParams.delete("empresa");history.replaceState({...window.OrionSubscriptionSentMessages?.navigationState?.(),...window.OrionSubscriptionDiagnostics?.navigationState?.(),...window.OrionSubscriptionCampaigns?.navigationState?.()},"",url.pathname+url.search);
+ const url=new URL(location.href);url.searchParams.delete("empresa");history.replaceState({...window.OrionSubscriptionSentMessages?.navigationState?.(),...window.OrionSubscriptionDiagnostics?.navigationState?.(),...window.OrionSubscriptionScheduledMessages?.navigationState?.(),...window.OrionSubscriptionCampaigns?.navigationState?.()},"",url.pathname+url.search);
  suiteUser={role,name,email,maintenance};
  loginRole=role;
  const maintenanceActive=role==="member"&&maintenance?.active===true;

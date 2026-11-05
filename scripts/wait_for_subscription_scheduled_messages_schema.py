@@ -23,6 +23,7 @@ SUPPORT_UPDATES = {
     "subscription_schedule_requests": ("schedule_id", "run_id", "status", "result", "confirmed_at"),
 }
 PRIVATE_TABLES = tuple(SUPPORT_UPDATES)
+SUPPORT_CUSTOMER_COLUMNS = ("id", "tenant_id", "whatsapp_e164", "name", "active", "deleted_at", "version")
 
 # PostgreSQL widths include four typmod bytes. A column listed as nullable
 # must stay nullable as well, notably the explicit invalid-DST placeholder.
@@ -106,7 +107,7 @@ CHECKS = (
     ("subscription_schedule_runs", "subscription_schedule_run_values", ("occurrence_index >= 0", "schedule_version > 0", "version > 0", "^[a-f0-9]{64}$", "jsonb_typeof(snapshot)", "1048576", "'pending'", "'running'", "'completed'", "'failed'", "'uncertain'", "'cancelled'")),
     ("subscription_schedule_runs", "subscription_schedule_run_terminal", ("'pending'", "'running'", "finished_at is null", "'completed'", "'failed'", "'uncertain'", "'cancelled'", "finished_at is not null")),
     ("subscription_schedule_runs", "subscription_schedule_run_admission", ("'running'", "first_admitted_at is not null", "first_admitted_at is null", "last_admitted_at is null", "last_admitted_at is not null", "last_admitted_at >= first_admitted_at")),
-    ("subscription_schedule_runs", "subscription_schedule_run_due", ("due_at is not null", "due_at is null", "error_code is distinct from", "'schedule_recurrence_invalid'", "'pending'", "'cancelled'", "first_admitted_at is null", "manual_released_at is null", "next_admission_at is null")),
+    ("subscription_schedule_runs", "subscription_schedule_run_due", ("due_at is not null", "due_at is null", "error_code", "is distinct from", "'schedule_recurrence_invalid'", "'pending'", "'cancelled'", "first_admitted_at is null", "manual_released_at is null", "next_admission_at is null")),
     ("subscription_schedule_runs", "subscription_schedule_run_origin", ("occurrence_index = 0", "source_run_id is null", "occurrence_index > 0", "source_run_id is not null", "source_run_id <> id")),
     ("subscription_schedule_recipients", "subscription_schedule_recipient_values", ("^[a-f0-9]{64}$", "plan_hash", "ordinal >= 1", "ordinal <= 10000", "^[1-9][0-9]{7,14}$", "length", "name", "jsonb_typeof(origins)", "jsonb_array_length(origins) >= 1", "jsonb_array_length(origins) <= 101", "octet_length((origins)::text) <= 131072", "permission_version >= 0", "settings_revision > 0", "jsonb_typeof(plan)", "jsonb_array_length(plan)", "131072", "'pending'", "'running'", "'sent'", "'failed'", "'uncertain'", "'cancelled'")),
     ("subscription_schedule_recipients", "subscription_schedule_recipient_terminal", ("'pending'", "'running'", "finished_at is null", "'sent'", "'failed'", "'uncertain'", "'cancelled'", "finished_at is not null")),
@@ -253,10 +254,36 @@ INDEX_CONTRACT = """
          WHERE strpos(lower(pg_catalog.pg_get_expr(i.indpred,i.indrelid)),required.fragment)=0)))
 """
 
+CUSTOMER_CATALOG_CONTRACT = """
+ SELECT EXISTS(SELECT 1 FROM pg_catalog.pg_class c
+   WHERE c.oid=pg_catalog.to_regclass('public.customers')
+     AND c.relkind='r' AND c.relrowsecurity AND c.relforcerowsecurity
+     AND NOT pg_catalog.has_table_privilege('app_support',c.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+     AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_attribute a
+       WHERE a.attrelid=c.oid AND a.attnum>0 AND NOT a.attisdropped AND (
+         pg_catalog.has_column_privilege('app_support',c.oid,a.attnum,'SELECT') <>
+           (a.attname::text=ANY(""" + _literal(SUPPORT_CUSTOMER_COLUMNS) + """))
+         OR pg_catalog.has_column_privilege('app_support',c.oid,a.attnum,'SELECT WITH GRANT OPTION,INSERT,UPDATE,REFERENCES')))
+     AND EXISTS(SELECT 1 FROM pg_catalog.pg_policy p WHERE p.polrelid=c.oid
+       AND p.polname='customers_subscription_schedule_support' AND p.polcmd='r' AND p.polpermissive
+       AND p.polroles=ARRAY[(SELECT oid FROM pg_catalog.pg_roles WHERE rolname='app_support')]
+       AND p.polwithcheck IS NULL
+       AND pg_catalog.pg_get_expr(p.polqual,p.polrelid) LIKE '%EXISTS%'
+       AND pg_catalog.pg_get_expr(p.polqual,p.polrelid) LIKE '%business_onboarding%'
+       AND pg_catalog.pg_get_expr(p.polqual,p.polrelid) LIKE '%customers.tenant_id%'
+       AND pg_catalog.pg_get_expr(p.polqual,p.polrelid) LIKE '%configuration%'
+       AND pg_catalog.pg_get_expr(p.polqual,p.polrelid) LIKE '%''niche''%'
+       AND pg_catalog.pg_get_expr(p.polqual,p.polrelid) LIKE '%''servico_assinaturas''%'
+       AND pg_catalog.pg_get_expr(p.polqual,p.polrelid) NOT LIKE '% OR %')
+     AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_policy p WHERE p.polrelid=c.oid
+       AND p.polname<>'customers_subscription_schedule_support'
+       AND (0=ANY(p.polroles) OR (SELECT oid FROM pg_catalog.pg_roles WHERE rolname='app_support')=ANY(p.polroles))))
+"""
+
 CONTRACT_QUERY = "SELECT " + " AND ".join(
     "COALESCE((" + query + "),false)" for query in (
         PREVIOUS_CONTRACT, TABLE_CONTRACT, COLUMN_CONTRACT, KEY_CONTRACT,
-        FOREIGN_KEY_CONTRACT, CHECK_CONTRACT, INDEX_CONTRACT)
+        FOREIGN_KEY_CONTRACT, CHECK_CONTRACT, INDEX_CONTRACT, CUSTOMER_CATALOG_CONTRACT)
 ) + " AS ready"
 
 SCHEMA_QUERY = """

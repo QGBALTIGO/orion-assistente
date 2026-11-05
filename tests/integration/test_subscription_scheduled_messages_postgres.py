@@ -736,3 +736,28 @@ async def test_externally_closed_campaign_releases_the_gate_for_a_current_revisi
         saved = dict((await db.execute(text("""SELECT * FROM subscription_device_effects
             WHERE tenant_id=:t AND id=:id"""), {"t": c.tenant, "id": UUID(first["operation_id"])})).mappings().one())
         assert saved == closed
+
+
+async def test_customer_catalog_support_grants_are_readonly_and_limited_to_subscription_niche(scheduled_case):
+    c = scheduled_case
+    subscribed = await customer(c, name="Cliente do catálogo de assinaturas")
+    ordinary = await customer(c, phone="5567999999904", name="Cliente de empresa padrão", tenant=c.ctx.a)
+    async with c.ctx.migration.begin() as db:
+        # A missing onboarding record also fails this SELECT policy. If this
+        # shared fixture supplies one, make its standard niche explicit.
+        await db.execute(text("""UPDATE business_onboarding
+            SET configuration=jsonb_set(configuration,'{niche}','\"barbearia\"'::jsonb)
+            WHERE tenant_id=:t"""), {"t": c.ctx.a})
+    async with support_session_factory()() as db:
+        async with db.begin():
+            rows = (await db.execute(text("""SELECT id,tenant_id,whatsapp_e164,name,active,deleted_at,version
+                FROM customers WHERE id=ANY(CAST(:ids AS uuid[])) ORDER BY id"""),
+                {"ids": [subscribed, ordinary]})).mappings().all()
+            assert len(rows) == 1 and rows[0]["id"] == subscribed and rows[0]["tenant_id"] == c.tenant
+            assert rows[0]["whatsapp_e164"] == "+" + PHONE and rows[0]["active"] is True
+            assert rows[0]["deleted_at"] is None and rows[0]["version"] == 1
+        for sql in ("SELECT notes FROM customers WHERE id=:id", "UPDATE customers SET name='Não autorizado' WHERE id=:id"):
+            with pytest.raises(DBAPIError) as denied:
+                async with db.begin():
+                    await db.execute(text(sql), {"id": subscribed})
+            assert denied.value.orig.sqlstate == "42501"

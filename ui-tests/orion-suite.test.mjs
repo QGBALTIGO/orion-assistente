@@ -202,6 +202,22 @@ test('actual panel API returns null for HTTP 204 without parsing JSON', async t 
   assert.equal(jsonRead, false); assert.equal(options.headers['X-Orion-CSRF'], 'test-csrf'); assert.equal(options.credentials, 'same-origin');
 });
 
+test('panel bootstrap retains the same scheduled request through URL normalization',async t=>{
+  const html=await readFile(new URL('../app/static/panel.html',import.meta.url),'utf8');
+  const prefix=html.match(/async function showApp\([^)]*\)\{[\s\S]*?(?=\n suiteUser=)/)?.[0];
+  assert.ok(prefix,'execute the actual bootstrap before account assignment');
+  const dom=new JSDOM('',{url:'https://orion.test/painel?aba=programadas&empresa=untrusted',runScripts:'outside-only'});
+  t.after(()=>dom.window.close());
+  dom.window.eval(await readFile(new URL('../app/static/orion-subscription-scheduled-messages.js',import.meta.url),'utf8'));
+  const record={tenant_id:tenantA,account_scope:'a'.repeat(64),idempotency_key:'11111111-1111-4111-8111-111111111111',kind:'review_create',schedule_id:null,run_id:null,confirming:false};
+  dom.window.history.replaceState({orionScheduleRecovery:{...record,private_content:'discard'},unrelated:'discard'},'');
+  dom.window.eval(`var authEpoch=1,suiteTenantId='',businessRows=[],businessContextReady=false,businessContextError='';function resetWizard(){};${prefix}\n}`);
+  await dom.window.showApp('member','Synthetic','synthetic@example.test');
+  assert.deepEqual(JSON.parse(JSON.stringify(dom.window.history.state)),{orionScheduleRecovery:record});
+  assert.equal(new URL(dom.window.location.href).searchParams.get('aba'),'programadas');
+  assert.equal(new URL(dom.window.location.href).searchParams.has('empresa'),false);
+});
+
 test('panel preserves read cancellation and only exposes the exact scheduled stale-version proof',async t=>{
   const html=await readFile(new URL('../app/static/panel.html',import.meta.url),'utf8');
   const actual=html.match(/async function api\(url,method="GET",data,options\)\{[\s\S]*?\n\}/)?.[0];
