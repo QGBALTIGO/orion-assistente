@@ -12,6 +12,7 @@ import {validDeviceSnapshot} from './device-runtime.mjs';
 import {deviceStorage,deviceControlLedger} from './device-storage.mjs';
 import {createDeviceDiagnostics} from './device-diagnostics.mjs';
 import {validGroupContactsRequest} from './device-group-contacts.mjs';
+import {createDeviceGroupAdd,validGroupAddRequest} from './device-group-add.mjs';
 
 const sameKey=(a,b)=>typeof a==='string'&&typeof b==='string'&&a.length===b.length&&
   timingSafeEqual(Buffer.from(a),Buffer.from(b));
@@ -22,7 +23,7 @@ export function reconnectDelay(attempt,random=Math.random){
 }
 export function createChannelManager({broker,createSession,root='/data/orion-channels',
     owner=randomUUID(),clock=()=>performance.now(),schedule=setTimeout,cancel=clearTimeout,random=Math.random,maxChannels=10,
-    audioEnabled=()=>process.env.QR_AI_AUDIO_ENABLED==='1',verifiedLid=()=>process.env.QR_PILOT_USE_VERIFIED_LID==='1',resumeStore=null,diagnosticOptions={}}){
+    audioEnabled=()=>process.env.QR_AI_AUDIO_ENABLED==='1',verifiedLid=()=>process.env.QR_PILOT_USE_VERIFIED_LID==='1',resumeStore=null,diagnosticOptions={},groupAddOptions={}}){
   if(!channelId(owner))throw Error('invalid_channel_owner');
   if(!Number.isInteger(maxChannels)||maxChannels<1||maxChannels>50)throw Error('invalid_channel_capacity');
   const contexts=new Map(),stopping=new Set(),deviceControls=new Set(),lastHealth=new Map();let resuming=false,closed=false;
@@ -33,6 +34,7 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
     return !!(c&&current(c)&&c.session&&c.device?.id===grant.device_id&&c.device.generation===grant.generation&&
       c.device.settings_revision===grant.settings_revision&&proxyFingerprint(c.device)===proxyFingerprint({settings:{proxy:grant.proxy},proxy_secret:grant.proxy_secret}));
   }});
+  const groupAdds=createDeviceGroupAdd({...groupAddOptions,broker,root,owner,clock,resolve:groupAddContext});
   const requireCurrent=c=>{if(!current(c)){retire(c);throw Error('channel_lease_lost');}};
   function acceptLease(c,result,started,{renew=false}={}){
     if(result?.channel_id!==c.id||result?.owner!==owner||!channelId(result.tenant_id)||
@@ -381,6 +383,31 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
     return publicSend(operationId,record||{state:'unrecorded',accepted:false,delivery:'unknown'});
   }
   const scopeOf=device=>({device_id:device.id,generation:device.generation,settings_revision:device.settings_revision});
+  function groupAddContext(id,key,input){
+    const c=contexts.get(id),session=c?.session,socketGeneration=c?.generation;
+    const matches=()=>!!(c&&current(c)&&sameKey(c.key,key)&&c.session===session&&c.generation===socketGeneration&&
+      c.device?.id===input.device_id&&c.device.generation===input.generation&&c.device.settings_revision===input.settings_revision&&
+      session?.status?.()==='connected'&&typeof session.groupAdd==='function');
+    const refused=()=>Object.assign(Error('group_add_unavailable'),{groupAddReason:'context_changed'});
+    if(!matches())throw refused();
+    const authorize=async()=>{
+      if(!matches())throw refused();
+      await validate(c,key);
+      if(!matches())throw refused();
+    };
+    return {session,authorize,current:matches,tenantId:c.tenant,fence:c.fence,epoch:c.directory.split(/[\\/]/).at(-1)};
+  }
+  async function deviceGroupAdd(id,key,action,input){
+    if(!channelId(id)||!validGroupAddRequest(action,input))throw Error('group_add_unavailable');
+    if(action==='lookup')return groupAdds.lookup(id,key,input);
+    if(action==='add')return groupAdds.add(id,key,input);
+    const context=groupAddContext(id,key,input);
+    const result=await context.session.groupAdd(action,input,{authorize:context.authorize});
+    await context.authorize();
+    if(result?.device_id!==input.device_id||result.generation!==input.generation||result.settings_revision!==input.settings_revision)
+      throw Error('group_add_unavailable');
+    return result;
+  }
   async function deviceGroupContacts(id,key,action,input){
     if(!channelId(id)||!validGroupContactsRequest(action,input))throw Error('group_contacts_unavailable');
     const c=contexts.get(id),session=c?.session,socketGeneration=c?.generation;
@@ -497,7 +524,7 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
       throw Error('device_operation_unavailable');
     }finally{deviceControls.delete(id);}
   }
-  return {start,status,pair,send,operation,deviceStatus,deviceOperation,deviceControl,deviceGroupContacts,
+  return {start,status,pair,send,operation,deviceStatus,deviceOperation,deviceControl,deviceGroupContacts,deviceGroupAdd,
     deviceProxyTest:(id,key,input)=>diagnostics.dispatch(id,key,input),
     deviceDiagnosticOperation:(id,key,requestId)=>diagnostics.read(id,key,requestId),
     async deviceDiagnostics(id,key){const state=await deviceStatus(id,key);return {...state,runtime:contexts.get(id)?.session?.deviceDiagnostics?.()||null};},
@@ -523,7 +550,7 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
         await c.starting;await validate(c,key);resumeStore?.forget(id,key);retire(c);
         try{await broker.lease(id,key,'release',owner,c.fence);}catch{}
       }finally{stopping.delete(id);}},
-    close(){closed=true;diagnostics.close();for(const c of contexts.values())retire(c);},
+    close(){closed=true;diagnostics.close();groupAdds.close();for(const c of contexts.values())retire(c);},
     get size(){return contexts.size;}};
 }
 function publicSend(id,record){return {operation_id:id,state:record.state,accepted:record.accepted===true,delivery:record.delivery};}

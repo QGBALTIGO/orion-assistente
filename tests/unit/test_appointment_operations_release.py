@@ -149,7 +149,7 @@ def test_registration_gate_recognizes_additive_revision_and_keeps_older_contract
         monkeypatch.setattr(module, name, lambda _: True)
 
 
-@pytest.mark.parametrize("blocked", [None, 7, 8, 9, 10, 11, 12])
+@pytest.mark.parametrize("blocked", [None, 7, 8, 9, 10, 11, 12, 13])
 @pytest.mark.parametrize("revision", ["0066_appointment_operations", "0067_subscription_diagnostics", "0068_subscription_campaigns", "0069_subscription_schedules", "0070_subscription_bulk", "0071_subscription_direct"])
 def test_api_predeploy_preserves_agenda_before_diagnostics_and_normal_startup(monkeypatch, blocked, revision):
     from scripts import predeploy_one_click_links as entry
@@ -163,7 +163,7 @@ def test_api_predeploy_preserves_agenda_before_diagnostics_and_normal_startup(mo
     monkeypatch.setattr(version, "migrated_version", lambda _: revision)
     monkeypatch.setattr(registration, "portal_schema_ready", lambda _: True)
     monkeypatch.setattr(registration, "professional_hardening_schema_ready", lambda _: True)
-    modules = (*PRIOR_RELEASES[1:], "backup_and_migrate_appointment_operations", "backup_and_migrate_subscription_diagnostics", "backup_and_migrate_subscription_campaigns", "backup_and_migrate_subscription_scheduled_messages", "backup_and_migrate_subscription_bulk", "backup_and_migrate_subscription_direct")
+    modules = (*PRIOR_RELEASES[1:], "backup_and_migrate_appointment_operations", "backup_and_migrate_subscription_diagnostics", "backup_and_migrate_subscription_campaigns", "backup_and_migrate_subscription_scheduled_messages", "backup_and_migrate_subscription_bulk", "backup_and_migrate_subscription_direct", "backup_and_migrate_subscription_group_add")
     for index, name in enumerate(modules):
         module = importlib.import_module("scripts." + name)
         monkeypatch.setattr(module, "main", lambda i=index: events.append(i) or int(i == blocked))
@@ -175,7 +175,8 @@ def test_api_predeploy_preserves_agenda_before_diagnostics_and_normal_startup(mo
                  9: "subscription_campaigns_schema_not_ready",
                  10: "subscription_scheduled_messages_schema_not_ready",
                  11: "subscription_bulk_schema_not_ready",
-                 12: "subscription_direct_schema_not_ready"}[blocked]
+                 12: "subscription_direct_schema_not_ready",
+                 13: "subscription_group_add_schema_not_ready"}[blocked]
         with pytest.raises(RuntimeError, match=error):
             entry.main()
     assert events == ["legacy-checks", *range(len(modules) if blocked is None else blocked + 1)]
@@ -233,11 +234,11 @@ async def test_probe_rejects_owner_assumption_and_unrestricted_roles(monkeypatch
     assert closed == [True]
 
 
-@pytest.mark.parametrize("blocked", [*range(12), None])
+@pytest.mark.parametrize("blocked", [*range(13), None])
 def test_worker_predeploy_stops_at_first_unready_contract(monkeypatch, blocked):
     names = ("manual_start_times", "appointment_consent", "subscription_devices",
              "subscription_chatbot", "subscription_templates", "subscription_sent_messages",
-             "appointment_operations", "subscription_diagnostics", "subscription_campaigns", "subscription_scheduled_messages", "subscription_bulk", "subscription_direct")
+             "appointment_operations", "subscription_diagnostics", "subscription_campaigns", "subscription_scheduled_messages", "subscription_bulk", "subscription_direct", "subscription_group_add")
     events = []
 
     async def ready(_):
@@ -253,12 +254,12 @@ def test_worker_predeploy_stops_at_first_unready_contract(monkeypatch, blocked):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("blocked", [*range(12), None])
+@pytest.mark.parametrize("blocked", [*range(13), None])
 async def test_arq_cannot_consume_jobs_before_all_readonly_contracts(monkeypatch, blocked):
     from app.worker import WorkerSettings
     names = ("plan_permissions", "appointment_consent", "subscription_devices",
              "subscription_chatbot", "subscription_templates", "subscription_sent_messages",
-             "appointment_operations", "subscription_diagnostics", "subscription_campaigns", "subscription_scheduled_messages", "subscription_bulk", "subscription_direct")
+             "appointment_operations", "subscription_diagnostics", "subscription_campaigns", "subscription_scheduled_messages", "subscription_bulk", "subscription_direct", "subscription_group_add")
     events = []
     context = {}
     for flag in ("ORION_REVIEW_QA_VERIFY_7364", "ORION_REVIEW_QA_SEND_7364"):

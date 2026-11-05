@@ -19,6 +19,8 @@ def feature_for_path(relative, method="GET", *, resource=None, step_id=None):
     """Explicit classification; an unclassified future tenant API fails closed."""
     if relative == "/management/permissions":
         return "account.manage"
+    if relative == "/subscription-whatsapp/group-add" or relative.startswith("/subscription-whatsapp/group-add/"):
+        return "group_add.manage"
     if relative == "/subscription-whatsapp/group-contacts" or relative.startswith("/subscription-whatsapp/group-contacts/"):
         return "group_contacts.manage"
     if relative == "/subscription-whatsapp/direct-messages" or relative.startswith("/subscription-whatsapp/direct-messages/"):
@@ -149,6 +151,8 @@ def exclusive_professional_operation(relative, method, params):
 
 def subscription_workspace_route(relative, method, params):
     """Explicit metadata and subscription modules; never legacy operations."""
+    if relative == "/subscription-whatsapp/group-add" or relative.startswith("/subscription-whatsapp/group-add/"):
+        return True
     if relative == "/subscription-whatsapp/group-contacts" or relative.startswith("/subscription-whatsapp/group-contacts/"):
         return True
     if relative == "/subscription-whatsapp/direct-messages" or relative.startswith("/subscription-whatsapp/direct-messages/"):

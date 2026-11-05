@@ -1292,6 +1292,7 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
 <script src="/panel-assets/orion-subscription-bulk-messages.js"></script>
 <script src="/panel-assets/orion-subscription-direct-messages.js"></script>
 <script src="/panel-assets/orion-subscription-group-contacts.js"></script>
+<script src="/panel-assets/orion-subscription-group-add.js"></script>
 <script src="/panel-assets/orion-communication.js"></script>
 <script src="/panel-assets/orion-automations.js"></script>
 <script src="/panel-assets/orion-flows.js"></script>
@@ -1965,7 +1966,7 @@ async function showApp(role="support",name="",email="",maintenance=null){
  const epoch=authEpoch;
  resetWizard();
  suiteTenantId="";businessRows=[];businessContextReady=false;businessContextError="";
- const url=new URL(location.href);url.searchParams.delete("empresa");history.replaceState({...window.OrionSubscriptionSentMessages?.navigationState?.(),...window.OrionSubscriptionDiagnostics?.navigationState?.(),...window.OrionSubscriptionGroupContacts?.navigationState?.(),...window.OrionSubscriptionDirectMessages?.navigationState?.(),...window.OrionSubscriptionBulkMessages?.navigationState?.(),...window.OrionSubscriptionScheduledMessages?.navigationState?.(),...window.OrionSubscriptionCampaigns?.navigationState?.()},"",url.pathname+url.search);
+ const url=new URL(location.href);url.searchParams.delete("empresa");history.replaceState({...window.OrionSubscriptionSentMessages?.navigationState?.(),...window.OrionSubscriptionDiagnostics?.navigationState?.(),...window.OrionSubscriptionGroupAdd?.navigationState?.(),...window.OrionSubscriptionGroupContacts?.navigationState?.(),...window.OrionSubscriptionDirectMessages?.navigationState?.(),...window.OrionSubscriptionBulkMessages?.navigationState?.(),...window.OrionSubscriptionScheduledMessages?.navigationState?.(),...window.OrionSubscriptionCampaigns?.navigationState?.()},"",url.pathname+url.search);
  suiteUser={role,name,email,maintenance};
  loginRole=role;
  const maintenanceActive=role==="member"&&maintenance?.active===true;

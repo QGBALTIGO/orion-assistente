@@ -206,7 +206,7 @@ def predeploy_main():
     try:
         raw, _url = connection_values()
         current = migrated_version(raw)
-        if current in ('0058_professional_scope','0059_prepaid_pix','0060_manual_start_times','0061_appointment_consent','0062_subscription_devices', '0063_subscription_chatbot', '0064_subscription_templates', '0065_subscription_sent_messages', '0066_appointment_operations', '0067_subscription_diagnostics', '0068_subscription_campaigns', '0069_subscription_schedules', '0070_subscription_bulk', '0071_subscription_direct'):
+        if current in ('0058_professional_scope','0059_prepaid_pix','0060_manual_start_times','0061_appointment_consent','0062_subscription_devices', '0063_subscription_chatbot', '0064_subscription_templates', '0065_subscription_sent_messages', '0066_appointment_operations', '0067_subscription_diagnostics', '0068_subscription_campaigns', '0069_subscription_schedules', '0070_subscription_bulk', '0071_subscription_direct', '0072_subscription_group_add'):
             if (combo_duration.schema_ready(raw) and short_links.schema_ready(raw)
                     and one_click_schema_ready(raw) and portal_schema_ready(raw)
                     and professional_hardening_schema_ready(raw)):

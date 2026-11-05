@@ -141,7 +141,11 @@ def main():
     if result:
         return result
     from scripts.wait_for_subscription_direct_schema import main as direct_messages_wait
-    return direct_messages_wait()
+    result = direct_messages_wait()
+    if result:
+        return result
+    from scripts.wait_for_subscription_group_add_schema import main as group_add_wait
+    return group_add_wait()
 
 
 if __name__ == "__main__":

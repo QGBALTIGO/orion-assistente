@@ -4,6 +4,7 @@ import {createChannelManager} from './channel-manager.mjs';
 import {createBaileysChannelSession} from './channel-session.mjs';
 import {createChannelResumeStore} from './channel-resume.mjs';
 import {validGroupContactsRequest} from './device-group-contacts.mjs';
+import {validGroupAddRequest} from './device-group-add.mjs';
 
 function response(res,status,data){
   res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store',
@@ -29,6 +30,18 @@ export function createChannelRoutes({env=process.env,managerFactory=createChanne
     const uri=new URL(req.url||'/','http://internal');
     if(!uri.pathname.startsWith('/internal/channels/'))return false;
     if(env.QR_CHANNELS_ENABLED!=='1'){response(res,423,{error:'channels_disabled'});return true;}
+    const groupAddMatch=uri.pathname.match(/^\/internal\/channels\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/device\/group-add\/(groups|members|add|lookup)$/);
+    if(groupAddMatch&&!uri.search){
+      const [,id,action]=groupAddMatch,key=req.headers['x-orion-channel-key'];
+      if(typeof key!=='string'||key.length<32||key.length>256){response(res,401,{error:'channel_unauthorized'});return true;}
+      if(req.method!=='POST'){response(res,405,{error:'method_not_allowed'});return true;}
+      try{
+        const input=await body(req);
+        if(!validGroupAddRequest(action,input))throw Error('group_add_unavailable');
+        response(res,200,await getManager().deviceGroupAdd(id,key,action,input));
+      }catch{response(res,409,{error:'group_add_unavailable'});}
+      return true;
+    }
     const groupContactsMatch=uri.pathname.match(/^\/internal\/channels\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/device\/group-contacts\/(groups|members)$/);
     if(groupContactsMatch&&!uri.search){
       const [,id,action]=groupContactsMatch,key=req.headers['x-orion-channel-key'];
