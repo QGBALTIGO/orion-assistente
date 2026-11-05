@@ -92,6 +92,23 @@ conferir o efeito e o destinatário em execução no conjunto dos módulos,
 mantendo a exigência de exatamente um trabalho admitido. A nova candidata
 também exercita a compatibilidade entre versões da ponte no banco real.
 
+Na segunda candidata, Chrome concluiu 105 cenários, DOM 485 e ponte 488.
+WebKit parou após 76 aprovações em uma navegação de Programadas, antes dos
+cenários de Massa. O teste verificava a ausência de um item de menu antes
+de concluir o carregamento da conta e podia iniciar o próximo documento com
+uma consulta de identidade em andamento. Uma reprodução local com resposta
+sintética atrasada confirmou duas consultas abandonadas. A sincronização
+passa a aguardar a resposta e o estado carregado antes de navegar novamente;
+não se filtram erros nem se removem as asserções de acesso ou ausência de
+mutação. Essa correção pertence ao teste, sem alteração no código do produto.
+
+A mesma rodada esgotou o tempo do gate da API durante o download de pacotes
+do espelho Azure do Ubuntu, antes de executar testes. Os dois passos de
+instalação do decoder passam a usar o repositório oficial do Ubuntu via HTTPS,
+preservando versões disponíveis, componentes, chaves e verificação de
+assinaturas do APT. A preparação tem prazo limitado; o decoder real e todos
+os gates permanecem exigidos na revisão seguinte.
+
 ## Verificação após publicação
 
 Ainda pendente: backup privado verificado antes da migração, revisão 0070,

@@ -116,9 +116,33 @@ jobs:
           python-version: '3.12'
       - run: python -m pip install -c requirements.lock '.[test]'
       - name: Mesmo decoder do runtime, sem provedor pago
+        timeout-minutes: 6
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ffmpeg
+          # The hosted runner's Azure mirror stalled before tests in run 42040129374.
+          # Use Ubuntu's primary archive, preserving suites, components and signing keys.
+          # https://documentation.ubuntu.com/project/how-ubuntu-is-made/concepts/package-archive/
+          sudo python3 - <<'PY'
+          from pathlib import Path
+          sources = [Path('/etc/apt/sources.list'),
+                     *Path('/etc/apt/sources.list.d').glob('*.list'),
+                     *Path('/etc/apt/sources.list.d').glob('*.sources')]
+          for source in sources:
+              if not source.is_file():
+                  continue
+              original = updated = source.read_bytes()
+              for uri in (b'mirror+file:/etc/apt/apt-mirrors.txt',
+                          b'http://azure.archive.ubuntu.com/ubuntu',
+                          b'https://azure.archive.ubuntu.com/ubuntu'):
+                  updated = updated.replace(uri, b'https://archive.ubuntu.com/ubuntu')
+              if updated != original:
+                  source.write_bytes(updated)
+                  print('Ubuntu archive fallback:', source)
+          PY
+          apt_options=(-o Acquire::Retries=1 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
+          sudo apt-get "${apt_options[@]}" update
+          sudo apt-get "${apt_options[@]}" install -y --no-install-recommends ffmpeg
+          ffmpeg -version
+          ffprobe -version
       - name: Validar autorizacao, duracao, duplicacao e contratos existentes
         run: |
           python -m pytest -q -ra \
@@ -279,9 +303,31 @@ jobs:
           python-version: '3.12'
       - run: python -m pip install -c requirements.lock '.[test]'
       - name: Instalar o decoder real de midia
+        timeout-minutes: 6
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ffmpeg
+          # Same official archive fallback as the API gate; retain the real decoder.
+          sudo python3 - <<'PY'
+          from pathlib import Path
+          sources = [Path('/etc/apt/sources.list'),
+                     *Path('/etc/apt/sources.list.d').glob('*.list'),
+                     *Path('/etc/apt/sources.list.d').glob('*.sources')]
+          for source in sources:
+              if not source.is_file():
+                  continue
+              original = updated = source.read_bytes()
+              for uri in (b'mirror+file:/etc/apt/apt-mirrors.txt',
+                          b'http://azure.archive.ubuntu.com/ubuntu',
+                          b'https://azure.archive.ubuntu.com/ubuntu'):
+                  updated = updated.replace(uri, b'https://archive.ubuntu.com/ubuntu')
+              if updated != original:
+                  source.write_bytes(updated)
+                  print('Ubuntu archive fallback:', source)
+          PY
+          apt_options=(-o Acquire::Retries=1 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
+          sudo apt-get "${apt_options[@]}" update
+          sudo apt-get "${apt_options[@]}" install -y --no-install-recommends ffmpeg
+          ffmpeg -version
+          ffprobe -version
       - name: Provisionar os tres papeis no banco descartavel
         env:
           PGPASSWORD: ci-only-chatbot-postgres
