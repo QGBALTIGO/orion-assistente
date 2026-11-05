@@ -40,13 +40,13 @@ def prepared(monkeypatch, versions):
     return events
 
 
-def test_bulk_is_the_single_additive_head_after_the_published_schedules():
+def test_bulk_remains_a_reviewed_ancestor_after_the_published_schedules():
     root = Path(__file__).resolve().parents[2]
     config = Config(str(root / "alembic.ini"))
     config.set_main_option("path_separator", "os")
     config.set_main_option("script_location", str(root / "alembic"))
     migrations = ScriptDirectory.from_config(config)
-    assert migrations.get_heads() == ["0070_subscription_bulk"]
+    assert migrations.get_heads() == ["0071_subscription_direct"]
     assert release.TARGET == barrier.SCHEMA_MARKER == "0070_subscription_bulk"
     assert release.PREVIOUS == previous_release.TARGET == "0069_subscription_schedules"
     assert migrations.get_revision(release.TARGET).down_revision == release.PREVIOUS

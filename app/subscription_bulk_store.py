@@ -18,6 +18,7 @@ from app import subscription_bulk_schemas as schemas
 from app.customer_names import useful_name
 
 FEATURE = "bulk_messages.manage"
+ORIGIN_FEATURES = {"bulk": FEATURE, "direct": "direct_messages.manage"}
 encode, fingerprint = shared.encode, shared.fingerprint
 ERRORS = {
     "BULK_INVALID": "Confira os campos, os telefones e o conteúdo das linhas.",
@@ -85,16 +86,21 @@ async def batch_row(db, tenant, identity, *, lock=False):
     return dict(row)
 
 
-async def request_row(db, tenant, actor, key):
+async def request_row(db, tenant, actor, key, *, origin="bulk", for_mutation=False):
     row = (await db.execute(text("""SELECT * FROM subscription_bulk_requests
         WHERE tenant_id=:t AND idempotency_key=:key"""), {"t": tenant, "key": key})).mappings().one_or_none()
     if row and row["actor_account_id"] != actor.account_id:
         raise fail("BULK_NOT_FOUND", 404)
+    if row and row.get("origin", "bulk") != origin:
+        # A global recovery key cannot be rebound to another origin. Never
+        # hide this collision as an absent row and proceed to a UNIQUE error.
+        raise fail("BULK_IDEMPOTENCY_CONFLICT" if for_mutation else "BULK_NOT_FOUND",
+                   409 if for_mutation else 404)
     return dict(row) if row else None
 
 
-async def existing_request(db, tenant, actor, key, kind, payload, *, bulk_id=None):
-    row = await request_row(db, tenant, actor, key)
+async def existing_request(db, tenant, actor, key, kind, payload, *, bulk_id=None, origin="bulk"):
+    row = await request_row(db, tenant, actor, key, origin=origin, for_mutation=True)
     if row and (row["kind"] != kind or row["request_fingerprint"] != fingerprint(payload)
                 or bulk_id is not None and row["bulk_id"] != bulk_id):
         raise fail("BULK_IDEMPOTENCY_CONFLICT")
@@ -110,7 +116,9 @@ def operation_dto(row, now, *, replayed=False):
 
 
 async def save_request(db, tenant, actor, key, kind, payload, *, bulk_id=None, snapshot=None,
-                       preview=None, result=None, identity=None, now=None):
+                       preview=None, result=None, identity=None, now=None, origin="bulk"):
+    if origin not in ORIGIN_FEATURES:
+        raise fail("BULK_INVALID", 422)
     now = now or await clock(db)
     for value, limit in ((snapshot, schemas.MAX_EXPANDED_BYTES), (preview, schemas.MAX_METADATA_BYTES), (result, 4194304)):
         if value is not None:
@@ -118,14 +126,15 @@ async def save_request(db, tenant, actor, key, kind, payload, *, bulk_id=None, s
     prepared = snapshot is not None
     row = (await db.execute(text("""INSERT INTO subscription_bulk_requests
         (id,tenant_id,actor_account_id,idempotency_key,kind,request_fingerprint,bulk_id,status,review_version,
-          snapshot,preview,result,created_at,expires_at)
+          snapshot,preview,result,created_at,expires_at,origin)
         VALUES(:id,:t,:a,:key,:kind,:fp,:bulk,:status,:review,CAST(:snapshot AS jsonb),CAST(:preview AS jsonb),
-          CAST(:result AS jsonb),:now,:expires) RETURNING *"""),
+          CAST(:result AS jsonb),:now,:expires,:origin) RETURNING *"""),
         {"id": identity or uuid4(), "t": tenant, "a": actor.account_id, "key": key, "kind": kind,
          "fp": fingerprint(payload), "bulk": bulk_id, "status": "prepared" if prepared else "succeeded",
          "review": fingerprint(snapshot) if prepared else None, "snapshot": encode(snapshot) if prepared else None,
          "preview": encode(preview) if preview is not None else None, "result": encode(result) if result is not None else None,
-         "now": now, "expires": now + timedelta(seconds=schemas.REVIEW_SECONDS) if prepared else None})).mappings().one()
+         "now": now, "expires": now + timedelta(seconds=schemas.REVIEW_SECONDS) if prepared else None,
+         "origin": origin})).mappings().one()
     return dict(row)
 
 
@@ -214,7 +223,7 @@ async def sources_valid(db, tenant, origins, phone, *, source="catalog", manual_
     return await catalog.sources_valid(db, tenant, origins, phone)
 
 
-async def capture_review(db, tenant, actor, definition):
+async def capture_review(db, tenant, actor, definition, *, prepared_messages=None):
     zone = await timezone_for(db, tenant)
     items = definition["items"]
     catalog_keys = sorted({item["contact_key"] for item in items if item["source"] == "catalog"})
@@ -261,12 +270,16 @@ async def capture_review(db, tenant, actor, definition):
         reason = "BULK_OPTED_OUT" if permission["revoked"] else None
         if device["phone_e164"] == "+" + phone:
             reason = "BULK_SELF_CONTACT"
+        prepared = (prepared_messages or {}).get(item["row_key"])
         try:
-            plan = policy.frozen_plan(item, template, {**facts, "name": name, "phone": "+" + phone, "phone_number": phone})
+            plan = deepcopy(prepared["plan"]) if prepared is not None else policy.frozen_plan(
+                item, template, {**facts, "name": name, "phone": "+" + phone, "phone_number": phone})
         except (ValueError, KeyError, TypeError):
             raise fail("BULK_INVALID", 422) from None
         bounded_json(plan, schemas.MAX_PLAN_BYTES)
         context = {"device": device, "template": template}
+        if prepared is not None and prepared.get("media") is not None:
+            context["media"] = deepcopy(prepared["media"])
         bounded_json(context, schemas.MAX_PLAN_BYTES)
         row = {"row_key": item["row_key"], "ordinal": ordinal, "phone": phone, "name": name,
             "source": item["source"], "origins": contact["origins"] if contact else [],
@@ -312,7 +325,7 @@ def row_preview(row):
     return {"row_key": row["row_key"], "ordinal": row["ordinal"], "source": row["source"],
         "phone_e164": "+" + row["phone"], "name": row["name"],
         "device": {key: device.get(key) for key in ("id", "name", "phone_e164")},
-        "message_type": "template" if template else "text",
+        "message_type": "template" if template else "media" if row["context"].get("media") else "text",
         "template": {key: template[key] for key in ("id", "name", "kind")} if template else None,
         "message_preview": message_preview(row["plan"], template), "available": not row["blocked"],
         "blocked_reason": ERRORS.get(row["blocked_reason"]) if row["blocked_reason"] else None,
@@ -381,7 +394,7 @@ RECIPIENT_STATES_SQL = """WITH states AS (
        ORDER BY e.bulk_part_index) FILTER(WHERE (e.status IN ('failed','not_sent') AND e.error_code IS NOT NULL)
          OR e.status='pending' AND e.expires_at<=:now))[1] AS first_error
    FROM subscription_device_effects e WHERE e.tenant_id=r.tenant_id AND e.bulk_recipient_id=r.id
- ) a ON true WHERE r.tenant_id=:t AND b.owner_account_id=:actor
+ ) a ON true WHERE r.tenant_id=:t AND b.owner_account_id=:actor AND b.origin=:origin
    AND (CAST(:only_bulk AS uuid) IS NULL OR r.bulk_id=CAST(:only_bulk AS uuid))
 ) """
 
@@ -398,7 +411,7 @@ BATCH_VIEW_SQL = RECIPIENT_STATES_SQL + """, totals AS (
      CASE WHEN n_uncertain>0 THEN 'uncertain' WHEN n_failed>0 THEN 'failed'
        WHEN n_sent>0 THEN 'completed' ELSE 'cancelled' END ELSE b.status END AS effective_status
  FROM subscription_bulk_batches b LEFT JOIN totals t ON t.bulk_id=b.id
- WHERE b.tenant_id=:t AND b.owner_account_id=:actor
+ WHERE b.tenant_id=:t AND b.owner_account_id=:actor AND b.origin=:origin
    AND (CAST(:only_bulk AS uuid) IS NULL OR b.id=CAST(:only_bulk AS uuid))
 ) """
 
@@ -416,9 +429,10 @@ def batch_dto(row, now):
         "actions": ["cancel"] if state in {"pending", "running"} and row.get("cancelled_at") is None else []}
 
 
-async def batch_item(db, tenant, bulk_id, actor, now):
+async def batch_item(db, tenant, bulk_id, actor, now, *, origin="bulk"):
     row = (await db.execute(text(BATCH_VIEW_SQL + "SELECT * FROM viewed WHERE id=:id"),
-        {"t": tenant, "actor": actor.account_id, "only_bulk": bulk_id, "now": now, "id": bulk_id})).mappings().one_or_none()
+        {"t": tenant, "actor": actor.account_id, "only_bulk": bulk_id, "now": now, "id": bulk_id,
+         "origin": origin})).mappings().one_or_none()
     if row is None:
         raise fail("BULK_NOT_FOUND", 404)
     return batch_dto(dict(row), now)
@@ -454,7 +468,8 @@ SEARCH_SQL = """ WHERE (:status='' OR public_status=:status) AND (:q='' OR
 
 async def recipient_page(db, batch, now, *, status="", q="", page=1):
     params = {"t": batch["tenant_id"], "actor": batch["owner_account_id"], "only_bulk": batch["id"],
-              "now": now, "status": status, "q": q.strip().casefold(), "offset": (page - 1) * schemas.PAGE_SIZE}
+              "now": now, "status": status, "q": q.strip().casefold(), "offset": (page - 1) * schemas.PAGE_SIZE,
+              "origin": batch.get("origin", "bulk")}
     total = (await db.execute(text(RECIPIENT_STATES_SQL + "SELECT count(*) FROM states" + SEARCH_SQL), params)).scalar_one()
     rows = (await db.execute(text(RECIPIENT_STATES_SQL + "SELECT * FROM states" + SEARCH_SQL +
         " ORDER BY ordinal,id LIMIT 30 OFFSET :offset"), params)).mappings().all()
@@ -463,7 +478,7 @@ async def recipient_page(db, batch, now, *, status="", q="", page=1):
 
 async def history_page(db, tenant, actor, now, zone, *, status="", q="", page=1):
     params = {"t": tenant, "actor": actor.account_id, "only_bulk": None, "now": now, "zone": zone,
-              "status": status, "q": q.strip().casefold(), "offset": (page - 1) * schemas.PAGE_SIZE}
+              "status": status, "q": q.strip().casefold(), "offset": (page - 1) * schemas.PAGE_SIZE, "origin": "bulk"}
     counts_row = (await db.execute(text(RECIPIENT_STATES_SQL + """SELECT count(*) AS total,
         count(*) FILTER(WHERE sent_at>=CAST(:now AS timestamptz)-interval '30 days') AS last_30_days,
         count(*) FILTER(WHERE (sent_at AT TIME ZONE :zone)::date=

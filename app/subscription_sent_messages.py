@@ -54,6 +54,7 @@ BLOCK_MESSAGES = {
     "MESSAGE_INVALID_RECIPIENT": "O destinatário não permite um novo envio.",
     "MESSAGE_CAMPAIGN_CONTROLLED": "Esta tentativa pertence a uma campanha. Consulte o acompanhamento em Campanhas.",
     "MESSAGE_BULK_CONTROLLED": "Esta tentativa pertence a um lote. Consulte o acompanhamento em Mensagem em Massa.",
+    "MESSAGE_DIRECT_CONTROLLED": "Esta tentativa pertence a um envio direto. Consulte o acompanhamento em Enviar Mensagem.",
     "MESSAGE_SCHEDULE_CONTROLLED": "Esta tentativa pertence a um agendamento. Consulte o acompanhamento em Mensagens Programadas.",
 }
 FAILURE_MESSAGES = {
@@ -120,7 +121,7 @@ HISTORY_SQL = """
    d.name AS device_name,d.removed_at AS device_removed_at,d.owner_account_id AS device_owner,
    d.runtime AS device_runtime,
    original.event_id AS original_event_id,original.previous_effect AS logical_previous,
-   ev.kind AS incoming_kind,ev.payload AS incoming_payload,
+   ev.kind AS incoming_kind,ev.payload AS incoming_payload,b.origin AS outbound_origin,
    r.origin AS run_origin,r.input_kind AS original_input_kind,r.input_text AS run_input_text,r.input_context AS run_input_context,
    r.rule_id AS original_rule_id,r.rule_revision AS original_rule_revision,
    r.actor_account_id AS original_actor,r.generation AS original_generation,
@@ -134,6 +135,7 @@ HISTORY_SQL = """
  LEFT JOIN subscription_sent_message_resends link ON link.tenant_id=e.tenant_id AND link.new_effect_id=e.id
  JOIN subscription_device_effects original ON original.tenant_id=e.tenant_id AND original.id=COALESCE(link.root_effect_id,e.id)
  JOIN subscription_device_events ev ON ev.tenant_id=original.tenant_id AND ev.id=original.event_id
+ LEFT JOIN subscription_bulk_batches b ON b.tenant_id=original.tenant_id AND b.id=original.bulk_id
  LEFT JOIN subscription_chatbot_runs r ON r.tenant_id=original.tenant_id AND r.id=original.chatbot_run_id
  LEFT JOIN subscription_chatbot_rules rule ON rule.tenant_id=r.tenant_id AND rule.id=r.rule_id
  WHERE e.tenant_id=:tenant AND d.owner_account_id=:actor AND """ + MESSAGE_SQL + """
@@ -144,6 +146,7 @@ HISTORY_SQL = """
  WHEN h.status='uncertain' OR h.status='running' AND h.expires_at<=:now THEN 'MESSAGE_OUTCOME_UNCERTAIN'
  WHEN h.type='campaign_action' THEN 'MESSAGE_CAMPAIGN_CONTROLLED'
  WHEN h.type='scheduled_action' THEN 'MESSAGE_SCHEDULE_CONTROLLED'
+ WHEN h.type='bulk_action' AND h.outbound_origin='direct' THEN 'MESSAGE_DIRECT_CONTROLLED'
  WHEN h.type='bulk_action' THEN 'MESSAGE_BULK_CONTROLLED'
  WHEN h.has_resend THEN 'MESSAGE_ALREADY_RETRIED'
  WHEN NOT COALESCE(((h.status='not_sent' AND h.provider_id IS NULL AND h.error_code IN
@@ -293,17 +296,23 @@ def item_dto(row, now, *, detail=False):
               "diagnostic_test": ("diagnostic_test", "Teste de diagnóstico")}.get(row["purpose"],
               {"test_response": ("test_response", "Teste de resposta"), "owner_command": ("owner_command", "Comando do aparelho")}.get(row.get("run_origin"), ("chatbot", "Chatbot")))
     blocked = {"campaign_action": "MESSAGE_CAMPAIGN_CONTROLLED", "scheduled_action": "MESSAGE_SCHEDULE_CONTROLLED", "bulk_action": "MESSAGE_BULK_CONTROLLED"}.get(row["type"], row.get("resend_block"))
+    direct = row["type"] == "bulk_action" and row.get("outbound_origin") == "direct"
+    if direct:
+        origin, blocked = ("direct", "Envio direto"), "MESSAGE_DIRECT_CONTROLLED"
+        incoming, cut_in = None, False
     eligible = blocked is None and status == "failed"
     runtime = row.get("device_runtime") or {}
     device_phone = runtime.get("phone") if runtime.get("phone_verified") is True else None
     display_name = event.get("name") if event.get("origin", "contact") == "contact" and row.get("run_origin") != "owner_command" else None
+    if direct:
+        display_name = event.get("name")
     return {"id": row["id"], "root_effect_id": row.get("root_effect_id", row["id"]),
         "retry_of_effect_id": row.get("retry_of_effect_id"), "version": item_version(row),
         "origin": {"code": origin[0], "label": origin[1], "is_resend": row.get("retry_of_effect_id") is not None},
         "device": {"id": row["device_id"], "name": row["device_name"], "removed": row.get("device_removed_at") is not None,
                    "phone_e164": "+" + device_phone if isinstance(device_phone, str) and re.fullmatch(r"[1-9][0-9]{7,14}", device_phone) else None},
         "recipient": {"phone_e164": "+" + row["payload"].get("phone", ""), "display_name": _bounded(display_name, 100)[0]},
-        "received": {"type": "selection" if row.get("original_input_kind") == "selection" else row.get("incoming_kind", "text"), "text": incoming, "truncated": cut_in},
+        "received": {"type": "direct" if direct else "selection" if row.get("original_input_kind") == "selection" else row.get("incoming_kind", "text"), "text": incoming, "truncated": cut_in},
         "sent": {"type": kind, "type_label": TYPE_LABELS.get(kind, "Mensagem"), "text": outgoing,
                  "caption": caption, "media": media, "truncated": cut_out or cut_caption},
         "status": status, "status_label": label, "outcome": outcome, "failure": failure,
@@ -377,7 +386,8 @@ async def list_messages(tenant_id: UUID, response: Response, actor: Actor = Depe
               CASE purpose WHEN 'chatbot_reply' THEN 'Chatbot' WHEN 'transcription_reply' THEN 'Transcrição'
                 WHEN 'absence' THEN 'Fora do horário' WHEN 'call_reply' THEN 'Resposta a ligação'
                 WHEN 'diagnostic_test' THEN 'Teste de diagnóstico' WHEN 'campaign_action' THEN 'Campanha'
-                WHEN 'scheduled_action' THEN 'Mensagem programada' WHEN 'bulk_action' THEN 'Mensagem em massa' ELSE '' END,
+                WHEN 'scheduled_action' THEN 'Mensagem programada' WHEN 'bulk_action' THEN
+                  CASE WHEN outbound_origin='direct' THEN 'Envio direto' ELSE 'Mensagem em massa' END ELSE '' END,
               CASE run_origin WHEN 'test_response' THEN 'Teste de resposta' WHEN 'owner_command' THEN 'Comando do aparelho' ELSE '' END,
               CASE message_type WHEN 'text' THEN 'texto' WHEN 'list' THEN 'lista' WHEN 'image' THEN 'imagem'
                 WHEN 'sticker' THEN 'figurinha' WHEN 'video' THEN 'vídeo' WHEN 'ptv' THEN 'recado de vídeo'

@@ -165,6 +165,8 @@ def test_worker_waits_for_all_four_contracts_and_stops_at_first_failure(monkeypa
     monkeypatch.setattr(campaigns_wait, "main", lambda: 0)
     from scripts import wait_for_subscription_scheduled_messages_schema as scheduled_wait
     monkeypatch.setattr(scheduled_wait, "main", lambda: 0)
+    from scripts import wait_for_subscription_direct_schema as direct_wait
+    monkeypatch.setattr(direct_wait, "main", lambda: 0)
     from scripts import wait_for_subscription_bulk_schema as bulk_wait
     monkeypatch.setattr(bulk_wait, "main", lambda: 0)
     monkeypatch.setattr(templates_wait, "main", lambda: 0)

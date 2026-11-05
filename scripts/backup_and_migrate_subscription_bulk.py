@@ -38,7 +38,7 @@ def main():
     try:
         raw, url = connection_values()
         current = migrated_version(raw)
-        if current == TARGET:
+        if current in {TARGET, "0071_subscription_direct"}:
             valid = schema_ready(raw)
             print("orion_subscription_bulk_schema_ready" if valid else
                   "orion_subscription_bulk_schema_invalid", flush=True)
@@ -55,7 +55,7 @@ def main():
                            backup_context="subscription-bulk-0070",
                            schema_revision=PREVIOUS, preserve_ownership=True)
         current = migrated_version(raw)
-        if current == TARGET:
+        if current in {TARGET, "0071_subscription_direct"}:
             return 0 if schema_ready(raw) else 3
         if current != PREVIOUS or not previous_ready(raw):
             return 3

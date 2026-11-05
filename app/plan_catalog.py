@@ -29,8 +29,9 @@ ELITE_FEATURES = PRO_FEATURES | frozenset({
 })
 PLAN_FEATURES = {"essencial": BASE_FEATURES, "profissional": PRO_FEATURES, "elite": ELITE_FEATURES}
 RECOVERY_FEATURES = frozenset({"plan.manage", "account.manage", "business.setup"})
-ALL_FEATURES = ELITE_FEATURES | RECOVERY_FEATURES | {"commerce.admin", "devices.manage", "chatbot.manage", "templates.manage", "sent_messages.manage", "diagnostics.manage", "campaigns.manage", "scheduled_messages.manage", "bulk_messages.manage"}
+ALL_FEATURES = ELITE_FEATURES | RECOVERY_FEATURES | {"commerce.admin", "devices.manage", "chatbot.manage", "templates.manage", "sent_messages.manage", "diagnostics.manage", "campaigns.manage", "scheduled_messages.manage", "bulk_messages.manage", "direct_messages.manage"}
 FEATURE_LABELS = {
+    "direct_messages.manage": "Enviar mensagem de WhatsApp de assinaturas",
     "bulk_messages.manage": "Mensagem em massa de WhatsApp de assinaturas",
     "scheduled_messages.manage": "Mensagens programadas de WhatsApp de assinaturas",
     "campaigns.manage": "Campanhas de WhatsApp de assinaturas",

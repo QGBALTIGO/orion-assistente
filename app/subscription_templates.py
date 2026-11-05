@@ -194,6 +194,37 @@ async def validate_candidate(tenant, definition, identity, graph, templates, ass
     return value
 
 
+async def persist_candidate(db, tenant, candidate, *, existing=None):
+    """Persist a validated library item inside the caller's owner transaction."""
+    query_values = {"t": tenant, "id": candidate["id"], "name": candidate["name"], "kind": candidate["kind"],
+        "body": candidate["body"], "followup": candidate["followup_body"], "asset": candidate["asset_id"],
+        "location": store.encode(candidate["location"]) if candidate["location"] is not None else None,
+        "filename": candidate["file_name"]}
+    if existing:
+        query = """UPDATE subscription_chatbot_templates SET name=:name,body=:body,followup_body=:followup,
+            asset_id=:asset,location=CAST(:location AS jsonb),file_name=:filename,
+            revision=revision+1,updated_at=clock_timestamp() WHERE tenant_id=:t AND id=:id RETURNING *"""
+    else:
+        query = """INSERT INTO subscription_chatbot_templates
+            (id,tenant_id,origin_id,name,kind,body,followup_body,asset_id,location,file_name)
+            VALUES(:id,:t,:id,:name,:kind,:body,:followup,:asset,CAST(:location AS jsonb),:filename) RETURNING *"""
+    row = dict((await db.execute(text(query), query_values)).mappings().one())
+    return row, await store.bump_revision(db, tenant)
+
+
+async def create_in_transaction(db, tenant, definition):
+    """No nested transaction: a direct confirmation and its optional template
+    commit together, including the existing graph quota and revision update.
+    """
+    await store.workspace(db, tenant, feature=FEATURE)
+    await store.writable(db, tenant)
+    definition = schemas.LibraryTemplate.model_validate(definition).model_dump(mode="python")
+    graph, templates, assets = await store.load_graph(db, tenant)
+    candidate = await validate_candidate(tenant, definition, uuid4(), graph, templates, assets)
+    row, _ = await persist_candidate(db, tenant, candidate)
+    return {key: row[key] for key in ("id", "name", "kind", "revision")}
+
+
 async def mutate(tenant, actor, action, payload, identity=None):
     values = payload.model_dump(mode="json") | ({"template_id": str(identity)} if identity else {})
     async with owner_transaction(tenant, actor) as db:
@@ -219,20 +250,7 @@ async def mutate(tenant, actor, action, payload, identity=None):
             identity = identity or uuid4()
             definition = payload.template.model_dump(mode="python")
             candidate = await validate_candidate(tenant, definition, identity, graph, templates, assets, existing=old)
-            query_values = {"t": tenant, "id": identity, "name": candidate["name"], "kind": candidate["kind"],
-                "body": candidate["body"], "followup": candidate["followup_body"], "asset": candidate["asset_id"],
-                "location": store.encode(candidate["location"]) if candidate["location"] is not None else None,
-                "filename": candidate["file_name"]}
-            if old:
-                query = """UPDATE subscription_chatbot_templates SET name=:name,body=:body,followup_body=:followup,
-                    asset_id=:asset,location=CAST(:location AS jsonb),file_name=:filename,
-                    revision=revision+1,updated_at=clock_timestamp() WHERE tenant_id=:t AND id=:id RETURNING *"""
-            else:
-                query = """INSERT INTO subscription_chatbot_templates
-                    (id,tenant_id,origin_id,name,kind,body,followup_body,asset_id,location,file_name)
-                    VALUES(:id,:t,:id,:name,:kind,:body,:followup,:asset,CAST(:location AS jsonb),:filename) RETURNING *"""
-            row = dict((await db.execute(text(query), query_values)).mappings().one())
-            revision = await store.bump_revision(db, tenant)
+            row, revision = await persist_candidate(db, tenant, candidate, existing=old)
             result = detail(row, tenant, revision, dependencies, assets) | {"request_id": payload.request_id}
         await store.complete_job(db, job["id"], result)
         return jsonable_encoder(result)
