@@ -1,0 +1,129 @@
+name: QA - URL tags end to end
+on:
+  push:
+    branches: [qa/url-api-webhook-tags-20261104]
+    paths: ['.github/workflows/apply-url-tags.yml']
+permissions:
+  contents: write
+concurrency:
+  group: apply-url-tags-20261104
+  cancel-in-progress: false
+jobs:
+  qualify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: orion_chatbot_ci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-only-chatbot-postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d orion_chatbot_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 15
+      redis:
+        image: redis:7
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 15
+    env:
+      TARGET: fix/url-api-webhook-tags-20261104
+      BASE: 8972e8cac6a304d8610857f096304a6f0018ea64
+      EXPECTED_TREE: 69fb5a1569f2f4253fd6c01908d626813e05c17c
+      APP_DATABASE_URL: postgresql+asyncpg://app_runtime:ci-chatbot-runtime@127.0.0.1:5432/orion_chatbot_ci
+      MIGRATION_DATABASE_URL: postgresql+psycopg://app_migrator:ci-chatbot-migrator@127.0.0.1:5432/orion_chatbot_ci
+      SUPPORT_DATABASE_URL: postgresql+asyncpg://app_support:ci-chatbot-support@127.0.0.1:5432/orion_chatbot_ci
+      SUPPORT_API_TOKEN: synthetic-chatbot-ci-token-at-least-32-characters
+      REQUIRE_POSTGRES_TESTS: '1'
+      REQUIRE_REDIS_TESTS: '1'
+      REDIS_URL: redis://127.0.0.1:6379/15
+      META_LIVE_SEND: '0'
+      QR_AI_ENABLED: '0'
+      INBOX_SEND_ENABLED: '0'
+      MARKETING_EXECUTION_ENABLED: '0'
+      CAKTO_BILLING_LIVE_ENABLED: '0'
+      ORION_DIRECT_PAYMENTS_ENABLED: '0'
+      ORION_NOTIFY_SELF_ON_LINK: '0'
+      QR_BRIDGE_URL: ''
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate patch integrity and unchanged feature base
+        run: |
+          python - <<'PY'
+          import base64, hashlib, lzma
+          from pathlib import Path
+          encoded=''.join(Path(f'.github/qa/url-tags-{n}.b64').read_text().strip() for n in (1,2))
+          patch=lzma.decompress(base64.b64decode(encoded,validate=True))
+          assert hashlib.sha256(patch).hexdigest()=='9ac5346ab9b16659a2dd7325cddb047990b98cabf90894aef2133ae057e7ca14'
+          Path('/tmp/url-tags.patch').write_bytes(patch)
+          PY
+          git fetch origin "refs/heads/$TARGET"
+          test "$(git rev-parse FETCH_HEAD)" = "$BASE"
+          git checkout -B "$TARGET" "$BASE"
+          git apply --check --unidiff-zero /tmp/url-tags.patch
+          git apply --index --unidiff-zero /tmp/url-tags.patch
+          git diff --cached --check
+          test "$(git write-tree)" = "$EXPECTED_TREE"
+      - name: Install exact test dependencies
+        run: |
+          python -m pip install -c requirements.lock '.[test]'
+          npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+          npm ci --prefix qr-bridge --ignore-scripts --no-audit --no-fund
+      - name: Validate schemas, discovery, broker and rendering
+        run: |
+          python -m pytest -q -ra --junitxml=/tmp/url-tags-unit.xml tests/unit/test_subscription_chatbot_tags.py tests/unit/test_subscription_chatbot_http.py tests/unit/test_subscription_chatbot_rules.py tests/unit/test_subscription_chatbot_api.py tests/unit/test_subscription_chatbot_broker.py tests/unit/test_subscription_chatbot_test.py > /tmp/url-tags-unit.log 2>&1
+          node --test ui-tests/subscription-chatbot.test.mjs ui-tests/subscription-chatbot-test.test.mjs > /tmp/url-tags-dom.log 2>&1
+          node --test qr-bridge/test/chatbot-*.test.mjs > /tmp/url-tags-bridge.log 2>&1
+      - name: Provision role separated disposable database
+        env:
+          PGPASSWORD: ci-only-chatbot-postgres
+        run: |
+          psql -h 127.0.0.1 -U postgres -d orion_chatbot_ci -v ON_ERROR_STOP=1 -v db_name=orion_chatbot_ci -v runtime_password=ci-chatbot-runtime -v migrator_password=ci-chatbot-migrator -v support_password=ci-chatbot-support -f infra/postgres/init/001-roles.sql
+          python -m alembic upgrade head
+      - name: Validate real HTTP result persistence and no duplicate sends
+        run: |
+          python - <<'PY' > /tmp/url-tags-postgres.log 2>&1
+          import ipaddress, socket, pytest
+          connect, connect_ex, getaddrinfo=socket.socket.connect,socket.socket.connect_ex,socket.getaddrinfo
+          def check(address):
+              host=address[0] if isinstance(address,tuple) else address
+              if host=='localhost': return
+              try: allowed=ipaddress.ip_address(host).is_loopback
+              except (ValueError,TypeError): allowed=False
+              if not allowed: raise AssertionError('External providers forbidden in tag regression')
+          def guarded_connect(sock,address): check(address);return connect(sock,address)
+          def guarded_connect_ex(sock,address): check(address);return connect_ex(sock,address)
+          def guarded_dns(host,*args,**kwargs):
+              if host is not None: check((host,0))
+              return getaddrinfo(host,*args,**kwargs)
+          socket.socket.connect=guarded_connect
+          socket.socket.connect_ex=guarded_connect_ex
+          socket.getaddrinfo=guarded_dns
+          raise SystemExit(pytest.main(['-q','-ra','--junitxml=/tmp/url-tags-postgres.xml','tests/integration/test_subscription_chatbot_postgres.py','-k','nested_url_tags or tag_discovery_stores_safe_error']))
+          PY
+      - name: Save qualified code on feature branch only
+        run: |
+          test "$(git write-tree)" = "$EXPECTED_TREE"
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'fix(chatbot): resolve bounded JSON paths in URL and webhook tags'
+          git push origin "HEAD:refs/heads/$TARGET"
+          echo "CANDIDATE_COMMIT=$(git rev-parse HEAD)"
+          echo "CANDIDATE_TREE=$(git rev-parse HEAD^{tree})"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: url-tags-qualification
+          path: |
+            /tmp/url-tags-*.log
+            /tmp/url-tags-*.xml
+          retention-days: 7
