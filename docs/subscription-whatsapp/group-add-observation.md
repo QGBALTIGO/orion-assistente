@@ -152,3 +152,16 @@ de erros e o bloqueio de destinos externos. A mensagem específica do WebKit
 não foi reproduzida localmente; a correção de sincronização do teste ainda
 depende da nova rodada completa nesse motor. Nenhuma configuração de CORS
 ou tratamento de erro do produto foi alterado.
+
+A quarta candidata, no workflow
+[`42111981290`](https://github.com/QGBALTIGO/orion-assistente/actions/runs/42111981290),
+encontrou outra condição de sincronização em um teste DOM anterior de
+Programadas: 660 casos passaram e o teste de leitura tardia após desmontagem
+falhou antes de iniciar sua requisição. Produto, fixture e esse teste eram
+idênticos aos da candidata anterior. Uma reprodução com o cálculo de
+identidade suspenso comprovou que uma quantidade fixa de ciclos não garante
+o início do GET. O teste agora espera o início efetivo da consulta antes de
+desmontar, mantendo as asserções de sinal abortado, resposta tardia, ausência
+de conteúdo privado e número de chamadas. Os 45 casos DOM de Programadas
+passaram localmente. Essa correção de teste não modifica as consultas SQL
+da candidata 4; a candidata seguinte deverá executar os seis gates completos.

@@ -242,7 +242,15 @@ test('unmount aborts reads and clears private DOM while already dispatched write
 });
 
 test('late reads after unmount have an aborted signal and cannot restore private content',async t=>{
-  const gate=deferred();const h=await makeSchedules({wait:false,respond:async(path)=>path.endsWith('/options')?gate.promise:undefined});t.after(()=>h.close());await flush();assert.equal(h.calls.length,1);h.controller.unmount();assert.ok(h.signals[0].signal.aborted);gate.resolve(contract.options_response);await h.controller.ready;assert.equal(h.bridge.host.textContent,'');assert.equal(h.calls.length,1);
+  const gate=deferred(),started=deferred();
+  const h=await makeSchedules({wait:false,respond:async(path)=>{
+    if(path.endsWith('/options')){started.resolve();return gate.promise;}
+  }});t.after(()=>h.close());
+  // Account hashing is asynchronous; unmount only after this read actually starts.
+  await started.promise;
+  assert.equal(h.calls.length,1);h.controller.unmount();assert.ok(h.signals[0].signal.aborted);
+  gate.resolve(contract.options_response);await h.controller.ready;
+  assert.equal(h.bridge.host.textContent,'');assert.equal(h.calls.length,1);
 });
 
 test('revocation clears dialog, form, contacts and recovery without another mutation',async t=>{
