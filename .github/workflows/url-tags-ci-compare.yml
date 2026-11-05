@@ -16,12 +16,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           python - <<'PY'
-          import urllib.request,json,os,re,collections
+          import urllib.request,urllib.parse,json,os,re
           from pathlib import Path
           root='https://api.github.com/repos/QGBALTIGO/orion-assistente/'
+          class ScopedRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self,req,fp,code,msg,headers,newurl):
+                  new=super().redirect_request(req,fp,code,msg,headers,newurl)
+                  if new is not None and urllib.parse.urlsplit(newurl).netloc != urllib.parse.urlsplit(req.full_url).netloc:
+                      new.remove_header('Authorization')
+                      new.remove_header('Accept')
+                  return new
+          opener=urllib.request.build_opener(ScopedRedirect())
           def get(endpoint):
               request=urllib.request.Request(root+endpoint,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
-              with urllib.request.urlopen(request,timeout=30) as response: return response.read()
+              with opener.open(request,timeout=30) as response: return response.read()
           def js(endpoint): return json.loads(get(endpoint))
           revisions={'base':'23b78bf42086766694a992474f078c2a4ed0a2eb','candidate':'06bbbe727c16236cd18757a1ed97e28ea503f33e'}
           wanted={400923985,399871712,398876786,399986915}
