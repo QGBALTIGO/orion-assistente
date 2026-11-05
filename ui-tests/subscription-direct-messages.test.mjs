@@ -199,6 +199,20 @@ test('review actions are outside its scroll body, with accessible consent and re
   h.element('[data-dm-consent]').focus();h.change('[data-dm-consent]',true);assert.equal(h.document.activeElement,h.element('[data-dm-consent]'));h.click(action('cancel-review'));assert.equal(h.document.activeElement,h.element(action('review')));assert.equal(h.server.confirmations.length,0);assert.equal(h.controller.getState().pending,false);
 });
 
+test('native dialog closure may release focus after the click without losing the review return target',async t=>{
+  const frames=[];const h=await setup(t,{configureWindow:window=>{window.requestAnimationFrame=callback=>{frames.push(callback);return frames.length;};const close=window.HTMLDialogElement.prototype.close;window.HTMLDialogElement.prototype.close=function(){close.call(this);window.queueMicrotask(()=>window.document.activeElement?.blur());};}});
+  await review(h);h.click(action('cancel-review'));const target=h.element(action('review'));assert.equal(h.document.activeElement,target);await flush();assert.equal(h.document.activeElement,h.document.body);
+  frames.splice(0).forEach(callback=>callback());assert.equal(h.document.activeElement,target);assert.equal(writes(h).length,1);assert.equal(h.server.confirmations.length,0);
+});
+
+test('native dialog focus restoration cannot steal focus from another control or revoked context',async t=>{
+  for(const changed of ['control','context']){const frames=[];const h=await setup(t,{configureWindow:window=>{window.requestAnimationFrame=callback=>{frames.push(callback);return frames.length;};}});await review(h);h.click(action('cancel-review'));const target=h.element(action('review'));
+    if(changed==='control'){h.element(field('text')).focus();frames.splice(0).forEach(callback=>callback());assert.equal(h.document.activeElement,h.element(field('text')));}
+    else{target.blur();h.access.allowed=false;frames.splice(0).forEach(callback=>callback());assert.equal(h.document.activeElement,h.document.body);h.window.OrionSubscriptionDirectMessages.clearContext();assert.equal(h.document.querySelector(field('text')),null);}
+    assert.equal(h.server.confirmations.length,0);
+  }
+});
+
 test('Suite exposes enviar-mensagem only for its subscription feature without opening Central',async t=>{
   const {makeSuite,planState,defaultResponse}=await import('./harness.mjs');
   for(const [profile,allowed]of [['subscription_services',true],['subscription_services',false],['standard',true]]){

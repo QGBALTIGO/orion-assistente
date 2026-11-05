@@ -45,6 +45,34 @@ final. Nenhuma delas é um teste de envio real do WhatsApp.
 
 ## Qualificação necessária da candidata final
 
+A primeira candidata, `8c87f9b8fdc73d6f8bef90d4d1154ce198ee0e04`, árvore
+`127cc78f70415b8f1aba145e8679ed3f5fabf215`, executou o
+[workflow 42057771560](https://github.com/QGBALTIGO/orion-assistente/actions/runs/42057771560).
+API (2.759), DOM (558), ponte (488) e Chrome (121) passaram.
+O WebKit interrompeu após 100 aprovações e uma falha no retorno de foco ao
+botão Revisar mensagem depois de fechar a revisão de um template; 20 cenários
+do engine ainda não haviam executado. Os casos não selecionados do outro
+engine não contam como cobertura concluída. O ajuste fica restrito à
+restauração de foco e mantém a expectativa de acessibilidade do teste.
+PostgreSQL concluiu **588 aprovações em 740,46 segundos**, incluindo os 29
+casos novos de catálogo/publicação e os 22 funcionais. O log comprova o
+upgrade 0070 → 0071. A comparação geral é registrada separadamente, com
+limites para os jobs incompletos. Essa candidata **não foi publicada**.
+
+A correção mantém o foco imediato e o reafirma no próximo frame somente
+se o fechamento nativo o liberou e o contexto continua válido, sem outra
+modal ou campo escolhido pelo usuário. Dois casos DOM reproduzem a perda
+tardia e protegem a mudança de foco/contexto. Os 75 casos DOM do módulo
+passaram, assim como o cenário Chrome dos oito templates reexecutado
+isoladamente. A expectativa WebKit original permanece intacta; a correção
+deve passar na próxima execução integrada antes de publicar.
+
+Os artefatos dos dois engines da primeira candidata foram baixados e
+conferidos por SHA256. Doze capturas, cobrindo uma combinação de tamanho e
+tema por engine entre formulário, revisão e resultado, não apresentaram
+outra inconsistência visual material. Isso não substitui o gate WebKit
+pendente da correção de foco.
+
 O workflow dedicado deve executar os seis grupos existentes, incluindo os
 novos contratos de Enviar Mensagem:
 
