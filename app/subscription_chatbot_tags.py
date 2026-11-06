@@ -20,6 +20,11 @@ IDENTIFIER = r"[a-zA-Z_][a-zA-Z0-9_]{0,79}"
 _IDENT = re.compile(IDENTIFIER)
 _INDEX = re.compile(r"0|[1-9][0-9]{0,3}")
 URL_TAG_PATTERN = re.compile(r"\{\{([^{}]*)\}\}")
+# Contact markers and provider JSON paths must never be confused or re-parsed.
+CONTACT_TAG_PATTERN = re.compile(r"(?<!\{)\{(name|phone_number|my_name|my_email|my_contact_number)\}(?!\})")
+MIXED_TAG_PATTERN = re.compile(
+    r"\{\{([^{}]*)\}\}|(?<!\{)\{(name|phone_number|my_name|my_email|my_contact_number)\}(?!\})"
+)
 _RESERVED = frozenset({"__proto__", "prototype", "constructor"})
 
 
@@ -82,9 +87,17 @@ def parse_path(path: str) -> tuple[str | int, ...]:
 def validate_template(value: str) -> str:
     for match in URL_TAG_PATTERN.finditer(value):
         parse_path(match[1].strip())
-    if re.search(r"[{}]", URL_TAG_PATTERN.sub("", value)):
-        raise ValueError("Use tags como {{campo}}, {{data.nome}} ou {{itens[0].nome}}")
+    remaining = URL_TAG_PATTERN.sub("", value)
+    remaining = CONTACT_TAG_PATTERN.sub("", remaining)
+    if re.search(r"[{}]", remaining):
+        raise ValueError("Use {{campo}} da API ou {name} como tag de contato")
     return value
+
+
+def contact_fields(template: str) -> tuple[str, ...]:
+    """Fields required for an HTTP action, without matching inside {{API paths}}."""
+    validate_template(template)
+    return tuple(dict.fromkeys(m[1] for m in CONTACT_TAG_PATTERN.finditer(template)))
 
 
 def validate_json(value):
@@ -186,14 +199,21 @@ def resolve_path(body, path: str):
     return str(value)
 
 
-def render_template(template: str, body, *, maximum=512000) -> str:
+def render_template(template: str, body, *, maximum=512000, contact_facts=None) -> str:
     validate_json(body)
     validate_template(template)
     result, cursor, budget = [], 0, maximum
-    # Bound expansion before allocation: repeated tags cannot amplify one
-    # provider response into gigabytes. Returned values are never re-parsed.
-    for match in URL_TAG_PATTERN.finditer(template):
-        for part in (template[cursor:match.start()], resolve_path(body, match[1].strip())):
+    # Iterate the ORIGINAL template once. A contact name or API value containing
+    # braces remains data and cannot be executed as another tag.
+    for match in MIXED_TAG_PATTERN.finditer(template):
+        if match[1] is not None:
+            replacement = resolve_path(body, match[1].strip())
+        else:
+            value = contact_facts.get(match[2]) if isinstance(contact_facts, dict) else None
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError("Dados indisponíveis para a tag " + match[2])
+            replacement = value.strip()
+        for part in (template[cursor:match.start()], replacement):
             budget -= _units(part)
             if budget < 0:
                 raise ValueError("Resposta expandida acima do limite")
