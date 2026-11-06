@@ -1,0 +1,223 @@
+"""Conservative BotBot ZIP reply converter; all imported rules remain inactive.
+
+No external links are fetched, media is not executed, and unsupported actions
+raise an explicit error rather than silently dropping behaviour.
+"""
+from __future__ import annotations
+
+from datetime import datetime, timezone
+import io
+import json
+from pathlib import PurePosixPath
+import stat
+from uuid import UUID, uuid5
+import zipfile
+
+MAX_FILES = 512
+MAX_EXPANDED = 40 * 1024 * 1024
+MAX_MANIFEST = 10 * 1024 * 1024
+NAMESPACE = UUID("741d70f4-b6f9-4d2e-b604-a9b169fe35b1")
+FALLBACK_DATE = "2000-01-01T00:00:00+00:00"
+
+
+def _invalid(message: str):
+    return ValueError(message)
+
+
+def _records(value):
+    """Only accept known reply collections; never treat arbitrary JSON as rules."""
+    if isinstance(value, list):
+        if value and all(isinstance(row, dict) and
+                         any(k in row for k in ("keyword", "trigger", "keywords", "command"))
+                         for row in value):
+            return value
+        return None
+    if not isinstance(value, dict):
+        return None
+    for key in ("replies", "responses", "rules", "items", "chatbot_replies"):
+        found = _records(value.get(key))
+        if found is not None:
+            return found
+    if isinstance(value.get("data"), (dict, list)):
+        return _records(value["data"])
+    return None
+
+
+def _source_id(row, index):
+    raw = row.get("id", row.get("reply_id", row.get("replyId")))
+    if not isinstance(raw, (str, int)) or isinstance(raw, bool) or not str(raw):
+        raw = f'position:{index}:{row.get("keyword", row.get("trigger", ""))}'
+    return str(raw)
+
+
+def _identity(source_id, suffix):
+    return str(uuid5(NAMESPACE, source_id + ":" + suffix))
+
+
+def _delay(value):
+    if value is None:
+        return 1
+    if type(value) not in (int, float) or not 0 <= value <= 15 or value != int(value):
+        raise _invalid("A resposta tem um atraso incompatível com o limite do Orion.")
+    # Ações no Orion exigem no mínimo um segundo.
+    return max(1, int(value))
+
+
+def _action(row, name, references):
+    if isinstance(row, str):
+        row = {"type": "text", "text": row}
+    if not isinstance(row, dict):
+        raise _invalid("A exportação contém uma mensagem que não pode ser convertida.")
+    kind = str(row.get("type", row.get("kind", "text"))).lower()
+    if kind in ("message", "send_text", "text", "texto"):
+        value = row.get("text", row.get("message", row.get("body", row.get("content"))))
+        if not isinstance(value, str) or not value.strip():
+            raise _invalid("Há uma resposta de texto sem conteúdo no arquivo.")
+        definition = {"type": "text", "text": value}
+    elif kind in ("url", "http", "webhook", "external_request"):
+        url = row.get("url", row.get("endpoint"))
+        if not isinstance(url, str):
+            raise _invalid("Uma ação de URL não possui endpoint válido.")
+        method = str(row.get("method", "POST")).upper()
+        if method not in ("GET", "POST"):
+            raise _invalid("Uma ação de URL usa método não suportado.")
+        custom = row.get("custom_template", row.get("customTemplate", row.get("template", "")))
+        if not isinstance(custom, str):
+            raise _invalid("A resposta personalizada da URL não é texto.")
+        definition = {"type": "url", "url": url, "method": method,
+                      "custom_template": custom, "as_file": False}
+    elif kind in ("nested_reply", "nested_list", "send_reply"):
+        raw = row.get("rule_id", row.get("reply_id", row.get("replyId")))
+        if raw is None or str(raw) not in references:
+            raise _invalid("Um menu faz referência a uma resposta ausente da exportação.")
+        definition = {"type": "nested_reply" if kind == "send_reply" else kind,
+                      "rule_id": references[str(raw)]}
+    else:
+        raise _invalid("O arquivo contém uma ação que precisa de adaptação antes de importar.")
+    definition["id"] = _identity(name, "action")
+    definition["delay_seconds"] = _delay(row.get("delay_seconds", row.get("delay", 1)))
+    return definition
+
+
+def _response(raw, source_id, references):
+    if isinstance(raw, str):
+        actions = [raw]
+    elif isinstance(raw, list):
+        actions = raw
+    elif isinstance(raw, dict):
+        kind = raw.get("kind", raw.get("type"))
+        if kind in ("list", "menu"):
+            sections = raw.get("sections")
+            if not isinstance(sections, list) or not sections:
+                raise _invalid("Uma lista de opções não contém seções compatíveis.")
+            parsed_sections = []
+            for i, section in enumerate(sections):
+                if not isinstance(section, dict) or not isinstance(section.get("rows"), list):
+                    raise _invalid("Uma seção de lista contém opções incompatíveis.")
+                rows = []
+                for j, row in enumerate(section["rows"]):
+                    if not isinstance(row, dict):
+                        raise _invalid("Uma opção de lista não é válida.")
+                    value = row.get("action", row.get("response"))
+                    rows.append({"id": _identity(source_id, f"row:{i}:{j}"),
+                                 "title": row.get("title"), "description": row.get("description", ""),
+                                 "action": _action(value, f"{source_id}:row:{i}:{j}", references)})
+                parsed_sections.append({"id": _identity(source_id, f"section:{i}"),
+                                       "title": section.get("title", ""), "rows": rows})
+            return {"kind": "list", "title": raw.get("title"),
+                    "description": raw.get("description"),
+                    "button_text": raw.get("button_text", raw.get("buttonText")),
+                    "footer": raw.get("footer", ""), "sections": parsed_sections}
+        if kind in ("sequence", "messages") or "actions" in raw or "messages" in raw:
+            actions = raw.get("actions", raw.get("messages"))
+        else:
+            actions = [raw]
+    else:
+        raise _invalid("Uma resposta não contém mensagens reconhecidas.")
+    if not isinstance(actions, list) or not actions or len(actions) > 30:
+        raise _invalid("A sequência de mensagens está vazia ou excede o limite do Orion.")
+    result = {"kind": "sequence", "actions": [
+        _action(value, f"{source_id}:{index}", references)
+        for index, value in enumerate(actions)]}
+    if sum(action["delay_seconds"] for action in result["actions"]) > 30:
+        raise _invalid("Uma sequência supera 30 segundos de atraso e precisa ser ajustada.")
+    return result
+
+
+def read_botbot(raw: bytes, filename: str):
+    if not isinstance(raw, bytes) or len(raw) > 10 * 1024 * 1024 or not filename.lower().startswith("botbot_replies_"):
+        raise _invalid("Selecione o ZIP original exportado em Respostas no BotBot.")
+    try:
+        with zipfile.ZipFile(io.BytesIO(raw), "r") as archive:
+            infos = archive.infolist()
+            if not 1 <= len(infos) <= MAX_FILES or sum(i.file_size for i in infos) > MAX_EXPANDED:
+                raise _invalid("O ZIP do BotBot contém arquivos demais ou excede o limite permitido.")
+            candidates = []
+            observed = set()
+            for info in infos:
+                path = PurePosixPath(info.filename)
+                if (info.filename in observed or info.is_dir() or info.filename.startswith("/")
+                        or "\\" in info.filename or ".." in path.parts or info.flag_bits & 1
+                        or stat.S_IFMT(info.external_attr >> 16) not in (0, stat.S_IFREG)):
+                    raise _invalid("O ZIP contém caminhos ou arquivos não permitidos.")
+                observed.add(info.filename)
+                if not info.filename.lower().endswith(".json"):
+                    continue
+                if info.file_size <= 0 or info.file_size > MAX_MANIFEST:
+                    raise _invalid("O JSON de respostas do BotBot ultrapassa o limite.")
+                with archive.open(info) as stream:
+                    blob = stream.read(MAX_MANIFEST + 1)
+                if len(blob) > MAX_MANIFEST:
+                    raise _invalid("O JSON de respostas do BotBot ultrapassa o limite.")
+                try:
+                    value = json.loads(blob.decode("utf-8-sig"))
+                except (ValueError, UnicodeDecodeError, RecursionError):
+                    raise _invalid("O arquivo de respostas do ZIP não é JSON válido.") from None
+                records = _records(value)
+                if records is not None:
+                    candidates.append((info.filename, value, records))
+    except (zipfile.BadZipFile, RuntimeError, OSError, EOFError):
+        raise _invalid("O ZIP exportado pelo BotBot está incompleto ou corrompido.") from None
+    if len(candidates) != 1:
+        raise _invalid("Não foi possível identificar uma lista única de respostas no ZIP do BotBot.")
+    _, manifest, records = candidates[0]
+    if len(records) > 2000:
+        raise _invalid("A exportação ultrapassa o limite de respostas do Orion.")
+    source_keys = [_source_id(row, index) for index, row in enumerate(records)]
+    if len(set(source_keys)) != len(source_keys):
+        raise _invalid("Existem identificadores de respostas duplicados no arquivo.")
+    references = {key: _identity(key, "rule") for key in source_keys}
+    definitions = []
+    for index, row in enumerate(records):
+        if not isinstance(row, dict):
+            raise _invalid("Uma resposta exportada não é válida.")
+        keywords = row.get("keyword", row.get("keywords", row.get("trigger", row.get("command"))))
+        if isinstance(keywords, list) and all(isinstance(v, str) for v in keywords):
+            keyword = ",".join(keywords)
+            mode = "array"
+        else:
+            keyword = keywords
+            mode = str(row.get("match_mode", row.get("matchMode", row.get("match_type", row.get("match", "equal"))))).lower()
+        if mode not in ("equal", "like", "array"):
+            raise _invalid("Uma resposta usa correspondência não suportada.")
+        if not isinstance(keyword, str) or not keyword.strip():
+            raise _invalid("Uma resposta não contém palavra-chave válida.")
+        raw_response = row.get("response", row.get("messages", row.get("actions", row.get("replies", row.get("reply")))))
+        if raw_response is None:
+            raise _invalid("Uma resposta não contém mensagens que possam ser importadas.")
+        definitions.append({
+            "id": references[source_keys[index]], "creation_order": index + 1,
+            "definition": {"keyword": keyword, "match_mode": mode,
+                           "device_id": None, "enabled": False,
+                           "response": _response(raw_response, source_keys[index], references)}
+        })
+    exported_at = FALLBACK_DATE
+    if isinstance(manifest, dict) and isinstance(manifest.get("exported_at"), str):
+        try:
+            date = datetime.fromisoformat(manifest["exported_at"])
+            if date.tzinfo is not None and date.utcoffset() is not None:
+                exported_at = date.isoformat()
+        except ValueError:
+            pass
+    return {"format": "orion.subscription-chatbot", "version": 1,
+            "exported_at": exported_at, "rules": definitions, "templates": [], "assets": []}
