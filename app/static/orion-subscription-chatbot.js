@@ -565,7 +565,7 @@
       if(['nested_reply','nested_list'].includes(action.type)&&!referenceOptions(action.type,action.rule_id).list.some(item=>item.id===action.rule_id))throw Error('Selecione uma resposta existente e diferente da própria regra.');
       if(action.type==='url'){
         try{const url=new URL(action.url);if(!['http:','https:'].includes(url.protocol)||url.username||url.password)throw Error();}catch{throw Error('Informe uma URL HTTP ou HTTPS sem usuário ou senha.');}
-        if(!validUrlTemplate(action.custom_template))throw Error('Use {name} para o contato e {{campo}} para a API, sem expressões.');
+        if(!validUrlTemplate(action.custom_template))throw Error('Use somente tags válidas: {name} para o contato e {{campo}} para a API, sem expressões.');
       }
       if(action.type==='carousel'&&(!action.body.trim()||!action.cards[0]?.body.trim()||action.cards.length!==3))throw Error('Preencha o corpo principal e o corpo do primeiro card do carrossel.');
     }
