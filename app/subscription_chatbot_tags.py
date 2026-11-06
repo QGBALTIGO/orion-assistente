@@ -127,7 +127,10 @@ def discover_tags(value, *, include_containers: bool = False) -> list[str]:
     def walk(item, path):
         # A complete JSON list/object is useful as a BotBot-style {{data}}
         # tag. Keep old scalar-only discovery for existing callers.
-        if include_containers and path and isinstance(item, (dict, list)) and item:
+        if (include_containers and path and isinstance(item, (dict, list)) and item
+                and not re.search(r"\\[\\d+\\]$", path)):
+            # Named arrays/objects are useful tags; individual list elements
+            # are already represented by their scalar children.
             containers.append(path)
         if isinstance(item, dict):
             for key, child in item.items():
