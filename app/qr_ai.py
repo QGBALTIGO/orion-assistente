@@ -687,6 +687,7 @@ def _professional_result(state, business, *, factual="", step=None):
     source = inquiry if query else state
     page = professional_menu(source.get("professionals", []), page=source.get("professional_page", 0),
         preferences=_preferences(business), information_only=query)
+    page["intro"] = "\n\n".join(value for value in (factual, page["intro"]) if value)
     result = _bounded_reply(factual, page["answer"], step or state.get("step", "professional"))
     if page["rows"] and result["step"] != "choose_priority":
         result["_professional_page"] = page

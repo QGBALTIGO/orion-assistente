@@ -60,6 +60,34 @@ async def test_factual_answer_naming_staff_cannot_issue_an_implicit_professional
     assert 'presentation' not in shown and not h.calls['writes']
 
 
+@pytest.mark.parametrize('question,expected', [
+    ('Aceitam Pix?', ['Aceitamos Pix.']),
+    ('Quanto custa? Aceitam Pix?', ['R$ 35', 'Aceitamos Pix.']),
+])
+async def test_native_professional_menu_preserves_all_composed_price_and_faq_facts(flow,question,expected):
+    h = flow
+    result = await h.turn(f'Quero agendar corte em {h.tomorrow}. {question}', preview=False)
+    assert result.get('_professional_page') and all(value in result['answer'] for value in expected), result
+    shown = await interactions.present(h.redis, h.tenant, '5567999999999', h.namespace, result,
+        interactions.Capabilities(assistant_interactions=1))
+    action = shown['presentation']['action']
+    assert action['button_text'] == 'Ver profissionais'
+    assert all(value in action['description'] for value in expected), action
+    assert len(action['sections'][0]['rows']) == 2 and not h.calls['writes'] and not h.calls['names']
+
+
+async def test_native_menu_budget_falls_back_to_complete_factual_answer_without_cutting_it(flow):
+    h = flow
+    state = h.seed('professional', professionals=[{'id': str(row['id']), 'name': row['name']} for row in h.professionals])
+    factual = 'A'*1000
+    result = qr_ai._professional_result(state, h.business, factual=factual)
+    assert result['step'] == 'professional' and factual in result['answer']
+    shown = await interactions.present(h.redis, h.tenant, '5567999999999', h.namespace, result,
+        interactions.Capabilities(assistant_interactions=1))
+    assert 'presentation' not in shown and shown['answer'] == result['answer']
+    assert not h.calls['writes']
+
+
 async def test_professional_choice_in_exact_clock_query_cannot_create_a_hold(flow):
     h = flow
     first = await h.turn(f'Tem horário para corte em {h.tomorrow} às 10:00?', preview=False)

@@ -21,7 +21,7 @@ from fastapi import HTTPException
 from redis.asyncio import from_url
 from sqlalchemy import text
 
-from app import qr_ai, qr_customer, qr_profile, qr_cancellation, whatsapp_dialogue
+from app import booking_service, qr_ai, qr_customer, qr_profile, qr_cancellation, whatsapp_dialogue
 from app import qr_assistant_interactions as choices
 from app.booking_service import book_appointment, confirm_hold, cancel_appointment, reschedule_appointment
 from app.business_profile_schemas import BusinessProfile
@@ -594,7 +594,7 @@ async def complete_journey(booking_db, monkeypatch, request):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("identity,kind,title",JOURNEYS,ids=[row[0]+"_"+row[1] for row in JOURNEYS])
-async def test_complete_customer_journey(complete_journey,identity,kind,title):
+async def test_complete_customer_journey(complete_journey,monkeypatch,identity,kind,title):
     h = complete_journey
     await h.greeting(known=kind!="new_customer")
     await h.info()
@@ -872,8 +872,15 @@ async def test_complete_customer_journey(complete_journey,identity,kind,title):
         assert await h.state()==original
         await h.finish_booking(services=[h.d["cut"]],total=3500)
     elif kind == "two_reservations":
-        a=await h.background(hour="10:00",number=1901)
-        b=await h.background(hour="14:00",number=1901)
+        # A valid opaque protocol may contain a clock-looking substring. Keep
+        # the real booking/RLS transaction and make that domain-generated edge
+        # deterministic rather than depending on random protocol characters.
+        protocol_values=iter(("AG-T4H7LY","AG-3JL6PQ"))
+        with monkeypatch.context() as protocol_seed:
+            protocol_seed.setattr(booking_service,"protocol",lambda:next(protocol_values))
+            a=await h.background(hour="10:00",number=1901)
+            b=await h.background(hour="14:00",number=1901)
+        assert a["protocol"]=="AG-T4H7LY" and b["protocol"]=="AG-3JL6PQ"
         listing=await h.say("Quais são meus agendamentos?",read_only=True)
         assert a["protocol"] in listing["answer"] and b["protocol"] in listing["answer"]
         await h.cancel_conversation(a)
