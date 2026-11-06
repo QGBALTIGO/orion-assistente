@@ -40,11 +40,13 @@
     }
     function render(){
       if(!alive())return;
+      const focus=host.contains(document.activeElement)&&document.activeElement?.matches('[data-nc-device]')?'[data-nc-device]':null;
+      host.setAttribute('aria-busy',String(state.busy));
       const blocked=state.busy||!editable(),hasConnection=state.devices.some(row=>row.id===state.deviceId&&row.available);
       const options=state.devices.map(row=>'<option value="'+escape(row.id)+'" '+(row.id===state.deviceId?'selected':'')+
         (!row.available?' disabled':'')+'>'+escape(row.name)+' · '+escape(row.status)+'</option>').join('');
-      host.innerHTML='<header class="os-page-header"><div><h1>Verificador de números WhatsApp</h1>'+
-        '<p>Consulte números autorizados, sem enviar mensagens nem salvar novos contatos.</p></div></header>'+
+      host.innerHTML='<div class="os-title-row"><div><h1 tabindex="-1">Verificador de números WhatsApp</h1>'+
+        '<p>Consulte números autorizados, sem enviar mensagens nem salvar novos contatos.</p></div></div><div class="os-section-stack">'+
         (state.error?'<div class="os-notice os-error" role="alert"><p>'+escape(state.error)+'</p></div>':'')+
         '<form class="os-form os-section-stack" data-nc-form><section class="os-card os-form">'+
         '<div class="os-form-grid"><div class="os-field"><label for="osNcDevice">Dispositivo conectado</label>'+
@@ -66,7 +68,9 @@
         '<div class="os-table-scroll"><table class="os-table"><thead><tr><th scope="col">WhatsApp</th><th scope="col">Status</th></tr></thead><tbody>'+
         state.results.map(row=>'<tr><td>'+escape(row.phone)+'</td><td><span class="os-badge '+
           stateClasses[row.status]+'">'+stateLabels[row.status]+'</span></td></tr>').join('')+
-        '</tbody></table></div></section>':'');
+        '</tbody></table></div></section>':'')+'</div>';
+      window.OrionFields?.refresh(host);
+      if(focus){const next=host.querySelector(focus);if(next&&!next.disabled)next.focus({preventScroll:true});}
     }
     async function load(){
       const revision=++state.revision;
