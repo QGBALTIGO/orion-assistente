@@ -49,6 +49,20 @@
     target:'M12 12 21 3M16 3h5v5', lock:'M6 10h12v12H6zM8 10V6a4 4 0 0 1 8 0v4',
     link:'M10 13a5 5 0 0 0 7 .5l4-4a5 5 0 0 0-7-7l-2 2m2 6a5 5 0 0 0-7-.5l-4 4a5 5 0 0 0 7 7l2-2',
     refresh:'M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5',
+    flask:'M9 3h6M10 3v7l-5.4 8.5A2 2 0 0 0 6.3 22h11.4a2 2 0 0 0 1.7-3.5L14 10V3M8 15h8',
+    fileCheck:'M5 3h9l5 5v13H5V3Zm9 0v5h5M8 15l3 3 5-5',
+    activity:'M2 12h4l3-8 5 16 3-8h5',
+    megaphone:'M3 10v4h4l13 5V5L7 10H3Zm4 4 1.8 7H12l-2.1-6',
+    calendarClock:'M8 3v3m8-3v3M3 9h18M5 5h14a2 2 0 0 1 2 2v6M5 5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h7M18 15a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm0 2v2l1.5 1',
+    broadcast:'M12 12v9M6.7 6.7a7.5 7.5 0 0 0 0 10.6M17.3 6.7a7.5 7.5 0 0 1 0 10.6M3.5 3.5a12 12 0 0 0 0 17M20.5 3.5a12 12 0 0 1 0 17M12 12a2 2 0 1 0 0-4 2 2 0 0 0 0 4',
+    flame:'M12 22c4.6 0 8-3.4 8-7.7 0-3.2-1.7-5.3-4-7.8-.2 2.4-1.2 3.8-2.5 4.7C13.2 8 11.5 5 8 2c.1 4.1-1.8 6-3.3 8.5-.5 1-.7 2.3-.7 3.8C4 18.6 7.4 22 12 22ZM10 19c-1.4-1.3-1.4-3.1-.2-4.7l2.2-2.3c.2 1.3 1.2 2.1 1.9 3 1 1.5.2 3.6-1.9 4',
+    shieldCheck:'m12 2 9 4v6c0 5-9 10-9 10S3 17 3 12V6l9-4ZM8 12l3 3 5-6',
+    shieldAlert:'m12 2 9 4v6c0 5-9 10-9 10S3 17 3 12V6l9-4ZM12 8v5m0 3h.01',
+    usersSearch:'M3 20v-1a4 4 0 0 1 4-4h4M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM17 12a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm3 7 2 2',
+    badgeUser:'M4 4h16v16H4zM8 9a2 2 0 1 0 4 0 2 2 0 0 0-4 0ZM6.5 16a3.5 3.5 0 0 1 7 0M15 9h3M15 12h3',
+    brain:'M12 6a4 4 0 0 0-7 2 3.5 3.5 0 0 0-.5 6A4 4 0 0 0 8 20h1.5A3 3 0 0 0 12 22M12 6a4 4 0 0 1 7 2 3.5 3.5 0 0 1 .5 6A4 4 0 0 1 16 20h-1.5A3 3 0 0 1 12 22V6M8 10v3m8-3v3',
+    messages:'M4 4h12a2 2 0 0 1 2 2v9H8l-4 3V6a2 2 0 0 1 2-2ZM10 19h7l3 2V10a2 2 0 0 0-2-2M8 8h6m-6 4h4',
+    building:'M4 21V4l8-2 8 2v17M2 21h20M8 7h1m6 0h1M8 11h1m6 0h1M8 15h1m6 0h1M10 21v-4h4v4',
     send:'m22 2-7 20-4-9-9-4 20-7ZM11 13 22 2', mail:'M3 5h18v14H3zM3 5l9 7 9-7', shield:'m12 2 9 4v6c0 5-9 10-9 10S3 17 3 12V6l9-4Z',
     more:'M5 12h.01M12 12h.01M19 12h.01', arrowDown:'M12 4v16m-5-5 5 5 5-5', arrowUp:'M12 20V4m-5 5 5-5 5 5',
     instagram:'M7 2h10a5 5 0 0 1 5 5v10a5 5 0 0 1-5 5H7a5 5 0 0 1-5-5V7a5 5 0 0 1 5-5Zm10 5h.01',
@@ -59,7 +73,7 @@
   const compactDisclosureSummary = label => '<summary><span class="os-detail-toggle-icon" aria-hidden="true">'+icon('plus')+icon('minus')+'</span><span>'+esc(label)+'</span></summary>';
   const routeNames={dispositivos:'Dispositivos',chatbot:'Chatbot','testar-chatbot':'Testar Chatbot',templates:'Templates','mensagens-enviadas':'Mensagens Enviadas',diagnosticos:'Diagnósticos',campanhas:'Campanhas',programadas:'Mensagens Programadas',massa:'Mensagem em Massa','enviar-mensagem':'Enviar Mensagem',aquecimento:'Aquecimento','evitar-banimento':'Evitar Banimento','resolver-banimento':'Resolver Banimento','extrator-contatos':'Extrator de contatos de grupos','adicionar-ao-grupo':'Adicionar contatos ao grupo',inbox:'Central de atendimento',dashboard:'Dashboard',agenda:'Agenda',clientes:'Clientes',servicos:'Serviços',funcionarios:'Funcionários',financeiro:'Financeiro',desempenho:'Meu desempenho',marketing:'Marketing IA',site:'Meu site',fidelizacao:'Fidelização',consultor:'Consultor IA',plano:'Plano',configuracoes:'Configurações',novidades:'Novidades',ajuda:'Base de conhecimento',dispositivo:'Conectar WhatsApp',conversas:'Conversas',ai:'Testar atendimento',empresa:'Configurar atendimento',catalogo:'Catálogo e pedidos',cadastros:'Administração do atendimento',member:'Minha conta'};
   const routeAliases=new Map([['acelerar','dashboard']]);
-  const mainNav=[['dispositivos','phone'],['chatbot','bot'],['testar-chatbot','chat'],['templates','layers'],['mensagens-enviadas','send'],['diagnosticos','monitor'],['campanhas','mail'],['programadas','calendarPlus'],['massa','send'],['enviar-mensagem','send'],['aquecimento','book'],['evitar-banimento','shield'],['resolver-banimento','shield'],['extrator-contatos','users'],['adicionar-ao-grupo','userPlus'],['dashboard','dashboard'],['agenda','calendar'],['clientes','users'],['inbox','chat'],['servicos','scissors'],['funcionarios','users'],['financeiro','wallet'],['desempenho','chart'],['marketing','sparkles'],['site','globe'],['fidelizacao','gift'],['consultor','bot'],['plano','credit'],['configuracoes','settings']];
+  const mainNav=[['dispositivos','phone'],['chatbot','bot'],['testar-chatbot','flask'],['templates','layers'],['mensagens-enviadas','fileCheck'],['diagnosticos','activity'],['campanhas','megaphone'],['programadas','calendarClock'],['massa','broadcast'],['enviar-mensagem','send'],['aquecimento','flame'],['evitar-banimento','shieldCheck'],['resolver-banimento','shieldAlert'],['extrator-contatos','usersSearch'],['adicionar-ao-grupo','userPlus'],['dashboard','dashboard'],['agenda','calendar'],['clientes','users'],['inbox','chat'],['servicos','scissors'],['funcionarios','badgeUser'],['financeiro','wallet'],['desempenho','chart'],['marketing','sparkles'],['site','globe'],['fidelizacao','gift'],['consultor','brain'],['plano','credit'],['configuracoes','settings']];
   const legacyPages=new Set(['dispositivo','conversas','ai','empresa','catalogo','cadastros','member']);
   // The original Orion operator console is restricted to the authenticated
   // platform administrator. Business owners use the regular workspace.
@@ -388,7 +402,7 @@
     nav+='<div class="os-nav-section">Gestão</div>'+mainNav.filter(([route])=>routePermitted(route)).map(item=>navItem(item)).join('');
     if(state.bridge.user?.role==='admin'&&!subscriptionWorkspace()){
       nav+='<div class="os-nav-section">Atendimento Orion</div>';
-      const attendance=[['conversas','chat'],['ai','bot'],['empresa','settings'],['catalogo','box']];
+      const attendance=[['conversas','messages'],['ai','flask'],['empresa','building'],['catalogo','box']];
       attendance.forEach(item=>{nav+=navItem(item);});
     }
     nav+='<div class="os-nav-section">Ajuda e conta</div>'+[['novidades','bell'],['ajuda','book'],['member','shield']].map(([route,symbol])=>{
