@@ -262,9 +262,20 @@ def compile_plan(rule_id, rules, templates, facts, http_context, *, selected_act
                 result.append({"delay_seconds": 0, "action": {"type": "text", "text": render_contact(followup, facts)}})
             return result
         elif kind == "url":
+            from app.subscription_chatbot_tags import contact_fields
             transport = {"type": "http", "url": action["url"], "method": action["method"],
                          "data": deepcopy(http_context), "custom_template": action["custom_template"],
                          "as_file": action["as_file"], "mode": "reply"}
+            fields = contact_fields(action["custom_template"])
+            if fields:
+                # Contact values are kept server-side in the authorized effect.
+                # Only the HTTP 'data' field is sent to the provider by the bridge.
+                contact = {key: facts.get(key) for key in fields}
+                if any(not isinstance(value, str) or not value.strip()
+                       or len(value.encode("utf-16-le")) // 2 > 32000
+                       for value in contact.values()):
+                    raise ValueError("Dados de contato indisponíveis para a resposta de URL")
+                transport["contact_facts"] = contact
         elif kind == "carousel":
             transport = {"type": "carousel", "body": render_contact(action["body"], facts, maximum=1024),
                          "cards": deepcopy(action["cards"])}
@@ -311,7 +322,7 @@ def render_http_result(action, body):
         if not isinstance(result, str):
             raise ValueError("O servidor deve retornar reply como texto ou usar uma resposta customizada")
     else:
-        result = render_template(custom, body)
+        result = render_template(custom, body, contact_facts=action.get("contact_facts"))
     return clean_text(result, maximum=512000)
 
 
