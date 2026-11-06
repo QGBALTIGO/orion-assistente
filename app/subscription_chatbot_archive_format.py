@@ -2,7 +2,7 @@
 
 Media bytes are integrity-checked here and decoded by the authenticated importer
 before becoming usable assets. URLs in rules are declarative data, never fetched.
-Only this versioned Orion format is accepted; no BotBot compatibility is implied.
+The Orion format remains strict; BotBot ZIP is an explicit, separate converter.
 """
 from __future__ import annotations
 
