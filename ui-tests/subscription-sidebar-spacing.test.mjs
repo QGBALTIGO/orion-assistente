@@ -33,8 +33,8 @@ test('compact spacing is removed when another ordinary account is loaded',async 
 
 const subscriptionManagementRoutes=[
   'dispositivos','chatbot','testar-chatbot','templates','mensagens-enviadas','diagnosticos',
-  'campanhas','programadas','massa','enviar-mensagem','aquecimento','evitar-banimento',
-  'resolver-banimento','extrator-contatos','adicionar-ao-grupo',
+  'campanhas','programadas','massa','enviar-mensagem','extrator-contatos','adicionar-ao-grupo',
+  'aquecimento','evitar-banimento','resolver-banimento',
 ];
 const subscriptionManagementFeatures=[
   'account.manage','devices.manage','chatbot.manage','templates.manage','sent_messages.manage',
@@ -87,4 +87,71 @@ test('standard business also keeps unique menu SVGs for clients and staff',async
   assert.deepEqual(links.map(node=>node.dataset.osRoute),routes);
   assert.equal(new Set(links.map(iconHTML)).size,routes.length);
   assert.deepEqual(h.errors,[]);
+});
+
+const navigationGroups=h=>{
+  const groups=new Map();
+  let current=null;
+  for(const node of h.document.getElementById('osNav').children){
+    if(node.classList.contains('os-nav-section')){
+      current=node.textContent.trim();
+      assert.equal(groups.has(current),false,'duplicate menu section: '+current);
+      groups.set(current,[]);
+    }else if(current&&node.hasAttribute('data-os-route')){
+      groups.get(current).push(node.getAttribute('data-os-route'));
+    }
+  }
+  return groups;
+};
+
+test('subscription services groups five tools after management and before help',async t=>{
+  const permissions=Object.fromEntries(subscriptionManagementFeatures.map(feature=>[feature,true]));
+  const h=await makeSuite({
+    initialRoute:'aquecimento',
+    permissions:planState('elite',{
+      workspace_profile:'subscription_services',revision:'tools-group-owner',
+      features:subscriptionManagementFeatures,permissions,
+    }),
+    bridge:{tenants:[{...business(),status:'active'}]},
+  });
+  t.after(()=>h.close());await flush();
+  const groups=navigationGroups(h);
+  assert.deepEqual([...groups.keys()],['Gestão','Ferramentas','Ajuda e conta']);
+  assert.deepEqual(groups.get('Ferramentas'),[
+    'extrator-contatos','adicionar-ao-grupo','aquecimento',
+    'evitar-banimento','resolver-banimento',
+  ]);
+  assert.deepEqual(groups.get('Gestão'),[
+    'dispositivos','chatbot','testar-chatbot','templates',
+    'mensagens-enviadas','diagnosticos','campanhas','programadas',
+    'massa','enviar-mensagem',
+  ]);
+  const routes=[...h.document.querySelectorAll('#osNav [data-os-route]')]
+    .map(node=>node.getAttribute('data-os-route'));
+  assert.equal(new Set(routes).size,routes.length,'routes must not appear in both sections');
+  assert.deepEqual(h.errors,[]);
+});
+
+test('Ferramentas is absent for non-owner subscriptions and standard businesses',async t=>{
+  const permissions=Object.fromEntries(subscriptionManagementFeatures.map(feature=>[feature,true]));
+  const viewer=await makeSuite({
+    initialRoute:'novidades',
+    permissions:planState('elite',{
+      workspace_profile:'subscription_services',revision:'tools-group-viewer',
+      features:subscriptionManagementFeatures,permissions,
+    }),
+    bridge:{tenants:[{...business(),role:'viewer',status:'active'}]},
+  });
+  t.after(()=>viewer.close());await flush();
+  assert.equal(navigationGroups(viewer).has('Ferramentas'),false);
+  assert.deepEqual(viewer.errors,[]);
+
+  const standard=await makeSuite({
+    initialRoute:'dashboard',
+    permissions:planState('elite',{workspace_profile:'standard',revision:'tools-group-standard'}),
+    bridge:{tenants:[business('standard')]},
+  });
+  t.after(()=>standard.close());await flush();
+  assert.equal(navigationGroups(standard).has('Ferramentas'),false);
+  assert.deepEqual(standard.errors,[]);
 });
