@@ -16,6 +16,7 @@ on:
       - 'app/static/orion-suite.js'
       - 'app/static/panel.html'
       - 'tests/unit/test_subscription_number_check.py'
+      - 'ui-tests/subscription-number-check.test.mjs'
       - '.github/workflows/subscription-number-check.yml'
   workflow_dispatch:
 permissions:
@@ -52,6 +53,17 @@ jobs:
       - name: Ensure transport has no mutation path added to verifier
         run: |
           if grep -E 'sendMessage\\(|relayMessage\\(|groupParticipantsUpdate\\(|logout\\(' qr-bridge/src/device-number-check.mjs; then exit 1; fi
+  orion-ui:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with: {node-version: '22'}
+      - run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+      - name: Synthetic no-send DOM tests for stage 18
+        run: node --test ui-tests/subscription-number-check.test.mjs
   api-and-permissions:
     runs-on: ubuntu-24.04
     timeout-minutes: 16
