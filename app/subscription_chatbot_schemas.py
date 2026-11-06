@@ -18,6 +18,10 @@ IMPORT_BODY_BYTES = ((IMPORT_BYTES + 2) // 3) * 4 + 8192
 MAX_RULES = 2000
 MAX_ASSETS = 500
 MAX_TEMPLATE_BYTES = 32000
+# Effect rows expire after 10 minutes. Keep total configured delay within
+# five minutes to leave room for provider delivery, retries and queue latency.
+MAX_SEQUENCE_DELAY_SECONDS = 300
+MAX_ACTION_DELAY_SECONDS = 300
 CONTACT_TAGS = frozenset({"name", "phone_number", "my_name", "my_email", "my_contact_number"})
 ACTION_TYPES = ("text", "template", "sticker", "shortvideo", "carousel", "url", "url_button", "nested_reply", "nested_list")
 RESTORE_MODES = ("add_missing", "merge", "exact")
@@ -85,7 +89,7 @@ def button_destination(value):
 
 class ActionBase(StrictModel):
     id: UUID = Field(default_factory=uuid4)
-    delay_seconds: int = Field(default=1, strict=True, ge=1, le=15)
+    delay_seconds: int = Field(default=1, strict=True, ge=1, le=MAX_ACTION_DELAY_SECONDS)
 
 
 class TextAction(ActionBase):
@@ -207,8 +211,8 @@ class SequenceResponse(StrictModel):
     def sequence_limits(self):
         if len({action.id for action in self.actions}) != len(self.actions):
             raise ValueError("As ações precisam ter identidades distintas")
-        if sum(action.delay_seconds for action in self.actions) > 30:
-            raise ValueError("A soma dos atrasos não pode ultrapassar 30 segundos")
+        if sum(action.delay_seconds for action in self.actions) > MAX_SEQUENCE_DELAY_SECONDS:
+            raise ValueError("A soma dos atrasos não pode ultrapassar 300 segundos")
         return self
 
 
