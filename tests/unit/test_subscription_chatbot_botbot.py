@@ -42,7 +42,7 @@ def test_botbot_zip_text_and_url_are_imported_as_inactive_rules_with_stable_ids(
     assert a["rules"][0]["definition"]["response"]["actions"][0]["text"] == "Olá de teste!"
     url = a["rules"][1]["definition"]["response"]["actions"][0]
     assert url["type"] == "url" and url["custom_template"] == "{{reply}}"
-    assert URL := url["url"] == "https://api.example.com/lookup"
+    assert url["url"] == "https://api.example.com/lookup"
     assert all(UUID(record["id"]) for record in a["rules"])
 
 
