@@ -118,7 +118,7 @@ def test_split_json_export_with_one_rule_per_file_and_nested_manifest():
         ("botbot/replies/102.json", {"data": {"rule": {
             "id": 102, "phrase": "teste", "reply": {"type": "url",
              "method": "GET", "url": "https://api.example.com/lookup",
-             "custom_template": "Olá {name}, {{username}}"}}}),
+             "custom_template": "Olá {name}, {{username}}"}}}}),
     ]
     out = BytesIO()
     with zipfile.ZipFile(out, "w", compression=zipfile.ZIP_DEFLATED) as zipfile_out:
