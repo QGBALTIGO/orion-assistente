@@ -221,3 +221,19 @@ async def test_discovery_reports_safe_specific_failure_without_external_body(end
     assert exc.value.detail["code"] == code
     assert "sentinel" not in str(exc.value.detail)
     assert len(calls) == 1
+
+
+async def test_url_tag_discovery_includes_root_data_and_reply_without_leaking_values(endpoint):
+    calls, checks, result, authorize = endpoint
+    result["body"] = json.dumps({
+        "dns": "https://example.invalid",
+        "username": "synthetic-user",
+        "connections": 1,
+        "reply": "Mensagem de teste privada",
+        "data": [{"message": "Mensagem de teste privada"}],
+    }, ensure_ascii=False).encode()
+    output = await tags.read_url_tags(
+        "https://api.example.com/tags", "GET", request_id=uuid4(), authorize=authorize)
+    assert output == ["dns", "username", "connections", "reply", "data[0].message", "data"]
+    assert "Mensagem de teste privada" not in repr(output)
+    assert checks == ["dns", "authorize", "authorize"] and len(calls) == 1
