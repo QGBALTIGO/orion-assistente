@@ -37,8 +37,8 @@ equivalência integral quando há comportamento ainda não observado ou testado.
 | 14 | Evitar Banimento | Publicado e conferido ao vivo em 2026-11-05 — PR 266, produção `f33b373ea0273296d0dc7b8e02c75353a9b648cc`; etapa encerrada. [Observação e validação](avoid-ban-observation.md) |
 | 15 | Resolver Banimento | Publicado e conferido ao vivo em 2026-11-05 — PR 268, produção `784c31046420b406b655ee5913e39e102f971c76`; etapa encerrada. [Observação e validação](resolve-ban-observation.md) |
 | 16 | Extrator de contatos de grupos | Publicado e conferido ao vivo em 2026-11-05 — PR 269 e corretivo PR 270, produção `a438a1416577cde1fb643e9c8a200ca90093e084`; leitura real de grupos e membros validada, com importação exercitada em dados sintéticos. Etapa encerrada. [Observação e validação](group-contacts-observation.md) |
-| 17 | Adicionar contatos ao grupo | Referência acessível observada; implementação e qualificação em andamento. [Observação](group-add-observation.md) |
-| 18 | Verificador de números WhatsApp | Não iniciado |
+| 17 | Adicionar contatos ao grupo | Publicado pela PR #272; leitura de controles no Chrome confirmada. Conferência visual completa ainda pendente. [Observação](group-add-observation.md) |
+| 18 | Verificador de números WhatsApp | Em revisão na PR #274, sem publicação. Consulta conservadora e somente leitura, com quota no Redis; equivalência com BotBot não comprovada. [Observação](number-check-observation.md) |
 | 19 | Link e QR do WhatsApp | Não iniciado |
 
 A etapa 04 passou nos seis grupos específicos de CI: 1.198 casos Python,

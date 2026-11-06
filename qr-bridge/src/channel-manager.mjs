@@ -12,6 +12,7 @@ import {validDeviceSnapshot} from './device-runtime.mjs';
 import {deviceStorage,deviceControlLedger} from './device-storage.mjs';
 import {createDeviceDiagnostics} from './device-diagnostics.mjs';
 import {validGroupContactsRequest} from './device-group-contacts.mjs';
+import {validNumberCheckRequest} from './device-number-check.mjs';
 import {createDeviceGroupAdd,validGroupAddRequest} from './device-group-add.mjs';
 import {chatbotInteractiveMode} from './interactive-mode.mjs';
 
@@ -422,6 +423,24 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
       throw Error('group_add_unavailable');
     return result;
   }
+  async function deviceNumberCheck(id,key,input){
+    if(!channelId(id)||!validNumberCheckRequest(input))throw Error('number_check_unavailable');
+    const c=contexts.get(id),session=c?.session,socketGeneration=c?.generation;
+    const matches=()=>!!(c&&current(c)&&sameKey(c.key,key)&&c.session===session&&
+      c.generation===socketGeneration&&c.device?.id===input.device_id&&
+      c.device.generation===input.generation&&c.device.settings_revision===input.settings_revision&&
+      session?.status?.()==='connected'&&typeof session.numberCheck==='function');
+    if(!matches())throw Error('number_check_unavailable');
+    const authorize=async()=>{
+      if(!matches())throw Error('number_check_unavailable');
+      await validate(c,key);
+      if(!matches())throw Error('number_check_unavailable');
+    };
+    const result=await session.numberCheck(input,{authorize});
+    if(!matches()||result?.device_id!==input.device_id||result.generation!==input.generation||
+        result.settings_revision!==input.settings_revision)throw Error('number_check_unavailable');
+    return result;
+  }
   async function deviceGroupContacts(id,key,action,input){
     if(!channelId(id)||!validGroupContactsRequest(action,input))throw Error('group_contacts_unavailable');
     const c=contexts.get(id),session=c?.session,socketGeneration=c?.generation;
@@ -538,7 +557,7 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
       throw Error('device_operation_unavailable');
     }finally{deviceControls.delete(id);}
   }
-  return {start,status,pair,send,operation,deviceStatus,deviceOperation,deviceControl,deviceGroupContacts,deviceGroupAdd,
+  return {start,status,pair,send,operation,deviceStatus,deviceOperation,deviceControl,deviceGroupContacts,deviceGroupAdd,deviceNumberCheck,
     deviceProxyTest:(id,key,input)=>diagnostics.dispatch(id,key,input),
     deviceDiagnosticOperation:(id,key,requestId)=>diagnostics.read(id,key,requestId),
     async deviceDiagnostics(id,key){const state=await deviceStatus(id,key);return {...state,runtime:contexts.get(id)?.session?.deviceDiagnostics?.()||null};},

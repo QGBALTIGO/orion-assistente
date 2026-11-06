@@ -53,6 +53,7 @@ from app.subscription_scheduled_messages import router as subscription_scheduled
 from app.subscription_bulk_messages import router as subscription_bulk_messages_router
 from app.subscription_direct_messages import router as subscription_direct_messages_router
 from app.subscription_group_contacts import router as subscription_group_contacts_router
+from app.subscription_number_check import router as subscription_number_check_router
 from app.subscription_group_add import router as subscription_group_add_router
 from app.automation_api import router as automation_router
 from app.qr_channel_audio import router as qr_channel_audio_router
@@ -157,6 +158,7 @@ include_plan_router(app, subscription_scheduled_messages_router)
 include_plan_router(app, subscription_bulk_messages_router)
 include_plan_router(app, subscription_direct_messages_router)
 include_plan_router(app, subscription_group_contacts_router)
+include_plan_router(app, subscription_number_check_router)
 include_plan_router(app, subscription_group_add_router)
 include_plan_router(app, automation_router)
 include_plan_router(app, qr_channel_audio_router)

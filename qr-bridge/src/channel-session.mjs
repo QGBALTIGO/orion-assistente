@@ -34,6 +34,7 @@ import {messagePreflightError} from './device-message-failure.mjs';
 import {createDeviceProxy} from './device-network.mjs';
 import {currentDiagnosticMessage} from './device-diagnostic-message.mjs';
 import {createDeviceGroupContacts} from './device-group-contacts.mjs';
+import {createDeviceNumberCheck} from './device-number-check.mjs';
 import {createGroupAddSocket} from './device-group-add.mjs';
 import {classifyPairedAuth} from './paired-auth-state.mjs';
 import {chatbotInteractiveMode} from './interactive-mode.mjs';
@@ -221,6 +222,8 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
   const outgoingPresence=makeOutgoingPresence({socket:client,isConnected:()=>state==='connected'&&current(),typingFactory,now:presenceNow,schedule,cancel});
   const close=()=>{if(closed)return;closed=true;state='stopped';qrValue=null;pairAttempt=null;cancel(pairTimer);cancel(noticeTimer);cancel(assistantTimer);assistantIngress?.abandon();abort.abort();health.stop();deviceRuntime?.close();proxyTransport?.close();outgoingPresence.close();for(const lease of typingLeases)lease.stop();typingLeases.clear();client.ev.removeAllListeners();try{client.end(undefined);}catch{}};
   const groupContacts=createDeviceGroupContacts({...deviceOptions.groupContactsOptions,client,isCurrent:current,
+    isConnected:()=>state==='connected',deviceSnapshot:()=>context.deviceSnapshot?.(),schedule,cancel});
+  const numberCheck=createDeviceNumberCheck({...deviceOptions.numberCheckOptions,client,isCurrent:current,
     isConnected:()=>state==='connected',deviceSnapshot:()=>context.deviceSnapshot?.(),schedule,cancel});
   const groupMutationReady=()=>{
       const runtime=deviceRuntime?.diagnostics(),readiness=health.snapshot();
@@ -510,7 +513,7 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
     }
   }
   client.ev.on('messages.upsert',receive);
-  return {close,groupContacts,groupAdd,status:()=>{expirePairing();return state;},
+  return {close,groupContacts,groupAdd,numberCheck,status:()=>{expirePairing();return state;},
     connectionHealth:()=>health.snapshot(),
     ingressDiagnostics,
     deviceSettingsChanged:()=>deviceRuntime?.sync(),
