@@ -119,11 +119,16 @@ def validate_json(value):
     return value
 
 
-def discover_tags(value) -> list[str]:
+def discover_tags(value, *, include_containers: bool = False) -> list[str]:
     validate_json(value)
     tags = []
+    containers = []
 
     def walk(item, path):
+        # A complete JSON list/object is useful as a BotBot-style {{data}}
+        # tag. Keep old scalar-only discovery for existing callers.
+        if include_containers and path and isinstance(item, (dict, list)) and item:
+            containers.append(path)
         if isinstance(item, dict):
             for key, child in item.items():
                 if not _key(key):
@@ -145,6 +150,15 @@ def discover_tags(value) -> list[str]:
                 raise ValueError("A resposta ultrapassa 128 tags")
 
     walk(value, "")
+    if include_containers:
+        # Scalar paths keep their original order. Container aliases are
+        # additional, bounded and do not make large responses fail by themselves.
+        for path in sorted(set(containers), key=lambda item: (item.count(".") + item.count("["), item)):
+            if len(tags) >= MAX_TAGS:
+                break
+            if path not in tags:
+                parse_path(path)
+                tags.append(path)
     return tags
 
 
@@ -159,8 +173,11 @@ def resolve_path(body, path: str):
             if not isinstance(value, dict) or segment not in value:
                 raise ValueError("Tag ausente na resposta")
             value = value[segment]
-    if value is None or isinstance(value, (dict, list)):
-        raise ValueError("A tag deve apontar para texto, número ou booleano não nulo")
+    if value is None or isinstance(value, (dict, list)) and not value:
+        raise ValueError("A tag deve apontar para um valor não nulo e não vazio")
+    if isinstance(value, (dict, list)):
+        # Exact, bounded JSON serialization; never execute or reinterpret it.
+        return json.dumps(value, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
     if isinstance(value, bool):
         return "true" if value else "false"
     return str(value)
