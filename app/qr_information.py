@@ -84,7 +84,7 @@ def info(plan: UnderstandingPlan, business: dict, catalog: list[dict], *, messag
     """
     if not isinstance(plan, UnderstandingPlan) or not isinstance(message, str) or len(message) > 1500:
         raise ValueError("A validated plan and the complete current message are required")
-    if len(catalog) > 60:
+    if len(catalog) > 500:
         raise ValueError("Catalog outside supported bounds")
     profile = _profile(business)
     style = StyleRules.model_validate(profile.get("style_rules") or {}).model_dump()
@@ -124,11 +124,13 @@ def info(plan: UnderstandingPlan, business: dict, catalog: list[dict], *, messag
     known_faqs = {row["id"]: row for row in faq_catalog(business)}
     raw_faqs = profile.get("faqs", [])
     requested_faqs = list(dict.fromkeys(plan.faq_ids))
+    literal_faqs = set()
     # Exact published wording may occur as one part of a multi-topic message.
     # No fuzzy match or one-word payment/policy guess can create a fact.
     for key, row in known_faqs.items():
         question = normalized(row["question"]).strip(" ?!.")
         if question and re.search(r"(?<!\w)" + re.escape(question) + r"(?!\w)", lower):
+            literal_faqs.add(key)
             if key not in requested_faqs:
                 requested_faqs.append(key)
     for key in requested_faqs:
@@ -151,7 +153,8 @@ def info(plan: UnderstandingPlan, business: dict, catalog: list[dict], *, messag
         topics.add("address")
         if profile.get("address"):
             append("address", "Endereço: " + profile["address"])
-        else:
+        elif not any(key in literal_faqs and re.search(r"\b(?:endereco|onde fica|localizacao)\b",
+                normalized(row["question"])) for key, row in known_faqs.items()):
             missing("address", "O endereço ainda não está cadastrado neste atendimento. Preciso confirmar com a equipe.")
     if re.search(r"\b(?:horarios? de funcionamento|horarios? d[ao] (?:empresa|loja)|que horas (?:abre|fecha)|(?:voces )?(?:abrem|fecham))\b", lower):
         topics.add("hours")

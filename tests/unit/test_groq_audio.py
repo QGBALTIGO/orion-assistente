@@ -57,7 +57,9 @@ async def test_audio_groq_mock_produces_text_without_real_request(monkeypatch):
         assert b"whisper-large-v3-turbo" in req.content
         assert b"OggS-audio-synthetic" in req.content
         assert b"verbose_json" in req.content
-        return httpx.Response(200, json={"text": " Quero corte e barba ", "duration": 4.5})
+        return httpx.Response(200, json={"text": " Quero corte e barba ", "duration": 4.5,
+            "segments": [{"text": "Quero corte e barba", "start": 0, "end": 4.5,
+                          "avg_logprob": -.2, "no_speech_prob": .01, "compression_ratio": 1.1}]})
 
     monkeypatch.setattr(groq_audio.httpx, "AsyncClient",
                         lambda **kwargs: original(transport=httpx.MockTransport(handler), **kwargs))

@@ -1,7 +1,8 @@
 /** Encaminha apenas mensagem privada recém-recebida para a API Orion autorizada. */
 import {cleanContactProfile} from './contact-names.mjs';
 import {assistantParts} from './assistant-parts.mjs';
-export async function forwardAssistant({apiUrl,token,phone,messageId,messageIds,text,parts,intakeRevision,requireSummaryReview,profile,envelope,isCurrent=()=>true,fetchImpl=fetch}){
+import {assistantSelection,validateAssistantPresentation} from './assistant-presentation.mjs';
+export async function forwardAssistant({apiUrl,token,phone,messageId,messageIds,text,parts,intakeRevision,requireSummaryReview,profile,envelope,interactionSupported=false,selection,isCurrent=()=>true,fetchImpl=fetch}){
   if(typeof token!=="string"||token.length<32)throw Error("bridge_key_missing");
   if(typeof phone!=="string"||!/^55[1-9]\d(?:9\d{8}|[2-5]\d{7})$/.test(phone))throw Error("invalid_recipient");
   if(typeof messageId!=="string"||! /^[a-zA-Z0-9._:-]{1,160}$/.test(messageId))throw Error("invalid_message_id");
@@ -14,6 +15,8 @@ export async function forwardAssistant({apiUrl,token,phone,messageId,messageIds,
   if(intakeRevision!==undefined&&(!Number.isSafeInteger(intakeRevision)||intakeRevision<1))
     throw Error("invalid_intake_revision");
   const safeParts=assistantParts(parts,messageIds??[messageId],text);
+  const safeSelection=interactionSupported&&selection!==undefined?assistantSelection(selection):null;
+  if(safeSelection&&(messageIds?.length??1)!==1)throw Error('invalid_assistant_selection_batch');
   if(requireSummaryReview!==undefined&&typeof requireSummaryReview!=='boolean')
     throw Error('invalid_summary_review');
   const contactProfile=cleanContactProfile(profile);
@@ -25,6 +28,7 @@ export async function forwardAssistant({apiUrl,token,phone,messageId,messageIds,
   const timeout=setTimeout(()=>controller.abort(),19000);
   try{
     const payload={phone,message_id:messageId,text,...(envelope?{envelope}:{}),
+      ...(interactionSupported?{capabilities:{assistant_interactions:1},...(safeSelection?{selection:safeSelection}:{})}:{}),
       ...(safeParts?{parts:safeParts}:{}),
       ...(intakeRevision===undefined?{}:{intake_revision:intakeRevision}),
       ...(requireSummaryReview===undefined?{}:{require_summary_review:requireSummaryReview}),
@@ -56,7 +60,10 @@ export async function forwardAssistant({apiUrl,token,phone,messageId,messageIds,
     if(result?.answer===null)return null;
     if(typeof result?.answer!=="string"||!result.answer.trim()||
        result.answer.length>1200)throw Error("invalid_ai_reply");
-    return result.answer;
+    if(!interactionSupported)return result.answer;
+    let presentation;
+    if(result.presentation){try{validateAssistantPresentation(result.presentation);presentation=result.presentation;}catch{}}
+    return {answer:result.answer,...(presentation?{presentation}:{})};
   }finally{clearTimeout(timeout)}
 }
 
@@ -78,6 +85,22 @@ export async function registerAssistantIngress({apiUrl,token,phone,messageId,con
     if(!response.ok)throw Error('ingress_notice_unavailable');
     const result=await response.json();
     if(!Number.isSafeInteger(result?.revision)||result.revision<1)throw Error('invalid_ingress_revision');
-    return {revision:result.revision};
+    return {revision:result.revision,...(result.assistant_interactions===1?{assistant_interactions:1}:{})};
   }finally{clearTimeout(timeout);}
+}
+
+/** Reconcile only a proved accepted assistant message, never create/send one. */
+export async function acknowledgeAssistantPresentation({apiUrl,token,payload,fetchImpl=fetch}){
+  if(typeof token!=='string'||token.length<32||typeof payload?.phone!=='string'||
+      !/^55[1-9]\d(?:9\d{8}|[2-5]\d{7})$/.test(payload.phone)||
+      typeof payload.presentation_id!=='string'||! /^[A-Za-z0-9_-]{32}$/.test(payload.presentation_id)||
+      typeof payload.provider_id!=='string'||! /^[A-Za-z0-9._:-]{1,160}$/.test(payload.provider_id))throw Error('invalid_assistant_ack');
+  const target=new URL(apiUrl);
+  if(target.protocol!=='http:'||!target.hostname.endsWith('.railway.internal')||target.pathname!=='/internal/qr/ai/reply'||
+      target.search||target.hash||target.username||target.password)throw Error('unsafe_ai_endpoint');
+  target.pathname='/internal/qr/ai/presentation-ack';
+  const response=await fetchImpl(target,{method:'POST',redirect:'error',signal:AbortSignal.timeout(5000),
+    headers:{'Content-Type':'application/json','X-Orion-Bridge-Key':token},body:JSON.stringify(payload)});
+  if(!response.ok)throw Error('assistant_ack_unavailable');
+  const result=await response.json();if(result?.acknowledged!==true)throw Error('assistant_ack_unconfirmed');return result;
 }

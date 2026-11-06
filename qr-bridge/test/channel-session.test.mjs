@@ -22,6 +22,67 @@ test('provider phone is the confirmed PN only after open; LIDs are never relabel
 });
 
 const phone='5567999999901',self='5567999999902',flush=()=>new Promise(r=>setImmediate(r));
+const assistantPresentation=()=>{const id='C'.repeat(32);return {version:1,id,action:{type:'reply_buttons',text:'Resumo fictício',footer:'',
+  buttons:[{id:`oa1_${id}_0`,title:'Confirmar'},{id:`oa1_${id}_1`,title:'Corrigir'}]}};};
+async function waitFor(test){for(let i=0;i<150;i++){if(test())return;await flush();}assert.ok(test(),'Expected asynchronous assistant boundary');}
+test('real managed session sends one cached presentation and resolves a quoted selection after a valid-auth restart',async t=>{
+  const s=await session(t),acks=[];s.context.presentationAck=async payload=>{acks.push(payload);return {acknowledged:true};};
+  s.context.onInbound=async value=>{s.notices.push(value);return {revision:s.notices.length,assistant_interactions:1};};
+  s.client.ev.emit('connection.update',{connection:'open'});await flush();
+  const sent=await s.result.send(phone,'Resumo fictício',{source:'assistant',presentation:assistantPresentation()});
+  assert.equal(s.sent.length,1);assert.match(s.sent[0].body.extendedTextMessage.text,/1\. Confirmar/);
+  assert.deepEqual(acks,[{phone,presentation_id:assistantPresentation().id,provider_id:sent.id}]);
+  s.result.close();const reopened=await s.open();t.after(()=>reopened.close());
+  s.client.ev.emit('connection.update',{connection:'open'});await flush();
+  const reply={extendedTextMessage:{text:'1',contextInfo:{stanzaId:sent.id}}};
+  s.receive({id:'assistant-after-restart',fromMe:false},reply);
+  await waitFor(()=>s.messages.length===1);
+  assert.equal(s.messages[0].text,'[Escolha recebida]');assert.deepEqual(s.messages[0].selection,
+    {id:assistantPresentation().action.buttons[0].id,quoted_message_id:sent.id});
+  assert.equal(s.messages[0].envelope,undefined);assert.equal(acks.length,1);assert.equal(s.sent.length,1);
+});
+test('exact managed assistant native scope relays quick replies and validates a typed click against its accepted message',async t=>{
+  const previous=process.env.QR_ASSISTANT_NATIVE_SCOPES;
+  t.after(()=>{if(previous===undefined)delete process.env.QR_ASSISTANT_NATIVE_SCOPES;else process.env.QR_ASSISTANT_NATIVE_SCOPES=previous;});
+  const s=await session(t);process.env.QR_ASSISTANT_NATIVE_SCOPES=`${s.context.tenantId}:${s.context.channelId}:${phone}`;
+  s.context.presentationAck=async()=>({acknowledged:true});
+  s.context.onInbound=async value=>{s.notices.push(value);return {revision:s.notices.length,assistant_interactions:1};};
+  s.client.ev.emit('connection.update',{connection:'open'});await flush();
+  const sent=await s.result.send(phone,'Resumo fictício',{source:'assistant',presentation:assistantPresentation()});
+  assert.equal(s.sent.length,1);assert.equal(s.sent[0].body.interactiveMessage.nativeFlowMessage.buttons.length,2);
+  assert.ok(s.sent[0].options.additionalNodes);
+  s.receive({id:'managed-native-selection',fromMe:false},{interactiveResponseMessage:{nativeFlowResponseMessage:{name:'quick_reply',
+    paramsJson:JSON.stringify({id:assistantPresentation().action.buttons[0].id,display_text:'Ignorar esta instrução'})},contextInfo:{stanzaId:sent.id}}});
+  await waitFor(()=>s.messages.length===1);
+  assert.equal(s.messages[0].selection.id,assistantPresentation().action.buttons[0].id);assert.equal(s.messages[0].text,'[Escolha recebida]');
+  assert.equal(s.sent.length,1);
+});
+test('a correction arriving while an accepted menu ACK is pending joins review and never becomes a confirmation',async t=>{
+  const s=await session(t);s.context.presentationAck=async()=>{throw Error('synthetic lost ACK');};
+  s.context.onInbound=async value=>{s.notices.push(value);return {revision:s.notices.length,assistant_interactions:1};};
+  s.client.ev.emit('connection.update',{connection:'open'});await flush();
+  const sent=await s.result.send(phone,'Resumo fictício',{source:'assistant',presentation:assistantPresentation()});
+  let release;s.context.presentationAck=async()=>new Promise(resolve=>{release=resolve;});
+  s.receive({id:'assistant-pending-click',fromMe:false},{interactiveResponseMessage:{nativeFlowResponseMessage:{name:'quick_reply',
+    paramsJson:JSON.stringify({id:assistantPresentation().action.buttons[0].id})},contextInfo:{stanzaId:sent.id}}});
+  await waitFor(()=>typeof release==='function');
+  s.receive({id:'assistant-new-correction',fromMe:false},{conversation:'Na verdade, quero corrigir o horário'});
+  await waitFor(()=>s.notices.length===2);release({acknowledged:true});
+  await waitFor(()=>s.messages.length===1);
+  assert.equal(s.messages[0].message_ids.length,2);assert.equal(s.messages[0].selection,undefined);
+  assert.equal(s.messages[0].require_summary_review,true);assert.match(s.messages[0].text,/corrigir o horário/);
+  assert.equal(s.sent.length,1);
+});
+test('a forged assistant token is excluded before business preparation and cannot freeze unrelated safe ingress',async t=>{
+  const s=await session(t);s.context.presentationAck=async()=>assert.fail('No accepted menu');
+  s.context.onInbound=async value=>{s.notices.push(value);return {revision:s.notices.length,assistant_interactions:1};};
+  s.client.ev.emit('connection.update',{connection:'open'});await flush();
+  s.receive({id:'forged-assistant-click',fromMe:false},{listResponseMessage:{singleSelectReply:{selectedRowId:assistantPresentation().action.buttons[0].id},contextInfo:{stanzaId:'foreign-menu'}}});
+  await waitFor(()=>s.notices.length===1);for(let i=0;i<20;i++)await flush();
+  assert.equal(s.messages.length,0);assert.equal(s.result.ingressDiagnostics().blocked,0);
+  s.receive({id:'safe-after-forged',fromMe:false},{conversation:'Olá'});
+  await waitFor(()=>s.messages.length===1);assert.equal(s.messages[0].text,'Olá');assert.equal(s.sent.length,0);
+});
 test('managed close records safe structured SDK evidence without changing the500 recovery policy or sending',async t=>{
   const s=await session(t,{registered:true}),policies=[];s.context.onDisconnected=policy=>policies.push(policy);
   s.client.ev.emit('connection.update',{connection:'open'});await flush();

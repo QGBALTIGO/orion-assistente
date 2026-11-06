@@ -269,7 +269,16 @@ async def test_verified_confirmation_superseded_before_reply_is_reported_without
     monkeypatch.setattr(qr_ai,"confirm_hold",confirmed_then_late)
     lost=await qr_ai.run_locked(h.tenant,"5567999999999","SIM",h.namespace,"synthetic-message",intake_revision=1)
     assert lost == {"answer":None,"step":"superseded_after_write","not_committed":False}
-    assert h.key not in client.values and receipt.key(h.tenant,"5567999999999") in client.values
+    state=json.loads(client.values[h.key])
+    assert state["step"] == "menu" and set(state) <= {"step", "history", "customer_name", "completed_task"}
+    assert state["completed_task"]["kind"] == "confirmed" and state["completed_task"]["protocol"] == "SYNTHETIC"
+    assert set(state["completed_task"]) == {"kind", "protocol", "occurred_at"}
+    assert 0 < state["completed_task"]["occurred_at"] <= datetime.now().timestamp()
+    assert 0 < len(state["history"]) <= 8 and all(set(item) == {"role", "content"}
+        and item["role"] in {"user", "assistant"} and len(item["content"]) <= 1500 for item in state["history"])
+    assert not set(state) & {"hold", "services", "professional", "expected_snapshot", "hold_snapshot", "consent",
+        "appointment", "confirmation_summary", "confirmation_message_id", "confirmation_expires_at"}
+    assert receipt.key(h.tenant,"5567999999999") in client.values
     client.seen["synthetic-correction"]=2
     result=await qr_ai.run_locked(h.tenant,"5567999999999","Pera, é sexta",h.namespace,"synthetic-correction",
         intake_revision=2,require_summary_review=True)

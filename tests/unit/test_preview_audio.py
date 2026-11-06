@@ -106,7 +106,9 @@ def preview(monkeypatch):
     tenant, account = uuid4(), uuid4()
     actor = Actor("member", tenant, account, "owner")
     events, provider_calls, turns = [], [], []
-    provider_payload = {"text": " Quanto custa cabelo e barba? ", "duration": 2.8}
+    provider_payload = {"text": " Quanto custa cabelo e barba? ", "duration": 2.8,
+        "segments": [{"text": "Quanto custa cabelo e barba?", "start": 0, "end": 2.8,
+                      "avg_logprob": -.2, "no_speech_prob": .01, "compression_ratio": 1.1}]}
     monkeypatch.setenv("GROQ_PREVIEW_ENABLED", "1")
     monkeypatch.setenv("QR_AI_AUDIO_ENABLED", "1")
     monkeypatch.setenv("GROQ_API_KEY", "synthetic-no-real-provider")

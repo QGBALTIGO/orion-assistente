@@ -131,7 +131,7 @@ async def notice(payload: Notice, request: Request):
         if payload.control:
             from app.contact_preferences import receive_control
             await receive_control(tenant,payload.phone,payload.control,redis)
-        return {"revision":revision}
+        return {"revision":revision, "assistant_interactions": 1}
     except Exception:
         raise HTTPException(503, "Não consegui validar esta mensagem agora") from None
     finally:

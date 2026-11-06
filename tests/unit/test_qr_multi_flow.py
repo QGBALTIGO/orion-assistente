@@ -322,7 +322,8 @@ async def test_any_affirmation_requires_fresh_visible_summary_before_backend(flo
 async def test_greeting_in_menu_preserves_active_availability_inquiry(flow):
     h = flow;original = h.seed("menu", services=[], availability_query={"services": [str(h.beard)], "waiting_for": "professional"})
     reply = await h.turn("Oi")
-    assert reply["step"] == "menu" and "Olá" in reply["answer"] and "continuar" in reply["answer"]
+    assert reply["step"] == "greeting" and reply["answer"].startswith("Oi")
+    assert len(reply["answer"]) <= 240 and "R$" not in reply["answer"]
     assert h.state()["availability_query"] == original["availability_query"]
     assert not h.calls["plans"] and not h.calls["reads"] and not h.calls["writes"]
 
@@ -672,7 +673,10 @@ async def test_real_oi_is_a_greeting_in_every_stage_in_both_engines(flow, monkey
     h = flow;monkeypatch.setenv("QR_AI_MULTI_INTENT_ENABLED", flag)
     original = h.seed(step, hold=str(uuid4()))
     result = await h.turn("Oi", preview=False)
-    assert result["answer"].startswith("Olá") and "dias livres" in result["answer"]
+    assert result["step"] == "greeting" and result["answer"].startswith("Oi")
+    assert len(result["answer"]) <= 240 and "R$" not in result["answer"]
+    if step == "confirm":
+        assert h.state()["confirmation_requires_review"]
     assert "Informe o dia" not in result["answer"] and h.state()["hold"] == original["hold"]
     assert not h.calls["plans"] and not h.calls["reads"] and not h.calls["writes"]
 
@@ -787,7 +791,8 @@ async def test_actual_oi_service_menu_accepts_complete_unique_service_reply_with
         raise AssertionError("A complete unique answer to the service menu must not call a provider")
     monkeypatch.setattr(qr_ai, "interpret_plan", forbidden)
     first = await h.turn("Oi", preview=False)
-    assert first["step"] == "menu" and "Qual serviço" in first["answer"] and h.state()["service_reply_expected"]
+    assert first["step"] == "greeting" and "serviço" in first["answer"] and h.state()["service_reply_expected"]
+    assert "R$" not in first["answer"] and len(first["answer"]) <= 240
     assert "_service_reply_prompt" not in first
     result = await h.turn(reply, preview=False)
     assert "Para qual dia" in result["answer"] and "Preciso distinguir" not in result["answer"]
