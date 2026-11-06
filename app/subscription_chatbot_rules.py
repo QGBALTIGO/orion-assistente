@@ -176,6 +176,22 @@ def validate_graph(rules, templates, *, require_enabled=False, root_ids=None):
     return memo
 
 
+def _spaced_footer(body: str, footer: str, *, maximum: int) -> tuple[str, str]:
+    """Render a configured footer after exactly one blank line in the body.
+
+    Native WhatsApp footers have client-defined spacing. When safely within
+    the existing body limit, include it in the body itself so the spacing is
+    deterministic across mobile clients. If full, retain the native footer
+    instead of silently truncating or making a previously valid send fail.
+    """
+    if not footer:
+        return body, footer
+    composed = body.rstrip() + "\n\n" + footer.lstrip()
+    if len(composed.encode("utf-16-le")) // 2 <= maximum:
+        return composed, ""
+    return body, footer
+
+
 def compile_plan(rule_id, rules, templates, facts, http_context, *, selected_action=None, allow_inactive_root=False):
     """Build bounded SDK-neutral actions; tokenized selections are added by SQL."""
     rules = {str(key): value for key, value in rules.items()}
@@ -201,6 +217,8 @@ def compile_plan(rule_id, rules, templates, facts, http_context, *, selected_act
             result["type"] = "list"
             for key, maximum in (("title", 60), ("description", 1000), ("footer", 60), ("button_text", 20)):
                 result[key] = render_contact(result.get(key, ""), facts, maximum=maximum)
+            result["description"], result["footer"] = _spaced_footer(
+                result["description"], result["footer"], maximum=1000)
             for section in result["sections"]:
                 section["title"] = render_contact(section["title"], facts, maximum=24)
                 for row in section["rows"]:
@@ -226,6 +244,8 @@ def compile_plan(rule_id, rules, templates, facts, http_context, *, selected_act
             from app.subscription_chatbot_schemas import UrlButtonContent
             transport = {"type": "url_button", **UrlButtonContent.model_validate({
                 key: transport[key] for key in ("text", "footer", "button_text", "url")}).model_dump()}
+            transport["text"], transport["footer"] = _spaced_footer(
+                transport["text"], transport["footer"], maximum=1024)
         elif kind in {"template", "sticker", "shortvideo"}:
             template = templates[str(action["template_id"])]
             text = render_contact(template.get("body", template.get("text", "")), facts)
