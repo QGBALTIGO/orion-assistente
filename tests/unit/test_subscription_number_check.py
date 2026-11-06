@@ -6,6 +6,10 @@ from uuid import UUID
 import pytest
 from pydantic import ValidationError
 
+from fastapi import HTTPException
+from redis.exceptions import RedisError
+
+from app import subscription_number_check as api
 from app import subscription_number_check_schemas as schemas
 from app import plan_routing, plan_catalog, workspace_policy
 
@@ -68,3 +72,46 @@ def test_feature_only_in_subscription_and_fail_closed_path():
     assert name not in plan_catalog.ELITE_FEATURES
     assert plan_routing.feature_for_path("/subscription-whatsapp/number-check/check", "POST") == name
     assert plan_routing.subscription_workspace_route("/subscription-whatsapp/number-check/check", "POST", {}) is True
+
+
+class FakeQuota:
+    def __init__(self):
+        self.count = 0
+        self.calls = []
+        self.closed = False
+    async def eval(self, script, keys, key, amount, maximum, ttl):
+        assert "INCRBY" in script and keys == 1
+        assert key.startswith("orion:subscription:number-check:v1:")
+        assert maximum == 30 and ttl == 3_600_000
+        self.calls.append((key, amount))
+        self.count += amount
+        return 1 if self.count <= maximum else 0
+    async def aclose(self):
+        self.closed = True
+
+
+@pytest.mark.asyncio
+async def test_durable_quota_reservation_shared_by_requests_and_closes_owned_client(monkeypatch):
+    redis = FakeQuota()
+    monkeypatch.setattr(api, "_request_redis", lambda request: (redis, True))
+    for _ in range(6):
+        await api.reserve_quota(None, DEVICE, GEN, 5)
+    with pytest.raises(HTTPException) as error:
+        await api.reserve_quota(None, DEVICE, GEN, 1)
+    assert error.value.status_code == 429
+    assert redis.count == 31 and len(redis.calls) == 7
+    assert redis.closed is True
+    assert len({row[0] for row in redis.calls}) == 1
+
+
+@pytest.mark.asyncio
+async def test_quota_backend_failure_fails_closed(monkeypatch):
+    class Offline:
+        async def eval(self, *args):
+            raise RedisError("secret internals")
+        async def aclose(self): pass
+    monkeypatch.setattr(api, "_request_redis", lambda request: (Offline(), True))
+    with pytest.raises(HTTPException) as error:
+        await api.reserve_quota(None, DEVICE, GEN, 1)
+    assert error.value.status_code == 503
+    assert "secret" not in str(error.value.detail)
