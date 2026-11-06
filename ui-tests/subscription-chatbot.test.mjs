@@ -102,6 +102,29 @@ test('URL tag inspection is explicit and pauses on an uncertain command with the
  let attempts=0;const h=await makeChatbot({respond(path,method){if(path.endsWith('/url-tags')&&method==='POST'){if(++attempts===1)throw failure(503);return job('succeeded','url_tags',{result:{tags:['status','message']}});}}});t.after(()=>h.close());createText(h);h.change(field('response.actions.0.type'),'url');h.fill(field('response.actions.0.url'),'https://example.invalid/test');h.click(act('read-url-tags'));assert.equal(writes(h).length,0);h.submit(form('url-tags'));await flush();assert.equal(writes(h).length,1);await h.tick(10000);assert.equal(writes(h).length,1);h.click(form('url-tags')+' '+act('retry-pending'));await flush();assert.equal(writes(h).length,2);assert.deepEqual(writes(h)[0].data,writes(h)[1].data);assert.match(h.element(form('editor')).textContent,/\{\{status\}\}/);assert.equal(h.document.querySelector(form('url-tags')),null);assert.deepEqual(h.errors,[]);
 });
 
+test('URL tags from JSON data are clickable and insert only the selected placeholder',async t=>{
+ const tags=['dns','reply','data[0].message','data'];
+ const h=await makeChatbot({respond(path,method){
+  if(path.endsWith('/url-tags')&&method==='POST')
+   return job('succeeded','url_tags',{result:{tags}});
+ }});
+ t.after(()=>h.close());createText(h);
+ h.change(field('response.actions.0.type'),'url');
+ h.fill(field('response.actions.0.url'),'https://api.example.com/example');
+ h.click(act('read-url-tags'));
+ h.submit(form('url-tags'));
+ await flush();
+ const targets=[...h.document.querySelectorAll('[data-sc-action="insert-url-tag"]')];
+ assert.deepEqual(targets.map(node=>node.dataset.scTag),tags);
+ assert.equal(h.document.querySelectorAll('[data-sc-url-tags] span').length,0);
+ h.click('[data-sc-action="insert-url-tag"][data-sc-tag="data"]');
+ assert.equal(h.element(field('response.actions.0.custom_template')).value,'{{data}}');
+ h.click('[data-sc-action="insert-url-tag"][data-sc-tag="reply"]');
+ assert.equal(h.element(field('response.actions.0.custom_template')).value,'{{data}}{{reply}}');
+ assert.equal(writes(h).filter(call=>call.path.endsWith('/rules')).length,0);
+ assert.deepEqual(h.errors,[]);
+});
+
 test('read-only accounts keep backup download and selected export while every mutation is unavailable',async t=>{
  const config=catalog();config.capabilities={...config.capabilities,manage:false,test_response:false,import:false,restore:false,read_url_tags:false};const h=await makeChatbot({configuration:config,respond(path,method){if(path===base+'/exports'&&method==='POST')return {export:{...copy(contract.export_response.export),url:base+'/exports/'+jobId}};}});t.after(()=>h.close());assert.equal(h.element(act('create')).disabled,true);assert.equal(h.element(act('import')).disabled,true);assert.equal(h.element(act('edit')).disabled,true);
  h.click(act('export'));await flush();assert.equal(h.element(form('export')+' button[type=submit]').disabled,true);h.check('[data-sc-select-id="'+ruleId+'"]');h.submit(form('export'));await flush();assert.deepEqual(writes(h)[0].data,{ids:[ruleId],format:'zip'});assert.equal(h.downloads.length,1);
