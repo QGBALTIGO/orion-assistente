@@ -1,7 +1,7 @@
 name: Billing reliability and recovery
 on:
   push:
-    branches: [codex/billing-reliability-20261106]
+    branches: [main, security/prelaunch-hardening-20261030, codex/billing-reliability-20261106]
   pull_request:
     paths: ['app/**', 'scripts/**', 'alembic/**', 'tests/**', 'ui-tests/**', 'railway.json', 'Dockerfile', '.github/workflows/billing-reliability.yml']
   workflow_dispatch:

@@ -515,9 +515,12 @@ def test_cakto_lifecycle_decisions_are_bound_to_exact_subscription_and_latest_or
 
     refused={**event,"event_type":"purchase_refused"}
     assert decision(e=refused,o={**order,"status":"refused"},
+                    r={**remote,"status":"late"})=="manual_review"
+    refused_order={**order,"status":"refused","createdAt":"2026-10-29T12:00:00Z"}
+    assert decision(e=refused,o=refused_order,
                     r={**remote,"status":"late"})=="past_due"
-    assert decision(e=refused,o={**order,"status":"refused"})=="manual_review"
-    assert decision(e=refused,o={**order,"status":"refused"},
+    assert decision(e=refused,o=refused_order)=="manual_review"
+    assert decision(e=refused,o=refused_order,
                     b={**binding,"local_status":"canceled"},
                     r={**remote,"status":"late"})=="manual_review"
 
