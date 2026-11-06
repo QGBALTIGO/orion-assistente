@@ -169,7 +169,8 @@ async def test_url_button_review_confirm_claim_and_receipt_keep_exact_frozen_lin
     c = direct_case
     source = message(c, kind="url_button", text="*Sistema sintético*\nTexto literal {name}",
         footer="Site externo", button_text="Acessar meu sistema", url="https://orionagenda.pro/?origin=synthetic")
-    action = {"type": "url_button", **{key: source[key] for key in ("text", "footer", "button_text", "url")}}
+    action = {"type": "url_button", "text": "*Sistema sintético*\nTexto literal {name}\n\nSite externo",
+        "footer": "", "button_text": source["button_text"], "url": source["url"]}
     before = await snapshot(c)
     async with url_button_transport(c, monkeypatch) as status:
         prepared = await review(c, source)
@@ -382,7 +383,7 @@ async def test_raw_media_keeps_renamed_file_and_audio_never_emits_caption_or_fol
         assert not action.get("caption") and not action.get("text")
         assert not template["body"] and not template["followup_body"]
     else:
-        assert action["caption"] == "Primeira Segunda Terceira"
+        assert action["caption"] == "Primeira\nSegunda\nTerceira"
     effect, = await poll(c)
     permit = await grant(c, effect)
     assert permit["authorized"] and permit["payload"]["action"] == action

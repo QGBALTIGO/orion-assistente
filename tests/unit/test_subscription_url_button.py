@@ -81,10 +81,24 @@ def test_direct_contract_has_no_hidden_template_or_protocol_injection(extra):
 
 def test_direct_keeps_brace_text_literal_and_builds_one_exact_action_without_ids():
     value = parse(message(text='*Olá* {name} e {qualquer}', footer="Rodapé {literal}"))
-    assert direct.url_button_plan(value) == [{"type": "url_button", **content(text=value["text"], footer=value["footer"])}]
+    assert direct.url_button_plan(value) == [{"type": "url_button", **content(
+        text=value["text"]+"\n\n"+value["footer"], footer="")}]
     assert direct.expanded_definition(value, KEY) == direct.expanded_definition(value, KEY)
     assert "id" not in direct.url_button_plan(value)[0]
     assert "delay_seconds" not in direct.url_button_plan(value)[0]
+
+
+@pytest.mark.asyncio
+async def test_full_direct_footer_is_rejected_with_help_before_any_snapshot_query(monkeypatch):
+    class NoDatabase:
+        async def execute(self, *args, **kwargs):
+            pytest.fail("Invalid combined content reached SQL admission")
+    value = parse(message(text="A"*1024, footer="Rodapé"))
+    with pytest.raises(HTTPException) as error:
+        await store.capture_review(NoDatabase(), TENANT, ACTOR, value, KEY)
+    assert error.value.status_code == 422
+    assert error.value.detail["code"] == "DIRECT_FOOTER_TOO_LONG"
+    assert "rodapé" in error.value.detail["message"]
 
 
 def test_chatbot_renders_only_known_tenant_facts_without_url_interpolation_or_mutation():
@@ -93,8 +107,9 @@ def test_chatbot_renders_only_known_tenant_facts_without_url_interpolation_or_mu
     before = deepcopy(root)
     facts = FACTS | {"name": "Ana", "my_name": "Clínica sintética"}
     plan, deps = rules.compile_plan(root["id"], graph(root), {}, facts, CONTEXT)
-    assert plan == [{"delay_seconds": 1, "action": {"type": "url_button", "text": "Olá Ana, acesse Clínica sintética.",
-        "footer": FACTS["my_email"], "button_text": "Abrir Ana", "url": "https://orionagenda.pro/"}}]
+    assert plan == [{"delay_seconds": 1, "action": {"type": "url_button",
+        "text": "Olá Ana, acesse Clínica sintética.\n\n"+FACTS["my_email"],
+        "footer": "", "button_text": "Abrir Ana", "url": "https://orionagenda.pro/"}}]
     assert root == before and deps == [root["id"]]
 
 
@@ -167,7 +182,11 @@ async def test_history_displays_full_cta_and_freezes_resend_without_fetch_or_sel
     shown = history.item_dto(row, NOW)
     assert "Site externo" in shown["sent"]["text"] and "https://orionagenda.pro/" in shown["sent"]["text"]
     payload, result, selections = await history.frozen_payload(object(), row, clone_tokens=True)
-    assert payload == row["payload"] and result is None and selections == []
+    assert payload == {"phone": PHONE, "action": {**action,
+        "text": action["text"]+"\n\n"+action["footer"], "footer": ""}}
+    assert row["payload"] == {"phone": PHONE, "action": action} and result is None and selections == []
+    original, _, _ = await history.frozen_payload(object(), row, clone_tokens=False)
+    assert original == row["payload"], "Dispatch revalidation must not rewrite an old attempt"
     row["payload"]["action"]["url"] = "https://127.1/"
     with pytest.raises(HTTPException):
         await history.frozen_payload(object(), row, clone_tokens=True)

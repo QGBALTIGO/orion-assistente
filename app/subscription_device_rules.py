@@ -88,8 +88,9 @@ def transcription_parts(settings, event, transcript):
     if not isinstance(transcript, str) or not transcript.strip() or len(transcript) > 120000:
         raise ValueError("Transcrição indisponível ou acima do limite")
     config = settings["transcription"]
-    rendered = config["template"].format(name=event.get("name") or event["phone"],
-                                         transcript=transcript, footer=config["footer"]).strip()
+    from app.whatsapp_footer import footer_template
+    rendered = footer_template(config["template"], name=event.get("name") or event["phone"],
+                               transcript=transcript, footer=config["footer"])
     # Only this module uses long messages; the legacy send limit is unchanged.
     # Every part is independently ledgered and waits for its accepted predecessor.
     parts, part, size = [], [], 0

@@ -44,7 +44,7 @@ from app import qr_assistant_interactions
 from app.communication_events import EventMetadata
 from app.qr_service_context import resolve_service_reply
 from app.groq_understanding import interpret_plan
-from app.qr_understanding import UnderstandingPlan, build_plan, clarification_for, unique_service_reply
+from app.qr_understanding import UnderstandingPlan, build_plan, clarification_for, unique_service_reply, same_professional_reference
 from app.qr_information import info as compose_information, faq_catalog, current_price_reference, explain_price_followup
 from app.qr_dialogue import (contextual_response, interpret_contextual_response, choose_time, choose_professional,
     compound_candidate, interpret_compound_response, summary_review_requested)
@@ -2381,6 +2381,35 @@ async def _multi_turn(tenant: UUID, phone: str, body: str, state: dict, business
         catalog, professionals, redis, key, preview, context=context)
     if multiple_availability is not None:
         return multiple_availability
+    if "reschedule" in operations and same_professional_reference(body) and not third_party_subject(body):
+        # Terminal dialogue deliberately retains no staff selection. Resolve
+        # this explicit reference from the current owned booking, not memory
+        # or a usual/completed service. These are reads and transient state;
+        # the normal snapshot and separate consent still govern the write.
+        if not state.get("step", "").startswith("reschedule_"):
+            started = await begin_reschedule(tenant, phone, business, redis, key, preview)
+            state = json.loads(await redis.get(key) or "{}")
+            if started["step"] == "reschedule_pick":
+                if not set(plan.ambiguities) - {"professional"}:
+                    state["deferred_reschedule"] = plan.model_copy(update={
+                        "intents": ["reschedule"], "professional_id": None, "faq_ids": [], "query_service_ids": [],
+                        "ambiguities": []}).model_dump(mode="json")
+                    await redis.set(key, json.dumps(state), ex=STATE_TTL)
+                return _bounded_reply(factual, started["answer"], started["step"])
+            if started["step"] != "reschedule_day":
+                return _bounded_reply(factual, started["answer"], started["step"])
+        if state.get("appointment"):
+            original = await appointment_services(tenant, UUID(state["appointment"]), phone)
+            if (not original or original["status"] != "confirmed" or
+                    not isinstance(original.get("start_at"), datetime) or
+                    original["start_at"] <= datetime.now(ZoneInfo(business["timezone"]))):
+                return _bounded_reply(factual, "Não encontrei agendamento futuro confirmado neste número.", "no_reservation")
+            reference_plan = build_plan(message=body, catalog=catalog, professionals=professionals,
+                context={**context, "professional_id": str(original["professional_id"])},
+                reference_date=datetime.now(ZoneInfo(business["timezone"])).date())
+            if reference_plan.professional_id == original["professional_id"] and "professional" not in reference_plan.ambiguities:
+                plan = plan.model_copy(update={"professional_id": reference_plan.professional_id,
+                    "ambiguities": [field for field in plan.ambiguities if field != "professional"]})
     if plan.requires_clarification:
         await _review_after_inquiry(state, redis, key)
         draft = await _save_booking_draft(plan, state, business, catalog, professionals, redis, key)
@@ -3520,6 +3549,42 @@ async def _record_customer_interaction(tenant, phone, message_id, redis, *, chan
         raise HTTPException(503, "Não consegui registrar a interação agora") from None
 
 
+async def _interaction_control_revision(identity, phone, message_id, revalidate):
+    """Optional send proof for this exact journaled input, never intake order.
+
+    Notice registration remains useful when no AI send grant can be read. This
+    query neither creates a control nor borrows the revision of another input;
+    send-authorize still rechecks the returned generation before any relay.
+    """
+    from app import inbox_control
+    if (not identity.assistant_enabled or not identity.allowed_sender or
+            not (inbox_control.enabled() or identity.central_adopted)):
+        return None
+    token = qr_channel_scope.bind(identity, revalidate)
+    try:
+        async with asyncio.timeout(2):
+            # The endpoint just revalidated this identity. The bound tenant
+            # transaction locks/rechecks owner and fence around the SELECT;
+            # revalidate the complete identity again after that transaction.
+            async with get_session_factory()() as db:
+                async with tenant_transaction(db, identity.tenant_id):
+                    revision = (await db.execute(text("""SELECT c.revision
+                        FROM inbox_controls c
+                        JOIN inbox_messages m ON m.tenant_id=c.tenant_id AND m.control_id=c.id
+                        WHERE c.tenant_id=:tenant AND c.channel_id=:channel AND c.contact_e164=:phone
+                          AND c.mode='ai' AND c.pending_operation IS NULL
+                          AND m.direction='in' AND m.source='customer' AND m.external_id=:message
+                          AND m.control_revision=c.revision"""),
+                        {"tenant": identity.tenant_id, "channel": identity.channel_id,
+                         "phone": "+" + phone.removeprefix("+"), "message": message_id})).scalar_one_or_none()
+            await qr_channel_scope.assert_current()
+            return revision if type(revision) is int and 1 <= revision <= 2**53 - 1 else None
+    except (HTTPException, SQLAlchemyError, TimeoutError, ConnectionError, RuntimeError):
+        return None
+    finally:
+        qr_channel_scope.reset(token)
+
+
 @router.post("/internal/qr/channels/{channel_id}/interaction", include_in_schema=False)
 async def managed_qr_interaction(channel_id: UUID, payload: qr_intake_revision.Notice, request: Request):
     from app.qr_channels import authenticated_channel
@@ -3529,6 +3594,7 @@ async def managed_qr_interaction(channel_id: UUID, payload: qr_intake_revision.N
         fresh = await authenticated_channel(request, phone=payload.phone)
         if fresh != identity or not fresh.allowed_sender:
             raise HTTPException(409, "Autorização do canal mudou")
+        return fresh
     redis = from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"), socket_connect_timeout=3, socket_timeout=3)
     try:
         await _record_customer_interaction(identity.tenant_id, payload.phone, payload.message_id, redis,
@@ -3545,7 +3611,9 @@ async def managed_qr_interaction(channel_id: UUID, payload: qr_intake_revision.N
             from app.contact_preferences import receive_control
             await receive_control(identity.tenant_id,payload.phone,payload.control,redis,identity=identity)
             await revalidate()
-        return {"recorded": True, "revision": revision, "assistant_interactions": 1}
+        control_revision = await _interaction_control_revision(identity, payload.phone, payload.message_id, revalidate)
+        return {"recorded": True, "revision": revision, "assistant_interactions": 1,
+                "control_revision": control_revision}
     finally:
         await redis.aclose()
 

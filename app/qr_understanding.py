@@ -61,6 +61,19 @@ def normalized(value: str) -> str:
                    if unicodedata.category(c) != "Mn")
 
 
+def same_professional_reference(message: str) -> bool:
+    """An explicit staff reference, never a habit, beneficiary or condition.
+
+    The caller must supply the current owned appointment as factual context;
+    this predicate does not identify that appointment or authorize a write.
+    """
+    value = normalized(message)
+    return bool(re.search(r"\b(?:mesmo (?:profissional|barbeiro|dentista)|mesma (?:profissional|barbeira|dentista))\b", value)
+        and not re.search(r"\b(?:nao|nem|sem|se|caso|talvez|depend\w*|ou|mas|porem|exceto|menos|evit[ae]r?|dispenso|nunca|jamais)\b|"
+            r"\b(?:desde|contanto)\s+que\b|\b(?:em vez|no lugar|ao inves)\b", value)
+        and not re.search(r"\b(?:filh[oa]|pai|mae|espos[oa]|marido|irma[oa]|outra pessoa|mesma pessoa)\b", value))
+
+
 def _unique(items):
     return list(dict.fromkeys(items))
 
@@ -565,8 +578,18 @@ def build_plan(*, message: str, catalog: list[dict], professionals: list[dict] |
             data.update(requested_time=recalled, time_relation=relation)
         else:
             ambiguities.append("time")
-    same_person = references and bool(re.search(r"\b(?:mesmo (?:profissional|barbeiro|dentista)|mesma (?:profissional|barbeira)|com (?:ele|ela))\b", lower))
-    other_person = references and bool(re.search(r"\b(?:[oa] outr[oa])\s+(?:profissional|barbeir[oa]|dentista)\b", lower))
+    staff_reference = bool(re.search(r"\b(?:mesmo (?:profissional|barbeiro|dentista)|mesma (?:profissional|barbeira|dentista))\b", lower))
+    same_person = references and (same_professional_reference(message) or
+        (not staff_reference and bool(re.search(r"\bcom (?:ele|ela)\b", lower))))
+    if staff_reference:
+        remainder = re.sub(r"\b(?:com\s+(?:[oa]\s+)?)?(?:mesmo (?:profissional|barbeiro|dentista)|mesma (?:profissional|barbeira|dentista))\b", " ", lower)
+        if any(word not in first_names | non_people for word in re.findall(
+                r"\b(?:com|profissional|barbeiro|barbeira)\s+(?:o\s+|a\s+)?([a-z]+)", remainder)):
+            same_person = False
+    if staff_reference and not same_person:
+        data["professional_id"] = None
+        ambiguities.append("professional")
+    other_person = references and not staff_reference and bool(re.search(r"\b(?:[oa] outr[oa])\s+(?:profissional|barbeir[oa]|dentista)\b", lower))
     if (same_person or other_person) and not pro_matches:
         try:
             recalled = UUID(str(context.get("professional_id", "")))

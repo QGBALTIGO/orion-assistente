@@ -11,6 +11,7 @@ from app import subscription_direct_policy as policy
 from app import subscription_direct_schemas as schemas
 from app import subscription_templates as library
 from app import subscription_templates_schemas as template_schemas
+from app.whatsapp_footer import FooterTooLong
 
 FEATURE = "direct_messages.manage"
 ORIGIN = "direct"
@@ -25,6 +26,7 @@ ERRORS.update({
     "DIRECT_TEMPLATE_INVALID": "Para salvar como template, use somente as cinco tags disponíveis na biblioteca.",
     "DIRECT_ASSET_INVALID": "Selecione um arquivo validado desta empresa, com o nome devolvido pelo upload.",
     "DIRECT_FORMAT_UNAVAILABLE": "Este dispositivo não está pronto para mensagens com botão. Confira a conexão e tente novamente.",
+    "DIRECT_FOOTER_TOO_LONG": "A mensagem com rodapé ultrapassa o limite do botão. Reduza o texto ou o rodapé antes de confirmar.",
 })
 
 
@@ -63,6 +65,8 @@ async def capture_review(db, tenant, actor, message, key):
     elif message["kind"] == "url_button":
         try:
             plan = policy.url_button_plan(message)
+        except FooterTooLong:
+            raise fail("DIRECT_FOOTER_TOO_LONG", 422) from None
         except ValueError:
             raise fail("DIRECT_INVALID", 422) from None
         prepared = {item["row_key"]: {"plan": plan} for item in definition["items"]}
