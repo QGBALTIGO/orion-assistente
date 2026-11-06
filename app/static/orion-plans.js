@@ -8,16 +8,16 @@ const price=cents=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL
 let timezone='America/Sao_Paulo';
 const localDate=date=>{if(!date)return '—';try{return new Intl.DateTimeFormat('pt-BR',{dateStyle:'medium',timeZone:timezone}).format(new Date(date));}catch{return '—';}};
 const defs=[
- {code:'essencial',name:'Orion Essencial',intro:'Tudo o que você precisa para organizar e gerenciar seu negócio.',professionals:2,features:[
+ {code:'essencial',name:'Orion Essencial',intro:'Tudo o que você precisa para organizar e gerenciar seu negócio.',features:[
  'Dashboard com indicadores essenciais','Agenda e agendamentos online','Clientes e histórico de atendimentos',
  'Serviços, combos e adicionais','Site de agendamento personalizado','Financeiro básico: receitas e despesas',
  'Meu desempenho: atendimentos e faturamento','Confirmações e lembretes pelo WhatsApp*','Convites para avaliação no Google*','Suporte padrão']},
- {code:'profissional',name:'Orion Profissional',intro:'Mais ferramentas para fidelizar clientes e acelerar o crescimento da sua empresa.',professionals:6,features:[
+ {code:'profissional',name:'Orion Profissional',intro:'Mais ferramentas para fidelizar clientes e acelerar o crescimento da sua empresa.',features:[
  'Tudo do Essencial','Central de atendimento e WhatsApp da empresa','Financeiro avançado, DRE e relatórios','Comissões, vales e pagamentos de funcionários',
  'Metas e análises por profissional','Fidelização, pontos e recompensas','Cupons e benefícios personalizados',
  'Clientes inativos e ações de retorno','Campanhas de aniversário e recuperação*',
  'Marketing IA para campanhas e mensagens*','Consultor IA de gestão*']},
- {code:'elite',name:'Orion Elite',intro:'Automatize seu atendimento com uma recepcionista inteligente no WhatsApp da sua empresa.',professionals:10,features:[
+ {code:'elite',name:'Orion Elite',intro:'Automatize seu atendimento com uma recepcionista inteligente no WhatsApp da sua empresa.',features:[
  'Tudo do Profissional','Recepcionista IA no WhatsApp da empresa*','Respostas sobre serviços, preços e horários',
  'Consulta de horários disponíveis*','Agendar, reagendar e cancelar via conversa*',
  'Atendimento fora do horário comercial*','Nome e estilo personalizados da assistente',
@@ -33,28 +33,35 @@ const comparisons=[
  ['Automações e lembretes',[['Confirmação e lembretes WhatsApp*',true,true,true],['Convite para avaliação no Google*',true,true,true],['Agendamento automático por conversa*',false,false,true]]],
  ['Marketing e fidelização',[['Pontos e recompensas',false,true,true],['Cupons e benefícios',false,true,true],['Campanhas de aniversário e retorno*',false,true,true]]],
  ['Inteligência artificial',[['Marketing IA e Consultor IA de gestão*',false,true,true],['Recepcionista IA no WhatsApp*',false,false,true]]],
- ['Equipe e profissionais',[['Profissionais permitidos','Até 2','Até 6','Até 10'],['Relatórios por profissional',true,true,true]]],
+ ['Equipe e profissionais',[['Profissionais permitidos',null,null,null],['Relatórios por profissional',true,true,true]]],
  ['Suporte',[['Suporte padrão',true,true,true]]]
 ];
 function compareCell(value){return value===true?'<span class="op-yes" aria-label="Incluído">'+ic('check')+'<span class="op-cell-word">Incluído</span></span>':value===false?'<span class="op-no" aria-label="Não incluído">—</span>':'<span class="op-comparison-value">'+escapeHTML(value)+'</span>';}
 function canonical(code){const s=String(code||'').toLowerCase();return s.includes('essencial')?'essencial':s.includes('profissional')||s==='pro'||s.includes('_pro')?'profissional':s.includes('elite')?'elite':'';}
 function statusOf(sub){if(!sub)return 'Sem assinatura';return ({active:'Ativa',trialing:'Em teste',trial:'Em teste',past_due:'Pagamento pendente',grace:'Em carência',suspended:'Suspensa',canceled:'Cancelada',cancelled:'Cancelada',expired:'Encerrada'})[sub.status]||'Estado não confirmado';}
 let mounted=null;
+function catalogPlan(plans,code){
+ if(!Array.isArray(plans)||!defs.some(plan=>plan.code===code))return null;
+ const rows=plans.filter(plan=>plan&&plan.code===code),plan=rows[0];
+ return rows.length===1&&typeof plan.name==='string'&&plan.name.trim()&&plan.name.length<=120&&
+  Number.isSafeInteger(plan.monthly_cents)&&plan.monthly_cents>0&&
+  Number.isSafeInteger(plan.max_professionals)&&plan.max_professionals>0?plan:null;
+}
 function renderCard(def, server, currentCode, currentActive, allowed, ctx, source, checkoutConfigured) {
- const chosen=server.find(x=>x.code===def.code)||{};
+ const chosen=catalogPlan(server,def.code);
  const same=currentActive&&currentCode===def.code;
  const badge=def.code==='profissional'?'<span class="op-recommended">Recomendado</span>':'';
  let actionLabel='Assinar '+(def.code==='profissional'?'Profissional':def.code==='essencial'?'Essencial':'Elite');
  let disabled='';
- if(same){actionLabel=source==='pix_prepaid'?'Renovar com Pix':'Plano atual';disabled=source==='pix_prepaid'?'':'disabled';}
+ if(!allowed){actionLabel='Somente proprietário';disabled='disabled';}
+ else if(!chosen){actionLabel='Plano indisponível';disabled='disabled';}
+ else if(same){actionLabel=source==='pix_prepaid'?'Renovar com Pix':'Plano atual';disabled=source==='pix_prepaid'?'':'disabled';}
  else if(currentActive){actionLabel=source==='manual'?'Gerenciado pela administração':'Troca de plano pelo suporte';disabled='disabled';}
- else if(!allowed){actionLabel='Somente proprietário';disabled='disabled';}
- else if(!Number.isInteger(chosen.monthly_cents)){actionLabel='Plano indisponível';disabled='disabled';}
  const features=def.features.map(feature=>'<li>'+ic('check')+'<span>'+escapeHTML(feature)+'</span></li>').join('');
  return '<article class="op-plan op-'+def.code+(same?' op-current':'')+'" aria-label="'+escapeHTML(def.name)+'">'
    +'<header class="op-plan-head"><div class="op-plan-heading"><h3>'+escapeHTML(def.name)+'</h3>'+badge+'</div><p>'+escapeHTML(def.intro)+'</p></header>'
-   +'<div class="op-price"><strong>'+(Number.isInteger(chosen.monthly_cents)?price(chosen.monthly_cents):'Preço indisponível')+'</strong><span>/30 dias</span></div>'
-   +'<p class="op-per-company">por empresa · até '+def.professionals+' profissionais</p>'
+   +'<div class="op-price"><strong>'+(chosen?price(chosen.monthly_cents):'Preço indisponível')+'</strong><span>/30 dias</span></div>'
+   +'<p class="op-per-company">por empresa · '+(chosen?'até '+chosen.max_professionals+' profissionais':'limite indisponível')+'</p>'
    +'<div class="op-plan-divider"></div><ul class="op-plan-features">'+features+'</ul>'
    +'<div class="op-plan-bottom"><button class="op-btn '+(def.code==='profissional'?'op-btn-primary':'op-btn-secondary')+'" type="button" data-op-checkout="'+def.code+'" '+disabled+'>'+escapeHTML(actionLabel)+'</button>'
    +'<span class="op-plan-caption">'+(same?'Seu plano vigente':checkoutConfigured?'Pagamento protegido, sujeito à verificação.':'Pagamento temporariamente indisponível; nenhuma cobrança será gerada.')+'</span></div></article>';
@@ -63,6 +70,8 @@ function hasPlanDifference(feature){
  return feature[1]!==feature[2]||feature[2]!==feature[3];
 }
 function renderComparison(plans){
+ const matrix=comparisons.map(([category,features])=>[category,features.map(feature=>feature[0]==='Profissionais permitidos'?
+  [feature[0],...defs.map(def=>{const plan=catalogPlan(plans,def.code);return plan?'Até '+plan.max_professionals:'Não informado';})]:feature)]);
  const tiers=[
   {code:'essencial',title:'Essencial',short:'Essencial'},
   {code:'profissional',title:'Profissional',short:'Pro'},
@@ -75,7 +84,7 @@ function renderComparison(plans){
    +'<span class="op-matrix-tier-name"><span class="op-matrix-full">'+tier.title+'</span><span class="op-matrix-short">'+tier.short+'</span></span>'
    +'<span class="op-matrix-tier-price">'+escapeHTML(display)+'</span></th>';
  }).join('');
- const sections=comparisons.map(([category,features],groupIndex)=>{
+ const sections=matrix.map(([category,features],groupIndex)=>{
   const header='<tr class="op-matrix-category"><th scope="rowgroup" colspan="4"><span class="op-matrix-category-label">'+escapeHTML(category)+'</span></th></tr>';
   const body=features.map(feature=>{
    const [name,essencial,profissional,elite]=feature;
@@ -84,7 +93,7 @@ function renderComparison(plans){
   }).join('');
   return '<tbody data-op-category="'+groupIndex+'">'+header+body+'</tbody>';
  }).join('');
- const mobileSections=comparisons.map(([category,features],groupIndex)=>{
+ const mobileSections=matrix.map(([category,features],groupIndex)=>{
   const groupId='opMobileCategory'+groupIndex;
   const items=features.map(feature=>{
    const [name,...values]=feature;
@@ -125,17 +134,22 @@ function applyComparisonFilter(root,onlyDifferences){
 function effectiveBanner(data){
  const p=data.effective_plan;if(!p)return '<p class="os-notice" role="status">Não foi possível confirmar o acesso da empresa. Atualize o estado antes de continuar.</p>';
  const origins={manual:'Liberação manual',cakto:'Assinatura Cakto',pix_prepaid:'Pix pré-pago (renovação manual)',trial:'Teste grátis',none:'Sem acesso ativo',platform_admin:'Administração Orion'};
- return '<section class="op-account-state" data-op-effective-plan aria-label="Acesso liberado à empresa"><div><span class="op-eyebrow">SEU ACESSO</span><h2>'+escapeHTML(p.active?p.name||'Plano Orion':'Sem plano ativo')+'</h2><p>'+escapeHTML(origins[p.source]||'Origem não confirmada')+(p.valid_until?' · até '+escapeHTML(localDate(p.valid_until)):'')+'</p></div><div class="op-current-metrics"><span><small>Profissionais ativos</small><strong>'+escapeHTML(p.limits?.active_professionals??data.active_professionals??0)+' de '+escapeHTML(p.limits?.max_professionals??'—')+'</strong></span></div>'+(p.source==='manual'&&p.active?'<p class="os-help">A liberação manual tem prioridade sobre compras. Para que uma contratação determine o acesso, a administração deve remover esta atribuição. A assinatura comercial permanece preservada.</p>':'')+(Number(p.limits?.excess_professionals)>0?'<p class="os-notice">Há '+escapeHTML(p.limits.excess_professionals)+' profissional(is) acima do limite. Os dados e agendamentos foram preservados. Novas ativações ficam bloqueadas até a regularização.</p>':'')+'</section>';
+ const canceledPaid=p.active&&p.source==='cakto'&&p.commercial_subscription?.status==='canceled'&&p.valid_until;
+ const description=canceledPaid?'Renovação cancelada. Acesso pago até '+localDate(p.valid_until):
+  (origins[p.source]||'Origem não confirmada')+(p.valid_until?' · até '+localDate(p.valid_until):'');
+ return '<section class="op-account-state" data-op-effective-plan aria-label="Acesso liberado à empresa"><div><span class="op-eyebrow">SEU ACESSO</span><h2>'+escapeHTML(p.active?p.name||'Plano Orion':'Sem plano ativo')+'</h2><p>'+escapeHTML(description)+'</p></div><div class="op-current-metrics"><span><small>Profissionais ativos</small><strong>'+escapeHTML(p.limits?.active_professionals??data.active_professionals??0)+' de '+escapeHTML(p.limits?.max_professionals??'—')+'</strong></span></div>'+(p.source==='manual'&&p.active?'<p class="os-help">A liberação manual tem prioridade sobre compras. Para que uma contratação determine o acesso, a administração deve remover esta atribuição. A assinatura comercial permanece preservada.</p>':'')+(Number(p.limits?.excess_professionals)>0?'<p class="os-notice">Há '+escapeHTML(p.limits.excess_professionals)+' profissional(is) acima do limite. Os dados e agendamentos foram preservados. Novas ativações ficam bloqueadas até a regularização.</p>':'')+'</section>';
 }
 function subscriptionBanner(data){
  const sub=data.subscription,trial=data.trial;
  if(sub){
-   const status=statusOf(sub);
+   const canceledPaid=sub.status==='canceled'&&data.effective_plan?.active&&data.effective_plan?.source==='cakto'&&data.effective_plan?.valid_until;
+   const status=canceledPaid?'Renovação cancelada':statusOf(sub);
    const details=[
-     '<span><small>Mensalidade</small><strong>'+price(sub.monthly_cents||0)+'</strong></span>',
+     '<span><small>'+(canceledPaid?'Valor do período':'Mensalidade')+'</small><strong>'+price(sub.monthly_cents||0)+'</strong></span>',
      '<span><small>Profissionais</small><strong>'+(data.active_professionals||0)+' de '+(sub.max_professionals||'—')+'</strong></span>',
    ];
-   if(sub.next_renewal_at)details.push('<span><small>Próxima cobrança</small><strong>'+escapeHTML(localDate(sub.next_renewal_at))+'</strong></span>');
+   if(canceledPaid)details.push('<span><small>Acesso pago até</small><strong>'+escapeHTML(localDate(data.effective_plan.valid_until))+'</strong></span>');
+   if(sub.next_renewal_at&&sub.status!=='canceled')details.push('<span><small>Próxima cobrança</small><strong>'+escapeHTML(localDate(sub.next_renewal_at))+'</strong></span>');
    if(sub.trial_ends_at&&['trial','trialing'].includes(sub.status))details.push('<span><small>Seu teste termina</small><strong>'+escapeHTML(localDate(sub.trial_ends_at))+'</strong></span>');
    return '<section class="op-account-state" aria-label="Assinatura da empresa"><div><span class="op-eyebrow">SUA ASSINATURA</span><h2>'+escapeHTML(sub.name||'Plano Orion')+'</h2><p>Estado confirmado pelo servidor: <strong>'+escapeHTML(status)+'</strong></p></div><div class="op-current-metrics">'+details.join('')+'</div></section>';
  }
@@ -207,8 +221,6 @@ function renderTrialDialog(root,data,ctx){
  dialog.querySelector('#opFullName')?.focus({preventScroll:true});
 }
 
-const checkoutPrices={essencial:2990,profissional:8990,elite:13990};
-const checkoutNames={essencial:'Essencial',profissional:'Profissional',elite:'Elite'};
 function checkoutField(name,label,type='text',attributes=''){
  return '<label class="op-payment-field"><span>'+label+'</span><input name="'+name+'" type="'+type+'" '+attributes+'></label>';
 }
@@ -241,9 +253,10 @@ function checkoutDocumentData(field){
  return {kind,digits};
 }
 /* Pix único: cobrança voluntária, acesso de 30 dias, sem cartão/recorrência. */
-async function pixCheckout(root,code,ctx){
+async function pixCheckout(root,code,ctx,data){
  const action=root.querySelector('[data-op-checkout="'+code+'"]');
- if(!action||action.disabled||!checkoutPrices[code]||root.querySelector('.op-checkout-dialog'))return;
+ const selected=catalogPlan(data?.plans,code);
+ if(!action||action.disabled||!selected||data?.can_manage_plan!==true||ctx.canManage!==true||root.querySelector('.op-checkout-dialog'))return;
  const modal=document.createElement('dialog');
  modal.className='os-dialog op-dialog op-checkout-dialog';
  modal.setAttribute('aria-label','Pagamento Pix único Orion');
@@ -252,8 +265,8 @@ async function pixCheckout(root,code,ctx){
  +'<span class="op-eyebrow">ORION · PIX PRÉ-PAGO</span><h2>Pagar 30 dias de acesso</h2>'
  +'<p>Pagamento único. Sem débito automático e sem cartão.</p></div></div>'
  +'<button class="op-dialog-close" type="button" data-pix-close aria-label="Fechar pagamento">'+ic('close')+'</button></div>'
- +'<div class="op-payment-summary"><div class="op-payment-plan"><span>Plano '+escapeHTML(checkoutNames[code])+'</span>'
- +'<small>Acesso por 30 dias · Renovação manual</small></div><strong>'+price(checkoutPrices[code])+'<small> / 30 dias</small></strong></div>'
+ +'<div class="op-payment-summary"><div class="op-payment-plan"><span>'+escapeHTML(selected.name)+'</span>'
+ +'<small>Acesso por 30 dias · Renovação manual</small></div><strong>'+price(selected.monthly_cents)+'<small> / 30 dias</small></strong></div>'
  +'<div class="op-payment-banner" data-pix-status role="status" aria-live="polite">Verificando a disponibilidade do Pix…</div>'
  +'<form class="op-payment-form" data-pix-form hidden><div class="op-payment-fields">'
  +'<h3 class="op-payment-section-title">Dados do pagador</h3>'
@@ -263,7 +276,7 @@ async function pixCheckout(root,code,ctx){
  +checkoutField('doc_number','CPF ou CNPJ','text','required inputmode="numeric" autocomplete="off" minlength="11" maxlength="18"')
  +'</div><div class="op-payment-confirmations">'
  +'<label class="op-payment-consent"><input type="checkbox" name="one_time" required>'
- +'<span>Confirmo o Pix único de <strong>'+price(checkoutPrices[code])+'</strong> por 30 dias de Orion '+escapeHTML(checkoutNames[code])+'.</span></label>'
+ +'<span>Confirmo o Pix único de <strong>'+price(selected.monthly_cents)+'</strong> por 30 dias de '+escapeHTML(selected.name)+'.</span></label>'
  +'<label class="op-payment-consent"><input type="checkbox" name="understood" required>'
  +'<span>Entendo que não há renovação automática. O próximo período precisa de outro Pix, por minha decisão.</span></label>'
  +'</div><p class="op-payment-error" data-pix-error role="alert" aria-live="polite"></p>'
@@ -279,11 +292,62 @@ async function pixCheckout(root,code,ctx){
  form.elements.namedItem('name').value=ctx.user?.name||'';
  form.elements.namedItem('email').value=ctx.user?.email||'';
  form.elements.namedItem('phone').value=window.OrionFields?.phoneDisplay(ctx.user?.phone||ctx.tenant?.contact_phone||'')||'';
- let busy=false,finished=false,intent=null,ticker=null;
+ let busy=false,finished=false,intent=null,ticker=null,ready=false;
  const close=()=>{
   if(busy)return;
   if(ticker)window.clearInterval(ticker);
   modal.close();modal.remove();action.focus({preventScroll:true});
+ };
+ const showPix=(result,resumed=false)=>{
+  if(result?.status!=='pending_confirmation'||!defs.some(plan=>plan.code===result.plan_code)||
+    !Number.isSafeInteger(result.monthly_cents)||result.monthly_cents<=0||
+    typeof result.intent_id!=='string'||!result.intent_id||
+    result.pix_code!=null&&(typeof result.pix_code!=='string'||!result.pix_code||result.pix_code.length>32768))
+   throw Error('O Pix exige verificação. Não tente gerar outro.');
+  const hasCode=typeof result.pix_code==='string';
+  intent=result;ready=false;form.hidden=true;resultBox.hidden=false;
+  // A resumed order keeps its original agreed amount, even if the current
+  // catalogue changes. It never becomes permission to create another charge.
+  const label=catalogPlan(data.plans,result.plan_code)?.name||result.plan_code;
+  modal.querySelector('.op-payment-plan span').textContent=label;
+  modal.querySelector('.op-payment-summary > strong').innerHTML=price(result.monthly_cents)+'<small> / 30 dias</small>';
+  resultBox.innerHTML='<div class="op-payment-pix"><span class="op-eyebrow">'+(resumed?'PIX EM ANDAMENTO':'PIX GERADO')+'</span>'
+    +(hasCode?'<h3>Pague pelo seu banco</h3><p>Pagamento único, sem cobrança mensal automática. O QR Code tem validade limitada.</p>':
+      '<h3>Aguardando confirmação</h3><p>O pagamento existente está sendo verificado. Não gere outro Pix.</p>')
+    +(hasCode&&String(result.pix_qr_data_uri||'').startsWith('data:image/png;base64,')
+      ?'<img class="op-payment-qr" alt="QR Code Pix Cakto" src="'+escapeHTML(result.pix_qr_data_uri)+'">':'')
+    +(hasCode?'<label class="op-payment-field"><span>Pix copia e cola</span>'
+      +'<textarea data-pix-code readonly rows="3">'+escapeHTML(result.pix_code)+'</textarea></label>'
+      +'<button type="button" class="op-btn op-btn-primary" data-pix-copy>Copiar código Pix</button>':'')
+    +'<button type="button" class="op-btn op-btn-secondary" data-pix-check>Verificar pagamento</button></div>';
+  status.textContent=!hasCode?'Aguardando a confirmação do pagamento existente. Nenhuma nova cobrança foi criada.':
+   resumed?'Retomamos seu Pix existente. Nenhuma nova cobrança foi criada.':'Aguardando pagamento. A confirmação libera 30 dias de acesso.';
+  if(ticker)window.clearInterval(ticker);
+  ticker=window.setInterval(()=>{if(!document.hidden)void poll();},12000);
+ };
+ const refreshAccess=async answer=>{
+  finished=true;ready=false;form.hidden=true;if(ticker)window.clearInterval(ticker);
+  status.textContent='Pix confirmado! Seu plano está ativo.';
+  resultBox.hidden=false;resultBox.innerHTML='<div class="op-payment-success">'+ic('check')+'<h3>Pagamento aprovado!</h3>'
+    +'<p>Seu acesso vai até '+escapeHTML(localDate(answer.paid_until))+'. A renovação é manual.</p></div>';
+  const fresh=await ctx.request('/plan-overview');
+  if(modal.isConnected){busy=false;close();render(root,fresh,ctx);
+    window.dispatchEvent(new CustomEvent('orion:plan-changed',{detail:{preservePage:true}}));}
+ };
+ const recoverCurrent=async()=>{
+  ready=false;
+  const existing=await ctx.request('/plan-pix-current');if(!modal.isConnected)return true;
+  if(existing?.status==='none')return false;
+  if(existing?.status==='pending_confirmation'){showPix(existing,true);return true;}
+  if(existing?.status==='active'){await refreshAccess(existing);return true;}
+  if(['review_required','declined','refunded','expired'].includes(existing?.status)){
+   form.hidden=true;
+   status.textContent=existing.status==='expired'?'Este período encerrou. Feche esta janela e confira as opções de renovação.':
+    existing.status==='review_required'?'Pagamento em análise. Não gere outro Pix; procure o suporte.':
+    'O pagamento anterior precisa de verificação. Consulte o suporte antes de iniciar outro Pix.';
+   return true;
+  }
+  throw Error('Não foi possível confirmar o pagamento existente. Nenhuma nova cobrança será iniciada.');
  };
  const poll=async()=>{
   if(!intent||finished||!modal.isConnected)return;
@@ -291,19 +355,14 @@ async function pixCheckout(root,code,ctx){
    const answer=await ctx.request('/plan-pix-status?intent_id='+encodeURIComponent(intent.intent_id));
    if(!modal.isConnected)return;
    if(answer.status==='active'){
-    finished=true;if(ticker)window.clearInterval(ticker);
-    status.textContent='Pix confirmado! Seu plano está ativo.';
-    resultBox.innerHTML='<div class="op-payment-success">'+ic('check')+'<h3>Pagamento aprovado!</h3>'
-      +'<p>Seu acesso vai até '+escapeHTML(localDate(answer.paid_until))+'. A renovação é manual.</p></div>';
-    const fresh=await ctx.request('/plan-overview');
-    if(modal.isConnected){close();render(root,fresh,ctx);
-      window.dispatchEvent(new CustomEvent('orion:plan-changed',{detail:{preservePage:true}}));}
+    await refreshAccess(answer);
    }else if(answer.status==='review_required'){
     if(ticker)window.clearInterval(ticker);
     status.textContent='Pagamento em análise. Não gere outro Pix; procure o suporte.';
-   }else if(answer.status==='refunded'||answer.status==='declined'){
+   }else if(['refunded','declined','expired'].includes(answer.status)){
     if(ticker)window.clearInterval(ticker);
-    status.textContent='Pagamento não concluído ou estornado. Consulte o suporte.';
+    status.textContent=answer.status==='expired'?'Este período encerrou. Feche esta janela e confira as opções de renovação.':
+     'Pagamento não concluído ou estornado. Consulte o suporte.';
    }else status.textContent='Aguardando pagamento no seu banco.';
   }catch{status.textContent='Sem atualização de pagamento. Verifique novamente.';}
  };
@@ -332,7 +391,7 @@ async function pixCheckout(root,code,ctx){
   }
  });
  form.addEventListener('submit',async event=>{
-  event.preventDefault();if(busy||finished)return;
+  event.preventDefault();if(busy||finished||!ready||form.hidden)return;
   const doc=checkoutDocumentData(form.elements.namedItem('doc_number'));
   if(!form.reportValidity())return;
   const value=name=>form.elements.namedItem(name).value.trim();
@@ -343,31 +402,33 @@ async function pixCheckout(root,code,ctx){
      doc_type:doc.kind,doc_number:doc.digits,
      fingerprint:'orion_'+(window.crypto?.randomUUID?.()||String(Date.now())+'_prepaid_pix_12345')};
    const result=await ctx.request('/plan-pix-charge','POST',{
-     plan_code:code,payer,consent_one_time:true
+     plan_code:code,payer,consent_one_time:true,expected_cents:selected.monthly_cents
    });
    if(result.status!=='pending_confirmation'||result.plan_code!==code
-      ||result.monthly_cents!==checkoutPrices[code]||!result.intent_id||!result.pix_code)
+      ||result.monthly_cents!==selected.monthly_cents||!result.intent_id||!result.pix_code)
       throw Error('O Pix exige verificação. Não tente gerar outro.');
-   intent=result;
-   form.hidden=true;resultBox.hidden=false;
-   resultBox.innerHTML='<div class="op-payment-pix"><span class="op-eyebrow">PIX GERADO</span>'
-     +'<h3>Pague pelo seu banco</h3>'
-     +'<p>Pagamento único, sem cobrança mensal automática. O QR Code tem validade limitada.</p>'
-     +(String(result.pix_qr_data_uri||'').startsWith('data:image/png;base64,')
-       ?'<img class="op-payment-qr" alt="QR Code Pix Cakto" src="'+escapeHTML(result.pix_qr_data_uri)+'">':'')
-     +'<label class="op-payment-field"><span>Pix copia e cola</span>'
-     +'<textarea data-pix-code readonly rows="3">'+escapeHTML(result.pix_code)+'</textarea></label>'
-     +'<button type="button" class="op-btn op-btn-primary" data-pix-copy>Copiar código Pix</button>'
-     +'<button type="button" class="op-btn op-btn-secondary" data-pix-check>Verificar pagamento</button></div>';
-   status.textContent='Aguardando pagamento. A confirmação libera 30 dias de acesso.';
-   ticker=window.setInterval(()=>{if(!document.hidden)void poll();},12000);
+   showPix(result);
   }catch(err){
+   ready=false;
    feedback.textContent=(err.message||'Não foi possível gerar o Pix.')
       +' Não gere outro pagamento enquanto houver uma cobrança em verificação.';
    status.textContent='Pagamento não confirmado.';
+   // A lost POST response may still have created the original payment. Only
+   // the authenticated recovery GET may restore that order, never a second POST.
+   try{
+    const recovered=await recoverCurrent();
+    if(!recovered&&[400,422].includes(err.status)&&modal.isConnected){
+     // A definitive rejection plus an authoritative empty recovery permits
+     // corrected input. Only another explicit submit can start a new attempt.
+     ready=true;submit.disabled=false;form.hidden=false;
+     feedback.textContent=(err.message||'Confira os dados do pagamento.')+' Corrija os dados e confirme novamente.';
+     status.textContent='Esta tentativa não gerou cobrança. Confira os dados e confirme novamente.';
+    }
+   }catch{}
   }finally{busy=false;}
  });
  try{
+  if(await recoverCurrent())return;
   const config=await ctx.request('/plan-pix-config');
   if(!modal.isConnected)return;
   if(!config?.available||config.mode!=='manual_30_days'){
@@ -375,12 +436,13 @@ async function pixCheckout(root,code,ctx){
    return;
   }
   status.textContent='Pix comum: 30 dias de acesso, renovação manual.';
-  form.hidden=false;
+  ready=true;form.hidden=false;
  }catch{status.textContent='Não foi possível validar o Pix. Nenhuma cobrança criada.';}
 }
 
 function render(root,data,ctx){
  if(!root.isConnected)return;
+ if(mounted?.root===root)mounted.data=data;
  const plans=Array.isArray(data.plans)?data.plans:[],sub=data.subscription,
  currentCode=canonical(data.effective_plan?.code),currentActive=data.effective_plan?.active===true;
  const canManage=!!data.effective_plan&&!!data.can_manage_plan&&!!ctx.canManage;
@@ -399,13 +461,13 @@ function render(root,data,ctx){
 function mount(root,data,ctx){
  if(!root||!ctx?.request)return;
  unmount();
- mounted={root,ctx};
+ mounted={root,ctx,data};
  timezone=ctx.tenant?.timezone||'America/Sao_Paulo';
  render(root,data,ctx);
  root.addEventListener('click',root._orionPlansClick=async event=>{
   const trial=event.target.closest('[data-op-trial]'),checkoutButton=event.target.closest('[data-op-checkout]');
   if(trial&&!trial.disabled){event.preventDefault();renderTrialDialog(root,data,ctx);}
-  if(checkoutButton&&!checkoutButton.disabled){event.preventDefault();await pixCheckout(root,checkoutButton.dataset.opCheckout,ctx);}
+  if(checkoutButton&&!checkoutButton.disabled){event.preventDefault();await pixCheckout(root,checkoutButton.dataset.opCheckout,ctx,mounted?.root===root?mounted.data:data);}
  });
  root.addEventListener('change',root._orionPlansChange=event=>{
   if(!event.target.matches('[data-op-only-differences]'))return;

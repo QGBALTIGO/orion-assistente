@@ -29,7 +29,7 @@ def test_api_exec_has_runtime_roles_but_no_owner_migration_environment(monkeypat
     barriers = []
 
     def wait(command, **kwargs):
-        assert command == [start_api.sys.executable, "-m", "scripts.wait_for_subscription_group_add_schema"]
+        assert command == [start_api.sys.executable, "-m", "scripts.wait_for_cakto_recovery_schema"]
         assert kwargs["check"] is True and kwargs["timeout"] == 95
         assert not set(kwargs["env"]) & migration_keys
         assert not set(kwargs["env"]) & start_api.ONE_TIME_KEYS

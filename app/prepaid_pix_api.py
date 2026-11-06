@@ -3,28 +3,36 @@ from __future__ import annotations
 import base64
 import hashlib
 import io
+import json
 import os
+from contextlib import asynccontextmanager
 from datetime import datetime,timedelta,timezone
 from decimal import Decimal,InvalidOperation
 from uuid import UUID,uuid4
 
 import httpx
 import qrcode
-from fastapi import APIRouter,Depends,HTTPException
-from pydantic import BaseModel,ConfigDict,model_validator
+from cryptography.fernet import Fernet,InvalidToken
+from fastapi import APIRouter,Depends,HTTPException,Response
+from pydantic import BaseModel,ConfigDict,Field,StrictInt,model_validator
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.catalog_api import Actor,authenticate,support_session_factory
 from app.tenant_access import resolve_site_access
-from app.cakto_api import CaktoClient,BASE,ORDER_ID
+from app.cakto_api import cached_cakto_client,BASE,ORDER_ID
 from app.orion_direct_checkout import Payer
 from app.plan_catalog import CODES
 from app.plan_permissions import lock_plan
 from app.plan_management import (_owner_account,_ensure_owner,
     _replayable_checkout_token,require_checkout_available)
 
-router=APIRouter(tags=["Orion Pix pré-pago"])
+def private_payment_response(response:Response):
+    response.headers["Cache-Control"]="no-store, max-age=0"
+    response.headers["Pragma"]="no-cache"
+
+
+router=APIRouter(tags=["Orion Pix pré-pago"],dependencies=[Depends(private_payment_response)])
 PIX_NAMES={
     "essencial":"Orion Essencial - Pix 30 dias",
     "profissional":"Orion Profissional - Pix 30 dias",
@@ -135,6 +143,7 @@ class PixPurchase(BaseModel):
     plan_code:str
     payer:Payer
     consent_one_time:bool
+    expected_cents:StrictInt|None=Field(default=None,gt=0)
     @model_validator(mode="after")
     def validate(self):
         if self.plan_code not in CODES or not self.consent_one_time:
@@ -173,16 +182,91 @@ def png_uri(code):
     return "data:image/png;base64,"+base64.b64encode(out.getvalue()).decode("ascii")
 
 
-async def set_attempt(order_id,state,external_id=None):
+def pix_cipher():
+    try:
+        return Fernet(os.environ["INTEGRATION_FERNET_KEY"].encode())
+    except (KeyError,ValueError,TypeError):
+        raise HTTPException(503,"Proteção do pagamento temporariamente indisponível.") from None
+
+
+def pix_expiry(value):
+    try:
+        result=datetime.fromisoformat(value.replace("Z","+00:00"))
+        return result if result.tzinfo is not None else None
+    except (AttributeError,ValueError,TypeError):
+        return None
+
+
+def encode_pix(cipher,tenant,intent,offer,price,charge):
+    expiry=pix_expiry(charge["pix"].get("expirationDate"))
+    now=datetime.now(timezone.utc)
+    if expiry is None or not now<expiry<=now+timedelta(days=1):
+        raise HTTPException(502,"Validade do Pix exige verificação. Não gere outro pagamento.")
+    data={"v":1,"tenant":str(tenant),"intent":str(intent),"order":charge["id"],
+          "offer":offer,"cents":price,"code":charge["pix"]["qrCode"],"expires":expiry.isoformat()}
+    return cipher.encrypt(json.dumps(data,separators=(",",":"),ensure_ascii=True).encode()).decode(),expiry
+
+
+def saved_pix(record):
+    """Only decrypt a QR bound to this exact owner-scoped persisted purchase."""
+    encoded=record.get("pix_code_enc")
+    if not isinstance(encoded,str) or not 100<=len(encoded)<=32768:
+        return None
+    try:
+        data=json.loads(pix_cipher().decrypt(encoded.encode()).decode())
+        expected={"v":1,"tenant":str(record["tenant_id"]),"intent":str(record["id"]),
+                  "order":record["external_order_id"],"offer":record["offer_id"],
+                  "cents":record["expected_cents"]}
+        if not isinstance(data,dict) or any(data.get(k)!=v for k,v in expected.items()):
+            return None
+        expiry=pix_expiry(data.get("expires"))
+        code=data.get("code")
+        if (expiry!=record.get("pix_expires_at") or expiry is None
+            or expiry<=datetime.now(timezone.utc)
+            or not isinstance(code,str) or not 60<=len(code)<=4096):
+            return None
+        return {"qrCode":code,"expirationDate":expiry.isoformat(),"user_journey":None}
+    except (HTTPException,InvalidToken,ValueError,TypeError,UnicodeError):
+        return None
+
+
+async def set_attempt(order_id,state,external_id=None,*,pix_code_enc=None,pix_expires_at=None):
     async with support_session_factory()() as db:
         async with db.begin():
-            await db.execute(text("""
+            row=(await db.execute(text("""
               UPDATE orion_prepaid_pix_orders
-                 SET state=:state,
-                     external_order_id=COALESCE(:external,external_order_id),
+                 SET state=CASE WHEN CAST(:external AS text) IS NOT NULL
+                         AND external_order_id IS NOT NULL AND external_order_id<>:external
+                         THEN 'needs_review' ELSE :state END,
+                     external_order_id=COALESCE(external_order_id,:external),
+                     pix_code_enc=CASE WHEN external_order_id IS NULL OR external_order_id=:external
+                         THEN COALESCE(pix_code_enc,:pix_code_enc) ELSE pix_code_enc END,
+                     pix_expires_at=CASE WHEN external_order_id IS NULL OR external_order_id=:external
+                         THEN COALESCE(pix_expires_at,:pix_expires_at) ELSE pix_expires_at END,
                      updated_at=now()
                WHERE id=:id AND state IN ('reserved','created','needs_review')
-            """),{"id":order_id,"state":state,"external":external_id})
+               RETURNING state,external_order_id
+            """),{"id":order_id,"state":state,"external":external_id,
+                   "pix_code_enc":pix_code_enc,"pix_expires_at":pix_expires_at})).mappings().first()
+            return bool(row and row["state"]==state and
+                        (external_id is None or row["external_order_id"]==external_id))
+
+
+async def best_effort_attempt(order_id,state,external_id=None):
+    try:
+        return await set_attempt(order_id,state,external_id)
+    except SQLAlchemyError:
+        return False
+
+
+@asynccontextmanager
+async def _pix_provider_start_guard(tenant_id,account):
+    # Keep the verified owner/manual-plan admission valid during the bounded
+    # financial POST. Administrative changes wait until it has finished.
+    async with support_session_factory()() as db:
+        async with db.begin():
+            await require_checkout_available(db,tenant_id,account,channel="pix")
+            yield
 
 
 @router.get("/api/v1/tenants/{tenant_id}/management/plan-pix-config")
@@ -191,7 +275,8 @@ async def pix_config(tenant_id:UUID,actor:Actor=Depends(authenticate)):
     if not pix_environment_ready():
         return {"available":False,"methods":[],"mode":"manual_30_days"}
     try:
-        await verified_pix_catalog(CaktoClient())
+        pix_cipher()
+        await verified_pix_catalog(cached_cakto_client())
     except HTTPException:
         return {"available":False,"methods":[],"mode":"manual_30_days"}
     return {"available":True,"methods":["pix"],"mode":"manual_30_days"}
@@ -201,9 +286,12 @@ async def pix_config(tenant_id:UUID,actor:Actor=Depends(authenticate)):
 async def create_pix_charge(tenant_id:UUID,payload:PixPurchase,
                             actor:Actor=Depends(authenticate)):
     account=await owner(tenant_id,actor)
-    client=CaktoClient()
-    matched=await verified_pix_catalog(client)
+    cipher=pix_cipher()
     plan=CODES[payload.plan_code]
+    if payload.expected_cents is not None and payload.expected_cents!=plan["price_cents"]:
+        raise HTTPException(409,"O preço deste plano foi atualizado. Confira o valor e confirme novamente.")
+    client=cached_cakto_client()
+    matched=await verified_pix_catalog(client)
     offer_id=matched[payload.plan_code]["id"]
     intent=uuid4()
     token=_replayable_checkout_token(tenant_id,intent,payload.plan_code)
@@ -211,7 +299,7 @@ async def create_pix_charge(tenant_id:UUID,payload:PixPurchase,
     async with support_session_factory()() as db:
         async with db.begin():
             await lock_plan(db,tenant_id,exclusive=True)
-            await require_checkout_available(db,tenant_id,account)
+            await require_checkout_available(db,tenant_id,account,channel="pix",lock="exclusive")
             ongoing=(await db.execute(text("""
               SELECT 1 FROM subscriptions WHERE tenant_id=:tenant
             """),{"tenant":tenant_id})).scalar_one_or_none()
@@ -237,27 +325,41 @@ async def create_pix_charge(tenant_id:UUID,payload:PixPurchase,
             """),{"id":intent,"tenant":tenant_id,"account":account,
                 "plan":payload.plan_code,"offer":offer_id,
                 "cents":plan["price_cents"],"hash":digest})
+    known_external=None
     try:
         bearer=await client.token()
-        async with httpx.AsyncClient(timeout=25,follow_redirects=False) as http:
-            response=await http.post(BASE+"/payments/",
-                json=payment_request(offer_id,payload.payer,token),
-                headers={"Authorization":"Bearer "+bearer,
-                         "Content-Type":"application/json",
-                         "X-Idempotency-Key":str(intent)})
-            response.raise_for_status()
-            charge=response.json()
+        async with _pix_provider_start_guard(tenant_id,account):
+            async with httpx.AsyncClient(timeout=25,follow_redirects=False) as http:
+                response=await http.post(BASE+"/payments/",
+                    json=payment_request(offer_id,payload.payer,token),
+                    headers={"Authorization":"Bearer "+bearer,
+                             "Content-Type":"application/json",
+                             "X-Idempotency-Key":str(intent)})
+                response.raise_for_status()
+                charge=response.json()
         if not verified_pix_creation(charge,offer_id,plan["price_cents"]):
             await set_attempt(intent,"needs_review")
             raise HTTPException(502,"Pagamento em análise. Não gere outro Pix.")
-        await set_attempt(intent,"created",charge["id"])
+        known_external=charge["id"]
+        encoded,expiry=encode_pix(cipher,tenant_id,intent,offer_id,plan["price_cents"],charge)
+        if not await set_attempt(intent,"created",charge["id"],pix_code_enc=encoded,pix_expires_at=expiry):
+            raise HTTPException(502,"O Pix existente exige verificação. Não gere outro pagamento.")
     except HTTPException:
+        await best_effort_attempt(intent,"needs_review",known_external)
         raise
+    except httpx.HTTPStatusError as error:
+        # Documented authentication/validation rejection is not an ambiguous
+        # network result. Let the owner correct the form, without persisting
+        # provider bodies or sending another POST automatically. A 409 can
+        # mean an operation still in flight and must remain blocked.
+        if error.response.status_code in {400,401,403,404,422}:
+            if not await best_effort_attempt(intent,"declined"):
+                raise HTTPException(503,"O registro do Pix exige verificação. Não gere outro pagamento.") from None
+            raise HTTPException(400,"A Cakto não aceitou a criação do Pix. Confira os dados ou fale com o suporte.") from None
+        await best_effort_attempt(intent,"needs_review")
+        raise HTTPException(503,"Pagamento não confirmado. Não gere outro Pix; consulte o suporte.") from None
     except (httpx.HTTPError,ValueError,TypeError,RuntimeError,SQLAlchemyError):
-        try:
-            await set_attempt(intent,"needs_review")
-        except SQLAlchemyError:
-            pass
+        await best_effort_attempt(intent,"needs_review",known_external)
         raise HTTPException(503,"Pagamento não confirmado. Não gere outro Pix; consulte o suporte.") from None
     return {"intent_id":str(intent),"status":"pending_confirmation",
             "mode":"manual_30_days","plan_code":payload.plan_code,
@@ -265,6 +367,104 @@ async def create_pix_charge(tenant_id:UUID,payload:PixPurchase,
             "pix_code":charge["pix"]["qrCode"],
             "pix_qr_data_uri":png_uri(charge["pix"]["qrCode"]),
             "expires_at":charge["pix"].get("expirationDate")}
+
+
+def verified_pix_order_binding(order,record):
+    """Bind an authenticated provider GET to one immutable local purchase.
+
+    Public request bodies never supply this proof. The immutable external ID
+    was recorded from the exact validated POST (or uniquely bound server SCK).
+    GET /orders can omit offer; a present divergent offer always fails.
+    """
+    if not isinstance(order,dict):
+        return False
+    offer=order.get("offer")
+    if (not record.get("external_order_id")
+        or order.get("id")!=record["external_order_id"]
+        or (offer is not None and (not isinstance(offer,dict) or offer.get("id")!=record["offer_id"]))
+        or order.get("type")!="unique" or order.get("paymentMethod")!="pix"
+        or order.get("offer_type") not in (None,"main")
+        or order.get("currency") not in (None,"BRL")
+        or order.get("subscription") not in (None,"")
+        or cents(order.get("amount"))!=record["expected_cents"]):
+        return False
+    token=order.get("sck")
+    return (token is None or isinstance(token,str) and
+            hashlib.sha256(token.encode()).hexdigest()==record["callback_hash"])
+
+
+@router.get("/api/v1/tenants/{tenant_id}/management/plan-pix-current")
+async def pix_current(tenant_id:UUID,actor:Actor=Depends(authenticate)):
+    """Recover the existing charge after a reload without another payment POST."""
+    account=await owner(tenant_id,actor)
+    async with support_session_factory()() as db:
+        row=(await db.execute(text("""
+          SELECT id,tenant_id,account_id,plan_code,offer_id,expected_cents,
+                 callback_hash,external_order_id,state,created_at,expires_at,pix_code_enc,pix_expires_at
+          FROM orion_prepaid_pix_orders
+          WHERE tenant_id=:tenant
+            AND state IN ('reserved','created','needs_review')
+          ORDER BY created_at DESC LIMIT 1
+        """),{"tenant":tenant_id,"account":account})).mappings().first()
+    if not row:
+        return {"status":"none"}
+    result={"status":"review_required","intent_id":str(row["id"]),
+            "plan_code":row["plan_code"],"monthly_cents":row["expected_cents"]}
+    if row["account_id"]!=account:
+        return result
+    if not row["external_order_id"]:
+        return result
+    try:
+        order=await cached_cakto_client().get_order(row["external_order_id"])
+    except (httpx.HTTPError,ValueError,TypeError,RuntimeError):
+        raise HTTPException(503,"Não foi possível consultar o Pix existente. Tente novamente; não gere outro pagamento.") from None
+    if not verified_pix_order_binding(order,row):
+        return result
+    # The provider read yields control. Membership and the local payment may
+    # have changed while it was in flight; never return a stale payable QR.
+    async with support_session_factory()() as db:
+        async with db.begin():
+            await lock_plan(db,tenant_id)
+            await _ensure_owner(db,tenant_id,account)
+            current=(await db.execute(text("""
+                SELECT state,external_order_id FROM orion_prepaid_pix_orders
+                WHERE id=:id AND tenant_id=:tenant AND account_id=:account
+            """),{"id":row["id"],"tenant":tenant_id,"account":account})).mappings().first()
+            if not current or current["external_order_id"]!=row["external_order_id"]:
+                return result
+            if current["state"]=="paid":
+                until=(await db.execute(text("SELECT paid_until FROM orion_prepaid_pix_access WHERE tenant_id=:tenant"),{"tenant":tenant_id})).scalar_one_or_none()
+                return {**result,"status":"active" if until and until>datetime.now(timezone.utc) else "expired","paid_until":until}
+            if current["state"] in {"refunded","declined","expired"}:
+                return {**result,"status":current["state"]}
+            if current["state"] not in {"created","needs_review"}:
+                return result
+    # The worker verifies terminal states and reconciles access. A bank GET
+    # saying paid must never be presented as an already activated local plan.
+    result["status"]="pending_confirmation"
+    if order.get("status") not in {"waiting_payment","pending","processing"}:
+        return result
+    # GET /orders does not promise to return pix/offer. Retain the validated
+    # creation response encrypted, with a context-bound payload and bank expiry.
+    pix=saved_pix(row)
+    if pix is None:
+        # Older attempts may lack saved QR data. Only use a GET-provided QR
+        # when the provider supplies the complete exact creation binding.
+        if not verified_pix_creation(order,row["offer_id"],row["expected_cents"]):
+            return result
+        pix=order["pix"]
+    expiry=pix.get("expirationDate")
+    if isinstance(expiry,str):
+        try:
+            end=datetime.fromisoformat(expiry.replace("Z","+00:00"))
+        except ValueError:
+            return {**result,"status":"review_required"}
+        if end.tzinfo is None or end<=datetime.now(timezone.utc):
+            return result
+    else:
+        return result
+    return {**result,"pix_code":pix["qrCode"],
+            "pix_qr_data_uri":png_uri(pix["qrCode"]),"expires_at":expiry}
 
 
 @router.get("/api/v1/tenants/{tenant_id}/management/plan-pix-status")
@@ -283,11 +483,13 @@ async def pix_status(tenant_id:UUID,intent_id:UUID,
         """),{"tenant":tenant_id})).scalar_one_or_none()
     state=row["state"]
     if state=="paid":
-        return {"status":"active","paid_until":valid}
+        return {"status":"active" if valid and valid>datetime.now(timezone.utc) else "expired","paid_until":valid}
     if state=="refunded":
         return {"status":"refunded"}
     if state=="declined":
         return {"status":"declined"}
+    if state=="expired":
+        return {"status":"expired"}
     if state in ("reserved","needs_review"):
         return {"status":"review_required"}
     return {"status":"pending"}

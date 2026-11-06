@@ -25,7 +25,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.catalog_api import Actor, authenticate, support_session_factory
 from app.tenant_access import resolve_site_access
-from app.cakto_api import CaktoClient, BASE, ORDER_ID
+from app.cakto_api import CaktoClient, cached_cakto_client, BASE, ORDER_ID
 from app.plan_management import (
     CheckoutChoice, CODES, _ensure_owner, _owner_account, _replayable_checkout_token,
     _exact_offer, start_plan_checkout,
@@ -243,7 +243,7 @@ async def direct_config(tenant_id: UUID, actor: Actor = Depends(authenticate)):
     available = checkout_enabled()
     if available:
         try:
-            await require_verified_webhooks(CaktoClient())
+            await require_verified_webhooks(cached_cakto_client())
         except HTTPException:
             available = False
     return {"available": available,
@@ -258,7 +258,7 @@ async def direct_prepare(tenant_id: UUID, payload: DirectPrepare,
     require_enabled()
     account_id = await owner(tenant_id, actor)
     await check_new_checkout_access(tenant_id, account_id)
-    await require_verified_webhooks(CaktoClient())
+    await require_verified_webhooks(cached_cakto_client())
     # Existing reviewed endpoint checks monthly offer, price, owner, current
     # subscription and ensures only one tenant/account checkout intent.
     try:
@@ -372,7 +372,7 @@ async def direct_charge(tenant_id: UUID, data: DirectCharge,
     require_enabled()
     account_id = await owner(tenant_id,actor)
     await check_new_checkout_access(tenant_id, account_id)
-    await require_verified_webhooks(CaktoClient())
+    await require_verified_webhooks(cached_cakto_client())
     # The same tenant lock serializes embedded attempts with hosted intent creation.
     # No account details or provider token are persisted.
     async with support_session_factory()() as db:
@@ -406,7 +406,7 @@ async def direct_charge(tenant_id: UUID, data: DirectCharge,
                   "tenant":tenant_id,"account":account_id,"method":data.method})
     # Read-only confirmation of exact subscription offer, after durable reservation.
     try:
-        client = CaktoClient()
+        client = cached_cakto_client()
         offers = await client.list_offers()
         plan = CODES[intent["plan_code"]]
         offer = _exact_offer(offers,plan)
