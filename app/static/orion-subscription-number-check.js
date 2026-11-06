@@ -7,6 +7,7 @@
   const escape=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
   const stateLabels={registered:'Cadastrado',not_registered:'Não cadastrado',unknown:'Não confirmado'};
   const stateClasses={registered:'os-success',not_registered:'os-neutral',unknown:'os-warning'};
+  const deviceStatuses={connected:'Conectado',disconnected:'Desconectado',stopped:'Parado',needs_attention:'Precisa de atenção',connecting:'Conectando',error:'Indisponível',disabled:'Desativado'};
   function unmount(){active?.revoke();active=null;}
   function mount(bridge){
     unmount();
@@ -44,7 +45,7 @@
       host.setAttribute('aria-busy',String(state.busy));
       const blocked=state.busy||!editable(),hasConnection=state.devices.some(row=>row.id===state.deviceId&&row.available);
       const options=state.devices.map(row=>'<option value="'+escape(row.id)+'" '+(row.id===state.deviceId?'selected':'')+
-        (!row.available?' disabled':'')+'>'+escape(row.name)+' · '+escape(row.status)+'</option>').join('');
+        (!row.available?' disabled':'')+'>'+escape(row.name)+' · '+escape(deviceStatuses[row.status]||'Indisponível')+'</option>').join('');
       host.innerHTML='<div class="os-title-row"><div><h1 tabindex="-1">Verificador de números WhatsApp</h1>'+
         '<p>Consulte números autorizados, sem enviar mensagens nem salvar novos contatos.</p></div></div><div class="os-section-stack">'+
         (state.error?'<div class="os-notice os-error" role="alert"><p>'+escape(state.error)+'</p></div>':'')+
@@ -120,11 +121,14 @@
     });
     host.addEventListener('input',event=>{
       if(!alive()||state.busy)return;
-      if(event.target.matches('[data-nc-phones]'))state.input=event.target.value;
+      if(event.target.matches('[data-nc-phones]')){
+        state.input=event.target.value;
+        if(state.results){state.results=null;host.querySelector('[data-nc-results]')?.remove();}
+      }
     });
     host.addEventListener('change',event=>{
       if(!alive()||state.busy)return;
-      if(event.target.matches('[data-nc-device]')){state.deviceId=event.target.value;state.results=null;render();}
+      if(event.target.matches('[data-nc-device]')){state.deviceId=event.target.value;state.confirmed=false;state.results=null;render();}
       if(event.target.matches('[data-nc-confirm]')){
         state.confirmed=event.target.checked;
         const button=host.querySelector('[data-nc-check]');
