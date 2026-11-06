@@ -221,26 +221,26 @@ def _action(row, name, references):
         # the allowed contact tags without making an external request.
         definition = {
             "type": "url_button",
-            "text": row.get("text", row.get("message", row.get("body"))),
+            "text": _message_text(row),
             "footer": row.get("footer") or "",
-            "button_text": row.get("button_text", row.get("buttonText", row.get("label"))),
+            "button_text": row.get("button_text") or row.get("buttonText") or row.get("label"),
             "url": row.get("url", row.get("link")),
         }
     elif kind in ("carousel", "cards"):
         cards = row.get("cards")
         if not isinstance(cards, list) or len(cards) != 3:
             raise _invalid("Um carrossel precisa ter exatamente três cards para ser preservado.")
-        definition = {"type": "carousel", "body": row.get("body", row.get("text")),
+        definition = {"type": "carousel", "body": row.get("body") or _message_text(row),
                       "cards": []}
         for index, card in enumerate(cards):
             if not isinstance(card, dict):
                 raise _invalid("Um carrossel contém card em formato incompatível.")
             definition["cards"].append({
                 "id": _identity(name, f"card:{index}"),
-                "title": card.get("title"),
-                "body": card.get("body", ""),
+                "title": card.get("title") or card.get("name"),
+                "body": card.get("body") or card.get("description") or "",
                 "image_url": card.get("image_url", card.get("imageUrl")),
-                "button_text": card.get("button_text", card.get("buttonText")),
+                "button_text": card.get("button_text") or card.get("buttonText"),
             })
     elif kind in ("nested_reply", "nested_list", "send_reply"):
         raw = row.get("rule_id", row.get("reply_id", row.get("replyId")))
