@@ -12,7 +12,7 @@ import unicodedata
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
-from app.subscription_chatbot_schemas import CONTACT_TAGS, TAG_PATTERN, URL_TAG_PATTERN, clean_text
+from app.subscription_chatbot_schemas import CONTACT_TAGS, TAG_PATTERN, URL_TAG_PATTERN, MAX_SEQUENCE_DELAY_SECONDS, clean_text
 
 
 WILDCARDS = {"*": timedelta(hours=24), "**": timedelta(days=14), "***": None,
@@ -147,8 +147,8 @@ def validate_graph(rules, templates, *, require_enabled=False, root_ids=None):
             # Displaying a list ends synchronous traversal. Its row actions
             # are separate entry points, reached only by a verified selection.
             result = 1, 1
-        if result[0] > MAX_ACTIONS or result[1] > 30:
-            raise ValueError("A sequência expandida deve ter até trinta ações e trinta segundos de atraso")
+        if result[0] > MAX_ACTIONS or result[1] > MAX_SEQUENCE_DELAY_SECONDS:
+            raise ValueError("A sequência expandida deve ter até trinta ações e 300 segundos de atraso")
         memo[cache] = result
         return result
 
@@ -166,8 +166,8 @@ def validate_graph(rules, templates, *, require_enabled=False, root_ids=None):
                     if not target or target["response"]["kind"] != expected:
                         raise ValueError("A referência não corresponde ao tipo de resposta selecionado")
                     count, delay = walk(action["rule_id"], (), origin_device=rule.get("device_id"), enabled=require_enabled)
-                    if count > MAX_ACTIONS or delay + action["delay_seconds"] > 30:
-                        raise ValueError("Uma opção expandida ultrapassa trinta ações ou trinta segundos")
+                    if count > MAX_ACTIONS or delay + action["delay_seconds"] > MAX_SEQUENCE_DELAY_SECONDS:
+                        raise ValueError("Uma opção expandida ultrapassa trinta ações ou 300 segundos")
                 elif action["type"] in {"template", "sticker", "shortvideo"}:
                     template = templates.get(str(action["template_id"]))
                     required = {"sticker": "sticker", "shortvideo": "ptv"}.get(action["type"])
@@ -288,7 +288,7 @@ def compile_plan(rule_id, rules, templates, facts, http_context, *, selected_act
         return [{"delay_seconds": delay, "action": transport}]
 
     plan = expand(selected_action, ()) if selected_action else walk(rule_id)
-    if not plan or len(plan) > MAX_ACTIONS or sum(item["delay_seconds"] for item in plan) > 30:
+    if not plan or len(plan) > MAX_ACTIONS or sum(item["delay_seconds"] for item in plan) > MAX_SEQUENCE_DELAY_SECONDS:
         raise ValueError("A sequência expandida ultrapassa os limites")
     return plan, sorted(dependencies | {str(rule_id)})
 
