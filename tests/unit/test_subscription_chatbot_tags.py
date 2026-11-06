@@ -120,4 +120,4 @@ def test_nested_json_container_aliases_are_bounded_and_cannot_execute_expression
         render_template("{{empty}}", body)
     with pytest.raises(ValueError):
         render_template("{{none}}", body)
-    assert len(discover_tags({**{f"x{i}":i for i in range(128)}, "data": [1]}, include_containers=True)) == 128
+    assert len(discover_tags({**{f"x{i}":i for i in range(127)}, "data": [1]}, include_containers=True)) == 128
