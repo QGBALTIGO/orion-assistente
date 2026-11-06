@@ -171,7 +171,7 @@ async def read_url_tags(url: str, method: str, *, request_id: UUID,
             await authorize()
             try:
                 data = json.loads(response_body.decode("utf-8-sig"), parse_constant=_reject_constant)
-                tags = discover_tags(data)
+                tags = discover_tags(data, include_containers=True)
             except (ValueError, RecursionError, UnicodeDecodeError):
                 raise _error(422, "CHATBOT_URL_JSON", "A URL não retornou um objeto ou lista JSON com campos válidos dentro dos limites.") from None
             return tags
