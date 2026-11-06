@@ -565,6 +565,8 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
         try{await broker.lease(id,key,'release',owner,c.fence);}catch{}
       }finally{stopping.delete(id);}},
     close(){closed=true;diagnostics.close();groupAdds.close();for(const c of contexts.values())retire(c);},
+    capacity:()=>({max_channels:maxChannels,active_contexts:contexts.size,available_contexts:Math.max(0,maxChannels-contexts.size),
+      saturated:contexts.size>=maxChannels}),
     get size(){return contexts.size;}};
 }
 function publicSend(id,record){return {operation_id:id,state:record.state,accepted:record.accepted===true,delivery:record.delivery};}

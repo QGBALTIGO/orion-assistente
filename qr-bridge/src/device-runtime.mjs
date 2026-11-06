@@ -38,7 +38,7 @@ export function createDeviceRuntime(context,{client,downloadMediaMessage,logger,
   now=Date.now,openedAt=now(),schedule=setTimeout,cancel=clearTimeout,
   postWebhook=postDeviceWebhook,downloadOptions={},capacity=makeSendCapacity({now}),pollMs=5000,chatbotOptions={}}={}){
   const initial=context.deviceSnapshot?.();if(!validDeviceSnapshot(initial))throw Error('invalid_device_snapshot');
-  if(!ingressJournal||!['append','pending','ack','begin','complete','block','diagnostics'].every(key=>typeof ingressJournal[key]==='function'))throw Error('device_ingress_journal_required');
+  if(!ingressJournal||!['append','pending','ack','begin','complete','block','diagnostics','confirmIdentity','markAdmissionAttempted'].every(key=>typeof ingressJournal[key]==='function'))throw Error('device_ingress_journal_required');
   const directory=privateDirectory(path.join(context.deviceDirectory,'effects'));
   const ledger=sendLedger(directory,context.secret);
   const seen=new Set(),inflight=new Set(),controllers=new Set(),sent=new Map();
@@ -69,8 +69,16 @@ export function createDeviceRuntime(context,{client,downloadMediaMessage,logger,
   async function finish(expected,operation_id,state,extra={}){
     try{await context.deviceEffectFinish({...scope(expected),operation_id,state,...extra});}catch{/* The durable grant stays conservative if acknowledgement is lost. */}
   }
-  async function event(expected,data,sourceMessage,onAdmitted,deferEffects=false){
+  async function event(expected,data,sourceMessage,onAdmitted,deferEffects=false,ingressEntry){
     await guard(expected);
+    // The lease check can yield across the source deadline. Revalidate at the
+    // actual admission boundary, with no await between expiry, durable attempt
+    // evidence and the broker call. A prior ambiguous attempt stays marked.
+    if(ingressEntry){
+      if(ingressEntry.at<now()-300000){const error=Error('incoming_expired');error.ingressReason='expired';throw error;}
+      try{if(ingressJournal.markAdmissionAttempted(ingressEntry.id)!==true)throw Error('incoming_attempt_marker_missing');}
+      catch(error){journalFailure(error);throw error;}
+    }
     const result=await context.deviceEvent({...scope(expected),...data});
     await guard(expected);
     if(!result||!Array.isArray(result.effects)||result.effects.length>32)throw Error('invalid_device_effects');
@@ -271,7 +279,11 @@ export function createDeviceRuntime(context,{client,downloadMediaMessage,logger,
     resolveIdentity:async({entry,expected,message})=>{
       await guard(expected);const phone=await resolveMessagePhone(message.key,client);await guard(expected);
       const self=normalizeFromJid(client.user?.id);
-      if(phonePattern.test(phone||'')&&self&&phone!==self)return phone;
+      if(phonePattern.test(phone||'')&&self&&phone!==self){
+        try{if(ingressJournal.confirmIdentity(entry.id,phone)!==true)throw Error('incoming_identity_proof_missing');}
+        catch(error){journalFailure(error);return null;}
+        return phone;
+      }
       if(phone&&phone===self)journalBlock(entry.id,'policy_denied');
       // Unresolved identity stays durable. onSettled frees its active marker
       // after the bounded lookup, so the next poll can safely retry it.
@@ -299,7 +311,7 @@ export function createDeviceRuntime(context,{client,downloadMediaMessage,logger,
                 admitted=true;
               }
               catch(error){journalFailure(error);throw error;}
-            },!!audio);
+            },!!audio,entry);
           if(audioActive){
             // Keep admission ordering independent from source-consuming ASR.
             // A following control must reach SQL before any automatic effect.

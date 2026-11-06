@@ -17,6 +17,67 @@ function fixture(t,options={}){
   const input={directory,secret,...codec,...options};return {directory,input,open:()=>createIngressJournal(input)};
 }
 const entry=(id='msg-1',extra={})=>({id,scope:scope(),at:1000000,order:1,message:{key:{id},message:{conversation:'Synthetic private message'}},...extra});
+const greeting=id=>entry(id,{message:{key:{id,fromMe:false,remoteJid:'5511999999999@s.whatsapp.net'},message:{conversation:'Olá!'}}});
+
+test('only resolved inert never-attempted terminal input stops blocking while encrypted evidence survives restart',t=>{
+  for(const reason of ['expired','scope_changed','policy_denied','invalid_message']){
+    const f=fixture(t),j=f.open(),value=greeting(reason);j.append(value);
+    assert.equal(j.pending()[0].admission_attempted,false);assert.equal(j.pending()[0].terminal_inert,false);
+    j.confirmIdentity(value.id,'5511999999999');j.block(value.id,reason);
+    assert.equal(j.diagnostics().blocked,0);assert.equal(j.diagnostics().retained_terminal,1);assert.equal(j.diagnostics().entries,1);
+    const restored=f.open(),retained=restored.append({...value,at:value.at+99999}).entry;
+    assert.equal(retained.state,'blocked');assert.equal(retained.at,value.at);assert.deepEqual(retained.message,value.message);
+    assert.equal(restored.diagnostics().retained_terminal,1);assert.equal(restored.diagnostics().blocked,0);
+    assert.deepEqual(restored.pending(),[]);assert.throws(()=>restored.ack(value.id),/entry_blocked/);
+    assert.throws(()=>restored.markAdmissionAttempted(value.id),/entry_blocked/);
+    assert.throws(()=>restored.confirmIdentity(value.id,'5511999999999'),/entry_blocked/);
+  }
+});
+
+test('attempted, unresolved, control and business-started inputs remain global review barriers',t=>{
+  for(const mode of ['attempted','unknown-identity','control','audio','business_started','identity_unresolved','authorization_revoked','broker_refused']){
+    const f=fixture(t),j=f.open(),value=greeting(mode);
+    if(mode==='control')value.message.message={conversation:'PARAR'};
+    if(mode==='audio')value.message.message={audioMessage:{mediaKey:Buffer.from('synthetic')}};
+    j.append(value);if(mode!=='unknown-identity')j.confirmIdentity(value.id,'5511999999999');
+    if(mode==='attempted')j.markAdmissionAttempted(value.id);
+    if(mode==='business_started'){j.begin([value.id]);j.abandon();}
+    else j.block(value.id,['identity_unresolved','authorization_revoked','broker_refused'].includes(mode)?mode:'expired');
+    assert.equal(j.diagnostics().blocked,1,mode);assert.equal(f.open().diagnostics().blocked,1,mode);
+    assert.equal(f.open().diagnostics().retained_terminal,0,mode);
+  }
+});
+
+test('legacy missing attempt evidence remains unknown and append cannot inject a false terminal proof',t=>{
+  const f=fixture(t),value=greeting('legacy'),store=encryptedChannelStore(f.input);
+  store.set('incoming-admission-v1',{version:1,next_sequence:2,entries:[{...value,sequence:1,state:'pending'}]});
+  const j=f.open();j.confirmIdentity(value.id,'5511999999999');j.block(value.id,'expired');
+  assert.equal(j.diagnostics().blocked,1);assert.equal(f.open().diagnostics().blocked,1);
+  const fresh=fixture(t).open(),injected={...greeting('injected'),admission_attempted:false,terminal_inert:true};
+  fresh.append(injected);fresh.block(injected.id,'expired');assert.equal(fresh.diagnostics().blocked,1);
+  assert.equal(fresh.append(injected).entry.terminal_inert,false);
+});
+
+test('admission attempt is monotonic, durable and fenced before any broker call can proceed',t=>{
+  let current=true;const f=fixture(t,{isCurrent:()=>current}),j=f.open(),value=greeting('attempt');j.append(value);
+  j.confirmIdentity(value.id,'5511999999999');j.markAdmissionAttempted(value.id);
+  assert.equal(f.open().pending()[0].admission_attempted,true);
+  j.append({...value,admission_attempted:false});assert.equal(j.pending()[0].admission_attempted,true);
+  const file=path.join(f.directory,digest('incoming-admission-v1')+'.enc'),before=fs.readFileSync(file);current=false;
+  assert.throws(()=>j.markAdmissionAttempted(value.id),/owner_superseded/);assert.deepEqual(fs.readFileSync(file),before);
+});
+
+test('a failed durable attempt marker cannot enter the broker or erase the original never-attempted source',t=>{
+  const f=fixture(t),j=f.open(),value=greeting('disk-full-attempt');j.append(value);j.confirmIdentity(value.id,'5511999999999');
+  const original=fs.openSync,file=path.join(f.directory,digest('incoming-admission-v1')+'.enc'),before=fs.readFileSync(file);let calls=0;
+  try{
+    fs.openSync=(...args)=>{if(typeof args[0]==='string'&&args[0].endsWith('.tmp')){const error=Error('synthetic disk full');error.code='ENOSPC';throw error;}return original(...args);};
+    const dispatch=()=>{j.markAdmissionAttempted(value.id);calls++;};
+    assert.throws(dispatch,/journal_unavailable/);
+  }finally{fs.openSync=original;}
+  assert.equal(calls,0);assert.equal(j.diagnostics().state,'unavailable');assert.deepEqual(fs.readFileSync(file),before);
+  assert.equal(f.open().pending()[0].admission_attempted,false);
+});
 
 test('ingress is encrypted on disk and survives restart including native BufferJSON media source',t=>{
   const f=fixture(t),j=f.open(),value=entry();
