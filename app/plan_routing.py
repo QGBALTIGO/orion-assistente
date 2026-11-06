@@ -154,7 +154,7 @@ def exclusive_professional_operation(relative, method, params):
 def subscription_workspace_route(relative, method, params):
     """Explicit metadata and subscription modules; never legacy operations."""
     if relative == "/subscription-whatsapp/number-check" or relative.startswith("/subscription-whatsapp/number-check/"):
-        return "number_check.manage"
+        return True
     if relative == "/subscription-whatsapp/group-add" or relative.startswith("/subscription-whatsapp/group-add/"):
         return True
     if relative == "/subscription-whatsapp/group-contacts" or relative.startswith("/subscription-whatsapp/group-contacts/"):
