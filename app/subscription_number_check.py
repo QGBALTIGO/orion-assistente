@@ -5,6 +5,9 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.encoders import jsonable_encoder
 from pydantic import ValidationError
+from redis.exceptions import RedisError
+
+from app.panel_auth import _request_redis
 
 from app.catalog_api import Actor, authenticate
 from app import qr_channels as channels
@@ -23,6 +26,7 @@ def fail(code, status=409):
         "NUMBER_CHECK_DEVICE_UNAVAILABLE": "Conecte seu WhatsApp para verificar os números.",
         "NUMBER_CHECK_UNAVAILABLE": "Não foi possível verificar estes números agora. Nenhuma mensagem foi enviada.",
         "NUMBER_CHECK_CONTEXT_CHANGED": "A conexão foi alterada. Atualize antes de verificar novamente.",
+        "NUMBER_CHECK_LIMIT": "Limite de verificações desta hora atingido. Não foi realizada uma nova consulta.",
     }
     return HTTPException(status, {"code": code, "message": messages[code]},
                          headers={"Cache-Control": "no-store"})
@@ -36,6 +40,34 @@ def output(response, value):
 
 def owner_transaction(tenant, actor):
     return shared.owner_transaction(tenant, actor, feature=FEATURE)
+
+
+# Redis guarantees a single per-tenant/device quota over worker, transport and
+# session restarts. No requested phone, response or contact is stored in Redis.
+# Each reservation charges *before* making an external query; failures are not refunded.
+QUOTA_SCRIPT = """
+local count = redis.call('INCRBY', KEYS[1], tonumber(ARGV[1]))
+if count == tonumber(ARGV[1]) then
+  redis.call('PEXPIRE', KEYS[1], tonumber(ARGV[3]))
+end
+if count > tonumber(ARGV[2]) then return 0 end
+return 1
+"""
+
+
+async def reserve_quota(request: Request, tenant: UUID, device: UUID, amount: int):
+    redis, owned = _request_redis(request)
+    try:
+        permitted = await redis.eval(QUOTA_SCRIPT, 1,
+            f"orion:subscription:number-check:v1:{tenant}:{device}", amount,
+            schemas.MAX_PER_HOUR, 3_600_000)
+    except (RedisError, OSError):
+        raise fail("NUMBER_CHECK_UNAVAILABLE", 503) from None
+    finally:
+        if owned:
+            await redis.aclose()
+    if permitted != 1:
+        raise fail("NUMBER_CHECK_LIMIT", 429)
 
 
 @router.get(BASE + "/options")
@@ -72,6 +104,7 @@ async def check(tenant_id: UUID, request: Request, response: Response, actor: Ac
             raise
         expected_version = devices.device_version(device)
         scope = devices.transport_scope(device)
+    await reserve_quota(request, tenant_id, payload.device_id, len(payload.phones))
     try:
         async with asyncio.timeout(17):
             remote = await channels._bridge_control(
