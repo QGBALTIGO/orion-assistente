@@ -181,7 +181,7 @@ def test_url_actions_and_carousel_images_reject_non_public_destinations_without_
         CarouselAction.model_validate(value)
 
 
-@pytest.mark.parametrize("custom", ["{{x()}}", "{name}", "{{{name}}}", "{{a..b}}", "{{items[-1]}}"])
+@pytest.mark.parametrize("custom", ["{{x()}}", "{password}", "{{{name}}}", "{{a..b}}", "{{items[-1]}}"])
 def test_url_response_template_rejects_expressions_and_malformed_paths(custom):
     with pytest.raises(ValidationError):
         UrlAction(url="https://example.com/reply", custom_template=custom)
@@ -451,6 +451,31 @@ def test_url_compile_only_describes_the_http_action_and_copies_context():
                       "as_file": True, "mode": "reply", "data": CONTEXT}
     result["data"]["name"] = "Alterado somente na cópia"
     assert CONTEXT["name"] == FACTS["name"]
+
+
+def test_mixed_contact_and_api_tags_compile_and_render_without_second_pass():
+    custom = "Olá, {name}! Usuário: {{username}} | Senha: {{password}}."
+    item = action("url", url="https://example.com/reply", method="GET", custom_template=custom)
+    root = rule(response=sequence(item))
+    plan, _ = engine.compile_plan(root["id"], graph(root), {}, FACTS, CONTEXT)
+    transport = plan[0]["action"]
+    assert transport["custom_template"] == custom
+    assert transport["contact_facts"] == {"name": FACTS["name"]}
+    assert transport["data"] == CONTEXT
+    body = {"username": "usuario-de-teste", "password": "senha-sintetica"}
+    assert engine.render_http_result(transport, body) == (
+        "Olá, Cliente sintético! Usuário: usuario-de-teste | Senha: senha-sintetica.")
+    # Neither the user's name nor an API field is evaluated again after insertion.
+    malicious = {**transport, "contact_facts": {"name": "{{password}}"}}
+    assert engine.render_http_result(malicious, body).startswith("Olá, {{password}}! ")
+    assert engine.render_http_result(
+        transport, {"username": "{name}", "password": "x"}
+    ).startswith("Olá, Cliente sintético! Usuário: {name} |")
+    assert UrlAction(url="https://example.com/reply", custom_template=custom)
+    with pytest.raises(ValidationError):
+        UrlAction(url="https://example.com/reply", custom_template="Olá, {password}!")
+    with pytest.raises(ValueError, match="Dados de contato indisponíveis"):
+        engine.compile_plan(root["id"], graph(root), {}, {}, CONTEXT)
 
 
 def test_http_scalar_tags_are_non_recursive_and_preserve_values_without_evaluating_expressions():
