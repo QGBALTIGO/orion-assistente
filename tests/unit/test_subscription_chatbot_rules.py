@@ -98,8 +98,8 @@ def test_utf16_text_limit_accepts_exactly_32000_units_without_cutting_emoji():
         engine.render_contact("Olá {name}", {"name": value})
 
 
-@pytest.mark.parametrize("delay", [0, 16, True, "1", 1.5])
-def test_action_delays_are_strict_integers_between_one_and_fifteen(delay):
+@pytest.mark.parametrize("delay", [0, 301, True, "1", 1.5])
+def test_action_delays_are_strict_integers_between_one_and_three_hundred(delay):
     with pytest.raises(ValidationError):
         TextAction(text="Resposta", delay_seconds=delay)
 
@@ -112,9 +112,9 @@ def test_sequence_rejects_duplicate_action_ids_and_bounds_count_and_delay_separa
     repeated = action()
     with pytest.raises(ValidationError):
         SequenceResponse.model_validate(sequence(repeated, deepcopy(repeated)))
-    assert SequenceResponse.model_validate(sequence(action(delay_seconds=15), action(delay_seconds=15)))
+    assert SequenceResponse.model_validate(sequence(action(delay_seconds=150), action(delay_seconds=150)))
     with pytest.raises(ValidationError):
-        SequenceResponse.model_validate(sequence(action(delay_seconds=15), action(delay_seconds=15), action()))
+        SequenceResponse.model_validate(sequence(action(delay_seconds=150), action(delay_seconds=150), action()))
 
 
 def test_ten_menu_options_are_mutually_exclusive_and_do_not_sum_their_delays():
@@ -299,13 +299,13 @@ def test_nested_sequence_preserves_every_message_order_delay_and_source_objects(
 
 
 def test_expanded_delay_is_checked_before_save_and_never_truncates_later_actions():
-    child = rule(2, response=sequence(action(delay_seconds=15), action(delay_seconds=14)))
+    child = rule(2, response=sequence(action(delay_seconds=150), action(delay_seconds=149)))
     root = rule(response=sequence(action("nested_reply", rule_id=child["id"])))
     assert engine.validate_graph(graph(root, child), {})
     plan, _ = engine.compile_plan(root["id"], graph(root, child), {}, FACTS, CONTEXT)
-    assert len(plan) == 2 and sum(row["delay_seconds"] for row in plan) == 30
-    child["response"]["actions"][1]["delay_seconds"] = 15
-    with pytest.raises(ValueError, match="trinta"):
+    assert len(plan) == 2 and sum(row["delay_seconds"] for row in plan) == 300
+    child["response"]["actions"][1]["delay_seconds"] = 150
+    with pytest.raises(ValueError, match="300"):
         engine.validate_graph(graph(root, child), {})
     with pytest.raises(ValueError):
         engine.compile_plan(root["id"], graph(root, child), {}, FACTS, CONTEXT)
