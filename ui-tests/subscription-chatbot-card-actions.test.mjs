@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {makeChatbot,base,ruleId,detail,listing,catalog,copy,flush} from './subscription-chatbot-harness.mjs';
+import {makeChatbot,base,ruleId,detail,listing,catalog,flush,failure} from './subscription-chatbot-harness.mjs';
 
 const action=kind=>'[data-sc-card] [data-sc-action="'+kind+'"]';
 const writes=h=>h.calls.filter(call=>call.method!=='GET');
@@ -19,6 +19,8 @@ test('card actions use accessible icons only, with the switch isolated in the he
 
   const group=card.querySelector('.os-chatbot-card-actions');
   assert.equal(group.getAttribute('role'),'group');
+  assert.ok(group.closest('.os-chatbot-card-title'),'ações devem ficar junto do conteúdo');
+  assert.ok(group.closest('.os-chatbot-card-header'),'ações não precisam de linha vazia separada');
   const buttons=[...group.querySelectorAll('button')];
   assert.deepEqual(buttons.map(x=>x.dataset.scAction),['edit','copy','delete']);
   assert.deepEqual(buttons.map(x=>x.getAttribute('title')),['Editar','Copiar','Excluir']);
@@ -37,7 +39,8 @@ test('card actions use accessible icons only, with the switch isolated in the he
   assert.deepEqual(h.errors,[]);
 });
 
-test('switch opens existing confirmation; cancel leaves state unchanged, confirm sends versioned PATCH',async t=>{
+
+test('switch changes directly only after versioned PATCH returns success; no confirmation popup',async t=>{
   const h=await makeChatbot({respond(path,method,payload,server){
     if(path===base+'/rules/'+ruleId+'/enabled'&&method==='PATCH'){
       const version=server.data.chatbot_revision+1;
@@ -50,17 +53,14 @@ test('switch opens existing confirmation; cancel leaves state unchanged, confirm
     }
   }});
   t.after(()=>h.close());
-  h.click(action('toggle'));
-  assert.ok(h.element('[data-sc-form="toggle"]'));
-  assert.equal(h.element(action('toggle')).getAttribute('aria-checked'),'true');
-  assert.equal(writes(h).length,0);
-  h.click('[data-sc-form="toggle"] [data-sc-action="close-dialog"]');
+  const toggle=h.element(action('toggle'));
+  toggle.click();
   assert.equal(h.document.querySelector('[data-sc-form="toggle"]'),null);
-  assert.equal(h.element(action('toggle')).getAttribute('aria-checked'),'true');
-  h.click(action('toggle'));
-  h.submit('[data-sc-form="toggle"]');
+  assert.equal(h.document.querySelector('dialog'),null);
+  assert.equal(toggle.getAttribute('aria-checked'),'true','não antecipar a confirmação do servidor');
   await flush();
   const patch=writes(h)[0];
+  assert.equal(writes(h).length,1);
   assert.equal(patch.path,base+'/rules/'+ruleId+'/enabled');
   assert.equal(patch.method,'PATCH');
   assert.equal(patch.data.enabled,false);
@@ -70,6 +70,39 @@ test('switch opens existing confirmation; cancel leaves state unchanged, confirm
   assert.equal(h.element(action('toggle')).getAttribute('aria-checked'),'false');
   assert.match(h.element(action('toggle')).getAttribute('aria-label'),/^Ativar resposta: /);
   assert.equal(h.element('[data-sc-card] .os-badge').textContent,'Inativa');
+  assert.deepEqual(h.errors,[]);
+});
+
+test('failed switch does not flip visually or open a modal',async t=>{
+  const h=await makeChatbot({respond(path,method){
+    if(method==='PATCH'&&path.endsWith('/enabled'))throw failure(409,'Conflito de versão.');
+  }});
+  t.after(()=>h.close());
+  h.click(action('toggle'));await flush();
+  assert.equal(writes(h).length,1);
+  assert.equal(h.element(action('toggle')).getAttribute('aria-checked'),'true');
+  assert.equal(h.document.querySelector('[data-sc-form="toggle"]'),null);
+  assert.equal(h.document.querySelector('dialog'),null);
+  assert.match(h.element('[data-sc-feedback]').textContent,/Conflito de versão|dados mudaram/i);
+  assert.deepEqual(h.errors,[]);
+});
+
+test('uncertain activation result retains the same idempotency key for an explicit retry',async t=>{
+  let attempts=0;
+  const h=await makeChatbot({respond(path,method){
+    if(method==='PATCH'&&path.endsWith('/enabled')){attempts++;throw failure(503);}
+  }});
+  t.after(()=>h.close());
+  h.click(action('toggle'));await flush();
+  assert.equal(writes(h).length,1);
+  assert.equal(h.element(action('toggle')).getAttribute('aria-checked'),'true');
+  assert.equal(h.document.querySelector('[data-sc-form="toggle"]'),null);
+  assert.ok(h.element('[data-sc-pending]'));
+  assert.equal(h.element(action('toggle')).disabled,true);
+  h.click('[data-sc-action="retry-pending"]');await flush();
+  assert.equal(writes(h).length,2);
+  assert.deepEqual(writes(h)[0].data,writes(h)[1].data);
+  assert.equal(attempts,2);
   assert.deepEqual(h.errors,[]);
 });
 
@@ -108,9 +141,10 @@ test('long and escaped keywords remain safe in aria labels and title layout',asy
 
 test('scoped mobile styles keep actions compact and preserve touch targets',async()=>{
   const css=await readFile(new URL('../app/static/orion-subscription-chatbot.css',import.meta.url),'utf8');
-  assert.match(css,/\.os-chatbot-card-actions\{[^}]*justify-content:flex-end/);
+  assert.match(css,/\.os-chatbot-card-actions\{[^}]*justify-content:flex-start/);
   assert.match(css,/\.os-chatbot-card-actions>\.os-chatbot-icon-action\{[^}]*width:44px;[^}]*height:44px/);
   assert.match(css,/\.os-chatbot-switch\{[^}]*height:44px/);
+  assert.match(css,/\.os-chatbot-card-actions>\.os-chatbot-icon-action::before\{[^}]*inset:5px/);
   assert.match(css,/\.os-chatbot-switch\[aria-checked=true\]/);
   assert.match(css,/@media\(max-width:640px\)/);
   assert.doesNotMatch(css,/\.os-chatbot-card-actions>\.os-button\{flex:1 1 auto\}/);
