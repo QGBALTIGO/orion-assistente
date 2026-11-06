@@ -100,7 +100,8 @@ jobs:
         run: |
           mapfile -t units < <(printf '%s\n' tests/unit/test_qr*.py tests/unit/test_groq*.py \
             tests/unit/test_preview_audio.py tests/unit/test_subscription_device_audio.py \
-            tests/unit/test_contact_preferences.py tests/unit/test_whatsapp_customer_names_unit.py | sort -u | grep -v '/test_qr_intelligence_')
+            tests/unit/test_contact_preferences.py tests/unit/test_whatsapp_customer_names_unit.py \
+            tests/unit/test_ai_customer_flow.py | sort -u | grep -v '/test_qr_intelligence_')
           python tests/isolated_runner.py -q -ra --junitxml=/tmp/intelligence-units.xml "${units[@]}"
       - name: Common booking lifecycle, contention, tenant scope and real Redis Lua
         env: {ORION_TEST_NETWORK_AUDIT: /tmp/intelligence-integrations-network.json}

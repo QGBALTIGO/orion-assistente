@@ -8,8 +8,10 @@ no database, model, networking, scheduling, stock, payment or send operations.
 """
 from dataclasses import dataclass
 from datetime import time
+import math
 import re
 from typing import Literal
+from uuid import UUID
 
 from app.business_profile_schemas import StyleRules
 from app.qr_presentation import InteractionContext, QuoteItem, render_quote
@@ -29,6 +31,69 @@ class InformationReply:
     parts: tuple[InformationPart, ...]
     unresolved: tuple[str, ...]
     profile_version: str | None
+
+
+PRICE_REFERENCE_SECONDS = 300
+
+
+def price_followup_question(message: str) -> bool:
+    """Only a complete price explanation question, never a mixed operation."""
+    if not isinstance(message, str) or len(message) > 1500:
+        return False
+    text = re.sub(r"\s+", " ", normalized(message)).strip(" ?!.,\"'“”")
+    text = re.sub(r"^(?:mas|e)\s+", "", text)
+    return bool(re.fullmatch(
+        r"(?:(?:por que|porque|pq)(?: (?:esse|este|o) (?:preco|valor)(?: e)?)? (?:e )?a partir de|"
+        r"(?:o que (?:significa|quer dizer)|como assim) (?:esse )?a partir de|"
+        r"(?:(?:esse|este|o) )?(?:preco|valor) e (?:fechado|fixo|final))", text))
+
+
+def current_price_reference(reference, catalog: list[dict], *, revision: str, scope: str, now: float) -> dict | None:
+    """A short-lived read-only subject. It supplies no booking selection."""
+    if (not isinstance(reference, dict) or reference.get("catalog_revision") != revision
+            or reference.get("scope") != scope):
+        return None
+    quoted_at, ids = reference.get("quoted_at"), reference.get("service_ids")
+    if (type(quoted_at) not in {int, float} or not math.isfinite(quoted_at)
+            or not 0 <= now-quoted_at <= PRICE_REFERENCE_SECONDS
+            or not isinstance(ids, list) or not 1 <= len(ids) <= 6
+            or len(catalog) > 500):
+        return None
+    try:
+        if any(not isinstance(value, str) or str(UUID(value)) != value for value in ids):
+            return None
+        by_id = {str(row["id"]): row for row in catalog}
+        if (len(by_id) != len(catalog) or len(set(ids)) != len(ids)
+                or any(value not in by_id or by_id[value].get("active") is False for value in ids)):
+            return None
+    except (KeyError, TypeError, ValueError):
+        return None
+    return {"service_ids": list(ids), "catalog_revision": revision, "scope": scope, "quoted_at": quoted_at}
+
+
+def explain_price_followup(message: str, business: dict, catalog: list[dict], reference, *,
+                           revision: str, scope: str, now: float) -> tuple[str, dict | None] | None:
+    """Explain the price kind from current catalog facts, without inventing why it varies."""
+    if not price_followup_question(message):
+        return None
+    clarification = ("Qual serviço você quer consultar? Preciso identificar o serviço no catálogo atual "
+                     "para explicar se o preço é fixo ou inicial.", None)
+    current = current_price_reference(reference, catalog, revision=revision, scope=scope, now=now)
+    if current is None or len(current["service_ids"]) != 1:
+        return clarification
+    row = next(row for row in catalog if str(row["id"]) == current["service_ids"][0])
+    kind = row.get("price_mode", "fixed")
+    if kind not in {"fixed", "from"}:
+        return clarification
+    try:
+        quote = render_quote([QuoteItem(row["name"], row.get("price_cents"), price_kind=kind)],
+            _profile(business).get("style_rules"), context=InteractionContext(information_only=True), show_total=False)
+    except (KeyError, TypeError, ValueError):
+        return clarification
+    explanation = ("Esse é o valor inicial cadastrado, não um preço fechado. A equipe precisa confirmar o preço final "
+        "para esse serviço. Para saber o que pode alterar esse valor, confirme com a equipe."
+        if kind == "from" else "Esse é o preço fixo cadastrado para esse serviço.")
+    return quote + "\n\n" + explanation, current
 
 
 def _profile(business: dict) -> dict:

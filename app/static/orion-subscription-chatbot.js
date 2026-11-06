@@ -64,7 +64,7 @@
     }).join('');
   }
   function fileEnvelope(file){
-    if(!file||!Number.isSafeInteger(file.size)||file.size<1||file.size>10*1024*1024||!/^.+\.(?:json|zip)$/i.test(file.name))return Promise.reject(Error('Escolha um arquivo JSON ou ZIP exportado pelo Orion, de até 10 MB.'));
+    if(!file||!Number.isSafeInteger(file.size)||file.size<1||file.size>10*1024*1024||!/^.+\.(?:json|zip)$/i.test(file.name))return Promise.reject(Error('Escolha um ZIP exportado pelo BotBot ou um JSON/ZIP do Orion, de até 10 MB.'));
     return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onerror=()=>reject(Error('Não foi possível ler o arquivo selecionado.'));reader.onload=()=>{const value=String(reader.result||''),comma=value.indexOf(',');if(comma<0||!value.slice(0,comma).endsWith(';base64'))return reject(Error('Não foi possível ler o arquivo selecionado.'));resolve({filename:file.name,content_base64:value.slice(comma+1)});};reader.readAsDataURL(file);});
   }
   let active=null;
@@ -294,7 +294,7 @@
     function transferDeviceOptions(){return [['','Manter atribuições originais'],...(state.catalog?.devices||[]).map(item=>[item.id,item.name])];}
     function showImport(){
       if(!allowed('import'))return;
-      const entry=dialog('import','Importar Respostas','<p>Use um arquivo JSON ou ZIP exportado pelo Orion, de até 10 MB. A primeira etapa apenas valida o arquivo e mostra uma prévia.</p><div class="os-field"><label for="sc-import-file">Arquivo do Orion</label><input id="sc-import-file" type="file" data-sc-import-file accept=".json,.zip,application/json,application/zip" required></div>'+select('Atribuir a dispositivo (opcional)','transfer_device','',transferDeviceOptions(),'','Selecionar um dispositivo substitui o escopo de todas as respostas importadas.')+select('Como importar','transfer_mode','add_missing',[['add_missing','Adicionar ausentes'],['merge','Mesclar e atualizar']])+'<div data-sc-transfer-preview></div>',{confirm:'Fazer Upload e Visualizar',wide:true,preview:null,file:null,mode:'add_missing',applyKey:null});entry.element.querySelector('button[type=submit]').dataset.scTransferSubmit='';
+      const entry=dialog('import','Importar Respostas','<p>Use um ZIP original do BotBot (botbot_replies_...) ou uma exportação JSON/ZIP do Orion, de até 10 MB. O Orion converte somente respostas compatíveis, deixando as respostas do BotBot inativas para revisão. A primeira etapa apenas valida o arquivo e mostra uma prévia.</p><div class="os-field"><label for="sc-import-file">Arquivo do BotBot ou Orion</label><input id="sc-import-file" type="file" data-sc-import-file accept=".json,.zip,application/json,application/zip" required></div>'+select('Atribuir a dispositivo (opcional)','transfer_device','',transferDeviceOptions(),'','Selecionar um dispositivo substitui o escopo de todas as respostas importadas.')+select('Como importar','transfer_mode','add_missing',[['add_missing','Adicionar ausentes'],['merge','Mesclar e atualizar']])+'<div data-sc-transfer-preview></div>',{confirm:'Fazer Upload e Visualizar',wide:true,preview:null,file:null,mode:'add_missing',applyKey:null});entry.element.querySelector('button[type=submit]').dataset.scTransferSubmit='';
     }
     function showRestore(backup){
       if(!allowed('restore')||!backup||backup.status!=='ready')return;
@@ -319,7 +319,7 @@
       const mode=transferMode(entry),selected=entry.element.querySelector('[data-sc-field="transfer_device"]').value,device_id=selected||null;if(device_id&&!uuid(device_id))return;
       let payload,suffix;const epoch=state.epoch,previewRead=entry.previewRead=(entry.previewRead||0)+1;
       if(entry.kind==='import'){
-        const file=entry.element.querySelector('[data-sc-import-file]').files?.[0]||entry.file;if(!file){dialogError(entry,'Escolha um arquivo JSON ou ZIP exportado pelo Orion.');return;}
+        const file=entry.element.querySelector('[data-sc-import-file]').files?.[0]||entry.file;if(!file){dialogError(entry,'Escolha um ZIP do BotBot ou um JSON/ZIP do Orion.');return;}
         try{payload={...await fileEnvelope(file),device_id,mode};}catch(error){dialogError(entry,error.message);return;}
         if(!current(epoch)||!entry.element.isConnected||entry.previewRead!==previewRead)return;entry.file=file;suffix='/imports/preview';
       }else{payload={mode,device_id};suffix='/backups/'+encodeURIComponent(entry.backup.id)+'/preview';}
@@ -504,7 +504,7 @@
         body=select(action.type==='nested_list'?'Lista de Opções':'Resposta existente',path+'.rule_id',action.rule_id,references.options,'required'+(!references.list.length?' disabled':''))+(target?.enabled===false?'<p class="os-notice">A resposta selecionada está inativa e não será executada enquanto permanecer assim.</p>':'')+'<p class="os-help">Referências removidas, ciclos e sequências que ultrapassem o atraso máximo são recusados ao salvar.</p>';
       }else if(action.type==='url'){
         const tags=state.editor.urlTags.get(action.id)||[];
-        body=input('URL',path+'.url',action.url,'url','required maxlength="2048" placeholder="https://…"')+select('Método',path+'.method',action.method,[['POST','POST'],['GET','GET']])+textarea('Resposta customizada (opcional)',path+'.custom_template',action.custom_template,32000,'Use {{campo}}, {{data.nome}} ou {{itens[0].nome}}. Para chaves com espaços, use {{["nome completo"]}}. Em branco, usa reply na raiz. Campos ausentes ou nulos não são enviados.')+checkbox('Enviar como arquivo .txt',path+'.as_file',action.as_file)+'<div class="os-actions">'+button('Ler Tags da URL','read-url-tags','os-outline os-small','link','data-sc-path="'+path+'"'+(!allowed('read_url_tags')?' disabled':''))+'</div><p class="os-help">Ler as tags acessa a URL informada com dados de exemplo. Abrir este formulário não consulta a URL.</p>'+(tags.length?'<div class="os-chatbot-keywords" data-sc-url-tags="'+esc(action.id)+'">'+tags.map(tag=>'<span>'+esc('{{'+tag+'}}')+'</span>').join('')+'</div>':'');
+        body=input('URL',path+'.url',action.url,'url','required maxlength="2048" placeholder="https://…"')+select('Método',path+'.method',action.method,[['POST','POST'],['GET','GET']])+textarea('Resposta customizada (opcional)',path+'.custom_template',action.custom_template,32000,'Use {{campo}}, {{data.nome}}, {{data}} ou {{itens[0].nome}}. Toque em uma tag encontrada para inseri-la aqui. Em branco, usa reply na raiz.')+checkbox('Enviar como arquivo .txt',path+'.as_file',action.as_file)+'<div class="os-actions">'+button('Ler Tags da URL','read-url-tags','os-outline os-small','link','data-sc-path="'+path+'"'+(!allowed('read_url_tags')?' disabled':''))+'</div><p class="os-help">Ler as tags acessa a URL informada com dados de exemplo. Abrir este formulário não consulta a URL.</p>'+(tags.length?'<div class="os-chatbot-keywords" data-sc-url-tags="'+esc(action.id)+'" role="group" aria-label="Tags encontradas">'+tags.map(tag=>'<button type="button" class="os-chatbot-keyword-tag" data-sc-action="insert-url-tag" data-sc-path="'+esc(path)+'" data-sc-tag="'+esc(tag)+'" title="Inserir tag na resposta">'+esc('{{'+tag+'}}')+'</button>').join('')+'</div>':'');
       }else if(action.type==='carousel'){
         body=textarea('Corpo principal',path+'.body',action.body,1024)+'<div class="os-chatbot-step-list">'+action.cards.map((card,index)=>{const p=path+'.cards.'+index;return '<section class="os-chatbot-menu-section"><h3>Card '+(index+1)+'</h3>'+input('Título',p+'.title',card.title,'text','required maxlength="60"')+textarea('Corpo'+(index===0?' (obrigatório)':' (opcional)'),p+'.body',card.body,1024)+input('URL da imagem',p+'.image_url',card.image_url,'url','required maxlength="2048" placeholder="https://…"')+input('Texto do botão',p+'.button_text',card.button_text,'text','required maxlength="20"')+'</section>';}).join('')+'</div>';
       }
@@ -645,6 +645,19 @@
       if(action==='test'){showTest(id);return;}
       if(action==='tags'){showTags();return;}
       if(action==='keywords-help'){showKeywords();return;}
+      if(action==='insert-url-tag'){
+        const path=node.dataset.scPath,tag=node.dataset.scTag;
+        const editor=state.editor,source=editor?.entry?.element;
+        const step=editor?.definition&&getPath(editor.definition,path),allowedTags=step?.id&&editor.urlTags.get(step.id);
+        if(!canWrite()||!step||!validUrlTag(tag)||!allowedTags?.includes(tag))return;
+        const target=source?.querySelector('[data-sc-field="'+path+'.custom_template"]');
+        if(!target||target.disabled)return;
+        const snippet='{{'+tag+'}}',start=target.selectionStart,end=target.selectionEnd;
+        target.setRangeText(snippet,start,end,'end');
+        target.dispatchEvent(new Event('input',{bubbles:true}));
+        target.focus({preventScroll:true});
+        return;
+      }
       if(action==='read-url-tags'){showUrlTags(node.dataset.scPath);return;}
       if(action==='reload-editor'){if(state.editor)dialog('reload-editor',state.editor.id?'Carregar a versão atual?':'Atualizar o catálogo?','<p>'+esc(state.editor.id?'As alterações locais desta resposta serão substituídas pela versão salva no servidor.':'Seu rascunho será preservado e validado com os dados atuais ao salvar.')+'</p>',{confirm:state.editor.id?'Carregar versão atual':'Atualizar catálogo'});return;}
       if(action==='export'){showExport();return;}

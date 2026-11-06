@@ -45,7 +45,7 @@ from app.communication_events import EventMetadata
 from app.qr_service_context import resolve_service_reply
 from app.groq_understanding import interpret_plan
 from app.qr_understanding import UnderstandingPlan, build_plan, clarification_for, unique_service_reply
-from app.qr_information import info as compose_information, faq_catalog
+from app.qr_information import info as compose_information, faq_catalog, current_price_reference, explain_price_followup
 from app.qr_dialogue import (contextual_response, interpret_contextual_response, choose_time, choose_professional,
     compound_candidate, interpret_compound_response, summary_review_requested)
 
@@ -62,6 +62,7 @@ REVIEW_STEPS = frozenset({"confirm", "reschedule_confirm", "cancel_confirm"})
 AVAILABILITY_ERRORS = (HTTPException, TimeoutError, ConnectionError, SQLAlchemyError)
 _reply_preferences: ContextVar[dict | None] = ContextVar("orion_qr_reply_preferences", default=None)
 _reply_facts: ContextVar[tuple | None] = ContextVar("orion_qr_reply_facts", default=None)
+_reply_price: ContextVar[dict | None] = ContextVar("orion_qr_reply_price", default=None)
 _message_identity: ContextVar[str | None] = ContextVar("orion_qr_message_identity", default=None)
 _recent_operation: ContextVar[dict | None] = ContextVar("orion_qr_recent_operation", default=None)
 
@@ -2178,6 +2179,19 @@ async def _multi_turn(tenant: UUID, phone: str, body: str, state: dict, business
         if selected and (denial := capability_denial(business, capability)):
             return denial
     information = compose_information(plan, business, catalog, message=body)
+    scope = hashlib.sha256(f"{key}:{phone}".encode()).hexdigest()
+    price_parts = [part for part in information.parts if part.kind == "price" and part.source_ids]
+    if len(price_parts) == 1 and 1 <= len(price_parts[0].source_ids) <= 6:
+        _reply_price.set({"text": price_parts[0].text, "reference": {
+            "service_ids": list(price_parts[0].source_ids), "quoted_at": datetime.now().timestamp(),
+            "catalog_revision": qr_profile.catalog_revision(business, catalog, professionals), "scope": scope}})
+    elif (information.answer and operations <= {"faq", "other"} and not plan.service_ids and not plan.query_service_ids
+            and not qr_memory.changed_subject(body)
+            and not re.search(r"\b(?:esquece|esqueca|deixa|deixe)\s+(?:esse|este|o)\s+assunto\b", norm(body))):
+        reference = current_price_reference(state.get("price_information"), catalog,
+            revision=qr_profile.catalog_revision(business, catalog, professionals), scope=scope, now=datetime.now().timestamp())
+        if reference is not None:
+            _reply_price.set({"text": information.answer, "reference": reference})
     factual = "\n\n".join(value for value in (_factual_prefix, information.answer) if value)
     if not presentation.fits_message(factual):
         await _review_after_inquiry(state, redis, key)
@@ -2315,9 +2329,14 @@ async def turn(tenant: UUID, phone: str, body: str, redis, namespace: str, previ
         history = []
     token = _reply_preferences.set(None)
     facts_token = _reply_facts.set(None)
+    price_token = _reply_price.set(None)
+    price_reference = None
     identity_token = _message_identity.set(_message_identity.get() or ("preview-" + str(uuid4()) if preview else None))
     try:
         result = await _turn(tenant, phone, body, redis, namespace, preview)
+        quoted = _reply_price.get()
+        if quoted is not None and quoted["text"] in (result.get("answer") or ""):
+            price_reference = quoted["reference"]
         literal = result.pop("_literal_information", False)
         # Receipt bodies are already owner-approved native WhatsApp templates.
         # The generic QR formatter rewrites field labels and removes emojis.
@@ -2335,6 +2354,7 @@ async def turn(tenant: UUID, phone: str, body: str, redis, namespace: str, previ
                     result = before_presentation
                 else:
                     result = _bounded_reply(result["answer"], "", result.get("step", "information"))
+                    price_reference = None
         if qr_commerce.enabled() and _message_identity.get() and not result.get("step", "").startswith("commerce"):
             commerce_key = key + ":commerce"
             try:
@@ -2347,6 +2367,7 @@ async def turn(tenant: UUID, phone: str, body: str, redis, namespace: str, previ
     finally:
         _reply_preferences.reset(token)
         _reply_facts.reset(facts_token)
+        _reply_price.reset(price_token)
         _message_identity.reset(identity_token)
     if result.get("answer"):
         try:
@@ -2358,6 +2379,9 @@ async def turn(tenant: UUID, phone: str, body: str, redis, namespace: str, previ
             current = qr_memory.retain_dialogue(current if isinstance(current, dict) else before,
                 result, now=datetime.now().timestamp())
         if isinstance(current, dict):
+            current.pop("price_information", None)
+            if price_reference is not None:
+                current["price_information"] = price_reference
             if not result.get("_catalog_page"):
                 current.pop("catalog_choice_expected", None)
             if current.get("step") == "menu" and service_question:
@@ -2449,6 +2473,16 @@ async def _turn(tenant: UUID, phone: str, body: str, redis, namespace: str, prev
         await _review_after_inquiry(state, redis, state_key)
         return {"answer": ("Tudo bem, continuo por aqui. Como posso ajudar?" if intent == "human_declined" else
             "Você quer continuar comigo ou falar com uma pessoa da equipe?"), "step": state.get("step", "clarify")}
+    price_explanation = explain_price_followup(body, business, catalog, state.get("price_information"),
+        revision=revision, scope=hashlib.sha256(f"{state_key}:{phone}".encode()).hexdigest(), now=datetime.now().timestamp())
+    if price_explanation is not None:
+        if denial := capability_denial(business, "catalog_answers"):
+            return denial
+        answer, reference = price_explanation
+        await _review_after_inquiry(state, redis, state_key)
+        if reference is not None:
+            _reply_price.set({"text": answer, "reference": reference})
+        return {"answer": answer, "step": state.get("step", "information"), "_literal_information": True}
     if text_clean.isdigit() and not text_clean.isdecimal():
         await _review_after_inquiry(state, redis, state_key)
         return {"answer": "Essa opção não ficou clara. Pode dizer o nome do serviço ou profissional, o horário que procura, ou usar uma das opções atuais?", "step": "clarify"}

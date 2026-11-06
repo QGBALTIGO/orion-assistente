@@ -138,6 +138,9 @@ async def test_long_customer_journey(narrative, monkeypatch, journey, messages):
         assert len(result["answer"])<=4096 and len(h.state().get("history",[]))<=8, (journey,index)
         if fact:
             assert fact.casefold() in result["answer"].casefold(), (journey,index,message,fact,result)
+        if journey.startswith("JRN07") and message == "Esse preço é fechado?":
+            assert all(value in result["answer"] for value in ("Corte", "35,00", "valor inicial", "equipe")), result
+            assert not result.get("degraded") and not h.calls["writes"], result
         # No information turn, greeting or vague acceptance may confirm a task.
         effects=h.calls["writes"][before:]
         if message != "Pode marcar":
