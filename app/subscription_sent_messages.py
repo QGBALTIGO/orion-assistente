@@ -275,7 +275,8 @@ def item_dto(row, now, *, detail=False):
     if kind == "carousel":
         outgoing = "\n".join(filter(None, [action.get("body"), *[" — ".join(filter(None, [c.get("title"), c.get("body")])) for c in action.get("cards", [])]]))
     if kind == "url_button":
-        outgoing = "\n".join(filter(None, [action.get("text"), action.get("footer"),
+        message = "\n\n".join(filter(None, [action.get("text"), action.get("footer")]))
+        outgoing = "\n".join(filter(None, [message,
             " · ".join(filter(None, [action.get("button_text"), action.get("url")]))]))
     if kind == "location":
         outgoing = f"{action.get('latitude')}, {action.get('longitude')}"
