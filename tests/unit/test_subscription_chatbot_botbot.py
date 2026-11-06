@@ -256,3 +256,13 @@ def test_botbot_rejects_fractional_milliseconds_and_excessive_delays():
                 {"type":"text","text":"A","delay_seconds":200},
                 {"type":"text","text":"B","delay_seconds":101}]}}]),
             "botbot_replies_delays.zip")
+
+
+def test_botbot_reports_record_position_without_echoing_keyword_or_payload():
+    rows=[{"id":1,"keyword":"oi","response":"Olá"},
+          {"id":2,"keyword":"PRIVATE-KEYWORD", "response":{
+              "type":"text","text":"", "message":" "}}]
+    with pytest.raises(ValueError) as failure:
+        codec.read_archive(archive(rows),"botbot_replies_position.zip")
+    assert "Resposta 2" in str(failure.value)
+    assert "PRIVATE-KEYWORD" not in str(failure.value)
