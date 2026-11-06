@@ -95,7 +95,7 @@ async def recover_events(ctx: dict):
     support = support_session_factory()
     async with support() as session:
         pending = (await session.execute(text("""
-            SELECT tenant_id,id FROM inbound_events
+            SELECT tenant_id,id,attempts FROM inbound_events
             WHERE status='pending'
                 OR (status='processing' AND processing_at < now()-interval '5 minutes')
             ORDER BY id LIMIT 100
@@ -112,8 +112,12 @@ async def recover_events(ctx: dict):
                     WHERE id=:id AND status='processing'
                     AND processing_at < now()-interval '5 minutes'
                 """), {"id":UUID(event_id)})
+        # ARQ retains failed results for an hour. Reusing the same recovery
+        # ID would suppress a still-pending event after another transient
+        # failure. The SQL attempt counter advances only when a worker claims
+        # the event; scans of the same attempt still deduplicate in ARQ.
         await ctx["redis"].enqueue_job("process_inbound_event",tenant_id,event_id,
-                                        _job_id="wa:retry:" + event_id)
+                                        _job_id=f"wa:retry:{event_id}:{row['attempts']}")
     return len(pending)
 
 

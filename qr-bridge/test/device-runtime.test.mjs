@@ -200,7 +200,8 @@ test('expired retained incoming blocks event-return and polled effects but fresh
   const original=storedIngress(f).entries[0];f.setTime(1300001);await f.poll();
   await until(()=>f.session.deviceDiagnostics().ingress.blocked===1);
   const retained=storedIngress(f).entries[0];assert.equal(retained.at,original.at);assert.equal(retained.order,original.order);
-  assert.equal(retained.blocked_reason,'expired');assert.equal(f.session.connectionHealth().state,'needs_attention');
+  assert.equal(retained.blocked_reason,'expired');assert.equal(retained.admission_attempted,true);assert.equal(retained.terminal_inert,false);
+  assert.equal(f.session.connectionHealth().state,'needs_attention');
   const effect=f.effect('send_text',{phone,text:'must await operator review'});
   f.behavior.event=async event=>event.kind==='text'?[effect]:[];f.behavior.pending=async()=>({effects:[effect],reconcile:[]});
   f.receive('fresh-control','PARAR');await until(()=>f.events.some(event=>event.message_id==='fresh-control'));
@@ -208,6 +209,71 @@ test('expired retained incoming blocks event-return and polled effects but fresh
   assert.equal(f.authorizations.length,0);assert.equal(f.sends.length,0);assert.equal(f.session.deviceDiagnostics().ingress.blocked,1);
   const g=await fixture(t),allowed=g.effect('send_text',{phone,text:'Independent device response'});
   g.behavior.event=async event=>event.kind==='text'?[allowed]:[];g.receive('unaffected-device');await until(()=>g.sends.length===1);
+});
+
+test('a resolved greeting that expires before its first broker attempt remains retained but does not stop an independent contact',async t=>{
+  const f=await fixture(t),barrier=deferred(),entered=deferred(),original=f.context.assertCurrent,other='5567999999903';let paused=false;
+  f.context.assertCurrent=async()=>{await original();if(!paused){paused=true;entered.resolve();await barrier.promise;}};
+  f.receive('never-attempted-expired','Olá!');await entered.promise;
+  const captured=storedIngress(f).entries[0];assert.equal(captured.admission_attempted,false);
+  f.setTime(1300001);barrier.resolve();await until(()=>f.session.deviceDiagnostics().ingress.retained_terminal===1);
+  const retained=storedIngress(f).entries[0];
+  assert.equal(retained.blocked_reason,'expired');assert.equal(retained.admission_attempted,false);assert.equal(retained.terminal_inert,true);
+  assert.equal(retained.at,captured.at);assert.equal(f.events.some(event=>event.message_id==='never-attempted-expired'),false);
+  assert.equal(f.session.deviceDiagnostics().ingress.blocked,0);
+  const effect=f.effect('send_text',{phone:other,text:'Independent authorized response'});
+  f.behavior.event=async event=>event.message_id==='independent-after-expiry'?[effect]:[];
+  f.receive('independent-after-expiry','Pedido atual',{remoteJid:other+'@s.whatsapp.net'});await until(()=>f.sends.length===1);
+  assert.equal(f.sends[0].jid,other+'@s.whatsapp.net');assert.equal(f.authorizations.length,1);
+  f.session.close();await f.open();assert.equal(f.session.deviceDiagnostics().ingress.retained_terminal,1);
+  f.receive('never-attempted-expired','replacement');await tick();await tick();
+  assert.equal(f.events.some(event=>event.message_id==='never-attempted-expired'),false);
+  assert.equal(storedIngress(f).entries[0].at,captured.at);assert.deepEqual(storedIngress(f).entries[0].message,retained.message);
+});
+
+for(const pausedGuard of [3,4])test(`expiry while awaiting admission guard${pausedGuard} never marks or posts a first attempt`,async t=>{
+  const f=await fixture(t);await tick();await tick();
+  const barrier=deferred(),entered=deferred(),original=f.context.assertCurrent,other='5567999999903';let checks=0;
+  f.context.assertCurrent=async()=>{await original();if(++checks===pausedGuard){entered.resolve();await barrier.promise;}};
+  f.receive('expired-during-final-guard','Olá!');await entered.promise;
+  const captured=storedIngress(f).entries[0];assert.equal(captured.terminal_inert,true);assert.equal(captured.admission_attempted,false);
+  f.setTime(1300001);barrier.resolve();await until(()=>f.session.deviceDiagnostics().ingress.retained_terminal===1);
+  const retained=storedIngress(f).entries[0];assert.equal(retained.admission_attempted,false);assert.equal(retained.blocked_reason,'expired');
+  assert.equal(f.events.some(event=>event.message_id==='expired-during-final-guard'),false);
+  assert.equal(f.session.deviceDiagnostics().ingress.blocked,0);
+  const effect=f.effect('send_text',{phone:other,text:'Current independent response'});
+  f.behavior.event=async event=>event.message_id==='after-final-guard'?[effect]:[];
+  f.receive('after-final-guard','Pedido atual',{remoteJid:other+'@s.whatsapp.net'});await until(()=>f.sends.length===1);
+  assert.equal(f.sends[0].jid,other+'@s.whatsapp.net');assert.equal(f.authorizations.length,1);
+});
+
+test('an exact greeting with an ambiguous503 admission still stops other-contact effects after expiry',async t=>{
+  const f=await fixture(t),other='5567999999903';
+  f.behavior.event=async event=>{if(event.kind==='text'){
+    const retained=storedIngress(f).entries.find(entry=>entry.message.key.id===event.message_id);
+    assert.equal(retained.admission_attempted,true,'Marker must be on disk before entering the broker adapter');
+    throw broker503();
+  }return [];};
+  f.receive('attempted-greeting','hello');await until(()=>f.events.some(event=>event.message_id==='attempted-greeting'));await tick();
+  f.setTime(1300001);await f.poll();await until(()=>f.session.deviceDiagnostics().ingress.blocked===1);
+  const retained=storedIngress(f).entries[0];assert.equal(retained.terminal_inert,true);assert.equal(retained.admission_attempted,true);
+  const effect=f.effect('send_text',{phone:other,text:'Must wait for review'});
+  f.behavior.event=async event=>event.kind==='text'?[effect]:[];f.behavior.pending=async()=>({effects:[effect],reconcile:[]});
+  f.receive('blocked-independent','Pedido novo',{remoteJid:other+'@s.whatsapp.net'});
+  await until(()=>f.events.some(event=>event.message_id==='blocked-independent'));await tick();await f.poll();
+  assert.equal(f.authorizations.length,0);assert.equal(f.sends.length,0);assert.equal(f.session.deviceDiagnostics().ingress.blocked,1);
+});
+
+test('a control that expires before any admission attempt keeps automatic effects stopped',async t=>{
+  const f=await fixture(t),barrier=deferred(),entered=deferred(),original=f.context.assertCurrent;let paused=false;
+  f.context.assertCurrent=async()=>{await original();if(!paused){paused=true;entered.resolve();await barrier.promise;}};
+  f.receive('unadmitted-stop','PARAR');await entered.promise;f.setTime(1300001);barrier.resolve();
+  await until(()=>f.session.deviceDiagnostics().ingress.blocked===1);
+  const retained=storedIngress(f).entries[0];assert.equal(retained.admission_attempted,false);assert.equal(retained.terminal_inert,false);
+  assert.equal(f.events.some(event=>event.message_id==='unadmitted-stop'),false);
+  const effect=f.effect('send_text',{phone,text:'Must not bypass unrecorded opt-out'});
+  f.behavior.pending=async()=>({effects:[effect],reconcile:[]});await f.poll();
+  assert.equal(f.authorizations.length,0);assert.equal(f.sends.length,0);
 });
 
 test('settings change retains old incoming as blocked and never rebinds it to the new revision',async t=>{

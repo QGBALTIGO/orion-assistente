@@ -69,8 +69,10 @@ test("bounded maximum and clear remove cached blobs",()=>{
  const {d,clean}=temp();
  try{
   const st=makeEncryptedRetryStore({directory:d,secret,max:3});
-  for(let i=0;i<8;i++)st.save({id:"id-"+i},{conversation:"message-"+i});
-  assert.ok(fs.readdirSync(d).length<=3);
+  for(let i=0;i<8;i++)assert.equal(st.save({id:"id-"+i},{conversation:"message-"+i}),i<3);
+  assert.equal(fs.readdirSync(d).length,3);
+  for(let i=0;i<3;i++)assert.deepEqual(st.get({id:'id-'+i}),{conversation:'message-'+i});
+  assert.equal(st.diagnostics().denied_saves,5);
   st.clear();assert.deepEqual(fs.readdirSync(d),[]);
  }finally{clean()}
 });
@@ -83,14 +85,41 @@ test("corrupt input and oversized payload are refused safely",()=>{
   assert.deepEqual(fs.readdirSync(d),[]);
  }finally{clean()}
 });
-test("larger native records retain the original aggregate disk budget and never claim an evicted cache",()=>{
+test("larger native records refuse overflow without evicting unexpired accepted originals",()=>{
  const {d,clean}=temp();
  try{
   const st=makeEncryptedRetryStore({directory:d,secret,maxPayloadBytes:512*1024,maxTotalBytes:280000});
-  for(let i=0;i<5;i++)assert.equal(st.save({id:'native-'+i},{conversation:'x'.repeat(100000)}),true);
+  for(let i=0;i<5;i++)assert.equal(st.save({id:'native-'+i},{conversation:'x'.repeat(100000)}),i<2);
   const files=fs.readdirSync(d);assert.ok(files.reduce((sum,file)=>sum+fs.statSync(path.join(d,file)).size,0)<=280000);
-  assert.ok(files.length<=2);assert.equal(st.get({id:'native-4'}).conversation.length,100000);
+  assert.equal(files.length,2);assert.equal(st.get({id:'native-0'}).conversation.length,100000);
+  assert.equal(st.get({id:'native-1'}).conversation.length,100000);
+  assert.equal(st.get({id:'native-4'}),undefined);
   const tooSmall=makeEncryptedRetryStore({directory:d,secret,maxPayloadBytes:512*1024,maxTotalBytes:1024});
   assert.equal(tooSmall.save({id:'cannot-cache'},{conversation:'x'.repeat(100000)}),false);
+  assert.equal(fs.readdirSync(d).length,2,'a smaller new budget cannot erase retained originals');
+ }finally{clean();}
+});
+
+test('disk reserve refuses the new send while retained retries survive restart',()=>{
+ const {d,clean}=temp();
+ try{
+  let free=1000000;const opts={directory:d,secret,minimumFreeBytes:500000,availableBytes:()=>free};
+  const st=makeEncryptedRetryStore(opts);assert.equal(st.save({id:'accepted'},{conversation:'original'}),true);
+  free=500000;assert.equal(st.save({id:'new'},{conversation:'new payload'}),false);
+  assert.equal(st.diagnostics().error_code,'disk_reserve');
+  assert.deepEqual(makeEncryptedRetryStore(opts).get({id:'accepted'}),{conversation:'original'});
+  assert.equal(st.get({id:'new'}),undefined);assert.equal(fs.readdirSync(d).length,1);
+ }finally{clean();}
+});
+
+test('only expiry releases a full retry slot; prune does not erase a valid original',()=>{
+ const {d,clean}=temp();
+ try{
+  let clock=Date.now();const opts={directory:d,secret,max:1,ttlMs:1000,now:()=>clock};
+  const st=makeEncryptedRetryStore(opts);assert.equal(st.save({id:'first'},{conversation:'retained'}),true);
+  st.prune();assert.equal(st.save({id:'second'},{conversation:'later'}),false);
+  assert.deepEqual(st.get({id:'first'}),{conversation:'retained'});
+  clock+=5000;assert.equal(st.save({id:'second'},{conversation:'later'}),true);
+  assert.equal(st.get({id:'first'}),undefined);assert.deepEqual(st.get({id:'second'}),{conversation:'later'});
  }finally{clean();}
 });

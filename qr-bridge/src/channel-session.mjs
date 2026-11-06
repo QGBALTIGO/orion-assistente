@@ -461,11 +461,13 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
         if(!current()||selfIdentity()!==identity)return null;
         if(!phone)throw Error('assistant_identity_unresolved');
         if(!self||!context.allowedSender(phone)||phone===self){journal.exclude(id);return null;}
+        journal.confirmIdentity(id,phone);
          const entry={phone,identity,...(normalized.special?{event:normalized.event}:{})};metadata.set(id,entry);
         const entryCurrent=()=>current()&&selfIdentity()===identity&&context.allowedSender(phone)&&(overflowEpoch.get(peer)||0)===ingressEpoch;
          // Even rejected input registers its revision before consuming more
          // work. It revokes stale inference and records handoff/opt-out in the
          // journal. The rejected prefix never reaches the domain consumer.
+         journal.markAdmissionAttempted(id);
          const proofTask=Promise.resolve(context.onInbound({phone,message_id:id,text:text||'',kind:media?'audio':text?'text':'unsupported',
            ...(normalized.special?{envelope:normalized.event}:{})})).then(async proof=>{
              await guarded();if(!entryCurrent()||!Number.isSafeInteger(proof?.revision)||proof.revision<1)throw Error('assistant_notice_unconfirmed');

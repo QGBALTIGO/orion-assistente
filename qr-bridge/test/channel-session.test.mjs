@@ -367,10 +367,18 @@ function replayClock(){let serial=0;const tasks=new Map();return {tasks,
   schedule:(fn,ms)=>{const id=++serial;tasks.set(id,{fn,ms});return id;},cancel:id=>tasks.delete(id),
   async replay(){const found=[...tasks.values()].find(task=>task.ms===5000);assert.ok(found,'Pending admission arms a bounded recovery timer');await found.fn();for(let i=0;i<12;i++)await flush();}};}
 async function reached(predicate){for(let i=0;i<200;i++){if(predicate())return;await flush();}assert.fail('Expected managed admission boundary');}
+function storedAssistantIngress(s){
+  const base=path.join(s.context.directory,'incoming-assistant'),namespace=fs.readdirSync(base)[0];
+  return encryptedChannelStore({directory:path.join(base,namespace),secret:s.context.secret,
+    serialize:value=>JSON.stringify(value,sdk.BufferJSON.replacer),deserialize:value=>JSON.parse(value,sdk.BufferJSON.reviver)}).get('incoming-admission-v1');
+}
 
 test('managed notice 503 persists encrypted input and retries original payload only before preparation',async t=>{
   const clock=replayClock(),s=await session(t,clock);let unavailable=true,attempts=0;
-  s.context.onInbound=async value=>{attempts++;s.notices.push(value);if(unavailable)throw Object.assign(Error('synthetic API503'),{status:503});return {revision:1};};
+  s.context.onInbound=async value=>{attempts++;s.notices.push(value);
+    assert.equal(storedAssistantIngress(s).entries.find(entry=>entry.id===value.message_id).admission_attempted,true,
+      'Attempt evidence must be durable before the authenticated backend adapter runs');
+    if(unavailable)throw Object.assign(Error('synthetic API503'),{status:503});return {revision:1};};
   s.receive({id:'notice-503'},{conversation:'Private original synthetic body'});await reached(()=>attempts===1);await flush();await flush();
   assert.equal(s.messages.length,0);assert.equal(s.result.ingressDiagnostics().pending,1);
   const base=path.join(s.context.directory,'incoming-assistant'),namespace=fs.readdirSync(base)[0],file=path.join(base,namespace,fs.readdirSync(path.join(base,namespace))[0]);
@@ -378,6 +386,19 @@ test('managed notice 503 persists encrypted input and retries original payload o
   s.receive({id:'notice-503'},{conversation:'changed duplicate must not replace'});unavailable=false;await clock.replay();
   await reached(()=>s.result.ingressDiagnostics().entries===0);assert.equal(attempts,2);assert.equal(s.messages.length,1);
   assert.equal(s.messages[0].text,'Private original synthetic body');assert.equal(s.notices[1].text,'Private original synthetic body');
+});
+
+test('managed identity lookup expiring before a first notice retains an inert greeting without blocking fresh work',async t=>{
+  const s=await session(t);let release,entered;const waiting=new Promise(resolve=>{entered=resolve;}),barrier=new Promise(resolve=>{release=resolve;});
+  const original=s.context.assertCurrent;let paused=false;
+  s.context.assertCurrent=async()=>{await original();if(!paused){paused=true;entered();await barrier;}};
+  s.receive({id:'never-noticed',fromMe:false},{conversation:'oi'});await waiting;s.setTime(100000+900001);release();
+  await reached(()=>s.result.ingressDiagnostics().retained_terminal===1);
+  assert.equal(s.notices.length,0);assert.equal(s.result.ingressDiagnostics().blocked,0);
+  const retained=storedAssistantIngress(s).entries[0];assert.equal(retained.admission_attempted,false);assert.equal(retained.terminal_inert,true);
+  s.receive({id:'fresh-managed',fromMe:false},{conversation:'Pedido atual'},100000+900001);
+  await reached(()=>s.messages.length===1);assert.equal(s.messages[0].message_id,'fresh-managed');
+  assert.equal(s.result.ingressDiagnostics().retained_terminal,1);assert.equal(storedAssistantIngress(s).entries[0].id,'never-noticed');
 });
 
 test('managed malformed notice proof is never admitted or prepared and can recover with a typed revision',async t=>{

@@ -1,7 +1,24 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {normalizeInbound,updateEvent,callEvent,safetyControl,queueControl} from '../src/inbound-event.mjs';
+import {normalizeInbound,updateEvent,callEvent,safetyControl,queueControl,inertGreeting} from '../src/inbound-event.mjs';
 const key={id:'source-id',fromMe:false,remoteJid:'5567999999901@s.whatsapp.net'};
+
+test('terminal-safe greeting proof excludes consent, opt-out, handoff, quotes, selections and opaque content',()=>{
+ for(const text of ['oi',' Olá! ','bom dia','boa tarde.','boa noite!','hello','hi']){
+  assert.equal(inertGreeting({key,message:{conversation:text}}),true,text);
+  assert.equal(inertGreeting({key,message:{extendedTextMessage:{text}}}),true,text);
+ }
+ for(const text of ['PARAR','sair','não quero mensagens','quero falar com atendente','sim','não','aceito','pode confirmar',
+   'oi, parar mensagens','bom dia\nPARAR','oi?','ola\0','Oi, quero receber promoções']){
+  assert.equal(inertGreeting({key,message:{conversation:text}}),false,text);
+ }
+ for(const message of [{audioMessage:{}},{imageMessage:{caption:'oi'}},{listResponseMessage:{title:'oi'}},
+   {protocolMessage:{editedMessage:{conversation:'oi'}}},{conversation:'oi',audioMessage:{}},
+   {ephemeralMessage:{message:{conversation:'oi'}},audioMessage:{}},
+   {extendedTextMessage:{text:'oi',contextInfo:{stanzaId:'previous-consent'}}},
+   {viewOnceMessage:{message:{conversation:'oi'}}}])assert.equal(inertGreeting({key,message}),false);
+ assert.equal(inertGreeting({key:{...key,fromMe:true},message:{conversation:'oi'}}),false);
+});
 test('oversized input keeps no useful prefix and retains a finite opt-out control',()=>{
  const result=normalizeInbound({message:{conversation:'A'.repeat(1500)+' não quero promoções'}});
  assert.equal(result.text,'');assert.equal(result.event.oversized,true);assert.equal(result.event.control,'marketing');

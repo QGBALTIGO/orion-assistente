@@ -3,7 +3,7 @@ on:
   push:
     branches: [codex/whatsapp-reliability-20261105]
   pull_request:
-    paths: ['qr-bridge/**', 'app/qr_*.py', 'app/inbox_*.py', 'app/subscription_*.py', 'app/static/orion-subscription-*.js', 'tests/**', 'ui-tests/subscription-*.test.mjs', '.github/workflows/whatsapp-reliability.yml']
+    paths: ['qr-bridge/**', 'app/qr_*.py', 'app/inbox_*.py', 'app/subscription_*.py', 'app/worker.py', 'app/static/orion-subscription-*.js', 'tests/**', 'ui-tests/subscription-*.test.mjs', '.github/workflows/whatsapp-reliability.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -54,6 +54,8 @@ jobs:
         run: node --test qr-bridge/test/outgoing-presence.test.mjs qr-bridge/test/outgoing-presence-server.test.mjs qr-bridge/test/reliable-send.test.mjs qr-bridge/test/send-capacity.test.mjs qr-bridge/test/connection-notice-startup.test.mjs qr-bridge/test/disconnect-evidence.test.mjs
       - name: Isolated primary native list, URL button and fixed audio authority
         run: node --test qr-bridge/test/native-test-canary.test.mjs qr-bridge/test/native-test-transport.test.mjs
+      - name: Retain accepted retry originals and refuse storage overflow before relay
+        run: node --test qr-bridge/test/encrypted-retry-store.test.mjs qr-bridge/test/e2ee-retry-hardening.test.mjs qr-bridge/test/retry-identity.test.mjs
       - run: npm audit --prefix qr-bridge --omit=dev --audit-level=high
       - run: docker build -t orion-whatsapp-reliability qr-bridge
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -64,6 +66,35 @@ jobs:
             /tmp/whatsapp-baseline.tap
             /tmp/whatsapp-candidate.tap
             /tmp/whatsapp-regression.json
+          retention-days: 7
+  offline-correctness:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with: {node-version: '22'}
+      - run: npm ci --prefix qr-bridge --ignore-scripts --no-audit --no-fund
+      - name: Real Signal and durable stores with an isolated synthetic peer process
+        run: node tests/qualification/whatsapp_capacity.mjs --output /tmp/whatsapp-offline-capacity.json
+      - name: Check correctness and explicitly report capacity limits
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          proof = json.loads(Path('/tmp/whatsapp-offline-capacity.json').read_text())
+          assert proof['correctness_passed'] is True
+          assert proof['production_capacity_qualified'] is False
+          if not proof['offline_service_targets_passed']:
+              print('::warning::Offline service latency target failed. This job validates correctness; production capacity is not qualified.')
+          print(json.dumps({key: proof[key] for key in ('correctness_passed', 'offline_service_targets_passed', 'production_capacity_qualified')}))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: whatsapp-offline-correctness-and-capacity-evidence
+          path: /tmp/whatsapp-offline-capacity.json
           retention-days: 7
   postgres-and-redis:
     runs-on: ubuntu-24.04
@@ -146,6 +177,8 @@ jobs:
           python -m pytest -q -ra tests/qualification/whatsapp_reliability_postgres.py tests/integration/test_qr_channels_postgres.py tests/integration/test_qr_channels_transaction_postgres.py tests/integration/test_qr_single_connection_postgres.py tests/integration/test_qr_revocation_quarantine_postgres.py tests/integration/test_qr_conversation_lock_redis.py tests/integration/test_qr_intake_revision_redis.py tests/integration/test_single_whatsapp_release_postgres.py tests/integration/test_professional_phone_release_pg.py tests/integration/test_subscription_ingress_recovery_postgres.py tests/integration/test_subscription_devices_postgres.py tests/unit/test_professional_phone_release.py tests/unit/test_qr_turn_ownership.py tests/unit/test_qr_batch_recovery.py tests/unit/test_whatsapp_pending_purpose.py tests/unit/test_subscription_connection_health.py tests/unit/test_subscription_relink_frozen_context.py tests/unit/test_subscription_devices.py tests/unit/test_subscription_device_rules.py tests/unit/test_subscription_device_audio.py tests/unit/test_subscription_devices_release.py tests/unit/test_qr_channels_human_pause.py tests/unit/test_appointment_message_templates.py --junitxml=/tmp/whatsapp-recovery.xml
       - name: URL-button review, frozen delivery and opt-out with real PostgreSQL
         run: python -m pytest -q -ra tests/unit/test_subscription_url_button.py tests/unit/test_subscription_url_button_transport.py tests/integration/test_subscription_direct_messages_postgres.py --junitxml=/tmp/whatsapp-url-button.xml
+      - name: Retained failed ARQ result must not suppress durable event recovery
+        run: python -m pytest -q -ra tests/integration/test_worker_recovery_redis.py --junitxml=/tmp/whatsapp-worker-recovery.xml
       - name: Same-operation authorization after preparation with real PostgreSQL
         run: python -m pytest -q -ra tests/unit/test_whatsapp_send_recheck.py tests/integration/test_whatsapp_send_recheck_postgres.py --junitxml=/tmp/whatsapp-send-recheck.xml
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -156,6 +189,7 @@ jobs:
             /tmp/whatsapp-recovery.xml
             /tmp/whatsapp-url-button.xml
             /tmp/whatsapp-send-recheck.xml
+            /tmp/whatsapp-worker-recovery.xml
             /tmp/whatsapp-canary-audio.json
   panel:
     runs-on: ubuntu-24.04

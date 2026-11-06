@@ -213,7 +213,7 @@ function visibleStatus(){
 function stats(){
   const phase=visibleStatus();
   return {status:phase,hasQr:phase==="qr_ready"&&!!qr&&freshQR(qrAt),
-    connection_health:primaryHealth.snapshot(),
+    connection_health:primaryHealth.snapshot(),channel_capacity:channelRoutes.capacity(),
     lastError,disconnectCode:lastDisconnectCode,
     waitingSeconds:Math.floor((Date.now()-connectStartedAt)/1000),
     phone:status==="connected"?(pairedNumber||null):null,
@@ -222,7 +222,7 @@ function stats(){
     connectionType:"unofficial_linked_device",messagesEnabled:status==="connected",
     retainedMessages:messages.length,paired:!!pairingCode,
     connectionNotice:process.env.ORION_NOTIFY_SELF_ON_LINK==="1" ? noticeState(authDir) : "disabled",
-    deliveryDiagnostics:{...retryDiagnostics},
+    deliveryDiagnostics:{...retryDiagnostics,retryCache:encryptedRetry.diagnostics()},
     transportDiagnostics:transport.snapshot(),
     transportVersion:"verified-lid-pilot-v1",
     buildCommit:/^[a-f0-9]{40}$/.test(process.env.RAILWAY_GIT_COMMIT_SHA||'')?
@@ -707,6 +707,7 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
         if(namesStore.observeResolvedMessage(message,phone,{historical:sourceType==='append'}))namesSync.changed();
         if(legacyCentral.configured())await legacyCentral.resume();
         metadata.phone=phone;metadata.allowed=legacyCentral.configured()?legacyCentral.allowed(phone):allowAssistantRecipient(phone,connectedStore.settings());
+        if(assistantIngress&&metadata.allowed)assistantIngress.confirmIdentity(traceId,phone);
         inboundMetadata.set(traceId,metadata);
         transport.record('inbound_resolved',traceId);
         return phone;
@@ -719,6 +720,7 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
           if(!phone||!current()||!metadata.allowed)return {skip:true};
           const body=normalized.text,media=message.message.audioMessage||message.message.ephemeralMessage?.message?.audioMessage;
           if(legacyCentral.configured()){
+            assistantIngress?.markAdmissionAttempted(traceId);
             const proof=await legacyCentral.inbound({phone,message_id:traceId,text:body||'',kind:media?'audio':body?'text':'unsupported',
               ...(normalized.special?{envelope:normalized.event}:{})});
             if(!current())throw Error('assistant_ingress_admission_stale');

@@ -46,6 +46,25 @@ export function safetyControl(text){
   return null;
 }
 export function priorityText(text){return safetyControl(text)!==null||typeof text==='string'&&/\b(?:humano|atendente|pessoa|urg[eê]ncia)\b/i.test(text);}
+/** Only an isolated social greeting is provably free of business, consent or
+ * handoff instructions. Arbitrary text, quoted replies and media stay unknown.
+ * This classifier grants no admission, business or send authority. */
+export function inertGreeting(message){
+  if(message?.key?.fromMe!==false)return false;
+  let content=message.message;
+  if(content?.ephemeralMessage){
+    if(Object.keys(content).length!==1)return false;
+    content=content.ephemeralMessage.message;
+  }
+  if(!content||typeof content!=='object'||Array.isArray(content)||Object.keys(content).length!==1)return false;
+  let text;
+  if(typeof content.conversation==='string')text=content.conversation;
+  else if(content.extendedTextMessage&&Object.keys(content.extendedTextMessage).length===1&&
+      typeof content.extendedTextMessage.text==='string')text=content.extendedTextMessage.text;
+  else return false;
+  const normalized=text.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+  return /^(?:oi|ola|bom dia|boa tarde|boa noite|hello|hi)[!.]*$/.test(normalized);
+}
 export function queueControl(queue,item){
   const choice=entry=>entry[1].event.control||safetyControl(entry[1].text);
   const incoming=choice(item),same=queue.findIndex(entry=>incoming==='human'?choice(entry)==='human':incoming&&choice(entry)&&choice(entry)!=='human');

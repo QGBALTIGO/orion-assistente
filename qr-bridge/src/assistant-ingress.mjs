@@ -42,6 +42,13 @@ export function createAssistantIngress({directory,secret,scope,isCurrent=()=>tru
       return journal.append({id:message.key.id,scope:namespace,at,order:0,message:{raw:message,type}});
     },
     pending,
+    confirmIdentity:(id,phone)=>journal.confirmIdentity(id,phone),
+    markAdmissionAttempted(id){
+      // Identity lookup may have crossed the source TTL. Expire locally before
+      // the first request; a prior request is still retained as ambiguous.
+      if(!pending().some(entry=>entry.id===id))throw Error('assistant_ingress_admission_not_pending');
+      return journal.markAdmissionAttempted(id);
+    },
     begin(ids){
       const fresh=ids.filter(id=>!active.has(id));
       const times=new Map(pending().map(entry=>[entry.id,entry.at]));
@@ -50,6 +57,7 @@ export function createAssistantIngress({directory,secret,scope,isCurrent=()=>tru
     },
     admitted(id){
       if(!journal.pending().some(entry=>entry.id===id))throw Error('assistant_ingress_admission_not_pending');
+      journal.markAdmissionAttempted(id);
       admitted.add(id);
     },
     complete(id){if(!active.has(id))throw Error('assistant_ingress_completion_not_owned');

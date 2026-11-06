@@ -7,7 +7,7 @@ import {randomUUID} from 'node:crypto';
 import {Readable} from 'node:stream';
 import vm from 'node:vm';
 import {createChannelManager,reconnectDelay} from '../src/channel-manager.mjs';
-import {createChannelRoutes} from '../src/channel-routes.mjs';
+import {createChannelRoutes,configuredChannelCapacity} from '../src/channel-routes.mjs';
 import {createChannelBroker} from '../src/channel-broker.mjs';
 import {channelDirectory,encryptedChannelStore} from '../src/channel-storage.mjs';
 import {createChannelResumeStore} from '../src/channel-resume.mjs';
@@ -166,6 +166,30 @@ function fixture(t){
     async advance(ms){now+=ms;for(const [id,item] of [...tasks])if(item.at<=now){tasks.delete(id);item.fn();}await flush();},
     setTime:value=>{now=value;}};
 }
+test('channel capacity environment is strict, bounded and preserves the ten-context default',()=>{
+  assert.equal(configuredChannelCapacity(undefined),10);
+  for(let value=1;value<=50;value++)assert.equal(configuredChannelCapacity(String(value)),value);
+  for(const value of ['',null,0,50,'0','51','100','050',' 50','50 ','1.5','Infinity','1e1','-1'])
+    assert.throws(()=>configuredChannelCapacity(value),/invalid_channel_capacity/);
+});
+test('production channel routes pass the configured process capacity without constructing a session during diagnosis',async()=>{
+  let constructed=0,options;const route=createChannelRoutes({env:{QR_MAX_CHANNELS:'50',QR_CHANNEL_BROKER_URL:'http://api.railway.internal'},
+    brokerFactory:()=>({}),managerFactory:value=>{constructed++;options=value;return {start:async()=>({status:'connecting'}),
+      capacity:()=>({max_channels:value.maxChannels,active_contexts:1,available_contexts:value.maxChannels-1,saturated:false})};}});
+  assert.deepEqual(route.capacity(),{max_channels:50,active_contexts:0,available_contexts:50,saturated:false});assert.equal(constructed,0);
+  await route.adopt(randomUUID(),'synthetic-configured-key-'.repeat(3));assert.equal(options.maxChannels,50);assert.equal(constructed,1);
+  assert.deepEqual(route.capacity(),{max_channels:50,active_contexts:1,available_contexts:49,saturated:false});
+  assert.throws(()=>createChannelRoutes({env:{QR_MAX_CHANNELS:'51'}}),/invalid_channel_capacity/);
+});
+for(const configured of [10,50])test(`manager admission stops at ${configured} contexts and frees a slot without affecting another connection`,async t=>{
+  const f=fixture(t),manager=f.manager({maxChannels:configured}),identities=Array.from({length:configured+1},()=>f.add());
+  for(const row of identities.slice(0,configured))await manager.start(row.id,row.key);
+  assert.deepEqual(manager.capacity(),{max_channels:configured,active_contexts:configured,available_contexts:0,saturated:true});
+  await assert.rejects(manager.start(identities.at(-1).id,identities.at(-1).key),/channel_capacity/);
+  assert.equal(f.made.length,configured,'Only synthetic session adapters were constructed, no real Baileys sockets');
+  await manager.stop(identities[0].id,identities[0].key);assert.equal(f.made[1].closed,false);
+  await manager.start(identities.at(-1).id,identities.at(-1).key);assert.equal(manager.capacity().active_contexts,configured);
+});
 
 function connectionNoticeFlag(t,value){
   const previous=process.env.ORION_NOTIFY_SELF_ON_LINK;

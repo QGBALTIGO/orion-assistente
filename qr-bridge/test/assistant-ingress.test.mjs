@@ -61,6 +61,25 @@ test('expired/future source time is quarantined and a provider duplicate cannot 
   assert.deepEqual(queue.pending(),[]);assert.equal(queue.canConsume([]),false);
 });
 
+test('identity lookup crossing TTL can retain an inert greeting without sending a stale first admission',t=>{
+  let at=1700000010000;const f=fixture(t,{now:()=>at,ttlMs:1000}),queue=f.open();
+  const message={key:{id:'INERT',fromMe:false,remoteJid:'5511999999999@s.whatsapp.net'},message:{conversation:'oi'}};
+  queue.append(message,'notify',at);queue.confirmIdentity('INERT','5511999999999');at+=1001;
+  assert.throws(()=>queue.markAdmissionAttempted('INERT'),/admission_not_pending/);
+  assert.equal(queue.diagnostics().retained_terminal,1);assert.equal(queue.diagnostics().blocked,0);
+  assert.equal(queue.canAutomate(),true);assert.equal(f.open().diagnostics().retained_terminal,1);
+  const retained=f.open().append(message,'notify',at).entry;
+  assert.equal(retained.admission_attempted,false);assert.equal(retained.state,'blocked');
+});
+
+test('a prior assistant admission attempt keeps the entire channel blocked after source expiry',t=>{
+  let at=1700000010000;const f=fixture(t,{now:()=>at,ttlMs:1000}),queue=f.open();
+  const message={key:{id:'ATTEMPT',fromMe:false,remoteJid:'5511999999999@s.whatsapp.net'},message:{conversation:'oi'}};
+  queue.append(message,'notify',at);queue.confirmIdentity('ATTEMPT','5511999999999');queue.markAdmissionAttempted('ATTEMPT');at+=1001;
+  assert.deepEqual(queue.pending(),[]);assert.equal(queue.diagnostics().blocked,1);assert.equal(queue.canAutomate(),false);
+  assert.equal(f.open().diagnostics().blocked,1);assert.equal(f.open().append(message,'notify',at).entry.admission_attempted,true);
+});
+
 test('different tenant or physical account never opens another namespace pending input',t=>{
   const f=fixture(t,{now:()=>1700000010000}),queue=f.open();queue.append(raw('ORIGINAL'),'notify',1700000000000);
   for(const change of [{session_digest:'b'.repeat(64)},{tenant_id:'30000000-0000-4000-8000-000000000001'}]){

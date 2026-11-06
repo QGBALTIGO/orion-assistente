@@ -2,9 +2,11 @@
  * A provider message stays here until the backend confirms durable admission.
  * Blocked entries remain reviewable; capacity never evicts unacknowledged work. */
 import {channelId,encryptedChannelStore} from './channel-storage.mjs';
+import {inertGreeting} from './inbound-event.mjs';
 
 const journalKey='incoming-admission-v1';
 const reasons=new Set(['expired','scope_changed','policy_denied','invalid_message','authorization_revoked','broker_refused','identity_unresolved','business_started']);
+const terminalReasons=new Set(['expired','scope_changed','policy_denied','invalid_message']);
 const deviceNamespaceKeys=['tenant_id','channel_id','device_id','generation'];
 const legacyNamespaceKeys=['tenant_id','channel_id','session_digest'];
 const object=value=>value&&typeof value==='object'&&!Array.isArray(value);
@@ -14,6 +16,13 @@ const legacyScope=value=>exactKeys(value,legacyNamespaceKeys)&&channelId(value.t
 const deviceNamespace=value=>exactKeys(value,deviceNamespaceKeys)&&deviceNamespaceKeys.every(key=>channelId(value[key]));
 const validId=value=>typeof value==='string'&&value.length>=1&&value.length<=256&&!/[\u0000-\u001f\u007f]/.test(value);
 const integer=value=>Number.isSafeInteger(value)&&value>=0;
+// This is deliberately narrower than "plain text": a missed consent, handoff
+// or business instruction must keep automatic effects stopped. Old entries
+// without explicit attempt evidence remain unknown, including after restart.
+const nonblockingTerminal=entry=>entry.state==='blocked'&&terminalReasons.has(entry.blocked_reason)&&
+  entry.admission_attempted===false&&entry.terminal_inert===true;
+const sourceEntry=entry=>({...entry,blocked_reason:undefined,blocked_at:undefined,
+  admission_attempted:undefined,terminal_inert:undefined,state:'pending'});
 const validScope=value=>legacyScope(value)||(exactKeys(value,[...deviceNamespaceKeys,'settings_revision'])&&
   deviceNamespaceKeys.every(key=>channelId(value[key]))&&Number.isSafeInteger(value.settings_revision)&&value.settings_revision>=1);
 const sameNamespace=(a,b)=>{
@@ -45,10 +54,12 @@ export function createIngressJournal({directory,secret,serialize=JSON.stringify,
       integer(entry.order)&&Number.isSafeInteger(entry.sequence)&&entry.sequence>=1&&
       entry.message&&typeof entry.message==='object'&&!Array.isArray(entry.message)&&
       ['pending','blocked'].includes(entry.state)&&
+      (entry.admission_attempted===undefined||typeof entry.admission_attempted==='boolean')&&
+      (entry.terminal_inert===undefined||typeof entry.terminal_inert==='boolean')&&
       (entry.state==='pending'?entry.blocked_reason===undefined&&entry.blocked_at===undefined:
         reasons.has(entry.blocked_reason)&&Number.isSafeInteger(entry.blocked_at)&&entry.blocked_at>=0)&&
       // Quarantine metadata must fit even when a source filled its entry limit.
-      size({...entry,state:'pending',blocked_reason:undefined,blocked_at:undefined})<=maxEntryBytes;
+      size(sourceEntry(entry))<=maxEntryBytes;
   }
   function validate(value){
     if(!value||value.version!==1||!Number.isSafeInteger(value.next_sequence)||value.next_sequence<1||
@@ -84,15 +95,35 @@ export function createIngressJournal({directory,secret,serialize=JSON.stringify,
       }
       if(data.entries.length>=maxEntries||data.next_sequence>=Number.MAX_SAFE_INTEGER)return capacity();
       const entry=clone({id:value.id,scope:value.scope,at:value.at,order:value.order,message:value.message,
-        sequence:data.next_sequence,state:'pending'});
-      if(size(entry)>maxEntryBytes)return capacity();
+        sequence:data.next_sequence,state:'pending',admission_attempted:false,terminal_inert:false});
+      if(size(sourceEntry(entry))>maxEntryBytes)return capacity();
       const next={version:1,next_sequence:data.next_sequence+1,entries:[...data.entries,entry]};
       // Reserve bounded space to mark every pending row blocked later. Filling
       // the queue must not prevent retaining an expiry or authorization result.
-      if(size(next)+next.entries.filter(row=>row.state==='pending').length*128>maxBytes)return capacity();
+      if(size(next)+next.entries.filter(row=>row.state==='pending').length*256>maxBytes)return capacity();
       persist(next);return {fresh:true,entry:clone(entry)};
     },
     pending(){guard();return clone(data.entries.filter(entry=>entry.state==='pending').sort((a,b)=>a.sequence-b.sequence));},
+    // Only the authenticated resolver calls this after PN/LID resolution and
+    // ownership revalidation. Neither a provider field nor append() can set
+    // this proof. No recipient identity is added to the persisted metadata.
+    confirmIdentity(id,phone){
+      guard();if(!validId(id)||typeof phone!=='string'||!/^[1-9]\d{7,14}$/.test(phone))throw Error('invalid_ingress_identity');
+      const entry=data.entries.find(value=>value.id===id);if(!entry)return false;
+      if(entry.state!=='pending')throw Error('ingress_journal_entry_blocked');
+      const raw=legacyScope(entry.scope)?entry.message.raw:entry.message;
+      const proof=inertGreeting(raw);if(entry.terminal_inert===proof)return true;
+      persist({...data,entries:data.entries.map(value=>value.id===id?{...value,terminal_inert:proof}:value)});return true;
+    },
+    // Persist before invoking the broker. A timeout, 503 or stale-event result
+    // cannot prove that an earlier SQL admission did not commit.
+    markAdmissionAttempted(id){
+      guard();if(!validId(id))throw Error('invalid_ingress_id');
+      const entry=data.entries.find(value=>value.id===id);if(!entry)return false;
+      if(entry.state!=='pending')throw Error('ingress_journal_entry_blocked');
+      if(entry.admission_attempted===true)return true;
+      persist({...data,entries:data.entries.map(value=>value.id===id?{...value,admission_attempted:true}:value)});return true;
+    },
     ack(id){
       guard();if(!validId(id))throw Error('invalid_ingress_id');
       const entry=data.entries.find(value=>value.id===id);if(!entry)return false;
@@ -109,7 +140,7 @@ export function createIngressJournal({directory,secret,serialize=JSON.stringify,
       const at=now();if(!Number.isSafeInteger(at)||at<0)throw Error('invalid_ingress_clock');
       const selectedIds=new Set(ids);
       persist({...data,entries:data.entries.map(entry=>selectedIds.has(entry.id)?
-        {...entry,state:'blocked',blocked_reason:'business_started',blocked_at:at}:entry)});
+        {...entry,state:'blocked',admission_attempted:true,blocked_reason:'business_started',blocked_at:at}:entry)});
       ids.forEach(id=>active.add(id));return true;
     },
     complete(id){
@@ -139,9 +170,10 @@ export function createIngressJournal({directory,secret,serialize=JSON.stringify,
     },
     diagnostics(){
       const pending=data.entries.filter(entry=>entry.state==='pending'),working=fault?0:active.size,
-        blocked=data.entries.length-pending.length-working;
+        retained_terminal=data.entries.filter(nonblockingTerminal).length,
+        blocked=data.entries.length-pending.length-working-retained_terminal;
       return {state:fault?'unavailable':full?'full':'ok',error_code:fault||(full?'ingress_journal_full':null),
-        pending:pending.length,blocked,active:working,entries:data.entries.length,bytes,
+        pending:pending.length,blocked,retained_terminal,active:working,entries:data.entries.length,bytes,
         oldest_at:data.entries.length?Math.min(...data.entries.map(entry=>entry.at)):null};
     }
   };

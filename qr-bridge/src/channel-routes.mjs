@@ -6,6 +6,12 @@ import {createChannelResumeStore} from './channel-resume.mjs';
 import {validGroupContactsRequest} from './device-group-contacts.mjs';
 import {validGroupAddRequest} from './device-group-add.mjs';
 
+export function configuredChannelCapacity(value){
+  if(value===undefined)return 10;
+  if(typeof value!=='string'||! /^(?:[1-9]|[1-4][0-9]|50)$/.test(value))throw Error('invalid_channel_capacity');
+  return Number(value);
+}
+
 function response(res,status,data){
   res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store',
     'X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'});res.end(JSON.stringify(data));
@@ -21,9 +27,10 @@ export function createChannelRoutes({env=process.env,managerFactory=createChanne
   renderQr=async value=>(await import('qrcode')).default.toDataURL(value,{errorCorrectionLevel:'M',margin:2,width:370})}={}){
   // Construction/GETs perform no network or socket mutation. Resume is an
   // explicit server lifecycle hook, backed by an encrypted connection intent.
+  const maxChannels=configuredChannelCapacity(env.QR_MAX_CHANNELS);
   let manager;
   const getManager=()=>manager||(manager=managerFactory({broker:brokerFactory({apiUrl:env.QR_CHANNEL_BROKER_URL}),
-    createSession:sessionFactory,root:'/data/orion-channels',
+    createSession:sessionFactory,root:'/data/orion-channels',maxChannels,
     resumeStore:env.QR_CHANNELS_ENABLED==='1'&&env.QR_BRIDGE_TOKEN?.length>=32?
       createChannelResumeStore({root:'/data/orion-channels',secret:env.QR_BRIDGE_TOKEN}):null}));
   const route=async function route(req,res){
@@ -139,5 +146,6 @@ export function createChannelRoutes({env=process.env,managerFactory=createChanne
   route.adopt=(id,key)=>getManager().start(id,key);
   route.send=(id,key,payload)=>getManager().send(id,key,payload);
   route.close=()=>manager?.close();
+  route.capacity=()=>manager?.capacity?.()||{max_channels:maxChannels,active_contexts:0,available_contexts:maxChannels,saturated:false};
   return route;
 }
