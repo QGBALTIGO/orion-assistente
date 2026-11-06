@@ -94,8 +94,8 @@ def _records(value, depth=0):
         return None
     if _looks_like_rule(value):
         return [value]
-    if value and all(key.isdigit() and _looks_like_rule(child)
-                     for key, child in value.items() if isinstance(key, str)):
+    if value and all(isinstance(key, str) and key.isdigit() and _looks_like_rule(child)
+                     for key, child in value.items()):
         return list(value.values())
     for key in _WRAPPERS:
         if key in value:
@@ -237,27 +237,31 @@ def _response(raw, source_id, references):
     elif isinstance(raw, dict):
         kind = raw.get("kind", raw.get("type"))
         if kind in ("list", "menu"):
-            sections = raw.get("sections")
+            sections = raw.get("sections", raw.get("lists"))
             if not isinstance(sections, list) or not sections:
                 raise _invalid("Uma lista de opções não contém seções compatíveis.")
             parsed_sections = []
             for i, section in enumerate(sections):
-                if not isinstance(section, dict) or not isinstance(section.get("rows"), list):
+                if not isinstance(section, dict) or not isinstance(section.get("rows", section.get("options")), list):
                     raise _invalid("Uma seção de lista contém opções incompatíveis.")
                 rows = []
-                for j, row in enumerate(section["rows"]):
+                for j, row in enumerate(section.get("rows", section.get("options"))):
                     if not isinstance(row, dict):
                         raise _invalid("Uma opção de lista não é válida.")
-                    value = row.get("action", row.get("response"))
+                    value = row.get("action", row.get("response", row.get("message")))
+                    title = row.get("title", row.get("label"))
+                    description = row.get("description") or ""
                     rows.append({"id": _identity(source_id, f"row:{i}:{j}"),
-                                 "title": row.get("title"), "description": row.get("description", ""),
+                                 "title": title, "description": description,
                                  "action": _action(value, f"{source_id}:row:{i}:{j}", references)})
                 parsed_sections.append({"id": _identity(source_id, f"section:{i}"),
                                        "title": section.get("title", ""), "rows": rows})
-            return {"kind": "list", "title": raw.get("title"),
-                    "description": raw.get("description"),
-                    "button_text": raw.get("button_text", raw.get("buttonText")),
-                    "footer": raw.get("footer", ""), "sections": parsed_sections}
+            # The BotBot export can omit display labels which Orion requires.
+            # Use neutral UI defaults without modifying choices or actions.
+            return {"kind": "list", "title": raw.get("title") or "Opções",
+                    "description": raw.get("description") or "Escolha uma opção.",
+                    "button_text": raw.get("button_text", raw.get("buttonText")) or "Ver opções",
+                    "footer": raw.get("footer") or "", "sections": parsed_sections}
         if kind in ("sequence", "messages") or "actions" in raw or "messages" in raw:
             actions = raw.get("actions", raw.get("messages"))
         else:
@@ -378,5 +382,7 @@ def read_botbot(raw: bytes, filename: str):
                 exported_at = date.isoformat()
         except ValueError:
             pass
+    from app.subscription_chatbot_botbot_preflight import validate_imported_rules
     return {"format": "orion.subscription-chatbot", "version": 1,
-            "exported_at": exported_at, "rules": definitions, "templates": [], "assets": []}
+            "exported_at": exported_at, "rules": validate_imported_rules(definitions),
+            "templates": [], "assets": []}
