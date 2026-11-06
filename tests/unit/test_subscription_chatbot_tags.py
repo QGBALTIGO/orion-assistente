@@ -91,3 +91,33 @@ def test_case_and_literal_bracket_names_are_never_guessed():
     assert render_template('{{Name}} {{name}} {{["items[0]"]}}',body)=="A B C"
     with pytest.raises(ValueError):
         render_template("{{NAME}}",body)
+
+
+def test_discovery_exposes_nonempty_json_containers_when_requested_without_changing_old_tags():
+    # Same shape as a third-party API result; all values are synthetic.
+    body = {"dns": "https://example.invalid", "username": "sample-user",
+            "connections": 1, "reply": "*Mensagem de demonstração*",
+            "data": [{"message": "Olá, teste."}]}
+    assert discover_tags(body) == ["dns", "username", "connections", "reply", "data[0].message"]
+    tags = discover_tags(body, include_containers=True)
+    assert tags[:-1] == discover_tags(body)
+    assert tags[-1] == "data"
+    assert render_template("{{data}}", body) == '[{"message":"Olá, teste."}]'
+    assert render_template("{{reply}}", body) == "*Mensagem de demonstração*"
+    assert render_template("{{data[0].message}}", body) == "Olá, teste."
+
+
+def test_nested_json_container_aliases_are_bounded_and_cannot_execute_expressions():
+    body = {"response": {"data": [{"name": "Pessoa de teste"}]}, "empty": {}, "none": None}
+    discovered = discover_tags(body, include_containers=True)
+    assert discovered == ["response.data[0].name", "response", "response.data"]
+    assert render_template("{{response.data}}", body) == '[{"name":"Pessoa de teste"}]'
+    for expression in ("{{response.__class__}}", "{{response.data[0].name.upper()}}",
+                       "{{response.data[*]}}"):
+        with pytest.raises(ValueError):
+            render_template(expression, body)
+    with pytest.raises(ValueError):
+        render_template("{{empty}}", body)
+    with pytest.raises(ValueError):
+        render_template("{{none}}", body)
+    assert len(discover_tags({**{f"x{i}":i for i in range(128)}, "data": [1]}, include_containers=True)) == 128
