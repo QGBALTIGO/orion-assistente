@@ -54,22 +54,53 @@ def _bounded_json(raw: bytes):
         raise _invalid("O JSON de respostas do ZIP é inválido.") from None
 
 
-def _records(value):
-    """Only accept known reply collections; never treat arbitrary JSON as rules."""
+_KEYWORDS = ("keyword", "keywords", "trigger", "command", "phrase", "word", "match_text", "matchText")
+_CONTENT = ("response", "messages", "actions", "replies", "reply", "message", "content", "text", "answer")
+_WRAPPERS = ("replies", "reply", "responses", "rules", "rule", "items",
+             "chatbot_replies", "records", "data", "result", "export",
+             "chatbot", "backup", "payload")
+
+
+def _keyword_field(row):
+    for key in _KEYWORDS:
+        if key in row and row[key] is not None:
+            value = row[key]
+            if isinstance(value, dict):
+                value = value.get("keyword", value.get("value", value.get("text")))
+            return value
+    return None
+
+
+def _looks_like_rule(value):
+    return isinstance(value, dict) and _keyword_field(value) is not None and any(
+        key in value for key in _CONTENT
+    )
+
+
+def _records(value, depth=0):
+    """Detect reply collections across BotBot's wrapped and split-JSON exports.
+
+    Never accept a generic list of arbitrary JSON dictionaries. A response must
+    contain an explicit trigger and payload before entering the converter.
+    """
+    if depth > 8:
+        return None
     if isinstance(value, list):
-        if value and all(isinstance(row, dict) and
-                         any(k in row for k in ("keyword", "trigger", "keywords", "command"))
-                         for row in value):
+        if value and all(_looks_like_rule(row) for row in value):
             return value
         return None
     if not isinstance(value, dict):
         return None
-    for key in ("replies", "responses", "rules", "items", "chatbot_replies"):
-        found = _records(value.get(key))
-        if found is not None:
-            return found
-    if isinstance(value.get("data"), (dict, list)):
-        return _records(value["data"])
+    if _looks_like_rule(value):
+        return [value]
+    if value and all(key.isdigit() and _looks_like_rule(child)
+                     for key, child in value.items() if isinstance(key, str)):
+        return list(value.values())
+    for key in _WRAPPERS:
+        if key in value:
+            found = _records(value[key], depth + 1)
+            if found:
+                return found
     return None
 
 
@@ -208,9 +239,31 @@ def read_botbot(raw: bytes, filename: str):
                     candidates.append((info.filename, value, records))
     except (zipfile.BadZipFile, RuntimeError, OSError, EOFError):
         raise _invalid("O ZIP exportado pelo BotBot está incompleto ou corrompido.") from None
-    if len(candidates) != 1:
-        raise _invalid("Não foi possível identificar uma lista única de respostas no ZIP do BotBot.")
-    _, manifest, records = candidates[0]
+    if not candidates:
+        raise _invalid(
+            "Não foi encontrada uma estrutura de respostas reconhecida no ZIP do BotBot. "
+            "Nenhuma resposta foi importada; confira o arquivo de exportação."
+        )
+    # Support one JSON manifest and exports containing one reply per JSON file.
+    # Duplicate records must agree exactly; never let an index entry silently
+    # overwrite a fuller definition from another file.
+    records, signatures = [], {}
+    manifest = candidates[0][1]
+    for filename, source, rows in candidates:
+        for index, row in enumerate(rows):
+            raw_id = row.get("id", row.get("reply_id", row.get("replyId")))
+            signature = json.dumps(row, sort_keys=True, ensure_ascii=False)
+            key = ("id:" + str(raw_id) if isinstance(raw_id, (str, int)) and not isinstance(raw_id, bool)
+                   else "content:" + signature)
+            previous = signatures.get(key)
+            if previous is not None:
+                if previous != signature:
+                    raise _invalid("O ZIP possui versões conflitantes da mesma resposta.")
+                continue
+            signatures[key] = signature
+            records.append(row)
+    if not records:
+        raise _invalid("O ZIP do BotBot não contém respostas importáveis.")
     if len(records) > 2000:
         raise _invalid("A exportação ultrapassa o limite de respostas do Orion.")
     source_keys = [_source_id(row, index) for index, row in enumerate(records)]
@@ -221,7 +274,7 @@ def read_botbot(raw: bytes, filename: str):
     for index, row in enumerate(records):
         if not isinstance(row, dict):
             raise _invalid("Uma resposta exportada não é válida.")
-        keywords = row.get("keyword", row.get("keywords", row.get("trigger", row.get("command"))))
+        keywords = _keyword_field(row)
         if isinstance(keywords, list) and all(isinstance(v, str) for v in keywords):
             keyword = ",".join(keywords)
             mode = "array"
@@ -232,7 +285,7 @@ def read_botbot(raw: bytes, filename: str):
             raise _invalid("Uma resposta usa correspondência não suportada.")
         if not isinstance(keyword, str) or not keyword.strip():
             raise _invalid("Uma resposta não contém palavra-chave válida.")
-        raw_response = row.get("response", row.get("messages", row.get("actions", row.get("replies", row.get("reply")))))
+        raw_response = next((row[key] for key in _CONTENT if key in row and row[key] is not None), None)
         if raw_response is None:
             raise _invalid("Uma resposta não contém mensagens que possam ser importadas.")
         definitions.append({

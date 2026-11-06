@@ -108,3 +108,53 @@ def test_botbot_import_keeps_sensitive_url_as_data_and_never_fetches_it(monkeypa
     parsed = codec.read_archive(archive(records), "botbot_replies_test.zip")
     assert parsed["rules"][0]["definition"]["enabled"] is False
     assert parsed["rules"][0]["definition"]["response"]["actions"][0]["url"].endswith("/private-token")
+
+
+def test_split_json_export_with_one_rule_per_file_and_nested_manifest():
+    entries = [
+        ("botbot/manifest.json", {"name": "Exportação sintética", "version": 1}),
+        ("botbot/replies/101.json", {"reply": {
+            "id": 101, "keyword": "oi", "response": "Olá!"}}),
+        ("botbot/replies/102.json", {"data": {"rule": {
+            "id": 102, "phrase": "teste", "reply": {"type": "url",
+             "method": "GET", "url": "https://api.example.com/lookup",
+             "custom_template": "Olá {name}, {{username}}"}}}}),
+    ]
+    out = BytesIO()
+    with zipfile.ZipFile(out, "w", compression=zipfile.ZIP_DEFLATED) as zipfile_out:
+        for filename, value in entries:
+            zipfile_out.writestr(filename, json.dumps(value, ensure_ascii=False))
+    result = codec.read_archive(out.getvalue(), "botbot_replies_split_fixture.zip")
+    assert len(result["rules"]) == 2
+    assert [row["definition"]["keyword"] for row in result["rules"]] == ["oi", "teste"]
+    assert not any(row["definition"]["enabled"] for row in result["rules"])
+    action = result["rules"][1]["definition"]["response"]["actions"][0]
+    assert action["custom_template"] == "Olá {name}, {{username}}"
+
+
+def test_duplicate_records_across_split_archive_files_are_not_imported_twice():
+    row = {"id": 14, "keyword": "oi", "reply": "Olá de teste"}
+    out = BytesIO()
+    with zipfile.ZipFile(out, "w") as z:
+        z.writestr("replies.json", json.dumps({"replies": [row]}))
+        z.writestr("replies/14.json", json.dumps(row))
+    result = codec.read_archive(out.getvalue(), "botbot_replies_duplicated.zip")
+    assert len(result["rules"]) == 1
+
+
+def test_conflicting_duplicate_reply_is_rejected_without_partial_import():
+    out = BytesIO()
+    with zipfile.ZipFile(out, "w") as z:
+        z.writestr("replies/a.json", json.dumps({"id": 14, "keyword": "oi", "reply": "Original"}))
+        z.writestr("replies/b.json", json.dumps({"id": 14, "keyword": "oi", "reply": "Outra"}))
+    with pytest.raises(ValueError, match="conflitantes"):
+        codec.read_archive(out.getvalue(), "botbot_replies_conflict.zip")
+
+
+def test_unrecognized_export_is_explicit_error_without_mutations():
+    out = BytesIO()
+    with zipfile.ZipFile(out, "w") as z:
+        z.writestr("manifest.json", json.dumps({"kind": "botbot-export", "data": []}))
+        z.writestr("media/image.png", b"not-executed")
+    with pytest.raises(ValueError, match="estrutura de respostas"):
+        codec.read_archive(out.getvalue(), "botbot_replies_unknown.zip")

@@ -58,6 +58,32 @@ test('eight action editors use real catalog references, preserve variants, and d
  h.change(field('response.actions.0.type'),'text');assert.equal(h.element(field('response.actions.0.text')).value,'Texto preservado');h.change(field('response.actions.0.type'),'url');assert.equal(h.element(field('response.actions.0.url')).value,'https://example.invalid/resposta');assert.equal(h.element(field('response.actions.0.as_file')).checked,true);assert.equal(writes(h).length,0);assert.deepEqual(h.errors,[]);
 });
 
+test('new URL reply accepts contact and API tags side by side while blocking unknown braces',async t=>{
+ const custom='*Olá, {name}!*\n✅ Usuário: *{{username}}* e senha: *{{password}}*';
+ const h=await makeChatbot({respond(path,method,payload,server){
+  if(path===base+'/rules'&&method==='POST')return updated(server,payload);
+ }});t.after(()=>h.close());
+ createText(h);
+ h.change(field('response.actions.0.type'),'url');
+ h.fill(field('response.actions.0.url'),'https://api.example.com/chatbot/fixture');
+ h.fill(field('response.actions.0.custom_template'),custom);
+ h.submit(form('editor'));await flush();
+ const call=writes(h).find(call=>call.path===base+'/rules');
+ assert.ok(call,'API rule save should be attempted');
+ assert.equal(call.data.rule.response.actions[0].custom_template,custom);
+ assert.deepEqual(h.errors,[]);
+
+ const other=await makeChatbot();t.after(()=>other.close());
+ createText(other);
+ other.change(field('response.actions.0.type'),'url');
+ other.fill(field('response.actions.0.url'),'https://api.example.com/chatbot/fixture');
+ other.fill(field('response.actions.0.custom_template'),'Olá {password}!');
+ other.submit(form('editor'));await flush();
+ assert.equal(writes(other).length,0);
+ assert.match(other.element('[data-sc-dialog-error]').textContent,/contato|campo/);
+ assert.deepEqual(other.errors,[]);
+});
+
 test('empty template catalogs do not fabricate selectable templates or saving success',async t=>{
  const h=await makeChatbot();t.after(()=>h.close());createText(h);h.change(field('response.actions.0.type'),'template');assert.equal(h.element(field('response.actions.0.template_id')).disabled,true);assert.equal(h.element(field('response.actions.0.template_id')).options.length,1);h.submit(form('editor'));await flush();assert.equal(writes(h).length,0);assert.match(h.element('[data-sc-dialog-error]').textContent,/template disponível/);
 });
