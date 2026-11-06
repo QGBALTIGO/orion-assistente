@@ -24,6 +24,36 @@ def _invalid(message: str):
     return ValueError(message)
 
 
+def _bounded_json(raw: bytes):
+    def distinct(pairs):
+        result = {}
+        for name, value in pairs:
+            if name in result:
+                raise _invalid("O arquivo JSON contém campos duplicados.")
+            result[name] = value
+        return result
+
+    def nonfinite(_value):
+        raise _invalid("O arquivo JSON contém número inválido.")
+
+    try:
+        root = json.loads(raw.decode("utf-8-sig"), object_pairs_hook=distinct,
+                          parse_constant=nonfinite)
+        nodes, stack = 0, [(root, 0)]
+        while stack:
+            value, depth = stack.pop()
+            nodes += 1
+            if nodes > 200_000 or depth > 32:
+                raise _invalid("O JSON do BotBot ultrapassa o limite de estrutura.")
+            if isinstance(value, dict):
+                stack.extend((child, depth + 1) for child in value.values())
+            elif isinstance(value, list):
+                stack.extend((child, depth + 1) for child in value)
+        return root
+    except (UnicodeDecodeError, RecursionError):
+        raise _invalid("O JSON de respostas do ZIP é inválido.") from None
+
+
 def _records(value):
     """Only accept known reply collections; never treat arbitrary JSON as rules."""
     if isinstance(value, list):
@@ -170,9 +200,9 @@ def read_botbot(raw: bytes, filename: str):
                 if len(blob) > MAX_MANIFEST:
                     raise _invalid("O JSON de respostas do BotBot ultrapassa o limite.")
                 try:
-                    value = json.loads(blob.decode("utf-8-sig"))
-                except (ValueError, UnicodeDecodeError, RecursionError):
-                    raise _invalid("O arquivo de respostas do ZIP não é JSON válido.") from None
+                    value = _bounded_json(blob)
+                except ValueError:
+                    raise _invalid("O arquivo de respostas do ZIP não é JSON válido ou excede os limites.") from None
                 records = _records(value)
                 if records is not None:
                     candidates.append((info.filename, value, records))
