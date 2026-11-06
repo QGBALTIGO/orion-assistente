@@ -358,11 +358,17 @@ def read_botbot(raw: bytes, filename: str):
                              and _content_present(row[key])), None)
         if raw_response is None:
             raise _invalid("Uma resposta não contém mensagens que possam ser importadas.")
+        try:
+            converted_response = _response(raw_response, source_keys[index], references)
+        except ValueError as error:
+            # Error strings come from our own validator, never the source
+            # payload. Show the record position without exposing credentials.
+            raise _invalid(f"Resposta {index + 1}: {error}") from None
         definitions.append({
             "id": references[source_keys[index]], "creation_order": index + 1,
             "definition": {"keyword": keyword, "match_mode": mode,
                            "device_id": None, "enabled": False,
-                           "response": _response(raw_response, source_keys[index], references)}
+                           "response": converted_response}
         })
     exported_at = FALLBACK_DATE
     if isinstance(manifest, dict) and isinstance(manifest.get("exported_at"), str):
