@@ -359,7 +359,7 @@ class ImportPreview(StrictModel):
         if "/" in value or "\\" in value or any(ord(char) < 32 for char in value):
             raise ValueError("Nome de arquivo inválido")
         if not value.lower().endswith((".json", ".zip")):
-            raise ValueError("Selecione um arquivo JSON ou ZIP exportado pelo Orion")
+            raise ValueError("Selecione um ZIP do BotBot ou um JSON/ZIP do Orion")
         return value
 
 
