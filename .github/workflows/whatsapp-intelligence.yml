@@ -120,6 +120,7 @@ jobs:
             tests/integration/test_qr_reschedule_reference_postgres.py \
             tests/integration/test_qr_interaction_revision_postgres.py \
             tests/integration/test_whatsapp_footer_postgres.py \
+            tests/integration/test_subscription_direct_messages_postgres.py \
             tests/integration/test_qr_adopted_ingress_postgres.py \
             tests/integration/test_qr_conversation_lock_redis.py tests/integration/test_qr_intake_revision_redis.py \
             tests/integration/test_qr_intelligence_redis.py
@@ -143,7 +144,7 @@ jobs:
               assert cases, 'No executed tests: '+kind
               assert not any(case.find(tag) is not None for case in cases for tag in ('failure','error','skipped')), kind
               if kind == 'integrations':
-                  for module, minimum in (('test_qr_superseded_holds_postgres', 19), ('test_qr_presentation_ack_postgres', 13), ('test_qr_adopted_ingress_postgres', 6), ('test_qr_native_selection_roundtrip_postgres', 21), ('test_qr_reschedule_reference_postgres', 9), ('test_qr_interaction_revision_postgres', 16), ('test_whatsapp_footer_postgres', 9)):
+                  for module, minimum in (('test_qr_superseded_holds_postgres', 19), ('test_qr_presentation_ack_postgres', 13), ('test_qr_adopted_ingress_postgres', 6), ('test_qr_native_selection_roundtrip_postgres', 21), ('test_qr_reschedule_reference_postgres', 9), ('test_qr_interaction_revision_postgres', 16), ('test_whatsapp_footer_postgres', 9), ('test_subscription_direct_messages_postgres', 26)):
                       assert sum(module in case.get('classname', '') for case in cases) >= minimum, module
               audit = json.loads(Path('/tmp/intelligence-'+kind+'-network.json').read_text())
               assert audit['external_network'] == 'denied' and audit['blocked'] == [] and audit['exit_code'] == 0, kind
