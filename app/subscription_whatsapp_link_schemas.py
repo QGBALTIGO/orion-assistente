@@ -23,7 +23,7 @@ class LinkRequest(StrictModel):
     def safe_message(cls, message):
         clean = unicodedata.normalize("NFC", message)
         if any(unicodedata.category(char) in {"Cc", "Cs", "Cf"}
-               and char not in {"\n", "\t"} for char in clean):
+               and char not in {"\n", "\t", "\u200d"} for char in clean):
             raise ValueError("A mensagem contém caracteres de controle")
         if len(clean.encode("utf-8")) > 1200:
             raise ValueError("A mensagem é muito longa")
