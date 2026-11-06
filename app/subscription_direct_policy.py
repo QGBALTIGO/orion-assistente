@@ -1,11 +1,11 @@
 """Literal direct content; existing selected templates keep library semantics."""
 from copy import deepcopy
-import re
 from uuid import UUID, uuid5
 
 from app.subscription_direct_schemas import literal_content
 from app.subscription_chatbot_schemas import UrlButtonContent
 from app.subscription_templates_schemas import LibraryTemplate, media_filename
+from app.whatsapp_footer import action_footer
 
 MEDIA_KINDS = frozenset({"image", "video", "audio", "document"})
 
@@ -39,10 +39,8 @@ def media_plan(message, descriptor):
             warnings.append("AUDIO_CAPTION_OMITTED")
         caption = ""
     else:
-        flattened = re.sub(r"[\r\n]+", " ", caption)
-        if flattened != caption:
-            warnings.append("CAPTION_LINES_NORMALIZED")
-        caption = flattened
+        # Preserve authored paragraphs, including an explicitly typed footer.
+        caption = caption.replace("\r\n", "\n").replace("\r", "\n")
     # Audio deliberately remains a single media action. A caption is never
     # converted to a follow-up text as it is in some saved library templates.
     return [{"type": kind, "asset": deepcopy(descriptor), "caption": caption,
@@ -53,7 +51,7 @@ def url_button_plan(message):
     # Revalidate the frozen direct content without interpolation or URL I/O.
     value = UrlButtonContent.model_validate({key: message.get(key, "") for key in
         ("text", "footer", "button_text", "url")}).model_dump()
-    return [{"type": "url_button", **value}]
+    return [action_footer({"type": "url_button", **value})]
 
 
 def optional_template(message, plan):

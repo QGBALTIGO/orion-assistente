@@ -13,6 +13,7 @@ from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
 from app.subscription_chatbot_schemas import CONTACT_TAGS, TAG_PATTERN, URL_TAG_PATTERN, MAX_SEQUENCE_DELAY_SECONDS, clean_text
+from app.whatsapp_footer import spaced_footer as _spaced_footer
 
 
 WILDCARDS = {"*": timedelta(hours=24), "**": timedelta(days=14), "***": None,
@@ -174,22 +175,6 @@ def validate_graph(rules, templates, *, require_enabled=False, root_ids=None):
                     if not template or template.get("removed_at") or required and template["kind"] != required:
                         raise ValueError("Um template referenciado não está disponível")
     return memo
-
-
-def _spaced_footer(body: str, footer: str, *, maximum: int) -> tuple[str, str]:
-    """Render a configured footer after exactly one blank line in the body.
-
-    Native WhatsApp footers have client-defined spacing. When safely within
-    the existing body limit, include it in the body itself so the spacing is
-    deterministic across mobile clients. If full, retain the native footer
-    instead of silently truncating or making a previously valid send fail.
-    """
-    if not footer:
-        return body, footer
-    composed = body.rstrip() + "\n\n" + footer.lstrip()
-    if len(composed.encode("utf-16-le")) // 2 <= maximum:
-        return composed, ""
-    return body, footer
 
 
 def compile_plan(rule_id, rules, templates, facts, http_context, *, selected_action=None, allow_inactive_root=False):

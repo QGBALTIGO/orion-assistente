@@ -124,7 +124,7 @@ def test_transcript_preserves_all_unicode_text_template_and_footer_in_transport_
     source = ("á😀fim\n" * 20000)[:120000]
     before = deepcopy(settings)
     chunks = transcription_parts(settings, event, source)
-    assert "".join(chunks) == f"Pessoa\n{source}\nRodapé"
+    assert "".join(chunks) == "Pessoa\n" + source.rstrip() + "\n\nRodapé"
     assert all(len(chunk.encode("utf-16-le")) // 2 <= 32000 for chunk in chunks)
     assert settings == before and len(chunks) > 3
     with pytest.raises(ValueError):

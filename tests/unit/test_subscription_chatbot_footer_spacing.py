@@ -85,20 +85,20 @@ def test_without_configured_footer_original_text_is_untouched():
 
 
 @pytest.mark.parametrize("kind", ["url_button", "list"])
-def test_legacy_maximum_length_message_is_not_truncated_or_broken(kind):
-    if kind == "url_button":
-        msg = url_button(text="A" * 1024, footer="Crédito final")
-        assert msg["text"] == "A" * 1024
-        assert msg["footer"] == "Crédito final"
-    else:
-        msg = list_message(description="A" * 1000, footer="Crédito final")
-        assert msg["description"] == "A" * 1000
-        assert msg["footer"] == "Crédito final"
+def test_full_authored_message_and_footer_are_rejected_before_transport_plan(kind):
+    # The explicit spacing requirement supersedes the old native-footer fallback.
+    # Neither content truncation nor conversion into a different action is valid.
+    with pytest.raises(ValueError, match="rodapé"):
+        if kind == "url_button":
+            url_button(text="A" * 1024, footer="Crédito final")
+        else:
+            list_message(description="A" * 1000, footer="Crédito final")
 
 
 def test_utf16_units_govern_footer_composition_and_no_surrogate_is_split():
     assert _spaced_footer("😀" * 510, "A", maximum=1024) == ("😀" * 510 + "\n\nA", "")
-    assert _spaced_footer("😀" * 511, "A", maximum=1024) == ("😀" * 511, "A")
+    with pytest.raises(ValueError, match="rodapé"):
+        _spaced_footer("😀" * 511, "A", maximum=1024)
 
 
 def test_footer_text_remains_data_not_an_executable_template():

@@ -6,13 +6,13 @@ still validates ownership, the complete summary, availability and idempotency.
 """
 import hashlib
 import json
+import logging
 import math
 import os
 import re
 import secrets
 import time
 from contextvars import ContextVar
-from datetime import datetime
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -23,7 +23,8 @@ from sqlalchemy import text
 from app.catalog_schemas import StrictModel
 from app import qr_channel_scope
 from app.qr_assistant_catalog import clip, focus_service, service_option
-from app.qr_presentation import money, duration, message_units
+from app.qr_presentation import money, duration, message_units, displayed_slot_clocks
+from app.whatsapp_footer import FooterTooLong, action_footer, spaced_footer
 
 router = APIRouter(tags=["Escolhas privadas da recepcionista"])
 ID_PATTERN = r"^[A-Za-z0-9:_-]{1,160}$"
@@ -313,13 +314,10 @@ async def present(redis, tenant, phone, namespace, result, capabilities, *, veri
     elif step in {"time", "reschedule_time"} and state.get("step") == step:
         rows = []
         zone = await _timezone(tenant)
-        for value in state.get("slots", [])[:10]:
-            clock = datetime.fromisoformat(value)
-            if zone is None or clock.tzinfo is None:
-                continue
-            clock = clock.astimezone(zone)
-            if clock.strftime("%H:%M") in answer:
-                rows.append(option(clock.strftime("%H:%M"), {"kind": "text", "body": clock.strftime("%H:%M")}))
+        if zone is not None:
+            for clock in displayed_slot_clocks(answer, state.get("slots", []),
+                    timezone=str(zone), day=state.get("day")):
+                rows.append(option(clock, {"kind": "text", "body": clock}))
         if rows:
             action = {"type": "list", "title": "Escolha uma opção", "description": answer,
                       "button_text": "Ver opções", "footer": "Disponibilidade conferida novamente ao reservar.",
@@ -335,7 +333,24 @@ async def present(redis, tenant, phone, namespace, result, capabilities, *, veri
                       "button_text": "Ver agendamento", "footer": "Remarque ou cancele pela página segura.", "url": url}
     limit = 1000 if action and action.get("type") == "list" else 1024
     if action is None or message_units(action.get("text", action.get("description", ""))) > limit:
+        if verified_operation and step in {"confirmed", "rescheduled"} and message_units(answer) > 1024:
+            logging.getLogger(__name__).info("qr_footer_presentation_fallback reason=native_body_limit optional_text=omitted")
         return result
+    try:
+        action = action_footer(action)
+    except FooterTooLong:
+        # Optional UI must never turn an already persisted booking into an
+        # error or truncate its facts. The original text remains authoritative.
+        optional = action["footer"]
+        if action["type"] == "url_button":
+            optional += "\n\n" + action["button_text"] + ": " + action["url"]
+        try:
+            fallback, _ = spaced_footer(answer, optional, maximum=1200)
+        except FooterTooLong:
+            fallback = answer
+        logging.getLogger(__name__).info("qr_footer_presentation_fallback reason=combined_limit optional_text=%s",
+                                        "included" if fallback != answer else "omitted")
+        return {**result, "answer": fallback}
     record = {"id": nonce, "authority": authority(tenant, phone, namespace), "state": await state_digest(redis, key),
               "control_revision": await control_revision(tenant, phone),
               "expires_at": expires, "provider_id": None, "choices": choices}

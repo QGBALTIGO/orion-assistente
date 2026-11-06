@@ -105,8 +105,8 @@ def test_avulso_media_is_one_action_with_observed_caption_semantics(kind):
     before = deepcopy(descriptor)
     plan, warnings = policy.media_plan(value, descriptor)
     assert len(plan) == 1 and descriptor == before and plan[0]["asset"] == descriptor
-    assert plan[0]["caption"] == ("" if kind == "audio" else "Linha 1 Linha {name}")
-    assert warnings == ["AUDIO_CAPTION_OMITTED" if kind == "audio" else "CAPTION_LINES_NORMALIZED"]
+    assert plan[0]["caption"] == ("" if kind == "audio" else "Linha 1\nLinha {name}")
+    assert warnings == (["AUDIO_CAPTION_OMITTED"] if kind == "audio" else [])
     candidate = policy.optional_template(value, plan)
     assert candidate["text"] == plan[0]["caption"] and candidate["followup_text"] == ""
     assert candidate["asset_id"] == str(ASSET)

@@ -50,6 +50,7 @@ BLOCK_MESSAGES = {
     "MESSAGE_CONTACT_BUSY": "Aguarde a tentativa anterior para este contato.",
     "MESSAGE_MEDIA_SNAPSHOT_UNAVAILABLE": "O arquivo original desta mensagem não está disponível para reenvio.",
     "MESSAGE_SELECTION_SNAPSHOT_UNAVAILABLE": "Os vínculos originais desta mensagem não estão disponíveis.",
+    "MESSAGE_FOOTER_TOO_LONG": "A mensagem completa com rodapé ultrapassa o limite deste formato. Crie um novo envio com texto menor.",
     "MESSAGE_COOLDOWN": "O intervalo de avisos deste contato ainda está em vigor.",
     "MESSAGE_INVALID_RECIPIENT": "O destinatário não permite um novo envio.",
     "MESSAGE_CAMPAIGN_CONTROLLED": "Esta tentativa pertence a uma campanha. Consulte o acompanhamento em Campanhas.",
@@ -549,6 +550,16 @@ async def frozen_payload(db, source, *, clone_tokens):
                 token = "ocb:" + secrets.token_urlsafe(24)
                 entry[field] = token
             selections.append((hashlib.sha256(token.encode()).hexdigest(), deepcopy(selected)))
+    if clone_tokens:
+        # Only the explicitly requested NEW operation gets the current display
+        # policy. Dispatch revalidation and old/uncertain snapshots stay exact.
+        from app.whatsapp_footer import FooterTooLong, action_footer
+        try:
+            payload["action"] = action_footer(action)
+        except FooterTooLong:
+            raise fail("MESSAGE_FOOTER_TOO_LONG") from None
+        except ValueError:
+            raise fail("MESSAGE_CONTENT_INVALID") from None
     return payload, result, selections
 
 

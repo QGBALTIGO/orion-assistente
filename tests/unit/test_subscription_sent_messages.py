@@ -212,13 +212,14 @@ def test_url_button_history_displays_one_blank_line_before_configured_footer():
         "type":"url_button","text":"Texto de exemplo","footer":"Rodapé configurado",
         "button_text":"Acessar","url":"https://example.com/acesso"}})
     record=api.item_dto(row,NOW,detail=True)
-    assert "Texto de exemplo\\n\\nRodapé configurado" in record["sent"]["text"]
+    assert "Texto de exemplo\n\nRodapé configurado" in record["sent"]["text"]
     assert "Acessar" in record["sent"]["text"]
 
 
 def test_url_button_history_does_not_duplicate_footer_after_native_composition():
     row=effect(message_type="url_button",payload={"phone":"5567999999901","action":{
-        "type":"url_button","text":"Texto de exemplo\\n\\nRodapé configurado","footer":"",
+        "type":"url_button","text":"Texto de exemplo\n\nRodapé configurado","footer":"",
         "button_text":"Acessar","url":"https://example.com/acesso"}})
     record=api.item_dto(row,NOW,detail=True)
     assert record["sent"]["text"].count("Rodapé configurado") == 1
+    assert "Texto de exemplo\n\nRodapé configurado" in record["sent"]["text"]
