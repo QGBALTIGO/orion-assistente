@@ -312,7 +312,7 @@ def test_expanded_delay_is_checked_before_save_and_never_truncates_later_actions
 
 
 def test_duplicate_references_count_each_expansion_toward_limits():
-    child = rule(2, response=sequence(*(action() for _ in range(15))))
+    child = rule(2, response=sequence(*(action() for _ in range(16))))
     root = rule(response=sequence(action("nested_reply", rule_id=child["id"]), action("nested_reply", rule_id=child["id"])))
     with pytest.raises(ValueError, match="trinta"):
         engine.validate_graph(graph(root, child), {})
