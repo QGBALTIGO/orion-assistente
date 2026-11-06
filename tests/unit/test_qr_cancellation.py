@@ -506,7 +506,11 @@ async def test_explicit_natural_resume_clears_old_plan_and_only_acknowledges_no_
     h.redis.data[h.key+":commerce"] = json.dumps({"pending": {"token": "private-synthetic"}})
     result = await h.turn(body)
     assert result["step"] == "menu" and "Voltei ao atendimento automático" in result["answer"]
-    assert h.state() == {} and h.key+":commerce" not in h.redis.data and not h.events
+    assert h.state() == {"step": "menu", "history": [
+        {"role": "user", "content": body}, {"role": "assistant", "content": result["answer"]}]}
+    assert not set(h.state()) & {"hold", "services", "expected_snapshot", "hold_snapshot", "consent",
+        "appointment", "confirmation_summary", "confirmation_message_id", "confirmation_expires_at"}
+    assert h.key+":commerce" not in h.redis.data and not h.events
 
 
 @pytest.mark.asyncio

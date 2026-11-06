@@ -58,13 +58,22 @@ async def test_unknown_query_data_cannot_be_presented_as_verified_empty_agenda(f
 
 
 @pytest.mark.asyncio
-async def test_greeting_after_cancel_proposal_starts_service_question_without_resurrecting_target(routed_cancellation):
+async def test_greeting_after_cancel_proposal_starts_service_question_without_resurrecting_target(routed_cancellation, monkeypatch):
     h = routed_cancellation
+    reads = []
+    async def name(tenant, phone):
+        assert tenant == h.tenant and phone == h.phone
+        reads.append((tenant, phone))
+        return None
+    monkeypatch.setattr(qr_ai, "customer_name", name)
     await h.turn("Quero cancelar minha reserva", "synthetic-cancel-summary")
     assert h.state()["step"] == "cancel_confirm"
     greeting = await h.turn("Oi", "synthetic-new-greeting")
-    assert greeting["step"] == "menu" and h.state()["service_reply_expected"]
-    assert not set(h.state()) & {"appointment", "expected_snapshot", "confirmation_summary", "confirmation_message_id"}
+    assert greeting["step"] == "greeting" and h.state()["step"] == "menu" and h.state()["service_reply_expected"]
+    assert "R$" not in greeting["answer"] and len(greeting["answer"]) <= 240
+    assert not set(h.state()) & {"hold", "appointment", "expected_snapshot", "hold_snapshot", "consent",
+        "confirmation_summary", "confirmation_message_id", "confirmation_expires_at"}
+    assert reads == [(h.tenant, h.phone)]
     service = await h.turn("Cabelo", "synthetic-new-service")
     assert "R$ 35,00" in service["answer"] and "cancelamento" not in service["answer"]
     assert h.state()["services"] == [str(h.service)] and "cancel" not in h.events

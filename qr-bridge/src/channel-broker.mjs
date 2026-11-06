@@ -71,6 +71,7 @@ export function createChannelBroker({apiUrl,fetchImpl=fetch,env=process.env}){
     receipt:(id,key,lease,payload)=>request(id,key,'message-receipt',payload,lease),
     transcribe:(id,key,lease,{phone,buffer,mediaType,signal})=>request(id,key,'audio',buffer,{...lease,phone,mediaType,signal}),
     forward:(id,key,lease,payload)=>request(id,key,'ai/reply',payload,lease),
+    presentationAck:(id,key,lease,payload)=>request(id,key,'ai/presentation-ack',payload,lease),
     authorizeSend:(id,key,lease,payload)=>request(id,key,'send-authorize',payload,lease),
     finishSend:(id,key,lease,payload)=>request(id,key,'send-finish',payload,lease),
     deviceEvent:(id,key,lease,payload)=>request(id,key,'device/event',payload,lease),

@@ -37,6 +37,7 @@ import {createDeviceGroupContacts} from './device-group-contacts.mjs';
 import {createGroupAddSocket} from './device-group-add.mjs';
 import {classifyPairedAuth} from './paired-auth-state.mjs';
 import {chatbotInteractiveMode} from './interactive-mode.mjs';
+import {createAssistantPresentationStore,relayAssistantPresentation,assistantNativeMode,ASSISTANT_SELECTION_TEXT} from './assistant-presentation.mjs';
 import {disconnectEvidence} from './disconnect-evidence.mjs';
 
 export async function createBaileysChannelSession(context,{loadBaileys=()=>import('@whiskeysockets/baileys'),selectVersion=selectWaWebVersion,now=Date.now,presenceNow=()=>performance.now(),typingFactory=makeAssistantTyping,intakeOptions={},schedule=setTimeout,cancel=clearTimeout,deviceOptions={}}={}){
@@ -103,6 +104,10 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
     const self=normalizeFromJid(client.user?.id);
     return self?createHmac('sha256',context.secret).update('orion:managed-assistant-session:v1\0'+self).digest('hex'):null;
   };
+  let assistantPresentationStore;
+  const assistantPresentations=()=>assistantPresentationStore||(assistantPresentationStore=createAssistantPresentationStore({
+    directory:privateDirectory(path.join(context.directory,'assistant-presentations')),secret:context.secret,now,
+    scope:{tenant:context.tenantId,channel:context.channelId,self:selfIdentity(),registration:creds.registrationId}}));
   function assistantStorageFailure(){
     assistantFault='assistant_ingress_unavailable';
     const policy={code:null,reason:'ingress_storage_unavailable',action:'inspect_ingress_storage',retry:false,delayMs:null};
@@ -236,7 +241,8 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
     assertMutationReady:async()=>{await guarded();if(!groupMutationReady())throw Error('group_add_unavailable');},
     mutationCurrent:groupMutationReady});
   async function relayText(phone,text,{isCurrent:operationCurrent=()=>true,maxTextChars=1200,device=false,source='automation',
-    diagnostic=null,assertAuthorized,onRelayAttempt,pacing=true}={}){
+    diagnostic=null,assertAuthorized,onRelayAttempt,pacing=true,presentation}={}){
+    if(presentation&&(device||source!=='assistant'))throw Error('assistant_presentation_denied');
     await guarded();const self=normalizeFromJid(client.user?.id);
     let authorized=true;
     const sendCurrent=()=>{try{return authorized&&current()&&operationCurrent()===true&&
@@ -264,7 +270,14 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
     // the external-recipient resolver deliberately refuses a self address.
     const proof=await resolvePilotRecipient({phone,pilotPhone:phone,enabled:!(diagnostic&&phone===self)&&context.verifiedLid?.()===true,
       socket:client,deviceCache,isCurrent:sendCurrent});await authorize();
-    return outgoingPresence.run({phone,chatJid:proof.jid,isCurrent:sendCurrent,assertAuthorized:authorize,action:{type:'text',text},pacing},async({beforeSend})=>{
+    return outgoingPresence.run({phone,chatJid:proof.jid,isCurrent:sendCurrent,assertAuthorized:authorize,action:presentation?.action||{type:'text',text},pacing},async({beforeSend})=>{
+    if(presentation){
+      const sent=await relayAssistantPresentation({presentation,sdk:{...mod,userJid:client.user.id},jid:proof.jid,recipientProof:proof,phone,
+        retryStore,presentationStore:assistantPresentations(),relay:async(jid,body,options)=>{await authorize();return client.relayMessage(jid,body,options);},
+        isCurrent:sendCurrent,assertAuthorized:authorize,beforeSend,acknowledge:context.presentationAck,
+        interactiveMode:assistantNativeMode({tenantId:context.tenantId,channelId:context.channelId,phone})});
+      return {id:sent.key.id};
+    }
     await beforeSend();
     const sent=await sendStoredText({jid:proof.jid,recipientProof:proof,text,store:retryStore,freshDevices:true,isCurrent:sendCurrent,assertAuthorized:authorize,maxTextChars,preserveWhitespace:device,
       makeMessage:(jid,body)=>mod.generateWAMessage(jid,{text:body},{userJid:client.user.id,logger:silent,messageId:mod.generateMessageIDV2(client.user.id)}),
@@ -351,6 +364,8 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
       await guarded();
       const outcome=await context.onMessage({phone:first.phone,message_id:batch.messages[0].id,message_ids:ids,
         text:batch.text,parts:batch.messages.map(item=>({message_id:item.id,text:item.text})),intake_revision:batch.intakeRevision,
+        ...(entries.length===1&&first.selection?{selection:first.selection}:{}),
+        ...(entries.length>1&&entries.some(item=>item.selection)?{require_summary_review:true}:{}),
         ...(entries.some(item=>item.event)?{envelope:entries.findLast(item=>item.event)?.event}:{})},{noticeProofs:entries.map(item=>item.proof),isCurrent:batchCurrent,
         beforeReply:value=>entries.at(-1)?.lease?.beforeReply(value)});
       if(!(outcome?.state==='superseded'&&outcome?.not_committed===true)){
@@ -481,10 +496,23 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
               journal.exclude(id);return {skip:true};
             }
             if(journal.diagnostics().blocked){journal.review(id,'policy_denied');return {skip:true};}
+            if(entry.proof?.assistant_interactions===1&&(normalized.selection||normalized.event.reply_to)){
+              const selection=assistantPresentations().resolve(message,phone);
+              if(selection){
+                if(!await assistantPresentations().acknowledge(phone,selection.quoted_message_id,context.presentationAck,entryCurrent)){
+                  journal.exclude(id);return {skip:true};
+                }
+                entry.selection=selection;delete entry.event;
+              }
+              // A claimed assistant token without a proved accepted message
+              // never degrades into ordinary consent or a model instruction.
+              else if(normalized.selection){journal.exclude(id);return {skip:true};}
+            }
             // This persisted boundary forbids any ASR/domain replay following
             // a crash or an uncertain result. Only the live attempt can finish.
             journal.begin([id]);
             entry.lease=outgoingPresence.begin({phone,chatJid:peer,isCurrent:()=>entryCurrent()&&context.assistantEnabled?.()!==false});typingLeases.add(entry.lease);
+            if(entry.selection)return {text:ASSISTANT_SELECTION_TEXT};
              if(normalized.special)return {text:text||'[Evento de mensagem recebido]'};
              let body=text;
             if(!body?.trim())body=await withAssistantAudio(message,{client,downloadMediaMessage:mod.downloadMediaMessage,logger:silent,

@@ -30,7 +30,9 @@ class Request:
 @pytest.fixture
 def provider(monkeypatch):
     observed = []
-    response = {"text": "Texto completo da mensagem.", "duration": 65.0}
+    response = {"text": "Texto completo da mensagem.", "duration": 65.0,
+        "segments": [{"text": "Texto completo da mensagem.", "start": 0, "end": 65,
+                      "avg_logprob": -.2, "no_speech_prob": .01, "compression_ratio": 1.1}]}
     status = [200]
     monkeypatch.setenv("GROQ_API_KEY", "synthetic-device-audio-test-key")
     monkeypatch.setattr(audio, "audio_available", lambda: True)
@@ -76,6 +78,7 @@ async def test_provider_is_called_once_after_actual_duration_reservation_and_rec
 async def test_full_transcript_above_legacy_and_32k_limits_is_preserved(provider):
     _, response, _, authorize = provider
     response["text"] = "Mensagem completa. " * 2500
+    response["segments"][0]["text"] = response["text"]
     result = await audio.transcribe_audio(Request(), max_minutes=30, authorize=authorize)
     assert len(result["text"]) > 32_000
     assert result["text"] == response["text"].strip()

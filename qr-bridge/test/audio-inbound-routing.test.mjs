@@ -10,7 +10,8 @@ import path from 'node:path';
 import {makeContactNames} from '../src/contact-names.mjs';
 import {extractText,resolveMessagePhone} from '../src/core.mjs';
 import {shouldIngestUpsert,timestampMs} from '../src/linked-session-health.mjs';
-import {forwardAssistant,registerAssistantIngress} from '../src/ai-forward.mjs';
+import {forwardAssistant,registerAssistantIngress,acknowledgeAssistantPresentation} from '../src/ai-forward.mjs';
+import {createAssistantPresentationStore,relayAssistantPresentation,ASSISTANT_SELECTION_TEXT} from '../src/assistant-presentation.mjs';
 import {isBookingProtocolMessage,resolveBookingSenderPhone} from '../src/appointment-confirmation.mjs';
 import {makeBookingIntakeGuard} from '../src/booking-intake-guard.mjs';
 import {allowAssistantRecipient,allowAssistantAudio,pilotNumber} from '../src/ai-pilot.mjs';
@@ -21,7 +22,8 @@ import {disconnectEvidence} from '../src/disconnect-evidence.mjs';
 import {createNativeTestCanary} from '../src/native-test-canary.mjs';
 import {transcribeAssistantAudio} from '../src/ai-audio.mjs';
 import {createAssistantIngress} from '../src/assistant-ingress.mjs';
-import {BufferJSON} from '@whiskeysockets/baileys';
+import * as assistantSdk from '@whiskeysockets/baileys';
+const {BufferJSON}=assistantSdk;
 
 // Real inbound handler, intake and private forwarder. Network and speech
 // recognition are replaced, so this proves routing rather than ASR accuracy.
@@ -39,14 +41,14 @@ after(()=>{for(const directory of contactDirectories)fs.rmSync(directory,{recurs
 
 function harness({transcribe=async()=> 'Synthetic speech',audioEnabled=true,answer=null,realAudio=false,legacyController,directory:reuseDirectory,
   revisionEnabled=false,forwardResponse,sendResponse,presence,typingConfig={maxPauseMs:0},multipleRecipients=false,withConnection=false,
-  centralEnabled=false,centralAnswer='Confirmação de agendamento',nativeEnabled=false,nativeSend=async()=>{}}={}){
+  centralEnabled=false,centralAnswer='Confirmação de agendamento',nativeEnabled=false,nativeSend=async()=>{},interactions=false}={}){
   let listener,transcriptions=0,downloads=0;
   const directory=reuseDirectory||fs.mkdtempSync(path.join(os.tmpdir(),'orion-inbound-names-'));
   if(!reuseDirectory)contactDirectories.push(directory);
   const namesStore=makeContactNames({directory,secret:'synthetic-local-contact-key-at-least-32-bytes'});
   namesStore.bindIdentity('5511999990000@s.whatsapp.net');
   let nameChanges=0;
-  const forwarded=[],inbox=[],sent=[],sentOptions=[],events=[],queues=new Map(),seen=new Set(),notices=[],presenceCalls=[],centralCalls=[],nativeSends=[];let nativeSerial=0;
+  const forwarded=[],inbox=[],sent=[],sentOptions=[],events=[],queues=new Map(),seen=new Set(),notices=[],presenceCalls=[],centralCalls=[],nativeSends=[],presentationAcks=[],presentationsSent=[];let nativeSerial=0;
   const env={QR_AI_ENABLED:'1',QR_AI_AUDIO_ENABLED:audioEnabled?'1':'0',QR_AI_GROUP_WAIT_MS:'0',
     QR_AI_PILOT_NUMBER:phone,QR_AI_API_URL:'http://orion-assistente.railway.internal/internal/qr/ai/reply'};
   if(revisionEnabled)env.QR_AI_INTAKE_REVISION_ENABLED='1';
@@ -61,6 +63,9 @@ function harness({transcribe=async()=> 'Synthetic speech',audioEnabled=true,answ
     legacyCentral:{transportCurrent:()=>true,assertTransportCurrent:async()=>{},nativeTestScope:()=>null,
       ...(legacyController||{configured:()=>false})},socketOutgoingPresence:new WeakMap(),createNativeTestCanary,
     namesStore,namesSync:{changed(){nameChanges++;},start(){}},path,authDir:directory,createAssistantIngress,BufferJSON,
+    authRegistrationId:12345,createAssistantPresentationStore,ASSISTANT_SELECTION_TEXT,
+    acknowledgeAssistantPresentation:args=>acknowledgeAssistantPresentation({...args,fetchImpl:async(_url,request)=>{
+      presentationAcks.push(JSON.parse(request.body));return {ok:true,json:async()=>({acknowledged:true})};}}),
     normalizeFromJid:value=>String(value).match(/^(\d+)(?::\d+)?@s\.whatsapp\.net$/)?.[1]||null,
     primaryIngressDiagnostics:null,primaryIngressCanAutomate:null,stopPrimaryIngress(){},
     primaryHealth:{connected(){events.push(['readiness',context.primaryIngressDiagnostics?.(),context.primaryIngressCanAutomate?.()]);}},
@@ -102,11 +107,20 @@ function harness({transcribe=async()=> 'Synthetic speech',audioEnabled=true,answ
     },
     send:async(p,text,options)=>{
       assert.equal(p,phone);assert.equal(options.isCurrent(),true);
-      const result=sendResponse?await sendResponse(text,options):{accepted:true};
+      let result;
+      if(sendResponse)result=await sendResponse(text,options);
+      else if(interactions&&options.presentation){
+        const msg=await relayAssistantPresentation({presentation:options.presentation,sdk:{...assistantSdk,userJid:client.user.id},
+          jid:p+'@s.whatsapp.net',phone:p,retryStore:context.retryStore,presentationStore:context.socketOutgoingPresence.get(client).assistantPresentations(),
+          isCurrent:options.isCurrent,assertAuthorized:async()=>{},beforeSend:async()=>{},
+          acknowledge:payload=>context.acknowledgeAssistantPresentation({apiUrl:env.QR_AI_API_URL,token:context.KEY,payload}),
+          relay:async(_,body,opts)=>{presentationsSent.push({body,id:opts.messageId});}});
+        result={accepted:true,id:msg.key.id};
+      }else result={accepted:true};
       if(result?.accepted)sent.push(text);return result;
     },
     registerAssistantIngress:args=>registerAssistantIngress({...args,fetchImpl:async(_url,options)=>{
-      notices.push(JSON.parse(options.body));return {ok:true,json:async()=>({revision:notices.length})};
+      notices.push(JSON.parse(options.body));return {ok:true,json:async()=>({revision:notices.length,...(interactions?{assistant_interactions:1}:{})})};
     }}),
     forwardAssistant:args=>forwardAssistant({...args,fetchImpl:async(_url,options)=>{
       const payload=JSON.parse(options.body);forwarded.push(payload);
@@ -118,12 +132,48 @@ function harness({transcribe=async()=> 'Synthetic speech',audioEnabled=true,answ
     key:{id,remoteJid:remote,fromMe,...(senderPn?{senderPn}:{})},pushName,messageTimestamp:Math.floor(Date.now()/1000),
     message:text===undefined?{audioMessage:{fileLength,seconds}}:{conversation:text}
   });
-  return {context,env,forwarded,inbox,sent,sentOptions,events,message,notices,presenceCalls,namesStore,centralCalls,directory,nativeSends,
+  return {context,env,forwarded,inbox,sent,sentOptions,events,message,notices,presenceCalls,namesStore,centralCalls,directory,nativeSends,presentationAcks,presentationsSent,
     recover:()=>context.replayAssistantIngress(),diagnostics:()=>context.primaryIngressDiagnostics?.(),
     get nameChanges(){return nameChanges;},
     emit:(messages,type='notify')=>listener({type,messages}),emitEvent:(event,value)=>handlers.get(event)(value),
     get transcriptions(){return transcriptions;},get downloads(){return downloads;}};
 }
+
+const assistantMenu=()=>{const id='D'.repeat(32);return {version:1,id,action:{type:'reply_buttons',text:'Resumo fictício',footer:'',
+  buttons:[{id:`oa1_${id}_0`,title:'Confirmar'},{id:`oa1_${id}_1`,title:'Corrigir'}]}};};
+async function waitAssistant(predicate){const until=Date.now()+2500;while(Date.now()<until){if(predicate())return;await tick();}assert.ok(predicate(),'Expected assistant boundary');}
+function presentationTestMode(t){const before=process.env.ORION_RETRY_TEST_MODE;process.env.ORION_RETRY_TEST_MODE='1';
+  t.after(()=>{if(before===undefined)delete process.env.ORION_RETRY_TEST_MODE;else process.env.ORION_RETRY_TEST_MODE=before;});}
+test('PRIMARY assistant negotiates one presentation and a quoted numeric response returns only its bound selection',async t=>{
+  presentationTestMode(t);
+  const h=harness({interactions:true,revisionEnabled:true,forwardResponse:(_payload,index)=>index===1?{answer:'Resumo fictício',presentation:assistantMenu()}:{answer:null}});
+  h.emit([h.message('assistant-menu-start',{text:'Olá'})]);await waitAssistant(()=>h.sent.length===1);
+  assert.equal(h.presentationsSent.length,1);assert.equal(h.presentationAcks.length,1);
+  const provider=h.presentationsSent[0].id,reply=h.message('assistant-quoted-choice',{text:'1'});
+  reply.message={extendedTextMessage:{text:'1',contextInfo:{stanzaId:provider}}};
+  h.emit([reply]);await waitAssistant(()=>h.forwarded.length===2);
+  assert.deepEqual(h.forwarded[0].capabilities,{assistant_interactions:1});
+  assert.deepEqual(h.forwarded[1].selection,{id:assistantMenu().action.buttons[0].id,quoted_message_id:provider});
+  assert.equal(h.forwarded[1].text,'[Escolha recebida]');assert.equal(h.forwarded[1].envelope,undefined);
+  h.emit([reply]);for(let i=0;i<30;i++)await tick();
+  assert.equal(h.forwarded.length,2);assert.equal(h.sent.length,1);assert.equal(h.presentationAcks.length,1);
+});
+test('PRIMARY correction during an ACK wait groups with the click and requests review without a selection',async t=>{
+  presentationTestMode(t);
+  const h=harness({interactions:true,revisionEnabled:true,forwardResponse:(_payload,index)=>index===1?{answer:'Resumo fictício',presentation:assistantMenu()}:{answer:null}});
+  h.context.acknowledgeAssistantPresentation=async()=>{throw Error('synthetic ACK lost');};
+  h.emit([h.message('assistant-menu-lost-ack',{text:'Olá'})]);await waitAssistant(()=>h.sent.length===1);
+  let release;h.context.acknowledgeAssistantPresentation=async()=>new Promise(resolve=>{release=resolve;});
+  const click=h.message('assistant-native-choice',{text:''});click.message={interactiveResponseMessage:{nativeFlowResponseMessage:{name:'quick_reply',
+    paramsJson:JSON.stringify({id:assistantMenu().action.buttons[0].id,display_text:'NÃO AUTORIZA POR TEXTO'})},contextInfo:{stanzaId:h.presentationsSent[0].id}}};
+  h.emit([click]);await waitAssistant(()=>typeof release==='function');
+  h.emit([h.message('assistant-later-correction',{text:'Na verdade, quero corrigir o horário'})]);
+  await waitAssistant(()=>h.notices.length===3);release({acknowledged:true});
+  await waitAssistant(()=>h.forwarded.length===2);
+  assert.equal(h.forwarded[1].message_ids.length,2);assert.equal(h.forwarded[1].selection,undefined);
+  assert.equal(h.forwarded[1].require_summary_review,true);assert.match(h.forwarded[1].text,/corrigir o horário/);
+  assert.doesNotMatch(h.forwarded[1].text,/NÃO AUTORIZA/);assert.equal(h.sent.length,1);
+});
 
 test('real adopted handler journals before processing and uses only the managed reply path',async()=>{
   const events=[],proofs=[];

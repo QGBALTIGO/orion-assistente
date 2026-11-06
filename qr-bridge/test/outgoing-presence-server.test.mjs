@@ -2,6 +2,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import vm from 'node:vm';
 import * as sdk from '@whiskeysockets/baileys';
 import {validPhone,normalizeFromJid} from '../src/core.mjs';
@@ -12,6 +14,7 @@ import {resolvePilotRecipient} from '../src/pilot-recipient.mjs';
 import {deliveryPolicy,requiresPreRelayCache} from '../src/pilot-send-policy.mjs';
 import {resolveTransactionalRecipient} from '../src/transactional-recipient.mjs';
 import {presenceClock,presenceFlush} from './helpers/presence-clock.mjs';
+import {createAssistantPresentationStore,relayAssistantPresentation,assistantNativeMode} from '../src/assistant-presentation.mjs';
 
 const phone='5511999999901',self='5511999999902';
 const source=fs.readFileSync(new URL('../src/server.mjs',import.meta.url),'utf8');
@@ -78,6 +81,29 @@ test('primary policy/owner revocation after composing prevents both cached and f
     await f.clock.advance(200);if(reason==='owner')f.revoke();else f.deny();
     await f.clock.advance(800);await rejected;assert.equal(f.relays.length,0);assert.equal(f.retryStore.size(),0);f.coordinator.close();
   }
+});
+
+test('real PRIMARY raw sender caches one native assistant protocol, retains targeted presence and ACKs only acceptance',async t=>{
+  const before=process.env.ORION_RETRY_TEST_MODE;process.env.ORION_RETRY_TEST_MODE='1';
+  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'orion-primary-presentation-'));
+  t.after(()=>{if(before===undefined)delete process.env.ORION_RETRY_TEST_MODE;else process.env.ORION_RETRY_TEST_MODE=before;
+    assert.ok(path.resolve(directory).startsWith(path.resolve(os.tmpdir())+path.sep+'orion-primary-presentation-'));fs.rmSync(directory,{recursive:true,force:true});});
+  const f=fixture(),acks=[],id='E'.repeat(32),tenant='11111111-1111-4111-8111-111111111111',channel='22222222-2222-4222-8222-222222222222';
+  const presentation={version:1,id,action:{type:'reply_buttons',text:'Resumo fictício',footer:'',
+    buttons:[{id:`oa1_${id}_0`,title:'Confirmar'},{id:`oa1_${id}_1`,title:'Corrigir'}]}};
+  const store=createAssistantPresentationStore({directory,secret:'synthetic-primary-presentation-secret-'.repeat(2),scope:{registration:123}});
+  f.context.socketOutgoingPresence.set(f.socket,{...f.coordinator,assistantPresentations:()=>store});
+  Object.assign(f.context,{proto:sdk.proto,generateWAMessageFromContent:sdk.generateWAMessageFromContent,relayAssistantPresentation,
+    assistantNativeMode:options=>assistantNativeMode({...options,env:f.context.process.env})});
+  f.context.legacyCentral.ingressScope=()=>({tenant_id:tenant,channel_id:channel});
+  f.context.process.env.QR_ASSISTANT_NATIVE_SCOPES=`${tenant}:${channel}:${phone}`;
+  const sending=f.context.sendLegacyRaw(phone,presentation.action.text,{source:'assistant',presentation,isCurrent:()=>true,
+    presentationAck:async payload=>{acks.push(payload);return {acknowledged:true};}});
+  await f.clock.advance(3000);const result=await sending;
+  assert.equal(result.accepted,true);assert.equal(f.relays.length,1);assert.equal(f.retryStore.size(),1);
+  const protocol=f.relays[0].message.interactiveMessage;assert.ok(protocol);assert.equal(protocol.nativeFlowMessage.buttons.length,2);
+  assert.ok(f.relays[0].options.additionalNodes);assert.equal(acks.length,1);assert.equal(acks[0].provider_id,f.relays[0].options.messageId);
+  assert.deepEqual(f.presence.map(value=>value.type),['composing','paused']);f.coordinator.close();
 });
 
 test('pinned SDK encodes only targeted recording as composing with audio media, without global availability',async()=>{

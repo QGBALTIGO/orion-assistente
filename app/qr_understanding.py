@@ -143,7 +143,7 @@ def unique_service_reply(message: str, catalog: list[dict], *, context_step: str
     any ambiguity defer the complete utterance to the normal understanding path.
     The caller separately verifies that a service question was really presented.
     """
-    if context_step != "menu" or not isinstance(message, str) or not message.strip() or len(message) > 1500 or len(catalog) > 60:
+    if context_step != "menu" or not isinstance(message, str) or not message.strip() or len(message) > 1500 or len(catalog) > 500:
         return None
     text = normalized(message)
     if "?" in text or "¿" in text or re.search(r"\d|\b(?:nao|nem|sem|nunca|menos|exceto|"
@@ -310,7 +310,7 @@ def build_plan(*, message: str, catalog: list[dict], professionals: list[dict] |
     if not isinstance(message, str) or not message.strip() or len(message) > 1500:
         raise ValueError("Message outside supported bounds")
     professionals, faqs, context = professionals or [], faqs or [], context or {}
-    if len(catalog) > 60 or len(professionals) > 30 or len(faqs) > 30:
+    if len(catalog) > 500 or len(professionals) > 30 or len(faqs) > 30:
         raise ValueError("Context outside supported bounds")
     data = (proposal or UnderstandingPlan()).model_dump()
     valid_services = {UUID(str(x["id"])) for x in catalog}
@@ -322,7 +322,7 @@ def build_plan(*, message: str, catalog: list[dict], professionals: list[dict] |
     lower = normalized(message)
     ambiguities = list(data["ambiguities"])
     intents = [x for x in data["intents"] if x != "other"]
-    price = bool(re.search(r"\b(?:quanto|preco|valor|custa|custam)\b", lower))
+    price = bool(re.search(r"\b(?:quanto|precos?|valor(?:es)?|custa|custam)\b", lower))
     available = bool(re.search(r"\b(?:disponive[li]s?|vagas?|livre|livres|se tiver|se houver)\b|"
                                r"\b(?:que|qual|quais)\s+dias?\b|\btem\b.*\bhorarios?\b", lower))
     explicit_booking = any(not _negative(lower[:x.start()]) for x in
@@ -431,9 +431,17 @@ def build_plan(*, message: str, catalog: list[dict], professionals: list[dict] |
         data["service_ids"] = chosen
         if "booking" in intents or "reschedule" in intents:
             data["selection_mode"] = "replace"
-    if not price and not available and re.search(r"\b(?:inclu(?:ir|a)|adiciona\w*|acrescenta\w*)\b", lower) and chosen:
+    polite_addition = bool(re.search(r"^(?:(?:voce|voces)\s+)?pode(?:m)?\s+(?:por|colocar|botar|incluir|adicionar|acrescentar)\b", lower)
+        and not re.search(r"\b(?:se|caso|talvez|nao|nem)\b", lower))
+    if (price or available) and polite_addition and chosen and base:
+        data.update(query_service_ids=_unique(base + chosen), service_ids=[], selection_mode="simulate")
+        intents = [value for value in intents if value not in {"booking", "confirm"}]
+    if not price and not available and not information_only and not re.search(r"\b(?:se|caso|talvez)\b", lower) and (polite_addition or
+            re.search(r"\b(?:inclu(?:ir|a)|adiciona\w*|acrescenta\w*)\b", lower)) and chosen:
         data.update(service_ids=_unique(base + chosen), selection_mode="add")
         intents.append("booking")
+        if not base and re.search(r"\b(?:junto|tambem)\b", lower):
+            ambiguities.append("service")
     if not price and re.search(r"\b(?:tira|tirar|retira|retirar|remove|remover)\b", lower) and declined:
         data.update(service_ids=[x for x in base if x not in declined], selection_mode="remove")
         intents.append("booking")
@@ -500,6 +508,39 @@ def build_plan(*, message: str, catalog: list[dict], professionals: list[dict] |
     if any(word not in first_names | non_people for word in introduced) or (
             alternative and alternative.group(1) not in first_names | non_people | set(_WEEKDAYS) | {"amanha", "hoje"}):
         data["professional_id"] = None;ambiguities.append("professional")
+    # Only explicit references may reuse previously requested facts. These are
+    # selections to recheck against the agenda, never a confirmation/hold.
+    references = not re.search(r"\b(?:nao|nem|sem)\s+(?:[oa]\s+)?(?:mesm[oa]|ess[ea]|aquele|aquela)\b", lower)
+    if references and not mentioned_day and re.search(r"\b(?:mesmo|nesse|neste|naquele) dia\b", lower):
+        try:
+            recalled = date.fromisoformat(context.get("requested_date", ""))
+            if reference_date is None or recalled < reference_date:
+                raise ValueError
+            data["requested_date"] = recalled.isoformat()
+        except (TypeError, ValueError):
+            ambiguities.append("date")
+    if references and not mentioned_time and re.search(r"\b(?:mesm[oa]|ess[ea]|aquele|aquela)\s+(?:horario|hora)\b", lower):
+        recalled = context.get("requested_time")
+        relation = context.get("time_relation", "exact")
+        if isinstance(recalled, str) and re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", recalled) and relation in {"exact", "after", "before", "around"}:
+            data.update(requested_time=recalled, time_relation=relation)
+        else:
+            ambiguities.append("time")
+    same_person = references and bool(re.search(r"\b(?:mesmo (?:profissional|barbeiro|dentista)|mesma (?:profissional|barbeira)|com (?:ele|ela))\b", lower))
+    other_person = references and bool(re.search(r"\b(?:[oa] outr[oa])\s+(?:profissional|barbeir[oa]|dentista)\b", lower))
+    if (same_person or other_person) and not pro_matches:
+        try:
+            recalled = UUID(str(context.get("professional_id", "")))
+            if recalled not in valid_pros:
+                raise ValueError
+            candidates = valid_pros - {recalled} if other_person else {recalled}
+            if len(candidates) != 1:
+                raise ValueError
+            data["professional_id"] = next(iter(candidates))
+            ambiguities = [value for value in ambiguities if value != "professional"]
+        except (TypeError, ValueError):
+            data["professional_id"] = None
+            ambiguities.append("professional")
     from app.qr_customer import supplied_name
     data["customer_name"] = supplied_name(message)
     for faq in faqs:

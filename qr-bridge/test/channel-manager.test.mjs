@@ -14,6 +14,52 @@ import {createChannelResumeStore} from '../src/channel-resume.mjs';
 
 const phone='5567999999901',other='5567999999902';
 const flush=()=>new Promise(resolve=>setImmediate(resolve));
+const assistantMenu=()=>{const id='B'.repeat(32);return {version:1,id,action:{type:'reply_buttons',text:'Resumo fictício',footer:'',
+  buttons:[{id:`oa1_${id}_0`,title:'Confirmar'},{id:`oa1_${id}_1`,title:'Corrigir'}]}};};
+
+test('assistant interactions negotiate from the actual notice and old API requests and sends remain text-only',async t=>{
+  const f=fixture(t),a=f.add();let supported=false;
+  const interaction=f.broker.interaction;f.broker.interaction=async(...args)=>({...await interaction(...args),...(supported?{assistant_interactions:1}:{})});
+  f.broker.forward=async(id,key,lease,payload)=>{f.forwards.push({payload});return {answer:'Resumo fictício',presentation:assistantMenu()};};
+  const m=f.manager();await m.start(a.id,a.key);const s=f.made[0],sends=[];
+  s.send=async(to,text,options)=>{sends.push({to,text,options});return {id:'synthetic-'+sends.length};};
+  for(const id of ['old','new']){
+    supported=id==='new';const proof=await s.ctx.onInbound({phone,message_id:id,text:'Revisar'});
+    await s.ctx.onMessage({phone,message_id:id,text:'Revisar'},{noticeProof:proof});
+  }
+  assert.equal(f.forwards[0].payload.capabilities,undefined);assert.equal(sends[0].options.presentation,undefined);
+  assert.deepEqual(f.forwards[1].payload.capabilities,{assistant_interactions:1});assert.equal(sends[1].options.presentation.id,assistantMenu().id);
+  assert.equal(sends.length,2);
+});
+test('a managed presentation with an uncertain relay never generates a fallback or another send for the same input',async t=>{
+  const f=fixture(t),a=f.add();let sends=0;
+  const interaction=f.broker.interaction;f.broker.interaction=async(...args)=>({...await interaction(...args),assistant_interactions:1});
+  f.broker.forward=async()=>({answer:'Resumo fictício',presentation:assistantMenu()});
+  const m=f.manager();await m.start(a.id,a.key);const s=f.made[0];s.send=async()=>{sends++;throw Error('synthetic relay unknown');};
+  for(let i=0;i<2;i++){
+    const proof=await s.ctx.onInbound({phone,message_id:'same-input',text:'Revisar'});
+    const result=await s.ctx.onMessage({phone,message_id:'same-input',text:'Revisar'},{noticeProof:proof});
+    assert.equal(result.accepted,false);
+  }
+  assert.equal(sends,1);
+});
+test('typed selection stays one input and mixed corrections force review; ACK is a separate fenced API call',async t=>{
+  const f=fixture(t),a=f.add(),acks=[];
+  const interaction=f.broker.interaction;f.broker.interaction=async(...args)=>({...await interaction(...args),assistant_interactions:1});
+  f.broker.presentationAck=async(...args)=>{acks.push(args);return {acknowledged:true};};
+  const m=f.manager();await m.start(a.id,a.key);const ctx=f.made[0].ctx;
+  const proof=await ctx.onInbound({phone,message_id:'click',text:'[Escolha recebida]'});
+  const selection={id:assistantMenu().action.buttons[0].id,quoted_message_id:'synthetic-summary'};
+  await ctx.onMessage({phone,message_id:'click',text:'[Escolha recebida]',selection},{noticeProof:proof});
+  assert.deepEqual(f.forwards[0].payload.selection,selection);
+  const proofs=await Promise.all(['mixed1','mixed2'].map(message_id=>ctx.onInbound({phone,message_id,text:'Corrigir'})));
+  await ctx.onMessage({phone,message_id:'mixed1',message_ids:['mixed1','mixed2'],text:'[Escolha recebida]\nCorrigir',require_summary_review:true},{noticeProofs:proofs});
+  assert.equal(f.forwards[1].payload.selection,undefined);assert.equal(f.forwards[1].payload.require_summary_review,true);
+  await ctx.presentationAck({phone,presentation_id:assistantMenu().id,provider_id:'synthetic-summary'});
+  assert.equal(acks.length,1);assert.equal(acks[0][0],a.id);assert.equal(acks[0][2].fence,f.rows.get(a.id).fence);
+  f.rows.get(a.id).revoked=true;await assert.rejects(ctx.presentationAck({phone,presentation_id:assistantMenu().id,provider_id:'synthetic-summary'}));
+  assert.equal(acks.length,1);
+});
 test('an explicitly empty private policy connects with assistant off but permits no inbound or outbound recipient',async t=>{
   const f=fixture(t),a=f.add();Object.assign(f.rows.get(a.id),{allowed_senders:[],assistant_enabled:false});
   const m=f.manager();await m.start(a.id,a.key);
@@ -25,6 +71,12 @@ test('an explicitly empty private policy connects with assistant off but permits
 test('an empty private policy with assistant enabled is rejected before socket construction',async t=>{
   const f=fixture(t),a=f.add();f.rows.get(a.id).allowed_senders=[];
   await assert.rejects(f.manager().start(a.id,a.key),/invalid_channel_lease/);assert.equal(f.made.length,0);
+});
+test('a lease cannot activate assistant and subscription consumers together on one socket without a separate grant',async t=>{
+  const f=fixture(t),a=f.add();
+  f.rows.get(a.id).device={id:randomUUID(),generation:randomUUID(),settings_revision:1,settings:{},capabilities:{}};
+  const m=f.manager();await assert.rejects(m.start(a.id,a.key),/invalid_device_lease/);
+  assert.equal(f.made.length,0);assert.equal(f.forwards.length,0);assert.equal(f.interactions.length,0);
 });
 test('channel status discloses only a connected verified PN, never a LID or a prefilled form number',async t=>{
   const f=fixture(t),a=f.add(),m=f.manager();await m.start(a.id,a.key);

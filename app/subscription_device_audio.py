@@ -20,6 +20,7 @@ from typing import Awaitable, Callable
 
 from fastapi import HTTPException
 import httpx
+from app.qr_audio_quality import reliable_transcript
 
 
 MAX_AUDIO_BYTES = 25_000_000
@@ -190,7 +191,7 @@ async def _provider_transcribe(audio: bytearray, duration: float, max_seconds: i
                 "POST", PROVIDER_URL,
                 headers={"Authorization": "Bearer " + api_key},
                 files={"file": ("message.ogg", bytes(audio), "audio/ogg")},
-                data={"model": MODEL, "language": "pt", "response_format": "verbose_json", "temperature": "0"},
+                data={"model": MODEL, "language": "pt", "response_format": "verbose_json", "temperature": "0", "timestamp_granularities[]": "segment"},
             ) as response:
                 if response.status_code != 200:
                     raise _error(503, "DEVICE_AUDIO_PROVIDER_FAILED", "Não foi possível transcrever o áudio agora.")
@@ -213,6 +214,8 @@ async def _provider_transcribe(audio: bytearray, duration: float, max_seconds: i
             raise _error(502, "DEVICE_AUDIO_PROVIDER_INVALID", "Não foi possível confirmar a transcrição completa.") from None
         if len(text.strip()) > MAX_TRANSCRIPT_CHARS:
             raise _error(422, "DEVICE_AUDIO_TRANSCRIPT_TOO_LONG", "A transcrição excede o limite de texto. Divida o áudio em partes menores.")
+        if not reliable_transcript(result, max_seconds=max_seconds):
+            raise _error(422, "DEVICE_AUDIO_UNCLEAR", "Não consegui entender esse áudio com segurança. Grave novamente, mais perto do microfone, ou escreva sua mensagem.")
         return text.strip()
     except httpx.RequestError:
         raise _error(503, "DEVICE_AUDIO_PROVIDER_FAILED", "O serviço de transcrição está temporariamente indisponível.") from None
