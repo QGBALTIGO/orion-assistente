@@ -453,9 +453,15 @@ async def test_availability_question_collects_missing_fields_then_reads_real_slo
     assert "Qual serviço" in reply["answer"]
     assert "R$" not in reply["answer"] and not seen
     reply = await h.turn("Quero consultar corte de cabelo")
-    assert "qual profissional" in reply["answer"] and "Corte de cabelo" in reply["answer"]
+    assert (reply.get("_professional_page") and h.state()["availability_query"]["waiting_for"] == "professional"
+            and {str(person["id"]) for person in reply["_professional_page"]["rows"]} == {str(h.bruno), str(h.carlos)}
+            and all(person["name"] in reply["answer"] for person in h.pros)
+            and "Corte de cabelo" in reply["answer"] and not seen and not h.calls["writes"])
     reply = await h.turn("20/11/2026")
-    assert "qual profissional" in reply["answer"] and not seen
+    assert (reply.get("_professional_page") and h.state()["availability_query"]["waiting_for"] == "professional"
+            and {str(person["id"]) for person in reply["_professional_page"]["rows"]} == {str(h.bruno), str(h.carlos)}
+            and all(person["name"] in reply["answer"] for person in h.pros)
+            and "Corte de cabelo" in reply["answer"] and not seen and not h.calls["writes"])
     reply = await h.turn("O Bruno")
     assert "14h30" in reply["answer"] and "20/11" in reply["answer"]
     assert "Corte de cabelo" in reply["answer"] and "*Profissional:* Bruno Souza" in reply["answer"]

@@ -17,6 +17,62 @@ const flush=()=>new Promise(resolve=>setImmediate(resolve));
 const assistantMenu=()=>{const id='B'.repeat(32);return {version:1,id,action:{type:'reply_buttons',text:'Resumo fictício',footer:'',
   buttons:[{id:`oa1_${id}_0`,title:'Confirmar'},{id:`oa1_${id}_1`,title:'Corrigir'}]}};};
 
+test('managed assistant ACK follows a persisted accepted receipt and confirmed SQL slot finish, without replay',async t=>{
+  const f=fixture(t),a=f.add(),events=[];Object.assign(f.rows.get(a.id),{inbox_control:true});
+  f.broker.journal=async()=>({recorded:true});
+  const interaction=f.broker.interaction;f.broker.interaction=async(...args)=>({...await interaction(...args),assistant_interactions:1});
+  f.broker.forward=async()=>({answer:'Resumo fictício',presentation:assistantMenu(),control_revision:1});
+  let pending=false,sends=0,acks=0;
+  f.broker.authorizeSend=async(_id,_key,_lease,p)=>{pending=true;events.push('authorize');return {authorized:true,operation_id:p.operation_id};};
+  f.broker.finishSend=async(_id,_key,_lease,p)=>{
+    events.push('finish');assert.equal(pending,true);
+    const accepted=await m.operation(a.id,a.key,p.operation_id);assert.equal(accepted.accepted,true,'Receipt must be durable before releasing the slot');
+    pending=false;return {released:true,operation_id:p.operation_id};
+  };
+  const m=f.manager();await m.start(a.id,a.key);const s=f.made[0];
+  s.send=async(_to,_text,options)=>{
+    sends++;events.push('relay');assert.equal(options.deferPresentationAck,true);
+    return {id:'synthetic-accepted-menu',acknowledgePresentation:async()=>{acks++;events.push('ack');assert.equal(pending,false);return true;}};
+  };
+  const proof=await s.ctx.onInbound({phone,message_id:'menu-slot',text:'Menu'});
+  const sent=await s.ctx.onMessage({phone,message_id:'menu-slot',text:'Menu'},{noticeProof:proof});
+  assert.equal(sent.accepted,true);assert.equal(acks,1);assert.equal(sends,1);
+  assert.deepEqual(events,['authorize','relay','finish','ack']);assert.equal(Object.hasOwn(sent,'acknowledgePresentation'),false);
+  const replayProof=await s.ctx.onInbound({phone,message_id:'menu-slot',text:'Menu'});
+  await s.ctx.onMessage({phone,message_id:'menu-slot',text:'Menu'},{noticeProof:replayProof});
+  assert.equal(sends,1);assert.equal(acks,1);
+});
+
+for(const failure of ['finish_lost','finish_unconfirmed','owner_changed','relay_uncertain'])test(`assistant deferred ACK stays closed after ${failure} and never retries the accepted/uncertain protocol`,async t=>{
+  const f=fixture(t),a=f.add();Object.assign(f.rows.get(a.id),{inbox_control:true});
+  f.broker.journal=async()=>({recorded:true});
+  const interaction=f.broker.interaction;f.broker.interaction=async(...args)=>({...await interaction(...args),assistant_interactions:1});
+  f.broker.forward=async()=>({answer:'Resumo fictício',presentation:assistantMenu(),control_revision:1});
+  f.broker.authorizeSend=async(_id,_key,_lease,p)=>({authorized:true,operation_id:p.operation_id});
+  let sends=0,acks=0,finishes=0;
+  f.broker.finishSend=async(_id,_key,_lease,p)=>{
+    finishes++;
+    if(failure==='finish_lost')throw Error('synthetic lost finish response');
+    if(failure==='finish_unconfirmed')return {released:false,operation_id:p.operation_id};
+    f.rows.get(a.id).revoked=true;return {released:true,operation_id:p.operation_id};
+  };
+  const m=f.manager();await m.start(a.id,a.key);const s=f.made[0];
+  s.send=async(_to,_text,options)=>{
+    sends++;assert.equal(options.deferPresentationAck,true);
+    if(failure==='relay_uncertain')throw Error('synthetic relay response lost after attempt');
+    return {id:'synthetic-accepted-menu',acknowledgePresentation:async()=>{acks++;return true;}};
+  };
+  const proof=await s.ctx.onInbound({phone,message_id:'menu-'+failure,text:'Menu'});
+  const result=await s.ctx.onMessage({phone,message_id:'menu-'+failure,text:'Menu'},{noticeProof:proof});
+  assert.equal(result.accepted,failure!=='relay_uncertain');assert.equal(sends,1);assert.equal(acks,0);
+  assert.equal(finishes,failure==='relay_uncertain'?0:1);
+  if(failure!=='owner_changed'){
+    const replayProof=await s.ctx.onInbound({phone,message_id:'menu-'+failure,text:'Menu'});
+    await s.ctx.onMessage({phone,message_id:'menu-'+failure,text:'Menu'},{noticeProof:replayProof});
+    assert.equal(sends,1);assert.equal(acks,0);
+  }
+});
+
 test('assistant interactions negotiate from the actual notice and old API requests and sends remain text-only',async t=>{
   const f=fixture(t),a=f.add();let supported=false;
   const interaction=f.broker.interaction;f.broker.interaction=async(...args)=>({...await interaction(...args),...(supported?{assistant_interactions:1}:{})});

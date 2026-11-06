@@ -102,13 +102,21 @@ def _target_reference(body, names):
 def _selection(body, records, tz_name):
     """Resolve only an unambiguous reference to the displayed owned candidates."""
     text = normalized(body).strip(" .!?")
+    matches = [row for row in records if re.search(r"(?<!\w)" + re.escape(normalized(row["protocol"])) + r"(?!\w)", text)]
+    if len(matches) > 1:
+        return "ambiguous", None
+    if matches:
+        protocol = normalized(matches[0]["protocol"])
+        if any(value != protocol for value in re.findall(r"\bag-[a-z0-9-]+\b", text)):
+            return "ambiguous", None
+        # The authenticated candidate's protocol is opaque, even when it
+        # contains a clock, staff name or conditional word. Keep every other
+        # word for the normal negation and contradictory-reference guards.
+        text = re.sub(r"(?<!\w)" + re.escape(protocol) + r"(?!\w)", " ", text).strip()
     if re.search(r"\b(?:nao|nem|ou|se|caso|talvez|espera|pera)\b", text):
         return "ambiguous", None
     candidates = list(records)
     reference = False
-    matches = [row for row in records if re.search(r"(?<!\w)" + re.escape(normalized(row["protocol"])) + r"(?!\w)", text)]
-    if len(matches) > 1:
-        return "ambiguous", None
     if matches:
         candidates = matches; reference = True
     elif re.search(r"\bag-[a-z0-9-]+\b", text):
@@ -118,8 +126,12 @@ def _selection(body, records, tz_name):
     ordinal = re.fullmatch(r"(?:(?:quero|cancele|cancelar|o|a|da|de|opcao)\s+)*(primeir[oa]|segundo|segunda opcao|terceir[oa]|ultim[oa])(?:\s+(?:reserva|agendamento|opcao))?", text)
     if text.isdigit() or ordinal:
         index = int(text)-1 if text.isdigit() else ordinals[ordinal.group(1)]
-        return ("selected", records[index]["id"]) if 0 <= index < len(records) else ("unavailable", None)
-    plan = build_plan(message=body, catalog=[], reference_date=_now().astimezone(ZoneInfo(tz_name)).date())
+        if not 0 <= index < len(records):
+            return "unavailable", None
+        if matches and records[index]["id"] != matches[0]["id"]:
+            return "ambiguous", None
+        return "selected", records[index]["id"]
+    plan = build_plan(message=text or "protocolo", catalog=[], reference_date=_now().astimezone(ZoneInfo(tz_name)).date())
     date_reference = bool(re.search(r"\b(?:hoje|amanha|segunda|terca|quarta|quinta|sexta|sabado|domingo)\b|\d{1,4}[-/]\d{1,2}", text))
     time_reference = bool(re.search(r"\b(?:as|pelas|pras)\s+|\d{1,2}(?::\d{2}|h)", text))
     if ((date_reference and not plan.requested_date) or (time_reference and not plan.requested_time)

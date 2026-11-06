@@ -286,6 +286,50 @@ def _times(message: str, context: dict):
     return (values[-1][2:] if values and not invalid else (None, "none")), bool(matches or noisy), invalid
 
 
+def _professional_mentions(lower: str, names_by_id: dict, context: dict):
+    """Match named staff, not an incidental word from a compound label."""
+    def personal_reference(start):
+        return bool(re.search(r"\b(?:me chamo|meu nome e|sou [oa])\s+$|"
+            r"\b(?:meu|minha|nosso|nossa)\s+(?:filh[oa]|pai|mae|espos[oa]|irmao|irma|dependente)"
+            r"\s+(?:(?:e|se chama|chama|chama-se)\s+)?$|"
+            r"\b(?:pai|mae|responsavel)\s+(?:do|da|pelo|pela)\s+$", lower[:start]))
+
+    def declined(start):
+        prefix = lower[:start]
+        return _negative(prefix) or _negative(re.sub(r"\bcom\s+(?:(?:o|a)\s+)?$", "", prefix))
+
+    full = []
+    for identity, name in names_by_id.items():
+        pattern = r"\b" + r"\s+".join(re.escape(part) for part in name.split()) + r"\b"
+        for match in re.finditer(pattern, lower):
+            if not personal_reference(match.start()) and not declined(match.start()):
+                full.append((match.start(), match.end(), identity))
+    # A full 'João Silva' supersedes the overlapping first name 'João'. Equal
+    # complete names retain both IDs and remain genuinely ambiguous.
+    full = [item for item in full if not any(other[0] <= item[0] and item[1] <= other[1]
+        and other[1]-other[0] > item[1]-item[0] for other in full)]
+    matches = [(start, identity) for start, _end, identity in full]
+    for identity, name in names_by_id.items():
+        words = name.split()
+        if len(words) < 2:
+            continue
+        for match in re.finditer(r"\b" + re.escape(words[0]) + r"\b", lower):
+            start, end = match.span()
+            if (any(a <= start < b for a, b, _ in full) or personal_reference(start)
+                    or declined(start)):
+                continue
+            prefix = lower[:start]
+            introduced = re.search(r"\b(?:com\s+(?:(?:o|a)\s+)?|"
+                r"(?:profissional|barbeir[oa]|dentista|esteticista)\s+(?:(?:o|a)\s+)?)$", prefix)
+            subject = re.match(r"\s+(?:tem|esta|atende|trabalha|pode|possui)\b", lower[end:])
+            direct_choice = context.get("step") == "professional" and lower.strip(" ?!.,\n\t") == words[0]
+            alternative = matches and re.search(r"\b(?:ou|melhor|prefiro|quer dizer|na verdade)\s+"
+                r"(?:com\s+)?(?:(?:o|a)\s+)?$", prefix)
+            if introduced or subject or direct_choice or alternative:
+                matches.append((start, identity))
+    return sorted(set(matches))
+
+
 def clarification_for(plan: UnderstandingPlan) -> str | None:
     """Targeted questions contain no model-provided facts or operational promises."""
     questions = {"service": "Qual serviço você quer? Preciso distinguir as opções do catálogo.",
@@ -324,7 +368,7 @@ def build_plan(*, message: str, catalog: list[dict], professionals: list[dict] |
     intents = [x for x in data["intents"] if x != "other"]
     price = bool(re.search(r"\b(?:quanto|precos?|valor(?:es)?|custa|custam)\b", lower))
     available = bool(re.search(r"\b(?:disponive[li]s?|vagas?|livre|livres|se tiver|se houver)\b|"
-                               r"\b(?:que|qual|quais)\s+dias?\b|\btem\b.*\bhorarios?\b", lower))
+                               r"\b(?:que|qual|quais)\s+(?:dias?|horarios?)\b|\b(?:tem|ha)\b.*\bhorarios?\b", lower))
     explicit_booking = any(not _negative(lower[:x.start()]) for x in
                            re.finditer(r"\b(?:agendar|marcar|reservar|quero fazer|quero cortar)\b", lower))
     reschedule = [x for x in re.finditer(r"\b(?:remarcar|reagendar|mudar|trocar|adiar)\b", lower) if not _negative(lower[:x.start()])]
@@ -344,7 +388,8 @@ def build_plan(*, message: str, catalog: list[dict], professionals: list[dict] |
     from app.qr_dialogue import contextual_response
     awaiting_confirmation = context.get("step") in {"confirm", "reschedule_confirm"}
     consent = contextual_response(message, awaiting_confirmation=awaiting_confirmation,
-        semantic_kind="affirm" if "confirm" in intents else None)
+        semantic_kind="affirm" if "confirm" in intents else None,
+        confirmation_action="reschedule" if context.get("step") == "reschedule_confirm" else "booking")
     if consent.kind == "affirm":
         intents.append("confirm")
     else:
@@ -480,25 +525,19 @@ def build_plan(*, message: str, catalog: list[dict], professionals: list[dict] |
             ambiguities = [x for x in ambiguities if x != "time"]
     else:
         data.update(requested_time=None, time_relation="none")
-    pro_matches = []
     data["professional_id"] = None  # Never carry a prior model/context name by habit.
     names_by_id = {UUID(str(x["id"])): normalized(x["name"]) for x in professionals}
-    for person in professionals:
-        name = normalized(person["name"])
-        first = name.split()[0]
-        for match in re.finditer(r"\b" + re.escape(first) + r"\b", lower):
-            declared = re.search(r"\b(?:me chamo|meu nome e|sou [oa])\s+$", lower[:match.start()])
-            if not declared and not _negative(lower[:match.start()]):
-                pro_matches.append((match.start(), UUID(str(person["id"]))))
+    pro_matches = _professional_mentions(lower, names_by_id, context)
     ids = _unique(x[1] for x in sorted(pro_matches))
     if len(ids) == 1:
-        # Names self-declared by a customer are not professional selections.
-        if not re.search(r"\b(?:me chamo|meu nome e|sou [oa])\s+" + re.escape(names_by_id[ids[0]].split()[0]), lower):
-            data["professional_id"] = ids[0]
+        # Personal-name occurrences were excluded before selecting staff.
+        data["professional_id"] = ids[0]
     elif len(ids) > 1:
         positions = sorted(pro_matches)
-        if _CORRECTION.search(lower[positions[0][0]:positions[-1][0]]) and not re.search(r"\bou\b", lower[positions[0][0]:positions[-1][0]]):
-            data["professional_id"] = positions[-1][1]
+        final_ids = {identity for position, identity in positions if position == positions[-1][0]}
+        if (len(final_ids) == 1 and _CORRECTION.search(lower[positions[0][0]:positions[-1][0]])
+                and not re.search(r"\bou\b", lower[positions[0][0]:positions[-1][0]])):
+            data["professional_id"] = next(iter(final_ids))
         else:
             data["professional_id"] = None;ambiguities.append("professional")
     non_people = {"barba", "cabelo", "corte", "produto", "produtos", "pix", "cartao", "dinheiro", "desconto", "voces", "certeza", "isso", "atendente", "humano", "uma", "pessoa"}

@@ -112,6 +112,19 @@ test('fenced manual transport delegates to the original reliable sender exactly 
   assert.equal(f.calls.filter(c=>c[0]==='raw').length,1);
 });
 
+test('adopted PRIMARY preserves the private deferred ACK callback for the same accepted presentation',async()=>{
+  let sentOptions,acks=0;
+  const acknowledgePresentation=async()=>{acks++;return true;};
+  const f=fixture({}, {rawSend:async(_phone,_text,options)=>{sentOptions=options;return {accepted:true,id:'out:SYNTHETIC',acknowledgePresentation};}});
+  await f.central.resume();
+  f.context().presentationAck=async()=>({acknowledged:true});
+  const presentation={version:1,id:'A'.repeat(32),action:{type:'reply_buttons'}};
+  const result=await f.adapter().send(phone,'Resumo fictício',{source:'assistant',presentation,deferPresentationAck:true});
+  assert.equal(sentOptions.deferPresentationAck,true);assert.equal(typeof sentOptions.presentationAck,'function');
+  assert.equal(result.id,'SYNTHETIC');assert.equal(result.acknowledgePresentation,acknowledgePresentation);assert.equal(acks,0);
+  assert.equal(await result.acknowledgePresentation(),true);assert.equal(acks,1);
+});
+
 test('receipts are forwarded without sending and automatic notices use the central manager',async()=>{
   const f=fixture();await f.central.resume();await f.central.receipt('SYNTHETIC','read');
   await f.central.automatic(phone,'Aviso sintético');

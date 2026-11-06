@@ -111,8 +111,18 @@ jobs:
             tests/integration/test_qr_context_availability_postgres.py tests/integration/test_qr_hold_recovery_postgres.py \
             tests/integration/test_qr_cancellation_postgres.py tests/integration/test_qr_business_time_postgres.py \
             tests/integration/test_qr_memory_postgres.py tests/integration/test_qr_intelligence_postgres.py \
+            tests/integration/test_qr_superseded_holds_postgres.py \
+            tests/integration/test_qr_presentation_ack_postgres.py \
+            tests/integration/test_qr_adopted_ingress_postgres.py \
             tests/integration/test_qr_conversation_lock_redis.py tests/integration/test_qr_intake_revision_redis.py \
             tests/integration/test_qr_intelligence_redis.py
+      - name: Fifty complete and distinct composed journeys with real PostgreSQL and Redis
+        env:
+          ORION_TEST_NETWORK_AUDIT: /tmp/intelligence-complete50-network.json
+          ORION_COMPLETE_JOURNEY_EVIDENCE: /tmp/intelligence-complete50-turns
+        run: |
+          python tests/isolated_runner.py -q -ra --junitxml=/tmp/intelligence-complete50.xml \
+            tests/integration/test_qr_complete_journeys_postgres.py
       - name: Qualification cannot silently skip mandatory infrastructure or accept an empty suite
         run: |
           python - <<'PY'
@@ -120,15 +130,28 @@ jobs:
           from pathlib import Path
           import xml.etree.ElementTree as ET
           report = {}
-          for kind in ('narratives', 'units', 'integrations'):
+          for kind in ('narratives', 'units', 'integrations', 'complete50'):
               path = Path('/tmp/intelligence-'+kind+'.xml')
               cases = list(ET.parse(path).getroot().iter('testcase'))
               assert cases, 'No executed tests: '+kind
               assert not any(case.find(tag) is not None for case in cases for tag in ('failure','error','skipped')), kind
+              if kind == 'integrations':
+                  for module, minimum in (('test_qr_superseded_holds_postgres', 19), ('test_qr_presentation_ack_postgres', 13), ('test_qr_adopted_ingress_postgres', 6)):
+                      assert sum(module in case.get('classname', '') for case in cases) >= minimum, module
               audit = json.loads(Path('/tmp/intelligence-'+kind+'-network.json').read_text())
               assert audit['external_network'] == 'denied' and audit['blocked'] == [] and audit['exit_code'] == 0, kind
               report[kind] = {'executed': len(cases), 'skipped': 0, 'external_network': 'denied'}
           assert report['narratives']['executed'] >= 80
+          assert report['complete50']['executed'] == 50
+          journeys = list(Path('/tmp/intelligence-complete50-turns').glob('FJ*.json'))
+          expected = {'FJ'+str(index).zfill(2) for index in range(1, 51)}
+          assert {path.stem for path in journeys} == expected
+          for path in journeys:
+              item = json.loads(path.read_text())
+              assert item['completed_assertions'] is True and item['customer_turns'] >= 6, path.stem
+              assert item['real_postgres'] is True and item['real_redis'] is True, path.stem
+              assert item['fixture_cleanup']['active_reservations_remaining'] == 0, path.stem
+              assert item['provider_http'] is False and item['whatsapp_transport'] is False, path.stem
           Path('/tmp/intelligence-summary.json').write_text(json.dumps(report, indent=2))
           PY
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

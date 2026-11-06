@@ -379,14 +379,21 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
       }:null;
       attempted=true;
       const result=await c.session.send(phone,text,{isCurrent:operationCurrent,transactionalTyping:source==='automation'||source==='appointment',source,
-        pacing:!needsPermit||!!recheck,...(presentation?{presentation}:{}),...(recheck?{assertAuthorized:recheck}:{})});requireCurrent(c);
+        pacing:!needsPermit||!!recheck,...(presentation?{presentation,deferPresentationAck:true}:{}),...(recheck?{assertAuthorized:recheck}:{})});requireCurrent(c);
       if(typeof result?.id!=='string'||!/^[a-zA-Z0-9._:-]{1,160}$/.test(result.id))throw Error('channel_send_unknown');
       const record={fingerprint:ledgerFingerprint,state:'accepted',accepted:true,delivery:'unknown',provider_id:result.id};
       c.ledger.save(operation_id,record);c.sent.set(result.id,{operation:operation_id,fingerprint:ledgerFingerprint,phone});
-      if(c.inboxControl===true||control_revision!==undefined||source==='appointment'){
+      let ackReady=!needsPermit;
+      if(needsPermit){
         // A lost finish response leaves a conservative slot. It is released
         // only after the API verifies this already persisted receipt.
-        try{await broker.finishSend(c.id,c.key,{owner,fence:c.fence},{...slot,accepted:true,provider_id:result.id});}catch{}
+        try{const finished=await broker.finishSend(c.id,c.key,{owner,fence:c.fence},{...slot,accepted:true,provider_id:result.id});
+          ackReady=finished?.released===true&&finished.operation_id===operation_id;}catch{}
+      }
+      if(presentation&&ackReady&&typeof result.acknowledgePresentation==='function'){
+        // ACK is a separate bounded, idempotent receipt, never a relay retry.
+        // Do not reuse the completed send slot's pre-relay authorization.
+        try{await validate(c,key);if(operationCurrent()===true)await result.acknowledgePresentation();}catch{}
       }
       if(c.sent.size>1000)c.sent.delete(c.sent.keys().next().value);
       return publicSend(operation_id,record);
