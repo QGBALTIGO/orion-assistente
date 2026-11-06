@@ -108,7 +108,7 @@
       return copy(value);
     }
     function actionDTO(action,menu=false){
-      if(!object(action)||!uuid(action.id)||!Object.hasOwn(actionLabels,action.type)||!Number.isInteger(action.delay_seconds)||action.delay_seconds<1||action.delay_seconds>(menu?5:15))throw Error('invalid_action_response');
+      if(!object(action)||!uuid(action.id)||!Object.hasOwn(actionLabels,action.type)||!Number.isInteger(action.delay_seconds)||action.delay_seconds<1||action.delay_seconds>(menu?5:300))throw Error('invalid_action_response');
       if(action.type==='text'&&typeof action.text!=='string'||['template','sticker','shortvideo'].includes(action.type)&&!uuid(action.template_id)||['nested_reply','nested_list'].includes(action.type)&&!uuid(action.rule_id))throw Error('invalid_action_response');
       if(action.type==='url'&&(typeof action.url!=='string'||typeof action.custom_template!=='string'||!['GET','POST'].includes(action.method)||typeof action.as_file!=='boolean'))throw Error('invalid_action_response');
       if(action.type==='url_button'&&(['text','footer','button_text','url'].some(key=>typeof action[key]!=='string')||!fixedPublicLink(action.url)))throw Error('invalid_action_response');
@@ -493,7 +493,7 @@
     function actionEditor(action,path,{menu=false}={}){
       const typeOptions=Object.entries(actionLabels).map(([key,label])=>[key,label+(actionAllowed(key)?'':' · Indisponível'),!actionAllowed(key)]);
       const types=select('Tipo de resposta',path+'.type',action.type,typeOptions,'data-sc-action-type="'+path+'"');
-      const delay=input('Atraso antes de enviar (segundos)',path+'.delay_seconds',action.delay_seconds,'number','required min="1" max="'+(menu?5:15)+'" step="1"',menu?'De 1 a 5 segundos para esta opção.':'De 1 a 15 segundos. A sequência inteira pode somar até 30 segundos.');
+      const delay=input('Atraso antes de enviar (segundos)',path+'.delay_seconds',action.delay_seconds,'number','required min="1" max="'+(menu?5:300)+'" step="1"',menu?'De 1 a 5 segundos para esta opção.':'Até 300 segundos de atraso total por sequência.');
       let body='';
       if(action.type==='text')body=textarea('Resposta',path+'.text',action.text,32000)+button('Tags disponíveis','tags','os-ghost os-small','tag');
       else if(action.type==='url_button')body=textarea('Mensagem',path+'.text',action.text,1024)+input('Texto do botão',path+'.button_text',action.button_text,'text','required maxlength="20"')+input('Link do botão',path+'.url',action.url,'url','required maxlength="2048" placeholder="https://…"')+input('Rodapé (opcional)',path+'.footer',action.footer,'text','maxlength="60"')+button('Tags disponíveis','tags','os-ghost os-small','tag')+'<p class="os-help">O botão abre um site externo. Use um link HTTPS fixo, sem tags. Nenhuma URL é consultada ao editar ou simular esta mensagem. A aparência depende da versão do WhatsApp.</p>';
@@ -513,7 +513,7 @@
     }
     function sequenceEditor(response){
       const total=response.actions.reduce((sum,action)=>sum+Number(action.delay_seconds||0),0);
-      return '<p class="os-help" data-sc-sequence-summary>'+response.actions.length+' resposta(s) · '+total+' de 30 segundos de atraso configurado</p><div class="os-chatbot-step-list">'+response.actions.map((action,index)=>'<section class="os-chatbot-step" data-sc-step="'+action.id+'"><header class="os-chatbot-step-header"><strong>Resposta '+(index+1)+'</strong><div class="os-actions">'+button('Subir','step-up','os-outline','up','data-sc-index="'+index+'"'+(index===0?' disabled':''))+button('Descer','step-down','os-outline','chevron','data-sc-index="'+index+'"'+(index===response.actions.length-1?' disabled':''))+button('Remover','step-remove','os-ghost','trash','data-sc-index="'+index+'"'+(response.actions.length===1?' disabled':''))+'</div></header>'+actionEditor(action,'response.actions.'+index)+'</section>').join('')+'</div><div class="os-actions">'+button('Adicionar Resposta','step-add','os-outline','plus',response.actions.length>=30||total>=30?'disabled':'')+'</div>';
+      return '<p class="os-help" data-sc-sequence-summary>'+response.actions.length+' resposta(s) · '+total+' de 300 segundos de atraso configurado</p><div class="os-chatbot-step-list">'+response.actions.map((action,index)=>'<section class="os-chatbot-step" data-sc-step="'+action.id+'"><header class="os-chatbot-step-header"><strong>Resposta '+(index+1)+'</strong><div class="os-actions">'+button('Subir','step-up','os-outline','up','data-sc-index="'+index+'"'+(index===0?' disabled':''))+button('Descer','step-down','os-outline','chevron','data-sc-index="'+index+'"'+(index===response.actions.length-1?' disabled':''))+button('Remover','step-remove','os-ghost','trash','data-sc-index="'+index+'"'+(response.actions.length===1?' disabled':''))+'</div></header>'+actionEditor(action,'response.actions.'+index)+'</section>').join('')+'</div><div class="os-actions">'+button('Adicionar Resposta','step-add','os-outline','plus',response.actions.length>=30||total>=30?'disabled':'')+'</div>';
     }
     function listEditor(response){
       const rows=response.sections.reduce((sum,section)=>sum+section.rows.length,0);
@@ -550,7 +550,7 @@
     }
     function validateAction(action,menu=false){
       if(!uuid(action.id)||!Object.hasOwn(actionLabels,action.type))throw Error('Confira o tipo da resposta.');
-      if(!Number.isInteger(action.delay_seconds)||action.delay_seconds<1||action.delay_seconds>(menu?5:15))throw Error('O atraso deve ser de 1 a '+(menu?5:15)+' segundos.');
+      if(!Number.isInteger(action.delay_seconds)||action.delay_seconds<1||action.delay_seconds>(menu?5:300))throw Error('O atraso deve ser de 1 a '+(menu?5:300)+' segundos.');
       if(state.editor.definition.enabled&&!actionAllowed(action.type))throw Error('O tipo '+actionLabels[action.type]+' não está disponível para ativação.');
       if(action.type==='text')validateContactText(action.text,'o texto da resposta');
       if(action.type==='url_button'){
@@ -578,7 +578,7 @@
       if(response.kind==='sequence'){
         if(!response.actions.length||response.actions.length>30)throw Error('A sequência deve ter de 1 a 30 respostas.');
         response.actions.forEach(action=>validateAction(action));
-        if(response.actions.reduce((sum,action)=>sum+action.delay_seconds,0)>30)throw Error('A soma dos atrasos da sequência não pode ultrapassar 30 segundos.');
+        if(response.actions.reduce((sum,action)=>sum+action.delay_seconds,0)>300)throw Error('A soma dos atrasos da sequência não pode ultrapassar 300 segundos.');
       }else{
         const rows=response.sections.flatMap(section=>section.rows);
         if(!response.title.trim()||!response.description.trim()||!response.button_text.trim())throw Error('Preencha o título, a descrição e o texto do botão da lista.');
@@ -593,13 +593,13 @@
     function filterValues(root,prefix,target){for(const node of root.querySelectorAll('[data-sc-field]')){const name=node.dataset.scField;if(name.startsWith(prefix+'.')&&Object.hasOwn(target,name.slice(prefix.length+1)))target[name.slice(prefix.length+1)]=node.value;}}
     function validFilterDates(filters,entry){if(filters.created_from&&filters.created_to&&filters.created_from>filters.created_to){if(entry)dialogError(entry,'A data inicial deve ser anterior ou igual à data final.');else feedback('A data inicial deve ser anterior ou igual à data final.',true);return false;}return true;}
     function editorChange(){if(state.editor){editorDirty();state.editor.key=crypto.randomUUID();}}
-    function updateDelaySummary(){const response=state.editor?.definition.response;if(response?.kind!=='sequence')return;const total=response.actions.reduce((sum,action)=>sum+Number(action.delay_seconds||0),0),element=state.editor.entry.element;const summary=element.querySelector('[data-sc-sequence-summary]');if(summary)summary.textContent=response.actions.length+' resposta(s) · '+total+' de 30 segundos de atraso configurado';const add=element.querySelector('[data-sc-action="step-add"]');if(add)add.disabled=response.actions.length>=30||total>=30||!canWrite();}
+    function updateDelaySummary(){const response=state.editor?.definition.response;if(response?.kind!=='sequence')return;const total=response.actions.reduce((sum,action)=>sum+Number(action.delay_seconds||0),0),element=state.editor.entry.element;const summary=element.querySelector('[data-sc-sequence-summary]');if(summary)summary.textContent=response.actions.length+' resposta(s) · '+total+' de 300 segundos de atraso configurado';const add=element.querySelector('[data-sc-action="step-add"]');if(add)add.disabled=response.actions.length>=30||total>=300||!canWrite();}
     function editorAction(action,node){
       const editor=state.editor;if(!editor||!canWrite()||editor.stale)return;const response=editor.definition.response,index=Number(node.dataset.scIndex),sectionIndex=Number(node.dataset.scSection);
       if(action==='response-sequence'||action==='response-list'){
         const kind=action==='response-list'?'list':'sequence';if(response.kind===kind)return;editor.variants[response.kind]=copy(response);editor.definition.response=editor.variants[kind]?copy(editor.variants[kind]):defaultResponse(kind);
       }else if(action==='step-add'&&response.kind==='sequence'){
-        if(response.actions.length>=30||response.actions.reduce((sum,row)=>sum+Number(row.delay_seconds||0),0)>=30)return;response.actions.push(defaultAction());
+        if(response.actions.length>=30||response.actions.reduce((sum,row)=>sum+Number(row.delay_seconds||0),0)>=300)return;response.actions.push(defaultAction());
       }else if(['step-up','step-down','step-remove'].includes(action)&&response.kind==='sequence'){
         if(!Number.isInteger(index)||!response.actions[index])return;if(action==='step-remove'){if(response.actions.length<2)return;response.actions.splice(index,1);}else{const next=index+(action==='step-up'?-1:1);if(!response.actions[next])return;[response.actions[index],response.actions[next]]=[response.actions[next],response.actions[index]];}
       }else if(response.kind==='list'){
