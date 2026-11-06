@@ -216,6 +216,32 @@ def _action(row, name, references):
             raise _invalid("A resposta personalizada da URL não é texto.")
         definition = {"type": "url", "url": url, "method": method,
                       "custom_template": custom, "as_file": False}
+    elif kind in ("url_button", "button_url", "link_button", "urlbutton"):
+        # Preserve each supplied field; the strict schema handles HTTPS and
+        # the allowed contact tags without making an external request.
+        definition = {
+            "type": "url_button",
+            "text": row.get("text", row.get("message", row.get("body"))),
+            "footer": row.get("footer") or "",
+            "button_text": row.get("button_text", row.get("buttonText", row.get("label"))),
+            "url": row.get("url", row.get("link")),
+        }
+    elif kind in ("carousel", "cards"):
+        cards = row.get("cards")
+        if not isinstance(cards, list) or len(cards) != 3:
+            raise _invalid("Um carrossel precisa ter exatamente três cards para ser preservado.")
+        definition = {"type": "carousel", "body": row.get("body", row.get("text")),
+                      "cards": []}
+        for index, card in enumerate(cards):
+            if not isinstance(card, dict):
+                raise _invalid("Um carrossel contém card em formato incompatível.")
+            definition["cards"].append({
+                "id": _identity(name, f"card:{index}"),
+                "title": card.get("title"),
+                "body": card.get("body", ""),
+                "image_url": card.get("image_url", card.get("imageUrl")),
+                "button_text": card.get("button_text", card.get("buttonText")),
+            })
     elif kind in ("nested_reply", "nested_list", "send_reply"):
         raw = row.get("rule_id", row.get("reply_id", row.get("replyId")))
         if raw is None or str(raw) not in references:
@@ -363,6 +389,8 @@ def read_botbot(raw: bytes, filename: str):
         "Uma resposta não contém mensagens reconhecidas.",
         "A sequência de mensagens está vazia ou excede o limite do Orion.",
         "A sequência supera 300 segundos de atraso e precisa ser ajustada.",
+        "Um carrossel precisa ter exatamente três cards para ser preservado.",
+        "Um carrossel contém card em formato incompatível.",
     })
     for index, row in enumerate(records):
         number = index + 1
