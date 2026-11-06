@@ -8,6 +8,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import io
 import json
+import re
 from pathlib import PurePosixPath
 import stat
 from uuid import UUID, uuid5
@@ -115,13 +116,42 @@ def _identity(source_id, suffix):
     return str(uuid5(NAMESPACE, source_id + ":" + suffix))
 
 
-def _delay(value):
+def _delay(value, *, unit="seconds"):
+    """Convert a BotBot time into whole seconds without rounding or truncation.
+
+    Explicit millisecond fields are authoritative. The legacy 'delay' field
+    uses seconds for small values and milliseconds for values >= 1000, as
+    supported by the source export. Other fields never infer units.
+    """
     if value is None:
         return 1
-    if type(value) not in (int, float) or not 0 <= value <= 15 or value != int(value):
-        raise _invalid("A resposta tem um atraso incompatível com o limite do Orion.")
-    # Ações no Orion exigem no mínimo um segundo.
+    if isinstance(value, str):
+        value = value.strip()
+        if len(value) > 16 or not re.fullmatch(r"[0-9]+(?:\\.0+)?", value):
+            raise _invalid("O atraso da resposta precisa ser um número inteiro.")
+        value = float(value)
+    if type(value) not in (int, float) or not 0 <= value or value != int(value):
+        raise _invalid("O atraso da resposta precisa ser um número inteiro.")
+    if unit == "milliseconds" or unit == "auto" and value >= 1000:
+        if int(value) % 1000:
+            raise _invalid("O atraso em milissegundos não corresponde a segundos inteiros.")
+        value //= 1000
+    if value > 300:
+        raise _invalid("O atraso de uma mensagem ultrapassa 300 segundos (5 minutos).")
+    # Orion uses a one-second minimum; preserve zero-delay as the legacy
+    # one-second floor rather than introducing unsupported fractional sends.
     return max(1, int(value))
+
+
+def _action_delay(row):
+    for key, unit in (
+        ("delay_seconds", "seconds"), ("delaySeconds", "seconds"),
+        ("delay_ms", "milliseconds"), ("delayMs", "milliseconds"),
+        ("delayMilliseconds", "milliseconds"), ("delay", "auto"),
+    ):
+        if key in row and row[key] is not None:
+            return _delay(row[key], unit=unit)
+    return 1
 
 
 def _message_text(value, depth=0):
@@ -195,7 +225,7 @@ def _action(row, name, references):
     else:
         raise _invalid("O arquivo contém uma ação que precisa de adaptação antes de importar.")
     definition["id"] = _identity(name, "action")
-    definition["delay_seconds"] = _delay(row.get("delay_seconds", row.get("delay", 1)))
+    definition["delay_seconds"] = _action_delay(row)
     return definition
 
 
@@ -239,8 +269,8 @@ def _response(raw, source_id, references):
     result = {"kind": "sequence", "actions": [
         _action(value, f"{source_id}:{index}", references)
         for index, value in enumerate(actions)]}
-    if sum(action["delay_seconds"] for action in result["actions"]) > 30:
-        raise _invalid("Uma sequência supera 30 segundos de atraso e precisa ser ajustada.")
+    if sum(action["delay_seconds"] for action in result["actions"]) > 300:
+        raise _invalid("A sequência supera 300 segundos de atraso e precisa ser ajustada.")
     return result
 
 
