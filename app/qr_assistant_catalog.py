@@ -7,6 +7,7 @@ from app.qr_presentation import escape_label, money, duration, message_units, Pr
 
 PAGE_SIZE = 8
 MAX_LIST_ROWS = 10
+_RESET_COMMANDS = frozenset({"menu", "reiniciar", "comecar", "recomecar"})
 
 
 def clip(value, maximum):
@@ -47,7 +48,10 @@ def service_option(row):
 
 
 def _request(body, browser):
-    text = norm(body).strip(" !?.")
+    text = norm(body)
+    if text in _RESET_COMMANDS:
+        return {"page": 0, "query": "", "category": ""}
+    text = text.strip(" !?.")
     text = re.sub(r"(?:,\s*)?\bpor favor$", "", text).strip(" ,!?.")
     text = re.sub(r"^(?:(?:pode|poderia|consegue)\s+(?:me\s+)?(?:mostrar|listar|mandar|enviar|ver)|"
                   r"me\s+(?:mostra|mostre|manda|mande)|quero\s+(?:ver|conhecer))\s+(?:os\s+)?", "", text)
@@ -74,8 +78,9 @@ def _request(body, browser):
 
 
 async def handle_request(body, state, business, catalog, redis, key):
+    reset = norm(body) in _RESET_COMMANDS
     request = _request(body, state.get("catalog_browser"))
-    if request is None:
+    if request is None or (not catalog and reset):
         return None
     profile = business.get("profile") or {}
     if business.get("profile_id") and "appointments" not in profile.get("capabilities", []):
@@ -119,7 +124,7 @@ async def handle_request(body, state, business, catalog, redis, key):
         answer += "\nVocê também pode voltar à página anterior."
     if business.get("catalog_has_more"):
         answer += "\nCatálogo extenso: a equipe pode ajudar com os demais serviços."
-    return {"answer": answer, "step": "catalog", "_catalog_page": {
+    return {"answer": answer, "step": "menu" if reset else "catalog", "_catalog_page": {
         "rows": shown, "page": page, "pages": pages, "query": query, "category": category, "total": len(rows),
         "intro": marker+"*Escolha seu serviço*\nVeja os valores e a duração na lista. Se preferir, me diga o nome do serviço.",
     }}

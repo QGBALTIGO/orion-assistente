@@ -57,7 +57,7 @@ PHONE_RE = re.compile(r"^55[1-9][0-9]{9,10}$")
 TIME_RE = re.compile(r"(?<!\d)([01]?\d|2[0-3])(?:[:h]([0-5]\d))?(?!\d)")
 YES = {"sim", "sm", "s", "confirmo", "pode confirmar", "confirmar", "ok pode confirmar"}
 NO = {"não", "nao", "n", "cancelar", "desistir"}
-RESET = {"menu", "reiniciar", "começar", "recomecar", "recomeçar"}
+RESET = {"menu", "reiniciar", "começar", "comecar", "recomecar", "recomeçar"}
 REVIEW_STEPS = frozenset({"confirm", "reschedule_confirm", "cancel_confirm"})
 AVAILABILITY_ERRORS = (HTTPException, TimeoutError, ConnectionError, SQLAlchemyError)
 _reply_preferences: ContextVar[dict | None] = ContextVar("orion_qr_reply_preferences", default=None)
@@ -3311,7 +3311,7 @@ async def run_locked(tenant: UUID, phone: str, body: str, namespace: str,
                     and len(ids) == 1 and body == "[Escolha recebida]")
                 if selection_input_valid:
                     selection_proves_delivery = await qr_assistant_interactions.selected_action(
-                        redis, tenant, phone, namespace, selection) is not None
+                        redis, tenant, phone, namespace, selection, message_id=message_id) is not None
                 # A quoted, accepted, current choice proves delivery of that
                 # exact presentation even if the relay's ACK raced the click.
                 # This never clears a previously persisted review requirement.
@@ -3349,7 +3349,8 @@ async def run_locked(tenant: UUID, phone: str, body: str, namespace: str,
                     if result is None and selection is not None:
                         resolved = None
                         if selection_input_valid:
-                            resolved = await qr_assistant_interactions.resolve(redis, tenant, phone, namespace, selection)
+                            resolved = await qr_assistant_interactions.resolve(redis, tenant, phone, namespace, selection,
+                                message_id=message_id)
                         if resolved is None:
                             await _require_pending_review(redis, state_key)
                             result = {"answer": qr_assistant_interactions.STALE, "step": "interaction_expired"}

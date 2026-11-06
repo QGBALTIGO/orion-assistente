@@ -105,6 +105,49 @@ async def control_revision(tenant, phone, identity=None):
     return await inbox_control.assistant_revision(tenant, identity.channel_id, phone)
 
 
+async def _control_revision_matches(tenant, phone, issued, current, *, identity=None,
+                                    message_id=None, receipt_only=False):
+    """A current journaled click can explain exactly one customer generation.
+
+    The incoming journal must still invalidate old outgoings. This proof only
+    keeps that exact click bound to its previously displayed presentation; it
+    does not rebase the presentation or grant a business-operation bypass.
+    """
+    if issued is None and current is None:
+        return True  # Existing unmanaged/preview-free legacy contract.
+    if type(issued) is not int or type(current) is not int or issued < 1 or current < 1:
+        return False
+    if issued == current:
+        return True
+    identity = identity if identity is not None else qr_channel_scope.current()
+    if current != issued+1 or identity is None or identity.tenant_id != tenant:
+        return False
+    if not receipt_only and (not isinstance(message_id, str) or
+            re.fullmatch(r"[A-Za-z0-9._:-]{1,160}", message_id) is None):
+        return False
+    from app.database import get_session_factory, tenant_transaction
+    async with get_session_factory()() as db:
+        async with tenant_transaction(db, tenant):
+            # Existing tenant/channel transaction guards recheck owner, lease,
+            # fence and the bound assistant revision. Neither an operator event
+            # nor an unrelated inbound may explain the generation difference.
+            proven = (await db.execute(text("""SELECT EXISTS (
+                SELECT 1 FROM inbox_controls c
+                JOIN inbox_control_events e ON e.tenant_id=c.tenant_id AND e.control_id=c.id
+                  AND e.revision=c.revision AND e.source='customer'
+                  AND e.previous_mode='ai' AND e.mode='ai'
+                JOIN inbox_messages m ON m.tenant_id=c.tenant_id AND m.control_id=c.id
+                  AND m.control_revision=c.revision AND m.direction='in' AND m.source='customer'
+                  AND m.kind='text' AND m.body='[Escolha recebida]'
+                WHERE c.tenant_id=:tenant AND c.channel_id=:channel AND c.contact_e164=:phone
+                  AND c.mode='ai' AND c.pending_operation IS NULL AND c.revision=:revision
+                  AND (CAST(:receipt_only AS boolean) OR m.external_id=CAST(:message_id AS text))
+            )"""), {"tenant": tenant, "channel": identity.channel_id,
+                "phone": "+"+phone.removeprefix("+"), "revision": current,
+                "receipt_only": receipt_only is True, "message_id": message_id})).scalar_one()
+    return proven is True
+
+
 ACK_SCRIPT = """
 local raw=redis.call('GET',KEYS[1])
 if not raw then return 0 end
@@ -122,7 +165,9 @@ return 1
 async def acknowledge(redis, tenant, phone, namespace, payload, *, identity=None):
     key = f"orion:qr:ai:{tenant}:{namespace}:presentation"
     current = _read(await redis.get(key))
-    if current is None or current.get("control_revision") != await control_revision(tenant, phone, identity):
+    if current is None or not await _control_revision_matches(tenant, phone,
+            current.get("control_revision"), await control_revision(tenant, phone, identity),
+            identity=identity, receipt_only=True):
         raise HTTPException(409, "O controle do atendimento mudou")
     result = await redis.eval(ACK_SCRIPT, 1, key, payload.presentation_id, payload.provider_id,
                               authority(tenant, phone, namespace, identity), time.time())
@@ -131,12 +176,13 @@ async def acknowledge(redis, tenant, phone, namespace, payload, *, identity=None
     return {"acknowledged": True}
 
 
-async def selected_action(redis, tenant, phone, namespace, selection):
+async def selected_action(redis, tenant, phone, namespace, selection, *, message_id=None):
     key = f"orion:qr:ai:{tenant}:{namespace}"
     record = _read(await redis.get(key+":presentation"))
     try:
         valid = (record is not None and record.get("authority") == authority(tenant, phone, namespace)
-            and record.get("control_revision") == await control_revision(tenant, phone)
+            and await _control_revision_matches(tenant, phone, record.get("control_revision"),
+                await control_revision(tenant, phone), message_id=message_id)
             and isinstance(record.get("expires_at"), (int, float)) and math.isfinite(record["expires_at"])
             and record["expires_at"] > time.time()
             and isinstance(record.get("provider_id"), str)
@@ -150,8 +196,9 @@ async def selected_action(redis, tenant, phone, namespace, selection):
     return action
 
 
-async def resolve(redis, tenant, phone, namespace, selection):
-    action = await selected_action(redis, tenant, phone, namespace, selection)
+async def resolve(redis, tenant, phone, namespace, selection, *, message_id=None):
+    action = await selected_action(redis, tenant, phone, namespace, selection,
+        **({"message_id": message_id} if message_id is not None else {}))
     if action is None:
         return None
     key = f"orion:qr:ai:{tenant}:{namespace}"
