@@ -147,9 +147,20 @@ def _message_text(value, depth=0):
 
 
 def _content_present(value):
-    return value is not None and not (
-        isinstance(value, (str, list, dict)) and not value
-    )
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, (list, dict)) and not value:
+        return False
+    if isinstance(value, dict):
+        kind = str(value.get("type", value.get("kind", ""))).lower()
+        if kind in ("text", "texto", "message", "send_text") and _message_text(value) is None:
+            return False
+        if kind in ("sequence", "messages") and not value.get(
+                "actions", value.get("messages")):
+            return False
+    return True
 
 
 def _action(row, name, references):
