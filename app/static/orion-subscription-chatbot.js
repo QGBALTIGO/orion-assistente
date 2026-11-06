@@ -160,7 +160,7 @@
     function actionPreview(action){
       const label=actionLabels[action.type]||'Tipo indisponível';
       if(action.type==='text')return formatText(action.text);
-      if(action.type==='url_button')return formatText(action.text)+(action.footer?'\n'+esc(action.footer):'')+'\n'+esc(action.button_text)+' · '+esc(action.url);
+      if(action.type==='url_button')return formatText(action.text)+(action.footer?'\n\n'+esc(action.footer):'')+'\n'+esc(action.button_text)+' · '+esc(action.url);
       if(action.type==='url')return '<strong>'+label+'</strong>\n'+esc(action.method+' '+action.url)+(action.custom_template?'\n'+formatText(action.custom_template):'')+(action.as_file?'\nEnviar como arquivo .txt':'');
       if(['template','sticker','shortvideo'].includes(action.type)){const template=state.catalog?.templates.find(item=>item.id===action.template_id);return '<strong>'+label+'</strong>\n'+esc(template?.name||'Template indisponível');}
       if(['nested_reply','nested_list'].includes(action.type)){const rule=state.catalog?.rules.find(item=>item.id===action.rule_id);return '<strong>'+label+'</strong>\n'+esc(rule?.keyword||'Resposta indisponível')+(rule?.enabled===false?' · Inativa':'');}
@@ -176,7 +176,7 @@
       return response.actions.map((action,index)=>{
         let value='';
         if(action.type==='text')value=action.text;
-        else if(action.type==='url_button')value=[action.text,action.footer,action.button_text+' · '+action.url].filter(Boolean).join('\n');
+        else if(action.type==='url_button')value=[[action.text,action.footer].filter(Boolean).join('\n\n'),action.button_text+' · '+action.url].filter(Boolean).join('\n');
         else if(action.type==='url')value=action.method+' '+action.url+(action.custom_template?'\n'+action.custom_template:'')+(action.as_file?'\nEnviar como arquivo .txt':'');
         else if(['template','sticker','shortvideo'].includes(action.type))value=state.catalog?.templates.find(item=>item.id===action.template_id)?.name||'Template indisponível';
         else if(['nested_reply','nested_list'].includes(action.type))value=state.catalog?.rules.find(item=>item.id===action.rule_id)?.keyword||'Resposta indisponível';
