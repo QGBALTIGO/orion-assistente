@@ -286,6 +286,11 @@ def read_archive(raw: bytes, filename: str) -> dict:
             or not isinstance(filename, str) or not 0 < len(filename) <= 150
             or any(ord(c) < 32 for c in filename) or any(c in filename for c in "/\\:")):
         raise _invalid("Escolha um arquivo JSON ou ZIP de até 10 MB exportado pelo Orion.")
+    if filename.lower().startswith("botbot_replies_") and filename.lower().endswith(".zip"):
+        # Separate explicit compatibility mode. Standard Orion archives
+        # retain their strict manifest and media integrity validation.
+        from app.subscription_chatbot_botbot import read_botbot
+        return _closed_graph(_base(read_botbot(raw, filename)))
     if filename.lower().endswith(".json"):
         source = _json(raw)
         result = _base(source)
