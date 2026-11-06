@@ -326,7 +326,11 @@ def _decode_raw(encoded):
 async def _normalize_document(raw, filename):
     try:
         document = await asyncio.to_thread(codec.read_archive, raw, filename)
-    except (ValueError, TypeError):
+    except (ValueError, TypeError) as error:
+        if filename.lower().startswith("botbot_replies_"):
+            # Only controlled converter error messages, never file contents,
+            # provider payloads, URLs, credentials or response text.
+            raise store.fail("CHATBOT_IMPORT_INVALID", 422, str(error)[:240]) from None
         raise _invalid() from None
     normalized, expanded = [], 0
     for item in document["assets"]:
