@@ -2,6 +2,7 @@
 from pathlib import Path
 from playwright.async_api import async_playwright
 import asyncio
+import json
 import sys
 
 ROOT=Path(__file__).resolve().parents[2]
@@ -37,6 +38,7 @@ async def inspect(page,width,mode):
     await page.add_style_tag(path=str(ROOT/"app/static/orion-plans.css"))
     await page.add_script_tag(path=str(ROOT/"app/static/orion-plans.js"))
     await page.evaluate("""fixture=>{
+      const state=window.__pixSmoke={calls:[],current:{status:'none'},available:false};
       window.OrionFields={phoneDisplay:value=>value,
         phoneValue:()=>'+5567999991111'};
       window.OrionPlans.mount(document.querySelector('#osPageBody'),{
@@ -50,7 +52,22 @@ async def inspect(page,width,mode):
       },{
         canManage:true,isAdmin:false,user:{name:'Pessoa Sintética'},
         tenant:{name:'Empresa Sintética',timezone:'America/Campo_Grande'},
-        request:async()=>{throw Error('Blocked in synthetic browser test');}
+        request:async(path,method='GET',data)=>{
+          state.calls.push({path,method,data});
+          if(method==='GET'&&path==='/plan-pix-current')return structuredClone(state.current);
+          if(method==='GET'&&path==='/plan-pix-config')return {
+            available:state.available,methods:state.available?['pix']:[],mode:'manual_30_days'};
+          if(method==='POST'&&path==='/plan-pix-charge'){
+            if(!state.available||data.plan_code!=='profissional'||data.expected_cents!==8990
+                ||data.consent_one_time!==true)throw Error('Unexpected synthetic purchase');
+            state.current=Object.freeze({status:'pending_confirmation',
+              intent_id:'11111111-1111-4111-8111-111111111111',plan_code:'profissional',
+              monthly_cents:8990,pix_code:'synthetic-pix-profissional-8990',pix_qr_data_uri:null});
+            return structuredClone(state.current);
+          }
+          if(method==='GET'&&path.startsWith('/plan-pix-status?'))return {status:'pending'};
+          throw Error('Unexpected synthetic API route');
+        }
       });
     }""",{'effective_plan':synthetic_plan_state('synthetic-plan-smoke',None),
             'feature_catalog':feature_catalog()})
@@ -126,53 +143,99 @@ async def inspect(page,width,mode):
     assert await page.locator("[name=privacy_ack]").count()==1
     await page.locator(".op-dialog .op-dialog-close").click()
     assert await page.locator(".op-dialog").count()==0,(width,mode,"dialog close")
+    # A real readiness failure must keep the financial form hidden and reject
+    # even a programmatic submit. No external payment provider exists here.
     await page.locator('[data-op-checkout="profissional"]').click()
-    await page.locator(".op-checkout-dialog").wait_for(state="visible")
-    checkout=await page.locator(".op-checkout-dialog").bounding_box()
-    assert checkout and checkout["x"]>=0 and checkout["x"]+checkout["width"]<=width+1,(width,mode,"checkout dialog",checkout)
-    assert await page.locator(".op-payment-summary").count()==1,(width,mode)
-    await page.locator(".op-payment-body").wait_for(state="visible")
-    assert await page.locator(".op-payment-submit").is_disabled(),(width,mode,"fail closed")
+    await page.locator('[data-pix-status]').filter(has_text="Pix temporariamente indisponível").wait_for()
+    assert await page.locator('[data-pix-form]').is_hidden(), (width,mode,"unavailable form")
+    await page.locator('[data-pix-form]').evaluate("form=>form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}))")
+    assert await page.evaluate("()=>__pixSmoke.calls.filter(c=>c.method==='POST').length")==0
+    await page.locator('[data-pix-close]').click()
+    assert await page.locator('.op-checkout-dialog').count()==0
+    await page.evaluate("()=>{__pixSmoke.available=true;}")
+    await page.locator('[data-op-checkout="profissional"]').click()
+    await page.locator('[data-pix-form]').wait_for(state="visible")
+    assert await page.locator('.op-payment-summary').count()==1,(width,mode)
+    assert '89,90' in await page.locator('.op-payment-summary').inner_text(),(width,mode)
     assert await page.locator('[name=doc_type]').count()==0,(width,mode)
     assert await page.locator('[name=doc_number]').count()==1,(width,mode)
+    assert await page.locator('[data-op-payment-method],.op-payment-card-fields,.op-payment-card-row').count()==0
+    for name in ('pan','card_number','cvv','cvc','expiry','zip','state','city','street','number','complement'):
+        assert await page.locator('.op-checkout-dialog [name='+name+']').count()==0,(width,mode,name)
+    assert await page.locator('[autocomplete^="cc-"]').count()==0
+    submit=page.locator('[data-pix-submit]')
+    await submit.click()
+    assert await page.evaluate("()=>__pixSmoke.calls.filter(c=>c.method==='POST').length")==0
     await page.locator('[name=doc_number]').fill('52998224725')
     assert await page.locator('[name=doc_number]').input_value()=='529.982.247-25',(width,mode)
     await page.locator('[name=doc_number]').fill('11444777000161')
     assert await page.locator('[name=doc_number]').input_value()=='11.444.777/0001-61',(width,mode)
-    await page.locator('[data-op-payment-method=card]').click()
-    assert await page.locator('.op-payment-card-fields').is_visible(),(width,mode)
-    assert await page.locator('.op-payment-submit').is_disabled(),(width,mode)
-    for name in ('zip','state','city','street','number','complement'):
-        assert await page.locator('.op-checkout-dialog [name='+name+']').count()==0,(width,mode,name)
+    await page.locator('[name=doc_number]').fill('52998224725')
+    await page.locator('[data-pix-form] [name=email]').fill('synthetic@example.test')
+    await page.locator('[data-pix-form] [name=phone]').fill('(67) 99999-1111')
     layout=await page.evaluate("""()=>{
         const dlg=document.querySelector('.op-checkout-dialog');
-        const fields=[...dlg.querySelectorAll('.op-payment-field input')]
-            .filter(el=>!el.disabled);
-        const pair=dlg.querySelector('.op-payment-card-row');
-        const [expiry,cvv]=[...pair.querySelectorAll('input')].map(el=>el.getBoundingClientRect());
+        const fields=[...dlg.querySelectorAll('[data-pix-form] .op-payment-field input')];
         const rect=dlg.getBoundingClientRect();
         return {
             pageScroll:document.documentElement.scrollWidth,
             modalScroll:dlg.scrollWidth,modalClient:dlg.clientWidth,
             rectLeft:rect.left,rectRight:rect.right,rectTop:rect.top,rectBottom:rect.bottom,
-            innerWidth:window.innerWidth,innerHeight:window.innerHeight,
+            innerWidth:window.innerWidth,innerHeight:window.innerHeight,fieldCount:fields.length,
             fieldMin:Math.min(...fields.map(el=>el.getBoundingClientRect().width)),
-            fontSize:parseFloat(getComputedStyle(fields[0]).fontSize),
-            sameRow:Math.abs(expiry.y-cvv.y)<2,
-            expiryWidth:expiry.width,cvvWidth:cvv.width
+            fieldsFit:fields.every(el=>{const r=el.getBoundingClientRect();return r.left>=rect.left&&r.right<=rect.right;}),
+            fontSize:Math.min(...fields.map(el=>parseFloat(getComputedStyle(el).fontSize)))
         };
     }""")
     assert layout['pageScroll']<=width+1,(width,mode,'page overflow',layout)
     assert layout['modalScroll']<=layout['modalClient']+1,(width,mode,'modal overflow',layout)
     assert layout['rectLeft']>=-1 and layout['rectRight']<=width+1,(width,mode,layout)
     assert layout['rectTop']>=-1 and layout['rectBottom']<=850+1,(width,mode,layout)
+    assert layout['fieldCount']==4 and layout['fieldsFit'],(width,mode,'payer fields',layout)
     assert layout['fieldMin']>=96,(width,mode,'input too small',layout)
-    assert layout['sameRow'] and layout['expiryWidth']>=96 and layout['cvvWidth']>=96,(width,mode,'card row',layout)
     if width<=600:
         assert layout['fontSize']>=16,(width,mode,'iOS zoom font',layout)
-    await page.locator('.op-checkout-dialog').evaluate('(dialog)=>dialog.scrollTop=dialog.scrollHeight')
-    await page.locator('.op-checkout-dialog .op-dialog-close').click()
-    assert await page.locator(".op-checkout-dialog").count()==0,(width,mode,"checkout close")
+    # Native required-field validation must enforce BOTH separate consents.
+    for one_time,understood in ((False,False),(True,False),(False,True)):
+        await page.locator('[name=one_time]').set_checked(one_time)
+        await page.locator('[name=understood]').set_checked(understood)
+        await submit.click()
+        assert await page.evaluate("()=>__pixSmoke.calls.filter(c=>c.method==='POST').length")==0
+    await page.locator('[name=one_time]').check()
+    await page.locator('[name=understood]').check()
+    await submit.click()
+    await page.locator('[data-pix-code]').wait_for(state='visible')
+    assert await page.locator('[data-pix-form]').is_hidden()
+    assert await page.locator('[data-pix-code]').input_value()=='synthetic-pix-profissional-8990'
+    sent=await page.evaluate("()=>__pixSmoke.calls.filter(c=>c.method==='POST')")
+    assert len(sent)==1 and sent[0]['path']=='/plan-pix-charge'
+    payload=sent[0]['data']
+    assert payload['plan_code']=='profissional' and payload['expected_cents']==8990
+    assert payload['consent_one_time'] is True
+    assert payload['payer']['doc_type']=='cpf' and payload['payer']['doc_number']=='52998224725'
+    assert payload['payer']['name']=='Pessoa Sintética' and payload['payer']['email']=='synthetic@example.test'
+    assert not {'pan','card_number','cvv','cvc'} & payload['payer'].keys()
+    original=await page.evaluate("()=>structuredClone(__pixSmoke.current)")
+    current_gets=await page.evaluate("()=>__pixSmoke.calls.filter(c=>c.path==='/plan-pix-current').length")
+    config_gets=await page.evaluate("()=>__pixSmoke.calls.filter(c=>c.path==='/plan-pix-config').length")
+    await page.locator('[data-pix-close]').click()
+    assert await page.locator('.op-checkout-dialog').count()==0
+    # Choosing another card must resume the original order/amount, never POST.
+    await page.locator('[data-op-checkout="essencial"]').click()
+    await page.locator('[data-pix-code]').wait_for(state='visible')
+    assert await page.locator('[data-pix-form]').is_hidden()
+    assert await page.locator('[data-pix-code]').input_value()==original['pix_code']
+    summary=await page.locator('.op-payment-summary').inner_text()
+    assert 'Profissional' in summary and '89,90' in summary,(width,mode,'frozen plan',summary)
+    assert await page.evaluate("()=>__pixSmoke.calls.filter(c=>c.method==='POST').length")==1
+    assert await page.evaluate("()=>__pixSmoke.calls.filter(c=>c.path==='/plan-pix-current').length")==current_gets+1
+    assert await page.evaluate("()=>__pixSmoke.calls.filter(c=>c.path==='/plan-pix-config').length")==config_gets
+    assert await page.evaluate("()=>structuredClone(__pixSmoke.current)")==original
+    await page.locator('[data-pix-close]').click()
+    assert await page.locator('.op-checkout-dialog').count()==0
+    return {'width':width,'theme':mode,'fake_posts':1,'unavailable_denied':True,
+            'both_consents_required':True,'same_intent_resumed':True}
+
 
 
 async def main():
@@ -180,9 +243,18 @@ async def main():
         browser=await driver.chromium.launch(headless=True)
         try:
             page=await browser.new_page()
+            blocked=[]
+            async def deny_network(route):
+                blocked.append(route.request.url)
+                await route.abort()
+            await page.route('**/*',deny_network)
+            observations=[]
             for mode in COLORS:
                 for width in WIDTHS:
-                    await inspect(page,width,mode)
+                    observations.append(await inspect(page,width,mode))
+            assert not blocked, 'Unexpected browser networking was denied'
+            print(json.dumps({'status':'passed','scenarios':observations,
+                              'external_network':'denied','network_requests':len(blocked)},ensure_ascii=False))
             print("orion_plans_browser_7_widths_2_themes_pass")
         finally:
             await browser.close()
