@@ -11,7 +11,7 @@ A etapa 17 está publicada (PR 272); a PR 273 fez alterações posteriores à po
 - Exclusivo da empresa **ativa** de serviços de assinaturas, papel proprietário, controle `number_check.manage`; nenhum dos demais nichos recebe essa permissão.
 - Reaproveita o dispositivo e socket Baileys já ligados ao tenant/owner: **sem nova instância, novo vínculo QR, login ou envio**.
 - O usuário informa até 5 números E.164 únicos por lote (com `+` e DDI) e confirma autorização explícita. Sem importação de contatos, busca em massa ou enumeração de grupo.
-- Na ponte: até 30 verificações por janela de uma hora **em memória por sessão**; atraso mínimo de 800 ms entre consultas; até 15 s na ponte e 17 s na API; não inicia consulta concorrente. Recomeçar a sessão reinicia a quota em memória — limite conhecido; não considerar esta barreira proteção persistente contra abuso.
+- A API reserva uma quota durável **atômica no Redis** de até 30 números por hora, por empresa/dispositivo, que continua valendo após reinício da ponte ou da API. O Redis armazena apenas os IDs da empresa/dispositivo e contador (nunca números consultados); se estiver indisponível, a verificação não acontece. A ponte mantém um segundo limite conservador em memória (30 por sessão/hora), atraso mínimo de 800 ms entre consultas, 15 s de timeout e proibição de concorrência. Uma falha pode consumir quota, sem reenviar a consulta.
 - Resultado só classifica **cadastrado** ou **não cadastrado** quando o Baileys devolve um `jid` PN exatamente igual ao número informado com `exists` booleano. Respostas ausentes, LID, incongruentes ou malformadas viram **não confirmado**.
 - Valida geração, versão de configurações, sessão, identidade/lease e autorização imediatamente antes e após consultar. Não mantém transação PostgreSQL aberta durante I/O externo.
 - Não salva a lista nem cria histórico de números verificados. O front apenas mostra a resposta na página. Sem mensagens, convites ou reconexão.
@@ -21,7 +21,7 @@ A etapa 17 está publicada (PR 272); a PR 273 fez alterações posteriores à po
 
 1. Testes de validação, concorrência, sessão revogada, PN/LID e limites, rodados em CI no mesmo código.
 2. Regressões da ponte e dos planos anteriores, além de testes da tela em Chrome/WebKit com fixture sintética.
-3. Reforçar a quota contra reinício/reconexão e verificar limitações do provedor antes de produção.
+3. Validar a quota durável no Redis de produção e as limitações do provedor antes de publicar.
 4. Comparação da tela acessível do BotBot (sem compra) e conferência da produção publicada.
 5. Somente após testes e auditoria, considerar merge/publicação. Não usar números reais sem escopo e autorização específicos.
 
