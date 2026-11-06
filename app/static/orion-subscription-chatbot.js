@@ -52,8 +52,9 @@
   }
   function validUrlTemplate(value){
     const pattern=/\{\{([^{}]*)\}\}/g;
+    const contacts=/(?<!\{)\{(?:name|phone_number|my_name|my_email|my_contact_number)\}(?!\})/g;
     for(const match of String(value).matchAll(pattern))if(!validUrlTag(match[1].trim()))return false;
-    return !/[{}]/.test(String(value).replace(pattern,''));
+    return !/[{}]/.test(String(value).replace(pattern,'').replace(contacts,''));
   }
   const validUrlTags=tags=>Array.isArray(tags)&&tags.length<=128&&new Set(tags).size===tags.length&&tags.every(validUrlTag);
   function formatText(value){
@@ -504,7 +505,7 @@
         body=select(action.type==='nested_list'?'Lista de Opções':'Resposta existente',path+'.rule_id',action.rule_id,references.options,'required'+(!references.list.length?' disabled':''))+(target?.enabled===false?'<p class="os-notice">A resposta selecionada está inativa e não será executada enquanto permanecer assim.</p>':'')+'<p class="os-help">Referências removidas, ciclos e sequências que ultrapassem o atraso máximo são recusados ao salvar.</p>';
       }else if(action.type==='url'){
         const tags=state.editor.urlTags.get(action.id)||[];
-        body=input('URL',path+'.url',action.url,'url','required maxlength="2048" placeholder="https://…"')+select('Método',path+'.method',action.method,[['POST','POST'],['GET','GET']])+textarea('Resposta customizada (opcional)',path+'.custom_template',action.custom_template,32000,'Use {{campo}}, {{data.nome}}, {{data}} ou {{itens[0].nome}}. Toque em uma tag encontrada para inseri-la aqui. Em branco, usa reply na raiz.')+checkbox('Enviar como arquivo .txt',path+'.as_file',action.as_file)+'<div class="os-actions">'+button('Ler Tags da URL','read-url-tags','os-outline os-small','link','data-sc-path="'+path+'"'+(!allowed('read_url_tags')?' disabled':''))+'</div><p class="os-help">Ler as tags acessa a URL informada com dados de exemplo. Abrir este formulário não consulta a URL.</p>'+(tags.length?'<div class="os-chatbot-keywords" data-sc-url-tags="'+esc(action.id)+'" role="group" aria-label="Tags encontradas">'+tags.map(tag=>'<button type="button" class="os-chatbot-keyword-tag" data-sc-action="insert-url-tag" data-sc-path="'+esc(path)+'" data-sc-tag="'+esc(tag)+'" title="Inserir tag na resposta">'+esc('{{'+tag+'}}')+'</button>').join('')+'</div>':'');
+        body=input('URL',path+'.url',action.url,'url','required maxlength="2048" placeholder="https://…"')+select('Método',path+'.method',action.method,[['POST','POST'],['GET','GET']])+textarea('Resposta customizada (opcional)',path+'.custom_template',action.custom_template,32000,'Use {name} para o contato e {{username}}, {{password}} ou {{reply}} para os dados da API. Toque nas tags encontradas para inserir. Em branco, utiliza reply na raiz.')+checkbox('Enviar como arquivo .txt',path+'.as_file',action.as_file)+'<div class="os-actions">'+button('Ler Tags da URL','read-url-tags','os-outline os-small','link','data-sc-path="'+path+'"'+(!allowed('read_url_tags')?' disabled':''))+'</div><p class="os-help">Ler as tags acessa a URL informada com dados de exemplo. Abrir este formulário não consulta a URL.</p>'+(tags.length?'<div class="os-chatbot-keywords" data-sc-url-tags="'+esc(action.id)+'" role="group" aria-label="Tags encontradas">'+tags.map(tag=>'<button type="button" class="os-chatbot-keyword-tag" data-sc-action="insert-url-tag" data-sc-path="'+esc(path)+'" data-sc-tag="'+esc(tag)+'" title="Inserir tag na resposta">'+esc('{{'+tag+'}}')+'</button>').join('')+'</div>':'');
       }else if(action.type==='carousel'){
         body=textarea('Corpo principal',path+'.body',action.body,1024)+'<div class="os-chatbot-step-list">'+action.cards.map((card,index)=>{const p=path+'.cards.'+index;return '<section class="os-chatbot-menu-section"><h3>Card '+(index+1)+'</h3>'+input('Título',p+'.title',card.title,'text','required maxlength="60"')+textarea('Corpo'+(index===0?' (obrigatório)':' (opcional)'),p+'.body',card.body,1024)+input('URL da imagem',p+'.image_url',card.image_url,'url','required maxlength="2048" placeholder="https://…"')+input('Texto do botão',p+'.button_text',card.button_text,'text','required maxlength="20"')+'</section>';}).join('')+'</div>';
       }
@@ -564,7 +565,7 @@
       if(['nested_reply','nested_list'].includes(action.type)&&!referenceOptions(action.type,action.rule_id).list.some(item=>item.id===action.rule_id))throw Error('Selecione uma resposta existente e diferente da própria regra.');
       if(action.type==='url'){
         try{const url=new URL(action.url);if(!['http:','https:'].includes(url.protocol)||url.username||url.password)throw Error();}catch{throw Error('Informe uma URL HTTP ou HTTPS sem usuário ou senha.');}
-        if(!validUrlTemplate(action.custom_template))throw Error('Use tags como {{campo}}, {{data.nome}} ou {{itens[0].nome}}, sem expressões.');
+        if(!validUrlTemplate(action.custom_template))throw Error('Use {name} para o contato e {{campo}} para a API, sem expressões.');
       }
       if(action.type==='carousel'&&(!action.body.trim()||!action.cards[0]?.body.trim()||action.cards.length!==3))throw Error('Preencha o corpo principal e o corpo do primeiro card do carrossel.');
     }
