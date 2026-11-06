@@ -11,6 +11,7 @@ from app.prepaid_pix_api import (
     verified_pix_creation, verified_pix_catalog, pix_environment_ready,
 )
 from app.prepaid_pix_reconcile import authenticated_pix_order, verified_paid_at
+from app.prepaid_pix_recovery import provider_receipt
 from app.plan_catalog import CODES
 from app.plan_permissions import derive_plan
 
@@ -215,3 +216,20 @@ def test_old_paid_order_cannot_be_used_to_create_fresh_thirty_days():
     record={"created_at":now-timedelta(days=33),
             "expires_at":now-timedelta(days=32)}
     assert verified_paid_at({"paidAt":now.isoformat()},record,now) is None
+
+
+@pytest.mark.parametrize("value",[True,"2990",2990.0,0,-1])
+def test_price_consent_is_a_positive_strict_integer(value):
+    with pytest.raises(ValueError):
+        PixPurchase(plan_code="essencial",payer=payer(),consent_one_time=True,expected_cents=value)
+
+
+def test_internal_provider_receipt_contains_no_payer_information_and_has_separate_identity():
+    event,order,record=fake_receipt()
+    order.update({"customer":{"email":"private@example.test","docNumber":"synthetic-private"},
+                  "paidAt":"2026-11-06T12:00:00+00:00"})
+    receipt=provider_receipt(order,record)
+    assert receipt["event"]=="purchase_approved" and receipt["order_id"]==order["id"]
+    assert "customer" not in receipt and "private" not in str(receipt)
+    assert provider_receipt(order,record)==receipt
+    assert provider_receipt({**order,"offer":{"id":"foreign"}},record) is None

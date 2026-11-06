@@ -284,6 +284,7 @@ async def test_preferences_edit_does_not_activate_new_content_without_fresh_owne
 
 @pytest.mark.asyncio
 async def test_approved_inactive_campaign_stops_when_customer_books_before_send(automation_db):
+    from app.booking_service import protocol
     ctx = automation_db
     pro = uuid4()
     now = datetime.now(timezone.utc)
@@ -291,8 +292,8 @@ async def test_approved_inactive_campaign_stops_when_customer_books_before_send(
         await db.execute(text("INSERT INTO professionals(id,tenant_id,name) VALUES(:id,:t,'Profissional sintético')"), {"id": pro, "t": ctx.tenant})
         await db.execute(text("UPDATE campaigns SET audience='inactive_customers',status='draft',version=1 WHERE id=:id"), {"id": ctx.campaign})
         await db.execute(text("""INSERT INTO appointments(tenant_id,customer_id,professional_id,protocol,idempotency_key,request_fingerprint,
-            start_at,end_at,occupied_from,occupied_until,status,total_cents) VALUES(:t,:c,:p,'SYNTHOLD',:key,:fp,
-            :start,:end,:start,:end,'completed',3500)"""), {"t": ctx.tenant, "c": ctx.customer, "p": pro,
+            start_at,end_at,occupied_from,occupied_until,status,total_cents) VALUES(:t,:c,:p,:protocol,:key,:fp,
+            :start,:end,:start,:end,'completed',3500)"""), {"t": ctx.tenant, "c": ctx.customer, "p": pro, "protocol": protocol(),
             "key": str(uuid4()), "fp": "b"*64, "start": now-timedelta(days=70), "end": now-timedelta(days=70)+timedelta(minutes=30)})
     review = await api.review(ctx.tenant, ctx.campaign, ctx.actor)
     assert review["eligible_count"] == 1
@@ -302,8 +303,8 @@ async def test_approved_inactive_campaign_stops_when_customer_books_before_send(
     async with ctx.migration.begin() as db:
         item = dict((await db.execute(text("SELECT * FROM automation_jobs WHERE tenant_id=:t AND campaign_id=:id"), {"t": ctx.tenant, "id": ctx.campaign})).mappings().one())
         await db.execute(text("""INSERT INTO appointments(tenant_id,customer_id,professional_id,protocol,idempotency_key,request_fingerprint,
-            start_at,end_at,occupied_from,occupied_until,status,total_cents) VALUES(:t,:c,:p,'SYNTHNEW',:key,:fp,
-            :start,:end,:start,:end,'confirmed',3500)"""), {"t": ctx.tenant, "c": ctx.customer, "p": pro,
+            start_at,end_at,occupied_from,occupied_until,status,total_cents) VALUES(:t,:c,:p,:protocol,:key,:fp,
+            :start,:end,:start,:end,'confirmed',3500)"""), {"t": ctx.tenant, "c": ctx.customer, "p": pro, "protocol": protocol(),
             "key": str(uuid4()), "fp": "c"*64, "start": now+timedelta(days=2), "end": now+timedelta(days=2, minutes=30)})
     assert await process(ctx, item) == "new_booking" and not ctx.sent
     async with ctx.migration.connect() as db:

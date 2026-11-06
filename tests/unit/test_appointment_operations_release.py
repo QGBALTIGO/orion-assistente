@@ -168,7 +168,7 @@ def test_api_predeploy_preserves_agenda_before_diagnostics_and_normal_startup(mo
         module = importlib.import_module("scripts." + name)
         monkeypatch.setattr(module, "main", lambda i=index: events.append(i) or int(i == blocked))
     if blocked is None:
-        entry.main()
+        entry._legacy_main()
     else:
         error = {7: "appointment_operations_schema_not_ready",
                  8: "subscription_diagnostics_schema_not_ready",
@@ -178,7 +178,7 @@ def test_api_predeploy_preserves_agenda_before_diagnostics_and_normal_startup(mo
                  12: "subscription_direct_schema_not_ready",
                  13: "subscription_group_add_schema_not_ready"}[blocked]
         with pytest.raises(RuntimeError, match=error):
-            entry.main()
+            entry._legacy_main()
     assert events == ["legacy-checks", *range(len(modules) if blocked is None else blocked + 1)]
 
 
@@ -254,12 +254,12 @@ def test_worker_predeploy_stops_at_first_unready_contract(monkeypatch, blocked):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("blocked", [*range(13), None])
+@pytest.mark.parametrize("blocked", [*range(14), None])
 async def test_arq_cannot_consume_jobs_before_all_readonly_contracts(monkeypatch, blocked):
     from app.worker import WorkerSettings
     names = ("plan_permissions", "appointment_consent", "subscription_devices",
              "subscription_chatbot", "subscription_templates", "subscription_sent_messages",
-             "appointment_operations", "subscription_diagnostics", "subscription_campaigns", "subscription_scheduled_messages", "subscription_bulk", "subscription_direct", "subscription_group_add")
+             "appointment_operations", "subscription_diagnostics", "subscription_campaigns", "subscription_scheduled_messages", "subscription_bulk", "subscription_direct", "subscription_group_add", "cakto_recovery")
     events = []
     context = {}
     for flag in ("ORION_REVIEW_QA_VERIFY_7364", "ORION_REVIEW_QA_SEND_7364"):

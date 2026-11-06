@@ -24,7 +24,7 @@ def base():
         "id":"synthetic-order-1",
         "status":"paid","type":"subscription",
         "offer_type":"main","amount":"29.90",
-        "currency":"BRL","paidAt":PAID_AT,
+        "currency":"BRL","paidAt":PAID_AT,"createdAt":PAID_AT,
         "subscription":"synthetic-sub-1",
     }
     subscription={

@@ -85,6 +85,49 @@ def test_past_due_only_with_live_grace_and_canonical_binding():
     assert derive_plan(data,NOW+timedelta(seconds=1))["source"]=="none"
 
 
+def test_recurring_active_status_cannot_extend_a_missing_renewal_beyond_verified_30_days():
+    last_paid = NOW-timedelta(days=45)
+    state = derive_plan(snapshot(commercial=commercial(last_verified_payment_at=last_paid)), NOW)
+    assert state["active"] is False and state["status"] == "expired"
+    recent = snapshot(commercial=commercial(last_verified_payment_at=NOW-timedelta(days=8)))
+    state = derive_plan(recent, NOW)
+    assert state["active"] is True and state["valid_until"] == NOW+timedelta(days=22)
+    assert derive_plan(recent, NOW+timedelta(days=22))["active"] is False
+
+
+def test_canceled_renewal_preserves_only_the_exact_remaining_verified_paid_period():
+    last_paid = NOW - timedelta(days=1)
+    end = last_paid + timedelta(days=30)
+    data = snapshot(commercial=commercial(status="canceled", last_verified_payment_at=last_paid, grace_until=end))
+    state = derive_plan(data, NOW)
+    assert state["active"] is True and state["source"] == "cakto" and state["valid_until"] == end
+    assert state["commercial_subscription"]["status"] == "canceled"
+    assert "agenda.manage" in state["features"]
+    assert derive_plan(data, end)["active"] is False
+    assert derive_plan(data, end)["status"] == "canceled"
+
+
+@pytest.mark.parametrize("patch", [
+    {"grace_until": None}, {"grace_until": (NOW+timedelta(days=30)).isoformat()},
+    {"grace_until": "2026-11-10T12:00:00"}, {"last_verified_payment_at": None},
+    {"last_verified_payment_at": (NOW+timedelta(seconds=1)).isoformat()},
+    {"cakto_bound": False}, {"status": "suspended"},
+])
+def test_canceled_access_without_exact_bank_paid_window_or_after_refund_stays_closed(patch):
+    values = {"status": "canceled", "grace_until": NOW+timedelta(days=29), **patch}
+    assert derive_plan(snapshot(commercial=commercial(**values)), NOW)["active"] is False
+
+
+def test_manual_priority_and_inactive_tenant_rules_remain_above_a_canceled_paid_period():
+    remote = commercial(status="canceled", grace_until=NOW+timedelta(days=29))
+    state = derive_plan(snapshot("elite", commercial=remote), NOW)
+    assert state["source"] == "manual" and state["code"] == "elite"
+    assert state["commercial_subscription"]["status"] == "canceled"
+    paused = derive_plan(snapshot(commercial=remote, tenant_status="paused"), NOW)
+    assert paused["active"] is False and paused["status"] == "tenant_inactive"
+    assert set(paused["features"]) == RECOVERY_FEATURES
+
+
 @pytest.mark.parametrize("status", ["paused","suspended","canceled"])
 def test_inactive_tenant_does_not_gain_operating_rights(status):
     result=derive_plan(snapshot("elite",tenant_status=status),NOW)

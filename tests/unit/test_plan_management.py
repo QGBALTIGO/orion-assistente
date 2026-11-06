@@ -1,6 +1,7 @@
 """Synthetic plan and Cakto contracts, no real customers or payment requests."""
 import hashlib
 import json
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -10,6 +11,23 @@ from pydantic import ValidationError
 
 from app import plan_management as plans
 from app import cakto_api
+
+
+def test_paid_at_uses_the_frozen_intent_window_not_delayed_processing_time():
+    now=datetime(2026,11,6,12,tzinfo=timezone.utc)
+    paid=now-timedelta(days=8)
+    intent={"created_at":now-timedelta(days=9),"expires_at":now-timedelta(days=2)}
+    assert plans.verified_checkout_paid_at({"paidAt":paid.isoformat()},intent,now)==paid
+    assert plans.verified_checkout_paid_at({"paidAt":(intent["created_at"]-timedelta(minutes=5)).isoformat()},intent,now)
+    assert plans.verified_checkout_paid_at({"paidAt":intent["expires_at"].isoformat()},intent,now)
+
+
+@pytest.mark.parametrize("value", [None,"invalid","2026-11-06T12:00:00",
+    "2026-10-28T11:54:59+00:00","2026-11-04T12:00:01+00:00","2026-11-06T12:05:01+00:00"])
+def test_invalid_or_out_of_window_first_payment_does_not_bind(value):
+    now=datetime(2026,11,6,12,tzinfo=timezone.utc)
+    intent={"created_at":now-timedelta(days=9),"expires_at":now-timedelta(days=2)}
+    assert plans.verified_checkout_paid_at({"paidAt":value},intent,now) is None
 
 
 def test_offered_plan_prices_and_staff_limits_never_drift():
@@ -117,7 +135,7 @@ async def test_professional_checkout_requires_exact_active_offer_even_when_flag_
     monkeypatch.setattr(plans,"resolve_site_access",granted)
     async def checkout_access(*_): pass
     monkeypatch.setattr(plans,"check_new_checkout_access",checkout_access)
-    monkeypatch.setattr(plans,"CaktoClient",ReadOnlyCakto)
+    monkeypatch.setattr(plans,"cached_cakto_client",ReadOnlyCakto)
     monkeypatch.setenv("CAKTO_BILLING_LIVE_ENABLED","1")
     
     with pytest.raises(HTTPException) as error:
@@ -312,6 +330,9 @@ async def test_embedded_checkout_accepts_verified_v2_history_and_denies_unproved
     class ReadOnlyClient:
         async def list_offers(self):
             return [{"id": "synthetic-offer"}]
+        def granted_scopes(self, required):
+            assert required == frozenset({"read", "write", "orders", "subscriptions", "payments", "card_tokens"})
+            return True
 
     calls=[]
     async def inventory_missing(*args):
@@ -361,7 +382,6 @@ async def test_embedded_checkout_accepts_verified_v2_history_and_denies_unproved
     monkeypatch.setattr(inventory,"probe",broken_inventory)
     assert await direct.require_verified_webhooks(ReadOnlyClient()) is None
     assert calls == ["history"]  # V2 still works without V1 listing
-
     async def invalid_history(*args):
         return None
     monkeypatch.setattr(history,"probe",invalid_history)
@@ -384,6 +404,25 @@ async def test_embedded_checkout_accepts_verified_v2_history_and_denies_unproved
         await direct.require_verified_webhooks(UnauthorizedOffers())
     assert no_credentials.value.status_code == 503
     assert "synthetic" not in str(no_credentials.value.detail)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("granted", [False, None, "true"])
+async def test_embedded_checkout_denies_scopes_without_explicit_provider_proof(monkeypatch, granted):
+    from app import orion_direct_checkout as direct
+    from scripts import probe_orion_webhooks_read_only as inventory
+    class ReadOnlyClient:
+        async def list_offers(self):
+            return [{"id": "synthetic-offer"}]
+        def granted_scopes(self, required):
+            assert "payments" in required and "card_tokens" in required
+            return granted
+    async def forbidden_probe(*_):
+        pytest.fail("No webhook evidence can authorize a provider token with unproved billing grants")
+    monkeypatch.setattr(inventory, "probe", forbidden_probe)
+    with pytest.raises(HTTPException) as caught:
+        await direct.require_verified_webhooks(ReadOnlyClient())
+    assert caught.value.status_code == 409
 
 
 @pytest.mark.asyncio

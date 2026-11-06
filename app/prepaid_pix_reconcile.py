@@ -5,12 +5,13 @@ Refund/MED only adjusts the last paid period, with prior paid days preserved.
 """
 from __future__ import annotations
 import hashlib
+from collections.abc import Mapping
 from datetime import datetime,timedelta,timezone
 from sqlalchemy import text
 from app.catalog_api import support_session_factory
 from app.plan_catalog import CODES
 from app.plan_permissions import lock_plan
-from app.prepaid_pix_api import cents
+from app.prepaid_pix_api import cents,verified_pix_order_binding
 from app.plan_management import _ensure_owner
 from fastapi import HTTPException
 
@@ -38,7 +39,7 @@ def verified_paid_at(order,record,now=None):
 
 
 def authenticated_pix_order(event,order,record):
-    if not isinstance(order,dict) or not isinstance(record,dict):
+    if not isinstance(record,Mapping) or not verified_pix_order_binding(order,record):
         return False
     if (event.get("event_type")!="purchase_approved"
         or event.get("external_order_id")!=record["external_order_id"]
@@ -94,9 +95,9 @@ async def reconcile_prepaid_receipt(event,order):
                 return "already_verified"
             if rec["state"]=="reserved":
                 return "retry_later"
-            if rec["state"]!="created" or not authenticated_pix_order(event,order,rec):
+            if rec["state"] not in {"created","needs_review"} or not authenticated_pix_order(event,order,rec):
                 return "manual_review"
-            if CODES.get(rec["plan_code"],{}).get("price_cents")!=rec["expected_cents"]:
+            if rec["plan_code"] not in CODES:
                 return "manual_review"
             now=datetime.now(timezone.utc)
             paid=verified_paid_at(order,rec,now)
@@ -146,7 +147,7 @@ async def reconcile_prepaid_receipt(event,order):
                 UPDATE orion_prepaid_pix_orders SET
                     state='paid',paid_at=:paid_at,previous_paid_until=:old,
                     updated_at=now()
-                WHERE id=:id AND state='created'
+                WHERE id=:id AND state IN ('created','needs_review')
             """),{"id":rec["id"],"paid_at":paid,"old":previous})
             return "activated"
 
@@ -168,15 +169,15 @@ async def reconcile_prepaid_reversal(event,order):
             rec=await _record(db,order_id,lock=True)
             if rec["state"]=="refunded":
                 return "already_verified"
-            if (order.get("id")!=order_id or order.get("type")!="unique"
-                or order.get("paymentMethod")!="pix"
+            if (not verified_pix_order_binding(order,rec)
                 or event.get("external_offer_id")!=rec["offer_id"]
-                or cents(order.get("amount"))!=rec["expected_cents"]
+                or event.get("external_subscription_id") is not None
+                or event.get("callback_hash") not in (None,rec["callback_hash"])
                 or event.get("currency") not in ("BRL",None)
                 or event.get("amount_cents") not in (None,rec["expected_cents"])):
                 return "manual_review"
             if event_type=="purchase_refused":
-                if order.get("status")!="refused" or rec["state"]!="created":
+                if order.get("status")!="refused" or rec["state"] not in {"created","needs_review","declined"}:
                     return "manual_review"
                 await db.execute(text("""
                     UPDATE orion_prepaid_pix_orders SET state='declined',updated_at=now()
@@ -185,7 +186,17 @@ async def reconcile_prepaid_reversal(event,order):
                 return "reconciled"
             if order.get("status") not in {
                     "refund":{"refunded"},"chargeback":{"chargedback","MED"}
-            }[event_type] or rec["state"]!="paid":
+            }[event_type]:
+                return "manual_review"
+            # A refund can arrive before its approval webhook. Bank proof closes
+            # this unpaid local attempt without granting or revoking any days.
+            if rec["state"] in {"created","needs_review"}:
+                await db.execute(text("""
+                    UPDATE orion_prepaid_pix_orders SET state='refunded',updated_at=now()
+                    WHERE id=:id
+                """),{"id":rec["id"]})
+                return "reconciled"
+            if rec["state"]!="paid":
                 return "manual_review"
             access=(await db.execute(text("""
                 SELECT last_order_id,paid_until FROM orion_prepaid_pix_access

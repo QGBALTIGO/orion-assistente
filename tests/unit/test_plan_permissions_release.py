@@ -57,17 +57,38 @@ async def test_worker_waits_for_completed_initial_grants_before_jobs(monkeypatch
 
 
 @pytest.mark.asyncio
-async def test_arq_startup_awaits_readonly_barrier(monkeypatch):
+@pytest.mark.parametrize("blocked", [None, *range(14)])
+async def test_arq_startup_awaits_every_readonly_barrier_before_jobs(monkeypatch, blocked):
+    import importlib
     from app.worker import WorkerSettings
     from scripts.wait_for_agenda_schema import Settings
-    called=[]
-    monkeypatch.setattr(Settings,"from_environment",lambda:"synthetic-runtime")
-    async def wait(settings): called.append(settings)
-    monkeypatch.setattr(barrier,"wait_for_schema",wait)
-    context={}
-    await WorkerSettings.on_startup(context)
-    assert called==["synthetic-runtime"]
-    assert context['plan_permissions_ready'] is True
+    order = ("plan_permissions", "appointment_consent", "subscription_devices", "subscription_chatbot",
+             "subscription_templates", "subscription_sent_messages", "appointment_operations", "subscription_diagnostics",
+             "subscription_campaigns", "subscription_scheduled_messages", "subscription_bulk", "subscription_direct",
+             "subscription_group_add", "cakto_recovery")
+    called = []
+    settings = Settings("synthetic-runtime")
+    monkeypatch.setattr(Settings, "from_environment", lambda: settings)
+    for index, name in enumerate(order):
+        module = importlib.import_module("scripts.wait_for_" + name + "_schema")
+
+        async def wait(actual, i=index):
+            assert actual is settings
+            called.append(i)
+            if i == blocked:
+                raise barrier.Stop("agenda_schema_timeout")
+            return {"ok": True}
+
+        monkeypatch.setattr(module, "wait_for_schema", wait)
+    context = {}
+    if blocked is None:
+        await WorkerSettings.on_startup(context)
+        assert context["plan_permissions_ready"] is True
+    else:
+        with pytest.raises(barrier.Stop, match="agenda_schema_timeout"):
+            await WorkerSettings.on_startup(context)
+        assert "plan_permissions_ready" not in context
+    assert called == list(range(len(order) if blocked is None else blocked + 1))
 
 
 def test_current_release_never_reruns_applied_earlier_migrations(monkeypatch):

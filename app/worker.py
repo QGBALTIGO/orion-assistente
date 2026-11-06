@@ -147,6 +147,8 @@ async def startup_plan_permissions(ctx):
     await wait_for_direct_messages(Settings.from_environment())
     from scripts.wait_for_subscription_group_add_schema import wait_for_schema as wait_for_group_add
     await wait_for_group_add(Settings.from_environment())
+    from scripts.wait_for_cakto_recovery_schema import wait_for_schema as wait_for_cakto_recovery
+    await wait_for_cakto_recovery(Settings.from_environment())
     ctx['plan_permissions_ready'] = True
     logging.getLogger(__name__).info('orion_plan_permissions_0050_worker_ready')
     if os.getenv('ORION_REVIEW_QA_VERIFY_7364') == '1':
@@ -234,7 +236,7 @@ class WorkerSettings:
                  cron(scan_calendar_outbox, minute=set(range(60)), second=10),
                  cron(scan_due_appointments, minute=set(range(60)), second={0,10,20,30,40,50}),
                  cron(scan_pending_billing, minute={3,13,23,33,43,53}, second=0),
-                 cron(scan_pending_cakto, minute={4,14,24,34,44,54}, second=0),
+                 cron(scan_pending_cakto, minute=set(range(60)), second=4, timeout=75),
                  cron(scan_automations, minute=set(range(60)), second=20),
                  cron(scan_inbox,minute=set(range(60)),second={5,35}),
                  cron(scan_email_outbox,minute=set(range(60)),second={0,15,30,45}),

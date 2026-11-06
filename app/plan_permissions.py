@@ -6,7 +6,7 @@ account/session mutation belongs in this module.
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import hashlib
 import json
 from uuid import UUID
@@ -56,16 +56,28 @@ def derive_plan(snapshot, now=None):
         code, source, status, until = manual_code, "manual", "active", manual.get("expires_at")
     elif isinstance(commercial, dict):
         mapped = next((key for key, value in CODES.items() if value["db_code"] == commercial.get("code")), None)
+        last_paid = _date(commercial.get("last_verified_payment_at"))
+        paid_until = _date(commercial.get("grace_until"))
+        active_paid_until = (last_paid + timedelta(days=30)
+                             if last_paid is not None and last_paid <= now else None)
+        # Cancellation stops renewal, not an already paid, bank-verified
+        # 30-day period. The lifecycle writer supplies its exact end; neither
+        # a missing date nor an arbitrary future grace can extend this access.
+        canceled_paid = bool(commercial.get("status") == "canceled" and last_paid and last_paid <= now and paid_until
+                             and now < paid_until <= last_paid + timedelta(days=30))
         paid_valid = (mapped is not None and commercial.get("cakto_bound") is True
-            and _date(commercial.get("last_verified_payment_at")) is not None
-            and _date(commercial["last_verified_payment_at"]) <= now
-            and (commercial.get("status") == "active" or
-                 commercial.get("status") == "past_due" and _future(commercial.get("grace_until"), now)))
+            and last_paid is not None and last_paid <= now
+            and (commercial.get("status") == "active" and active_paid_until > now or
+                 commercial.get("status") == "past_due" and _future(commercial.get("grace_until"), now)
+                 or canceled_paid))
         if paid_valid:
             code, source, status = mapped, "cakto", "active"
-            until = commercial.get("grace_until") if commercial.get("status") == "past_due" else None
+            until = commercial.get("grace_until") if commercial.get("status") in {"past_due", "canceled"} else active_paid_until
         else:
             status = commercial.get("status") if commercial.get("status") in {"past_due", "suspended", "canceled"} else "no_access"
+            if (mapped and commercial.get("cakto_bound") is True and last_paid is not None and last_paid <= now
+                    and commercial.get("status") == "active" and active_paid_until <= now):
+                status = "expired"
     # Prepaid Pix is a separate verified commercial grant, never a provider
     # subscription. Manual admin grants and active recurring contracts win.
     prepaid = snapshot.get("prepaid")

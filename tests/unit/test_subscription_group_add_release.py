@@ -46,7 +46,8 @@ def test_group_add_is_a_single_additive_head_after_published_direct_messages():
     config.set_main_option("path_separator", "os")
     config.set_main_option("script_location", str(ROOT / "alembic"))
     migrations = ScriptDirectory.from_config(config)
-    assert migrations.get_heads() == [release.TARGET]
+    assert migrations.get_heads() == ["0073_cakto_recovery"]
+    assert migrations.get_revision("0073_cakto_recovery").down_revision == release.TARGET
     assert release.TARGET == barrier.SCHEMA_MARKER == "0072_subscription_group_add"
     assert release.PREVIOUS == previous_release.TARGET == "0071_subscription_direct"
     assert migrations.get_revision(release.TARGET).down_revision == release.PREVIOUS
@@ -307,7 +308,7 @@ def test_api_cannot_serve_before_the_readonly_0072_barrier(monkeypatch, ready):
     monkeypatch.setattr(start_api.os, "environ", {"PORT": "8080", "APP_DATABASE_URL": "synthetic-runtime"})
 
     def wait(command, **kwargs):
-        assert command == [start_api.sys.executable, "-m", "scripts.wait_for_subscription_group_add_schema"]
+        assert command == [start_api.sys.executable, "-m", "scripts.wait_for_cakto_recovery_schema"]
         assert kwargs["check"] is True and kwargs["timeout"] == 95
         assert "MIGRATION_DATABASE_URL" not in kwargs["env"]
         events.append("read-only-0072")
@@ -339,7 +340,7 @@ async def test_worker_startup_does_not_consume_jobs_before_0072_is_ready(monkeyp
     order = ["plan_permissions", "appointment_consent", "subscription_devices", "subscription_chatbot",
         "subscription_templates", "subscription_sent_messages", "appointment_operations", "subscription_diagnostics",
         "subscription_campaigns", "subscription_scheduled_messages", "subscription_bulk", "subscription_direct",
-        "subscription_group_add"]
+        "subscription_group_add", "cakto_recovery"]
     events = []
     monkeypatch.setattr(worker.os, "environ", {})
     monkeypatch.setattr(Settings, "from_environment", lambda: barrier.Settings("synthetic-runtime"))
@@ -349,7 +350,7 @@ async def test_worker_startup_does_not_consume_jobs_before_0072_is_ready(monkeyp
         async def wait(settings, item=name):
             assert settings.dsn == "synthetic-runtime"
             events.append(item)
-            if item == "subscription_group_add" and not ready:
+            if item == "cakto_recovery" and not ready:
                 raise barrier.Stop("agenda_schema_timeout")
             return {"ok": True}
 
@@ -395,8 +396,8 @@ def test_predeploy_runs_0072_after_0071_and_propagates_its_failure(monkeypatch, 
         module = importlib.import_module("scripts.backup_and_migrate_" + name)
         monkeypatch.setattr(module, "main", lambda item=name: events.append(item) or int(item == "subscription_group_add" and not ready))
     if ready:
-        chain.main()
+        chain._legacy_main()
     else:
         with pytest.raises(RuntimeError, match="subscription_group_add_schema_not_ready"):
-            chain.main()
+            chain._legacy_main()
     assert events == ["original", *order]

@@ -110,7 +110,10 @@ ACCOUNT_QUERY = """
            CASE WHEN company.company_count=1 THEN company.company_status END AS company_status,
            CASE WHEN company.company_count=1 THEN company.company_role END AS company_role,
            COALESCE(company.company_count,0) AS company_count,
-           CASE WHEN company.company_count=1 THEN public.orion_plan_snapshot(company.company_id) END AS plan_snapshot
+           CASE WHEN company.company_count=1 THEN public.orion_plan_snapshot(company.company_id)
+             || jsonb_build_object('prepaid',public.orion_prepaid_plan_snapshot(company.company_id),
+                  'niche',(SELECT configuration->>'niche' FROM business_onboarding
+                           WHERE tenant_id=company.company_id)) END AS plan_snapshot
     FROM panel_accounts a LEFT JOIN admin_account_controls c ON c.account_id=a.id
     LEFT JOIN LATERAL (
         SELECT t.id AS company_id,t.name AS company_name,t.status AS company_status,
@@ -166,7 +169,7 @@ async def list_customer_accounts(q:str="",status:str="all",page:int=Query(1,ge=1
         response.headers["Cache-Control"]="no-store"
     if status not in ("all","active","suspended","archived","erased"):
         raise HTTPException(422,"Filtro inválido")
-    if plan not in {"all","none",*CODES} or source not in {"all","manual","cakto","trial","none","platform_admin"}:
+    if plan not in {"all","none",*CODES} or source not in {"all","manual","cakto","pix_prepaid","trial","none","platform_admin"}:
         raise HTTPException(422,"Filtro de plano inválido")
     if subscription_status not in {"all","none","active","trialing","past_due","grace","suspended","canceled","expired"}:
         raise HTTPException(422,"Filtro de assinatura inválido")
@@ -225,7 +228,10 @@ async def unassigned_company_plans(response:Response,admin:UUID=Depends(require_
     response.headers["Cache-Control"]="no-store"
     async with _storage()() as db:
         rows=(await db.execute(text("""SELECT t.id,t.name,t.status,
-            public.orion_plan_snapshot(t.id) AS plan_snapshot FROM tenants t
+            public.orion_plan_snapshot(t.id)
+              || jsonb_build_object('prepaid',public.orion_prepaid_plan_snapshot(t.id),
+                   'niche',(SELECT configuration->>'niche' FROM business_onboarding
+                            WHERE tenant_id=t.id)) AS plan_snapshot FROM tenants t
             WHERE NOT """+MANAGEABLE_COMPANY_OWNER+" ORDER BY lower(t.name),t.id"))).mappings().all()
     now=datetime.now(timezone.utc)
     companies=[]
