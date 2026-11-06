@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'app/subscription_chatbot_botbot.py'
+      - 'app/subscription_chatbot_rules.py'
       - 'app/subscription_chatbot_tags.py'
       - 'app/subscription_chatbot_http.py'
       - 'app/subscription_chatbot_archive.py'
@@ -12,6 +13,7 @@ on:
       - 'app/static/orion-subscription-chatbot.js'
       - 'app/static/orion-subscription-chatbot.css'
       - 'tests/unit/test_subscription_chatbot_botbot.py'
+      - 'tests/unit/test_subscription_chatbot_rules.py'
       - 'tests/unit/test_subscription_chatbot_tags.py'
       - 'tests/unit/test_subscription_chatbot_http.py'
       - 'ui-tests/subscription-chatbot.test.mjs'
@@ -39,8 +41,8 @@ jobs:
       - run: python -m pip install -c requirements.lock '.[test]'
       - name: Testar tags, egress seguro e formatos de importação
         run: |
-          python -m compileall -q app/subscription_chatbot_botbot.py app/subscription_chatbot_tags.py app/subscription_chatbot_http.py app/subscription_chatbot_archive_format.py app/subscription_chatbot_archive.py
-          python -m pytest -q -ra tests/unit/test_subscription_chatbot_botbot.py tests/unit/test_subscription_chatbot_tags.py tests/unit/test_subscription_chatbot_http.py tests/unit/test_subscription_chatbot_archive.py
+          python -m compileall -q app/subscription_chatbot_botbot.py app/subscription_chatbot_tags.py app/subscription_chatbot_http.py app/subscription_chatbot_archive_format.py app/subscription_chatbot_archive.py app/subscription_chatbot_rules.py
+          python -m pytest -q -ra tests/unit/test_subscription_chatbot_botbot.py tests/unit/test_subscription_chatbot_tags.py tests/unit/test_subscription_chatbot_http.py tests/unit/test_subscription_chatbot_archive.py tests/unit/test_subscription_chatbot_rules.py
   frontend:
     runs-on: ubuntu-24.04
     timeout-minutes: 8
