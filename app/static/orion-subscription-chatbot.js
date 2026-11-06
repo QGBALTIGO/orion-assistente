@@ -190,7 +190,7 @@
       const statusAction=enabled?'Desativar':'Ativar',writeDisabled=!canWrite();
       const switchControl='<button type="button" class="os-chatbot-switch" role="switch" aria-checked="'+enabled+'" aria-label="'+esc(statusAction+' resposta: '+item.keyword)+'" title="'+esc(statusAction+' resposta')+'" data-sc-action="toggle" '+attr+(writeDisabled?' disabled':'')+'><span class="os-chatbot-switch-track" aria-hidden="true"></span></button>';
       const iconAction=(label,action,symbol,danger=false)=>'<button type="button" class="os-button os-outline os-chatbot-icon-action'+(danger?' os-chatbot-icon-danger':'')+'" data-sc-action="'+action+'" '+attr+' title="'+esc(label)+'" aria-label="'+esc(label+' resposta: '+item.keyword)+'"'+(writeDisabled?' disabled':'')+'>'+icon(symbol)+'</button>';
-      return '<article class="os-card os-chatbot-card" data-sc-card="'+item.id+'"><div class="os-chatbot-card-header"><div class="os-chatbot-card-title"><h2>'+esc(item.keyword)+'</h2><div class="os-chatbot-card-meta"><span class="os-badge '+(enabled?'os-success':'os-neutral')+'">'+(enabled?'Ativa':'Inativa')+'</span><span>'+esc(matchLabels[item.match_mode]||'')+'</span><span>·</span><span>'+esc(item.device_name||deviceName(item.device_id))+'</span></div><p class="os-chatbot-card-subtitle">'+esc(item.preview||'')+'</p></div>'+switchControl+'</div><div class="os-chatbot-card-actions" role="group" aria-label="'+esc('Ações da resposta: '+item.keyword)+'">'+iconAction('Editar','edit','edit')+iconAction('Copiar','copy','copy')+'<span class="os-chatbot-action-divider" aria-hidden="true"></span>'+iconAction('Excluir','delete','trash',true)+'</div><details class="os-chatbot-card-details" data-sc-details="'+item.id+'"'+(expanded?' open':'')+'><summary><span>Detalhes e prévia</span>'+icon('chevron')+'</summary><div class="os-chatbot-card-content">'+(expanded?content:'')+'</div></details></article>';
+      return '<article class="os-card os-chatbot-card" data-sc-card="'+item.id+'"><div class="os-chatbot-card-header"><div class="os-chatbot-card-title"><h2>'+esc(item.keyword)+'</h2><div class="os-chatbot-card-meta"><span class="os-badge '+(enabled?'os-success':'os-neutral')+'">'+(enabled?'Ativa':'Inativa')+'</span><span>'+esc(matchLabels[item.match_mode]||'')+'</span><span>·</span><span>'+esc(item.device_name||deviceName(item.device_id))+'</span></div><p class="os-chatbot-card-subtitle">'+esc(item.preview||'')+'</p><div class="os-chatbot-card-actions" role="group" aria-label="'+esc('Ações da resposta: '+item.keyword)+'">'+iconAction('Editar','edit','edit')+iconAction('Copiar','copy','copy')+'<span class="os-chatbot-action-divider" aria-hidden="true"></span>'+iconAction('Excluir','delete','trash',true)+'</div></div>'+switchControl+'</div><details class="os-chatbot-card-details" data-sc-details="'+item.id+'"'+(expanded?' open':'')+'><summary><span>Detalhes e prévia</span>'+icon('chevron')+'</summary><div class="os-chatbot-card-content">'+(expanded?content:'')+'</div></details></article>';
     }
     function render(){
       if(!state.mounted)return;
@@ -215,7 +215,7 @@
       clearTimeout(entry.expiryTimer);entry.releaseFields();entry.element.removeEventListener('click',click);entry.element.removeEventListener('input',inputChanged);entry.element.removeEventListener('change',change);entry.element.removeEventListener('submit',submit);entry.element.removeEventListener('cancel',cancelDialog);if(entry.element.open)entry.element.close();entry.element.remove();state.dialogs=state.dialogs.filter(value=>value!==entry);if(entry.kind==='editor')state.editor=null;entry.trigger?.isConnected&&entry.trigger.focus({preventScroll:true});
     }
     function cancelDialog(event){event.preventDefault();closeDialog(dialogFor(event.target));}
-    function dialogError(entry,message){const node=entry?.element.querySelector('[data-sc-dialog-error]');if(node?.isConnected){node.textContent=message;node.tabIndex=-1;node.focus();node.scrollIntoView({block:'nearest'});}else feedback(message,true);}
+    function dialogError(entry,message){const node=entry?.element?.querySelector('[data-sc-dialog-error]');if(node?.isConnected){node.textContent=message;node.tabIndex=-1;node.focus();node.scrollIntoView({block:'nearest'});}else feedback(message,true);}
     async function responseBytes(response,maximum){
       if(!response.body?.getReader)throw Error('invalid_download_body');
       const reader=response.body.getReader(),chunks=[];let size=0;
@@ -368,10 +368,11 @@
     }
     function mutationEntry(kind,item){
       if(!canWrite()||!item)return;
+      if(kind==='toggle')return void applyMutation({kind:'toggle',item:copy(item),key:crypto.randomUUID(),revision:state.data.chatbot_revision});
       const source='<p><strong>'+esc(item.keyword)+'</strong><br>'+esc(item.device_name||deviceName(item.device_id))+'</p>';
       if(kind==='delete')return dialog('delete','Excluir resposta?',source+'<p>Esta resposta será removida do Chatbot. As demais respostas serão preservadas.</p>',{confirm:'Excluir resposta',danger:true,item:copy(item),key:crypto.randomUUID(),revision:state.data.chatbot_revision});
       if(kind==='copy')return dialog('copy','Copiar resposta?',source+'<p>A cópia terá uma nova ordem de cadastro e ficará inativa para você revisar antes de ativar.</p>',{confirm:'Criar cópia',item:copy(item),key:crypto.randomUUID(),revision:state.data.chatbot_revision});
-      return dialog('toggle',item.enabled?'Desativar resposta?':'Ativar resposta?',source+'<p>'+esc(item.enabled?'A resposta deixará de ser acionada automaticamente.':'A resposta poderá ser enviada automaticamente quando encontrar uma correspondência.')+'</p>',{confirm:item.enabled?'Desativar':'Ativar',item:copy(item),key:crypto.randomUUID(),revision:state.data.chatbot_revision});
+
     }
     async function applyMutation(entry){
       if(!canWrite())return;
@@ -380,7 +381,7 @@
       await execute({kind:entry.kind,entry,suffix,method,payload,accept:async result=>{
         if(entry.kind==='delete'){if(result?.deleted!==1||!Number.isSafeInteger(result.chatbot_revision))throw Error('invalid_delete_response');state.details.delete(item.id);state.expanded.delete(item.id);}
         else{const value=ruleDTO(result,entry.kind==='copy'?undefined:item.id);if(entry.kind==='copy'&&value.rule.enabled)throw Error('invalid_duplicate_state');state.details.set(value.rule.id,value);}
-        closeDialog(entry,true);feedback(entry.kind==='copy'?'Cópia criada e mantida inativa para revisão.':entry.kind==='delete'?'Resposta excluída.':item.enabled?'Resposta desativada.':'Resposta ativada.');await load();
+        if(entry.element)closeDialog(entry,true);feedback(entry.kind==='copy'?'Cópia criada e mantida inativa para revisão.':entry.kind==='delete'?'Resposta excluída.':item.enabled?'Resposta desativada.':'Resposta ativada.');await load();
       }});
     }
     function showDeleteAll(){
@@ -691,7 +692,7 @@
       if(kind==='discard'){const editor=entry.editor;closeDialog(entry,true);closeDialog(editor,true);return;}
       if(kind==='reload-editor'){void reloadEditor(entry);return;}
       if(!form.reportValidity())return;
-      if(['copy','toggle','delete'].includes(kind)){void applyMutation(entry);return;}
+      if(['copy','delete'].includes(kind)){void applyMutation(entry);return;}
       if(kind==='delete-all'){void deleteAll(entry);return;}
       if(kind==='test'){void submitTest(entry);return;}
       if(kind==='url-tags'){void submitUrlTags(entry);return;}

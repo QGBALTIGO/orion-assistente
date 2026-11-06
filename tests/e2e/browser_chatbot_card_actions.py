@@ -135,12 +135,14 @@ def test_card_switch_and_icon_actions_are_compact(browser, fixture_url, size, th
               const head=card.querySelector('.os-chatbot-card-header');
               const sw=card.querySelector('[role=switch]');
               const actionBar=card.querySelector('.os-chatbot-card-actions');
+              const preview=card.querySelector('.os-chatbot-card-subtitle');
               const actions=[...actionBar.querySelectorAll('button')];
               return {card:r(card),header:r(head),toggle:r(sw),
-                checked:sw.getAttribute('aria-checked'),actions:actions.map(a=>({
+                checked:sw.getAttribute('aria-checked'),preview:r(preview),
+                actions:actions.map(a=>({
                   ...r(a),action:a.dataset.scAction,label:a.getAttribute('aria-label'),
                   text:a.textContent.trim(),icon:!!a.querySelector('svg.os-icon'),
-                  disabled:a.disabled
+                  disabled:a.disabled,visualInset:getComputedStyle(a,'::before').inset
                 })),group:r(actionBar)};
             })
           };
@@ -153,20 +155,24 @@ def test_card_switch_and_icon_actions_are_compact(browser, fixture_url, size, th
             assert card["toggle"]["width"]>=44 and card["toggle"]["height"]>=44,card
             assert card["toggle"]["right"]<=card["header"]["right"]+1,card
             assert card["toggle"]["top"]>=card["header"]["top"]-8,card
+            assert card["group"]["left"]-card["card"]["left"]<=26,card
+            assert card["group"]["top"]>=card["preview"]["bottom"],card
+            assert card["group"]["top"]-card["preview"]["bottom"]<=24,card
+            assert card["card"]["height"]<=300,card
             assert [a["action"] for a in card["actions"]]==["edit","copy","delete"],card
             assert all(a["text"]=="" and a["icon"] and a["label"] for a in card["actions"]),card
             assert all(a["width"]>=43 and a["height"]>=43 for a in card["actions"]),card
+            assert all(a["visualInset"]=="5px" for a in card["actions"]),card
             assert all(card["group"]["left"]-1<=a["left"] and
                        a["right"]<=card["group"]["right"]+1 for a in card["actions"]),card
             assert card["actions"][-1]["left"]>card["actions"][1]["left"],card
         page.screenshot(path=str(ARTIFACTS/f"{ident}.png"),full_page=True,animations="disabled")
         first=cards.first
         first.locator('[role="switch"]').click()
-        expect(page.locator('[data-sc-form="toggle"]')).to_be_visible()
-        assert page.evaluate("window.__calls.filter(c=>c.method!=='GET').length")==0
-        expect(first.locator('[role="switch"]')).to_have_attribute("aria-checked","true")
-        page.locator('[data-sc-form="toggle"] [data-sc-action="close-dialog"]').click()
         expect(page.locator('[data-sc-form="toggle"]')).to_have_count(0)
+        expect(page.locator('dialog')).to_have_count(0)
+        expect(page.locator('[data-sc-pending]')).to_be_visible()
+        assert page.evaluate("window.__calls.filter(c=>c.method==='PATCH').length")==1
         expect(first.locator('[role="switch"]')).to_have_attribute("aria-checked","true")
         assert not errors,errors
         assert not unexpected,unexpected
