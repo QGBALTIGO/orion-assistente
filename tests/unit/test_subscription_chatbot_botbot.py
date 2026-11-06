@@ -79,9 +79,9 @@ def test_normal_orion_archive_remains_strict_and_does_not_accept_botbot_silently
     [{"id": 1, "keyword": "x", "response": [{"type": "text", "text": ""}]}],
     [{"id": 1, "keyword": "x", "response": {"type": "nested_reply", "reply_id": 999}}],
     [{"id": 1, "keyword": "x", "response": {"kind": "sequence", "actions": [
-        {"type": "text", "text": "x", "delay": 15},
-        {"type": "text", "text": "y", "delay": 15},
-        {"type": "text", "text": "z", "delay": 15}]}}],
+        {"type": "text", "text": "x", "delay": 120},
+        {"type": "text", "text": "y", "delay": 120},
+        {"type": "text", "text": "z", "delay": 120}]}}],
 ])
 def test_botbot_zip_rejects_unknown_actions_missing_refs_and_oversized_delay(rows):
     with pytest.raises(ValueError):
@@ -215,3 +215,44 @@ def test_botbot_skips_empty_response_envelope_when_messages_are_populated():
     actions = converted["rules"][0]["definition"]["response"]["actions"]
     assert len(actions) == 1 and actions[0]["text"] == "Conteúdo real"
     assert converted["rules"][0]["definition"]["enabled"] is False
+
+@pytest.mark.parametrize("case,seconds", [
+    ({"delay": 5000}, 5), ({"delay": "15000"}, 15),
+    ({"delay_ms": 31000}, 31), ({"delayMs": "2000"}, 2),
+    ({"delayMilliseconds": 60000}, 60),
+    ({"delay_seconds": 90}, 90), ({"delaySeconds": "120"}, 120),
+    ({"delay": 20}, 20), ({"delay": 0}, 1)
+])
+def test_botbot_delay_in_seconds_or_milliseconds_is_exact(case, seconds):
+    from app.subscription_chatbot_botbot import _action_delay
+    assert _action_delay(case) == seconds
+
+
+def test_botbot_import_preserves_four_messages_and_31_second_total():
+    # Realistic synthetic BotBot distribution; 31 sec used to be rejected.
+    actions = [{"type":"text","text":"Mensagem A","delay":1000},
+               {"type":"text","text":"Mensagem B","delayMs":5000},
+               {"type":"text","text":"Mensagem C","delay_seconds":10},
+               {"type":"text","text":"Mensagem D","delay":15}]
+    converted=codec.read_archive(archive([{"id":51,"keyword":"/start",
+              "response":{"kind":"sequence","actions":actions}}]),"botbot_replies_delays.zip")
+    rule=converted["rules"][0]["definition"]
+    assert rule["enabled"] is False
+    received=rule["response"]["actions"]
+    assert [row["delay_seconds"] for row in received] == [1,5,10,15]
+    assert [row["text"] for row in received] == [row["text"] for row in actions]
+
+
+def test_botbot_rejects_fractional_milliseconds_and_excessive_delays():
+    from app.subscription_chatbot_botbot import _action_delay
+    for candidate in ({"delay_ms":1500}, {"delay":"1501"},
+                      {"delay_seconds":301}, {"delayMs":301000},
+                      {"delay":1.5}, {"delay":-1}, {"delay":True}):
+        with pytest.raises(ValueError):
+            _action_delay(candidate)
+    with pytest.raises(ValueError,match="300 segundos"):
+        codec.read_archive(archive([{"id":52,"keyword":"atraso",
+            "response":{"kind":"sequence","actions":[
+                {"type":"text","text":"A","delay_seconds":200},
+                {"type":"text","text":"B","delay_seconds":101}]}}]),
+            "botbot_replies_delays.zip")
