@@ -186,3 +186,42 @@ def test_duplicate_invalid_and_valid_imports_never_mutate_the_input():
     converted = fixture_zip(records)
     assert len(converted["rules"]) == 2
     assert all(not r["definition"]["enabled"] for r in converted["rules"])
+
+
+def test_url_buttons_are_imported_only_with_complete_compatible_fields():
+    items = [{"id": 1, "keyword": "acesse", "response": {
+        "type": "button_url", "text": "", "message": "Acesse seu painel",
+        "button_text": "Abrir", "url": "https://example.com/portal"}}]
+    result = fixture_zip(items)
+    action = result["rules"][0]["definition"]["response"]["actions"][0]
+    assert action["type"] == "url_button"
+    assert action["text"] == "Acesse seu painel"
+    assert action["button_text"] == "Abrir"
+    assert action["url"] == "https://example.com/portal"
+    assert not result["rules"][0]["definition"]["enabled"]
+
+
+def test_carousel_with_exactly_three_cards_preserves_each_card_and_order():
+    value = {"id": 4, "keyword": "catálogo", "response": {
+        "type": "carousel", "text": "Confira as opções",
+        "cards": [
+            {"name": f"Item {index}", "description": f"Descrição {index}",
+             "imageUrl": f"https://cdn.example.com/item{index}.jpg",
+             "buttonText": "Ver item"}
+            for index in (1, 2, 3)
+        ]}}
+    result = fixture_zip([value])
+    action = result["rules"][0]["definition"]["response"]["actions"][0]
+    assert action["type"] == "carousel"
+    assert action["body"] == "Confira as opções"
+    assert [card["title"] for card in action["cards"]] == ["Item 1", "Item 2", "Item 3"]
+    assert len({card["id"] for card in action["cards"]}) == 3
+
+
+@pytest.mark.parametrize("count", [0, 1, 2, 4, 6])
+def test_incomplete_or_extra_carousel_cards_cannot_be_silently_dropped(count):
+    cards = [{"title": "Item", "body": "Texto", "image_url": "https://example.com/i.jpg",
+              "button_text": "Ver"} for _ in range(count)]
+    with pytest.raises(ValueError, match="carrossel"):
+        fixture_zip([{"id": 8, "keyword": "itens", "response": {
+            "type": "carousel", "body": "Itens disponíveis", "cards": cards}}])
