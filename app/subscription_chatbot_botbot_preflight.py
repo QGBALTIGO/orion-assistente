@@ -44,21 +44,22 @@ def _safe_reason(issue):
     return position + name + " " + reason
 
 
-def validate_imported_rules(definitions):
+def validate_imported_rules(definitions, *, positions=None, conversion_issues=()):
     """Collect every record's validation problems; apply nothing if any fail."""
     from app import subscription_chatbot_schemas as schemas
     from app import subscription_chatbot_rules as rules
 
-    problems = []
-    for position, record in enumerate(definitions, 1):
+    problems = list(conversion_issues)
+    for sequence, record in enumerate(definitions, 1):
+        position = positions[sequence - 1] if positions is not None else sequence
         try:
             checked = schemas.RuleDefinition.model_validate(record["definition"])
             record["definition"] = checked.model_dump(mode="json")
         except ValidationError as error:
             reasons = list(dict.fromkeys(_safe_reason(item) for item in error.errors()))
-            problems.append(f"{position}: {', '.join(reasons[:2])}")
+            problems.append(f"Resposta {position}: {', '.join(reasons[:2])}")
         except (ValueError, TypeError, OverflowError):
-            problems.append(f"{position}: formato incompatível")
+            problems.append(f"Resposta {position}: formato incompatível")
 
     # Check graph relationships only once all definitions have valid shapes.
     if not problems:
@@ -68,11 +69,12 @@ def validate_imported_rules(definitions):
         try:
             rules.validate_graph(graph, {})
         except (ValueError, KeyError, TypeError, RecursionError):
-            for position, record in enumerate(definitions, 1):
+            for sequence, record in enumerate(definitions, 1):
+                position = positions[sequence - 1] if positions is not None else sequence
                 try:
                     rules.validate_graph(graph, {}, root_ids=[record["id"]])
                 except (ValueError, KeyError, TypeError, RecursionError):
-                    problems.append(f"{position}: menu ou referência incompatível")
+                    problems.append(f"Resposta {position}: menu ou referência incompatível")
                 if len(problems) >= 12:
                     break
 
