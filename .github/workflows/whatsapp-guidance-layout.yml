@@ -1,0 +1,36 @@
+name: Orion - guias WhatsApp responsivos
+on:
+  pull_request:
+    paths:
+      - 'app/static/orion-suite.js'
+      - 'app/static/orion-suite.css'
+      - 'ui-tests/whatsapp-guidance-layout.test.mjs'
+      - '.github/workflows/whatsapp-guidance-layout.yml'
+permissions:
+  contents: read
+concurrency:
+  group: whatsapp-guides-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  guidance-dom:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    env:
+      META_LIVE_SEND: '0'
+      QR_AI_ENABLED: '0'
+      INBOX_SEND_ENABLED: '0'
+      MARKETING_EXECUTION_ENABLED: '0'
+      CAKTO_BILLING_LIVE_ENABLED: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Instalar dependencias locais para testes DOM
+        run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+      - name: Verificar JavaScript e regressões dos guias
+        run: |
+          node --check app/static/orion-suite.js
+          node --test ui-tests/whatsapp-guidance-layout.test.mjs ui-tests/subscription-sidebar-spacing.test.mjs ui-tests/subscription-workspace.test.mjs ui-tests/single-business-context.test.mjs
