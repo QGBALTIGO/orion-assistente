@@ -22,7 +22,7 @@ from sqlalchemy import text
 
 from app.catalog_schemas import StrictModel
 from app import qr_channel_scope
-from app.qr_assistant_catalog import clip, focus_service
+from app.qr_assistant_catalog import clip, focus_service, service_option
 from app.qr_presentation import money, duration, message_units
 
 router = APIRouter(tags=["Escolhas privadas da recepcionista"])
@@ -197,6 +197,7 @@ async def _timezone(tenant):
 
 async def present(redis, tenant, phone, namespace, result, capabilities, *, verified_operation=False):
     page = result.pop("_catalog_page", None)
+    professional_page = result.pop("_professional_page", None)
     key = f"orion:qr:ai:{tenant}:{namespace}"
     await redis.delete(key+":presentation")
     if capabilities is None or not isinstance(result.get("answer"), str) or not result["answer"]:
@@ -215,16 +216,36 @@ async def present(redis, tenant, phone, namespace, result, capabilities, *, veri
     if page:
         rows = []
         for row in page["rows"]:
-            price = ("a partir de " if row.get("price_mode") == "from" else "")+money(row["price_cents"])
-            description = price+" · "+duration(row["duration_min"])+" · "+row["name"]
-            rows.append(option(row["name"], {"kind": "service", "service_id": str(row["id"])}, description))
+            title, description = service_option(row)
+            rows.append(option(title, {"kind": "service", "service_id": str(row["id"])}, description))
         if page["page"] > 0:
             rows.append(option("Página anterior", {"kind": "text", "body": f"ver serviços página {page['page']}"}))
         if page["page"]+1 < page["pages"]:
             rows.append(option("Mais serviços", {"kind": "text", "body": f"ver serviços página {page['page']+2}"}))
         action = {"type": "list", "title": "Serviços", "description": page["intro"],
-                  "button_text": "Ver serviços", "footer": f"Página {page['page']+1}/{page['pages']}",
+                  "button_text": "Ver serviços", "footer": f"{page.get('total', len(page['rows']))} serviços · Página {page['page']+1}/{page['pages']}",
                   "sections": [{"title": "Serviços disponíveis", "rows": rows}]}
+    elif professional_page:
+        inquiry = state.get("availability_query") or {}
+        source = inquiry if inquiry.get("waiting_for") == "professional" else state
+        people = source.get("professionals", [])
+        allowed = {str(person["id"]) for person in people}
+        rows = []
+        for index, person in enumerate(professional_page["rows"], 1):
+            if str(person["id"]) not in allowed:
+                continue
+            duplicate = sum(row["name"].casefold() == person["name"].casefold() for row in people) > 1
+            title = clip(person["name"], 24)
+            description = f"Opção {index}" if duplicate else (person["name"] if title != person["name"] else "")
+            rows.append(option(title, {"kind": "professional", "professional_id": str(person["id"])}, description))
+        if professional_page["page"]:
+            rows.append(option("Profissionais anteriores", {"kind": "text", "body": f"ver profissionais página {professional_page['page']}"}))
+        if professional_page["page"]+1 < professional_page["pages"]:
+            rows.append(option("Mais profissionais", {"kind": "text", "body": f"ver profissionais página {professional_page['page']+2}"}))
+        if rows:
+            action = {"type": "list", "title": "Profissionais", "description": professional_page["intro"],
+                "button_text": "Ver profissionais", "footer": f"{professional_page['total']} profissionais · Página {professional_page['page']+1}/{professional_page['pages']}",
+                "sections": [{"title": "Quem vai atender você?", "rows": rows}]}
     elif step in {"confirm", "reschedule_confirm", "cancel_confirm"} and state.get("step") == step:
         summary = state.get("confirmation_summary")
         try:
@@ -242,24 +263,16 @@ async def present(redis, tenant, phone, namespace, result, capabilities, *, veri
                 buttons.append(option("Voltar", {"kind": "text", "body": "não"}))
             action = {"type": "reply_buttons", "text": answer, "footer": "Confira os dados antes de escolher.",
                       "buttons": [{"id": x["id"], "title": x["title"]} for x in buttons]}
-    elif step in {"time", "reschedule_time", "professional"} and state.get("step") == step:
+    elif step in {"time", "reschedule_time"} and state.get("step") == step:
         rows = []
-        if step == "professional":
-            people = state.get("professionals", [])
-            for index, person in enumerate(people[:10], 1):
-                if person["name"] in answer:
-                    duplicate = sum(row["name"] == person["name"] for row in people) > 1
-                    rows.append(option(person["name"], {"kind": "professional", "professional_id": str(person["id"])},
-                                       f"Opção {index}" if duplicate else ""))
-        else:
-            zone = await _timezone(tenant)
-            for value in state.get("slots", [])[:10]:
-                clock = datetime.fromisoformat(value)
-                if zone is None or clock.tzinfo is None:
-                    continue
-                clock = clock.astimezone(zone)
-                if clock.strftime("%H:%M") in answer:
-                    rows.append(option(clock.strftime("%H:%M"), {"kind": "text", "body": clock.strftime("%H:%M")}))
+        zone = await _timezone(tenant)
+        for value in state.get("slots", [])[:10]:
+            clock = datetime.fromisoformat(value)
+            if zone is None or clock.tzinfo is None:
+                continue
+            clock = clock.astimezone(zone)
+            if clock.strftime("%H:%M") in answer:
+                rows.append(option(clock.strftime("%H:%M"), {"kind": "text", "body": clock.strftime("%H:%M")}))
         if rows:
             action = {"type": "list", "title": "Escolha uma opção", "description": answer,
                       "button_text": "Ver opções", "footer": "Disponibilidade conferida novamente ao reservar.",
@@ -287,6 +300,7 @@ async def _ack_request(payload, request, channel_id=None):
     from redis.asyncio import from_url
     import os
     identity = None
+    scope_token = None
     if channel_id is None:
         from app.qr_intake_revision import authorized_tenant
         from app.qr_legacy import require_managed_path
@@ -298,15 +312,33 @@ async def _ack_request(payload, request, channel_id=None):
     else:
         from app.qr_channels import authenticated_channel
         from app.qr_ai import _managed_assistant_ready
-        identity = await authenticated_channel(request, phone=payload.phone)
-        if identity.channel_id != channel_id or not identity.assistant_enabled or not await _managed_assistant_ready(identity):
-            raise HTTPException(403, "Canal de atendimento indisponível")
+
+        async def revalidate():
+            fresh = await authenticated_channel(request, phone=payload.phone)
+            if fresh.channel_id != channel_id or not fresh.assistant_enabled or not await _managed_assistant_ready(fresh):
+                raise HTTPException(403, "Canal de atendimento indisponível")
+            return fresh
+
+        identity = await revalidate()
         tenant, namespace = identity.tenant_id, identity.conversation_namespace(payload.phone)
-    redis = from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"), socket_connect_timeout=3, socket_timeout=3)
+        # A preserved, adopted primary enables persistent control independently
+        # of the global switch. Its ACK must read the same scoped SQL revision
+        # as the reply that issued the presentation, never a legacy None value.
+        scope_token = qr_channel_scope.bind(identity, revalidate)
+    redis = None
     try:
-        return await acknowledge(redis, tenant, payload.phone, namespace, payload, identity=identity)
+        redis = from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"), socket_connect_timeout=3, socket_timeout=3)
+        await qr_channel_scope.assert_current()
+        result = await acknowledge(redis, tenant, payload.phone, namespace, payload, identity=identity)
+        await qr_channel_scope.assert_current()
+        return result
     finally:
-        await redis.aclose()
+        try:
+            if redis is not None:
+                await redis.aclose()
+        finally:
+            if scope_token is not None:
+                qr_channel_scope.reset(scope_token)
 
 
 @router.post("/internal/qr/ai/presentation-ack", include_in_schema=False)

@@ -5,7 +5,8 @@ import re
 from app.qr_behaviors import norm
 from app.qr_presentation import escape_label, money, duration, message_units, PresentationPreferences
 
-PAGE_SIZE = 6
+PAGE_SIZE = 8
+MAX_LIST_ROWS = 10
 
 
 def clip(value, maximum):
@@ -18,8 +19,40 @@ def clip(value, maximum):
     return value + ("…" if truncated else "")
 
 
+def service_option(row):
+    """Keep names and price readable within the native row's 24/72 limits."""
+    name = " ".join(str(row["name"]).split())
+    title = name
+    if message_units(title) > 24:
+        words, title = name.split(), ""
+        for word in words:
+            candidate = (title+" "+word).strip()
+            if message_units(candidate) > 24:
+                break
+            title = candidate
+        title = title or clip(name, 24)
+    minutes = row.get("duration_min")
+    if type(minutes) is int and minutes > 0:
+        hours, remainder = divmod(minutes, 60)
+        short_time = (f"{hours}h"+(f"{remainder:02d}" if remainder else "")) if hours else f"{minutes} min"
+    else:
+        short_time = duration(minutes)
+    price = ("a partir de " if row.get("price_mode") == "from" else "")+money(row["price_cents"])
+    facts = price+" · "+short_time
+    suffix = name[len(title):].strip() if name.startswith(title) else name
+    description = (suffix+" · " if suffix else "")+facts
+    if message_units(description) > 72:
+        description = facts+" · "+clip(suffix, max(1, 72-message_units(facts)-3))
+    return title, clip(description, 72)
+
+
 def _request(body, browser):
     text = norm(body).strip(" !?.")
+    text = re.sub(r"(?:,\s*)?\bpor favor$", "", text).strip(" ,!?.")
+    text = re.sub(r"^(?:(?:pode|poderia|consegue)\s+(?:me\s+)?(?:mostrar|listar|mandar|enviar|ver)|"
+                  r"me\s+(?:mostra|mostre|manda|mande)|quero\s+(?:ver|conhecer))\s+(?:os\s+)?", "", text)
+    if re.fullmatch(r"(?:valores|precos|tabela de (?:valores|precos)|(?:valores|precos)(?: de todos| dos| de)? (?:os )?servicos|todos os servicos)", text):
+        return {"page": 0, "query": "", "category": ""}
     if re.fullmatch(r"quais(?: sao)?(?: os)? servicos(?: (?:voces tem|tem|disponiveis))?", text):
         return {"page": 0, "query": "", "category": ""}
     if re.fullmatch(r"(?:(?:me )?(?:manda|mande|mostra|mostre|ver|veja|quero ver|quais sao)(?:\s+o[sa]?)?\s+)?(?:lista(?: de servicos)?|catalogo(?: de servicos)?|servicos|opcoes de servicos)", text):
@@ -33,8 +66,10 @@ def _request(body, browser):
     found = re.fullmatch(r"(?:ver )?servicos pagina (\d{1,3})", text)
     if found and isinstance(browser, dict):
         return {**browser, "page": max(0, int(found[1])-1)}
-    if text in {"mais servicos", "proximos servicos", "proxima pagina"} and isinstance(browser, dict):
+    if text in {"mais servicos", "outros servicos", "tem mais servicos", "proximos servicos", "proxima pagina"} and isinstance(browser, dict):
         return {**browser, "page": browser.get("page", 0)+1}
+    if text in {"pagina anterior", "servicos anteriores", "voltar para a pagina anterior", "voltar a pagina anterior"} and isinstance(browser, dict):
+        return {**browser, "page": max(0, browser.get("page", 0)-1)}
     return None
 
 
@@ -50,9 +85,10 @@ async def handle_request(body, state, business, catalog, redis, key):
     category, query = request["category"], request["query"]
     rows = [row for row in catalog if (not category or norm(row.get("category") or "") == category)
             and (not query or all(word in norm(row["name"]) for word in query.split()))]
-    pages = max(1, (len(rows)+PAGE_SIZE-1)//PAGE_SIZE)
+    page_size = MAX_LIST_ROWS if len(rows) <= MAX_LIST_ROWS else PAGE_SIZE
+    pages = max(1, (len(rows)+page_size-1)//page_size)
     page = min(request["page"], pages-1)
-    shown = rows[page*PAGE_SIZE:(page+1)*PAGE_SIZE]
+    shown = rows[page*page_size:(page+1)*page_size]
     request["page"] = page
     # Browsing withdraws consent, while retaining the customer's draft choices.
     if state.get("step") in {"confirm", "reschedule_confirm", "cancel_confirm"}:
@@ -70,20 +106,22 @@ async def handle_request(body, state, business, catalog, redis, key):
     marker = "📋 " if prefs.emoji == "light" else ""
     heading = marker+f"*{title}*"
     if pages > 1:
-        heading += f" · página {page+1}/{pages}"
+        heading += f"\nPágina {page+1}/{pages} · {page*page_size+1}–{page*page_size+len(shown)} de {len(rows)} serviços"
     lines = []
     for index, row in enumerate(shown, 1):
         price = ("a partir de " if row.get("price_mode") == "from" else "") + money(row["price_cents"])
-        lines.append(f"{index}. *{escape_label(clip(row['name'], 75))}*\n{price} · {duration(row['duration_min'])}")
+        lines.append(f"{index}. *{escape_label(clip(row['name'], 100))}*\n{price} · {duration(row['duration_min'])}")
     answer = heading + "\n\n" + "\n\n".join(lines)
-    answer += "\n\nPode escolher pela lista ou escrever o serviço. Para pesquisar: *buscar serviço* e o nome."
+    answer += "\n\nEscolha uma opção ou me diga o serviço que procura."
     if page+1 < pages:
-        answer += "\nPara continuar: *mais serviços*."
+        answer += "\nQuer ver os próximos serviços? É só pedir."
+    if page:
+        answer += "\nVocê também pode voltar à página anterior."
     if business.get("catalog_has_more"):
         answer += "\nCatálogo extenso: a equipe pode ajudar com os demais serviços."
     return {"answer": answer, "step": "catalog", "_catalog_page": {
-        "rows": shown, "page": page, "pages": pages, "query": query, "category": category,
-        "intro": marker+"*Escolha seu serviço*\nVeja o valor e a duração nas opções. Você também pode escrever o nome.",
+        "rows": shown, "page": page, "pages": pages, "query": query, "category": category, "total": len(rows),
+        "intro": marker+"*Escolha seu serviço*\nVeja os valores e a duração na lista. Se preferir, me diga o nome do serviço.",
     }}
 
 

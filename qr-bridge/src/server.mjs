@@ -1153,7 +1153,7 @@ async function sendLegacyProtocol(phone,action,{isCurrent=()=>false,assertAuthor
     return {accepted:true,id:sent.key.id};
   });}finally{built?.dispose();}
 }
-async function sendLegacyRaw(phone,text,{waitForCapacity=false,isCurrent=()=>true,transactionalTyping=false,source='automation',assertAuthorized,pacing=true,presentation,presentationAck}={}){
+async function sendLegacyRaw(phone,text,{waitForCapacity=false,isCurrent=()=>true,transactionalTyping=false,source='automation',assertAuthorized,pacing=true,presentation,presentationAck,deferPresentationAck=false}={}){
   if(presentation&&source!=='assistant')throw Error('assistant_presentation_denied');
   const target=validPhone(phone);
   if(status!=="connected"||!socket)throw Error("O WhatsApp não está conectado");
@@ -1211,7 +1211,7 @@ async function sendLegacyRaw(phone,text,{waitForCapacity=false,isCurrent=()=>tru
       jid:destination,recipientProof,phone:target,retryStore,presentationStore:socketOutgoingPresence.get(selectedSocket).assistantPresentations(),
       isCurrent:current,assertAuthorized:authorize,beforeSend,
       interactiveMode:assistantNativeMode({tenantId:scope?.tenant_id,channelId:scope?.channel_id,phone:target}),
-      acknowledge:presentationAck||(payload=>acknowledgeAssistantPresentation({apiUrl:process.env.QR_AI_API_URL,token:KEY,payload})),
+      acknowledge:presentationAck||(payload=>acknowledgeAssistantPresentation({apiUrl:process.env.QR_AI_API_URL,token:KEY,payload})),deferPresentationAck,
       onDiagnostic:(category,id)=>{
         if(assistantNativeMode({tenantId:scope?.tenant_id,channelId:scope?.channel_id,phone:target})==='native')
           transport.record('assistant_presentation',id,{category});
@@ -1254,7 +1254,8 @@ async function sendLegacyRaw(phone,text,{waitForCapacity=false,isCurrent=()=>tru
     delivery:deliveryReceipts.get(result.key.id)||"pending"});
   // sendMessage resolve quando a biblioteca entrega ao transporte, não
   // quando o iPhone consegue descriptografar. Apenas receipts validam isso.
-  return {accepted:true,delivery:deliveryReceipts.get(result.key.id)||"pending",id,trace:transport.tag(result.key.id)};
+  return {accepted:true,delivery:deliveryReceipts.get(result.key.id)||"pending",id,trace:transport.tag(result.key.id),
+    ...(typeof result.acknowledgePresentation==='function'?{acknowledgePresentation:result.acknowledgePresentation}:{})};
   });
 }
 

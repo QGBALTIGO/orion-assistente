@@ -247,7 +247,7 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
     assertMutationReady:async()=>{await guarded();if(!groupMutationReady())throw Error('group_add_unavailable');},
     mutationCurrent:groupMutationReady});
   async function relayText(phone,text,{isCurrent:operationCurrent=()=>true,maxTextChars=1200,device=false,source='automation',
-    diagnostic=null,assertAuthorized,onRelayAttempt,pacing=true,presentation}={}){
+    diagnostic=null,assertAuthorized,onRelayAttempt,pacing=true,presentation,deferPresentationAck=false}={}){
     if(presentation&&(device||source!=='assistant'))throw Error('assistant_presentation_denied');
     await guarded();const self=normalizeFromJid(client.user?.id);
     let authorized=true;
@@ -280,13 +280,13 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
     if(presentation){
       const sent=await relayAssistantPresentation({presentation,sdk:{...mod,userJid:client.user.id},jid:proof.jid,recipientProof:proof,phone,
         retryStore,presentationStore:assistantPresentations(),relay:async(jid,body,options)=>{await authorize();return client.relayMessage(jid,body,options);},
-        isCurrent:sendCurrent,assertAuthorized:authorize,beforeSend,acknowledge:context.presentationAck,
+        isCurrent:sendCurrent,assertAuthorized:authorize,beforeSend,acknowledge:context.presentationAck,deferPresentationAck,
         onDiagnostic:(category,id)=>{
           if(assistantNativeMode({tenantId:context.tenantId,channelId:context.channelId,phone})==='native')
             diagnostics.record('assistant_presentation',id,{category});
         },
         interactiveMode:assistantNativeMode({tenantId:context.tenantId,channelId:context.channelId,phone})});
-      return {id:sent.key.id};
+      return {id:sent.key.id,...(typeof sent.acknowledgePresentation==='function'?{acknowledgePresentation:sent.acknowledgePresentation}:{})};
     }
     await beforeSend();
     const sent=await sendStoredText({jid:proof.jid,recipientProof:proof,text,store:retryStore,freshDevices:true,isCurrent:sendCurrent,assertAuthorized:authorize,maxTextChars,preserveWhitespace:device,

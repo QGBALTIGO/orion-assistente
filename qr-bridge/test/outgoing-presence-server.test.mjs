@@ -114,6 +114,25 @@ test('real PRIMARY raw sender caches one native assistant protocol, retains targ
   f.coordinator.close();
 });
 
+test('PRIMARY raw transport returns a private deferred ACK after persisting acceptance, without another relay',async t=>{
+  const before=process.env.ORION_RETRY_TEST_MODE;process.env.ORION_RETRY_TEST_MODE='1';
+  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'orion-primary-deferred-ack-'));
+  t.after(()=>{if(before===undefined)delete process.env.ORION_RETRY_TEST_MODE;else process.env.ORION_RETRY_TEST_MODE=before;
+    assert.ok(path.resolve(directory).startsWith(path.resolve(os.tmpdir())+path.sep+'orion-primary-deferred-ack-'));fs.rmSync(directory,{recursive:true,force:true});});
+  const f=fixture(),acks=[],id='F'.repeat(32),presentation={version:1,id,action:{type:'reply_buttons',text:'Resumo fictício',footer:'',
+    buttons:[{id:`oa1_${id}_0`,title:'Confirmar'},{id:`oa1_${id}_1`,title:'Corrigir'}]}};
+  const store=createAssistantPresentationStore({directory,secret:'synthetic-primary-deferred-secret-'.repeat(2),scope:{registration:123}});
+  f.context.socketOutgoingPresence.set(f.socket,{...f.coordinator,assistantPresentations:()=>store});
+  Object.assign(f.context,{proto:sdk.proto,generateWAMessageFromContent:sdk.generateWAMessageFromContent,relayAssistantPresentation,assistantNativeMode});
+  const sending=f.context.sendLegacyRaw(phone,presentation.action.text,{source:'assistant',presentation,deferPresentationAck:true,isCurrent:()=>true,
+    presentationAck:async payload=>{acks.push(payload);return {acknowledged:true};}});
+  await f.clock.advance(3000);const sent=await sending;
+  assert.equal(sent.accepted,true);assert.equal(f.relays.length,1);assert.equal(acks.length,0);assert.equal(typeof sent.acknowledgePresentation,'function');
+  assert.equal(await sent.acknowledgePresentation(),true);assert.equal(acks.length,1);
+  assert.equal(await sent.acknowledgePresentation(),true);assert.equal(acks.length,1);assert.equal(f.relays.length,1);
+  f.coordinator.close();
+});
+
 test('pinned SDK encodes only targeted recording as composing with audio media, without global availability',async()=>{
   const source=fs.readFileSync(new URL('../node_modules/@whiskeysockets/baileys/lib/Socket/chats.js',import.meta.url),'utf8');
   const match=source.match(/const sendPresenceUpdate = async \(type, toJid\) => \{[\s\S]*?\n    \};/);assert.ok(match);

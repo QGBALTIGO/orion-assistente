@@ -555,6 +555,7 @@ async def book_appointment(s: AsyncSession, tenant: UUID, professional: UUID,
                            start: datetime, idempotency_key: str,
                            now: datetime | None = None, *, replace_hold_id: UUID | None = None,
                            expected_snapshot: str | None = None,
+                           replace_hold_professional_id: UUID | None = None,
                            context: LifecycleActor | None = None, source: str = "unknown",
                            nonblocking_professional_lock: bool = False,
                            public_birth_date: date | None = None):
@@ -562,16 +563,25 @@ async def book_appointment(s: AsyncSession, tenant: UUID, professional: UUID,
     supplied_clock = now is not None
     now = now or datetime.now(UTC)
     fp = fingerprint(professional, ids, start, phone)
+    if replace_hold_professional_id is not None and (replace_hold_id is None or not isinstance(replace_hold_professional_id, UUID)):
+        fail(422, "A substituição exige o profissional original da reserva temporária")
+    original_professional = replace_hold_professional_id or professional
     if replace_hold_id is not None:
         if not isinstance(expected_snapshot, str) or not expected_snapshot:
             fail(409, "Confira a reserva temporária antes de substituir o horário")
-        fp = hashlib.sha256(json.dumps({"request": fp, "replace_hold": str(replace_hold_id),
-                                       "snapshot": expected_snapshot}, sort_keys=True).encode()).hexdigest()
+        replacement = {"request": fp, "replace_hold": str(replace_hold_id), "snapshot": expected_snapshot}
+        if replace_hold_professional_id is not None:
+            replacement["replace_hold_professional"] = str(replace_hold_professional_id)
+        fp = hashlib.sha256(json.dumps(replacement, sort_keys=True).encode()).hexdigest()
     elif expected_snapshot is not None:
         fail(422, "A substituição exige a reserva temporária")
     async with tenant_transaction(s, tenant):
         await _require_booking_feature(s, tenant, nonblocking=nonblocking_professional_lock)
-        await _engine_professional_lock(s, tenant, professional, nonblocking=nonblocking_professional_lock)
+        # A customer's replacement can move an unconfirmed proposal between
+        # staff. Both calendars remain locked until old cancellation + new hold
+        # commit together; default callers still require the same professional.
+        for locked_professional in sorted({professional, original_professional}, key=str):
+            await _engine_professional_lock(s, tenant, locked_professional, nonblocking=nonblocking_professional_lock)
         if not supplied_clock:
             now = datetime.now(UTC)
         existing = (await s.execute(text("""
@@ -589,7 +599,7 @@ async def book_appointment(s: AsyncSession, tenant: UUID, professional: UUID,
         from app.onboarding_service import require_operational_ready
         await require_operational_ready(s, tenant, "appointments")
         if replace_hold_id is not None:
-            previous = await _replacement_hold(s, tenant, professional, replace_hold_id, phone,
+            previous = await _replacement_hold(s, tenant, original_professional, replace_hold_id, phone,
                                                expected_snapshot, now, lock=True)
             if not supplied_clock:
                 now = datetime.now(UTC)
@@ -605,7 +615,7 @@ async def book_appointment(s: AsyncSession, tenant: UUID, professional: UUID,
                     updated_at=GREATEST(:now,updated_at+interval '1 microsecond')
                 WHERE tenant_id=:tenant AND id=:id AND professional_id=:professional AND status='hold'
                   AND hold_expires_at>:now AND """ + CUSTOMER_MATCH_SQL + " RETURNING id"),
-                {"tenant": tenant, "id": replace_hold_id, "professional": professional,
+                {"tenant": tenant, "id": replace_hold_id, "professional": original_professional,
                  "now": now, "customer_phone": phone})).scalar_one_or_none()
             if changed is None:
                 fail(409, "A reserva temporária mudou. Confira um novo resumo")

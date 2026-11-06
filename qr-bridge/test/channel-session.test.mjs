@@ -25,6 +25,33 @@ const phone='5567999999901',self='5567999999902',flush=()=>new Promise(r=>setImm
 const assistantPresentation=()=>{const id='C'.repeat(32);return {version:1,id,action:{type:'reply_buttons',text:'Resumo fictício',footer:'',
   buttons:[{id:`oa1_${id}_0`,title:'Confirmar'},{id:`oa1_${id}_1`,title:'Corrigir'}]}};};
 async function waitFor(test){for(let i=0;i<150;i++){if(test())return;await flush();}assert.ok(test(),'Expected asynchronous assistant boundary');}
+
+test('managed accepted presentation can defer only its ACK until the owning manager releases the send slot',async t=>{
+  const s=await session(t),acks=[];s.context.presentationAck=async payload=>{acks.push(payload);return {acknowledged:true};};
+  s.client.ev.emit('connection.update',{connection:'open'});await flush();
+  const sent=await s.result.send(phone,'Resumo fictício',{source:'assistant',presentation:assistantPresentation(),deferPresentationAck:true});
+  assert.equal(s.sent.length,1);assert.equal(acks.length,0,'The transport must return acceptance before trying a still-pending SQL slot');
+  assert.equal(typeof sent.acknowledgePresentation,'function');
+  assert.equal(await sent.acknowledgePresentation(),true);assert.equal(acks.length,1);
+  assert.equal(await sent.acknowledgePresentation(),true);assert.equal(acks.length,1,'Only the idempotent ACK is cached, never a second relay');
+  assert.equal(s.sent.length,1);
+});
+
+test('a stopped deferred sender cannot ACK; the same accepted map can reconcile after a valid-session restart without relay',async t=>{
+  const s=await session(t),acks=[];let released=false;
+  s.context.presentationAck=async payload=>{acks.push(payload);if(!released)throw Object.assign(Error('synthetic pending slot'),{status:423});return {acknowledged:true};};
+  s.context.onInbound=async value=>{s.notices.push(value);return {revision:s.notices.length,assistant_interactions:1};};
+  s.client.ev.emit('connection.update',{connection:'open'});await flush();
+  const sent=await s.result.send(phone,'Resumo fictício',{source:'assistant',presentation:assistantPresentation(),deferPresentationAck:true});
+  assert.equal(s.sent.length,1);assert.equal(acks.length,0);
+  s.result.close();assert.equal(await sent.acknowledgePresentation(),false);assert.equal(acks.length,0);
+  const reopened=await s.open();t.after(()=>reopened.close());s.client.ev.emit('connection.update',{connection:'open'});await flush();
+  const reply={extendedTextMessage:{text:'1',contextInfo:{stanzaId:sent.id}}};
+  s.receive({id:'deferred-before-release',fromMe:false},reply);
+  await waitFor(()=>acks.length===2);for(let i=0;i<20;i++)await flush();assert.equal(s.messages.length,0);
+  released=true;s.receive({id:'deferred-after-release',fromMe:false},reply);await waitFor(()=>s.messages.length===1);
+  assert.equal(s.messages[0].selection.quoted_message_id,sent.id);assert.equal(s.sent.length,1);assert.equal(acks.length,3);
+});
 test('real managed session sends one cached presentation and resolves a quoted selection after a valid-auth restart',async t=>{
   const s=await session(t),acks=[];s.context.presentationAck=async payload=>{acks.push(payload);return {acknowledged:true};};
   s.context.onInbound=async value=>{s.notices.push(value);return {revision:s.notices.length,assistant_interactions:1};};

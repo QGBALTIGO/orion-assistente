@@ -108,12 +108,12 @@ async def test_catalog_pages_cover_services_after_original_sixty_item_limit():
     redis = Redis(); key = "test-catalog"; state = {}
     rows = services(150); business = {"name": "Empresa de teste"}
     seen = set()
-    for page in range(25):
+    for page in range((len(rows)+7)//8):
         request = "lista" if page == 0 else "mais serviços"
         result = await catalog.handle_request(request, state, business, rows, redis, key)
         current = result["_catalog_page"]
         assert current["page"] == page
-        assert len(current["rows"]) == 6
+        assert [row["id"] for row in current["rows"]] == [row["id"] for row in rows[page*8:(page+1)*8]]
         assert choices.message_units(result["answer"]) <= 1200
         seen.update(row["id"] for row in current["rows"])
     assert seen == {row["id"] for row in rows}
@@ -146,7 +146,7 @@ async def test_number_selects_visible_catalog_page_instead_of_old_menu():
     await catalog.handle_request("mais serviços", state, {}, rows, redis, "k")
     assert await catalog.numeric_choice(redis, "k", "2") == "1"
     selected = json.loads(await redis.get("k"))
-    assert selected["menu_ids"] == [str(rows[7]["id"])]
+    assert selected["menu_ids"] == [str(rows[9]["id"])]
     assert selected["step"] == "menu" and "confirmation_summary" not in selected
 
 
@@ -157,11 +157,12 @@ async def test_unusual_digit_is_not_parsed_as_an_integer_catalog_option():
 
 
 async def test_same_named_professionals_keep_distinct_verified_ids():
+    from app.qr_assistant_professionals import professional_menu
     redis = Redis(); key = f"orion:qr:ai:{TENANT}:{PHONE}"
     people = [{"id": str(uuid4()), "name": "João"}, {"id": str(uuid4()), "name": "João"}]
     await redis.set(key, json.dumps({"step": "professional", "professionals": people}))
     result = await choices.present(redis, TENANT, PHONE, PHONE,
-        {"answer": "Qual profissional você prefere?\n• João\n• João", "step": "professional"}, choices.Capabilities(assistant_interactions=1))
+        {"answer": "Qual profissional você prefere?\n• João\n• João", "step": "professional", "_professional_page": professional_menu(people)}, choices.Capabilities(assistant_interactions=1))
     selected = result["presentation"]["action"]["sections"][0]["rows"][1]
     record = json.loads(await redis.get(key+":presentation")); record["provider_id"] = "accepted-professionals"
     await redis.set(key+":presentation", json.dumps(record))

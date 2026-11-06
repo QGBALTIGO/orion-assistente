@@ -109,7 +109,7 @@ export async function buildAssistantPresentation(presentation,{sdk,interactiveMo
 }
 export async function relayAssistantPresentation({presentation,sdk,jid,recipientProof,phone:recipient,
   retryStore,presentationStore,relay,isCurrent,assertAuthorized,beforeSend,interactiveMode='text_fallback',acknowledge,
-  onPrepared=()=>{},onDiagnostic=()=>{}}){
+  deferPresentationAck=false,onPrepared=()=>{},onDiagnostic=()=>{}}){
   const diagnostic=(category,id)=>{try{onDiagnostic(category,id);}catch{}};
   let built;
   try{
@@ -123,9 +123,14 @@ export async function relayAssistantPresentation({presentation,sdk,jid,recipient
       relay:(to,body,options)=>relay(to,body,{...options,...built?.relayOptions})});
     presentationStore.accepted(recipient,sent.key.id);
     diagnostic('accepted',sent.key.id);
+    const acknowledgePresentation=()=>presentationStore.acknowledge(recipient,sent.key.id,acknowledge,isCurrent,category=>diagnostic(category,sent.key.id));
+    // A managed SQL send slot must be finished from the durable accepted
+    // receipt before its own presentation can pass the independent ACK guard.
+    // This private callback never enters the protocol, ledger or public DTO.
+    if(deferPresentationAck===true)return {...sent,acknowledgePresentation};
     // A missing ACK can be reconciled by a later selection; it never causes
     // another WhatsApp send or a change to the already accepted protocol.
-    await presentationStore.acknowledge(recipient,sent.key.id,acknowledge,isCurrent,category=>diagnostic(category,sent.key.id));
+    await acknowledgePresentation();
     return sent;
   }finally{built?.dispose();}
 }
