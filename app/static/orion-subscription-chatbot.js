@@ -65,7 +65,7 @@
     }).join('');
   }
   function fileEnvelope(file){
-    if(!file||!Number.isSafeInteger(file.size)||file.size<1||file.size>10*1024*1024||!/^.+\.(?:json|zip)$/i.test(file.name))return Promise.reject(Error('Escolha um ZIP exportado pelo BotBot ou um JSON/ZIP do Orion, de até 10 MB.'));
+    if(!file||!Number.isSafeInteger(file.size)||file.size<1||file.size>10*1024*1024||!/^.+\.(?:json|zip)$/i.test(file.name))return Promise.reject(Error('Selecione um arquivo JSON ou ZIP de até 10 MB.'));
     return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onerror=()=>reject(Error('Não foi possível ler o arquivo selecionado.'));reader.onload=()=>{const value=String(reader.result||''),comma=value.indexOf(',');if(comma<0||!value.slice(0,comma).endsWith(';base64'))return reject(Error('Não foi possível ler o arquivo selecionado.'));resolve({filename:file.name,content_base64:value.slice(comma+1)});};reader.readAsDataURL(file);});
   }
   let active=null;
@@ -320,7 +320,7 @@
       const mode=transferMode(entry),selected=entry.element.querySelector('[data-sc-field="transfer_device"]').value,device_id=selected||null;if(device_id&&!uuid(device_id))return;
       let payload,suffix;const epoch=state.epoch,previewRead=entry.previewRead=(entry.previewRead||0)+1;
       if(entry.kind==='import'){
-        const file=entry.element.querySelector('[data-sc-import-file]').files?.[0]||entry.file;if(!file){dialogError(entry,'Escolha um ZIP do BotBot ou um JSON/ZIP do Orion.');return;}
+        const file=entry.element.querySelector('[data-sc-import-file]').files?.[0]||entry.file;if(!file){dialogError(entry,'Selecione um arquivo JSON ou ZIP.');return;}
         try{payload={...await fileEnvelope(file),device_id,mode};}catch(error){dialogError(entry,error.message);return;}
         if(!current(epoch)||!entry.element.isConnected||entry.previewRead!==previewRead)return;entry.file=file;suffix='/imports/preview';
       }else{payload={mode,device_id};suffix='/backups/'+encodeURIComponent(entry.backup.id)+'/preview';}
