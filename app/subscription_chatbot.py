@@ -98,7 +98,7 @@ async def catalog(db, tenant, actor, *, graph=None):
                   | {"response_kind": row["response"]["kind"]} for row in sorted(rules.values(), key=lambda item: item["creation_order"], reverse=True)],
         "capabilities": capabilities(bool(state.get("permissions", {}).get("chatbot.manage"))),
         "limits": {"rules": schemas.MAX_RULES, "keyword_chars": 255, "sequence_actions": 30,
-                   "sequence_delay_seconds": 30, "action_delay_seconds": 15, "list_sections": 10,
+                   "sequence_delay_seconds": schemas.MAX_SEQUENCE_DELAY_SECONDS, "action_delay_seconds": schemas.MAX_ACTION_DELAY_SECONDS, "list_sections": 10,
                    "list_rows": 10, "list_row_delay_seconds": 5, "import_bytes": schemas.IMPORT_BYTES},
         "tags": [{"key": key, "label": label} for key, label in (
             ("name", "Nome do contato"), ("phone_number", "Telefone do contato"), ("my_name", "Nome do negócio"),
