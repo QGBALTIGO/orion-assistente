@@ -39,7 +39,7 @@ equivalência integral quando há comportamento ainda não observado ou testado.
 | 16 | Extrator de contatos de grupos | Publicado e conferido ao vivo em 2026-11-05 — PR 269 e corretivo PR 270, produção `a438a1416577cde1fb643e9c8a200ca90093e084`; leitura real de grupos e membros validada, com importação exercitada em dados sintéticos. Etapa encerrada. [Observação e validação](group-contacts-observation.md) |
 | 17 | Adicionar contatos ao grupo | Referência acessível observada; implementação e qualificação em andamento. [Observação](group-add-observation.md) |
 | 18 | Verificador de números WhatsApp | Não iniciado |
-| 19 | Link e QR do WhatsApp | Não iniciado |
+| 19 | Link e QR do WhatsApp | Candidata em revisão isolada: geração local de QR PNG e link oficial WhatsApp; não publicada e não comparada integralmente à referência. [Observação](whatsapp-link-observation.md) |
 
 A etapa 04 passou nos seis grupos específicos de CI: 1.198 casos Python,
 147 PostgreSQL, 309 da ponte, 226 DOM, 33 no Chrome oficial e 33 no WebKit.
