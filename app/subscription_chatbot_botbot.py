@@ -343,10 +343,32 @@ def read_botbot(raw: bytes, filename: str):
     if len(set(source_keys)) != len(source_keys):
         raise _invalid("Existem identificadores de respostas duplicados no arquivo.")
     references = {key: _identity(key, "rule") for key in source_keys}
-    definitions = []
+    definitions, positions, conversion_issues = [], [], []
+    # Error messages are a closed set from the converter. Never echo source
+    # text, URLs, keys or untrusted exception strings in the import dialog.
+    allowed_errors = frozenset({
+        "A exportação contém uma mensagem que não pode ser convertida.",
+        "Uma mensagem está sem texto. Confira o arquivo de origem.",
+        "Uma ação de URL não possui endpoint válido.",
+        "Uma ação de URL usa método não suportado.",
+        "A resposta personalizada da URL não é texto.",
+        "Um menu faz referência a uma resposta ausente da exportação.",
+        "O arquivo contém uma ação que precisa de adaptação antes de importar.",
+        "O atraso da resposta precisa ser um número inteiro.",
+        "O atraso em milissegundos não corresponde a segundos inteiros.",
+        "O atraso de uma mensagem ultrapassa 300 segundos (5 minutos).",
+        "Uma lista de opções não contém seções compatíveis.",
+        "Uma seção de lista contém opções incompatíveis.",
+        "Uma opção de lista não é válida.",
+        "Uma resposta não contém mensagens reconhecidas.",
+        "A sequência de mensagens está vazia ou excede o limite do Orion.",
+        "A sequência supera 300 segundos de atraso e precisa ser ajustada.",
+    })
     for index, row in enumerate(records):
+        number = index + 1
         if not isinstance(row, dict):
-            raise _invalid("Uma resposta exportada não é válida.")
+            conversion_issues.append(f"Resposta {number}: registro inválido")
+            continue
         keywords = _keyword_field(row)
         if isinstance(keywords, list) and all(isinstance(v, str) for v in keywords):
             keyword = ",".join(keywords)
@@ -355,25 +377,31 @@ def read_botbot(raw: bytes, filename: str):
             keyword = keywords
             mode = str(row.get("match_mode", row.get("matchMode", row.get("match_type", row.get("match", "equal"))))).lower()
         if mode not in ("equal", "like", "array"):
-            raise _invalid("Uma resposta usa correspondência não suportada.")
+            conversion_issues.append(f"Resposta {number}: correspondência incompatível")
+            continue
         if not isinstance(keyword, str) or not keyword.strip():
-            raise _invalid("Uma resposta não contém palavra-chave válida.")
+            conversion_issues.append(f"Resposta {number}: palavra-chave ausente")
+            continue
         raw_response = next((row[key] for key in _CONTENT if key in row
                              and _content_present(row[key])), None)
         if raw_response is None:
-            raise _invalid("Uma resposta não contém mensagens que possam ser importadas.")
+            conversion_issues.append(f"Resposta {number}: não contém mensagens que possam ser importadas")
+            continue
         try:
             converted_response = _response(raw_response, source_keys[index], references)
         except ValueError as error:
-            # Error strings come from our own validator, never the source
-            # payload. Show the record position without exposing credentials.
-            raise _invalid(f"Resposta {index + 1}: {error}") from None
+            message = str(error)
+            if message not in allowed_errors:
+                message = "tipo de resposta incompatível"
+            conversion_issues.append(f"Resposta {number}: {message}")
+            continue
         definitions.append({
-            "id": references[source_keys[index]], "creation_order": index + 1,
+            "id": references[source_keys[index]], "creation_order": number,
             "definition": {"keyword": keyword, "match_mode": mode,
                            "device_id": None, "enabled": False,
                            "response": converted_response}
         })
+        positions.append(number)
     exported_at = FALLBACK_DATE
     if isinstance(manifest, dict) and isinstance(manifest.get("exported_at"), str):
         try:
@@ -384,5 +412,7 @@ def read_botbot(raw: bytes, filename: str):
             pass
     from app.subscription_chatbot_botbot_preflight import validate_imported_rules
     return {"format": "orion.subscription-chatbot", "version": 1,
-            "exported_at": exported_at, "rules": validate_imported_rules(definitions),
+            "exported_at": exported_at,
+            "rules": validate_imported_rules(definitions, positions=positions,
+                                            conversion_issues=conversion_issues),
             "templates": [], "assets": []}
