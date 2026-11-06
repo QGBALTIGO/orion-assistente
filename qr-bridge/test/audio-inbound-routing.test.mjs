@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import os from 'node:os';
 import path from 'node:path';
+import {createHmac,randomUUID} from 'node:crypto';
 import {makeContactNames} from '../src/contact-names.mjs';
 import {extractText,resolveMessagePhone} from '../src/core.mjs';
 import {shouldIngestUpsert,timestampMs} from '../src/linked-session-health.mjs';
@@ -42,7 +43,7 @@ after(()=>{for(const directory of contactDirectories)fs.rmSync(directory,{recurs
 function harness({transcribe=async()=> 'Synthetic speech',audioEnabled=true,answer=null,realAudio=false,legacyController,directory:reuseDirectory,
   revisionEnabled=false,forwardResponse,sendResponse,presence,typingConfig={maxPauseMs:0},multipleRecipients=false,withConnection=false,
   centralEnabled=false,centralAnswer='Confirmação de agendamento',nativeEnabled=false,nativeSend=async()=>{},interactions=false}={}){
-  let listener,transcriptions=0,downloads=0;
+  let listener,transcriptions=0,downloads=0,managedTranscriptions=0,legacyTranscriptions=0;
   const directory=reuseDirectory||fs.mkdtempSync(path.join(os.tmpdir(),'orion-inbound-names-'));
   if(!reuseDirectory)contactDirectories.push(directory);
   const namesStore=makeContactNames({directory,secret:'synthetic-local-contact-key-at-least-32-bytes'});
@@ -62,7 +63,7 @@ function harness({transcribe=async()=> 'Synthetic speech',audioEnabled=true,answ
   const context=vm.createContext({client,socket:client,mine:1,generation:1,status:'connected',
     legacyCentral:{transportCurrent:()=>true,assertTransportCurrent:async()=>{},nativeTestScope:()=>null,
       ...(legacyController||{configured:()=>false})},socketOutgoingPresence:new WeakMap(),createNativeTestCanary,
-    namesStore,namesSync:{changed(){nameChanges++;},start(){}},path,authDir:directory,createAssistantIngress,BufferJSON,
+    namesStore,namesSync:{changed(){nameChanges++;},start(){}},path,authDir:directory,createAssistantIngress,BufferJSON,createHmac,
     authRegistrationId:12345,createAssistantPresentationStore,ASSISTANT_SELECTION_TEXT,assistantNativeMode,
     acknowledgeAssistantPresentation:args=>acknowledgeAssistantPresentation({...args,fetchImpl:async(_url,request)=>{
       presentationAcks.push(JSON.parse(request.body));return {ok:true,json:async()=>({acknowledged:true})};}}),
@@ -84,6 +85,16 @@ function harness({transcribe=async()=> 'Synthetic speech',audioEnabled=true,answ
     allowAssistantAudio:(p,s)=>allowAssistantAudio(p,s,env),
     transcribeAssistantAudio:async(message,options)=>{
       transcriptions++;
+      if(typeof options.transcribe==='function'){
+        managedTranscriptions++;
+        return transcribeAssistantAudio(message,{...options,
+          // Legacy-controller fixtures without ASR replace only that boundary.
+          // Explicit controllers exercise the real server callback unchanged.
+          transcribe:typeof legacyController?.transcribe==='function'?options.transcribe:()=>transcribe(message,options),
+          downloadMediaMessage:async()=>{downloads++;return Buffer.from('synthetic audio bytes');},
+          fetchFn:async()=>{throw Error('Adopted audio must not use the global HTTP proxy');}});
+      }
+      legacyTranscriptions++;
       if(!realAudio)return transcribe(message,options);
       return transcribeAssistantAudio(message,{...options,
         downloadMediaMessage:async()=>{downloads++;return Buffer.from('synthetic audio bytes');},
@@ -136,7 +147,8 @@ function harness({transcribe=async()=> 'Synthetic speech',audioEnabled=true,answ
     recover:()=>context.replayAssistantIngress(),diagnostics:()=>context.primaryIngressDiagnostics?.(),
     get nameChanges(){return nameChanges;},
     emit:(messages,type='notify')=>listener({type,messages}),emitEvent:(event,value)=>handlers.get(event)(value),
-    get transcriptions(){return transcriptions;},get downloads(){return downloads;}};
+    get transcriptions(){return transcriptions;},get downloads(){return downloads;},
+    get managedTranscriptions(){return managedTranscriptions;},get legacyTranscriptions(){return legacyTranscriptions;}};
 }
 
 const assistantMenu=()=>{const id='D'.repeat(32);return {version:1,id,action:{type:'reply_buttons',text:'Resumo fictício',footer:'',
@@ -200,6 +212,160 @@ function adopted({inbound,forward,allowed=p=>p===phone,scope=()=>admissionScope}
 function nativeController(options={}){
   return {...adopted(options),nativeTestScope:()=>({...admissionScope,owner:'30000000-0000-4000-8000-000000000001',fence:3})};
 }
+
+function preparationController({grant=true,transcribe=async()=>null,forward}={}){
+  let revision=0;const notifications=[];
+  const central=adopted({allowed:p=>[phone,'5511999999998'].includes(p),forward,
+    inbound:async()=>({revision:++revision,assistant_interactions:1,control_revision:grant?100+revision:null})});
+  central.transcribe=transcribe;
+  central.preparationFailed=async(payload,options)=>{
+    assert.equal(options.isCurrent(),true);notifications.push(payload);return {accepted:true,state:'accepted'};
+  };
+  return {central,notifications};
+}
+
+test('adopted PRIMARY routes audio only through its managed ASR callback without a global request',async()=>{
+  let asr=0;const f=preparationController({transcribe:async({buffer,phone:recipient,signal})=>{
+    asr++;assert.equal(recipient,phone);assert.ok(Buffer.isBuffer(buffer));assert.equal(signal.aborted,false);return 'Consulta sintética sem reserva';}});
+  const h=harness({legacyController:f.central});await h.emit([h.message('managed-audio')]);
+  assert.equal(asr,1);assert.equal(h.managedTranscriptions,1);assert.equal(h.legacyTranscriptions,0);
+  assert.equal(f.central.turns.length,1);assert.equal(f.central.turns[0].text,'Consulta sintética sem reserva');
+  assert.equal(h.diagnostics().entries,0);assert.equal(f.notifications.length,0);
+});
+
+test('a known preparation failure explains once and no longer blocks another contact or a fresh text',async()=>{
+  const f=preparationController(),h=harness({legacyController:f.central,multipleRecipients:true});
+  const audio=h.message('bad-audio');await h.emit([audio]);
+  assert.equal(h.transcriptions,1);assert.equal(f.central.turns.length,0);assert.equal(f.notifications.length,1);
+  assert.equal(f.notifications[0].control_revision,101);assert.equal(f.notifications[0].message_ids[0],'bad-audio');
+  assert.match(f.notifications[0].operation_id,/^[a-f0-9-]{36}$/);
+  assert.equal(h.diagnostics().blocked,0);assert.equal(h.diagnostics().retained,1);
+  await h.emit([audio]);await h.recover();assert.equal(h.transcriptions,1);assert.equal(f.notifications.length,1);
+  await h.emit([h.message('other-text',{remote:'5511999999998@s.whatsapp.net',text:'Consulta sintética B'})]);
+  assert.equal(f.central.turns.length,1);
+  assert.equal(f.central.turns[0].require_summary_review,undefined);
+  await h.emit([h.message('fresh-text',{text:'Consulta sintética A'})]);
+  assert.equal(f.central.turns.length,2);assert.equal(f.central.turns[1].require_summary_review,true);
+  assert.equal(h.diagnostics().blocked,0);
+});
+
+test('no control revision means no notification grant and is never replaced with intake revision',async()=>{
+  const f=preparationController({grant:false}),h=harness({legacyController:f.central});
+  await h.emit([h.message('no-control-proof')]);
+  assert.equal(f.notifications.length,0);assert.equal(h.sent.length,0);assert.equal(f.central.turns.length,0);
+  assert.equal(h.diagnostics().retained,1);assert.equal(h.diagnostics().blocked,0);
+});
+
+test('after restart a failed audio rejects an old native confirmation even without SQL control revision',async t=>{
+  presentationTestMode(t);
+  const f=preparationController({grant:false}),first=harness({legacyController:f.central});
+  const menu=assistantMenu(),provider='old-native-summary';
+  const store=first.context.socketOutgoingPresence.get(first.context.client).assistantPresentations();
+  store.prepared(menu,phone,{key:{id:provider,fromMe:true}});store.accepted(phone,provider);
+  await first.emit([first.message('failed-before-old-click')]);
+  first.context.stopPrimaryIngress();first.context.generation++;
+  let acks=0;const next=preparationController({grant:false});next.central.presentationAck=async()=>{acks++;return {acknowledged:true};};
+  const restored=harness({legacyController:next.central,directory:first.directory});
+  const click=restored.message('old-native-click',{text:''});
+  click.message={listResponseMessage:{singleSelectReply:{selectedRowId:menu.action.buttons[0].id},contextInfo:{stanzaId:provider}}};
+  await restored.emit([click]);
+  assert.equal(acks,0);assert.equal(next.central.turns.length,0);assert.equal(restored.sent.length,0);
+  assert.equal(restored.diagnostics().retained,1);assert.equal(restored.diagnostics().blocked,0);
+  await restored.emit([restored.message('fresh-sim',{text:'Sim'})]);
+  assert.equal(next.central.turns.length,1);assert.equal(next.central.turns[0].require_summary_review,true);
+  assert.equal(next.central.turns[0].selection,undefined);
+});
+
+test('after a failed audio and restart new native service staff and time choices reach a new summary before one confirmation',async t=>{
+  presentationTestMode(t);
+  const original=preparationController({grant:false}),first=harness({legacyController:original.central});
+  const oldMenu=assistantMenu(),oldProvider='pre-failure-summary';
+  const oldStore=first.context.socketOutgoingPresence.get(first.context.client).assistantPresentations();
+  oldStore.prepared(oldMenu,phone,{key:{id:oldProvider,fromMe:true}});oldStore.accepted(phone,oldProvider);
+  await first.emit([first.message('failed-navigation-start')]);first.context.stopPrimaryIngress();first.context.generation++;
+  const f=preparationController({grant:false});let h,stage=0,domainWrites=0,latest;
+  f.central.presentationAck=async()=>({acknowledged:true});
+  f.central.forward=async(payload,options)=>{
+    f.central.turns.push(payload);assert.equal(options.isCurrent(),true);
+    if(stage){assert.equal(payload.selection.id,latest.choice);assert.equal(payload.selection.quoted_message_id,latest.provider);}
+    if(stage===4){domainWrites++;stage++;return {accepted:true};}
+    assert.equal(domainWrites,0);assert.equal(payload.require_summary_review,true);
+    const step=['catalog','professional','time','confirm'][stage],nonce='NAV'+String(stage).padStart(29,'0');
+    const choice=`oa1_${nonce}_0`,provider='new-native-'+stage;
+    const action=stage===3?{type:'reply_buttons',text:'Novo resumo sintético',footer:'',
+      buttons:[{id:choice,title:'Confirmar'},{id:`oa1_${nonce}_1`,title:'Alterar'}]}:
+      {type:'list',title:'Escolha atual',description:'Opção atual',button_text:'Ver opções',footer:'',
+        sections:[{title:'',rows:[{id:choice,title:['Serviço','Profissional','Horário'][stage]}]}]};
+    const store=h.context.socketOutgoingPresence.get(h.context.client).assistantPresentations();
+    store.prepared({version:1,id:nonce,action},phone,{key:{id:provider,fromMe:true}},
+      {...options.presentationProvenance,kind:step==='confirm'?'summary':'navigation'});
+    store.accepted(phone,provider);latest={provider,choice,step};stage++;
+    return {accepted:true,...(step==='confirm'?{summary_review_delivered:true}:{})};
+  };
+  h=harness({legacyController:f.central,directory:first.directory});
+  const old=h.message('old-confirm-before-new-list',{text:''});old.message={listResponseMessage:{
+    singleSelectReply:{selectedRowId:oldMenu.action.buttons[0].id},contextInfo:{stanzaId:oldProvider}}};
+  await h.emit([old]);assert.equal(f.central.turns.length,0);assert.equal(domainWrites,0);
+  await h.emit([h.message('fresh-list-after-failure',{text:'Lista'})]);assert.equal(stage,1);
+  for(let index=0;index<4;index++){
+    const click=h.message('new-choice-'+index,{text:''});
+    click.message={interactiveResponseMessage:{nativeFlowResponseMessage:{name:'quick_reply',
+      paramsJson:JSON.stringify({id:latest.choice,display_text:'Not business authority'})},contextInfo:{stanzaId:latest.provider}}};
+    await h.emit([click]);assert.equal(domainWrites,index===3?1:0);
+    if(index===3){await h.emit([click]);assert.equal(domainWrites,1);}
+  }
+  assert.equal(stage,5);assert.equal(h.diagnostics().blocked,0);assert.equal(h.diagnostics().retained,1);
+  assert.equal(f.central.turns.at(-1).require_summary_review,undefined);
+});
+
+test('uncertain ASR notification is not retried and never becomes another assistant turn',async()=>{
+  const f=preparationController();let notices=0;
+  f.central.preparationFailed=async()=>{notices++;throw Error('synthetic notification result lost');};
+  const h=harness({legacyController:f.central}),audio=h.message('unknown-notice');
+  await h.emit([audio]);await h.emit([audio]);await h.recover();
+  assert.equal(notices,1);assert.equal(h.transcriptions,1);assert.equal(f.central.turns.length,0);
+  assert.equal(h.diagnostics().retained,1);assert.equal(h.diagnostics().blocked,0);
+});
+
+test('live PRIMARY operator retires only attested originals without ASR sends or business and fences a stale actor',async t=>{
+  presentationTestMode(t);
+  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'orion-inbound-names-'));contactDirectories.push(directory);
+  const central=nativeController(),key='x'.repeat(32),at=Date.now()-10000;
+  const original=id=>({key:{id,remoteJid:phone+'@s.whatsapp.net',fromMe:false},messageTimestamp:Math.floor(at/1000),message:{audioMessage:{seconds:4,fileLength:1000}}});
+  const queue=createAssistantIngress({directory:path.join(directory,'assistant-ingress-encrypted'),secret:key,scope:admissionScope,
+    serialize:value=>JSON.stringify(value,BufferJSON.replacer),deserialize:value=>JSON.parse(value,BufferJSON.reviver)});
+  queue.append(original('operator-failed'),'notify',at);queue.begin(['operator-failed']);queue.review('operator-failed');
+  queue.append(original('operator-pending'),'notify',at);queue.abandon();
+  const h=harness({legacyController:central,directory});await h.emit([original('operator-failed')]);
+  const oldMenu=assistantMenu(),oldProvider='operator-old-summary';
+  const oldStore=h.context.socketOutgoingPresence.get(h.context.client).assistantPresentations();
+  oldStore.prepared(oldMenu,phone,{key:{id:oldProvider,fromMe:true}});oldStore.accepted(phone,oldProvider);
+  const authority={actor_id:'40000000-0000-4000-8000-000000000001',authority:'platform_owner_proxy'};
+  const dry=await h.context.primaryIngressReview({version:1,mode:'dry_run',operation_id:randomUUID(),traces:[]},authority);
+  assert.equal(dry.entries.length,2);assert.equal(dry.scope.owner,'30000000-0000-4000-8000-000000000001');assert.equal(dry.scope.fence,3);
+  assert.match(dry.scope.auth_epoch,/^[a-f0-9]{64}$/);assert.notEqual(dry.scope.auth_epoch,'12345');
+  const body={version:1,mode:'apply',operation_id:randomUUID(),expected:{scope:dry.scope,snapshot_sha256:dry.snapshot_sha256},
+    entries:dry.entries.map(entry=>({trace:entry.trace,fingerprint:entry.fingerprint,disposition:'do_not_replay',evidence:{
+      kind:entry.eligible_as[0],receipt_sha256:'d'.repeat(64),build_sha:'e'.repeat(40),event_at:at+1000}}))};
+  const result=await h.context.primaryIngressReview(body,authority);assert.equal(result.mutation,true);
+  assert.equal(h.transcriptions,0);assert.equal(h.sent.length,0);assert.equal(central.turns.length,0);assert.equal(central.notices.length,0);
+  assert.equal(h.diagnostics().retained,2);assert.equal(h.diagnostics().blocked,0);assert.equal(h.diagnostics().pending,0);
+  const replay=await h.context.primaryIngressReview(body,authority);assert.equal(replay.replayed,true);
+  h.context.generation++;
+  await assert.rejects(h.context.primaryIngressReview(body,authority),{code:'ingress_review_not_ready'});
+  assert.equal(h.transcriptions,0);assert.equal(central.turns.length,0);assert.equal(h.sent.length,0);
+  let revision=0;const restoredCentral=nativeController({inbound:async()=>({revision:++revision,assistant_interactions:1})}),
+    restored=harness({legacyController:restoredCentral,directory});
+  const click=restored.message('operator-old-confirm',{text:''});click.message={listResponseMessage:{
+    singleSelectReply:{selectedRowId:oldMenu.action.buttons[0].id},contextInfo:{stanzaId:oldProvider}}};
+  await restored.emit([click]);assert.equal(restoredCentral.turns.length,0);assert.equal(restored.transcriptions,0);
+  const absent=restoredCentral.inbound;restoredCentral.inbound=async()=>({revision:++revision});
+  await restored.emit([{...click,key:{...click.key,id:'operator-old-confirm-no-cap'}}]);
+  assert.equal(restoredCentral.turns.length,0);assert.equal(restored.transcriptions,0);restoredCentral.inbound=absent;
+  await restored.emit([restored.message('operator-fresh-text',{text:'Pode conferir um novo resumo?'})]);
+  assert.equal(restoredCentral.turns.length,1);assert.equal(restoredCentral.turns[0].require_summary_review,true);
+  assert.equal(restoredCentral.turns[0].selection,undefined);assert.equal(restored.diagnostics().retained,2);
+});
 test('PRIMARY selection diagnostics require exact native scope and ACK failure never reaches business or sends',async t=>{
   presentationTestMode(t);
   for(const optedIn of [false,true]){

@@ -119,6 +119,7 @@ jobs:
             tests/integration/test_qr_native_selection_roundtrip_postgres.py \
             tests/integration/test_qr_reschedule_reference_postgres.py \
             tests/integration/test_qr_interaction_revision_postgres.py \
+            tests/integration/test_qr_ingress_review_postgres.py \
             tests/integration/test_whatsapp_footer_postgres.py \
             tests/integration/test_subscription_direct_messages_postgres.py \
             tests/integration/test_qr_adopted_ingress_postgres.py \
@@ -144,7 +145,7 @@ jobs:
               assert cases, 'No executed tests: '+kind
               assert not any(case.find(tag) is not None for case in cases for tag in ('failure','error','skipped')), kind
               if kind == 'integrations':
-                  for module, minimum in (('test_qr_superseded_holds_postgres', 19), ('test_qr_presentation_ack_postgres', 13), ('test_qr_adopted_ingress_postgres', 6), ('test_qr_native_selection_roundtrip_postgres', 21), ('test_qr_reschedule_reference_postgres', 9), ('test_qr_interaction_revision_postgres', 16), ('test_whatsapp_footer_postgres', 9), ('test_subscription_direct_messages_postgres', 26)):
+                  for module, minimum in (('test_qr_superseded_holds_postgres', 19), ('test_qr_presentation_ack_postgres', 13), ('test_qr_adopted_ingress_postgres', 6), ('test_qr_native_selection_roundtrip_postgres', 21), ('test_qr_reschedule_reference_postgres', 9), ('test_qr_interaction_revision_postgres', 16), ('test_qr_ingress_review_postgres', 13), ('test_whatsapp_footer_postgres', 9), ('test_subscription_direct_messages_postgres', 26)):
                       assert sum(module in case.get('classname', '') for case in cases) >= minimum, module
               audit = json.loads(Path('/tmp/intelligence-'+kind+'-network.json').read_text())
               assert audit['external_network'] == 'denied' and audit['blocked'] == [] and audit['exit_code'] == 0, kind
@@ -186,10 +187,51 @@ jobs:
             qr-bridge/test/channel-session.test.mjs qr-bridge/test/channel-manager.test.mjs \
             qr-bridge/test/legacy-central.test.mjs qr-bridge/test/ai-forward.test.mjs \
             qr-bridge/test/inbound-event.test.mjs qr-bridge/test/assistant-parts.test.mjs \
-            qr-bridge/test/conversation-intake.test.mjs | tee /tmp/intelligence-transport.tap
+            qr-bridge/test/conversation-intake.test.mjs qr-bridge/test/ai-audio.test.mjs \
+            qr-bridge/test/assistant-preparation.test.mjs qr-bridge/test/assistant-ingress.test.mjs \
+            qr-bridge/test/channel-intake.test.mjs qr-bridge/test/ingress-journal.test.mjs \
+            qr-bridge/test/ingress-health.test.mjs qr-bridge/test/assistant-ingress-review.test.mjs \
+            qr-bridge/test/ingress-review-auth.test.mjs qr-bridge/test/ingress-review-panel.test.mjs | tee /tmp/intelligence-transport.tap
+      - name: Preparation and operator contract minimums without skipped tests
+        run: |
+          set -euo pipefail
+          for module in assistant-preparation assistant-ingress-review ingress-review-auth ingress-review-panel; do
+            node --test --test-reporter=tap "qr-bridge/test/${module}.test.mjs" | tee "/tmp/intelligence-${module}-contract.tap"
+          done
+          node --input-type=module <<'JS'
+          import {readFileSync, writeFileSync} from 'node:fs';
+          const minimums = new Map([
+            ['transport', 413],
+            ['assistant-preparation-contract', 17],
+            ['assistant-ingress-review-contract', 31],
+            ['ingress-review-auth-contract', 5],
+            ['ingress-review-panel-contract', 6],
+          ]);
+          const report = {};
+          for (const [name, minimum] of minimums) {
+            const tap = readFileSync(`/tmp/intelligence-${name}.tap`, 'utf8');
+            const counts = {};
+            for (const key of ['tests', 'pass', 'fail', 'cancelled', 'skipped', 'todo']) {
+              const matches = [...tap.matchAll(new RegExp(`^# ${key} (\\d+)\\s*$`, 'gm'))];
+              if (matches.length !== 1) throw new Error(`Missing or duplicate TAP summary: ${name}/${key}`);
+              counts[key] = Number(matches[0][1]);
+            }
+            if (counts.tests < minimum || counts.pass !== counts.tests ||
+                ['fail', 'cancelled', 'skipped', 'todo'].some(key => counts[key] !== 0)) {
+              throw new Error(`Incomplete or skipped contract: ${name}`);
+            }
+            report[name] = counts;
+          }
+          writeFileSync('/tmp/intelligence-transport-summary.json', JSON.stringify({
+            suites: report, critical_module_suites_overlap_transport: true,
+          }, null, 2));
+          JS
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: whatsapp-intelligence-transport
-          path: /tmp/intelligence-transport.tap
+          path: |
+            /tmp/intelligence-transport.tap
+            /tmp/intelligence-*-contract.tap
+            /tmp/intelligence-transport-summary.json
           retention-days: 7

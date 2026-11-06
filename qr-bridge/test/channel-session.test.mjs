@@ -507,13 +507,35 @@ test('managed pending notice recovers on restart without another provider upsert
   assert.equal(reopened.ingressDiagnostics().entries,0);
 });
 
-test('managed assistant begun before ASR retains uncertain source and never replays paid preparation after restart',async t=>{
+test('managed ASR rejection retains original review without blocking or replaying paid preparation after restart',async t=>{
   const clock=replayClock(),s=await session(t,{...clock,audio:true});let asr=0;
   s.context.transcribe=async()=>{asr++;throw Error('synthetic unknown ASR response');};
   s.receive({id:'started-audio'},{audioMessage:{fileLength:20,seconds:1,mimetype:'audio/ogg'}});
-  await reached(()=>s.result.ingressDiagnostics()?.blocked===1);assert.equal(asr,1);assert.equal(s.messages.length,0);
+  await reached(()=>s.result.ingressDiagnostics()?.retained===1);assert.equal(asr,1);assert.equal(s.messages.length,0);
+  assert.equal(s.result.ingressDiagnostics().blocked,0);
+  const base=path.join(s.context.directory,'incoming-assistant'),directory=path.join(base,fs.readdirSync(base)[0]);
+  const stored=()=>encryptedChannelStore({directory,secret:s.context.secret,
+    deserialize:value=>JSON.parse(value,sdk.BufferJSON.reviver)}).get('incoming-admission-v1');
+  assert.equal(stored().entries[0].id,'started-audio');assert.equal(stored().entries[0].at,100000);
+  assert.equal(stored().entries[0].message.raw.message.audioMessage.seconds,1);
+  assert.equal(stored().entries[0].work.phase,'preparation_failed');assert.equal(stored().entries[0].work.review_required,true);
   s.result.close();const reopened=await s.open();t.after(()=>reopened.close());s.client.ev.emit('connection.update',{connection:'open'});
-  for(let i=0;i<10;i++)await flush();assert.equal(asr,1);assert.equal(reopened.ingressDiagnostics().blocked,1);assert.equal(s.sent.length,0);
+  for(let i=0;i<10;i++)await flush();assert.equal(asr,1);assert.equal(reopened.ingressDiagnostics().blocked,0);
+  assert.equal(reopened.ingressDiagnostics().retained,1);assert.equal(s.sent.length,0);
+  s.receive({id:'unnegotiated-selection-after-audio',fromMe:false},{interactiveResponseMessage:{nativeFlowResponseMessage:{name:'quick_reply',
+    paramsJson:JSON.stringify({id:assistantPresentation().action.buttons[0].id,display_text:'Sim'})},contextInfo:{stanzaId:'old-unprovenanced-summary'}}});
+  await reached(()=>s.notices.length===2);for(let i=0;i<15;i++)await flush();
+  assert.equal(s.messages.length,0,'Missing interaction capability cannot bypass the durable selection review barrier');
+  s.receive({id:'fresh-after-rejected-audio'},{conversation:'Sim'});await reached(()=>s.messages.length===1);
+  assert.equal(s.messages[0].require_summary_review,true);assert.equal(s.messages[0].selection,undefined);
+  assert.equal(asr,1);assert.equal(stored().entries.find(entry=>entry.id==='started-audio').work.review_required,true);
+});
+
+test('without preparation review an unnegotiated typed event keeps the prior opaque backend contract',async t=>{
+  const s=await session(t);s.receive({id:'unnegotiated-without-review',fromMe:false},{interactiveResponseMessage:{nativeFlowResponseMessage:{name:'quick_reply',
+    paramsJson:JSON.stringify({id:assistantPresentation().action.buttons[0].id,display_text:'not consent authority'})},contextInfo:{stanzaId:'unproved-provider'}}});
+  await reached(()=>s.messages.length===1);assert.equal(s.messages[0].selection,undefined);
+  assert.equal(s.messages[0].text,'[Escolha recebida]');assert.equal(s.messages[0].envelope,undefined);assert.equal(s.sent.length,0);
 });
 
 for(const [label,outcome] of [['undefined',undefined],['null',null],['empty',{}],['unaccepted',{accepted:false}]])

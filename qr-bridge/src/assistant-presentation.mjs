@@ -23,6 +23,14 @@ function ackFailure(error){
     Number.isInteger(status)&&status>=500&&status<=599?'ack_http_5xx':'ack_failed';
 }
 const fields=(value,names)=>plain(value)&&Object.keys(value).every(key=>names.includes(key));
+function presentationProvenance(value){
+  if(value===undefined||value===null)return null;
+  if(!plain(value)||Object.keys(value).length!==3||
+      !['peer_tag','review_stamp','kind'].every(key=>Object.hasOwn(value,key))||
+      ![value.peer_tag,value.review_stamp].every(item=>typeof item==='string'&&/^[a-f0-9]{64}$/.test(item))||
+      !['navigation','summary','other'].includes(value.kind))throw invalid();
+  return {peer_tag:value.peer_tag,review_stamp:value.review_stamp,kind:value.kind};
+}
 const label=(value,max,optional=false)=>{
   if(optional&&value===undefined)return '';
   if(typeof value!=='string'||value.length>max||!optional&&!value.trim()||
@@ -109,7 +117,8 @@ export async function buildAssistantPresentation(presentation,{sdk,interactiveMo
 }
 export async function relayAssistantPresentation({presentation,sdk,jid,recipientProof,phone:recipient,
   retryStore,presentationStore,relay,isCurrent,assertAuthorized,beforeSend,interactiveMode='text_fallback',acknowledge,
-  deferPresentationAck=false,onPrepared=()=>{},onDiagnostic=()=>{}}){
+  deferPresentationAck=false,onPrepared=()=>{},onDiagnostic=()=>{},provenance}){
+  const capturedProvenance=presentationProvenance(provenance);
   const diagnostic=(category,id)=>{try{onDiagnostic(category,id);}catch{}};
   let built;
   try{
@@ -119,7 +128,7 @@ export async function relayAssistantPresentation({presentation,sdk,jid,recipient
         await beforeSend();
         return sdk.generateWAMessageFromContent(to,built.content,{userJid:sdk.userJid,messageId:sdk.generateMessageIDV2(sdk.userJid)});
       },
-      onPrepared:message=>{presentationStore.prepared(presentation,recipient,message);onPrepared(message);diagnostic('prepared',message.key.id);},
+      onPrepared:message=>{presentationStore.prepared(presentation,recipient,message,capturedProvenance);onPrepared(message);diagnostic('prepared',message.key.id);},
       relay:(to,body,options)=>relay(to,body,{...options,...built?.relayOptions})});
     presentationStore.accepted(recipient,sent.key.id);
     diagnostic('accepted',sent.key.id);
@@ -182,12 +191,16 @@ export function createAssistantPresentationStore({directory,secret,scope,now=Dat
     acknowledgements.set(operation,task);try{return await task;}finally{acknowledgements.delete(operation);}
   }
   return {
-    prepared(presentation,recipient,message){const p=validateAssistantPresentation(presentation);
+    prepared(presentation,recipient,message,provenance){const p=validateAssistantPresentation(presentation),captured=presentationProvenance(provenance);
       if(!phone(recipient)||!provider(message?.key?.id)||message.key.fromMe!==true)throw invalid();
       const old=record(recipient,message.key.id);
-      if(old){if(old.presentation_id!==p.id||JSON.stringify(old.choices)!==JSON.stringify(p.selectionIds))throw invalid();return;}
-      save(recipient,message.key.id,{presentation_id:p.id,choices:[...p.selectionIds],accepted:false,acknowledged:false});},
+      if(old){if(old.presentation_id!==p.id||JSON.stringify(old.choices)!==JSON.stringify(p.selectionIds)||
+          JSON.stringify(old.provenance||null)!==JSON.stringify(captured))throw invalid();return;}
+      save(recipient,message.key.id,{presentation_id:p.id,choices:[...p.selectionIds],accepted:false,acknowledged:false,
+        ...(captured?{provenance:captured}:{})});},
     accepted(recipient,id){const old=record(recipient,id);if(!old||!opaque(old.presentation_id))throw invalid();save(recipient,id,{...old,accepted:true});},
+    selectionProvenance(recipient,id){const old=record(recipient,id);if(old?.accepted!==true)return null;
+      try{return presentationProvenance(old.provenance);}catch{return null;}},
     acknowledge,
     resolve(message,recipient,onDiagnostic){
       const rejected=category=>{observe(onDiagnostic,category);return null;};

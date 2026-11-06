@@ -18,6 +18,7 @@ from app.prepaid_pix_api import router as prepaid_pix_router
 from app.metrics_api import router as metrics_router
 from app.advanced_api import router as advanced_router
 from app.qr_api import router as qr_router
+from app.qr_ingress_review import router as qr_ingress_review_router
 from app.panel_auth import router as panel_auth_router
 from app.account_auth import router as account_auth_router
 from app.account_settings import router as account_settings_router
@@ -117,6 +118,7 @@ include_plan_router(app, prepaid_pix_router)
 include_plan_router(app, metrics_router)
 include_plan_router(app, advanced_router)
 include_plan_router(app, qr_router)
+include_plan_router(app, qr_ingress_review_router)
 include_plan_router(app, panel_auth_router)
 include_plan_router(app, account_auth_router)
 include_plan_router(app, account_settings_router)
@@ -198,6 +200,7 @@ async def panel_asset(asset: str) -> FileResponse:
                "orion-focus.css": "text/css", "orion-focus.js": "text/javascript",
                "orion-suite-live.js": "text/javascript",
                "orion-admin-center.js": "text/javascript",
+               "orion-ingress-review.js": "text/javascript",
                "orion-communication.js": "text/javascript",
                "orion-appointment-communications.js": "text/javascript",
                "orion-pwa.js": "text/javascript",

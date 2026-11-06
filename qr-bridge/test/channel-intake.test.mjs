@@ -9,6 +9,7 @@ import {createChannelManager} from '../src/channel-manager.mjs';
 import {createBaileysChannelSession} from '../src/channel-session.mjs';
 import {DEFAULT_CONNECTION_CONFIG,BufferJSON,proto} from '@whiskeysockets/baileys';
 import {pairedAuthFixture} from './helpers/paired-auth-fixture.mjs';
+import {PREPARATION_FAILURE_REPLY} from '../src/assistant-ingress.mjs';
 
 process.env.ORION_RETRY_TEST_MODE='1';
 const phone='5567999999901',self='5567999999902',tick=()=>new Promise(resolve=>setImmediate(resolve));
@@ -25,13 +26,14 @@ async function fixture(t){
       if(operation==='claim'){row.owner=owner;row.fence++;}
       else if(operation!=='inspect'&&(row.owner!==owner||row.fence!==fence))throw Error('fenced');
       return {channel_id:id,tenant_id:row.tenant,provider:'baileys',owner,fence:row.fence,expires_in_ms:30000,
-        assistant_enabled:row.assistant,allowed_senders:[phone]};
+        assistant_enabled:row.assistant,allowed_senders:row.allowed||[phone]};
     },
     async interaction(id,_key,_lease,payload){
       await behavior.notice(payload);
       const key=scope(id,payload.phone),dedupe=key+':'+payload.message_id;
       if(!ids.has(dedupe)){revisions.set(key,(revisions.get(key)||0)+1);ids.set(dedupe,revisions.get(key));}
-      const revision=ids.get(dedupe);notices.push({id,...payload,revision});return {recorded:true,revision};
+      const revision=ids.get(dedupe);notices.push({id,...payload,revision});return {recorded:true,revision,
+        ...(behavior.controlRevision?{control_revision:behavior.controlRevision(id,payload,revision)}:{})};
     },
     async transcribe(id,_key,_lease,payload){asr++;return {text:await behavior.asr(id,payload),truncated:false};},
     async forward(id,_key,_lease,payload){forwards.push({id,...payload});return behavior.forward(id,payload);}
@@ -54,14 +56,54 @@ async function fixture(t){
       client.ev.emit('connection.update',{connection:'open'});return session;
     }});
   t.after(()=>{manager.close();fs.rmSync(root,{recursive:true,force:true});});
-  async function add(){const id=randomUUID(),key='synthetic-private-'+randomUUID();rows.set(id,{key,tenant:randomUUID(),fence:0,assistant:true});
+  async function add(allowed){const id=randomUUID(),key='synthetic-private-'+randomUUID();rows.set(id,{key,tenant:randomUUID(),fence:0,assistant:true,...(allowed?{allowed}:{})});
     await manager.start(id,key);return {id,key};}
   function receive(id,messageId,body,extra={}){clients.get(id).ev.emit('messages.upsert',{type:'notify',messages:[{
     key:{id:messageId,remoteJid:phone+'@s.whatsapp.net',...extra},messageTimestamp:Date.now()/1000,
     message:typeof body==='string'?{conversation:body}:body}]});}
-  return {manager,add,receive,contexts,clients,sessions,rows,behavior,notices,forwards,sent,revisions,scope,get asr(){return asr;}};
+  return {manager,add,receive,contexts,clients,sessions,rows,broker,behavior,notices,forwards,sent,revisions,scope,get asr(){return asr;}};
 }
 const audio={audioMessage:{fileLength:18,seconds:1,mimetype:'audio/ogg'}};
+
+test('real managed session emits one normally authorized failure reply and preserves review until a fresh accepted summary',async t=>{
+  const f=await fixture(t),a=await f.add();const grants=[],finishes=[];
+  f.behavior.controlRevision=(_id,_p,revision)=>revision+100;
+  f.behavior.asr=async()=>{throw Error('synthetic ASR unavailable');};
+  f.broker.authorizeSend=async(_id,_key,_lease,payload)=>{grants.push(payload);
+    assert.equal(payload.control_revision,101);assert.equal(payload.source,'assistant');assert.equal(payload.text,PREPARATION_FAILURE_REPLY);
+    return {authorized:true,operation_id:payload.operation_id};};
+  f.broker.finishSend=async(_id,_key,_lease,payload)=>{finishes.push(payload);return {released:true,operation_id:payload.operation_id};};
+  f.receive(a.id,'failed-managed-audio',audio);await until(()=>f.sent.length===1);
+  assert.equal(f.sent[0].text,PREPARATION_FAILURE_REPLY);assert.equal(f.forwards.length,0);
+  await until(()=>f.sessions.get(a.id).ingressDiagnostics().retained===1);
+  assert.equal(f.sessions.get(a.id).ingressDiagnostics().blocked,0);assert.equal(f.asr,1);
+  assert.equal(grants.length,1);assert.equal(finishes.length,1);
+  f.receive(a.id,'failed-managed-audio',audio);await tick();assert.equal(f.asr,1);assert.equal(f.sent.length,1);
+  // Normal replies use no SQL-control fixture here; their real backend path
+  // still receives the durable review requirement on each ordinary turn.
+  f.behavior.forward=async()=>({answer:null,step:'disabled'});
+  f.receive(a.id,'disabled-after-failure','Sim');await until(()=>f.forwards.length===1);
+  assert.equal(f.forwards[0].require_summary_review,true);
+  await until(()=>f.sessions.get(a.id).ingressDiagnostics().active===0);
+  f.behavior.forward=async()=>({answer:'Novo resumo sintético',step:'confirm'});
+  f.receive(a.id,'reviewed-summary','Quero rever o resumo');await until(()=>f.sent.length===2);
+  assert.equal(f.forwards[1].require_summary_review,true);
+  await until(()=>f.sessions.get(a.id).ingressDiagnostics().active===0);
+  f.behavior.forward=async()=>({answer:null,step:'information'});
+  f.receive(a.id,'after-reviewed-summary','Consulta seguinte');await until(()=>f.forwards.length===3);
+  assert.equal(f.forwards[2].require_summary_review,false);
+});
+
+test('known preparation rejection in a real session does not block another authorized contact',async t=>{
+  const other='5511999999998',f=await fixture(t),a=await f.add([phone,other]);
+  f.behavior.asr=async()=>{throw Error('synthetic unusable audio');};
+  f.receive(a.id,'bad-audio',audio);await until(()=>f.sessions.get(a.id).ingressDiagnostics().retained===1);
+  assert.equal(f.sessions.get(a.id).ingressDiagnostics().blocked,0);
+  f.receive(a.id,'other-contact','Consulta independente',{remoteJid:other+'@s.whatsapp.net'});
+  await until(()=>f.sent.length===1);assert.equal(f.forwards[0].phone,other);
+  assert.equal(f.forwards[0].require_summary_review,true); // safe manager default for this new contact
+  assert.equal(f.sessions.get(a.id).ingressDiagnostics().blocked,0);
+});
 
 test('managed audio and a correction during ASR register both revisions before forwarding one ordered batch',async t=>{
   const f=await fixture(t),a=await f.add(),speech=deferred();f.behavior.asr=()=>speech.promise;

@@ -9,6 +9,7 @@ import {urlButtonContent} from '../src/url-button.mjs';
 import {normalizeInbound} from '../src/inbound-event.mjs';
 import {forwardAssistant,registerAssistantIngress,acknowledgeAssistantPresentation} from '../src/ai-forward.mjs';
 import {makeTransportDiagnostics} from '../src/transport-diagnostics.mjs';
+import {createAssistantIngress} from '../src/assistant-ingress.mjs';
 import {buildAssistantPresentation,validateAssistantPresentation,assistantNativeMode,createAssistantPresentationStore,
   relayAssistantPresentation,assistantSelectionCandidate} from '../src/assistant-presentation.mjs';
 process.env.ORION_RETRY_TEST_MODE='1';
@@ -28,6 +29,35 @@ function fixture(t){
   const open=(patch={})=>createAssistantPresentationStore({directory,secret,scope,...patch});
   return {directory,open,scope,retry:makeEncryptedRetryStore({directory:path.join(directory,'retry'),secret}),store:open()};
 }
+
+test('accepted presentation provenance is private, immutable and scoped to the stored peer and namespace',t=>{
+  const f=fixture(t),id='provenanced-provider',proof={peer_tag:'a'.repeat(64),review_stamp:'b'.repeat(64),kind:'navigation'};
+  f.store.prepared(presentation(),recipient,{key:{id,fromMe:true}},proof);
+  assert.equal(f.store.selectionProvenance(recipient,id),null);
+  f.store.accepted(recipient,id);proof.review_stamp='c'.repeat(64);
+  const captured=f.open().selectionProvenance(recipient,id);assert.equal(captured.review_stamp,'b'.repeat(64));
+  assert.equal(f.store.selectionProvenance(other,id),null);
+  assert.equal(f.open({scope:{...f.scope,registration:124}}).selectionProvenance(recipient,id),null);
+  assert.throws(()=>f.store.prepared(presentation(),recipient,{key:{id,fromMe:true}},proof));
+  const candidate=clicked(id);candidate.provenance=proof;
+  assert.deepEqual(f.store.resolve(candidate,recipient),{id:token(0),quoted_message_id:id});
+  assert.equal(f.store.selectionProvenance(recipient,id).review_stamp,'b'.repeat(64));
+});
+
+test('a known relay keeps its original provenance if a new failure arrives between prepared and accepted',async t=>{
+  const f=fixture(t),queue=createAssistantIngress({directory:path.join(f.directory,'ingress'),secret,
+    scope:{tenant_id:'10000000-0000-4000-8000-000000000001',channel_id:'20000000-0000-4000-8000-000000000001',session_digest:'a'.repeat(64)}});
+  const start=id=>{queue.append({key:{id,fromMe:false},message:{conversation:'synthetic'}},'notify',Date.now());
+    queue.admitted(id);queue.prepare([id],{phone:recipient,proofs:[{revision:7,control_revision:31}]});};
+  start('reply');queue.consume(['reply']);const provenance={...queue.consumptionProof(['reply']),kind:'summary'};
+  const sent=await relayAssistantPresentation({presentation:presentation(),provenance,sdk:{...sdk,userJid:other+'@s.whatsapp.net'},jid,phone:recipient,
+    retryStore:f.retry,presentationStore:f.store,isCurrent:()=>true,assertAuthorized:async()=>{},beforeSend:async()=>{},
+    acknowledge:async()=>({acknowledged:true}),relay:async()=>{start('new-failure');queue.failPreparation(['new-failure'],'prepare_failed');}});
+  const saved=f.open().selectionProvenance(recipient,sent.key.id);
+  assert.deepEqual(saved,provenance);assert.ok(f.store.resolve(clicked(sent.key.id),recipient));
+  assert.equal(queue.allowsSelection(recipient,saved),false);
+  queue.complete('reply',{reviewDelivered:true});assert.equal(queue.requiresReview(recipient),true);
+});
 test('real pinned protobuf retains two opaque quick replies without accepting provider nodes',async()=>{
   const built=await buildAssistantPresentation(presentation(),{sdk,interactiveMode:'native'});
   const native=wire(built.content).interactiveMessage.nativeFlowMessage;

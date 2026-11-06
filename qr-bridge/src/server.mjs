@@ -30,6 +30,8 @@ import {createNativeTestCanary,loadNativeTestAsset} from './native-test-canary.m
 import {makeSendCapacity} from "./send-capacity.mjs";
 import {makeConversationIntake} from "./conversation-intake.mjs";
 import {createAssistantIngress} from './assistant-ingress.mjs';
+import {collectIngressReviewBody} from './assistant-ingress-review.mjs';
+import {verifyIngressReviewAssertion} from './ingress-review-auth.mjs';
 import {withIngressHealth} from './ingress-health.mjs';
 import {makeOutgoingPresence} from './outgoing-presence.mjs';
 import {inspectLookup,inspectDelivery} from "./recipient-diagnostics.mjs";
@@ -74,7 +76,7 @@ const KEY=process.env.QR_BRIDGE_TOKEN || "";
 const transport=makeTransportDiagnostics({secret:KEY,
   emit:event=>console.info('Orion transport '+JSON.stringify(event))});
 const logger=transport.logger;
-let primaryIngressDiagnostics=null,primaryIngressCanAutomate=null,stopPrimaryIngress=()=>{};
+let primaryIngressDiagnostics=null,primaryIngressCanAutomate=null,primaryIngressReview=null,stopPrimaryIngress=()=>{};
 const primaryHealth=makeConnectionHealth({emit:event=>console.info(JSON.stringify(event)),
   readiness:value=>withIngressHealth(value,primaryIngressDiagnostics?.()),
   isSyncPending:()=>socket?.ev?.isBuffering?.()===true,onStale:reason=>{
@@ -393,7 +395,24 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false,authRegistra
     primaryIngressDiagnostics=ingressDiagnostics;
     primaryIngressCanAutomate=()=>!ingressFault&&assistantIngress?.canAutomate()===true;
   }
-  stopPrimaryIngress=()=>{clearTimeout(ingressTimer);ingressTimer=null;assistantIngress?.abandon();typingPresence.close();};
+  const reviewPrimaryIngress=async(body,authority)=>{
+    // MASTER is also the adopted PRIMARY credential. The signed assertion
+    // binds the platform-owner proxy audit; it is not a second secret boundary.
+    if(!assistantIngress||ingressFault||!intakeCurrent()||!legacyCentral.configured())
+      throw Object.assign(Error('ingress_review_not_ready'),{status:409,code:'ingress_review_not_ready'});
+    return assistantIngress.operatorReview(body,{authority,isCurrent:()=>intakeCurrent()&&legacyCentral.transportCurrent(),
+      assertCurrent:()=>legacyCentral.assertTransportCurrent(),getScope:()=>{
+        const scope=legacyCentral.nativeTestScope();
+        return scope&&Number.isSafeInteger(authRegistrationId)&&authRegistrationId>=1?{...scope,
+          auth_epoch:createHmac('sha256',KEY).update('orion:assistant-ingress-auth-epoch:v1\0'+scope.session_digest+'\0'+authRegistrationId).digest('hex')}:null;
+      },
+      // Only stored authenticated PN hints are used. No network lookup, guessed
+      // LID, display name, or arbitrary target supplied by the operator body.
+      resolvePhone:key=>resolveMessagePhone(key,null),allowedSender:phone=>legacyCentral.allowed(phone)});
+  };
+  if(legacyCentral.configured())primaryIngressReview=reviewPrimaryIngress;
+  stopPrimaryIngress=()=>{clearTimeout(ingressTimer);ingressTimer=null;assistantIngress?.abandon();typingPresence.close();
+    if(primaryIngressReview===reviewPrimaryIngress)primaryIngressReview=null;};
   function ensureAssistantIngress(){
     if(!legacyCentral.configured())return null;
     const scope=legacyCentral.ingressScope();
@@ -436,13 +455,30 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false,authRegistra
     retryUnconsumedNoticeFailures:legacyCentral.configured(),
     settleMs,maxGroupMs:Math.max(settleMs,groupSetting('QR_AI_GROUP_MAX_WAIT_MS',1200,5000)),
     isDuplicate:({messageId})=>seen.has('wa:'+messageId),
+    beforeConsume:batch=>{if(assistantIngress)assistantIngress.consume(batch.messageIds);},
     onRejected:async batch=>{
       for(const id of batch.messageIds)transport.record('inbound_batch_rejected',id,{category:batch.reason});
       if(batch.reason==='stale'||!batch.isCurrent()||!intakeCurrent())return;
       const entries=batch.messageIds.map(id=>inboundMetadata.get(id)).filter(item=>item?.allowed);
-      // Preparation has started; a rejected turn is retained for review. Do
-      // not introduce an additional ambiguous outgoing operation here.
-      if(assistantIngress){for(const id of batch.messageIds)if(assistantIngress.active(id))assistantIngress.review(id);return;}
+      if(assistantIngress){
+        // Only the live, durably preparing attempt can prove that no business
+        // consumer ran. Unknown/legacy/consuming entries stay blocked.
+        try{
+          const failed=assistantIngress.failPreparation(batch.messageIds,batch.reason);
+          if(!failed)return;
+          const phone=entries[0]?.phone;
+          if(phone)summaryReviewRequired.set(phone,true);
+          const current=()=>intakeCurrent()&&batch.isCurrent()&&!!phone&&entries.every(item=>item.phone===phone)&&
+            Date.now()<failed.expires_at&&legacyCentral.allowed(phone)&&assistantIngress.canAutomate();
+          if(!current()||!Number.isSafeInteger(failed.control_revision)||typeof legacyCentral.preparationFailed!=='function')return;
+          const proofs=failed.message_ids.map(id=>inboundMetadata.get(id)?.noticeProof);
+          if(!assistantIngress.claimPreparationNotice(failed.operation_id))return;
+          let outcome;
+          try{outcome=await legacyCentral.preparationFailed({phone,...failed},{noticeProofs:proofs,isCurrent:current});}
+          finally{assistantIngress.finishPreparationNotice(failed.operation_id,outcome);}
+        }catch{for(const id of batch.messageIds)if(assistantIngress.active(id))assistantIngress.review(id);}
+        return;
+      }
       const phone=entries[0]?.phone;
       if(legacyCentral.configured()&&!allowAssistantRecipient(phone,connectedStore.settings()))return;
       const current=()=>intakeCurrent()&&batch.isCurrent()&&!!phone&&
@@ -459,10 +495,17 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false,authRegistra
       const entries=batch.messages.map(item=>inboundMetadata.get(item.id));
       const phone=entries[0]?.phone,traceId=batch.messages[0]?.id;
       const ids=batch.messages.map(item=>item.id);
+      const provenance=assistantIngress?.consumptionProof(ids);
+      if(assistantIngress&&entries.some(item=>item?.selection&&!assistantIngress.allowsSelection(phone,item.selectionProvenance))){
+        for(const id of ids)if(assistantIngress.active(id))assistantIngress.complete(id);
+        return {state:'policy_skipped',not_committed:true};
+      }
       const authorized=()=>intakeCurrent()&&batch.isCurrent()&&!!phone&&
         entries.every(item=>item?.allowed&&item.phone===phone)&&
         (legacyCentral.configured()?legacyCentral.allowed(phone):allowAssistantRecipient(phone,connectedStore.settings()));
-      const current=()=>authorized()&&(!assistantIngress||(!ingressFault&&assistantIngress.canConsume(ids)));
+      const current=()=>authorized()&&(!assistantIngress||(!ingressFault&&assistantIngress.canConsume(ids)&&
+        assistantIngress.isProvenanceCurrent(phone,provenance)&&
+        entries.every(item=>!item?.selection||assistantIngress.allowsSelection(phone,item.selectionProvenance))));
       if(assistantIngress)await assistantIngress.waitForAdmission(ids,{isCurrent:()=>!ingressFault&&authorized()});
       if(!current())return;
       const typing=typingPresence.begin({phone,chatJid:entries[0]?.jid,isCurrent:current});let outcome;
@@ -472,9 +515,10 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false,authRegistra
         return legacyCentral.forward({phone,message_id:traceId,message_ids:batch.messages.map(item=>item.id),
           text:batch.text,parts:batch.messages.map(item=>({message_id:item.id,text:item.text})),intake_revision:batch.intakeRevision,
           ...(entries.length===1&&entries[0].selection?{selection:entries[0].selection}:{}),
-          ...(entries.length>1&&entries.some(item=>item.selection)?{require_summary_review:true}:{}),
+          ...(assistantIngress?.requiresReview(phone)||entries.length>1&&entries.some(item=>item.selection)?{require_summary_review:true}:{}),
           ...(entries.some(item=>item.event)?{envelope:entries.findLast(item=>item.event)?.event}:{})},
-          {noticeProofs:entries.map(item=>item.noticeProof),isCurrent:current,beforeReply:value=>typing.beforeReply(value)});
+          {noticeProofs:entries.map(item=>item.noticeProof),isCurrent:current,presentationProvenance:provenance,
+            beforeReply:value=>typing.beforeReply(value)});
       }
       transport.record('ai_forward',traceId,{count:batch.messages.length});
       let answer,response;
@@ -507,12 +551,13 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false,authRegistra
         return sent;
       }catch(error){if(revisionEnabled)summaryReviewRequired.set(phone,true);transport.record('ai_send_failed',traceId);throw error;}
       })();}finally{typing.stop();}
+      if(assistantIngress&&outcome?.state==='superseded'&&outcome?.not_committed===true)assistantIngress.zeroWrite(ids,outcome);
       if(assistantIngress&&!(outcome?.state==='superseded'&&outcome?.not_committed===true)){
         const confirmed=current()&&(outcome?.accepted===true||
           (outcome?.state==='committed_no_reply'&&outcome.not_committed===false)||
           (outcome?.state==='policy_skipped'&&outcome.not_committed===true));
         for(const id of ids)if(assistantIngress.active(id)){
-          if(confirmed)assistantIngress.complete(id);else assistantIngress.review(id);
+          if(confirmed)assistantIngress.complete(id,{reviewDelivered:outcome?.accepted===true&&outcome.summary_review_delivered===true});else assistantIngress.review(id);
         }
       }
       return outcome;
@@ -765,18 +810,23 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false,authRegistra
           let body=normalized.text;
           const media=message.message.audioMessage||message.message.ephemeralMessage?.message?.audioMessage;
           if(!normalized.special&&!body&&!media){transport.record('inbound_no_text',traceId);return {skip:true};}
+          if(assistantIngress?.requiresReview(phone)&&normalized.selection&&metadata.noticeProof?.assistant_interactions!==1){
+            assistantIngress.exclude(traceId);return {skip:true};
+          }
           if(metadata.noticeProof?.assistant_interactions===1&&(normalized.selection||normalized.event.reply_to)){
             const diagnose=assistantSelectionDiagnostic(phone,traceId);diagnose('detected');
             diagnose('quote_provided',normalized.selection?.quoted_message_id||normalized.event.reply_to);
             const store=typingPresence.assistantPresentations(),selection=store.resolve(message,phone,diagnose);
             if(selection){
+              const provenance=store.selectionProvenance(phone,selection.quoted_message_id);
+              if(assistantIngress&&!assistantIngress.allowsSelection(phone,provenance)){diagnose('stale');assistantIngress.exclude(traceId);return {skip:true};}
               const acknowledge=legacyCentral.configured()?payload=>legacyCentral.presentationAck(payload):
                 payload=>acknowledgeAssistantPresentation({apiUrl:process.env.QR_AI_API_URL,token:KEY,payload});
               if(!await store.acknowledge(phone,selection.quoted_message_id,acknowledge,current,diagnose)){
                 diagnose('ack_unconfirmed');
                 assistantIngress?.exclude(traceId);return {skip:true};
               }
-              metadata.selection=selection;delete metadata.event;body=ASSISTANT_SELECTION_TEXT;
+              metadata.selection=selection;metadata.selectionProvenance=provenance;delete metadata.event;body=ASSISTANT_SELECTION_TEXT;
             }else if(normalized.selection){assistantIngress?.exclude(traceId);return {skip:true};}
           }
           if(assistantIngress){
@@ -784,7 +834,7 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false,authRegistra
             if(ingressFault||assistantIngress.diagnostics().blocked)return {skip:true};
             // Persist a no-replay boundary before ASR, display dedupe, business
             // or any outgoing effect. Only this live attempt can complete it.
-            assistantIngress.begin([traceId]);
+            assistantIngress.prepare([traceId],{phone,proofs:[metadata.noticeProof]});
           }
           const at=admission?.at||timestampMs(message.messageTimestamp)||Date.now();
           const row={id:'wa:'+traceId,phone,body:body?String(body).slice(0,2000):'[Áudio recebido]',direction:'in',at};
@@ -797,7 +847,8 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false,authRegistra
           if(!body){
             if(!assistantAudioEnabled()||!allowAssistantAudio(phone,connectedStore.settings()))return {skip:true};
             const txt=await transcribeAssistantAudio(message,{client,downloadMediaMessage,phone,token:KEY,
-              apiUrl:process.env.QR_AI_API_URL,logger,signal});
+              apiUrl:process.env.QR_AI_API_URL,logger,signal,
+              ...(legacyCentral.configured()?{transcribe:payload=>legacyCentral.transcribe(payload)}:{})});
             if(!current()||signal.aborted)return {skip:true};
             if(!txt)throw Error('audio_not_understood');
             row.body='[Áudio transcrito] '+txt;persistInbox();body=txt;
@@ -1153,7 +1204,7 @@ async function sendLegacyProtocol(phone,action,{isCurrent=()=>false,assertAuthor
     return {accepted:true,id:sent.key.id};
   });}finally{built?.dispose();}
 }
-async function sendLegacyRaw(phone,text,{waitForCapacity=false,isCurrent=()=>true,transactionalTyping=false,source='automation',assertAuthorized,pacing=true,presentation,presentationAck,deferPresentationAck=false}={}){
+async function sendLegacyRaw(phone,text,{waitForCapacity=false,isCurrent=()=>true,transactionalTyping=false,source='automation',assertAuthorized,pacing=true,presentation,presentationAck,deferPresentationAck=false,presentationProvenance}={}){
   if(presentation&&source!=='assistant')throw Error('assistant_presentation_denied');
   const target=validPhone(phone);
   if(status!=="connected"||!socket)throw Error("O WhatsApp não está conectado");
@@ -1207,7 +1258,7 @@ async function sendLegacyRaw(phone,text,{waitForCapacity=false,isCurrent=()=>tru
   // older optional global reliability flag.
   if(presentation){
     const scope=legacyCentral.ingressScope?.();
-    result=await relayAssistantPresentation({presentation,sdk:{proto,generateWAMessageFromContent,generateMessageIDV2,userJid:selectedSocket.user?.id},
+    result=await relayAssistantPresentation({presentation,provenance:presentationProvenance,sdk:{proto,generateWAMessageFromContent,generateMessageIDV2,userJid:selectedSocket.user?.id},
       jid:destination,recipientProof,phone:target,retryStore,presentationStore:socketOutgoingPresence.get(selectedSocket).assistantPresentations(),
       isCurrent:current,assertAuthorized:authorize,beforeSend,
       interactiveMode:assistantNativeMode({tenantId:scope?.tenant_id,channelId:scope?.channel_id,phone:target}),
@@ -1273,6 +1324,22 @@ const server=http.createServer(async(req,res)=>{
     return reply(res,503,{error:"bridge_not_configured"});
   if(!auth(req))return reply(res,401,{error:"unauthorized"});
   try{
+    if(path==='/internal/ops/assistant-ingress-review'){
+      if(req.method!=='POST')return reply(res,405,{error:'method_not_allowed'});
+      try{
+        const body=await collectIngressReviewBody(req);
+        const authority=verifyIngressReviewAssertion({headers:req.headers,body,secret:KEY});
+        if(!primaryIngressReview)return reply(res,409,{error:'ingress_review_not_ready'});
+        return reply(res,200,await primaryIngressReview(body,authority));
+      }catch(error){
+        const codes={invalid_ingress_review_request:400,invalid_operator_assertion:401,
+          ingress_review_not_ready:409,ingress_review_scope_conflict:409,ingress_review_snapshot_conflict:409,
+          ingress_review_operation_conflict:409,ingress_review_entry_refused:409,ingress_review_identity_unresolved:409,
+          ingress_review_backup_failed:503,ingress_review_capacity:503,ingress_review_storage_unavailable:503};
+        const code=Object.hasOwn(codes,error.code)?error.code:'ingress_review_storage_unavailable';
+        return reply(res,codes[code],{error:code});
+      }
+    }
     if(path.startsWith('/internal/ops/database-backups/'))
       return await databaseBackup(req,res,{root:'/data/orion-db-backups',id:path.slice('/internal/ops/database-backups/'.length),
         enabled:process.env.QR_DATABASE_BACKUP_ENABLED==='1',secret:KEY});

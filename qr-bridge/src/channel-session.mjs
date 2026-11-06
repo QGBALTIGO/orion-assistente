@@ -247,7 +247,7 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
     assertMutationReady:async()=>{await guarded();if(!groupMutationReady())throw Error('group_add_unavailable');},
     mutationCurrent:groupMutationReady});
   async function relayText(phone,text,{isCurrent:operationCurrent=()=>true,maxTextChars=1200,device=false,source='automation',
-    diagnostic=null,assertAuthorized,onRelayAttempt,pacing=true,presentation,deferPresentationAck=false}={}){
+    diagnostic=null,assertAuthorized,onRelayAttempt,pacing=true,presentation,deferPresentationAck=false,presentationProvenance}={}){
     if(presentation&&(device||source!=='assistant'))throw Error('assistant_presentation_denied');
     await guarded();const self=normalizeFromJid(client.user?.id);
     let authorized=true;
@@ -278,7 +278,7 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
       socket:client,deviceCache,isCurrent:sendCurrent});await authorize();
     return outgoingPresence.run({phone,chatJid:proof.jid,isCurrent:sendCurrent,assertAuthorized:authorize,action:presentation?.action||{type:'text',text},pacing},async({beforeSend})=>{
     if(presentation){
-      const sent=await relayAssistantPresentation({presentation,sdk:{...mod,userJid:client.user.id},jid:proof.jid,recipientProof:proof,phone,
+      const sent=await relayAssistantPresentation({presentation,provenance:presentationProvenance,sdk:{...mod,userJid:client.user.id},jid:proof.jid,recipientProof:proof,phone,
         retryStore,presentationStore:assistantPresentations(),relay:async(jid,body,options)=>{await authorize();return client.relayMessage(jid,body,options);},
         isCurrent:sendCurrent,assertAuthorized:authorize,beforeSend,acknowledge:context.presentationAck,deferPresentationAck,
         onDiagnostic:(category,id)=>{
@@ -362,26 +362,46 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
   const intake=makeConversationIntake({settleMs,maxGroupMs:Math.max(settleMs,groupSetting('QR_AI_GROUP_MAX_WAIT_MS',1200,5000)),
     ...intakeOptions,
     retryUnconsumedNoticeFailures:true,
+    beforeConsume:batch=>{if(assistantIngress)assistantIngress.consume(batch.messageIds);},
     onRejected:async batch=>{const first=metadata.get(batch.messageIds[0]);if(first)context.onRejected?.({phone:first.phone});
-      try{for(const id of batch.messageIds)if(assistantIngress?.active(id))assistantIngress.review(id);}catch{assistantStorageFailure();}},
+      if(!assistantIngress||batch.reason==='stale'||!batch.isCurrent()||!current())return;
+      try{
+        const failed=assistantIngress.failPreparation(batch.messageIds,batch.reason);if(!failed)return;
+        const alive=()=>current()&&batch.isCurrent()&&!!first&&now()<failed.expires_at&&context.allowedSender(first.phone)&&assistantIngress.canAutomate();
+        if(!alive()||!Number.isSafeInteger(failed.control_revision)||typeof context.onPreparationFailed!=='function')return;
+        const proofs=failed.message_ids.map(id=>metadata.get(id)?.proof);
+        if(!assistantIngress.claimPreparationNotice(failed.operation_id))return;
+        let outcome;
+        try{outcome=await context.onPreparationFailed({phone:first.phone,...failed},{noticeProofs:proofs,isCurrent:alive});}
+        finally{assistantIngress.finishPreparationNotice(failed.operation_id,outcome);}
+      }catch{try{for(const id of batch.messageIds)if(assistantIngress.active(id))assistantIngress.review(id);}catch{assistantStorageFailure();}}},
     consume:async batch=>{
       const entries=batch.messages.map(item=>metadata.get(item.id)),first=entries[0];
       const ids=batch.messages.map(item=>item.id),journal=assistantIngress,identity=assistantIdentity;
+      const provenance=journal?.consumptionProof(ids);
+      if(journal&&entries.some(item=>item?.selection&&!journal.allowsSelection(first.phone,item.selectionProvenance))){
+        for(const id of ids)if(journal.active(id))journal.complete(id);
+        return {state:'policy_skipped',not_committed:true};
+      }
       const rawCurrent=()=>current()&&batch.isCurrent()&&!!first&&selfIdentity()===identity&&entries.every(item=>item?.identity===identity&&item.phone===first.phone&&context.allowedSender(item.phone));
-      const batchCurrent=()=>rawCurrent()&&!assistantFault&&journal?.canConsume(ids)===true;
+      const batchCurrent=()=>rawCurrent()&&!assistantFault&&journal?.canConsume(ids)===true&&
+        journal.isProvenanceCurrent(first.phone,provenance)&&
+        entries.every(item=>!item?.selection||journal.allowsSelection(first.phone,item.selectionProvenance));
       if(journal&&!await journal.waitForAdmission(ids,{isCurrent:rawCurrent}))return {state:'superseded',not_committed:true};
       if(!batchCurrent())return {state:'superseded',not_committed:true};
       await guarded();
       const outcome=await context.onMessage({phone:first.phone,message_id:batch.messages[0].id,message_ids:ids,
         text:batch.text,parts:batch.messages.map(item=>({message_id:item.id,text:item.text})),intake_revision:batch.intakeRevision,
         ...(entries.length===1&&first.selection?{selection:first.selection}:{}),
-        ...(entries.length>1&&entries.some(item=>item.selection)?{require_summary_review:true}:{}),
-        ...(entries.some(item=>item.event)?{envelope:entries.findLast(item=>item.event)?.event}:{})},{noticeProofs:entries.map(item=>item.proof),isCurrent:batchCurrent,
+        ...(journal.requiresReview(first.phone)||entries.length>1&&entries.some(item=>item.selection)?{require_summary_review:true}:{}),
+        ...(entries.some(item=>item.event)?{envelope:entries.findLast(item=>item.event)?.event}:{})},{noticeProofs:entries.map(item=>item.proof),isCurrent:batchCurrent,presentationProvenance:provenance,
         beforeReply:value=>entries.at(-1)?.lease?.beforeReply(value)});
+      if(outcome?.state==='superseded'&&outcome?.not_committed===true)journal.zeroWrite(ids,outcome);
       if(!(outcome?.state==='superseded'&&outcome?.not_committed===true)){
         const confirmed=outcome?.accepted===true||outcome?.state==='committed_no_reply'&&outcome.not_committed===false||
           outcome?.state==='policy_skipped'&&outcome.not_committed===true;
-        for(const id of ids)if(journal.active(id)){if(confirmed)journal.complete(id);else journal.review(id);}
+        for(const id of ids)if(journal.active(id)){if(confirmed)journal.complete(id,
+          {reviewDelivered:outcome?.accepted===true&&outcome.summary_review_delivered===true});else journal.review(id);}
       }
       return outcome;
     }});
@@ -506,16 +526,21 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
               journal.exclude(id);return {skip:true};
             }
             if(journal.diagnostics().blocked){journal.review(id,'policy_denied');return {skip:true};}
+            if(journal.requiresReview(phone)&&normalized.selection&&entry.proof?.assistant_interactions!==1){
+              journal.exclude(id);return {skip:true};
+            }
             if(entry.proof?.assistant_interactions===1&&(normalized.selection||normalized.event.reply_to)){
               const diagnose=assistantSelectionDiagnostic(phone,id);diagnose('detected');
               diagnose('quote_provided',normalized.selection?.quoted_message_id||normalized.event.reply_to);
-              const selection=assistantPresentations().resolve(message,phone,diagnose);
+              const store=assistantPresentations(),selection=store.resolve(message,phone,diagnose);
               if(selection){
+                const provenance=store.selectionProvenance(phone,selection.quoted_message_id);
+                if(!journal.allowsSelection(phone,provenance)){diagnose('stale');journal.exclude(id);return {skip:true};}
                 if(!await assistantPresentations().acknowledge(phone,selection.quoted_message_id,context.presentationAck,entryCurrent,diagnose)){
                   diagnose('ack_unconfirmed');
                   journal.exclude(id);return {skip:true};
                 }
-                entry.selection=selection;delete entry.event;
+                entry.selection=selection;entry.selectionProvenance=provenance;delete entry.event;
               }
               // A claimed assistant token without a proved accepted message
               // never degrades into ordinary consent or a model instruction.
@@ -523,7 +548,7 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
             }
             // This persisted boundary forbids any ASR/domain replay following
             // a crash or an uncertain result. Only the live attempt can finish.
-            journal.begin([id]);
+            journal.prepare([id],{phone,proofs:[entry.proof]});
             entry.lease=outgoingPresence.begin({phone,chatJid:peer,isCurrent:()=>entryCurrent()&&context.assistantEnabled?.()!==false});typingLeases.add(entry.lease);
             if(entry.selection)return {text:ASSISTANT_SELECTION_TEXT};
              if(normalized.special)return {text:text||'[Evento de mensagem recebido]'};

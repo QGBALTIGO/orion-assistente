@@ -51,6 +51,34 @@ test('preserves the broker notice proof and batches, with no parallel legacy ans
   await assert.rejects(f.central.inbound({phone:'5567999999902',message_id:'OTHER'}),/denied/);
 });
 
+test('adopted audio delegates only to the current managed transcription context without a business turn',async()=>{
+  const f=fixture();await f.central.resume();let asr=0;
+  f.context().transcribe=async payload=>{asr++;assert.equal(payload.phone,phone);return 'synthetic managed transcript';};
+  const result=await f.central.transcribe({phone,buffer:Buffer.from([1,2,3]),mediaType:'audio/ogg'});
+  assert.equal(result,'synthetic managed transcript');assert.equal(asr,1);
+  assert.equal(f.calls.some(row=>['message','raw','send'].includes(row[0])),false);
+  await assert.rejects(f.central.transcribe({phone:'5567999999902',buffer:Buffer.from([1])}),/not_ready/);
+  assert.equal(asr,1);
+});
+
+test('lease loss during managed audio never falls back to the legacy credential or a business reply',async()=>{
+  const f=fixture();await f.central.resume();let release;
+  f.context().transcribe=()=>new Promise(resolve=>{release=resolve;});
+  const pending=f.central.transcribe({phone,buffer:Buffer.from([1,2,3]),mediaType:'audio/ogg'});
+  while(!release)await new Promise(resolve=>setImmediate(resolve));
+  f.revoke();release('late private transcript');await assert.rejects(pending,/revoked/);
+  assert.equal(f.calls.some(row=>['message','raw','send'].includes(row[0])),false);
+});
+
+test('a preparation failure delegates its existing operation to the managed normal sender only',async()=>{
+  const f=fixture();await f.central.resume();let called=0;
+  const payload={phone,message_ids:['synthetic-audio'],operation_id:'30000000-0000-4000-8000-000000000001',control_revision:31};
+  f.context().onPreparationFailed=async(actual,options)=>{called++;assert.equal(actual,payload);assert.equal(options.isCurrent(),true);return {accepted:true};};
+  assert.equal((await f.central.preparationFailed(payload,{noticeProofs:[],isCurrent:()=>true})).accepted,true);
+  assert.equal(called,1);assert.equal(f.calls.some(row=>['message','raw','send'].includes(row[0])),false);
+  f.revoke();await assert.rejects(f.central.preparationFailed(payload),/not_ready/);assert.equal(called,1);
+});
+
 test('manager retirement detaches only the adapter and refuses stale sends',async()=>{
   const f=fixture();await f.central.resume();const adapter=f.adapter();adapter.close();
   assert.equal(f.central.health().connected,true);assert.equal(f.central.health().ready,false);
