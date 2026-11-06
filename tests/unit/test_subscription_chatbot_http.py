@@ -190,7 +190,7 @@ async def test_private_request_log_filter_does_not_hide_concurrent_httpx_or_http
 
 @pytest.mark.parametrize("body,expected", [
     ({"data":{"name":"Não expor valor","active":False},"items":[{"price":0}]},
-     ["data.name","data.active","items[0].price"]),
+     ["data.name","data.active","items[0].price","data","items"]),
     ([{"reply":"Não expor resposta"}], ["[0].reply"]),
     ({"nome completo":"Dado privado","pay-url":"https://example.com/private"},
      ['["nome completo"]','["pay-url"]']),
