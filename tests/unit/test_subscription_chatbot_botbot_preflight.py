@@ -63,7 +63,7 @@ def test_batch_preflight_reports_multiple_errors_in_one_attempt_and_no_private_d
         fixture_zip(source)
     message = str(info.value)
     assert "3 resposta(s)" in message
-    for position in ("2:", "3:", "4:"):
+    for position in ("Resposta 2:", "Resposta 3:", "Resposta 4:"):
         assert position in message
     for secret in ("SENSITIVE-LABEL", "SENSITIVE-URL", "PRIVATE-URL",
                    "account_password", "Y" * 55):
@@ -149,3 +149,40 @@ def test_preflight_error_renderer_is_whitelist_only():
     rendered = _safe_reason(issue)
     assert rendered == "mensagem 2: texto conteúdo ou tags incompatíveis"
     assert "secret" not in rendered
+
+
+def test_multiple_conversion_errors_are_aggregated_together_with_schema_errors():
+    records = [
+        txt(1, "mensagem válida"),
+        {"id": 2, "keyword": "private-keyword", "response": {
+            "type": "sticker", "asset": {"private": "SENSITIVE"}}},
+        {"id": 3, "keyword": "menu", "response": {
+            "kind": "list", "sections": [{"rows": [
+                {"title": "X" * 40, "action": {"type": "text", "text": "hello"}}]}]}},
+        {"id": 4, "keyword": "url", "response": {
+            "type": "url", "url": "https://example.com/secret",
+            "method": "PUT", "custom_template": "{{reply}}"}},
+        {"id": 5, "keyword": "hello", "response": "Text {name}"},
+    ]
+    with pytest.raises(ValueError) as error:
+        fixture_zip(records)
+    value = str(error.value)
+    assert "3 resposta(s)" in value
+    for number in (2, 3, 4):
+        assert f"Resposta {number}" in value
+    assert "SENSITIVE" not in value
+    assert "private-keyword" not in value
+    assert "example.com/secret" not in value
+    assert len(value) <= 235
+
+
+def test_duplicate_invalid_and_valid_imports_never_mutate_the_input():
+    records = [txt(1, "Olá"), txt(2, "{{invalid}}"), txt(3, "Oi")]
+    before = deepcopy(records)
+    with pytest.raises(ValueError):
+        fixture_zip(records)
+    assert records == before
+    del records[1]
+    converted = fixture_zip(records)
+    assert len(converted["rules"]) == 2
+    assert all(not r["definition"]["enabled"] for r in converted["rules"])
