@@ -56,8 +56,9 @@ def _bounded_json(raw: bytes):
 
 _KEYWORDS = ("keyword", "keywords", "trigger", "command", "phrase", "word", "match_text", "matchText")
 _CONTENT = ("response", "messages", "actions", "replies", "reply", "message", "content", "text", "answer")
-_WRAPPERS = ("replies", "responses", "rules", "items", "chatbot_replies",
-             "records", "data", "result", "export", "chatbot", "backup", "payload")
+_WRAPPERS = ("replies", "reply", "responses", "rules", "rule", "items",
+             "chatbot_replies", "records", "data", "result", "export",
+             "chatbot", "backup", "payload")
 
 
 def _keyword_field(row):
