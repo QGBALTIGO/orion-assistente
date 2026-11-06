@@ -194,7 +194,7 @@ def test_botbot_never_invents_message_when_all_text_fields_are_empty():
     rows = [{"id": 503, "keyword": "ajuda",
              "response": {"type": "text", "text": "", "message": " ",
                           "content": {"text": ""}}}]
-    with pytest.raises(ValueError, match="mensagem está sem texto"):
+    with pytest.raises(ValueError, match="não contém mensagens que possam ser importadas"):
         codec.read_archive(archive(rows), "botbot_replies_sample.zip")
 
 
