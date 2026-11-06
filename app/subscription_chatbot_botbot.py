@@ -127,7 +127,7 @@ def _delay(value, *, unit="seconds"):
         return 1
     if isinstance(value, str):
         value = value.strip()
-        if len(value) > 16 or not re.fullmatch(r"[0-9]+(?:\\.0+)?", value):
+        if len(value) > 16 or not re.fullmatch(r"[0-9]+(?:\.0+)?", value):
             raise _invalid("O atraso da resposta precisa ser um número inteiro.")
         value = float(value)
     if type(value) not in (int, float) or not 0 <= value or value != int(value):
