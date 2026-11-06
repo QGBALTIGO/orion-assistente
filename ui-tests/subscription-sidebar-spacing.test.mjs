@@ -30,3 +30,61 @@ test('compact spacing is removed when another ordinary account is loaded',async 
   assert.equal(compact(h),false);assert.ok(site(h));
   assert.deepEqual(h.errors,[]);
 });
+
+const subscriptionManagementRoutes=[
+  'dispositivos','chatbot','testar-chatbot','templates','mensagens-enviadas','diagnosticos',
+  'campanhas','programadas','massa','enviar-mensagem','aquecimento','evitar-banimento',
+  'resolver-banimento','extrator-contatos','adicionar-ao-grupo',
+];
+const subscriptionManagementFeatures=[
+  'account.manage','devices.manage','chatbot.manage','templates.manage','sent_messages.manage',
+  'diagnostics.manage','campaigns.manage','scheduled_messages.manage','bulk_messages.manage',
+  'direct_messages.manage','whatsapp_guidance.view','group_contacts.manage','group_add.manage',
+];
+const iconHTML=button=>{
+  const svg=button.querySelector(':scope > svg.os-icon');
+  assert.ok(svg,'missing SVG: '+button.dataset.osRoute);
+  assert.equal(svg.getAttribute('viewBox'),'0 0 24 24');
+  assert.equal(svg.getAttribute('aria-hidden'),'true');
+  assert.equal(svg.getAttribute('focusable'),'false');
+  assert.ok(svg.querySelector('path')?.getAttribute('d'),'missing SVG path');
+  return svg.innerHTML;
+};
+
+test('subscription management shows distinct SVG geometry for every function',async t=>{
+  const permissions=Object.fromEntries(subscriptionManagementFeatures.map(feature=>[feature,true]));
+  const h=await makeSuite({
+    initialRoute:'aquecimento',
+    permissions:planState('elite',{
+      workspace_profile:'subscription_services',revision:'unique-svg-icons',
+      features:subscriptionManagementFeatures,permissions,
+    }),
+    bridge:{tenants:[{...business(),status:'active'}]},
+  });
+  t.after(()=>h.close());await flush();
+  const links=[...h.document.querySelectorAll('#osNav .os-nav-link[data-os-route]')]
+    .filter(node=>subscriptionManagementRoutes.includes(node.dataset.osRoute));
+  assert.deepEqual(links.map(node=>node.dataset.osRoute),subscriptionManagementRoutes);
+  assert.equal(new Set(links.map(iconHTML)).size,subscriptionManagementRoutes.length);
+  assert.notEqual(iconHTML(links.find(node=>node.dataset.osRoute==='evitar-banimento')),
+    iconHTML(links.find(node=>node.dataset.osRoute==='resolver-banimento')));
+  assert.notEqual(iconHTML(links.find(node=>node.dataset.osRoute==='mensagens-enviadas')),
+    iconHTML(links.find(node=>node.dataset.osRoute==='massa')));
+  assert.notEqual(iconHTML(links.find(node=>node.dataset.osRoute==='massa')),
+    iconHTML(links.find(node=>node.dataset.osRoute==='enviar-mensagem')));
+  assert.deepEqual(h.errors,[]);
+});
+
+test('standard business also keeps unique menu SVGs for clients and staff',async t=>{
+  const h=await makeSuite({initialRoute:'dashboard',
+    permissions:planState('elite',{revision:'unique-svg-standard'}),
+    bridge:{tenants:[business('standard')]}});
+  t.after(()=>h.close());await flush();
+  const routes=['dashboard','agenda','clientes','inbox','servicos','funcionarios','financeiro',
+    'desempenho','marketing','site','fidelizacao','consultor','plano','configuracoes'];
+  const links=[...h.document.querySelectorAll('#osNav .os-nav-link[data-os-route]')]
+    .filter(node=>routes.includes(node.dataset.osRoute));
+  assert.deepEqual(links.map(node=>node.dataset.osRoute),routes);
+  assert.equal(new Set(links.map(iconHTML)).size,routes.length);
+  assert.deepEqual(h.errors,[]);
+});
