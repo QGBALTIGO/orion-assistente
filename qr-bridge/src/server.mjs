@@ -371,6 +371,12 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false,authRegistra
         scope:{tenant:scope?.tenant_id??null,channel:scope?.channel_id??null,self:normalizeFromJid(client.user?.id),registration:authRegistrationId}}));
     }};
   socketOutgoingPresence.set(client,typingPresence);
+  const assistantSelectionDiagnostic=(phone,id)=>(category,reference=id)=>{
+    try{const scope=legacyCentral.ingressScope?.();
+      if(assistantNativeMode({tenantId:scope?.tenant_id,channelId:scope?.channel_id,phone,env:process.env})==='native')
+        transport.record('assistant_selection',reference,{category});
+    }catch{/* Observability cannot alter inbound processing. */}
+  };
   const nativeCanary=createNativeTestCanary({directory:authDir,secret:KEY,env:process.env,
     isCurrent:()=>intakeCurrent()&&legacyCentral.transportCurrent(),
     isReady:()=>!ingressFault&&(!assistantIngress||assistantIngress.canAutomate()),
@@ -732,7 +738,11 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false,authRegistra
       const noticeTask=revisionEnabled?(()=>{noticePending++;return (async()=>{
           const phone=await resolveIdentity();
           if(!phone&&assistantIngress)throw Error('assistant_identity_unresolved');
-          if(!phone||!current()||!metadata.allowed)return {skip:true};
+          if(!phone||!current()||!metadata.allowed){
+            if(phone&&(normalized.selection||normalized.event.reply_to))
+              assistantSelectionDiagnostic(phone,traceId)(!metadata.allowed?'not_allowed':'stale');
+            return {skip:true};
+          }
           const body=normalized.text,media=message.message.audioMessage||message.message.ephemeralMessage?.message?.audioMessage;
           if(legacyCentral.configured()){
             const proof=await legacyCentral.inbound({phone,message_id:traceId,text:body||'',kind:media?'audio':body?'text':'unsupported',
@@ -756,11 +766,14 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false,authRegistra
           const media=message.message.audioMessage||message.message.ephemeralMessage?.message?.audioMessage;
           if(!normalized.special&&!body&&!media){transport.record('inbound_no_text',traceId);return {skip:true};}
           if(metadata.noticeProof?.assistant_interactions===1&&(normalized.selection||normalized.event.reply_to)){
-            const store=typingPresence.assistantPresentations(),selection=store.resolve(message,phone);
+            const diagnose=assistantSelectionDiagnostic(phone,traceId);diagnose('detected');
+            diagnose('quote_provided',normalized.selection?.quoted_message_id||normalized.event.reply_to);
+            const store=typingPresence.assistantPresentations(),selection=store.resolve(message,phone,diagnose);
             if(selection){
               const acknowledge=legacyCentral.configured()?payload=>legacyCentral.presentationAck(payload):
                 payload=>acknowledgeAssistantPresentation({apiUrl:process.env.QR_AI_API_URL,token:KEY,payload});
-              if(!await store.acknowledge(phone,selection.quoted_message_id,acknowledge,current)){
+              if(!await store.acknowledge(phone,selection.quoted_message_id,acknowledge,current,diagnose)){
+                diagnose('ack_unconfirmed');
                 assistantIngress?.exclude(traceId);return {skip:true};
               }
               metadata.selection=selection;delete metadata.event;body=ASSISTANT_SELECTION_TEXT;
@@ -1199,6 +1212,10 @@ async function sendLegacyRaw(phone,text,{waitForCapacity=false,isCurrent=()=>tru
       isCurrent:current,assertAuthorized:authorize,beforeSend,
       interactiveMode:assistantNativeMode({tenantId:scope?.tenant_id,channelId:scope?.channel_id,phone:target}),
       acknowledge:presentationAck||(payload=>acknowledgeAssistantPresentation({apiUrl:process.env.QR_AI_API_URL,token:KEY,payload})),
+      onDiagnostic:(category,id)=>{
+        if(assistantNativeMode({tenantId:scope?.tenant_id,channelId:scope?.channel_id,phone:target})==='native')
+          transport.record('assistant_presentation',id,{category});
+      },
       relay:async(recipient,message,options)=>{await authorize();return selectedSocket.relayMessage(recipient,message,options);},
       onPrepared:msg=>{retryDiagnostics.prepared++;deliveryReceipts.set(msg.key.id,'pending');deliveryStart.set(msg.key.id,Date.now());
         pushMessage({id:'out:'+msg.key.id,phone:target,body:text.trim(),direction:'out',at:Date.now(),delivery:'pending'});}});

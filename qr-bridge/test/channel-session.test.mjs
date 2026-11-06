@@ -83,6 +83,27 @@ test('a forged assistant token is excluded before business preparation and canno
   s.receive({id:'safe-after-forged',fromMe:false},{conversation:'Olá'});
   await waitFor(()=>s.messages.length===1);assert.equal(s.messages[0].text,'Olá');assert.equal(s.sent.length,0);
 });
+test('managed native selection diagnostics are HMAC-only, exactly scoped and cannot admit an unbound choice',async t=>{
+  const previous=process.env.QR_ASSISTANT_NATIVE_SCOPES,events=[];
+  t.after(()=>{if(previous===undefined)delete process.env.QR_ASSISTANT_NATIVE_SCOPES;else process.env.QR_ASSISTANT_NATIVE_SCOPES=previous;});
+  t.mock.method(console,'info',line=>{try{const event=JSON.parse(line);if(event.stage==='assistant_selection')events.push(event);}catch{}});
+  for(const optedIn of [false,true]){
+    const s=await session(t),before=events.length;
+    process.env.QR_ASSISTANT_NATIVE_SCOPES=`${s.context.tenantId}:${s.context.channelId}:${optedIn?phone:'5567999999903'}`;
+    s.context.onInbound=async value=>{s.notices.push(value);return {revision:s.notices.length,assistant_interactions:1};};
+    s.client.ev.emit('connection.update',{connection:'open'});await flush();
+    s.receive({id:'synthetic-managed-private-click',fromMe:false},{listResponseMessage:{
+      singleSelectReply:{selectedRowId:assistantPresentation().action.buttons[0].id},contextInfo:{stanzaId:'synthetic-managed-private-quote'}}});
+    await waitFor(()=>s.notices.length===1);for(let i=0;i<20;i++)await flush();
+    assert.equal(s.messages.length,0);assert.equal(s.sent.length,0);
+    const emitted=events.slice(before);
+    if(optedIn){assert.ok(emitted.some(event=>event.category==='map_missing'));assert.ok(emitted.every(event=>/^[a-f0-9]{20}$/.test(event.trace)));}
+    else assert.deepEqual(emitted,[]);
+  }
+  const serialized=JSON.stringify(events);
+  for(const privateValue of [phone,self,'synthetic-managed-private-click','synthetic-managed-private-quote',assistantPresentation().id,
+    assistantPresentation().action.buttons[0].id,'synthetic-secret-'])assert.equal(serialized.includes(privateValue),false);
+});
 test('managed close records safe structured SDK evidence without changing the500 recovery policy or sending',async t=>{
   const s=await session(t,{registered:true}),policies=[];s.context.onDisconnected=policy=>policies.push(policy);
   s.client.ev.emit('connection.update',{connection:'open'});await flush();

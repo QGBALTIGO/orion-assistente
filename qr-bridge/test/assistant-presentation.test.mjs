@@ -8,6 +8,7 @@ import {makeEncryptedRetryStore} from '../src/encrypted-retry-store.mjs';
 import {urlButtonContent} from '../src/url-button.mjs';
 import {normalizeInbound} from '../src/inbound-event.mjs';
 import {forwardAssistant,registerAssistantIngress,acknowledgeAssistantPresentation} from '../src/ai-forward.mjs';
+import {makeTransportDiagnostics} from '../src/transport-diagnostics.mjs';
 import {buildAssistantPresentation,validateAssistantPresentation,assistantNativeMode,createAssistantPresentationStore,
   relayAssistantPresentation,assistantSelectionCandidate} from '../src/assistant-presentation.mjs';
 process.env.ORION_RETRY_TEST_MODE='1';
@@ -148,4 +149,35 @@ test('legacy presentation ACK uses only its fixed authenticated endpoint and nev
   await acknowledgeAssistantPresentation({apiUrl:'http://api.railway.internal/internal/qr/ai/reply',token:secret,payload,
     fetchImpl:async(url,request)=>{calls.push({url:String(url),body:JSON.parse(request.body)});return {ok:true,json:async()=>({acknowledged:true})};}});
   assert.deepEqual(calls,[{url:'http://api.railway.internal/internal/qr/ai/presentation-ack',body:payload}]);
+});
+test('selection diagnostics report bounded reasons without changing the fail-closed map contract',t=>{
+  const f=fixture(t),observed=[],emit=value=>observed.push(value),id='synthetic-diagnostic-summary';
+  assert.equal(f.store.resolve(clicked(id),recipient,emit),null);assert.deepEqual(observed,['map_missing']);
+  f.store.prepared(presentation(),recipient,{key:{id,fromMe:true}});observed.length=0;
+  assert.equal(f.store.resolve(clicked(id),recipient,emit),null);assert.deepEqual(observed,['map_unaccepted']);
+  f.store.accepted(recipient,id);observed.length=0;
+  assert.equal(f.store.resolve(clicked(id,token(9)),recipient,emit),null);assert.deepEqual(observed,['choice_mismatch']);
+  assert.ok(f.store.resolve(clicked(id),recipient,()=>{throw Error('synthetic broken log sink');}));
+  assert.equal(f.store.resolve({key:{fromMe:true},message:clicked(id).message},recipient,emit),null);
+  assert.ok(observed.every(value=>/^[a-z_]+$/.test(value)));
+});
+test('ACK diagnostic codes use the existing HMAC trace and never expose payload, provider body or exception text',async t=>{
+  const f=fixture(t),events=[],id='synthetic-private-provider-id',d=makeTransportDiagnostics({secret,emit:event=>events.push(event)});
+  f.store.prepared(presentation(),recipient,{key:{id,fromMe:true}});f.store.accepted(recipient,id);
+  const diagnostic=category=>d.record('assistant_selection',id,{category});
+  const refused=async()=>{throw Object.assign(Error('PRIVATE PROVIDER TEXT '+recipient+' '+nonce),{status:403});};
+  assert.equal(await f.store.acknowledge(recipient,id,refused,()=>true,diagnostic),false);
+  assert.equal(events.filter(x=>x.category==='ack_http_403').length,2);
+  const serialized=JSON.stringify(events);
+  for(const value of [secret,recipient,nonce,id,'PRIVATE PROVIDER TEXT',token(0)])assert.equal(serialized.includes(value),false);
+  assert.ok(events.every(x=>/^[a-f0-9]{20}$/.test(x.trace)&&/^[a-z0-9_]+$/.test(x.category)));
+  assert.equal(await f.store.acknowledge(recipient,id,async()=>({acknowledged:true}),()=>true,()=>{throw Error('log sink');}),true);
+});
+test('legacy ACK preserves only the response status, never its private response body',async()=>{
+  let bodyReads=0;
+  await assert.rejects(acknowledgeAssistantPresentation({apiUrl:'http://api.railway.internal/internal/qr/ai/reply',token:secret,
+    payload:{phone:recipient,presentation_id:nonce,provider_id:'synthetic-private-provider'},
+    fetchImpl:async()=>({ok:false,status:409,json:async()=>{bodyReads++;return {private:'must not read'};}})}),
+    error=>error.message==='assistant_ack_unavailable'&&error.status===409);
+  assert.equal(bodyReads,0);
 });

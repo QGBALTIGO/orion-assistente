@@ -15,6 +15,13 @@ const opaque=x=>typeof x==='string'&&/^[A-Za-z0-9:_-]{1,160}$/.test(x);
 const provider=x=>typeof x==='string'&&/^[A-Za-z0-9._:-]{1,160}$/.test(x);
 const phone=x=>typeof x==='string'&&/^[1-9]\d{7,14}$/.test(x);
 const invalid=()=>Object.assign(Error('assistant_presentation_invalid'),{code:'ASSISTANT_PRESENTATION_INVALID'});
+const observe=(callback,category)=>{try{callback?.(category);}catch{/* Diagnostics never alter delivery or authorization. */}};
+function ackFailure(error){
+  if(error?.name==='AbortError'||error?.name==='TimeoutError'||error?.message==='assistant_ack_timeout')return 'ack_timeout';
+  const status=error?.status;
+  return [400,401,403,404,409,422,429,500,502,503,504].includes(status)?`ack_http_${status}`:
+    Number.isInteger(status)&&status>=500&&status<=599?'ack_http_5xx':'ack_failed';
+}
 const fields=(value,names)=>plain(value)&&Object.keys(value).every(key=>names.includes(key));
 const label=(value,max,optional=false)=>{
   if(optional&&value===undefined)return '';
@@ -102,7 +109,8 @@ export async function buildAssistantPresentation(presentation,{sdk,interactiveMo
 }
 export async function relayAssistantPresentation({presentation,sdk,jid,recipientProof,phone:recipient,
   retryStore,presentationStore,relay,isCurrent,assertAuthorized,beforeSend,interactiveMode='text_fallback',acknowledge,
-  onPrepared=()=>{}}){
+  onPrepared=()=>{},onDiagnostic=()=>{}}){
+  const diagnostic=(category,id)=>{try{onDiagnostic(category,id);}catch{}};
   let built;
   try{
     const sent=await sendStoredProtocol({jid,recipientProof,store:retryStore,isCurrent,assertAuthorized,
@@ -111,12 +119,13 @@ export async function relayAssistantPresentation({presentation,sdk,jid,recipient
         await beforeSend();
         return sdk.generateWAMessageFromContent(to,built.content,{userJid:sdk.userJid,messageId:sdk.generateMessageIDV2(sdk.userJid)});
       },
-      onPrepared:message=>{presentationStore.prepared(presentation,recipient,message);onPrepared(message);},
+      onPrepared:message=>{presentationStore.prepared(presentation,recipient,message);onPrepared(message);diagnostic('prepared',message.key.id);},
       relay:(to,body,options)=>relay(to,body,{...options,...built?.relayOptions})});
     presentationStore.accepted(recipient,sent.key.id);
+    diagnostic('accepted',sent.key.id);
     // A missing ACK can be reconciled by a later selection; it never causes
     // another WhatsApp send or a change to the already accepted protocol.
-    await presentationStore.acknowledge(recipient,sent.key.id,acknowledge,isCurrent);
+    await presentationStore.acknowledge(recipient,sent.key.id,acknowledge,isCurrent,category=>diagnostic(category,sent.key.id));
     return sent;
   }finally{built?.dispose();}
 }
@@ -145,19 +154,25 @@ export function createAssistantPresentationStore({directory,secret,scope,now=Dat
   function record(recipient,id){return phone(recipient)&&provider(id)?store.get(key(recipient,id)):null;}
   function save(recipient,id,value){if(store.save(key(recipient,id),value)!==true)throw Error('assistant_presentation_not_persisted');}
   const acknowledgements=new Map();
-  async function acknowledge(recipient,id,ack,isCurrent=()=>true){
-    const old=record(recipient,id);if(!old?.accepted||typeof ack!=='function'||!isCurrent())return false;
-    if(old.acknowledged===true)return true;
-    const operation=recipient+':'+id;if(acknowledgements.has(operation))return acknowledgements.get(operation);
+  async function acknowledge(recipient,id,ack,isCurrent=()=>true,onDiagnostic){
+    const old=record(recipient,id);
+    if(!old?.accepted){observe(onDiagnostic,'ack_map_unaccepted');return false;}
+    if(typeof ack!=='function'){observe(onDiagnostic,'ack_unavailable');return false;}
+    if(!isCurrent()){observe(onDiagnostic,'ack_stale');return false;}
+    if(old.acknowledged===true){observe(onDiagnostic,'ack_cached');return true;}
+    const operation=recipient+':'+id;
+    if(acknowledgements.has(operation)){observe(onDiagnostic,'ack_joined');return acknowledgements.get(operation);}
     const task=(async()=>{for(let i=0;i<2;i++){
-      if(!isCurrent())return false;
+      if(!isCurrent()){observe(onDiagnostic,'ack_stale');return false;}
       let timer;
-      try{const result=await Promise.race([Promise.resolve().then(()=>ack({phone:recipient,presentation_id:old.presentation_id,provider_id:id})),
+      try{observe(onDiagnostic,'ack_attempt');const result=await Promise.race([Promise.resolve().then(()=>ack({phone:recipient,presentation_id:old.presentation_id,provider_id:id})),
           new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('assistant_ack_timeout')),ackTimeoutMs);})]);
-        if(!isCurrent()||result?.acknowledged!==true)return false;
-        const fresh=record(recipient,id);if(!fresh?.accepted||fresh.presentation_id!==old.presentation_id)return false;
-        save(recipient,id,{...fresh,acknowledged:true});return true;
-      }catch{if(!isCurrent())return false;}finally{clearTimeout(timer);}
+        if(!isCurrent()){observe(onDiagnostic,'ack_stale');return false;}
+        if(result?.acknowledged!==true){observe(onDiagnostic,'ack_unconfirmed');return false;}
+        const fresh=record(recipient,id);
+        if(!fresh?.accepted||fresh.presentation_id!==old.presentation_id){observe(onDiagnostic,'ack_map_changed');return false;}
+        save(recipient,id,{...fresh,acknowledged:true});observe(onDiagnostic,'ack_confirmed');return true;
+      }catch(error){observe(onDiagnostic,ackFailure(error));if(!isCurrent())return false;}finally{clearTimeout(timer);}
     }return false;})();
     acknowledgements.set(operation,task);try{return await task;}finally{acknowledgements.delete(operation);}
   }
@@ -169,14 +184,18 @@ export function createAssistantPresentationStore({directory,secret,scope,now=Dat
       save(recipient,message.key.id,{presentation_id:p.id,choices:[...p.selectionIds],accepted:false,acknowledged:false});},
     accepted(recipient,id){const old=record(recipient,id);if(!old||!opaque(old.presentation_id))throw invalid();save(recipient,id,{...old,accepted:true});},
     acknowledge,
-    resolve(message,recipient){
-      if(message?.key?.fromMe!==false||!phone(recipient))return null;
+    resolve(message,recipient,onDiagnostic){
+      const rejected=category=>{observe(onDiagnostic,category);return null;};
+      if(message?.key?.fromMe!==false||!phone(recipient))return rejected('sender_unverified');
       let candidate=assistantSelectionCandidate(message);
-      if(!candidate){const {text,quoted}=quotedText(message);if(typeof text!=='string'||!/^(?:[1-9]|10)$/.test(text.trim())||!provider(quoted))return null;
+      if(!candidate){const {text,quoted}=quotedText(message);if(typeof text!=='string'||!/^(?:[1-9]|10)$/.test(text.trim())||!provider(quoted))return rejected('selection_unrecognized');
         const old=record(recipient,quoted),id=old?.choices?.[Number(text.trim())-1];
-        if(!assistantSelectionId(id))return null;candidate={id,quoted_message_id:quoted};}
+        if(!assistantSelectionId(id))return rejected(old?'choice_mismatch':'map_missing');candidate={id,quoted_message_id:quoted};}
       const old=record(recipient,candidate.quoted_message_id);
-      return old?.accepted===true&&old.choices?.includes(candidate.id)?candidate:null;
+      if(!old)return rejected('map_missing');
+      if(old.accepted!==true)return rejected('map_unaccepted');
+      if(!old.choices?.includes(candidate.id))return rejected('choice_mismatch');
+      observe(onDiagnostic,'matched');return candidate;
     }
   };
 }
