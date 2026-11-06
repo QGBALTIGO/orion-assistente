@@ -46,7 +46,8 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
   const mod=await loadBaileys();await context.assertCurrent();
   const makeSocket=mod.default,openedAt=now();
   const diagnostics=makeTransportDiagnostics({secret:context.secret,now,emit:event=>{
-    if(['decrypt_failed','retry_received','retry_send_failed','retry_content_missing','get_message','server_rejected','auth_write_failed'].includes(event.stage))
+    if(['decrypt_failed','retry_received','retry_send_failed','retry_content_missing','get_message','server_rejected','auth_write_failed',
+      'assistant_selection','assistant_presentation'].includes(event.stage))
       console.info(JSON.stringify({component:'orion-managed-transport',...event}));
   }});
   const silent=diagnostics.logger;
@@ -108,6 +109,11 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
   const assistantPresentations=()=>assistantPresentationStore||(assistantPresentationStore=createAssistantPresentationStore({
     directory:privateDirectory(path.join(context.directory,'assistant-presentations')),secret:context.secret,now,
     scope:{tenant:context.tenantId,channel:context.channelId,self:selfIdentity(),registration:creds.registrationId}}));
+  const assistantSelectionDiagnostic=(phone,id)=>(category,reference=id)=>{
+    try{if(assistantNativeMode({tenantId:context.tenantId,channelId:context.channelId,phone})==='native')
+      diagnostics.record('assistant_selection',reference,{category});
+    }catch{/* Observability cannot alter inbound processing. */}
+  };
   function assistantStorageFailure(){
     assistantFault='assistant_ingress_unavailable';
     const policy={code:null,reason:'ingress_storage_unavailable',action:'inspect_ingress_storage',retry:false,delayMs:null};
@@ -275,6 +281,10 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
       const sent=await relayAssistantPresentation({presentation,sdk:{...mod,userJid:client.user.id},jid:proof.jid,recipientProof:proof,phone,
         retryStore,presentationStore:assistantPresentations(),relay:async(jid,body,options)=>{await authorize();return client.relayMessage(jid,body,options);},
         isCurrent:sendCurrent,assertAuthorized:authorize,beforeSend,acknowledge:context.presentationAck,
+        onDiagnostic:(category,id)=>{
+          if(assistantNativeMode({tenantId:context.tenantId,channelId:context.channelId,phone})==='native')
+            diagnostics.record('assistant_presentation',id,{category});
+        },
         interactiveMode:assistantNativeMode({tenantId:context.tenantId,channelId:context.channelId,phone})});
       return {id:sent.key.id};
     }
@@ -497,9 +507,12 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
             }
             if(journal.diagnostics().blocked){journal.review(id,'policy_denied');return {skip:true};}
             if(entry.proof?.assistant_interactions===1&&(normalized.selection||normalized.event.reply_to)){
-              const selection=assistantPresentations().resolve(message,phone);
+              const diagnose=assistantSelectionDiagnostic(phone,id);diagnose('detected');
+              diagnose('quote_provided',normalized.selection?.quoted_message_id||normalized.event.reply_to);
+              const selection=assistantPresentations().resolve(message,phone,diagnose);
               if(selection){
-                if(!await assistantPresentations().acknowledge(phone,selection.quoted_message_id,context.presentationAck,entryCurrent)){
+                if(!await assistantPresentations().acknowledge(phone,selection.quoted_message_id,context.presentationAck,entryCurrent,diagnose)){
+                  diagnose('ack_unconfirmed');
                   journal.exclude(id);return {skip:true};
                 }
                 entry.selection=selection;delete entry.event;

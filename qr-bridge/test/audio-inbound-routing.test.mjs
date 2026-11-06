@@ -11,7 +11,7 @@ import {makeContactNames} from '../src/contact-names.mjs';
 import {extractText,resolveMessagePhone} from '../src/core.mjs';
 import {shouldIngestUpsert,timestampMs} from '../src/linked-session-health.mjs';
 import {forwardAssistant,registerAssistantIngress,acknowledgeAssistantPresentation} from '../src/ai-forward.mjs';
-import {createAssistantPresentationStore,relayAssistantPresentation,ASSISTANT_SELECTION_TEXT} from '../src/assistant-presentation.mjs';
+import {createAssistantPresentationStore,relayAssistantPresentation,ASSISTANT_SELECTION_TEXT,assistantNativeMode} from '../src/assistant-presentation.mjs';
 import {isBookingProtocolMessage,resolveBookingSenderPhone} from '../src/appointment-confirmation.mjs';
 import {makeBookingIntakeGuard} from '../src/booking-intake-guard.mjs';
 import {allowAssistantRecipient,allowAssistantAudio,pilotNumber} from '../src/ai-pilot.mjs';
@@ -63,7 +63,7 @@ function harness({transcribe=async()=> 'Synthetic speech',audioEnabled=true,answ
     legacyCentral:{transportCurrent:()=>true,assertTransportCurrent:async()=>{},nativeTestScope:()=>null,
       ...(legacyController||{configured:()=>false})},socketOutgoingPresence:new WeakMap(),createNativeTestCanary,
     namesStore,namesSync:{changed(){nameChanges++;},start(){}},path,authDir:directory,createAssistantIngress,BufferJSON,
-    authRegistrationId:12345,createAssistantPresentationStore,ASSISTANT_SELECTION_TEXT,
+    authRegistrationId:12345,createAssistantPresentationStore,ASSISTANT_SELECTION_TEXT,assistantNativeMode,
     acknowledgeAssistantPresentation:args=>acknowledgeAssistantPresentation({...args,fetchImpl:async(_url,request)=>{
       presentationAcks.push(JSON.parse(request.body));return {ok:true,json:async()=>({acknowledged:true})};}}),
     normalizeFromJid:value=>String(value).match(/^(\d+)(?::\d+)?@s\.whatsapp\.net$/)?.[1]||null,
@@ -200,6 +200,25 @@ function adopted({inbound,forward,allowed=p=>p===phone,scope=()=>admissionScope}
 function nativeController(options={}){
   return {...adopted(options),nativeTestScope:()=>({...admissionScope,owner:'30000000-0000-4000-8000-000000000001',fence:3})};
 }
+test('PRIMARY selection diagnostics require exact native scope and ACK failure never reaches business or sends',async t=>{
+  presentationTestMode(t);
+  for(const optedIn of [false,true]){
+    let acks=0;
+    const central=adopted({inbound:async()=>({revision:1,assistant_interactions:1})});
+    central.presentationAck=async()=>{acks++;throw Object.assign(Error('private provider detail'),{status:403});};
+    const h=harness({legacyController:central}),menu=assistantMenu(),id='synthetic-primary-native-summary';
+    h.env.QR_ASSISTANT_NATIVE_SCOPES=`${admissionScope.tenant_id}:${admissionScope.channel_id}:${optedIn?phone:'5511888888888'}`;
+    const store=h.context.socketOutgoingPresence.get(h.context.client).assistantPresentations();
+    store.prepared(menu,phone,{key:{id,fromMe:true}});store.accepted(phone,id);
+    const choice=h.message('synthetic-primary-native-click',{text:'not forwarded'});
+    choice.message={listResponseMessage:{singleSelectReply:{selectedRowId:menu.action.buttons[0].id},contextInfo:{stanzaId:id}}};
+    await h.emit([choice]);assert.equal(acks,2);assert.equal(central.turns.length,0);assert.equal(h.sent.length,0);
+    const categories=h.events.filter(event=>event[0]==='assistant_selection').map(event=>event[2].category);
+    if(optedIn){assert.ok(categories.includes('matched'));assert.equal(categories.filter(value=>value==='ack_http_403').length,2);
+      assert.equal(categories.at(-1),'ack_unconfirmed');}
+    else assert.deepEqual(categories,[]);
+  }
+});
 test('PRIMARY canary commands and malformed tokens are intercepted before AI and never change ordinaryORIONTESTE',async()=>{
   const central=nativeController(),h=harness({legacyController:central,nativeEnabled:true});
   await h.emit([h.message('native-list',{text:'ORIONTESTE LISTA'})]);assert.equal(h.nativeSends.length,1);assert.equal(h.nativeSends[0].action.type,'list');

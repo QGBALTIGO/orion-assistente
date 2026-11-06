@@ -101,6 +101,6 @@ export async function acknowledgeAssistantPresentation({apiUrl,token,payload,fet
   target.pathname='/internal/qr/ai/presentation-ack';
   const response=await fetchImpl(target,{method:'POST',redirect:'error',signal:AbortSignal.timeout(5000),
     headers:{'Content-Type':'application/json','X-Orion-Bridge-Key':token},body:JSON.stringify(payload)});
-  if(!response.ok)throw Error('assistant_ack_unavailable');
+  if(!response.ok)throw Object.assign(Error('assistant_ack_unavailable'),{status:response.status});
   const result=await response.json();if(result?.acknowledged!==true)throw Error('assistant_ack_unconfirmed');return result;
 }

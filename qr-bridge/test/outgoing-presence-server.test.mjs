@@ -88,7 +88,8 @@ test('real PRIMARY raw sender caches one native assistant protocol, retains targ
   const directory=fs.mkdtempSync(path.join(os.tmpdir(),'orion-primary-presentation-'));
   t.after(()=>{if(before===undefined)delete process.env.ORION_RETRY_TEST_MODE;else process.env.ORION_RETRY_TEST_MODE=before;
     assert.ok(path.resolve(directory).startsWith(path.resolve(os.tmpdir())+path.sep+'orion-primary-presentation-'));fs.rmSync(directory,{recursive:true,force:true});});
-  const f=fixture(),acks=[],id='E'.repeat(32),tenant='11111111-1111-4111-8111-111111111111',channel='22222222-2222-4222-8222-222222222222';
+  const f=fixture(),acks=[],diagnostics=[],id='E'.repeat(32),tenant='11111111-1111-4111-8111-111111111111',channel='22222222-2222-4222-8222-222222222222';
+  f.context.transport.record=(stage,_id,details)=>{if(stage==='assistant_presentation')diagnostics.push(details.category);};
   const presentation={version:1,id,action:{type:'reply_buttons',text:'Resumo fictício',footer:'',
     buttons:[{id:`oa1_${id}_0`,title:'Confirmar'},{id:`oa1_${id}_1`,title:'Corrigir'}]}};
   const store=createAssistantPresentationStore({directory,secret:'synthetic-primary-presentation-secret-'.repeat(2),scope:{registration:123}});
@@ -103,7 +104,14 @@ test('real PRIMARY raw sender caches one native assistant protocol, retains targ
   assert.equal(result.accepted,true);assert.equal(f.relays.length,1);assert.equal(f.retryStore.size(),1);
   const protocol=f.relays[0].message.interactiveMessage;assert.ok(protocol);assert.equal(protocol.nativeFlowMessage.buttons.length,2);
   assert.ok(f.relays[0].options.additionalNodes);assert.equal(acks.length,1);assert.equal(acks[0].provider_id,f.relays[0].options.messageId);
-  assert.deepEqual(f.presence.map(value=>value.type),['composing','paused']);f.coordinator.close();
+  assert.deepEqual(f.presence.map(value=>value.type),['composing','paused']);
+  assert.deepEqual(diagnostics,['prepared','accepted','ack_attempt','ack_confirmed']);
+  delete f.context.process.env.QR_ASSISTANT_NATIVE_SCOPES;
+  const fallback=f.context.sendLegacyRaw(phone,presentation.action.text,{source:'assistant',presentation,isCurrent:()=>true,
+    presentationAck:async()=>({acknowledged:true})});
+  await f.clock.advance(3000);assert.equal((await fallback).accepted,true);assert.equal(f.relays.length,2);
+  assert.ok(f.relays[1].message.extendedTextMessage);assert.equal(diagnostics.length,4);
+  f.coordinator.close();
 });
 
 test('pinned SDK encodes only targeted recording as composing with audio media, without global availability',async()=>{
