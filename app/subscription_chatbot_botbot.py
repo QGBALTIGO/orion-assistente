@@ -124,6 +124,34 @@ def _delay(value):
     return max(1, int(value))
 
 
+def _message_text(value, depth=0):
+    """Find an explicit, nonblank text payload in common BotBot wrappers.
+
+    Exported reply records can contain an empty legacy `text` field
+    alongside a populated `message`, `body` or nested content field.
+    Accept those without inventing text or flattening non-text actions.
+    """
+    if isinstance(value, str):
+        return value if value.strip() else None
+    if not isinstance(value, dict) or depth >= 4:
+        return None
+    for field in ("text", "message", "body", "content", "reply", "answer",
+                  "value", "payload", "data"):
+        if field in value:
+            candidate = value[field]
+            if isinstance(candidate, (str, dict)):
+                found = _message_text(candidate, depth + 1)
+                if found is not None:
+                    return found
+    return None
+
+
+def _content_present(value):
+    return value is not None and not (
+        isinstance(value, (str, list, dict)) and not value
+    )
+
+
 def _action(row, name, references):
     if isinstance(row, str):
         row = {"type": "text", "text": row}
@@ -131,9 +159,9 @@ def _action(row, name, references):
         raise _invalid("A exportação contém uma mensagem que não pode ser convertida.")
     kind = str(row.get("type", row.get("kind", "text"))).lower()
     if kind in ("message", "send_text", "text", "texto"):
-        value = row.get("text", row.get("message", row.get("body", row.get("content"))))
-        if not isinstance(value, str) or not value.strip():
-            raise _invalid("Há uma resposta de texto sem conteúdo no arquivo.")
+        value = _message_text(row)
+        if value is None:
+            raise _invalid("Uma mensagem está sem texto. Confira o arquivo de origem.")
         definition = {"type": "text", "text": value}
     elif kind in ("url", "http", "webhook", "external_request"):
         url = row.get("url", row.get("endpoint"))
@@ -285,7 +313,8 @@ def read_botbot(raw: bytes, filename: str):
             raise _invalid("Uma resposta usa correspondência não suportada.")
         if not isinstance(keyword, str) or not keyword.strip():
             raise _invalid("Uma resposta não contém palavra-chave válida.")
-        raw_response = next((row[key] for key in _CONTENT if key in row and row[key] is not None), None)
+        raw_response = next((row[key] for key in _CONTENT if key in row
+                             and _content_present(row[key])), None)
         if raw_response is None:
             raise _invalid("Uma resposta não contém mensagens que possam ser importadas.")
         definitions.append({
