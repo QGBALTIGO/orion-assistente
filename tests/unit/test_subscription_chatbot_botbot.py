@@ -158,3 +158,60 @@ def test_unrecognized_export_is_explicit_error_without_mutations():
         z.writestr("media/image.png", b"not-executed")
     with pytest.raises(ValueError, match="estrutura de respostas"):
         codec.read_archive(out.getvalue(), "botbot_replies_unknown.zip")
+
+
+
+@pytest.mark.parametrize("reply,expected", [
+    ({"type": "text", "text": "", "message": "Texto do campo alternativo"},
+     "Texto do campo alternativo"),
+    ({"type": "text", "text": "  ", "content": {"text": "Conteúdo aninhado"}},
+     "Conteúdo aninhado"),
+    ({"type": "message", "text": None, "body": {"message": "Mensagem interna"}},
+     "Mensagem interna"),
+    ({"type": "text", "text": "", "payload": {"data": {"text": "Texto do payload"}}},
+     "Texto do payload"),
+    ({"type": "text", "text": "", "reply": "Resposta alternativa"},
+     "Resposta alternativa"),
+])
+def test_botbot_uses_nonempty_text_field_when_legacy_text_is_blank(reply, expected):
+    rows = [{"id": 501, "keyword": "oi", "response": reply}]
+    converted = codec.read_archive(archive(rows), "botbot_replies_sample.zip")
+    rule = converted["rules"][0]["definition"]
+    assert rule["enabled"] is False
+    assert rule["response"]["actions"][0]["text"] == expected
+
+
+def test_botbot_prefers_real_messages_over_empty_legacy_response():
+    rows = [{"id": 502, "keyword": "ajuda", "response": "",
+             "messages": [{"type": "text", "text": "Mensagem preservada"}]}]
+    converted = codec.read_archive(archive(rows), "botbot_replies_sample.zip")
+    actions = converted["rules"][0]["definition"]["response"]["actions"]
+    assert len(actions) == 1
+    assert actions[0]["text"] == "Mensagem preservada"
+
+
+def test_botbot_never_invents_message_when_all_text_fields_are_empty():
+    rows = [{"id": 503, "keyword": "ajuda",
+             "response": {"type": "text", "text": "", "message": " ",
+                          "content": {"text": ""}}}]
+    with pytest.raises(ValueError, match="não contém mensagens que possam ser importadas"):
+        codec.read_archive(archive(rows), "botbot_replies_sample.zip")
+
+
+def test_botbot_rejects_unsupported_media_even_when_empty_text_field_exists():
+    rows = [{"id": 504, "keyword": "foto",
+             "response": {"type": "image", "text": "",
+                          "image": {"url": "https://example.invalid/sample.jpg"}}}]
+    with pytest.raises(ValueError, match="ação que precisa de adaptação"):
+        codec.read_archive(archive(rows), "botbot_replies_sample.zip")
+
+
+
+def test_botbot_skips_empty_response_envelope_when_messages_are_populated():
+    rows = [{"id": 505, "keyword": "info",
+             "response": {"type": "text", "text": ""},
+             "messages": [{"type": "text", "message": "Conteúdo real"}]}]
+    converted = codec.read_archive(archive(rows), "botbot_replies_sample.zip")
+    actions = converted["rules"][0]["definition"]["response"]["actions"]
+    assert len(actions) == 1 and actions[0]["text"] == "Conteúdo real"
+    assert converted["rules"][0]["definition"]["enabled"] is False

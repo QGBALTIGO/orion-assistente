@@ -193,8 +193,22 @@ test('unmount aborts an archive request and ignores its late response',async t=>
  const ready=deferred();const h=await makeChatbot({respondDownload:()=>ready.promise});t.after(()=>h.close());h.click(act('backups'));await flush();h.click(act('backup-download'));await flush();const signal=h.downloadCalls[0].options.signal;assert.equal(signal.aborted,false);h.controller.unmount();assert.equal(signal.aborted,true);ready.resolve(archiveResponse());await flush();assert.equal(h.downloads.length,0);assert.equal(h.objectURLs.size,0);assert.equal(h.document.querySelector('dialog'),null);assert.deepEqual(h.errors,[]);
 });
 
+test('import dialog uses concise language for all businesses',async t=>{
+ const h=await makeChatbot();t.after(()=>h.close());
+ h.click(act('import'));
+ const node=h.element(form('import'));
+ assert.match(node.textContent,/Selecione um arquivo para conferir as respostas/);
+ assert.match(node.textContent,/Arquivo de respostas/);
+ assert.match(node.textContent,/JSON ou ZIP/);
+ assert.doesNotMatch(node.textContent,/botbot_replies_|converte somente|exportado pelo Orion|primeira etapa/);
+ assert.equal(node.querySelector('button[type="submit"]').textContent,'Ver prévia');
+ assert.equal(node.querySelector('[data-sc-import-file]').getAttribute('type'),'file');
+ assert.equal(writes(h).length,0);
+ assert.deepEqual(h.errors,[]);
+});
+
 test('import uploads only a bounded file for preview, changing assignment invalidates that preview',async t=>{
- const h=await makeChatbot({respond(path,method){if(path===base+'/imports/preview'&&method==='POST')return preview();}});t.after(()=>h.close());h.click(act('import'));await upload(h,'{"schema_version":1}');h.submit(form('import'));await flush();await flush();const request=writes(h)[0];assert.equal(request.path,base+'/imports/preview');assert.equal(Buffer.from(request.data.content_base64,'base64').toString(),' {"schema_version":1}'.trim());assert.equal(request.data.device_id,null);assert.equal(h.document.querySelectorAll('.os-chatbot-preview-counts>div').length,6);assert.equal(writes(h).length,1);h.change(field('transfer_device'),deviceId);assert.equal(h.document.querySelector('.os-chatbot-preview-counts'),null);assert.match(h.element('[data-sc-transfer-submit]').textContent,/Visualizar/);
+ const h=await makeChatbot({respond(path,method){if(path===base+'/imports/preview'&&method==='POST')return preview();}});t.after(()=>h.close());h.click(act('import'));await upload(h,'{"schema_version":1}');h.submit(form('import'));await flush();await flush();const request=writes(h)[0];assert.equal(request.path,base+'/imports/preview');assert.equal(Buffer.from(request.data.content_base64,'base64').toString(),' {"schema_version":1}'.trim());assert.equal(request.data.device_id,null);assert.equal(h.document.querySelectorAll('.os-chatbot-preview-counts>div').length,6);assert.equal(writes(h).length,1);h.change(field('transfer_device'),deviceId);assert.equal(h.document.querySelector('.os-chatbot-preview-counts'),null);assert.equal(h.element('[data-sc-transfer-submit]').textContent,'Ver prévia');
 });
 
 test('import rejects oversized files before any API request',async t=>{

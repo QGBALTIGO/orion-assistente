@@ -65,7 +65,7 @@
     }).join('');
   }
   function fileEnvelope(file){
-    if(!file||!Number.isSafeInteger(file.size)||file.size<1||file.size>10*1024*1024||!/^.+\.(?:json|zip)$/i.test(file.name))return Promise.reject(Error('Escolha um ZIP exportado pelo BotBot ou um JSON/ZIP do Orion, de até 10 MB.'));
+    if(!file||!Number.isSafeInteger(file.size)||file.size<1||file.size>10*1024*1024||!/^.+\.(?:json|zip)$/i.test(file.name))return Promise.reject(Error('Selecione um arquivo JSON ou ZIP de até 10 MB.'));
     return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onerror=()=>reject(Error('Não foi possível ler o arquivo selecionado.'));reader.onload=()=>{const value=String(reader.result||''),comma=value.indexOf(',');if(comma<0||!value.slice(0,comma).endsWith(';base64'))return reject(Error('Não foi possível ler o arquivo selecionado.'));resolve({filename:file.name,content_base64:value.slice(comma+1)});};reader.readAsDataURL(file);});
   }
   let active=null;
@@ -295,7 +295,7 @@
     function transferDeviceOptions(){return [['','Manter atribuições originais'],...(state.catalog?.devices||[]).map(item=>[item.id,item.name])];}
     function showImport(){
       if(!allowed('import'))return;
-      const entry=dialog('import','Importar Respostas','<p>Use um ZIP original do BotBot (botbot_replies_...) ou uma exportação JSON/ZIP do Orion, de até 10 MB. O Orion converte somente respostas compatíveis, deixando as respostas do BotBot inativas para revisão. A primeira etapa apenas valida o arquivo e mostra uma prévia.</p><div class="os-field"><label for="sc-import-file">Arquivo do BotBot ou Orion</label><input id="sc-import-file" type="file" data-sc-import-file accept=".json,.zip,application/json,application/zip" required></div>'+select('Atribuir a dispositivo (opcional)','transfer_device','',transferDeviceOptions(),'','Selecionar um dispositivo substitui o escopo de todas as respostas importadas.')+select('Como importar','transfer_mode','add_missing',[['add_missing','Adicionar ausentes'],['merge','Mesclar e atualizar']])+'<div data-sc-transfer-preview></div>',{confirm:'Fazer Upload e Visualizar',wide:true,preview:null,file:null,mode:'add_missing',applyKey:null});entry.element.querySelector('button[type=submit]').dataset.scTransferSubmit='';
+      const entry=dialog('import','Importar Respostas','<p>Selecione um arquivo para conferir as respostas.</p><div class="os-field"><label for="sc-import-file">Arquivo de respostas</label><input id="sc-import-file" type="file" data-sc-import-file accept=".json,.zip,application/json,application/zip" required><small class="os-help">JSON ou ZIP • até 10 MB</small></div>'+select('Atribuir a dispositivo (opcional)','transfer_device','',transferDeviceOptions(),'','Se escolhido, todas as respostas serão atribuídas a esse dispositivo.')+select('Como importar','transfer_mode','add_missing',[['add_missing','Adicionar ausentes'],['merge','Mesclar e atualizar']])+'<div data-sc-transfer-preview></div>',{confirm:'Ver prévia',wide:true,preview:null,file:null,mode:'add_missing',applyKey:null});entry.element.querySelector('button[type=submit]').dataset.scTransferSubmit='';
     }
     function showRestore(backup){
       if(!allowed('restore')||!backup||backup.status!=='ready')return;
@@ -309,7 +309,7 @@
     function transferMode(entry){return entry.element.querySelector('[data-sc-field="transfer_mode"]:checked')?.value||entry.element.querySelector('[data-sc-field="transfer_mode"]')?.value||'add_missing';}
     function refreshTransferPreview(entry){
       if(!entry.element.isConnected)return;clearTimeout(entry.expiryTimer);const preview=entry.preview,container=entry.element.querySelector('[data-sc-transfer-preview]'),submit=entry.element.querySelector('[data-sc-transfer-submit]');
-      if(!preview){container.replaceChildren();submit.textContent=entry.kind==='import'?'Fazer Upload e Visualizar':'Visualizar restauração';submit.disabled=!allowed(entry.kind==='import'?'import':'restore');return;}
+      if(!preview){container.replaceChildren();submit.textContent=entry.kind==='import'?'Ver prévia':'Visualizar restauração';submit.disabled=!allowed(entry.kind==='import'?'import':'restore');return;}
       const expired=Date.parse(preview.expires_at)<=Date.now(),exact=preview.mode==='exact';
       container.innerHTML='<h3>Prévia · '+esc(restoreLabels[preview.mode])+'</h3><p class="os-help">Nenhuma alteração foi aplicada. A prévia expira em '+esc(dateTime(preview.expires_at))+'.</p><div class="os-chatbot-preview-counts">'+[['create','Criar'],['update','Atualizar'],['delete','Excluir'],['skip','Pular'],['template_clones','Templates a copiar'],['media_copies','Mídias a copiar']].map(([key,label])=>'<div><strong>'+count(preview.counts[key])+'</strong>'+label+'</div>').join('')+'</div>'+preview.warnings.map(warning=>'<p class="os-notice">'+esc(typeof warning==='string'?warning:warning?.message||'Revise os dados do arquivo antes de aplicar.')+'</p>').join('')+(exact?'<div class="os-notice"><p>O snapshot exato pode excluir respostas criadas depois deste backup. Um backup de segurança será criado antes da substituição.</p></div>'+input('Digite RESTORE para confirmar','restore_confirmation','','text','autocomplete="off" maxlength="20" spellcheck="false"'):'')+(expired?'<p class="os-notice os-error" role="alert">Esta prévia expirou. Gere uma nova prévia antes de aplicar.</p>':'')+'<div class="os-actions">'+button('Gerar nova prévia','new-preview','os-outline os-small','refresh')+'</div>';
       submit.textContent=entry.kind==='import'?'Aplicar importação':'Colocar restauração na fila';submit.classList.toggle('os-danger',exact);submit.disabled=expired||!preview.can_apply||exact||!allowed(entry.kind==='import'?'import':'restore');
@@ -320,7 +320,7 @@
       const mode=transferMode(entry),selected=entry.element.querySelector('[data-sc-field="transfer_device"]').value,device_id=selected||null;if(device_id&&!uuid(device_id))return;
       let payload,suffix;const epoch=state.epoch,previewRead=entry.previewRead=(entry.previewRead||0)+1;
       if(entry.kind==='import'){
-        const file=entry.element.querySelector('[data-sc-import-file]').files?.[0]||entry.file;if(!file){dialogError(entry,'Escolha um ZIP do BotBot ou um JSON/ZIP do Orion.');return;}
+        const file=entry.element.querySelector('[data-sc-import-file]').files?.[0]||entry.file;if(!file){dialogError(entry,'Selecione um arquivo JSON ou ZIP.');return;}
         try{payload={...await fileEnvelope(file),device_id,mode};}catch(error){dialogError(entry,error.message);return;}
         if(!current(epoch)||!entry.element.isConnected||entry.previewRead!==previewRead)return;entry.file=file;suffix='/imports/preview';
       }else{payload={mode,device_id};suffix='/backups/'+encodeURIComponent(entry.backup.id)+'/preview';}
