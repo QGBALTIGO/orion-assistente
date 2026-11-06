@@ -204,3 +204,14 @@ def test_botbot_rejects_unsupported_media_even_when_empty_text_field_exists():
                           "image": {"url": "https://example.invalid/sample.jpg"}}}]
     with pytest.raises(ValueError, match="ação que precisa de adaptação"):
         codec.read_archive(archive(rows), "botbot_replies_sample.zip")
+
+
+
+def test_botbot_skips_empty_response_envelope_when_messages_are_populated():
+    rows = [{"id": 505, "keyword": "info",
+             "response": {"type": "text", "text": ""},
+             "messages": [{"type": "text", "message": "Conteúdo real"}]}]
+    converted = codec.read_archive(archive(rows), "botbot_replies_sample.zip")
+    actions = converted["rules"][0]["definition"]["response"]["actions"]
+    assert len(actions) == 1 and actions[0]["text"] == "Conteúdo real"
+    assert converted["rules"][0]["definition"]["enabled"] is False
