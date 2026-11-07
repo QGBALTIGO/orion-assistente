@@ -348,3 +348,23 @@ async def test_group_contact_read_timeout_has_specific_failure(monkeypatch):
     assert error.value.status_code == 504
     assert error.value.detail["code"] == "GROUP_CONTACTS_BRIDGE_TIMEOUT"
     assert len(calls) == 1
+
+
+def test_bridge_group_list_validates_bounded_omission_counts():
+    base = {**store.transport_scope(ROW), "groups": [members()["group"]]}
+    valid = schemas.BridgeGroups.model_validate({**base, "unavailable_groups": 2})
+    assert valid.unavailable_groups == 2
+    for value in (True, -1, 1001, "2", 2.5):
+        with pytest.raises(ValidationError):
+            schemas.BridgeGroups.model_validate({**base, "unavailable_groups": value})
+
+
+@pytest.mark.asyncio
+async def test_api_lists_available_groups_and_explicit_unavailable_count(monkeypatch):
+    payload = {**store.transport_scope(ROW), "groups": [members()["group"]],
+               "unavailable_groups": 1}
+    await install_reads(monkeypatch, provider=payload)
+    result = await api.groups(TENANT, Response(), DEVICE, ACTOR)
+    assert result["total"] == 1
+    assert result["unavailable_groups"] == 1
+    assert [group["id"] for group in result["items"]] == [REMOTE]
