@@ -617,7 +617,7 @@ async def _bridge_control(row, action, method, payload=None):
                     reason = failure.get("reason") if isinstance(failure, dict) else None
                 except (ValueError, TypeError):
                     reason = None
-                if reason in {
+                if isinstance(reason, str) and reason in {
                     "invalid_request", "read_busy", "provider_timeout", "provider_failed",
                     "invalid_metadata", "context_changed", "group_unavailable",
                     "device_unavailable", "device_busy", "deadline_exceeded",
