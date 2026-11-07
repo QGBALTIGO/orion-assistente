@@ -26,7 +26,10 @@ ERRORS = {
     "GROUP_CONTACTS_PREVIEW_EXPIRED": "A prévia expirou. Carregue os membros novamente.",
     "GROUP_CONTACTS_CONTEXT_CHANGED": "O dispositivo mudou. Atualize e carregue os membros novamente.",
     "GROUP_CONTACTS_DEVICE_UNAVAILABLE": "Conecte um dispositivo desta empresa para consultar seus grupos.",
-    "GROUP_CONTACTS_BRIDGE_UNAVAILABLE": "Não foi possível consultar os grupos do dispositivo. Confira sua conexão.",
+    "GROUP_CONTACTS_BRIDGE_UNAVAILABLE": "O WhatsApp não respondeu à consulta de grupos. Confira a conexão.",
+    "GROUP_CONTACTS_BRIDGE_TIMEOUT": "A consulta de grupos demorou demais. Aguarde a sincronização do WhatsApp e atualize.",
+    "GROUP_CONTACTS_READ_BUSY": "Uma consulta anterior de grupos ainda está em andamento. Aguarde a conclusão.",
+    "GROUP_CONTACTS_PROVIDER_DATA_UNAVAILABLE": "O WhatsApp retornou dados de grupos incompletos. Atualize a conexão e tente novamente.",
     "GROUP_CONTACTS_CONFLICT": "O grupo local mudou. Atualize os grupos antes de salvar.",
     "GROUP_CONTACTS_IDEMPOTENCY_CONFLICT": "Esta chave já pertence a outro pedido.",
 }
