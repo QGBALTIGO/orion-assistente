@@ -73,6 +73,8 @@ class DeviceScope(StrictModel):
 
 class BridgeGroups(DeviceScope):
     groups: list[RemoteGroup] = Field(max_length=MAX_REMOTE_GROUPS)
+    # Count unavailable metadata without presenting a partial list as complete.
+    unavailable_groups: StrictInt = Field(default=0, ge=0, le=MAX_REMOTE_GROUPS)
 
     @model_validator(mode="after")
     def unique_groups(self):
