@@ -594,13 +594,36 @@ async def _bridge_control(row, action, method, payload=None):
     except (InvalidToken, UnicodeError, ValueError):
         raise HTTPException(503, "Credencial indisponível") from None
     try:
-        async with httpx.AsyncClient(timeout=18, trust_env=False, follow_redirects=False) as client:
+        group_read = action in {
+            "device/group-add/groups", "device/group-add/members",
+            "device/group-contacts/groups", "device/group-contacts/members",
+        }
+        # Read-only group queries can take longer while WhatsApp synchronizes.
+        # Every other control, especially group participant mutations, retains
+        # its previous timeout.
+        async with httpx.AsyncClient(timeout=33 if group_read else 18,
+                                     trust_env=False, follow_redirects=False) as client:
             path = ("/internal/" + ("status" if action == "start" else action)) if legacy else f"/internal/channels/{row['id']}/{action}"
             result = await client.request("GET" if legacy and action == "start" else method, raw_url + path,
                 headers={"X-Orion-Bridge-Key" if legacy else "X-Orion-Channel-Key": key,
                     **({"X-Orion-Canonical-Prepare": "1"} if legacy and action in {"reconnect", "recover"} else {})},
                 json=(payload if payload is not None else {}) if method == "POST" and not (legacy and action == "start") else None)
         if result.status_code not in {200, 202}:
+            # Allow only small closed-set diagnostic enums from the private
+            # bridge on read-only group endpoints. Never forward raw errors.
+            if group_read and result.status_code == 409 and len(result.content) <= 256:
+                try:
+                    failure = result.json()
+                    reason = failure.get("reason") if isinstance(failure, dict) else None
+                except (ValueError, TypeError):
+                    reason = None
+                if reason in {
+                    "invalid_request", "read_busy", "provider_timeout", "provider_failed",
+                    "invalid_metadata", "context_changed", "group_unavailable",
+                    "device_unavailable", "device_busy", "deadline_exceeded",
+                    "ingress_blocked", "storage_unavailable",
+                }:
+                    raise HTTPException(409, {"group_read_reason": reason})
             raise HTTPException(409, "Operação do canal indisponível; atualize o estado")
         if len(result.content) > 256000:
             raise ValueError()
