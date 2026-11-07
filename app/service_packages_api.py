@@ -24,6 +24,7 @@ class PackageFields(CleanModel):
     description: str | None = Field(default=None, max_length=500)
     service_ids: list[UUID] = Field(min_length=2, max_length=6)
     price_cents: StrictInt = Field(ge=0, le=100_000_000)
+    duration_override_min: StrictInt | None = Field(default=None, ge=1, le=1440)
     active: bool = True
     featured: bool = False
     sort_order: StrictInt = Field(default=0, ge=0, le=1_000_000)
@@ -92,7 +93,8 @@ async def package_row(db, tenant, package_id):
         {"tenant": tenant, "id": package_id})).mappings().all()
     result = {key: value for key, value in row.items() if key not in {"tenant_id", "selection_key", "request_fingerprint", "idempotency_key"}}
     result.update(items=[dict(x) for x in items], service_ids=[x["service_id"] for x in items],
-                  original_price_cents=sum(x["price_cents"] for x in items))
+                  original_price_cents=sum(x["price_cents"] for x in items),
+                  automatic_duration_min=sum(x["duration_min"] for x in items))
     return result
 
 
@@ -106,7 +108,9 @@ async def validate_package_sources(db, tenant, fields):
         raise HTTPException(422, "Informe um preço mínimo maior que zero para este combo 'a partir de'.")
     if fields.price_cents > sum(x["price_cents"] for x in sources):
         raise HTTPException(422, "O preço especial não pode superar a soma dos serviços")
-    if (sum(x["duration_min"] for x in sources) > 1440 or sum(x["prep_min"] for x in sources) > 240
+    automatic_duration = sum(x["duration_min"] for x in sources)
+    effective_duration = fields.duration_override_min if fields.duration_override_min is not None else automatic_duration
+    if (effective_duration > 1440 or sum(x["prep_min"] for x in sources) > 240
             or sum(x["cleanup_min"] for x in sources) > 240):
         raise HTTPException(422, "O tempo completo do combo ultrapassa o limite da agenda")
 
@@ -148,8 +152,8 @@ async def create_package(tenant_id: UUID, payload: PackageCreate, actor: Actor =
         package, synthetic = uuid4(), uuid4()
         await insert_synthetic(db, tenant_id, synthetic, payload.name, "combo")
         await db.execute(text("""INSERT INTO service_packages
-            (id,tenant_id,synthetic_service_id,name,description,price_cents,active,featured,sort_order,color,image_url,idempotency_key,request_fingerprint)
-            VALUES (:id,:tenant,:synthetic,:name,:description,:price_cents,:active,:featured,:sort_order,:color,:image_url,:key,:fp)"""),
+            (id,tenant_id,synthetic_service_id,name,description,price_cents,duration_override_min,active,featured,sort_order,color,image_url,idempotency_key,request_fingerprint)
+            VALUES (:id,:tenant,:synthetic,:name,:description,:price_cents,:duration_override_min,:active,:featured,:sort_order,:color,:image_url,:key,:fp)"""),
             {"id": package, "tenant": tenant_id, "synthetic": synthetic, "key": payload.idempotency_key, "fp": fp, **values})
         await insert_items(db, tenant_id, package, [(x, True) for x in payload.service_ids])
         await audit(db, tenant_id, "created", "service_packages", package)
@@ -169,7 +173,7 @@ async def save_package(tenant_id: UUID, package_id: UUID, payload: PackageSave, 
         await db.execute(text("DELETE FROM service_package_items WHERE tenant_id=:tenant AND package_id=:id"),
                          {"tenant": tenant_id, "id": package_id})
         await db.execute(text("""UPDATE service_packages SET name=:name,description=:description,price_cents=:price_cents,
-            active=:active,featured=:featured,sort_order=:sort_order,color=:color,image_url=:image_url,
+            duration_override_min=:duration_override_min,active=:active,featured=:featured,sort_order=:sort_order,color=:color,image_url=:image_url,
             version=version+1,updated_at=now() WHERE tenant_id=:tenant AND id=:id"""),
             {"tenant": tenant_id, "id": package_id, **values})
         await insert_items(db, tenant_id, package_id, [(x, True) for x in payload.service_ids])

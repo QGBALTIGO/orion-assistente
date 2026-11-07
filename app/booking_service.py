@@ -24,6 +24,7 @@ from app.appointment_lifecycle import (
 )
 from app.customer_names import useful_name
 from app.customer_identity import resolve_customer
+from app.start_policies import open_periods, policy_from_hours, read_working_day
 
 UTC = timezone.utc
 PROTOCOL_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
@@ -61,6 +62,22 @@ async def _engine_professional_lock(s, tenant, professional, *, nonblocking=Fals
         if remaining <= 0:
             fail(409, "A agenda está sendo atualizada. Consulte o horário novamente em instantes")
         await asyncio.sleep(min(0.025, remaining))
+
+
+async def _require_booking_feature(s, tenant, *, nonblocking=False):
+    """Public guard and engine use different connections: neither may wait.
+
+    A queued exclusive plan editor prevents a new shared lock from passing it,
+    while the public source guard still owns a shared lock and awaits this
+    engine. Take that same lock without waiting, then check the current feature
+    under the acquired lock. A 409 releases the guard and lets the editor finish.
+    """
+    from app.plan_permissions import require_feature, try_lock_plan
+    if nonblocking:
+        if not await try_lock_plan(s, tenant):
+            fail(409, "A agenda está sendo atualizada. Consulte o horário novamente em instantes")
+        return await require_feature(s, tenant, "agenda.manage", lock=None)
+    return await require_feature(s, tenant, "agenda.manage")
 
 
 # tenants intentionally grants runtime SELECT only. Read the whole contract in
@@ -126,6 +143,32 @@ async def load_bundle(s: AsyncSession, tenant: UUID, professional: UUID, ids: li
     return dict(contract["shop"]), ordered
 
 
+async def rescheduling_items(s, tenant, appointment, catalogue_items):
+    """Keep an expanded appointment's agreed snapshots when its clock changes.
+
+    The live catalogue still authorizes the professional/service relationship.
+    Its prices and durations cannot silently replace items already charged as
+    extras, nor turn a configured no-time add-on into a longer reservation.
+    Legacy appointments without extras retain their existing re-quote policy.
+    """
+    saved = (await s.execute(text("""SELECT service_id,name_snapshot,duration_snapshot_min,
+        price_snapshot_cents,price_mode_snapshot,prep_snapshot_min,cleanup_snapshot_min,
+        item_origin,added_duration_min FROM appointment_items
+        WHERE tenant_id=:t AND appointment_id=:id ORDER BY item_order"""),
+        {"t": tenant, "id": appointment})).mappings().all()
+    if not any(item["item_origin"] == "extra" for item in saved):
+        return catalogue_items, False
+    if [item["service_id"] for item in saved] != [item["id"] for item in catalogue_items]:
+        fail(409, "Os serviços deste atendimento mudaram. Atualize os detalhes")
+    items = [{"id": item["service_id"], "name": item["name_snapshot"],
+              "duration_min": (item["added_duration_min"] if item["added_duration_min"] is not None
+                               else item["duration_snapshot_min"]),
+              "price_cents": item["price_snapshot_cents"], "price_mode": item["price_mode_snapshot"],
+              "prep_min": item["prep_snapshot_min"], "cleanup_min": item["cleanup_snapshot_min"]}
+             for item in saved]
+    return items, True
+
+
 def amounts(items: list[dict]):
     duration = sum(i["duration_min"] for i in items)
     prep = sum(i["prep_min"] for i in items)
@@ -166,28 +209,23 @@ class _SlotConstraints:
     tenant: UUID
     professional: UUID
     day: date
-    hours: dict | None
+    hours: tuple
     pauses: tuple
     blocks: tuple
     reservations: tuple
+    start_policy: dict | None = None
 
 
 async def _read_slot_constraints(s, tenant, professional, target, tz, now, ignored):
     """Request-local inputs for a read-only grid; never reused by a mutation."""
-    hours = (await s.execute(text("""
-        SELECT id, start_time, end_time FROM working_hours
-        WHERE tenant_id=:tenant AND professional_id=:professional AND weekday=:weekday
-    """), {"tenant": tenant, "professional": professional, "weekday": target.weekday()})).mappings().first()
-    if hours is None:
-        return _SlotConstraints(tenant, professional, target, None, (), (), ())
-    pauses = (await s.execute(text("""
-        SELECT start_time, end_time FROM working_breaks
-        WHERE tenant_id=:tenant AND working_hour_id=:working_hour
-    """), {"tenant": tenant, "working_hour": hours["id"]})).mappings().all()
+    hours, pauses = await read_working_day(s, tenant, professional, target.weekday())
+    if not hours:
+        return _SlotConstraints(tenant, professional, target, (), (), (), ())
+    policy = policy_from_hours(hours)
     # A valid candidate's complete occupied interval must fit inside this
     # shift, so intervals outside it cannot reject any candidate in the grid.
-    begin = datetime.combine(target, hours["start_time"], tzinfo=tz).astimezone(UTC)
-    stop = datetime.combine(target, hours["end_time"], tzinfo=tz).astimezone(UTC)
+    begin = datetime.combine(target, min(hour["start_time"] for hour in hours), tzinfo=tz).astimezone(UTC)
+    stop = datetime.combine(target, max(hour["end_time"] for hour in hours), tzinfo=tz).astimezone(UTC)
     parameters = {"tenant": tenant, "professional": professional, "begin": begin, "stop": stop}
     blocks = []
     for table in ("time_off", "schedule_blocks"):
@@ -203,7 +241,7 @@ async def _read_slot_constraints(s, tenant, professional, target, tz, now, ignor
           AND occupied_from < :stop AND occupied_until > :begin
           AND (status <> 'hold' OR hold_expires_at > :now)
     """), {**parameters, "ignored": ignored or UUID(int=0), "now": now})).mappings().all()
-    return _SlotConstraints(tenant, professional, target, dict(hours), tuple(pauses), tuple(blocks), tuple(reservations))
+    return _SlotConstraints(tenant, professional, target, hours, pauses, tuple(blocks), tuple(reservations), policy)
 
 
 async def check_slot(s: AsyncSession, tenant: UUID, professional: UUID,
@@ -218,30 +256,34 @@ async def check_slot(s: AsyncSession, tenant: UUID, professional: UUID,
     if local.date() < now.astimezone(tz).date():
         fail(409, "Não é possível reservar no passado")
     minute = local.hour * 60 + local.minute
-    if local.second or local.microsecond or minute % shop["slot_step_minutes"]:
+    if local.second or local.microsecond:
         fail(422, "Horário fora da grade configurada")
-    b = bounds(start, items)
     if _constraints is not None and (_constraints.tenant != tenant or _constraints.professional != professional or _constraints.day != local.date()):
         raise ValueError("Slot constraints belong to another request scope")
-    hours = _constraints.hours if _constraints is not None else (await s.execute(text("""
-        SELECT id, start_time, end_time FROM working_hours
-        WHERE tenant_id=:tenant AND professional_id=:professional AND weekday=:weekday
-    """), {"tenant": tenant, "professional": professional, "weekday": local.weekday()})).mappings().first()
-    if hours is None:
+    hours, pauses = ((_constraints.hours, _constraints.pauses) if _constraints is not None
+                     else await read_working_day(s, tenant, professional, local.weekday()))
+    if not hours:
         fail(409, "Profissional não trabalha nesse dia")
-    work_start = datetime.combine(local.date(), hours["start_time"], tzinfo=tz).astimezone(UTC)
-    work_end = datetime.combine(local.date(), hours["end_time"], tzinfo=tz).astimezone(UTC)
-    if b["occupied_from"] < work_start or b["occupied_until"] > work_end:
-        fail(409, "Atendimento completo e buffers não cabem no expediente")
-    pauses = _constraints.pauses if _constraints is not None else (await s.execute(text("""
-        SELECT start_time, end_time FROM working_breaks
-        WHERE tenant_id=:tenant AND working_hour_id=:working_hour
-    """), {"tenant": tenant, "working_hour": hours["id"]})).mappings().all()
-    for pause in pauses:
-        lo = datetime.combine(local.date(), pause["start_time"], tzinfo=tz).astimezone(UTC)
-        hi = datetime.combine(local.date(), pause["end_time"], tzinfo=tz).astimezone(UTC)
-        if lo < b["occupied_until"] and hi > b["occupied_from"]:
-            fail(409, "Horário conflita com pausa do profissional")
+    policy = _constraints.start_policy if _constraints is not None else policy_from_hours(hours)
+    if policy is not None and policy["mode"] == "manual":
+        if local.time().replace(tzinfo=None) not in policy["start_times"]:
+            fail(422, "Este início não está na lista de horários manuais do profissional")
+    elif minute % shop["slot_step_minutes"]:
+        fail(422, "Horário fora da grade configurada")
+    b = bounds(start, items)
+    # The appointment itself must fit in the shift. Preparation is a gap
+    # BETWEEN appointments; at opening (or immediately after a break) there
+    # is no preceding customer, so that gap need not push the first booking
+    # by 5/15/30 minutes. Cleanup still fits completely before closing.
+    for begin, end in open_periods(hours, pauses):
+        work_start = datetime.combine(local.date(), begin, tzinfo=tz).astimezone(UTC)
+        work_end = datetime.combine(local.date(), end, tzinfo=tz).astimezone(UTC)
+        if work_start <= b["start_at"] and b["occupied_until"] <= work_end:
+            # Persist precisely the occupied interval that availability checked.
+            b["occupied_from"] = max(b["occupied_from"], work_start)
+            break
+    else:
+        fail(409, "Atendimento completo não cabe no expediente ou conflita com uma pausa")
     if _constraints is not None:
         for entry in _constraints.blocks:
             if entry["starts_at"] < b["occupied_until"] and entry["ends_at"] > b["occupied_from"]:
@@ -284,15 +326,17 @@ async def expire_holds(s: AsyncSession, tenant: UUID, professional: UUID, now: d
 
 
 async def history(s: AsyncSession, tenant: UUID, appointment: UUID, event: str, *, calendar: bool = True,
-                  context: LifecycleActor | None = None, requested_by=None, reason=None, previous=None):
+                  context: LifecycleActor | None = None, requested_by=None, reason=None, previous=None,
+                  notifications: bool = True):
     details = metadata(context, requested_by=requested_by, reason=reason, previous=previous)
     await s.execute(text("""
         INSERT INTO appointment_history (tenant_id,appointment_id,event,operator,details,occurred_at)
         VALUES (:tenant,:appointment,:event,:operator,CAST(:details AS jsonb),clock_timestamp())
     """), {"tenant": tenant, "appointment": appointment, "event": event,
            "operator": details["actor"]["role"], "details": json.dumps(details, ensure_ascii=False)})
-    from app.appointment_notifications import enqueue_event
-    await enqueue_event(s, tenant, appointment, event, details)
+    if notifications:
+        from app.appointment_notifications import enqueue_event
+        await enqueue_event(s, tenant, appointment, event, details)
     if calendar:
         from app.calendar_sync import enqueue_calendar_sync
         await enqueue_calendar_sync(s, tenant, appointment, event)
@@ -319,6 +363,7 @@ async def read_appointments(s: AsyncSession, tenant: UUID, item_ids: list[UUID])
     rows = (await s.execute(text("""
         SELECT a.id, a.tenant_id, a.customer_id, a.professional_id, a.protocol,
                a.start_at, a.end_at, a.status, a.total_cents, a.hold_expires_at, a.updated_at,
+               a.created_at, a.booking_mode, a.created_by_account_id, a.actual_duration_min,
                a.original_total_cents, a.discount_cents,
                a.commission_percent_snapshot, a.commission_cents, a.commission_mode_snapshot,
                c.name AS customer_name, c.whatsapp_e164 AS customer_phone,
@@ -341,6 +386,7 @@ async def read_appointments(s: AsyncSession, tenant: UUID, item_ids: list[UUID])
     items = (await s.execute(text("""
         SELECT appointment_id, service_id, name_snapshot, duration_snapshot_min, price_snapshot_cents,
                price_mode_snapshot,prep_snapshot_min, cleanup_snapshot_min,
+               item_origin,added_at,added_by_account_id,added_duration_min,
                commission_kind_snapshot,commission_source_snapshot,
                commission_percent_snapshot,commission_fixed_cents_snapshot,
                commission_base_cents,commission_cents
@@ -354,6 +400,10 @@ async def read_appointments(s: AsyncSession, tenant: UUID, item_ids: list[UUID])
     results = {}
     for row in rows:
         result = {**dict(row), "items": by_appointment.get(row["id"], [])}
+        result["reserved_duration_min"] = int((row["end_at"] - row["start_at"]).total_seconds() // 60)
+        result["services_duration_min"] = sum(
+            item["added_duration_min"] if item.get("added_duration_min") is not None
+            else item["duration_snapshot_min"] for item in result["items"])
         result["price_mode"] = "from" if any(
             item["price_mode_snapshot"] == "from" for item in result["items"]
         ) else "fixed"
@@ -435,11 +485,15 @@ async def verified_slot_grid(s: AsyncSession, tenant: UUID, professional: UUID,
     """
     tz = ZoneInfo(shop["timezone"])
     constraints = await _read_slot_constraints(s, tenant, professional, target, tz, now, ignored)
-    if constraints.hours is None:
+    if not constraints.hours:
         return [], "no_working_hours"
     result = []
-    for minute in range(0, 24 * 60, shop["slot_step_minutes"]):
-        naive = datetime.combine(target, time.min) + timedelta(minutes=minute)
+    policy = constraints.start_policy
+    candidates = (sorted(policy["start_times"]) if policy is not None and policy["mode"] == "manual"
+                  else (time(minute // 60, minute % 60)
+                        for minute in range(0, 24 * 60, shop["slot_step_minutes"])))
+    for candidate in candidates:
+        naive = datetime.combine(target, candidate)
         local = naive.replace(tzinfo=tz)
         start = local.astimezone(UTC).astimezone(tz)
         if start.replace(tzinfo=None) != naive:
@@ -470,7 +524,7 @@ async def list_slots(s: AsyncSession, tenant: UUID, professional: UUID,
             if replace_hold_id is not None:
                 fail(422, "Selecione apenas uma operação de agenda")
             current = (await s.execute(text("""
-                SELECT professional_id,status FROM appointments WHERE tenant_id=:tenant AND id=:id
+                SELECT professional_id,status,total_cents FROM appointments WHERE tenant_id=:tenant AND id=:id
             """), {"tenant": tenant, "id": appointment_id})).mappings().one_or_none()
             if current is None:
                 fail(404, "Agendamento não encontrado")
@@ -480,12 +534,17 @@ async def list_slots(s: AsyncSession, tenant: UUID, professional: UUID,
             if current["status"] != "confirmed" or current["professional_id"] != professional or service_ids != ids:
                 fail(409, "A consulta de remarcação exige o profissional e os serviços do agendamento confirmado")
         shop, items = await load_bundle(s, tenant, professional, ids)
+        preserve_items = False
+        if appointment_id is not None:
+            items, preserve_items = await rescheduling_items(s, tenant, appointment_id, items)
         local_now = now.astimezone(ZoneInfo(shop["timezone"]))
         if target < local_now.date() or target > local_now.date() + timedelta(days=shop["booking_horizon_days"]):
             fail(422, "Data fora do horizonte de agendamento")
         result, availability_reason = await verified_slot_grid(s, tenant, professional,
             shop, items, target, now, ignored=appointment_id or replace_hold_id)
         duration, prep, cleanup, price = amounts(items)
+        if preserve_items:
+            price = current["total_cents"]
         return {"slots": result, "duration_min": duration, "prep_min": prep,
                 "cleanup_min": cleanup, "price_cents": price, "timezone": shop["timezone"],
                 **({"availability_reason": availability_reason} if explain_reason else {})}
@@ -496,23 +555,33 @@ async def book_appointment(s: AsyncSession, tenant: UUID, professional: UUID,
                            start: datetime, idempotency_key: str,
                            now: datetime | None = None, *, replace_hold_id: UUID | None = None,
                            expected_snapshot: str | None = None,
+                           replace_hold_professional_id: UUID | None = None,
                            context: LifecycleActor | None = None, source: str = "unknown",
-                           nonblocking_professional_lock: bool = False):
+                           nonblocking_professional_lock: bool = False,
+                           public_birth_date: date | None = None):
     """ÚNICA função para criar reservas/holds de todos os canais futuros."""
     supplied_clock = now is not None
     now = now or datetime.now(UTC)
     fp = fingerprint(professional, ids, start, phone)
+    if replace_hold_professional_id is not None and (replace_hold_id is None or not isinstance(replace_hold_professional_id, UUID)):
+        fail(422, "A substituição exige o profissional original da reserva temporária")
+    original_professional = replace_hold_professional_id or professional
     if replace_hold_id is not None:
         if not isinstance(expected_snapshot, str) or not expected_snapshot:
             fail(409, "Confira a reserva temporária antes de substituir o horário")
-        fp = hashlib.sha256(json.dumps({"request": fp, "replace_hold": str(replace_hold_id),
-                                       "snapshot": expected_snapshot}, sort_keys=True).encode()).hexdigest()
+        replacement = {"request": fp, "replace_hold": str(replace_hold_id), "snapshot": expected_snapshot}
+        if replace_hold_professional_id is not None:
+            replacement["replace_hold_professional"] = str(replace_hold_professional_id)
+        fp = hashlib.sha256(json.dumps(replacement, sort_keys=True).encode()).hexdigest()
     elif expected_snapshot is not None:
         fail(422, "A substituição exige a reserva temporária")
     async with tenant_transaction(s, tenant):
-        from app.plan_permissions import require_feature
-        await require_feature(s, tenant, "agenda.manage")
-        await _engine_professional_lock(s, tenant, professional, nonblocking=nonblocking_professional_lock)
+        await _require_booking_feature(s, tenant, nonblocking=nonblocking_professional_lock)
+        # A customer's replacement can move an unconfirmed proposal between
+        # staff. Both calendars remain locked until old cancellation + new hold
+        # commit together; default callers still require the same professional.
+        for locked_professional in sorted({professional, original_professional}, key=str):
+            await _engine_professional_lock(s, tenant, locked_professional, nonblocking=nonblocking_professional_lock)
         if not supplied_clock:
             now = datetime.now(UTC)
         existing = (await s.execute(text("""
@@ -530,7 +599,7 @@ async def book_appointment(s: AsyncSession, tenant: UUID, professional: UUID,
         from app.onboarding_service import require_operational_ready
         await require_operational_ready(s, tenant, "appointments")
         if replace_hold_id is not None:
-            previous = await _replacement_hold(s, tenant, professional, replace_hold_id, phone,
+            previous = await _replacement_hold(s, tenant, original_professional, replace_hold_id, phone,
                                                expected_snapshot, now, lock=True)
             if not supplied_clock:
                 now = datetime.now(UTC)
@@ -546,14 +615,25 @@ async def book_appointment(s: AsyncSession, tenant: UUID, professional: UUID,
                     updated_at=GREATEST(:now,updated_at+interval '1 microsecond')
                 WHERE tenant_id=:tenant AND id=:id AND professional_id=:professional AND status='hold'
                   AND hold_expires_at>:now AND """ + CUSTOMER_MATCH_SQL + " RETURNING id"),
-                {"tenant": tenant, "id": replace_hold_id, "professional": professional,
+                {"tenant": tenant, "id": replace_hold_id, "professional": original_professional,
                  "now": now, "customer_phone": phone})).scalar_one_or_none()
             if changed is None:
                 fail(409, "A reserva temporária mudou. Confira um novo resumo")
             # This cancels an unconfirmed proposal, not a published calendar event.
             await history(s, tenant, replace_hold_id, "cancelled", calendar=False, previous=previous,
                           context=resolved_actor(context, source, previous["customer_id"], verified_customer=True))
-        customer_row, _ = await resolve_customer(s, tenant, phone, customer_name)
+        # Anonymous visitors can submit any phone, so only populate a DOB on
+        # newly created customers. ON CONFLICT preserves all existing PII.
+        creation_fields = None
+        if source == "public_site" and public_birth_date is not None:
+            creation_fields = {
+                "birth_date": public_birth_date,
+                "birth_month": public_birth_date.month,
+                "birth_day": public_birth_date.day,
+            }
+        customer_row, _ = await resolve_customer(
+            s, tenant, phone, customer_name, attributes=creation_fields,
+        )
         customer = customer_row["id"]
         item_id = uuid4()
         # Retry com SAVEPOINT para colisão estatisticamente improvável do protocolo.
@@ -614,14 +694,14 @@ async def confirm_hold(s: AsyncSession, tenant: UUID, item_id: UUID,
                        expected_snapshot: str | None = None, expected_updated_at: datetime | None = None,
                        idempotency_key: str | None = None,
                        context: LifecycleActor | None = None, source: str = "unknown",
-                       nonblocking_professional_lock: bool = False):
+                       nonblocking_professional_lock: bool = False,
+                       appointment_messages_opt_in: bool = False):
     supplied_clock = now is not None
     now = now or datetime.now(UTC)
     expired = False
     result = None
     async with tenant_transaction(s, tenant):
-        from app.plan_permissions import require_feature
-        await require_feature(s, tenant, "agenda.manage")
+        await _require_booking_feature(s, tenant, nonblocking=nonblocking_professional_lock)
         row = (await s.execute(text("""
             SELECT professional_id FROM appointments
             WHERE tenant_id=:tenant AND id=:id
@@ -643,7 +723,14 @@ async def confirm_hold(s: AsyncSession, tenant: UUID, item_id: UUID,
         if customer_phone is not None or expected_snapshot is not None:
             await verify_customer_snapshot(s, tenant, hold, customer_phone, expected_snapshot)
         context = resolved_actor(context, source, hold["customer_id"], verified_customer=customer_phone is not None)
-        receipt = operation_payload(item_id, expected_updated_at, context)
+        consent_actor = None
+        if appointment_messages_opt_in is True:
+            from app.appointment_consent import staff_consent_actor
+            consent_actor = staff_consent_actor(context)
+            if consent_actor is None:
+                fail(403, "A autorização de mensagens exige a confirmação da equipe autenticada")
+        receipt = operation_payload(item_id, expected_updated_at, context,
+            **({'appointment_messages_opt_in': True} if appointment_messages_opt_in is True else {}))
         if await operation_replayed(s, tenant, "agenda_confirm", idempotency_key, receipt):
             return await read_appointment(s, tenant, item_id)
         check_expected_updated_at(hold, expected_updated_at)
@@ -672,15 +759,15 @@ async def confirm_hold(s: AsyncSession, tenant: UUID, item_id: UUID,
                 AND appointment_id=:id ORDER BY item_order
             """), {"tenant": tenant, "id": item_id})).scalars().all()
             shop, items = await load_bundle(s, tenant, hold["professional_id"], list(ids))
-            fresh = bounds(hold["start_at"], items)
+            fresh = await check_slot(s, tenant, hold["professional_id"], shop, items,
+                hold["start_at"].astimezone(ZoneInfo(shop["timezone"])), now,
+                ignore_appointment=item_id)
             # Evitar confirmação usando preço/tempo antigo se catálogo mudou
             if (fresh["end_at"] != hold["end_at"] or
                 fresh["occupied_from"] != hold["occupied_from"] or
                 fresh["occupied_until"] != hold["occupied_until"] or
                 fresh["total_cents"] != hold["total_cents"]):
                 fail(409, "O serviço mudou; escolha o horário novamente")
-            await check_slot(s, tenant, hold["professional_id"], shop, items,
-                             hold["start_at"].astimezone(ZoneInfo(shop["timezone"])), now, ignore_appointment=item_id)
             # READ COMMITTED takes a fresh snapshot for this statement. A
             # catalog edit committed after validation but before UPDATE rejects
             # the operation; no history/outbox is emitted for a rejected write.
@@ -696,6 +783,11 @@ async def confirm_hold(s: AsyncSession, tenant: UUID, item_id: UUID,
                  **bundle_guard_parameters(tenant, hold["professional_id"], list(ids), shop, items, customer_phone)})).scalar_one_or_none()
             if changed is None:
                 fail(409, "A reserva ou os serviços mudaram. Confira um novo resumo antes de confirmar")
+            if consent_actor is not None:
+                from app.appointment_consent import grant_scoped_consent
+                from app.appointment_messages import APPOINTMENT_MESSAGE_CONSENT_STATEMENT
+                await grant_scoped_consent(s, tenant, item_id, source=consent_actor[0],
+                    actor=consent_actor[1], evidence=APPOINTMENT_MESSAGE_CONSENT_STATEMENT)
             await history(s, tenant, item_id, "confirmed", context=context, previous=hold)
             await record_operation(s, tenant, item_id, "agenda_confirm", idempotency_key, receipt)
             result = await read_appointment(s, tenant, item_id)
@@ -727,7 +819,7 @@ async def cancel_appointment(s: AsyncSession, tenant: UUID, item_id: UUID, *,
                              future_only: bool = False, expected_updated_at: datetime | None = None,
                              idempotency_key: str | None = None, requested_by: str | None = None,
                              reason: str | None = None, context: LifecycleActor | None = None,
-                             source: str = "unknown"):
+                             source: str = "unknown", authorized_professional_id: UUID | None = None):
     async with tenant_transaction(s, tenant):
         row = (await s.execute(text("""
             SELECT professional_id FROM appointments WHERE tenant_id=:tenant AND id=:id
@@ -740,6 +832,8 @@ async def cancel_appointment(s: AsyncSession, tenant: UUID, item_id: UUID, *,
         """), {"tenant": tenant, "id": item_id})).mappings().one()
         if entry["professional_id"] != row["professional_id"]:
             fail(409, "O profissional mudou. Atualize o agendamento")
+        if authorized_professional_id is not None and entry["professional_id"] != authorized_professional_id:
+            fail(404, "Agendamento não encontrado na sua agenda")
         if customer_phone is not None or expected_snapshot is not None:
             await verify_customer_snapshot(s, tenant, entry, customer_phone, expected_snapshot)
         context = resolved_actor(context, source, entry["customer_id"], verified_customer=customer_phone is not None)
@@ -797,8 +891,11 @@ async def preview_reschedule(s: AsyncSession, tenant: UUID, item_id: UUID, new_s
         ids = list((await s.execute(text("SELECT service_id FROM appointment_items WHERE tenant_id=:t AND appointment_id=:id ORDER BY item_order"),
             {"t": tenant, "id": item_id})).scalars())
         shop, items = await load_bundle(s, tenant, current["professional_id"], ids)
+        items, preserve_items = await rescheduling_items(s, tenant, item_id, items)
         contract = await check_slot(s, tenant, current["professional_id"], shop, items, new_start,
                                    datetime.now(UTC), ignore_appointment=item_id)
+        if preserve_items:
+            contract["total_cents"] = current["total_cents"]
         return {"id": item_id, "protocol": current["protocol"], "start_at": contract["start_at"],
                 "timezone": shop["timezone"], "total_cents": contract["total_cents"],
                 "duration_min": amounts(items)[0], "professional": shop["professional_name"], "services": [item["name"] for item in items],
@@ -810,7 +907,8 @@ async def reschedule_appointment(s: AsyncSession, tenant: UUID, item_id: UUID,
                                  new_start: datetime, now: datetime | None = None, *,
                                  expected_snapshot: str | None = None, customer_phone: str | None = None,
                                  expected_updated_at: datetime | None = None, idempotency_key: str | None = None,
-                                 context: LifecycleActor | None = None, source: str = "unknown", proposal_id: UUID | None = None):
+                                 context: LifecycleActor | None = None, source: str = "unknown", proposal_id: UUID | None = None,
+                                 authorized_professional_id: UUID | None = None):
     supplied_clock = now is not None
     now = now or datetime.now(UTC)
     async with tenant_transaction(s, tenant):
@@ -825,6 +923,8 @@ async def reschedule_appointment(s: AsyncSession, tenant: UUID, item_id: UUID,
         """), {"tenant": tenant, "id": item_id})).mappings().one()
         if row["professional_id"] != current["professional_id"]:
             fail(409, "O profissional mudou. Atualize o agendamento")
+        if authorized_professional_id is not None and row["professional_id"] != authorized_professional_id:
+            fail(404, "Agendamento não encontrado na sua agenda")
         if not supplied_clock:
             now = datetime.now(UTC)
         if customer_phone is not None:
@@ -851,7 +951,8 @@ async def reschedule_appointment(s: AsyncSession, tenant: UUID, item_id: UUID,
             SELECT service_id FROM appointment_items WHERE tenant_id=:tenant
             AND appointment_id=:id ORDER BY item_order
         """), {"tenant": tenant, "id": item_id})).scalars().all())
-        shop, items = await load_bundle(s, tenant, row["professional_id"], ids)
+        shop, catalogue_items = await load_bundle(s, tenant, row["professional_id"], ids)
+        items, preserve_items = await rescheduling_items(s, tenant, item_id, catalogue_items)
         if proposal_id is not None:
             # PostgreSQL returns timestamptz in UTC. The slot engine validates
             # the submitted local offset, so restore the business IANA zone.
@@ -868,6 +969,8 @@ async def reschedule_appointment(s: AsyncSession, tenant: UUID, item_id: UUID,
                 fail(409, "A reserva ou os serviços mudaram. Confira um novo resumo antes de remarcar")
         b = await check_slot(s, tenant, row["professional_id"], shop, items, new_start,
                              now, ignore_appointment=item_id)
+        if preserve_items:
+            b["total_cents"] = row["total_cents"]
         changed = (await s.execute(text("""
             UPDATE appointments SET start_at=:start_at,end_at=:end_at,
                 occupied_from=:occupied_from,occupied_until=:occupied_until,
@@ -877,11 +980,11 @@ async def reschedule_appointment(s: AsyncSession, tenant: UUID, item_id: UUID,
               AND """ + BUNDLE_MATCH_SQL + " AND " + CUSTOMER_MATCH_SQL + " AND " + CAS_SQL + " RETURNING id"),
             {"tenant": tenant, "id": item_id, "now": now, "expected_updated_at": expected_updated_at,
              "is_customer": context.role == "customer", **b,
-             **bundle_guard_parameters(tenant, row["professional_id"], ids, shop, items, customer_phone)})).scalar_one_or_none()
+             **bundle_guard_parameters(tenant, row["professional_id"], ids, shop, catalogue_items, customer_phone)})).scalar_one_or_none()
         if changed is None:
             fail(409, "A reserva ou os serviços mudaram. Confira um novo resumo antes de remarcar")
         # Snapshot acompanha o novo contrato da remarcação.
-        for order, item in enumerate(items):
+        for order, item in enumerate([] if preserve_items else items):
             await s.execute(text("""
                 UPDATE appointment_items SET name_snapshot=:name,
                     duration_snapshot_min=:duration,price_snapshot_cents=:price,

@@ -26,6 +26,8 @@ from app.inbox_runtime import process_inbox_message,scan_inbox
 from app.email_outbox import process_email_outbox,scan_email_outbox
 from app.account_erasure import erase_due_account_logins
 from app.appointment_notifications import process_notification as process_appointment_notification, scan_notifications as scan_appointment_notifications, cleanup_notification_payloads
+from app.subscription_chatbot_worker import process_subscription_chatbot_restore, scan_subscription_chatbot, backup_subscription_chatbots
+from app.subscription_group_add_worker import process_subscription_group_add, process_subscription_group_add_receipt, scan_subscription_group_add
 
 
 async def infrastructure_ping(ctx: dict) -> str:
@@ -121,22 +123,125 @@ async def startup_plan_permissions(ctx):
     from scripts.wait_for_agenda_schema import Settings
     from scripts.wait_for_plan_permissions_schema import wait_for_schema
     await wait_for_schema(Settings.from_environment())
+    from scripts.wait_for_appointment_consent_schema import wait_for_schema as wait_for_appointment_consent
+    await wait_for_appointment_consent(Settings.from_environment())
+    from scripts.wait_for_subscription_devices_schema import wait_for_schema as wait_for_subscription_devices
+    await wait_for_subscription_devices(Settings.from_environment())
+    from scripts.wait_for_subscription_chatbot_schema import wait_for_schema as wait_for_subscription_chatbot
+    await wait_for_subscription_chatbot(Settings.from_environment())
+    from scripts.wait_for_subscription_templates_schema import wait_for_schema as wait_for_subscription_templates
+    await wait_for_subscription_templates(Settings.from_environment())
+    from scripts.wait_for_subscription_sent_messages_schema import wait_for_schema as wait_for_sent_messages
+    await wait_for_sent_messages(Settings.from_environment())
+    from scripts.wait_for_appointment_operations_schema import wait_for_schema as wait_for_appointment_operations
+    await wait_for_appointment_operations(Settings.from_environment())
+    from scripts.wait_for_subscription_diagnostics_schema import wait_for_schema as wait_for_subscription_diagnostics
+    await wait_for_subscription_diagnostics(Settings.from_environment())
+    from scripts.wait_for_subscription_campaigns_schema import wait_for_schema as wait_for_subscription_campaigns
+    await wait_for_subscription_campaigns(Settings.from_environment())
+    from scripts.wait_for_subscription_scheduled_messages_schema import wait_for_schema as wait_for_scheduled_messages
+    await wait_for_scheduled_messages(Settings.from_environment())
+    from scripts.wait_for_subscription_bulk_schema import wait_for_schema as wait_for_bulk_messages
+    await wait_for_bulk_messages(Settings.from_environment())
+    from scripts.wait_for_subscription_direct_schema import wait_for_schema as wait_for_direct_messages
+    await wait_for_direct_messages(Settings.from_environment())
+    from scripts.wait_for_subscription_group_add_schema import wait_for_schema as wait_for_group_add
+    await wait_for_group_add(Settings.from_environment())
+    from scripts.wait_for_cakto_recovery_schema import wait_for_schema as wait_for_cakto_recovery
+    await wait_for_cakto_recovery(Settings.from_environment())
     ctx['plan_permissions_ready'] = True
     logging.getLogger(__name__).info('orion_plan_permissions_0050_worker_ready')
+    if os.getenv('ORION_REVIEW_QA_VERIFY_7364') == '1':
+        try:
+            import json
+            from app.review_qa_verify_once import inspect_once
+            print('orion_review_qa_verify_7364='
+                  + json.dumps(await inspect_once(ctx),sort_keys=True),flush=True)
+        except Exception as error:
+            print('orion_review_qa_verify_7364_failed_closed type='
+                  + type(error).__name__,flush=True)
+    if os.getenv('ORION_REVIEW_QA_SEND_7364') == '1':
+        try:
+            import json
+            from app.review_qa_send_once import run_once
+            result = await run_once(ctx)
+            print('orion_review_qa_send_7364=' + json.dumps(result, sort_keys=True), flush=True)
+        except Exception as error:
+            from app import review_qa_send_once as qa
+            origin = getattr(error, 'orig', None)
+            code = getattr(origin, 'sqlstate', None) or getattr(origin, 'pgcode', None)
+            safe_code = code if isinstance(code, str) and len(code) == 5 and code.isalnum() else 'unknown'
+            print('orion_review_qa_send_7364_failed_closed type='
+                  + type(error).__name__ + ' phase=' + qa.PHASE
+                  + ' sqlstate=' + safe_code, flush=True)
+    if os.getenv('ORION_REVIEW_QA_7364_PREFLIGHT') == '1':
+        try:
+            import json
+            from app.review_qa_preflight import inspect
+            summary = await inspect()
+            print('orion_review_qa_7364=' + json.dumps(summary, sort_keys=True), flush=True)
+        except Exception as error:
+            print('orion_review_qa_7364_failed_closed type=' + type(error).__name__, flush=True)
+    if os.getenv('ORION_ONE_TIME_PEIXOTO_WHATSAPP_INSPECT') == '1':
+        try:
+            import json
+            from app.peixoto_whatsapp_delivery_inspect import inspect
+            print('orion_peixoto_whatsapp_inspection='
+                  + json.dumps(await inspect(), sort_keys=True), flush=True)
+        except Exception as exc:
+            print('orion_peixoto_whatsapp_inspection_failed_closed type='
+                  + type(exc).__name__, flush=True)
+    if os.getenv('ORION_E2E_PEIXOTO_CLEANUP') == '1':
+        try:
+            from app.peixoto_e2e_cleanup import cancel_one
+            outcome = await cancel_one()
+            print('orion_peixoto_e2e_cleanup state=' + outcome, flush=True)
+        except Exception as exc:
+            print('orion_peixoto_e2e_cleanup_failed_closed type='
+                  + type(exc).__name__, flush=True)
+    if os.getenv('ORION_ONE_TIME_PEIXOTO_PREFLIGHT') == '1':
+        try:
+            import json
+            from app.peixoto_notification_preflight import inspect
+            observed = await inspect()
+            print('orion_peixoto_readiness=' + json.dumps(observed, sort_keys=True),
+                  flush=True)
+        except Exception as exc:
+            print('orion_peixoto_readiness_failed_closed type='
+                  + type(exc).__name__, flush=True)
+    # Explicit operator-triggered, one-booking recovery only. The regular
+    # notification outbox and receipt ledger still authorize the actual send.
+    if os.getenv('ORION_ONE_TIME_PEIXOTO_RECOVERY') == '1':
+        try:
+            from app.one_time_peixoto_recovery import TENANT, recover_once
+            outcome, notification = await recover_once()
+            if notification is not None:
+                await ctx['redis'].enqueue_job(
+                    'process_appointment_notification', str(TENANT), str(notification),
+                    _job_id='orion-single-peixoto-test:' + str(notification))
+            print('orion_single_peixoto_recovery state=' + outcome
+                  + ' notice=' + (str(notification) if notification is not None else 'none'),
+                  flush=True)
+        except Exception as exc:
+            print('orion_single_peixoto_recovery_failed_closed type='
+                  + type(exc).__name__, flush=True)
 
 
 class WorkerSettings:
     on_startup = startup_plan_permissions
-    functions = [func(process_appointment_notification,name='process_appointment_notification'),infrastructure_ping,process_inbound_event,process_message_outbox,process_calendar_outbox,process_due_appointment,reconcile_asaas_job,process_automation_job,reconcile_automation_job,process_inbox_message,process_email_outbox]
-    cron_jobs = [cron(cleanup_notification_payloads, minute={13}, second={10}),cron(scan_appointment_notifications, minute=set(range(60)), second={0,15,30,45}),
+    functions = [func(process_appointment_notification,name='process_appointment_notification'),infrastructure_ping,process_inbound_event,process_message_outbox,process_calendar_outbox,process_due_appointment,reconcile_asaas_job,process_automation_job,reconcile_automation_job,process_inbox_message,process_email_outbox,process_subscription_chatbot_restore,func(process_subscription_group_add,name='process_subscription_group_add',keep_result=0,max_tries=1,timeout=25),func(process_subscription_group_add_receipt,name='process_subscription_group_add_receipt',keep_result=0,max_tries=1,timeout=40)]
+    cron_jobs = [cron(scan_subscription_group_add,minute=set(range(60)),second=set(range(0,60,3))),
+                 cron(cleanup_notification_payloads, minute={13}, second={10}),cron(scan_appointment_notifications, minute=set(range(60)), second=set(range(0,60,5))),
                  cron(recover_events, minute={0,5,10,15,20,25,30,35,40,45,50,55}, second=0),
                  cron(scan_calendar_outbox, minute=set(range(60)), second=10),
                  cron(scan_due_appointments, minute=set(range(60)), second={0,10,20,30,40,50}),
                  cron(scan_pending_billing, minute={3,13,23,33,43,53}, second=0),
-                 cron(scan_pending_cakto, minute={4,14,24,34,44,54}, second=0),
+                 cron(scan_pending_cakto, minute=set(range(60)), second=4, timeout=75),
                  cron(scan_automations, minute=set(range(60)), second=20),
                  cron(scan_inbox,minute=set(range(60)),second={5,35}),
                  cron(scan_email_outbox,minute=set(range(60)),second={0,15,30,45}),
+                 cron(scan_subscription_chatbot,minute=set(range(60)),second={7,37}),
+                 cron(backup_subscription_chatbots,minute={2,17,32,47},second=22),
                  # Retention-aware, irreversible login removal after 30 days.
                  cron(erase_due_account_logins,minute={17},second=12)]
     redis_settings = RedisSettings.from_dsn(os.getenv("REDIS_URL", "redis://localhost:6379/0"))

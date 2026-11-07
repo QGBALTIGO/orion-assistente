@@ -1,0 +1,60 @@
+{
+  "scope": "Local Windows synthetic and actual-source handler tests; no real WhatsApp sockets/delivery",
+  "head_before_uncommitted_ingress_fix": "09fb8c110b733b13b2418df45e6ad16123860ded",
+  "candidate": {
+    "tests": 995,
+    "pass": 971,
+    "fail": 19,
+    "cancelled": 0,
+    "skipped": 5,
+    "todo": 0
+  },
+  "failures": {
+    "simulador ignora resposta de outro tenant e finally antigo não libera envio novo": 1,
+    "logout invalida prévia pendente e submit repetido não duplica POST": 1,
+    "status atrasado do simulador não substitui estado do tenant atual": 1,
+    "readiness e finally antigos não liberam tenant novo nem conta desconectada": 1,
+    "membro carrega somente empresas atribuídas para configuração e simulador": 1,
+    "runtime desligado não oferece rascunho nem estilos e logout limpa nomes e versões": 1,
+    "Testar rascunho bloqueia o tenant antigo desde a navegação, antes mesmo da lista carregar": 1,
+    "membro só busca empresas atribuídas no catálogo comercial": 1,
+    "variante não transforma preço ausente em zero e serializa os quatro tipos corretamente": 1,
+    "logout apaga catálogo, proposta e confirmação pendente; respostas antigas permanecem ignoradas": 1,
+    "cadastros de membro usam somente empresas atribuídas e papel confirmado em cada empresa": 1,
+    "editor pode cadastrar serviços mas somente proprietário altera acesso da equipe": 1,
+    "cadastro não transforma preço vazio em zero nem duplica mutação incerta": 1,
+    "respostas antigas de cadastros não cruzam tenant, categoria nem logout": 1,
+    "publicação cancelada ou com empresa/sessão alterada durante await não faz POST": 1,
+    "troca de empresa com edição exige aceite; cancelar preserva formulário e logout não restaura tenant antigo": 1,
+    "atualização com edição espera escolha e contexto fresco; cancelar ou mudar contexto não consulta dados": 1,
+    "envio manual cancelado ou com destinatário/texto/contato/sessão alterado durante confirmação não envia": 1,
+    "duplo submit e duplo Aceitar do envio manual produzem uma única tentativa de transporte": 1
+  },
+  "new_failed_identities_vs_preexisting_Linux_baseline": {},
+  "global_suite_passed": false,
+  "skipped_cases": [
+    "ok 254 - POSIX auth and ledger files are private # SKIP Windows ACLs are not POSIX mode bits",
+    "ok 527 - POSIX directory and new files have private modes # SKIP Windows ACLs do not expose POSIX permission modes",
+    "ok 529 - symbolic backup entries cannot be read or replaced # SKIP file symlink creation requires privileges on this Windows host",
+    "ok 642 - symlink credentials and unexpected auth paths fail closed # SKIP Windows file symlink permission is unavailable in this test environment",
+    "ok 744 - POSIX ledger reserves permanently with private modes and refuses corruption # SKIP"
+  ],
+  "focused_legacy": {
+    "tests": 190,
+    "passed": 189,
+    "failed": 0,
+    "skipped": 1,
+    "cancelled": 0
+  },
+  "source_sha256": {
+    "qr-bridge/src/server.mjs": "198ca9a4e28100acdbd08279e1737c6440d17954907062e1d87940c903f6f6f2",
+    "qr-bridge/src/assistant-ingress.mjs": "d69ca99ea4b7d4d32ad690dedd812f76352842a73f21a70124667138353d13c8",
+    "qr-bridge/src/conversation-intake.mjs": "6a549b5cf577733987dd769e753e585afce96c5a810e5f932a80c31277afe9d0",
+    "qr-bridge/src/legacy-central.mjs": "870e84b2212474e2dcffaf7460eb552dc2afc1779360c701f538a797d156ebef",
+    "qr-bridge/src/channel-manager.mjs": "7216f703568f2f7d3c24c996f64e5397d45435133a853218c819cb4765dfb5a2",
+    "qr-bridge/src/channel-session.mjs": "c87b647c3d0d676e8d0467159417a5b69fbe770bb849ae0a72686a9a1f6a41e0",
+    "qr-bridge/src/ingress-journal.mjs": "93623bb131b7069c335917327160261a9134556a86efeb4499365cdc9fe7552c",
+    "qr-bridge/src/ingress-health.mjs": "ae3eca428db2b48cd176c54cf95e49228bc78be4dc5eec58876568851bce557f"
+  },
+  "tap_sha256": "e6ef4d3af0055f0d36cf61bdfee925c18c67d336de0656a7961d3e7090545dee"
+}

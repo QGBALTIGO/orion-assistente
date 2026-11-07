@@ -82,6 +82,13 @@ async def test_webhook_requires_signature_and_does_not_activate(monkeypatch):
                                 hashlib.sha256).hexdigest()
         assert (await client.post("/webhooks/cakto", content=wrong,
             headers={"X-Cakto-Timestamp": ts, "X-Cakto-Signature": sig})).status_code == 401
+        huge=b"x" * 131073
+        assert (await client.post("/webhooks/cakto", content=huge, headers=headers)).status_code == 413
+        async def oversized_chunked():
+            yield b"y" * 65000
+            yield b"z" * 65000
+            yield b"w" * 2000
+        assert (await client.post("/webhooks/cakto", content=oversized_chunked(), headers=headers)).status_code == 413
     assert len(seen) == 2
     assert seen[0]["digest"] == seen[1]["digest"]
 
@@ -106,6 +113,14 @@ def test_verification_requires_order_and_matching_state():
 def test_catalog_prices_links_are_only_read_only():
     assert [(x["code"], x["monthly_cents"]) for x in cakto_api.PLANS] == [
         ("essencial", 2990), ("profissional", 8990), ("elite", 13990)]
+    assert cakto_api.match_plans([{
+        "name": "Orion Pro", "price": "89.90",
+        "status": "active", "type": "subscription", "recurrence_period": 30
+    }])[1]["found"] is False
+    assert cakto_api.match_plans([
+        {"id": "renamed-offer", "name": "Orion Profissional", "price": "89.90",
+         "status": "active", "type": "subscription", "recurrence_period": 30}
+    ])[1]["offer_id"] == "renamed-offer"
     assert cakto_api.match_plans([
         {"id": "verified-id", "name": "Orion Pro", "price": "89.90",
          "status": "active", "type": "subscription", "recurrence_period": 30},
@@ -178,13 +193,26 @@ def test_signed_cakto_callback_is_reconciled_even_without_sck():
 
 
 @pytest.mark.asyncio
-async def test_public_checkout_availability_tracks_real_server_flag(monkeypatch):
-    monkeypatch.setenv("CAKTO_BILLING_LIVE_ENABLED", "1")
-    result=await cakto_api.public_cakto_plans()
-    assert result["subscription_activation_enabled"] is True
-    assert [x["monthly_cents"] for x in result["plans"]] == [2990,8990,13990]
-    assert all("checkout_url" not in x for x in result["plans"])
-    monkeypatch.setenv("CAKTO_BILLING_LIVE_ENABLED", "0")
+async def test_public_checkout_requires_all_live_gates_and_uses_canonical_plan_names(monkeypatch):
+    from app.cakto_readiness import REQUIRED_FLAGS
+    for name in (*REQUIRED_FLAGS,"CAKTO_CLIENT_ID","CAKTO_CLIENT_SECRET",
+                 "CAKTO_WEBHOOK_SECRET"):
+        monkeypatch.delenv(name,raising=False)
+    monkeypatch.setenv("CAKTO_BILLING_LIVE_ENABLED","1")
+    plans=await cakto_api.public_cakto_plans()
+    assert plans["subscription_activation_enabled"] is False
+    assert [row["name"] for row in plans["plans"]] == [
+        "Orion Essencial","Orion Profissional","Orion Elite"]
+    assert [row["monthly_cents"] for row in plans["plans"]] == [2990,8990,13990]
+    assert all("checkout_url" not in row and "offer_names" not in row
+               for row in plans["plans"])
+    for name in REQUIRED_FLAGS:
+        monkeypatch.setenv(name,"1")
+    monkeypatch.setenv("CAKTO_CLIENT_ID","synthetic-ci-id")
+    monkeypatch.setenv("CAKTO_CLIENT_SECRET","synthetic-ci-secret")
+    monkeypatch.setenv("CAKTO_WEBHOOK_SECRET","temporary-test-only-secret-at-least-32-characters")
+    assert (await cakto_api.public_cakto_plans())["subscription_activation_enabled"] is True
+    monkeypatch.setenv("CAKTO_WEBHOOK_SECRET","short")
     assert (await cakto_api.public_cakto_plans())["subscription_activation_enabled"] is False
 
 

@@ -93,7 +93,59 @@ def main():
         print(json.dumps({"ok": False, "error": code}))
         return 1
     print(json.dumps(result))
-    return 0
+    # The API performs the additive scheduling migration in its pre-deploy.
+    # Keep the previous worker alive until the new booking engine can safely
+    # read its optional start policy, using only runtime catalog privileges.
+    from scripts.wait_for_manual_start_times_schema import main as manual_start_wait
+    result = manual_start_wait()
+    if result:
+        return result
+    from scripts.wait_for_appointment_consent_schema import main as consent_wait
+    result = consent_wait()
+    if result:
+        return result
+    from scripts.wait_for_subscription_devices_schema import main as devices_wait
+    result = devices_wait()
+    if result:
+        return result
+    from scripts.wait_for_subscription_chatbot_schema import main as chatbot_wait
+    result = chatbot_wait()
+    if result:
+        return result
+    from scripts.wait_for_subscription_templates_schema import main as templates_wait
+    result = templates_wait()
+    if result:
+        return result
+    from scripts.wait_for_subscription_sent_messages_schema import main as sent_messages_wait
+    result = sent_messages_wait()
+    if result:
+        return result
+    from scripts.wait_for_appointment_operations_schema import main as appointment_operations_wait
+    result = appointment_operations_wait()
+    if result:
+        return result
+    from scripts.wait_for_subscription_diagnostics_schema import main as diagnostics_wait
+    result = diagnostics_wait()
+    if result:
+        return result
+    from scripts.wait_for_subscription_campaigns_schema import main as campaigns_wait
+    result = campaigns_wait()
+    if result:
+        return result
+    from scripts.wait_for_subscription_scheduled_messages_schema import main as scheduled_messages_wait
+    result = scheduled_messages_wait()
+    if result:
+        return result
+    from scripts.wait_for_subscription_bulk_schema import main as bulk_messages_wait
+    result = bulk_messages_wait()
+    if result:
+        return result
+    from scripts.wait_for_subscription_direct_schema import main as direct_messages_wait
+    result = direct_messages_wait()
+    if result:
+        return result
+    from scripts.wait_for_subscription_group_add_schema import main as group_add_wait
+    return group_add_wait()
 
 
 if __name__ == "__main__":

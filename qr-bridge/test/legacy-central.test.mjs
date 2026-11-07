@@ -11,7 +11,7 @@ import {createHmac} from 'node:crypto';
 const id='10000000-0000-4000-8000-000000000001',tenant='20000000-0000-4000-8000-000000000001';
 const phone='5567999999901',key='synthetic-primary-key-0000000000000000000000000000';
 
-function fixture(changes={}){
+function fixture(changes={},options={}){
   const calls=[],env={QR_LEGACY_CENTRAL_ENABLED:'1',QR_CHANNEL_BROKER_URL:'http://api.railway.internal',
     QR_BRIDGE_TOKEN:key,QR_AI_PILOT_NUMBER:phone,...changes};
   let active=true,connected=true,currentDigest='a'.repeat(64),context,closeAdapter;
@@ -29,7 +29,7 @@ function fixture(changes={}){
       closeAdapter=await central.attach(context);
     },
     send:async(...args)=>{calls.push(['send',...args]);return {accepted:true};},
-    rawSend:async(...args)=>{calls.push(['raw',...args]);return {accepted:true,id:'out:SYNTHETIC'};}});
+    rawSend:async(...args)=>{calls.push(['raw',...args]);return {accepted:true,id:'out:SYNTHETIC'};},...options});
   return {central,calls,env,context:()=>context,adapter:()=>closeAdapter,revoke:()=>{active=false;},disconnect:()=>{connected=false;},replaceAccount:()=>{currentDigest='b'.repeat(64);}};
 }
 
@@ -51,6 +51,34 @@ test('preserves the broker notice proof and batches, with no parallel legacy ans
   await assert.rejects(f.central.inbound({phone:'5567999999902',message_id:'OTHER'}),/denied/);
 });
 
+test('adopted audio delegates only to the current managed transcription context without a business turn',async()=>{
+  const f=fixture();await f.central.resume();let asr=0;
+  f.context().transcribe=async payload=>{asr++;assert.equal(payload.phone,phone);return 'synthetic managed transcript';};
+  const result=await f.central.transcribe({phone,buffer:Buffer.from([1,2,3]),mediaType:'audio/ogg'});
+  assert.equal(result,'synthetic managed transcript');assert.equal(asr,1);
+  assert.equal(f.calls.some(row=>['message','raw','send'].includes(row[0])),false);
+  await assert.rejects(f.central.transcribe({phone:'5567999999902',buffer:Buffer.from([1])}),/not_ready/);
+  assert.equal(asr,1);
+});
+
+test('lease loss during managed audio never falls back to the legacy credential or a business reply',async()=>{
+  const f=fixture();await f.central.resume();let release;
+  f.context().transcribe=()=>new Promise(resolve=>{release=resolve;});
+  const pending=f.central.transcribe({phone,buffer:Buffer.from([1,2,3]),mediaType:'audio/ogg'});
+  while(!release)await new Promise(resolve=>setImmediate(resolve));
+  f.revoke();release('late private transcript');await assert.rejects(pending,/revoked/);
+  assert.equal(f.calls.some(row=>['message','raw','send'].includes(row[0])),false);
+});
+
+test('a preparation failure delegates its existing operation to the managed normal sender only',async()=>{
+  const f=fixture();await f.central.resume();let called=0;
+  const payload={phone,message_ids:['synthetic-audio'],operation_id:'30000000-0000-4000-8000-000000000001',control_revision:31};
+  f.context().onPreparationFailed=async(actual,options)=>{called++;assert.equal(actual,payload);assert.equal(options.isCurrent(),true);return {accepted:true};};
+  assert.equal((await f.central.preparationFailed(payload,{noticeProofs:[],isCurrent:()=>true})).accepted,true);
+  assert.equal(called,1);assert.equal(f.calls.some(row=>['message','raw','send'].includes(row[0])),false);
+  f.revoke();await assert.rejects(f.central.preparationFailed(payload),/not_ready/);assert.equal(called,1);
+});
+
 test('manager retirement detaches only the adapter and refuses stale sends',async()=>{
   const f=fixture();await f.central.resume();const adapter=f.adapter();adapter.close();
   assert.equal(f.central.health().connected,true);assert.equal(f.central.health().ready,false);
@@ -66,12 +94,63 @@ test('a different physical account cannot use the adopted company or send on its
   assert.equal(f.calls.some(c=>c[0]==='raw'),false);
 });
 
+test('trusted ingress scope exists only for the current matching physical session',async()=>{
+  const f=fixture();assert.equal(f.central.ingressScope(),null);await f.central.resume();
+  const scope=f.central.ingressScope();assert.ok(Object.isFrozen(scope));
+  assert.deepEqual(scope,{tenant_id:tenant,channel_id:id,session_digest:'a'.repeat(64)});
+  f.replaceAccount();assert.equal(f.central.ingressScope(),null);
+  const revoked=fixture();await revoked.central.resume();revoked.revoke();assert.equal(revoked.central.ingressScope(),null);
+});
+
+test('native canary scope is a read-only snapshot of the same actual owner/fence and matching preserved account',async()=>{
+  const f=fixture();assert.equal(f.central.nativeTestScope(),null);await f.central.resume();assert.equal(f.central.nativeTestScope(),null);
+  const actualOwner='30000000-0000-4000-8000-000000000001';Object.assign(f.context(),{owner:actualOwner,fence:7});
+  const before=f.calls.length,proof=f.central.nativeTestScope();assert.ok(Object.isFrozen(proof));
+  assert.deepEqual(proof,{tenant_id:tenant,channel_id:id,session_digest:'a'.repeat(64),owner:actualOwner,fence:7});assert.equal(f.calls.length,before);
+  f.replaceAccount();assert.equal(f.central.nativeTestScope(),null);
+  const revoked=fixture();await revoked.central.resume();Object.assign(revoked.context(),{owner:actualOwner,fence:7});revoked.revoke();assert.equal(revoked.central.nativeTestScope(),null);
+});
+
+test('public pending/review readiness stays separate from raw transport authorization',async()=>{
+  let state='degraded';const f=fixture({}, {publicHealth:()=>({state,ingress_pending:1,ingress_blocked:0})});
+  await f.central.resume();assert.equal(f.central.health().connected,true);assert.equal(f.central.health().ready,false);
+  assert.equal(f.adapter().status(),'degraded');assert.equal(f.adapter().connectionHealth().ingress_pending,1);
+  assert.ok(f.central.ingressScope());await f.central.inbound({phone,message_id:'CONTROL',text:'pare'});
+  await f.central.forward({phone,message_id:'TURN',text:'teste'});
+  state='needs_attention';assert.equal(f.adapter().status(),'needs_attention');assert.equal(f.central.health().ready,false);
+  state='connected';assert.equal(f.central.health().ready,true);
+});
+
+test('legacy automated/appointment relay rechecks pending admission after its capacity wait',async()=>{
+  for(const source of ['automation','appointment','assistant']){
+    let ready=true,relay=0,release;const capacity=new Promise(resolve=>{release=resolve;});
+    const f=fixture({}, {outgoingReady:()=>ready,rawSend:async(_phone,_text,options)=>{
+      await capacity;if(!options.isCurrent())return {accepted:false};relay++;return {accepted:true,id:'out:SYNTHETIC'};}});
+    await f.central.resume();const running=f.adapter().send(phone,'Aviso',{source});
+    await Promise.resolve();ready=false;release();await assert.rejects(running,/unknown|revoked/);
+    assert.equal(relay,0);await assert.rejects(f.central.automatic(phone,'Outro aviso'),/not_ready/);
+  }
+});
+
 test('fenced manual transport delegates to the original reliable sender exactly once',async()=>{
   const f=fixture();await f.central.resume();
   assert.deepEqual(await f.adapter().send(phone,'Sintético'),{id:'SYNTHETIC'});
   assert.equal(f.calls.filter(c=>c[0]==='raw').length,1);
   f.revoke();await assert.rejects(f.adapter().send(phone,'Sintético'),/revoked/);
   assert.equal(f.calls.filter(c=>c[0]==='raw').length,1);
+});
+
+test('adopted PRIMARY preserves the private deferred ACK callback for the same accepted presentation',async()=>{
+  let sentOptions,acks=0;
+  const acknowledgePresentation=async()=>{acks++;return true;};
+  const f=fixture({}, {rawSend:async(_phone,_text,options)=>{sentOptions=options;return {accepted:true,id:'out:SYNTHETIC',acknowledgePresentation};}});
+  await f.central.resume();
+  f.context().presentationAck=async()=>({acknowledged:true});
+  const presentation={version:1,id:'A'.repeat(32),action:{type:'reply_buttons'}};
+  const result=await f.adapter().send(phone,'Resumo fictício',{source:'assistant',presentation,deferPresentationAck:true});
+  assert.equal(sentOptions.deferPresentationAck,true);assert.equal(typeof sentOptions.presentationAck,'function');
+  assert.equal(result.id,'SYNTHETIC');assert.equal(result.acknowledgePresentation,acknowledgePresentation);assert.equal(acks,0);
+  assert.equal(await result.acknowledgePresentation(),true);assert.equal(acks,1);
 });
 
 test('receipts are forwarded without sending and automatic notices use the central manager',async()=>{
@@ -139,6 +218,19 @@ test('old self PN requires HMAC correspondence with the preserved physical sessi
     if(valid){await central.resume();assert.equal(starts,1);}
     else {await assert.rejects(central.resume(),/invalid_legacy_adoption/);assert.equal(starts,0);}
   }
+});
+
+test('central passes appointment source only to verified transactional path',async()=>{
+  const f=fixture();await f.central.resume();
+  const adapter=f.adapter();
+  await adapter.send(phone,'Teste autorizado, sem dados pessoais',{
+    source:'appointment',transactionalTyping:true});
+  const call=f.calls.find(c=>c[0]==='raw');
+  assert.equal(call[3].source,'appointment');
+  assert.equal(call[3].transactionalTyping,true);
+  assert.equal(call[1],phone);
+  const next=await adapter.send(phone,'Mensagem manual');
+  assert.equal(f.calls.filter(c=>c[0]==='raw')[1][3].source,'automation');
 });
 
 test('aviso automático autorizado propaga digitando apenas para o envio transacional',async()=>{

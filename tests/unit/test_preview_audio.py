@@ -23,6 +23,7 @@ class MemoryRedis:
     def __init__(self):
         self.values, self.locks, self.transactions = {}, {}, []
         self.closed = 0
+        self.lock_tokens = {}
 
     async def get(self, key):
         return self.values.get(key)
@@ -44,11 +45,33 @@ class MemoryRedis:
 
     def lock(self, key, **kwargs):
         lock = self.locks.setdefault(key, asyncio.Lock())
-        @asynccontextmanager
-        async def held():
-            async with lock:
-                yield
-        return held()
+        redis = self
+        class Held:
+            active = False
+            name = key
+            local = SimpleNamespace(token=None)
+            async def acquire(self):
+                await lock.acquire()
+                self.active = True
+                self.local = SimpleNamespace(token=uuid4().hex.encode())
+                redis.lock_tokens[key] = self.local.token
+                return True
+            async def owned(self):
+                return self.active and lock.locked()
+            async def extend(self, *args, **kwargs):
+                return await self.owned()
+            async def release(self):
+                if self.active:
+                    self.active = False
+                    if redis.lock_tokens.get(key) == self.local.token:
+                        del redis.lock_tokens[key]
+                    lock.release()
+            async def __aenter__(self):
+                await self.acquire()
+                return self
+            async def __aexit__(self, *args):
+                await self.release()
+        return Held()
 
     def pipeline(self, transaction=False):
         owner = self
@@ -83,7 +106,9 @@ def preview(monkeypatch):
     tenant, account = uuid4(), uuid4()
     actor = Actor("member", tenant, account, "owner")
     events, provider_calls, turns = [], [], []
-    provider_payload = {"text": " Quanto custa cabelo e barba? ", "duration": 2.8}
+    provider_payload = {"text": " Quanto custa cabelo e barba? ", "duration": 2.8,
+        "segments": [{"text": "Quanto custa cabelo e barba?", "start": 0, "end": 2.8,
+                      "avg_logprob": -.2, "no_speech_prob": .01, "compression_ratio": 1.1}]}
     monkeypatch.setenv("GROQ_PREVIEW_ENABLED", "1")
     monkeypatch.setenv("QR_AI_AUDIO_ENABLED", "1")
     monkeypatch.setenv("GROQ_API_KEY", "synthetic-no-real-provider")
@@ -247,7 +272,8 @@ async def test_run_locked_duplicate_group_is_rejected_before_prepare_and_marks_o
     assert len(h.redis.transactions) == 1 and len(h.redis.transactions[0]) == 3
     overlap = await qr_ai.run_locked(h.tenant, "5567999999999", "", namespace,
                                     message_id=ids[1], message_ids=[ids[1], "new-4"], preview=True, prepare=prepare)
-    assert overlap["step"] == "duplicate" and len(prepared) == len(h.turns) == 1
+    assert overlap["step"] == "partial_duplicate" and overlap["answer"]
+    assert len(prepared) == len(h.turns) == 1
     assert not any("new-4" in key for key in h.redis.values), "never partially consume a rejected group"
 
 

@@ -23,6 +23,16 @@ test('existing administration exposes plan filters and opens the shared modal wi
   h.click('#osDialog [data-admin-control=close]');const select=h.element('[data-admin-plan-filter=source]');select.value='manual';select.dispatchEvent(new h.window.Event('change',{bubbles:true}));await flush();assert.ok(h.calls.some(call=>call.path.includes('source=manual')));
 });
 
+test('paid Pix has its own readable origin and filter without a commercial mutation',async t=>{
+  const h=await fixture({state:planState('profissional',{source:'pix_prepaid',revision:'a'.repeat(64),version:0,
+    valid_until:'2027-01-01T00:00:00Z'})});t.after(()=>h.close());
+  const select=h.element('[data-admin-plan-filter=source]');assert.ok(select.querySelector('option[value=pix_prepaid]'));
+  select.value='pix_prepaid';select.dispatchEvent(new h.window.Event('change',{bubbles:true}));await flush();
+  assert.ok(h.calls.some(call=>call.path.includes('source=pix_prepaid')));await open(h);
+  assert.match(h.element('#osDialog').textContent,/Pix pré-pago \(renovação manual\)/);
+  assert.equal(mutations(h).length,0);assert.equal(h.calls.some(call=>/checkout|charge/.test(call.path)),false);
+});
+
 test('plan history shows an administrator name or the general administrator label without exposing its audit UUID',async t=>{
   const actorId='ef606263-1000-4000-8000-000000000001';
   for(const actorName of [undefined,'Ana Administradora']){

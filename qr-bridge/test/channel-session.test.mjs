@@ -4,36 +4,168 @@ import {EventEmitter} from 'node:events';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import {randomUUID,createHash} from 'node:crypto';
 import {createBaileysChannelSession} from '../src/channel-session.mjs';
+import * as sdk from '@whiskeysockets/baileys';
+import {DEFAULT_CONNECTION_CONFIG} from '@whiskeysockets/baileys';
+import {encryptedChannelStore} from '../src/channel-storage.mjs';
+import {makePairedAuthFixture} from './helpers/paired-auth-fixture.mjs';
+import {presenceClock,presenceFlush} from './helpers/presence-clock.mjs';
+import {Boom} from '@hapi/boom';
 
 process.env.ORION_RETRY_TEST_MODE='1';
 test('provider phone is the confirmed PN only after open; LIDs are never relabeled as phone numbers',async t=>{
-  const s=await session(t);assert.equal(s.result.phone(),null);
+  const s=await session(t);assert.equal(s.result.phone(),null);assert.equal(s.result.supportsUrlButton(),true);
   s.client.ev.emit('connection.update',{connection:'open'});await flush();assert.equal(s.result.phone(),self);
   s.client.user.id='123456789:7@lid';assert.equal(s.result.phone(),null);
   s.client.user.id=self+':7@s.whatsapp.net';assert.equal(s.result.phone(),self);
 });
 
 const phone='5567999999901',self='5567999999902',flush=()=>new Promise(r=>setImmediate(r));
-async function session(t,{audio=false,assistant=true,typingFactory,notifySelf=false,schedule,cancel,registered=false,resumeOnly=false}={}){
+const assistantPresentation=()=>{const id='C'.repeat(32);return {version:1,id,action:{type:'reply_buttons',text:'Resumo fictício',footer:'',
+  buttons:[{id:`oa1_${id}_0`,title:'Confirmar'},{id:`oa1_${id}_1`,title:'Corrigir'}]}};};
+async function waitFor(test){for(let i=0;i<150;i++){if(test())return;await flush();}assert.ok(test(),'Expected asynchronous assistant boundary');}
+
+test('managed accepted presentation can defer only its ACK until the owning manager releases the send slot',async t=>{
+  const s=await session(t),acks=[];s.context.presentationAck=async payload=>{acks.push(payload);return {acknowledged:true};};
+  s.client.ev.emit('connection.update',{connection:'open'});await flush();
+  const sent=await s.result.send(phone,'Resumo fictício',{source:'assistant',presentation:assistantPresentation(),deferPresentationAck:true});
+  assert.equal(s.sent.length,1);assert.equal(acks.length,0,'The transport must return acceptance before trying a still-pending SQL slot');
+  assert.equal(typeof sent.acknowledgePresentation,'function');
+  assert.equal(await sent.acknowledgePresentation(),true);assert.equal(acks.length,1);
+  assert.equal(await sent.acknowledgePresentation(),true);assert.equal(acks.length,1,'Only the idempotent ACK is cached, never a second relay');
+  assert.equal(s.sent.length,1);
+});
+
+test('a stopped deferred sender cannot ACK; the same accepted map can reconcile after a valid-session restart without relay',async t=>{
+  const s=await session(t),acks=[];let released=false;
+  s.context.presentationAck=async payload=>{acks.push(payload);if(!released)throw Object.assign(Error('synthetic pending slot'),{status:423});return {acknowledged:true};};
+  s.context.onInbound=async value=>{s.notices.push(value);return {revision:s.notices.length,assistant_interactions:1};};
+  s.client.ev.emit('connection.update',{connection:'open'});await flush();
+  const sent=await s.result.send(phone,'Resumo fictício',{source:'assistant',presentation:assistantPresentation(),deferPresentationAck:true});
+  assert.equal(s.sent.length,1);assert.equal(acks.length,0);
+  s.result.close();assert.equal(await sent.acknowledgePresentation(),false);assert.equal(acks.length,0);
+  const reopened=await s.open();t.after(()=>reopened.close());s.client.ev.emit('connection.update',{connection:'open'});await flush();
+  const reply={extendedTextMessage:{text:'1',contextInfo:{stanzaId:sent.id}}};
+  s.receive({id:'deferred-before-release',fromMe:false},reply);
+  await waitFor(()=>acks.length===2);for(let i=0;i<20;i++)await flush();assert.equal(s.messages.length,0);
+  released=true;s.receive({id:'deferred-after-release',fromMe:false},reply);await waitFor(()=>s.messages.length===1);
+  assert.equal(s.messages[0].selection.quoted_message_id,sent.id);assert.equal(s.sent.length,1);assert.equal(acks.length,3);
+});
+test('real managed session sends one cached presentation and resolves a quoted selection after a valid-auth restart',async t=>{
+  const s=await session(t),acks=[];s.context.presentationAck=async payload=>{acks.push(payload);return {acknowledged:true};};
+  s.context.onInbound=async value=>{s.notices.push(value);return {revision:s.notices.length,assistant_interactions:1};};
+  s.client.ev.emit('connection.update',{connection:'open'});await flush();
+  const sent=await s.result.send(phone,'Resumo fictício',{source:'assistant',presentation:assistantPresentation()});
+  assert.equal(s.sent.length,1);assert.match(s.sent[0].body.extendedTextMessage.text,/1\. Confirmar/);
+  assert.deepEqual(acks,[{phone,presentation_id:assistantPresentation().id,provider_id:sent.id}]);
+  s.result.close();const reopened=await s.open();t.after(()=>reopened.close());
+  s.client.ev.emit('connection.update',{connection:'open'});await flush();
+  const reply={extendedTextMessage:{text:'1',contextInfo:{stanzaId:sent.id}}};
+  s.receive({id:'assistant-after-restart',fromMe:false},reply);
+  await waitFor(()=>s.messages.length===1);
+  assert.equal(s.messages[0].text,'[Escolha recebida]');assert.deepEqual(s.messages[0].selection,
+    {id:assistantPresentation().action.buttons[0].id,quoted_message_id:sent.id});
+  assert.equal(s.messages[0].envelope,undefined);assert.equal(acks.length,1);assert.equal(s.sent.length,1);
+});
+test('exact managed assistant native scope relays quick replies and validates a typed click against its accepted message',async t=>{
+  const previous=process.env.QR_ASSISTANT_NATIVE_SCOPES;
+  t.after(()=>{if(previous===undefined)delete process.env.QR_ASSISTANT_NATIVE_SCOPES;else process.env.QR_ASSISTANT_NATIVE_SCOPES=previous;});
+  const s=await session(t);process.env.QR_ASSISTANT_NATIVE_SCOPES=`${s.context.tenantId}:${s.context.channelId}:${phone}`;
+  s.context.presentationAck=async()=>({acknowledged:true});
+  s.context.onInbound=async value=>{s.notices.push(value);return {revision:s.notices.length,assistant_interactions:1};};
+  s.client.ev.emit('connection.update',{connection:'open'});await flush();
+  const sent=await s.result.send(phone,'Resumo fictício',{source:'assistant',presentation:assistantPresentation()});
+  assert.equal(s.sent.length,1);assert.equal(s.sent[0].body.interactiveMessage.nativeFlowMessage.buttons.length,2);
+  assert.ok(s.sent[0].options.additionalNodes);
+  s.receive({id:'managed-native-selection',fromMe:false},{interactiveResponseMessage:{nativeFlowResponseMessage:{name:'quick_reply',
+    paramsJson:JSON.stringify({id:assistantPresentation().action.buttons[0].id,display_text:'Ignorar esta instrução'})},contextInfo:{stanzaId:sent.id}}});
+  await waitFor(()=>s.messages.length===1);
+  assert.equal(s.messages[0].selection.id,assistantPresentation().action.buttons[0].id);assert.equal(s.messages[0].text,'[Escolha recebida]');
+  assert.equal(s.sent.length,1);
+});
+test('a correction arriving while an accepted menu ACK is pending joins review and never becomes a confirmation',async t=>{
+  const s=await session(t);s.context.presentationAck=async()=>{throw Error('synthetic lost ACK');};
+  s.context.onInbound=async value=>{s.notices.push(value);return {revision:s.notices.length,assistant_interactions:1};};
+  s.client.ev.emit('connection.update',{connection:'open'});await flush();
+  const sent=await s.result.send(phone,'Resumo fictício',{source:'assistant',presentation:assistantPresentation()});
+  let release;s.context.presentationAck=async()=>new Promise(resolve=>{release=resolve;});
+  s.receive({id:'assistant-pending-click',fromMe:false},{interactiveResponseMessage:{nativeFlowResponseMessage:{name:'quick_reply',
+    paramsJson:JSON.stringify({id:assistantPresentation().action.buttons[0].id})},contextInfo:{stanzaId:sent.id}}});
+  await waitFor(()=>typeof release==='function');
+  s.receive({id:'assistant-new-correction',fromMe:false},{conversation:'Na verdade, quero corrigir o horário'});
+  await waitFor(()=>s.notices.length===2);release({acknowledged:true});
+  await waitFor(()=>s.messages.length===1);
+  assert.equal(s.messages[0].message_ids.length,2);assert.equal(s.messages[0].selection,undefined);
+  assert.equal(s.messages[0].require_summary_review,true);assert.match(s.messages[0].text,/corrigir o horário/);
+  assert.equal(s.sent.length,1);
+});
+test('a forged assistant token is excluded before business preparation and cannot freeze unrelated safe ingress',async t=>{
+  const s=await session(t);s.context.presentationAck=async()=>assert.fail('No accepted menu');
+  s.context.onInbound=async value=>{s.notices.push(value);return {revision:s.notices.length,assistant_interactions:1};};
+  s.client.ev.emit('connection.update',{connection:'open'});await flush();
+  s.receive({id:'forged-assistant-click',fromMe:false},{listResponseMessage:{singleSelectReply:{selectedRowId:assistantPresentation().action.buttons[0].id},contextInfo:{stanzaId:'foreign-menu'}}});
+  await waitFor(()=>s.notices.length===1);for(let i=0;i<20;i++)await flush();
+  assert.equal(s.messages.length,0);assert.equal(s.result.ingressDiagnostics().blocked,0);
+  s.receive({id:'safe-after-forged',fromMe:false},{conversation:'Olá'});
+  await waitFor(()=>s.messages.length===1);assert.equal(s.messages[0].text,'Olá');assert.equal(s.sent.length,0);
+});
+test('managed native selection diagnostics are HMAC-only, exactly scoped and cannot admit an unbound choice',async t=>{
+  const previous=process.env.QR_ASSISTANT_NATIVE_SCOPES,events=[];
+  t.after(()=>{if(previous===undefined)delete process.env.QR_ASSISTANT_NATIVE_SCOPES;else process.env.QR_ASSISTANT_NATIVE_SCOPES=previous;});
+  t.mock.method(console,'info',line=>{try{const event=JSON.parse(line);if(event.stage==='assistant_selection')events.push(event);}catch{}});
+  for(const optedIn of [false,true]){
+    const s=await session(t),before=events.length;
+    process.env.QR_ASSISTANT_NATIVE_SCOPES=`${s.context.tenantId}:${s.context.channelId}:${optedIn?phone:'5567999999903'}`;
+    s.context.onInbound=async value=>{s.notices.push(value);return {revision:s.notices.length,assistant_interactions:1};};
+    s.client.ev.emit('connection.update',{connection:'open'});await flush();
+    s.receive({id:'synthetic-managed-private-click',fromMe:false},{listResponseMessage:{
+      singleSelectReply:{selectedRowId:assistantPresentation().action.buttons[0].id},contextInfo:{stanzaId:'synthetic-managed-private-quote'}}});
+    await waitFor(()=>s.notices.length===1);for(let i=0;i<20;i++)await flush();
+    assert.equal(s.messages.length,0);assert.equal(s.sent.length,0);
+    const emitted=events.slice(before);
+    if(optedIn){assert.ok(emitted.some(event=>event.category==='map_missing'));assert.ok(emitted.every(event=>/^[a-f0-9]{20}$/.test(event.trace)));}
+    else assert.deepEqual(emitted,[]);
+  }
+  const serialized=JSON.stringify(events);
+  for(const privateValue of [phone,self,'synthetic-managed-private-click','synthetic-managed-private-quote',assistantPresentation().id,
+    assistantPresentation().action.buttons[0].id,'synthetic-secret-'])assert.equal(serialized.includes(privateValue),false);
+});
+test('managed close records safe structured SDK evidence without changing the500 recovery policy or sending',async t=>{
+  const s=await session(t,{registered:true}),policies=[];s.context.onDisconnected=policy=>policies.push(policy);
+  s.client.ev.emit('connection.update',{connection:'open'});await flush();
+  s.client.ev.emit('connection.update',{connection:'close',lastDisconnect:{error:new Boom('private exception phone/token',
+    {statusCode:500,data:{reason:'500',location:'private peer'}})}});
+  assert.equal(policies.length,1);assert.equal(policies[0].reason,'session_recovery');assert.equal(policies[0].retry,true);
+  const health=s.result.connectionHealth();assert.equal(health.disconnect_code,500);
+  assert.deepEqual(health.disconnect_evidence,{source:'provider_failure',condition:'unknown',provider_reason_numeric:500,websocket_code:null});
+  assert.doesNotMatch(JSON.stringify(health),/private exception|private peer/);assert.equal(s.sent.length,0);
+});
+async function session(t,{audio=false,assistant=true,typingFactory,notifySelf=false,schedule,cancel,registered=false,resumeOnly=false,savedAuth,clock:virtualClock}={}){
   const directory=fs.mkdtempSync(path.join(os.tmpdir(),'orion-channel-socket-'));fs.chmodSync(directory,0o700);
   t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
   let alive=true,now=100000;const messages=[],sent=[],notices=[];let config;
   const client={ev:new EventEmitter(),user:{id:self+'@s.whatsapp.net'},end(){this.ended=true;},
     onWhatsApp:async pn=>[{exists:true,jid:pn+'@s.whatsapp.net'}],sendMessage:async()=>assert.fail('direct sendMessage is forbidden'),
     relayMessage:async(jid,body,options)=>{sent.push({jid,body,options});}};
-  const context={directory,secret:'synthetic-secret-'.repeat(4),isCurrent:()=>alive,notifySelf,resumeOnly,newLinkNotice:{pending:false},
+  const context={directory,tenantId:randomUUID(),channelId:randomUUID(),secret:'synthetic-secret-'.repeat(4),isCurrent:()=>alive,notifySelf,resumeOnly,newLinkNotice:{pending:false},
     assertCurrent:async()=>{if(!alive)throw Error('lease lost');},allowedSender:value=>value===phone,
     assistantEnabled:()=>assistant,audioEnabled:()=>audio,
     onInbound:async value=>{notices.push(value);return Object.freeze({revision:notices.length});},
     transcribe:async()=> 'Áudio transcrito sintético',
-    onConnected(){},onDisconnected(){},onReceipt:async()=>{},onMessage:async value=>messages.push(value)};
+    onConnected(){},onDisconnected(){},onReceipt:async()=>{},onMessage:async value=>{messages.push(value);return {state:'committed_no_reply',not_committed:false};}};
+  if(registered||savedAuth){const auth=path.join(directory,'auth');fs.mkdirSync(auth,{mode:0o700});
+    const initial=savedAuth||makePairedAuthFixture({phone:self}).creds;if(registered)initial.registered=true;
+    encryptedChannelStore({directory:auth,secret:context.secret,serialize:value=>JSON.stringify(value,sdk.BufferJSON.replacer)}).set('creds',initial);}
   const mod={
-    default:options=>{config=options;return client;},BufferJSON:{},initAuthCreds:()=>({synthetic:'private-auth',registered}),
-    generateMessageIDV2:()=> 'provider-id',generateWAMessage:async(jid,{text})=>({key:{id:'provider-id',remoteJid:jid},message:{conversation:text}}),
+    ...sdk,
+    fetchLatestWaWebVersion:async()=>({version:DEFAULT_CONNECTION_CONFIG.version,isLatest:false}),
+    DEFAULT_CONNECTION_CONFIG:{version:DEFAULT_CONNECTION_CONFIG.version},
+    default:options=>{config=options;return client;},BufferJSON:sdk.BufferJSON,initAuthCreds:sdk.initAuthCreds,
+    generateMessageIDV2:()=> 'provider-id',generateWAMessage:async(jid,{text})=>({key:{id:'provider-id',remoteJid:jid,fromMe:true},message:{conversation:text}}),
     downloadMediaMessage:async()=>Buffer.from('OggS synthetic media'),
-    Browsers:{windows:()=>['synthetic']},DisconnectReason:{loggedOut:401},proto:{Message:{AppStateSyncKeyData:{fromObject:v=>v}}}};
-  const open=()=>createBaileysChannelSession(context,{now:()=>now,loadBaileys:async()=>mod,intakeOptions:{settleMs:0,maxGroupMs:0},...(typingFactory?{typingFactory}:{}),...(schedule?{schedule,cancel}:{})});
+    Browsers:{windows:()=>['synthetic']},DisconnectReason:{loggedOut:401},proto:sdk.proto};
+  const open=()=>createBaileysChannelSession(context,{now:()=>virtualClock?.now()??now,...(virtualClock?{presenceNow:virtualClock.now}:{}),loadBaileys:async()=>mod,intakeOptions:{settleMs:0,maxGroupMs:0},...(typingFactory?{typingFactory}:{}),...(schedule?{schedule,cancel}:{})});
   const result=await open();
   t.after(()=>result.close());
   return {result,client,messages,sent,notices,context,mod,open,get config(){return config;},setTime:value=>{now=value;},revoke:()=>{alive=false;},
@@ -161,10 +293,65 @@ for(const resumeOnly of [false,true])test(`registered managed ${resumeOnly?'resu
   assert.equal(s.context.newLinkNotice.pending,false);
 });
 
+const authHashes=directory=>fs.readdirSync(path.join(directory,'auth')).sort().map(name=>[name,
+  createHash('sha256').update(fs.readFileSync(path.join(directory,'auth',name))).digest('hex')]);
+
+for(const resumeOnly of [false,true])test(`actual SDK QR account with registered=false and no LID survives ${resumeOnly?'resume':'start'} without changing encrypted auth or arming a notice`,async t=>{
+  const timers=[],creds=makePairedAuthFixture({phone:self}).creds;
+  assert.equal(creds.registered,false);assert.equal(creds.me.lid,undefined);
+  const s=await session(t,{savedAuth:creds,resumeOnly,notifySelf:true,schedule:fn=>{timers.push(fn);return timers.length;},cancel(){}});
+  const before=authHashes(s.context.directory);s.result.close();s.context.resumeOnly=true;
+  const reopened=await s.open();t.after(()=>reopened.close());
+  assert.deepEqual(authHashes(s.context.directory),before);assert.equal(s.config.auth.creds.registered,false);
+  assert.equal(reopened.supportsPairing(),false);s.client.requestPairingCode=()=>assert.fail('Paired auth cannot request a replacement code');
+  await assert.rejects(reopened.pair(phone),/pairing_unavailable/);
+  s.client.ev.emit('connection.update',{connection:'open'});await flush();await flush();
+  assert.equal(timers.length,0);assert.equal(s.sent.length,0);assert.equal(s.context.newLinkNotice.pending,false);
+});
+
+test('a provider QR during paired resume stops before exposing a new QR and preserves signed auth',async t=>{
+  const s=await session(t,{savedAuth:makePairedAuthFixture({phone:self}).creds,resumeOnly:true}),disconnected=[];
+  s.context.onDisconnected=value=>disconnected.push(value);const before=authHashes(s.context.directory);
+  s.client.ev.emit('connection.update',{qr:'replacement-qr'});
+  assert.equal(s.result.qr(),null);assert.equal(s.result.status(),'stopped');assert.equal(disconnected[0].retry,false);
+  assert.equal(disconnected[0].action,'inspect_session_state');assert.deepEqual(authHashes(s.context.directory),before);
+  assert.equal(s.sent.length,0);
+});
+
+for(const mutation of ['registered_only','missing_identity','tampered_account'])test(`resume rejects ${mutation} without writing auth or constructing another socket`,async t=>{
+  const s=await session(t,{savedAuth:makePairedAuthFixture({phone:self}).creds});s.result.close();s.context.resumeOnly=true;
+  const creds=s.config.auth.creds;
+  if(mutation==='registered_only'){delete creds.me;delete creds.account;creds.registered=true;}
+  if(mutation==='missing_identity')delete creds.signedIdentityKey;
+  if(mutation==='tampered_account'){
+    const signature=typeof creds.account.accountSignature==='string'?Buffer.from(creds.account.accountSignature,'base64'):Buffer.from(creds.account.accountSignature);
+    signature[0]^=1;creds.account.accountSignature=signature;
+  }
+  encryptedChannelStore({directory:path.join(s.context.directory,'auth'),secret:s.context.secret,
+    serialize:value=>JSON.stringify(value,sdk.BufferJSON.replacer)}).set('creds',creds);
+  const before=authHashes(s.context.directory);s.mod.default=()=>assert.fail('Incomplete auth cannot create a native socket');
+  await assert.rejects(s.open(),/channel_auth_unavailable/);assert.deepEqual(authHashes(s.context.directory),before);
+});
+
+test('a missing credential record on resume cannot create a new identity',async t=>{
+  const s=await session(t);s.result.close();s.context.resumeOnly=true;
+  for(const name of fs.readdirSync(path.join(s.context.directory,'auth')))fs.unlinkSync(path.join(s.context.directory,'auth',name));
+  s.mod.initAuthCreds=()=>assert.fail('No initAuthCreds on resume');s.mod.default=()=>assert.fail('No new socket');
+  await assert.rejects(s.open(),/channel_auth_unavailable/);assert.deepEqual(fs.readdirSync(path.join(s.context.directory,'auth')),[]);
+});
+
+test('a provisional native pairing request shares its active code but cannot expose a QR or start a new attempt after expiry',async t=>{
+  const s=await session(t);let calls=0;
+  s.client.requestPairingCode=async()=>{calls++;Object.assign(s.config.auth.creds,{me:{id:phone+'@s.whatsapp.net',name:'~'},pairingCode:'ABCDEFGH'});return 'ABCDEFGH';};
+  s.client.ev.emit('connection.update',{qr:'initial'});const first=await s.result.pair(phone);
+  assert.equal(s.result.supportsPairing(),false);assert.deepEqual(await s.result.pair(phone),first);
+  s.setTime(191000);assert.equal(s.result.qr(),null);await assert.rejects(s.result.pair(phone));assert.equal(calls,1);
+});
+
 test('a fresh managed link retains its notice intent through the provider restart, without persisting the intent',async t=>{
   const timers=[],s=await session(t,{notifySelf:true,assistant:false,schedule:fn=>{timers.push(fn);return timers.length;},cancel(){}});
   assert.equal(s.context.newLinkNotice.pending,true);
-  s.config.auth.creds.registered=true;s.client.ev.emit('creds.update');await flush();s.result.close();
+  Object.assign(s.config.auth.creds,makePairedAuthFixture({phone:self}).creds,{registered:true});s.client.ev.emit('creds.update');await flush();s.result.close();
   const reopened=await s.open();t.after(()=>reopened.close());
   assert.equal(s.config.auth.creds.registered,true);s.client.ev.emit('connection.update',{connection:'open'});await flush();
   assert.equal(timers.length,1);await timers.shift()();assert.equal(s.sent.length,1);assert.equal(s.context.newLinkNotice.pending,false);
@@ -179,7 +366,7 @@ test('managed connection notice goes only to socket self, caches its exact proto
   s.client.ev.emit('connection.update',{connection:'open'});await flush();assert.equal(timers.length,1);
   await timers.shift()();assert.equal(s.sent.length,1);assert.equal(s.sent[0].jid,self+'@s.whatsapp.net');
   assert.match(s.sent[0].body.conversation,/Dispositivo Conectado/);
-  assert.deepEqual(await s.config.getMessage({id:'provider-id'}),s.sent[0].body);
+  assert.deepEqual(await s.config.getMessage({id:'provider-id',remoteJid:self+'@s.whatsapp.net',fromMe:true}),s.sent[0].body);
   await assert.rejects(s.result.send(self,'cannot send arbitrary self message'));
   s.result.close();const reopened=await s.open();t.after(()=>reopened.close());
   s.client.ev.emit('connection.update',{connection:'open'});await flush();await timers.shift()();
@@ -210,11 +397,20 @@ test('actual socket factory uses per-channel auth and refuses group, self, histo
   s.receive({});await flush();await flush();assert.equal(s.messages.length,1);
   assert.equal(s.config.syncFullHistory,false);assert.equal(s.config.shouldSyncHistoryMessage(),false);
 });
+test('recent managed offline append from before reconnect is consumed once while old history stays excluded',async t=>{
+  const s=await session(t);s.setTime(1000000);
+  const message={key:{id:'recovered-managed',remoteJid:phone+'@s.whatsapp.net',fromMe:false},messageTimestamp:970,
+    message:{conversation:'Pedido recebido durante a interrupção'}};
+  s.client.ev.emit('messages.upsert',{type:'append',messages:[message]});await flush();await flush();
+  assert.equal(s.messages.length,1);assert.equal(s.messages[0].message_id,'recovered-managed');
+  s.client.ev.emit('messages.upsert',{type:'append',messages:[message,{...message,key:{...message.key,id:'too-old'},messageTimestamp:99}]});
+  await flush();await flush();assert.equal(s.messages.length,1);
+});
 
 test('exact outgoing proto is encrypted before relay and survives a new channel socket',async t=>{
   const s=await session(t);s.client.ev.emit('connection.update',{connection:'open'});
   s.client.relayMessage=async(jid,body,options)=>{
-    assert.equal(jid,phone+'@s.whatsapp.net');assert.deepEqual(await s.config.getMessage({id:options.messageId}),body);
+    assert.equal(jid,phone+'@s.whatsapp.net');assert.deepEqual(await s.config.getMessage({id:options.messageId,remoteJid:jid,fromMe:true}),body);
     s.sent.push({jid,body,options});
   };
   assert.deepEqual(await s.result.send(phone,'private synthetic payload'),{id:'provider-id'});
@@ -222,9 +418,9 @@ test('exact outgoing proto is encrypted before relay and survives a new channel 
   const retryDir=path.join(s.context.directory,'retry-proto');
   assert.equal(fs.readdirSync(retryDir).length,1);
   assert.equal(fs.readFileSync(path.join(retryDir,fs.readdirSync(retryDir)[0])).includes(Buffer.from('private synthetic payload')),false);
-  s.result.close();assert.equal(await s.config.getMessage({id:'provider-id'}),undefined);
+  s.result.close();assert.equal(await s.config.getMessage({id:'provider-id',remoteJid:phone+'@s.whatsapp.net',fromMe:true}),undefined);
   const reopened=await s.open();t.after(()=>reopened.close());
-  assert.deepEqual(await s.config.getMessage({id:'provider-id'}),{conversation:'private synthetic payload'});
+  assert.deepEqual(await s.config.getMessage({id:'provider-id',remoteJid:phone+'@s.whatsapp.net',fromMe:true}),{conversation:'private synthetic payload'});
 });
 
 test('a different channel cannot recover another channels proto even with the same message id',async t=>{
@@ -245,7 +441,7 @@ test('an ambiguous relay is attempted once with the prepared proto retained for 
   const s=await session(t);s.client.ev.emit('connection.update',{connection:'open'});let attempts=0;
   s.client.relayMessage=async()=>{attempts++;throw Error('uncertain relay');};
   await assert.rejects(s.result.send(phone,'one attempt'));assert.equal(attempts,1);
-  assert.deepEqual(await s.config.getMessage({id:'provider-id'}),{conversation:'one attempt'});
+  assert.deepEqual(await s.config.getMessage({id:'provider-id',remoteJid:phone+'@s.whatsapp.net',fromMe:true}),{conversation:'one attempt'});
 });
 
 test('audio records interaction before download/ASR and passes only the bounded transcript',async t=>{
@@ -253,7 +449,7 @@ test('audio records interaction before download/ASR and passes only the bounded 
   s.context.onInbound=async value=>{s.notices.push(value);order.push('notice');return {revision:s.notices.length};};
   s.mod.downloadMediaMessage=async()=>{order.push('download');assert.equal(s.notices.length,1);return buffer;};
   s.context.transcribe=async value=>{order.push('asr');assert.equal(value.phone,phone);assert.equal(value.mediaType,'audio/ogg');assert.equal(value.buffer,buffer);return 'Quero corte';};
-  s.context.onMessage=async value=>{order.push('forward');s.messages.push(value);};
+  s.context.onMessage=async value=>{order.push('forward');s.messages.push(value);return {state:'committed_no_reply',not_committed:false};};
   s.receive({}, {audioMessage:{fileLength:buffer.length,seconds:1,mimetype:'audio/ogg'}});
   await flush();await flush();assert.deepEqual(order,['notice','download','asr','forward']);
   assert.equal(s.messages[0].text,'Quero corte');assert.ok(buffer.every(byte=>byte===0));
@@ -276,6 +472,150 @@ test('unapproved audio and failed interaction notices never reach media processi
   s.receive({}, {audioMessage:{fileLength:20,seconds:1}});await flush();await flush();assert.equal(s.messages.length,0);
 });
 
+function replayClock(){let serial=0;const tasks=new Map();return {tasks,
+  schedule:(fn,ms)=>{const id=++serial;tasks.set(id,{fn,ms});return id;},cancel:id=>tasks.delete(id),
+  async replay(){const found=[...tasks.values()].find(task=>task.ms===5000);assert.ok(found,'Pending admission arms a bounded recovery timer');await found.fn();for(let i=0;i<12;i++)await flush();}};}
+async function reached(predicate){for(let i=0;i<200;i++){if(predicate())return;await flush();}assert.fail('Expected managed admission boundary');}
+
+test('managed notice 503 persists encrypted input and retries original payload only before preparation',async t=>{
+  const clock=replayClock(),s=await session(t,clock);let unavailable=true,attempts=0;
+  s.context.onInbound=async value=>{attempts++;s.notices.push(value);if(unavailable)throw Object.assign(Error('synthetic API503'),{status:503});return {revision:1};};
+  s.receive({id:'notice-503'},{conversation:'Private original synthetic body'});await reached(()=>attempts===1);await flush();await flush();
+  assert.equal(s.messages.length,0);assert.equal(s.result.ingressDiagnostics().pending,1);
+  const base=path.join(s.context.directory,'incoming-assistant'),namespace=fs.readdirSync(base)[0],file=path.join(base,namespace,fs.readdirSync(path.join(base,namespace))[0]);
+  assert.equal(fs.readFileSync(file).includes(Buffer.from('Private original synthetic body')),false);
+  s.receive({id:'notice-503'},{conversation:'changed duplicate must not replace'});unavailable=false;await clock.replay();
+  await reached(()=>s.result.ingressDiagnostics().entries===0);assert.equal(attempts,2);assert.equal(s.messages.length,1);
+  assert.equal(s.messages[0].text,'Private original synthetic body');assert.equal(s.notices[1].text,'Private original synthetic body');
+});
+
+test('managed malformed notice proof is never admitted or prepared and can recover with a typed revision',async t=>{
+  const clock=replayClock(),s=await session(t,clock);let valid=false,asr=0;
+  s.context.onInbound=async()=>valid?{revision:1}:{recorded:true};s.context.transcribe=async()=>{asr++;return 'synthetic';};
+  s.receive({id:'malformed-proof'},{conversation:'No inference until revision proof'});await flush();await flush();
+  assert.equal(s.result.ingressDiagnostics().pending,1);assert.equal(s.messages.length,0);assert.equal(asr,0);
+  valid=true;await clock.replay();await reached(()=>s.messages.length===1);assert.equal(s.result.ingressDiagnostics().entries,0);
+});
+
+test('managed pending notice recovers on restart without another provider upsert and keeps original timestamp',async t=>{
+  const clock=replayClock(),s=await session(t,clock);let unavailable=true;
+  s.context.onInbound=async value=>{s.notices.push(value);if(unavailable)throw Error('synthetic unavailable');return {revision:1};};
+  s.receive({id:'notice-restart'},{conversation:'kept across restart'});await reached(()=>s.notices.length===1);await flush();await flush();
+  assert.equal(s.result.ingressDiagnostics().pending,1);s.result.close();s.setTime(110000);unavailable=false;
+  const reopened=await s.open();t.after(()=>reopened.close());s.client.ev.emit('connection.update',{connection:'open'});
+  await reached(()=>s.messages.length===1);assert.equal(s.messages[0].message_id,'notice-restart');
+  assert.equal(reopened.ingressDiagnostics().entries,0);
+});
+
+test('managed ASR rejection retains original review without blocking or replaying paid preparation after restart',async t=>{
+  const clock=replayClock(),s=await session(t,{...clock,audio:true});let asr=0;
+  s.context.transcribe=async()=>{asr++;throw Error('synthetic unknown ASR response');};
+  s.receive({id:'started-audio'},{audioMessage:{fileLength:20,seconds:1,mimetype:'audio/ogg'}});
+  await reached(()=>s.result.ingressDiagnostics()?.retained===1);assert.equal(asr,1);assert.equal(s.messages.length,0);
+  assert.equal(s.result.ingressDiagnostics().blocked,0);
+  const base=path.join(s.context.directory,'incoming-assistant'),directory=path.join(base,fs.readdirSync(base)[0]);
+  const stored=()=>encryptedChannelStore({directory,secret:s.context.secret,
+    deserialize:value=>JSON.parse(value,sdk.BufferJSON.reviver)}).get('incoming-admission-v1');
+  assert.equal(stored().entries[0].id,'started-audio');assert.equal(stored().entries[0].at,100000);
+  assert.equal(stored().entries[0].message.raw.message.audioMessage.seconds,1);
+  assert.equal(stored().entries[0].work.phase,'preparation_failed');assert.equal(stored().entries[0].work.review_required,true);
+  s.result.close();const reopened=await s.open();t.after(()=>reopened.close());s.client.ev.emit('connection.update',{connection:'open'});
+  for(let i=0;i<10;i++)await flush();assert.equal(asr,1);assert.equal(reopened.ingressDiagnostics().blocked,0);
+  assert.equal(reopened.ingressDiagnostics().retained,1);assert.equal(s.sent.length,0);
+  s.receive({id:'unnegotiated-selection-after-audio',fromMe:false},{interactiveResponseMessage:{nativeFlowResponseMessage:{name:'quick_reply',
+    paramsJson:JSON.stringify({id:assistantPresentation().action.buttons[0].id,display_text:'Sim'})},contextInfo:{stanzaId:'old-unprovenanced-summary'}}});
+  await reached(()=>s.notices.length===2);for(let i=0;i<15;i++)await flush();
+  assert.equal(s.messages.length,0,'Missing interaction capability cannot bypass the durable selection review barrier');
+  s.receive({id:'fresh-after-rejected-audio'},{conversation:'Sim'});await reached(()=>s.messages.length===1);
+  assert.equal(s.messages[0].require_summary_review,true);assert.equal(s.messages[0].selection,undefined);
+  assert.equal(asr,1);assert.equal(stored().entries.find(entry=>entry.id==='started-audio').work.review_required,true);
+});
+
+test('without preparation review an unnegotiated typed event keeps the prior opaque backend contract',async t=>{
+  const s=await session(t);s.receive({id:'unnegotiated-without-review',fromMe:false},{interactiveResponseMessage:{nativeFlowResponseMessage:{name:'quick_reply',
+    paramsJson:JSON.stringify({id:assistantPresentation().action.buttons[0].id,display_text:'not consent authority'})},contextInfo:{stanzaId:'unproved-provider'}}});
+  await reached(()=>s.messages.length===1);assert.equal(s.messages[0].selection,undefined);
+  assert.equal(s.messages[0].text,'[Escolha recebida]');assert.equal(s.messages[0].envelope,undefined);assert.equal(s.sent.length,0);
+});
+
+for(const [label,outcome] of [['undefined',undefined],['null',null],['empty',{}],['unaccepted',{accepted:false}]])
+test('managed assistant '+label+' business outcome remains reviewable instead of fabricated completion',async t=>{
+  const s=await session(t);s.context.onMessage=async()=>outcome;s.receive({id:'uncertain-'+label});
+  await reached(()=>s.result.ingressDiagnostics()?.blocked===1);assert.equal(s.result.ingressDiagnostics().entries,1);
+  assert.equal(s.sent.length,0);
+});
+
+test('managed known policy skip after admitted safety notice completes without business replay',async t=>{
+  const s=await session(t);s.context.onMessage=async()=>({state:'policy_skipped',not_committed:true});s.receive({id:'policy-known'});
+  await reached(()=>s.result.ingressDiagnostics()?.entries===0);assert.equal(s.notices.length,1);assert.equal(s.sent.length,0);
+});
+
+test('managed pending identity resolves on recovery while healthy other contacts do not require review',async t=>{
+  const clock=replayClock(),s=await session(t,clock),other='5567999999903';let mapped=false;
+  s.context.allowedSender=value=>[phone,other].includes(value);
+  s.client.signalRepository={lidMapping:{getPNForLID:async()=>mapped?phone+'@s.whatsapp.net':null}};
+  s.receive({id:'lid-pending',remoteJid:'100000000000001@lid'});await flush();await flush();
+  assert.equal(s.result.ingressDiagnostics().pending,1);assert.equal(s.notices.length,0);
+  mapped=true;await clock.replay();await reached(()=>s.messages.length===1);
+  s.receive({id:'contact-a'});s.receive({id:'contact-b',remoteJid:other+'@s.whatsapp.net'});
+  await reached(()=>s.messages.length===3);assert.equal(s.result.ingressDiagnostics().blocked,0);assert.equal(s.result.ingressDiagnostics().entries,0);
+});
+
+test('managed old physical account journal stays isolated when authenticated own PN changes',async t=>{
+  const clock=replayClock(),s=await session(t,clock);let unavailable=true;
+  s.context.onInbound=async value=>{s.notices.push(value);if(unavailable)throw Error('synthetic notice outage');return {revision:s.notices.length};};
+  s.receive({id:'prior-self'});await reached(()=>s.notices.length===1);await flush();await flush();s.result.close();
+  const base=path.join(s.context.directory,'incoming-assistant'),oldNamespace=fs.readdirSync(base)[0];
+  s.client.user.id='5567999999904@s.whatsapp.net';unavailable=false;const reopened=await s.open();t.after(()=>reopened.close());
+  s.client.ev.emit('connection.update',{connection:'open'});for(let i=0;i<8;i++)await flush();
+  assert.equal(s.notices.length,1);assert.equal(s.messages.length,0);assert.equal(fs.existsSync(path.join(base,oldNamespace)),true);
+  assert.equal(reopened.ingressDiagnostics().entries,0);s.receive({id:'current-self'});await reached(()=>s.messages.length===1);
+});
+
+test('managed expired pending notice stays blocked for review with no backend retry or timestamp rewrite',async t=>{
+  const clock=replayClock(),s=await session(t,clock);s.context.onInbound=async()=>{throw Error('synthetic503');};
+  s.receive({id:'expires-original'});await reached(()=>s.result.ingressDiagnostics()?.pending===1);await flush();await flush();
+  s.setTime(100000+900001);await clock.replay();assert.equal(s.result.ingressDiagnostics().pending,0);
+  assert.equal(s.result.ingressDiagnostics().blocked,1);assert.equal(s.result.ingressDiagnostics().oldest_at,100000);assert.equal(s.messages.length,0);
+});
+
+test('managed storage failure stops native channel before notice and does not arm reconnection',async t=>{
+  const s=await session(t),rename=fs.renameSync,policies=[];s.context.onDisconnected=policy=>policies.push(policy);
+  fs.renameSync=(from,to)=>{if(to.includes(path.sep+'incoming-assistant'+path.sep))throw Error('synthetic full storage');return rename(from,to);};
+  try{s.receive({id:'cannot-journal'});}finally{fs.renameSync=rename;}
+  assert.equal(s.client.ended,true);assert.equal(s.notices.length,0);assert.equal(policies[0].retry,false);
+  assert.equal(s.result.connectionHealth().state,'needs_attention');assert.equal(s.result.connectionHealth().ingress_storage_unavailable,true);
+});
+
+test('managed pending notice prevents external automatic relay after asynchronous recipient lookup',async t=>{
+  const clock=replayClock(),s=await session(t,clock);s.client.ev.emit('connection.update',{connection:'open'});await flush();
+  let release,lookup=false;const gate=new Promise(resolve=>{release=resolve;});
+  s.client.onWhatsApp=async pn=>{lookup=true;await gate;return [{exists:true,jid:pn+'@s.whatsapp.net'}];};
+  const sending=s.result.send(phone,'synthetic appointment notice',{source:'appointment'});await reached(()=>lookup);
+  s.context.onInbound=async()=>{throw Error('synthetic notice503');};s.receive({id:'stop-before-external-relay'},{conversation:'PARAR'});
+  await reached(()=>s.result.ingressDiagnostics()?.pending===1);await flush();await flush();release();
+  await assert.rejects(sending,/operation_superseded/);assert.equal(s.sent.length,0);assert.equal(s.result.ingressDiagnostics().pending,1);
+});
+
+test('managed existing review journal is loaded before the first connected snapshot or external automatic send',async t=>{
+  const s=await session(t);s.context.onMessage=async()=>undefined;s.receive({id:'review-before-open'});
+  await reached(()=>s.result.ingressDiagnostics()?.blocked===1);s.result.close();
+  const reopened=await s.open();t.after(()=>reopened.close());s.client.ev.emit('connection.update',{connection:'open'});
+  const immediate=reopened.connectionHealth();assert.equal(immediate.state,'needs_attention');assert.equal(immediate.ingress_blocked,1);
+  await assert.rejects(reopened.send(phone,'must remain paused',{source:'automation'}),/operation_superseded/);assert.equal(s.sent.length,0);
+});
+
+test('managed corrupt retained admission cannot publish a healthy open or reconnect without review',async t=>{
+  const clock=replayClock(),s=await session(t,clock),policies=[];s.context.onDisconnected=policy=>policies.push(policy);
+  s.context.onInbound=async()=>{throw Error('synthetic notice503');};s.receive({id:'corrupt-before-open'});
+  await reached(()=>s.result.ingressDiagnostics()?.pending===1);await flush();await flush();s.result.close();
+  const base=path.join(s.context.directory,'incoming-assistant'),namespace=fs.readdirSync(base)[0],file=path.join(base,namespace,fs.readdirSync(path.join(base,namespace))[0]);
+  fs.writeFileSync(file,'synthetic invalid encrypted evidence');const reopened=await s.open();t.after(()=>reopened.close());
+  s.client.ev.emit('connection.update',{connection:'open'});assert.equal(s.client.ended,true);
+  assert.equal(reopened.connectionHealth().state,'needs_attention');assert.equal(policies.at(-1).retry,false);
+  assert.equal(fs.readFileSync(file,'utf8'),'synthetic invalid encrypted evidence');assert.equal(s.sent.length,0);
+});
+
 test('closing during audio aborts ASR, erases downloaded bytes and never forwards stale text',async t=>{
   const s=await session(t,{audio:true}),buffer=Buffer.from('OggS bounded'),started=[];
   s.mod.downloadMediaMessage=async()=>buffer;
@@ -286,8 +626,29 @@ test('closing during audio aborts ASR, erases downloaded bytes and never forward
 
 test('typing is scoped to a verified private sender and always stopped after the reply callback',async t=>{
   const events=[];const s=await session(t,{typingFactory:options=>({begin(meta){assert.equal(options.pilotPhone(),phone);assert.equal(meta.phone,phone);events.push('begin');return {beforeReply:async()=>events.push('reply'),stop:()=>events.push('stop')};}})});
-  s.context.onMessage=async(_value,{beforeReply})=>{await beforeReply('answer');events.push('forward-done');};
+  s.client.ev.emit('connection.update',{connection:'open'});await flush();
+  s.context.onMessage=async(_value,{beforeReply})=>{await beforeReply('answer');events.push('forward-done');return {accepted:true};};
   s.receive({});await flush();await flush();assert.deepEqual(events,['begin','reply','forward-done','stop']);
+});
+
+test('managed AI preparation and final reliable relay share one presence lease and credit elapsed inference',async t=>{
+  const clock=presenceClock(100000),s=await session(t,{clock,schedule:clock.schedule,cancel:clock.cancel,registered:true}),presence=[];
+  s.client.sendPresenceUpdate=async(type,jid)=>{presence.push({type,jid,at:clock.now()});};
+  s.client.ev.emit('connection.update',{connection:'open'});await flush();
+  let release;const inference=new Promise(resolve=>{release=resolve;});
+  s.context.onMessage=async(_value,{beforeReply})=>{await inference;await beforeReply('answer');const result=await s.result.send(phone,'answer',{source:'assistant'});return {...result,accepted:true};};
+  s.receive({id:'credited-AI'});await reached(()=>presence.length===1);await clock.advance(1200);release();
+  await reached(()=>s.sent.length===1);await flush();assert.equal(clock.now(),101200);
+  assert.deepEqual(presence.map(value=>value.type),['composing','paused']);assert.equal(s.result.ingressDiagnostics().blocked,0);
+});
+
+test('managed connection notice uses composing and bounded pacing solely for the authenticated self account',async t=>{
+  const clock=presenceClock(100000),s=await session(t,{clock,schedule:clock.schedule,cancel:clock.cancel,notifySelf:true}),presence=[];
+  s.client.sendPresenceUpdate=async(type,jid)=>presence.push({type,jid,at:clock.now()});
+  s.client.ev.emit('connection.update',{connection:'open'});await flush();await clock.advance(2500);await flush();
+  assert.equal(presence[0]?.type,'composing');assert.equal(s.sent.length,0);
+  await clock.advance(3000);await reached(()=>s.sent.length===1);
+  assert.ok(presence.every(value=>value.jid===self+'@s.whatsapp.net'));assert.equal(presence.at(-1).type,'paused');
 });
 
 test('verified LID/device proof belongs to this socket and uses the same reliable proto cache',async t=>{
@@ -295,7 +656,7 @@ test('verified LID/device proof belongs to this socket and uses the same reliabl
   s.context.verifiedLid=()=>true;s.client.user={id:self+':4@s.whatsapp.net',lid:'100000000000001:4@lid'};
   s.client.onWhatsApp=async pn=>[{exists:true,jid:pn+'@s.whatsapp.net',lid:'100000000000002@lid'}];s.client.getUSyncDevices=async()=>[];
   await s.result.send(phone,'verified channel');assert.equal(s.sent[0].jid,'100000000000002@lid');assert.equal(s.sent[0].options.useUserDevicesCache,true);
-  assert.deepEqual(await s.config.getMessage({id:'provider-id'}),{conversation:'verified channel'});
+  assert.deepEqual(await s.config.getMessage({id:'provider-id',remoteJid:'100000000000002@lid',fromMe:true}),{conversation:'verified channel'});
 });
 test('verified recipient PN required and lease is rechecked after provider lookup',async t=>{
   const s=await session(t);s.client.ev.emit('connection.update',{connection:'open'});
@@ -355,4 +716,42 @@ test('a single large decorative batch does not discard its final useful message'
  messages.push({key:{id:'bulk-final',fromMe:false,remoteJid:phone+'@s.whatsapp.net'},message:{conversation:'Qual o preço do corte?'},messageTimestamp:100});
  s.client.ev.emit('messages.upsert',{type:'notify',messages});await flush();await flush();
  assert.equal(s.messages.length,1);assert.equal(s.messages[0].text,'Qual o preço do corte?');assert.equal(s.notices.length,1);
+});
+
+test('creds.update immediately followed by close persists updated keys before reconnect',async t=>{
+  const s=await session(t);
+  Object.assign(s.config.auth.creds,makePairedAuthFixture({phone:self}).creds);s.config.auth.creds.nextPreKeyId=733;
+  s.client.ev.emit('creds.update');s.result.close();
+  const reopened=await s.open();t.after(()=>reopened.close());
+  assert.equal(s.config.auth.creds.registered,false);
+  assert.equal(s.config.auth.creds.nextPreKeyId,733);
+});
+
+test('crypto storage does not await a broker roundtrip or lose an accepted key write during close',async t=>{
+  const s=await session(t);
+  s.context.assertCurrent=()=>new Promise(()=>{});
+  const saved=s.config.auth.keys.set({session:{fixture:{ratchet:'accepted'}}});
+  s.result.close();await saved;
+  s.context.assertCurrent=async()=>{};
+  const reopened=await s.open();t.after(()=>reopened.close());
+  assert.deepEqual(await s.config.auth.keys.get('session',['fixture']),{fixture:{ratchet:'accepted'}});
+});
+
+test('managed encrypted key journal restores the whole interrupted batch',async t=>{
+  const s=await session(t),rename=fs.renameSync;
+  const {digest}=await import('../src/channel-storage.mjs');
+  fs.renameSync=(from,to)=>{if(to.endsWith(digest('key:session:second')+'.enc'))throw Error('synthetic disk fault');return rename(from,to);};
+  try{await assert.rejects(s.config.auth.keys.set({session:{first:{ratchet:1},second:{ratchet:2}}}));}
+  finally{fs.renameSync=rename;}
+  assert.equal(s.result.status(),'stopped');
+  const reopened=await s.open();t.after(()=>reopened.close());
+  assert.deepEqual(await s.config.auth.keys.get('session',['first','second']),{first:{ratchet:1},second:{ratchet:2}});
+});
+
+test('managed keys without their identity cannot create a fresh account',async t=>{
+  const s=await session(t);await s.config.auth.keys.set({session:{old:{ratchet:1}}});s.result.close();
+  const {digest}=await import('../src/channel-storage.mjs');
+  fs.unlinkSync(path.join(s.context.directory,'auth',digest('creds')+'.enc'));
+  s.mod.initAuthCreds=()=>assert.fail('must not replace the lost identity');
+  await assert.rejects(s.open(),/channel_auth_unavailable/);
 });

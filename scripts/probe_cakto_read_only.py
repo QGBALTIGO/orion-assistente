@@ -24,6 +24,24 @@ async def check():
         print("cakto_read_only_connectivity_failed", file=sys.stderr)
         return 3
     print("cakto_oauth_offers_read_ok", flush=True)
+    # Only Boolean authorization results, never raw scopes or OAuth tokens.
+    required = {
+        "write": frozenset({"write"}),
+        "payments": frozenset({"payments"}),
+        "subscriptions": frozenset({"subscriptions"}),
+        "card_tokens": frozenset({"card_tokens"}),
+        "orders": frozenset({"orders"}),
+    }
+    def verdict(needed):
+        state=client.granted_scopes(needed)
+        return "unknown" if state is None else ("yes" if state else "no")
+    print("cakto_provider_grants=" + ";".join(
+        name + ":" + verdict(scopes) for name,scopes in required.items()
+    ), flush=True)
+    print("cakto_catalog_write_grants="+";".join(
+        scope+":"+verdict(frozenset({"write",scope}))
+        for scope in ("products","offers","webhooks")
+    ),flush=True)
     print("cakto_catalog_matches=" + str(sum(plan["found"] for plan in matched)) +
           "/3;cakto_ambiguous_matches=" + str(sum(plan["ambiguous"] for plan in matched)),
           flush=True)
@@ -64,6 +82,25 @@ async def check():
     except Exception:
         print("cakto_delivery_history_read_not_verified", flush=True)
     try:
+        from scripts.probe_orion_v2_adoption_read_only import probe as probe_v2
+        v2=await probe_v2(client,offers)
+        # Only aggregate booleans and counts; no IDs or provider payloads.
+        print("cakto_v2_linked_apps="
+              + str(v2["active_target_product_apps"])
+              + ";key_readable:" + str(v2["remote_secret_readable"])
+              + ";env_matches:" + str(v2["matches_current_env"])
+              + ";six_events:" + str(v2["full_six_event_app_coverage"])
+              + ";maximum_events:" + str(v2["max_event_count"]),flush=True)
+    except Exception:
+        print("cakto_v2_linked_apps_read_unavailable",flush=True)
+    try:
+        from scripts.probe_cakto_v2_management_read_only import check as probe_management
+        status=await probe_management(client,offers)
+        # One safe, known status string; no provider response content or IDs.
+        print("cakto_v2_management_api="+status,flush=True)
+    except Exception:
+        print("cakto_v2_management_api=unavailable",flush=True)
+    try:
         methods = await probe_payment_methods(client, offers)
         print("cakto_orion_payment_methods="
               + "one_product:" + str(int(methods["offers_one_product"]))
@@ -72,6 +109,31 @@ async def check():
               + ";confirmed:" + str(int(methods["methods_confirmed"])), flush=True)
     except Exception:
         print("cakto_orion_payment_methods_unverified", flush=True)
+    try:
+        from scripts.probe_cakto_receipt_backlog_read_only import totals
+        counts=await totals()
+        # Aggregate counts only. This cannot expose or modify payment records.
+        print("cakto_local_receipts=" + ";".join(
+            key + ":" + str(value) for key,value in sorted(counts.items())
+        ),flush=True)
+    except Exception:
+        print("cakto_local_receipts_unavailable",flush=True)
+    # Check the brand-new, one-time Pix contract without enabling payments:
+    # the flag override is process-local and only for a READ-only probe.
+    pix_ready=False
+    if len(__import__("os").getenv("CAKTO_PIX_WEBHOOK_SECRET",""))>=32:
+        try:
+            from scripts.probe_prepaid_pix_read_only import check as pix_check
+            pix_ready=await pix_check()
+            print("orion_pix_prepaid_catalog_ready="+str(int(pix_ready)),flush=True)
+        except Exception:
+            print("orion_pix_prepaid_catalog_unverified",flush=True)
+        if __import__("os").getenv("ORION_PIX_SYNTHETIC_TEST_ONCE","0")=="1":
+            if pix_ready:
+                from scripts.test_orion_prepaid_pix_webhook_once import run as pix_test
+                await pix_test()
+            else:
+                print("orion_pix_synthetic_skipped_catalog_unverified",flush=True)
     import os
     # Only a Boolean is logged. Never print/reveal any value, token or length.
     print("cakto_webhook_secret_min_length_ready="

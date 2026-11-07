@@ -9,6 +9,8 @@ from uuid import UUID
 
 from fastapi import HTTPException
 from sqlalchemy import text
+from app.workspace_policy import (SUBSCRIPTION_NICHE, SUBSCRIPTION_WORKSPACE,
+                                  STANDARD_WORKSPACE)
 
 
 MULTIPLE_BUSINESSES_MESSAGE = (
@@ -25,6 +27,9 @@ OPERATOR_CONTEXT_MESSAGE = (
     "Entre com a conta da empresa para continuar."
 )
 _MULTIPLE = "__multiple_businesses__"
+_WORKSPACE_COLUMN = f"""CASE WHEN (SELECT configuration->>'niche'
+    FROM business_onboarding WHERE tenant_id=t.id)='{SUBSCRIPTION_NICHE}'
+    THEN '{SUBSCRIPTION_WORKSPACE}' ELSE '{STANDARD_WORKSPACE}' END AS workspace_profile"""
 
 
 def reject_multiple_businesses():
@@ -93,7 +98,8 @@ async def panel_businesses(db, actor):
     """Return zero/one authorized context; never enumerate platform tenants."""
     account_id = getattr(actor, "account_id", None)
     if isinstance(account_id, UUID):
-        rows = (await db.execute(text("""SELECT t.id,t.name,t.slug,t.status,t.timezone,m.role
+        rows = (await db.execute(text(f"""SELECT t.id,t.name,t.slug,t.status,t.timezone,m.role,
+            {_WORKSPACE_COLUMN}
             FROM tenant_memberships m JOIN tenants t ON t.id=m.tenant_id
             WHERE m.account_id=:account AND m.active ORDER BY t.id LIMIT 2"""),
             {"account": account_id})).mappings().all()
@@ -106,8 +112,9 @@ async def panel_businesses(db, actor):
                 raise HTTPException(409, INACTIVE_BUSINESS_MESSAGE)
             return []
     elif actor.role == "viewer" and isinstance(getattr(actor, "tenant_id", None), UUID):
-        row = (await db.execute(text("""SELECT id,name,slug,status,timezone,'viewer' AS role
-            FROM tenants WHERE id=:tenant"""), {"tenant": actor.tenant_id})).mappings().first()
+        row = (await db.execute(text(f"""SELECT id,name,slug,status,timezone,'viewer' AS role,
+            {_WORKSPACE_COLUMN} FROM tenants t WHERE id=:tenant"""),
+            {"tenant": actor.tenant_id})).mappings().first()
         if row is None:
             raise HTTPException(403, "Empresa não vinculada ao acesso")
         return [row]
@@ -120,10 +127,12 @@ async def panel_businesses(db, actor):
             tenant_id = UUID(configured)
         except ValueError:
             raise HTTPException(409, OPERATOR_CONTEXT_MESSAGE) from None
-        rows = (await db.execute(text("""SELECT id,name,slug,status,timezone,:role AS role
+        rows = (await db.execute(text(f"""SELECT id,name,slug,status,timezone,:role AS role,
+            '{STANDARD_WORKSPACE}' AS workspace_profile
             FROM tenants WHERE id=:tenant"""), {"tenant": tenant_id, "role": actor.role})).mappings().all()
     else:
-        rows = (await db.execute(text("""SELECT id,name,slug,status,timezone,:role AS role
+        rows = (await db.execute(text(f"""SELECT id,name,slug,status,timezone,:role AS role,
+            '{STANDARD_WORKSPACE}' AS workspace_profile
             FROM tenants ORDER BY id LIMIT 2"""), {"role": actor.role})).mappings().all()
     if len(rows) != 1:
         raise HTTPException(409, OPERATOR_CONTEXT_MESSAGE)

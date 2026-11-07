@@ -178,6 +178,12 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
 .device-dialog legend{font-weight:750;padding:0 7px}.device-dialog small{display:block;margin-top:5px}
 .device-dialog .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .device-dialog pre{white-space:pre-wrap;overflow-wrap:anywhere;border:1px solid #2a4639;background:#07100d;padding:13px;border-radius:9px;color:#a9d7c4}
+#ingressReviewPanel{margin-top:24px;overflow-wrap:anywhere}
+#ingressReviewPanel fieldset{min-width:0}
+#ingressReviewPanel .field{display:grid;gap:6px;margin:12px 0}
+#ingressReviewPanel input[type=text]{width:100%;min-width:0;box-sizing:border-box}
+#ingressReviewPanel input[type=checkbox]{width:18px;height:18px;vertical-align:middle}
+#ingressReviewPanel .btn{margin:8px 8px 8px 0;white-space:normal}
 @media(max-width:740px){.device-stat-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.device-actions{grid-template-columns:1fr}.device-dialog .form-grid{grid-template-columns:1fr}.device-hero{padding:18px}.device-feature{padding:15px 12px}}
 
 
@@ -579,11 +585,23 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
 <link rel="stylesheet" href="/panel-assets/orion-fields.css">
 <link rel="stylesheet" href="/panel-assets/orion-onboarding.css">
 <link rel="stylesheet" href="/panel-assets/orion-channels.css">
+<link rel="stylesheet" href="/panel-assets/orion-subscription-devices.css">
+<link rel="stylesheet" href="/panel-assets/orion-subscription-chatbot.css">
+<link rel="stylesheet" href="/panel-assets/orion-subscription-chatbot-test.css">
+<link rel="stylesheet" href="/panel-assets/orion-subscription-templates.css">
+<link rel="stylesheet" href="/panel-assets/orion-subscription-sent-messages.css">
+<link rel="stylesheet" href="/panel-assets/orion-subscription-diagnostics.css">
+<link rel="stylesheet" href="/panel-assets/orion-subscription-campaigns.css">
+<link rel="stylesheet" href="/panel-assets/orion-subscription-scheduled-messages.css">
+<link rel="stylesheet" href="/panel-assets/orion-subscription-bulk-messages.css">
+<link rel="stylesheet" href="/panel-assets/orion-subscription-direct-messages.css">
 <link rel="stylesheet" href="/panel-assets/orion-inbox.css">
 <style>
 #appView.ob-gated .content > .page,#appView.ob-gated #osConsultantFab{display:none!important}
 #orionSetup[hidden]{display:none!important}
 </style>
+<link rel="stylesheet" href="/panel-assets/orion-focus.css">
+<script src="/panel-assets/orion-focus.js"></script>
 <script src="/panel-assets/orion-appointment-communications.js" defer></script>
 </head>
 <body>
@@ -813,8 +831,16 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
     <section id="page-dispositivo" class="page os-main">
       <div class="header">
         <div><div class="eyebrow">Atendimento Orion</div><h1>Conectar WhatsApp</h1><p class="subhead">Conecte seu número e acompanhe o atendimento em um só lugar.</p></div>
-        <div class="pill"><span id="statusDot" class="dot amber"></span><span id="globalStatus">Verificando conexão</span></div>
+        <div class="row" style="justify-content:flex-end;flex-wrap:wrap">
+          <div class="pill"><span id="statusDot" class="dot amber"></span><span id="globalStatus">Verificando conexão</span></div>
+          <button id="deviceStatusDiagnostics" class="btn secondary hidden" data-admin-only type="button">Diagnósticos</button>
+        </div>
       </div>
+
+      <section id="deviceAttention" class="card hidden" role="status" aria-labelledby="deviceAttentionTitle">
+        <h2 id="deviceAttentionTitle">O atendimento precisa de verificação</h2>
+        <p>Seu número permanece vinculado ao Orion. Consulte os diagnósticos antes de retomar o atendimento automático.</p>
+      </section>
 
       <div id="connectedCenter" class="device-hub orion-workspace hidden" aria-label="Central do WhatsApp conectado">
         <div class="device-hero">
@@ -937,6 +963,7 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
         <h2 id="deviceDiagnosticsTitle">Diagnósticos da conexão</h2>
         <p>Somente estados operacionais, sem expor sessões Signal ou credenciais.</p>
         <pre id="deviceDiagnosticsText">Consultando…</pre>
+        <section id="ingressReviewPanel" class="hidden" aria-labelledby="ingressReviewTitle"></section>
         <div class="modal-actions"><button id="deviceDiagnosticsClose" class="btn secondary" type="button">Fechar</button></div>
       </dialog>
       <div id="disconnectedWizard" class="os-connect wizard-shell">
@@ -1269,6 +1296,18 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
 <script src="/panel-assets/orion-connect.js"></script>
 <script src="/panel-assets/orion-onboarding.js"></script>
 <script src="/panel-assets/orion-channels.js"></script>
+<script src="/panel-assets/orion-subscription-devices.js"></script>
+<script src="/panel-assets/orion-subscription-chatbot.js"></script>
+<script src="/panel-assets/orion-subscription-chatbot-test.js"></script>
+<script src="/panel-assets/orion-subscription-templates.js"></script>
+<script src="/panel-assets/orion-subscription-sent-messages.js"></script>
+<script src="/panel-assets/orion-subscription-diagnostics.js"></script>
+<script src="/panel-assets/orion-subscription-campaigns.js"></script>
+<script src="/panel-assets/orion-subscription-scheduled-messages.js"></script>
+<script src="/panel-assets/orion-subscription-bulk-messages.js"></script>
+<script src="/panel-assets/orion-subscription-direct-messages.js"></script>
+<script src="/panel-assets/orion-subscription-group-contacts.js"></script>
+<script src="/panel-assets/orion-subscription-group-add.js"></script>
 <script src="/panel-assets/orion-communication.js"></script>
 <script src="/panel-assets/orion-automations.js"></script>
 <script src="/panel-assets/orion-flows.js"></script>
@@ -1278,6 +1317,7 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
 <script src="/panel-assets/orion-suite-live.js"></script>
 <script src="/panel-assets/orion-pwa.js" defer></script>
 <script src="/panel-assets/orion-admin-center.js"></script>
+<script src="/panel-assets/orion-ingress-review.js"></script>
 <script>
 (()=>{
 "use strict";
@@ -1403,6 +1443,12 @@ window.addEventListener("pageshow",event=>{if(event.persisted)void restoreSessio
 let suiteUser=null,suiteTenantId="",businessContextReady=false,businessContextError="";
 let setupController=null,setupResolving=0,setupGate=false;
 let setupPlanRequested=new URLSearchParams(location.search).get('aba')==='plano';
+function syncSetupAccess(profile){
+ const subscription=!(suiteUser?.role==='admin'&&!suiteUser?.maintenance?.active)&&
+  (profile||window.OrionSuite?.workspaceProfile?.()||accountBusiness()?.workspace_profile)==='subscription_services';
+ const plan=document.querySelector('#orionSetupAccess [data-setup-access="plano"]');
+ if(plan)plan.hidden=subscription;
+}
 function setSetupGate(value){
  setupGate=Boolean(value);
  const app=$("appView");
@@ -1415,6 +1461,7 @@ function setSetupGate(value){
  let access=$("orionSetupAccess");
  if(!access){access=document.createElement('div');access.id='orionSetupAccess';access.className='os-actions hidden';access.innerHTML='<button type="button" class="os-button os-outline" data-setup-access="plano">Ver planos</button><button type="button" class="os-button os-outline" data-setup-access="account">Minha conta</button>';app.querySelector('.content').append(access);access.addEventListener('click',event=>{const target=event.target.closest('[data-setup-access]')?.dataset.setupAccess;if(!target||!accountBusiness())return;++setupResolving;setSetupGate(false);$("orionSetup").hidden=true;void window.OrionSuite?.open(target==='plano'?'plano':'member',{force:true});});}
  access.hidden=!setupGate||!accountBusiness();access.classList.toggle('hidden',access.hidden);
+ syncSetupAccess();
  closeSetupTheme();
 }
 function accountBusiness(){return businessContextReady&&businessRows.length===1&&businessRows[0].id===suiteTenantId?businessRows[0]:null}
@@ -1437,7 +1484,7 @@ function blockBusinessContext(message){
  resetBusinessState();resetCommerceState();resetCatalogState();resetAiConversation();clearAiProfileState();resetChatState();
  ++statusSequence;connectedSnapshot=null;
  clearInterval(statusTimer);clearInterval(chatTimer);clearInterval(wizardClocks);statusTimer=null;chatTimer=null;wizardClocks=null;
- window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionCommunication?.unmount();window.OrionInbox?.unmount();renderAccountBusiness();
+ window.OrionSubscriptionDiagnostics?.unmount();window.OrionSubscriptionSentMessages?.unmount();window.OrionSubscriptionTemplates?.unmount();window.OrionSubscriptionChatbotTest?.unmount();window.OrionSubscriptionChatbot?.unmount();window.OrionSubscriptionDevices?.unmount();window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionCommunication?.unmount();window.OrionInbox?.unmount();renderAccountBusiness();
  window.OrionSuite?.sync({tenants:[],tenantId:"",businessContextReady:false,businessContextError});
  showBusinessContextError(businessContextError);
 }
@@ -1485,6 +1532,7 @@ async function resolveSetup(options={}){
 function suiteBridge(initialRoute){
  return {request:api,uploadImage:uploadImage,user:suiteUser,tenants:businessRows,tenantId:suiteTenantId,
   businessContextReady,businessContextError,
+  onWorkspaceProfile:syncSetupAccess,
   initialRoute:initialRoute||"dashboard",
   openSetup(){void resolveSetup({force:true})},
   retryBusinessContext(){void loadBusinesses().then(ok=>{if(ok)startBusinessSession()})},
@@ -1603,8 +1651,12 @@ $("settingsAllowedCallers").addEventListener("beforeinput",event=>{
 });
 $("settingsAllowedCallers").addEventListener("focusout",()=>{const input=$("settingsAllowedCallers");if(input.disabled||input.matches(":disabled")||input.readOnly)return;try{legacyPhoneListValue(input.value);legacyCallerError();}catch(error){legacyCallerError(error.message);}});
 for(const key of ["authorized_staff","time_off"])$("resource").add(new Option(descriptions[key],key));
-function errorMessage(data,code){return typeof data?.detail==="string"?data.detail:(typeof data?.error==="string"?data.error:
-  "O servidor retornou HTTP "+code+".")}
+function errorMessage(data,code){
+ const detail=data?.detail;
+ return typeof detail==="string"?detail:
+  typeof detail?.message==="string"&&detail.message.trim()?detail.message:
+  typeof data?.error==="string"?data.error:"O servidor retornou HTTP "+code+".";
+}
 // A 401 on an optional tenant integration is not proof that Orion's login expired.
 // Only the first-party /auth/me route may confirm that the active session is gone.
 let authProbePending=null;
@@ -1634,22 +1686,52 @@ async function checkSessionAfterUnauthorized(epoch,expectedCsrf){
  if(epoch!==authEpoch||csrf!==expectedCsrf)return;
  if(result==="expired"||result==="changed"){
    if(result==="changed"&&suiteUser?.maintenance?.active)
-     window.location.replace("/panel?aba=member");
+     window.location.replace("/painel?aba=member");
    else showLogin();
  }
 }
-async function api(url,method="GET",data){
+async function api(url,method="GET",data,options){
  const scoped=url.match(/^\/api\/v1\/tenants\/([^/?]+)/);
  if(scoped&&(!accountBusiness()||decodeURIComponent(scoped[1])!==suiteTenantId))throw Error(businessContextError||"Não foi possível confirmar a empresa desta conta.");
  if(url.startsWith("/api/v1/qr/")&&!accountBusiness())throw Error(businessContextError||"Confirme o acesso à sua empresa antes de continuar.");
  const requestAuthEpoch=authEpoch,requestCsrf=csrf;
  const headers={"Accept":"application/json"};
  if(method!=="GET"){headers["Content-Type"]="application/json";headers["X-Orion-CSRF"]=csrf;}
- const response=await fetch(url,{method,headers,body:data===undefined?undefined:JSON.stringify(data),credentials:"same-origin",cache:"no-store"});
+ const response=await fetch(url,{method,headers,body:data===undefined?undefined:JSON.stringify(data),credentials:"same-origin",cache:"no-store",signal:options?.signal});
  if(!response.ok){
    const json=await response.json().catch(()=>({}));
    if(response.status===401&&requestAuthEpoch===authEpoch&&requestCsrf===csrf&&url!=="/auth/login"&&url!=="/auth/me")await checkSessionAfterUnauthorized(requestAuthEpoch,requestCsrf);
-   const error=Error(errorMessage(json,response.status));error.status=response.status;throw error;
+   const error=Error(errorMessage(json,response.status));error.status=response.status;error.detail=json?.detail;
+   const rejection=json?.detail?.rejection;
+   if(response.status===409&&method==="POST"&&/\/subscription-whatsapp\/diagnostics\/[^/]+\/(?:test-messages\/prepare|proxy-tests)$/.test(url)&&json?.detail?.code==="DIAGNOSTIC_CONTEXT_CHANGED"&&rejection?.reason==="stale_device_version"){
+     error.code="DIAGNOSTIC_CONTEXT_CHANGED";
+     error.diagnosticRejection=Object.fromEntries(["reason","idempotency_key","device_id","kind","expected_version"].map(key=>[key,rejection[key]]));
+   }
+   const campaignAdmission=(method==="POST"&&/\/subscription-whatsapp\/campaigns\/[^/]+\/(?:review|actions)$/.test(url))||(method==="PATCH"&&/\/subscription-whatsapp\/campaigns\/[^/]+$/.test(url))||(["PATCH","DELETE"].includes(method)&&/\/subscription-whatsapp\/campaigns\/groups\/[^/]+$/.test(url))||(method==="POST"&&/\/subscription-whatsapp\/campaigns\/groups\/[^/]+\/permissions$/.test(url));
+   if(response.status===409&&campaignAdmission&&json?.detail?.code==="CAMPAIGN_CONFLICT"&&rejection?.reason==="stale_version"){
+     error.code="CAMPAIGN_CONFLICT";
+     error.campaignRejection=Object.fromEntries(["reason","idempotency_key","kind","campaign_id","group_id","expected_version"].map(key=>[key,rejection[key]]));
+   }
+   const scheduleAdmission=method==="POST"&&/\/subscription-whatsapp\/scheduled-messages\/[^/]+\/(?:review|actions)$/.test(url);
+   if(response.status===409&&scheduleAdmission&&json?.detail?.code==="SCHEDULE_CONFLICT"&&rejection?.reason==="stale_version"){
+     error.code="SCHEDULE_CONFLICT";
+     error.scheduleRejection=Object.fromEntries(["reason","idempotency_key","kind","schedule_id","run_id","expected_version","expected_run_version"].map(key=>[key,rejection[key]]));
+   }
+   if(response.status===409&&method==="POST"&&/\/subscription-whatsapp\/group-contacts\/import$/.test(url)&&json?.detail?.code==="GROUP_CONTACTS_CONFLICT"&&rejection?.reason==="stale_group_version"){
+     error.code="GROUP_CONTACTS_CONFLICT";
+     error.groupContactsRejection=Object.fromEntries(["reason","idempotency_key","group_id","expected_version"].map(key=>[key,rejection[key]]));
+   }
+   const directAdmission=method==="POST"&&/\/subscription-whatsapp\/direct-messages\/[^/]+\/actions$/.test(url);
+   if(response.status===409&&directAdmission&&json?.detail?.code==="DIRECT_CONFLICT"&&rejection?.reason==="stale_version"){
+     error.code="DIRECT_CONFLICT";
+     error.directRejection=Object.fromEntries(["reason","idempotency_key","kind","send_id","expected_version"].map(key=>[key,rejection[key]]));
+   }
+   const bulkAdmission=method==="POST"&&/\/subscription-whatsapp\/bulk-messages\/[^/]+\/actions$/.test(url);
+   if(response.status===409&&bulkAdmission&&json?.detail?.code==="BULK_CONFLICT"&&rejection?.reason==="stale_version"){
+     error.code="BULK_CONFLICT";
+     error.bulkRejection=Object.fromEntries(["reason","idempotency_key","kind","batch_id","expected_version"].map(key=>[key,rejection[key]]));
+   }
+   throw error;
  }
  return response.status===204?null:response.json();
 }
@@ -1864,17 +1946,18 @@ function setMaintenanceExpiry(maintenance){
  const ms=Math.max(0,expires-Date.now()+1000);
  maintenanceExpiryTimer=setTimeout(()=>{
    if(suiteUser?.maintenance?.active)
-     window.location.replace("/panel?aba=member");
+     window.location.replace("/painel?aba=member");
  },Math.min(ms,2147483647));
 }
 function showLogin(){
  ++authEpoch;
+ window.OrionIngressReview?.reset();
  resetWizard();
  clearTimeout(maintenanceExpiryTimer);maintenanceExpiryTimer=null;
  window.OrionAdminCenter?.reset();
  $("orionMaintenanceBanner")?.classList.add("hidden");
  ++setupResolving;window.OrionOnboarding?.unmount();setupController=null;setSetupGate(false);
- window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionCommunication?.unmount();window.OrionInbox?.unmount();
+ window.OrionSubscriptionDiagnostics?.unmount();window.OrionSubscriptionSentMessages?.unmount();window.OrionSubscriptionTemplates?.unmount();window.OrionSubscriptionChatbotTest?.unmount();window.OrionSubscriptionChatbot?.unmount();window.OrionSubscriptionDevices?.unmount();window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionCommunication?.unmount();window.OrionInbox?.unmount();
  window.OrionSuite?.destroy();suiteUser=null;suiteTenantId="";businessContextReady=false;businessContextError="";
  memberBusinessOriginal=null;$("memberBusinessForm").reset();$("memberPasswordForm").reset();
  memberFeedback("memberBusinessFeedback","");memberFeedback("memberPasswordFeedback","");
@@ -1900,7 +1983,7 @@ async function showApp(role="support",name="",email="",maintenance=null){
  const epoch=authEpoch;
  resetWizard();
  suiteTenantId="";businessRows=[];businessContextReady=false;businessContextError="";
- const url=new URL(location.href);url.searchParams.delete("empresa");history.replaceState({},"",url.pathname+url.search);
+ const url=new URL(location.href);url.searchParams.delete("empresa");history.replaceState({...window.OrionSubscriptionSentMessages?.navigationState?.(),...window.OrionSubscriptionDiagnostics?.navigationState?.(),...window.OrionSubscriptionGroupAdd?.navigationState?.(),...window.OrionSubscriptionGroupContacts?.navigationState?.(),...window.OrionSubscriptionDirectMessages?.navigationState?.(),...window.OrionSubscriptionBulkMessages?.navigationState?.(),...window.OrionSubscriptionScheduledMessages?.navigationState?.(),...window.OrionSubscriptionCampaigns?.navigationState?.()},"",url.pathname+url.search);
  suiteUser={role,name,email,maintenance};
  loginRole=role;
  const maintenanceActive=role==="member"&&maintenance?.active===true;
@@ -2124,7 +2207,7 @@ function openPage(target){
   $("page-member").classList.toggle("os-admin-center-open",platform);
   if(platform)window.OrionAdminCenter?.open({
     request:api,role:loginRole,
-    onMaintenanceStart:()=>window.location.assign("/panel?aba=dashboard"),
+    onMaintenanceStart:()=>window.location.assign("/painel?aba=dashboard"),
   });else window.OrionAdminCenter?.reset();
  }
  if(platformAdminLegacyPages.has(target)&&loginRole!=="admin"){
@@ -2152,7 +2235,7 @@ function openPage(target){
  if(target==="catalogo")void loadCommerceTenants();
  if(target==="cadastros")void loadTenants();
  if(target==="member"&&!adminOnly())void loadMemberBusiness();
- history.replaceState({}, "", "/panel?aba="+encodeURIComponent(target));
+ history.replaceState({}, "", "/painel?aba="+encodeURIComponent(target));
  window.OrionSuite?.legacyOpened(target);
 }
 document.querySelectorAll("[data-page]").forEach(x=>x.addEventListener("click",()=>openPage(x.dataset.page)));
@@ -2162,7 +2245,7 @@ $("orionMaintenanceExit").addEventListener("click",async()=>{
  button.disabled=true;button.textContent="Encerrando…";
  try{
    await api("/auth/maintenance/end","POST",{});
-   window.location.assign("/panel?aba=member");
+   window.location.assign("/painel?aba=member");
  }catch(error){
    button.disabled=false;button.textContent="Encerrar manutenção";
    const note=$("orionMaintenanceUntil");
@@ -2203,16 +2286,20 @@ function updateWizardClocks(){
    renderGuide();
  }else $("codeCountdown").textContent=pairExpiresAt?countdownLabel(pairExpiresAt-Date.now()):"—";
 }
+function sessionNeedsAttention(data){
+ return ["needs_attention","degraded"].includes(data?.status)&&data.messagesEnabled===true&&data.phone_verified===true;
+}
 function renderGuide(){
  if($("guideSteps").dataset.guideMethod!==method){$("guideSteps").innerHTML=connectView.instructions(method);$("guideSteps").dataset.guideMethod=method}
+ const attention=connectedSnapshot?.status===deviceStatus&&sessionNeedsAttention(connectedSnapshot);
  const revoked=["logged_out","pair_failed"].includes(deviceStatus);
- const locked=wizardBusy||wizardUncertain||revoked||deviceStatus==="connected";
+ const locked=wizardBusy||wizardUncertain||revoked||deviceStatus==="connected"||attention;
  const qrNeedsPreparation=["qr_expired","qr_delayed"].includes(deviceStatus);
  const prepareHint="A conexão precisa ser preparada para gerar o código. Use Preparar novo código.";
  const waitHint="Preparando a conexão. O botão será liberado quando estiver pronta.";
  const panes={tutorial:"wizardTutorial",qr:"qrPanel",code_form:"codePanel",code_ready:"codePanel",success:"wizardSuccess"};
  for(const id of ["wizardTutorial","qrPanel","codePanel","wizardSuccess"])
-   $(id).classList.toggle("hidden",(revoked&&!["tutorial","success"].includes(wizardStep))||id!==panes[wizardStep]);
+   $(id).classList.toggle("hidden",attention||(revoked&&!["tutorial","success"].includes(wizardStep))||id!==panes[wizardStep]);
  document.querySelectorAll("[data-method]").forEach(x=>{
    x.setAttribute("aria-pressed",String(wizardStep!=="success"&&x.dataset.method===method));
    x.classList.toggle("active",wizardStep!=="success"&&x.dataset.method===method);x.disabled=locked;
@@ -2230,7 +2317,7 @@ function renderGuide(){
  $("wizardCodeBack").textContent=wizardStep==="code_ready"?"Alterar número":"Voltar";
  $("wizardCodeBack").disabled=wizardBusy||wizardUncertain;
  $("retryCode").classList.toggle("hidden",!(qrNeedsPreparation||wizardCodeExpired||wizardUncertain||wizardStep==="code_ready"||deviceStatus==="pair_expired"||deviceStatus==="pairing"||deviceStatus==="error"));
- $("retryCode").disabled=wizardBusy||wizardUncertain||deviceStatus==="connected"||deviceStatus==="pairing"||revoked;
+ $("retryCode").disabled=wizardBusy||wizardUncertain||deviceStatus==="connected"||attention||deviceStatus==="pairing"||revoked;
  $("copyCode").disabled=wizardBusy||!pairExpiresAt||Date.now()>=pairExpiresAt;
  $("wizardCheckStatus").classList.toggle("hidden",!(wizardUncertain||["starting","connecting","reconnecting","error","pairing"].includes(deviceStatus)));
  $("wizardCheckStatus").disabled=wizardBusy;
@@ -2268,19 +2355,23 @@ function statusWord(s){
  return ({connected:"Conectado",qr_ready:"Pronto para conectar",qr_expired:"QR expirou",
  qr_delayed:"QR demorando a carregar",pair_failed:"Pareamento recusado",pair_expired:"Código expirado",
  connecting:"Preparando",reconnecting:"Reconectando",logged_out:"Sessão desvinculada",
+ needs_attention:"Atendimento automático pausado",degraded:"Conexão instável",
  error:"Falha na conexão",starting:"Iniciando",pairing:"Aguardando código no celular"})[s]||"Aguardando";
 }
 let connectedSnapshot=null;
 function renderConnectedCenter(data){
  connectedSnapshot=data;
  const active=data.status==="connected";
+ const attention=sessionNeedsAttention(data);
  const successPlaying=active&&wizardStep==="success"&&Date.now()<wizardSuccessUntil;
+ $("deviceAttention").classList.toggle("hidden",!attention);
+ if(attention)$("deviceAttentionTitle").textContent=statusWord(data.status);
  $("connectedCenter").classList.toggle("hidden",!active||successPlaying);
- $("disconnectedWizard").classList.toggle("hidden",active&&!successPlaying);
+ $("disconnectedWizard").classList.toggle("hidden",attention||active&&!successPlaying);
  const headerPill=$("page-dispositivo").querySelector(".header .pill");
  if(headerPill)headerPill.classList.toggle("hidden",active);
  const sub=$("page-dispositivo").querySelector(".header .subhead");
- if(sub)sub.textContent=active?"Seu número, métricas e configurações em um só lugar.":"Vincule seu número em poucos passos.";
+ if(sub)sub.textContent=attention?"Seu WhatsApp permanece vinculado; o atendimento automático precisa de verificação.":active?"Seu número, métricas e configurações em um só lugar.":"Vincule seu número em poucos passos.";
  if(!active)return;
  const profile=data.profile||{};
  $("realWhatsAppName").textContent=profile.name||"Nome não disponibilizado pelo WhatsApp";
@@ -2354,6 +2445,8 @@ function showDeviceSettings(){
 async function showDeviceDiagnostics(){
  closeOptions();
  $("deviceDiagnosticsDialog").showModal();
+ window.OrionIngressReview?.mount({root:$("ingressReviewPanel"),request:api,role:loginRole,
+   isCurrent:(()=>{const epoch=authEpoch,role=loginRole;return()=>epoch===authEpoch&&role===loginRole&&$("deviceDiagnosticsDialog").open})()});
  $("deviceDiagnosticsText").textContent="Consultando o conector privado…";
  try{
    const d=await api("/api/v1/qr/status");
@@ -2403,7 +2496,7 @@ async function disconnectConnectedDevice(){
 }
 for(const id of ["deviceSettings","deviceMenuSettings","deviceChatbot","deviceTranscript","deviceCallBlock"])
  $(id).addEventListener("click",showDeviceSettings);
-for(const id of ["deviceDiagnostics","deviceMenuDiagnostics"])
+for(const id of ["deviceDiagnostics","deviceMenuDiagnostics","deviceStatusDiagnostics"])
  $(id).addEventListener("click",showDeviceDiagnostics);
 for(const id of ["deviceRestart","deviceMenuRestart"])
  $(id).addEventListener("click",restartConnectedDevice);
@@ -2428,7 +2521,8 @@ $("deviceMenuAlerts").addEventListener("click",()=>{
 $("deviceAlertsClose").addEventListener("click",()=>$("deviceAlertsDialog").close());
 $("deviceMenuChats").addEventListener("click",()=>{closeOptions();openPage("conversas")});
 $("deviceSettingsCancel").addEventListener("click",()=>$("deviceSettingsDialog").close());
-$("deviceDiagnosticsClose").addEventListener("click",()=>$("deviceDiagnosticsDialog").close());
+$("deviceDiagnosticsClose").addEventListener("click",()=>{$("deviceDiagnosticsDialog").close();window.OrionIngressReview?.reset()});
+$("deviceDiagnosticsDialog").addEventListener("close",()=>window.OrionIngressReview?.reset());
 $("deviceSettingsForm").addEventListener("submit",async event=>{
  event.preventDefault();
  if(!connectedSnapshot || connectedSnapshot.status!=="connected")return;
@@ -2470,6 +2564,7 @@ async function updateStatus({snapshot}={}){
   const previous=deviceStatus;
   deviceStatus=result.status;lastDeviceStatus=result.status;
   const active=result.status==="connected";
+  const attention=sessionNeedsAttention(result);
   if(active&&previous!=="connected"&&wizardAttempted&&!wizardSuccessDone){
     wizardAttempted=false;wizardStep="success";wizardSuccessUntil=Date.now()+2200;
     renderGuide();
@@ -2479,7 +2574,8 @@ async function updateStatus({snapshot}={}){
       }
     },2300);
   }
-  if(!active&&previous==="connected"){
+  if(attention||!active&&previous==="connected"){
+    if(attention&&wizardBusy){++wizardOperation;wizardBusy=false}
     wizardStep=method==="code"?"code_form":"tutorial";wizardSuccessDone=false;
     wizardSuccessUntil=0;wizardAttempted=false;showQr=false;renderGuide();
   }
@@ -2499,13 +2595,13 @@ async function updateStatus({snapshot}={}){
     ?"Caixa de conversas criptografada no servidor, preservada durante reinícios (até sete dias)."
     :"Atenção: armazenamento de conversas precisa de verificação antes de confiar na persistência.";
   $("chatDot").className="dot "+(active?"green":"amber");
-  $("chatConnection").textContent=active?"Conectado":"Desconectado";
+  $("chatConnection").textContent=attention?statusWord(result.status):active?"Conectado":"Desconectado";
   renderConversationMode(result);
   $("connectedBanner").classList.toggle("hidden",!active);
   $("repairConnection").classList.toggle("hidden",!["logged_out","pair_failed"].includes(result.status));
   $("wizardRecover").classList.toggle("hidden",!["logged_out","pair_failed"].includes(result.status));
   $("wizardRecoveryArea").classList.toggle("hidden",!["logged_out","pair_failed"].includes(result.status));
-  $("refreshQr").disabled=result.status==="connected"||result.status==="pairing";
+  $("refreshQr").disabled=active||attention||result.status==="pairing";
   $("connectedPhone").textContent=result.phone?
     "Dispositivo "+result.phone+" conectado. Você pode ler e enviar mensagens manualmente.":
     "Dispositivo conectado. Você pode ler e enviar mensagens manualmente.";
@@ -2523,7 +2619,7 @@ async function updateStatus({snapshot}={}){
     (result.status==="pairing"&&pairExpiresAt>0&&Date.now()>pairExpiresAt)){
     clearWizardCodes();wizardCodeExpired=true;wizardUncertain=false;wizardStep=method==="code"?"code_form":"tutorial";
     $("codeStatus").textContent="O código expirou. Prepare um novo código para continuar.";
-  }else if(showQr&&page==="dispositivo"&&method==="qr")await updateQr();
+  }else if(!attention&&showQr&&page==="dispositivo"&&method==="qr")await updateQr();
   if(result.status==="qr_ready"&&!wizardUncertain&&!wizardCodeExpired&&$("codeStatus").textContent.startsWith("Preparando"))$("codeStatus").textContent="";
   renderGuide();
  }catch(ex){
@@ -2580,6 +2676,7 @@ async function attemptQrRefresh(){
  try{
    const state=await api("/api/v1/qr/status");if(!current())return;
    deviceStatus=state.status;
+   if(sessionNeedsAttention(state)){await updateStatus({snapshot:state});return}
    if(["connected","pairing","logged_out","pair_failed"].includes(state.status)){await updateStatus();return}
    if(["qr_expired","qr_delayed","error","reconnecting","pair_expired"].includes(state.status)||(state.status==="connecting"&&state.waitingSeconds>=25)){
      await api("/api/v1/qr/reconnect","POST",{});if(!current())return;
@@ -3098,10 +3195,15 @@ async function loadBusinesses({resolveSetup:resolveAfter=true}={}){
    if(!Array.isArray(rows))throw Error("Não foi possível conferir a empresa desta conta. Tente novamente.");
    if(rows.length>1)throw Error("Sua conta está vinculada a mais de uma empresa. Entre em contato com o suporte para regularizar o vínculo.");
    if(rows.length===1&&(!rows[0]||typeof rows[0].id!=="string"||!rows[0].id))throw Error("Não foi possível confirmar a empresa desta conta.");
+   if(loginRole==="member"&&rows.length===1&&rows[0].role==="professional"){
+     window.location.replace("/profissional");
+     return false;
+   }
    const id=rows.length===1?rows[0].id:"";
-   if(suiteTenantId!==id){resetBusinessState();resetCommerceState();resetCatalogState();resetAiConversation();clearAiProfileState();window.OrionChannels?.unmount();window.OrionAutomations?.unmount()}
+   if(suiteTenantId!==id){resetBusinessState();resetCommerceState();resetCatalogState();resetAiConversation();clearAiProfileState();window.OrionSubscriptionDiagnostics?.unmount();window.OrionSubscriptionSentMessages?.unmount();window.OrionSubscriptionTemplates?.unmount();window.OrionSubscriptionChatbotTest?.unmount();window.OrionSubscriptionChatbot?.unmount();window.OrionSubscriptionDevices?.unmount();window.OrionChannels?.unmount();window.OrionAutomations?.unmount()}
    suiteTenantId=id;businessContextReady=true;businessContextError="";
    businessRows=rows;
+   syncSetupAccess(rows[0]?.workspace_profile);
    const showOperatorConsole=loginRole==="admin"&&rows.length===1;
    for(const id of ["businessNav","aiNav","commerceNav","catalogNav"])$(id).classList.toggle("hidden",!showOperatorConsole);
    renderAccountBusiness();

@@ -101,10 +101,11 @@ test("web panel closed and primary phone offline are not needed for socket stora
 });
 test("do not fetch/import chat history or auto reply on inbound callbacks",()=>{
   const src=fs.readFileSync(new URL("../src/server.mjs",import.meta.url),"utf8");
-  const beginning=src.indexOf('async function receive({messages:incoming,type})');
+  const beginning=src.indexOf('async function receive({messages:incoming,type},replayed=null)');
   const ending=src.indexOf('client.ev.on("connection.update"',beginning);
+  assert.ok(beginning>0&&ending>beginning);
   const handler=src.slice(beginning,ending);
-  assert.ok(handler.includes('shouldIngestUpsert(type,message.messageTimestamp)'));
+  assert.ok(handler.includes('!replayEntry&&!shouldIngestUpsert(sourceType,message.messageTimestamp)'));
   assert.match(handler,/if\(message\.key\?\.fromMe\)\{[^}]*continue;/);
   assert.ok(!handler.includes('sendMessage('));
   assert.ok(!handler.includes('sendStoredText('));
@@ -115,8 +116,8 @@ test("do not fetch/import chat history or auto reply on inbound callbacks",()=>{
 
 test("Baileys retry cache has bounded TTL without changing persistent auth",()=>{
   const server=fs.readFileSync(new URL("../src/server.mjs",import.meta.url),"utf8");
-  assert.match(server,/msgRetryCounterCache=new NodeCache/);
-  assert.match(server,/stdTTL:600,checkperiod:120,useClones:false/);
+  assert.match(server,/msgRetryCounterCache=makeBoundedCache/);
+  assert.match(server,/max:10000,ttlMs:600000/);
   assert.match(server,/maxMsgRetryCount:5/);
   assert.match(server,/keys:makeCacheableSignalKeyStore\(state.keys,logger\)/);
   assert.match(server,/getMessage:async key=>/);

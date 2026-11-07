@@ -1,9 +1,10 @@
 """API Orion: oito fatias técnicas, integrações externas opt-in."""
 from pathlib import Path
-from fastapi import Depends, FastAPI
-from fastapi.responses import FileResponse
+from fastapi import Depends, FastAPI, Request
+from fastapi.responses import FileResponse, RedirectResponse
 from app.catalog_api import router as catalog_router, list_services
 from app.booking_api import router as bookings_router
+from app.start_policies import router as start_policies_router
 from app.whatsapp_api import router as whatsapp_router
 from app.integrations_api import router as integrations_router
 from app.ops_api import router as ops_router
@@ -13,9 +14,11 @@ from app.billing_api import router as billing_router
 from app.cakto_api import router as cakto_router
 from app.plan_management import router as plan_management_router
 from app.orion_direct_checkout import router as direct_checkout_router
+from app.prepaid_pix_api import router as prepaid_pix_router
 from app.metrics_api import router as metrics_router
 from app.advanced_api import router as advanced_router
 from app.qr_api import router as qr_router
+from app.qr_ingress_review import router as qr_ingress_review_router
 from app.panel_auth import router as panel_auth_router
 from app.account_auth import router as account_auth_router
 from app.account_settings import router as account_settings_router
@@ -32,11 +35,26 @@ from app.management_api import router as management_router
 from app.management_blocks import router as management_blocks_router
 from app.management_ai import router as management_ai_router
 from app.management_team import router as management_team_router, invitation_router
+from app.professional_invites import router as professional_invites_router
+from app.professional_portal import router as professional_portal_router
 from app.management_preferences import router as management_preferences_router
 from app.public_site_api import router as public_site_router
 from app.service_packages_api import router as service_packages_router
 from app.onboarding_api import router as onboarding_router
 from app.qr_channels import router as qr_channels_router
+from app.subscription_devices import router as subscription_devices_router
+from app.subscription_chatbot import router as subscription_chatbot_router
+from app.subscription_chatbot_broker import router as subscription_chatbot_broker_router
+from app.subscription_chatbot_test import router as subscription_chatbot_test_router
+from app.subscription_templates import router as subscription_templates_router
+from app.subscription_sent_messages import router as subscription_sent_messages_router
+from app.subscription_diagnostics import router as subscription_diagnostics_router
+from app.subscription_campaigns import router as subscription_campaigns_router
+from app.subscription_scheduled_messages import router as subscription_scheduled_messages_router
+from app.subscription_bulk_messages import router as subscription_bulk_messages_router
+from app.subscription_direct_messages import router as subscription_direct_messages_router
+from app.subscription_group_contacts import router as subscription_group_contacts_router
+from app.subscription_group_add import router as subscription_group_add_router
 from app.automation_api import router as automation_router
 from app.qr_channel_audio import router as qr_channel_audio_router
 from app.media_api import router as media_router
@@ -52,6 +70,9 @@ app = FastAPI(
     title="Orion Barbearias",
     description="Agenda SaaS multiempresa — desenvolvimento controlado",
     version="0.8.0",
+    openapi_url=None,
+    docs_url=None,
+    redoc_url=None,
 )
 
 
@@ -81,6 +102,7 @@ async def health() -> dict[str, str]:
 app.add_api_route("/api/v1/tenants/{tenant_id}/services", list_services,
                   methods=["GET"], tags=["Operação interna"], dependencies=[Depends(enforce_endpoint_plan)])
 include_plan_router(app, bookings_router)
+include_plan_router(app, start_policies_router)
 include_plan_router(app, onboarding_router)
 include_plan_router(app, commercial_router)
 include_plan_router(app, whatsapp_router)
@@ -92,9 +114,11 @@ include_plan_router(app, billing_router)
 include_plan_router(app, cakto_router)
 include_plan_router(app, plan_management_router)
 include_plan_router(app, direct_checkout_router)
+include_plan_router(app, prepaid_pix_router)
 include_plan_router(app, metrics_router)
 include_plan_router(app, advanced_router)
 include_plan_router(app, qr_router)
+include_plan_router(app, qr_ingress_review_router)
 include_plan_router(app, panel_auth_router)
 include_plan_router(app, account_auth_router)
 include_plan_router(app, account_settings_router)
@@ -113,6 +137,8 @@ include_plan_router(app, management_blocks_router)
 include_plan_router(app, management_ai_router)
 include_plan_router(app, management_team_router)
 include_plan_router(app, invitation_router)
+include_plan_router(app, professional_invites_router)
+include_plan_router(app, professional_portal_router)
 include_plan_router(app, management_preferences_router)
 from app.appointment_access_api import router as appointment_access_router
 include_plan_router(app, appointment_access_router)
@@ -121,6 +147,19 @@ include_plan_router(app, appointment_communications_router)
 include_plan_router(app, public_site_router)
 include_plan_router(app, service_packages_router)
 include_plan_router(app, qr_channels_router)
+include_plan_router(app, subscription_devices_router)
+include_plan_router(app, subscription_chatbot_router)
+include_plan_router(app, subscription_chatbot_broker_router)
+include_plan_router(app, subscription_chatbot_test_router)
+include_plan_router(app, subscription_templates_router)
+include_plan_router(app, subscription_sent_messages_router)
+include_plan_router(app, subscription_diagnostics_router)
+include_plan_router(app, subscription_campaigns_router)
+include_plan_router(app, subscription_scheduled_messages_router)
+include_plan_router(app, subscription_bulk_messages_router)
+include_plan_router(app, subscription_direct_messages_router)
+include_plan_router(app, subscription_group_contacts_router)
+include_plan_router(app, subscription_group_add_router)
 include_plan_router(app, automation_router)
 include_plan_router(app, qr_channel_audio_router)
 include_plan_router(app, media_router)
@@ -132,7 +171,6 @@ include_plan_router(app, workflow_drafts_router)
 include_plan_router(app, orion_pwa_router)
 # Specific management paths must precede the legacy two-segment catalog path.
 include_plan_router(app, catalog_router)
-
 
 @app.get("/brand/{asset}", include_in_schema=False)
 async def branding(asset: str) -> FileResponse:
@@ -159,15 +197,30 @@ async def panel_asset(asset: str) -> FileResponse:
     allowed = {"orion-suite.css": "text/css", "orion-suite.js": "text/javascript",
                "orion-plans.css": "text/css", "orion-plans.js": "text/javascript",
                "orion-fields.css": "text/css", "orion-fields.js": "text/javascript",
+               "orion-focus.css": "text/css", "orion-focus.js": "text/javascript",
                "orion-suite-live.js": "text/javascript",
                "orion-admin-center.js": "text/javascript",
+               "orion-ingress-review.js": "text/javascript",
                "orion-communication.js": "text/javascript",
                "orion-appointment-communications.js": "text/javascript",
                "orion-pwa.js": "text/javascript",
                "orion-auth.css": "text/css",
                "orion-invite.css": "text/css", "orion-invite.js": "text/javascript",
+               "orion-professional.css": "text/css", "orion-professional.js": "text/javascript",
                "orion-onboarding.css": "text/css", "orion-onboarding.js": "text/javascript",
                "orion-channels.css": "text/css", "orion-channels.js": "text/javascript",
+               "orion-subscription-devices.css": "text/css", "orion-subscription-devices.js": "text/javascript",
+               "orion-subscription-chatbot.css": "text/css", "orion-subscription-chatbot.js": "text/javascript",
+               "orion-subscription-chatbot-test.css": "text/css", "orion-subscription-chatbot-test.js": "text/javascript",
+               "orion-subscription-templates.css": "text/css", "orion-subscription-templates.js": "text/javascript",
+               "orion-subscription-sent-messages.css": "text/css", "orion-subscription-sent-messages.js": "text/javascript",
+               "orion-subscription-diagnostics.css": "text/css", "orion-subscription-diagnostics.js": "text/javascript",
+               "orion-subscription-campaigns.css": "text/css", "orion-subscription-campaigns.js": "text/javascript",
+               "orion-subscription-scheduled-messages.css": "text/css", "orion-subscription-scheduled-messages.js": "text/javascript",
+               "orion-subscription-bulk-messages.css": "text/css", "orion-subscription-bulk-messages.js": "text/javascript",
+               "orion-subscription-direct-messages.css": "text/css", "orion-subscription-direct-messages.js": "text/javascript",
+               "orion-subscription-group-contacts.js": "text/javascript",
+               "orion-subscription-group-add.js": "text/javascript",
                "orion-connect.js": "text/javascript",
                "orion-automations.js": "text/javascript",
                "orion-inbox.js": "text/javascript", "orion-conversations.js": "text/javascript", "orion-flows.js": "text/javascript", "orion-inbox.css": "text/css"}
@@ -181,8 +234,8 @@ async def panel_asset(asset: str) -> FileResponse:
     )
 
 
-@app.get("/panel", include_in_schema=False)
-async def panel() -> FileResponse:
+@app.get("/painel", include_in_schema=False)
+async def painel() -> FileResponse:
     """Painel HTML; dados protegidos por sessão HttpOnly com CSRF."""
     return FileResponse(
         Path(__file__).parent / "static" / "panel.html",
@@ -190,8 +243,28 @@ async def panel() -> FileResponse:
     )
 
 
+@app.get("/panel", include_in_schema=False)
+async def painel_legacy_redirect(request: Request) -> RedirectResponse:
+    """Preserva links antigos e parâmetros sem expor dados da sessão."""
+    suffix = "?" + request.url.query if request.url.query else ""
+    return RedirectResponse("/painel" + suffix, status_code=308,
+                            headers={"Cache-Control": "no-store"})
+
+
+@app.get("/profissional", include_in_schema=False)
+async def professional_page() -> FileResponse:
+    return FileResponse(Path(__file__).parent / "static" / "orion-professional.html",
+        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer",
+                 "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"})
+
+
 @app.get("/convite", include_in_schema=False)
 async def invitation_page() -> FileResponse:
     return FileResponse(Path(__file__).parent / "static" / "orion-invite.html",
         headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer",
                  "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"})
+
+# IMPORTANT: Register catch-all short protocol pages AFTER every fixed route.
+# Otherwise /painel, /convite and other one-segment URLs return 404.
+from app.short_appointment_api import router as short_appointment_router
+include_plan_router(app, short_appointment_router)

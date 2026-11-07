@@ -55,6 +55,36 @@ test('failed notice prevents media work and business execution; claims remain de
   assert.equal(notices,1);assert.equal(media,0);assert.equal(consumed,0);assert.deepEqual(rejected,['revision_failed']);
 });
 
+test('opt-in durable admission releases only a failed pre-prepare notice and emits no rejection send',async()=>{
+  let notices=0,prepared=0,consumed=0,rejected=0;
+  const intake=makeConversationIntake({settleMs:0,retryUnconsumedNoticeFailures:true,
+    consume:async()=>{consumed++;},onRejected:async()=>{rejected++;}});
+  const item=plain('RETRY-NOTICE','original',{notice:async()=>{if(++notices===1)throw Error('503');return {revision:1};},
+    prepare:async()=>{prepared++;return {text:'original'};}});
+  assert.deepEqual(await intake.submit(item),{state:'revision_failed'});
+  assert.equal(prepared,0);assert.equal(consumed,0);assert.equal(rejected,0);
+  assert.deepEqual(await intake.submit(item),{state:'processed'});
+  assert.deepEqual(await intake.submit(item),{state:'duplicate'});
+  assert.equal(prepared,1);assert.equal(consumed,1);assert.equal(notices,2);
+});
+
+test('opt-in notice retry never releases a prepared sibling or an uncertain consumer',async()=>{
+  const speech=deferred();let attempts=0;
+  const intake=makeConversationIntake({settleMs:0,retryUnconsumedNoticeFailures:true,
+    consume:async()=>{attempts++;throw Error('unknown after write');}});
+  const prepared=intake.submit(plain('PREPARED','text',{notice:async()=>({revision:1}),prepare:()=>speech.promise}));
+  await tick();
+  const failed=intake.submit(plain('FAILED','text',{notice:async()=>{throw Error('503');}}));
+  speech.resolve({text:'text'});await Promise.all([prepared,failed]);
+  assert.deepEqual(await intake.submit(plain('PREPARED','text')),{state:'duplicate'});
+  assert.deepEqual(await intake.submit(plain('FAILED','text',{notice:async()=>({revision:2})})),{state:'consume_failed'});
+  assert.deepEqual(await intake.submit(plain('FAILED','text')),{state:'duplicate'});assert.equal(attempts,1);
+});
+
+test('the admission retry option rejects truthy non-booleans',()=>{
+  assert.throws(()=>makeConversationIntake({consume:async()=>{},retryUnconsumedNoticeFailures:'1'}),/configuration/);
+});
+
 test('a correction typed during a slow audio transcript joins it before any conversation execution',async()=>{
   const speech=deferred(),calls=[],intake=makeConversationIntake({settleMs:0,consume:async batch=>calls.push(batch)});
   const first=intake.submit({conversationKey:key,messageId:'AUDIO',prepare:()=>speech.promise});

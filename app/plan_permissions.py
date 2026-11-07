@@ -6,7 +6,7 @@ account/session mutation belongs in this module.
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import hashlib
 import json
 from uuid import UUID
@@ -15,6 +15,9 @@ from fastapi import HTTPException
 from sqlalchemy import text
 
 from app.plan_catalog import ALL_FEATURES, CODES, PLAN_FEATURES, RECOVERY_FEATURES
+from app.workspace_policy import (SUBSCRIPTION_WORKSPACE, SUBSCRIPTION_WORKSPACE_FEATURES,
+                                  require_standard_workspace, workspace_profile,
+                                  workspace_unavailable)
 
 LOCK_PREFIX = "orion-plan-v1:"
 
@@ -53,19 +56,45 @@ def derive_plan(snapshot, now=None):
         code, source, status, until = manual_code, "manual", "active", manual.get("expires_at")
     elif isinstance(commercial, dict):
         mapped = next((key for key, value in CODES.items() if value["db_code"] == commercial.get("code")), None)
+        last_paid = _date(commercial.get("last_verified_payment_at"))
+        paid_until = _date(commercial.get("grace_until"))
+        active_paid_until = (last_paid + timedelta(days=30)
+                             if last_paid is not None and last_paid <= now else None)
+        # Cancellation stops renewal, not an already paid, bank-verified
+        # 30-day period. The lifecycle writer supplies its exact end; neither
+        # a missing date nor an arbitrary future grace can extend this access.
+        canceled_paid = bool(commercial.get("status") == "canceled" and last_paid and last_paid <= now and paid_until
+                             and now < paid_until <= last_paid + timedelta(days=30))
         paid_valid = (mapped is not None and commercial.get("cakto_bound") is True
-            and _date(commercial.get("last_verified_payment_at")) is not None
-            and _date(commercial["last_verified_payment_at"]) <= now
-            and (commercial.get("status") == "active" or
-                 commercial.get("status") == "past_due" and _future(commercial.get("grace_until"), now)))
+            and last_paid is not None and last_paid <= now
+            and (commercial.get("status") == "active" and active_paid_until > now or
+                 commercial.get("status") == "past_due" and _future(commercial.get("grace_until"), now)
+                 or canceled_paid))
         if paid_valid:
             code, source, status = mapped, "cakto", "active"
-            until = commercial.get("grace_until") if commercial.get("status") == "past_due" else None
+            until = commercial.get("grace_until") if commercial.get("status") in {"past_due", "canceled"} else active_paid_until
         else:
             status = commercial.get("status") if commercial.get("status") in {"past_due", "suspended", "canceled"} else "no_access"
+            if (mapped and commercial.get("cakto_bound") is True and last_paid is not None and last_paid <= now
+                    and commercial.get("status") == "active" and active_paid_until <= now):
+                status = "expired"
+    # Prepaid Pix is a separate verified commercial grant, never a provider
+    # subscription. Manual admin grants and active recurring contracts win.
+    prepaid = snapshot.get("prepaid")
+    if (source == "none" and isinstance(prepaid, dict)
+            and prepaid.get("plan_code") in CODES
+            and _date(prepaid.get("last_verified_payment_at")) is not None
+            and _date(prepaid["last_verified_payment_at"]) <= now
+            and _future(prepaid.get("paid_until"), now)):
+        code, source, status, until = prepaid["plan_code"], "pix_prepaid", "active", prepaid["paid_until"]
     if source == "none" and isinstance(trial, dict) and trial.get("status") == "active" and _future(trial.get("ends_at"), now):
         if _date(trial.get("started_at")) is not None and _date(trial["started_at"]) <= now:
             code, source, status, until = "essencial", "trial", "active", trial["ends_at"]
+    if (source == "none" and status == "no_access"
+            and isinstance(prepaid,dict) and prepaid.get("plan_code") in CODES
+            and _date(prepaid.get("paid_until")) is not None
+            and not _future(prepaid["paid_until"],now)):
+        status = "expired"
     if source == "none" and status == "no_access" and ((manual_view and not manual_valid) or
             isinstance(trial, dict) and trial.get("status") in {"expired", "active"}):
         status = "expired"
@@ -74,10 +103,20 @@ def derive_plan(snapshot, now=None):
         status = "tenant_inactive"
     features = sorted(ALL_FEATURES if platform and active else
                       (PLAN_FEATURES.get(code, frozenset()) if active else frozenset()) | RECOVERY_FEATURES)
+    profile = workspace_profile(snapshot.get("niche"), platform=platform)
+    if profile == SUBSCRIPTION_WORKSPACE:
+        # Keep commercial history intact. A grant never enables another
+        # niche's operations while its own workspace is being prepared.
+        features = sorted(SUBSCRIPTION_WORKSPACE_FEATURES)
+        if snapshot.get("tenant_status") != "active":
+            # New subscription modules must also close when the company stops
+            # being active; only account recovery and setup remain available.
+            features = [feature for feature in features if feature in {"account.manage", "business.setup"}]
     maximum = CODES[code]["max_professionals"] if code else None
     result = {"code": code, "name": "Administração Orion" if platform else CODES[code]["name"] if code else "Sem plano ativo",
         "source": source, "status": status, "active": active, "valid_until": until,
         "version": int(snapshot.get("version") or 0), "platform_workspace": platform,
+        "workspace_profile": profile,
         "features": features, "permissions": {key: key in features for key in sorted(ALL_FEATURES)},
         "limits": {"max_professionals": maximum, "active_professionals": used,
                    "excess_professionals": max(0, used - maximum) if maximum is not None else 0},
@@ -94,15 +133,32 @@ async def lock_plan(db, tenant_id, exclusive=False):
     await db.execute(text(f"SELECT {function}(hashtextextended(:key,0))"), {"key": LOCK_PREFIX + str(tenant_id)})
 
 
+async def try_lock_plan(db, tenant_id):
+    """Acquire the same shared plan lock without joining PostgreSQL's wait queue."""
+    if not isinstance(tenant_id, UUID):
+        raise ValueError("Verified tenant UUID required")
+    return (await db.execute(text("SELECT pg_try_advisory_xact_lock_shared(hashtextextended(:key,0))"),
+                             {"key": LOCK_PREFIX + str(tenant_id)})).scalar_one()
+
+
 async def plan_state(db, tenant_id, lock="shared"):
     if lock not in {"shared", "exclusive", None}:
         raise ValueError("Invalid plan lock")
     if lock:
         await lock_plan(db, tenant_id, exclusive=lock == "exclusive")
-    snapshot = (await db.execute(text("SELECT public.orion_plan_snapshot(:tenant)"), {"tenant": tenant_id})).scalar_one()
+    snapshot = (await db.execute(text("""SELECT public.orion_plan_snapshot(:tenant)
+        || jsonb_build_object('niche', (SELECT configuration->>'niche'
+            FROM public.business_onboarding WHERE tenant_id=:tenant))"""),
+        {"tenant": tenant_id})).scalar_one()
     if snapshot is None:
         raise HTTPException(404, "Empresa não encontrada")
-    return derive_plan(snapshot)
+    # Provider-neutral prepaid access is SECURITY DEFINER + tenant scoped;
+    # app_runtime never receives direct SELECT on billing tables.
+    prepaid = (await db.execute(
+        text("SELECT public.orion_prepaid_plan_snapshot(:tenant)"),
+        {"tenant":tenant_id}
+    )).scalar_one_or_none()
+    return derive_plan({**snapshot,"prepaid":prepaid})
 
 
 @dataclass(frozen=True)
@@ -111,12 +167,13 @@ class PlanScope:
     features: frozenset[str]
     exclusive: bool = False
     bypass: bool = False
+    workspace_allowed: bool = True
 
 
 _scope = ContextVar("orion_plan_scope", default=None)
 
 
-def bind_feature(tenant_id, feature, exclusive=False, bypass=False):
+def bind_feature(tenant_id, feature, exclusive=False, bypass=False, workspace_allowed=True):
     if not isinstance(tenant_id, UUID) or feature not in ALL_FEATURES:
         raise ValueError("Verified plan context required")
     current = _scope.get()
@@ -124,7 +181,8 @@ def bind_feature(tenant_id, feature, exclusive=False, bypass=False):
         raise HTTPException(403, "Contexto de empresa inválido")
     features = (current.features if current else frozenset()) | {feature}
     return _scope.set(PlanScope(tenant_id, frozenset(features), exclusive or bool(current and current.exclusive),
-                               bypass or bool(current and current.bypass)))
+                               bypass or bool(current and current.bypass),
+                               workspace_allowed and (current is None or current.workspace_allowed)))
 
 
 def reset_feature(token):
@@ -141,6 +199,8 @@ async def require_feature(db, tenant_id, feature, lock="shared"):
         raise HTTPException(403, "Funcionalidade não disponível")
     state = await plan_state(db, tenant_id, lock=lock)
     if not _bypass(tenant_id) and not state["permissions"].get(feature, False):
+        if state.get("workspace_profile") == SUBSCRIPTION_WORKSPACE:
+            raise workspace_unavailable(feature)
         if state["status"] == "tenant_inactive":
             raise HTTPException(409, {"code": "TENANT_INACTIVE", "message":
                 "Esta empresa ainda não está ativa para operar. Confira a configuração ou fale com a administração."})
@@ -187,8 +247,12 @@ async def plan_transaction_guard(db, tenant_id):
     if not scope.bypass:
         await lock_plan(db, tenant_id, exclusive=scope.exclusive)
         for feature in sorted(scope.features):
-            await require_feature(db, tenant_id, feature, lock=None)
+            state = await require_feature(db, tenant_id, feature, lock=None)
+            if not scope.workspace_allowed:
+                require_standard_workspace(state, feature)
     yield
     if not scope.bypass:
         for feature in sorted(scope.features):
-            await require_feature(db, tenant_id, feature, lock=None)
+            state = await require_feature(db, tenant_id, feature, lock=None)
+            if not scope.workspace_allowed:
+                require_standard_workspace(state, feature)

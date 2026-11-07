@@ -1,0 +1,123 @@
+name: Billing reliability and recovery
+on:
+  push:
+    branches: [main, security/prelaunch-hardening-20261030, codex/billing-reliability-20261106]
+  pull_request:
+    paths: ['app/**', 'scripts/**', 'alembic/**', 'tests/**', 'ui-tests/**', 'railway.json', 'Dockerfile', '.github/workflows/billing-reliability.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: billing-reliability-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  CAKTO_BILLING_LIVE_ENABLED: '0'
+  ORION_DIRECT_PAYMENTS_ENABLED: '0'
+  ORION_PIX_PREPAID_ENABLED: '0'
+  ORION_CAKTO_LIFECYCLE_ENABLED: '0'
+  ORION_PIX_PROVISION_ONCE: '0'
+  META_LIVE_SEND: '0'
+  QR_AI_ENABLED: '0'
+  INBOX_SEND_ENABLED: '0'
+  MARKETING_EXECUTION_ENABLED: '0'
+  ORION_AUTO_COMPLETE_APPOINTMENTS: '0'
+  QR_BRIDGE_URL: ''
+  PYTHONUTF8: '1'
+jobs:
+  financial-contracts:
+    name: Financial contracts, populated migration and PostgreSQL/RLS
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env: {POSTGRES_DB: orion_billing_test, POSTGRES_USER: postgres, POSTGRES_PASSWORD: ci-billing-postgres-only}
+        ports: ['5432:5432']
+        options: --health-cmd "pg_isready -U postgres -d orion_billing_test" --health-interval 5s --health-timeout 3s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      APP_DATABASE_URL: postgresql+asyncpg://app_runtime:ci-billing-runtime-only@127.0.0.1:5432/orion_billing_test
+      MIGRATION_DATABASE_URL: postgresql+psycopg://app_migrator:ci-billing-migrator-only@127.0.0.1:5432/orion_billing_test
+      SUPPORT_DATABASE_URL: postgresql+asyncpg://app_support:ci-billing-support-only@127.0.0.1:5432/orion_billing_test
+      SUPPORT_API_TOKEN: synthetic-billing-ci-support-token-of-at-least-32-characters
+      INTEGRATION_FERNET_KEY: MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=
+      REQUIRE_POSTGRES_TESTS: '1'
+      REDIS_URL: redis://127.0.0.1:6379/15
+      REQUIRE_REDIS_TESTS: '1'
+      ORION_MIGRATION_TEST_OWNER_URL: postgresql+psycopg://postgres:ci-billing-postgres-only@127.0.0.1:5432/postgres
+      ORION_REQUIRE_MIGRATION_OPS_TEST: '1'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: {python-version: '3.12'}
+      - name: Locked dependencies
+        run: |
+          python -m pip install -c requirements.lock '.[test]'
+          python -m pip check
+      - name: Separate synthetic database roles and full migration chain
+        env: {PGPASSWORD: ci-billing-postgres-only}
+        run: |
+          timeout 10s psql --version
+          psql -h 127.0.0.1 -U postgres -d orion_billing_test -v ON_ERROR_STOP=1 \
+            -v db_name=orion_billing_test -v runtime_password=ci-billing-runtime-only \
+            -v migrator_password=ci-billing-migrator-only -v support_password=ci-billing-support-only \
+            -f infra/postgres/init/001-roles.sql
+          python -m alembic upgrade head
+      - name: Initial plan-release contract must run before other fixtures
+        env: {ORION_TEST_NETWORK_AUDIT: /tmp/billing-release-network.json}
+        run: python tests/isolated_runner.py -q -ra --junitxml=/tmp/billing-release.xml tests/integration/test_plan_permissions_release_postgres.py
+      - name: Financial and release units with external networking denied
+        env: {ORION_TEST_NETWORK_AUDIT: /tmp/billing-units-network.json}
+        run: |
+          mapfile -t units < <(printf '%s\n' \
+            tests/unit/test_cakto*.py tests/unit/test_prepaid_pix*.py tests/unit/test_plan*.py \
+            tests/unit/test_*release.py tests/unit/test_manual_plan_management.py \
+            tests/unit/test_checkout_manual_priority.py tests/unit/test_onboarding_completion_plan.py \
+            tests/unit/test_start_api.py tests/unit/test_reverse_ingress.py tests/unit/test_0056_predeploy_guard.py \
+            tests/load/test_qualification_plan_fixture.py | sort -u)
+          python tests/isolated_runner.py -q -ra --junitxml=/tmp/billing-units.xml "${units[@]}"
+      - name: Real PostgreSQL lifecycle, contention, isolation and migration preservation
+        env: {ORION_TEST_NETWORK_AUDIT: /tmp/billing-postgres-network.json}
+        run: |
+          python tests/isolated_runner.py -q -ra --junitxml=/tmp/billing-postgres.xml \
+            tests/integration/test_cakto*.py tests/integration/test_prepaid_pix*.py \
+            tests/integration/test_billing*.py tests/integration/test_manual_plan_permissions_postgres.py \
+            tests/integration/test_manual_checkout_priority_postgres.py \
+            tests/integration/test_plan_runtime_postgres.py tests/integration/test_plan_trials_postgres.py \
+            tests/integration/test_onboarding_completion_plan_postgres.py \
+            tests/integration/test_qualification_plan_fixture_postgres.py tests/integration/test_automation_postgres.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: billing-reliability-postgres
+          path: |
+            /tmp/billing-release.xml
+            /tmp/billing-units.xml
+            /tmp/billing-postgres.xml
+            /tmp/billing-*-network.json
+          retention-days: 7
+  panel-contracts:
+    name: Plan and payment panel contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with: {node-version: '22'}
+      - run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+      - name: DOM and safe payment-state rendering
+        run: |
+          node --check app/static/orion-plans.js
+          node --check app/static/orion-admin-center.js
+          node --test --test-reporter=tap ui-tests/orion-plans.test.mjs ui-tests/plan-permissions.test.mjs ui-tests/admin-plan-management.test.mjs ui-tests/admin-client-center.test.mjs ui-tests/admin-unassigned-plan.test.mjs | tee /tmp/billing-panel.tap
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: billing-reliability-panel
+          path: /tmp/billing-panel.tap
+          retention-days: 7

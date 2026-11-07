@@ -78,6 +78,95 @@ def main():
         print('orion_registration_predeploy_failed_closed',file=sys.stderr);return 3
 
 
+def one_click_schema_ready(raw):
+    """Read-only acknowledgement of migration 0056; never replay older DDL."""
+    engine = create_engine(raw, poolclass=NullPool,
+        connect_args={'options':'-c default_transaction_read_only=on -c statement_timeout=10000'})
+    try:
+        with engine.connect() as db:
+            check = db.execute(text("""
+                SELECT p.prosecdef,
+                    pg_get_userbyid(p.proowner)='app_migrator',
+                    p.proconfig=ARRAY['search_path=pg_catalog']::text[],
+                    has_function_privilege('app_support',p.oid,'EXECUTE'),
+                    has_function_privilege('app_runtime',p.oid,'EXECUTE'),
+                    has_function_privilege('app_migrator',p.oid,'EXECUTE')
+                FROM pg_proc p
+                WHERE p.oid=to_regprocedure(
+                    'public.orion_resolve_direct_appointment(text)')
+            """)).first()
+            return check is not None and tuple(check)==(True,True,True,True,False,False)
+    finally:
+        engine.dispose()
+
+
+def portal_schema_ready(raw):
+    """Verify the 0057 security boundary without reading any professional data."""
+    engine = create_engine(raw, poolclass=NullPool,
+        connect_args={'options':'-c default_transaction_read_only=on -c statement_timeout=10000'})
+    try:
+        with engine.connect() as db:
+            table = db.execute(text("""SELECT c.relrowsecurity,c.relforcerowsecurity,
+                has_table_privilege('app_support',c.oid,'SELECT,INSERT,UPDATE,DELETE'),
+                has_table_privilege('app_runtime',c.oid,'SELECT'),
+                has_table_privilege('app_runtime',c.oid,'UPDATE'),
+                (SELECT count(*) FROM pg_constraint
+                 WHERE conrelid='public.professional_portal_links'::regclass
+                 AND contype='f')
+                FROM pg_class c
+                WHERE c.oid=to_regclass('public.professional_portal_links')""")).first()
+            if table is None or tuple(table)!=(True,True,True,False,False,3):
+                return False
+            roles = db.execute(text("""SELECT
+                EXISTS(SELECT 1 FROM pg_constraint WHERE
+                  conrelid='public.tenant_memberships'::regclass
+                  AND conname='ck_membership_role' AND
+                  pg_get_constraintdef(oid) LIKE '%professional%'),
+                EXISTS(SELECT 1 FROM pg_constraint WHERE
+                  conrelid='public.management_team_invitations'::regclass
+                  AND conname='ck_professional_invite_binding' AND convalidated)""")).one()
+            fence = db.execute(text("""SELECT
+                EXISTS(SELECT 1 FROM information_schema.columns
+                    WHERE table_schema='public' AND table_name='professionals'
+                    AND column_name='last_archived_at' AND data_type='timestamp with time zone'),
+                EXISTS(SELECT 1 FROM pg_trigger
+                    WHERE tgrelid='public.professionals'::regclass
+                      AND tgname='orion_professional_archive_fence' AND NOT tgisinternal)""")).one()
+            return tuple(roles)==(True,True) and tuple(fence)==(True,True)
+    finally:
+        engine.dispose()
+
+
+def professional_hardening_schema_ready(raw):
+    """Read-only proof that owner blocks and professional email are isolated."""
+    engine=create_engine(raw,poolclass=NullPool,connect_args={
+        'options':'-c default_transaction_read_only=on -c statement_timeout=10000'})
+    try:
+        with engine.connect() as db:
+            flags=db.execute(text("""SELECT
+                EXISTS(SELECT 1 FROM information_schema.columns WHERE
+                    table_schema='public' AND table_name='schedule_blocks'
+                    AND column_name='origin' AND column_default IS NOT NULL),
+                EXISTS(SELECT 1 FROM information_schema.columns WHERE
+                    table_schema='public' AND table_name='schedule_blocks'
+                    AND column_name='created_by_account_id'),
+                EXISTS(SELECT 1 FROM information_schema.columns WHERE
+                    table_schema='public' AND table_name='professional_portal_links'
+                    AND column_name='can_manage_owner_blocks'
+                    AND column_default='false'),
+                EXISTS(SELECT 1 FROM pg_constraint WHERE conname='ck_schedule_block_origin'
+                    AND conrelid='public.schedule_blocks'::regclass AND convalidated),
+                EXISTS(SELECT 1 FROM pg_constraint WHERE conname='uq_professional_portal_email'
+                    AND conrelid='public.professional_portal_links'::regclass
+                    AND contype='u' AND convalidated),
+                (SELECT relrowsecurity AND relforcerowsecurity
+                    FROM pg_class WHERE oid='public.professional_portal_links'::regclass)
+            """)).one()
+            return tuple(flags)==(True,True,True,True,True,True)
+    finally:
+        engine.dispose()
+
+
 def predeploy_main():
     """Preserve the Railway predeploy command and use only reviewed migrations.
 
@@ -95,6 +184,13 @@ def predeploy_main():
     from scripts import backup_and_migrate_plan_permissions as permissions
     from scripts import backup_and_migrate_central_appointment_confirmation as central
     from scripts import backup_and_migrate_paraguay_phone as paraguay
+    from scripts import backup_and_migrate_central_notifications as central_notifications
+    from scripts import backup_and_migrate_short_links as short_links
+    from scripts import backup_and_migrate_combo_duration as combo_duration
+    def finish_notifications(result):
+        if result:return result
+        if migrated_version(raw)!=paraguay.TARGET:return 0
+        return central_notifications.main()
     def finish_permissions(result):
         if result:return result
         checked=permissions.main()
@@ -102,7 +198,7 @@ def predeploy_main():
         if os.getenv('ORION_RUN_CENTRAL_APPOINTMENT_MIGRATION')=='1':
             checked=central.main()
             if checked:return checked
-        return paraguay.main() if os.getenv(paraguay.FLAG)=='1' else 0
+        return finish_notifications(paraguay.main()) if os.getenv(paraguay.FLAG)=='1' else 0
     def finish_direct():
         result=direct.main()
         if result:return result
@@ -110,11 +206,43 @@ def predeploy_main():
     try:
         raw, _url = connection_values()
         current = migrated_version(raw)
+        if current in ('0058_professional_scope','0059_prepaid_pix','0060_manual_start_times','0061_appointment_consent','0062_subscription_devices', '0063_subscription_chatbot', '0064_subscription_templates', '0065_subscription_sent_messages', '0066_appointment_operations', '0067_subscription_diagnostics', '0068_subscription_campaigns', '0069_subscription_schedules', '0070_subscription_bulk', '0071_subscription_direct', '0072_subscription_group_add'):
+            if (combo_duration.schema_ready(raw) and short_links.schema_ready(raw)
+                    and one_click_schema_ready(raw) and portal_schema_ready(raw)
+                    and professional_hardening_schema_ready(raw)):
+                print('orion_professional_0058_schema_verified',flush=True)
+                return 0
+            print('orion_professional_0058_schema_invalid',file=sys.stderr)
+            return 3
+        if current == '0057_professional_portal':
+            if (combo_duration.schema_ready(raw) and short_links.schema_ready(raw)
+                    and one_click_schema_ready(raw) and portal_schema_ready(raw)):
+                print('orion_professional_0057_schema_verified', flush=True)
+                return 0
+            print('orion_professional_0057_schema_invalid', file=sys.stderr)
+            return 3
+        if current == '0056_one_click_appointment_links':
+            # 0056 is an explicitly reviewed, already-applied additive release.
+            # Old 0039/0054/0055 migrators may NEVER be replayed here.
+            if (combo_duration.schema_ready(raw) and short_links.schema_ready(raw)
+                    and one_click_schema_ready(raw)):
+                print('orion_one_click_0056_schema_verified', flush=True)
+                return 0
+            print('orion_one_click_0056_schema_invalid', file=sys.stderr)
+            return 3
+        if current == combo_duration.TARGET:
+            return combo_duration.main()
+        if current == short_links.TARGET:
+            checked = short_links.main()
+            return checked if checked else combo_duration.main()
+        if current == central_notifications.TARGET:
+            checked=central_notifications.main()
+            return checked if checked else short_links.main()
         if current == paraguay.TARGET:
-            return paraguay.main()
+            return finish_notifications(paraguay.main())
         if current == central.TARGET:
             checked=central.main()
-            return checked if checked else paraguay.main()
+            return checked if checked else finish_notifications(paraguay.main())
         if current == permissions.TARGET:
             return finish_permissions(0)
         if current in {appointment.TARGET,appointment.COMMUNICATIONS_PREVIOUS}:

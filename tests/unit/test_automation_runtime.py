@@ -173,6 +173,8 @@ async def test_inactive_campaign_revalidates_new_booking_in_actual_job_reason(mo
             if "orion_plan_snapshot" in sql:
                 return Result(scalar={"tenant_id":str(params["tenant"]),"tenant_status":"active",
                     "manual":{"plan_code":"profissional","started_at":now-timedelta(days=1),"expires_at":None}})
+            if "orion_prepaid_plan_snapshot" in sql:
+                return SimpleNamespace(scalar_one_or_none=lambda: None)
             if "SELECT version FROM management_preferences" in sql:
                 return SimpleNamespace(scalar_one_or_none=lambda: 1)
             if "FROM campaigns" in sql:

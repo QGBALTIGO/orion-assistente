@@ -1,9 +1,15 @@
 """Start the ordinary API after discarding one-time deployment credentials."""
 import os
+import subprocess
 import sys
 
+SSH_KEYS = frozenset({
+    "ORION_ORIGIN_SSH_HOST", "ORION_ORIGIN_SSH_PRIVATE_KEY", "ORION_ORIGIN_SSH_KNOWN_HOSTS",
+    "ORION_ORIGIN_HTTPS_FINGERPRINT", "ORION_ORIGIN_HTTPS_AUTH",
+})
+
 ONE_TIME_KEYS = frozenset({
-    "ORION_RUN_PLAN_PERMISSIONS_MIGRATION", "ORION_RUN_APPOINTMENT_COMMUNICATION_MIGRATION", "MIGRATION_DATABASE_URL", "ORION_RUN_BUSINESS_MIGRATION", "ORION_RUN_ACCOUNT_MIGRATION",
+    "ORION_RUN_CENTRAL_NOTIFICATIONS_MIGRATION", "ORION_RUN_PLAN_PERMISSIONS_MIGRATION", "ORION_RUN_APPOINTMENT_COMMUNICATION_MIGRATION", "MIGRATION_DATABASE_URL", "ORION_RUN_BUSINESS_MIGRATION", "ORION_RUN_ACCOUNT_MIGRATION",
     "ORION_MIGRATION_SWITCH_ROLE", "ORION_BUSINESS_MIGRATION_RUN_ID",
     "ORION_RUN_MANAGEMENT_MIGRATION", "ORION_MANAGEMENT_MIGRATION_RUN_ID",
     "ORION_RUN_SALES_REQUESTS_MIGRATION", "ORION_RUN_AGENDA_MIGRATION",
@@ -22,11 +28,30 @@ def runtime_environment(source):
     return {key: value for key, value in source.items() if key not in ONE_TIME_KEYS}
 
 
+def wait_for_campaigns_schema(environment):
+    # The pre-deploy is the only process allowed to migrate. This child checks
+    # 0073 and every predecessor using runtime-only, read-only catalogs.
+    subprocess.run([sys.executable, "-m", "scripts.wait_for_cakto_recovery_schema"],
+                   env=environment, check=True, timeout=95)
+
+
 def main():
     environment = runtime_environment(os.environ)
     port = environment.get("PORT", "8000")
     if not port.isdigit() or not 1 <= int(port) <= 65535:
         raise RuntimeError("Invalid API port")
+    if any(environment.get(key, "") for key in SSH_KEYS):
+        # Preserve the published execve boundary before the supervisor creates
+        # any child. Filtering a child's env does not clean its parent's /proc.
+        os.execve(sys.executable, [sys.executable, "-m", "scripts.reverse_ingress"], environment)
+        return
+    environment = {key: value for key, value in environment.items() if key not in SSH_KEYS}
+    if set(os.environ) & ONE_TIME_KEYS:
+        # The ordinary launcher must cross the same boundary before its schema
+        # probe. The clean second entry has no one-time keys, so it cannot loop.
+        os.execve(sys.executable, [sys.executable, "-m", "scripts.start_api"], environment)
+        return
+    wait_for_campaigns_schema(environment)
     # The OAuth callback carries a one-use authorization code and state in its
     # query string. Uvicorn's ordinary access log records the complete target.
     # Keep application/error logging, without persisting request credentials.

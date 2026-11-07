@@ -82,7 +82,7 @@ async def test_panel_login_cookie_csrf_and_bridge(monkeypatch):
 async def test_panel_ui_includes_qr_pairing_chats_without_manual_support_token():
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
                                  base_url="https://test") as c:
-        r=await c.get("/panel")
+        r=await c.get("/painel")
         assert r.status_code==200
         assert "Conectar dispositivo" in r.text
         assert "Código de emparelhamento" in r.text or "Gerar código de emparelhamento" in r.text
@@ -90,4 +90,29 @@ async def test_panel_ui_includes_qr_pairing_chats_without_manual_support_token()
         assert "SUPPORT_API_TOKEN" not in r.text
         d=await c.get("/conectar-whatsapp",follow_redirects=False)
         assert d.status_code==303
-        assert d.headers["location"]=="/panel?aba=dispositivo"
+        assert d.headers["location"]=="/painel?aba=dispositivo"
+        old=await c.get("/panel?aba=agenda",follow_redirects=False)
+        assert old.status_code==308
+        assert old.headers["location"]=="/painel?aba=agenda"
+        assert old.headers["cache-control"]=="no-store"
+
+
+@pytest.mark.asyncio
+async def test_short_links_do_not_capture_fixed_routes(monkeypatch):
+    monkeypatch.setenv("APPOINTMENT_COMMUNICATIONS_ENABLED", "1")
+    monkeypatch.setenv("ORION_SHORT_APPOINTMENT_LINKS_ENABLED", "1")
+    monkeypatch.setenv("ORION_CENTRAL_CONFIRMATION_REPLY_ENABLED", "1")
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
+                                 base_url="https://test") as c:
+        for path in ("/", "/painel", "/convite", "/health", "/manifest.webmanifest"):
+            response=await c.get(path)
+            assert response.status_code==200, (path,response.text[:200])
+        assert 'href="/painel"' in (await c.get("/")).text
+        assert 'href="/panel"' not in (await c.get("/")).text
+        manifest=(await c.get("/manifest.webmanifest")).json()
+        assert manifest["start_url"]=="/painel"
+        assert manifest["scope"]=="/painel"
+        # A valid short alias continues to serve the verification shell.
+        assert (await c.get("/AG-4NNSY2")).status_code==200
+        # Arbitrary one-segment paths must not disclose or resolve a booking.
+        assert (await c.get("/not-a-protocol")).status_code==404

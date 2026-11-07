@@ -61,6 +61,19 @@ def normalized(value: str) -> str:
                    if unicodedata.category(c) != "Mn")
 
 
+def same_professional_reference(message: str) -> bool:
+    """An explicit staff reference, never a habit, beneficiary or condition.
+
+    The caller must supply the current owned appointment as factual context;
+    this predicate does not identify that appointment or authorize a write.
+    """
+    value = normalized(message)
+    return bool(re.search(r"\b(?:mesmo (?:profissional|barbeiro|dentista)|mesma (?:profissional|barbeira|dentista))\b", value)
+        and not re.search(r"\b(?:nao|nem|sem|se|caso|talvez|depend\w*|ou|mas|porem|exceto|menos|evit[ae]r?|dispenso|nunca|jamais)\b|"
+            r"\b(?:desde|contanto)\s+que\b|\b(?:em vez|no lugar|ao inves)\b", value)
+        and not re.search(r"\b(?:filh[oa]|pai|mae|espos[oa]|marido|irma[oa]|outra pessoa|mesma pessoa)\b", value))
+
+
 def _unique(items):
     return list(dict.fromkeys(items))
 
@@ -143,7 +156,7 @@ def unique_service_reply(message: str, catalog: list[dict], *, context_step: str
     any ambiguity defer the complete utterance to the normal understanding path.
     The caller separately verifies that a service question was really presented.
     """
-    if context_step != "menu" or not isinstance(message, str) or not message.strip() or len(message) > 1500 or len(catalog) > 60:
+    if context_step != "menu" or not isinstance(message, str) or not message.strip() or len(message) > 1500 or len(catalog) > 500:
         return None
     text = normalized(message)
     if "?" in text or "¿" in text or re.search(r"\d|\b(?:nao|nem|sem|nunca|menos|exceto|"
@@ -286,6 +299,50 @@ def _times(message: str, context: dict):
     return (values[-1][2:] if values and not invalid else (None, "none")), bool(matches or noisy), invalid
 
 
+def _professional_mentions(lower: str, names_by_id: dict, context: dict):
+    """Match named staff, not an incidental word from a compound label."""
+    def personal_reference(start):
+        return bool(re.search(r"\b(?:me chamo|meu nome e|sou [oa])\s+$|"
+            r"\b(?:meu|minha|nosso|nossa)\s+(?:filh[oa]|pai|mae|espos[oa]|irmao|irma|dependente)"
+            r"\s+(?:(?:e|se chama|chama|chama-se)\s+)?$|"
+            r"\b(?:pai|mae|responsavel)\s+(?:do|da|pelo|pela)\s+$", lower[:start]))
+
+    def declined(start):
+        prefix = lower[:start]
+        return _negative(prefix) or _negative(re.sub(r"\bcom\s+(?:(?:o|a)\s+)?$", "", prefix))
+
+    full = []
+    for identity, name in names_by_id.items():
+        pattern = r"\b" + r"\s+".join(re.escape(part) for part in name.split()) + r"\b"
+        for match in re.finditer(pattern, lower):
+            if not personal_reference(match.start()) and not declined(match.start()):
+                full.append((match.start(), match.end(), identity))
+    # A full 'João Silva' supersedes the overlapping first name 'João'. Equal
+    # complete names retain both IDs and remain genuinely ambiguous.
+    full = [item for item in full if not any(other[0] <= item[0] and item[1] <= other[1]
+        and other[1]-other[0] > item[1]-item[0] for other in full)]
+    matches = [(start, identity) for start, _end, identity in full]
+    for identity, name in names_by_id.items():
+        words = name.split()
+        if len(words) < 2:
+            continue
+        for match in re.finditer(r"\b" + re.escape(words[0]) + r"\b", lower):
+            start, end = match.span()
+            if (any(a <= start < b for a, b, _ in full) or personal_reference(start)
+                    or declined(start)):
+                continue
+            prefix = lower[:start]
+            introduced = re.search(r"\b(?:com\s+(?:(?:o|a)\s+)?|"
+                r"(?:profissional|barbeir[oa]|dentista|esteticista)\s+(?:(?:o|a)\s+)?)$", prefix)
+            subject = re.match(r"\s+(?:tem|esta|atende|trabalha|pode|possui)\b", lower[end:])
+            direct_choice = context.get("step") == "professional" and lower.strip(" ?!.,\n\t") == words[0]
+            alternative = matches and re.search(r"\b(?:ou|melhor|prefiro|quer dizer|na verdade)\s+"
+                r"(?:com\s+)?(?:(?:o|a)\s+)?$", prefix)
+            if introduced or subject or direct_choice or alternative:
+                matches.append((start, identity))
+    return sorted(set(matches))
+
+
 def clarification_for(plan: UnderstandingPlan) -> str | None:
     """Targeted questions contain no model-provided facts or operational promises."""
     questions = {"service": "Qual serviço você quer? Preciso distinguir as opções do catálogo.",
@@ -310,7 +367,7 @@ def build_plan(*, message: str, catalog: list[dict], professionals: list[dict] |
     if not isinstance(message, str) or not message.strip() or len(message) > 1500:
         raise ValueError("Message outside supported bounds")
     professionals, faqs, context = professionals or [], faqs or [], context or {}
-    if len(catalog) > 60 or len(professionals) > 30 or len(faqs) > 30:
+    if len(catalog) > 500 or len(professionals) > 30 or len(faqs) > 30:
         raise ValueError("Context outside supported bounds")
     data = (proposal or UnderstandingPlan()).model_dump()
     valid_services = {UUID(str(x["id"])) for x in catalog}
@@ -322,9 +379,9 @@ def build_plan(*, message: str, catalog: list[dict], professionals: list[dict] |
     lower = normalized(message)
     ambiguities = list(data["ambiguities"])
     intents = [x for x in data["intents"] if x != "other"]
-    price = bool(re.search(r"\b(?:quanto|preco|valor|custa|custam)\b", lower))
+    price = bool(re.search(r"\b(?:quanto|precos?|valor(?:es)?|custa|custam)\b", lower))
     available = bool(re.search(r"\b(?:disponive[li]s?|vagas?|livre|livres|se tiver|se houver)\b|"
-                               r"\b(?:que|qual|quais)\s+dias?\b|\btem\b.*\bhorarios?\b", lower))
+                               r"\b(?:que|qual|quais)\s+(?:dias?|horarios?)\b|\b(?:tem|ha)\b.*\bhorarios?\b", lower))
     explicit_booking = any(not _negative(lower[:x.start()]) for x in
                            re.finditer(r"\b(?:agendar|marcar|reservar|quero fazer|quero cortar)\b", lower))
     reschedule = [x for x in re.finditer(r"\b(?:remarcar|reagendar|mudar|trocar|adiar)\b", lower) if not _negative(lower[:x.start()])]
@@ -344,7 +401,8 @@ def build_plan(*, message: str, catalog: list[dict], professionals: list[dict] |
     from app.qr_dialogue import contextual_response
     awaiting_confirmation = context.get("step") in {"confirm", "reschedule_confirm"}
     consent = contextual_response(message, awaiting_confirmation=awaiting_confirmation,
-        semantic_kind="affirm" if "confirm" in intents else None)
+        semantic_kind="affirm" if "confirm" in intents else None,
+        confirmation_action="reschedule" if context.get("step") == "reschedule_confirm" else "booking")
     if consent.kind == "affirm":
         intents.append("confirm")
     else:
@@ -431,9 +489,17 @@ def build_plan(*, message: str, catalog: list[dict], professionals: list[dict] |
         data["service_ids"] = chosen
         if "booking" in intents or "reschedule" in intents:
             data["selection_mode"] = "replace"
-    if not price and not available and re.search(r"\b(?:inclu(?:ir|a)|adiciona\w*|acrescenta\w*)\b", lower) and chosen:
+    polite_addition = bool(re.search(r"^(?:(?:voce|voces)\s+)?pode(?:m)?\s+(?:por|colocar|botar|incluir|adicionar|acrescentar)\b", lower)
+        and not re.search(r"\b(?:se|caso|talvez|nao|nem)\b", lower))
+    if (price or available) and polite_addition and chosen and base:
+        data.update(query_service_ids=_unique(base + chosen), service_ids=[], selection_mode="simulate")
+        intents = [value for value in intents if value not in {"booking", "confirm"}]
+    if not price and not available and not information_only and not re.search(r"\b(?:se|caso|talvez)\b", lower) and (polite_addition or
+            re.search(r"\b(?:inclu(?:ir|a)|adiciona\w*|acrescenta\w*)\b", lower)) and chosen:
         data.update(service_ids=_unique(base + chosen), selection_mode="add")
         intents.append("booking")
+        if not base and re.search(r"\b(?:junto|tambem)\b", lower):
+            ambiguities.append("service")
     if not price and re.search(r"\b(?:tira|tirar|retira|retirar|remove|remover)\b", lower) and declined:
         data.update(service_ids=[x for x in base if x not in declined], selection_mode="remove")
         intents.append("booking")
@@ -472,25 +538,19 @@ def build_plan(*, message: str, catalog: list[dict], professionals: list[dict] |
             ambiguities = [x for x in ambiguities if x != "time"]
     else:
         data.update(requested_time=None, time_relation="none")
-    pro_matches = []
     data["professional_id"] = None  # Never carry a prior model/context name by habit.
     names_by_id = {UUID(str(x["id"])): normalized(x["name"]) for x in professionals}
-    for person in professionals:
-        name = normalized(person["name"])
-        first = name.split()[0]
-        for match in re.finditer(r"\b" + re.escape(first) + r"\b", lower):
-            declared = re.search(r"\b(?:me chamo|meu nome e|sou [oa])\s+$", lower[:match.start()])
-            if not declared and not _negative(lower[:match.start()]):
-                pro_matches.append((match.start(), UUID(str(person["id"]))))
+    pro_matches = _professional_mentions(lower, names_by_id, context)
     ids = _unique(x[1] for x in sorted(pro_matches))
     if len(ids) == 1:
-        # Names self-declared by a customer are not professional selections.
-        if not re.search(r"\b(?:me chamo|meu nome e|sou [oa])\s+" + re.escape(names_by_id[ids[0]].split()[0]), lower):
-            data["professional_id"] = ids[0]
+        # Personal-name occurrences were excluded before selecting staff.
+        data["professional_id"] = ids[0]
     elif len(ids) > 1:
         positions = sorted(pro_matches)
-        if _CORRECTION.search(lower[positions[0][0]:positions[-1][0]]) and not re.search(r"\bou\b", lower[positions[0][0]:positions[-1][0]]):
-            data["professional_id"] = positions[-1][1]
+        final_ids = {identity for position, identity in positions if position == positions[-1][0]}
+        if (len(final_ids) == 1 and _CORRECTION.search(lower[positions[0][0]:positions[-1][0]])
+                and not re.search(r"\bou\b", lower[positions[0][0]:positions[-1][0]])):
+            data["professional_id"] = next(iter(final_ids))
         else:
             data["professional_id"] = None;ambiguities.append("professional")
     non_people = {"barba", "cabelo", "corte", "produto", "produtos", "pix", "cartao", "dinheiro", "desconto", "voces", "certeza", "isso", "atendente", "humano", "uma", "pessoa"}
@@ -500,6 +560,49 @@ def build_plan(*, message: str, catalog: list[dict], professionals: list[dict] |
     if any(word not in first_names | non_people for word in introduced) or (
             alternative and alternative.group(1) not in first_names | non_people | set(_WEEKDAYS) | {"amanha", "hoje"}):
         data["professional_id"] = None;ambiguities.append("professional")
+    # Only explicit references may reuse previously requested facts. These are
+    # selections to recheck against the agenda, never a confirmation/hold.
+    references = not re.search(r"\b(?:nao|nem|sem)\s+(?:[oa]\s+)?(?:mesm[oa]|ess[ea]|aquele|aquela)\b", lower)
+    if references and not mentioned_day and re.search(r"\b(?:mesmo|nesse|neste|naquele) dia\b", lower):
+        try:
+            recalled = date.fromisoformat(context.get("requested_date", ""))
+            if reference_date is None or recalled < reference_date:
+                raise ValueError
+            data["requested_date"] = recalled.isoformat()
+        except (TypeError, ValueError):
+            ambiguities.append("date")
+    if references and not mentioned_time and re.search(r"\b(?:mesm[oa]|ess[ea]|aquele|aquela)\s+(?:horario|hora)\b", lower):
+        recalled = context.get("requested_time")
+        relation = context.get("time_relation", "exact")
+        if isinstance(recalled, str) and re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", recalled) and relation in {"exact", "after", "before", "around"}:
+            data.update(requested_time=recalled, time_relation=relation)
+        else:
+            ambiguities.append("time")
+    staff_reference = bool(re.search(r"\b(?:mesmo (?:profissional|barbeiro|dentista)|mesma (?:profissional|barbeira|dentista))\b", lower))
+    same_person = references and (same_professional_reference(message) or
+        (not staff_reference and bool(re.search(r"\bcom (?:ele|ela)\b", lower))))
+    if staff_reference:
+        remainder = re.sub(r"\b(?:com\s+(?:[oa]\s+)?)?(?:mesmo (?:profissional|barbeiro|dentista)|mesma (?:profissional|barbeira|dentista))\b", " ", lower)
+        if any(word not in first_names | non_people for word in re.findall(
+                r"\b(?:com|profissional|barbeiro|barbeira)\s+(?:o\s+|a\s+)?([a-z]+)", remainder)):
+            same_person = False
+    if staff_reference and not same_person:
+        data["professional_id"] = None
+        ambiguities.append("professional")
+    other_person = references and not staff_reference and bool(re.search(r"\b(?:[oa] outr[oa])\s+(?:profissional|barbeir[oa]|dentista)\b", lower))
+    if (same_person or other_person) and not pro_matches:
+        try:
+            recalled = UUID(str(context.get("professional_id", "")))
+            if recalled not in valid_pros:
+                raise ValueError
+            candidates = valid_pros - {recalled} if other_person else {recalled}
+            if len(candidates) != 1:
+                raise ValueError
+            data["professional_id"] = next(iter(candidates))
+            ambiguities = [value for value in ambiguities if value != "professional"]
+        except (TypeError, ValueError):
+            data["professional_id"] = None
+            ambiguities.append("professional")
     from app.qr_customer import supplied_name
     data["customer_name"] = supplied_name(message)
     for faq in faqs:

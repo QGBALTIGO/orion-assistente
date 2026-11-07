@@ -83,3 +83,14 @@ test("corrupt input and oversized payload are refused safely",()=>{
   assert.deepEqual(fs.readdirSync(d),[]);
  }finally{clean()}
 });
+test("larger native records retain the original aggregate disk budget and never claim an evicted cache",()=>{
+ const {d,clean}=temp();
+ try{
+  const st=makeEncryptedRetryStore({directory:d,secret,maxPayloadBytes:512*1024,maxTotalBytes:280000});
+  for(let i=0;i<5;i++)assert.equal(st.save({id:'native-'+i},{conversation:'x'.repeat(100000)}),true);
+  const files=fs.readdirSync(d);assert.ok(files.reduce((sum,file)=>sum+fs.statSync(path.join(d,file)).size,0)<=280000);
+  assert.ok(files.length<=2);assert.equal(st.get({id:'native-4'}).conversation.length,100000);
+  const tooSmall=makeEncryptedRetryStore({directory:d,secret,maxPayloadBytes:512*1024,maxTotalBytes:1024});
+  assert.equal(tooSmall.save({id:'cannot-cache'},{conversation:'x'.repeat(100000)}),false);
+ }finally{clean();}
+});

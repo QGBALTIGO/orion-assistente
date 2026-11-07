@@ -80,7 +80,7 @@ for(const ambiguous of [false,true])test('verified LID caches before a single re
     store:{save(receivedKey,proto){assert.equal(receivedKey,key);assert.equal(proto,message);events.push('cache');return saved.save(receivedKey,proto);}},
     relay:async(recipient,proto,opts)=>{relays++;events.push('relay');assert.equal(recipient,lid);
       assert.equal(proto,message);assert.equal(saved.get({id:opts.messageId,remoteJid:lid}),message);
-      assert.equal(saved.get({id:opts.messageId,remoteJid:phone+'@s.whatsapp.net'}),message);assert.equal(opts.useUserDevicesCache,true);
+      assert.equal(saved.get({id:opts.messageId,remoteJid:phone+'@s.whatsapp.net'}),undefined);assert.equal(opts.useUserDevicesCache,true);
       if(ambiguous)throw Error('ambiguous transport result');}};
   if(ambiguous)await assert.rejects(sendStoredText(options),/ambiguous transport result/);
   else assert.deepEqual(await sendStoredText(options),{key,message});

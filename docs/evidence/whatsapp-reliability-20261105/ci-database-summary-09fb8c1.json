@@ -1,0 +1,34 @@
+{
+  "suites": [
+    {
+      "name": "pytest",
+      "errors": "0",
+      "failures": "0",
+      "skipped": "0",
+      "tests": "166",
+      "time": "20.364",
+      "timestamp": "2026-11-05T18:29:48.028753+00:00",
+      "hostname": "runnervm7aw5e"
+    }
+  ],
+  "classes": {
+    "tests.qualification.whatsapp_reliability_postgres": 2,
+    "tests.integration.test_qr_channels_postgres": 13,
+    "tests.integration.test_qr_channels_transaction_postgres": 6,
+    "tests.integration.test_qr_single_connection_postgres": 14,
+    "tests.integration.test_qr_revocation_quarantine_postgres": 5,
+    "tests.integration.test_qr_conversation_lock_redis": 2,
+    "tests.integration.test_qr_intake_revision_redis": 4,
+    "tests.integration.test_single_whatsapp_release_postgres": 3,
+    "tests.integration.test_professional_phone_release_pg": 3,
+    "tests.unit.test_professional_phone_release": 42,
+    "tests.unit.test_qr_turn_ownership": 12,
+    "tests.unit.test_qr_batch_recovery": 9,
+    "tests.unit.test_whatsapp_pending_purpose": 9,
+    "tests.unit.test_subscription_connection_health": 14,
+    "tests.unit.test_qr_channels_human_pause": 9,
+    "tests.unit.test_appointment_message_templates": 19
+  },
+  "real_pg_redis_cases": 52,
+  "unit_cases": 114
+}

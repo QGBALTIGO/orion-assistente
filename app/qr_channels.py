@@ -27,6 +27,9 @@ from app.catalog_schemas import StrictModel
 from app.tenant_access import resolve_tenant_access
 
 LEASE_SECONDS = 30
+# Retired writers may still hold their old local deadline until the next
+# broker check. This internal owner reserves that slot without authorizing I/O.
+REVOKED_LEASE_OWNER = UUID(int=0)
 BASE = "/api/v1/tenants/{tenant_id}/qr-channels"
 INTERNAL = "/internal/qr/channels/{channel_id}"
 SAFE_FIELDS = ("id", "tenant_id", "owner_account_id", "provider", "label", "enabled", "assistant_enabled", "revision")
@@ -84,6 +87,13 @@ class ChannelState(StrictModel):
 class LeaseRequest(StrictModel):
     owner: UUID
     fence: int | None = Field(default=None, strict=True, ge=1)
+
+    @field_validator("owner")
+    @classmethod
+    def actual_process_owner(cls, value):
+        if value == REVOKED_LEASE_OWNER:
+            raise ValueError("Instância de conexão inválida")
+        return value
 
 
 class ChannelCommand(StrictModel):
@@ -316,23 +326,29 @@ async def provision_connection(tenant_id: UUID, payload: ProvisionConnection, re
     response.headers["Cache-Control"] = "no-store"
     async with support_session_factory()() as db:
         async with db.begin():
-            await _owner(db, tenant_id, actor)
-            row, state = await _canonical(db, tenant_id, lock=True)
-            if state == "ambiguous":
-                raise HTTPException(409, "Conexões existentes precisam de revisão; nenhum vínculo foi alterado")
-            if row is None:
-                credential = secrets.token_urlsafe(48)
-                row = (await db.execute(text("""INSERT INTO qr_channels
-                    (tenant_id,owner_account_id,provider,label,credential_hash,credential_encrypted,allowed_senders,idempotency_key,request_fingerprint)
-                    VALUES (:tenant,:account,'baileys','WhatsApp',:digest,:encrypted,'[]'::jsonb,:key,:fingerprint) RETURNING *"""),
-                    {"tenant": tenant_id, "account": actor.account_id, "digest": credential_hash(credential),
-                     "encrypted": _cipher().encrypt(credential.encode()).decode(), "key": payload.idempotency_key,
-                     "fingerprint": hashlib.sha256(b"orion:single-whatsapp-provision:v1").hexdigest()})).mappings().one()
-                await db.execute(text("UPDATE tenants SET whatsapp_channel_id=:id WHERE id=:tenant"),
-                    {"id": row["id"], "tenant": tenant_id})
-            if row["owner_account_id"] != actor.account_id:
-                raise HTTPException(409, "Conexão existente requer revisão do proprietário")
+            row = await provision_owned_connection(db, tenant_id, payload.idempotency_key, actor)
     return jsonable_encoder(_connection_envelope(row, "ready", True, actor))
+
+
+async def provision_owned_connection(db, tenant_id, idempotency_key, actor):
+    """Provision inside the caller's transaction; never connect or expose a key."""
+    await _owner(db, tenant_id, actor)
+    row, state = await _canonical(db, tenant_id, lock=True)
+    if state == "ambiguous":
+        raise HTTPException(409, "Conexões existentes precisam de revisão; nenhum vínculo foi alterado")
+    if row is None:
+        credential = secrets.token_urlsafe(48)
+        row = (await db.execute(text("""INSERT INTO qr_channels
+            (tenant_id,owner_account_id,provider,label,credential_hash,credential_encrypted,allowed_senders,idempotency_key,request_fingerprint)
+            VALUES (:tenant,:account,'baileys','WhatsApp',:digest,:encrypted,'[]'::jsonb,:key,:fingerprint) RETURNING *"""),
+            {"tenant": tenant_id, "account": actor.account_id, "digest": credential_hash(credential),
+             "encrypted": _cipher().encrypt(credential.encode()).decode(), "key": idempotency_key,
+             "fingerprint": hashlib.sha256(b"orion:single-whatsapp-provision:v1").hexdigest()})).mappings().one()
+        await db.execute(text("UPDATE tenants SET whatsapp_channel_id=:id WHERE id=:tenant"),
+            {"id": row["id"], "tenant": tenant_id})
+    if row["owner_account_id"] != actor.account_id:
+        raise HTTPException(409, "Conexão existente requer revisão do proprietário")
+    return row
 
 
 @router.patch(BASE + "/{channel_id}")
@@ -351,14 +367,20 @@ async def change_state(tenant_id: UUID, channel_id: UUID, payload: ChannelState,
                 raise HTTPException(403, "A conexão preservada exige o administrador autenticado")
             if payload.assistant_enabled is True and not current["allowed_senders"]:
                 raise HTTPException(409, "O atendimento privado ainda precisa de uma política autorizada")
+            # Deny API effects now, but do not admit another auth writer before
+            # the old socket's local deadline. One stable SQL clock keeps the
+            # paired owner/expiry columns consistent at the expiry boundary.
             row = (await db.execute(text("""UPDATE qr_channels SET enabled=COALESCE(:enabled,enabled),
                 assistant_enabled=COALESCE(:assistant,assistant_enabled),revision=revision+1,
-                fence=fence+1,lease_owner=NULL,lease_expires_at=NULL,updated_at=clock_timestamp()
+                fence=fence+1,
+                lease_owner=CASE WHEN lease_expires_at>statement_timestamp() THEN CAST(:retired AS uuid) ELSE NULL END,
+                lease_expires_at=CASE WHEN lease_expires_at>statement_timestamp() THEN lease_expires_at ELSE NULL END,
+                updated_at=clock_timestamp()
                 WHERE tenant_id=:tenant AND id=:id AND owner_account_id=:account AND revision=:revision
                 RETURNING id,tenant_id,owner_account_id,provider,label,enabled,assistant_enabled,revision,allowed_senders"""),
                 {"tenant": tenant_id, "id": channel_id, "account": actor.account_id,
                  "revision": payload.expected_revision, "enabled": payload.enabled,
-                 "assistant": payload.assistant_enabled})).mappings().one_or_none()
+                 "assistant": payload.assistant_enabled, "retired": REVOKED_LEASE_OWNER})).mappings().one_or_none()
             if not row:
                 raise HTTPException(409, "Canal alterado ou indisponível")
     return jsonable_encoder(_connection_dto(dict(row), True))
@@ -387,16 +409,21 @@ async def _lock_membership(db, channel_id):
 
 
 def _current(row, owner, fence):
-    if (row["lease_owner"] != owner or row["fence"] != fence or not row["lease_expires_at"]
+    if (owner == REVOKED_LEASE_OWNER or row["lease_owner"] == REVOKED_LEASE_OWNER
+            or row["lease_owner"] != owner or row["fence"] != fence or not row["lease_expires_at"]
             or row["lease_expires_at"] <= row["server_now"]):
         raise HTTPException(409, "Posse do canal expirada")
 
 
 async def lease_operation(db, channel_id, credential, payload, operation):
     enabled()
+    if payload.owner == REVOKED_LEASE_OWNER:
+        raise HTTPException(401, "Instância de conexão inválida")
     if operation not in {"claim", "renew", "release", "check", "inspect", "receipt"}:
         raise HTTPException(404)
     async with db.begin():
+        from app.subscription_devices import prepare_device_lease, device_lease_snapshot
+        device = await prepare_device_lease(db, channel_id, operation)
         row = await _channel(db, channel_id, credential, receipt_only=operation == "receipt")
         if operation == "receipt":
             # Historical receipt lookup grants no lease, current AI identity,
@@ -433,8 +460,9 @@ async def lease_operation(db, channel_id, credential, payload, operation):
                 "owner_account_id": str(row["owner_account_id"]), "provider": row["provider"],
                 "owner": str(payload.owner), "fence": row["fence"], "expires_in_ms": remaining,
                 "allowed_senders": row["allowed_senders"], "assistant_enabled": row["assistant_enabled"],
-                "legacy_transport": legacy,
+                "legacy_transport": legacy, "incoming_parts": True, "send_recheck": True,
                 "verified_self_phone":qr_legacy.verified_self_phone(row) if legacy else None,
+                **({"device": await device_lease_snapshot(db, row)} if device else {}),
                 **({"inbox_control": True} if central or os.getenv("INBOX_CONTROL_ENABLED", "0") == "1" else {})}
 
 
@@ -566,13 +594,36 @@ async def _bridge_control(row, action, method, payload=None):
     except (InvalidToken, UnicodeError, ValueError):
         raise HTTPException(503, "Credencial indisponível") from None
     try:
-        async with httpx.AsyncClient(timeout=18, trust_env=False, follow_redirects=False) as client:
+        group_read = action in {
+            "device/group-add/groups", "device/group-add/members",
+            "device/group-contacts/groups", "device/group-contacts/members",
+        }
+        # Read-only group queries can take longer while WhatsApp synchronizes.
+        # Every other control, especially group participant mutations, retains
+        # its previous timeout.
+        async with httpx.AsyncClient(timeout=33 if group_read else 18,
+                                     trust_env=False, follow_redirects=False) as client:
             path = ("/internal/" + ("status" if action == "start" else action)) if legacy else f"/internal/channels/{row['id']}/{action}"
             result = await client.request("GET" if legacy and action == "start" else method, raw_url + path,
                 headers={"X-Orion-Bridge-Key" if legacy else "X-Orion-Channel-Key": key,
                     **({"X-Orion-Canonical-Prepare": "1"} if legacy and action in {"reconnect", "recover"} else {})},
                 json=(payload if payload is not None else {}) if method == "POST" and not (legacy and action == "start") else None)
         if result.status_code not in {200, 202}:
+            # Allow only small closed-set diagnostic enums from the private
+            # bridge on read-only group endpoints. Never forward raw errors.
+            if group_read and result.status_code == 409 and len(result.content) <= 256:
+                try:
+                    failure = result.json()
+                    reason = failure.get("reason") if isinstance(failure, dict) else None
+                except (ValueError, TypeError):
+                    reason = None
+                if isinstance(reason, str) and reason in {
+                    "invalid_request", "read_busy", "provider_timeout", "provider_failed",
+                    "invalid_metadata", "context_changed", "group_unavailable",
+                    "device_unavailable", "device_busy", "deadline_exceeded",
+                    "ingress_blocked", "storage_unavailable",
+                }:
+                    raise HTTPException(409, {"group_read_reason": reason})
             raise HTTPException(409, "Operação do canal indisponível; atualize o estado")
         if len(result.content) > 256000:
             raise ValueError()

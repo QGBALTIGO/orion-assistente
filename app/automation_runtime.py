@@ -130,8 +130,20 @@ async def contact_facts(db, tenant, phone):
     return dict(consent) if consent else None, dict(state) if state else None
 
 
+async def newer_historical_service(db, tenant, customer, trigger_at):
+    """A recorded visit cancels an old win-back trigger without creating one."""
+    return bool((await db.execute(text("""SELECT EXISTS (
+        SELECT 1 FROM appointments WHERE tenant_id=:t AND customer_id=:customer
+          AND status='completed' AND booking_mode='retroactive' AND end_at>:trigger
+    )"""), {"t": tenant, "customer": customer, "trigger": trigger_at})).scalar_one())
+
+
 async def queue_notification(db, tenant, settings, preference, customer, event, event_key, facts, labels, *, campaign_id=None):
     if not execution_enabled() or not execution_authorized(settings):
+        return False
+    # Historical entry records accounting facts without starting a new customer
+    # interaction. Keep this fence even when called outside the tenant scanner.
+    if facts.get("booking_mode") == "retroactive":
         return False
     if event not in OPERATIONAL_EVENTS | MARKETING_EVENTS:
         return False
@@ -147,6 +159,9 @@ async def queue_notification(db, tenant, settings, preference, customer, event, 
     elif rule:
         template = rule["template"]
     else:
+        return False
+    if (event in {"inactive_60d", "cancelled_7d"} and facts.get("occurred_at")
+            and await newer_historical_service(db, tenant, customer["id"], facts["occurred_at"])):
         return False
     consent, contact = await contact_facts(db, tenant, customer["whatsapp_e164"])
     required = 'birthday_opt_in' if event.startswith('birthday_') else "operational_opt_in" if event in OPERATIONAL_EVENTS else "marketing_opt_in"
@@ -244,6 +259,7 @@ async def plan_tenant(tenant):
                     AND h.appointment_id=a.id AND h.event=a.status) AS occurred_at
                   FROM appointments a JOIN professionals p ON p.tenant_id=a.tenant_id AND p.id=a.professional_id
                   WHERE a.tenant_id=:t AND a.customer_id=:customer AND a.updated_at>now()-interval '100 days'
+                    AND a.booking_mode<>'retroactive'
                   ORDER BY a.updated_at DESC,a.id LIMIT 40"""), {"t": tenant, "customer": customer["id"]})).mappings().all()
                 future = bool((await db.execute(text("""SELECT 1 FROM appointments WHERE tenant_id=:t AND customer_id=:customer
                   AND status='confirmed' AND start_at>now() LIMIT 1"""), {"t": tenant, "customer": customer["id"]})).first())
@@ -262,7 +278,8 @@ async def plan_tenant(tenant):
                         queued += await queue_notification(db, tenant, settings, preference, customer, event, key, event_facts, known)
                 completed_at = (await db.execute(text("""SELECT max(h.occurred_at) FROM appointment_history h
                   JOIN appointments a ON a.tenant_id=h.tenant_id AND a.id=h.appointment_id
-                  WHERE a.tenant_id=:t AND a.customer_id=:customer AND a.status='completed' AND h.event='completed'"""),
+                  WHERE a.tenant_id=:t AND a.customer_id=:customer AND a.status='completed' AND h.event='completed'
+                    AND a.booking_mode<>'retroactive'"""),
                   {"t": tenant, "customer": customer["id"]})).scalar_one_or_none()
                 for event in ("inactive_60d", "birthday_7d", "birthday_2d"):
                     facts = {"occurred_at": completed_at, "birth_date": customer["birth_date"],
@@ -309,7 +326,9 @@ async def job_reason(db, tenant, job, settings):
     appointment = None
     campaign = None
     if job["appointment_id"]:
-        appointment = (await db.execute(text("SELECT status,updated_at,start_at FROM appointments WHERE tenant_id=:t AND id=:id"), {"t": tenant, "id": job["appointment_id"]})).mappings().one_or_none()
+        appointment = (await db.execute(text("SELECT status,updated_at,start_at,booking_mode FROM appointments WHERE tenant_id=:t AND id=:id"), {"t": tenant, "id": job["appointment_id"]})).mappings().one_or_none()
+        if appointment and appointment["booking_mode"] == "retroactive":
+            return "retroactive_appointment"
     if job["campaign_id"]:
         campaign = (await db.execute(text("SELECT status,version,audience FROM campaigns WHERE tenant_id=:t AND id=:id"), {"t": tenant, "id": job["campaign_id"]})).mappings().one_or_none()
     if not settings or not settings.get("owner_active") or settings.get("tenant_status") != "active":
@@ -343,9 +362,12 @@ async def job_reason(db, tenant, job, settings):
     if job["event"] in {"inactive_60d", "cancelled_7d"}:
         if not job.get("trigger_at"):
             return "trigger_changed"
+        if await newer_historical_service(db, tenant, job["customer_id"], job["trigger_at"]):
+            return "new_activity"
         completed = (await db.execute(text("""SELECT max(h.occurred_at) FROM appointment_history h
             JOIN appointments a ON a.tenant_id=h.tenant_id AND a.id=h.appointment_id
-            WHERE a.tenant_id=:t AND a.customer_id=:customer AND a.status='completed' AND h.event='completed'"""),
+            WHERE a.tenant_id=:t AND a.customer_id=:customer AND a.status='completed' AND h.event='completed'
+              AND a.booking_mode<>'retroactive'"""),
             {"t": tenant, "customer": job["customer_id"]})).scalar_one_or_none()
         if (job["event"] == "inactive_60d" and completed != job.get("trigger_at")) or (
                 job["event"] == "cancelled_7d" and completed and completed > job.get("trigger_at")):

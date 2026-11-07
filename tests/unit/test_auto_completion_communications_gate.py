@@ -1,7 +1,7 @@
-"""Auto-completion eligibility is deliberately distinct from a real service review.
+"""Automatic completion keeps its existing worker and pilot rollout controls.
 
-No client, calendar, or WhatsApp side effects. A completed timestamp alone
-cannot prove the client attended and must never force a marketing review.
+Native review eligibility separately requires trusted completion evidence and
+appointment-scoped or legacy consent; a timestamp alone grants neither.
 """
 from uuid import uuid4
 

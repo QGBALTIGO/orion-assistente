@@ -165,31 +165,34 @@ test('consultant loads status/history without generation and requires an explici
   assert.match(h.document.getElementById('osConsultorMessages').textContent, /Resposta sintética sem envio/);
 });
 
-test('invitation replay with null link never fabricates or exposes a link', async t => {
-  const h = await makeSuite({ initialRoute: 'funcionarios', respond: (path, method) => method === 'POST' ? { link: null, expires_at: '2030-01-01T12:00:00Z', status: 'pending' } : defaultResponse(path) }); t.after(() => h.close()); await flush();
-  h.click('[data-os-action=new-invitation]'); h.submit('[data-os-form=invitation]'); await flush();
-  const dialog = h.document.getElementById('osDialog');
-  assert.match(dialog.textContent, /já havia sido criado|exibido apenas uma vez/);
-  assert.equal(dialog.querySelector('[aria-label="Link do convite"]'), null);
-  assert.equal(dialog.querySelector('[data-os-action=copy-invitation]'), null);
-  assert.equal(h.calls.filter(c => c.method === 'POST').length, 1);
+test('unbound generic team invites are not offered by the owner panel', async t => {
+  const h = await makeSuite({initialRoute:'funcionarios'});t.after(()=>h.close());await flush();
+  assert.equal(h.document.querySelector('[data-os-action=new-invitation]'),null);
+  assert.equal(h.document.querySelector('[data-os-form=invitation]'),null);
+  assert.deepEqual(h.calls.filter(call=>call.method!=='GET'),[]);
 });
 
-test('approving a claimed invitation waits for an explicit confirmation and includes version', async t => {
-  const invitationId = '40000000-0000-4000-8000-000000000004';
-  const invitation = { id: invitationId, role: 'editor', status: 'claimed', claimed_by_name: 'Pessoa sintética', expires_at: '2030-01-01T12:00:00Z', version: 3 };
-  const h = await makeSuite({ initialRoute: 'funcionarios', respond: path => path.endsWith('/management/team') ? { can_manage: true, members: [], invitations: [invitation] } : defaultResponse(path) }); t.after(() => h.close()); await flush();
-  h.click(`[data-os-action=approve-invitation][data-invitation="${invitationId}"]`); await flush();
-  assert.equal(h.calls.filter(c => c.method === 'PATCH').length, 0);
-  assert.match(h.document.getElementById('osDialog').textContent, /Pessoa sintética/);
-  h.submit('[data-os-form=confirm]'); await flush();
-  const writes = h.calls.filter(c => c.method === 'PATCH');
-  assert.equal(writes.length, 1); assert.equal(writes[0].data.action, 'approve'); assert.equal(writes[0].data.expected_version, 3);
+test('legacy claimed generic invitation cannot be approved and can be revoked by owner', async t => {
+  const invitationId='40000000-0000-4000-8000-000000000004';
+  const invitation={id:invitationId,role:'editor',status:'claimed',claimed_by_name:'Pessoa sintética',
+    expires_at:'2030-01-01T12:00:00Z',version:3};
+  const h=await makeSuite({initialRoute:'funcionarios',respond:path=>
+    path.endsWith('/management/team')?{can_manage:true,members:[],invitations:[invitation]}:defaultResponse(path)});
+  t.after(()=>h.close());await flush();
+  h.click('[data-os-staff-tab=permissions]');await flush();
+  assert.equal(h.document.querySelector('[data-os-action=approve-invitation]'),null);
+  h.click('[data-os-action=revoke-invitation][data-invitation="'+invitationId+'"]');await flush();
+  assert.equal(h.calls.filter(c=>c.method==='PATCH').length,0);
+  assert.match(h.document.getElementById('osDialog').textContent,/Revogar/);
+  h.submit('[data-os-form=confirm]');await flush();
+  const writes=h.calls.filter(c=>c.method==='PATCH');
+  assert.equal(writes.length,1);assert.equal(writes[0].data.action,'revoke');
+  assert.equal(writes[0].data.expected_version,3);
 });
 
 test('actual panel API returns null for HTTP 204 without parsing JSON', async t => {
   const html = await readFile(new URL('../app/static/panel.html', import.meta.url), 'utf8');
-  const actual = html.match(/async function api\(url,method="GET",data\)\{[\s\S]*?\n\}/)?.[0];
+  const actual = html.match(/async function api\(url,method="GET",data,options\)\{[\s\S]*?\n\}/)?.[0];
   assert.ok(actual, 'read the real API adapter from panel.html');
   const dom = new JSDOM('', { url: 'https://orion.test/panel', runScripts: 'outside-only' }); t.after(() => dom.window.close());
   let options, jsonRead = false;
@@ -197,4 +200,42 @@ test('actual panel API returns null for HTTP 204 without parsing JSON', async t 
   dom.window.eval(`var authEpoch=1, csrf='test-csrf', suiteTenantId='test', businessContextError=''; function accountBusiness(){return {id:'test'};} function errorMessage(){return 'test error';} function showLogin(){}; ${actual}`);
   assert.equal(await dom.window.api('/api/v1/tenants/test/services/id', 'DELETE'), null);
   assert.equal(jsonRead, false); assert.equal(options.headers['X-Orion-CSRF'], 'test-csrf'); assert.equal(options.credentials, 'same-origin');
+});
+
+test('panel bootstrap retains the same scheduled request through URL normalization',async t=>{
+  const html=await readFile(new URL('../app/static/panel.html',import.meta.url),'utf8');
+  const prefix=html.match(/async function showApp\([^)]*\)\{[\s\S]*?(?=\n suiteUser=)/)?.[0];
+  assert.ok(prefix,'execute the actual bootstrap before account assignment');
+  const dom=new JSDOM('',{url:'https://orion.test/painel?aba=programadas&empresa=untrusted',runScripts:'outside-only'});
+  t.after(()=>dom.window.close());
+  dom.window.eval(await readFile(new URL('../app/static/orion-subscription-scheduled-messages.js',import.meta.url),'utf8'));
+  const record={tenant_id:tenantA,account_scope:'a'.repeat(64),idempotency_key:'11111111-1111-4111-8111-111111111111',kind:'review_create',schedule_id:null,run_id:null,confirming:false};
+  dom.window.history.replaceState({orionScheduleRecovery:{...record,private_content:'discard'},unrelated:'discard'},'');
+  dom.window.eval(`var authEpoch=1,suiteTenantId='',businessRows=[],businessContextReady=false,businessContextError='';function resetWizard(){};${prefix}\n}`);
+  await dom.window.showApp('member','Synthetic','synthetic@example.test');
+  assert.deepEqual(JSON.parse(JSON.stringify(dom.window.history.state)),{orionScheduleRecovery:record});
+  assert.equal(new URL(dom.window.location.href).searchParams.get('aba'),'programadas');
+  assert.equal(new URL(dom.window.location.href).searchParams.has('empresa'),false);
+});
+
+test('panel preserves read cancellation and only exposes the exact scheduled stale-version proof',async t=>{
+  const html=await readFile(new URL('../app/static/panel.html',import.meta.url),'utf8');
+  const actual=html.match(/async function api\(url,method="GET",data,options\)\{[\s\S]*?\n\}/)?.[0];
+  assert.ok(actual);
+  const dom=new JSDOM('',{url:'https://orion.test/painel',runScripts:'outside-only'});t.after(()=>dom.window.close());
+  dom.window.eval(`var authEpoch=1, csrf='test-csrf', suiteTenantId='test', businessContextError=''; function accountBusiness(){return {id:'test'};} function errorMessage(){return 'test error';} ${actual}`);
+  const signal=new dom.window.AbortController().signal;
+  dom.window.fetch=async(path,options)=>{assert.equal(options.signal,signal);return {ok:true,status:200,json:async()=>({items:[]})};};
+  await dom.window.api('/api/v1/tenants/test/subscription-whatsapp/scheduled-messages','GET',undefined,{signal});
+  const proof={reason:'stale_version',idempotency_key:'operation',kind:'review_edit',schedule_id:'schedule',run_id:'run',expected_version:1,expected_run_version:2};
+  dom.window.fetch=async(path,options)=>{assert.equal(options.signal,undefined);return {ok:false,status:409,json:async()=>({detail:{code:'SCHEDULE_CONFLICT',rejection:{...proof,unexpected:'private'}}})};};
+  const route='/api/v1/tenants/test/subscription-whatsapp/scheduled-messages/schedule/review';
+  await assert.rejects(dom.window.api(route,'POST',{}),error=>{
+    assert.equal(error.code,'SCHEDULE_CONFLICT');
+    assert.deepEqual(JSON.parse(JSON.stringify(error.scheduleRejection)),proof);
+    assert.equal(error.scheduleRejection.unexpected,undefined);return true;
+  });
+  await assert.rejects(dom.window.api('/api/v1/tenants/test/subscription-whatsapp/scheduled-messages/confirm','POST',{}),error=>{
+    assert.equal(error.scheduleRejection,undefined);assert.equal(error.code,undefined);return true;
+  });
 });

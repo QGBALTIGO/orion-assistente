@@ -1,0 +1,118 @@
+name: Orion - Acesso profissional individual
+on:
+  pull_request:
+    paths:
+      - 'app/professional_*.py'
+      - 'app/management_team.py'
+      - 'app/booking_service.py'
+      - 'app/management_models.py'
+      - 'app/catalog_api.py'
+      - 'app/main.py'
+      - 'app/email_transport.py'
+      - 'app/static/orion-professional.*'
+      - 'app/static/orion-suite.js'
+      - 'app/static/orion-invite.*'
+      - 'alembic/versions/0057_professional_portal.py'
+      - 'alembic/versions/0058_professional_access_hardening.py'
+      - 'scripts/predeploy_one_click_links.py'
+      - 'scripts/backup_and_migrate_registration.py'
+      - 'tests/unit/test_professional_portal.py'
+      - 'tests/integration/test_professional_portal_postgres.py'
+      - 'ui-tests/professional-portal.test.mjs'
+      - '.github/workflows/professional-portal.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  contracts:
+    name: API, permissoes, convites, frontend
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: python -m pip install -c requirements.lock '.[test]'
+      - run: python -m pip check
+      - run: python -m pytest -q tests/unit/test_professional_portal.py tests/unit/test_catalog_membership_scope.py tests/unit/test_email_delivery.py tests/unit/test_0056_predeploy_guard.py
+      - run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+      - run: node --check app/static/orion-professional.js && node --check app/static/orion-suite.js
+      - run: node --test ui-tests/professional-portal.test.mjs ui-tests/professional-phone.test.mjs ui-tests/invite-verification.test.mjs
+  postgres:
+    name: PostgreSQL real - contas e isolamento
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: barber_saas
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-postgres-only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d barber_saas"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      APP_DATABASE_URL: postgresql+asyncpg://app_runtime:ci-runtime-only@localhost:5432/barber_saas
+      MIGRATION_DATABASE_URL: postgresql+psycopg://app_migrator:ci-migrator-only@localhost:5432/barber_saas
+      SUPPORT_DATABASE_URL: postgresql+asyncpg://app_support:ci-support-only@localhost:5432/barber_saas
+      REDIS_URL: redis://localhost:6379/15
+      SUPPORT_API_TOKEN: synthetic-professional-portal-support-token-00000000000000000
+      BUSINESS_PROFILES_ENABLED: '1'
+      REQUIRE_POSTGRES_TESTS: '1'
+      PANEL_PUBLIC_URL: https://orionagenda.pro
+      PANEL_EMAIL_ENABLED: '0'
+      PANEL_EMAIL_LIVE_SEND: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -c requirements.lock '.[test]'
+      - name: Provisionar papeis separados
+        env:
+          PGPASSWORD: ci-postgres-only
+        run: |
+          psql -h localhost -U postgres -d barber_saas -v ON_ERROR_STOP=1 \
+            -v db_name=barber_saas -v runtime_password=ci-runtime-only \
+            -v migrator_password=ci-migrator-only \
+            -v support_password=ci-support-only \
+            -f infra/postgres/init/001-roles.sql
+      - name: Migrar do zero ate o novo contrato
+        run: |
+          python -m alembic upgrade head
+          python -m alembic current --check-heads
+      - name: Validar protecoes de banco sem acessar dados pessoais
+        run: |
+          python - <<'PY'
+          import os
+          from sqlalchemy import create_engine, text
+          db=create_engine(os.environ['MIGRATION_DATABASE_URL'])
+          with db.connect() as session:
+              assert session.execute(text("SELECT version_num FROM alembic_version")).scalar_one()=='0058_professional_scope'
+              assert session.execute(text("""SELECT relrowsecurity AND relforcerowsecurity
+                  FROM pg_class WHERE oid='public.professional_portal_links'::regclass""")).scalar_one()
+              assert session.execute(text("""SELECT has_table_privilege('app_support','public.professional_portal_links','SELECT,INSERT,UPDATE')""")).scalar_one()
+              assert not session.execute(text("""SELECT has_table_privilege('app_runtime','public.professional_portal_links','SELECT')""")).scalar_one()
+              assert session.execute(text("""SELECT EXISTS(SELECT 1 FROM pg_constraint
+                  WHERE conrelid='public.professional_portal_links'::regclass
+                  AND conname='uq_professional_portal_email' AND convalidated)""")).scalar_one()
+              assert session.execute(text("""SELECT EXISTS(SELECT 1 FROM pg_constraint
+                  WHERE conrelid='public.schedule_blocks'::regclass
+                  AND conname='ck_schedule_block_origin' AND convalidated)""")).scalar_one()
+          db.dispose()
+          PY
+      - name: Convite verdadeiro com contas sinteticas, isolamento e revogacao
+        run: |
+          python -m pytest -q -ra tests/integration/test_professional_portal_postgres.py tests/integration/test_single_business_memberships_postgres.py

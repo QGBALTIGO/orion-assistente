@@ -1,0 +1,214 @@
+{
+  "contract": "subscription_diagnostics",
+  "version": 1,
+  "base": "/api/v1/tenants/{tenant_id}/subscription-whatsapp/diagnostics",
+  "feature": "diagnostics.manage",
+  "route": "diagnosticos",
+  "list_response": {
+    "devices": [
+      {
+        "id": "40000000-0000-4000-8000-000000000001",
+        "name": "Dispositivo sintético de diagnósticos",
+        "version": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    ],
+    "selected_device_id": null,
+    "generated_at": "2026-11-04T18:30:00Z",
+    "timezone": "America/Cuiaba"
+  },
+  "detail_response": {
+    "device": {
+      "id": "40000000-0000-4000-8000-000000000001",
+      "name": "Dispositivo sintético de diagnósticos",
+      "version": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "generated_at": "2026-11-04T18:30:00Z",
+    "timezone": "America/Cuiaba",
+    "connection": {
+      "state": "connected",
+      "label": "Conectado",
+      "source": "bridge",
+      "observed_at": "2026-11-04T18:30:00Z",
+      "freshness": "current",
+      "phone_e164": "+5567999999902"
+    },
+    "server": {
+      "state": "available",
+      "latency_ms": 17,
+      "observed_at": "2026-11-04T18:30:00Z",
+      "measurement": "api_to_bridge_health"
+    },
+    "recent_messages": {
+      "limit": 3,
+      "items": [
+        {
+          "id": "81000000-0000-4000-8000-000000000001",
+          "created_at": "2026-11-04T18:29:00Z",
+          "recipient": {
+            "phone_e164": "+5567999999903",
+            "display_name": "Contato sintético"
+          },
+          "sent": {
+            "type": "text",
+            "type_label": "Texto",
+            "text": "Sua assinatura está ativa.",
+            "caption": null,
+            "media": null,
+            "truncated": false
+          },
+          "type": "text",
+          "status": "sent",
+          "status_label": "Enviada",
+          "outcome": "accepted",
+          "truncated": false
+        },
+        {
+          "id": "81000000-0000-4000-8000-000000000002",
+          "created_at": "2026-11-04T18:28:00Z",
+          "recipient": {
+            "phone_e164": "+5567999999904",
+            "display_name": "<img src=x onerror=alert(1)>"
+          },
+          "sent": {
+            "type": "text",
+            "type_label": "Texto",
+            "text": "Texto literal <script>alert(1)</script>.",
+            "caption": null,
+            "media": null,
+            "truncated": false
+          },
+          "type": "text",
+          "status": "failed",
+          "status_label": "Falhou",
+          "outcome": "not_sent",
+          "truncated": false
+        },
+        {
+          "id": "81000000-0000-4000-8000-000000000003",
+          "created_at": "2026-11-04T18:27:00Z",
+          "recipient": {
+            "phone_e164": "+5567999999905",
+            "display_name": null
+          },
+          "sent": {
+            "type": "text",
+            "type_label": "Texto",
+            "text": "Tentativa com resultado ainda não confirmado.",
+            "caption": null,
+            "media": null,
+            "truncated": false
+          },
+          "type": "text",
+          "status": "uncertain",
+          "status_label": "Resultado incerto",
+          "outcome": "uncertain",
+          "truncated": false
+        }
+      ]
+    },
+    "proxy": {
+      "mode": "configured",
+      "host": "proxy.example.com",
+      "port": 8080,
+      "configuration_version": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "applied_to_session": "yes",
+      "can_test": true,
+      "blocked_reason": null,
+      "last_test": null
+    },
+    "test_message": {
+      "can_prepare": true,
+      "default_recipient_e164": "+5567999999902",
+      "text": "Mensagem de teste do Orion. Envio solicitado pelo proprietário para verificar a conexão do WhatsApp.",
+      "requires_confirmation": true,
+      "blocked_reason": null
+    }
+  },
+  "prepare_request": {
+    "idempotency_key": "91000000-0000-4000-8000-000000000001",
+    "expected_version": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "phone": null
+  },
+  "prepare_response": {
+    "request_id": "92000000-0000-4000-8000-000000000001",
+    "idempotency_key": "91000000-0000-4000-8000-000000000001",
+    "kind": "message_test",
+    "device_id": "40000000-0000-4000-8000-000000000001",
+    "status": "prepared",
+    "replayed": false,
+    "created_at": "2026-11-04T18:30:00Z",
+    "expires_at": "2026-11-04T18:32:00Z",
+    "finished_at": null,
+    "preview": {
+      "confirmation_version": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "recipient": {
+        "mode": "self",
+        "phone_e164": "+5567999999902"
+      },
+      "text": "Mensagem de teste do Orion. Envio solicitado pelo proprietário para verificar a conexão do WhatsApp.",
+      "expires_at": "2026-11-04T18:32:00Z"
+    },
+    "message": null,
+    "proxy": null
+  },
+  "confirm_request": {
+    "idempotency_key": "91000000-0000-4000-8000-000000000001",
+    "confirmation_version": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "confirmation": "ENVIAR"
+  },
+  "confirm_response": {
+    "request_id": "92000000-0000-4000-8000-000000000001",
+    "idempotency_key": "91000000-0000-4000-8000-000000000001",
+    "kind": "message_test",
+    "device_id": "40000000-0000-4000-8000-000000000001",
+    "status": "pending",
+    "replayed": false,
+    "created_at": "2026-11-04T18:30:00Z",
+    "expires_at": "2026-11-04T18:33:00Z",
+    "finished_at": null,
+    "preview": {
+      "confirmation_version": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "recipient": {
+        "mode": "self",
+        "phone_e164": "+5567999999902"
+      },
+      "text": "Mensagem de teste do Orion. Envio solicitado pelo proprietário para verificar a conexão do WhatsApp.",
+      "expires_at": "2026-11-04T18:32:00Z"
+    },
+    "message": {
+      "effect_id": "93000000-0000-4000-8000-000000000001",
+      "status": "pending",
+      "outcome": "pending",
+      "error_code": null,
+      "reason": null
+    },
+    "proxy": null
+  },
+  "proxy_request": {
+    "idempotency_key": "91000000-0000-4000-8000-000000000002",
+    "expected_version": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "proxy_response": {
+    "request_id": "92000000-0000-4000-8000-000000000002",
+    "idempotency_key": "91000000-0000-4000-8000-000000000002",
+    "kind": "proxy_test",
+    "device_id": "40000000-0000-4000-8000-000000000001",
+    "status": "succeeded",
+    "replayed": false,
+    "created_at": "2026-11-04T18:30:00Z",
+    "expires_at": "2026-11-04T18:31:00Z",
+    "finished_at": "2026-11-04T18:30:00Z",
+    "preview": null,
+    "message": null,
+    "proxy": {
+      "status": "reachable",
+      "scope": "configured",
+      "configuration_version": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "applied_to_session": "yes",
+      "latency_ms": 21,
+      "observed_at": "2026-11-04T18:30:00Z",
+      "error_code": null,
+      "reason": "A conexão com o proxy configurado foi verificada."
+    }
+  }
+}

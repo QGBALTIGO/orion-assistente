@@ -1,0 +1,26 @@
+name: Orion - galeria Instagram personalizada no Sobre nós
+on:
+  pull_request:
+    paths:
+      - 'app/static/orion-public.html'
+      - 'app/static/orion-public.js'
+      - 'app/static/orion-public.css'
+      - 'ui-tests/public-instagram-preview.test.mjs'
+      - '.github/workflows/public-instagram-gallery-style.yml'
+permissions:
+  contents: read
+jobs:
+  gallery:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Instalar dependências bloqueadas dos testes de interface
+        run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+      - name: JavaScript e regressões da seção Sobre nós
+        run: |
+          node --check app/static/orion-public.js
+          node --test ui-tests/public-instagram-preview.test.mjs ui-tests/public-contact-theme.test.mjs ui-tests/public-location-hours.test.mjs ui-tests/public-audit.test.mjs

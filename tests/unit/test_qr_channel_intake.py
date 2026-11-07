@@ -36,8 +36,8 @@ async def test_notice_returns_scoped_revision_before_asr_even_with_assistant_off
     second = await announce(api, a, "text-correction")
     other = await announce(api, b, "same-correction")
     assert [v.json() for v in (first, duplicate, second, other)] == [
-        {"recorded": True, "revision": 1}, {"recorded": True, "revision": 1},
-        {"recorded": True, "revision": 2}, {"recorded": True, "revision": 1}]
+        {"recorded": True, "revision": 1, "assistant_interactions": 1, "control_revision": None}, {"recorded": True, "revision": 1, "assistant_interactions": 1, "control_revision": None},
+        {"recorded": True, "revision": 2, "assistant_interactions": 1, "control_revision": None}, {"recorded": True, "revision": 1, "assistant_interactions": 1, "control_revision": None}]
     assert not calls and len(interactions) == 3 and scope.current() is None
     assert len({event[1] for event in redis.events}) == 2
 

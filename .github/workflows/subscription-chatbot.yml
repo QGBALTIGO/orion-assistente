@@ -1,0 +1,550 @@
+name: Orion - chatbot de assinaturas
+
+on:
+  pull_request:
+    paths:
+      - 'app/subscription_device*.py'
+      - 'app/subscription_chatbot*.py'
+      - 'app/subscription_template*.py'
+      - 'app/subscription_sent_messages*.py'
+      - 'app/subscription_diagnostics*.py'
+      - 'app/subscription_campaign*.py'
+      - 'app/subscription_schedule*.py'
+      - 'app/subscription_bulk*.py'
+      - 'app/subscription_direct*.py'
+      - 'app/subscription_group_contacts*.py'
+      - 'app/subscription_group_add*.py'
+      - 'app/qr_channels.py'
+      - 'app/plan_catalog.py'
+      - 'app/plan_permissions.py'
+      - 'app/plan_routing.py'
+      - 'app/workspace_policy.py'
+      - 'app/main.py'
+      - 'app/worker.py'
+      - 'app/static/orion-subscription-devices.*'
+      - 'app/static/orion-subscription-chatbot*.*'
+      - 'app/static/orion-subscription-templates.*'
+      - 'app/static/orion-subscription-sent-messages.*'
+      - 'app/static/orion-subscription-diagnostics.*'
+      - 'app/static/orion-subscription-campaigns.*'
+      - 'app/static/orion-subscription-scheduled-messages.*'
+      - 'app/static/orion-subscription-bulk-messages.*'
+      - 'app/static/orion-subscription-direct-messages.*'
+      - 'app/static/orion-subscription-group-contacts.*'
+      - 'app/static/orion-subscription-group-add.*'
+      - 'app/static/orion-suite.js'
+      - 'app/static/panel.html'
+      - 'alembic/versions/0063_subscription_chatbot.py'
+      - 'alembic/versions/0064_subscription_templates.py'
+      - 'alembic/versions/0065_subscription_sent_messages.py'
+      - 'alembic/versions/0066_appointment_operations.py'
+      - 'alembic/versions/0067_subscription_diagnostics.py'
+      - 'alembic/versions/0068_subscription_campaigns.py'
+      - 'alembic/versions/0069_subscription_scheduled_messages.py'
+      - 'alembic/versions/0070_subscription_bulk_messages.py'
+      - 'alembic/versions/0071_subscription_direct_messages.py'
+      - 'alembic/versions/0072_subscription_group_add.py'
+      - 'qr-bridge/**'
+      - 'scripts/*subscription_devices*'
+      - 'scripts/*subscription_chatbot*'
+      - 'scripts/*subscription_templates*'
+      - 'scripts/*subscription_sent_messages*'
+      - 'scripts/*subscription_diagnostics*'
+      - 'scripts/*subscription_campaigns*'
+      - 'scripts/*subscription_scheduled_messages*'
+      - 'scripts/*subscription_bulk*'
+      - 'scripts/*subscription_direct*'
+      - 'scripts/*subscription_group_add*'
+      - 'scripts/backup_and_migrate_*.py'
+      - 'scripts/predeploy_one_click_links.py'
+      - 'scripts/wait_for_single_whatsapp_schema.py'
+      - 'scripts/start_api.py'
+      - 'scripts/reverse_ingress.py'
+      - 'scripts/wait_for_appointment_operations_schema.py'
+      - 'tests/**/test_subscription_device*.py'
+      - 'tests/unit/test_subscription_connection_health.py'
+      - 'tests/**/test_subscription_chatbot*.py'
+      - 'tests/**/test_subscription_template*.py'
+      - 'tests/**/test_subscription_sent_messages*.py'
+      - 'tests/**/test_subscription_diagnostics*.py'
+      - 'tests/**/test_subscription_campaign*.py'
+      - 'tests/**/test_subscription_schedule*.py'
+      - 'tests/**/test_subscription_bulk*.py'
+      - 'tests/**/test_subscription_direct*.py'
+      - 'tests/**/test_subscription_group_contacts*.py'
+      - 'tests/**/test_subscription_group_add*.py'
+      - 'tests/unit/test_start_api.py'
+      - 'tests/unit/test_reverse_ingress.py'
+      - 'tests/unit/test_https_transport.py'
+      - 'tests/unit/test_reverse_proxy_contract.py'
+      - 'tests/unit/test_appointment_operations_release.py'
+      - 'tests/fixtures/subscription_chatbot*_contract.json'
+      - 'tests/fixtures/subscription_templates*.json'
+      - 'tests/fixtures/subscription_sent_messages*.json'
+      - 'tests/fixtures/subscription_diagnostics*.json'
+      - 'tests/fixtures/subscription_campaigns*.json'
+      - 'tests/fixtures/subscription_scheduled_messages*.json'
+      - 'tests/fixtures/subscription_bulk*.json'
+      - 'tests/fixtures/subscription_direct*.json'
+      - 'tests/fixtures/subscription_group_contacts*.json'
+      - 'tests/fixtures/subscription_group_add*.json'
+      - 'tests/e2e/browser_subscription_chatbot*.py'
+      - 'tests/e2e/browser_subscription_templates.py'
+      - 'tests/e2e/browser_subscription_sent_messages.py'
+      - 'tests/e2e/browser_subscription_diagnostics.py'
+      - 'tests/e2e/browser_subscription_campaigns.py'
+      - 'tests/e2e/browser_subscription_scheduled_messages.py'
+      - 'tests/e2e/subscription_scheduled_messages_fixture.py'
+      - 'tests/e2e/browser_subscription_bulk_messages.py'
+      - 'tests/e2e/subscription_bulk_messages_fixture.py'
+      - 'tests/e2e/browser_subscription_direct_messages.py'
+      - 'tests/e2e/subscription_direct_messages_fixture.py'
+      - 'tests/e2e/browser_subscription_group_contacts.py'
+      - 'tests/e2e/subscription_group_contacts_fixture.py'
+      - 'tests/e2e/browser_subscription_group_add.py'
+      - 'tests/e2e/subscription_group_add_fixture.py'
+      - 'tests/e2e/browser_subscription_guidance.py'
+      - 'tests/e2e/subscription_guidance_fixture.py'
+      - 'ui-tests/*subscription*'
+      - 'Dockerfile'
+      - 'pyproject.toml'
+      - 'requirements.lock'
+      - '.github/workflows/subscription-chatbot.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: subscription-chatbot-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CAKTO_BILLING_LIVE_ENABLED: '0'
+  ORION_DIRECT_PAYMENTS_ENABLED: '0'
+  META_LIVE_SEND: '0'
+  QR_AI_ENABLED: '0'
+  INBOX_SEND_ENABLED: '0'
+  MARKETING_EXECUTION_ENABLED: '0'
+  ORION_NOTIFY_SELF_ON_LINK: '0'
+  QR_BRIDGE_URL: ''
+
+jobs:
+  contracts:
+    name: API, motor, arquivos reais e publicacao
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -c requirements.lock '.[test]'
+      - name: Mesmo decoder do runtime, sem provedor pago
+        timeout-minutes: 6
+        run: |
+          # The hosted runner's Azure mirror stalled before tests in run 42040129374.
+          # Use Ubuntu's primary archive, preserving suites, components and signing keys.
+          # https://documentation.ubuntu.com/project/how-ubuntu-is-made/concepts/package-archive/
+          sudo python3 - <<'PY'
+          from pathlib import Path
+          sources = [Path('/etc/apt/sources.list'),
+                     *Path('/etc/apt/sources.list.d').glob('*.list'),
+                     *Path('/etc/apt/sources.list.d').glob('*.sources')]
+          for source in sources:
+              if not source.is_file():
+                  continue
+              original = updated = source.read_bytes()
+              for uri in (b'mirror+file:/etc/apt/apt-mirrors.txt',
+                          b'http://azure.archive.ubuntu.com/ubuntu',
+                          b'https://azure.archive.ubuntu.com/ubuntu'):
+                  updated = updated.replace(uri, b'https://archive.ubuntu.com/ubuntu')
+              if updated != original:
+                  source.write_bytes(updated)
+                  print('Ubuntu archive fallback:', source)
+          PY
+          apt_options=(-o Acquire::Retries=1 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
+          sudo apt-get "${apt_options[@]}" update
+          sudo apt-get "${apt_options[@]}" install -y --no-install-recommends ffmpeg
+          ffmpeg -version
+          ffprobe -version
+      - name: Validar autorizacao, duracao, duplicacao e contratos existentes
+        run: |
+          python -m pytest -q -ra \
+            tests/unit/test_subscription_chatbot*.py \
+            tests/unit/test_subscription_template*.py \
+            tests/unit/test_subscription_sent_messages*.py \
+            tests/unit/test_subscription_diagnostics*.py \
+            tests/unit/test_subscription_campaign*.py \
+            tests/unit/test_subscription_schedule*.py \
+            tests/unit/test_subscription_bulk*.py \
+            tests/unit/test_subscription_direct*.py \
+            tests/unit/test_subscription_group_contacts*.py \
+            tests/unit/test_subscription_group_add*.py \
+            tests/unit/test_subscription_devices.py \
+            tests/unit/test_subscription_connection_health.py \
+            tests/unit/test_subscription_device_rules.py \
+            tests/unit/test_subscription_device_audio.py \
+            tests/unit/test_subscription_devices_release.py \
+            tests/unit/test_subscription_workspace.py \
+            tests/unit/test_appointment_consent_release.py \
+            tests/unit/test_manual_start_times_release.py \
+            tests/unit/test_appointment_operations_release.py \
+            tests/unit/test_start_api.py \
+            tests/unit/test_reverse_ingress.py \
+            tests/unit/test_https_transport.py \
+            tests/unit/test_reverse_proxy_contract.py \
+            tests/unit/test_plan_permissions.py \
+            tests/unit/test_plan_routing.py \
+            tests/unit/test_qr_channels.py \
+            tests/unit/test_qr_channels_control.py \
+            tests/unit/test_qr_channels_scope.py \
+            tests/unit/test_qr_single_connection.py \
+            tests/unit/test_qr_admin_identity.py
+
+  bridge:
+    name: Ponte - lifecycle, efeitos e isolamento do legado
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Dependencias do transporte publicado
+        run: npm ci --prefix qr-bridge --ignore-scripts --no-audit --no-fund
+      - name: Transporte afetado com sockets, eventos e providers sinteticos
+        run: |
+          node --check qr-bridge/src/channel-session.mjs
+          node --check qr-bridge/src/channel-manager.mjs
+          node --check qr-bridge/src/channel-routes.mjs
+          node --check qr-bridge/src/device-runtime.mjs
+          node --check qr-bridge/src/device-group-contacts.mjs
+          node --check qr-bridge/src/device-group-add.mjs
+          node --check qr-bridge/src/device-diagnostics.mjs
+          for source in qr-bridge/src/campaign-*.mjs qr-bridge/src/scheduled-*.mjs qr-bridge/src/bulk-*.mjs; do
+            node --check "$source"
+          done
+          node --check qr-bridge/src/device-diagnostic-message.mjs
+          node --check qr-bridge/src/device-proxy-probe.mjs
+          node --check qr-bridge/src/device-message-failure.mjs
+          node --check qr-bridge/src/chatbot-runtime.mjs
+          node --check qr-bridge/src/chatbot-message.mjs
+          node --check qr-bridge/src/chatbot-input.mjs
+          node --check qr-bridge/src/chatbot-network.mjs
+          node --check qr-bridge/src/chatbot-media-upload.mjs
+          # The separate whatsapp-transport-hardening workflow runs the full
+          # transport and saves its baseline/candidate failure comparison.
+          # This focused gate covers the changed subscription transport and
+          # its actual shared consumers; it does not suppress new failures.
+          node --test \
+            qr-bridge/test/chatbot-*.test.mjs \
+            qr-bridge/test/campaign-*.test.mjs \
+            qr-bridge/test/scheduled-*.test.mjs \
+            qr-bridge/test/bulk-*.test.mjs \
+            qr-bridge/test/device-*.test.mjs \
+            qr-bridge/test/channel-*.test.mjs \
+            qr-bridge/test/bridge-auth.test.mjs \
+            qr-bridge/test/canonical-prepare.test.mjs \
+            qr-bridge/test/connected-features.test.mjs \
+            qr-bridge/test/connected-store.test.mjs \
+            qr-bridge/test/connection-notice-startup.test.mjs \
+            qr-bridge/test/paired-auth-state.test.mjs \
+            qr-bridge/test/pn-lid-session-transition.test.mjs \
+            qr-bridge/test/interactive-mode.test.mjs \
+            qr-bridge/test/wa-version-policy.test.mjs \
+            qr-bridge/test/core.test.mjs \
+            qr-bridge/test/e2ee-retry-hardening.test.mjs \
+            qr-bridge/test/encrypted-retry-store.test.mjs \
+            qr-bridge/test/legacy-central.test.mjs \
+            qr-bridge/test/reliable-encrypted-integration.test.mjs \
+            qr-bridge/test/reliable-send.test.mjs \
+            qr-bridge/test/send-capacity.test.mjs \
+            qr-bridge/test/wizard-journey.test.mjs
+
+  dom:
+    name: Formulario, estados, acessibilidade e navegacao
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+      - name: Componentes reais com API sintetica
+        run: |
+          node --check app/static/orion-subscription-chatbot.js
+          node --check app/static/orion-subscription-chatbot-test.js
+          node --check app/static/orion-subscription-templates.js
+          node --check app/static/orion-subscription-sent-messages.js
+          node --check app/static/orion-subscription-diagnostics.js
+          node --check app/static/orion-subscription-campaigns.js
+          node --check app/static/orion-subscription-scheduled-messages.js
+          node --check app/static/orion-subscription-bulk-messages.js
+          node --check app/static/orion-subscription-direct-messages.js
+          node --check app/static/orion-subscription-group-contacts.js
+          node --check app/static/orion-subscription-group-add.js
+          node --check app/static/orion-subscription-devices.js
+          node --check app/static/orion-suite.js
+          node --test \
+            ui-tests/subscription-guidance.test.mjs \
+            ui-tests/subscription-chatbot.test.mjs \
+            ui-tests/subscription-chatbot-test.test.mjs \
+            ui-tests/subscription-templates.test.mjs \
+            ui-tests/subscription-sent-messages.test.mjs \
+            ui-tests/subscription-diagnostics.test.mjs \
+            ui-tests/subscription-campaigns.test.mjs \
+            ui-tests/subscription-scheduled-messages.test.mjs \
+            ui-tests/subscription-bulk-messages.test.mjs \
+            ui-tests/subscription-direct-messages.test.mjs \
+            ui-tests/subscription-group-contacts.test.mjs \
+            ui-tests/subscription-group-add.test.mjs \
+            ui-tests/subscription-devices.test.mjs \
+            ui-tests/subscription-workspace.test.mjs \
+            ui-tests/channels.test.mjs \
+            ui-tests/channels-pairing.test.mjs \
+            ui-tests/single-business-context.test.mjs \
+            ui-tests/member-account-settings.test.mjs \
+            ui-tests/plan-permissions.test.mjs \
+            ui-tests/orion-suite.test.mjs
+
+  postgres:
+    name: PostgreSQL - migracao, RLS, concorrencia e quotas
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: orion_chatbot_ci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-only-chatbot-postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d orion_chatbot_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 15
+      redis:
+        image: redis:7
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 15
+    env:
+      APP_DATABASE_URL: postgresql+asyncpg://app_runtime:ci-chatbot-runtime@127.0.0.1:5432/orion_chatbot_ci
+      MIGRATION_DATABASE_URL: postgresql+psycopg://app_migrator:ci-chatbot-migrator@127.0.0.1:5432/orion_chatbot_ci
+      SUPPORT_DATABASE_URL: postgresql+asyncpg://app_support:ci-chatbot-support@127.0.0.1:5432/orion_chatbot_ci
+      SUPPORT_API_TOKEN: synthetic-chatbot-ci-token-at-least-32-characters
+      REQUIRE_POSTGRES_TESTS: '1'
+      REQUIRE_REDIS_TESTS: '1'
+      REDIS_URL: redis://127.0.0.1:6379/15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -c requirements.lock '.[test]'
+      - name: Instalar o decoder real de midia
+        timeout-minutes: 6
+        run: |
+          # Same official archive fallback as the API gate; retain the real decoder.
+          sudo python3 - <<'PY'
+          from pathlib import Path
+          sources = [Path('/etc/apt/sources.list'),
+                     *Path('/etc/apt/sources.list.d').glob('*.list'),
+                     *Path('/etc/apt/sources.list.d').glob('*.sources')]
+          for source in sources:
+              if not source.is_file():
+                  continue
+              original = updated = source.read_bytes()
+              for uri in (b'mirror+file:/etc/apt/apt-mirrors.txt',
+                          b'http://azure.archive.ubuntu.com/ubuntu',
+                          b'https://azure.archive.ubuntu.com/ubuntu'):
+                  updated = updated.replace(uri, b'https://archive.ubuntu.com/ubuntu')
+              if updated != original:
+                  source.write_bytes(updated)
+                  print('Ubuntu archive fallback:', source)
+          PY
+          apt_options=(-o Acquire::Retries=1 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
+          sudo apt-get "${apt_options[@]}" update
+          sudo apt-get "${apt_options[@]}" install -y --no-install-recommends ffmpeg
+          ffmpeg -version
+          ffprobe -version
+      - name: Provisionar os tres papeis no banco descartavel
+        env:
+          PGPASSWORD: ci-only-chatbot-postgres
+        run: |
+          psql -h 127.0.0.1 -U postgres -d orion_chatbot_ci -v ON_ERROR_STOP=1 \
+            -v db_name=orion_chatbot_ci \
+            -v runtime_password=ci-chatbot-runtime \
+            -v migrator_password=ci-chatbot-migrator \
+            -v support_password=ci-chatbot-support \
+            -f infra/postgres/init/001-roles.sql
+          python -m alembic upgrade head
+      - name: Validar contratos reais sem saida para provedores
+        run: |
+          python - <<'PY'
+          import glob
+          import ipaddress
+          import socket
+          import pytest
+          original_connect = socket.socket.connect
+          original_connect_ex = socket.socket.connect_ex
+          original_getaddrinfo = socket.getaddrinfo
+          def loopback(address):
+              host = address[0] if isinstance(address, tuple) else address
+              if host == 'localhost':
+                  return
+              try:
+                  allowed = ipaddress.ip_address(host).is_loopback
+              except (ValueError, TypeError):
+                  allowed = False
+              if not allowed:
+                  raise AssertionError('External network forbidden in chatbot qualification')
+          def connect(sock, address):
+              loopback(address)
+              return original_connect(sock, address)
+          def connect_ex(sock, address):
+              loopback(address)
+              return original_connect_ex(sock, address)
+          def getaddrinfo(host, *args, **kwargs):
+              if host is not None:
+                  loopback((host, 0))
+              return original_getaddrinfo(host, *args, **kwargs)
+          socket.socket.connect = connect
+          socket.socket.connect_ex = connect_ex
+          socket.getaddrinfo = getaddrinfo
+          # Validate group addition and migration before existing imports and
+          # collect every failure. Any failure keeps the entire gate nonzero.
+          raise SystemExit(pytest.main(['-q', '-ra',
+              *sorted(glob.glob('tests/integration/test_subscription_group_add*_postgres.py'),
+                  key=lambda path: ('release' not in path, path)),
+              *sorted(glob.glob('tests/integration/test_subscription_group_contacts*_postgres.py')),
+              *sorted(glob.glob('tests/integration/test_subscription_direct*_postgres.py'),
+                  key=lambda path: ('release' not in path, path)),
+              *sorted(glob.glob('tests/integration/test_subscription_bulk*_postgres.py'),
+                  key=lambda path: ('release' not in path, path)),
+              *sorted(glob.glob('tests/integration/test_subscription_schedule*_postgres.py'),
+                  key=lambda path: ('release' not in path, path)),
+              *sorted(glob.glob('tests/integration/test_subscription_chatbot*_postgres.py')),
+              *sorted(glob.glob('tests/integration/test_subscription_templates*_postgres.py')),
+              *sorted(glob.glob('tests/integration/test_subscription_sent_messages*_postgres.py')),
+              *sorted(glob.glob('tests/integration/test_subscription_diagnostics*_postgres.py')),
+              *sorted(glob.glob('tests/integration/test_subscription_campaigns*_postgres.py')),
+              'tests/integration/test_subscription_devices_postgres.py',
+              'tests/integration/test_subscription_devices_release_postgres.py',
+              'tests/integration/test_subscription_workspace_postgres.py',
+              'tests/integration/test_qr_single_connection_postgres.py',
+              'tests/integration/test_qr_channels_postgres.py',
+              'tests/integration/test_qr_channels_transaction_postgres.py',
+          ]))
+          PY
+
+  browser:
+    name: Navegadores - ${{ matrix.engine }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [chromium, webkit]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Usar arquivo Ubuntu para dependencias do WebKit
+        if: matrix.engine == 'webkit'
+        run: |
+          # The Azure mirror downloaded fonts at about 39 KB/s in run 42111981290.
+          # Use the same official archive as API/PG, retaining suites and signing keys.
+          sudo python3 - <<'PY'
+          from pathlib import Path
+          sources = [Path('/etc/apt/sources.list'),
+                     *Path('/etc/apt/sources.list.d').glob('*.list'),
+                     *Path('/etc/apt/sources.list.d').glob('*.sources')]
+          for source in sources:
+              if not source.is_file():
+                  continue
+              original = updated = source.read_bytes()
+              for uri in (b'mirror+file:/etc/apt/apt-mirrors.txt',
+                          b'http://azure.archive.ubuntu.com/ubuntu',
+                          b'https://azure.archive.ubuntu.com/ubuntu'):
+                  updated = updated.replace(uri, b'https://archive.ubuntu.com/ubuntu')
+              if updated != original:
+                  source.write_bytes(updated)
+                  print('Ubuntu archive fallback:', source)
+          PY
+      - name: Instalar o navegador de teste
+        run: |
+          # The synthetic server validates the real DTOs and renders a real JPEG.
+          python -m pip install -c requirements.lock -r tests/e2e/requirements.txt pytest pytest-asyncio pydantic Pillow
+          python -m playwright install --with-deps ${{ matrix.engine }}
+      - name: Chrome oficial para os codecs de midia publicados
+        if: matrix.engine == 'chromium'
+        run: |
+          # Playwright's Chromium does not bundle every licensed media codec.
+          # Test the actual H.264/MP3 contract with Google's official binary.
+          # https://playwright.dev/python/docs/browsers#media-codecs
+          python -m playwright install --with-deps chrome
+          python - <<'PY'
+          import json
+          import os
+          import shutil
+          from playwright.sync_api import sync_playwright
+          executable = shutil.which('google-chrome') or shutil.which('google-chrome-stable')
+          if not executable:
+              raise SystemExit('Official Chrome executable was not installed')
+          with sync_playwright() as playwright:
+              for name, options in [('bundled-chromium', {}), ('official-chrome', {'executable_path': executable})]:
+                  instance = playwright.chromium.launch(**options)
+                  page = instance.new_page()
+                  codecs = page.evaluate('''() => ({
+                      h264: document.createElement('video').canPlayType('video/mp4; codecs="avc1.64001f"'),
+                      mp3: document.createElement('audio').canPlayType('audio/mpeg')
+                  })''')
+                  print(json.dumps({'browser': name, 'version': instance.version, 'codecs': codecs}))
+                  instance.close()
+                  if name == 'official-chrome' and not all(codecs.values()):
+                      raise SystemExit('Official Chrome is missing required H.264/MP3 codecs')
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as environment:
+              environment.write('ORION_TEST_CHROMIUM_EXECUTABLE=' + executable + '\n')
+          PY
+      - name: Fluxos no painel real - celular, tablet, desktop e dois temas
+        run: |
+          python -m pytest -q -ra --maxfail=1 \
+            tests/e2e/browser_subscription_group_add.py \
+            tests/e2e/browser_subscription_group_contacts.py \
+            tests/e2e/browser_subscription_guidance.py \
+            tests/e2e/browser_subscription_chatbot.py \
+            tests/e2e/browser_subscription_chatbot_simulator.py \
+            tests/e2e/browser_subscription_templates.py \
+            tests/e2e/browser_subscription_sent_messages.py \
+            tests/e2e/browser_subscription_diagnostics.py \
+            tests/e2e/browser_subscription_campaigns.py \
+            tests/e2e/browser_subscription_scheduled_messages.py \
+            tests/e2e/browser_subscription_bulk_messages.py \
+            tests/e2e/browser_subscription_direct_messages.py \
+            tests/e2e/browser_subscription_devices.py \
+            tests/e2e/browser_subscription_workspace.py -k '${{ matrix.engine }}'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: subscription-chatbot-${{ matrix.engine }}
+          path: |
+            test-artifacts/subscription-group-add/
+            test-artifacts/subscription-group-contacts/
+            test-artifacts/subscription-guidance/
+            test-artifacts/subscription-chatbot/
+            test-artifacts/subscription-chatbot-test/
+            test-artifacts/subscription-templates/
+            test-artifacts/subscription-sent-messages/
+            test-artifacts/subscription-diagnostics/
+            test-artifacts/subscription-campaigns/
+            test-artifacts/subscription-scheduled-messages/
+            test-artifacts/subscription-bulk-messages/
+            test-artifacts/subscription-direct-messages/
+            test-artifacts/subscription-devices/
+            test-artifacts/subscription-workspace/
+          if-no-files-found: warn
+          retention-days: 7

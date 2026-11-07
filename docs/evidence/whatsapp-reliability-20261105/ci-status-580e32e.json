@@ -1,0 +1,64 @@
+{
+  "head": "580e32e722aeeb438ef7de3abfcf8fd96966c8d2",
+  "pull_request": "https://github.com/QGBALTIGO/orion-assistente/pull/267",
+  "run": "https://github.com/QGBALTIGO/orion-assistente/actions/runs/42077676949",
+  "scope": "old head; subsequent channel-quarantine fix is not covered",
+  "jobs": {
+    "bridge": {
+      "id": 127422116842,
+      "conclusion": "success",
+      "runner": "Ubuntu 24.04",
+      "node": "22.23.4",
+      "baseline": {
+        "tests": 840,
+        "passed": 821,
+        "failed": 19
+      },
+      "candidate": {
+        "tests": 881,
+        "passed": 862,
+        "failed": 19
+      },
+      "all_failures_in": "panel-ui.test.mjs",
+      "new_failures": 0,
+      "new_protocol_recovery_tests_passed": 30,
+      "npm_audit_vulnerabilities": 0,
+      "docker_image": "sha256:9002633287b809a517fc8fc7d46934a0d8e6eaba10f52613d53e78f05bb89259"
+    },
+    "postgres_and_redis": {
+      "id": 127422117152,
+      "conclusion": "success",
+      "passed": 93,
+      "real_pg_redis_cases": 21,
+      "unit_cases": 72,
+      "schema": "0071_subscription_direct",
+      "coverage_missing_from_local_41": [
+        "tests/integration/test_qr_channels_transaction_postgres.py (6 cases)",
+        "tests/integration/test_qr_single_connection_postgres.py (14 cases)"
+      ]
+    },
+    "panel": {
+      "id": 127422117217,
+      "conclusion": "success",
+      "tests": 25,
+      "passed": 25,
+      "failed": 0,
+      "skipped": 0
+    }
+  },
+  "other_completed_failure": {
+    "job": 127422347017,
+    "run": 42077745611,
+    "passed": 288,
+    "failed": 1,
+    "test": "tests/integration/test_single_whatsapp_release_postgres.py::test_release_verifier_accepts_actual_binding_policy_guards_and_grants",
+    "classification": "reproduced on immutable baseline 976698882c666250c54a54675a91cb13f2d7f937; verifier/test/workflow unchanged",
+    "retries": 0
+  },
+  "remaining_other_gates": "still being monitored",
+  "artifact": {
+    "id": 13440091241,
+    "sha256": "f22d8bb1d2181060a78450a53ec34fa314b170759ce90277bfdaf03fad501a44",
+    "verified": true
+  }
+}
