@@ -169,8 +169,8 @@ async def test_url_button_review_confirm_claim_and_receipt_keep_exact_frozen_lin
     c = direct_case
     source = message(c, kind="url_button", text="*Sistema sintético*\nTexto literal {name}",
         footer="Site externo", button_text="Acessar meu sistema", url="https://orionagenda.pro/?origin=synthetic")
-    action = {"type": "url_button", "text": "*Sistema sintético*\nTexto literal {name}\n\nSite externo",
-        "footer": "", "button_text": source["button_text"], "url": source["url"]}
+    action = {"type": "url_button", "text": "*Sistema sintético*\nTexto literal {name}\n\u200b",
+        "footer": "Site externo", "button_text": source["button_text"], "url": source["url"]}
     before = await snapshot(c)
     async with url_button_transport(c, monkeypatch) as status:
         prepared = await review(c, source)

@@ -18,6 +18,7 @@ SLOTS = ["2026-11-07T13:00:00Z", "2026-11-07T14:15:00Z", "2026-11-07T15:15:00Z",
          "2026-11-07T20:00:00Z", "2026-11-07T21:15:00Z"]
 CLOCKS = ["09:00", "10:15", "11:15", "12:30", "13:45", "15:00", "16:00", "17:15"]
 FOOTER = "Disponibilidade conferida novamente ao reservar."
+NATIVE_GAP = "\n\u200b"
 
 
 class Redis:
@@ -67,8 +68,8 @@ async def test_real_formatter_produces_native_choices_for_both_time_states(monke
     result, record = await project(monkeypatch, answer, step=step)
     assert "presentation" in result
     action = result["presentation"]["action"]
-    assert action["type"] == "list" and action["description"] == answer+"\n\n"+FOOTER
-    assert action["footer"] == ""
+    assert action["type"] == "list" and action["description"] == answer+NATIVE_GAP
+    assert action["footer"] == FOOTER
     assert [row["title"] for row in action["sections"][0]["rows"]] == CLOCKS
     assert offered_bodies(result, record) == CLOCKS
     assert all(spec["kind"] == "text" for spec in record["choices"].values())
@@ -82,7 +83,7 @@ async def test_display_preferences_keep_the_same_verified_slot_choices(monkeypat
     answer = formatted(preferences={"style": style, "length": length, "emoji": emoji})
     result, _ = await project(monkeypatch, answer)
     action = result["presentation"]["action"]
-    assert action["description"] == answer+"\n\n"+FOOTER and action["footer"] == ""
+    assert action["description"] == answer+NATIVE_GAP and action["footer"] == FOOTER
     assert [row["title"] for row in action["sections"][0]["rows"]] == CLOCKS
 
 
@@ -123,8 +124,8 @@ async def test_existing_colon_only_list_is_not_expanded_to_new_times(monkeypatch
     answer = "Encontrei estes horários livres para 07/11:\n09:00 • 10:15\nQual horário prefere?"
     result, record = await project(monkeypatch, answer)
     assert offered_bodies(result, record) == CLOCKS[:2]
-    assert result["presentation"]["action"]["description"] == answer+"\n\n"+FOOTER
-    assert result["presentation"]["action"]["footer"] == ""
+    assert result["presentation"]["action"]["description"] == answer+NATIVE_GAP
+    assert result["presentation"]["action"]["footer"] == FOOTER
 
 
 @pytest.mark.parametrize("slots", [None, "09h", {}, ["not-an-instant"], ["2026-11-07T09:00:00"],
@@ -180,18 +181,20 @@ async def test_full_factual_prefix_uses_existing_utf16_bound_instead_of_truncati
 @pytest.mark.parametrize("combined_units", [1000, 1001])
 async def test_combined_footer_limit_keeps_all_facts_and_never_issues_hidden_choices(monkeypatch, combined_units):
     body = formatted(SLOTS[:1])
-    remaining = combined_units - presentation.message_units(body+"\n\n"+FOOTER) - 2
+    # The native footer has its own limit; the list body pays only the two
+    # UTF-16 units of the LF + zero-width anchor, without dropping any facts.
+    remaining = combined_units - presentation.message_units(body+NATIVE_GAP) - 2
     answer = "😀"*(remaining//2) + "x"*(remaining % 2) + "\n\n" + body
-    complete = answer+"\n\n"+FOOTER
+    complete = answer+NATIVE_GAP
     assert presentation.message_units(complete) == combined_units
     result, record = await project(monkeypatch, answer)
     if combined_units == 1000:
         action = result["presentation"]["action"]
-        assert action["description"] == complete and action["footer"] == ""
+        assert action["description"] == complete and action["footer"] == FOOTER
         assert offered_bodies(result, record) == CLOCKS[:1]
         assert result["answer"] == answer
     else:
-        assert result == {"answer": complete, "step": "time"}
+        assert result == {"answer": answer+"\n\n"+FOOTER, "step": "time"}
         assert record is None
 
 

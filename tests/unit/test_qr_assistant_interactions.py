@@ -10,6 +10,7 @@ import pytest
 from app import qr_assistant_interactions as choices
 from app import qr_assistant_catalog as catalog
 from app.qr_catalog_context import candidates
+from test_qr_multi_flow import flow
 
 TENANT = UUID("7f254d34-2cf4-465d-93da-c14e4fe75868")
 PHONE = "5521999990001"
@@ -53,6 +54,73 @@ async def test_accepts_one_current_delivered_choice_once():
     # Resolving the capability only supplies a new inbound decision. It never
     # mutates the reservation or falsely claims the domain operation succeeded.
     assert json.loads(await redis.get(key))["step"] == "confirm"
+
+
+@pytest.mark.parametrize("step", ["confirm", "reschedule_confirm"])
+@pytest.mark.parametrize("button_index, decision", [(0, "sim"), (1, "quero alterar o horário")])
+async def test_real_booking_summary_offers_only_confirm_and_change_with_current_one_shot_choices(flow, step, button_index, decision):
+    h = flow
+    request = ("Quero agendar corte amanhã às 15:00 com Bruno" if step == "confirm"
+               else "Quero remarcar amanhã às 15:00")
+    proposed = await h.turn(request, preview=False)
+    assert proposed["step"] == step
+    state_before = h.state(); writes_before = list(h.calls["writes"])
+    assert state_before["confirmation_summary"] in proposed["answer"]
+    assert not state_before.get("confirmation_requires_review")
+    assert [write[0] for write in writes_before] == (["hold"] if step == "confirm" else [])
+    assert not any(write[0] in {"confirm", "reschedule", "cancel"} for write in writes_before)
+    presented = await choices.present(h.redis, h.tenant, "5567999999999", h.namespace,
+        dict(proposed), choices.Capabilities(assistant_interactions=1))
+    action = presented["presentation"]["action"]
+    assert action["type"] == "reply_buttons"
+    assert [button["title"] for button in action["buttons"]] == ["Confirmar", "Alterar horário"]
+    assert proposed["answer"] in action["text"] and presented["answer"] == proposed["answer"]
+    nonce = presented["presentation"]["id"]
+    assert [button["id"] for button in action["buttons"]] == [f"oa1_{nonce}_0", f"oa1_{nonce}_1"]
+    record = json.loads(await h.redis.get(h.key+":presentation"))
+    assert [record["choices"][choices._digest(button["id"])] for button in action["buttons"]] == [
+        {"kind": "text", "body": "sim"}, {"kind": "text", "body": "quero alterar o horário"}]
+    assert record["expires_at"] == state_before["confirmation_expires_at"]
+    assert h.state() == state_before and h.calls["writes"] == writes_before
+    selection = choices.Selection(id=action["buttons"][button_index]["id"], quoted_message_id="accepted-current-summary")
+    assert await choices.selected_action(h.redis, h.tenant, "5567999999999", h.namespace, selection) is None
+    record["provider_id"] = selection.quoted_message_id
+    await h.redis.set(h.key+":presentation", json.dumps(record))
+    removed = selection.model_copy(update={"id": f"oa1_{nonce}_2"})
+    assert await choices.resolve(h.redis, h.tenant, "5567999999999", h.namespace, removed) is None
+    resolved = await choices.resolve(h.redis, h.tenant, "5567999999999", h.namespace, selection)
+    assert resolved == decision
+    assert await choices.resolve(h.redis, h.tenant, "5567999999999", h.namespace, selection) is None
+    assert h.state() == state_before and h.calls["writes"] == writes_before
+    reply = await h.turn(resolved, preview=False)
+    if button_index == 0:
+        assert reply["step"] == ("confirmed" if step == "confirm" else "rescheduled")
+        assert [write[0] for write in h.calls["writes"]] == (["hold", "confirm"] if step == "confirm" else ["reschedule"])
+    else:
+        assert reply["step"] == ("time" if step == "confirm" else "reschedule_day")
+        assert h.calls["writes"] == writes_before
+        assert not any(h.state().get(field) for field in ("confirmation_summary", "confirmation_message_id", "confirmation_expires_at"))
+        if step == "reschedule_confirm":
+            assert h.state()["appointment"] == state_before["appointment"]
+
+
+@pytest.mark.parametrize("index, decision", [(0, "sim"), (1, "não")])
+async def test_cancellation_keeps_explicit_cancel_and_keep_time_choices(index, decision):
+    redis = Redis(); key = f"orion:qr:ai:{TENANT}:{PHONE}"
+    state = {"step": "cancel_confirm", "appointment": str(uuid4()), "expected_snapshot": "original-snapshot",
+             "confirmation_summary": "Cancelar o horário de Corte?", "confirmation_expires_at": time.time()+240}
+    await redis.set(key, json.dumps(state))
+    result = await choices.present(redis, TENANT, PHONE, PHONE,
+        {"answer": state["confirmation_summary"], "step": "cancel_confirm"}, choices.Capabilities(assistant_interactions=1))
+    buttons = result["presentation"]["action"]["buttons"]
+    assert [button["title"] for button in buttons] == ["Cancelar horário", "Manter horário"]
+    record = json.loads(await redis.get(key+":presentation")); record["provider_id"] = "accepted-cancellation"
+    assert [record["choices"][choices._digest(button["id"])] for button in buttons] == [
+        {"kind": "text", "body": "sim"}, {"kind": "text", "body": "não"}]
+    await redis.set(key+":presentation", json.dumps(record))
+    assert await choices.resolve(redis, TENANT, PHONE, PHONE,
+        choices.Selection(id=buttons[index]["id"], quoted_message_id="accepted-cancellation")) == decision
+    assert json.loads(await redis.get(key)) == state
 
 
 @pytest.mark.parametrize("attack", ["forged", "wrong_quote", "no_ack", "expired", "changed_state", "changed_catalog", "other_phone", "other_tenant", "other_namespace"])

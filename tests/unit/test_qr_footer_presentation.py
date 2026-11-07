@@ -1,4 +1,4 @@
-"""Complete footer paragraphs before wire freezing, using only synthetic data."""
+"""Native footer presentation before wire freezing, using only synthetic data."""
 from copy import deepcopy
 import json
 import time
@@ -10,7 +10,10 @@ from app import qr_assistant_interactions as choices
 from app import subscription_chatbot_rules as rules, subscription_direct_policy as direct
 from app.subscription_device_rules import transcription_parts
 from app.subscription_device_schemas import DeviceSettings
+from app import whatsapp_footer as footer_composer
 from app.whatsapp_footer import FooterTooLong, action_footer, footer_template, spaced_footer, units
+
+NATIVE_GAP = "\n\u200b"
 
 
 class Redis:
@@ -29,22 +32,48 @@ def test_shared_composition_preserves_all_decisions_and_is_idempotent(kind, fiel
         "sections": [{"rows": [{"id": "opaque-row", "title": "Escolher"}]}]}
     original = deepcopy(action)
     result = action_footer(action)
-    assert result[field] == "Texto completo\n\nRodapé" and result["footer"] == ""
+    assert result[field] == "Texto completo" + NATIVE_GAP and result["footer"] == "Rodapé"
     assert result | {field: original[field], "footer": original["footer"]} == original
     assert action == original and action_footer(result) == result
     assert units(result[field]) <= maximum
 
 
 @pytest.mark.parametrize("maximum", [1000, 1024])
-def test_full_body_never_falls_back_to_an_unspaced_native_footer(maximum):
+def test_full_body_is_rejected_when_the_visual_anchor_exceeds_the_native_body_limit(maximum):
     with pytest.raises(FooterTooLong): rules._spaced_footer("A"*maximum, "Rodapé", maximum=maximum)
 
 
-@pytest.mark.parametrize("body,allowed", [("😀"*510, True), ("😀"*511, False)])
+@pytest.mark.parametrize("body,allowed", [("😀"*511, True), ("😀"*512, False)])
 def test_utf16_boundary_preserves_unicode_and_all_footer_content(body, allowed):
-    if allowed: assert spaced_footer(body, "A", maximum=1024) == (body+"\n\nA", "")
+    if allowed: assert spaced_footer(body, "A", maximum=1024) == (body+NATIVE_GAP, "A")
     else:
         with pytest.raises(FooterTooLong): spaced_footer(body, "A", maximum=1024)
+
+
+@pytest.mark.parametrize("maximum", [1000, 1024])
+def test_native_footer_keeps_its_own_limit_outside_the_anchored_body_budget(maximum):
+    body, footer = "A" * (maximum - 2), "F" * 60
+    assert spaced_footer(body, footer, maximum=maximum) == (body + NATIVE_GAP, footer)
+    assert units(body + NATIVE_GAP) == maximum
+
+
+def test_native_footer_limit_is_rejected_without_truncation_or_moving_it_into_the_body():
+    with pytest.raises(ValueError, match="rodapé"):
+        spaced_footer("Mensagem", "F" * 61, maximum=1024)
+
+
+@pytest.mark.parametrize("body,footer,expected", [
+    ("Mensagem", "Rodapé", ("Mensagem\n\nRodapé", "")),
+    ("Mensagem\n\n", " Rodapé", ("Mensagem\n\nRodapé", "")),
+    ("Sem rodapé\n", "", ("Sem rodapé\n", "")),
+])
+def test_plain_text_fallback_uses_paragraphs_without_a_native_footer_anchor(body, footer, expected):
+    assert footer_composer.text_footer(body, footer, maximum=1200) == expected
+
+
+def test_plain_text_fallback_rejects_overflow_instead_of_truncating():
+    with pytest.raises(FooterTooLong):
+        footer_composer.text_footer("😀" * 511, "A", maximum=1024)
 
 
 def test_direct_url_keeps_literal_braces_url_and_label_with_one_footer():
@@ -53,7 +82,7 @@ def test_direct_url_keeps_literal_braces_url_and_label_with_one_footer():
     before = deepcopy(source)
     action = direct.url_button_plan(source)[0]
     assert action == {"type": "url_button", **source,
-        "text": "Olá {name}\n\nRodapé {literal}", "footer": ""}
+        "text": "Olá {name}" + NATIVE_GAP}
     assert source == before
 
 
@@ -107,16 +136,17 @@ async def present(monkeypatch, *, step="confirm", answer="Resumo completo", veri
     return result, redis, key
 
 
-async def test_actual_qr_reply_buttons_have_real_blank_line_and_no_native_footer(monkeypatch):
+async def test_actual_qr_reply_buttons_preserve_native_footer_and_body_gap(monkeypatch):
     result, redis, key = await present(monkeypatch)
     action = result["presentation"]["action"]
-    assert action["text"] == "Resumo completo\n\nConfira os dados antes de escolher."
-    assert action["footer"] == "" and len(action["buttons"]) == 3
-    assert len(json.loads(await redis.get(key+":presentation"))["choices"]) == 3
+    assert action["text"] == "Resumo completo" + NATIVE_GAP
+    assert action["footer"] == "Confira os dados antes de escolher."
+    assert [button["title"] for button in action["buttons"]] == ["Confirmar", "Alterar horário"]
+    assert len(json.loads(await redis.get(key+":presentation"))["choices"]) == 2
 
 
 async def test_successful_operation_overflow_keeps_complete_answer_footer_and_url_as_text(monkeypatch):
-    answer = "A"*1000
+    answer = "A"*1023
     result, redis, key = await present(monkeypatch, step="confirmed", answer=answer, verified=True)
     assert "presentation" not in result
     assert result["answer"].startswith(answer+"\n\nRemarque ou cancele pela página segura.")
@@ -137,7 +167,7 @@ async def test_post_operation_1200_unit_original_answer_never_errors_or_loses_ex
 
 
 async def test_pre_operation_optional_widget_overflow_keeps_full_summary_without_new_choice_authority(monkeypatch):
-    answer = "Resumo " + "A"*993
+    answer = "Resumo " + "A"*1016
     result, redis, key = await present(monkeypatch, answer=answer)
     assert "presentation" not in result
     assert result["answer"] == answer + "\n\nConfira os dados antes de escolher."

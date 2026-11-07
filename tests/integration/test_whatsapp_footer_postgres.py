@@ -61,8 +61,8 @@ async def test_new_resend_composes_footer_once_and_replay_keeps_same_frozen_atte
     assert await effect_row(c, source["id"]) == original
     fresh = await effect_row(c, created.json()["effect_id"])
     field = "description" if kind == "list" else "text"
-    assert fresh["payload"]["action"][field] == body + "\n\nRodapé sintético"
-    assert fresh["payload"]["action"]["footer"] == ""
+    assert fresh["payload"]["action"][field] == body + "\n\u200b"
+    assert fresh["payload"]["action"]["footer"] == "Rodapé sintético"
     assert fresh["payload"]["phone"] == original["payload"]["phone"]
     if kind == "url_button":
         assert fresh["payload"]["action"]["url"] == original["payload"]["action"]["url"]

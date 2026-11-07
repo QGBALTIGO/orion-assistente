@@ -82,7 +82,7 @@ def test_direct_contract_has_no_hidden_template_or_protocol_injection(extra):
 def test_direct_keeps_brace_text_literal_and_builds_one_exact_action_without_ids():
     value = parse(message(text='*Olá* {name} e {qualquer}', footer="Rodapé {literal}"))
     assert direct.url_button_plan(value) == [{"type": "url_button", **content(
-        text=value["text"]+"\n\n"+value["footer"], footer="")}]
+        text=value["text"]+"\n\u200b", footer=value["footer"])}]
     assert direct.expanded_definition(value, KEY) == direct.expanded_definition(value, KEY)
     assert "id" not in direct.url_button_plan(value)[0]
     assert "delay_seconds" not in direct.url_button_plan(value)[0]
@@ -108,8 +108,8 @@ def test_chatbot_renders_only_known_tenant_facts_without_url_interpolation_or_mu
     facts = FACTS | {"name": "Ana", "my_name": "Clínica sintética"}
     plan, deps = rules.compile_plan(root["id"], graph(root), {}, facts, CONTEXT)
     assert plan == [{"delay_seconds": 1, "action": {"type": "url_button",
-        "text": "Olá Ana, acesse Clínica sintética.\n\n"+FACTS["my_email"],
-        "footer": "", "button_text": "Abrir Ana", "url": "https://orionagenda.pro/"}}]
+        "text": "Olá Ana, acesse Clínica sintética.\n\u200b",
+        "footer": FACTS["my_email"], "button_text": "Abrir Ana", "url": "https://orionagenda.pro/"}}]
     assert root == before and deps == [root["id"]]
 
 
@@ -183,7 +183,7 @@ async def test_history_displays_full_cta_and_freezes_resend_without_fetch_or_sel
     assert "Site externo" in shown["sent"]["text"] and "https://orionagenda.pro/" in shown["sent"]["text"]
     payload, result, selections = await history.frozen_payload(object(), row, clone_tokens=True)
     assert payload == {"phone": PHONE, "action": {**action,
-        "text": action["text"]+"\n\n"+action["footer"], "footer": ""}}
+        "text": action["text"]+"\n\u200b"}}
     assert row["payload"] == {"phone": PHONE, "action": action} and result is None and selections == []
     original, _, _ = await history.frozen_payload(object(), row, clone_tokens=False)
     assert original == row["payload"], "Dispatch revalidation must not rewrite an old attempt"

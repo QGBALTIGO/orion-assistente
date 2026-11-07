@@ -2,6 +2,8 @@
 from copy import deepcopy
 from string import Formatter
 
+NATIVE_FOOTER_GAP = "\n\u200b"
+
 
 class FooterTooLong(ValueError):
     """The complete message and footer do not fit the original wire format."""
@@ -17,12 +19,30 @@ def units(value: str) -> int:
 
 
 def spaced_footer(body: str, footer: str, *, maximum: int) -> tuple[str, str]:
-    """Keep authored content, moving its explicit footer behind one blank line.
+    """Keep the native footer and anchor an empty line at the end of its body.
 
-    Clearing the structured footer makes composition idempotent. A full body is
-    rejected rather than truncated, silently downgraded or returned to a native
-    footer whose spacing is controlled by the recipient's WhatsApp client.
+    The invisible anchor keeps the final line from being ordinary trim-only
+    whitespace. Recipient rendering still requires handset verification. The
+    native footer retains its own styling and limit; its text is never moved
+    into the body. Applying this before a new snapshot is frozen is idempotent.
     """
+    units(body)
+    footer_units = units(footer)
+    if type(maximum) is not int or maximum < 1:
+        raise ValueError("Limite de texto inválido")
+    if not footer:
+        return body, ""
+    if footer_units > 60:
+        raise ValueError("O rodapé deve ter até 60 caracteres")
+    trimmed = body.rstrip()
+    spaced = trimmed if trimmed.endswith(NATIVE_FOOTER_GAP) else trimmed + NATIVE_FOOTER_GAP
+    if units(spaced) > maximum:
+        raise FooterTooLong("A mensagem completa com rodapé ultrapassa o limite deste formato")
+    return spaced, footer
+
+
+def text_footer(body: str, footer: str, *, maximum: int) -> tuple[str, str]:
+    """Compose an ordinary text fallback with its footer in a new paragraph."""
     units(body)
     units(footer)
     if type(maximum) is not int or maximum < 1:

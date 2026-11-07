@@ -24,7 +24,7 @@ from app.catalog_schemas import StrictModel
 from app import qr_channel_scope
 from app.qr_assistant_catalog import clip, focus_service, service_option
 from app.qr_presentation import money, duration, message_units, displayed_slot_clocks
-from app.whatsapp_footer import FooterTooLong, action_footer, spaced_footer
+from app.whatsapp_footer import FooterTooLong, action_footer, text_footer
 
 router = APIRouter(tags=["Escolhas privadas da recepcionista"])
 ID_PATTERN = r"^[A-Za-z0-9:_-]{1,160}$"
@@ -307,8 +307,6 @@ async def present(redis, tenant, phone, namespace, result, capabilities, *, veri
             buttons = [option(positive, {"kind": "text", "body": "sim"}),
                        option("Manter horário" if step == "cancel_confirm" else "Alterar horário",
                               {"kind": "text", "body": "não" if step == "cancel_confirm" else "quero alterar o horário"})]
-            if step != "cancel_confirm":
-                buttons.append(option("Voltar", {"kind": "text", "body": "não"}))
             action = {"type": "reply_buttons", "text": answer, "footer": "Confira os dados antes de escolher.",
                       "buttons": [{"id": x["id"], "title": x["title"]} for x in buttons]}
     elif step in {"time", "reschedule_time"} and state.get("step") == step:
@@ -345,7 +343,7 @@ async def present(redis, tenant, phone, namespace, result, capabilities, *, veri
         if action["type"] == "url_button":
             optional += "\n\n" + action["button_text"] + ": " + action["url"]
         try:
-            fallback, _ = spaced_footer(answer, optional, maximum=1200)
+            fallback, _ = text_footer(answer, optional, maximum=1200)
         except FooterTooLong:
             fallback = answer
         logging.getLogger(__name__).info("qr_footer_presentation_fallback reason=combined_limit optional_text=%s",
