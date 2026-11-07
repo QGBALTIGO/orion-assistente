@@ -38,7 +38,7 @@
     if(new Set(value.devices.map(row=>row.id)).size!==value.devices.length||new Set(value.groups.map(row=>row.id)).size!==value.groups.length)throw Error('duplicate_options');return value;
   }
   function groupsDTO(value,deviceId){
-    if(!object(value)||!Array.isArray(value.items)||value.items.length>1000||value.total!==value.items.length)throw Error('invalid_groups');deviceDTO(value.device,deviceId);value.items.forEach(row=>remoteDTO(row));
+    if(!object(value)||!Array.isArray(value.items)||value.items.length>1000||value.total!==value.items.length||!integer(value.unavailable_groups??0)||value.unavailable_groups>1000)throw Error('invalid_groups');deviceDTO(value.device,deviceId);value.items.forEach(row=>remoteDTO(row));
     if(new Set(value.items.map(row=>row.id)).size!==value.items.length)throw Error('duplicate_groups');return value;
   }
   function membersDTO(value,deviceId,groupId){
@@ -65,7 +65,7 @@
     unmount();
     const host=bridge.host,base='/api/v1/tenants/'+bridge.tenantId+'/subscription-whatsapp/group-contacts';
     if(!host||!uuid(bridge.tenantId))throw Error('invalid_group_contacts_context');
-    const state={alive:true,revoked:false,epoch:0,memberRead:0,scope:null,options:null,groups:[],deviceId:'',groupId:'',preview:null,selected:new Set(),target:'new',name:'',loading:'',busy:false,error:'',identityError:'',pending:null,operation:null,missing:false};
+    const state={alive:true,revoked:false,epoch:0,memberRead:0,scope:null,options:null,groups:[],unavailableGroups:0,deviceId:'',groupId:'',preview:null,selected:new Set(),target:'new',name:'',loading:'',busy:false,error:'',identityError:'',pending:null,operation:null,missing:false};
     const controllers=new Map();let expiryTimer=null,controller;
     const allowed=()=>{try{return bridge.canAccess?.()!==false;}catch{return false;}};
     const current=(epoch=state.epoch)=>state.alive&&!state.revoked&&active===controller&&host.isConnected&&allowed()&&epoch===state.epoch;
@@ -75,7 +75,7 @@
     function valid(epoch){if(current(epoch))return true;if(active===controller&&state.alive&&!allowed())revoke();return false;}
     function abortReads(){for(const abort of controllers.values())abort.abort();controllers.clear();}
     function clearPreview(){clearTimeout(expiryTimer);expiryTimer=null;state.preview=null;state.selected.clear();state.memberRead++;}
-    function discard(){abortReads();clearPreview();state.options=null;state.groups=[];state.deviceId='';state.groupId='';state.target='new';state.name='';state.pending=null;state.operation=null;state.scope=null;}
+    function discard(){abortReads();clearPreview();state.options=null;state.groups=[];state.unavailableGroups=0;state.deviceId='';state.groupId='';state.target='new';state.name='';state.pending=null;state.operation=null;state.scope=null;}
     function revoke(){if(state.revoked||!state.alive||active!==controller)return;state.revoked=true;state.epoch++;state.loading='';state.busy=false;discard();clearRecovery();host.setAttribute('aria-busy','false');host.innerHTML=notice('O acesso a esta empresa mudou. Abra o painel novamente para continuar.');}
     async function request(path,method='GET',payload,scope=path){
       if(!current()||method!=='GET'&&!writable())throw Object.assign(Error('Acesso indisponível'),{status:403});
@@ -99,6 +99,7 @@
       const options=state.options,off=!editable(),devices=options.devices,groups=state.groups,device=devices.find(row=>row.id===state.deviceId),readable=readableDevice(device);
       let html='<form class="os-form os-section-stack" data-gc-form><section class="os-card os-form"><div class="os-form-grid">'+select('Dispositivo','device_id',[['','Selecione um dispositivo'],...devices.map(row=>[row.id,row.name+' · '+(deviceStatuses[row.status]||'Estado indisponível'),!readableDevice(row)])],state.deviceId,off||state.loading==='options')+select('Grupo do WhatsApp','group_id',[['','Selecione um grupo'],...groups.map(row=>[row.id,row.name])],state.groupId,off||!readable||state.loading==='groups')+'</div><div class="os-form-actions">'+button('Carregar membros','load-members',off||!readable||!state.groupId||!!state.loading,'')+'</div>'+
         (device&&!readable?connectionNotice(device):!devices.length?'<p class="os-help">Nenhum dispositivo disponível. Confira Dispositivos antes de carregar os grupos.</p>':readable&&!groups.length&&!state.loading?'<p class="os-help" data-gc-empty>Nenhum grupo disponível neste dispositivo.</p>':'')+'</section>';
+      if(state.unavailableGroups)html+=notice(state.unavailableGroups+' grupo(s) não puderam ser exibidos por dados incompletos do WhatsApp. Os grupos disponíveis continuam selecionáveis.');
       if(state.loading==='groups'||state.loading==='members')html+=notice(state.loading==='groups'?'Carregando grupos…':'Carregando membros…');
       if(state.preview){const preview=state.preview,disabled=off||expired();
         html+='<section class="os-card os-form" aria-labelledby="osGcMembers"><header class="os-card-header"><div><h2 id="osGcMembers">'+esc(preview.group.name)+'</h2><p data-gc-count>'+state.selected.size+' de '+preview.members.length+' contatos selecionados.</p><p class="os-help">'+preview.total+' membros encontrados · '+preview.unavailable_count+' sem número disponível · '+preview.duplicate_count+' repetidos.</p></div></header>'+
@@ -127,7 +128,7 @@
       if(focus){const next=[...host.querySelectorAll('[data-gc-field],[data-gc-member],[data-gc-action],[data-gc-select-all]')].find(node=>Object.hasOwn(node.dataset,focus)&&node.dataset[focus]===focusValue);if(next&&!next.disabled)next.focus({preventScroll:true});}
     }
     async function loadOptions(){
-      if(!editable())return;state.epoch++;abortReads();clearPreview();state.options=null;state.groups=[];state.deviceId='';state.groupId='';state.target='new';state.name='';state.error='';state.loading='options';const epoch=state.epoch;render();
+      if(!editable())return;state.epoch++;abortReads();clearPreview();state.options=null;state.groups=[];state.unavailableGroups=0;state.deviceId='';state.groupId='';state.target='new';state.name='';state.error='';state.loading='options';const epoch=state.epoch;render();
       try{const value=optionsDTO(await request('/options','GET',undefined,'options'));if(!valid(epoch))return;state.options=value;if(value.devices.length===1)state.deviceId=value.devices[0].id;}
       catch(error){if(valid(epoch))handleReadError(error);}
       finally{if(valid(epoch)){state.loading='';render();}}
@@ -135,7 +136,7 @@
     }
     async function loadGroups(){
       if(!editable()||!readableDevice(state.options?.devices.find(row=>row.id===state.deviceId)))return;const epoch=state.epoch,id=state.deviceId;state.loading='groups';state.error='';render();
-      try{const value=groupsDTO(await request('/groups?'+new URLSearchParams({device_id:id}),'GET',undefined,'groups'),id);if(!valid(epoch)||id!==state.deviceId)return;if(!readableDevice(value.device))throw Object.assign(Error('Unavailable'),{code:'GROUP_CONTACTS_DEVICE_UNAVAILABLE'});state.groups=value.items;}
+      try{const value=groupsDTO(await request('/groups?'+new URLSearchParams({device_id:id}),'GET',undefined,'groups'),id);if(!valid(epoch)||id!==state.deviceId)return;if(!readableDevice(value.device))throw Object.assign(Error('Unavailable'),{code:'GROUP_CONTACTS_DEVICE_UNAVAILABLE'});state.groups=value.items;state.unavailableGroups=value.unavailable_groups||0;}
       catch(error){if(valid(epoch)&&id===state.deviceId)handleReadError(error);}
       finally{if(valid(epoch)&&id===state.deviceId){state.loading='';render();}}
     }
