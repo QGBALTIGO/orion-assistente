@@ -3,7 +3,14 @@
 import {channelId} from './channel-storage.mjs';
 
 export const GROUP_CONTACTS_LIMITS=Object.freeze({groups:1000,participants:5000,bytes:240000,timeout_ms:12000,name_utf16:100});
-const unavailable=()=>Error('group_contacts_unavailable');
+export const GROUP_CONTACTS_READ_TIMEOUT_MS=28000;
+export const GROUP_CONTACTS_READ_REASONS=Object.freeze([
+  'invalid_request','read_busy','context_changed','provider_timeout',
+  'provider_failed','invalid_metadata'
+]);
+const unavailable=(reason='provider_failed')=>Object.assign(Error('group_contacts_unavailable'),{
+  groupContactsReason:GROUP_CONTACTS_READ_REASONS.includes(reason)?reason:'provider_failed'
+});
 const record=value=>!!value&&typeof value==='object'&&!Array.isArray(value);
 export const groupContactsId=value=>typeof value==='string'&&/^[0-9]{5,20}(?:-[0-9]{1,20})?@g\.us$/.test(value);
 export function validGroupContactsRequest(action,input){
@@ -81,11 +88,12 @@ export {label as groupContactLabel,pn as groupContactPhone,peer as groupContactP
   memberItems as groupContactMembers,bounded as boundedGroupContacts};
 
 export function createDeviceGroupContacts({client,isCurrent,isConnected,deviceSnapshot,
-  schedule=setTimeout,cancel=clearTimeout,timeoutMs=GROUP_CONTACTS_LIMITS.timeout_ms}={}){
-  if(!Number.isSafeInteger(timeoutMs)||timeoutMs<1||timeoutMs>GROUP_CONTACTS_LIMITS.timeout_ms)throw unavailable();
+  schedule=setTimeout,cancel=clearTimeout,timeoutMs=GROUP_CONTACTS_READ_TIMEOUT_MS}={}){
+  if(!Number.isSafeInteger(timeoutMs)||timeoutMs<1||timeoutMs>GROUP_CONTACTS_READ_TIMEOUT_MS)throw unavailable('invalid_request');
   let busy=false;
   return async function read(action,input,{authorize}={}){
-    if(!validGroupContactsRequest(action,input)||typeof authorize!=='function'||busy)throw unavailable();
+    if(!validGroupContactsRequest(action,input)||typeof authorize!=='function')throw unavailable('invalid_request');
+    if(busy)throw unavailable('read_busy');
     const expected={device_id:input.device_id,generation:input.generation,settings_revision:input.settings_revision};
     let expired=false,timer;
     const current=()=>{
@@ -94,9 +102,9 @@ export function createDeviceGroupContacts({client,isCurrent,isConnected,deviceSn
         device.generation===expected.generation&&device.settings_revision===expected.settings_revision;
     };
     const guard=async()=>{
-      if(!current())throw unavailable();
-      await authorize();
-      if(!current())throw unavailable();
+      if(!current())throw unavailable('context_changed');
+      try{await authorize();}catch{throw unavailable('context_changed');}
+      if(!current())throw unavailable('context_changed');
     };
     busy=true;
     // A provider query cannot be cancelled independently of its live socket.
@@ -104,27 +112,29 @@ export function createDeviceGroupContacts({client,isCurrent,isConnected,deviceSn
     const work=(async()=>{
       try{
         await guard();
-        if(typeof client?.groupFetchAllParticipating!=='function'||action==='members'&&typeof client.groupMetadata!=='function')throw unavailable();
+        if(typeof client?.groupFetchAllParticipating!=='function'||action==='members'&&typeof client.groupMetadata!=='function')throw unavailable('provider_failed');
         const initial=await client.groupFetchAllParticipating();
         await guard();
-        const first=participating(initial);
+        let first;try{first=participating(initial);}catch{throw unavailable('invalid_metadata');}
         if(action==='groups')return bounded({...expected,groups:first.groups});
-        if(!first.ids.has(input.group_id))throw unavailable();
+        if(!first.ids.has(input.group_id))throw unavailable('context_changed');
         const metadata=await client.groupMetadata(input.group_id);
         await guard();
-        const group=groupItem(metadata,input.group_id),result=memberItems(metadata);
+        let group,result;
+        try{group=groupItem(metadata,input.group_id);result=memberItems(metadata);}
+        catch{throw unavailable('invalid_metadata');}
         // A partial provider list cannot be presented as a complete extraction.
-        if(group.member_count!==result.total)throw unavailable();
-        const output=bounded({...expected,group,...result});
+        if(group.member_count!==result.total)throw unavailable('invalid_metadata');
+        let output;try{output=bounded({...expected,group,...result});}catch{throw unavailable('invalid_metadata');}
         const final=await client.groupFetchAllParticipating();
         await guard();
-        const latest=participating(final);
-        if(!latest.ids.has(input.group_id))throw unavailable();
+        let latest;try{latest=participating(final);}catch{throw unavailable('invalid_metadata');}
+        if(!latest.ids.has(input.group_id))throw unavailable('context_changed');
         return output;
-      }catch{throw unavailable();}
+      }catch(error){throw unavailable(error?.groupContactsReason||'provider_failed');}
       finally{busy=false;}
     })();
-    const deadline=new Promise((_,reject)=>{timer=schedule(()=>{expired=true;reject(unavailable());},timeoutMs);});
+    const deadline=new Promise((_,reject)=>{timer=schedule(()=>{expired=true;reject(unavailable('provider_timeout'));},timeoutMs);});
     try{return await Promise.race([work,deadline]);}
     finally{cancel(timer);}
   };

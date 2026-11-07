@@ -7,7 +7,7 @@ import {randomUUID} from 'node:crypto';
 import {EventEmitter} from 'node:events';
 import {Readable} from 'node:stream';
 import {DEFAULT_CONNECTION_CONFIG,initAuthCreds} from '@whiskeysockets/baileys';
-import {createGroupAddSocket,createDeviceGroupAdd,groupAddAdmin,groupAddLedger,validGroupAddRequest,GROUP_ADD_LIMITS} from '../src/device-group-add.mjs';
+import {createGroupAddSocket,createDeviceGroupAdd,groupAddAdmin,groupAddLedger,validGroupAddRequest,GROUP_ADD_LIMITS,GROUP_ADD_READ_TIMEOUT_MS} from '../src/device-group-add.mjs';
 import {createChannelManager} from '../src/channel-manager.mjs';
 import {createBaileysChannelSession} from '../src/channel-session.mjs';
 import {createChannelRoutes} from '../src/channel-routes.mjs';
@@ -470,4 +470,27 @@ test('broker uses fixed stage 17 claim and receipt paths, exact scoped payload a
   assert.throws(()=>broker.deviceGroupAddAuthorize(id,key,{owner,fence:0},{...f.input,recheck:true}),/invalid_group_add_request/);
   assert.throws(()=>broker.deviceGroupAddReceipt(id,key,{...f.input,extra:true}),/invalid_group_add_request/);
   assert.equal(requests.length,2);
+});
+
+test('group read has 28-second deadline but group mutation keeps its 12-second grant',async()=>{
+  const f=fixture(),scheduled=[];
+  const socket=createGroupAddSocket({client:f.client,isCurrent:()=>f.alive,
+    isConnected:()=>f.connected,deviceSnapshot:()=>f.device,
+    assertMutationReady:f.assertMutationReady,mutationCurrent:f.mutationCurrent,
+    schedule:(fn,ms)=>{scheduled.push(ms);return scheduled.length;},cancel:()=>{}});
+  const current=scope(f.device);
+  const value=await socket('groups',current,{authorize:f.authorize});
+  assert.equal(value.groups.length,1);
+  assert.deepEqual(scheduled,[GROUP_ADD_READ_TIMEOUT_MS]);
+  assert.equal(GROUP_ADD_LIMITS.timeout_ms,12000);
+  assert.equal(GROUP_ADD_READ_TIMEOUT_MS,28000);
+  assert.equal(f.calls.filter(x=>x[0]==='add').length,0);
+  assert.deepEqual(f.forbidden,[]);
+});
+
+test('group add read deadline is bounded and cannot be raised by arbitrary callers',()=>{
+  const f=fixture();
+  assert.throws(()=>createGroupAddSocket({client:f.client,isCurrent:()=>true,
+    isConnected:()=>true,deviceSnapshot:()=>f.device,
+    readTimeoutMs:GROUP_ADD_READ_TIMEOUT_MS+1}),/group_add_unavailable/);
 });

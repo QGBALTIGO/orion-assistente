@@ -299,7 +299,7 @@ async def test_unavailable_or_mismatched_transport_cannot_publish_private_or_sta
     await install_reads(monkeypatch, provider=provider)
     with pytest.raises(HTTPException) as error:
         await api.read_groups(TENANT, ACTOR, DEVICE, selected_group=REMOTE)
-    assert error.value.status_code in {409, 503}
+    assert error.value.status_code in {409, 503, 504}
     assert "private data" not in str(error.value.detail) and "secret" not in str(error.value.detail)
 
 
@@ -318,3 +318,33 @@ def test_every_route_uses_the_new_feature_and_the_existing_subscription_boundary
             assert plan_routing.feature_for_path(relative, method) == store.FEATURE
             assert plan_routing.subscription_workspace_route(relative, method, {})
     assert not plan_routing.subscription_workspace_route("/qr-channels", "GET", {})
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reason,expected", [
+    ("provider_timeout", "GROUP_CONTACTS_BRIDGE_TIMEOUT"),
+    ("read_busy", "GROUP_CONTACTS_READ_BUSY"),
+    ("context_changed", "GROUP_CONTACTS_CONTEXT_CHANGED"),
+    ("invalid_metadata", "GROUP_CONTACTS_PROVIDER_DATA_UNAVAILABLE"),
+    ("provider_failed", "GROUP_CONTACTS_BRIDGE_UNAVAILABLE"),
+    ("DO_NOT_LEAK_SECRET", "GROUP_CONTACTS_BRIDGE_UNAVAILABLE"),
+])
+async def test_group_fetch_maps_only_safe_private_diagnostic_codes(monkeypatch, reason, expected):
+    _, calls = await install_reads(monkeypatch,
+        provider=HTTPException(409, {"group_read_reason": reason,
+                                     "not_exposed": "SENSITIVE-CONTACT-AND-SECRET"}))
+    with pytest.raises(HTTPException) as error:
+        await api.groups(TENANT, Response(), DEVICE, ACTOR)
+    assert error.value.detail["code"] == expected
+    assert "SENSITIVE" not in json.dumps(error.value.detail)
+    assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_group_contact_read_timeout_has_specific_failure(monkeypatch):
+    _, calls = await install_reads(monkeypatch, provider=TimeoutError())
+    with pytest.raises(HTTPException) as error:
+        await api.groups(TENANT, Response(), DEVICE, ACTOR)
+    assert error.value.status_code == 504
+    assert error.value.detail["code"] == "GROUP_CONTACTS_BRIDGE_TIMEOUT"
+    assert len(calls) == 1

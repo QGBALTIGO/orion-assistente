@@ -3,8 +3,8 @@ import {createChannelBroker} from './channel-broker.mjs';
 import {createChannelManager} from './channel-manager.mjs';
 import {createBaileysChannelSession} from './channel-session.mjs';
 import {createChannelResumeStore} from './channel-resume.mjs';
-import {validGroupContactsRequest} from './device-group-contacts.mjs';
-import {validGroupAddRequest} from './device-group-add.mjs';
+import {validGroupContactsRequest,GROUP_CONTACTS_READ_REASONS} from './device-group-contacts.mjs';
+import {validGroupAddRequest,GROUP_ADD_REASONS} from './device-group-add.mjs';
 
 function response(res,status,data){
   res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store',
@@ -39,7 +39,14 @@ export function createChannelRoutes({env=process.env,managerFactory=createChanne
         const input=await body(req);
         if(!validGroupAddRequest(action,input))throw Error('group_add_unavailable');
         response(res,200,await getManager().deviceGroupAdd(id,key,action,input));
-      }catch{response(res,409,{error:'group_add_unavailable'});}
+      }catch(failure){
+        const reason=['groups','members'].includes(action)&&
+          GROUP_ADD_REASONS.includes(failure?.groupAddReason)
+          ?failure.groupAddReason:null;
+        // No group ID, contact data, provider response or credential in logs.
+        if(reason)console.warn(JSON.stringify({event:'orion_group_read_failed',tool:'group-add',action,reason}));
+        response(res,409,{error:'group_add_unavailable',...(reason?{reason}:{})});
+      }
       return true;
     }
     const groupContactsMatch=uri.pathname.match(/^\/internal\/channels\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/device\/group-contacts\/(groups|members)$/);
@@ -51,7 +58,12 @@ export function createChannelRoutes({env=process.env,managerFactory=createChanne
         const input=await body(req);
         if(!validGroupContactsRequest(action,input))throw Error('group_contacts_unavailable');
         response(res,200,await getManager().deviceGroupContacts(id,key,action,input));
-      }catch{response(res,409,{error:'group_contacts_unavailable'});}
+      }catch(failure){
+        const reason=GROUP_CONTACTS_READ_REASONS.includes(failure?.groupContactsReason)
+          ?failure.groupContactsReason:null;
+        if(reason)console.warn(JSON.stringify({event:'orion_group_read_failed',tool:'group-contacts',action,reason}));
+        response(res,409,{error:'group_contacts_unavailable',...(reason?{reason}:{})});
+      }
       return true;
     }
     const diagnosticMatch=uri.pathname.match(/^\/internal\/channels\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/device\/diagnostics\/(proxy|operations\/([0-9a-f-]{36}))$/);
