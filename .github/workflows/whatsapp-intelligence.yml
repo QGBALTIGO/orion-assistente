@@ -191,21 +191,24 @@ jobs:
             qr-bridge/test/assistant-preparation.test.mjs qr-bridge/test/assistant-ingress.test.mjs \
             qr-bridge/test/channel-intake.test.mjs qr-bridge/test/ingress-journal.test.mjs \
             qr-bridge/test/ingress-health.test.mjs qr-bridge/test/assistant-ingress-review.test.mjs \
-            qr-bridge/test/ingress-review-auth.test.mjs qr-bridge/test/ingress-review-panel.test.mjs | tee /tmp/intelligence-transport.tap
+            qr-bridge/test/ingress-review-auth.test.mjs qr-bridge/test/ingress-review-panel.test.mjs \
+            tests/ui/connection-attention-panel.test.mjs | tee /tmp/intelligence-transport.tap
       - name: Preparation and operator contract minimums without skipped tests
         run: |
           set -euo pipefail
           for module in assistant-preparation assistant-ingress-review ingress-review-auth ingress-review-panel; do
             node --test --test-reporter=tap "qr-bridge/test/${module}.test.mjs" | tee "/tmp/intelligence-${module}-contract.tap"
           done
+          node --test --test-reporter=tap tests/ui/connection-attention-panel.test.mjs | tee /tmp/intelligence-connection-attention-panel-contract.tap
           node --input-type=module <<'JS'
           import {readFileSync, writeFileSync} from 'node:fs';
           const minimums = new Map([
-            ['transport', 413],
+            ['transport', 462],
             ['assistant-preparation-contract', 17],
             ['assistant-ingress-review-contract', 31],
             ['ingress-review-auth-contract', 5],
             ['ingress-review-panel-contract', 6],
+            ['connection-attention-panel-contract', 19],
           ]);
           const report = {};
           for (const [name, minimum] of minimums) {

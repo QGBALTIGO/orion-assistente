@@ -831,8 +831,16 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
     <section id="page-dispositivo" class="page os-main">
       <div class="header">
         <div><div class="eyebrow">Atendimento Orion</div><h1>Conectar WhatsApp</h1><p class="subhead">Conecte seu número e acompanhe o atendimento em um só lugar.</p></div>
-        <div class="pill"><span id="statusDot" class="dot amber"></span><span id="globalStatus">Verificando conexão</span></div>
+        <div class="row" style="justify-content:flex-end;flex-wrap:wrap">
+          <div class="pill"><span id="statusDot" class="dot amber"></span><span id="globalStatus">Verificando conexão</span></div>
+          <button id="deviceStatusDiagnostics" class="btn secondary hidden" data-admin-only type="button">Diagnósticos</button>
+        </div>
       </div>
+
+      <section id="deviceAttention" class="card hidden" role="status" aria-labelledby="deviceAttentionTitle">
+        <h2 id="deviceAttentionTitle">O atendimento precisa de verificação</h2>
+        <p>Seu número permanece vinculado ao Orion. Consulte os diagnósticos antes de retomar o atendimento automático.</p>
+      </section>
 
       <div id="connectedCenter" class="device-hub orion-workspace hidden" aria-label="Central do WhatsApp conectado">
         <div class="device-hero">
@@ -2278,16 +2286,20 @@ function updateWizardClocks(){
    renderGuide();
  }else $("codeCountdown").textContent=pairExpiresAt?countdownLabel(pairExpiresAt-Date.now()):"—";
 }
+function sessionNeedsAttention(data){
+ return ["needs_attention","degraded"].includes(data?.status)&&data.messagesEnabled===true&&data.phone_verified===true;
+}
 function renderGuide(){
  if($("guideSteps").dataset.guideMethod!==method){$("guideSteps").innerHTML=connectView.instructions(method);$("guideSteps").dataset.guideMethod=method}
+ const attention=connectedSnapshot?.status===deviceStatus&&sessionNeedsAttention(connectedSnapshot);
  const revoked=["logged_out","pair_failed"].includes(deviceStatus);
- const locked=wizardBusy||wizardUncertain||revoked||deviceStatus==="connected";
+ const locked=wizardBusy||wizardUncertain||revoked||deviceStatus==="connected"||attention;
  const qrNeedsPreparation=["qr_expired","qr_delayed"].includes(deviceStatus);
  const prepareHint="A conexão precisa ser preparada para gerar o código. Use Preparar novo código.";
  const waitHint="Preparando a conexão. O botão será liberado quando estiver pronta.";
  const panes={tutorial:"wizardTutorial",qr:"qrPanel",code_form:"codePanel",code_ready:"codePanel",success:"wizardSuccess"};
  for(const id of ["wizardTutorial","qrPanel","codePanel","wizardSuccess"])
-   $(id).classList.toggle("hidden",(revoked&&!["tutorial","success"].includes(wizardStep))||id!==panes[wizardStep]);
+   $(id).classList.toggle("hidden",attention||(revoked&&!["tutorial","success"].includes(wizardStep))||id!==panes[wizardStep]);
  document.querySelectorAll("[data-method]").forEach(x=>{
    x.setAttribute("aria-pressed",String(wizardStep!=="success"&&x.dataset.method===method));
    x.classList.toggle("active",wizardStep!=="success"&&x.dataset.method===method);x.disabled=locked;
@@ -2305,7 +2317,7 @@ function renderGuide(){
  $("wizardCodeBack").textContent=wizardStep==="code_ready"?"Alterar número":"Voltar";
  $("wizardCodeBack").disabled=wizardBusy||wizardUncertain;
  $("retryCode").classList.toggle("hidden",!(qrNeedsPreparation||wizardCodeExpired||wizardUncertain||wizardStep==="code_ready"||deviceStatus==="pair_expired"||deviceStatus==="pairing"||deviceStatus==="error"));
- $("retryCode").disabled=wizardBusy||wizardUncertain||deviceStatus==="connected"||deviceStatus==="pairing"||revoked;
+ $("retryCode").disabled=wizardBusy||wizardUncertain||deviceStatus==="connected"||attention||deviceStatus==="pairing"||revoked;
  $("copyCode").disabled=wizardBusy||!pairExpiresAt||Date.now()>=pairExpiresAt;
  $("wizardCheckStatus").classList.toggle("hidden",!(wizardUncertain||["starting","connecting","reconnecting","error","pairing"].includes(deviceStatus)));
  $("wizardCheckStatus").disabled=wizardBusy;
@@ -2343,19 +2355,23 @@ function statusWord(s){
  return ({connected:"Conectado",qr_ready:"Pronto para conectar",qr_expired:"QR expirou",
  qr_delayed:"QR demorando a carregar",pair_failed:"Pareamento recusado",pair_expired:"Código expirado",
  connecting:"Preparando",reconnecting:"Reconectando",logged_out:"Sessão desvinculada",
+ needs_attention:"Atendimento automático pausado",degraded:"Conexão instável",
  error:"Falha na conexão",starting:"Iniciando",pairing:"Aguardando código no celular"})[s]||"Aguardando";
 }
 let connectedSnapshot=null;
 function renderConnectedCenter(data){
  connectedSnapshot=data;
  const active=data.status==="connected";
+ const attention=sessionNeedsAttention(data);
  const successPlaying=active&&wizardStep==="success"&&Date.now()<wizardSuccessUntil;
+ $("deviceAttention").classList.toggle("hidden",!attention);
+ if(attention)$("deviceAttentionTitle").textContent=statusWord(data.status);
  $("connectedCenter").classList.toggle("hidden",!active||successPlaying);
- $("disconnectedWizard").classList.toggle("hidden",active&&!successPlaying);
+ $("disconnectedWizard").classList.toggle("hidden",attention||active&&!successPlaying);
  const headerPill=$("page-dispositivo").querySelector(".header .pill");
  if(headerPill)headerPill.classList.toggle("hidden",active);
  const sub=$("page-dispositivo").querySelector(".header .subhead");
- if(sub)sub.textContent=active?"Seu número, métricas e configurações em um só lugar.":"Vincule seu número em poucos passos.";
+ if(sub)sub.textContent=attention?"Seu WhatsApp permanece vinculado; o atendimento automático precisa de verificação.":active?"Seu número, métricas e configurações em um só lugar.":"Vincule seu número em poucos passos.";
  if(!active)return;
  const profile=data.profile||{};
  $("realWhatsAppName").textContent=profile.name||"Nome não disponibilizado pelo WhatsApp";
@@ -2480,7 +2496,7 @@ async function disconnectConnectedDevice(){
 }
 for(const id of ["deviceSettings","deviceMenuSettings","deviceChatbot","deviceTranscript","deviceCallBlock"])
  $(id).addEventListener("click",showDeviceSettings);
-for(const id of ["deviceDiagnostics","deviceMenuDiagnostics"])
+for(const id of ["deviceDiagnostics","deviceMenuDiagnostics","deviceStatusDiagnostics"])
  $(id).addEventListener("click",showDeviceDiagnostics);
 for(const id of ["deviceRestart","deviceMenuRestart"])
  $(id).addEventListener("click",restartConnectedDevice);
@@ -2548,6 +2564,7 @@ async function updateStatus({snapshot}={}){
   const previous=deviceStatus;
   deviceStatus=result.status;lastDeviceStatus=result.status;
   const active=result.status==="connected";
+  const attention=sessionNeedsAttention(result);
   if(active&&previous!=="connected"&&wizardAttempted&&!wizardSuccessDone){
     wizardAttempted=false;wizardStep="success";wizardSuccessUntil=Date.now()+2200;
     renderGuide();
@@ -2557,7 +2574,7 @@ async function updateStatus({snapshot}={}){
       }
     },2300);
   }
-  if(!active&&previous==="connected"){
+  if(!active&&!attention&&previous==="connected"){
     wizardStep=method==="code"?"code_form":"tutorial";wizardSuccessDone=false;
     wizardSuccessUntil=0;wizardAttempted=false;showQr=false;renderGuide();
   }
@@ -2577,13 +2594,13 @@ async function updateStatus({snapshot}={}){
     ?"Caixa de conversas criptografada no servidor, preservada durante reinícios (até sete dias)."
     :"Atenção: armazenamento de conversas precisa de verificação antes de confiar na persistência.";
   $("chatDot").className="dot "+(active?"green":"amber");
-  $("chatConnection").textContent=active?"Conectado":"Desconectado";
+  $("chatConnection").textContent=attention?statusWord(result.status):active?"Conectado":"Desconectado";
   renderConversationMode(result);
   $("connectedBanner").classList.toggle("hidden",!active);
   $("repairConnection").classList.toggle("hidden",!["logged_out","pair_failed"].includes(result.status));
   $("wizardRecover").classList.toggle("hidden",!["logged_out","pair_failed"].includes(result.status));
   $("wizardRecoveryArea").classList.toggle("hidden",!["logged_out","pair_failed"].includes(result.status));
-  $("refreshQr").disabled=result.status==="connected"||result.status==="pairing";
+  $("refreshQr").disabled=active||attention||result.status==="pairing";
   $("connectedPhone").textContent=result.phone?
     "Dispositivo "+result.phone+" conectado. Você pode ler e enviar mensagens manualmente.":
     "Dispositivo conectado. Você pode ler e enviar mensagens manualmente.";
@@ -2601,7 +2618,7 @@ async function updateStatus({snapshot}={}){
     (result.status==="pairing"&&pairExpiresAt>0&&Date.now()>pairExpiresAt)){
     clearWizardCodes();wizardCodeExpired=true;wizardUncertain=false;wizardStep=method==="code"?"code_form":"tutorial";
     $("codeStatus").textContent="O código expirou. Prepare um novo código para continuar.";
-  }else if(showQr&&page==="dispositivo"&&method==="qr")await updateQr();
+  }else if(!attention&&showQr&&page==="dispositivo"&&method==="qr")await updateQr();
   if(result.status==="qr_ready"&&!wizardUncertain&&!wizardCodeExpired&&$("codeStatus").textContent.startsWith("Preparando"))$("codeStatus").textContent="";
   renderGuide();
  }catch(ex){
