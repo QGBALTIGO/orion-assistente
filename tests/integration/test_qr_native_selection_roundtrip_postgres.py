@@ -217,8 +217,11 @@ async def test_adopted_native_catalog_click_survives_second_incoming_notice(
             assert (await snapshot('unsafe_envelope_repair'))['state']['confirmation_requires_review'] is True
         else:
             assert result['step']=='catalog',result
-            assert result['presentation']['action']['description'].rsplit('\n\n',1)[-1]=='14 serviços · Página 2/2',result
-            assert result['presentation']['action']['footer']=='',result
+            assert result['presentation']['action']['description']==(
+                '*Escolha seu serviço*\n'
+                'Veja os valores e a duração na lista. Se preferir, me diga o nome do serviço.\n\u200b'
+            ),result
+            assert result['presentation']['action']['footer']=='14 serviços · Página 2/2',result
             assert all(guard['selected'] for guard in trace if guard['phase']=='selected_action_guard')
             assert result['presentation']['id']!=presentation['id']
             after_page=await snapshot('page2_verified')
@@ -260,8 +263,11 @@ async def test_lost_ack_after_current_click_records_receipt_without_rebasing_or_
     assert 0<await c.redis.pttl(c.key+':presentation')<=ttl
     response=await click_menu(c,row,revision)
     assert response.status_code==200,response.text
-    assert response.json()['step']=='catalog' and response.json()['presentation']['action']['description'].rsplit('\n\n',1)[-1]=='14 serviços · Página 2/2'
-    assert response.json()['presentation']['action']['footer']==''
+    assert response.json()['step']=='catalog' and response.json()['presentation']['action']['description']==(
+        '*Escolha seu serviço*\n'
+        'Veja os valores e a duração na lista. Se preferir, me diga o nome do serviço.\n\u200b'
+    )
+    assert response.json()['presentation']['action']['footer']=='14 serviços · Página 2/2'
     replay=await click_menu(c,row,revision)
     assert replay.status_code==200 and replay.json()['step']=='duplicate',replay.text
     await assert_no_domain_write(c)
