@@ -43,16 +43,24 @@ function peer(jid){
 }
 function groupItem(meta,id){
   if(!record(meta)||!groupContactsId(id)||meta.id!==id)throw unavailable();
-  const size=meta.size===undefined&&Array.isArray(meta.participants)?meta.participants.length:meta.size;
+  const size=(meta.size===undefined||meta.size===null)&&Array.isArray(meta.participants)
+    ?meta.participants.length:meta.size;
   if(!Number.isSafeInteger(size)||size<0||size>GROUP_CONTACTS_LIMITS.participants)throw unavailable();
   return {id,name:label(meta.subject)||'Grupo sem nome',member_count:size};
 }
 function participating(value){
-  if(!record(value))throw unavailable();
+  if(!record(value))throw unavailable('invalid_metadata');
   const entries=Object.entries(value);
-  if(entries.length>GROUP_CONTACTS_LIMITS.groups)throw unavailable();
-  const groups=entries.map(([id,meta])=>groupItem(meta,id));
-  return {groups,ids:new Set(groups.map(group=>group.id))};
+  if(entries.length>GROUP_CONTACTS_LIMITS.groups)throw unavailable('invalid_metadata');
+  const groups=[];let unavailable_groups=0;
+  // One malformed group from the provider must not hide other usable groups.
+  // Excluded entries are counted and never selectable as a destination.
+  for(const [id,meta] of entries){
+    try{groups.push(groupItem(meta,id));}
+    catch{unavailable_groups++;}
+  }
+  if(unavailable_groups>0&&!groups.length)throw unavailable('invalid_metadata');
+  return {groups,ids:new Set(groups.map(group=>group.id)),unavailable_groups};
 }
 function memberItems(meta){
   if(!Array.isArray(meta.participants)||meta.participants.length>GROUP_CONTACTS_LIMITS.participants)throw unavailable();
@@ -116,7 +124,8 @@ export function createDeviceGroupContacts({client,isCurrent,isConnected,deviceSn
         const initial=await client.groupFetchAllParticipating();
         await guard();
         let first;try{first=participating(initial);}catch{throw unavailable('invalid_metadata');}
-        if(action==='groups')return bounded({...expected,groups:first.groups});
+        if(action==='groups')return bounded({...expected,groups:first.groups,
+          ...(first.unavailable_groups?{unavailable_groups:first.unavailable_groups}:{})});
         if(!first.ids.has(input.group_id))throw unavailable('context_changed');
         const metadata=await client.groupMetadata(input.group_id);
         await guard();
