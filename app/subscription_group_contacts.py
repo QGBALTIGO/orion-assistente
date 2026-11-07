@@ -89,7 +89,8 @@ async def read_groups(tenant, actor, identity, *, selected_group=None):
         device = store.public_device(current)
         if selected_group is None:
             return {"device": device, "items": [item.model_dump(mode="json") for item in result.groups],
-                    "total": len(result.groups)}
+                    "total": len(result.groups),
+                    **({"unavailable_groups": result.unavailable_groups} if result.unavailable_groups else {})}
         token, expires = store.create_preview(tenant, actor, current, result, await store.clock(db))
         return {"preview_token": token, "expires_at": expires, "device": device,
                 **result.model_dump(mode="json", exclude={"device_id", "generation", "settings_revision"})}
