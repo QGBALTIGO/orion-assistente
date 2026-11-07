@@ -94,8 +94,8 @@ def _records(value, depth=0):
         return None
     if _looks_like_rule(value):
         return [value]
-    if value and all(key.isdigit() and _looks_like_rule(child)
-                     for key, child in value.items() if isinstance(key, str)):
+    if value and all(isinstance(key, str) and key.isdigit() and _looks_like_rule(child)
+                     for key, child in value.items()):
         return list(value.values())
     for key in _WRAPPERS:
         if key in value:
@@ -216,6 +216,32 @@ def _action(row, name, references):
             raise _invalid("A resposta personalizada da URL não é texto.")
         definition = {"type": "url", "url": url, "method": method,
                       "custom_template": custom, "as_file": False}
+    elif kind in ("url_button", "button_url", "link_button", "urlbutton"):
+        # Preserve each supplied field; the strict schema handles HTTPS and
+        # the allowed contact tags without making an external request.
+        definition = {
+            "type": "url_button",
+            "text": _message_text(row),
+            "footer": row.get("footer") or "",
+            "button_text": row.get("button_text") or row.get("buttonText") or row.get("label"),
+            "url": row.get("url", row.get("link")),
+        }
+    elif kind in ("carousel", "cards"):
+        cards = row.get("cards")
+        if not isinstance(cards, list) or len(cards) != 3:
+            raise _invalid("Um carrossel precisa ter exatamente três cards para ser preservado.")
+        definition = {"type": "carousel", "body": row.get("body") or _message_text(row),
+                      "cards": []}
+        for index, card in enumerate(cards):
+            if not isinstance(card, dict):
+                raise _invalid("Um carrossel contém card em formato incompatível.")
+            definition["cards"].append({
+                "id": _identity(name, f"card:{index}"),
+                "title": card.get("title") or card.get("name"),
+                "body": card.get("body") or card.get("description") or "",
+                "image_url": card.get("image_url", card.get("imageUrl")),
+                "button_text": card.get("button_text") or card.get("buttonText"),
+            })
     elif kind in ("nested_reply", "nested_list", "send_reply"):
         raw = row.get("rule_id", row.get("reply_id", row.get("replyId")))
         if raw is None or str(raw) not in references:
@@ -237,27 +263,31 @@ def _response(raw, source_id, references):
     elif isinstance(raw, dict):
         kind = raw.get("kind", raw.get("type"))
         if kind in ("list", "menu"):
-            sections = raw.get("sections")
+            sections = raw.get("sections", raw.get("lists"))
             if not isinstance(sections, list) or not sections:
                 raise _invalid("Uma lista de opções não contém seções compatíveis.")
             parsed_sections = []
             for i, section in enumerate(sections):
-                if not isinstance(section, dict) or not isinstance(section.get("rows"), list):
+                if not isinstance(section, dict) or not isinstance(section.get("rows", section.get("options")), list):
                     raise _invalid("Uma seção de lista contém opções incompatíveis.")
                 rows = []
-                for j, row in enumerate(section["rows"]):
+                for j, row in enumerate(section.get("rows", section.get("options"))):
                     if not isinstance(row, dict):
                         raise _invalid("Uma opção de lista não é válida.")
-                    value = row.get("action", row.get("response"))
+                    value = row.get("action", row.get("response", row.get("message")))
+                    title = row.get("title", row.get("label"))
+                    description = row.get("description") or ""
                     rows.append({"id": _identity(source_id, f"row:{i}:{j}"),
-                                 "title": row.get("title"), "description": row.get("description", ""),
+                                 "title": title, "description": description,
                                  "action": _action(value, f"{source_id}:row:{i}:{j}", references)})
                 parsed_sections.append({"id": _identity(source_id, f"section:{i}"),
                                        "title": section.get("title", ""), "rows": rows})
-            return {"kind": "list", "title": raw.get("title"),
-                    "description": raw.get("description"),
-                    "button_text": raw.get("button_text", raw.get("buttonText")),
-                    "footer": raw.get("footer", ""), "sections": parsed_sections}
+            # The BotBot export can omit display labels which Orion requires.
+            # Use neutral UI defaults without modifying choices or actions.
+            return {"kind": "list", "title": raw.get("title") or "Opções",
+                    "description": raw.get("description") or "Escolha uma opção.",
+                    "button_text": raw.get("button_text", raw.get("buttonText")) or "Ver opções",
+                    "footer": raw.get("footer") or "", "sections": parsed_sections}
         if kind in ("sequence", "messages") or "actions" in raw or "messages" in raw:
             actions = raw.get("actions", raw.get("messages"))
         else:
@@ -339,10 +369,34 @@ def read_botbot(raw: bytes, filename: str):
     if len(set(source_keys)) != len(source_keys):
         raise _invalid("Existem identificadores de respostas duplicados no arquivo.")
     references = {key: _identity(key, "rule") for key in source_keys}
-    definitions = []
+    definitions, positions, conversion_issues = [], [], []
+    # Error messages are a closed set from the converter. Never echo source
+    # text, URLs, keys or untrusted exception strings in the import dialog.
+    allowed_errors = frozenset({
+        "A exportação contém uma mensagem que não pode ser convertida.",
+        "Uma mensagem está sem texto. Confira o arquivo de origem.",
+        "Uma ação de URL não possui endpoint válido.",
+        "Uma ação de URL usa método não suportado.",
+        "A resposta personalizada da URL não é texto.",
+        "Um menu faz referência a uma resposta ausente da exportação.",
+        "O arquivo contém uma ação que precisa de adaptação antes de importar.",
+        "O atraso da resposta precisa ser um número inteiro.",
+        "O atraso em milissegundos não corresponde a segundos inteiros.",
+        "O atraso de uma mensagem ultrapassa 300 segundos (5 minutos).",
+        "Uma lista de opções não contém seções compatíveis.",
+        "Uma seção de lista contém opções incompatíveis.",
+        "Uma opção de lista não é válida.",
+        "Uma resposta não contém mensagens reconhecidas.",
+        "A sequência de mensagens está vazia ou excede o limite do Orion.",
+        "A sequência supera 300 segundos de atraso e precisa ser ajustada.",
+        "Um carrossel precisa ter exatamente três cards para ser preservado.",
+        "Um carrossel contém card em formato incompatível.",
+    })
     for index, row in enumerate(records):
+        number = index + 1
         if not isinstance(row, dict):
-            raise _invalid("Uma resposta exportada não é válida.")
+            conversion_issues.append(f"Resposta {number}: registro inválido")
+            continue
         keywords = _keyword_field(row)
         if isinstance(keywords, list) and all(isinstance(v, str) for v in keywords):
             keyword = ",".join(keywords)
@@ -351,25 +405,31 @@ def read_botbot(raw: bytes, filename: str):
             keyword = keywords
             mode = str(row.get("match_mode", row.get("matchMode", row.get("match_type", row.get("match", "equal"))))).lower()
         if mode not in ("equal", "like", "array"):
-            raise _invalid("Uma resposta usa correspondência não suportada.")
+            conversion_issues.append(f"Resposta {number}: correspondência incompatível")
+            continue
         if not isinstance(keyword, str) or not keyword.strip():
-            raise _invalid("Uma resposta não contém palavra-chave válida.")
+            conversion_issues.append(f"Resposta {number}: palavra-chave ausente")
+            continue
         raw_response = next((row[key] for key in _CONTENT if key in row
                              and _content_present(row[key])), None)
         if raw_response is None:
-            raise _invalid("Uma resposta não contém mensagens que possam ser importadas.")
+            conversion_issues.append(f"Resposta {number}: não contém mensagens que possam ser importadas")
+            continue
         try:
             converted_response = _response(raw_response, source_keys[index], references)
         except ValueError as error:
-            # Error strings come from our own validator, never the source
-            # payload. Show the record position without exposing credentials.
-            raise _invalid(f"Resposta {index + 1}: {error}") from None
+            message = str(error)
+            if message not in allowed_errors:
+                message = "tipo de resposta incompatível"
+            conversion_issues.append(f"Resposta {number}: {message}")
+            continue
         definitions.append({
-            "id": references[source_keys[index]], "creation_order": index + 1,
+            "id": references[source_keys[index]], "creation_order": number,
             "definition": {"keyword": keyword, "match_mode": mode,
                            "device_id": None, "enabled": False,
                            "response": converted_response}
         })
+        positions.append(number)
     exported_at = FALLBACK_DATE
     if isinstance(manifest, dict) and isinstance(manifest.get("exported_at"), str):
         try:
@@ -378,5 +438,9 @@ def read_botbot(raw: bytes, filename: str):
                 exported_at = date.isoformat()
         except ValueError:
             pass
+    from app.subscription_chatbot_botbot_preflight import validate_imported_rules
     return {"format": "orion.subscription-chatbot", "version": 1,
-            "exported_at": exported_at, "rules": definitions, "templates": [], "assets": []}
+            "exported_at": exported_at,
+            "rules": validate_imported_rules(definitions, positions=positions,
+                                            conversion_issues=conversion_issues),
+            "templates": [], "assets": []}
