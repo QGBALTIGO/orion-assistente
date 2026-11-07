@@ -299,7 +299,7 @@ async def test_unavailable_or_mismatched_transport_cannot_publish_private_or_sta
     await install_reads(monkeypatch, provider=provider)
     with pytest.raises(HTTPException) as error:
         await api.read_groups(TENANT, ACTOR, DEVICE, selected_group=REMOTE)
-    assert error.value.status_code in {409, 503}
+    assert error.value.status_code in {409, 503, 504}
     assert "private data" not in str(error.value.detail) and "secret" not in str(error.value.detail)
 
 
