@@ -359,3 +359,35 @@ async def test_dispatch_failure_finishes_unknown_and_never_repeats_http(monkeypa
     assert len(calls) == len(finishes) == 1
     assert calls[0][1:] == ("device/group-add/add", "POST", payload)
     assert finishes[0][1:] == ("unknown", "GROUP_ADD_OUTCOME_UNKNOWN", True, False)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reason,expected", [
+    ("deadline_exceeded", "GROUP_ADD_BRIDGE_TIMEOUT"),
+    ("device_busy", "GROUP_ADD_READ_BUSY"),
+    ("device_unavailable", "GROUP_ADD_DEVICE_UNAVAILABLE"),
+    ("invalid_metadata", "GROUP_ADD_PROVIDER_DATA_UNAVAILABLE"),
+    ("group_unavailable", "GROUP_ADD_BRIDGE_UNAVAILABLE"),
+    ("PRIVATE-PHONE-SECRET", "GROUP_ADD_BRIDGE_UNAVAILABLE"),
+])
+async def test_group_add_read_maps_only_safe_private_diagnostic_codes(monkeypatch, reason, expected):
+    state = install_producer(monkeypatch)
+    state.failure = HTTPException(409, {"group_read_reason": reason,
+                                        "not_exposed": "SENSITIVE-CONTACT-AND-SECRET"})
+    with pytest.raises(HTTPException) as error:
+        await api.groups(TENANT, DEVICE, Response(), ACTOR)
+    assert error.value.detail["code"] == expected
+    assert "SENSITIVE" not in json.dumps(error.value.detail)
+    assert len(state.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_group_add_timeout_does_not_trigger_membership_mutation(monkeypatch):
+    state = install_producer(monkeypatch)
+    state.failure = TimeoutError()
+    with pytest.raises(HTTPException) as error:
+        await api.groups(TENANT, DEVICE, Response(), ACTOR)
+    assert error.value.status_code == 504
+    assert error.value.detail["code"] == "GROUP_ADD_BRIDGE_TIMEOUT"
+    assert len(state.calls) == 1
+    assert state.calls[0][0] == "device/group-add/groups"
