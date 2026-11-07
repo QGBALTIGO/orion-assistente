@@ -58,12 +58,25 @@ async def read_groups(tenant, actor, identity, *, selected_group=None):
     action = "members" if selected_group is not None else "groups"
     model = schemas.BridgeMembers if selected_group is not None else schemas.BridgeGroups
     try:
-        async with asyncio.timeout(15):
+        async with asyncio.timeout(35):
             raw = await store.channels._bridge_control(transport, "device/group-contacts/" + action, "POST", payload)
         if len(store.encode(raw).encode("utf-8")) > schemas.BRIDGE_BYTES:
             raise ValueError()
         result = model.model_validate(raw)
-    except (HTTPException, TimeoutError, ValueError, TypeError, UnicodeError, ValidationError):
+    except HTTPException as exc:
+        reason = exc.detail.get("group_read_reason") if isinstance(exc.detail, dict) else None
+        if reason in {"context_changed", "device_unavailable"}:
+            raise store.fail("GROUP_CONTACTS_CONTEXT_CHANGED") from None
+        if reason == "read_busy":
+            raise store.fail("GROUP_CONTACTS_READ_BUSY") from None
+        if reason == "provider_timeout":
+            raise store.fail("GROUP_CONTACTS_BRIDGE_TIMEOUT", 504) from None
+        if reason == "invalid_metadata":
+            raise store.fail("GROUP_CONTACTS_PROVIDER_DATA_UNAVAILABLE", 503) from None
+        raise store.fail("GROUP_CONTACTS_BRIDGE_UNAVAILABLE", 503) from None
+    except TimeoutError:
+        raise store.fail("GROUP_CONTACTS_BRIDGE_TIMEOUT", 504) from None
+    except (ValueError, TypeError, UnicodeError, ValidationError):
         raise store.fail("GROUP_CONTACTS_BRIDGE_UNAVAILABLE", 503) from None
     if (str(result.device_id) != payload["device_id"] or str(result.generation) != payload["generation"]
             or result.settings_revision != payload["settings_revision"]
