@@ -7,6 +7,7 @@ import {GROUP_CONTACTS_LIMITS,groupContactsId,groupContactPhone,groupContactPeer
   groupContactGroup,groupContactGroups,groupContactMembers,boundedGroupContacts} from './device-group-contacts.mjs';
 
 export const GROUP_ADD_LIMITS=Object.freeze({...GROUP_CONTACTS_LIMITS,interval_ms:3000});
+export const GROUP_ADD_READ_TIMEOUT_MS=28000;
 export const GROUP_ADD_REASONS=Object.freeze(['provider_refused','not_admin','group_unavailable','context_changed',
   'device_unavailable','ingress_blocked','device_busy','deadline_exceeded','provider_result_unverified',
   'operation_incomplete','storage_unavailable']);
@@ -77,8 +78,11 @@ function providerOutcome(value,phone,metadata){
 }
 
 export function createGroupAddSocket({client,isCurrent,isConnected,deviceSnapshot,assertMutationReady,mutationCurrent,
-  schedule=setTimeout,cancel=clearTimeout,timeoutMs=GROUP_ADD_LIMITS.timeout_ms}={}){
-  if(!Number.isSafeInteger(timeoutMs)||timeoutMs<1||timeoutMs>GROUP_ADD_LIMITS.timeout_ms)throw error('deadline_exceeded');
+  schedule=setTimeout,cancel=clearTimeout,timeoutMs=GROUP_ADD_LIMITS.timeout_ms,
+  readTimeoutMs=GROUP_ADD_READ_TIMEOUT_MS}={}){
+  if(!Number.isSafeInteger(timeoutMs)||timeoutMs<1||timeoutMs>GROUP_ADD_LIMITS.timeout_ms||
+      !Number.isSafeInteger(readTimeoutMs)||readTimeoutMs<1||readTimeoutMs>GROUP_ADD_READ_TIMEOUT_MS)
+    throw error('deadline_exceeded');
   let busy=false;
   return async function run(action,input,{authorize,beforeAttempt,onAttempt,isExpired=()=>false}={}){
     if(!validGroupAddRequest(action,input)||action==='lookup'||typeof authorize!=='function')throw error('context_changed');
@@ -146,7 +150,7 @@ export function createGroupAddSocket({client,isCurrent,isConnected,deviceSnapsho
     // Add has a controller-owned deadline so its durable receipt can distinguish
     // a preflight timeout from an already attempted provider mutation.
     if(action==='add')return work;
-    const deadline=new Promise((_,reject)=>{timer=schedule(()=>{expired=true;reject(error('deadline_exceeded'));},timeoutMs);});
+    const deadline=new Promise((_,reject)=>{timer=schedule(()=>{expired=true;reject(error('deadline_exceeded'));},readTimeoutMs);});
     try{return await Promise.race([work,deadline]);}finally{cancel(timer);}
   };
 }
