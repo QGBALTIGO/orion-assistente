@@ -70,15 +70,17 @@ function definition(name,optional=false){
   for(const line of lines){source+=line+'\n';try{new vm.Script(source);return source;}catch{}}
   throw Error(`Cannot parse production function ${name}`);
 }
-function harness(role='admin'){
-  const {root,ids}=dom(),requests=[],mounts=[],qrReads=[];
+function harness(role='admin',{reply=async()=>({status:'needs_attention'})}={}){
+  const {root,ids}=dom(),requests=[],mounts=[],qrReads=[],timers=[];let now=1794000000000;
   // The application itself is authenticated in this fixture; preserve each
   // protected control's real data-admin-only visibility rule.
   ids.get('appView').classList.remove('hidden');ids.get('page-dispositivo').classList.remove('hidden');
   const document={querySelectorAll:selector=>root.querySelectorAll(selector)};
-  const context={document,console,Date,Intl,setTimeout:()=>0,api:async(path,method='GET')=>{requests.push({path,method});return {status:'needs_attention'};},
+  const context={document,console,Date:class extends Date{static now(){return now;}},Intl,
+    setTimeout:callback=>{timers.push(callback);return timers.length;},
+    api:async(path,method='GET')=>{requests.push({path,method});if(path==='/api/v1/qr/image')qrReads.push(true);return reply(path,method);},
     window:{OrionIngressReview:{mount:value=>mounts.push(value)}},$:id=>{assert.ok(ids.has(id),`Unknown production node ${id}`);return ids.get(id);},
-    connectView:{instructions:()=>''},updateQr:async()=>{qrReads.push(true);}};
+    connectView:{instructions:()=>'',seconds:()=>''}};
   const bindings=controller.match(/^for\(const id of \["deviceDiagnostics"[^\n]*\]\)\r?\n[^\n]+showDeviceDiagnostics\);/m);
   assert.ok(bindings,'Use the actual diagnostic event registrations');
   const roleRule=controller.match(/const isAdmin=role==="support"\|\|role==="admin";[\s\S]*?document\.querySelectorAll\("\[data-admin-only\]"\)\.forEach\([^\n]+/)[0];
@@ -87,6 +89,8 @@ function harness(role='admin'){
       wizardCodeExpired=false,wizardQrRead=0,wizardQrDeadline=0,pairExpiresAt=0,showQr=false,wizardOperation=0;
     ${definition('sessionNeedsAttention',true)}
     ${definition('clearWizardCodes')}
+    ${definition('countdownLabel')}
+    ${definition('updateWizardClocks')}
     ${definition('renderGuide')}
     ${definition('statusWord')}
     let connectedSnapshot=null;
@@ -95,12 +99,17 @@ function harness(role='admin'){
     ${definition('closeOptions')}
     ${definition('showDeviceDiagnostics')}
     ${definition('updateStatus')}
+    ${definition('updateQr')}
+    ${definition('attemptQrRefresh')}
     ${bindings[0]}
     function setRole(role){loginRole=role;${roleRule}}
     setRole(loginRole);
-    globalThis.view={load:snapshot=>updateStatus({snapshot}),setRole,showOldQr:()=>{showQr=true;method='qr'},statusWord};`;
+    globalThis.view={load:snapshot=>updateStatus({snapshot}),poll:()=>updateStatus(),setRole,showOldQr:()=>{showQr=true;method='qr'},statusWord,
+      pairingStarted:()=>{deviceStatus='pairing';wizardAttempted=true;},refreshQr:attemptQrRefresh,
+      invalidateSession:()=>{authEpoch++;},invalidateOperation:()=>{wizardOperation++;}};`;
   vm.runInNewContext(source,context,{filename:'production-attention-renderers.js'});
-  return {node:id=>ids.get(id),view:context.view,requests,mounts,qrReads};
+  return {node:id=>ids.get(id),view:context.view,requests,mounts,qrReads,
+    finishSuccess:()=>{now+=2300;for(const callback of timers.splice(0))callback();}};
 }
 const linked=status=>({status,messagesEnabled:true,phone_verified:true,phone:'5567999999901',automaticRepliesEnabled:false});
 
@@ -125,13 +134,70 @@ test(`${state} without strict verified session facts cannot claim a linked sessi
 });
 
 test('healthy, attention, healthy and logged-out transitions preserve their distinct views',async()=>{
-  const h=harness();await h.view.load(linked('connected'));
+  const h=harness();h.view.pairingStarted();await h.view.load(linked('connected'));
+  assert.equal(visible(h.node('wizardSuccess')),true,'Use the real successful-pairing branch');
+  h.finishSuccess();
   assert.equal(visible(h.node('connectedCenter')),true);assert.equal(visible(h.node('disconnectedWizard')),false);
   await h.view.load(linked('needs_attention'));assert.equal(visible(h.node('deviceAttention')),true);
   await h.view.load(linked('connected'));assert.equal(visible(h.node('deviceAttention')),false);assert.equal(visible(h.node('connectedCenter')),true);
   await h.view.load({status:'logged_out',messagesEnabled:false,phone_verified:false});
   assert.equal(visible(h.node('connectedCenter')),false);assert.equal(visible(h.node('deviceAttention')),false);
   assert.equal(visible(h.node('disconnectedWizard')),true);assert.equal(visible(h.node('wizardRecover')),true);
+});
+
+for(const attention of ['needs_attention','degraded'])
+for(const next of ['starting','reconnecting','error'])
+test(`successful pairing then ${attention} then ${next} cannot revive the green success wizard`,async()=>{
+  const h=harness();h.view.pairingStarted();await h.view.load(linked('connected'));
+  assert.equal(visible(h.node('wizardSuccess')),true,'The real success branch must first be visible');
+  await h.view.load(linked(attention));
+  assert.equal(visible(h.node('deviceAttention')),true);assert.equal(visible(h.node('disconnectedWizard')),false);
+  await h.view.load({status:next,messagesEnabled:false,phone_verified:false});
+  assert.equal(visible(h.node('deviceAttention')),false);assert.equal(visible(h.node('disconnectedWizard')),true);
+  assert.equal(visible(h.node('wizardSuccess')),false,'Never claim WhatsApp is ready after the linked state ends');
+  assert.equal(visible(h.node('connectedCenter')),false);
+});
+
+for(const state of ['needs_attention','degraded'])
+test(`an in-flight real QR refresh stops after a verified ${state} status preflight`,async()=>{
+  const h=harness('admin',{reply:async path=>path==='/api/v1/qr/status'?linked(state):
+    {status:'qr_ready',image:'data:image/png;base64,YQ==',expiresIn:30}});
+  await h.view.refreshQr();
+  assert.deepEqual(h.requests,[{path:'/api/v1/qr/status',method:'GET'}]);
+  assert.equal(h.qrReads.length,0,'Execute actual attemptQrRefresh and updateQr, without a QR stub');
+  assert.equal(visible(h.node('deviceAttention')),true);assert.equal(visible(h.node('disconnectedWizard')),false);
+});
+
+for(const invalidation of ['invalidateSession','invalidateOperation'])
+test(`QR preflight still respects ${invalidation} while the status response is pending`,async()=>{
+  let respond;
+  const h=harness('admin',{reply:()=>new Promise(resolve=>{respond=resolve;})});
+  const refresh=h.view.refreshQr();h.view[invalidation]();respond(linked('needs_attention'));await refresh;
+  assert.deepEqual(h.requests,[{path:'/api/v1/qr/status',method:'GET'}]);
+  assert.equal(visible(h.node('deviceAttention')),false,'An obsolete response cannot render into the current context');
+  assert.equal(h.qrReads.length,0);
+});
+
+for(const attention of ['needs_attention','degraded'])
+test(`a newer accepted ${attention} poll invalidates the older QR preflight without reconnect or QR fetch`,async()=>{
+  let statusReads=0,release;
+  const h=harness('admin',{reply:async path=>{
+    if(path==='/api/v1/qr/status'){
+      if(++statusReads===1)return new Promise(resolve=>{release=resolve;});
+      return linked(attention);
+    }
+    return {status:'qr_ready',image:'data:image/png;base64,YQ==',expiresIn:30};
+  }});
+  const refresh=h.view.refreshQr();
+  await h.view.poll();
+  const busyAfterAttention=h.node('wizardCard').attributes['aria-busy'];
+  assert.equal(visible(h.node('deviceAttention')),true,'The newer poll is accepted by actual updateStatus');
+  release({status:'qr_expired'});await refresh;
+  assert.deepEqual(h.requests,[{path:'/api/v1/qr/status',method:'GET'},{path:'/api/v1/qr/status',method:'GET'}]);
+  assert.equal(busyAfterAttention,'false','Accepting attention releases the obsolete local wizard attempt');
+  assert.equal(h.qrReads.length,0);assert.equal(visible(h.node('deviceAttention')),true);
+  assert.equal(visible(h.node('disconnectedWizard')),false);assert.equal(visible(h.node('wizardSuccess')),false);
+  assert.equal(h.node('globalStatus').textContent,h.view.statusWord(attention));
 });
 
 for(const role of ['admin','support'])

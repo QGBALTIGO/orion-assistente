@@ -203,12 +203,12 @@ jobs:
           node --input-type=module <<'JS'
           import {readFileSync, writeFileSync} from 'node:fs';
           const minimums = new Map([
-            ['transport', 462],
+            ['transport', 474],
             ['assistant-preparation-contract', 17],
             ['assistant-ingress-review-contract', 31],
             ['ingress-review-auth-contract', 5],
             ['ingress-review-panel-contract', 6],
-            ['connection-attention-panel-contract', 19],
+            ['connection-attention-panel-contract', 31],
           ]);
           const report = {};
           for (const [name, minimum] of minimums) {

@@ -2574,7 +2574,8 @@ async function updateStatus({snapshot}={}){
       }
     },2300);
   }
-  if(!active&&!attention&&previous==="connected"){
+  if(attention||!active&&previous==="connected"){
+    if(attention&&wizardBusy){++wizardOperation;wizardBusy=false}
     wizardStep=method==="code"?"code_form":"tutorial";wizardSuccessDone=false;
     wizardSuccessUntil=0;wizardAttempted=false;showQr=false;renderGuide();
   }
@@ -2675,6 +2676,7 @@ async function attemptQrRefresh(){
  try{
    const state=await api("/api/v1/qr/status");if(!current())return;
    deviceStatus=state.status;
+   if(sessionNeedsAttention(state)){await updateStatus({snapshot:state});return}
    if(["connected","pairing","logged_out","pair_failed"].includes(state.status)){await updateStatus();return}
    if(["qr_expired","qr_delayed","error","reconnecting","pair_expired"].includes(state.status)||(state.status==="connecting"&&state.waitingSeconds>=25)){
      await api("/api/v1/qr/reconnect","POST",{});if(!current())return;
