@@ -240,3 +240,30 @@ test('real panel adapter forwards GET abort and exposes bounded stale-import pro
   const proof={reason:'stale_group_version',idempotency_key:'operation',group_id:'group',expected_version:2};dom.window.fetch=async(path,options)=>{assert.equal(options.signal,undefined);assert.equal(options.headers['X-Orion-CSRF'],'test-csrf');return {ok:false,status:409,json:async()=>({detail:{code:'GROUP_CONTACTS_CONFLICT',rejection:{...proof,private:'discard'}}})};};
   for(const path of ['/api/v1/tenants/test/subscription-whatsapp/group-contacts/import','/api/v1/tenants/test/subscription-whatsapp/campaigns/groups']){await assert.rejects(dom.window.api(path,'POST',{}),error=>{assert.deepEqual(error.groupContactsRejection?copy(error.groupContactsRejection):undefined,path.endsWith('/group-contacts/import')?proof:undefined);return true;});}
 });
+
+
+test('partially available remote groups show a warning without hiding valid choices',async t=>{
+  const h=await setup(t,{respond:async(path,method,payload,server)=>{
+    if(path.includes('/groups?'))return {
+      ...await server.execute(path,method,payload),unavailable_groups:1
+    };
+  }});
+  const notice=[...h.document.querySelectorAll('.os-notice')]
+    .find(node=>node.textContent.includes('1 grupo(s) não puderam'));
+  assert.ok(notice,'partial groups must be disclosed to user');
+  assert.equal(h.element(field('group_id')).options.length,3);
+  assert.equal(h.element(field('group_id')).disabled,false);
+  assert.equal(writes(h).length,0);
+  assert.deepEqual(h.errors,[]);
+});
+
+test('malformed partial count is rejected instead of allowing an invented group set',async t=>{
+  const h=await setup(t,{respond:async(path,method,payload,server)=>{
+    if(path.includes('/groups?'))return {
+      ...await server.execute(path,method,payload),unavailable_groups:true
+    };
+  }});
+  assert.ok(h.document.querySelector('[data-gc-error]'));
+  assert.equal(h.element(field('group_id')).options.length,1);
+  assert.equal(writes(h).length,0);
+});
