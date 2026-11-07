@@ -178,6 +178,12 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
 .device-dialog legend{font-weight:750;padding:0 7px}.device-dialog small{display:block;margin-top:5px}
 .device-dialog .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .device-dialog pre{white-space:pre-wrap;overflow-wrap:anywhere;border:1px solid #2a4639;background:#07100d;padding:13px;border-radius:9px;color:#a9d7c4}
+#ingressReviewPanel{margin-top:24px;overflow-wrap:anywhere}
+#ingressReviewPanel fieldset{min-width:0}
+#ingressReviewPanel .field{display:grid;gap:6px;margin:12px 0}
+#ingressReviewPanel input[type=text]{width:100%;min-width:0;box-sizing:border-box}
+#ingressReviewPanel input[type=checkbox]{width:18px;height:18px;vertical-align:middle}
+#ingressReviewPanel .btn{margin:8px 8px 8px 0;white-space:normal}
 @media(max-width:740px){.device-stat-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.device-actions{grid-template-columns:1fr}.device-dialog .form-grid{grid-template-columns:1fr}.device-hero{padding:18px}.device-feature{padding:15px 12px}}
 
 
@@ -949,6 +955,7 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
         <h2 id="deviceDiagnosticsTitle">Diagnósticos da conexão</h2>
         <p>Somente estados operacionais, sem expor sessões Signal ou credenciais.</p>
         <pre id="deviceDiagnosticsText">Consultando…</pre>
+        <section id="ingressReviewPanel" class="hidden" aria-labelledby="ingressReviewTitle"></section>
         <div class="modal-actions"><button id="deviceDiagnosticsClose" class="btn secondary" type="button">Fechar</button></div>
       </dialog>
       <div id="disconnectedWizard" class="os-connect wizard-shell">
@@ -1302,6 +1309,7 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
 <script src="/panel-assets/orion-suite-live.js"></script>
 <script src="/panel-assets/orion-pwa.js" defer></script>
 <script src="/panel-assets/orion-admin-center.js"></script>
+<script src="/panel-assets/orion-ingress-review.js"></script>
 <script>
 (()=>{
 "use strict";
@@ -1935,6 +1943,7 @@ function setMaintenanceExpiry(maintenance){
 }
 function showLogin(){
  ++authEpoch;
+ window.OrionIngressReview?.reset();
  resetWizard();
  clearTimeout(maintenanceExpiryTimer);maintenanceExpiryTimer=null;
  window.OrionAdminCenter?.reset();
@@ -2420,6 +2429,8 @@ function showDeviceSettings(){
 async function showDeviceDiagnostics(){
  closeOptions();
  $("deviceDiagnosticsDialog").showModal();
+ window.OrionIngressReview?.mount({root:$("ingressReviewPanel"),request:api,role:loginRole,
+   isCurrent:(()=>{const epoch=authEpoch,role=loginRole;return()=>epoch===authEpoch&&role===loginRole&&$("deviceDiagnosticsDialog").open})()});
  $("deviceDiagnosticsText").textContent="Consultando o conector privado…";
  try{
    const d=await api("/api/v1/qr/status");
@@ -2494,7 +2505,8 @@ $("deviceMenuAlerts").addEventListener("click",()=>{
 $("deviceAlertsClose").addEventListener("click",()=>$("deviceAlertsDialog").close());
 $("deviceMenuChats").addEventListener("click",()=>{closeOptions();openPage("conversas")});
 $("deviceSettingsCancel").addEventListener("click",()=>$("deviceSettingsDialog").close());
-$("deviceDiagnosticsClose").addEventListener("click",()=>$("deviceDiagnosticsDialog").close());
+$("deviceDiagnosticsClose").addEventListener("click",()=>{$("deviceDiagnosticsDialog").close();window.OrionIngressReview?.reset()});
+$("deviceDiagnosticsDialog").addEventListener("close",()=>window.OrionIngressReview?.reset());
 $("deviceSettingsForm").addEventListener("submit",async event=>{
  event.preventDefault();
  if(!connectedSnapshot || connectedSnapshot.status!=="connected")return;

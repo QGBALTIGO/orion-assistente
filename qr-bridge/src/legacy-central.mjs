@@ -58,11 +58,11 @@ export function createLegacyCentral({env=process.env,fetchImpl=fetch,start,send,
       (publicHealth?.()?.state||status()):'connecting',qr:()=>null,
       connectionHealth:()=>publicHealth?.(),
       close(){if(context===value){context=null;onTransportLeaseLost();}},
-      async send(phone,text,{isCurrent=()=>true,transactionalTyping=false,source='automation',assertAuthorized,pacing=true,presentation,deferPresentationAck=false}={}){
+      async send(phone,text,{isCurrent=()=>true,transactionalTyping=false,source='automation',assertAuthorized,pacing=true,presentation,deferPresentationAck=false,presentationProvenance}={}){
         if(context!==value||!value.isCurrent()||!matching()||!(value.allowedSender(phone)||source==='appointment')||!isCurrent()||!outgoingReady(source))throw Error('legacy_send_revoked');
         await value.assertCurrent();
         const result=await rawSend(phone,text,{waitForCapacity:true,transactionalTyping,source,assertAuthorized,pacing,
-          ...(presentation?{presentation,deferPresentationAck,presentationAck:payload=>value.presentationAck(payload)}:{}),isCurrent:()=>
+          ...(presentation?{presentation,deferPresentationAck,presentationProvenance,presentationAck:payload=>value.presentationAck(payload)}:{}),isCurrent:()=>
           context===value&&value.isCurrent()&&matching()&&(value.allowedSender(phone)||source==='appointment')&&isCurrent()&&outgoingReady(source)});
         const id=result?.accepted===true&&typeof result.id==='string'?result.id.replace(/^out:/,''):null;
         if(!id)throw Error('legacy_send_unknown');
@@ -77,6 +77,24 @@ export function createLegacyCentral({env=process.env,fetchImpl=fetch,start,send,
   async function forward(payload,options={}){
     if(!active()||!context.allowedSender(payload.phone))throw Error('legacy_assistant_not_ready');
     return context.onMessage(payload,options);
+  }
+  async function transcribe(payload){
+    const expected=context;
+    if(!active()||!expected.allowedSender(payload.phone)||typeof expected.transcribe!=='function')throw Error('legacy_managed_audio_not_ready');
+    await expected.assertCurrent();
+    if(context!==expected||!active())throw Error('legacy_managed_audio_revoked');
+    const result=await expected.transcribe(payload);
+    await expected.assertCurrent();
+    if(context!==expected||!active()||!expected.allowedSender(payload.phone))throw Error('legacy_managed_audio_revoked');
+    return result;
+  }
+  async function preparationFailed(payload,options={}){
+    const expected=context;
+    if(!active()||!expected.allowedSender(payload.phone)||typeof expected.onPreparationFailed!=='function')throw Error('legacy_preparation_notice_not_ready');
+    await expected.assertCurrent();
+    if(context!==expected||!active())throw Error('legacy_preparation_notice_revoked');
+    return expected.onPreparationFailed(payload,{...options,isCurrent:()=>context===expected&&active()&&
+      expected.allowedSender(payload.phone)&&(options.isCurrent?.()??true)});
   }
   async function presentationAck(payload){
     if(!active()||!context.allowedSender(payload.phone)||typeof context.presentationAck!=='function')throw Error('legacy_assistant_not_ready');
@@ -102,5 +120,5 @@ export function createLegacyCentral({env=process.env,fetchImpl=fetch,start,send,
   function health(){const connection=publicHealth?.();return {configured:configured(),owned:configured()&&transportCurrent(),
     ready:active()&&(!publicHealth||connection?.state==='connected'),connected:status()==='connected',
     ...(connection?{connection_health:connection}:{}),observed_at:now(),session_preserved:Boolean(matching())};}
-  return {configured,resume,attach,inbound,forward,presentationAck,automatic,receipt,allowed,ingressScope,nativeTestScope,health,transportCurrent,assertTransportCurrent};
+  return {configured,resume,attach,inbound,forward,transcribe,preparationFailed,presentationAck,automatic,receipt,allowed,ingressScope,nativeTestScope,health,transportCurrent,assertTransportCurrent};
 }

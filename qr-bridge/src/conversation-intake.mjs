@@ -3,12 +3,12 @@
  * supplies an authenticated account/tenant/conversation key and durable dedupe.
  * This module does not connect, persist audio, send, or retry an operation.
  */
-export function makeConversationIntake({consume,onRejected=async()=>{},settleMs=350,maxGroupMs=1200,
+export function makeConversationIntake({consume,beforeConsume=async()=>{},onRejected=async()=>{},settleMs=350,maxGroupMs=1200,
   maxMessages=6,maxTextChars=1500,maxPending=20,maxConversations=100,
   maxSeen=2000,seenTtlMs=86400000,prepareTimeoutMs=40000,
   now=Date.now,sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms)),
   isDuplicate=()=>false,retryUnconsumedNoticeFailures=false}={}){
-  if(typeof consume!=='function'||typeof onRejected!=='function'||typeof isDuplicate!=='function'||
+  if(typeof consume!=='function'||typeof beforeConsume!=='function'||typeof onRejected!=='function'||typeof isDuplicate!=='function'||
       !Number.isSafeInteger(settleMs)||settleMs<0||settleMs>2000||
       !Number.isSafeInteger(maxGroupMs)||maxGroupMs<settleMs||maxGroupMs>5000||
       !Number.isSafeInteger(maxMessages)||maxMessages<1||maxMessages>20||
@@ -106,6 +106,10 @@ export function makeConversationIntake({consume,onRejected=async()=>{},settleMs=
         else if(!prepared.length)finish(batch,'skipped');
         else{
           try{
+            // The durable phase must precede the consumer callback itself.
+            // A failed marker is unknown, never a preparation-failure release.
+            await beforeConsume(Object.freeze({conversationKey:key,
+              messageIds:Object.freeze(prepared.map(item=>item.id))}));
             batch.forEach(entry=>{entry.consumeStarted=true;});
             const revision=Math.max(0,...batch.map(entry=>entry.revision||0));
             const outcome=await consume(Object.freeze({conversationKey:key,text,
