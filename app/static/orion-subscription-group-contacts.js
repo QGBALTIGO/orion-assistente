@@ -159,7 +159,7 @@
       }
       return [['GROUP_CONTACTS_INVALID',422],['GROUP_CONTACTS_LIMIT',422],['GROUP_CONTACTS_LIMIT',413],['GROUP_CONTACTS_PREVIEW_INVALID',422],['GROUP_CONTACTS_PREVIEW_EXPIRED',410],['GROUP_CONTACTS_CONTEXT_CHANGED',409],['GROUP_CONTACTS_DEVICE_UNAVAILABLE',409],['GROUP_CONTACTS_NOT_FOUND',404]].some(([code,status])=>errorCode(error)===code&&error?.status===status);
     }
-    function succeeded(value,intent){state.operation=value;state.missing=false;intent.payload=null;clearPreview();state.name='';state.groups=[];state.options=null;state.target='new';state.error='';}
+    function succeeded(value,intent){state.operation=value;state.missing=false;intent.payload=null;clearPreview();state.name='';state.groups=[];state.unavailableGroups=0;state.options=null;state.target='new';state.error='';}
     async function save(retry=false){
       if(!writable()||state.busy)return;let intent=state.pending;
       if(retry){if(!state.missing||!intent?.payload||Date.parse(intent.expiresAt)<=Date.now())return;}
@@ -180,7 +180,7 @@
       if(!current()){revoke();return;}if(!editable())return;const node=event.target,name=node.dataset.gcField;
       if(name==='device_id'){
         if(node.value&&!state.options?.devices.some(row=>row.id===node.value&&readableDevice(row)))return;
-        state.epoch++;abortReads();clearPreview();state.deviceId=node.value;state.groupId='';state.groups=[];state.target='new';state.name='';state.loading='';state.error='';render();if(state.deviceId)await loadGroups();return;
+        state.epoch++;abortReads();clearPreview();state.deviceId=node.value;state.groupId='';state.groups=[];state.unavailableGroups=0;state.target='new';state.name='';state.loading='';state.error='';render();if(state.deviceId)await loadGroups();return;
       }
       if(name==='group_id'){
         if(node.value&&!state.groups.some(row=>row.id===node.value))return;
