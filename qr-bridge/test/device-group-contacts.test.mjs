@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {DEFAULT_CONNECTION_CONFIG,initAuthCreds} from '@whiskeysockets/baileys';
-import {createDeviceGroupContacts,GROUP_CONTACTS_LIMITS,validGroupContactsRequest} from '../src/device-group-contacts.mjs';
+import {createDeviceGroupContacts,GROUP_CONTACTS_LIMITS,GROUP_CONTACTS_READ_TIMEOUT_MS,validGroupContactsRequest} from '../src/device-group-contacts.mjs';
 import {createChannelManager} from '../src/channel-manager.mjs';
 import {createChannelRoutes} from '../src/channel-routes.mjs';
 import {createBaileysChannelSession} from '../src/channel-session.mjs';
@@ -180,12 +180,15 @@ test('UTF-8 response overflow is rejected before another membership query, witho
 });
 
 test('concurrent and timed-out reads retain one provider slot until the late query settles',async()=>{
-  let timeout;const f=fixture({schedule:(fn,ms)=>{assert.equal(ms,12000);timeout=fn;return 1;},cancel(){}}),pending=deferred();
+  let timeout;const f=fixture({schedule:(fn,ms)=>{assert.equal(ms,GROUP_CONTACTS_READ_TIMEOUT_MS);timeout=fn;return 1;},cancel(){}}),pending=deferred();
   f.behavior.groups=()=>pending.promise;
   const read=f.read('groups',f.input,{authorize:f.authorize});await tick();assert.equal(f.calls.length,1);
-  await assert.rejects(f.read('groups',f.input,{authorize:f.authorize}),/group_contacts_unavailable/);
-  timeout();await assert.rejects(read,/group_contacts_unavailable/);
-  await assert.rejects(f.read('groups',f.input,{authorize:f.authorize}),/group_contacts_unavailable/);
+  await assert.rejects(f.read('groups',f.input,{authorize:f.authorize}),
+    e=>e.message==='group_contacts_unavailable'&&e.groupContactsReason==='read_busy');
+  timeout();await assert.rejects(read,
+    e=>e.message==='group_contacts_unavailable'&&e.groupContactsReason==='provider_timeout');
+  await assert.rejects(f.read('groups',f.input,{authorize:f.authorize}),
+    e=>e.message==='group_contacts_unavailable'&&e.groupContactsReason==='read_busy');
   assert.equal(f.calls.length,1);pending.resolve({[GROUP]:f.value});await tick();
   f.behavior.groups=async()=>({[GROUP]:f.value});assert.equal((await f.read('groups',f.input,{authorize:f.authorize})).groups.length,1);
   assert.equal(f.calls.length,2);
@@ -200,7 +203,9 @@ test('the same timeout covers authorization and prevents a query after late auth
 
 test('provider errors never expose names, phone numbers or opaque IDs',async()=>{
   const f=fixture();f.behavior.groups=async()=>{throw Error('secret '+GROUP+' '+PHONE);};
-  await assert.rejects(f.read('groups',f.input,{authorize:f.authorize}),error=>error.message==='group_contacts_unavailable');
+  await assert.rejects(f.read('groups',f.input,{authorize:f.authorize}),
+    error=>error.message==='group_contacts_unavailable'&&error.groupContactsReason==='provider_failed'
+      &&!JSON.stringify(error).includes(GROUP)&&!JSON.stringify(error).includes(PHONE));
   assert.deepEqual(f.effects,[]);
 });
 
