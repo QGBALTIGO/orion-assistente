@@ -173,7 +173,7 @@
       catch(error){if(valid(epoch))readError(error);}finally{if(valid(epoch)){state.loading='';render();}}
     }
     function schedulePoll(){clearTimeout(pollTimer);if(current()&&state.batch&&running(state.batch.batch.status))pollTimer=setTimeout(()=>{if(current()&&!state.busy&&!state.loading)void loadBatch();},3000);}
-    function acceptBatch(value){state.batch=value;state.missing=false;state.error='';clearPreview();state.options=null;state.groups=[];state.filters=emptyFilters();schedulePoll();}
+    function acceptBatch(value){state.batch=value;state.missing=false;state.error='';clearPreview();state.options=null;state.groups=[];state.unavailableGroups=0;state.filters=emptyFilters();schedulePoll();}
     async function loadBatch(){
       if(!current()||!state.pending||!state.batch||state.busy||state.loading)return;const epoch=state.epoch,intent=state.pending,id=state.batch.batch.id;state.loading='progress';state.error='';clearTimeout(pollTimer);render();
       try{const value=batchDTO(await request('/batches/'+id,'GET',undefined,'batch'),intent,state.batch);if(!valid(epoch)||state.pending!==intent)return;acceptBatch(value);}
@@ -199,7 +199,7 @@
     async function change(event){
       if(!current()){revoke();return;}if(!editable())return;const node=event.target,name=node.dataset.gaField;
       if(name==='device_id'){
-        if(node.value&&!state.options?.devices.some(row=>row.id===node.value&&readableDevice(row)))return;invalidate();clearPreview();state.deviceId=node.value;state.destinationId='';state.sourceGroupId='';state.groups=[];state.error='';render();if(state.deviceId)await loadGroups();return;
+        if(node.value&&!state.options?.devices.some(row=>row.id===node.value&&readableDevice(row)))return;invalidate();clearPreview();state.deviceId=node.value;state.destinationId='';state.sourceGroupId='';state.groups=[];state.unavailableGroups=0;state.error='';render();if(state.deviceId)await loadGroups();return;
       }
       if(name==='destination_group_id'){
         if(node.value&&!state.groups.some(row=>row.id===node.value))return;const preserve=!!state.preview;invalidate();state.destinationId=node.value;state.error='';render();if(preserve)await loadPreview(true);return;
