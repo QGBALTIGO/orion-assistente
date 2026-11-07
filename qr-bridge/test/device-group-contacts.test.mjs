@@ -234,7 +234,9 @@ function managerFixture(t){
 
 test('manager never starts a stopped channel and validates the private key and exact device before a read',async t=>{
   const f=managerFixture(t);
-  await assert.rejects(f.manager.deviceGroupContacts(f.id,f.key,'groups',f.input),/group_contacts_unavailable/);
+  await assert.rejects(f.manager.deviceGroupContacts(f.id,f.key,'groups',f.input),
+    error=>error.message==='group_contacts_unavailable'
+      &&error.groupContactsReason==='context_changed');
   assert.equal(f.made.length,0);assert.equal(f.calls.length,0);
   await f.manager.start(f.id,f.key);f.calls.length=0;let reads=0;
   f.behavior.groups=async()=>{reads++;return {[GROUP]:f.data};};
