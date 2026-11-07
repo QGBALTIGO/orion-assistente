@@ -391,3 +391,35 @@ async def test_group_add_timeout_does_not_trigger_membership_mutation(monkeypatc
     assert error.value.detail["code"] == "GROUP_ADD_BRIDGE_TIMEOUT"
     assert len(state.calls) == 1
     assert state.calls[0][0] == "device/group-add/groups"
+
+
+def test_group_add_list_validates_omission_count_without_changing_admin_fields():
+    groups = deepcopy(CONTRACT["groups"]["items"])
+    value = schemas.BridgeGroups.model_validate({
+        "device_id": str(DEVICE), "generation": str(GENERATION),
+        "settings_revision": 2,
+        "groups": [{key: val for key, val in group.items() if key != "blocked_reason"}
+                   for group in groups],
+        "unavailable_groups": 2
+    })
+    assert value.unavailable_groups == 2
+    for count in (-1, 1001, True, "2"):
+        with pytest.raises(ValidationError):
+            schemas.BridgeGroups.model_validate({
+                **value.model_dump(mode="json"), "unavailable_groups": count
+            })
+
+
+@pytest.mark.asyncio
+async def test_api_reports_unavailable_group_metadata_without_allowing_new_members(monkeypatch):
+    state = install_producer(monkeypatch)
+    original = store.channels._bridge_control
+    async def bridge(transport, action, method, payload):
+        result = await original(transport, action, method, payload)
+        return {**result, "unavailable_groups": 1}
+    monkeypatch.setattr(store.channels, "_bridge_control", bridge)
+    response = await api.groups(TENANT, DEVICE, Response(), ACTOR)
+    assert response["unavailable_groups"] == 1
+    assert response["total"] == len(response["items"])
+    assert all(isinstance(group["can_add"], bool) for group in response["items"])
+    assert all(action.endswith("/groups") for action, _ in state.calls)
