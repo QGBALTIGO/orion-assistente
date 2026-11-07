@@ -243,3 +243,28 @@ test('the actual panel bootstrap preserves only the sanitized addition identity 
   const dom=new JSDOM('',{url:'https://orion.test/painel?aba=adicionar-ao-grupo&empresa=untrusted',runScripts:'outside-only'});t.after(()=>dom.window.close());dom.window.eval(source);const record=recovery();dom.window.history.replaceState({orionGroupAddRecovery:{...record,phones:['discard'],preview_token:'discard'},unrelated:'discard'},'');
   dom.window.eval('var authEpoch=1,suiteTenantId="",businessRows=[],businessContextReady=false,businessContextError="";function resetWizard(){};'+prefix+'\n}');await dom.window.showApp('member','Synthetic','synthetic@example.invalid');assert.deepEqual(copy(dom.window.history.state),{orionGroupAddRecovery:record});assert.equal(new URL(dom.window.location).searchParams.has('empresa'),false);assert.equal(new URL(dom.window.location).searchParams.get('aba'),'adicionar-ao-grupo');
 });
+
+
+test('partially available destinations remain selectable with explicit missing-group notice',async t=>{
+  const h=await setup(t,{respond:async(path,method,payload,server)=>{
+    if(path.includes('/groups?'))return {
+      ...await server.execute(path,method,payload),unavailable_groups:1
+    };
+  }});
+  assert.match(h.document.body.textContent,/1 grupo\(s\) não puderam ser exibidos/);
+  assert.ok(h.element(field('destination_group_id')).options.length>1);
+  assert.equal(mutations(h).length,0);
+  assert.equal(previews(h).length,0);
+  assert.deepEqual(h.errors,[]);
+});
+
+test('untrusted omission counts cannot enable group-add mutations',async t=>{
+  const h=await setup(t,{respond:async(path,method,payload,server)=>{
+    if(path.includes('/groups?'))return {
+      ...await server.execute(path,method,payload),unavailable_groups:1001
+    };
+  }});
+  assert.ok(h.document.querySelector('[data-ga-error]'));
+  assert.equal(h.element(field('destination_group_id')).options.length,1);
+  assert.equal(mutations(h).length,0);
+});
