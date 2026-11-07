@@ -41,7 +41,7 @@
     if(new Set(value.devices.map(row=>row.id)).size!==value.devices.length||new Set(value.groups.map(row=>row.id)).size!==value.groups.length)throw Error('duplicate_options');return value;
   }
   function groupsDTO(value,deviceId){
-    if(!object(value)||!Array.isArray(value.items)||value.items.length>1000||value.total!==value.items.length)throw Error('invalid_groups');deviceDTO(value.device,deviceId);
+    if(!object(value)||!Array.isArray(value.items)||value.items.length>1000||value.total!==value.items.length||!integer(value.unavailable_groups??0)||value.unavailable_groups>1000)throw Error('invalid_groups');deviceDTO(value.device,deviceId);
     for(const row of value.items){remoteDTO(row);if(typeof row.can_add!=='boolean'||!nullable(row.blocked_reason,v=>clean(v,1000)))throw Error('invalid_group_access');}
     if(new Set(value.items.map(row=>row.id)).size!==value.items.length)throw Error('duplicate_groups');return value;
   }
@@ -82,7 +82,7 @@
     unmount();const host=bridge.host,base='/api/v1/tenants/'+bridge.tenantId+'/subscription-whatsapp/group-add';
     if(!host||!uuid(bridge.tenantId))throw Error('invalid_group_add_context');
     const emptyFilters=()=>({contact_group_id:'all',search:'',created_from:'',created_to:''});
-    const state={alive:true,revoked:false,epoch:0,scope:null,options:null,groups:[],deviceId:'',destinationId:'',source:'contacts',sourceGroupId:'',filters:emptyFilters(),preview:null,previewRequest:null,selected:new Set(),loading:'',busy:false,error:'',identityError:'',pending:null,batch:null,missing:false};
+    const state={alive:true,revoked:false,epoch:0,scope:null,options:null,groups:[],unavailableGroups:0,deviceId:'',destinationId:'',source:'contacts',sourceGroupId:'',filters:emptyFilters(),preview:null,previewRequest:null,selected:new Set(),loading:'',busy:false,error:'',identityError:'',pending:null,batch:null,missing:false};
     const controllers=new Map();let expiryTimer=null,pollTimer=null,controller;
     const allowed=()=>{try{return bridge.canAccess?.()!==false;}catch{return false;}};
     const current=(epoch=state.epoch)=>state.alive&&!state.revoked&&active===controller&&host.isConnected&&allowed()&&epoch===state.epoch;
@@ -93,7 +93,7 @@
     function abortReads(){for(const abort of controllers.values())abort.abort();controllers.clear();}
     function clearPreview(){clearTimeout(expiryTimer);expiryTimer=null;state.preview=null;state.previewRequest=null;state.selected.clear();}
     function invalidate(){state.epoch++;abortReads();state.loading='';clearTimeout(expiryTimer);expiryTimer=null;if(state.preview)state.preview={...state.preview,preview_token:null,expires_at:null};state.previewRequest=null;}
-    function discard(){abortReads();clearTimeout(pollTimer);clearPreview();state.options=null;state.groups=[];state.deviceId='';state.destinationId='';state.sourceGroupId='';state.filters=emptyFilters();state.pending=null;state.batch=null;state.scope=null;}
+    function discard(){abortReads();clearTimeout(pollTimer);clearPreview();state.options=null;state.groups=[];state.unavailableGroups=0;state.deviceId='';state.destinationId='';state.sourceGroupId='';state.filters=emptyFilters();state.pending=null;state.batch=null;state.scope=null;}
     function revoke(){if(state.revoked||!state.alive||active!==controller)return;state.revoked=true;state.epoch++;state.loading='';state.busy=false;discard();clearRecovery();host.setAttribute('aria-busy','false');host.innerHTML=notice('O acesso a esta empresa mudou. Abra o painel novamente para continuar.');}
     async function request(path,method='GET',payload,scope){
       if(!current()||method!=='GET'&&path!=='/preview'&&!writable())throw Object.assign(Error('Acesso indisponível'),{status:403});
@@ -114,6 +114,7 @@
       const options=state.options,off=!editable(),device=options.devices.find(row=>row.id===state.deviceId),readable=readableDevice(device),selectedGroup=state.groups.find(row=>row.id===state.destinationId);
       const destination=state.preview?.destination?.id===state.destinationId?state.preview.destination:selectedGroup?{...selectedGroup,is_admin:selectedGroup.can_add}:null;
       let html='<form class="os-form os-section-stack" data-ga-form><section class="os-card os-form"><div class="os-form-grid">'+select('Dispositivo','device_id',[['','Selecione um dispositivo'],...options.devices.map(row=>[row.id,row.name+' · '+(deviceStatuses[row.status]||'Estado indisponível'),!readableDevice(row)])],state.deviceId,off||state.loading==='options')+select('Grupo de destino','destination_group_id',[['','Selecione um grupo'],...state.groups.map(row=>[row.id,row.name])],state.destinationId,off||!readable||state.loading==='groups')+'</div>'+(device&&!readable?connectionNotice(device):'')+(destination&&!destination.is_admin?'<div class="os-notice" role="status" data-ga-destination-state><p>'+esc(destination.blocked_reason||'Seu número do WhatsApp não é administrador deste grupo.')+'</p></div>':'')+(!options.devices.length?'<p class="os-help">Nenhum dispositivo disponível. Confira Dispositivos antes de continuar.</p>':'')+'</section>';
+      if(state.unavailableGroups)html+=notice(state.unavailableGroups+' grupo(s) não puderam ser exibidos por dados incompletos do WhatsApp. Os grupos disponíveis continuam selecionáveis.');
       html+='<section class="os-card os-form">'+select('Fonte dos contatos','source',[['contacts','Contatos salvos'],['group','Outro grupo do WhatsApp']],state.source,off);
       if(state.source==='contacts')html+='<div class="os-form-grid">'+select('Grupo de contatos','contact_group_id',[['all','Todos os contatos'],['ungrouped','Sem grupo'],...options.groups.filter(row=>!row.archived).map(row=>[row.id,row.name])],state.filters.contact_group_id,off)+field('Pesquisar por nome ou WhatsApp','search',state.filters.search,'search',off,'maxlength="255"')+field('Cadastrados a partir de','created_from',state.filters.created_from,'date',off)+field('Cadastrados até','created_to',state.filters.created_to,'date',off)+'</div><p class="os-help">Datas consideradas no fuso '+esc(options.timezone)+'.</p>';
       else html+=select('Grupo de origem','source_group_id',[['','Selecione um grupo'],...state.groups.map(row=>[row.id,row.name,row.id===state.destinationId])],state.sourceGroupId,off||!readable||state.loading==='groups');
@@ -140,14 +141,14 @@
       if(focus){const next=[...host.querySelectorAll('[data-ga-field],[data-ga-member],[data-ga-action],[data-ga-select-all]')].find(node=>Object.hasOwn(node.dataset,focus)&&node.dataset[focus]===focusValue);if(next&&!next.disabled)next.focus({preventScroll:true});}
     }
     async function loadOptions(){
-      if(!editable())return;invalidate();clearPreview();state.options=null;state.groups=[];state.deviceId='';state.destinationId='';state.sourceGroupId='';state.filters=emptyFilters();state.error='';state.loading='options';const epoch=state.epoch;render();
+      if(!editable())return;invalidate();clearPreview();state.options=null;state.groups=[];state.unavailableGroups=0;state.deviceId='';state.destinationId='';state.sourceGroupId='';state.filters=emptyFilters();state.error='';state.loading='options';const epoch=state.epoch;render();
       try{const value=optionsDTO(await request('/options','GET',undefined,'options'));if(!valid(epoch))return;state.options=value;if(value.devices.length===1)state.deviceId=value.devices[0].id;}
       catch(error){if(valid(epoch))readError(error);}finally{if(valid(epoch)){state.loading='';render();}}
       if(current(epoch)&&readableDevice(state.options?.devices.find(row=>row.id===state.deviceId)))await loadGroups();
     }
     async function loadGroups(){
       if(!editable()||!readableDevice(state.options?.devices.find(row=>row.id===state.deviceId)))return;const epoch=state.epoch,id=state.deviceId;state.loading='groups';state.error='';render();
-      try{const value=groupsDTO(await request('/groups?'+new URLSearchParams({device_id:id}),'GET',undefined,'groups'),id);if(!valid(epoch)||id!==state.deviceId)return;if(!readableDevice(value.device))throw Object.assign(Error('Unavailable'),{code:'GROUP_ADD_DEVICE_UNAVAILABLE'});state.groups=value.items;}
+      try{const value=groupsDTO(await request('/groups?'+new URLSearchParams({device_id:id}),'GET',undefined,'groups'),id);if(!valid(epoch)||id!==state.deviceId)return;if(!readableDevice(value.device))throw Object.assign(Error('Unavailable'),{code:'GROUP_ADD_DEVICE_UNAVAILABLE'});state.groups=value.items;state.unavailableGroups=value.unavailable_groups||0;}
       catch(error){if(valid(epoch)&&id===state.deviceId)readError(error);}finally{if(valid(epoch)&&id===state.deviceId){state.loading='';render();}}
     }
     function previewPayload(){
@@ -172,7 +173,7 @@
       catch(error){if(valid(epoch))readError(error);}finally{if(valid(epoch)){state.loading='';render();}}
     }
     function schedulePoll(){clearTimeout(pollTimer);if(current()&&state.batch&&running(state.batch.batch.status))pollTimer=setTimeout(()=>{if(current()&&!state.busy&&!state.loading)void loadBatch();},3000);}
-    function acceptBatch(value){state.batch=value;state.missing=false;state.error='';clearPreview();state.options=null;state.groups=[];state.filters=emptyFilters();schedulePoll();}
+    function acceptBatch(value){state.batch=value;state.missing=false;state.error='';clearPreview();state.options=null;state.groups=[];state.unavailableGroups=0;state.filters=emptyFilters();schedulePoll();}
     async function loadBatch(){
       if(!current()||!state.pending||!state.batch||state.busy||state.loading)return;const epoch=state.epoch,intent=state.pending,id=state.batch.batch.id;state.loading='progress';state.error='';clearTimeout(pollTimer);render();
       try{const value=batchDTO(await request('/batches/'+id,'GET',undefined,'batch'),intent,state.batch);if(!valid(epoch)||state.pending!==intent)return;acceptBatch(value);}
@@ -198,7 +199,7 @@
     async function change(event){
       if(!current()){revoke();return;}if(!editable())return;const node=event.target,name=node.dataset.gaField;
       if(name==='device_id'){
-        if(node.value&&!state.options?.devices.some(row=>row.id===node.value&&readableDevice(row)))return;invalidate();clearPreview();state.deviceId=node.value;state.destinationId='';state.sourceGroupId='';state.groups=[];state.error='';render();if(state.deviceId)await loadGroups();return;
+        if(node.value&&!state.options?.devices.some(row=>row.id===node.value&&readableDevice(row)))return;invalidate();clearPreview();state.deviceId=node.value;state.destinationId='';state.sourceGroupId='';state.groups=[];state.unavailableGroups=0;state.error='';render();if(state.deviceId)await loadGroups();return;
       }
       if(name==='destination_group_id'){
         if(node.value&&!state.groups.some(row=>row.id===node.value))return;const preserve=!!state.preview;invalidate();state.destinationId=node.value;state.error='';render();if(preserve)await loadPreview(true);return;

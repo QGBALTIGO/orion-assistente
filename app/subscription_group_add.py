@@ -90,7 +90,8 @@ async def groups(tenant_id: UUID, device_id: UUID, response: Response, actor: Ac
             raise store.fail("GROUP_ADD_CONTEXT_CHANGED")
     return output(response, {"device": store.contacts.public_device(current),
         "items": [{**group.model_dump(mode="json"), "blocked_reason": None if group.can_add else
-                   store.ERRORS["GROUP_ADD_ADMIN_REQUIRED"]} for group in value.groups], "total": len(value.groups)})
+                   store.ERRORS["GROUP_ADD_ADMIN_REQUIRED"]} for group in value.groups], "total": len(value.groups),
+        **({"unavailable_groups": value.unavailable_groups} if value.unavailable_groups else {})})
 
 
 async def prepare_preview(tenant, actor, payload, *, issue_token=True):

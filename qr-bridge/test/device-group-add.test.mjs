@@ -494,3 +494,25 @@ test('group add read deadline is bounded and cannot be raised by arbitrary calle
     isConnected:()=>true,deviceSnapshot:()=>f.device,
     readTimeoutMs:GROUP_ADD_READ_TIMEOUT_MS+1}),/group_add_unavailable/);
 });
+
+
+test('group add lists available groups while excluding invalid metadata from destinations',async()=>{
+  const f=fixture();
+  f.behavior.groups=async()=>({
+    [GROUP]:f.value,
+    [OTHER_GROUP]:{id:OTHER_GROUP,subject:'Outdated',size:'invalid',participants:[]}
+  });
+  const result=await f.socket('groups',scope(f.device),{authorize:f.authorize});
+  assert.deepEqual(result.groups,[{id:GROUP,name:'Grupo sintético',member_count:1,can_add:true}]);
+  assert.equal(result.unavailable_groups,1);
+  assert.equal(f.calls.filter(row=>row[0]==='add').length,0);
+  assert.deepEqual(f.forbidden,[]);
+});
+
+test('group add rejects a completely unverified group collection without membership mutation',async()=>{
+  const f=fixture();
+  f.behavior.groups=async()=>({[GROUP]:null});
+  await assert.rejects(f.socket('groups',scope(f.device),{authorize:f.authorize}),/group_add_unavailable/);
+  assert.equal(f.calls.filter(row=>row[0]==='add').length,0);
+  assert.deepEqual(f.forbidden,[]);
+});

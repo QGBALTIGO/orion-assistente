@@ -234,7 +234,9 @@ function managerFixture(t){
 
 test('manager never starts a stopped channel and validates the private key and exact device before a read',async t=>{
   const f=managerFixture(t);
-  await assert.rejects(f.manager.deviceGroupContacts(f.id,f.key,'groups',f.input),/group_contacts_unavailable/);
+  await assert.rejects(f.manager.deviceGroupContacts(f.id,f.key,'groups',f.input),
+    error=>error.message==='group_contacts_unavailable'
+      &&error.groupContactsReason==='context_changed');
   assert.equal(f.made.length,0);assert.equal(f.calls.length,0);
   await f.manager.start(f.id,f.key);f.calls.length=0;let reads=0;
   f.behavior.groups=async()=>{reads++;return {[GROUP]:f.data};};
@@ -318,4 +320,40 @@ test('private route errors never echo provider failures or instantiate a socket 
   assert.deepEqual(result.body,{error:'group_contacts_unavailable'});
   const disabled=createChannelRoutes({env:{},managerFactory:()=>assert.fail('Disabled route must not construct a manager')});
   assert.equal((await request(disabled,url,scope(device))).status,423);
+});
+
+
+test('a malformed group cannot make healthy groups disappear and is explicitly counted',async()=>{
+  const f=fixture();
+  f.behavior.groups=async()=>({
+    [GROUP]:f.value,
+    [OTHER_GROUP]:null,
+    'unknown@g.us':{id:'unknown@g.us',subject:'Unexpected'}
+  });
+  const result=await f.read('groups',f.input,{authorize:f.authorize});
+  assert.deepEqual(result.groups,[{id:GROUP,name:'Grupo sintético',member_count:1}]);
+  assert.equal(result.unavailable_groups,2);
+  assert.deepEqual(f.calls,['groups']);
+  assert.deepEqual(f.effects,[]);
+  const members=await f.read('members',{...f.input,group_id:GROUP},{authorize:f.authorize});
+  assert.equal(members.group.id,GROUP);
+  assert.equal(members.members.length,1);
+  assert.deepEqual(f.effects,[]);
+});
+
+test('all invalid groups fail closed rather than displaying an empty account',async()=>{
+  const f=fixture();
+  f.behavior.groups=async()=>({[GROUP]:null});
+  await assert.rejects(f.read('groups',f.input,{authorize:f.authorize}),
+    e=>e.message==='group_contacts_unavailable'&&e.groupContactsReason==='invalid_metadata');
+  assert.deepEqual(f.effects,[]);
+});
+
+test('nullable provider size is reconstructed only from complete participant array',async()=>{
+  const f=fixture();
+  f.behavior.groups=async()=>({[GROUP]:{...f.value,size:null}});
+  const result=await f.read('groups',f.input,{authorize:f.authorize});
+  assert.deepEqual(result.groups,[{id:GROUP,name:'Grupo sintético',member_count:1}]);
+  assert.equal(result.unavailable_groups,undefined);
+  assert.deepEqual(f.effects,[]);
 });

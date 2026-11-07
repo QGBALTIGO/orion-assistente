@@ -104,6 +104,7 @@ class BridgeGroups(StrictModel):
     generation: UUID
     settings_revision: StrictInt = Field(ge=1)
     groups: list[RemoteGroup] = Field(max_length=contacts.MAX_REMOTE_GROUPS)
+    unavailable_groups: StrictInt = Field(default=0, ge=0, le=contacts.MAX_REMOTE_GROUPS)
 
     @model_validator(mode="after")
     def unique_groups(self):

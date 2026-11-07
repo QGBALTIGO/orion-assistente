@@ -111,7 +111,8 @@ export function createGroupAddSocket({client,isCurrent,isConnected,deviceSnapsho
         const raw=await client.groupFetchAllParticipating();await guard();
         let list;try{list=groupContactGroups(raw);}catch{throw error('group_unavailable');}
         if(action==='groups')return boundedGroupContacts({...scope(input),groups:list.groups.map(group=>
-          ({...group,can_add:groupAddAdmin(raw[group.id],client.user)}))});
+          ({...group,can_add:groupAddAdmin(raw[group.id],client.user)})),
+          ...(list.unavailable_groups?{unavailable_groups:list.unavailable_groups}:{})});
         if(!list.ids.has(input.group_id)||typeof client.groupMetadata!=='function')throw error('group_unavailable');
         const metadata=await client.groupMetadata(input.group_id);await guard();
         const group=completeMetadata(metadata,input.group_id),is_admin=groupAddAdmin(metadata,client.user);

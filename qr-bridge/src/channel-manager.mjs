@@ -478,20 +478,23 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
     return result;
   }
   async function deviceGroupContacts(id,key,action,input){
-    if(!channelId(id)||!validGroupContactsRequest(action,input))throw Error('group_contacts_unavailable');
+    const rejected=reason=>Object.assign(Error('group_contacts_unavailable'),{
+      groupContactsReason:reason
+    });
+    if(!channelId(id)||!validGroupContactsRequest(action,input))throw rejected('invalid_request');
     const c=contexts.get(id),session=c?.session,socketGeneration=c?.generation;
     const matches=()=>!!(c&&current(c)&&sameKey(c.key,key)&&c.session===session&&c.generation===socketGeneration&&
       c.device?.id===input.device_id&&c.device.generation===input.generation&&c.device.settings_revision===input.settings_revision&&
       session?.status?.()==='connected'&&typeof session.groupContacts==='function');
-    if(!matches())throw Error('group_contacts_unavailable');
+    if(!matches())throw rejected('context_changed');
     const authorize=async()=>{
-      if(!matches())throw Error('group_contacts_unavailable');
-      await validate(c,key);
-      if(!matches())throw Error('group_contacts_unavailable');
+      if(!matches())throw rejected('context_changed');
+      try{await validate(c,key);}catch{throw rejected('context_changed');}
+      if(!matches())throw rejected('context_changed');
     };
     const result=await session.groupContacts(action,input,{authorize});
     if(!matches()||result?.device_id!==input.device_id||result.generation!==input.generation||
-        result.settings_revision!==input.settings_revision)throw Error('group_contacts_unavailable');
+        result.settings_revision!==input.settings_revision)throw rejected('context_changed');
     return result;
   }
   async function deviceStatus(id,key){
