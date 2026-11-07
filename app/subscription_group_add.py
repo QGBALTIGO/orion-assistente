@@ -42,12 +42,25 @@ async def bridge_read(transport, device, group_id=None):
         payload["group_id"] = group_id
     model = schemas.BridgeGroups if group_id is None else schemas.BridgeMembers
     try:
-        async with asyncio.timeout(15):
+        async with asyncio.timeout(35):
             raw = await store.channels._bridge_control(transport,
                 "device/group-add/" + ("groups" if group_id is None else "members"), "POST", payload)
         store.bounded(raw, schemas.BRIDGE_BYTES)
         value = model.model_validate(raw)
-    except (HTTPException, TimeoutError, ValueError, TypeError, UnicodeError, ValidationError):
+    except HTTPException as exc:
+        reason = exc.detail.get("group_read_reason") if isinstance(exc.detail, dict) else None
+        if reason in {"device_unavailable", "context_changed"}:
+            raise store.fail("GROUP_ADD_DEVICE_UNAVAILABLE") from None
+        if reason in {"device_busy", "read_busy"}:
+            raise store.fail("GROUP_ADD_READ_BUSY") from None
+        if reason in {"deadline_exceeded", "provider_timeout"}:
+            raise store.fail("GROUP_ADD_BRIDGE_TIMEOUT", 504) from None
+        if reason == "invalid_metadata":
+            raise store.fail("GROUP_ADD_PROVIDER_DATA_UNAVAILABLE", 503) from None
+        raise store.fail("GROUP_ADD_BRIDGE_UNAVAILABLE", 503) from None
+    except TimeoutError:
+        raise store.fail("GROUP_ADD_BRIDGE_TIMEOUT", 504) from None
+    except (ValueError, TypeError, UnicodeError, ValidationError):
         raise store.fail("GROUP_ADD_BRIDGE_UNAVAILABLE", 503) from None
     if (value.device_id != device["id"] or value.generation != device["generation"]
             or value.settings_revision != device["revision"] or group_id is not None and value.group.id != group_id):
