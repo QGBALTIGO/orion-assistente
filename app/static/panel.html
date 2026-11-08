@@ -1412,6 +1412,14 @@ window.OrionFields?.bind(document);
 
 let authEpoch=0;
 let sessionBootAttempt=null;
+function showSessionBoot(message="Preparando seu painel…"){
+ const boot=$("sessionBoot");
+ boot.classList.remove("hidden","session-boot-failed");
+ boot.setAttribute("aria-busy","true");
+ $("sessionBootMessage").textContent=message;
+ $("sessionBootSpinner").classList.remove("hidden");
+ $("sessionBootRetry").classList.add("hidden");$("sessionBootRetry").disabled=true;
+}
 function dismissSessionBoot(){
  const attempt=sessionBootAttempt;sessionBootAttempt=null;
  if(attempt){clearTimeout(attempt.timer);attempt.controller.abort();}
@@ -1421,10 +1429,7 @@ async function restoreSession(){
  if(sessionBootAttempt||$("sessionBoot").classList.contains("hidden"))return;
  const attempt={epoch:authEpoch,controller:new AbortController(),timer:null};sessionBootAttempt=attempt;
  const current=()=>sessionBootAttempt===attempt&&attempt.epoch===authEpoch;
- $("sessionBoot").setAttribute("aria-busy","true");
- $("sessionBootMessage").textContent="Abrindo Orion…";
- $("sessionBootSpinner").classList.remove("hidden");
- $("sessionBootRetry").classList.add("hidden");$("sessionBootRetry").disabled=true;
+ showSessionBoot("Abrindo Orion…");
  attempt.timer=setTimeout(()=>attempt.controller.abort(),12000);
  try{
   const response=await fetch("/auth/me",{method:"GET",headers:{"Accept":"application/json"},credentials:"same-origin",cache:"no-store",signal:attempt.controller.signal});
@@ -1441,6 +1446,7 @@ async function restoreSession(){
   if(!current())return;
   $("loginView").classList.add("hidden");$("appView").classList.add("hidden");
   $("sessionBoot").setAttribute("aria-busy","false");
+  $("sessionBoot").classList.add("session-boot-failed");
   $("sessionBootSpinner").classList.add("hidden");
   $("sessionBootMessage").textContent=attempt.controller.signal.aborted?"A conexão demorou mais que o esperado. Tente novamente.":"Não foi possível abrir a Orion. Confira sua conexão e tente novamente.";
   $("sessionBootRetry").disabled=false;$("sessionBootRetry").classList.remove("hidden");
@@ -1454,7 +1460,7 @@ $("sessionBootRetry").addEventListener("click",()=>{void restoreSession()});
 // The guard in restoreSession leaves an already-open app or login untouched.
 window.addEventListener("pageshow",event=>{if(event.persisted)void restoreSession()});
 let suiteUser=null,suiteTenantId="",businessContextReady=false,businessContextError="";
-let setupController=null,setupResolving=0,setupGate=false;
+let setupController=null,setupResolving=0,setupGate=false,setupEntryReady=false;
 let setupPlanRequested=new URLSearchParams(location.search).get('aba')==='plano';
 function syncSetupAccess(profile){
  const subscription=!(suiteUser?.role==='admin'&&!suiteUser?.maintenance?.active)&&
@@ -1473,7 +1479,7 @@ function setSetupGate(value){
  app.classList.toggle("ob-gated",setupGate);
  let access=$("orionSetupAccess");
  if(!access){access=document.createElement('div');access.id='orionSetupAccess';access.className='os-actions hidden';access.innerHTML='<button type="button" class="os-button os-outline" data-setup-access="plano">Ver planos</button><button type="button" class="os-button os-outline" data-setup-access="account">Minha conta</button>';app.querySelector('.content').append(access);access.addEventListener('click',event=>{const target=event.target.closest('[data-setup-access]')?.dataset.setupAccess;if(!target||!accountBusiness())return;++setupResolving;setSetupGate(false);$("orionSetup").hidden=true;void window.OrionSuite?.open(target==='plano'?'plano':'member',{force:true});});}
- access.hidden=!setupGate||!accountBusiness();access.classList.toggle('hidden',access.hidden);
+ access.hidden=!setupGate||!setupEntryReady||!accountBusiness();access.classList.toggle('hidden',access.hidden);
  syncSetupAccess();
  closeSetupTheme();
 }
@@ -1485,7 +1491,7 @@ function renderAccountBusiness(){
  document.querySelectorAll("[data-account-business-name]").forEach(node=>node.textContent=business?.name||(businessContextReady?"Nenhuma empresa vinculada":"Conferindo empresa…"));
 }
 function showBusinessContextError(message){
- ++setupResolving;mountSetup();setSetupGate(true);const host=$("orionSetup");if(!host)return;
+ ++setupResolving;setupEntryReady=false;mountSetup();setSetupGate(true);const host=$("orionSetup");if(!host)return;
  host.hidden=false;host.innerHTML='<header class="ob-heading"><div><p class="ob-eyebrow">Seu acesso ao Orion</p><h1 tabindex="-1">Confira o acesso à sua empresa</h1></div></header><section class="ob-card"><p class="ob-note ob-error" role="alert" id="businessContextMessage"></p><div class="ob-actions"><button type="button" id="retryBusinessContext" class="ob-button">Verificar novamente</button><button type="button" id="businessContextLogout" class="ob-button ob-secondary">Entrar com outra conta</button></div></section>';
  $("businessContextMessage").textContent=message;
  $("retryBusinessContext").onclick=async()=>{const button=$("retryBusinessContext");button.disabled=true;button.textContent="Conferindo…";if(await loadBusinesses())startBusinessSession();};
@@ -1534,13 +1540,13 @@ async function resolveSetup(options={}){
  if(!suiteUser||!setupController)return;
  if(businessContextError){showBusinessContextError(businessContextError);return}
  if(!businessContextReady)return;
- const epoch=authEpoch,sequence=++setupResolving;setSetupGate(true);
+ const epoch=authEpoch,sequence=++setupResolving;setupEntryReady=false;setSetupGate(true);
  try{const entry=await setupController.resolveEntry({force:options.force===true});
   if(epoch!==authEpoch||sequence!==setupResolving||!entry)return;
  if(entry.kind==="business_conflict"){blockBusinessContext(entry.message||"Sua conta está vinculada a mais de uma empresa. Entre em contato com o suporte para regularizar o vínculo.");return}
  if(setupPlanRequested&&accountBusiness()){setSetupGate(false);$("orionSetup").hidden=true;await window.OrionSuite?.open('plano',{force:true});return;}
-  setSetupGate(entry.kind!=="dashboard");
- }catch{if(epoch===authEpoch&&sequence===setupResolving)setSetupGate(true)}
+  setupEntryReady=true;setSetupGate(entry.kind!=="dashboard");
+ }catch{if(epoch===authEpoch&&sequence===setupResolving){setupEntryReady=false;setSetupGate(true)}}
 }
 function suiteBridge(initialRoute){
  return {request:api,uploadImage:uploadImage,user:suiteUser,tenants:businessRows,tenantId:suiteTenantId,
@@ -1969,7 +1975,7 @@ function showLogin(){
  clearTimeout(maintenanceExpiryTimer);maintenanceExpiryTimer=null;
  window.OrionAdminCenter?.reset();
  $("orionMaintenanceBanner")?.classList.add("hidden");
- ++setupResolving;window.OrionOnboarding?.unmount();setupController=null;setSetupGate(false);
+ ++setupResolving;setupEntryReady=false;window.OrionOnboarding?.unmount();setupController=null;setSetupGate(false);
  window.OrionSubscriptionDiagnostics?.unmount();window.OrionSubscriptionSentMessages?.unmount();window.OrionSubscriptionTemplates?.unmount();window.OrionSubscriptionChatbotTest?.unmount();window.OrionSubscriptionChatbot?.unmount();window.OrionSubscriptionDevices?.unmount();window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionCommunication?.unmount();window.OrionInbox?.unmount();
  window.OrionSuite?.destroy();suiteUser=null;suiteTenantId="";businessContextReady=false;businessContextError="";
  memberBusinessOriginal=null;$("memberBusinessForm").reset();$("memberPasswordForm").reset();
@@ -1994,7 +2000,9 @@ async function showApp(role="support",name="",email="",maintenance=null){
  try{const pendingInvite=sessionStorage.getItem("orion_pending_invitation");if(pendingInvite&&/^[A-Za-z0-9_-]{43}$/.test(pendingInvite)){sessionStorage.removeItem("orion_pending_invitation");location.assign("/convite#token="+encodeURIComponent(pendingInvite));return}}catch{}
  const desired=new URLSearchParams(location.search).get("aba");
  const epoch=authEpoch;
+ showSessionBoot("Conferindo acesso e configurações da empresa…");
  resetWizard();
+ setupEntryReady=false;
  suiteTenantId="";businessRows=[];businessContextReady=false;businessContextError="";
  const url=new URL(location.href);url.searchParams.delete("empresa");history.replaceState({...window.OrionSubscriptionSentMessages?.navigationState?.(),...window.OrionSubscriptionDiagnostics?.navigationState?.(),...window.OrionSubscriptionGroupAdd?.navigationState?.(),...window.OrionSubscriptionGroupContacts?.navigationState?.(),...window.OrionSubscriptionDirectMessages?.navigationState?.(),...window.OrionSubscriptionBulkMessages?.navigationState?.(),...window.OrionSubscriptionScheduledMessages?.navigationState?.(),...window.OrionSubscriptionCampaigns?.navigationState?.()},"",url.pathname+url.search);
  suiteUser={role,name,email,maintenance};
@@ -2031,10 +2039,15 @@ async function showApp(role="support",name="",email="",maintenance=null){
    $("memberProfileEmail").textContent=email||"—";
  }
  window.OrionSuite?.mount(suiteBridge(desired));
- dismissSessionBoot();
- if(await loadBusinesses({resolveSetup:role!=="admin"})&&epoch===authEpoch){
-  startBusinessSession();
-  if(loginRole==="member")void loadMemberBusiness();
+ try{
+  if(await loadBusinesses({resolveSetup:role!=="admin"})&&epoch===authEpoch){
+   startBusinessSession();
+   if(loginRole==="member")void loadMemberBusiness();
+  }
+ }finally{
+  // Reveal only a resolved dashboard, onboarding screen or recoverable access error.
+  // Never reveal the setup header or navigation during account/tenant verification.
+  if(epoch===authEpoch)dismissSessionBoot();
  }
 }
 async function publicAuth(path,payload){
