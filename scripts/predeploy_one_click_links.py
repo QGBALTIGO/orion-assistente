@@ -145,13 +145,23 @@ def predecessors_ready(raw):
 
 def current_release(raw):
     from scripts import backup_and_migrate_cakto_recovery as recovery
+    from scripts import backup_and_migrate_fixed_client_series as fixed
+    from scripts.apply_variable_combo_migration import migrated_version
     subprocess.run([sys.executable, "-c", RUNTIME_PREDEPLOY_CHECK], check=True)
     if not predecessors_ready(raw):
         raise RuntimeError("cakto_recovery_predecessor_contract_invalid")
-    if recovery.main() != 0:
-        raise RuntimeError("cakto_recovery_schema_not_ready")
-    if not predecessors_ready(raw) or not recovery.schema_ready(raw):
+    current = migrated_version(raw)
+    if current in {recovery.PREVIOUS, recovery.TARGET}:
+        if recovery.main() != 0:
+            raise RuntimeError("cakto_recovery_schema_not_ready")
+    elif current != fixed.TARGET:
+        raise RuntimeError("fixed_client_source_revision_not_approved")
+    if not recovery.schema_ready(raw):
         raise RuntimeError("cakto_recovery_post_migration_contract_invalid")
+    if fixed.main() != 0:
+        raise RuntimeError("fixed_client_schema_not_ready")
+    if not predecessors_ready(raw) or not recovery.schema_ready(raw) or not fixed.schema_ready(raw):
+        raise RuntimeError("fixed_client_post_migration_contract_invalid")
     # This is a bounded provider GET probe, never merchant provisioning or a
     # payment operation. ORION_PIX_PROVISION_ONCE is deliberately not read here.
     subprocess.run([sys.executable, "-m", "scripts.probe_cakto_read_only"], check=True)
@@ -163,9 +173,10 @@ def main():
     from scripts.backup_and_migrate_commissions import connection_values
     from scripts.apply_variable_combo_migration import migrated_version
     from scripts import backup_and_migrate_cakto_recovery as recovery
+    from scripts import backup_and_migrate_fixed_client_series as fixed
     raw, _url = connection_values()
     current = migrated_version(raw)
-    if current in {recovery.PREVIOUS, recovery.TARGET}:
+    if current in {recovery.PREVIOUS, recovery.TARGET, fixed.TARGET}:
         return current_release(raw)
     if current not in LEGACY_REVISIONS:
         raise RuntimeError("cakto_recovery_source_revision_not_approved")

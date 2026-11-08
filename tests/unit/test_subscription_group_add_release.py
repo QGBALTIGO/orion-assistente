@@ -46,7 +46,8 @@ def test_group_add_is_a_single_additive_head_after_published_direct_messages():
     config.set_main_option("path_separator", "os")
     config.set_main_option("script_location", str(ROOT / "alembic"))
     migrations = ScriptDirectory.from_config(config)
-    assert migrations.get_heads() == ["0073_cakto_recovery"]
+    assert migrations.get_heads() == ["0074_fixed_client_series"]
+    assert migrations.get_revision("0074_fixed_client_series").down_revision == "0073_cakto_recovery"
     assert migrations.get_revision("0073_cakto_recovery").down_revision == release.TARGET
     assert release.TARGET == barrier.SCHEMA_MARKER == "0072_subscription_group_add"
     assert release.PREVIOUS == previous_release.TARGET == "0071_subscription_direct"
@@ -308,7 +309,7 @@ def test_api_cannot_serve_before_the_readonly_0072_barrier(monkeypatch, ready):
     monkeypatch.setattr(start_api.os, "environ", {"PORT": "8080", "APP_DATABASE_URL": "synthetic-runtime"})
 
     def wait(command, **kwargs):
-        assert command == [start_api.sys.executable, "-m", "scripts.wait_for_cakto_recovery_schema"]
+        assert command == [start_api.sys.executable, "-m", "scripts.wait_for_fixed_client_schema"]
         assert kwargs["check"] is True and kwargs["timeout"] == 95
         assert "MIGRATION_DATABASE_URL" not in kwargs["env"]
         events.append("read-only-0072")
@@ -340,7 +341,7 @@ async def test_worker_startup_does_not_consume_jobs_before_0072_is_ready(monkeyp
     order = ["plan_permissions", "appointment_consent", "subscription_devices", "subscription_chatbot",
         "subscription_templates", "subscription_sent_messages", "appointment_operations", "subscription_diagnostics",
         "subscription_campaigns", "subscription_scheduled_messages", "subscription_bulk", "subscription_direct",
-        "subscription_group_add", "cakto_recovery"]
+        "subscription_group_add", "cakto_recovery", "fixed_client"]
     events = []
     monkeypatch.setattr(worker.os, "environ", {})
     monkeypatch.setattr(Settings, "from_environment", lambda: barrier.Settings("synthetic-runtime"))
@@ -364,7 +365,7 @@ async def test_worker_startup_does_not_consume_jobs_before_0072_is_ready(monkeyp
         with pytest.raises(barrier.Stop, match="agenda_schema_timeout"):
             await worker.startup_plan_permissions(context)
         assert context.get("plan_permissions_ready") is not True
-    assert events == order
+    assert events == (order if ready else order[:-1])
 
 
 @pytest.mark.parametrize("ready", [False, True])

@@ -254,12 +254,12 @@ def test_worker_predeploy_stops_at_first_unready_contract(monkeypatch, blocked):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("blocked", [*range(14), None])
+@pytest.mark.parametrize("blocked", [*range(15), None])
 async def test_arq_cannot_consume_jobs_before_all_readonly_contracts(monkeypatch, blocked):
     from app.worker import WorkerSettings
     names = ("plan_permissions", "appointment_consent", "subscription_devices",
              "subscription_chatbot", "subscription_templates", "subscription_sent_messages",
-             "appointment_operations", "subscription_diagnostics", "subscription_campaigns", "subscription_scheduled_messages", "subscription_bulk", "subscription_direct", "subscription_group_add", "cakto_recovery")
+             "appointment_operations", "subscription_diagnostics", "subscription_campaigns", "subscription_scheduled_messages", "subscription_bulk", "subscription_direct", "subscription_group_add", "cakto_recovery", "fixed_client")
     events = []
     context = {}
     for flag in ("ORION_REVIEW_QA_VERIFY_7364", "ORION_REVIEW_QA_SEND_7364"):

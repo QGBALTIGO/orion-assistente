@@ -30,8 +30,8 @@ def runtime_environment(source):
 
 def wait_for_campaigns_schema(environment):
     # The pre-deploy is the only process allowed to migrate. This child checks
-    # 0073 and every predecessor using runtime-only, read-only catalogs.
-    subprocess.run([sys.executable, "-m", "scripts.wait_for_cakto_recovery_schema"],
+    # 0074 and every predecessor using runtime-only, read-only catalogs.
+    subprocess.run([sys.executable, "-m", "scripts.wait_for_fixed_client_schema"],
                    env=environment, check=True, timeout=95)
 
 
