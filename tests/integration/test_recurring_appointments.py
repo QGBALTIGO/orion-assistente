@@ -21,16 +21,11 @@ pytestmark = pytest.mark.integration
 @pytest_asyncio.fixture
 async def recurring_db(management_db, monkeypatch):
     d = management_db
-    app = d["app"]
+    # Keep only the exact production booking and recurrence routers under test;
+    # the reused management fixture mounts a generic catalog catchall first.
+    app = FastAPI()
     app.include_router(recurring_appointments.router)
     app.include_router(booking_api.router)
-    # Match main.py: concrete booking endpoints precede the generic catalog route.
-    concrete = [r for r in app.router.routes
-                if getattr(r, 'path', None) == '/api/v1/tenants/{tenant_id}/appointments'
-                and 'GET' in getattr(r, 'methods', set())]
-    for route in concrete:
-        app.router.routes.remove(route)
-        app.router.routes.insert(0, route)
     factory = async_sessionmaker(d["runtime"], expire_on_commit=False)
     monkeypatch.setattr(recurring_appointments, "get_session_factory", lambda: factory)
     monkeypatch.setattr(booking_api, "get_session_factory", lambda: factory)
@@ -47,11 +42,14 @@ async def recurring_db(management_db, monkeypatch):
             INSERT INTO professional_services(tenant_id,professional_id,service_id)
             VALUES(:tenant,:pro,:service)
         """), {"tenant": d["a"], "pro": d["pro"], "service": d["service"]})
-    try:
-        yield {**d, "first": first, "zone": zone, "base_series": f"/api/v1/tenants/{d['a']}/appointments/series"}
-    finally:
-        async with d["migrator"].begin() as db:
-            await db.execute(text("DELETE FROM usage_counters WHERE tenant_id=:tenant"), {"tenant": d["a"]})
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
+                                base_url="http://test") as client:
+        try:
+            yield {**d, "app": app, "client": client, "first": first, "zone": zone,
+                   "base_series": f"/api/v1/tenants/{d['a']}/appointments/series"}
+        finally:
+            async with d["migrator"].begin() as db:
+                await db.execute(text("DELETE FROM usage_counters WHERE tenant_id=:tenant"), {"tenant": d["a"]})
 
 
 def payload(d, **changes):
