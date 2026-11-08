@@ -46,6 +46,25 @@
     return data;
   };
   const blank = () => ({});
+  // Static placeholders use no guessed counters and are immediately replaced by scoped API data.
+  function placeholder() {
+    const cell = '<div class="os-subdash-skeleton-card os-card"><span class="os-subdash-skeleton-line os-subdash-skeleton-icon"></span>' +
+      '<span class="os-subdash-skeleton-line os-subdash-skeleton-value"></span>' +
+      '<span class="os-subdash-skeleton-line os-subdash-skeleton-caption"></span></div>';
+    return '<div class="os-subdash os-subdash-skeleton" role="status" aria-label="Carregando a visão geral da empresa">' +
+      '<div class="os-subdash-head"><div><p class="os-subdash-overline">VISÃO GERAL</p><h1>Início</h1>' +
+      '<p>Preparando os indicadores do seu atendimento…</p></div></div>' +
+      '<div class="os-subdash-stats" aria-hidden="true">' + cell.repeat(4) + '</div>' +
+      '<div class="os-subdash-panels" aria-hidden="true">' +
+      '<div class="os-subdash-skeleton-panel os-card"><span class="os-subdash-skeleton-line os-subdash-skeleton-title"></span>' +
+      '<span class="os-subdash-skeleton-line os-subdash-skeleton-row"></span>' +
+      '<span class="os-subdash-skeleton-line os-subdash-skeleton-row"></span>' +
+      '<span class="os-subdash-skeleton-line os-subdash-skeleton-row"></span></div>' +
+      '<div class="os-subdash-skeleton-panel os-card"><span class="os-subdash-skeleton-line os-subdash-skeleton-title"></span>' +
+      '<span class="os-subdash-skeleton-line os-subdash-skeleton-row"></span>' +
+      '<span class="os-subdash-skeleton-line os-subdash-skeleton-row"></span>' +
+      '<span class="os-subdash-skeleton-line os-subdash-skeleton-row"></span></div></div></div>';
+  }
   let current = null;
 
   function allowed(view, key) {
@@ -280,7 +299,8 @@
     current = view;
     view.listener = event => onClick(view, event);
     view.host.addEventListener('click', view.listener);
-    view.host.innerHTML = '<div class="os-loading" role="status"><span class="os-spinner" aria-hidden="true"></span>Consultando indicadores da sua empresa…</div>';
+    view.host.innerHTML = placeholder();
+    view.host.setAttribute('aria-busy', 'true');
     await refresh(view);
   }
   function unmount() {
@@ -289,5 +309,5 @@
     current.host.removeEventListener('click', current.listener);
     current = null;
   }
-  window.OrionSubscriptionDashboard = Object.freeze({mount, unmount});
+  window.OrionSubscriptionDashboard = Object.freeze({mount, unmount, placeholder});
 })();
