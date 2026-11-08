@@ -32,13 +32,21 @@ h1{font-size:clamp(1.8rem,3.8vw,2.65rem);line-height:1.14;letter-spacing:-.035em
 p{color:var(--muted)}small{color:var(--muted);font-size:.77rem}
 .hidden{display:none!important}
 /* Keep the first paint neutral until the server has checked the saved session. */
-#sessionBoot{position:fixed;inset:0;z-index:100;display:grid;place-items:center;padding:24px;background:var(--os-bg,var(--boot-bg,#f5f8fc));color:var(--os-muted,var(--boot-muted,#4e5a72));font:400 14px/1.5 var(--os-font,system-ui,-apple-system,Segoe UI,sans-serif)}
+#sessionBoot{position:fixed;inset:0;z-index:100;display:grid;place-items:center;min-height:100dvh;padding:24px max(20px,env(safe-area-inset-right,0px)) 24px max(20px,env(safe-area-inset-left,0px));background:var(--os-bg,var(--boot-bg,#f5f8fc));color:var(--os-muted,var(--boot-muted,#4e5a72));font:400 14px/1.5 var(--os-font,system-ui,-apple-system,Segoe UI,sans-serif);overscroll-behavior:contain}
 html[data-theme="dark"] #sessionBoot{--boot-bg:#05080f;--boot-muted:#8a97ac;--boot-border:#1b2437}
-#sessionBoot>div{display:flex;flex-direction:column;align-items:center;gap:16px;width:min(100%,320px);text-align:center}
-#sessionBoot p{margin:0;color:inherit}
-#sessionBootSpinner{width:24px;height:24px;border:2px solid var(--os-border,var(--boot-border,#dce3ee));border-top-color:var(--os-primary,#2e7bf6);border-radius:50%;animation:session-boot-spin .8s linear infinite}
+#sessionBoot>div{display:flex;flex-direction:column;align-items:center;gap:0;width:min(100%,330px);text-align:center;transform:translateY(-4vh)}
+#sessionBoot .session-boot-brand{display:block;width:168px;height:60px;object-fit:contain;margin:0 0 30px}
+#sessionBoot .session-boot-symbol{display:grid;place-items:center;width:56px;height:56px;margin-bottom:24px;border-radius:18px;background:var(--os-tint,#eaf2ff)}
+#sessionBoot h1{margin:0 0 7px;color:var(--os-text,#0f1b33);font:600 23px/30px var(--os-display,system-ui,-apple-system,Segoe UI,sans-serif);letter-spacing:-.025em}
+#sessionBoot p{margin:0;color:inherit;font-size:13px;line-height:20px;max-width:280px}
+#sessionBootSpinner{display:block;width:27px;height:27px;border:2px solid var(--os-border,var(--boot-border,#dce3ee));border-top-color:var(--os-primary,#2e7bf6);border-radius:50%;animation:session-boot-spin .8s linear infinite}
+#sessionBoot .session-boot-progress{width:116px;height:3px;overflow:hidden;border-radius:99px;background:var(--os-border,var(--boot-border,#dce3ee));margin:22px 0 0}
+#sessionBoot .session-boot-progress::after{content:"";display:block;width:44%;height:100%;border-radius:inherit;background:var(--os-primary,#2e7bf6);animation:session-boot-progress 1.5s ease-in-out infinite alternate}
+#sessionBoot.session-boot-failed .session-boot-progress{display:none}
+#sessionBootRetry{margin-top:20px;min-height:40px}
 @keyframes session-boot-spin{to{transform:rotate(360deg)}}
-@media(prefers-reduced-motion:reduce){#sessionBootSpinner{animation:none}}
+@keyframes session-boot-progress{from{transform:translateX(-100%)}to{transform:translateX(240%)}}
+@media(prefers-reduced-motion:reduce){#sessionBootSpinner,#sessionBoot .session-boot-progress::after{animation:none}#sessionBoot .session-boot-progress::after{width:100%}}
 .action-confirm{width:min(520px,calc(100vw - 32px));max-height:calc(100vh - 40px);overflow:auto;padding:26px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);box-shadow:0 24px 90px #0009;overflow-wrap:anywhere}
 .action-confirm::backdrop{background:#000b}
 .confirm-actions{display:flex;justify-content:flex-end;gap:12px;flex-wrap:wrap;margin-top:24px}
@@ -606,12 +614,15 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
 <script src="/panel-assets/orion-appointment-communications.js" defer></script>
 </head>
 <body>
-<section id="sessionBoot" aria-label="Acesso à Orion" aria-busy="true">
+<section id="sessionBoot" aria-label="Preparando seu painel Orion" aria-busy="true">
   <div>
-    <span id="sessionBootSpinner" aria-hidden="true"></span>
+    <img class="session-boot-brand" data-orion-logo src="/brand/orion-brand-dark.svg" alt="Orion" width="168" height="60">
+    <span class="session-boot-symbol" aria-hidden="true"><span id="sessionBootSpinner"></span></span>
+    <h1>Preparando seu painel</h1>
     <p id="sessionBootMessage" role="status" aria-live="polite">Abrindo Orion…</p>
+    <span class="session-boot-progress" aria-hidden="true"></span>
     <button id="sessionBootRetry" class="os-button os-outline hidden" type="button">Tentar novamente</button>
-    <noscript><style>#sessionBootSpinner,#sessionBootMessage{display:none}</style><p>Ative o JavaScript no navegador para abrir a Orion.</p></noscript>
+    <noscript><style>#sessionBootSpinner,#sessionBootMessage,.session-boot-progress{display:none}</style><p>Ative o JavaScript no navegador para abrir a Orion.</p></noscript>
   </div>
 </section>
 <section id="loginView" class="hidden" aria-label="Acesso à conta Orion">
