@@ -39,8 +39,9 @@ function reply({conflict=false}={}){
 }
 
 async function openForm(h){
-  h.click('[data-os-agenda-mode=fixed]');await flush();
-  h.click('[data-os-action=new-fixed-client]');await flush();
+  h.click('[data-os-action=new-appointment]');await flush();
+  const mode=h.document.querySelector('select[name=booking_mode]');
+  mode.value='fixed';mode.dispatchEvent(new h.window.Event('change',{bubbles:true}));await flush();
   assert.ok(h.document.querySelector('[data-os-form=fixed-client]'),'must reuse Orion form');
   h.fill('input[name=customer_name]','João sintético');
   h.fill('input[name=customer_phone]','+5511999990060');
@@ -50,11 +51,12 @@ async function openForm(h){
   await flush();
 }
 
-test('fixed clients remain a tab inside Orion agenda and do not create a new page',async t=>{
+test('fixed-client creation is only a record type; recurring listing remains available for management',async t=>{
   const h=await makeSuite({initialRoute:'agenda',respond:reply()});
   t.after(()=>h.close());await flush();
-  assert.ok(h.document.querySelector('[data-os-action=new-fixed-client]'));
+  assert.equal(h.document.querySelector('[data-os-action=new-fixed-client]'),null);
   h.click('[data-os-agenda-mode=fixed]');await flush();
+  assert.equal(h.document.querySelector('[data-os-action=new-fixed-client]'),null);
   assert.equal(h.document.querySelectorAll('[data-os-fixed-series]').length,1);
   assert.match(h.document.getElementById('osPageBody').textContent,/João sintético/);
   assert.equal(h.document.querySelector('[data-os-agenda-mode=fixed]').getAttribute('aria-selected'),'true');
@@ -97,4 +99,47 @@ test('series details show each visit and require confirmation before stopping th
   assert.equal(h.calls.filter(x=>x.path.endsWith('/stop')).length,0);
   h.submit('[data-os-form=confirm]');await flush();
   assert.equal(h.calls.filter(x=>x.path.endsWith('/stop')&&x.method==='POST').length,1);
+});
+
+
+test('booking mode includes fixed client and switches within the same Orion dialog',async t=>{
+  const h=await makeSuite({initialRoute:'agenda',respond:reply()});
+  t.after(()=>h.close());await flush();
+  h.click('[data-os-action=new-appointment]');await flush();
+  const select=h.document.querySelector('select[name=booking_mode]');
+  assert.deepEqual([...select.options].map(option=>option.value),['regular','fixed','exceptional','retroactive']);
+  h.fill('input[name=customer_name]','João sintético');
+  h.fill('input[name=customer_phone]','+5511999990060');
+  select.value='fixed';select.dispatchEvent(new h.window.Event('change',{bubbles:true}));await flush();
+  assert.ok(h.document.querySelector('[data-os-form=fixed-client]'));
+  assert.equal(h.document.querySelector('#osDialogTitle').textContent,'Novo agendamento');
+  assert.equal(h.document.querySelector('select[name=booking_mode]').value,'fixed');
+  assert.equal(h.document.querySelector('input[name=customer_name]').value,'João sintético');
+  assert.equal(h.document.querySelector('input[name=customer_phone]').value,'+5511999990060');
+  assert.ok(h.document.querySelector('#osDialog').classList.contains('os-booking-dialog'));
+  const back=h.document.querySelector('select[name=booking_mode]');
+  back.value='exceptional';back.dispatchEvent(new h.window.Event('change',{bubbles:true}));await flush();
+  assert.ok(h.document.querySelector('[data-os-form=appointment]'));
+  assert.equal(h.document.querySelector('select[name=booking_mode]').value,'exceptional');
+  assert.equal(h.document.querySelector('input[name=customer_name]').value,'João sintético');
+  assert.ok(h.document.querySelector('#osDialog').classList.contains('os-booking-dialog'));
+});
+
+test('entry and fixed management never show a second fixed-client registration button',async t=>{
+  const h=await makeSuite({initialRoute:'agenda',respond:reply()});
+  t.after(()=>h.close());await flush();
+  assert.equal(h.document.querySelectorAll('[data-os-action=new-fixed-client]').length,0);
+  h.click('[data-os-agenda-mode=fixed]');await flush();
+  assert.equal(h.document.querySelectorAll('[data-os-action=new-fixed-client]').length,0);
+  assert.ok(h.document.querySelector('[data-os-action=new-appointment]'));
+});
+
+test('booking dialog design is scoped to appointment flows and stays rounded on mobile',async()=>{
+  const {readFileSync}=await import('node:fs');
+  const css=readFileSync(new URL('../app/static/orion-suite.css',import.meta.url),'utf8');
+  assert.match(css,/#osDialog\.os-booking-dialog\s*\{/);
+  assert.match(css,/border-radius:28px/);
+  assert.match(css,/border-radius:26px/);
+  assert.match(css,/#osDialog\.os-booking-dialog \.os-service-option/);
+  assert.match(css,/@media\(max-width:639px\)/);
 });
