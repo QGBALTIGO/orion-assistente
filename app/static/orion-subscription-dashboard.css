@@ -64,3 +64,20 @@
 @media(max-width:767px){.os-main[data-os-current-route=dashboard]:has(.os-subdash){padding:20px 16px calc(96px + env(safe-area-inset-bottom,0px))}.os-subdash{gap:19px}.os-subdash-head{gap:10px;align-items:center}.os-subdash-head h1{font-size:26px;line-height:34px}.os-subdash-head p:not(.os-subdash-overline){font-size:12px;line-height:18px}.os-subdash-refresh{min-height:36px;padding:6px 11px;font-size:12px}.os-subdash-stats{gap:10px}.os-subdash-stat{padding:14px!important;min-height:161px;gap:9px}.os-subdash-stat-header{gap:8px;font-size:12px;line-height:17px}.os-subdash-stat-header .os-square-icon{width:32px;height:32px;flex-basis:32px}.os-subdash-stat-header .os-square-icon .os-icon{width:17px;height:17px}.os-subdash-stat-number{font-size:28px}.os-subdash-panel-heading{padding:17px 15px 13px}.os-subdash-health-list{padding:0 15px 12px}.os-subdash-activity-list{padding:0 15px}.os-subdash-panel-footer{padding:2px 15px 12px}.os-subdash-action-grid{gap:10px}.os-subdash-action{padding:12px!important;gap:10px;min-height:75px}.os-subdash-action .os-square-icon{width:35px;height:35px;flex-basis:35px}.os-subdash-action-copy strong{font-size:13px}.os-subdash-action-copy small{font-size:11px}}
 @media(max-width:380px){.os-subdash-head{align-items:flex-start}.os-subdash-refresh{padding-inline:9px}.os-subdash-stats{grid-template-columns:1fr}.os-subdash-stat{min-height:130px}.os-subdash-action-grid{grid-template-columns:minmax(0,1fr)}.os-subdash-health-row{gap:8px}.os-subdash-health-side{flex-direction:column;align-items:flex-end}.os-subdash-health-icon{flex-basis:29px;width:29px;height:29px}}
 @media(prefers-reduced-motion:reduce){.os-subdash *{transition:none!important;animation:none!important}.os-subdash-action:hover{transform:none}}
+
+/* Loading dashboard: calm, dimensionally stable skeleton using existing Orion colors. */
+.os-subdash-skeleton{min-width:0}
+.os-subdash-skeleton-card{display:flex;flex-direction:column;align-items:flex-start;gap:14px;min-width:0;min-height:172px;border:1px solid var(--os-border);border-radius:18px;padding:20px!important}
+.os-subdash-skeleton-line{display:block;border-radius:8px;background:var(--os-soft);background-image:linear-gradient(90deg,transparent 0%,color-mix(in srgb,var(--os-primary) 8%,transparent) 50%,transparent 100%);background-size:200% 100%;animation:os-subdash-skeleton-shift 1.6s ease-in-out infinite}
+.os-subdash-skeleton-icon{width:41px;height:41px;border-radius:12px}
+.os-subdash-skeleton-value{width:58%;height:25px}
+.os-subdash-skeleton-caption{width:75%;height:11px}
+.os-subdash-skeleton-panel{display:flex;flex-direction:column;gap:19px;min-height:242px;padding:24px!important;border:1px solid var(--os-border);border-radius:20px}
+.os-subdash-skeleton-title{width:42%;height:23px;margin-bottom:3px}
+.os-subdash-skeleton-row{width:90%;height:14px}
+.os-subdash-skeleton-row:nth-of-type(3){width:76%}
+.os-subdash-skeleton-row:nth-of-type(4){width:83%}
+@keyframes os-subdash-skeleton-shift{from{background-position:200% 0}to{background-position:-200% 0}}
+#orionSetupAccess[hidden],#orionSetupAccess [hidden]{display:none!important}
+@media(max-width:767px){.os-subdash-skeleton-card{min-height:156px;padding:15px!important}.os-subdash-skeleton-panel{min-height:190px;padding:18px!important;gap:15px}}
+@media(prefers-reduced-motion:reduce){.os-subdash-skeleton-line{animation:none}}
