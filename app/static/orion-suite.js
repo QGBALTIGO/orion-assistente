@@ -2469,9 +2469,10 @@
   }
   function showCustomer(record=null){
     const c=record||{};
-    const hasExtra=dentalWorkspace()||!!(record&&(c.email||c.birth_date||c.birth_day||c.neighborhood||c.city));
+    const hasExtra=!!(record&&(c.email||c.birth_date||c.birth_day||c.neighborhood||c.city));
+    const expandExtra=dentalWorkspace()||hasExtra;
     const legacyBirthday=!c.birth_date&&c.birth_month&&c.birth_day;
-    const extras='<details class="os-client-more"'+(hasExtra?' open':'')+'>'+
+    const extras='<details class="os-client-more"'+(expandExtra?' open':'')+'>'+
       '<summary class="os-client-more-toggle"><span class="os-client-more-icon" aria-hidden="true">'+
         icon('plus')+'<svg class="os-icon os-client-more-minus" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12h14"/></svg></span>'+
       '<span class="os-client-more-text"><span class="os-client-more-label-collapsed">Mais dados</span><span class="os-client-more-label-expanded">Menos dados</span><small>(e-mail, aniversário, endereço)</small></span></summary>'+
