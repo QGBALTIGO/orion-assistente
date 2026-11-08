@@ -3258,7 +3258,7 @@
       const data=await request(apiPath('/appointments/series/'+encodeURIComponent(id)));
       if(!stillAccount(c)||state.dialog!==d)return;
       d.record=data;
-      const interval={1:'Toda semana',2:'A cada duas semanas',4:'A cada quatro semanas'}[data.interval_weeks]||'Recorrente';
+      const interval=data.monthly_visits===2?'2 vezes por mês':data.monthly_visits===4?'4 vezes por mês':({1:'Toda semana',2:'A cada duas semanas',4:'A cada quatro semanas'}[data.interval_weeks]||'Recorrente');
       const times=rows(data.appointments),future=times.filter(x=>x.status==='confirmed'&&Date.parse(x.start_at)>Date.now());
       const content='<div class="os-appointment-scroll"><div class="os-appointment-customer"><span class="os-avatar">'+esc(initials(data.customer_name))+'</span><div><h3>'+esc(data.customer_name)+'</h3><p>'+esc(data.customer_phone||'')+'</p></div></div>'+
         '<section class="os-appointment-section"><h3>Horário combinado</h3><div class="os-summary">'+
@@ -3268,7 +3268,7 @@
           '<button type="button" data-os-fixed-appointment="'+esc(item.id)+'" class="os-fixed-date-row"><span><strong>'+esc(fmtDate(dateKey(new Date(item.start_at))))+'</strong><small>'+esc(timeLabel(item.start_at))+' · '+esc(item.protocol)+'</small></span>'+badge(item.status)+icon('chevron')+'</button>').join('')+'</div>'+
         '<p class="os-help">Selecione uma visita para cancelar, remarcar ou finalizar somente aquele atendimento.</p></section>'+
         '<p class="os-help">Atendimentos finalizados permanecem no histórico e no financeiro. O encerramento libera apenas horários futuros.</p></div>';
-      setAppointmentSheet('Cliente fixo',content,writable()&&future.length?button('Encerrar próximos horários','fixed-stop','os-outline os-appointment-cancel','close')+button('Fechar','close-dialog','os-ghost'):button('Fechar','close-dialog','os-outline'));
+      setAppointmentSheet('Cliente fixo',content,writable()&&future.length?button('Editar recorrência','fixed-edit','','edit')+button('Encerrar horários','fixed-stop','os-outline os-appointment-cancel','close')+button('Fechar','close-dialog','os-ghost'):button('Fechar','close-dialog','os-outline'));
     }catch(error){if(stillAccount(c)&&state.dialog===d)setAppointmentSheet('Cliente fixo','<div class="os-appointment-scroll">'+errorHTML(error)+'</div>',button('Fechar','close-dialog','os-outline'));}
   }
   async function showAppointment(preset={}){if(preset.bookingMode==='fixed'){await showFixedClient(preset);return;}if(!writable()){toast('Seu acesso permite apenas consultar agendamentos.',true);return;}const c=context();showDialog('appointment','Novo agendamento',loading('Carregando clientes, serviços e profissionais…'),{serviceIds:[...(preset.serviceIds||[])],engineServiceIds:[],addonIds:[],addonCache:{},customerId:preset.customerId||'',slots:[],availabilityVersion:0,preset});$('osDialog').classList.add('os-booking-dialog');const activeDialog=state.dialog;
@@ -3793,7 +3793,8 @@
         if(!d.preview||d.previewKey!==signature){
           const c=context();markBusy(form,true);
           try{
-            const preview=await request(apiPath('/appointments/series/preview'),'POST',payload);
+            const endpoint=d.editSeriesId?'/appointments/series/'+encodeURIComponent(d.editSeriesId)+'/preview':'/appointments/series/preview';
+            const preview=await request(apiPath(endpoint),'POST',payload);
             if(stillAccount(c)&&state.dialog===d){d.preview=preview;d.previewKey=signature;renderFixedPreview(d,preview);}
           }catch(error){if(stillAccount(c)&&state.dialog===d)dialogError(error);}
           finally{if(stillAccount(c)&&state.dialog===d)markBusy(form,false);}
@@ -3801,15 +3802,15 @@
         }
         if(d.preview.conflict_count)throw Error('Existem conflitos nas datas. Ajuste os horários e verifique novamente.');
         await saveForm(form,async c=>{
-          const result=await request(apiPath('/appointments/series'),'POST',{...payload,idempotency_key:requestKey(form,payload)});
-          // Series occurrences share the standard appointment views.
-          if(current(c)){
+          const endpoint=d.editSeriesId?'/appointments/series/'+encodeURIComponent(d.editSeriesId)+'/replace':'/appointments/series';
+          const result=await request(apiPath(endpoint),'POST',{...payload,idempotency_key:requestKey(form,payload)});
+          if(current(c)&&!d.editSeriesId){
             state.filters.agendaMode='list';
             state.filters.agendaDay=payload.first_date;
             state.filters.agendaOffset=0;
           }
           return result;
-        },'Cliente fixo cadastrado. Todas as visitas foram reservadas na Agenda.');
+        },d.editSeriesId?'Cliente fixo atualizado. Os novos horários estão na Agenda.':'Cliente fixo cadastrado. Todas as visitas foram reservadas na Agenda.');
         return;
       }
       if(kind==='appointment'){
@@ -4042,6 +4043,7 @@
       case 'no-show-appointment':await showAppointmentAction('no_show');break;
       case 'reschedule-appointment':await showAppointmentAction('reschedule');break;
       case 'fixed-open-from-appointment':if(d?.record?.series_id)await showFixedSeriesDetail(d.record.series_id);break;
+      case 'fixed-edit':if(d?.type==='fixed-detail'&&d.record&&writable())await showFixedClient({editSeries:d.record});break;
       case 'fixed-stop':if(d?.type==='fixed-detail'&&d.record?.next_start_at)confirmMutation('Encerrar cliente fixo','Cancelar todos os horários futuros dessa recorrência? Atendimentos anteriores, histórico e financeiro serão preservados. Esta operação não envia cancelamentos em massa pelo WhatsApp.',()=>request(apiPath('/appointments/series/'+encodeURIComponent(d.record.id)+'/stop'),'POST',{}),'Horários futuros cancelados.');break;
     }
   }
