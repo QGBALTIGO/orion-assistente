@@ -1,0 +1,39 @@
+name: Orion - odontologia no workspace existente
+on:
+  pull_request:
+    paths:
+      - 'app/plan_permissions.py'
+      - 'app/static/orion-suite.js'
+      - 'app/static/orion-suite.css'
+      - 'tests/unit/test_dental_workspace_context.py'
+      - 'ui-tests/dental-workspace.test.mjs'
+      - '.github/workflows/dental-workspace.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  dental-ui:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verificar sintaxe do painel
+        run: node --check app/static/orion-suite.js
+      - name: Preparar DOM
+        run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+      - name: Navegacao, permissoes e regressao por nicho
+        run: node --test ui-tests/dental-workspace.test.mjs
+  dental-context:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Dependencias de autorizacao
+        run: python -m pip install --disable-pip-version-check pytest fastapi sqlalchemy
+      - name: Regressao de nichos e permissoes
+        run: pytest -q tests/unit/test_dental_workspace_context.py tests/unit/test_barbershop_layout_modes.py
