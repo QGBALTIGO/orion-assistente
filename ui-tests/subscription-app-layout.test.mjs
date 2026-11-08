@@ -24,7 +24,7 @@ const layoutStorage = 'orion-navigation-v1:'+tenantA+':synthetic@example.invalid
 
 function subscriptionPermissions(overrides={}){
   const all=planState('elite');
-  const permissions=Object.fromEntries(Object.keys(all.permissions).map(feature=>[feature,allowedFeatures.includes(feature)]));
+  const permissions=Object.fromEntries([...new Set([...Object.keys(all.permissions),...allowedFeatures])].map(feature=>[feature,allowedFeatures.includes(feature)]));
   return planState('elite',{
     workspace_profile:'subscription_services',
     layout_modes:['classic','app'],
