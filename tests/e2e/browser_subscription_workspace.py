@@ -11,7 +11,8 @@ import json
 import os
 from pathlib import Path
 import threading
-from urllib.parse import urlsplit
+import time
+from urllib.parse import parse_qs, urlsplit
 
 from playwright.sync_api import expect, sync_playwright
 import pytest
@@ -36,7 +37,8 @@ class Handler(PlansHandler):
             with base._lock:
                 session = base._sessions[cookie]
                 session.update(workspace_profile=PROFILE, workspace_calls=[],
-                               business_identity=dict(IDENTITY))
+                               slow_boot=parse_qs(urlsplit(self.path).query).get("fixtureSlowBoot") == ["1"],
+                               slow_boot_finished=False, business_identity=dict(IDENTITY))
         session = self.session()
         if session and path == "/api/v1/account/businesses" and isinstance(value, list):
             value = [{**item, "workspace_profile": PROFILE,
@@ -57,6 +59,9 @@ class Handler(PlansHandler):
             return self.body({"calls": session["workspace_calls"], "unexpected": session["unexpected"]})
         if session and path.startswith(("/api/", "/auth/")):
             session["workspace_calls"].append({"method": "GET", "path": path})
+        if session and path == "/api/v1/account/businesses" and session.get("slow_boot") and not session.get("slow_boot_finished"):
+            session["slow_boot_finished"] = True
+            time.sleep(2.0)
         if session and path == "/api/v1/account/business-identity":
             return self.body(session["business_identity"])
         if session and path == base.BASE + "/subscription-whatsapp/devices":
@@ -147,6 +152,38 @@ def assert_shell(page, width):
     })""")
     assert measured["viewport"] == width and measured["scroll"] <= width + 1, measured
     assert not measured["forbidden"], measured
+
+
+def test_subscription_mobile_bootstrap_never_exposes_setup_buttons(browser, fixture_url):
+    """Slow authenticated business lookup shows only the branded full-screen splash."""
+    engine, instance = browser
+    context = instance.new_context(viewport={"width": 390, "height": 844},
+        color_scheme="dark", locale="pt-BR", has_touch=True,
+        is_mobile=engine == "webkit", service_workers="block")
+    context.add_init_script("localStorage.setItem('orion-theme', 'dark');")
+    page = context.new_page()
+    errors = []
+    page.on("pageerror", lambda error: errors.append(str(error)))
+    ARTIFACTS.mkdir(parents=True, exist_ok=True)
+    try:
+        page.goto(f"{fixture_url}/panel?fixtureRole=owner&fixturePlan=elite&fixtureSlowBoot=1&aba=dashboard",
+                  wait_until="domcontentloaded")
+        expect(page.locator("#sessionBoot")).to_be_visible()
+        expect(page.locator("#sessionBoot h1")).to_have_text("Preparando seu painel")
+        expect(page.locator("#orionSetupAccess")).not_to_be_visible()
+        assert page.evaluate("""() => {
+          const target = document.elementFromPoint(innerWidth / 2, innerHeight / 2);
+          return !!target?.closest('#sessionBoot') && document.documentElement.scrollWidth <= innerWidth + 1;
+        }"""), "splash must cover the viewport without horizontal overflow"
+        page.screenshot(path=str(ARTIFACTS / f"{engine}-bootstrap-dark-mobile.png"),
+                        full_page=False, animations="disabled")
+        expect(page.locator("#sessionBoot")).to_be_hidden(timeout=20000)
+        expect(page.locator("#page-suite")).to_have_attribute("data-os-current-route", "dashboard")
+        expect(page.locator(".os-subdash-stats")).to_be_visible()
+        expect(page.locator("#orionSetupAccess")).not_to_be_visible()
+        assert not errors, errors
+    finally:
+        context.close()
 
 
 @pytest.mark.parametrize("size", SIZES, ids=lambda size: f"{size[0]}x{size[1]}")
