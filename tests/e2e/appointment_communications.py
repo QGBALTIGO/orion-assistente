@@ -127,7 +127,7 @@ def main():
             status:'unknown',due_at:'2026-11-15T18:00:00Z',attempted_at:'2026-11-15T18:00:00Z',last_error:'transport_result_unknown'}],
           reviews:[{rating:5,professional:'Profissional sintético',comment:'<script>alert(1)</script>'}],transport_limit:'Teste sintético de interface.'};
         window._settingsSaved=null;window._recoveryCount=0;
-        await window.OrionAppointmentCommunications.mount({host:document.getElementById('settings-host'),tenantId:'tenant',canWrite:true,
+        await window.OrionAppointmentCommunications.mount({host:document.getElementById('settings-host'),tenantId:'tenant',canWrite:true,canFeature:key=>key==='conversations.manual',
           request:async(path,method,body)=>{if(path.endsWith('/recover-confirmation')){window._recoveryCount++;return {status:'queued',accepted:false};}if(method==='PUT'){window._settingsSaved=body;fixture.settings.version++;return {saved:true};}return fixture;}});
       }""")
       page.get_by_role('heading',name='Comunicação de agendamentos',exact=True).wait_for()
