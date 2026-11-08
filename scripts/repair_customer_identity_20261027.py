@@ -29,6 +29,9 @@ OPERATION = "customer_merge_20261027"
 PREFIX = "production/customer-merge-20261027/"
 FK_TABLES = {"appointments", "financial_entries", "loyalty_transactions",
              "loyalty_coupons", "automation_jobs", "inbox_customer_labels"}
+# 0053 adds the only extra approved customer FK. Existing one-off repairs must
+# fail closed when the source customer already owns an appointment series.
+OPTIONAL_FK_TABLES = {"appointment_series"}
 EXPECTED_COUNTS = {"appointments": (18, 1), "financial_entries": (3, 1),
                    **{table: (0, 0) for table in FK_TABLES - {"appointments", "financial_entries"}}}
 CREATED = (datetime.fromisoformat("2026-10-17T17:09:31.606497+00:00"),
@@ -80,18 +83,21 @@ def verify_foreign_keys(db):
         FROM pg_constraint k JOIN pg_class c ON c.oid=k.conrelid
         JOIN pg_namespace n ON n.oid=c.relnamespace
         WHERE k.contype='f' AND k.confrelid='public.customers'::regclass""", {})
-    require(len(actual) == len(FK_TABLES) and {row["table_name"] for row in actual} == FK_TABLES
+    names = {row["table_name"] for row in actual}
+    require(names in (FK_TABLES, FK_TABLES | OPTIONAL_FK_TABLES)
+            and len(actual) == len(names)
             and all(row["namespace"] == "public" and row["columns"] == ["tenant_id", "customer_id"] for row in actual),
             "customer_foreign_keys_changed")
+    return names
 
 
 def inspect(db, scope=APPROVED):
-    verify_foreign_keys(db)
+    tables = verify_foreign_keys(db)
     p = scope.parameters
     people = rows(db, "SELECT * FROM customers WHERE tenant_id=:tenant AND id IN (:primary,:secondary)", p)
     require(len(people) == 2, "reviewed_customers_missing")
     state = {"customers": people}
-    for table in sorted(FK_TABLES):
+    for table in sorted(tables):
         state[table] = rows(db, f"SELECT * FROM {table} WHERE tenant_id=:tenant AND customer_id IN (:primary,:secondary)", p)
     state["management_requests"] = rows(db, """SELECT * FROM management_requests WHERE tenant_id=:tenant
         AND entity_id IN (:primary,:secondary)""", p)
@@ -118,7 +124,14 @@ def people(state, scope):
 
 def counts(state, scope):
     return {table: tuple(sum(row["customer_id"] == identity for row in state[table])
-                         for identity in (scope.primary, scope.secondary)) for table in sorted(FK_TABLES)}
+                         for identity in (scope.primary, scope.secondary))
+            for table in sorted(FK_TABLES | (OPTIONAL_FK_TABLES & state.keys()))}
+
+
+def expected_counts(state):
+    # Not an authorization to merge recurring sessions. If any 0053 series points
+    # to either reviewed customer, this privileged one-off procedure refuses.
+    return {**EXPECTED_COUNTS, **{table: (0, 0) for table in OPTIONAL_FK_TABLES & state.keys()}}
 
 
 def validate_before(state, scope):
@@ -132,7 +145,7 @@ def validate_before(state, scope):
             "reviewed_phone_changed")
     require(primary["birth_date"] is not None and secondary["birth_date"] is None
             and secondary["birth_month"] is None and secondary["birth_day"] is None, "birthday_state_changed")
-    require(counts(state, scope) == EXPECTED_COUNTS, "reviewed_reference_counts_changed")
+    require(counts(state, scope) == expected_counts(state), "reviewed_reference_counts_changed")
     for field in ("instagram", "email", "city", "neighborhood", "notes"):
         require(not (primary.get(field) and secondary.get(field) and primary[field] != secondary[field]),
                 "customer_fields_conflict")
@@ -238,7 +251,7 @@ def repair(db, backup, seal_snapshot, scope=APPROVED):
     actual_primary, actual_secondary = people(after, scope)
     require(all(actual_primary[key] == primary[key] for key in ("id", "name", "whatsapp_e164", "birth_date", "birth_month", "birth_day", "created_at")),
             "primary_identity_changed")
-    require(counts(after, scope) == {table: (sum(values), 0) for table, values in EXPECTED_COUNTS.items()}
+    require(counts(after, scope) == {table: (sum(values), 0) for table, values in expected_counts(before).items()}
             and actual_secondary["whatsapp_e164"] is None and not actual_secondary["active"] and actual_secondary["deleted_at"] is not None,
             "repair_postconditions_failed")
     db.execute(text("""INSERT INTO management_requests(tenant_id,operation,idempotency_key,fingerprint,entity_id)
