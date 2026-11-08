@@ -254,7 +254,7 @@ test('iPhone: primeiro atendimento e horário fixo não extrapolam a grade do mo
   const declaration=css.slice(start,css.indexOf('}',start));
   for(const rule of ['-webkit-appearance:none','appearance:none','box-sizing:border-box',
                      'width:100%','min-width:0','max-width:100%',
-                     'min-inline-size:0','max-inline-size:100%']){
+                     'min-inline-size:0','max-inline-size:100%','height:48px']){
     assert.ok(declaration.includes(rule),'controles WebKit devem respeitar '+rule);
   }
   assert.match(css,/#osDialog\.os-booking-dialog \[data-os-form="fixed-client"\] \.os-form-grid\s*\{\s*grid-template-columns:minmax\(0,1fr\)/);
