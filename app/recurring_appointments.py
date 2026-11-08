@@ -280,7 +280,7 @@ async def create_series(tenant_id: UUID, payload: SeriesCreate,
                         actor: Actor = Depends(authenticate)):
     authorize(actor, tenant_id, write=True)
     digest = hashlib.sha256(json.dumps(
-        payload.model_dump(mode="json", exclude={"idempotency_key"}),
+        payload.model_dump(mode="json", exclude={"idempotency_key"}, exclude_none=True),
         sort_keys=True, ensure_ascii=False).encode()).hexdigest()
     async with get_session_factory()() as db:
         try:
@@ -413,7 +413,7 @@ async def replace_series(tenant_id: UUID, series_id: UUID, payload: SeriesCreate
     authorize(actor, tenant_id, write=True)
     digest = hashlib.sha256(json.dumps({
         "supersedes_id": str(series_id),
-        "payload": payload.model_dump(mode="json", exclude={"idempotency_key"}),
+        "payload": payload.model_dump(mode="json", exclude={"idempotency_key"}, exclude_none=True),
     }, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
     async with get_session_factory()() as db:
         try:
