@@ -55,14 +55,15 @@ jobs:
             -f infra/postgres/init/001-roles.sql
       - name: Compilar Python e aplicar o schema aditivo
         run: |
-          python -m py_compile app/recurring_appointments.py alembic/versions/0074_fixed_client_series.py scripts/wait_for_fixed_client_schema.py scripts/backup_and_migrate_fixed_client_series.py scripts/predeploy_one_click_links.py
+          python -m py_compile app/recurring_appointments.py alembic/versions/0074_fixed_client_series.py alembic/versions/0075_fixed_client_monthly.py scripts/wait_for_fixed_client_schema.py scripts/wait_for_fixed_client_monthly_schema.py scripts/backup_and_migrate_fixed_client_series.py scripts/backup_and_migrate_fixed_client_monthly.py scripts/predeploy_one_click_links.py scripts/start_api.py
           alembic upgrade head
-      - name: Contrato 0074 e barreira de inicializacao somente leitura
+      - name: Contratos 0074/0075 e barreira de inicializacao somente leitura
         run: |
           python -c "import os; from scripts.backup_and_migrate_fixed_client_series import schema_ready; assert schema_ready(os.environ['MIGRATION_DATABASE_URL'])"
-          python -m scripts.wait_for_fixed_client_schema
+          python -c "import os; from scripts.backup_and_migrate_fixed_client_monthly import schema_ready; assert schema_ready(os.environ['MIGRATION_DATABASE_URL'])"
+          python -m scripts.wait_for_fixed_client_monthly_schema
       - name: Testes unitarios de frequencias e timezone
-        run: pytest -q tests/unit/test_recurring_series_unit.py tests/unit/test_fixed_client_release.py tests/unit/test_cakto_recovery_release.py
+        run: pytest -q tests/unit/test_recurring_series_unit.py tests/unit/test_fixed_client_release.py tests/unit/test_fixed_client_monthly_release.py tests/unit/test_cakto_recovery_release.py
       - name: Testes reais de reservas atomicas e RLS
         run: pytest -q tests/integration/test_recurring_appointments.py
   ui:
