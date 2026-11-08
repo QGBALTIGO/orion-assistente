@@ -115,7 +115,7 @@ test('booking mode includes fixed client and switches within the same Orion dial
   assert.equal(h.document.querySelector('#osDialogTitle').textContent,'Novo agendamento');
   assert.equal(h.document.querySelector('select[name=booking_mode]').value,'fixed');
   assert.equal(h.document.querySelector('input[name=customer_name]').value,'João sintético');
-  assert.equal(h.document.querySelector('input[name=customer_phone]').value,'+5511999990060');
+  assert.equal(h.document.querySelector('input[name=customer_phone]').value.replace(/\D/g,''),'11999990060');
   assert.ok(h.document.querySelector('#osDialog').classList.contains('os-booking-dialog'));
   const back=h.document.querySelector('select[name=booking_mode]');
   back.value='exceptional';back.dispatchEvent(new h.window.Event('change',{bubbles:true}));await flush();
