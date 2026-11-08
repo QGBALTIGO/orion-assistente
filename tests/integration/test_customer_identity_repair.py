@@ -286,6 +286,14 @@ async def test_operational_cli_defaults_to_read_only_and_requires_verified_backu
     output = capsys.readouterr()
     assert all(value not in output.out + output.err for value in (PHONE64, PHONE94, "Kayky", "1990-05-17"))
     assert ("orion_customer_repair_started" in output.out) == (mode != "missing_scope")
+    # The retired customer repair is intentionally pinned to its reviewed
+    # release. On newer schemas (including fixed-client series), it MUST fail
+    # closed before any backup or writes; never mock that version gate away.
+    if repair.migrated_version(raw) != repair.SCHEMA:
+        assert code == 2 and not events
+        assert await current(d) == before
+        assert '"status": "not_applied"' in output.err
+        return
     if mode == "verified_backup":
         assert code == 0 and events == ["backup", "snapshot"]
         assert json.loads(output.out.splitlines()[-1])["status"] == "applied"
