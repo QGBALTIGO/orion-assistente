@@ -56,6 +56,12 @@ test('dental procedures remain the normal writable service catalogue, not a seco
   assert.equal(h.document.querySelector('.os-title-row h1')?.textContent,'Procedimentos');
   assert.match(h.document.getElementById('osPageBody').textContent,/PROCEDIMENTOS CADASTRADOS/);
   assert.ok(h.document.querySelector('[data-os-action=new-service]'));
+  assert.match(h.document.getElementById('osPageBody').textContent,/Modelos de procedimentos/);
+  h.click('[data-os-action=toggle-service-models]');await flush();
+  const presets=[...h.document.querySelectorAll('[data-os-service-model]')];
+  assert.equal(presets.length,6);
+  assert.ok(presets.some(el=>el.textContent.includes('Avaliação odontológica')));
+  assert.ok(presets.some(el=>el.textContent.includes('Profilaxia e limpeza')));
   assert.ok(h.document.getElementById('appView').classList.contains('os-dental-workspace'));
   assert.equal(h.errors.length,0);
 });
@@ -94,7 +100,8 @@ test('switching quickly between dental routes leaves a consistent single selecti
 
 test('dental styles use the existing Orion tokens and mobile breakpoints',()=>{
   const css=readFileSync(new URL('../app/static/orion-suite.css',import.meta.url),'utf8');
-  assert.match(css,/\.orion-suite-enabled\.os-dental-workspace \.os-service-models\{display:none!important\}/);
+  assert.ok(!css.includes('.orion-suite-enabled.os-dental-workspace .os-service-models{display:none!important}'));
+  assert.match(css,/\.os-service-models/);
   assert.match(css,/--os-primary:/);
   assert.match(css,/--os-font:/);
   assert.match(css,/@media\(max-width:767px\)/);
