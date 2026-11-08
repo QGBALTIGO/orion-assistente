@@ -764,7 +764,7 @@
     if(state.route==='dashboard'){html=subscriptionWorkspace()?'<div id="osPageBody"><section id="osSubscriptionDashboard">'+(window.OrionSubscriptionDashboard?.placeholder?.()||loading('Preparando seu painel…'))+'</section></div>':'<div id="osPageBody">'+loading('Carregando o resumo do seu negócio…')+'</div>';}
     if(state.route==='perfil'&&appLayoutEnabled())html='<div id="osPageBody">'+appProfileView()+'</div>';
     if(state.route==='agenda')html=agendaFrame(readOnly);
-    if(state.route==='clientes')html='<div class="os-title-row os-client-heading"><div><h1>'+esc(routeLabel('clientes'))+'</h1><p id="osCustomersCount">'+(dentalWorkspace()?'Carregando pacientes…':'Carregando clientes…')+'</p></div><div class="os-actions">'+button(dentalWorkspace()?'Novo paciente':'Novo cliente','new-customer','','plus',can?'':'disabled')+'</div></div>'+readOnly+'<div class="os-search os-client-search">'+icon('search')+'<input id="osCustomerSearch" type="search" placeholder="Buscar por nome ou telefone..." aria-label="Buscar clientes por nome, telefone ou e-mail" value="'+esc(f.customerQuery)+'"></div><div class="os-client-filters"><div class="os-pill-tabs" role="tablist" aria-label="Situação dos clientes">'+(dentalWorkspace()?[['active','Ativos'],['inactive','Inativos']]:[['active','Ativos'],['at_risk','Em Risco'],['inactive','Inativos']]).map(([v,label])=>'<button type="button" class="os-pill-tab" role="tab" aria-selected="'+(f.customerStatus===v)+'" data-os-customer-status="'+v+'">'+label+'</button>').join('')+'</div>'+(dentalWorkspace()?'':button('Aniversariantes','customer-birthdays',f.customerStatus==='birthday'?'':'os-outline','gift','aria-pressed="'+(f.customerStatus==='birthday')+'"'))+'<button class="os-icon-button" type="button" data-os-action="export-customers" title="Exportar clientes em CSV" aria-label="Exportar clientes em CSV">'+icon('download')+'</button></div>'+(f.customerStatus==='at_risk'?'<div class="os-client-risk"><span>Sem retornar há mais de</span>'+[30,60,90].map(n=>'<button class="os-button os-small '+(f.customerRisk===n?'':'os-outline')+'" type="button" data-os-customer-risk="'+n+'">'+n+' dias</button>').join('')+'</div>':f.customerStatus==='birthday'?'<p class="os-help" style="margin-bottom:16px">Aniversariantes desta semana, de domingo a sábado.</p>':'')+'<div id="osPageBody">'+loading('Carregando clientes…')+'</div>';
+    if(state.route==='clientes')html='<div class="os-title-row os-client-heading"><div><h1>'+esc(routeLabel('clientes'))+'</h1><p id="osCustomersCount">'+(dentalWorkspace()?'Carregando pacientes…':'Carregando clientes…')+'</p></div><div class="os-actions">'+button(dentalWorkspace()?'Novo paciente':f.customerStatus==='fixed'?'Novo fixo':'Novo cliente',!dentalWorkspace()&&f.customerStatus==='fixed'?'new-fixed-client':'new-customer','','plus',can?'':'disabled')+'</div></div>'+readOnly+'<div class="os-search os-client-search">'+icon('search')+'<input id="osCustomerSearch" type="search" placeholder="Buscar por nome ou telefone..." aria-label="Buscar clientes por nome, telefone ou e-mail" value="'+esc(f.customerQuery)+'"></div><div class="os-client-filters"><div class="os-pill-tabs" role="tablist" aria-label="Situação dos clientes">'+(dentalWorkspace()?[['active','Ativos'],['inactive','Inativos']]:[['active','Ativos'],['fixed','Fixos'],['at_risk','Em risco']]).map(([v,label])=>'<button type="button" class="os-pill-tab" role="tab" aria-selected="'+(f.customerStatus===v)+'" data-os-customer-status="'+v+'">'+label+'</button>').join('')+'</div>'+(dentalWorkspace()?'':button('Aniversariantes','customer-birthdays',f.customerStatus==='birthday'?'':'os-outline','gift','aria-pressed="'+(f.customerStatus==='birthday')+'"'))+'<button class="os-icon-button" type="button" data-os-action="export-customers" title="Exportar clientes em CSV" aria-label="Exportar clientes em CSV">'+icon('download')+'</button></div>'+(f.customerStatus==='at_risk'?'<div class="os-client-risk"><span>Sem retornar há mais de</span>'+[30,60,90].map(n=>'<button class="os-button os-small '+(f.customerRisk===n?'':'os-outline')+'" type="button" data-os-customer-risk="'+n+'">'+n+' dias</button>').join('')+'</div>':f.customerStatus==='birthday'?'<p class="os-help" style="margin-bottom:16px">Aniversariantes desta semana, de domingo a sábado.</p>':'')+'<div id="osPageBody">'+loading('Carregando clientes…')+'</div>';
     if(state.route==='servicos')html=title(routeLabel('servicos'),dentalWorkspace()?'Cadastre os procedimentos oferecidos pela clínica, com duração e valores.':'Cadastre, ative e organize os serviços oferecidos pela sua empresa.')+readOnly+'<div id="osPageBody">'+loading('Carregando serviços…')+'</div>';
     if(state.route==='funcionarios')html=title(routeLabel('funcionarios'),'Gerencie os profissionais, a equipe e as permissões de acesso ao painel.')+readOnly+'<div class="os-pill-tabs os-staff-tabs" role="tablist" aria-label="Funcionários">'+[['professionals','Profissionais'],['permissions','Equipe & Permissões']].map(([v,l])=>'<button type="button" class="os-pill-tab" role="tab" aria-selected="'+(f.staffTab===v)+'" data-os-staff-tab="'+v+'">'+l+'</button>').join('')+'</div><div id="osPageBody">'+loading('Carregando profissionais…')+'</div>';
     if(state.route==='financeiro')html='<div class="os-title-row os-finance-heading">'+
@@ -1227,14 +1227,52 @@
   }
   async function loadCustomers(c=context()){
     if(!current(c))return;
-    const f=state.filters,read=state.customerRead=(state.customerRead||0)+1,filter=query({q:f.customerQuery,status:f.customerStatus,risk_days:f.customerRisk,limit:50,offset:f.customerOffset});
+    const f=state.filters,read=state.customerRead=(state.customerRead||0)+1;
+    if(f.customerStatus==='fixed'&&!dentalWorkspace()){
+      const [data,active]=await Promise.all([
+        request(apiPath('/appointments/series?limit=200')),
+        request(mgmt('/customers?status=active&limit=1'))
+      ]);
+      if(!current(c)||read!==state.customerRead)return;
+      state.data.fixedSeries=data;
+      state.data.activeCustomers=number(active.total);
+      renderFixedCustomers(data);
+      return;
+    }
+    const filter=query({q:f.customerQuery,status:f.customerStatus,risk_days:f.customerRisk,limit:50,offset:f.customerOffset});
     const requests=[request(mgmt('/customers?'+filter))];
     if(f.customerQuery||f.customerStatus!=='active')requests.push(request(mgmt('/customers?status=active&limit=1')));
     const [data,active]=await Promise.all(requests);
     if(!current(c)||read!==state.customerRead)return;
     state.data.customers=data;state.data.activeCustomers=number((active||data).total);renderCustomers(data);
   }
+  function renderFixedCustomers(data){
+    const q=state.filters.customerQuery.trim().toLocaleLowerCase('pt-BR');
+    const digits=q.replace(/\\D/g,'');
+    const series=rows(data).filter(item=>!item.closed_at&&item.next_start_at&&Date.parse(item.next_start_at)>Date.now());
+    const list=series.filter(item=>!q||[item.customer_name,item.customer_phone,item.services_label,item.professional_name].some(
+      text=>String(text||'').toLocaleLowerCase('pt-BR').includes(q))||(digits&&String(item.customer_phone||'').replace(/\\D/g,'').includes(digits)));
+    const people=new Set(series.map(item=>item.customer_id)).size;
+    const count=$('osCustomersCount');
+    if(count)count.textContent=people+' '+(people===1?'cliente fixo':'clientes fixos');
+    if(!list.length){
+      bodyHTML('<div class="os-client-empty">'+esc(q?'Nenhum cliente fixo encontrado.':'Nenhum cliente com agendamento fixo ativo.')+'</div>');
+      return;
+    }
+    const label=item=>item.monthly_visits===2?'2 vezes por mês':item.monthly_visits===4?'4 vezes por mês':
+      ({1:'Toda semana',2:'A cada 2 semanas',4:'A cada 4 semanas'}[item.interval_weeks]||'Recorrente');
+    bodyHTML('<div class="os-fixed-list os-client-fixed-list">'+list.map(item=>{
+      const name=item.customer_name||'Cliente',frequency=label(item);
+      const date=(fixedWeekdays[item.weekday]||'')+' às '+String(item.local_time||'').slice(0,5);
+      return '<button type="button" class="os-fixed-card" data-os-fixed-series="'+esc(item.id)+'" aria-label="'+esc('Ver e editar cliente fixo '+name+', '+frequency)+'">'+
+        '<span class="os-fixed-card-icon">'+icon('repeat')+'</span>'+
+        '<span class="os-fixed-card-main"><strong>'+esc(name)+'</strong><small>'+esc(item.services_label||'Serviço não informado')+' · '+esc(item.professional_name||'Profissional')+'</small><small>'+esc(date)+'</small></span>'+
+        '<span class="os-fixed-card-side"><span class="os-badge os-neutral">'+esc(frequency)+'</span><small>Próxima: '+esc(appointmentMoment(item.next_start_at))+'</small></span>'+icon('chevron')+'</button>';
+    }).join('')+'</div>');
+  }
+
   function renderCustomers(data){
+    if(state.filters.customerStatus==='fixed'&&!dentalWorkspace()){renderFixedCustomers(data);return;}
     const list=rows(data),f=state.filters,count=$('osCustomersCount');if(count)count.textContent=state.data.activeCustomers+' '+(dentalWorkspace()?(state.data.activeCustomers===1?'paciente ativo':'pacientes ativos'):(state.data.activeCustomers===1?'ativo':'ativos'));
     if(!list.length){const message=dentalWorkspace()?(f.customerQuery?'Nenhum paciente encontrado.':f.customerStatus==='inactive'?'Nenhum paciente inativo.':'Nenhum paciente cadastrado. Cadastre o primeiro!'):f.customerQuery?'Nenhum cliente encontrado.':f.customerStatus==='at_risk'?'Nenhum cliente em risco neste período.':f.customerStatus==='inactive'?'Nenhum cliente inativo.':f.customerStatus==='birthday'?'Nenhum aniversariante nesta semana.':'Nenhum cliente ainda. Cadastre o primeiro!';bodyHTML('<div class="os-client-empty">'+esc(message)+'</div>');return;}
     const actions=c=>'<button type="button" class="os-icon-button" data-os-customer="'+esc(c.id)+'" aria-label="'+(writable()?'Editar ':'Ver ')+esc(customerDisplayName(c))+'">'+icon('edit')+'</button>'+(writable()?'<button type="button" class="os-icon-button" data-os-customer-toggle="'+esc(c.id)+'" aria-label="'+(c.active?'Inativar ':'Ativar ')+esc(customerDisplayName(c))+'">'+icon(c.active?'block':'check')+'</button><button type="button" class="os-icon-button os-negative" data-os-customer-delete="'+esc(c.id)+'" aria-label="Excluir '+esc(customerDisplayName(c))+'">'+icon('trash')+'</button>':'');
