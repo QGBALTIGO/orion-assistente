@@ -3199,7 +3199,7 @@ html:has(.os-professional-history[open]){overflow:hidden}
   box-sizing:border-box;display:block;
   width:100%;min-width:0;max-width:100%;
   min-inline-size:0;max-inline-size:100%;
-  margin:0;line-height:24px;text-align:left;
+  margin:0;height:48px;min-height:48px;line-height:24px;text-align:left;
 }
 #osDialog.os-booking-dialog [data-os-form="fixed-client"] :is(input[type="date"],input[type="time"])::-webkit-date-and-time-value{
   min-height:24px;line-height:24px;text-align:left;
