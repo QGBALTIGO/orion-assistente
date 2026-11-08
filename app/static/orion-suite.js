@@ -4268,7 +4268,7 @@
     if(state.dialog?.type==='fixed-client'&&el.closest('[data-os-form=fixed-client]')){
       const form=el.closest('form');
       if(el.name==='weekday'){
-        const first=form.elements.first_date.value||dateKey(),base=d.editSeriesId?dateKey():first;
+        const first=form.elements.first_date.value||dateKey(),base=state.dialog.editSeriesId?dateKey():first;
         const current=(dayDate(base).getUTCDay()+6)%7;
         form.elements.first_date.value=shiftDay(base,(Number(el.value)-current+7)%7);
       }else if(el.name==='first_date'&&el.value){
