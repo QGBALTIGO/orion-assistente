@@ -30,6 +30,8 @@ def local_database_url():
 
 def test_professional_contact_release_matches_real_postgres_contract(local_database_url):
     raw = local_database_url
+    assert release.registration_contract_ready(raw), 'upstream registration/email/goals contract not ready'
+    assert release.professional_contract_ready(raw, expect_phone=True), 'professional phone contract not ready'
     assert release.schema_contract_ready(raw)
     assert not release.source_contract_ready(raw), 'An already-applied column must not be treated as an unmigrated source'
 
