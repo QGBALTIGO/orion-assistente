@@ -212,6 +212,7 @@ async def panel_asset(asset: str) -> FileResponse:
                "orion-onboarding.css": "text/css", "orion-onboarding.js": "text/javascript",
                "orion-channels.css": "text/css", "orion-channels.js": "text/javascript",
                "orion-subscription-devices.css": "text/css", "orion-subscription-devices.js": "text/javascript",
+                "orion-subscription-dashboard.css": "text/css", "orion-subscription-dashboard.js": "text/javascript",
                "orion-subscription-chatbot.css": "text/css", "orion-subscription-chatbot.js": "text/javascript",
                "orion-subscription-chatbot-test.css": "text/css", "orion-subscription-chatbot-test.js": "text/javascript",
                "orion-subscription-templates.css": "text/css", "orion-subscription-templates.js": "text/javascript",
