@@ -61,12 +61,20 @@ test('all operational deep links return to News before any module request',async
   t.after(()=>h.close());
   const routes=['dashboard','agenda','clientes','inbox','servicos','funcionarios',
     'financeiro','desempenho','marketing','campanhas','site','fidelizacao','consultor','plano',
-    'configuracoes','dispositivo','conversas','ai','empresa','catalogo','cadastros','acelerar'];
+    'dispositivo','conversas','ai','empresa','catalogo','cadastros','acelerar'];
   for(const route of routes){
     await h.window.OrionSuite.open(route,{force:true});await flush();
     assert.equal(h.element('#page-suite').dataset.osCurrentRoute,'novidades',route);
     assertSubscriptionShell(h);
   }
+  // Subscription Appearance is now an explicitly permitted, read-only settings
+  // destination. It must not expose the business/finance settings of other niches.
+  await h.window.OrionSuite.open('configuracoes',{force:true});await flush();
+  assert.equal(h.element('#page-suite').dataset.osCurrentRoute,'configuracoes');
+  assert.deepEqual([...h.document.querySelector('#osSettingsSection').options].map(x=>x.value),['appearance','account']);
+  assert.equal(h.document.querySelector('[data-os-settings=general]'),null);
+  assertSubscriptionShell(h);
+  await h.window.OrionSuite.open('novidades',{force:true});await flush();
   assert.equal(operationalCalls(h).length,0);
   assert.equal(h.calls.some(call=>call.method!=='GET'),false);
   assert.equal(h.element('#logout').textContent.trim(),'Sair com segurança');

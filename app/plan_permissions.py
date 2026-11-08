@@ -117,7 +117,7 @@ def derive_plan(snapshot, now=None):
         "source": source, "status": status, "active": active, "valid_until": until,
         "version": int(snapshot.get("version") or 0), "platform_workspace": platform,
         "workspace_profile": profile,
-        "layout_modes": ["classic", "app"] if snapshot.get("niche") == "barbearia" and not platform else ["classic"],
+        "layout_modes": ["classic", "app"] if snapshot.get("niche") in {"barbearia", "servico_assinaturas"} and not platform else ["classic"],
         "features": features, "permissions": {key: key in features for key in sorted(ALL_FEATURES)},
         "limits": {"max_professionals": maximum, "active_professionals": used,
                    "excess_professionals": max(0, used - maximum) if maximum is not None else 0},

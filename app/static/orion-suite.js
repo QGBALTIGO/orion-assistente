@@ -82,9 +82,16 @@
     ['hours','clock','Horários'],['clientes','users','Clientes'],['financeiro','wallet','Financeiro'],
     ['inbox','chat','Conversas'],['funcionarios','badgeUser','Equipe'],['desempenho','chart','Desempenho'],
     ['site','globe','Meu site'],['fidelizacao','gift','Fidelização'],
-    ['marketing','sparkles','Marketing'],['consultor','brain','Consultor IA']
+    ['marketing','sparkles','Marketing'],['consultor','brain','Consultor IA'],
+    ['chatbot','bot','Chatbot'],['templates','layers','Templates'],
+    ['enviar-mensagem','send','Enviar mensagens'],['diagnosticos','activity','Diagnóstico'],
+    ['dispositivos','phone','Dispositivos'],['testar-chatbot','flask','Testar chatbot'],
+    ['mensagens-enviadas','fileCheck','Mensagens enviadas'],['campanhas','megaphone','Campanhas'],
+    ['programadas','calendarClock','Programadas'],['massa','broadcast','Mensagem em massa'],
+    ['extrator-contatos','usersSearch','Extrator de contatos'],['adicionar-ao-grupo','userPlus','Adicionar ao grupo']
   ];
-  const appDefaultShortcuts=['dashboard','agenda','servicos','hours'];
+  const appDefaultShortcuts=()=>subscriptionWorkspace()?
+    ['chatbot','templates','enviar-mensagem','diagnosticos']:['dashboard','agenda','servicos','hours'];
   const appProfileShortcut=['perfil','user','Perfil'];
   const legacyPages=new Set(['dispositivo','conversas','ai','empresa','catalogo','cadastros','member']);
   // The original Orion operator console is restricted to the authenticated
@@ -98,8 +105,8 @@
   const subscriptionWorkspace=()=>workspaceProfile()==='subscription_services';
   const fallbackRoute=()=>subscriptionWorkspace()?'novidades':'plano';
   const permitted=feature=>!feature||platformWorkspace()||(!subscriptionWorkspace()||['account.manage','business.setup','devices.manage','chatbot.manage','templates.manage','sent_messages.manage','diagnostics.manage','campaigns.manage','scheduled_messages.manage','bulk_messages.manage','direct_messages.manage','whatsapp_guidance.view','group_contacts.manage','group_add.manage'].includes(feature))&&state.entitlements?.permissions?.[feature]===true;
-  const routePermitted=route=>route==='perfil'?appLayoutEnabled():['aquecimento','evitar-banimento','resolver-banimento','extrator-contatos','adicionar-ao-grupo'].includes(route)?(subscriptionWorkspace()&&tenant()?.role==='owner'&&tenant()?.status==='active'&&permitted(routeFeatures[route])):['dispositivos','chatbot','testar-chatbot','templates','mensagens-enviadas','diagnosticos','campanhas','programadas','massa','enviar-mensagem'].includes(route)?(subscriptionWorkspace()&&permitted(routeFeatures[route])):subscriptionWorkspace()?subscriptionRoutes.has(route):route==='configuracoes'?(permitted('settings.manage')||permitted('business.setup')||permitted('account.manage')):permitted(routeFeatures[route]);
-  const settingsTabAllowed=tab=>['appearance','account'].includes(tab)||tab==='general'?(tab!=='general'||permitted('business.setup')||permitted('settings.manage')):tab==='ai'?(permitted('marketing.ai')||permitted('consultant.ai')):tab==='whatsapp'?permitted('conversations.manual'):tab==='hours'?permitted('agenda.manage'):tab==='calendar'?permitted('calendar.manage'):tab==='notifications'?permitted('notifications.basic'):tab==='site-requests'?canManageSiteRequests():platformWorkspace();
+  const routePermitted=route=>route==='perfil'?appLayoutEnabled():['aquecimento','evitar-banimento','resolver-banimento','extrator-contatos','adicionar-ao-grupo'].includes(route)?(subscriptionWorkspace()&&tenant()?.role==='owner'&&tenant()?.status==='active'&&permitted(routeFeatures[route])):['dispositivos','chatbot','testar-chatbot','templates','mensagens-enviadas','diagnosticos','campanhas','programadas','massa','enviar-mensagem'].includes(route)?(subscriptionWorkspace()&&permitted(routeFeatures[route])):subscriptionWorkspace()?(route==='configuracoes'?permitted('account.manage'):subscriptionRoutes.has(route)):route==='configuracoes'?(permitted('settings.manage')||permitted('business.setup')||permitted('account.manage')):permitted(routeFeatures[route]);
+  const settingsTabAllowed=tab=>subscriptionWorkspace()?['appearance','account'].includes(tab):['appearance','account'].includes(tab)||tab==='general'?(tab!=='general'||permitted('business.setup')||permitted('settings.manage')):tab==='ai'?(permitted('marketing.ai')||permitted('consultant.ai')):tab==='whatsapp'?permitted('conversations.manual'):tab==='hours'?permitted('agenda.manage'):tab==='calendar'?permitted('calendar.manage'):tab==='notifications'?permitted('notifications.basic'):tab==='site-requests'?canManageSiteRequests():platformWorkspace();
   const atProfessionalLimit=()=>!platformWorkspace()&&Number.isInteger(state.entitlements?.limits?.max_professionals)&&Number(state.entitlements.limits.active_professionals)>=state.entitlements.limits.max_professionals;
   function featureForPath(path,method='GET',data){
     const suffix=path.split('/management/')[1]||'',resource=path.split('/api/v1/tenants/')[1]?.split('/')[1];
@@ -177,7 +184,7 @@
         if(profileChanged){state.load++;state.data={};state.busy=false;clearTimeout(state.searchTimer);clearTimeout(state.agendaSearchTimer);clearSiteLookups();closeNotifications();closeDialog(true);}
         state.bridge.onWorkspaceProfile?.();
         if(changed){
-          renderSidebar();applyPermissionDOM();
+          state.appShortcutDraft=null;renderSidebar();applyPermissionDOM();
           if(state.dialog&&!permitted(state.dialog.requiredFeature)){state.busy=false;closeDialog(true);toast('Seu plano mudou. Esta ação não está mais disponível.',true);}
           if(reconcile){
             if(!routePermitted(state.route))await open(fallbackRoute(),{force:true,permissionsChecked:true});
@@ -412,7 +419,7 @@
     $('osSidebarContext').innerHTML='<div class="os-overline">Meu negócio</div><div class="os-tenant-name">'+esc(t?.name||(businessAccessError()?'Acesso pendente':state.bridge.businessContextReady===false?'Conferindo empresa…':'Sua empresa'))+'</div><div class="os-sidebar-badges"><span class="os-badge">'+esc(isAdmin?'Administração':t?.role==='viewer'?'Consulta':t?.role==='editor'?'Equipe':'Minha empresa')+'</span></div>'+(t&&!subscriptionWorkspace()?'<button type="button" class="os-side-site" data-os-route="site">meu site '+icon('external')+'</button>':'');
     const navItem=([route,symbol],extra='')=>'<button type="button" class="os-nav-link'+extra+'" data-os-route="'+route+'" title="'+esc(routeNames[route])+'">'+icon(symbol)+'<span>'+esc(routeNames[route])+'</span></button>';
     let nav=subscriptionWorkspace()?'':isAdmin?navItem(['dispositivo','phone'],' os-nav-connection'):t&&permitted('conversations.manual')?'<button type="button" class="os-nav-link os-nav-connection" data-os-action="managed-whatsapp" title="Conectar WhatsApp">'+icon('phone')+'<span>Conectar WhatsApp</span></button>':'';
-    const permittedNav=mainNav.filter(([route])=>routePermitted(route));
+    const permittedNav=mainNav.filter(([route])=>routePermitted(route)&&!(subscriptionWorkspace()&&route==='configuracoes'));
     nav+='<div class="os-nav-section">Gestão</div>'+permittedNav.filter(([route])=>!toolNavRoutes.includes(route)).map(item=>navItem(item)).join('');
     if(state.bridge.user?.role==='admin'&&!subscriptionWorkspace()){
       nav+='<div class="os-nav-section">Atendimento Orion</div>';
@@ -425,6 +432,7 @@
       const label=route==='member'&&state.bridge.user?.role==='admin'&&!subscriptionWorkspace()?'Administração de clientes':routeNames[route];
       return '<button type="button" class="os-nav-link os-nav-utility" data-os-route="'+route+'" title="'+esc(label)+'">'+icon(symbol)+'<span>'+esc(label)+'</span></button>';
     }).join('');
+    if(subscriptionWorkspace()&&routePermitted('configuracoes'))nav+='<button type="button" class="os-nav-link os-nav-utility" data-os-app-settings="appearance" title="Aparência">'+icon('sun')+'<span>Aparência</span></button>';
     $('osNav').innerHTML=nav;selectedNav();applyPermissionDOM();
     if(previousFocus){const target=previousFocus.route?$('osNav').querySelector('[data-os-route="'+previousFocus.route+'"]'):$('osNav').querySelector('[data-os-action="'+previousFocus.action+'"]');(target||$('osNav').querySelector('[data-os-route="'+fallbackRoute()+'"]'))?.focus({preventScroll:true});}
   }
@@ -433,7 +441,7 @@
 
   // Navigation is a presentation layer. All booking, finance and access logic stays shared.
   // Authorization is server-derived from the verified business niche.
-  const appLayoutEligible=()=>!!tenant()&&!platformWorkspace()&&!subscriptionWorkspace()&&state.entitlements?.layout_modes?.includes('app')===true;
+  const appLayoutEligible=()=>!!tenant()&&!platformWorkspace()&&state.entitlements?.layout_modes?.includes('app')===true;
   const appLayoutEnabled=()=>state.layoutMode==='app'&&appLayoutEligible();
   const appLayoutKey=()=>state.tenantId&&(state.bridge.user?.id||state.bridge.user?.email)?
     'orion-navigation-v1:'+state.tenantId+':'+String(state.bridge.user.id||state.bridge.user.email).toLowerCase():null;
@@ -444,7 +452,7 @@
   // Stored locally, scoped to the authenticated account and single company.
   // Only server-authorized routes can ever become interactive shortcuts.
   const appShortcutKey=()=>{
-    const key=appLayoutKey();return key?'orion-quick-tabs-v1:'+key.slice('orion-navigation-v1:'.length):null;
+    const key=appLayoutKey();return key?'orion-quick-tabs-v1:'+key.slice('orion-navigation-v1:'.length)+(subscriptionWorkspace()?':subscription_services':''):null;
   };
   const appTabAllowed=tab=>tab==='perfil'?appLayoutEnabled():
     tab==='hours'?routePermitted('configuracoes')&&settingsTabAllowed('hours'):
@@ -460,7 +468,7 @@
     }catch{return null;}
   }
   function appShortcutSelection(){
-    const saved=savedAppShortcuts(),selected=saved===null?appDefaultShortcuts:saved;
+    const saved=savedAppShortcuts(),selected=saved===null?appDefaultShortcuts():saved;
     return selected.filter((name,index)=>selected.indexOf(name)===index&&appTabAllowed(name)).slice(0,4);
   }
   function appLayoutTabs(){
@@ -493,13 +501,13 @@
     dock.style.setProperty('--os-app-count',String(tabs.length));
     dock.style.setProperty('--os-app-width',(100/tabs.length)+'%');
     dock.innerHTML='<div class="os-app-dock-rail"><span class="os-app-dock-indicator" aria-hidden="true"></span>'+
-      tabs.map(([name,symbol,label])=>'<button type="button" class="os-app-dock-item" data-os-app-tab="'+name+'" aria-label="'+esc(label)+'"'+
-        (appTabAllowed(name)?'':' disabled aria-disabled="true"')+'><span class="os-app-dock-symbol">'+icon(symbol)+'</span><span class="os-app-dock-label">'+esc(label)+'</span></button>').join('')+'</div>';
+      tabs.map(([name,symbol,label])=>'<button type="button" class="os-app-dock-item" data-os-app-tab="'+name+'" aria-label="'+esc(label)+'" title="'+esc(label)+'"'+
+        (appTabAllowed(name)?'':' disabled aria-disabled="true"')+'><span class="os-app-dock-symbol">'+icon(symbol)+'</span><span class="os-app-dock-label">'+esc(name==='enviar-mensagem'?'Enviar':label)+'</span></button>').join('')+'</div>';
     updateAppDock();
   }
   function appShortcutDraft(){
     if(!Array.isArray(state.appShortcutDraft)){
-      const saved=savedAppShortcuts(),selected=saved===null?appDefaultShortcuts:saved;
+      const saved=savedAppShortcuts(),selected=saved===null?appDefaultShortcuts():saved;
       state.appShortcutDraft=selected.filter(name=>appTabAllowed(name)).slice(0,4);
       while(state.appShortcutDraft.length<4)state.appShortcutDraft.push('');
     }
@@ -528,7 +536,7 @@
       '<span class="os-app-shortcut-lock" aria-label="Não pode ser removido">'+icon('lock')+'</span></div></div>'+
       '<div class="os-app-shortcut-preview"><strong>Prévia da navegação</strong>'+
       '<div class="os-app-shortcut-preview-items" style="--os-preview-count:'+preview.length+'">'+preview.map(([,symbol,label])=>
-        '<span class="os-app-shortcut-preview-item">'+icon(symbol)+'<small>'+esc(label)+'</small></span>').join('')+'</div></div>'+
+        '<span class="os-app-shortcut-preview-item">'+icon(symbol)+'<small>'+esc(label==='Enviar mensagens'?'Enviar':label)+'</small></span>').join('')+'</div></div>'+
       '<p class="os-help">Personalização salva somente para esta conta neste dispositivo. As outras funções continuam em Perfil.</p>'+
       '<div class="os-form-actions os-app-shortcut-actions">'+
       button('Restaurar padrão','app-shortcuts-default','os-outline','refresh')+
@@ -584,7 +592,12 @@
     toast('Layout '+(mode==='app'?'Aplicativo':'Clássico')+' ativado.'+(stored?'':' Esta escolha não pôde ser salva neste navegador.'));
   }
   function appProfileView(){
-    const groups=[
+    const groups=subscriptionWorkspace()?[
+      ['Atendimento e chatbot',[['dispositivos','phone'],['chatbot','bot'],['testar-chatbot','flask'],['templates','layers'],['mensagens-enviadas','fileCheck'],['diagnosticos','activity']]],
+      ['Envios e campanhas',[['enviar-mensagem','send'],['programadas','calendarClock'],['campanhas','megaphone'],['massa','broadcast']]],
+      ['Ferramentas',[['aquecimento','flame'],['evitar-banimento','shieldCheck'],['resolver-banimento','shieldAlert'],['extrator-contatos','usersSearch'],['adicionar-ao-grupo','userPlus']]],
+      ['Configurações e conta',[['configuracoes','settings'],['novidades','bell'],['ajuda','book'],['member','user']]]
+    ]:[
       ['Agenda e operação',[['dashboard','home'],['agenda','calendar'],['servicos','scissors'],['hours','clock'],['clientes','users'],['funcionarios','badgeUser']]],
       ['Gestão do negócio',[['financeiro','wallet'],['desempenho','chart']]],
       ['Atendimento e relacionamento',[['inbox','chat'],['fidelizacao','gift'],['marketing','sparkles'],['consultor','bot']]],
@@ -595,7 +608,7 @@
       const allowed=items.filter(([route])=>route==='hours'?appTabAllowed('hours'):routePermitted(route));if(!allowed.length)return '';
       const rows=allowed.map(([route,symbol])=>
         '<button type="button" class="os-app-profile-item" '+(route==='hours'?'data-os-app-tab="hours"':'data-os-route="'+route+'"')+'><span class="os-app-profile-item-icon">'+icon(symbol)+'</span><span>'+esc(route==='hours'?'Horários':routeNames[route])+'</span>'+icon('chevron')+'</button>').join('');
-      const appearance=heading==='Site e configurações'&&settingsTabAllowed('appearance')?
+      const appearance=['Site e configurações','Configurações e conta'].includes(heading)&&settingsTabAllowed('appearance')?
         '<button type="button" class="os-app-profile-item" data-os-app-settings="appearance"><span class="os-app-profile-item-icon">'+icon('sun')+'</span><span>Aparência</span>'+icon('chevron')+'</button>':'';
       return '<section class="os-app-profile-group" aria-labelledby="osAppProfileGroup'+i+'"><h2 id="osAppProfileGroup'+i+'">'+esc(heading)+'</h2><div class="os-app-profile-items">'+rows+appearance+'</div></section>';
     }).join('');
@@ -626,11 +639,11 @@
 
   function drawer(open){const app=$('appView'),side=$('osSidebar');if(!app||!side)return;app.classList.toggle('os-menu-open',open);$('osMenu').setAttribute('aria-expanded',String(open));if(open){state.drawerTrigger=document.activeElement;side.querySelector('button')?.focus();}else state.drawerTrigger?.focus?.();}
   function resetPeriod(){const today=dateKey(),d=dayDate(today);d.setUTCMonth(d.getUTCMonth()+1,0);state.filters.periodStart=today.slice(0,8)+'01';state.filters.periodEnd=d.toISOString().slice(0,10);state.filters.performancePeriod='month';state.filters.performanceDay=today;}
-  function legacyOpened(route){if(state.mounted&&subscriptionWorkspace()&&!routePermitted(route)){void open(fallbackRoute(),{force:true});return;}if(route==='cadastros'){void open('configuracoes',{force:true});return;}if(!state.mounted||!legacyPages.has(route))return;if(platformAdminOnlyPages.has(route)&&state.bridge.user?.role!=='admin'){void open('dashboard',{force:true});return;}clearSiteLookups();state.route=route;state.load++;state.filters.agendaTablet=false;clearInterval(state.clockTimer);$('appView')?.classList.remove('os-tablet-mode');closeNotifications();closeDialog();selectedNav();$('page-suite').classList.add('hidden');$('osConsultantFab')?.classList.add('hidden');drawer(false);document.title=routeNames[route]+' · Orion';}
+  function legacyOpened(route){if(state.mounted&&subscriptionWorkspace()&&!routePermitted(route)){void open(fallbackRoute(),{force:true});return;}if(route==='cadastros'){void open(subscriptionWorkspace()?'novidades':'configuracoes',{force:true});return;}if(!state.mounted||!legacyPages.has(route))return;if(platformAdminOnlyPages.has(route)&&state.bridge.user?.role!=='admin'){void open('dashboard',{force:true});return;}clearSiteLookups();state.route=route;state.load++;state.filters.agendaTablet=false;clearInterval(state.clockTimer);$('appView')?.classList.remove('os-tablet-mode');closeNotifications();closeDialog();selectedNav();$('page-suite').classList.add('hidden');$('osConsultantFab')?.classList.add('hidden');drawer(false);document.title=routeNames[route]+' · Orion';}
   async function open(route,options={}){
     route=routeAliases.get(route)||route;
     const navigationRead=state.navigationRead=(state.navigationRead||0)+1;state.pendingRoute=route;
-    if(route==='cadastros')route='configuracoes';
+    if(route==='cadastros')route=subscriptionWorkspace()?'novidades':'configuracoes';
     if(!appPages.has(route))route='dashboard';
     // Never open the legacy operator console from a member/support bookmark,
     // stale URL, programmatic link or previous account's navigation state.
@@ -2033,7 +2046,7 @@
   }
   function renderSettings(){
     const t=tenant(),isAdmin=['support','admin'].includes(state.bridge.user?.role),
-      sections=settingsSections.filter(([key])=>key==='account'||key==='appearance'||key==='general'&&(permitted('business.setup')||permitted('settings.manage'))||key==='site-requests'&&isAdmin||key==='ai'&&(permitted('marketing.ai')||permitted('consultant.ai'))||key==='hours'&&permitted('agenda.manage')||key==='calendar'&&permitted('calendar.manage')||key==='notifications'&&permitted('notifications.basic')||key==='whatsapp'&&permitted('conversations.manual')),
+      sections=settingsSections.filter(([key])=>subscriptionWorkspace()?['appearance','account'].includes(key):key==='account'||key==='appearance'||key==='general'&&(permitted('business.setup')||permitted('settings.manage'))||key==='site-requests'&&isAdmin||key==='ai'&&(permitted('marketing.ai')||permitted('consultant.ai'))||key==='hours'&&permitted('agenda.manage')||key==='calendar'&&permitted('calendar.manage')||key==='notifications'&&permitted('notifications.basic')||key==='whatsapp'&&permitted('conversations.manual')),
       tab=sections.some(item=>item[0]===state.filters.settingsTab)?state.filters.settingsTab:'general',
       definition=sections.find(item=>item[0]===tab)||sections[0];let panel='';
     if(tab==='site-requests')panel=renderSiteRequests();
@@ -3769,7 +3782,7 @@
     }
     if(name==='app-shortcuts-default'){
       if(!appLayoutEligible()||state.route!=='configuracoes'||state.filters.settingsTab!=='appearance')return;
-      state.appShortcutDraft=appDefaultShortcuts.filter(tab=>appTabAllowed(tab));
+      state.appShortcutDraft=appDefaultShortcuts().filter(tab=>appTabAllowed(tab));
       while(state.appShortcutDraft.length<4)state.appShortcutDraft.push('');
       renderSettings();$('osAppShortcut0')?.focus({preventScroll:true});return;
     }
@@ -3952,7 +3965,7 @@
       if(el.dataset.osNotificationFilter){state.filters.notificationsUnread=el.dataset.osNotificationFilter==='true';await loadNotifications();return;}
       if(el.dataset.osNotification){const item=rows(state.data.notifications).find(item=>item.id===el.dataset.osNotification);if(!item)return;const c=context();if(!item.read_at&&state.data.notifications?.can_mark_read)await markNotificationsRead([item.id]);if(!stillAccount(c))return;closeNotifications();await showAppointmentDetail(item.appointment_id);return;}
       if(el.dataset.osAppHours){if(!appLayoutEnabled()||!settingsTabAllowed('hours')||!['hours','blocks'].includes(el.dataset.osAppHours))return;state.filters.appHoursView=el.dataset.osAppHours;await open('configuracoes',{keepScroll:true});return;}
-      if(el.dataset.osAppSettings){if(!appLayoutEnabled()||!settingsTabAllowed(el.dataset.osAppSettings))return;state.filters.settingsTab=el.dataset.osAppSettings;await open('configuracoes');return;}
+      if(el.dataset.osAppSettings){if(!(appLayoutEnabled()||subscriptionWorkspace())||!settingsTabAllowed(el.dataset.osAppSettings))return;state.filters.settingsTab=el.dataset.osAppSettings;await open('configuracoes');return;}
       if(el.dataset.osRoute){if(appLayoutEnabled()&&state.route==='perfil'&&el.dataset.osRoute==='configuracoes')state.filters.settingsTab='general';await open(el.dataset.osRoute);return;}
       if(el.dataset.osDay){state.filters.agendaDay=el.dataset.osDay;state.filters.agendaOffset=0;await open('agenda',{keepScroll:true});$('osAgendaDay-'+state.filters.agendaDay)?.focus();return;}
       if(el.dataset.osAgendaMode){if(!['list','calendar','professional','fixed'].includes(el.dataset.osAgendaMode))return;state.filters.agendaMode=el.dataset.osAgendaMode;state.filters.agendaOffset=0;clearTimeout(state.agendaSearchTimer);await open('agenda',{keepScroll:true});return;}
