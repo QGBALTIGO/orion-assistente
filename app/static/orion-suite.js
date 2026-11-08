@@ -3190,7 +3190,8 @@
       const first=editing?shiftDay(reference,(weekday-referenceWeekday+7)%7):reference;
       const repetition=existing?.monthly_visits?'monthly'+existing.monthly_visits:
         'weekly'+(existing?.interval_weeks||1);
-      const quantity=editing?Math.max(2,Math.min(52,number(existing.confirmed_count)||12)):12;
+      const futureCount=editing?rows(existing.appointments).filter(visit=>visit.status==='confirmed'&&Date.parse(visit.start_at)>Date.now()).length:0;
+      const quantity=editing?Math.max(2,Math.min(52,futureCount||2)):12;
       const content=(editing?'':selectField('Tipo de registro','booking_mode',bookingModes,'fixed'))+
         '<p id="osBookingModeHelp" class="os-help">'+(editing?
           'Altere apenas as próximas visitas. Os atendimentos anteriores e o financeiro são preservados.':
