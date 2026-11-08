@@ -146,24 +146,27 @@ def predecessors_ready(raw):
 def current_release(raw):
     from scripts import backup_and_migrate_cakto_recovery as recovery
     from scripts import backup_and_migrate_fixed_client_series as fixed
+    from scripts import backup_and_migrate_fixed_client_monthly as monthly
     from scripts.apply_variable_combo_migration import migrated_version
     subprocess.run([sys.executable, "-c", RUNTIME_PREDEPLOY_CHECK], check=True)
     if not predecessors_ready(raw):
-        raise RuntimeError("cakto_recovery_predecessor_contract_invalid")
-    current = migrated_version(raw)
-    if current in {recovery.PREVIOUS, recovery.TARGET}:
+        raise RuntimeError("fixed_client_predecessor_contract_invalid")
+    revision = migrated_version(raw)
+    if revision in {recovery.PREVIOUS, recovery.TARGET}:
         if recovery.main() != 0:
             raise RuntimeError("cakto_recovery_schema_not_ready")
-    elif current != fixed.TARGET:
+    elif revision not in {fixed.TARGET, monthly.TARGET}:
         raise RuntimeError("fixed_client_source_revision_not_approved")
     if not recovery.schema_ready(raw):
         raise RuntimeError("cakto_recovery_post_migration_contract_invalid")
-    if fixed.main() != 0:
-        raise RuntimeError("fixed_client_schema_not_ready")
-    if not predecessors_ready(raw) or not recovery.schema_ready(raw) or not fixed.schema_ready(raw):
+    revision = migrated_version(raw)
+    if revision != monthly.TARGET:
+        if fixed.main() != 0 or not fixed.schema_ready(raw):
+            raise RuntimeError("fixed_client_schema_not_ready")
+    if monthly.main() != 0 or not monthly.schema_ready(raw):
+        raise RuntimeError("fixed_client_monthly_schema_not_ready")
+    if not predecessors_ready(raw) or not recovery.schema_ready(raw):
         raise RuntimeError("fixed_client_post_migration_contract_invalid")
-    # This is a bounded provider GET probe, never merchant provisioning or a
-    # payment operation. ORION_PIX_PROVISION_ONCE is deliberately not read here.
     subprocess.run([sys.executable, "-m", "scripts.probe_cakto_read_only"], check=True)
     if os.getenv("ORION_PIX_PREPAID_ENABLED", "0") == "1":
         subprocess.run([sys.executable, "-m", "scripts.probe_prepaid_pix_read_only"], check=True)
@@ -174,9 +177,10 @@ def main():
     from scripts.apply_variable_combo_migration import migrated_version
     from scripts import backup_and_migrate_cakto_recovery as recovery
     from scripts import backup_and_migrate_fixed_client_series as fixed
+    from scripts import backup_and_migrate_fixed_client_monthly as monthly
     raw, _url = connection_values()
     current = migrated_version(raw)
-    if current in {recovery.PREVIOUS, recovery.TARGET, fixed.TARGET}:
+    if current in {recovery.PREVIOUS, recovery.TARGET, fixed.TARGET, monthly.TARGET}:
         return current_release(raw)
     if current not in LEGACY_REVISIONS:
         raise RuntimeError("cakto_recovery_source_revision_not_approved")
