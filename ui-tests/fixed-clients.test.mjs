@@ -243,3 +243,32 @@ test('prévia de conflito ao editar impede modificar a recorrência existente',a
   h.submit('[data-os-form=fixed-client]');await flush();
   assert.equal(h.calls.filter(call=>call.path.endsWith('/replace')).length,0);
 });
+
+
+test('iPhone: primeiro atendimento e horário fixo não extrapolam a grade do modal',async t=>{
+  const {readFileSync}=await import('node:fs');
+  const css=readFileSync(new URL('../app/static/orion-suite.css',import.meta.url),'utf8');
+  const selector='#osDialog.os-booking-dialog [data-os-form="fixed-client"] :is(input[type="date"],input[type="time"])';
+  const start=css.indexOf(selector+'{');
+  assert.ok(start>=0,'a correção dos campos nativos deve ser específica do agendamento fixo');
+  const declaration=css.slice(start,css.indexOf('}',start));
+  for(const rule of ['-webkit-appearance:none','appearance:none','box-sizing:border-box',
+                     'width:100%','min-width:0','max-width:100%',
+                     'min-inline-size:0','max-inline-size:100%','height:48px']){
+    assert.ok(declaration.includes(rule),'controles WebKit devem respeitar '+rule);
+  }
+  assert.match(css,/#osDialog\.os-booking-dialog \[data-os-form="fixed-client"\] \.os-form-grid\s*\{\s*grid-template-columns:minmax\(0,1fr\)/);
+  const h=await makeSuite({initialRoute:'agenda',respond:reply()});
+  t.after(()=>h.close());
+  await flush();
+  await openForm(h);
+  const form=h.document.querySelector('[data-os-form="fixed-client"]');
+  for(const [name,type] of [['first_date','date'],['local_time','time']]){
+    const input=form.querySelector('input[name="'+name+'"]');
+    assert.ok(input,name+' precisa continuar nativo e editável');
+    assert.equal(input.type,type);
+    assert.ok(input.closest('.os-form-grid'),'o campo deve permanecer na mesma grade Orion');
+    assert.ok(input.closest('.os-field'),'o estilo reutiliza os controles do sistema');
+    assert.equal(input.disabled,false);
+  }
+});

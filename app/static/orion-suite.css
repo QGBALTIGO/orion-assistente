@@ -3188,6 +3188,31 @@ html:has(.os-professional-history[open]){overflow:hidden}
   #osDialog.os-booking-dialog .os-form-actions>.os-button{font-size:12px;padding-inline:9px}
 }
 
+/* iPhone/WebKit: native date/time inputs can count padding outside width:100%.
+   Keep the Orion field dimensions and native pickers without expanding the sheet. */
+#osDialog.os-booking-dialog [data-os-form="fixed-client"] .os-form-grid,
+#osDialog.os-booking-dialog [data-os-form="fixed-client"] .os-form-grid>.os-field{
+  box-sizing:border-box;min-width:0;max-width:100%;
+}
+#osDialog.os-booking-dialog [data-os-form="fixed-client"] :is(input[type="date"],input[type="time"]){
+  -webkit-appearance:none;appearance:none;
+  box-sizing:border-box;display:block;
+  width:100%;min-width:0;max-width:100%;
+  min-inline-size:0;max-inline-size:100%;
+  margin:0;height:48px;min-height:48px;line-height:24px;text-align:left;
+}
+#osDialog.os-booking-dialog [data-os-form="fixed-client"] :is(input[type="date"],input[type="time"])::-webkit-date-and-time-value{
+  min-height:24px;line-height:24px;text-align:left;
+}
+#osDialog.os-booking-dialog [data-os-form="fixed-client"] :is(input[type="date"],input[type="time"])::-webkit-datetime-edit{
+  min-width:0;padding:0;line-height:24px;
+}
+@media(max-width:767px){
+  #osDialog.os-booking-dialog [data-os-form="fixed-client"] .os-form-grid{
+    grid-template-columns:minmax(0,1fr);
+  }
+}
+
 
 /* Orion barbearia - alternate navigation shell. Reuse suite design tokens only.
    The original desktop rail, drawer, themes and route components remain intact. */
