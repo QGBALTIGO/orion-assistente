@@ -45,6 +45,7 @@ class SeriesDraft(StrictModel):
     weekday: int = Field(ge=0, le=6)
     local_time: time
     interval_weeks: Literal[1, 2, 4] = 1
+    monthly_visits: Literal[2, 4] | None = None
     occurrence_count: int = Field(ge=2, le=52)
 
     @field_validator("service_ids")
@@ -78,30 +79,41 @@ class SeriesStop(StrictModel):
 
 
 def series_days(draft: SeriesDraft, tz_name: str, now: datetime):
-    """Contagem inclui a primeira data; não reservar indefinidamente nem além de um ano."""
+    """Count the first occurrence; 2/month means alternating calendar weeks, never 3."""
     zone = ZoneInfo(tz_name)
     today = now.astimezone(zone).date()
-    if draft.first_date < today or draft.first_date > today + timedelta(days=365):
-        raise HTTPException(422, "Selecione datas futuras dentro dos próximos 365 dias")
-    end = draft.first_date + timedelta(weeks=draft.interval_weeks * (draft.occurrence_count - 1))
-    if end > today + timedelta(days=365):
+    horizon = today + timedelta(days=365)
+    if draft.first_date < today or draft.first_date > horizon:
         raise HTTPException(422, "Selecione datas futuras dentro dos próximos 365 dias")
     dates = []
-    for i in range(draft.occurrence_count):
-        day = draft.first_date + timedelta(weeks=draft.interval_weeks * i)
-        naive = datetime.combine(day, draft.local_time)
-        instant = naive.replace(tzinfo=zone, fold=0)
-        if (instant.utcoffset() != naive.replace(tzinfo=zone, fold=1).utcoffset()
-                or instant.astimezone(UTC).astimezone(zone).replace(tzinfo=None) != naive):
-            raise HTTPException(422, f"Horário local inexistente ou ambíguo em {day.isoformat()}")
-        dates.append((i + 1, day, instant))
+    candidate = draft.first_date
+    first_ordinal = (candidate.day - 1) // 7
+    while len(dates) < draft.occurrence_count:
+        if candidate > horizon:
+            raise HTTPException(422, "Selecione datas futuras dentro dos próximos 365 dias")
+        ordinal = (candidate.day - 1) // 7
+        if draft.monthly_visits is None:
+            include = True
+        elif draft.monthly_visits == 4:
+            include = ordinal < 4 or candidate == draft.first_date
+        else:
+            # First/third OR second/fourth weekday of each calendar month.
+            include = (ordinal < 4 and ordinal % 2 == first_ordinal % 2) or candidate == draft.first_date
+        if include:
+            naive = datetime.combine(candidate, draft.local_time)
+            instant = naive.replace(tzinfo=zone, fold=0)
+            if (instant.utcoffset() != naive.replace(tzinfo=zone, fold=1).utcoffset()
+                    or instant.astimezone(UTC).astimezone(zone).replace(tzinfo=None) != naive):
+                raise HTTPException(422, f"Horário local inexistente ou ambíguo em {candidate.isoformat()}")
+            dates.append((len(dates) + 1, candidate, instant))
+        candidate += timedelta(days=7 * (draft.interval_weeks if draft.monthly_visits is None else 1))
     return dates
 
 
 async def _series_detail(db, tenant, identity):
     record = (await db.execute(text("""
         SELECT s.id,s.customer_id,s.professional_id,s.service_ids,s.services_label,
-               s.first_date,s.weekday,s.local_time,s.interval_weeks,s.occurrence_count,
+               s.first_date,s.weekday,s.local_time,s.interval_weeks,s.monthly_visits,s.occurrence_count,
                s.timezone,s.created_at,s.closed_at,
                c.name AS customer_name,c.whatsapp_e164 AS customer_phone,
                p.name AS professional_name
@@ -123,7 +135,7 @@ async def _series_detail(db, tenant, identity):
             "appointments": [dict(row) for row in rows],
             "confirmed_count": sum(r["status"] == "confirmed" for r in rows),
             "cancelled_count": sum(r["status"] == "cancelled" for r in rows),
-            "next_start_at": upcoming[0]["start_at"] if upcoming else None}
+            "next_start_at": min(r["start_at"] for r in upcoming) if upcoming else None}
 
 
 async def _check_occurrences(db, tenant, draft, now, *, collect=False):
@@ -177,6 +189,92 @@ async def preview_series(tenant_id: UUID, payload: SeriesDraft,
             })
 
 
+async def _insert_series(db, tenant_id, payload, actor, digest, now, *, customer=None):
+    """Insert all visits atomically using the regular booking engine."""
+    shop, items, proposed, _, totals = await _check_occurrences(
+        db, tenant_id, payload, now)
+    if customer is None:
+        customer, _ = await resolve_customer(
+            db, tenant_id, payload.customer_phone, payload.customer_name)
+    identity = uuid4()
+    await db.execute(text("""
+        INSERT INTO appointment_series(
+            id,tenant_id,customer_id,professional_id,service_ids,services_label,
+            first_date,weekday,local_time,interval_weeks,monthly_visits,occurrence_count,
+            timezone,idempotency_key,request_fingerprint)
+        VALUES(:id,:tenant,:customer,:professional,:services,:label,
+            :first_date,:weekday,:local_time,:interval,:monthly,:count,:timezone,:key,:fp)
+    """), {
+        "id": identity, "tenant": tenant_id, "customer": customer["id"],
+        "professional": payload.professional_id, "services": payload.service_ids,
+        "label": " + ".join(item["name"] for item in items)[:750],
+        "first_date": payload.first_date, "weekday": payload.weekday,
+        "local_time": payload.local_time, "interval": payload.interval_weeks,
+            "monthly": payload.monthly_visits,
+        "count": payload.occurrence_count, "timezone": shop["timezone"],
+        "key": payload.idempotency_key, "fp": digest,
+    })
+    for occurrence in proposed:
+        index = occurrence["index"]
+        item_id = uuid4()
+        # UUID scoped idempotency is independent from the frontend key.
+        child_key = f"fixed:{identity}:{index:02d}"
+        for attempt in range(5):
+            try:
+                async with db.begin_nested():
+                    await db.execute(text("""
+                        INSERT INTO appointments(
+                            id,tenant_id,customer_id,professional_id,protocol,
+                            idempotency_key,request_fingerprint,start_at,end_at,
+                            occupied_from,occupied_until,status,hold_expires_at,
+                            total_cents,series_id,series_index)
+                        VALUES(:id,:tenant,:customer,:professional,:protocol,
+                            :key,:fp,:start_at,:end_at,:occupied_from,:occupied_until,
+                            'confirmed',NULL,:total_cents,:series_id,:series_index)
+                    """), {
+                        "id": item_id, "tenant": tenant_id, "customer": customer["id"],
+                        "professional": payload.professional_id, "protocol": protocol(),
+                        "key": child_key,
+                        "fp": fingerprint(payload.professional_id, payload.service_ids,
+                                          occurrence["start_at"], payload.customer_phone),
+                        "series_id": identity, "series_index": index,
+                        **occurrence["bounds"],
+                    })
+                break
+            except IntegrityError as exc:
+                if "uq_appointment_protocol" not in str(exc):
+                    raise
+        else:
+            raise HTTPException(503, "Não foi possível criar um protocolo de agendamento")
+        for order, service in enumerate(items):
+            await db.execute(text("""
+                INSERT INTO appointment_items(
+                    tenant_id,appointment_id,service_id,name_snapshot,
+                    duration_snapshot_min,price_snapshot_cents,price_mode_snapshot,
+                    prep_snapshot_min,cleanup_snapshot_min,item_order)
+                VALUES(:tenant,:appointment,:service,:name,
+                    :duration,:price,:price_mode,:prep,:cleanup,:item_order)
+            """), {
+                "tenant": tenant_id, "appointment": item_id,
+                "service": service["id"], "name": service["name"],
+                "duration": service["duration_min"], "price": service["price_cents"],
+                "price_mode": service["price_mode"], "prep": service["prep_min"],
+                "cleanup": service["cleanup_min"], "item_order": order,
+            })
+        # Um único aviso inicial ao profissional; lembretes individuais seguem ativos.
+        await history(db, tenant_id, item_id, "confirmed",
+                      context=panel_actor(actor), bulk=index > 1)
+    await db.execute(text("""
+        INSERT INTO usage_counters(tenant_id,period,bookings)
+        VALUES(:tenant,date_trunc('month',CURRENT_DATE)::date,:count)
+        ON CONFLICT(tenant_id,period) DO UPDATE
+        SET bookings=usage_counters.bookings+EXCLUDED.bookings
+    """), {"tenant": tenant_id, "count": payload.occurrence_count})
+    await audit(db, tenant_id, "appointment_series_created",
+                "appointment_series", identity)
+    return await _series_detail(db, tenant_id, identity)
+
+
 @router.post("", status_code=201)
 async def create_series(tenant_id: UUID, payload: SeriesCreate,
                         actor: Actor = Depends(authenticate)):
@@ -201,87 +299,9 @@ async def create_series(tenant_id: UUID, payload: SeriesCreate,
                 await require_operational_ready(db, tenant_id, "appointments")
                 now = datetime.now(UTC)
                 await expire_holds(db, tenant_id, payload.professional_id, now)
-                shop, items, proposed, _, totals = await _check_occurrences(
-                    db, tenant_id, payload, now)
-                customer, _ = await resolve_customer(
-                    db, tenant_id, payload.customer_phone, payload.customer_name)
-                identity = uuid4()
-                await db.execute(text("""
-                    INSERT INTO appointment_series(
-                        id,tenant_id,customer_id,professional_id,service_ids,services_label,
-                        first_date,weekday,local_time,interval_weeks,occurrence_count,
-                        timezone,idempotency_key,request_fingerprint)
-                    VALUES(:id,:tenant,:customer,:professional,:services,:label,
-                        :first_date,:weekday,:local_time,:interval,:count,:timezone,:key,:fp)
-                """), {
-                    "id": identity, "tenant": tenant_id, "customer": customer["id"],
-                    "professional": payload.professional_id, "services": payload.service_ids,
-                    "label": " + ".join(item["name"] for item in items)[:750],
-                    "first_date": payload.first_date, "weekday": payload.weekday,
-                    "local_time": payload.local_time, "interval": payload.interval_weeks,
-                    "count": payload.occurrence_count, "timezone": shop["timezone"],
-                    "key": payload.idempotency_key, "fp": digest,
-                })
-                for occurrence in proposed:
-                    index = occurrence["index"]
-                    item_id = uuid4()
-                    # UUID scoped idempotency is independent from the frontend key.
-                    child_key = f"fixed:{identity}:{index:02d}"
-                    for attempt in range(5):
-                        try:
-                            async with db.begin_nested():
-                                await db.execute(text("""
-                                    INSERT INTO appointments(
-                                        id,tenant_id,customer_id,professional_id,protocol,
-                                        idempotency_key,request_fingerprint,start_at,end_at,
-                                        occupied_from,occupied_until,status,hold_expires_at,
-                                        total_cents,series_id,series_index)
-                                    VALUES(:id,:tenant,:customer,:professional,:protocol,
-                                        :key,:fp,:start_at,:end_at,:occupied_from,:occupied_until,
-                                        'confirmed',NULL,:total_cents,:series_id,:series_index)
-                                """), {
-                                    "id": item_id, "tenant": tenant_id, "customer": customer["id"],
-                                    "professional": payload.professional_id, "protocol": protocol(),
-                                    "key": child_key,
-                                    "fp": fingerprint(payload.professional_id, payload.service_ids,
-                                                      occurrence["start_at"], payload.customer_phone),
-                                    "series_id": identity, "series_index": index,
-                                    **occurrence["bounds"],
-                                })
-                            break
-                        except IntegrityError as exc:
-                            if "uq_appointment_protocol" not in str(exc):
-                                raise
-                    else:
-                        raise HTTPException(503, "Não foi possível criar um protocolo de agendamento")
-                    for order, service in enumerate(items):
-                        await db.execute(text("""
-                            INSERT INTO appointment_items(
-                                tenant_id,appointment_id,service_id,name_snapshot,
-                                duration_snapshot_min,price_snapshot_cents,price_mode_snapshot,
-                                prep_snapshot_min,cleanup_snapshot_min,item_order)
-                            VALUES(:tenant,:appointment,:service,:name,
-                                :duration,:price,:price_mode,:prep,:cleanup,:item_order)
-                        """), {
-                            "tenant": tenant_id, "appointment": item_id,
-                            "service": service["id"], "name": service["name"],
-                            "duration": service["duration_min"], "price": service["price_cents"],
-                            "price_mode": service["price_mode"], "prep": service["prep_min"],
-                            "cleanup": service["cleanup_min"], "item_order": order,
-                        })
-                    # Um único aviso inicial ao profissional; lembretes individuais seguem ativos.
-                    await history(db, tenant_id, item_id, "confirmed",
-                                  context=panel_actor(actor), bulk=index > 1)
-                await db.execute(text("""
-                    INSERT INTO usage_counters(tenant_id,period,bookings)
-                    VALUES(:tenant,date_trunc('month',CURRENT_DATE)::date,:count)
-                    ON CONFLICT(tenant_id,period) DO UPDATE
-                    SET bookings=usage_counters.bookings+EXCLUDED.bookings
-                """), {"tenant": tenant_id, "count": payload.occurrence_count})
-                await audit(db, tenant_id, "appointment_series_created",
-                            "appointment_series", identity)
-                return json_response({**await _series_detail(db, tenant_id, identity),
-                                      "replayed": False}, status_code=201)
+                detail = await _insert_series(db, tenant_id, payload, actor, digest, now)
+                return json_response({**detail, "replayed": False}, status_code=201)
+
         except IntegrityError as exc:
             raise HTTPException(409, "Um dos horários ficou indisponível. Nenhum agendamento foi criado") from exc
 
@@ -307,6 +327,135 @@ async def read_series(tenant_id: UUID, series_id: UUID,
     async with get_session_factory()() as db:
         async with tenant_transaction(db, tenant_id):
             return json_response(await _series_detail(db, tenant_id, series_id))
+
+
+async def _edit_source(db, tenant_id, series_id, payload):
+    row = (await db.execute(text("""
+        SELECT s.id,s.customer_id,s.professional_id,s.closed_at,
+               c.whatsapp_e164 AS customer_phone
+        FROM appointment_series s JOIN customers c
+          ON c.tenant_id=s.tenant_id AND c.id=s.customer_id
+        WHERE s.tenant_id=:tenant AND s.id=:id
+    """), {"tenant": tenant_id, "id": series_id})).mappings().first()
+    if row is None:
+        raise HTTPException(404, "Cliente fixo não encontrado nesta empresa")
+    if row["closed_at"] is not None:
+        raise HTTPException(409, "Essa recorrência foi encerrada. Atualize a lista.")
+    if row["customer_phone"] != payload.customer_phone:
+        raise HTTPException(409, "O WhatsApp deste cliente mudou. Reabra a recorrência.")
+    exists = (await db.execute(text("""
+        SELECT 1 FROM appointments
+        WHERE tenant_id=:tenant AND series_id=:id
+          AND status='confirmed' AND start_at>clock_timestamp() LIMIT 1
+    """), {"tenant": tenant_id, "id": series_id})).first()
+    if not exists:
+        raise HTTPException(409, "Não há horários futuros nesta recorrência para alterar")
+    return row
+
+
+async def _release_future_series(db, tenant_id, series_id, now, *, actor=None):
+    future = (await db.execute(text("""
+        SELECT a.* FROM appointments a
+        WHERE a.tenant_id=:tenant AND a.series_id=:series
+          AND a.status='confirmed' AND a.start_at>:now
+        ORDER BY a.start_at FOR UPDATE
+    """), {"tenant": tenant_id, "series": series_id, "now": now})).mappings().all()
+    for entry in future:
+        await db.execute(text("""
+            UPDATE appointments SET status='cancelled',hold_expires_at=NULL,
+                updated_at=GREATEST(clock_timestamp(),updated_at+interval '1 microsecond')
+            WHERE tenant_id=:tenant AND id=:id AND status='confirmed'
+        """), {"tenant": tenant_id, "id": entry["id"]})
+        if actor is not None:
+            await history(db, tenant_id, entry["id"], "cancelled",
+                          context=panel_actor(actor), requested_by="business",
+                          reason="Recorrência alterada pelo responsável", previous=entry,
+                          bulk=True)
+    return len(future)
+
+
+@router.post("/{series_id}/preview")
+async def preview_series_edit(tenant_id: UUID, series_id: UUID, payload: SeriesDraft,
+                              actor: Actor = Depends(authenticate)):
+    authorize(actor, tenant_id, write=True)
+    async with get_session_factory()() as db:
+        async with tenant_transaction(db, tenant_id):
+            await require_feature(db, tenant_id, "agenda.manage")
+            await require_operational_ready(db, tenant_id, "appointments")
+            await _edit_source(db, tenant_id, series_id, payload)
+            now = datetime.now(UTC)
+            # Savepoint cancellation is only a visibility trick for slot checks:
+            # all rows are reverted before this preview transaction returns.
+            nested = await db.begin_nested()
+            try:
+                await _release_future_series(db, tenant_id, series_id, now)
+                shop, items, available, conflicts, totals = await _check_occurrences(
+                    db, tenant_id, payload, now, collect=True)
+            finally:
+                await nested.rollback()
+            occurrences = [
+                {key: value for key, value in item.items() if key != "bounds"}
+                for item in available
+            ] + conflicts
+            occurrences.sort(key=lambda item: item["index"])
+            return json_response({
+                "timezone": shop["timezone"], "count": payload.occurrence_count,
+                "available_count": len(available), "conflict_count": len(conflicts),
+                "duration_min": totals[0], "prep_min": totals[1], "cleanup_min": totals[2],
+                "price_cents": totals[3],
+                "occurrences": occurrences, "can_create": not conflicts,
+            })
+
+
+@router.post("/{series_id}/replace", status_code=201)
+async def replace_series(tenant_id: UUID, series_id: UUID, payload: SeriesCreate,
+                         actor: Actor = Depends(authenticate)):
+    authorize(actor, tenant_id, write=True)
+    digest = hashlib.sha256(json.dumps({
+        "supersedes_id": str(series_id),
+        "payload": payload.model_dump(mode="json", exclude={"idempotency_key"}),
+    }, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+    async with get_session_factory()() as db:
+        try:
+            async with tenant_transaction(db, tenant_id):
+                await require_feature(db, tenant_id, "agenda.manage")
+                # Successful retries must work even after the old series was closed.
+                prior = (await db.execute(text("""
+                    SELECT id,request_fingerprint FROM appointment_series
+                    WHERE tenant_id=:tenant AND idempotency_key=:key
+                """), {"tenant": tenant_id, "key": payload.idempotency_key})).mappings().first()
+                if prior:
+                    if prior["request_fingerprint"] != digest:
+                        raise HTTPException(409, "Esta chave já foi usada com outros dados")
+                    return json_response({**await _series_detail(db, tenant_id, prior["id"]),
+                                          "replayed": True, "supersedes_id": str(series_id)})
+                await require_operational_ready(db, tenant_id, "appointments")
+                old = await _edit_source(db, tenant_id, series_id, payload)
+                # Serialise both professionals in a stable order; never lock
+                # two workers' calendars in opposite directions.
+                for professional in sorted({old["professional_id"], payload.professional_id}, key=str):
+                    await acquire_professional_lock(db, tenant_id, professional)
+                old = await _edit_source(db, tenant_id, series_id, payload)
+                now = datetime.now(UTC)
+                await expire_holds(db, tenant_id, payload.professional_id, now)
+                cancelled = await _release_future_series(
+                    db, tenant_id, series_id, now, actor=actor)
+                if not cancelled:
+                    raise HTTPException(409, "Os horários futuros já foram alterados")
+                # Only after validating the replacement do we commit either side.
+                detail = await _insert_series(
+                    db, tenant_id, payload, actor, digest, now,
+                    customer={"id": old["customer_id"]})
+                await db.execute(text("""
+                    UPDATE appointment_series SET closed_at=clock_timestamp()
+                    WHERE tenant_id=:tenant AND id=:id AND closed_at IS NULL
+                """), {"tenant": tenant_id, "id": series_id})
+                await audit(db, tenant_id, "appointment_series_replaced",
+                            "appointment_series", series_id)
+                return json_response({**detail, "replayed": False,
+                                      "supersedes_id": str(series_id)}, status_code=201)
+        except IntegrityError as exc:
+            raise HTTPException(409, "Um dos novos horários ficou indisponível. Nada foi alterado") from exc
 
 
 @router.post("/{series_id}/stop")
