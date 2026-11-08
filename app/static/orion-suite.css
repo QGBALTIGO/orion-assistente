@@ -3105,3 +3105,83 @@ html:has(.os-professional-history[open]){overflow:hidden}
   .os-fixed-card-icon .os-icon{width:18px;height:18px}
   .os-fixed-occurrences>li{grid-template-columns:minmax(0,1fr) auto;gap:4px}
 }
+
+
+/* Agenda: single creation entry, rounded booking sheets shared by all record types. */
+.os-main[data-os-current-route=agenda] .os-agenda-heading-actions .os-button{
+  min-height:44px;border-radius:16px;
+}
+#osDialog.os-booking-dialog{
+  box-sizing:border-box;width:min(640px,calc(100vw - 24px));max-width:calc(100vw - 24px);
+  max-height:min(90dvh,860px);padding:28px;border:1px solid var(--os-border);
+  border-radius:28px;background:var(--os-bg);box-shadow:0 26px 75px #0003;
+  overscroll-behavior:contain;
+}
+#osDialog.os-booking-dialog::backdrop{background:#0d1935a8}
+#osDialog.os-booking-dialog>h2{
+  margin:0 48px 22px 0;font:650 23px/30px var(--os-display);letter-spacing:-.035em;
+}
+#osDialog.os-booking-dialog>.os-close{
+  box-sizing:border-box;top:18px;right:18px;display:grid;place-items:center;
+  width:38px;height:38px;min-width:38px;min-height:38px;border:1px solid var(--os-border);
+  border-radius:50%;background:var(--os-card);color:var(--os-muted);
+}
+#osDialog.os-booking-dialog>.os-close .os-icon{width:18px;height:18px}
+#osDialog.os-booking-dialog>.os-close:hover{color:var(--os-text);background:var(--os-soft)}
+#osDialog.os-booking-dialog .os-form>fieldset.os-form{gap:18px}
+#osDialog.os-booking-dialog .os-field label,
+#osDialog.os-booking-dialog .os-fixed-service-fieldset legend,
+#osDialog.os-booking-dialog .os-form legend{
+  font:600 13px/19px var(--os-font);color:var(--os-text);
+}
+#osDialog.os-booking-dialog :is(input:not([type=checkbox]):not([type=radio]):not([type=color]),select,textarea){
+  box-sizing:border-box;min-height:48px;border-radius:16px;padding:11px 14px;
+  border:1px solid var(--os-border);background:var(--os-card);box-shadow:none;
+  color:var(--os-text);
+}
+#osDialog.os-booking-dialog :is(input:not([type=checkbox]):not([type=radio]):not([type=color]),select,textarea):focus{
+  border-color:var(--os-primary);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--os-primary) 17%,transparent);
+}
+#osDialog.os-booking-dialog .os-search>.os-icon{left:15px;width:18px;height:18px}
+#osDialog.os-booking-dialog .os-search input{padding-left:44px!important}
+#osDialog.os-booking-dialog #osBookingModeHelp{margin:-10px 0 0;font-size:12px;line-height:19px}
+#osDialog.os-booking-dialog .os-fixed-intro{margin:0;color:var(--os-muted);font-size:12px;line-height:19px}
+#osDialog.os-booking-dialog .os-service-options{gap:10px}
+#osDialog.os-booking-dialog .os-service-option{
+  border:1px solid var(--os-border);border-radius:18px;padding:15px 16px;
+  background:var(--os-card);transition:border-color .15s ease,background-color .15s ease;
+}
+#osDialog.os-booking-dialog .os-service-option:where(:hover,[aria-pressed=true]){
+  border-color:var(--os-primary);background:var(--os-tint);
+}
+#osDialog.os-booking-dialog .os-service-option[aria-pressed=true]{box-shadow:inset 0 0 0 1px var(--os-primary)}
+#osDialog.os-booking-dialog .os-service-option strong{font-weight:600;line-height:21px;overflow-wrap:anywhere}
+#osDialog.os-booking-dialog .os-service-option small{margin-top:3px;line-height:19px}
+#osDialog.os-booking-dialog .os-customer-results,
+#osDialog.os-booking-dialog .os-fixed-preview-card{border-radius:18px}
+#osDialog.os-booking-dialog .os-form-actions{
+  position:sticky;bottom:-28px;z-index:3;display:flex;gap:10px;flex-wrap:nowrap;
+  margin:8px -28px -28px;padding:16px 28px calc(16px + env(safe-area-inset-bottom,0px));
+  border-top:1px solid var(--os-border);background:var(--os-bg);
+}
+#osDialog.os-booking-dialog .os-form-actions>.os-button{
+  flex:1 1 0;min-height:46px;min-width:0;border-radius:15px;font-weight:600;
+}
+@media(max-width:639px){
+  #osDialog.os-booking-dialog{
+    width:calc(100vw - 20px);max-width:calc(100vw - 20px);
+    max-height:calc(100dvh - 34px);padding:22px 18px;border-radius:26px;
+  }
+  #osDialog.os-booking-dialog>h2{font-size:22px;line-height:29px;margin:2px 44px 22px 0}
+  #osDialog.os-booking-dialog>.os-close{right:16px;top:16px}
+  #osDialog.os-booking-dialog .os-service-options{grid-template-columns:minmax(0,1fr)}
+  #osDialog.os-booking-dialog .os-form-actions{
+    bottom:-22px;margin:8px -18px -22px;
+    padding:14px 18px calc(14px + env(safe-area-inset-bottom,0px));
+  }
+}
+@media(max-width:359px){
+  #osDialog.os-booking-dialog .os-form-actions{gap:7px}
+  #osDialog.os-booking-dialog .os-form-actions>.os-button{font-size:12px;padding-inline:9px}
+}
