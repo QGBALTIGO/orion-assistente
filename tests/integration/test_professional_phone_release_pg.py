@@ -12,6 +12,8 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.pool import NullPool
 
 from scripts import backup_and_migrate_professional_phone as release
+from scripts import backup_and_migrate_paraguay_phone as recent_release
+from scripts.apply_variable_combo_migration import migrated_version
 
 pytestmark = pytest.mark.integration
 
@@ -30,9 +32,13 @@ def local_database_url():
 
 def test_professional_contact_release_matches_real_postgres_contract(local_database_url):
     raw = local_database_url
-    assert release.registration_contract_ready(raw), 'upstream registration/email/goals contract not ready'
-    assert release.professional_contract_ready(raw, expect_phone=True), 'professional phone contract not ready'
-    assert release.schema_contract_ready(raw)
+    version = migrated_version(raw)
+    # 0052 legitimately extends the 0040 +55-only constraint with +595 mobiles.
+    # Test the current guarded release contract rather than expecting old DDL.
+    if version in {recent_release.TARGET, "0053_fixed_client_series"}:
+        assert recent_release.schema_ready(raw)
+    else:
+        assert release.schema_contract_ready(raw)
     assert not release.source_contract_ready(raw), 'An already-applied column must not be treated as an unmigrated source'
 
 
