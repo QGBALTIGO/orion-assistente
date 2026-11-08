@@ -10,7 +10,7 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from app import booking_api, recurring_appointments
+from app import booking_api, management_api, recurring_appointments
 from app.catalog_api import Actor, authenticate
 from app.database import tenant_transaction
 from test_management import management_db, customer, appointment
@@ -24,6 +24,7 @@ async def recurring_db(management_db, monkeypatch):
     # Keep only the exact production booking and recurrence routers under test;
     # the reused management fixture mounts a generic catalog catchall first.
     app = FastAPI()
+    app.include_router(management_api.router)
     app.include_router(recurring_appointments.router)
     app.include_router(booking_api.router)
     factory = async_sessionmaker(d["runtime"], expire_on_commit=False)
