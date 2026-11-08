@@ -3418,6 +3418,3 @@ html:has(.os-professional-history[open]){overflow:hidden}
 }
 
 @media(max-width:359px){.os-agenda-views>button>.os-icon{display:none}}
-
-/* Dental workspace uses Orion tokens and hides barbershop-only service presets. */
-.orion-suite-enabled.os-dental-workspace .os-service-models{display:none!important}
