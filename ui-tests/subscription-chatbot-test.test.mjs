@@ -15,7 +15,7 @@ const devices=()=>[{...copy(contract.bootstrap_response.devices[0]),phone_e164:'
 test('the simulator route is subscription-only and requires its operational feature before any request',async t=>{
  const h=await makeSuite({initialRoute:'testar-chatbot',permissions,bridge:{tenants:[{id:tenantA,name:'Empresa sintética',role:'owner',workspace_profile:'subscription_services'}]},configureWindow:window=>window.eval(source),respond:path=>path===base?bootstrap():defaultResponse(path)});t.after(()=>h.close());await flush();
  assert.equal(h.document.querySelector('#page-suite').dataset.osCurrentRoute,'testar-chatbot');assert.ok(h.document.querySelector('[data-sct-device]'));
- assert.deepEqual([...h.document.querySelectorAll('#osNav [data-os-route]')].map(node=>node.dataset.osRoute),['dispositivos','chatbot','testar-chatbot','novidades','ajuda','member']);
+ assert.deepEqual([...h.document.querySelectorAll('#osNav [data-os-route]')].map(node=>node.dataset.osRoute),['dashboard','dispositivos','chatbot','testar-chatbot','novidades','ajuda','member']);
  assert.deepEqual(h.calls.filter(call=>call.path.includes('/subscription-whatsapp/')).map(call=>[call.method,call.path]),[['GET',base]]);
  for(const [profile,allowed] of [['standard',true],['subscription_services',false]]){
   const p={...copy(permissions),workspace_profile:profile,permissions:{...permissions.permissions,'chatbot.manage':allowed}};
