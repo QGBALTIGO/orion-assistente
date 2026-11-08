@@ -24,7 +24,7 @@ def cipher():
     return Fernet(os.environ['INTEGRATION_FERNET_KEY'].encode())
 
 
-async def enqueue_event(db, tenant, appointment, event, details):
+async def enqueue_event(db, tenant, appointment, event, details, *, bulk=False):
     if not access.tenant_enabled(tenant):return
     from app.plan_permissions import has_feature
     if not await has_feature(db, tenant, "notifications.basic"):return
@@ -42,8 +42,8 @@ async def enqueue_event(db, tenant, appointment, event, details):
     events=[]
     def add(kind,recipient,due=None,expiry=None,recipient_id=None):
         events.append((kind,recipient,recipient_id or row['professional_id' if recipient=='professional' else 'customer_id'],due or now,expiry or now+timedelta(hours=24)))
-    if event=='confirmed' and settings['professional_notice']:add('professional_new','professional')
-    if event=='cancelled' and settings['cancellation']:
+    if event=='confirmed' and settings['professional_notice'] and not bulk:add('professional_new','professional')
+    if event=='cancelled' and settings['cancellation'] and not bulk:
         add('professional_cancelled' if customer else 'customer_cancelled','professional' if customer else 'customer')
     if event=='reschedule_proposed' and settings['rescheduling']:add('customer_proposal','customer')
     if event=='reschedule_declined' and settings['rescheduling']:add('professional_proposal_declined','professional')
