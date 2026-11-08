@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parents[2]
 ARTIFACTS = ROOT / "test-artifacts" / "subscription-workspace"
 SIZES = [(390, 844), (768, 1024), (1440, 900)]
 PROFILE = "subscription_services"
-ALLOWED_ROUTES = ["dispositivos", "chatbot", "novidades", "ajuda", "member"]
+ALLOWED_ROUTES = ["dashboard", "dispositivos", "chatbot", "novidades", "ajuda", "member"]
 IDENTITY = {"name": "Empresa sintética de assinaturas", "contact_phone": "+5511900000001"}
 
 
@@ -59,6 +59,10 @@ class Handler(PlansHandler):
             session["workspace_calls"].append({"method": "GET", "path": path})
         if session and path == "/api/v1/account/business-identity":
             return self.body(session["business_identity"])
+        if session and path == base.BASE + "/subscription-whatsapp/devices":
+            return self.body({"items": [], "usage": {"used": 0, "limit": 1}})
+        if session and path == base.BASE + "/subscription-whatsapp/chatbot":
+            return self.body({"items": [], "counts": {"total": 0, "active": 0, "inactive": 0}})
         return super().do_GET()
 
     def mutate(self):
@@ -122,7 +126,7 @@ def open_navigation(page):
 
 
 def assert_shell(page, width):
-    expect(page.locator("#osNav [data-os-route]")).to_have_count(5)
+    expect(page.locator("#osNav [data-os-route]")).to_have_count(6)
     assert page.locator("#osNav [data-os-route]").evaluate_all(
         "nodes => nodes.map(node => node.dataset.osRoute)"
     ) == ALLOWED_ROUTES
@@ -139,7 +143,7 @@ def assert_shell(page, width):
       forbidden: [...document.querySelectorAll('#page-suite [data-os-route]')]
         .filter(node => node.getClientRects().length && getComputedStyle(node).visibility !== 'hidden')
         .map(node => node.dataset.osRoute)
-        .filter(route => !['dispositivos','chatbot','novidades','ajuda','member'].includes(route))
+        .filter(route => !['dashboard','dispositivos','chatbot','novidades','ajuda','member'].includes(route))
     })""")
     assert measured["viewport"] == width and measured["scroll"] <= width + 1, measured
     assert not measured["forbidden"], measured
@@ -147,7 +151,7 @@ def assert_shell(page, width):
 
 @pytest.mark.parametrize("size", SIZES, ids=lambda size: f"{size[0]}x{size[1]}")
 @pytest.mark.parametrize("theme", ["light", "dark"])
-def test_subscription_shell_keeps_only_enabled_devices_help_and_account(browser, fixture_url, size, theme):
+def test_subscription_shell_includes_read_only_inicio_without_exposing_standard_features(browser, fixture_url, size, theme):
     engine, instance = browser
     width, height = size
     context = instance.new_context(viewport={"width": width, "height": height},
@@ -172,8 +176,8 @@ def test_subscription_shell_keeps_only_enabled_devices_help_and_account(browser,
     try:
         # A paid fixture also must not reveal the scheduling workspace by accident.
         page.goto(f"{fixture_url}/panel?fixtureRole=owner&fixturePlan=elite&fixtureDelay=1&aba=plano")
-        expect(page.locator("#page-suite")).to_have_attribute("data-os-current-route", "novidades")
-        expect(page.locator(".os-news-list")).to_be_visible()
+        expect(page.locator("#page-suite")).to_have_attribute("data-os-current-route", "dashboard")
+        expect(page.locator(".os-subdash-stats")).to_be_visible()
         page.evaluate("document.fonts.ready")
         assert_shell(page, width)
         open_navigation(page)
@@ -203,15 +207,17 @@ def test_subscription_shell_keeps_only_enabled_devices_help_and_account(browser,
 
         # Old operational bookmarks are resolved by the same normal bootstrap.
         page.goto(fixture_url + "/panel?aba=site")
-        expect(page.locator("#page-suite")).to_have_attribute("data-os-current-route", "novidades")
-        expect(page.locator(".os-news-list")).to_be_visible()
+        expect(page.locator("#page-suite")).to_have_attribute("data-os-current-route", "dashboard")
+        expect(page.locator(".os-subdash-stats")).to_be_visible()
         assert_shell(page, width)
         expect(page.locator("#osSidebarContext .os-tenant-name")).to_have_text("Assinaturas sintéticas atualizadas")
         snapshot = page.request.get(fixture_url + "/__fixture/calls").json()
         calls = snapshot["calls"]
         allowed_paths = {"/auth/me", "/auth/features", "/api/v1/account/businesses",
                          "/api/v1/onboarding/entry", "/api/v1/account/business-identity",
-                         base.BASE + "/management/permissions"}
+                         base.BASE + "/management/permissions",
+                         base.BASE + "/subscription-whatsapp/devices",
+                         base.BASE + "/subscription-whatsapp/chatbot"}
         assert all(call["path"] in allowed_paths for call in calls), calls
         assert [call for call in calls if call["method"] != "GET"] == [
             {"method": "PUT", "path": "/api/v1/account/business-identity"}]

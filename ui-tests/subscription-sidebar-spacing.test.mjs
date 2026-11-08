@@ -122,7 +122,7 @@ test('subscription services groups five tools after management and before help',
     'evitar-banimento','resolver-banimento',
   ]);
   assert.deepEqual(groups.get('Gestão'),[
-    'dispositivos','chatbot','testar-chatbot','templates',
+    'dashboard','dispositivos','chatbot','testar-chatbot','templates',
     'mensagens-enviadas','diagnosticos','campanhas','programadas',
     'massa','enviar-mensagem',
   ]);
