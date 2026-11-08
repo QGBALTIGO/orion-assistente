@@ -81,8 +81,10 @@ def series_days(draft: SeriesDraft, tz_name: str, now: datetime):
     """Contagem inclui a primeira data; não reservar indefinidamente nem além de um ano."""
     zone = ZoneInfo(tz_name)
     today = now.astimezone(zone).date()
+    if draft.first_date < today or draft.first_date > today + timedelta(days=365):
+        raise HTTPException(422, "Selecione datas futuras dentro dos próximos 365 dias")
     end = draft.first_date + timedelta(weeks=draft.interval_weeks * (draft.occurrence_count - 1))
-    if draft.first_date < today or end > today + timedelta(days=365):
+    if end > today + timedelta(days=365):
         raise HTTPException(422, "Selecione datas futuras dentro dos próximos 365 dias")
     dates = []
     for i in range(draft.occurrence_count):
