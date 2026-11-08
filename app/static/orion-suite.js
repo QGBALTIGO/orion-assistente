@@ -16,6 +16,7 @@
     dashboard:'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z',
     calendar:'M8 2v4m8-4v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z',
     calendarPlus:'M8 2v4m8-4v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm7 9v6m-3-3h6',
+    repeat:'M17 2l4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 0 1-3 3H3',
     users:'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75',
     userPlus:'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M20 8v6m-3-3h6',
     scissors:'m14 14 7 7M21 3l-8 8M7.5 7.5l9 9',
@@ -727,13 +728,43 @@
   function appointmentProfessional(a){return a.professional_name||(state.data.professionals||[]).find(p=>p.id===a.professional_id)?.name||'Profissional';}
   function appointmentDuration(a){return Math.max(0,Math.round((Date.parse(a.end_at)-Date.parse(a.start_at))/60000));}
   function appointmentHistoryOnly(a){return ['cancelled','no_show'].includes(a.status)||appointmentState(a)==='expired_hold';}
+  const fixedWeekdays=['segunda-feira','terça-feira','quarta-feira','quinta-feira','sexta-feira','sábado','domingo'];
+  function fixedAgendaTabs(){
+    const active=state.filters.agendaMode;
+    return '<div class="os-agenda-views" role="tablist" aria-label="Visualização da agenda">'+
+      [['list','list','Lista'],['calendar','calendar','Calendário'],['professional','users','Equipe'],['fixed','repeat','Clientes fixos']].map(([value,symbol,label])=>
+        '<button type="button" role="tab" id="osAgendaView-'+value+'" aria-controls="osPageBody" aria-selected="'+(active===value)+'" tabindex="'+(active===value?'0':'-1')+'" data-os-agenda-mode="'+value+'">'+icon(symbol)+'<span>'+label+'</span></button>').join('')+'</div>';
+  }
+  function fixedAgendaFrame(readOnly=''){
+    const can=writable();
+    return '<div class="os-agenda-heading"><div><p class="os-agenda-eyebrow">ORGANIZE SEUS ATENDIMENTOS</p><h1>Agenda</h1><p class="os-date-label">Clientes com horário recorrente</p></div><div class="os-agenda-heading-actions">'+button('Novo agendamento','new-appointment','os-outline','plus',can?'':'disabled')+button('Adicionar cliente fixo','new-fixed-client','','repeat',can?'':'disabled')+'</div></div>'+
+      '<div class="os-agenda-view-row">'+fixedAgendaTabs()+button('Atualizar','agenda-reload','os-ghost os-small','refresh')+'</div>'+
+      readOnly+'<p class="os-fixed-intro">Cadastre um horário combinado com o cliente e consulte todos os próximos atendimentos. Cada visita permanece individual na Agenda, com lembretes e histórico próprios.</p>'+
+      '<div class="os-agenda-result-line"><p id="osAgendaCount" tabindex="-1" role="status" aria-live="polite">Carregando clientes fixos...</p></div>'+
+      '<div id="osPageBody" role="tabpanel" aria-labelledby="osAgendaView-fixed" tabindex="0">'+loading('Carregando clientes fixos...')+'</div>';
+  }
+  function renderFixedSeries(){
+    const list=rows(state.data.fixedSeries),target=$('osAgendaCount');
+    if(target)target.textContent=list.length+' cliente'+(list.length===1?'':'s')+' com recorrência cadastrada'+(list.length===1?'':'s')+'.';
+    if(!list.length){bodyHTML('<div class="os-agenda-empty">'+empty('repeat','Nenhum cliente fixo ainda','Cadastre um cliente com dia da semana, horário e quantidade de atendimentos definidos.',writable()?button('Adicionar cliente fixo','new-fixed-client','','repeat'):'')+'</div>');return;}
+    bodyHTML('<div class="os-fixed-list">'+list.map(s=>{
+      const next=s.next_start_at,finished=!!s.closed_at||!next,interval={1:'Toda semana',2:'A cada 2 semanas',4:'A cada 4 semanas'}[s.interval_weeks]||'Recorrente';
+      return '<button type="button" class="os-fixed-card" data-os-fixed-series="'+esc(s.id)+'" aria-label="Consultar recorrência de '+esc(s.customer_name)+'">'+
+        '<span class="os-fixed-card-icon">'+icon('repeat')+'</span><span class="os-fixed-card-main"><strong>'+esc(s.customer_name)+'</strong><small>'+esc(s.services_label||'Serviço')+'</small>'+
+        '<small>'+esc(s.professional_name||'Profissional')+' · '+esc(interval)+' · '+esc(fixedWeekdays[s.weekday]||'')+' às '+esc(String(s.local_time).slice(0,5))+'</small></span>'+
+        '<span class="os-fixed-card-side">'+badge(finished?'inactive':'active',finished?'Sem próximos horários':'Ativo')+
+        '<small>'+number(s.confirmed_count)+' de '+number(s.occurrence_count)+' confirmados</small>'+
+        '<small>'+(next?'Próximo: '+esc(fmtDate(dateKey(new Date(next)))):'Sem próximo agendamento')+'</small></span>'+icon('chevron')+'</button>';
+    }).join('')+'</div>');
+  }
   function agendaFrame(readOnly=''){
+    if(state.filters.agendaMode==='fixed')return fixedAgendaFrame(readOnly);
     const f=state.filters,day=f.agendaDay||dateKey(),weekStart=shiftDay(day,-dayDate(day).getUTCDay()),can=writable();
-    return '<div class="os-agenda-heading"><div><p class="os-agenda-eyebrow">ORGANIZE SEUS ATENDIMENTOS</p><h1>Agenda</h1><p class="os-date-label" id="osAgendaDate">'+esc(longDay(day))+'</p></div><div class="os-agenda-heading-actions">'+button('Bloquear horário','new-block','os-outline','block',can?'':'disabled')+button('Novo agendamento','new-appointment','','plus',can?'':'disabled')+'</div></div>'+
+    return '<div class="os-agenda-heading"><div><p class="os-agenda-eyebrow">ORGANIZE SEUS ATENDIMENTOS</p><h1>Agenda</h1><p class="os-date-label" id="osAgendaDate">'+esc(longDay(day))+'</p></div><div class="os-agenda-heading-actions">'+button('Bloquear horário','new-block','os-outline','block',can?'':'disabled')+button('Cliente fixo','new-fixed-client','os-outline','repeat',can?'':'disabled')+button('Novo agendamento','new-appointment','','plus',can?'':'disabled')+'</div></div>'+
       '<div class="os-agenda-toolbar"><div class="os-agenda-date-tools">'+button('','agenda-prev','os-outline os-agenda-icon-control','left','aria-label="Dia anterior"')+button('Hoje','agenda-today','os-outline')+'<label class="os-agenda-date-picker">'+icon('calendar')+'<span>'+esc(fmtDate(day))+'</span><input id="osAgendaDatePicker" type="date" value="'+esc(day)+'" aria-label="Escolher data da agenda"></label>'+button('','agenda-next','os-outline os-agenda-icon-control','chevron','aria-label="Próximo dia"')+'</div><div class="os-agenda-connection"><button type="button" class="os-agenda-google" data-os-action="agenda-google" aria-label="Gerenciar conexão com Google Agenda"><span class="os-google-mark" aria-hidden="true"><img src="https://www.gstatic.com/images/branding/productlogos/calendar_2026/v2/web/192px.svg" alt="" width="26" height="26" loading="lazy" referrerpolicy="no-referrer"></span><span><strong>Google Agenda</strong><small id="osAgendaGoogleLabel">Consultando conexão...</small></span>'+icon('chevron')+'</button>'+button(f.agendaTablet?'Sair da tela ampliada':'Ampliar agenda',f.agendaTablet?'agenda-tablet-exit':'agenda-tablet','os-outline os-agenda-expand','monitor','aria-label="'+(f.agendaTablet?'Sair da tela ampliada':'Ampliar agenda')+'"')+'</div></div>'+
       '<div class="os-agenda-week"><button class="os-icon-button" type="button" data-os-action="week-prev" aria-label="Semana anterior">'+icon('left')+'</button><div class="os-week-grid" role="tablist" aria-label="Dias da semana">'+Array.from({length:7},(_,i)=>{const date=shiftDay(weekStart,i),selected=date===day;return '<button class="os-week-day" type="button" id="osAgendaDay-'+date+'" data-os-day="'+date+'" role="tab" aria-controls="osPageBody" aria-selected="'+selected+'" tabindex="'+(selected?'0':'-1')+'" aria-label="'+esc(longDay(date))+'"><small>'+['dom','seg','ter','qua','qui','sex','sáb'][i]+'</small><strong>'+dayDate(date).getUTCDate()+'</strong>'+(date===dateKey()?'<span class="os-week-today" aria-label="Hoje"></span>':'')+'</button>';}).join('')+'</div><button type="button" class="os-icon-button" data-os-action="week-next" aria-label="Próxima semana">'+icon('chevron')+'</button></div>'+
       '<form id="osAgendaFilters" class="os-agenda-filters" aria-label="Filtrar agendamentos"><label class="os-agenda-search"><span class="os-sr-only">Buscar por nome, telefone ou protocolo</span>'+icon('search')+'<input id="osAgendaSearch" name="query" type="search" maxlength="120" autocomplete="off" placeholder="Nome, telefone ou protocolo" value="'+esc(f.agendaQuery)+'"></label><label class="os-agenda-filter"><span>Profissional</span><select id="osAgendaProfessional" name="professional" aria-label="Filtrar por profissional"><option value="">Toda a equipe</option></select></label><label class="os-agenda-filter"><span>Situação</span><select id="osAgendaStatus" name="status" aria-label="Filtrar por situação">'+[['all','Todas as situações'],['confirmed','Confirmados'],['completed','Finalizados'],['no_show','Faltas'],['cancelled','Todos os cancelamentos'],['cancelled_customer','Pelo cliente'],['cancelled_professional','Pelo profissional'],['cancelled_business','Pela empresa'],['hold','Reservas temporárias']].map(([value,label])=>'<option value="'+value+'"'+(f.agendaStatus===value?' selected':'')+'>'+label+'</option>').join('')+'</select></label><button type="submit" class="os-sr-only">Aplicar filtros</button></form>'+
-      '<div class="os-agenda-view-row"><div class="os-agenda-views" role="tablist" aria-label="Visualização da agenda">'+[['list','list','Lista'],['calendar','calendar','Calendário'],['professional','users','Equipe']].map(([value,symbol,label])=>'<button type="button" role="tab" id="osAgendaView-'+value+'" aria-controls="osPageBody" aria-selected="'+(f.agendaMode===value)+'" tabindex="'+(f.agendaMode===value?'0':'-1')+'" data-os-agenda-mode="'+value+'">'+icon(symbol)+'<span>'+label+'</span></button>').join('')+'</div><button type="button" class="os-button os-ghost os-small" data-os-action="agenda-reload" aria-label="Atualizar agendamentos">'+icon('refresh')+'Atualizar</button></div>'+
+      '<div class="os-agenda-view-row"><div class="os-agenda-views" role="tablist" aria-label="Visualização da agenda">'+[['list','list','Lista'],['calendar','calendar','Calendário'],['professional','users','Equipe'],['fixed','repeat','Clientes fixos']].map(([value,symbol,label])=>'<button type="button" role="tab" id="osAgendaView-'+value+'" aria-controls="osPageBody" aria-selected="'+(f.agendaMode===value)+'" tabindex="'+(f.agendaMode===value?'0':'-1')+'" data-os-agenda-mode="'+value+'">'+icon(symbol)+'<span>'+label+'</span></button>').join('')+'</div><button type="button" class="os-button os-ghost os-small" data-os-action="agenda-reload" aria-label="Atualizar agendamentos">'+icon('refresh')+'Atualizar</button></div>'+
       readOnly+'<div id="osAgendaSummary" class="os-agenda-summary"></div><div class="os-agenda-result-line"><p id="osAgendaCount" tabindex="-1" role="status" aria-live="polite">Carregando agendamentos...</p><button type="button" id="osAgendaClear" class="os-button os-ghost os-small" data-os-action="agenda-clear" hidden>Limpar filtros</button></div><div id="osPageBody" role="tabpanel" aria-labelledby="osAgendaView-'+esc(f.agendaMode)+'" tabindex="0">'+loading('Carregando os agendamentos...')+'</div>';
   }
   function syncAgendaControls(){
@@ -750,6 +781,19 @@
   async function loadAgenda(c=context(),{catalogue=true}={}){
     const read=state.agendaRead=(state.agendaRead||0)+1,calendar=state.filters.agendaMode==='calendar',limit=calendar?200:50,offset=calendar?0:state.filters.agendaOffset;
     const valid=()=>current(c)&&read===state.agendaRead;
+    if(state.filters.agendaMode==='fixed'){
+      $('osPageBody')?.setAttribute('aria-busy','true');
+      try{
+        const result=await request(apiPath('/appointments/series?limit=100'));
+        if(!valid())return;
+        state.data.fixedSeries=result;renderFixedSeries();
+      }catch(error){
+        if(!valid())return;
+        bodyHTML('<div class="os-agenda-error" role="alert">'+icon('info')+'<h2>Não foi possível consultar os clientes fixos</h2><p>'+esc(error.message||'Atualize para tentar novamente.')+'</p>'+button('Atualizar','agenda-reload','os-outline','refresh')+'</div>');
+        if($('osAgendaCount'))$('osAgendaCount').textContent='Consulta indisponível.';
+      }finally{if(valid())$('osPageBody')?.removeAttribute('aria-busy');}
+      return;
+    }
     $('osPageBody')?.setAttribute('aria-busy','true');
     if($('osAgendaCount'))$('osAgendaCount').textContent='Atualizando agendamentos...';
     const catalogueRequests=catalogue||!state.data.agendaCatalogueReady?Promise.allSettled([
@@ -2433,6 +2477,7 @@
   function renderAppointmentDetail(d,notice=''){
     const a=d.record,can=action=>appointmentCan(a,action),items=rows(a.items),name=appointmentName(a),phoneValue=typeof a.customer_phone==='string'?a.customer_phone:'',cancel=a.cancellation;
     let content='<div class="os-appointment-scroll">'+(notice?'<div class="os-notice os-appointment-notice" role="status">'+icon('info')+'<p>'+esc(notice)+'</p></div>':'')+'<div class="os-appointment-state-row">'+appointmentBadge(a)+'<span>'+appointmentDuration(a)+' min</span></div><div class="os-appointment-customer"><span class="os-avatar">'+esc(initials(name))+'</span><div><h3>'+esc(name)+'</h3><p>'+esc(phoneValue||'WhatsApp não informado')+'</p></div>'+(phoneValue?button('','appointment-copy-phone','os-icon-button','copy','aria-label="Copiar WhatsApp do cliente"'):'')+'</div><section class="os-appointment-section"><div class="os-appointment-when">'+icon('calendar')+'<div><strong>'+esc(longDay(dateKey(new Date(a.start_at))))+'</strong><span>'+esc(timeLabel(a.start_at))+' a '+esc(timeLabel(a.end_at))+' · '+esc(a.timezone||zone())+'</span></div></div><div class="os-appointment-when">'+icon('users')+'<div><strong>'+esc(appointmentProfessional(a))+'</strong><span>Profissional responsável</span></div></div></section><section class="os-appointment-section"><h3>Serviços</h3><ul class="os-appointment-services">'+items.map(item=>'<li><div><strong>'+esc(item.name_snapshot||'Serviço registrado')+'</strong><small>'+number(item.duration_snapshot_min)+' min</small></div><span>'+esc(priceLabel(item.price_snapshot_cents,item.price_mode_snapshot))+'</span></li>').join('')+'</ul><dl class="os-appointment-totals"><div><dt>'+(a.price_mode==='from'&&a.status!=='completed'?'Valor mínimo previsto':'Valor dos serviços')+'</dt><dd>'+esc(priceLabel(a.original_total_cents??a.total_cents,a.status==='completed'?'fixed':a.price_mode))+'</dd></div><div><dt>Desconto</dt><dd>'+money(a.discount_cents)+'</dd></div><div class="os-appointment-net"><dt>'+(a.price_mode==='from'&&a.status!=='completed'?'Mínimo estimado':'Total líquido')+'</dt><dd>'+esc(priceLabel(a.total_cents,a.status==='completed'?'fixed':a.price_mode))+'</dd></div></dl>'+(a.status==='completed'?'<p class="os-help">Atendimento finalizado. O recebimento do valor é acompanhado separadamente no Financeiro.</p>':a.price_mode==='from'?'<p class="os-help">Preço mínimo, não definitivo. A equipe define o valor final na conclusão. Este atendimento não é finalizado automaticamente.</p>':'')+'</section>';
+    if(a.series_id)content+='<section class="os-appointment-section os-fixed-appointment-link"><div><strong>'+icon('repeat')+' Cliente fixo</strong><p class="os-help">Atendimento vinculado a uma recorrência. Cancelar ou remarcar este horário não altera as demais visitas.</p></div>'+button('Ver recorrência','fixed-open-from-appointment','os-outline os-small','chevron')+'</section>';
     if(a.status==='cancelled')content+='<section class="os-appointment-section"><h3>'+(a.cancellation?.event==='hold_expired'?'Reserva expirada':'Cancelamento')+'</h3><p>'+esc(a.cancellation?.event==='hold_expired'?'A reserva não foi confirmada dentro do prazo. O horário foi liberado.':{customer:'Solicitado pelo cliente ou paciente.',professional:'Solicitado pelo profissional.',business:'Solicitado pela empresa.',system:'Cancelamento registrado pelo sistema.'}[cancel?.requested_by]||'Este registro não informa quem solicitou o cancelamento.')+'</p>'+(cancel?.reason?'<p class="os-appointment-reason">'+esc(cancel.reason)+'</p>':'')+(cancel?.occurred_at?'<small class="os-help">'+esc(appointmentMoment(cancel.occurred_at))+'</small>':'')+'</section>';
     content+='<section class="os-appointment-section"><div class="os-appointment-section-title"><h3>Google Agenda</h3>'+'<button type="button" class="os-icon-button os-appointment-google-refresh" data-os-action="appointment-google-refresh" aria-label="Atualizar sincronização deste agendamento">'+icon('refresh')+'</button>'+'</div><div id="osAppointmentGoogle" aria-live="polite">'+loading('Consultando sincronização...')+'</div></section>'+appointmentHistory(a)+'<section class="os-appointment-protocol"><div><span>Protocolo</span><strong>'+esc(a.protocol||'Não informado')+'</strong></div>'+(a.protocol?button('Copiar','appointment-copy-protocol','os-ghost os-small','copy'):'')+'</section></div>';
     const actions=(can('confirm')?button('Confirmar reserva','confirm-appointment','','check'):'')+(can('complete')?button('Finalizar atendimento','complete-appointment','','check'):'')+(can('reschedule')?button('Remarcar','reschedule-appointment','os-outline','calendar'):'')+(can('no_show')?button('Registrar falta','no-show-appointment','os-outline','block'):'')+(can('cancel')?button('Cancelar agendamento','cancel-appointment','os-outline os-appointment-cancel','close'):'');
@@ -2767,6 +2812,7 @@
       case 'copy-invitation':if(d?.link){await navigator.clipboard.writeText(d.link);toast('Link do convite copiado.');}break;
       case 'approve-invitation':case 'revoke-invitation':{if(!state.data.team?.can_manage)return;const invitation=rows(state.data.team.invitations).find(i=>i.id===element.dataset.invitation);if(!invitation)return;const approval=name==='approve-invitation',path=mgmt('/team/invitations/'+encodeURIComponent(invitation.id));confirmMutation(approval?'Aprovar acesso':'Revogar convite',approval?'Autorizar o acesso de '+(invitation.claimed_by_name||invitation.email||'quem aceitou o convite')+' como '+(teamRoles[invitation.role]||invitation.role)+'.':'Este convite não poderá mais ser usado para entrar na equipe.',()=>request(path,'PATCH',{action:approval?'approve':'revoke',expected_version:invitation.version}),approval?'Acesso aprovado.':'Convite revogado.');break;}
       case 'new-appointment':await showAppointment();break;
+      case 'new-fixed-client':await showFixedClient();break;
       case 'new-block':await showBlock();break;
       case 'dashboard-finance-refresh':if(state.route==='dashboard')await loadDashboardFinance(context(),dateKey());break;
       case 'dashboard-finance-full':f.financeTab='entries';await open('financeiro');break;
@@ -2778,7 +2824,7 @@
         await open('agenda');break;
       }
       case 'agenda-open':await open('agenda');break;
-      case 'agenda-reload':await loadAgenda(context());void loadGoogle();break;
+      case 'agenda-reload':await loadAgenda(context());if(state.filters.agendaMode!=='fixed')void loadGoogle();break;
       case 'agenda-clear':f.agendaProfessional='';f.agendaStatus='all';f.agendaQuery='';f.agendaOffset=0;await open('agenda',{keepScroll:true});break;
       case 'agenda-page-prev':case 'agenda-page-next':{const result=state.data.agendaResult;if(!result||state.data.agendaError)return;const next=Math.max(0,f.agendaOffset+(name==='agenda-page-prev'?-50:50));if(next>=number(result.total))return;f.agendaOffset=next;await loadAgenda(context(),{catalogue:false});$('osAgendaCount')?.focus();break;}
       case 'agenda-google':await showGoogle();break;
@@ -2845,6 +2891,8 @@
       case 'complete-appointment':await showAppointmentAction('complete');break;
       case 'no-show-appointment':await showAppointmentAction('no_show');break;
       case 'reschedule-appointment':await showAppointmentAction('reschedule');break;
+      case 'fixed-open-from-appointment':if(d?.record?.series_id)await showFixedSeriesDetail(d.record.series_id);break;
+      case 'fixed-stop':if(d?.type==='fixed-detail'&&d.record?.next_start_at)confirmMutation('Encerrar cliente fixo','Cancelar todos os horários futuros dessa recorrência? Atendimentos anteriores, histórico e financeiro serão preservados. Esta operação não envia cancelamentos em massa pelo WhatsApp.',()=>request(apiPath('/appointments/series/'+encodeURIComponent(d.record.id)+'/stop'),'POST',{}),'Horários futuros cancelados.');break;
     }
   }
   async function handleClick(event){
@@ -2866,7 +2914,7 @@
       if(el.dataset.osNotification){const item=rows(state.data.notifications).find(item=>item.id===el.dataset.osNotification);if(!item)return;const c=context();if(!item.read_at&&state.data.notifications?.can_mark_read)await markNotificationsRead([item.id]);if(!stillAccount(c))return;closeNotifications();await showAppointmentDetail(item.appointment_id);return;}
       if(el.dataset.osRoute){await open(el.dataset.osRoute);return;}
       if(el.dataset.osDay){state.filters.agendaDay=el.dataset.osDay;state.filters.agendaOffset=0;await open('agenda',{keepScroll:true});$('osAgendaDay-'+state.filters.agendaDay)?.focus();return;}
-      if(el.dataset.osAgendaMode){if(!['list','calendar','professional'].includes(el.dataset.osAgendaMode))return;state.filters.agendaMode=el.dataset.osAgendaMode;state.filters.agendaOffset=0;clearTimeout(state.agendaSearchTimer);syncAgendaControls();await loadAgenda(context(),{catalogue:false});return;}
+      if(el.dataset.osAgendaMode){if(!['list','calendar','professional','fixed'].includes(el.dataset.osAgendaMode))return;state.filters.agendaMode=el.dataset.osAgendaMode;state.filters.agendaOffset=0;clearTimeout(state.agendaSearchTimer);await open('agenda',{keepScroll:true});return;}
       if(el.dataset.osSettings){state.filters.settingsTab=el.dataset.osSettings;await open('configuracoes',{keepScroll:true});return;}
       if(el.dataset.osSiteRequestCopy){if(!canManageSiteRequests()||state.filters.settingsTab!=='site-requests')return;const item=rows(state.data.siteRequests).find(item=>item.id===el.dataset.requestId),key=el.dataset.osSiteRequestCopy;if(!item||!['email','phone'].includes(key)||typeof item[key]!=='string')return;const c=context();await navigator.clipboard.writeText(item[key]);if(current(c))toast(key==='email'?'E-mail copiado.':'WhatsApp copiado.');return;}
       if(el.dataset.osCustomerStatus){state.filters.customerStatus=el.dataset.osCustomerStatus;state.filters.customerOffset=0;await open('clientes',{keepScroll:true});return;}
@@ -2910,6 +2958,10 @@
       if(el.dataset.osBlock){showBlockDetail(el.dataset.osBlock,el.dataset.resource);return;}
       if(el.dataset.osCalendarSlot){await showAppointment({professionalId:el.dataset.osCalendarSlot,time:el.dataset.time});return;}
       if(el.dataset.osAppointment){await showAppointmentDetail(el.dataset.osAppointment,{trigger:el});return;}
+      if(el.dataset.osFixedSeries){await showFixedSeriesDetail(el.dataset.osFixedSeries);return;}
+      if(el.dataset.osFixedAppointment){await showAppointmentDetail(el.dataset.osFixedAppointment,{trigger:el});return;}
+      if(el.dataset.osFixedService){const d=state.dialog;if(d?.type!=='fixed-client')return;const id=el.dataset.osFixedService;if(!d.serviceIds.includes(id)&&d.serviceIds.length>=6){toast('Selecione até 6 serviços.',true);return;}d.serviceIds=d.serviceIds.includes(id)?d.serviceIds.filter(x=>x!==id):[...d.serviceIds,id];el.setAttribute('aria-pressed',String(d.serviceIds.includes(id)));resetFixedPreview();return;}
+      if(el.dataset.osFixedCustomer){const d=state.dialog;if(d?.type!=='fixed-client')return;const c=d.customers.find(item=>item.id===el.dataset.osFixedCustomer);if(!c)return;const form=$('osDialog').querySelector('form');form.elements.customer_name.value=c.name;form.elements.customer_phone.value=sharedFields().phoneDisplay(c.phone||'');$('osFixedCustomers')?.replaceChildren();resetFixedPreview();return;}
       if(el.dataset.osSettlement){await showSettlementDetail(el.dataset.osSettlement);return;}
       if(el.dataset.osFinance){const r=[...rows(state.data.finance),...rows(state.data.financeAdvances),...rows(state.data.financePayments)].find(r=>r.id===el.dataset.osFinance);if(r){if(number(r.allocated_cents)>0||rows(state.data.settlements).some(item=>item.payment_entry_id===r.id))showLockedFinance(r);else showFinance(r.kind,r);}return;}
       if(el.dataset.osMarketingTab){state.filters.marketingTab=el.dataset.osMarketingTab;if(['automations','queue'].includes(el.dataset.osMarketingTab))await open('marketing',{keepScroll:true});else renderMarketing(state.data.marketing);return;}
