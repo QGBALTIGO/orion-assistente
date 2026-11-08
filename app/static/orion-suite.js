@@ -1065,42 +1065,13 @@
   function appointmentHistoryOnly(a){return ['cancelled','no_show'].includes(a.status)||appointmentState(a)==='expired_hold';}
   const fixedWeekdays=['segunda-feira','terça-feira','quarta-feira','quinta-feira','sexta-feira','sábado','domingo'];
   const bookingModes=[['regular','Agendamento normal'],['fixed','Cliente fixo (recorrente)'],['exceptional','Horário excepcional'],['retroactive','Registrar atendimento realizado']];
-  function fixedAgendaTabs(){
-    const active=state.filters.agendaMode;
-    return '<div class="os-agenda-views" role="tablist" aria-label="Visualização da agenda">'+
-      [['list','list','Lista'],['calendar','calendar','Calendário'],['professional','users','Equipe'],['fixed','repeat','Clientes fixos']].map(([value,symbol,label])=>
-        '<button type="button" role="tab" id="osAgendaView-'+value+'" aria-controls="osPageBody" aria-selected="'+(active===value)+'" tabindex="'+(active===value?'0':'-1')+'" data-os-agenda-mode="'+value+'">'+icon(symbol)+'<span>'+label+'</span></button>').join('')+'</div>';
-  }
-  function fixedAgendaFrame(readOnly=''){
-    const can=writable();
-    return '<div class="os-agenda-heading"><div><p class="os-agenda-eyebrow">ORGANIZE SEUS ATENDIMENTOS</p><h1>Agenda</h1><p class="os-date-label">Clientes com horário recorrente</p></div><div class="os-agenda-heading-actions">'+button('Novo agendamento','new-appointment','','plus',can?'':'disabled')+'</div></div>'+
-      '<div class="os-agenda-view-row">'+fixedAgendaTabs()+button('Atualizar','agenda-reload','os-ghost os-small','refresh')+'</div>'+
-      readOnly+'<p class="os-fixed-intro">Cadastre um horário combinado com o cliente e consulte todos os próximos atendimentos. Cada visita permanece individual na Agenda, com lembretes e histórico próprios.</p>'+
-      '<div class="os-agenda-result-line"><p id="osAgendaCount" tabindex="-1" role="status" aria-live="polite">Carregando clientes fixos...</p></div>'+
-      '<div id="osPageBody" role="tabpanel" aria-labelledby="osAgendaView-fixed" tabindex="0">'+loading('Carregando clientes fixos...')+'</div>';
-  }
-  function renderFixedSeries(){
-    const list=rows(state.data.fixedSeries),target=$('osAgendaCount');
-    if(target)target.textContent=list.length+' cliente'+(list.length===1?'':'s')+' com recorrência cadastrada'+(list.length===1?'':'s')+'.';
-    if(!list.length){bodyHTML('<div class="os-agenda-empty">'+empty('repeat','Nenhum cliente fixo ainda','Cadastre um cliente com dia da semana, horário e quantidade de atendimentos definidos.',writable()?button('Novo agendamento','new-appointment','','plus'):'')+'</div>');return;}
-    bodyHTML('<div class="os-fixed-list">'+list.map(s=>{
-      const next=s.next_start_at,finished=!!s.closed_at||!next,interval={1:'Toda semana',2:'A cada 2 semanas',4:'A cada 4 semanas'}[s.interval_weeks]||'Recorrente';
-      return '<button type="button" class="os-fixed-card" data-os-fixed-series="'+esc(s.id)+'" aria-label="Consultar recorrência de '+esc(s.customer_name)+'">'+
-        '<span class="os-fixed-card-icon">'+icon('repeat')+'</span><span class="os-fixed-card-main"><strong>'+esc(s.customer_name)+'</strong><small>'+esc(s.services_label||'Serviço')+'</small>'+
-        '<small>'+esc(s.professional_name||'Profissional')+' · '+esc(interval)+' · '+esc(fixedWeekdays[s.weekday]||'')+' às '+esc(String(s.local_time).slice(0,5))+'</small></span>'+
-        '<span class="os-fixed-card-side">'+badge(finished?'inactive':'active',finished?'Sem próximos horários':'Ativo')+
-        '<small>'+number(s.confirmed_count)+' de '+number(s.occurrence_count)+' confirmados</small>'+
-        '<small>'+(next?'Próximo: '+esc(fmtDate(dateKey(new Date(next)))):'Sem próximo agendamento')+'</small></span>'+icon('chevron')+'</button>';
-    }).join('')+'</div>');
-  }
   function agendaFrame(readOnly=''){
-    if(state.filters.agendaMode==='fixed')return fixedAgendaFrame(readOnly);
     const f=state.filters,day=f.agendaDay||dateKey(),weekStart=shiftDay(day,-dayDate(day).getUTCDay()),can=writable();
     return '<div class="os-agenda-heading"><div><p class="os-agenda-eyebrow">ORGANIZE SEUS ATENDIMENTOS</p><h1>Agenda</h1><p class="os-date-label" id="osAgendaDate">'+esc(longDay(day))+'</p></div><div class="os-agenda-heading-actions">'+button('Bloquear horário','new-block','os-outline','block',can?'':'disabled')+button('Novo agendamento','new-appointment','','plus',can?'':'disabled')+'</div></div>'+
       '<div class="os-agenda-toolbar"><div class="os-agenda-date-tools">'+button('','agenda-prev','os-outline os-agenda-icon-control','left','aria-label="Dia anterior"')+button('Hoje','agenda-today','os-outline')+'<label class="os-agenda-date-picker">'+icon('calendar')+'<span>'+esc(fmtDate(day))+'</span><input id="osAgendaDatePicker" type="date" value="'+esc(day)+'" aria-label="Escolher data da agenda"></label>'+button('','agenda-next','os-outline os-agenda-icon-control','chevron','aria-label="Próximo dia"')+'</div><div class="os-agenda-connection"><button type="button" class="os-agenda-google" data-os-action="agenda-google" aria-label="Gerenciar conexão com Google Agenda"><span class="os-google-mark" aria-hidden="true"><img src="https://www.gstatic.com/images/branding/productlogos/calendar_2026/v2/web/192px.svg" alt="" width="26" height="26" loading="lazy" referrerpolicy="no-referrer"></span><span><strong>Google Agenda</strong><small id="osAgendaGoogleLabel">Consultando conexão...</small></span>'+icon('chevron')+'</button>'+button(f.agendaTablet?'Sair da tela ampliada':'Ampliar agenda',f.agendaTablet?'agenda-tablet-exit':'agenda-tablet','os-outline os-agenda-expand','monitor','aria-label="'+(f.agendaTablet?'Sair da tela ampliada':'Ampliar agenda')+'"')+'</div></div>'+
       '<div class="os-agenda-week"><button class="os-icon-button" type="button" data-os-action="week-prev" aria-label="Semana anterior">'+icon('left')+'</button><div class="os-week-grid" role="tablist" aria-label="Dias da semana">'+Array.from({length:7},(_,i)=>{const date=shiftDay(weekStart,i),selected=date===day;return '<button class="os-week-day" type="button" id="osAgendaDay-'+date+'" data-os-day="'+date+'" role="tab" aria-controls="osPageBody" aria-selected="'+selected+'" tabindex="'+(selected?'0':'-1')+'" aria-label="'+esc(longDay(date))+'"><small>'+['dom','seg','ter','qua','qui','sex','sáb'][i]+'</small><strong>'+dayDate(date).getUTCDate()+'</strong>'+(date===dateKey()?'<span class="os-week-today" aria-label="Hoje"></span>':'')+'</button>';}).join('')+'</div><button type="button" class="os-icon-button" data-os-action="week-next" aria-label="Próxima semana">'+icon('chevron')+'</button></div>'+
       '<form id="osAgendaFilters" class="os-agenda-filters" aria-label="Filtrar agendamentos"><label class="os-agenda-search"><span class="os-sr-only">Buscar por nome, telefone ou protocolo</span>'+icon('search')+'<input id="osAgendaSearch" name="query" type="search" maxlength="120" autocomplete="off" placeholder="Nome, telefone ou protocolo" value="'+esc(f.agendaQuery)+'"></label><label class="os-agenda-filter"><span>Profissional</span><select id="osAgendaProfessional" name="professional" aria-label="Filtrar por profissional"><option value="">Toda a equipe</option></select></label><label class="os-agenda-filter"><span>Situação</span><select id="osAgendaStatus" name="status" aria-label="Filtrar por situação">'+[['all','Todas as situações'],['confirmed','Confirmados'],['completed','Finalizados'],['no_show','Faltas'],['cancelled','Todos os cancelamentos'],['cancelled_customer','Pelo cliente'],['cancelled_professional','Pelo profissional'],['cancelled_business','Pela empresa'],['hold','Reservas temporárias']].map(([value,label])=>'<option value="'+value+'"'+(f.agendaStatus===value?' selected':'')+'>'+label+'</option>').join('')+'</select></label><button type="submit" class="os-sr-only">Aplicar filtros</button></form>'+
-      '<div class="os-agenda-view-row"><div class="os-agenda-views" role="tablist" aria-label="Visualização da agenda">'+[['list','list','Lista'],['calendar','calendar','Calendário'],['professional','users','Equipe'],['fixed','repeat','Clientes fixos']].map(([value,symbol,label])=>'<button type="button" role="tab" id="osAgendaView-'+value+'" aria-controls="osPageBody" aria-selected="'+(f.agendaMode===value)+'" tabindex="'+(f.agendaMode===value?'0':'-1')+'" data-os-agenda-mode="'+value+'">'+icon(symbol)+'<span>'+label+'</span></button>').join('')+'</div><button type="button" class="os-button os-ghost os-small" data-os-action="agenda-reload" aria-label="Atualizar agendamentos">'+icon('refresh')+'Atualizar</button></div>'+
+      '<div class="os-agenda-view-row"><div class="os-agenda-views" role="tablist" aria-label="Visualização da agenda">'+[['list','list','Lista'],['calendar','calendar','Calendário'],['professional','users','Equipe']].map(([value,symbol,label])=>'<button type="button" role="tab" id="osAgendaView-'+value+'" aria-controls="osPageBody" aria-selected="'+(f.agendaMode===value)+'" tabindex="'+(f.agendaMode===value?'0':'-1')+'" data-os-agenda-mode="'+value+'">'+icon(symbol)+'<span>'+label+'</span></button>').join('')+'</div><button type="button" class="os-button os-ghost os-small" data-os-action="agenda-reload" aria-label="Atualizar agendamentos">'+icon('refresh')+'Atualizar</button></div>'+
       readOnly+'<div id="osAgendaSummary" class="os-agenda-summary"></div><div class="os-agenda-result-line"><p id="osAgendaCount" tabindex="-1" role="status" aria-live="polite">Carregando agendamentos...</p><button type="button" id="osAgendaClear" class="os-button os-ghost os-small" data-os-action="agenda-clear" hidden>Limpar filtros</button></div><div id="osPageBody" role="tabpanel" aria-labelledby="osAgendaView-'+esc(f.agendaMode)+'" tabindex="0">'+loading('Carregando os agendamentos...')+'</div>';
   }
   function syncAgendaControls(){
@@ -1117,19 +1088,6 @@
   async function loadAgenda(c=context(),{catalogue=true}={}){
     const read=state.agendaRead=(state.agendaRead||0)+1,calendar=state.filters.agendaMode==='calendar',limit=calendar?200:50,offset=calendar?0:state.filters.agendaOffset;
     const valid=()=>current(c)&&read===state.agendaRead;
-    if(state.filters.agendaMode==='fixed'){
-      $('osPageBody')?.setAttribute('aria-busy','true');
-      try{
-        const result=await request(apiPath('/appointments/series?limit=100'));
-        if(!valid())return;
-        state.data.fixedSeries=result;renderFixedSeries();
-      }catch(error){
-        if(!valid())return;
-        bodyHTML('<div class="os-agenda-error" role="alert">'+icon('info')+'<h2>Não foi possível consultar os clientes fixos</h2><p>'+esc(error.message||'Atualize para tentar novamente.')+'</p>'+button('Atualizar','agenda-reload','os-outline','refresh')+'</div>');
-        if($('osAgendaCount'))$('osAgendaCount').textContent='Consulta indisponível.';
-      }finally{if(valid())$('osPageBody')?.removeAttribute('aria-busy');}
-      return;
-    }
     $('osPageBody')?.setAttribute('aria-busy','true');
     if($('osAgendaCount'))$('osAgendaCount').textContent='Atualizando agendamentos...';
     const catalogueRequests=catalogue||!state.data.agendaCatalogueReady?Promise.allSettled([
@@ -3721,9 +3679,14 @@
           return;
         }
         if(d.preview.conflict_count)throw Error('Existem conflitos nas datas. Ajuste os horários e verifique novamente.');
-        await saveForm(form,async()=>{
+        await saveForm(form,async c=>{
           const result=await request(apiPath('/appointments/series'),'POST',{...payload,idempotency_key:requestKey(form,payload)});
-          state.filters.agendaMode='fixed';
+          // Series occurrences share the standard appointment views.
+          if(current(c)){
+            state.filters.agendaMode='list';
+            state.filters.agendaDay=payload.first_date;
+            state.filters.agendaOffset=0;
+          }
           return result;
         },'Cliente fixo cadastrado. Todas as visitas foram reservadas na Agenda.');
         return;
@@ -3889,7 +3852,7 @@
         await open('agenda');break;
       }
       case 'agenda-open':await open('agenda');break;
-      case 'agenda-reload':await loadAgenda(context());if(state.filters.agendaMode!=='fixed')void loadGoogle();break;
+      case 'agenda-reload':await loadAgenda(context());void loadGoogle();break;
       case 'agenda-clear':f.agendaProfessional='';f.agendaStatus='all';f.agendaQuery='';f.agendaOffset=0;await open('agenda',{keepScroll:true});break;
       case 'agenda-page-prev':case 'agenda-page-next':{const result=state.data.agendaResult;if(!result||state.data.agendaError)return;const next=Math.max(0,f.agendaOffset+(name==='agenda-page-prev'?-50:50));if(next>=number(result.total))return;f.agendaOffset=next;await loadAgenda(context(),{catalogue:false});$('osAgendaCount')?.focus();break;}
       case 'agenda-google':await showGoogle();break;
@@ -3989,7 +3952,7 @@
       if(el.dataset.osAppSettings){if(!(appLayoutEnabled()||subscriptionWorkspace())||!settingsTabAllowed(el.dataset.osAppSettings))return;state.filters.settingsTab=el.dataset.osAppSettings;await open('configuracoes');return;}
       if(el.dataset.osRoute){if(appLayoutEnabled()&&state.route==='perfil'&&el.dataset.osRoute==='configuracoes')state.filters.settingsTab='general';await open(el.dataset.osRoute);return;}
       if(el.dataset.osDay){state.filters.agendaDay=el.dataset.osDay;state.filters.agendaOffset=0;await open('agenda',{keepScroll:true});$('osAgendaDay-'+state.filters.agendaDay)?.focus();return;}
-      if(el.dataset.osAgendaMode){if(!['list','calendar','professional','fixed'].includes(el.dataset.osAgendaMode))return;state.filters.agendaMode=el.dataset.osAgendaMode;state.filters.agendaOffset=0;clearTimeout(state.agendaSearchTimer);await open('agenda',{keepScroll:true});return;}
+      if(el.dataset.osAgendaMode){if(!['list','calendar','professional'].includes(el.dataset.osAgendaMode))return;state.filters.agendaMode=el.dataset.osAgendaMode;state.filters.agendaOffset=0;clearTimeout(state.agendaSearchTimer);await open('agenda',{keepScroll:true});return;}
       if(el.dataset.osSettings){state.filters.settingsTab=el.dataset.osSettings;await open('configuracoes',{keepScroll:true});return;}
       if(el.dataset.osSiteRequestCopy){if(!canManageSiteRequests()||state.filters.settingsTab!=='site-requests')return;const item=rows(state.data.siteRequests).find(item=>item.id===el.dataset.requestId),key=el.dataset.osSiteRequestCopy;if(!item||!['email','phone'].includes(key)||typeof item[key]!=='string')return;const c=context();await navigator.clipboard.writeText(item[key]);if(current(c))toast(key==='email'?'E-mail copiado.':'WhatsApp copiado.');return;}
       if(el.dataset.osCustomerStatus){state.filters.customerStatus=el.dataset.osCustomerStatus;state.filters.customerOffset=0;await open('clientes',{keepScroll:true});return;}
