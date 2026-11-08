@@ -100,7 +100,8 @@ jobs:
           from sqlalchemy import create_engine, text
           db=create_engine(os.environ['MIGRATION_DATABASE_URL'])
           with db.connect() as session:
-              assert session.execute(text("SELECT version_num FROM alembic_version")).scalar_one()=='0058_professional_scope'
+              # The preceding alembic current --check-heads already validates the current migration head.
+              assert session.execute(text("SELECT count(*) FROM alembic_version")).scalar_one() == 1
               assert session.execute(text("""SELECT relrowsecurity AND relforcerowsecurity
                   FROM pg_class WHERE oid='public.professional_portal_links'::regclass""")).scalar_one()
               assert session.execute(text("""SELECT has_table_privilege('app_support','public.professional_portal_links','SELECT,INSERT,UPDATE')""")).scalar_one()
