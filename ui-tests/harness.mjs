@@ -20,6 +20,11 @@ export function planState(code='elite',overrides={}){
 export function defaultResponse(path) {
   if(path==='/api/v1/admin/accounts/companies/unassigned')return {companies:[]};
   if(path.endsWith('/management/permissions'))return {effective_plan:planState()};
+  if(path.endsWith('/subscription-whatsapp/devices'))return {items:[],usage:{used:0,limit:1}};
+  if(path.includes('/subscription-whatsapp/chatbot?'))return {items:[],counts:{total:0,active:0,inactive:0}};
+  if(path.includes('/subscription-whatsapp/sent-messages?'))return {items:[],counts:{today:0,last_30_days:0,scope:'message_attempts'}};
+  if(path.includes('/subscription-whatsapp/scheduled-messages?'))return {items:[],counts:{active:0,attention:0}};
+  if(path.includes('/subscription-whatsapp/campaigns?'))return {items:[],total:0};
   if (path.includes('/management/dashboard')) return { summary: { appointments: 0, completed: 0, customers: 0 } };
   if (path.includes('/management/customers')) return { items: [], total: 0 };
   if (path.endsWith('/ai/status')) return { enabled: true, configured: true, remaining_today: 10, daily_limit: 10 };
