@@ -26,6 +26,9 @@ TARGET = "0074_fixed_client_series"
 
 
 def schema_ready(raw):
+    # The pre-deploy migrator may read Alembic's marker; app_runtime may not.
+    if migrated_version(raw) != TARGET:
+        return False
     engine = create_engine(raw, poolclass=NullPool, connect_args={
         "options": "-c default_transaction_read_only=on -c statement_timeout=12000",
     })

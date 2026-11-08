@@ -80,7 +80,14 @@ jobs:
           url=os.environ['MIGRATION_DATABASE_URL']
           db=create_engine(url)
           with db.connect() as connection:
-              assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == '0058_professional_scope'
+              # The published 0058 boundary is an ancestor of this review branch.
+              # Assert the new head without weakening one-click privilege checks.
+              assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == '0074_fixed_client_series'
+              from alembic.config import Config
+              from alembic.script import ScriptDirectory
+              graph=ScriptDirectory.from_config(Config("alembic.ini"))
+              assert graph.get_revision("0058_professional_scope").down_revision == "0057_professional_portal"
+              assert graph.get_revision("0074_fixed_client_series").down_revision == "0073_cakto_recovery"
               grants=connection.execute(text("""SELECT has_function_privilege('app_support','public.orion_resolve_direct_appointment(text)','EXECUTE'),
                             has_function_privilege('app_runtime','public.orion_resolve_direct_appointment(text)','EXECUTE')""")).one()
               assert grants == (True,False)

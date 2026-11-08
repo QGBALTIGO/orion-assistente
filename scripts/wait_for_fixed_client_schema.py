@@ -62,12 +62,14 @@ CONSTRAINT_CONTRACT = """WITH expected(table_name,constraint_name,kind) AS (VALU
  AND EXISTS(SELECT 1 FROM pg_catalog.pg_index i
  WHERE i.indexrelid=pg_catalog.to_regclass('public.ix_appointment_series_instances')
   AND i.indisvalid AND i.indisready)"""
+# app_runtime has no permission to SELECT alembic_version: this check is
+# performed only with the reviewed migrator role in the pre-deploy release.
 REVISION_CONTRACT = """SELECT (SELECT count(*) FROM public.alembic_version)=1 AND
  EXISTS(SELECT 1 FROM public.alembic_version
  WHERE version_num='0074_fixed_client_series')"""
 CONTRACT_QUERY = "SELECT " + " AND ".join("COALESCE((" + part + "),false)" for part in (
     predecessor.CONTRACT_QUERY, COLUMN_CONTRACT, ROLE_CONTRACT,
-    CONSTRAINT_CONTRACT, REVISION_CONTRACT)) + " AS ready"
+    CONSTRAINT_CONTRACT)) + " AS ready"
 SCHEMA_QUERY = """SELECT current_user AS runtime_role, session_user AS authenticated_role,
  EXISTS(SELECT 1 FROM pg_catalog.pg_roles WHERE rolname=current_user
  AND NOT rolsuper AND NOT rolcreaterole AND NOT rolbypassrls) AS restricted_role,
