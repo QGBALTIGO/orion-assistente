@@ -58,7 +58,7 @@ test('fixed clients remain a tab inside Orion agenda and do not create a new pag
   assert.equal(h.document.querySelectorAll('[data-os-fixed-series]').length,1);
   assert.match(h.document.getElementById('osPageBody').textContent,/João sintético/);
   assert.equal(h.document.querySelector('[data-os-agenda-mode=fixed]').getAttribute('aria-selected'),'true');
-  assert.equal(h.document.querySelector('#page-suite').dataset.osCurrentRoute,undefined);
+  assert.equal(h.document.querySelector('#page-suite').dataset.osCurrentRoute,'agenda');
 });
 
 test('preview precedes commit, shows dates and confirms only on second submit',async t=>{
