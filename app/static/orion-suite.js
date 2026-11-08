@@ -2458,13 +2458,13 @@
       fmtDate(dateKey(new Date(record.last_visit_at))):'Sem atendimento concluído';
     return '<details class="os-client-more os-dental-journey" aria-label="Jornada administrativa do paciente">'+
       '<summary class="os-client-more-toggle"><span class="os-client-more-icon" aria-hidden="true">'+
-      icon('plus')+'</span><span class="os-client-more-text"><span class="os-client-more-label-collapsed">Jornada do paciente</span>'+
+      icon('plus')+'<svg class="os-icon os-client-more-minus" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12h14"/></svg></span><span class="os-client-more-text"><span class="os-client-more-label-collapsed">Jornada do paciente</span>'+
       '<span class="os-client-more-label-expanded">Jornada do paciente</span>'+
       '<small>Consultas e atendimentos registrados no Orion</small></span></summary>'+
       '<div class="os-client-extra-fields"><div class="os-stats os-client-stats">'+
-      '<div class="os-stat"><strong>'+appointments+'</strong><small>Consultas agendadas</small></div>'+
+      '<div class="os-stat"><strong>'+appointments+'</strong><small>Agendamentos registrados</small></div>'+
       '<div class="os-stat"><strong>'+completed+'</strong><small>Atendimentos concluídos</small></div>'+
-      '<div class="os-stat"><strong>'+money(record.total_spent_cents)+'</strong><small>Total de atendimentos</small></div>'+
+      '<div class="os-stat"><strong>'+money(record.total_spent_cents)+'</strong><small>Valor dos atendimentos</small></div>'+
       '</div><p class="os-client-hint">Último atendimento: '+esc(last)+'. Dados administrativos provenientes da agenda e do financeiro do Orion, não de um prontuário clínico.</p></div></details>';
   }
   function showCustomer(record=null){
