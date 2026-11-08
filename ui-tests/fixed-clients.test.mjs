@@ -31,12 +31,14 @@ function visit(){
 function reply({conflict=false,existing=false}={}){
   const series=sample();let created=existing;
   return (path,method='GET')=>{
-    if(path.includes('/appointments/series/preview')&&method==='POST')return {
+    if((path.includes('/appointments/series/preview')||path.endsWith('/appointments/series/'+seriesId+'/preview'))&&method==='POST')return {
       count:12,available_count:conflict?11:12,conflict_count:conflict?1:0,can_create:!conflict,
       duration_min:30,price_cents:10000,
       occurrences:[{index:1,day:'2030-04-05',start_at:next,available:!conflict,
                     reason:conflict?'Horário já reservado':null}]};
     if(path.endsWith('/appointments/series')&&method==='POST'){created=true;return series;}
+    if(path.includes('/appointments/series?limit='))return {items:created?[series]:[]};
+    if(path.endsWith('/appointments/series/'+seriesId+'/replace')&&method==='POST')return {...series,id:'90000000-0000-4000-8000-000000000009',replayed:false,supersedes_id:seriesId};
     if(path.endsWith('/appointments/series/'+seriesId)&&method==='GET')return series;
     if(path.endsWith('/appointments/series/'+seriesId+'/stop')&&method==='POST')return {cancelled_count:12};
     if(path.endsWith('/appointments/'+appointmentId)&&method==='GET')return visit();
@@ -179,4 +181,65 @@ test('booking dialog design is scoped to appointment flows and stays rounded on 
   assert.match(css,/border-radius:26px/);
   assert.match(css,/#osDialog\.os-booking-dialog \.os-service-option/);
   assert.match(css,/@media\(max-width:639px\)/);
+});
+
+
+test('Clientes da barbearia mostra Ativos, Fixos, Em risco e recorrências cadastradas',async t=>{
+  const h=await makeSuite({initialRoute:'clientes',respond:reply({existing:true})});
+  t.after(()=>h.close());await flush();
+  assert.deepEqual([...h.document.querySelectorAll('[data-os-customer-status]')].map(el=>el.dataset.osCustomerStatus),
+    ['active','fixed','at_risk']);
+  h.click('[data-os-customer-status=fixed]');await flush();
+  const row=h.document.querySelector('[data-os-fixed-series="'+seriesId+'"]');
+  assert.ok(row,'recorrência ativa deve aparecer na aba Fixos');
+  assert.match(row.textContent,/João sintético/);
+  assert.match(row.textContent,/Toda semana/);
+  assert.match(h.document.getElementById('osCustomersCount').textContent,/1 cliente fixo/);
+  assert.ok(h.calls.some(call=>call.path.includes('/appointments/series?limit=200')));
+});
+
+test('Editar fixo permite mudar sexta para quarta e duas para quatro visitas por mês',async t=>{
+  const h=await makeSuite({initialRoute:'clientes',respond:reply({existing:true})});
+  t.after(()=>h.close());await flush();
+  h.click('[data-os-customer-status=fixed]');await flush();
+  h.click('[data-os-fixed-series="'+seriesId+'"]');await flush();
+  assert.ok(h.document.querySelector('[data-os-action=fixed-edit]'));
+  h.click('[data-os-action=fixed-edit]');await flush();
+  const form=h.document.querySelector('[data-os-form=fixed-client]');
+  assert.ok(form,'usa o formulário da própria Agenda');
+  assert.equal(form.elements.customer_name.readOnly,true);
+  assert.equal(form.elements.customer_name.value,'João sintético');
+  const weekday=form.elements.weekday;
+  weekday.value='2';weekday.dispatchEvent(new h.window.Event('change',{bubbles:true}));await flush();
+  assert.equal(form.elements.weekday.value,'2');
+  assert.equal(new Date(form.elements.first_date.value+'T12:00:00Z').getUTCDay(),3,'quarta-feira');
+  const pattern=form.elements.repeat_pattern;
+  assert.deepEqual([...pattern.options].map(option=>option.value),
+    ['weekly1','weekly2','weekly4','monthly2','monthly4']);
+  pattern.value='monthly4';pattern.dispatchEvent(new h.window.Event('change',{bubbles:true}));await flush();
+  form.elements.occurrence_count.value='4';
+  h.submit('[data-os-form=fixed-client]');await flush();
+  const previews=h.calls.filter(call=>call.path.endsWith('/appointments/series/'+seriesId+'/preview'));
+  assert.equal(previews.length,1);
+  assert.equal(previews[0].data.monthly_visits,4);
+  assert.equal(previews[0].data.weekday,2);
+  assert.equal(previews[0].data.occurrence_count,4);
+  assert.equal(h.calls.filter(call=>call.path.endsWith('/replace')).length,0,'prévia antes de alteração');
+  h.submit('[data-os-form=fixed-client]');await flush();
+  const replacements=h.calls.filter(call=>call.path.endsWith('/appointments/series/'+seriesId+'/replace'));
+  assert.equal(replacements.length,1,'nova série salva uma vez');
+  assert.equal(replacements[0].data.customer_phone,'+5511999990060');
+  assert.equal(replacements[0].data.monthly_visits,4);
+});
+
+test('prévia de conflito ao editar impede modificar a recorrência existente',async t=>{
+  const h=await makeSuite({initialRoute:'clientes',respond:reply({existing:true,conflict:true})});
+  t.after(()=>h.close());await flush();
+  h.click('[data-os-customer-status=fixed]');await flush();
+  h.click('[data-os-fixed-series="'+seriesId+'"]');await flush();
+  h.click('[data-os-action=fixed-edit]');await flush();
+  h.submit('[data-os-form=fixed-client]');await flush();
+  assert.match(h.document.querySelector('#osFixedPreview').textContent,/Conflitos encontrados/);
+  h.submit('[data-os-form=fixed-client]');await flush();
+  assert.equal(h.calls.filter(call=>call.path.endsWith('/replace')).length,0);
 });
