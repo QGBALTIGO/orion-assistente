@@ -33,10 +33,34 @@ def local_database_url():
 def test_professional_contact_release_matches_real_postgres_contract(local_database_url):
     raw = local_database_url
     version = migrated_version(raw)
-    # 0052 legitimately extends the 0040 +55-only constraint with +595 mobiles.
-    # Test the current guarded release contract rather than expecting old DDL.
+    # In disposable CI, the DDL exists without the production-only 0050
+    # bootstrap receipt. Inspect the schema itself; release readiness remains
+    # an independent operational contract.
     if version in {recent_release.TARGET, "0053_fixed_client_series"}:
-        assert recent_release.schema_ready(raw)
+        engine = create_engine(raw, poolclass=NullPool)
+        try:
+            with engine.connect() as db:
+                for table, constraint in (
+                    ("customers", "ck_customer_phone"),
+                    ("contact_consents", "ck_consent_phone"),
+                    ("professionals", "ck_professional_phone_e164"),
+                ):
+                    rule = db.execute(text("""
+                        SELECT pg_get_constraintdef(c.oid) FROM pg_constraint c
+                        WHERE c.conrelid=to_regclass(:table) AND c.conname=:name
+                          AND c.contype='c'
+                    """), {"table": "public." + table, "name": constraint}).scalar_one_or_none()
+                    assert rule and "5959" in rule and "+55" in rule
+                fn = db.execute(text("""
+                    SELECT pg_get_functiondef(p.oid),p.prosecdef,pg_get_userbyid(p.proowner),
+                      has_function_privilege('app_support',p.oid,'EXECUTE'),
+                      has_function_privilege('app_runtime',p.oid,'EXECUTE')
+                    FROM pg_proc p
+                    WHERE p.oid=to_regprocedure('public.orion_resolve_central_appointment(text,text)')
+                """)).first()
+                assert fn and "5959" in fn[0] and fn[1] and fn[2] == "app_migrator" and fn[3] and not fn[4]
+        finally:
+            engine.dispose()
     else:
         assert release.schema_contract_ready(raw)
     assert not release.source_contract_ready(raw), 'An already-applied column must not be treated as an unmigrated source'
