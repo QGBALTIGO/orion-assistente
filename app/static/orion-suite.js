@@ -671,7 +671,13 @@
     }
     const permissionEpoch=state.epoch,permissionTenant=state.tenantId;
     if(!options.permissionsChecked&&!platformWorkspace()){
-      if(!state.entitlements){pageHTML(loading(subscriptionWorkspace()?'Conferindo o acesso à sua empresa…':'Conferindo seu plano e permissões…'));$('osConsultantFab')?.classList.add('hidden');}
+      if(!state.entitlements){
+         const pendingHome=subscriptionWorkspace()&&route==='dashboard';
+         const placeholder=pendingHome&&window.OrionSubscriptionDashboard?.placeholder?.();
+         pageHTML(placeholder?'<div id="osPageBody">'+placeholder+'</div>':
+           loading(subscriptionWorkspace()?'Conferindo o acesso à sua empresa…':'Conferindo seu plano e permissões…'));
+         $('osConsultantFab')?.classList.add('hidden');
+       }
       await refreshPermissions();
       if(!state.mounted||permissionEpoch!==state.epoch||permissionTenant!==state.tenantId||navigationRead!==state.navigationRead)return;
     }
@@ -729,7 +735,7 @@
     if(state.route==='chatbot')html='<div id="osPageBody"><section id="osSubscriptionChatbot"></section></div>';
     if(state.route==='testar-chatbot')html='<div id="osPageBody"><section id="osSubscriptionChatbotTest"></section></div>';
     if(state.route==='inbox')html=title('Central de atendimento','Acompanhe suas conversas e atendimentos.')+'<div id="osPageBody"><div id="osInboxHost"></div></div>';
-    if(state.route==='dashboard'){html=subscriptionWorkspace()?'<div id="osPageBody"><section id="osSubscriptionDashboard"></section></div>':'<div id="osPageBody">'+loading('Carregando o resumo do seu negócio…')+'</div>';}
+    if(state.route==='dashboard'){html=subscriptionWorkspace()?'<div id="osPageBody"><section id="osSubscriptionDashboard">'+(window.OrionSubscriptionDashboard?.placeholder?.()||loading('Preparando seu painel…'))+'</section></div>':'<div id="osPageBody">'+loading('Carregando o resumo do seu negócio…')+'</div>';}
     if(state.route==='perfil'&&appLayoutEnabled())html='<div id="osPageBody">'+appProfileView()+'</div>';
     if(state.route==='agenda')html=agendaFrame(readOnly);
     if(state.route==='clientes')html='<div class="os-title-row os-client-heading"><div><h1>Clientes</h1><p id="osCustomersCount">Carregando clientes…</p></div><div class="os-actions">'+button('Novo cliente','new-customer','','plus',can?'':'disabled')+'</div></div>'+readOnly+'<div class="os-search os-client-search">'+icon('search')+'<input id="osCustomerSearch" type="search" placeholder="Buscar por nome ou telefone..." aria-label="Buscar clientes por nome, telefone ou e-mail" value="'+esc(f.customerQuery)+'"></div><div class="os-client-filters"><div class="os-pill-tabs" role="tablist" aria-label="Situação dos clientes">'+[['active','Ativos'],['at_risk','Em Risco'],['inactive','Inativos']].map(([v,label])=>'<button type="button" class="os-pill-tab" role="tab" aria-selected="'+(f.customerStatus===v)+'" data-os-customer-status="'+v+'">'+label+'</button>').join('')+'</div>'+button('Aniversariantes','customer-birthdays',f.customerStatus==='birthday'?'':'os-outline','gift','aria-pressed="'+(f.customerStatus==='birthday')+'"')+'<button class="os-icon-button" type="button" data-os-action="export-customers" title="Exportar clientes em CSV" aria-label="Exportar clientes em CSV">'+icon('download')+'</button></div>'+(f.customerStatus==='at_risk'?'<div class="os-client-risk"><span>Sem retornar há mais de</span>'+[30,60,90].map(n=>'<button class="os-button os-small '+(f.customerRisk===n?'':'os-outline')+'" type="button" data-os-customer-risk="'+n+'">'+n+' dias</button>').join('')+'</div>':f.customerStatus==='birthday'?'<p class="os-help" style="margin-bottom:16px">Aniversariantes desta semana, de domingo a sábado.</p>':'')+'<div id="osPageBody">'+loading('Carregando clientes…')+'</div>';
