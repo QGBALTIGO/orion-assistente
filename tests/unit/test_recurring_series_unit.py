@@ -95,3 +95,33 @@ def test_idempotency_key_must_be_valid():
     with pytest.raises(ValidationError):
         SeriesCreate(**fields, idempotency_key="!")
     assert SeriesCreate(**fields, idempotency_key="c1c81a4b-7367-47a4-b01a-0054936c191e")
+
+
+def test_two_visits_per_calendar_month_never_falls_on_fifth_weekday():
+    rows = series_days(draft(monthly_visits=2, occurrence_count=6), "America/Sao_Paulo", NOW)
+    assert [day for _, day, _ in rows] == [
+        date(2030, 4, 5), date(2030, 4, 19),
+        date(2030, 5, 3), date(2030, 5, 17),
+        date(2030, 6, 7), date(2030, 6, 21)]
+    assert all(day.weekday() == 4 for _, day, _ in rows)
+
+
+def test_four_visits_per_calendar_month_excludes_fifth_weekday():
+    rows = series_days(draft(monthly_visits=4, occurrence_count=12), "America/Sao_Paulo", NOW)
+    assert [day for _, day, _ in rows if day.month == 5] == [
+        date(2030, 5, 3), date(2030, 5, 10),
+        date(2030, 5, 17), date(2030, 5, 24)]
+    assert date(2030, 5, 31) not in [day for _, day, _ in rows]
+
+
+def test_monthly_cadence_preserves_a_second_and_fourth_weekday_choice():
+    rows = series_days(draft(first_date=date(2030, 4, 12), monthly_visits=2,
+                             occurrence_count=4), "America/Sao_Paulo", NOW)
+    assert [day for _, day, _ in rows] == [
+        date(2030, 4, 12), date(2030, 4, 26),
+        date(2030, 5, 10), date(2030, 5, 24)]
+
+
+def test_monthly_count_past_one_year_is_rejected():
+    with pytest.raises(HTTPException, match="365"):
+        series_days(draft(monthly_visits=2, occurrence_count=26), "America/Sao_Paulo", NOW)

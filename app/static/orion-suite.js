@@ -764,7 +764,7 @@
     if(state.route==='dashboard'){html=subscriptionWorkspace()?'<div id="osPageBody"><section id="osSubscriptionDashboard">'+(window.OrionSubscriptionDashboard?.placeholder?.()||loading('Preparando seu painel…'))+'</section></div>':'<div id="osPageBody">'+loading('Carregando o resumo do seu negócio…')+'</div>';}
     if(state.route==='perfil'&&appLayoutEnabled())html='<div id="osPageBody">'+appProfileView()+'</div>';
     if(state.route==='agenda')html=agendaFrame(readOnly);
-    if(state.route==='clientes')html='<div class="os-title-row os-client-heading"><div><h1>'+esc(routeLabel('clientes'))+'</h1><p id="osCustomersCount">'+(dentalWorkspace()?'Carregando pacientes…':'Carregando clientes…')+'</p></div><div class="os-actions">'+button(dentalWorkspace()?'Novo paciente':'Novo cliente','new-customer','','plus',can?'':'disabled')+'</div></div>'+readOnly+'<div class="os-search os-client-search">'+icon('search')+'<input id="osCustomerSearch" type="search" placeholder="Buscar por nome ou telefone..." aria-label="Buscar clientes por nome, telefone ou e-mail" value="'+esc(f.customerQuery)+'"></div><div class="os-client-filters"><div class="os-pill-tabs" role="tablist" aria-label="Situação dos clientes">'+(dentalWorkspace()?[['active','Ativos'],['inactive','Inativos']]:[['active','Ativos'],['at_risk','Em Risco'],['inactive','Inativos']]).map(([v,label])=>'<button type="button" class="os-pill-tab" role="tab" aria-selected="'+(f.customerStatus===v)+'" data-os-customer-status="'+v+'">'+label+'</button>').join('')+'</div>'+(dentalWorkspace()?'':button('Aniversariantes','customer-birthdays',f.customerStatus==='birthday'?'':'os-outline','gift','aria-pressed="'+(f.customerStatus==='birthday')+'"'))+'<button class="os-icon-button" type="button" data-os-action="export-customers" title="Exportar clientes em CSV" aria-label="Exportar clientes em CSV">'+icon('download')+'</button></div>'+(f.customerStatus==='at_risk'?'<div class="os-client-risk"><span>Sem retornar há mais de</span>'+[30,60,90].map(n=>'<button class="os-button os-small '+(f.customerRisk===n?'':'os-outline')+'" type="button" data-os-customer-risk="'+n+'">'+n+' dias</button>').join('')+'</div>':f.customerStatus==='birthday'?'<p class="os-help" style="margin-bottom:16px">Aniversariantes desta semana, de domingo a sábado.</p>':'')+'<div id="osPageBody">'+loading('Carregando clientes…')+'</div>';
+    if(state.route==='clientes')html='<div class="os-title-row os-client-heading"><div><h1>'+esc(routeLabel('clientes'))+'</h1><p id="osCustomersCount">'+(dentalWorkspace()?'Carregando pacientes…':'Carregando clientes…')+'</p></div><div class="os-actions">'+button(dentalWorkspace()?'Novo paciente':f.customerStatus==='fixed'?'Novo fixo':'Novo cliente',!dentalWorkspace()&&f.customerStatus==='fixed'?'new-fixed-client':'new-customer','','plus',can?'':'disabled')+'</div></div>'+readOnly+'<div class="os-search os-client-search">'+icon('search')+'<input id="osCustomerSearch" type="search" placeholder="Buscar por nome ou telefone..." aria-label="Buscar clientes por nome, telefone ou e-mail" value="'+esc(f.customerQuery)+'"></div><div class="os-client-filters"><div class="os-pill-tabs" role="tablist" aria-label="Situação dos clientes">'+(dentalWorkspace()?[['active','Ativos'],['inactive','Inativos']]:[['active','Ativos'],['fixed','Fixos'],['at_risk','Em risco']]).map(([v,label])=>'<button type="button" class="os-pill-tab" role="tab" aria-selected="'+(f.customerStatus===v)+'" data-os-customer-status="'+v+'">'+label+'</button>').join('')+'</div>'+(dentalWorkspace()?'':button('Aniversariantes','customer-birthdays',f.customerStatus==='birthday'?'':'os-outline','gift','aria-pressed="'+(f.customerStatus==='birthday')+'"'))+'<button class="os-icon-button" type="button" data-os-action="export-customers" title="Exportar clientes em CSV" aria-label="Exportar clientes em CSV">'+icon('download')+'</button></div>'+(f.customerStatus==='at_risk'?'<div class="os-client-risk"><span>Sem retornar há mais de</span>'+[30,60,90].map(n=>'<button class="os-button os-small '+(f.customerRisk===n?'':'os-outline')+'" type="button" data-os-customer-risk="'+n+'">'+n+' dias</button>').join('')+'</div>':f.customerStatus==='birthday'?'<p class="os-help" style="margin-bottom:16px">Aniversariantes desta semana, de domingo a sábado.</p>':'')+'<div id="osPageBody">'+loading('Carregando clientes…')+'</div>';
     if(state.route==='servicos')html=title(routeLabel('servicos'),dentalWorkspace()?'Cadastre os procedimentos oferecidos pela clínica, com duração e valores.':'Cadastre, ative e organize os serviços oferecidos pela sua empresa.')+readOnly+'<div id="osPageBody">'+loading('Carregando serviços…')+'</div>';
     if(state.route==='funcionarios')html=title(routeLabel('funcionarios'),'Gerencie os profissionais, a equipe e as permissões de acesso ao painel.')+readOnly+'<div class="os-pill-tabs os-staff-tabs" role="tablist" aria-label="Funcionários">'+[['professionals','Profissionais'],['permissions','Equipe & Permissões']].map(([v,l])=>'<button type="button" class="os-pill-tab" role="tab" aria-selected="'+(f.staffTab===v)+'" data-os-staff-tab="'+v+'">'+l+'</button>').join('')+'</div><div id="osPageBody">'+loading('Carregando profissionais…')+'</div>';
     if(state.route==='financeiro')html='<div class="os-title-row os-finance-heading">'+
@@ -1090,6 +1090,7 @@
   function appointmentDuration(a){return Math.max(0,Math.round((Date.parse(a.end_at)-Date.parse(a.start_at))/60000));}
   function appointmentHistoryOnly(a){return ['cancelled','no_show'].includes(a.status)||appointmentState(a)==='expired_hold';}
   const fixedWeekdays=['segunda-feira','terça-feira','quarta-feira','quinta-feira','sexta-feira','sábado','domingo'];
+  const fixedRepeatChoices=[['weekly1','Toda semana'],['weekly2','A cada 2 semanas'],['weekly4','A cada 4 semanas'],['monthly2','2 vezes por mês'],['monthly4','4 vezes por mês']];
   const bookingModes=[['regular','Agendamento normal'],['fixed','Cliente fixo (recorrente)'],['exceptional','Horário excepcional'],['retroactive','Registrar atendimento realizado']];
   function agendaFrame(readOnly=''){
     const f=state.filters,day=f.agendaDay||dateKey(),weekStart=shiftDay(day,-dayDate(day).getUTCDay()),can=writable();
@@ -1227,14 +1228,52 @@
   }
   async function loadCustomers(c=context()){
     if(!current(c))return;
-    const f=state.filters,read=state.customerRead=(state.customerRead||0)+1,filter=query({q:f.customerQuery,status:f.customerStatus,risk_days:f.customerRisk,limit:50,offset:f.customerOffset});
+    const f=state.filters,read=state.customerRead=(state.customerRead||0)+1;
+    if(f.customerStatus==='fixed'&&!dentalWorkspace()){
+      const [data,active]=await Promise.all([
+        request(apiPath('/appointments/series?limit=200')),
+        request(mgmt('/customers?status=active&limit=1'))
+      ]);
+      if(!current(c)||read!==state.customerRead)return;
+      state.data.fixedSeries=data;
+      state.data.activeCustomers=number(active.total);
+      renderFixedCustomers(data);
+      return;
+    }
+    const filter=query({q:f.customerQuery,status:f.customerStatus,risk_days:f.customerRisk,limit:50,offset:f.customerOffset});
     const requests=[request(mgmt('/customers?'+filter))];
     if(f.customerQuery||f.customerStatus!=='active')requests.push(request(mgmt('/customers?status=active&limit=1')));
     const [data,active]=await Promise.all(requests);
     if(!current(c)||read!==state.customerRead)return;
     state.data.customers=data;state.data.activeCustomers=number((active||data).total);renderCustomers(data);
   }
+  function renderFixedCustomers(data){
+    const q=state.filters.customerQuery.trim().toLocaleLowerCase('pt-BR');
+    const digits=q.replace(/\D/g,'');
+    const series=rows(data).filter(item=>!item.closed_at&&item.next_start_at&&Date.parse(item.next_start_at)>Date.now());
+    const list=series.filter(item=>!q||[item.customer_name,item.customer_phone,item.services_label,item.professional_name].some(
+      text=>String(text||'').toLocaleLowerCase('pt-BR').includes(q))||(digits&&String(item.customer_phone||'').replace(/\D/g,'').includes(digits)));
+    const people=new Set(series.map(item=>item.customer_id)).size;
+    const count=$('osCustomersCount');
+    if(count)count.textContent=people+' '+(people===1?'cliente fixo':'clientes fixos');
+    if(!list.length){
+      bodyHTML('<div class="os-client-empty">'+esc(q?'Nenhum cliente fixo encontrado.':'Nenhum cliente com agendamento fixo ativo.')+'</div>');
+      return;
+    }
+    const label=item=>item.monthly_visits===2?'2 vezes por mês':item.monthly_visits===4?'4 vezes por mês':
+      ({1:'Toda semana',2:'A cada 2 semanas',4:'A cada 4 semanas'}[item.interval_weeks]||'Recorrente');
+    bodyHTML('<div class="os-fixed-list os-client-fixed-list">'+list.map(item=>{
+      const name=item.customer_name||'Cliente',frequency=label(item);
+      const date=(fixedWeekdays[item.weekday]||'')+' às '+String(item.local_time||'').slice(0,5);
+      return '<button type="button" class="os-fixed-card" data-os-fixed-series="'+esc(item.id)+'" aria-label="'+esc('Ver e editar cliente fixo '+name+', '+frequency)+'">'+
+        '<span class="os-fixed-card-icon">'+icon('repeat')+'</span>'+
+        '<span class="os-fixed-card-main"><strong>'+esc(name)+'</strong><small>'+esc(item.services_label||'Serviço não informado')+' · '+esc(item.professional_name||'Profissional')+'</small><small>'+esc(date)+'</small></span>'+
+        '<span class="os-fixed-card-side"><span class="os-badge os-neutral">'+esc(frequency)+'</span><small>Próxima: '+esc(appointmentMoment(item.next_start_at))+'</small></span>'+icon('chevron')+'</button>';
+    }).join('')+'</div>');
+  }
+
   function renderCustomers(data){
+    if(state.filters.customerStatus==='fixed'&&!dentalWorkspace()){renderFixedCustomers(data);return;}
     const list=rows(data),f=state.filters,count=$('osCustomersCount');if(count)count.textContent=state.data.activeCustomers+' '+(dentalWorkspace()?(state.data.activeCustomers===1?'paciente ativo':'pacientes ativos'):(state.data.activeCustomers===1?'ativo':'ativos'));
     if(!list.length){const message=dentalWorkspace()?(f.customerQuery?'Nenhum paciente encontrado.':f.customerStatus==='inactive'?'Nenhum paciente inativo.':'Nenhum paciente cadastrado. Cadastre o primeiro!'):f.customerQuery?'Nenhum cliente encontrado.':f.customerStatus==='at_risk'?'Nenhum cliente em risco neste período.':f.customerStatus==='inactive'?'Nenhum cliente inativo.':f.customerStatus==='birthday'?'Nenhum aniversariante nesta semana.':'Nenhum cliente ainda. Cadastre o primeiro!';bodyHTML('<div class="os-client-empty">'+esc(message)+'</div>');return;}
     const actions=c=>'<button type="button" class="os-icon-button" data-os-customer="'+esc(c.id)+'" aria-label="'+(writable()?'Editar ':'Ver ')+esc(customerDisplayName(c))+'">'+icon('edit')+'</button>'+(writable()?'<button type="button" class="os-icon-button" data-os-customer-toggle="'+esc(c.id)+'" aria-label="'+(c.active?'Inativar ':'Ativar ')+esc(customerDisplayName(c))+'">'+icon(c.active?'block':'check')+'</button><button type="button" class="os-icon-button os-negative" data-os-customer-delete="'+esc(c.id)+'" aria-label="Excluir '+esc(customerDisplayName(c))+'">'+icon('trash')+'</button>':'');
@@ -3128,8 +3167,12 @@
   }
   async function showFixedClient(preset={}){
     if(!writable()){toast('Seu acesso permite apenas consultar a agenda.',true);return;}
-    const c=context();
-    if(!showDialog('fixed-client','Novo agendamento',loading('Carregando clientes, serviços e profissionais...'),{serviceIds:[...(preset.serviceIds||[])],customers:[],services:[],professionals:[],preview:null,previewKey:''},true))return;
+    const c=context(),existing=preset.editSeries||null,editing=!!existing;
+    const serviceIds=[...(preset.serviceIds||existing?.service_ids||[])];
+    const titleText=editing?'Editar cliente fixo':'Novo agendamento';
+    if(!showDialog('fixed-client',titleText,loading('Carregando clientes, serviços e profissionais...'),
+      {serviceIds,customers:[],services:[],professionals:[],preview:null,previewKey:'',
+       editSeriesId:editing?existing.id:null},true))return;
     $('osDialog').classList.add('os-booking-dialog');
     const d=state.dialog;
     try{
@@ -3140,26 +3183,41 @@
       d.customers=rows(customers);d.services=rows(services).filter(item=>item.active);
       d.professionals=rows(professionals).filter(p=>p.active&&p.accepts_appointments!==false);
       d.serviceIds=d.serviceIds.filter(id=>d.services.some(service=>service.id===id));
-      const first=preset.day||state.filters.agendaDay||dateKey(),weekday=(dayDate(first).getUTCDay()+6)%7;
-      const content=selectField('Tipo de registro','booking_mode',bookingModes,'fixed')+
-        '<p id="osBookingModeHelp" class="os-help">Escolha o dia, o horário e quantas vezes este cliente será atendido.</p>'+
-        '<p class="os-fixed-intro">O horário será reservado para o cliente nas próximas visitas. A recorrência utiliza as mesmas regras de serviços, expediente e disponibilidade da Agenda.</p>'+
-        '<div class="os-field"><label for="osFixedCustomer">Cliente</label><div class="os-search os-fixed-search">'+icon('search')+'<input id="osFixedCustomer" type="search" name="customer_name" placeholder="Buscar cliente ou digitar novo nome" required maxlength="120" autocomplete="off"></div><div id="osFixedCustomers" class="os-customer-results"></div></div>'+
-        field('WhatsApp do cliente','customer_phone','tel','','required placeholder="(67) 99999-9999"')+
+      const reference=existing?.next_start_at?dateKey(new Date(existing.next_start_at)):
+        preset.day||state.filters.agendaDay||dateKey();
+      const referenceWeekday=(dayDate(reference).getUTCDay()+6)%7;
+      const weekday=editing?Number(existing.weekday):referenceWeekday;
+      const first=editing?shiftDay(reference,(weekday-referenceWeekday+7)%7):reference;
+      const repetition=existing?.monthly_visits?'monthly'+existing.monthly_visits:
+        'weekly'+(existing?.interval_weeks||1);
+      const futureCount=editing?rows(existing.appointments).filter(visit=>visit.status==='confirmed'&&Date.parse(visit.start_at)>Date.now()).length:0;
+      const quantity=editing?Math.max(2,Math.min(52,futureCount||2)):12;
+      const content=(editing?'':selectField('Tipo de registro','booking_mode',bookingModes,'fixed'))+
+        '<p id="osBookingModeHelp" class="os-help">'+(editing?
+          'Altere apenas as próximas visitas. Os atendimentos anteriores e o financeiro são preservados.':
+          'Escolha o dia, o horário e quantas vezes este cliente será atendido.')+'</p>'+
+        '<div class="os-field"><label for="osFixedCustomer">Cliente</label><div class="os-search os-fixed-search">'+icon('search')+
+          '<input id="osFixedCustomer" type="search" name="customer_name" placeholder="Buscar cliente ou digitar novo nome" required maxlength="120" autocomplete="off"'+(editing?' readonly':'')+'></div><div id="osFixedCustomers" class="os-customer-results"></div></div>'+
+        field('WhatsApp do cliente','customer_phone','tel',existing?.customer_phone||'','required placeholder="(67) 99999-9999"'+(editing?' readonly':''))+
         '<fieldset class="os-fixed-service-fieldset"><legend>Serviço</legend><div class="os-service-options">'+(d.services.length?d.services.map(item=>
           '<button type="button" class="os-service-option" data-os-fixed-service="'+esc(item.id)+'" aria-pressed="'+d.serviceIds.includes(item.id)+'"><strong>'+esc(item.name)+'</strong><small>'+esc(priceLabel(item.price_cents,item.price_mode))+' · '+number(item.duration_min)+' min</small></button>').join(''):'<p class="os-help">Cadastre ao menos um serviço ativo.</p>')+'</div><p class="os-help" id="osFixedServiceSummary">Selecione o serviço deste atendimento.</p></fieldset>'+
-        selectField('Profissional','professional_id',[['','Selecionar profissional'],...d.professionals.map(p=>[p.id,p.name])],preset.professionalId||'','required')+
+        selectField('Profissional','professional_id',[['','Selecionar profissional'],...d.professionals.map(p=>[p.id,p.name])],existing?.professional_id||preset.professionalId||'','required')+
         '<div class="os-form-grid">'+selectField('Dia da semana','weekday',fixedWeekdays.map((name,i)=>[i,name]),weekday)+
         field('Primeiro atendimento','first_date','date',first,'required')+'</div>'+
-        '<div class="os-form-grid">'+field('Horário fixo','local_time','time','14:00','required')+
-        selectField('Repetição','interval_weeks',[[1,'Toda semana'],[2,'A cada 2 semanas'],[4,'A cada 4 semanas']],1)+'</div>'+
-        field('Quantidade de atendimentos','occurrence_count','number','12','required min="2" max="52" step="1"')+
-        '<p class="os-help">A contagem inclui o primeiro atendimento. Escolha entre 2 e 52 visitas, em um período de até 365 dias.</p>'+
+        '<div class="os-form-grid">'+field('Horário fixo','local_time','time',editing?String(existing.local_time).slice(0,5):'14:00','required')+
+        selectField('Frequência','repeat_pattern',fixedRepeatChoices,repetition)+'</div>'+
+        field('Quantidade de próximos atendimentos','occurrence_count','number',String(quantity),'required min="2" max="52" step="1"')+
+        '<p class="os-help">2 vezes por mês reserva semanas alternadas (1ª e 3ª ou 2ª e 4ª); 4 vezes por mês reserva até quatro semanas. A prévia confirma as datas.</p>'+
         '<div id="osFixedPreview" class="os-fixed-preview" aria-live="polite"><p class="os-help">Confira os dados e verifique as datas antes de confirmar.</p></div>';
-      $('osDialog').innerHTML='<button type="button" class="os-icon-button os-close" data-os-action="close-dialog" aria-label="Fechar">'+icon('close')+'</button><h2 id="osDialogTitle">Novo agendamento</h2>'+dialogForm('fixed-client',content,'Verificar horários');
+      $('osDialog').innerHTML='<button type="button" class="os-icon-button os-close" data-os-action="close-dialog" aria-label="Fechar">'+icon('close')+'</button><h2 id="osDialogTitle">'+esc(titleText)+'</h2>'+dialogForm('fixed-client',content,'Verificar horários');
       const fixedForm=$('osDialog').querySelector('[data-os-form=fixed-client]');
-      if(preset.customerName)fixedForm.elements.customer_name.value=preset.customerName;
-      if(preset.customerPhone)fixedForm.elements.customer_phone.value=preset.customerPhone;
+      if(editing){
+        fixedForm.elements.customer_name.value=existing.customer_name||'';
+        fixedForm.elements.customer_phone.value=existing.customer_phone||'';
+      }else{
+        if(preset.customerName)fixedForm.elements.customer_name.value=preset.customerName;
+        if(preset.customerPhone)fixedForm.elements.customer_phone.value=preset.customerPhone;
+      }
       resetFixedPreview();
       window.OrionFields?.refresh($('osDialog'));
       if(!d.services.length||!d.professionals.length)$('osDialog').querySelector('button[type=submit]').disabled=true;
@@ -3171,12 +3229,16 @@
     if(!d.serviceIds.length)throw Error('Selecione ao menos um serviço.');
     if(!f.first_date||!f.local_time||!f.professional_id)throw Error('Informe profissional, data inicial e horário.');
     if(!Number.isInteger(Number(f.occurrence_count))||Number(f.occurrence_count)<2||Number(f.occurrence_count)>52)throw Error('Escolha entre 2 e 52 atendimentos.');
+    const repetition=String(f.repeat_pattern||'weekly1');
+    if(!['weekly1','weekly2','weekly4','monthly2','monthly4'].includes(repetition))throw Error('Selecione a frequência.');
     return {customer_name:f.customer_name.trim(),customer_phone:phone,
       professional_id:f.professional_id,service_ids:[...d.serviceIds],
       first_date:f.first_date,weekday:Number(f.weekday),
-      local_time:f.local_time,interval_weeks:Number(f.interval_weeks),
+      local_time:f.local_time,interval_weeks:repetition.startsWith('weekly')?Number(repetition.slice(-1)):1,
+      monthly_visits:repetition.startsWith('monthly')?Number(repetition.slice(-1)):null,
       occurrence_count:Number(f.occurrence_count)};
   }
+
   function renderFixedPreview(d,preview){
     const target=$('osFixedPreview');if(!target)return;
     const okay=preview.conflict_count===0;
@@ -3197,7 +3259,7 @@
       const data=await request(apiPath('/appointments/series/'+encodeURIComponent(id)));
       if(!stillAccount(c)||state.dialog!==d)return;
       d.record=data;
-      const interval={1:'Toda semana',2:'A cada duas semanas',4:'A cada quatro semanas'}[data.interval_weeks]||'Recorrente';
+      const interval=data.monthly_visits===2?'2 vezes por mês':data.monthly_visits===4?'4 vezes por mês':({1:'Toda semana',2:'A cada duas semanas',4:'A cada quatro semanas'}[data.interval_weeks]||'Recorrente');
       const times=rows(data.appointments),future=times.filter(x=>x.status==='confirmed'&&Date.parse(x.start_at)>Date.now());
       const content='<div class="os-appointment-scroll"><div class="os-appointment-customer"><span class="os-avatar">'+esc(initials(data.customer_name))+'</span><div><h3>'+esc(data.customer_name)+'</h3><p>'+esc(data.customer_phone||'')+'</p></div></div>'+
         '<section class="os-appointment-section"><h3>Horário combinado</h3><div class="os-summary">'+
@@ -3207,7 +3269,7 @@
           '<button type="button" data-os-fixed-appointment="'+esc(item.id)+'" class="os-fixed-date-row"><span><strong>'+esc(fmtDate(dateKey(new Date(item.start_at))))+'</strong><small>'+esc(timeLabel(item.start_at))+' · '+esc(item.protocol)+'</small></span>'+badge(item.status)+icon('chevron')+'</button>').join('')+'</div>'+
         '<p class="os-help">Selecione uma visita para cancelar, remarcar ou finalizar somente aquele atendimento.</p></section>'+
         '<p class="os-help">Atendimentos finalizados permanecem no histórico e no financeiro. O encerramento libera apenas horários futuros.</p></div>';
-      setAppointmentSheet('Cliente fixo',content,writable()&&future.length?button('Encerrar próximos horários','fixed-stop','os-outline os-appointment-cancel','close')+button('Fechar','close-dialog','os-ghost'):button('Fechar','close-dialog','os-outline'));
+      setAppointmentSheet('Cliente fixo',content,writable()&&future.length?button('Editar recorrência','fixed-edit','','edit')+button('Fechar','close-dialog','os-ghost')+button('Encerrar horários','fixed-stop','os-outline os-appointment-cancel','close'):button('Fechar','close-dialog','os-outline'));
     }catch(error){if(stillAccount(c)&&state.dialog===d)setAppointmentSheet('Cliente fixo','<div class="os-appointment-scroll">'+errorHTML(error)+'</div>',button('Fechar','close-dialog','os-outline'));}
   }
   async function showAppointment(preset={}){if(preset.bookingMode==='fixed'){await showFixedClient(preset);return;}if(!writable()){toast('Seu acesso permite apenas consultar agendamentos.',true);return;}const c=context();showDialog('appointment','Novo agendamento',loading('Carregando clientes, serviços e profissionais…'),{serviceIds:[...(preset.serviceIds||[])],engineServiceIds:[],addonIds:[],addonCache:{},customerId:preset.customerId||'',slots:[],availabilityVersion:0,preset});$('osDialog').classList.add('os-booking-dialog');const activeDialog=state.dialog;
@@ -3732,7 +3794,8 @@
         if(!d.preview||d.previewKey!==signature){
           const c=context();markBusy(form,true);
           try{
-            const preview=await request(apiPath('/appointments/series/preview'),'POST',payload);
+            const endpoint=d.editSeriesId?'/appointments/series/'+encodeURIComponent(d.editSeriesId)+'/preview':'/appointments/series/preview';
+            const preview=await request(apiPath(endpoint),'POST',payload);
             if(stillAccount(c)&&state.dialog===d){d.preview=preview;d.previewKey=signature;renderFixedPreview(d,preview);}
           }catch(error){if(stillAccount(c)&&state.dialog===d)dialogError(error);}
           finally{if(stillAccount(c)&&state.dialog===d)markBusy(form,false);}
@@ -3740,15 +3803,15 @@
         }
         if(d.preview.conflict_count)throw Error('Existem conflitos nas datas. Ajuste os horários e verifique novamente.');
         await saveForm(form,async c=>{
-          const result=await request(apiPath('/appointments/series'),'POST',{...payload,idempotency_key:requestKey(form,payload)});
-          // Series occurrences share the standard appointment views.
-          if(current(c)){
+          const endpoint=d.editSeriesId?'/appointments/series/'+encodeURIComponent(d.editSeriesId)+'/replace':'/appointments/series';
+          const result=await request(apiPath(endpoint),'POST',{...payload,idempotency_key:requestKey(form,payload)});
+          if(current(c)&&!d.editSeriesId){
             state.filters.agendaMode='list';
             state.filters.agendaDay=payload.first_date;
             state.filters.agendaOffset=0;
           }
           return result;
-        },'Cliente fixo cadastrado. Todas as visitas foram reservadas na Agenda.');
+        },d.editSeriesId?'Cliente fixo atualizado. Os novos horários estão na Agenda.':'Cliente fixo cadastrado. Todas as visitas foram reservadas na Agenda.');
         return;
       }
       if(kind==='appointment'){
@@ -3981,6 +4044,7 @@
       case 'no-show-appointment':await showAppointmentAction('no_show');break;
       case 'reschedule-appointment':await showAppointmentAction('reschedule');break;
       case 'fixed-open-from-appointment':if(d?.record?.series_id)await showFixedSeriesDetail(d.record.series_id);break;
+      case 'fixed-edit':if(d?.type==='fixed-detail'&&d.record&&writable())await showFixedClient({editSeries:d.record});break;
       case 'fixed-stop':if(d?.type==='fixed-detail'&&d.record?.next_start_at)confirmMutation('Encerrar cliente fixo','Cancelar todos os horários futuros dessa recorrência? Atendimentos anteriores, histórico e financeiro serão preservados. Esta operação não envia cancelamentos em massa pelo WhatsApp.',()=>request(apiPath('/appointments/series/'+encodeURIComponent(d.record.id)+'/stop'),'POST',{}),'Horários futuros cancelados.');break;
     }
   }
@@ -4205,8 +4269,9 @@
     if(state.dialog?.type==='fixed-client'&&el.closest('[data-os-form=fixed-client]')){
       const form=el.closest('form');
       if(el.name==='weekday'){
-        const first=form.elements.first_date.value||dateKey(),current=(dayDate(first).getUTCDay()+6)%7;
-        form.elements.first_date.value=shiftDay(first,(Number(el.value)-current+7)%7);
+        const first=form.elements.first_date.value||dateKey(),base=state.dialog.editSeriesId?dateKey():first;
+        const current=(dayDate(base).getUTCDay()+6)%7;
+        form.elements.first_date.value=shiftDay(base,(Number(el.value)-current+7)%7);
       }else if(el.name==='first_date'&&el.value){
         form.elements.weekday.value=(dayDate(el.value).getUTCDay()+6)%7;
       }

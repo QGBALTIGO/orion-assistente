@@ -49,8 +49,11 @@ paralela foi criada: botão, aba, modal, campos e badges usam a suite Orion.
 
 ## Interface
 
-**Agenda** → visão **Clientes fixos** e botão **Cliente fixo** junto de
-“Novo agendamento”. O formulário mostra clientes existentes (ou cadastro novo),
+**Agenda** → **Novo agendamento** → opção **Cliente fixo**. A seção **Clientes**
+mostra as abas **Ativos**, **Fixos** e **Em risco** no nicho de barbearia.
+Em **Fixos**, o proprietário consulta as séries futuras ativas e pode
+editar o dia, hora, profissional, serviços, frequência e próximas visitas,
+sem duplicar o cliente no cadastro. O formulário mostra clientes existentes (ou cadastro novo),
 serviços, profissional, dia, primeiro atendimento, horário, periodicidade
 e quantidade. A primeira confirmação visual é uma prévia com conflitos;
 a segunda registra o lote inteiro.
@@ -58,6 +61,23 @@ a segunda registra o lote inteiro.
 A lista resume o cliente, profissional, frequência, serviço, quantidade e
 próxima visita. Detalhe abre cada visita no formulário já existente, com
 opção de encerrar todos os futuros horários.
+
+### Alteração de recorrência
+
+- A edição opera somente sobre visitas **futuras confirmadas**. Histórico,
+  serviços anteriores, visitas já executadas e lançamentos financeiros são preservados.
+- A alteração gera uma **nova série** vinculada ao mesmo `customer_id`; a série
+  anterior é encerrada e suas visitas futuras são canceladas em uma **transação única**.
+- A prévia ignora os horários da série antiga sem gravar cancelamentos, verifica
+  todos os novos horários e exige confirmação. Um conflito aborta a alteração
+  inteira, preservando os agendamentos anteriores.
+- Frequência semanal: toda semana, a cada duas ou a cada quatro semanas.
+  Frequência mensal: **exatamente 2 vezes por mês** (1ª/3ª ou 2ª/4ª semana)
+  ou **4 vezes por mês** (primeiras quatro semanas), sem marcar a quinta semana
+  em meses longos.
+- A revisão de esquema 0075 adiciona `monthly_visits` opcional; a migração
+  exige backup verificado, contrato RLS e validação read-only do runtime.
+
 
 ## Qualidade e publicação
 

@@ -52,7 +52,8 @@ def test_0073_is_the_only_additive_head_after_published_0072():
     cfg.set_main_option("path_separator", "os")
     cfg.set_main_option("script_location", str(ROOT / "alembic"))
     graph = ScriptDirectory.from_config(cfg)
-    assert graph.get_heads() == ["0074_fixed_client_series"]
+    assert graph.get_heads() == ["0075_fixed_client_monthly"]
+    assert graph.get_revision("0075_fixed_client_monthly").down_revision == "0074_fixed_client_series"
     assert graph.get_revision("0074_fixed_client_series").down_revision == release.TARGET
     assert graph.get_revision(release.TARGET).down_revision == release.PREVIOUS
     assert release.PREVIOUS == "0072_subscription_group_add"
@@ -132,6 +133,9 @@ def prepare_entry(monkeypatch, revision):
     from scripts import backup_and_migrate_fixed_client_series as fixed
     monkeypatch.setattr(fixed, "main", lambda: events.append("release74") or 0)
     monkeypatch.setattr(fixed, "schema_ready", lambda _: True)
+    from scripts import backup_and_migrate_fixed_client_monthly as monthly
+    monkeypatch.setattr(monthly, "main", lambda: events.append("release75") or 0)
+    monkeypatch.setattr(monthly, "schema_ready", lambda _: True)
     monkeypatch.setattr(entry, "_legacy_main", lambda: pytest.fail("No historical migration on 72/73"))
 
     def run(command, **kwargs):
@@ -152,7 +156,7 @@ def test_current_predeploy_preserves_readonly_guards_without_provisioning_even_w
     monkeypatch.setenv("ORION_PIX_PROVISION_ONCE", "1")
     entry.main()
     assert events == ["runtime-admin", "readonly-contracts", "release73",
-                      "release74", "readonly-contracts", "provider-get-probe"]
+                      "release74", "release75", "readonly-contracts", "provider-get-probe"]
     assert "wait_for_admin_identity_schema" in entry.RUNTIME_PREDEPLOY_CHECK
     assert "tested_runtime_versions_match" in entry.RUNTIME_PREDEPLOY_CHECK
     assert "backup_and_migrate" not in entry.RUNTIME_PREDEPLOY_CHECK
@@ -163,7 +167,7 @@ def test_predeploy_after_0074_never_repeats_0073_backup(monkeypatch):
     events = prepare_entry(monkeypatch, fixed.TARGET)
     entry.main()
     assert events == ["runtime-admin", "readonly-contracts", "release74",
-                      "readonly-contracts", "provider-get-probe"]
+                      "release75", "readonly-contracts", "provider-get-probe"]
 
 
 @pytest.mark.parametrize("stage", ["predecessor", "release", "postcondition", "probe"])
