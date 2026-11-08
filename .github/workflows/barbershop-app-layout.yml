@@ -1,0 +1,39 @@
+name: Orion - navegação Aplicativo barbearia
+
+on:
+  pull_request:
+  push:
+    branches: [main, security/prelaunch-hardening-20261030]
+
+permissions:
+  contents: read
+
+jobs:
+  ui:
+    name: Barra, Perfil, permissoes e troca rapida
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verificar sintaxe do painel
+        run: node --check app/static/orion-suite.js
+      - name: Instalar dependencias DOM
+        run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+      - name: Testar layouts e navegar rapidamente
+        run: node --test ui-tests/barbershop-app-layout.test.mjs
+      - name: Regressao de agendamentos fixos
+        run: node --test ui-tests/fixed-clients.test.mjs
+  scope:
+    name: Niche gating server-side
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Dependencias isoladas de autorizacao
+        run: python -m pip install --disable-pip-version-check pytest fastapi sqlalchemy
+      - name: Verificar permissao por nicho e revisao
+        run: pytest -q tests/unit/test_barbershop_layout_modes.py
