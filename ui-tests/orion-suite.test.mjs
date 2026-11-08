@@ -211,7 +211,7 @@ test('panel bootstrap retains the same scheduled request through URL normalizati
   dom.window.eval(await readFile(new URL('../app/static/orion-subscription-scheduled-messages.js',import.meta.url),'utf8'));
   const record={tenant_id:tenantA,account_scope:'a'.repeat(64),idempotency_key:'11111111-1111-4111-8111-111111111111',kind:'review_create',schedule_id:null,run_id:null,confirming:false};
   dom.window.history.replaceState({orionScheduleRecovery:{...record,private_content:'discard'},unrelated:'discard'},'');
-  dom.window.eval(`var authEpoch=1,suiteTenantId='',businessRows=[],businessContextReady=false,businessContextError='';function resetWizard(){};${prefix}\n}`);
+  dom.window.eval(`var authEpoch=1,suiteTenantId='',businessRows=[],businessContextReady=false,businessContextError='';function resetWizard(){};function showSessionBoot(){};${prefix}\n}`);
   await dom.window.showApp('member','Synthetic','synthetic@example.test');
   assert.deepEqual(JSON.parse(JSON.stringify(dom.window.history.state)),{orionScheduleRecovery:record});
   assert.equal(new URL(dom.window.location.href).searchParams.get('aba'),'programadas');

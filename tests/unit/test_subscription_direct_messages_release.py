@@ -45,7 +45,8 @@ def test_direct_remains_an_ancestor_and_preserves_the_published_bulk_predecessor
     config.set_main_option("path_separator", "os")
     config.set_main_option("script_location", str(root / "alembic"))
     migrations = ScriptDirectory.from_config(config)
-    assert migrations.get_heads() == ["0074_fixed_client_series"]
+    assert migrations.get_heads() == ["0075_fixed_client_monthly"]
+    assert migrations.get_revision("0075_fixed_client_monthly").down_revision == "0074_fixed_client_series"
     assert migrations.get_revision("0074_fixed_client_series").down_revision == "0073_cakto_recovery"
     assert migrations.get_revision("0072_subscription_group_add").down_revision == release.TARGET
     assert release.TARGET == barrier.SCHEMA_MARKER == "0071_subscription_direct"
