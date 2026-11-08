@@ -24,6 +24,13 @@ async def recurring_db(management_db, monkeypatch):
     app = d["app"]
     app.include_router(recurring_appointments.router)
     app.include_router(booking_api.router)
+    # Match main.py: concrete booking endpoints precede the generic catalog route.
+    concrete = [r for r in app.router.routes
+                if getattr(r, 'path', None) == '/api/v1/tenants/{tenant_id}/appointments'
+                and 'GET' in getattr(r, 'methods', set())]
+    for route in concrete:
+        app.router.routes.remove(route)
+        app.router.routes.insert(0, route)
     factory = async_sessionmaker(d["runtime"], expire_on_commit=False)
     monkeypatch.setattr(recurring_appointments, "get_session_factory", lambda: factory)
     monkeypatch.setattr(booking_api, "get_session_factory", lambda: factory)
