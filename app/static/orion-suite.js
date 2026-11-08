@@ -3268,7 +3268,7 @@
           '<button type="button" data-os-fixed-appointment="'+esc(item.id)+'" class="os-fixed-date-row"><span><strong>'+esc(fmtDate(dateKey(new Date(item.start_at))))+'</strong><small>'+esc(timeLabel(item.start_at))+' · '+esc(item.protocol)+'</small></span>'+badge(item.status)+icon('chevron')+'</button>').join('')+'</div>'+
         '<p class="os-help">Selecione uma visita para cancelar, remarcar ou finalizar somente aquele atendimento.</p></section>'+
         '<p class="os-help">Atendimentos finalizados permanecem no histórico e no financeiro. O encerramento libera apenas horários futuros.</p></div>';
-      setAppointmentSheet('Cliente fixo',content,writable()&&future.length?button('Editar recorrência','fixed-edit','','edit')+button('Encerrar horários','fixed-stop','os-outline os-appointment-cancel','close')+button('Fechar','close-dialog','os-ghost'):button('Fechar','close-dialog','os-outline'));
+      setAppointmentSheet('Cliente fixo',content,writable()&&future.length?button('Editar recorrência','fixed-edit','','edit')+button('Fechar','close-dialog','os-ghost')+button('Encerrar horários','fixed-stop','os-outline os-appointment-cancel','close'):button('Fechar','close-dialog','os-outline'));
     }catch(error){if(stillAccount(c)&&state.dialog===d)setAppointmentSheet('Cliente fixo','<div class="os-appointment-scroll">'+errorHTML(error)+'</div>',button('Fechar','close-dialog','os-outline'));}
   }
   async function showAppointment(preset={}){if(preset.bookingMode==='fixed'){await showFixedClient(preset);return;}if(!writable()){toast('Seu acesso permite apenas consultar agendamentos.',true);return;}const c=context();showDialog('appointment','Novo agendamento',loading('Carregando clientes, serviços e profissionais…'),{serviceIds:[...(preset.serviceIds||[])],engineServiceIds:[],addonIds:[],addonCache:{},customerId:preset.customerId||'',slots:[],availabilityVersion:0,preset});$('osDialog').classList.add('os-booking-dialog');const activeDialog=state.dialog;
@@ -4268,8 +4268,9 @@
     if(state.dialog?.type==='fixed-client'&&el.closest('[data-os-form=fixed-client]')){
       const form=el.closest('form');
       if(el.name==='weekday'){
-        const first=form.elements.first_date.value||dateKey(),current=(dayDate(first).getUTCDay()+6)%7;
-        form.elements.first_date.value=shiftDay(first,(Number(el.value)-current+7)%7);
+        const first=form.elements.first_date.value||dateKey(),base=d.editSeriesId?dateKey():first;
+        const current=(dayDate(base).getUTCDay()+6)%7;
+        form.elements.first_date.value=shiftDay(base,(Number(el.value)-current+7)%7);
       }else if(el.name==='first_date'&&el.value){
         form.elements.weekday.value=(dayDate(el.value).getUTCDay()+6)%7;
       }
