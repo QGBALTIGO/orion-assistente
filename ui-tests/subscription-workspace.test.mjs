@@ -90,7 +90,7 @@ test('standard News and Help remain usable without unavailable module shortcuts'
   assert.match(h.element('.os-help-hero').textContent,/Base de conhecimento/);
   h.click('[data-os-help-article=publicar-site]');await flush();
   assert.match(h.element('.os-help-article h1').textContent,/Como revisar e publicar/);
-  assert.equal(h.document.querySelector('.os-help-article [data-os-route]'),null);
+  assert.deepEqual([...h.document.querySelectorAll('.os-help-article [data-os-route]')].map(node=>node.dataset.osRoute),['dashboard']);
   h.click('[data-os-action=help-back]');await flush();
   h.fill('#osHelpSearch','minha conta');await flush();
   assert.match(h.element('#osHelpResults').textContent,/Como acessar a empresa da minha conta/);
