@@ -159,3 +159,82 @@ async def test_other_company_cannot_read_fixed_client_details(recurring_db):
     target = f"/api/v1/tenants/{d['b']}/appointments/series/{created.json()['id']}"
     forbidden = await d["client"].get(target)
     assert forbidden.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_replacing_future_series_is_atomic_and_keeps_customer_identity(recurring_db):
+    d = recurring_db
+    old = (await d["client"].post(d["base_series"], json=payload(d))).json()
+    old_id = old["id"]
+    body = payload(d, occurrence_count=4, monthly_visits=None)
+    read_before = await d["client"].get(d["base_series"] + "/" + old_id)
+    assert read_before.status_code == 200
+    assert len(read_before.json()["appointments"]) == 3
+
+    # Preview must ignore the source series' own future reservations.
+    preview = await d["client"].post(
+        d["base_series"] + "/" + old_id + "/preview",
+        json={key: value for key, value in body.items() if key != "idempotency_key"})
+    assert preview.status_code == 200, preview.text
+    assert preview.json()["can_create"] is True
+    assert preview.json()["conflict_count"] == 0
+    after_preview = (await d["client"].get(d["base_series"] + "/" + old_id)).json()
+    assert all(a["status"] == "confirmed" for a in after_preview["appointments"])
+
+    changed = await d["client"].post(d["base_series"] + "/" + old_id + "/replace", json=body)
+    assert changed.status_code == 201, changed.text
+    new = changed.json()
+    assert new["supersedes_id"] == old_id
+    assert new["customer_id"] == old["customer_id"]
+    assert new["id"] != old_id
+    assert len(new["appointments"]) == 4
+    assert all(a["status"] == "confirmed" for a in new["appointments"])
+    archived = (await d["client"].get(d["base_series"] + "/" + old_id)).json()
+    assert archived["closed_at"] is not None
+    assert all(a["status"] == "cancelled" for a in archived["appointments"])
+
+    replay = await d["client"].post(d["base_series"] + "/" + old_id + "/replace", json=body)
+    assert replay.status_code == 200, replay.text
+    assert replay.json()["replayed"] is True and replay.json()["id"] == new["id"]
+
+
+@pytest.mark.asyncio
+async def test_replacement_conflict_rolls_back_all_old_future_visits(recurring_db):
+    d = recurring_db
+    old = (await d["client"].post(d["base_series"], json=payload(d))).json()
+    # The fourth proposed visit is not part of the existing three-visit series.
+    other_customer = await customer(d, phone="11976543210")
+    await appointment(d, other_customer["id"],
+                      start_at=datetime.combine(d["first"] + timedelta(days=21),
+                                                time(10), d["zone"]))
+    candidate = payload(d, occurrence_count=4)
+    preview = await d["client"].post(
+        d["base_series"] + "/" + old["id"] + "/preview",
+        json={key: value for key, value in candidate.items() if key != "idempotency_key"})
+    assert preview.status_code == 200 and preview.json()["conflict_count"] == 1
+    rejected = await d["client"].post(
+        d["base_series"] + "/" + old["id"] + "/replace", json=candidate)
+    assert rejected.status_code == 409, rejected.text
+    old_after = (await d["client"].get(d["base_series"] + "/" + old["id"])).json()
+    assert old_after["closed_at"] is None
+    assert all(a["status"] == "confirmed" for a in old_after["appointments"])
+    listed = (await d["client"].get(d["base_series"])).json()["items"]
+    assert len(listed) == 1
+
+
+@pytest.mark.asyncio
+async def test_monthly_fixed_client_and_cross_tenant_edit_isolation(recurring_db):
+    d = recurring_db
+    body = payload(d, occurrence_count=4, monthly_visits=2)
+    created = await d["client"].post(d["base_series"], json=body)
+    assert created.status_code == 201, created.text
+    assert created.json()["monthly_visits"] == 2
+    first_four = [a["start_at"] for a in created.json()["appointments"]]
+    months = [datetime.fromisoformat(instant.replace("Z", "+00:00")).astimezone(
+        d["zone"]).date().month for instant in first_four]
+    assert months[0] == months[1]
+    assert months[2] == months[3]
+    forbidden = await d["client"].post(
+        f"/api/v1/tenants/{d['b']}/appointments/series/{created.json()['id']}/replace",
+        json=body)
+    assert forbidden.status_code == 403
