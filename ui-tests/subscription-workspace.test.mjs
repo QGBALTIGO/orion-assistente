@@ -300,6 +300,8 @@ test('subscription Início drops delayed tenant metrics when navigating away',as
     }});
   t.after(()=>h.close());await flush();
   assert.equal(h.document.querySelector('#page-suite').dataset.osCurrentRoute,'dashboard');
+  assert.ok(h.document.querySelector('.os-subdash-skeleton'),'while metrics are pending, use Orion skeleton');
+  assert.equal(h.document.querySelector('.os-subdash-stat-number'),null,'no fake counters during loading');
   await h.window.OrionSuite.open('novidades',{force:true});await flush();
   pending.resolve({items:[{name:'INFORMAÇÃO DO PAINEL ANTERIOR',status:'connected'}],
     usage:{used:1,limit:1}});
