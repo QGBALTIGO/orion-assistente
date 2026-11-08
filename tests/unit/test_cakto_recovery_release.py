@@ -52,7 +52,8 @@ def test_0073_is_the_only_additive_head_after_published_0072():
     cfg.set_main_option("path_separator", "os")
     cfg.set_main_option("script_location", str(ROOT / "alembic"))
     graph = ScriptDirectory.from_config(cfg)
-    assert graph.get_heads() == [release.TARGET]
+    assert graph.get_heads() == ["0074_fixed_client_series"]
+    assert graph.get_revision("0074_fixed_client_series").down_revision == release.TARGET
     assert graph.get_revision(release.TARGET).down_revision == release.PREVIOUS
     assert release.PREVIOUS == "0072_subscription_group_add"
     assert release.TARGET == "0073_cakto_recovery"

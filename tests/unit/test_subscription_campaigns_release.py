@@ -46,7 +46,8 @@ def test_campaigns_precedes_scheduled_messages_after_published_diagnostics_and_a
     config.set_main_option("path_separator", "os")
     config.set_main_option("script_location", str(root / "alembic"))
     migrations = ScriptDirectory.from_config(config)
-    assert migrations.get_heads() == ["0073_cakto_recovery"]
+    assert migrations.get_heads() == ["0074_fixed_client_series"]
+    assert migrations.get_revision("0074_fixed_client_series").down_revision == "0073_cakto_recovery"
     assert migrations.get_revision("0070_subscription_bulk").down_revision == "0069_subscription_schedules"
     assert migrations.get_revision("0069_subscription_schedules").down_revision == release.TARGET
     assert release.TARGET == barrier.SCHEMA_MARKER == "0068_subscription_campaigns"
