@@ -249,3 +249,62 @@ test('customer maintenance keeps the subscription workspace and My account label
   assert.equal(operationalCalls(h).some(call=>call.method!=='GET'||!call.path.includes('/subscription-whatsapp/')),false);
   assert.deepEqual(h.errors,[]);
 });
+
+
+test('subscription Início shows confirmed tenant data, scoped quick actions and honest message attempts',async t=>{
+  const policy=subscriptionPlan('elite');
+  for(const feature of ['sent_messages.manage','scheduled_messages.manage','campaigns.manage',
+    'templates.manage','direct_messages.manage','diagnostics.manage']){
+    policy.features.push(feature);policy.permissions[feature]=true;
+  }
+  const calls=[];
+  const h=await makeSuite({initialRoute:'dashboard',permissions:policy,
+    bridge:{tenants:[business()]},respond(path,method){
+      calls.push({path,method});
+      if(path.endsWith('/subscription-whatsapp/devices'))return {items:[{id:'device-1',name:'WhatsApp da loja',status:'connected'}],usage:{used:1,limit:1}};
+      if(path.includes('/subscription-whatsapp/chatbot?'))return {counts:{total:5,active:4,inactive:1},items:[]};
+      if(path.includes('/subscription-whatsapp/sent-messages?'))return {
+        counts:{today:7,last_30_days:42,scope:'message_attempts'},
+        timezone:'America/Sao_Paulo',items:[{status:'sent',origin:{label:'Chatbot'},
+          device:{name:'WhatsApp da loja'},created_at:'2026-11-08T16:30:00Z'}]};
+      if(path.includes('/subscription-whatsapp/scheduled-messages?'))return {items:[],
+        counts:{active:2,attention:1}};
+      if(path.includes('/subscription-whatsapp/campaigns?'))return {items:[],total:1};
+      return defaultResponse(path);
+    }});
+  t.after(()=>h.close());await flush();
+  assert.equal(h.document.querySelector('#page-suite').dataset.osCurrentRoute,'dashboard');
+  assert.deepEqual([...h.document.querySelectorAll('.os-subdash-stat-number')].map(el=>el.textContent),
+    ['1 de 1','4','7','2']);
+  assert.match(h.document.querySelector('.os-subdash-panels').textContent,/WhatsApp da loja/);
+  assert.match(h.document.querySelector('.os-subdash-panels').textContent,/1 programação/);
+  assert.match(h.document.querySelector('.os-subdash-panels').textContent,/Campanhas em execução/);
+  assert.match(h.document.querySelector('.os-subdash-activity-list').textContent,/Chatbot/);
+  assert.match(h.document.querySelector('.os-subdash-footnote').textContent,/não significam mensagens entregues/);
+  h.click('[data-sd-period="30"]');
+  assert.equal(h.document.querySelector('.os-subdash-stat:nth-child(3) .os-subdash-stat-number').textContent,'42');
+  assert.equal(h.document.querySelector('[data-sd-period="30"]').getAttribute('aria-pressed'),'true');
+  assert.ok(h.document.querySelector('.os-subdash-action[data-os-route=diagnosticos]'));
+  assert.equal(calls.filter(call=>call.method!=='GET').length,0);
+  assert.equal(calls.some(call=>/management\/(?:dashboard|finance|customers)/.test(call.path)),false);
+  assert.equal(calls.filter(call=>call.path.includes('/subscription-whatsapp/')).length,5);
+  assert.deepEqual(h.errors,[]);
+});
+
+test('subscription Início drops delayed tenant metrics when navigating away',async t=>{
+  const pending=deferred();
+  const h=await makeSuite({initialRoute:'dashboard',permissions:subscriptionPlan('elite'),
+    bridge:{tenants:[business()]},respond:path=>{
+      if(path.endsWith('/subscription-whatsapp/devices'))return pending.promise;
+      return defaultResponse(path);
+    }});
+  t.after(()=>h.close());await flush();
+  assert.equal(h.document.querySelector('#page-suite').dataset.osCurrentRoute,'dashboard');
+  await h.window.OrionSuite.open('novidades',{force:true});await flush();
+  pending.resolve({items:[{name:'INFORMAÇÃO DO PAINEL ANTERIOR',status:'connected'}],
+    usage:{used:1,limit:1}});
+  await flush();
+  assert.equal(h.document.querySelector('#page-suite').dataset.osCurrentRoute,'novidades');
+  assert.doesNotMatch(h.document.querySelector('#page-suite').textContent,/INFORMAÇÃO DO PAINEL ANTERIOR/);
+  assert.deepEqual(h.errors,[]);
+});
