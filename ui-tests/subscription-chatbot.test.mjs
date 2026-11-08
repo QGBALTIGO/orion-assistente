@@ -16,8 +16,8 @@ async function upload(h,contents='{}',name='orion-chatbot.json',size){await h.fi
 test('Chatbot is subscription-only, reads scoped endpoints and leaves other modules closed',async t=>{
  const h=await makeSuite({initialRoute:'chatbot',permissions,bridge:{tenants:[{id:tenantA,name:'Empresa sintética',role:'owner',workspace_profile:'subscription_services'}]},configureWindow:w=>w.eval(source),respond:path=>path.startsWith(base+'?')?listing():path===base+'/catalog'?catalog():defaultResponse(path)});t.after(()=>h.close());await flush();
  assert.equal(h.document.querySelector('#page-suite').dataset.osCurrentRoute,'chatbot');assert.equal(h.document.querySelectorAll('[data-sc-card]').length,1);
- assert.deepEqual([...h.document.querySelectorAll('#osNav [data-os-route]')].map(n=>n.dataset.osRoute),['dispositivos','chatbot','testar-chatbot','novidades','ajuda','member']);assert.equal(writes(h).length,0);assert.equal(h.calls.some(c=>/testar.chatbot|templates|plan-|management\/dashboard/.test(c.path)),false);
- await h.window.OrionSuite.open('inbox');await flush();assert.equal(h.document.querySelector('#page-suite').dataset.osCurrentRoute,'novidades');assert.equal(h.document.querySelector('#osSubscriptionChatbot'),null);assert.deepEqual(h.errors,[]);
+ assert.deepEqual([...h.document.querySelectorAll('#osNav [data-os-route]')].map(n=>n.dataset.osRoute),['dashboard','dispositivos','chatbot','testar-chatbot','novidades','ajuda','member']);assert.equal(writes(h).length,0);assert.equal(h.calls.some(c=>/testar.chatbot|templates|plan-|management\/dashboard/.test(c.path)),false);
+ await h.window.OrionSuite.open('inbox');await flush();assert.equal(h.document.querySelector('#page-suite').dataset.osCurrentRoute,'dashboard');assert.equal(h.document.querySelector('#osSubscriptionChatbot'),null);assert.deepEqual(h.errors,[]);
 });
 
 test('standard businesses cannot open Chatbot with an injected capability',async t=>{
