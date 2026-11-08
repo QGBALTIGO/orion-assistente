@@ -47,6 +47,7 @@ from app.communication_api import router as communication_router
 from app.workflow_drafts import router as workflow_drafts_router
 from app.orion_pwa_api import router as orion_pwa_router
 from app.plan_routing import include_plan_router, enforce_endpoint_plan
+from app.recurring_appointments import router as recurring_appointments_router
 
 app = FastAPI(
     title="Orion Barbearias",
@@ -80,6 +81,7 @@ async def health() -> dict[str, str]:
 
 app.add_api_route("/api/v1/tenants/{tenant_id}/services", list_services,
                   methods=["GET"], tags=["Operação interna"], dependencies=[Depends(enforce_endpoint_plan)])
+include_plan_router(app, recurring_appointments_router)
 include_plan_router(app, bookings_router)
 include_plan_router(app, onboarding_router)
 include_plan_router(app, commercial_router)
