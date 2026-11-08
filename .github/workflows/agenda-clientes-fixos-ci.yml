@@ -2,7 +2,7 @@ name: Agenda - Clientes fixos (CI isolada)
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, security/prelaunch-hardening-20261030]
 permissions:
   contents: read
 jobs:
@@ -55,10 +55,14 @@ jobs:
             -f infra/postgres/init/001-roles.sql
       - name: Compilar Python e aplicar o schema aditivo
         run: |
-          python -m py_compile app/recurring_appointments.py alembic/versions/0074_fixed_client_series.py
+          python -m py_compile app/recurring_appointments.py alembic/versions/0074_fixed_client_series.py scripts/wait_for_fixed_client_schema.py scripts/backup_and_migrate_fixed_client_series.py scripts/predeploy_one_click_links.py
           alembic upgrade head
+      - name: Contrato 0074 e barreira de inicializacao somente leitura
+        run: |
+          python -c "import os; from scripts.backup_and_migrate_fixed_client_series import schema_ready; assert schema_ready(os.environ['MIGRATION_DATABASE_URL'])"
+          python -m scripts.wait_for_fixed_client_schema
       - name: Testes unitarios de frequencias e timezone
-        run: pytest -q tests/unit/test_recurring_series_unit.py
+        run: pytest -q tests/unit/test_recurring_series_unit.py tests/unit/test_fixed_client_release.py tests/unit/test_cakto_recovery_release.py
       - name: Testes reais de reservas atomicas e RLS
         run: pytest -q tests/integration/test_recurring_appointments.py
   ui:

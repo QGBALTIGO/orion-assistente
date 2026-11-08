@@ -149,6 +149,8 @@ async def startup_plan_permissions(ctx):
     await wait_for_group_add(Settings.from_environment())
     from scripts.wait_for_cakto_recovery_schema import wait_for_schema as wait_for_cakto_recovery
     await wait_for_cakto_recovery(Settings.from_environment())
+    from scripts.wait_for_fixed_client_schema import wait_for_schema as wait_for_fixed_clients
+    await wait_for_fixed_clients(Settings.from_environment())
     ctx['plan_permissions_ready'] = True
     logging.getLogger(__name__).info('orion_plan_permissions_0050_worker_ready')
     if os.getenv('ORION_REVIEW_QA_VERIFY_7364') == '1':
