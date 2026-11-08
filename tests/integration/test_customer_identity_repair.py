@@ -232,6 +232,9 @@ async def test_operational_cli_defaults_to_read_only_and_requires_verified_backu
     monkeypatch.setattr(repair, "APPROVED", d["scope"])
     raw = os.environ["MIGRATION_DATABASE_URL"]
     monkeypatch.setattr(repair, "connection_values", lambda: (raw, make_url(raw)))
+    # Exercise the original 0037 CLI contract on the newer disposable test schema.
+    # Production still refuses this retired repair when the actual version differs.
+    monkeypatch.setattr(repair, "migrated_version", lambda _raw: repair.SCHEMA)
     events = []
     monkeypatch.setattr(repair, "storage_values", lambda: {"synthetic": True})
     def backup(_url, _settings, destination, **kwargs):
