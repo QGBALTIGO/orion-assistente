@@ -3201,13 +3201,13 @@ html:has(.os-professional-history[open]){overflow:hidden}
   background:var(--os-card);color:var(--os-text);font-family:var(--os-font);
 }
 .os-app-dock-rail{
-  box-sizing:border-box;display:grid;grid-template-rows:repeat(5,68px);gap:1px;
+  box-sizing:border-box;display:grid;grid-template-rows:repeat(var(--os-app-count,5),68px);gap:1px;
   width:100%;min-width:0;position:relative;isolation:isolate;
 }
 .os-app-dock-indicator{
   box-sizing:border-box;position:absolute;inset:3px 0 auto;
   height:60px;border-radius:16px;background:var(--os-tint);
-  transform:translateY(calc(var(--os-app-active,0) * 69px));
+  transform:translateY(var(--os-app-y,0px));
   transition:transform 240ms cubic-bezier(.2,.75,.25,1);
   z-index:-1;pointer-events:none;
 }
@@ -3325,10 +3325,10 @@ html:has(.os-professional-history[open]){overflow:hidden}
     border-right:0;border-top:1px solid var(--os-border);
     box-shadow:0 -5px 22px color-mix(in srgb,var(--os-text) 6%,transparent);
   }
-  .os-app-dock-rail{grid-template-columns:repeat(5,minmax(0,1fr));grid-template-rows:none;gap:0}
+  .os-app-dock-rail{grid-template-columns:repeat(var(--os-app-count,5),minmax(0,1fr));grid-template-rows:none;gap:0}
   .os-app-dock-indicator{
-    inset:2px auto auto 0;width:20%;height:39px;border-radius:999px;
-    transform:translateX(calc(var(--os-app-active,0) * 100%));
+    inset:2px auto auto 0;width:var(--os-app-width,20%);height:39px;border-radius:999px;
+    transform:translateX(var(--os-app-offset,0%));
   }
   .os-app-dock-item{min-height:62px;gap:6px;padding:2px 0;border-radius:14px;font-size:11px;line-height:15px}
   .os-app-dock-symbol{height:37px;width:100%}
@@ -3348,4 +3348,69 @@ html:has(.os-professional-history[open]){overflow:hidden}
   .os-app-dock-indicator,.os-app-dock-item,.os-app-dock-symbol>.os-icon,
   .os-app-layout-option,.os-app-profile-item{transition:none!important}
   .os-layout-app .os-main>:first-child{animation:none!important}
+}
+
+
+/* Custom app shortcuts: existing Orion font, radius, color and field tokens. */
+.os-app-shortcut-settings{min-width:0}
+.os-app-shortcuts-list{display:grid;gap:9px;margin-top:16px}
+.os-app-shortcut-row{
+  box-sizing:border-box;display:grid;grid-template-columns:25px 36px minmax(0,1fr);
+  align-items:center;gap:12px;min-width:0;padding:12px 14px;
+  border:1px solid var(--os-border);border-radius:16px;background:var(--os-card);
+}
+.os-app-shortcut-number{
+  display:grid;place-items:center;min-width:0;color:var(--os-muted);
+  font:600 12px/18px var(--os-font);
+}
+.os-app-shortcut-icon{
+  display:grid;place-items:center;width:36px;height:36px;border-radius:12px;
+  background:var(--os-tint);color:var(--os-primary);
+}
+.os-app-shortcut-icon .os-icon{width:20px;height:20px}
+.os-app-shortcut-field{display:grid;gap:6px;min-width:0}
+.os-app-shortcut-field label{font:600 12px/17px var(--os-font);color:var(--os-muted)}
+.os-app-shortcut-field select{
+  box-sizing:border-box;display:block;width:100%;min-width:0;min-height:44px;
+  padding:8px 12px;border:1px solid var(--os-border);border-radius:12px;
+  background:var(--os-bg);color:var(--os-text);font:500 14px/20px var(--os-font);
+}
+.os-app-shortcut-field select:focus-visible{
+  outline:2px solid var(--os-primary);outline-offset:2px;
+}
+.os-app-shortcut-locked{grid-template-columns:25px 36px minmax(0,1fr) auto;background:var(--os-soft)}
+.os-app-shortcut-fixed-copy{display:grid;min-width:0;gap:1px}
+.os-app-shortcut-fixed-copy strong{font:600 14px/20px var(--os-font)}
+.os-app-shortcut-fixed-copy small{font:400 12px/17px var(--os-font);color:var(--os-muted)}
+.os-app-shortcut-lock{display:grid;place-items:center;color:var(--os-muted)}
+.os-app-shortcut-lock>.os-icon{width:17px;height:17px}
+.os-app-shortcut-preview{display:grid;gap:12px;min-width:0;margin-top:20px}
+.os-app-shortcut-preview>strong{font:600 13px/19px var(--os-font)}
+.os-app-shortcut-preview-items{
+  display:grid;grid-template-columns:repeat(var(--os-preview-count,5),minmax(0,1fr));
+  gap:4px;min-width:0;padding:10px 5px;border:1px solid var(--os-border);
+  border-radius:16px;background:var(--os-bg);
+}
+.os-app-shortcut-preview-item{
+  display:flex;align-items:center;flex-direction:column;gap:6px;min-width:0;
+  color:var(--os-muted);text-align:center;padding:4px 0;
+}
+.os-app-shortcut-preview-item>.os-icon{width:21px;height:21px;color:var(--os-primary)}
+.os-app-shortcut-preview-item small{
+  min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font:500 11px/15px var(--os-font);
+}
+.os-app-shortcut-settings>.os-help{margin-top:14px}
+.os-app-shortcut-actions{margin-top:18px;gap:10px}
+.os-app-shortcut-actions>.os-button{min-height:44px}
+@media(max-width:639px){
+  .os-app-shortcut-row{gap:9px;padding:10px 12px}
+  .os-app-shortcut-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+  .os-app-shortcut-actions>.os-button{width:100%;min-width:0;padding-inline:10px}
+}
+@media(max-width:359px){
+  .os-app-shortcut-row{grid-template-columns:19px 32px minmax(0,1fr);gap:8px;padding-inline:9px}
+  .os-app-shortcut-locked{grid-template-columns:19px 32px minmax(0,1fr) auto}
+  .os-app-shortcut-icon{width:32px;height:32px}
+  .os-app-shortcut-preview-item small{font-size:10px}
 }

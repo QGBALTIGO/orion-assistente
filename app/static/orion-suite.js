@@ -77,7 +77,15 @@
   const routeAliases=new Map([['acelerar','dashboard']]);
   const mainNav=[['dispositivos','phone'],['chatbot','bot'],['testar-chatbot','flask'],['templates','layers'],['mensagens-enviadas','fileCheck'],['diagnosticos','activity'],['campanhas','megaphone'],['programadas','calendarClock'],['massa','broadcast'],['enviar-mensagem','send'],['aquecimento','flame'],['evitar-banimento','shieldCheck'],['resolver-banimento','shieldAlert'],['extrator-contatos','usersSearch'],['adicionar-ao-grupo','userPlus'],['dashboard','dashboard'],['agenda','calendar'],['clientes','users'],['inbox','chat'],['servicos','scissors'],['funcionarios','badgeUser'],['financeiro','wallet'],['desempenho','chart'],['marketing','sparkles'],['site','globe'],['fidelizacao','gift'],['consultor','brain'],['plano','credit'],['configuracoes','settings']];
   const toolNavRoutes=['extrator-contatos','adicionar-ao-grupo','aquecimento','evitar-banimento','resolver-banimento'];
-  const appLayoutTabs=[['dashboard','home','Início'],['agenda','calendar','Agenda'],['servicos','scissors','Serviços'],['hours','clock','Horários'],['perfil','user','Perfil']];
+  const appShortcutChoices=[
+    ['dashboard','home','Início'],['agenda','calendar','Agenda'],['servicos','scissors','Serviços'],
+    ['hours','clock','Horários'],['clientes','users','Clientes'],['financeiro','wallet','Financeiro'],
+    ['inbox','chat','Conversas'],['funcionarios','badgeUser','Equipe'],['desempenho','chart','Desempenho'],
+    ['site','globe','Meu site'],['fidelizacao','gift','Fidelização'],
+    ['marketing','sparkles','Marketing'],['consultor','brain','Consultor IA']
+  ];
+  const appDefaultShortcuts=['dashboard','agenda','servicos','hours'];
+  const appProfileShortcut=['perfil','user','Perfil'];
   const legacyPages=new Set(['dispositivo','conversas','ai','empresa','catalogo','cadastros','member']);
   // The original Orion operator console is restricted to the authenticated
   // platform administrator. Business owners use the regular workspace.
@@ -185,7 +193,7 @@
     })();state.permissionPending=pending;return pending;
   }
   const defaultFilters=()=>({customerQuery:'',customerStatus:'active',customerRisk:30,customerOffset:0,agendaMode:'list',agendaDay:'',agendaTablet:false,agendaProfessional:'',agendaStatus:'all',agendaQuery:'',agendaOffset:0,financeKind:'',financeStatus:'',financeFiltersOpen:false,financeTab:'entries',performancePeriod:'month',performanceDay:'',performanceGroup:'day',staffTab:'professionals',staffStatus:'active',marketingTab:'overview',marketingQueueStatus:'all',loyaltyTab:'ranking',loyaltyOffset:0,couponStatus:'all',periodStart:'',periodEnd:'',settingsTab:'general',appHoursView:'hours',siteRequestStatus:'all',siteRequestIntent:'all',siteRequestQuery:'',siteRequestOffset:0,siteTab:'dashboard',helpQuery:'',helpCategory:'all',helpArticle:'',newsFilter:'all',notificationsUnread:false});
-  const state={bridge:{},mounted:false,epoch:0,load:0,route:'dashboard',tenantId:'',layoutMode:'classic',data:{},filters:defaultFilters(),dialog:null,busy:false,imageUploading:false,searchTimer:null,drawerTrigger:null,observer:null};
+  const state={bridge:{},mounted:false,epoch:0,load:0,route:'dashboard',tenantId:'',layoutMode:'classic',appShortcutDraft:null,data:{},filters:defaultFilters(),dialog:null,busy:false,imageUploading:false,searchTimer:null,drawerTrigger:null,observer:null};
   const rows = value => Array.isArray(value)?value:Array.isArray(value?.items)?value.items:[];
   const number = value => Number.isFinite(Number(value))?Number(value):0;
   const money = value => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(number(value)/100);
@@ -433,30 +441,124 @@
     try{const key=appLayoutKey();return key&&localStorage.getItem(key)==='app'?'app':'classic';}
     catch{return 'classic';}
   }
-  function appActiveTab(){
-    if(state.route==='configuracoes'&&state.filters.settingsTab==='hours')return 'hours';
-    return ['dashboard','agenda','servicos'].includes(state.route)?state.route:'perfil';
-  }
+  // Stored locally, scoped to the authenticated account and single company.
+  // Only server-authorized routes can ever become interactive shortcuts.
+  const appShortcutKey=()=>{
+    const key=appLayoutKey();return key?'orion-quick-tabs-v1:'+key.slice('orion-navigation-v1:'.length):null;
+  };
   const appTabAllowed=tab=>tab==='perfil'?appLayoutEnabled():
-    tab==='hours'?routePermitted('configuracoes')&&settingsTabAllowed('hours'):routePermitted(tab);
+    tab==='hours'?routePermitted('configuracoes')&&settingsTabAllowed('hours'):
+    appShortcutChoices.some(([route])=>route===tab)&&routePermitted(tab);
+  function savedAppShortcuts(){
+    try{
+      const key=appShortcutKey(),raw=key?localStorage.getItem(key):null;
+      if(raw===null||raw.length>1024)return null;
+      const chosen=JSON.parse(raw);
+      if(!Array.isArray(chosen)||chosen.length>4||new Set(chosen).size!==chosen.length||
+        chosen.some(route=>typeof route!=='string'||!appShortcutChoices.some(([name])=>name===route)))return null;
+      return chosen;
+    }catch{return null;}
+  }
+  function appShortcutSelection(){
+    const saved=savedAppShortcuts(),selected=saved===null?appDefaultShortcuts:saved;
+    return selected.filter((name,index)=>selected.indexOf(name)===index&&appTabAllowed(name)).slice(0,4);
+  }
+  function appLayoutTabs(){
+    return [...appShortcutSelection().map(route=>appShortcutChoices.find(item=>item[0]===route)),appProfileShortcut];
+  }
+  function appActiveTab(){
+    const route=state.route==='configuracoes'&&state.filters.settingsTab==='hours'?'hours':state.route;
+    return appLayoutTabs().some(([tab])=>tab===route)?route:'perfil';
+  }
   function updateAppDock(){
     const dock=$('osAppDock');if(!dock||dock.hidden)return;
-    const tab=appActiveTab(),index=appLayoutTabs.findIndex(item=>item[0]===tab);
+    const tabs=appLayoutTabs(),signature=tabs.map(([route])=>route).join('|');
+    if(dock.dataset.tabSignature!==signature){renderAppDock();return;}
+    const active=appActiveTab(),index=tabs.findIndex(([name])=>name===active);
     dock.style.setProperty('--os-app-active',String(Math.max(0,index)));
+    dock.style.setProperty('--os-app-offset',(Math.max(0,index)*100)+'%');
+    dock.style.setProperty('--os-app-y',(Math.max(0,index)*69)+'px');
     dock.querySelectorAll('[data-os-app-tab]').forEach(button=>{
-      if(button.dataset.osAppTab===tab)button.setAttribute('aria-current','page');
+      if(button.dataset.osAppTab===active)button.setAttribute('aria-current','page');
       else button.removeAttribute('aria-current');
       button.disabled=!appTabAllowed(button.dataset.osAppTab);
     });
   }
   function renderAppDock(){
     const dock=$('osAppDock');if(!dock)return;
-    if(!appLayoutEnabled()){dock.hidden=true;dock.replaceChildren();return;}
+    if(!appLayoutEnabled()){dock.hidden=true;dock.replaceChildren();delete dock.dataset.tabSignature;return;}
+    const tabs=appLayoutTabs();
     dock.hidden=false;
+    dock.dataset.tabSignature=tabs.map(([name])=>name).join('|');
+    dock.style.setProperty('--os-app-count',String(tabs.length));
+    dock.style.setProperty('--os-app-width',(100/tabs.length)+'%');
     dock.innerHTML='<div class="os-app-dock-rail"><span class="os-app-dock-indicator" aria-hidden="true"></span>'+
-      appLayoutTabs.map(([name,symbol,label])=>'<button type="button" class="os-app-dock-item" data-os-app-tab="'+name+'" aria-label="'+esc(label)+'"'+
+      tabs.map(([name,symbol,label])=>'<button type="button" class="os-app-dock-item" data-os-app-tab="'+name+'" aria-label="'+esc(label)+'"'+
         (appTabAllowed(name)?'':' disabled aria-disabled="true"')+'><span class="os-app-dock-symbol">'+icon(symbol)+'</span><span class="os-app-dock-label">'+esc(label)+'</span></button>').join('')+'</div>';
     updateAppDock();
+  }
+  function appShortcutDraft(){
+    if(!Array.isArray(state.appShortcutDraft)){
+      const saved=savedAppShortcuts(),selected=saved===null?appDefaultShortcuts:saved;
+      state.appShortcutDraft=selected.filter(name=>appTabAllowed(name)).slice(0,4);
+      while(state.appShortcutDraft.length<4)state.appShortcutDraft.push('');
+    }
+    return state.appShortcutDraft;
+  }
+  function appShortcutEditor(){
+    const draft=appShortcutDraft(),allowed=appShortcutChoices.filter(([name])=>appTabAllowed(name));
+    const preview=[...draft.filter(Boolean).map(name=>appShortcutChoices.find(item=>item[0]===name)),appProfileShortcut];
+    const fields=Array.from({length:4},(_,index)=>{
+      const selected=draft[index]||'',item=appShortcutChoices.find(entry=>entry[0]===selected);
+      return '<div class="os-app-shortcut-row"><span class="os-app-shortcut-number">'+(index+1)+'</span>'+
+        '<span class="os-app-shortcut-icon" aria-hidden="true">'+icon(item?.[1]||'plus')+'</span>'+
+        '<div class="os-app-shortcut-field"><label for="osAppShortcut'+index+'">Atalho '+(index+1)+'</label>'+
+        '<select id="osAppShortcut'+index+'" data-os-app-shortcut="'+index+'" aria-label="Escolher atalho '+(index+1)+'">'+
+        '<option value=""'+(selected?'':' selected')+'>Nenhum atalho</option>'+
+        allowed.map(([name,,label])=>'<option value="'+name+'"'+(name===selected?' selected':'')+'>'+esc(label)+'</option>').join('')+
+        '</select></div></div>';
+    }).join('');
+    return '<section class="os-card os-section-gap os-app-shortcut-settings" aria-labelledby="osAppShortcutsTitle">'+
+      '<div class="os-card-header"><div><h2 id="osAppShortcutsTitle">Atalhos do modo Aplicativo</h2>'+
+      '<p>Escolha até quatro atalhos. Perfil fica sempre na última posição.</p></div></div>'+
+      '<div class="os-app-shortcuts-list">'+fields+
+      '<div class="os-app-shortcut-row os-app-shortcut-locked"><span class="os-app-shortcut-number">5</span>'+
+      '<span class="os-app-shortcut-icon" aria-hidden="true">'+icon('user')+'</span>'+
+      '<div class="os-app-shortcut-fixed-copy"><strong>Perfil</strong><small>Atalho fixo</small></div>'+
+      '<span class="os-app-shortcut-lock" aria-label="Não pode ser removido">'+icon('lock')+'</span></div></div>'+
+      '<div class="os-app-shortcut-preview"><strong>Prévia da navegação</strong>'+
+      '<div class="os-app-shortcut-preview-items" style="--os-preview-count:'+preview.length+'">'+preview.map(([,symbol,label])=>
+        '<span class="os-app-shortcut-preview-item">'+icon(symbol)+'<small>'+esc(label)+'</small></span>').join('')+'</div></div>'+
+      '<p class="os-help">Personalização salva somente para esta conta neste dispositivo. As outras funções continuam em Perfil.</p>'+
+      '<div class="os-form-actions os-app-shortcut-actions">'+
+      button('Restaurar padrão','app-shortcuts-default','os-outline','refresh')+
+      button('Salvar atalhos','app-shortcuts-save','','check')+'</div></section>';
+  }
+  function changeAppShortcut(index,route){
+    if(!appLayoutEligible()||!Number.isInteger(index)||index<0||index>=4||
+      (route!==''&&!appTabAllowed(route)))return;
+    const draft=appShortcutDraft(),previous=draft[index],collision=route?draft.indexOf(route):-1;
+    if(previous===route)return;
+    if(collision>=0&&collision!==index)draft[collision]=previous;
+    draft[index]=route;
+    if(state.route==='configuracoes'&&state.filters.settingsTab==='appearance'){
+      renderSettings();$('osAppShortcut'+index)?.focus({preventScroll:true});
+    }
+  }
+  function saveAppShortcuts(){
+    if(!appLayoutEligible()||state.route!=='configuracoes'||state.filters.settingsTab!=='appearance')return;
+    const selected=appShortcutDraft().filter(Boolean);
+    if(selected.length>4||new Set(selected).size!==selected.length||selected.some(name=>!appTabAllowed(name))){
+      toast('Confira os atalhos antes de salvar.',true);return;
+    }
+    const key=appShortcutKey();
+    if(!key){toast('Não foi possível identificar a conta para salvar os atalhos.',true);return;}
+    try{localStorage.setItem(key,JSON.stringify(selected));}
+    catch{toast('Não foi possível salvar os atalhos neste dispositivo.',true);return;}
+    state.appShortcutDraft=null;
+    renderAppDock();renderSettings();
+    $('osPageBody')?.querySelector('[data-os-action=app-shortcuts-save]')?.focus({preventScroll:true});
+    toast('Atalhos salvos. A navegação foi atualizada.');
   }
   function applyAppLayout(preference=null){
     const previous=state.layoutMode;
@@ -483,15 +585,16 @@
   }
   function appProfileView(){
     const groups=[
-      ['Gestão do negócio',[['clientes','users'],['funcionarios','badgeUser'],['financeiro','wallet'],['desempenho','chart']]],
+      ['Agenda e operação',[['dashboard','home'],['agenda','calendar'],['servicos','scissors'],['hours','clock'],['clientes','users'],['funcionarios','badgeUser']]],
+      ['Gestão do negócio',[['financeiro','wallet'],['desempenho','chart']]],
       ['Atendimento e relacionamento',[['inbox','chat'],['fidelizacao','gift'],['marketing','sparkles'],['consultor','bot']]],
       ['Site e configurações',[['site','globe'],['configuracoes','settings'],['plano','credit']]],
       ['Ajuda e conta',[['novidades','bell'],['ajuda','book'],['member','user']]]
     ];
     const sections=groups.map(([heading,items],i)=>{
-      const allowed=items.filter(([route])=>routePermitted(route));if(!allowed.length)return '';
+      const allowed=items.filter(([route])=>route==='hours'?appTabAllowed('hours'):routePermitted(route));if(!allowed.length)return '';
       const rows=allowed.map(([route,symbol])=>
-        '<button type="button" class="os-app-profile-item" data-os-route="'+route+'"><span class="os-app-profile-item-icon">'+icon(symbol)+'</span><span>'+esc(routeNames[route])+'</span>'+icon('chevron')+'</button>').join('');
+        '<button type="button" class="os-app-profile-item" '+(route==='hours'?'data-os-app-tab="hours"':'data-os-route="'+route+'"')+'><span class="os-app-profile-item-icon">'+icon(symbol)+'</span><span>'+esc(route==='hours'?'Horários':routeNames[route])+'</span>'+icon('chevron')+'</button>').join('');
       const appearance=heading==='Site e configurações'&&settingsTabAllowed('appearance')?
         '<button type="button" class="os-app-profile-item" data-os-app-settings="appearance"><span class="os-app-profile-item-icon">'+icon('sun')+'</span><span>Aparência</span>'+icon('chevron')+'</button>':'';
       return '<section class="os-app-profile-group" aria-labelledby="osAppProfileGroup'+i+'"><h2 id="osAppProfileGroup'+i+'">'+esc(heading)+'</h2><div class="os-app-profile-items">'+rows+appearance+'</div></section>';
@@ -1942,6 +2045,7 @@
     if(tab==='appearance'&&appLayoutEligible())panel+='<section class="os-card os-section-gap"><div class="os-card-header"><div><h2>Layout de navegação</h2><p>Escolha como deseja usar o Orion neste navegador.</p></div></div><div class="os-app-layout-choices">'+
       [['classic','menu','Clássico','Menu lateral, como você já utiliza.'],['app','home','Aplicativo','Cinco atalhos e demais funções em Perfil.']].map(([value,symbol,label,description])=>
         '<button type="button" class="os-app-layout-option" data-os-layout="'+value+'" aria-pressed="'+(state.layoutMode===value)+'"><span class="os-app-layout-preview os-app-layout-preview-'+value+'"><i></i><b></b><b></b><b></b></span><span class="os-theme-caption">'+icon(symbol)+'<strong>'+label+'</strong></span><small>'+description+'</small></button>').join('')+'</div></section>';
+    if(tab==='appearance'&&appLayoutEligible())panel+=appShortcutEditor();
     if(tab==='ai'){const status=state.data.aiStatus;panel='<section class="os-card"><div class="os-card-header"><div><h2>Uso de IA</h2><p>Consulte suas gerações e a disponibilidade de hoje.</p></div></div>'+aiAvailability(status)+'<div class="os-stats">'+[[status?.used_today,'Utilizadas'],[status?.remaining_today,'Disponíveis'],[status?.daily_limit,'Limite diário']].map(([value,label])=>'<div class="os-stat"><strong>'+(status?number(value):'—')+'</strong><small>'+label+'</small></div>').join('')+'</div><p class="os-help os-section-gap">O limite é compartilhado pelas ferramentas de IA desta empresa e é renovado à meia-noite UTC. Consultar esta tela não consome gerações.</p><div class="os-form-actions">'+routeButton('Criar campanha','marketing','os-outline','sparkles')+routeButton('Conversar com o consultor','consultor','','bot')+'</div></section>';}
     if(tab==='notifications')panel='<section class="os-card"><div class="os-card-header"><div><h2>Notificações</h2><p>Acompanhe as mudanças nos agendamentos.</p></div>'+icon('bell')+'</div><p class="os-help">Confirmações, reagendamentos, cancelamentos, conclusões e ausências aparecem no sino do painel. A marcação de leitura é individual para cada conta.</p><div class="os-form-actions">'+button('Ver notificações','notifications','','bell',t?'':'disabled')+'</div></section><section class="os-card os-section-gap"><h3>Notificações no aplicativo</h3>'+ (state.bridge.user?.role==='admin'&&!state.bridge.user?.maintenance?.active?'<div id="orionPwaPushHost"></div>':'<p class="os-help">Em teste na conta de administrador. O sino do painel continua disponível.</p>')+'</section>';
     if(tab==='account')panel='<section class="os-card"><div class="os-card-header"><div><h2>Minha conta</h2><p>Seu acesso ao Orion.</p></div></div><div class="os-summary-row"><span>Nome</span><strong>'+esc(state.bridge.user?.name||$('sidebarAccountName')?.textContent||'Administrador')+'</strong></div><div class="os-summary-row"><span>E-mail</span><strong>'+esc(state.bridge.user?.email||'—')+'</strong></div><div class="os-summary-row"><span>Acesso</span><strong>'+esc(['support','admin'].includes(state.bridge.user?.role)?'Administração':t?.role==='viewer'?'Leitor':t?.role==='editor'?'Editor':'Proprietário')+'</strong></div><div class="os-form-actions">'+(!['support','admin'].includes(state.bridge.user?.role)?routeButton('Ver minha conta','member','os-outline','edit'):'')+button('Sair da conta','logout','os-outline','logout')+'</div></section>';
@@ -3663,6 +3767,13 @@
       if(box.closest('#osSiteForm'))box.closest('form').dataset.dirty='true';
       return;
     }
+    if(name==='app-shortcuts-default'){
+      if(!appLayoutEligible()||state.route!=='configuracoes'||state.filters.settingsTab!=='appearance')return;
+      state.appShortcutDraft=appDefaultShortcuts.filter(tab=>appTabAllowed(tab));
+      while(state.appShortcutDraft.length<4)state.appShortcutDraft.push('');
+      renderSettings();$('osAppShortcut0')?.focus({preventScroll:true});return;
+    }
+    if(name==='app-shortcuts-save'){saveAppShortcuts();return;}
     if(name==='menu'){drawer(true);return;}if(name==='close-menu'){drawer(false);return;}if(name==='collapse'){if(matchMedia('(max-width:767px)').matches){drawer(false);return;}const app=$('appView');app.classList.toggle('os-rail-collapsed');element.innerHTML=icon(app.classList.contains('os-rail-collapsed')?'chevron':'left');element.setAttribute('aria-label',app.classList.contains('os-rail-collapsed')?'Expandir menu':'Recolher menu');return;}
     if(name==='notifications'){if(state.busy)return;const show=!state.notificationsOpen;closeNotifications();if(show){state.notificationsOpen=true;$('osNotificationsPanel').classList.remove('hidden');$('osNotificationsToggle').setAttribute('aria-expanded','true');await loadNotifications();$('osNotificationsPanel').focus();}return;}
     if(name==='close-notifications'){closeNotifications(true);return;}
@@ -3977,6 +4088,10 @@
     if(el.id==='osAgendaDatePicker'){if(/^\d{4}-\d{2}-\d{2}$/.test(el.value)){state.filters.agendaDay=el.value;state.filters.agendaOffset=0;await open('agenda',{keepScroll:true});$('osAgendaDatePicker')?.focus();}return;}
     if(el.id==='osAgendaProfessional'||el.id==='osAgendaStatus'){state.filters[el.id==='osAgendaProfessional'?'agendaProfessional':'agendaStatus']=el.value;await applyAgendaFilters();return;}
     if(state.dialog?.action==='reschedule'&&el.name==='day'){await loadRescheduleAvailability();return;}
+    if(el.dataset.osAppShortcut!==undefined){
+      if(appLayoutEligible()&&state.route==='configuracoes'&&state.filters.settingsTab==='appearance')changeAppShortcut(Number(el.dataset.osAppShortcut),el.value);
+      return;
+    }
     if(el.id==='osSettingsSection'){state.filters.settingsTab=el.value;await open('configuracoes',{keepScroll:true});return;}
     if(['osSiteRequestStatus','osSiteRequestIntent'].includes(el.id)){await applySiteRequestFilters(el.closest('form'));return;}
     if(el.id==='osHoursProfessional'){
@@ -4070,7 +4185,7 @@
     const oldIdentity=state.bridge.user?.email+'|'+state.bridge.user?.role,oldTenant=state.tenantId,oldReady=state.bridge.businessContextReady,oldError=businessAccessError(),oldProfile=tenant()?.workspace_profile;state.bridge={...state.bridge,...bridge};
     state.tenantId=accountTenantId();
     const nextProfile=tenant()?.workspace_profile,profileChanged=!!nextProfile&&oldProfile!==nextProfile;
-    const identity=state.bridge.user?.email+'|'+state.bridge.user?.role;if(oldIdentity!==identity||(oldTenant&&oldTenant!==state.tenantId)||(oldProfile&&profileChanged)){window.OrionSubscriptionSentMessages?.clearContext();window.OrionSubscriptionGroupAdd?.clearContext();window.OrionSubscriptionGroupContacts?.clearContext();window.OrionSubscriptionDirectMessages?.clearContext();window.OrionSubscriptionBulkMessages?.clearContext();window.OrionSubscriptionScheduledMessages?.clearContext();window.OrionSubscriptionCampaigns?.clearContext();window.OrionSubscriptionDiagnostics?.clearContext();}if(oldIdentity!==identity||oldTenant!==state.tenantId||profileChanged){state.workspaceProfile=nextProfile||null;clearTimeout(state.permissionExpiryTimer);state.permissionExpiryTimer=null;state.permissionExpiryConsumed=null;state.entitlements=null;state.permissionPending=null;state.permissionRead=(state.permissionRead||0)+1;state.epoch++;state.imageUploading=false;clearSiteLookups();clearTimeout(state.searchTimer);clearTimeout(state.agendaSearchTimer);state.data={};state.filters=defaultFilters();applyAppLayout();closeNotifications();$('osNotificationsPanel')?.replaceChildren();$('osNotificationDot')?.classList.add('hidden');state.filters.agendaDay=dateKey();resetPeriod();closeDialog(true);}
+    const identity=state.bridge.user?.email+'|'+state.bridge.user?.role;if(oldIdentity!==identity||(oldTenant&&oldTenant!==state.tenantId)||(oldProfile&&profileChanged)){window.OrionSubscriptionSentMessages?.clearContext();window.OrionSubscriptionGroupAdd?.clearContext();window.OrionSubscriptionGroupContacts?.clearContext();window.OrionSubscriptionDirectMessages?.clearContext();window.OrionSubscriptionBulkMessages?.clearContext();window.OrionSubscriptionScheduledMessages?.clearContext();window.OrionSubscriptionCampaigns?.clearContext();window.OrionSubscriptionDiagnostics?.clearContext();}if(oldIdentity!==identity||oldTenant!==state.tenantId||profileChanged){state.workspaceProfile=nextProfile||null;clearTimeout(state.permissionExpiryTimer);state.permissionExpiryTimer=null;state.permissionExpiryConsumed=null;state.entitlements=null;state.permissionPending=null;state.permissionRead=(state.permissionRead||0)+1;state.epoch++;state.imageUploading=false;clearSiteLookups();clearTimeout(state.searchTimer);clearTimeout(state.agendaSearchTimer);state.data={};state.filters=defaultFilters();state.appShortcutDraft=null;applyAppLayout();closeNotifications();$('osNotificationsPanel')?.replaceChildren();$('osNotificationDot')?.classList.add('hidden');state.filters.agendaDay=dateKey();resetPeriod();closeDialog(true);}
     if(!state.mounted)return;renderSidebar();state.bridge.onWorkspaceProfile?.();if(oldIdentity!==identity||oldTenant!==state.tenantId||profileChanged||oldReady!==state.bridge.businessContextReady||oldError!==businessAccessError())void open(state.pendingRoute||state.route,{replace:true,force:true});
   }
   async function refreshLiveRoute(){
@@ -4093,6 +4208,6 @@
     state.observer=new MutationObserver(()=>applyThemeState());state.observer.observe(document.documentElement,{attributes:true,attributeFilter:['data-theme','data-theme-preference']});
     const desired=bridge?.initialRoute||'dashboard';void open(appPages.has(desired)?desired:'dashboard');
   }
-  function destroy(){window.OrionSubscriptionGroupAdd?.clearContext();window.OrionSubscriptionGroupContacts?.clearContext();window.OrionSubscriptionDirectMessages?.clearContext();window.OrionSubscriptionBulkMessages?.clearContext();window.OrionSubscriptionScheduledMessages?.clearContext();window.OrionSubscriptionCampaigns?.clearContext();window.OrionSubscriptionDiagnostics?.clearContext();window.OrionSubscriptionSentMessages?.clearContext();window.OrionSubscriptionGroupAdd?.unmount();window.OrionSubscriptionGroupContacts?.unmount();window.OrionSubscriptionDirectMessages?.unmount();window.OrionSubscriptionBulkMessages?.unmount();window.OrionSubscriptionScheduledMessages?.unmount();window.OrionSubscriptionCampaigns?.unmount();window.OrionSubscriptionDiagnostics?.unmount();window.OrionSubscriptionSentMessages?.unmount();window.OrionSubscriptionTemplates?.unmount();window.OrionSubscriptionChatbotTest?.unmount();window.OrionSubscriptionChatbot?.unmount();window.OrionSubscriptionDevices?.unmount();window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionCommunication?.unmount();window.OrionInbox?.unmount();state.mounted=false;clearInterval(state.clockTimer);clearInterval(state.liveRefreshTimer);state.epoch++;state.load++;state.busy=false;state.imageUploading=false;clearTimeout(state.searchTimer);clearTimeout(state.agendaSearchTimer);clearSiteLookups();closeDialog(true);state.data={};state.bridge={};state.tenantId='';state.workspaceProfile=null;state.filters=defaultFilters();applyAppLayout();closeNotifications();$('osNotificationsPanel')?.replaceChildren();$('osNotificationDot')?.classList.add('hidden');clearTimeout(state.permissionExpiryTimer);state.permissionExpiryTimer=null;if(state.permissionChannel){state.permissionChannel.onmessage=null;state.permissionChannel.close();state.permissionChannel=null;}state.permissionObserver?.disconnect();state.permissionObserver=null;window.removeEventListener('focus',refreshAccess);document.removeEventListener('visibilitychange',refreshAccess);window.removeEventListener('orion:plan-changed',refreshAccess);state.entitlements=null;state.permissionPending=null;state.observer?.disconnect();state.observer=null;document.removeEventListener('click',handleClick);document.removeEventListener('change',handleChange);document.removeEventListener('input',handleInput);document.removeEventListener('focusout',handleSiteFocusOut);document.removeEventListener('compositionend',handleSiteCompositionEnd);document.removeEventListener('submit',submitForm);document.removeEventListener('keydown',handleKeydown);document.removeEventListener('pointerdown',handleServicePointerDown);document.removeEventListener('pointermove',handleServicePointerMove);document.removeEventListener('pointerup',handleServicePointerUp);document.removeEventListener('pointercancel',clearServiceDrag);clearServiceDrag();$('osDialog')?.removeEventListener('cancel',onDialogCancel);$('page-suite')?.replaceChildren();$('osNav')?.replaceChildren();$('osSidebarContext')?.replaceChildren();$('osToastRegion')?.replaceChildren();$('appView')?.classList.remove('os-menu-open','os-tablet-mode');}
+  function destroy(){window.OrionSubscriptionGroupAdd?.clearContext();window.OrionSubscriptionGroupContacts?.clearContext();window.OrionSubscriptionDirectMessages?.clearContext();window.OrionSubscriptionBulkMessages?.clearContext();window.OrionSubscriptionScheduledMessages?.clearContext();window.OrionSubscriptionCampaigns?.clearContext();window.OrionSubscriptionDiagnostics?.clearContext();window.OrionSubscriptionSentMessages?.clearContext();window.OrionSubscriptionGroupAdd?.unmount();window.OrionSubscriptionGroupContacts?.unmount();window.OrionSubscriptionDirectMessages?.unmount();window.OrionSubscriptionBulkMessages?.unmount();window.OrionSubscriptionScheduledMessages?.unmount();window.OrionSubscriptionCampaigns?.unmount();window.OrionSubscriptionDiagnostics?.unmount();window.OrionSubscriptionSentMessages?.unmount();window.OrionSubscriptionTemplates?.unmount();window.OrionSubscriptionChatbotTest?.unmount();window.OrionSubscriptionChatbot?.unmount();window.OrionSubscriptionDevices?.unmount();window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionCommunication?.unmount();window.OrionInbox?.unmount();state.mounted=false;clearInterval(state.clockTimer);clearInterval(state.liveRefreshTimer);state.epoch++;state.load++;state.busy=false;state.imageUploading=false;clearTimeout(state.searchTimer);clearTimeout(state.agendaSearchTimer);clearSiteLookups();closeDialog(true);state.data={};state.bridge={};state.tenantId='';state.workspaceProfile=null;state.filters=defaultFilters();state.appShortcutDraft=null;applyAppLayout();closeNotifications();$('osNotificationsPanel')?.replaceChildren();$('osNotificationDot')?.classList.add('hidden');clearTimeout(state.permissionExpiryTimer);state.permissionExpiryTimer=null;if(state.permissionChannel){state.permissionChannel.onmessage=null;state.permissionChannel.close();state.permissionChannel=null;}state.permissionObserver?.disconnect();state.permissionObserver=null;window.removeEventListener('focus',refreshAccess);document.removeEventListener('visibilitychange',refreshAccess);window.removeEventListener('orion:plan-changed',refreshAccess);state.entitlements=null;state.permissionPending=null;state.observer?.disconnect();state.observer=null;document.removeEventListener('click',handleClick);document.removeEventListener('change',handleChange);document.removeEventListener('input',handleInput);document.removeEventListener('focusout',handleSiteFocusOut);document.removeEventListener('compositionend',handleSiteCompositionEnd);document.removeEventListener('submit',submitForm);document.removeEventListener('keydown',handleKeydown);document.removeEventListener('pointerdown',handleServicePointerDown);document.removeEventListener('pointermove',handleServicePointerMove);document.removeEventListener('pointerup',handleServicePointerUp);document.removeEventListener('pointercancel',clearServiceDrag);clearServiceDrag();$('osDialog')?.removeEventListener('cancel',onDialogCancel);$('page-suite')?.replaceChildren();$('osNav')?.replaceChildren();$('osSidebarContext')?.replaceChildren();$('osToastRegion')?.replaceChildren();$('appView')?.classList.remove('os-menu-open','os-tablet-mode');}
   window.OrionSuite=Object.freeze({mount,sync,destroy,open,legacyOpened,workspaceProfile});
 })();
