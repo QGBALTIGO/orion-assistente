@@ -31,7 +31,7 @@ FK_TABLES = {"appointments", "financial_entries", "loyalty_transactions",
              "loyalty_coupons", "automation_jobs", "inbox_customer_labels"}
 # 0053 adds the only extra approved customer FK. Existing one-off repairs must
 # fail closed when the source customer already owns an appointment series.
-OPTIONAL_FK_TABLES = {"appointment_series"}
+OPTIONAL_FK_TABLES = {"appointment_access", "appointment_reviews", "appointment_series"}
 EXPECTED_COUNTS = {"appointments": (18, 1), "financial_entries": (3, 1),
                    **{table: (0, 0) for table in FK_TABLES - {"appointments", "financial_entries"}}}
 CREATED = (datetime.fromisoformat("2026-10-17T17:09:31.606497+00:00"),
