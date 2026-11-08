@@ -1090,6 +1090,7 @@
   function appointmentDuration(a){return Math.max(0,Math.round((Date.parse(a.end_at)-Date.parse(a.start_at))/60000));}
   function appointmentHistoryOnly(a){return ['cancelled','no_show'].includes(a.status)||appointmentState(a)==='expired_hold';}
   const fixedWeekdays=['segunda-feira','terça-feira','quarta-feira','quinta-feira','sexta-feira','sábado','domingo'];
+  const fixedRepeatChoices=[['weekly1','Toda semana'],['weekly2','A cada 2 semanas'],['weekly4','A cada 4 semanas'],['monthly2','2 vezes por mês'],['monthly4','4 vezes por mês']];
   const bookingModes=[['regular','Agendamento normal'],['fixed','Cliente fixo (recorrente)'],['exceptional','Horário excepcional'],['retroactive','Registrar atendimento realizado']];
   function agendaFrame(readOnly=''){
     const f=state.filters,day=f.agendaDay||dateKey(),weekStart=shiftDay(day,-dayDate(day).getUTCDay()),can=writable();
@@ -1248,10 +1249,10 @@
   }
   function renderFixedCustomers(data){
     const q=state.filters.customerQuery.trim().toLocaleLowerCase('pt-BR');
-    const digits=q.replace(/\\D/g,'');
+    const digits=q.replace(/\D/g,'');
     const series=rows(data).filter(item=>!item.closed_at&&item.next_start_at&&Date.parse(item.next_start_at)>Date.now());
     const list=series.filter(item=>!q||[item.customer_name,item.customer_phone,item.services_label,item.professional_name].some(
-      text=>String(text||'').toLocaleLowerCase('pt-BR').includes(q))||(digits&&String(item.customer_phone||'').replace(/\\D/g,'').includes(digits)));
+      text=>String(text||'').toLocaleLowerCase('pt-BR').includes(q))||(digits&&String(item.customer_phone||'').replace(/\D/g,'').includes(digits)));
     const people=new Set(series.map(item=>item.customer_id)).size;
     const count=$('osCustomersCount');
     if(count)count.textContent=people+' '+(people===1?'cliente fixo':'clientes fixos');
@@ -3166,8 +3167,12 @@
   }
   async function showFixedClient(preset={}){
     if(!writable()){toast('Seu acesso permite apenas consultar a agenda.',true);return;}
-    const c=context();
-    if(!showDialog('fixed-client','Novo agendamento',loading('Carregando clientes, serviços e profissionais...'),{serviceIds:[...(preset.serviceIds||[])],customers:[],services:[],professionals:[],preview:null,previewKey:''},true))return;
+    const c=context(),existing=preset.editSeries||null,editing=!!existing;
+    const serviceIds=[...(preset.serviceIds||existing?.service_ids||[])];
+    const titleText=editing?'Editar cliente fixo':'Novo agendamento';
+    if(!showDialog('fixed-client',titleText,loading('Carregando clientes, serviços e profissionais...'),
+      {serviceIds,customers:[],services:[],professionals:[],preview:null,previewKey:'',
+       editSeriesId:editing?existing.id:null},true))return;
     $('osDialog').classList.add('os-booking-dialog');
     const d=state.dialog;
     try{
@@ -3178,26 +3183,40 @@
       d.customers=rows(customers);d.services=rows(services).filter(item=>item.active);
       d.professionals=rows(professionals).filter(p=>p.active&&p.accepts_appointments!==false);
       d.serviceIds=d.serviceIds.filter(id=>d.services.some(service=>service.id===id));
-      const first=preset.day||state.filters.agendaDay||dateKey(),weekday=(dayDate(first).getUTCDay()+6)%7;
-      const content=selectField('Tipo de registro','booking_mode',bookingModes,'fixed')+
-        '<p id="osBookingModeHelp" class="os-help">Escolha o dia, o horário e quantas vezes este cliente será atendido.</p>'+
-        '<p class="os-fixed-intro">O horário será reservado para o cliente nas próximas visitas. A recorrência utiliza as mesmas regras de serviços, expediente e disponibilidade da Agenda.</p>'+
-        '<div class="os-field"><label for="osFixedCustomer">Cliente</label><div class="os-search os-fixed-search">'+icon('search')+'<input id="osFixedCustomer" type="search" name="customer_name" placeholder="Buscar cliente ou digitar novo nome" required maxlength="120" autocomplete="off"></div><div id="osFixedCustomers" class="os-customer-results"></div></div>'+
-        field('WhatsApp do cliente','customer_phone','tel','','required placeholder="(67) 99999-9999"')+
+      const reference=existing?.next_start_at?dateKey(new Date(existing.next_start_at)):
+        preset.day||state.filters.agendaDay||dateKey();
+      const referenceWeekday=(dayDate(reference).getUTCDay()+6)%7;
+      const weekday=editing?Number(existing.weekday):referenceWeekday;
+      const first=editing?shiftDay(reference,(weekday-referenceWeekday+7)%7):reference;
+      const repetition=existing?.monthly_visits?'monthly'+existing.monthly_visits:
+        'weekly'+(existing?.interval_weeks||1);
+      const quantity=editing?Math.max(2,Math.min(52,number(existing.confirmed_count)||12)):12;
+      const content=(editing?'':selectField('Tipo de registro','booking_mode',bookingModes,'fixed'))+
+        '<p id="osBookingModeHelp" class="os-help">'+(editing?
+          'Altere apenas as próximas visitas. Os atendimentos anteriores e o financeiro são preservados.':
+          'Escolha o dia, o horário e quantas vezes este cliente será atendido.')+'</p>'+
+        '<div class="os-field"><label for="osFixedCustomer">Cliente</label><div class="os-search os-fixed-search">'+icon('search')+
+          '<input id="osFixedCustomer" type="search" name="customer_name" placeholder="Buscar cliente ou digitar novo nome" required maxlength="120" autocomplete="off"'+(editing?' readonly':'')+'></div><div id="osFixedCustomers" class="os-customer-results"></div></div>'+
+        field('WhatsApp do cliente','customer_phone','tel',existing?.customer_phone||'','required placeholder="(67) 99999-9999"'+(editing?' readonly':''))+
         '<fieldset class="os-fixed-service-fieldset"><legend>Serviço</legend><div class="os-service-options">'+(d.services.length?d.services.map(item=>
           '<button type="button" class="os-service-option" data-os-fixed-service="'+esc(item.id)+'" aria-pressed="'+d.serviceIds.includes(item.id)+'"><strong>'+esc(item.name)+'</strong><small>'+esc(priceLabel(item.price_cents,item.price_mode))+' · '+number(item.duration_min)+' min</small></button>').join(''):'<p class="os-help">Cadastre ao menos um serviço ativo.</p>')+'</div><p class="os-help" id="osFixedServiceSummary">Selecione o serviço deste atendimento.</p></fieldset>'+
-        selectField('Profissional','professional_id',[['','Selecionar profissional'],...d.professionals.map(p=>[p.id,p.name])],preset.professionalId||'','required')+
+        selectField('Profissional','professional_id',[['','Selecionar profissional'],...d.professionals.map(p=>[p.id,p.name])],existing?.professional_id||preset.professionalId||'','required')+
         '<div class="os-form-grid">'+selectField('Dia da semana','weekday',fixedWeekdays.map((name,i)=>[i,name]),weekday)+
         field('Primeiro atendimento','first_date','date',first,'required')+'</div>'+
-        '<div class="os-form-grid">'+field('Horário fixo','local_time','time','14:00','required')+
-        selectField('Repetição','interval_weeks',[[1,'Toda semana'],[2,'A cada 2 semanas'],[4,'A cada 4 semanas']],1)+'</div>'+
-        field('Quantidade de atendimentos','occurrence_count','number','12','required min="2" max="52" step="1"')+
-        '<p class="os-help">A contagem inclui o primeiro atendimento. Escolha entre 2 e 52 visitas, em um período de até 365 dias.</p>'+
+        '<div class="os-form-grid">'+field('Horário fixo','local_time','time',editing?String(existing.local_time).slice(0,5):'14:00','required')+
+        selectField('Frequência','repeat_pattern',fixedRepeatChoices,repetition)+'</div>'+
+        field('Quantidade de próximos atendimentos','occurrence_count','number',String(quantity),'required min="2" max="52" step="1"')+
+        '<p class="os-help">2 vezes por mês reserva semanas alternadas (1ª e 3ª ou 2ª e 4ª); 4 vezes por mês reserva até quatro semanas. A prévia confirma as datas.</p>'+
         '<div id="osFixedPreview" class="os-fixed-preview" aria-live="polite"><p class="os-help">Confira os dados e verifique as datas antes de confirmar.</p></div>';
-      $('osDialog').innerHTML='<button type="button" class="os-icon-button os-close" data-os-action="close-dialog" aria-label="Fechar">'+icon('close')+'</button><h2 id="osDialogTitle">Novo agendamento</h2>'+dialogForm('fixed-client',content,'Verificar horários');
+      $('osDialog').innerHTML='<button type="button" class="os-icon-button os-close" data-os-action="close-dialog" aria-label="Fechar">'+icon('close')+'</button><h2 id="osDialogTitle">'+esc(titleText)+'</h2>'+dialogForm('fixed-client',content,'Verificar horários');
       const fixedForm=$('osDialog').querySelector('[data-os-form=fixed-client]');
-      if(preset.customerName)fixedForm.elements.customer_name.value=preset.customerName;
-      if(preset.customerPhone)fixedForm.elements.customer_phone.value=preset.customerPhone;
+      if(editing){
+        fixedForm.elements.customer_name.value=existing.customer_name||'';
+        fixedForm.elements.customer_phone.value=existing.customer_phone||'';
+      }else{
+        if(preset.customerName)fixedForm.elements.customer_name.value=preset.customerName;
+        if(preset.customerPhone)fixedForm.elements.customer_phone.value=preset.customerPhone;
+      }
       resetFixedPreview();
       window.OrionFields?.refresh($('osDialog'));
       if(!d.services.length||!d.professionals.length)$('osDialog').querySelector('button[type=submit]').disabled=true;
@@ -3209,12 +3228,16 @@
     if(!d.serviceIds.length)throw Error('Selecione ao menos um serviço.');
     if(!f.first_date||!f.local_time||!f.professional_id)throw Error('Informe profissional, data inicial e horário.');
     if(!Number.isInteger(Number(f.occurrence_count))||Number(f.occurrence_count)<2||Number(f.occurrence_count)>52)throw Error('Escolha entre 2 e 52 atendimentos.');
+    const repetition=String(f.repeat_pattern||'weekly1');
+    if(!['weekly1','weekly2','weekly4','monthly2','monthly4'].includes(repetition))throw Error('Selecione a frequência.');
     return {customer_name:f.customer_name.trim(),customer_phone:phone,
       professional_id:f.professional_id,service_ids:[...d.serviceIds],
       first_date:f.first_date,weekday:Number(f.weekday),
-      local_time:f.local_time,interval_weeks:Number(f.interval_weeks),
+      local_time:f.local_time,interval_weeks:repetition.startsWith('weekly')?Number(repetition.slice(-1)):1,
+      monthly_visits:repetition.startsWith('monthly')?Number(repetition.slice(-1)):null,
       occurrence_count:Number(f.occurrence_count)};
   }
+
   function renderFixedPreview(d,preview){
     const target=$('osFixedPreview');if(!target)return;
     const okay=preview.conflict_count===0;
