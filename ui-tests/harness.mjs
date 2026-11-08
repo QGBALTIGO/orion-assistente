@@ -50,6 +50,7 @@ export async function makeSuite({ initialRoute = 'clientes', role = 'owner', res
   window.eval(await readFile(new URL('../app/static/orion-fields.js', import.meta.url), 'utf8'));
   window.OrionFields.bind(window.document);
   window.eval(await readFile(new URL('../app/static/orion-appointment-communications.js',import.meta.url),'utf8'));
+  window.eval(await readFile(new URL('../app/static/orion-subscription-dashboard.js', import.meta.url), 'utf8'));
   window.eval(await readFile(sourceURL, 'utf8'));
   window.OrionSuite.mount(bridge);
   const document = window.document;
