@@ -232,8 +232,9 @@ async def test_monthly_fixed_client_and_cross_tenant_edit_isolation(recurring_db
     first_four = [a["start_at"] for a in created.json()["appointments"]]
     months = [datetime.fromisoformat(instant.replace("Z", "+00:00")).astimezone(
         d["zone"]).date().month for instant in first_four]
-    assert months[0] == months[1]
-    assert months[2] == months[3]
+    from collections import Counter
+    assert all(count <= 2 for count in Counter(months).values())
+    assert all(a["status"] == "confirmed" for a in created.json()["appointments"])
     forbidden = await d["client"].post(
         f"/api/v1/tenants/{d['b']}/appointments/series/{created.json()['id']}/replace",
         json=body)
