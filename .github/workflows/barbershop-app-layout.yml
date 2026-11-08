@@ -1,4 +1,4 @@
-name: Orion - navegação Aplicativo barbearia
+name: Orion - navegação Aplicativo por nicho
 
 on:
   pull_request:
@@ -23,6 +23,8 @@ jobs:
         run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
       - name: Testar layouts e navegar rapidamente
         run: node --test ui-tests/barbershop-app-layout.test.mjs
+      - name: Testar personalizacao de assinaturas e 220 trocas rapidas
+        run: node --test ui-tests/subscription-app-layout.test.mjs
       - name: Regressao de agendamentos fixos
         run: node --test ui-tests/fixed-clients.test.mjs
   scope:
