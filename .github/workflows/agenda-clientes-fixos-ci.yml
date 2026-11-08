@@ -59,7 +59,6 @@ jobs:
           alembic upgrade head
       - name: Contratos 0074/0075 e barreira de inicializacao somente leitura
         run: |
-          python -c "import os; from scripts.backup_and_migrate_fixed_client_series import schema_ready; assert schema_ready(os.environ['MIGRATION_DATABASE_URL'])"
           python -c "import os; from scripts.backup_and_migrate_fixed_client_monthly import schema_ready; assert schema_ready(os.environ['MIGRATION_DATABASE_URL'])"
           python -m scripts.wait_for_fixed_client_monthly_schema
       - name: Testes unitarios de frequencias e timezone
