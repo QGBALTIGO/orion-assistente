@@ -3088,8 +3088,9 @@ html:has(.os-professional-history[open]){overflow:hidden}
 .os-fixed-date-row small{font-size:11px;color:var(--os-muted)}
 .os-fixed-date-row>.os-icon{width:16px;height:16px;color:var(--os-muted);flex-shrink:0}
 @media(max-width:720px){
-  .os-agenda-views{flex-wrap:wrap}
-  .os-agenda-views>button{flex:1 1 auto;min-width:0;padding:9px 10px}
+  /* Three appointment views stay aligned in one row on phones. */
+  .os-agenda-views{flex:1;flex-wrap:nowrap;min-width:0;gap:2px}
+  .os-agenda-views>button{flex:1 1 0;min-width:0;min-height:44px;gap:4px;padding:9px 4px;white-space:nowrap;font-size:12px}
   .os-fixed-card{grid-template-columns:40px minmax(0,1fr) 18px;gap:10px;padding:13px}
   .os-fixed-card-icon{width:40px;height:40px}
   .os-fixed-card-side{grid-column:2;align-items:flex-start;text-align:left}
@@ -3098,6 +3099,7 @@ html:has(.os-professional-history[open]){overflow:hidden}
   .os-fixed-appointment-link>.os-button{align-self:flex-start}
 }
 @media(max-width:420px){
+  .os-agenda-views>button{font-size:11px;gap:3px;padding-inline:2px}
   .os-main[data-os-current-route=agenda] .os-agenda-heading-actions{gap:6px}
   .os-main[data-os-current-route=agenda] .os-agenda-heading-actions .os-button{font-size:12px;padding-inline:10px}
   .os-fixed-card{grid-template-columns:34px minmax(0,1fr) 16px}
@@ -3414,3 +3416,5 @@ html:has(.os-professional-history[open]){overflow:hidden}
   .os-app-shortcut-icon{width:32px;height:32px}
   .os-app-shortcut-preview-item small{font-size:10px}
 }
+
+@media(max-width:359px){.os-agenda-views>button>.os-icon{display:none}}
