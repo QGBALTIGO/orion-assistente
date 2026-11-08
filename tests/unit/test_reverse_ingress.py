@@ -356,7 +356,7 @@ def test_clean_supervisor_checks_schema_once_before_api_or_ssh_children(environm
     events = []
 
     def probe(command, **kwargs):
-        assert command == [ingress.sys.executable, "-m", "scripts.wait_for_cakto_recovery_schema"]
+        assert command == [ingress.sys.executable, "-m", "scripts.wait_for_fixed_client_schema"]
         assert kwargs["check"] is True and kwargs["timeout"] == 95
         assert not set(kwargs["env"]) & (start_api.ONE_TIME_KEYS | start_api.SSH_KEYS)
         assert kwargs["env"]["APP_DATABASE_URL"] == "synthetic-runtime"
