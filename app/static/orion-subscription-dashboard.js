@@ -172,12 +172,12 @@
       {action: document.activeElement.getAttribute('data-sd-action'),
         route: document.activeElement.getAttribute('data-os-route'),
         period: document.activeElement.getAttribute('data-sd-period')} : null;
-    const devices = ready(view, 'devices') ? view.data.devices : null;
+    const devices = allowed(view, 'devices') && ready(view, 'devices') ? view.data.devices : null;
     const connected = devices ? devices.items.filter(item => item.status === 'connected').length : null;
     const total = devices ? devices.usage.limit : null;
-    const chatbot = ready(view, 'chatbot') ? view.data.chatbot : null;
-    const messages = ready(view, 'messages') ? view.data.messages : null;
-    const schedules = ready(view, 'schedules') ? view.data.schedules : null;
+    const chatbot = allowed(view, 'chatbot') && ready(view, 'chatbot') ? view.data.chatbot : null;
+    const messages = allowed(view, 'messages') && ready(view, 'messages') ? view.data.messages : null;
+    const schedules = allowed(view, 'schedules') && ready(view, 'schedules') ? view.data.schedules : null;
     const value = messages ? messages.counts[view.period === '30' ? 'last_30_days' : 'today'] : null;
     const periodHTML = allowed(view, 'messages') ?
       '<div class="os-subdash-period" role="group" aria-label="Período das tentativas de envio">' +
@@ -234,6 +234,7 @@
     if (current !== view || view.epoch !== epoch) return;
     specs.forEach(([key], index) => {
       const result = outcomes[index];
+      if (!allowed(view, key)) { delete view.data[key]; delete view.errors[key]; return; }
       if (result.status === 'fulfilled') {
         view.data[key] = result.value;
         delete view.errors[key];
@@ -265,7 +266,11 @@
     }
     if (current && current.host === options.host && current.tenantId === options.tenantId) {
       current.allowed = {...options.allowed};
+      for (const key of Object.keys(current.data)) {
+        if (!allowed(current, key)) { delete current.data[key]; delete current.errors[key]; }
+      }
       current.request = options.request;
+      render(current);
       return refresh(current);
     }
     unmount();
