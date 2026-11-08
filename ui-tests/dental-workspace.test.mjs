@@ -80,7 +80,7 @@ test('non-dental workspace keeps original navigation and barbershop service pres
 
 test('switching quickly between dental routes leaves a consistent single selection and no errors',async t=>{
   const h=await makeSuite({initialRoute:'dashboard',permissions:dentalPlan()});
-  t.after(()=>h.close();await flush());
+  t.after(()=>h.close());
   await flush();
   const routes=['dashboard','agenda','clientes','servicos','funcionarios','financeiro'];
   for(let i=0;i<96;i++)h.click('#osNav [data-os-route='+routes[i%routes.length]+']');
