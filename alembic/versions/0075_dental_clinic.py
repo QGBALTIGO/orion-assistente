@@ -200,7 +200,7 @@ def upgrade():
             # Even an inadvertent SQL read in another tenant API cannot retrieve
             # health records: the private transaction must also set a clinician.
             scope = (f"tenant_id={TENANT} AND EXISTS (SELECT 1 FROM public.dental_clinicians g "
-                     f"WHERE g.tenant_id=tenant_id AND g.account_id={ACTOR} AND g.enabled)")
+                     f"WHERE g.tenant_id=public.{table}.tenant_id AND g.account_id={ACTOR} AND g.enabled)")
         else:
             scope = f"tenant_id={TENANT}"
         op.execute(f"CREATE POLICY {table}_runtime ON public.{table} FOR ALL TO app_runtime "
