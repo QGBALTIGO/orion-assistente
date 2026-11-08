@@ -327,7 +327,7 @@ async def expire_holds(s: AsyncSession, tenant: UUID, professional: UUID, now: d
 
 async def history(s: AsyncSession, tenant: UUID, appointment: UUID, event: str, *, calendar: bool = True,
                   context: LifecycleActor | None = None, requested_by=None, reason=None, previous=None,
-                  notifications: bool = True):
+                  notifications: bool = True, bulk: bool = False):
     details = metadata(context, requested_by=requested_by, reason=reason, previous=previous)
     await s.execute(text("""
         INSERT INTO appointment_history (tenant_id,appointment_id,event,operator,details,occurred_at)
@@ -336,7 +336,7 @@ async def history(s: AsyncSession, tenant: UUID, appointment: UUID, event: str, 
            "operator": details["actor"]["role"], "details": json.dumps(details, ensure_ascii=False)})
     if notifications:
         from app.appointment_notifications import enqueue_event
-        await enqueue_event(s, tenant, appointment, event, details)
+        await enqueue_event(s, tenant, appointment, event, details, bulk=bulk)
     if calendar:
         from app.calendar_sync import enqueue_calendar_sync
         await enqueue_calendar_sync(s, tenant, appointment, event)
@@ -364,6 +364,7 @@ async def read_appointments(s: AsyncSession, tenant: UUID, item_ids: list[UUID])
         SELECT a.id, a.tenant_id, a.customer_id, a.professional_id, a.protocol,
                a.start_at, a.end_at, a.status, a.total_cents, a.hold_expires_at, a.updated_at,
                a.created_at, a.booking_mode, a.created_by_account_id, a.actual_duration_min,
+               a.series_id, a.series_index,
                a.original_total_cents, a.discount_cents,
                a.commission_percent_snapshot, a.commission_cents, a.commission_mode_snapshot,
                c.name AS customer_name, c.whatsapp_e164 AS customer_phone,

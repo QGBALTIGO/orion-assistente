@@ -3038,3 +3038,70 @@ html:has(.os-professional-history[open]){overflow:hidden}
     column-gap:9px;row-gap:4px;
   }
 }
+
+
+
+/* Cliente fixo — extensão dos componentes e tokens visuais da Agenda Orion. */
+.os-main[data-os-current-route=agenda] .os-fixed-intro{font:400 13px/21px var(--os-font);color:var(--os-muted);margin:12px 0 20px;max-width:760px}
+.os-fixed-list{display:grid;gap:10px;min-width:0}
+.os-fixed-card{width:100%;min-width:0;display:grid;grid-template-columns:44px minmax(0,1fr) minmax(125px,auto) 18px;gap:14px;align-items:center;border:1px solid var(--os-border);background:var(--os-card);color:var(--os-text);border-radius:14px;padding:16px;text-align:left;font:400 13px/20px var(--os-font);cursor:pointer}
+.os-fixed-card:hover{border-color:var(--os-primary);background:var(--os-tint)}
+.os-fixed-card:focus-visible,.os-fixed-date-row:focus-visible{outline:3px solid var(--os-primary);outline-offset:2px}
+.os-fixed-card-icon{width:44px;height:44px;border-radius:12px;background:var(--os-tint);color:var(--os-primary);display:grid;place-items:center}
+.os-fixed-card-icon .os-icon{width:21px;height:21px}
+.os-fixed-card-main,.os-fixed-card-side{display:flex;flex-direction:column;gap:3px;min-width:0}
+.os-fixed-card-main strong{font:600 15px/21px var(--os-display);overflow-wrap:anywhere}
+.os-fixed-card-main small,.os-fixed-card-side small{font-size:12px;line-height:18px;color:var(--os-muted);overflow-wrap:anywhere}
+.os-fixed-card-side{align-items:flex-end;text-align:right}
+.os-fixed-card-side .os-badge{margin-bottom:3px}
+.os-fixed-card>.os-icon{color:var(--os-muted);width:17px;height:17px}
+.os-fixed-service-fieldset{border:0;padding:0;margin:0;min-width:0}
+.os-fixed-service-fieldset legend{font:600 13px/19px var(--os-font);margin-bottom:10px;color:var(--os-text)}
+.os-fixed-service-fieldset #osFixedServiceSummary{margin:8px 0 0}
+.os-fixed-search{max-width:none}
+.os-fixed-preview{min-width:0;margin-top:8px}
+.os-fixed-preview-card{padding:14px;border:1px solid var(--os-border);border-radius:14px;background:var(--os-soft);min-width:0}
+.os-fixed-preview-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.os-fixed-preview-heading>strong{font:600 14px/20px var(--os-font);display:flex;align-items:center;gap:7px}
+.os-fixed-preview-heading>strong .os-icon{width:17px;height:17px;color:var(--os-primary)}
+.os-fixed-preview-card>.os-help{margin:12px 0 0}
+.os-fixed-occurrences{display:grid;gap:0;list-style:none;margin:12px 0 0;padding:0;max-height:224px;overflow:auto;border:1px solid var(--os-border);border-radius:10px;background:var(--os-card)}
+.os-fixed-occurrences>li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 14px;align-items:center;padding:9px 12px;border-bottom:1px solid var(--os-border);min-width:0;font-size:13px}
+.os-fixed-occurrences>li:last-child{border-bottom:0}
+.os-fixed-occurrences>li>span:first-child{display:flex;align-items:center;gap:7px;font-weight:500}
+.os-fixed-occurrences>li .os-icon{width:15px;height:15px;color:var(--os-primary);flex:0 0 15px}
+.os-fixed-occurrences>li small{grid-column:1/-1;font-size:11px;color:var(--os-muted)}
+.os-fixed-occurrences>li.os-fixed-conflict{background:var(--os-tint)}
+.os-fixed-occurrences>li.os-fixed-conflict .os-icon{color:var(--os-danger,var(--os-muted))}
+.os-fixed-appointment-link{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.os-fixed-appointment-link>div{min-width:0}
+.os-fixed-appointment-link strong{display:inline-flex;align-items:center;gap:6px;font-weight:600}
+.os-fixed-appointment-link strong>.os-icon{width:16px;height:16px;color:var(--os-primary)}
+.os-fixed-tag{display:inline-flex;gap:4px;align-items:center;font:600 11px/17px var(--os-font);color:var(--os-primary)}
+.os-fixed-tag .os-icon{width:14px;height:14px}
+.os-fixed-dates{display:grid;gap:0;max-height:390px;overflow:auto;border:1px solid var(--os-border);border-radius:12px}
+.os-fixed-date-row{display:flex;align-items:center;gap:12px;justify-content:space-between;min-width:0;padding:11px 12px;border:0;border-bottom:1px solid var(--os-border);background:var(--os-card);color:var(--os-text);text-align:left;cursor:pointer;font:400 13px/19px var(--os-font)}
+.os-fixed-date-row:last-child{border-bottom:0}
+.os-fixed-date-row:hover{background:var(--os-tint)}
+.os-fixed-date-row>span:first-child{min-width:0;flex:1;display:grid}
+.os-fixed-date-row strong{font-weight:600}
+.os-fixed-date-row small{font-size:11px;color:var(--os-muted)}
+.os-fixed-date-row>.os-icon{width:16px;height:16px;color:var(--os-muted);flex-shrink:0}
+@media(max-width:720px){
+  .os-agenda-views{flex-wrap:wrap}
+  .os-agenda-views>button{flex:1 1 auto;min-width:0;padding:9px 10px}
+  .os-fixed-card{grid-template-columns:40px minmax(0,1fr) 18px;gap:10px;padding:13px}
+  .os-fixed-card-icon{width:40px;height:40px}
+  .os-fixed-card-side{grid-column:2;align-items:flex-start;text-align:left}
+  .os-fixed-card>.os-icon{grid-column:3;grid-row:1}
+  .os-fixed-appointment-link{align-items:stretch;flex-direction:column}
+  .os-fixed-appointment-link>.os-button{align-self:flex-start}
+}
+@media(max-width:420px){
+  .os-main[data-os-current-route=agenda] .os-agenda-heading-actions{gap:6px}
+  .os-main[data-os-current-route=agenda] .os-agenda-heading-actions .os-button{font-size:12px;padding-inline:10px}
+  .os-fixed-card{grid-template-columns:34px minmax(0,1fr) 16px}
+  .os-fixed-card-icon{width:34px;height:34px}
+  .os-fixed-card-icon .os-icon{width:18px;height:18px}
+  .os-fixed-occurrences>li{grid-template-columns:minmax(0,1fr) auto;gap:4px}
+}

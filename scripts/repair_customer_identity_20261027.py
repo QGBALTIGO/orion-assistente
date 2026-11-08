@@ -36,8 +36,9 @@ FK_TABLES = {"appointments", "financial_entries", "loyalty_transactions",
 # historical repair. The operational CLI remains pinned to SCHEMA above.
 NEW_FK_TABLES = {"appointment_access", "appointment_reviews"}
 SCOPED_CONSENT_FK_TABLES = {"appointment_message_consents"}
+OPTIONAL_FK_TABLES = {"appointment_series"}
 EXPECTED_COUNTS = {"appointments": (18, 1), "financial_entries": (3, 1),
-                   **{table: (0, 0) for table in (FK_TABLES | NEW_FK_TABLES | SCOPED_CONSENT_FK_TABLES)
+                   **{table: (0, 0) for table in (FK_TABLES | NEW_FK_TABLES | SCOPED_CONSENT_FK_TABLES | OPTIONAL_FK_TABLES)
                       - {"appointments", "financial_entries"}}}
 CREATED = (datetime.fromisoformat("2026-10-17T17:09:31.606497+00:00"),
            datetime.fromisoformat("2026-10-26T20:43:31.324782+00:00"))
@@ -90,7 +91,8 @@ def verify_foreign_keys(db):
         WHERE k.contype='f' AND k.confrelid='public.customers'::regclass""", {})
     tables = {row["table_name"] for row in actual}
     allowed = (FK_TABLES, FK_TABLES | NEW_FK_TABLES,
-               FK_TABLES | NEW_FK_TABLES | SCOPED_CONSENT_FK_TABLES)
+               FK_TABLES | NEW_FK_TABLES | SCOPED_CONSENT_FK_TABLES,
+               FK_TABLES | NEW_FK_TABLES | SCOPED_CONSENT_FK_TABLES | OPTIONAL_FK_TABLES)
     require(any(len(actual) == len(group) and tables == group for group in allowed)
             and all(row["namespace"] == "public" and row["columns"] == ["tenant_id", "customer_id"] for row in actual),
             "customer_foreign_keys_changed")
@@ -131,7 +133,7 @@ def people(state, scope):
 def counts(state, scope):
     return {table: tuple(sum(row["customer_id"] == identity for row in state[table])
                          for identity in (scope.primary, scope.secondary))
-            for table in sorted((FK_TABLES | NEW_FK_TABLES | SCOPED_CONSENT_FK_TABLES) & state.keys())}
+            for table in sorted((FK_TABLES | NEW_FK_TABLES | SCOPED_CONSENT_FK_TABLES | OPTIONAL_FK_TABLES) & state.keys())}
 
 
 def validate_before(state, scope):

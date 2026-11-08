@@ -73,7 +73,7 @@ async def management_db(monkeypatch):
         async with migrator.begin() as db:
             for table in ("commission_advance_allocations", "commission_settlements", "loyalty_transactions", "loyalty_coupons", "financial_entries", "loyalty_rules", "professional_goals", "management_requests",
                           "management_site_preferences", "campaigns", "appointment_history", "appointment_items", "calendar_outbox",
-                          "appointments", "customers", "working_breaks", "working_hours", "professional_services", "services", "professionals", "tenant_audit", "tenant_memberships"):
+                          "appointments", "appointment_series", "customers", "working_breaks", "working_hours", "professional_services", "services", "professionals", "tenant_audit", "tenant_memberships"):
                 await db.execute(text(f"DELETE FROM {table} WHERE tenant_id IN (:a,:b)"), {"a": a, "b": b})
             await clear_fixture_plans(db,(a,b),(plan_admin,))
             await db.execute(text("DELETE FROM tenants WHERE id IN (:a,:b)"), {"a": a, "b": b})
