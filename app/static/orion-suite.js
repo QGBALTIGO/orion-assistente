@@ -1235,10 +1235,10 @@
     state.data.customers=data;state.data.activeCustomers=number((active||data).total);renderCustomers(data);
   }
   function renderCustomers(data){
-    const list=rows(data),f=state.filters,count=$('osCustomersCount');if(count)count.textContent=state.data.activeCustomers+' '+(state.data.activeCustomers===1?'ativo':'ativos');
-    if(!list.length){const message=f.customerQuery?'Nenhum cliente encontrado.':f.customerStatus==='at_risk'?'Nenhum cliente em risco neste período.':f.customerStatus==='inactive'?'Nenhum cliente inativo.':f.customerStatus==='birthday'?'Nenhum aniversariante nesta semana.':'Nenhum cliente ainda. Cadastre o primeiro!';bodyHTML('<div class="os-client-empty">'+esc(message)+'</div>');return;}
+    const list=rows(data),f=state.filters,count=$('osCustomersCount');if(count)count.textContent=state.data.activeCustomers+' '+(dentalWorkspace()?(state.data.activeCustomers===1?'paciente ativo':'pacientes ativos'):(state.data.activeCustomers===1?'ativo':'ativos'));
+    if(!list.length){const message=dentalWorkspace()?(f.customerQuery?'Nenhum paciente encontrado.':f.customerStatus==='inactive'?'Nenhum paciente inativo.':'Nenhum paciente cadastrado. Cadastre o primeiro!'):f.customerQuery?'Nenhum cliente encontrado.':f.customerStatus==='at_risk'?'Nenhum cliente em risco neste período.':f.customerStatus==='inactive'?'Nenhum cliente inativo.':f.customerStatus==='birthday'?'Nenhum aniversariante nesta semana.':'Nenhum cliente ainda. Cadastre o primeiro!';bodyHTML('<div class="os-client-empty">'+esc(message)+'</div>');return;}
     const actions=c=>'<button type="button" class="os-icon-button" data-os-customer="'+esc(c.id)+'" aria-label="'+(writable()?'Editar ':'Ver ')+esc(customerDisplayName(c))+'">'+icon('edit')+'</button>'+(writable()?'<button type="button" class="os-icon-button" data-os-customer-toggle="'+esc(c.id)+'" aria-label="'+(c.active?'Inativar ':'Ativar ')+esc(customerDisplayName(c))+'">'+icon(c.active?'block':'check')+'</button><button type="button" class="os-icon-button os-negative" data-os-customer-delete="'+esc(c.id)+'" aria-label="Excluir '+esc(customerDisplayName(c))+'">'+icon('trash')+'</button>':'');
-    let html='<p class="os-help os-only-mobile" style="margin-bottom:12px">'+(writable()?'Deslize para a esquerda para editar, inativar ou excluir.':'Toque em um cliente para consultar seus dados.')+'</p><div class="os-card os-no-pad os-hide-mobile"><div class="os-table-scroll"><table class="os-table"><thead><tr><th>Cliente</th><th>WhatsApp</th><th>Última visita</th><th>Atendimentos</th><th><span class="os-sr-only">Ações</span></th></tr></thead><tbody>'+list.map(c=>'<tr><td><div class="os-person"><span class="os-avatar">'+customerAvatar(c)+'</span><div><strong>'+esc(customerDisplayName(c))+'</strong><small>'+esc(c.email||c.instagram||'')+'</small>'+
+    let html='<p class="os-help os-only-mobile" style="margin-bottom:12px">'+(writable()?'Deslize para a esquerda para editar, inativar ou excluir.':'Toque em um cliente para consultar seus dados.')+'</p><div class="os-card os-no-pad os-hide-mobile"><div class="os-table-scroll"><table class="os-table"><thead><tr><th>'+(dentalWorkspace()?'Paciente':'Cliente')+'</th><th>WhatsApp</th><th>Última visita</th><th>Atendimentos</th><th><span class="os-sr-only">Ações</span></th></tr></thead><tbody>'+list.map(c=>'<tr><td><div class="os-person"><span class="os-avatar">'+customerAvatar(c)+'</span><div><strong>'+esc(customerDisplayName(c))+'</strong><small>'+esc(c.email||c.instagram||'')+'</small>'+
       (c.created_at?'<small class="os-client-row-created">Cadastro: '+esc(customerRegisteredAt(c.created_at))+'</small>':'')+'</div></div></td><td>'+esc(c.phone||'—')+'</td><td>'+fmtDate(c.last_visit_at)+'</td><td>'+number(c.completed_appointments??c.total_appointments)+'</td><td><div class="os-table-actions">'+actions(c)+'</div></td></tr>').join('')+'</tbody></table></div></div>';
     html+='<div class="os-mobile-customers os-only-mobile">'+list.map(c=>{
       const name=customerMobileName(c),whatsapp=customerWhatsappLink(c.phone);
@@ -2350,8 +2350,12 @@
     '</div>';
   }
   function customerNotesField(value){
-    return '<div class="os-field os-client-field"><label for="osField-notes">Observações</label>'+
-      '<div class="os-client-textarea"><textarea id="osField-notes" name="notes" maxlength="2000" placeholder="Preferências, alergias e informações importantes...">'+esc(value||'')+'</textarea></div></div>';
+    const dental=dentalWorkspace();
+    return '<div class="os-field os-client-field"><label for="osField-notes">'+(dental?'Observações administrativas':'Observações')+'</label>'+
+      '<div class="os-client-textarea"><textarea id="osField-notes" name="notes" maxlength="2000" placeholder="'+
+      (dental?'Ex.: preferência de contato ou horário':'Preferências, alergias e informações importantes...')+'">'+esc(value||'')+'</textarea></div>'+
+      (dental?'<p class="os-client-hint">Não registre sintomas, diagnósticos, tratamentos ou exames aqui. Informações clínicas precisam de prontuário protegido.</p>':'')+
+      '</div>';
   }
   // created_at is generated once by PostgreSQL for manual, WhatsApp and site records.
   function customerRegisteredAt(value){
@@ -2445,11 +2449,30 @@
       }
     }finally{if(state.dialog===d)d.historyLoading=false;}
   }
+  function dentalPatientJourney(record){
+    if(!dentalWorkspace()||!record)return '';
+    // CRM-only numbers. Do not infer clinical progress or diagnoses from visits.
+    const appointments=number(record.total_appointments);
+    const completed=number(record.completed_appointments);
+    const last=record.last_visit_at&&!Number.isNaN(Date.parse(record.last_visit_at))?
+      fmtDate(dateKey(new Date(record.last_visit_at))):'Sem atendimento concluído';
+    return '<details class="os-client-more os-dental-journey" aria-label="Jornada administrativa do paciente">'+
+      '<summary class="os-client-more-toggle"><span class="os-client-more-icon" aria-hidden="true">'+
+      icon('plus')+'<svg class="os-icon os-client-more-minus" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12h14"/></svg></span><span class="os-client-more-text"><span class="os-client-more-label-collapsed">Jornada do paciente</span>'+
+      '<span class="os-client-more-label-expanded">Jornada do paciente</span>'+
+      '<small>Consultas e atendimentos registrados no Orion</small></span></summary>'+
+      '<div class="os-client-extra-fields"><div class="os-stats os-client-stats">'+
+      '<div class="os-stat"><strong>'+appointments+'</strong><small>Agendamentos registrados</small></div>'+
+      '<div class="os-stat"><strong>'+completed+'</strong><small>Atendimentos concluídos</small></div>'+
+      '<div class="os-stat"><strong>'+money(record.total_spent_cents)+'</strong><small>Valor dos atendimentos</small></div>'+
+      '</div><p class="os-client-hint">Último atendimento: '+esc(last)+'. Dados administrativos provenientes da agenda e do financeiro do Orion, não de um prontuário clínico.</p></div></details>';
+  }
   function showCustomer(record=null){
     const c=record||{};
     const hasExtra=!!(record&&(c.email||c.birth_date||c.birth_day||c.neighborhood||c.city));
+    const expandExtra=dentalWorkspace()||hasExtra;
     const legacyBirthday=!c.birth_date&&c.birth_month&&c.birth_day;
-    const extras='<details class="os-client-more"'+(hasExtra?' open':'')+'>'+
+    const extras='<details class="os-client-more"'+(expandExtra?' open':'')+'>'+
       '<summary class="os-client-more-toggle"><span class="os-client-more-icon" aria-hidden="true">'+
         icon('plus')+'<svg class="os-icon os-client-more-minus" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12h14"/></svg></span>'+
       '<span class="os-client-more-text"><span class="os-client-more-label-collapsed">Mais dados</span><span class="os-client-more-label-expanded">Menos dados</span><small>(e-mail, aniversário, endereço)</small></span></summary>'+
@@ -2463,17 +2486,17 @@
         '</div>'+
       '</div></details>';
     let content='<div class="os-client-form">'+
-      '<p class="os-client-hint os-client-intro">Somente o nome é obrigatório.</p>'+
-      customerInputField('Nome completo *','name','text',c.name||'','userPlus','required maxlength="120" autocomplete="name" placeholder="Ex.: João Silva"')+
+      '<p class="os-client-hint os-client-intro">'+(dentalWorkspace()?'Cadastro administrativo. Prontuários e dados clínicos não devem ser registrados nesta ficha.':'Somente o nome é obrigatório.')+'</p>'+
+      customerInputField(dentalWorkspace()?'Nome do paciente *':'Nome completo *','name','text',c.name||'','userPlus','required maxlength="120" autocomplete="name" placeholder="Ex.: João Silva"')+
       customerInputField('WhatsApp','phone','tel',c.phone||'','phone','autocomplete="tel" placeholder="(11) 91234-5678"','Usado para identificar o cliente nos agendamentos.')+
       customerInputField('Instagram','instagram','text',c.instagram||'','instagram','maxlength="120" placeholder="@usuario"')+
       extras+customerNotesField(c.notes||'')+
       (record?'<p class="os-client-created"><span class="os-client-created-icon" aria-hidden="true">'+icon('clock')+'</span>'+
         '<span>Cadastrado em '+esc(customerRegisteredAt(c.created_at))+'</span></p>':'')+'</div>'+
-      (record?checkField('Cliente ativo','active',c.active!==false):'');
+      (record?checkField(dentalWorkspace()?'Paciente ativo':'Cliente ativo','active',c.active!==false):'');
     if(record)content+='<div class="os-stats os-client-stats"><div class="os-stat os-client-stat-total"><strong>'+money(c.total_spent_cents)+'</strong><small>Total atendido</small></div><div class="os-stat"><strong>'+number(c.total_appointments)+'</strong><small>Agendamentos</small></div><div class="os-stat"><strong>'+number(c.loyalty_points)+'</strong><small>Pontos</small></div></div>';
-    const afterFields=record?customerHistoryPanel(c):'';
-    if(!showDialog('customer',record?(writable()?'Editar cliente':'Cliente'):'Novo cliente',
+    const afterFields=record?dentalPatientJourney(c)+customerHistoryPanel(c):'';
+    if(!showDialog('customer',record?(dentalWorkspace()?(writable()?'Editar paciente':'Paciente'):(writable()?'Editar cliente':'Cliente')):(dentalWorkspace()?'Novo paciente':'Novo cliente'),
       dialogForm('customer',content,record?'Salvar alterações':'Cadastrar cliente',
         record&&writable()?button('Excluir','delete-customer','os-ghost','trash'):'',afterFields),{record}))return;
     if(record){

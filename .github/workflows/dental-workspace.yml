@@ -7,6 +7,7 @@ on:
       - 'app/static/orion-suite.css'
       - 'tests/unit/test_dental_workspace_context.py'
       - 'ui-tests/dental-workspace.test.mjs'
+      - 'ui-tests/dental-patient-journey.test.mjs'
       - '.github/workflows/dental-workspace.yml'
 
 permissions:
@@ -25,7 +26,7 @@ jobs:
       - name: Preparar DOM
         run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
       - name: Navegacao, permissoes e regressao por nicho
-        run: node --test ui-tests/dental-workspace.test.mjs
+        run: node --test ui-tests/dental-workspace.test.mjs ui-tests/dental-patient-journey.test.mjs ui-tests/customer-form.test.mjs ui-tests/customer-history.test.mjs
   dental-context:
     runs-on: ubuntu-24.04
     steps:
