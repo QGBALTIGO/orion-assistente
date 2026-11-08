@@ -146,7 +146,7 @@ test('subscription shortcuts can be customized, reordered, persisted and restore
   const options=[...h.document.querySelector('[data-os-app-shortcut="0"]').options].map(x=>x.value);
   assert.ok(options.includes('campanhas')&&options.includes('dispositivos')&&options.includes('programadas'));
   assert.equal(options.includes('financeiro'),false);
-  assert.equal(options.includes('dashboard'),false);
+  assert.equal(options.includes('dashboard'),true);
   assert.equal(options.includes('perfil'),false);
   await editShortcut(h,0,'diagnosticos'); // swaps with fourth
   await editShortcut(h,1,'campanhas');
