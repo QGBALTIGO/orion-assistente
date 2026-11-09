@@ -115,13 +115,18 @@
        '<p class="os-dental-empty">Nenhum paciente encontrado.</p>')+'</div></div>';
   }
   function patientCreate(){
-    return '<div class="os-dental-card os-dental-space"><h2 class="os-dental-title">Novo paciente</h2>'+
+    const editing=state.editingPatient&&state.patient,record=editing?state.patient:{};
+    return '<div class="os-dental-card os-dental-space"><h2 class="os-dental-title">'+
+      (editing?'Editar paciente':'Novo paciente')+'</h2>'+
       info('Cadastre a pessoa atendida, não apenas o número de WhatsApp. O vínculo do responsável não une prontuários.')+
-      '<form data-dental-form="patient" class="os-dental-space">'+field('Nome completo do paciente','name','text','','required maxlength="120"')+
-      field('Data de nascimento','birth_date','date')+field('Telefone de contato (opcional)','contact_phone','tel','','maxlength="30"')+
-      field('Nome do responsável (opcional)','guardian_name','text','','maxlength="120"')+
-      field('Telefone do responsável (opcional)','guardian_phone','tel','','maxlength="30"')+
-      '<div class="os-dental-controls">'+button('Cancelar','cancel-patient')+'<button type="submit" class="os-button">Cadastrar paciente</button></div></form></div>';
+      '<form data-dental-form="patient" class="os-dental-space">'+
+      field('Nome completo do paciente','name','text',record.name||'','required maxlength="120"')+
+      field('Data de nascimento','birth_date','date',dateInput(record.birth_date))+
+      field('Telefone de contato (opcional)','contact_phone','tel',record.contact_phone||'','maxlength="30"')+
+      field('Nome do responsável (opcional)','guardian_name','text',record.guardian_name||'','maxlength="120"')+
+      field('Telefone do responsável (opcional)','guardian_phone','tel',record.guardian_phone||'','maxlength="30"')+
+      '<div class="os-dental-controls">'+button('Cancelar','cancel-patient')+
+      '<button type="submit" class="os-button">'+(editing?'Salvar alterações':'Cadastrar paciente')+'</button></div></form></div>';
   }
   function toothGrid(){
     const values=state.dentition==='permanent'?adult:state.dentition==='deciduous'?child:adult.concat(child);
@@ -235,7 +240,8 @@
        '<div><p class="os-dental-kicker">Paciente da clínica</p><h2 class="os-dental-title">'+esc(state.patient.name)+'</h2>'+
        '<p class="os-dental-muted">Nascimento: '+esc(dateInput(state.patient.birth_date)||'Não informado')+
        ' · Responsável: '+esc(state.patient.guardian_name||'Não informado')+'</p></div>'+
-       button('Atualizar','refresh-patient')+'</div>'+
+       '<div class="os-dental-actions">'+button('Editar cadastro','edit-patient')+
+       button('Atualizar','refresh-patient')+'</div></div>'+
        info('As anotações são protegidas e possuem autoria, mas não estão homologadas como documentos assinados digitalmente.')+'</div>'+
        '<div class="os-dental-card"><nav class="os-dental-tabs" aria-label="Áreas odontológicas">'+
        topics.map(([kind,label])=>'<button type="button" class="os-pill-tab" data-dental-tab="'+kind+'" role="tab" aria-selected="'+String(state.tab===kind)+'">'+esc(label)+'</button>').join('')+'</nav>'+
@@ -263,7 +269,7 @@
     else if(state.section==='supplies')html+=supplyManager();
     else if(state.section==='patients')html+=
        '<div class="os-dental-grid">'+patientList()+'<div class="os-dental-space">'+
-       (state.creatingPatient?patientCreate():patientPanel())+'</div></div>';
+       (state.creatingPatient||state.editingPatient?patientCreate():patientPanel())+'</div></div>';
     html+='</div>';
     host.innerHTML=html;
   }
@@ -387,9 +393,11 @@
       if(section==='rooms'||section==='supplies')await loadManagers(section);
       return;
     }
-    if(act==='new-patient'){state.creatingPatient=true;render();return;}
-    if(act==='cancel-patient'){state.creatingPatient=false;render();return;}
-    if(act==='select-patient'&&idRe.test(btn.dataset.id||'')){state.creatingPatient=false;await loadPatient(btn.dataset.id);return;}
+    if(act==='new-patient'){state.creatingPatient=true;state.editingPatient=false;render();return;}
+    if(act==='edit-patient'&&state.patient){state.editingPatient=true;state.creatingPatient=false;render();return;}
+    if(act==='cancel-patient'){state.creatingPatient=false;state.editingPatient=false;render();return;}
+    if(act==='select-patient'&&idRe.test(btn.dataset.id||'')){
+      state.creatingPatient=false;state.editingPatient=false;await loadPatient(btn.dataset.id);return;}
     if(act==='refresh-patient'&&state.patient){await loadPatient(state.patient.id);return;}
     if(act==='add-finding'){addFinding();return;}
     if(act==='add-period'){addPeriod();return;}
@@ -420,11 +428,21 @@
     if(kind==='patient')return invoke(async()=>{
       const payload={name:v.name,birth_date:v.birth_date||null,contact_phone:v.contact_phone||null,
         guardian_name:v.guardian_name||null,guardian_phone:v.guardian_phone||null};
-      const created=await api('/patients','POST',payload);
-      state.creatingPatient=false;state.q='';
+      const editing=state.editingPatient&&state.patient;
+      if(editing){
+        await api('/patients/'+state.patient.id,'PATCH',{
+          ...payload,customer_id:state.patient.customer_id||null,
+          expected_version:state.patient.version
+        });
+      }else{
+        const created=await api('/patients','POST',payload);
+        state.patient={...created};
+      }
+      const updatedId=state.patient?.id;
+      state.creatingPatient=false;state.editingPatient=false;state.q='';
       const res=await api('/patients?limit=100');state.patients=res.items||[];
-      await loadPatient(created.id);
-    },'Paciente cadastrado.');
+      if(updatedId)await loadPatient(updatedId);
+    },state.editingPatient?'Cadastro atualizado.':'Paciente cadastrado.');
     if(kind==='record'){
       if(!patient)return;
       const payload={kind:form.dataset.kind,content:recordPayload(form),entry_key:crypto.randomUUID()};
@@ -524,7 +542,8 @@
       professionals:[],patients:[],patient:null,records:[],exams:[],rooms:[],appointments:[],
       roomDay:localToday(),roomZone:'',supplies:[],q:'',
       selectedTooth:11,dentition:'permanent',tab:'anamnesis',section:'patients',findings:[],
-      periodontal:[],stages:[],creatingPatient:false,error:'',success:'',loading:false,submitting:false});
+      periodontal:[],stages:[],creatingPatient:false,editingPatient:false,
+      error:'',success:'',loading:false,submitting:false});
   }
   window.OrionDentalClinic=Object.freeze({mount,unmount});
 })();
