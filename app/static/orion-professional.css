@@ -34,3 +34,39 @@ h1,h2,h3{font-family:Outfit,Figtree,sans-serif;line-height:1.2;letter-spacing:-.
 #modalExtraConflict p{margin:0 0 10px}#modalExtraConflict .service-choice{border:0;padding:0;align-items:flex-start}
 #modalExtraConflict input{flex-shrink:0;margin-top:3px}
 @media(max-width:390px){.dialog .field-row{grid-template-columns:1fr}.dialog-actions{flex-wrap:wrap}.dialog-actions .button{flex:1}}
+
+/* Dental controls inherit the existing professional Orion design, not a demo stylesheet. */
+#professionalDentalWorkspace .os-dental{
+ --os-bg:var(--bg);--os-card:var(--surface);--os-text:var(--text);
+ --os-muted:var(--muted);--os-border:var(--border);--os-soft:var(--subtle);
+ --os-tint:var(--soft);--os-primary:var(--accent);--os-primary-hover:var(--accent-dark);
+ --os-danger:var(--danger);--os-danger-bg:var(--subtle);--os-shadow:var(--shadow);
+ --os-font:Figtree,system-ui,sans-serif;--os-display:Outfit,Figtree,sans-serif;
+}
+#professionalDentalWorkspace .os-button{
+ display:inline-flex;align-items:center;justify-content:center;gap:8px;
+ padding:8px 14px;min-height:38px;max-width:100%;border:1px solid transparent;
+ border-radius:10px;background:var(--os-primary);color:#fff;font:600 13px/20px var(--os-font);
+ text-align:center;white-space:normal;cursor:pointer
+}
+#professionalDentalWorkspace .os-button:is(:hover,:focus-visible):not(:disabled){background:var(--os-primary-hover)}
+#professionalDentalWorkspace .os-button.os-outline{
+ border-color:var(--os-border);color:var(--os-text);background:var(--os-card)}
+#professionalDentalWorkspace .os-button.os-ghost{border:0;background:transparent;color:var(--os-muted)}
+#professionalDentalWorkspace .os-button.os-danger{background:var(--os-danger);color:white}
+#professionalDentalWorkspace .os-pill-tab{
+ display:inline-flex;align-items:center;justify-content:center;min-height:36px;padding:8px 13px;
+ background:var(--os-card);border:1px solid var(--os-border);border-radius:9px;
+ color:var(--os-muted);font:600 13px var(--os-font);cursor:pointer
+}
+#professionalDentalWorkspace .os-pill-tab[aria-selected=true]{
+ border-color:var(--os-primary);background:var(--os-tint);color:var(--os-primary)
+}
+#professionalDentalWorkspace .os-dental .os-dental-card{
+ box-shadow:none;border-radius:14px
+}
+@media(max-width:700px){
+ .mobile-nav[data-dental-visible=true]{grid-template-columns:repeat(6,minmax(0,1fr))}
+ .mobile-nav[data-dental-visible=true] button{font-size:10px;min-width:0}
+ .main:has(#professionalDentalWorkspace){padding-inline:12px}
+}

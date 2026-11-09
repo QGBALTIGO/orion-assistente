@@ -5,6 +5,8 @@ on:
       - 'alembic/versions/0076_dental_clinic.py'
       - 'app/dental_clinic_*.py'
       - 'app/main.py'
+      - 'app/professional_portal.py'
+      - 'app/static/orion-professional.*'
       - 'app/plan_permissions.py'
       - 'app/plan_routing.py'
       - 'app/static/orion-dental-clinic.*'
@@ -19,6 +21,7 @@ on:
       - 'tests/unit/test_dental_clinic_release.py'
       - 'tests/unit/test_start_api.py'
       - 'ui-tests/dental-clinic.test.mjs'
+      - 'ui-tests/professional-portal.test.mjs'
       - '.github/workflows/dental-clinic.yml'
 permissions:
   contents: read
@@ -72,6 +75,7 @@ jobs:
           python -m compileall -q app/dental_clinic_api.py app/dental_clinic_schemas.py app/dental_clinic_media.py alembic/versions/0076_dental_clinic.py
           node --check app/static/orion-suite.js
           node --check app/static/orion-dental-clinic.js
+          node --check app/static/orion-professional.js
       - name: Migração 0001-0076 em PostgreSQL 16 limpo
         run: python -m alembic upgrade 0076_dental_clinic
       - name: Verificar contrato de papéis, RLS e migração
@@ -83,4 +87,4 @@ jobs:
       - name: Instalar DOM isolado
         run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
       - name: Testar a interface e regressões
-        run: node --test ui-tests/dental-clinic.test.mjs ui-tests/dental-workspace.test.mjs ui-tests/dental-patient-journey.test.mjs ui-tests/customer-form.test.mjs
+        run: node --test ui-tests/dental-clinic.test.mjs ui-tests/dental-workspace.test.mjs ui-tests/dental-patient-journey.test.mjs ui-tests/customer-form.test.mjs ui-tests/professional-portal.test.mjs

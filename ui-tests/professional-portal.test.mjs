@@ -77,11 +77,12 @@ test('team view only offers invites inside registered professionals and retains 
  assert.ok(h.document.querySelector('[data-os-team-member]'));
 });
 
-async function portal(t,{respond}={}){
+async function portal(t,{respond,enableDental=false}={}){
  const errors=[],calls=[];
  const html=await readFile(new URL('../app/static/orion-professional.html',import.meta.url),'utf8');
  const js=await readFile(new URL('../app/static/orion-professional.js',import.meta.url),'utf8');
  const shared=await readFile(new URL('../app/static/orion-fields.js',import.meta.url),'utf8');
+ const dentalJs=enableDental?await readFile(new URL('../app/static/orion-dental-clinic.js',import.meta.url),'utf8'):null;
  const c=new VirtualConsole();c.on('jsdomError',e=>errors.push(String(e)));
  const dom=new JSDOM(html,{url:'https://orionagenda.pro/profissional',runScripts:'outside-only',virtualConsole:c});
  t.after(()=>dom.window.close());
@@ -102,6 +103,12 @@ async function portal(t,{respond}={}){
    else if(path.includes('/api/v1/professional/finance'))data={professional:'Guilherme',period:{},summary:{revenue_cents:20000,
        earned_cents:5000,balance_cents:3000,advances_cents:0,payments_cents:2000,payable_cents:3000}};
    else if(path==='/api/v1/professional/goals')data={items:[]};
+   else if(path==='/api/v1/professional/dental/context')data=enableDental?
+     {enabled:true,tenant_id:'10000000-0000-4000-8000-000000000001'}:{enabled:false};
+   else if(enableDental&&path.endsWith('/dental/access'))data={
+     can_manage:false,can_read_records:true,grants:[],
+     clinical_access:{professional_id:pro,level:'dentist'}};
+   else if(enableDental&&path.includes('/dental/patients?'))data={items:[],total:0};
    else if(path==='/api/v1/professional/services')data={items:[
      {id:other,name:'Corte',duration_min:40,price_cents:4000,price_mode:'fixed'}]};
    else if(path.startsWith('/api/v1/professional/availability?'))data={
@@ -113,7 +120,7 @@ async function portal(t,{respond}={}){
    else {status=404;data={detail:'Not found'}}
    return {ok:status===200,status,json:async()=>data,headers:new Map()};
  };
- w.eval(shared);w.eval(js);
+ w.eval(shared);if(dentalJs)w.eval(dentalJs);w.eval(js);
  for(let i=0;i<10;i++)await new Promise(r=>setTimeout(r,12));
  return {w,doc:w.document,calls,errors};
 }
@@ -207,4 +214,34 @@ test('owner explicitly grants removal of company-created blocks to a linked prof
  assert.ok(posted);
  assert.equal(posted.data.can_manage_owner_blocks,true);
  assert.equal(posted.data.expected_updated_at,'2026-11-02T12:00:00Z');
+});
+
+
+test('authorized dentist sees only their clinical tab with verified tenant context',async t=>{
+ const h=await portal(t,{enableDental:true});
+ const nav=h.doc.querySelector('.navigation [data-page=clinica]');
+ assert.equal(nav.hidden,false);
+ assert.equal(h.doc.querySelector('.mobile-nav [data-page=clinica]').hidden,false);
+ assert.equal(h.doc.querySelector('.mobile-nav').dataset.dentalVisible,'true');
+ nav.click();await new Promise(resolve=>setTimeout(resolve,100));
+ assert.match(h.doc.getElementById('content').textContent,/Clínica odontológica/);
+ assert.match(h.doc.getElementById('content').textContent,/Pacientes/);
+ assert.ok(h.calls.some(x=>x.path.endsWith('/dental/access')));
+ assert.ok(h.calls.some(x=>x.path.includes('/dental/patients?')));
+ assert.ok(!h.calls.some(x=>x.method!=='GET'&&x.path.includes('/dental/')));
+ h.doc.querySelector('[data-page=agenda]').click();
+ await new Promise(resolve=>setTimeout(resolve,55));
+ assert.equal(h.doc.querySelector('#professionalDentalWorkspace'),null);
+ assert.equal(h.errors.length,0);
+});
+
+test('normal professional cannot see a dental tab or fetch patient data',async t=>{
+ const h=await portal(t);
+ assert.equal(h.doc.querySelector('.navigation [data-page=clinica]').hidden,true);
+ assert.equal(h.doc.querySelector('.mobile-nav [data-page=clinica]').hidden,true);
+ assert.equal(h.calls.some(x=>x.path.includes('/dental/patients')),false);
+ h.doc.querySelector('.navigation [data-page=clinica]').click();
+ await new Promise(resolve=>setTimeout(resolve,30));
+ assert.equal(h.doc.querySelector('#professionalDentalWorkspace'),null);
+ assert.equal(h.errors.length,0);
 });

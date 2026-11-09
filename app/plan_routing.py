@@ -197,27 +197,45 @@ async def enforce_endpoint_plan(request: Request, tenant_id: UUID, actor: Actor 
     template = "/{resource}/{item_id}" if "item_id" in request.path_params and "resource" in request.path_params else "/{resource}" if "resource" in request.path_params else relative
     feature = feature_for_path(template, request.method, resource=request.path_params.get("resource"), step_id=request.path_params.get("step_id"))
     from app.catalog_api import authorize
-    # Other endpoints also recheck publication/membership/owner rules. This
-    # prevents disclosing plan state for a tenant not owned by this request.
-    authorize(actor, tenant_id, write=False)
-    if feature is None:
-        from app.catalog_schemas import RESOURCE_MODELS
-        if template in {"/{resource}", "/{resource}/{item_id}"} and request.path_params.get("resource") not in RESOURCE_MODELS:
-            raise HTTPException(404, "Recurso não encontrado")
-        raise HTTPException(403, "Recurso indisponível para este plano")
-    bypass = actor.role in {"admin", "support"} and not getattr(actor, "maintenance", False)
-    workspace_allowed = subscription_workspace_route(relative, request.method, request.path_params)
-    token = bind_feature(tenant_id, feature,
-        exclusive=exclusive_professional_operation(relative, request.method, request.path_params),
-        bypass=bypass, workspace_allowed=workspace_allowed)
-    try:
-        if not bypass:
-            state = await require_tenant_feature(tenant_id, feature)
-            if not workspace_allowed:
-                require_standard_workspace(state, feature)
-        yield
-    finally:
-        reset_feature(token)
+    from contextlib import asynccontextmanager
+
+    @asynccontextmanager
+    async def verified_actor():
+        professional_dental = (relative.startswith("/dental/")
+            and actor.role == "member" and actor.membership_role == "professional")
+        if professional_dental:
+            # Never broaden the generic read-only tenant authorization: an
+            # individual professional can only enter the dental endpoints
+            # through the existing, verified professional-portal link.
+            from app.professional_portal import individual_access
+            async with individual_access(actor) as (verified_tenant, _professional):
+                if verified_tenant != tenant_id:
+                    raise HTTPException(403, "Profissional não vinculado à clínica")
+                yield
+        else:
+            # All company-wide APIs retain their original membership rules.
+            authorize(actor, tenant_id, write=False)
+            yield
+
+    async with verified_actor():
+        if feature is None:
+            from app.catalog_schemas import RESOURCE_MODELS
+            if template in {"/{resource}", "/{resource}/{item_id}"} and request.path_params.get("resource") not in RESOURCE_MODELS:
+                raise HTTPException(404, "Recurso não encontrado")
+            raise HTTPException(403, "Recurso indisponível para este plano")
+        bypass = actor.role in {"admin", "support"} and not getattr(actor, "maintenance", False)
+        workspace_allowed = subscription_workspace_route(relative, request.method, request.path_params)
+        token = bind_feature(tenant_id, feature,
+            exclusive=exclusive_professional_operation(relative, request.method, request.path_params),
+            bypass=bypass, workspace_allowed=workspace_allowed)
+        try:
+            if not bypass:
+                state = await require_tenant_feature(tenant_id, feature)
+                if not workspace_allowed:
+                    require_standard_workspace(state, feature)
+            yield
+        finally:
+            reset_feature(token)
 
 
 def include_plan_router(app, router):

@@ -70,6 +70,29 @@ async def individual_access(actor: Actor):
             yield tenant, professional
 
 
+@router.get("/dental/context")
+async def dental_professional_context(actor: Actor = Depends(authenticate)):
+    """The dental tab is advertised only to a verified, explicitly granted dentist.
+
+    Never accepts a client-chosen company or professional ID.
+    """
+    from app.plan_permissions import plan_state
+    async with individual_access(actor) as (tenant, professional):
+        async with get_session_factory()() as db:
+            async with tenant_transaction(db,tenant):
+                plan=await plan_state(db,tenant)
+                if not plan.get("dental_clinical_enabled") or not plan.get("permissions",{}).get("clients.manage"):
+                    return {"enabled":False}
+                granted=(await db.execute(text("""
+                    SELECT 1 FROM dental_clinicians
+                    WHERE tenant_id=:tenant AND account_id=:account
+                      AND professional_id=:professional AND level='dentist' AND enabled
+                """),{"tenant":tenant,"account":actor.account_id,
+                       "professional":professional})).scalar_one_or_none()
+                return {"enabled":granted is not None,
+                        "tenant_id":tenant if granted else None}
+
+
 async def may_manage_company_blocks(tenant, professional, account_id):
     """Only an owner-authorized override may remove company-origin blocks."""
     async with support_session_factory()() as db:

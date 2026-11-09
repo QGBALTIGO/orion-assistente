@@ -3,7 +3,7 @@
 const $=id=>document.getElementById(id);
 const sharedFields=window.OrionFields;
 sharedFields?.bind(document);
-const state={csrf:'',profile:null,page:'inicio',day:'',month:'',appointments:[],blocks:[],modal:null,epoch:0,loading:false};
+const state={csrf:'',profile:null,page:'inicio',day:'',month:'',appointments:[],blocks:[],modal:null,epoch:0,loading:false,dental:null};
 const esc=value=>String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 const money=cents=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(cents||0)/100);
 const fmt=(value,option={})=>new Intl.DateTimeFormat('pt-BR',{timeZone:state.profile?.timezone||'America/Campo_Grande',...option}).format(new Date(value));
@@ -55,7 +55,9 @@ function appointmentsHtml(list){
  }).join('')+'</div>';
 }
 async function changePage(page){
- if(!['inicio','agenda','financeiro','metas','perfil'].includes(page))return;
+ if(!['inicio','agenda','financeiro','metas','perfil','clinica'].includes(page))return;
+ if(page==='clinica'&&!state.dental?.enabled)return;
+ window.OrionDentalClinic?.unmount?.();
  state.page=page;updateNav();
  const epoch=++state.epoch;$('content').innerHTML='<div class="notice" role="status">Carregando informações…</div>';
  try{
@@ -85,6 +87,16 @@ async function changePage(page){
        '<p class="muted">Nenhum bloqueio neste dia.</p>')+'</section>'+
        '<div class="section-heading"><h2>Atendimentos</h2><span class="muted">'+state.appointments.length+' registro(s)</span></div>'+
        appointmentsHtml(state.appointments);
+   }else if(page==='clinica'){
+    if(!state.dental?.enabled||!window.OrionDentalClinic)
+      throw Error('Acesso odontológico indisponível para esta conta.');
+    $('content').innerHTML=intro('Clínica odontológica',
+      'Área clínica protegida, exclusiva para profissionais habilitados no Orion.')+
+      '<section id="professionalDentalWorkspace" aria-label="Prontuário odontológico"></section>';
+    await window.OrionDentalClinic.mount({
+      host:$('professionalDentalWorkspace'),request:api,tenantId:state.dental.tenant_id,
+      canAccess:()=>state.page==='clinica'&&state.epoch===epoch&&state.dental?.enabled===true
+    });
    }else if(page==='financeiro'){
     const selected=state.month||state.day.slice(0,7);
     const report=await api('/api/v1/professional/finance?month='+encodeURIComponent(selected));
@@ -452,6 +464,16 @@ async function boot(){
    if(!auth?.authenticated||auth.role!=='member'||!auth.csrf)throw Error('Entre na sua conta profissional para continuar.');
    state.csrf=auth.csrf;
    state.profile=await api('/api/v1/professional/me');
+   // The endpoint resolves the verified tenant and professional on the server.
+   // A non-dental or unapproved account never gets an extra navigation tab.
+   try{
+     const dental=await api('/api/v1/professional/dental/context');
+     if(dental?.enabled===true&&typeof dental.tenant_id==='string'){
+       state.dental=dental;
+       document.querySelectorAll('[data-page=clinica]').forEach(el=>el.hidden=false);
+       document.querySelector('.mobile-nav')?.setAttribute('data-dental-visible','true');
+     }
+   }catch{state.dental=null;}
    $('companyName').textContent=state.profile.business_name;
    $('boot').hidden=true;$('portal').hidden=false;
    const first=await api('/api/v1/professional/dashboard');
@@ -515,6 +537,8 @@ document.addEventListener('change',event=>{
  if(event.target.id==='financeMonth'){state.month=event.target.value;void changePage('financeiro')}
 });
 $('logoutButton').addEventListener('click',async()=>{
+ window.OrionDentalClinic?.unmount?.();
+ state.dental=null;
  try{await api('/auth/logout','POST',{})}catch{}
  location.assign('/painel');
 });
