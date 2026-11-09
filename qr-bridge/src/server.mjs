@@ -1340,6 +1340,30 @@ const server=http.createServer(async(req,res)=>{
         return reply(res,codes[code],{error:code});
       }
     }
+    const deviceReview=path.match(/^\/internal\/ops\/device-ingress-review\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/);
+    if(deviceReview&&!uri.search){
+      if(req.method!=='POST')return reply(res,405,{error:'method_not_allowed'});
+      try{
+        const key=req.headers['x-orion-channel-key'];
+        if(typeof key!=='string'||key.length<32||key.length>256)
+          return reply(res,401,{error:'channel_unauthorized'});
+        const body=await collectIngressReviewBody(req,{device:true});
+        const authority=verifyIngressReviewAssertion({headers:req.headers,body,secret:KEY});
+        // A platform owner assertion and the actual current channel key are
+        // both required. A legacy MASTER alone never opens another tenant.
+        return reply(res,200,await channelRoutes.reviewDevice(deviceReview[1],key,body,authority));
+      }catch(error){
+        const codes={invalid_ingress_review_request:400,invalid_operator_assertion:401,
+          channel_unauthorized:401,ingress_review_not_ready:409,
+          ingress_review_scope_conflict:409,ingress_review_snapshot_conflict:409,
+          ingress_review_operation_conflict:409,ingress_review_entry_refused:409,
+          ingress_review_identity_unresolved:409,ingress_review_backup_failed:503,
+          ingress_review_capacity:503,ingress_review_storage_unavailable:503};
+        const code=error?.code||error?.message;
+        const safe=Object.hasOwn(codes,code)?code:'ingress_review_storage_unavailable';
+        return reply(res,codes[safe],{error:safe});
+      }
+    }
     if(path.startsWith('/internal/ops/database-backups/'))
       return await databaseBackup(req,res,{root:'/data/orion-db-backups',id:path.slice('/internal/ops/database-backups/'.length),
         enabled:process.env.QR_DATABASE_BACKUP_ENABLED==='1',secret:KEY});
