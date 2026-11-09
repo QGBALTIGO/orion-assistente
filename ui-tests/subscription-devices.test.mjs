@@ -24,7 +24,7 @@ test('only the subscription profile gets the Devices route; every other module s
   assert.equal(writes(h).length,0);
   assert.equal(h.calls.some(call=>call.path.startsWith('/api/v1/qr/')||call.path.includes('/qr-channels')||call.path.includes('/plan-')),false);
   await h.window.OrionSuite.open('inbox');await flush();
-  assert.equal(h.document.querySelector('#page-suite').dataset.osCurrentRoute,'novidades');
+  assert.equal(h.document.querySelector('#page-suite').dataset.osCurrentRoute,'dashboard');
   assert.equal(h.document.querySelector('#osSubscriptionDevices'),null);
   assert.deepEqual(h.errors,[]);
 });
