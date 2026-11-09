@@ -81,7 +81,7 @@ def test_failed_backup_prevents_migration_and_redacts_provider_details(monkeypat
 
 
 def test_changed_revision_after_backup_fails_closed(monkeypatch):
-    steps=prepare(monkeypatch,[release.PREVIOUS,release.PREVIOUS,"0077_other"])
+    steps=prepare(monkeypatch,[release.PREVIOUS,"0077_other"])
     assert release.main()==3
     assert steps==["verified_private_backup"]
 
