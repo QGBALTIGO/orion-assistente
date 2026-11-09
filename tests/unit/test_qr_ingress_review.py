@@ -250,3 +250,109 @@ async def test_private_http_is_literal_bounded_no_redirect_and_signs_server_iden
         assert error.value.status_code == (409 if case == "known_error" else 503)
         assert secret not in str(error.value.detail)
     assert len(requests) == 1
+
+
+# Multi-company subscription-device review is a separate, scoped operator lane.
+DEVICE = UUID("06d65d14-7d9f-4fa7-93a8-b97317d18f4a")
+GENERATION = UUID("e975967b-a347-4b42-aef6-c7b09816a749")
+DEVICE_SCOPE = dict(tenant_id=str(TENANT), channel_id=str(CHANNEL),
+    device_id=str(DEVICE), generation=str(GENERATION), settings_revision=3,
+    auth_epoch="8" * 64, owner=str(OWNER), fence=7)
+DEVICE_BINDING = {key: value for key, value in DEVICE_SCOPE.items() if key != "auth_epoch"}
+DEVICE_RESULT = dict(version=1, mode="dry_run", scope=DEVICE_SCOPE,
+    snapshot_sha256="9" * 64, entries=[dict(trace=TRACE,
+        fingerprint="a" * 64, at=1794180000000, sequence=1, state="blocked",
+        blocked_reason="business_started", phase=None,
+        eligible_as=["operator_attested_uncertain"])],
+    total_entries=1, truncated=False, mutation=False)
+DEVICE_APPLY = dict(version=1, mode="apply", operation_id=OPERATION,
+    expected=dict(scope=DEVICE_SCOPE, snapshot_sha256="9" * 64),
+    entries=[dict(trace=TRACE, fingerprint="a" * 64, disposition="do_not_replay",
+        evidence=dict(kind="operator_attested_uncertain", receipt_sha256="c" * 64,
+                      build_sha="d" * 40, event_at=1794180900000))])
+DEVICE_APPLIED = dict(APPLIED, before_snapshot_sha256="9" * 64)
+
+
+@pytest.fixture
+def device_backend(monkeypatch):
+    calls = []
+    async def binding(device_id):
+        calls.append(("binding", device_id))
+        return deepcopy(DEVICE_BINDING), "synthetic-per-device-key-not-logged-anywhere-123456"
+    async def private(body, actor, *, private_path, channel_key):
+        assert private_path == review.DEVICE_PRIVATE_PREFIX + str(CHANNEL)
+        assert channel_key == "synthetic-per-device-key-not-logged-anywhere-123456"
+        assert actor == ACTOR
+        calls.append(("review", body))
+        return deepcopy(DEVICE_RESULT if body["mode"] == "dry_run" else DEVICE_APPLIED)
+    monkeypatch.setattr(review, "_device_binding", binding)
+    monkeypatch.setattr(review, "_private_review", private)
+    return calls
+
+
+@pytest.mark.asyncio
+async def test_device_review_requires_real_platform_owner_csrf_and_server_selected_device(auth, device_backend):
+    url = review.DEVICE_PUBLIC_PATH.format(device_id=DEVICE)
+    async with client() as web:
+        assert (await web.post(url, json=DRY)).status_code == 403
+        assert (await web.post(url, json=DRY, headers={"X-Orion-CSRF": CSRF,
+            "Origin": "https://other.invalid"})).status_code == 403
+        assert device_backend == []
+        result = await web.post(url, json=DRY, headers={"X-Orion-CSRF": CSRF})
+        assert result.status_code == 200, result.text
+        assert result.json() == DEVICE_RESULT
+        assert result.headers["Cache-Control"] == "no-store"
+        assert device_backend == [("binding", DEVICE), ("review", DRY)]
+
+
+@pytest.mark.asyncio
+async def test_device_review_refuses_cross_tenant_generation_and_fake_evidence(auth, device_backend):
+    url = review.DEVICE_PUBLIC_PATH.format(device_id=DEVICE)
+    for key, value in [("tenant_id", str(ACTOR)), ("channel_id", str(ACTOR)),
+                       ("device_id", str(ACTOR)), ("generation", str(ACTOR)),
+                       ("settings_revision", 4), ("owner", str(ACTOR)), ("fence", 8)]:
+        payload = deepcopy(DEVICE_APPLY)
+        payload["expected"]["scope"][key] = value
+        async with client() as web:
+            rejected = await web.post(url, json=payload, headers={"X-Orion-CSRF": CSRF})
+        assert rejected.status_code == 409, (key, rejected.text)
+    device_backend.clear()
+    wrong = deepcopy(DEVICE_APPLY)
+    wrong["entries"][0]["evidence"]["kind"] = "not_started"
+    async with client() as web:
+        result = await web.post(url, json=wrong, headers={"X-Orion-CSRF": CSRF})
+    assert result.status_code == 422 and device_backend == []
+
+
+@pytest.mark.asyncio
+async def test_device_review_rejects_wrong_response_and_keeps_legacy_unmodified(auth, device_backend, monkeypatch):
+    url = review.DEVICE_PUBLIC_PATH.format(device_id=DEVICE)
+    async with client() as web:
+        accepted = await web.post(url, json=DEVICE_APPLY, headers={"X-Orion-CSRF": CSRF})
+        assert accepted.status_code == 200 and accepted.json() == DEVICE_APPLIED
+        assert device_backend == [("binding", DEVICE), ("review", DEVICE_APPLY)]
+        device_backend.clear()
+        wrong = deepcopy(DEVICE_RESULT)
+        wrong["scope"]["tenant_id"] = str(ACTOR)
+        async def invalid(*_args, **_kwargs):
+            return wrong
+        monkeypatch.setattr(review, "_private_review", invalid)
+        refused = await web.post(url, json=DRY, headers={"X-Orion-CSRF": CSRF})
+        assert refused.status_code == 409
+        assert device_backend == [("binding", DEVICE)]
+
+
+@pytest.mark.asyncio
+async def test_device_review_denies_support_members_and_invalid_extra_request_fields(auth, device_backend):
+    url = review.DEVICE_PUBLIC_PATH.format(device_id=DEVICE)
+    auth["role"] = "support"
+    async with client() as web:
+        assert (await web.post(url, json=DRY, headers={"X-Orion-CSRF": CSRF})).status_code in {401,403}
+    assert device_backend == []
+    auth["role"] = "admin"
+    async with client() as web:
+        for payload in [{**DRY, "tenant_id": str(TENANT)},
+                        {**DRY, "device_id": str(DEVICE)},
+                        {**DRY, "traces": [TRACE, TRACE]}]:
+            assert (await web.post(url, json=payload, headers={"X-Orion-CSRF": CSRF})).status_code == 422
+    assert device_backend == []

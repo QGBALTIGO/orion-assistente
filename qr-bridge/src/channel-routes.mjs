@@ -149,6 +149,9 @@ export function createChannelRoutes({env=process.env,managerFactory=createChanne
   };
   route.resume=async()=>env.QR_CHANNELS_ENABLED==='1'?getManager().resume():{resumed:0};
   route.adopt=(id,key)=>getManager().start(id,key);
+  // Used only by MASTER-authenticated, HMAC-signed server /internal/ops route.
+  // Never expose this as a normal /internal/channels/ browser/device operation.
+  route.reviewDevice=(id,key,body,authority)=>getManager().reviewDeviceIngress(id,key,body,authority);
   route.send=(id,key,payload)=>getManager().send(id,key,payload);
   route.close=()=>manager?.close();
   return route;

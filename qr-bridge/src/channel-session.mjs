@@ -29,6 +29,7 @@ import {normalizeInbound,priorityText,updateEvent,callEvent,queueControl} from '
 import {createDeviceRuntime} from './device-runtime.mjs';
 import {createIngressJournal} from './ingress-journal.mjs';
 import {createAssistantIngress} from './assistant-ingress.mjs';
+import {createAssistantIngressReview} from './assistant-ingress-review.mjs';
 import {withIngressHealth} from './ingress-health.mjs';
 import {messagePreflightError} from './device-message-failure.mjs';
 import {createDeviceProxy} from './device-network.mjs';
@@ -51,7 +52,7 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
       console.info(JSON.stringify({component:'orion-managed-transport',...event}));
   }});
   const silent=diagnostics.logger;
-  let deviceRuntime=null,assistantIngress=null,assistantIdentity=null,assistantFault=null,assistantTimer=null,assistantReplaying=false;
+  let deviceRuntime=null,deviceIngressReviewer=null,deviceIngressScope=null,assistantIngress=null,assistantIdentity=null,assistantFault=null,assistantTimer=null,assistantReplaying=false;
   const assistantJobs=new Set();
   const ingressDiagnostics=()=>deviceRuntime?.diagnostics()?.ingress||(assistantFault?
     {...(assistantIngress?.diagnostics()||{}),state:'unavailable',error_code:'assistant_ingress_unavailable'}:assistantIngress?.diagnostics());
@@ -344,9 +345,24 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
       // Preserve old journals separately; never replay them into a new login.
       const authEpoch=path.basename(context.directory);
       if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(authEpoch))throw Error('invalid_device_auth_epoch');
-      ingressJournal=createIngressJournal({directory:privateDirectory(path.join(context.deviceDirectory,'incoming',authEpoch)),
-      secret:context.secret,now,isCurrent:current,
-      serialize:value=>JSON.stringify(value,mod.BufferJSON.replacer),deserialize:value=>JSON.parse(value,mod.BufferJSON.reviver)});}
+      const ingressDirectory=privateDirectory(path.join(context.deviceDirectory,'incoming',authEpoch));
+      const serialize=value=>JSON.stringify(value,mod.BufferJSON.replacer);
+      ingressJournal=createIngressJournal({directory:ingressDirectory,
+        secret:context.secret,now,isCurrent:current,
+        serialize,deserialize:value=>JSON.parse(value,mod.BufferJSON.reviver)});
+      deviceIngressScope=()=>{
+        const currentDevice=context.deviceSnapshot?.();
+        if(!currentDevice)return null;
+        return {tenant_id:context.tenantId,channel_id:context.channelId,
+          device_id:currentDevice.id,generation:currentDevice.generation,
+          settings_revision:currentDevice.settings_revision,
+          auth_epoch:createHmac('sha256',context.secret)
+            .update('orion:device-ingress-auth-epoch:v1\0'+authEpoch).digest('hex'),
+          owner:context.owner,fence:context.fence};
+      };
+      deviceIngressReviewer=createAssistantIngressReview({journal:ingressJournal,directory:ingressDirectory,
+        secret:context.secret,device:true,serialize});
+    }
     catch(error){ingressFailure('ingress_journal_unavailable',null);throw error;}
     deviceRuntime=createDeviceRuntime(context,{client,downloadMediaMessage:mod.downloadMediaMessage,logger:silent,
       now,openedAt,schedule,cancel,downloadOptions:proxyTransport.download,
@@ -581,6 +597,15 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
     ingressDiagnostics,
     deviceSettingsChanged:()=>deviceRuntime?.sync(),
     deviceDiagnostics:()=>deviceRuntime?.diagnostics()||null,
+    async reviewDeviceIngress(body,authority){
+      // The device ledger is never accessible from the legacy assistant.
+      // Only a current SQL-fenced device owner can produce an operator review.
+      if(!deviceRuntime||!deviceIngressReviewer||!deviceIngressScope||state!=='connected')
+        throw Error('ingress_review_not_ready');
+      await guarded();
+      return deviceIngressReviewer(body,{authority,getScope:deviceIngressScope,
+        isCurrent:()=>current()&&state==='connected',assertCurrent:guarded});
+    },
     async logout({authorize}={}){
       if(!deviceRuntime||typeof authorize!=='function')throw Error('device_logout_unavailable');
       // Removing revokes normal device effects/leases before the provider call.

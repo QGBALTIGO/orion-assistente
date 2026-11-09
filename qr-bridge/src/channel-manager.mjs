@@ -511,6 +511,22 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
     return {...value,...scopeOf(c.device),profile:c.profile||{name:null,avatar_url:null},connected_at:c.connectedAt||null,
       applied_revision:c.device.settings_revision};
   }
+  async function reviewDeviceIngress(id,key,body,authority){
+    const c=contexts.get(id);
+    if(!channelId(id)||!c||!c.device||!c.session?.reviewDeviceIngress)
+      throw Error('ingress_review_not_ready');
+    await validate(c,key);
+    const expected={tenant:c.tenant,device:c.device.id,generation:c.device.generation,
+      revision:c.device.settings_revision,owner:c.fence};
+    const matching=()=>current(c)&&c.tenant===expected.tenant&&c.device?.id===expected.device&&
+      c.device?.generation===expected.generation&&c.device?.settings_revision===expected.revision&&
+      c.fence===expected.owner;
+    if(!matching())throw Error('ingress_review_scope_conflict');
+    const result=await c.session.reviewDeviceIngress(body,authority);
+    await validate(c,key);
+    if(!matching())throw Error('ingress_review_scope_conflict');
+    return result;
+  }
   async function deviceOperation(id,key,operationId){
     if(!channelId(id)||!channelId(operationId))throw Error('invalid_device_operation');
     const row=await broker.lease(id,key,'receipt',owner);
@@ -596,7 +612,7 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
       throw Error('device_operation_unavailable');
     }finally{deviceControls.delete(id);}
   }
-  return {start,status,pair,send,operation,deviceStatus,deviceOperation,deviceControl,deviceGroupContacts,deviceGroupAdd,
+  return {start,status,pair,send,operation,deviceStatus,deviceOperation,reviewDeviceIngress,deviceControl,deviceGroupContacts,deviceGroupAdd,
     deviceProxyTest:(id,key,input)=>diagnostics.dispatch(id,key,input),
     deviceDiagnosticOperation:(id,key,requestId)=>diagnostics.read(id,key,requestId),
     async deviceDiagnostics(id,key){const state=await deviceStatus(id,key);return {...state,runtime:contexts.get(id)?.session?.deviceDiagnostics?.()||null};},

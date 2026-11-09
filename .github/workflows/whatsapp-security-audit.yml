@@ -4,6 +4,9 @@ on:
   pull_request:
     paths:
       - 'app/qr_api.py'
+      - 'app/qr_ingress_review.py'
+      - 'app/static/orion-ingress-review.js'
+      - 'tests/unit/test_qr_ingress_review.py'
       - 'app/central_appointment_reply.py'
       - 'qr-bridge/src/**'
       - 'qr-bridge/test/**'
@@ -15,6 +18,9 @@ on:
     branches: [main]
     paths:
       - 'app/qr_api.py'
+      - 'app/qr_ingress_review.py'
+      - 'app/static/orion-ingress-review.js'
+      - 'tests/unit/test_qr_ingress_review.py'
       - 'app/central_appointment_reply.py'
       - 'qr-bridge/src/**'
       - 'qr-bridge/test/**'
@@ -42,6 +48,12 @@ jobs:
       - name: Source syntax and targeted security contract
         run: |
           node --check qr-bridge/src/server.mjs
+          node --check qr-bridge/src/assistant-ingress-review.mjs
+          node --check qr-bridge/src/ingress-journal.mjs
+          node --check qr-bridge/src/channel-session.mjs
+          node --check qr-bridge/src/channel-manager.mjs
+          node --check qr-bridge/src/channel-routes.mjs
+          node --check app/static/orion-ingress-review.js
           node --check qr-bridge/src/booking-intake-guard.mjs
           node --check qr-bridge/src/encrypted-retry-store.mjs
           node --test \
@@ -53,7 +65,11 @@ jobs:
             qr-bridge/test/assistant-typing.test.mjs \
             qr-bridge/test/encrypted-retry-store.test.mjs \
             qr-bridge/test/reliable-send.test.mjs \
-            qr-bridge/test/send-capacity.test.mjs
+            qr-bridge/test/send-capacity.test.mjs \
+            qr-bridge/test/device-ingress-review.test.mjs \
+            qr-bridge/test/assistant-ingress-review.test.mjs \
+            qr-bridge/test/ingress-review-panel.test.mjs \
+            qr-bridge/test/ingress-journal.test.mjs
 
   private-api:
     name: Private URL, CSRF and central protocol quotas
@@ -70,4 +86,5 @@ jobs:
         run: |
           python -m pytest -q -ra \
             tests/unit/test_whatsapp_bridge_url_security.py \
-            tests/unit/test_central_confirmation_reply.py
+            tests/unit/test_central_confirmation_reply.py \
+            tests/unit/test_qr_ingress_review.py
