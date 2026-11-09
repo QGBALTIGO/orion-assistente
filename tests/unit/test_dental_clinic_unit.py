@@ -131,3 +131,46 @@ def test_mutations_and_access_never_have_implicit_clinical_rights():
     assert any(p.endswith("/access") for p in paths)
     assert any(p.endswith("/records") for p in paths)
     assert any(p.endswith("/exams/{exam_id}") for p in paths)
+
+
+def test_dental_rollout_fails_closed_without_exact_flag_and_strong_key(monkeypatch):
+    from app.plan_permissions import dental_environment_ready
+    monkeypatch.delenv("ORION_DENTAL_CLINIC_ENABLED", raising=False)
+    monkeypatch.delenv("DENTAL_DATA_KEY_B64", raising=False)
+    assert dental_environment_ready() is False
+    monkeypatch.setenv("ORION_DENTAL_CLINIC_ENABLED","1")
+    assert dental_environment_ready() is False
+    monkeypatch.setenv("DENTAL_DATA_KEY_B64","not-base64")
+    assert dental_environment_ready() is False
+    monkeypatch.setenv("DENTAL_DATA_KEY_B64",base64.b64encode(b"too-short").decode())
+    assert dental_environment_ready() is False
+    monkeypatch.setenv("DENTAL_DATA_KEY_B64",base64.b64encode(os.urandom(32)).decode())
+    assert dental_environment_ready() is True
+    monkeypatch.setenv("ORION_DENTAL_CLINIC_ENABLED","0")
+    assert dental_environment_ready() is False
+
+
+def test_api_startup_barrier_selects_clinical_schema_only_after_reviewed_release_flag(monkeypatch):
+    from scripts import start_api
+    called=[]
+    def record(args, **kw):
+        called.append((args, kw))
+    monkeypatch.setattr(start_api.subprocess,"run",record)
+    start_api.wait_for_campaigns_schema({"APP_DATABASE_URL":"synthetic"})
+    assert called[0][0][-1] == "scripts.wait_for_fixed_client_monthly_schema"
+    called.clear()
+    start_api.wait_for_campaigns_schema({
+        "APP_DATABASE_URL":"synthetic","ORION_DENTAL_0076_RELEASE_ENABLED":"1"})
+    assert called[0][0][-1] == "scripts.wait_for_dental_schema"
+    assert called[0][1]["check"] is True
+    assert called[0][1]["timeout"] == 95
+    assert "MIGRATION_DATABASE_URL" not in called[0][1]["env"]
+
+
+def test_0076_schema_contract_keeps_0075_monthly_and_clinical_rls():
+    from scripts import wait_for_dental_schema as schema
+    assert schema.REVISION == "0076_dental_clinic"
+    assert "MONTHLY_CONTRACT" in schema.CONTRACT_QUERY
+    assert "relforcerowsecurity" in schema.ROLE_CONTRACT
+    assert "dental_room_reservations" in schema.APPEND_ONLY
+    assert "NOT has_table_privilege('app_runtime',c.oid,'SELECT')" in schema.ROLE_CONTRACT
