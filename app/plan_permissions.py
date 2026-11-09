@@ -149,7 +149,8 @@ async def try_lock_plan(db, tenant_id):
 
 def dental_environment_ready():
     """Infrastructure readiness is not an entitlement or clinical credential."""
-    if os.getenv("ORION_DENTAL_CLINIC_ENABLED", "0") != "1":
+    if (os.getenv("ORION_DENTAL_CLINIC_ENABLED", "0") != "1"
+            or os.getenv("ORION_DENTAL_0076_RELEASE_ENABLED", "0") != "1"):
         return False
     try:
         key = base64.b64decode(os.getenv("DENTAL_DATA_KEY_B64", ""), validate=True)
