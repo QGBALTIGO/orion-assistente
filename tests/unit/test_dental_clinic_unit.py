@@ -170,7 +170,7 @@ def test_api_startup_barrier_selects_clinical_schema_only_after_reviewed_release
 def test_0076_schema_contract_keeps_0075_monthly_and_clinical_rls():
     from scripts import wait_for_dental_schema as schema
     assert schema.REVISION == "0076_dental_clinic"
-    assert "MONTHLY_CONTRACT" in schema.CONTRACT_QUERY
+    assert schema.MONTHLY_CONTRACT in schema.CONTRACT_QUERY
     assert "relforcerowsecurity" in schema.ROLE_CONTRACT
     assert "dental_room_reservations" in schema.APPEND_ONLY
     assert "NOT has_table_privilege('app_runtime',c.oid,'SELECT')" in schema.ROLE_CONTRACT
