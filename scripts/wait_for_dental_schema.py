@@ -17,7 +17,13 @@ TABLES = (
 ROLE_CONTRACT = """SELECT COUNT(*)=9 AND bool_and(
  c.relrowsecurity AND c.relforcerowsecurity
  AND NOT has_table_privilege('app_support',c.oid,'SELECT')
- AND has_table_privilege('app_runtime',c.oid,'SELECT')
+ AND (
+   (c.relname='dental_access_audit'
+     AND has_table_privilege('app_runtime',c.oid,'INSERT')
+     AND NOT has_table_privilege('app_runtime',c.oid,'SELECT'))
+   OR (c.relname<>'dental_access_audit'
+     AND has_table_privilege('app_runtime',c.oid,'SELECT'))
+ )
  AND NOT has_table_privilege('app_runtime',c.oid,'TRUNCATE')
 ) FROM pg_catalog.pg_class c
 WHERE c.oid = ANY(ARRAY[""" + ",".join(
