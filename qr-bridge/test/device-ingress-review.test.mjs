@@ -83,7 +83,7 @@ test('4 retained subscription messages: operator retires them in 2 audited no-re
   assert.equal(f.store().entries[0].message.message.conversation,'Synthetic sensitive message synthetic-a');
   assert.equal(fs.readdirSync(path.join(f.directory,'operator-review-backups')).length,2);
   assert.equal(createIngressJournal(f.options).diagnostics().blocked,0,'restarted bridge must not replay old input');
-  assert.doesNotMatch(fs.readFileSync(path.join(f.directory,fs.readdirSync(f.directory).find(n=>n.endsWith('.enc')))),
+  assert.doesNotMatch(fs.readFileSync(path.join(f.directory,fs.readdirSync(f.directory).find(n=>n.endsWith('.enc')))).toString('latin1'),
     /Synthetic sensitive/,'source stays encrypted on disk');
 });
 
