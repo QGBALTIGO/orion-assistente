@@ -393,7 +393,8 @@ async def _device_binding(device_id: UUID):
                 or not isinstance(channel["lease_owner"], UUID) or
                 not isinstance(channel["fence"], int) or channel["fence"] < 1):
             raise HTTPException(409, "Vínculo deste dispositivo precisa de revisão.")
-        qr_channels._current(channel, channel["lease_owner"], channel["fence"])
+        server_now = (await db.execute(text("SELECT clock_timestamp()"))).scalar_one()
+        qr_channels._current({**channel, "server_now": server_now}, channel["lease_owner"], channel["fence"])
         try:
             credential = qr_channels._cipher().decrypt(channel["credential_encrypted"].encode()).decode()
             if not secrets.compare_digest(qr_channels.credential_hash(credential), channel["credential_hash"]):
