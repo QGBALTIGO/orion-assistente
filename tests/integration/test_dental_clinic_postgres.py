@@ -327,6 +327,9 @@ async def clinic_api_db(clinic_db,monkeypatch):
 async def test_dental_http_patient_records_exams_and_clinical_role_restrictions(clinic_api_db):
     import base64
     import httpx
+    import io
+    import json
+    import zipfile
     from fastapi import FastAPI
     from app.catalog_api import Actor, authenticate
     from app.dental_clinic_api import router
@@ -384,6 +387,21 @@ async def test_dental_http_patient_records_exams_and_clinical_role_restrictions(
         assert opened.status_code==200 and opened.content==raw
         assert "no-store" in opened.headers["cache-control"]
         assert "attachment" in opened.headers["content-disposition"]
+        exported=await client.get(base+"/patients/"+patients[0]+"/export")
+        assert exported.status_code==200,exported.text if exported.status_code!=200 else ""
+        assert exported.headers["content-type"]=="application/zip"
+        assert "no-store" in exported.headers["cache-control"]
+        with zipfile.ZipFile(io.BytesIO(exported.content)) as archive:
+            listing=archive.namelist()
+            assert "manifesto.json" in listing
+            manifest=json.loads(archive.read("manifesto.json"))
+            assert manifest["paciente"]["id"]==patients[0]
+            assert manifest["assinatura_eletronica_qualificada"] is False
+            assert manifest["registros"][0]["conteudo"]["complaint"]==secret
+            assert manifest["registros"][0]["sha256"]
+            assert len(manifest["exames"])==1
+            assert archive.read(manifest["exames"][0]["arquivo"])==raw
+            assert listing[0].startswith("exames/")
         api.dependency_overrides[authenticate]=lambda:Actor(
             "member",d["a"],d["assistant"],"editor")
         administrative=await client.get(base+"/patients/"+patients[0])
@@ -392,10 +410,14 @@ async def test_dental_http_patient_records_exams_and_clinical_role_restrictions(
         forbidden_exams=await client.get(base+"/patients/"+patients[0]+"/exams")
         assert forbidden_records.status_code==403
         assert forbidden_exams.status_code==403
+        forbidden_copy=await client.get(base+"/patients/"+patients[0]+"/export")
+        assert forbidden_copy.status_code==403
         api.dependency_overrides[authenticate]=lambda:Actor(
             "member",d["b"],d["account_b"],"owner")
         other=await client.get(base+"/patients/"+patients[0])
         assert other.status_code==403
+        other_export=await client.get(base+"/patients/"+patients[0]+"/export")
+        assert other_export.status_code==403
 
 
 @pytest.mark.asyncio
