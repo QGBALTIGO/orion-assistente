@@ -84,7 +84,7 @@ async def clinic_db():
                       :start,:end,:start,:end,'confirmed',1000
                     )
                 """),{"id":apid,"tenant":a,"customer":cust,"pro":pro,
-                       "protocol":"AG-"+str(uuid4()).replace("-","")[:12],
+                       "protocol":"AG-"+str(uuid4()).replace("-","")[:6],
                        "key":str(apid),"fingerprint":"0"*64,
                        "start":when,"end":when+timedelta(minutes=40)})
             for rid,name in ((room_a,'Consultório A'),(room_a2,'Consultório B')):
