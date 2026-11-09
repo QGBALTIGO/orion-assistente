@@ -211,6 +211,9 @@
   }
   function patientPanel(){
     if(!state.patient)return '<div class="os-dental-card os-dental-empty">Selecione um paciente para abrir a área clínica. Nenhum diagnóstico ou medição é preenchido automaticamente.</div>';
+    if(state.access?.can_read_records!==true)
+      return '<div class="os-dental-card os-dental-space"><h2 class="os-dental-title">'+esc(state.patient.name)+'</h2>'+
+        info('Este acesso administrativo não inclui consulta ou edição de prontuários, odontogramas, anamnese, periodontia ou exames.')+'</div>';
     return '<div class="os-dental-space"><div class="os-dental-card os-dental-space"><div class="os-dental-toolbar">'+
        '<div><p class="os-dental-kicker">Paciente da clínica</p><h2 class="os-dental-title">'+esc(state.patient.name)+'</h2>'+
        '<p class="os-dental-muted">Nascimento: '+esc(dateInput(state.patient.birth_date)||'Não informado')+
@@ -258,9 +261,11 @@
     const epoch=state.epoch;
     state.loading=true;state.error='';render();
     try{
+      const authorized=state.access?.can_read_records===true;
       const [detail,records,exams]=await Promise.all([
-        api('/patients/'+patient),api('/patients/'+patient+'/records?limit=100'),
-        api('/patients/'+patient+'/exams')]);
+        api('/patients/'+patient),
+        authorized?api('/patients/'+patient+'/records?limit=100'):Promise.resolve({items:[]}),
+        authorized?api('/patients/'+patient+'/exams'):Promise.resolve({items:[]})]);
       if(!valid(epoch))return;
       state.patient=detail;state.records=records.items||[];state.exams=exams.items||[];
       state.tab='anamnesis';state.findings=[];state.periodontal=[];state.stages=[];
