@@ -279,6 +279,7 @@ async def clinic_api_db(clinic_db,monkeypatch):
     from plan_fixtures import seed_fixture_plan, clear_fixture_plans
     d=clinic_db
     monkeypatch.setenv("BUSINESS_PROFILES_ENABLED","1")
+    monkeypatch.setenv("ORION_DENTAL_CLINIC_ENABLED","1")
     import base64
     monkeypatch.setenv("DENTAL_DATA_KEY_B64",base64.b64encode(os.urandom(32)).decode())
     from app.catalog_api import support_session_factory
