@@ -21,7 +21,7 @@
     patients:[],patient:null,records:[],exams:[],rooms:[],appointments:[],roomDay:localToday(),
     roomZone:'',supplies:[],q:'',selectedTooth:11,
     dentition:'permanent',tab:'anamnesis',section:'patients',findings:[],periodontal:[],stages:[],
-    error:'',success:'',loading:false,submitting:false};
+    error:'',success:'',loading:false,submitting:false,patientRead:0,searchRead:0};
   const endpoint=path=>'/api/v1/tenants/'+state.tenantId+'/dental'+path;
   const valid=epoch=>state.host&&state.host.isConnected&&state.epoch===epoch&&state.canAccess?.()===true;
   async function api(path,method='GET',data){return await state.request(endpoint(path),method,data);}
@@ -281,7 +281,7 @@
     finally{state.submitting=false;}
   }
   async function loadPatient(patient){
-    const epoch=state.epoch;
+    const epoch=state.epoch,read=++state.patientRead;
     state.loading=true;state.error='';render();
     try{
       const authorized=state.access?.can_read_records===true;
@@ -289,18 +289,19 @@
         api('/patients/'+patient),
         authorized?api('/patients/'+patient+'/records?limit=100'):Promise.resolve({items:[]}),
         authorized?api('/patients/'+patient+'/exams'):Promise.resolve({items:[]})]);
-      if(!valid(epoch))return;
+      if(!valid(epoch)||read!==state.patientRead)return;
+      if(detail?.id!==patient)throw Error('Resposta não corresponde ao paciente selecionado.');
       state.patient=detail;state.records=records.items||[];state.exams=exams.items||[];
       state.tab='anamnesis';state.findings=[];state.periodontal=[];state.stages=[];
-    }catch(e){if(valid(epoch))state.error=e?.message||'Falha ao consultar paciente.';}
-    finally{if(valid(epoch)){state.loading=false;render();}}
+    }catch(e){if(valid(epoch)&&read===state.patientRead)state.error=e?.message||'Falha ao consultar paciente.';}
+    finally{if(valid(epoch)&&read===state.patientRead){state.loading=false;render();}}
   }
   async function refreshPatients(){
-    const epoch=state.epoch;state.loading=true;render();
+    const epoch=state.epoch,read=++state.searchRead;state.loading=true;render();
     try{const result=await api('/patients?q='+encodeURIComponent(state.q)+'&limit=100');
-      if(valid(epoch))state.patients=result.items||[];
-    }catch(e){if(valid(epoch))state.error=e?.message||'Não foi possível buscar pacientes.';}
-    finally{if(valid(epoch)){state.loading=false;render();}}
+      if(valid(epoch)&&read===state.searchRead)state.patients=result.items||[];
+    }catch(e){if(valid(epoch)&&read===state.searchRead)state.error=e?.message||'Não foi possível buscar pacientes.';}
+    finally{if(valid(epoch)&&read===state.searchRead){state.loading=false;render();}}
   }
   async function loadManagers(section){
     const epoch=state.epoch;state.loading=true;state.error='';render();
@@ -449,6 +450,7 @@
       return invoke(async()=>{
         await api('/patients/'+patient.id+'/records','POST',payload);
         const r=await api('/patients/'+patient.id+'/records?limit=100');
+        if(state.patient?.id!==patient.id)return;
         state.records=r.items||[];state.findings=[];state.periodontal=[];state.stages=[];
       },'Registro clínico gravado e auditado.');
     }
@@ -463,7 +465,8 @@
       });
       const type=file.type||({'pdf':'application/pdf','png':'image/png','jpg':'image/jpeg','jpeg':'image/jpeg'}[file.name.split('.').pop().toLowerCase()]);
       await api('/patients/'+patient.id+'/exams','POST',{filename:file.name,media_type:type,data_base64:b64});
-      const r=await api('/patients/'+patient.id+'/exams');state.exams=r.items||[];
+      const r=await api('/patients/'+patient.id+'/exams');
+      if(state.patient?.id===patient.id)state.exams=r.items||[];
     },'Exame armazenado com criptografia.');
     if(kind==='room')return invoke(async()=>{
       await api('/rooms','POST',{name:v.name});
@@ -543,7 +546,7 @@
       roomDay:localToday(),roomZone:'',supplies:[],q:'',
       selectedTooth:11,dentition:'permanent',tab:'anamnesis',section:'patients',findings:[],
       periodontal:[],stages:[],creatingPatient:false,editingPatient:false,
-      error:'',success:'',loading:false,submitting:false});
+      error:'',success:'',loading:false,submitting:false,patientRead:0,searchRead:0});
   }
   window.OrionDentalClinic=Object.freeze({mount,unmount});
 })();
