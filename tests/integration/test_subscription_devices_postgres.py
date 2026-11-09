@@ -484,3 +484,45 @@ async def test_audio_budget_exhaustion_never_calls_provider_or_releases_ambiguou
     assert response.status_code == 429 and called == []
     async with c.ctx.migration.connect() as db:
         assert (await db.execute(text("SELECT count(*) FROM subscription_device_audio_usage WHERE tenant_id=:t"), {"t": c.tenant})).scalar_one() == 0
+
+
+@pytest.mark.asyncio
+async def test_platform_operator_device_binding_is_readonly_and_current_with_real_postgres(device_case):
+    """The server chooses the active tenant/channel and actual encrypted key."""
+    from app import qr_ingress_review as review
+    c = device_case
+    await create(c)
+    device_id = UUID(c.device["id"])
+    # No leased device may be reviewed by guessing its identifier.
+    with pytest.raises(HTTPException) as missing:
+        await review._device_binding(device_id)
+    assert missing.value.status_code == 409
+    await action(c, "connect")
+    before = {}
+    async with c.ctx.migration.connect() as db:
+        for table in ("qr_channels", "subscription_devices"):
+            before[table] = (await db.execute(text(f"""
+                SELECT to_jsonb(x) FROM {table} x WHERE tenant_id=:t
+                ORDER BY to_jsonb(x)::text"""), {"t": c.tenant})).scalars().all()
+    binding, channel_key = await review._device_binding(device_id)
+    assert binding["tenant_id"] == str(c.tenant)
+    assert binding["channel_id"] == str(c.row["id"])
+    assert binding["device_id"] == c.device["id"]
+    assert binding["generation"] == str(c.saved["generation"])
+    assert binding["settings_revision"] == c.device["revision"]
+    assert binding["owner"] == str(c.bridge.owner)
+    assert channel_key == channels._cipher().decrypt(c.row["credential_encrypted"].encode()).decode()
+    assert "channel_key" not in binding and "credential" not in binding
+    async with c.ctx.migration.connect() as db:
+        for table in ("qr_channels", "subscription_devices"):
+            after = (await db.execute(text(f"""
+                SELECT to_jsonb(x) FROM {table} x WHERE tenant_id=:t
+                ORDER BY to_jsonb(x)::text"""), {"t": c.tenant})).scalars().all()
+            assert after == before, f"Read-only binding changed {table}"
+    async with c.ctx.migration.begin() as db:
+        await db.execute(text("""UPDATE qr_channels
+            SET lease_expires_at=clock_timestamp()-interval '1 second'
+            WHERE id=:id"""), {"id": c.row["id"]})
+    with pytest.raises(HTTPException) as expired:
+        await review._device_binding(device_id)
+    assert expired.value.status_code == 409
