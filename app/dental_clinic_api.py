@@ -329,7 +329,7 @@ async def list_dental_records(tenant_id:UUID,patient_id:UUID,
         records=(await db.execute(text("""
             SELECT id,kind,encrypted_content,nonce,digest,authored_by,professional_id,created_at
             FROM dental_records WHERE tenant_id=:tenant AND patient_id=:patient
-              AND (:kind IS NULL OR kind=:kind)
+              AND (CAST(:kind AS varchar) IS NULL OR kind=:kind)
             ORDER BY created_at DESC,id DESC LIMIT :limit
         """),{"tenant":tenant_id,"patient":patient_id,"kind":kind,"limit":limit})).mappings().all()
         result=[]
