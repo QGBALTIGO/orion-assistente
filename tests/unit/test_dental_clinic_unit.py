@@ -177,3 +177,39 @@ def test_0076_schema_contract_keeps_0075_monthly_and_clinical_rls():
     assert "relforcerowsecurity" in schema.ROLE_CONTRACT
     assert "dental_room_reservations" in schema.APPEND_ONLY
     assert "NOT has_table_privilege('app_runtime',c.oid,'SELECT')" in schema.ROLE_CONTRACT
+
+
+@pytest.mark.asyncio
+async def test_dentist_professional_requires_the_portals_verified_link(monkeypatch):
+    from contextlib import asynccontextmanager
+    from app import professional_portal
+    from app.dental_clinic_api import verified_clinical_membership
+    tenant,pro,account=uuid4(),uuid4(),uuid4()
+    seen=[]
+
+    @asynccontextmanager
+    async def bound(actor):
+        seen.append(actor.account_id)
+        yield tenant,pro
+    monkeypatch.setattr(professional_portal,"individual_access",bound)
+    actor=Actor("member",tenant,account,"professional")
+    async with verified_clinical_membership(tenant,actor,write=True) as (role,identity):
+        assert role=="professional" and identity==pro
+    assert seen==[account]
+    with pytest.raises(HTTPException) as err:
+        async with verified_clinical_membership(uuid4(),actor,write=True):
+            pass
+    assert err.value.status_code==403
+
+
+@pytest.mark.asyncio
+async def test_legacy_viewer_and_support_cannot_claim_professional_clinical_role():
+    from app.dental_clinic_api import verified_clinical_membership
+    tenant,acc=uuid4(),uuid4()
+    for actor in (Actor("support"), Actor("viewer",tenant), Actor("admin"),
+                  Actor("member",tenant,acc,"viewer"),
+                  Actor("member",tenant,acc,"professional",True)):
+        with pytest.raises(HTTPException) as blocked:
+            async with verified_clinical_membership(tenant,actor,write=False):
+                pass
+        assert blocked.value.status_code==403
