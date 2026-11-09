@@ -112,33 +112,55 @@ async def verify_dental_plan(db, tenant):
 def require_member(actor,tenant):
     if (actor.role != "member" or actor.maintenance or actor.tenant_id != tenant
             or not isinstance(actor.account_id,UUID)
-            or actor.membership_role not in {"owner","editor"}):
+            or actor.membership_role not in {"owner","editor","professional"}):
         raise HTTPException(403,"Acesso clínico restrito a membros autorizados da clínica")
 
 
 @asynccontextmanager
+async def verified_clinical_membership(tenant: UUID, actor: Actor, *, write=False):
+    """Professional must hold the portal's live, exclusive professional link.
+
+    The professional link remains under the original SHARE locks while the
+    health operation commits; a caller-supplied tenant/professional is ignored.
+    """
+    require_member(actor, tenant)
+    if actor.membership_role == "professional":
+        from app.professional_portal import individual_access
+        async with individual_access(actor) as (verified_tenant, verified_professional):
+            if verified_tenant != tenant:
+                raise HTTPException(403, "Profissional vinculado a outra clínica")
+            yield "professional", verified_professional
+    else:
+        access = await resolve_tenant_access(
+            actor, tenant, "draft" if write else "read")
+        if access.role not in {"owner", "editor"} or access.account_id != actor.account_id:
+            raise HTTPException(403, "Vínculo clínico não autorizado")
+        yield access.role, None
+
+
+@asynccontextmanager
 async def clinical_session(tenant: UUID, actor: Actor, *, write=False, dentist=False):
-    require_member(actor,tenant)
-    access=await resolve_tenant_access(actor,tenant,"draft" if write else "read")
-    if access.role not in {"owner","editor"} or access.account_id != actor.account_id:
-        raise HTTPException(403,"Acesso clínico não autorizado")
-    async with get_session_factory()() as db:
-        async with tenant_transaction(db,tenant):
-            await verify_dental_plan(db,tenant)
-            grant=(await db.execute(text("""
-                SELECT g.account_id,g.professional_id,g.level,g.cro_number,g.cro_state
-                FROM dental_clinicians g JOIN professionals p
-                  ON p.tenant_id=g.tenant_id AND p.id=g.professional_id
-                WHERE g.tenant_id=:tenant AND g.account_id=:account
-                  AND g.enabled AND p.active
-            """),{"tenant":tenant,"account":actor.account_id})).mappings().one_or_none()
-            if not grant:
-                raise HTTPException(403,"O proprietário precisa autorizar seu acesso clínico na equipe.")
-            if dentist and grant["level"] != "dentist":
-                raise HTTPException(403,"Este registro exige um cirurgião-dentista autorizado.")
-            await db.execute(text("SELECT set_config('app.dental_actor',:actor,true)"),
-                             {"actor":str(actor.account_id)})
-            yield db, dict(grant)
+    async with verified_clinical_membership(tenant, actor, write=write) as (role, linked_professional):
+        async with get_session_factory()() as db:
+            async with tenant_transaction(db,tenant):
+                await verify_dental_plan(db,tenant)
+                grant=(await db.execute(text("""
+                    SELECT g.account_id,g.professional_id,g.level,g.cro_number,g.cro_state
+                    FROM dental_clinicians g JOIN professionals p
+                      ON p.tenant_id=g.tenant_id AND p.id=g.professional_id
+                    WHERE g.tenant_id=:tenant AND g.account_id=:account
+                      AND g.enabled AND p.active
+                      AND (CAST(:linked_professional AS uuid) IS NULL
+                           OR g.professional_id=:linked_professional)
+                """),{"tenant":tenant,"account":actor.account_id,
+                       "linked_professional":linked_professional})).mappings().one_or_none()
+                if not grant:
+                    raise HTTPException(403,"O proprietário precisa autorizar seu acesso clínico na equipe.")
+                if dentist and grant["level"] != "dentist":
+                    raise HTTPException(403,"Este registro exige um cirurgião-dentista autorizado.")
+                await db.execute(text("SELECT set_config('app.dental_actor',:actor,true)"),
+                                 {"actor":str(actor.account_id)})
+                yield db, dict(grant)
 
 
 @asynccontextmanager
@@ -177,28 +199,32 @@ async def patient_row(db,tenant,patient, *, lock=False):
 
 @router.get("/access")
 async def dental_access(tenant_id: UUID,actor:Actor=Depends(authenticate)):
-    require_member(actor,tenant_id)
-    access=await resolve_tenant_access(actor,tenant_id,"read")
-    async with get_session_factory()() as db:
-        async with tenant_transaction(db,tenant_id):
-            await verify_dental_plan(db,tenant_id)
-            row=(await db.execute(text("""
-                SELECT g.account_id,g.professional_id,g.level,g.cro_number,g.cro_state
-                FROM dental_clinicians g JOIN professionals p
-                  ON p.tenant_id=g.tenant_id AND p.id=g.professional_id
-                WHERE g.tenant_id=:tenant AND g.account_id=:account AND g.enabled AND p.active
-            """),{"tenant":tenant_id,"account":actor.account_id})).mappings().first()
-            grants=[]
-            if access.role=="owner":
-                grants=[dict(x) for x in (await db.execute(text("""
-                    SELECT g.account_id,g.professional_id,g.level,g.cro_number,g.cro_state,g.enabled
-                    FROM dental_clinicians g WHERE g.tenant_id=:tenant ORDER BY g.granted_at
-                """),{"tenant":tenant_id})).mappings().all()]
-            return {"can_manage":access.role=="owner","account_id":actor.account_id,
-                    "clinical_access":dict(row) if row else None,"grants":grants,
-                    "can_read_records":bool(row and row["level"] == "dentist"),
-                    "data_encryption_configured":bool(os.environ.get("DENTAL_DATA_KEY_B64")),
-                    "electronic_signatures_homologated":False}
+    async with verified_clinical_membership(tenant_id, actor) as (role, linked_professional):
+        async with get_session_factory()() as db:
+            async with tenant_transaction(db,tenant_id):
+                await verify_dental_plan(db,tenant_id)
+                row=(await db.execute(text("""
+                    SELECT g.account_id,g.professional_id,g.level,g.cro_number,g.cro_state
+                    FROM dental_clinicians g JOIN professionals p
+                      ON p.tenant_id=g.tenant_id AND p.id=g.professional_id
+                    WHERE g.tenant_id=:tenant AND g.account_id=:account
+                      AND g.enabled AND p.active
+                      AND (CAST(:linked_professional AS uuid) IS NULL
+                           OR g.professional_id=:linked_professional)
+                """),{"tenant":tenant_id,"account":actor.account_id,
+                       "linked_professional":linked_professional})).mappings().first()
+                grants=[]
+                if role=="owner":
+                    grants=[dict(x) for x in (await db.execute(text("""
+                        SELECT g.account_id,g.professional_id,g.level,g.cro_number,g.cro_state,g.enabled
+                        FROM dental_clinicians g
+                        WHERE g.tenant_id=:tenant ORDER BY g.granted_at
+                    """),{"tenant":tenant_id})).mappings().all()]
+                return {"can_manage":role=="owner","account_id":actor.account_id,
+                        "clinical_access":dict(row) if row else None,"grants":grants,
+                        "can_read_records":bool(row and row["level"] == "dentist"),
+                        "data_encryption_configured":bool(os.environ.get("DENTAL_DATA_KEY_B64")),
+                        "electronic_signatures_homologated":False}
 
 
 @router.put("/clinicians")
@@ -207,8 +233,16 @@ async def set_clinician(tenant_id: UUID,payload:ClinicianGrant,actor:Actor=Depen
     async with owner_session(tenant_id,actor) as db:
         async with support_session_factory()() as support:
             member=await account_membership_role(support,payload.account_id,tenant_id)
-        if member not in {"owner","editor"}:
-            raise HTTPException(422,"Vincule o profissional à equipe autorizada desta clínica primeiro")
+            if member=="professional":
+                verified=(await support.execute(text("""
+                    SELECT professional_id FROM professional_portal_links
+                    WHERE tenant_id=:tenant AND account_id=:account AND active
+                """),{"tenant":tenant_id,"account":payload.account_id})).scalar_one_or_none()
+                if verified != payload.professional_id or payload.level != "dentist":
+                    raise HTTPException(422,
+                        "O dentista deve ter vínculo profissional ativo com o mesmo cadastro")
+            elif member not in {"owner","editor"}:
+                raise HTTPException(422,"Vincule a conta à equipe autorizada da clínica primeiro")
         known=(await db.execute(text("""
             SELECT id FROM professionals WHERE tenant_id=:tenant AND id=:professional AND active
         """),{"tenant":tenant_id,"professional":payload.professional_id})).scalar_one_or_none()
