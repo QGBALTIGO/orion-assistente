@@ -45,15 +45,25 @@ export function createIngressJournal({directory,secret,serialize=JSON.stringify,
   const hash=value=>createHash('sha256').update(encode(value)).digest('hex');
   const hex64=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);
   const evidenceKeys=['kind','receipt_sha256','build_sha','event_at'];
-  const validEvidence=value=>exactKeys(value,evidenceKeys)&&['operator_attested_prepare_failed','not_started'].includes(value.kind)&&
+  const validEvidence=value=>exactKeys(value,evidenceKeys)&&['operator_attested_prepare_failed','not_started','operator_attested_uncertain','operator_attested_no_replay'].includes(value.kind)&&
     hex64(value.receipt_sha256)&&typeof value.build_sha==='string'&&/^[a-f0-9]{40}$/.test(value.build_sha)&&integer(value.event_at);
-  const operatorEligible=(entry,kind)=>entry&&legacyScope(entry.scope)&&entry.work===undefined&&!active.has(entry.id)&&
-    (kind==='operator_attested_prepare_failed'?entry.state==='blocked'&&entry.blocked_reason==='business_started':
-      kind==='not_started'&&(entry.state==='pending'||entry.state==='blocked'&&entry.blocked_reason==='expired'));
+  const operatorEligible=(entry,kind)=>{
+    if(!entry||entry.work!==undefined||active.has(entry.id))return false;
+    if(legacyScope(entry.scope))return kind==='operator_attested_prepare_failed'?
+      entry.state==='blocked'&&entry.blocked_reason==='business_started':
+      kind==='not_started'&&(entry.state==='pending'||entry.state==='blocked'&&entry.blocked_reason==='expired');
+    if(!validScope(entry.scope))return false;
+    // For a subscription device the operator can retire only blocked work.
+    // The encrypted source remains reviewable; no backend event, send, ASR or
+    // other side effect is replayed. Unfinished work is never silently skipped.
+    if(entry.state!=='blocked')return false;
+    return kind==='operator_attested_uncertain'?entry.blocked_reason==='business_started':
+      kind==='operator_attested_no_replay'&&!['business_started','preparation_failed','operator_do_not_replay'].includes(entry.blocked_reason);
+  };
   function validWork(entry){
     const work=entry.work;
     if(work===undefined)return !['preparation_failed','operator_do_not_replay'].includes(entry.blocked_reason);
-    if(work?.phase==='operator_retired')return legacyScope(entry.scope)&&entry.state==='blocked'&&
+    if(work?.phase==='operator_retired')return (legacyScope(entry.scope)||validScope(entry.scope))&&entry.state==='blocked'&&
       entry.blocked_reason==='operator_do_not_replay'&&exactKeys(work,['phase','operation_id','peer_tag','review_required'])&&
       channelId(work.operation_id)&&hex64(work.peer_tag)&&typeof work.review_required==='boolean';
     const base=['phase','attempt_id','peer_tag','intake_revision','control_revision'];
@@ -263,7 +273,8 @@ export function createIngressJournal({directory,secret,serialize=JSON.stringify,
         const entry=data.entries.find(row=>row.id===item?.id);
         if(!exactKeys(item,['id','fingerprint','peer_tag','evidence'])||!hex64(item.peer_tag)||!validEvidence(item.evidence)||
             !operatorEligible(entry,item.evidence.kind)||hash(entry)!==item.fingerprint||
-            item.evidence.event_at<entry.at||item.evidence.event_at>entry.at+15*60*1000||
+            item.evidence.event_at<entry.at||
+            legacyScope(entry.scope)&&item.evidence.event_at>entry.at+15*60*1000||
             item.evidence.event_at>now()+60000)throw Error('ingress_review_entry_refused');
         return {entry,item};
       });
