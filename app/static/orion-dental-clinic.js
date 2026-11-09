@@ -89,7 +89,7 @@
      (!canManage?'<p class="os-dental-muted">Somente o proprietário pode conceder ou revogar acessos.</p>':
      '<form data-dental-form="grant" class="os-dental-space">'+
      choices('Conta da equipe','account_id',
-       (state.team.length?state.team.map(x=>[x.account_id,x.name||x.email||x.account_id]):
+       (state.team.some(x=>x.active!==false&&['owner','editor','professional'].includes(x.role))?state.team.filter(x=>x.active!==false&&['owner','editor','professional'].includes(x.role)).map(x=>[x.account_id,x.name||x.email||x.account_id]):
          [[state.access?.account_id||'','Minha conta']]),state.access?.account_id||'','required')+
      choices('Profissional cadastrado','professional_id',state.professionals.filter(x=>x.active!==false).map(x=>[x.id,x.name]),'','required')+
      choices('Acesso','level',[['dentist','Cirurgião-dentista'],['assistant','Assistente administrativo']],'dentist')+
