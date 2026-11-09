@@ -128,6 +128,8 @@ async def owner_session(tenant: UUID, actor: Actor):
     async with get_session_factory()() as db:
         async with tenant_transaction(db,tenant):
             await verify_dental_plan(db,tenant)
+            await db.execute(text("SELECT set_config('app.dental_actor',:actor,true)"),
+                             {"actor":str(actor.account_id)})
             yield db
 
 
@@ -170,7 +172,8 @@ async def dental_access(tenant_id: UUID,actor:Actor=Depends(authenticate)):
                 """),{"tenant":tenant_id})).mappings().all()]
             return {"can_manage":access.role=="owner","account_id":actor.account_id,
                     "clinical_access":dict(row) if row else None,"grants":grants,
-                    "data_encryption_configured":len(os.environ.get("DENTAL_DATA_KEY_B64",""))>0,
+                    "can_read_records":bool(row and row["level"] == "dentist"),
+                    "data_encryption_configured":bool(os.environ.get("DENTAL_DATA_KEY_B64")),
                     "electronic_signatures_homologated":False}
 
 
@@ -295,7 +298,7 @@ async def list_dental_records(tenant_id:UUID,patient_id:UUID,
                               kind:str|None=Query(None,max_length=30),
                               limit:int=Query(40,ge=1,le=100),
                               actor:Actor=Depends(authenticate)):
-    async with clinical_session(tenant_id,actor) as (db,grant):
+    async with clinical_session(tenant_id,actor,dentist=True) as (db,grant):
         await patient_row(db,tenant_id,patient_id)
         if kind and kind not in (
             "anamnesis","odontogram","periodontal","progress","treatment","consent",
