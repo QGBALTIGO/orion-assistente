@@ -240,3 +240,33 @@ async def test_cancelled_appointment_releases_its_room(clinic_db):
                 (tenant_id,appointment_id,room_id,period)
               VALUES (:t,:a,:r,tstzrange(now(),now()+interval '1 second','[)'))
             """),{"t":d["a"],"a":d["appt_a2"],"r":d["room_a"]})
+
+
+@pytest.mark.asyncio
+async def test_simultaneous_room_requests_have_only_one_winner(clinic_db):
+    import asyncio
+    d=clinic_db
+    factory=async_sessionmaker(d["runtime"],expire_on_commit=False)
+    async def reserve(appointment):
+        try:
+            async with factory() as session:
+                async with tenant_transaction(session,d["a"]):
+                    await session.execute(text("""
+                        INSERT INTO dental_room_reservations
+                          (tenant_id,appointment_id,room_id,period)
+                        VALUES (:tenant,:appointment,:room,
+                                tstzrange(now(),now()+interval '1 second','[)'))
+                    """),{"tenant":d["a"],"appointment":appointment,"room":d["room_a"]})
+            return True
+        except DBAPIError:
+            return False
+    outcomes=await asyncio.wait_for(
+        asyncio.gather(reserve(d["appt_a"]),reserve(d["appt_a2"])),timeout=20)
+    assert sorted(outcomes)==[False,True]
+    async with factory() as session:
+        async with tenant_transaction(session,d["a"]):
+            count=(await session.execute(text("""
+                SELECT count(*) FROM dental_room_reservations
+                WHERE tenant_id=:tenant AND room_id=:room AND active
+            """),{"tenant":d["a"],"room":d["room_a"]})).scalar_one()
+            assert count==1
