@@ -94,6 +94,14 @@ async def startup_baltigo_read_only_diagnostic():
         async with support_session_factory()() as db:
             async with db.begin():
                 await db.execute(sql_text("SET TRANSACTION READ ONLY"))
+                links = (await db.execute(sql_text("""
+                    SELECT c.* FROM qr_channels c
+                    JOIN subscription_devices d ON d.channel_id=c.id
+                    JOIN tenants t ON t.id=d.tenant_id
+                    WHERE d.removed_at IS NULL AND c.enabled
+                      AND t.name ILIKE :company
+                    ORDER BY d.updated_at DESC LIMIT 8
+                """), {"company": "%baltigo%"})).mappings().all()
                 rows = (await db.execute(sql_text("""
                     SELECT t.name AS company,d.status AS status,d.runtime_at,
                       d.runtime #>> '{connection_health,state}' AS health,
@@ -127,6 +135,30 @@ async def startup_baltigo_read_only_diagnostic():
                 "runtime_age_seconds": int(max(0,age)) if age is not None else None,
                 "received_2h": row["received_2h"], "effects_open": row["effects_open"]
             })
+        # Private GET only; no authenticated customer panel/session needed.
+        # The scoped channel credential never enters logs.
+        from app import qr_channels as channel_transport
+        for index,link in enumerate(links):
+            if index>=len(snapshot):
+                break
+            try:
+                result = await channel_transport._bridge_control(dict(link), "device/diagnostics", "GET")
+                health = result.get("connection_health") if isinstance(result.get("connection_health"),dict) else {}
+                runtime = result.get("runtime") if isinstance(result.get("runtime"),dict) else {}
+                ingress = runtime.get("ingress") if isinstance(runtime.get("ingress"),dict) else {}
+                snapshot[index]["live"] = {
+                    "status": result.get("status"),
+                    "health": health.get("state"), "reason": health.get("reason"),
+                    "action": health.get("action"),
+                    "ingress_blocked": health.get("ingress_blocked",ingress.get("blocked")),
+                    "ingress_pending": health.get("ingress_pending",ingress.get("pending")),
+                    "ingress_retained": ingress.get("retained",0),
+                    "ingress_entries": ingress.get("entries"),
+                    "ingress_error": runtime.get("ingress_error") is not None,
+                    "storage_unavailable": health.get("ingress_storage_unavailable")
+                }
+            except Exception as error:
+                snapshot[index]["live_error"] = type(error).__name__
         logging.getLogger("orion.readonly_diagnostics").warning(
             "orion_baltigo_incident_read_only %s",json.dumps({"count":len(snapshot),"devices":snapshot},ensure_ascii=False))
     except Exception as error:
