@@ -126,6 +126,7 @@ def test_exam_upload_rejects_unknown_mime_and_oversize_base64():
 
 def test_mutations_and_access_never_have_implicit_clinical_rights():
     from app.dental_clinic_api import router
+    import app.dental_clinic_media  # loads protected exam endpoints before inspecting router
     paths={r.path for r in router.routes}
     assert any(p.endswith("/access") for p in paths)
     assert any(p.endswith("/records") for p in paths)
