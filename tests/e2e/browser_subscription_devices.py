@@ -30,7 +30,7 @@ DEVICE_BASE = base.BASE + "/subscription-whatsapp/devices"
 DEVICE_PATH = DEVICE_BASE + "/" + DEVICE_ID
 SIZES = [(390, 844), (768, 1024), (1440, 900)]
 PROFILE = "subscription_services"
-ALLOWED_ROUTES = ["dispositivos", "chatbot", "novidades", "ajuda", "member"]
+ALLOWED_ROUTES = ["dashboard", "dispositivos", "chatbot", "novidades", "ajuda", "member"]
 CAPABILITIES = {"manage": True, "webhook": True, "proxy": True,
                 "transcription": True, "transcription_max_minutes": 30}
 
