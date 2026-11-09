@@ -9,8 +9,9 @@ import json
 import os
 import secrets
 from contextlib import asynccontextmanager
-from datetime import date
+from datetime import date, datetime, time, timedelta, timezone
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo
 
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -396,6 +397,36 @@ async def add_dental_room(tenant_id:UUID,payload:RoomCreate,actor:Actor=Depends(
             raise HTTPException(409,"Este consultório já está cadastrado") from None
         await audit(db,tenant_id,actor,"room_created")
         return {"id":rid,"name":payload.name,"active":True}
+
+
+@router.get("/appointments")
+async def clinic_appointments(tenant_id: UUID,day:date,
+                               actor:Actor=Depends(authenticate)):
+    """Read appointments from the existing Orion agenda, not a second scheduler."""
+    if not 1900 <= day.year <= 2100:
+        raise HTTPException(422,"Informe uma data válida")
+    async with clinical_session(tenant_id,actor) as (db,grant):
+        zone_name=(await db.execute(text("""
+            SELECT timezone FROM tenants WHERE id=:tenant
+        """),{"tenant":tenant_id})).scalar_one()
+        zone=ZoneInfo(zone_name)
+        start=datetime.combine(day,time.min,zone).astimezone(timezone.utc)
+        end=datetime.combine(day+timedelta(days=1),time.min,zone).astimezone(timezone.utc)
+        records=(await db.execute(text("""
+            SELECT a.id,a.start_at,a.end_at,a.status,c.name AS customer_name,
+                   p.name AS professional_name,r.room_id,d.name AS room_name
+            FROM appointments a
+            JOIN customers c ON c.tenant_id=a.tenant_id AND c.id=a.customer_id
+            JOIN professionals p ON p.tenant_id=a.tenant_id AND p.id=a.professional_id
+            LEFT JOIN dental_room_reservations r
+              ON r.tenant_id=a.tenant_id AND r.appointment_id=a.id AND r.active
+            LEFT JOIN dental_rooms d ON d.tenant_id=r.tenant_id AND d.id=r.room_id
+            WHERE a.tenant_id=:tenant AND a.start_at>=:start AND a.start_at<:end
+              AND a.status='confirmed'
+            ORDER BY a.start_at,a.id LIMIT 151
+        """),{"tenant":tenant_id,"start":start,"end":end})).mappings().all()
+        return {"day":day,"items":[dict(row) for row in records[:150]],
+                "has_more":len(records)>150}
 
 
 @router.put("/appointments/{appointment_id}/room")
