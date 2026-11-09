@@ -107,6 +107,10 @@
       const retry=['create','action'].includes(state.pending.kind)&&!state.operation;
       return '<section class="os-notice os-devices-feedback"><div><strong>Resultado ainda não confirmado</strong><p>Confira o estado antes de repetir a ação. Nenhum novo comando será enviado automaticamente.</p><div class="os-actions">'+button('Conferir estado','reconcile')+(retry?button('Retomar a mesma solicitação','retry-pending','os-ghost'):'')+'</div></div></section>';
     }
+    function hasRetainedMessages(item){
+      const count=item?.connection_health?.ingress_blocked;
+      return Number.isSafeInteger(count)&&count>0;
+    }
     function connectionHealth(item){
       const value=item.connection_health,zone=item.metrics?.timezone;
       if(!object(value))return '';
@@ -115,7 +119,10 @@
       if(value.stale===true)notes.push('O estado está desatualizado. Ainda não foi possível confirmar a conexão.');
       if(value.action&&actions[value.action])notes.push(actions[value.action]);
       if(value.ingress_storage_unavailable===true)notes.push('Não foi possível guardar novas mensagens com segurança. O suporte precisa conferir o armazenamento desta conexão.');
-      else if(Number.isSafeInteger(value.ingress_blocked)&&value.ingress_blocked>0)notes.push((value.ingress_blocked===1?'Uma mensagem recebida precisa':value.ingress_blocked+' mensagens recebidas precisam')+' de revisão pelo suporte. As respostas automáticas estão pausadas.');
+      else if(Number.isSafeInteger(value.ingress_blocked)&&value.ingress_blocked>0){
+        notes.push((value.ingress_blocked===1?'Uma mensagem recebida precisa':value.ingress_blocked+' mensagens recebidas precisam')+' de revisão pelo suporte. As respostas automáticas estão pausadas.');
+        notes.push('Reiniciar a conexão não libera essas mensagens. Mantenha o vínculo atual e solicite ao suporte Orion a conferência dos registros retidos, sem reenviar ou apagar mensagens.');
+      }
       else if(Number.isSafeInteger(value.ingress_pending)&&value.ingress_pending>0)notes.push((value.ingress_pending===1?'Uma mensagem recebida aguarda':value.ingress_pending+' mensagens recebidas aguardam')+' processamento. A recuperação está em andamento.');
       const interrupted=dateTime(value.interrupted_at,zone),next=dateTime(value.reconnect_at,zone);
       const activity=value.transport_observed===true?dateTime(value.last_activity_at,zone):'';
@@ -125,15 +132,15 @@
       return notes.length?'<p class="os-device-health"'+(['degraded','needs_attention'].includes(value.state)||value.stale?' data-error="true"':'')+'>'+notes.map(esc).join('<br>')+'</p>':'';
     }
     function card(item){
-      const avatar=safeImage(item.profile?.avatar_url),verifiedPhone=item.phone?fields.phoneDisplay('+'+item.phone,{allowInternational:true}):'',connected=item.status==='connected',stats=item.metrics||{},caps=item.capabilities||{};
+      const avatar=safeImage(item.profile?.avatar_url),verifiedPhone=item.phone?fields.phoneDisplay('+'+item.phone,{allowInternational:true}):'',connected=item.status==='connected',stats=item.metrics||{},caps=item.capabilities||{},retained=hasRetainedMessages(item);
       const badge='<span class="os-badge '+(connected?'os-success':['error','logged_out','pair_failed','unavailable','degraded','needs_attention'].includes(item.status)?'os-warning':'os-neutral')+'">'+esc(statuses[item.status])+'</span>';
       const actionEnabled=canWrite(),attr='data-sd-device="'+item.id+'"';
-      const menu=[button('Abrir conexão','open-connect','','link',attr),...(caps.settings?[button('Configurações','settings','','settings',attr)]:[]),...(caps.restart?[button('Reiniciar conexão','restart','','refresh',attr+(!actionEnabled?' disabled':''))]:[]),...(caps.relink?[button('Refazer vínculo','relink','','link',attr+(!actionEnabled?' disabled':''))]:[]),...(caps.remove?[button('Excluir dispositivo','remove','os-device-danger','trash',attr+(!actionEnabled?' disabled':''))]:[])].join('');
+      const menu=[button('Abrir conexão','open-connect','','link',attr),...(caps.settings?[button('Configurações','settings','','settings',attr)]:[]),...(!retained&&caps.restart?[button('Reiniciar conexão','restart','','refresh',attr+(!actionEnabled?' disabled':''))]:[]),...(caps.relink?[button('Refazer vínculo','relink','','link',attr+(!actionEnabled?' disabled':''))]:[]),...(caps.remove?[button('Excluir dispositivo','remove','os-device-danger','trash',attr+(!actionEnabled?' disabled':''))]:[])].join('');
       const lastSeen=dateTime(item.last_seen_at,stats.timezone),tracking=dateTime(stats.tracking_since,stats.timezone);
       const health=connectionHealth(item)||(item.last_error?'<p class="os-device-health" data-error="true">'+esc(typeof item.last_error==='string'?item.last_error:'A conexão precisa de atenção. Atualize o estado.')+'</p>':lastSeen?'<p class="os-device-health">Última atualização: '+esc(lastSeen)+'</p>':'');
       const featureSettings=caps.settings===true&&canManage();
       const features=object(item.features)?'<div class="os-device-features">'+[['transcription','Transcrição de áudio','mic','transcription'],['call_blocking','Bloqueio de ligações','shield','calls']].map(([key,label,symbol,section])=>'<button type="button" class="os-device-feature" '+(featureSettings?'data-sd-action="settings" '+attr+' data-sd-open-section="'+section+'"':'disabled')+'><span>'+icon(symbol)+esc(label)+'</span><span class="os-badge '+(item.features[key]===true?'os-success':'os-neutral')+'" title="Preferência salva do dispositivo">'+(item.features[key]===true?'Ativado':'Desativado')+'</span></button>').join('')+'</div>':'';
-      return '<article class="os-card os-device-card" data-sd-card="'+item.id+'"><div class="os-device-card-top"><div class="os-device-identity"><div class="os-device-avatar">'+(avatar?'<img src="'+esc(avatar)+'" alt="" loading="lazy" referrerpolicy="no-referrer">':icon('phone'))+'</div><div><h2>'+esc(item.name)+'</h2><div class="os-device-status-line">'+badge+'</div>'+(verifiedPhone?'<p class="os-device-phone">'+esc(verifiedPhone)+'</p>':'')+'</div></div><details class="os-device-menu" data-sd-device="'+item.id+'"><summary class="os-button os-outline" aria-label="Opções de '+esc(item.name)+'">'+icon('more')+'<span>Opções</span></summary><div>'+menu+'</div></details></div><div class="os-device-metrics" aria-label="Mensagens registradas">'+[['today','Hoje'],['last_7_days','7 dias'],['last_30_days','30 dias'],['total','Total']].map(([key,label])=>'<div class="os-device-metric"><strong>'+count(stats.available===true?stats[key]:null)+'</strong><span>'+label+'</span></div>').join('')+'</div><p class="os-help os-device-metrics-note">'+(stats.available===true?'Mensagens registradas pelo Orion'+(tracking?' desde '+esc(tracking):'')+'.':'As métricas ainda não estão disponíveis.')+'</p>'+health+'<div class="os-device-card-actions">'+button(connected?'Ver conexão':'Conectar','open-connect','', 'link',attr)+(caps.settings?button('Configurações','settings','os-outline','settings',attr):'')+(caps.restart?button('Reiniciar','restart','os-outline','refresh',attr+(!actionEnabled?' disabled':'')):'')+'</div>'+features+'</article>';
+      return '<article class="os-card os-device-card" data-sd-card="'+item.id+'"><div class="os-device-card-top"><div class="os-device-identity"><div class="os-device-avatar">'+(avatar?'<img src="'+esc(avatar)+'" alt="" loading="lazy" referrerpolicy="no-referrer">':icon('phone'))+'</div><div><h2>'+esc(item.name)+'</h2><div class="os-device-status-line">'+badge+'</div>'+(verifiedPhone?'<p class="os-device-phone">'+esc(verifiedPhone)+'</p>':'')+'</div></div><details class="os-device-menu" data-sd-device="'+item.id+'"><summary class="os-button os-outline" aria-label="Opções de '+esc(item.name)+'">'+icon('more')+'<span>Opções</span></summary><div>'+menu+'</div></details></div><div class="os-device-metrics" aria-label="Mensagens registradas">'+[['today','Hoje'],['last_7_days','7 dias'],['last_30_days','30 dias'],['total','Total']].map(([key,label])=>'<div class="os-device-metric"><strong>'+count(stats.available===true?stats[key]:null)+'</strong><span>'+label+'</span></div>').join('')+'</div><p class="os-help os-device-metrics-note">'+(stats.available===true?'Mensagens registradas pelo Orion'+(tracking?' desde '+esc(tracking):'')+'.':'As métricas ainda não estão disponíveis.')+'</p>'+health+'<div class="os-device-card-actions">'+button(connected?'Ver conexão':'Conectar','open-connect','', 'link',attr)+(caps.settings?button('Configurações','settings','os-outline','settings',attr):'')+(!retained&&caps.restart?button('Reiniciar','restart','os-outline','refresh',attr+(!actionEnabled?' disabled':'')):'')+'</div>'+features+'</article>';
     }
     function renderList(){
       const usage=state.usage,limit=usage?'<div class="os-devices-usage"><span class="os-badge os-neutral">'+count(usage.used)+' de '+count(usage.limit)+'</span><span>'+((usage.limit===1)?'dispositivo em uso':'dispositivos em uso')+'</span></div>':'';
@@ -553,6 +560,10 @@
         openDialog('create','Criar dispositivo','<p>Escolha um nome para identificar o WhatsApp da sua empresa.</p>'+input('Nome do dispositivo','new_name','WhatsApp','text','required maxlength="100"'));
         return;
       }
+      if(action==='restart'&&hasRetainedMessages(state.items.find(item=>item.id===id))){
+        feedback('Reiniciar não remove mensagens que precisam de revisão. Mantenha o vínculo e consulte o suporte Orion.',true);
+        return;
+      }
       if(['connect','restart','relink','remove'].includes(action)){confirmAction(action,id);return;}
       if(action==='tutorial-next'){
         if(!canWrite()||!device())return;const mode=state.method==='code'&&(device().capabilities.pair||state.pair)?'code':'qr';state.tutorial[mode]=true;render();if(mode==='qr')await showQR();else host.querySelector('#sd-pair-phone')?.focus();return;
@@ -584,6 +595,9 @@
       if(['connect','restart','relink','remove'].includes(dialog.kind)){
         const item=state.items.find(row=>row.id===dialog.id);
         if(!item||item.revision!==dialog.revision){closeDialog();feedback('O dispositivo mudou. Confira o estado antes de continuar.',true);return;}
+        if(dialog.kind==='restart'&&hasRetainedMessages(item)){
+          closeDialog();feedback('Reiniciar não remove mensagens retidas. Consulte o suporte Orion antes de retomar as respostas automáticas.',true);return;
+        }
         await performAction(dialog.kind,dialog.id,dialog.revision,dialog.key);
       }
     }
