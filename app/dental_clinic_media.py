@@ -69,7 +69,7 @@ async def upload_exam(tenant_id:UUID,patient_id:UUID,payload:ExamUpload,actor:Ac
 
 @router.get("/patients/{patient_id}/exams")
 async def list_exams(tenant_id:UUID,patient_id:UUID,actor:Actor=Depends(authenticate)):
-    async with clinical_session(tenant_id,actor) as (db,grant):
+    async with clinical_session(tenant_id,actor,dentist=True) as (db,grant):
         await patient_row(db,tenant_id,patient_id)
         records=(await db.execute(text("""
             SELECT id,filename,media_type,byte_count,created_at,authored_by
@@ -84,7 +84,7 @@ async def list_exams(tenant_id:UUID,patient_id:UUID,actor:Actor=Depends(authenti
 async def download_exam(tenant_id:UUID,patient_id:UUID,exam_id:UUID,
                         actor:Actor=Depends(authenticate)):
     key=key_material()
-    async with clinical_session(tenant_id,actor) as (db,grant):
+    async with clinical_session(tenant_id,actor,dentist=True) as (db,grant):
         await patient_row(db,tenant_id,patient_id)
         file=(await db.execute(text("""
             SELECT id,filename,media_type,byte_count,nonce,digest,encrypted_content
