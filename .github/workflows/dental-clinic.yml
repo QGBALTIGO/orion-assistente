@@ -5,6 +5,7 @@ on:
       - 'alembic/versions/0076_dental_clinic.py'
       - 'app/dental_clinic_*.py'
       - 'app/main.py'
+      - 'app/plan_permissions.py'
       - 'app/plan_routing.py'
       - 'app/static/orion-dental-clinic.*'
       - 'app/static/orion-suite.js'
@@ -12,6 +13,7 @@ on:
       - 'scripts/backup_and_migrate_dental_clinic.py'
       - 'scripts/wait_for_dental_schema.py'
       - 'scripts/predeploy_one_click_links.py'
+      - 'scripts/start_api.py'
       - 'tests/integration/test_dental_clinic_postgres.py'
       - 'tests/unit/test_dental_clinic_unit.py'
       - 'tests/unit/test_dental_clinic_release.py'
@@ -77,7 +79,7 @@ jobs:
       - name: Testar conflitos concorrentes e isolamento real entre empresas
         run: python -m pytest -q tests/integration/test_dental_clinic_postgres.py
       - name: Validar registros FDI, periodontia, autorização e criptografia
-        run: python -m pytest -q tests/unit/test_dental_clinic_unit.py tests/unit/test_dental_clinic_release.py tests/unit/test_start_api.py tests/unit/test_dental_workspace_context.py tests/unit/test_barbershop_layout_modes.py
+        run: python -m pytest -q tests/unit/test_dental_clinic_unit.py tests/unit/test_dental_clinic_release.py tests/unit/test_start_api.py tests/unit/test_plan_permissions.py tests/unit/test_dental_workspace_context.py tests/unit/test_barbershop_layout_modes.py
       - name: Instalar DOM isolado
         run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
       - name: Testar a interface e regressões
