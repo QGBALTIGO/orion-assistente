@@ -364,6 +364,31 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
         secret:context.secret,device:true,serialize});
     }
     catch(error){ingressFailure('ingress_journal_unavailable',null);throw error;}
+    // Read-only, tenant-opaque diagnostics. Do NOT print source messages, LIDs,
+    // phone numbers, exact timestamps, secret material or journal entry IDs.
+    // A durable blocked admission can globally fence outbound effects despite
+    // a live socket, so count its safe reason codes before changing policy.
+    try{
+      const entries=ingressJournal.operatorSnapshot().data.entries;
+      const blocked=entries.filter(item=>item.state==='blocked'&&
+        item.work?.phase!=='operator_retired'&&item.work?.phase!=='preparation_failed');
+      if(blocked.length){
+        const reasons={};
+        for(const reason of ['expired','scope_changed','policy_denied','invalid_message',
+          'authorization_revoked','broker_refused','identity_unresolved','business_started',
+          'preparation_failed','operator_do_not_replay']){
+          const count=blocked.filter(item=>item.blocked_reason===reason).length;
+          if(count)reasons[reason]=count;
+        }
+        const deviceTag=createHmac('sha256',context.secret).update(
+          'orion:device-ingress-diagnostic:v1\\0'+context.tenantId+'\\0'+deviceSnapshot.id).digest('hex').slice(0,12);
+        const nowMs=now(),oldest=blocked.reduce((at,item)=>Math.min(at,item.at),nowMs);
+        console.info(JSON.stringify({event:'orion_device_ingress_backlog',device_tag:deviceTag,
+          blocked:blocked.length,pending:ingressJournal.diagnostics().pending,reasons,
+          oldest_minutes:Math.max(0,Math.floor((nowMs-oldest)/60000)),
+          retained:ingressJournal.diagnostics().retained||0}));
+      }
+    }catch{console.warn(JSON.stringify({event:'orion_device_ingress_diagnostic_unavailable'}));}
     deviceRuntime=createDeviceRuntime(context,{client,downloadMediaMessage:mod.downloadMediaMessage,logger:silent,
       now,openedAt,schedule,cancel,downloadOptions:proxyTransport.download,
       capacity:context.deviceSendCapacity,
