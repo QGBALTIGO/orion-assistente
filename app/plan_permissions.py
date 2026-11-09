@@ -5,6 +5,9 @@ account/session mutation belongs in this module.
 """
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
+import base64
+import binascii
+import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import hashlib
@@ -144,6 +147,17 @@ async def try_lock_plan(db, tenant_id):
                              {"key": LOCK_PREFIX + str(tenant_id)})).scalar_one()
 
 
+def dental_environment_ready():
+    """Infrastructure readiness is not an entitlement or clinical credential."""
+    if os.getenv("ORION_DENTAL_CLINIC_ENABLED", "0") != "1":
+        return False
+    try:
+        key = base64.b64decode(os.getenv("DENTAL_DATA_KEY_B64", ""), validate=True)
+    except (ValueError, binascii.Error):
+        return False
+    return len(key) == 32
+
+
 async def plan_state(db, tenant_id, lock="shared"):
     if lock not in {"shared", "exclusive", None}:
         raise ValueError("Invalid plan lock")
@@ -161,7 +175,18 @@ async def plan_state(db, tenant_id, lock="shared"):
         text("SELECT public.orion_prepaid_plan_snapshot(:tenant)"),
         {"tenant":tenant_id}
     )).scalar_one_or_none()
-    return derive_plan({**snapshot,"prepaid":prepaid})
+    state = derive_plan({**snapshot, "prepaid": prepaid})
+    state["dental_clinical_enabled"] = (
+        state.get("business_niche") == "odontologia"
+        and state.get("active") is True
+        and dental_environment_ready()
+    )
+    if state["dental_clinical_enabled"]:
+        # Cause the open panel to reconcile when the rollout turns on.
+        state["revision"] = hashlib.sha256(
+            (state["revision"] + "|dental-clinical-enabled-v1").encode()
+        ).hexdigest()
+    return state
 
 
 @dataclass(frozen=True)
