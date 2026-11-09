@@ -15,6 +15,8 @@ from uuid import UUID, uuid4
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.exceptions import RequestValidationError
+from fastapi.routing import APIRoute
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
@@ -39,8 +41,27 @@ class PrivateJSON(JSONResponse):
         super().__init__(content, headers=headers, **kwargs)
 
 
+class PrivateClinicalRoute(APIRoute):
+    """Do not echo any submitted medical text in default Pydantic 422 errors."""
+
+    def get_route_handler(self):
+        original = super().get_route_handler()
+
+        async def filtered(request):
+            try:
+                return await original(request)
+            except RequestValidationError as exc:
+                safe = [{"loc": list(error.get("loc", ())), "type": error.get("type", "value_error"),
+                         "msg": "Verifique os campos informados."}
+                        for error in exc.errors()]
+                return PrivateJSON({"detail": safe}, status_code=422)
+
+        return filtered
+
+
 router = APIRouter(prefix="/api/v1/tenants/{tenant_id}/dental",
-                   tags=["Odontologia — dados privados"], default_response_class=PrivateJSON)
+                   tags=["Odontologia — dados privados"], default_response_class=PrivateJSON,
+                   route_class=PrivateClinicalRoute)
 
 
 def key_material():
