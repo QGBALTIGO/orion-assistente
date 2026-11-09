@@ -13,8 +13,13 @@
   const choices=(label,name,options,selected='',attrs='')=>'<div class="os-dental-field"><label for="dental-'+esc(name)+'">'+esc(label)+'</label>'+
     '<select id="dental-'+esc(name)+'" name="'+esc(name)+'" '+attrs+'>'+
     options.map(([v,l])=>'<option value="'+esc(v)+'"'+(v===selected?' selected':'')+'>'+esc(l)+'</option>').join('')+'</select></div>';
+  function localToday(){
+    const d=new Date(),n=x=>String(x).padStart(2,'0');
+    return d.getFullYear()+'-'+n(d.getMonth()+1)+'-'+n(d.getDate());
+  }
   const state={host:null,request:null,tenantId:'',canAccess:null,epoch:0,access:null,team:[],professionals:[],
-    patients:[],patient:null,records:[],exams:[],rooms:[],supplies:[],q:'',selectedTooth:11,
+    patients:[],patient:null,records:[],exams:[],rooms:[],appointments:[],roomDay:localToday(),
+    roomZone:'',supplies:[],q:'',selectedTooth:11,
     dentition:'permanent',tab:'anamnesis',section:'patients',findings:[],periodontal:[],stages:[],
     error:'',success:'',loading:false,submitting:false};
   const endpoint=path=>'/api/v1/tenants/'+state.tenantId+'/dental'+path;
@@ -38,6 +43,9 @@
   const nameFor=kind=>topics.find(x=>x[0]===kind)?.[1]||kind;
   const safeItem=item=>(item&&typeof item==='object'?item:{});
   const dateInput=v=>v?String(v).slice(0,10):'';
+  const clinicTime=value=>new Intl.DateTimeFormat('pt-BR',{
+    timeZone:state.roomZone||undefined,hour:'2-digit',minute:'2-digit'
+  }).format(new Date(value));
   function roomManager(){
     return '<div class="os-dental-space"><div class="os-dental-card">'+
        '<h2 class="os-dental-title">Consultórios</h2><p class="os-dental-muted">As reservas usam a agenda real do Orion e impedem sobreposição no banco.</p>'+
@@ -47,11 +55,20 @@
        (state.rooms.length?state.rooms.map(r=>'<div class="os-dental-entry">'+esc(r.name)+' <small>'+(r.active?'Ativo':'Inativo')+'</small></div>').join(''):
        '<div class="os-dental-empty">Nenhum consultório cadastrado.</div>')+'</div>'+
        '<div class="os-dental-card"><h3>Reservar sala para uma consulta</h3>'+
-       '<p class="os-dental-muted">Use o identificador do agendamento já confirmado na Agenda. Uma sala ocupada retorna conflito, sem reservar parcialmente.</p>'+
-       '<form data-dental-form="room-reservation" class="os-dental-space">'+
-       field('Identificador do agendamento','appointment_id','text','','required maxlength="36" placeholder="UUID do agendamento"')+
+       '<p class="os-dental-muted">Selecione uma consulta da agenda real. O Orion verifica colisões no banco ao reservar ou reagendar.</p>'+
+       '<form data-dental-form="room-day" class="os-dental-row">'+
+       field('Dia das consultas','day','date',state.roomDay,'required')+
+       '<div class="os-dental-field"><label>Consultar agenda</label><button type="submit" class="os-button">Buscar consultas</button></div></form>'+
+       (state.appointments.length?'<form data-dental-form="room-reservation" class="os-dental-space">'+
+       choices('Consulta confirmada','appointment_id',state.appointments.map(x=>[
+         x.id,clinicTime(x.start_at)+' · '+x.customer_name+' · '+x.professional_name+
+         (x.room_name?' · '+x.room_name:'')
+       ]),'','required')+
        choices('Consultório','room_id',state.rooms.filter(x=>x.active).map(x=>[x.id,x.name]),'','required')+
-       '<div class="os-dental-controls"><button class="os-button" type="submit">Vincular consultório</button></div></form></div></div>';
+       '<div class="os-dental-controls"><button class="os-button" type="submit"'+
+       (state.rooms.some(x=>x.active)?'':' disabled')+'>Vincular consultório</button></div></form>':
+       '<p class="os-dental-empty">Não há consultas confirmadas para o dia selecionado.</p>')+
+       '</div></div>';
   }
   function supplyManager(){
     return '<div class="os-dental-space"><div class="os-dental-card"><h2 class="os-dental-title">Estoque e insumos</h2>'+
@@ -281,8 +298,19 @@
   }
   async function loadManagers(section){
     const epoch=state.epoch;state.loading=true;state.error='';render();
-    try{const res=await api(section==='rooms'?'/rooms':'/supplies');
-      if(valid(epoch))state[section]=res.items||[];
+    try{
+      if(section==='rooms'){
+        const [rooms,appointments]=await Promise.all([
+          api('/rooms'),api('/appointments?day='+encodeURIComponent(state.roomDay))]);
+        if(valid(epoch)){
+          state.rooms=rooms.items||[];
+          state.appointments=appointments.items||[];
+          state.roomZone=appointments.timezone||'';
+        }
+      }else{
+        const res=await api('/supplies');
+        if(valid(epoch))state.supplies=res.items||[];
+      }
     }catch(e){if(valid(epoch))state.error=e?.message||'Não foi possível carregar os cadastros.';}
     finally{if(valid(epoch)){state.loading=false;render();}}
   }
@@ -423,9 +451,18 @@
       await api('/rooms','POST',{name:v.name});
       const r=await api('/rooms');state.rooms=r.items||[];
     },'Consultório cadastrado.');
+    if(kind==='room-day')return invoke(async()=>{
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(v.day||''))throw Error('Selecione uma data válida.');
+      const next=await api('/appointments?day='+encodeURIComponent(v.day));
+      state.roomDay=v.day;state.appointments=next.items||[];state.roomZone=next.timezone||'';
+    },'Consultas atualizadas.');
     if(kind==='room-reservation')return invoke(async()=>{
-      if(!idRe.test(v.appointment_id||''))throw Error('Informe o identificador do agendamento.');
+      if(!idRe.test(v.appointment_id||''))throw Error('Selecione uma consulta da agenda.');
+      if(!state.appointments.some(x=>x.id===v.appointment_id))
+        throw Error('Consulta não encontrada na data selecionada.');
       await api('/appointments/'+v.appointment_id+'/room','PUT',{room_id:v.room_id});
+      const next=await api('/appointments?day='+encodeURIComponent(state.roomDay));
+      state.appointments=next.items||[];
     },'Consultório vinculado à consulta.');
     if(kind==='supply')return invoke(async()=>{
       await api('/supplies','POST',{name:v.name,unit:v.unit});
@@ -484,7 +521,8 @@
     if(host){host.removeEventListener('click',onClick);host.removeEventListener('submit',onSubmit);
       host.removeEventListener('change',onChange);host.replaceChildren();}
     Object.assign(state,{host:null,request:null,tenantId:'',canAccess:null,access:null,team:[],
-      professionals:[],patients:[],patient:null,records:[],exams:[],rooms:[],supplies:[],q:'',
+      professionals:[],patients:[],patient:null,records:[],exams:[],rooms:[],appointments:[],
+      roomDay:localToday(),roomZone:'',supplies:[],q:'',
       selectedTooth:11,dentition:'permanent',tab:'anamnesis',section:'patients',findings:[],
       periodontal:[],stages:[],creatingPatient:false,error:'',success:'',loading:false,submitting:false});
   }
