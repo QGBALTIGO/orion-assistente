@@ -425,7 +425,7 @@ async def clinic_appointments(tenant_id: UUID,day:date,
               AND a.status='confirmed'
             ORDER BY a.start_at,a.id LIMIT 151
         """),{"tenant":tenant_id,"start":start,"end":end})).mappings().all()
-        return {"day":day,"items":[dict(row) for row in records[:150]],
+        return {"day":day,"timezone":zone_name,"items":[dict(row) for row in records[:150]],
                 "has_more":len(records)>150}
 
 
