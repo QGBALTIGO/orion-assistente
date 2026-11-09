@@ -1,4 +1,4 @@
-"""Read-only schema contract for the isolated 0075 clinical release.
+"""Read-only schema contract for the isolated 0076 clinical release.
 
 Never opens a migration connection from the worker/API. No patient rows read.
 """
@@ -43,7 +43,12 @@ APPEND_ONLY = """SELECT
       AND tgname='dental_follow_appointment' AND tgenabled='O' AND NOT tgisinternal)
 """
 
-CONTRACT_QUERY = "SELECT COALESCE(("+ROLE_CONTRACT+"),false) AND COALESCE(("+APPEND_ONLY+"),false) AS ready"
+from scripts.wait_for_fixed_client_monthly_schema import CONTRACT_QUERY as MONTHLY_CONTRACT
+
+# 0076 may not hide corruption of the existing 0075 recurrence contracts.
+CONTRACT_QUERY = ("SELECT COALESCE(("+MONTHLY_CONTRACT+"),false) AND "
+                  "COALESCE(("+ROLE_CONTRACT+"),false) AND COALESCE(("
+                  +APPEND_ONLY+"),false) AS ready")
 
 REVISION = "0076_dental_clinic"
 
