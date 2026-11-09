@@ -344,3 +344,42 @@ test('readonly access cannot create, prepare, edit, remove or read QR credential
   assert.equal(h.calls.some(call=>call.path.endsWith('/qr')),false);assert.equal(writes(h).length,0);
   assert.deepEqual(h.errors,[]);
 });
+
+
+test('mensagens retidas mantêm a pausa e não oferecem reinício que não as resolveria',async t=>{
+  const original=device();
+  const withReview=device({
+    status:'needs_attention',
+    capabilities:{...original.capabilities,restart:true,settings:true,relink:true},
+    connection_health:{
+      state:'needs_attention',reason:'ingress_review_required',action:'review_incoming_messages',
+      ingress_blocked:4,ingress_pending:0,ingress_storage_unavailable:false,
+      transport_observed:false,stale:false
+    }
+  });
+  const h=await makeDevices({data:listing([withReview])});
+  t.after(()=>h.close());
+  const card=h.element('[data-sd-card]');
+  assert.match(card.textContent,/4 mensagens recebidas precisam de revisão/);
+  assert.match(card.textContent,/respostas automáticas estão pausadas/);
+  assert.match(card.textContent,/Reiniciar a conexão não libera essas mensagens/);
+  assert.equal(card.querySelectorAll('[data-sd-action="restart"]').length,0);
+  assert.ok(card.querySelector('[data-sd-action="open-connect"]'));
+  assert.equal(writes(h).length,0,'mensagem explicativa não pode modificar conexão');
+  assert.deepEqual(h.errors,[]);
+});
+
+test('um botão antigo de reinício também é rejeitado quando a fila ficou bloqueada',async t=>{
+  const item=device({status:'needs_attention',
+    connection_health:{state:'needs_attention',reason:'ingress_review_required',
+      action:'review_incoming_messages',ingress_blocked:1,ingress_pending:0},
+    capabilities:{...device().capabilities,restart:true}});
+  const h=await makeDevices({data:listing([item])});
+  t.after(()=>h.close());
+  const stale=h.document.createElement('button');
+  stale.type='button';stale.dataset.sdAction='restart';stale.dataset.sdDevice=deviceId;
+  h.element('#devices').append(stale);stale.click();await flush();
+  assert.equal(writes(h).length,0,'reinício antigo não deve ser enviado');
+  assert.match(h.element('[data-sd-feedback]').textContent,/Reiniciar não remove mensagens/);
+  assert.deepEqual(h.errors,[]);
+});
