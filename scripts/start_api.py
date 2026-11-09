@@ -29,9 +29,13 @@ def runtime_environment(source):
 
 
 def wait_for_campaigns_schema(environment):
-    # The pre-deploy is the only process allowed to migrate. This child checks
-    # 0075 and every predecessor using runtime-only, read-only catalogs.
-    subprocess.run([sys.executable, "-m", "scripts.wait_for_fixed_client_monthly_schema"],
+    # API or reverse ingress never performs DDL. A 0076 rollout must verify
+    # the clinical schema after the private backup and migration pre-deploy.
+    # The default remains the proven 0075 monthly barrier on existing services.
+    schema = ("scripts.wait_for_dental_schema"
+              if environment.get("ORION_DENTAL_0076_RELEASE_ENABLED") == "1"
+              else "scripts.wait_for_fixed_client_monthly_schema")
+    subprocess.run([sys.executable, "-m", schema],
                    env=environment, check=True, timeout=95)
 
 
