@@ -65,6 +65,7 @@ test('assistant sees administrative patients but no charts or examination reques
   h.click('[data-dental-action=select-patient]');await flush();
   assert.match(h.host.textContent,/Este acesso administrativo não inclui/);
   assert.equal(h.host.querySelector('[data-dental-form=record]'),null);
+  assert.equal(h.host.querySelector('[data-dental-action=export-patient]'),null);
   assert.equal(h.calls.some(x=>x.path.includes('/records?')),false);
   assert.equal(h.calls.some(x=>x.path.includes('/exams')&&x.method==='GET'),false);
 });
@@ -73,6 +74,7 @@ test('dentist sees 32 permanent teeth and can record one explicit finding only',
   const h=makeDOM({level:'dentist'});t.after(()=>h.close());
   await h.mount();await flush();
   h.click('[data-dental-action=select-patient]');await flush();
+  assert.ok(h.host.querySelector('[data-dental-action=export-patient]'));
   h.click('[data-dental-tab=odontogram]');await flush();
   assert.equal(h.host.querySelectorAll('[data-dental-tooth]').length,32);
   assert.equal(h.host.querySelectorAll('.os-dental-tooth[aria-pressed=true]').length,1);
