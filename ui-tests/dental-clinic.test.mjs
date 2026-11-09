@@ -21,8 +21,11 @@ const response=(path,method='GET',data,config)=>{
   if(path.includes('/dental/patients/'+patient+'/records?'))return {items:[]};
   if(path.includes('/dental/patients/'+patient+'/exams')&&method==='GET')return {items:[]};
   if(path.endsWith('/dental/patients/'+patient))return patientDTO;
+  if(path.includes('/dental/appointments?'))return {
+    timezone:'America/Campo_Grande',items:config.appointments||[]};
   if(path.endsWith('/dental/patients/'+patient+'/records')&&method==='POST')return {id:randomUUID(),recorded:true};
-  if(path.endsWith('/dental/rooms'))return method==='GET'?{items:[]}:{id:randomUUID(),...data};
+  if(path.endsWith('/dental/rooms'))return method==='GET'?{items:config.rooms||[]}:{id:randomUUID(),...data};
+  if(path.endsWith('/room')&&method==='PUT')return {assigned:true};
   if(path.endsWith('/dental/supplies'))return method==='GET'?{items:[]}:{id:randomUUID(),...data};
   return {items:[]};
 };
@@ -132,4 +135,27 @@ test('CSS reuses Orion tokens and preserves mobile/low-motion design',()=>{
   assert.match(css,/@media\(max-width:767px\)/);
   assert.match(css,/@media\(max-width:359px\)/);
   assert.match(css,/prefers-reduced-motion:reduce/);
+});
+
+
+test('consultório selects actual confirmed appointment without exposing internal UUID input',async t=>{
+  const appointment='60000000-0000-4000-8000-000000000006';
+  const room='70000000-0000-4000-8000-000000000007';
+  const h=makeDOM({level:'dentist',rooms:[{id:room,name:'Consultório 1',active:true}],
+    appointments:[{id:appointment,customer_name:'Paciente Teste',professional_name:'Dentista A',
+      start_at:'2026-11-10T13:00:00Z',room_name:null}]});
+  t.after(()=>h.close());await h.mount();await flush();
+  h.click('[data-dental-action=section-rooms]');await flush();
+  assert.ok(h.calls.some(x=>x.path.includes('/dental/appointments?day=')));
+  assert.equal(h.host.querySelector('input[name=appointment_id]'),null);
+  const selector=h.host.querySelector('select[name=appointment_id]');
+  assert.ok(selector);
+  assert.equal(selector.options.length,1);
+  assert.equal(selector.value,appointment);
+  assert.match(selector.options[0].textContent,/Paciente Teste/);
+  h.submit('[data-dental-form=room-reservation]');await flush();
+  const writes=h.calls.filter(x=>x.method==='PUT'&&x.path.includes('/appointments/'));
+  assert.equal(writes.length,1);
+  assert.equal(writes[0].path,'/api/v1/tenants/'+tenant+'/dental/appointments/'+appointment+'/room');
+  assert.equal(writes[0].data.room_id,room);
 });
