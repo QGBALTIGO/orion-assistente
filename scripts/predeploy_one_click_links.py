@@ -172,22 +172,58 @@ def current_release(raw):
         subprocess.run([sys.executable, "-m", "scripts.probe_prepaid_pix_read_only"], check=True)
 
 
+def dental_already_published(raw):
+    """0076 is read-only verified on restarts, never replaying 0075 monthly DDL."""
+    from scripts import backup_and_migrate_dental_clinic as dental
+    from scripts.wait_for_fixed_client_monthly_schema import CONTRACT_QUERY as monthly_contract
+    from sqlalchemy import create_engine, text
+    from sqlalchemy.pool import NullPool
+    if not dental.schema_ready(raw):
+        raise RuntimeError("dental_schema_invalid")
+    engine=create_engine(raw,poolclass=NullPool,connect_args={
+        "options":"-c default_transaction_read_only=on -c statement_timeout=12000"})
+    try:
+        with engine.connect() as db:
+            if db.execute(text(monthly_contract)).scalar() is not True:
+                raise RuntimeError("dental_monthly_predecessor_invalid")
+    finally:
+        engine.dispose()
+    subprocess.run([sys.executable,"-c",RUNTIME_PREDEPLOY_CHECK],check=True)
+    subprocess.run([sys.executable,"-m","scripts.probe_cakto_read_only"],check=True)
+    if os.getenv("ORION_PIX_PREPAID_ENABLED","0")=="1":
+        subprocess.run([sys.executable,"-m","scripts.probe_prepaid_pix_read_only"],check=True)
+
+
+def dental_release_if_enabled(raw):
+    if os.getenv("ORION_DENTAL_0076_RELEASE_ENABLED","0") != "1":
+        return
+    from scripts import backup_and_migrate_dental_clinic as dental
+    if dental.main() != 0:
+        raise RuntimeError("dental_release_backup_or_schema_invalid")
+    dental_already_published(raw)
+
+
 def main():
     from scripts.backup_and_migrate_commissions import connection_values
     from scripts.apply_variable_combo_migration import migrated_version
     from scripts import backup_and_migrate_cakto_recovery as recovery
     from scripts import backup_and_migrate_fixed_client_series as fixed
     from scripts import backup_and_migrate_fixed_client_monthly as monthly
+    from scripts import backup_and_migrate_dental_clinic as dental
     raw, _url = connection_values()
     current = migrated_version(raw)
+    if current == dental.TARGET:
+        return dental_already_published(raw)
     if current in {recovery.PREVIOUS, recovery.TARGET, fixed.TARGET, monthly.TARGET}:
-        return current_release(raw)
+        result = current_release(raw)
+        dental_release_if_enabled(raw)
+        return result
     if current not in LEGACY_REVISIONS:
         raise RuntimeError("cakto_recovery_source_revision_not_approved")
     _legacy_main()
-    # Preserve the earlier reviewed migration path, then publish the new head
-    # through the same backup gate. Runtime processes never perform this DDL.
-    return current_release(raw)
+    result = current_release(raw)
+    dental_release_if_enabled(raw)
+    return result
 
 
 if __name__ == "__main__":

@@ -65,6 +65,8 @@ from app.inbox_conversations import router as inbox_conversations_router
 from app.communication_api import router as communication_router
 from app.workflow_drafts import router as workflow_drafts_router
 from app.orion_pwa_api import router as orion_pwa_router
+from app.dental_clinic_api import router as dental_clinic_router
+import app.dental_clinic_media  # registers protected exam endpoints on the same router
 from app.plan_routing import include_plan_router, enforce_endpoint_plan
 
 app = FastAPI(
@@ -219,6 +221,7 @@ include_plan_router(app, central_appointment_reply_router)
 include_plan_router(app, business_profile_router)
 include_plan_router(app, account_business_router)
 include_plan_router(app, management_router)
+include_plan_router(app, dental_clinic_router)
 include_plan_router(app, management_blocks_router)
 include_plan_router(app, management_ai_router)
 include_plan_router(app, management_team_router)
@@ -308,6 +311,8 @@ async def panel_asset(asset: str) -> FileResponse:
                "orion-subscription-direct-messages.css": "text/css", "orion-subscription-direct-messages.js": "text/javascript",
                "orion-subscription-group-contacts.js": "text/javascript",
                "orion-subscription-group-add.js": "text/javascript",
+               "orion-dental-clinic.js": "text/javascript",
+               "orion-dental-clinic.css": "text/css",
                "orion-connect.js": "text/javascript",
                "orion-automations.js": "text/javascript",
                "orion-inbox.js": "text/javascript", "orion-conversations.js": "text/javascript", "orion-flows.js": "text/javascript", "orion-inbox.css": "text/css"}
