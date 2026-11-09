@@ -102,6 +102,8 @@ async def verify_dental_plan(db, tenant):
     state = await plan_state(db,tenant)
     if state.get("business_niche") != "odontologia" or state.get("platform_workspace"):
         raise HTTPException(404, "Módulo disponível apenas para clínicas odontológicas")
+    if not state.get("dental_clinical_enabled"):
+        raise HTTPException(503, "Área clínica em homologação: acesso não habilitado")
     if not state.get("active") or not state.get("permissions",{}).get("clients.manage"):
         raise HTTPException(403, "Acesso operacional indisponível para esta clínica")
     return state
