@@ -7,6 +7,8 @@ import hashlib
 import hmac
 import json
 import time
+import secrets
+from cryptography.fernet import InvalidToken
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -218,7 +220,7 @@ def _non_json(_):
     raise ValueError("invalid_json_number")
 
 
-async def _read_request(request: Request):
+async def _read_request(request: Request, adapter=RequestPayload):
     if request.headers.get("content-type", "").split(";", 1)[0].strip().lower() != "application/json":
         raise HTTPException(415, "Envie a revisão no formato correto.")
     content = bytearray()
@@ -228,17 +230,19 @@ async def _read_request(request: Request):
         content.extend(chunk)
     try:
         parsed = json.loads(bytes(content), object_pairs_hook=_pairs, parse_constant=_non_json)
-        return RequestPayload.validate_python(parsed)
+        return adapter.validate_python(parsed)
     except (ValueError, TypeError, RecursionError, ValidationError):
         raise HTTPException(422, "Pedido de revisão inválido.") from None
 
 
-async def _private_review(body: dict, actor: UUID) -> dict:
+async def _private_review(body: dict, actor: UUID, *, private_path=PRIVATE_PATH, channel_key=None) -> dict:
     url, secret = qr_api._config()
     headers = {"X-Orion-Bridge-Key": secret, "Content-Type": "application/json", **_assertion(body, actor, secret)}
+    if channel_key is not None:
+        headers["X-Orion-Channel-Key"] = channel_key
     try:
         async with httpx.AsyncClient(timeout=18, trust_env=False, follow_redirects=False) as client:
-            async with client.stream("POST", url + PRIVATE_PATH, headers=headers, content=_canonical(body)) as result:
+            async with client.stream("POST", url + private_path, headers=headers, content=_canonical(body)) as result:
                 content = bytearray()
                 async for chunk in result.aiter_bytes():
                     if len(content) + len(chunk) > RESPONSE_LIMIT:
@@ -275,6 +279,183 @@ async def ingress_review(request: Request, response: Response, actor: UUID = Dep
     elif (result.operation_id != payload.operation_id or result.backup.reference != payload.operation_id
           or result.before_snapshot_sha256 != payload.expected.snapshot_sha256):
         raise HTTPException(503, "Não foi possível correlacionar o resultado. Consulte o estado antes de tentar novamente.")
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return result.model_dump(mode="json")
+
+
+# Separate platform-owner review for subscription devices. These DTOs cannot
+# be confused with the PRIMARY namespace, and are not exposed to tenant owners.
+DEVICE_LIST_PATH = "/api/v1/admin/whatsapp/ingress-devices"
+DEVICE_PUBLIC_PATH = "/api/v1/admin/whatsapp/devices/{device_id}/ingress-review"
+DEVICE_PRIVATE_PREFIX = "/internal/ops/device-ingress-review/"
+
+
+class DeviceScope(Closed):
+    tenant_id: UUID
+    channel_id: UUID
+    device_id: UUID
+    generation: UUID
+    settings_revision: int = Field(strict=True, ge=1, le=MAX_INTEGER)
+    auth_epoch: str = Field(strict=True, pattern=HEX64)
+    owner: UUID
+    fence: int = Field(strict=True, ge=1, le=MAX_INTEGER)
+
+
+class DeviceExpected(Closed):
+    scope: DeviceScope
+    snapshot_sha256: str = Field(strict=True, pattern=HEX64)
+
+
+class DeviceEvidence(Closed):
+    # No assertion that an uncertain audio/message was never executed.
+    # A reviewed uncertain source is archived, NEVER replayed or re-sent.
+    kind: Literal["operator_attested_uncertain", "operator_attested_no_replay"]
+    receipt_sha256: str = Field(strict=True, pattern=HEX64)
+    build_sha: str = Field(strict=True, pattern=r"^[a-f0-9]{40}$")
+    event_at: int = Field(strict=True, ge=1, le=MAX_INTEGER)
+
+
+class DeviceEntry(Closed):
+    trace: str = Field(strict=True, pattern=TRACE)
+    fingerprint: str = Field(strict=True, pattern=HEX64)
+    disposition: Literal["do_not_replay"]
+    evidence: DeviceEvidence
+
+
+class DeviceApplyRequest(Closed):
+    version: int = Field(strict=True, ge=1, le=1)
+    mode: Literal["apply"]
+    operation_id: UUID
+    expected: DeviceExpected
+    entries: list[DeviceEntry] = Field(min_length=1, max_length=2)
+
+    @model_validator(mode="after")
+    def unique(self):
+        if len({row.trace for row in self.entries}) != len(self.entries):
+            raise ValueError("Entrada repetida")
+        return self
+
+
+DevicePayload = TypeAdapter(Annotated[DryRequest | DeviceApplyRequest, Field(discriminator="mode")])
+
+
+class DeviceEntryView(Closed):
+    trace: str = Field(strict=True, pattern=TRACE)
+    fingerprint: str = Field(strict=True, pattern=HEX64)
+    at: int = Field(strict=True, ge=1, le=MAX_INTEGER)
+    sequence: int = Field(strict=True, ge=1, le=MAX_INTEGER)
+    state: Literal["pending", "blocked"]
+    blocked_reason: Reason | None
+    phase: Phase | None
+    eligible_as: list[Literal["operator_attested_uncertain", "operator_attested_no_replay"]] = Field(max_length=2)
+
+
+class DeviceDryResult(Closed):
+    version: int = Field(strict=True, ge=1, le=1)
+    mode: Literal["dry_run"]
+    scope: DeviceScope
+    snapshot_sha256: str = Field(strict=True, pattern=HEX64)
+    entries: list[DeviceEntryView] = Field(max_length=32)
+    total_entries: int = Field(strict=True, ge=0, le=512)
+    truncated: bool = Field(strict=True)
+    mutation: bool = Field(strict=True)
+
+    @model_validator(mode="after")
+    def read_only(self):
+        if self.mutation or len({row.trace for row in self.entries}) != len(self.entries):
+            raise ValueError("invalid_dry_run")
+        return self
+
+
+async def _device_binding(device_id: UUID):
+    """The DB, not the browser, binds tenant, current device and channel key."""
+    async with qr_channels.support_session_factory()() as db:
+        device = (await db.execute(text("""
+            SELECT * FROM subscription_devices
+            WHERE id=:id AND removed_at IS NULL
+        """), {"id": device_id})).mappings().one_or_none()
+        if device is None:
+            raise HTTPException(404, "Dispositivo não encontrado.")
+        tenant_id, channel_id = device["tenant_id"], device["channel_id"]
+        if qr_legacy.is_alias(tenant_id, channel_id):
+            raise HTTPException(409, "Dispositivo preservado não permite esta revisão.")
+        channel = await qr_channels._require_canonical(db, tenant_id, channel_id)
+        account_ok = (await db.execute(text("""
+            SELECT 1 FROM tenants t
+            JOIN tenant_memberships m ON m.tenant_id=t.id
+            WHERE t.id=:tenant AND t.status='active' AND t.whatsapp_channel_id=:channel
+              AND m.account_id=:owner AND m.active AND m.role='owner'
+        """), {"tenant": tenant_id, "channel": channel_id,
+               "owner": device["owner_account_id"]})).scalar_one_or_none()
+        if (not account_ok or not channel["enabled"] or channel["owner_account_id"] != device["owner_account_id"]
+                or channel["assistant_enabled"] or channel["provider"] != "baileys"
+                or not isinstance(channel["lease_owner"], UUID) or
+                not isinstance(channel["fence"], int) or channel["fence"] < 1):
+            raise HTTPException(409, "Vínculo deste dispositivo precisa de revisão.")
+        qr_channels._current(channel, channel["lease_owner"], channel["fence"])
+        try:
+            credential = qr_channels._cipher().decrypt(channel["credential_encrypted"].encode()).decode()
+            if not secrets.compare_digest(qr_channels.credential_hash(credential), channel["credential_hash"]):
+                raise ValueError()
+        except (InvalidToken, UnicodeError, ValueError):
+            raise HTTPException(503, "Credencial do dispositivo indisponível.") from None
+    binding = {"tenant_id": str(tenant_id), "channel_id": str(channel_id),
+               "device_id": str(device_id), "generation": str(device["generation"]),
+               "settings_revision": int(device["revision"]),
+               "owner": str(channel["lease_owner"]), "fence": channel["fence"]}
+    return binding, credential
+
+
+def _check_device_scope(scope: DeviceScope, binding: dict) -> None:
+    actual = scope.model_dump(mode="json")
+    if any(actual.get(key) != value for key, value in binding.items()):
+        raise HTTPException(409, "O dispositivo mudou. Consulte novamente antes de revisar.")
+
+
+@router.get(DEVICE_LIST_PATH, include_in_schema=False)
+async def device_review_candidates(response: Response, actor: UUID = Depends(require_platform_owner)):
+    """Only operational summaries. No phone number or message text is returned."""
+    async with qr_channels.support_session_factory()() as db:
+        devices = (await db.execute(text("""
+            SELECT d.id, d.name, t.name AS company,
+              d.runtime_at,
+              CASE WHEN jsonb_typeof(d.runtime#>'{connection_health,ingress_blocked}')='number'
+                THEN LEAST(20000, GREATEST(0,(d.runtime#>>'{connection_health,ingress_blocked}')::integer))
+                ELSE 0 END AS blocked
+            FROM subscription_devices d JOIN tenants t ON t.id=d.tenant_id
+            WHERE d.removed_at IS NULL AND t.status='active'
+            ORDER BY blocked DESC,d.runtime_at DESC NULLS LAST LIMIT 100
+        """))).mappings().all()
+    response.headers["Cache-Control"] = "no-store"
+    return {"items": [{"id": str(row["id"]), "name": str(row["name"])[:100],
+                       "company": str(row["company"])[:120], "blocked": row["blocked"],
+                       "stale": row["runtime_at"] is None or
+                           row["runtime_at"].timestamp() < time.time()-90} for row in devices
+                      if row["blocked"] > 0]}
+
+
+@router.post(DEVICE_PUBLIC_PATH, include_in_schema=False)
+async def device_ingress_review(device_id: UUID, request: Request, response: Response,
+                                actor: UUID = Depends(require_platform_owner)):
+    payload = await _read_request(request, DevicePayload)
+    binding, channel_key = await _device_binding(device_id)
+    if isinstance(payload, DeviceApplyRequest):
+        _check_device_scope(payload.expected.scope, binding)
+    body = payload.model_dump(mode="json")
+    raw = await _private_review(body, actor,
+        private_path=DEVICE_PRIVATE_PREFIX + binding["channel_id"], channel_key=channel_key)
+    try:
+        result = (DeviceDryResult if isinstance(payload, DryRequest) else ApplyResult).model_validate(raw)
+    except ValidationError:
+        raise HTTPException(503, "A revisão do dispositivo retornou um estado inválido.") from None
+    if isinstance(result, DeviceDryResult):
+        _check_device_scope(result.scope, binding)
+        if payload.traces and any(row.trace not in payload.traces for row in result.entries):
+            raise HTTPException(503, "A revisão retornou entradas não solicitadas.")
+    elif (result.operation_id != payload.operation_id or result.backup.reference != payload.operation_id
+          or result.before_snapshot_sha256 != payload.expected.snapshot_sha256):
+        raise HTTPException(503, "Resposta não corresponde à revisão. Consulte o estado antes de repetir.")
     response.headers["Cache-Control"] = "no-store"
     response.headers["X-Content-Type-Options"] = "nosniff"
     return result.model_dump(mode="json")
