@@ -15,11 +15,11 @@ from sqlalchemy.pool import NullPool
 
 from scripts.apply_variable_combo_migration import migrated_version
 from scripts.backup_and_migrate_commissions import connection_values, storage_values, perform_backup
-from scripts import backup_and_migrate_fixed_client_series as previous
+from scripts import backup_and_migrate_fixed_client_monthly as previous
 from scripts.wait_for_dental_schema import schema_ready as dental_contract
 
-PREVIOUS="0074_fixed_client_series"
-TARGET="0075_dental_clinic"
+PREVIOUS="0075_fixed_client_monthly"
+TARGET="0076_dental_clinic"
 
 
 @contextmanager
@@ -31,12 +31,12 @@ def release_lock(raw):
             if db.execute(text("SELECT current_user")).scalar_one()!="app_migrator":
                 db.execute(text("SET ROLE app_migrator"))
                 db.commit()
-            if not db.execute(text("SELECT pg_try_advisory_lock(1330792783,75)")).scalar_one():
+            if not db.execute(text("SELECT pg_try_advisory_lock(1330792783,76)")).scalar_one():
                 raise RuntimeError("dental_migration_busy")
             db.commit()
             try:yield
             finally:
-                db.execute(text("SELECT pg_advisory_unlock(1330792783,75)"))
+                db.execute(text("SELECT pg_advisory_unlock(1330792783,76)"))
                 db.commit()
     finally:engine.dispose()
 
@@ -57,9 +57,9 @@ def main():
             if current!=PREVIOUS or not previous.schema_ready(raw):
                 print("orion_dental_source_schema_invalid",file=sys.stderr)
                 return 3
-            with tempfile.TemporaryDirectory(prefix="orion-dental-0075-") as folder:
+            with tempfile.TemporaryDirectory(prefix="orion-dental-0076-") as folder:
                 perform_backup(url,storage_values(),Path(folder)/"backup.dump",
-                    backup_context="dental-clinic-0075",
+                    backup_context="dental-clinic-0076",
                     schema_revision=PREVIOUS,preserve_ownership=True)
             if migrated_version(raw)!=PREVIOUS or not previous.schema_ready(raw):
                 print("orion_dental_source_changed_after_backup",file=sys.stderr)
