@@ -83,6 +83,58 @@ async def startup_provider_probe():
 
 
 @app.on_event("startup")
+async def startup_baltigo_read_only_diagnostic():
+    """One-time private incident snapshot. No message bodies, people, phones or keys."""
+    import json
+    import logging
+    from datetime import datetime, timezone
+    from sqlalchemy import text as sql_text
+    from app.catalog_api import support_session_factory
+    try:
+        async with support_session_factory()() as db:
+            async with db.begin():
+                await db.execute(sql_text("SET TRANSACTION READ ONLY"))
+                rows = (await db.execute(sql_text("""
+                    SELECT t.name AS company,d.status AS status,d.runtime_at,
+                      d.runtime #>> '{connection_health,state}' AS health,
+                      d.runtime #>> '{connection_health,reason}' AS reason,
+                      d.runtime #>> '{connection_health,action}' AS action,
+                      d.runtime #>> '{connection_health,ingress_blocked}' AS blocked,
+                      d.runtime #>> '{connection_health,ingress_pending}' AS pending,
+                      d.runtime #>> '{connection_health,ingress_storage_unavailable}' AS storage_error,
+                      c.enabled AS channel_enabled,
+                      c.lease_expires_at > clock_timestamp() AS lease_active,
+                      (SELECT count(*) FROM subscription_device_events e
+                       WHERE e.device_id=d.id AND e.kind IN ('text','audio')
+                         AND e.occurred_at>clock_timestamp()-interval '2 hours') AS received_2h,
+                      (SELECT count(*) FROM subscription_device_effects e
+                       WHERE e.device_id=d.id AND e.status IN ('pending','running','uncertain')) AS effects_open
+                    FROM subscription_devices d
+                    JOIN tenants t ON t.id=d.tenant_id
+                    JOIN qr_channels c ON c.id=d.channel_id
+                    WHERE d.removed_at IS NULL AND t.name ILIKE :company
+                    ORDER BY d.updated_at DESC LIMIT 8
+                """), {"company": "%baltigo%"})).mappings().all()
+        snapshot = []
+        for row in rows:
+            age = (datetime.now(timezone.utc)-row["runtime_at"]).total_seconds() if row["runtime_at"] else None
+            snapshot.append({
+                "company": str(row["company"])[:60], "status": row["status"],
+                "health": row["health"], "reason": row["reason"], "action": row["action"],
+                "blocked": row["blocked"], "pending": row["pending"],
+                "storage_error": row["storage_error"], "channel_enabled": row["channel_enabled"],
+                "lease_active": row["lease_active"],
+                "runtime_age_seconds": int(max(0,age)) if age is not None else None,
+                "received_2h": row["received_2h"], "effects_open": row["effects_open"]
+            })
+        logging.getLogger("orion.readonly_diagnostics").warning(
+            "orion_baltigo_incident_read_only %s",json.dumps({"count":len(snapshot),"devices":snapshot},ensure_ascii=False))
+    except Exception as error:
+        logging.getLogger("orion.readonly_diagnostics").warning(
+            "orion_baltigo_incident_unavailable category=%s",type(error).__name__)
+
+
+@app.on_event("startup")
 async def startup_panel_session_store():
     from app.panel_auth import start_session_store
     await start_session_store(app)
