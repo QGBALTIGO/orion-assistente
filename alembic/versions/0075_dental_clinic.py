@@ -197,10 +197,15 @@ def upgrade():
         op.execute(f"CREATE POLICY {table}_migrator ON public.{table} FOR ALL TO app_migrator USING(true) WITH CHECK(true)")
         sensitive = table in ("dental_patients","dental_records","dental_exam_files")
         if sensitive:
-            # Even an inadvertent SQL read in another tenant API cannot retrieve
-            # health records: the private transaction must also set a clinician.
+            # RLS also prevents an admin assistant from reading charts or exams,
+            # even if a future application path accidentally issues their SQL.
+            licensed = " AND g.level='dentist'" if table in ("dental_records","dental_exam_files") else ""
             scope = (f"tenant_id={TENANT} AND EXISTS (SELECT 1 FROM public.dental_clinicians g "
-                     f"WHERE g.tenant_id=public.{table}.tenant_id AND g.account_id={ACTOR} AND g.enabled)")
+                     f"WHERE g.tenant_id=public.{table}.tenant_id AND g.account_id={ACTOR} "
+                     f"AND g.enabled{licensed})")
+        elif table == "dental_access_audit":
+            # No generic tenant transaction may append a clinical audit event.
+            scope = f"tenant_id={TENANT} AND {ACTOR} IS NOT NULL"
         else:
             scope = f"tenant_id={TENANT}"
         op.execute(f"CREATE POLICY {table}_runtime ON public.{table} FOR ALL TO app_runtime "
@@ -214,7 +219,7 @@ def upgrade():
       "dental_room_reservations":"SELECT,INSERT,UPDATE,DELETE",
       "dental_supplies":"SELECT,INSERT,UPDATE",
       "dental_supply_movements":"SELECT,INSERT",
-      "dental_access_audit":"SELECT,INSERT",
+      "dental_access_audit":"INSERT",
     }
     for table,privileges in grants.items():
         op.execute(f"GRANT {privileges} ON public.{table} TO app_runtime")
