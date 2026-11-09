@@ -136,6 +136,7 @@ def test_mutations_and_access_never_have_implicit_clinical_rights():
 def test_dental_rollout_fails_closed_without_exact_flag_and_strong_key(monkeypatch):
     from app.plan_permissions import dental_environment_ready
     monkeypatch.delenv("ORION_DENTAL_CLINIC_ENABLED", raising=False)
+    monkeypatch.delenv("ORION_DENTAL_0076_RELEASE_ENABLED", raising=False)
     monkeypatch.delenv("DENTAL_DATA_KEY_B64", raising=False)
     assert dental_environment_ready() is False
     monkeypatch.setenv("ORION_DENTAL_CLINIC_ENABLED","1")
@@ -145,6 +146,8 @@ def test_dental_rollout_fails_closed_without_exact_flag_and_strong_key(monkeypat
     monkeypatch.setenv("DENTAL_DATA_KEY_B64",base64.b64encode(b"too-short").decode())
     assert dental_environment_ready() is False
     monkeypatch.setenv("DENTAL_DATA_KEY_B64",base64.b64encode(os.urandom(32)).decode())
+    assert dental_environment_ready() is False
+    monkeypatch.setenv("ORION_DENTAL_0076_RELEASE_ENABLED","1")
     assert dental_environment_ready() is True
     monkeypatch.setenv("ORION_DENTAL_CLINIC_ENABLED","0")
     assert dental_environment_ready() is False
