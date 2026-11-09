@@ -438,6 +438,7 @@ async def test_dental_professional_portal_link_clinician_permission_and_revocati
     from app.catalog_api import Actor,authenticate
     from app.dental_clinic_api import router as dental_router
     from app.professional_portal import router as portal_router
+    from app.plan_routing import include_plan_router
     import app.dental_clinic_media
 
     d=clinic_api_db
@@ -460,7 +461,8 @@ async def test_dental_professional_portal_link_clinician_permission_and_revocati
                "email":email,"account":professional_account})
     try:
         app=FastAPI()
-        app.include_router(dental_router)
+        # Exercise the same central feature guard used by app.main in production.
+        include_plan_router(app,dental_router)
         app.include_router(portal_router)
         base=f"/api/v1/tenants/{d['a']}/dental"
         app.dependency_overrides[authenticate]=lambda:Actor(
