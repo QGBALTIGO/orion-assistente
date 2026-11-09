@@ -45,7 +45,7 @@ APPEND_ONLY = """SELECT
 
 CONTRACT_QUERY = "SELECT COALESCE(("+ROLE_CONTRACT+"),false) AND COALESCE(("+APPEND_ONLY+"),false) AS ready"
 
-REVISION = "0075_dental_clinic"
+REVISION = "0076_dental_clinic"
 
 
 def schema_ready(raw):
