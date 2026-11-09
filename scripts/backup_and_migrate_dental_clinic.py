@@ -1,4 +1,4 @@
-"""Apply dental 0075 after one verified, private, ownership-preserving database backup.
+"""Apply dental 0076 after one verified, private, ownership-preserving database backup.
 
 Runs only in Railway API pre-deploy with the migrator role. Never from runtime
 HTTP/worker code. Idempotent; unknown Alembic heads fail closed.
