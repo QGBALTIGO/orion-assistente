@@ -46,6 +46,9 @@ def feature_for_path(relative, method="GET", *, resource=None, step_id=None):
     if relative in {"/management/plan-overview", "/management/subscription",
                     "/management/plan-trial", "/management/plan-checkout"} or relative.startswith(("/management/plan-direct-","/management/plan-pix-")):
         return "plan.manage"
+    if relative.startswith("/dental/"):
+        # The module checks verified dental niche, active plan and clinician grant again.
+        return "clients.manage"
     if relative.startswith("/onboarding"):
         return "business.setup"
     if relative in {"/{resource}", "/{resource}/{item_id}"}:
