@@ -95,6 +95,7 @@ async def clinic_db():
                 """),{"id":rid,"tenant":a,"name":name})
         yield {"runtime":runtime,"migrator":migrator,"a":a,"b":b,
                "account":account,"assistant":assistant,"account_b":account_b,
+               "pro_a":pro_a,"pro_a2":pro_a2,"pro_b":pro_b,
                "patient_a":patient_a,"patient_b":patient_b,
                "appt_a":appt_a,"appt_a2":appt_a2,"room_a":room_a,
                "room_a2":room_a2,"when":when}
@@ -427,3 +428,113 @@ async def test_dental_http_schedule_select_and_conflict_is_real(clinic_api_db):
         assert second.status_code==409,second.text
         rooms=await client.get(base+"/appointments/"+str(d["appt_a"])+"/room")
         assert rooms.status_code==200 and rooms.json()["reservation"]["room_id"]==rid
+
+
+@pytest.mark.asyncio
+async def test_dental_professional_portal_link_clinician_permission_and_revocation(clinic_api_db):
+    """A real invited dentist uses their professional link; cannot access other tenants."""
+    import httpx
+    from fastapi import FastAPI
+    from app.catalog_api import Actor,authenticate
+    from app.dental_clinic_api import router as dental_router
+    from app.professional_portal import router as portal_router
+    import app.dental_clinic_media
+
+    d=clinic_api_db
+    professional_account=uuid4()
+    email=str(professional_account)+"@example.invalid"
+    async with d["migrator"].begin() as db:
+        await db.execute(text("""
+            INSERT INTO panel_accounts(id,name,email,password_hash,verified_at)
+            VALUES (:id,'Cirurgião sintético',:email,'synthetic-invalid-hash',clock_timestamp())
+        """),{"id":professional_account,"email":email})
+        await db.execute(text("""
+            INSERT INTO tenant_memberships(tenant_id,account_id,role)
+            VALUES (:tenant,:account,'professional')
+        """),{"tenant":d["a"],"account":professional_account})
+        await db.execute(text("""
+            INSERT INTO professional_portal_links
+              (tenant_id,professional_id,email,account_id,active)
+            VALUES (:tenant,:pro,:email,:account,true)
+        """),{"tenant":d["a"],"pro":d["pro_a"],
+               "email":email,"account":professional_account})
+    try:
+        app=FastAPI()
+        app.include_router(dental_router)
+        app.include_router(portal_router)
+        base=f"/api/v1/tenants/{d['a']}/dental"
+        app.dependency_overrides[authenticate]=lambda:Actor(
+            "member",d["a"],professional_account,"professional")
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
+                                     base_url="http://test.invalid") as client:
+            before=await client.get("/api/v1/professional/dental/context")
+            assert before.status_code==200 and before.json()["enabled"] is False
+            access=await client.get(base+"/access")
+            assert access.status_code==200 and access.json()["clinical_access"] is None
+            denied=await client.get(base+"/patients")
+            assert denied.status_code==403
+
+            app.dependency_overrides[authenticate]=lambda:Actor(
+                "member",d["a"],d["account"],"owner")
+            mismatched=await client.put(base+"/clinicians",json={
+                "account_id":str(professional_account),
+                "professional_id":str(d["pro_a2"]),"level":"dentist",
+                "cro_number":"12345","cro_state":"MS",
+                "professional_license_checked":True})
+            assert mismatched.status_code==422
+            granted=await client.put(base+"/clinicians",json={
+                "account_id":str(professional_account),
+                "professional_id":str(d["pro_a"]),"level":"dentist",
+                "cro_number":"12345","cro_state":"MS",
+                "professional_license_checked":True})
+            assert granted.status_code==200,granted.text
+
+            app.dependency_overrides[authenticate]=lambda:Actor(
+                "member",d["a"],professional_account,"professional")
+            approved=await client.get("/api/v1/professional/dental/context")
+            assert approved.status_code==200 and approved.json()=={
+                "enabled":True,"tenant_id":str(d["a"])}
+            patient=await client.get(base+"/patients")
+            assert patient.status_code==200,patient.text
+            assert patient.json()["total"]==1
+            other=await client.get(f"/api/v1/tenants/{d['b']}/dental/patients")
+            assert other.status_code==403
+
+            app.dependency_overrides[authenticate]=lambda:Actor(
+                "member",d["a"],d["account"],"owner")
+            revoke=await client.delete(base+"/clinicians/"+str(professional_account))
+            assert revoke.status_code==200
+            app.dependency_overrides[authenticate]=lambda:Actor(
+                "member",d["a"],professional_account,"professional")
+            after=await client.get("/api/v1/professional/dental/context")
+            assert after.status_code==200 and after.json()["enabled"] is False
+            revoked=await client.get(base+"/patients")
+            assert revoked.status_code==403
+
+            async with d["migrator"].begin() as db:
+                await db.execute(text("""
+                    UPDATE professional_portal_links SET active=false
+                    WHERE tenant_id=:tenant AND account_id=:account
+                """),{"tenant":d["a"],"account":professional_account})
+            disabled=await client.get("/api/v1/professional/dental/context")
+            assert disabled.status_code==403
+    finally:
+        async with d["migrator"].begin() as db:
+            await db.execute(text("""
+                DELETE FROM dental_access_audit
+                WHERE tenant_id=:tenant AND actor_account_id=:account
+            """),{"tenant":d["a"],"account":professional_account})
+            await db.execute(text("""
+                DELETE FROM dental_clinicians
+                WHERE tenant_id=:tenant AND account_id=:account
+            """),{"tenant":d["a"],"account":professional_account})
+            await db.execute(text("""
+                DELETE FROM professional_portal_links
+                WHERE tenant_id=:tenant AND account_id=:account
+            """),{"tenant":d["a"],"account":professional_account})
+            await db.execute(text("""
+                DELETE FROM tenant_memberships
+                WHERE tenant_id=:tenant AND account_id=:account
+            """),{"tenant":d["a"],"account":professional_account})
+            await db.execute(text("DELETE FROM panel_accounts WHERE id=:account"),
+                             {"account":professional_account})
