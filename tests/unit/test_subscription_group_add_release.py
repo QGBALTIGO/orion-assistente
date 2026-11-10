@@ -46,7 +46,9 @@ def test_group_add_is_a_single_additive_head_after_published_direct_messages():
     config.set_main_option("path_separator", "os")
     config.set_main_option("script_location", str(ROOT / "alembic"))
     migrations = ScriptDirectory.from_config(config)
-    assert migrations.get_heads() == ["0075_fixed_client_monthly"]
+    assert migrations.get_heads() == ["0077_commercial_demos"]
+    assert migrations.get_revision("0077_commercial_demos").down_revision == "0076_dental_clinic"
+    assert migrations.get_revision("0076_dental_clinic").down_revision == "0075_fixed_client_monthly"
     assert migrations.get_revision("0075_fixed_client_monthly").down_revision == "0074_fixed_client_series"
     assert migrations.get_revision("0074_fixed_client_series").down_revision == "0073_cakto_recovery"
     assert migrations.get_revision("0073_cakto_recovery").down_revision == release.TARGET
@@ -302,35 +304,37 @@ async def test_readiness_wait_is_bounded_and_does_not_turn_missing_schema_into_s
         assert elapsed[0] == 1
 
 
-@pytest.mark.parametrize("ready", [False, True])
-def test_api_cannot_serve_before_the_readonly_0072_barrier(monkeypatch, ready):
+@pytest.mark.parametrize("failed_barrier", [0, 1, None])
+def test_api_cannot_serve_before_both_readonly_schema_barriers(monkeypatch, failed_barrier):
     from scripts import start_api
 
     events = []
+    barriers = ["scripts.wait_for_fixed_client_monthly_schema", "scripts.wait_for_commercial_demos_schema"]
     monkeypatch.setattr(start_api.os, "environ", {"PORT": "8080", "APP_DATABASE_URL": "synthetic-runtime"})
 
     def wait(command, **kwargs):
-        assert command == [start_api.sys.executable, "-m", "scripts.wait_for_fixed_client_monthly_schema"]
+        index = len(events)
+        assert command == [start_api.sys.executable, "-m", barriers[index]]
         assert kwargs["check"] is True and kwargs["timeout"] == 95
         assert "MIGRATION_DATABASE_URL" not in kwargs["env"]
-        events.append("read-only-0072")
-        if not ready:
+        events.append(command[2])
+        if index == failed_barrier:
             raise start_api.subprocess.CalledProcessError(1, command)
 
     def execute(binary, command, environment):
-        assert events == ["read-only-0072"]
+        assert events == barriers
         assert command[1:4] == ["-m", "uvicorn", "app.main:app"]
         events.append("serve")
 
     monkeypatch.setattr(start_api.subprocess, "run", wait)
     monkeypatch.setattr(start_api.os, "execve", execute)
-    if ready:
+    if failed_barrier is None:
         start_api.main()
-        assert events == ["read-only-0072", "serve"]
+        assert events == [*barriers, "serve"]
     else:
         with pytest.raises(start_api.subprocess.CalledProcessError):
             start_api.main()
-        assert events == ["read-only-0072"]
+        assert events == barriers[:failed_barrier + 1]
 
 
 @pytest.mark.asyncio
