@@ -46,7 +46,9 @@ def test_bulk_remains_a_reviewed_ancestor_after_the_published_schedules():
     config.set_main_option("path_separator", "os")
     config.set_main_option("script_location", str(root / "alembic"))
     migrations = ScriptDirectory.from_config(config)
-    assert migrations.get_heads() == ["0075_fixed_client_monthly"]
+    assert migrations.get_heads() == ["0077_commercial_demos"]
+    assert migrations.get_revision("0077_commercial_demos").down_revision == "0076_dental_clinic"
+    assert migrations.get_revision("0076_dental_clinic").down_revision == "0075_fixed_client_monthly"
     assert migrations.get_revision("0075_fixed_client_monthly").down_revision == "0074_fixed_client_series"
     assert migrations.get_revision("0074_fixed_client_series").down_revision == "0073_cakto_recovery"
     assert release.TARGET == barrier.SCHEMA_MARKER == "0070_subscription_bulk"

@@ -27,7 +27,18 @@ TARGET = "0075_fixed_client_monthly"
 
 def schema_ready(raw):
     # The pre-deploy migrator may read Alembic's marker; app_runtime may not.
-    if migrated_version(raw) != TARGET:
+    current = migrated_version(raw)
+    # Readiness checks of the 0075 contract remain useful after these reviewed
+    # additive releases. Require each successor's complete contract, including
+    # the monthly predecessor, rather than accepting an arbitrary newer head.
+    # The migration entry point below still accepts only PREVIOUS or TARGET.
+    if current == "0076_dental_clinic":
+        from scripts.wait_for_dental_schema import schema_ready as successor_ready
+        return successor_ready(raw) is True
+    if current == "0077_commercial_demos":
+        from scripts.wait_for_commercial_demos_schema import schema_ready as successor_ready
+        return successor_ready(raw) is True
+    if current != TARGET:
         return False
     engine = create_engine(raw, poolclass=NullPool, connect_args={
         "options": "-c default_transaction_read_only=on -c statement_timeout=12000",

@@ -82,10 +82,13 @@ jobs:
           with db.connect() as connection:
               # The published 0058 boundary is an ancestor of this review branch.
               # Assert the new head without weakening one-click privilege checks.
-              assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == '0075_fixed_client_monthly'
+              assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == '0077_commercial_demos'
               from alembic.config import Config
               from alembic.script import ScriptDirectory
               graph=ScriptDirectory.from_config(Config("alembic.ini"))
+              assert graph.get_heads() == ["0077_commercial_demos"]
+              assert graph.get_revision("0077_commercial_demos").down_revision == "0076_dental_clinic"
+              assert graph.get_revision("0076_dental_clinic").down_revision == "0075_fixed_client_monthly"
               assert graph.get_revision("0058_professional_scope").down_revision == "0057_professional_portal"
               assert graph.get_revision("0075_fixed_client_monthly").down_revision == "0074_fixed_client_series"
               assert graph.get_revision("0074_fixed_client_series").down_revision == "0073_cakto_recovery"
@@ -93,6 +96,8 @@ jobs:
                             has_function_privilege('app_runtime','public.orion_resolve_direct_appointment(text)','EXECUTE')""")).one()
               assert grants == (True,False)
           db.dispose()
+          from scripts.backup_and_migrate_commercial_demos import schema_ready
+          assert schema_ready(url), "The reviewed 0077 and predecessor contracts must hold"
           PY
       - name: Regressao de links e isolamento PostgreSQL real
         run: python -m pytest -q tests/integration/test_appointment_access_pg.py tests/integration/test_short_appointment_links_pg.py
