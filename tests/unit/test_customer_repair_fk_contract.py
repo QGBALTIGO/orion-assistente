@@ -11,6 +11,8 @@ def catalog(tables):
     repair.FK_TABLES,
     repair.FK_TABLES | repair.NEW_FK_TABLES,
     repair.FK_TABLES | repair.NEW_FK_TABLES | repair.SCOPED_CONSENT_FK_TABLES,
+    repair.FK_TABLES | repair.NEW_FK_TABLES | repair.SCOPED_CONSENT_FK_TABLES | repair.OPTIONAL_FK_TABLES,
+    repair.FK_TABLES | repair.NEW_FK_TABLES | repair.SCOPED_CONSENT_FK_TABLES | repair.OPTIONAL_FK_TABLES | repair.DENTAL_FK_TABLES,
 ])
 def test_only_reviewed_foreign_key_sets_are_allowed(monkeypatch, tables):
     monkeypatch.setattr(repair, "rows", lambda *args, **kwargs: catalog(tables))
@@ -41,6 +43,16 @@ def test_wrong_reference_columns_refused(monkeypatch):
 def test_new_consent_reference_must_keep_exact_tenant_customer_columns(monkeypatch):
     altered = catalog(repair.FK_TABLES | repair.NEW_FK_TABLES | repair.SCOPED_CONSENT_FK_TABLES)
     next(row for row in altered if row['table_name'] == 'appointment_message_consents')['columns'] = ['customer_id']
+    monkeypatch.setattr(repair, 'rows', lambda *args, **kwargs: altered)
+    with pytest.raises(ValueError, match='customer_foreign_keys_changed'):
+        repair.verify_foreign_keys(object())
+
+
+def test_dental_reference_must_keep_exact_tenant_customer_columns(monkeypatch):
+    tables = (repair.FK_TABLES | repair.NEW_FK_TABLES | repair.SCOPED_CONSENT_FK_TABLES |
+              repair.OPTIONAL_FK_TABLES | repair.DENTAL_FK_TABLES)
+    altered = catalog(tables)
+    next(row for row in altered if row['table_name'] == 'dental_patients')['columns'] = ['customer_id']
     monkeypatch.setattr(repair, 'rows', lambda *args, **kwargs: altered)
     with pytest.raises(ValueError, match='customer_foreign_keys_changed'):
         repair.verify_foreign_keys(object())

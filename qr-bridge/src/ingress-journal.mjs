@@ -47,11 +47,17 @@ export function createIngressJournal({directory,secret,serialize=JSON.stringify,
   const evidenceKeys=['kind','receipt_sha256','build_sha','event_at'];
   const validEvidence=value=>exactKeys(value,evidenceKeys)&&['operator_attested_prepare_failed','not_started','operator_attested_uncertain','operator_attested_no_replay'].includes(value.kind)&&
     hex64(value.receipt_sha256)&&typeof value.build_sha==='string'&&/^[a-f0-9]{40}$/.test(value.build_sha)&&integer(value.event_at);
+  const safeReviewBatch=entries=>entries.length<=2||entries.every(item=>item?.evidence?.kind==='not_started');
   const operatorEligible=(entry,kind)=>{
-    if(!entry||entry.work!==undefined||active.has(entry.id))return false;
-    if(legacyScope(entry.scope))return kind==='operator_attested_prepare_failed'?
-      entry.state==='blocked'&&entry.blocked_reason==='business_started':
-      kind==='not_started'&&(entry.state==='pending'||entry.state==='blocked'&&entry.blocked_reason==='expired');
+    if(!entry||active.has(entry.id))return false;
+    if(legacyScope(entry.scope)){
+      if(kind==='operator_attested_uncertain')return entry.state==='blocked'&&entry.blocked_reason==='business_started'&&
+        ['preparing','consuming'].includes(entry.work?.phase);
+      if(entry.work!==undefined)return false;
+      return kind==='operator_attested_prepare_failed'?entry.state==='blocked'&&entry.blocked_reason==='business_started':
+        kind==='not_started'&&(entry.state==='pending'||entry.state==='blocked'&&entry.blocked_reason==='expired');
+    }
+    if(entry.work!==undefined)return false;
     if(!validScope(entry.scope))return false;
     // For a subscription device the operator can retire only blocked work.
     // The encrypted source remains reviewable; no backend event, send, ASR or
@@ -117,7 +123,8 @@ export function createIngressJournal({directory,secret,serialize=JSON.stringify,
           ![review.request_sha256,review.before_snapshot_sha256,review.after_entries_sha256].every(hex64)||
           !exactKeys(review.backup,['reference','sha256','bytes'])||review.backup.reference!==review.operation_id||
           !hex64(review.backup.sha256)||!integer(review.backup.bytes)||review.backup.bytes<28||
-          !Array.isArray(review.entries)||!review.entries.length||review.entries.length>2)throw Error('invalid_ingress_reviews');
+          !Array.isArray(review.entries)||!review.entries.length||review.entries.length>32||
+          !safeReviewBatch(review.entries))throw Error('invalid_ingress_reviews');
         operations.add(review.operation_id);
         for(const item of review.entries){
           if(!exactKeys(item,['source_id','fingerprint','sequence','prior_state','prior_reason','evidence'])||
@@ -262,7 +269,8 @@ export function createIngressJournal({directory,secret,serialize=JSON.stringify,
     operatorApply({expectedSnapshot,operationId,requestDigest,actorId,entries,backup}={}){
       guard();
       if(!channelId(operationId)||!channelId(actorId)||!hex64(requestDigest)||!hex64(expectedSnapshot)||
-          !Array.isArray(entries)||!entries.length||entries.length>2||typeof backup!=='function')throw Error('invalid_ingress_review');
+          !Array.isArray(entries)||!entries.length||entries.length>32||!safeReviewBatch(entries)||
+          typeof backup!=='function')throw Error('invalid_ingress_review');
       const previous=data.reviews?.find(review=>review.operation_id===operationId);
       if(previous){if(previous.request_sha256!==requestDigest||previous.actor_id!==actorId)throw Error('ingress_review_operation_conflict');
         return {replayed:true,review:clone(previous),snapshot_sha256:hash(data)};}

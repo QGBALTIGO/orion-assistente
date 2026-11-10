@@ -75,13 +75,24 @@ test('reset and session changes discard delayed results without remounting privi
   const next=deferred(),g=fixture({request:()=>next.promise});const loading=buttons(g.root,'Consultar entradas')[0].fire();g.deactivate();next.resolve(structuredClone(dry));await loading;
   assert.equal(buttons(g.root,'Revisar liberação').length,0);
 });
-test('invalid filters and more than two selected entries cannot be submitted',async()=>{
+test('invalid filters and more than two uncertain entries cannot be submitted',async()=>{
   const f=fixture();inputs(f.root)[0].value=[trace,'b'.repeat(20),'c'.repeat(20)].join(' ');
   await buttons(f.root,'Consultar entradas')[0].fire();assert.equal(f.calls.length,0);
   const three=structuredClone(dry);three.entries=[0,1,2].map(i=>({...three.entries[0],trace:String(i).repeat(20)}));
   const g=fixture({request:async()=>three});await buttons(g.root,'Consultar entradas')[0].fire();
   const all=inputs(g.root);for(let i=0;i<3;i++){all[1+i*4].checked=true;all[2+i*4].value=receipt;all[3+i*4].value=build;}
   await buttons(g.root,'Revisar liberação')[0].fire();assert.equal(buttons(g.root,'Liberar sem reprocessar').length,0);assert.equal(g.calls.length,1);
+});
+
+test('up to 32 explicitly not-started entries can share one reviewed incident receipt',async()=>{
+  const safe=structuredClone(dry);safe.entries=Array.from({length:32},(_,index)=>({...safe.entries[0],
+    trace:index.toString(16).padStart(20,'0'),sequence:index+1,state:'blocked',blocked_reason:'expired',phase:null,
+    eligible_as:['not_started']}));safe.total_entries=32;
+  const f=fixture({request:async()=>structuredClone(safe)});await buttons(f.root,'Consultar entradas')[0].fire();
+  const all=inputs(f.root);
+  for(let index=0;index<32;index++){all[1+index*4].checked=true;all[2+index*4].value=receipt;all[3+index*4].value=build;}
+  await buttons(f.root,'Revisar liberação')[0].fire();
+  assert.equal(buttons(f.root,'Liberar sem reprocessar').length,1);assert.equal(f.calls.length,1);
 });
 
 

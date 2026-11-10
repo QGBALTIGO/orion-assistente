@@ -80,6 +80,47 @@ test('manual attestation retires only selected sources, backs up ciphertext and 
   assert.ok(!beforeBytes.includes(Buffer.from('private-failed')));
 });
 
+test('an orphaned legacy consuming entry can be retired only as uncertain without replay',async t=>{
+  const f=fixture(t);f.append('orphaned');
+  f.journal.prepare([{id:'orphaned',peer_tag:hash('peer'),intake_revision:240,control_revision:117}]);
+  f.journal.consume(['orphaned']);
+  const original=f.stored(),restarted=f.restart(),review=f.makeReview(restarted);
+  const snapshot=await review(f.dry(),f.context),entry=snapshot.entries.find(item=>item.trace===trace('orphaned'));
+  assert.equal(entry.phase,'consuming');assert.deepEqual(entry.eligible_as,['operator_attested_uncertain']);
+  const operation=randomUUID(),body={version:1,mode:'apply',operation_id:operation,
+    expected:{scope:snapshot.scope,snapshot_sha256:snapshot.snapshot_sha256},entries:[{
+      trace:entry.trace,fingerprint:entry.fingerprint,disposition:'do_not_replay',
+      evidence:{kind:'operator_attested_uncertain',receipt_sha256:'c'.repeat(64),build_sha:'d'.repeat(40),event_at:now-5000}}]};
+  const result=await review(body,f.context),after=f.stored();
+  assert.equal(result.mutation,true);assert.deepEqual(after.entries[0].message,original.entries[0].message);
+  assert.equal(after.entries[0].work.phase,'operator_retired');assert.equal(after.reviews[0].entries[0].prior_reason,'business_started');
+  assert.equal(restarted.diagnostics().blocked,0);assert.equal(restarted.diagnostics().retained,1);
+  assert.ok(fs.existsSync(path.join(f.directory,'operator-review-backups',operation+'.enc')));
+});
+
+test('safe not-started batches expose the next actionable page and preserve every encrypted source',async t=>{
+  const f=fixture(t);
+  for(let index=0;index<48;index++){const id='expired-'+index;f.append(id);f.journal.block(id,'expired');}
+  const original=f.stored(),applyPage=async snapshot=>{
+    const operation=randomUUID(),entries=snapshot.entries.filter(item=>item.eligible_as.includes('not_started')).slice(0,32).map(item=>({
+      trace:item.trace,fingerprint:item.fingerprint,disposition:'do_not_replay',
+      evidence:{kind:'not_started',receipt_sha256:'c'.repeat(64),build_sha:'d'.repeat(40),event_at:item.at}}));
+    return f.review({version:1,mode:'apply',operation_id:operation,
+      expected:{scope:snapshot.scope,snapshot_sha256:snapshot.snapshot_sha256},entries},f.context);
+  };
+  const first=await f.review(f.dry(),f.context);
+  assert.equal(first.entries.filter(item=>item.eligible_as.includes('not_started')).length,32);assert.equal(first.truncated,true);
+  await applyPage(first);
+  const second=await f.review(f.dry(),f.context);
+  assert.equal(second.entries.filter(item=>item.eligible_as.includes('not_started')).length,16);
+  await applyPage(second);
+  const after=f.stored(),restarted=f.restart();
+  assert.equal(after.entries.length,48);assert.equal(after.reviews.length,2);
+  assert.deepEqual(after.reviews.map(review=>review.entries.length),[32,16]);
+  assert.deepEqual(after.entries.map(entry=>entry.message),original.entries.map(entry=>entry.message));
+  assert.equal(restarted.diagnostics().blocked,0);assert.equal(restarted.diagnostics().retained,48);
+});
+
 test('same operation is idempotent after restart and altered payload or actor conflicts',async t=>{
   const f=fixture(t);f.seed();const body=f.apply(await f.review(f.dry(),f.context)),first=await f.review(body,f.context),before=f.stored();
   const replay=await f.makeReview(f.restart())(body,f.context);
@@ -180,7 +221,7 @@ test('new journal change from a synchronous backup callback defeats the final CA
 });
 
 test('HTTP body bound rejects extra identity, excessive input and malformed JSON',async()=>{
-  for(const text of ['{',JSON.stringify({version:1,mode:'dry_run',operation_id:randomUUID(),traces:[],actor_id:actor}),' '.repeat(8193)]){
+  for(const text of ['{',JSON.stringify({version:1,mode:'dry_run',operation_id:randomUUID(),traces:[],actor_id:actor}),' '.repeat(32*1024+1)]){
     const request=new EventEmitter(),promise=collectIngressReviewBody(request);request.emit('data',Buffer.from(text));request.emit('end');
     await assert.rejects(promise,{code:'invalid_ingress_review_request'});
   }

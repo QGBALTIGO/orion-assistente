@@ -15,7 +15,7 @@
  const field=(parent,label,value="")=>{const row=node("label"),input=node("input");row.className="field";row.append(node("span",label));input.type="text";input.value=value;input.autocomplete="off";row.append(input);parent.append(row);return input};
  const hex=(value,length)=>new RegExp("^[a-f0-9]{"+length+"}$").test(value);
  const status=text=>{if(valid())context.status.textContent=text};
- const phaseNames={preparing:"Preparação iniciada",consuming:"Atendimento iniciado: liberação bloqueada",
+ const phaseNames={preparing:"Preparação órfã: atendimento possivelmente iniciado",consuming:"Atendimento órfão: execução anterior incerta",
    preparation_failed:"Falha de preparação registrada",operator_retired:"Revisada sem reprocessamento"};
  const blockedReasons={expired:"Prazo esgotado",scope_changed:"Configuração ou sessão mudou",
    policy_denied:"Bloqueio preventivo",identity_unresolved:"Identidade não confirmada",
@@ -104,7 +104,8 @@
  function prepare(){
    if(!valid()||busy||!snapshot||frozen)return;
    const selected=context.inputs.filter(row=>row.selection.checked);
-   if(!selected.length||selected.length>2){status("Selecione uma ou duas entradas, somente as que foram revisadas.");return}
+   const safeBulk=selected.length<=2||selected.every(row=>row.kind==="not_started");
+   if(!selected.length||selected.length>32||!safeBulk){status("Selecione até 32 entradas não iniciadas; casos incertos continuam limitados a duas por revisão.");return}
    const entries=[];
    for(const row of selected){
      const receipt=row.receipt.value.trim(),build=row.build.value.trim(),event=row.event.value.trim(),at=Date.parse(event);
