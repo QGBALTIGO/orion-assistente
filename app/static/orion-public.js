@@ -6,9 +6,12 @@
   const $ = id => document.getElementById(id);
   const dialog = $('booking-dialog');
   const previewMatch = location.pathname.match(/^\/app\/site-preview\/([0-9a-f-]+)\/?$/i);
+  const demoMatch = location.pathname.match(/^\/demo\/([A-Za-z0-9_-]+)\/?$/);
   const slugMatch = location.pathname.match(/^\/s\/([a-z0-9-]+)\/?$/);
+  // The route owns this boundary. A demo response can never enable live booking.
+  const demo = !!demoMatch;
   const preview = !!previewMatch;
-  const apiBase = preview ? `/api/v1/tenants/${previewMatch[1]}/management/site/preview` : `/api/v1/public/sites/${slugMatch?.[1] || ''}`;
+  const apiBase = demo ? `/api/v1/public/demos/${demoMatch[1]}` : preview ? `/api/v1/tenants/${previewMatch[1]}/management/site/preview` : `/api/v1/public/sites/${slugMatch?.[1] || ''}`;
   let data, category = 'Todos', requestSequence = 0, availabilityController;
   let retainedTimeView = null; // Keep photos mounted across wizard step navigation.
   let booking = newBooking();
@@ -100,8 +103,10 @@
     container.replaceChildren(img);
   }
   function initials(name) { return String(name || '').trim().split(/\s+/).slice(0, 2).map(p => p[0] || '').join('').toUpperCase(); }
+  function knownPrice(value) { return typeof value === 'number' && Number.isFinite(value) && value >= 0; }
+  function knownDuration(value) { return typeof value === 'number' && Number.isFinite(value) && value > 0; }
   function money(cents) { return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(cents) / 100); }
-  function priceText(cents, mode) { return (mode === 'from' ? 'A partir de ' : '') + money(cents); }
+  function priceText(cents, mode) { return demo && !knownPrice(cents) ? 'Valor a confirmar' : (mode === 'from' ? 'A partir de ' : '') + money(cents); }
   function duration(minutes) { const n = Number(minutes); return n >= 60 ? `${Math.floor(n / 60)} h${n % 60 ? ` ${n % 60} min` : ''}` : `${n} min`; }
   const WEEKDAYS=['Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado','Domingo'];
   function validTime(value) { return typeof value==='string' && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value); }
@@ -120,23 +125,40 @@
   function groupedHours(slots) {
     const groups=[];
     for(let day=0;day<7;day++){
-      const value=slots[day].map(([start,end])=>start+'–'+end).join('|'),previous=groups.at(-1);
+      const value=slots[day]===null?'unknown':slots[day].map(([start,end])=>start+'–'+end).join('|'),previous=groups.at(-1);
       if(previous?.key===value)previous.last=day;
       else groups.push({first:day,last:day,key:value,intervals:slots[day]});
     }
     return groups;
   }
+  function demoWeeklyHours(raw) {
+    if (!Array.isArray(raw)) return null;
+    const slots = new Array(7).fill(null), seen = new Set();
+    for (const entry of raw) {
+      const day = entry?.weekday;
+      if (!Number.isInteger(day) || day < 0 || day > 6 || seen.has(day)) return null;
+      seen.add(day);
+      if (entry.intervals === null || entry.intervals === undefined) continue;
+      if (!Array.isArray(entry.intervals)) return null;
+      const intervals = entry.intervals.map(item => [item?.open, item?.close]);
+      if (intervals.some(([start,end]) => !validTime(start) || !validTime(end) || start >= end)) return null;
+      slots[day] = intervals;
+    }
+    return slots;
+  }
   function renderOpeningHours(raw){
-    const card=$('hours-card'),root=$('hours-list'),weekly=weeklyHours(raw);
-    if(!weekly||!weekly.some(day=>day.length)){card.hidden=true;root.replaceChildren();return;}
+    const card=$('hours-card'),root=$('hours-list'),weekly=demo?demoWeeklyHours(raw):weeklyHours(raw);
+    if(!weekly||!weekly.some(day=>day?.length)){card.hidden=true;root.replaceChildren();return;}
     card.hidden=false;
     root.replaceChildren(...groupedHours(weekly).map(group=>{
       const row=el('div','hours-row');row.setAttribute('role','listitem');
       const label=group.first===group.last?WEEKDAYS[group.first]:
         WEEKDAYS[group.first]+' a '+WEEKDAYS[group.last].toLocaleLowerCase('pt-BR');
       const name=el('span','hours-day',label);
-      const times=el('div',group.intervals.length?'hours-time':'hours-time hours-closed');
-      if(!group.intervals.length) {
+      const times=el('div',group.intervals?.length?'hours-time':'hours-time hours-closed');
+      if(group.intervals===null) {
+        times.textContent='A confirmar';
+      } else if(!group.intervals.length) {
         times.textContent='Fechado';
       } else {
         // Display the first opening and final closing as one concise range.
@@ -266,17 +288,20 @@
   function eligibleProfessionals() {
     const services = selectedServices(), addons = selectedAddons();
     if (!services.length) return [];
+    const matches = (item, id) => (demo && !item.professional_ids?.length) || item.professional_ids?.includes(id);
     return data.professionals.filter(p =>
-      services.every(s => s.professional_ids?.includes(p.id)) &&
-      addons.every(a => a.professional_ids?.includes(p.id)));
+      services.every(s => matches(s, p.id)) &&
+      addons.every(a => matches(a, p.id)));
   }
+  function demoTeamPending() { return demo && !data.professionals.length; }
   function selectionTotal() {
     const services = selectedServices(), addons = selectedAddons(), all = [...services, ...addons];
     return {
-      price: all.reduce((n, item) => n + item.price_cents, 0),
+      price: demo && !all.every(item => knownPrice(item.price_cents)) ? null : all.reduce((n, item) => n + item.price_cents, 0),
       price_mode: all.some(s => s.price_mode === 'from') ? 'from' : 'fixed',
-      minutes: services.reduce((n, s) => n + s.duration_min, 0) +
-        addons.reduce((n, a) => n + (a.add_duration ? a.duration_min : 0), 0)
+      minutes: demo && (![...services, ...addons.filter(a => a.add_duration)].every(item => knownDuration(item.duration_min))) ? null :
+        services.reduce((n, s) => n + s.duration_min, 0) +
+          addons.reduce((n, a) => n + (a.add_duration ? a.duration_min : 0), 0)
     };
   }
   function componentIds(service) {
@@ -288,6 +313,10 @@
   function showError(message) { $('booking-error').textContent = message || ''; $('booking-error').hidden = !message; }
 
   async function api(path = '', options = {}) {
+    // Defense in depth: demo pages may read their own catalogue only. This
+    // also stops future wizard changes from reaching a real booking endpoint.
+    if (demo && (path !== '' || (options.method || 'GET').toUpperCase() !== 'GET' || options.body))
+      throw new Error('Esta demonstração não envia reservas ou dados de clientes.');
     const controller = options.signal ? null : new AbortController();
     const timeout = controller && setTimeout(() => controller.abort(), 30000);
     try {
@@ -306,13 +335,16 @@
     detail.append(el('strong', '', service.name));
     if (service.description) detail.append(el('p', '', service.description));
     const meta = el('span', 'service-meta');
+    const hasDuration = !demo || knownDuration(service.duration_min);
     if (data.site.show_prices) {
       meta.append(el('span', 'price', priceText(service.price_cents, service.price_mode)));
-      const separator = el('span', 'service-meta-separator', '•');
-      separator.setAttribute('aria-hidden', 'true');
-      meta.append(separator);
+      if (hasDuration) {
+        const separator = el('span', 'service-meta-separator', '•');
+        separator.setAttribute('aria-hidden', 'true');
+        meta.append(separator);
+      }
     }
-    meta.append(el('span', 'service-duration', duration(service.duration_min)));
+    if (hasDuration) meta.append(el('span', 'service-duration', duration(service.duration_min)));
     detail.append(meta); card.append(thumb, detail, el('span', 'service-arrow', isSelected ? '✓' : '›'));
     return card;
   }
@@ -321,7 +353,7 @@
     const term = $('service-search').value.trim().toLocaleLowerCase('pt-BR');
     const items = data.services.filter(s => (category === 'Todos' || (s.category || 'Serviços') === category) && `${s.name} ${s.description || ''}`.toLocaleLowerCase('pt-BR').includes(term));
     $('services-grid').replaceChildren(...items.map((s, i) => serviceCard(s, () => openBooking(s.id), false, i < 2 ? 'eager' : 'lazy')));
-    if (!items.length) $('services-grid').append(el('p', 'empty', data.services.length ? 'Nenhum serviço encontrado. Tente outra busca.' : 'Não há serviços disponíveis para agendamento neste momento.'));
+    if (!items.length) $('services-grid').append(el('p', 'empty', data.services.length ? 'Nenhum serviço encontrado. Tente outra busca.' : demo ? 'Catálogo a confirmar. Os serviços serão exibidos após a revisão da empresa.' : 'Não há serviços disponíveis para agendamento neste momento.'));
   }
 
   const AMENITY_ICONS = {"wifi":"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.9\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M2 8.8a15.3 15.3 0 0 1 20 0\"/><path d=\"M5.3 12.3a10 10 0 0 1 13.4 0\"/><path d=\"M8.7 15.8a4.7 4.7 0 0 1 6.6 0\"/><circle cx=\"12\" cy=\"19.4\" r=\"1\" fill=\"currentColor\" stroke=\"none\"/></svg>","parking":"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.9\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M5.4 11l1.5-4.8A2.2 2.2 0 0 1 9 4.7h6a2.2 2.2 0 0 1 2.1 1.5l1.5 4.8\"/><path d=\"M4.5 11h15a1.5 1.5 0 0 1 1.5 1.5V17H3v-4.5A1.5 1.5 0 0 1 4.5 11Z\"/><path d=\"M5.5 17v2.5h2V17M16.5 17v2.5h2V17\"/><circle cx=\"6.8\" cy=\"14.1\" r=\".9\" fill=\"currentColor\" stroke=\"none\"/><circle cx=\"17.2\" cy=\"14.1\" r=\".9\" fill=\"currentColor\" stroke=\"none\"/></svg>","accessibility":"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.85\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"11\" cy=\"3.7\" r=\"1.4\"/><path d=\"M11 6.6v5.3h5.2l2.7 5.3M11 9.5h4.3\"/><circle cx=\"9.1\" cy=\"16.1\" r=\"4.15\"/></svg>","children":"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.9\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"13.3\" r=\"7.7\"/><path d=\"M7 7.3A3.3 3.3 0 0 1 10 4c1.4 0 2.2.8 2.2 2.1M5 11.6a2.8 2.8 0 0 0 0 4.6M19 11.6a2.8 2.8 0 0 1 0 4.6\"/><path d=\"M9.1 12.6h.01M14.9 12.6h.01M9.5 16a3.6 3.6 0 0 0 5 0\"/></svg>"};
@@ -364,7 +396,7 @@
 
   function renderPage() {
     const site = data.site;
-    document.title = `${site.title} • Agendamento`;
+    document.title = `${site.title} • ${demo ? 'Demonstração Orion' : 'Agendamento'}`;
     color(document.documentElement, '--primary', site.theme_color);
     const hex = /^#[0-9a-f]{6}$/i.test(site.theme_color || '') ? site.theme_color.slice(1) : '2e7bf6';
     const luminance = [0, 2, 4].map(i => parseInt(hex.slice(i, i + 2), 16) / 255).map(v => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4).reduce((n, v, i) => n + v * [.2126, .7152, .0722][i], 0);
@@ -407,11 +439,37 @@
     $('contact-links').replaceChildren(...validContacts);
     $('contact-links').dataset.count = String(validContacts.length);
     $('contact-section').hidden = validContacts.length === 0;
-    $('orion-credit').hidden = !!site.hide_orion_brand; $('preview-banner').hidden = !preview;
+    $('orion-credit').hidden = demo ? false : !!site.hide_orion_brand; $('preview-banner').hidden = !(preview || demo);
+    if (demo) renderDemoIdentity();
     $('site-content').hidden = false; $('page-message').hidden = true;
   }
 
+  function renderDemoIdentity() {
+    document.body.classList.add('public-demo');
+    const banner = $('preview-banner');
+    banner.classList.add('demo-banner');
+    banner.replaceChildren(el('strong', '', 'Demonstração personalizada da Orion'),
+      el('span', '', 'Uso demonstrativo. Nenhuma reserva real é criada.'));
+    for (const id of ['hero-book', 'footer-book']) {
+      const node = $(id), icon = node.querySelector('svg');
+      node.replaceChildren(document.createTextNode(data.services.length ? 'Simular agendamento ' : 'Catálogo a confirmar'));
+      if (icon) node.append(icon);
+      node.disabled = !data.services.length;
+    }
+    $('booking-title').textContent = 'Simular agendamento';
+    $('close-booking').setAttribute('aria-label', 'Fechar simulação');
+    $('booking-steps').setAttribute('aria-label', 'Etapas da simulação');
+    const finalStep = $('booking-steps').querySelector('[data-step="3"]');
+    finalStep.replaceChildren(el('span', '', '3'), document.createTextNode(' Revisar'));
+    $('footer-booking-title').textContent = data.services.length ? 'Experimente esta agenda na Orion' : 'Catálogo em preparação';
+    const online = document.querySelector('.online-label');
+    if (online) online.textContent = 'Agenda demonstrativa';
+    const hoursNote = $('hours-card').querySelector('.hours-note');
+    if (hoursNote) hoursNote.textContent = 'Horários publicados. A disponibilidade real e o expediente da equipe ainda precisam ser confirmados.';
+  }
+
   function openBooking(service = null) {
+    if (demo && !data.services.length) return;
     booking = newBooking(); retainedTimeView = null; booking.service = service; booking.services = service ? [service] : []; booking.day = data.today;
     $('booking-shop').textContent = data.site.title; showError(); renderBooking();
     dialog.showModal(); document.body.classList.add('booking-open');
@@ -452,6 +510,7 @@
     refreshServiceSelection();
   }
   function selectionWarning() {
+    if (booking.services.length > 0 && demoTeamPending()) return 'Equipe a confirmar';
     if (booking.services.length > 0 && !eligibleProfessionals().length)
       return 'Nenhum profissional realiza todos esses serviços. Retire um dos itens para continuar.';
     return booking.notice;
@@ -464,7 +523,7 @@
     count.textContent = quantity + (quantity === 1 ? ' serviço selecionado' : ' serviços selecionados');
     summary.replaceChildren();
     if (quantity) {
-      summary.append(el('span', '', 'Tempo total: ' + duration(amount.minutes)));
+      if (!demo || knownDuration(amount.minutes)) summary.append(el('span', '', 'Tempo total: ' + duration(amount.minutes)));
       if (data.site.show_prices) summary.append(el('strong', '', priceText(amount.price, amount.price_mode)));
     } else summary.append(el('span', '', 'Selecione os serviços que deseja realizar no mesmo horário.'));
     warning.textContent = selectionWarning();
@@ -498,11 +557,13 @@
         updateFooter();
       });
       const copy = el('span', '', addon.name);
-      copy.append(el('small', '', addon.add_duration ?
-        'Acrescenta ' + duration(addon.duration_min) : 'Realizado dentro do tempo do serviço'));
+      if (!demo || !addon.add_duration || knownDuration(addon.duration_min))
+        copy.append(el('small', '', addon.add_duration ?
+          'Acrescenta ' + duration(addon.duration_min) : 'Realizado dentro do tempo do serviço'));
       label.append(input, copy);
-      if (data.site.show_prices) label.append(el('b', '', addon.price_mode === 'from' ?
-        priceText(addon.price_cents, 'from') : '+ ' + money(addon.price_cents)));
+      if (data.site.show_prices) label.append(el('b', '', demo && !knownPrice(addon.price_cents) ?
+        'Valor a confirmar' : addon.price_mode === 'from' ?
+          priceText(addon.price_cents, 'from') : '+ ' + money(addon.price_cents)));
       extras.append(label);
     }
     container.append(extras);
@@ -617,10 +678,16 @@
   }
 
   function renderTime(body) {
-    body.append(el('h3', '', 'Escolha o profissional e o horário'));
+    body.append(el('h3', '', demoTeamPending() ? 'Escolha uma data e um horário ilustrativo' : 'Escolha o profissional e o horário'));
+    if (demo) {
+      const note = el('p', 'demo-flow-note', 'Horários ilustrativos para testar o fluxo. Não representam a agenda real da empresa.');
+      note.id = 'demo-time-notice';
+      body.append(note);
+      if (demoTeamPending()) body.append(el('p', 'demo-pending-note', 'Equipe a confirmar'));
+    }
     const people = eligibleProfessionals();
     const picker = el('div', 'professional-picker');
-    picker.setAttribute('aria-label', 'Profissionais disponíveis');
+    picker.setAttribute('aria-label', demo ? 'Profissionais publicados para simulação' : 'Profissionais disponíveis');
     for (const person of people) {
       const node = button('', 'professional-choice', () => {
         // Clicking an already selected professional should not refetch or redraw.
@@ -639,14 +706,14 @@
       node.dataset.professionalId = person.id;
       node.setAttribute('aria-pressed', String(person.id === booking.professional));
       node.title = person.name;
-      node.setAttribute('aria-label', 'Agendar com ' + person.name);
+      node.setAttribute('aria-label', (demo ? 'Simular com ' : 'Agendar com ') + person.name);
       const face = el('span', 'mini-portrait professional-photo');
       picture(face, person.image_url, initials(person.name));
       const name = el('span', 'professional-name', person.name);
       node.append(face, name);
       picker.append(node);
     }
-    body.append(picker);
+    if (people.length || !demo) body.append(picker);
     const heading = el('div', 'date-heading');
     heading.id = 'booking-date-heading';
     const title = el('strong');
@@ -686,9 +753,9 @@
     control.append(value, calendar, input); label.append(control);
     heading.append(title, label); body.append(heading);
     const strip = el('div', 'date-strip'); strip.id = 'booking-day-strip';
-    body.append(strip, el('p', 'timezone-note',
+    body.append(strip, el('p', 'timezone-note', demo ? 'A data escolhida faz parte da simulação.' :
       'Horários locais · ' + data.timezone.replaceAll('_', ' ')));
-    body.append(el('h3', 'booking-slots-heading', 'Horários disponíveis'));
+    body.append(el('h3', 'booking-slots-heading', demo ? 'Horários ilustrativos' : 'Horários disponíveis'));
     const slots = el('div'); slots.id = 'time-slots';
     slots.setAttribute('aria-live', 'polite');
     body.append(slots);
@@ -706,7 +773,7 @@
     showError();
     refreshDateChoice();
     updateFooter();
-    if (preview) renderSlots();
+    if (preview || demo) renderSlots();
     else loadAvailability();
   }
 
@@ -780,6 +847,7 @@
   function renderSlots() {
     const root = $('time-slots');
     if (!root) return;
+    if (demo) { renderDemoSlots(root); return; }
     let list = root.querySelector('.slots-grid');
     if (preview) {
       root.removeAttribute('aria-busy');
@@ -873,7 +941,31 @@
     updateSlotSelection(list, booking.start);
   }
 
+  function renderDemoSlots(root) {
+    // Fixed examples, intentionally unrelated to published hours, reservations,
+    // service duration or staff schedules. Never request or imply live inventory.
+    const examples = ['09:00', '10:00', '11:00', '14:00', '15:00', '16:00'];
+    root.removeAttribute('aria-busy');
+    root.setAttribute('aria-describedby', 'demo-time-notice');
+    let list = root.querySelector('.demo-slots-grid');
+    if (!list) {
+      list = el('div', 'demo-slots-grid');
+      list.setAttribute('role', 'group');
+      list.setAttribute('aria-label', 'Exemplos de horários, sem disponibilidade real');
+      list.append(...examples.map(time => {
+        const node = button(time, 'slot', () => chooseSlot(time));
+        node.dataset.slotStart = time;
+        node.setAttribute('aria-label', time + ', horário ilustrativo');
+        node.setAttribute('aria-pressed', 'false');
+        return node;
+      }));
+      root.replaceChildren(list);
+    }
+    updateSlotSelection(list, booking.start);
+  }
+
   async function loadAvailability() {
+    if (demo) { renderSlots(); updateFooter(); return; }
     if (preview || !booking.professional) return;
     const seq = ++requestSequence;
     availabilityController?.abort();
@@ -917,6 +1009,7 @@
   }
 
   function reviewCard(result = null) {
+    if (demo) return demoReviewCard();
     const box = el('div', 'review-card'); box.append(el('h3', '', 'Seu atendimento'));
     const person = result?.professional || data.professionals.find(p => p.id === booking.professional)?.name;
     const services = result?.services || booking.availability?.services ||
@@ -941,7 +1034,36 @@
     box.append(total);
     return box;
   }
+  function demoReviewCard() {
+    const box = el('div', 'review-card demo-review-card');
+    box.append(el('h3', '', 'Sua simulação'));
+    const person = data.professionals.find(item => item.id === booking.professional);
+    const total = selectionTotal();
+    const rows = [
+      ['Serviços', [...selectedServices(), ...selectedAddons()].map(item => item.name).join(' + ')],
+      ['Profissional', person?.name || 'Equipe a confirmar'],
+      ['Data ilustrativa', dateLabel(booking.day, {dateStyle:'long'})],
+      ['Horário ilustrativo', booking.start]
+    ];
+    if (knownDuration(total.minutes)) rows.push(['Duração publicada', duration(total.minutes)]);
+    for (const [label, value] of rows) {
+      const row = el('div', 'review-row');
+      row.append(el('span', '', label), el('strong', '', value));
+      box.append(row);
+    }
+    if (data.site.show_prices) {
+      const row = el('div', 'review-row total');
+      row.append(el('span', '', 'Valor publicado'), el('strong', '', priceText(total.price, total.price_mode)));
+      box.append(row);
+    }
+    return box;
+  }
   function renderConfirmation(body) {
+    if (demo) {
+      body.append(demoReviewCard(), el('p', 'demo-flow-note',
+        'Você pode concluir a simulação sem informar dados pessoais. Nenhuma reserva ou mensagem será enviada.'));
+      return;
+    }
     // The confirmation button itself is the affirmative booking action.
     // The separate message preference is optional and never confirms a booking.
     body.append(reviewCard());
@@ -1028,16 +1150,17 @@
     total.replaceChildren();
     if (!total.hidden && booking.services.length) {
       const amount = selectionTotal();
-      total.append(el('span', '', duration(booking.availability?.duration_min ?? amount.minutes)));
+      const minutes = booking.availability?.duration_min ?? amount.minutes;
+      if (!demo || knownDuration(minutes)) total.append(el('span', '', duration(minutes)));
       if (data.site.show_prices) total.append(el('strong', '',
         priceText(booking.availability?.price_cents ?? amount.price,
           booking.availability?.price_mode || amount.price_mode)));
     }
     next.textContent = booking.result ? 'Concluir' :
-      booking.busy ? 'Confirmando…' : confirmStep ? 'Confirmar agendamento' : 'Continuar →';
+      booking.busy ? 'Confirmando…' : confirmStep ? (demo ? 'Concluir simulação' : 'Confirmar agendamento') : 'Continuar →';
     next.disabled = booking.busy || (!booking.result &&
-      (booking.step === 1 ? !booking.services.length || !eligibleProfessionals().length :
-       booking.step === 2 ? !booking.start || !booking.quote || booking.loading || preview ||
+      (booking.step === 1 ? !booking.services.length || (!eligibleProfessionals().length && !demoTeamPending()) :
+       booking.step === 2 ? !booking.start || (!demo && !booking.quote) || booking.loading || preview ||
          !dateInput?.value || !dateInput.validity.valid : preview));
   }
 
@@ -1064,6 +1187,12 @@
   }
 
   async function submitBooking() {
+    if (demo) {
+      if (booking.busy || booking.result || booking.step !== 3 || !booking.start || !booking.services.length) return;
+      booking.result = {status:'simulated'};
+      renderBooking();
+      return;
+    }
     if (booking.busy || booking.step !== 3 || preview || !booking.quote || !booking.start) return;
     const form = $('customer-form');
     if (!form || !fields.validateForm(form) || !form.reportValidity()) return;
@@ -1153,6 +1282,15 @@
     return 'https://calendar.google.com/calendar/render?' + params.toString();
   }
   function renderSuccess(body) {
+    if (demo) {
+      const success = el('div', 'success demo-success');
+      success.append(el('div', 'success-check', '✓'),
+        el('h3', '', 'Simulação concluída'),
+        el('p', '', 'Você experimentou o fluxo da Orion. Nenhuma reserva foi criada e nenhuma mensagem foi enviada.'),
+        demoReviewCard());
+      body.append(success);
+      return;
+    }
     const success = el('div', 'success');
     success.append(el('div', 'success-check', '✓'),
       el('h3', '', 'Agendamento confirmado!'),
@@ -1243,29 +1381,33 @@
     if (booking.step === 3) { submitBooking(); return; }
     if (booking.step === 1) {
       const people = eligibleProfessionals();
-      if (!booking.services.length || !people.length) return;
+      if (!booking.services.length || (!people.length && !demoTeamPending())) return;
       // Back/Continue is navigation, not a new professional choice. A quote
       // and start may only survive while they still belong to this person.
       if (!people.some(person => person.id === booking.professional)) {
         invalidateAvailability();
-        booking.professional = people[0].id;
+        booking.professional = people[0]?.id || null;
       }
       booking.step = 2; showError(); renderBooking(); loadAvailability();
     }
-    else if (booking.start && booking.quote) { booking.step = 3; showError(); renderBooking(); }
+    else if (booking.start && (booking.quote || demo)) { booking.step = 3; showError(); renderBooking(); }
   });
   $('share-site').addEventListener('click', async () => {
     const message = $('share-message');
     if (preview) { message.textContent = 'Publique o site para compartilhar o endereço público.'; message.hidden = false; return; }
-    try { if (navigator.share) await navigator.share({ title: data.site.title, url: location.href }); else { await navigator.clipboard.writeText(location.href); message.textContent = 'Link copiado.'; message.hidden = false; } }
+    const url = demo ? location.origin + location.pathname : location.href;
+    try { if (navigator.share) await navigator.share({ title: data.site.title, url }); else { await navigator.clipboard.writeText(url); message.textContent = 'Link copiado.'; message.hidden = false; } }
     catch (error) { if (error.name !== 'AbortError') { message.textContent = 'Copie o endereço do site na barra do navegador para compartilhar.'; message.hidden = false; } }
   });
-  api().then(result => { data = result; renderPage();
+  api().then(result => {
+    if (demo && (result.demo !== true || result.preview !== true || result.booking_enabled !== false))
+      throw new Error('Esta demonstração não está disponível.');
+    data = result; renderPage();
     const params=new URLSearchParams(location.search),ids=(params.get('servicos')||'').split(',').filter(Boolean);
     if(!preview&&ids.length&&ids.length<=6&&new Set(ids).size===ids.length&&ids.every(id=>data.services.some(s=>s.id===id))){
       openBooking(ids[0]);booking.services=ids;
       const professional=params.get('profissional');if(eligibleProfessionals().some(p=>p.id===professional))booking.professional=professional;
       renderBooking();
     }
-  }).catch(error => { const node = $('page-message'); node.replaceChildren(el('h1', '', error.status === 404 ? 'Página indisponível' : 'Não foi possível carregar o site'), el('p', 'muted', error.status === 404 ? 'Este endereço ainda não foi publicado ou deixou de estar disponível.' : error.message)); });
+  }).catch(error => { const node = $('page-message'); node.replaceChildren(el('h1', '', error.status === 404 ? 'Página indisponível' : 'Não foi possível carregar o site'), el('p', 'muted', error.status === 404 ? (demo ? 'Esta demonstração expirou ou deixou de estar disponível.' : 'Este endereço ainda não foi publicado ou deixou de estar disponível.') : error.message)); });
 })();

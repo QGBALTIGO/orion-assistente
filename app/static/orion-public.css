@@ -59,6 +59,21 @@
   .hero-actions .hero-icon-action{transition:none}
 }
 
+/* Personalized demos retain the public site's tokens and layout. The mode is
+   visible throughout the journey; example slots never suggest live stock. */
+.demo-banner{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:3px 12px;padding:10px 16px;line-height:1.5}
+.demo-banner strong{font-size:13px;font-weight:650}
+.public-demo .cover>img{object-position:center 34%}
+.demo-banner>span{font-size:12px}
+.public-demo .demo-flow-note{margin:0 0 16px;padding:11px 13px;border:1px solid color-mix(in srgb,var(--primary) 22%,var(--border));border-radius:12px;background:color-mix(in srgb,var(--primary) 5%,var(--card));color:var(--muted);font-size:13px;line-height:1.6;overflow-wrap:anywhere}
+.public-demo .demo-pending-note{margin:0 0 16px;color:var(--muted);font-size:13px;line-height:1.5}
+.demo-slots-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.demo-success .review-card{text-align:left}
+.public-demo .demo-review-card .review-row>span:first-child{flex:0 1 auto;min-width:0}
+.public-demo .demo-review-card .review-row>strong{min-width:0}
+@media(min-width:640px){.demo-slots-grid{grid-template-columns:repeat(6,minmax(0,1fr))}}
+@media(max-width:359px){.demo-banner{padding-inline:12px}.demo-banner strong,.demo-banner>span{width:100%}.public-demo .demo-review-card .review-row{gap:10px;font-size:13px}}
+
 /* Public information area: compact opening hours and a real Google map preview.
    Uses the same card, color and typography tokens as the rest of the site. */
 .info-grid{grid-template-columns:minmax(0,1fr);gap:18px}

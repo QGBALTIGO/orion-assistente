@@ -178,7 +178,12 @@ def dental_already_published(raw):
     from scripts.wait_for_fixed_client_monthly_schema import CONTRACT_QUERY as monthly_contract
     from sqlalchemy import create_engine, text
     from sqlalchemy.pool import NullPool
-    if not dental.schema_ready(raw):
+    from scripts import backup_and_migrate_commercial_demos as demos
+    from scripts.apply_variable_combo_migration import migrated_version
+    from scripts.wait_for_dental_schema import schema_ready as dental_contract
+    # 0077 adds only isolated demo records. Keep checking every 0076 contract
+    # without replaying the older migration on the known successor revision.
+    if migrated_version(raw) not in {dental.TARGET, demos.TARGET} or not dental_contract(raw):
         raise RuntimeError("dental_schema_invalid")
     engine=create_engine(raw,poolclass=NullPool,connect_args={
         "options":"-c default_transaction_read_only=on -c statement_timeout=12000"})
@@ -203,6 +208,15 @@ def dental_release_if_enabled(raw):
     dental_already_published(raw)
 
 
+def commercial_demo_release(raw):
+    from scripts import backup_and_migrate_commercial_demos as demos
+    from scripts.apply_variable_combo_migration import migrated_version
+    if migrated_version(raw) not in {demos.PREVIOUS, demos.TARGET}:
+        raise RuntimeError("commercial_demo_predecessor_not_published")
+    if demos.main() != 0:
+        raise RuntimeError("commercial_demo_backup_or_schema_invalid")
+
+
 def main():
     from scripts.backup_and_migrate_commissions import connection_values
     from scripts.apply_variable_combo_migration import migrated_version
@@ -210,19 +224,24 @@ def main():
     from scripts import backup_and_migrate_fixed_client_series as fixed
     from scripts import backup_and_migrate_fixed_client_monthly as monthly
     from scripts import backup_and_migrate_dental_clinic as dental
+    from scripts import backup_and_migrate_commercial_demos as demos
     raw, _url = connection_values()
     current = migrated_version(raw)
-    if current == dental.TARGET:
-        return dental_already_published(raw)
+    if current in {dental.TARGET, demos.TARGET}:
+        dental_already_published(raw)
+        commercial_demo_release(raw)
+        return
     if current in {recovery.PREVIOUS, recovery.TARGET, fixed.TARGET, monthly.TARGET}:
         result = current_release(raw)
         dental_release_if_enabled(raw)
+        commercial_demo_release(raw)
         return result
     if current not in LEGACY_REVISIONS:
         raise RuntimeError("cakto_recovery_source_revision_not_approved")
     _legacy_main()
     result = current_release(raw)
     dental_release_if_enabled(raw)
+    commercial_demo_release(raw)
     return result
 
 

@@ -29,7 +29,8 @@ def test_api_exec_has_runtime_roles_but_no_owner_migration_environment(monkeypat
     barriers = []
 
     def wait(command, **kwargs):
-        assert command == [start_api.sys.executable, "-m", "scripts.wait_for_fixed_client_monthly_schema"]
+        expected = ["scripts.wait_for_fixed_client_monthly_schema", "scripts.wait_for_commercial_demos_schema"]
+        assert command == [start_api.sys.executable, "-m", expected[len(barriers)]]
         assert kwargs["check"] is True and kwargs["timeout"] == 95
         assert not set(kwargs["env"]) & migration_keys
         assert not set(kwargs["env"]) & start_api.ONE_TIME_KEYS
@@ -41,7 +42,7 @@ def test_api_exec_has_runtime_roles_but_no_owner_migration_environment(monkeypat
         if args[1] == [start_api.sys.executable, "-m", "scripts.start_api"]:
             assert barriers == []
         else:
-            assert len(barriers) == 1
+            assert len(barriers) == 2
         executed.append(args)
 
     monkeypatch.setattr(start_api.subprocess, "run", wait)
@@ -66,7 +67,7 @@ def test_api_exec_has_runtime_roles_but_no_owner_migration_environment(monkeypat
     assert environment["APP_DATABASE_URL"] == "runtime-only"
     assert environment["SUPPORT_DATABASE_URL"] == "support-only"
     assert environment["QR_BRIDGE_TOKEN"] == "existing-bridge-secret"
-    assert barriers == [environment]
+    assert barriers == [environment, environment]
     assert "MIGRATION_DATABASE_URL" in source  # Do not mutate the deployment helper's environment.
 
 
@@ -152,7 +153,7 @@ def test_empty_reverse_settings_keep_original_uvicorn_command_and_runtime_env(mo
     assert executed[0][1] == [start_api.sys.executable, "-m", "uvicorn", "app.main:app",
                               "--no-access-log", "--host", "0.0.0.0", "--port", "8000"]
     assert executed[0][2] == {"PORT": "8000", "WEB_CONCURRENCY": "2", "QR_BRIDGE_TOKEN": "unchanged"}
-    assert barriers == [executed[0][2]]
+    assert barriers == [executed[0][2], executed[0][2]]
 
 
 @pytest.mark.parametrize("key", ["ORION_ORIGIN_HTTPS_AUTH", "ORION_ORIGIN_HTTPS_FINGERPRINT"])

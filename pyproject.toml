@@ -45,4 +45,4 @@ asyncio_mode = "auto"
 markers = ["integration: precisa de PostgreSQL real e migrations aplicadas"]
 
 [tool.setuptools.package-data]
-app = ["static/*.html", "static/*.svg", "static/*.png", "static/*.css", "static/*.js", "static/*.woff2", "static/*.webmanifest", "static/*-OFL.txt"]
+app = ["static/*.html", "static/*.svg", "static/*.png", "static/*.css", "static/*.js", "static/*.woff2", "static/*.webmanifest", "static/*-OFL.txt", "static/demo-assets/*.webp"]
