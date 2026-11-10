@@ -351,22 +351,22 @@ def test_direct_module_invocation_reexecs_before_processing_configuration(monkey
     assert "MIGRATION_DATABASE_URL" in source
 
 
-def test_clean_supervisor_checks_schema_once_before_api_or_ssh_children(environment, monkeypatch):
+def test_clean_supervisor_checks_both_schemas_once_before_api_or_ssh_children(environment, monkeypatch):
     monkeypatch.setattr(ingress.os, "environ", environment)
     events = []
+    barriers = ["scripts.wait_for_fixed_client_monthly_schema", "scripts.wait_for_commercial_demos_schema"]
 
     def probe(command, **kwargs):
-        assert command == [ingress.sys.executable, "-m", "scripts.wait_for_fixed_client_monthly_schema"]
+        assert command == [ingress.sys.executable, "-m", barriers[len(events)]]
         assert kwargs["check"] is True and kwargs["timeout"] == 95
         assert not set(kwargs["env"]) & (start_api.ONE_TIME_KEYS | start_api.SSH_KEYS)
         assert kwargs["env"]["APP_DATABASE_URL"] == "synthetic-runtime"
         assert kwargs["env"]["WEB_CONCURRENCY"] == "3"
-        assert events == []
-        events.append("schema-ready")
+        events.append(command[2])
 
     def supervise(source):
         assert source == environment and not set(source) & start_api.ONE_TIME_KEYS
-        assert events == ["schema-ready"]
+        assert events == barriers
         events.append("supervise")
         return 0
 
@@ -374,7 +374,7 @@ def test_clean_supervisor_checks_schema_once_before_api_or_ssh_children(environm
     monkeypatch.setattr(ingress, "supervise", supervise)
     with pytest.raises(SystemExit) as result:
         ingress.main()
-    assert result.value.code == 0 and events == ["schema-ready", "supervise"]
+    assert result.value.code == 0 and events == [*barriers, "supervise"]
 
 
 @pytest.mark.parametrize("failure", ["exit", "timeout", "spawn"])
