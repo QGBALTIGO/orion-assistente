@@ -23,7 +23,7 @@ from app import qr_api, qr_channels, qr_legacy
 router = APIRouter(tags=["Diagnóstico restrito do WhatsApp"])
 PRIVATE_PATH = "/internal/ops/assistant-ingress-review"
 PUBLIC_PATH = "/api/v1/admin/whatsapp/ingress-review"
-BODY_LIMIT = 16 * 1024
+BODY_LIMIT = 32 * 1024
 RESPONSE_LIMIT = 32 * 1024
 HEX64 = r"^[a-f0-9]{64}$"
 TRACE = r"^[a-f0-9]{20}$"
@@ -49,7 +49,7 @@ class Expected(Closed):
 
 
 class Evidence(Closed):
-    kind: Literal["operator_attested_prepare_failed", "not_started"]
+    kind: Literal["operator_attested_prepare_failed", "operator_attested_uncertain", "not_started"]
     receipt_sha256: str = Field(strict=True, pattern=HEX64)
     build_sha: str = Field(strict=True, pattern=r"^[a-f0-9]{40}$")
     event_at: int = Field(strict=True, ge=1, le=MAX_INTEGER)
@@ -80,12 +80,14 @@ class ApplyRequest(Closed):
     mode: Literal["apply"]
     operation_id: UUID
     expected: Expected
-    entries: list[Entry] = Field(min_length=1, max_length=2)
+    entries: list[Entry] = Field(min_length=1, max_length=32)
 
     @model_validator(mode="after")
     def unique(self):
         if len({row.trace for row in self.entries}) != len(self.entries):
             raise ValueError("Entrada repetida")
+        if len(self.entries) > 2 and any(row.evidence.kind != "not_started" for row in self.entries):
+            raise ValueError("Lote permitido somente para entradas não iniciadas")
         return self
 
 
@@ -104,7 +106,7 @@ class EntryView(Closed):
     state: Literal["pending", "blocked"]
     blocked_reason: Reason | None
     phase: Phase | None
-    eligible_as: list[Literal["operator_attested_prepare_failed", "not_started"]] = Field(max_length=2)
+    eligible_as: list[Literal["operator_attested_prepare_failed", "operator_attested_uncertain", "not_started"]] = Field(max_length=2)
 
 
 class DryResult(Closed):
@@ -381,10 +383,13 @@ async def _device_binding(device_id: UUID):
         if qr_legacy.is_alias(tenant_id, channel_id):
             raise HTTPException(409, "Dispositivo preservado não permite esta revisão.")
         channel = await qr_channels._require_canonical(db, tenant_id, channel_id)
+        # A paused workspace may still need its encrypted backlog retired. This
+        # operator lane cannot send, replay, enable the assistant or change plan
+        # state, so requiring an active plan would make safe recovery impossible.
         account_ok = (await db.execute(text("""
             SELECT 1 FROM tenants t
             JOIN tenant_memberships m ON m.tenant_id=t.id
-            WHERE t.id=:tenant AND t.status='active' AND t.whatsapp_channel_id=:channel
+            WHERE t.id=:tenant AND t.whatsapp_channel_id=:channel
               AND m.account_id=:owner AND m.active AND m.role='owner'
         """), {"tenant": tenant_id, "channel": channel_id,
                "owner": device["owner_account_id"]})).scalar_one_or_none()
@@ -425,7 +430,9 @@ async def device_review_candidates(response: Response, actor: UUID = Depends(req
                 THEN LEAST(20000, GREATEST(0,(d.runtime#>>'{connection_health,ingress_blocked}')::integer))
                 ELSE 0 END AS blocked
             FROM subscription_devices d JOIN tenants t ON t.id=d.tenant_id
-            WHERE d.removed_at IS NULL AND t.status='active'
+            -- Include paused workspaces: listing is read-only and the review
+            -- endpoint can only archive with a protected no-replay backup.
+            WHERE d.removed_at IS NULL
             ORDER BY blocked DESC,d.runtime_at DESC NULLS LAST LIMIT 100
         """))).mappings().all()
     response.headers["Cache-Control"] = "no-store"

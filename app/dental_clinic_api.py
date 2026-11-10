@@ -34,12 +34,12 @@ from app.dental_clinic_schemas import (
 
 
 class PrivateJSON(JSONResponse):
-    def __init__(self, content, **kwargs):
+    def __init__(self, content, status_code: int = 200, **kwargs):
         headers = dict(kwargs.pop("headers", {}) or {})
         headers.update({"Cache-Control": "no-store, max-age=0",
                         "Pragma": "no-cache", "X-Content-Type-Options": "nosniff",
                         "Referrer-Policy": "no-referrer"})
-        super().__init__(content, headers=headers, **kwargs)
+        super().__init__(content, status_code=status_code, headers=headers, **kwargs)
 
 
 class PrivateClinicalRoute(APIRoute):

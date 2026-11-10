@@ -159,6 +159,27 @@ async def test_apply_forwards_exact_frozen_snapshot_and_server_actor_only(auth, 
 
 
 @pytest.mark.asyncio
+async def test_primary_accepts_large_batch_only_when_every_entry_never_started(auth, backend):
+    safe = deepcopy(APPLY)
+    safe["entries"] = []
+    for index in range(32):
+        item = deepcopy(APPLY["entries"][0])
+        item["trace"] = f"{index:020x}"
+        item["evidence"]["kind"] = "not_started"
+        safe["entries"].append(item)
+    async with client() as web:
+        accepted = await web.post(review.PUBLIC_PATH, json=safe, headers={"X-Orion-CSRF": CSRF})
+    assert accepted.status_code == 200 and backend == ["binding", (safe, ACTOR)]
+    backend.clear()
+    unsafe = deepcopy(safe)
+    unsafe["entries"] = unsafe["entries"][:3]
+    unsafe["entries"][0]["evidence"]["kind"] = "operator_attested_uncertain"
+    async with client() as web:
+        refused = await web.post(review.PUBLIC_PATH, json=unsafe, headers={"X-Orion-CSRF": CSRF})
+    assert refused.status_code == 422 and backend == []
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("change", ["secret", "scope", "mutation", "duplicate", "wrong_operation", "no_review", "wrong_backup", "wrong_before"])
 async def test_response_allowlist_scope_and_operation_correlation_hide_unexpected_data(auth, backend, monkeypatch, change):
     result = deepcopy(RESULT if change not in {"wrong_operation", "no_review", "wrong_backup", "wrong_before"} else APPLIED)
@@ -356,3 +377,54 @@ async def test_device_review_denies_support_members_and_invalid_extra_request_fi
                         {**DRY, "traces": [TRACE, TRACE]}]:
             assert (await web.post(url, json=payload, headers={"X-Orion-CSRF": CSRF})).status_code == 422
     assert device_backend == []
+
+
+@pytest.mark.asyncio
+async def test_paused_device_remains_listable_and_bound_only_for_no_replay_review(monkeypatch):
+    from datetime import datetime, timezone
+    observed = datetime.now(timezone.utc)
+    list_queries = []
+
+    class ListDB:
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): pass
+        async def execute(self, query, params=None):
+            list_queries.append(str(query))
+            rows = [dict(id=DEVICE, name="WhatsApp", company="Paused synthetic",
+                         runtime_at=observed, blocked=4)]
+            return SimpleNamespace(mappings=lambda: SimpleNamespace(all=lambda: rows))
+
+    monkeypatch.setattr(review.qr_channels, "support_session_factory", lambda: lambda: ListDB())
+    response = review.Response()
+    listed = await review.device_review_candidates(response, ACTOR)
+    assert listed["items"][0]["blocked"] == 4
+    assert all("t.status='active'" not in query for query in list_queries)
+
+    device = dict(id=DEVICE, tenant_id=TENANT, channel_id=CHANNEL, owner_account_id=ACTOR,
+                  generation=GENERATION, revision=3)
+    channel = dict(id=CHANNEL, tenant_id=TENANT, enabled=True, owner_account_id=ACTOR,
+                   assistant_enabled=False, provider="baileys", lease_owner=OWNER, fence=7,
+                   credential_encrypted="encrypted", credential_hash="credential-hash")
+    binding_queries = []
+
+    class BindingDB:
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): pass
+        async def execute(self, query, params=None):
+            sql = str(query); binding_queries.append(sql)
+            if "FROM subscription_devices" in sql:
+                return SimpleNamespace(mappings=lambda: SimpleNamespace(one_or_none=lambda: device))
+            if "SELECT 1 FROM tenants" in sql:
+                return SimpleNamespace(scalar_one_or_none=lambda: 1)
+            return SimpleNamespace(scalar_one=lambda: observed)
+
+    monkeypatch.setattr(review.qr_channels, "support_session_factory", lambda: lambda: BindingDB())
+    async def canonical(*_args): return channel
+    monkeypatch.setattr(review.qr_channels, "_require_canonical", canonical)
+    monkeypatch.setattr(review.qr_channels, "_current", lambda *_args: None)
+    monkeypatch.setattr(review.qr_channels, "_cipher", lambda: SimpleNamespace(decrypt=lambda _value: b"credential"))
+    monkeypatch.setattr(review.qr_channels, "credential_hash", lambda value: "credential-hash" if value == "credential" else "bad")
+    monkeypatch.setattr(review.qr_legacy, "is_alias", lambda *_args: False)
+    binding, credential = await review._device_binding(DEVICE)
+    assert binding["device_id"] == str(DEVICE) and credential == "credential"
+    assert all("t.status='active'" not in query for query in binding_queries)

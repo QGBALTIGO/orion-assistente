@@ -11,8 +11,9 @@ const object=value=>value!==null&&typeof value==='object'&&!Array.isArray(value)
 const exact=(value,keys)=>object(value)&&Object.keys(value).length===keys.length&&keys.every(key=>Object.hasOwn(value,key));
 const hex=(value,length)=>typeof value==='string'&&new RegExp('^[a-f0-9]{'+length+'}$').test(value);
 const integer=value=>Number.isSafeInteger(value)&&value>=0;
-const legacyKinds=['operator_attested_prepare_failed','not_started'];
+const legacyKinds=['operator_attested_prepare_failed','operator_attested_uncertain','not_started'];
 const deviceKinds=['operator_attested_uncertain','operator_attested_no_replay'];
+const maxReviewEntries=32;
 const scopeKeys=['tenant_id','channel_id','session_digest','auth_epoch','owner','fence'];
 const deviceScopeKeys=['tenant_id','channel_id','device_id','generation','settings_revision','auth_epoch','owner','fence'];
 const validScope=(value,device=false)=>device?
@@ -27,15 +28,19 @@ const error=code=>Object.assign(Error(code),{code,status:{invalid_ingress_review
   ingress_review_backup_failed:503,ingress_review_capacity:503,ingress_review_storage_unavailable:503}[code]||409});
 const trace=(secret,id)=>createHmac('sha256',secret).update('orion-trace-v1:'+id).digest('hex').slice(0,20);
 const eligible=(entry,device=false)=>{
-  if(entry.work!==undefined)return [];
   if(device){
+    if(entry.work!==undefined)return [];
     if(entry.state!=='blocked')return [];
     return entry.blocked_reason==='business_started'?['operator_attested_uncertain']:
       ['preparation_failed','operator_do_not_replay'].includes(entry.blocked_reason)?[]:['operator_attested_no_replay'];
   }
+  if(entry.state==='blocked'&&entry.blocked_reason==='business_started'&&
+      ['preparing','consuming'].includes(entry.work?.phase))return ['operator_attested_uncertain'];
+  if(entry.work!==undefined)return [];
   return entry.state==='blocked'&&entry.blocked_reason==='business_started'?['operator_attested_prepare_failed']:
     entry.state==='pending'||entry.state==='blocked'&&entry.blocked_reason==='expired'?['not_started']:[];
 };
+const safeBatch=entries=>entries.length<=2||entries.every(item=>item?.evidence?.kind==='not_started');
 
 function validateRequest(body,{device=false}={}){
   if(!channelId(body?.operation_id)||body.version!==1)throw error('invalid_ingress_review_request');
@@ -45,7 +50,8 @@ function validateRequest(body,{device=false}={}){
   }else if(body.mode==='apply'){
     if(!exact(body,['version','mode','operation_id','expected','entries'])||!exact(body.expected,['scope','snapshot_sha256'])||
         !validScope(body.expected.scope,device)||!hex(body.expected.snapshot_sha256,64)||!Array.isArray(body.entries)||
-        !body.entries.length||body.entries.length>2||new Set(body.entries.map(item=>item?.trace)).size!==body.entries.length)throw error('invalid_ingress_review_request');
+        !body.entries.length||body.entries.length>maxReviewEntries||!safeBatch(body.entries)||
+        new Set(body.entries.map(item=>item?.trace)).size!==body.entries.length)throw error('invalid_ingress_review_request');
     for(const item of body.entries){
       if(!exact(item,['trace','fingerprint','disposition','evidence'])||!hex(item.trace,20)||!hex(item.fingerprint,64)||
           item.disposition!=='do_not_replay'||!exact(item.evidence,['kind','receipt_sha256','build_sha','event_at'])||
@@ -109,7 +115,9 @@ export function createAssistantIngressReview({journal,directory,secret,peerTag,s
       state:entry.state,blocked_reason:entry.blocked_reason??null,phase:entry.work?.phase??null,
       eligible_as:snapshot.active_ids.includes(entry.id)?[]:eligible(entry,device)});
     if(body.mode==='dry_run'){
-      const selected=body.traces.length?snapshot.data.entries.filter(entry=>body.traces.includes(trace(secret,entry.id))):snapshot.data.entries;
+      const actionable=entry=>!snapshot.active_ids.includes(entry.id)&&eligible(entry,device).length>0;
+      const selected=body.traces.length?snapshot.data.entries.filter(entry=>body.traces.includes(trace(secret,entry.id))):
+        [...snapshot.data.entries].sort((left,right)=>Number(actionable(right))-Number(actionable(left)));
       await guard();if(!scopeCurrent()||journal.operatorSnapshot().snapshot_sha256!==snapshot.snapshot_sha256)throw error('ingress_review_snapshot_conflict');
       return {version:1,mode:'dry_run',scope,snapshot_sha256:snapshot.snapshot_sha256,
         entries:selected.slice(0,32).map(publicEntry),total_entries:snapshot.data.entries.length,truncated:selected.length>32,mutation:false};
@@ -164,7 +172,7 @@ export function collectIngressReviewBody(req,{device=false}={}){
   return new Promise((resolve,reject)=>{
     let size=0,settled=false;const chunks=[];
     const fail=()=>{if(!settled){settled=true;reject(error('invalid_ingress_review_request'));}};
-    req.on('data',part=>{if(settled)return;size+=part.length;if(size>8192){fail();return;}chunks.push(Buffer.from(part));});
+    req.on('data',part=>{if(settled)return;size+=part.length;if(size>32*1024){fail();return;}chunks.push(Buffer.from(part));});
     req.on('end',()=>{if(settled)return;try{const body=JSON.parse(Buffer.concat(chunks).toString('utf8'));
       validateRequest(body,{device});settled=true;resolve(body);}catch{fail();}});
     req.on('aborted',fail);req.on('error',fail);

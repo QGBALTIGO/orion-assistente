@@ -20,6 +20,7 @@ def synthetic_plan_state(tenant_id, code="elite"):
         "source": "manual" if plan else "none", "status": "active" if plan else "no_access",
         "active": plan is not None, "valid_until": None, "version": 1, "platform_workspace": False,
         "workspace_profile": "standard",
+        "business_niche": None,
         "layout_modes": ["classic"],
         "features": features, "permissions": {key: key in features for key in sorted(ALL_FEATURES)},
         "limits": {"max_professionals": plan["max_professionals"] if plan else None, "active_professionals": 0,

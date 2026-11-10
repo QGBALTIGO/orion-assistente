@@ -1,0 +1,45 @@
+{
+  "schema": "orion.whatsapp.ingress_recovery_receipt.v1",
+  "created_at": "2026-11-10T17:49:49.805Z",
+  "environment": "production",
+  "railway_project_id": "55750961-99ca-495e-b55e-4c07d78e53df",
+  "source_bridge_deployment_id": "ab8d51c4-d764-4049-8ace-f6f02958f855",
+  "source_build_sha": "a8b6a759edafac55afdba9502abaab78e66d540d",
+  "review": {
+    "primary": {
+      "entries": 52,
+      "already_operator_retired": 2,
+      "preparation_failed": 1,
+      "orphaned_consuming": 1,
+      "expired_without_work": 48,
+      "pending": 0,
+      "orphaned_trace": "688939e7894c667fbeed",
+      "orphaned_source_event_at_ms": 1794088777000,
+      "orphaned_intake_revision": 240,
+      "orphaned_control_revision": 117
+    },
+    "subscription_device": {
+      "workspace_label": "BaltigoFlix",
+      "blocked": 4,
+      "pending": 0
+    }
+  },
+  "disposition": {
+    "mode": "do_not_replay",
+    "primary_orphan": "operator_attested_uncertain",
+    "primary_expired": "not_started",
+    "subscription_device": "individual_review_required"
+  },
+  "safeguards": [
+    "Preserve the original encrypted journal and create a protected ciphertext backup before each mutation.",
+    "Never replay an inbound message, booking action, assistant action or outbound response.",
+    "Keep uncertain prior business effects classified as uncertain.",
+    "Require exact snapshot, scope, fingerprint, operator authority and idempotent operation identifiers.",
+    "Permit batches above two entries only when every selected entry has no recorded work start."
+  ],
+  "does_not_assert": [
+    "Message contents or sender identity.",
+    "Whether the orphaned business operation produced an external effect.",
+    "Delivery, response or definitive loss of any message."
+  ]
+}
