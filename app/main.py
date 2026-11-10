@@ -24,6 +24,7 @@ from app.panel_auth import router as panel_auth_router
 from app.account_auth import router as account_auth_router
 from app.account_settings import router as account_settings_router
 from app.admin_accounts import router as admin_accounts_router
+from app.demo_sites import router as demo_sites_router
 from app.maintenance_access import router as maintenance_router, admin_router as maintenance_admin_router
 from app.groq_api import router as groq_router
 from app.groq_audio import router as groq_audio_router
@@ -214,6 +215,7 @@ include_plan_router(app, account_settings_router)
 include_plan_router(app, maintenance_admin_router)
 include_plan_router(app, maintenance_router)
 include_plan_router(app, admin_accounts_router)
+include_plan_router(app, demo_sites_router)
 include_plan_router(app, groq_router)
 include_plan_router(app, groq_audio_router)
 include_plan_router(app, qr_ai_router)
@@ -289,6 +291,7 @@ async def panel_asset(asset: str) -> FileResponse:
                "orion-focus.css": "text/css", "orion-focus.js": "text/javascript",
                "orion-suite-live.js": "text/javascript",
                "orion-admin-center.js": "text/javascript",
+               "orion-demo-center.js": "text/javascript",
                "orion-ingress-review.js": "text/javascript",
                "orion-communication.js": "text/javascript",
                "orion-appointment-communications.js": "text/javascript",

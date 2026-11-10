@@ -47,12 +47,14 @@ def prepared(monkeypatch, revisions):
     return events
 
 
-def test_0073_is_the_only_additive_head_after_published_0072():
+def test_reviewed_successors_keep_the_additive_chain_after_published_0072():
     cfg = Config(str(ROOT / "alembic.ini"))
     cfg.set_main_option("path_separator", "os")
     cfg.set_main_option("script_location", str(ROOT / "alembic"))
     graph = ScriptDirectory.from_config(cfg)
-    assert graph.get_heads() == ["0075_fixed_client_monthly"]
+    assert graph.get_heads() == ["0077_commercial_demos"]
+    assert graph.get_revision("0077_commercial_demos").down_revision == "0076_dental_clinic"
+    assert graph.get_revision("0076_dental_clinic").down_revision == "0075_fixed_client_monthly"
     assert graph.get_revision("0075_fixed_client_monthly").down_revision == "0074_fixed_client_series"
     assert graph.get_revision("0074_fixed_client_series").down_revision == release.TARGET
     assert graph.get_revision(release.TARGET).down_revision == release.PREVIOUS
@@ -137,6 +139,9 @@ def prepare_entry(monkeypatch, revision):
     monkeypatch.setattr(monthly, "main", lambda: events.append("release75") or 0)
     monkeypatch.setattr(monthly, "schema_ready", lambda _: True)
     monkeypatch.setattr(entry, "_legacy_main", lambda: pytest.fail("No historical migration on 72/73"))
+    # This fixture isolates the historical 0072-0075 chain. The newer demo
+    # backup gate and missing-predecessor failure have their own release tests.
+    monkeypatch.setattr(entry, "commercial_demo_release", lambda _: None)
 
     def run(command, **kwargs):
         assert kwargs == {"check": True}

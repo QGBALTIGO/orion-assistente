@@ -37,6 +37,9 @@ def wait_for_campaigns_schema(environment):
               else "scripts.wait_for_fixed_client_monthly_schema")
     subprocess.run([sys.executable, "-m", schema],
                    env=environment, check=True, timeout=95)
+    # This release serves demos only after the backed-up pre-deploy migration.
+    subprocess.run([sys.executable, "-m", "scripts.wait_for_commercial_demos_schema"],
+                   env=environment, check=True, timeout=95)
 
 
 def main():
