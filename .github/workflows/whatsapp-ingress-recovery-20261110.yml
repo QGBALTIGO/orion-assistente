@@ -1,0 +1,43 @@
+name: Orion - recuperacao de ingressos 20261110
+on:
+  push:
+    branches: ['fix/whatsapp-ingress-recovery-20261110']
+  pull_request:
+    paths:
+      - 'qr-bridge/src/**'
+      - 'qr-bridge/test/**'
+      - 'app/qr_ingress_review.py'
+      - 'scripts/recover_whatsapp_ingress.py'
+      - 'tests/unit/test_qr_ingress_review.py'
+      - '.github/workflows/whatsapp-ingress-recovery-20261110.yml'
+permissions:
+  contents: read
+concurrency:
+  group: ingress-recovery-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  scoped-recovery:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --prefix qr-bridge --ignore-scripts --no-audit --no-fund
+      - name: Fonte exata e dependencias para verificacao isolada
+        run: |
+          mkdir -p /tmp/orion-ingress-verify
+          git archive HEAD | tar -x -C /tmp/orion-ingress-verify
+          cp -a qr-bridge/node_modules /tmp/orion-ingress-verify/qr-bridge/
+          tar -czf /tmp/orion-ingress-verify.tar.gz -C /tmp/orion-ingress-verify .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: orion-ingress-source-${{ github.sha }}
+          path: /tmp/orion-ingress-verify.tar.gz
+          retention-days: 1
+      - name: Regressao de diario e isolamento, sem acesso a producao
+        run: |
+          node --test qr-bridge/test/assistant-ingress-review.test.mjs qr-bridge/test/device-ingress-review.test.mjs qr-bridge/test/ingress-review-panel.test.mjs qr-bridge/test/ingress-journal.test.mjs qr-bridge/test/assistant-ingress.test.mjs qr-bridge/test/device-runtime.test.mjs
