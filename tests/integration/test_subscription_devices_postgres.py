@@ -518,7 +518,7 @@ async def test_platform_operator_device_binding_is_readonly_and_current_with_rea
             after = (await db.execute(text(f"""
                 SELECT to_jsonb(x) FROM {table} x WHERE tenant_id=:t
                 ORDER BY to_jsonb(x)::text"""), {"t": c.tenant})).scalars().all()
-            assert after == before, f"Read-only binding changed {table}"
+            assert after == before[table], f"Read-only binding changed {table}"
     async with c.ctx.migration.begin() as db:
         await db.execute(text("""UPDATE qr_channels
             SET lease_expires_at=clock_timestamp()-interval '1 second'
