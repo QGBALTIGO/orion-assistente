@@ -29,6 +29,7 @@ import {normalizeInbound,priorityText,updateEvent,callEvent,queueControl} from '
 import {createDeviceRuntime} from './device-runtime.mjs';
 import {createIngressJournal} from './ingress-journal.mjs';
 import {createAssistantIngress} from './assistant-ingress.mjs';
+import {StaleSocketRejection} from './stale-socket-rejection.mjs';
 import {createAssistantIngressReview} from './assistant-ingress-review.mjs';
 import {withIngressHealth} from './ingress-health.mjs';
 import {messagePreflightError} from './device-message-failure.mjs';
@@ -191,11 +192,11 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
   // here loses a creds.update followed immediately by restartRequired/close.
   // isCurrent is the manager's monotonic, fenced lease, not an optimistic flag.
   const write=job=>{
-    try{if(!current())throw Error('channel_socket_replaced');job();return Promise.resolve();}
+    try{if(!current())throw new StaleSocketRejection();job();return Promise.resolve();}
     catch(error){if(current()){diagnostics.record('auth_write_failed');close();context.onDisconnected('disconnected');}return Promise.reject(error);}
   };
   const auth={creds,keys:{
-    async get(type,ids){if(!current())throw Error('channel_socket_replaced');return Object.fromEntries(ids.map(id=>{
+    async get(type,ids){if(!current())throw new StaleSocketRejection();return Object.fromEntries(ids.map(id=>{
       let value=store.get('key:'+type+':'+id);
       if(type==='app-state-sync-key'&&value)value=mod.proto.Message.AppStateSyncKeyData.fromObject(value);
       return [id,value];}));},

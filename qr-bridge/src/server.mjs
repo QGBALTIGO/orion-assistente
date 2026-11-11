@@ -56,10 +56,13 @@ import {makeTransportDiagnostics,receiptDiagnosticDetails,usyncDeviceDomainCount
 import {backupAuth} from "./auth-backup.mjs";
 import {createChannelRoutes} from './channel-routes.mjs';
 import {createBaileysChannelSession} from './channel-session.mjs';
+import {installStaleSocketRejectionGuard} from './stale-socket-rejection.mjs';
 import {createLegacyCentral} from './legacy-central.mjs';
 import {testReplyFor} from './trigger-test.mjs';
 import {makeTestFallbackText,sendTestCloudCta,selectTestCtaMode} from './test-url-button.mjs';
 import {runConsentedPairSmoke,SMOKE_ID,APPOINTMENT_QA_ID} from './consented-live-qa.mjs';
+
+installStaleSocketRejectionGuard();
 
 const legacyCentral=createLegacyCentral({
   start:(id,key)=>channelRoutes.adopt(id,key),send:(id,key,payload)=>channelRoutes.send(id,key,payload),
