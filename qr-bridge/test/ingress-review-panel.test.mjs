@@ -127,6 +127,18 @@ test('subscription device operator selects a tenant-scoped path and never sends 
   assert.equal(f.calls.some(call=>/\/send|\/replay|\/relink|\/restart/.test(call[0])),false);
 });
 
+test('a stale zero-count device remains selectable for authoritative protected review',async()=>{
+  const device='40000000-0000-4000-8000-000000000001';
+  const f=fixture({request:async(path)=>path.endsWith('/ingress-devices')?
+    {items:[{id:device,name:'WhatsApp',company:'Pausada',blocked:0,stale:true}]}:structuredClone(dry)});
+  await buttons(f.root,'Buscar dispositivos com mensagens retidas')[0].fire();
+  const selector=find(f.root,node=>node.tag==='select')[0];
+  assert.equal(selector.options.length,2);
+  selector.value=device;await selector.fire('change');
+  await buttons(f.root,'Consultar entradas')[0].fire();
+  assert.equal(f.calls[1][0],'/api/v1/admin/whatsapp/devices/'+device+'/ingress-review');
+});
+
 test('operator cannot switch device after query without invalidating prepared authorization',async()=>{
   const device='40000000-0000-4000-8000-000000000001';
   const f=fixture({request:async(path,_method,payload)=>path.endsWith('/ingress-devices')?
