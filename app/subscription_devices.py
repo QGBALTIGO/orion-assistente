@@ -259,7 +259,7 @@ async def device_dto(db, row):
                      "call_blocking": row["settings"]["calls"]["reject_enabled"]},
         "capabilities": {"connect": idle and not current, "qr": idle and status in {"starting", "connecting", "qr_ready", "qr_delayed", "qr_expired", "pairing"},
             "pair": idle and status == "qr_ready", "restart": idle and status != "disabled" and not outbound_degraded,
-            "relink": idle and status != "disabled", "remove": idle, "settings": idle, "diagnostics": True},
+            "relink": idle and status != "disabled" and not outbound_degraded, "remove": idle, "settings": idle, "diagnostics": True},
         "pending_operation": operation_dto(pending) if pending else None,
         "last_error": None}
 
