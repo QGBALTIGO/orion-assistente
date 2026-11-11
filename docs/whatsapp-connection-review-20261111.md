@@ -13,12 +13,13 @@
 | Vínculo e sessão | A mesma bridge mantém identidade cifrada no volume, usa concessão SQL com responsável e geração e recusa nova identidade quando o estado preservado é incompleto. Reconexão distingue falha transitória, logout e substituição de sessão. Nenhuma credencial foi apagada ou desvinculada. |
 | Entrada | Eventos recebem admissão durável por empresa, dispositivo, geração e revisão. Entrada bloqueada impede efeitos automáticos; registros com trabalho incerto não são reproduzidos. |
 | Saída de todas as empresas e nichos | `channel-session` é o transporte comum. A consulta read-only ao WhatsApp agora tem limite de tempo e uma segunda tentativa apenas quando a consulta lança erro ou expira. Cada tentativa verifica a concessão vigente. Resultado negativo de identidade é definitivo para a operação; nenhum relay é repetido. |
-| Estado visível | Duas falhas recentes de preparação antes do relay marcam a resposta como degradada, mesmo com socket aberto. O motivo não contém número, conteúdo ou erro privado do provedor. Uma resposta nova aceita limpa o sinal. O sinal acompanha a retomada da sessão até haver sucesso. |
+| Estado visível | Duas falhas recentes de preparação antes do relay marcam a resposta como degradada, mesmo com socket aberto. API e painel mostram uma orientação clara. O motivo não contém número, conteúdo ou erro privado do provedor. Uma resposta nova aceita limpa o sinal. O sinal acompanha a retomada da sessão até haver sucesso. |
 | Diagnóstico | A etapa da falha do chatbot inclui somente tipo da ação e identificadores de empresa e canal. Não registra telefone, mensagem, mídia, chaves nem texto bruto de erro. |
 
 ## Qualificação local
 
 - Testes específicos cobrem consulta transitória, expiração, revogação, resultado negativo sem repetição, degradação após duas falhas, recuperação após resposta aceita, sessão e legado.
+- Os 25 testes da interface de dispositivos passaram, incluindo o aviso de resposta degradada sem comando de reenvio. A verificação sintática dos arquivos Python passou. O teste unitário Python local não pôde ser coletado: este Windows usa Python 3.14 sem SQLAlchemy, enquanto o projeto exige Python anterior a 3.14; o gate CI em ambiente suportado deve validar esse teste.
 - A matriz sem dois arquivos alheios a esta mudança passou: 1.305 testes, zero falhas e cinco ignorados. Na suíte total, 1.385 passaram, 20 falharam e cinco foram ignorados: 19 falhas em `panel-ui.test.mjs` (arquivos de interface não alterados; não comparadas nesta execução com a base) e um teste TLS impedido pela ausência do executável OpenSSL neste Windows.
 
 ## Limites da conclusão

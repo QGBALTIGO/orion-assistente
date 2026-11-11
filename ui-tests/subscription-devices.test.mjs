@@ -369,6 +369,19 @@ test('mensagens retidas mantêm a pausa e não oferecem reinício que não as re
   assert.deepEqual(h.errors,[]);
 });
 
+test('respostas degradadas aparecem mesmo com socket aberto e não disparam reenvio',async t=>{
+  const item=device({status:'degraded',connection_health:{state:'degraded',reason:'outbound_preparation_failed',
+    action:'inspect_outbound_preparation',outbound_preparation_failures:2,outbound_preparation_degraded:true,
+    ingress_blocked:0,ingress_pending:0}});
+  const h=await makeDevices({data:listing([item])});
+  t.after(()=>h.close());
+  const card=h.element('[data-sd-card]');
+  assert.match(card.textContent,/respostas recentes falharam antes do envio/);
+  assert.match(card.textContent,/Mensagens antigas não serão reenviadas automaticamente/);
+  assert.equal(writes(h).length,0);
+  assert.deepEqual(h.errors,[]);
+});
+
 test('um botão antigo de reinício também é rejeitado quando a fila ficou bloqueada',async t=>{
   const item=device({status:'needs_attention',
     connection_health:{state:'needs_attention',reason:'ingress_review_required',

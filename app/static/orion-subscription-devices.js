@@ -118,6 +118,7 @@
       const notes=[];
       if(value.stale===true)notes.push('O estado está desatualizado. Ainda não foi possível confirmar a conexão.');
       if(value.action&&actions[value.action])notes.push(actions[value.action]);
+      if(value.reason==='outbound_preparation_failed')notes.push('O WhatsApp está conectado, mas respostas recentes falharam antes do envio. O suporte Orion precisa conferir a preparação das respostas. Mensagens antigas não serão reenviadas automaticamente.');
       if(value.ingress_storage_unavailable===true)notes.push('Não foi possível guardar novas mensagens com segurança. O suporte precisa conferir o armazenamento desta conexão.');
       else if(Number.isSafeInteger(value.ingress_blocked)&&value.ingress_blocked>0){
         notes.push((value.ingress_blocked===1?'Uma mensagem recebida precisa':value.ingress_blocked+' mensagens recebidas precisam')+' de revisão pelo suporte. As respostas automáticas estão pausadas.');
