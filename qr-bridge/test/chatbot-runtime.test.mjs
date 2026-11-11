@@ -82,6 +82,18 @@ test('ingress to a native list uses a current effect, exact encrypted proto and 
   const incoming=f.events.find(row=>row.message_id==='native-list');assert.equal(incoming.origin,'contact');assert.equal(incoming.chatbot_revision,1);assert.ok(Number.isSafeInteger(incoming.ingress_order));
 });
 
+test('a failed recipient lookup reports its boundary without leaking provider details',async t=>{
+  const f=await fixture(t),reported=[],original=console.warn;
+  console.warn=value=>{if(String(value).includes('orion-chatbot-preparation'))reported.push(JSON.parse(value));else original(value);};
+  t.after(()=>{console.warn=original;});
+  f.behavior.onWhatsApp=async()=>{throw Error('private provider detail '+phone);};
+  const item=f.effect({type:'text',text:'Synthetic private content'});
+  f.behavior.event=async row=>row.kind==='text'?[item]:[];
+  f.receive('failed-lookup');await until(()=>f.finished.length===1);
+  assert.equal(f.finished[0].state,'not_sent');assert.equal(f.sends.length,0);
+  assert.deepEqual(reported,[{component:'orion-chatbot-preparation',event:'failed_before_relay',stage:'recipient_lookup',action_type:'text'}]);
+});
+
 for(const type of ['list','url_button','text'])test(`current ${type} effect composes and paces before constructing/caching its exact provider protocol`,async t=>{
   const f=await fixture(t,{native:true,presence:true});
   const action=type==='list'?{type,title:'Menu',description:'Escolha',button_text:'Abrir',sections:[{rows:[{id:'one',title:'Uma'}]}]}:
