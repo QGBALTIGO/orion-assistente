@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {randomUUID,createHash} from 'node:crypto';
 import {createBaileysChannelSession} from '../src/channel-session.mjs';
+import {StaleSocketRejection} from '../src/stale-socket-rejection.mjs';
 import * as sdk from '@whiskeysockets/baileys';
 import {DEFAULT_CONNECTION_CONFIG} from '@whiskeysockets/baileys';
 import {encryptedChannelStore} from '../src/channel-storage.mjs';
@@ -22,6 +23,13 @@ test('provider phone is the confirmed PN only after open; LIDs are never relabel
 });
 
 const phone='5567999999901',self='5567999999902',flush=()=>new Promise(r=>setImmediate(r));
+test('retired socket auth callbacks reject with the narrow nonfatal marker',async t=>{
+  const s=await session(t);
+  s.result.close();
+  await assert.rejects(s.config.auth.keys.get('session',['synthetic']),error=>error instanceof StaleSocketRejection);
+  await assert.rejects(s.config.auth.keys.set({session:{synthetic:{}}}),error=>error instanceof StaleSocketRejection);
+  assert.equal(s.sent.length,0);
+});
 const assistantPresentation=()=>{const id='C'.repeat(32);return {version:1,id,action:{type:'reply_buttons',text:'Resumo fictício',footer:'',
   buttons:[{id:`oa1_${id}_0`,title:'Confirmar'},{id:`oa1_${id}_1`,title:'Corrigir'}]}};};
 async function waitFor(test){for(let i=0;i<150;i++){if(test())return;await flush();}assert.ok(test(),'Expected asynchronous assistant boundary');}

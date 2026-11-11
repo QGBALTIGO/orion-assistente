@@ -357,7 +357,7 @@ def read_botbot(raw: bytes, filename: str):
         raw_response = next((row[key] for key in _CONTENT if key in row
                              and _content_present(row[key])), None)
         if raw_response is None:
-            raise _invalid("Uma resposta não contém mensagens que possam ser importadas.")
+            raise _invalid(f"Resposta {index + 1}: uma resposta não contém mensagens que possam ser importadas.")
         try:
             converted_response = _response(raw_response, source_keys[index], references)
         except ValueError as error:
