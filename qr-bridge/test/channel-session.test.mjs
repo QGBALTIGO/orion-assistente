@@ -431,6 +431,24 @@ test('exact outgoing proto is encrypted before relay and survives a new channel 
   assert.deepEqual(await s.config.getMessage({id:'provider-id',remoteJid:phone+'@s.whatsapp.net',fromMe:true}),{conversation:'private synthetic payload'});
 });
 
+test('legacy and appointment sends recover one transient read-only recipient lookup',async t=>{
+  const s=await session(t);s.client.ev.emit('connection.update',{connection:'open'});let lookups=0;
+  s.client.onWhatsApp=async pn=>{if(++lookups===1)throw Error('temporary lookup');return [{exists:true,jid:pn+'@s.whatsapp.net'}];};
+  assert.deepEqual(await s.result.send(phone,'synthetic notice',{source:'appointment'}),{id:'provider-id'});
+  assert.equal(lookups,2);assert.equal(s.sent.length,1);assert.equal(s.result.connectionHealth().state,'connected');
+});
+
+test('repeated legacy preparation failures are visible while the socket stays open',async t=>{
+  const s=await session(t);s.client.ev.emit('connection.update',{connection:'open'});let lookups=0;
+  s.client.onWhatsApp=async()=>{lookups++;throw Error('private provider error');};
+  await assert.rejects(s.result.send(phone,'one'));assert.equal(s.result.connectionHealth().state,'connected');
+  await assert.rejects(s.result.send(phone,'two'));assert.equal(lookups,4);
+  assert.equal(s.result.connectionHealth().state,'degraded');
+  assert.equal(s.result.connectionHealth().reason,'outbound_preparation_failed');
+  s.client.onWhatsApp=async pn=>[{exists:true,jid:pn+'@s.whatsapp.net'}];
+  await s.result.send(phone,'three');assert.equal(s.sent.length,1);assert.equal(s.result.connectionHealth().state,'connected');
+});
+
 test('a different channel cannot recover another channels proto even with the same message id',async t=>{
   const a=await session(t),b=await session(t);a.client.ev.emit('connection.update',{connection:'open'});
   await a.result.send(phone,'private channel A');assert.equal(await b.config.getMessage({id:'provider-id'}),undefined);
@@ -662,8 +680,9 @@ test('managed connection notice uses composing and bounded pacing solely for the
 test('verified LID/device proof belongs to this socket and uses the same reliable proto cache',async t=>{
   const s=await session(t);s.client.ev.emit('connection.update',{connection:'open'});
   s.context.verifiedLid=()=>true;s.client.user={id:self+':4@s.whatsapp.net',lid:'100000000000001:4@lid'};
-  s.client.onWhatsApp=async pn=>[{exists:true,jid:pn+'@s.whatsapp.net',lid:'100000000000002@lid'}];s.client.getUSyncDevices=async()=>[];
+  let lookups=0;s.client.onWhatsApp=async pn=>{lookups++;return [{exists:true,jid:pn+'@s.whatsapp.net',lid:'100000000000002@lid'}];};s.client.getUSyncDevices=async()=>[];
   await s.result.send(phone,'verified channel');assert.equal(s.sent[0].jid,'100000000000002@lid');assert.equal(s.sent[0].options.useUserDevicesCache,true);
+  assert.equal(lookups,1);
   assert.deepEqual(await s.config.getMessage({id:'provider-id',remoteJid:'100000000000002@lid',fromMe:true}),{conversation:'verified channel'});
 });
 test('verified recipient PN required and lease is rechecked after provider lookup',async t=>{

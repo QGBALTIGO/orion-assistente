@@ -64,6 +64,22 @@ def test_incoming_backlog_is_visible_without_journal_content_or_a_false_connecte
     assert bad["ingress_storage_unavailable"] is False
 
 
+def test_repeated_outbound_preparation_failures_are_visible_without_private_provider_data():
+    value = _safe_runtime({"status": "connected", "connection_health": {
+        "state": "degraded", "reason": "outbound_preparation_failed",
+        "action": "inspect_outbound_preparation", "outbound_preparation_failures": 2,
+        "outbound_preparation_degraded": True, "outbound_preparation_at": 1793898000000,
+        "phone": "PRIVATE-PHONE", "error": "PRIVATE-PROVIDER-ERROR"}})
+    assert value["status"] == "degraded"
+    health = value["connection_health"]
+    assert health["reason"] == "outbound_preparation_failed"
+    assert health["action"] == "inspect_outbound_preparation"
+    assert health["outbound_preparation_failures"] == 2
+    assert health["outbound_preparation_degraded"] is True
+    assert health["outbound_preparation_at"] == datetime.fromtimestamp(1793898000, timezone.utc).isoformat()
+    assert "PRIVATE" not in json.dumps(value)
+
+
 @pytest.mark.parametrize("health", [None, [], "connected", {"state": []}, {"state": "invented"}])
 def test_invalid_health_cannot_manufacture_connected_state(health):
     assert _safe_connection_health(health) is None
@@ -73,11 +89,16 @@ def test_untrusted_health_fields_are_bounded_and_timestamp_offsets_normalized():
     health = _safe_connection_health({"state": "needs_attention", "action": ["reauthenticate"],
         "reason": {"logged_out": True}, "disconnect_code": True, "reconnect_attempts": 10**100,
         "last_activity_at": True, "connected_at": 10**100, "interrupted_at": "2026-11-05T12:00:00-04:00",
-        "recovered_at": "2026-11-05T12:00:00", "reconnect_at": float("inf")})
+        "recovered_at": "2026-11-05T12:00:00", "reconnect_at": float("inf"),
+        "outbound_preparation_at": 10**100, "outbound_preparation_failures": 10**100,
+        "outbound_preparation_degraded": "true"})
     assert health["action"] is None and health["reason"] is None
     assert health["disconnect_code"] is None and health["reconnect_attempts"] == 0
     assert health["interrupted_at"] == "2026-11-05T16:00:00+00:00"
     assert all(health[key] is None for key in ("last_activity_at", "connected_at", "recovered_at", "reconnect_at"))
+    assert health["outbound_preparation_at"] is None
+    assert health["outbound_preparation_failures"] == 0
+    assert health["outbound_preparation_degraded"] is False
 
 
 @pytest.mark.asyncio
@@ -99,3 +120,25 @@ async def test_stored_open_event_expires_when_the_process_stops_reporting(monkey
     if expected == "unavailable":
         assert result["connection_health"]["stale"] is True
         assert result["connection_health"]["state"] == "degraded"
+
+
+@pytest.mark.asyncio
+async def test_outbound_degradation_keeps_link_without_suggesting_restart_or_relink(monkeypatch):
+    class Result:
+        def mappings(self): return self
+        def one_or_none(self): return None
+    class Database:
+        async def execute(self, *_args): return Result()
+    async def metrics(*_args): return {"available": False}
+    monkeypatch.setattr(devices, "_metrics", metrics)
+    row = {"id": uuid4(), "tenant_id": uuid4(), "name": "Synthetic device", "revision": 1,
+        "status": "disconnected", "runtime": {"status": "degraded", "phone": "5511999999999",
+            "phone_verified": True, "connection_health": {"state": "degraded",
+            "reason": "outbound_preparation_failed", "action": "inspect_outbound_preparation"}},
+        "runtime_at": datetime.now(timezone.utc),
+        "settings": {"transcription": {"enabled": False}, "calls": {"reject_enabled": False}}}
+    result = await devices.device_dto(Database(), row)
+    assert result["status"] == "degraded"
+    assert result["capabilities"]["connect"] is False
+    assert result["capabilities"]["restart"] is False
+    assert result["capabilities"]["relink"] is False

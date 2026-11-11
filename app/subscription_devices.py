@@ -145,19 +145,22 @@ def _safe_connection_health(value):
     states = {"starting", "connecting", "connected", "degraded", "reconnecting", "needs_attention", "stopped"}
     actions = {"reauthenticate", "inspect_provider_restriction", "inspect_client_compatibility",
                "inspect_session_ownership", "inspect_session_state", "retry_connection",
-               "inspect_ingress_storage", "review_incoming_messages", "wait_ingress_recovery"}
+               "inspect_ingress_storage", "review_incoming_messages", "wait_ingress_recovery",
+               "inspect_outbound_preparation"}
     reasons = {"logged_out", "forbidden", "multidevice_mismatch", "connection_replaced", "bad_session",
                "reconnect_exhausted", "restart_required", "network_timeout", "connection_closed",
                "provider_unavailable", "transport_interrupted", "socket_not_open", "event_loop_delayed",
                "transport_unresponsive", "session_recovery", "session_recovery_exhausted", "sync_stalled",
-               "ingress_storage_unavailable", "ingress_review_required", "ingress_pending", "auth_state_unavailable"}
+               "ingress_storage_unavailable", "ingress_review_required", "ingress_pending", "auth_state_unavailable",
+               "outbound_preparation_failed"}
     if not isinstance(value.get("state"), str) or value["state"] not in states:
         return None
     action, reason = value.get("action"), value.get("reason")
     result = {"state": value["state"], "transport_observed": value.get("transport_observed") is True,
               "reason": reason if isinstance(reason, str) and reason in reasons else None,
               "action": action if isinstance(action, str) and action in actions else None}
-    for key in ("last_activity_at", "connected_at", "interrupted_at", "recovered_at", "reconnect_at", "ingress_oldest_at"):
+    for key in ("last_activity_at", "connected_at", "interrupted_at", "recovered_at", "reconnect_at", "ingress_oldest_at",
+                "outbound_preparation_at"):
         result[key] = None
         raw = value.get(key)
         try:
@@ -176,6 +179,9 @@ def _safe_connection_health(value):
         raw = value.get(key)
         result[key] = raw if type(raw) is int and 0 <= raw <= 20000 else 0
     result["ingress_storage_unavailable"] = value.get("ingress_storage_unavailable") is True
+    raw = value.get("outbound_preparation_failures")
+    result["outbound_preparation_failures"] = raw if type(raw) is int and 0 <= raw <= 2 else 0
+    result["outbound_preparation_degraded"] = value.get("outbound_preparation_degraded") is True
     return result
 
 
@@ -234,7 +240,9 @@ async def device_dto(db, row):
         # Saved transport timestamps remain historical; never advertise a
         # successful recovery from a process that has stopped reporting.
         health = {**(health or {}), "state": "degraded", "action": "retry_connection", "stale": True}
-    current = status == "connected"
+    outbound_degraded = (status == "degraded" and health and
+                         health.get("reason") == "outbound_preparation_failed")
+    current = status == "connected" or bool(outbound_degraded and runtime["phone_verified"])
     idle = status not in {"removing", "removed"}
     pending = (await db.execute(text("""SELECT * FROM subscription_device_operations
         WHERE tenant_id=:t AND device_id=:d AND status IN ('pending','running','uncertain')"""),
@@ -250,8 +258,8 @@ async def device_dto(db, row):
         "features": {"transcription": row["settings"]["transcription"]["enabled"],
                      "call_blocking": row["settings"]["calls"]["reject_enabled"]},
         "capabilities": {"connect": idle and not current, "qr": idle and status in {"starting", "connecting", "qr_ready", "qr_delayed", "qr_expired", "pairing"},
-            "pair": idle and status == "qr_ready", "restart": idle and status != "disabled",
-            "relink": idle and status != "disabled", "remove": idle, "settings": idle, "diagnostics": True},
+            "pair": idle and status == "qr_ready", "restart": idle and status != "disabled" and not outbound_degraded,
+            "relink": idle and status != "disabled" and not outbound_degraded, "remove": idle, "settings": idle, "diagnostics": True},
         "pending_operation": operation_dto(pending) if pending else None,
         "last_error": None}
 

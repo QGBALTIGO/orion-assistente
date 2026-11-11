@@ -32,13 +32,15 @@ import {createAssistantIngress} from './assistant-ingress.mjs';
 import {StaleSocketRejection} from './stale-socket-rejection.mjs';
 import {createAssistantIngressReview} from './assistant-ingress-review.mjs';
 import {withIngressHealth} from './ingress-health.mjs';
-import {messagePreflightError} from './device-message-failure.mjs';
+import {messageFailureCode,messagePreflightError} from './device-message-failure.mjs';
+import {makeOutboundHealth} from './outbound-health.mjs';
 import {createDeviceProxy} from './device-network.mjs';
 import {currentDiagnosticMessage} from './device-diagnostic-message.mjs';
 import {createDeviceGroupContacts} from './device-group-contacts.mjs';
 import {createGroupAddSocket} from './device-group-add.mjs';
 import {classifyPairedAuth} from './paired-auth-state.mjs';
 import {chatbotInteractiveMode} from './interactive-mode.mjs';
+import {lookupRecipient} from './recipient-lookup.mjs';
 import {createAssistantPresentationStore,relayAssistantPresentation,assistantNativeMode,ASSISTANT_SELECTION_TEXT} from './assistant-presentation.mjs';
 import {disconnectEvidence} from './disconnect-evidence.mjs';
 
@@ -57,14 +59,30 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
   const assistantJobs=new Set();
   const ingressDiagnostics=()=>deviceRuntime?.diagnostics()?.ingress||(assistantFault?
     {...(assistantIngress?.diagnostics()||{}),state:'unavailable',error_code:'assistant_ingress_unavailable'}:assistantIngress?.diagnostics());
+  const outbound=makeOutboundHealth({now,previous:context.previousConnectionHealth});
   const health=makeConnectionHealth({now,schedule,cancel,previous:context.previousConnectionHealth,
-    readiness:value=>withIngressHealth(value,ingressDiagnostics()),scope:{channel_id:context.channelId,tenant_id:context.tenantId,
+    readiness:value=>outbound.apply(withIngressHealth(value,ingressDiagnostics())),scope:{channel_id:context.channelId,tenant_id:context.tenantId,
     owner:context.owner,fence:context.fence,generation:context.deviceSnapshot?.()?.generation},
     isSyncPending:()=>client.ev.isBuffering?.()===true,
     emit:event=>{console.info(JSON.stringify(event));context.onConnectionHealth?.(health.snapshot());},onStale:reason=>{
       if(!current()||state!=='connected')return;
       const policy={...disconnectPolicy(408),reason};health.disconnected(policy,1);close();context.onDisconnected(policy);
     }});
+  const outboundFailure=(stage,error,isCurrent)=>{
+    if(messageFailureCode(error,{beforeSend:true,current:isCurrent()})!=='MESSAGE_PREPARATION_FAILED')return;
+    if(outbound.failure(stage)){
+      console.warn(JSON.stringify({component:'orion-outbound-health',event:'preparation_degraded',
+        channel_id:context.channelId,tenant_id:context.tenantId,stage}));
+      context.onConnectionHealth?.(health.snapshot());
+    }
+  };
+  const outboundSuccess=()=>{
+    if(outbound.success()){
+      console.info(JSON.stringify({component:'orion-outbound-health',event:'preparation_recovered',
+        channel_id:context.channelId,tenant_id:context.tenantId}));
+      context.onConnectionHealth?.(health.snapshot());
+    }
+  };
   health.connecting();
   const store=encryptedChannelStore({directory:privateDirectory(path.join(context.directory,'auth')),secret:context.secret,
     serialize:value=>JSON.stringify(value,mod.BufferJSON.replacer),deserialize:value=>JSON.parse(value,mod.BufferJSON.reviver),
@@ -270,18 +288,21 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
     checkDiagnostic();
     if(!self||phone===self&&!diagnostic||(!device&&!context.allowedSender(phone))||device&&!context.deviceSnapshot?.())throw Error('channel_send_denied');
     await authorize();
-    const exists=await client.onWhatsApp(phone);await authorize();
+    const exists=await lookupRecipient(client,phone,{assertCurrent:authorize,isCurrent:sendCurrent,schedule,cancel})
+      .catch(error=>{if(!diagnostic)outboundFailure('recipient_lookup',error,sendCurrent);throw error;});
     const recipient=exists?.find(row=>row.exists&&normalizeFromJid(row.jid)===phone);
     if(!recipient)throw messagePreflightError(Array.isArray(exists)&&exists.some(row=>row?.exists===false&&normalizeFromJid(row.jid)===phone)
       ?'RECIPIENT_NOT_REGISTERED':'RECIPIENT_IDENTITY_UNVERIFIED');
     // Confirmed self diagnostics have their own exact current-self grant;
     // the external-recipient resolver deliberately refuses a self address.
     const proof=await resolvePilotRecipient({phone,pilotPhone:phone,enabled:!(diagnostic&&phone===self)&&context.verifiedLid?.()===true,
-      socket:client,deviceCache,isCurrent:sendCurrent});await authorize();
-    return outgoingPresence.run({phone,chatJid:proof.jid,isCurrent:sendCurrent,assertAuthorized:authorize,action:presentation?.action||{type:'text',text},pacing},async({beforeSend})=>{
+      socket:client,deviceCache,isCurrent:sendCurrent,lookupResults:exists,schedule,cancel}).catch(error=>{if(!diagnostic)outboundFailure('recipient_proof',error,sendCurrent);throw error;});await authorize();
+    let preparationStage='presence';
+    try{const result=await outgoingPresence.run({phone,chatJid:proof.jid,isCurrent:sendCurrent,assertAuthorized:authorize,action:presentation?.action||{type:'text',text},pacing},async({beforeSend})=>{
     if(presentation){
+      preparationStage='message_generation';
       const sent=await relayAssistantPresentation({presentation,provenance:presentationProvenance,sdk:{...mod,userJid:client.user.id},jid:proof.jid,recipientProof:proof,phone,
-        retryStore,presentationStore:assistantPresentations(),relay:async(jid,body,options)=>{await authorize();return client.relayMessage(jid,body,options);},
+        retryStore,presentationStore:assistantPresentations(),relay:async(jid,body,options)=>{await authorize();preparationStage='relay_attempt';return client.relayMessage(jid,body,options);},
         isCurrent:sendCurrent,assertAuthorized:authorize,beforeSend,acknowledge:context.presentationAck,deferPresentationAck,
         onDiagnostic:(category,id)=>{
           if(assistantNativeMode({tenantId:context.tenantId,channelId:context.channelId,phone})==='native')
@@ -290,7 +311,8 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
         interactiveMode:assistantNativeMode({tenantId:context.tenantId,channelId:context.channelId,phone})});
       return {id:sent.key.id,...(typeof sent.acknowledgePresentation==='function'?{acknowledgePresentation:sent.acknowledgePresentation}:{})};
     }
-    await beforeSend();
+    preparationStage='pacing';await beforeSend();
+    preparationStage='message_generation';
     const sent=await sendStoredText({jid:proof.jid,recipientProof:proof,text,store:retryStore,freshDevices:true,isCurrent:sendCurrent,assertAuthorized:authorize,maxTextChars,preserveWhitespace:device,
       makeMessage:(jid,body)=>mod.generateWAMessage(jid,{text:body},{userJid:client.user.id,logger:silent,messageId:mod.generateMessageIDV2(client.user.id)}),
       relay:async(jid,body,options)=>{
@@ -298,11 +320,11 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
         if(state!=='connected')throw messagePreflightError('TRANSPORT_UNAVAILABLE_BEFORE_SEND');
         // Both the intended self PN and the active device/lease are checked
         // after the last async preparation, immediately before the relay.
-        checkDiagnostic();onRelayAttempt?.();
+        checkDiagnostic();preparationStage='relay_attempt';onRelayAttempt?.();
         return client.relayMessage(jid,body,options);
       }});
     return {id:sent?.key?.id};
-    });
+    });outboundSuccess();return result;}catch(error){if(!diagnostic&&preparationStage!=='relay_attempt')outboundFailure(preparationStage,error,sendCurrent);throw error;}
   }
   async function relayChatbot(phone,action,{isCurrent:operationCurrent=()=>true,assertAuthorized,signal,
     loadAsset,prepareCarouselImage,onRelayAttempt,fetchImage}={}){
@@ -318,15 +340,16 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
     if(state!=='connected')throw messagePreflightError('TRANSPORT_UNAVAILABLE_BEFORE_SEND');
     if(!context.deviceSnapshot?.()||!self||phone===self||!/^\d{8,15}$/.test(phone))throw Error('channel_send_denied');
     preparationStage='recipient_lookup';
-    const exists=await client.onWhatsApp(phone);await authorize();
+    const exists=await lookupRecipient(client,phone,{assertCurrent:authorize,isCurrent:sendCurrent,schedule,cancel});
     if(!exists?.some(row=>row.exists&&normalizeFromJid(row.jid)===phone))throw messagePreflightError(Array.isArray(exists)&&exists.some(row=>row?.exists===false&&normalizeFromJid(row.jid)===phone)
       ?'RECIPIENT_NOT_REGISTERED':'RECIPIENT_IDENTITY_UNVERIFIED');
     preparationStage='recipient_proof';
-    const proof=await resolvePilotRecipient({phone,pilotPhone:phone,enabled:context.verifiedLid?.()===true,socket:client,deviceCache,isCurrent:sendCurrent});await authorize();
+    const proof=await resolvePilotRecipient({phone,pilotPhone:phone,enabled:context.verifiedLid?.()===true,socket:client,deviceCache,isCurrent:sendCurrent,
+      lookupResults:exists,schedule,cancel});await authorize();
     preparationStage='asset_validation';
     if(action?.type==='audio')validateChatbotAsset(action.asset,'audio');
     let built;
-    try{preparationStage='presence';return await outgoingPresence.run({phone,chatJid:proof.jid,isCurrent:sendCurrent,assertAuthorized:authorize,action,signal},async({beforeSend})=>{
+    try{preparationStage='presence';const result=await outgoingPresence.run({phone,chatJid:proof.jid,isCurrent:sendCurrent,assertAuthorized:authorize,action,signal},async({beforeSend})=>{
       const sent=await sendStoredProtocol({jid:proof.jid,recipientProof:proof,store:retryStore,isCurrent:sendCurrent,
         assertAuthorized:authorize,onRelayAttempt:(...args)=>{preparationStage='relay_attempt';onRelayAttempt?.(...args);},
         onPrepared:message=>{if(built?.selectionIds)saveFallbackSelection(selectionStore,message,phone,built.selectionIds);},
@@ -342,10 +365,12 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
         },
         relay:(jid,body,options)=>client.relayMessage(jid,body,options)});
       return {id:sent.key.id};
-    });}finally{built?.dispose();}
+    });outboundSuccess();return result;}finally{built?.dispose();}
     }catch(error){
       if(preparationStage!=='relay_attempt')console.warn(JSON.stringify({component:'orion-chatbot-preparation',event:'failed_before_relay',stage:preparationStage,
+        channel_id:context.channelId,tenant_id:context.tenantId,
         action_type:['text','list','url_button','audio','image','video','document','sticker','ptv','location','carousel'].includes(action?.type)?action.type:'unknown'}));
+      if(preparationStage!=='relay_attempt')outboundFailure(preparationStage,error,sendCurrent);
       throw error;
     }
   }
