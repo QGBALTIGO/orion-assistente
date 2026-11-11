@@ -86,12 +86,31 @@ test('a failed recipient lookup reports its boundary without leaking provider de
   const f=await fixture(t),reported=[],original=console.warn;
   console.warn=value=>{if(String(value).includes('orion-chatbot-preparation'))reported.push(JSON.parse(value));else original(value);};
   t.after(()=>{console.warn=original;});
-  f.behavior.onWhatsApp=async()=>{throw Error('private provider detail '+phone);};
+  let lookups=0;
+  f.behavior.onWhatsApp=async()=>{lookups++;throw Error('private provider detail '+phone);};
   const item=f.effect({type:'text',text:'Synthetic private content'});
   f.behavior.event=async row=>row.kind==='text'?[item]:[];
-  f.receive('failed-lookup');await until(()=>f.finished.length===1);
+  f.receive('failed-lookup');await until(()=>lookups===1);f.advance(300);await until(()=>f.finished.length===1);
+  assert.equal(lookups,2);
   assert.equal(f.finished[0].state,'not_sent');assert.equal(f.sends.length,0);
-  assert.deepEqual(reported,[{component:'orion-chatbot-preparation',event:'failed_before_relay',stage:'recipient_lookup',action_type:'text'}]);
+  assert.deepEqual(reported,[{component:'orion-chatbot-preparation',event:'failed_before_relay',stage:'recipient_lookup',
+    channel_id:f.context.channelId,tenant_id:f.context.tenantId,action_type:'text'}]);
+});
+
+test('repeated pre-relay failures degrade device reply readiness and a fresh success clears it',async t=>{
+  const f=await fixture(t),first=f.effect({type:'text',text:'Synthetic one'}),second=f.effect({type:'text',text:'Synthetic two'}),
+    third=f.effect({type:'text',text:'Synthetic three'});
+  let lookups=0;
+  f.behavior.onWhatsApp=async()=>{lookups++;throw Error('private provider error');};
+  f.behavior.event=async row=>row.kind==='text'?[row.message_id==='one'?first:row.message_id==='two'?second:third]:[];
+  f.receive('one');await until(()=>lookups===1);f.advance(300);await until(()=>f.finished.length===1);
+  assert.equal(f.session.connectionHealth().state,'connected');
+  f.receive('two');await until(()=>lookups===3);f.advance(300);await until(()=>f.finished.length===2);
+  assert.equal(f.session.connectionHealth().state,'degraded');
+  assert.equal(f.session.connectionHealth().reason,'outbound_preparation_failed');
+  f.behavior.onWhatsApp=async pn=>[{exists:true,jid:pn+'@s.whatsapp.net'}];
+  f.receive('three');await until(()=>f.finished.length===3);
+  assert.equal(f.finished[2].state,'accepted');assert.equal(f.session.connectionHealth().state,'connected');
 });
 
 for(const type of ['list','url_button','text'])test(`current ${type} effect composes and paces before constructing/caching its exact provider protocol`,async t=>{
@@ -276,8 +295,10 @@ test('definite recipient refusal retains a sanitized reason across lost acknowle
 
 test('provider text is not exposed and a code named preflight after relay is still uncertain',async t=>{
   const f=await fixture(t),before=f.effect({type:'text',text:'Preparar'});
-  f.behavior.onWhatsApp=async()=>{throw Error('synthetic-secret-provider-token');};
-  f.behavior.event=async row=>row.kind==='text'?[before]:[];f.receive('preparation-error');await until(()=>f.finished.length===1);
+  let lookups=0;
+  f.behavior.onWhatsApp=async()=>{lookups++;throw Error('synthetic-secret-provider-token');};
+  f.behavior.event=async row=>row.kind==='text'?[before]:[];f.receive('preparation-error');await until(()=>lookups===1);
+  f.advance(300);await until(()=>f.finished.length===1);assert.equal(lookups,2);
   assert.equal(f.finished[0].state,'not_sent');assert.equal(f.finished[0].error_code,'MESSAGE_PREPARATION_FAILED');
   const after=f.effect({type:'text',text:'Tentativa ambígua'});
   f.behavior.onWhatsApp=async pn=>[{exists:true,jid:pn+'@s.whatsapp.net'}];
