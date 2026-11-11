@@ -8,7 +8,7 @@ export async function lookupRecipient(socket,phone,{assertCurrent=async()=>{},is
   const once=()=>new Promise((resolve,reject)=>{
     let done=false;
     const finish=(failure,value)=>{if(done)return;done=true;cancel(timer);failure?reject(failure):resolve(value);};
-    const timer=schedule(()=>finish(Error('recipient_lookup_timeout')),timeoutMs);timer?.unref?.();
+    const timer=schedule(()=>finish(Error('recipient_lookup_timeout')),timeoutMs);
     Promise.resolve().then(()=>socket.onWhatsApp(phone)).then(value=>finish(null,value),failure=>finish(failure));
   });
   for(let attempt=0;attempt<2;attempt++){
@@ -17,7 +17,7 @@ export async function lookupRecipient(socket,phone,{assertCurrent=async()=>{},is
     catch(failure){
       await guard();
       if(attempt===1)throw failure;
-      if(retryMs>0)await new Promise(resolve=>{const timer=schedule(resolve,retryMs);timer?.unref?.();});
+      if(retryMs>0)await new Promise(resolve=>schedule(resolve,retryMs));
     }
   }
 }
