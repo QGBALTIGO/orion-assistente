@@ -240,7 +240,9 @@ async def device_dto(db, row):
         # Saved transport timestamps remain historical; never advertise a
         # successful recovery from a process that has stopped reporting.
         health = {**(health or {}), "state": "degraded", "action": "retry_connection", "stale": True}
-    current = status == "connected"
+    outbound_degraded = (status == "degraded" and health and
+                         health.get("reason") == "outbound_preparation_failed")
+    current = status == "connected" or bool(outbound_degraded and runtime["phone_verified"])
     idle = status not in {"removing", "removed"}
     pending = (await db.execute(text("""SELECT * FROM subscription_device_operations
         WHERE tenant_id=:t AND device_id=:d AND status IN ('pending','running','uncertain')"""),
@@ -256,7 +258,7 @@ async def device_dto(db, row):
         "features": {"transcription": row["settings"]["transcription"]["enabled"],
                      "call_blocking": row["settings"]["calls"]["reject_enabled"]},
         "capabilities": {"connect": idle and not current, "qr": idle and status in {"starting", "connecting", "qr_ready", "qr_delayed", "qr_expired", "pairing"},
-            "pair": idle and status == "qr_ready", "restart": idle and status != "disabled",
+            "pair": idle and status == "qr_ready", "restart": idle and status != "disabled" and not outbound_degraded,
             "relink": idle and status != "disabled", "remove": idle, "settings": idle, "diagnostics": True},
         "pending_operation": operation_dto(pending) if pending else None,
         "last_error": None}

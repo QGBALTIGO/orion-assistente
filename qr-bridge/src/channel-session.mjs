@@ -296,7 +296,7 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
     // Confirmed self diagnostics have their own exact current-self grant;
     // the external-recipient resolver deliberately refuses a self address.
     const proof=await resolvePilotRecipient({phone,pilotPhone:phone,enabled:!(diagnostic&&phone===self)&&context.verifiedLid?.()===true,
-      socket:client,deviceCache,isCurrent:sendCurrent}).catch(error=>{if(!diagnostic)outboundFailure('recipient_proof',error,sendCurrent);throw error;});await authorize();
+      socket:client,deviceCache,isCurrent:sendCurrent,lookupResults:exists,schedule,cancel}).catch(error=>{if(!diagnostic)outboundFailure('recipient_proof',error,sendCurrent);throw error;});await authorize();
     let preparationStage='presence';
     try{const result=await outgoingPresence.run({phone,chatJid:proof.jid,isCurrent:sendCurrent,assertAuthorized:authorize,action:presentation?.action||{type:'text',text},pacing},async({beforeSend})=>{
     if(presentation){
@@ -344,7 +344,8 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
     if(!exists?.some(row=>row.exists&&normalizeFromJid(row.jid)===phone))throw messagePreflightError(Array.isArray(exists)&&exists.some(row=>row?.exists===false&&normalizeFromJid(row.jid)===phone)
       ?'RECIPIENT_NOT_REGISTERED':'RECIPIENT_IDENTITY_UNVERIFIED');
     preparationStage='recipient_proof';
-    const proof=await resolvePilotRecipient({phone,pilotPhone:phone,enabled:context.verifiedLid?.()===true,socket:client,deviceCache,isCurrent:sendCurrent});await authorize();
+    const proof=await resolvePilotRecipient({phone,pilotPhone:phone,enabled:context.verifiedLid?.()===true,socket:client,deviceCache,isCurrent:sendCurrent,
+      lookupResults:exists,schedule,cancel});await authorize();
     preparationStage='asset_validation';
     if(action?.type==='audio')validateChatbotAsset(action.asset,'audio');
     let built;

@@ -680,8 +680,9 @@ test('managed connection notice uses composing and bounded pacing solely for the
 test('verified LID/device proof belongs to this socket and uses the same reliable proto cache',async t=>{
   const s=await session(t);s.client.ev.emit('connection.update',{connection:'open'});
   s.context.verifiedLid=()=>true;s.client.user={id:self+':4@s.whatsapp.net',lid:'100000000000001:4@lid'};
-  s.client.onWhatsApp=async pn=>[{exists:true,jid:pn+'@s.whatsapp.net',lid:'100000000000002@lid'}];s.client.getUSyncDevices=async()=>[];
+  let lookups=0;s.client.onWhatsApp=async pn=>{lookups++;return [{exists:true,jid:pn+'@s.whatsapp.net',lid:'100000000000002@lid'}];};s.client.getUSyncDevices=async()=>[];
   await s.result.send(phone,'verified channel');assert.equal(s.sent[0].jid,'100000000000002@lid');assert.equal(s.sent[0].options.useUserDevicesCache,true);
+  assert.equal(lookups,1);
   assert.deepEqual(await s.config.getMessage({id:'provider-id',remoteJid:'100000000000002@lid',fromMe:true}),{conversation:'verified channel'});
 });
 test('verified recipient PN required and lease is rechecked after provider lookup',async t=>{

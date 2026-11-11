@@ -28,6 +28,24 @@ test('only the opted-in pilot performs a contemporary identity lookup',async()=>
   assert.equal(isVerifiedPilotLid(proof,'100000000000003@lid'),false);
 });
 
+test('a fresh bounded recipient lookup is reused without another provider query',async()=>{
+  const fixture=setup();
+  const proof=await resolvePilotRecipient({...fixture.options,lookupResults:[match()]});
+  assert.equal(proof.jid,lid);
+  assert.equal(fixture.lookups,0);
+});
+
+test('a stalled device proof stops before a message can be built or sent',async()=>{
+  const fixture=setup();let builds=0,relays=0;
+  fixture.socket.getUSyncDevices=async()=>new Promise(()=>{});
+  await assert.rejects(async()=>{
+    const proof=await resolvePilotRecipient({...fixture.options,lookupResults:[match()],deviceLookupTimeoutMs:15});
+    await sendStoredText({jid:proof.jid,recipientProof:proof,text:'Synthetic',
+      makeMessage:async()=>{builds++;return {};},store:{save:()=>true},relay:async()=>{relays++;}});
+  },/Nenhuma mensagem foi enviada/);
+  assert.deepEqual([builds,relays],[0,0]);
+});
+
 test('invalid or ambiguous identity results stop before building, caching or relaying',async()=>{
   const rows=[null,{},[],[match(),match()],[{...match(),jid:otherPhone+'@s.whatsapp.net'}],
     [{...match(),exists:'true'}],[{...match(),exists:false}],[{...match(),lid:undefined}],

@@ -378,6 +378,9 @@ test('respostas degradadas aparecem mesmo com socket aberto e não disparam reen
   const card=h.element('[data-sd-card]');
   assert.match(card.textContent,/respostas recentes falharam antes do envio/);
   assert.match(card.textContent,/Mensagens antigas não serão reenviadas automaticamente/);
+  assert.match(card.querySelector('.os-device-card-actions [data-sd-action="open-connect"]').textContent,/Ver conexão/);
+  assert.equal(card.querySelector('[data-sd-action="restart"]'),null);
+  assert.equal(card.querySelector('[data-sd-action="relink"]'),null);
   assert.equal(writes(h).length,0);
   assert.deepEqual(h.errors,[]);
 });

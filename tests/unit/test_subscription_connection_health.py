@@ -120,3 +120,25 @@ async def test_stored_open_event_expires_when_the_process_stops_reporting(monkey
     if expected == "unavailable":
         assert result["connection_health"]["stale"] is True
         assert result["connection_health"]["state"] == "degraded"
+
+
+@pytest.mark.asyncio
+async def test_outbound_degradation_keeps_link_without_suggesting_restart_or_relink(monkeypatch):
+    class Result:
+        def mappings(self): return self
+        def one_or_none(self): return None
+    class Database:
+        async def execute(self, *_args): return Result()
+    async def metrics(*_args): return {"available": False}
+    monkeypatch.setattr(devices, "_metrics", metrics)
+    row = {"id": uuid4(), "tenant_id": uuid4(), "name": "Synthetic device", "revision": 1,
+        "status": "disconnected", "runtime": {"status": "degraded", "phone": "5511999999999",
+            "phone_verified": True, "connection_health": {"state": "degraded",
+            "reason": "outbound_preparation_failed", "action": "inspect_outbound_preparation"}},
+        "runtime_at": datetime.now(timezone.utc),
+        "settings": {"transcription": {"enabled": False}, "calls": {"reject_enabled": False}}}
+    result = await devices.device_dto(Database(), row)
+    assert result["status"] == "degraded"
+    assert result["capabilities"]["connect"] is False
+    assert result["capabilities"]["restart"] is False
+    assert result["capabilities"]["relink"] is False
