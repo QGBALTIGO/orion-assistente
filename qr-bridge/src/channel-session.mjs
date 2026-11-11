@@ -11,7 +11,7 @@ import {readAuthorizedRetry} from './retry-identity.mjs';
 import path from 'node:path';
 import fs from 'node:fs';
 import {createHmac} from 'node:crypto';
-import {encryptedChannelStore,privateDirectory} from './channel-storage.mjs';
+import {channelId,digest,encryptedChannelStore,privateDirectory} from './channel-storage.mjs';
 import {resolveMessagePhone,normalizeFromJid,freshQR} from './core.mjs';
 import {shouldIngestUpsert,timestampMs} from './linked-session-health.mjs';
 import {deliveryFromAck} from './message-retry-store.mjs';
@@ -52,7 +52,7 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
       console.info(JSON.stringify({component:'orion-managed-transport',...event}));
   }});
   const silent=diagnostics.logger;
-  let deviceRuntime=null,deviceIngressReviewer=null,deviceIngressScope=null,assistantIngress=null,assistantIdentity=null,assistantFault=null,assistantTimer=null,assistantReplaying=false;
+  let deviceRuntime=null,deviceIngressReviewer=null,deviceIngressScope=null,deviceIngressEpoch=null,deviceIngressJournal=null,assistantIngress=null,assistantIdentity=null,assistantFault=null,assistantTimer=null,assistantReplaying=false;
   const assistantJobs=new Set();
   const ingressDiagnostics=()=>deviceRuntime?.diagnostics()?.ingress||(assistantFault?
     {...(assistantIngress?.diagnostics()||{}),state:'unavailable',error_code:'assistant_ingress_unavailable'}:assistantIngress?.diagnostics());
@@ -345,6 +345,7 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
       // Preserve old journals separately; never replay them into a new login.
       const authEpoch=path.basename(context.directory);
       if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(authEpoch))throw Error('invalid_device_auth_epoch');
+      deviceIngressEpoch=authEpoch;
       const ingressDirectory=privateDirectory(path.join(context.deviceDirectory,'incoming',authEpoch));
       const serialize=value=>JSON.stringify(value,mod.BufferJSON.replacer);
       ingressJournal=createIngressJournal({directory:ingressDirectory,
@@ -362,6 +363,7 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
       };
       deviceIngressReviewer=createAssistantIngressReview({journal:ingressJournal,directory:ingressDirectory,
         secret:context.secret,device:true,serialize});
+      deviceIngressJournal=ingressJournal;
     }
     catch(error){ingressFailure('ingress_journal_unavailable',null);throw error;}
     // Read-only, tenant-opaque diagnostics. Do NOT print source messages, LIDs,
@@ -624,12 +626,47 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
     deviceDiagnostics:()=>deviceRuntime?.diagnostics()||null,
     async reviewDeviceIngress(body,authority){
       // The device ledger is never accessible from the legacy assistant.
-      // Only a current SQL-fenced device owner can produce an operator review.
-      if(!deviceRuntime||!deviceIngressReviewer||!deviceIngressScope||state!=='connected')
+      // Old auth epochs retain their encrypted admission journals after relink.
+      // Review them through the same current SQL fence, without loading old
+      // credentials or replaying old provider messages into this socket.
+      if(!deviceRuntime||!deviceIngressReviewer||!deviceIngressScope||!deviceIngressJournal||!deviceIngressEpoch||state!=='connected')
         throw Error('ingress_review_not_ready');
       await guarded();
-      return deviceIngressReviewer(body,{authority,getScope:deviceIngressScope,
-        isCurrent:()=>current()&&state==='connected',assertCurrent:guarded});
+      const root=privateDirectory(path.join(context.deviceDirectory,'incoming'),{create:false});
+      const serialize=value=>JSON.stringify(value,mod.BufferJSON.replacer);
+      const deserialize=value=>JSON.parse(value,mod.BufferJSON.reviver);
+      const base=deviceIngressScope();
+      if(!base)throw Error('ingress_review_not_ready');
+      const epochs=fs.readdirSync(root,{withFileTypes:true}).filter(item=>item.isDirectory()&&channelId(item.name));
+      const candidates=epochs.map(item=>{
+        const epoch=item.name,directory=privateDirectory(path.join(root,epoch),{create:false});
+        const file=path.join(directory,digest('incoming-admission-v1')+'.enc');
+        if(epoch!==deviceIngressEpoch&&!fs.existsSync(file))return null;
+        const journal=epoch===deviceIngressEpoch?deviceIngressJournal:createIngressJournal({directory,
+          secret:context.secret,serialize,deserialize,isCurrent:()=>current()&&state==='connected',
+          namespace:{tenant_id:base.tenant_id,channel_id:base.channel_id,device_id:base.device_id,generation:base.generation}});
+        const entries=journal.operatorSnapshot().data.entries;
+        const blocked=entries.filter(entry=>entry.state==='blocked'&&
+          !['operator_retired','preparation_failed'].includes(entry.work?.phase));
+        const getScope=()=>({...deviceIngressScope(),auth_epoch:createHmac('sha256',context.secret)
+          .update('orion:device-ingress-auth-epoch:v1\0'+epoch).digest('hex')});
+        const reviewer=epoch===deviceIngressEpoch?deviceIngressReviewer:
+          createAssistantIngressReview({journal,directory,secret:context.secret,device:true,serialize});
+        return {epoch,journal,reviewer,getScope,blocked:blocked.length,
+          oldest:blocked.reduce((at,entry)=>Math.min(at,entry.at),Number.MAX_SAFE_INTEGER)};
+      }).filter(Boolean);
+      const ranked=candidates.filter(item=>item.blocked).sort((a,b)=>a.oldest-b.oldest||a.epoch.localeCompare(b.epoch));
+      const options={authority,isCurrent:()=>current()&&state==='connected',assertCurrent:guarded};
+      if(body?.mode==='dry_run'&&body.traces?.length){
+        for(const candidate of ranked){
+          const result=await candidate.reviewer(body,{...options,getScope:candidate.getScope});
+          if(result.entries.length)return result;
+        }
+      }
+      const selected=body?.mode==='apply'?candidates.find(item=>item.getScope().auth_epoch===body.expected?.scope?.auth_epoch):
+        ranked[0]||candidates.find(item=>item.epoch===deviceIngressEpoch);
+      if(!selected)throw Error('ingress_review_not_ready');
+      return selected.reviewer(body,{...options,getScope:selected.getScope});
     },
     async logout({authorize}={}){
       if(!deviceRuntime||typeof authorize!=='function')throw Error('device_logout_unavailable');
