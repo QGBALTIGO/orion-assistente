@@ -306,32 +306,48 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
   }
   async function relayChatbot(phone,action,{isCurrent:operationCurrent=()=>true,assertAuthorized,signal,
     loadAsset,prepareCarouselImage,onRelayAttempt,fetchImage}={}){
+    // Report only the failing boundary. Never log provider errors, content,
+    // credentials or the recipient, and never call a relay failure unsent.
+    let preparationStage='authorization';
     let authorized=true;
     const sendCurrent=()=>{try{return authorized&&current()&&operationCurrent()===true&&!signal?.aborted;}catch{return false;}};
     const authorize=async()=>{await guarded();if(!sendCurrent()||typeof assertAuthorized!=='function')throw Error('chatbot_operation_superseded');try{await assertAuthorized();}catch(error){authorized=false;throw error;}if(!sendCurrent())throw Error('chatbot_operation_superseded');};
+    try{
     await authorize();const self=normalizeFromJid(client.user?.id);
+    preparationStage='transport';
     if(state!=='connected')throw messagePreflightError('TRANSPORT_UNAVAILABLE_BEFORE_SEND');
     if(!context.deviceSnapshot?.()||!self||phone===self||!/^\d{8,15}$/.test(phone))throw Error('channel_send_denied');
+    preparationStage='recipient_lookup';
     const exists=await client.onWhatsApp(phone);await authorize();
     if(!exists?.some(row=>row.exists&&normalizeFromJid(row.jid)===phone))throw messagePreflightError(Array.isArray(exists)&&exists.some(row=>row?.exists===false&&normalizeFromJid(row.jid)===phone)
       ?'RECIPIENT_NOT_REGISTERED':'RECIPIENT_IDENTITY_UNVERIFIED');
+    preparationStage='recipient_proof';
     const proof=await resolvePilotRecipient({phone,pilotPhone:phone,enabled:context.verifiedLid?.()===true,socket:client,deviceCache,isCurrent:sendCurrent});await authorize();
+    preparationStage='asset_validation';
     if(action?.type==='audio')validateChatbotAsset(action.asset,'audio');
     let built;
-    try{return await outgoingPresence.run({phone,chatJid:proof.jid,isCurrent:sendCurrent,assertAuthorized:authorize,action,signal},async({beforeSend})=>{
+    try{preparationStage='presence';return await outgoingPresence.run({phone,chatJid:proof.jid,isCurrent:sendCurrent,assertAuthorized:authorize,action,signal},async({beforeSend})=>{
       const sent=await sendStoredProtocol({jid:proof.jid,recipientProof:proof,store:retryStore,isCurrent:sendCurrent,
-        assertAuthorized:authorize,onRelayAttempt,
+        assertAuthorized:authorize,onRelayAttempt:(...args)=>{preparationStage='relay_attempt';onRelayAttempt?.(...args);},
         onPrepared:message=>{if(built?.selectionIds)saveFallbackSelection(selectionStore,message,phone,built.selectionIds);},
         makeMessage:async jid=>{
+          preparationStage='content';
           built=await buildChatbotContent(action,{sdk:mod,jid,loadAsset,prepareCarouselImage,fetchImage,signal,
             upload:(...args)=>client.waUploadToServer(...args),logger:silent,assertCurrent:authorize,isCurrent:sendCurrent,mediaOptions:proxyTransport?.download,
             interactiveMode:deviceOptions.interactiveMode??chatbotInteractiveMode(action,{tenantId:context.tenantId,deviceId:context.deviceSnapshot?.()?.id})});
+          preparationStage='pacing';
           await beforeSend();
+          preparationStage='message_generation';
           return mod.generateWAMessageFromContent(jid,built.content,{userJid:client.user.id,messageId:mod.generateMessageIDV2(client.user.id),timestamp:new Date(now())});
         },
         relay:(jid,body,options)=>client.relayMessage(jid,body,options)});
       return {id:sent.key.id};
     });}finally{built?.dispose();}
+    }catch(error){
+      if(preparationStage!=='relay_attempt')console.warn(JSON.stringify({component:'orion-chatbot-preparation',event:'failed_before_relay',stage:preparationStage,
+        action_type:['text','list','url_button','audio','image','video','document','sticker','ptv','location','carousel'].includes(action?.type)?action.type:'unknown'}));
+      throw error;
+    }
   }
   if(deviceSnapshot){
     const ingressFailure=(code,backlog)=>{
