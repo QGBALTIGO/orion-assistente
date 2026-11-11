@@ -38,13 +38,19 @@ test('global open preserves provider PN and never fabricates a phone from a LID'
   assert.equal(h.notices.length,0);
 });
 
+test('restored paired auth keeps its verified PN for no-replay review before provider open',async()=>{
+  const h=harness({registered:true});await h.connect();
+  assert.equal(h.context.status,'connecting');assert.equal(h.context.pairedNumber,'5567999999902');
+  assert.equal(h.notices.length,0);
+});
+
 function harness(options={}){
   const {registered=true}=options,flag=Object.hasOwn(options,'flag')?options.flag:'1';
   const sockets=[],notices=[],timers=new Map();let serial=0;
   const restored=registered?makePairedAuthFixture().creds:initAuthCreds();restored.registered=registered;
   const auth={creds:restored,keys:{async set(){}}};
   const context=vm.createContext({
-    SMOKE_ID,APPOINTMENT_QA_ID,stopPrimaryIngress(){},replayAssistantIngress:async()=>{},
+    SMOKE_ID,APPOINTMENT_QA_ID,stopPrimaryIngress(){},preparePrimaryReview(){},replayAssistantIngress:async()=>{},
     ensureAssistantIngress:()=>({pending:()=>[]}),ingressFault:null,
     generation:0,socket:null,timer:null,attempts:0,sessionRecoveryAttempts:0,stopping:false,status:'starting',authDir:'/synthetic/preserved-auth',newLinkNoticeAuthDir:null,
     legacyCentral:{configured:()=>false,transportCurrent:()=>true,assertTransportCurrent:async()=>{}},

@@ -102,6 +102,17 @@ test('trusted ingress scope exists only for the current matching physical sessio
   const revoked=fixture();await revoked.central.resume();revoked.revoke();assert.equal(revoked.central.ingressScope(),null);
 });
 
+test('provider disconnect keeps only the fenced no-replay review identity available',async()=>{
+  const f=fixture();await f.central.resume();
+  const actualOwner='30000000-0000-4000-8000-000000000001';Object.assign(f.context(),{owner:actualOwner,fence:9});
+  f.disconnect();
+  assert.equal(f.central.ingressScope(),null);assert.equal(f.central.nativeTestScope(),null);
+  assert.deepEqual(f.central.reviewScope(),{tenant_id:tenant,channel_id:id,session_digest:'a'.repeat(64),owner:actualOwner,fence:9});
+  assert.equal(f.central.reviewAllowed(phone),true);assert.equal(f.central.allowed(phone),false);
+  assert.equal(f.adapter().status(),'connecting');
+  f.revoke();assert.equal(f.central.reviewScope(),null);assert.equal(f.central.reviewAllowed(phone),false);
+});
+
 test('native canary scope is a read-only snapshot of the same actual owner/fence and matching preserved account',async()=>{
   const f=fixture();assert.equal(f.central.nativeTestScope(),null);await f.central.resume();assert.equal(f.central.nativeTestScope(),null);
   const actualOwner='30000000-0000-4000-8000-000000000001';Object.assign(f.context(),{owner:actualOwner,fence:7});

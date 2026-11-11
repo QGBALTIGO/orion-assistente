@@ -440,7 +440,11 @@ async def device_review_candidates(response: Response, actor: UUID = Depends(req
                        "company": str(row["company"])[:120], "blocked": row["blocked"],
                        "stale": row["runtime_at"] is None or
                            row["runtime_at"].timestamp() < time.time()-90} for row in devices
-                      if row["blocked"] > 0]}
+                      # The bridge is authoritative for the encrypted journal.
+                      # Paused workspaces may stop publishing runtime snapshots,
+                      # so platform owners must still be able to select them and
+                      # perform the protected dry-run (which reveals no content).
+                      ]}
 
 
 @router.post(DEVICE_PUBLIC_PATH, include_in_schema=False)

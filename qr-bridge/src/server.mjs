@@ -63,7 +63,11 @@ import {runConsentedPairSmoke,SMOKE_ID,APPOINTMENT_QA_ID} from './consented-live
 
 const legacyCentral=createLegacyCentral({
   start:(id,key)=>channelRoutes.adopt(id,key),send:(id,key,payload)=>channelRoutes.send(id,key,payload),
-  sessionDigest:()=>status==='connected'?createHmac('sha256',KEY).update('orion:preserved-primary-session:v1\0'+pairedNumber).digest('hex'):null,
+  // pairedNumber is set only after a successful provider open and is retained
+  // across disconnects. Keeping this proof readable does not make the adapter
+  // active; active() still requires status==='connected'. It only lets the
+  // fenced no-replay reviewer bind the preserved journal after a 401 logout.
+  sessionDigest:()=>pairedNumber?createHmac('sha256',KEY).update('orion:preserved-primary-session:v1\0'+pairedNumber).digest('hex'):null,
   status:()=>status,rawSend:(phone,text,options)=>sendLegacyRaw(phone,text,options),
   onTransportLeaseLost:()=>stopPrimaryTransport('lease_lost'),publicHealth:()=>primaryHealth.snapshot(),
   outgoingReady:source=>source==='manual'||primaryIngressCanAutomate?.()===true});
@@ -76,7 +80,8 @@ const KEY=process.env.QR_BRIDGE_TOKEN || "";
 const transport=makeTransportDiagnostics({secret:KEY,
   emit:event=>console.info('Orion transport '+JSON.stringify(event))});
 const logger=transport.logger;
-let primaryIngressDiagnostics=null,primaryIngressCanAutomate=null,primaryIngressReview=null,stopPrimaryIngress=()=>{};
+let primaryIngressDiagnostics=null,primaryIngressCanAutomate=null,primaryIngressReview=null,
+  stopPrimaryIngress=()=>{},preparePrimaryReview=()=>{};
 const primaryHealth=makeConnectionHealth({emit:event=>console.info(JSON.stringify(event)),
   readiness:value=>withIngressHealth(value,primaryIngressDiagnostics?.()),
   isSyncPending:()=>socket?.ev?.isBuffering?.()===true,onStale:reason=>{
@@ -398,35 +403,50 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false,authRegistra
   const reviewPrimaryIngress=async(body,authority)=>{
     // MASTER is also the adopted PRIMARY credential. The signed assertion
     // binds the platform-owner proxy audit; it is not a second secret boundary.
-    if(!assistantIngress||ingressFault||!intakeCurrent()||!legacyCentral.configured())
+    const reviewCurrent=()=>!stopping&&mine===generation&&legacyCentral.transportCurrent()&&
+      legacyCentral.reviewScope?.()?.session_digest===ingressIdentityScope?.session_digest;
+    if(!assistantIngress||ingressFault||!reviewCurrent()||!legacyCentral.configured())
       throw Object.assign(Error('ingress_review_not_ready'),{status:409,code:'ingress_review_not_ready'});
-    return assistantIngress.operatorReview(body,{authority,isCurrent:()=>intakeCurrent()&&legacyCentral.transportCurrent(),
+    return assistantIngress.operatorReview(body,{authority,isCurrent:reviewCurrent,
       assertCurrent:()=>legacyCentral.assertTransportCurrent(),getScope:()=>{
-        const scope=legacyCentral.nativeTestScope();
+        const scope=legacyCentral.reviewScope?.();
         return scope&&Number.isSafeInteger(authRegistrationId)&&authRegistrationId>=1?{...scope,
           auth_epoch:createHmac('sha256',KEY).update('orion:assistant-ingress-auth-epoch:v1\0'+scope.session_digest+'\0'+authRegistrationId).digest('hex')}:null;
       },
       // Only stored authenticated PN hints are used. No network lookup, guessed
       // LID, display name, or arbitrary target supplied by the operator body.
-      resolvePhone:key=>resolveMessagePhone(key,null),allowedSender:phone=>legacyCentral.allowed(phone)});
+      resolvePhone:key=>resolveMessagePhone(key,null),allowedSender:phone=>legacyCentral.reviewAllowed?.(phone)===true});
   };
   if(legacyCentral.configured())primaryIngressReview=reviewPrimaryIngress;
-  stopPrimaryIngress=()=>{clearTimeout(ingressTimer);ingressTimer=null;assistantIngress?.abandon();typingPresence.close();
-    if(primaryIngressReview===reviewPrimaryIngress)primaryIngressReview=null;};
-  function ensureAssistantIngress(){
+  stopPrimaryIngress=({preserveReview=false}={})=>{clearTimeout(ingressTimer);ingressTimer=null;assistantIngress?.abandon();typingPresence.close();
+    if(!preserveReview&&primaryIngressReview===reviewPrimaryIngress)primaryIngressReview=null;};
+  let ingressIdentityScope=null;
+  function ensureAssistantIngress({reviewOnly=false}={}){
     if(!legacyCentral.configured())return null;
-    const scope=legacyCentral.ingressScope();
+    const bound=reviewOnly?legacyCentral.reviewScope?.():legacyCentral.ingressScope();
+    const scope=bound&&{tenant_id:bound.tenant_id,channel_id:bound.channel_id,
+      session_digest:bound.session_digest};
     if(!scope)throw Error('assistant_ingress_scope_unavailable');
     const identity=JSON.stringify([scope.tenant_id,scope.channel_id,scope.session_digest]);
     if(assistantIngress&&identity===ingressIdentity)return assistantIngress;
     assistantIngress?.abandon();ingressIdentity=identity;
-    const current=()=>intakeCurrent()&&JSON.stringify((()=>{const value=legacyCentral.ingressScope();
-      return value?[value.tenant_id,value.channel_id,value.session_digest]:null;})())===identity;
+    ingressIdentityScope=scope;
+    // Journal authority follows the adopted SQL lease, not WebSocket liveness.
+    // Every business/transport path still requires intakeCurrent(); this only
+    // keeps the encrypted no-replay review available after provider logout.
+    const current=()=>!stopping&&mine===generation&&legacyCentral.transportCurrent()&&
+      JSON.stringify((()=>{const value=legacyCentral.reviewScope?.();
+        return value?[value.tenant_id,value.channel_id,value.session_digest]:null;})())===identity;
     assistantIngress=createAssistantIngress({directory:path.join(authDir,'assistant-ingress-encrypted'),secret:KEY,
       scope,isCurrent:current,serialize:value=>JSON.stringify(value,BufferJSON.replacer),
       deserialize:value=>JSON.parse(value,BufferJSON.reviver)});
     ingressFault=null;return assistantIngress;
   }
+  preparePrimaryReview=()=>{
+    if(!legacyCentral.configured()||!pairedNumber)return;
+    try{ensureAssistantIngress({reviewOnly:true});}
+    catch{ingressFault=true;transport.record('assistant_ingress_unavailable');}
+  };
   function scheduleIngressRecovery(){
     if(!legacyCentral.configured()||!intakeCurrent()||ingressTimer||!assistantIngress?.diagnostics().pending)return;
     ingressTimer=setTimeout(()=>{ingressTimer=null;void replayAssistantIngress();},5000);ingressTimer.unref?.();
@@ -974,7 +994,7 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false,authRegistra
       }
     }
     if(update.connection==="close"){
-      stopPrimaryIngress();
+      stopPrimaryIngress({preserveReview:true});
       pauseContactNames({purge:Number(update.lastDisconnect?.error?.output?.statusCode)===DisconnectReason.loggedOut});
       qr="";qrAt=0;pairingCode="";pairAt=0;
       connectedSince=0;pendingNotificationsReceived=false;inboundSinceConnect=false;
@@ -1048,6 +1068,12 @@ async function connect(){
       }});
     if(mine!==generation||namesForConnection!==contactNames||selectedAuthDir!==authDir)return;
     namesForConnection.bindIdentity(state.creds.me);
+    // A rollout can meet a provider 401 before connection.open. The signed
+    // paired credential still carries the last verified self PN needed only
+    // to bind the preserved no-replay journal to the broker session digest.
+    // Public status remains unverified until a future connection.open.
+    if(classifyPairedAuth(state.creds,{Curve,proto})==='paired')
+      pairedNumber=normalizeFromJid(state.creds.me?.id)||pairedNumber;
     const originalSet=state.keys.set;
     state.keys.set=async data=>{
       try{
@@ -1099,6 +1125,9 @@ async function connect(){
     if(classifyPairedAuth(state.creds,{Curve,proto})==='unlinked'&&process.env.ORION_NOTIFY_SELF_ON_LINK==="1")newLinkNoticeAuthDir=selectedAuthDir;
     const notifyNewLink=newLinkNoticeAuthDir===selectedAuthDir;
     socket=client;installListeners(client,mine,saveCreds,notifyNewLink,state.creds.registrationId);
+    // A provider 401 can arrive before connection.open. Load the existing
+    // encrypted queue under the restored identity and SQL lease; no replay.
+    preparePrimaryReview();
     primaryHealth.watch(client.ws);
   }catch{
     if(stopping||mine!==generation)return;

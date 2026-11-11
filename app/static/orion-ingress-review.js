@@ -55,12 +55,12 @@
      const items=Array.isArray(data?.items)?data.items:[];
      context.deviceSelect.replaceChildren(new Option("WhatsApp principal (legado)",""));
      for(const item of items){
-       if(!validDeviceId(item?.id)||!Number.isSafeInteger(item.blocked)||item.blocked<1)continue;
+       if(!validDeviceId(item?.id)||!Number.isSafeInteger(item.blocked)||item.blocked<0)continue;
        context.deviceSelect.append(new Option(String(item.company||"Empresa")+" · "+String(item.name||"Dispositivo")+
-         " — "+item.blocked+" retida(s)"+(item.stale?" · estado antigo":""),item.id));
+         " — "+item.blocked+" retida(s) no último estado"+(item.stale?" · estado antigo":""),item.id));
      }
      if([...context.deviceSelect.options].some(option=>option.value===previous))context.deviceSelect.value=previous;
-     status(items.length?"Escolha o dispositivo e consulte as entradas retidas.":"Nenhum dispositivo informou mensagens retidas. Confira o estado da conexão.");
+     status(items.length?"Escolha o dispositivo e consulte a fila protegida. O último estado pode estar desatualizado.":"Nenhum dispositivo disponível para revisão.");
    }catch(error){if(current(epoch))status("Não foi possível listar os dispositivos: "+error.message);}
  }
  async function query(){

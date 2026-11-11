@@ -108,6 +108,20 @@ export function createLegacyCentral({env=process.env,fetchImpl=fetch,start,send,
   }
   async function receipt(id,delivery){if(active())await context.onReceipt(id,delivery);}
   function allowed(phone){return active()&&context.allowedSender(phone);}
+  // Operator review is a no-replay, no-send lane. A provider logout must not
+  // make the preserved encrypted admission journal impossible to retire, but
+  // the same SQL owner/fence and the adopted allowlist still remain mandatory.
+  // These helpers deliberately grant no transport, assistant or send access.
+  function reviewAllowed(phone){
+    return configured()&&transportCurrent()&&matching()&&Array.isArray(identity?.allowed_senders)&&
+      identity.allowed_senders.includes(phone)&&context?.allowedSender(phone)===true;
+  }
+  function reviewScope(){
+    if(!configured()||!transportCurrent()||!matching()||!identity||!context||
+        !channelId(context.owner)||!Number.isSafeInteger(context.fence)||context.fence<1)return null;
+    return Object.freeze({tenant_id:identity.tenant_id,channel_id:identity.channel_id,
+      session_digest:identity.session_digest,owner:context.owner,fence:context.fence});
+  }
   function ingressScope(){
     if(!active())return null;
     return Object.freeze({tenant_id:identity.tenant_id,channel_id:identity.channel_id,session_digest:identity.session_digest});
@@ -120,5 +134,6 @@ export function createLegacyCentral({env=process.env,fetchImpl=fetch,start,send,
   function health(){const connection=publicHealth?.();return {configured:configured(),owned:configured()&&transportCurrent(),
     ready:active()&&(!publicHealth||connection?.state==='connected'),connected:status()==='connected',
     ...(connection?{connection_health:connection}:{}),observed_at:now(),session_preserved:Boolean(matching())};}
-  return {configured,resume,attach,inbound,forward,transcribe,preparationFailed,presentationAck,automatic,receipt,allowed,ingressScope,nativeTestScope,health,transportCurrent,assertTransportCurrent};
+  return {configured,resume,attach,inbound,forward,transcribe,preparationFailed,presentationAck,automatic,receipt,
+    allowed,reviewAllowed,reviewScope,ingressScope,nativeTestScope,health,transportCurrent,assertTransportCurrent};
 }

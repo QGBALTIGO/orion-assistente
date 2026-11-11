@@ -391,13 +391,16 @@ async def test_paused_device_remains_listable_and_bound_only_for_no_replay_revie
         async def execute(self, query, params=None):
             list_queries.append(str(query))
             rows = [dict(id=DEVICE, name="WhatsApp", company="Paused synthetic",
-                         runtime_at=observed, blocked=4)]
+                         runtime_at=observed, blocked=4),
+                    dict(id=UUID("c58d969b-a1b5-4a0f-b605-6a8bc62e95ae"), name="Runtime stale",
+                         company="Paused synthetic", runtime_at=None, blocked=0)]
             return SimpleNamespace(mappings=lambda: SimpleNamespace(all=lambda: rows))
 
     monkeypatch.setattr(review.qr_channels, "support_session_factory", lambda: lambda: ListDB())
     response = review.Response()
     listed = await review.device_review_candidates(response, ACTOR)
     assert listed["items"][0]["blocked"] == 4
+    assert listed["items"][1]["blocked"] == 0 and listed["items"][1]["stale"] is True
     assert all("t.status='active'" not in query for query in list_queries)
 
     device = dict(id=DEVICE, tenant_id=TENANT, channel_id=CHANNEL, owner_account_id=ACTOR,

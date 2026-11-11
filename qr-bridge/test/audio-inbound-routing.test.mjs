@@ -60,7 +60,7 @@ function harness({transcribe=async()=> 'Synthetic speech',audioEnabled=true,answ
   if(presence)client.sendPresenceUpdate=(type,jid)=>{
     presenceCalls.push({type,jid});events.push(['typing',type,jid]);return presence(type,jid);
   };
-  const context=vm.createContext({client,socket:client,mine:1,generation:1,status:'connected',
+  const context=vm.createContext({client,socket:client,mine:1,generation:1,status:'connected',stopping:false,
     legacyCentral:{transportCurrent:()=>true,assertTransportCurrent:async()=>{},nativeTestScope:()=>null,
       ...(legacyController||{configured:()=>false})},socketOutgoingPresence:new WeakMap(),createNativeTestCanary,
     namesStore,namesSync:{changed(){nameChanges++;},start(){}},path,authDir:directory,createAssistantIngress,BufferJSON,createHmac,
@@ -189,8 +189,10 @@ test('PRIMARY correction during an ACK wait groups with the click and requests r
 
 test('real adopted handler journals before processing and uses only the managed reply path',async()=>{
   const events=[],proofs=[];
-  const legacyController={configured:()=>true,resume:async()=>{},allowed:p=>p===phone,
-    ingressScope:()=>({tenant_id:'10000000-0000-4000-8000-000000000001',channel_id:'20000000-0000-4000-8000-000000000001',session_digest:'a'.repeat(64)}),
+  const scope={tenant_id:'10000000-0000-4000-8000-000000000001',channel_id:'20000000-0000-4000-8000-000000000001',session_digest:'a'.repeat(64)};
+  const legacyController={configured:()=>true,resume:async()=>{},allowed:p=>p===phone,reviewAllowed:p=>p===phone,
+    transportCurrent:()=>true,assertTransportCurrent:async()=>{},ingressScope:()=>scope,
+    reviewScope:()=>({...scope,owner:'30000000-0000-4000-8000-000000000001',fence:3}),
     inbound:async payload=>{events.push(['journal',payload]);const proof={revision:proofs.length+1};proofs.push(proof);return proof;},
     forward:async(payload,options)=>{events.push(['managed',payload,options]);return {accepted:true};}};
   const h=harness({legacyController,answer:'This legacy answer must never be used'});
@@ -204,13 +206,15 @@ const admissionScope={tenant_id:'10000000-0000-4000-8000-000000000001',
   channel_id:'20000000-0000-4000-8000-000000000001',session_digest:'a'.repeat(64)};
 function adopted({inbound,forward,allowed=p=>p===phone,scope=()=>admissionScope}={}){
   let revision=0;const notices=[],turns=[];
-  return {notices,turns,configured:()=>true,resume:async()=>{},allowed,ingressScope:scope,
+  const fencedScope=()=>({...scope(),owner:'30000000-0000-4000-8000-000000000001',fence:3});
+  return {notices,turns,configured:()=>true,resume:async()=>{},allowed,reviewAllowed:allowed,
+    ingressScope:scope,reviewScope:fencedScope,transportCurrent:()=>true,assertTransportCurrent:async()=>{},
     async inbound(payload){notices.push(payload);return inbound?inbound(payload):{revision:++revision};},
     async forward(payload,options){turns.push(payload);return forward?forward(payload,options):{accepted:true};}};
 }
 
 function nativeController(options={}){
-  return {...adopted(options),nativeTestScope:()=>({...admissionScope,owner:'30000000-0000-4000-8000-000000000001',fence:3})};
+  const central=adopted(options);return {...central,nativeTestScope:central.reviewScope};
 }
 
 function preparationController({grant=true,transcribe=async()=>null,forward}={}){
@@ -327,7 +331,7 @@ test('uncertain ASR notification is not retried and never becomes another assist
   assert.equal(h.diagnostics().retained,1);assert.equal(h.diagnostics().blocked,0);
 });
 
-test('live PRIMARY operator retires only attested originals without ASR sends or business and fences a stale actor',async t=>{
+test('PRIMARY operator retires attested originals after provider logout without ASR sends or business and fences a stale actor',async t=>{
   presentationTestMode(t);
   const directory=fs.mkdtempSync(path.join(os.tmpdir(),'orion-inbound-names-'));contactDirectories.push(directory);
   const central=nativeController(),key='x'.repeat(32),at=Date.now()-10000;
@@ -344,6 +348,7 @@ test('live PRIMARY operator retires only attested originals without ASR sends or
   const dry=await h.context.primaryIngressReview({version:1,mode:'dry_run',operation_id:randomUUID(),traces:[]},authority);
   assert.equal(dry.entries.length,2);assert.equal(dry.scope.owner,'30000000-0000-4000-8000-000000000001');assert.equal(dry.scope.fence,3);
   assert.match(dry.scope.auth_epoch,/^[a-f0-9]{64}$/);assert.notEqual(dry.scope.auth_epoch,'12345');
+  h.context.status='logged_out';
   const body={version:1,mode:'apply',operation_id:randomUUID(),expected:{scope:dry.scope,snapshot_sha256:dry.snapshot_sha256},
     entries:dry.entries.map(entry=>({trace:entry.trace,fingerprint:entry.fingerprint,disposition:'do_not_replay',evidence:{
       kind:entry.eligible_as[0],receipt_sha256:'d'.repeat(64),build_sha:'e'.repeat(40),event_at:at+1000}}))};
