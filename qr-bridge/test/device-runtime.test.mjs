@@ -327,6 +327,40 @@ test('explicit auth-epoch reset preserves old incoming journal without replaying
   f.receive('new-login-input');await until(()=>f.events.some(event=>event.message_id==='new-login-input'));
 });
 
+test('protected review finds a blocked previous auth epoch and never replays it into the new login',async t=>{
+  const f=await fixture(t);f.session.close();f.context.owner=randomUUID();f.context.fence=1;
+  const storage=deviceStorage(temp(t,'orion-device-history-'),f.snapshot,f.context.secret);
+  f.context.deviceDirectory=storage.directory;f.context.directory=storage.authDirectory();await f.open();
+  f.behavior.event=async event=>{if(event.kind==='text')throw broker503();return [];};
+  f.receive('previous-epoch-input','Synthetic retained request');
+  await until(()=>f.events.some(event=>event.message_id==='previous-epoch-input'));await tick();
+  const oldDirectory=incomingDirectory(f);f.session.close();
+  const oldJournal=createIngressJournal({directory:oldDirectory,secret:f.context.secret,
+    serialize:value=>JSON.stringify(value,BufferJSON.replacer),deserialize:value=>JSON.parse(value,BufferJSON.reviver)});
+  assert.equal(oldJournal.block('message:previous-epoch-input','business_started'),true);
+  f.context.directory=storage.reset();f.behavior.event=async()=>[];await f.open();
+  const authority={authority:'platform_owner_proxy',actor_id:randomUUID()};
+  const operation_id=randomUUID(),dry={version:1,mode:'dry_run',operation_id,traces:[]};
+  const found=await f.session.reviewDeviceIngress(dry,authority);
+  assert.equal(found.total_entries,1);assert.equal(found.entries[0].blocked_reason,'business_started');
+  assert.deepEqual(found.entries[0].eligible_as,['operator_attested_uncertain']);
+  assert.equal(f.events.filter(event=>event.message_id==='previous-epoch-input').length,1);
+  const item=found.entries[0],apply={version:1,mode:'apply',operation_id,
+    expected:{scope:found.scope,snapshot_sha256:found.snapshot_sha256},entries:[{
+      trace:item.trace,fingerprint:item.fingerprint,disposition:'do_not_replay',
+      evidence:{kind:'operator_attested_uncertain',receipt_sha256:'a'.repeat(64),
+        build_sha:'b'.repeat(40),event_at:Date.now()}}]};
+  const result=await f.session.reviewDeviceIngress(apply,authority);
+  assert.equal(result.mutation,true);assert.equal(result.replayed,false);
+  assert.equal((await f.session.reviewDeviceIngress(apply,authority)).replayed,true);
+  const retained=encryptedChannelStore({directory:oldDirectory,secret:f.context.secret,
+    serialize:value=>JSON.stringify(value,BufferJSON.replacer),deserialize:value=>JSON.parse(value,BufferJSON.reviver)})
+    .get('incoming-admission-v1');
+  assert.equal(retained.entries[0].message.message.conversation,'Synthetic retained request');
+  assert.equal(retained.entries[0].work.phase,'operator_retired');
+  assert.equal(f.sends.length,0);assert.equal((await f.session.reviewDeviceIngress({...dry,operation_id:randomUUID()},authority)).total_entries,0);
+});
+
 test('pending opt-out prevents a previously waiting send from authorizing before replay',async t=>{
   const f=await fixture(t),effect=f.effect('send_text',{phone,text:'must not overtake pending optout'}),barrier=deferred();let unavailable=true,capacityEntered=false;
   f.behavior.capacity=async()=>{capacityEntered=true;await barrier.promise;};
