@@ -3690,7 +3690,7 @@
   }
   function confirmMutation(titleText,description,operation,success){showDialog('confirm',titleText,'<p style="margin:0 0 20px;line-height:23px">'+esc(description)+'</p><form class="os-form" data-os-form="confirm"><div class="os-form-message" role="alert"></div><div class="os-form-actions">'+button('Voltar','close-dialog','os-outline')+'<button type="submit" class="os-button">Confirmar</button></div></form>',{operation,success});}
   async function runInline(operation,success){if(state.busy||!writable())return;const c=context();state.busy=true;try{await operation(c);if(stillAccount(c))toast(success);}catch(ex){if(stillAccount(c))toast(ex.message||'Não foi possível salvar.',true);}finally{if(stillAccount(c)){state.busy=false;if(current(c))await open(state.route,{keepScroll:true});}}}
-  function deleteService(record){if(!record||!writable())return;const path=apiPath('/services/'+encodeURIComponent(record.id));confirmMutation('Excluir serviço','O serviço '+record.name+' será removido do catálogo. Se houver vínculos que impeçam a exclusão, você pode inativá-lo.',()=>request(path,'DELETE'),'Serviço excluído.');}
+  function deleteService(record){if(!record||!writable())return;const path=apiPath('/services/'+encodeURIComponent(record.id));confirmMutation('Excluir serviço','O serviço '+record.name+' deixará de aparecer no catálogo. Agendamentos antigos continuarão no histórico.',()=>request(path,'DELETE'),'Serviço excluído.');}
   function sortedServices(){return [...(state.data.services||[])].filter(s=>!s.catalog_kind||s.catalog_kind==='base').sort((a,b)=>number(a.sort_order)-number(b.sort_order)||a.name.localeCompare(b.name,'pt-BR'));}
   async function saveServiceOrder(list){
     await runInline(async c=>{
@@ -4093,7 +4093,7 @@
         const path=mgmt('/goals/'+encodeURIComponent(g.id));
         confirmMutation('Excluir meta','A meta de '+goalOwner(g)+(g.recurrence==='monthly'?' deixará de valer no mês atual e nos próximos. Os resultados dos meses anteriores serão preservados.':' será encerrada. O histórico do período anterior à exclusão será preservado.'),()=>request(path,'DELETE',{expected_version:g.template_version||g.version}),'Meta excluída.');break;
       }
-      case 'delete-service':{if(!d?.record||!writable())return;const r=d.record,path=apiPath('/services/'+encodeURIComponent(r.id));confirmMutation('Excluir serviço','O serviço '+r.name+' será removido do catálogo. Se houver vínculos que impeçam a exclusão, você pode inativá-lo.',()=>request(path,'DELETE'),'Serviço excluído.');break;}
+      case 'delete-service':{if(!d?.record||!writable())return;const r=d.record,path=apiPath('/services/'+encodeURIComponent(r.id));confirmMutation('Excluir serviço','O serviço '+r.name+' deixará de aparecer no catálogo. Agendamentos antigos continuarão no histórico.',()=>request(path,'DELETE'),'Serviço excluído.');break;}
       case 'confirm-appointment':await showAppointmentAction('confirm');break;
       case 'cancel-appointment':await showAppointmentAction('cancel');break;
       case 'complete-appointment':await showAppointmentAction('complete');break;

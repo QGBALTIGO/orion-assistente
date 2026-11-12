@@ -45,7 +45,7 @@ def test_direct_remains_an_ancestor_and_preserves_the_published_bulk_predecessor
     config.set_main_option("path_separator", "os")
     config.set_main_option("script_location", str(root / "alembic"))
     migrations = ScriptDirectory.from_config(config)
-    assert migrations.get_heads() == ["0078_customer_legacy_history"]
+    assert migrations.get_heads() == ["0079_service_archive"]
     assert migrations.get_revision("0077_commercial_demos").down_revision == "0076_dental_clinic"
     assert migrations.get_revision("0076_dental_clinic").down_revision == "0075_fixed_client_monthly"
     assert migrations.get_revision("0075_fixed_client_monthly").down_revision == "0074_fixed_client_series"

@@ -180,11 +180,12 @@ def dental_already_published(raw):
     from sqlalchemy.pool import NullPool
     from scripts import backup_and_migrate_commercial_demos as demos
     from scripts import backup_and_migrate_customer_legacy_history as legacy_history
+    from scripts import backup_and_migrate_service_archive as service_archive
     from scripts.apply_variable_combo_migration import migrated_version
     from scripts.wait_for_dental_schema import schema_ready as dental_contract
     # 0077 adds only isolated demo records. Keep checking every 0076 contract
     # without replaying the older migration on the known successor revision.
-    if migrated_version(raw) not in {dental.TARGET, demos.TARGET, legacy_history.TARGET} or not dental_contract(raw):
+    if migrated_version(raw) not in {dental.TARGET, demos.TARGET, legacy_history.TARGET, service_archive.TARGET} or not dental_contract(raw):
         raise RuntimeError("dental_schema_invalid")
     engine=create_engine(raw,poolclass=NullPool,connect_args={
         "options":"-c default_transaction_read_only=on -c statement_timeout=12000"})
@@ -236,6 +237,15 @@ def customer_history_after_demo(raw):
         customer_legacy_history_release(raw)
 
 
+def service_archive_after_history(raw):
+    from scripts import backup_and_migrate_service_archive as service_archive
+    from scripts.apply_variable_combo_migration import migrated_version
+
+    if migrated_version(raw) in {service_archive.PREVIOUS, service_archive.TARGET}:
+        if service_archive.main() != 0:
+            raise RuntimeError("service_archive_backup_or_schema_invalid")
+
+
 def main():
     from scripts.backup_and_migrate_commissions import connection_values
     from scripts.apply_variable_combo_migration import migrated_version
@@ -245,22 +255,30 @@ def main():
     from scripts import backup_and_migrate_dental_clinic as dental
     from scripts import backup_and_migrate_commercial_demos as demos
     from scripts import backup_and_migrate_customer_legacy_history as legacy_history
+    from scripts import backup_and_migrate_service_archive as service_archive
     raw, _url = connection_values()
     current = migrated_version(raw)
+    if current == service_archive.TARGET:
+        dental_already_published(raw)
+        service_archive_after_history(raw)
+        return
     if current == legacy_history.TARGET:
         dental_already_published(raw)
         customer_history_after_demo(raw)
+        service_archive_after_history(raw)
         return
     if current in {dental.TARGET, demos.TARGET}:
         dental_already_published(raw)
         commercial_demo_release(raw)
         customer_history_after_demo(raw)
+        service_archive_after_history(raw)
         return
     if current in {recovery.PREVIOUS, recovery.TARGET, fixed.TARGET, monthly.TARGET}:
         result = current_release(raw)
         dental_release_if_enabled(raw)
         commercial_demo_release(raw)
         customer_history_after_demo(raw)
+        service_archive_after_history(raw)
         return result
     if current not in LEGACY_REVISIONS:
         raise RuntimeError("cakto_recovery_source_revision_not_approved")
@@ -269,6 +287,7 @@ def main():
     dental_release_if_enabled(raw)
     commercial_demo_release(raw)
     customer_history_after_demo(raw)
+    service_archive_after_history(raw)
     return result
 
 

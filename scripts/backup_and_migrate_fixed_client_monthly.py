@@ -41,6 +41,9 @@ def schema_ready(raw):
     if current == "0078_customer_legacy_history":
         from scripts.wait_for_customer_legacy_history_schema import schema_ready as successor_ready
         return successor_ready(raw) is True
+    if current == "0079_service_archive":
+        from scripts.wait_for_service_archive_schema import schema_ready as successor_ready
+        return successor_ready(raw) is True
     if current != TARGET:
         return False
     engine = create_engine(raw, poolclass=NullPool, connect_args={

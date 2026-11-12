@@ -100,7 +100,7 @@ async def package_row(db, tenant, package_id):
 
 async def validate_package_sources(db, tenant, fields):
     sources = (await db.execute(text("""SELECT id,price_cents,price_mode,duration_min,prep_min,cleanup_min
-        FROM services WHERE tenant_id=:tenant AND id=ANY(CAST(:ids AS uuid[])) AND catalog_kind='base'
+        FROM services WHERE tenant_id=:tenant AND id=ANY(CAST(:ids AS uuid[])) AND catalog_kind='base' AND deleted_at IS NULL
         ORDER BY id FOR SHARE"""), {"tenant": tenant, "ids": fields.service_ids})).mappings().all()
     if len(sources) != len(fields.service_ids):
         raise HTTPException(422, "Todos os componentes devem ser serviços desta barbearia")
@@ -195,7 +195,7 @@ async def archive_package(tenant_id: UUID, package_id: UUID, payload: VersionedO
 
 
 async def addons_result(db, tenant, service):
-    version = (await db.execute(text("SELECT addons_version FROM services WHERE tenant_id=:tenant AND id=:id AND catalog_kind<>'variant'"),
+    version = (await db.execute(text("SELECT addons_version FROM services WHERE tenant_id=:tenant AND id=:id AND catalog_kind<>'variant' AND deleted_at IS NULL"),
                               {"tenant": tenant, "id": service})).scalar_one_or_none()
     if version is None:
         raise HTTPException(404, "Serviço não encontrado")
@@ -216,14 +216,14 @@ async def get_addons(tenant_id: UUID, service_id: UUID, actor: Actor = Depends(a
 async def save_addons(tenant_id: UUID, service_id: UUID, payload: AddonsSave, actor: Actor = Depends(authenticate)):
     async with management_session(tenant_id, actor, write=True) as db:
         await catalogue_lock(db, tenant_id)
-        row = (await db.execute(text("SELECT addons_version FROM services WHERE tenant_id=:tenant AND id=:id AND catalog_kind<>'variant' FOR UPDATE"),
+        row = (await db.execute(text("SELECT addons_version FROM services WHERE tenant_id=:tenant AND id=:id AND catalog_kind<>'variant' AND deleted_at IS NULL FOR UPDATE"),
                                {"tenant": tenant_id, "id": service_id})).scalar_one_or_none()
         if row is None:
             raise HTTPException(404, "Serviço não encontrado")
         if row != payload.expected_version:
             raise HTTPException(409, "Os adicionais mudaram. Atualize antes de salvar")
         ids = [x.addon_service_id for x in payload.items]
-        available = (await db.execute(text("SELECT id FROM services WHERE tenant_id=:tenant AND id=ANY(CAST(:ids AS uuid[])) AND catalog_kind='base' AND id<>:base"),
+        available = (await db.execute(text("SELECT id FROM services WHERE tenant_id=:tenant AND id=ANY(CAST(:ids AS uuid[])) AND catalog_kind='base' AND deleted_at IS NULL AND id<>:base"),
                                      {"tenant": tenant_id, "ids": ids, "base": service_id})).scalars().all()
         if len(available) != len(ids):
             raise HTTPException(422, "Adicionais devem ser outros serviços desta barbearia")
@@ -244,7 +244,7 @@ async def selection_contract(db, tenant, base_id, addon_ids, professional, *, lo
         raise HTTPException(422, "Seleção de adicionais inválida")
     ids = [base_id, *sorted(addon_ids, key=str)]
     suffix = " FOR SHARE" if lock else ""
-    rows = (await db.execute(text("SELECT id,catalog_kind,addons_version FROM services WHERE tenant_id=:tenant AND id=ANY(CAST(:ids AS uuid[])) ORDER BY id"+suffix),
+    rows = (await db.execute(text("SELECT id,catalog_kind,addons_version FROM services WHERE tenant_id=:tenant AND id=ANY(CAST(:ids AS uuid[])) AND deleted_at IS NULL ORDER BY id"+suffix),
                             {"tenant": tenant, "ids": ids})).mappings().all()
     kinds={r["id"]:r["catalog_kind"] for r in rows}
     if kinds.get(base_id) not in {"base","combo"} or any(kinds.get(x)!="base" for x in addon_ids):
