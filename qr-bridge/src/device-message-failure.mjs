@@ -19,8 +19,8 @@ export const safeMessageFailureCode=value=>known.has(value)?value:undefined;
 
 export function messageFailureCode(error,{beforeSend,current,chatbot=false,campaign=false,scheduled=false,bulk=false}){
   const revoked=bulk?'BULK_REVOKED':scheduled?'SCHEDULE_REVOKED':campaign?'CAMPAIGN_REVOKED':chatbot?'CHATBOT_REVOKED':'DEVICE_REVOKED';
-  if(!current)return revoked;
   if(!beforeSend)return 'MESSAGE_OUTCOME_UNCERTAIN';
+  if(!current)return revoked;
   const verified=knownMessagePreflight(error);if(verified)return verified;
   if(['CHATBOT_REVOKED','CHATBOT_EFFECT_REVOKED','CAMPAIGN_REVOKED','SCHEDULE_REVOKED','BULK_REVOKED'].includes(error?.code)||
     ['channel_operation_superseded','chatbot_operation_superseded','device_operation_superseded'].includes(error?.message))return revoked;
