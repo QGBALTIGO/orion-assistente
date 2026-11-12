@@ -79,6 +79,14 @@ def test_only_proved_unsent_failure_codes_can_advance_to_policy_checks(code):
     assert not api.proven_unsent(effect(error_code=code, status="uncertain"), NOW)
 
 
+def test_revoked_chatbot_reply_explains_interruption_without_offering_replay():
+    view = api.item_dto(effect(error_code="CHATBOT_REVOKED", resend_block="MESSAGE_NO_UNSENT_PROOF"), NOW)
+    assert view["status"] == "failed"
+    assert view["failure"]["code"] == "CHATBOT_REVOKED"
+    assert "antes do envio" in view["failure"]["message"]
+    assert view["actions"] == []
+
+
 def test_expiry_proof_requires_no_authorization_and_no_attempt():
     row = effect(status="pending", attempts=0, authorized_at=None, expires_at=NOW-timedelta(seconds=1))
     assert api.proven_unsent(row, NOW)
