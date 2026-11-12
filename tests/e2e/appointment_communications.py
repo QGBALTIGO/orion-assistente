@@ -29,7 +29,18 @@ FIXTURE={'company':'Barbearia de teste','customer':'Cliente Sintético','profess
 def assert_contrast(page,selector):
  # Read the rendered colors, including each theme's actual card background.
  ratio=page.locator(selector).first.evaluate('''element => {
-  const luminance=color=>{const rgb=color.match(/[\\d.]+/g).slice(0,3).map(Number).map(v=>v/255).map(v=>v<=.04045?v/12.92:((v+.055)/1.055)**2.4);return .2126*rgb[0]+.7152*rgb[1]+.0722*rgb[2];};
+  // CSS color-mix() can return oklab()/color() values, not only rgb().
+  // Sample the rendered CSS color as an sRGB pixel before computing luminance.
+  const canvas=document.createElement('canvas');canvas.width=canvas.height=1;
+  const ctx=canvas.getContext('2d',{willReadFrequently:true});
+  const luminance=color=>{
+    if(!CSS.supports('color',color))throw Error('Unsupported CSS color: '+color);
+    ctx.clearRect(0,0,1,1);ctx.fillStyle='#123456';ctx.fillStyle=color;
+    if(ctx.fillStyle==='#123456'&&color!=='#123456')throw Error('Canvas rejected CSS color: '+color);
+    ctx.fillRect(0,0,1,1);
+    const rgb=Array.from(ctx.getImageData(0,0,1,1).data).slice(0,3).map(v=>v/255).map(v=>v<=.04045?v/12.92:((v+.055)/1.055)**2.4);
+    return .2126*rgb[0]+.7152*rgb[1]+.0722*rgb[2];
+  };
   const style=getComputedStyle(element);let parent=element,background=style.backgroundColor;
   while(background==='rgba(0, 0, 0, 0)'&&parent.parentElement){parent=parent.parentElement;background=getComputedStyle(parent).backgroundColor;}
   const a=luminance(style.color),b=luminance(background);return (Math.max(a,b)+.05)/(Math.min(a,b)+.05);
@@ -128,6 +139,7 @@ def main():
           reviews:[{rating:5,professional:'Profissional sintético',comment:'<script>alert(1)</script>'}],transport_limit:'Teste sintético de interface.'};
         window._settingsSaved=null;window._recoveryCount=0;
         await window.OrionAppointmentCommunications.mount({host:document.getElementById('settings-host'),tenantId:'tenant',canWrite:true,
+          canFeature:feature=>feature==='conversations.manual',
           request:async(path,method,body)=>{if(path.endsWith('/recover-confirmation')){window._recoveryCount++;return {status:'queued',accepted:false};}if(method==='PUT'){window._settingsSaved=body;fixture.settings.version++;return {saved:true};}return fixture;}});
       }""")
       page.get_by_role('heading',name='Comunicação de agendamentos',exact=True).wait_for()

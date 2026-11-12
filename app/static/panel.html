@@ -3205,8 +3205,13 @@ function fillBusinessProfile(data,history){
  if(commerceTenant===businessLoadedTenant&&commerceState?.fulfillment?.enabled===true&&(commerceState.fulfillment.profile_version_id!==(data.published?.id||null)||commerceState.fulfillment.profile_revision!==(data.published?.revision||0)))commerceInvalidateFulfillment();
 }
 async function loadBusinessProfile(){
- const tenant=$("businessTenant").value;resetBusinessState();const epoch=businessEpoch;
- if(!tenant)return {epoch,ok:false};businessLoadedTenant=tenant;businessBusy=true;$("businessStatus").textContent="Consultando configuração...";updateBusinessControls();
+ const tenant=$("businessTenant").value;
+ // A legacy selector is never an authorization source; bind reads to the
+ // single company proved by the authenticated account context. Reject a
+ // forged selector without discarding a legitimate unsaved form.
+ if(!tenant||tenant!==accountBusiness()?.id){if(tenant)$("businessFeedback").textContent="Confirme o acesso à sua empresa.";return {epoch:businessEpoch,ok:false};}
+ resetBusinessState();const epoch=businessEpoch;
+ businessLoadedTenant=tenant;businessBusy=true;$("businessStatus").textContent="Consultando configuração...";updateBusinessControls();
  const current=()=>epoch===businessEpoch&&tenant===$("businessTenant").value;
  try{
    const results=await Promise.allSettled([api(businessUrl(tenant)),api(businessUrl(tenant,"/history"))]);
@@ -3255,6 +3260,7 @@ async function loadBusinesses({resolveSetup:resolveAfter=true}={}){
 }
 async function businessMutation(kind){
  if(businessBusy||!businessSnapshot||businessStale)return;
+ if(businessLoadedTenant!==accountBusiness()?.id||$("businessTenant").value!==businessLoadedTenant)return;
  if(kind==="draft"&&!businessCan("can_edit_draft")||kind!=="draft"&&!businessCan("can_publish"))return;
  if(kind!=="draft"&&businessDirty){$("businessFeedback").textContent="Salve as alterações antes de publicar ou restaurar uma versão.";return;}
  if(kind==="rollback"){

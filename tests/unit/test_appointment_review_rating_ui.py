@@ -22,7 +22,9 @@ def test_review_only_has_three_compact_facts_and_other_receipts_stay_full():
         assert f"['{label}'" not in abbreviated
         assert f"['{label}'" in full
     assert "classList.toggle('review-mode',reviewMode)" in JS
-    assert "if(!reviewMode){" in JS
+    # Review-only mode must hide redundant rebooking without hiding a real future visit.
+    assert "if(data.status==='completed'&&data.has_future_booking)" in JS
+    assert "else if(!reviewMode&&['completed','cancelled','no_show'].includes(data.status))" in JS
     assert "#review{order:1" in CSS
     assert "#actions{order:2" in CSS
 
