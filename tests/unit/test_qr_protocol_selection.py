@@ -1,13 +1,17 @@
 """An owned opaque protocol selects a candidate; it is not natural language."""
 from copy import deepcopy
+from datetime import datetime, timezone
 
 import pytest
 
+from app import qr_cancellation as flow
 from app.qr_cancellation import choose_candidate
 
 
 @pytest.fixture
-def records():
+def records(monkeypatch):
+    # Relative dates must not change meaning with the CI runner's wall clock.
+    monkeypatch.setattr(flow, '_now', lambda: datetime(2026, 11, 10, tzinfo=timezone.utc))
     return [
         {'id': '11111111-1111-4111-8111-111111111111', 'protocol': 'AG-T4H7LY',
          'start_at': '2026-11-13T14:00:00+00:00', 'professional': 'Bruno'},
