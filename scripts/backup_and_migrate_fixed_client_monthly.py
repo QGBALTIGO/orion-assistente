@@ -38,6 +38,9 @@ def schema_ready(raw):
     if current == "0077_commercial_demos":
         from scripts.wait_for_commercial_demos_schema import schema_ready as successor_ready
         return successor_ready(raw) is True
+    if current == "0078_customer_legacy_history":
+        from scripts.wait_for_customer_legacy_history_schema import schema_ready as successor_ready
+        return successor_ready(raw) is True
     if current != TARGET:
         return False
     engine = create_engine(raw, poolclass=NullPool, connect_args={

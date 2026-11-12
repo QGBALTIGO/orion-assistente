@@ -99,6 +99,7 @@ def test_runtime_schema_barrier_is_read_only_and_includes_previous_contract():
 @pytest.mark.parametrize("revision,module_name", [
     ("0076_dental_clinic", "scripts.wait_for_dental_schema"),
     ("0077_commercial_demos", "scripts.wait_for_commercial_demos_schema"),
+    ("0078_customer_legacy_history", "scripts.wait_for_customer_legacy_history_schema"),
 ])
 @pytest.mark.parametrize("valid", [False, True])
 def test_reviewed_successor_requires_its_complete_schema_contract(monkeypatch, revision, module_name, valid):
@@ -121,7 +122,7 @@ def test_schema_probe_rejects_unreviewed_revisions_before_database_access(monkey
     assert release.schema_ready("synthetic-dsn") is False
 
 
-@pytest.mark.parametrize("revision", ["0076_dental_clinic", "0077_commercial_demos"])
+@pytest.mark.parametrize("revision", ["0076_dental_clinic", "0077_commercial_demos", "0078_customer_legacy_history"])
 def test_successor_readiness_does_not_authorize_replaying_0075_ddl(monkeypatch, revision):
     events = prepared(monkeypatch, [revision])
     assert release.main() == 3 and events == []
