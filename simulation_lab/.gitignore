@@ -1,0 +1,5 @@
+artifacts/
+property/node_modules/
+playwright/node_modules/
+playwright/test-results/
+playwright/playwright-report/

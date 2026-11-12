@@ -1,0 +1,52 @@
+name: Orion Simulation Lab - synthetic and property checks
+
+on:
+  pull_request:
+    branches:
+      - security/prelaunch-hardening-20261030
+      - main
+  workflow_dispatch:
+  schedule:
+    - cron: '0 9 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  deterministic-lab:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run isolated lab Python regressions
+        run: python -m pip install pytest && python -m pytest -q tests/unit/test_simulation_lab.py
+      - name: Build all synthetic cases and journeys
+        run: python -m simulation_lab.orion_lab all --out simulation_lab/artifacts
+      - name: Verify hashes and semantic signatures
+        run: python -m simulation_lab.orion_lab verify --out simulation_lab/artifacts
+      - name: Upload reproducible synthetic receipts
+        uses: actions/upload-artifact@v4
+        with:
+          name: orion-simulation-lab-receipts
+          path: |
+            simulation_lab/artifacts/manifest.json
+            simulation_lab/artifacts/reference_results.json
+            simulation_lab/artifacts/report.html
+          retention-days: 14
+
+  property-based:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: simulation_lab/property
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --no-audit --no-fund
+      - run: npm test
