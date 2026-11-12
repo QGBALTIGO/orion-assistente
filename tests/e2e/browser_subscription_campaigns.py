@@ -121,6 +121,8 @@ class Handler(ChatbotHandler):
                 "campaigns": list(session["cp_campaigns"].values()), "groups": list(session["cp_groups"].values()),
                 "confirmations": session["cp_confirmations"], "effects": session["cp_effects"],
                 "unexpected": session["unexpected"]})
+        if session and path == base.BASE + "/subscription-whatsapp/sent-messages" and session["workspace_profile"] == "subscription_services":
+            return self.body({"items": [], "counts": {"today": 0, "last_30_days": 0, "scope": "message_attempts"}})
         if not path.startswith(CAMPAIGNS_BASE):
             return super().do_GET()
         if session:
