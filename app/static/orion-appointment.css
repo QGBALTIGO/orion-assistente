@@ -83,7 +83,7 @@ main > .public-footer a:hover{text-decoration:underline}
   border:1px solid var(--border);border-radius:12px;
   background:var(--bg);color:var(--muted);
   font-size:clamp(24px,6vw,32px);line-height:1;
-  transition:background .15s ease,border-color .15s ease,color .15s ease,transform .15s ease;
+  transition:background .15s ease,border-color .15s ease,transform .15s ease;
 }
 #review .stars label.is-filled span{
   border-color:var(--primary);
