@@ -13,6 +13,7 @@ def catalog(tables):
     repair.FK_TABLES | repair.NEW_FK_TABLES | repair.SCOPED_CONSENT_FK_TABLES,
     repair.FK_TABLES | repair.NEW_FK_TABLES | repair.SCOPED_CONSENT_FK_TABLES | repair.OPTIONAL_FK_TABLES,
     repair.FK_TABLES | repair.NEW_FK_TABLES | repair.SCOPED_CONSENT_FK_TABLES | repair.OPTIONAL_FK_TABLES | repair.DENTAL_FK_TABLES,
+    repair.FK_TABLES | repair.NEW_FK_TABLES | repair.SCOPED_CONSENT_FK_TABLES | repair.OPTIONAL_FK_TABLES | repair.DENTAL_FK_TABLES | repair.LEGACY_HISTORY_FK_TABLES,
 ])
 def test_only_reviewed_foreign_key_sets_are_allowed(monkeypatch, tables):
     monkeypatch.setattr(repair, "rows", lambda *args, **kwargs: catalog(tables))

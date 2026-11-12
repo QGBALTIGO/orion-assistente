@@ -1286,7 +1286,9 @@
     if(!list.length){const message=dentalWorkspace()?(f.customerQuery?'Nenhum paciente encontrado.':f.customerStatus==='inactive'?'Nenhum paciente inativo.':'Nenhum paciente cadastrado. Cadastre o primeiro!'):f.customerQuery?'Nenhum cliente encontrado.':f.customerStatus==='at_risk'?'Nenhum cliente em risco neste período.':f.customerStatus==='inactive'?'Nenhum cliente inativo.':f.customerStatus==='birthday'?'Nenhum aniversariante nesta semana.':'Nenhum cliente ainda. Cadastre o primeiro!';bodyHTML('<div class="os-client-empty">'+esc(message)+'</div>');return;}
     const actions=c=>'<button type="button" class="os-icon-button" data-os-customer="'+esc(c.id)+'" aria-label="'+(writable()?'Editar ':'Ver ')+esc(customerDisplayName(c))+'">'+icon('edit')+'</button>'+(writable()?'<button type="button" class="os-icon-button" data-os-customer-toggle="'+esc(c.id)+'" aria-label="'+(c.active?'Inativar ':'Ativar ')+esc(customerDisplayName(c))+'">'+icon(c.active?'block':'check')+'</button><button type="button" class="os-icon-button os-negative" data-os-customer-delete="'+esc(c.id)+'" aria-label="Excluir '+esc(customerDisplayName(c))+'">'+icon('trash')+'</button>':'');
     let html='<p class="os-help os-only-mobile" style="margin-bottom:12px">'+(writable()?'Deslize para a esquerda para editar, inativar ou excluir.':'Toque em um cliente para consultar seus dados.')+'</p><div class="os-card os-no-pad os-hide-mobile"><div class="os-table-scroll"><table class="os-table"><thead><tr><th>'+(dentalWorkspace()?'Paciente':'Cliente')+'</th><th>WhatsApp</th><th>Última visita</th><th>Atendimentos</th><th><span class="os-sr-only">Ações</span></th></tr></thead><tbody>'+list.map(c=>'<tr><td><div class="os-person"><span class="os-avatar">'+customerAvatar(c)+'</span><div><strong>'+esc(customerDisplayName(c))+'</strong><small>'+esc(c.email||c.instagram||'')+'</small>'+
-      (c.created_at?'<small class="os-client-row-created">Cadastro: '+esc(customerRegisteredAt(c.created_at))+'</small>':'')+'</div></div></td><td>'+esc(c.phone||'—')+'</td><td>'+fmtDate(c.last_visit_at)+'</td><td>'+number(c.completed_appointments??c.total_appointments)+'</td><td><div class="os-table-actions">'+actions(c)+'</div></td></tr>').join('')+'</tbody></table></div></div>';
+      (c.created_at?'<small class="os-client-row-created">Cadastro: '+esc(customerRegisteredAt(c.created_at))+'</small>':'')+
+      (number(c.legacy_appointments)>0?'<small>Agenda antiga: '+number(c.legacy_appointments)+' agendamentos</small>':'')+
+      '</div></div></td><td>'+esc(c.phone||'—')+'</td><td>'+fmtDate(c.last_visit_at)+'</td><td>'+number(c.completed_appointments??c.total_appointments)+'</td><td><div class="os-table-actions">'+actions(c)+'</div></td></tr>').join('')+'</tbody></table></div></div>';
     html+='<div class="os-mobile-customers os-only-mobile">'+list.map(c=>{
       const name=customerMobileName(c),whatsapp=customerWhatsappLink(c.phone);
       const link=whatsapp?'<a class="os-client-mobile-whatsapp" href="'+whatsapp+'" target="_blank" rel="noopener noreferrer" aria-label="Abrir WhatsApp de '+esc(name)+'" title="Conversar pelo WhatsApp">'+whatsappMark+'</a>':'';
@@ -2421,6 +2423,39 @@
       '</summary><div id="osCustomerHistoryBody" class="os-client-history-body" role="region" aria-label="Atendimentos realizados" aria-live="polite">'+
       '<p class="os-help">Expanda para consultar os serviços realizados.</p></div></details>';
   }
+  function customerLegacyHistoryPanel(){
+    return '<details id="osCustomerLegacyHistory" class="os-client-history">'+
+      '<summary aria-controls="osCustomerLegacyBody"><span class="os-client-history-icon">'+icon('book')+'</span>'+
+      '<span class="os-client-history-title"><strong>Histórico da agenda antiga</strong><small>Dados importados, separados dos agendamentos da Orion</small></span>'+
+      '<span class="os-client-history-chevron" aria-hidden="true">'+icon('down')+'</span></summary>'+
+      '<div id="osCustomerLegacyBody" class="os-client-history-body" role="region" aria-label="Histórico da agenda antiga" aria-live="polite">'+
+      '<p class="os-help">Expanda para consultar os dados importados.</p></div></details>';
+  }
+  async function loadCustomerLegacyHistory(d){
+    if(d?.type!=='customer'||!d.record||state.dialog!==d||d.legacyLoading)return;
+    const c=context(),target=$('osCustomerLegacyBody');if(!target)return;
+    d.legacyLoading=true;target.innerHTML=loading('Carregando agenda antiga…');
+    try{
+      const result=await request(mgmt('/customers/'+encodeURIComponent(d.record.id)+'/legacy-history'));
+      if(!stillAccount(c)||!current(c)||state.dialog!==d)return;
+      if(!Array.isArray(result?.sources))throw Error('Histórico antigo indisponível.');
+      d.legacyLoaded=true;
+      target.innerHTML=result.sources.length?result.sources.map(source=>{
+        const visits=Array.isArray(source.history)?source.history:[];
+        return '<div class="os-client-history-overview"><strong>'+number(source.reported_appointments)+
+          ' agendamentos informados pela agenda antiga</strong><small>Total informado: '+money(source.reported_spent_cents)+
+          ' · Ticket médio: '+money(source.reported_ticket_cents)+'</small></div>'+
+          (!source.history_complete?'<p class="os-client-history-error" role="status">A agenda antiga não forneceu os detalhes de todos os agendamentos deste cliente.</p>':'')+
+          '<div class="os-client-history-list">'+visits.map(visit=>'<article class="os-client-history-visit">'+
+            '<div class="os-client-visit-heading"><div><strong>'+esc(visit.date||'Data indisponível')+
+            (visit.time?' às '+esc(visit.time):'')+'</strong><small>'+esc(visit.professional||'Profissional não informado')+
+            '</small></div><strong class="os-client-visit-total">'+money(visit.price_cents)+'</strong></div>'+
+            '<p>'+esc(visit.service||'Serviço não informado')+'</p></article>').join('')+'</div>';
+      }).join(''):'<p class="os-help">Este cliente não tem histórico importado.</p>';
+    }catch(error){if(stillAccount(c)&&current(c)&&state.dialog===d)
+      target.innerHTML='<p class="os-client-history-error" role="alert">'+esc(error.message||'Não foi possível consultar a agenda antiga.')+'</p>';
+    }finally{if(state.dialog===d)d.legacyLoading=false;}
+  }
   function customerHistoryVisit(visit){
     const services=rows(visit.services),validDate=typeof visit.start_at==='string'&&Number.isFinite(Date.parse(visit.start_at));
     const date=validDate?fmtDate(dateKey(new Date(visit.start_at)))+' às '+timeLabel(visit.start_at):'Data não disponível';
@@ -2541,8 +2576,9 @@
       (record?'<p class="os-client-created"><span class="os-client-created-icon" aria-hidden="true">'+icon('clock')+'</span>'+
         '<span>Cadastrado em '+esc(customerRegisteredAt(c.created_at))+'</span></p>':'')+'</div>'+
       (record?checkField(dentalWorkspace()?'Paciente ativo':'Cliente ativo','active',c.active!==false):'');
-    if(record)content+='<div class="os-stats os-client-stats"><div class="os-stat os-client-stat-total"><strong>'+money(c.total_spent_cents)+'</strong><small>Total atendido</small></div><div class="os-stat"><strong>'+number(c.total_appointments)+'</strong><small>Agendamentos</small></div><div class="os-stat"><strong>'+number(c.loyalty_points)+'</strong><small>Pontos</small></div></div>';
-    const afterFields=record?dentalPatientJourney(c)+customerHistoryPanel(c):'';
+    if(record)content+='<div class="os-stats os-client-stats"><div class="os-stat os-client-stat-total"><strong>'+money(c.total_spent_cents)+'</strong><small>Total atendido na Orion</small></div><div class="os-stat"><strong>'+number(c.total_appointments)+'</strong><small>Agendamentos na Orion</small></div><div class="os-stat"><strong>'+number(c.loyalty_points)+'</strong><small>Pontos</small></div></div>'+
+      (number(c.legacy_appointments)>0?'<p class="os-client-hint">Agenda antiga: '+number(c.legacy_appointments)+' agendamentos e '+money(c.legacy_spent_cents)+' informados pela origem. Consulte os detalhes abaixo.</p>':'');
+    const afterFields=record?dentalPatientJourney(c)+customerHistoryPanel(c)+customerLegacyHistoryPanel():'';
     if(!showDialog('customer',record?(dentalWorkspace()?(writable()?'Editar paciente':'Paciente'):(writable()?'Editar cliente':'Cliente')):(dentalWorkspace()?'Novo paciente':'Novo cliente'),
       dialogForm('customer',content,record?'Salvar alterações':'Cadastrar cliente',
         record&&writable()?button('Excluir','delete-customer','os-ghost','trash'):'',afterFields),{record}))return;
@@ -2566,6 +2602,15 @@
         if(!opened.historyOpened){
           opened.historyOpened=true;
           startHistory();
+        }
+      });
+      const legacy=$('osCustomerLegacyHistory');
+      legacy?.querySelector('summary')?.addEventListener('click',()=>{
+        if(!legacy.open&&!opened.legacyLoaded)void loadCustomerLegacyHistory(opened);
+      });
+      legacy?.addEventListener('toggle',()=>{
+        if(legacy.open&&!opened.legacyLoaded){
+          void loadCustomerLegacyHistory(opened);
         }
       });
     }

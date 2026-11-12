@@ -179,7 +179,11 @@ CUSTOMER_SELECT = """
        (SELECT COALESCE(sum(a.total_cents),0) FROM appointments a WHERE a.tenant_id=c.tenant_id
           AND a.customer_id=c.id AND a.status='completed') AS total_spent_cents,
        (SELECT COALESCE(sum(l.points_delta),0) FROM loyalty_transactions l
-          WHERE l.tenant_id=c.tenant_id AND l.customer_id=c.id) AS loyalty_points
+          WHERE l.tenant_id=c.tenant_id AND l.customer_id=c.id) AS loyalty_points,
+       (SELECT COALESCE(sum(h.reported_appointments),0) FROM customer_legacy_history h
+          WHERE h.tenant_id=c.tenant_id AND h.customer_id=c.id) AS legacy_appointments,
+       (SELECT COALESCE(sum(h.reported_spent_cents),0) FROM customer_legacy_history h
+          WHERE h.tenant_id=c.tenant_id AND h.customer_id=c.id) AS legacy_spent_cents
     FROM customers c
 """
 
