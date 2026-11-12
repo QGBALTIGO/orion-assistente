@@ -18,20 +18,24 @@ security/prelaunch-hardening-20261030
 
     py -3.12 -m simulation_lab.orion_lab reference --out E:\OrionSimulationWork\lab-data
 
-4. Conferir quotas, hashes SHA-256 e diversidade:
+4. Reproduzir 38.000 casos nas funcoes PURAS reais do motor de reservas da Orion (sem banco ou mensagens):
+
+    E:\OrionSimulationWork\.venv\Scripts\python.exe -m simulation_lab.real_engine_replay --out E:\OrionSimulationWork\lab-data
+
+5. Conferir quotas, hashes SHA-256 e diversidade:
 
     py -3.12 -m simulation_lab.orion_lab verify --out E:\OrionSimulationWork\lab-data
 
-5. Testar o codigo do laboratorio, sem banco nem internet:
+6. Testar o codigo do laboratorio, sem banco nem internet:
 
     py -3.12 -m pytest -q tests/unit/test_simulation_lab.py
 
-6. Testar invariantes geradas por fast-check:
+7. Testar invariantes geradas por fast-check:
 
     npm ci --prefix simulation_lab/property
     npm test --prefix simulation_lab/property
 
-7. Abrir o arquivo lab-data/report.html no navegador para visualizar a cobertura.
+8. Abrir o arquivo lab-data/report.html no navegador para visualizar a cobertura.
 
 Dados gerados sao gravados FORA da arvore Git por padrao. A pasta
 simulation_lab/artifacts esta ignorada pelo Git. Nunca adicionar arquivos de
@@ -109,7 +113,11 @@ nota de respostas >= 4,5/5 em amostra identificada. Metas NAO sao resultados.
 ## Transparencia de execucao inicial (12/11/2026)
 
 - Corpus local gerado e 100.000 oraculos do modelo de referencia executados.
-- 26 testes unitarios novos do laboratorio passaram no Windows.
+- 44 testes unitarios novos do laboratorio, incluindo funcoes reais do motor, passaram no Windows.
+- 38.000 casos foram executados contra as funcoes PURAS reais de reservas (22.000 agenda, 10.000 servicos e 6.000 recorrencias): 38.000 aprovados, zero operacoes PostgreSQL.
+- Playwright Chrome: 13 testes de leitura aprovaram site publico e login em diferentes dispositivos/temas.
+- A suite de UI preexistente apresentou 1.680 aprovados e 22 reprovados; entre eles testes de assinatura fora do escopo.
+- A CI original do QR Bridge acusou 19 falhas do harness panel-ui, nao alterado por este laboratorio; trata-se de bloqueio de regressao ainda sem conclusao de causa raiz.
 - fast-check: 7 testes aprovados, com 60.000 amostras sinteticas.
 - A suite Python inteira do repo no Windows relatou 9.603 passes, 94 falhas,
   11 erros e 15 skips. NAO classificar tudo como defeito de producao: muitos

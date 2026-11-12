@@ -27,6 +27,12 @@ jobs:
         run: python -m simulation_lab.orion_lab all --out simulation_lab/artifacts
       - name: Verify hashes and semantic signatures
         run: python -m simulation_lab.orion_lab verify --out simulation_lab/artifacts
+      - name: Install Orion runtime dependencies for pure-engine replay
+        run: python -m pip install -c requirements.lock '.[test]'
+      - name: Assert actual Orion booking-function regressions
+        run: python -m pytest -q tests/unit/test_simulation_booking_contract.py
+      - name: Replay 38k cases against real booking-engine pure functions
+        run: python -m simulation_lab.real_engine_replay --out simulation_lab/artifacts
       - name: Upload reproducible synthetic receipts
         uses: actions/upload-artifact@v4
         with:
@@ -34,6 +40,7 @@ jobs:
           path: |
             simulation_lab/artifacts/manifest.json
             simulation_lab/artifacts/reference_results.json
+            simulation_lab/artifacts/real_engine_results.json
             simulation_lab/artifacts/report.html
           retention-days: 14
 

@@ -432,6 +432,12 @@ def run_reference(out, max_scenarios=100000):
 def make_report(out, manifest, results=None):
     """Static, offline HTML dashboard. Empty evaluation categories remain zero."""
     results = results or {}
+    engine = {}
+    receipt_path = out / "real_engine_results.json"
+    if receipt_path.exists():
+        candidate = json.loads(receipt_path.read_text(encoding="utf-8"))
+        if candidate.get("corpus_sha256") == manifest["files"]["scenarios.jsonl.gz"]["sha256"]:
+            engine = candidate
     rows = "".join(
         "<tr><td>%s</td><td>%s</td><td>%s</td></tr>" %
         (html.escape(k), format(v, ","), format(results.get("by_area", {}).get(k, 0), ","))
@@ -443,6 +449,8 @@ def make_report(out, manifest, results=None):
         ("Jornadas geradas", manifest["generated_journeys"]),
         ("Empresas ficticias", manifest["synthetic_companies"]),
         ("Testes do modelo de referencia", results.get("executed_deterministic_reference_cases", 0)),
+        ("Verificacoes de funcoes reais da agenda (sem banco)", engine.get("function_scenarios_executed", 0)),
+        ("Falhas nessas verificacoes de funcoes", engine.get("failed", 0)),
         ("Execucoes reais de IA", results.get("ai_conversations_executed", 0)),
         ("Integracoes PostgreSQL reais", results.get("postgres_integration_tests_executed", 0)),
         ("Ponta a ponta real", results.get("end_to_end_tests_executed", 0)),
