@@ -1,0 +1,33 @@
+name: Login visual qualification
+on:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  browser:
+    if: github.head_ref == 'fix/login-agenda-notifications-20261018'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install isolated browser test tools
+        if: hashFiles('scripts/check_login_browser.py') != ''
+        run: |
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium webkit
+      - name: Render both themes and authentication forms at four widths
+        if: hashFiles('scripts/check_login_browser.py') != ''
+        run: python scripts/check_login_browser.py --output browser-evidence
+      - uses: actions/upload-artifact@v4
+        if: always() && hashFiles('browser-evidence/*.png') != ''
+        with:
+          name: login-browser-evidence
+          path: browser-evidence/
+          retention-days: 14
+          if-no-files-found: error
