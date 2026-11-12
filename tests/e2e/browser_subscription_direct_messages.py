@@ -462,7 +462,7 @@ def test_expiry_malformed_reply_revocation_and_subscription_boundary(browser, fi
         expect(page.locator('#osNav [data-os-route="enviar-mensagem"]')).to_have_count(0)
         assert writes(report(page, fixture_url)) == before
         assert page.evaluate("history.state.orionDirectRecovery || null") is None
-        for extra, route in (("&fixtureProfile=standard", "plano"), ("&fixtureReadonly=1", "novidades")):
+        for extra, route in (("&fixtureProfile=standard", "plano"), ("&fixtureReadonly=1", "dashboard")):
             # The denied route still reads identity and loads its fallback.
             # Wait for that concrete bootstrap before replacing the document.
             with page.expect_response(lambda response: urlsplit(response.url).path == "/api/v1/account/business-identity") as identity:
