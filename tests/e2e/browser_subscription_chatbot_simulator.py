@@ -90,6 +90,8 @@ class Handler(ChatbotHandler):
                     return self.body({"detail": "Invalid synthetic asset ticket"}, 409)
                 return self.body(IMAGE_BYTES, mime="image/jpeg")
             return self.reject(session, "Unknown synthetic simulator read")
+        if session and path == base.BASE + "/subscription-whatsapp/devices":
+            return self.body({"items": [deepcopy(DEVICE)], "usage": {"used": 1, "limit": 1}})
         return super().do_GET()
 
     def simulation_result(self, session, payload):
