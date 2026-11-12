@@ -99,6 +99,8 @@ class Handler(ChatbotHandler):
             return self.body({"calls": session["dg_calls"], "operations": list(session["dg_operations"].values()),
                 "effects": session["dg_effects"], "proxy_calls": session["dg_proxy_calls"],
                 "unexpected": session["unexpected"]})
+        if session and path == base.BASE + "/subscription-whatsapp/sent-messages" and session["workspace_profile"] == "subscription_services":
+            return self.body({"items": [], "counts": {"today": 0, "last_30_days": 0, "scope": "message_attempts"}})
         if not path.startswith(DIAGNOSTICS_BASE):
             return super().do_GET()
         if session:
