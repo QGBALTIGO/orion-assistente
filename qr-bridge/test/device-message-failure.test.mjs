@@ -14,7 +14,9 @@ test('only errors issued at the local preflight boundary prove a device send was
 });
 
 test('a changed connection after relay never claims the message was unsent',()=>{
-  for(const scope of [{},{chatbot:true},{campaign:true},{scheduled:true},{bulk:true}]){
+  for(const [scope,revoked] of [[{},'DEVICE_REVOKED'],[{chatbot:true},'CHATBOT_REVOKED'],
+    [{campaign:true},'CAMPAIGN_REVOKED'],[{scheduled:true},'SCHEDULE_REVOKED'],[{bulk:true},'BULK_REVOKED']]){
+    assert.equal(messageFailureCode({code:'CHATBOT_REVOKED'},{beforeSend:true,current:false,...scope}),revoked);
     assert.equal(messageFailureCode({code:'CHATBOT_REVOKED'},{beforeSend:false,current:false,...scope}),
       'MESSAGE_OUTCOME_UNCERTAIN');
   }
