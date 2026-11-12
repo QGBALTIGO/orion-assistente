@@ -65,6 +65,7 @@ FAILURE_MESSAGES = {
     "RECIPIENT_IDENTITY_UNVERIFIED": "A identidade do destinatário não foi confirmada.",
     "MESSAGE_CONTENT_INVALID": "O conteúdo não pôde ser enviado.",
     "MESSAGE_EXPIRED_BEFORE_SEND": "A tentativa expirou antes de receber autorização para envio.",
+    "CHATBOT_REVOKED": "A resposta foi interrompida antes do envio porque a conexão, a fila protegida ou a autorização mudou. Confira o atendimento antes de criar um novo envio.",
     "chatbot_predecessor_failed": "A mensagem anterior da sequência não foi enviada.",
     "CHATBOT_PREDECESSOR_UNAVAILABLE": "A mensagem anterior da sequência ficou indisponível.",
 }
