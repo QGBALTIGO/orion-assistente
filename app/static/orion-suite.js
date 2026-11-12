@@ -2605,6 +2605,9 @@
         }
       });
       const legacy=$('osCustomerLegacyHistory');
+      legacy?.querySelector('summary')?.addEventListener('click',()=>{
+        if(!legacy.open&&!opened.legacyLoaded)void loadCustomerLegacyHistory(opened);
+      });
       legacy?.addEventListener('toggle',()=>{
         if(legacy.open&&!opened.legacyLoaded){
           void loadCustomerLegacyHistory(opened);

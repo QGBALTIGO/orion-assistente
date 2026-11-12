@@ -259,7 +259,7 @@ test('totais altos ocupam uma linha inteira e não truncam valores monetários',
   const stats=h.document.querySelector('.os-client-stats'),cards=[...stats.querySelectorAll('.os-stat')];
   assert.equal(cards.length,3);
   assert.equal(cards[0].classList.contains('os-client-stat-total'),true);
-  assert.equal(cards[0].querySelector('small').textContent,'Total atendido');
+  assert.equal(cards[0].querySelector('small').textContent,'Total atendido na Orion');
   const expected=new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(veryLarge/100);
   assert.equal(cards[0].querySelector('strong').textContent,expected,'o valor completo deve ser preservado');
   assert.ok(cards[1].textContent.includes('10000000'),'atendimentos continuam visíveis');
