@@ -168,7 +168,10 @@ _FACT_READ_TABLES = _FACT_TABLES + (("start_policies", "professional_start_polic
 # Names are fixed here, never taken from a request. Every subquery retains both
 # the explicit tenant predicate and the runtime connection's RLS policies.
 _FACTS_SQL = text("SELECT business.id,business.name,business.timezone,business.status," + ",".join(
-    f"ARRAY(SELECT item FROM {table} item WHERE item.tenant_id=:t ORDER BY item.id) AS {key}"
+    f"ARRAY(SELECT item FROM {table} item WHERE item.tenant_id=:t"
+    + (" AND item.deleted_at IS NULL" if key == "services" else "")
+    + (" AND EXISTS (SELECT 1 FROM services s WHERE s.tenant_id=item.tenant_id AND s.id=item.service_id AND s.deleted_at IS NULL)" if key == "links" else "")
+    + f" ORDER BY item.id) AS {key}"
     for key, table in _FACT_READ_TABLES
 ) + " FROM tenants business WHERE business.id=:t")
 
@@ -676,6 +679,8 @@ async def _edit_guard(db, tenant, table, item_id, expected):
     item = (await db.execute(text(f"SELECT * FROM {table} WHERE tenant_id=:t AND id=:id FOR UPDATE"), {"t": tenant, "id": item_id})).mappings().first()
     if item is None:
         raise HTTPException(404, "Item não encontrado nesta empresa")
+    if table == "services" and item["deleted_at"] is not None:
+        raise HTTPException(404, "Serviço não encontrado")
     related = {"services": ("professional_services", "service_id"),
                "commercial_products": ("commercial_variants", "product_id"),
                "working_hours": ("working_breaks", "working_hour_id")}.get(table)
@@ -843,7 +848,9 @@ async def _apply_step(db, tenant, meta, step, data, access):
                 if row is None:
                     raise HTTPException(422, "Vínculo a profissional de outra empresa ou inexistente")
             if data.item.get("id"):
-                kind = (await db.execute(text("SELECT catalog_kind FROM services WHERE tenant_id=:t AND id=:id"), {"t": tenant, "id": UUID(data.item["id"])})).scalar_one_or_none()
+                kind = (await db.execute(text("SELECT catalog_kind FROM services WHERE tenant_id=:t AND id=:id AND deleted_at IS NULL"), {"t": tenant, "id": UUID(data.item["id"])})).scalar_one_or_none()
+                if kind is None:
+                    raise HTTPException(404, "Serviço não encontrado")
                 if kind and kind != "base":
                     conflict("Edite pacotes e complementos no cadastro específico")
             item = {k: v for k, v in data.item.items() if not data.item.get("id") or k in data._item_fields}

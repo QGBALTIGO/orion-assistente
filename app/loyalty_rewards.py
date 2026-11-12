@@ -29,7 +29,7 @@ async def configuration_lock(db, tenant_id):
 async def validate_reward_service(db, tenant_id, values):
     identity = values.get("reward_service_id")
     if identity is not None:
-        found = (await db.execute(text("SELECT id FROM services WHERE tenant_id=:tenant AND id=:id AND catalog_kind<>'variant'"),
+        found = (await db.execute(text("SELECT id FROM services WHERE tenant_id=:tenant AND id=:id AND catalog_kind<>'variant' AND deleted_at IS NULL"),
                                   {"tenant": tenant_id, "id": identity})).scalar_one_or_none()
         if found is None:
             raise HTTPException(404, "O serviço da recompensa não pertence ao catálogo desta empresa")
