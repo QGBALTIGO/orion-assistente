@@ -2447,10 +2447,13 @@
           ' · Ticket médio: '+money(source.reported_ticket_cents)+'</small></div>'+
           (!source.history_complete?'<p class="os-client-history-error" role="status">A agenda antiga não forneceu os detalhes de todos os agendamentos deste cliente.</p>':'')+
           '<div class="os-client-history-list">'+visits.map(visit=>'<article class="os-client-history-visit">'+
-            '<div class="os-client-visit-heading"><div><strong>'+esc(visit.date||'Data indisponível')+
-            (visit.time?' às '+esc(visit.time):'')+'</strong><small>'+esc(visit.professional||'Profissional não informado')+
-            '</small></div><strong class="os-client-visit-total">'+money(visit.price_cents)+'</strong></div>'+
-            '<p>'+esc(visit.service||'Serviço não informado')+'</p></article>').join('')+'</div>';
+            '<div class="os-client-visit-heading"><span class="os-client-visit-calendar" aria-hidden="true">'+icon('calendar')+
+            '</span><div><strong>'+esc(visit.date||'Data indisponível')+'</strong><small>'+
+            (visit.time?'às '+esc(visit.time):'Horário não informado')+'</small><small>'+
+            esc(visit.professional||'Profissional não informado')+'</small></div>'+
+            '<strong class="os-client-visit-total">'+money(visit.price_cents)+'</strong></div>'+
+            '<ul class="os-client-visit-services"><li><span class="os-client-service-dot" aria-hidden="true"></span>'+
+            '<div><strong>'+esc(visit.service||'Serviço não informado')+'</strong></div></li></ul></article>').join('')+'</div>';
       }).join(''):'<p class="os-help">Este cliente não tem histórico importado.</p>';
     }catch(error){if(stillAccount(c)&&current(c)&&state.dialog===d)
       target.innerHTML='<p class="os-client-history-error" role="alert">'+esc(error.message||'Não foi possível consultar a agenda antiga.')+'</p>';
