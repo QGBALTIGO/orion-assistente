@@ -708,11 +708,11 @@ def test_unknown_revocation_other_niche_and_empty_state_never_admit(browser, fix
         assert not writes(report(page, fixture_url))
         control(page, fixture_url, "revoke")
         action(page, "refresh").click()
-        expect(page.locator("#page-suite")).to_have_attribute("data-os-current-route", "novidades")
+        expect(page.locator("#page-suite")).to_have_attribute("data-os-current-route", "dashboard")
         expect(page.locator('#osNav [data-os-route="diagnosticos"]')).to_have_count(0)
         expect(page.locator("[data-dg-row]")).to_have_count(0)
         assert not writes(report(page, fixture_url))
-        for query, fallback in (("fixtureProfile=standard", "plano"), ("fixtureReadonly=1", "novidades")):
+        for query, fallback in (("fixtureProfile=standard", "plano"), ("fixtureReadonly=1", "dashboard")):
             page.goto(fixture_url + "/panel?fixtureRole=owner&fixturePlan=elite&aba=diagnosticos&" + query)
             expect(page.locator("#page-suite")).to_have_attribute("data-os-current-route", fallback)
             assert report(page, fixture_url)["calls"] == []
