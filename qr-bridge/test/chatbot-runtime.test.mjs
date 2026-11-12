@@ -94,7 +94,25 @@ test('a failed recipient lookup reports its boundary without leaking provider de
   assert.equal(lookups,2);
   assert.equal(f.finished[0].state,'not_sent');assert.equal(f.sends.length,0);
   assert.deepEqual(reported,[{component:'orion-chatbot-preparation',event:'failed_before_relay',stage:'recipient_lookup',
+    failure_code:'MESSAGE_PREPARATION_FAILED',observed_gate:'preparation_error',
     channel_id:f.context.channelId,tenant_id:f.context.tenantId,action_type:'text'}]);
+});
+
+test('authorization revoked during preparation is reported without retrying or leaking content',async t=>{
+  const f=await fixture(t),reported=[],original=console.warn;let allowed=true;
+  console.warn=value=>{if(String(value).includes('orion-chatbot-preparation'))reported.push(JSON.parse(value));else original(value);};
+  t.after(()=>{console.warn=original;});
+  f.behavior.authorize=async()=>allowed;
+  f.behavior.onWhatsApp=async pn=>{allowed=false;return [{exists:true,jid:pn+'@s.whatsapp.net'}];};
+  const item=f.effect({type:'text',text:'Private synthetic reply'});
+  f.behavior.event=async row=>row.kind==='text'?[item]:[];
+  f.receive('authorization-change');await until(()=>f.finished.length===1);
+  assert.equal(f.finished[0].state,'not_sent');assert.equal(f.finished[0].error_code,'CHATBOT_REVOKED');
+  assert.equal(f.sends.length,0);
+  assert.deepEqual(reported,[{component:'orion-chatbot-preparation',event:'failed_before_relay',stage:'recipient_lookup',
+    failure_code:'CHATBOT_REVOKED',observed_gate:'authorization_changed',
+    channel_id:f.context.channelId,tenant_id:f.context.tenantId,action_type:'text'}]);
+  assert.equal(JSON.stringify(reported).includes('Private synthetic reply'),false);
 });
 
 test('repeated pre-relay failures degrade device reply readiness and a fresh success clears it',async t=>{
