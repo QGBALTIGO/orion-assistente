@@ -80,15 +80,20 @@ def test_compact_confirmation_birth_and_phone(browser_name,width,theme):
             form=page.locator('#customer-form');form.wait_for()
             assert page.locator('.review-card').count()==1
             assert page.locator('.booking-confirmation-body>.booking-contact-heading').count()==1
-            assert page.locator('.consent-label').count()==0
-            assert page.locator('.privacy-note').count()==0
+            # Optional opt-in is shown explicitly, never preselected. It must
+            # remain separate from the required booking confirmation action.
+            assert page.locator('.consent-label').count()==1
+            assert page.locator('.privacy-note').count()==1
             assert page.locator('[name=confirmed]').count()==0
+            assert page.locator('[name=appointment_messages_opt_in]').count()==1
+            assert not page.locator('[name=appointment_messages_opt_in]').is_checked()
             assert page.locator('#booking-total').is_hidden()
             assert page.locator('.review-row.total').count()==1
             assert page.locator('.review-row.total').inner_text().count('40,00')==1
             assert page.locator('.booking-footer-confirm').count()==1
             fields=form.locator('input')
-            assert fields.count()==3
+            assert fields.count()==4  # 3 customer fields + 1 optional WhatsApp consent
+            assert form.locator('input:not([type=checkbox])').count()==3
 
             phone=form.locator('[name=customer_phone]')
             phone.fill('86972676282')
@@ -121,6 +126,7 @@ def test_compact_confirmation_birth_and_phone(browser_name,width,theme):
             assert posted[0]['customer_birth_date']=='1990-07-06'
             assert posted[0]['customer_phone']=='+5586972676282'
             assert posted[0]['confirmed'] is True
+            assert posted[0]['appointment_messages_opt_in'] is False
             assert not errors,errors
         finally:
             browser.close()

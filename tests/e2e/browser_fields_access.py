@@ -78,7 +78,7 @@ class IsolatedHTTP:
                 filename = "orion-suite.js"
             source = ROOT / "app/static" / filename
         elif path.startswith("/landing-assets/"):
-            source = (ROOT / "app/static" / filename if filename in ("orion-fields.js", "orion-fields.css")
+            source = (ROOT / "app/static" / filename if filename in ("orion-fields.js", "orion-fields.css", "orion-focus.js", "orion-focus.css")
                       else ROOT / "landing/assets" / filename)
         elif path.startswith("/brand/"):
             source = ROOT / "app/static" / filename
