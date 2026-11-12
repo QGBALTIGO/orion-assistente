@@ -367,9 +367,19 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
       return {id:sent.key.id};
     });outboundSuccess();return result;}finally{built?.dispose();}
     }catch(error){
-      if(preparationStage!=='relay_attempt')console.warn(JSON.stringify({component:'orion-chatbot-preparation',event:'failed_before_relay',stage:preparationStage,
-        channel_id:context.channelId,tenant_id:context.tenantId,
-        action_type:['text','list','url_button','audio','image','video','document','sticker','ptv','location','carousel'].includes(action?.type)?action.type:'unknown'}));
+      if(preparationStage!=='relay_attempt'){
+        let ingress;try{ingress=deviceRuntime?.diagnostics();}catch{}
+        let operationActive=false;try{operationActive=operationCurrent()===true;}catch{}
+        const observed_gate=!current()||state!=='connected'?'connection_changed':
+          ingress?.ingress_error||ingress?.ingress?.blocked>0?'ingress_review_required':
+          ingress?.ingress?.pending>0?'ingress_pending':
+          !authorized?'authorization_changed':!operationActive?'effect_scope_changed':
+          signal?.aborted?'operation_cancelled':'preparation_error';
+        console.warn(JSON.stringify({component:'orion-chatbot-preparation',event:'failed_before_relay',stage:preparationStage,
+          failure_code:messageFailureCode(error,{beforeSend:true,current:sendCurrent(),chatbot:true}),observed_gate,
+          channel_id:context.channelId,tenant_id:context.tenantId,
+          action_type:['text','list','url_button','audio','image','video','document','sticker','ptv','location','carousel'].includes(action?.type)?action.type:'unknown'}));
+      }
       if(preparationStage!=='relay_attempt')outboundFailure(preparationStage,error,sendCurrent);
       throw error;
     }
