@@ -35,7 +35,7 @@ DEVICE["name"] = "Atendimento sintético"
 DEVICE["phone_e164"] = "+5511900000001"
 DEVICE_ID = DEVICE["id"]
 ASSET_ID = CONTRACT["message_examples"]["media"]["asset"]["id"]
-ROUTES = ["dispositivos", "chatbot", "testar-chatbot", "templates", "novidades", "ajuda", "member"]
+ROUTES = ["dashboard", "dispositivos", "chatbot", "testar-chatbot", "templates", "novidades", "ajuda", "member"]
 KEYWORDS = [{"rule_id": RULE_ID, "keyword": "Olá", "match_mode": "equal", "enabled": True},
     {"rule_id": "60000000-0000-4000-8000-000000000002", "keyword": "menu", "match_mode": "equal", "enabled": True},
     {"rule_id": "60000000-0000-4000-8000-000000000003", "keyword": "imagem", "match_mode": "equal", "enabled": True},
@@ -383,7 +383,7 @@ def test_late_response_clear_revocation_and_standard_niche_cannot_reuse_context(
         assert page.request.post(fixture_url + "/__fixture/simulator-revoke", data={}).ok
         page.locator("[data-sct-input]").fill("Depois da revogação")
         page.locator("[data-sct-input]").press("Enter")
-        expect(page.locator("#page-suite")).to_have_attribute("data-os-current-route", "novidades")
+        expect(page.locator("#page-suite")).to_have_attribute("data-os-current-route", "dashboard")
         expect(page.locator("[data-sct-message]")).to_have_count(0)
         expect(page.locator("#osNav [data-os-route=testar-chatbot]")).to_have_count(0)
         report(page, fixture_url)
