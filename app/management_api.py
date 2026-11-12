@@ -172,6 +172,21 @@ async def get_customer_services(tenant_id: UUID, customer_id: UUID,
         return await data.customer_service_history(db, tenant_id, customer_id, limit, offset)
 
 
+@router.get("/customers/{customer_id}/legacy-history")
+async def get_customer_legacy_history(tenant_id: UUID, customer_id: UUID,
+                                      actor: Actor = Depends(authenticate)):
+    async with management_session(tenant_id, actor) as db:
+        await data.customer_detail(db, tenant_id, customer_id)
+        row = (await db.execute(text("""
+            SELECT source_system,source_name,source_phone,reported_appointments,
+                   reported_spent_cents,reported_ticket_cents,history,history_complete,imported_at
+            FROM customer_legacy_history
+            WHERE tenant_id=:tenant AND customer_id=:customer
+            ORDER BY source_system
+        """), {"tenant": tenant_id, "customer": customer_id})).mappings().all()
+        return {"sources": [data.clean_row(item) for item in row]}
+
+
 @router.get("/customers/{customer_id}")
 async def get_customer(tenant_id: UUID, customer_id: UUID, actor: Actor = Depends(authenticate)):
     async with management_session(tenant_id, actor) as db:
