@@ -34,7 +34,7 @@ BACKUP_ID = CONTRACT["backups_response"]["items"][0]["id"]
 EXPORT_ID = CONTRACT["export_response"]["export"]["id"]
 SIZES = [(390, 844), (768, 1024), (1440, 900)]
 PROFILE = "subscription_services"
-ALLOWED_ROUTES = ["dispositivos", "chatbot", "testar-chatbot", "templates", "novidades", "ajuda", "member"]
+ALLOWED_ROUTES = ["dashboard", "dispositivos", "chatbot", "testar-chatbot", "templates", "novidades", "ajuda", "member"]
 
 
 def now():
