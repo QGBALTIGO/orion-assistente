@@ -618,12 +618,12 @@ def test_lost_response_conflict_abort_revocation_and_other_niche_preserve_bounda
         assert page.evaluate("window.templateFixtureBlobs()") == 0
         control(page, fixture_url, "revoke")
         page.locator('[data-st-action="refresh"]').click()
-        expect(page.locator("#page-suite")).to_have_attribute("data-os-current-route", "novidades")
+        expect(page.locator("#page-suite")).to_have_attribute("data-os-current-route", "dashboard")
         expect(page.locator("#osNav [data-os-route=templates]")).to_have_count(0)
         expect(page.locator("[data-st-results]")).to_have_count(0)
         report(page, fixture_url)
 
-        for query, route in (("fixtureProfile=standard", "plano"), ("fixtureReadonly=1", "novidades")):
+        for query, route in (("fixtureProfile=standard", "plano"), ("fixtureReadonly=1", "dashboard")):
             page.goto(fixture_url + "/panel?fixtureRole=owner&fixturePlan=elite&aba=templates&" + query)
             expect(page.locator("#page-suite")).to_have_attribute("data-os-current-route", route)
             expect(page.locator("#osNav [data-os-route=templates]")).to_have_count(0)

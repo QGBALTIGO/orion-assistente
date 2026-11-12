@@ -13,7 +13,7 @@ async function preview(h){h.click(act('preview'));await flush();}
 test('Templates is a subscription-only route with its own permission and scoped reads',async t=>{
  const h=await makeSuite({initialRoute:'templates',permissions,bridge:{tenants:[{id:tenantA,name:'Empresa sintética',role:'owner',workspace_profile:'subscription_services'}]},configureWindow:window=>window.eval(source),respond:path=>path===base?listing():defaultResponse(path)});t.after(()=>h.close());await flush();
  assert.equal(h.document.querySelector('#page-suite').dataset.osCurrentRoute,'templates');assert.ok(h.document.querySelector('[data-st-empty]'));
- assert.deepEqual([...h.document.querySelectorAll('#osNav [data-os-route]')].map(node=>node.dataset.osRoute),['dispositivos','chatbot','testar-chatbot','templates','novidades','ajuda','member']);assert.equal(writes(h).length,0);
+ assert.deepEqual([...h.document.querySelectorAll('#osNav [data-os-route]')].map(node=>node.dataset.osRoute),['dashboard','dispositivos','chatbot','testar-chatbot','templates','novidades','ajuda','member']);assert.equal(writes(h).length,0);
  assert.equal(h.calls.some(call=>/\/chatbot-test|\/devices|\/management\/dashboard|plan-catalog/.test(call.path)),false);assert.deepEqual(h.errors,[]);
 });
 

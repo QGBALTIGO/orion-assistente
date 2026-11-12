@@ -446,12 +446,12 @@ def test_conflict_revocation_other_niche_and_empty_state_do_not_send(browser, fi
         action(page, "close-dialog").last.click()
         control(page, fixture_url, "revoke")
         action(page, "refresh").click()
-        expect(page.locator("#page-suite")).to_have_attribute("data-os-current-route", "novidades")
+        expect(page.locator("#page-suite")).to_have_attribute("data-os-current-route", "dashboard")
         expect(page.locator('#osNav [data-os-route="mensagens-enviadas"]')).to_have_count(0)
         expect(page.locator("[data-sm-row]")).to_have_count(0)
         assert len(writes(report(page, fixture_url))) == 1
 
-        for query, fallback in (("fixtureProfile=standard", "plano"), ("fixtureReadonly=1", "novidades")):
+        for query, fallback in (("fixtureProfile=standard", "plano"), ("fixtureReadonly=1", "dashboard")):
             page.goto(fixture_url + "/panel?fixtureRole=owner&fixturePlan=elite&aba=mensagens-enviadas&" + query)
             expect(page.locator("#page-suite")).to_have_attribute("data-os-current-route", fallback)
             expect(page.locator('#osNav [data-os-route="mensagens-enviadas"]')).to_have_count(0)
