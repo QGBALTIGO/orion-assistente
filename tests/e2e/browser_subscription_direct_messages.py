@@ -260,7 +260,7 @@ def test_url_button_draft_literal_safe_preview_and_cancel_without_transport(brow
             "footer": footer, "button_text": button_text, "url": url}
         frozen = prepared["operations"][0]["operation"]["preview"]
         assert (frozen["eligible"], frozen["blocked"]) == (0, 1)
-        assert frozen["items"][0]["message_preview"]["parts"] == [{"type": "url_button", "text": body,
+        assert frozen["items"][0]["message_preview"]["parts"] == [{"type": "url_button", "text": body + "\n\u200b",
             "footer": footer, "button_text": button_text, "url": url}]
         action(page, "cancel-review").click()
         expect(page.locator("[data-dm-dialog]")).to_have_count(0)
