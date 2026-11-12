@@ -72,3 +72,26 @@ def test_real_engine_fingerprint_is_deterministic_for_retries():
     assert first == fingerprint(prof, [service], start, "+5567900000000")
     assert first != fingerprint(prof, [service], start + timedelta(minutes=40),
                                 "+5567900000000")
+
+
+def test_real_engine_rejects_ambiguous_dst_local_time():
+    tz = ZoneInfo("America/New_York")
+    # A local wall time repeated during the November fall-back cannot safely
+    # identify one appointment instant without the caller choosing a fold.
+    with pytest.raises(HTTPException) as error:
+        validate_local(datetime(2026, 11, 1, 1, 30, tzinfo=tz), tz)
+    assert error.value.status_code == 422
+
+
+def test_real_engine_rejects_nonexistent_dst_local_time():
+    tz = ZoneInfo("America/New_York")
+    # Spring-forward skips this time entirely. Never confirm a nonexistent slot.
+    with pytest.raises(HTTPException) as error:
+        validate_local(datetime(2026, 3, 8, 2, 30, tzinfo=tz), tz)
+    assert error.value.status_code == 422
+
+
+def test_real_engine_accepts_valid_local_time_after_dst_gap():
+    tz = ZoneInfo("America/New_York")
+    candidate = datetime(2026, 3, 8, 3, 0, tzinfo=tz)
+    assert validate_local(candidate, tz) == candidate

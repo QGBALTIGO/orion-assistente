@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from pydantic import ValidationError
 
 from app.catalog_api import authenticate
+from app.plan_routing import enforce_endpoint_plan
 from app.commercial_api import router
 from app.commercial_schemas import Product, Variant, StockObservation, EstimateRequest, CreateQuote, ConfirmOrder
 from app.commercial_service import calculate
@@ -107,6 +108,10 @@ async def test_unlinked_members_and_viewers_cannot_mutate_commerce(monkeypatch):
     monkeypatch.setenv("COMMERCIAL_CATALOG_ENABLED", "1")
     app = FastAPI()
     app.include_router(router)
+    # This unit test isolates the commercial API's own role checks. The
+    # central plan dependency needs PostgreSQL and has separate integration
+    # tests; overriding it here must not override authenticate or authorize.
+    app.dependency_overrides[enforce_endpoint_plan] = lambda: None
     tenant = uuid4()
     base = f"/api/v1/tenants/{tenant}/commerce"
     app.dependency_overrides[authenticate] = lambda: SimpleNamespace(role="member", account_id=None)
