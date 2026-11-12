@@ -124,6 +124,8 @@ class Handler(PlansHandler):
                               "rules": session["chatbot_rules"]})
         if session and path.startswith(("/api/", "/auth/")):
             session["chatbot_calls"].append({"method": "GET", "path": path})
+        if session and path == base.BASE + "/subscription-whatsapp/devices" and session["workspace_profile"] == PROFILE:
+            return self.body({"items": [], "usage": {"used": 0, "limit": 1}})
         if session and path.startswith(CHATBOT_BASE):
             if session["workspace_profile"] != PROFILE:
                 return self.reject(session, "Chatbot is unavailable to standard workspaces")
