@@ -69,6 +69,7 @@ from app.orion_pwa_api import router as orion_pwa_router
 from app.dental_clinic_api import router as dental_clinic_router
 import app.dental_clinic_media  # registers protected exam endpoints on the same router
 from app.plan_routing import include_plan_router, enforce_endpoint_plan
+from app.ingress import AuthenticatedIngressMiddleware
 
 app = FastAPI(
     title="Orion Barbearias",
@@ -78,6 +79,7 @@ app = FastAPI(
     docs_url=None,
     redoc_url=None,
 )
+app.add_middleware(AuthenticatedIngressMiddleware)
 
 
 @app.on_event("startup")
