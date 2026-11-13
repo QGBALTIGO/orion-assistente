@@ -840,7 +840,7 @@
          if(!current(c))return;state.data.dashboard=d;renderDashboard(d,today);
          await Promise.all([loadDashboardAgenda(c,today),loadDashboardFinance(c,today)]);break;
        }
-      case 'agenda':void loadGoogle();await loadAgenda(c);break;
+      case 'agenda':if(agendaPeriod()==='day')void loadGoogle();await loadAgenda(c);break;
       case 'clientes':await loadCustomers(c);break;
       case 'inbox':await window.OrionInbox?.mount({host:$('osInboxHost'),request,tenantId:state.tenantId,canWrite:writable()});break;
       case 'servicos':{const d=await request(apiPath('/services'));if(!current(c))return;state.data.services=rows(d);renderServices();break;}
@@ -1164,11 +1164,14 @@
     const valid=()=>current(c)&&read===state.agendaRead;
     $('osPageBody')?.setAttribute('aria-busy','true');
     if($('osAgendaCount'))$('osAgendaCount').textContent='Atualizando agendamentos...';
-    const catalogueRequests=catalogue||!state.data.agendaCatalogueReady?Promise.allSettled([
-      request(apiPath('/professionals')),request(apiPath('/working_hours')),request(apiPath('/schedule_blocks')),
-      request(apiPath('/time_off')),request(apiPath('/working_breaks')),
-      request(mgmt('/block-series?'+query({start_date:state.filters.agendaDay,end_date:state.filters.agendaDay})))
-    ]):null;
+    const isPeriod=agendaPeriod()!=='day';
+    const catalogueRequests=isPeriod?
+      (catalogue||!state.data.professionals?Promise.allSettled([request(apiPath('/professionals'))]):null):
+      (catalogue||!state.data.agendaCatalogueReady?Promise.allSettled([
+        request(apiPath('/professionals')),request(apiPath('/working_hours')),request(apiPath('/schedule_blocks')),
+        request(apiPath('/time_off')),request(apiPath('/working_breaks')),
+        request(mgmt('/block-series?'+query({start_date:state.filters.agendaDay,end_date:state.filters.agendaDay})))
+      ]):null);
     try{
       let result=await request(apiPath('/appointments?'+agendaQuery(offset,limit)));
       if(!valid())return;
@@ -1186,10 +1189,14 @@
       }
       if(catalogueRequests){
         const outcomes=await catalogueRequests;if(!valid())return;
-        const keys=['professionals','workingHours','scheduleBlocks','timeOff','workingBreaks','blockSeries'];
-        outcomes.forEach((outcome,index)=>{if(outcome.status==='fulfilled')state.data[keys[index]]=rows(outcome.value);});
-        state.data.agendaCatalogueReady=outcomes.every(outcome=>outcome.status==='fulfilled');
-        state.data.agendaCatalogueError=state.data.agendaCatalogueReady?null:'Não foi possível consultar todos os expedientes e bloqueios. Atualize antes de usar a grade de horários.';
+        if(isPeriod){
+          if(outcomes[0].status==='fulfilled')state.data.professionals=rows(outcomes[0].value);
+        }else{
+          const keys=['professionals','workingHours','scheduleBlocks','timeOff','workingBreaks','blockSeries'];
+          outcomes.forEach((outcome,index)=>{if(outcome.status==='fulfilled')state.data[keys[index]]=rows(outcome.value);});
+          state.data.agendaCatalogueReady=outcomes.every(outcome=>outcome.status==='fulfilled');
+          state.data.agendaCatalogueError=state.data.agendaCatalogueReady?null:'Não foi possível consultar todos os expedientes e bloqueios. Atualize antes de usar a grade de horários.';
+        }
       }
       Object.assign(state.data,{appointments:list,agendaResult:{...result,items:list,offset:calendar?0:offset,limit},agendaError:null});
       if(!list.length&&offset>0&&number(result.total)>0){state.filters.agendaOffset=Math.max(0,Math.floor((number(result.total)-1)/limit)*limit);await loadAgenda(c,{catalogue:false});return;}
