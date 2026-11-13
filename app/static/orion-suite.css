@@ -3469,7 +3469,7 @@ html:has(.os-professional-history[open]){overflow:hidden}
 .os-agenda-summary-range>.os-agenda-summary-item{flex:0 0 auto;gap:4px;font-size:11px}
 .os-agenda-summary-range>.os-agenda-summary-item strong{font:600 14px/19px var(--os-display)}
 .os-agenda-range-heading{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:6px 14px;margin:0 0 12px}
-.os-agenda-range-heading h2{font:650 18px/26px var(--os-display);color:var(--os-text);text-transform:capitalize}
+.os-agenda-range-heading h2{font:650 18px/26px var(--os-display);color:var(--os-text);text-transform:none}
 .os-agenda-range-heading>span{font-size:12px;line-height:18px;color:var(--os-muted)}
 .os-agenda-period-overview{min-width:0;margin:8px 0 18px}
 .os-agenda-range-day{position:relative;display:flex;min-width:0;align-items:center;justify-content:center;flex-direction:column;gap:4px;box-sizing:border-box;padding:7px 4px;border:0;border-radius:0;background:var(--os-card);color:var(--os-text);font-family:var(--os-font);cursor:pointer;touch-action:manipulation;transition:background .14s ease,color .14s ease}
@@ -3527,7 +3527,7 @@ html:has(.os-professional-history[open]){overflow:hidden}
 .os-agenda-focus-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:15px 14px;border-bottom:1px solid var(--os-border)}
 .os-agenda-focus-head>div{min-width:0}
 .os-agenda-focus-head small{font-size:10px;line-height:15px;color:var(--os-muted);font-weight:650;letter-spacing:.07em}
-.os-agenda-focus-head h3{font:650 16px/23px var(--os-display);text-transform:capitalize;overflow-wrap:anywhere}
+.os-agenda-focus-head h3{font:650 16px/23px var(--os-display);text-transform:none;overflow-wrap:anywhere}
 .os-agenda-focus-head p{font-size:11px;color:var(--os-muted);line-height:18px;margin:4px 0 0}
 .os-agenda-focus-head .os-button{flex:0 0 auto}
 .os-agenda-focus-body{max-height:535px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
@@ -3550,7 +3550,7 @@ html:has(.os-professional-history[open]){overflow:hidden}
 .os-agenda-month-list-tools>div h2{font-size:14px}
 .os-agenda-period-group{margin:0 0 16px}
 .os-agenda-period-group-heading{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:0 0 8px}
-.os-agenda-period-group-heading h3{font:650 14px/21px var(--os-display);text-transform:capitalize}
+.os-agenda-period-group-heading h3{font:650 14px/21px var(--os-display);text-transform:none}
 .os-agenda-period-group-heading>span{font-size:11px;color:var(--os-muted)}
 .os-agenda-range-all-list .os-agenda-list{border-radius:14px}
 @container agenda (max-width:950px){

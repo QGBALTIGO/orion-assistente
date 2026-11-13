@@ -51,7 +51,7 @@ test('compact month has 30 selectable days and inline selected-day details',()=>
   assert.match(result.html,/os-agenda-range-layout/);
   assert.match(result.html,/osAgendaRangeFocusBody/);
   assert.match(result.html,/14 agendamentos/);
-  assert.match(result.html,/Ver mês em lista/);
+  assert.match(result.html,/Lista do mês/);
   assert.match(result.html,/Abrir dia/);
   assert.equal(result.next,'2026-12-01');
   assert.equal(result.prev,'2026-10-01');
@@ -67,14 +67,14 @@ test('week is 7 days in one strip and whole-week list is available',()=>{
   assert.match(result.html,/os-agenda-week-overview/);
   assert.match(result.html,/appointment-one/);
   assert.match(result.html,/appointment-two/);
-  assert.match(result.html,/Ver dia selecionado/);
+  assert.match(result.html,/Ver dia/);
   assert.doesNotMatch(result.html,/osAgendaRangeFocusBody/);
 });
 test('tapping week day focuses the day without leaving the week',()=>{
   const result=inspect('2026-11-13','week',false,'2026-11-11');
   assert.equal(result.selected,'2026-11-11');
   assert.match(result.html,/osAgendaRangeFocusBody/);
-  assert.match(result.html,/Ver semana completa/);
+  assert.match(result.html,/Semana inteira/);
   assert.equal((result.html.match(/aria-pressed="true"/g)||[]).length,1);
 });
 test('leap year, year crossover and month list',()=>{
@@ -85,7 +85,7 @@ test('leap year, year crossover and month list',()=>{
   assert.deepEqual(JSON.parse(JSON.stringify(cross.bounds)),{start:'2026-12-27',end:'2027-01-02'});
   const expanded=inspect('2026-11-13','month',true,'',[{id:'all-one',start_at:'2026-11-13T12:00:00Z'}]);
   assert.match(expanded.html,/all-one/);
-  assert.match(expanded.html,/Ver dia selecionado/);
+  assert.match(expanded.html,/Ver dia/);
   assert.match(expanded.html,/data-testid="pages"/);
   assert.doesNotMatch(expanded.html,/osAgendaRangeFocusBody/);
 });

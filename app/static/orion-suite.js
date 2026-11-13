@@ -1119,6 +1119,10 @@
     const day=f.agendaFocusDay||f.agendaDay||dateKey();
     return day>=start&&day<=end?day:(dateKey()>=start&&dateKey()<=end?dateKey():start);
   }
+  function agendaReadableDay(day){
+    const label=longDay(day);
+    return label.charAt(0).toLocaleUpperCase('pt-BR')+label.slice(1);
+  }
   function agendaPeriodLabel(){
     const bounds=agendaBounds(),period=agendaPeriod();
     if(period==='day')return fmtDate(bounds.start);
@@ -1130,7 +1134,8 @@
       if(a.getUTCMonth()!==b.getUTCMonth())return from+' '+month(a)+' – '+to+' '+month(b)+' '+year;
       return from+'–'+to+' '+month(b)+' '+year;
     }
-    return new Intl.DateTimeFormat('pt-BR',{timeZone:'UTC',month:'long',year:'numeric'}).format(dayDate(bounds.start));
+    const title=new Intl.DateTimeFormat('pt-BR',{timeZone:'UTC',month:'long',year:'numeric'}).format(dayDate(bounds.start));
+    return title.charAt(0).toLocaleUpperCase('pt-BR')+title.slice(1);
   }
   function agendaFrame(readOnly=''){
     const f=state.filters,day=f.agendaDay||dateKey(),weekStart=shiftDay(day,-dayDate(day).getUTCDay()),period=agendaPeriod(),can=writable();
@@ -1335,7 +1340,7 @@
     };
     const focusTitle=()=>{
       const count=countOn(selected);
-      return '<div class="os-agenda-focus-head"><div><small>AGENDA DO DIA</small><h3>'+esc(longDay(selected))+
+      return '<div class="os-agenda-focus-head"><div><small>AGENDA DO DIA</small><h3>'+esc(agendaReadableDay(selected))+
         '</h3><p>'+count+' agendamento'+(count===1?'':'s')+' nesta data</p></div>'+
         '<button type="button" class="os-button os-outline os-small" data-os-action="agenda-open-selected">'+icon('calendar')+
         '<span>Abrir dia</span></button></div>'+
@@ -1351,14 +1356,14 @@
       });
       const sections=[...grouped].sort(([a],[b])=>a.localeCompare(b)).map(([day,items])=>
         '<section class="os-agenda-period-group"><div class="os-agenda-period-group-heading">'+
-        '<h3>'+esc(longDay(day))+'</h3><span>'+items.length+' '+(items.length===1?'atendimento':'atendimentos')+'</span></div>'+
+        '<h3>'+esc(agendaReadableDay(day))+'</h3><span>'+items.length+' '+(items.length===1?'atendimento':'atendimentos')+'</span></div>'+
         '<div class="os-agenda-list">'+items.map(appointmentRow).join('')+'</div></section>').join('');
       return '<div class="os-agenda-range-all-list" role="region" aria-label="Atendimentos do período">'+
         (sections||agendaEmpty())+agendaPagination()+'</div>';
     };
     const toggle='<button type="button" class="os-button os-outline os-small os-agenda-range-switch-list"'+
       ' data-os-action="agenda-range-list" aria-expanded="'+whole+'">'+
-      icon(whole?'calendar':'list')+'<span>'+(whole?'Ver dia selecionado':period==='week'?'Ver semana completa':'Ver mês em lista')+
+      icon(whole?'calendar':'list')+'<span>'+(whole?'Ver dia':period==='week'?'Semana inteira':'Lista do mês')+
       '</span></button>';
     if(period==='week'){
       const strip=Array.from({length:7},(_,i)=>dayButton(shiftDay(bounds.start,i),'week')).join('');

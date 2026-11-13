@@ -94,11 +94,11 @@ assert.equal(month.next,'2026-12-01');
 assert.equal(month.prev,'2026-10-01');
 assert.equal((month.html.match(/data-os-open-day=/g)||[]).length,30);
 assert.equal((week.html.match(/data-os-open-day=/g)||[]).length,7);
-assert.match(month.html,/Ver mês em lista/);
+assert.match(month.html,/Lista do mês/);
 assert.match(month.html,/osAgendaRangeFocusBody/);
 assert.equal((month.html.match(/aria-pressed="true"/g)||[]).length,1);
 assert.match(month.html,/14 agendamentos/);
-assert.match(week.html,/Ver semana completa/);
+assert.match(week.html,/Semana inteira/);
 assert.ok(!month.html.includes('undefined'));
 console.log('Day/week/month calendar and drill-down: OK');
 """.replace("EXTRACTED_HELPERS", json.dumps(helpers)).replace(
