@@ -121,6 +121,8 @@ class Handler(ChatbotHandler):
                 "campaigns": list(session["cp_campaigns"].values()), "groups": list(session["cp_groups"].values()),
                 "confirmations": session["cp_confirmations"], "effects": session["cp_effects"],
                 "unexpected": session["unexpected"]})
+        if session and path == base.BASE + "/subscription-whatsapp/sent-messages" and session["workspace_profile"] == "subscription_services":
+            return self.body({"items": [], "counts": {"today": 0, "last_30_days": 0, "scope": "message_attempts"}})
         if not path.startswith(CAMPAIGNS_BASE):
             return super().do_GET()
         if session:
@@ -751,11 +753,18 @@ def test_filters_expiry_revocation_empty_and_other_niche_do_not_admit(browser, f
         with page.expect_response(lambda response: response.status == 403 and CAMPAIGNS_BASE in response.url):
             action(page, "refresh").click()
         expect(page.locator('#osNav [data-os-route="campanhas"]')).to_have_count(0)
+        expect(page.locator("#page-suite")).to_have_attribute("data-os-current-route", "dashboard")
+        expect(page.locator("#osSubscriptionDashboard")).to_have_attribute("aria-busy", "false")
         revoked = report(page, fixture_url)
         assert writes(revoked) == before_revocation
         assert not revoked["confirmations"] and not revoked["effects"]
         for extra in ["&fixtureProfile=standard", "&fixtureReadonly=1"]:
-            page.goto(fixture_url + "/panel?fixtureRole=owner&fixturePlan=elite&aba=campanhas" + extra)
+            with page.expect_response(lambda response: urlsplit(response.url).path == "/api/v1/account/business-identity"):
+                page.goto(fixture_url + "/panel?fixtureRole=owner&fixturePlan=elite&aba=campanhas" + extra)
+            fallback = "plano" if "standard" in extra else "dashboard"
+            expect(page.locator("#page-suite")).to_have_attribute("data-os-current-route", fallback)
+            if fallback == "dashboard":
+                expect(page.locator("#osSubscriptionDashboard")).to_have_attribute("aria-busy", "false")
             expect(page.locator('#osNav [data-os-route="campanhas"]')).to_have_count(0)
             assert report(page, fixture_url)["calls"] == []
         open_campaigns(page, fixture_url, "&fixtureEmpty=1")

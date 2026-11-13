@@ -183,6 +183,13 @@ class Handler(ChatbotHandler):
                 "sends": list(session["dm_sends"].values()), "confirmations": session["dm_confirmations"],
                 "saved_templates": session["dm_saved_templates"], "uploads": list(session["dm_uploads"].values()),
                 "effects": session["dm_effects"], "unexpected": session["unexpected"]})
+        if session and session["workspace_profile"] == "subscription_services" and not session["chatbot_readonly"]:
+            if path == base.BASE + "/subscription-whatsapp/sent-messages":
+                return self.body({"items": [], "counts": {"today": 0, "last_30_days": 0, "scope": "message_attempts"}})
+            if path == base.BASE + "/subscription-whatsapp/scheduled-messages":
+                return self.body({"items": [], "counts": {"active": 0, "attention": 0}})
+            if path == base.BASE + "/subscription-whatsapp/campaigns":
+                return self.body({"items": [], "total": 0})
         if not path.startswith(DIRECT_BASE):
             return super().do_GET()
         if session:

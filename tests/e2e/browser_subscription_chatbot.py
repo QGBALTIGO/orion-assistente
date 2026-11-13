@@ -34,7 +34,7 @@ BACKUP_ID = CONTRACT["backups_response"]["items"][0]["id"]
 EXPORT_ID = CONTRACT["export_response"]["export"]["id"]
 SIZES = [(390, 844), (768, 1024), (1440, 900)]
 PROFILE = "subscription_services"
-ALLOWED_ROUTES = ["dispositivos", "chatbot", "testar-chatbot", "templates", "novidades", "ajuda", "member"]
+ALLOWED_ROUTES = ["dashboard", "dispositivos", "chatbot", "testar-chatbot", "templates", "novidades", "ajuda", "member"]
 
 
 def now():
@@ -124,6 +124,8 @@ class Handler(PlansHandler):
                               "rules": session["chatbot_rules"]})
         if session and path.startswith(("/api/", "/auth/")):
             session["chatbot_calls"].append({"method": "GET", "path": path})
+        if session and path == base.BASE + "/subscription-whatsapp/devices" and session["workspace_profile"] == PROFILE:
+            return self.body({"items": [], "usage": {"used": 0, "limit": 1}})
         if session and path.startswith(CHATBOT_BASE):
             if session["workspace_profile"] != PROFILE:
                 return self.reject(session, "Chatbot is unavailable to standard workspaces")

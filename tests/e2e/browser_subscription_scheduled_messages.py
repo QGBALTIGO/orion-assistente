@@ -381,7 +381,7 @@ def test_search_tabs_pagination_expiry_revocation_and_niche_boundary(browser, fi
         expect(page.locator('#osNav [data-os-route="programadas"]')).to_have_count(0)
         assert writes(report(page, fixture_url)) == before
         assert page.evaluate("history.state.orionScheduleRecovery || null") is None
-        for extra, route in (("&fixtureProfile=standard", "plano"), ("&fixtureReadonly=1", "novidades")):
+        for extra, route in (("&fixtureProfile=standard", "plano"), ("&fixtureReadonly=1", "dashboard")):
             navigate_ready_account(extra, route)
             expect(page.locator('#osNav [data-os-route="programadas"]')).to_have_count(0)
             assert report(page, fixture_url)["calls"] == []

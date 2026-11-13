@@ -234,7 +234,7 @@ def test_group_contact_direct_route_requires_owner_active_company_workspace_and_
         role = "reader" if case == "non-owner" else "owner"
         query = query.replace("&fixtureRole=reader", "")
         page.goto(fixture_url + f"/panel?fixtureRole={role}&fixturePlan=none&aba=extrator-contatos" + query)
-        expect(page.locator("#page-suite")).to_have_attribute("data-os-current-route", "plano" if case == "standard" else "novidades")
+        expect(page.locator("#page-suite")).to_have_attribute("data-os-current-route", "plano" if case == "standard" else "dashboard")
         expect(page.locator(HOST)).to_have_count(0)
         expect(page.locator('#osNav [data-os-route="extrator-contatos"]')).to_have_count(0)
         value = report(page, fixture_url)
