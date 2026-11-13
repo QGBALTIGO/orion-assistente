@@ -1255,6 +1255,7 @@
     const target=$('osAgendaSummary');if(!target)return;
     const counters=[['confirmed','Confirmados'],['completed','Finalizados'],['cancelled','Cancelamentos'],['no_show','Faltas']];
     const days=agendaPeriod()==='day'?null:state.data.agendaResult?.days;
+    target.classList.toggle('os-agenda-summary-range',agendaPeriod()!=='day');
     const count=status=>Array.isArray(days)?days.reduce((total,day)=>total+number(day[status]),0):list.filter(a=>a.status===status).length;
     target.innerHTML='<span class="os-agenda-summary-label">'+(days?'No período':'Exibidos')+'</span>'+counters.map(([status,label])=>'<span class="os-agenda-summary-item os-status-'+status+'"><strong>'+count(status)+'</strong><span>'+label+'</span></span>').join('');
   }
@@ -1299,7 +1300,6 @@
       counts=new Map(days.map(item=>[String(item.day),item])),
       countOn=day=>number(counts.get(day)?.total),
       weekdays=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'],
-      compactWeekdays=['D','S','T','Q','Q','S','S'],
       whole=state.filters.agendaRangeList===true,
       total=number(result.total);
     const markers=day=>{
@@ -1310,7 +1310,7 @@
           .map(key=>'<i class="os-agenda-dot-'+key+'"></i>').join('')+'</span>';
     };
     const dayButton=(day,kind)=>{
-      const date=dayDate(day),count=countOn(day),focused=day===selected;
+      const date=dayDate(day),count=countOn(day),focused=day===selected&&!whole;
       return '<button type="button" class="os-agenda-range-day os-agenda-'+kind+'-day'+
         (day===today?' is-today':'')+(focused?' is-selected':'')+
         '" data-os-open-day="'+day+'" aria-pressed="'+focused+'" aria-label="'+
@@ -1325,7 +1325,7 @@
         '</h3><p>'+count+' agendamento'+(count===1?'':'s')+' nesta data</p></div>'+
         '<button type="button" class="os-button os-outline os-small" data-os-action="agenda-open-selected">'+icon('calendar')+
         '<span>Abrir dia</span></button></div>'+
-        '<div id="osAgendaRangeFocusBody" class="os-agenda-focus-body" role="status" aria-live="polite">'+
+        '<div id="osAgendaRangeFocusBody" class="os-agenda-focus-body" role="region" aria-label="Atendimentos do dia selecionado" aria-live="polite">'+
         loading('Consultando atendimentos...')+'</div>';
     };
     const wholeList=()=>{
@@ -1349,7 +1349,7 @@
     if(period==='week'){
       const strip=Array.from({length:7},(_,i)=>dayButton(shiftDay(bounds.start,i),'week')).join('');
       return '<section class="os-agenda-period-overview os-agenda-week-overview-wrapper">'+
-        '<div class="os-agenda-range-heading"><h2>Esta semana</h2><span>'+esc(agendaPeriodLabel())+'</span></div>'+
+        '<div class="os-agenda-range-heading"><h2>Semana</h2><span>'+esc(agendaPeriodLabel())+'</span></div>'+
         '<div class="os-agenda-week-overview" role="group" aria-label="Dias da semana">'+strip+'</div></section>'+
         '<div class="os-agenda-range-list-heading"><div><h2>'+(whole?'Atendimentos da semana':'Dia selecionado')+
         '</h2><p>'+(whole?'Todos os horários, organizados por data':'Consulte os horários sem sair da semana')+
@@ -1370,7 +1370,7 @@
       '<span>'+total+' '+(total===1?'atendimento':'atendimentos')+'</span></div>'+
       '<div class="os-agenda-range-layout'+(whole?' is-list':'')+'">'+grid+
       (whole?'':'<aside class="os-agenda-focus-shell">'+focusTitle()+'</aside>')+'</div></section>'+
-      '<div class="os-agenda-range-list-heading os-agenda-month-list-tools">'+
+      '<div class="os-agenda-range-list-heading os-agenda-month-list-tools '+(whole?'is-list':'is-focus')+'">'+
       '<div><h2>'+(whole?'Agendamentos do mês':'Navegação mensal')+'</h2>'+
       '<p>'+(whole?'Lista completa por data':'Toque em uma data para consultar seus horários')+'</p></div>'+toggle+'</div>'+
       (whole?wholeList():'');
