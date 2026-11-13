@@ -1250,7 +1250,7 @@
   }
   async function applyAgendaFilters(){
     if(state.busy||state.route!=='agenda')return;
-    clearTimeout(state.agendaSearchTimer);state.filters.agendaOffset=0;
+    clearTimeout(state.agendaSearchTimer);state.filters.agendaOffset=0;state.filters.agendaFocusOffset=0;
     await loadAgenda(context(),{catalogue:false});
   }
   function agendaPagination(){
@@ -4218,7 +4218,7 @@
         if(f.agendaFocusOffset>=number(r.total))return;
         await loadAgendaFocus(context());break;
       }
-      case 'agenda-clear':f.agendaProfessional='';f.agendaStatus='all';f.agendaQuery='';f.agendaOffset=0;await open('agenda',{keepScroll:true});break;
+      case 'agenda-clear':f.agendaProfessional='';f.agendaStatus='all';f.agendaQuery='';f.agendaOffset=0;f.agendaFocusOffset=0;await open('agenda',{keepScroll:true});break;
       case 'agenda-page-prev':case 'agenda-page-next':{const result=state.data.agendaResult;if(!result||state.data.agendaError)return;const next=Math.max(0,f.agendaOffset+(name==='agenda-page-prev'?-1:1)*(number(result.limit)||50));if(next>=number(result.total))return;f.agendaOffset=next;await loadAgenda(context(),{catalogue:false});$('osAgendaCount')?.focus();break;}
       case 'agenda-google':await showGoogle();break;
       case 'google-refresh':await loadGoogle({handleReturn:false});break;
