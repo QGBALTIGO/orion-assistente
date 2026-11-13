@@ -1,3 +1,5 @@
+import {makeBoundedCache} from './bounded-cache.mjs';
+import {lookupRecipient} from './recipient-lookup.mjs';
 // Only a contemporary, exact PN lookup may authorize a LID for the pilot.
 // Keep the phone as application metadata; never derive it from an opaque LID.
 import {AsyncLocalStorage} from 'node:async_hooks';
@@ -10,7 +12,7 @@ const identityError=()=>Error('Não foi possível confirmar a identidade do dest
 
 // Baileys does not cache empty USync results. Scope a checked snapshot to this
 // relay, including empty lists, without changing cache behavior for other work.
-export function makePilotDeviceCache(base=new Map()){
+export function makePilotDeviceCache(base=makeBoundedCache()){
   const scope=new AsyncLocalStorage();
   const cache={
     get(key){const snapshot=scope.getStore();return snapshot?.has(key)?snapshot.get(key):base.get(key);},
@@ -21,7 +23,8 @@ export function makePilotDeviceCache(base=new Map()){
   return cache;
 }
 
-export async function resolvePilotRecipient({phone,pilotPhone,enabled=false,socket,deviceCache,isCurrent=()=>true}){
+export async function resolvePilotRecipient({phone,pilotPhone,enabled=false,socket,deviceCache,isCurrent=()=>true,
+  lookupResults,deviceLookupTimeoutMs=5000,schedule=setTimeout,cancel=clearTimeout}){
   if(typeof phone!=='string'||!pn.test(phone))throw identityError();
   const normal={jid:phone+'@s.whatsapp.net',phone,kind:'pn'};
   if(!enabled||phone!==pilotPhone)return normal;
@@ -33,8 +36,10 @@ export async function resolvePilotRecipient({phone,pilotPhone,enabled=false,sock
   if(!ownPn||ownPn===phone||typeof ownLid!=='string'||!ownLidWithDevice.test(ownLid)||
       typeof socket?.onWhatsApp!=='function'||typeof socket?.getUSyncDevices!=='function'||
       !caches.has(deviceCache)||!isCurrent())throw identityError();
-  let results;
-  try{results=await socket.onWhatsApp(phone);}catch{throw identityError();}
+  // The caller's fresh, bounded lookup belongs to this same authorized send.
+  // Standalone callers still make their own lookup; never use a shared cache.
+  let results=lookupResults;
+  if(results===undefined)try{results=await lookupRecipient(socket,phone,{isCurrent,schedule,cancel});}catch{throw identityError();}
   if(!isCurrent()||!Array.isArray(results))throw identityError();
   const matches=results.filter(row=>row?.jid===normal.jid);
   if(matches.length!==1||matches[0].exists!==true||typeof matches[0].lid!=='string'||
@@ -45,7 +50,16 @@ export async function resolvePilotRecipient({phone,pilotPhone,enabled=false,sock
   // extractor loses domains: an own-LID companion or recipient-PN companion
   // cannot safely be reinterpreted by that relay. Stop before creating a message.
   let devices;
-  try{devices=await socket.getUSyncDevices([socket.user.id,jid],false,true);}catch{throw identityError();}
+  try{
+    if(!Number.isSafeInteger(deviceLookupTimeoutMs)||deviceLookupTimeoutMs<1)throw identityError();
+    devices=await new Promise((resolve,reject)=>{
+      let settled=false;
+      const finish=(error,value)=>{if(settled)return;settled=true;cancel(timer);error?reject(error):resolve(value);};
+      const timer=schedule(()=>finish(identityError()),deviceLookupTimeoutMs);
+      Promise.resolve().then(()=>socket.getUSyncDevices([socket.user.id,jid],false,true))
+        .then(value=>finish(null,value),error=>finish(error));
+    });
+  }catch{throw identityError();}
   if(!isCurrent()||!Array.isArray(devices)||devices.length>200)throw identityError();
   const recipientUser=jid.split('@')[0];
   for(const device of devices){

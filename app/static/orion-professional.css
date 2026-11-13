@@ -1,0 +1,72 @@
+@font-face{font-family:Figtree;src:url('/brand/figtree-latin.woff2') format('woff2');font-weight:300 900;font-display:swap}
+@font-face{font-family:Outfit;src:url('/brand/outfit-latin.woff2') format('woff2');font-weight:100 900;font-display:swap}
+:root{color-scheme:light;--bg:#f6f8fb;--surface:#fff;--subtle:#f0f4f7;--text:#172438;--muted:#69778a;--border:#e2e8ef;--accent:#2e7bf6;--accent-dark:#2469d7;--soft:#eaf2ff;--danger:#b42332;--shadow:0 10px 30px rgba(17,36,56,.045)}
+:root[data-theme="dark"]{color-scheme:dark;--bg:#0f1720;--surface:#18232e;--subtle:#23303b;--text:#eef4f8;--muted:#9faebc;--border:#30414f;--accent:#72a8ff;--accent-dark:#4a8dfa;--soft:#132b50;--danger:#f28a96;--shadow:0 12px 30px #0003}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.55 Figtree,system-ui,sans-serif}button,input,textarea,select{font:inherit}button{cursor:pointer}button:disabled{opacity:.5;cursor:default}button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+[hidden]{display:none!important}.boot{padding:24px;text-align:center;margin:16vh auto;max-width:520px}.shell{min-height:100vh;display:grid;grid-template-columns:246px minmax(0,1fr)}
+.sidebar{background:var(--surface);border-right:1px solid var(--border);padding:30px 18px;display:flex;flex-direction:column;gap:34px}
+.brand{display:grid;gap:5px;text-decoration:none;color:var(--text);padding:0 12px}.brand img{width:155px;max-width:100%;height:42px;object-fit:contain;object-position:left}.brand span{font-size:10px;color:var(--muted);letter-spacing:1.8px;font-weight:800}
+.navigation{display:grid;gap:5px}.navigation button{width:100%;background:none;border:0;color:var(--muted);border-radius:12px;text-align:left;padding:12px 13px;font-weight:600;display:flex;align-items:center;gap:12px}.navigation button:hover{background:var(--subtle);color:var(--text)}.navigation button[aria-current="page"]{color:var(--accent-dark);background:var(--soft)}.nav-icon{font-size:18px;width:20px;line-height:1}.sidebar-foot{margin-top:auto;border-top:1px solid var(--border);padding:20px 13px;color:var(--muted)}
+.workspace{min-width:0;display:flex;flex-direction:column}.topbar{background:var(--surface);border-bottom:1px solid var(--border);padding:17px clamp(20px,3vw,43px);display:flex;align-items:center;justify-content:space-between;gap:16px;position:sticky;top:0;z-index:2}
+.company{display:flex;align-items:center;gap:11px;min-width:0}.company strong{display:block;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}.company small{display:block;color:var(--muted);font-size:12px}.company-symbol{display:grid;place-items:center;width:40px;height:40px;border-radius:12px;background:var(--soft)}.company-symbol img{width:25px;height:25px}.top-actions{display:flex;align-items:center;gap:9px}.main{width:100%;max-width:1210px;margin:auto;padding:clamp(20px,3.4vw,48px);align-self:start}
+h1,h2,h3{font-family:Outfit,Figtree,sans-serif;line-height:1.2;letter-spacing:-.02em}h1{font-size:clamp(26px,3vw,36px);margin:0}h2{font-size:20px;margin:0 0 16px}h3{font-size:17px;margin:0}.intro{margin-bottom:25px}.intro p{color:var(--muted);margin:7px 0 0}.eyebrow{font-size:11px;letter-spacing:1.7px;font-weight:800;color:var(--accent);margin-bottom:10px}.page-controls{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin:0 0 20px}
+.cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-bottom:24px}.card{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:21px;min-width:0;box-shadow:var(--shadow)}.card-label{color:var(--muted);font-size:13px;font-weight:600;margin:0 0 7px}.card-value{font:700 clamp(23px,2.5vw,31px)/1.2 Outfit,Figtree,sans-serif;overflow-wrap:anywhere}.card small{display:block;color:var(--muted);margin-top:6px}.section-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px}.section-heading h2{margin:0}
+.button,.ghost-button,.icon-button{border:1px solid transparent;border-radius:12px;min-height:42px;padding:9px 15px;font-weight:700}.button{background:var(--accent);color:white}.button:hover{background:var(--accent-dark)}.ghost-button,.icon-button{background:var(--surface);color:var(--text);border-color:var(--border)}.ghost-button:hover,.icon-button:hover{background:var(--subtle)}.icon-button{width:42px;padding:6px;display:grid;place-items:center;font-size:20px}.danger{color:var(--danger)}.small{min-height:35px;padding:6px 10px;font-size:12px}.actions{display:flex;flex-wrap:wrap;gap:7px}
+.appointments{display:grid;gap:12px}.appointment{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:18px;display:grid;grid-template-columns:100px 1fr auto;gap:18px;align-items:start}.hour{font:700 20px Outfit}.hour small{display:block;font:12px Figtree;color:var(--muted)}.appointment strong{font-size:15px}.appointment p{font-size:13px;margin:4px 0;color:var(--muted)}.appointment .actions{justify-content:flex-end}
+.state{display:inline-block;border-radius:20px;background:var(--subtle);color:var(--muted);padding:3px 9px;font-size:11px;font-weight:800}.state.confirmed{background:var(--soft);color:var(--accent-dark)}.state.completed{background:#e6f0ff;color:#2259a5}.state.cancelled{background:#fdf0ef;color:#b42332}
+.empty{padding:32px 18px;text-align:center;border:1px dashed var(--border);border-radius:16px;color:var(--muted)}.muted{color:var(--muted)}.notice{padding:14px 16px;border:1px solid var(--border);background:var(--subtle);border-radius:12px;color:var(--muted);font-size:13px}.goal{padding:18px 0;border-bottom:1px solid var(--border)}.goal:last-child{border-bottom:0}.goal-top{display:flex;justify-content:space-between;gap:10px}.goal progress{width:100%;height:9px;accent-color:var(--accent);margin:13px 0}.goal p{margin:4px 0;color:var(--muted);font-size:12px}
+.blocks{display:flex;flex-wrap:wrap;gap:10px}.block{border:1px solid var(--border);padding:10px 12px;border-radius:12px;background:var(--subtle);display:flex;align-items:center;gap:10px}.block button{border:0;background:none;color:var(--danger);font-weight:700}.field{display:grid;gap:6px;margin:0 0 15px}.field label{font-size:13px;font-weight:700}.field input,.field textarea{display:block;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:11px;min-height:44px;width:100%;padding:9px 12px}.field textarea{min-height:80px;resize:vertical}.field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}.field-inline{display:flex;gap:9px;align-items:center}.field-inline input{width:auto}
+.modal-layer{position:fixed;inset:0;background:#07151fc0;display:grid;place-items:center;padding:16px;z-index:15}.dialog{background:var(--surface);width:min(100%,480px);max-height:90vh;overflow:auto;border-radius:20px;border:1px solid var(--border);padding:24px;box-shadow:0 20px 70px #0004}.dialog-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}.dialog-top h2{margin:0}.dialog-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px}.form-error{font-size:13px;color:var(--danger);min-height:18px}.toast{position:fixed;right:24px;bottom:24px;background:var(--text);color:var(--bg);padding:13px 20px;border-radius:12px;z-index:20;max-width:min(90vw,420px)}.mobile-nav{display:none}
+@media(max-width:1000px){.shell{grid-template-columns:210px minmax(0,1fr)}.sidebar{padding:20px 10px}.cards{grid-template-columns:repeat(2,minmax(0,1fr))}.appointment{grid-template-columns:80px 1fr}.appointment .actions{grid-column:2;justify-content:flex-start}}
+@media(max-width:700px){.shell{display:block}.sidebar{display:none}.topbar{padding:12px 16px}.main{padding:24px 16px 94px}.cards{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.card{padding:16px;border-radius:15px}.card-value{font-size:23px}.cards .card:last-child:nth-child(odd){grid-column:1/-1}.appointment{grid-template-columns:65px 1fr;gap:10px;padding:14px}.appointment .actions{grid-column:1/-1;padding-top:8px}.mobile-nav{display:grid;grid-template-columns:repeat(5,1fr);position:fixed;bottom:0;left:0;right:0;z-index:4;background:var(--surface);border-top:1px solid var(--border);padding-bottom:env(safe-area-inset-bottom)}.mobile-nav button{border:0;background:transparent;color:var(--muted);padding:13px 2px;font-size:11px;font-weight:700}.mobile-nav button[aria-current=page]{color:var(--accent-dark);background:var(--soft)}.dialog{padding:20px}.top-actions .ghost-button{font-size:12px;padding:8px 12px}.field-row{grid-template-columns:1fr 1fr}.page-controls{align-items:stretch}.page-controls input{flex:1}}
+
+.services-select{border:1px solid var(--border);border-radius:12px;margin:0 0 15px;padding:12px;min-width:0}.services-select legend{font-size:13px;font-weight:700;padding:0 7px}.service-choice{display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)}.service-choice:last-child{border:0}.service-choice input{accent-color:var(--accent);width:17px;height:17px}.service-choice span{display:grid;gap:1px}.service-choice small{font-size:12px;color:var(--muted)}.slot-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:10px 0}.slot-choice{position:relative}.slot-choice input{position:absolute;opacity:0}.slot-choice span{display:block;text-align:center;padding:10px;border:1px solid var(--border);border-radius:10px;background:var(--subtle);cursor:pointer}.slot-choice input:checked+span{border-color:var(--accent);background:var(--soft);color:var(--accent-dark);font-weight:700}.slot-choice input:focus-visible+span{outline:2px solid var(--accent);outline-offset:2px}@media(max-width:470px){.slot-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
+.booking-step{display:flex;align-items:center;gap:10px;margin:8px 0 14px}.booking-step span{font-size:11px;font-weight:800;color:var(--accent-dark);padding:5px 9px;background:var(--soft);border-radius:8px}.booking-step strong{font-size:13px}.booking-summary{border:1px solid var(--border);background:var(--subtle);border-radius:14px;padding:15px;margin:15px 0}.booking-summary>div{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;border-bottom:1px solid var(--border);padding:9px 0;font-size:13px}.booking-summary>div:last-child{border:0}.booking-summary span{color:var(--muted);flex:0 0 35%}.booking-summary strong{text-align:right;overflow-wrap:anywhere}#modalServices{max-height:220px;overflow:auto}.dialog{width:min(100%,530px)}
+.field select{display:block;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:11px;min-height:44px;width:100%;padding:9px 12px}
+.recorded-services{display:grid;gap:10px;list-style:none;margin:12px 0 20px;padding:0}
+.recorded-services li{display:flex;align-items:flex-start;justify-content:space-between;gap:15px;font-size:13px}
+.recorded-services li>span:first-child{display:grid;gap:3px;min-width:0}
+.recorded-services strong,.service-choice strong{overflow-wrap:anywhere}
+.recorded-services small{color:var(--muted);font-size:12px}
+.recorded-services li>span:last-child{white-space:nowrap}
+.appointment-duration{display:block}.service-choice span{min-width:0}
+#modalExtraConflict p{margin:0 0 10px}#modalExtraConflict .service-choice{border:0;padding:0;align-items:flex-start}
+#modalExtraConflict input{flex-shrink:0;margin-top:3px}
+@media(max-width:390px){.dialog .field-row{grid-template-columns:1fr}.dialog-actions{flex-wrap:wrap}.dialog-actions .button{flex:1}}
+
+/* Dental controls inherit the existing professional Orion design, not a demo stylesheet. */
+#professionalDentalWorkspace .os-dental{
+ --os-bg:var(--bg);--os-card:var(--surface);--os-text:var(--text);
+ --os-muted:var(--muted);--os-border:var(--border);--os-soft:var(--subtle);
+ --os-tint:var(--soft);--os-primary:var(--accent);--os-primary-hover:var(--accent-dark);
+ --os-danger:var(--danger);--os-danger-bg:var(--subtle);--os-shadow:var(--shadow);
+ --os-font:Figtree,system-ui,sans-serif;--os-display:Outfit,Figtree,sans-serif;
+}
+#professionalDentalWorkspace .os-button{
+ display:inline-flex;align-items:center;justify-content:center;gap:8px;
+ padding:8px 14px;min-height:38px;max-width:100%;border:1px solid transparent;
+ border-radius:10px;background:var(--os-primary);color:#fff;font:600 13px/20px var(--os-font);
+ text-align:center;white-space:normal;cursor:pointer
+}
+#professionalDentalWorkspace .os-button:is(:hover,:focus-visible):not(:disabled){background:var(--os-primary-hover)}
+#professionalDentalWorkspace .os-button.os-outline{
+ border-color:var(--os-border);color:var(--os-text);background:var(--os-card)}
+#professionalDentalWorkspace .os-button.os-ghost{border:0;background:transparent;color:var(--os-muted)}
+#professionalDentalWorkspace .os-button.os-danger{background:var(--os-danger);color:white}
+#professionalDentalWorkspace .os-pill-tab{
+ display:inline-flex;align-items:center;justify-content:center;min-height:36px;padding:8px 13px;
+ background:var(--os-card);border:1px solid var(--os-border);border-radius:9px;
+ color:var(--os-muted);font:600 13px var(--os-font);cursor:pointer
+}
+#professionalDentalWorkspace .os-pill-tab[aria-selected=true]{
+ border-color:var(--os-primary);background:var(--os-tint);color:var(--os-primary)
+}
+#professionalDentalWorkspace .os-dental .os-dental-card{
+ box-shadow:none;border-radius:14px
+}
+@media(max-width:700px){
+ .mobile-nav[data-dental-visible=true]{grid-template-columns:repeat(6,minmax(0,1fr))}
+ .mobile-nav[data-dental-visible=true] button{font-size:10px;min-width:0}
+ .main:has(#professionalDentalWorkspace){padding-inline:12px}
+}

@@ -426,4 +426,4 @@ async def qr_send(data:SendPayload,actor:Actor=Depends(authenticate)):
 async def qr_page():
     # Mesmo painel/login em cookie; tela na aba "Conectar dispositivo".
     from fastapi.responses import RedirectResponse
-    return RedirectResponse("/panel?aba=dispositivo",status_code=303)
+    return RedirectResponse("/painel?aba=dispositivo",status_code=303)

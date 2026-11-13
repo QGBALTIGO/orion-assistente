@@ -127,8 +127,8 @@ async def test_real_public_api_rejects_early_review_and_duplicate_review(booking
         assert view.headers['referrer-policy']=='no-referrer' and view.headers['cache-control']=='no-store'
         assert (await client.post('/api/appointment-access',json={'token':token,'action':'review','rating':5})).status_code==409
         assert (await client.post('/api/appointment-access',headers={'Origin':'https://evil.example'},json={'token':token})).status_code==403
-        # A synthetic team-recorded completion. Automated completion alone is
-        # deliberately insufficient for a review even if status says completed.
+        # A status alone is not completion evidence. Even a trusted team event
+        # cannot expose a review while the appointment is still in the future.
         async with d['migrator'].begin() as db:
             await db.execute(text("UPDATE appointments SET status='completed' WHERE tenant_id=:t AND id=:id"),{'t':d['a'],'id':a['id']})
         assert (await client.post('/api/appointment-access',json={'token':token,'action':'review','rating':5})).status_code==409
@@ -136,6 +136,13 @@ async def test_real_public_api_rejects_early_review_and_duplicate_review(booking
             await db.execute(text("""INSERT INTO appointment_history(tenant_id,appointment_id,event,operator,details)
                 VALUES(:t,:id,'completed','owner',CAST(:details AS jsonb))"""),
                 {'t':d['a'],'id':a['id'],'details':'{"v":1,"source":"panel","actor":{"role":"owner"}}'})
+        assert (await client.post('/api/appointment-access',json={'token':token,'action':'review','rating':5})).status_code==409
+        async with d['migrator'].begin() as db:
+            await db.execute(text("""UPDATE appointments SET
+                start_at=clock_timestamp()-interval '2 hours',end_at=clock_timestamp()-interval '1 hour',
+                occupied_from=clock_timestamp()-interval '2 hours 5 minutes',
+                occupied_until=clock_timestamp()-interval '50 minutes'
+                WHERE tenant_id=:t AND id=:id"""),{'t':d['a'],'id':a['id']})
         valid=await client.post('/api/appointment-access',json={'token':token,'action':'review','rating':5,'comment':'<script>alert(1)</script>'})
         assert valid.status_code==200 and valid.json()['review']['rating']==5
         assert (await client.post('/api/appointment-access',json={'token':token,'action':'review','rating':1})).status_code==409

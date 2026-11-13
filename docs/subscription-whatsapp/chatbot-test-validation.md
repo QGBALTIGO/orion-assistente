@@ -1,0 +1,132 @@
+# Etapa 03 — Qualificação de Testar Chatbot
+
+Base publicada: `112e92ea79240a1980f484bf2787c4400bd5418d` (PR #249).
+Observação: [chatbot-test-observation.md](chatbot-test-observation.md).
+
+## Implementação
+
+A rota `testar-chatbot` pertence somente a `subscription_services` e exige
+`chatbot.manage`. O atalho nos detalhes de uma resposta abre a conversa com
+dispositivo e regra inicial. O botão anterior de envio real permanece separado.
+
+O servidor usa o matcher e compilador publicados sobre cópias do grafo, sem
+alterar o motor de eventos. A simulação inclui regras inativas e funciona com
+dispositivo desconectado. Ela não consome janelas de atendimento ou frequências,
+não executa URLs externas e não cria jobs ou efeitos de WhatsApp.
+
+Cada pedido revalida proprietário, empresa, dispositivo e revisão. Listas usam
+um contexto local e tickets autenticados de curta duração, com finalidade
+separada dos menus reais. A leitura de mídia exige autorização antes e depois
+de obter os bytes privados. Não há nova migração, dependência ou variável de
+ambiente nesta etapa.
+
+## Evidência local disponível
+
+- Backend: o gate Python completo passou com **936 testes em 56,48 s**, incluindo
+  **62 casos novos** do simulador, matcher/API, permissões, dispositivos e
+  contratos dos nichos existentes. A primeira execução focada havia passado
+  com 255 testes. Compilação Python sem erros.
+- DOM: **196 testes passaram em 7,54 s**, sem falhas ou casos ignorados. Inclui
+  23 casos novos da conversa e dois novos cenários do atalho da etapa 02.
+- Chromium: **7 cenários passaram**, cobrindo 390/768/1440 pixels nos temas
+  claro/escuro e um fluxo de corrida/revogação/isolamento. Capturas de celular,
+  tablet e desktop foram inspecionadas. O JPEG privado foi decodificado pelo
+  navegador; não houve erro JavaScript, origem externa ou envio real.
+- WebKit: os sete cenários equivalentes serão executados no CI; esse runtime
+  não está instalado localmente. Larguras simuladas não substituem aparelho
+  físico nem teclado virtual real.
+- PostgreSQL: **17 casos coletados**, preparados para o banco descartável do
+  CI. Coleta não representa execução no banco.
+- Revisão independente da integração do painel: rota, deep link, isolamento
+  por empresa e desmontagem ao sair/trocar contexto, sem bloqueador encontrado.
+
+## Validação que bloqueia a publicação
+
+O workflow `subscription-chatbot.yml` executa os contratos Python, a ponte
+existente, os testes DOM, PostgreSQL 16 e os fluxos Chromium/WebKit em celular,
+tablet e desktop nos dois temas. O PostgreSQL compara linhas completas de 17
+tabelas antes/depois da simulação; a saída de rede para provedores é bloqueada.
+
+Os cenários cobrem texto, correspondência, inativas, referências, listas,
+arquivos normalizados, URL/carrossel declarativos, 400 unidades UTF-16, revisão
+obsoleta, perda de acesso e respostas tardias. A publicação requer resultados
+do commit exato, deploy saudável e conferência posterior no painel publicado.
+
+Os resultados finais do CI e da publicação serão registrados após a execução;
+este documento não afirma que essas verificações já ocorreram.
+
+## Ajustes encontrados pelo primeiro CI
+
+O primeiro head da PR 250 passou em Python (936), Node (300), DOM (196) e
+Chromium (25 cenários). A execução revelou três problemas nas fixtures e na
+descoberta de testes, corrigidos antes da publicação:
+
+- O nome do E2E terminava em `_test.py`, portanto a suíte geral também tentou
+  coletá-lo sem o runner Playwright. O arquivo foi renomeado para
+  `browser_subscription_chatbot_simulator.py`, mantendo execução explícita no
+  gate de navegadores. Não foi alterada a descoberta global nem adicionada
+  dependência de navegador aos testes gerais.
+- O interceptor de rede do WebKit classificou um Blob criado pela própria
+  página como origem externa. O artefato registrou somente esse Blob local e
+  nenhum erro JavaScript. A fixture passa a reconhecer exclusivamente Blobs
+  da origem local do servidor de teste, mantendo o bloqueio de origens remotas
+  e a asserção de decodificação real do JPEG.
+- O cenário PostgreSQL de substituição de dispositivo mantinha uma conexão
+  no bridge falso depois de remover seu lease no banco descartável. A fixture
+  foi alinhada ao estado desconectado; a autorização da API permaneceu intacta.
+
+Esses ajustes não modificam o comportamento de produção. O novo commit deve
+executar novamente os gates antes do merge.
+
+## Segunda rodada
+
+O head `f8bacbee3e45bfaba305bcfdd70fd4f64a61f441` passou nos seis jobs do
+[run 41838357914](https://github.com/QGBALTIGO/orion-assistente/actions/runs/41838357914):
+936 Python, 300 Node, 196 DOM, 109 PostgreSQL, 25 Chromium e 25 WebKit —
+**1.591 execuções aprovadas**. Os 17 cenários PostgreSQL novos e a decodificação
+da imagem no WebKit foram confirmados sem remover assertions.
+
+Nos gates compartilhados, os nomes e diagnósticos das falhas de Node,
+Planos, cadastro/histórico e Campos coincidiram com o head da PR 249.
+O gate de acesso profissional repetiu o assert antigo de schema 0058.
+Esses testes não foram alterados para ocultar falhas anteriores.
+
+O pytest geral do FATIA voltou a coletar normalmente, mas o passo foi
+interrompido pelo limite de 12 minutos enquanto ainda avançava. A execução
+anterior completa havia levado 578,98 segundos; o limite do mesmo passo
+foi ampliado para 20 minutos para obter o resumo final com a suíte ampliada.
+O comando, a seleção de testes e as assertions permanecem iguais.
+
+## Qualificação final e publicação
+
+O head `63e215a27b83ca9638ea43ee4d5dc379e7060253` passou nos seis jobs do
+[run 41840922434](https://github.com/QGBALTIGO/orion-assistente/actions/runs/41840922434):
+936 Python, 300 Node, 196 DOM, 109 PostgreSQL, 25 Chromium e 25 WebKit —
+**1.591 execuções aprovadas**. A árvore qualificada é
+`f911128ea29637f7a1f3af326e01f764f597158e`.
+
+O pytest geral terminou no
+[run 41840922375](https://github.com/QGBALTIGO/orion-assistente/actions/runs/41840922375)
+em 729,68 segundos: 7.474 aprovados, 176 falhas, 43 erros e 12 ignorados.
+A base da PR 249 tinha 7.395 aprovados e os mesmos 176 testes falhos,
+43 erros e 12 ignorados. Os 79 aprovados adicionais correspondem aos 62 testes
+unitários e 17 PostgreSQL desta etapa. A comparação dos identificadores não
+encontrou falha ou erro novo; três diagnósticos diferiram apenas em UUIDs/hashes
+da fixture, mantendo a mesma assertion, arquivo e linha. As falhas compartilhadas
+de Node, Planos, cadastro/histórico, Campos e schema de acesso profissional
+também coincidiram com a base, sem enfraquecer os gates.
+
+A [PR 250](https://github.com/QGBALTIGO/orion-assistente/pull/250) foi publicada
+em `8146d5f7f50bb778d188f74b7e52452394870c50`; sua árvore foi comparada com
+a árvore qualificada. API `f82ff217-a711-4156-bbaa-8caccd002b5b` e worker
+`bc17b905-f29b-4d92-8b07-b2139cfdd79c` concluíram com sucesso. A ponte permaneceu
+no deployment saudável `ec2ec483-c877-4437-9214-50afab4f2986`, pois sua subárvore
+`a170cdb7553d9b2d7c3dadf2935b74da31d32f78` não mudou. O ambiente apresentou cinco
+serviços online, nenhuma réplica caída e nenhum trabalho de deploy pendente.
+
+No Chrome conectado, a aba publicada foi aberta sem alterar os rascunhos do
+usuário em outras abas. Foram confirmados: dispositivo obrigatório, ativação
+do campo após seleção, envio local por Enter, duas bolhas e resultado sem
+correspondência quando a empresa não tem regras, contador, limpeza imediata
+preservando dispositivo e entrada/saída de tela cheia por Escape. Foi capturada
+a tela real do Orion. Não foi criada regra de teste nem enviada mensagem real.

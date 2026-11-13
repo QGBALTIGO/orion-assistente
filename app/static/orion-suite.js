@@ -14,18 +14,21 @@
     chevron:'m9 5 7 7-7 7', left:'m15 5-7 7 7 7', down:'m6 9 6 6 6-6',
     arrow:'M5 12h14m-5-5 5 5-5 5', external:'M15 3h6v6m0-6-9 9M9 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-4',
     dashboard:'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z',
+    home:'m3 10 9-7 9 7v10H3V10Zm6 10v-7h6v7',user:'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4 21v-2a8 8 0 0 1 16 0v2',
     calendar:'M8 2v4m8-4v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z',
     calendarPlus:'M8 2v4m8-4v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm7 9v6m-3-3h6',
+    repeat:'M17 2l4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 0 1-3 3H3',
     users:'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75',
     userPlus:'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M20 8v6m-3-3h6',
     scissors:'m14 14 7 7M21 3l-8 8M7.5 7.5l9 9',
+    tooth:'M12 5C7 2 3 4 3 9c0 4 2 8 3.2 10.2.8 1.7 2.3 1.7 3 .1l2.1-5c.4-.8 1.1-.8 1.5 0l2 5c.7 1.6 2.2 1.6 3-.1C19 17 21 13 21 9c0-5-4-7-9-4Z',
     wallet:'M20 8V5a2 2 0 0 0-2-2H6a3 3 0 0 0 0 6h14v12H6a3 3 0 0 1-3-3V6m17 7h-4a2 2 0 0 0 0 4h4',
     chart:'M3 3v18h18M7 14l4-4 4 3 6-8',
     sparkles:'m12 3 2.8 6.2L21 12l-6.2 2.8L12 21l-2.8-6.2L3 12l6.2-2.8ZM20 2v4m-2-2h4',
     globe:'M2 12h20M12 2c3 3.5 4 7 4 10s-1 6.5-4 10c-3-3.5-4-7-4-10s1-6.5 4-10',
     gift:'M20 12v9H4v-9M2 7h20v5H2zM12 7v14m0-14H7.5A2.5 2.5 0 1 1 10 4.5L12 7Zm0 0h4.5A2.5 2.5 0 1 0 14 4.5L12 7Z',
     layers:'m12 3 9 5-9 5-9-5 9-5ZM3 12l9 5 9-5M3 17l9 5 9-5',
-    bot:'M12 3v4M3 7h18v14H3zM7 13h.01M17 13h.01M8 17h8',
+    bot:'M12 3v3.5M8 7h8a5 5 0 0 1 5 5v4a5 5 0 0 1-5 5H9l-4 2v-4.1A5 5 0 0 1 3 15V12a5 5 0 0 1 5-5ZM9 13h.01M15 13h.01M9 17c1.7 1.1 4.3 1.1 6 0',
     credit:'M2 8h20M4 3h16a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2ZM6 16h3',
     settings:'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm-2-6h4l1 3 3 1 3-1 2 4-2 2v3l2 2-2 4-3-1-3 1-1 3h-4l-1-3-3-1-3 1-2-4 2-2v-3l-2-2 2-4 3 1 3-1 1-3Z',
     phone:'M6 2h12v20H6zM10 5h4M11 19h2',
@@ -49,7 +52,21 @@
     target:'M12 12 21 3M16 3h5v5', lock:'M6 10h12v12H6zM8 10V6a4 4 0 0 1 8 0v4',
     link:'M10 13a5 5 0 0 0 7 .5l4-4a5 5 0 0 0-7-7l-2 2m2 6a5 5 0 0 0-7-.5l-4 4a5 5 0 0 0 7 7l2-2',
     refresh:'M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5',
-    mail:'M3 5h18v14H3zM3 5l9 7 9-7', shield:'m12 2 9 4v6c0 5-9 10-9 10S3 17 3 12V6l9-4Z',
+    flask:'M9 3h6M10 3v7l-5.4 8.5A2 2 0 0 0 6.3 22h11.4a2 2 0 0 0 1.7-3.5L14 10V3M8 15h8',
+    fileCheck:'M5 3h9l5 5v13H5V3Zm9 0v5h5M8 15l3 3 5-5',
+    activity:'M2 12h4l3-8 5 16 3-8h5',
+    megaphone:'M3 10v4h4l13 5V5L7 10H3Zm4 4 1.8 7H12l-2.1-6',
+    calendarClock:'M8 3v3m8-3v3M3 9h18M5 5h14a2 2 0 0 1 2 2v6M5 5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h7M18 15a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm0 2v2l1.5 1',
+    broadcast:'M12 12v9M6.7 6.7a7.5 7.5 0 0 0 0 10.6M17.3 6.7a7.5 7.5 0 0 1 0 10.6M3.5 3.5a12 12 0 0 0 0 17M20.5 3.5a12 12 0 0 1 0 17M12 12a2 2 0 1 0 0-4 2 2 0 0 0 0 4',
+    flame:'M12 22c4.6 0 8-3.4 8-7.7 0-3.2-1.7-5.3-4-7.8-.2 2.4-1.2 3.8-2.5 4.7C13.2 8 11.5 5 8 2c.1 4.1-1.8 6-3.3 8.5-.5 1-.7 2.3-.7 3.8C4 18.6 7.4 22 12 22ZM10 19c-1.4-1.3-1.4-3.1-.2-4.7l2.2-2.3c.2 1.3 1.2 2.1 1.9 3 1 1.5.2 3.6-1.9 4',
+    shieldCheck:'m12 2 9 4v6c0 5-9 10-9 10S3 17 3 12V6l9-4ZM8 12l3 3 5-6',
+    shieldAlert:'m12 2 9 4v6c0 5-9 10-9 10S3 17 3 12V6l9-4ZM12 8v5m0 3h.01',
+    usersSearch:'M3 20v-1a4 4 0 0 1 4-4h4M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM17 12a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm3 7 2 2',
+    badgeUser:'M4 4h16v16H4zM8 9a2 2 0 1 0 4 0 2 2 0 0 0-4 0ZM6.5 16a3.5 3.5 0 0 1 7 0M15 9h3M15 12h3',
+    brain:'M12 6a4 4 0 0 0-7 2 3.5 3.5 0 0 0-.5 6A4 4 0 0 0 8 20h1.5A3 3 0 0 0 12 22M12 6a4 4 0 0 1 7 2 3.5 3.5 0 0 1 .5 6A4 4 0 0 1 16 20h-1.5A3 3 0 0 1 12 22V6M8 10v3m8-3v3',
+    messages:'M4 4h12a2 2 0 0 1 2 2v9H8l-4 3V6a2 2 0 0 1 2-2ZM10 19h7l3 2V10a2 2 0 0 0-2-2M8 8h6m-6 4h4',
+    building:'M4 21V4l8-2 8 2v17M2 21h20M8 7h1m6 0h1M8 11h1m6 0h1M8 15h1m6 0h1M10 21v-4h4v4',
+    send:'m22 2-7 20-4-9-9-4 20-7ZM11 13 22 2', mail:'M3 5h18v14H3zM3 5l9 7 9-7', shield:'m12 2 9 4v6c0 5-9 10-9 10S3 17 3 12V6l9-4Z',
     more:'M5 12h.01M12 12h.01M19 12h.01', arrowDown:'M12 4v16m-5-5 5 5 5-5', arrowUp:'M12 20V4m-5 5 5-5 5 5',
     instagram:'M7 2h10a5 5 0 0 1 5 5v10a5 5 0 0 1-5 5H7a5 5 0 0 1-5-5V7a5 5 0 0 1 5-5Zm10 5h.01',
     logout:'M9 21H4V3h5m7 14 5-5-5-5M9 12h12',
@@ -57,19 +74,43 @@
   const circles={users:'<circle cx="9" cy="7" r="4"/>',userPlus:'<circle cx="9" cy="7" r="4"/>',scissors:'<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/>',clock:'<circle cx="12" cy="12" r="10"/>',search:'<circle cx="10.5" cy="10.5" r="7.5"/>',sun:'<circle cx="12" cy="12" r="4"/>',info:'<circle cx="12" cy="12" r="10"/>',help:'<circle cx="12" cy="12" r="10"/>',globe:'<circle cx="12" cy="12" r="10"/>',block:'<circle cx="12" cy="12" r="10"/>',target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/>',instagram:'<circle cx="12" cy="12" r="4"/>'};
   const icon = name => '<svg class="os-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">'+(circles[name]||'')+'<path d="'+(paths[name]||paths.info)+'"/></svg>';
   const compactDisclosureSummary = label => '<summary><span class="os-detail-toggle-icon" aria-hidden="true">'+icon('plus')+icon('minus')+'</span><span>'+esc(label)+'</span></summary>';
-  const routeNames={inbox:'Central de atendimento',dashboard:'Dashboard',agenda:'Agenda',clientes:'Clientes',servicos:'Serviços',funcionarios:'Funcionários',financeiro:'Financeiro',desempenho:'Meu desempenho',marketing:'Marketing IA',site:'Meu site',fidelizacao:'Fidelização',consultor:'Consultor IA',plano:'Plano',configuracoes:'Configurações',novidades:'Novidades',ajuda:'Base de conhecimento',dispositivo:'Conectar WhatsApp',conversas:'Conversas',ai:'Testar atendimento',empresa:'Configurar atendimento',catalogo:'Catálogo e pedidos',cadastros:'Administração do atendimento',member:'Minha conta'};
+  const routeNames={dispositivos:'Dispositivos',chatbot:'Chatbot','testar-chatbot':'Testar Chatbot',templates:'Templates','mensagens-enviadas':'Mensagens Enviadas',diagnosticos:'Diagnósticos',campanhas:'Campanhas',programadas:'Mensagens Programadas',massa:'Mensagem em Massa','enviar-mensagem':'Enviar Mensagem',aquecimento:'Aquecimento','evitar-banimento':'Evitar Banimento','resolver-banimento':'Resolver Banimento','extrator-contatos':'Extrator de contatos de grupos','adicionar-ao-grupo':'Adicionar contatos ao grupo',inbox:'Central de atendimento',dashboard:'Dashboard',perfil:'Perfil',agenda:'Agenda',clientes:'Clientes',clinica:'Clínica odontológica',servicos:'Serviços',funcionarios:'Funcionários',financeiro:'Financeiro',desempenho:'Meu desempenho',marketing:'Marketing IA',site:'Meu site',fidelizacao:'Fidelização',consultor:'Consultor IA',plano:'Plano',configuracoes:'Configurações',novidades:'Novidades',ajuda:'Base de conhecimento',dispositivo:'Conectar WhatsApp',conversas:'Conversas',ai:'Testar atendimento',empresa:'Configurar atendimento',catalogo:'Catálogo e pedidos',cadastros:'Administração do atendimento',member:'Minha conta'};
   const routeAliases=new Map([['acelerar','dashboard']]);
-  const mainNav=[['dashboard','dashboard'],['agenda','calendar'],['clientes','users'],['inbox','chat'],['servicos','scissors'],['funcionarios','users'],['financeiro','wallet'],['desempenho','chart'],['marketing','sparkles'],['site','globe'],['fidelizacao','gift'],['consultor','bot'],['plano','credit'],['configuracoes','settings']];
+  const mainNav=[['dispositivos','phone'],['chatbot','bot'],['testar-chatbot','flask'],['templates','layers'],['mensagens-enviadas','fileCheck'],['diagnosticos','activity'],['campanhas','megaphone'],['programadas','calendarClock'],['massa','broadcast'],['enviar-mensagem','send'],['aquecimento','flame'],['evitar-banimento','shieldCheck'],['resolver-banimento','shieldAlert'],['extrator-contatos','usersSearch'],['adicionar-ao-grupo','userPlus'],['dashboard','dashboard'],['agenda','calendar'],['clientes','users'],['clinica','tooth'],['inbox','chat'],['servicos','scissors'],['funcionarios','badgeUser'],['financeiro','wallet'],['desempenho','chart'],['marketing','sparkles'],['site','globe'],['fidelizacao','gift'],['consultor','brain'],['plano','credit'],['configuracoes','settings']];
+  const toolNavRoutes=['extrator-contatos','adicionar-ao-grupo','aquecimento','evitar-banimento','resolver-banimento'];
+  const appShortcutChoices=[
+    ['dashboard','home','Início'],['agenda','calendar','Agenda'],['servicos','scissors','Serviços'],
+    ['hours','clock','Horários'],['clientes','users','Clientes'],['financeiro','wallet','Financeiro'],
+    ['inbox','chat','Conversas'],['funcionarios','badgeUser','Equipe'],['desempenho','chart','Desempenho'],
+    ['site','globe','Meu site'],['fidelizacao','gift','Fidelização'],
+    ['marketing','sparkles','Marketing'],['consultor','brain','Consultor IA'],
+    ['chatbot','bot','Chatbot'],['templates','layers','Templates'],
+    ['enviar-mensagem','send','Enviar mensagens'],['diagnosticos','activity','Diagnóstico'],
+    ['dispositivos','phone','Dispositivos'],['testar-chatbot','flask','Testar chatbot'],
+    ['mensagens-enviadas','fileCheck','Mensagens enviadas'],['campanhas','megaphone','Campanhas'],
+    ['programadas','calendarClock','Programadas'],['massa','broadcast','Mensagem em massa'],
+    ['extrator-contatos','usersSearch','Extrator de contatos'],['adicionar-ao-grupo','userPlus','Adicionar ao grupo']
+  ];
+  const appDefaultShortcuts=()=>subscriptionWorkspace()?
+    ['chatbot','templates','enviar-mensagem','diagnosticos']:['dashboard','agenda','servicos','hours'];
+  const appProfileShortcut=['perfil','user','Perfil'];
   const legacyPages=new Set(['dispositivo','conversas','ai','empresa','catalogo','cadastros','member']);
   // The original Orion operator console is restricted to the authenticated
   // platform administrator. Business owners use the regular workspace.
   const platformAdminOnlyPages=new Set(['conversas','ai','empresa','catalogo','cadastros']);
   const appPages=new Set([...Object.keys(routeNames),...routeAliases.keys()]);
-  const routeFeatures={dashboard:'dashboard.basic',agenda:'agenda.manage',clientes:'clients.manage',inbox:'conversations.manual',servicos:'services.manage',funcionarios:'professionals.manage',financeiro:'finance.basic',desempenho:'performance.advanced',marketing:'marketing.ai',site:'site.manage',fidelizacao:'loyalty.manage',consultor:'consultant.ai',configuracoes:'settings.manage'};
+  const routeFeatures={dispositivos:'devices.manage',chatbot:'account.manage','testar-chatbot':'chatbot.manage',templates:'templates.manage','mensagens-enviadas':'sent_messages.manage',diagnosticos:'diagnostics.manage',campanhas:'campaigns.manage',programadas:'scheduled_messages.manage',massa:'bulk_messages.manage','enviar-mensagem':'direct_messages.manage',aquecimento:'whatsapp_guidance.view','evitar-banimento':'whatsapp_guidance.view','resolver-banimento':'whatsapp_guidance.view','extrator-contatos':'group_contacts.manage','adicionar-ao-grupo':'group_add.manage',dashboard:'dashboard.basic',agenda:'agenda.manage',clientes:'clients.manage',clinica:'clients.manage',inbox:'conversations.manual',servicos:'services.manage',funcionarios:'professionals.manage',financeiro:'finance.basic',desempenho:'performance.advanced',marketing:'marketing.ai',site:'site.manage',fidelizacao:'loyalty.manage',consultor:'consultant.ai',configuracoes:'settings.manage'};
   const platformWorkspace=()=>state.bridge.user?.role==='admin'&&!state.bridge.user?.maintenance?.active;
-  const permitted=feature=>!feature||platformWorkspace()||state.entitlements?.permissions?.[feature]===true;
-  const routePermitted=route=>route==='configuracoes'?(permitted('settings.manage')||permitted('business.setup')||permitted('account.manage')):permitted(routeFeatures[route]);
-  const settingsTabAllowed=tab=>['appearance','account'].includes(tab)||tab==='general'?(tab!=='general'||permitted('business.setup')||permitted('settings.manage')):tab==='ai'?(permitted('marketing.ai')||permitted('consultant.ai')):tab==='whatsapp'?permitted('conversations.manual'):tab==='hours'?permitted('agenda.manage'):tab==='calendar'?permitted('calendar.manage'):tab==='notifications'?permitted('notifications.basic'):tab==='site-requests'?canManageSiteRequests():platformWorkspace();
+  const subscriptionRoutes=new Set(['dashboard','novidades','ajuda','member']);
+  const workspaceProfile=()=>platformWorkspace()?'standard':state.workspaceProfile||tenant()?.workspace_profile||null;
+  const subscriptionWorkspace=()=>workspaceProfile()==='subscription_services';
+  // A niche comes from the server's verified entitlement, never from a URL or storage.
+  const dentalWorkspace=()=>!platformWorkspace()&&!subscriptionWorkspace()&&state.entitlements?.business_niche==='odontologia';
+  const routeLabel=route=>dentalWorkspace()?({dashboard:'Início',agenda:'Agenda clínica',clientes:'Pacientes',servicos:'Procedimentos',funcionarios:'Equipe clínica',inbox:'Conversas'})[route]||routeNames[route]:subscriptionWorkspace()&&route==='dashboard'?'Início':routeNames[route];
+  const fallbackRoute=()=>subscriptionWorkspace()?'dashboard':'plano';
+  const permitted=feature=>!feature||platformWorkspace()||(!subscriptionWorkspace()||['account.manage','business.setup','devices.manage','chatbot.manage','templates.manage','sent_messages.manage','diagnostics.manage','campaigns.manage','scheduled_messages.manage','bulk_messages.manage','direct_messages.manage','whatsapp_guidance.view','group_contacts.manage','group_add.manage'].includes(feature))&&state.entitlements?.permissions?.[feature]===true;
+  const routePermitted=route=>route==='clinica'?(dentalWorkspace()&&state.entitlements?.dental_clinical_enabled===true&&['owner','editor'].includes(tenant()?.role)&&permitted('clients.manage')):route==='perfil'?appLayoutEnabled():['aquecimento','evitar-banimento','resolver-banimento','extrator-contatos','adicionar-ao-grupo'].includes(route)?(subscriptionWorkspace()&&tenant()?.role==='owner'&&tenant()?.status==='active'&&permitted(routeFeatures[route])):['dispositivos','chatbot','testar-chatbot','templates','mensagens-enviadas','diagnosticos','campanhas','programadas','massa','enviar-mensagem'].includes(route)?(subscriptionWorkspace()&&permitted(routeFeatures[route])):subscriptionWorkspace()?(route==='configuracoes'?permitted('account.manage'):subscriptionRoutes.has(route)):route==='configuracoes'?(permitted('settings.manage')||permitted('business.setup')||permitted('account.manage')):permitted(routeFeatures[route]);
+  const settingsTabAllowed=tab=>subscriptionWorkspace()?['appearance','account'].includes(tab):['appearance','account'].includes(tab)||tab==='general'?(tab!=='general'||permitted('business.setup')||permitted('settings.manage')):tab==='ai'?(permitted('marketing.ai')||permitted('consultant.ai')):tab==='whatsapp'?permitted('conversations.manual'):tab==='hours'?permitted('agenda.manage'):tab==='calendar'?permitted('calendar.manage'):tab==='notifications'?permitted('notifications.basic'):tab==='site-requests'?canManageSiteRequests():platformWorkspace();
   const atProfessionalLimit=()=>!platformWorkspace()&&Number.isInteger(state.entitlements?.limits?.max_professionals)&&Number(state.entitlements.limits.active_professionals)>=state.entitlements.limits.max_professionals;
   function featureForPath(path,method='GET',data){
     const suffix=path.split('/management/')[1]||'',resource=path.split('/api/v1/tenants/')[1]?.split('/')[1];
@@ -86,10 +127,23 @@
     if(/^ai\/(consult|consultant)/.test(suffix))return 'consultant.ai';
     if(/^ai\/(campaign|marketing)/.test(suffix))return 'marketing.ai';
     if(/^ai\//.test(suffix))return permitted('marketing.ai')?'marketing.ai':'consultant.ai';
+    if(resource==='dental')return 'clients.manage';
     if(/^customers/.test(suffix))return 'clients.manage';
     if(/^dashboard/.test(suffix))return 'dashboard.basic';
     if(/^professionals/.test(suffix)||resource==='professionals')return 'professionals.manage';
     if(/^service/.test(suffix)||['services','professional_services'].includes(resource))return 'services.manage';
+    if(resource==='subscription-whatsapp'&&/\/subscription-whatsapp\/devices(?:[/?]|$)/.test(path))return 'devices.manage';
+    if(resource==='subscription-whatsapp'&&/\/subscription-whatsapp\/group-add(?:[/?]|$)/.test(path))return 'group_add.manage';
+    if(resource==='subscription-whatsapp'&&/\/subscription-whatsapp\/group-contacts(?:[/?]|$)/.test(path))return 'group_contacts.manage';
+    if(resource==='subscription-whatsapp'&&/\/subscription-whatsapp\/direct-messages(?:[/?]|$)/.test(path))return 'direct_messages.manage';
+    if(resource==='subscription-whatsapp'&&/\/subscription-whatsapp\/bulk-messages(?:[/?]|$)/.test(path))return 'bulk_messages.manage';
+    if(resource==='subscription-whatsapp'&&/\/subscription-whatsapp\/scheduled-messages(?:[/?]|$)/.test(path))return 'scheduled_messages.manage';
+    if(resource==='subscription-whatsapp'&&/\/subscription-whatsapp\/campaigns(?:[/?]|$)/.test(path))return 'campaigns.manage';
+    if(resource==='subscription-whatsapp'&&/\/subscription-whatsapp\/diagnostics(?:[/?]|$)/.test(path))return 'diagnostics.manage';
+    if(resource==='subscription-whatsapp'&&/\/subscription-whatsapp\/sent-messages(?:[/?]|$)/.test(path))return 'sent_messages.manage';
+    if(resource==='subscription-whatsapp'&&/\/subscription-whatsapp\/templates(?:[/?]|$)/.test(path))return 'templates.manage';
+    if(resource==='subscription-whatsapp'&&/\/subscription-whatsapp\/chatbot-test(?:[/?]|$)/.test(path))return 'chatbot.manage';
+    if(resource==='subscription-whatsapp'&&/\/subscription-whatsapp\/chatbot(?:[/?]|$)/.test(path))return method==='GET'||method==='POST'&&/\/chatbot\/exports$/.test(path)?'account.manage':'chatbot.manage';
     if(resource==='qr-channels')return data?.assistant_enabled===true?'reception.ai':'conversations.manual';
     if(/^inbox/.test(suffix))return 'conversations.manual';
     return null;
@@ -102,6 +156,7 @@
     const fab=$('osConsultantFab');if(fab)fab.classList.toggle('hidden',!permitted('consultant.ai')||['agenda','inbox'].includes(state.route));
     document.querySelectorAll('[data-qc-assistant]').forEach(node=>{node.hidden=!permitted('reception.ai');});
     document.querySelectorAll('[data-os-action=notifications]').forEach(node=>{node.hidden=!permitted('notifications.basic');});
+    const notifications=$('osNotificationsToggle')?.closest('.os-notifications');if(notifications)notifications.hidden=subscriptionWorkspace();
     document.querySelectorAll('#osDialog .os-commission-default,#osDialog .os-commission-service-controls,#osDialog [name=commission_mode]').forEach(node=>{
       const area=node.name==='commission_mode'?node.closest('.os-field'):node;if(!area)return;area.hidden=!permitted('commissions.advanced');
       area.querySelectorAll('input,select').forEach(input=>{if(!permitted('commissions.advanced')){if(!input.dataset.osPlanDisabled)input.dataset.osPlanDisabled=String(input.disabled);input.disabled=true;}else if(input.dataset.osPlanDisabled){input.disabled=input.dataset.osPlanDisabled==='true';delete input.dataset.osPlanDisabled;}});
@@ -128,12 +183,16 @@
         const result=await Promise.resolve().then(()=>state.bridge.request(mgmt('/permissions'))),value=result?.effective_plan;
         if(!state.mounted||epoch!==state.epoch||id!==state.tenantId||read!==state.permissionRead)return false;
         if(!value||!value.permissions||typeof value.permissions!=='object'||Array.isArray(value.permissions)||typeof value.revision!=='string')throw Error('Não foi possível confirmar as permissões desta empresa.');
-        const changed=state.entitlements?.revision!==value.revision;state.entitlements=value;state.permissionError='';armPermissionExpiry(value,epoch,id);
+        const previousProfile=workspaceProfile(),nextProfile=['standard','subscription_services'].includes(value.workspace_profile)?value.workspace_profile:tenant()?.workspace_profile||previousProfile;
+        const profileChanged=previousProfile!==nextProfile,changed=state.entitlements?.revision!==value.revision||profileChanged;
+        state.workspaceProfile=nextProfile;state.entitlements=value;state.permissionError='';armPermissionExpiry(value,epoch,id);applyAppLayout();
+        if(profileChanged){state.load++;state.data={};state.busy=false;clearTimeout(state.searchTimer);clearTimeout(state.agendaSearchTimer);clearSiteLookups();closeNotifications();closeDialog(true);}
+        state.bridge.onWorkspaceProfile?.();
         if(changed){
-          renderSidebar();applyPermissionDOM();
+          state.appShortcutDraft=null;renderSidebar();applyPermissionDOM();
           if(state.dialog&&!permitted(state.dialog.requiredFeature)){state.busy=false;closeDialog(true);toast('Seu plano mudou. Esta ação não está mais disponível.',true);}
           if(reconcile){
-            if(!routePermitted(state.route))await open('plano',{force:true,permissionsChecked:true});
+            if(!routePermitted(state.route))await open(fallbackRoute(),{force:true,permissionsChecked:true});
             else if(state.route==='configuracoes'&&!settingsTabAllowed(state.filters.settingsTab)){state.filters.settingsTab='account';await open('configuracoes',{force:true,permissionsChecked:true});}
             else if(state.route==='financeiro'&&!permitted(financeFeature(state.filters.financeTab))){state.filters.financeTab='entries';await open('financeiro',{force:true,permissionsChecked:true});}
             else if(!state.dialog&&!document.activeElement?.matches?.('input,select,textarea,[contenteditable=true]'))await open(state.route,{force:true,keepScroll:true,permissionsChecked:true});
@@ -141,12 +200,12 @@
           }
         }
         return true;
-      }catch(error){if(epoch===state.epoch&&id===state.tenantId){clearTimeout(state.permissionExpiryTimer);state.permissionExpiryTimer=null;state.entitlements=null;state.permissionError=error.message||'Não foi possível confirmar as permissões.';renderSidebar();applyPermissionDOM();if(reconcile){state.busy=false;closeDialog(true);await open('plano',{force:true,permissionsChecked:true});}}return false;}
+      }catch(error){if(epoch===state.epoch&&id===state.tenantId){clearTimeout(state.permissionExpiryTimer);state.permissionExpiryTimer=null;state.entitlements=null;state.permissionError=error.message||'Não foi possível confirmar as permissões.';applyAppLayout();renderSidebar();applyPermissionDOM();if(reconcile){state.busy=false;closeDialog(true);await open(fallbackRoute(),{force:true,permissionsChecked:true});}}return false;}
       finally{if(state.permissionPending===pending)state.permissionPending=null;}
     })();state.permissionPending=pending;return pending;
   }
-  const defaultFilters=()=>({customerQuery:'',customerStatus:'active',customerRisk:30,customerOffset:0,agendaMode:'list',agendaDay:'',agendaTablet:false,agendaProfessional:'',agendaStatus:'all',agendaQuery:'',agendaOffset:0,financeKind:'',financeStatus:'',financeFiltersOpen:false,financeTab:'entries',performancePeriod:'month',performanceDay:'',performanceGroup:'day',staffTab:'professionals',staffStatus:'active',marketingTab:'overview',marketingQueueStatus:'all',loyaltyTab:'ranking',loyaltyOffset:0,couponStatus:'all',periodStart:'',periodEnd:'',settingsTab:'general',siteRequestStatus:'all',siteRequestIntent:'all',siteRequestQuery:'',siteRequestOffset:0,siteTab:'dashboard',helpQuery:'',helpCategory:'all',helpArticle:'',newsFilter:'all',notificationsUnread:false});
-  const state={bridge:{},mounted:false,epoch:0,load:0,route:'dashboard',tenantId:'',data:{},filters:defaultFilters(),dialog:null,busy:false,imageUploading:false,searchTimer:null,drawerTrigger:null,observer:null};
+  const defaultFilters=()=>({customerQuery:'',customerStatus:'active',customerRisk:30,customerOffset:0,agendaMode:'list',agendaPeriod:'day',agendaRangeList:false,agendaFocusDay:'',agendaFocusOffset:0,agendaDay:'',agendaTablet:false,agendaProfessional:'',agendaStatus:'all',agendaQuery:'',agendaOffset:0,financeKind:'',financeStatus:'',financeFiltersOpen:false,financeTab:'entries',performancePeriod:'month',performanceDay:'',performanceGroup:'day',staffTab:'professionals',staffStatus:'active',marketingTab:'overview',marketingQueueStatus:'all',loyaltyTab:'ranking',loyaltyOffset:0,couponStatus:'all',periodStart:'',periodEnd:'',settingsTab:'general',appHoursView:'hours',siteRequestStatus:'all',siteRequestIntent:'all',siteRequestQuery:'',siteRequestOffset:0,siteTab:'dashboard',helpQuery:'',helpCategory:'all',helpArticle:'',newsFilter:'all',notificationsUnread:false});
+  const state={bridge:{},mounted:false,epoch:0,load:0,route:'dashboard',tenantId:'',layoutMode:'classic',appShortcutDraft:null,data:{},filters:defaultFilters(),dialog:null,busy:false,imageUploading:false,searchTimer:null,drawerTrigger:null,observer:null};
   const rows = value => Array.isArray(value)?value:Array.isArray(value?.items)?value.items:[];
   const number = value => Number.isFinite(Number(value))?Number(value):0;
   const money = value => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(number(value)/100);
@@ -223,7 +282,7 @@
   const canManageSiteRequests=()=>['support','admin'].includes(state.bridge.user?.role);
   function apiPath(suffix){if(!tenant())throw Error(businessAccessError()||'Não foi possível confirmar a empresa desta conta.');return '/api/v1/tenants/'+encodeURIComponent(state.tenantId)+suffix;}
   function mgmt(suffix){return apiPath('/management'+suffix);}
-  function request(path,method='GET',data){if(typeof state.bridge.request!=='function')return Promise.reject(Error('A conexão com sua conta ainda não está pronta.'));if(!permitted(featureForPath(path,method,data)))return Promise.reject(Object.assign(Error('Seu plano não inclui este recurso.'),{status:403}));return state.bridge.request(path,method,data).catch(error=>{if(error.status===403&&!platformWorkspace())void refreshPermissions({reconcile:true});throw error;});}
+  function request(path,method='GET',data,options){if(typeof state.bridge.request!=='function')return Promise.reject(Error('A conexão com sua conta ainda não está pronta.'));if(subscriptionWorkspace()&&path.startsWith('/api/v1/tenants/')&&!path.endsWith('/management/permissions')&&!(path.startsWith('/api/v1/tenants/'+encodeURIComponent(state.tenantId)+'/subscription-whatsapp/')&&['devices.manage','chatbot.manage','templates.manage','sent_messages.manage','diagnostics.manage','campaigns.manage','scheduled_messages.manage','bulk_messages.manage','direct_messages.manage','group_contacts.manage','group_add.manage','account.manage'].includes(featureForPath(path,method,data))))return Promise.reject(Object.assign(Error('Esta função ainda não está disponível para este tipo de negócio.'),{status:403}));if(!permitted(featureForPath(path,method,data)))return Promise.reject(Object.assign(Error('Seu plano não inclui este recurso.'),{status:403}));return state.bridge.request(path,method,data,options).catch(error=>{if(error.status===403&&!platformWorkspace())void refreshPermissions({reconcile:true});throw error;});}
   function context(){return {epoch:state.epoch,tenantId:state.tenantId,load:state.load,route:state.route,accessRevision:state.entitlements?.revision};}
   function current(c){return state.mounted&&c.epoch===state.epoch&&c.tenantId===state.tenantId&&c.load===state.load&&c.route===state.route&&c.accessRevision===state.entitlements?.revision;}
   function stillAccount(c){return state.mounted&&c.epoch===state.epoch&&c.tenantId===state.tenantId&&c.accessRevision===state.entitlements?.revision;}
@@ -232,7 +291,7 @@
   const statusLabels={archived:'Arquivada',paused:'Pausada',approved:'Autorizada',hold:'Reserva',confirmed:'Confirmado',completed:'Atendido',cancelled:'Cancelado',no_show:'Não compareceu',pending:'Pendente',paid:'Pago',available:'Disponível',redeemed:'Usado',expired:'Expirado',draft:'Rascunho',active:'Ativo',inactive:'Inativo'};
   function badge(status,label){const cls=['completed','paid','active','available','redeemed'].includes(status)?'os-success':['cancelled','no_show','expired'].includes(status)?'os-danger':['hold','pending'].includes(status)?'os-warning':'os-neutral';return '<span class="os-badge '+cls+'">'+esc(label||statusLabels[status]||status)+'</span>';}
   const button=(text,action,kind='',symbol='',extra='')=>'<button type="button" class="os-button '+kind+'" data-os-action="'+action+'" '+extra+'>'+(symbol?icon(symbol):'')+esc(text)+'</button>';
-  const routeButton=(text,route,kind='',symbol='')=>'<button type="button" class="os-button '+kind+'" data-os-route="'+route+'">'+(symbol?icon(symbol):'')+esc(text)+'</button>';
+  const routeButton=(text,route,kind='',symbol='')=>subscriptionWorkspace()&&!routePermitted(route)?'':'<button type="button" class="os-button '+kind+'" data-os-route="'+route+'">'+(symbol?icon(symbol):'')+esc(text)+'</button>';
   function typedField(type,value,extra,name){
     if(type==='tel'){
       const internationalCustomer=name==='phone'||name==='customer_phone';
@@ -327,9 +386,9 @@
   function errorHTML(error){return '<div class="os-notice os-error" role="alert">'+icon('info')+'<p>'+esc(error?.message||'Não foi possível consultar os dados. Tente novamente.')+'</p>'+button('Tentar novamente','reload','os-ghost os-small','refresh')+'</div>';}
   function toast(message,error=false){const r=$('osToastRegion');if(!r)return;const n=document.createElement('div');n.className='os-toast'+(error?' os-error':'');n.innerHTML=icon(error?'info':'check')+'<span>'+esc(message)+'</span>';r.appendChild(n);setTimeout(()=>n.remove(),6000);}
   function title(titleText,subtitle,actions=''){return '<div class="os-title-row"><div><h1>'+esc(titleText)+'</h1>'+(subtitle?'<p>'+esc(subtitle)+'</p>':'')+'</div>'+(actions?'<div class="os-actions">'+actions+'</div>':'')+'</div>';}
-  function bodyHTML(html){clearSiteLookups();window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionCommunication?.unmount();window.OrionInbox?.unmount();const body=$('osPageBody');if(body){body.innerHTML=html;window.OrionFields?.refresh(body);}}
+  function bodyHTML(html){clearSiteLookups();window.OrionSubscriptionGroupAdd?.unmount();window.OrionSubscriptionGroupContacts?.unmount();window.OrionSubscriptionDirectMessages?.unmount();window.OrionSubscriptionBulkMessages?.unmount();window.OrionSubscriptionScheduledMessages?.unmount();window.OrionSubscriptionCampaigns?.unmount();window.OrionSubscriptionDiagnostics?.unmount();window.OrionSubscriptionSentMessages?.unmount();window.OrionSubscriptionTemplates?.unmount();window.OrionSubscriptionChatbotTest?.unmount();window.OrionSubscriptionChatbot?.unmount();window.OrionSubscriptionDevices?.unmount();window.OrionSubscriptionDashboard?.unmount();window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionCommunication?.unmount();window.OrionInbox?.unmount();window.OrionDentalClinic?.unmount?.();const body=$('osPageBody');if(body){body.innerHTML=html;window.OrionFields?.refresh(body);}}
   function pageHTML(html){$('page-suite').innerHTML=html;window.OrionFields?.refresh($('page-suite'));}
-  function selectedNav(){const activeRoute=state.route==='cadastros'?'configuracoes':state.route,channels=activeRoute==='configuracoes'&&state.filters.settingsTab==='whatsapp'&&!!document.querySelector('#osNav [data-os-action="managed-whatsapp"]');document.querySelectorAll('.os-nav-link').forEach(a=>{if(channels?a.dataset.osAction==='managed-whatsapp':a.dataset.osRoute===activeRoute)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});}
+  function selectedNav(){const activeRoute=state.route==='cadastros'?'configuracoes':state.route,channels=activeRoute==='configuracoes'&&state.filters.settingsTab==='whatsapp'&&!!document.querySelector('#osNav [data-os-action="managed-whatsapp"]');document.querySelectorAll('.os-nav-link').forEach(a=>{if(channels?a.dataset.osAction==='managed-whatsapp':a.dataset.osRoute===activeRoute)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});updateAppDock();}
 
   function buildShell(){
     const app=$('appView'),sidebar=app.querySelector('.sidebar'),content=app.querySelector('.content');
@@ -339,6 +398,7 @@
     if(!$('osHeader'))content.insertAdjacentHTML('afterbegin','<header id="osHeader" class="os-header"><button id="osMenu" type="button" class="os-icon-button os-menu-button" data-os-action="menu" aria-label="Abrir menu" aria-controls="osSidebar" aria-expanded="false">'+icon('menu')+'</button><div class="os-mobile-brand"><img src="/brand/orion-brand-'+(document.documentElement.dataset.theme==='dark'?'dark':'light')+'.svg" data-orion-logo alt="Orion" width="104" height="32"></div><span class="os-header-spacer"></span><span id="osHeaderNotice" class="os-header-notice"></span><div class="os-theme"><button id="osThemeToggle" class="os-icon-button" type="button" data-os-action="theme-menu" aria-label="Escolher aparência" aria-expanded="false">'+icon('sun')+'</button><div id="osThemeMenu" class="os-theme-menu hidden" aria-label="Aparência"><button type="button" data-os-theme="light">'+icon('sun')+'Claro</button><button type="button" data-os-theme="dark">'+icon('moon')+'Escuro</button><button type="button" data-os-theme="auto">'+icon('monitor')+'Sistema</button></div></div><div class="os-notifications"><button id="osNotificationsToggle" class="os-icon-button" type="button" data-os-action="notifications" aria-label="Notificações" aria-expanded="false" aria-controls="osNotificationsPanel">'+icon('bell')+'<span id="osNotificationDot" class="os-notification-dot hidden"></span></button><section id="osNotificationsPanel" class="os-notifications-panel hidden" aria-label="Notificações" tabindex="-1"></section></div></header>');
     if(!$('page-suite'))content.insertAdjacentHTML('beforeend','<section id="page-suite" class="page os-main" aria-label="Gestão Orion"></section>');
     if(!$('osScrim'))app.insertAdjacentHTML('beforeend','<button id="osScrim" type="button" class="os-scrim" data-os-action="close-menu" aria-label="Fechar menu"></button><button id="osConsultantFab" class="os-fab" type="button" data-os-route="consultor" aria-label="Abrir Consultor IA"><span>'+icon('bot')+'</span><span class="os-fab-label">Consultor IA</span></button>');
+    if(!$('osAppDock'))app.insertAdjacentHTML('beforeend','<nav id="osAppDock" class="os-app-dock" aria-label="Navegação rápida" hidden></nav>');
     if(!$('osDialog'))document.body.insertAdjacentHTML('beforeend','<dialog id="osDialog" class="os-dialog" aria-labelledby="osDialogTitle"></dialog><div id="osToastRegion" class="os-toast-region" aria-live="polite" aria-atomic="false"></div>');
     renderSidebar();applyThemeState();
   }
@@ -360,31 +420,259 @@
   function renderSidebar(){
     const focused=document.activeElement,previousFocus=focused?.closest?.('#osNav')?{route:focused.dataset.osRoute,action:focused.dataset.osAction}:null;
     const t=tenant(),isAdmin=['support','admin'].includes(state.bridge.user?.role);
-    $('osSidebarContext').innerHTML='<div class="os-overline">Meu negócio</div><div class="os-tenant-name">'+esc(t?.name||(businessAccessError()?'Acesso pendente':state.bridge.businessContextReady===false?'Conferindo empresa…':'Sua empresa'))+'</div><div class="os-sidebar-badges"><span class="os-badge">'+esc(isAdmin?'Administração':t?.role==='viewer'?'Consulta':t?.role==='editor'?'Equipe':'Minha empresa')+'</span></div>'+(t?'<button type="button" class="os-side-site" data-os-route="site">meu site '+icon('external')+'</button>':'');
-    const navItem=([route,symbol],extra='')=>'<button type="button" class="os-nav-link'+extra+'" data-os-route="'+route+'" title="'+esc(routeNames[route])+'">'+icon(symbol)+'<span>'+esc(routeNames[route])+'</span></button>';
-    let nav=isAdmin?navItem(['dispositivo','phone'],' os-nav-connection'):t&&permitted('conversations.manual')?'<button type="button" class="os-nav-link os-nav-connection" data-os-action="managed-whatsapp" title="Conectar WhatsApp">'+icon('phone')+'<span>Conectar WhatsApp</span></button>':'';
-    nav+='<div class="os-nav-section">Gestão</div>'+mainNav.filter(([route])=>routePermitted(route)).map(item=>navItem(item)).join('');
-    if(state.bridge.user?.role==='admin'){
+    $('appView')?.classList.toggle('os-dental-workspace',dentalWorkspace());
+    $('osSidebarContext').classList.toggle('os-sidebar-context--subscription',subscriptionWorkspace());
+    $('osSidebarContext').innerHTML='<div class="os-overline">Meu negócio</div><div class="os-tenant-name">'+esc(t?.name||(businessAccessError()?'Acesso pendente':state.bridge.businessContextReady===false?'Conferindo empresa…':'Sua empresa'))+'</div><div class="os-sidebar-badges"><span class="os-badge">'+esc(isAdmin?'Administração':t?.role==='viewer'?'Consulta':t?.role==='editor'?'Equipe':'Minha empresa')+'</span></div>'+(t&&!subscriptionWorkspace()?'<button type="button" class="os-side-site" data-os-route="site">meu site '+icon('external')+'</button>':'');
+    const navItem=([route,symbol],extra='')=>'<button type="button" class="os-nav-link'+extra+'" data-os-route="'+route+'" title="'+esc(routeLabel(route))+'">'+icon(symbol)+'<span>'+esc(routeLabel(route))+'</span></button>';
+    let nav=subscriptionWorkspace()?'':isAdmin?navItem(['dispositivo','phone'],' os-nav-connection'):t&&permitted('conversations.manual')?'<button type="button" class="os-nav-link os-nav-connection" data-os-action="managed-whatsapp" title="Conectar WhatsApp">'+icon('phone')+'<span>Conectar WhatsApp</span></button>':'';
+    const navAvailable=mainNav.filter(([route])=>routePermitted(route)&&!(subscriptionWorkspace()&&route==='configuracoes'));
+    const permittedNav=subscriptionWorkspace()?[...navAvailable.filter(([route])=>route==='dashboard'),...navAvailable.filter(([route])=>route!=='dashboard')]:navAvailable;
+    if(dentalWorkspace()){
+      // Show only existing functional Orion routes while clinical record storage is prepared.
+      const groups=[
+        ['Visão geral',['dashboard']],
+        ['Atendimento clínico',['agenda','clientes','clinica','servicos','funcionarios']],
+        ['Atendimento e site',['inbox','site']],
+        ['Gestão',['financeiro','desempenho','marketing','fidelizacao','consultor','plano','configuracoes']]
+      ];
+      const placed=new Set();
+      for(const [heading,routes] of groups){
+        const items=routes.map(route=>permittedNav.find(item=>item[0]===route)).filter(Boolean);
+        if(!items.length)continue;
+        nav+='<div class="os-nav-section">'+heading+'</div>'+items.map(([route,symbol])=>{
+          placed.add(route);
+          return navItem([route,route==='servicos'?'tooth':symbol]);
+        }).join('');
+      }
+      const extras=permittedNav.filter(([route])=>!placed.has(route)&&!toolNavRoutes.includes(route));
+      if(extras.length)nav+='<div class="os-nav-section">Outros recursos</div>'+extras.map(item=>navItem(item)).join('');
+    }else{
+      nav+='<div class="os-nav-section">Gestão</div>'+permittedNav.filter(([route])=>!toolNavRoutes.includes(route)).map(item=>navItem(item)).join('');
+    }
+    if(state.bridge.user?.role==='admin'&&!subscriptionWorkspace()){
       nav+='<div class="os-nav-section">Atendimento Orion</div>';
-      const attendance=[['conversas','chat'],['ai','bot'],['empresa','settings'],['catalogo','box']];
+      const attendance=[['conversas','messages'],['ai','flask'],['empresa','building'],['catalogo','box']];
       attendance.forEach(item=>{nav+=navItem(item);});
     }
+    const availableTools=toolNavRoutes.map(route=>permittedNav.find(([name])=>name===route)).filter(Boolean);
+    if(availableTools.length)nav+='<div class="os-nav-section">Ferramentas</div>'+availableTools.map(item=>navItem(item)).join('');
     nav+='<div class="os-nav-section">Ajuda e conta</div>'+[['novidades','bell'],['ajuda','book'],['member','shield']].map(([route,symbol])=>{
-      const label=route==='member'&&state.bridge.user?.role==='admin'?'Administração de clientes':routeNames[route];
+      const label=route==='member'&&state.bridge.user?.role==='admin'&&!subscriptionWorkspace()?'Administração de clientes':routeNames[route];
       return '<button type="button" class="os-nav-link os-nav-utility" data-os-route="'+route+'" title="'+esc(label)+'">'+icon(symbol)+'<span>'+esc(label)+'</span></button>';
     }).join('');
+    if(subscriptionWorkspace()&&routePermitted('configuracoes'))nav+='<button type="button" class="os-nav-link os-nav-utility" data-os-app-settings="appearance" title="Aparência">'+icon('sun')+'<span>Aparência</span></button>';
     $('osNav').innerHTML=nav;selectedNav();applyPermissionDOM();
-    if(previousFocus){const target=previousFocus.route?$('osNav').querySelector('[data-os-route="'+previousFocus.route+'"]'):$('osNav').querySelector('[data-os-action="'+previousFocus.action+'"]');(target||$('osNav').querySelector('[data-os-route=plano]'))?.focus({preventScroll:true});}
+    if(previousFocus){const target=previousFocus.route?$('osNav').querySelector('[data-os-route="'+previousFocus.route+'"]'):$('osNav').querySelector('[data-os-action="'+previousFocus.action+'"]');(target||$('osNav').querySelector('[data-os-route="'+fallbackRoute()+'"]'))?.focus({preventScroll:true});}
   }
   function applyThemeState(){const pref=document.documentElement.dataset.themePreference||'auto',effective=document.documentElement.dataset.theme||'light';document.querySelectorAll('[data-os-theme]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.osTheme===pref)));const toggle=$('osThemeToggle');if(toggle)toggle.innerHTML=icon(effective==='dark'?'moon':'sun');document.querySelectorAll('.os-mobile-brand [data-orion-logo]').forEach(i=>i.src='/brand/orion-brand-'+effective+'.svg');}
   function setTheme(preference){const original=document.querySelector('.theme-choice[data-theme-choice="'+preference+'"]');if(original)original.click();else{document.documentElement.dataset.themePreference=preference;document.documentElement.dataset.theme=preference==='auto'?(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light'):preference;try{localStorage.setItem('orion-theme',preference);}catch{}}applyThemeState();$('osThemeMenu').classList.add('hidden');$('osThemeToggle').setAttribute('aria-expanded','false');}
+
+  // Navigation is a presentation layer. All booking, finance and access logic stays shared.
+  // Authorization is server-derived from the verified business niche.
+  const appLayoutEligible=()=>!!tenant()&&!platformWorkspace()&&state.entitlements?.layout_modes?.includes('app')===true;
+  const appLayoutEnabled=()=>state.layoutMode==='app'&&appLayoutEligible();
+  const appLayoutKey=()=>state.tenantId&&(state.bridge.user?.id||state.bridge.user?.email)?
+    'orion-navigation-v1:'+state.tenantId+':'+String(state.bridge.user.id||state.bridge.user.email).toLowerCase():null;
+  function savedAppLayout(){
+    try{const key=appLayoutKey();return key&&localStorage.getItem(key)==='app'?'app':'classic';}
+    catch{return 'classic';}
+  }
+  // Stored locally, scoped to the authenticated account and single company.
+  // Only server-authorized routes can ever become interactive shortcuts.
+  const appShortcutKey=()=>{
+    const key=appLayoutKey();return key?'orion-quick-tabs-v1:'+key.slice('orion-navigation-v1:'.length)+(subscriptionWorkspace()?':subscription_services':''):null;
+  };
+  const appTabAllowed=tab=>tab==='perfil'?appLayoutEnabled():
+    tab==='hours'?routePermitted('configuracoes')&&settingsTabAllowed('hours'):
+    appShortcutChoices.some(([route])=>route===tab)&&routePermitted(tab);
+  function savedAppShortcuts(){
+    try{
+      const key=appShortcutKey(),raw=key?localStorage.getItem(key):null;
+      if(raw===null||raw.length>1024)return null;
+      const chosen=JSON.parse(raw);
+      if(!Array.isArray(chosen)||chosen.length>4||new Set(chosen).size!==chosen.length||
+        chosen.some(route=>typeof route!=='string'||!appShortcutChoices.some(([name])=>name===route)))return null;
+      return chosen;
+    }catch{return null;}
+  }
+  function appShortcutSelection(){
+    const saved=savedAppShortcuts(),selected=saved===null?appDefaultShortcuts():saved;
+    return selected.filter((name,index)=>selected.indexOf(name)===index&&appTabAllowed(name)).slice(0,4);
+  }
+  function appLayoutTabs(){
+    return [...appShortcutSelection().map(route=>appShortcutChoices.find(item=>item[0]===route)),appProfileShortcut];
+  }
+  function appActiveTab(){
+    const route=state.route==='configuracoes'&&state.filters.settingsTab==='hours'?'hours':state.route;
+    return appLayoutTabs().some(([tab])=>tab===route)?route:'perfil';
+  }
+  function updateAppDock(){
+    const dock=$('osAppDock');if(!dock||dock.hidden)return;
+    const tabs=appLayoutTabs(),signature=tabs.map(([route])=>route).join('|');
+    if(dock.dataset.tabSignature!==signature){renderAppDock();return;}
+    const active=appActiveTab(),index=tabs.findIndex(([name])=>name===active);
+    dock.style.setProperty('--os-app-active',String(Math.max(0,index)));
+    dock.style.setProperty('--os-app-offset',(Math.max(0,index)*100)+'%');
+    dock.style.setProperty('--os-app-y',(Math.max(0,index)*69)+'px');
+    dock.querySelectorAll('[data-os-app-tab]').forEach(button=>{
+      if(button.dataset.osAppTab===active)button.setAttribute('aria-current','page');
+      else button.removeAttribute('aria-current');
+      button.disabled=!appTabAllowed(button.dataset.osAppTab);
+    });
+  }
+  function renderAppDock(){
+    const dock=$('osAppDock');if(!dock)return;
+    if(!appLayoutEnabled()){dock.hidden=true;dock.replaceChildren();delete dock.dataset.tabSignature;return;}
+    const tabs=appLayoutTabs();
+    dock.hidden=false;
+    dock.dataset.tabSignature=tabs.map(([name])=>name).join('|');
+    dock.style.setProperty('--os-app-count',String(tabs.length));
+    dock.style.setProperty('--os-app-width',(100/tabs.length)+'%');
+    dock.innerHTML='<div class="os-app-dock-rail"><span class="os-app-dock-indicator" aria-hidden="true"></span>'+
+      tabs.map(([name,symbol,label])=>'<button type="button" class="os-app-dock-item" data-os-app-tab="'+name+'" aria-label="'+esc(label)+'" title="'+esc(label)+'"'+
+        (appTabAllowed(name)?'':' disabled aria-disabled="true"')+'><span class="os-app-dock-symbol">'+icon(symbol)+'</span><span class="os-app-dock-label">'+esc(name==='enviar-mensagem'?'Enviar':label)+'</span></button>').join('')+'</div>';
+    updateAppDock();
+  }
+  function appShortcutDraft(){
+    if(!Array.isArray(state.appShortcutDraft)){
+      const saved=savedAppShortcuts(),selected=saved===null?appDefaultShortcuts():saved;
+      state.appShortcutDraft=selected.filter(name=>appTabAllowed(name)).slice(0,4);
+      while(state.appShortcutDraft.length<4)state.appShortcutDraft.push('');
+    }
+    return state.appShortcutDraft;
+  }
+  function appShortcutEditor(){
+    const draft=appShortcutDraft(),allowed=appShortcutChoices.filter(([name])=>appTabAllowed(name));
+    const preview=[...draft.filter(Boolean).map(name=>appShortcutChoices.find(item=>item[0]===name)),appProfileShortcut];
+    const fields=Array.from({length:4},(_,index)=>{
+      const selected=draft[index]||'',item=appShortcutChoices.find(entry=>entry[0]===selected);
+      return '<div class="os-app-shortcut-row"><span class="os-app-shortcut-number">'+(index+1)+'</span>'+
+        '<span class="os-app-shortcut-icon" aria-hidden="true">'+icon(item?.[1]||'plus')+'</span>'+
+        '<div class="os-app-shortcut-field"><label for="osAppShortcut'+index+'">Atalho '+(index+1)+'</label>'+
+        '<select id="osAppShortcut'+index+'" data-os-app-shortcut="'+index+'" aria-label="Escolher atalho '+(index+1)+'">'+
+        '<option value=""'+(selected?'':' selected')+'>Nenhum atalho</option>'+
+        allowed.map(([name,,label])=>'<option value="'+name+'"'+(name===selected?' selected':'')+'>'+esc(label)+'</option>').join('')+
+        '</select></div></div>';
+    }).join('');
+    return '<section class="os-card os-section-gap os-app-shortcut-settings" aria-labelledby="osAppShortcutsTitle">'+
+      '<div class="os-card-header"><div><h2 id="osAppShortcutsTitle">Atalhos do modo Aplicativo</h2>'+
+      '<p>Escolha até quatro atalhos. Perfil fica sempre na última posição.</p></div></div>'+
+      '<div class="os-app-shortcuts-list">'+fields+
+      '<div class="os-app-shortcut-row os-app-shortcut-locked"><span class="os-app-shortcut-number">5</span>'+
+      '<span class="os-app-shortcut-icon" aria-hidden="true">'+icon('user')+'</span>'+
+      '<div class="os-app-shortcut-fixed-copy"><strong>Perfil</strong><small>Atalho fixo</small></div>'+
+      '<span class="os-app-shortcut-lock" aria-label="Não pode ser removido">'+icon('lock')+'</span></div></div>'+
+      '<div class="os-app-shortcut-preview"><strong>Prévia da navegação</strong>'+
+      '<div class="os-app-shortcut-preview-items" style="--os-preview-count:'+preview.length+'">'+preview.map(([,symbol,label])=>
+        '<span class="os-app-shortcut-preview-item">'+icon(symbol)+'<small>'+esc(label==='Enviar mensagens'?'Enviar':label)+'</small></span>').join('')+'</div></div>'+
+      '<p class="os-help">Personalização salva somente para esta conta neste dispositivo. As outras funções continuam em Perfil.</p>'+
+      '<div class="os-form-actions os-app-shortcut-actions">'+
+      button('Restaurar padrão','app-shortcuts-default','os-outline','refresh')+
+      button('Salvar atalhos','app-shortcuts-save','','check')+'</div></section>';
+  }
+  function changeAppShortcut(index,route){
+    if(!appLayoutEligible()||!Number.isInteger(index)||index<0||index>=4||
+      (route!==''&&!appTabAllowed(route)))return;
+    const draft=appShortcutDraft(),previous=draft[index],collision=route?draft.indexOf(route):-1;
+    if(previous===route)return;
+    if(collision>=0&&collision!==index)draft[collision]=previous;
+    draft[index]=route;
+    if(state.route==='configuracoes'&&state.filters.settingsTab==='appearance'){
+      renderSettings();$('osAppShortcut'+index)?.focus({preventScroll:true});
+    }
+  }
+  function saveAppShortcuts(){
+    if(!appLayoutEligible()||state.route!=='configuracoes'||state.filters.settingsTab!=='appearance')return;
+    const selected=appShortcutDraft().filter(Boolean);
+    if(selected.length>4||new Set(selected).size!==selected.length||selected.some(name=>!appTabAllowed(name))){
+      toast('Confira os atalhos antes de salvar.',true);return;
+    }
+    const key=appShortcutKey();
+    if(!key){toast('Não foi possível identificar a conta para salvar os atalhos.',true);return;}
+    try{localStorage.setItem(key,JSON.stringify(selected));}
+    catch{toast('Não foi possível salvar os atalhos neste dispositivo.',true);return;}
+    state.appShortcutDraft=null;
+    renderAppDock();renderSettings();
+    $('osPageBody')?.querySelector('[data-os-action=app-shortcuts-save]')?.focus({preventScroll:true});
+    toast('Atalhos salvos. A navegação foi atualizada.');
+  }
+  function applyAppLayout(preference=null){
+    const previous=state.layoutMode;
+    state.layoutMode=appLayoutEligible()&&(preference||savedAppLayout())==='app'?'app':'classic';
+    $('appView')?.classList.toggle('os-layout-app',state.layoutMode==='app');
+    const dock=$('osAppDock');
+    if(dock){
+      if(state.layoutMode!=='app'){dock.hidden=true;dock.replaceChildren();}
+      else if(previous!==state.layoutMode||!dock.firstElementChild)renderAppDock();
+      else updateAppDock();
+    }
+    selectedNav();
+  }
+  function chooseAppLayout(mode){
+    if(!appLayoutEligible()||!['classic','app'].includes(mode))return;
+    let stored=false;
+    try{const key=appLayoutKey();if(key){localStorage.setItem(key,mode);stored=true;}}catch{}
+    applyAppLayout(mode);
+    if(state.route==='configuracoes'&&state.filters.settingsTab==='appearance'){
+      renderSettings();
+      $('osPageBody')?.querySelector('[data-os-layout="'+mode+'"]')?.focus({preventScroll:true});
+    }
+    toast('Layout '+(mode==='app'?'Aplicativo':'Clássico')+' ativado.'+(stored?'':' Esta escolha não pôde ser salva neste navegador.'));
+  }
+  function appProfileView(){
+    const groups=subscriptionWorkspace()?[
+      ['Visão geral',[['dashboard','home']]],
+      ['Atendimento e chatbot',[['dispositivos','phone'],['chatbot','bot'],['testar-chatbot','flask'],['templates','layers'],['mensagens-enviadas','fileCheck'],['diagnosticos','activity']]],
+      ['Envios e campanhas',[['enviar-mensagem','send'],['programadas','calendarClock'],['campanhas','megaphone'],['massa','broadcast']]],
+      ['Ferramentas',[['aquecimento','flame'],['evitar-banimento','shieldCheck'],['resolver-banimento','shieldAlert'],['extrator-contatos','usersSearch'],['adicionar-ao-grupo','userPlus']]],
+      ['Configurações e conta',[['configuracoes','settings'],['novidades','bell'],['ajuda','book'],['member','user']]]
+    ]:[
+      ['Agenda e operação',[['dashboard','home'],['agenda','calendar'],['servicos','scissors'],['hours','clock'],['clientes','users'],['funcionarios','badgeUser']]],
+      ['Gestão do negócio',[['financeiro','wallet'],['desempenho','chart']]],
+      ['Atendimento e relacionamento',[['inbox','chat'],['fidelizacao','gift'],['marketing','sparkles'],['consultor','bot']]],
+      ['Site e configurações',[['site','globe'],['configuracoes','settings'],['plano','credit']]],
+      ['Ajuda e conta',[['novidades','bell'],['ajuda','book'],['member','user']]]
+    ];
+    const sections=groups.map(([heading,items],i)=>{
+      const allowed=items.filter(([route])=>route==='hours'?appTabAllowed('hours'):routePermitted(route));if(!allowed.length)return '';
+      const rows=allowed.map(([route,symbol])=>
+        '<button type="button" class="os-app-profile-item" '+(route==='hours'?'data-os-app-tab="hours"':'data-os-route="'+route+'"')+'><span class="os-app-profile-item-icon">'+icon(symbol)+'</span><span>'+esc(route==='hours'?'Horários':routeNames[route])+'</span>'+icon('chevron')+'</button>').join('');
+      const appearance=['Site e configurações','Configurações e conta'].includes(heading)&&settingsTabAllowed('appearance')?
+        '<button type="button" class="os-app-profile-item" data-os-app-settings="appearance"><span class="os-app-profile-item-icon">'+icon('sun')+'</span><span>Aparência</span>'+icon('chevron')+'</button>':'';
+      return '<section class="os-app-profile-group" aria-labelledby="osAppProfileGroup'+i+'"><h2 id="osAppProfileGroup'+i+'">'+esc(heading)+'</h2><div class="os-app-profile-items">'+rows+appearance+'</div></section>';
+    }).join('');
+    return '<div class="os-app-profile-view"><header class="os-app-profile-title"><h1>Perfil</h1><p>Seu negócio e todas as ferramentas do Orion.</p></header>'+
+      '<div class="os-app-profile-hero"><span class="os-avatar" aria-hidden="true">'+esc(initials(tenant()?.name||'Orion'))+'</span><div><strong>'+esc(tenant()?.name||'Minha empresa')+'</strong><small>'+esc(state.bridge.user?.name||'Minha conta')+'</small></div></div>'+
+      '<div class="os-app-profile-groups">'+sections+'</div></div>';
+  }
+  function appBlocksView(){
+    const professionals=rows(state.data.professionals);
+    const blocks=[...rows(state.data.scheduleBlocks).map(item=>({...item,_resource:'schedule_blocks'})),
+      ...rows(state.data.timeOff).map(item=>({...item,_resource:'time_off'}))]
+      .filter(item=>item.id&&item.starts_at&&item.ends_at)
+      .sort((a,b)=>String(a.starts_at).localeCompare(String(b.starts_at))).slice(0,150);
+    const header='<div class="os-app-blocks-head"><p class="os-help">Os bloqueios também aparecem na Agenda.</p>'+
+      (writable()?button('Novo bloqueio','new-block','','plus'):'')+'</div>';
+    if(!blocks.length)return '<section class="os-card">'+header+empty('block','Nenhum bloqueio registrado','Bloqueie um intervalo ou dia inteiro quando necessário.')+'</section>';
+    return '<section class="os-card">'+header+'<div class="os-app-blocks-list">'+blocks.map(item=>{
+      const professional=professionals.find(person=>person.id===item.professional_id);
+      return '<button type="button" class="os-app-profile-item os-app-block-item" data-os-block="'+esc(item.id)+'" data-resource="'+esc(item._resource)+'"><span class="os-app-profile-item-icon">'+icon('block')+'</span><span><strong>'+esc(fmtDate(dateKey(new Date(item.starts_at))))+' · '+esc(timeLabel(item.starts_at))+'–'+esc(timeLabel(item.ends_at))+'</strong><small>'+esc(item.reason||'Horário bloqueado')+(professional?' · '+esc(professional.name):'')+'</small></span>'+icon('chevron')+'</button>';
+    }).join('')+'</div></section>';
+  }
+  function appHoursView(){
+    const mode=state.filters.appHoursView==='blocks'?'blocks':'hours';
+    return '<section class="os-app-hours-view"><div class="os-app-hours-tabs" role="tablist" aria-label="Horários">'+
+      [['hours','Dias de atendimento'],['blocks','Bloqueios']].map(([value,label])=>'<button type="button" role="tab" data-os-app-hours="'+value+'" aria-selected="'+(mode===value)+'">'+label+'</button>').join('')+
+      '</div><div class="os-app-hours-panel" role="tabpanel">'+(mode==='blocks'?appBlocksView():settingsHours())+'</div></section>';
+  }
+
   function drawer(open){const app=$('appView'),side=$('osSidebar');if(!app||!side)return;app.classList.toggle('os-menu-open',open);$('osMenu').setAttribute('aria-expanded',String(open));if(open){state.drawerTrigger=document.activeElement;side.querySelector('button')?.focus();}else state.drawerTrigger?.focus?.();}
   function resetPeriod(){const today=dateKey(),d=dayDate(today);d.setUTCMonth(d.getUTCMonth()+1,0);state.filters.periodStart=today.slice(0,8)+'01';state.filters.periodEnd=d.toISOString().slice(0,10);state.filters.performancePeriod='month';state.filters.performanceDay=today;}
-  function legacyOpened(route){if(route==='cadastros'){void open('configuracoes',{force:true});return;}if(!state.mounted||!legacyPages.has(route))return;if(platformAdminOnlyPages.has(route)&&state.bridge.user?.role!=='admin'){void open('dashboard',{force:true});return;}clearSiteLookups();state.route=route;state.load++;state.filters.agendaTablet=false;clearInterval(state.clockTimer);$('appView')?.classList.remove('os-tablet-mode');closeNotifications();closeDialog();selectedNav();$('page-suite').classList.add('hidden');$('osConsultantFab')?.classList.add('hidden');drawer(false);document.title=routeNames[route]+' · Orion';}
+  function legacyOpened(route){if(state.mounted&&subscriptionWorkspace()&&!routePermitted(route)){void open(fallbackRoute(),{force:true});return;}if(route==='cadastros'){void open(subscriptionWorkspace()?'dashboard':'configuracoes',{force:true});return;}if(!state.mounted||!legacyPages.has(route))return;if(platformAdminOnlyPages.has(route)&&state.bridge.user?.role!=='admin'){void open('dashboard',{force:true});return;}clearSiteLookups();state.route=route;state.load++;state.filters.agendaTablet=false;clearInterval(state.clockTimer);$('appView')?.classList.remove('os-tablet-mode');closeNotifications();closeDialog();selectedNav();$('page-suite').classList.add('hidden');$('osConsultantFab')?.classList.add('hidden');drawer(false);document.title=routeLabel(route)+' · Orion';}
   async function open(route,options={}){
     route=routeAliases.get(route)||route;
     const navigationRead=state.navigationRead=(state.navigationRead||0)+1;state.pendingRoute=route;
-    if(route==='cadastros')route='configuracoes';
+    if(route==='cadastros')route=subscriptionWorkspace()?'dashboard':'configuracoes';
     if(!appPages.has(route))route='dashboard';
     // Never open the legacy operator console from a member/support bookmark,
     // stale URL, programmatic link or previous account's navigation state.
@@ -399,30 +687,54 @@
       return;
     }
     clearSiteLookups();
-    window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionCommunication?.unmount();window.OrionInbox?.unmount();
+    window.OrionSubscriptionGroupAdd?.unmount();window.OrionSubscriptionGroupContacts?.unmount();window.OrionSubscriptionDirectMessages?.unmount();window.OrionSubscriptionBulkMessages?.unmount();window.OrionSubscriptionScheduledMessages?.unmount();window.OrionSubscriptionCampaigns?.unmount();window.OrionSubscriptionDiagnostics?.unmount();window.OrionSubscriptionSentMessages?.unmount();window.OrionSubscriptionTemplates?.unmount();window.OrionSubscriptionChatbotTest?.unmount();window.OrionSubscriptionChatbot?.unmount();window.OrionSubscriptionDevices?.unmount();window.OrionSubscriptionDashboard?.unmount();window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionCommunication?.unmount();window.OrionInbox?.unmount();window.OrionDentalClinic?.unmount?.();
     if(!tenant()){
       state.route=route;state.load++;closeNotifications();closeDialog(true);drawer(false);
       document.querySelectorAll('#appView .content>.page').forEach(p=>p.classList.toggle('hidden',p.id!=='page-suite'));$('osConsultantFab')?.classList.add('hidden');selectedNav();
       const error=businessAccessError();
       pageHTML(error?title('Acesso à sua empresa','Confira o vínculo da sua conta.')+'<div class="os-card"><p class="os-notice os-error" role="alert">'+esc(error)+'</p>'+button('Verificar novamente','business-context-retry','os-outline','refresh')+'</div>':state.bridge.businessContextReady===false?loading('Conferindo o acesso à sua empresa…'):title('Sua empresa','Conclua o cadastro do negócio para continuar.')+'<div class="os-card">'+empty('users','Nenhuma empresa vinculada','Esta conta ainda não possui uma empresa disponível.')+'</div>');
-      try{const url=new URL(location.href);url.searchParams.delete('empresa');history.replaceState({},'',url.pathname+url.search);}catch{}
+      try{const url=new URL(location.href);url.searchParams.delete('empresa');history.replaceState({...window.OrionSubscriptionSentMessages?.navigationState?.(),...window.OrionSubscriptionDiagnostics?.navigationState?.(),...window.OrionSubscriptionGroupAdd?.navigationState?.(),...window.OrionSubscriptionGroupContacts?.navigationState?.(),...window.OrionSubscriptionDirectMessages?.navigationState?.(),...window.OrionSubscriptionBulkMessages?.navigationState?.(),...window.OrionSubscriptionScheduledMessages?.navigationState?.(),...window.OrionSubscriptionCampaigns?.navigationState?.()},'',url.pathname+url.search);}catch{}
       return;
     }
     const permissionEpoch=state.epoch,permissionTenant=state.tenantId;
     if(!options.permissionsChecked&&!platformWorkspace()){
-      if(!state.entitlements){pageHTML(loading('Conferindo seu plano e permissões…'));$('osConsultantFab')?.classList.add('hidden');}
+      if(!state.entitlements){
+         const pendingHome=subscriptionWorkspace()&&route==='dashboard';
+         const placeholder=pendingHome&&window.OrionSubscriptionDashboard?.placeholder?.();
+         pageHTML(placeholder?'<div id="osPageBody">'+placeholder+'</div>':
+           loading(subscriptionWorkspace()?'Conferindo o acesso à sua empresa…':'Conferindo seu plano e permissões…'));
+         $('osConsultantFab')?.classList.add('hidden');
+       }
       await refreshPermissions();
       if(!state.mounted||permissionEpoch!==state.epoch||permissionTenant!==state.tenantId||navigationRead!==state.navigationRead)return;
     }
-    if(!routePermitted(route))route='plano';
+    if(!routePermitted(route))route=fallbackRoute();
+    if(route!=='enviar-mensagem'){
+      try{const url=new URL(location.href);if(state.route==='enviar-mensagem'||url.searchParams.get('aba')==='enviar-mensagem'){url.searchParams.delete('message_id');history.replaceState(history.state,'',url.pathname+url.search);}}catch{}
+    }
+    if(route!=='massa'){
+      try{const url=new URL(location.href);if(state.route==='massa'||url.searchParams.get('aba')==='massa'){for(const key of ['batch_id','view'])url.searchParams.delete(key);history.replaceState(history.state,'',url.pathname+url.search);}}catch{}
+    }
+    if(route!=='programadas'){
+      try{const url=new URL(location.href);if(state.route==='programadas'||url.searchParams.get('aba')==='programadas'){for(const key of ['schedule_id','run_id','view'])url.searchParams.delete(key);history.replaceState(history.state,'',url.pathname+url.search);}}catch{}
+    }
+    if(route!=='campanhas'){
+      try{const url=new URL(location.href);if(state.route==='campanhas'||url.searchParams.get('aba')==='campanhas'){for(const key of ['campaign_id','group_id','view'])url.searchParams.delete(key);history.replaceState(history.state,'',url.pathname+url.search);}}catch{}
+    }
+    if(route!=='diagnosticos'){
+      try{const url=new URL(location.href);if(state.route==='diagnosticos'||url.searchParams.get('aba')==='diagnosticos'){url.searchParams.delete('device_id');history.replaceState(history.state,'',url.pathname+url.search);}}catch{}
+    }
+    if(route!=='testar-chatbot'){
+      try{const url=new URL(location.href);if(state.route==='testar-chatbot'||url.searchParams.get('aba')==='testar-chatbot'){url.searchParams.delete('device_id');url.searchParams.delete('reply_id');history.replaceState(history.state,'',url.pathname+url.search);}}catch{}
+    }
     if(legacyPages.has(route)){
       if(route==='dispositivo'&&!['support','admin'].includes(state.bridge.user?.role)){toast('Seu acesso não inclui a operação do WhatsApp.',true);return;}
       if(route==='member'&&['support','admin'].includes(state.bridge.user?.role)){route='configuracoes';}else{legacyOpened(route);state.bridge.openLegacy?.(route);return;}
     }
     state.pendingRoute=null;clearTimeout(state.agendaSearchTimer);state.route=route;state.load++;if(route!=='agenda')state.filters.agendaTablet=false;closeNotifications();closeDialog();drawer(false);state.bridge.onRouteChange?.(route);$('page-suite').dataset.osCurrentRoute=route;$('osConsultantFab')?.classList.toggle('hidden',!permitted('consultant.ai')||['agenda','inbox'].includes(route));
     document.querySelectorAll('#appView .content>.page').forEach(p=>p.classList.toggle('hidden',p.id!=='page-suite'));
-    selectedNav();document.title=routeNames[route]+' · Orion';
-    try{const url=new URL(location.href);url.searchParams.set('aba',route);url.searchParams.delete('empresa');history.replaceState({orionSuite:route},'',url.pathname+url.search);}catch{}
+    selectedNav();document.title=routeLabel(route)+' · Orion';
+    try{const url=new URL(location.href);url.searchParams.set('aba',route);url.searchParams.delete('empresa');history.replaceState({...window.OrionSubscriptionSentMessages?.navigationState?.(),...window.OrionSubscriptionDiagnostics?.navigationState?.(),...window.OrionSubscriptionGroupAdd?.navigationState?.(),...window.OrionSubscriptionGroupContacts?.navigationState?.(),...window.OrionSubscriptionDirectMessages?.navigationState?.(),...window.OrionSubscriptionBulkMessages?.navigationState?.(),...window.OrionSubscriptionScheduledMessages?.navigationState?.(),...window.OrionSubscriptionCampaigns?.navigationState?.(),orionSuite:route},'',url.pathname+url.search);}catch{}
     if(!options.keepScroll)window.scrollTo({top:0,behavior:'instant'});
     renderRoute();await loadRoute();
     if(route==='agenda'&&tenant()){
@@ -437,12 +749,26 @@
     const f=state.filters,can=writable();$('appView').classList.toggle('os-tablet-mode',state.route==='agenda'&&f.agendaTablet);clearInterval(state.clockTimer);
     const readOnly=tenant()&&!can?'<div class="os-notice os-readonly">'+icon('lock')+'<p>Seu acesso a esta empresa é somente para consulta.</p></div>':'';
     let html='';
+    if(state.route==='dispositivos')html='<div id="osPageBody"><section id="osSubscriptionDevices"></section></div>';
+    if(state.route==='adicionar-ao-grupo')html='<div id="osPageBody"><section id="osSubscriptionGroupAdd"></section></div>';
+    if(state.route==='extrator-contatos')html='<div id="osPageBody"><section id="osSubscriptionGroupContacts"></section></div>';
+    if(state.route==='enviar-mensagem')html='<div id="osPageBody"><section id="osSubscriptionDirectMessages"></section></div>';
+    if(state.route==='massa')html='<div id="osPageBody"><section id="osSubscriptionBulkMessages"></section></div>';
+    if(state.route==='programadas')html='<div id="osPageBody"><section id="osSubscriptionScheduledMessages"></section></div>';
+    else if(state.route==='campanhas')html='<div id="osPageBody"><section id="osSubscriptionCampaigns"></section></div>';
+    if(state.route==='diagnosticos')html='<div id="osPageBody"><section id="osSubscriptionDiagnostics"></section></div>';
+    if(state.route==='mensagens-enviadas')html='<div id="osPageBody"><section id="osSubscriptionSentMessages"></section></div>';
+    if(state.route==='templates')html='<div id="osPageBody"><section id="osSubscriptionTemplates"></section></div>';
+    if(state.route==='chatbot')html='<div id="osPageBody"><section id="osSubscriptionChatbot"></section></div>';
+    if(state.route==='testar-chatbot')html='<div id="osPageBody"><section id="osSubscriptionChatbotTest"></section></div>';
+    if(state.route==='clinica')html=title('Clínica odontológica','Acesso protegido a pacientes, registros e consultórios.')+'<div id="osPageBody"><section id="osDentalClinic"></section></div>';
     if(state.route==='inbox')html=title('Central de atendimento','Acompanhe suas conversas e atendimentos.')+'<div id="osPageBody"><div id="osInboxHost"></div></div>';
-    if(state.route==='dashboard'){html='<div id="osPageBody">'+loading('Carregando o resumo do seu negócio…')+'</div>';}
+    if(state.route==='dashboard'){html=subscriptionWorkspace()?'<div id="osPageBody"><section id="osSubscriptionDashboard">'+(window.OrionSubscriptionDashboard?.placeholder?.()||loading('Preparando seu painel…'))+'</section></div>':'<div id="osPageBody">'+loading('Carregando o resumo do seu negócio…')+'</div>';}
+    if(state.route==='perfil'&&appLayoutEnabled())html='<div id="osPageBody">'+appProfileView()+'</div>';
     if(state.route==='agenda')html=agendaFrame(readOnly);
-    if(state.route==='clientes')html='<div class="os-title-row os-client-heading"><div><h1>Clientes</h1><p id="osCustomersCount">Carregando clientes…</p></div><div class="os-actions">'+button('Novo cliente','new-customer','','plus',can?'':'disabled')+'</div></div>'+readOnly+'<div class="os-search os-client-search">'+icon('search')+'<input id="osCustomerSearch" type="search" placeholder="Buscar por nome ou telefone..." aria-label="Buscar clientes por nome, telefone ou e-mail" value="'+esc(f.customerQuery)+'"></div><div class="os-client-filters"><div class="os-pill-tabs" role="tablist" aria-label="Situação dos clientes">'+[['active','Ativos'],['at_risk','Em Risco'],['inactive','Inativos']].map(([v,label])=>'<button type="button" class="os-pill-tab" role="tab" aria-selected="'+(f.customerStatus===v)+'" data-os-customer-status="'+v+'">'+label+'</button>').join('')+'</div>'+button('Aniversariantes','customer-birthdays',f.customerStatus==='birthday'?'':'os-outline','gift','aria-pressed="'+(f.customerStatus==='birthday')+'"')+'<button class="os-icon-button" type="button" data-os-action="export-customers" title="Exportar clientes em CSV" aria-label="Exportar clientes em CSV">'+icon('download')+'</button></div>'+(f.customerStatus==='at_risk'?'<div class="os-client-risk"><span>Sem retornar há mais de</span>'+[30,60,90].map(n=>'<button class="os-button os-small '+(f.customerRisk===n?'':'os-outline')+'" type="button" data-os-customer-risk="'+n+'">'+n+' dias</button>').join('')+'</div>':f.customerStatus==='birthday'?'<p class="os-help" style="margin-bottom:16px">Aniversariantes desta semana, de domingo a sábado.</p>':'')+'<div id="osPageBody">'+loading('Carregando clientes…')+'</div>';
-    if(state.route==='servicos')html=title('Serviços','Cadastre, ative e organize os serviços oferecidos pela sua empresa.')+readOnly+'<div id="osPageBody">'+loading('Carregando serviços…')+'</div>';
-    if(state.route==='funcionarios')html=title('Funcionários','Gerencie os profissionais, a equipe e as permissões de acesso ao painel.')+readOnly+'<div class="os-pill-tabs os-staff-tabs" role="tablist" aria-label="Funcionários">'+[['professionals','Profissionais'],['permissions','Equipe & Permissões']].map(([v,l])=>'<button type="button" class="os-pill-tab" role="tab" aria-selected="'+(f.staffTab===v)+'" data-os-staff-tab="'+v+'">'+l+'</button>').join('')+'</div><div id="osPageBody">'+loading('Carregando profissionais…')+'</div>';
+    if(state.route==='clientes')html='<div class="os-title-row os-client-heading"><div><h1>'+esc(routeLabel('clientes'))+'</h1><p id="osCustomersCount">'+(dentalWorkspace()?'Carregando pacientes…':'Carregando clientes…')+'</p></div><div class="os-actions">'+button(dentalWorkspace()?'Novo paciente':f.customerStatus==='fixed'?'Novo fixo':'Novo cliente',!dentalWorkspace()&&f.customerStatus==='fixed'?'new-fixed-client':'new-customer','','plus',can?'':'disabled')+'</div></div>'+readOnly+'<div class="os-search os-client-search">'+icon('search')+'<input id="osCustomerSearch" type="search" placeholder="Buscar por nome ou telefone..." aria-label="Buscar clientes por nome, telefone ou e-mail" value="'+esc(f.customerQuery)+'"></div><div class="os-client-filters"><div class="os-pill-tabs" role="tablist" aria-label="Situação dos clientes">'+(dentalWorkspace()?[['active','Ativos'],['inactive','Inativos']]:[['active','Ativos'],['fixed','Fixos'],['at_risk','Em risco']]).map(([v,label])=>'<button type="button" class="os-pill-tab" role="tab" aria-selected="'+(f.customerStatus===v)+'" data-os-customer-status="'+v+'">'+label+'</button>').join('')+'</div>'+(dentalWorkspace()?'':button('Aniversariantes','customer-birthdays',f.customerStatus==='birthday'?'':'os-outline','gift','aria-pressed="'+(f.customerStatus==='birthday')+'"'))+'<button class="os-icon-button" type="button" data-os-action="export-customers" title="Exportar clientes em CSV" aria-label="Exportar clientes em CSV">'+icon('download')+'</button></div>'+(f.customerStatus==='at_risk'?'<div class="os-client-risk"><span>Sem retornar há mais de</span>'+[30,60,90].map(n=>'<button class="os-button os-small '+(f.customerRisk===n?'':'os-outline')+'" type="button" data-os-customer-risk="'+n+'">'+n+' dias</button>').join('')+'</div>':f.customerStatus==='birthday'?'<p class="os-help" style="margin-bottom:16px">Aniversariantes desta semana, de domingo a sábado.</p>':'')+'<div id="osPageBody">'+loading('Carregando clientes…')+'</div>';
+    if(state.route==='servicos')html=title(routeLabel('servicos'),dentalWorkspace()?'Cadastre os procedimentos oferecidos pela clínica, com duração e valores.':'Cadastre, ative e organize os serviços oferecidos pela sua empresa.')+readOnly+'<div id="osPageBody">'+loading('Carregando serviços…')+'</div>';
+    if(state.route==='funcionarios')html=title(routeLabel('funcionarios'),'Gerencie os profissionais, a equipe e as permissões de acesso ao painel.')+readOnly+'<div class="os-pill-tabs os-staff-tabs" role="tablist" aria-label="Funcionários">'+[['professionals','Profissionais'],['permissions','Equipe & Permissões']].map(([v,l])=>'<button type="button" class="os-pill-tab" role="tab" aria-selected="'+(f.staffTab===v)+'" data-os-staff-tab="'+v+'">'+l+'</button>').join('')+'</div><div id="osPageBody">'+loading('Carregando profissionais…')+'</div>';
     if(state.route==='financeiro')html='<div class="os-title-row os-finance-heading">'+
       '<div class="os-finance-title-line"><h1>Financeiro</h1></div>'+
       '<div class="os-actions os-finance-toolbar os-finance-period-row">'+financeMonthPicker()+button('Hoje','finance-today','os-outline os-small')+button('Novo lançamento','new-expense','os-finance-add','plus',can?'':'disabled')+'</div></div>'+
@@ -453,8 +779,8 @@
     if(state.route==='fidelizacao')html=title('Fidelização','Programa de pontos, cupons automáticos e ações de retenção para trazer o cliente de volta.')+readOnly+'<div id="osPageBody">'+loading('Carregando o programa de fidelidade…')+'</div>';
     if(state.route==='consultor')html=title('Consultor IA','Encontre oportunidades a partir dos dados do seu negócio.')+'<div id="osPageBody">'+loading('Analisando os dados disponíveis…')+'</div>';
     if(state.route==='plano')html='<div id="osPageBody">'+loading('Consultando os planos do Orion…')+'</div>';
-    if(state.route==='configuracoes')html=title('Configurações','Gerencie sua empresa, horários e preferências.')+'<div id="osPageBody">'+loading('Carregando configurações…')+'</div>';
-    if(state.route==='ajuda')html='<div id="osPageBody"></div>';
+    if(state.route==='configuracoes')html=appLayoutEnabled()&&state.filters.settingsTab==='hours'?title('Horários','Expediente, pausas e bloqueios dos profissionais.')+'<div id="osPageBody">'+loading('Carregando horários…')+'</div>':title('Configurações','Gerencie sua empresa, horários e preferências.')+'<div id="osPageBody">'+loading('Carregando configurações…')+'</div>';
+    if(['ajuda','aquecimento','evitar-banimento','resolver-banimento'].includes(state.route))html='<div id="osPageBody"></div>';
     if(state.route==='novidades')html=title('Novidades','O que você já pode fazer no seu painel Orion.')+'<div id="osPageBody"></div>';
     pageHTML(html);
   }
@@ -473,8 +799,48 @@
   }
   async function loadRoute(){const c=context();try{
     switch(state.route){
-      case 'dashboard':{const today=dateKey();const d=await request(mgmt('/dashboard?'+query({start_date:today,end_date:today})));if(!current(c))return;state.data.dashboard=d;renderDashboard(d,today);await Promise.all([loadDashboardAgenda(c,today),loadDashboardFinance(c,today)]);break;}
-      case 'agenda':void loadGoogle();await loadAgenda(c);break;
+      case 'clinica':
+        if(!window.OrionDentalClinic)throw Error('Módulo clínico indisponível. Atualize o painel.');
+        await window.OrionDentalClinic.mount({host:$('osDentalClinic'),request,tenantId:state.tenantId,
+          accountId:state.bridge.user?.id||state.bridge.user?.account_id||null,
+          canAccess:()=>state.mounted&&c.epoch===state.epoch&&c.tenantId===state.tenantId&&c.load===state.load&&state.route==='clinica'&&routePermitted('clinica')});
+        break;
+      case 'adicionar-ao-grupo':if(!window.OrionSubscriptionGroupAdd)throw Error('Não foi possível abrir Adicionar contatos ao grupo. Atualize o painel.');await window.OrionSubscriptionGroupAdd.mount({host:$('osSubscriptionGroupAdd'),request,tenantId:state.tenantId,accountKey:state.bridge.user?.email?state.bridge.user.email+'|'+state.bridge.user.role:null,canWrite:()=>writable(),canOpenDevices:()=>routePermitted('dispositivos'),canAccess:()=>state.mounted&&c.epoch===state.epoch&&c.tenantId===state.tenantId&&c.load===state.load&&state.route==='adicionar-ao-grupo'&&routePermitted('adicionar-ao-grupo')});break;
+      case 'extrator-contatos':if(!window.OrionSubscriptionGroupContacts)throw Error('Não foi possível abrir o Extrator de contatos de grupos. Atualize o painel.');await window.OrionSubscriptionGroupContacts.mount({host:$('osSubscriptionGroupContacts'),request,tenantId:state.tenantId,accountKey:state.bridge.user?.email?state.bridge.user.email+'|'+state.bridge.user.role:null,canWrite:()=>writable(),canOpenDevices:()=>routePermitted('dispositivos'),canAccess:()=>state.mounted&&c.epoch===state.epoch&&c.tenantId===state.tenantId&&c.load===state.load&&state.route==='extrator-contatos'&&routePermitted('extrator-contatos')});break;
+      case 'enviar-mensagem':if(!window.OrionSubscriptionDirectMessages)throw Error('Não foi possível abrir Enviar Mensagem. Atualize o painel.');await window.OrionSubscriptionDirectMessages.mount({host:$('osSubscriptionDirectMessages'),request,tenantId:state.tenantId,accountKey:state.bridge.user?.email?state.bridge.user.email+'|'+state.bridge.user.role:null,canWrite:()=>writable(),canAccess:()=>state.mounted&&c.epoch===state.epoch&&c.tenantId===state.tenantId&&c.load===state.load&&state.route==='enviar-mensagem'&&routePermitted('enviar-mensagem')});break;
+      case 'massa':if(!window.OrionSubscriptionBulkMessages)throw Error('Não foi possível abrir Mensagem em Massa. Atualize o painel.');await window.OrionSubscriptionBulkMessages.mount({host:$('osSubscriptionBulkMessages'),request,tenantId:state.tenantId,accountKey:state.bridge.user?.email?state.bridge.user.email+'|'+state.bridge.user.role:null,canWrite:()=>writable(),canAccess:()=>state.mounted&&c.epoch===state.epoch&&c.tenantId===state.tenantId&&c.load===state.load&&state.route==='massa'&&routePermitted('massa')});break;
+      case 'programadas':if(!window.OrionSubscriptionScheduledMessages)throw Error('Não foi possível abrir Mensagens Programadas. Atualize o painel.');await window.OrionSubscriptionScheduledMessages.mount({host:$('osSubscriptionScheduledMessages'),request,tenantId:state.tenantId,accountKey:state.bridge.user?.email?state.bridge.user.email+'|'+state.bridge.user.role:null,canWrite:()=>writable(),canAccess:()=>state.mounted&&c.epoch===state.epoch&&c.tenantId===state.tenantId&&c.load===state.load&&state.route==='programadas'&&routePermitted('programadas')});break;
+      case 'campanhas':if(!window.OrionSubscriptionCampaigns)throw Error('Não foi possível abrir Campanhas. Atualize o painel.');await window.OrionSubscriptionCampaigns.mount({host:$('osSubscriptionCampaigns'),request,tenantId:state.tenantId,accountKey:state.bridge.user?.email?state.bridge.user.email+'|'+state.bridge.user.role:null,canWrite:()=>writable(),canAccess:()=>state.mounted&&c.epoch===state.epoch&&c.tenantId===state.tenantId&&c.load===state.load&&state.route==='campanhas'&&routePermitted('campanhas')});break;
+      case 'diagnosticos':if(!window.OrionSubscriptionDiagnostics)throw Error('Não foi possível abrir Diagnósticos. Atualize o painel.');await window.OrionSubscriptionDiagnostics.mount({host:$('osSubscriptionDiagnostics'),request,tenantId:state.tenantId,accountKey:state.bridge.user?.email?state.bridge.user.email+'|'+state.bridge.user.role:null,canWrite:()=>writable(),canAccess:()=>state.mounted&&c.epoch===state.epoch&&c.tenantId===state.tenantId&&c.load===state.load&&state.route==='diagnosticos'&&routePermitted('diagnosticos')});break;
+      case 'mensagens-enviadas':if(!window.OrionSubscriptionSentMessages)throw Error('Não foi possível abrir Mensagens Enviadas. Atualize o painel.');await window.OrionSubscriptionSentMessages.mount({host:$('osSubscriptionSentMessages'),request,tenantId:state.tenantId,accountKey:state.bridge.user?.email?state.bridge.user.email+'|'+state.bridge.user.role:null,canWrite:()=>writable(),canAccess:()=>state.mounted&&c.epoch===state.epoch&&c.tenantId===state.tenantId&&c.load===state.load&&state.route==='mensagens-enviadas'&&routePermitted('mensagens-enviadas')});break;
+      case 'templates':if(!window.OrionSubscriptionTemplates)throw Error('Não foi possível abrir Templates. Atualize o painel.');await window.OrionSubscriptionTemplates.mount({host:$('osSubscriptionTemplates'),request,tenantId:state.tenantId});break;
+      case 'chatbot':if(!window.OrionSubscriptionChatbot)throw Error('Não foi possível abrir Chatbot. Atualize o painel.');await window.OrionSubscriptionChatbot.mount({host:$('osSubscriptionChatbot'),request,tenantId:state.tenantId,openTester:({deviceId,ruleId})=>{
+        if(!current(c)||!routePermitted('testar-chatbot')||!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(ruleId||''))return;
+        const url=new URL(location.href);url.searchParams.set('reply_id',ruleId);
+        if(deviceId)url.searchParams.set('device_id',deviceId);else url.searchParams.delete('device_id');
+        history.replaceState(history.state,'',url.pathname+url.search);void open('testar-chatbot');
+      }});break;
+      case 'testar-chatbot':{
+        if(!window.OrionSubscriptionChatbotTest)throw Error('Não foi possível abrir Testar Chatbot. Atualize o painel.');
+        const params=new URLSearchParams(location.search);
+        await window.OrionSubscriptionChatbotTest.mount({host:$('osSubscriptionChatbotTest'),request,tenantId:state.tenantId,initialDeviceId:params.get('device_id'),initialRuleId:params.get('reply_id')});break;
+      }
+      case 'dispositivos':if(!window.OrionSubscriptionDevices)throw Error('Não foi possível abrir Dispositivos. Atualize o painel.');await window.OrionSubscriptionDevices.mount({host:$('osSubscriptionDevices'),request,tenantId:state.tenantId});break;
+      case 'dashboard':{
+         if(subscriptionWorkspace()){
+           if(!window.OrionSubscriptionDashboard)throw Error('Não foi possível abrir o Início. Atualize o painel.');
+           await window.OrionSubscriptionDashboard.mount({host:$('osSubscriptionDashboard'),request,tenantId:state.tenantId,
+             allowed:{devices:routePermitted('dispositivos'),chatbot:routePermitted('chatbot'),
+               messages:routePermitted('mensagens-enviadas'),schedules:routePermitted('programadas'),
+               campaigns:routePermitted('campanhas'),templates:routePermitted('templates'),
+               direct:routePermitted('enviar-mensagem'),diagnostics:routePermitted('diagnosticos')}});
+           break;
+         }
+         const today=dateKey();const d=await request(mgmt('/dashboard?'+query({start_date:today,end_date:today})));
+         if(!current(c))return;state.data.dashboard=d;renderDashboard(d,today);
+         await Promise.all([loadDashboardAgenda(c,today),loadDashboardFinance(c,today)]);break;
+       }
+      case 'agenda':if(agendaPeriod()==='day')void loadGoogle();await loadAgenda(c);break;
       case 'clientes':await loadCustomers(c);break;
       case 'inbox':await window.OrionInbox?.mount({host:$('osInboxHost'),request,tenantId:state.tenantId,canWrite:writable()});break;
       case 'servicos':{const d=await request(apiPath('/services'));if(!current(c))return;state.data.services=rows(d);renderServices();break;}
@@ -503,6 +869,9 @@
       case 'plano':await loadPlan(c);break;
       case 'configuracoes':await loadSettings(c);break;
       case 'ajuda':renderHelp();break;
+      case 'aquecimento':renderWhatsAppWarmup();break;
+      case 'evitar-banimento':renderWhatsAppAvoidBan();break;
+      case 'resolver-banimento':renderWhatsAppResolveBan();break;
       case 'novidades':renderNews();break;
     }
   }catch(error){if(current(c))bodyHTML(errorHTML(error));}}
@@ -692,9 +1061,9 @@
     const s=data.summary||{},t=tenant(),can=writable(),hours=Number(new Intl.DateTimeFormat('en-GB',{hour:'2-digit',hourCycle:'h23',timeZone:zone()}).format(new Date()));
     const greeting=hours<12?'Bom dia':hours<18?'Boa tarde':'Boa noite';
     const quick=(titleText,sub,action,symbol,primary=false)=>'<button type="button" class="os-quick-action'+(primary?' os-primary':'')+'" data-os-action="'+action+'"'+(!can&&action!=='agenda-open'?' disabled':'')+'><span class="os-action-icon">'+icon(symbol)+'</span><div><strong>'+esc(titleText)+'</strong><small>'+esc(sub)+'</small></div>'+icon('chevron')+'</button>';
-    let html='<div class="os-dashboard-title"><p class="os-date-label">'+esc(longDay(dateKey()))+'</p><h1>Dashboard</h1><p class="os-dashboard-greeting">'+greeting+', '+esc(t?.name||'seu negócio')+'.</p></div>'+(!can?'<div class="os-notice os-readonly">'+icon('lock')+'<p>Seu acesso a esta empresa é somente para consulta.</p></div>':'')+'<div class="os-space">';
-    html+='<section class="os-quick-actions" aria-label="Ações rápidas">'+quick('Novo agendamento','Marque um horário em segundos','new-appointment','calendarPlus',true)+quick('Novo cliente','Cadastre nome e telefone','new-customer','userPlus')+'</section>';
-    html+='<section class="os-dashboard-today"><h2 class="os-today-title">Hoje no seu negócio</h2><div class="os-stats">'+[[s.appointments,'Agendados'],[s.completed,'Atendidos'],[number(s.cancelled)+number(s.no_show),'Cancel. / faltas']].map(([v,l])=>'<div class="os-stat"><strong>'+number(v)+'</strong><small>'+l+'</small></div>').join('')+'</div>'+dashboardAgendaFrame(today)+dashboardFinanceFrame()+'</section></div>';
+    let html='<div class="os-dashboard-title"><p class="os-date-label">'+esc(longDay(dateKey()))+'</p><h1>'+esc(routeLabel('dashboard'))+'</h1><p class="os-dashboard-greeting">'+greeting+', '+esc(t?.name||'seu negócio')+'.</p></div>'+(!can?'<div class="os-notice os-readonly">'+icon('lock')+'<p>Seu acesso a esta empresa é somente para consulta.</p></div>':'')+'<div class="os-space">';
+    html+='<section class="os-quick-actions" aria-label="Ações rápidas">'+quick(dentalWorkspace()?'Nova consulta':'Novo agendamento','Marque um horário em segundos','new-appointment','calendarPlus',true)+quick(dentalWorkspace()?'Novo paciente':'Novo cliente','Cadastre nome e telefone','new-customer','userPlus')+'</section>';
+    html+='<section class="os-dashboard-today"><h2 class="os-today-title">'+(dentalWorkspace()?'Consultas de hoje':'Hoje no seu negócio')+'</h2><div class="os-stats">'+[[s.appointments,dentalWorkspace()?'Agendadas':'Agendados'],[s.completed,dentalWorkspace()?'Concluídas':'Atendidos'],[number(s.cancelled)+number(s.no_show),'Cancel. / faltas']].map(([v,l])=>'<div class="os-stat"><strong>'+number(v)+'</strong><small>'+l+'</small></div>').join('')+'</div>'+dashboardAgendaFrame(today)+dashboardFinanceFrame()+'</section></div>';
     bodyHTML(html);
   }
   const agendaStates={
@@ -721,42 +1090,93 @@
   }
   function appointmentBadge(a){
     const key=appointmentState(a),spec=agendaStates[key];
-    return '<span class="os-appointment-status os-status-'+key+'">'+icon(spec.symbol)+'<span>'+esc(spec.label)+'</span></span>';
+    return '<span class="os-appointment-status os-status-'+key+'">'+icon(spec.symbol)+'<span>'+esc(spec.label)+'</span></span>'+appointmentOrigin(a);
   }
+  function appointmentOrigin(a){const label={exceptional:'Excepcional',retroactive:'Registrado depois'}[a.booking_mode];return label?'<span class="os-appointment-origin">'+esc(label)+'</span>':'';}
   function appointmentName(a){return customerDisplayName({name:a.customer_name,display_name:a.customer_display_name,whatsapp_name:a.whatsapp_name,phone:a.customer_phone});}
   function appointmentProfessional(a){return a.professional_name||(state.data.professionals||[]).find(p=>p.id===a.professional_id)?.name||'Profissional';}
   function appointmentDuration(a){return Math.max(0,Math.round((Date.parse(a.end_at)-Date.parse(a.start_at))/60000));}
   function appointmentHistoryOnly(a){return ['cancelled','no_show'].includes(a.status)||appointmentState(a)==='expired_hold';}
+  const fixedWeekdays=['segunda-feira','terça-feira','quarta-feira','quinta-feira','sexta-feira','sábado','domingo'];
+  const fixedRepeatChoices=[['weekly1','Toda semana'],['weekly2','A cada 2 semanas'],['weekly4','A cada 4 semanas'],['monthly2','2 vezes por mês'],['monthly4','4 vezes por mês']];
+  const bookingModes=[['regular','Agendamento normal'],['fixed','Cliente fixo (recorrente)'],['exceptional','Horário excepcional'],['retroactive','Registrar atendimento realizado']];
+  const agendaPeriod=()=>['day','week','month'].includes(state.filters.agendaPeriod)?state.filters.agendaPeriod:'day';
+  function agendaBounds(){
+    const day=state.filters.agendaDay||dateKey(),period=agendaPeriod();
+    if(period==='week'){const start=shiftDay(day,-dayDate(day).getUTCDay());return {start,end:shiftDay(start,6)};}
+    if(period==='month'){
+      const start=day.slice(0,7)+'-01',next=dayDate(start);next.setUTCMonth(next.getUTCMonth()+1);
+      return {start,end:shiftDay(next.toISOString().slice(0,10),-1)};
+    }
+    return {start:day,end:day};
+  }
+  function agendaShiftMonth(day,delta){
+    const selected=dayDate((day||dateKey()).slice(0,7)+'-01');selected.setUTCMonth(selected.getUTCMonth()+delta);
+    return selected.toISOString().slice(0,10);
+  }
+  function agendaSelectedDay(){
+    const {start,end}=agendaBounds(),f=state.filters;
+    const day=f.agendaFocusDay||f.agendaDay||dateKey();
+    return day>=start&&day<=end?day:(dateKey()>=start&&dateKey()<=end?dateKey():start);
+  }
+  function agendaReadableDay(day){
+    const label=longDay(day);
+    return label.charAt(0).toLocaleUpperCase('pt-BR')+label.slice(1);
+  }
+  function agendaPeriodLabel(){
+    const bounds=agendaBounds(),period=agendaPeriod();
+    if(period==='day')return fmtDate(bounds.start);
+    if(period==='week'){
+      const a=dayDate(bounds.start),b=dayDate(bounds.end),month=value=>
+        new Intl.DateTimeFormat('pt-BR',{timeZone:'UTC',month:'short'}).format(value).replace(/\./g,'');
+      const from=a.getUTCDate(),to=b.getUTCDate(),year=b.getUTCFullYear();
+      if(a.getUTCFullYear()!==year)return from+' '+month(a)+' '+a.getUTCFullYear()+' – '+to+' '+month(b)+' '+year;
+      if(a.getUTCMonth()!==b.getUTCMonth())return from+' '+month(a)+' – '+to+' '+month(b)+' '+year;
+      return from+'–'+to+' '+month(b)+' '+year;
+    }
+    const title=new Intl.DateTimeFormat('pt-BR',{timeZone:'UTC',month:'long',year:'numeric'}).format(dayDate(bounds.start));
+    return title.charAt(0).toLocaleUpperCase('pt-BR')+title.slice(1);
+  }
   function agendaFrame(readOnly=''){
-    const f=state.filters,day=f.agendaDay||dateKey(),weekStart=shiftDay(day,-dayDate(day).getUTCDay()),can=writable();
-    return '<div class="os-agenda-heading"><div><p class="os-agenda-eyebrow">ORGANIZE SEUS ATENDIMENTOS</p><h1>Agenda</h1><p class="os-date-label" id="osAgendaDate">'+esc(longDay(day))+'</p></div><div class="os-agenda-heading-actions">'+button('Bloquear horário','new-block','os-outline','block',can?'':'disabled')+button('Novo agendamento','new-appointment','','plus',can?'':'disabled')+'</div></div>'+
-      '<div class="os-agenda-toolbar"><div class="os-agenda-date-tools">'+button('','agenda-prev','os-outline os-agenda-icon-control','left','aria-label="Dia anterior"')+button('Hoje','agenda-today','os-outline')+'<label class="os-agenda-date-picker">'+icon('calendar')+'<span>'+esc(fmtDate(day))+'</span><input id="osAgendaDatePicker" type="date" value="'+esc(day)+'" aria-label="Escolher data da agenda"></label>'+button('','agenda-next','os-outline os-agenda-icon-control','chevron','aria-label="Próximo dia"')+'</div><div class="os-agenda-connection"><button type="button" class="os-agenda-google" data-os-action="agenda-google" aria-label="Gerenciar conexão com Google Agenda"><span class="os-google-mark" aria-hidden="true"><img src="https://www.gstatic.com/images/branding/productlogos/calendar_2026/v2/web/192px.svg" alt="" width="26" height="26" loading="lazy" referrerpolicy="no-referrer"></span><span><strong>Google Agenda</strong><small id="osAgendaGoogleLabel">Consultando conexão...</small></span>'+icon('chevron')+'</button>'+button(f.agendaTablet?'Sair da tela ampliada':'Ampliar agenda',f.agendaTablet?'agenda-tablet-exit':'agenda-tablet','os-outline os-agenda-expand','monitor','aria-label="'+(f.agendaTablet?'Sair da tela ampliada':'Ampliar agenda')+'"')+'</div></div>'+
-      '<div class="os-agenda-week"><button class="os-icon-button" type="button" data-os-action="week-prev" aria-label="Semana anterior">'+icon('left')+'</button><div class="os-week-grid" role="tablist" aria-label="Dias da semana">'+Array.from({length:7},(_,i)=>{const date=shiftDay(weekStart,i),selected=date===day;return '<button class="os-week-day" type="button" id="osAgendaDay-'+date+'" data-os-day="'+date+'" role="tab" aria-controls="osPageBody" aria-selected="'+selected+'" tabindex="'+(selected?'0':'-1')+'" aria-label="'+esc(longDay(date))+'"><small>'+['dom','seg','ter','qua','qui','sex','sáb'][i]+'</small><strong>'+dayDate(date).getUTCDate()+'</strong>'+(date===dateKey()?'<span class="os-week-today" aria-label="Hoje"></span>':'')+'</button>';}).join('')+'</div><button type="button" class="os-icon-button" data-os-action="week-next" aria-label="Próxima semana">'+icon('chevron')+'</button></div>'+
+    const f=state.filters,day=f.agendaDay||dateKey(),weekStart=shiftDay(day,-dayDate(day).getUTCDay()),period=agendaPeriod(),can=writable();
+    return '<div class="os-agenda-heading"><div><p class="os-agenda-eyebrow">ORGANIZE SEUS ATENDIMENTOS</p><h1>Agenda</h1><p class="os-date-label" id="osAgendaDate">'+esc(period==='day'?longDay(day):agendaPeriodLabel())+'</p></div><div class="os-agenda-heading-actions">'+button('Bloquear horário','new-block','os-outline','block',can?'':'disabled')+button('Novo agendamento','new-appointment','','plus',can?'':'disabled')+'</div></div>'+
+      '<div class="os-agenda-period-switch" role="tablist" aria-label="Período da agenda">'+
+        [['day','Dia'],['week','Semana'],['month','Mês']].map(([value,label])=>'<button type="button" role="tab" data-os-agenda-period="'+value+'" aria-selected="'+(period===value)+'" tabindex="'+(period===value?'0':'-1')+'">'+label+'</button>').join('')+'</div>'+
+      '<div class="os-agenda-toolbar'+(period==='day'?'':' os-agenda-toolbar-range')+'"><div class="os-agenda-date-tools">'+button('','agenda-prev','os-outline os-agenda-icon-control','left','aria-label="Período anterior"')+button('Hoje','agenda-today','os-outline')+'<label class="os-agenda-date-picker">'+icon('calendar')+'<span>'+esc(agendaPeriodLabel())+'</span><input id="osAgendaDatePicker" type="date" value="'+esc(day)+'" aria-label="Escolher data da agenda"></label>'+button('','agenda-next','os-outline os-agenda-icon-control','chevron','aria-label="Próximo período"')+'</div><div class="os-agenda-connection"><button type="button" class="os-agenda-google" data-os-action="agenda-google" aria-label="Gerenciar conexão com Google Agenda"><span class="os-google-mark" aria-hidden="true"><img src="https://www.gstatic.com/images/branding/productlogos/calendar_2026/v2/web/192px.svg" alt="" width="26" height="26" loading="lazy" referrerpolicy="no-referrer"></span><span><strong>Google Agenda</strong><small id="osAgendaGoogleLabel">Consultando conexão...</small></span>'+icon('chevron')+'</button>'+button(f.agendaTablet?'Sair da tela ampliada':'Ampliar agenda',f.agendaTablet?'agenda-tablet-exit':'agenda-tablet','os-outline os-agenda-expand','monitor','aria-label="'+(f.agendaTablet?'Sair da tela ampliada':'Ampliar agenda')+'"')+'</div></div>'+
+      (period==='day'?'<div class="os-agenda-week"><button class="os-icon-button" type="button" data-os-action="week-prev" aria-label="Semana anterior">'+icon('left')+'</button><div class="os-week-grid" role="tablist" aria-label="Dias da semana">'+Array.from({length:7},(_,i)=>{const date=shiftDay(weekStart,i),selected=date===day;return '<button class="os-week-day" type="button" id="osAgendaDay-'+date+'" data-os-day="'+date+'" role="tab" aria-controls="osPageBody" aria-selected="'+selected+'" tabindex="'+(selected?'0':'-1')+'" aria-label="'+esc(longDay(date))+'"><small>'+['dom','seg','ter','qua','qui','sex','sáb'][i]+'</small><strong>'+dayDate(date).getUTCDate()+'</strong>'+(date===dateKey()?'<span class="os-week-today" aria-label="Hoje"></span>':'')+'</button>';}).join('')+'</div><button type="button" class="os-icon-button" data-os-action="week-next" aria-label="Próxima semana">'+icon('chevron')+'</button></div>':'')+
       '<form id="osAgendaFilters" class="os-agenda-filters" aria-label="Filtrar agendamentos"><label class="os-agenda-search"><span class="os-sr-only">Buscar por nome, telefone ou protocolo</span>'+icon('search')+'<input id="osAgendaSearch" name="query" type="search" maxlength="120" autocomplete="off" placeholder="Nome, telefone ou protocolo" value="'+esc(f.agendaQuery)+'"></label><label class="os-agenda-filter"><span>Profissional</span><select id="osAgendaProfessional" name="professional" aria-label="Filtrar por profissional"><option value="">Toda a equipe</option></select></label><label class="os-agenda-filter"><span>Situação</span><select id="osAgendaStatus" name="status" aria-label="Filtrar por situação">'+[['all','Todas as situações'],['confirmed','Confirmados'],['completed','Finalizados'],['no_show','Faltas'],['cancelled','Todos os cancelamentos'],['cancelled_customer','Pelo cliente'],['cancelled_professional','Pelo profissional'],['cancelled_business','Pela empresa'],['hold','Reservas temporárias']].map(([value,label])=>'<option value="'+value+'"'+(f.agendaStatus===value?' selected':'')+'>'+label+'</option>').join('')+'</select></label><button type="submit" class="os-sr-only">Aplicar filtros</button></form>'+
-      '<div class="os-agenda-view-row"><div class="os-agenda-views" role="tablist" aria-label="Visualização da agenda">'+[['list','list','Lista'],['calendar','calendar','Calendário'],['professional','users','Equipe']].map(([value,symbol,label])=>'<button type="button" role="tab" id="osAgendaView-'+value+'" aria-controls="osPageBody" aria-selected="'+(f.agendaMode===value)+'" tabindex="'+(f.agendaMode===value?'0':'-1')+'" data-os-agenda-mode="'+value+'">'+icon(symbol)+'<span>'+label+'</span></button>').join('')+'</div><button type="button" class="os-button os-ghost os-small" data-os-action="agenda-reload" aria-label="Atualizar agendamentos">'+icon('refresh')+'Atualizar</button></div>'+
-      readOnly+'<div id="osAgendaSummary" class="os-agenda-summary"></div><div class="os-agenda-result-line"><p id="osAgendaCount" tabindex="-1" role="status" aria-live="polite">Carregando agendamentos...</p><button type="button" id="osAgendaClear" class="os-button os-ghost os-small" data-os-action="agenda-clear" hidden>Limpar filtros</button></div><div id="osPageBody" role="tabpanel" aria-labelledby="osAgendaView-'+esc(f.agendaMode)+'" tabindex="0">'+loading('Carregando os agendamentos...')+'</div>';
+      (period==='day'?'<div class="os-agenda-view-row"><div class="os-agenda-views" role="tablist" aria-label="Visualização da agenda">'+[['list','list','Lista'],['calendar','calendar','Calendário'],['professional','users','Equipe']].map(([value,symbol,label])=>'<button type="button" role="tab" id="osAgendaView-'+value+'" aria-controls="osPageBody" aria-selected="'+(f.agendaMode===value)+'" tabindex="'+(f.agendaMode===value?'0':'-1')+'" data-os-agenda-mode="'+value+'">'+icon(symbol)+'<span>'+label+'</span></button>').join('')+'</div><button type="button" class="os-button os-ghost os-small" data-os-action="agenda-reload" aria-label="Atualizar agendamentos">'+icon('refresh')+'Atualizar</button></div>':'<div class="os-agenda-view-row os-agenda-range-caption"><span>'+(period==='week'?'Visão da semana · toque em um dia para abrir os detalhes.':'Visão do mês · toque em uma data para consultar todos os horários.')+'</span>'+button('Atualizar','agenda-reload','os-ghost os-small','refresh')+'</div>')+
+      readOnly+'<div id="osAgendaSummary" class="os-agenda-summary"></div><div class="os-agenda-result-line"><p id="osAgendaCount" tabindex="-1" role="status" aria-live="polite">Carregando agendamentos...</p><button type="button" id="osAgendaClear" class="os-button os-ghost os-small" data-os-action="agenda-clear" hidden>Limpar filtros</button></div><div id="osPageBody" role="'+(period==='day'?'tabpanel':'region')+'" '+(period==='day'?'aria-labelledby="osAgendaView-'+esc(f.agendaMode)+'"':'aria-label="Agendamentos do período"')+' tabindex="0">'+loading('Carregando os agendamentos...')+'</div>';
   }
   function syncAgendaControls(){
     const f=state.filters,select=$('osAgendaProfessional');
     if(select){const professionals=(state.data.professionals||[]).filter(p=>p.active||(state.data.appointments||[]).some(a=>a.professional_id===p.id));select.innerHTML='<option value="">Toda a equipe</option>'+professionals.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.name)+(p.active?'':' (inativo)')+'</option>').join('');if(f.agendaProfessional&&!professionals.some(p=>p.id===f.agendaProfessional))select.insertAdjacentHTML('beforeend','<option value="'+esc(f.agendaProfessional)+'">Profissional selecionado</option>');select.value=f.agendaProfessional;}
     document.querySelectorAll('[data-os-agenda-mode]').forEach(button=>{const selected=button.dataset.osAgendaMode===f.agendaMode;button.setAttribute('aria-selected',String(selected));button.tabIndex=selected?0:-1;});
-    $('osPageBody')?.setAttribute('aria-labelledby','osAgendaView-'+f.agendaMode);
+    document.querySelectorAll('[data-os-agenda-period]').forEach(button=>{const selected=button.dataset.osAgendaPeriod===agendaPeriod();button.setAttribute('aria-selected',String(selected));button.tabIndex=selected?0:-1;});
+    if(agendaPeriod()==='day')$('osPageBody')?.setAttribute('aria-labelledby','osAgendaView-'+f.agendaMode);
     if($('osAgendaClear'))$('osAgendaClear').hidden=!f.agendaQuery&&!f.agendaProfessional&&f.agendaStatus==='all';
   }
   function agendaQuery(offset=state.filters.agendaOffset,limit=50){
     const f=state.filters,cancelledBy=f.agendaStatus.startsWith('cancelled_')?f.agendaStatus.slice(10):'';
-    return query({paged:true,day:f.agendaDay,q:f.agendaQuery.trim(),professional_id:f.agendaProfessional,status:cancelledBy?'cancelled':f.agendaStatus==='all'?'':f.agendaStatus,cancellation_requested_by:cancelledBy,limit,offset});
+    const range=agendaBounds(),dates=agendaPeriod()==='day'?{day:range.start}:{start_date:range.start,end_date:range.end};
+    return query({paged:true,...dates,q:f.agendaQuery.trim(),professional_id:f.agendaProfessional,status:cancelledBy?'cancelled':f.agendaStatus==='all'?'':f.agendaStatus,cancellation_requested_by:cancelledBy,limit,offset});
   }
   async function loadAgenda(c=context(),{catalogue=true}={}){
-    const read=state.agendaRead=(state.agendaRead||0)+1,calendar=state.filters.agendaMode==='calendar',limit=calendar?200:50,offset=calendar?0:state.filters.agendaOffset;
+    const read=state.agendaRead=(state.agendaRead||0)+1,calendar=agendaPeriod()==='day'&&state.filters.agendaMode==='calendar',
+      limit=calendar?200:agendaPeriod()==='week'?100:50,offset=calendar?0:state.filters.agendaOffset;
+    state.agendaFocusRead=(state.agendaFocusRead||0)+1;
+    state.data.agendaFocusResult=null;
     const valid=()=>current(c)&&read===state.agendaRead;
     $('osPageBody')?.setAttribute('aria-busy','true');
     if($('osAgendaCount'))$('osAgendaCount').textContent='Atualizando agendamentos...';
-    const catalogueRequests=catalogue||!state.data.agendaCatalogueReady?Promise.allSettled([
-      request(apiPath('/professionals')),request(apiPath('/working_hours')),request(apiPath('/schedule_blocks')),
-      request(apiPath('/time_off')),request(apiPath('/working_breaks')),
-      request(mgmt('/block-series?'+query({start_date:state.filters.agendaDay,end_date:state.filters.agendaDay})))
-    ]):null;
+    const isPeriod=agendaPeriod()!=='day';
+    const catalogueRequests=isPeriod?
+      (catalogue||!state.data.professionals?Promise.allSettled([request(apiPath('/professionals'))]):null):
+      (catalogue||!state.data.agendaCatalogueReady?Promise.allSettled([
+        request(apiPath('/professionals')),request(apiPath('/working_hours')),request(apiPath('/schedule_blocks')),
+        request(apiPath('/time_off')),request(apiPath('/working_breaks')),
+        request(mgmt('/block-series?'+query({start_date:state.filters.agendaDay,end_date:state.filters.agendaDay})))
+      ]):null);
     try{
       let result=await request(apiPath('/appointments?'+agendaQuery(offset,limit)));
       if(!valid())return;
@@ -774,14 +1194,19 @@
       }
       if(catalogueRequests){
         const outcomes=await catalogueRequests;if(!valid())return;
-        const keys=['professionals','workingHours','scheduleBlocks','timeOff','workingBreaks','blockSeries'];
-        outcomes.forEach((outcome,index)=>{if(outcome.status==='fulfilled')state.data[keys[index]]=rows(outcome.value);});
-        state.data.agendaCatalogueReady=outcomes.every(outcome=>outcome.status==='fulfilled');
-        state.data.agendaCatalogueError=state.data.agendaCatalogueReady?null:'Não foi possível consultar todos os expedientes e bloqueios. Atualize antes de usar a grade de horários.';
+        if(isPeriod){
+          if(outcomes[0].status==='fulfilled')state.data.professionals=rows(outcomes[0].value);
+        }else{
+          const keys=['professionals','workingHours','scheduleBlocks','timeOff','workingBreaks','blockSeries'];
+          outcomes.forEach((outcome,index)=>{if(outcome.status==='fulfilled')state.data[keys[index]]=rows(outcome.value);});
+          state.data.agendaCatalogueReady=outcomes.every(outcome=>outcome.status==='fulfilled');
+          state.data.agendaCatalogueError=state.data.agendaCatalogueReady?null:'Não foi possível consultar todos os expedientes e bloqueios. Atualize antes de usar a grade de horários.';
+        }
       }
       Object.assign(state.data,{appointments:list,agendaResult:{...result,items:list,offset:calendar?0:offset,limit},agendaError:null});
       if(!list.length&&offset>0&&number(result.total)>0){state.filters.agendaOffset=Math.max(0,Math.floor((number(result.total)-1)/limit)*limit);await loadAgenda(c,{catalogue:false});return;}
       syncAgendaControls();renderAgenda();
+      if(agendaPeriod()!=='day'&&!state.filters.agendaRangeList)void loadAgendaFocus(c);
     }catch(error){
       if(!valid())return;
       state.data.agendaError=error;
@@ -790,24 +1215,72 @@
       $('osAgendaSummary')?.replaceChildren();
     }finally{if(valid())$('osPageBody')?.removeAttribute('aria-busy');}
   }
+
+  function agendaFocusQuery(day,offset=0,limit=80){
+    const f=state.filters,by=f.agendaStatus.startsWith('cancelled_')?f.agendaStatus.slice(10):'';
+    return query({paged:true,day,q:f.agendaQuery.trim(),professional_id:f.agendaProfessional,
+      status:by?'cancelled':f.agendaStatus==='all'?'':f.agendaStatus,
+      cancellation_requested_by:by,offset,limit});
+  }
+  function renderAgendaFocus(){
+    const target=$('osAgendaRangeFocusBody'),result=state.data.agendaFocusResult;
+    if(!target||!result||result.day!==agendaSelectedDay())return;
+    const items=result.items||[],total=number(result.total),offset=number(result.offset),limit=number(result.limit)||80;
+    target.innerHTML=(items.length?'<div class="os-agenda-list">'+items.map(appointmentRow).join('')+'</div>':
+      '<div class="os-agenda-focus-empty">'+icon('calendar')+'<p>Nenhum agendamento nesta data.</p></div>')+
+      (total>limit?'<nav class="os-agenda-focus-pagination" aria-label="Outros agendamentos do dia">'+
+        '<span>'+(offset+1)+'–'+Math.min(total,offset+items.length)+' de '+total+'</span><div>'+
+        button('Anterior','agenda-focus-page-prev','os-outline os-small','left',offset>0?'':'disabled')+
+        button('Próxima','agenda-focus-page-next','os-outline os-small','chevron',result.has_more?'':'disabled')+
+        '</div></nav>':'');
+    target.removeAttribute('aria-busy');
+  }
+  async function loadAgendaFocus(c=context()){
+    const target=$('osAgendaRangeFocusBody');
+    if(!target||agendaPeriod()==='day'||state.filters.agendaRangeList)return;
+    const day=agendaSelectedDay(),read=state.agendaFocusRead=(state.agendaFocusRead||0)+1;
+    state.data.agendaFocusResult=null;
+    target.setAttribute('aria-busy','true');
+    target.innerHTML=loading('Consultando atendimentos deste dia...');
+    const valid=()=>current(c)&&state.route==='agenda'&&read===state.agendaFocusRead&&
+      agendaPeriod()!=='day'&&!state.filters.agendaRangeList&&agendaSelectedDay()===day;
+    try{
+      const result=await request(apiPath('/appointments?'+agendaFocusQuery(day,state.filters.agendaFocusOffset||0)));
+      if(!valid())return;
+      if(!result||!Array.isArray(result.items)||!Number.isSafeInteger(Number(result.total))||
+        !Number.isSafeInteger(Number(result.offset))||Number(result.total)<0)
+        throw Error('Não foi possível confirmar os atendimentos do dia.');
+      state.data.agendaFocusResult={...result,day};
+      renderAgendaFocus();
+    }catch(error){
+      if(valid()){
+        target.removeAttribute('aria-busy');
+        target.innerHTML='<div class="os-agenda-focus-empty" role="alert"><p>'+esc(error.message||'Não foi possível consultar a data.')+
+          '</p>'+button('Tentar novamente','agenda-focus-retry','os-outline os-small','refresh')+'</div>';
+      }
+    }
+  }
   async function applyAgendaFilters(){
     if(state.busy||state.route!=='agenda')return;
-    clearTimeout(state.agendaSearchTimer);state.filters.agendaOffset=0;
+    clearTimeout(state.agendaSearchTimer);state.filters.agendaOffset=0;state.filters.agendaFocusOffset=0;
     await loadAgenda(context(),{catalogue:false});
   }
   function agendaPagination(){
     const result=state.data.agendaResult||{},offset=number(result.offset),limit=number(result.limit)||50,total=number(result.total);
-    if(state.filters.agendaMode==='calendar'||total<=limit)return '';
+    if((agendaPeriod()==='day'&&state.filters.agendaMode==='calendar')||total<=limit)return '';
     return '<nav class="os-agenda-pagination" aria-label="Páginas de agendamentos"><span>'+Math.min(offset+1,total)+' a '+Math.min(offset+limit,total)+' de '+total+'</span><div>'+button('Anterior','agenda-page-prev','os-outline','left',offset>0?'':'disabled')+button('Próxima','agenda-page-next','os-outline','chevron',result.has_more?'':'disabled')+'</div></nav>';
   }
   function renderAgendaSummary(list){
     const target=$('osAgendaSummary');if(!target)return;
     const counters=[['confirmed','Confirmados'],['completed','Finalizados'],['cancelled','Cancelamentos'],['no_show','Faltas']];
-    target.innerHTML='<span class="os-agenda-summary-label">Exibidos</span>'+counters.map(([status,label])=>'<span class="os-agenda-summary-item os-status-'+status+'"><strong>'+list.filter(a=>a.status===status).length+'</strong><span>'+label+'</span></span>').join('');
+    const days=agendaPeriod()==='day'?null:state.data.agendaResult?.days;
+    target.classList.toggle('os-agenda-summary-range',agendaPeriod()!=='day');
+    const count=status=>Array.isArray(days)?days.reduce((total,day)=>total+number(day[status]),0):list.filter(a=>a.status===status).length;
+    target.innerHTML='<span class="os-agenda-summary-label">'+(days?'No período':'Exibidos')+'</span>'+counters.map(([status,label])=>'<span class="os-agenda-summary-item os-status-'+status+'"><strong>'+count(status)+'</strong><span>'+label+'</span></span>').join('');
   }
   function agendaEmpty(){
     const f=state.filters,filtered=!!(f.agendaQuery||f.agendaProfessional||f.agendaStatus!=='all');
-    return '<div class="os-agenda-empty">'+empty('calendar',filtered?'Nenhum agendamento com estes filtros':'Nenhum agendamento neste dia',filtered?'Ajuste a busca, o profissional ou a situação para consultar outros registros.':'Escolha outra data ou registre o próximo atendimento.',filtered?button('Limpar filtros','agenda-clear','os-outline'):writable()?button('Novo agendamento','new-appointment','','plus'):'')+'</div>';
+    return '<div class="os-agenda-empty">'+empty('calendar',filtered?'Nenhum agendamento com estes filtros':'Nenhum agendamento '+(agendaPeriod()==='day'?'neste dia':agendaPeriod()==='week'?'nesta semana':'neste mês'),filtered?'Ajuste a busca, o profissional ou a situação para consultar outros registros.':'Escolha outra data ou registre o próximo atendimento.',filtered?button('Limpar filtros','agenda-clear','os-outline'):writable()?button('Novo agendamento','new-appointment','','plus'):'')+'</div>';
   }
   function agendaCalendar(list,professionals,blocks){
     if(!state.data.agendaCatalogueReady)return '<div class="os-notice os-error" role="alert">'+icon('info')+'<p>'+esc(state.data.agendaCatalogueError||'Os horários e bloqueios ainda não foram carregados.')+'</p>'+button('Atualizar','agenda-reload','os-outline','refresh')+'</div>';
@@ -839,12 +1312,93 @@
   const minuteOf=time=>{const parts=String(time||'00:00').split(':');return number(parts[0])*60+number(parts[1]);};
   const eventMinute=value=>minuteOf(timeLabel(value));
   function agendaBlocks(){const day=state.filters.agendaDay,lower=Date.parse(localISO(day,'00:00')),upper=Date.parse(localISO(shiftDay(day,1),'00:00'));return [...(state.data.scheduleBlocks||[]).map(b=>({...b,resource:'schedule_blocks'})),...(state.data.timeOff||[]).map(b=>({...b,resource:'time_off'}))].filter(b=>Date.parse(b.starts_at)<upper&&Date.parse(b.ends_at)>lower);}
+
+  function agendaRangeView(list,result){
+    const period=agendaPeriod(),bounds=agendaBounds(),selected=agendaSelectedDay(),today=dateKey(),
+      days=Array.isArray(result.days)?result.days:[],
+      counts=new Map(days.map(item=>[String(item.day),item])),
+      countOn=day=>number(counts.get(day)?.total),
+      weekdays=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'],
+      whole=state.filters.agendaRangeList===true,
+      total=number(result.total);
+    const markers=day=>{
+      const value=counts.get(day);
+      if(!value)return '';
+      return '<span class="os-agenda-range-dots" aria-hidden="true">'+
+        ['confirmed','completed','cancelled','no_show','hold'].filter(key=>number(value[key])>0)
+          .map(key=>'<i class="os-agenda-dot-'+key+'"></i>').join('')+'</span>';
+    };
+    const dayButton=(day,kind)=>{
+      const date=dayDate(day),count=countOn(day),focused=day===selected&&!whole;
+      return '<button type="button" class="os-agenda-range-day os-agenda-'+kind+'-day'+
+        (day===today?' is-today':'')+(focused?' is-selected':'')+
+        '" data-os-open-day="'+day+'" aria-pressed="'+focused+'" aria-label="'+
+        esc(fmtDate(day)+': '+count+' agendamento'+(count===1?'':'s')+'. Mostrar horários.')+'">'+
+        '<span class="os-agenda-range-day-title"><small>'+weekdays[date.getUTCDay()]+'</small><strong>'+date.getUTCDate()+'</strong></span>'+
+        '<span class="os-agenda-range-day-count">'+(count?'<strong>'+count+'</strong>':'<span aria-hidden="true" class="os-agenda-no-bookings">·</span>')+
+        '<small>'+ (count===1?'agendamento':'agendamentos')+'</small></span>'+markers(day)+'</button>';
+    };
+    const focusTitle=()=>{
+      const count=countOn(selected);
+      return '<div class="os-agenda-focus-head"><div><small>AGENDA DO DIA</small><h3>'+esc(agendaReadableDay(selected))+
+        '</h3><p>'+count+' agendamento'+(count===1?'':'s')+' nesta data</p></div>'+
+        '<button type="button" class="os-button os-outline os-small" data-os-action="agenda-open-selected">'+icon('calendar')+
+        '<span>Abrir dia</span></button></div>'+
+        '<div id="osAgendaRangeFocusBody" class="os-agenda-focus-body" role="region" aria-label="Atendimentos do dia selecionado" aria-live="polite">'+
+        loading('Consultando atendimentos...')+'</div>';
+    };
+    const wholeList=()=>{
+      const grouped=new Map();
+      list.forEach(item=>{
+        const day=dateKey(new Date(item.start_at));
+        if(!grouped.has(day))grouped.set(day,[]);
+        grouped.get(day).push(item);
+      });
+      const sections=[...grouped].sort(([a],[b])=>a.localeCompare(b)).map(([day,items])=>
+        '<section class="os-agenda-period-group"><div class="os-agenda-period-group-heading">'+
+        '<h3>'+esc(agendaReadableDay(day))+'</h3><span>'+items.length+' '+(items.length===1?'atendimento':'atendimentos')+'</span></div>'+
+        '<div class="os-agenda-list">'+items.map(appointmentRow).join('')+'</div></section>').join('');
+      return '<div class="os-agenda-range-all-list" role="region" aria-label="Atendimentos do período">'+
+        (sections||agendaEmpty())+agendaPagination()+'</div>';
+    };
+    const toggle='<button type="button" class="os-button os-outline os-small os-agenda-range-switch-list"'+
+      ' data-os-action="agenda-range-list" aria-expanded="'+whole+'">'+
+      icon(whole?'calendar':'list')+'<span>'+(whole?'Ver dia':period==='week'?'Semana inteira':'Lista do mês')+
+      '</span></button>';
+    if(period==='week'){
+      const strip=Array.from({length:7},(_,i)=>dayButton(shiftDay(bounds.start,i),'week')).join('');
+      return '<section class="os-agenda-period-overview os-agenda-week-overview-wrapper">'+
+        '<div class="os-agenda-range-heading"><h2>Semana</h2><span>'+esc(agendaPeriodLabel())+'</span></div>'+
+        '<div class="os-agenda-week-overview" role="group" aria-label="Dias da semana">'+strip+'</div></section>'+
+        '<div class="os-agenda-range-list-heading"><div><h2>'+(whole?'Atendimentos da semana':'Dia selecionado')+
+        '</h2><p>'+(whole?'Todos os horários, organizados por data':'Consulte os horários sem sair da semana')+
+        '</p></div>'+toggle+'</div>'+
+        (whole?wholeList():'<section class="os-agenda-focus-shell os-agenda-week-focus">'+focusTitle()+'</section>');
+    }
+    const gap=dayDate(bounds.start).getUTCDay(),last=dayDate(bounds.end).getUTCDate(),
+      cellCount=Math.ceil((gap+last)/7)*7;
+    const grid='<div class="os-agenda-month-calendar" role="group" aria-label="Calendário do mês">'+
+      '<div class="os-agenda-month-weekdays" aria-hidden="true">'+weekdays.map(x=>'<span>'+x.slice(0,3)+'</span>').join('')+'</div>'+
+      '<div class="os-agenda-month-grid">'+Array.from({length:cellCount},(_,i)=>{
+        const n=i-gap+1;
+        return n<1||n>last?'<span class="os-agenda-month-empty" aria-hidden="true"></span>':
+          dayButton(shiftDay(bounds.start,n-1),'month');
+      }).join('')+'</div></div>';
+    return '<section class="os-agenda-period-overview os-agenda-month-overview">'+
+      '<div class="os-agenda-range-heading"><h2>'+esc(agendaPeriodLabel())+'</h2>'+toggle+'</div>'+
+      '<div class="os-agenda-range-layout'+(whole?' is-list':'')+'">'+grid+
+      (whole?'':'<aside class="os-agenda-focus-shell">'+focusTitle()+'</aside>')+'</div></section>'+
+      (whole?wholeList():'');
+  }
   function renderAgenda(){
     const list=state.data.appointments||[],f=state.filters,result=state.data.agendaResult||{},total=number(result.total??list.length),offset=number(result.offset);
     const professionals=(state.data.professionals||[]).filter(p=>(!f.agendaProfessional||p.id===f.agendaProfessional)&&((p.active&&p.accepts_appointments!==false)||list.some(a=>a.professional_id===p.id)));
     const blocks=agendaBlocks().filter(b=>!f.agendaProfessional||b.professional_id===f.agendaProfessional);
-    if($('osAgendaCount'))$('osAgendaCount').textContent=total===0?'Nenhum agendamento encontrado.':(offset||list.length<total?'Exibindo '+(offset+1)+' a '+(offset+list.length)+' de '+total:total+' agendamento'+(total===1?'':'s'))+' nesta seleção.';
+    if($('osAgendaCount'))$('osAgendaCount').textContent=agendaPeriod()==='day'?
+      (total===0?'Nenhum agendamento encontrado.':(offset||list.length<total?'Exibindo '+(offset+1)+' a '+(offset+list.length)+' de '+total:total+' agendamento'+(total===1?'':'s'))+' nesta seleção.'):
+      (total+' agendamento'+(total===1?'':'s')+(agendaPeriod()==='week'?' nesta semana.':' neste mês.'));
     renderAgendaSummary(list);syncAgendaControls();
+    if(agendaPeriod()!=='day'){bodyHTML(agendaRangeView(list,result));return;}
     if(f.agendaMode==='calendar'){bodyHTML(agendaCalendar(list,professionals,blocks));return;}
     let html='';
     if(f.agendaMode==='professional'&&list.length){
@@ -859,23 +1413,63 @@
   function showBlockDetail(id,resource){const b=(resource==='time_off'?state.data.timeOff:state.data.scheduleBlocks)?.find(b=>b.id===id);if(!b)return;const p=(state.data.professionals||[]).find(p=>p.id===b.professional_id);showDialog('block-detail','Bloqueio da agenda','<div class="os-summary">'+[['Profissional',p?.name||'—'],['Início',fmtDate(dateKey(new Date(b.starts_at)))+' às '+timeLabel(b.starts_at)],['Fim',fmtDate(dateKey(new Date(b.ends_at)))+' às '+timeLabel(b.ends_at)],['Motivo',b.reason||'Não informado']].map(([label,value])=>'<div class="os-summary-row"><span>'+esc(label)+'</span><strong>'+esc(value)+'</strong></div>').join('')+'</div><div class="os-form-actions">'+button('Fechar','close-dialog','os-outline')+(writable()?button('Remover bloqueio','delete-block','os-danger','trash'):'')+'</div>',{record:b,resource,series:(state.data.blockSeries||[]).find(s=>(s.occurrences||[]).some(o=>o.block_id===b.id)),occurrenceDate:state.filters.agendaDay});}
   function appointmentRow(a){
     const name=appointmentName(a),professional=appointmentProfessional(a),services=(a.items||[]).map(item=>item.name_snapshot).join(' + '),status=appointmentState(a);
-    return '<button type="button" class="os-agenda-item os-status-'+status+'" data-os-appointment="'+esc(a.id)+'" aria-label="'+esc('Ver agendamento de '+name+', às '+timeLabel(a.start_at)+', '+agendaStates[status].label)+'"><span class="os-agenda-time"><strong>'+esc(timeLabel(a.start_at))+'</strong><small>'+esc(timeLabel(a.end_at))+'</small></span><span class="os-agenda-person"><strong class="os-agenda-name">'+esc(name)+'</strong><span class="os-agenda-service">'+esc(services||'Serviços registrados no agendamento')+'</span><span class="os-agenda-staff"><span class="os-color-dot" style="background:'+cleanColor(a.professional_color||(state.data.professionals||[]).find(p=>p.id===a.professional_id)?.color,'#2e7bf6')+'"></span>'+esc(professional)+'<span class="os-agenda-duration">'+appointmentDuration(a)+' min</span></span></span><span class="os-agenda-meta">'+appointmentBadge(a)+'<strong>'+esc(priceLabel(a.total_cents,a.status==='completed'?'fixed':a.price_mode))+'</strong></span><span class="os-agenda-row-arrow">'+icon('chevron')+'</span></button>';
+    return '<button type="button" class="os-agenda-item os-status-'+status+'" data-os-appointment="'+esc(a.id)+'" aria-label="'+esc('Ver agendamento de '+name+', às '+timeLabel(a.start_at)+', '+agendaStates[status].label)+'"><span class="os-agenda-time"><strong>'+esc(timeLabel(a.start_at))+'</strong><small>'+esc(timeLabel(a.end_at))+'</small></span><span class="os-agenda-person"><strong class="os-agenda-name">'+esc(name)+'</strong><span class="os-agenda-service">'+esc(services||'Serviços registrados no agendamento')+'</span><span class="os-agenda-staff"><span class="os-color-dot" style="background:'+cleanColor(a.professional_color||(state.data.professionals||[]).find(p=>p.id===a.professional_id)?.color,'#2e7bf6')+'"></span>'+esc(professional)+'<span class="os-agenda-duration">'+appointmentDuration(a)+' min</span></span></span><span class="os-agenda-meta">'+appointmentBadge(a)+(a.series_id?'<span class="os-fixed-tag">'+icon('repeat')+' Fixo</span>':'')+'<strong>'+esc(priceLabel(a.total_cents,a.status==='completed'?'fixed':a.price_mode))+'</strong></span><span class="os-agenda-row-arrow">'+icon('chevron')+'</span></button>';
   }
   async function loadCustomers(c=context()){
     if(!current(c))return;
-    const f=state.filters,read=state.customerRead=(state.customerRead||0)+1,filter=query({q:f.customerQuery,status:f.customerStatus,risk_days:f.customerRisk,limit:50,offset:f.customerOffset});
+    const f=state.filters,read=state.customerRead=(state.customerRead||0)+1;
+    if(f.customerStatus==='fixed'&&!dentalWorkspace()){
+      const [data,active]=await Promise.all([
+        request(apiPath('/appointments/series?limit=200')),
+        request(mgmt('/customers?status=active&limit=1'))
+      ]);
+      if(!current(c)||read!==state.customerRead)return;
+      state.data.fixedSeries=data;
+      state.data.activeCustomers=number(active.total);
+      renderFixedCustomers(data);
+      return;
+    }
+    const filter=query({q:f.customerQuery,status:f.customerStatus,risk_days:f.customerRisk,limit:50,offset:f.customerOffset});
     const requests=[request(mgmt('/customers?'+filter))];
     if(f.customerQuery||f.customerStatus!=='active')requests.push(request(mgmt('/customers?status=active&limit=1')));
     const [data,active]=await Promise.all(requests);
     if(!current(c)||read!==state.customerRead)return;
     state.data.customers=data;state.data.activeCustomers=number((active||data).total);renderCustomers(data);
   }
+  function renderFixedCustomers(data){
+    const q=state.filters.customerQuery.trim().toLocaleLowerCase('pt-BR');
+    const digits=q.replace(/\D/g,'');
+    const series=rows(data).filter(item=>!item.closed_at&&item.next_start_at&&Date.parse(item.next_start_at)>Date.now());
+    const list=series.filter(item=>!q||[item.customer_name,item.customer_phone,item.services_label,item.professional_name].some(
+      text=>String(text||'').toLocaleLowerCase('pt-BR').includes(q))||(digits&&String(item.customer_phone||'').replace(/\D/g,'').includes(digits)));
+    const people=new Set(series.map(item=>item.customer_id)).size;
+    const count=$('osCustomersCount');
+    if(count)count.textContent=people+' '+(people===1?'cliente fixo':'clientes fixos');
+    if(!list.length){
+      bodyHTML('<div class="os-client-empty">'+esc(q?'Nenhum cliente fixo encontrado.':'Nenhum cliente com agendamento fixo ativo.')+'</div>');
+      return;
+    }
+    const label=item=>item.monthly_visits===2?'2 vezes por mês':item.monthly_visits===4?'4 vezes por mês':
+      ({1:'Toda semana',2:'A cada 2 semanas',4:'A cada 4 semanas'}[item.interval_weeks]||'Recorrente');
+    bodyHTML('<div class="os-fixed-list os-client-fixed-list">'+list.map(item=>{
+      const name=item.customer_name||'Cliente',frequency=label(item);
+      const date=(fixedWeekdays[item.weekday]||'')+' às '+String(item.local_time||'').slice(0,5);
+      return '<button type="button" class="os-fixed-card" data-os-fixed-series="'+esc(item.id)+'" aria-label="'+esc('Ver e editar cliente fixo '+name+', '+frequency)+'">'+
+        '<span class="os-fixed-card-icon">'+icon('repeat')+'</span>'+
+        '<span class="os-fixed-card-main"><strong>'+esc(name)+'</strong><small>'+esc(item.services_label||'Serviço não informado')+' · '+esc(item.professional_name||'Profissional')+'</small><small>'+esc(date)+'</small></span>'+
+        '<span class="os-fixed-card-side"><span class="os-badge os-neutral">'+esc(frequency)+'</span><small>Próxima: '+esc(appointmentMoment(item.next_start_at))+'</small></span>'+icon('chevron')+'</button>';
+    }).join('')+'</div>');
+  }
+
   function renderCustomers(data){
-    const list=rows(data),f=state.filters,count=$('osCustomersCount');if(count)count.textContent=state.data.activeCustomers+' '+(state.data.activeCustomers===1?'ativo':'ativos');
-    if(!list.length){const message=f.customerQuery?'Nenhum cliente encontrado.':f.customerStatus==='at_risk'?'Nenhum cliente em risco neste período.':f.customerStatus==='inactive'?'Nenhum cliente inativo.':f.customerStatus==='birthday'?'Nenhum aniversariante nesta semana.':'Nenhum cliente ainda. Cadastre o primeiro!';bodyHTML('<div class="os-client-empty">'+esc(message)+'</div>');return;}
+    if(state.filters.customerStatus==='fixed'&&!dentalWorkspace()){renderFixedCustomers(data);return;}
+    const list=rows(data),f=state.filters,count=$('osCustomersCount');if(count)count.textContent=state.data.activeCustomers+' '+(dentalWorkspace()?(state.data.activeCustomers===1?'paciente ativo':'pacientes ativos'):(state.data.activeCustomers===1?'ativo':'ativos'));
+    if(!list.length){const message=dentalWorkspace()?(f.customerQuery?'Nenhum paciente encontrado.':f.customerStatus==='inactive'?'Nenhum paciente inativo.':'Nenhum paciente cadastrado. Cadastre o primeiro!'):f.customerQuery?'Nenhum cliente encontrado.':f.customerStatus==='at_risk'?'Nenhum cliente em risco neste período.':f.customerStatus==='inactive'?'Nenhum cliente inativo.':f.customerStatus==='birthday'?'Nenhum aniversariante nesta semana.':'Nenhum cliente ainda. Cadastre o primeiro!';bodyHTML('<div class="os-client-empty">'+esc(message)+'</div>');return;}
     const actions=c=>'<button type="button" class="os-icon-button" data-os-customer="'+esc(c.id)+'" aria-label="'+(writable()?'Editar ':'Ver ')+esc(customerDisplayName(c))+'">'+icon('edit')+'</button>'+(writable()?'<button type="button" class="os-icon-button" data-os-customer-toggle="'+esc(c.id)+'" aria-label="'+(c.active?'Inativar ':'Ativar ')+esc(customerDisplayName(c))+'">'+icon(c.active?'block':'check')+'</button><button type="button" class="os-icon-button os-negative" data-os-customer-delete="'+esc(c.id)+'" aria-label="Excluir '+esc(customerDisplayName(c))+'">'+icon('trash')+'</button>':'');
-    let html='<p class="os-help os-only-mobile" style="margin-bottom:12px">'+(writable()?'Deslize para a esquerda para editar, inativar ou excluir.':'Toque em um cliente para consultar seus dados.')+'</p><div class="os-card os-no-pad os-hide-mobile"><div class="os-table-scroll"><table class="os-table"><thead><tr><th>Cliente</th><th>WhatsApp</th><th>Última visita</th><th>Atendimentos</th><th><span class="os-sr-only">Ações</span></th></tr></thead><tbody>'+list.map(c=>'<tr><td><div class="os-person"><span class="os-avatar">'+customerAvatar(c)+'</span><div><strong>'+esc(customerDisplayName(c))+'</strong><small>'+esc(c.email||c.instagram||'')+'</small>'+
-      (c.created_at?'<small class="os-client-row-created">Cadastro: '+esc(customerRegisteredAt(c.created_at))+'</small>':'')+'</div></div></td><td>'+esc(c.phone||'—')+'</td><td>'+fmtDate(c.last_visit_at)+'</td><td>'+number(c.completed_appointments??c.total_appointments)+'</td><td><div class="os-table-actions">'+actions(c)+'</div></td></tr>').join('')+'</tbody></table></div></div>';
+    let html='<p class="os-help os-only-mobile" style="margin-bottom:12px">'+(writable()?'Deslize para a esquerda para editar, inativar ou excluir.':'Toque em um cliente para consultar seus dados.')+'</p><div class="os-card os-no-pad os-hide-mobile"><div class="os-table-scroll"><table class="os-table"><thead><tr><th>'+(dentalWorkspace()?'Paciente':'Cliente')+'</th><th>WhatsApp</th><th>Última visita</th><th>Atendimentos</th><th><span class="os-sr-only">Ações</span></th></tr></thead><tbody>'+list.map(c=>'<tr><td><div class="os-person"><span class="os-avatar">'+customerAvatar(c)+'</span><div><strong>'+esc(customerDisplayName(c))+'</strong><small>'+esc(c.email||c.instagram||'')+'</small>'+
+      (c.created_at?'<small class="os-client-row-created">Cadastro: '+esc(customerRegisteredAt(c.created_at))+'</small>':'')+
+      (number(c.legacy_appointments)>0?'<small>Agenda antiga: '+number(c.legacy_appointments)+' agendamentos</small>':'')+
+      '</div></div></td><td>'+esc(c.phone||'—')+'</td><td>'+fmtDate(c.last_visit_at)+'</td><td>'+number(c.completed_appointments??c.total_appointments)+'</td><td><div class="os-table-actions">'+actions(c)+'</div></td></tr>').join('')+'</tbody></table></div></div>';
     html+='<div class="os-mobile-customers os-only-mobile">'+list.map(c=>{
       const name=customerMobileName(c),whatsapp=customerWhatsappLink(c.phone);
       const link=whatsapp?'<a class="os-client-mobile-whatsapp" href="'+whatsapp+'" target="_blank" rel="noopener noreferrer" aria-label="Abrir WhatsApp de '+esc(name)+'" title="Conversar pelo WhatsApp">'+whatsappMark+'</a>':'';
@@ -890,11 +1484,22 @@
     bodyHTML(html);
   }
   const serviceModels=[['Atendimento','Atendimento individual'],['Consulta','Consulta inicial'],['Avaliação','Avaliação'],['Retorno','Retorno'],['Sessão','Sessão individual'],['Personalizado','Serviço personalizado']];
+  // Nomes da demo são apenas sugestões para o catálogo real; valores e tempos
+  // permanecem sob responsabilidade da clínica e são salvos na API existente.
+  const dentalServiceModels=[
+    ['Clínica geral','Avaliação odontológica'],
+    ['Prevenção','Profilaxia e limpeza'],
+    ['Dentística','Restauração'],
+    ['Ortodontia','Consulta de ortodontia'],
+    ['Endodontia','Tratamento endodôntico'],
+    ['Retorno','Consulta de retorno']
+  ];
+  const serviceModelOptions=()=>dentalWorkspace()?dentalServiceModels:serviceModels;
   const cleanColor=(value,fallback='#8b5cf6')=>/^#[0-9a-fA-F]{6}$/.test(value||'')?value:fallback;
   function serviceRecordPayload(s){return {name:s.name,description:s.description||null,duration_min:s.duration_min,price_cents:s.price_cents,price_mode:s.price_mode||'fixed',prep_min:s.prep_min||0,cleanup_min:s.cleanup_min||0,active:s.active,category:s.category||null,color:cleanColor(s.color),image_url:s.image_url||null,sort_order:number(s.sort_order)};}
   function renderServices(){
     const list=[...(state.data.services||[])].filter(s=>!s.catalog_kind||s.catalog_kind==='base').sort((a,b)=>number(a.sort_order)-number(b.sort_order)||a.name.localeCompare(b.name,'pt-BR')),can=writable();
-    let html='<section class="os-card os-service-models"><div class="os-card-header" style="margin:0"><button type="button" class="os-plain-disclosure" data-os-action="toggle-service-models" aria-expanded="false" aria-controls="osServiceModels"><span class="os-square-icon">'+icon('sparkles')+'</span><span><strong>Modelos de serviços</strong><small>Clique para ver modelos prontos por categoria.</small></span>'+icon('down')+'</button>'+button('Do zero','new-service','os-outline os-small','plus',can?'':'disabled')+'</div><div id="osServiceModels" class="hidden"><div class="os-template-grid">'+serviceModels.map(([category,name],i)=>'<button type="button" class="os-service-option" data-os-service-model="'+i+'" '+(can?'':'disabled')+'><strong>'+esc(category)+'</strong><small>'+esc(name)+'</small></button>').join('')+'</div><p class="os-help" style="margin-top:12px">Escolha um modelo e ajuste a duração e o preço antes de cadastrar.</p></div></section><div class="os-subsection-title"><h2>SEUS SERVIÇOS</h2>'+button('Novo serviço','new-service','os-small','plus',can?'':'disabled')+'</div><p class="os-help" style="margin-bottom:16px">Use as setas para definir a ordem em que os serviços aparecem no seu site.</p>';
+    let html='<section class="os-card os-service-models"><div class="os-card-header" style="margin:0"><button type="button" class="os-plain-disclosure" data-os-action="toggle-service-models" aria-expanded="false" aria-controls="osServiceModels"><span class="os-square-icon">'+icon('sparkles')+'</span><span><strong>'+(dentalWorkspace()?'Modelos de procedimentos':'Modelos de serviços')+'</strong><small>Clique para ver modelos prontos por categoria.</small></span>'+icon('down')+'</button>'+button('Do zero','new-service','os-outline os-small','plus',can?'':'disabled')+'</div><div id="osServiceModels" class="hidden"><div class="os-template-grid">'+serviceModelOptions().map(([category,name],i)=>'<button type="button" class="os-service-option" data-os-service-model="'+i+'" '+(can?'':'disabled')+'><strong>'+esc(category)+'</strong><small>'+esc(name)+'</small></button>').join('')+'</div><p class="os-help" style="margin-top:12px">Escolha um modelo e ajuste a duração e o preço antes de cadastrar.</p></div></section><div class="os-subsection-title"><h2>'+(dentalWorkspace()?'PROCEDIMENTOS CADASTRADOS':'SEUS SERVIÇOS')+'</h2>'+button(dentalWorkspace()?'Novo procedimento':'Novo serviço','new-service','os-small','plus',can?'':'disabled')+'</div><p class="os-help" style="margin-bottom:16px">Use as setas para definir a ordem em que os serviços aparecem no seu site.</p>';
     html+=list.length?'<div class="os-cards-grid os-services-grid">'+list.map((s,i)=>{
       const serviceId=esc(s.id),name=esc(s.name),color=cleanColor(s.color),photo=safePublicURL(s.image_url);
       return '<article class="os-card os-item-card os-service-card" data-os-service-card="'+serviceId+'">'+
@@ -904,7 +1509,7 @@
             '<button type="button" class="os-service-grip" data-os-service-drag="'+serviceId+'" aria-label="Arrastar '+name+' para reordenar (ou usar as setas do teclado)" title="Arraste para reordenar · use as setas do teclado" '+(can?'':'disabled')+'><svg class="os-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="5" r="1.4"/><circle cx="15" cy="5" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="9" cy="19" r="1.4"/><circle cx="15" cy="19" r="1.4"/></svg></button>'+
             '<button type="button" class="os-icon-button" data-os-service-order="'+serviceId+'" data-direction="1" aria-label="Mover '+name+' para baixo" '+(!can||i===list.length-1?'disabled':'')+'>'+icon('arrowDown')+'</button>'+
           '</div>'+
-          '<div class="os-service-photo" style="color:'+color+';background:'+color+'15">'+(photo?'<img src="'+esc(photo)+'" alt="" loading="lazy" referrerpolicy="no-referrer">':icon('scissors'))+'</div>'+
+          '<div class="os-service-photo" style="color:'+color+';background:'+color+'15">'+(photo?'<img src="'+esc(photo)+'" alt="" loading="lazy" referrerpolicy="no-referrer">':icon(dentalWorkspace()?'tooth':'scissors'))+'</div>'+
           '<div class="os-service-info"><h3>'+name+'</h3><p class="os-service-meta">'+number(s.duration_min)+' min · '+esc(priceLabel(s.price_cents,s.price_mode))+'</p><div class="os-service-state">'+badge(s.active?'active':'inactive')+'</div></div>'+
         '</div>'+
         '<div class="os-item-commands">'+
@@ -925,7 +1530,7 @@
     if(state.filters.staffTab==='permissions'){bodyHTML(renderTeam());return;}
     const active=all.filter(p=>p.active!==false),inactive=all.filter(p=>p.active===false),
       isInactive=state.filters.staffStatus==='inactive',list=isInactive?inactive:active;
-    let html=(atProfessionalLimit()?'<p class="os-notice" role="status">Você atingiu o limite de profissionais do seu plano. '+routeButton('Conhecer planos','plano','os-outline os-small')+'</p>':'')+'<div class="os-staff-intro"><p>Cadastre e gerencie sua equipe.</p>'+button('Novo funcionário','new-professional','','plus',can?'':'disabled')+'</div>'+
+    let html=(atProfessionalLimit()?'<p class="os-notice" role="status">Você atingiu o limite de profissionais do seu plano. '+routeButton('Conhecer planos','plano','os-outline os-small')+'</p>':'')+'<div class="os-staff-intro"><p>Cadastre e gerencie sua equipe.</p>'+button(dentalWorkspace()?'Novo profissional':'Novo funcionário','new-professional','','plus',can?'':'disabled')+'</div>'+
       (isInactive?'':renderInvitations(true))+
       '<div class="os-staff-toolbar"><div class="os-subsection-title"><h2>PROFISSIONAIS <span class="os-badge os-neutral">'+list.length+'</span></h2></div>'+
       '<div class="os-pill-tabs os-staff-status-tabs" role="tablist" aria-label="Situação dos profissionais">'+
@@ -946,15 +1551,70 @@
     }else{
       html+='<div class="os-card">'+(isInactive?
         empty('users','Nenhum funcionário inativo','Os funcionários removidos aparecerão nesta lista.') :
-        empty('users','Nenhum profissional ativo','Cadastre um funcionário ou reative alguém na aba Inativos.',button('Novo funcionário','new-professional','','plus',can?'':'disabled')))+'</div>';
+        empty('users','Nenhum profissional ativo','Cadastre um funcionário ou reative alguém na aba Inativos.',button(dentalWorkspace()?'Novo profissional':'Novo funcionário','new-professional','','plus',can?'':'disabled')))+'</div>';
     }
     bodyHTML(html);
   }
   const teamRoles={owner:'Proprietário',editor:'Editor',viewer:'Leitor'};
   const inviteStatuses={pending:'Aguardando aceite',claimed:'Aguardando aprovação',approved:'Aprovado',revoked:'Revogado',expired:'Expirado'};
-  function renderInvitations(compact=false){const team=state.data.team||{},invitations=rows(team.invitations),pending=invitations.filter(i=>['pending','claimed'].includes(i.status)),items=compact?pending:invitations;return '<section class="os-card os-team-invites"><div class="os-card-header"><div><h2>Convites</h2><p>Gere um link de acesso para sua equipe, com aprovação.</p></div>'+button('Convidar','new-invitation','os-outline os-small','plus',team.can_manage?'':'disabled')+'</div>'+(items.length?'<div class="os-invitation-list">'+items.map(i=>'<div class="os-invitation-row"><div><strong>'+esc(i.email||'Convite por link')+'</strong><small>'+esc(teamRoles[i.role]||i.role)+' · '+esc(inviteStatuses[i.status]||i.status)+(i.claimed_by_name?' · '+esc(i.claimed_by_name):'')+'</small><small>Expira em '+fmtDate(dateKey(new Date(i.expires_at)))+'</small></div><div class="os-actions">'+(team.can_manage&&i.status==='claimed'?button('Aprovar','approve-invitation','os-small','check','data-invitation="'+esc(i.id)+'"'):'')+(team.can_manage&&['pending','claimed'].includes(i.status)?button('Revogar','revoke-invitation','os-ghost os-small','close','data-invitation="'+esc(i.id)+'"'):'')+'</div></div>').join('')+'</div>':'<p class="os-help">Nenhum convite pendente.</p>')+'</section>';}
-  function renderTeam(){const team=state.data.team||{},members=rows(team.members),selfEmail=String(state.bridge.user?.email||'').toLowerCase();return '<section class="os-card" style="margin-top:24px"><div class="os-card-header"><div><h2>Equipe & Permissões</h2><p>Gerencie quem pode consultar e editar o painel da empresa.</p></div>'+icon('shield')+'</div>'+(members.length?'<div class="os-table-scroll"><table class="os-table"><thead><tr><th>Pessoa</th><th>Perfil</th><th>Situação</th><th></th></tr></thead><tbody>'+members.map(member=>'<tr><td><div class="os-person"><span class="os-avatar">'+esc(initials(member.name||member.email))+'</span><div><strong>'+esc(member.name||member.email)+'</strong><small>'+esc(member.email)+'</small></div></div></td><td>'+esc(teamRoles[member.role]||member.role)+'</td><td>'+badge(member.active?'active':'inactive')+'</td><td>'+(team.can_manage&&member.role!=='owner'&&String(member.email).toLowerCase()!==selfEmail?'<button type="button" class="os-icon-button" data-os-team-member="'+esc(member.account_id)+'" aria-label="Editar acesso de '+esc(member.name||member.email)+'">'+icon('edit')+'</button>':'')+'</td></tr>').join('')+'</tbody></table></div>':'<p class="os-finance-empty">Nenhum membro de equipe disponível para esta empresa.</p>')+'<div class="os-team-roles"><div><strong>Proprietário</strong><p>Gerencia a empresa e aprova os acessos da equipe.</p></div><div><strong>Editor</strong><p>Edita os cadastros e os dados de gestão autorizados.</p></div><div><strong>Leitor</strong><p>Consulta os dados da empresa sem fazer alterações.</p></div></div></section>'+renderInvitations();}
-  function showInvitation(){if(!state.data.team?.can_manage)return;showDialog('invitation','Convidar funcionário',dialogForm('invitation',field('E-mail (opcional)','email','email','','maxlength="320" placeholder="nome@email.com"')+selectField('Perfil de acesso','role',[['editor','Editor'],['viewer','Leitor']],'editor')+'<p class="os-help">Você receberá um link para compartilhar. Depois do aceite, o proprietário aprova a entrada na equipe.</p>','Gerar link'));}
+  function proAccessState(p){
+    const team=state.data.team||{},link=rows(team.professional_access).find(a=>a.professional_id===p.id);
+    const invite=rows(team.invitations).filter(i=>i.role==='professional'&&i.professional_id===p.id).sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at)))[0];
+    const pending=invite&&invite.status==='pending'&&!invite.expired;
+    const lastArchive=p.last_archived_at&&Date.parse(p.last_archived_at);
+    const linkVersion=link?.updated_at&&Date.parse(link.updated_at);
+    const active=Boolean(link?.active&&p.active&&(!lastArchive||linkVersion>lastArchive));
+    const label=active?'Acesso ativo':link?.account_id?'Acesso suspenso':pending?'Convite enviado':'Sem acesso';
+    return {link,invite,pending,label,active};
+  }
+  function renderInvitations(compact=false){
+    const items=rows(state.data.team?.invitations).filter(i=>i.role==='professional'&&i.status==='pending'&&!i.expired);
+    if(compact&&!items.length)return '';
+    return '<section class="os-card os-team-invites"><div class="os-card-header"><div><h2>Convites profissionais</h2><p>O convite nasce dentro do cadastro de cada profissional.</p></div></div>'+
+      (items.length?'<div class="os-invitation-list">'+items.map(i=>'<div class="os-invitation-row"><div><strong>'+esc(i.email||'Profissional')+'</strong><small>Aguardando aceite · Expira em '+fmtDate(dateKey(new Date(i.expires_at)))+'</small></div>'+
+        (state.data.team?.can_manage?button('Revogar','revoke-invitation','os-ghost os-small','close','data-invitation="'+esc(i.id)+'"'):'')+'</div>').join('')+'</div>':
+        '<p class="os-help">Nenhum convite profissional aguardando aceite.</p>')+'</section>';
+  }
+  function renderTeam(){
+    const team=state.data.team||{},pros=state.data.professionals||[];
+    return '<div class="os-card os-team-access"><div class="os-card-header"><div><h2>Acesso dos profissionais</h2><p>Somente profissionais cadastrados podem receber um acesso individual. O acesso não permite consultar outros funcionários.</p></div></div>'+
+      (pros.length?'<div class="os-invitation-list">'+pros.map(p=>{
+        const access=proAccessState(p),link=access.link;
+        const commands=team.can_manage?'<div class="os-actions">'+
+          '<button class="os-button os-ghost os-small" type="button" data-os-professional="'+esc(p.id)+'">'+icon('edit')+'Editar</button>'+
+          (link?.account_id?(access.active?button('Suspender','pro-access-suspend','os-outline os-small','lock','data-professional="'+esc(p.id)+'"'):
+          (p.active?button('Reativar','pro-access-reactivate','os-outline os-small','refresh','data-professional="'+esc(p.id)+'"'):''))+
+          button('Revogar vínculo','pro-access-revoke','os-ghost os-small','close','data-professional="'+esc(p.id)+'"')+
+          button(link.can_manage_owner_blocks?'Proteger bloqueios da empresa':'Permitir remover bloqueios da empresa',
+            'pro-block-permission','os-ghost os-small',link.can_manage_owner_blocks?'lock':'unlock',
+            'data-professional="'+esc(p.id)+'"'):'')+
+          '</div>':'';
+        return '<div class="os-invitation-row"><div class="os-person"><span class="os-avatar">'+esc(initials(p.name))+'</span><div><strong>'+esc(p.name)+'</strong>'+
+          '<small>'+esc(p.specialty||'Profissional')+' · '+esc(access.label)+(p.active?'':' · Inativo')+'</small>'+
+          (link?.email?'<small>'+esc(link.email)+'</small>':'')+'</div></div>'+commands+'</div>';
+      }).join('')+'</div>':'<p class="os-help">Cadastre um profissional antes de enviar um convite.</p>')+'</div>'+
+      renderInvitations()+
+      (rows(team.members).some(member=>member.role==='editor'||member.role==='viewer')?
+        '<section class="os-card os-team-access" style="margin-top:18px"><div class="os-card-header"><div><h2>Acessos anteriores</h2><p>Contas antigas são mantidas para revisão e revogação; novos convites são exclusivos dos profissionais.</p></div></div>'+
+          '<div class="os-invitation-list">'+rows(team.members).filter(member=>member.role==='editor'||member.role==='viewer').map(member=>
+            '<div class="os-invitation-row"><div><strong>'+esc(member.name||member.email)+'</strong><small>'+esc(member.email||'')+' · '+esc(teamRoles[member.role]||member.role)+' · '+esc(member.active?'Ativo':'Inativo')+'</small></div>'+
+            (team.can_manage?'<button class="os-button os-ghost os-small" type="button" data-os-team-member="'+esc(member.account_id)+'">'+icon('edit')+'Gerenciar</button>':'')+'</div>'
+          ).join('')+'</div></section>':'')+renderLegacyInvitations();
+  }
+  function renderLegacyInvitations(){
+    const pending=rows(state.data.team?.invitations).filter(i=>i.role!=='professional'&&
+      ['pending','claimed'].includes(i.status)&&!i.expired);
+    if(!pending.length)return '';
+    return '<section class="os-card os-team-invites"><div class="os-card-header"><div>'+
+      '<h2>Convites antigos</h2><p>Estes convites não podem mais ser aprovados. Revogue-os e utilize o cadastro de profissionais.</p>'+
+      '</div></div><div class="os-invitation-list">'+pending.map(i=>
+      '<div class="os-invitation-row"><div><strong>'+esc(i.email||'Convite antigo')+
+      '</strong><small>'+esc(teamRoles[i.role]||i.role)+' · '+esc(inviteStatuses[i.status]||i.status)+'</small></div>'+
+      (state.data.team?.can_manage?button('Revogar','revoke-invitation','os-ghost os-small','close',
+        'data-invitation="'+esc(i.id)+'"'):'')+'</div>'
+      ).join('')+'</div></section>';
+  }
+  function showInvitation(){toast('Abra o cadastro de um profissional para enviar o convite.');}
   function invitationDeliveryNotice(result){
     const labels={queued:'Convite na fila de envio. A entrega ainda não foi confirmada.',accepted:'O provedor aceitou o envio do convite. Isso não confirma a entrega.',failed:'Não foi possível concluir o envio por e-mail.',disabled:'O envio por e-mail está indisponível.',manual:'Compartilhe o link com a pessoa convidada.',suppressed:'O envio por e-mail não foi realizado.',expired:'O envio deste convite expirou.',uncertain:'O resultado do envio não foi confirmado. Confira a situação antes de tentar novamente.'};
     const text=labels[result.email_delivery?.status];return text?'<p class="os-help" role="status">'+esc(text)+'</p>':'';
@@ -1616,14 +2276,23 @@
     if(!tenant()){renderSettings();return;}
     const tab=state.filters.settingsTab;
     if(tab==='general'){const data=await request(mgmt('/preferences'));if(!current(c))return;state.data.preferences=data;}
-    if(tab==='hours'){const [professionals,hours,breaks]=await Promise.all([request(apiPath('/professionals')),request(apiPath('/working_hours')),request(apiPath('/working_breaks'))]);if(!current(c))return;Object.assign(state.data,{professionals:rows(professionals),workingHours:rows(hours),workingBreaks:rows(breaks)});}
+    if(tab==='hours'){
+      const needsBlocks=appLayoutEnabled()&&state.filters.appHoursView==='blocks';
+      const [professionals,hours,breaks,blocks,timeOff]=await Promise.all([request(apiPath('/professionals')),request(apiPath('/working_hours')),request(apiPath('/working_breaks')),
+        needsBlocks?request(apiPath('/schedule_blocks')):Promise.resolve([]),needsBlocks?request(apiPath('/time_off')):Promise.resolve([])]);
+      if(!current(c))return;
+      Object.assign(state.data,{professionals:rows(professionals),workingHours:rows(hours),workingBreaks:rows(breaks),
+        ...(needsBlocks?{scheduleBlocks:rows(blocks),timeOff:rows(timeOff)}:{})});
+      if(!state.data.professionals.some(p=>p.id===state.filters.hoursProfessional))state.filters.hoursProfessional=state.data.professionals[0]?.id||'';
+      if(state.filters.hoursProfessional)await loadSettingsStartPolicies(state.filters.hoursProfessional,c);
+    }
     if(tab==='ai'&&!permitted('marketing.ai')&&!permitted('consultant.ai')){state.filters.settingsTab='general';}
     if(tab==='ai'&&(permitted('marketing.ai')||permitted('consultant.ai'))){const [status,history]=await Promise.all([request(mgmt('/ai/status')),request(mgmt('/ai/history'))]);if(!current(c))return;Object.assign(state.data,{aiStatus:status,aiHistory:history});}
     if(current(c))renderSettings();
   }
   function renderSettings(){
     const t=tenant(),isAdmin=['support','admin'].includes(state.bridge.user?.role),
-      sections=settingsSections.filter(([key])=>key==='account'||key==='appearance'||key==='general'&&(permitted('business.setup')||permitted('settings.manage'))||key==='site-requests'&&isAdmin||key==='ai'&&(permitted('marketing.ai')||permitted('consultant.ai'))||key==='hours'&&permitted('agenda.manage')||key==='calendar'&&permitted('calendar.manage')||key==='notifications'&&permitted('notifications.basic')||key==='whatsapp'&&permitted('conversations.manual')),
+      sections=settingsSections.filter(([key])=>subscriptionWorkspace()?['appearance','account'].includes(key):key==='account'||key==='appearance'||key==='general'&&(permitted('business.setup')||permitted('settings.manage'))||key==='site-requests'&&isAdmin||key==='ai'&&(permitted('marketing.ai')||permitted('consultant.ai'))||key==='hours'&&permitted('agenda.manage')||key==='calendar'&&permitted('calendar.manage')||key==='notifications'&&permitted('notifications.basic')||key==='whatsapp'&&permitted('conversations.manual')),
       tab=sections.some(item=>item[0]===state.filters.settingsTab)?state.filters.settingsTab:'general',
       definition=sections.find(item=>item[0]===tab)||sections[0];let panel='';
     if(tab==='site-requests')panel=renderSiteRequests();
@@ -1632,9 +2301,14 @@
     if(tab==='calendar')panel='<section class="os-card"><div class="os-card-header"><div><h2>Google Agenda</h2><p>Sincronize os agendamentos com a agenda do seu negócio.</p></div></div><div id="osGoogleStatus">'+loading('Consultando integração…')+'</div></section>';
     if(tab==='whatsapp')panel='<section id="osManagedChannels"></section>';
     if(tab==='appearance')panel='<section class="os-card"><div class="os-card-header"><div><h2>Aparência</h2><p>Escolha como o painel será exibido neste dispositivo.</p></div></div><div class="os-appearance-options">'+[['light','sun','Claro','Painel claro, com fundo suave.'],['dark','moon','Escuro','Painel escuro, com menos luminosidade.'],['auto','monitor','Sistema','Acompanha a aparência do dispositivo.']].map(([value,symbol,label,description])=>'<button type="button" class="os-appearance-option" data-os-theme="'+value+'" aria-pressed="'+((document.documentElement.dataset.themePreference||'auto')===value)+'"><span class="os-theme-preview os-preview-'+value+'"><i></i><span><b></b><em></em><em></em><em></em></span></span><span class="os-theme-caption">'+icon(symbol)+'<strong>'+label+'</strong></span><small>'+description+'</small></button>').join('')+'</div></section>';
+    if(tab==='appearance'&&appLayoutEligible())panel+='<section class="os-card os-section-gap"><div class="os-card-header"><div><h2>Layout de navegação</h2><p>Escolha como deseja usar o Orion neste navegador.</p></div></div><div class="os-app-layout-choices">'+
+      [['classic','menu','Clássico','Menu lateral, como você já utiliza.'],['app','home','Aplicativo','Cinco atalhos e demais funções em Perfil.']].map(([value,symbol,label,description])=>
+        '<button type="button" class="os-app-layout-option" data-os-layout="'+value+'" aria-pressed="'+(state.layoutMode===value)+'"><span class="os-app-layout-preview os-app-layout-preview-'+value+'"><i></i><b></b><b></b><b></b></span><span class="os-theme-caption">'+icon(symbol)+'<strong>'+label+'</strong></span><small>'+description+'</small></button>').join('')+'</div></section>';
+    if(tab==='appearance'&&appLayoutEligible())panel+=appShortcutEditor();
     if(tab==='ai'){const status=state.data.aiStatus;panel='<section class="os-card"><div class="os-card-header"><div><h2>Uso de IA</h2><p>Consulte suas gerações e a disponibilidade de hoje.</p></div></div>'+aiAvailability(status)+'<div class="os-stats">'+[[status?.used_today,'Utilizadas'],[status?.remaining_today,'Disponíveis'],[status?.daily_limit,'Limite diário']].map(([value,label])=>'<div class="os-stat"><strong>'+(status?number(value):'—')+'</strong><small>'+label+'</small></div>').join('')+'</div><p class="os-help os-section-gap">O limite é compartilhado pelas ferramentas de IA desta empresa e é renovado à meia-noite UTC. Consultar esta tela não consome gerações.</p><div class="os-form-actions">'+routeButton('Criar campanha','marketing','os-outline','sparkles')+routeButton('Conversar com o consultor','consultor','','bot')+'</div></section>';}
     if(tab==='notifications')panel='<section class="os-card"><div class="os-card-header"><div><h2>Notificações</h2><p>Acompanhe as mudanças nos agendamentos.</p></div>'+icon('bell')+'</div><p class="os-help">Confirmações, reagendamentos, cancelamentos, conclusões e ausências aparecem no sino do painel. A marcação de leitura é individual para cada conta.</p><div class="os-form-actions">'+button('Ver notificações','notifications','','bell',t?'':'disabled')+'</div></section><section class="os-card os-section-gap"><h3>Notificações no aplicativo</h3>'+ (state.bridge.user?.role==='admin'&&!state.bridge.user?.maintenance?.active?'<div id="orionPwaPushHost"></div>':'<p class="os-help">Em teste na conta de administrador. O sino do painel continua disponível.</p>')+'</section>';
     if(tab==='account')panel='<section class="os-card"><div class="os-card-header"><div><h2>Minha conta</h2><p>Seu acesso ao Orion.</p></div></div><div class="os-summary-row"><span>Nome</span><strong>'+esc(state.bridge.user?.name||$('sidebarAccountName')?.textContent||'Administrador')+'</strong></div><div class="os-summary-row"><span>E-mail</span><strong>'+esc(state.bridge.user?.email||'—')+'</strong></div><div class="os-summary-row"><span>Acesso</span><strong>'+esc(['support','admin'].includes(state.bridge.user?.role)?'Administração':t?.role==='viewer'?'Leitor':t?.role==='editor'?'Editor':'Proprietário')+'</strong></div><div class="os-form-actions">'+(!['support','admin'].includes(state.bridge.user?.role)?routeButton('Ver minha conta','member','os-outline','edit'):'')+button('Sair da conta','logout','os-outline','logout')+'</div></section>';
+    if(tab==='hours'&&appLayoutEnabled()){bodyHTML(appHoursView());return;}
     bodyHTML('<div class="os-settings-mobile"><label class="os-sr-only" for="osSettingsSection">Seção de configurações</label><select id="osSettingsSection">'+sections.map(([value,,label])=>'<option value="'+value+'"'+(tab===value?' selected':'')+'>'+label+'</option>').join('')+'</select></div><div class="os-settings-layout"><nav class="os-settings-menu" aria-label="Seções de configurações">'+sections.map(([value,symbol,label,description])=>'<button type="button" data-os-settings="'+value+'" aria-current="'+(tab===value)+'"><span class="os-settings-icon">'+icon(symbol)+'</span><span><strong>'+label+'</strong><small>'+description+'</small></span></button>').join('')+'</nav><section class="os-settings-panel"><div class="os-settings-section-heading"><h2>'+definition[2]+'</h2><p>'+definition[3]+'</p></div>'+panel+'</section></div>');
     if(tab==='notifications'&&t){const host=document.createElement('div');document.querySelector('.os-settings-panel')?.append(host);void window.OrionAppointmentCommunications?.mount({host,request,tenantId:state.tenantId,canWrite:isAdmin||t.role==='owner',canFeature:permitted});}
     if(tab==='notifications'&&state.bridge.user?.role==='admin'&&!state.bridge.user?.maintenance?.active){
@@ -1652,7 +2326,10 @@
     if(!professionals.some(p=>p.id===state.filters.hoursProfessional))state.filters.hoursProfessional=professionals[0].id;
     const id=state.filters.hoursProfessional,person=professionals.find(p=>p.id===id),hours=(state.data.workingHours||[]).filter(h=>h.professional_id===id).sort((a,b)=>a.weekday-b.weekday||a.start_time.localeCompare(b.start_time)),breaks=state.data.workingBreaks||[],days=['Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado','Domingo'];
     let total=0;hours.forEach(h=>total+=minuteOf(h.end_time)-minuteOf(h.start_time)-breaks.filter(b=>b.working_hour_id===h.id).reduce((sum,b)=>sum+minuteOf(b.end_time)-minuteOf(b.start_time),0));
-    return '<section class="os-card"><div class="os-card-header"><div><h2>Horários de trabalho</h2><p>Os horários disponíveis respeitam o expediente, as pausas e os bloqueios.</p></div></div><label class="os-sr-only" for="osHoursProfessional">Profissional</label><select id="osHoursProfessional">'+professionals.map(p=>'<option value="'+esc(p.id)+'"'+(p.id===id?' selected':'')+'>'+esc(p.name)+(p.active?'':' · Inativo')+'</option>').join('')+'</select><div class="os-hours-overview">'+days.map((label,weekday)=>{const periods=hours.filter(h=>h.weekday===weekday);return '<div class="os-hours-day"><strong>'+label+'</strong><span>'+ (periods.length?periods.map(h=>'<span>'+esc(h.start_time.slice(0,5)+' – '+h.end_time.slice(0,5))+breaks.filter(b=>b.working_hour_id===h.id).map(b=>'<small>Pausa '+esc(b.start_time.slice(0,5)+' – '+b.end_time.slice(0,5))+'</small>').join('')+'</span>').join(''):'<small>Não atende</small>')+'</span></div>';}).join('')+'</div><div class="os-summary-row"><span>Carga horária semanal</span><strong>'+Math.floor(total/60)+'h'+(total%60?' '+total%60+'min':'')+'</strong></div><p class="os-help os-section-gap">Horários no fuso '+esc(zone())+'.</p><div class="os-form-actions"><button type="button" class="os-button" data-os-hours="'+esc(person.id)+'" '+(writable()?'':'disabled')+'>'+icon('edit')+'Editar horários e pausas</button></div></section>';
+    const startPolicies=state.data.hoursStartPolicies?.[id];
+    return '<section class="os-card"><div class="os-card-header"><div><h2>Horários de trabalho</h2><p>Os horários disponíveis respeitam o expediente, as pausas e os bloqueios.</p></div></div><label class="os-sr-only" for="osHoursProfessional">Profissional</label><select id="osHoursProfessional">'+professionals.map(p=>'<option value="'+esc(p.id)+'"'+(p.id===id?' selected':'')+'>'+esc(p.name)+(p.active?'':' · Inativo')+'</option>').join('')+'</select>'+
+      (startPolicies?.error?'<p class="os-help os-hours-policy-error" role="status">Não foi possível carregar os horários de início. Abra a edição para tentar novamente.</p>':'')+
+      '<div class="os-hours-overview">'+days.map((label,weekday)=>{const periods=hours.filter(h=>Number(h.weekday)===weekday),policy=startPolicies?.policies?.find(p=>p.weekday===weekday);return '<div class="os-hours-day"><strong>'+label+'</strong><span>'+ (periods.length?periods.map(h=>'<span>'+esc(h.start_time.slice(0,5)+' – '+h.end_time.slice(0,5))+breaks.filter(b=>b.working_hour_id===h.id).map(b=>'<small>Pausa '+esc(b.start_time.slice(0,5)+' – '+b.end_time.slice(0,5))+'</small>').join('')+'</span>').join('')+'<small class="os-hours-mode-summary'+(policy?.mode==='manual'?' is-manual':'')+'">'+(policy?'Inícios: '+startPolicyModeLabel(policy.mode):startPolicies?.error?'Inícios não carregados':'Carregando inícios…')+'</small>':'<small>Não atende</small>')+'</span></div>';}).join('')+'</div><div class="os-summary-row"><span>Carga horária semanal</span><strong>'+Math.floor(total/60)+'h'+(total%60?' '+total%60+'min':'')+'</strong></div><p class="os-help os-section-gap">Horários no fuso '+esc(zone())+'.</p><div class="os-form-actions"><button type="button" class="os-button" data-os-hours="'+esc(person.id)+'" '+(writable()?'':'disabled')+'>'+icon('edit')+'Editar horários e pausas</button></div></section>';
   }
   const googleStatusLabels={email_confirmation_required:'Confirme seu e-mail',not_configured:'Integração indisponível',not_connected:'Não conectado',choose_calendar:'Escolha o calendário',paused:'Sincronização pausada',reauthorization_required:'Reconecte sua conta',pending:'Sincronização pendente',attention:'Requer atenção',up_to_date:'Sincronizado',idle:'Conectado'};
   const googleDisclosure='O Orion envia nome do cliente, serviço, profissional e horários para o calendário escolhido. Telefone, observações internas e motivo do cancelamento ficam no Orion.';
@@ -1732,7 +2409,7 @@
     if(authorizationOrigin){try{const target=new URL(authorizationOrigin);if(target.protocol!=='https:'||target.username||target.password||target.pathname!=='/'||target.search||target.hash)throw Error();authorizationOrigin=target.origin;}catch{throw Error('Não foi possível confirmar o endereço de conexão Google. Atualize a situação.');}}
     if(!authorizationOrigin&&location.hostname==='orion-painel-iota.vercel.app')authorizationOrigin='https://orion-assistente-production.up.railway.app';
     if(action==='connect'&&authorizationOrigin&&authorizationOrigin!==location.origin){
-      const originalPanel=authorizationOrigin+'/panel?aba=agenda&empresa='+encodeURIComponent(state.tenantId);
+      const originalPanel=authorizationOrigin+'/painel?aba=agenda&empresa='+encodeURIComponent(state.tenantId);
       showDialog('google-original-panel','Conectar Google Agenda','<p>Para conectar o Google Agenda, continue no painel original do Orion. Talvez seja necessário entrar novamente.</p><div class="os-form-actions">'+button('Cancelar','close-dialog','os-outline')+'<a class="os-button" href="'+esc(originalPanel)+'">Continuar no painel original</a></div>',{capability});
       return;
     }
@@ -1784,7 +2461,7 @@
   }
   async function loadAppointmentGoogle(d=state.dialog){
     if(d?.type!=='appointment-detail'||!d.record||!$('osAppointmentGoogle'))return;const c=context(),read=d.googleRead=(d.googleRead||0)+1;const target=$('osAppointmentGoogle');target.innerHTML=loading('Consultando sincronização...');
-    try{const data=await request(apiPath('/google/appointments/'+encodeURIComponent(d.record.id)+'/status'));if(!current(c)||state.dialog!==d||read!==d.googleRead)return;const labels={pending:'Aguardando sincronização',retrying:'Nova tentativa programada',synced:'Sincronizado com o Google',failed:'Sincronização com falha',not_queued:'Sem envio registrado',outside_initial_sync:'Anterior à conexão'},configured=data.configured!==false,connected=['active','connected'].includes(data.connection_status),description=data.status==='outside_initial_sync'?'Este atendimento foi encerrado antes da conexão e não faz parte da sincronização inicial.':!configured?'A integração com Google Agenda ainda não está configurada nesta instalação.':!connected?'A conta Google não está conectada. Os dados deste agendamento permanecem no Orion.':data.status==='synced'?(d.record.status==='cancelled'?'O cancelamento foi sincronizado com o Google.':'Os dados deste agendamento foram sincronizados.'):!data.sync_enabled?'A sincronização está pausada. Os dados deste agendamento permanecem no Orion.':data.status==='not_queued'?'Este agendamento ainda não tem um envio registrado para o Google.':'A situação do Orion está atualizada, mesmo enquanto o envio ao Google está pendente.';target.innerHTML='<div class="os-appointment-google-state"><span class="os-google-mark" aria-hidden="true"><img src="https://www.gstatic.com/images/branding/productlogos/calendar_2026/v2/web/192px.svg" alt="" width="26" height="26" loading="lazy" referrerpolicy="no-referrer"></span><div><strong>'+esc(labels[data.status]||'Situação indisponível')+'</strong><p>'+esc(description)+'</p>'+(data.last_synced_at?'<small>Último envio: '+esc(appointmentMoment(data.last_synced_at))+'</small>':'')+(data.next_attempt_at?'<small>Próxima tentativa: '+esc(appointmentMoment(data.next_attempt_at))+'</small>':'')+(data.last_error?'<p class="os-google-error">'+esc(googleErrorText(data.last_error))+'</p>':'')+'</div></div>'+button('Ver conexão','agenda-google','os-ghost os-small','link');}
+    try{const data=await request(apiPath('/google/appointments/'+encodeURIComponent(d.record.id)+'/status'));if(!current(c)||state.dialog!==d||read!==d.googleRead)return;const labels={pending:'Aguardando sincronização',retrying:'Nova tentativa programada',synced:'Sincronizado com o Google',failed:'Sincronização com falha',not_connected:'Conecte o Google Agenda',not_queued:'Sem envio registrado',outside_initial_sync:'Anterior à conexão'},configured=data.configured!==false,connected=['active','connected'].includes(data.connection_status),description=data.status==='outside_initial_sync'?'Este atendimento foi encerrado antes da conexão e não faz parte da sincronização inicial.':!configured?'A integração com Google Agenda ainda não está configurada nesta instalação.':!connected?'A conta Google não está conectada. Os dados deste agendamento permanecem no Orion.':data.status==='synced'?(d.record.status==='cancelled'?'O cancelamento foi sincronizado com o Google.':'Os dados deste agendamento foram sincronizados.'):!data.sync_enabled?'A sincronização está pausada. Os dados deste agendamento permanecem no Orion.':data.status==='not_queued'?'Este agendamento ainda não tem um envio registrado para o Google.':'A situação do Orion está atualizada, mesmo enquanto o envio ao Google está pendente.';target.innerHTML='<div class="os-appointment-google-state"><span class="os-google-mark" aria-hidden="true"><img src="https://www.gstatic.com/images/branding/productlogos/calendar_2026/v2/web/192px.svg" alt="" width="26" height="26" loading="lazy" referrerpolicy="no-referrer"></span><div><strong>'+esc(labels[data.status]||'Situação indisponível')+'</strong><p>'+esc(description)+'</p>'+(data.last_synced_at?'<small>Último envio: '+esc(appointmentMoment(data.last_synced_at))+'</small>':'')+(data.next_attempt_at?'<small>Próxima tentativa: '+esc(appointmentMoment(data.next_attempt_at))+'</small>':'')+(data.last_error?'<p class="os-google-error">'+esc(googleErrorText(data.last_error))+'</p>':'')+'</div></div>'+button('Ver conexão','agenda-google','os-ghost os-small','link');}
     catch(error){if(current(c)&&state.dialog===d&&read===d.googleRead)target.innerHTML='<p class="os-help" role="status">Não foi possível consultar a sincronização. Os dados do agendamento continuam disponíveis.</p>'+button('Tentar novamente','appointment-google-refresh','os-ghost os-small','refresh');}
   }
   const helpCategories=[["agenda","Agenda","calendar"],["clientes","Clientes","users"],["servicos","Serviços","scissors"],["combos","Combos e adicionais","box"],["equipe","Equipe","users"],["horarios","Horários","clock"],["financeiro","Financeiro","wallet"],["comissoes","Comissões e vales","credit"],["desempenho","Desempenho","chart"],["fidelidade","Fidelização","gift"],["site","Meu site","globe"],["marketing","Marketing","sparkles"],["consultor","Consultor IA","bot"],["configuracoes","Configurações","settings"],["whatsapp","WhatsApp","phone"],["atendimento","Atendimento Orion","chat"],["catalogo","Catálogo e pedidos","box"],["conta","Conta e acesso","shield"]];
@@ -1800,9 +2477,77 @@
   function renderHelpResults(){const query=normalizedSearch(state.filters.helpQuery),category=state.filters.helpCategory,list=helpArticles.filter(article=>(category==='all'||article[1]===category)&&(!query||normalizedSearch(article[2]+' '+article[3]+' '+article[5].join(' ')).includes(query))),featured=!query&&category==='all'?[helpArticles.find(article=>article[0]==='bloquear'),helpArticles[0]]:[];const target=$('osHelpResults');if(!target)return;target.innerHTML='<div class="os-help-results-heading"><p>'+list.length+' artigo'+(list.length===1?' encontrado':'s encontrados')+'</p></div>'+(featured.length?'<section class="os-help-featured-grid" aria-label="Artigos em destaque">'+featured.map(article=>helpCard(article,true)).join('')+'</section>':'')+(list.length?'<section class="os-help-grid" aria-label="Artigos">'+list.filter(article=>!featured.some(item=>item[0]===article[0])).map(article=>helpCard(article)).join('')+'</section>':'<section class="os-card">'+empty('search','Nenhum artigo encontrado','Tente buscar por outro termo ou escolha outra categoria.')+'</section>');}
   function renderHelpArticle(article){const category=helpCategory(article[1]),related=[...helpArticles.filter(item=>item[0]!==article[0]&&item[1]===article[1]),...helpArticles.filter(item=>item[0]!==article[0]&&item[1]!==article[1])].slice(0,3);bodyHTML('<article class="os-help-article">'+button('Voltar para a base','help-back','os-ghost','left')+'<header><span class="os-badge os-neutral">'+category[1]+'</span><h1>'+esc(article[2])+'</h1><p class="os-help-article-meta">'+icon('clock')+'1 min de leitura <span>Guia da gestão Orion</span></p></header><div class="os-help-prose">'+article[5].map(paragraph=>'<p>'+esc(paragraph)+'</p>').join('')+'</div><div class="os-form-actions">'+routeButton('Abrir '+routeNames[article[4]],article[4],'os-outline',category[2])+'</div><section class="os-help-related"><h2>Continue lendo</h2><div>'+related.map(item=>'<button type="button" data-os-help-article="'+item[0]+'"><strong>'+esc(item[2])+'</strong><span>Ler '+icon('arrow')+'</span></button>').join('')+'</div></section><section class="os-card os-help-article-footer"><h3>Precisa consultar seus dados?</h3><p>Abra a área correspondente do painel para conferir os registros da sua empresa.</p>'+routeButton('Voltar ao painel','dashboard','os-outline os-small','dashboard')+'</section></article>');}
   function openHelpArticle(id){if(!helpArticles.some(article=>article[0]===id))return;state.filters.helpArticle=id;renderHelp();window.scrollTo({top:0,behavior:'instant'});}
-  function renderNews(){const labels={feature:'Novidade',improvement:'Melhoria',fix:'Correção'},filter=state.filters.newsFilter,list=releaseNotes.filter(note=>filter==='all'||note[0]===filter);bodyHTML('<section class="os-card os-news-toolbar"><div><h2>O que mudou no Orion</h2><p>Atualizações desta versão do painel.</p></div>'+routeButton('Base de conhecimento','ajuda','os-outline os-small','book')+'</section><div class="os-help-categories os-news-filters" role="tablist" aria-label="Tipo de atualização">'+[['all','Todos'],...Object.entries(labels)].map(([value,label])=>'<button type="button" role="tab" class="os-pill-tab" aria-selected="'+(filter===value)+'" data-os-news-filter="'+value+'">'+label+'</button>').join('')+'</div><div class="os-news-list">'+list.map(note=>'<article class="os-card os-news-card"><header><span class="os-badge '+(note[0]==='feature'?'os-success':note[0]==='fix'?'os-warning':'os-neutral')+'">'+labels[note[0]]+'</span><h2>'+esc(note[1])+'</h2><p>'+esc(note[2])+'</p></header><div><ul>'+note[3].map(text=>'<li>'+esc(text)+'</li>').join('')+'</ul>'+routeButton('Abrir '+routeNames[note[4]],note[4],'os-ghost os-small','arrow')+'</div></article>').join('')+'</div>');}
+  const guidanceMeta=summary=>'<p class="os-help-article-meta"><span class="os-guidance-meta-summary">'+icon('book')+'<span>'+esc(summary)+'</span></span><span class="os-guidance-meta-scope">Serviços de assinaturas</span></p>';
+  function renderWhatsAppWarmup(){
+    if(!routePermitted('aquecimento'))return;
+    const paragraphs=items=>items.map(text=>'<p>'+esc(text)+'</p>').join('');
+    const step=(number,title,body)=>'<section class="os-section-gap" data-os-guidance-step="'+number+'" aria-labelledby="osWarmupStep'+number+'"><h2 id="osWarmupStep'+number+'">'+number+'. '+esc(title)+'</h2>'+body+'</section>';
+    const example='<div class="os-card os-table-scroll"><table class="os-table" style="min-width:0" data-os-warmup-example aria-describedby="osWarmupExampleNote"><caption>Exemplo ilustrativo de progressão manual</caption><thead><tr><th scope="col">Dia</th><th scope="col">Contatos</th></tr></thead><tbody>'+[10,20,50,80,100].map((volume,index)=>'<tr><th scope="row">'+(index+1)+'</th><td>'+volume+'</td></tr>').join('')+'</tbody></table></div>';
+    bodyHTML('<article class="os-help-article" data-os-guidance="warmup">'+routeButton('Base de conhecimento','ajuda','os-ghost','left')+
+      '<header><span class="os-badge os-neutral">WhatsApp</span><h1>Aquecimento</h1>'+guidanceMeta('Guia de uso manual')+'</header>'+
+      '<div class="os-help-prose">'+paragraphs(['Prepare a presença da sua empresa no WhatsApp e acompanhe conversas reais antes de ampliar o atendimento. Este roteiro de uso manual reúne os cuidados para organizar essas ações no aplicativo.'])+
+      step(1,'Complete o perfil da empresa',paragraphs(['No WhatsApp Business, confira nome, foto, descrição, horário de atendimento e canais de contato. Use informações verdadeiras e atualizadas para que as pessoas reconheçam quem está falando.','Verifique se o número e o aparelho estão sob controle da empresa antes de conectar ferramentas de atendimento.']))+
+      step(2,'Comece com interações conhecidas',paragraphs(['Nos dias 1 e 2 do exemplo, converse manualmente com pessoas que conhecem a empresa e autorizaram seu contato. Respeite pedidos para parar de receber mensagens.','Participe de grupos legítimos dos quais você já faz parte. Use status e chamadas quando fizerem sentido para essas relações, respeitando as preferências de cada pessoa. Não crie conversas artificiais apenas para aumentar a atividade do número.']))+
+      step(3,'Revise a progressão com cuidado',paragraphs(['Entre os dias 2 e 5 do roteiro, avalie a necessidade de ampliar as conversas e a capacidade de responder a cada pessoa. Prepare texto, imagem, áudio, documento ou vídeo conforme o assunto e a preferência do contato. Reserve intervalos para ler as respostas e atender cada pessoa. A tabela ilustra uma progressão de contatos.'])+example+
+        '<div class="os-notice os-section-gap">'+icon('info')+'<p id="osWarmupExampleNote">As quantidades de contatos da tabela e prazos como 7 ou 14 dias são exemplos de organização. Esses exemplos não são limites oficiais nem metas obrigatórias e não garantem entrega, aprovação ou proteção contra restrições. Cada contato precisa ter autorizado as mensagens; ajuste o ritmo às conversas reais.</p></div>')+
+      step(4,'Confira o uso antes de conectar',paragraphs(['Faça uma revisão do perfil, das conversas e das permissões antes de usar o número no Orion. Considere as respostas das pessoas e os avisos do WhatsApp nessa avaliação.','Quando estiver pronto para conferir a conexão, abra Meus Dispositivos e acompanhe a situação do número no painel.'])+'<div class="os-form-actions">'+routeButton('Meus Dispositivos','dispositivos','os-outline','phone')+'</div>')+
+      '<section class="os-section-gap" aria-labelledby="osWarmupMistakes"><h2 id="osWarmupMistakes">Erros a evitar</h2><ul>'+[
+        'Começar com mensagens em massa antes de estabelecer o atendimento e a autorização dos destinatários.',
+        'Usar listas compradas ou contatos que não deram autorização para receber mensagens da empresa.',
+        'Enviar promoções inesperadas ou insistir depois de um pedido de interrupção.',
+        'Conectar vários sistemas sem conferir a compatibilidade e o que cada um está autorizado a fazer.',
+        'Usar automação agressiva ou tentar contornar avisos e restrições da plataforma.'
+      ].map(text=>'<li>'+esc(text)+'</li>').join('')+'</ul></section>'+
+      '<section class="os-section-gap" aria-labelledby="osWarmupSignals"><h2 id="osWarmupSignals">Quando interromper e revisar</h2>'+paragraphs(['Demora incomum, mensagens sem entrega, pouca resposta ou alertas no aplicativo são motivos para revisar o uso. Esses sinais podem ter causas diferentes e não comprovam, por si só, uma restrição.','Interrompa a expansão dos envios, confira a conexão, os avisos da plataforma e se as pessoas esperam o contato. Diante de um aviso do WhatsApp, siga as instruções oficiais mostradas no aplicativo.'])+'</section>'+
+      '<section class="os-help-related" aria-labelledby="osWarmupOfficial"><h2 id="osWarmupOfficial">Orientações oficiais</h2><ul><li><a class="os-inline-link" href="https://whatsappbusiness.com/policy/" target="_blank" rel="noopener noreferrer" aria-label="Política de mensagens do WhatsApp Business (abre em nova aba)">Política de mensagens do WhatsApp Business'+icon('external')+'</a></li><li><a class="os-inline-link" href="https://www.whatsapp.com/legal/messaging-guidelines" target="_blank" rel="noopener noreferrer" aria-label="Diretrizes de mensagens do WhatsApp (abre em nova aba)">Diretrizes de mensagens do WhatsApp'+icon('external')+'</a></li></ul></section></div></article>');
+  }
+  function renderWhatsAppAvoidBan(){
+    if(!routePermitted('evitar-banimento'))return;
+    const paragraphs=items=>items.map(text=>'<p>'+esc(text)+'</p>').join('');
+    const tip=(number,title,body)=>'<section class="os-section-gap" data-os-guidance-tip="'+number+'" aria-labelledby="osAvoidBanTip'+number+'"><h2 id="osAvoidBanTip'+number+'">'+number+'. '+esc(title)+'</h2>'+body+'</section>';
+    const action=(label,route,symbol)=>'<div class="os-form-actions">'+routeButton(label,route,'os-outline',symbol)+'</div>';
+    bodyHTML('<article class="os-help-article" data-os-guidance="avoid-ban">'+routeButton('Base de conhecimento','ajuda','os-ghost','left')+
+      '<header><span class="os-badge os-neutral">WhatsApp</span><h1>Evitar Banimento</h1>'+guidanceMeta('Orientações de uso')+'</header>'+
+      '<div class="os-help-prose">'+paragraphs(['Revise a autorização dos contatos, as ferramentas conectadas e a capacidade de atendimento da empresa. Estas dez orientações ajudam a organizar a comunicação com quem espera receber suas mensagens.'])+
+      '<div class="os-notice">'+icon('info')+'<p>Esses cuidados não garantem proteção contra restrições. As políticas e os avisos oficiais do WhatsApp devem orientar o uso do número.</p></div>'+
+      tip(1,'Confira as ferramentas conectadas',paragraphs(['Defina quais automações serão operadas pelo Orion e os responsáveis na equipe. Revise quais sessões e ferramentas usam o número, quem tem acesso e quais ações cada integração realiza. Confira a compatibilidade antes de combinar sistemas e mantenha apenas as conexões autorizadas e necessárias à operação.'])+action('Dispositivos','dispositivos','phone'))+
+      tip(2,'Peça autorização antes do contato',paragraphs(['Peça permissão no cadastro, no atendimento ou em outro canal já autorizado antes de iniciar mensagens pelo WhatsApp. Explique a finalidade do contato e respeite a decisão de parar de receber mensagens.','Exemplo: “Você autoriza receber pelo WhatsApp os avisos sobre sua assinatura? Você pode pedir para interromper a qualquer momento.”']))+
+      tip(3,'Personalize com informações reais',paragraphs(['Use o nome confirmado da pessoa e o contexto da solicitação ou da assinatura para tornar a mensagem relevante. Confira o destinatário, os dados e o motivo do contato antes de enviar; a personalização deve refletir a conversa real.','Exemplo: “Olá, Ana. Sobre a renovação da assinatura que você consultou ontem, posso esclarecer alguma condição?”']))+
+      tip(4,'Prepare os números novos',paragraphs(['Complete o perfil com informações verdadeiras, confira o controle do número e comece pelas conversas autorizadas. O guia de Aquecimento reúne um roteiro manual para organizar essa preparação.'])+action('Aquecimento','aquecimento','book'))+
+      tip(5,'Acompanhe a conexão e as respostas',paragraphs(['Observe desconexões, erros de entrega, demora incomum e queda de interação. Esses sinais podem ter causas técnicas ou estar relacionados à expectativa dos contatos; confira a situação antes de ampliar os envios. Abra Diagnósticos para consultar os recursos de verificação disponíveis.'])+action('Diagnósticos','diagnosticos','monitor'))+
+      tip(6,'Dê contexto a cobranças e ofertas',paragraphs(['Ao falar de Pix, boleto ou promoção, identifique a empresa e explique a relação com a assinatura ou com o pedido da pessoa. Apresente valores, prazos e condições de forma clara quando forem pertinentes, usando informações legítimas e verificáveis.','Exemplo: “Olá, Bruno. Este boleto corresponde à renovação da assinatura que combinamos. O valor e o vencimento estão no documento; posso esclarecer a cobrança?”']))+
+      tip(7,'Siga os canais oficiais de revisão',paragraphs(['Se o WhatsApp apresentar uma restrição, leia o aviso e use os canais oficiais indicados no aplicativo para solicitar análise. Mantenha nome, foto e demais informações do perfil verdadeiros e consistentes com a empresa, reunindo o contexto necessário à revisão.']))+
+      tip(8,'Organize o acompanhamento da conversa',paragraphs(['Combine a frequência com a finalidade autorizada e com a necessidade de cada conversa. Este exemplo pode ajudar a planejar o atendimento:'])+'<ol><li>Comece com uma saudação e explique o motivo do contato autorizado.</li><li>Algumas horas depois, acompanhe o assunto se houver uma pendência e a pessoa esperar essa mensagem.</li><li>No dia seguinte, conclua o assunto quando ainda fizer sentido para o atendimento.</li></ol>'+paragraphs(['Essa sequência é ilustrativa e depende da conversa. Se a pessoa pedir para parar ou não houver motivo para nova mensagem, encerre o acompanhamento.']))+
+      tip(9,'Considere o momento da comunicação',paragraphs(['Em crises, emergências ou períodos sensíveis, priorize informações pertinentes e verificáveis para quem será atendido. Revise o tom e a oportunidade de uma promoção ou cobrança, mantendo o contato dentro da finalidade autorizada.']))+
+      tip(10,'Planeje a capacidade do atendimento',paragraphs(['Defina quem responde às conversas, os horários de atendimento e como as campanhas serão acompanhadas. Organize a operação com os números autorizados e disponíveis para a empresa, respeitando o limite de dispositivos e a capacidade da equipe de responder.','Se houver números adicionais autorizados e capacidade disponível, organize separadamente o atendimento diário e as campanhas, mantendo a identificação da empresa em cada canal.']))+
+      '<section class="os-help-related" aria-labelledby="osAvoidBanOfficial"><h2 id="osAvoidBanOfficial">Orientações oficiais</h2><ul><li><a class="os-inline-link" href="https://whatsappbusiness.com/policy/" target="_blank" rel="noopener noreferrer" aria-label="Política de mensagens do WhatsApp Business (abre em nova aba)">Política de mensagens do WhatsApp Business'+icon('external')+'</a></li><li><a class="os-inline-link" href="https://www.whatsapp.com/legal/messaging-guidelines" target="_blank" rel="noopener noreferrer" aria-label="Diretrizes de mensagens do WhatsApp (abre em nova aba)">Diretrizes de mensagens do WhatsApp'+icon('external')+'</a></li></ul></section></div></article>');
+  }
+  function renderWhatsAppResolveBan(){
+    if(!routePermitted('resolver-banimento'))return;
+    const paragraphs=items=>items.map(text=>'<p>'+esc(text)+'</p>').join('');
+    const step=(number,title,body)=>'<section class="os-section-gap" data-os-guidance-step="'+number+'" aria-labelledby="osResolveBanStep'+number+'"><h2 id="osResolveBanStep'+number+'">'+number+'. '+esc(title)+'</h2>'+body+'</section>';
+    const sources=[
+      ['Banimento no WhatsApp','https://faq.whatsapp.com/465883178708358'],
+      ['Banimento no WhatsApp Business','https://faq.whatsapp.com/723378546580115/'],
+      ['Contas temporariamente banidas','https://faq.whatsapp.com/1848531392146538/'],
+      ['Recuperação da conta após a liberação','https://faq.whatsapp.com/1297640017664693/'],
+      ['Número usado anteriormente por outra pessoa','https://faq.whatsapp.com/465883178708358'],
+      ['Aplicativos não oficiais','https://faq.whatsapp.com/1217634902127718/'],
+      ['Política de mensagens do WhatsApp Business','https://whatsappbusiness.com/policy/'],
+    ].map(([label,url])=>'<li><a class="os-inline-link" href="'+esc(url)+'" target="_blank" rel="noopener noreferrer" aria-label="'+esc(label)+' (abre em nova aba)">'+esc(label)+icon('external')+'</a></li>').join('');
+    bodyHTML('<article class="os-help-article" data-os-guidance="resolve-ban">'+routeButton('Base de conhecimento','ajuda','os-ghost','left')+
+      '<header><span class="os-badge os-neutral">WhatsApp</span><h1>Resolver Banimento</h1>'+guidanceMeta('Revisão e reconexão')+'</header>'+
+      '<div class="os-help-prose">'+paragraphs(['Se o aplicativo informar um banimento, leia o aviso e identifique as instruções disponíveis para o número. Para uma restrição temporária, consulte também a orientação específica na Central de Ajuda oficial.'])+
+      '<div class="os-notice">'+icon('info')+'<p>A decisão de banir ou liberar a conta é do WhatsApp. Não pague a pessoas ou serviços que prometem remover o banimento.</p></div>'+
+      '<section class="os-section-gap" aria-labelledby="osResolveBanReasons"><h2 id="osResolveBanReasons">Possíveis motivos</h2>'+paragraphs(['As restrições podem estar relacionadas a situações como:'])+'<ul><li>Mensagens indesejadas, repetitivas ou enviadas sem autorização.</li><li>Informações enganosas, fraude ou uso de uma identidade que não corresponde à empresa.</li><li>Aplicativos não oficiais ou coleta de informações sem autorização.</li><li>Outras violações dos Termos de Serviço e das políticas de mensagens do WhatsApp.</li></ul></section>'+
+      step(1,'Solicite a revisão no aplicativo, quando disponível',paragraphs(['Abra o aplicativo oficial e, se a tela do banimento oferecer “Solicitar revisão”, use essa opção. Explique o contexto com clareza e informe somente os dados pedidos no próprio aplicativo. Se houver uma verificação do número, conclua essa etapa ali.','Cada solicitação deve tratar de um único número. Acompanhe a resposta no aplicativo ou na notificação enviada pelo WhatsApp. A maioria das revisões é concluída em 24 horas, mas esse prazo pode variar.','Quando o aviso de banimento não oferecer a opção de revisão, a decisão é final e não há recurso disponível. Solicitações em outros canais de suporte não aceleram a análise.']))+
+      step(2,'Confirme a liberação e confira a conexão',paragraphs(['Depois que o WhatsApp confirmar a liberação, siga as instruções para verificar novamente o número no aplicativo oficial. Conclua somente as verificações solicitadas ali.','Se usava um aplicativo não oficial, consulte as instruções de migração, remova esse aplicativo e use o WhatsApp ou o WhatsApp Business oficial. A transferência do histórico de conversas de aplicativos não oficiais não é garantida.','Com o número liberado e funcionando no aplicativo, abra Meus Dispositivos e confira o estado da conexão no Orion. Se precisar reconectar, use “Abrir conexão” e siga as opções disponíveis para mostrar e ler o QR Code. A opção “Refazer vínculo” encerra o vínculo atual; use-a apenas quando necessário.'])+'<div class="os-form-actions">'+routeButton('Meus Dispositivos','dispositivos','os-outline','phone')+'</div>')+
+      '<section class="os-help-related" aria-labelledby="osResolveBanOfficial"><h2 id="osResolveBanOfficial">Orientações oficiais</h2><ul>'+sources+'</ul></section></div></article>');
+  }
+  function renderNews(){const labels={feature:'Novidade',improvement:'Melhoria',fix:'Correção'},filter=state.filters.newsFilter,list=releaseNotes.filter(note=>filter==='all'||note[0]===filter);bodyHTML('<section class="os-card os-news-toolbar"><div><h2>O que mudou no Orion</h2><p>Atualizações desta versão do painel.</p></div>'+routeButton('Base de conhecimento','ajuda','os-outline os-small','book')+'</section><div class="os-help-categories os-news-filters" role="tablist" aria-label="Tipo de atualização">'+[['all','Todos'],...Object.entries(labels)].map(([value,label])=>'<button type="button" role="tab" class="os-pill-tab" aria-selected="'+(filter===value)+'" data-os-news-filter="'+value+'">'+label+'</button>').join('')+'</div><div class="os-news-list">'+list.map(note=>'<article class="os-card os-news-card"><header><span class="os-badge '+(note[0]==='feature'?'os-success':note[0]==='fix'?'os-warning':'os-neutral')+'">'+labels[note[0]]+'</span><h2>'+esc(note[1])+'</h2><p>'+esc(note[2])+'</p></header><div><ul>'+note[3].map(text=>'<li>'+esc(text)+'</li>').join('')+'</ul>'+(subscriptionWorkspace()&&note[4]==='dashboard'?'':routeButton('Abrir '+routeNames[note[4]],note[4],'os-ghost os-small','arrow'))+'</div></article>').join('')+'</div>');}
   function showDialog(type,titleText,content,meta={},wide=false){
     if(state.busy)return false;
+    if(subscriptionWorkspace()){toast('Esta função ainda não está disponível para este tipo de negócio.',true);return false;}
     if(!permitted(dialogFeature(type))){toast('Seu plano não inclui este recurso.',true);return false;}
     closeDialog();const d=$('osDialog');
     state.dialog={type,requiredFeature:dialogFeature(type),epoch:state.epoch,tenantId:state.tenantId,trigger:document.activeElement,key:crypto.randomUUID(),...meta};
@@ -1835,8 +2580,12 @@
     '</div>';
   }
   function customerNotesField(value){
-    return '<div class="os-field os-client-field"><label for="osField-notes">Observações</label>'+
-      '<div class="os-client-textarea"><textarea id="osField-notes" name="notes" maxlength="2000" placeholder="Preferências, alergias e informações importantes...">'+esc(value||'')+'</textarea></div></div>';
+    const dental=dentalWorkspace();
+    return '<div class="os-field os-client-field"><label for="osField-notes">'+(dental?'Observações administrativas':'Observações')+'</label>'+
+      '<div class="os-client-textarea"><textarea id="osField-notes" name="notes" maxlength="2000" placeholder="'+
+      (dental?'Ex.: preferência de contato ou horário':'Preferências, alergias e informações importantes...')+'">'+esc(value||'')+'</textarea></div>'+
+      (dental?'<p class="os-client-hint">Não registre sintomas, diagnósticos, tratamentos ou exames aqui. Informações clínicas precisam de prontuário protegido.</p>':'')+
+      '</div>';
   }
   // created_at is generated once by PostgreSQL for manual, WhatsApp and site records.
   function customerRegisteredAt(value){
@@ -1854,6 +2603,42 @@
         '<span class="os-client-history-chevron" aria-hidden="true">'+icon('down')+'</span>'+
       '</summary><div id="osCustomerHistoryBody" class="os-client-history-body" role="region" aria-label="Atendimentos realizados" aria-live="polite">'+
       '<p class="os-help">Expanda para consultar os serviços realizados.</p></div></details>';
+  }
+  function customerLegacyHistoryPanel(){
+    return '<details id="osCustomerLegacyHistory" class="os-client-history">'+
+      '<summary aria-controls="osCustomerLegacyBody"><span class="os-client-history-icon">'+icon('book')+'</span>'+
+      '<span class="os-client-history-title"><strong>Histórico da agenda antiga</strong><small>Dados importados, separados dos agendamentos da Orion</small></span>'+
+      '<span class="os-client-history-chevron" aria-hidden="true">'+icon('down')+'</span></summary>'+
+      '<div id="osCustomerLegacyBody" class="os-client-history-body" role="region" aria-label="Histórico da agenda antiga" aria-live="polite">'+
+      '<p class="os-help">Expanda para consultar os dados importados.</p></div></details>';
+  }
+  async function loadCustomerLegacyHistory(d){
+    if(d?.type!=='customer'||!d.record||state.dialog!==d||d.legacyLoading)return;
+    const c=context(),target=$('osCustomerLegacyBody');if(!target)return;
+    d.legacyLoading=true;target.innerHTML=loading('Carregando agenda antiga…');
+    try{
+      const result=await request(mgmt('/customers/'+encodeURIComponent(d.record.id)+'/legacy-history'));
+      if(!stillAccount(c)||!current(c)||state.dialog!==d)return;
+      if(!Array.isArray(result?.sources))throw Error('Histórico antigo indisponível.');
+      d.legacyLoaded=true;
+      target.innerHTML=result.sources.length?result.sources.map(source=>{
+        const visits=Array.isArray(source.history)?source.history:[];
+        return '<div class="os-client-history-overview"><strong>'+number(source.reported_appointments)+
+          ' agendamentos informados pela agenda antiga</strong><small>Total informado: '+money(source.reported_spent_cents)+
+          ' · Ticket médio: '+money(source.reported_ticket_cents)+'</small></div>'+
+          (!source.history_complete?'<p class="os-client-history-error" role="status">A agenda antiga não forneceu os detalhes de todos os agendamentos deste cliente.</p>':'')+
+          '<div class="os-client-history-list">'+visits.map(visit=>'<article class="os-client-history-visit">'+
+            '<div class="os-client-visit-heading"><span class="os-client-visit-calendar" aria-hidden="true">'+icon('calendar')+
+            '</span><div><strong>'+esc(visit.date||'Data indisponível')+'</strong><small>'+
+            (visit.time?'às '+esc(visit.time):'Horário não informado')+'</small><small>'+
+            esc(visit.professional||'Profissional não informado')+'</small></div>'+
+            '<strong class="os-client-visit-total">'+money(visit.price_cents)+'</strong></div>'+
+            '<ul class="os-client-visit-services"><li><span class="os-client-service-dot" aria-hidden="true"></span>'+
+            '<div><strong>'+esc(visit.service||'Serviço não informado')+'</strong></div></li></ul></article>').join('')+'</div>';
+      }).join(''):'<p class="os-help">Este cliente não tem histórico importado.</p>';
+    }catch(error){if(stillAccount(c)&&current(c)&&state.dialog===d)
+      target.innerHTML='<p class="os-client-history-error" role="alert">'+esc(error.message||'Não foi possível consultar a agenda antiga.')+'</p>';
+    }finally{if(state.dialog===d)d.legacyLoading=false;}
   }
   function customerHistoryVisit(visit){
     const services=rows(visit.services),validDate=typeof visit.start_at==='string'&&Number.isFinite(Date.parse(visit.start_at));
@@ -1930,11 +2715,30 @@
       }
     }finally{if(state.dialog===d)d.historyLoading=false;}
   }
+  function dentalPatientJourney(record){
+    if(!dentalWorkspace()||!record)return '';
+    // CRM-only numbers. Do not infer clinical progress or diagnoses from visits.
+    const appointments=number(record.total_appointments);
+    const completed=number(record.completed_appointments);
+    const last=record.last_visit_at&&!Number.isNaN(Date.parse(record.last_visit_at))?
+      fmtDate(dateKey(new Date(record.last_visit_at))):'Sem atendimento concluído';
+    return '<details class="os-client-more os-dental-journey" aria-label="Jornada administrativa do paciente">'+
+      '<summary class="os-client-more-toggle"><span class="os-client-more-icon" aria-hidden="true">'+
+      icon('plus')+'<svg class="os-icon os-client-more-minus" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12h14"/></svg></span><span class="os-client-more-text"><span class="os-client-more-label-collapsed">Jornada do paciente</span>'+
+      '<span class="os-client-more-label-expanded">Jornada do paciente</span>'+
+      '<small>Consultas e atendimentos registrados no Orion</small></span></summary>'+
+      '<div class="os-client-extra-fields"><div class="os-stats os-client-stats">'+
+      '<div class="os-stat"><strong>'+appointments+'</strong><small>Agendamentos registrados</small></div>'+
+      '<div class="os-stat"><strong>'+completed+'</strong><small>Atendimentos concluídos</small></div>'+
+      '<div class="os-stat"><strong>'+money(record.total_spent_cents)+'</strong><small>Valor dos atendimentos</small></div>'+
+      '</div><p class="os-client-hint">Último atendimento: '+esc(last)+'. Dados administrativos provenientes da agenda e do financeiro do Orion, não de um prontuário clínico.</p></div></details>';
+  }
   function showCustomer(record=null){
     const c=record||{};
     const hasExtra=!!(record&&(c.email||c.birth_date||c.birth_day||c.neighborhood||c.city));
+    const expandExtra=dentalWorkspace()||hasExtra;
     const legacyBirthday=!c.birth_date&&c.birth_month&&c.birth_day;
-    const extras='<details class="os-client-more"'+(hasExtra?' open':'')+'>'+
+    const extras='<details class="os-client-more"'+(expandExtra?' open':'')+'>'+
       '<summary class="os-client-more-toggle"><span class="os-client-more-icon" aria-hidden="true">'+
         icon('plus')+'<svg class="os-icon os-client-more-minus" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12h14"/></svg></span>'+
       '<span class="os-client-more-text"><span class="os-client-more-label-collapsed">Mais dados</span><span class="os-client-more-label-expanded">Menos dados</span><small>(e-mail, aniversário, endereço)</small></span></summary>'+
@@ -1948,17 +2752,18 @@
         '</div>'+
       '</div></details>';
     let content='<div class="os-client-form">'+
-      '<p class="os-client-hint os-client-intro">Somente o nome é obrigatório.</p>'+
-      customerInputField('Nome completo *','name','text',c.name||'','userPlus','required maxlength="120" autocomplete="name" placeholder="Ex.: João Silva"')+
+      '<p class="os-client-hint os-client-intro">'+(dentalWorkspace()?'Cadastro administrativo. Prontuários e dados clínicos não devem ser registrados nesta ficha.':'Somente o nome é obrigatório.')+'</p>'+
+      customerInputField(dentalWorkspace()?'Nome do paciente *':'Nome completo *','name','text',c.name||'','userPlus','required maxlength="120" autocomplete="name" placeholder="Ex.: João Silva"')+
       customerInputField('WhatsApp','phone','tel',c.phone||'','phone','autocomplete="tel" placeholder="(11) 91234-5678"','Usado para identificar o cliente nos agendamentos.')+
       customerInputField('Instagram','instagram','text',c.instagram||'','instagram','maxlength="120" placeholder="@usuario"')+
       extras+customerNotesField(c.notes||'')+
       (record?'<p class="os-client-created"><span class="os-client-created-icon" aria-hidden="true">'+icon('clock')+'</span>'+
         '<span>Cadastrado em '+esc(customerRegisteredAt(c.created_at))+'</span></p>':'')+'</div>'+
-      (record?checkField('Cliente ativo','active',c.active!==false):'');
-    if(record)content+='<div class="os-stats os-client-stats"><div class="os-stat os-client-stat-total"><strong>'+money(c.total_spent_cents)+'</strong><small>Total atendido</small></div><div class="os-stat"><strong>'+number(c.total_appointments)+'</strong><small>Agendamentos</small></div><div class="os-stat"><strong>'+number(c.loyalty_points)+'</strong><small>Pontos</small></div></div>';
-    const afterFields=record?customerHistoryPanel(c):'';
-    if(!showDialog('customer',record?(writable()?'Editar cliente':'Cliente'):'Novo cliente',
+      (record?checkField(dentalWorkspace()?'Paciente ativo':'Cliente ativo','active',c.active!==false):'');
+    if(record)content+='<div class="os-stats os-client-stats"><div class="os-stat os-client-stat-total"><strong>'+money(c.total_spent_cents)+'</strong><small>Total atendido na Orion</small></div><div class="os-stat"><strong>'+number(c.total_appointments)+'</strong><small>Agendamentos na Orion</small></div><div class="os-stat"><strong>'+number(c.loyalty_points)+'</strong><small>Pontos</small></div></div>'+
+      (number(c.legacy_appointments)>0?'<p class="os-client-hint">Agenda antiga: '+number(c.legacy_appointments)+' agendamentos e '+money(c.legacy_spent_cents)+' informados pela origem. Consulte os detalhes abaixo.</p>':'');
+    const afterFields=record?dentalPatientJourney(c)+customerHistoryPanel(c)+customerLegacyHistoryPanel():'';
+    if(!showDialog('customer',record?(dentalWorkspace()?(writable()?'Editar paciente':'Paciente'):(writable()?'Editar cliente':'Cliente')):(dentalWorkspace()?'Novo paciente':'Novo cliente'),
       dialogForm('customer',content,record?'Salvar alterações':'Cadastrar cliente',
         record&&writable()?button('Excluir','delete-customer','os-ghost','trash'):'',afterFields),{record}))return;
     if(record){
@@ -1981,6 +2786,15 @@
         if(!opened.historyOpened){
           opened.historyOpened=true;
           startHistory();
+        }
+      });
+      const legacy=$('osCustomerLegacyHistory');
+      legacy?.querySelector('summary')?.addEventListener('click',()=>{
+        if(!legacy.open&&!opened.legacyLoaded)void loadCustomerLegacyHistory(opened);
+      });
+      legacy?.addEventListener('toggle',()=>{
+        if(legacy.open&&!opened.legacyLoaded){
+          void loadCustomerLegacyHistory(opened);
         }
       });
     }
@@ -2061,7 +2875,7 @@
       [['fixed','Preço fixo','Valor definido'],['from','A partir de','Valor inicial']].map(([value,title,description])=>
       '<label class="os-service-price-choice"><input type="radio" name="price_mode" value="'+value+'" '+(kind===value?'checked':'')+'><span><strong>'+title+'</strong><small>'+description+'</small></span></label>').join('')+'</div>'+
       '<p class="os-help" id="osServicePriceModeHint" role="status" aria-live="polite"></p></fieldset>';
-    const content=field('Nome','name','text',s.name||'','required maxlength="120" placeholder="Ex.: Atendimento completo"')+field('Categoria (opcional)','category','text',s.category||'','maxlength="80" placeholder="Ex.: Consultas, Cuidados, Estética"')+field('Duração (min)','duration_min','number',s.duration_min||30,'required min="1" max="1440"')+'<div class="os-service-duration-shortcuts" role="group" aria-label="Preencher duração rapidamente">'+[15,30,45,60,90].map(m=>'<button type="button" class="os-button os-outline os-small" data-os-duration="'+m+'" aria-pressed="'+(Number(s.duration_min||30)===m)+'">'+m+' min</button>').join('')+'</div>'+pricing+moneyField('Preço (R$)','price','text',s.price_cents!=null?currencyInputGrouped(s.price_cents):'','required inputmode="decimal" autocomplete="off" maxlength="18" data-os-money-mask="whole" data-field-max="100000000" placeholder="0,00"')+'<div class="os-field os-service-color-field"><span class="os-color-group-label">Cor do serviço</span><div class="os-color-presets" role="group" aria-label="Cor do serviço">'+colors.map(color=>'<button type="button" data-os-color="'+color+'" aria-label="Cor '+color+'" aria-pressed="'+(color.toLowerCase()===(s.color||'#8b5cf6').toLowerCase())+'" style="--os-preset-color:'+color+'"></button>').join('')+colorField('Personalizar cor','color',s.color||'#8b5cf6',true)+'</div></div>'+imageUploadField('Imagem do serviço (opcional)','image_url',s.image_url||'','service')+'<fieldset><legend>Profissionais que realizam este serviço</legend><p class="os-help" style="margin-bottom:12px">Nenhum selecionado significa todos os profissionais cadastrados.</p>'+(rows(pros).length?'<div class="os-checkbox-chips">'+rows(pros).map(p=>'<label class="os-check"><input type="checkbox" name="professional_ids" value="'+esc(p.id)+'" '+(selected.includes(p.id)?'checked':'')+'><span>'+esc(p.name)+'</span></label>').join('')+'</div>':'<p class="os-help">Cadastre um profissional para vinculá-lo a este serviço.</p>')+'</fieldset>'+textField('Descrição','description',s.description||'','maxlength="500"')+'<details class="os-more-fields"><summary>'+icon('clock')+'<span class="os-disclosure-label">Intervalos de atendimento</span></summary><div class="os-disclosure-body"><div class="os-form-grid" style="margin-top:16px">'+field('Preparação (min)','prep_min','number',s.prep_min||0,'min="0" max="240"')+field('Intervalo após serviço (min)','cleanup_min','number',s.cleanup_min||0,'min="0" max="240"')+'</div></div></details>'+'<details class="os-more-fields"><summary>'+icon('sparkles')+'<span class="os-disclosure-label">Adicionais</span></summary><div class="os-disclosure-body"><p class="os-help" style="margin:8px 0 12px">Selecione até 5 serviços extras. Escolha se o adicional aumenta o tempo do atendimento.</p><div class="os-form">'+addonServices.map(service=>{const addon=rows(addons).find(a=>a.addon_service_id===service.id);return '<div class="os-addon-option"><label class="os-check"><input type="checkbox" name="addon_ids" value="'+esc(service.id)+'" '+(addon?'checked':'')+'><span>'+esc(service.name)+'<small>'+esc(priceLabel(service.price_cents,service.price_mode))+' · '+number(service.duration_min)+' min</small></span></label><label class="os-check"><input type="checkbox" name="addon_duration_'+esc(service.id)+'" '+(!addon||addon.add_duration?'checked ':'')+(addon?'':'disabled')+'><small>Somar tempo</small></label></div>';}).join('')+(addonServices.length?'':'<p class="os-help">Cadastre outro serviço para oferecê-lo como adicional.</p>')+'</div></div></details>'+checkField('Ativo','active',s.active!==false,'Disponível para novos agendamentos.');
+    const content=field('Nome','name','text',s.name||'','required maxlength="120" placeholder="'+(dentalWorkspace()?'Ex.: Avaliação odontológica':'Ex.: Atendimento completo')+'"')+field('Categoria (opcional)','category','text',s.category||'','maxlength="80" placeholder="Ex.: Consultas, Cuidados, Estética"')+field('Duração (min)','duration_min','number',s.duration_min||30,'required min="1" max="1440"')+'<div class="os-service-duration-shortcuts" role="group" aria-label="Preencher duração rapidamente">'+[15,30,45,60,90].map(m=>'<button type="button" class="os-button os-outline os-small" data-os-duration="'+m+'" aria-pressed="'+(Number(s.duration_min||30)===m)+'">'+m+' min</button>').join('')+'</div>'+pricing+moneyField('Preço (R$)','price','text',s.price_cents!=null?currencyInputGrouped(s.price_cents):'','required inputmode="decimal" autocomplete="off" maxlength="18" data-os-money-mask="whole" data-field-max="100000000" placeholder="0,00"')+'<div class="os-field os-service-color-field"><span class="os-color-group-label">Cor do serviço</span><div class="os-color-presets" role="group" aria-label="Cor do serviço">'+colors.map(color=>'<button type="button" data-os-color="'+color+'" aria-label="Cor '+color+'" aria-pressed="'+(color.toLowerCase()===(s.color||'#8b5cf6').toLowerCase())+'" style="--os-preset-color:'+color+'"></button>').join('')+colorField('Personalizar cor','color',s.color||'#8b5cf6',true)+'</div></div>'+imageUploadField('Imagem do serviço (opcional)','image_url',s.image_url||'','service')+'<fieldset><legend>Profissionais que realizam este serviço</legend><p class="os-help" style="margin-bottom:12px">Nenhum selecionado significa todos os profissionais cadastrados.</p>'+(rows(pros).length?'<div class="os-checkbox-chips">'+rows(pros).map(p=>'<label class="os-check"><input type="checkbox" name="professional_ids" value="'+esc(p.id)+'" '+(selected.includes(p.id)?'checked':'')+'><span>'+esc(p.name)+'</span></label>').join('')+'</div>':'<p class="os-help">Cadastre um profissional para vinculá-lo a este serviço.</p>')+'</fieldset>'+textField('Descrição','description',s.description||'','maxlength="500"')+'<details class="os-more-fields"><summary>'+icon('clock')+'<span class="os-disclosure-label">Intervalos de atendimento</span></summary><div class="os-disclosure-body"><div class="os-form-grid" style="margin-top:16px">'+field('Preparação (min)','prep_min','number',s.prep_min||0,'min="0" max="240"')+field('Intervalo após serviço (min)','cleanup_min','number',s.cleanup_min||0,'min="0" max="240"')+'</div></div></details>'+'<details class="os-more-fields"><summary>'+icon('sparkles')+'<span class="os-disclosure-label">Adicionais</span></summary><div class="os-disclosure-body"><p class="os-help" style="margin:8px 0 12px">Selecione até 5 serviços extras. Escolha se o adicional aumenta o tempo do atendimento.</p><div class="os-form">'+addonServices.map(service=>{const addon=rows(addons).find(a=>a.addon_service_id===service.id);return '<div class="os-addon-option"><label class="os-check"><input type="checkbox" name="addon_ids" value="'+esc(service.id)+'" '+(addon?'checked':'')+'><span>'+esc(service.name)+'<small>'+esc(priceLabel(service.price_cents,service.price_mode))+' · '+number(service.duration_min)+' min</small></span></label><label class="os-check"><input type="checkbox" name="addon_duration_'+esc(service.id)+'" '+(!addon||addon.add_duration?'checked ':'')+(addon?'':'disabled')+'><small>Somar tempo</small></label></div>';}).join('')+(addonServices.length?'':'<p class="os-help">Cadastre outro serviço para oferecê-lo como adicional.</p>')+'</div></div></details>'+checkField('Ativo','active',s.active!==false,'Disponível para novos agendamentos.');
     if(showDialog('service',record?'Editar serviço':'Novo serviço',dialogForm('service',content,'Salvar',record&&writable()?button('Excluir','delete-service','os-ghost','trash'):'') ,{record,drawer:true,addonVersion:number(addons.version)})){const form=$('osDialog')?.querySelector('form');updateServicePriceMode(form);syncServiceDurationPresets(form);}
   }
   function compactServiceDuration(minutes){
@@ -2118,8 +2932,35 @@
     const c=context();if(!state.data.services){try{state.data.services=rows(await request(apiPath('/services')));if(!current(c))return;}catch(ex){toast(ex.message,true);return;}}
     const services=(state.data.services||[]).filter(s=>!s.catalog_kind||s.catalog_kind==='base'),p=record||{};
     if(services.length<2){showDialog('package-start','Novo combo',empty('scissors','Cadastre pelo menos dois serviços','Os combos reúnem serviços do seu catálogo. Cadastre os serviços antes de criar o pacote.',button('Fechar','close-dialog','os-outline')));return;}
-    const selected=p.service_ids||[],content=field('Nome do combo','name','text',p.name||'','required maxlength="120" placeholder="Ex.: Atendimento completo"')+'<fieldset><legend>Serviços do combo</legend><p class="os-help" style="margin-bottom:12px">Escolha de 2 a 6 serviços.</p><div class="os-form">'+services.map(service=>'<label class="os-check"><input type="checkbox" name="service_ids" value="'+esc(service.id)+'" '+(selected.includes(service.id)?'checked':'')+'><span>'+esc(service.name)+' <small>'+number(service.duration_min)+' min · '+esc(priceLabel(service.price_cents,service.price_mode))+'</small></span></label>').join('')+'</div></fieldset><div id="osPackageSummary" class="os-summary"></div>'+moneyField('Preço do combo (R$)','price','text',p.price_cents!=null?currencyInputGrouped(p.price_cents):'','required inputmode="decimal" autocomplete="off" maxlength="18" data-os-money-mask="whole" data-field-max="100000000" placeholder="0,00"')+'<p id="osPackageVariableHint" class="os-help hidden" role="status">Este combo será exibido como “A partir de”. O preço informado é o mínimo, e a equipe confirmará o valor final antes de concluir o atendimento.</p><div class="os-actions">'+[5,10,15,20].map(n=>'<button type="button" class="os-button os-outline os-small" data-os-package-discount="'+n+'">−'+n+'%</button>').join('')+'</div>'+checkField('Visível no agendamento','active',p.active!==false)+checkField('Destacar combo','featured',p.featured===true)+textField('Descrição (opcional)','description',p.description||'','maxlength="500"')+imageUploadField('Imagem do combo (opcional)','image_url',p.image_url||'','package');
-    showDialog('package',record?'Editar combo':'Novo combo',dialogForm('package',content,record?'Salvar alterações':'Criar combo',record?button('Excluir','delete-package','os-ghost','trash'):''),{record,services,priceTouched:!!record});updatePackageSummary();
+    const customDuration=p.duration_override_min!=null;
+    const durationSettings='<fieldset class="os-package-duration-settings"><legend>Duração do combo</legend>'+
+      checkField('Definir duração personalizada','custom_duration',customDuration,'Desativado: soma automática dos serviços.')+
+      '<div id="osPackageCustomDuration" class="'+(customDuration?'':'hidden')+'">'+
+        field('Duração personalizada (min)','duration_override_min','number',customDuration?p.duration_override_min:'',
+          'min="1" max="1440" step="1" inputmode="numeric"')+
+        '<p class="os-help">Pode ser maior ou menor que a soma dos serviços.</p></div></fieldset>';
+    const selected=p.service_ids||[],content=field('Nome do combo','name','text',p.name||'','required maxlength="120" placeholder="Ex.: Atendimento completo"')+'<fieldset><legend>Serviços do combo</legend><p class="os-help" style="margin-bottom:12px">Escolha de 2 a 6 serviços.</p><div class="os-form">'+services.map(service=>'<label class="os-check"><input type="checkbox" name="service_ids" value="'+esc(service.id)+'" '+(selected.includes(service.id)?'checked':'')+'><span>'+esc(service.name)+' <small>'+number(service.duration_min)+' min · '+esc(priceLabel(service.price_cents,service.price_mode))+'</small></span></label>').join('')+'</div></fieldset>'+durationSettings+'<div id="osPackageSummary" class="os-summary"></div>'+moneyField('Preço do combo (R$)','price','text',p.price_cents!=null?currencyInputGrouped(p.price_cents):'','required inputmode="decimal" autocomplete="off" maxlength="18" data-os-money-mask="whole" data-field-max="100000000" placeholder="0,00"')+'<p id="osPackageVariableHint" class="os-help hidden" role="status">Este combo será exibido como “A partir de”. O preço informado é o mínimo, e a equipe confirmará o valor final antes de concluir o atendimento.</p><div class="os-actions">'+[5,10,15,20].map(n=>'<button type="button" class="os-button os-outline os-small" data-os-package-discount="'+n+'">−'+n+'%</button>').join('')+'</div>'+checkField('Visível no agendamento','active',p.active!==false)+checkField('Destacar combo','featured',p.featured===true)+textField('Descrição (opcional)','description',p.description||'','maxlength="500"')+imageUploadField('Imagem do combo (opcional)','image_url',p.image_url||'','package');
+    if(showDialog('package',record?'Editar combo':'Novo combo',dialogForm('package',content,record?'Salvar alterações':'Criar combo',record?button('Excluir','delete-package','os-ghost','trash'):''),{record,services,priceTouched:!!record})){
+      syncPackageDurationMode(false);
+    }
+  }
+  function syncPackageDurationMode(fillDefault=true){
+    const d=state.dialog,form=$('osDialog')?.querySelector('[data-os-form=package]');
+    if(d?.type!=='package'||!form)return;
+    const customized=form.elements.custom_duration?.checked===true;
+    const durationInput=form.elements.duration_override_min;
+    const wrapper=$('osPackageCustomDuration');
+    if(wrapper)wrapper.classList.toggle('hidden',!customized);
+    if(durationInput){
+      durationInput.disabled=!customized;
+      durationInput.required=customized;
+      if(customized&&fillDefault&&!durationInput.value){
+        const selected=new FormData(form).getAll('service_ids');
+        const automatic=d.services.filter(s=>selected.includes(s.id)).reduce((sum,s)=>sum+number(s.duration_min),0);
+        if(automatic>=1&&automatic<=1440)durationInput.value=String(automatic);
+      }
+    }
+    updatePackageSummary();
   }
   function updatePackageSummary(){
     const d=state.dialog,form=$('osDialog')?.querySelector('form');
@@ -2128,10 +2969,16 @@
       services=d.services.filter(s=>ids.includes(s.id)),
       total=services.reduce((n,s)=>n+number(s.price_cents),0),
       duration=services.reduce((n,s)=>n+number(s.duration_min),0),
+      custom=form.elements.custom_duration?.checked===true,
+      rawDuration=String(form.elements.duration_override_min?.value||'').trim(),
+      customMinutes=/^\d{1,4}$/.test(rawDuration)?Number(rawDuration):null,
+      shownDuration=custom?(customMinutes>=1&&customMinutes<=1440?customMinutes:null):duration,
       variable=services.some(s=>s.price_mode==='from');
     $('osPackageSummary').innerHTML=
       '<div class="os-summary-row"><span>Valor dos serviços avulsos</span><strong>'+esc(priceLabel(total,variable?'from':'fixed'))+'</strong></div>'+
-      '<div class="os-summary-row"><span>Duração total</span><strong>'+duration+' min</strong></div>'+
+      '<div class="os-summary-row"><span>Duração do combo</span><strong>'+
+      (shownDuration===null?'Informe o tempo':shownDuration+' min'+(custom?' (personalizada)':' (automática)'))+'</strong></div>'+
+      (custom?'<div class="os-summary-row"><span>Soma dos serviços</span><strong>'+duration+' min</strong></div>':'')+
       '<div class="os-summary-row"><span>Tipo de preço do combo</span><strong>'+(variable?'A partir de':'Fixo')+'</strong></div>';
     const label=form.elements.price.closest('.os-field')?.querySelector('label');
     if(label)label.textContent=variable?'Preço mínimo do combo (R$)':'Preço do combo (R$)';
@@ -2190,11 +3037,18 @@
           [['percent','%'],['fixed','R$']].map(([v,t])=>'<option value="'+v+'"'+(kind===v?' selected':'')+'>'+t+'</option>').join('')+
         '</select><input type="text" '+numericAttributes(kind,{min:0,max:kind==='fixed'?100000000:100})+' autocomplete="off" name="commission_value_'+esc(service.id)+'" value="'+esc(value)+'" placeholder="'+(kind==='fixed'?'0,00':'0')+'" aria-label="Comissão do serviço '+esc(service.name)+'" '+(custom&&selected.includes(service.id)?'required':'disabled')+'></div>':'')+'</div>';
     }).join('');
+    const access=rows(state.data.team?.professional_access).find(a=>a.professional_id===p.id);
     const content=field('Nome completo','name','text',p.name||'','required maxlength="120" placeholder="Nome do profissional"')+
       field('Especialidade','specialty','text',p.specialty||'','maxlength="120" placeholder="Ex.: Cabeleireiro, Terapeuta, Consultor"')+
       '<div class="os-field" data-field-wrapper><label for="osField-phone_e164">Telefone/WhatsApp (opcional)</label>'+
         '<input id="osField-phone_e164" name="phone_e164" type="tel" inputmode="tel" autocomplete="tel-national" data-orion-field="phone" data-os-professional-phone aria-describedby="osProfessionalPhoneHelp" placeholder="(00) 00000-0000" value="'+esc(professionalPhoneDisplay(p.phone_e164))+'">'+
         '<p id="osProfessionalPhoneHelp" class="os-help">Número de contato deste profissional, com DDD.</p></div>'+
+      (state.data.team?.can_manage?
+        field('E-mail de acesso (opcional)','access_email','email',access?.email||'',
+          'maxlength="254" placeholder="profissional@exemplo.com" '+(access?.account_id?'disabled':'autocomplete="email"'))+
+        (access?.account_id?'<p class="os-help">Já existe uma conta vinculada. Revogue o acesso na aba Acessos antes de alterar o e-mail.</p>':
+          checkField('Enviar convite ao salvar','send_invitation',false)+'<p class="os-help">O convite libera apenas a área individual após confirmação do e-mail.</p>')
+        : '')+
       '<div class="os-form-grid">'+colorField('Cor na agenda','color',p.color||'#31ad52')+
       (permitted('commissions.advanced')?selectField('Modelo de comissão','commission_mode',[['percent','Percentual padrão'],['per_service','Por serviço']],mode):'')+'</div>'+
       (permitted('commissions.advanced')?
@@ -2220,6 +3074,161 @@
     return [...items].sort((a,b)=>Number(a.weekday)-Number(b.weekday)||
       shortClock(a.start_time).localeCompare(shortClock(b.start_time))||
       shortClock(a.end_time).localeCompare(shortClock(b.end_time))||String(a.id).localeCompare(String(b.id)));
+  }
+  function startPolicyModeLabel(mode){return mode==='manual'?'Manual':'Automático';}
+  function validStartClock(value){return typeof value==='string'&&/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);}
+  function normalizeStartPolicy(policy,weekday){
+    if(!policy||policy.weekday!==weekday||!['automatic','manual'].includes(policy.mode)||
+       !Number.isSafeInteger(policy.version)||policy.version<0||!Array.isArray(policy.start_times)||
+       policy.start_times.some(time=>!validStartClock(time))||policy.mode==='manual'&&!policy.start_times.length)
+      throw Error('Não foi possível confirmar os horários de início. Tente carregar novamente.');
+    return {weekday,mode:policy.mode,start_times:[...new Set(policy.start_times)].sort(),version:policy.version};
+  }
+  async function readStartPolicies(professionalId){
+    try{
+      const result=await request(apiPath('/professionals/'+encodeURIComponent(professionalId)+'/start-policies'));
+      if(result?.professional_id!==professionalId||!Array.isArray(result.policies)||result.policies.length!==7)
+        throw Error('Não foi possível confirmar os horários de início. Tente carregar novamente.');
+      return {policies:workweekDays.map((_,weekday)=>normalizeStartPolicy(result.policies.find(p=>p.weekday===weekday),weekday)),error:null};
+    }catch(error){return {policies:null,error:error?.message||'Não foi possível carregar os horários de início.'};}
+  }
+  async function loadSettingsStartPolicies(professionalId,c=context()){
+    const cache=state.data.hoursStartPolicies||(state.data.hoursStartPolicies={}),pending={loading:true};
+    cache[professionalId]=pending;
+    const result=await readStartPolicies(professionalId);
+    if(current(c)&&state.data.hoursStartPolicies===cache&&cache[professionalId]===pending)cache[professionalId]=result;
+  }
+  function rememberHoursStartPolicies(d){
+    const cache=state.data.hoursStartPolicies||(state.data.hoursStartPolicies={});
+    cache[d.record.id]={policies:d.startPolicies,error:d.startPoliciesError||null};
+    if(state.route==='configuracoes'&&state.filters.settingsTab==='hours')renderSettings();
+  }
+  function hoursStartTimeError(d,weekday,time,hours=d.hours,breaks=d.breaks){
+    if(!validStartClock(time))return 'Informe um horário válido no formato HH:MM.';
+    const periods=(hours||[]).filter(h=>Number(h.weekday)===weekday&&time>=shortClock(h.start_time)&&time<shortClock(h.end_time));
+    if(!periods.length)return 'Escolha um horário dentro do expediente.';
+    let pause;
+    for(const hour of periods){
+      const blocked=(breaks||[]).find(b=>b.working_hour_id===hour.id&&time>=shortClock(b.start_time)&&time<shortClock(b.end_time));
+      if(!blocked)return '';
+      pause=blocked;
+    }
+    return 'Este horário está dentro da pausa de '+shortClock(pause.start_time)+' às '+shortClock(pause.end_time)+'.';
+  }
+  function hoursStartDraft(d,weekday){
+    const drafts=d.startPolicyDrafts||(d.startPolicyDrafts={});
+    if(!drafts[weekday]){
+      const policy=d.startPolicies?.find(p=>p.weekday===weekday);if(!policy)return null;
+      drafts[weekday]={mode:policy.mode,startTimes:[...policy.start_times],version:policy.version,pendingTime:'',message:'',conflict:false};
+    }
+    return drafts[weekday];
+  }
+  function validateActiveStartPolicies(d,hours,breaks){
+    for(const policy of d.startPolicies||[]){
+      if(policy.mode!=='manual')continue;
+      const invalid=policy.start_times.filter(time=>hoursStartTimeError(d,policy.weekday,time,hours,breaks));
+      if(invalid.length)throw Error('A alteração deixaria os horários de início '+invalid.join(', ')+' inválidos em '+workweekDays[policy.weekday]+'. Ajuste os horários de início ou ative o modo automático antes de salvar.');
+    }
+  }
+  function renderHoursStartPolicy(d,weekday){
+    const policy=d.startPolicies?.find(p=>p.weekday===weekday),can=writable(),
+      expanded=d.hoursEditor?.mode==='start-policy'&&d.hoursEditor.weekday===weekday,
+      panelId='osHoursStartPolicy-'+weekday;
+    if(!policy)return '<div class="os-hours-start-section"><div class="os-hours-start-heading">Horários de início</div><p class="os-help os-hours-policy-error" role="status">Não foi possível carregar esta configuração.</p><button type="button" class="os-button os-ghost os-small" data-os-start-policy-retry="'+weekday+'">'+icon('refresh')+'Tentar novamente</button></div>';
+    let content='';
+    if(expanded&&can){
+      const draft=hoursStartDraft(d,weekday),manual=draft.mode==='manual',
+        invalid=draft.startTimes.filter(time=>hoursStartTimeError(d,weekday,time));
+      content='<form class="os-form os-hours-editor os-hours-start-editor" data-os-form="hours-start-policy" data-weekday="'+weekday+'">'+
+        '<fieldset class="os-hours-start-modes"><legend>Como oferecer os horários de início</legend>'+[['automatic','Automático'],['manual','Definir manualmente']].map(([value,label])=>
+          '<label><input type="radio" name="start_mode" value="'+value+'" '+(draft.mode===value?'checked ':'')+'data-os-start-policy-mode><span>'+label+'</span></label>').join('')+'</fieldset>'+
+        (manual?'<p class="os-help">Ofereça novos agendamentos apenas nos horários que você adicionar.</p>'+
+          '<div class="os-hours-start-add"><div class="os-field"><label for="osHoursStartTime-'+weekday+'">Horário de início</label><input id="osHoursStartTime-'+weekday+'" name="start_time" type="time" step="60" value="'+esc(draft.pendingTime)+'" data-os-start-time-input aria-describedby="osHoursStartHelp-'+weekday+'"></div><button type="button" class="os-button os-outline os-small" data-os-start-time-add>'+icon('plus')+'Adicionar</button></div>'+
+          '<div class="os-hours-start-list" aria-label="Horários de início adicionados">'+(draft.startTimes.length?draft.startTimes.map(time=>{
+            const error=hoursStartTimeError(d,weekday,time);
+            return '<span class="os-hours-start-chip'+(error?' is-invalid':'')+'"'+(error?' title="'+esc(error)+'"':'')+'><span>'+esc(time)+'</span><button type="button" data-os-start-time-remove="'+esc(time)+'" aria-label="Remover horário de início '+esc(time)+'">'+icon('close')+'</button></span>';
+          }).join(''):'<p class="os-help os-hours-start-empty">Nenhum horário adicionado. Digite o primeiro horário de início.</p>')+'</div>'+
+          (invalid.length?'<p class="os-hours-policy-error" role="status">Revise os horários destacados: '+esc(invalid.join(', '))+'. Eles precisam estar dentro do expediente e fora das pausas.</p>':'')+
+          '<p id="osHoursStartHelp-'+weekday+'" class="os-help">A duração do serviço, as pausas e as reservas continuam sendo consideradas.</p>':
+          '<p class="os-help">O sistema calcula os horários de início a partir do expediente, das pausas e da duração do serviço.</p>'+
+          (policy.start_times.length?'<p class="os-help">A última lista manual salva será mantida para quando você quiser usá-la novamente.</p>':''))+
+        '<p class="os-form-message" role="alert" aria-live="polite">'+esc(draft.message)+'</p>'+
+        (draft.conflict?'<button type="button" class="os-button os-outline os-small os-hours-start-reload" data-os-start-policy-reload="'+weekday+'">Recarregar horários salvos</button><p class="os-help">Recarregar substitui este rascunho pela configuração salva.</p>':'')+
+        '<div class="os-form-actions"><button type="button" class="os-button os-outline os-small" data-os-start-policy-cancel="'+weekday+'">Cancelar</button><button type="submit" class="os-button os-small">Salvar horários</button></div></form>';
+    }else if(expanded){
+      content='<p class="os-help os-hours-start-readonly">'+(policy.mode==='manual'?'Inícios permitidos: '+esc(policy.start_times.join(' · '))+'. A duração do serviço, as pausas e as reservas continuam sendo consideradas.':'O sistema calcula os horários de início a partir do expediente, das pausas e da duração do serviço.')+'</p>';
+    }
+    return '<div class="os-hours-start-section"><button type="button" class="os-hours-start-disclosure" data-os-start-policy-toggle="'+weekday+'" aria-expanded="'+expanded+'" aria-controls="'+panelId+'"><span>Horários de início</span><span class="os-hours-start-status'+(policy.mode==='manual'?' is-manual':'')+'">'+startPolicyModeLabel(policy.mode)+'</span>'+icon('down')+'</button>'+
+      '<div id="'+panelId+'"'+(expanded?'':' hidden')+'>'+content+'</div></div>';
+  }
+  function setHoursStartMessage(d,weekday,message){
+    const draft=hoursStartDraft(d,weekday);if(draft)draft.message=message;
+    const form=$('osDialog')?.querySelector('[data-os-form="hours-start-policy"][data-weekday="'+weekday+'"]');
+    const target=form?.querySelector('.os-form-message');if(target)target.textContent=message;
+  }
+  function addHoursStartTime(form){
+    const d=state.dialog;if(d?.type!=='hours'||!writable()||state.busy||!form)return false;
+    const weekday=Number(form.dataset.weekday),draft=hoursStartDraft(d,weekday),input=form.elements.start_time;
+    if(!draft||draft.mode!=='manual'||!input)return false;
+    const time=input.value;draft.pendingTime=time;
+    const message=hoursStartTimeError(d,weekday,time)||(draft.startTimes.includes(time)?'Este horário já foi adicionado.':'');
+    if(message){setHoursStartMessage(d,weekday,message);input.focus({preventScroll:true});return false;}
+    draft.startTimes=[...draft.startTimes,time].sort();draft.pendingTime='';draft.message='';
+    renderHoursDialog();$('osHoursStartTime-'+weekday)?.focus({preventScroll:true});return true;
+  }
+  async function reloadHoursStartPolicies(d,weekday,replaceDraft=false){
+    if(d?.type!=='hours'||state.busy)return;
+    const c=context(),dialog=$('osDialog');markBusy(dialog,true);
+    try{
+      const [policies,hours,breaks]=await Promise.all([readStartPolicies(d.record.id),request(apiPath('/working_hours')),request(apiPath('/working_breaks'))]);
+      if(!current(c)||state.dialog!==d)return;
+      if(policies.error)throw Error(policies.error);
+      d.startPolicies=policies.policies;d.startPoliciesError=null;
+      d.hours=rows(hours).filter(h=>h.professional_id===d.record.id);d.breaks=rows(breaks);
+      state.data.workingHours=rows(hours);state.data.workingBreaks=rows(breaks);
+      if(replaceDraft){delete d.startPolicyDrafts?.[weekday];hoursStartDraft(d,weekday);}
+      rememberHoursStartPolicies(d);
+    }catch(error){
+      if(current(c)&&state.dialog===d){
+        if(d.startPolicies)setHoursStartMessage(d,weekday,error?.message||'Não foi possível recarregar os horários.');
+        else d.startPoliciesError=error?.message||'Não foi possível carregar os horários de início.';
+      }
+    }finally{
+      if(stillAccount(c)&&state.dialog===d){markBusy(dialog,false);renderHoursDialog();}
+      else state.busy=false;
+    }
+  }
+  async function submitHoursStartPolicy(form,d){
+    if(d?.type!=='hours'||!writable()||state.busy)return;
+    const weekday=Number(form.dataset.weekday),draft=hoursStartDraft(d,weekday);
+    if(!draft||d.hoursEditor?.mode!=='start-policy'||d.hoursEditor.weekday!==weekday)return;
+    if(draft.mode==='manual'){
+      const pending=form.elements.start_time?.value||'';
+      if(pending){if(!addHoursStartTime(form))return;form=$('osDialog').querySelector('[data-os-form="hours-start-policy"]');}
+      if(!draft.startTimes.length){setHoursStartMessage(d,weekday,'Adicione pelo menos um horário para usar a seleção manual.');return;}
+      const invalid=draft.startTimes.filter(time=>hoursStartTimeError(d,weekday,time));
+      if(invalid.length){setHoursStartMessage(d,weekday,'Revise os horários '+invalid.join(', ')+': eles precisam estar dentro do expediente e fora das pausas.');return;}
+    }
+    const c=context(),payload={mode:draft.mode,expected_version:draft.version,...(draft.mode==='manual'?{start_times:[...draft.startTimes]}:{})};
+    draft.message='';draft.conflict=false;markBusy(form,true);
+    let saved=false;
+    try{
+      const result=await request(apiPath('/professionals/'+encodeURIComponent(d.record.id)+'/start-policies/'+weekday),'PUT',payload);
+      if(!current(c)||state.dialog!==d)return;
+      saved=true;
+      const policy=normalizeStartPolicy(result,weekday);
+      d.startPolicies=d.startPolicies.map(item=>item.weekday===weekday?policy:item);
+      delete d.startPolicyDrafts[weekday];d.hoursEditor=null;
+      rememberHoursStartPolicies(d);toast('Horários de início salvos.');
+    }catch(error){
+      if(current(c)&&state.dialog===d){
+        draft.message=(saved?'Não foi possível confirmar o resultado. Recarregue os horários salvos antes de tentar novamente. ':'')+(error?.message||'Não foi possível salvar os horários de início.');
+        draft.conflict=saved||error?.status===409;
+      }
+    }finally{
+      if(stillAccount(c)&&state.dialog===d)markBusy(form,false);else state.busy=false;
+    }
+    if(current(c)&&state.dialog===d){renderHoursDialog();if(d.hoursEditor)$('osDialog').querySelector('.os-form-message')?.scrollIntoView({block:'nearest'});else $('osDialog').querySelector('[data-os-start-policy-toggle="'+weekday+'"]')?.focus({preventScroll:true});}
   }
   function hoursEditorForm(editor,record,parentHour=null){
     if(!writable())return '';
@@ -2252,14 +3261,17 @@
   async function showHours(id){
     const p=(state.data.professionals||[]).find(x=>x.id===id);if(!p)return;
     const c=context();
-    if(!showDialog('hours','Horários de '+p.name,loading('Carregando expediente…'),{record:p,hoursEditor:null},true))return;
+    if(!showDialog('hours','Horários de '+p.name,loading('Carregando expediente…'),{record:p,hoursEditor:null,startPolicyDrafts:{}},true))return;
     $('osDialog').classList.add('os-hours-dialog');
     const activeDialog=state.dialog;
     try{
-      const [hours,breaks]=await Promise.all([request(apiPath('/working_hours')),request(apiPath('/working_breaks'))]);
+      const [hours,breaks,startPolicies]=await Promise.all([request(apiPath('/working_hours')),request(apiPath('/working_breaks')),readStartPolicies(id)]);
       if(!current(c)||state.dialog!==activeDialog)return;
       activeDialog.hours=rows(hours).filter(h=>h.professional_id===id);
       activeDialog.breaks=rows(breaks);
+      activeDialog.startPolicies=startPolicies.policies;activeDialog.startPoliciesError=startPolicies.error;
+      state.data.workingHours=rows(hours);state.data.workingBreaks=rows(breaks);
+      rememberHoursStartPolicies(activeDialog);
       renderHoursDialog();
     }catch(ex){
       if(current(c)&&state.dialog===activeDialog)dialogError(ex);
@@ -2298,6 +3310,7 @@
               (editor?.mode==='add-break'&&editor.id===hour.id?hoursEditorForm(editor,null,hour):'')+
               '</div>';
           }).join(''):'')+
+          (daily.length?renderHoursStartPolicy(d,weekday):'')+
           (editor?.mode==='add-hour'&&editor.weekday===weekday?hoursEditorForm(editor):'')+
           '</section>';
       }).join('')+'</div>'+
@@ -2328,6 +3341,7 @@
         throw Error('Há pausas fora do novo expediente. Ajuste ou remova essas pausas primeiro.');
       path=apiPath('/working_hours'+(isEdit?'/'+encodeURIComponent(original.id):''));
       payload={professional_id:d.record.id,weekday,start_time:start,end_time:end};
+      validateActiveStartPolicies(d,isEdit?d.hours.map(h=>h.id===original.id?{...h,...payload}:h):[...d.hours,{...payload,id:'new-hour'}],d.breaks);
     }else{
       const previous=isEdit?(d.breaks||[]).find(b=>b.id===edit.id):null,
         hour=(d.hours||[]).find(h=>h.id===(isEdit?previous?.working_hour_id:edit.id));
@@ -2339,6 +3353,7 @@
         throw Error('Esta pausa se sobrepõe a outra pausa do mesmo período.');
       path=apiPath('/working_breaks'+(isEdit?'/'+encodeURIComponent(previous.id):''));
       payload={working_hour_id:hour.id,start_time:start,end_time:end};
+      validateActiveStartPolicies(d,d.hours,isEdit?d.breaks.map(b=>b.id===previous.id?{...b,...payload}:b):[...d.breaks,{...payload,id:'new-break'}]);
     }
     const c=context(),message=form.querySelector('.os-form-message');
     if(message)message.textContent='';
@@ -2348,11 +3363,14 @@
       await request(path,isEdit?'PUT':'POST',payload);
       if(!current(c)||state.dialog!==d)return;
       changed=true;
-      const [newHours,newBreaks]=await Promise.all([request(apiPath('/working_hours')),request(apiPath('/working_breaks'))]);
+      const [newHours,newBreaks,startPolicies]=await Promise.all([request(apiPath('/working_hours')),request(apiPath('/working_breaks')),readStartPolicies(d.record.id)]);
       if(!current(c)||state.dialog!==d)return;
       d.hours=rows(newHours).filter(h=>h.professional_id===d.record.id);
       d.breaks=rows(newBreaks);
+      d.startPolicies=startPolicies.policies;d.startPoliciesError=startPolicies.error;
+      state.data.workingHours=rows(newHours);state.data.workingBreaks=rows(newBreaks);
       d.hoursEditor=null;
+      rememberHoursStartPolicies(d);
       toast(isHour?(isEdit?'Horário atualizado.':'Horário cadastrado.'):(isEdit?'Pausa atualizada.':'Pausa adicionada.'));
     }catch(error){
       if(current(c)&&state.dialog===d&&message){
@@ -2367,14 +3385,177 @@
     }
     if(current(c)&&state.dialog===d)renderHoursDialog();
   }
-  async function showAppointment(preset={}){if(!writable()){toast('Seu acesso permite apenas consultar agendamentos.',true);return;}const c=context();showDialog('appointment','Novo agendamento',loading('Carregando clientes, serviços e profissionais…'),{serviceIds:[],engineServiceIds:[],addonIds:[],addonCache:{},customerId:'',slots:[],availabilityVersion:0,preset});const activeDialog=state.dialog;
+  // Clientes fixos: o mesmo formulário, catálogo, cliente e estilo da agenda atual.
+  function resetFixedPreview(){
+    const d=state.dialog;if(d?.type!=='fixed-client')return;
+    d.preview=null;d.previewKey='';d.key=crypto.randomUUID();
+    const target=$('osFixedPreview');if(target)target.innerHTML='<p class="os-help">Confira os dados e verifique as datas antes de confirmar.</p>';
+    const submit=$('osDialog')?.querySelector('[data-os-form=fixed-client] button[type=submit]');
+    if(submit){submit.disabled=false;submit.textContent='Verificar horários';}
+    const selected=d.services.filter(s=>d.serviceIds.includes(s.id));
+    const summary=$('osFixedServiceSummary');
+    if(summary)summary.textContent=selected.length?selected.length+' serviço(s) · '+selected.reduce((sum,item)=>sum+number(item.duration_min),0)+' min · '+priceLabel(selected.reduce((sum,item)=>sum+number(item.price_cents),0),selected.some(x=>x.price_mode==='from')?'from':'fixed'):'Selecione o serviço deste atendimento.';
+  }
+  function filterFixedCustomers(value){
+    const d=state.dialog,target=$('osFixedCustomers');if(d?.type!=='fixed-client'||!target)return;
+    const q=value.toLocaleLowerCase('pt-BR').trim(),digits=q.replace(/\D/g,'');
+    const matches=q?d.customers.filter(c=>c.name.toLocaleLowerCase('pt-BR').includes(q)||(digits&&(c.phone||'').replace(/\D/g,'').includes(digits))).slice(0,8):[];
+    target.innerHTML=matches.map(c=>'<button type="button" data-os-fixed-customer="'+esc(c.id)+'"><span>'+esc(c.name)+'</span><small>'+esc(c.phone||'Sem WhatsApp')+'</small></button>').join('');
+  }
+  async function showFixedClient(preset={}){
+    if(!writable()){toast('Seu acesso permite apenas consultar a agenda.',true);return;}
+    const c=context(),existing=preset.editSeries||null,editing=!!existing;
+    const serviceIds=[...(preset.serviceIds||existing?.service_ids||[])];
+    const titleText=editing?'Editar cliente fixo':'Novo agendamento';
+    if(!showDialog('fixed-client',titleText,loading('Carregando clientes, serviços e profissionais...'),
+      {serviceIds,customers:[],services:[],professionals:[],preview:null,previewKey:'',
+       editSeriesId:editing?existing.id:null},true))return;
+    $('osDialog').classList.add('os-booking-dialog');
+    const d=state.dialog;
+    try{
+      const [customers,services,professionals]=await Promise.all([
+        preset.customers||request(mgmt('/customers?limit=200&status=active')),
+        preset.services||request(apiPath('/services')),preset.professionals||request(apiPath('/professionals'))]);
+      if(!stillAccount(c)||state.dialog!==d)return;
+      d.customers=rows(customers);d.services=rows(services).filter(item=>item.active);
+      d.professionals=rows(professionals).filter(p=>p.active&&p.accepts_appointments!==false);
+      d.serviceIds=d.serviceIds.filter(id=>d.services.some(service=>service.id===id));
+      const reference=existing?.next_start_at?dateKey(new Date(existing.next_start_at)):
+        preset.day||state.filters.agendaDay||dateKey();
+      const referenceWeekday=(dayDate(reference).getUTCDay()+6)%7;
+      const weekday=editing?Number(existing.weekday):referenceWeekday;
+      const first=editing?shiftDay(reference,(weekday-referenceWeekday+7)%7):reference;
+      const repetition=existing?.monthly_visits?'monthly'+existing.monthly_visits:
+        'weekly'+(existing?.interval_weeks||1);
+      const futureCount=editing?rows(existing.appointments).filter(visit=>visit.status==='confirmed'&&Date.parse(visit.start_at)>Date.now()).length:0;
+      const quantity=editing?Math.max(2,Math.min(52,futureCount||2)):12;
+      const content=(editing?'':selectField('Tipo de registro','booking_mode',bookingModes,'fixed'))+
+        '<p id="osBookingModeHelp" class="os-help">'+(editing?
+          'Altere apenas as próximas visitas. Os atendimentos anteriores e o financeiro são preservados.':
+          'Escolha o dia, o horário e quantas vezes este cliente será atendido.')+'</p>'+
+        '<div class="os-field"><label for="osFixedCustomer">Cliente</label><div class="os-search os-fixed-search">'+icon('search')+
+          '<input id="osFixedCustomer" type="search" name="customer_name" placeholder="Buscar cliente ou digitar novo nome" required maxlength="120" autocomplete="off"'+(editing?' readonly':'')+'></div><div id="osFixedCustomers" class="os-customer-results"></div></div>'+
+        field('WhatsApp do cliente','customer_phone','tel',existing?.customer_phone||'','required placeholder="(67) 99999-9999"'+(editing?' readonly':''))+
+        '<fieldset class="os-fixed-service-fieldset"><legend>Serviço</legend><div class="os-service-options">'+(d.services.length?d.services.map(item=>
+          '<button type="button" class="os-service-option" data-os-fixed-service="'+esc(item.id)+'" aria-pressed="'+d.serviceIds.includes(item.id)+'"><strong>'+esc(item.name)+'</strong><small>'+esc(priceLabel(item.price_cents,item.price_mode))+' · '+number(item.duration_min)+' min</small></button>').join(''):'<p class="os-help">Cadastre ao menos um serviço ativo.</p>')+'</div><p class="os-help" id="osFixedServiceSummary">Selecione o serviço deste atendimento.</p></fieldset>'+
+        selectField('Profissional','professional_id',[['','Selecionar profissional'],...d.professionals.map(p=>[p.id,p.name])],existing?.professional_id||preset.professionalId||'','required')+
+        '<div class="os-form-grid">'+selectField('Dia da semana','weekday',fixedWeekdays.map((name,i)=>[i,name]),weekday)+
+        field('Primeiro atendimento','first_date','date',first,'required')+'</div>'+
+        '<div class="os-form-grid">'+field('Horário fixo','local_time','time',editing?String(existing.local_time).slice(0,5):'14:00','required')+
+        selectField('Frequência','repeat_pattern',fixedRepeatChoices,repetition)+'</div>'+
+        field('Quantidade de próximos atendimentos','occurrence_count','number',String(quantity),'required min="2" max="52" step="1"')+
+        '<p class="os-help">2 vezes por mês reserva semanas alternadas (1ª e 3ª ou 2ª e 4ª); 4 vezes por mês reserva até quatro semanas. A prévia confirma as datas.</p>'+
+        '<div id="osFixedPreview" class="os-fixed-preview" aria-live="polite"><p class="os-help">Confira os dados e verifique as datas antes de confirmar.</p></div>';
+      $('osDialog').innerHTML='<button type="button" class="os-icon-button os-close" data-os-action="close-dialog" aria-label="Fechar">'+icon('close')+'</button><h2 id="osDialogTitle">'+esc(titleText)+'</h2>'+dialogForm('fixed-client',content,'Verificar horários');
+      const fixedForm=$('osDialog').querySelector('[data-os-form=fixed-client]');
+      if(editing){
+        fixedForm.elements.customer_name.value=existing.customer_name||'';
+        fixedForm.elements.customer_phone.value=existing.customer_phone||'';
+      }else{
+        if(preset.customerName)fixedForm.elements.customer_name.value=preset.customerName;
+        if(preset.customerPhone)fixedForm.elements.customer_phone.value=preset.customerPhone;
+      }
+      resetFixedPreview();
+      window.OrionFields?.refresh($('osDialog'));
+      if(!d.services.length||!d.professionals.length)$('osDialog').querySelector('button[type=submit]').disabled=true;
+    }catch(error){if(stillAccount(c)&&state.dialog===d)dialogError(error);}
+  }
+  function fixedDraft(d,f){
+    const phone=customerPhoneValue(f.customer_phone);
+    if(!/^(?:\+55[1-9][0-9]{9,10}|\+5959[0-9]{8})$/.test(phone))throw Error('Informe um WhatsApp brasileiro com DDD ou celular paraguaio +595.');
+    if(!d.serviceIds.length)throw Error('Selecione ao menos um serviço.');
+    if(!f.first_date||!f.local_time||!f.professional_id)throw Error('Informe profissional, data inicial e horário.');
+    if(!Number.isInteger(Number(f.occurrence_count))||Number(f.occurrence_count)<2||Number(f.occurrence_count)>52)throw Error('Escolha entre 2 e 52 atendimentos.');
+    const repetition=String(f.repeat_pattern||'weekly1');
+    if(!['weekly1','weekly2','weekly4','monthly2','monthly4'].includes(repetition))throw Error('Selecione a frequência.');
+    return {customer_name:f.customer_name.trim(),customer_phone:phone,
+      professional_id:f.professional_id,service_ids:[...d.serviceIds],
+      first_date:f.first_date,weekday:Number(f.weekday),
+      local_time:f.local_time,interval_weeks:repetition.startsWith('weekly')?Number(repetition.slice(-1)):1,
+      monthly_visits:repetition.startsWith('monthly')?Number(repetition.slice(-1)):null,
+      occurrence_count:Number(f.occurrence_count)};
+  }
+
+  function renderFixedPreview(d,preview){
+    const target=$('osFixedPreview');if(!target)return;
+    const okay=preview.conflict_count===0;
+    target.innerHTML='<section class="os-fixed-preview-card"><div class="os-fixed-preview-heading"><strong>'+icon(okay?'check':'info')+(okay?' Todos os horários disponíveis':' Conflitos encontrados')+'</strong>'+badge(okay?'active':'pending',number(preview.available_count)+' de '+number(preview.count)+' disponíveis')+'</div>'+
+      '<p class="os-help">'+number(preview.duration_min)+' min por atendimento · '+esc(priceLabel(preview.price_cents,d.services.some(s=>d.serviceIds.includes(s.id)&&s.price_mode==='from')?'from':'fixed'))+' por visita. Preço e duração seguem o serviço cadastrado.</p>'+
+      '<ol class="os-fixed-occurrences">'+rows(preview.occurrences).map(o=>
+        '<li class="'+(o.available?'':'os-fixed-conflict')+'"><span>'+icon(o.available?'check':'block')+esc(fmtDate(o.day))+'</span><span>'+esc(timeLabel(o.start_at))+'</span><small>'+esc(o.available?'Disponível':o.reason||'Indisponível')+'</small></li>').join('')+'</ol>'+
+      '<p class="os-help">'+(okay?'Confirme para registrar todas as visitas de uma vez.':'Nenhuma visita será registrada enquanto houver conflito. Ajuste a primeira data, serviço, horário ou quantidade e verifique novamente.')+'</p></section>';
+    const submit=$('osDialog')?.querySelector('[data-os-form=fixed-client] button[type=submit]');
+    if(submit)submit.textContent=okay?'Confirmar '+number(preview.count)+' agendamentos':'Ajustar e verificar novamente';
+  }
+  async function showFixedSeriesDetail(id){
+    if(!id||state.busy)return;
+    const c=context(),d=beginAppointmentSheet('fixed-detail','Cliente fixo',
+      '<div class="os-appointment-scroll">'+loading('Consultando recorrência...')+'</div>',{seriesId:id});
+    if(!d)return;
+    try{
+      const data=await request(apiPath('/appointments/series/'+encodeURIComponent(id)));
+      if(!stillAccount(c)||state.dialog!==d)return;
+      d.record=data;
+      const interval=data.monthly_visits===2?'2 vezes por mês':data.monthly_visits===4?'4 vezes por mês':({1:'Toda semana',2:'A cada duas semanas',4:'A cada quatro semanas'}[data.interval_weeks]||'Recorrente');
+      const times=rows(data.appointments),future=times.filter(x=>x.status==='confirmed'&&Date.parse(x.start_at)>Date.now());
+      const content='<div class="os-appointment-scroll"><div class="os-appointment-customer"><span class="os-avatar">'+esc(initials(data.customer_name))+'</span><div><h3>'+esc(data.customer_name)+'</h3><p>'+esc(data.customer_phone||'')+'</p></div></div>'+
+        '<section class="os-appointment-section"><h3>Horário combinado</h3><div class="os-summary">'+
+        [['Serviço',data.services_label],['Profissional',data.professional_name],['Repetição',interval],['Dia e horário',(fixedWeekdays[data.weekday]||'')+' às '+String(data.local_time).slice(0,5)],['Quantidade',data.occurrence_count+' atendimentos'],['Próxima visita',data.next_start_at?appointmentMoment(data.next_start_at):'Sem visitas futuras']].map(([label,value])=>
+          '<div class="os-summary-row"><span>'+esc(label)+'</span><strong>'+esc(value||'—')+'</strong></div>').join('')+'</div></section>'+
+        '<section class="os-appointment-section"><div class="os-appointment-section-title"><h3>Atendimentos da série</h3><span>'+times.length+' registros</span></div><div class="os-fixed-dates">'+times.map(item=>
+          '<button type="button" data-os-fixed-appointment="'+esc(item.id)+'" class="os-fixed-date-row"><span><strong>'+esc(fmtDate(dateKey(new Date(item.start_at))))+'</strong><small>'+esc(timeLabel(item.start_at))+' · '+esc(item.protocol)+'</small></span>'+badge(item.status)+icon('chevron')+'</button>').join('')+'</div>'+
+        '<p class="os-help">Selecione uma visita para cancelar, remarcar ou finalizar somente aquele atendimento.</p></section>'+
+        '<p class="os-help">Atendimentos finalizados permanecem no histórico e no financeiro. O encerramento libera apenas horários futuros.</p></div>';
+      setAppointmentSheet('Cliente fixo',content,writable()&&future.length?button('Editar recorrência','fixed-edit','','edit')+button('Fechar','close-dialog','os-ghost')+button('Encerrar horários','fixed-stop','os-outline os-appointment-cancel','close'):button('Fechar','close-dialog','os-outline'));
+    }catch(error){if(stillAccount(c)&&state.dialog===d)setAppointmentSheet('Cliente fixo','<div class="os-appointment-scroll">'+errorHTML(error)+'</div>',button('Fechar','close-dialog','os-outline'));}
+  }
+  async function showAppointment(preset={}){if(preset.bookingMode==='fixed'){await showFixedClient(preset);return;}if(!writable()){toast('Seu acesso permite apenas consultar agendamentos.',true);return;}const c=context();showDialog('appointment','Novo agendamento',loading('Carregando clientes, serviços e profissionais…'),{serviceIds:[...(preset.serviceIds||[])],engineServiceIds:[],addonIds:[],addonCache:{},customerId:preset.customerId||'',slots:[],availabilityVersion:0,preset});$('osDialog').classList.add('os-booking-dialog');const activeDialog=state.dialog;
     try{const [customers,services,professionals,links]=await Promise.all([request(mgmt('/customers?limit=200&status=active')),request(apiPath('/services')),request(apiPath('/professionals')),request(apiPath('/professional_services'))]);if(!stillAccount(c)||state.dialog!==activeDialog)return;
-      Object.assign(state.dialog,{customers:rows(customers),services:rows(services).filter(s=>s.active),professionals:rows(professionals).filter(p=>p.active&&p.accepts_appointments!==false),links:rows(links)});renderAppointmentForm();
+      Object.assign(state.dialog,{customers:rows(customers),services:rows(services).filter(s=>s.active),professionals:rows(professionals).filter(p=>p.active&&p.accepts_appointments!==false),links:rows(links)});state.dialog.serviceIds=state.dialog.serviceIds.filter(id=>state.dialog.services.some(service=>service.id===id));renderAppointmentForm();if(state.dialog.serviceIds.length)await updateAvailability();
     }catch(ex){if(stillAccount(c)&&state.dialog===activeDialog)$('osDialog').innerHTML='<button class="os-icon-button os-close" type="button" data-os-action="close-dialog" aria-label="Fechar">'+icon('close')+'</button><h2 id="osDialogTitle">Novo agendamento</h2>'+errorHTML(ex)+button('Fechar','close-dialog','os-outline');}
   }
-  function renderAppointmentForm(){const d=state.dialog;if(d?.type!=='appointment')return;const noServices=!d.services.length,noPros=!d.professionals.length;const content='<div class="os-field"><label for="osBookingCustomer">Cliente</label><div class="os-search" style="max-width:none">'+icon('search')+'<input id="osBookingCustomer" name="customer_name" type="search" placeholder="Buscar por nome ou telefone, ou digite um novo" required maxlength="120" autocomplete="off" aria-autocomplete="list" aria-controls="osBookingCustomers"></div><div id="osBookingCustomers" class="os-customer-results"></div><p id="osBookingCustomerHelp" class="os-help" style="margin-top:8px">'+(d.customers.length?'Selecione um cliente ou preencha os dados para um novo cadastro.':'Nenhum cliente cadastrado ainda.')+'</p></div>'+field('WhatsApp do cliente','customer_phone','tel','','required placeholder="(11) 91234-5678"')+field('Data','day','date',state.filters.agendaDay||dateKey(),'required')+'<fieldset><legend style="font:500 14px/20px var(--os-font);margin:0 0 6px">Serviço</legend><div id="osBookingServices" class="os-service-options">'+(noServices?'<p class="os-help">Cadastre um serviço ativo antes de agendar.</p>':d.services.map(s=>'<button type="button" class="os-service-option" data-os-book-service="'+esc(s.id)+'" aria-pressed="false"><strong>'+esc(s.name)+'</strong><small>'+esc(priceLabel(s.price_cents,s.price_mode))+' · '+number(s.duration_min)+' min</small></button>').join(''))+'</div></fieldset><div id="osBookingAddons" class="hidden"></div>'+selectField('Profissional','professional_id',[['',noPros?'Nenhum profissional disponível':'Selecionar'],...d.professionals.map(p=>[p.id,p.name])],d.preset?.professionalId||'','required')+'<div class="os-field"><label for="osBookingSlot">Horário</label><select id="osBookingSlot" name="start_at" required disabled><option value="">Escolha profissional e serviço</option></select><p id="osBookingSlotHelp" class="os-help" style="margin-top:6px"></p></div><div id="osBookingSummary" class="os-summary hidden"></div>';
+  function renderAppointmentForm(){
+    const d=state.dialog;if(d?.type!=='appointment')return;
+    const noServices=!d.services.length,noPros=!d.professionals.length;
+    const mode=['exceptional','retroactive'].includes(d.preset?.bookingMode)?d.preset.bookingMode:'regular';
+    const content=selectField('Tipo de registro','booking_mode',bookingModes,mode)+'<p id="osBookingModeHelp" class="os-help">Escolha um horário disponível na agenda.</p>'+
+      '<div class="os-field"><label for="osBookingCustomer">Cliente</label><div class="os-search" style="max-width:none">'+icon('search')+'<input id="osBookingCustomer" name="customer_name" type="search" placeholder="Buscar por nome ou telefone, ou digite um novo" required maxlength="120" autocomplete="off" aria-autocomplete="list" aria-controls="osBookingCustomers"></div><div id="osBookingCustomers" class="os-customer-results"></div><p id="osBookingCustomerHelp" class="os-help" style="margin-top:8px">'+(d.customers.length?'Selecione um cliente ou preencha os dados para um novo cadastro.':'Nenhum cliente cadastrado ainda.')+'</p></div>'+
+      '<div id="osBookingWalkIn" hidden>'+checkField('Cliente avulso, sem WhatsApp','walk_in',false)+'</div>'+
+      '<div id="osBookingPhone">'+field('WhatsApp do cliente','customer_phone','tel','','required placeholder="(11) 91234-5678"')+'</div>'+
+      '<div id="osBookingWhen" class="os-form">'+field('Data','day','date',state.filters.agendaDay||dateKey(),'required')+
+      '<div id="osBookingClock" hidden>'+field('Horário','clock','time',d.preset?.time||'','disabled')+'</div></div>'+
+      '<fieldset><legend style="font:500 14px/20px var(--os-font);margin:0 0 6px">Serviço</legend><div id="osBookingServices" class="os-service-options">'+(noServices?'<p class="os-help">Cadastre um serviço ativo antes de agendar.</p>':d.services.map(service=>'<button type="button" class="os-service-option" data-os-book-service="'+esc(service.id)+'" aria-pressed="'+d.serviceIds.includes(service.id)+'"><strong>'+esc(service.name)+'</strong><small>'+esc(priceLabel(service.price_cents,service.price_mode))+' · '+number(service.duration_min)+' min</small></button>').join(''))+'</div></fieldset>'+
+      '<div id="osBookingAddons" class="hidden"></div>'+selectField('Profissional','professional_id',[['',noPros?'Nenhum profissional disponível':'Selecionar'],...d.professionals.map(pro=>[pro.id,pro.name])],d.preset?.professionalId||'','required')+
+      '<div id="osBookingSlotField" class="os-field"><label for="osBookingSlot">Horário</label><select id="osBookingSlot" name="start_at" required disabled><option value="">Escolha profissional e serviço</option></select><p id="osBookingSlotHelp" class="os-help" style="margin-top:6px"></p></div>'+
+      '<div id="osBookingSummary" class="os-summary hidden"></div>'+
+      '<div id="osBookingCompleted" class="os-form" hidden><div class="os-form-grid">'+moneyField('Valor final (R$)','final_total','text','','disabled inputmode="decimal" placeholder="0,00"')+
+      field('Duração realizada (min, opcional)','actual_duration_min','number','','disabled min="1" max="1440" step="1"')+'</div><p class="os-help">Será salvo como Concluído na data do atendimento. O recebimento será acompanhado no Financeiro.</p></div>'+
+      '<div id="osBookingMessages">'+checkField('O cliente autorizou mensagens deste agendamento pelo WhatsApp','appointment_messages_opt_in',false,'Inclui avisos, lembrete 1 hora antes e pedido de avaliação. Marque apenas com autorização expressa do cliente; é opcional.')+'</div>';
     $('osDialog').innerHTML='<button class="os-icon-button os-close" type="button" data-os-action="close-dialog" aria-label="Fechar">'+icon('close')+'</button><h2 id="osDialogTitle">Novo agendamento</h2>'+dialogForm('appointment',content,'Agendar');
+    const form=$('osDialog').querySelector('[data-os-form=appointment]');
+    if(d.preset?.customerName)form.elements.customer_name.value=d.preset.customerName;
+    if(d.preset?.customerPhone)form.elements.customer_phone.value=d.preset.customerPhone;
+    d.bookingMode=mode;syncBookingMode();
     if(noServices||noPros)$('osDialog').querySelector('button[type=submit]').disabled=true;
+    window.OrionFields?.refresh($('osDialog'));
+  }
+  function syncBookingMode(){
+    const d=state.dialog,form=$('osDialog')?.querySelector('[data-os-form=appointment]');if(d?.type!=='appointment'||!form||d.holdForm||d.manualOperation)return;
+    const mode=form.elements.booking_mode.value,manual=mode!=='regular',retro=mode==='retroactive';
+    d.bookingMode=mode;$('osBookingWhen').classList.toggle('os-form-grid',manual);
+    $('osBookingModeHelp').textContent=retro?'Registre um atendimento que já terminou. Nenhum aviso ou lembrete será enviado.':manual?'Informe um horário fora do expediente. A agenda continuará verificando conflitos e bloqueios.':'Escolha um horário disponível na agenda.';
+    $('osBookingWalkIn').hidden=!manual;form.elements.walk_in.disabled=!manual;if(!manual)form.elements.walk_in.checked=false;
+    const selected=d.customers.find(customer=>customer.id===d.customerId);
+    if(manual&&form.elements.walk_in.checked&&selected?.phone)form.elements.walk_in.checked=false;
+    const walkIn=manual&&form.elements.walk_in.checked;
+    $('osBookingPhone').hidden=walkIn;form.elements.customer_phone.disabled=walkIn;form.elements.customer_phone.required=!walkIn;
+    $('osBookingClock').hidden=!manual;form.elements.clock.disabled=!manual;form.elements.clock.required=manual;
+    $('osBookingSlotField').hidden=manual;form.elements.start_at.required=!manual;form.elements.start_at.disabled=manual||!d.slots.length;
+    $('osBookingCompleted').hidden=!retro;form.elements.final_total.disabled=!retro;form.elements.final_total.required=retro;form.elements.actual_duration_min.disabled=!retro;
+    $('osBookingMessages').hidden=retro||walkIn;form.elements.appointment_messages_opt_in.disabled=retro||walkIn;
+    if(retro||walkIn)form.elements.appointment_messages_opt_in.checked=false;
+    form.elements.day.max=retro?dateKey():'';
+    const submit=form.querySelector('[type=submit]');if(submit)submit.textContent=retro?'Registrar atendimento':'Agendar';
   }
   function renderBookingAddons(d){const target=$('osBookingAddons');if(!target)return;const options=d.addons||[];target.classList.toggle('hidden',!options.length);target.innerHTML=options.length?'<fieldset><legend>Adicionais (opcional)</legend><div class="os-booking-addon-options">'+options.map(item=>'<label class="os-check"><input type="checkbox" data-os-book-addon="'+esc(item.addon_service_id)+'" '+(d.addonIds.includes(item.addon_service_id)?'checked':'')+'><span>'+esc(item.name)+'<small>'+esc(priceLabel(item.price_cents,item.price_mode))+' · '+(item.add_duration?'+ '+number(item.duration_min)+' min':'sem tempo extra')+'</small></span></label>').join('')+'</div></fieldset>':'';}
   function renderBookingSummary(d,selected,prepared=null){
@@ -2385,6 +3566,8 @@
         addons.reduce((sum,item)=>sum+(item.add_duration?number(item.duration_min):0),0),
       variable=prepared?.price_mode==='from'||selected.some(x=>x.price_mode==='from')||
         addons.some(x=>x.price_mode==='from');
+    d.estimatedTotal=total;d.estimatedDuration=duration;
+    const completedTotal=$('osDialog')?.querySelector('[name=final_total]');if(completedTotal&&!d.finalTotalTouched)completedTotal.value=selected.length?currencyInput(total):'';
     $('osBookingSummary').classList.toggle('hidden',!selected.length);
     $('osBookingSummary').innerHTML='<div class="os-summary-row"><span>Serviços e adicionais</span><strong>'+
       (selected.length+addons.length)+'</strong></div><div class="os-summary-row"><span>Duração</span><strong>'+
@@ -2393,23 +3576,97 @@
       '</strong></div>'+(variable?'<p class="os-help">O valor final será confirmado pela equipe ao concluir o atendimento. O mínimo não é uma cobrança definitiva.</p>':'');
   }
   async function updateAvailability(){
-    const d=state.dialog,form=$('osDialog')?.querySelector('form');if(d?.type!=='appointment'||!form||d.holdForm)return;
-    const professional=form.elements.professional_id.value,day=form.elements.day.value,slot=$('osBookingSlot'),version=++d.availabilityVersion,c=context(),selected=d.services.filter(service=>d.serviceIds.includes(service.id));d.slots=[];d.engineServiceIds=[...d.serviceIds];slot.replaceChildren(new Option('Escolha profissional e serviço',''));slot.disabled=true;$('osBookingSlotHelp').textContent='';
-    const base=selected.length===1?selected[0].id:'';if(d.addonBase!==base){d.addonBase=base;d.addonIds=[];d.addons=[];}renderBookingAddons(d);renderBookingSummary(d,selected);
+    const d=state.dialog,form=$('osDialog')?.querySelector('form');if(d?.type!=='appointment'||!form||d.holdForm||d.manualOperation)return;
+    const professional=form.elements.professional_id.value,day=form.elements.day.value,slot=$('osBookingSlot'),version=++d.availabilityVersion,c=context(),selected=d.services.filter(service=>d.serviceIds.includes(service.id));
+    d.slots=[];d.engineServiceIds=[...d.serviceIds];d.selectionPending=true;d.selectionError='';
+    slot.replaceChildren(new Option('Escolha profissional e serviço',''));slot.disabled=true;$('osBookingSlotHelp').textContent='';
+    const base=selected.length===1?selected[0].id:'';
+    if(d.addonBase!==base){d.addonBase=base;d.addonIds=[];d.addons=[];}
+    renderBookingAddons(d);renderBookingSummary(d,selected);
     try{
-      if(base){if(!d.addonCache[base]){const data=await request(mgmt('/services/'+encodeURIComponent(base)+'/addons'));if(!stillAccount(c)||state.dialog!==d||version!==d.availabilityVersion)return;d.addonCache[base]=rows(data).filter(item=>item.active!==false);}
+      if(base){
+        if(!d.addonCache[base]){const data=await request(mgmt('/services/'+encodeURIComponent(base)+'/addons'));if(!stillAccount(c)||state.dialog!==d||version!==d.availabilityVersion)return;d.addonCache[base]=rows(data).filter(item=>item.active!==false);}
         d.addons=d.addonCache[base];d.addonIds=d.addonIds.filter(id=>d.addons.some(item=>item.addon_service_id===id));renderBookingAddons(d);renderBookingSummary(d,selected);
       }
-      if(!professional||!day||!selected.length)return;slot.replaceChildren(new Option('Consultando horários…',''));
-      if(base&&d.addonIds.length){const prepared=await request(mgmt('/booking-selection'),'POST',{service_id:base,professional_id:professional,addon_ids:[...d.addonIds]});if(!stillAccount(c)||state.dialog!==d||version!==d.availabilityVersion)return;if(!prepared.engine_service_id)throw Error('Não foi possível preparar os adicionais deste atendimento.');d.engineServiceIds=[prepared.engine_service_id];renderBookingSummary(d,selected,prepared);}
-      const params=new URLSearchParams({professional_id:professional,day});d.engineServiceIds.forEach(id=>params.append('service_ids',id));const data=await request(apiPath('/availability?'+params));if(!stillAccount(c)||state.dialog!==d||version!==d.availabilityVersion)return;d.slots=data.slots||[];slot.replaceChildren(new Option(d.slots.length?'Selecionar horário':'Sem horários disponíveis',''));d.slots.forEach(value=>slot.add(new Option(timeLabel(value),value)));slot.disabled=!d.slots.length;if(d.preset?.time){const preferred=d.slots.find(value=>timeLabel(value)===d.preset.time);if(preferred)slot.value=preferred;}$('osBookingSlotHelp').textContent=d.slots.length?'Horários no fuso '+(data.timezone||zone())+'.':'Tente outro dia ou profissional.';
-    }catch(error){if(stillAccount(c)&&state.dialog===d&&version===d.availabilityVersion){slot.replaceChildren(new Option('Não foi possível carregar',''));$('osBookingSlotHelp').textContent=error.message;}}
+      if(!professional||!day||!selected.length)return;
+      if(base&&d.addonIds.length){
+        const prepared=await request(mgmt('/booking-selection'),'POST',{service_id:base,professional_id:professional,addon_ids:[...d.addonIds]});
+        if(!stillAccount(c)||state.dialog!==d||version!==d.availabilityVersion)return;
+        if(!prepared.engine_service_id)throw Error('Não foi possível preparar os adicionais deste atendimento.');
+        d.engineServiceIds=[prepared.engine_service_id];renderBookingSummary(d,selected,prepared);
+      }
+      if(d.bookingMode!=='regular')return;
+      slot.replaceChildren(new Option('Consultando horários…',''));
+      const params=new URLSearchParams({professional_id:professional,day});d.engineServiceIds.forEach(id=>params.append('service_ids',id));
+      const data=await request(apiPath('/availability?'+params));if(!stillAccount(c)||state.dialog!==d||version!==d.availabilityVersion)return;
+      d.slots=data.slots||[];slot.replaceChildren(new Option(d.slots.length?'Selecionar horário':'Sem horários disponíveis',''));
+      d.slots.forEach(value=>slot.add(new Option(timeLabel(value),value)));slot.disabled=!d.slots.length;
+      if(d.preset?.time){const preferred=d.slots.find(value=>timeLabel(value)===d.preset.time);if(preferred)slot.value=preferred;}
+      $('osBookingSlotHelp').textContent=d.slots.length?'Horários no fuso '+(data.timezone||zone())+'.':'Tente outro dia ou profissional.';
+    }catch(error){
+      if(stillAccount(c)&&state.dialog===d&&version===d.availabilityVersion){
+        d.selectionError=error.message;slot.replaceChildren(new Option('Não foi possível carregar',''));$('osBookingSlotHelp').textContent=error.message;
+        if(d.bookingMode!=='regular'){const message=form.querySelector('.os-form-message');if(message)message.textContent=error.message;}
+      }
+    }finally{if(stillAccount(c)&&state.dialog===d&&version===d.availabilityVersion)d.selectionPending=false;}
+  }
+  async function submitManualAppointment(form,d,values){
+    if(state.busy||!writable())return;
+    let operation=d.manualOperation;
+    if(!operation){
+      if(d.selectionPending)throw Error('Aguarde a conferência dos serviços.');
+      if(d.selectionError)throw Error(d.selectionError);
+      if(!d.serviceIds.length)throw Error('Selecione ao menos um serviço.');
+      const mode=form.elements.booking_mode.value,walkIn=form.elements.walk_in.checked;
+      if(!['exceptional','retroactive'].includes(mode))throw Error('Selecione o tipo de registro.');
+      const customerPhone=walkIn?null:customerPhoneValue(values.customer_phone);
+      if(!walkIn&&!customerPhone)throw Error('Informe o WhatsApp ou marque Cliente avulso.');
+      if(!values.day||!/^\d{2}:\d{2}$/.test(values.clock||''))throw Error('Informe a data e o horário do atendimento.');
+      const start=localISO(values.day,values.clock),retro=mode==='retroactive';
+      const actual=retro&&values.actual_duration_min?Number(values.actual_duration_min):null;
+      if(actual!==null&&(!Number.isInteger(actual)||actual<1||actual>1440))throw Error('Informe uma duração entre 1 e 1440 minutos.');
+      const payload={mode,professional_id:values.professional_id,service_ids:[...d.engineServiceIds],customer_id:d.customerId||null,
+        customer_name:values.customer_name.trim(),customer_phone:customerPhone,walk_in:walkIn,start_at:start,
+        final_total_cents:retro?cents(values.final_total):null,actual_duration_min:actual,
+        appointment_messages_opt_in:!retro&&!walkIn&&form.elements.appointment_messages_opt_in.checked};
+      const selected=d.customers.find(customer=>customer.id===d.customerId);
+      operation={payload:{...payload,idempotency_key:requestKey(form,payload)},day:values.day,customerUpdate:selected&&customerPhone&&customerPhoneValue(selected.phone)!==customerPhone?{id:selected.id,phone:customerPhone,version:selected.version}:null};
+    }
+    const c=context(),message=form.querySelector('.os-form-message'),submit=form.querySelector('[type=submit]');
+    message.textContent='';d.manualOperation=operation;markBusy(form,true);let result=null;
+    try{
+      if(operation.customerUpdate){
+        const update=operation.customerUpdate,path=mgmt('/customers/'+encodeURIComponent(update.id));let updated;
+        try{updated=await request(path,'PATCH',{phone:update.phone,expected_version:update.version});}
+        catch(error){
+          if(error.status>=400&&error.status<500&&error.status!==409)throw error;
+          try{updated=await request(path);}catch{throw error;}
+          if(updated?.id!==update.id||customerPhoneValue(updated.phone)!==update.phone)throw error;
+        }
+        if(!stillAccount(c)||state.dialog!==d)return;
+        const selected=d.customers.find(customer=>customer.id===update.id);if(selected)Object.assign(selected,updated);operation.customerUpdate=null;
+      }
+      result=await request(apiPath('/appointments/manual'),'POST',operation.payload);
+      if(!current(c)||state.dialog!==d)return;
+      const expected=operation.payload.mode==='retroactive'?'completed':'confirmed';
+      if(!result?.id||result.status!==expected)throw Error('Não foi possível confirmar o registro. Tente novamente para verificar a mesma solicitação.');
+      d.manualOperation=null;state.filters.agendaDay=operation.day;
+    }catch(error){
+      result=null;if(!stillAccount(c)||state.dialog!==d)return;
+      if(error.status>=400&&error.status<500&&![408,429].includes(error.status))d.manualOperation=null;
+      message.textContent=(error.message||'Não foi possível registrar.')+(d.manualOperation?' Os dados foram preservados. Tente novamente para conferir a mesma solicitação.':'');
+    }finally{
+      if(stillAccount(c)){markBusy(form,false);if(state.dialog===d){form.querySelector('fieldset').disabled=!!d.manualOperation;submit.textContent=d.manualOperation?'Verificar este registro':operation.payload.mode==='retroactive'?'Registrar atendimento':'Agendar';}}
+      else state.busy=false;
+    }
+    if(!current(c)||state.dialog!==d)return;
+    if(result){closeDialog();toast(operation.payload.mode==='retroactive'?'Atendimento registrado como concluído. O recebimento está pendente no Financeiro.':'Agendamento excepcional registrado.');await open(state.route,{keepScroll:true});}
   }
   function freezePendingBooking(form,d){
     form.querySelectorAll('fieldset').forEach(fieldset=>fieldset.disabled=true);const submit=form.querySelector('button[type=submit]');if(submit){submit.disabled=!writable();submit.textContent=d.holdId?'Tentar confirmar a mesma reserva':'Verificar e confirmar esta reserva';}
     if(!$('osPendingBooking'))form.insertAdjacentHTML('afterbegin','<div id="osPendingBooking" class="os-notice os-warning">'+icon('info')+'<p>Os dados foram preservados para verificar a mesma reserva. '+(d.holdId?'Protocolo: '+esc(d.holdRecord?.protocol||d.holdId)+'. ':'')+'Tente confirmar novamente ou consulte a Agenda antes de criar outro agendamento.</p></div>');
   }
-  function filterBookingCustomers(value){const d=state.dialog;if(d?.type!=='appointment'||d.holdForm)return;const q=value.toLocaleLowerCase('pt-BR').trim(),digits=q.replace(/\D/g,'');d.customerId='';const list=q?d.customers.filter(c=>c.name.toLocaleLowerCase('pt-BR').includes(q)||(digits&&(c.phone||'').replace(/\D/g,'').includes(digits))).slice(0,8):[];
+  function filterBookingCustomers(value){const d=state.dialog;if(d?.type!=='appointment'||d.holdForm||d.manualOperation)return;const q=value.toLocaleLowerCase('pt-BR').trim(),digits=q.replace(/\D/g,'');d.customerId='';const list=q?d.customers.filter(c=>c.name.toLocaleLowerCase('pt-BR').includes(q)||(digits&&(c.phone||'').replace(/\D/g,'').includes(digits))).slice(0,8):[];
     $('osBookingCustomers').innerHTML=list.map(c=>'<button type="button" data-os-book-customer="'+esc(c.id)+'"><span>'+esc(c.name)+'</span><small>'+esc(c.phone||'Sem WhatsApp')+'</small></button>').join('');}
   function appointmentCan(a,action){return writable()&&typeof a?.updated_at==='string'&&Array.isArray(a.allowed_actions)&&a.allowed_actions.includes(action);}
   function appointmentMoment(value){return value?fmtDate(dateKey(new Date(value)))+' às '+timeLabel(value):'Não informado';}
@@ -2425,14 +3682,17 @@
   function appointmentForm(type,content,submitLabel){
     return '<form class="os-appointment-form" data-os-form="'+type+'"><div class="os-appointment-scroll"><fieldset class="os-form">'+content+'</fieldset><div class="os-form-message" role="alert" tabindex="-1"></div></div><footer class="os-appointment-sheet-footer">'+button('Voltar aos detalhes','appointment-back','os-outline')+'<button type="submit" class="os-button">'+esc(submitLabel)+'</button></footer></form>';
   }
-  const appointmentEventLabels={hold_created:'Reserva criada',hold_expired:'Reserva expirada',confirmed:'Agendamento confirmado',rescheduled:'Agendamento remarcado',cancelled:'Agendamento cancelado',completed:'Atendimento finalizado',no_show:'Falta registrada'};
+  const appointmentEventLabels={exceptional_created:'Agendamento excepcional criado',retroactive_created:'Atendimento passado registrado',services_added:'Serviços adicionados',hold_created:'Reserva criada',hold_expired:'Reserva expirada',confirmed:'Agendamento confirmado',rescheduled:'Agendamento remarcado',cancelled:'Agendamento cancelado',completed:'Atendimento finalizado',no_show:'Falta registrada'};
   const appointmentSourceLabels={panel:'Painel Orion',public_site:'Site de agendamento',whatsapp:'WhatsApp',whatsapp_qr:'WhatsApp',whatsapp_meta:'WhatsApp',system:'Sistema',unknown:'Origem não informada'};
   function appointmentHistory(a){
-    const history=rows(a.history);return '<section class="os-appointment-section"><div class="os-appointment-section-title"><h3>Histórico</h3><span>'+number(a.history_total??history.length)+' registros</span></div>'+(history.length?'<ol class="os-appointment-history">'+history.map(item=>{const attribution=item.event==='cancelled'?({customer:'Solicitado pelo cliente',professional:'Solicitado pelo profissional',business:'Solicitado pela empresa',system:'Cancelamento automático'}[item.requested_by]||'Quem solicitou não foi registrado'):'';return '<li><span class="os-history-dot" aria-hidden="true"></span><div><strong>'+esc(appointmentEventLabels[item.event]||'Atualização do agendamento')+'</strong><time datetime="'+esc(item.occurred_at)+'">'+esc(appointmentMoment(item.occurred_at))+'</time><small>'+esc(appointmentSourceLabels[item.source]||'Origem não informada')+({support:'Suporte',admin:'Administração',owner:'Proprietário',editor:'Equipe',customer:'Cliente',system:'Sistema'}[item.actor?.role]?' · Registro: '+esc({support:'Suporte',admin:'Administração',owner:'Proprietário',editor:'Equipe',customer:'Cliente',system:'Sistema'}[item.actor?.role]):'')+(attribution?' · '+esc(attribution):'')+'</small>'+(item.event==='rescheduled'&&item.previous?.start_at?'<p>Horário anterior: '+esc(appointmentMoment(item.previous.start_at))+'</p>':'')+(item.reason?'<p class="os-appointment-reason">'+esc(item.reason)+'</p>':'')+'</div></li>';}).join('')+'</ol>':'<p class="os-help">Não há eventos disponíveis para este registro.</p>')+(a.history_has_more?'<p class="os-help">Exibindo os 100 eventos mais recentes deste agendamento.</p>':'')+'</section>';
+    const history=rows(a.history);return '<section class="os-appointment-section"><div class="os-appointment-section-title"><h3>Histórico</h3><span>'+number(a.history_total??history.length)+' registros</span></div>'+(history.length?'<ol class="os-appointment-history">'+history.map(item=>{const attribution=item.event==='cancelled'?({customer:'Solicitado pelo cliente',professional:'Solicitado pelo profissional',business:'Solicitado pela empresa',system:'Cancelamento automático'}[item.requested_by]||'Quem solicitou não foi registrado'):'';return '<li><span class="os-history-dot" aria-hidden="true"></span><div><strong>'+esc(appointmentEventLabels[item.event]||'Atualização do agendamento')+'</strong><time datetime="'+esc(item.occurred_at)+'">'+esc(appointmentMoment(item.occurred_at))+'</time><small>'+esc(appointmentSourceLabels[item.source]||'Origem não informada')+({support:'Suporte',admin:'Administração',owner:'Proprietário',editor:'Equipe',professional:'Profissional',customer:'Cliente',system:'Sistema'}[item.actor?.role]?' · Registro: '+esc({support:'Suporte',admin:'Administração',owner:'Proprietário',editor:'Equipe',professional:'Profissional',customer:'Cliente',system:'Sistema'}[item.actor?.role]):'')+(attribution?' · '+esc(attribution):'')+'</small>'+(item.event==='rescheduled'&&item.previous?.start_at?'<p>Horário anterior: '+esc(appointmentMoment(item.previous.start_at))+'</p>':'')+(item.reason?'<p class="os-appointment-reason">'+esc(item.reason)+'</p>':'')+'</div></li>';}).join('')+'</ol>':'<p class="os-help">Não há eventos disponíveis para este registro.</p>')+(a.history_has_more?'<p class="os-help">Exibindo os 100 eventos mais recentes deste agendamento.</p>':'')+'</section>';
   }
   function renderAppointmentDetail(d,notice=''){
     const a=d.record,can=action=>appointmentCan(a,action),items=rows(a.items),name=appointmentName(a),phoneValue=typeof a.customer_phone==='string'?a.customer_phone:'',cancel=a.cancellation;
-    let content='<div class="os-appointment-scroll">'+(notice?'<div class="os-notice os-appointment-notice" role="status">'+icon('info')+'<p>'+esc(notice)+'</p></div>':'')+'<div class="os-appointment-state-row">'+appointmentBadge(a)+'<span>'+appointmentDuration(a)+' min</span></div><div class="os-appointment-customer"><span class="os-avatar">'+esc(initials(name))+'</span><div><h3>'+esc(name)+'</h3><p>'+esc(phoneValue||'WhatsApp não informado')+'</p></div>'+(phoneValue?button('','appointment-copy-phone','os-icon-button','copy','aria-label="Copiar WhatsApp do cliente"'):'')+'</div><section class="os-appointment-section"><div class="os-appointment-when">'+icon('calendar')+'<div><strong>'+esc(longDay(dateKey(new Date(a.start_at))))+'</strong><span>'+esc(timeLabel(a.start_at))+' a '+esc(timeLabel(a.end_at))+' · '+esc(a.timezone||zone())+'</span></div></div><div class="os-appointment-when">'+icon('users')+'<div><strong>'+esc(appointmentProfessional(a))+'</strong><span>Profissional responsável</span></div></div></section><section class="os-appointment-section"><h3>Serviços</h3><ul class="os-appointment-services">'+items.map(item=>'<li><div><strong>'+esc(item.name_snapshot||'Serviço registrado')+'</strong><small>'+number(item.duration_snapshot_min)+' min</small></div><span>'+esc(priceLabel(item.price_snapshot_cents,item.price_mode_snapshot))+'</span></li>').join('')+'</ul><dl class="os-appointment-totals"><div><dt>'+(a.price_mode==='from'&&a.status!=='completed'?'Valor mínimo previsto':'Valor dos serviços')+'</dt><dd>'+esc(priceLabel(a.original_total_cents??a.total_cents,a.status==='completed'?'fixed':a.price_mode))+'</dd></div><div><dt>Desconto</dt><dd>'+money(a.discount_cents)+'</dd></div><div class="os-appointment-net"><dt>'+(a.price_mode==='from'&&a.status!=='completed'?'Mínimo estimado':'Total líquido')+'</dt><dd>'+esc(priceLabel(a.total_cents,a.status==='completed'?'fixed':a.price_mode))+'</dd></div></dl>'+(a.status==='completed'?'<p class="os-help">Atendimento finalizado. O recebimento do valor é acompanhado separadamente no Financeiro.</p>':a.price_mode==='from'?'<p class="os-help">Preço mínimo, não definitivo. A equipe define o valor final na conclusão. Este atendimento não é finalizado automaticamente.</p>':'')+'</section>';
+    let content='<div class="os-appointment-scroll">'+(notice?'<div class="os-notice os-appointment-notice" role="status">'+icon('info')+'<p>'+esc(notice)+'</p></div>':'')+'<div class="os-appointment-state-row">'+appointmentBadge(a)+'<span>'+appointmentDuration(a)+' min</span></div><div class="os-appointment-customer"><span class="os-avatar">'+esc(initials(name))+'</span><div><h3>'+esc(name)+'</h3><p>'+esc(phoneValue||'WhatsApp não informado')+'</p></div>'+(phoneValue?button('','appointment-copy-phone','os-icon-button','copy','aria-label="Copiar WhatsApp do cliente"'):'')+'</div><section class="os-appointment-section"><div class="os-appointment-when">'+icon('calendar')+'<div><strong>'+esc(longDay(dateKey(new Date(a.start_at))))+'</strong><span>'+esc(timeLabel(a.start_at))+' a '+esc(timeLabel(a.end_at))+' · '+esc(a.timezone||zone())+'</span></div></div><div class="os-appointment-when">'+icon('users')+'<div><strong>'+esc(appointmentProfessional(a))+'</strong><span>Profissional responsável</span></div></div></section><section class="os-appointment-section"><div class="os-appointment-section-title"><h3>Serviços</h3>'+(can('add_services')?button('Adicionar serviços','appointment-extras','os-outline os-small','plus'):'')+'</div><ul class="os-appointment-services">'+items.map(item=>'<li><div><strong>'+esc(item.name_snapshot||'Serviço registrado')+'</strong><small>'+number(item.duration_snapshot_min)+' min'+(item.item_origin==='extra'?' · Adicionado no atendimento':'')+(item.item_origin==='extra'&&item.added_duration_min===0?' · Sem tempo extra':'')+'</small></div><span>'+esc(priceLabel(item.price_snapshot_cents,item.price_mode_snapshot))+'</span></li>').join('')+'</ul><dl class="os-appointment-totals"><div><dt>'+(a.price_mode==='from'&&a.status!=='completed'?'Valor mínimo previsto':'Valor dos serviços')+'</dt><dd>'+esc(priceLabel(a.original_total_cents??a.total_cents,a.status==='completed'?'fixed':a.price_mode))+'</dd></div><div><dt>Desconto</dt><dd>'+money(a.discount_cents)+'</dd></div><div class="os-appointment-net"><dt>'+(a.price_mode==='from'&&a.status!=='completed'?'Mínimo estimado':'Total líquido')+'</dt><dd>'+esc(priceLabel(a.total_cents,a.status==='completed'?'fixed':a.price_mode))+'</dd></div></dl>'+(a.status==='completed'?'<p class="os-help">Atendimento finalizado. O recebimento do valor é acompanhado separadamente no Financeiro.</p>':a.price_mode==='from'?'<p class="os-help">Preço mínimo, não definitivo. A equipe define o valor final na conclusão. Este atendimento não é finalizado automaticamente.</p>':'')+'</section>';
+    if(a.booking_mode==='retroactive')content+='<section class="os-appointment-section"><h3>Registro do atendimento</h3><p class="os-help">Realizado em '+esc(appointmentMoment(a.start_at))+'. Registrado em '+esc(appointmentMoment(a.created_at))+'.</p></section>';
+    if(a.actual_duration_min||a.services_duration_min&&a.services_duration_min!==appointmentDuration(a))content+='<section class="os-appointment-section"><h3>Duração</h3><dl class="os-appointment-totals"><div><dt>Horário reservado</dt><dd>'+appointmentDuration(a)+' min</dd></div>'+(a.services_duration_min?'<div><dt>Tempo dos serviços</dt><dd>'+number(a.services_duration_min)+' min</dd></div>':'')+(a.actual_duration_min?'<div><dt>Duração realizada</dt><dd>'+number(a.actual_duration_min)+' min</dd></div>':'')+'</dl></section>';
+    if(a.series_id)content+='<section class="os-appointment-section os-fixed-appointment-link"><div><strong>'+icon('repeat')+' Cliente fixo</strong><p class="os-help">Atendimento vinculado a uma recorrência. Cancelar ou remarcar este horário não altera as demais visitas.</p></div>'+button('Ver recorrência','fixed-open-from-appointment','os-outline os-small','chevron')+'</section>';
     if(a.status==='cancelled')content+='<section class="os-appointment-section"><h3>'+(a.cancellation?.event==='hold_expired'?'Reserva expirada':'Cancelamento')+'</h3><p>'+esc(a.cancellation?.event==='hold_expired'?'A reserva não foi confirmada dentro do prazo. O horário foi liberado.':{customer:'Solicitado pelo cliente ou paciente.',professional:'Solicitado pelo profissional.',business:'Solicitado pela empresa.',system:'Cancelamento registrado pelo sistema.'}[cancel?.requested_by]||'Este registro não informa quem solicitou o cancelamento.')+'</p>'+(cancel?.reason?'<p class="os-appointment-reason">'+esc(cancel.reason)+'</p>':'')+(cancel?.occurred_at?'<small class="os-help">'+esc(appointmentMoment(cancel.occurred_at))+'</small>':'')+'</section>';
     content+='<section class="os-appointment-section"><div class="os-appointment-section-title"><h3>Google Agenda</h3>'+'<button type="button" class="os-icon-button os-appointment-google-refresh" data-os-action="appointment-google-refresh" aria-label="Atualizar sincronização deste agendamento">'+icon('refresh')+'</button>'+'</div><div id="osAppointmentGoogle" aria-live="polite">'+loading('Consultando sincronização...')+'</div></section>'+appointmentHistory(a)+'<section class="os-appointment-protocol"><div><span>Protocolo</span><strong>'+esc(a.protocol||'Não informado')+'</strong></div>'+(a.protocol?button('Copiar','appointment-copy-protocol','os-ghost os-small','copy'):'')+'</section></div>';
     const actions=(can('confirm')?button('Confirmar reserva','confirm-appointment','','check'):'')+(can('complete')?button('Finalizar atendimento','complete-appointment','','check'):'')+(can('reschedule')?button('Remarcar','reschedule-appointment','os-outline','calendar'):'')+(can('no_show')?button('Registrar falta','no-show-appointment','os-outline','block'):'')+(can('cancel')?button('Cancelar agendamento','cancel-appointment','os-outline os-appointment-cancel','close'):'');
@@ -2442,6 +3702,97 @@
     if(!id||state.busy)return;const c=context(),d=beginAppointmentSheet('appointment-detail','Detalhes do agendamento','<div class="os-appointment-scroll">'+loading('Atualizando o agendamento...')+'</div>',{appointmentId:id,...(trigger?.isConnected?{trigger}:{})});if(!d)return;
     try{const record=await request(apiPath('/appointments/'+encodeURIComponent(id)));if(!current(c)||state.dialog!==d)return;if(!record||String(record.id)!==String(id)||!record.status)throw Error('Não foi possível confirmar os dados deste agendamento.');d.record=record;renderAppointmentDetail(d,notice);$('osDialogTitle')?.focus();void loadAppointmentGoogle(d);}
     catch(error){if(!current(c)||state.dialog!==d)return;setAppointmentSheet('Detalhes do agendamento','<div class="os-appointment-scroll"><div class="os-agenda-error" role="alert"><h3>Não foi possível consultar o agendamento</h3><p>'+esc(error.message||'Confira a conexão e tente novamente.')+'</p>'+button('Tentar novamente','appointment-back','os-outline','refresh')+'</div></div>');$('osDialogTitle')?.focus();}
+  }
+  function appointmentExtraItems(items){
+    return '<ul class="os-appointment-services">'+rows(items).map(item=>'<li><div><strong>'+esc(item.name_snapshot||'Serviço registrado')+'</strong><small>'+(item.item_origin==='extra'?'Adicionado no atendimento':'Serviço original')+'</small></div><span>'+esc(priceLabel(item.price_snapshot_cents,item.price_mode_snapshot))+'</span></li>').join('')+'</ul>';
+  }
+  async function showAppointmentExtras(){
+    const a=state.dialog?.record;if(!appointmentCan(a,'add_services'))return;
+    const c=context(),d=beginAppointmentSheet('appointment-extras','Adicionar serviços','<div class="os-appointment-scroll">'+loading('Carregando serviços disponíveis…')+'</div>',{record:a,appointmentId:a.id,extraIds:[],extraPreview:null});if(!d)return;
+    try{
+      const data=await request(apiPath('/appointments/'+encodeURIComponent(a.id)+'/extras-catalog'));
+      if(!current(c)||state.dialog!==d)return;
+      if(!data?.appointment||String(data.appointment.id)!==String(a.id)||!Array.isArray(data.services))throw Error('Não foi possível confirmar os serviços deste atendimento.');
+      d.record=data.appointment;
+      if(!appointmentCan(d.record,'add_services')){await showAppointmentDetail(a.id,{notice:'Este atendimento não está disponível para adicionar serviços.'});return;}
+      d.extraServices=data.services;d.extraLimit=Math.max(0,Math.min(6,number(data.max_items)||6)-rows(d.record.items).length);
+      const recommended=data.services.filter(item=>item.recommended),others=data.services.filter(item=>!item.recommended);
+      const choices=(items,label)=>items.length?'<fieldset class="os-extra-options"><legend>'+esc(label)+'</legend>'+items.map(item=>'<label class="os-check"><input type="checkbox" name="extra_service_ids" data-os-extra-service="'+esc(item.id)+'" value="'+esc(item.id)+'"><span><strong>'+esc(item.name)+'</strong><small>'+esc(priceLabel(item.price_cents,item.price_mode))+' · '+(item.add_duration===false?'sem tempo extra':number(item.duration_min)+' min')+'</small></span></label>').join('')+'</fieldset>':'';
+      const available=d.extraLimit>0&&d.extraServices.length>0;
+      const content=appointmentBrief(d.record)+'<section class="os-appointment-section"><h3>Serviços registrados</h3>'+appointmentExtraItems(d.record.items)+'</section>'+
+        (available?choices(recommended,'Adicionais deste atendimento')+choices(others,recommended.length?'Outros serviços':'Serviços disponíveis')+
+          '<p class="os-help">Selecione até '+d.extraLimit+' serviço'+(d.extraLimit===1?'':'s')+'. Os itens já registrados serão preservados.</p>'+
+          (Date.parse(d.record.start_at)<=Date.now()?field('Duração realizada (min, opcional)','actual_duration_min','number','','min="1" max="1440" step="1"'):'')+
+          '<div id="osExtraPreview" class="os-summary" hidden aria-live="polite"></div>'+
+          '<div id="osExtraConflict" class="os-extra-conflict" hidden><p id="osExtraConflictMessage" class="os-help" aria-live="polite" aria-atomic="true"></p>'+checkField('Manter o horário reservado e registrar os extras','preserve_reserved_time',false,'Os horários dos demais clientes permanecem como estão.')+'</div>':
+          '<p class="os-help">'+(d.extraLimit?'Não há outros serviços disponíveis para este profissional.':'Este atendimento já contém o limite de serviços.')+'</p>');
+      setAppointmentSheet('Adicionar serviços',appointmentForm('appointment-extras',content,'Conferir serviços'));
+      const form=$('osDialog').querySelector('form');form.querySelector('[type=submit]').disabled=!available;
+      if(form.elements.preserve_reserved_time)form.elements.preserve_reserved_time.disabled=true;
+      window.OrionFields?.refresh($('osDialog'));$('osDialogTitle')?.focus();
+    }catch(error){if(current(c)&&state.dialog===d)setAppointmentSheet('Adicionar serviços','<div class="os-appointment-scroll">'+errorHTML(error)+button('Tentar novamente','appointment-extras','os-outline','refresh')+button('Voltar aos detalhes','appointment-back','os-ghost')+'</div>');}
+  }
+  function resetExtrasPreview(d=state.dialog){
+    if(d?.type!=='appointment-extras'||d.pendingExtras)return;
+    d.extraPreview=null;d.extraPreviewSignature=null;
+    const form=$('osDialog')?.querySelector('form');if(!form)return;
+    if($('osExtraPreview'))$('osExtraPreview').hidden=true;
+    if($('osExtraConflict'))$('osExtraConflict').hidden=true;
+    if(form.elements.preserve_reserved_time){form.elements.preserve_reserved_time.checked=false;form.elements.preserve_reserved_time.required=false;form.elements.preserve_reserved_time.disabled=true;}
+    form.querySelector('[type=submit]').textContent='Conferir serviços';
+  }
+  function renderExtrasPreview(d){
+    const preview=d.extraPreview,form=$('osDialog')?.querySelector('form'),target=$('osExtraPreview');if(!preview||!target||!form)return;
+    target.hidden=false;
+    const selected=[...form.querySelectorAll('[name=extra_service_ids]:checked')].map(input=>input.value),variable=d.record.price_mode==='from'||d.extraServices.some(item=>selected.includes(item.id)&&item.price_mode==='from');
+    target.innerHTML='<div class="os-summary-row"><span>Tempo dos serviços</span><strong>'+number(preview.services_duration_min)+' min</strong></div>'+
+      '<div class="os-summary-row"><span>Horário reservado</span><strong>'+esc(timeLabel(d.record.start_at))+' a '+esc(timeLabel(preview.duration_conflict?d.record.end_at:preview.new_end_at||d.record.end_at))+'</strong></div>'+
+      '<div class="os-summary-row os-total"><span>'+(variable?'Mínimo atualizado':'Total atualizado')+'</span><strong>'+esc(priceLabel(preview.total_cents,variable?'from':'fixed'))+'</strong></div>';
+    $('osExtraConflict').hidden=!preview.duration_conflict;
+    $('osExtraConflictMessage').textContent=preview.conflict_message||'Não é possível ampliar o horário deste atendimento. Você pode registrar os serviços mantendo o horário já reservado.';
+    const preserve=form.elements.preserve_reserved_time;preserve.disabled=!preview.duration_conflict;preserve.required=!!preview.duration_conflict;preserve.setAttribute('aria-describedby','osExtraConflictMessage');
+    form.querySelector('[type=submit]').textContent='Adicionar serviços';
+  }
+  async function submitAppointmentExtras(form,d,values){
+    if(state.busy||!appointmentCan(d.record,'add_services'))return;
+    let payload=d.pendingExtras,signature=null,previewOnly=false;
+    if(!payload){
+      const ids=[...form.querySelectorAll('[name=extra_service_ids]:checked')].map(input=>input.value);
+      if(!ids.length||ids.length>d.extraLimit)throw Error('Selecione de 1 a '+d.extraLimit+' serviços disponíveis.');
+      const actual=Date.parse(d.record.start_at)<=Date.now()&&values.actual_duration_min?Number(values.actual_duration_min):null;
+      if(actual!==null&&(!Number.isInteger(actual)||actual<1||actual>1440))throw Error('Informe uma duração entre 1 e 1440 minutos.');
+      const intent={service_ids:ids,expected_updated_at:d.record.updated_at,actual_duration_min:actual};
+      signature=JSON.stringify(intent);previewOnly=!d.extraPreview||d.extraPreviewSignature!==signature;
+      const preserve=!previewOnly&&d.extraPreview.duration_conflict&&form.elements.preserve_reserved_time.checked;
+      if(!previewOnly&&d.extraPreview.duration_conflict&&!preserve)throw Error('Confirme se deseja manter o horário reservado.');
+      payload={...intent,preserve_reserved_time:preserve===true,idempotency_key:requestKey(form,{...intent,preserve_reserved_time:preserve===true})};
+    }
+    const c=context(),error=form.querySelector('.os-form-message');error.textContent='';markBusy(form,true);
+    let saved=false,changed=false,showPreview=false;
+    if(!previewOnly)d.pendingExtras=payload;
+    try{
+      const result=await request(apiPath('/appointments/'+encodeURIComponent(d.record.id)+'/extras'+(previewOnly?'/preview':'')),'POST',payload);
+      if(!current(c)||state.dialog!==d)return;
+      if(previewOnly){
+        if(!result?.appointment||String(result.appointment.id)!==String(d.record.id)||!Number.isFinite(result.total_cents))throw Error('Não foi possível conferir os valores deste atendimento.');
+        d.extraPreview=result;d.extraPreviewSignature=signature;showPreview=true;
+      }else{
+        if(!result?.id||String(result.id)!==String(d.record.id))throw Error('Não foi possível confirmar a atualização. Tente novamente para conferir a mesma solicitação.');
+        d.pendingExtras=null;saved=true;
+      }
+    }catch(ex){
+      if(!current(c)||state.dialog!==d)return;
+      if(ex.status>=400&&ex.status<500&&![408,429].includes(ex.status))d.pendingExtras=null;
+      if(ex.status===409&&ex.detail?.code==='extra_duration_conflict'&&d.extraPreview){
+        d.extraPreview={...d.extraPreview,duration_conflict:true,conflict_message:ex.message};form.elements.preserve_reserved_time.checked=false;showPreview=true;
+      }else if(ex.status===409){changed=true;}
+      else error.textContent=(ex.message||'Não foi possível atualizar.')+(d.pendingExtras?' Os dados desta tentativa foram preservados. Tente novamente para verificar o resultado.':'');
+    }finally{
+      if(stillAccount(c)){markBusy(form,false);if(state.dialog===d){form.querySelector('fieldset').disabled=!!d.pendingExtras;form.querySelector('[type=submit]').textContent=d.pendingExtras?'Verificar atualização':d.extraPreview?'Adicionar serviços':'Conferir serviços';if(showPreview)renderExtrasPreview(d);}}
+      else state.busy=false;
+    }
+    if(!current(c)||state.dialog!==d)return;
+    if(saved||changed){await showAppointmentDetail(d.record.id,{notice:saved?(payload.preserve_reserved_time?'Serviços adicionados. Total atualizado e horário reservado mantido.':'Serviços adicionados ao atendimento. Total atualizado.'):'O atendimento mudou. Confira os dados atualizados antes de adicionar serviços.'});if(current(c)&&state.route==='agenda')void loadAgenda(c,{catalogue:false});}
   }
   async function showAppointmentAction(action){
     const a=state.dialog?.record;if(!appointmentCan(a,action))return;
@@ -2520,7 +3871,7 @@
   }
   function confirmMutation(titleText,description,operation,success){showDialog('confirm',titleText,'<p style="margin:0 0 20px;line-height:23px">'+esc(description)+'</p><form class="os-form" data-os-form="confirm"><div class="os-form-message" role="alert"></div><div class="os-form-actions">'+button('Voltar','close-dialog','os-outline')+'<button type="submit" class="os-button">Confirmar</button></div></form>',{operation,success});}
   async function runInline(operation,success){if(state.busy||!writable())return;const c=context();state.busy=true;try{await operation(c);if(stillAccount(c))toast(success);}catch(ex){if(stillAccount(c))toast(ex.message||'Não foi possível salvar.',true);}finally{if(stillAccount(c)){state.busy=false;if(current(c))await open(state.route,{keepScroll:true});}}}
-  function deleteService(record){if(!record||!writable())return;const path=apiPath('/services/'+encodeURIComponent(record.id));confirmMutation('Excluir serviço','O serviço '+record.name+' será removido do catálogo. Se houver vínculos que impeçam a exclusão, você pode inativá-lo.',()=>request(path,'DELETE'),'Serviço excluído.');}
+  function deleteService(record){if(!record||!writable())return;const path=apiPath('/services/'+encodeURIComponent(record.id));confirmMutation('Excluir serviço','O serviço '+record.name+' deixará de aparecer no catálogo. Agendamentos antigos continuarão no histórico.',()=>request(path,'DELETE'),'Serviço excluído.');}
   function sortedServices(){return [...(state.data.services||[])].filter(s=>!s.catalog_kind||s.catalog_kind==='base').sort((a,b)=>number(a.sort_order)-number(b.sort_order)||a.name.localeCompare(b.name,'pt-BR'));}
   async function saveServiceOrder(list){
     await runInline(async c=>{
@@ -2588,6 +3939,7 @@
     const kind=form.dataset.osForm;if(!kind)return;event.preventDefault();if(!permitted(state.dialog?.requiredFeature||dialogFeature(kind))){dialogError(Error('Seu plano não inclui este recurso.'));return;}if(kind==='site'){if(!siteCanEdit())return;finalizeSiteSlug(form.elements.slug);if(form.dataset.cepPending==='true'){form.querySelector('.os-form-message').textContent='Aguarde a consulta do CEP terminar antes de salvar.';return;}}if(state.imageUploading){const message=form.querySelector('.os-form-message');if(message)message.textContent='Aguarde o envio da imagem antes de salvar.';return;}if(!form.reportValidity())return;if(state.busy||!writable())return;
     const d=state.dialog,f=getValues(form);if(!['site','business-preferences','automations','loyalty-inline','loyalty-ideas','ai-campaign','ai-consultant'].includes(kind)&&(!d||d.epoch!==state.epoch||d.tenantId!==state.tenantId))return;
     try{
+      if(kind==='appointment-extras'){await submitAppointmentExtras(form,d,f);return;}
       if(kind==='appointment-action'||kind==='complete-appointment'){await submitAppointmentAction(form,d,f);return;}
       if(kind==='google-action'||kind==='google-calendar'){await submitGoogleAction(form,d,f);return;}
       if(kind==='google-email'){await submitGoogleEmail(form,d,f);return;}
@@ -2604,7 +3956,7 @@
         await saveForm(form,()=>request(mgmt('/customers'+(c?'/'+encodeURIComponent(c.id):'')),c?'PATCH':'POST',{...payload,...(c?{expected_version:c.version}:{idempotency_key:d.key})}),result=>c?'Cliente atualizado.':result?.reused_existing===true?'Cliente já cadastrado. Mantivemos as informações existentes.':'Cliente cadastrado.');
       }
       if(kind==='service'){const s=d.record,payload=servicePayload(form,s),selected=(new FormData(form).getAll('professional_ids').length?new FormData(form).getAll('professional_ids'):(state.data.professionals||[]).map(pro=>pro.id)),addonIds=new FormData(form).getAll('addon_ids'),addonItems=addonIds.map(id=>({addon_service_id:id,add_duration:form.elements['addon_duration_'+id].checked}));if(addonIds.length>5)throw Error('Escolha no máximo 5 adicionais.');await saveForm(form,async c=>{const id=s?.id||d.savedId,result=await request(apiPath('/services'+(id?'/'+encodeURIComponent(id):'')),id?'PUT':'POST',payload);if(!stillAccount(c))return;d.savedId=result?.id||id;if(!d.savedId)throw Error('O servidor não retornou a identificação do serviço.');try{const links=rows(await request(apiPath('/professional_services'))).filter(l=>l.service_id===d.savedId);for(const professionalId of selected.filter(id=>!links.some(l=>l.professional_id===id))){if(!stillAccount(c))return;await request(apiPath('/professional_services'),'POST',{professional_id:professionalId,service_id:d.savedId});}for(const link of links.filter(l=>!selected.includes(l.professional_id))){if(!stillAccount(c))return;await request(apiPath('/professional_services/'+encodeURIComponent(link.id)),'DELETE');}}catch(ex){throw Error('O serviço foi salvo, mas nem todos os profissionais foram vinculados. Revise os vínculos e tente salvar novamente. '+ex.message);}try{const result=await request(mgmt('/services/'+encodeURIComponent(d.savedId)+'/addons'),'PUT',{expected_version:d.addonVersion,items:addonItems});d.addonVersion=result.version;}catch(ex){throw Error('O serviço foi salvo, mas os adicionais não foram atualizados. '+ex.message);}},s?'Serviço atualizado.':'Serviço cadastrado.');}
-      if(kind==='package'){const r=d.record,ids=new FormData(form).getAll('service_ids');if(ids.length<2||ids.length>6)throw Error('Selecione de 2 a 6 serviços para o combo.');const payload={name:f.name.trim(),description:f.description?.trim()||null,service_ids:ids,price_cents:cents(f.price,{max:100000000}),active:form.elements.active.checked,featured:form.elements.featured.checked,sort_order:number(r?.sort_order),color:r?.color||'#8b5cf6',image_url:f.image_url?.trim()||null};await saveForm(form,()=>request(mgmt('/service-packages'+(r?'/'+encodeURIComponent(r.id):'')),r?'PATCH':'POST',{...payload,...(r?{expected_version:r.version}:{idempotency_key:d.key})}),r?'Combo atualizado.':'Combo criado.');}
+      if(kind==='package'){const r=d.record,ids=new FormData(form).getAll('service_ids');if(ids.length<2||ids.length>6)throw Error('Selecione de 2 a 6 serviços para o combo.');const custom=form.elements.custom_duration.checked,raw=String(form.elements.duration_override_min.value||'').trim();if(custom&&!/^\d{1,4}$/.test(raw))throw Error('Informe uma duração personalizada em minutos inteiros.');const minutes=custom?Number(raw):null;if(custom&&(minutes<1||minutes>1440))throw Error('A duração deve estar entre 1 e 1.440 minutos.');const payload={name:f.name.trim(),description:f.description?.trim()||null,service_ids:ids,duration_override_min:minutes,price_cents:cents(f.price,{max:100000000}),active:form.elements.active.checked,featured:form.elements.featured.checked,sort_order:number(r?.sort_order),color:r?.color||'#8b5cf6',image_url:f.image_url?.trim()||null};await saveForm(form,()=>request(mgmt('/service-packages'+(r?'/'+encodeURIComponent(r.id):'')),r?'PATCH':'POST',{...payload,...(r?{expected_version:r.version}:{idempotency_key:d.key})}),r?'Combo atualizado.':'Combo criado.');}
       if(kind==='professional'){
         const p=d.record,selected=new FormData(form).getAll('service_ids'),
           advanced=permitted('commissions.advanced'),mode=advanced?form.elements.commission_mode.value:null,
@@ -2644,6 +3996,10 @@
         if(payload.active&&(!p||p.active===false)&&atProfessionalLimit())throw Error('Você atingiu o limite de profissionais do seu plano.');
         if(p?.id)payload.expected_version=number(p.commission_config_version)||1;
         else payload.idempotency_key=d.key;
+        let invitationResult=null;
+        const inviteEmail=(f.access_email||'').trim();
+        const sendInvitation=form.elements.send_invitation?.checked===true;
+        if(sendInvitation&&!inviteEmail)throw Error('Informe o e-mail para enviar o convite.');
         await saveForm(form,async c=>{
           const id=p?.id||d.savedId;
           const result=await request(mgmt('/professionals/'+(id?encodeURIComponent(id)+'/':'')+'configure'),
@@ -2654,10 +4010,52 @@
           if(state.route==='funcionarios')state.filters.staffStatus=payload.active?'active':'inactive';
           state.data.commissionRules=null;
           state.data.professionalServices=null;
+          if(stillAccount(c)){
+            try{
+              if(sendInvitation){
+                invitationResult=await request(mgmt('/team/professionals/'+encodeURIComponent(d.savedId)+'/invite'),'POST',
+                   {email:inviteEmail,idempotency_key:d.inviteKey||(d.inviteKey=crypto.randomUUID())});
+              }else if(form.elements.access_email&&!form.elements.access_email.disabled&&(inviteEmail||null)!==(access?.email||null)){
+                await request(mgmt('/team/professionals/'+encodeURIComponent(d.savedId)+'/email'),'PUT',
+                   {email:inviteEmail||null});
+              }
+            }catch(error){throw Error('Profissional salvo, mas o acesso não foi atualizado: '+error.message);}
+          }
         },p?'Profissional atualizado.':'Profissional cadastrado.');
+        if(invitationResult&&state.mounted)showInvitationResult(invitationResult);
       }
+      if(kind==='hours-start-policy'){await submitHoursStartPolicy(form,d);return;}
       if(['hours','hours-edit','pause','pause-edit'].includes(kind)){await submitHoursEditor(form,kind,f,d);return;}
+      if(kind==='fixed-client'){
+        const payload=fixedDraft(d,f),signature=JSON.stringify(payload);
+        if(!d.preview||d.previewKey!==signature){
+          const c=context();markBusy(form,true);
+          try{
+            const endpoint=d.editSeriesId?'/appointments/series/'+encodeURIComponent(d.editSeriesId)+'/preview':'/appointments/series/preview';
+            const preview=await request(apiPath(endpoint),'POST',payload);
+            if(stillAccount(c)&&state.dialog===d){d.preview=preview;d.previewKey=signature;renderFixedPreview(d,preview);}
+          }catch(error){if(stillAccount(c)&&state.dialog===d)dialogError(error);}
+          finally{if(stillAccount(c)&&state.dialog===d)markBusy(form,false);}
+          return;
+        }
+        if(d.preview.conflict_count)throw Error('Existem conflitos nas datas. Ajuste os horários e verifique novamente.');
+        await saveForm(form,async c=>{
+          const endpoint=d.editSeriesId?'/appointments/series/'+encodeURIComponent(d.editSeriesId)+'/replace':'/appointments/series';
+          const result=await request(apiPath(endpoint),'POST',{...payload,idempotency_key:requestKey(form,payload)});
+          if(current(c)&&!d.editSeriesId){
+            state.filters.agendaMode='list';
+            state.filters.agendaDay=payload.first_date;
+            state.filters.agendaOffset=0;
+          }
+          return result;
+        },d.editSeriesId?'Cliente fixo atualizado. Os novos horários estão na Agenda.':'Cliente fixo cadastrado. Todas as visitas foram reservadas na Agenda.');
+        return;
+      }
       if(kind==='appointment'){
+        if(d.manualOperation||form.elements.booking_mode.value!=='regular'){await submitManualAppointment(form,d,f);return;}
+        if(d.selectionPending)throw Error('Aguarde a conferência dos serviços e horários.');
+        if(d.selectionError)throw Error(d.selectionError);
+        if(!d.holdForm)f.appointment_messages_opt_in=form.elements.appointment_messages_opt_in.checked;
         const values=d.holdForm||f,customerPhone=customerPhoneValue(values.customer_phone);if(!/^(?:\+55[1-9][0-9]{9,10}|\+5959[0-9]{8})$/.test(customerPhone))throw Error('Para agendar, informe WhatsApp com DDD brasileiro ou celular paraguaio +595.');if(!d.serviceIds.length)throw Error('Selecione ao menos um serviço.');if(!d.holdForm&&!d.slots.includes(values.start_at))throw Error('Selecione um horário disponível.');
         await saveForm(form,async c=>{
           let hold=d.holdId?d.holdRecord:null;
@@ -2677,7 +4075,7 @@
             try{hold=await request(apiPath('/appointments/hold'),'POST',d.holdPayload);d.holdId=hold.id;d.holdRecord=hold;}
             catch(error){if(error.status>=400&&error.status<500){d.holdForm=null;d.holdPayload=null;d.key=crypto.randomUUID();}throw error;}
           }
-          if(!stillAccount(c))return;if(typeof hold.updated_at!=='string')throw Error('Não foi possível confirmar a versão da reserva. Consulte os detalhes na Agenda antes de continuar.');if(!d.confirmPayload)d.confirmPayload={expected_updated_at:hold.updated_at,idempotency_key:crypto.randomUUID()};const confirmed=await request(apiPath('/appointments/'+encodeURIComponent(hold.id)+'/confirm'),'POST',d.confirmPayload);if(confirmed.status!=='confirmed')throw Error('A reserva ainda não foi confirmada. Confira a agenda antes de tentar novamente.');state.filters.agendaDay=values.day;
+          if(!stillAccount(c))return;if(typeof hold.updated_at!=='string')throw Error('Não foi possível confirmar a versão da reserva. Consulte os detalhes na Agenda antes de continuar.');if(!d.confirmPayload)d.confirmPayload={expected_updated_at:hold.updated_at,idempotency_key:crypto.randomUUID(),appointment_messages_opt_in:values.appointment_messages_opt_in===true};const confirmed=await request(apiPath('/appointments/'+encodeURIComponent(hold.id)+'/confirm'),'POST',d.confirmPayload);if(confirmed.status!=='confirmed')throw Error('A reserva ainda não foi confirmada. Confira a agenda antes de tentar novamente.');state.filters.agendaDay=values.day;
         },'Agendamento confirmado. O protocolo está disponível na agenda.');
         if(state.dialog===d&&d.holdForm)freezePendingBooking(form,d);else if(state.dialog===d&&$('osPendingBooking')){form.querySelectorAll('fieldset').forEach(fieldset=>fieldset.disabled=false);$('osPendingBooking').remove();const submit=form.querySelector('button[type=submit]');if(submit)submit.textContent='Agendar';}
       }
@@ -2726,6 +4124,13 @@
       if(box.closest('#osSiteForm'))box.closest('form').dataset.dirty='true';
       return;
     }
+    if(name==='app-shortcuts-default'){
+      if(!appLayoutEligible()||state.route!=='configuracoes'||state.filters.settingsTab!=='appearance')return;
+      state.appShortcutDraft=appDefaultShortcuts().filter(tab=>appTabAllowed(tab));
+      while(state.appShortcutDraft.length<4)state.appShortcutDraft.push('');
+      renderSettings();$('osAppShortcut0')?.focus({preventScroll:true});return;
+    }
+    if(name==='app-shortcuts-save'){saveAppShortcuts();return;}
     if(name==='menu'){drawer(true);return;}if(name==='close-menu'){drawer(false);return;}if(name==='collapse'){if(matchMedia('(max-width:767px)').matches){drawer(false);return;}const app=$('appView');app.classList.toggle('os-rail-collapsed');element.innerHTML=icon(app.classList.contains('os-rail-collapsed')?'chevron':'left');element.setAttribute('aria-label',app.classList.contains('os-rail-collapsed')?'Expandir menu':'Recolher menu');return;}
     if(name==='notifications'){if(state.busy)return;const show=!state.notificationsOpen;closeNotifications();if(show){state.notificationsOpen=true;$('osNotificationsPanel').classList.remove('hidden');$('osNotificationsToggle').setAttribute('aria-expanded','true');await loadNotifications();$('osNotificationsPanel').focus();}return;}
     if(name==='close-notifications'){closeNotifications(true);return;}
@@ -2764,28 +4169,75 @@
       case 'custom-period':showDialog('period','Escolher período',periodFilters()+button('Fechar','close-dialog','os-ghost'));break;
       case 'new-professional':await showProfessional();break;
       case 'new-invitation':showInvitation();break;
+      case 'pro-access-suspend':case 'pro-access-reactivate':case 'pro-access-revoke':{
+        if(!state.data.team?.can_manage)return;
+        const prof=rows(state.data.professionals).find(p=>p.id===element.dataset.professional);
+        if(!prof)return;
+        const link=proAccessState(prof).link;
+        if(!link?.account_id)return;
+        const action=name==='pro-access-suspend'?'suspend':name==='pro-access-reactivate'?'reactivate':'revoke';
+        confirmMutation(action==='revoke'?'Revogar acesso de '+prof.name:action==='suspend'?'Suspender acesso de '+prof.name:'Reativar acesso de '+prof.name,
+          action==='revoke'?'Esta conta deixará de estar vinculada ao profissional. O histórico será preservado.':'A alteração vale imediatamente para a área profissional.',
+          ()=>request(mgmt('/team/professionals/'+encodeURIComponent(prof.id)+'/access'),'PATCH',
+            {action,expected_updated_at:link.updated_at}),'Acesso profissional atualizado.');
+        break;
+      }
+      case 'pro-block-permission':{
+        if(!state.data.team?.can_manage)return;
+        const prof=rows(state.data.professionals).find(p=>p.id===element.dataset.professional);
+        if(!prof)return;
+        const link=proAccessState(prof).link;
+        if(!link?.account_id)return;
+        const grant=!link.can_manage_owner_blocks;
+        confirmMutation(grant?'Permitir remover bloqueios da empresa':'Proteger bloqueios da empresa',
+          grant?'O profissional poderá remover bloqueios criados pela empresa em sua própria agenda. Não terá acesso aos horários de colegas.':
+            'O profissional ficará limitado aos bloqueios que ele mesmo criou.',
+          ()=>request(mgmt('/team/professionals/'+encodeURIComponent(prof.id)+'/block-permissions'),
+            'PATCH',{can_manage_owner_blocks:grant,expected_updated_at:link.updated_at}),
+            'Permissão de bloqueios atualizada.');
+        break;
+      }
       case 'copy-invitation':if(d?.link){await navigator.clipboard.writeText(d.link);toast('Link do convite copiado.');}break;
       case 'approve-invitation':case 'revoke-invitation':{if(!state.data.team?.can_manage)return;const invitation=rows(state.data.team.invitations).find(i=>i.id===element.dataset.invitation);if(!invitation)return;const approval=name==='approve-invitation',path=mgmt('/team/invitations/'+encodeURIComponent(invitation.id));confirmMutation(approval?'Aprovar acesso':'Revogar convite',approval?'Autorizar o acesso de '+(invitation.claimed_by_name||invitation.email||'quem aceitou o convite')+' como '+(teamRoles[invitation.role]||invitation.role)+'.':'Este convite não poderá mais ser usado para entrar na equipe.',()=>request(path,'PATCH',{action:approval?'approve':'revoke',expected_version:invitation.version}),approval?'Acesso aprovado.':'Convite revogado.');break;}
       case 'new-appointment':await showAppointment();break;
+      case 'new-fixed-client':await showAppointment({bookingMode:'fixed'});break;
       case 'new-block':await showBlock();break;
       case 'dashboard-finance-refresh':if(state.route==='dashboard')await loadDashboardFinance(context(),dateKey());break;
       case 'dashboard-finance-full':f.financeTab='entries';await open('financeiro');break;
       case 'dashboard-goals-full':await open('desempenho');break;
       case 'dashboard-agenda-refresh':if(state.route==='dashboard')await open('dashboard',{keepScroll:true});break;
       case 'dashboard-agenda-full':{
-        f.agendaDay=dateKey();f.agendaMode='list';f.agendaOffset=0;
+        f.agendaDay=dateKey();f.agendaMode='list';f.agendaPeriod='day';f.agendaOffset=0;
         f.agendaQuery='';f.agendaProfessional='';f.agendaStatus='all';
         await open('agenda');break;
       }
       case 'agenda-open':await open('agenda');break;
       case 'agenda-reload':await loadAgenda(context());void loadGoogle();break;
-      case 'agenda-clear':f.agendaProfessional='';f.agendaStatus='all';f.agendaQuery='';f.agendaOffset=0;await open('agenda',{keepScroll:true});break;
-      case 'agenda-page-prev':case 'agenda-page-next':{const result=state.data.agendaResult;if(!result||state.data.agendaError)return;const next=Math.max(0,f.agendaOffset+(name==='agenda-page-prev'?-50:50));if(next>=number(result.total))return;f.agendaOffset=next;await loadAgenda(context(),{catalogue:false});$('osAgendaCount')?.focus();break;}
+      case 'agenda-range-list':
+        f.agendaRangeList=!f.agendaRangeList;
+        f.agendaFocusOffset=0;
+        renderAgenda();
+        if(!f.agendaRangeList)await loadAgendaFocus(context());
+        break;
+      case 'agenda-open-selected':
+        f.agendaDay=agendaSelectedDay();f.agendaPeriod='day';f.agendaMode='list';f.agendaOffset=0;
+        await open('agenda',{keepScroll:true});break;
+      case 'agenda-focus-retry':await loadAgendaFocus(context());break;
+      case 'agenda-focus-page-prev':case 'agenda-focus-page-next':{
+        const r=state.data.agendaFocusResult;if(!r)return;
+        const amount=number(r.limit)||80;
+        f.agendaFocusOffset=Math.max(0,number(r.offset)+(name==='agenda-focus-page-next'?amount:-amount));
+        if(f.agendaFocusOffset>=number(r.total))return;
+        await loadAgendaFocus(context());break;
+      }
+      case 'agenda-clear':f.agendaProfessional='';f.agendaStatus='all';f.agendaQuery='';f.agendaOffset=0;f.agendaFocusOffset=0;await open('agenda',{keepScroll:true});break;
+      case 'agenda-page-prev':case 'agenda-page-next':{const result=state.data.agendaResult;if(!result||state.data.agendaError)return;const next=Math.max(0,f.agendaOffset+(name==='agenda-page-prev'?-1:1)*(number(result.limit)||50));if(next>=number(result.total))return;f.agendaOffset=next;await loadAgenda(context(),{catalogue:false});$('osAgendaCount')?.focus();break;}
       case 'agenda-google':await showGoogle();break;
       case 'google-refresh':await loadGoogle({handleReturn:false});break;
-      case 'google-sign-in':window.location.assign('/panel?aba=agenda');break;
+      case 'google-sign-in':window.location.assign('/painel?aba=agenda');break;
       case 'google-calendars':await showGoogleCalendars();break;
       case 'google-retry':showGoogleAction('retry');break;
+      case 'appointment-extras':await showAppointmentExtras();break;
       case 'appointment-back':if(d?.appointmentId||d?.record?.id)await showAppointmentDetail(d.appointmentId||d.record.id);break;
       case 'appointment-google-refresh':await loadAppointmentGoogle();break;
       case 'reschedule-reload':await loadRescheduleAvailability();break;
@@ -2793,8 +4245,15 @@
       case 'agenda-tablet':f.agendaTablet=true;f.agendaMode='calendar';await open('agenda',{keepScroll:true});break;
       case 'agenda-tablet-exit':f.agendaTablet=false;await open('agenda',{keepScroll:true});break;
       case 'delete-block':{if(!d?.record||!writable())return;if(d.series){const series=d.series,occurrenceDate=d.occurrenceDate;showDialog('delete-series','Remover bloqueio',dialogForm('delete-series',selectField('Quais bloqueios remover?','scope',[['one','Somente este dia'],['following','Este dia e os próximos'],['all','Toda a série']],'one')+'<p class="os-help">Os períodos selecionados voltarão a aceitar novos agendamentos, conforme o expediente.</p>','Remover bloqueio'),{series,occurrenceDate});}else{const path=apiPath('/'+d.resource+'/'+encodeURIComponent(d.record.id));confirmMutation('Remover bloqueio','Este período voltará a aceitar novos agendamentos, conforme o expediente do profissional.',()=>request(path,'DELETE'),'Bloqueio removido.');}break;}
-      case 'agenda-today':f.agendaOffset=0;f.agendaDay=dateKey();await open('agenda',{keepScroll:true});break;
-      case 'agenda-prev':case 'agenda-next':case 'week-prev':case 'week-next':f.agendaOffset=0;f.agendaDay=shiftDay(f.agendaDay,name==='agenda-prev'?-1:name==='agenda-next'?1:name==='week-prev'?-7:7);await open('agenda',{keepScroll:true});break;
+      case 'agenda-today':f.agendaOffset=0;f.agendaDay=dateKey();f.agendaFocusDay=dateKey();f.agendaFocusOffset=0;await open('agenda',{keepScroll:true});break;
+      case 'agenda-prev':case 'agenda-next':case 'week-prev':case 'week-next':{
+        f.agendaOffset=0;f.agendaFocusDay='';f.agendaFocusOffset=0;
+        const delta=name.endsWith('prev')?-1:1;
+        f.agendaDay=name.startsWith('week-')?shiftDay(f.agendaDay,delta*7):
+          agendaPeriod()==='month'?agendaShiftMonth(f.agendaDay,delta):
+          shiftDay(f.agendaDay,delta*(agendaPeriod()==='week'?7:1));
+        await open('agenda',{keepScroll:true});break;
+      }
       case 'customer-history-more':if(d?.type==='customer')await loadCustomerServiceHistory(d,{append:true});break;
       case 'customer-history-retry':if(d?.type==='customer')await loadCustomerServiceHistory(d,{append:!!d.historyRetryAppend});break;
       case 'customers-prev':f.customerOffset=Math.max(0,f.customerOffset-50);await open('clientes',{keepScroll:true});break;
@@ -2839,19 +4298,29 @@
         const path=mgmt('/goals/'+encodeURIComponent(g.id));
         confirmMutation('Excluir meta','A meta de '+goalOwner(g)+(g.recurrence==='monthly'?' deixará de valer no mês atual e nos próximos. Os resultados dos meses anteriores serão preservados.':' será encerrada. O histórico do período anterior à exclusão será preservado.'),()=>request(path,'DELETE',{expected_version:g.template_version||g.version}),'Meta excluída.');break;
       }
-      case 'delete-service':{if(!d?.record||!writable())return;const r=d.record,path=apiPath('/services/'+encodeURIComponent(r.id));confirmMutation('Excluir serviço','O serviço '+r.name+' será removido do catálogo. Se houver vínculos que impeçam a exclusão, você pode inativá-lo.',()=>request(path,'DELETE'),'Serviço excluído.');break;}
+      case 'delete-service':{if(!d?.record||!writable())return;const r=d.record,path=apiPath('/services/'+encodeURIComponent(r.id));confirmMutation('Excluir serviço','O serviço '+r.name+' deixará de aparecer no catálogo. Agendamentos antigos continuarão no histórico.',()=>request(path,'DELETE'),'Serviço excluído.');break;}
       case 'confirm-appointment':await showAppointmentAction('confirm');break;
       case 'cancel-appointment':await showAppointmentAction('cancel');break;
       case 'complete-appointment':await showAppointmentAction('complete');break;
       case 'no-show-appointment':await showAppointmentAction('no_show');break;
       case 'reschedule-appointment':await showAppointmentAction('reschedule');break;
+      case 'fixed-open-from-appointment':if(d?.record?.series_id)await showFixedSeriesDetail(d.record.series_id);break;
+      case 'fixed-edit':if(d?.type==='fixed-detail'&&d.record&&writable())await showFixedClient({editSeries:d.record});break;
+      case 'fixed-stop':if(d?.type==='fixed-detail'&&d.record?.next_start_at)confirmMutation('Encerrar cliente fixo','Cancelar todos os horários futuros dessa recorrência? Atendimentos anteriores, histórico e financeiro serão preservados. Esta operação não envia cancelamentos em massa pelo WhatsApp.',()=>request(apiPath('/appointments/series/'+encodeURIComponent(d.record.id)+'/stop'),'POST',{}),'Horários futuros cancelados.');break;
     }
   }
   async function handleClick(event){
     if(!state.mounted)return;if(state.notificationsOpen&&!event.target.closest('.os-notifications')&&!event.target.closest('[data-os-action=notifications]'))closeNotifications();let el=event.target.closest('button,[role=button],a[data-os-route]');if(el&&!Object.keys(el.dataset).some(key=>key.startsWith('os')))el=null;
     if(!el){if(!$('osThemeMenu')?.classList.contains('hidden')&&!event.target.closest('.os-theme')){$('osThemeMenu').classList.add('hidden');$('osThemeToggle').setAttribute('aria-expanded','false');}return;}if(el.disabled)return;
     event.preventDefault();try{
+      if(el.dataset.osLayout){chooseAppLayout(el.dataset.osLayout);return;}
       if(el.dataset.osTheme){setTheme(el.dataset.osTheme);return;}
+      if(el.dataset.osAppTab){
+        if(!appLayoutEnabled()||!appTabAllowed(el.dataset.osAppTab))return;
+        if(el.dataset.osAppTab==='hours'){state.filters.settingsTab='hours';await open('configuracoes');}
+        else await open(el.dataset.osAppTab);
+        return;
+      }
       if(el.dataset.osAction){await action(el.dataset.osAction,el);return;}
       if(state.busy)return;
       if(el.dataset.osHelpArticle){openHelpArticle(el.dataset.osHelpArticle);return;}
@@ -2864,9 +4333,21 @@
       if(el.dataset.osQueueStatus){state.filters.marketingQueueStatus=el.dataset.osQueueStatus;await open('marketing',{keepScroll:true});return;}
       if(el.dataset.osNotificationFilter){state.filters.notificationsUnread=el.dataset.osNotificationFilter==='true';await loadNotifications();return;}
       if(el.dataset.osNotification){const item=rows(state.data.notifications).find(item=>item.id===el.dataset.osNotification);if(!item)return;const c=context();if(!item.read_at&&state.data.notifications?.can_mark_read)await markNotificationsRead([item.id]);if(!stillAccount(c))return;closeNotifications();await showAppointmentDetail(item.appointment_id);return;}
-      if(el.dataset.osRoute){await open(el.dataset.osRoute);return;}
+      if(el.dataset.osAppHours){if(!appLayoutEnabled()||!settingsTabAllowed('hours')||!['hours','blocks'].includes(el.dataset.osAppHours))return;state.filters.appHoursView=el.dataset.osAppHours;await open('configuracoes',{keepScroll:true});return;}
+      if(el.dataset.osAppSettings){if(!(appLayoutEnabled()||subscriptionWorkspace())||!settingsTabAllowed(el.dataset.osAppSettings))return;state.filters.settingsTab=el.dataset.osAppSettings;await open('configuracoes');return;}
+      if(el.dataset.osRoute){if(appLayoutEnabled()&&state.route==='perfil'&&el.dataset.osRoute==='configuracoes')state.filters.settingsTab='general';await open(el.dataset.osRoute);return;}
+      if(el.dataset.osOpenDay){
+        const day=el.dataset.osOpenDay,{start,end}=agendaBounds();
+        if(!/^\d{4}-\d{2}-\d{2}$/.test(day)||day<start||day>end)return;
+        state.filters.agendaDay=day;state.filters.agendaFocusDay=day;
+        state.filters.agendaFocusOffset=0;state.filters.agendaRangeList=false;
+        renderAgenda();await loadAgendaFocus(context());
+        document.querySelector('[data-os-open-day="'+day+'"]')?.focus({preventScroll:true});
+        return;
+      }
+      if(el.dataset.osAgendaPeriod){if(!['day','week','month'].includes(el.dataset.osAgendaPeriod))return;state.filters.agendaPeriod=el.dataset.osAgendaPeriod;state.filters.agendaOffset=0;state.filters.agendaFocusDay='';state.filters.agendaFocusOffset=0;state.filters.agendaRangeList=el.dataset.osAgendaPeriod==='week';await open('agenda',{keepScroll:true});return;}
       if(el.dataset.osDay){state.filters.agendaDay=el.dataset.osDay;state.filters.agendaOffset=0;await open('agenda',{keepScroll:true});$('osAgendaDay-'+state.filters.agendaDay)?.focus();return;}
-      if(el.dataset.osAgendaMode){if(!['list','calendar','professional'].includes(el.dataset.osAgendaMode))return;state.filters.agendaMode=el.dataset.osAgendaMode;state.filters.agendaOffset=0;clearTimeout(state.agendaSearchTimer);syncAgendaControls();await loadAgenda(context(),{catalogue:false});return;}
+      if(el.dataset.osAgendaMode){if(!['list','calendar','professional'].includes(el.dataset.osAgendaMode))return;state.filters.agendaMode=el.dataset.osAgendaMode;state.filters.agendaOffset=0;clearTimeout(state.agendaSearchTimer);await open('agenda',{keepScroll:true});return;}
       if(el.dataset.osSettings){state.filters.settingsTab=el.dataset.osSettings;await open('configuracoes',{keepScroll:true});return;}
       if(el.dataset.osSiteRequestCopy){if(!canManageSiteRequests()||state.filters.settingsTab!=='site-requests')return;const item=rows(state.data.siteRequests).find(item=>item.id===el.dataset.requestId),key=el.dataset.osSiteRequestCopy;if(!item||!['email','phone'].includes(key)||typeof item[key]!=='string')return;const c=context();await navigator.clipboard.writeText(item[key]);if(current(c))toast(key==='email'?'E-mail copiado.':'WhatsApp copiado.');return;}
       if(el.dataset.osCustomerStatus){state.filters.customerStatus=el.dataset.osCustomerStatus;state.filters.customerOffset=0;await open('clientes',{keepScroll:true});return;}
@@ -2896,7 +4377,7 @@
       if(el.dataset.osPerformancePeriod){setPerformancePeriod(el.dataset.osPerformancePeriod);await open('desempenho',{keepScroll:true});return;}
       if(el.dataset.osPerformanceGroup){state.filters.performanceGroup=el.dataset.osPerformanceGroup;renderPerformance(state.data.performance,state.data.goals);return;}
       if(el.dataset.osPerformanceHistory){await showProfessionalHistory(el.dataset.osPerformanceHistory,el);return;}
-      if(el.dataset.osServiceModel!==undefined){const model=serviceModels[Number(el.dataset.osServiceModel)];if(model)await showService(null,{name:model[1],category:model[0]});return;}
+      if(el.dataset.osServiceModel!==undefined){const model=serviceModelOptions()[Number(el.dataset.osServiceModel)];if(model)await showService(null,{name:model[1],category:model[0]});return;}
       if(el.dataset.osServiceOrder){await moveService(el.dataset.osServiceOrder,Number(el.dataset.direction));return;}
       if(el.dataset.osServiceDelete){deleteService((state.data.services||[]).find(s=>s.id===el.dataset.osServiceDelete));return;}
       if(el.dataset.osPackage){const record=rows(state.data.packages).find(p=>p.id===el.dataset.osPackage);if(record)await showPackage(record);return;}
@@ -2910,6 +4391,10 @@
       if(el.dataset.osBlock){showBlockDetail(el.dataset.osBlock,el.dataset.resource);return;}
       if(el.dataset.osCalendarSlot){await showAppointment({professionalId:el.dataset.osCalendarSlot,time:el.dataset.time});return;}
       if(el.dataset.osAppointment){await showAppointmentDetail(el.dataset.osAppointment,{trigger:el});return;}
+      if(el.dataset.osFixedSeries){await showFixedSeriesDetail(el.dataset.osFixedSeries);return;}
+      if(el.dataset.osFixedAppointment){await showAppointmentDetail(el.dataset.osFixedAppointment,{trigger:el});return;}
+      if(el.dataset.osFixedService){const d=state.dialog;if(d?.type!=='fixed-client')return;const id=el.dataset.osFixedService;if(!d.serviceIds.includes(id)&&d.serviceIds.length>=6){toast('Selecione até 6 serviços.',true);return;}d.serviceIds=d.serviceIds.includes(id)?d.serviceIds.filter(x=>x!==id):[...d.serviceIds,id];el.setAttribute('aria-pressed',String(d.serviceIds.includes(id)));resetFixedPreview();return;}
+      if(el.dataset.osFixedCustomer){const d=state.dialog;if(d?.type!=='fixed-client')return;const c=d.customers.find(item=>item.id===el.dataset.osFixedCustomer);if(!c)return;const form=$('osDialog').querySelector('form');form.elements.customer_name.value=c.name;form.elements.customer_phone.value=sharedFields().phoneDisplay(c.phone||'');$('osFixedCustomers')?.replaceChildren();resetFixedPreview();return;}
       if(el.dataset.osSettlement){await showSettlementDetail(el.dataset.osSettlement);return;}
       if(el.dataset.osFinance){const r=[...rows(state.data.finance),...rows(state.data.financeAdvances),...rows(state.data.financePayments)].find(r=>r.id===el.dataset.osFinance);if(r){if(number(r.allocated_cents)>0||rows(state.data.settlements).some(item=>item.payment_entry_id===r.id))showLockedFinance(r);else showFinance(r.kind,r);}return;}
       if(el.dataset.osMarketingTab){state.filters.marketingTab=el.dataset.osMarketingTab;if(['automations','queue'].includes(el.dataset.osMarketingTab))await open('marketing',{keepScroll:true});else renderMarketing(state.data.marketing);return;}
@@ -2925,9 +4410,36 @@
       if(el.dataset.osLoyalty){const r=rows(state.data.loyalty?.rules).find(r=>r.id===el.dataset.osLoyalty);if(r)showLoyalty(r);return;}
       if(el.dataset.osGoal){const key=el.dataset.osGoal,r=key.startsWith('template:')?rows(state.data.goalTemplates).find(g=>'template:'+g.id===key):rows(state.data.goals).find(g=>goalKey(g)===key);if(r)await showGoal(r);return;}
       if(el.dataset.osDuration){const form=$('osDialog')?.querySelector('[data-os-form=service]');const input=form?.elements?.duration_min;if(input){input.value=el.dataset.osDuration;syncServiceDurationPresets(form);}return;}
-      if(el.dataset.osBookService){const d=state.dialog;if(d?.type!=='appointment'||d.holdForm)return;const id=el.dataset.osBookService;if(d.serviceIds.includes(id))d.serviceIds=d.serviceIds.filter(s=>s!==id);else if(d.serviceIds.length<6)d.serviceIds.push(id);else{toast('Escolha até 6 serviços por agendamento.',true);return;}el.setAttribute('aria-pressed',String(d.serviceIds.includes(id)));await updateAvailability();return;}
-      if(el.dataset.osBookCustomer){const d=state.dialog;if(d?.type!=='appointment'||d.holdForm)return;const c=d.customers.find(c=>c.id===el.dataset.osBookCustomer);if(!c)return;const form=$('osDialog').querySelector('form');form.elements.customer_name.value=c.name;form.elements.customer_phone.value=sharedFields().phoneDisplay(c.phone||'');d.customerId=c.id;$('osBookingCustomers').replaceChildren();$('osBookingCustomerHelp').textContent=c.phone?'Cliente selecionado.':'Este cliente ainda não tem WhatsApp. Ao confirmar, o número informado será salvo neste cadastro.';return;}
+      if(el.dataset.osBookService){const d=state.dialog;if(d?.type!=='appointment'||d.holdForm||d.manualOperation)return;const id=el.dataset.osBookService;if(d.serviceIds.includes(id))d.serviceIds=d.serviceIds.filter(s=>s!==id);else if(d.serviceIds.length<6)d.serviceIds.push(id);else{toast('Escolha até 6 serviços por agendamento.',true);return;}el.setAttribute('aria-pressed',String(d.serviceIds.includes(id)));await updateAvailability();return;}
+      if(el.dataset.osBookCustomer){const d=state.dialog;if(d?.type!=='appointment'||d.holdForm||d.manualOperation)return;const c=d.customers.find(c=>c.id===el.dataset.osBookCustomer);if(!c)return;const form=$('osDialog').querySelector('form');form.elements.customer_name.value=c.name;form.elements.customer_phone.value=sharedFields().phoneDisplay(c.phone||'');form.elements.appointment_messages_opt_in.checked=false;d.customerId=c.id;syncBookingMode();$('osBookingCustomers').replaceChildren();$('osBookingCustomerHelp').textContent=c.phone?'Cliente selecionado.':d.bookingMode!=='regular'?'Cliente selecionado sem WhatsApp. Informe o contato ou marque Cliente avulso.':'Este cliente ainda não tem WhatsApp. Ao confirmar, o número informado será salvo neste cadastro.';return;}
 
+      if(el.dataset.osStartPolicyToggle!==undefined){
+        const d=state.dialog,weekday=Number(el.dataset.osStartPolicyToggle);
+        if(d?.type!=='hours'||!d.startPolicies?.some(p=>p.weekday===weekday))return;
+        const expanded=d.hoursEditor?.mode==='start-policy'&&d.hoursEditor.weekday===weekday;
+        d.hoursEditor=expanded?null:{mode:'start-policy',weekday};
+        if(!expanded&&writable())hoursStartDraft(d,weekday);
+        renderHoursDialog();
+        const target=expanded?'[data-os-start-policy-toggle="'+weekday+'"]':'#osHoursStartPolicy-'+weekday+' input:checked';
+        $('osDialog').querySelector(target)?.focus({preventScroll:true});return;
+      }
+      if(el.dataset.osStartPolicyCancel!==undefined){
+        const d=state.dialog,weekday=Number(el.dataset.osStartPolicyCancel);
+        if(d?.type!=='hours'||!writable())return;
+        delete d.startPolicyDrafts?.[weekday];d.hoursEditor=null;renderHoursDialog();
+        $('osDialog').querySelector('[data-os-start-policy-toggle="'+weekday+'"]')?.focus({preventScroll:true});return;
+      }
+      if(el.dataset.osStartPolicyRetry!==undefined||el.dataset.osStartPolicyReload!==undefined){
+        await reloadHoursStartPolicies(state.dialog,Number(el.dataset.osStartPolicyRetry??el.dataset.osStartPolicyReload),el.dataset.osStartPolicyReload!==undefined);return;
+      }
+      if(el.dataset.osStartTimeAdd!==undefined){addHoursStartTime(el.closest('form'));return;}
+      if(el.dataset.osStartTimeRemove!==undefined){
+        const d=state.dialog,form=el.closest('[data-os-form="hours-start-policy"]'),weekday=Number(form?.dataset.weekday);
+        if(d?.type!=='hours'||!writable()||!form)return;
+        const draft=hoursStartDraft(d,weekday);if(!draft||draft.mode!=='manual')return;
+        draft.startTimes=draft.startTimes.filter(time=>time!==el.dataset.osStartTimeRemove);draft.message='';
+        draft.pendingTime=form.elements.start_time?.value||'';renderHoursDialog();$('osHoursStartTime-'+weekday)?.focus({preventScroll:true});return;
+      }
       if(el.dataset.osHoursCancel!==undefined){
         if(state.dialog?.type==='hours'){state.dialog.hoursEditor=null;renderHoursDialog();}return;
       }
@@ -2965,12 +4477,27 @@
   }
   async function handleChange(event){if(!state.mounted)return;const el=event.target;markCustomerBirthChanged(el);markSiteAddressEdit(el);if(el.matches?.('[data-os-image-file]')){await sendImageFile(el);return;}if(state.busy)return;if(el.matches?.('input.os-color-native'))syncColorPicker(el);if(el.closest('#osSiteForm'))el.closest('form').dataset.dirty='true';
     if(el.closest('#osSiteForm')&&siteCanEdit()){if(el.name==='slug'){finalizeSiteSlug(el);return;}if(el.name==='postal_code'){const form=el.closest('form');if(form._siteCepQuery!==el.value.replace(/\D/g,''))queueSiteCepLookup(el);return;}if(el.name==='address_no_number'){syncSiteNumber(el.closest('form'));return;}if(el.name==='state'){el.value=el.value.toUpperCase();return;}}
-    if(el.id==='osAgendaDatePicker'){if(/^\d{4}-\d{2}-\d{2}$/.test(el.value)){state.filters.agendaDay=el.value;state.filters.agendaOffset=0;await open('agenda',{keepScroll:true});$('osAgendaDatePicker')?.focus();}return;}
+    if(el.id==='osAgendaDatePicker'){if(/^\d{4}-\d{2}-\d{2}$/.test(el.value)){state.filters.agendaDay=el.value;state.filters.agendaFocusDay=el.value;state.filters.agendaFocusOffset=0;state.filters.agendaOffset=0;await open('agenda',{keepScroll:true});$('osAgendaDatePicker')?.focus();}return;}
     if(el.id==='osAgendaProfessional'||el.id==='osAgendaStatus'){state.filters[el.id==='osAgendaProfessional'?'agendaProfessional':'agendaStatus']=el.value;await applyAgendaFilters();return;}
     if(state.dialog?.action==='reschedule'&&el.name==='day'){await loadRescheduleAvailability();return;}
+    if(el.dataset.osAppShortcut!==undefined){
+      if(appLayoutEligible()&&state.route==='configuracoes'&&state.filters.settingsTab==='appearance')changeAppShortcut(Number(el.dataset.osAppShortcut),el.value);
+      return;
+    }
     if(el.id==='osSettingsSection'){state.filters.settingsTab=el.value;await open('configuracoes',{keepScroll:true});return;}
     if(['osSiteRequestStatus','osSiteRequestIntent'].includes(el.id)){await applySiteRequestFilters(el.closest('form'));return;}
-    if(el.id==='osHoursProfessional'){state.filters.hoursProfessional=el.value;renderSettings();return;}
+    if(el.id==='osHoursProfessional'){
+      const c=context(),id=el.value;state.filters.hoursProfessional=id;
+      const pending=loadSettingsStartPolicies(id,c);renderSettings();await pending;
+      if(current(c))renderSettings();return;
+    }
+    if(el.matches?.('[data-os-start-policy-mode]')){
+      const d=state.dialog,form=el.closest('[data-os-form="hours-start-policy"]'),weekday=Number(form?.dataset.weekday);
+      if(d?.type!=='hours'||!writable()||!form||!['automatic','manual'].includes(el.value))return;
+      const draft=hoursStartDraft(d,weekday);if(!draft)return;
+      draft.pendingTime=form.elements.start_time?.value||draft.pendingTime;draft.mode=el.value;draft.message='';
+      renderHoursDialog();$('osDialog').querySelector('[data-os-start-policy-mode]:checked')?.focus({preventScroll:true});return;
+    }
     if(el.name==='tax_document_kind'&&el.closest('[data-os-form=business-preferences]')){const input=el.closest('form').elements.tax_document;setTaxDocumentKind(input,el.value);return;}
     if(el.id==='osFinanceMonth'){if(/^\d{4}-\d{2}$/.test(el.value)){setMonth(el.value);await open('financeiro',{keepScroll:true});}return;}
     if(el.id==='osPerformancePeriod'){if(el.value==='custom'){await action('custom-period',el);return;}setPerformancePeriod(el.value);await open('desempenho',{keepScroll:true});return;}
@@ -2980,6 +4507,7 @@
     if(el.dataset.osServiceToggle){const s=(state.data.services||[]).find(s=>s.id===el.dataset.osServiceToggle);if(s)await runInline(()=>request(apiPath('/services/'+encodeURIComponent(s.id)),'PUT',{...serviceRecordPayload(s),active:el.checked}),el.checked?'Serviço ativado.':'Serviço inativado.');return;}
     if(state.dialog?.type==='service'&&el.name==='addon_ids'){const form=el.closest('form'),checked=form.querySelectorAll('[name=addon_ids]:checked');if(checked.length>5){el.checked=false;toast('Selecione até 5 adicionais.',true);}const duration=form.elements['addon_duration_'+el.value];if(duration)duration.disabled=!el.checked;return;}
     if(state.dialog?.type==='package'&&el.name==='service_ids'){updatePackageSummary();return;}
+    if(state.dialog?.type==='package'&&el.name==='custom_duration'){syncPackageDurationMode();return;}
     if(el.id==='osCustomerStatus'){state.filters.customerStatus=el.value;state.filters.customerOffset=0;await open('clientes',{keepScroll:true});return;}
     if(el.id==='osCouponStatus'){state.filters.couponStatus=el.value;state.filters.loyaltyOffset=0;await open('fidelizacao',{keepScroll:true});return;}
     if(el.name==='reward_type'&&el.closest('[data-os-form=loyalty-inline]')){const free=el.value==='free_service',value=$('osLoyaltyRewardValue'),service=$('osLoyaltyRewardService'),input=value.querySelector('input'),select=service.querySelector('select');value.classList.toggle('hidden',free);service.classList.toggle('hidden',!free);input.required=!free;input.disabled=free;select.required=free;select.disabled=!free;setNumericMode(input,el.value,{min:el.value==='fixed'?1:0.01,max:el.value==='fixed'?1000000000:100});value.querySelector('label').textContent=el.value==='fixed'?'Valor do cupom (R$)':'Valor do cupom (%)';return;}
@@ -2992,26 +4520,66 @@
     if(el.id==='osAdvanceStatus'){state.filters.advanceStatus=el.value;state.filters.advanceOffset=0;await open('financeiro',{keepScroll:true});return;}
     if(el.id==='osFinanceKind'){state.filters.financeKind=el.value;state.filters.financeOffset=0;state.filters.financeFiltersOpen=true;await open('financeiro',{keepScroll:true});return;}
     if(el.id==='osFinanceStatus'){state.filters.financeStatus=el.value;state.filters.financeOffset=0;state.filters.financeFiltersOpen=true;await open('financeiro',{keepScroll:true});return;}
-    if(el.dataset.osBookAddon){const d=state.dialog;if(d?.type!=='appointment'||d.holdForm)return;const id=el.dataset.osBookAddon;if(!d.addons?.some(item=>item.addon_service_id===id))return;d.addonIds=el.checked?[...new Set([...d.addonIds,id])]:d.addonIds.filter(value=>value!==id);await updateAvailability();return;}
+    if(state.dialog?.type==='appointment-extras'&&el.dataset.osExtraService){const d=state.dialog;if(d.pendingExtras)return;const selected=el.form.querySelectorAll('[name=extra_service_ids]:checked');if(selected.length>d.extraLimit){el.checked=false;toast('Este atendimento permite mais '+d.extraLimit+' serviços.',true);return;}resetExtrasPreview(d);return;}
+    if(state.dialog?.type==='appointment-extras'&&el.name==='actual_duration_min'){resetExtrasPreview();return;}
+    if(el.dataset.osBookAddon){const d=state.dialog;if(d?.type!=='appointment'||d.holdForm||d.manualOperation)return;const id=el.dataset.osBookAddon;if(!d.addons?.some(item=>item.addon_service_id===id))return;d.addonIds=el.checked?[...new Set([...d.addonIds,id])]:d.addonIds.filter(value=>value!==id);await updateAvailability();return;}
+    if(state.dialog?.type==='appointment'&&el.name==='booking_mode'&&el.value==='fixed'){
+      const d=state.dialog,form=el.form;
+      await showFixedClient({customers:d.customers,services:d.services,professionals:d.professionals,
+        customerName:form.elements.customer_name.value,customerPhone:form.elements.customer_phone.value,
+        serviceIds:[...d.serviceIds],professionalId:form.elements.professional_id.value,day:form.elements.day.value});return;
+    }
+    if(state.dialog?.type==='fixed-client'&&el.name==='booking_mode'){
+      if(el.value==='fixed')return;
+      const d=state.dialog,form=el.form;
+      await showAppointment({bookingMode:el.value,customerName:form.elements.customer_name.value,
+        customerPhone:form.elements.customer_phone.value,serviceIds:[...d.serviceIds],
+        professionalId:form.elements.professional_id.value,day:form.elements.first_date.value});return;
+    }
+    if(state.dialog?.type==='appointment'&&['booking_mode','walk_in'].includes(el.name)){syncBookingMode();await updateAvailability();return;}
+    if(state.dialog?.type==='fixed-client'&&el.closest('[data-os-form=fixed-client]')){
+      const form=el.closest('form');
+      if(el.name==='weekday'){
+        const first=form.elements.first_date.value||dateKey(),base=state.dialog.editSeriesId?dateKey():first;
+        const current=(dayDate(base).getUTCDay()+6)%7;
+        form.elements.first_date.value=shiftDay(base,(Number(el.value)-current+7)%7);
+      }else if(el.name==='first_date'&&el.value){
+        form.elements.weekday.value=(dayDate(el.value).getUTCDay()+6)%7;
+      }
+      resetFixedPreview();return;
+    }
     if(state.dialog?.type==='appointment'&&['professional_id','day'].includes(el.name)){await updateAvailability();return;}
     if(state.dialog?.type==='block'&&el.name==='repeat'){$('osBlockRepeat').classList.toggle('hidden',!el.checked);$('osField-until_date').required=el.checked;return;}
     if(state.dialog?.type==='block'&&el.name==='frequency'){$('osBlockWeekdays').classList.toggle('hidden',el.value!=='weekdays');return;}
     if(state.dialog?.type==='block'&&el.name==='block_type'){$('osBlockHours').classList.toggle('hidden',el.value==='days');$('osBlockDays').classList.toggle('hidden',el.value!=='days');const form=el.closest('form');['day','start_time','end_time'].forEach(name=>form.elements[name].required=el.value==='hours');form.elements.until_date.required=el.value==='hours'&&form.elements.repeat.checked;$('osBlockDays').querySelectorAll('input').forEach(i=>i.required=el.value==='days');}
   }
-  function handleInput(event){if(!state.mounted)return;const el=event.target;markCustomerBirthChanged(el);markSiteAddressEdit(el);if(state.dialog?.type==='service'&&el.name==='duration_min')syncServiceDurationPresets(el.closest('form'));if(el.matches?.('input.os-color-native'))syncColorPicker(el);if(el.id==='osAgendaSearch'&&!state.busy){state.filters.agendaQuery=el.value;state.filters.agendaOffset=0;state.agendaRead=(state.agendaRead||0)+1;clearTimeout(state.agendaSearchTimer);state.agendaSearchTimer=setTimeout(()=>void applyAgendaFilters(),250);return;}if(el.closest('#osSiteForm'))el.closest('form').dataset.dirty='true';if(el.closest('#osSiteForm')&&!state.busy&&siteCanEdit()&&!event.isComposing){if(el.name==='slug')queueSiteSlugCheck(el);if(el.name==='postal_code')queueSiteCepLookup(el);if(el.name==='state')el.value=el.value.toUpperCase();}if(el.id==='osHelpSearch'){state.filters.helpQuery=el.value;renderHelpResults();}if(el.id==='osCustomerSearch'){state.filters.customerQuery=el.value;state.filters.customerOffset=0;state.customerRead=(state.customerRead||0)+1;clearTimeout(state.searchTimer);clearTimeout(state.agendaSearchTimer);const c=context();state.searchTimer=setTimeout(()=>loadCustomers(c).catch(ex=>{if(current(c))bodyHTML(errorHTML(ex));}),250);}if(el.id==='osResourceSearch')renderServices(el.value);if(el.id==='osBookingCustomer')filterBookingCustomers(el.value);if(state.dialog?.type==='appointment'&&el.name==='customer_phone'&&state.dialog.customerId){$('osBookingCustomerHelp').textContent='Ao confirmar, o WhatsApp informado será salvo no cadastro deste cliente.';}if(state.dialog?.type==='package'&&el.name==='price')state.dialog.priceTouched=true;
+  function handleInput(event){if(!state.mounted)return;const el=event.target;markCustomerBirthChanged(el);markSiteAddressEdit(el);if(state.dialog?.type==='service'&&el.name==='duration_min')syncServiceDurationPresets(el.closest('form'));if(el.matches?.('input.os-color-native'))syncColorPicker(el);if(el.id==='osAgendaSearch'&&!state.busy){state.filters.agendaQuery=el.value;state.filters.agendaOffset=0;state.agendaRead=(state.agendaRead||0)+1;clearTimeout(state.agendaSearchTimer);state.agendaSearchTimer=setTimeout(()=>void applyAgendaFilters(),250);return;}if(el.closest('#osSiteForm'))el.closest('form').dataset.dirty='true';if(el.closest('#osSiteForm')&&!state.busy&&siteCanEdit()&&!event.isComposing){if(el.name==='slug')queueSiteSlugCheck(el);if(el.name==='postal_code')queueSiteCepLookup(el);if(el.name==='state')el.value=el.value.toUpperCase();}if(el.id==='osHelpSearch'){state.filters.helpQuery=el.value;renderHelpResults();}if(el.id==='osCustomerSearch'){state.filters.customerQuery=el.value;state.filters.customerOffset=0;state.customerRead=(state.customerRead||0)+1;clearTimeout(state.searchTimer);clearTimeout(state.agendaSearchTimer);const c=context();state.searchTimer=setTimeout(()=>loadCustomers(c).catch(ex=>{if(current(c))bodyHTML(errorHTML(ex));}),250);}if(el.id==='osResourceSearch')renderServices(el.value);if(state.dialog?.type==='appointment'&&!state.dialog.holdForm&&!state.dialog.manualOperation&&['customer_name','customer_phone'].includes(el.name)){const messages=el.form?.elements.appointment_messages_opt_in;if(messages)messages.checked=false;}if(state.dialog?.type==='appointment-extras'&&el.name==='actual_duration_min')resetExtrasPreview();if(state.dialog?.type==='appointment'&&el.name==='final_total')state.dialog.finalTotalTouched=true;if(el.id==='osBookingCustomer')filterBookingCustomers(el.value);if(el.id==='osFixedCustomer')filterFixedCustomers(el.value);if(state.dialog?.type==='fixed-client'&&el.closest('[data-os-form=fixed-client]'))resetFixedPreview();if(state.dialog?.type==='appointment'&&el.name==='customer_phone'&&state.dialog.customerId){$('osBookingCustomerHelp').textContent='Ao confirmar, o WhatsApp informado será salvo no cadastro deste cliente.';}if(state.dialog?.type==='package'&&el.name==='price')state.dialog.priceTouched=true;
+    if(el.matches?.('[data-os-start-time-input]')&&state.dialog?.type==='hours'&&writable()&&!state.busy){
+      const form=el.closest('[data-os-form="hours-start-policy"]'),draft=hoursStartDraft(state.dialog,Number(form?.dataset.weekday));
+      if(draft)draft.pendingTime=el.value;
+    }
+    if(state.dialog?.type==='package'&&el.name==='duration_override_min')updatePackageSummary();
     if(state.dialog?.type==='complete-appointment'&&el.name==='final_total')updateCompletionSummary();}
-  function handleKeydown(event){if(!state.mounted)return;const serviceGrip=event.target.closest?.('[data-os-service-drag]');if(serviceGrip&&['ArrowUp','ArrowDown'].includes(event.key)){event.preventDefault();void moveService(serviceGrip.dataset.osServiceDrag,event.key==='ArrowUp'?-1:1);return;}if(event.key==='Escape'){if(state.notificationsOpen){event.preventDefault();closeNotifications(true);}if($('appView').classList.contains('os-menu-open')){event.preventDefault();drawer(false);}if(!$('osThemeMenu').classList.contains('hidden')){$('osThemeMenu').classList.add('hidden');$('osThemeToggle').setAttribute('aria-expanded','false');$('osThemeToggle').focus();}}
-    const agendaTab=event.target.closest('[data-os-day],[data-os-agenda-mode]');
+  function handleKeydown(event){if(!state.mounted)return;
+    const appTab=event.target.closest?.('[data-os-app-tab]');
+    if(appTab&&['ArrowLeft','ArrowRight','Home','End'].includes(event.key)){
+      const tabs=[...$('osAppDock').querySelectorAll('[data-os-app-tab]:not(:disabled)')],index=tabs.indexOf(appTab),next=event.key==='Home'?0:event.key==='End'?tabs.length-1:(index+(event.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length;
+      if(index>=0&&tabs[next]){event.preventDefault();tabs[next].focus();tabs[next].click();}return;
+    }
+    const serviceGrip=event.target.closest?.('[data-os-service-drag]');if(serviceGrip&&['ArrowUp','ArrowDown'].includes(event.key)){event.preventDefault();void moveService(serviceGrip.dataset.osServiceDrag,event.key==='ArrowUp'?-1:1);return;}if(event.key==='Escape'){if(state.notificationsOpen){event.preventDefault();closeNotifications(true);}if($('appView').classList.contains('os-menu-open')){event.preventDefault();drawer(false);}if(!$('osThemeMenu').classList.contains('hidden')){$('osThemeMenu').classList.add('hidden');$('osThemeToggle').setAttribute('aria-expanded','false');$('osThemeToggle').focus();}}
+    if(event.key==='Enter'&&!event.isComposing&&event.target.matches?.('[data-os-start-time-input]')){event.preventDefault();addHoursStartTime(event.target.closest('form'));return;}
+    const agendaTab=event.target.closest('[data-os-day],[data-os-agenda-mode],[data-os-agenda-period]');
     if(agendaTab&&['ArrowLeft','ArrowRight','Home','End'].includes(event.key)&&!state.busy){const tabs=[...agendaTab.closest('[role=tablist]').querySelectorAll('[role=tab]')],index=tabs.indexOf(agendaTab),next=event.key==='Home'?0:event.key==='End'?tabs.length-1:(index+(event.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length;event.preventDefault();tabs[next].focus();tabs[next].click();return;}
     const row=event.target.closest('[data-os-appointment][role=button]');if(row&&(event.key==='Enter'||event.key===' ')){event.preventDefault();void showAppointmentDetail(row.dataset.osAppointment,{trigger:row});}
     if(event.key==='Tab'&&$('appView').classList.contains('os-menu-open')){const focusable=[...$('osSidebar').querySelectorAll('button:not([disabled]),select:not([disabled]),a[href]')].filter(el=>el.getClientRects().length);const first=focusable[0],last=focusable[focusable.length-1];if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}}
   }
   function onDialogCancel(event){if(state.busy){event.preventDefault();return;}event.preventDefault();closeDialog();}
   function sync(bridge={}){
-    const oldIdentity=state.bridge.user?.email+'|'+state.bridge.user?.role,oldTenant=state.tenantId,oldReady=state.bridge.businessContextReady,oldError=businessAccessError();state.bridge={...state.bridge,...bridge};
+    const oldIdentity=state.bridge.user?.email+'|'+state.bridge.user?.role,oldTenant=state.tenantId,oldReady=state.bridge.businessContextReady,oldError=businessAccessError(),oldProfile=tenant()?.workspace_profile;state.bridge={...state.bridge,...bridge};
     state.tenantId=accountTenantId();
-    const identity=state.bridge.user?.email+'|'+state.bridge.user?.role;if(oldIdentity!==identity||oldTenant!==state.tenantId){clearTimeout(state.permissionExpiryTimer);state.permissionExpiryTimer=null;state.permissionExpiryConsumed=null;state.entitlements=null;state.permissionPending=null;state.permissionRead=(state.permissionRead||0)+1;state.epoch++;state.imageUploading=false;clearSiteLookups();clearTimeout(state.searchTimer);clearTimeout(state.agendaSearchTimer);state.data={};state.filters=defaultFilters();closeNotifications();$('osNotificationsPanel')?.replaceChildren();$('osNotificationDot')?.classList.add('hidden');state.filters.agendaDay=dateKey();resetPeriod();closeDialog(true);}
-    if(!state.mounted)return;renderSidebar();if(oldIdentity!==identity||oldTenant!==state.tenantId||oldReady!==state.bridge.businessContextReady||oldError!==businessAccessError())void open(state.pendingRoute||state.route,{replace:true,force:true});
+    const nextProfile=tenant()?.workspace_profile,profileChanged=!!nextProfile&&oldProfile!==nextProfile;
+    const identity=state.bridge.user?.email+'|'+state.bridge.user?.role;if(oldIdentity!==identity||(oldTenant&&oldTenant!==state.tenantId)||(oldProfile&&profileChanged)){window.OrionSubscriptionSentMessages?.clearContext();window.OrionSubscriptionGroupAdd?.clearContext();window.OrionSubscriptionGroupContacts?.clearContext();window.OrionSubscriptionDirectMessages?.clearContext();window.OrionSubscriptionBulkMessages?.clearContext();window.OrionSubscriptionScheduledMessages?.clearContext();window.OrionSubscriptionCampaigns?.clearContext();window.OrionSubscriptionDiagnostics?.clearContext();}if(oldIdentity!==identity||oldTenant!==state.tenantId||profileChanged){window.OrionSubscriptionDashboard?.unmount();state.workspaceProfile=nextProfile||null;clearTimeout(state.permissionExpiryTimer);state.permissionExpiryTimer=null;state.permissionExpiryConsumed=null;state.entitlements=null;state.permissionPending=null;state.permissionRead=(state.permissionRead||0)+1;state.epoch++;state.imageUploading=false;clearSiteLookups();clearTimeout(state.searchTimer);clearTimeout(state.agendaSearchTimer);state.data={};state.filters=defaultFilters();state.appShortcutDraft=null;applyAppLayout();closeNotifications();$('osNotificationsPanel')?.replaceChildren();$('osNotificationDot')?.classList.add('hidden');state.filters.agendaDay=dateKey();resetPeriod();closeDialog(true);}
+    if(!state.mounted)return;renderSidebar();state.bridge.onWorkspaceProfile?.();if(oldIdentity!==identity||oldTenant!==state.tenantId||profileChanged||oldReady!==state.bridge.businessContextReady||oldError!==businessAccessError())void open(state.pendingRoute||state.route,{replace:true,force:true});
   }
   async function refreshLiveRoute(){
     if(state.mounted&&tenant()&&document.visibilityState!=='hidden')await refreshPermissions({reconcile:true});
@@ -3028,11 +4596,11 @@
   function refreshAccess(event){if(state.mounted&&tenant()&&document.visibilityState!=='hidden')void refreshPermissions({reconcile:event?.detail?.preservePage!==true});}
   function mount(bridge){
     if(state.mounted){sync(bridge);return;}
-    state.bridge=bridge||{};state.mounted=true;state.epoch++;state.load++;state.tenantId=accountTenantId();state.filters.agendaDay=dateKey();resetPeriod();
+    state.bridge=bridge||{};state.mounted=true;state.epoch++;state.load++;state.tenantId=accountTenantId();state.workspaceProfile=tenant()?.workspace_profile||null;state.filters.agendaDay=dateKey();resetPeriod();
     buildShell();if(typeof window.BroadcastChannel==='function'){try{state.permissionChannel=new BroadcastChannel('orion-plan-access');state.permissionChannel.onmessage=event=>{if(event.data?.type!=='changed'||event.data.tenantId!==state.tenantId||!tenant())return;const epoch=state.epoch,id=state.tenantId,refresh=()=>{if(state.mounted&&state.epoch===epoch&&state.tenantId===id)void refreshPermissions({reconcile:true});};if(state.permissionPending)void state.permissionPending.then(refresh);else refresh();};}catch{state.permissionChannel=null;}}state.permissionObserver=new MutationObserver(()=>applyPermissionDOM());state.permissionObserver.observe($('page-suite'),{childList:true,subtree:true});window.addEventListener('focus',refreshAccess);document.addEventListener('visibilitychange',refreshAccess);window.addEventListener('orion:plan-changed',refreshAccess);clearInterval(state.liveRefreshTimer);state.liveRefreshTimer=setInterval(()=>{void refreshLiveRoute().catch(()=>{});},30000);document.addEventListener('click',handleClick);document.addEventListener('change',handleChange);document.addEventListener('input',handleInput);document.addEventListener('focusout',handleSiteFocusOut);document.addEventListener('compositionend',handleSiteCompositionEnd);document.addEventListener('submit',submitForm);document.addEventListener('keydown',handleKeydown);document.addEventListener('pointerdown',handleServicePointerDown);document.addEventListener('pointermove',handleServicePointerMove);document.addEventListener('pointerup',handleServicePointerUp);document.addEventListener('pointercancel',clearServiceDrag);$('osDialog').addEventListener('cancel',onDialogCancel);
     state.observer=new MutationObserver(()=>applyThemeState());state.observer.observe(document.documentElement,{attributes:true,attributeFilter:['data-theme','data-theme-preference']});
     const desired=bridge?.initialRoute||'dashboard';void open(appPages.has(desired)?desired:'dashboard');
   }
-  function destroy(){window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionCommunication?.unmount();window.OrionInbox?.unmount();state.mounted=false;clearInterval(state.clockTimer);clearInterval(state.liveRefreshTimer);state.epoch++;state.load++;state.busy=false;state.imageUploading=false;clearTimeout(state.searchTimer);clearTimeout(state.agendaSearchTimer);clearSiteLookups();closeDialog(true);state.data={};state.bridge={};state.tenantId='';state.filters=defaultFilters();closeNotifications();$('osNotificationsPanel')?.replaceChildren();$('osNotificationDot')?.classList.add('hidden');clearTimeout(state.permissionExpiryTimer);state.permissionExpiryTimer=null;if(state.permissionChannel){state.permissionChannel.onmessage=null;state.permissionChannel.close();state.permissionChannel=null;}state.permissionObserver?.disconnect();state.permissionObserver=null;window.removeEventListener('focus',refreshAccess);document.removeEventListener('visibilitychange',refreshAccess);window.removeEventListener('orion:plan-changed',refreshAccess);state.entitlements=null;state.permissionPending=null;state.observer?.disconnect();state.observer=null;document.removeEventListener('click',handleClick);document.removeEventListener('change',handleChange);document.removeEventListener('input',handleInput);document.removeEventListener('focusout',handleSiteFocusOut);document.removeEventListener('compositionend',handleSiteCompositionEnd);document.removeEventListener('submit',submitForm);document.removeEventListener('keydown',handleKeydown);document.removeEventListener('pointerdown',handleServicePointerDown);document.removeEventListener('pointermove',handleServicePointerMove);document.removeEventListener('pointerup',handleServicePointerUp);document.removeEventListener('pointercancel',clearServiceDrag);clearServiceDrag();$('osDialog')?.removeEventListener('cancel',onDialogCancel);$('page-suite')?.replaceChildren();$('osNav')?.replaceChildren();$('osSidebarContext')?.replaceChildren();$('osToastRegion')?.replaceChildren();$('appView')?.classList.remove('os-menu-open','os-tablet-mode');}
-  window.OrionSuite=Object.freeze({mount,sync,destroy,open,legacyOpened});
+  function destroy(){$('appView')?.classList.remove('os-dental-workspace');window.OrionDentalClinic?.unmount?.();window.OrionSubscriptionGroupAdd?.clearContext();window.OrionSubscriptionGroupContacts?.clearContext();window.OrionSubscriptionDirectMessages?.clearContext();window.OrionSubscriptionBulkMessages?.clearContext();window.OrionSubscriptionScheduledMessages?.clearContext();window.OrionSubscriptionCampaigns?.clearContext();window.OrionSubscriptionDiagnostics?.clearContext();window.OrionSubscriptionSentMessages?.clearContext();window.OrionSubscriptionGroupAdd?.unmount();window.OrionSubscriptionGroupContacts?.unmount();window.OrionSubscriptionDirectMessages?.unmount();window.OrionSubscriptionBulkMessages?.unmount();window.OrionSubscriptionScheduledMessages?.unmount();window.OrionSubscriptionCampaigns?.unmount();window.OrionSubscriptionDiagnostics?.unmount();window.OrionSubscriptionSentMessages?.unmount();window.OrionSubscriptionTemplates?.unmount();window.OrionSubscriptionChatbotTest?.unmount();window.OrionSubscriptionChatbot?.unmount();window.OrionSubscriptionDevices?.unmount();window.OrionSubscriptionDashboard?.unmount();window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionCommunication?.unmount();window.OrionInbox?.unmount();state.mounted=false;clearInterval(state.clockTimer);clearInterval(state.liveRefreshTimer);state.epoch++;state.load++;state.busy=false;state.imageUploading=false;clearTimeout(state.searchTimer);clearTimeout(state.agendaSearchTimer);clearSiteLookups();closeDialog(true);state.data={};state.bridge={};state.tenantId='';state.workspaceProfile=null;state.filters=defaultFilters();state.appShortcutDraft=null;applyAppLayout();closeNotifications();$('osNotificationsPanel')?.replaceChildren();$('osNotificationDot')?.classList.add('hidden');clearTimeout(state.permissionExpiryTimer);state.permissionExpiryTimer=null;if(state.permissionChannel){state.permissionChannel.onmessage=null;state.permissionChannel.close();state.permissionChannel=null;}state.permissionObserver?.disconnect();state.permissionObserver=null;window.removeEventListener('focus',refreshAccess);document.removeEventListener('visibilitychange',refreshAccess);window.removeEventListener('orion:plan-changed',refreshAccess);state.entitlements=null;state.permissionPending=null;state.observer?.disconnect();state.observer=null;document.removeEventListener('click',handleClick);document.removeEventListener('change',handleChange);document.removeEventListener('input',handleInput);document.removeEventListener('focusout',handleSiteFocusOut);document.removeEventListener('compositionend',handleSiteCompositionEnd);document.removeEventListener('submit',submitForm);document.removeEventListener('keydown',handleKeydown);document.removeEventListener('pointerdown',handleServicePointerDown);document.removeEventListener('pointermove',handleServicePointerMove);document.removeEventListener('pointerup',handleServicePointerUp);document.removeEventListener('pointercancel',clearServiceDrag);clearServiceDrag();$('osDialog')?.removeEventListener('cancel',onDialogCancel);$('page-suite')?.replaceChildren();$('osNav')?.replaceChildren();$('osSidebarContext')?.replaceChildren();$('osToastRegion')?.replaceChildren();$('appView')?.classList.remove('os-menu-open','os-tablet-mode');}
+  window.OrionSuite=Object.freeze({mount,sync,destroy,open,legacyOpened,workspaceProfile});
 })();

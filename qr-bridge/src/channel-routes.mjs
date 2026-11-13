@@ -3,6 +3,8 @@ import {createChannelBroker} from './channel-broker.mjs';
 import {createChannelManager} from './channel-manager.mjs';
 import {createBaileysChannelSession} from './channel-session.mjs';
 import {createChannelResumeStore} from './channel-resume.mjs';
+import {validGroupContactsRequest,GROUP_CONTACTS_READ_REASONS} from './device-group-contacts.mjs';
+import {validGroupAddRequest,GROUP_ADD_REASONS} from './device-group-add.mjs';
 
 function response(res,status,data){
   res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store',
@@ -28,6 +30,87 @@ export function createChannelRoutes({env=process.env,managerFactory=createChanne
     const uri=new URL(req.url||'/','http://internal');
     if(!uri.pathname.startsWith('/internal/channels/'))return false;
     if(env.QR_CHANNELS_ENABLED!=='1'){response(res,423,{error:'channels_disabled'});return true;}
+    const groupAddMatch=uri.pathname.match(/^\/internal\/channels\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/device\/group-add\/(groups|members|add|lookup)$/);
+    if(groupAddMatch&&!uri.search){
+      const [,id,action]=groupAddMatch,key=req.headers['x-orion-channel-key'];
+      if(typeof key!=='string'||key.length<32||key.length>256){response(res,401,{error:'channel_unauthorized'});return true;}
+      if(req.method!=='POST'){response(res,405,{error:'method_not_allowed'});return true;}
+      try{
+        const input=await body(req);
+        if(!validGroupAddRequest(action,input))throw Error('group_add_unavailable');
+        response(res,200,await getManager().deviceGroupAdd(id,key,action,input));
+      }catch(failure){
+        const reason=['groups','members'].includes(action)&&
+          GROUP_ADD_REASONS.includes(failure?.groupAddReason)
+          ?failure.groupAddReason:null;
+        // No group ID, contact data, provider response or credential in logs.
+        if(reason)console.warn(JSON.stringify({event:'orion_group_read_failed',tool:'group-add',action,reason}));
+        response(res,409,{error:'group_add_unavailable',...(reason?{reason}:{})});
+      }
+      return true;
+    }
+    const groupContactsMatch=uri.pathname.match(/^\/internal\/channels\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/device\/group-contacts\/(groups|members)$/);
+    if(groupContactsMatch&&!uri.search){
+      const [,id,action]=groupContactsMatch,key=req.headers['x-orion-channel-key'];
+      if(typeof key!=='string'||key.length<32||key.length>256){response(res,401,{error:'channel_unauthorized'});return true;}
+      if(req.method!=='POST'){response(res,405,{error:'method_not_allowed'});return true;}
+      try{
+        const input=await body(req);
+        if(!validGroupContactsRequest(action,input))throw Error('group_contacts_unavailable');
+        response(res,200,await getManager().deviceGroupContacts(id,key,action,input));
+      }catch(failure){
+        const reason=GROUP_CONTACTS_READ_REASONS.includes(failure?.groupContactsReason)
+          ?failure.groupContactsReason:null;
+        if(reason)console.warn(JSON.stringify({event:'orion_group_read_failed',tool:'group-contacts',action,reason}));
+        response(res,409,{error:'group_contacts_unavailable',...(reason?{reason}:{})});
+      }
+      return true;
+    }
+    const diagnosticMatch=uri.pathname.match(/^\/internal\/channels\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/device\/diagnostics\/(proxy|operations\/([0-9a-f-]{36}))$/);
+    if(diagnosticMatch&&!uri.search){
+      const [,id,action,requestId]=diagnosticMatch,key=req.headers['x-orion-channel-key'];
+      if(typeof key!=='string'||key.length<32||key.length>256){response(res,401,{error:'channel_unauthorized'});return true;}
+      if(req.method!==(requestId?'GET':'POST')){response(res,405,{error:'method_not_allowed'});return true;}
+      try{
+        const api=getManager();let result;
+        if(requestId)result=await api.deviceDiagnosticOperation(id,key,requestId);
+        else{
+          const input=await body(req),fields=['request_id','device_id','generation','settings_revision'];
+          if(Object.keys(input).some(field=>!fields.includes(field))||fields.some(field=>!(field in input)))throw Error('invalid_device_diagnostic');
+          result=await api.deviceProxyTest(id,key,input);
+        }
+        response(res,requestId?200:202,result);
+      }catch{response(res,409,{error:'device_diagnostic_unavailable'});}
+      return true;
+    }
+    const deviceMatch=uri.pathname.match(/^\/internal\/channels\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/device\/(status|qr|diagnostics|connect|pair|restart|relink|remove|operations\/([0-9a-f-]{36}))$/);
+    if(deviceMatch&&!uri.search){
+      const [,id,action,operationId]=deviceMatch,key=req.headers['x-orion-channel-key'];
+      if(typeof key!=='string'||key.length<32||key.length>256){response(res,401,{error:'channel_unauthorized'});return true;}
+      const read=['status','qr','diagnostics'].includes(action)||!!operationId;
+      if(req.method!==(read?'GET':'POST')){response(res,405,{error:'method_not_allowed'});return true;}
+      try{
+        const api=getManager();let result;
+        if(action==='status')result=await api.deviceStatus(id,key);
+        else if(action==='diagnostics')result=await api.deviceDiagnostics(id,key);
+        else if(operationId)result=await api.deviceOperation(id,key,operationId);
+        else if(action==='qr'){
+          const scope=await api.deviceStatus(id,key),qr=await api.qr(id,key);
+          result={device_id:scope.device_id,generation:scope.generation,settings_revision:scope.settings_revision,image:null,expires_in_ms:0};
+          if(qr?.value&&qr.expires_in_ms>0){
+            const image=await renderQr(qr.value),fresh=await api.qr(id,key),latest=await api.deviceStatus(id,key);
+            if(fresh?.value===qr.value&&fresh.expires_in_ms>0&&latest.device_id===scope.device_id&&latest.generation===scope.generation&&latest.settings_revision===scope.settings_revision)
+              result={...result,image,expires_in_ms:Math.floor(fresh.expires_in_ms)};
+          }
+        }else{
+          const input=await body(req),fields=['device_id','generation','settings_revision','operation_id',...(action==='pair'?['phone']:[])];
+          if(Object.keys(input).some(k=>!fields.includes(k))||fields.some(k=>!(k in input)))throw Error('invalid_device_request');
+          result=await api.deviceControl(id,key,action,input);
+        }
+        response(res,200,result);
+      }catch{response(res,409,{error:'device_operation_unavailable'});}
+      return true;
+    }
     const match=uri.pathname.match(/^\/internal\/channels\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/(status|start|stop|qr|pair|send|operations\/([0-9a-f-]{36}))$/);
     if(!match||uri.search){response(res,404,{error:'not_found'});return true;}
     const [,id,action,operationId]=match,key=req.headers['x-orion-channel-key'];
@@ -49,7 +132,7 @@ export function createChannelRoutes({env=process.env,managerFactory=createChanne
       else {
         const input=await body(req),required=action==='send'?['to','text','operation_id']:action==='pair'?['phone']:[],allowed=[...required,...(action==='send'?['source','control_revision']:[])];
         if(Object.keys(input).some(k=>!allowed.includes(k))||required.some(k=>!(k in input))||
-          ('source' in input&&(input.source!=='manual'||!Number.isSafeInteger(input.control_revision)||input.control_revision<1))||
+          ('source' in input&&!(input.source==='appointment'&&input.control_revision===undefined||input.source==='manual'&&Number.isSafeInteger(input.control_revision)&&input.control_revision>=1))||
           ('control_revision' in input&&input.source!=='manual')||
           (action==='pair'&&(typeof input.phone!=='string'||input.phone!==input.phone.trim()||!/^[1-9]\d{7,14}$/.test(input.phone))))throw Error('invalid_channel_request');
         if(action==='start')result=await api.start(id,key);
@@ -66,6 +149,10 @@ export function createChannelRoutes({env=process.env,managerFactory=createChanne
   };
   route.resume=async()=>env.QR_CHANNELS_ENABLED==='1'?getManager().resume():{resumed:0};
   route.adopt=(id,key)=>getManager().start(id,key);
+  // Used only by MASTER-authenticated, HMAC-signed server /internal/ops route.
+  // Never expose this as a normal /internal/channels/ browser/device operation.
+  route.reviewDevice=(id,key,body,authority)=>getManager().reviewDeviceIngress(id,key,body,authority);
   route.send=(id,key,payload)=>getManager().send(id,key,payload);
+  route.close=()=>manager?.close();
   return route;
 }

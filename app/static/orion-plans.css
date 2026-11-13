@@ -27,6 +27,7 @@
 .op-plan-caption{text-align:center;color:var(--os-muted);font-size:10px;line-height:16px}
 .op-footnote{font-size:11px;line-height:1.65;color:var(--os-muted)}
 .op-footnote{margin:13px 0 0}
+.op-billing-notice{margin:0;color:var(--os-muted);font-size:13px;line-height:1.6}
 .op-free-trial{display:grid;grid-template-columns:46px minmax(0,1fr) auto;align-items:center;gap:17px;padding:24px;border:1px solid var(--os-border);border-radius:15px;background:var(--os-card)}
 .op-trial-icon,.op-dialog-symbol{width:46px;height:46px;display:grid;place-items:center;border-radius:12px;background:var(--os-tint);color:var(--os-primary)}
 .op-trial-icon svg,.op-dialog-symbol svg{width:23px;height:23px}

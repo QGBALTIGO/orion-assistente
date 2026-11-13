@@ -125,17 +125,14 @@ async def try_command(
     """Retorna (tratado, texto). Chamado antes dos menus normais."""
     cmd=user_text.strip().lower()
     if cmd in ("sair","parar mensagens","cancelar publicidade"):
+        from app.contact_preferences import preference_intent,record_optout
+        scope=preference_intent(user_text)
         async with get_session_factory()() as s:
             async with tenant_transaction(s,tenant):
-                await s.execute(text("""
-                    INSERT INTO contact_consents
-                    (tenant_id,contact_e164,marketing_opt_in,source)
-                    VALUES (:t,:phone,false,'whatsapp')
-                    ON CONFLICT (tenant_id,contact_e164) DO UPDATE
-                    SET marketing_opt_in=false,source='whatsapp',updated_at=now()
-                """),{"t":tenant,"phone":sender})
+                await record_optout(s,tenant,sender,scope)
         await redis.delete(state_key)
-        return True,"Seu contato foi retirado das comunicações promocionais."
+        label='as mensagens automáticas para este contato' if scope=='all' else 'as mensagens promocionais'
+        return True,"Interrompi "+label+". Seus agendamentos permanecem."
 
     async def save(value):
         value["last_message_id"] = message_id

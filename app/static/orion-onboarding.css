@@ -39,6 +39,8 @@
  * owns the navigation chrome. Do not override .hidden during login/bootstrap.
  */
 #appView #setupHeader{display:none!important}
+/* CSS display rules must never override hidden access actions during bootstrap. */
+#orionSetupAccess[hidden],#orionSetupAccess [hidden]{display:none!important}
 #appView.ob-gated:not(.hidden){display:block!important;min-height:100dvh;background:var(--os-bg)}
 #appView.ob-gated>.sidebar,
 #appView.ob-gated>.content>#osHeader,

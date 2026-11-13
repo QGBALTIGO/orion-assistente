@@ -96,7 +96,7 @@ export function makeTransportDiagnostics({secret,now=Date.now,emit=()=>{}}){
   function record(stage,id=null,details={}){
     counts[stage]=(counts[stage]||0)+1;
     const safe={};
-    for(const name of ['kind','status','type','error','category','count','fromMe','hasPn','hasLid','cached','generation',
+    for(const name of ['kind','status','type','error','category','count','fromMe','hasPn','hasLid','cached','tracked','generation',
       'participantKind','hasParticipant','isSelf','ownDomainMismatch','deviceClass','sendToAll','pnCount','lidCount','otherCount','primaryCount','companionCount',
       'pnPrimaryCount','lidPrimaryCount','otherPrimaryCount','pnCompanionCount','lidCompanionCount','otherCompanionCount',
       'pnEligibleCompanionCount','lidEligibleCompanionCount','otherEligibleCompanionCount']){

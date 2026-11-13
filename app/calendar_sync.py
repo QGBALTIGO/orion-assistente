@@ -2,6 +2,7 @@
 from sqlalchemy import text
 
 OUTSIDE_INITIAL_SYNC = "google_before_connection"
+NOT_CONNECTED = "calendar_not_connected"
 
 CALENDAR_ACTIONS = {
     "confirmed": "create", "rescheduled": "update", "cancelled": "delete",

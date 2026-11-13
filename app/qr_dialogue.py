@@ -17,6 +17,7 @@ import httpx
 from app.groq_ai import GROQ_URL
 
 ResponseKind = Literal["affirm", "decline", "amend", "uncertain"]
+ConfirmationAction = Literal["booking", "order", "cancel", "reschedule"]
 KINDS = frozenset({"affirm", "decline", "amend", "uncertain"})
 STRICT_MODELS = frozenset({"openai/gpt-oss-20b", "openai/gpt-oss-120b"})
 
@@ -34,7 +35,7 @@ class DialogueDecision:
 
 def contextual_response(message: str, *, awaiting_confirmation: bool,
                         semantic_kind: ResponseKind | None = None,
-                        confirmation_action: Literal["booking", "order", "cancel"] = "booking") -> DialogueDecision:
+                        confirmation_action: ConfirmationAction = "booking") -> DialogueDecision:
     """Interpret consent only in a pending confirmation context.
 
 Known brief answers avoid a model call. Other natural formulations may use the
@@ -43,7 +44,7 @@ Unknown text never becomes agreement merely because a summary is pending.
 """
     if not awaiting_confirmation:
         return DialogueDecision("uncertain", "no_pending_confirmation")
-    if confirmation_action not in {"booking", "order", "cancel"}:
+    if confirmation_action not in {"booking", "order", "cancel", "reschedule"}:
         return DialogueDecision("uncertain", "invalid_confirmation_action")
     if not isinstance(message, str) or not message.strip() or len(message) > 1500:
         return DialogueDecision("uncertain", "invalid_message")
@@ -55,6 +56,8 @@ Unknown text never becomes agreement merely because a summary is pending.
     if re.search(r"\b(?:se|caso|desde que|a menos que|contanto que|somente se|so se|"
                  r"sob (?:a )?condicao|com (?:a )?condicao|dependendo|salvo)\b", text):
         return DialogueDecision("uncertain", "condition_or_hypothesis")
+    if confirmation_action == "reschedule" and clean == "pode remarcar":
+        return DialogueDecision("affirm", "explicit_reschedule_consent")
     # A date/time/name/service amendment requires a fresh proposal. Broad guards
     # deliberately prefer clarification over confirming the preceding summary.
     amendment = bool(re.search(
@@ -76,7 +79,7 @@ Unknown text never becomes agreement merely because a summary is pending.
         return DialogueDecision("uncertain", "question_or_doubt")
     if clean in {"nao", "n", "nao obrigado", "nao obrigada", "nao quero", "nao pode", "negativo"}:
         return DialogueDecision("decline", "explicit_decline")
-    if confirmation_action in {"booking", "order"} and clean in {
+    if confirmation_action in {"booking", "order", "reschedule"} and clean in {
             "nao confirma", "nao confirmar", "nao pode confirmar"}:
         return DialogueDecision("decline", "explicit_decline")
     if re.search(r"\b(?:nao|nem|nunca)\b", text) or (confirmation_action != "cancel" and
@@ -115,7 +118,7 @@ def summary_review_requested(message: str) -> bool:
 
 async def interpret_contextual_response(*, message: str, awaiting_confirmation: bool,
         key: str, model: str, transport: httpx.AsyncBaseTransport | None = None,
-        confirmation_action: Literal["booking", "order", "cancel"] = "booking") -> DialogueDecision:
+        confirmation_action: ConfirmationAction = "booking") -> DialogueDecision:
     """One optional strict semantic call for callers without an existing planner.
 
 Only the current text and a boolean context enter the provider, never a hold,
@@ -176,7 +179,7 @@ def compound_candidate(message: str) -> bool:
         return True
     # This is only an inexpensive routing hint, not an acceptance rule. A
     # semantic interpretation must still validate every clause before action.
-    return any(contextual_response(text[:m.start()], awaiting_confirmation=True, semantic_kind="affirm").kind == "affirm"
+    return any(contextual_response(text[:m.start()], awaiting_confirmation=True).kind == "affirm"
                for m in re.finditer(r",|\s+e\s+", text))
 
 
@@ -330,7 +333,7 @@ An unqualified clock matching AM and PM, or multiple days, stays uncertain.
             return TimeChoice("uncertain")
         selected = candidates[-1] if ordinal.group(1).startswith("ultim") else candidates[0]
         return TimeChoice("selected", selected[1])
-    if numbered_menu and text.isdigit() and shown is not None and 1 <= int(text) <= len(shown):
+    if numbered_menu and text.isdecimal() and shown is not None and 1 <= int(text) <= len(shown):
         return TimeChoice("selected", shown[int(text) - 1][1])
     # Use the final explicit clock only after an actual correction marker.
     from app.qr_understanding import _NUMBERS
@@ -399,7 +402,7 @@ def _named_choice(message: str, candidates: Sequence[dict], *, service: bool) ->
     if not isinstance(message, str) or len(message) > 250:
         return None
     text = _norm(message).strip(" .!,;")
-    if text.isdigit():
+    if text.isdecimal():
         index = int(text) - 1
         return candidates[index] if 0 <= index < len(candidates) else None
     if "?" in text or re.search(r"\b(?:ou|nao|sem|nem|talvez|se|quanto|quando|quais|amanha|hoje)\b", text):

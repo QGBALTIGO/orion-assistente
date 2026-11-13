@@ -1,0 +1,60 @@
+name: Orion - tags JSON e importação BotBot
+
+on:
+  pull_request:
+    paths:
+      - 'app/subscription_chatbot_botbot.py'
+      - 'app/subscription_chatbot_rules.py'
+      - 'app/subscription_chatbot_tags.py'
+      - 'app/subscription_chatbot_http.py'
+      - 'app/subscription_chatbot_archive.py'
+      - 'app/subscription_chatbot_archive_format.py'
+      - 'app/subscription_chatbot_schemas.py'
+      - 'app/static/orion-subscription-chatbot.js'
+      - 'app/static/orion-subscription-chatbot.css'
+      - 'tests/unit/test_subscription_chatbot_botbot.py'
+      - 'tests/unit/test_subscription_chatbot_rules.py'
+      - 'tests/unit/test_subscription_chatbot_tags.py'
+      - 'tests/unit/test_subscription_chatbot_http.py'
+      - 'ui-tests/subscription-chatbot.test.mjs'
+      - '.github/workflows/chatbot-botbot-tags.yml'
+permissions:
+  contents: read
+concurrency:
+  group: orion-import-tags-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  backend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      META_LIVE_SEND: '0'
+      QR_AI_ENABLED: '0'
+      INBOX_SEND_ENABLED: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -c requirements.lock '.[test]'
+      - name: Testar tags, egress seguro e formatos de importação
+        run: |
+          python -m compileall -q app/subscription_chatbot_botbot.py app/subscription_chatbot_tags.py app/subscription_chatbot_http.py app/subscription_chatbot_archive_format.py app/subscription_chatbot_archive.py app/subscription_chatbot_rules.py
+          python -m pytest -q -ra tests/unit/test_subscription_chatbot_botbot.py tests/unit/test_subscription_chatbot_tags.py tests/unit/test_subscription_chatbot_http.py tests/unit/test_subscription_chatbot_archive.py tests/unit/test_subscription_chatbot_rules.py
+  frontend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+      - name: Tags clicáveis e regressão do chatbot
+        run: |
+          node --check app/static/orion-subscription-chatbot.js
+          node --test ui-tests/subscription-chatbot.test.mjs ui-tests/subscription-chatbot-card-actions.test.mjs

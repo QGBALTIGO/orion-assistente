@@ -1,0 +1,346 @@
+TAP version 13
+# Subtest: transport remains observable while durable admission backlog prevents false readiness
+ok 1 - transport remains observable while durable admission backlog prevents false readiness
+  ---
+  duration_ms: 1.7224
+  type: 'test'
+  ...
+# Subtest: retained review entries and failed storage require review without prompting a new QR
+ok 2 - retained review entries and failed storage require review without prompting a new QR
+  ---
+  duration_ms: 0.729
+  type: 'test'
+  ...
+# Subtest: provider or ownership intervention survives backlog and journal fields are allowlisted
+ok 3 - provider or ownership intervention survives backlog and journal fields are allowlisted
+  ---
+  duration_ms: 0.5033
+  type: 'test'
+  ...
+# Subtest: passive monitoring reports admission backlog and recovery without changing transport timers
+ok 4 - passive monitoring reports admission backlog and recovery without changing transport timers
+  ---
+  duration_ms: 2.4257
+  type: 'test'
+  ...
+# Subtest: unavailable journal diagnostic cannot stop passive sampling or leak its exception
+ok 5 - unavailable journal diagnostic cannot stop passive sampling or leak its exception
+  ---
+  duration_ms: 0.8257
+  type: 'test'
+  ...
+# Subtest: ingress is encrypted on disk and survives restart including native BufferJSON media source
+ok 6 - ingress is encrypted on disk and survives restart including native BufferJSON media source
+  ---
+  duration_ms: 35.4302
+  type: 'test'
+  ...
+# Subtest: 503 before backend admission leaves work durable and FIFO after a process restart
+ok 7 - 503 before backend admission leaves work durable and FIFO after a process restart
+  ---
+  duration_ms: 44.6912
+  type: 'test'
+  ...
+# Subtest: lost backend response replays one stable identity and only confirmed admission acknowledges it
+ok 8 - lost backend response replays one stable identity and only confirmed admission acknowledges it
+  ---
+  duration_ms: 35.1377
+  type: 'test'
+  ...
+# Subtest: duplicate local upserts do not overwrite first message, original time or settings scope
+ok 9 - duplicate local upserts do not overwrite first message, original time or settings scope
+  ---
+  duration_ms: 15.9113
+  type: 'test'
+  ...
+# Subtest: duplicate cross-tenant, cross-channel, cross-device and cross-generation identities fail without overwrite
+ok 10 - duplicate cross-tenant, cross-channel, cross-device and cross-generation identities fail without overwrite
+  ---
+  duration_ms: 15.5906
+  type: 'test'
+  ...
+# Subtest: expired and revoked work is retained encrypted and cannot be acknowledged or revived by duplicate delivery
+ok 11 - expired and revoked work is retained encrypted and cannot be acknowledged or revived by duplicate delivery
+  ---
+  duration_ms: 29.384
+  type: 'test'
+  ...
+# Subtest: settings changes remain loadable for adapter scope_changed quarantine without rewriting original scope
+ok 12 - settings changes remain loadable for adapter scope_changed quarantine without rewriting original scope
+  ---
+  duration_ms: 23.4106
+  type: 'test'
+  ...
+# Subtest: entry count saturation never evicts existing pending or blocked work
+ok 13 - entry count saturation never evicts existing pending or blocked work
+  ---
+  duration_ms: 63.2114
+  type: 'test'
+  ...
+# Subtest: serialized total capacity includes BufferJSON overhead and does not truncate source messages
+ok 14 - serialized total capacity includes BufferJSON overhead and does not truncate source messages
+  ---
+  duration_ms: 16.6901
+  type: 'test'
+  ...
+# Subtest: oversized source is refused without silently retaining a truncated payload
+ok 15 - oversized source is refused without silently retaining a truncated payload
+  ---
+  duration_ms: 2.9914
+  type: 'test'
+  ...
+# Subtest: a near-capacity pending record can still be quarantined without extending its original timestamp
+ok 16 - a near-capacity pending record can still be quarantined without extending its original timestamp
+  ---
+  duration_ms: 693.9493
+  type: 'test'
+  ...
+# Subtest: disk exhaustion cannot acknowledge or overwrite pending work, and a fresh owner can recover original bytes
+ok 17 - disk exhaustion cannot acknowledge or overwrite pending work, and a fresh owner can recover original bytes
+  ---
+  duration_ms: 21.1384
+  type: 'test'
+  ...
+# Subtest: returned snapshots cannot mutate encrypted or in-memory admission state
+ok 18 - returned snapshots cannot mutate encrypted or in-memory admission state
+  ---
+  duration_ms: 31.0734
+  type: 'test'
+  ...
+# Subtest: lease expiry fences reads, appends, acknowledgement and quarantine without changing original bytes
+ok 19 - lease expiry fences reads, appends, acknowledgement and quarantine without changing original bytes
+  ---
+  duration_ms: 16.6143
+  type: 'test'
+  ...
+# Subtest: fence loss immediately before atomic replacement cannot erase existing unacknowledged entry
+ok 20 - fence loss immediately before atomic replacement cannot erase existing unacknowledged entry
+  ---
+  duration_ms: 19.4062
+  type: 'test'
+  ...
+# Subtest: corrupt ciphertext and wrong encryption secret fail closed without overwriting retained bytes
+ok 21 - corrupt ciphertext and wrong encryption secret fail closed without overwriting retained bytes
+  ---
+  duration_ms: 18.564
+  type: 'test'
+  ...
+# Subtest: validly encrypted invalid schema, repeated identity and foreign namespace all fail closed
+ok 22 - validly encrypted invalid schema, repeated identity and foreign namespace all fail closed
+  ---
+  duration_ms: 55.5435
+  type: 'test'
+  ...
+# Subtest: invalid IDs, scopes, timestamps, payloads and block reasons are rejected before persistence
+ok 23 - invalid IDs, scopes, timestamps, payloads and block reasons are rejected before persistence
+  ---
+  duration_ms: 3.2748
+  type: 'test'
+  ...
+# Subtest: strict legacy session scope is retained and rejected across session digests or device scope types
+ok 24 - strict legacy session scope is retained and rejected across session digests or device scope types
+  ---
+  duration_ms: 23.372
+  type: 'test'
+  ...
+# Subtest: business begin persists one atomic non-replay boundary for the whole batch and completion is current-instance only
+ok 25 - business begin persists one atomic non-replay boundary for the whole batch and completion is current-instance only
+  ---
+  duration_ms: 71.4767
+  type: 'test'
+  ...
+# Subtest: business failure relinquishes its completion claim while keeping uncertain payload for review
+ok 26 - business failure relinquishes its completion claim while keeping uncertain payload for review
+  ---
+  duration_ms: 32.8769
+  type: 'test'
+  ...
+# Subtest: invalid or partially missing batches cannot start only a subset of business work
+ok 27 - invalid or partially missing batches cannot start only a subset of business work
+  ---
+  duration_ms: 116.9259
+  type: 'test'
+  ...
+# Subtest: fence loss during batch begin cannot admit business or leave a partial started subset
+ok 28 - fence loss during batch begin cannot admit business or leave a partial started subset
+  ---
+  duration_ms: 39.4033
+  type: 'test'
+  ...
+# Subtest: teardown can revoke only volatile completion capability after lease loss without changing encrypted review evidence
+ok 29 - teardown can revoke only volatile completion capability after lease loss without changing encrypted review evidence
+  ---
+  duration_ms: 54.4338
+  type: 'test'
+  ...
+# Subtest: degraded connection shows recovery evidence without a false connected badge or a write
+ok 30 - degraded connection shows recovery evidence without a false connected badge or a write
+  ---
+  duration_ms: 393.3245
+  type: 'test'
+  ...
+# Subtest: stale state and intervention show a useful action without starting another session
+ok 31 - stale state and intervention show a useful action without starting another session
+  ---
+  duration_ms: 96.8473
+  type: 'test'
+  ...
+# Subtest: confirmed logout offers an explicit relink while opening it never performs a write
+ok 32 - confirmed logout offers an explicit relink while opening it never performs a write
+  ---
+  duration_ms: 55.0248
+  type: 'test'
+  ...
+# Subtest: retained incoming review shows paused replies and never offers an automatic relink
+ok 33 - retained incoming review shows paused replies and never offers an automatic relink
+  ---
+  duration_ms: 48.0068
+  type: 'test'
+  ...
+# Subtest: pending admission and unavailable storage have separate useful explanations
+ok 34 - pending admission and unavailable storage have separate useful explanations
+  ---
+  duration_ms: 83.5998
+  type: 'test'
+  ...
+# Subtest: only the subscription profile gets the Devices route; every other module stays closed
+ok 35 - only the subscription profile gets the Devices route; every other module stays closed
+  ---
+  duration_ms: 469.5678
+  type: 'test'
+  ...
+# Subtest: ordinary businesses cannot open Devices even with an injected feature flag
+ok 36 - ordinary businesses cannot open Devices even with an injected feature flag
+  ---
+  duration_ms: 80.377
+  type: 'test'
+  ...
+# Subtest: opening devices reads only the scoped API and shows real verified numbers and metrics
+ok 37 - opening devices reads only the scoped API and shows real verified numbers and metrics
+  ---
+  duration_ms: 79.7824
+  type: 'test'
+  ...
+# Subtest: unknown metrics and unverified phone never become fabricated data
+ok 38 - unknown metrics and unverified phone never become fabricated data
+  ---
+  duration_ms: 42.6546
+  type: 'test'
+  ...
+# Subtest: the one-device limit explains the limit without offering plans or attempting creation
+ok 39 - the one-device limit explains the limit without offering plans or attempting creation
+  ---
+  duration_ms: 45.9787
+  type: 'test'
+  ...
+# Subtest: creation is explicit, idempotent and never connects or enables features
+ok 40 - creation is explicit, idempotent and never connects or enables features
+  ---
+  duration_ms: 66.4262
+  type: 'test'
+  ...
+# Subtest: an uncertain create never repeats automatically and an explicit retry keeps the original key
+ok 41 - an uncertain create never repeats automatically and an explicit retry keeps the original key
+  ---
+  duration_ms: 61.9019
+  type: 'test'
+  ...
+# Subtest: connection and its tutorial are read only until the explicit prepare confirmation
+ok 42 - connection and its tutorial are read only until the explicit prepare confirmation
+  ---
+  duration_ms: 131.9109
+  type: 'test'
+  ...
+# Subtest: QR is shown only after its tutorial and expiry never fetches a replacement
+ok 43 - QR is shown only after its tutorial and expiry never fetches a replacement
+  ---
+  duration_ms: 295.8781
+  type: 'test'
+  ...
+# Subtest: pairing normalizes the number; hidden codes retain TTL and survive status capability changes
+ok 44 - pairing normalizes the number; hidden codes retain TTL and survive status capability changes
+  ---
+  duration_ms: 472.6946
+  type: 'test'
+  ...
+# Subtest: an uncertain action is reconciled by reads and is not automatically submitted again
+ok 45 - an uncertain action is reconciled by reads and is not automatically submitted again
+  ---
+  duration_ms: 133.6403
+  type: 'test'
+  ...
+# Subtest: delete has cancel and repair alternatives and removes the card only after a terminal success
+ok 46 - delete has cancel and repair alternatives and removes the card only after a terminal success
+  ---
+  duration_ms: 108.0057
+  type: 'test'
+  ...
+# Subtest: failed, uncertain and malformed terminal removal keep the existing device
+ok 47 - failed, uncertain and malformed terminal removal keep the existing device
+  ---
+  duration_ms: 170.9425
+  type: 'test'
+  ...
+# Subtest: a pending pairing snapshot survives reload and is reconciled by reads only
+ok 48 - a pending pairing snapshot survives reload and is reconciled by reads only
+  ---
+  duration_ms: 50.6857
+  type: 'test'
+  ...
+# Subtest: settings save exact scoped values, schedule copies and write-only proxy secrets
+ok 49 - settings save exact scoped values, schedule copies and write-only proxy secrets
+  ---
+  duration_ms: 783.7915
+  type: 'test'
+  ...
+# Subtest: proxy password preserves, replaces or clears explicitly and never remains after saving
+ok 50 - proxy password preserves, replaces or clears explicitly and never remains after saving
+  ---
+  duration_ms: 761.3156
+  type: 'test'
+  ...
+# Subtest: clear day sends a disabled empty row and does not save automatically
+ok 51 - clear day sends a disabled empty row and does not save automatically
+  ---
+  duration_ms: 288.0552
+  type: 'test'
+  ...
+# Subtest: invalid pauses and unavailable capabilities keep the settings form without writes
+ok 52 - invalid pauses and unavailable capabilities keep the settings form without writes
+  ---
+  duration_ms: 212.7024
+  type: 'test'
+  ...
+# Subtest: settings conflict preserves drafts and requires reloading before a new save
+ok 53 - settings conflict preserves drafts and requires reloading before a new save
+  ---
+  duration_ms: 220.0854
+  type: 'test'
+  ...
+# Subtest: returning to a hidden settings load resumes the read without losing an existing draft
+ok 54 - returning to a hidden settings load resumes the read without losing an existing draft
+  ---
+  duration_ms: 148.5718
+  type: 'test'
+  ...
+# Subtest: late pairing cannot expose a code after hiding or unmount, and hidden screens stop polling
+ok 55 - late pairing cannot expose a code after hiding or unmount, and hidden screens stop polling
+  ---
+  duration_ms: 127.3709
+  type: 'test'
+  ...
+# Subtest: readonly access cannot create, prepare, edit, remove or read QR credentials
+ok 56 - readonly access cannot create, prepare, edit, remove or read QR credentials
+  ---
+  duration_ms: 44.5531
+  type: 'test'
+  ...
+1..56
+# tests 56
+# suites 0
+# pass 56
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 7920.0102

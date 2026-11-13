@@ -45,6 +45,7 @@ class PlanDB:
         self.queries.append((sql, params))
         if "pg_advisory_xact_lock" in sql: return Result()
         if "orion_plan_snapshot" in sql: return Result(self.snapshot())
+        if "orion_prepaid_plan_snapshot" in sql: return Result()
         if "SELECT active FROM professionals" in sql:
             return Result(self.professionals.get(params["id"]))
         if "SELECT id,active FROM professionals" in sql:

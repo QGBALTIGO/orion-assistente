@@ -9,6 +9,7 @@ import wave
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request
+from app.qr_audio_quality import reliable_transcript
 
 router = APIRouter(tags=["Áudio privado do Orion"])
 logger = logging.getLogger("orion.voice")
@@ -77,7 +78,7 @@ async def transcribe_request(request: Request, *, preview: bool = False) -> dict
                 headers={"Authorization": "Bearer " + api_key},
                 files={"file": ("message." + supported[media_type], bytes(body), media_type)},
                 data={"model": "whisper-large-v3-turbo", "language": "pt",
-                      "response_format": "verbose_json", "temperature": "0"},
+                      "response_format": "verbose_json", "temperature": "0", "timestamp_granularities[]": "segment"},
             )
         if res.status_code != 200:
             logger.warning("groq_audio_http=%s", res.status_code)
@@ -94,6 +95,8 @@ async def transcribe_request(request: Request, *, preview: bool = False) -> dict
             raise HTTPException(413, "Envie um áudio de até dois minutos")
         if len(raw.strip()) > 1500:
             raise HTTPException(422, "Esse áudio tem muita informação. Divida em áudios menores para eu considerar tudo")
+        if not reliable_transcript(data, max_seconds=MAX_DURATION):
+            raise HTTPException(422, "Não consegui entender esse áudio com segurança. Pode gravar novamente, mais perto do microfone, ou escrever a mensagem? Nenhum agendamento foi alterado por esse áudio.")
         return {"text": raw.strip()}
     except httpx.RequestError:
         raise HTTPException(503, "O serviço de áudio está indisponível. Pode escrever a mensagem?") from None

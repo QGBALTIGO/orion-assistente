@@ -1,0 +1,342 @@
+{
+  "synthetic_example": true,
+  "base": "/api/v1/tenants/{tenant_id}/subscription-whatsapp/bulk-messages",
+  "review_request": {
+    "idempotency_key": "00000000-0000-4000-8000-000000000008",
+    "batch": {
+      "interval_seconds": 10,
+      "items": [
+        {
+          "row_key": "00000000-0000-4000-8000-000000000004",
+          "device_id": "00000000-0000-4000-8000-000000000003",
+          "source": "manual",
+          "phone": "5567999999901",
+          "message_type": "text",
+          "text": "Olá. {\"nome\":\"literal\"}"
+        }
+      ]
+    }
+  },
+  "options": {
+    "devices": [
+      {
+        "id": "00000000-0000-4000-8000-000000000003",
+        "name": "Dispositivo sintético",
+        "phone_e164": "+5567999999902",
+        "status": "connected",
+        "available": true,
+        "blocked_reason": null
+      }
+    ],
+    "templates": [],
+    "groups": [],
+    "timezone": "America/Cuiaba",
+    "generated_at": "2026-11-05T16:00:00+00:00",
+    "defaults": {
+      "interval_seconds": 10,
+      "message_type": "text"
+    },
+    "limits": {
+      "recipients": 500,
+      "text_utf16": 1000,
+      "groups": 100,
+      "review_seconds": 120,
+      "interval_seconds": {
+        "min": 10,
+        "max": 60,
+        "step": 1
+      }
+    }
+  },
+  "contacts": {
+    "items": [
+      {
+        "key": "phone:5567999999901",
+        "phone_e164": "+5567999999901",
+        "name": "Contato sintético",
+        "available": true,
+        "blocked_reason": null,
+        "version": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "page_size": 30,
+    "pages": 1,
+    "timezone": "America/Cuiaba",
+    "generated_at": "2026-11-05T16:00:00+00:00"
+  },
+  "audience": {
+    "items": [
+      {
+        "key": "phone:5567999999901",
+        "phone_e164": "+5567999999901",
+        "name": "Contato sintético",
+        "available": true,
+        "blocked_reason": null,
+        "version": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    ],
+    "total": 1,
+    "eligible": 1,
+    "blocked": 0,
+    "duplicates": 0,
+    "timezone": "America/Cuiaba",
+    "generated_at": "2026-11-05T16:00:00+00:00"
+  },
+  "review": {
+    "request_id": "00000000-0000-4000-8000-000000000007",
+    "idempotency_key": "00000000-0000-4000-8000-000000000008",
+    "kind": "review",
+    "status": "prepared",
+    "batch_id": null,
+    "replayed": false,
+    "created_at": "2026-11-05T16:00:00+00:00",
+    "expires_at": "2026-11-05T16:02:00+00:00",
+    "result": null,
+    "preview": {
+      "review_version": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "expires_at": "2026-11-05T16:02:00+00:00",
+      "interval_seconds": 10,
+      "timezone": "America/Cuiaba",
+      "total": 1,
+      "eligible": 1,
+      "blocked": 0,
+      "duplicates": 0,
+      "duplicate_destinations": 0,
+      "unique_destinations": 1,
+      "items": [
+        {
+          "row_key": "00000000-0000-4000-8000-000000000004",
+          "ordinal": 1,
+          "source": "manual",
+          "phone_e164": "+5567999999901",
+          "name": "Contato",
+          "device": {
+            "id": "00000000-0000-4000-8000-000000000003",
+            "name": "Dispositivo sintético",
+            "phone_e164": "+5567999999902"
+          },
+          "message_type": "text",
+          "template": null,
+          "message_preview": {
+            "type": "text",
+            "template_name": null,
+            "text": "Olá. {\"nome\":\"literal\"}",
+            "caption": null,
+            "followup": null,
+            "parts": [
+              {
+                "type": "text",
+                "text": "Olá. {\"nome\":\"literal\"}"
+              }
+            ]
+          },
+          "available": true,
+          "blocked_reason": null,
+          "error_code": null
+        }
+      ]
+    }
+  },
+  "confirmed": {
+    "request_id": "00000000-0000-4000-8000-000000000007",
+    "idempotency_key": "00000000-0000-4000-8000-000000000008",
+    "kind": "review",
+    "status": "succeeded",
+    "batch_id": "00000000-0000-4000-8000-000000000005",
+    "replayed": false,
+    "created_at": "2026-11-05T16:00:00+00:00",
+    "expires_at": "2026-11-05T16:02:00+00:00",
+    "result": {
+      "batch": {
+        "batch_id": "00000000-0000-4000-8000-000000000005",
+        "version": 1,
+        "status": "pending",
+        "status_label": "Na fila",
+        "interval_seconds": 10,
+        "timezone": "America/Cuiaba",
+        "created_at": "2026-11-05T16:00:00+00:00",
+        "confirmed_at": "2026-11-05T16:00:00+00:00",
+        "finished_at": null,
+        "progress": {
+          "total": 1,
+          "processed": 0,
+          "pending": 1,
+          "sent": 0,
+          "failed": 0,
+          "uncertain": 0,
+          "cancelled": 0,
+          "percent": 0
+        },
+        "actions": [
+          "cancel"
+        ]
+      }
+    },
+    "preview": null
+  },
+  "history": {
+    "items": [
+      {
+        "row_key": "00000000-0000-4000-8000-000000000004",
+        "ordinal": 1,
+        "source": "manual",
+        "phone_e164": "+5567999999901",
+        "name": "Contato",
+        "device": {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "name": "Dispositivo sintético",
+          "phone_e164": "+5567999999902"
+        },
+        "message_type": "text",
+        "template": null,
+        "message_preview": {
+          "type": "text",
+          "template_name": null,
+          "text": "Olá. {\"nome\":\"literal\"}",
+          "caption": null,
+          "followup": null,
+          "parts": [
+            {
+              "type": "text",
+              "text": "Olá. {\"nome\":\"literal\"}"
+            }
+          ]
+        },
+        "error_code": null,
+        "id": "00000000-0000-4000-8000-000000000006",
+        "batch_id": "00000000-0000-4000-8000-000000000005",
+        "status": "pending",
+        "status_label": "Esperando",
+        "error_message": null,
+        "parts": [],
+        "sent_at": null,
+        "created_at": "2026-11-05T16:00:00+00:00"
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "page_size": 30,
+    "pages": 1,
+    "timezone": "America/Cuiaba",
+    "generated_at": "2026-11-05T16:00:00+00:00",
+    "counts": {
+      "total": 0,
+      "last_30_days": 0,
+      "today": 0
+    },
+    "active_batches": [
+      {
+        "batch_id": "00000000-0000-4000-8000-000000000005",
+        "version": 1,
+        "status": "pending",
+        "status_label": "Na fila",
+        "interval_seconds": 10,
+        "timezone": "America/Cuiaba",
+        "created_at": "2026-11-05T16:00:00+00:00",
+        "confirmed_at": "2026-11-05T16:00:00+00:00",
+        "finished_at": null,
+        "progress": {
+          "total": 1,
+          "processed": 0,
+          "pending": 1,
+          "sent": 0,
+          "failed": 0,
+          "uncertain": 0,
+          "cancelled": 0,
+          "percent": 0
+        },
+        "actions": [
+          "cancel"
+        ]
+      }
+    ],
+    "active_batches_total": 1
+  },
+  "detail": {
+    "batch": {
+      "batch_id": "00000000-0000-4000-8000-000000000005",
+      "version": 1,
+      "status": "pending",
+      "status_label": "Na fila",
+      "interval_seconds": 10,
+      "timezone": "America/Cuiaba",
+      "created_at": "2026-11-05T16:00:00+00:00",
+      "confirmed_at": "2026-11-05T16:00:00+00:00",
+      "finished_at": null,
+      "progress": {
+        "total": 1,
+        "processed": 0,
+        "pending": 1,
+        "sent": 0,
+        "failed": 0,
+        "uncertain": 0,
+        "cancelled": 0,
+        "percent": 0
+      },
+      "actions": [
+        "cancel"
+      ]
+    },
+    "recipients": {
+      "items": [
+        {
+          "row_key": "00000000-0000-4000-8000-000000000004",
+          "ordinal": 1,
+          "source": "manual",
+          "phone_e164": "+5567999999901",
+          "name": "Contato",
+          "device": {
+            "id": "00000000-0000-4000-8000-000000000003",
+            "name": "Dispositivo sintético",
+            "phone_e164": "+5567999999902"
+          },
+          "message_type": "text",
+          "template": null,
+          "message_preview": {
+            "type": "text",
+            "template_name": null,
+            "text": "Olá. {\"nome\":\"literal\"}",
+            "caption": null,
+            "followup": null,
+            "parts": [
+              {
+                "type": "text",
+                "text": "Olá. {\"nome\":\"literal\"}"
+              }
+            ]
+          },
+          "error_code": null,
+          "id": "00000000-0000-4000-8000-000000000006",
+          "batch_id": "00000000-0000-4000-8000-000000000005",
+          "status": "pending",
+          "status_label": "Esperando",
+          "error_message": null,
+          "parts": [],
+          "sent_at": null,
+          "created_at": "2026-11-05T16:00:00+00:00"
+        }
+      ],
+      "total": 1,
+      "page": 1,
+      "page_size": 30,
+      "pages": 1,
+      "timezone": "America/Cuiaba",
+      "generated_at": "2026-11-05T16:00:00+00:00"
+    }
+  },
+  "cancel_rejection": {
+    "detail": {
+      "code": "BULK_CONFLICT",
+      "message": "Os dados mudaram. Atualize e revise novamente.",
+      "rejection": {
+        "reason": "stale_version",
+        "idempotency_key": "00000000-0000-4000-8000-000000000008",
+        "kind": "cancel",
+        "batch_id": "00000000-0000-4000-8000-000000000005",
+        "expected_version": 1
+      }
+    }
+  }
+}

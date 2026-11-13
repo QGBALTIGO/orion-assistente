@@ -43,6 +43,19 @@ def test_01_signup_login_and_business_create_are_separate_real_transactions(jour
     account = h.query("SELECT id,role,verified_at FROM panel_accounts WHERE email=%s", (email,))[0]
     assert account["role"] == "member" and account["verified_at"] is None
     assert h.scalar("SELECT count(*) FROM tenant_memberships WHERE account_id=%s", (account["id"],)) == 0
+    # Decode the synthetic outbox on the pytest host, never in the browser.
+    # The real /auth/verify route still consumes the exact one-time code.
+    import json
+    from cryptography.fernet import Fernet
+    encrypted = h.query("SELECT payload_enc FROM panel_email_outbox WHERE account_id=%s AND kind='verify' ORDER BY created_at DESC LIMIT 1", (account["id"],))[0]["payload_enc"]
+    frozen = json.loads(Fernet(h.server.email_fernet_key.encode()).decrypt(encrypted.encode()))
+    codes = re.findall(r"(?m)^\d{6}$", frozen["text"])
+    assert len(codes) == 1
+    page.locator("#verifyCode").fill(codes[0])
+    with page.expect_response(lambda r: urlsplit(r.url).path == "/auth/verify") as confirmed:
+        page.locator("#authSubmitVerify").click()
+    assert confirmed.value.status == 200
+    assert h.query("SELECT verified_at,registration_pending FROM panel_accounts WHERE id=%s", (account["id"],))[0]["verified_at"] is not None
     h.login({"email": email})
     expect(page.locator('#orionSetup [data-ob-form="create"]')).to_be_visible()
     assert h.scalar("SELECT count(*) FROM tenant_memberships WHERE account_id=%s", (account["id"],)) == 0
@@ -62,9 +75,13 @@ def test_02_services_wizard_persists_private_address_bindings_buffers_and_real_h
     state = h.service()
     tenant = state["tenant_id"]
     assert h.query("SELECT price_cents,duration_min,prep_min,cleanup_min,active FROM services WHERE tenant_id=%s", (tenant,))[0] == {"price_cents":3500,"duration_min":40,"prep_min":5,"cleanup_min":10,"active":False}
-    h.hours()
-    assert h.scalar("SELECT count(*) FROM working_hours WHERE tenant_id=%s", (tenant,)) == 2
-    assert h.scalar("SELECT count(*) FROM working_breaks WHERE tenant_id=%s", (tenant,)) == 2
+    saved_hours = h.hours()
+    days = saved_hours["configuration"]["business_opening_hours"]["days"]
+    assert sorted(day["weekday"] for day in days if day.get("open")) == [0, 2]
+    assert all(day.get("break_start") == "12:00" and day.get("break_end") == "13:00"
+               for day in days if day.get("open"))
+    assert h.scalar("SELECT count(*) FROM working_hours WHERE tenant_id=%s", (tenant,)) == 0
+    assert h.scalar("SELECT count(*) FROM working_breaks WHERE tenant_id=%s", (tenant,)) == 0
     h.step("channels")
     h.page.locator('#orionSetup [name="assistant_name"]').fill("Recepção sintética E2E")
     h.page.locator('#orionSetup [name="capabilities"][value="catalog_answers"]').check()
@@ -243,43 +260,27 @@ def test_12_pending_email_bound_invitation_cannot_silently_create_an_owner_busin
     assert h.scalar("SELECT count(*) FROM business_onboarding_creations WHERE account_id=%s", (invited["id"],)) == 0
 
 
-def test_13_real_invitation_requires_acceptance_then_explicit_owner_review(journey):
+def test_13_real_professional_invitation_activates_only_individual_access(journey):
     h = journey
     owner, invited = h.account(), h.account(verified=True)
     company = h.tenant(owner, configured=True)
-    invitation = h.invitation(owner, company, invited)
+    professional = h.scalar("SELECT id FROM professionals WHERE tenant_id=%s", (company["id"],))
+    invitation = h.invitation(owner, company, invited, professional_id=professional)
     h.login(invited)
     h.page.goto(h.server.origin + "/convite#token=" + invitation["token"])
     expect(h.page.locator("#inviteAccept")).to_be_visible()
+    expect(h.page.locator("#inviteApprovalHelp")).to_contain_text("acesso à sua área profissional")
     with h.page.expect_response(lambda r: urlsplit(r.url).path == "/api/v1/team-invitations/accept") as accepted:
         h.page.locator("#inviteAccept").click()
-    assert accepted.value.status == 200 and accepted.value.json()["status"] == "claimed"
-    expect(h.page.locator("#inviteMessage")).to_contain_text("Aguarde a aprovação do proprietário")
-    assert h.scalar("SELECT status FROM management_team_invitations WHERE id=%s", (invitation["id"],)) == "claimed"
-    assert h.scalar("SELECT count(*) FROM tenant_memberships WHERE account_id=%s", (invited["id"],)) == 0
-    h.page.goto(h.server.origin + "/panel")
-    expect(h.page.locator("#orionSetup")).to_contain_text("Aguardando aprovação")
-    owner_context = h.context.browser.new_context(ignore_https_errors=True)
-    owner_context.set_default_timeout(15_000)
-    owner_context.route("**/*", h._guard_network)
-    owner_context.on("page", h._observe)
-    try:
-        owner_page = owner_context.new_page()
-        h.login(owner, page=owner_page)
-        owner_page.goto(h.server.origin + "/panel?aba=funcionarios&empresa=" + company["id"])
-        owner_page.locator(f'[data-os-action="approve-invitation"][data-invitation="{invitation["id"]}"]').click()
-        expect(owner_page.locator('#osDialog [data-os-form="confirm"]')).to_be_visible()
-        assert h.scalar("SELECT count(*) FROM tenant_memberships WHERE account_id=%s", (invited["id"],)) == 0
-        with owner_page.expect_response(lambda r: urlsplit(r.url).path.endswith("/team/invitations/" + invitation["id"]) and r.request.method == "PATCH") as approved:
-            owner_page.locator('#osDialog [data-os-form="confirm"] button[type="submit"]').click()
-        assert approved.value.status == 200
-        assert h.query("SELECT role,active FROM tenant_memberships WHERE tenant_id=%s AND account_id=%s", (company["id"], invited["id"]))[0] == {"role":"editor","active":True}
-        assert h.scalar("SELECT status FROM management_team_invitations WHERE id=%s", (invitation["id"],)) == "approved"
-    finally:
-        owner_context.close()
-    h.page.reload()
-    expect(h.page.locator("#appView")).not_to_have_class(re.compile(r"\bob-gated\b"))
-    expect(h.page.locator('[data-os-action="business-setup"]')).to_have_count(0)
+    assert accepted.value.status == 200 and accepted.value.json()["status"] == "approved"
+    assert h.scalar("SELECT status FROM management_team_invitations WHERE id=%s", (invitation["id"],)) == "approved"
+    assert h.query("SELECT role,active FROM tenant_memberships WHERE account_id=%s", (invited["id"],))[0] == {"role":"professional","active":True}
+    assert h.query("SELECT professional_id,active FROM professional_portal_links WHERE account_id=%s", (invited["id"],))[0] == {"professional_id":professional,"active":True}
+    h.page.goto(h.server.origin + "/profissional")
+    expect(h.page.locator("#portal")).to_be_visible()
+    expect(h.page.locator("#companyName")).to_contain_text(company["name"])
+    forbidden = h.api(f"/api/v1/tenants/{company['id']}/management/customers")
+    assert forbidden["status"] == 403
     assert h.scalar("SELECT count(*) FROM business_onboarding_creations WHERE account_id=%s", (invited["id"],)) == 0
 
 
@@ -412,7 +413,6 @@ def test_20_completed_business_channels_remain_disabled_without_touching_any_pro
     h.location()
     h.product()
     h.complete()
-    h.page.locator('[data-ob-action="open-dashboard"]').click()
     h.page.locator('[data-os-route="configuracoes"]').first.click()
     with h.page.expect_response(lambda r: urlsplit(r.url).path.endswith("/qr-channels")) as channels:
         h.page.locator('[data-os-settings="whatsapp"]').click()

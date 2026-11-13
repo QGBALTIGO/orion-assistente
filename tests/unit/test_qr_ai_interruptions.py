@@ -251,7 +251,9 @@ async def test_cancel_pending_flow_does_not_cancel_existing_reservations(convers
     h = conversation
     h.seed("confirm", hold=str(uuid4()))
     reply = await h.turn("quero cancelar")
-    assert reply["step"] == "cancelled" and not h.state()
+    assert reply["step"] == "cancelled" and h.state()["step"] == "menu"
+    assert h.state()["history"] and not any(field in h.state() for field in (
+        "hold", "appointment", "confirmation_summary", "confirmation_message_id", "hold_snapshot"))
     assert "Reservas já confirmadas permanecem" in reply["answer"]
     assert not h.calls["writes"]
     reply = await h.turn("cancelar minha reserva")
@@ -451,9 +453,15 @@ async def test_availability_question_collects_missing_fields_then_reads_real_slo
     assert "Qual serviço" in reply["answer"]
     assert "R$" not in reply["answer"] and not seen
     reply = await h.turn("Quero consultar corte de cabelo")
-    assert "qual profissional" in reply["answer"] and "Corte de cabelo" in reply["answer"]
+    assert (reply.get("_professional_page") and h.state()["availability_query"]["waiting_for"] == "professional"
+            and {str(person["id"]) for person in reply["_professional_page"]["rows"]} == {str(h.bruno), str(h.carlos)}
+            and all(person["name"] in reply["answer"] for person in h.pros)
+            and "Corte de cabelo" in reply["answer"] and not seen and not h.calls["writes"])
     reply = await h.turn("20/11/2026")
-    assert "qual profissional" in reply["answer"] and not seen
+    assert (reply.get("_professional_page") and h.state()["availability_query"]["waiting_for"] == "professional"
+            and {str(person["id"]) for person in reply["_professional_page"]["rows"]} == {str(h.bruno), str(h.carlos)}
+            and all(person["name"] in reply["answer"] for person in h.pros)
+            and "Corte de cabelo" in reply["answer"] and not seen and not h.calls["writes"])
     reply = await h.turn("O Bruno")
     assert "14h30" in reply["answer"] and "20/11" in reply["answer"]
     assert "Corte de cabelo" in reply["answer"] and "*Profissional:* Bruno Souza" in reply["answer"]
@@ -566,13 +574,19 @@ async def test_query_cannot_restore_an_expired_or_missing_confirmation_summary(c
 
 
 @pytest.mark.asyncio
-async def test_rescheduling_review_keeps_original_proposal_and_deadline(conversation):
+async def test_rescheduling_review_keeps_original_proposal_and_deadline(conversation, monkeypatch):
     h = conversation
     appointment = str(uuid4())
     deadline = qr_ai.datetime.now().timestamp() + 40
     summary = "Remarcar para 20/11 às 14:00?"
     h.seed("reschedule_confirm", appointment=appointment, new_start="2026-11-20T14:00:00-04:00",
            confirmation_summary=summary, confirmation_expires_at=deadline)
+    reads = []
+    async def fresh_original(tenant, identity, phone):
+        assert tenant == h.tenant and str(identity) == appointment and phone == "5567999999999"
+        reads.append(identity)
+        return {"status": "confirmed", "professional_id": h.bruno, "services": [h.cut]}
+    monkeypatch.setattr(qr_ai, "appointment_services", fresh_original)
     await h.turn("Quanto custa a barba?")
     assert h.state()["confirmation_requires_review"]
     blocked = await h.turn("sim", preview=False)
@@ -581,6 +595,7 @@ async def test_rescheduling_review_keeps_original_proposal_and_deadline(conversa
     assert summary in reply["answer"] and h.state()["appointment"] == appointment
     assert h.state()["new_start"] == "2026-11-20T14:00:00-04:00"
     assert h.state()["confirmation_expires_at"] == deadline and h.redis.ttls[h.key] == qr_ai.STATE_TTL
+    assert len(reads) == 2
     assert not h.calls["writes"]
 
 

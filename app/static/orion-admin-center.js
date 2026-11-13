@@ -21,7 +21,7 @@
   };
   const icon = name => '<svg class="os-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">'+(circles[name]||"")+'<path d="'+(paths[name]||paths.info)+'"/></svg>';
   const label = {active:"Ativa",suspended:"Suspensa",archived:"Arquivada",erased:"Excluída"};
-  const planNames={essencial:'Essencial',profissional:'Profissional',elite:'Elite'},sourceNames={manual:'Manual',cakto:'Cakto',trial:'Teste grátis',none:'Sem acesso',platform_admin:'Administração'};
+  const planNames={essencial:'Essencial',profissional:'Profissional',elite:'Elite'},sourceNames={manual:'Manual',cakto:'Cakto',pix_prepaid:'Pix pré-pago (renovação manual)',trial:'Teste grátis',none:'Sem acesso',platform_admin:'Administração'};
   const effective=a=>a.effective_plan||{};
   const subscriptionLabel=subscription=>({active:'Ativa',trialing:'Em teste',past_due:'Pagamento pendente',grace:'Em carência',suspended:'Suspensa',canceled:'Cancelada',expired:'Encerrada'})[subscription?.status]||(subscription?'Estado não confirmado':'Sem assinatura');
   const billingStatus=a=>subscriptionLabel(effective(a).commercial_subscription);
@@ -63,7 +63,7 @@
   function frame(){
     const el=$("adminClientCenter");
     el.innerHTML='<div class="os-title-row os-client-heading os-admin-heading"><div><h1>Administração de clientes</h1><p id="adminAccountsCount">Todas as contas cadastradas no Orion</p></div>'+
-      '<div class="os-actions">'+btn("Atualizar lista","refresh",{cls:"os-button os-outline os-small",icon:"refresh",text:"Atualizar"})+'</div></div>'+
+      '<div class="os-actions">'+btn("Demonstrações","demos",{cls:"os-button os-outline os-small",icon:"eye",text:"Demonstrações"})+btn("Atualizar lista","refresh",{cls:"os-button os-outline os-small",icon:"refresh",text:"Atualizar"})+'</div></div>'+
       '<div class="os-stats os-admin-stats" aria-label="Indicadores de clientes">'+
       [["total","Total"],["active","Ativas"],["suspended","Suspensas"],["archived","Arquivadas"]].map(([k,text])=>
         '<div class="os-stat"><strong data-admin-stat="'+k+'">—</strong><small>'+text+'</small></div>').join("")+'</div>'+
@@ -73,7 +73,7 @@
       [["all","Todas"],["active","Ativas"],["suspended","Suspensas"],["archived","Arquivadas"],["erased","Excluídas"]].map(([k,text])=>
         '<button type="button" class="os-pill-tab" role="tab" data-admin-status="'+k+'" aria-selected="'+(state.status===k)+'">'+text+'</button>').join("")+
       '</div></div><div class="os-filter-row" aria-label="Filtros de plano">'+
-      [['plan','Plano',[['all','Todos'],['none','Sem plano'],...Object.entries(planNames)]],['source','Origem',[['all','Todas'],['manual','Manual'],['cakto','Cakto'],['trial','Teste grátis'],['none','Sem acesso']]],['subscriptionStatus','Assinatura',[['all','Todas'],['active','Ativa'],['trialing','Em teste'],['past_due','Pagamento pendente'],['grace','Em carência'],['suspended','Suspensa'],['canceled','Cancelada'],['expired','Encerrada']]]].map(([key,title,options])=>'<div class="os-field"><label for="adminPlanFilter-'+key+'">'+title+'</label><select id="adminPlanFilter-'+key+'" data-admin-plan-filter="'+key+'">'+options.map(([value,text])=>'<option value="'+value+'">'+text+'</option>').join('')+'</select></div>').join('')+'</div><div class="os-space"><div id="adminAccountsResults" aria-live="polite">'+
+      [['plan','Plano',[['all','Todos'],['none','Sem plano'],...Object.entries(planNames)]],['source','Origem',[['all','Todas'],['manual','Manual'],['cakto','Cakto'],['pix_prepaid','Pix pré-pago'],['trial','Teste grátis'],['none','Sem acesso']]],['subscriptionStatus','Assinatura',[['all','Todas'],['active','Ativa'],['trialing','Em teste'],['past_due','Pagamento pendente'],['grace','Em carência'],['suspended','Suspensa'],['canceled','Cancelada'],['expired','Encerrada']]]].map(([key,title,options])=>'<div class="os-field"><label for="adminPlanFilter-'+key+'">'+title+'</label><select id="adminPlanFilter-'+key+'" data-admin-plan-filter="'+key+'">'+options.map(([value,text])=>'<option value="'+value+'">'+text+'</option>').join('')+'</select></div>').join('')+'</div><div class="os-space"><div id="adminAccountsResults" aria-live="polite">'+
       '<div class="os-loading" role="status">Consultando contas…</div></div><section id="adminUnassignedCompanies" class="os-space" aria-live="polite" hidden></section></div>';
     updateStats();
   }
@@ -383,6 +383,12 @@
     if(!button||!isAdmin()||state.busy)return;
     const key=button.dataset.adminControl,id=button.dataset.accountId;
     event.preventDefault();state.trigger=button;
+    if(key==="demos"){
+      const context={request:state.request,role:state.role,onMaintenanceStart:state.onMaintenanceStart};
+      state.epoch++;state.seq++;clearTimeout(state.timer);
+      window.OrionDemoCenter?.open({host:$("adminClientCenter"),request:state.request,role:state.role,onBack:()=>open(context)});
+      return;
+    }
     if(key==="close"){closeDialog();return;}
     if(key==="view"){await view(id);return;}
     if(key==='plan'){const kind=button.dataset.planTarget||'account';await showPlan(kind,kind==='company'?button.dataset.companyId:id);return;}
@@ -405,6 +411,7 @@
   }
   function open({request,role,onMaintenanceStart}){
     if(role!=="admin"||typeof request!=="function")return;
+    window.OrionDemoCenter?.reset();
     state.request=request;state.role=role;state.onMaintenanceStart=onMaintenanceStart;
     state.epoch++;state.seq++;state.modalRead++;state.page=1;state.query="";state.status="all";state.plan='all';state.source='all';state.subscriptionStatus='all';state.stats=null;state.companies=[];state.companyError=null;
     const dialog=$("osDialog");
@@ -421,6 +428,7 @@
     queueMicrotask(()=>{if(epoch===state.epoch)void load();});
   }
   function reset(){
+    window.OrionDemoCenter?.reset();
     state.epoch++;state.seq++;state.modalRead++;state.planEnvelope=null;state.planDraft=null;state.planIntent=null;clearTimeout(state.timer);state.timer=null;
     if(state.owned){state.busy=false;closeDialog();}
     state.request=null;state.role=null;state.selected=null;state.items=[];state.companies=[];state.companyError=null;state.stats=null;

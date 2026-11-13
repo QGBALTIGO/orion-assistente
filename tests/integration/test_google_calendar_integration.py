@@ -138,7 +138,7 @@ async def stage(d):
     state, intent = await start(d)
     response = await d["client"].get("/integrations/google/callback", params={"state": state, "code": "synthetic-code"})
     assert response.status_code == 303, response.text
-    assert response.headers["location"] == f"/panel?aba=agenda&google=choose&empresa={d['a']}"
+    assert response.headers["location"] == f"/painel?aba=agenda&google=choose&empresa={d['a']}"
     assert response.headers["cache-control"] == "no-store"
     return intent
 
@@ -448,7 +448,19 @@ async def test_worker_disabled_disconnected_and_hold_events_do_not_send(google_d
     assert await worker.process_calendar_outbox({}, str(d["a"]), str(item["id"])) == "not_connected"
     after = await outbox(d, identity)
     assert after["attempts"] == 0 and after["next_attempt_at"] > d["now"] + timedelta(minutes=14)
+    assert after["status"] == "dead" and after["last_error"] == "calendar_not_connected"
+    # Do not call Google without consent and do not show an unconnected tenant
+    # as if Google had rejected an authorized delivery.
+    status = (await d["client"].get(d["google_base"] + "/status")).json()
+    assert status["failed"] == 0 and status["sync_status"] == "not_connected"
+    record = (await d["client"].get(d["google_base"] + f"/appointments/{identity}/status")).json()
+    assert record["status"] == "not_connected"
     assert d["google"].calls == []
+    # Explicit OAuth + calendar selection must restore the latest booking.
+    await activate(d)
+    assert (await outbox(d, identity))["status"] == "pending"
+    assert await worker.process_calendar_outbox({}, str(d["a"]), str(item["id"])) == "sent"
+    assert (await outbox(d, identity))["status"] == "sent"
 
 
 @pytest.mark.asyncio

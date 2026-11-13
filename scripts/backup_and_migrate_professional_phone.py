@@ -4,12 +4,16 @@ Repeated deployments perform read-only schema checks. The only DDL is the
 reviewed, nullable professional contact column and its validation constraint.
 """
 from contextlib import contextmanager
+from functools import lru_cache
 import os
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
 
+from alembic.script import ScriptDirectory
+from alembic.script.revision import RevisionError
+from alembic.util.exc import CommandError
 from sqlalchemy import create_engine, text
 from sqlalchemy.pool import NullPool
 
@@ -20,10 +24,38 @@ from scripts.backup_and_migrate_registration import schema_contract_ready as reg
 PREVIOUS = "0039_registration_confirmation"
 TARGET = "0040_professional_phone"
 LOCK_SCOPE, LOCK_RELEASE = 0x4F52494F, 40
+BRAZIL_PHONE_CONSTRAINT = r"CHECK (((phone_e164 IS NULL) OR ((phone_e164)::text ~ '^\+55[1-9][0-9]{9,10}$'::text)))"
+PARAGUAY_PHONE_CONSTRAINT = r"CHECK (((phone_e164 IS NULL) OR ((phone_e164)::text ~ '^(\+55[1-9][0-9]{9,10}|\+5959[0-9]{8})$'::text)))"
 
 
 def normalized(value):
     return "".join((value or "").split())
+
+
+@lru_cache(maxsize=1)
+def _revision_graph():
+    # Cache repository metadata only, never a database readiness result. A
+    # release may run from another cwd; no user-supplied Alembic config is read.
+    return ScriptDirectory(str(Path(__file__).resolve().parents[1] / "alembic"))
+
+
+def _reviewed_phone_constraint(version):
+    if not isinstance(version, str) or not 1 <= len(version) <= 128:
+        return None
+    try:
+        scripts = _revision_graph()
+        revision = scripts.get_revision(version)
+        # Alembic also resolves aliases and partial IDs. Database verification
+        # accepts only the complete revision ID present in this source tree.
+        if revision is None or revision.revision != version:
+            return None
+        ancestors = {item.revision for item in scripts.iterate_revisions(version, "base")}
+    except (CommandError, RevisionError, OSError, ImportError):
+        return None
+    if TARGET not in ancestors:
+        return None
+    return (PARAGUAY_PHONE_CONSTRAINT if "0052_paraguay_phone" in ancestors
+            else BRAZIL_PHONE_CONSTRAINT)
 
 
 @contextmanager
@@ -102,8 +134,12 @@ def professional_contract_ready(raw, *, expect_phone):
             """)).first()
             if not expect_phone:
                 return column is None and constraint is None
-            expected_check = r"CHECK (((phone_e164 IS NULL) OR ((phone_e164)::text ~ '^\+55[1-9][0-9]{9,10}$'::text)))"
-            return (tuple(column or ()) == ('varchar', 'YES', 16, None)
+            version = db.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+            # Descendant migrations retain the reviewed 0052 policy. Unknown
+            # revisions fail closed; no arbitrary or older regex is accepted.
+            expected_check = _reviewed_phone_constraint(version)
+            return (expected_check is not None
+                    and tuple(column or ()) == ('varchar', 'YES', 16, None)
                     and constraint is not None and tuple(constraint[:3]) == (True, False, False)
                     and normalized(constraint[3]) == normalized(expected_check))
     finally:

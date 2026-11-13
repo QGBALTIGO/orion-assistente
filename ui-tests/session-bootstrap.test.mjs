@@ -96,6 +96,37 @@ test('an immediately restored member session finishes without waiting for a deco
   assert.equal(sessionReads(h).length, 1);
 });
 
+test('a slow business lookup keeps the splash on top without exposing setup links', async t => {
+  const businessRead = deferred();
+  const h = await createPanel(t, { role: 'member', initialRoute: 'dashboard', respond: path =>
+    path === '/api/v1/account/businesses' ? businessRead.promise : undefined });
+  expectScreens(h, { boot: true, login: false, app: true });
+  assert.match(h.element('#sessionBootMessage').textContent, /Conferindo acesso/);
+  assert.equal(h.element('#orionSetupAccess').hidden, true);
+  assert.equal(h.element('#appView').classList.contains('ob-gated'), true);
+  businessRead.resolve([{ id: '10000000-0000-4000-8000-000000000001', role: 'owner',
+    name: 'Empresa de teste', timezone: 'America/Campo_Grande' }]);
+  await flush();
+  expectScreens(h, { boot: false, login: false, app: true });
+  assert.equal(h.element('#appView').classList.contains('ob-gated'), false);
+  assert.equal(h.element('#orionSetupAccess').hidden, true);
+});
+
+test('the verified business still shows the splash until onboarding entry is decided', async t => {
+  const entryRead = deferred();
+  const h = await createPanel(t, { role: 'member', initialRoute: 'dashboard', respond: path =>
+    path === '/api/v1/onboarding/entry' ? entryRead.promise : undefined });
+  expectScreens(h, { boot: true, login: false, app: true });
+  assert.equal(h.element('#orionSetupAccess').hidden, true,
+    'no account or plan actions may appear while entry decision is pending');
+  entryRead.resolve({enabled: true, kind: 'dashboard',
+    tenant_id: '10000000-0000-4000-8000-000000000001'});
+  await flush();
+  expectScreens(h, { boot: false, login: false, app: true });
+  assert.equal(h.element('#appView').classList.contains('ob-gated'), false);
+  assert.equal(h.element('#orionSetupAccess').hidden, true);
+});
+
 test('login appears only after the session endpoint confirms that the session is absent', async t => {
   const pending = deferred();
   const h = await createPanel(t, { respond: path => {

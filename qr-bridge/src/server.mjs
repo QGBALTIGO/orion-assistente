@@ -1,3 +1,11 @@
+import {makeBoundedCache} from './bounded-cache.mjs';
+import {readAuthorizedRetry} from './retry-identity.mjs';
+import {useDurableAuthState} from './durable-auth.mjs';
+import {fenceSignalRepository} from './signal-fence.mjs';
+import {makeConnectionHealth,disconnectPolicy,sustainedRecovery} from './connection-health.mjs';
+import {disconnectEvidence} from './disconnect-evidence.mjs';
+import {selectWaWebVersion} from './wa-version-policy.mjs';
+import {classifyPairedAuth} from './paired-auth-state.mjs';
 import {normalizeInbound,updateEvent,callEvent,safetyControl,queueControl} from './inbound-event.mjs';
 /**
  * Orion Linked Device — aparelho de teste único, transporte não oficial.
@@ -7,21 +15,27 @@ import {normalizeInbound,updateEvent,callEvent,safetyControl,queueControl} from 
  */
 import http from "node:http";
 import {databaseBackup} from './database-backup-store.mjs';
-import path from "node:path";
+import path, {join as joinPath} from "node:path";
 import fs from "node:fs";
 import {timingSafeEqual,randomUUID,createHmac} from "node:crypto";
-import makeWASocket,{DisconnectReason,Browsers,DEFAULT_CONNECTION_CONFIG,useMultiFileAuthState,fetchLatestWaWebVersion,makeCacheableSignalKeyStore,generateWAMessage,generateMessageIDV2,BufferJSON,downloadMediaMessage} from "@whiskeysockets/baileys";
+import makeWASocket,{DisconnectReason,Browsers,DEFAULT_CONNECTION_CONFIG,Curve,proto,initAuthCreds,fetchLatestWaWebVersion,makeCacheableSignalKeyStore,generateWAMessage,generateWAMessageFromContent,prepareWAMessageMedia,generateMessageIDV2,BufferJSON,downloadMediaMessage} from "@whiskeysockets/baileys";
 import QRCode from "qrcode";
-import NodeCache from "@cacheable/node-cache";
 import {validPhone,normalizeFromJid,extractText,resolveMessagePhone,freshQR,formatPairingCode,connectionPhase,reconnectPlan} from "./core.mjs";
 import {sendConnectionNoticeOnce,noticeState} from "./connection-alert.mjs";
 import {makeMessageRetryStore,deliveryFromAck,advanceDelivery} from "./message-retry-store.mjs";
 import {makeEncryptedRetryStore} from "./encrypted-retry-store.mjs";
-import {sendStoredText} from "./reliable-send.mjs";
+import {sendStoredText,sendStoredProtocol} from "./reliable-send.mjs";
+import {buildChatbotContent} from './chatbot-message.mjs';
+import {createNativeTestCanary,loadNativeTestAsset} from './native-test-canary.mjs';
 import {makeSendCapacity} from "./send-capacity.mjs";
 import {makeConversationIntake} from "./conversation-intake.mjs";
-import {makeAssistantTyping} from "./assistant-typing.mjs";
+import {createAssistantIngress} from './assistant-ingress.mjs';
+import {collectIngressReviewBody} from './assistant-ingress-review.mjs';
+import {verifyIngressReviewAssertion} from './ingress-review-auth.mjs';
+import {withIngressHealth} from './ingress-health.mjs';
+import {makeOutgoingPresence} from './outgoing-presence.mjs';
 import {inspectLookup,inspectDelivery} from "./recipient-diagnostics.mjs";
+import {resolveTransactionalRecipient} from "./transactional-recipient.mjs";
 import {makeDurableInbox} from "./durable-inbox.mjs";
 import {shouldIngestUpsert,timestampMs,ingestionHealth} from "./linked-session-health.mjs";
 import {makeConnectedStore} from "./connected-store.mjs";
@@ -29,26 +43,37 @@ import {makeContactNames,installContactNameEvents,requestedContactPhones,request
 import {makeContactNameSync} from './contact-name-forward.mjs';
 import {transcriberConfig,cleanPictureUrl,transcribeAudio,handleCallOffers} from "./connected-features.mjs";
 import {protectSignalSessionLogs} from "./signal-log-safety.mjs";
-import {forwardAssistant,registerAssistantIngress} from "./ai-forward.mjs";
+import {forwardAssistant,registerAssistantIngress,acknowledgeAssistantPresentation} from "./ai-forward.mjs";
+import {createAssistantPresentationStore,relayAssistantPresentation,assistantNativeMode,ASSISTANT_SELECTION_TEXT} from './assistant-presentation.mjs';
 import {isBookingProtocolMessage,fetchBookingProtocolConfirmation,resolveBookingSenderPhone} from "./appointment-confirmation.mjs";
 import {makeBookingIntakeGuard} from './booking-intake-guard.mjs';
 import {allowAssistantRecipient,allowAssistantAudio,pilotNumber} from "./ai-pilot.mjs";
-import {deliveryPolicy} from "./pilot-send-policy.mjs";
+import {deliveryPolicy,requiresPreRelayCache} from "./pilot-send-policy.mjs";
+import {shouldCacheLinkedSelfText} from "./retry-capture-policy.mjs";
 import {resolvePilotRecipient,makePilotDeviceCache} from "./pilot-recipient.mjs";
 import {transcribeAssistantAudio} from "./ai-audio.mjs";
 import {makeTransportDiagnostics,receiptDiagnosticDetails,usyncDeviceDomainCounts,encryptionTargetDetails,observeSignalRepository} from "./transport-diagnostics.mjs";
 import {backupAuth} from "./auth-backup.mjs";
 import {createChannelRoutes} from './channel-routes.mjs';
 import {createBaileysChannelSession} from './channel-session.mjs';
+import {installStaleSocketRejectionGuard} from './stale-socket-rejection.mjs';
 import {createLegacyCentral} from './legacy-central.mjs';
 import {testReplyFor} from './trigger-test.mjs';
 import {makeTestFallbackText,sendTestCloudCta,selectTestCtaMode} from './test-url-button.mjs';
 import {runConsentedPairSmoke,SMOKE_ID,APPOINTMENT_QA_ID} from './consented-live-qa.mjs';
 
+installStaleSocketRejectionGuard();
+
 const legacyCentral=createLegacyCentral({
   start:(id,key)=>channelRoutes.adopt(id,key),send:(id,key,payload)=>channelRoutes.send(id,key,payload),
-  sessionDigest:()=>status==='connected'?createHmac('sha256',KEY).update('orion:preserved-primary-session:v1\0'+pairedNumber).digest('hex'):null,
-  status:()=>status,rawSend:(phone,text,options)=>sendLegacyRaw(phone,text,options)});
+  // pairedNumber is set only after a successful provider open and is retained
+  // across disconnects. Keeping this proof readable does not make the adapter
+  // active; active() still requires status==='connected'. It only lets the
+  // fenced no-replay reviewer bind the preserved journal after a 401 logout.
+  sessionDigest:()=>pairedNumber?createHmac('sha256',KEY).update('orion:preserved-primary-session:v1\0'+pairedNumber).digest('hex'):null,
+  status:()=>status,rawSend:(phone,text,options)=>sendLegacyRaw(phone,text,options),
+  onTransportLeaseLost:()=>stopPrimaryTransport('lease_lost'),publicHealth:()=>primaryHealth.snapshot(),
+  outgoingReady:source=>source==='manual'||primaryIngressCanAutomate?.()===true});
 const channelRoutes=createChannelRoutes({sessionFactory:context=>context.legacyTransport?
   legacyCentral.attach(context):createBaileysChannelSession(context)});
 
@@ -58,14 +83,21 @@ const KEY=process.env.QR_BRIDGE_TOKEN || "";
 const transport=makeTransportDiagnostics({secret:KEY,
   emit:event=>console.info('Orion transport '+JSON.stringify(event))});
 const logger=transport.logger;
+let primaryIngressDiagnostics=null,primaryIngressCanAutomate=null,primaryIngressReview=null,
+  stopPrimaryIngress=()=>{},preparePrimaryReview=()=>{};
+const primaryHealth=makeConnectionHealth({emit:event=>console.info(JSON.stringify(event)),
+  readiness:value=>withIngressHealth(value,primaryIngressDiagnostics?.()),
+  isSyncPending:()=>socket?.ev?.isBuffering?.()===true,onStale:reason=>{
+  if(stopping||status!=='connected'||!socket)return;
+  try{socket.end(Object.assign(Error(reason),{output:{statusCode:408}}));}
+  catch{stopPrimaryTransport(reason);}
+}});
 // libsignal-node 6.x logs full SessionEntry objects including ratchet keys.
 // Redact those exact calls before any socket/session operation; keep normal logs.
 protectSignalSessionLogs();
 // Baileys 6.7.24 accepts CacheStore here. A bounded TTL protects against
 // stale Signal retry state; it does NOT change long-lived auth credentials.
-const msgRetryCounterCache=new NodeCache({
-  stdTTL:600,checkperiod:120,useClones:false
-});
+const msgRetryCounterCache=makeBoundedCache({max:10000,ttlMs:600000});
 if(Buffer.byteLength(KEY)<32 || !SESSION_DIR.startsWith("/data/")){
   throw Error("Configuração segura do bridge não encontrada");
 }
@@ -76,16 +108,29 @@ try {
   const candidate=fs.readFileSync(ACTIVE_MARKER,"utf8").trim();
   if(candidate.startsWith(SESSION_DIR+"-renew-")&&candidate.startsWith("/data/"))authDir=candidate;
 } catch {}
-const authBackup=backupAuth({directory:authDir,backupDirectory:'/data/orion-auth-backups',
-  secret:KEY,label:'before-transport-diagnostics-v1'});
-console.info('Orion auth backup '+JSON.stringify(authBackup));
+let authBackup={state:'pending_owner'},authBackupDirectory=null;
 const socketDeviceCaches=new WeakMap();
+const socketOutgoingPresence=new WeakMap();
 let newLinkNoticeAuthDir=null;
-let socket=null,generation=0,timer=null,attempts=0,status="starting",
+let stopping=false,resumeTimer=null;
+let socket=null,generation=0,timer=null,attempts=0,sessionRecoveryAttempts=0,status="starting",
   connectStartedAt=Date.now(),lastQrAt=0,lastDisconnectCode=null,everConnected=false,
   pairingRequestedForGeneration=-1, pairPhone="",saveQueue=Promise.resolve(),
   notifiedGeneration=-1,
   qr="",qrAt=0,lastError=null,pairedNumber="",pairingCode="",pairAt=0,requesting=false;
+function stopPrimaryTransport(reason){
+  stopPrimaryIngress();
+  ++generation;clearTimeout(timer);timer=null;
+  pauseContactNames();
+  const previous=socket;socket=null;
+  socketOutgoingPresence.get(previous||{})?.close();
+  qr='';qrAt=0;pairingCode='';pairAt=0;connectedSince=0;
+  status='stopped';
+  lastError=reason==='lease_lost'?'Aguardando a responsabilidade exclusiva pela sessão do WhatsApp.':null;
+  try{previous?.ev?.removeAllListeners();}catch{}
+  try{previous?.end(undefined);}catch{}
+  primaryHealth.stop(reason);
+}
 let durableInbox=makeDurableInbox({directory:authDir,secret:KEY});
 let connectedStore=makeConnectedStore({directory:authDir,secret:KEY});
 let contactNames=makeContactNames({directory:authDir,secret:KEY});
@@ -130,7 +175,9 @@ let encryptedRetry=makeEncryptedRetryStore({
   deserialize:str=>JSON.parse(str,BufferJSON.reviver)
 });
 const retryStore={
+  entry:key=>retryMessages.entry(key)||encryptedRetry.entry(key),
   save(key,message){
+    if(stopping||!legacyCentral.transportCurrent())return false;
     const memory=retryMessages.save(key,message);
     const encrypted=encryptedRetry.save(key,message);
     return memory && encrypted;
@@ -139,12 +186,15 @@ const retryStore={
     const cached=retryMessages.get(key);
     if(cached)return cached;
     const persisted=encryptedRetry.get(key);
-    if(persisted)retryMessages.save(key,persisted);
+    // Never bind a legacy cache entry to untrusted caller-supplied addressing.
+    const entry=encryptedRetry.entry(key);
+    if(persisted&&entry?.identity?.peer)retryMessages.save({id:entry.identity.id,remoteJid:entry.identity.peer,fromMe:entry.identity.fromMe},persisted);
     return persisted;
   }
 };
 const retryDiagnostics={
-  cacheHits:0,cacheMisses:0,prepared:0,relayAccepted:0,
+  cacheHits:0,cacheMisses:0,cacheMissTracked:0,cacheMissUntracked:0,
+  persistedSelfTexts:0,persistFailures:0,prepared:0,relayAccepted:0,
   receiptUpdates:0,delivered:0,read:0,lastDeliveryDelayMs:null
 };
 const deliveryReceipts=new Map();
@@ -165,6 +215,8 @@ function pushMessage(item){
   persistInbox();
 }
 function visibleStatus(){
+  if(status==='connected'&&socket?.ws&&socket.ws.isOpen===false)return 'degraded';
+  if(status==='connected'&&['degraded','needs_attention'].includes(primaryHealth.snapshot().state))return primaryHealth.snapshot().state;
   if(status==="pairing"&&pairAt>0&&Date.now()-pairAt>=90000)
     return "pair_expired";
   return connectionPhase(status,qrAt,connectStartedAt);
@@ -172,6 +224,7 @@ function visibleStatus(){
 function stats(){
   const phase=visibleStatus();
   return {status:phase,hasQr:phase==="qr_ready"&&!!qr&&freshQR(qrAt),
+    connection_health:primaryHealth.snapshot(),
     lastError,disconnectCode:lastDisconnectCode,
     waitingSeconds:Math.floor((Date.now()-connectStartedAt)/1000),
     phone:status==="connected"?(pairedNumber||null):null,
@@ -210,8 +263,11 @@ function stats(){
     controlStorage:connectedStore.health(),contactNameStorage:contactNames.health()};
 }
 function auth(req){
-  const input=Buffer.from(String(req.headers["x-orion-bridge-key"]||""));
-  const expected=Buffer.from(KEY);
+  // A blank or short secret must NEVER authorize a blank header.
+  if(typeof KEY!=="string"||Buffer.byteLength(KEY,"utf8")<32||Buffer.byteLength(KEY,"utf8")>256)return false;
+  const header=req.headers["x-orion-bridge-key"];
+  if(typeof header!=="string")return false;
+  const input=Buffer.from(header,"utf8"),expected=Buffer.from(KEY,"utf8");
   return input.length===expected.length&&timingSafeEqual(input,expected);
 }
 function reply(res,code,data){
@@ -232,7 +288,7 @@ function collectBody(req){
     req.on("error",reject);
   });
 }
-function installListeners(client,mine,saveCreds,notifyNewLink=false){
+function installListeners(client,mine,saveCreds,notifyNewLink=false,authRegistrationId=null){
   // Capture the store for this socket. Old callbacks may never write into a
   // replacement account's registry, including after async PN resolution.
   const namesStore=contactNames;
@@ -264,10 +320,12 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
   // Persist auth state before starting the replacement socket.
   client.ev.on("creds.update",()=>{
     transport.record('creds_update');
-    saveQueue=saveQueue.then(()=>saveCreds()).catch(()=>{
-      lastError="Falha ao salvar sessão WhatsApp. Não tente novo vínculo sem verificar o volume.";
+    if(mine!==generation)return;
+    try{saveCreds();saveQueue=Promise.resolve();}
+    catch{
+      lastError="Falha ao salvar sessão WhatsApp. Envios interrompidos; credenciais não foram reiniciadas.";
       console.warn("Orion QR: falha ao salvar credenciais (dados omitidos)");
-    });
+    }
   });
   client.ev.on("messages.update",updates=>{
     if(mine!==generation)return;
@@ -313,8 +371,102 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
   const handledBookingProtocols=new Set();
   const bookingAdmission=makeBookingIntakeGuard();
   const intakeCurrent=()=>mine===generation&&socket===client&&status==='connected';
-  const typingPresence=makeAssistantTyping({socket:client,pilotPhone:pilotNumber,isConnected:intakeCurrent,
-    isAllowed:phone=>allowAssistantRecipient(phone,connectedStore.settings())});
+  let assistantPresentationStore;
+  const typingPresence={...makeOutgoingPresence({socket:client,isConnected:()=>intakeCurrent()&&legacyCentral.transportCurrent()}),
+    assistantPresentations(){
+      if(!Number.isSafeInteger(authRegistrationId)||authRegistrationId<1)throw Error('assistant_presentation_identity_unavailable');
+      const scope=legacyCentral.ingressScope?.();
+      return assistantPresentationStore||(assistantPresentationStore=createAssistantPresentationStore({
+        directory:path.join(authDir,'assistant-presentations'),secret:KEY,
+        scope:{tenant:scope?.tenant_id??null,channel:scope?.channel_id??null,self:normalizeFromJid(client.user?.id),registration:authRegistrationId}}));
+    }};
+  socketOutgoingPresence.set(client,typingPresence);
+  const assistantSelectionDiagnostic=(phone,id)=>(category,reference=id)=>{
+    try{const scope=legacyCentral.ingressScope?.();
+      if(assistantNativeMode({tenantId:scope?.tenant_id,channelId:scope?.channel_id,phone,env:process.env})==='native')
+        transport.record('assistant_selection',reference,{category});
+    }catch{/* Observability cannot alter inbound processing. */}
+  };
+  const nativeCanary=createNativeTestCanary({directory:authDir,secret:KEY,env:process.env,
+    isCurrent:()=>intakeCurrent()&&legacyCentral.transportCurrent(),
+    isReady:()=>!ingressFault&&(!assistantIngress||assistantIngress.canAutomate()),
+    assertCurrent:()=>legacyCentral.assertTransportCurrent(),allowedSender:phone=>legacyCentral.allowed(phone),
+    getScope:()=>{const value=legacyCentral.nativeTestScope();return value?{...value,native_generation:mine}:null;},
+    resolvePhone:key=>resolveMessagePhone(key,client),isBusy:()=>inboundIntake.pending()>0||assistantQueues.size>0,
+    send:(phone,action,options)=>sendLegacyProtocol(phone,action,options)});
+  let assistantIngress=null,ingressIdentity=null,ingressFault=null,ingressTimer=null,replayRunning=false;
+  let opaqueAdmissionAt=Date.now(),opaqueAdmissionCount=0;
+  const ingressDiagnostics=()=>ingressFault?{state:'unavailable',error_code:'assistant_ingress_unavailable',
+    pending:assistantIngress?.diagnostics().pending||0,blocked:assistantIngress?.diagnostics().blocked||0}:
+    assistantIngress?.diagnostics();
+  if(legacyCentral.configured()){
+    primaryIngressDiagnostics=ingressDiagnostics;
+    primaryIngressCanAutomate=()=>!ingressFault&&assistantIngress?.canAutomate()===true;
+  }
+  const reviewPrimaryIngress=async(body,authority)=>{
+    // MASTER is also the adopted PRIMARY credential. The signed assertion
+    // binds the platform-owner proxy audit; it is not a second secret boundary.
+    const reviewCurrent=()=>!stopping&&mine===generation&&legacyCentral.transportCurrent()&&
+      legacyCentral.reviewScope?.()?.session_digest===ingressIdentityScope?.session_digest;
+    if(!assistantIngress||ingressFault||!reviewCurrent()||!legacyCentral.configured())
+      throw Object.assign(Error('ingress_review_not_ready'),{status:409,code:'ingress_review_not_ready'});
+    return assistantIngress.operatorReview(body,{authority,isCurrent:reviewCurrent,
+      assertCurrent:()=>legacyCentral.assertTransportCurrent(),getScope:()=>{
+        const scope=legacyCentral.reviewScope?.();
+        return scope&&Number.isSafeInteger(authRegistrationId)&&authRegistrationId>=1?{...scope,
+          auth_epoch:createHmac('sha256',KEY).update('orion:assistant-ingress-auth-epoch:v1\0'+scope.session_digest+'\0'+authRegistrationId).digest('hex')}:null;
+      },
+      // Only stored authenticated PN hints are used. No network lookup, guessed
+      // LID, display name, or arbitrary target supplied by the operator body.
+      resolvePhone:key=>resolveMessagePhone(key,null),allowedSender:phone=>legacyCentral.reviewAllowed?.(phone)===true});
+  };
+  if(legacyCentral.configured())primaryIngressReview=reviewPrimaryIngress;
+  stopPrimaryIngress=({preserveReview=false}={})=>{clearTimeout(ingressTimer);ingressTimer=null;assistantIngress?.abandon();typingPresence.close();
+    if(!preserveReview&&primaryIngressReview===reviewPrimaryIngress)primaryIngressReview=null;};
+  let ingressIdentityScope=null;
+  function ensureAssistantIngress({reviewOnly=false}={}){
+    if(!legacyCentral.configured())return null;
+    const bound=reviewOnly?legacyCentral.reviewScope?.():legacyCentral.ingressScope();
+    const scope=bound&&{tenant_id:bound.tenant_id,channel_id:bound.channel_id,
+      session_digest:bound.session_digest};
+    if(!scope)throw Error('assistant_ingress_scope_unavailable');
+    const identity=JSON.stringify([scope.tenant_id,scope.channel_id,scope.session_digest]);
+    if(assistantIngress&&identity===ingressIdentity)return assistantIngress;
+    assistantIngress?.abandon();ingressIdentity=identity;
+    ingressIdentityScope=scope;
+    // Journal authority follows the adopted SQL lease, not WebSocket liveness.
+    // Every business/transport path still requires intakeCurrent(); this only
+    // keeps the encrypted no-replay review available after provider logout.
+    const current=()=>!stopping&&mine===generation&&legacyCentral.transportCurrent()&&
+      JSON.stringify((()=>{const value=legacyCentral.reviewScope?.();
+        return value?[value.tenant_id,value.channel_id,value.session_digest]:null;})())===identity;
+    assistantIngress=createAssistantIngress({directory:path.join(authDir,'assistant-ingress-encrypted'),secret:KEY,
+      scope,isCurrent:current,serialize:value=>JSON.stringify(value,BufferJSON.replacer),
+      deserialize:value=>JSON.parse(value,BufferJSON.reviver)});
+    ingressFault=null;return assistantIngress;
+  }
+  preparePrimaryReview=()=>{
+    if(!legacyCentral.configured()||!pairedNumber)return;
+    try{ensureAssistantIngress({reviewOnly:true});}
+    catch{ingressFault=true;transport.record('assistant_ingress_unavailable');}
+  };
+  function scheduleIngressRecovery(){
+    if(!legacyCentral.configured()||!intakeCurrent()||ingressTimer||!assistantIngress?.diagnostics().pending)return;
+    ingressTimer=setTimeout(()=>{ingressTimer=null;void replayAssistantIngress();},5000);ingressTimer.unref?.();
+  }
+  async function replayAssistantIngress(){
+    if(replayRunning||!intakeCurrent())return;
+    replayRunning=true;
+    try{
+      const journal=ensureAssistantIngress();
+      // Capture is bounded independently of the expensive identity/API lane.
+      // Controls may still be admitted while a previous started turn needs review.
+      const entries=journal.pending().slice(0,8).filter(entry=>!assistantQueues.has(String(mine)+':'+entry.id));
+      if(entries.length)await receive({messages:entries.map(entry=>entry.message.raw),type:'notify'},
+        new Map(entries.map(entry=>[entry.id,entry])));
+    }catch{ingressFault=true;transport.record('assistant_ingress_unavailable');}
+    finally{replayRunning=false;scheduleIngressRecovery();}
+  }
   const groupSetting=(name,fallback,max)=>{
     const raw=process.env[name],value=Number(raw);
     return raw!==undefined&&Number.isSafeInteger(value)&&value>=0&&value<=max?value:fallback;
@@ -323,12 +475,33 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
   const revisionEnabled=process.env.QR_AI_INTAKE_REVISION_ENABLED==='1'||legacyCentral.configured();
   const summaryReviewRequired=new Map();
   const inboundIntake=makeConversationIntake({
+    retryUnconsumedNoticeFailures:legacyCentral.configured(),
     settleMs,maxGroupMs:Math.max(settleMs,groupSetting('QR_AI_GROUP_MAX_WAIT_MS',1200,5000)),
     isDuplicate:({messageId})=>seen.has('wa:'+messageId),
+    beforeConsume:batch=>{if(assistantIngress)assistantIngress.consume(batch.messageIds);},
     onRejected:async batch=>{
       for(const id of batch.messageIds)transport.record('inbound_batch_rejected',id,{category:batch.reason});
       if(batch.reason==='stale'||!batch.isCurrent()||!intakeCurrent())return;
       const entries=batch.messageIds.map(id=>inboundMetadata.get(id)).filter(item=>item?.allowed);
+      if(assistantIngress){
+        // Only the live, durably preparing attempt can prove that no business
+        // consumer ran. Unknown/legacy/consuming entries stay blocked.
+        try{
+          const failed=assistantIngress.failPreparation(batch.messageIds,batch.reason);
+          if(!failed)return;
+          const phone=entries[0]?.phone;
+          if(phone)summaryReviewRequired.set(phone,true);
+          const current=()=>intakeCurrent()&&batch.isCurrent()&&!!phone&&entries.every(item=>item.phone===phone)&&
+            Date.now()<failed.expires_at&&legacyCentral.allowed(phone)&&assistantIngress.canAutomate();
+          if(!current()||!Number.isSafeInteger(failed.control_revision)||typeof legacyCentral.preparationFailed!=='function')return;
+          const proofs=failed.message_ids.map(id=>inboundMetadata.get(id)?.noticeProof);
+          if(!assistantIngress.claimPreparationNotice(failed.operation_id))return;
+          let outcome;
+          try{outcome=await legacyCentral.preparationFailed({phone,...failed},{noticeProofs:proofs,isCurrent:current});}
+          finally{assistantIngress.finishPreparationNotice(failed.operation_id,outcome);}
+        }catch{for(const id of batch.messageIds)if(assistantIngress.active(id))assistantIngress.review(id);}
+        return;
+      }
       const phone=entries[0]?.phone;
       if(legacyCentral.configured()&&!allowAssistantRecipient(phone,connectedStore.settings()))return;
       const current=()=>intakeCurrent()&&batch.isCurrent()&&!!phone&&
@@ -344,26 +517,45 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
     consume:async batch=>{
       const entries=batch.messages.map(item=>inboundMetadata.get(item.id));
       const phone=entries[0]?.phone,traceId=batch.messages[0]?.id;
-      const current=()=>intakeCurrent()&&batch.isCurrent()&&!!phone&&
+      const ids=batch.messages.map(item=>item.id);
+      const provenance=assistantIngress?.consumptionProof(ids);
+      if(assistantIngress&&entries.some(item=>item?.selection&&!assistantIngress.allowsSelection(phone,item.selectionProvenance))){
+        for(const id of ids)if(assistantIngress.active(id))assistantIngress.complete(id);
+        return {state:'policy_skipped',not_committed:true};
+      }
+      const authorized=()=>intakeCurrent()&&batch.isCurrent()&&!!phone&&
         entries.every(item=>item?.allowed&&item.phone===phone)&&
         (legacyCentral.configured()?legacyCentral.allowed(phone):allowAssistantRecipient(phone,connectedStore.settings()));
+      const current=()=>authorized()&&(!assistantIngress||(!ingressFault&&assistantIngress.canConsume(ids)&&
+        assistantIngress.isProvenanceCurrent(phone,provenance)&&
+        entries.every(item=>!item?.selection||assistantIngress.allowsSelection(phone,item.selectionProvenance))));
+      if(assistantIngress)await assistantIngress.waitForAdmission(ids,{isCurrent:()=>!ingressFault&&authorized()});
       if(!current())return;
-      return typingPresence.run({phone,chatJid:entries[0]?.jid,isCurrent:current},async typing=>{
+      const typing=typingPresence.begin({phone,chatJid:entries[0]?.jid,isCurrent:current});let outcome;
+      try{outcome=await (async()=>{
       if(legacyCentral.configured()){
         if(!allowAssistantRecipient(phone,connectedStore.settings()))return;
         return legacyCentral.forward({phone,message_id:traceId,message_ids:batch.messages.map(item=>item.id),
-          text:batch.text,intake_revision:batch.intakeRevision,...(entries.some(item=>item.event)?{envelope:entries.findLast(item=>item.event)?.event}:{})},
-          {noticeProofs:entries.map(item=>item.noticeProof),isCurrent:current,beforeReply:value=>typing.beforeReply(value)});
+          text:batch.text,parts:batch.messages.map(item=>({message_id:item.id,text:item.text})),intake_revision:batch.intakeRevision,
+          ...(entries.length===1&&entries[0].selection?{selection:entries[0].selection}:{}),
+          ...(assistantIngress?.requiresReview(phone)||entries.length>1&&entries.some(item=>item.selection)?{require_summary_review:true}:{}),
+          ...(entries.some(item=>item.event)?{envelope:entries.findLast(item=>item.event)?.event}:{})},
+          {noticeProofs:entries.map(item=>item.noticeProof),isCurrent:current,presentationProvenance:provenance,
+            beforeReply:value=>typing.beforeReply(value)});
       }
       transport.record('ai_forward',traceId,{count:batch.messages.length});
-      let answer;
-      try{answer=await forwardAssistant({apiUrl:process.env.QR_AI_API_URL,token:KEY,phone,
+      let answer,response;
+      const interactionSupported=entries.every(item=>item.noticeProof?.assistant_interactions===1);
+      try{response=await forwardAssistant({apiUrl:process.env.QR_AI_API_URL,token:KEY,phone,
         messageId:traceId,messageIds:batch.messages.map(item=>item.id),text:batch.text,intakeRevision:batch.intakeRevision,
+        ...(process.env.QR_AI_PARTS_ENABLED==='1'?{parts:batch.messages.map(item=>({message_id:item.id,text:item.text}))}:{}),
         profile:namesStore.profile(phone),isCurrent:current,...(entries.some(item=>item.event)?{envelope:entries.findLast(item=>item.event)?.event}:{}),
-        requireSummaryReview:revisionEnabled?summaryReviewRequired.get(phone)!==false:undefined});}
+        interactionSupported,...(entries.length===1&&entries[0].selection?{selection:entries[0].selection}:{}),
+        requireSummaryReview:entries.length>1&&entries.some(item=>item.selection)?true:revisionEnabled?summaryReviewRequired.get(phone)!==false:undefined});
+        answer=typeof response==='string'?response:response?.answer;}
       catch(error){if(revisionEnabled)summaryReviewRequired.set(phone,true);transport.record('ai_forward_failed',traceId);throw error;}
-      if(answer?.state==='superseded'&&answer?.not_committed===true){
-        if(revisionEnabled)summaryReviewRequired.set(phone,true);return answer;
+      if(response?.state==='superseded'&&response?.not_committed===true){
+        if(revisionEnabled)summaryReviewRequired.set(phone,true);return response;
       }
       if(!current()){
         if(revisionEnabled)summaryReviewRequired.set(phone,true);return;
@@ -375,11 +567,23 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
       }
       transport.record('ai_answer',traceId);
       try{
-        const sent=await send(phone,answer,{waitForCapacity:true,isCurrent:current});
+        const sent=await send(phone,answer,{waitForCapacity:true,isCurrent:current,
+          ...(response?.presentation?{presentation:response.presentation,source:'assistant'}:{})});
         if(revisionEnabled)summaryReviewRequired.set(phone,!sent?.accepted||!current());
         transport.record(sent?.accepted?'ai_relay_returned':'ai_send_unconfirmed',traceId);
+        return sent;
       }catch(error){if(revisionEnabled)summaryReviewRequired.set(phone,true);transport.record('ai_send_failed',traceId);throw error;}
-      });
+      })();}finally{typing.stop();}
+      if(assistantIngress&&outcome?.state==='superseded'&&outcome?.not_committed===true)assistantIngress.zeroWrite(ids,outcome);
+      if(assistantIngress&&!(outcome?.state==='superseded'&&outcome?.not_committed===true)){
+        const confirmed=current()&&(outcome?.accepted===true||
+          (outcome?.state==='committed_no_reply'&&outcome.not_committed===false)||
+          (outcome?.state==='policy_skipped'&&outcome.not_committed===true));
+        for(const id of ids)if(assistantIngress.active(id)){
+          if(confirmed)assistantIngress.complete(id,{reviewDelivered:outcome?.accepted===true&&outcome.summary_review_delivered===true});else assistantIngress.review(id);
+        }
+      }
+      return outcome;
     }
   });
   let noticePending=0;const rejectedNotices=new Map(),rejectedEpoch=new Map();
@@ -402,16 +606,28 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
       if(!item&&intakeCurrent())try{await send(phone,'Recebi muitas mensagens de uma vez. Pode reenviar o pedido completo com a última correção? Nenhuma nova operação foi confirmada por essa entrada.',{waitForCapacity:true,isCurrent:()=>intakeCurrent()});}catch{}
     }})().catch(()=>{}).finally(()=>rejectedNotices.delete(conversationKey));
   }
-  async function receive({messages:incoming,type}){
+  async function receive({messages:incoming,type},replayed=null){
     transport.record('upsert_batch',null,{count:incoming?.length||0,type});
     if(!intakeCurrent())return;
     const jobs=[];
     for(const message of incoming||[]){
       const traceId=message.key?.id;
-      if(!shouldIngestUpsert(type,message.messageTimestamp)){
+      const replayEntry=replayed?.get(traceId),sourceType=replayEntry?.message.type||type;
+      if(!replayEntry&&!shouldIngestUpsert(sourceType,message.messageTimestamp)){
         transport.record('inbound_filtered_age',traceId,{type});continue;
       }
-      if(message.key?.id&&message.message)retryMessages.save(message.key,message.message);
+      if(message.key?.id&&message.message){
+        retryMessages.save(message.key,message.message);
+        // When a message was authored in the owner's phone rather than
+        // through this bridge, Baileys may still be asked to retry its
+        // ciphertext for another linked device. Persist only our own simple
+        // text messages; never copy received customer messages or media into
+        // the durable retry cache.
+        if(shouldCacheLinkedSelfText(message)){
+          if(retryStore.save(message.key,message.message))retryDiagnostics.persistedSelfTexts++;
+          else retryDiagnostics.persistFailures++;
+        }
+      }
       if(message.key?.fromMe){transport.record('inbound_own',traceId);continue;}
       if(typeof traceId!=='string'||!/^[a-zA-Z0-9._:-]{1,157}$/.test(traceId)||!message.message){
         transport.record('inbound_no_content',traceId);continue;
@@ -422,14 +638,21 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
       // single-recipient pilot, PN/LID variants share this configured key; a LID
       // never supplies a telephone number. Authorization still occurs below.
       const conversationKey=String(mine)+':'+(pilotNumber()||remote[1]+'@'+remote[2]);
+      const nativeTicket=nativeCanary.observe(message,{type:sourceType,replay:!!replayEntry});
+      if(nativeCanary.recognizes(message)){
+        const task=nativeCanary.handle({message,type:sourceType,replay:!!replayEntry,ticket:nativeTicket})
+          .then(result=>transport.record('native_test_'+result.state,traceId,{type:result.kind}))
+          .catch(()=>transport.record('native_test_unavailable',traceId));
+        jobs.push(task);continue;
+      }
       const normalized=normalizeInbound(message);if(normalized.silent)continue;
       // Central booking confirmation is a separate deterministic lane.
       // Only a new private text containing a protocol enters it, independent
       // of the AI allowlist. Any other message follows the unchanged pilot.
       const centralEnabled=process.env.ORION_CENTRAL_CONFIRMATION_REPLY_ENABLED==='1';
-      const freshForCentral=type==='notify'||(type==='append'&&
+      const freshForCentral=sourceType==='notify'||(sourceType==='append'&&
         (timestampMs(message.messageTimestamp)||0)>=Date.now()-120000);
-      if(centralEnabled&&freshForCentral&&normalized.event.kind==='text'&&
+      if(!replayEntry&&centralEnabled&&freshForCentral&&normalized.event.kind==='text'&&
           isBookingProtocolMessage(normalized.text)){
         const key=String(mine)+':'+traceId;
         if(handledBookingProtocols.has(key)||seen.has('wa:'+traceId)){
@@ -503,7 +726,7 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
       // Explicit opt-in pilot: exact keyword, one verified phone, never fromMe.
       // Do not forward the test command to the customer-facing assistant.
       if(normalized.text?.trim().toUpperCase()==='ORIONTESTE' &&
-          process.env.QR_TRIGGER_TEST_PHONE && type==='notify'){
+          process.env.QR_TRIGGER_TEST_PHONE && sourceType==='notify'&&!replayEntry){
         const phone=await resolveMessagePhone(message.key,client);
         const replyText=testReplyFor({text:normalized.text,phone,
           allowedPhone:process.env.QR_TRIGGER_TEST_PHONE,fromMe:message.key.fromMe});
@@ -533,7 +756,35 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
           continue;
         }
       }
-      if(revisionEnabled&&noticePending>=40){enqueueOverflow(message,normalized,conversationKey);continue;}
+      const jobKey=String(mine)+':'+traceId;
+      let admission=null;
+      if(legacyCentral.configured()){
+        // Synchronous encrypted capture precedes PN lookup, backend notice and
+        // intake/display dedupe. The old display inbox is never the admission log.
+        try{
+          const journal=ensureAssistantIngress();
+          if(assistantQueues.has(jobKey)||seen.has('wa:'+traceId))continue;
+          const knownPhone=remote[2]==='s.whatsapp.net'?normalizeFromJid(message.key.remoteJid):null;
+          if(knownPhone&&!legacyCentral.allowed(knownPhone))continue;
+          if(!knownPhone&&!replayEntry){
+            if(Date.now()-opaqueAdmissionAt>=60000){opaqueAdmissionAt=Date.now();opaqueAdmissionCount=0;}
+            if(++opaqueAdmissionCount>64){ingressFault=true;transport.record('assistant_ingress_rate_limited');continue;}
+          }
+          if(replayEntry)admission=replayEntry;
+          else{
+            const captured=journal.append(message,sourceType,timestampMs(message.messageTimestamp)||Date.now());
+            admission=captured.entry;
+            // The original encrypted payload wins. A repeated source ID cannot
+            // replace its timestamp/body/sender while admission is pending.
+            if(!captured.fresh){scheduleIngressRecovery();continue;}
+          }
+          if(admission.state!=='pending')continue;
+          if(!journal.pending().some(entry=>entry.id===traceId))continue;
+          if(noticePending>=40){
+            scheduleIngressRecovery();continue;
+          }
+        }catch{ingressFault=true;transport.record('assistant_ingress_unavailable');continue;}
+      }else if(revisionEnabled&&noticePending>=40){enqueueOverflow(message,normalized,conversationKey);continue;}
       const epoch=rejectedEpoch.get(conversationKey)||0;
       const metadata={allowed:false,phone:null,jid:message.key.remoteJid,...(normalized.special?{event:normalized.event}:{})};
       const current=()=>intakeCurrent()&&(rejectedEpoch.get(conversationKey)||0)===epoch&&(!metadata.allowed||
@@ -543,7 +794,7 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
         const phone=await resolveMessagePhone(message.key,client);
         if(!current())return null;
         if(!phone){transport.record('inbound_unresolved',traceId);return null;}
-        if(namesStore.observeResolvedMessage(message,phone,{historical:type==='append'}))namesSync.changed();
+        if(namesStore.observeResolvedMessage(message,phone,{historical:sourceType==='append'}))namesSync.changed();
         if(legacyCentral.configured())await legacyCentral.resume();
         metadata.phone=phone;metadata.allowed=legacyCentral.configured()?legacyCentral.allowed(phone):allowAssistantRecipient(phone,connectedStore.settings());
         inboundMetadata.set(traceId,metadata);
@@ -554,15 +805,23 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
       // still revokes an obsolete turn and records customer safety controls.
       const noticeTask=revisionEnabled?(()=>{noticePending++;return (async()=>{
           const phone=await resolveIdentity();
-          if(!phone||!current()||!metadata.allowed)return {skip:true};
+          if(!phone&&assistantIngress)throw Error('assistant_identity_unresolved');
+          if(!phone||!current()||!metadata.allowed){
+            if(phone&&(normalized.selection||normalized.event.reply_to))
+              assistantSelectionDiagnostic(phone,traceId)(!metadata.allowed?'not_allowed':'stale');
+            return {skip:true};
+          }
           const body=normalized.text,media=message.message.audioMessage||message.message.ephemeralMessage?.message?.audioMessage;
           if(legacyCentral.configured()){
             const proof=await legacyCentral.inbound({phone,message_id:traceId,text:body||'',kind:media?'audio':body?'text':'unsupported',
               ...(normalized.special?{envelope:normalized.event}:{})});
+            if(!current())throw Error('assistant_ingress_admission_stale');
+            if(assistantIngress&&Number.isSafeInteger(proof?.revision)&&proof.revision>=1)assistantIngress.admitted(traceId);
             metadata.noticeProof=proof;return proof;
           }
           if(!normalized.special&&!body&&(!media||!assistantAudioEnabled()||!allowAssistantAudio(phone,connectedStore.settings())))return {skip:true};
-          return registerAssistantIngress({apiUrl:process.env.QR_AI_API_URL,token:KEY,phone,messageId:traceId,control:normalized.event.control||safetyControl(body)});
+          const proof=await registerAssistantIngress({apiUrl:process.env.QR_AI_API_URL,token:KEY,phone,messageId:traceId,control:normalized.event.control||safetyControl(body)});
+          metadata.noticeProof=proof;return proof;
         })().finally(()=>{noticePending--;});})():null;
       void noticeTask?.catch(()=>{});
       const task=inboundIntake.submit({conversationKey,messageId:traceId,isCurrent:current,
@@ -574,28 +833,66 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
           let body=normalized.text;
           const media=message.message.audioMessage||message.message.ephemeralMessage?.message?.audioMessage;
           if(!normalized.special&&!body&&!media){transport.record('inbound_no_text',traceId);return {skip:true};}
-          const at=timestampMs(message.messageTimestamp)||Date.now();
+          if(assistantIngress?.requiresReview(phone)&&normalized.selection&&metadata.noticeProof?.assistant_interactions!==1){
+            assistantIngress.exclude(traceId);return {skip:true};
+          }
+          if(metadata.noticeProof?.assistant_interactions===1&&(normalized.selection||normalized.event.reply_to)){
+            const diagnose=assistantSelectionDiagnostic(phone,traceId);diagnose('detected');
+            diagnose('quote_provided',normalized.selection?.quoted_message_id||normalized.event.reply_to);
+            const store=typingPresence.assistantPresentations(),selection=store.resolve(message,phone,diagnose);
+            if(selection){
+              const provenance=store.selectionProvenance(phone,selection.quoted_message_id);
+              if(assistantIngress&&!assistantIngress.allowsSelection(phone,provenance)){diagnose('stale');assistantIngress.exclude(traceId);return {skip:true};}
+              const acknowledge=legacyCentral.configured()?payload=>legacyCentral.presentationAck(payload):
+                payload=>acknowledgeAssistantPresentation({apiUrl:process.env.QR_AI_API_URL,token:KEY,payload});
+              if(!await store.acknowledge(phone,selection.quoted_message_id,acknowledge,current,diagnose)){
+                diagnose('ack_unconfirmed');
+                assistantIngress?.exclude(traceId);return {skip:true};
+              }
+              metadata.selection=selection;metadata.selectionProvenance=provenance;delete metadata.event;body=ASSISTANT_SELECTION_TEXT;
+            }else if(normalized.selection){assistantIngress?.exclude(traceId);return {skip:true};}
+          }
+          if(assistantIngress){
+            if(!metadata.allowed||!allowAssistantRecipient(phone,connectedStore.settings()))return {skip:true};
+            if(ingressFault||assistantIngress.diagnostics().blocked)return {skip:true};
+            // Persist a no-replay boundary before ASR, display dedupe, business
+            // or any outgoing effect. Only this live attempt can complete it.
+            assistantIngress.prepare([traceId],{phone,proofs:[metadata.noticeProof]});
+          }
+          const at=admission?.at||timestampMs(message.messageTimestamp)||Date.now();
           const row={id:'wa:'+traceId,phone,body:body?String(body).slice(0,2000):'[Áudio recebido]',direction:'in',at};
           pushMessage(row);
-          lastInboundAt=Date.now();inboundSinceConnect=true;if(type==='append')recentAppends++;
+          lastInboundAt=Date.now();inboundSinceConnect=true;if(sourceType==='append')recentAppends++;
           if(!metadata.allowed){transport.record('pilot_denied',traceId);return {skip:true};}
           transport.record('pilot_allowed',traceId);
+          if(metadata.selection)return {text:ASSISTANT_SELECTION_TEXT};
           if(normalized.special)return {text:body||'[Evento de mensagem recebido]'};
           if(!body){
             if(!assistantAudioEnabled()||!allowAssistantAudio(phone,connectedStore.settings()))return {skip:true};
             const txt=await transcribeAssistantAudio(message,{client,downloadMediaMessage,phone,token:KEY,
-              apiUrl:process.env.QR_AI_API_URL,logger,signal});
+              apiUrl:process.env.QR_AI_API_URL,logger,signal,
+              ...(legacyCentral.configured()?{transcribe:payload=>legacyCentral.transcribe(payload)}:{})});
             if(!current()||signal.aborted)return {skip:true};
             if(!txt)throw Error('audio_not_understood');
             row.body='[Áudio transcrito] '+txt;persistInbox();body=txt;
           }
           return {text:body};
         }});
-      const jobKey=String(mine)+':'+traceId;
       const job=task.then(async result=>{
         if(result.state==='duplicate')transport.record('inbound_duplicate',traceId);
-        else if(result.state==='overloaded'){transport.record('inbound_queue_full',traceId);await noticeTask?.catch(()=>{});if(current())enqueueOverflow(message,normalized,conversationKey);}
+        else if(result.state==='overloaded'){transport.record('inbound_queue_full',traceId);await noticeTask?.catch(()=>{});if(current()&&!assistantIngress)enqueueOverflow(message,normalized,conversationKey);}
         else if(result.state==='consume_failed')console.warn('Orion QR: atendimento IA não concluído (dados omitidos)');
+        if(assistantIngress&&admission){
+          try{
+            if(assistantIngress.active(traceId))assistantIngress.review(traceId);
+            else if(result.state==='skipped'&&current()&&metadata.phone&&
+              (!metadata.allowed||!allowAssistantRecipient(metadata.phone,connectedStore.settings())||
+                (!normalized.special&&!normalized.text&&!message.message.audioMessage&&!message.message.ephemeralMessage?.message?.audioMessage)))assistantIngress.exclude(traceId);
+          }catch{assistantIngress.abandon();ingressFault=true;transport.record('assistant_ingress_unavailable');}
+          // revision_failed is the only released intake claim. It has never
+          // reached preparation; encrypted pending input is retried unchanged.
+          scheduleIngressRecovery();
+        }
       }).finally(()=>{
         if(inboundMetadata.get(traceId)===metadata)inboundMetadata.delete(traceId);
         if(assistantQueues.get(jobKey)===job)assistantQueues.delete(jobKey);
@@ -622,7 +919,7 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
       console.info("Orion QR: pareamento disponível (conteúdo omitido)");
     }
     if(update.connection==="open"){
-      status="connected";everConnected=true;qr="";qrAt=0;pairingCode="";pairAt=0;attempts=0;
+      status="connected";everConnected=true;qr="";qrAt=0;pairingCode="";pairAt=0;
        namesStore.bindIdentity(client.user);namesSync.start();
        try{connectedStore.setIdentity(client.user?.id)}catch{
          console.warn("Orion QR: configuração criptografada indisponível")
@@ -631,6 +928,14 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
       connectedSince=Date.now();inboundSinceConnect=false;
       if(update.receivedPendingNotifications===true)pendingNotificationsReceived=true;
       pairedNumber=normalizeFromJid(client.user?.id)||"";
+      if(legacyCentral.configured()){
+        // Load existing review/pending work under the now-proven physical
+        // identity before publishing readiness or permitting automated sends.
+        try{ensureAssistantIngress().pending();}
+        catch{ingressFault=true;transport.record('assistant_ingress_unavailable');}
+      }
+      primaryHealth.connected();
+      if(legacyCentral.configured())void replayAssistantIngress();
       lastError=null;console.info("Orion QR: dispositivo conectado");
       // One-time, source-bound live delivery test explicitly authorized by
       // the owner. Persistent per-recipient claims prevent any duplicate.
@@ -659,15 +964,20 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
               authDir,
               client,
               sendText:async (jid,text)=>{
-                if(process.env.QR_RELIABLE_SEND_V2!=="1")return client.sendMessage(jid,{text});
-                return sendStoredText({
-                  jid,text,store:retryStore,freshDevices:false,
+                const phone=normalizeFromJid(jid),noticeCurrent=()=>mine===generation&&status==='connected'&&socket===client&&
+                  legacyCentral.transportCurrent()&&normalizeFromJid(client.user?.id)===phone;
+                return typingPresence.run({phone,chatJid:jid,isCurrent:noticeCurrent,assertAuthorized:()=>legacyCentral.assertTransportCurrent(),
+                  action:{type:'text',text}},async({beforeSend})=>{
+                await beforeSend();return sendStoredText({
+                  jid,text,store:retryStore,freshDevices:true,
+                  isCurrent:noticeCurrent,assertAuthorized:()=>legacyCentral.assertTransportCurrent(),
                   makeMessage:async (recipient,messageText)=>generateWAMessage(
                     recipient,{text:messageText},{
                       userJid:client.user?.id,logger,
                       messageId:generateMessageIDV2(client.user?.id)
                     }),
-                  relay:(recipient,message,opts)=>client.relayMessage(recipient,message,opts)
+                  relay:async(recipient,message,opts)=>{await legacyCentral.assertTransportCurrent();if(!noticeCurrent())throw Error('connection_notice_revoked');return client.relayMessage(recipient,message,opts);}
+                });
                 });
               },
               isCurrent:()=>mine===generation&&status==="connected"&&socket===client,
@@ -687,12 +997,17 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
       }
     }
     if(update.connection==="close"){
+      stopPrimaryIngress({preserveReview:true});
       pauseContactNames({purge:Number(update.lastDisconnect?.error?.output?.statusCode)===DisconnectReason.loggedOut});
       qr="";qrAt=0;pairingCode="";pairAt=0;
       connectedSince=0;pendingNotificationsReceived=false;inboundSinceConnect=false;
       const code=Number(update.lastDisconnect?.error?.output?.statusCode);
       lastDisconnectCode=Number.isFinite(code)?code:null;
       console.info("Orion QR: conexão encerrada (código="+(lastDisconnectCode??"desconhecido")+")");
+      if(sustainedRecovery(primaryHealth.snapshot())){attempts=0;sessionRecoveryAttempts=0;}
+      const decision=disconnectPolicy(code,attempts,{sessionAttempts:sessionRecoveryAttempts});
+      if(code===500)sessionRecoveryAttempts++;
+      primaryHealth.disconnected(decision,attempts+1,disconnectEvidence(update.lastDisconnect?.error));
       if(code===DisconnectReason.loggedOut){
         if(newLinkNoticeAuthDir===authDir)newLinkNoticeAuthDir=null;
         status=everConnected?"logged_out":"pair_failed";
@@ -701,14 +1016,19 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
           "O WhatsApp rejeitou o vínculo. Um novo código exige outra sessão.";
         return;
       }
+      if(!decision.retry){
+        status='error';socket=null;clearTimeout(timer);timer=null;
+        lastError=decision.reason==='connection_replaced'?'A sessão foi assumida por outra instância. Confira a responsabilidade da conexão.':
+          decision.reason==='reconnect_exhausted'?'As tentativas automáticas foram interrompidas. Confira a conexão antes de tentar novamente.':
+          'O WhatsApp exige uma verificação da sessão. As credenciais foram preservadas.';
+        return;
+      }
       status="reconnecting";
       lastError=code===DisconnectReason.restartRequired?
         "WhatsApp solicitou reinicialização após pareamento; restaurando sessão.":
         "Conexão interrompida; tentando restabelecer.";
-      const decision=reconnectPlan(code,attempts,DisconnectReason.loggedOut,
-        DisconnectReason.restartRequired);
       const delay=decision.delayMs;
-      if(code!==DisconnectReason.restartRequired)attempts++;
+      attempts++;
       timer=setTimeout(()=>{
         if(mine===generation){
           void saveQueue.finally(()=>connect().catch(()=>{}));
@@ -718,16 +1038,45 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
   });
 }
 async function connect(){
+  if(stopping)return;
+  stopPrimaryIngress();
   const mine=++generation;
   pauseContactNames();
   const namesForConnection=contactNames,selectedAuthDir=authDir;
   clearTimeout(timer);timer=null;qr="";qrAt=0;pairingCode="";pairAt=0;
   status="connecting";connectStartedAt=Date.now();pairingRequestedForGeneration=-1;
+  primaryHealth.connecting();
   pendingNotificationsReceived=false;inboundSinceConnect=false;
   try{
-    const {state,saveCreds}=await useMultiFileAuthState(selectedAuthDir);
+    // The primary socket shares the manager's SQL owner/fence. Reserve that
+    // owner before reading or mutating Signal state, including on startup.
+    if(legacyCentral.configured())await legacyCentral.resume();
+    await legacyCentral.assertTransportCurrent();
+    if(stopping||mine!==generation)return;
+    if(authBackupDirectory!==selectedAuthDir){
+      authBackup=backupAuth({directory:selectedAuthDir,backupDirectory:'/data/orion-auth-backups',
+        secret:KEY,label:'before-durable-auth-v2'});
+      authBackupDirectory=selectedAuthDir;
+      console.info('Orion auth backup '+JSON.stringify(authBackup));
+    }
+    const {state,saveCreds}=useDurableAuthState(selectedAuthDir,{
+      secret:KEY,sdk:{BufferJSON,proto,initAuthCreds},
+      backupVerified:['created_verified','verified_existing'].includes(authBackup.state),
+      isCurrent:()=>!stopping&&mine===generation&&selectedAuthDir===authDir&&legacyCentral.transportCurrent(),
+      onFailure:()=>{
+        transport.record('auth_write_failed');
+        if(mine!==generation)return;
+        status='error';lastError='Falha de persistência da sessão. Os envios foram interrompidos para proteger as chaves.';
+        ++generation;clearTimeout(timer);timer=null;pauseContactNames();try{socket?.end(undefined);}catch{}
+      }});
     if(mine!==generation||namesForConnection!==contactNames||selectedAuthDir!==authDir)return;
     namesForConnection.bindIdentity(state.creds.me);
+    // A rollout can meet a provider 401 before connection.open. The signed
+    // paired credential still carries the last verified self PN needed only
+    // to bind the preserved no-replay journal to the broker session digest.
+    // Public status remains unverified until a future connection.open.
+    if(classifyPairedAuth(state.creds,{Curve,proto})==='paired')
+      pairedNumber=normalizeFromJid(state.creds.me?.id)||pairedNumber;
     const originalSet=state.keys.set;
     state.keys.set=async data=>{
       try{
@@ -735,48 +1084,60 @@ async function connect(){
         for(const category of Object.keys(data))transport.record('auth_keys_saved',null,{category,count:Object.keys(data[category]||{}).length});
       }catch(error){transport.record('auth_write_failed');throw error;}
     };
-    // Prefer the WhatsApp Web client revision instead of a months-old
-    // bundled default. Official fetch may fail; in that case use bundled
-    // Baileys version rather than blocking the QR forever.
-    let currentVersion;
-    if(process.env.QR_WA_VERSION_AUTO!=="0"){
-      try{
-        const result=await fetchLatestWaWebVersion({timeout:3500});
-        const v=result.version;
-        if(result.isLatest&&Array.isArray(v)&&v.length===3&&
-          v.every(x=>Number.isSafeInteger(x)&&x>0))currentVersion=v;
-      }catch{}
-    }
+    const webVersion=await selectWaWebVersion({auto:process.env.QR_WA_VERSION_AUTO!=='0',
+      bundledVersion:DEFAULT_CONNECTION_CONFIG.version,fetchVersion:fetchLatestWaWebVersion});
     if(mine!==generation||namesForConnection!==contactNames||selectedAuthDir!==authDir)return;
-    const deviceCache=makePilotDeviceCache(new NodeCache({stdTTL:300,useClones:false}));
+    await legacyCentral.assertTransportCurrent();
+    if(stopping||mine!==generation||selectedAuthDir!==authDir||!legacyCentral.transportCurrent())return;
+    primaryHealth.protocolVersion(webVersion.version,webVersion.source);
+    const deviceCache=makePilotDeviceCache(makeBoundedCache({max:5000,ttlMs:300000}));
     const client=makeWASocket({
       userDevicesCache:deviceCache,
       auth:{creds:state.creds,keys:makeCacheableSignalKeyStore(state.keys,logger)},
-      makeSignalRepository:observeSignalRepository(DEFAULT_CONNECTION_CONFIG.makeSignalRepository,jid=>{
+      makeSignalRepository:fenceSignalRepository(observeSignalRepository(DEFAULT_CONNECTION_CONFIG.makeSignalRepository,jid=>{
         if(mine===generation)transport.record('signal_encrypt_target',null,encryptionTargetDetails(jid,state.creds.me));
-      }),
+      }),()=>!stopping&&mine===generation&&selectedAuthDir===authDir&&legacyCentral.transportCurrent()),
       msgRetryCounterCache,
       maxMsgRetryCount:5,
       getMessage:async key=>{
-        const content=retryStore.get(key);
-        transport.record('get_message',key?.id,{cached:!!content});
+        const content=await readAuthorizedRetry(retryStore,key,{socket:client,
+          isCurrent:()=>!stopping&&mine===generation&&socket===client&&status==='connected'&&legacyCentral.transportCurrent(),
+          assertCurrent:()=>legacyCentral.assertTransportCurrent()});
+        // The library also sends its OWN retry-control messages. A cache
+        // miss for one of those IDs is not proof that a customer-facing
+        // outgoing message is missing. Report these separately, without IDs.
+        const tracked=Boolean(key?.id && (
+          deliveryReceipts.has(key.id) || messages.some(m=>m.id==='out:'+key.id)
+        ));
+        transport.record('get_message',key?.id,{cached:!!content,tracked});
         if(content)retryDiagnostics.cacheHits++;
-        else retryDiagnostics.cacheMisses++;
+        else {
+          retryDiagnostics.cacheMisses++;
+          if(tracked)retryDiagnostics.cacheMissTracked++;
+          else retryDiagnostics.cacheMissUntracked++;
+        }
         return content;
       },
       browser:Browsers.windows("Chrome"),
-      ...(currentVersion?{version:currentVersion}:{}),
+      version:webVersion.version,
       printQRInTerminal:false,markOnlineOnConnect:false,syncFullHistory:false,logger});
     socketDeviceCaches.set(client,deviceCache);
-    // Do not announce a new link while merely restoring registered auth.
+    // QR pairing leaves registered=false in the pinned SDK. Only genuinely
+    // unlinked auth arms a new notice; restoring a signed account stays silent.
     // The memory-only intent survives Baileys' post-pairing restartRequired.
-    if(state.creds.registered!==true&&process.env.ORION_NOTIFY_SELF_ON_LINK==="1")newLinkNoticeAuthDir=selectedAuthDir;
+    if(classifyPairedAuth(state.creds,{Curve,proto})==='unlinked'&&process.env.ORION_NOTIFY_SELF_ON_LINK==="1")newLinkNoticeAuthDir=selectedAuthDir;
     const notifyNewLink=newLinkNoticeAuthDir===selectedAuthDir;
-    socket=client;installListeners(client,mine,saveCreds,notifyNewLink);
+    socket=client;installListeners(client,mine,saveCreds,notifyNewLink,state.creds.registrationId);
+    // A provider 401 can arrive before connection.open. Load the existing
+    // encrypted queue under the restored identity and SQL lease; no replay.
+    preparePrimaryReview();
+    primaryHealth.watch(client.ws);
   }catch{
+    if(stopping||mine!==generation)return;
     status="error";lastError="Não foi possível iniciar o serviço do WhatsApp.";
+    const decision=disconnectPolicy(null,attempts++);primaryHealth.disconnected(decision,attempts);
     console.warn("Orion QR: erro genérico ao iniciar");
-    timer=setTimeout(()=>{if(mine===generation)connect().catch(()=>{})},20000);
+    if(decision.retry)timer=setTimeout(()=>{if(mine===generation)connect().catch(()=>{})},decision.delayMs);
   }
 }
 async function pair(number){
@@ -851,47 +1212,106 @@ async function send(phone,text,options={}){
   if(legacyCentral.configured())return legacyCentral.automatic(phone,text,options);
   return sendLegacyRaw(phone,text,options);
 }
-async function sendLegacyRaw(phone,text,{waitForCapacity=false,isCurrent=()=>true,transactionalTyping=false}={}){
+async function sendLegacyProtocol(phone,action,{isCurrent=()=>false,assertAuthorized,onPrepared=()=>{}}={}){
+  if(!['text','list','url_button','audio'].includes(action?.type)||typeof assertAuthorized!=='function')throw Error('native_test_unavailable');
+  const target=validPhone(phone),client=socket,mine=generation;
+  const current=()=>socket===client&&generation===mine&&status==='connected'&&isCurrent()===true&&legacyCentral.transportCurrent();
+  const authorize=async()=>{if(!current())throw Error('native_test_unavailable');await assertAuthorized();if(!current())throw Error('native_test_unavailable');};
+  await authorize();await sendCapacity.acquire({wait:true,isCurrent:current});await authorize();
+  const matches=await client.onWhatsApp(target);await authorize();
+  if(!Array.isArray(matches)||!matches.some(row=>row.exists===true&&normalizeFromJid(row.jid)===target))throw Error('native_test_unavailable');
+  const proof=await resolvePilotRecipient({phone:target,pilotPhone:target,enabled:process.env.QR_PILOT_USE_VERIFIED_LID==='1',
+    socket:client,deviceCache:socketDeviceCaches.get(client),isCurrent:current});await authorize();
+  let built;
+  try{return await socketOutgoingPresence.get(client).run({phone:target,chatJid:proof.jid,isCurrent:current,assertAuthorized:authorize,action},async({beforeSend})=>{
+    const sent=await sendStoredProtocol({jid:proof.jid,recipientProof:proof,store:retryStore,isCurrent:current,assertAuthorized:authorize,
+      onPrepared:msg=>{onPrepared(msg);retryDiagnostics.prepared++;deliveryReceipts.set(msg.key.id,'pending');deliveryStart.set(msg.key.id,Date.now());
+        transport.record('native_test_prepared',msg.key.id,{type:action.type,kind:proof.kind});},
+      makeMessage:async jid=>{
+        built=await buildChatbotContent(action,{sdk:{proto,prepareWAMessageMedia},
+          jid,loadAsset:loadNativeTestAsset,upload:(...args)=>client.waUploadToServer(...args),assertCurrent:authorize,isCurrent:current,logger,interactiveMode:'native'});
+        await beforeSend();return generateWAMessageFromContent(jid,built.content,{userJid:client.user.id,messageId:generateMessageIDV2(client.user.id)});
+      },relay:(jid,body,options)=>client.relayMessage(jid,body,options)});
+    retryDiagnostics.relayAccepted++;transport.record('native_test_relay_returned',sent.key.id,{type:action.type});
+    return {accepted:true,id:sent.key.id};
+  });}finally{built?.dispose();}
+}
+async function sendLegacyRaw(phone,text,{waitForCapacity=false,isCurrent=()=>true,transactionalTyping=false,source='automation',assertAuthorized,pacing=true,presentation,presentationAck,deferPresentationAck=false,presentationProvenance}={}){
+  if(presentation&&source!=='assistant')throw Error('assistant_presentation_denied');
   const target=validPhone(phone);
   if(status!=="connected"||!socket)throw Error("O WhatsApp não está conectado");
   if(typeof text!=="string"||!text.trim()||text.length>1200)
     throw Error("Mensagem deve ter entre 1 e 1200 caracteres");
   const selectedSocket=socket;
   const selectedGeneration=generation;
-  const current=()=>socket===selectedSocket&&generation===selectedGeneration&&status==='connected'&&isCurrent();
+  let authorized=true;
+  const current=()=>authorized&&socket===selectedSocket&&generation===selectedGeneration&&status==='connected'&&isCurrent();
+  const authorize=async()=>{
+    if(!current()||!legacyCentral.transportCurrent())throw Error('A conexão ou autorização mudou antes do envio. Nenhuma mensagem foi enviada.');
+    if(typeof assertAuthorized==='function')try{await assertAuthorized();}catch(error){authorized=false;throw error;}
+    if(!current()||!legacyCentral.transportCurrent())throw Error('A conexão ou autorização mudou antes do envio. Nenhuma mensagem foi enviada.');
+  };
   await sendCapacity.acquire({wait:waitForCapacity,isCurrent:current});
+  await authorize();
   if(!current())throw Error('A conexão ou autorização mudou antes do envio. Nenhuma mensagem foi enviada.');
   let result;
-  const {reliable,freshDevices}=deliveryPolicy(target);
+  // Transactional notices must address the WhatsApp-verified PN, not a
+  // guessed JID reconstructed from a registered Brazilian mobile phone.
+  // The legacy 8-digit candidate is allowed only after an empty exact lookup
+  // and exactly one positive provider lookup of its regulated counterpart.
+  let verifiedRecipient=null;
+  if(source==='appointment'){
+    verifiedRecipient=await resolveTransactionalRecipient(
+      target,candidate=>selectedSocket.onWhatsApp(candidate),
+      {isCurrent:current,ownPhone:pairedNumber});
+    if(!current())throw Error('A conexão mudou antes do envio. Nenhuma mensagem foi enviada.');
+    transport.record('appointment_recipient_verified',null,{kind:verifiedRecipient.kind});
+  }
+  const {reliable,freshDevices}=deliveryPolicy(target,process.env,{source});
   const recipientProof=await resolvePilotRecipient({phone:target,pilotPhone:pilotNumber(process.env),
     enabled:reliable&&process.env.QR_PILOT_USE_VERIFIED_LID==='1',socket:selectedSocket,deviceCache:socketDeviceCaches.get(selectedSocket),
     isCurrent:current});
   if(!current())
     throw Error('A conexão mudou antes do envio. Nenhuma mensagem foi enviada.');
   const {jid,kind}=recipientProof;
-  let presenceLease=null;
-  try{
-    if(transactionalTyping){
-      // Only an admitted, destination-authorized transactional notice sends
-      // composing. Never emit it while a queue is waiting or a chat is revoked.
-      presenceLease=makeAssistantTyping({
-        socket:selectedSocket,pilotPhone:()=>target,isConnected:current,
-        isAllowed:recipient=>recipient===target,
-        transactional:true,maxPauseMs:1400
-      }).begin({phone:target,chatJid:jid,isCurrent:current});
-      await presenceLease.beforeReply(text);
-      if(!current())throw Error('A conexão mudou antes do envio. Nenhuma mensagem foi enviada.');
-    }
-  if(reliable){
+  // Preserve independently verified pilot LID routing. Other appointment
+  // notices use the PN that the provider itself confirmed.
+  const destination=verifiedRecipient&&kind==='pn'?verifiedRecipient.jid:jid;
+  // An appointment may use the PN normalized by the provider's answer to the
+  // original authorized lookup. Presence/FIFO follow that proved recipient;
+  // the business authorization remains bound to the original frozen grant.
+  const presencePhone=normalizeFromJid(destination)||target;
+  await authorize();
+  return socketOutgoingPresence.get(selectedSocket).run({phone:presencePhone,chatJid:destination,isCurrent:current,
+    assertAuthorized:authorize,action:presentation?.action||{type:'text',text},pacing},async({beforeSend})=>{
+  await beforeSend();
+  // An appointment is a transactional message: its exact encrypted retry
+  // source MUST exist before the first network send, regardless of the
+  // older optional global reliability flag.
+  if(presentation){
+    const scope=legacyCentral.ingressScope?.();
+    result=await relayAssistantPresentation({presentation,provenance:presentationProvenance,sdk:{proto,generateWAMessageFromContent,generateMessageIDV2,userJid:selectedSocket.user?.id},
+      jid:destination,recipientProof,phone:target,retryStore,presentationStore:socketOutgoingPresence.get(selectedSocket).assistantPresentations(),
+      isCurrent:current,assertAuthorized:authorize,beforeSend,
+      interactiveMode:assistantNativeMode({tenantId:scope?.tenant_id,channelId:scope?.channel_id,phone:target}),
+      acknowledge:presentationAck||(payload=>acknowledgeAssistantPresentation({apiUrl:process.env.QR_AI_API_URL,token:KEY,payload})),deferPresentationAck,
+      onDiagnostic:(category,id)=>{
+        if(assistantNativeMode({tenantId:scope?.tenant_id,channelId:scope?.channel_id,phone:target})==='native')
+          transport.record('assistant_presentation',id,{category});
+      },
+      relay:async(recipient,message,options)=>{await authorize();return selectedSocket.relayMessage(recipient,message,options);},
+      onPrepared:msg=>{retryDiagnostics.prepared++;deliveryReceipts.set(msg.key.id,'pending');deliveryStart.set(msg.key.id,Date.now());
+        pushMessage({id:'out:'+msg.key.id,phone:target,body:text.trim(),direction:'out',at:Date.now(),delivery:'pending'});}});
+  }else if(requiresPreRelayCache({reliable,source})){
     result=await sendStoredText({
-      jid,recipientProof,text:text.trim(),store:retryStore,freshDevices,
-      isCurrent:current,
+      jid:destination,recipientProof,text:text.trim(),store:retryStore,freshDevices,
+      isCurrent:current,assertAuthorized:authorize,
       makeMessage:async (recipient,messageText)=>generateWAMessage(
         recipient,{text:messageText},{
           userJid:selectedSocket.user?.id,logger,
           messageId:generateMessageIDV2(selectedSocket.user?.id)
         }),
-      relay:(recipient,message,opts)=>selectedSocket.relayMessage(recipient,message,opts),
+      relay:async(recipient,message,opts)=>{await authorize();return selectedSocket.relayMessage(recipient,message,opts);},
       onPrepared:msg=>{
         retryDiagnostics.prepared++;
         deliveryReceipts.set(msg.key.id,"pending");
@@ -901,7 +1321,8 @@ async function sendLegacyRaw(phone,text,{waitForCapacity=false,isCurrent=()=>tru
       }
     });
   }else{
-    result=await selectedSocket.sendMessage(jid,{text:text.trim()});
+    await authorize();
+    result=await selectedSocket.sendMessage(destination,{text:text.trim()});
     if(result?.key?.id&&result?.message)retryStore.save(result.key,result.message);
   }
   if(!result?.key?.id || !result?.message){
@@ -916,8 +1337,9 @@ async function sendLegacyRaw(phone,text,{waitForCapacity=false,isCurrent=()=>tru
     delivery:deliveryReceipts.get(result.key.id)||"pending"});
   // sendMessage resolve quando a biblioteca entrega ao transporte, não
   // quando o iPhone consegue descriptografar. Apenas receipts validam isso.
-  return {accepted:true,delivery:deliveryReceipts.get(result.key.id)||"pending",id,trace:transport.tag(result.key.id)};
-  }finally{presenceLease?.stop();}
+  return {accepted:true,delivery:deliveryReceipts.get(result.key.id)||"pending",id,trace:transport.tag(result.key.id),
+    ...(typeof result.acknowledgePresentation==='function'?{acknowledgePresentation:result.acknowledgePresentation}:{})};
+  });
 }
 
 const server=http.createServer(async(req,res)=>{
@@ -928,8 +1350,52 @@ const server=http.createServer(async(req,res)=>{
   // Additional channels authenticate their own credential at the SQL broker;
   // the shared legacy pilot token never grants access to these routes.
   if(path.startsWith('/internal/channels/')&&await channelRoutes(req,res))return;
+  // A disabled local backup key cannot be mistaken for a bad operator key.
+  // The service still fails closed; never reveal actual key length.
+  if(path.startsWith('/internal/ops/database-backups/')&&Buffer.byteLength(KEY,"utf8")<32)
+    return reply(res,503,{error:"bridge_not_configured"});
   if(!auth(req))return reply(res,401,{error:"unauthorized"});
   try{
+    if(path==='/internal/ops/assistant-ingress-review'){
+      if(req.method!=='POST')return reply(res,405,{error:'method_not_allowed'});
+      try{
+        const body=await collectIngressReviewBody(req);
+        const authority=verifyIngressReviewAssertion({headers:req.headers,body,secret:KEY});
+        if(!primaryIngressReview)return reply(res,409,{error:'ingress_review_not_ready'});
+        return reply(res,200,await primaryIngressReview(body,authority));
+      }catch(error){
+        const codes={invalid_ingress_review_request:400,invalid_operator_assertion:401,
+          ingress_review_not_ready:409,ingress_review_scope_conflict:409,ingress_review_snapshot_conflict:409,
+          ingress_review_operation_conflict:409,ingress_review_entry_refused:409,ingress_review_identity_unresolved:409,
+          ingress_review_backup_failed:503,ingress_review_capacity:503,ingress_review_storage_unavailable:503};
+        const code=Object.hasOwn(codes,error.code)?error.code:'ingress_review_storage_unavailable';
+        return reply(res,codes[code],{error:code});
+      }
+    }
+    const deviceReview=path.match(/^\/internal\/ops\/device-ingress-review\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/);
+    if(deviceReview&&!uri.search){
+      if(req.method!=='POST')return reply(res,405,{error:'method_not_allowed'});
+      try{
+        const key=req.headers['x-orion-channel-key'];
+        if(typeof key!=='string'||key.length<32||key.length>256)
+          return reply(res,401,{error:'channel_unauthorized'});
+        const body=await collectIngressReviewBody(req,{device:true});
+        const authority=verifyIngressReviewAssertion({headers:req.headers,body,secret:KEY});
+        // A platform owner assertion and the actual current channel key are
+        // both required. A legacy MASTER alone never opens another tenant.
+        return reply(res,200,await channelRoutes.reviewDevice(deviceReview[1],key,body,authority));
+      }catch(error){
+        const codes={invalid_ingress_review_request:400,invalid_operator_assertion:401,
+          channel_unauthorized:401,ingress_review_not_ready:409,
+          ingress_review_scope_conflict:409,ingress_review_snapshot_conflict:409,
+          ingress_review_operation_conflict:409,ingress_review_entry_refused:409,
+          ingress_review_identity_unresolved:409,ingress_review_backup_failed:503,
+          ingress_review_capacity:503,ingress_review_storage_unavailable:503};
+        const code=error?.code||error?.message;
+        const safe=Object.hasOwn(codes,code)?code:'ingress_review_storage_unavailable';
+        return reply(res,codes[safe],{error:safe});
+      }
+    }
     if(path.startsWith('/internal/ops/database-backups/'))
       return await databaseBackup(req,res,{root:'/data/orion-db-backups',id:path.slice('/internal/ops/database-backups/'.length),
         enabled:process.env.QR_DATABASE_BACKUP_ENABLED==='1',secret:KEY});
@@ -959,7 +1425,7 @@ const server=http.createServer(async(req,res)=>{
       pauseContactNames();
       try{socket?.end(undefined)}catch{}
       await saveQueue;
-      await connect();
+      attempts=0;await connect();
       return reply(res,202,{status:"connecting"});
     }
     if(path==="/internal/disconnect"&&req.method==="POST"){
@@ -1017,7 +1483,7 @@ const server=http.createServer(async(req,res)=>{
       lastInboundAt=0;pendingNotificationsReceived=false;inboundSinceConnect=false;
       recentAppends=0;
       encryptedRetry=makeEncryptedRetryStore({
-        directory:path.join(authDir,"retry-encrypted"),secret:KEY,
+        directory:joinPath(authDir,"retry-encrypted"),secret:KEY,
         serialize:obj=>JSON.stringify(obj,BufferJSON.replacer),
         deserialize:str=>JSON.parse(str,BufferJSON.reviver)
       });
@@ -1042,7 +1508,7 @@ const server=http.createServer(async(req,res)=>{
       pauseContactNames();
       try{socket?.end(undefined)}catch{}
       await saveQueue;
-      await connect();
+      attempts=0;await connect();
       return reply(res,202,{status:"connecting"});
     }
     if(path==="/internal/chats"&&req.method==="GET"){
@@ -1098,11 +1564,31 @@ server.headersTimeout=10000;
 server.requestTimeout=15000;
 server.listen({port:PORT, host:"::", ipv6Only:false},()=>{
   console.info("Orion QR: serviço privado em IPv6/dual-stack, porta "+PORT);
-  connect().catch(()=>{});
   const resumeChannels=async()=>{
-    if(legacyCentral.configured())await legacyCentral.resume().catch(()=>console.warn('Orion QR: adoção da sessão principal pendente'));
+    if(stopping)return;
+    if(legacyCentral.configured())await legacyCentral.resume().catch(error=>console.warn('Orion QR: adoção da sessão principal pendente '+JSON.stringify({category:['legacy_adoption_not_ready','invalid_legacy_adoption','unsafe_legacy_broker'].includes(error?.message)?error.message:'unavailable',httpStatus:Number.isInteger(error?.status)&&error.status>=400&&error.status<=599?error.status:null})));
+    if(!stopping&&legacyCentral.transportCurrent()&&status==='stopped')void connect();
     await channelRoutes.resume().catch(()=>console.warn('Orion QR: retomada dos dispositivos pendente'));
   };
+  void connect();
   void resumeChannels();
-  setInterval(resumeChannels,legacyCentral.configured()?5000:30000).unref();
+  resumeTimer=setInterval(resumeChannels,legacyCentral.configured()?5000:30000);resumeTimer.unref();
 });
+
+// Stop admitting effects and fence sockets before draining HTTP requests.
+// A forced end never deletes credentials or changes an uncertain send to sent.
+let shutdownPromise;
+function shutdown(){
+  if(shutdownPromise)return shutdownPromise;
+  stopping=true;clearInterval(resumeTimer);stopPrimaryTransport('shutdown');channelRoutes.close();
+  shutdownPromise=(async()=>{
+    const closed=new Promise(resolve=>server.close(resolve));server.closeIdleConnections?.();
+    let deadline;
+    try{
+      await Promise.race([Promise.allSettled([closed,saveQueue,...assistantQueues.values()]),
+        new Promise(resolve=>{deadline=setTimeout(resolve,8000);})]);
+    }finally{clearTimeout(deadline);server.closeAllConnections?.();}
+  })();
+  return shutdownPromise;
+}
+for(const signal of ['SIGTERM','SIGINT'])process.once(signal,()=>{void shutdown().finally(()=>process.exit(0));});

@@ -1,0 +1,81 @@
+name: Agenda - Clientes fixos (CI isolada)
+on:
+  pull_request:
+  push:
+    branches: [main, security/prelaunch-hardening-20261030]
+permissions:
+  contents: read
+jobs:
+  schema-and-series:
+    name: PostgreSQL 16 - recorrencia e isolamentos
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: barber_saas
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-postgres-only
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d barber_saas"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      APP_DATABASE_URL: postgresql+asyncpg://app_runtime:ci-runtime-only@localhost:5432/barber_saas
+      MIGRATION_DATABASE_URL: postgresql+psycopg://app_migrator:ci-migrator-only@localhost:5432/barber_saas
+      SUPPORT_DATABASE_URL: postgresql+asyncpg://app_support:ci-support-only@localhost:5432/barber_saas
+      REQUIRE_POSTGRES_TESTS: "1"
+      REDIS_URL: redis://localhost:6379/15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Dependencias de testes
+        run: python -m pip install -c requirements.lock ".[test]"
+      - name: Separar permissoes no PostgreSQL
+        env:
+          PGPASSWORD: ci-postgres-only
+        run: |
+          psql -h localhost -U postgres -d barber_saas -v ON_ERROR_STOP=1 \
+            -v db_name=barber_saas \
+            -v runtime_password=ci-runtime-only \
+            -v migrator_password=ci-migrator-only \
+            -v support_password=ci-support-only \
+            -f infra/postgres/init/001-roles.sql
+      - name: Compilar Python e aplicar o schema aditivo
+        run: |
+          python -m py_compile app/recurring_appointments.py alembic/versions/0074_fixed_client_series.py alembic/versions/0075_fixed_client_monthly.py scripts/wait_for_fixed_client_schema.py scripts/wait_for_fixed_client_monthly_schema.py scripts/backup_and_migrate_fixed_client_series.py scripts/backup_and_migrate_fixed_client_monthly.py scripts/predeploy_one_click_links.py scripts/start_api.py
+          alembic upgrade head
+      - name: Contratos 0074/0075 e barreira de inicializacao somente leitura
+        run: |
+          python -c "import os; from scripts.backup_and_migrate_fixed_client_monthly import schema_ready; assert schema_ready(os.environ['MIGRATION_DATABASE_URL'])"
+          python -m scripts.wait_for_fixed_client_monthly_schema
+      - name: Testes unitarios de frequencias e timezone
+        run: pytest -q tests/unit/test_recurring_series_unit.py tests/unit/test_fixed_client_release.py tests/unit/test_fixed_client_monthly_release.py tests/unit/test_cakto_recovery_release.py
+      - name: Testes reais de reservas atomicas e RLS
+        run: pytest -q tests/integration/test_recurring_appointments.py
+  ui:
+    name: Painel Orion - formulario e fluxos DOM
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Validar JavaScript do painel
+        run: node --check app/static/orion-suite.js
+      - name: Dependencias de testes DOM
+        run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+      - name: Testar visualizacao, pre-visualizacao e conflitos
+        run: node --test ui-tests/fixed-clients.test.mjs

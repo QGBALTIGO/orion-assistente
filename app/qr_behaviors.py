@@ -52,6 +52,10 @@ def human_control(text: str) -> str | None:
 
 def control_intent(text: str) -> str | None:
     lower = norm(text)
+    identity_subject = r"(?:pessoa(?: real| de verdade)?|robo|bot|ia|inteligencia artificial|assistente virtual|humano)"
+    if re.fullmatch(r"(?:voce (?:e|eh)|isso e|e)\s+(?:(?:um|uma|o|a)\s+)?" + identity_subject +
+            r"(?:\s+ou\s+(?:(?:um|uma)\s+)?" + identity_subject + r")?[?!.,\s]*", lower):
+        return "identity"
     if re.fullmatch(r'nao quero (?:falar com (?:o |um )?)?(?:robo|bot|assistente automatico)[.!\s]*',lower):return 'human'
     if human := human_control(lower):
         return human
@@ -68,7 +72,8 @@ def control_intent(text: str) -> str | None:
     if any(s in lower for s in ("quero cancelar", "cancelar minha reserva",
                                "desmarcar meu horario")):
         return "cancel_request"
-    if re.fullmatch(r"(oi+|ola+|alo+|bom dia|boa tarde|boa noite|e ai|eae|opa)[!.,\s]*", lower):
+    if re.fullmatch(r"(?:oi+|oie+|ola+|alo+|bom dia|boa tarde|boa noite|e ai|eai|eae|opa)"
+            r"(?:[!.,\s]*(?:tudo (?:bem|bom)|td bem|beleza|blz))?[!?.,\s]*", lower):
         return "greeting"
     if lower.strip(" ?!.,") in {"qual o seu nome", "qual seu nome", "como voce se chama", "quem e voce"}:
         return "identity"

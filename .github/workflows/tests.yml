@@ -48,13 +48,15 @@ jobs:
         run: |
           python -m pip install -c requirements.lock ".[test]"
           python -m pip check
-      - name: Cliente PostgreSQL 16 para validar backup e restauração isolados
+      - name: Cliente PostgreSQL 16 e decoder de midia do runtime
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends postgresql-client-16
+          sudo apt-get install -y --no-install-recommends postgresql-client-16 ffmpeg
           echo '/usr/lib/postgresql/16/bin' >> "$GITHUB_PATH"
           /usr/lib/postgresql/16/bin/pg_dump --version
           /usr/lib/postgresql/16/bin/pg_restore --version
+          ffmpeg -version
+          ffprobe -version
       - name: Validar sintaxe do serviço privado de transcrição
         run: python -m py_compile qr-transcriber/app.py
       - name: Provisionar papéis separados
@@ -80,7 +82,9 @@ jobs:
           dropdb -h localhost -U postgres orion_restore
           rm -f /tmp/orion-smoke.dump
       - name: Rodar suite incluindo RLS real
-        timeout-minutes: 12
+        # The full suite includes the PostgreSQL simulator cases; keep every
+        # assertion and allow the run to reach its final regression summary.
+        timeout-minutes: 20
         env:
           ORION_MIGRATION_TEST_OWNER_URL: postgresql+psycopg://postgres:ci-postgres-only@localhost:5432/postgres
           ORION_REQUIRE_MIGRATION_OPS_TEST: "1"
@@ -130,6 +134,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+      - name: Instalar o transporte usado pelos testes de protocolo
+        run: npm install --prefix qr-bridge --ignore-scripts --no-audit --no-fund
       - name: Sintaxe Node do conector
         run: |
           node --check qr-bridge/src/server.mjs

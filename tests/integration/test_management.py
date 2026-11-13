@@ -73,7 +73,7 @@ async def management_db(monkeypatch):
         async with migrator.begin() as db:
             for table in ("commission_advance_allocations", "commission_settlements", "loyalty_transactions", "loyalty_coupons", "financial_entries", "loyalty_rules", "professional_goals", "management_requests",
                           "management_site_preferences", "campaigns", "appointment_history", "appointment_items", "calendar_outbox",
-                          "appointments", "customers", "working_breaks", "working_hours", "professional_services", "services", "professionals", "tenant_audit", "tenant_memberships"):
+                          "appointments", "appointment_series", "customers", "working_breaks", "working_hours", "professional_services", "services", "professionals", "tenant_audit", "tenant_memberships"):
                 await db.execute(text(f"DELETE FROM {table} WHERE tenant_id IN (:a,:b)"), {"a": a, "b": b})
             await clear_fixture_plans(db,(a,b),(plan_admin,))
             await db.execute(text("DELETE FROM tenants WHERE id IN (:a,:b)"), {"a": a, "b": b})
@@ -103,7 +103,8 @@ async def appointment(d, customer_id, *, status="confirmed", start_at=None, amou
                 start_at,end_at,occupied_from,occupied_until,status,hold_expires_at,total_cents)
             VALUES (:id,:tenant,:customer,:pro,:protocol,:key,:fingerprint,:starts,:ends,:starts,:ends,:status,:expiry,:amount)
         """), {"id": identity, "tenant": d["a"], "customer": UUID(customer_id), "pro": professional_id or d["pro"],
-               "protocol": "AG-" + identity.hex[:6].upper(), "key": str(identity), "fingerprint": "0" * 64,
+               "protocol": "AG-" + "".join("ABCDEFGHJKLMNPQRSTUVWXYZ23456789"[(identity.int >> shift) & 31]
+                                      for shift in range(25, -1, -5)), "key": str(identity), "fingerprint": "0" * 64,
                "starts": starts, "ends": ends, "status": status, "expiry": d["now"] + timedelta(minutes=5) if status == "hold" else None, "amount": amount})
         await db.execute(text("""
             INSERT INTO appointment_items (tenant_id,appointment_id,service_id,name_snapshot,duration_snapshot_min,price_snapshot_cents,

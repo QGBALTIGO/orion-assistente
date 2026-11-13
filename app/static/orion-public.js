@@ -6,23 +6,67 @@
   const $ = id => document.getElementById(id);
   const dialog = $('booking-dialog');
   const previewMatch = location.pathname.match(/^\/app\/site-preview\/([0-9a-f-]+)\/?$/i);
+  const demoMatch = location.pathname.match(/^\/demo\/([A-Za-z0-9_-]+)\/?$/);
   const slugMatch = location.pathname.match(/^\/s\/([a-z0-9-]+)\/?$/);
+  // The route owns this boundary. A demo response can never enable live booking.
+  const demo = !!demoMatch;
   const preview = !!previewMatch;
-  const apiBase = preview ? `/api/v1/tenants/${previewMatch[1]}/management/site/preview` : `/api/v1/public/sites/${slugMatch?.[1] || ''}`;
+  const apiBase = demo ? `/api/v1/public/demos/${demoMatch[1]}` : preview ? `/api/v1/tenants/${previewMatch[1]}/management/site/preview` : `/api/v1/public/sites/${slugMatch?.[1] || ''}`;
   let data, category = 'Todos', requestSequence = 0, availabilityController;
   let retainedTimeView = null; // Keep photos mounted across wizard step navigation.
   let booking = newBooking();
 
-  function newBooking() { return { step: 1, service: null, services: [], addons: [], notice: '', professional: null, day: null, start: null, quote: null, availability: null, availabilityError: null, loading: false, busy: false, result: null, name: '', phone: '', birthDate: '', consent: false }; }
+  function newBooking() { return { step: 1, service: null, services: [], addons: [], notice: '', professional: null, day: null, start: null, quote: null, availability: null, availabilityError: null, loading: false, busy: false, result: null, name: '', phone: '', birthDate: '', appointmentMessagesOptIn: false }; }
   function el(tag, cls, value) { const node = document.createElement(tag); if (cls) node.className = cls; if (value !== undefined) node.textContent = value; return node; }
   function button(text, cls, handler) { const node = el('button', cls, text); node.type = 'button'; if (handler) node.addEventListener('click', handler); return node; }
   function safeHTTPS(value) { try { const u = new URL(value); return u.protocol === 'https:' && !u.username && !u.password ? u.href : null; } catch { return null; } }
+  // Only a real Instagram *profile* may be embedded. Never use arbitrary
+  // site URLs as iframe sources or forward pasted Instagram tracking params.
+  function instagramProfile(value) {
+    try {
+      if (typeof value !== 'string' || !value.trim()) return null;
+      const uri = new URL(value);
+      if (uri.protocol !== 'https:' ||
+          !['instagram.com', 'www.instagram.com'].includes(uri.hostname) ||
+          uri.port || uri.username || uri.password) return null;
+      const match = uri.pathname.match(/^\/([A-Za-z0-9_](?:[A-Za-z0-9._]{0,28}[A-Za-z0-9_])?)\/?$/);
+      if (!match || /^(p|reel|reels|stories|explore|accounts|direct|tv|tags|about|api|developer|challenge)$/i.test(match[1])) return null;
+      const username = match[1];
+      const base = 'https://www.instagram.com/' + username;
+      return {username, href:base+'/', embed:base+'/embed/'};
+    } catch { return null; }
+  }
+  function renderInstagramPreview(site) {
+    const section = $('about-instagram'), frame = $('about-instagram-frame');
+    const profile = instagramProfile(site.instagram_url);
+    section.hidden = !profile;
+    if (!profile) {
+      frame.removeAttribute('src');
+      $('about-instagram-open').removeAttribute('href');
+      $('about-instagram-handle').textContent = '';
+      return false;
+    }
+    $('about-instagram-handle').textContent = '@' + profile.username;
+    $('about-instagram-open').href = profile.href;
+    frame.title = 'Seis publicações recentes de @' + profile.username + ' no Instagram';
+    // The official embed is visually cropped to its six-photo gallery inside
+    // the Orion card. We do not access its cross-origin DOM, proxy third-party
+    // photos or invent thumbnails. Its original profile-header and white footer
+    // remain outside the visible crop. Open profile stays available as fallback.
+    // Loading stays lazy to avoid delaying services and the booking flow.
+    if (frame.getAttribute('src') !== profile.embed) frame.src = profile.embed;
+    return true;
+  }
   function safeImageURL(value) {
     if(typeof value==='string' && /^\/media\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.webp$/.test(value))return value;
     return safeHTTPS(value);
   }
   function setLink(node, value) { const href = safeHTTPS(value); node.hidden = !href; if (href) { node.href = href; node.target = '_blank'; node.rel = 'noopener noreferrer'; } }
   const CONTACT_ICONS = {"whatsapp":"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.85\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20 11.7a8 8 0 0 1-11.8 7.1L3.5 20l1.4-4.5A8 8 0 1 1 20 11.7Z\"/><path d=\"M8.2 8c.4-.5.8-.4 1.1.1l.9 1.6c.2.4.1.6-.2.9l-.6.6a6.5 6.5 0 0 0 3.4 3.4l.7-.7c.2-.3.5-.3.9-.1l1.6.9c.4.2.5.6.2 1.1-.3.6-1.1 1.1-1.9 1-3.5-.7-6-3.2-6.8-6.7-.1-.8.2-1.6.7-2.1\"/></svg>","phone":"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.85\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M21 16.7v2.8a2 2 0 0 1-2.2 2A18.3 18.3 0 0 1 2.5 5.2 2 2 0 0 1 4.5 3h2.8a2 2 0 0 1 2 1.7l.4 2.7a2 2 0 0 1-.6 1.7l-1.5 1.3a14.6 14.6 0 0 0 6 6l1.3-1.5a2 2 0 0 1 1.7-.6l2.7.4a2 2 0 0 1 1.7 2Z\"/></svg>","instagram":"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.9\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"5\"/><circle cx=\"12\" cy=\"12\" r=\"4\"/><circle cx=\"17.5\" cy=\"6.5\" r=\"1\" fill=\"currentColor\" stroke=\"none\"/></svg>","facebook":"<svg viewBox=\"0 0 24 24\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M14.2 21v-7.8h2.6l.4-3.1h-3V8c0-.9.3-1.6 1.6-1.6h1.5V3.6c-.3-.1-1.3-.2-2.5-.2-2.5 0-4.2 1.5-4.2 4.2v2.5H8v3.1h2.6V21h3.6Z\"/></svg>","tiktok":"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M14.2 3v11.5a4.2 4.2 0 1 1-4.2-4.2c.4 0 .9.1 1.2.2\"/><path d=\"M14.2 3c.6 3.3 2.5 5.3 5.8 5.6\"/></svg>","website":"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.85\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M3 12h18M12 3c2.7 2.4 4 5.4 4 9s-1.3 6.6-4 9c-2.7-2.4-4-5.4-4-9s1.3-6.6 4-9Z\"/></svg>"};
+  const CONTACT_LABELS = {
+    whatsapp:'WhatsApp',phone:'Ligar',instagram:'Instagram',
+    tiktok:'TikTok',facebook:'Facebook',website:'Site'
+  };
   function contactAnchor(name, kind, address, isPhone = false) {
     const href = isPhone ? (/^tel:\+[1-9]\d{9,14}$/.test(address) ? address : null) : safeHTTPS(address);
     if (!href) return null;
@@ -32,6 +76,7 @@
     node.title = name;
     if (!isPhone) { node.target = '_blank'; node.rel = 'noopener noreferrer'; }
     node.innerHTML = CONTACT_ICONS[kind]; // Fixed local SVGs; untrusted site data never enters markup.
+    node.append(el('span','social-link-label',CONTACT_LABELS[kind]));
     return node;
   }
   function thumbnailURL(safe) {
@@ -58,8 +103,10 @@
     container.replaceChildren(img);
   }
   function initials(name) { return String(name || '').trim().split(/\s+/).slice(0, 2).map(p => p[0] || '').join('').toUpperCase(); }
+  function knownPrice(value) { return typeof value === 'number' && Number.isFinite(value) && value >= 0; }
+  function knownDuration(value) { return typeof value === 'number' && Number.isFinite(value) && value > 0; }
   function money(cents) { return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(cents) / 100); }
-  function priceText(cents, mode) { return (mode === 'from' ? 'A partir de ' : '') + money(cents); }
+  function priceText(cents, mode) { return demo && !knownPrice(cents) ? 'Valor a confirmar' : (mode === 'from' ? 'A partir de ' : '') + money(cents); }
   function duration(minutes) { const n = Number(minutes); return n >= 60 ? `${Math.floor(n / 60)} h${n % 60 ? ` ${n % 60} min` : ''}` : `${n} min`; }
   const WEEKDAYS=['Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado','Domingo'];
   function validTime(value) { return typeof value==='string' && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value); }
@@ -78,42 +125,84 @@
   function groupedHours(slots) {
     const groups=[];
     for(let day=0;day<7;day++){
-      const value=slots[day].map(([start,end])=>start+'–'+end).join('|'),previous=groups.at(-1);
+      const value=slots[day]===null?'unknown':slots[day].map(([start,end])=>start+'–'+end).join('|'),previous=groups.at(-1);
       if(previous?.key===value)previous.last=day;
       else groups.push({first:day,last:day,key:value,intervals:slots[day]});
     }
     return groups;
   }
+  function demoWeeklyHours(raw) {
+    if (!Array.isArray(raw)) return null;
+    const slots = new Array(7).fill(null), seen = new Set();
+    for (const entry of raw) {
+      const day = entry?.weekday;
+      if (!Number.isInteger(day) || day < 0 || day > 6 || seen.has(day)) return null;
+      seen.add(day);
+      if (entry.intervals === null || entry.intervals === undefined) continue;
+      if (!Array.isArray(entry.intervals)) return null;
+      const intervals = entry.intervals.map(item => [item?.open, item?.close]);
+      if (intervals.some(([start,end]) => !validTime(start) || !validTime(end) || start >= end)) return null;
+      slots[day] = intervals;
+    }
+    return slots;
+  }
   function renderOpeningHours(raw){
-    const card=$('hours-card'),root=$('hours-list'),weekly=weeklyHours(raw);
-    if(!weekly||!weekly.some(day=>day.length)){card.hidden=true;root.replaceChildren();return;}
+    const card=$('hours-card'),root=$('hours-list'),weekly=demo?demoWeeklyHours(raw):weeklyHours(raw);
+    if(!weekly||!weekly.some(day=>day?.length)){card.hidden=true;root.replaceChildren();return;}
     card.hidden=false;
     root.replaceChildren(...groupedHours(weekly).map(group=>{
       const row=el('div','hours-row');row.setAttribute('role','listitem');
       const label=group.first===group.last?WEEKDAYS[group.first]:
         WEEKDAYS[group.first]+' a '+WEEKDAYS[group.last].toLocaleLowerCase('pt-BR');
       const name=el('span','hours-day',label);
-      const times=el('div',group.intervals.length?'hours-time':'hours-time hours-closed');
-      if(!group.intervals.length) {
+      const times=el('div',group.intervals?.length?'hours-time':'hours-time hours-closed');
+      if(group.intervals===null) {
+        times.textContent='A confirmar';
+      } else if(!group.intervals.length) {
         times.textContent='Fechado';
       } else {
-        const shiftList=el('span','hours-shifts');
-        for(const [index,[start,end]] of group.intervals.entries()){
-          if(index)shiftList.append(el('span','hours-separator','·'));
-          shiftList.append(el('span','hours-shift',start+'–'+end));
+        // Display the first opening and final closing as one concise range.
+        // Breaks stay visible below; booking availability still uses all intervals.
+        const periods=group.intervals.slice().sort((a,b)=>a[0].localeCompare(b[0]));
+        const opening=periods[0][0],pauses=[];
+        let closing=periods[0][1];
+        for(const [start,end] of periods.slice(1)){
+          if(start>closing)pauses.push(closing+'–'+start);
+          if(end>closing)closing=end;
         }
-        times.append(shiftList);
-        const pauses=group.intervals.slice(0,-1).map(([_,end],index)=>{
-          const next=group.intervals[index+1][0];
-          return end<next?end+'–'+next:null;
-        }).filter(Boolean);
+        times.append(el('span','hours-shift',opening+'–'+closing));
         if(pauses.length)
-          times.append(el('small','hours-break','Intervalo '+pauses.join(' · ')));
+          times.append(el('small','hours-break',
+            (pauses.length===1?'Intervalo ':'Intervalos ')+pauses.join(' · ')));
       }
       row.append(name,times);return row;
     }));
   }
   function siteAddressLine(site){return site.address_display||site.address;}
+
+  function renderHeroAddress(site){
+    // Keep the hero concise: street + number on one semantic line, then
+    // city/state on another. Address complement, neighborhood and CEP stay
+    // available unabridged in Onde estamos and in the accessible label.
+    const full = typeof siteAddressLine(site)==='string' ? siteAddressLine(site).trim() : '';
+    // The backend joins optional complement and neighborhood using a
+    // spaced em-dash; never let that separator dangle beside the logo.
+    const street = full.split(' — ')[0].trim();
+    const locality = [site.city,site.state].filter(v=>typeof v==='string'&&v.trim())
+      .map(v=>v.trim()).join(' · ');
+    const root=$('hero-address'),streetNode=$('hero-address-street'),
+      localityNode=$('hero-address-locality');
+    streetNode.textContent=street;
+    localityNode.textContent=locality;
+    streetNode.hidden=!street;
+    localityNode.hidden=!locality;
+    root.hidden=!street&&!locality;
+    // The complete, published address remains available to assistive tech.
+    const accessible=[full,site.city,site.state].filter(v=>typeof v==='string'&&v.trim())
+      .map(v=>v.trim()).join(', ');
+    if(accessible){root.title=accessible;root.setAttribute('aria-label',accessible);}
+    else{root.removeAttribute('title');root.removeAttribute('aria-label');}
+  }
   function mapDestination(site){
     const address=[site.title,siteAddressLine(site),site.city,site.state,site.postal_code,'Brasil']
       .filter(v=>typeof v==='string'&&v.trim()).map(v=>v.trim()).join(', ');
@@ -166,7 +255,13 @@
       .filter(Boolean).join('\n');
     const where=$('address-card'),box=$('map-preview'),frame=$('location-map'),target=mapDestination(site);
     $('full-address').textContent=address;
-    where.hidden=!address&&!target;
+    // A company can publish amenities before adding a postal address.
+    // The same Onde estamos card still hosts them, without a fake map/pin.
+    where.hidden=!address&&!target&&$('amenities-section').hidden;
+    $('location-details').hidden=!address;
+    $('location-subtitle').textContent=address||target
+      ? 'Encontre nosso espaço e venha nos visitar.'
+      : 'Confira as comodidades disponíveis.';
     box.hidden=!target;
     if(target){
       frame.src=target.embed;
@@ -193,17 +288,20 @@
   function eligibleProfessionals() {
     const services = selectedServices(), addons = selectedAddons();
     if (!services.length) return [];
+    const matches = (item, id) => (demo && !item.professional_ids?.length) || item.professional_ids?.includes(id);
     return data.professionals.filter(p =>
-      services.every(s => s.professional_ids?.includes(p.id)) &&
-      addons.every(a => a.professional_ids?.includes(p.id)));
+      services.every(s => matches(s, p.id)) &&
+      addons.every(a => matches(a, p.id)));
   }
+  function demoTeamPending() { return demo && !data.professionals.length; }
   function selectionTotal() {
     const services = selectedServices(), addons = selectedAddons(), all = [...services, ...addons];
     return {
-      price: all.reduce((n, item) => n + item.price_cents, 0),
+      price: demo && !all.every(item => knownPrice(item.price_cents)) ? null : all.reduce((n, item) => n + item.price_cents, 0),
       price_mode: all.some(s => s.price_mode === 'from') ? 'from' : 'fixed',
-      minutes: services.reduce((n, s) => n + s.duration_min, 0) +
-        addons.reduce((n, a) => n + (a.add_duration ? a.duration_min : 0), 0)
+      minutes: demo && (![...services, ...addons.filter(a => a.add_duration)].every(item => knownDuration(item.duration_min))) ? null :
+        services.reduce((n, s) => n + s.duration_min, 0) +
+          addons.reduce((n, a) => n + (a.add_duration ? a.duration_min : 0), 0)
     };
   }
   function componentIds(service) {
@@ -215,6 +313,10 @@
   function showError(message) { $('booking-error').textContent = message || ''; $('booking-error').hidden = !message; }
 
   async function api(path = '', options = {}) {
+    // Defense in depth: demo pages may read their own catalogue only. This
+    // also stops future wizard changes from reaching a real booking endpoint.
+    if (demo && (path !== '' || (options.method || 'GET').toUpperCase() !== 'GET' || options.body))
+      throw new Error('Esta demonstração não envia reservas ou dados de clientes.');
     const controller = options.signal ? null : new AbortController();
     const timeout = controller && setTimeout(() => controller.abort(), 30000);
     try {
@@ -233,13 +335,16 @@
     detail.append(el('strong', '', service.name));
     if (service.description) detail.append(el('p', '', service.description));
     const meta = el('span', 'service-meta');
+    const hasDuration = !demo || knownDuration(service.duration_min);
     if (data.site.show_prices) {
       meta.append(el('span', 'price', priceText(service.price_cents, service.price_mode)));
-      const separator = el('span', 'service-meta-separator', '•');
-      separator.setAttribute('aria-hidden', 'true');
-      meta.append(separator);
+      if (hasDuration) {
+        const separator = el('span', 'service-meta-separator', '•');
+        separator.setAttribute('aria-hidden', 'true');
+        meta.append(separator);
+      }
     }
-    meta.append(el('span', 'service-duration', duration(service.duration_min)));
+    if (hasDuration) meta.append(el('span', 'service-duration', duration(service.duration_min)));
     detail.append(meta); card.append(thumb, detail, el('span', 'service-arrow', isSelected ? '✓' : '›'));
     return card;
   }
@@ -248,7 +353,7 @@
     const term = $('service-search').value.trim().toLocaleLowerCase('pt-BR');
     const items = data.services.filter(s => (category === 'Todos' || (s.category || 'Serviços') === category) && `${s.name} ${s.description || ''}`.toLocaleLowerCase('pt-BR').includes(term));
     $('services-grid').replaceChildren(...items.map((s, i) => serviceCard(s, () => openBooking(s.id), false, i < 2 ? 'eager' : 'lazy')));
-    if (!items.length) $('services-grid').append(el('p', 'empty', data.services.length ? 'Nenhum serviço encontrado. Tente outra busca.' : 'Não há serviços disponíveis para agendamento neste momento.'));
+    if (!items.length) $('services-grid').append(el('p', 'empty', data.services.length ? 'Nenhum serviço encontrado. Tente outra busca.' : demo ? 'Catálogo a confirmar. Os serviços serão exibidos após a revisão da empresa.' : 'Não há serviços disponíveis para agendamento neste momento.'));
   }
 
   const AMENITY_ICONS = {"wifi":"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.9\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M2 8.8a15.3 15.3 0 0 1 20 0\"/><path d=\"M5.3 12.3a10 10 0 0 1 13.4 0\"/><path d=\"M8.7 15.8a4.7 4.7 0 0 1 6.6 0\"/><circle cx=\"12\" cy=\"19.4\" r=\"1\" fill=\"currentColor\" stroke=\"none\"/></svg>","parking":"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.9\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M5.4 11l1.5-4.8A2.2 2.2 0 0 1 9 4.7h6a2.2 2.2 0 0 1 2.1 1.5l1.5 4.8\"/><path d=\"M4.5 11h15a1.5 1.5 0 0 1 1.5 1.5V17H3v-4.5A1.5 1.5 0 0 1 4.5 11Z\"/><path d=\"M5.5 17v2.5h2V17M16.5 17v2.5h2V17\"/><circle cx=\"6.8\" cy=\"14.1\" r=\".9\" fill=\"currentColor\" stroke=\"none\"/><circle cx=\"17.2\" cy=\"14.1\" r=\".9\" fill=\"currentColor\" stroke=\"none\"/></svg>","accessibility":"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.85\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"11\" cy=\"3.7\" r=\"1.4\"/><path d=\"M11 6.6v5.3h5.2l2.7 5.3M11 9.5h4.3\"/><circle cx=\"9.1\" cy=\"16.1\" r=\"4.15\"/></svg>","children":"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.9\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"13.3\" r=\"7.7\"/><path d=\"M7 7.3A3.3 3.3 0 0 1 10 4c1.4 0 2.2.8 2.2 2.1M5 11.6a2.8 2.8 0 0 0 0 4.6M19 11.6a2.8 2.8 0 0 1 0 4.6\"/><path d=\"M9.1 12.6h.01M14.9 12.6h.01M9.5 16a3.6 3.6 0 0 0 5 0\"/></svg>"};
@@ -282,6 +387,7 @@
       tile.setAttribute('aria-expanded', 'false');
       tile.title = item.title;
       tile.innerHTML = AMENITY_ICONS[item.icon]; // Trusted static SVG markup only.
+      tile.append(el('span', 'amenity-label', item.title)); // Published, local labels, not user HTML.
       tile.addEventListener('click', () => toggleAmenity(item, tile));
       return tile;
     }));
@@ -290,7 +396,7 @@
 
   function renderPage() {
     const site = data.site;
-    document.title = `${site.title} • Agendamento`;
+    document.title = `${site.title} • ${demo ? 'Demonstração Orion' : 'Agendamento'}`;
     color(document.documentElement, '--primary', site.theme_color);
     const hex = /^#[0-9a-f]{6}$/i.test(site.theme_color || '') ? site.theme_color.slice(1) : '2e7bf6';
     const luminance = [0, 2, 4].map(i => parseInt(hex.slice(i, i + 2), 16) / 255).map(v => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4).reduce((n, v, i) => n + v * [.2126, .7152, .0722][i], 0);
@@ -299,13 +405,15 @@
     const cover = safeImageURL(site.cover_url); if (cover) { const image = el('img'); image.src = cover; image.alt = ''; image.loading = 'eager'; image.fetchPriority = 'high'; image.decoding = 'async'; image.referrerPolicy = 'no-referrer'; image.style.width = '100%'; image.style.height = '100%'; $('cover').replaceChildren(image); }
     picture($('site-logo'), site.logo_url, initials(site.title), 'hero');
     $('site-title').textContent = site.title; $('footer-title').textContent = site.title;
-    $('hero-address').textContent = [siteAddressLine(site), site.city].filter(Boolean).join(' · ');
-    $('hero-address').hidden = !$('hero-address').textContent;
+    renderHeroAddress(site);
     $('about-text').textContent = site.description || '';
-    $('about-card').hidden = !site.description;
+    $('about-text').hidden = !site.description;
+    const hasInstagramPreview = renderInstagramPreview(site);
+    $('about-card').hidden = !site.description && !hasInstagramPreview;
+    $('about-card').classList.toggle('about-card-instagram-only', !site.description && hasInstagramPreview);
     renderOpeningHours(data.opening_hours);
-    renderLocation(site);
     renderAmenities(site);
+    renderLocation(site);
     $('services-count').textContent = String(data.services.length);
     $('hero-book').disabled = !data.services.length;
     const cats = ['Todos', ...new Set(data.services.map(s => s.category || 'Serviços'))];
@@ -327,13 +435,41 @@
     ]) {
       contacts.push(contactAnchor(name, kind, site[field]));
     }
-    $('contact-links').replaceChildren(...contacts.filter(Boolean));
-    $('contact-section').hidden = !contacts.some(Boolean);
-    $('orion-credit').hidden = !!site.hide_orion_brand; $('preview-banner').hidden = !preview;
+    const validContacts = contacts.filter(Boolean);
+    $('contact-links').replaceChildren(...validContacts);
+    $('contact-links').dataset.count = String(validContacts.length);
+    $('contact-section').hidden = validContacts.length === 0;
+    $('orion-credit').hidden = demo ? false : !!site.hide_orion_brand; $('preview-banner').hidden = !(preview || demo);
+    if (demo) renderDemoIdentity();
     $('site-content').hidden = false; $('page-message').hidden = true;
   }
 
+  function renderDemoIdentity() {
+    document.body.classList.add('public-demo');
+    const banner = $('preview-banner');
+    banner.classList.add('demo-banner');
+    banner.replaceChildren(el('strong', '', 'Demonstração personalizada da Orion'),
+      el('span', '', 'Uso demonstrativo. Nenhuma reserva real é criada.'));
+    for (const id of ['hero-book', 'footer-book']) {
+      const node = $(id), icon = node.querySelector('svg');
+      node.replaceChildren(document.createTextNode(data.services.length ? 'Simular agendamento ' : 'Catálogo a confirmar'));
+      if (icon) node.append(icon);
+      node.disabled = !data.services.length;
+    }
+    $('booking-title').textContent = 'Simular agendamento';
+    $('close-booking').setAttribute('aria-label', 'Fechar simulação');
+    $('booking-steps').setAttribute('aria-label', 'Etapas da simulação');
+    const finalStep = $('booking-steps').querySelector('[data-step="3"]');
+    finalStep.replaceChildren(el('span', '', '3'), document.createTextNode(' Revisar'));
+    $('footer-booking-title').textContent = data.services.length ? 'Experimente esta agenda na Orion' : 'Catálogo em preparação';
+    const online = document.querySelector('.online-label');
+    if (online) online.textContent = 'Agenda demonstrativa';
+    const hoursNote = $('hours-card').querySelector('.hours-note');
+    if (hoursNote) hoursNote.textContent = 'Horários publicados. A disponibilidade real e o expediente da equipe ainda precisam ser confirmados.';
+  }
+
   function openBooking(service = null) {
+    if (demo && !data.services.length) return;
     booking = newBooking(); retainedTimeView = null; booking.service = service; booking.services = service ? [service] : []; booking.day = data.today;
     $('booking-shop').textContent = data.site.title; showError(); renderBooking();
     dialog.showModal(); document.body.classList.add('booking-open');
@@ -374,6 +510,7 @@
     refreshServiceSelection();
   }
   function selectionWarning() {
+    if (booking.services.length > 0 && demoTeamPending()) return 'Equipe a confirmar';
     if (booking.services.length > 0 && !eligibleProfessionals().length)
       return 'Nenhum profissional realiza todos esses serviços. Retire um dos itens para continuar.';
     return booking.notice;
@@ -386,7 +523,7 @@
     count.textContent = quantity + (quantity === 1 ? ' serviço selecionado' : ' serviços selecionados');
     summary.replaceChildren();
     if (quantity) {
-      summary.append(el('span', '', 'Tempo total: ' + duration(amount.minutes)));
+      if (!demo || knownDuration(amount.minutes)) summary.append(el('span', '', 'Tempo total: ' + duration(amount.minutes)));
       if (data.site.show_prices) summary.append(el('strong', '', priceText(amount.price, amount.price_mode)));
     } else summary.append(el('span', '', 'Selecione os serviços que deseja realizar no mesmo horário.'));
     warning.textContent = selectionWarning();
@@ -420,11 +557,13 @@
         updateFooter();
       });
       const copy = el('span', '', addon.name);
-      copy.append(el('small', '', addon.add_duration ?
-        'Acrescenta ' + duration(addon.duration_min) : 'Realizado dentro do tempo do serviço'));
+      if (!demo || !addon.add_duration || knownDuration(addon.duration_min))
+        copy.append(el('small', '', addon.add_duration ?
+          'Acrescenta ' + duration(addon.duration_min) : 'Realizado dentro do tempo do serviço'));
       label.append(input, copy);
-      if (data.site.show_prices) label.append(el('b', '', addon.price_mode === 'from' ?
-        priceText(addon.price_cents, 'from') : '+ ' + money(addon.price_cents)));
+      if (data.site.show_prices) label.append(el('b', '', demo && !knownPrice(addon.price_cents) ?
+        'Valor a confirmar' : addon.price_mode === 'from' ?
+          priceText(addon.price_cents, 'from') : '+ ' + money(addon.price_cents)));
       extras.append(label);
     }
     container.append(extras);
@@ -539,10 +678,16 @@
   }
 
   function renderTime(body) {
-    body.append(el('h3', '', 'Escolha o profissional e o horário'));
+    body.append(el('h3', '', demoTeamPending() ? 'Escolha uma data e um horário ilustrativo' : 'Escolha o profissional e o horário'));
+    if (demo) {
+      const note = el('p', 'demo-flow-note', 'Horários ilustrativos para testar o fluxo. Não representam a agenda real da empresa.');
+      note.id = 'demo-time-notice';
+      body.append(note);
+      if (demoTeamPending()) body.append(el('p', 'demo-pending-note', 'Equipe a confirmar'));
+    }
     const people = eligibleProfessionals();
     const picker = el('div', 'professional-picker');
-    picker.setAttribute('aria-label', 'Profissionais disponíveis');
+    picker.setAttribute('aria-label', demo ? 'Profissionais publicados para simulação' : 'Profissionais disponíveis');
     for (const person of people) {
       const node = button('', 'professional-choice', () => {
         // Clicking an already selected professional should not refetch or redraw.
@@ -561,14 +706,14 @@
       node.dataset.professionalId = person.id;
       node.setAttribute('aria-pressed', String(person.id === booking.professional));
       node.title = person.name;
-      node.setAttribute('aria-label', 'Agendar com ' + person.name);
+      node.setAttribute('aria-label', (demo ? 'Simular com ' : 'Agendar com ') + person.name);
       const face = el('span', 'mini-portrait professional-photo');
       picture(face, person.image_url, initials(person.name));
       const name = el('span', 'professional-name', person.name);
       node.append(face, name);
       picker.append(node);
     }
-    body.append(picker);
+    if (people.length || !demo) body.append(picker);
     const heading = el('div', 'date-heading');
     heading.id = 'booking-date-heading';
     const title = el('strong');
@@ -608,9 +753,9 @@
     control.append(value, calendar, input); label.append(control);
     heading.append(title, label); body.append(heading);
     const strip = el('div', 'date-strip'); strip.id = 'booking-day-strip';
-    body.append(strip, el('p', 'timezone-note',
+    body.append(strip, el('p', 'timezone-note', demo ? 'A data escolhida faz parte da simulação.' :
       'Horários locais · ' + data.timezone.replaceAll('_', ' ')));
-    body.append(el('h3', 'booking-slots-heading', 'Horários disponíveis'));
+    body.append(el('h3', 'booking-slots-heading', demo ? 'Horários ilustrativos' : 'Horários disponíveis'));
     const slots = el('div'); slots.id = 'time-slots';
     slots.setAttribute('aria-live', 'polite');
     body.append(slots);
@@ -628,7 +773,7 @@
     showError();
     refreshDateChoice();
     updateFooter();
-    if (preview) renderSlots();
+    if (preview || demo) renderSlots();
     else loadAvailability();
   }
 
@@ -702,6 +847,7 @@
   function renderSlots() {
     const root = $('time-slots');
     if (!root) return;
+    if (demo) { renderDemoSlots(root); return; }
     let list = root.querySelector('.slots-grid');
     if (preview) {
       root.removeAttribute('aria-busy');
@@ -759,8 +905,7 @@
         title.id = 'slot-period-title-' + group.key;
         const line = el('span', 'slot-period-line');
         line.setAttribute('aria-hidden', 'true');
-        const count = el('span', 'slot-period-count',
-          group.starts.length + ' ' + (group.starts.length === 1 ? 'horário' : 'horários'));
+        const count = el('span', 'slot-period-count', 'Disponíveis');
         heading.append(title, line, count);
         const grid = el('div', 'slot-period-grid');
         grid.setAttribute('role', 'group');
@@ -796,7 +941,31 @@
     updateSlotSelection(list, booking.start);
   }
 
+  function renderDemoSlots(root) {
+    // Fixed examples, intentionally unrelated to published hours, reservations,
+    // service duration or staff schedules. Never request or imply live inventory.
+    const examples = ['09:00', '10:00', '11:00', '14:00', '15:00', '16:00'];
+    root.removeAttribute('aria-busy');
+    root.setAttribute('aria-describedby', 'demo-time-notice');
+    let list = root.querySelector('.demo-slots-grid');
+    if (!list) {
+      list = el('div', 'demo-slots-grid');
+      list.setAttribute('role', 'group');
+      list.setAttribute('aria-label', 'Exemplos de horários, sem disponibilidade real');
+      list.append(...examples.map(time => {
+        const node = button(time, 'slot', () => chooseSlot(time));
+        node.dataset.slotStart = time;
+        node.setAttribute('aria-label', time + ', horário ilustrativo');
+        node.setAttribute('aria-pressed', 'false');
+        return node;
+      }));
+      root.replaceChildren(list);
+    }
+    updateSlotSelection(list, booking.start);
+  }
+
   async function loadAvailability() {
+    if (demo) { renderSlots(); updateFooter(); return; }
     if (preview || !booking.professional) return;
     const seq = ++requestSequence;
     availabilityController?.abort();
@@ -840,6 +1009,7 @@
   }
 
   function reviewCard(result = null) {
+    if (demo) return demoReviewCard();
     const box = el('div', 'review-card'); box.append(el('h3', '', 'Seu atendimento'));
     const person = result?.professional || data.professionals.find(p => p.id === booking.professional)?.name;
     const services = result?.services || booking.availability?.services ||
@@ -864,13 +1034,42 @@
     box.append(total);
     return box;
   }
+  function demoReviewCard() {
+    const box = el('div', 'review-card demo-review-card');
+    box.append(el('h3', '', 'Sua simulação'));
+    const person = data.professionals.find(item => item.id === booking.professional);
+    const total = selectionTotal();
+    const rows = [
+      ['Serviços', [...selectedServices(), ...selectedAddons()].map(item => item.name).join(' + ')],
+      ['Profissional', person?.name || 'Equipe a confirmar'],
+      ['Data ilustrativa', dateLabel(booking.day, {dateStyle:'long'})],
+      ['Horário ilustrativo', booking.start]
+    ];
+    if (knownDuration(total.minutes)) rows.push(['Duração publicada', duration(total.minutes)]);
+    for (const [label, value] of rows) {
+      const row = el('div', 'review-row');
+      row.append(el('span', '', label), el('strong', '', value));
+      box.append(row);
+    }
+    if (data.site.show_prices) {
+      const row = el('div', 'review-row total');
+      row.append(el('span', '', 'Valor publicado'), el('strong', '', priceText(total.price, total.price_mode)));
+      box.append(row);
+    }
+    return box;
+  }
   function renderConfirmation(body) {
+    if (demo) {
+      body.append(demoReviewCard(), el('p', 'demo-flow-note',
+        'Você pode concluir a simulação sem informar dados pessoais. Nenhuma reserva ou mensagem será enviada.'));
+      return;
+    }
     // The confirmation button itself is the affirmative booking action.
-    // No duplicate consent checkbox, price or long explanatory paragraph.
+    // The separate message preference is optional and never confirms a booking.
     body.append(reviewCard());
     body.append(el('h3', 'booking-contact-heading', 'Seus dados'));
     const instructions = el('p', 'small muted booking-form-note',
-      'Todos os campos são obrigatórios. O nascimento registra seu aniversário no cadastro do estabelecimento.');
+      'Nome, WhatsApp e nascimento são obrigatórios. O nascimento registra seu aniversário no cadastro do estabelecimento.');
     instructions.id = 'customer-form-note';
     body.append(instructions);
     const form = el('form', 'booking-form');
@@ -880,8 +1079,8 @@
     const contactFields = [
       { key: 'name', title: 'Nome completo', name: 'customer_name', autocomplete: 'name',
         type: 'text', fieldKind: 'native', max: 120, placeholder: 'Nome completo' },
-      { key: 'phone', title: 'WhatsApp com DDD ou DDI', name: 'customer_phone',
-        autocomplete: 'tel', type: 'tel', fieldKind: 'phone', placeholder: '(00) 00000-0000 ou +595 9...' },
+      { key: 'phone', title: 'WhatsApp com DDD', name: 'customer_phone',
+        autocomplete: 'tel-national', type: 'tel', fieldKind: 'phone', placeholder: '(00) 00000-0000' },
       { key: 'birthDate', title: 'Data de nascimento', name: 'customer_birth_date',
         autocomplete: 'bday', type: 'date', fieldKind: 'date', placeholder: '' }
     ];
@@ -919,6 +1118,21 @@
       label.append(field);
       form.append(label);
     }
+    const messagesLabel = el('label', 'consent-label');
+    messagesLabel.htmlFor = 'appointment_messages_opt_in';
+    const messages = el('input');
+    messages.id = 'appointment_messages_opt_in';
+    messages.name = 'appointment_messages_opt_in';
+    messages.type = 'checkbox';
+    messages.checked = booking.appointmentMessagesOptIn;
+    messages.setAttribute('aria-describedby', 'appointment-messages-note');
+    messages.addEventListener('change', () => { booking.appointmentMessagesOptIn = messages.checked; });
+    messagesLabel.append(messages, el('span', '',
+      'Quero receber pelo WhatsApp os avisos deste agendamento, um lembrete 1 hora antes e um pedido de avaliação após o atendimento.'));
+    const messagesNote = el('p', 'privacy-note',
+      'Opcional. Para ativar, envie a mensagem que será aberta no WhatsApp após a confirmação.');
+    messagesNote.id = 'appointment-messages-note';
+    form.append(messagesLabel, messagesNote);
     body.append(form);
     fields.refresh(form);
   }
@@ -936,16 +1150,17 @@
     total.replaceChildren();
     if (!total.hidden && booking.services.length) {
       const amount = selectionTotal();
-      total.append(el('span', '', duration(booking.availability?.duration_min ?? amount.minutes)));
+      const minutes = booking.availability?.duration_min ?? amount.minutes;
+      if (!demo || knownDuration(minutes)) total.append(el('span', '', duration(minutes)));
       if (data.site.show_prices) total.append(el('strong', '',
         priceText(booking.availability?.price_cents ?? amount.price,
           booking.availability?.price_mode || amount.price_mode)));
     }
     next.textContent = booking.result ? 'Concluir' :
-      booking.busy ? 'Confirmando…' : confirmStep ? 'Confirmar agendamento' : 'Continuar →';
+      booking.busy ? 'Confirmando…' : confirmStep ? (demo ? 'Concluir simulação' : 'Confirmar agendamento') : 'Continuar →';
     next.disabled = booking.busy || (!booking.result &&
-      (booking.step === 1 ? !booking.services.length || !eligibleProfessionals().length :
-       booking.step === 2 ? !booking.start || !booking.quote || booking.loading || preview ||
+      (booking.step === 1 ? !booking.services.length || (!eligibleProfessionals().length && !demoTeamPending()) :
+       booking.step === 2 ? !booking.start || (!demo && !booking.quote) || booking.loading || preview ||
          !dateInput?.value || !dateInput.validity.valid : preview));
   }
 
@@ -963,22 +1178,21 @@
   }
 
   function openBookingWhatsApp(url) {
-    // Only a successful reservation may open WhatsApp. A separate tab keeps the
-    // Orion receipt visible when the customer returns from the messenger.
-    try {
-      const tab = window.open('about:blank', '_blank');
-      if (tab) {
-        try { tab.opener = null; } catch { /* opener is detached when supported */ }
-        tab.location.replace(url);
-        return;
-      }
-    } catch { /* A popup blocker must not discard the completed booking. */ }
+    // A reservation is already committed at this point. Opening a new tab
+    // after the asynchronous API reply is blocked by Safari/Chrome on mobile.
+    // Navigate in the same tab instead; the receipt keeps a manual fallback.
     try { window.location.assign(url); } catch {
-      // Restricted browsers can still use the visible link on the receipt.
+      // Restricted browsers still have the visible link on the receipt.
     }
   }
 
   async function submitBooking() {
+    if (demo) {
+      if (booking.busy || booking.result || booking.step !== 3 || !booking.start || !booking.services.length) return;
+      booking.result = {status:'simulated'};
+      renderBooking();
+      return;
+    }
     if (booking.busy || booking.step !== 3 || preview || !booking.quote || !booking.start) return;
     const form = $('customer-form');
     if (!form || !fields.validateForm(form) || !form.reportValidity()) return;
@@ -986,6 +1200,7 @@
     booking.name = form.elements.customer_name.value;
     booking.phone = form.elements.customer_phone.value;
     booking.birthDate = form.elements.customer_birth_date.value;
+    booking.appointmentMessagesOptIn = form.elements.appointment_messages_opt_in.checked;
     if (!booking.name.trim()) {
       const nameField = form.elements.customer_name;
       nameField.setCustomValidity('Informe seu nome completo.');
@@ -994,7 +1209,7 @@
     }
     const canonicalPhone = fields.phoneValue(booking.phone, { required: true, allowInternational: true });
     if (!/^(?:\+55[1-9][0-9]{9,10}|\+5959[0-9]{8})$/.test(canonicalPhone)) {
-      form.elements.customer_phone.setCustomValidity('Informe +55 com DDD ou +595 com celular paraguaio.');
+      form.elements.customer_phone.setCustomValidity('Confira o número do WhatsApp informado.');
       form.elements.customer_phone.reportValidity();
       return;
     }
@@ -1011,12 +1226,14 @@
           customer_name: booking.name.trim(),
           customer_phone: canonicalPhone,
           customer_birth_date: birthDate,
-          confirmed: true
+          confirmed: true,
+          appointment_messages_opt_in: booking.appointmentMessagesOptIn
         })
       });
       booking.name = '';
       booking.phone = '';
       booking.birthDate = '';
+      booking.appointmentMessagesOptIn = false;
       booking.quote = null;
       renderBooking();
       const whatsappURL = bookingWhatsAppURL(booking.result);
@@ -1036,26 +1253,109 @@
     }
   }
 
+  // Confirmation actions reuse Orion's primary/outline tokens instead of an
+  // unstyled generic .pill. All SVG markup below is constant application code.
+  const SUCCESS_ACTION_ICONS = {
+    copy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>',
+    calendar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 11h18"/></svg>'
+  };
+  // Google Calendar template is an explicit, user-initiated import: it never
+  // grants the Orion access to a customer's Google account.
+  function googleBookingLink(result) {
+    if (!result || result.status !== 'confirmed') return null;
+    const start = new Date(result.start_at), end = new Date(result.end_at);
+    if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start) return null;
+    const stamp = value => value.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+    const services = Array.isArray(result.services) ? result.services.join(' + ') : '';
+    const params = new URLSearchParams({
+      action: 'TEMPLATE',
+      dates: stamp(start) + '/' + stamp(end),
+      text: ('Atendimento • ' + (data.site.title || '') + ' • ' + services).slice(0, 160),
+      details: ('Profissional: ' + (result.professional || '') +
+        '\nProtocolo: ' + (result.protocol || '') +
+        '\nPara remarcar ou cancelar, use o link seguro enviado pelo Orion.').slice(0, 350),
+      location: [siteAddressLine(data.site), data.site.city, data.site.state].filter(Boolean).join(', ').slice(0, 240)
+    });
+    if (typeof data.timezone === 'string' && /^[A-Za-z_]+(?:\/[A-Za-z_+-]+)+$/.test(data.timezone)) {
+      params.set('ctz', data.timezone);
+    }
+    return 'https://calendar.google.com/calendar/render?' + params.toString();
+  }
   function renderSuccess(body) {
-    const success = el('div', 'success'); success.append(el('div', 'success-check', '✓'), el('h3', '', 'Agendamento confirmado!'), el('p', '', 'Seu horário está reservado. Guarde o protocolo e chegue no horário combinado.'), reviewCard(booking.result));
+    if (demo) {
+      const success = el('div', 'success demo-success');
+      success.append(el('div', 'success-check', '✓'),
+        el('h3', '', 'Simulação concluída'),
+        el('p', '', 'Você experimentou o fluxo da Orion. Nenhuma reserva foi criada e nenhuma mensagem foi enviada.'),
+        demoReviewCard());
+      body.append(success);
+      return;
+    }
+    const success = el('div', 'success');
+    success.append(el('div', 'success-check', '✓'),
+      el('h3', '', 'Agendamento confirmado!'),
+      el('p', '', 'Seu horário está reservado. Guarde o protocolo e chegue no horário combinado.'),
+      reviewCard(booking.result));
+
+    const actions = el('div', 'success-actions');
+    actions.setAttribute('role', 'group');
+    actions.setAttribute('aria-label', 'Ações do agendamento');
+    function addAction(control, iconSVG, label) {
+      const icon = el('span', 'success-action-icon');
+      icon.setAttribute('aria-hidden', 'true');
+      icon.innerHTML = iconSVG; // Fixed local SVG, never customer data.
+      control.replaceChildren(icon, el('span', 'success-action-label', label));
+      actions.append(control);
+      return control;
+    }
+
     const whatsappURL = bookingWhatsAppURL(booking.result);
     if (whatsappURL) {
-      const wa = el('a', 'pill', 'Abrir WhatsApp novamente');
-      wa.href = whatsappURL; wa.target = '_blank'; wa.rel = 'noopener noreferrer';
-      success.append(wa);
+      const wa = el('a', 'primary success-action success-action-primary');
+      wa.href = whatsappURL;
+      wa.target = '_blank';
+      wa.rel = 'noopener noreferrer';
+      addAction(wa, CONTACT_ICONS.whatsapp, 'Abrir WhatsApp novamente');
     } else {
       success.append(el('p', 'small muted',
         'Seu agendamento foi salvo, mas o WhatsApp do Orion está indisponível neste momento. Guarde o protocolo.'));
     }
 
-    success.append(button('Copiar protocolo', 'outline', async()=>{try{await navigator.clipboard.writeText(booking.result.protocol);showError('Protocolo copiado. Seu agendamento está salvo.');}catch{showError('Guarde o protocolo: '+booking.result.protocol);}}));
-    success.append(button('Adicionar ao meu calendário', 'outline', downloadCalendar)); body.append(success);
+    const copy = button('Copiar protocolo', 'outline success-action success-action-secondary', async () => {
+      try {
+        await navigator.clipboard.writeText(booking.result.protocol);
+        const label = copy.querySelector('.success-action-label');
+        if (label) {
+          label.textContent = 'Protocolo copiado!';
+          window.setTimeout(() => {
+            if (label.isConnected) label.textContent = 'Copiar protocolo';
+          }, 2400);
+        }
+      } catch {
+        showError('Não foi possível copiar. Guarde o protocolo: ' + booking.result.protocol);
+      }
+    });
+    addAction(copy, SUCCESS_ACTION_ICONS.copy, 'Copiar protocolo');
+    const googleURL = googleBookingLink(booking.result);
+    if (googleURL) {
+      const google = el('a', 'outline success-action success-action-secondary');
+      google.href = googleURL;
+      google.target = '_blank';
+      google.rel = 'noopener noreferrer';
+      google.referrerPolicy = 'no-referrer';
+      addAction(google, SUCCESS_ACTION_ICONS.calendar, 'Adicionar ao Google Agenda');
+    }
+    const calendar = button('Baixar para outros calendários (.ics)',
+      'outline success-action success-action-secondary', downloadCalendar);
+    addAction(calendar, SUCCESS_ACTION_ICONS.calendar, 'Baixar para outros calendários (.ics)');
+    success.append(actions);
+    body.append(success);
   }
   function downloadCalendar() {
     const result = booking.result; if (!result) return;
     const escape = value => String(value || '').replaceAll('\\', '\\\\').replaceAll('\n', '\\n').replaceAll(';', '\\;').replaceAll(',', '\\,').replaceAll('\r', '');
     const stamp = value => new Date(value).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
-    const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Orion//Agendamento//PT-BR', 'BEGIN:VEVENT', `UID:${escape(result.protocol)}-${stamp(result.start_at)}@orion.invalid`, `DTSTAMP:${stamp(new Date())}`, `DTSTART:${stamp(result.start_at)}`, `DTEND:${stamp(result.end_at)}`, `SUMMARY:${escape(data.site.title)} — ${escape(result.services.join(' + '))}`, `DESCRIPTION:Protocolo ${escape(result.protocol)}. Profissional: ${escape(result.professional)}.`, `LOCATION:${escape([siteAddressLine(data.site), data.site.city, data.site.state].filter(Boolean).join(', '))}`, 'END:VEVENT', 'END:VCALENDAR'];
+    const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Orion//Agendamento//PT-BR', 'BEGIN:VEVENT', `UID:${escape(result.protocol)}@orionagenda.pro`, `DTSTAMP:${stamp(new Date())}`, `DTSTART:${stamp(result.start_at)}`, `DTEND:${stamp(result.end_at)}`, `SUMMARY:${escape(data.site.title)} — ${escape(result.services.join(' + '))}`, `DESCRIPTION:Protocolo ${escape(result.protocol)}. Profissional: ${escape(result.professional)}.`, `LOCATION:${escape([siteAddressLine(data.site), data.site.city, data.site.state].filter(Boolean).join(', '))}`, 'END:VEVENT', 'END:VCALENDAR'];
     const url = URL.createObjectURL(new Blob([lines.join('\r\n') + '\r\n'], { type: 'text/calendar;charset=utf-8' })); const anchor = el('a'); anchor.href = url; anchor.download = 'agendamento.ics'; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
@@ -1081,29 +1381,33 @@
     if (booking.step === 3) { submitBooking(); return; }
     if (booking.step === 1) {
       const people = eligibleProfessionals();
-      if (!booking.services.length || !people.length) return;
+      if (!booking.services.length || (!people.length && !demoTeamPending())) return;
       // Back/Continue is navigation, not a new professional choice. A quote
       // and start may only survive while they still belong to this person.
       if (!people.some(person => person.id === booking.professional)) {
         invalidateAvailability();
-        booking.professional = people[0].id;
+        booking.professional = people[0]?.id || null;
       }
       booking.step = 2; showError(); renderBooking(); loadAvailability();
     }
-    else if (booking.start && booking.quote) { booking.step = 3; showError(); renderBooking(); }
+    else if (booking.start && (booking.quote || demo)) { booking.step = 3; showError(); renderBooking(); }
   });
   $('share-site').addEventListener('click', async () => {
     const message = $('share-message');
     if (preview) { message.textContent = 'Publique o site para compartilhar o endereço público.'; message.hidden = false; return; }
-    try { if (navigator.share) await navigator.share({ title: data.site.title, url: location.href }); else { await navigator.clipboard.writeText(location.href); message.textContent = 'Link copiado.'; message.hidden = false; } }
+    const url = demo ? location.origin + location.pathname : location.href;
+    try { if (navigator.share) await navigator.share({ title: data.site.title, url }); else { await navigator.clipboard.writeText(url); message.textContent = 'Link copiado.'; message.hidden = false; } }
     catch (error) { if (error.name !== 'AbortError') { message.textContent = 'Copie o endereço do site na barra do navegador para compartilhar.'; message.hidden = false; } }
   });
-  api().then(result => { data = result; renderPage();
+  api().then(result => {
+    if (demo && (result.demo !== true || result.preview !== true || result.booking_enabled !== false))
+      throw new Error('Esta demonstração não está disponível.');
+    data = result; renderPage();
     const params=new URLSearchParams(location.search),ids=(params.get('servicos')||'').split(',').filter(Boolean);
     if(!preview&&ids.length&&ids.length<=6&&new Set(ids).size===ids.length&&ids.every(id=>data.services.some(s=>s.id===id))){
       openBooking(ids[0]);booking.services=ids;
       const professional=params.get('profissional');if(eligibleProfessionals().some(p=>p.id===professional))booking.professional=professional;
       renderBooking();
     }
-  }).catch(error => { const node = $('page-message'); node.replaceChildren(el('h1', '', error.status === 404 ? 'Página indisponível' : 'Não foi possível carregar o site'), el('p', 'muted', error.status === 404 ? 'Este endereço ainda não foi publicado ou deixou de estar disponível.' : error.message)); });
+  }).catch(error => { const node = $('page-message'); node.replaceChildren(el('h1', '', error.status === 404 ? 'Página indisponível' : 'Não foi possível carregar o site'), el('p', 'muted', error.status === 404 ? (demo ? 'Esta demonstração expirou ou deixou de estar disponível.' : 'Este endereço ainda não foi publicado ou deixou de estar disponível.') : error.message)); });
 })();

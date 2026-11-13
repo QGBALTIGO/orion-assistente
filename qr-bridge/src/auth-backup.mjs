@@ -1,3 +1,4 @@
+import {decodeAuthRecord} from './durable-auth.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import {createCipheriv,createDecipheriv,hkdfSync,randomBytes,createHash} from 'node:crypto';
@@ -24,7 +25,10 @@ export function backupAuth({directory,backupDirectory,secret,label}){
   if(typeof secret!=='string'||secret.length<32||!/^[-a-z0-9]{1,80}$/.test(label))throw Error('Invalid backup configuration');
   const credentials=path.join(directory,'creds.json');
   if(!fs.existsSync(credentials))return {state:'no_existing_auth',files:0};
-  const parsed=JSON.parse(fs.readFileSync(credentials,'utf8'));
+  const credentialsStat=fs.lstatSync(credentials);
+  if(!credentialsStat.isFile()||credentialsStat.isSymbolicLink()||credentialsStat.size>16*1024*1024)throw Error('Unexpected auth file');
+  const credentialsFd=fs.openSync(credentials,fs.constants.O_RDONLY|(fs.constants.O_NOFOLLOW||0));
+  let parsed;try{parsed=decodeAuthRecord(fs.readFileSync(credentialsFd),{directory,secret,name:'creds.json'}).value;}finally{fs.closeSync(credentialsFd);}
   if(!parsed.signedIdentityKey||!parsed.noiseKey)throw Error('Invalid existing credentials; refusing fresh authentication');
   fs.mkdirSync(backupDirectory,{recursive:true,mode:0o700});
   const scope=createHash('sha256').update(directory).digest('hex').slice(0,12);

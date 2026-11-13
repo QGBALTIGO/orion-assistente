@@ -124,9 +124,26 @@ async def test_service_catalog_isolated_and_audited(setup_catalog):
         assert upd.json()["price_cents"] == 4000
         trail = (await c.get(f"/api/v1/tenants/{a}/audit", headers=headers())).json()
         assert {"created", "updated"}.issubset({x["action"] for x in trail})
+        professional = (await c.post(f"/api/v1/tenants/{a}/professionals", headers=headers(), json={
+            "name": "Barbeiro histórico"
+        })).json()
+        linked = await c.post(f"/api/v1/tenants/{a}/professional_services", headers=headers(), json={
+            "professional_id": professional["id"], "service_id": service["id"]
+        })
+        assert linked.status_code == 201, linked.text
         dele = await c.delete(path + "/" + service["id"], headers=headers())
         assert dele.status_code == 204
         assert (await c.get(path, headers=headers())).json() == []
+        assert (await c.put(path + "/" + service["id"], headers=headers(), json={
+            "name": "Reativação indevida", "duration_min": 40, "price_cents": 3500
+        })).status_code == 404
+        assert (await c.delete(path + "/" + service["id"], headers=headers())).status_code == 404
+        async with migrator.connect() as con:
+            archived = (await con.execute(text("""SELECT active,deleted_at FROM services
+                WHERE tenant_id=:t AND id=:id"""), {"t": a, "id": service["id"]})).one()
+            assert archived.active is False and archived.deleted_at is not None
+            assert (await con.execute(text("""SELECT count(*) FROM professional_services
+                WHERE tenant_id=:t AND service_id=:id"""), {"t": a, "id": service["id"]})).scalar_one() == 1
 
 
 @pytest.mark.asyncio

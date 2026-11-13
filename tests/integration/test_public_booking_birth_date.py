@@ -42,7 +42,7 @@ async def test_public_booking_saves_birth_date_and_replay_does_not_change_it(pub
         """),{'tenant':d['a'],'protocol':created.json()['protocol']})).mappings().one()
         assert row['birth_date'].isoformat()=='1994-08-27'
         assert (row['birth_month'],row['birth_day'])==(8,27)
-        assert row['version']==2
+        assert row['version']==1
     month=await d['client'].get(d['base']+'/customers',params={'birthday_month':8})
     assert month.status_code==200,month.text
     assert {item['id'] for item in month.json()['items']}=={str(row['id'])}
@@ -55,7 +55,7 @@ async def test_public_booking_saves_birth_date_and_replay_does_not_change_it(pub
           SELECT birth_date,version FROM customers WHERE tenant_id=:tenant AND id=:id
         """),{'tenant':d['a'],'id':row['id']})).one()
         assert saved.birth_date.isoformat()=='1994-08-27'
-        assert saved.version==2
+        assert saved.version==1
 
 
 @pytest.mark.asyncio
@@ -83,8 +83,8 @@ async def test_public_booking_does_not_override_existing_customers_birth_date(pu
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('month,day,expected_date',[(8,27,'1994-08-27'),(4,12,None)])
-async def test_public_booking_keeps_partial_birthday_and_only_adds_a_matching_year(public_db,month,day,expected_date):
+@pytest.mark.parametrize('month,day',[(8,27),(4,12),(None,None)])
+async def test_public_booking_cannot_fill_existing_partial_or_missing_birthdate(public_db,month,day):
     d=public_db
     await publish(d)
     phone='+5511987654321'
@@ -105,7 +105,7 @@ async def test_public_booking_keeps_partial_birthday_and_only_adds_a_matching_ye
         """),{'tenant':d['a'],'other':d['b'],'phone':phone})).mappings().all()
     current=next(row for row in rows if row['tenant_id']==d['a'])
     other=next(row for row in rows if row['tenant_id']==d['b'])
-    assert (current['birth_date'].isoformat() if current['birth_date'] else None)==expected_date
+    assert current['birth_date'] is None, 'Anonymous bookings must not modify existing PII'
     assert (current['birth_month'],current['birth_day'])==(month,day)
-    assert current['version']==(2 if expected_date else 1)
+    assert current['version']==1
     assert other['birth_date'] is None and (other['birth_month'],other['birth_day'])==(8,27) and other['version']==1

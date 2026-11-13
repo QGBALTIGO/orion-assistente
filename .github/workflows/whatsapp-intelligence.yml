@@ -1,0 +1,240 @@
+name: WhatsApp intelligence and booking parity
+on:
+  push:
+    branches: [main, security/prelaunch-hardening-20261030, codex/whatsapp-intelligence-20261106]
+  pull_request:
+    paths: ['app/qr_*.py', 'app/groq*.py', 'app/booking*.py', 'app/appointment*.py', 'app/subscription_device_audio.py', 'app/whatsapp_footer.py', 'app/subscription_chatbot_rules.py', 'app/subscription_device_rules.py', 'app/subscription_direct_policy.py', 'app/subscription_sent_messages.py', 'qr-bridge/**', 'tests/**', '.github/workflows/whatsapp-intelligence.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: whatsapp-intelligence-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  META_LIVE_SEND: '0'
+  QR_AI_ENABLED: '0'
+  QR_BRIDGE_URL: ''
+  INBOX_SEND_ENABLED: '0'
+  MARKETING_EXECUTION_ENABLED: '0'
+  ORION_NOTIFY_SELF_ON_LINK: '0'
+  QR_NATIVE_TEST_ENABLED: '0'
+  QR_NATIVE_TEST_PHONE: ''
+  CAKTO_BILLING_LIVE_ENABLED: '0'
+  ORION_DIRECT_PAYMENTS_ENABLED: '0'
+  ORION_PIX_PREPAID_ENABLED: '0'
+  ORION_CAKTO_LIFECYCLE_ENABLED: '0'
+  ORION_PIX_PROVISION_ONCE: '0'
+  ORION_AUTO_COMPLETE_APPOINTMENTS: '0'
+  PYTHONUTF8: '1'
+jobs:
+  conversation-and-domain:
+    name: Narrative conversations, real booking, Redis and RLS
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env: {POSTGRES_DB: orion_intelligence_test, POSTGRES_USER: postgres, POSTGRES_PASSWORD: ci-intelligence-postgres-only}
+        ports: ['5432:5432']
+        options: --health-cmd "pg_isready -U postgres -d orion_intelligence_test" --health-interval 5s --health-timeout 3s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      APP_DATABASE_URL: postgresql+asyncpg://app_runtime:ci-intelligence-runtime-only@127.0.0.1:5432/orion_intelligence_test
+      MIGRATION_DATABASE_URL: postgresql+psycopg://app_migrator:ci-intelligence-migrator-only@127.0.0.1:5432/orion_intelligence_test
+      SUPPORT_DATABASE_URL: postgresql+asyncpg://app_support:ci-intelligence-support-only@127.0.0.1:5432/orion_intelligence_test
+      SUPPORT_API_TOKEN: synthetic-intelligence-ci-support-token-at-least-32-characters
+      INTEGRATION_FERNET_KEY: MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=
+      REQUIRE_POSTGRES_TESTS: '1'
+      REQUIRE_REDIS_TESTS: '1'
+      ORION_REQUIRE_INTAKE_REDIS_TEST: '1'
+      REDIS_URL: redis://127.0.0.1:6379/15
+      TEST_REDIS_URL: redis://127.0.0.1:6379/15
+      ORION_INTAKE_TEST_REDIS_URL: redis://127.0.0.1:6379/15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: {python-version: '3.12'}
+      - name: Locked Python dependencies
+        run: |
+          python -m pip install -c requirements.lock '.[test]'
+          python -m pip check
+      - name: Bounded real audio and PostgreSQL tools
+        shell: bash
+        timeout-minutes: 6
+        run: |
+          missing=()
+          if ! timeout 10s psql --version; then missing+=(postgresql-client-16); fi
+          if ! timeout 10s ffmpeg -version || ! timeout 10s ffprobe -version; then missing+=(ffmpeg); fi
+          if ((${#missing[@]})); then
+            for source in /etc/apt/sources.list /etc/apt/sources.list.d/ubuntu.sources /etc/apt/apt-mirrors.txt; do
+              if [[ -f "$source" ]]; then
+                sudo sed -i 's#https\?://azure\.archive\.ubuntu\.com/ubuntu#https://archive.ubuntu.com/ubuntu#g' "$source"
+              fi
+            done
+            apt_options=(-o Acquire::Retries=1 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 -o DPkg::Lock::Timeout=30)
+            sudo timeout --kill-after=10s 90s apt-get "${apt_options[@]}" update
+            sudo timeout --kill-after=10s 180s apt-get "${apt_options[@]}" install -y --no-install-recommends "${missing[@]}"
+          fi
+          timeout 10s psql --version
+          timeout 10s ffmpeg -version
+          timeout 10s ffprobe -version
+      - name: Separate synthetic roles and full schema
+        env: {PGPASSWORD: ci-intelligence-postgres-only}
+        run: |
+          psql -h 127.0.0.1 -U postgres -d orion_intelligence_test -v ON_ERROR_STOP=1 \
+            -v db_name=orion_intelligence_test -v runtime_password=ci-intelligence-runtime-only \
+            -v migrator_password=ci-intelligence-migrator-only -v support_password=ci-intelligence-support-only \
+            -f infra/postgres/init/001-roles.sql
+          python -m alembic upgrade head
+      - name: New narrative acceptance and long conversations, no external network
+        env: {ORION_TEST_NETWORK_AUDIT: /tmp/intelligence-narratives-network.json}
+        run: |
+          python tests/isolated_runner.py -q -ra --junitxml=/tmp/intelligence-narratives.xml \
+            tests/unit/test_qr_intelligence_scenarios.py tests/unit/test_qr_intelligence_conversations.py
+      - name: Parser, memory, composer, voice and authorization regressions
+        env: {ORION_TEST_NETWORK_AUDIT: /tmp/intelligence-units-network.json}
+        run: |
+          mapfile -t units < <(printf '%s\n' tests/unit/test_qr*.py tests/unit/test_groq*.py \
+            tests/unit/test_preview_audio.py tests/unit/test_subscription_device_audio.py \
+            tests/unit/test_contact_preferences.py tests/unit/test_whatsapp_customer_names_unit.py \
+            tests/unit/test_subscription_chatbot_footer_spacing.py tests/unit/test_subscription_url_button.py \
+            tests/unit/test_subscription_direct_policy.py tests/unit/test_subscription_device_rules.py \
+            tests/unit/test_subscription_sent_messages.py \
+            tests/unit/test_ai_customer_flow.py | sort -u | grep -v '/test_qr_intelligence_')
+          python tests/isolated_runner.py -q -ra --junitxml=/tmp/intelligence-units.xml "${units[@]}"
+      - name: Common booking lifecycle, contention, tenant scope and real Redis Lua
+        env: {ORION_TEST_NETWORK_AUDIT: /tmp/intelligence-integrations-network.json}
+        run: |
+          python tests/isolated_runner.py -q -ra --junitxml=/tmp/intelligence-integrations.xml \
+            tests/integration/test_booking.py tests/integration/test_appointment_lifecycle.py tests/integration/test_customer_identity.py \
+            tests/integration/test_qr_context_availability_postgres.py tests/integration/test_qr_hold_recovery_postgres.py \
+            tests/integration/test_qr_cancellation_postgres.py tests/integration/test_qr_business_time_postgres.py \
+            tests/integration/test_qr_memory_postgres.py tests/integration/test_qr_intelligence_postgres.py \
+            tests/integration/test_qr_superseded_holds_postgres.py \
+            tests/integration/test_qr_presentation_ack_postgres.py \
+            tests/integration/test_qr_native_selection_roundtrip_postgres.py \
+            tests/integration/test_qr_reschedule_reference_postgres.py \
+            tests/integration/test_qr_interaction_revision_postgres.py \
+            tests/integration/test_qr_ingress_review_postgres.py \
+            tests/integration/test_whatsapp_footer_postgres.py \
+            tests/integration/test_subscription_direct_messages_postgres.py \
+            tests/integration/test_qr_adopted_ingress_postgres.py \
+            tests/integration/test_qr_conversation_lock_redis.py tests/integration/test_qr_intake_revision_redis.py \
+            tests/integration/test_qr_intelligence_redis.py
+      - name: Fifty complete and distinct composed journeys with real PostgreSQL and Redis
+        env:
+          ORION_TEST_NETWORK_AUDIT: /tmp/intelligence-complete50-network.json
+          ORION_COMPLETE_JOURNEY_EVIDENCE: /tmp/intelligence-complete50-turns
+        run: |
+          python tests/isolated_runner.py -q -ra --junitxml=/tmp/intelligence-complete50.xml \
+            tests/integration/test_qr_complete_journeys_postgres.py
+      - name: Qualification cannot silently skip mandatory infrastructure or accept an empty suite
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          report = {}
+          for kind in ('narratives', 'units', 'integrations', 'complete50'):
+              path = Path('/tmp/intelligence-'+kind+'.xml')
+              cases = list(ET.parse(path).getroot().iter('testcase'))
+              assert cases, 'No executed tests: '+kind
+              assert not any(case.find(tag) is not None for case in cases for tag in ('failure','error','skipped')), kind
+              if kind == 'integrations':
+                  for module, minimum in (('test_qr_superseded_holds_postgres', 19), ('test_qr_presentation_ack_postgres', 13), ('test_qr_adopted_ingress_postgres', 6), ('test_qr_native_selection_roundtrip_postgres', 21), ('test_qr_reschedule_reference_postgres', 9), ('test_qr_interaction_revision_postgres', 16), ('test_qr_ingress_review_postgres', 13), ('test_whatsapp_footer_postgres', 9), ('test_subscription_direct_messages_postgres', 26)):
+                      assert sum(module in case.get('classname', '') for case in cases) >= minimum, module
+              audit = json.loads(Path('/tmp/intelligence-'+kind+'-network.json').read_text())
+              assert audit['external_network'] == 'denied' and audit['blocked'] == [] and audit['exit_code'] == 0, kind
+              report[kind] = {'executed': len(cases), 'skipped': 0, 'external_network': 'denied'}
+          assert report['narratives']['executed'] >= 80
+          assert report['complete50']['executed'] == 50
+          journeys = list(Path('/tmp/intelligence-complete50-turns').glob('FJ*.json'))
+          expected = {'FJ'+str(index).zfill(2) for index in range(1, 51)}
+          assert {path.stem for path in journeys} == expected
+          for path in journeys:
+              item = json.loads(path.read_text())
+              assert item['completed_assertions'] is True and item['customer_turns'] >= 6, path.stem
+              assert item['real_postgres'] is True and item['real_redis'] is True, path.stem
+              assert item['fixture_cleanup']['active_reservations_remaining'] == 0, path.stem
+              assert item['provider_http'] is False and item['whatsapp_transport'] is False, path.stem
+          Path('/tmp/intelligence-summary.json').write_text(json.dumps(report, indent=2))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: whatsapp-intelligence-domain
+          path: /tmp/intelligence-*
+          retention-days: 7
+  typed-transport:
+    name: Capability, native choices, accepted cache and acknowledgment
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with: {node-version: '22'}
+      - run: npm ci --prefix qr-bridge --ignore-scripts --no-audit --no-fund
+      - name: Actual primary and managed adapters with pinned SDK, no external sends
+        run: |
+          set -o pipefail
+          node --test --test-reporter=tap qr-bridge/test/assistant-presentation.test.mjs \
+            qr-bridge/test/audio-inbound-routing.test.mjs qr-bridge/test/outgoing-presence-server.test.mjs \
+            qr-bridge/test/channel-session.test.mjs qr-bridge/test/channel-manager.test.mjs \
+            qr-bridge/test/legacy-central.test.mjs qr-bridge/test/ai-forward.test.mjs \
+            qr-bridge/test/inbound-event.test.mjs qr-bridge/test/assistant-parts.test.mjs \
+            qr-bridge/test/conversation-intake.test.mjs qr-bridge/test/ai-audio.test.mjs \
+            qr-bridge/test/assistant-preparation.test.mjs qr-bridge/test/assistant-ingress.test.mjs \
+            qr-bridge/test/channel-intake.test.mjs qr-bridge/test/ingress-journal.test.mjs \
+            qr-bridge/test/ingress-health.test.mjs qr-bridge/test/assistant-ingress-review.test.mjs \
+            qr-bridge/test/ingress-review-auth.test.mjs qr-bridge/test/ingress-review-panel.test.mjs \
+            tests/ui/connection-attention-panel.test.mjs | tee /tmp/intelligence-transport.tap
+      - name: Preparation and operator contract minimums without skipped tests
+        run: |
+          set -euo pipefail
+          for module in assistant-preparation assistant-ingress-review ingress-review-auth ingress-review-panel; do
+            node --test --test-reporter=tap "qr-bridge/test/${module}.test.mjs" | tee "/tmp/intelligence-${module}-contract.tap"
+          done
+          node --test --test-reporter=tap tests/ui/connection-attention-panel.test.mjs | tee /tmp/intelligence-connection-attention-panel-contract.tap
+          node --input-type=module <<'JS'
+          import {readFileSync, writeFileSync} from 'node:fs';
+          const minimums = new Map([
+            ['transport', 474],
+            ['assistant-preparation-contract', 17],
+            ['assistant-ingress-review-contract', 31],
+            ['ingress-review-auth-contract', 5],
+            ['ingress-review-panel-contract', 6],
+            ['connection-attention-panel-contract', 31],
+          ]);
+          const report = {};
+          for (const [name, minimum] of minimums) {
+            const tap = readFileSync(`/tmp/intelligence-${name}.tap`, 'utf8');
+            const counts = {};
+            for (const key of ['tests', 'pass', 'fail', 'cancelled', 'skipped', 'todo']) {
+              const matches = [...tap.matchAll(new RegExp(`^# ${key} (\\d+)\\s*$`, 'gm'))];
+              if (matches.length !== 1) throw new Error(`Missing or duplicate TAP summary: ${name}/${key}`);
+              counts[key] = Number(matches[0][1]);
+            }
+            if (counts.tests < minimum || counts.pass !== counts.tests ||
+                ['fail', 'cancelled', 'skipped', 'todo'].some(key => counts[key] !== 0)) {
+              throw new Error(`Incomplete or skipped contract: ${name}`);
+            }
+            report[name] = counts;
+          }
+          writeFileSync('/tmp/intelligence-transport-summary.json', JSON.stringify({
+            suites: report, critical_module_suites_overlap_transport: true,
+          }, null, 2));
+          JS
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: whatsapp-intelligence-transport
+          path: |
+            /tmp/intelligence-transport.tap
+            /tmp/intelligence-*-contract.tap
+            /tmp/intelligence-transport-summary.json
+          retention-days: 7

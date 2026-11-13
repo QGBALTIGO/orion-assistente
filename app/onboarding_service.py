@@ -27,6 +27,7 @@ from app.onboarding_timezone import timezone_from_address
 from app import business_profile_service as profiles
 from app.business_profile_schemas import BusinessProfile
 from app.http_json import ordinary_json_tree
+from app.workspace_policy import SUBSCRIPTION_NICHE
 from app.commercial_service import audit as commercial_audit
 from app.account_business import (
     account_membership_role, lock_account_business, ensure_can_create_business,
@@ -49,6 +50,17 @@ def enabled():
 def require_enabled():
     if not enabled():
         raise HTTPException(423, "A configuração inicial ainda não está habilitada")
+
+
+async def _require_workspace_operation(db, tenant, configuration, feature=None):
+    if configuration.get("niche") != SUBSCRIPTION_NICHE:
+        return
+    # The effective resolver preserves the platform workspace exception. Do not
+    # acquire a plan lock after metadata: tenant routes already hold theirs, and
+    # direct callers must retain the existing metadata/plan lock order.
+    from app.plan_permissions import plan_state
+    from app.workspace_policy import require_standard_workspace
+    require_standard_workspace(await plan_state(db, tenant, lock=None), feature)
 
 
 _DIGEST_SCALARS = frozenset((str, int, float, bool, type(None), bytes, date, datetime, time, timedelta, Decimal, UUID, DriverUUID))
@@ -150,13 +162,17 @@ _FACT_TABLES = (("professionals", "professionals"), ("services", "services"),
                 ("links", "professional_services"), ("hours", "working_hours"),
                 ("breaks", "working_breaks"), ("products", "commercial_products"),
                 ("variants", "commercial_variants"))
+_FACT_READ_TABLES = _FACT_TABLES + (("start_policies", "professional_start_policies"),)
 # Whole-row composites preserve asyncpg's native UUID/date/time/Decimal codecs.
 # JSON aggregation would change the historical fingerprint representation.
 # Names are fixed here, never taken from a request. Every subquery retains both
 # the explicit tenant predicate and the runtime connection's RLS policies.
 _FACTS_SQL = text("SELECT business.id,business.name,business.timezone,business.status," + ",".join(
-    f"ARRAY(SELECT item FROM {table} item WHERE item.tenant_id=:t ORDER BY item.id) AS {key}"
-    for key, table in _FACT_TABLES
+    f"ARRAY(SELECT item FROM {table} item WHERE item.tenant_id=:t"
+    + (" AND item.deleted_at IS NULL" if key == "services" else "")
+    + (" AND EXISTS (SELECT 1 FROM services s WHERE s.tenant_id=item.tenant_id AND s.id=item.service_id AND s.deleted_at IS NULL)" if key == "links" else "")
+    + f" ORDER BY item.id) AS {key}"
+    for key, table in _FACT_READ_TABLES
 ) + " FROM tenants business WHERE business.id=:t")
 
 
@@ -165,8 +181,12 @@ async def _facts(db, tenant):
     if row is None:
         raise HTTPException(404, "Empresa não encontrada")
     result = {"business": {key: row[key] for key in ("id", "name", "timezone", "status")}}
-    for key, _table in _FACT_TABLES:
-        result[key] = [dict(item) for item in row[key]]
+    for key, _table in _FACT_READ_TABLES:
+        values = [dict(item) for item in row.get(key, ())]
+        # Preserve legacy snapshots byte-for-byte when this optional feature
+        # has never been configured; real policy edits enter the snapshot.
+        if key != "start_policies" or values:
+            result[key] = values
     return result
 
 
@@ -188,11 +208,12 @@ def _fitting_bindings(pros, services, facts):
     for service in services:
         duration = service.get("duration_min", 0) + service.get("prep_min", 0) + service.get("cleanup_min", 0)
         if duration > 0 and type(service.get("price_cents")) is int:
-            valid_services.append((str(service["id"]), duration))
+            valid_services.append((str(service["id"]), duration,
+                                   service.get("duration_min", 0) + service.get("cleanup_min", 0)))
     pro_ids = {str(pro["id"]) for pro in pros}
     if not pro_ids or not valid_services:
         return set(), set()
-    service_ids = {identity for identity, _duration in valid_services}
+    service_ids = {identity for identity, _duration, _manual_duration in valid_services}
     links = {}
     for link in facts.get("links", []):
         service_id, pro_id = str(link["service_id"]), str(link["professional_id"])
@@ -210,8 +231,15 @@ def _fitting_bindings(pros, services, facts):
         hour_id = str(pause["working_hour_id"])
         if hour_id in hour_ids:
             pauses.setdefault(hour_id, []).append((_minutes(pause["start_time"]), _minutes(pause["end_time"])))
+    manual_policies = {(str(policy["professional_id"]), policy["weekday"]): policy
+                       for policy in facts.get("start_policies", []) if policy["mode"] == "manual"}
     capacity = {}
+    manual_hours = {}
     for hour in hours:
+        scope = (str(hour["professional_id"]), hour.get("weekday"))
+        if scope in manual_policies:
+            manual_hours.setdefault(scope, []).append(hour)
+            continue
         cursor, end = _minutes(hour["start_time"]), _minutes(hour["end_time"])
         longest = 0
         for start, stop in sorted(pauses.get(str(hour["id"]), [])) + [(end, end)]:
@@ -219,10 +247,22 @@ def _fitting_bindings(pros, services, facts):
             cursor = max(cursor, stop)
         pro_id = str(hour["professional_id"])
         capacity[pro_id] = max(capacity.get(pro_id, 0), longest)
+    manual_capacity = {}
+    if manual_hours:
+        from app.start_policies import open_periods
+        for scope, day_hours in manual_hours.items():
+            periods = open_periods(day_hours, facts.get("breaks", []))
+            for candidate in manual_policies[scope]["start_times"]:
+                minute = _minutes(candidate)
+                for begin, end in periods:
+                    if _minutes(begin) <= minute < _minutes(end):
+                        manual_capacity[scope[0]] = max(manual_capacity.get(scope[0], 0),
+                                                       _minutes(end) - minute)
     fitting_services, fitting_professionals = set(), set()
-    for service_id, duration in valid_services:
+    for service_id, duration, manual_duration in valid_services:
         for pro_id in links.get(service_id, ()):
-            if capacity.get(pro_id, 0) >= duration:
+            if (capacity.get(pro_id, 0) >= duration
+                    or manual_capacity.get(pro_id, 0) >= manual_duration > 0):
                 fitting_services.add(service_id)
                 fitting_professionals.add(pro_id)
     return fitting_services, fitting_professionals
@@ -259,6 +299,10 @@ def readiness(configuration, facts, managed=None, *, staged=True,
         pending.append({"step": step, "code": code, "message": message})
     if not all(configuration.get(key) for key in ("niche", "activity")):
         add("business", "identity", "Informe o ramo e a atividade da empresa")
+    if (configuration.get("niche") == schemas.SUBSCRIPTION_NICHE
+            and (configuration.get("activity") != "products"
+                 or configuration.get("subscription_offering") not in schemas.SUBSCRIPTION_OFFERINGS)):
+        add("business", "subscription_offering", "Escolha o que sua empresa oferece")
     mode = configuration.get("modality")
     if mode not in {"onsite", "online", "client_address", "hybrid"}:
         add("location", "modality", "Escolha como a empresa atende")
@@ -635,6 +679,8 @@ async def _edit_guard(db, tenant, table, item_id, expected):
     item = (await db.execute(text(f"SELECT * FROM {table} WHERE tenant_id=:t AND id=:id FOR UPDATE"), {"t": tenant, "id": item_id})).mappings().first()
     if item is None:
         raise HTTPException(404, "Item não encontrado nesta empresa")
+    if table == "services" and item["deleted_at"] is not None:
+        raise HTTPException(404, "Serviço não encontrado")
     related = {"services": ("professional_services", "service_id"),
                "commercial_products": ("commercial_variants", "product_id"),
                "working_hours": ("working_breaks", "working_hour_id")}.get(table)
@@ -698,6 +744,11 @@ async def _save_simple(db, tenant, meta, table, data, expected=None):
 
 
 async def _save_hours(db, tenant, data):
+    from app.booking_service import _engine_professional_lock
+    from app.start_policies import validate_active_policies
+    # The onboarding metadata is already locked. Never wait on booking's
+    # professional lock while holding that row (booking reads it for readiness).
+    await _engine_professional_lock(db, tenant, data.professional_id, nonblocking=True)
     pro = (await db.execute(text("SELECT id FROM professionals WHERE tenant_id=:t AND id=:p FOR UPDATE"), {"t": tenant, "p": data.professional_id})).scalar_one_or_none()
     if pro is None:
         raise HTTPException(422, "Profissional não pertence à empresa")
@@ -719,6 +770,7 @@ async def _save_hours(db, tenant, data):
             await db.execute(text("INSERT INTO working_breaks(tenant_id,working_hour_id,start_time,end_time) VALUES(:t,:id,:s,:e)"), {"t": tenant, "id": item_id, "s": data.break_start, "e": data.break_end})
         await audit(db, tenant, "onboarding_saved", "working_hours", item_id)
         result.append(str(item_id))
+    await validate_active_policies(db, tenant, {(pro, day) for day in data.weekdays})
     return {"ids": result}
 
 
@@ -752,6 +804,8 @@ async def _apply_step(db, tenant, meta, step, data, access):
     config = meta["configuration"]
     if step == "business":
         await db.execute(text("SELECT public.onboarding_update_identity(:t,:name,:tz)"), {"t": tenant, "name": data.name, "tz": data.timezone})
+        if data.niche != schemas.SUBSCRIPTION_NICHE:
+            config.pop("subscription_offering", None)
         config.update(data.model_dump(mode="json", exclude={"name", "timezone"}))
     elif step == "location":
         config.update(modality=data.modality, private_address=data.address.model_dump(mode="json") if data.address else None)
@@ -794,7 +848,9 @@ async def _apply_step(db, tenant, meta, step, data, access):
                 if row is None:
                     raise HTTPException(422, "Vínculo a profissional de outra empresa ou inexistente")
             if data.item.get("id"):
-                kind = (await db.execute(text("SELECT catalog_kind FROM services WHERE tenant_id=:t AND id=:id"), {"t": tenant, "id": UUID(data.item["id"])})).scalar_one_or_none()
+                kind = (await db.execute(text("SELECT catalog_kind FROM services WHERE tenant_id=:t AND id=:id AND deleted_at IS NULL"), {"t": tenant, "id": UUID(data.item["id"])})).scalar_one_or_none()
+                if kind is None:
+                    raise HTTPException(404, "Serviço não encontrado")
                 if kind and kind != "base":
                     conflict("Edite pacotes e complementos no cadastro específico")
             item = {k: v for k, v in data.item.items() if not data.item.get("id") or k in data._item_fields}
@@ -859,6 +915,8 @@ async def _save_hours_by_mode(actor, tenant, step, payload):
                     quick = _uses_quick_profile(meta)
                     model = schemas.BusinessOpeningHours if quick else schemas.Hours
                     data = model.model_validate(payload.data)
+                    if not isinstance(data, schemas.BusinessOpeningHours):
+                        await _require_workspace_operation(db, tenant, meta["configuration"], "agenda.manage")
                     fingerprint = digest({"actor": actor.account_id, "step": step,
                                           "data": data.model_dump(mode="json"),
                                           "supplied": payload.data})
@@ -908,7 +966,14 @@ async def save_step(actor, tenant, step, payload):
         async with access_session(actor, tenant, write=True) as access:
             async with get_session_factory()() as db:
                 async with tenant_transaction(db, tenant):
+                    if step == "business":
+                        # Niche changes alter effective permissions. Serialize
+                        # them before metadata locks, matching plan mutations.
+                        from app.plan_permissions import lock_plan
+                        await lock_plan(db, tenant, exclusive=True)
                     meta = await _lock_meta(db, tenant, actor)
+                    if step in {"professionals", "catalog", "channels"}:
+                        await _require_workspace_operation(db, tenant, meta["configuration"])
                     replay = await _replay(db, tenant, actor, payload.idempotency_key, fingerprint)
                     if not replay:
                         if meta["version"] != payload.expected_version:
@@ -960,12 +1025,18 @@ async def complete(actor, tenant, payload):
                 if not payload.activate_catalog:
                     raise HTTPException(422, "Confirme explicitamente a disponibilização do cadastro operacional")
                 # Serialize final readiness against normal catalog edits/deletions.
-                for table in ("professionals", "services", "commercial_products", "commercial_variants", "working_hours", "working_breaks", "professional_services"):
+                for table in ("professionals", "services", "commercial_products", "commercial_variants", "working_hours", "working_breaks", "professional_services", "professional_start_policies"):
                     await db.execute(text(f"SELECT id FROM {table} WHERE tenant_id=:t ORDER BY id FOR UPDATE"), {"t": tenant})
                 current_facts = await _facts(db, tenant)
                 if payload.expected_snapshot != _snapshot(meta["configuration"], meta["managed_ids"], current_facts):
                     conflict("O catálogo ou expediente mudou. Revise os dados atuais antes de concluir")
                 quick_setup = _uses_quick_profile(meta)
+                # A private questionnaire needs no operating plan. However,
+                # quick-profile answers may coexist with staged catalogue rows;
+                # activating any such batch retains the original paid gate.
+                requires_operational_plan = not quick_setup or any(
+                    meta["managed_ids"].get(table) for table in
+                    ("professionals", "services", "commercial_products", "commercial_variants"))
                 pending = readiness(meta["configuration"], current_facts, meta["managed_ids"],
                                     profile_only=quick_setup,
                                     goals_required=bool(quick_setup and not meta["completed_at"]))
@@ -992,12 +1063,14 @@ async def complete(actor, tenant, payload):
                     else:
                         await db.execute(text("SELECT public.onboarding_activate_tenant(:t)"),
                                          {"t": tenant})
-                # A new business is intentionally paused while drafts are
-                # prepared. The activation and entitlement/capacity check are
-                # one transaction: no grant or an expired grant rolls back
-                # every staged activation and keeps the company paused.
+                # Real catalogue activation and its entitlement/capacity check
+                # remain atomic: a missing/expired grant rolls back every row.
+                # Completing only the private profile grants no paid features,
+                # plan or trial; their own API/domain gates still apply.
                 from app.plan_permissions import require_feature
-                await require_feature(db, tenant, "professionals.manage", lock="exclusive")
+                await require_feature(db, tenant,
+                    "professionals.manage" if requires_operational_plan else "business.setup",
+                    lock="exclusive")
                 return await _state(db, tenant, access)
 
 
@@ -1015,16 +1088,20 @@ async def require_operational_ready(db, tenant, capability):
     """Use in the caller's existing RLS transaction, before an operational write.
 
     Setup edits, reads and cancellation of existing appointments do not call it.
-    Legacy companies and a disabled rollout retain their previous engine gates.
+    A disabled setup rollout keeps its existing no-query contract. Operational
+    features still use the plan resolver, which applies the workspace policy.
     """
     if not enabled():
         return
     row = (await db.execute(text("SELECT is_new,completed_at,configuration FROM business_onboarding WHERE tenant_id=:t FOR SHARE"), {"t": tenant})).mappings().first()
-    if not row or not row["is_new"]:
+    if not row:
+        return
+    configuration = dict(row["configuration"])
+    await _require_workspace_operation(db, tenant, configuration, capability)
+    if not row["is_new"]:
         return
     if row["completed_at"] is None:
         raise HTTPException(409, "Conclua a configuração da empresa antes desta operação")
-    configuration = dict(row["configuration"])
     if capability in {"appointments", "rescheduling", "public_site", "google"}:
         if configuration.get("activity") not in {"services", "both"}:
             raise HTTPException(409, "Esta empresa não tem agenda configurada")

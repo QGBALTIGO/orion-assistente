@@ -11,6 +11,7 @@ from uuid import UUID
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from app.qr_catalog_context import candidates
 
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 MODELS = frozenset({
@@ -46,9 +47,15 @@ async def interpret(
         raise GroqServiceError(503, "Modelo Groq não autorizado")
     if not message.strip() or len(message) > 1500 or len(history) > 8:
         raise GroqServiceError(422, "Mensagem ou histórico fora do limite")
+    try:
+        selected_names = set((context or {}).get("servicos_selecionados", []))
+        relevant = candidates(message, catalog, {"service_ids": [str(item["id"]) for item in catalog
+            if item["name"] in selected_names]})
+    except (ValueError, TypeError, KeyError):
+        raise GroqServiceError(422, "Contexto de catálogo inválido") from None
     clean_catalog = [
         {"id": str(item["id"]), "name": str(item["name"])[:120]}
-        for item in catalog[:60]
+        for item in relevant
     ]
     prompt = (
         "Você classifica intenções de atendimento de um estabelecimento brasileiro. "

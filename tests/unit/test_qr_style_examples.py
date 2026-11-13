@@ -13,10 +13,13 @@ import pytest
 from app import qr_ai, qr_profile, tenant_access
 from app.catalog_api import Actor, authenticate
 from app.business_profile_schemas import BusinessProfile
+from app.plan_routing import include_plan_router
 
 
 @pytest.fixture
 def visual(monkeypatch):
+    from plan_fixture import install_plan_fixture
+    install_plan_fixture(monkeypatch,"elite")
     tenant, other, cut, beard, pro, account=(uuid4() for _ in range(6))
     zone=ZoneInfo("America/Campo_Grande");target=datetime.now(zone).date()+timedelta(days=1)
     catalog=[{"id":cut,"name":"Corte","price_cents":3500,"duration_min":40},
@@ -27,7 +30,7 @@ def visual(monkeypatch):
     events=[]
     values={"rows":[{"timezone":str(zone),"booking_horizon_days":30,"min_notice_minutes":30,
                      "weekday":target.weekday(),"end_time":time(18)}],"empty":False,"eligible":True,"slow":False}
-    actor=Actor("member",account_id=account)
+    actor=Actor("member",tenant_id=tenant,account_id=account,membership_role="viewer")
     async def access(given,t,operation="read"):
         assert given.account_id == account and operation == "read"
         events.append(("access",t))
@@ -74,7 +77,7 @@ def visual(monkeypatch):
     monkeypatch.setattr(qr_ai,"list_slots",grid)
     for name in ("book_appointment","confirm_hold","reschedule_appointment","remember_name","customer_appointments"):
         monkeypatch.setattr(qr_ai,name,forbidden)
-    app=FastAPI();app.include_router(qr_ai.router)
+    app=FastAPI();include_plan_router(app,qr_ai.router)
     app.dependency_overrides[authenticate]=lambda:actor
     async def request(t=None):
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url="https://test") as client:
@@ -141,7 +144,9 @@ async def test_grid_deadline_keeps_price_example_and_explains_operational_absenc
 @pytest.mark.asyncio
 async def test_another_tenant_is_rejected_before_catalog_or_grid_read(visual):
     h=visual;response=await h.request(h.other)
-    assert response.status_code == 403 and h.events == [("access",h.other)]
+    # The production plan dependency rejects another workspace before the
+    # endpoint can read membership, profile, catalog or availability facts.
+    assert response.status_code == 403 and h.events == []
 
 
 @pytest.mark.asyncio

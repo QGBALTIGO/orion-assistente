@@ -1,6 +1,6 @@
 """Ephemeral PostgreSQL RLS/tenant-scoping tests for 3-day trials. No real users."""
 import os
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import httpx
@@ -171,7 +171,7 @@ async def test_synthetic_cakto_checkout_activates_only_verified_owner_subscripti
                 "id": "CIProOffer", "name": "Orion Pro", "price": "89.90",
                 "status": "active", "type": "subscription", "recurrence_period": 30,
             }]
-    monkeypatch.setattr(plan_management, "CaktoClient", FakeReadOnlyCakto)
+    monkeypatch.setattr(plan_management, "cached_cakto_client", FakeReadOnlyCakto)
     monkeypatch.setenv("CAKTO_BILLING_LIVE_ENABLED", "1")
     monkeypatch.setenv("INTEGRATION_FERNET_KEY", "synthetic-domain-separated-checkout-key-for-ci-only-12345")
     order_id, subscription_id = str(uuid4()), "ci-sub-" + uuid4().hex
@@ -209,6 +209,7 @@ async def test_synthetic_cakto_checkout_activates_only_verified_owner_subscripti
             "status": "paid", "amount": "89.90", "currency": "BRL",
             "subscription": subscription_id,
             "checkoutUrl": checkout["checkout_url"], "sck": token,
+            "paidAt": datetime.now(timezone.utc).isoformat(),
         }
         remote_sub = {
             "id":subscription_id, "offer":"CIProOffer", "amount":"89.90",
@@ -272,7 +273,7 @@ async def test_0046_direct_payment_attempts_are_support_only_without_sensitive_f
         """))).scalars().all())
         assert names=={
             'id','intent_id','tenant_id','account_id','method','state',
-            'external_order_id','created_at','updated_at',
+            'external_order_id','created_at','updated_at','provider_checked_at',
         }
         assert not names.intersection({
             'email','cpf','cnpj','document','cvv','card_number','card_token',

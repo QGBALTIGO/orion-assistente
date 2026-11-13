@@ -16,12 +16,13 @@ from tests.integration.test_inbox_tools_postgres import inbox_db  # noqa: F401
 pytestmark = pytest.mark.integration
 
 
-@pytest.mark.parametrize("global_control,mode,revoke_before_control", [
-    ("0", None, False), ("1", None, False), ("0", "human", False),
-    ("0", "paused", False), ("0", None, True),
+@pytest.mark.parametrize("global_control,mode,revoke_before_control,plan_code", [
+    ("0", None, False, "elite"), ("1", None, False, "elite"), ("0", "human", False, "elite"),
+    ("0", "paused", False, "elite"), ("0", None, True, "elite"),
+    ("0", None, False, "profissional"),
 ])
 async def test_adopted_ingress_reads_initial_authority_with_real_transaction_guard(
-        inbox_db, monkeypatch, global_control, mode, revoke_before_control):
+        inbox_db, monkeypatch, global_control, mode, revoke_before_control, plan_code):
     c = inbox_db
     channel = qr_legacy.channel_id(c.tenant)
     owner = uuid4()
@@ -36,6 +37,10 @@ async def test_adopted_ingress_reads_initial_authority_with_real_transaction_gua
     monkeypatch.setattr(qr_ai, "get_session_factory", lambda: c.factory)
     async with c.migration.begin() as db:
         await db.execute(text("UPDATE tenants SET status='active',bot_enabled=true WHERE id=:t"), {"t": c.tenant})
+        # Reception scenarios require the actual reception.ai entitlement;
+        # the lower-plan case below must remain disabled even for adoption.
+        await db.execute(text("UPDATE tenant_plan_controls SET manual_plan_code=:plan WHERE tenant_id=:t"),
+                         {"t": c.tenant, "plan": plan_code})
         await db.execute(text("""INSERT INTO qr_channels(id,tenant_id,owner_account_id,provider,label,
             credential_hash,credential_encrypted,allowed_senders,enabled,assistant_enabled,
             lease_owner,lease_expires_at,fence,idempotency_key,request_fingerprint)
@@ -82,7 +87,10 @@ async def test_adopted_ingress_reads_initial_authority_with_real_transaction_gua
         response = await client.post(f"/internal/qr/channels/{channel}/ai/reply",
             headers={"X-Orion-Channel-Key": key, "X-Orion-Channel-Owner": str(owner), "X-Orion-Channel-Fence": "4"},
             json={"phone": PHONE.removeprefix("+"), "message_id": "synthetic-ingress", "text": "Olá", "intake_revision": 1})
-    if revoke_before_control:
+    if plan_code == "profissional":
+        assert response.status_code == 200 and response.json() == {"answer": None, "step": "disabled"}
+        assert not calls
+    elif revoke_before_control:
         assert response.status_code == 409 and not calls
     elif mode:
         assert response.status_code == 200 and response.json() == {"answer": None, "step": "human"}
@@ -97,5 +105,5 @@ async def test_adopted_ingress_reads_initial_authority_with_real_transaction_gua
             row = (await db.execute(text("""SELECT mode,revision FROM inbox_controls
                 WHERE tenant_id=:t AND channel_id=:c AND contact_e164=:phone"""),
                 {"t": c.tenant, "c": channel, "phone": PHONE})).mappings().one_or_none()
-            assert row is None if revoke_before_control else row["mode"] == (mode or "ai") and row["revision"] == 1
+            assert row is None if revoke_before_control or plan_code == "profissional" else row["mode"] == (mode or "ai") and row["revision"] == 1
     assert not c.sent

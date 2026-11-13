@@ -13,7 +13,7 @@ from redis.exceptions import RedisError
 from sqlalchemy import text
 
 from app.calendar_provider import CalendarProviderError, GoogleCalendar
-from app.calendar_sync import OUTSIDE_INITIAL_SYNC, calendar_lock
+from app.calendar_sync import NOT_CONNECTED, OUTSIDE_INITIAL_SYNC, calendar_lock
 from app.catalog_api import Actor, authenticate, authorize, ensure_tenant
 from app.csv_export import csv_document
 from app.database import get_session_factory, tenant_transaction
@@ -87,7 +87,7 @@ def current_candidate(candidate, row):
 
 
 def callback_result(tenant, outcome):
-    response = RedirectResponse("/panel?" + urlencode({"aba": "agenda", "google": outcome, "empresa": str(tenant)}),
+    response = RedirectResponse("/painel?" + urlencode({"aba": "agenda", "google": outcome, "empresa": str(tenant)}),
                                 status_code=303, headers=NO_STORE)
     response.delete_cookie(OAUTH_COOKIE, path=OAUTH_PATH, secure=True, httponly=True, samesite="lax")
     return response
@@ -102,11 +102,13 @@ async def google_status_data(tenant_id, actor, request):
             row = await connection_row(db, tenant_id)
             stats = dict((await db.execute(text("""
                 SELECT count(*) FILTER(WHERE status='pending') AS pending,
-                       count(*) FILTER(WHERE status='dead' AND last_error IS DISTINCT FROM :outside) AS failed,
+                       count(*) FILTER(WHERE status='dead' AND last_error IS DISTINCT FROM :outside
+                           AND last_error IS DISTINCT FROM :no_connection) AS failed,
                        count(*) FILTER(WHERE status='sent') AS sent,
                        max(updated_at) FILTER(WHERE status='sent') AS last_synced_at
                 FROM calendar_outbox WHERE tenant_id=:tenant
-            """), {"tenant": tenant_id, "outside": OUTSIDE_INITIAL_SYNC})).mappings().one())
+            """), {"tenant": tenant_id, "outside": OUTSIDE_INITIAL_SYNC,
+                   "no_connection": NOT_CONNECTED})).mappings().one())
     can_manage = access.role in {"owner", "support", "admin"}
     email_pending = can_manage and await email_confirmation_required(request, actor)
     candidate, cached_name, oauth_available, worker_health = None, None, True, None
@@ -425,7 +427,7 @@ async def google_appointment_status(tenant_id: UUID, appointment_id: UUID, actor
             connection = await connection_row(db, tenant_id)
     raw_status = record["status"]
     excluded = record["last_error"] == OUTSIDE_INITIAL_SYNC
-    state = "outside_initial_sync" if excluded else "not_queued" if raw_status is None else "synced" if raw_status == "sent" else \
+    state = "outside_initial_sync" if excluded else "not_connected" if record["last_error"] == NOT_CONNECTED else "not_queued" if raw_status is None else "synced" if raw_status == "sent" else \
             "failed" if raw_status == "dead" else "retrying" if record["attempts"] else "pending"
     return {"status": state, "sync_enabled": os.getenv("GOOGLE_LIVE_SYNC") == "1",
             "configured": google_configured(),

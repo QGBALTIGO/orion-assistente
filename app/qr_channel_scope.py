@@ -67,9 +67,12 @@ async def _lock_authority(session, identity):
 @asynccontextmanager
 async def transaction_guard(session, tenant):
     """Keep managed authority locked in the domain transaction, never across LLM I/O."""
+    from app.qr_conversation_lock import assert_current as conversation_current
+    await conversation_current()
     identity = current()
     if identity is None:
         yield
+        await conversation_current()
         return
     inherited = _hold.get()
     if (tenant != identity.tenant_id or not session.in_transaction()
@@ -85,6 +88,7 @@ async def transaction_guard(session, tenant):
         # clock_timestamp is checked again before commit; expiration rolls back
         # the entire domain operation, including writes already executed.
         await _lock_authority(session, identity)
+        await conversation_current()
     finally:
         hold.active = False
         _hold.reset(token)

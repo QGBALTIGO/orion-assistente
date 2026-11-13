@@ -65,7 +65,7 @@ async def repair_db(management_db):
     finally:
         engine.dispose()
         async with d["migrator"].begin() as db:
-            for table in ("communication_pending", "public_booking_receipts", "contact_consents"):
+            for table in ("appointment_message_consents", "communication_pending", "public_booking_receipts", "contact_consents"):
                 await db.execute(text(f"DELETE FROM {table} WHERE tenant_id=:tenant"), {"tenant": d["a"]})
 
 
@@ -182,6 +182,35 @@ async def test_repair_aborts_atomically_when_preconditions_or_protected_snapshot
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('identity', ['primary', 'secondary'])
+@pytest.mark.parametrize('opted_in', [True, False])
+async def test_repair_refuses_any_scoped_consent_without_transferring_or_changing_facts(repair_db, tmp_path, identity, opted_in):
+    d = repair_db
+    customer_id = getattr(d['scope'], identity)
+    state = await current(d)
+    appointment_id = next(row['id'] for row in state['appointments'] if row['customer_id'] == customer_id)
+    async with d['migrator'].begin() as db:
+        await db.execute(text("""INSERT INTO appointment_message_consents
+            (tenant_id,appointment_id,customer_id,contact_e164,operational_opt_in,
+             review_opt_in,source,actor,purpose_version,evidence_hash)
+            VALUES(:tenant,:appointment,:customer,:phone,:opted_in,:opted_in,
+              'customer_whatsapp',CAST(:actor AS jsonb),1,:evidence)"""),
+            {'tenant': d['a'], 'appointment': appointment_id, 'customer': customer_id,
+             'phone': PHONE64 if identity == 'primary' else PHONE94, 'opted_in': opted_in,
+             'actor': json.dumps({'role': 'customer', 'customer_id': str(customer_id)}),
+             'evidence': hashlib.sha256(b'synthetic explicit appointment permission').hexdigest()})
+    before = await current(d)
+    grant = before['appointment_message_consents'][0]
+    assert grant['customer_id'] == customer_id and grant['operational_opt_in'] is opted_in
+    assert repair.unchanged_facts(before)['appointment_message_consents'] == before['appointment_message_consents']
+    snapshot = PrivateSnapshot(tmp_path)
+    with pytest.raises(ValueError, match='appointment_consent_requires_review'):
+        await apply(d, snapshot)
+    assert snapshot.calls == 0
+    assert await current(d) == before
+
+
+@pytest.mark.asyncio
 async def test_old_phone_replay_denied_by_revocation_and_by_guard_even_with_original_hash(repair_db, tmp_path):
     d = repair_db
     await apply(d, PrivateSnapshot(tmp_path))
@@ -257,6 +286,14 @@ async def test_operational_cli_defaults_to_read_only_and_requires_verified_backu
     output = capsys.readouterr()
     assert all(value not in output.out + output.err for value in (PHONE64, PHONE94, "Kayky", "1990-05-17"))
     assert ("orion_customer_repair_started" in output.out) == (mode != "missing_scope")
+    # The retired customer repair is intentionally pinned to its reviewed
+    # release. On newer schemas (including fixed-client series), it MUST fail
+    # closed before any backup or writes; never mock that version gate away.
+    if repair.migrated_version(raw) != repair.SCHEMA:
+        assert code == 2 and not events
+        assert await current(d) == before
+        assert '"status": "not_applied"' in output.err
+        return
     if mode == "verified_backup":
         assert code == 0 and events == ["backup", "snapshot"]
         assert json.loads(output.out.splitlines()[-1])["status"] == "applied"

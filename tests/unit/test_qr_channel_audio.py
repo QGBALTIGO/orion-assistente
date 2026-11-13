@@ -24,7 +24,9 @@ def flow(monkeypatch):
     monkeypatch.setenv("QR_AI_ALLOWED_SENDERS", "")
     monkeypatch.setenv("GROQ_API_KEY", "synthetic-only-no-live-key")
     state = SimpleNamespace(identity=ChannelIdentity(uuid4(), uuid4(), uuid4(), "baileys", 3, uuid4(), True, True),
-        auth=[], calls=[], buffers=[], ready=True, auth_error=None, response={"text": " Quero corte e barba ", "duration": 4.5},
+        auth=[], calls=[], buffers=[], ready=True, auth_error=None, response={"text": " Quero corte e barba ", "duration": 4.5,
+            "segments": [{"text": "Quero corte e barba", "start": 0, "end": 4.5,
+                          "avg_logprob": -.2, "no_speech_prob": .01, "compression_ratio": 1.1}]},
         provider_status=200, after_provider=None)
     original_client = httpx.AsyncClient
     async def authorize(request, *, phone):

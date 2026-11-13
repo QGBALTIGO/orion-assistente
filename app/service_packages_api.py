@@ -24,6 +24,7 @@ class PackageFields(CleanModel):
     description: str | None = Field(default=None, max_length=500)
     service_ids: list[UUID] = Field(min_length=2, max_length=6)
     price_cents: StrictInt = Field(ge=0, le=100_000_000)
+    duration_override_min: StrictInt | None = Field(default=None, ge=1, le=1440)
     active: bool = True
     featured: bool = False
     sort_order: StrictInt = Field(default=0, ge=0, le=1_000_000)
@@ -92,13 +93,14 @@ async def package_row(db, tenant, package_id):
         {"tenant": tenant, "id": package_id})).mappings().all()
     result = {key: value for key, value in row.items() if key not in {"tenant_id", "selection_key", "request_fingerprint", "idempotency_key"}}
     result.update(items=[dict(x) for x in items], service_ids=[x["service_id"] for x in items],
-                  original_price_cents=sum(x["price_cents"] for x in items))
+                  original_price_cents=sum(x["price_cents"] for x in items),
+                  automatic_duration_min=sum(x["duration_min"] for x in items))
     return result
 
 
 async def validate_package_sources(db, tenant, fields):
     sources = (await db.execute(text("""SELECT id,price_cents,price_mode,duration_min,prep_min,cleanup_min
-        FROM services WHERE tenant_id=:tenant AND id=ANY(CAST(:ids AS uuid[])) AND catalog_kind='base'
+        FROM services WHERE tenant_id=:tenant AND id=ANY(CAST(:ids AS uuid[])) AND catalog_kind='base' AND deleted_at IS NULL
         ORDER BY id FOR SHARE"""), {"tenant": tenant, "ids": fields.service_ids})).mappings().all()
     if len(sources) != len(fields.service_ids):
         raise HTTPException(422, "Todos os componentes devem ser serviços desta barbearia")
@@ -106,7 +108,9 @@ async def validate_package_sources(db, tenant, fields):
         raise HTTPException(422, "Informe um preço mínimo maior que zero para este combo 'a partir de'.")
     if fields.price_cents > sum(x["price_cents"] for x in sources):
         raise HTTPException(422, "O preço especial não pode superar a soma dos serviços")
-    if (sum(x["duration_min"] for x in sources) > 1440 or sum(x["prep_min"] for x in sources) > 240
+    automatic_duration = sum(x["duration_min"] for x in sources)
+    effective_duration = fields.duration_override_min if fields.duration_override_min is not None else automatic_duration
+    if (effective_duration > 1440 or sum(x["prep_min"] for x in sources) > 240
             or sum(x["cleanup_min"] for x in sources) > 240):
         raise HTTPException(422, "O tempo completo do combo ultrapassa o limite da agenda")
 
@@ -148,8 +152,8 @@ async def create_package(tenant_id: UUID, payload: PackageCreate, actor: Actor =
         package, synthetic = uuid4(), uuid4()
         await insert_synthetic(db, tenant_id, synthetic, payload.name, "combo")
         await db.execute(text("""INSERT INTO service_packages
-            (id,tenant_id,synthetic_service_id,name,description,price_cents,active,featured,sort_order,color,image_url,idempotency_key,request_fingerprint)
-            VALUES (:id,:tenant,:synthetic,:name,:description,:price_cents,:active,:featured,:sort_order,:color,:image_url,:key,:fp)"""),
+            (id,tenant_id,synthetic_service_id,name,description,price_cents,duration_override_min,active,featured,sort_order,color,image_url,idempotency_key,request_fingerprint)
+            VALUES (:id,:tenant,:synthetic,:name,:description,:price_cents,:duration_override_min,:active,:featured,:sort_order,:color,:image_url,:key,:fp)"""),
             {"id": package, "tenant": tenant_id, "synthetic": synthetic, "key": payload.idempotency_key, "fp": fp, **values})
         await insert_items(db, tenant_id, package, [(x, True) for x in payload.service_ids])
         await audit(db, tenant_id, "created", "service_packages", package)
@@ -169,7 +173,7 @@ async def save_package(tenant_id: UUID, package_id: UUID, payload: PackageSave, 
         await db.execute(text("DELETE FROM service_package_items WHERE tenant_id=:tenant AND package_id=:id"),
                          {"tenant": tenant_id, "id": package_id})
         await db.execute(text("""UPDATE service_packages SET name=:name,description=:description,price_cents=:price_cents,
-            active=:active,featured=:featured,sort_order=:sort_order,color=:color,image_url=:image_url,
+            duration_override_min=:duration_override_min,active=:active,featured=:featured,sort_order=:sort_order,color=:color,image_url=:image_url,
             version=version+1,updated_at=now() WHERE tenant_id=:tenant AND id=:id"""),
             {"tenant": tenant_id, "id": package_id, **values})
         await insert_items(db, tenant_id, package_id, [(x, True) for x in payload.service_ids])
@@ -191,7 +195,7 @@ async def archive_package(tenant_id: UUID, package_id: UUID, payload: VersionedO
 
 
 async def addons_result(db, tenant, service):
-    version = (await db.execute(text("SELECT addons_version FROM services WHERE tenant_id=:tenant AND id=:id AND catalog_kind<>'variant'"),
+    version = (await db.execute(text("SELECT addons_version FROM services WHERE tenant_id=:tenant AND id=:id AND catalog_kind<>'variant' AND deleted_at IS NULL"),
                               {"tenant": tenant, "id": service})).scalar_one_or_none()
     if version is None:
         raise HTTPException(404, "Serviço não encontrado")
@@ -212,14 +216,14 @@ async def get_addons(tenant_id: UUID, service_id: UUID, actor: Actor = Depends(a
 async def save_addons(tenant_id: UUID, service_id: UUID, payload: AddonsSave, actor: Actor = Depends(authenticate)):
     async with management_session(tenant_id, actor, write=True) as db:
         await catalogue_lock(db, tenant_id)
-        row = (await db.execute(text("SELECT addons_version FROM services WHERE tenant_id=:tenant AND id=:id AND catalog_kind<>'variant' FOR UPDATE"),
+        row = (await db.execute(text("SELECT addons_version FROM services WHERE tenant_id=:tenant AND id=:id AND catalog_kind<>'variant' AND deleted_at IS NULL FOR UPDATE"),
                                {"tenant": tenant_id, "id": service_id})).scalar_one_or_none()
         if row is None:
             raise HTTPException(404, "Serviço não encontrado")
         if row != payload.expected_version:
             raise HTTPException(409, "Os adicionais mudaram. Atualize antes de salvar")
         ids = [x.addon_service_id for x in payload.items]
-        available = (await db.execute(text("SELECT id FROM services WHERE tenant_id=:tenant AND id=ANY(CAST(:ids AS uuid[])) AND catalog_kind='base' AND id<>:base"),
+        available = (await db.execute(text("SELECT id FROM services WHERE tenant_id=:tenant AND id=ANY(CAST(:ids AS uuid[])) AND catalog_kind='base' AND deleted_at IS NULL AND id<>:base"),
                                      {"tenant": tenant_id, "ids": ids, "base": service_id})).scalars().all()
         if len(available) != len(ids):
             raise HTTPException(422, "Adicionais devem ser outros serviços desta barbearia")
@@ -240,7 +244,7 @@ async def selection_contract(db, tenant, base_id, addon_ids, professional, *, lo
         raise HTTPException(422, "Seleção de adicionais inválida")
     ids = [base_id, *sorted(addon_ids, key=str)]
     suffix = " FOR SHARE" if lock else ""
-    rows = (await db.execute(text("SELECT id,catalog_kind,addons_version FROM services WHERE tenant_id=:tenant AND id=ANY(CAST(:ids AS uuid[])) ORDER BY id"+suffix),
+    rows = (await db.execute(text("SELECT id,catalog_kind,addons_version FROM services WHERE tenant_id=:tenant AND id=ANY(CAST(:ids AS uuid[])) AND deleted_at IS NULL ORDER BY id"+suffix),
                             {"tenant": tenant, "ids": ids})).mappings().all()
     kinds={r["id"]:r["catalog_kind"] for r in rows}
     if kinds.get(base_id) not in {"base","combo"} or any(kinds.get(x)!="base" for x in addon_ids):

@@ -79,7 +79,7 @@ def _plain(value, limit=120):
     return "".join(c for c in value if ord(c) >= 32 and ord(c) != 127)[:limit]
 
 
-def render_message(recipient, kind, *, code=None, invitation_token=None, business_name=None, origin=None):
+def render_message(recipient, kind, *, code=None, invitation_token=None, business_name=None, origin=None, professional_portal=False):
     """Freeze the complete provider payload once; retries must be identical."""
     recipient = normalize_recipient(recipient)
     if kind not in KINDS:
@@ -104,7 +104,11 @@ def render_message(recipient, kind, *, code=None, invitation_token=None, busines
         if not isinstance(invitation_token, str) or not re.fullmatch(r"[A-Za-z0-9_-]{43}", invitation_token):
             raise ValueError("invalid_invitation_token")
         subject = "Você recebeu um convite de equipe — Orion"
-        body = "Você recebeu um convite para " + business + ". Entre com o e-mail que recebeu este convite e solicite acesso. O proprietário revisará a solicitação. O convite expira em sete dias. Se não esperava este convite, ignore a mensagem."
+        body = ("Você foi convidado para acessar sua área profissional na " + business
+                + ". Confirme este mesmo e-mail e aceite o convite para acessar somente seus atendimentos. "
+                + "O convite expira em sete dias. Se não esperava este convite, ignore."
+                if professional_portal else
+                "Você recebeu um convite para " + business + ". Entre com o e-mail que recebeu este convite e solicite acesso. O proprietário revisará a solicitação. O convite expira em sete dias. Se não esperava este convite, ignore a mensagem.")
         link = canonical + "/convite#token=" + invitation_token
         content = '<p>' + escape(body) + '</p>'
     elif kind == "password_changed":
