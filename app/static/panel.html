@@ -31,22 +31,73 @@ a{color:var(--bright)}h1,h2,h3,p{margin-top:0}
 h1{font-size:clamp(1.8rem,3.8vw,2.65rem);line-height:1.14;letter-spacing:-.035em;margin-bottom:9px}h2{font-size:1.23rem;letter-spacing:-.015em}h3{font-size:1rem}
 p{color:var(--muted)}small{color:var(--muted);font-size:.77rem}
 .hidden{display:none!important}
-/* Keep the first paint neutral until the server has checked the saved session. */
-#sessionBoot{position:fixed;inset:0;z-index:100;display:grid;place-items:center;min-height:100dvh;padding:24px max(20px,env(safe-area-inset-right,0px)) 24px max(20px,env(safe-area-inset-left,0px));background:var(--os-bg,var(--boot-bg,#f5f8fc));color:var(--os-muted,var(--boot-muted,#4e5a72));font:400 14px/1.5 var(--os-font,system-ui,-apple-system,Segoe UI,sans-serif);overscroll-behavior:contain}
-html[data-theme="dark"] #sessionBoot{--boot-bg:#05080f;--boot-muted:#8a97ac;--boot-border:#1b2437}
-#sessionBoot>div{display:flex;flex-direction:column;align-items:center;gap:0;width:min(100%,330px);text-align:center;transform:translateY(-4vh)}
-#sessionBoot .session-boot-brand{display:block;width:168px;height:60px;object-fit:contain;margin:0 0 30px}
-#sessionBoot .session-boot-symbol{display:grid;place-items:center;width:56px;height:56px;margin-bottom:24px;border-radius:18px;background:var(--os-tint,#eaf2ff)}
-#sessionBoot h1{margin:0 0 7px;color:var(--os-text,#0f1b33);font:600 23px/30px var(--os-display,system-ui,-apple-system,Segoe UI,sans-serif);letter-spacing:-.025em}
-#sessionBoot p{margin:0;color:inherit;font-size:13px;line-height:20px;max-width:280px}
-#sessionBootSpinner{display:block;width:27px;height:27px;border:2px solid var(--os-border,var(--boot-border,#dce3ee));border-top-color:var(--os-primary,#2e7bf6);border-radius:50%;animation:session-boot-spin .8s linear infinite}
-#sessionBoot .session-boot-progress{width:116px;height:3px;overflow:hidden;border-radius:99px;background:var(--os-border,var(--boot-border,#dce3ee));margin:22px 0 0}
-#sessionBoot .session-boot-progress::after{content:"";display:block;width:44%;height:100%;border-radius:inherit;background:var(--os-primary,#2e7bf6);animation:session-boot-progress 1.5s ease-in-out infinite alternate}
+/* One focused, truthful startup state while the private session is verified. */
+#sessionBoot{
+  --boot-bg:#f5f8fc;--boot-text:#12203b;--boot-muted:#5f6f88;
+  --boot-track:#dce5f1;--boot-blue:#347fff;--boot-glow:rgba(52,127,255,.075);
+  position:fixed;inset:0;z-index:100;display:grid;place-items:center;
+  min-height:100vh;min-height:100dvh;overflow-y:auto;overscroll-behavior:contain;
+  padding:max(28px,env(safe-area-inset-top,0px)) max(22px,env(safe-area-inset-right,0px))
+    max(28px,env(safe-area-inset-bottom,0px)) max(22px,env(safe-area-inset-left,0px));
+  background:radial-gradient(ellipse 68% 48% at 50% 46%,var(--boot-glow),transparent 82%),var(--boot-bg);
+  color:var(--boot-muted);
+  font:400 14px/1.55 var(--os-font,system-ui,-apple-system,Segoe UI,sans-serif);
+}
+html[data-theme="dark"] #sessionBoot{
+  --boot-bg:#090f1c;--boot-text:#edf3ff;--boot-muted:#acb8ce;
+  --boot-track:#2d3a50;--boot-blue:#69a0ff;--boot-glow:rgba(52,127,255,.10);
+}
+#sessionBoot .session-boot-content{
+  display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:0;width:min(100%,400px);min-width:0;margin:auto;
+  text-align:center;transform:translateY(-2vh);
+}
+#sessionBoot .session-boot-brand{
+  display:block;width:clamp(215px,62vw,258px);height:auto;aspect-ratio:800/275;
+  object-fit:contain;margin:0 auto 34px;
+}
+#sessionBoot .session-boot-copy{display:flex;flex-direction:column;align-items:center;gap:7px;max-width:100%;min-width:0}
+#sessionBoot h1{
+  margin:0;color:var(--boot-text);
+  font:650 clamp(21px,5.5vw,25px)/1.22 var(--os-display,var(--os-font,system-ui,-apple-system,Segoe UI,sans-serif));
+  letter-spacing:-.035em;text-wrap:balance;
+}
+#sessionBoot p{margin:0;max-width:330px;color:var(--boot-muted);font-size:13px;line-height:21px;text-wrap:balance}
+#sessionBoot .session-boot-progress{
+  display:block;position:relative;overflow:hidden;
+  width:160px;height:3px;border-radius:99px;
+  background:var(--boot-track);margin:28px auto 0;
+}
+#sessionBoot .session-boot-progress::before{
+  content:"";display:block;height:100%;width:40%;border-radius:inherit;
+  background:var(--boot-blue);
+  animation:session-boot-progress 1.55s ease-in-out infinite alternate;
+  will-change:transform;
+}
 #sessionBoot.session-boot-failed .session-boot-progress{display:none}
-#sessionBootRetry{margin-top:20px;min-height:40px}
-@keyframes session-boot-spin{to{transform:rotate(360deg)}}
-@keyframes session-boot-progress{from{transform:translateX(-100%)}to{transform:translateX(240%)}}
-@media(prefers-reduced-motion:reduce){#sessionBootSpinner,#sessionBoot .session-boot-progress::after{animation:none}#sessionBoot .session-boot-progress::after{width:100%}}
+#sessionBoot.session-boot-failed h1{font-size:clamp(20px,5.2vw,24px)}
+#sessionBootRetry{
+  display:inline-flex;align-items:center;justify-content:center;min-height:44px;
+  margin-top:24px;padding:10px 20px;border:1px solid var(--boot-track);
+  border-radius:11px;background:var(--boot-text);color:var(--boot-bg);
+  font:600 13px/20px var(--os-font,system-ui,-apple-system,Segoe UI,sans-serif);
+  box-shadow:0 6px 16px rgba(15,30,56,.09);cursor:pointer;
+}
+#sessionBootRetry:focus-visible{outline:3px solid var(--boot-blue);outline-offset:3px}
+#sessionBootRetry:disabled{opacity:.5;cursor:wait}
+@keyframes session-boot-progress{
+  from{transform:translateX(0)}
+  to{transform:translateX(150%)}
+}
+@media(max-width:380px){
+  #sessionBoot .session-boot-content{transform:translateY(-1.5vh)}
+  #sessionBoot .session-boot-brand{width:220px;margin-bottom:28px}
+  #sessionBoot p{font-size:12.5px}
+  #sessionBoot .session-boot-progress{margin-top:24px}
+}
+@media(prefers-reduced-motion:reduce){
+  #sessionBoot .session-boot-progress::before{animation:none;transform:none;width:65%;will-change:auto}
+}
 .action-confirm{width:min(520px,calc(100vw - 32px));max-height:calc(100vh - 40px);overflow:auto;padding:26px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);box-shadow:0 24px 90px #0009;overflow-wrap:anywhere}
 .action-confirm::backdrop{background:#000b}
 .confirm-actions{display:flex;justify-content:flex-end;gap:12px;flex-wrap:wrap;margin-top:24px}
@@ -616,15 +667,16 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
 <script src="/panel-assets/orion-appointment-communications.js" defer></script>
 </head>
 <body>
-<section id="sessionBoot" aria-label="Preparando seu painel Orion" aria-busy="true">
-  <div>
-    <img class="session-boot-brand" data-orion-logo src="/brand/orion-brand-dark.svg" alt="Orion" width="168" height="60">
-    <span class="session-boot-symbol" aria-hidden="true"><span id="sessionBootSpinner"></span></span>
-    <h1>Preparando seu painel</h1>
-    <p id="sessionBootMessage" role="status" aria-live="polite">Abrindo Orion…</p>
+<section id="sessionBoot" aria-label="Carregando seu painel Orion" aria-busy="true">
+  <div class="session-boot-content">
+    <img class="session-boot-brand" data-orion-logo src="/brand/orion-brand-light.svg" alt="Orion — Recepcionista Digital" width="258" height="89" decoding="async">
+    <div class="session-boot-copy">
+      <h1 id="sessionBootTitle">Preparando seu painel</h1>
+      <p id="sessionBootMessage" role="status" aria-live="polite">Abrindo seu painel…</p>
+    </div>
     <span class="session-boot-progress" aria-hidden="true"></span>
-    <button id="sessionBootRetry" class="os-button os-outline hidden" type="button">Tentar novamente</button>
-    <noscript><style>#sessionBootSpinner,#sessionBootMessage,.session-boot-progress{display:none}</style><p>Ative o JavaScript no navegador para abrir a Orion.</p></noscript>
+    <button id="sessionBootRetry" class="hidden" type="button">Tentar novamente</button>
+    <noscript><style>#sessionBootMessage,.session-boot-progress{display:none}</style><p>Ative o JavaScript para acessar o Orion.</p></noscript>
   </div>
 </section>
 <section id="loginView" class="hidden" aria-label="Acesso à conta Orion">
@@ -1416,12 +1468,12 @@ window.OrionFields?.bind(document);
 
 let authEpoch=0;
 let sessionBootAttempt=null;
-function showSessionBoot(message="Preparando seu painel…"){
+function showSessionBoot(message="Abrindo seu painel…"){
  const boot=$("sessionBoot");
  boot.classList.remove("hidden","session-boot-failed");
  boot.setAttribute("aria-busy","true");
+ $("sessionBootTitle").textContent="Preparando seu painel";
  $("sessionBootMessage").textContent=message;
- $("sessionBootSpinner").classList.remove("hidden");
  $("sessionBootRetry").classList.add("hidden");$("sessionBootRetry").disabled=true;
 }
 function dismissSessionBoot(){
@@ -1433,7 +1485,7 @@ async function restoreSession(){
  if(sessionBootAttempt||$("sessionBoot").classList.contains("hidden"))return;
  const attempt={epoch:authEpoch,controller:new AbortController(),timer:null};sessionBootAttempt=attempt;
  const current=()=>sessionBootAttempt===attempt&&attempt.epoch===authEpoch;
- showSessionBoot("Abrindo Orion…");
+ showSessionBoot("Abrindo seu painel…");
  attempt.timer=setTimeout(()=>attempt.controller.abort(),12000);
  try{
   const response=await fetch("/auth/me",{method:"GET",headers:{"Accept":"application/json"},credentials:"same-origin",cache:"no-store",signal:attempt.controller.signal});
@@ -1451,7 +1503,7 @@ async function restoreSession(){
   $("loginView").classList.add("hidden");$("appView").classList.add("hidden");
   $("sessionBoot").setAttribute("aria-busy","false");
   $("sessionBoot").classList.add("session-boot-failed");
-  $("sessionBootSpinner").classList.add("hidden");
+  $("sessionBootTitle").textContent="Não foi possível abrir o painel";
   $("sessionBootMessage").textContent=attempt.controller.signal.aborted?"A conexão demorou mais que o esperado. Tente novamente.":"Não foi possível abrir a Orion. Confira sua conexão e tente novamente.";
   $("sessionBootRetry").disabled=false;$("sessionBootRetry").classList.remove("hidden");
  }finally{
@@ -2004,7 +2056,7 @@ async function showApp(role="support",name="",email="",maintenance=null){
  try{const pendingInvite=sessionStorage.getItem("orion_pending_invitation");if(pendingInvite&&/^[A-Za-z0-9_-]{43}$/.test(pendingInvite)){sessionStorage.removeItem("orion_pending_invitation");location.assign("/convite#token="+encodeURIComponent(pendingInvite));return}}catch{}
  const desired=new URLSearchParams(location.search).get("aba");
  const epoch=authEpoch;
- showSessionBoot("Conferindo acesso e configurações da empresa…");
+ showSessionBoot("Conferindo acesso e preferências…");
  resetWizard();
  setupEntryReady=false;
  suiteTenantId="";businessRows=[];businessContextReady=false;businessContextError="";
