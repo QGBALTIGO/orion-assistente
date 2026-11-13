@@ -1,0 +1,35 @@
+name: Orion - Agenda Dia Semana Mes
+on:
+  pull_request:
+    paths:
+      - 'app/booking_api.py'
+      - 'app/static/orion-suite.js'
+      - 'app/static/orion-suite.css'
+      - 'tests/unit/test_agenda_periods.py'
+      - 'tests/integration/test_booking.py'
+      - 'ui-tests/agenda-periods.test.mjs'
+      - '.github/workflows/agenda-periods.yml'
+permissions:
+  contents: read
+jobs:
+  agenda-periods:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install locked dependencies
+        run: python -m pip install -c requirements.lock ".[test]"
+      - name: Validate Python and JavaScript syntax
+        run: |
+          python -m py_compile app/booking_api.py tests/unit/test_agenda_periods.py
+          node --check app/static/orion-suite.js
+      - name: Test day week month and calendar rollover
+        run: pytest -q tests/unit/test_agenda_periods.py
+      - name: Run independent browser-controller calendar checks
+        run: node --test ui-tests/agenda-periods.test.mjs
