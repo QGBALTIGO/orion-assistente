@@ -66,7 +66,7 @@ function inspect(day,period,withList=false){
     agendaEmpty(){return '<div>empty</div>';},
     Date,Intl
   };
-  const code=helpers+renderer+';
+  const code=helpers+renderer+`
     globalThis.out={
       bounds:agendaBounds(),label:agendaPeriodLabel(),
       next:agendaShiftMonth(state.filters.agendaDay,1),prev:agendaShiftMonth(state.filters.agendaDay,-1),
@@ -74,7 +74,8 @@ function inspect(day,period,withList=false){
         days:[{day:"2026-11-13",total:14,confirmed:12,completed:1,cancelled:1,no_show:0,hold:0}],
         total:14,has_more:false
       })
-    };';
+    };
+  `;
   vm.runInNewContext(code,ctx);
   return ctx.out;
 }
@@ -97,8 +98,6 @@ console.log('Day/week/month calendar and drill-down: OK');
 """.replace("EXTRACTED_HELPERS", json.dumps(helpers)).replace(
         "EXTRACTED_RENDERER", json.dumps(renderer)
     )
-    # Replace the split string with an explicit newline to keep the Node source valid.
-    source = source.replace("const code=helpers+renderer+';\n    globalThis.out=", "const code=helpers+renderer+`;`+'globalThis.out=")
     proc = subprocess.run([NODE, "-e", source], cwd=ROOT, text=True, capture_output=True)
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert "OK" in proc.stdout
