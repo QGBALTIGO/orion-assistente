@@ -1122,7 +1122,14 @@
   function agendaPeriodLabel(){
     const bounds=agendaBounds(),period=agendaPeriod();
     if(period==='day')return fmtDate(bounds.start);
-    if(period==='week')return fmtDate(bounds.start)+' – '+fmtDate(bounds.end);
+    if(period==='week'){
+      const a=dayDate(bounds.start),b=dayDate(bounds.end),month=value=>
+        new Intl.DateTimeFormat('pt-BR',{timeZone:'UTC',month:'short'}).format(value).replace(/\./g,'');
+      const from=a.getUTCDate(),to=b.getUTCDate(),year=b.getUTCFullYear();
+      if(a.getUTCFullYear()!==year)return from+' '+month(a)+' '+a.getUTCFullYear()+' – '+to+' '+month(b)+' '+year;
+      if(a.getUTCMonth()!==b.getUTCMonth())return from+' '+month(a)+' – '+to+' '+month(b)+' '+year;
+      return from+'–'+to+' '+month(b)+' '+year;
+    }
     return new Intl.DateTimeFormat('pt-BR',{timeZone:'UTC',month:'long',year:'numeric'}).format(dayDate(bounds.start));
   }
   function agendaFrame(readOnly=''){
@@ -1366,13 +1373,9 @@
           dayButton(shiftDay(bounds.start,n-1),'month');
       }).join('')+'</div></div>';
     return '<section class="os-agenda-period-overview os-agenda-month-overview">'+
-      '<div class="os-agenda-range-heading"><h2>'+esc(agendaPeriodLabel())+'</h2>'+
-      '<span>'+total+' '+(total===1?'atendimento':'atendimentos')+'</span></div>'+
+      '<div class="os-agenda-range-heading"><h2>'+esc(agendaPeriodLabel())+'</h2>'+toggle+'</div>'+
       '<div class="os-agenda-range-layout'+(whole?' is-list':'')+'">'+grid+
       (whole?'':'<aside class="os-agenda-focus-shell">'+focusTitle()+'</aside>')+'</div></section>'+
-      '<div class="os-agenda-range-list-heading os-agenda-month-list-tools '+(whole?'is-list':'is-focus')+'">'+
-      '<div><h2>'+(whole?'Agendamentos do mês':'Navegação mensal')+'</h2>'+
-      '<p>'+(whole?'Lista completa por data':'Toque em uma data para consultar seus horários')+'</p></div>'+toggle+'</div>'+
       (whole?wholeList():'');
   }
   function renderAgenda(){
