@@ -866,12 +866,60 @@
   const minuteOf=time=>{const parts=String(time||'00:00').split(':');return number(parts[0])*60+number(parts[1]);};
   const eventMinute=value=>minuteOf(timeLabel(value));
   function agendaBlocks(){const day=state.filters.agendaDay,lower=Date.parse(localISO(day,'00:00')),upper=Date.parse(localISO(shiftDay(day,1),'00:00'));return [...(state.data.scheduleBlocks||[]).map(b=>({...b,resource:'schedule_blocks'})),...(state.data.timeOff||[]).map(b=>({...b,resource:'time_off'}))].filter(b=>Date.parse(b.starts_at)<upper&&Date.parse(b.ends_at)>lower);}
+
+  function agendaRangeView(list,result){
+    const period=agendaPeriod(),range=agendaBounds(),days=Array.isArray(result.days)?result.days:[],
+      counts=new Map(days.map(item=>[String(item.day),item])),
+      countOn=day=>number(counts.get(day)?.total),today=dateKey(),
+      weekdays=['dom','seg','ter','qua','qui','sex','sáb'];
+    const statusDots=day=>{
+      const item=counts.get(day);if(!item)return '';
+      return '<span class="os-agenda-range-dots" aria-hidden="true">'+
+        ['confirmed','completed','cancelled','no_show','hold'].filter(key=>number(item[key])>0)
+          .map(key=>'<i class="os-agenda-dot-'+key+'"></i>').join('')+'</span>';
+    };
+    const dayButton=(day,kind)=>{
+      const count=countOn(day),todayClass=day===today?' is-today':'',date=dayDate(day);
+      return '<button type="button" class="os-agenda-range-day os-agenda-'+kind+'-day'+todayClass+'" data-os-open-day="'+day+'" aria-label="'+esc(fmtDate(day)+', '+count+' agendamento'+(count===1?'':'s')+'. Abrir agenda do dia.')+'">'+
+        '<span class="os-agenda-range-day-title"><small>'+weekdays[date.getUTCDay()]+'</small><strong>'+date.getUTCDate()+'</strong></span>'+
+        '<span class="os-agenda-range-day-count"><strong>'+count+'</strong><small>'+(count===1?'agendamento':'agendamentos')+'</small></span>'+statusDots(day)+'</button>';
+    };
+    let overview='';
+    if(period==='week'){
+      overview='<div class="os-agenda-range-heading"><h2>Semana de '+esc(fmtDate(range.start))+' a '+esc(fmtDate(range.end))+'</h2><p>Selecione um dia para consultar a agenda completa.</p></div>'+
+        '<div class="os-agenda-week-overview">'+Array.from({length:7},(_,i)=>dayButton(shiftDay(range.start,i),'week')).join('')+'</div>';
+    }else{
+      const gap=dayDate(range.start).getUTCDay(),last=dayDate(range.end).getUTCDate(),
+        cellCount=Math.ceil((gap+last)/7)*7;
+      overview='<div class="os-agenda-range-heading"><h2>'+esc(agendaPeriodLabel())+'</h2><p>Contagens completas do mês. Selecione uma data para ver os agendamentos.</p></div>'+
+        '<div class="os-agenda-month-calendar" role="group" aria-label="Calendário mensal">'+
+          '<div class="os-agenda-month-weekdays" aria-hidden="true">'+['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'].map(label=>'<span>'+label+'</span>').join('')+'</div>'+
+          '<div class="os-agenda-month-grid">'+Array.from({length:cellCount},(_,i)=>{
+            const n=i-gap+1;return n<1||n>last?'<span class="os-agenda-month-empty" aria-hidden="true"></span>':dayButton(shiftDay(range.start,n-1),'month');
+          }).join('')+'</div></div>';
+    }
+    const showList=period==='week'||state.filters.agendaRangeList===true;
+    const listTitle=period==='week'?'Agendamentos da semana':'Agendamentos do mês';
+    let html='<section class="os-agenda-period-overview">'+overview+'</section>'+
+      '<div class="os-agenda-range-list-heading"><h2>'+listTitle+'</h2>'+
+      (period==='month'?'<button type="button" class="os-button os-outline os-small" data-os-action="agenda-range-list" aria-expanded="'+showList+'">'+(showList?'Ocultar lista':'Ver todos em lista')+'</button>':'')+'</div>';
+    if(showList){
+      const grouped=new Map();
+      list.forEach(item=>{const day=dateKey(new Date(item.start_at));if(!grouped.has(day))grouped.set(day,[]);grouped.get(day).push(item);});
+      html+=(list.length?[...grouped].sort(([a],[b])=>a.localeCompare(b)).map(([day,items])=>
+        '<section class="os-agenda-period-group"><div class="os-agenda-period-group-heading"><h3>'+esc(longDay(day))+'</h3><span>'+items.length+' nesta página</span></div>'+
+        '<div class="os-agenda-list">'+items.map(appointmentRow).join('')+'</div></section>').join(''):agendaEmpty())+
+        agendaPagination();
+    }
+    return html;
+  }
   function renderAgenda(){
     const list=state.data.appointments||[],f=state.filters,result=state.data.agendaResult||{},total=number(result.total??list.length),offset=number(result.offset);
     const professionals=(state.data.professionals||[]).filter(p=>(!f.agendaProfessional||p.id===f.agendaProfessional)&&((p.active&&p.accepts_appointments!==false)||list.some(a=>a.professional_id===p.id)));
     const blocks=agendaBlocks().filter(b=>!f.agendaProfessional||b.professional_id===f.agendaProfessional);
     if($('osAgendaCount'))$('osAgendaCount').textContent=total===0?'Nenhum agendamento encontrado.':(offset||list.length<total?'Exibindo '+(offset+1)+' a '+(offset+list.length)+' de '+total:total+' agendamento'+(total===1?'':'s'))+' nesta seleção.';
     renderAgendaSummary(list);syncAgendaControls();
+    if(agendaPeriod()!=='day'){bodyHTML(agendaRangeView(list,result));return;}
     if(f.agendaMode==='calendar'){bodyHTML(agendaCalendar(list,professionals,blocks));return;}
     let html='';
     if(f.agendaMode==='professional'&&list.length){
@@ -2800,12 +2848,13 @@
       case 'dashboard-goals-full':await open('desempenho');break;
       case 'dashboard-agenda-refresh':if(state.route==='dashboard')await open('dashboard',{keepScroll:true});break;
       case 'dashboard-agenda-full':{
-        f.agendaDay=dateKey();f.agendaMode='list';f.agendaOffset=0;
+        f.agendaDay=dateKey();f.agendaMode='list';f.agendaPeriod='day';f.agendaOffset=0;
         f.agendaQuery='';f.agendaProfessional='';f.agendaStatus='all';
         await open('agenda');break;
       }
       case 'agenda-open':await open('agenda');break;
       case 'agenda-reload':await loadAgenda(context());void loadGoogle();break;
+      case 'agenda-range-list':f.agendaRangeList=!f.agendaRangeList;renderAgenda();break;
       case 'agenda-clear':f.agendaProfessional='';f.agendaStatus='all';f.agendaQuery='';f.agendaOffset=0;await open('agenda',{keepScroll:true});break;
       case 'agenda-page-prev':case 'agenda-page-next':{const result=state.data.agendaResult;if(!result||state.data.agendaError)return;const next=Math.max(0,f.agendaOffset+(name==='agenda-page-prev'?-50:50));if(next>=number(result.total))return;f.agendaOffset=next;await loadAgenda(context(),{catalogue:false});$('osAgendaCount')?.focus();break;}
       case 'agenda-google':await showGoogle();break;
@@ -2821,7 +2870,14 @@
       case 'agenda-tablet-exit':f.agendaTablet=false;await open('agenda',{keepScroll:true});break;
       case 'delete-block':{if(!d?.record||!writable())return;if(d.series){const series=d.series,occurrenceDate=d.occurrenceDate;showDialog('delete-series','Remover bloqueio',dialogForm('delete-series',selectField('Quais bloqueios remover?','scope',[['one','Somente este dia'],['following','Este dia e os próximos'],['all','Toda a série']],'one')+'<p class="os-help">Os períodos selecionados voltarão a aceitar novos agendamentos, conforme o expediente.</p>','Remover bloqueio'),{series,occurrenceDate});}else{const path=apiPath('/'+d.resource+'/'+encodeURIComponent(d.record.id));confirmMutation('Remover bloqueio','Este período voltará a aceitar novos agendamentos, conforme o expediente do profissional.',()=>request(path,'DELETE'),'Bloqueio removido.');}break;}
       case 'agenda-today':f.agendaOffset=0;f.agendaDay=dateKey();await open('agenda',{keepScroll:true});break;
-      case 'agenda-prev':case 'agenda-next':case 'week-prev':case 'week-next':f.agendaOffset=0;f.agendaDay=shiftDay(f.agendaDay,name==='agenda-prev'?-1:name==='agenda-next'?1:name==='week-prev'?-7:7);await open('agenda',{keepScroll:true});break;
+      case 'agenda-prev':case 'agenda-next':case 'week-prev':case 'week-next':{
+        f.agendaOffset=0;
+        const delta=name.endsWith('prev')?-1:1;
+        f.agendaDay=name.startsWith('week-')?shiftDay(f.agendaDay,delta*7):
+          agendaPeriod()==='month'?agendaShiftMonth(f.agendaDay,delta):
+          shiftDay(f.agendaDay,delta*(agendaPeriod()==='week'?7:1));
+        await open('agenda',{keepScroll:true});break;
+      }
       case 'customer-history-more':if(d?.type==='customer')await loadCustomerServiceHistory(d,{append:true});break;
       case 'customer-history-retry':if(d?.type==='customer')await loadCustomerServiceHistory(d,{append:!!d.historyRetryAppend});break;
       case 'customers-prev':f.customerOffset=Math.max(0,f.customerOffset-50);await open('clientes',{keepScroll:true});break;
@@ -2892,6 +2948,8 @@
       if(el.dataset.osNotificationFilter){state.filters.notificationsUnread=el.dataset.osNotificationFilter==='true';await loadNotifications();return;}
       if(el.dataset.osNotification){const item=rows(state.data.notifications).find(item=>item.id===el.dataset.osNotification);if(!item)return;const c=context();if(!item.read_at&&state.data.notifications?.can_mark_read)await markNotificationsRead([item.id]);if(!stillAccount(c))return;closeNotifications();await showAppointmentDetail(item.appointment_id);return;}
       if(el.dataset.osRoute){await open(el.dataset.osRoute);return;}
+      if(el.dataset.osOpenDay){state.filters.agendaDay=el.dataset.osOpenDay;state.filters.agendaPeriod='day';state.filters.agendaMode='list';state.filters.agendaOffset=0;await open('agenda',{keepScroll:true});return;}
+      if(el.dataset.osAgendaPeriod){if(!['day','week','month'].includes(el.dataset.osAgendaPeriod))return;state.filters.agendaPeriod=el.dataset.osAgendaPeriod;state.filters.agendaOffset=0;state.filters.agendaRangeList=false;await open('agenda',{keepScroll:true});return;}
       if(el.dataset.osDay){state.filters.agendaDay=el.dataset.osDay;state.filters.agendaOffset=0;await open('agenda',{keepScroll:true});$('osAgendaDay-'+state.filters.agendaDay)?.focus();return;}
       if(el.dataset.osAgendaMode){if(!['list','calendar','professional'].includes(el.dataset.osAgendaMode))return;state.filters.agendaMode=el.dataset.osAgendaMode;state.filters.agendaOffset=0;clearTimeout(state.agendaSearchTimer);syncAgendaControls();await loadAgenda(context(),{catalogue:false});return;}
       if(el.dataset.osSettings){state.filters.settingsTab=el.dataset.osSettings;await open('configuracoes',{keepScroll:true});return;}
@@ -3028,7 +3086,7 @@
   function handleInput(event){if(!state.mounted)return;const el=event.target;markCustomerBirthChanged(el);markSiteAddressEdit(el);if(state.dialog?.type==='service'&&el.name==='duration_min')syncServiceDurationPresets(el.closest('form'));if(el.matches?.('input.os-color-native'))syncColorPicker(el);if(el.id==='osAgendaSearch'&&!state.busy){state.filters.agendaQuery=el.value;state.filters.agendaOffset=0;state.agendaRead=(state.agendaRead||0)+1;clearTimeout(state.agendaSearchTimer);state.agendaSearchTimer=setTimeout(()=>void applyAgendaFilters(),250);return;}if(el.closest('#osSiteForm'))el.closest('form').dataset.dirty='true';if(el.closest('#osSiteForm')&&!state.busy&&siteCanEdit()&&!event.isComposing){if(el.name==='slug')queueSiteSlugCheck(el);if(el.name==='postal_code')queueSiteCepLookup(el);if(el.name==='state')el.value=el.value.toUpperCase();}if(el.id==='osHelpSearch'){state.filters.helpQuery=el.value;renderHelpResults();}if(el.id==='osCustomerSearch'){state.filters.customerQuery=el.value;state.filters.customerOffset=0;state.customerRead=(state.customerRead||0)+1;clearTimeout(state.searchTimer);clearTimeout(state.agendaSearchTimer);const c=context();state.searchTimer=setTimeout(()=>loadCustomers(c).catch(ex=>{if(current(c))bodyHTML(errorHTML(ex));}),250);}if(el.id==='osResourceSearch')renderServices(el.value);if(el.id==='osBookingCustomer')filterBookingCustomers(el.value);if(state.dialog?.type==='appointment'&&el.name==='customer_phone'&&state.dialog.customerId){$('osBookingCustomerHelp').textContent='Ao confirmar, o WhatsApp informado será salvo no cadastro deste cliente.';}if(state.dialog?.type==='package'&&el.name==='price')state.dialog.priceTouched=true;
     if(state.dialog?.type==='complete-appointment'&&el.name==='final_total')updateCompletionSummary();}
   function handleKeydown(event){if(!state.mounted)return;const serviceGrip=event.target.closest?.('[data-os-service-drag]');if(serviceGrip&&['ArrowUp','ArrowDown'].includes(event.key)){event.preventDefault();void moveService(serviceGrip.dataset.osServiceDrag,event.key==='ArrowUp'?-1:1);return;}if(event.key==='Escape'){if(state.notificationsOpen){event.preventDefault();closeNotifications(true);}if($('appView').classList.contains('os-menu-open')){event.preventDefault();drawer(false);}if(!$('osThemeMenu').classList.contains('hidden')){$('osThemeMenu').classList.add('hidden');$('osThemeToggle').setAttribute('aria-expanded','false');$('osThemeToggle').focus();}}
-    const agendaTab=event.target.closest('[data-os-day],[data-os-agenda-mode]');
+    const agendaTab=event.target.closest('[data-os-day],[data-os-agenda-mode],[data-os-agenda-period]');
     if(agendaTab&&['ArrowLeft','ArrowRight','Home','End'].includes(event.key)&&!state.busy){const tabs=[...agendaTab.closest('[role=tablist]').querySelectorAll('[role=tab]')],index=tabs.indexOf(agendaTab),next=event.key==='Home'?0:event.key==='End'?tabs.length-1:(index+(event.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length;event.preventDefault();tabs[next].focus();tabs[next].click();return;}
     const row=event.target.closest('[data-os-appointment][role=button]');if(row&&(event.key==='Enter'||event.key===' ')){event.preventDefault();void showAppointmentDetail(row.dataset.osAppointment,{trigger:row});}
     if(event.key==='Tab'&&$('appView').classList.contains('os-menu-open')){const focusable=[...$('osSidebar').querySelectorAll('button:not([disabled]),select:not([disabled]),a[href]')].filter(el=>el.getClientRects().length);const first=focusable[0],last=focusable[focusable.length-1];if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}}
