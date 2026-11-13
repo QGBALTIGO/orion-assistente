@@ -175,6 +175,23 @@ async def test_hold_confirmation_cancel_and_idempotency_http(booking_db):
         assert conflict.status_code == 409
         listed = await client.get(url + "?day=" + d["day"].isoformat(), headers=headers())
         assert listed.status_code == 200 and len(listed.json()) == 1
+        period_params = {
+            "start_date": (d["day"] - timedelta(days=2)).isoformat(),
+            "end_date": (d["day"] + timedelta(days=2)).isoformat(),
+            "paged": "true", "limit": 1,
+        }
+        ranged = await client.get(url, params=period_params, headers=headers())
+        assert ranged.status_code == 200, ranged.text
+        assert ranged.json()["total"] == 1 and len(ranged.json()["items"]) == 1
+        assert ranged.json()["days"] == [{
+            "day": d["day"].isoformat(), "total": 1, "confirmed": 1,
+            "completed": 0, "cancelled": 0, "no_show": 0, "hold": 0,
+        }]
+        other_company = await client.get(
+            f"/api/v1/tenants/{d['b']}/appointments", params=period_params, headers=headers()
+        )
+        assert other_company.status_code == 200 and other_company.json()["total"] == 0
+        assert other_company.json()["days"] == []
         assert (await client.get(f"/api/v1/tenants/{d['b']}/appointments/{hold['id']}", headers=headers())).status_code == 404
         cancelled = await client.post(url + "/" + hold["id"] + "/cancel", headers=headers())
         assert cancelled.status_code == 200 and cancelled.json()["status"] == "cancelled"
