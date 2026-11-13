@@ -2808,3 +2808,72 @@ html:has(.os-professional-history[open]){overflow:hidden}
 .os-appointment-comms .os-summary-row small{margin-top:6px}
 .os-appointment-comms .os-comm-review:last-child,.os-appointment-comms .os-comm-notification:last-child{border:0;padding-bottom:0}
 @media(max-width:540px){.os-appointment-comms .os-comm-notification,.os-appointment-comms .os-comm-review{grid-template-columns:minmax(0,1fr);gap:8px}.os-appointment-comms .os-form-actions>.os-button{width:100%;min-height:44px}}
+
+/* Agenda periods: separate temporal scope (day/week/month) from the daily layout. */
+.os-agenda-period-switch{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;width:min(330px,100%);padding:4px;margin:0 0 16px;border-radius:13px;background:var(--os-soft);border:1px solid var(--os-border)}
+.os-agenda-period-switch>button{min-width:0;min-height:40px;border:0;border-radius:10px;padding:8px 12px;background:transparent;color:var(--os-muted);font:600 13px/20px var(--os-font);cursor:pointer}
+.os-agenda-period-switch>button[aria-selected=true]{background:var(--os-card);color:var(--os-text);box-shadow:var(--os-shadow)}
+.os-agenda-period-switch>button:hover:not([aria-selected=true]){color:var(--os-text)}
+.os-agenda-period-switch>button:focus-visible{outline:2px solid var(--os-primary);outline-offset:1px}
+.os-agenda-period-switch>button:focus:not(:focus-visible),.os-agenda-range-day:focus:not(:focus-visible){outline:none}
+.os-agenda-range-caption{color:var(--os-muted);font-size:12px;line-height:18px}
+.os-agenda-range-heading{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:6px 16px;margin-bottom:14px}
+.os-agenda-range-heading h2,.os-agenda-range-list-heading h2{font:600 19px/26px var(--os-display);color:var(--os-text)}
+.os-agenda-range-heading p{font-size:12px;line-height:19px;color:var(--os-muted)}
+.os-agenda-period-overview{margin:8px 0 26px;min-width:0}
+.os-agenda-week-overview{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px}
+.os-agenda-range-day{min-width:0;min-height:98px;display:flex;flex-direction:column;align-items:stretch;justify-content:space-between;gap:8px;padding:12px;position:relative;box-sizing:border-box;border:1px solid var(--os-border);border-radius:13px;background:var(--os-card);color:var(--os-text);font-family:var(--os-font);text-align:left;cursor:pointer;transition:border-color .15s,background .15s}
+.os-agenda-range-day:hover{border-color:var(--os-primary);background:var(--os-bg)}
+.os-agenda-range-day:focus-visible{outline:2px solid var(--os-primary);outline-offset:2px}
+.os-agenda-range-day.is-today{border-color:var(--os-primary);background:color-mix(in srgb,var(--os-primary) 6%,var(--os-card))}
+.os-agenda-range-day-title{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.os-agenda-range-day-title small{font:500 11px/16px var(--os-font);color:var(--os-muted);text-transform:uppercase}
+.os-agenda-range-day-title strong{font:600 20px/26px var(--os-display);font-variant-numeric:tabular-nums}
+.os-agenda-range-day-count{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px}
+.os-agenda-range-day-count strong{font:650 20px/24px var(--os-display);font-variant-numeric:tabular-nums}
+.os-agenda-range-day-count small{font:400 10px/14px var(--os-font);color:var(--os-muted);overflow-wrap:anywhere}
+.os-agenda-range-dots{display:flex;align-items:center;gap:3px;min-height:6px}
+.os-agenda-range-dots i{height:5px;width:5px;border-radius:50%;flex:0 0 5px;display:inline-block}
+.os-agenda-dot-confirmed{background:#3976dd}
+.os-agenda-dot-completed{background:#2b8a4b}
+.os-agenda-dot-cancelled{background:#bb6672}
+.os-agenda-dot-no_show{background:#9858c2}
+.os-agenda-dot-hold{background:#b38c2c}
+.os-agenda-month-calendar{border:1px solid var(--os-border);border-radius:16px;overflow:hidden;background:var(--os-card)}
+.os-agenda-month-weekdays{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));border-bottom:1px solid var(--os-border);background:var(--os-soft)}
+.os-agenda-month-weekdays span{min-width:0;padding:12px 4px;color:var(--os-muted);font:600 11px/16px var(--os-font);text-align:center}
+.os-agenda-month-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:1px;background:var(--os-border)}
+.os-agenda-month-empty{display:block;min-width:0;background:var(--os-bg)}
+.os-agenda-month-day{min-height:94px;border:0;border-radius:0;padding:10px;gap:8px}
+.os-agenda-month-day .os-agenda-range-day-title small{display:none}
+.os-agenda-month-day .os-agenda-range-day-title strong{font-size:16px;line-height:21px}
+.os-agenda-month-day .os-agenda-range-day-count{flex-direction:column;gap:0;align-items:flex-start}
+.os-agenda-month-day .os-agenda-range-day-count strong{font-size:16px;line-height:20px}
+.os-agenda-month-day .os-agenda-range-day-count small{font-size:10px;line-height:13px}
+.os-agenda-range-list-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:0 0 14px}
+.os-agenda-period-group{min-width:0;margin:0 0 18px}
+.os-agenda-period-group-heading{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:0 0 9px}
+.os-agenda-period-group-heading h3{font:600 15px/22px var(--os-display);color:var(--os-text);text-transform:capitalize}
+.os-agenda-period-group-heading>span{font-size:11px;color:var(--os-muted);white-space:nowrap}
+@container agenda (max-width:760px){
+ .os-agenda-week-overview{grid-template-columns:repeat(4,minmax(0,1fr))}
+ .os-agenda-month-day{min-height:83px;padding:8px 6px}
+ .os-agenda-month-day .os-agenda-range-day-count small{font-size:9px}
+ .os-agenda-date-picker{max-width:100%;overflow:hidden}
+ .os-agenda-date-picker>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+}
+@container agenda (max-width:520px){
+ .os-agenda-period-switch{width:100%;margin-bottom:14px}
+ .os-agenda-week-overview{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .os-agenda-week-day:last-child{grid-column:1/-1}
+ .os-agenda-week-day{min-height:82px}
+ .os-agenda-month-weekdays span{padding:9px 0;font-size:10px}
+ .os-agenda-month-day{min-height:70px;padding:6px 3px;gap:4px}
+ .os-agenda-month-day .os-agenda-range-day-title strong{font-size:14px;line-height:18px}
+ .os-agenda-month-day .os-agenda-range-day-count strong{font-size:13px;line-height:17px}
+ .os-agenda-month-day .os-agenda-range-day-count small{font-size:0;line-height:0}
+ .os-agenda-month-day .os-agenda-range-dots{gap:2px;min-height:4px}
+ .os-agenda-month-day .os-agenda-range-dots i{width:4px;height:4px;flex-basis:4px}
+ .os-agenda-range-heading h2,.os-agenda-range-list-heading h2{font-size:17px;line-height:23px}
+ .os-agenda-range-caption>span{font-size:11px;line-height:16px}
+}
