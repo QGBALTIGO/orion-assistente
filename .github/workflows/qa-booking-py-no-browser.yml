@@ -7,6 +7,7 @@ on:
       - 'app/static/orion-fields.js'
       - 'ui-tests/booking-recovery.test.mjs'
       - 'ui-tests/harness.mjs'
+      - 'ui-tests/agenda-periods.test.mjs'
       - '.github/workflows/qa-booking-py-no-browser.yml'
   push:
     branches: [main]
@@ -15,6 +16,7 @@ on:
       - 'app/static/orion-fields.js'
       - 'ui-tests/booking-recovery.test.mjs'
       - 'ui-tests/harness.mjs'
+      - 'ui-tests/agenda-periods.test.mjs'
       - '.github/workflows/qa-booking-py-no-browser.yml'
   workflow_dispatch:
 
@@ -39,3 +41,5 @@ jobs:
         run: |
           node --test --test-name-pattern="agendar com cliente|cliente fora do autocomplete" \
             ui-tests/booking-recovery.test.mjs
+      - name: Validar agenda diária semanal e mensal
+        run: node --test ui-tests/agenda-periods.test.mjs
