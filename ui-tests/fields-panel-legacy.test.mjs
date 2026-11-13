@@ -15,42 +15,73 @@ function status(){return {enabled:true,assistant_connected:false,access:{role:'o
 async function commerce(respond){return makePanel({initialRoute:'catalogo',respond(path,method,payload,options){const result=respond?.(path,method,payload,options);if(result!==undefined)return result;if(path.endsWith('/commerce/status'))return status();if(path.endsWith('/commerce/products'))return [product()];if(path.endsWith('/business/profile'))return {generation:1,published:{id:profileId,revision:1,profile:{business_name:'Empresa sintética',timezone:'America/Sao_Paulo',style_rules:{}}},draft:null,access:{role:'owner',can_edit_draft:true,can_publish:true},supported_capabilities:[],runtime_connected:false};}});}
 function selectVariant(h){change(h,'#comProduct',productId);change(h,'#comVariant',variantId);}
 
-test('legacy authorized staff uses a national phone mask and sends the existing E.164 contract',async t=>{
-  const h=await makePanel({initialRoute:'cadastros',respond:(path,method)=>method==='POST'&&path.endsWith('/authorized_staff')?jsonResponse({detail:'Rejeição sintética'},422):undefined});t.after(()=>h.close());
-  const input=h.fill('#record-phone_e164','+55 (55) 99123-4567');h.fill('#record-role','barber');assert.equal(input.value,'(55) 99123-4567');assert.equal(input.type,'tel');assert.equal(input.autocomplete,'tel-national');assert.equal(input.maxLength,-1);
-  h.submit('#recordForm');await flush();assert.equal(writes(h).length,1);assert.deepEqual(writes(h)[0].data,{phone_e164:'+5555991234567',role:'barber',active:true});assert.equal(input.value,'(55) 99123-4567');assert.deepEqual(h.errors,[]);
+// The old cadastros route was retired. Guard against an obsolete bookmark or
+// detached legacy form accidentally bypassing the current authenticated UX.
+// Active phone input and scheduling rules remain covered by fields-core,
+// fields-integration and orion-hours, not by this inaccessible legacy page.
+async function retired(t,options={}){
+  const h=await makePanel({initialRoute:'cadastros',...options});
+  t.after(()=>h.close());
+  await flush();
+  assert.equal(h.document.querySelector('#page-suite').dataset.osCurrentRoute,'configuracoes');
+  assert.equal(new URL(h.window.location.href).searchParams.get('aba'),'configuracoes');
+  assert.equal(writes(h).length,0);
+  return h;
+}
+
+test('retired staff registration bookmark redirects to settings without granting an old editor',async t=>{
+  const h=await retired(t);
+  assert.deepEqual(h.errors,[]);
+  assert.equal(h.document.querySelector('#page-suite').dataset.osCurrentRoute,'configuracoes');
 });
 
-test('legacy staff invalid or international phones stay visible and do not reach the Brazilian endpoint',async t=>{
-  const h=await makePanel({initialRoute:'cadastros'});t.after(()=>h.close());h.fill('#record-role','owner');
-  for(const value of ['(55) 99123-45678','+12025550123','telefone']){const input=h.fill('#record-phone_e164',value);h.submit('#recordForm');await flush();assert.equal(writes(h).length,0);assert.equal(input.value,value);assert.equal(input.getAttribute('aria-invalid'),'true');}
+test('retired staff phone and role fields cannot submit an operation',async t=>{
+  const h=await retired(t);
+  h.fill('#record-phone_e164','+55 (55) 99123-4567');h.fill('#record-role','barber');
+  h.submit('#recordForm');await flush();
+  assert.equal(writes(h).length,0);
+  assert.equal(h.document.querySelector('#page-suite').dataset.osCurrentRoute,'configuracoes');
 });
 
-test('legacy time off uses the company Sao Paulo timezone and sends explicit instants without reverse intervals',async t=>{
-  const h=await makePanel({initialRoute:'cadastros',respond:(path,method)=>method==='POST'&&path.endsWith('/time_off')?jsonResponse({detail:'Rejeição sintética'},422):undefined});t.after(()=>h.close());change(h,'#resource','time_off');await flush();
-  h.fill('#record-professional_id',profileId);const start=h.fill('#record-starts_at','2026-11-10T09:00');h.fill('#record-ends_at','2026-11-10T08:00');assert.equal(start.type,'datetime-local');h.submit('#recordForm');await flush();assert.equal(writes(h).length,0);
-  h.fill('#record-ends_at','2026-11-10T10:00');h.submit('#recordForm');await flush();assert.equal(writes(h).length,1);assert.equal(writes(h)[0].data.starts_at,'2026-11-10T12:00:00.000Z');assert.equal(writes(h)[0].data.ends_at,'2026-11-10T13:00:00.000Z');assert.match(h.element('#recordTimezone').textContent,/America\/Sao_Paulo/);assert.match(h.element('label[for=record-starts_at]').textContent,/horário da empresa/);
-});
-
-test('legacy time off respects another company timezone, including a fractional UTC offset',async t=>{
-  for(const [timezone,expected] of [['America/Manaus','2026-11-10T13:00:00.000Z'],['Asia/Kathmandu','2026-11-10T03:15:00.000Z']]){
-    const h=await makePanel({initialRoute:'cadastros',respond(path,method){if(path==='/api/v1/account/businesses')return [{id:tenantA,name:'Empresa sintética',role:'owner',timezone}];if(method==='POST'&&path.endsWith('/time_off'))return jsonResponse({detail:'Rejeição sintética'},422);}});t.after(()=>h.close());change(h,'#resource','time_off');await flush();
-    h.fill('#record-professional_id',profileId);h.fill('#record-starts_at','2026-11-10T09:00');h.fill('#record-ends_at','2026-11-10T10:00');h.submit('#recordForm');await flush();assert.equal(writes(h).length,1);assert.equal(writes(h)[0].data.starts_at,expected);assert.ok(h.element('#recordTimezone').textContent.includes(timezone));assert.deepEqual(h.errors,[]);
+test('retired staff form cannot submit international or malformed phone values',async t=>{
+  const h=await retired(t);
+  for(const value of ['(55) 99123-45678','+12025550123','telefone']){
+    h.fill('#record-phone_e164',value);h.submit('#recordForm');await flush();
+    assert.equal(writes(h).length,0);
   }
 });
 
-test('legacy time off rejects missing or invalid company timezones instead of using the device zone',async t=>{
-  for(const timezone of [undefined,'','Invalid/Zone']){
-    const h=await makePanel({initialRoute:'cadastros',respond(path){if(path==='/api/v1/account/businesses')return [{id:tenantA,name:'Empresa sintética',role:'owner',...(timezone===undefined?{}:{timezone})}];}});t.after(()=>h.close());change(h,'#resource','time_off');await flush();
-    h.fill('#record-professional_id',profileId);h.fill('#record-starts_at','2026-11-10T09:00');h.fill('#record-ends_at','2026-11-10T10:00');h.submit('#recordForm');await flush();assert.equal(writes(h).length,0);assert.match(h.element('#notice').textContent,/fuso horário da empresa/);assert.match(h.element('#recordTimezone').textContent,/fuso horário da empresa/);
+test('retired time-off editor cannot create a schedule override',async t=>{
+  const h=await retired(t);
+  change(h,'#resource','time_off');await flush();
+  h.fill('#record-professional_id',profileId);h.fill('#record-starts_at','2026-11-10T09:00');h.fill('#record-ends_at','2026-11-10T10:00');
+  h.submit('#recordForm');await flush();
+  assert.equal(writes(h).length,0);
+});
+
+test('retired time-off bookmark does not gain access through a different company timezone',async t=>{
+  for(const timezone of ['America/Sao_Paulo','America/Manaus','Asia/Kathmandu']){
+    const h=await retired(t,{respond(path){if(path==='/api/v1/account/businesses')
+      return [{id:tenantA,name:'Empresa sintética',role:'owner',timezone}];}});
+    change(h,'#resource','time_off');await flush();
+    h.fill('#record-professional_id',profileId);h.fill('#record-starts_at','2026-11-10T09:00');h.fill('#record-ends_at','2026-11-10T10:00');
+    h.submit('#recordForm');await flush();assert.equal(writes(h).length,0);
   }
 });
 
-test('legacy time off rejects daylight-saving gaps and ambiguous repeated times in the company zone',async t=>{
-  const h=await makePanel({initialRoute:'cadastros',respond(path,method){if(path==='/api/v1/account/businesses')return [{id:tenantA,name:'Empresa sintética',role:'owner',timezone:'America/New_York'}];if(method==='POST'&&path.endsWith('/time_off'))return jsonResponse({detail:'Rejeição sintética'},422);}});t.after(()=>h.close());change(h,'#resource','time_off');await flush();h.fill('#record-professional_id',profileId);
-  h.fill('#record-starts_at','2026-03-08T02:30');h.fill('#record-ends_at','2026-03-08T04:00');h.submit('#recordForm');await flush();assert.equal(writes(h).length,0);assert.match(h.element('#notice').textContent,/não existe.*America\/New_York/);
-  h.fill('#record-starts_at','2026-11-01T01:30');h.fill('#record-ends_at','2026-11-01T03:00');h.submit('#recordForm');await flush();assert.equal(writes(h).length,0);assert.match(h.element('#notice').textContent,/duas vezes.*America\/New_York/);
-  h.fill('#record-starts_at','2026-03-08T03:00');h.fill('#record-ends_at','2026-03-08T04:00');h.submit('#recordForm');await flush();assert.equal(writes(h).length,1);assert.equal(writes(h)[0].data.starts_at,'2026-03-08T07:00:00.000Z');assert.equal(writes(h)[0].data.ends_at,'2026-03-08T08:00:00.000Z');
+test('retired time-off bookmark cannot bypass daylight-saving validation by direct form submission',async t=>{
+  const h=await retired(t,{respond(path){if(path==='/api/v1/account/businesses')
+    return [{id:tenantA,name:'Empresa sintética',role:'owner',timezone:'America/New_York'}];}});
+  change(h,'#resource','time_off');await flush();
+  h.fill('#record-professional_id',profileId);
+  for(const [from,to] of [
+    ['2026-03-08T02:30','2026-03-08T04:00'],
+    ['2026-11-01T01:30','2026-11-01T03:00'],
+    ['2026-03-08T03:00','2026-03-08T04:00']
+  ]){
+    h.fill('#record-starts_at',from);h.fill('#record-ends_at',to);
+    h.submit('#recordForm');await flush();assert.equal(writes(h).length,0);
+  }
 });
 
 test('business profile contact formats without changing its international contract or other profile facts',async t=>{

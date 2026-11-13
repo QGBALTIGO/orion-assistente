@@ -17,7 +17,14 @@ async function setup(t,options={}){
 }
 const onlyPermissionReads=h=>{
   assert.ok(h.calls.length>0);
-  assert.ok(h.calls.every(call=>call.method==='GET'&&call.path.endsWith('/management/permissions')),JSON.stringify(h.calls));
+  // The neutral subscription Dashboard now loads read-only summaries when
+  // a restricted article is rejected. Read-only dashboard queries are not
+  // permission to access the guide or execute any messaging operation.
+  assert.ok(h.calls.every(call=>call.method==='GET'&&(
+    call.path.endsWith('/management/permissions')||
+    /\/subscription-whatsapp\/(?:devices|chatbot\?per_page=1)$/.test(call.path)
+  )),JSON.stringify(h.calls));
+  assert.ok(h.calls.every(call=>!/warmup|guidance/.test(call.path)),JSON.stringify(h.calls));
   assert.deepEqual(h.errors,[]);
 };
 
@@ -100,18 +107,18 @@ test('the article returns to the existing knowledge base without creating a seco
 
 for(const scenario of [
   {name:'standard business even with a forged guidance flag',plan:{workspace_profile:'standard'},tenant:{workspace_profile:'standard'},fallback:'plano'},
-  {name:'subscription without the feature',plan:{permissions:{'account.manage':true,'business.setup':true,'devices.manage':true}},fallback:'novidades'},
-  {name:'paused company even with an active commercial plan and stale true flag',tenant:{status:'paused'},fallback:'novidades'},
-  {name:'company without confirmed active status',tenant:{status:undefined},fallback:'novidades'},
-  {name:'viewer membership even with a stale owner feature',tenant:{role:'viewer'},fallback:'novidades'},
-  {name:'editor membership even with a stale owner feature',tenant:{role:'editor'},fallback:'novidades'},
+  {name:'subscription without the feature',plan:{permissions:{'account.manage':true,'business.setup':true,'devices.manage':true}},fallback:'dashboard'},
+  {name:'paused company even with an active commercial plan and stale true flag',tenant:{status:'paused'},fallback:'dashboard'},
+  {name:'company without confirmed active status',tenant:{status:undefined},fallback:'dashboard'},
+  {name:'viewer membership even with a stale owner feature',tenant:{role:'viewer'},fallback:'dashboard'},
+  {name:'editor membership even with a stale owner feature',tenant:{role:'editor'},fallback:'dashboard'},
 ])test('Aquecimento denies '+scenario.name,async t=>{
   const h=await setup(t,{permissions:access(scenario.plan),bridge:{tenants:[business(scenario.tenant)]}});
   assert.equal(h.document.querySelector(article),null);
   assert.equal(h.document.querySelector('#osNav [data-os-route="aquecimento"]'),null);
   assert.equal(h.document.querySelector('#page-suite').dataset.osCurrentRoute,scenario.fallback);
   assert.equal(h.calls.some(call=>call.method!=='GET'),false);
-  assert.equal(h.calls.some(call=>/subscription-whatsapp|warmup|guidance/.test(call.path)),false);
+  assert.equal(h.calls.some(call=>/warmup|guidance/.test(call.path)),false);
   assert.deepEqual(h.errors,[]);
 });
 
@@ -122,7 +129,7 @@ test('unresolved or failed permissions never flash the guide or its navigation e
   pending.reject(Error('Permissões indisponíveis'));await flush();
   assert.equal(h.document.querySelector(article),null);
   assert.equal(h.document.querySelector('#osNav [data-os-route="aquecimento"]'),null);
-  assert.equal(h.document.querySelector('#page-suite').dataset.osCurrentRoute,'novidades');onlyPermissionReads(h);
+  assert.equal(h.document.querySelector('#page-suite').dataset.osCurrentRoute,'dashboard');onlyPermissionReads(h);
 });
 
 test('feature revocation removes an open article and its device shortcut',async t=>{
@@ -131,7 +138,7 @@ test('feature revocation removes an open article and its device shortcut',async 
   h.window.dispatchEvent(new h.window.Event('orion:plan-changed'));await flush();
   assert.equal(h.document.querySelector(article),null);
   assert.equal(h.document.querySelector('#osNav [data-os-route="aquecimento"]'),null);
-  assert.equal(h.document.querySelector('#page-suite').dataset.osCurrentRoute,'novidades');onlyPermissionReads(h);
+  assert.equal(h.document.querySelector('#page-suite').dataset.osCurrentRoute,'dashboard');onlyPermissionReads(h);
 });
 
 test('account change clears the guide and keeps the next paused company closed despite a stale grant',async t=>{
@@ -142,7 +149,7 @@ test('account change clears the guide and keeps the next paused company closed d
   assert.equal(h.document.querySelector('#osNav [data-os-route="aquecimento"]'),null);
   pending.resolve({effective_plan:access({revision:'next-paused-company'})});await flush();
   assert.equal(h.document.querySelector(article),null);
-  assert.equal(h.document.querySelector('#page-suite').dataset.osCurrentRoute,'novidades');onlyPermissionReads(h);
+  assert.equal(h.document.querySelector('#page-suite').dataset.osCurrentRoute,'dashboard');onlyPermissionReads(h);
 });
 
 const avoidArticle='[data-os-guidance="avoid-ban"]';
@@ -259,14 +266,14 @@ test('Resolver Banimento remains readable while omitting the device shortcut wit
 test('the added guide routes share the subscription, active-company and feature boundaries',async t=>{
   for(const [route,selector] of [['evitar-banimento',avoidArticle],['resolver-banimento',resolveArticle]])for(const scenario of [
     {plan:{workspace_profile:'standard'},tenant:{workspace_profile:'standard'},fallback:'plano'},
-    {plan:{active:true,status:'active'},tenant:{status:'paused'},fallback:'novidades'},
-    {plan:{permissions:{'account.manage':true,'business.setup':true,'devices.manage':true,'diagnostics.manage':true}},fallback:'novidades'},
+    {plan:{active:true,status:'active'},tenant:{status:'paused'},fallback:'dashboard'},
+    {plan:{permissions:{'account.manage':true,'business.setup':true,'devices.manage':true,'diagnostics.manage':true}},fallback:'dashboard'},
   ]){
     const h=await setup(t,{initialRoute:route,permissions:avoidAccess(scenario.plan),bridge:{tenants:[business(scenario.tenant)]}});
     assert.equal(h.document.querySelector(selector),null);
     assert.equal(h.document.querySelector('#osNav [data-os-route="'+route+'"]'),null);
     assert.equal(h.document.querySelector('#page-suite').dataset.osCurrentRoute,scenario.fallback);
-    assert.equal(h.calls.some(call=>call.method!=='GET'||call.path.includes('/subscription-whatsapp/')),false);
+    assert.equal(h.calls.some(call=>call.method!=='GET'||/warmup|guidance/.test(call.path)),false);
     assert.deepEqual(h.errors,[]);
   }
 });

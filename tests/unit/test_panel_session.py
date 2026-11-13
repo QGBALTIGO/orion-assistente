@@ -23,7 +23,8 @@ class MemoryRedis:
     async def set(self,key,value,**options):
         self.store[key]=value
         return True
-    async def delete(self,key):self.store.pop(key,None)
+    async def delete(self,*keys):
+        for key in keys:self.store.pop(key,None)
     def pipeline(self):return FakePipe(self)
     async def aclose(self):pass
 
@@ -85,7 +86,9 @@ async def test_panel_ui_includes_qr_pairing_chats_without_manual_support_token()
         r=await c.get("/painel")
         assert r.status_code==200
         assert "Conectar dispositivo" in r.text
-        assert "Código de emparelhamento" in r.text or "Gerar código de emparelhamento" in r.text
+        # Updated wizard offers QR and a phone pairing flow rather than the old label.
+        assert 'id="pairForm"' in r.text and 'id="pairPhone"' in r.text
+        assert 'id="refreshQr"' in r.text and '/api/v1/qr/pair' in r.text
         assert "Enviar mensagem" in r.text
         assert "SUPPORT_API_TOKEN" not in r.text
         d=await c.get("/conectar-whatsapp",follow_redirects=False)

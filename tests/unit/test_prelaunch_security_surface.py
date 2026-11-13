@@ -9,7 +9,8 @@ def test_public_api_has_no_discovery_endpoints():
     assert app.openapi_url is None
     assert app.docs_url is None
     assert app.redoc_url is None
-    assert not any(route.path in {"/docs", "/redoc", "/openapi.json"} for route in app.routes)
+    # Recent FastAPI includes router wrappers without a direct path property.
+    assert not any(getattr(route, "path", None) in {"/docs", "/redoc", "/openapi.json"} for route in app.routes)
 
 
 def test_public_signing_never_falls_back_to_platform_support_token(monkeypatch):

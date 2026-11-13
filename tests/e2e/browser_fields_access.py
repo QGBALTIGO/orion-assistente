@@ -78,7 +78,7 @@ class IsolatedHTTP:
                 filename = "orion-suite.js"
             source = ROOT / "app/static" / filename
         elif path.startswith("/landing-assets/"):
-            source = (ROOT / "app/static" / filename if filename in ("orion-fields.js", "orion-fields.css")
+            source = (ROOT / "app/static" / filename if filename in ("orion-fields.js", "orion-fields.css", "orion-focus.js", "orion-focus.css")
                       else ROOT / "landing/assets" / filename)
         elif path.startswith("/brand/"):
             source = ROOT / "app/static" / filename
@@ -104,6 +104,11 @@ class IsolatedHTTP:
             return route.abort()
         if method == "GET" and self.asset(route, path):
             return
+        if method == "GET" and path == "/manifest.webmanifest":
+            # WebKit explicitly fetches the linked PWA manifest; Chromium may
+            # defer it. Serve the real local asset, not a network fallback.
+            return route.fulfill(status=200, content_type="application/manifest+json",
+                                 body=(ROOT / "app/static/orion-pwa.webmanifest").read_bytes())
         if method == "GET" and path in ("/", "/panel", "/convite"):
             source = ROOT / {"/": "landing/index.html", "/panel": "app/static/panel.html",
                              "/convite": "app/static/orion-invite.html"}[path]

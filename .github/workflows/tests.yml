@@ -88,7 +88,9 @@ jobs:
         env:
           ORION_MIGRATION_TEST_OWNER_URL: postgresql+psycopg://postgres:ci-postgres-only@localhost:5432/postgres
           ORION_REQUIRE_MIGRATION_OPS_TEST: "1"
-        run: pytest -q -ra
+        # PR #333 only: report the first 10 real failures with full names.
+        # Do NOT merge until the unbounded suite is restored and passes.
+        run: pytest -q -ra --tb=short --maxfail=10
       - name: Validar build Docker, Compose e health HTTP
         env:
           POSTGRES_PASSWORD: ci-postgres-only
