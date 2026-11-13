@@ -177,7 +177,13 @@ async def detail(
 
 def appointment_period(day: date | None, start_date: date | None, end_date: date | None) -> tuple[date, date]:
     """Validate an unambiguous day or a bounded inclusive date range."""
-    first_day, last_day = appointment_period(day, start_date, end_date)
+    if (start_date is None) != (end_date is None) or (day is None) == (start_date is None):
+        raise HTTPException(422, "Informe um dia ou um período completo para a agenda")
+    first_day, last_day = (day, day) if day is not None else (start_date, end_date)
+    if not (1900 <= first_day.year <= 2100 and 1900 <= last_day.year <= 2100):
+        raise HTTPException(422, "Selecione uma data válida para a agenda")
+    if first_day > last_day or (last_day - first_day).days >= 31:
+        raise HTTPException(422, "O período deve ter entre 1 e 31 dias")
     return first_day, last_day
 
 
@@ -192,14 +198,7 @@ async def list_appointments(
     actor: Actor = Depends(authenticate),
 ):
     authorize(actor, tenant_id)
-    # Preserve day-only clients; period views must supply a complete bounded range.
-    if (start_date is None) != (end_date is None) or (day is None) == (start_date is None):
-        raise HTTPException(422, "Informe um dia ou um período completo para a agenda")
-    first_day, last_day = (day, day) if day is not None else (start_date, end_date)
-    if not (1900 <= first_day.year <= 2100 and 1900 <= last_day.year <= 2100):
-        raise HTTPException(422, "Selecione uma data válida para a agenda")
-    if first_day > last_day or (last_day - first_day).days >= 31:
-        raise HTTPException(422, "O período deve ter entre 1 e 31 dias")
+    first_day, last_day = appointment_period(day, start_date, end_date)
     page_limit = limit or (50 if paged else 200)
     async with get_session_factory()() as session:
         async with tenant_transaction(session, tenant_id):
