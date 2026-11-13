@@ -175,6 +175,12 @@ async def detail(
     return json_response(content)
 
 
+def appointment_period(day: date | None, start_date: date | None, end_date: date | None) -> tuple[date, date]:
+    """Validate an unambiguous day or a bounded inclusive date range."""
+    first_day, last_day = appointment_period(day, start_date, end_date)
+    return first_day, last_day
+
+
 @router.get("/appointments")
 async def list_appointments(
     tenant_id: UUID, day: date | None = None, paged: bool = False,
