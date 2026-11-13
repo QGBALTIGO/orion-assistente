@@ -241,6 +241,7 @@
        '<p class="os-dental-muted">Nascimento: '+esc(dateInput(state.patient.birth_date)||'Não informado')+
        ' · Responsável: '+esc(state.patient.guardian_name||'Não informado')+'</p></div>'+
        '<div class="os-dental-actions">'+button('Editar cadastro','edit-patient')+
+       button('Cópia do prontuário','export-patient','os-outline')+
        button('Atualizar','refresh-patient')+'</div></div>'+
        info('As anotações são protegidas e possuem autoria, mas não estão homologadas como documentos assinados digitalmente.')+'</div>'+
        '<div class="os-dental-card"><nav class="os-dental-tabs" aria-label="Áreas odontológicas">'+
@@ -370,6 +371,25 @@
     if(kind==='insurance')return {insurer:v.insurer,plan:v.plan||null,eligibility:v.eligibility,notes:v.notes||null};
     return {text:v.text,reference:v.reference||null,state:'draft'};
   }
+  async function downloadPatientCopy(){
+    if(!state.patient||state.access?.can_read_records!==true)
+      throw Error('Acesso à cópia clínica não autorizado.');
+    const patient=state.patient.id,epoch=state.epoch;
+    if(!idRe.test(patient))throw Error('Paciente inválido.');
+    const res=await fetch(endpoint('/patients/'+patient+'/export'),
+      {credentials:'same-origin',cache:'no-store',redirect:'error'});
+    if(!res.ok)throw Error(res.status===413?
+      'O prontuário exige exportação assistida.':'Não foi possível emitir a cópia protegida.');
+    const blob=await res.blob();
+    if(!valid(epoch)||state.patient?.id!==patient)return;
+    const fileUrl=URL.createObjectURL(blob);
+    try{
+      const a=document.createElement('a');
+      a.href=fileUrl;a.download='orion-prontuario-'+patient+'.zip';
+      a.style.display='none';document.body.appendChild(a);
+      a.click();a.remove();
+    }finally{setTimeout(()=>URL.revokeObjectURL(fileUrl),1000);}
+  }
   async function downloadExam(id){
     if(!idRe.test(id)||!state.patient)return;
     const epoch=state.epoch;
@@ -410,6 +430,11 @@
     }
     if(act==='download-exam'&&idRe.test(btn.dataset.id||'')){
       await invoke(()=>downloadExam(btn.dataset.id),'Exame disponibilizado para download.');return;
+    }
+    if(act==='export-patient'&&state.patient){
+      await invoke(()=>downloadPatientCopy(),
+        'Cópia protegida preparada. Não substitui documentos assinados digitalmente.');
+      return;
     }
     if((act==='supply-in'||act==='supply-out')&&idRe.test(btn.dataset.id||'')){
       const value=prompt('Quantidade de '+(act==='supply-in'?'entrada':'saída')+' (inteiro positivo):');
