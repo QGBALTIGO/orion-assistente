@@ -177,7 +177,8 @@ async def detail(
 
 @router.get("/appointments")
 async def list_appointments(
-    tenant_id: UUID, day: date, paged: bool = False,
+    tenant_id: UUID, day: date | None = None, paged: bool = False,
+    start_date: date | None = None, end_date: date | None = None,
     q: str | None = Query(default=None, max_length=120), professional_id: UUID | None = None,
     status: Literal["hold", "confirmed", "cancelled", "completed", "no_show"] | None = None,
     cancellation_requested_by: Literal["customer", "professional", "business", "system", "unknown"] | None = None,
@@ -185,8 +186,14 @@ async def list_appointments(
     actor: Actor = Depends(authenticate),
 ):
     authorize(actor, tenant_id)
-    if not 1900 <= day.year <= 2100:
+    # Preserve day-only clients; period views must supply a complete bounded range.
+    if (start_date is None) != (end_date is None) or (day is None) == (start_date is None):
+        raise HTTPException(422, "Informe um dia ou um período completo para a agenda")
+    first_day, last_day = (day, day) if day is not None else (start_date, end_date)
+    if not (1900 <= first_day.year <= 2100 and 1900 <= last_day.year <= 2100):
         raise HTTPException(422, "Selecione uma data válida para a agenda")
+    if first_day > last_day or (last_day - first_day).days >= 31:
+        raise HTTPException(422, "O período deve ter entre 1 e 31 dias")
     page_limit = limit or (50 if paged else 200)
     async with get_session_factory()() as session:
         async with tenant_transaction(session, tenant_id):
@@ -196,8 +203,8 @@ async def list_appointments(
             if not tz:
                 raise HTTPException(404, "Barbearia não encontrada")
             zone = ZoneInfo(tz)
-            begin = datetime.combine(day, time.min, tzinfo=zone).astimezone(timezone.utc)
-            end = datetime.combine(day + timedelta(days=1), time.min, tzinfo=zone).astimezone(timezone.utc)
+            begin = datetime.combine(first_day, time.min, tzinfo=zone).astimezone(timezone.utc)
+            end = datetime.combine(last_day + timedelta(days=1), time.min, tzinfo=zone).astimezone(timezone.utc)
             conditions = ["a.tenant_id=:tenant", "a.start_at>=:begin", "a.start_at<:end"]
             parameters = {"tenant": tenant_id, "begin": begin, "end": end, "limit": page_limit, "offset": offset}
             if professional_id is not None:
@@ -234,6 +241,25 @@ async def list_appointments(
             """), parameters)).mappings().one()
             result = [appointment_payload(row, actor, tenant_id)
                       for row in await read_appointments(session, tenant_id, page["ids"])]
+            # Counts are evaluated across the entire filtered range, not only the
+            # paginated slice. The month/week grid must never show partial totals.
+            daily_counts = None
+            if start_date is not None and paged:
+                daily_counts = [dict(row) for row in (await session.execute(text("""
+                    SELECT (a.start_at AT TIME ZONE :tenant_zone)::date AS day,
+                        count(*) AS total,
+                        count(*) FILTER (WHERE a.status='confirmed') AS confirmed,
+                        count(*) FILTER (WHERE a.status='completed') AS completed,
+                        count(*) FILTER (WHERE a.status='cancelled') AS cancelled,
+                        count(*) FILTER (WHERE a.status='no_show') AS no_show,
+                        count(*) FILTER (WHERE a.status='hold') AS hold
+                    FROM appointments a
+                    JOIN customers c ON c.tenant_id=a.tenant_id AND c.id=a.customer_id
+                    WHERE """ + " AND ".join(conditions) + """
+                    GROUP BY 1 ORDER BY 1
+                """), {**parameters, "tenant_zone": tz})).mappings().all()]
             content = {"items": result, "total": page["total"], "limit": page_limit, "offset": offset,
                        "has_more": offset + len(result) < page["total"]} if paged else result
+            if daily_counts is not None:
+                content["days"] = daily_counts
     return json_response(content)
