@@ -285,6 +285,20 @@ def test_performance_history_goals(browser_name, width, height, theme):
             assert "start_date" not in writes[0]["data"]
             page.locator(".os-performance-goals").scroll_into_view_if_needed()
             no_horizontal_cut(".os-performance-goals,.os-goal-card")
+            # Performance must use the real Finance card styling at the same viewport.
+            read_metric_style = """() => {
+              const card=document.querySelector('.os-finance-metrics>.os-metric');
+              const read=(el,keys)=>Object.fromEntries(keys.map(key=>[key,getComputedStyle(el)[key]]));
+              return {card:read(card,['padding','borderRadius','backgroundColor','borderColor','boxShadow']),
+                label:read(card.querySelector('.os-metric-head'),['fontFamily','fontSize','fontWeight','lineHeight']),
+                value:read(card.querySelector('strong'),['fontFamily','fontSize','fontWeight','lineHeight'])};
+            }"""
+            performance_style = page.evaluate(read_metric_style)
+            page.evaluate("() => window.OrionSuite.open('financeiro')")
+            page.wait_for_selector(".os-finance-metrics>.os-metric")
+            assert performance_style == page.evaluate(read_metric_style)
+            page.evaluate("scrollTo(0,0)")
+            page.screenshot(path=str(ARTIFACTS / f"{stem}-finance-reference.png"), full_page=True)
             assert not errors, errors
         finally:
             context.close()

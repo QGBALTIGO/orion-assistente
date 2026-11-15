@@ -127,6 +127,15 @@ test('period validation accepts 366 days and rejects longer ranges before reques
   assert.match(h.document.body.textContent,/até 366 dias/);
 });
 
+test('canceling the custom picker preserves the applied period label and results',async t=>{
+  const h=await suite(t),count=columns(h).length,requests=h.calls.length;
+  change(h,'#osPerformancePeriod','custom');await flush();
+  assert.ok(h.document.querySelector('#osPeriodForm'));
+  h.click('#osDialog [data-os-action=close-dialog]');await flush();
+  assert.equal(h.document.querySelector('#osPerformancePeriod').value,'month');
+  assert.equal(columns(h).length,count);assert.equal(h.calls.length,requests);
+});
+
 test('a slower previous period cannot replace a refreshed chart',async t=>{
   const pending=deferred();let delay=false;
   const h=await suite(t,{respond:path=>delay&&path.includes('/performance/daily?')&&path.includes('2026-10-31')?pending.promise:undefined});
