@@ -99,6 +99,12 @@ def test_performance_history_goals(browser_name, width, height, theme):
               });
             }""")
             assert all(error <= 1 for error in scale), scale
+            controls = page.locator("#osPerformanceMetric,#osPerformanceProfessional,#osPerformancePeriod").evaluate_all("""nodes=>nodes.map(el=>({
+              appearance:getComputedStyle(el).appearance,background:getComputedStyle(el).backgroundColor
+            }))""")
+            assert all(control["appearance"] == "none" for control in controls), controls
+            if theme == "dark":
+                assert all(control["background"] != "rgb(255, 255, 255)" for control in controls), controls
             # Grouping, metric selection and values must work by touch as well as keyboard.
             page.locator("[data-os-performance-group=week]").click()
             assert page.locator("[data-os-performance-group=week]").get_attribute("aria-pressed") == "true"
@@ -117,6 +123,11 @@ def test_performance_history_goals(browser_name, width, height, theme):
             assert "75,00" in page.locator(".os-performance-metrics .os-metric>strong").first.inner_text()
             page.select_option("#osPerformanceProfessional", "")
             page.select_option("#osPerformanceMetric", "revenue_cents")
+            amounts = page.locator(".os-performance-selected-values strong").evaluate_all("""nodes=>nodes.map(el=>({
+              height:el.getBoundingClientRect().height,line:parseFloat(getComputedStyle(el).lineHeight),
+              scroll:el.scrollWidth,width:el.clientWidth
+            }))""")
+            assert all(amount["height"] <= amount["line"] + 1 and amount["scroll"] <= amount["width"] + 1 for amount in amounts), amounts
             page.locator(".os-performance-chart-card").screenshot(path=str(ARTIFACTS / f"{stem}-chart.png"))
             page.evaluate("scrollTo(0,0)")
             page.screenshot(path=str(ARTIFACTS / f"{stem}-page.png"), full_page=True)

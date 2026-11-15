@@ -1069,6 +1069,7 @@ html[data-theme=dark] .os-status-hold{--os-status-color:#dfc892;--os-status-bg:#
 .os-performance-scope .os-actions{flex-wrap:wrap;gap:8px;min-width:0;max-width:100%}
 .os-performance-scope label{min-width:0;max-width:100%}
 .os-performance-scope select,.os-performance-chart-controls select{max-width:100%;min-height:44px;border:1px solid var(--os-border);border-radius:10px;padding:9px 30px 9px 11px;font:500 13px/20px var(--os-font);background:var(--os-bg);color:var(--os-text)}
+.os-performance-periods select,.os-performance-scope select,.os-performance-chart-controls select{appearance:none;-webkit-appearance:none;background-color:var(--os-bg);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='m3 4.5 3 3 3-3' fill='none' stroke='%237c8ba1' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;background-size:12px;color:var(--os-text)}
 .os-performance-scope select{width:220px}
 .os-performance-scope .os-button{min-height:44px}
 .os-performance-metrics{grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:18px 0}
@@ -1199,6 +1200,11 @@ html[data-theme=dark] .os-status-hold{--os-status-color:#dfc892;--os-status-bg:#
   .os-performance-money>.os-help,.os-performance-movements{padding-left:16px;padding-right:16px}
   .os-performance-movements{grid-template-columns:1fr}
   .os-performance-details>summary,.os-performance-money>summary{padding:14px 16px}
+}
+@media(max-width:359px){
+  .os-performance-selected-values{grid-template-columns:1fr;gap:7px}
+  .os-performance-selected-values>div{display:flex;justify-content:space-between;align-items:center;gap:12px;min-width:0}
+  .os-performance-selected-values strong{margin:0;text-align:right;max-width:75%}
 }
 .os-performance-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;margin-top:20px}
 .os-performance-summary span{display:block;font-size:12px;color:var(--os-muted);margin-bottom:6px}
