@@ -76,15 +76,27 @@ def s3(prefix):
     from botocore.config import Config
 
     endpoint = os.environ[prefix + "ENDPOINT"]
-    assert endpoint.startswith("https://")
     style = os.getenv(prefix + "URL_STYLE", "path")
-    assert style in {"path", "virtual", "auto"}
+    emit("storage_config", {"scope": prefix, "endpoint_present": bool(endpoint),
+        "endpoint_https": endpoint.startswith("https://"),
+        "addressing_style": style if style in {"path", "virtual", "virtual-host", "auto", ""} else "invalid"})
+    if not endpoint.startswith("https://"):
+        raise ValueError("storage_endpoint_requires_https")
+    style = s3_addressing_style(style)
     return boto3.client("s3", endpoint_url=endpoint,
         aws_access_key_id=os.environ[prefix + "ACCESS_KEY_ID"],
         aws_secret_access_key=os.environ[prefix + "SECRET_ACCESS_KEY"],
         region_name=os.environ[prefix + "REGION"],
         config=Config(s3={"addressing_style": style}, connect_timeout=10,
             read_timeout=30, retries={"max_attempts": 2})), os.environ[prefix + "BUCKET"]
+
+
+def s3_addressing_style(value):
+    if value == "virtual-host":
+        return "virtual"
+    if value not in {"path", "virtual", "auto"}:
+        raise ValueError("invalid_storage_addressing_style")
+    return value
 
 
 def objects(client, bucket):
@@ -136,6 +148,40 @@ def storage():
         invalid = invalid or bool(missing or mismatched)
     if invalid:
         raise RuntimeError("storage_integrity_mismatch")
+
+
+def storage_manifest():
+    """Read a native bucket in its own project; emit hashes, never file bytes."""
+    for kind in ("MEDIA", "BACKUP"):
+        prefix = "ORION_VERIFY_" + kind + "_"
+        client, bucket = s3(prefix)
+        entries = objects(client, bucket)
+        manifest = []
+        for key, meta in sorted(entries.items()):
+            size, digest = digest_object(client, bucket, key)
+            if size != meta["size"]:
+                raise RuntimeError("storage_changed_during_inspection")
+            manifest.append({"key_sha256": hashlib.sha256(key.encode()).hexdigest(),
+                "size": size, "sha256": digest, "modified": meta["modified"],
+                "migration_temporary": key.startswith(("migration/", "migrations/", "railway-migration/"))})
+        emit("native_storage_" + kind.lower(), {"objects": len(manifest), "manifest": manifest,
+            "api_uses_this_bucket": os.getenv("ORION_VERIFY_API_" + kind + "_BUCKET") == bucket,
+            "api_uses_this_endpoint": os.getenv("ORION_VERIFY_API_" + kind + "_ENDPOINT") == os.environ[prefix + "ENDPOINT"]})
+    emit("native_storage_complete", {"ok": True})
+
+
+def compare_storage_manifests(source, target):
+    """Match opaque key hashes, file sizes and bytes; copy timestamps may differ."""
+    before = {r["key_sha256"]: r for r in source}
+    after = {r["key_sha256"]: r for r in target}
+    if len(before) != len(source) or len(after) != len(target):
+        raise ValueError("duplicate_manifest_key")
+    missing = sorted(before.keys() - after.keys())
+    mismatched = sorted(k for k in before.keys() & after.keys()
+        if (before[k]["size"], before[k]["sha256"]) != (after[k]["size"], after[k]["sha256"]))
+    return {"source_objects": len(before), "target_objects": len(after),
+        "missing": missing, "mismatched": mismatched,
+        "matched": len(before) - len(missing) - len(mismatched)}
 
 
 def safe_bridge_result(data):
