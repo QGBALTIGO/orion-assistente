@@ -3,62 +3,56 @@
 Destino: projeto `Orion`, conta Gabrieli, ambiente `production`.
 Origem: projeto `strong-creation`, conta Orion, ambiente `production`.
 
-## Evidências observadas
+## Resultado observado
 
-- API, worker, QR bridge, PostgreSQL e Redis estão online no destino.
-- Os cinco serviços da origem estão offline; não há implantação pendente no destino.
-- `/health`, `/health/whatsapp`, `/painel` e `/s/barbearia-peixoto` responderam HTTP 200.
-- Os registros da transferência confirmam 79 objetos de mídia e 48 backups
-  com SHA-256 verificado. O snapshot final de sessão registra 3.417 arquivos
-  e SHA-256 verificado.
-- A conexão principal recebeu `401`, `reason=logged_out`,
-  `action=reauthenticate`, em `2026-11-15T00:27:38Z`. As amostras posteriores
-  permanecem em `needs_attention`. Outro canal apresenta `connected`.
-- O DNS público aponta para a entrada Hostinger, conforme a arquitetura em
-  `hostinger-ingress.md`. O cadastro antigo do domínio na Railway, por si só,
-  não demonstra dependência de processamento da conta antiga.
+- Os cinco serviços de produção do destino estão online, com uma réplica em execução por serviço e sem alterações pendentes.
+- O worker final foi publicado com `SUCCESS`: `d02e29fd-fd08-4498-ab0b-6784c380e291`.
+- A configuração original de pré-deploy do worker foi restaurada e relida. As referências temporárias de diagnóstico foram esvaziadas.
+- API, QR bridge, Redis e PostgreSQL da origem continuam offline. A inspeção isolada dos buckets executada no antigo serviço worker terminou; sua réplica está em zero processos, sem executar ARQ, e seu comando de manutenção foi restaurado.
 
-`/health/whatsapp` confirma que a ponte responde; não confirma que todas as
-sessões estejam conectadas ou que uma mensagem tenha sido entregue.
+## Arquivos: comparação direta nas duas contas
 
-## Verificador preparado
+Os buckets foram lidos em cada conta com suas próprias referências nativas, sem copiar credenciais para a conversa. O verificador emitiu apenas hashes dos nomes dos objetos, tamanho, SHA-256 do conteúdo e metadados técnicos.
 
-`scripts/verify_railway_migration.py` inspeciona o banco em transação
-`READ ONLY`, com limites de conexão, consulta e espera por lock. Lista tabelas,
-contagens, papéis e metadados dos canais. Não altera schema, credenciais ou
-registros. Usa apenas GET nos endpoints privados de status do bridge e
-listagem/leitura no S3. As leituras dos objetos comparam tamanho e SHA-256.
-Os logs do bridge têm uma lista explícita de campos permitidos; não incluem
-número, perfil, QR, código de vínculo, mensagens ou credenciais.
+| Grupo | Origem | Destino | Bytes no destino | Ausentes | Conteúdo divergente |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Mídias | 79 | 79 | 2.121.425 | 0 | 0 |
+| Backups | 48 | 48 | 39.602.660 | 0 | 0 |
 
-Esse diagnóstico não é uma comparação integral do banco com o snapshot da
-origem. As contagens e os metadados precisam ser confrontados com o inventário
-final da migração antes de certificar preservação integral dos registros.
+A conferência também comprovou que os valores de bucket e endpoint usados pela API correspondem aos buckets nativos do projeto de destino. Os registros da migração anterior confirmam restauração de 3.417 arquivos de sessão com SHA-256 verificado; essa contagem não substitui uma conexão WhatsApp válida.
 
-Validação local:
+## Banco de destino
+
+O diagnóstico consultou as 159 tabelas em transação `REPEATABLE READ, READ ONLY`, com timeout de consulta/lock e papel `app_migrator`. Nenhuma tabela ficou inacessível; nenhuma constraint estava pendente de validação. A revisão é `0079_service_archive`.
+
+Amostra das contagens: 337 clientes, 163 agendamentos, 14 profissionais, 40 serviços, 12 empresas e 16 contas de painel. São contagens atuais do destino, não uma comparação de todos os registros com o banco congelado da origem.
+
+Os papéis `app_runtime`, `app_support` e `app_migrator` não são superusuários, não ignoram RLS e não podem criar papéis. Apenas as tabelas globais `alembic_version` e `plans` não usam RLS.
+
+O PostgreSQL original permanece desligado. A igualdade integral dos registros de origem/destino ainda não está comprovada; a presença das tabelas e a comparação dos arquivos de backup não constituem essa prova.
+
+## WhatsApp: depende de novo vínculo
+
+A conexão principal devolve `pair_failed`, `disconnectCode=401`, `reason=logged_out`, `action=reauthenticate` e `messagesEnabled=false`. O socket revogado está preservado e o armazenamento não informa indisponibilidade. O canal adicional mantém amostras de conexão saudável.
+
+É necessária nova confirmação do vínculo pelo responsável no WhatsApp. Reinicialização de infraestrutura não substitui essa autenticação. Não houve envio de mensagens de teste nem exclusão de credenciais preservadas.
+
+`/health/whatsapp` confirma somente que a ponte responde. Seu HTTP 200 não prova conexão de todas as sessões nem entrega de mensagens.
+
+## Execução e testes
+
+A inspeção completa de banco/bridge executou no pré-deploy `74819293-47bd-4d34-a115-be59693afe6b`. A parte de armazenamento dessa tentativa encontrou as antigas variáveis temporárias de migração vazias. A conferência foi então feita com referências nativas em cada projeto:
+
+- Destino: `e5258ab6-0043-4b57-80f2-ff73016a290f`, diagnóstico de arquivos concluído e worker publicado com `SUCCESS`.
+- Origem: `dc125403-99b8-414a-8b9e-720ce943b3d8`, inspeção somente leitura concluída e processo encerrado.
+- Limpeza do destino: `d02e29fd-fd08-4498-ab0b-6784c380e291`, `SUCCESS`.
+
+As primeiras republicações reutilizaram a configuração anterior. A aplicação por `connect-service-source` com a mesma imagem imutável fez a configuração corrigida entrar em vigor. Nenhuma mudança funcional da aplicação foi publicada por esta PR.
+
+Onze testes locais cobrem detecção de perda/corrupção, estilo S3 da Railway, remoção de informações sensíveis, comparação de manifestos e fechamento de streams:
 
 ```sh
 python -m unittest discover -s tests/unit -p test_verify_railway_migration.py -v
 ```
 
-Oito testes aprovados: detecção de objeto ausente, corrupção com tamanho
-igual, exclusão restrita ao prefixo configurado, digest/fechamento de stream,
-remoção de dados sensíveis e falhas sem exposição da mensagem da exceção.
-
-## Pendências de execução
-
-O verificador não foi executado em produção. A criação de um serviço isolado
-foi recusada pelo limite de recursos do plano gratuito. A alternativa de
-adicioná-lo temporariamente ao pré-deploy do worker foi recusada pela revisão
-automática de aprovação; a configuração original do worker foi relida e
-permanece intacta. Nenhuma republicação foi disparada por esta conferência.
-
-Após aprovação específica, a execução proposta usa a mesma imagem atual do
-worker e preserva todas as verificações de pré-deploy existentes. Ao terminar,
-remove-se somente a configuração temporária do diagnóstico. Qualquer falha
-de acesso ou integridade interrompe o diagnóstico; ela não autoriza ampliar
-permissões ou restaurar dados automaticamente.
-
-Separadamente, a sessão revogada exige a confirmação de um novo vínculo pelo
-responsável no WhatsApp. Não apagar a sessão preservada nem recriar a identidade
-automaticamente para tentar contornar a revogação do provedor.
+A migração não foi certificada como 100% concluída: vínculo do WhatsApp e comparação integral dos registros do banco continuam pendentes.
