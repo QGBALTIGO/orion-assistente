@@ -25,7 +25,7 @@ window.mountPerformanceFixture=effectivePlan=>{
       if(method==='DELETE'){goals=goals.filter(g=>!url.pathname.endsWith('/'+g.id));return {};}
       return {items:goals,templates:goals};
     }
-    if(path.includes('/performance/daily'))return {items:[{date:today,completed:3,revenue_cents:175000,commission_cents:17500}]};
+    if(path.includes('/performance/daily'))return {items:pros.map((p,i)=>({date:today,professional_id:p.id,professional_name:p.name,completed:3-i,revenue_cents:i===0?100000:i===1?7500:67500,commission_cents:i===0?10000:i===1?750:6750}))};
     if(path.includes('/performance?'))return {items:pros.map((p,i)=>({...p,completed:3-i,cancelled:i===0?1:0,revenue_cents:i===0?100000:i===1?7500:67500}))};
     if(path.includes('/finance/commissions'))return {items:pros.map(p=>({...p,commission_mode:'percent',commission_percent:10,earned_cents:17500,advances_cents:0,payable_cents:17500}))};
     if(path.endsWith('/professionals'))return pros;

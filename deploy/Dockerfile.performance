@@ -1,0 +1,8 @@
+# UI-only release: preserve the exact application and dependencies in production.
+# The two public assets were verified against this immutable base before release.
+FROM ghcr.io/qgbaltigo/orion-assistente-api@sha256:bd319796ec320c37b13a659ea42907dbc6bae745091b38d807829a9148da0fac
+ARG ORION_RELEASE_SHA
+LABEL org.opencontainers.image.source="https://github.com/QGBALTIGO/orion-assistente" \
+      org.opencontainers.image.revision="${ORION_RELEASE_SHA}"
+COPY --chown=appuser:appuser app/static/orion-suite.js /srv/app/app/static/orion-suite.js
+COPY --chown=appuser:appuser app/static/orion-suite.css /srv/app/app/static/orion-suite.css

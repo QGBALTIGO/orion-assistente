@@ -39,6 +39,8 @@ def test_performance_history_goals(browser_name, width, height, theme):
     with sync_playwright() as playwright:
         engine = getattr(playwright, browser_name)
         launch = {"channel": "chrome"} if browser_name == "chromium" and os.getenv("ORION_TEST_SYSTEM_CHROME") == "1" else {}
+        if browser_name == "chromium" and os.getenv("ORION_TEST_CHROMIUM_EXECUTABLE"):
+            launch = {"executable_path": os.environ["ORION_TEST_CHROMIUM_EXECUTABLE"]}
         browser = engine.launch(**launch)
         context = browser.new_context(viewport={"width": width, "height": height}, device_scale_factor=1,
                                       is_mobile=width < 768, has_touch=width < 768)
@@ -80,6 +82,59 @@ def test_performance_history_goals(browser_name, width, height, theme):
                     assert box["scroll"] <= box["client"] + 2, box
 
             page.evaluate("() => document.fonts.ready")
+            ARTIFACTS.mkdir(parents=True, exist_ok=True)
+            stem = f"{browser_name}-{width}x{height}-{theme}"
+            no_horizontal_cut(".os-performance-scope,.os-performance-metrics,.os-performance-chart-card,.os-performance-selection,.os-performance-insights")
+            page.screenshot(path=str(ARTIFACTS / f"{stem}-initial.png"), full_page=True)
+            overflow = page.evaluate("""() => ({width:innerWidth,scroll:document.documentElement.scrollWidth,
+              outside:[...document.querySelectorAll('#osPageBody *')].filter(el=>{
+                const r=el.getBoundingClientRect();return r.width>0&&r.right>innerWidth+2&&
+                  !el.closest('.os-performance-chart-scroll,.os-table-scroll');
+              }).slice(0,12).map(el=>({tag:el.tagName,class:el.className,right:el.getBoundingClientRect().right}))})""")
+            assert overflow["scroll"] <= width + 2, overflow
+            scale = page.evaluate("""() => {
+              const bar=document.querySelector('.os-performance-column').getBoundingClientRect();
+              return [...document.querySelectorAll('.os-performance-y-axis>span')].map((el,i)=>{
+                const r=el.getBoundingClientRect();return Math.abs(r.top+r.height/2-(bar.top+bar.height*i/4));
+              });
+            }""")
+            assert all(error <= 1 for error in scale), scale
+            controls = page.locator("#osPerformanceMetric,#osPerformanceProfessional,#osPerformancePeriod").evaluate_all("""nodes=>nodes.map(el=>({
+              appearance:getComputedStyle(el).appearance,background:getComputedStyle(el).backgroundColor
+            }))""")
+            assert all(control["appearance"] == "none" for control in controls), controls
+            if theme == "dark":
+                assert all(control["background"] != "rgb(255, 255, 255)" for control in controls), controls
+            # Grouping, metric selection and values must work by touch as well as keyboard.
+            page.locator("[data-os-performance-group=week]").click()
+            assert page.locator("[data-os-performance-group=week]").get_attribute("aria-pressed") == "true"
+            assert 4 <= page.locator("[data-os-performance-point]").count() <= 6
+            page.select_option("#osPerformanceMetric", "completed")
+            assert "Atendimentos" in page.locator(".os-performance-chart-scroll").get_attribute("aria-label")
+            first = page.locator("[data-os-performance-point]").first
+            first.scroll_into_view_if_needed()
+            first.click()
+            assert first.get_attribute("aria-pressed") == "true"
+            first.press("End")
+            assert page.locator("[data-os-performance-point]").last.evaluate("el=>el===document.activeElement")
+            page.select_option("#osPerformanceProfessional", "51000000-0000-4000-8000-000000000002")
+            assert page.locator("[data-os-performance-history]").count() == 1
+            assert page.locator(".os-performance-metrics .os-metric>strong").nth(1).inner_text() == "2"
+            assert "75,00" in page.locator(".os-performance-metrics .os-metric>strong").first.inner_text()
+            page.select_option("#osPerformanceProfessional", "")
+            page.select_option("#osPerformanceMetric", "revenue_cents")
+            amounts = page.locator(".os-performance-selected-values strong").evaluate_all("""nodes=>nodes.map(el=>({
+              height:el.getBoundingClientRect().height,line:parseFloat(getComputedStyle(el).lineHeight),
+              scroll:el.scrollWidth,width:el.clientWidth
+            }))""")
+            assert all(amount["height"] <= amount["line"] + 1 and amount["scroll"] <= amount["width"] + 1 for amount in amounts), amounts
+            page.locator(".os-performance-chart-card").screenshot(path=str(ARTIFACTS / f"{stem}-chart.png"))
+            page.evaluate("scrollTo(0,0)")
+            page.screenshot(path=str(ARTIFACTS / f"{stem}-page.png"), full_page=True)
+            page.locator(".os-performance-details summary").click()
+            assert page.locator(".os-performance-details").evaluate("el=>el.open")
+            assert "1.750,00" in page.locator(".os-performance-details tfoot").inner_text()
+            page.locator(".os-performance-details summary").click()
             page.locator(".os-professional-results").scroll_into_view_if_needed()
             assert page.locator("[data-os-performance-history]").count() == 3
             button = page.locator("[data-os-performance-history]").first
@@ -107,7 +162,7 @@ def test_performance_history_goals(browser_name, width, height, theme):
               }
               const box=rect(el),eye=rect(el.querySelector('svg'));
               const name=el.parentElement.querySelector('strong'),style=getComputedStyle(name);
-              const hit={x:box.x+box.width/2,y:box.y-3};
+              const hit={x:box.x+box.width/2,y:box.y+box.height/2};
               const target=document.elementFromPoint(hit.x,hit.y),pseudo=getComputedStyle(el,'::before');
               const ancestors=[];
               for(let node=el.parentElement;node;node=node.parentElement){
@@ -138,12 +193,11 @@ def test_performance_history_goals(browser_name, width, height, theme):
             assert geometry["stableFrames"] >= 2, geometry
             assert all(face["status"] == "loaded" for face in geometry["fonts"]), geometry
             box, typography, eye, hit = (geometry[key] for key in ("box", "typography", "eye", "hit"))
-            # The affordance should read as a small action beside the name,
-            # while its touch target extends beyond its compact visual box.
+            # The professional's name is the history action, with a real touch target.
             assert 0 < eye["width"] <= typography["font"] * 1.25
             assert 0 < eye["height"] <= typography["line"]
-            assert box["width"] <= typography["line"] * 1.6
-            assert box["height"] <= typography["line"] * 1.6
+            assert box["width"] >= 44
+            assert box["height"] >= 44
             assert box["x"] >= 0 and box["x"] + box["width"] <= width
             assert geometry["hitInside"], geometry
             if width < 768:
