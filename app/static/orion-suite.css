@@ -1175,6 +1175,7 @@ html[data-theme=dark] .os-status-hold{--os-status-color:#dfc892;--os-status-bg:#
   .os-performance-insights strong{grid-column:2;grid-row:1 / span 2;margin:0;align-self:center;font-size:16px}
   .os-performance-insights small{grid-column:1;margin-top:2px;font-size:10px}
   .os-professional-results{padding:16px 12px;border-radius:16px}
+  .os-performance-people-table{display:block;min-width:0;width:100%}
   .os-performance-people-table thead{display:none}
   .os-performance-people-table tbody{display:grid;gap:10px}
   .os-performance-people-table tr{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));padding:10px 12px;border:1px solid var(--os-border);border-radius:12px;gap:10px}

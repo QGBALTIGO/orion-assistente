@@ -85,7 +85,13 @@ def test_performance_history_goals(browser_name, width, height, theme):
             ARTIFACTS.mkdir(parents=True, exist_ok=True)
             stem = f"{browser_name}-{width}x{height}-{theme}"
             no_horizontal_cut(".os-performance-scope,.os-performance-metrics,.os-performance-chart-card,.os-performance-selection,.os-performance-insights")
-            assert page.evaluate("document.documentElement.scrollWidth<=innerWidth+2")
+            page.screenshot(path=str(ARTIFACTS / f"{stem}-initial.png"), full_page=True)
+            overflow = page.evaluate("""() => ({width:innerWidth,scroll:document.documentElement.scrollWidth,
+              outside:[...document.querySelectorAll('#osPageBody *')].filter(el=>{
+                const r=el.getBoundingClientRect();return r.width>0&&r.right>innerWidth+2&&
+                  !el.closest('.os-performance-chart-scroll,.os-table-scroll');
+              }).slice(0,12).map(el=>({tag:el.tagName,class:el.className,right:el.getBoundingClientRect().right}))})""")
+            assert overflow["scroll"] <= width + 2, overflow
             # Grouping, metric selection and values must work by touch as well as keyboard.
             page.locator("[data-os-performance-group=week]").click()
             assert page.locator("[data-os-performance-group=week]").get_attribute("aria-pressed") == "true"
