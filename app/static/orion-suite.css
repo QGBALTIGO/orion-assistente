@@ -1088,7 +1088,13 @@ html[data-theme=dark] .os-status-hold{--os-status-color:#dfc892;--os-status-bg:#
 .os-performance-chart-help .os-icon{width:15px;height:15px;margin-top:1px}
 .os-performance-no-results{font-size:12px;line-height:19px;padding:10px 12px;border-radius:10px;background:var(--os-soft);margin-top:12px!important}
 .os-performance-chart-frame{display:grid;grid-template-columns:66px minmax(0,1fr);min-width:0;padding-top:5px}
-.os-performance-y-axis{height:208px;display:flex;flex-direction:column;justify-content:space-between;align-items:flex-end;padding-right:10px;position:relative;top:-7px;font:500 10px/14px var(--os-font);color:var(--os-muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.os-performance-y-axis{height:208px;position:relative;font:500 10px/14px var(--os-font);color:var(--os-muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.os-performance-y-axis>span{position:absolute;right:10px;transform:translateY(-50%)}
+.os-performance-y-axis>span:nth-child(1){top:0}
+.os-performance-y-axis>span:nth-child(2){top:25%}
+.os-performance-y-axis>span:nth-child(3){top:50%}
+.os-performance-y-axis>span:nth-child(4){top:75%}
+.os-performance-y-axis>span:nth-child(5){top:100%}
 .os-performance-chart-scroll{min-width:0;max-width:100%;overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;scrollbar-width:thin;scrollbar-color:var(--os-border) transparent;padding:0 0 8px;scroll-padding-inline:4px}
 .os-performance-plot{height:268px;display:grid;grid-template-columns:repeat(var(--os-performance-count),minmax(0,1fr));min-width:calc(var(--os-performance-count) * var(--os-performance-column));padding:0 2px 60px;background:repeating-linear-gradient(to top,var(--os-border) 0,var(--os-border) 1px,transparent 1px,transparent 52px) left top / 100% 208px no-repeat}
 .os-performance-column{position:relative;display:flex;align-items:flex-end;justify-content:center;min-width:0;width:100%;height:208px;border:0;border-radius:5px 5px 0 0;padding:0 9px;background:transparent;color:var(--os-muted);font:500 10px/15px var(--os-font);cursor:pointer;touch-action:manipulation}
@@ -1164,7 +1170,8 @@ html[data-theme=dark] .os-status-hold{--os-status-color:#dfc892;--os-status-bg:#
   .os-performance-chart-controls select{width:100%;padding-left:8px;font-size:12px}
   .os-performance-chart-controls .os-pill-tab{padding:7px 8px;font-size:11px}
   .os-performance-chart-frame{grid-template-columns:57px minmax(0,1fr)}
-  .os-performance-y-axis{font-size:9px;padding-right:7px}
+  .os-performance-y-axis{font-size:9px}
+  .os-performance-y-axis>span{right:7px}
   .os-performance-selection{padding:11px 10px}
   .os-performance-selected-values{gap:6px}
   .os-performance-selected-values span{font-size:10px}

@@ -92,6 +92,13 @@ def test_performance_history_goals(browser_name, width, height, theme):
                   !el.closest('.os-performance-chart-scroll,.os-table-scroll');
               }).slice(0,12).map(el=>({tag:el.tagName,class:el.className,right:el.getBoundingClientRect().right}))})""")
             assert overflow["scroll"] <= width + 2, overflow
+            scale = page.evaluate("""() => {
+              const bar=document.querySelector('.os-performance-column').getBoundingClientRect();
+              return [...document.querySelectorAll('.os-performance-y-axis>span')].map((el,i)=>{
+                const r=el.getBoundingClientRect();return Math.abs(r.top+r.height/2-(bar.top+bar.height*i/4));
+              });
+            }""")
+            assert all(error <= 1 for error in scale), scale
             # Grouping, metric selection and values must work by touch as well as keyboard.
             page.locator("[data-os-performance-group=week]").click()
             assert page.locator("[data-os-performance-group=week]").get_attribute("aria-pressed") == "true"
