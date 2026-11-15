@@ -44,6 +44,35 @@ class Store:
 
 
 class MigrationInspectionTests(unittest.TestCase):
+    def test_native_manifest_hides_object_names(self):
+        client = Store({"private-client-file": b"data"})
+        output = io.StringIO()
+        with patch.object(check, "s3", return_value=(client, "bucket")), patch.dict(
+                os.environ, {"ORION_VERIFY_MEDIA_ENDPOINT": "https://storage.test",
+                    "ORION_VERIFY_BACKUP_ENDPOINT": "https://storage.test"}), redirect_stdout(output):
+            check.storage_manifest()
+        self.assertNotIn("private-client-file", output.getvalue())
+        self.assertIn(hashlib.sha256(b"private-client-file").hexdigest(), output.getvalue())
+        self.assertIn('"ok": true', output.getvalue())
+
+    def test_manifest_comparison_ignores_copy_time_and_detects_corruption(self):
+        source = [{"key_sha256": "key", "size": 4, "sha256": "content", "modified": "before"}]
+        target = [{**source[0], "modified": "after"}]
+        self.assertEqual(check.compare_storage_manifests(source, target)["matched"], 1)
+        self.assertEqual(check.compare_storage_manifests(source, [
+            {**target[0], "sha256": "corrupt"}])["mismatched"], ["key"])
+        self.assertEqual(check.compare_storage_manifests(source, [])["missing"], ["key"])
+        with self.assertRaises(ValueError):
+            check.compare_storage_manifests(source, target + target)
+
+    def test_railway_virtual_host_style_is_accepted_by_boto(self):
+        self.assertEqual(check.s3_addressing_style("virtual-host"), "virtual")
+        for value in ("path", "virtual", "auto"):
+            self.assertEqual(check.s3_addressing_style(value), value)
+        for value in ("", "unsupported"):
+            with self.assertRaises(ValueError):
+                check.s3_addressing_style(value)
+
     def run_storage(self, source, target, exclusion=""):
         before, after = Store(source), Store(target)
 
