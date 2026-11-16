@@ -119,7 +119,7 @@ async def recover_events(ctx: dict):
 
 
 async def startup_plan_permissions(ctx):
-    from scripts.wait_for_service_receipts_schema import wait_for_schema as receipt_schema
+    from scripts.wait_for_exceptional_overlap_schema import wait_for_schema as receipt_schema
     from scripts.wait_for_agenda_schema import Settings as ReceiptSchemaSettings
     await receipt_schema(ReceiptSchemaSettings.from_environment())
     # ARQ awaits this before consuming jobs; API predeploy performs the only

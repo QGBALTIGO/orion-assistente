@@ -117,7 +117,7 @@ def project_appointment(row):
     return {key: row.get(key) for key in (
         "id","protocol","start_at","end_at","status","updated_at",
         "customer_name","total_cents","price_mode","cancellation",
-        "booking_mode","created_at","actual_duration_min","services_duration_min",
+        "booking_mode","allow_overlap","created_at","actual_duration_min","services_duration_min",
         "reserved_duration_min","timezone","original_total_cents","discount_cents",
     )} | {"services": [
         {"name": item.get("name_snapshot"),"duration_min":item.get("duration_snapshot_min")}

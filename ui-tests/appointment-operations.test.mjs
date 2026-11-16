@@ -209,3 +209,31 @@ test('atualização explícita do telefone do cliente é conferida antes do manu
   const saved=writes(h);assert.equal(saved.length,2);assert.deepEqual(plain(saved[0].data),plain(saved[1].data));
   assert.equal(saved[0].data.customer_id,customerId);assert.equal(saved[0].data.customer_phone,'+5567999999999');
 });
+
+
+test('sobreposição exige opção explícita somente no excepcional e não vaza entre modos',async t=>{
+  const h=await fixture(t);const form=await manual(h);
+  assert.equal(form.elements.allow_overlap.checked,false);assert.equal(form.elements.allow_overlap.disabled,false);
+  assert.match(h.document.getElementById('osBookingOverlap').textContent,/dois clientes simultâneos/);
+  h.click('[name=allow_overlap]');await change(h,'booking_mode','retroactive');
+  assert.equal(form.elements.allow_overlap.checked,false);assert.equal(form.elements.allow_overlap.disabled,true);
+  assert.equal(h.document.getElementById('osBookingOverlap').hidden,true);
+  await change(h,'booking_mode','regular');assert.equal(form.elements.allow_overlap.disabled,true);
+  await change(h,'booking_mode','exceptional');h.click('[name=allow_overlap]');
+  h.submit('[data-os-form=appointment]');await flush();
+  assert.equal(writes(h).length,1);assert.equal(writes(h)[0].data.allow_overlap,true);
+  assert.equal(writes(h)[0].data.mode,'exceptional');
+});
+
+test('agenda mantém cada cliente, serviço, valor e detalhe no horário compartilhado',async t=>{
+  const otherId='91000000-0000-4000-8000-000000000009';
+  const first=initial({customer_name:'Cliente Corte',booking_mode:'standard'});
+  const second=initial({id:otherId,customer_name:'Cliente Barba',booking_mode:'exceptional',allow_overlap:true,total_cents:2500,
+    items:[{service_id:secondExtraId,name_snapshot:'Barba',duration_snapshot_min:20,price_snapshot_cents:2500,price_mode_snapshot:'fixed'}]});
+  const h=await fixture(t,{override:path=>path.includes('/appointments?')?{items:[first,second],total:2,has_more:false}:undefined});
+  assert.ok(h.document.querySelector('[data-os-appointment="'+appointmentId+'"]'));
+  assert.ok(h.document.querySelector('[data-os-appointment="'+otherId+'"]'));
+  assert.match(h.document.body.textContent,/Cliente Corte/);
+  assert.match(h.document.body.textContent,/Cliente Barba/);
+  assert.match(h.document.body.textContent,/Até 2 clientes/);
+});
