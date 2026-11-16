@@ -75,6 +75,16 @@ class Handler(DeviceHandler):
             })
         if session and path.startswith(("/api/", "/auth/")):
             session["guidance_calls"].append({"method": "GET", "path": path})
+        if session and path == base.BASE + "/subscription-whatsapp/chatbot":
+            # The neutral Dashboard may read one small aggregate even when
+            # the guidance feature is unavailable. It neither reveals rules
+            # from another company nor permits a mutation.
+            return self.body({
+                "items": [], "counts": {"total": 0, "active": 0, "inactive": 0},
+                "filtered_total": 0, "page": 1, "per_page": 1, "total_pages": 1,
+                "pending_job": None, "chatbot_revision": 0, "devices": [],
+                "templates": [],
+            })
         if session and path.startswith(DIAGNOSTICS_BASE):
             if (session["workspace_profile"] != PROFILE or session["company_status"] != "active"
                     or not session["guidance_diagnostics"] or path != DIAGNOSTICS_BASE):

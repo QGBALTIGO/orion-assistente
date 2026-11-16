@@ -78,7 +78,7 @@ function panelHarness(){
     set textContent(value){this._textNode=String(value)?{nodeType:3,textContent:String(value)}:null;this.children=[]}
     get firstChild(){return this._textNode||this.children[0]||null}
     addEventListener(type,callback){(this.listeners[type]??=[]).push(callback)}
-    append(...children){this.children.push(...children);for(const child of children)if(typeof child==='object')child.parent=this}
+    append(...children){this.children.push(...children);for(const child of children)if(child&&typeof child==='object'){child.parent=this;if(child.id)nodes.set(child.id,child)}}
     get parentElement(){return this.parent||null}
     before(...children){if(!this.parent)return;const parent=this.parent;parent.children.splice(parent.children.indexOf(this),0,...children);for(const child of children)if(child&&typeof child==='object')child.parent=parent}
     after(...children){if(!this.parent)return;const parent=this.parent;parent.children.splice(parent.children.indexOf(this)+1,0,...children);for(const child of children)if(child&&typeof child==='object')child.parent=parent}
@@ -86,6 +86,7 @@ function panelHarness(){
     remove(){if(this.parent)this.parent.children=this.parent.children.filter(x=>x!==this)}
     setAttribute(){}
     removeAttribute(){}
+    reset(){this.value='';this.resetCount=(this.resetCount||0)+1}
     focus(){this.focusCount++;activeElement=this}
     showModal(){this.open=true;this.modalCalls=(this.modalCalls||0)+1}
     close(){this.open=false}
@@ -96,12 +97,12 @@ function panelHarness(){
   }
   const nodes=new Map(),requests=[];let fakeNow;
   const node=id=>{
-    assert.ok(panel.includes('id="'+id+'"'),"unknown panel element "+id);
+    assert.ok(panel.includes('id="'+id+'"')||nodes.has(id),"unknown panel element "+id);
     if(!nodes.has(id))nodes.set(id,new Element());
     return nodes.get(id);
   };
   const context={
-    document:eventTarget({getElementById:node,createElement:tag=>new Element(tag),
+    document:eventTarget({getElementById:id=>(panel.includes('id="'+id+'"')||nodes.has(id))?node(id):null,createElement:tag=>new Element(tag),
       querySelector:()=>new Element(),querySelectorAll:()=>[],documentElement:{dataset:{}},get activeElement(){return activeElement}}),
     window:eventTarget({matchMedia:()=>({matches:false,addEventListener(){}})}),
     // This lightweight DOM has no CSS engine; an unset custom property is empty.
@@ -134,9 +135,9 @@ function panelHarness(){
       setRole:value=>{loginRole=value},
       authenticate:()=>{csrf="synthetic-csrf"},
       // Test-only account change; the runtime scope guard is NOT replaced.
-      verifiedBusiness:id=>{
+      verifiedBusiness:(id,role='owner')=>{
         if(!/^tenant-(a|b|m)$/.test(id))throw Error('invalid synthetic business');
-        businessRows=[{id,name:'Empresa sintética',role:'owner'}];
+        businessRows=[{id,name:'Empresa sintética',role}];
         suiteTenantId=id;businessContextReady=true;businessContextError='';
       },
       deviceStatus:()=>deviceStatus};
@@ -299,9 +300,10 @@ test('simulador ignora resposta de outro tenant e finally antigo não libera env
   await readyAi(h);
   const first=submitPreview(h,'pergunta da empresa A');
   const old=h.take(previewUrl('tenant-a'),'POST');
-  h.ui.verifiedBusiness('tenant-b');h.node('aiTenant').value='tenant-b';
-  const changed=h.node('aiTenant').listeners.change[0]();
-  h.take(businessUrl('tenant-b')).respond(snapshot('Empresa B'));
+  // Switching company requires a different authenticated account; there is
+  // no tenant picker inside a single-company Orion session.
+  h.ui.showLogin();h.ui.authenticate();h.ui.verifiedBusiness('tenant-b');h.node('aiTenant').value='tenant-b';
+  const changed=h.ui.aiCheckStatus();
   h.take(aiStatusUrl('tenant-b')).respond({configured:true,preview_enabled:true});await changed;
   await tick();
   const second=submitPreview(h,'pergunta da empresa B');
@@ -348,8 +350,8 @@ test('logout invalida prévia pendente e submit repetido não duplica POST',asyn
 test('status atrasado do simulador não substitui estado do tenant atual',async()=>{
   const h=panelHarness();h.node('aiTenant').value='tenant-a';
   const first=h.ui.aiCheckStatus(),old=h.take(aiStatusUrl('tenant-a'));
-  h.ui.verifiedBusiness('tenant-b');h.node('aiTenant').value='tenant-b';
-  const second=h.node('aiTenant').listeners.change[0]();
+  h.ui.showLogin();h.ui.authenticate();h.ui.verifiedBusiness('tenant-b');h.node('aiTenant').value='tenant-b';
+  const second=h.ui.aiCheckStatus();
   h.take(aiStatusUrl('tenant-b')).respond({configured:true,preview_enabled:true});await second;
   old.reject(Error('empresa A indisponível'));await first;
   assert.equal(h.node('aiStatus').textContent,'Prévia disponível');
@@ -383,8 +385,8 @@ test('falha de status invalida readiness anterior e botão de atualização recu
 
 test('readiness e finally antigos não liberam tenant novo nem conta desconectada',async()=>{
   const h=panelHarness();await readyAi(h,'tenant-a');const pendingA=h.ui.aiCheckStatus(),oldA=h.take(aiStatusUrl('tenant-a'));
-  h.ui.verifiedBusiness('tenant-b');h.node('aiTenant').value='tenant-b';const changed=h.node('aiTenant').listeners.change[0]();h.take(businessUrl('tenant-b')).respond(snapshot('Empresa B'));
-  const newB=h.take(aiStatusUrl('tenant-b'));oldA.respond({configured:true,preview_enabled:true,audio_preview_enabled:true});await pendingA;
+  h.ui.showLogin();h.ui.authenticate();h.ui.verifiedBusiness('tenant-b');h.node('aiTenant').value='tenant-b';
+  const changed=h.ui.aiCheckStatus();const newB=h.take(aiStatusUrl('tenant-b'));oldA.respond({configured:true,preview_enabled:true,audio_preview_enabled:true});await pendingA;
   assert.equal(h.node('aiSend').disabled,true);assert.equal(h.node('aiStatusRefresh').disabled,true);newB.respond({configured:true,preview_enabled:false,audio_preview_enabled:false});await changed;await tick();
   assert.equal(h.node('aiSend').disabled,true);assert.equal(h.node('aiAudioFile').disabled,true);
   const pendingB=h.ui.aiCheckStatus(),late=h.take(aiStatusUrl('tenant-b'));h.ui.showLogin();late.respond({configured:true,preview_enabled:true,audio_preview_enabled:true});await pendingB;
@@ -545,10 +547,13 @@ test('perfil desativado e capacidades sem implementação têm apresentação ve
 
 test('membro carrega somente empresas atribuídas para configuração e simulador',async()=>{
   const h=panelHarness();h.ui.setRole('member');
-  const loading=h.ui.loadBusinesses();h.take('/api/v1/account/businesses').respond([{id:'tenant-m',name:'Empresa atribuída',role:'editor'}]);await tick();
-  h.take(businessUrl('tenant-m')).respond(snapshot());h.take(businessUrl('tenant-m','/history')).respond(history());await loading;
-  const aiLoading=h.ui.aiLoadTenants();h.take('/api/v1/account/businesses').respond([{id:'tenant-m',name:'Empresa atribuída'}]);await tick();
-  h.take(businessUrl('tenant-m')).respond(snapshot());h.take(aiStatusUrl('tenant-m')).respond({configured:true,preview_enabled:true});await aiLoading;
+  const loading=h.ui.loadBusinesses({resolveSetup:false});
+  h.take('/api/v1/account/businesses').respond([{id:'tenant-m',name:'Empresa atribuída',role:'editor'}]);await loading;
+  assert.equal(h.node('businessTenant').value,'tenant-m');
+  const aiLoading=h.ui.aiLoadTenants();
+  h.take(businessUrl('tenant-m')).respond(snapshot());
+  h.take(aiStatusUrl('tenant-m')).respond({configured:true,preview_enabled:true});await aiLoading;
+  assert.equal(h.requests.filter(x=>x.url==='/api/v1/account/businesses').length,1);
   assert.equal(h.requests.some(x=>x.url==='/api/v1/tenants'),false);assert.equal(h.node('aiTenant').value,'tenant-m');
 });
 
@@ -600,12 +605,13 @@ test('carregamento de rascunho bloqueia texto e áudio até versão explícita e
 });
 
 test('Testar rascunho bloqueia o tenant antigo desde a navegação, antes mesmo da lista carregar',async()=>{
-  const h=panelHarness();await loadBusiness(h,'tenant-b',snapshot('Empresa B'));
+  const h=panelHarness();h.ui.setRole('admin');await loadBusiness(h,'tenant-b',snapshot('Empresa B'));
   h.node('aiTenant').value='tenant-a';h.ui.aiBubble('Conversa anterior da empresa A','in');
   h.ui.openBusinessPreview(true);
   assert.equal(h.node('aiSend').disabled,true);assert.equal(h.node('aiMessages').children.length,0);
   await submitPreview(h,'durante lista de empresas');assert.equal(h.requests.filter(x=>x.options.method==='POST').length,0);
-  h.take('/api/v1/tenants').respond([{id:'tenant-a',name:'Empresa A'},{id:'tenant-b',name:'Empresa B'}]);await tick();
+  await tick();
+  assert.equal(h.requests.some(x=>x.url==='/api/v1/tenants'),false,'never enumerate another company');
   assert.equal(h.node('aiTenant').value,'tenant-b');assert.equal(h.node('aiSend').disabled,true);
   await submitPreview(h,'durante carregamento do rascunho');assert.equal(h.requests.filter(x=>x.options.method==='POST').length,0);
   h.take(businessUrl('tenant-b')).respond(snapshot('Empresa B'));h.take(aiStatusUrl('tenant-b')).respond({configured:true,preview_enabled:true});await tick();
@@ -728,10 +734,13 @@ test('status distingue catálogo manual de atendimento automático; leitura não
 });
 
 test('membro só busca empresas atribuídas no catálogo comercial',async()=>{
-  const h=panelHarness();h.ui.setRole('member');const loading=h.ui.loadCommerceTenants();
-  h.take('/api/v1/account/businesses').respond([{id:'tenant-m',name:'Empresa atribuída'}]);await tick();
-  h.take(commerceUrl('tenant-m','/status')).respond(commerceAccess());await tick();h.take(commerceUrl('tenant-m','/products')).respond([]);await loading;
-  assert.equal(h.requests.some(x=>x.url==='/api/v1/tenants'),false);assert.equal(h.node('comTenant').value,'tenant-m');
+  const h=panelHarness();h.ui.setRole('member');h.ui.verifiedBusiness('tenant-m','editor');
+  const loading=h.ui.loadCommerceTenants();
+  h.take(commerceUrl('tenant-m','/status')).respond(commerceAccess());await tick();
+  h.take(commerceUrl('tenant-m','/products')).respond([]);await loading;
+  assert.equal(h.requests.some(x=>x.url==='/api/v1/tenants'),false);
+  assert.equal(h.requests.some(x=>x.url==='/api/v1/account/businesses'),false);
+  assert.equal(h.node('comTenant').value,'tenant-m');
 });
 
 test('produto novo é inativo; gravação preserva fatos oficiais e nunca duplica POST',async()=>{
@@ -747,7 +756,7 @@ test('produto novo é inativo; gravação preserva fatos oficiais e nunca duplic
 test('variante não transforma preço ausente em zero e serializa os quatro tipos corretamente',async()=>{
   const h=panelHarness();await loadCommerce(h);h.ui.commerceSelectProduct(productId);h.node('comVariantName').value='Nova opção';
   for(const kind of ['on_request','custom']){h.node('comPriceKind').value=kind;h.node('comPrice').value='999,99';assert.equal(h.ui.commerceVariantPayload().unit_price_cents,null);}
-  h.node('comPriceKind').value='fixed';h.node('comPrice').value='';const count=h.requests.length;await h.ui.commerceSave('variant');assert.equal(h.requests.length,count);assert.match(h.node('comFeedback').textContent,/Preço vazio não é zero/);
+  h.node('comPriceKind').value='fixed';h.node('comPrice').value='';const count=h.requests.length;await h.ui.commerceSave('variant');assert.equal(h.requests.length,count);assert.match(h.node('comFeedback').textContent,/Informe o valor em reais/);
   h.node('comPrice').value='0';assert.equal(h.ui.commerceVariantPayload().unit_price_cents,0,'zero só é aceito se informado explicitamente');
   h.node('comPriceKind').value='from';h.node('comPrice').value='12,90';assert.equal(h.ui.commerceVariantPayload().unit_price_cents,1290);
   h.node('comPrice').value='1,234';assert.throws(()=>h.ui.commerceVariantPayload(),/valor em reais/);
@@ -932,18 +941,30 @@ test('resultado complementar atrasado não atravessa seleção de produto ou ten
 });
 
 async function loadLegacyCatalog(h,rows=[{id:'tenant-a',name:'Empresa A',role:'owner'}],resource='services'){
-  h.ui.setRole('member');h.node('resource').value=resource;const loading=h.ui.loadTenants();h.take('/api/v1/account/businesses').respond(rows);await tick();
-  if(rows.length)h.take('/api/v1/tenants/'+rows[0].id+'/'+resource).respond([]);await loading;
+  h.ui.setRole('member');h.node('resource').value=resource;
+  // The current product contract is exactly one company per account. A
+  // second company must never be auto-selected or exposed to the member.
+  if(rows.length!==1){const check=h.ui.loadBusinesses();h.take('/api/v1/account/businesses').respond(rows);await check;return;}
+  h.ui.verifiedBusiness(rows[0].id,rows[0].role);
+  const loading=h.ui.loadTenants();
+  h.take('/api/v1/tenants/'+rows[0].id+'/'+resource).respond([]);await loading;
 }
-const recordEvent=(h,inputs=[])=>{const form=h.node('recordForm');form.querySelectorAll=()=>inputs;return {preventDefault(){},target:form}};
+const recordEvent=(h,inputs=[])=>{const form=h.node('recordForm');for(const input of inputs){input.dataset??={};input.matches??=()=>false;}form.querySelectorAll=()=>inputs;return {preventDefault(){},target:form}};
 
-test('cadastros de membro usam somente empresas atribuídas e papel confirmado em cada empresa',async()=>{
-  const h=panelHarness();await loadLegacyCatalog(h,[{id:'tenant-a',name:'Empresa A',role:'owner'},{id:'tenant-b',name:'Empresa B',role:'viewer'}]);
-  assert.equal(h.requests.some(x=>x.url==='/api/v1/tenants'),false);assert.equal(h.node('recordFields').disabled,false);
-  h.ui.verifiedBusiness('tenant-b');h.node('tenant').value='tenant-b';const reading=h.ui.loadRecords();assert.equal(h.node('recordFields').disabled,true);
-  h.take('/api/v1/tenants/tenant-b/services').respond([{name:'Registro somente da empresa B'}]);await reading;
-  assert.match(h.node('catalogAccess').textContent,/somente leitura/);const count=h.requests.length;await h.ui.submitRecord(recordEvent(h));assert.equal(h.requests.length,count);
-  h.node('tenant').value='tenant-forged';await h.ui.loadRecords();await h.ui.submitRecord(recordEvent(h));assert.equal(h.requests.length,count);
+test('cadastros de membro negam conta ambígua e não consultam dados de outra empresa',async()=>{
+  const h=panelHarness();
+  // One business per account is mandatory; a server reporting two memberships
+  // must block the UI instead of presenting a tenant picker.
+  await loadLegacyCatalog(h,[{id:'tenant-a',name:'Empresa A',role:'owner'},{id:'tenant-b',name:'Empresa B',role:'viewer'}]);
+  assert.equal(h.node('recordFields').disabled,true);
+  assert.equal(h.node('tenant').value,'');
+  const count=h.requests.length;
+  h.node('tenant').value='tenant-b';
+  await h.ui.loadRecords();
+  await h.ui.submitRecord(recordEvent(h));
+  assert.equal(h.requests.length,count,'ambiguous account must not read or mutate records');
+  assert.equal(h.requests.some(x=>x.url==='/api/v1/tenants/tenant-b/services'),false);
+  assert.equal(h.requests.some(x=>x.options.method==='POST'),false);
 });
 
 test('editor pode cadastrar serviços mas somente proprietário altera acesso da equipe',async()=>{
@@ -962,12 +983,22 @@ test('cadastro não transforma preço vazio em zero nem duplica mutação incert
   const refresh=h.ui.loadRecords();h.take('/api/v1/tenants/tenant-a/services').respond([{name:'Serviço salvo pelo servidor'}]);await refresh;assert.equal(h.node('recordFields').disabled,false);
 });
 
-test('respostas antigas de cadastros não cruzam tenant, categoria nem logout',async()=>{
-  const h=panelHarness();await loadLegacyCatalog(h,[{id:'tenant-a',name:'Empresa A',role:'owner'},{id:'tenant-b',name:'Empresa B',role:'owner'}]);
-  const oldRead=h.ui.loadRecords(),old=h.take('/api/v1/tenants/tenant-a/services');h.ui.verifiedBusiness('tenant-b');h.node('tenant').value='tenant-b';const newRead=h.ui.loadRecords();h.take('/api/v1/tenants/tenant-b/services').respond([{name:'Serviço B'}]);await newRead;
-  old.respond([{name:'Serviço A privado'}]);await oldRead;assert.match(h.node('records').textContent,/Serviço B/);assert.doesNotMatch(h.node('records').textContent,/privado/);
-  const saving=h.ui.submitRecord(recordEvent(h,[{name:'name',type:'text',value:'Profissional novo',required:true}])),post=h.take('/api/v1/tenants/tenant-b/services','POST');h.ui.showLogin();
-  post.respond({id:'new-record'});await saving;assert.equal(h.node('records').textContent,'');assert.equal(h.node('tenant').value,'');assert.equal(h.node('recordFields').disabled,true);
+test('respostas de cadastros da conta anterior não cruzam autenticação nem logout',async()=>{
+  const h=panelHarness();await loadLegacyCatalog(h,[{id:'tenant-a',name:'Empresa A',role:'owner'}]);
+  const oldRead=h.ui.loadRecords(),old=h.take('/api/v1/tenants/tenant-a/services');
+  h.ui.showLogin();h.ui.authenticate();h.ui.setRole('member');
+  h.ui.verifiedBusiness('tenant-b','owner');h.node('resource').value='services';
+  const newRead=h.ui.loadTenants();
+  h.take('/api/v1/tenants/tenant-b/services').respond([{name:'Serviço B'}]);await newRead;
+  old.respond([{name:'Serviço A privado'}]);await oldRead;
+  assert.match(h.node('records').textContent,/Serviço B/);
+  assert.doesNotMatch(h.node('records').textContent,/privado/);
+  const sending=h.ui.submitRecord(recordEvent(h,[{name:'name',type:'text',value:'Profissional novo',required:true}]));
+  const post=h.take('/api/v1/tenants/tenant-b/services','POST');
+  h.ui.showLogin();post.respond({id:'new-record'});await sending;
+  assert.equal(h.node('records').textContent,'');
+  assert.equal(h.node('tenant').value,'');
+  assert.equal(h.node('recordFields').disabled,true);
 });
 
 test('capacidade de pedidos comerciais só aparece habilitada quando servidor oferece e nunca é pré-selecionada',async()=>{
@@ -1016,14 +1047,23 @@ test('restauração revisada aguarda aceite e envia uma única versão com gera�
   assert.equal(h.requests.filter(x=>x.url.endsWith('/rollback')).length,1);
 });
 
-test('troca de empresa com edição exige aceite; cancelar preserva formulário e logout não restaura tenant antigo',async()=>{
-  const h=panelHarness();await loadBusiness(h);h.node('bizDescription').value='Edição a preservar';h.ui.businessChanged();h.node('businessTenant').value='tenant-b';
-  let before=h.requests.length;const cancelled=h.node('businessTenant').listeners.change[0]();await cancelAction(h);await cancelled;
-  assert.equal(h.node('businessTenant').value,'tenant-a');assert.equal(h.node('bizDescription').value,'Edição a preservar');assert.equal(h.requests.length,before);
-  h.ui.verifiedBusiness('tenant-b');h.node('businessTenant').value='tenant-b';const changed=h.node('businessTenant').listeners.change[0]();await acceptAction(h);
-  h.take(businessUrl('tenant-b')).respond(snapshot('Empresa B'));h.take(businessUrl('tenant-b','/history')).respond(history());await changed;assert.equal(h.node('bizName').value,'Empresa B');
-  h.ui.businessChanged();h.node('businessTenant').value='tenant-a';before=h.requests.length;const loggedOut=h.node('businessTenant').listeners.change[0]();h.ui.showLogin();await acceptAction(h);await loggedOut;
-  assert.equal(h.node('businessTenant').value,'');assert.equal(h.requests.length,before);
+test('seletor legado manipulado não consulta nem modifica outra empresa e preserva o rascunho',async()=>{
+  const h=panelHarness();await loadBusiness(h);
+  h.node('bizDescription').value='Edição a preservar';h.ui.businessChanged();
+  const count=h.requests.length;
+  // A forged DOM value is not equivalent to authenticating with another account.
+  h.node('businessTenant').value='tenant-b';
+  const denied=await h.ui.loadBusinessProfile();
+  assert.equal(denied.ok,false);
+  await h.ui.businessMutation('draft');
+  assert.equal(h.requests.length,count,'no GET or POST to a foreign tenant');
+  assert.equal(h.node('bizDescription').value,'Edição a preservar','rejecting a forged ID must not erase legitimate unsaved work');
+  assert.equal(h.requests.some(x=>x.url===businessUrl('tenant-b')),false);
+  h.node('businessTenant').value='tenant-a';
+  h.ui.showLogin();
+  assert.equal(h.node('businessTenant').value,'');
+  assert.equal(h.node('bizDescription').value,'');
+  assert.equal(h.requests.length,count);
 });
 
 test('atualização com edição espera escolha e contexto fresco; cancelar ou mudar contexto não consulta dados',async()=>{
@@ -1061,7 +1101,7 @@ test('envio manual cancelado ou com destinatário/texto/contato/sessão alterado
 test('duplo submit e duplo Aceitar do envio manual produzem uma única tentativa de transporte',async()=>{
   const h=panelHarness();await connect(h);h.node('chatPhone').value=phoneA;h.node('chatText').value='Uma tentativa';
   const send=()=>h.node('sendForm').listeners.submit[0]({preventDefault(){}}),sending=send();await send();assert.equal(h.node('actionConfirm').modalCalls,1);
-  h.node('actionConfirmAccept').listeners.click[0]();h.node('actionConfirmAccept').listeners.click[0]();await tick();const post=h.take('/api/v1/qr/send','POST');assert.deepEqual(JSON.parse(post.options.body),{phone:phoneA,text:'Uma tentativa'});
+  h.node('actionConfirmAccept').listeners.click[0]();h.node('actionConfirmAccept').listeners.click[0]();await tick();const post=h.take('/api/v1/qr/send','POST');const payload=JSON.parse(post.options.body);assert.equal(payload.phone,phoneA);assert.equal(payload.text,'Uma tentativa');assert.match(payload.operation_id,/^[0-9a-f-]{36}$/i,'outbox operation id is required for idempotency');
   await send();post.reject(Error('Resultado incerto'));await sending;assert.equal(h.requests.filter(x=>x.url==='/api/v1/qr/send').length,1);assert.equal(h.node('sendButton').disabled,false);
 });
 

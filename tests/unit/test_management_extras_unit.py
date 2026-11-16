@@ -122,7 +122,9 @@ async def test_management_entry_points_serve_their_assets_and_reject_other_files
     from app.main import app
 
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="https://test") as client:
-        panel = await client.get("/panel")
+        old = await client.get("/panel", follow_redirects=False)
+        assert old.status_code == 308 and old.headers["location"] == "/painel"
+        panel = await client.get("/painel")
         assert panel.status_code == 200 and "no-store" in panel.headers["cache-control"]
         for name, mime in (("orion-suite-live.js", "text/javascript"), ("orion-suite.css", "text/css"), ("orion-fields.js", "text/javascript"), ("orion-fields.css", "text/css")):
             path = "/panel-assets/" + name

@@ -50,9 +50,13 @@ def test_native_fields_and_actions_have_one_scale(browser_name, width, height, t
                       'orion-public.js': ('text/javascript', JS),
                       'orion-public-theme.js': ('text/javascript', THEME),
                       'orion-fields.css': ('text/css', FIELDS_CSS),
-                      'orion-fields.js': ('text/javascript', FIELDS_JS)}
+                      'orion-fields.js': ('text/javascript', FIELDS_JS),
+                      'orion-focus.css': ('text/css', (ROOT / 'app/static/orion-focus.css').read_text(encoding='utf-8')),
+                      'orion-focus.js': ('text/javascript', (ROOT / 'app/static/orion-focus.js').read_text(encoding='utf-8'))}
             def asset(route):
                 name = urlsplit(route.request.url).path.rsplit('/', 1)[-1]
+                if name not in assets:
+                    raise AssertionError(f'Missing synthetic public asset: {name}')
                 mime, body = assets[name]
                 route.fulfill(status=200, content_type=mime, body=body)
             page.route('**/public-assets/*', asset)
@@ -102,7 +106,7 @@ def test_native_fields_and_actions_have_one_scale(browser_name, width, height, t
                   };
                   return {viewport:innerWidth, document:document.documentElement.scrollWidth,
                     dialog:box(document.querySelector('#booking-dialog')),
-                    inputs:[...document.querySelectorAll('#customer-form input')].map(box),
+                    inputs:[...document.querySelectorAll('#customer-form input:not([type=checkbox])')].map(box),
                     back:box(document.querySelector('#booking-back')),
                     next:box(document.querySelector('#booking-next')),
                     footer:box(document.querySelector('.booking-footer'))};
@@ -110,6 +114,8 @@ def test_native_fields_and_actions_have_one_scale(browser_name, width, height, t
                 result['state'] = state
                 metrics.append(result)
                 assert len(result['inputs']) == 3, result
+                assert page.locator('#customer-form input[type=checkbox][name=appointment_messages_opt_in]').count() == 1
+                assert not page.locator('#customer-form input[type=checkbox][name=appointment_messages_opt_in]').is_checked()
                 for control in result['inputs'] + [result['back'], result['next']]:
                     assert abs(control['height'] - 44) <= 1, (state, control)
                     assert control['x'] >= -1 and control['right'] <= width + 1, control

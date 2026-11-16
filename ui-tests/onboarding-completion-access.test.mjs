@@ -74,7 +74,9 @@ test('structured completion denial keeps the review and permits an explicit retr
   assert.equal(h.element('#appView').classList.contains('ob-gated'),false);
   assert.equal(h.element('#orionSetup').hidden,true);
   // A successful questionnaire does not confer paid operational permissions.
-  assert.equal(h.element('#page-suite').dataset.osCurrentRoute,'novidades');
+  // The current app shell opens the neutral Dashboard after onboarding;
+  // this is navigation only, not a paid-feature grant.
+  assert.equal(h.element('#page-suite').dataset.osCurrentRoute,'dashboard');
   assert.equal(h.calls.slice(before).some(call=>/\/management\/dashboard/.test(call.path)),false);
   assert.equal(h.calls.slice(before).some(call=>/\/management\/plan-/.test(call.path)),false);
   assert.deepEqual(h.errors,[]);

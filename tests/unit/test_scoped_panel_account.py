@@ -60,7 +60,13 @@ async def test_live_scope_lookup_keeps_revocation_tenant_and_account_separation(
             assert (await client.get(path, headers=headers)).status_code == 401
             live.update(version=7, role="admin")
             assert (await client.get(path, headers=headers)).status_code == 401
-            assert len(calls) == 10 and len(store.reads) == 10
+            # Each live authorization checks the session plus the two narrowly
+            # scoped maintenance keys. None may be cached across requests.
+            assert len(calls) == 10 and len(store.reads) == 30
+            assert all(store.reads[index].startswith('orion:session:')
+                       and store.reads[index + 1].startswith('orion:maintenance:')
+                       and store.reads[index + 2].startswith('orion:maintenance-guard:')
+                       for index in range(0, len(store.reads), 3))
     finally:
         await panel_auth.close_session_store(app)
 

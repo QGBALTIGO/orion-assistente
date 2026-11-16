@@ -46,7 +46,7 @@ test('live Vercel facade sends capable Google connect to the original panel for 
     assert.ok(link);
     const url = new URL(link.href);
     assert.equal(url.origin, upstream);
-    assert.equal(url.pathname, '/panel');
+    assert.equal(url.pathname, '/painel');
     assert.deepEqual([...url.searchParams.entries()], [['aba', 'agenda'], ['empresa', tenant]]);
     assert.equal(url.hash, '');
     assert.equal(link.attributes.length, 2);

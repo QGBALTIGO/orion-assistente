@@ -83,10 +83,10 @@ function render(data){
   if(google){google.classList.add('secondary');google.target='_blank';google.referrerPolicy='no-referrer';actions.append(google);}
  }
  if(data.review)actions.append(node('p','Sua avaliação foi recebida. Obrigado!'));
- if(!reviewMode){
-   if(data.status==='completed'&&data.has_future_booking)actions.append(node('p','Seu próximo horário já está garantido!'));
-   else if(['completed','cancelled','no_show'].includes(data.status)){for(const suggestion of data.return_suggestions||[]){actions.append(node('p',suggestion.service+': retorno sugerido a partir de '+new Intl.DateTimeFormat('pt-BR',{dateStyle:'long',timeZone:'UTC'}).format(new Date(suggestion.from_date+'T12:00:00Z'))));}const next=link('Agendar novamente',data.new_booking_url);if(next)actions.append(next);}
- }
+ // A future confirmed visit must remain visible even after a review is saved.
+ // Review-only mode hides unnecessary rebooking, not the client's next booking.
+ if(data.status==='completed'&&data.has_future_booking)actions.append(node('p','Seu próximo horário já está garantido!'));
+ else if(!reviewMode&&['completed','cancelled','no_show'].includes(data.status)){for(const suggestion of data.return_suggestions||[]){actions.append(node('p',suggestion.service+': retorno sugerido a partir de '+new Intl.DateTimeFormat('pt-BR',{dateStyle:'long',timeZone:'UTC'}).format(new Date(suggestion.from_date+'T12:00:00Z'))));}const next=link('Agendar novamente',data.new_booking_url);if(next)actions.append(next);}
  if(data.contact_phone&&/^\+55[1-9][0-9]{9,10}$/.test(data.contact_phone)){const contact=link(data.central_whatsapp?'Falar com o Orion':'Falar com a empresa','https://wa.me/'+data.contact_phone.slice(1));if(contact){contact.classList.add('secondary');actions.append(contact);}}
 }
 $('confirmation').addEventListener('close',()=>{if($('confirmation').returnValue!=='cancel')return;void run(async()=>{operation=operation||crypto.randomUUID();render(await request('cancel',{expected_updated_at:current.updated_at,idempotency_key:operation}));});});
