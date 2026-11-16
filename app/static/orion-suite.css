@@ -8,7 +8,7 @@
 :root[data-theme=dark]{--os-bg:#05080f;--os-card:#0d1320;--os-text:#eaf0f7;--os-muted:#8a97ac;--os-border:#1b2437;--os-soft:#172136;--os-tint:#132b50;--os-success:#6edba3;--os-success-bg:#153328;--os-warning:#f3c471;--os-warning-bg:#332a16;--os-danger:#ff93a4;--os-danger-bg:#3b1c26;--os-shadow:0 1px 2px #0003}
 :root[data-theme=light]{--os-success:#16a34a;--os-danger:#c1272d;--os-warning:#b8860b}
 .app.orion-suite-enabled{display:grid;grid-template-columns:256px minmax(0,1fr);align-items:start;min-height:100dvh;background:var(--os-bg);color:var(--os-text);font:400 16px/1.5 var(--os-font);--bg:var(--os-bg);--surface:var(--os-card);--surface2:var(--os-soft);--panel-low:var(--os-bg);--panel-high:var(--os-card);--text:var(--os-text);--muted:var(--os-muted);--border:var(--os-border);--accent:var(--os-primary);--accent2:var(--os-primary-hover);--bright:var(--os-primary);--selected-bg:var(--os-tint);--hover-bg:var(--os-soft);--radius:20px;--danger:var(--os-danger)}
-.orion-suite-enabled>.sidebar{position:relative;top:auto;align-self:stretch;display:flex;flex-direction:column;gap:0;padding:0;width:256px;height:auto;min-height:100dvh;border-right:1px solid var(--os-border);background:var(--os-card);z-index:45;overflow:visible;transition:width .3s ease}
+.orion-suite-enabled>.sidebar{box-sizing:border-box;min-width:0;position:relative;top:auto;align-self:stretch;display:flex;flex-direction:column;gap:0;padding:0;width:256px;height:auto;min-height:100dvh;border-right:1px solid var(--os-border);background:var(--os-card);z-index:45;overflow:visible;transition:width .3s ease}
 .orion-suite-enabled>.sidebar>.brand{display:flex;flex-shrink:0;align-items:center;justify-content:space-between;gap:10px;height:64px;min-height:64px;padding:0 20px;border-bottom:1px solid var(--os-border)}
 .orion-suite-enabled>.sidebar>.brand img{display:block;width:132px;height:46px;object-fit:contain;object-position:left center}
 .orion-suite-enabled>.sidebar>.side-label,.orion-suite-enabled>.sidebar>.nav{display:none!important}
@@ -1130,8 +1130,9 @@ html[data-theme=dark] .os-status-hold{--os-status-color:#dfc892;--os-status-bg:#
   .os-performance-chart-card>.os-card-header>div:first-child{flex-basis:100%}
 }
 @media(max-width:767px){
-  .os-performance-periods>select{flex:1 1 calc(50% - 4px);width:calc(50% - 4px);min-width:0;max-width:none}
-  .os-performance-periods>.os-button{margin-left:0;width:100%;font-size:12px;padding-inline:8px}
+  .os-performance-periods{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+  .os-performance-periods>select,.os-performance-periods>#osPerformanceProfessional{width:100%;min-width:0;max-width:none}
+  .os-performance-periods>.os-button{grid-column:1/-1;margin-left:0;width:100%;font-size:12px;padding-inline:8px}
   .os-performance-selected-values{width:100%;justify-content:space-between;gap:8px}
   .os-performance-chart-card .os-performance-chart-controls{gap:8px}
   .os-performance-chart-card .os-card-header{gap:12px;margin-bottom:16px}

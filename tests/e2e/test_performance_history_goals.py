@@ -87,6 +87,13 @@ def test_performance_history_goals(browser_name, width, height, theme):
             page.evaluate("() => document.fonts.ready")
             ARTIFACTS.mkdir(parents=True, exist_ok=True)
             stem = f"{browser_name}-{width}x{height}-{theme}"
+            if width >= 768:
+                shell = page.evaluate("""() => {
+                  const rail=document.querySelector('.sidebar'),title=document.querySelector('.os-main h1');
+                  const r=rail.getBoundingClientRect(),t=title.getBoundingClientRect(),s=getComputedStyle(rail);
+                  return {right:r.right,titleLeft:t.left,width:r.width,boxSizing:s.boxSizing,padding:s.padding};
+                }""")
+                assert shell['titleLeft'] >= shell['right'] + 12, shell
             no_horizontal_cut(".os-performance-scope,.os-performance-metrics,.os-performance-chart-card,.os-performance-selection,.os-performance-insights")
             page.screenshot(path=str(ARTIFACTS / f"{stem}-initial.png"), full_page=True)
             overflow = page.evaluate("""() => ({width:innerWidth,scroll:document.documentElement.scrollWidth,
