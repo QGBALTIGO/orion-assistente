@@ -45,6 +45,7 @@ class ManualBooking(CreateOperation):
     final_total_cents: StrictInt | None = Field(default=None, ge=0, le=100_000_000)
     actual_duration_min: StrictInt | None = Field(default=None, ge=1, le=1440)
     appointment_messages_opt_in: StrictBool = False
+    allow_overlap: StrictBool = False
 
     @field_validator("customer_phone")
     @classmethod
@@ -60,6 +61,8 @@ class ManualBooking(CreateOperation):
 
     @model_validator(mode="after")
     def consistent_mode(self):
+        if self.allow_overlap and self.mode != "exceptional":
+            raise ValueError("Dois clientes no mesmo horário só são permitidos no agendamento excepcional")
         if self.walk_in != (self.customer_phone is None):
             raise ValueError("Informe o WhatsApp ou selecione cliente avulso sem telefone")
         if self.mode == "exceptional" and (
@@ -135,7 +138,7 @@ async def _lock_catalogue(db, tenant, professional, service_ids):
 
 
 async def check_private_conflicts(db, tenant, professional, interval, now, *,
-                                  ignored=None, historical=False):
+                                  ignored=None, historical=False, allow_overlap=False):
     parameters = {"t": tenant, "p": professional, "begin": interval["occupied_from"],
                   "stop": interval["occupied_until"], "ignored": ignored or UUID(int=0),
                   "now": now}
@@ -146,15 +149,28 @@ async def check_private_conflicts(db, tenant, professional, interval, now, *,
         if found:
             raise HTTPException(409, "Este período tem um bloqueio ou uma folga. Revise a agenda antes de continuar")
     statuses = "('hold','confirmed','completed')" if historical else "('hold','confirmed')"
-    overlap = (await db.execute(text("""SELECT 1 FROM appointments
+    overlap = (await db.execute(text("""SELECT id,customer_id,status,occupied_from,occupied_until FROM appointments
         WHERE tenant_id=:t AND professional_id=:p AND id<>:ignored
           AND status IN """ + statuses + """
           AND (status<>'hold' OR hold_expires_at>:now)
-          AND occupied_from<:stop AND occupied_until>:begin LIMIT 1"""), parameters)).first()
-    if overlap:
+          AND occupied_from<:stop AND occupied_until>:begin"""), parameters)).mappings().all()
+    if overlap and not allow_overlap:
         message = ("Já existe um atendimento neste período. Confira o histórico para não registrar o mesmo serviço duas vezes"
                    if historical else "Este período já tem outro agendamento")
         raise HTTPException(409, message)
+    if allow_overlap:
+        if any(row["status"] == "hold" for row in overlap):
+            raise HTTPException(409, "Há uma reserva em confirmação neste período. Aguarde a confirmação ou a liberação do horário")
+        # End events precede start events: adjacent intervals never consume a
+        # third place. Count concurrent clients, not every intersecting visit.
+        events = [(max(row["occupied_from"], interval["occupied_from"]), 1) for row in overlap]
+        events += [(min(row["occupied_until"], interval["occupied_until"]), -1) for row in overlap]
+        concurrent = 0
+        for _, delta in sorted(events):
+            concurrent += delta
+            if concurrent >= 2:
+                raise HTTPException(409, "Este profissional já tem dois clientes simultâneos neste período. Escolha outro horário")
+    return overlap
 
 
 async def _manual_customer(db, tenant, payload):
@@ -232,13 +248,16 @@ async def create_manual_appointment(db, tenant, professional, payload, *, contex
         retrospective = payload.mode == "retroactive"
         if not retrospective:
             await expire_holds(db, tenant, professional, now)
-        await check_private_conflicts(db, tenant, professional, interval, now, historical=retrospective)
+        overlaps = await check_private_conflicts(db, tenant, professional, interval, now,
+            historical=retrospective, allow_overlap=payload.allow_overlap)
         if retrospective:
             if payload.final_total_cents is not None:
                 interval["total_cents"] = payload.final_total_cents
             elif any(item["price_mode"] == "from" for item in items):
                 raise HTTPException(422, "Informe o valor final do atendimento realizado")
         customer = await _manual_customer(db, tenant, payload)
+        if any(row["customer_id"] == customer for row in overlaps):
+            raise HTTPException(409, "Este cliente já tem um agendamento neste período com este profissional")
         appointment = uuid4()
         for attempt in range(5):
             candidate = protocol()
@@ -247,13 +266,14 @@ async def create_manual_appointment(db, tenant, professional, payload, *, contex
                     await db.execute(text("""INSERT INTO appointments
                         (id,tenant_id,customer_id,professional_id,protocol,idempotency_key,
                          request_fingerprint,start_at,end_at,occupied_from,occupied_until,status,
-                         total_cents,booking_mode,created_by_account_id,actual_duration_min)
+                         total_cents,booking_mode,created_by_account_id,actual_duration_min,allow_overlap)
                         VALUES (:id,:t,:c,:p,:protocol,:key,:fingerprint,:start_at,:end_at,
-                                :occupied_from,:occupied_until,:status,:total_cents,:mode,:actor,:actual)"""),
+                                :occupied_from,:occupied_until,:status,:total_cents,:mode,:actor,:actual,:allow_overlap)"""),
                         {"id": appointment, "t": tenant, "c": customer, "p": professional,
                          "protocol": candidate, "key": payload.idempotency_key, "fingerprint": fingerprint,
                          "status": "completed" if retrospective else "confirmed", "mode": payload.mode,
-                         "actor": context.account_id, "actual": payload.actual_duration_min, **interval})
+                         "actor": context.account_id, "actual": payload.actual_duration_min,
+                         "allow_overlap": payload.allow_overlap, **interval})
                 break
             except IntegrityError as error:
                 if "uq_appointment_protocol" not in str(error):
@@ -291,6 +311,7 @@ async def create_manual_appointment(db, tenant, professional, payload, *, contex
                 await grant_scoped_consent(db, tenant, appointment, source=consent_actor[0],
                     actor=consent_actor[1], evidence=APPOINTMENT_MESSAGE_CONSENT_STATEMENT)
             await history(db, tenant, appointment, "exceptional_created", context=context,
+                          reason="Autorizado compartilhar horário com até dois clientes; o site permanece bloqueado" if payload.allow_overlap else None,
                           calendar=False, notifications=False)
             await history(db, tenant, appointment, "confirmed", context=context)
         await audit(db, tenant, "appointment_" + payload.mode + "_created", "appointments", appointment)
@@ -398,7 +419,8 @@ async def _extension_conflict(db, tenant, row, interval, shop, now):
         if not fits:
             return "A duração dos serviços ultrapassa o expediente ou uma pausa da agenda"
     try:
-        await check_private_conflicts(db, tenant, row["professional_id"], interval, now, ignored=row["id"])
+        await check_private_conflicts(db, tenant, row["professional_id"], interval, now,
+            ignored=row["id"], allow_overlap=bool(row.get("allow_overlap")))
     except HTTPException as error:
         if error.status_code == 409:
             return error.detail

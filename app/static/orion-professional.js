@@ -49,7 +49,7 @@ function appointmentsHtml(list){
  return '<article class="appointment"><div class="hour">'+esc(shortTime(a.start_at))+'<small>'+esc(shortTime(a.end_at))+'</small></div>'+
    '<div><strong>'+esc(a.customer_name||'Cliente')+'</strong><p>'+esc((a.items||a.services||[]).map(item=>(item.name_snapshot||item.name)+(item.item_origin==='extra'?' (extra)':'')).join(' • ')||'Atendimento')+'</p>'+
    '<p>'+esc((a.price_mode==='from'&&a.status!=='completed'?'A partir de ':'')+money(a.total_cents))+'</p>'+
-   (a.booking_mode==='exceptional'?'<small class="muted">Horário excepcional</small>':a.booking_mode==='retroactive'?'<small class="muted">Registrado depois'+(a.created_at?' · '+esc(shortDate(a.created_at)):'')+'</small>':'')+
+   (a.booking_mode==='exceptional'?'<small class="muted">'+(a.allow_overlap?'Excepcional · Até 2 clientes':'Horário excepcional')+'</small>':a.booking_mode==='retroactive'?'<small class="muted">Registrado depois'+(a.created_at?' · '+esc(shortDate(a.created_at)):'')+'</small>':'')+
    (a.actual_duration_min?'<small class="muted appointment-duration">Duração realizada: '+Number(a.actual_duration_min)+' min</small>':'')+
    '<span class="state '+stateClass(a.status)+'">'+esc(statuses[a.status]||a.status)+'</span></div>'+action+'</article>';
  }).join('')+'</div>';
@@ -154,6 +154,7 @@ function openModal(action,record,trigger=null){
      '<div id="modalBookingMessages"><label class="service-choice"><input type="checkbox" name="appointment_messages_opt_in"><span>O cliente autorizou mensagens deste agendamento pelo WhatsApp<small>Inclui avisos, lembrete 1 hora antes e pedido de avaliação. Marque apenas com autorização expressa do cliente; é opcional.</small></span></label></div>'+
      '<div id="modalBookingWhen">'+inputField('Data','day','date',state.day,'required')+
      '<div id="modalBookingClock" hidden>'+inputField('Horário','clock','time','','disabled')+'</div></div>'+
+     '<div id="modalBookingOverlap" hidden><label class="service-choice"><input type="checkbox" name="allow_overlap"><span>Permitir dois clientes neste horário<small>Somente neste agendamento excepcional. Serviços, valores e pagamentos separados. Limite de dois clientes simultâneos; bloqueios e folgas continuam valendo. O período ocupado permanece indisponível no site.</small></span></label></div>'+
      '<fieldset class="services-select"><legend>Serviços (até 6)</legend><div id="modalServices" class="muted">Carregando serviços…</div></fieldset>'+
      '<div id="modalCompletedFields" hidden>'+inputField('Valor final (R$)','final_total','text','','disabled inputmode="decimal" data-orion-field="money" data-field-min="0" data-field-max="1000000000" placeholder="0,00"')+
      inputField('Duração realizada (min, opcional)','actual_duration_min','number','','disabled min="1" max="1440" step="1"')+'</div>'+
@@ -224,7 +225,8 @@ function syncProfessionalBookingMode(){
  const d=state.modal,form=$('modalForm');if(d?.action!=='new-appointment'||d.bookingPayload)return;
  const mode=form.elements.booking_mode.value,manual=mode!=='regular',retro=mode==='retroactive';
  $('modalBookingWhen').classList.toggle('field-row',manual);
- $('modalBookingHelp').textContent=retro?'Registre um atendimento que já terminou. Nenhum aviso ou lembrete será enviado.':manual?'Informe o horário. Os conflitos e bloqueios da sua agenda continuam sendo verificados.':'Escolha um horário disponível na sua agenda.';
+ $('modalBookingHelp').textContent=retro?'Registre um atendimento que já terminou. Nenhum aviso ou lembrete será enviado.':manual?'Informe o horário, inclusive fora do expediente. Para compartilhar um horário ocupado, autorize a opção abaixo.':'Escolha um horário disponível na sua agenda.';
+ $('modalBookingOverlap').hidden=mode!=='exceptional';form.elements.allow_overlap.disabled=mode!=='exceptional';if(mode!=='exceptional')form.elements.allow_overlap.checked=false;
  $('modalWalkIn').hidden=!manual;form.elements.walk_in.disabled=!manual;if(!manual)form.elements.walk_in.checked=false;
  const walkIn=manual&&form.elements.walk_in.checked;
  $('modalBookingPhone').hidden=walkIn;form.elements.customer_phone.disabled=walkIn;form.elements.customer_phone.required=!walkIn;
@@ -247,7 +249,8 @@ async function submitProfessionalManual(form,d,val){
  if(actual!==null&&(!Number.isInteger(actual)||actual<1||actual>1440))throw Error('Informe uma duração entre 1 e 1440 minutos.');
  const payload={mode,service_ids,customer_name:val.customer_name.trim(),customer_phone,walk_in:walkIn,
    start_at:localStart(val.day,val.clock),final_total_cents:retro?sharedFields.parseMoney(val.final_total,{required:true,min:0,max:1000000000}):null,
-   actual_duration_min:actual,appointment_messages_opt_in:!retro&&!walkIn&&form.elements.appointment_messages_opt_in.checked};
+   actual_duration_min:actual,appointment_messages_opt_in:!retro&&!walkIn&&form.elements.appointment_messages_opt_in.checked,
+   allow_overlap:mode==='exceptional'&&form.elements.allow_overlap.checked};
  const signature=JSON.stringify(payload);
  if(d.manualReviewSignature!==signature){
    d.manualReviewSignature=signature;
@@ -259,6 +262,7 @@ async function submitProfessionalManual(form,d,val){
      '<div><span>Data e horário</span><strong>'+esc(shortDate(payload.start_at)+' às '+shortTime(payload.start_at))+'</strong></div>'+
      '<div><span>Valor'+(retro?' final':' previsto')+'</span><strong>'+esc((!retro&&selected.some(item=>item.price_mode==='from')?'A partir de ':'')+money(total))+'</strong></div>'+
      '<div><span>Situação</span><strong>'+(retro?'Concluído':'Confirmado · Excepcional')+'</strong></div></div>'+
+     (payload.allow_overlap?'<p class="notice">Compartilhamento autorizado para até dois clientes simultâneos. O período ocupado permanece bloqueado no site.</p>':'')+
      (retro?'<p class="notice">O atendimento ficará na data informada, com recebimento pendente no Financeiro. Não serão enviados avisos ou lembretes.</p>':'');
    $('modalSubmit').textContent=retro?'Registrar atendimento':'Confirmar agendamento';$('modalSubmit').disabled=false;return false;
  }
@@ -527,7 +531,7 @@ document.addEventListener('change',event=>{
  const d=state.modal,el=event.target;if(d?.submitting)return;
  if(d?.action==='new-appointment'&&!d.bookingPayload){
    if(['booking_mode','walk_in'].includes(el.name))syncProfessionalBookingMode();
-   else if(['day','clock','service_ids','actual_duration_min'].includes(el.name)){resetProfessionalBookingReview();updateProfessionalBookingTotal();}
+   else if(['day','clock','service_ids','actual_duration_min','allow_overlap'].includes(el.name)){resetProfessionalBookingReview();updateProfessionalBookingTotal();}
  }
  if(d?.action==='extras'&&!d.extrasPayload){
    if(el.name==='extra_service_ids'){const selected=$('modalForm').querySelectorAll('[name=extra_service_ids]:checked');if(selected.length>d.extraLimit){el.checked=false;notice('Este atendimento permite mais '+d.extraLimit+' serviços.');}resetProfessionalExtrasPreview();}

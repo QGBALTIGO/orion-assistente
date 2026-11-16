@@ -37,7 +37,7 @@ def wait_for_campaigns_schema(environment):
               else "scripts.wait_for_fixed_client_monthly_schema")
     subprocess.run([sys.executable, "-m", schema],
                    env=environment, check=True, timeout=95)
-    subprocess.run([sys.executable, '-m', 'scripts.wait_for_service_receipts_schema'],
+    subprocess.run([sys.executable, '-m', 'scripts.wait_for_exceptional_overlap_schema'],
                    env=environment, check=True, timeout=30)
     # This release serves demos only after the backed-up pre-deploy migration.
     subprocess.run([sys.executable, "-m", "scripts.wait_for_commercial_demos_schema"],

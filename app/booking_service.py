@@ -363,7 +363,7 @@ async def read_appointments(s: AsyncSession, tenant: UUID, item_ids: list[UUID])
     rows = (await s.execute(text("""
         SELECT a.id, a.tenant_id, a.customer_id, a.professional_id, a.protocol,
                a.start_at, a.end_at, a.status, a.total_cents, a.hold_expires_at, a.updated_at,
-               a.created_at, a.booking_mode, a.created_by_account_id, a.actual_duration_min,
+               a.created_at, a.booking_mode, a.created_by_account_id, a.actual_duration_min, a.allow_overlap,
                a.series_id, a.series_index,
                a.original_total_cents, a.discount_cents,
                a.commission_percent_snapshot, a.commission_cents, a.commission_mode_snapshot,

@@ -1110,7 +1110,7 @@
     const key=appointmentState(a),spec=agendaStates[key];
     return '<span class="os-appointment-status os-status-'+key+'">'+icon(spec.symbol)+'<span>'+esc(spec.label)+'</span></span>'+appointmentOrigin(a);
   }
-  function appointmentOrigin(a){const label={exceptional:'Excepcional',retroactive:'Registrado depois'}[a.booking_mode];return label?'<span class="os-appointment-origin">'+esc(label)+'</span>':'';}
+  function appointmentOrigin(a){const label=a.allow_overlap?'Excepcional · Até 2 clientes':{exceptional:'Excepcional',retroactive:'Registrado depois'}[a.booking_mode];return label?'<span class="os-appointment-origin">'+esc(label)+'</span>':'';}
   function appointmentName(a){return customerDisplayName({name:a.customer_name,display_name:a.customer_display_name,whatsapp_name:a.whatsapp_name,phone:a.customer_phone});}
   function appointmentProfessional(a){return a.professional_name||(state.data.professionals||[]).find(p=>p.id===a.professional_id)?.name||'Profissional';}
   function appointmentDuration(a){return Math.max(0,Math.round((Date.parse(a.end_at)-Date.parse(a.start_at))/60000));}
@@ -3638,6 +3638,7 @@
       '<div id="osBookingPhone">'+field('WhatsApp do cliente','customer_phone','tel','','required placeholder="(11) 91234-5678"')+'</div>'+
       '<div id="osBookingWhen" class="os-form">'+field('Data','day','date',state.filters.agendaDay||dateKey(),'required')+
       '<div id="osBookingClock" hidden>'+field('Horário','clock','time',d.preset?.time||'','disabled')+'</div></div>'+
+      '<div id="osBookingOverlap" hidden>'+checkField('Permitir dois clientes neste horário','allow_overlap',false,'Somente neste agendamento excepcional. Cada cliente mantém seus serviços, valores e pagamentos. Limite de dois clientes simultâneos por profissional; bloqueios e folgas continuam valendo. O período ocupado permanece indisponível no site.')+'</div>'+
       '<fieldset><legend style="font:500 14px/20px var(--os-font);margin:0 0 6px">Serviço</legend><div id="osBookingServices" class="os-service-options">'+(noServices?'<p class="os-help">Cadastre um serviço ativo antes de agendar.</p>':d.services.map(service=>'<button type="button" class="os-service-option" data-os-book-service="'+esc(service.id)+'" aria-pressed="'+d.serviceIds.includes(service.id)+'"><strong>'+esc(service.name)+'</strong><small>'+esc(priceLabel(service.price_cents,service.price_mode))+' · '+number(service.duration_min)+' min</small></button>').join(''))+'</div></fieldset>'+
       '<div id="osBookingAddons" class="hidden"></div>'+selectField('Profissional','professional_id',[['',noPros?'Nenhum profissional disponível':'Selecionar'],...d.professionals.map(pro=>[pro.id,pro.name])],d.preset?.professionalId||'','required')+
       '<div id="osBookingSlotField" class="os-field"><label for="osBookingSlot">Horário</label><select id="osBookingSlot" name="start_at" required disabled><option value="">Escolha profissional e serviço</option></select><p id="osBookingSlotHelp" class="os-help" style="margin-top:6px"></p></div>'+
@@ -3657,7 +3658,8 @@
     const d=state.dialog,form=$('osDialog')?.querySelector('[data-os-form=appointment]');if(d?.type!=='appointment'||!form||d.holdForm||d.manualOperation)return;
     const mode=form.elements.booking_mode.value,manual=mode!=='regular',retro=mode==='retroactive';
     d.bookingMode=mode;$('osBookingWhen').classList.toggle('os-form-grid',manual);
-    $('osBookingModeHelp').textContent=retro?'Registre um atendimento que já terminou. Nenhum aviso ou lembrete será enviado.':manual?'Informe um horário fora do expediente. A agenda continuará verificando conflitos e bloqueios.':'Escolha um horário disponível na agenda.';
+    $('osBookingModeHelp').textContent=retro?'Registre um atendimento que já terminou. Nenhum aviso ou lembrete será enviado.':manual?'Informe o horário, inclusive fora do expediente. Para compartilhar um horário ocupado, autorize a opção abaixo.':'Escolha um horário disponível na agenda.';
+    $('osBookingOverlap').hidden=mode!=='exceptional';form.elements.allow_overlap.disabled=mode!=='exceptional';if(mode!=='exceptional')form.elements.allow_overlap.checked=false;
     $('osBookingWalkIn').hidden=!manual;form.elements.walk_in.disabled=!manual;if(!manual)form.elements.walk_in.checked=false;
     const selected=d.customers.find(customer=>customer.id===d.customerId);
     if(manual&&form.elements.walk_in.checked&&selected?.phone)form.elements.walk_in.checked=false;
@@ -3742,7 +3744,8 @@
       const payload={mode,professional_id:values.professional_id,service_ids:[...d.engineServiceIds],customer_id:d.customerId||null,
         customer_name:values.customer_name.trim(),customer_phone:customerPhone,walk_in:walkIn,start_at:start,
         final_total_cents:retro?cents(values.final_total):null,actual_duration_min:actual,
-        appointment_messages_opt_in:!retro&&!walkIn&&form.elements.appointment_messages_opt_in.checked};
+        appointment_messages_opt_in:!retro&&!walkIn&&form.elements.appointment_messages_opt_in.checked,
+        allow_overlap:mode==='exceptional'&&form.elements.allow_overlap.checked};
       const selected=d.customers.find(customer=>customer.id===d.customerId);
       operation={payload:{...payload,idempotency_key:requestKey(form,payload)},day:values.day,customerUpdate:selected&&customerPhone&&customerPhoneValue(selected.phone)!==customerPhone?{id:selected.id,phone:customerPhone,version:selected.version}:null};
     }

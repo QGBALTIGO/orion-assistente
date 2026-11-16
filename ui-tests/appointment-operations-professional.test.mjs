@@ -170,3 +170,16 @@ test('catálogo profissional assíncrono coloca foco no modal durante a consulta
   assert.equal(h.doc.activeElement,h.doc.querySelector('[name=extra_service_ids]'));
   h.click('#modalCancel');assert.equal(h.doc.activeElement,trigger);
 });
+
+
+test('compartilhar horário exige revisão explícita no profissional e se limpa ao trocar o tipo',async t=>{
+  const h=await portal(t);const form=await manual(h);
+  assert.equal(form.elements.allow_overlap.checked,false);h.click('[name=allow_overlap]');h.submit();await flush();
+  assert.equal(posts(h).length,0);assert.match(h.doc.getElementById('modalReview').textContent,/até dois clientes simultâneos/);
+  h.click('[name=allow_overlap]');h.submit();await flush();assert.equal(posts(h).length,0);
+  h.click('[name=allow_overlap]');h.submit();await flush();h.submit();await flush();
+  assert.equal(posts(h)[0].body.allow_overlap,true);assert.equal(posts(h)[0].body.professional_id,undefined);
+  const another=await manual(h);h.click('[name=allow_overlap]');await h.change('booking_mode','retroactive');
+  assert.equal(another.elements.allow_overlap.checked,false);assert.equal(another.elements.allow_overlap.disabled,true);
+  assert.equal(h.doc.getElementById('modalBookingOverlap').hidden,true);
+});
