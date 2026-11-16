@@ -221,8 +221,11 @@ async def _insert_items(db, tenant, appointment, items, *, first_order=0, contex
 
 async def create_manual_appointment(db, tenant, professional, payload, *, context):
     require_staff_context(context)
-    request = {**payload.model_dump(exclude={"idempotency_key", "professional_id"}),
+    # Preserve retry identities from before this opt-in field existed.
+    request = {**payload.model_dump(exclude={"idempotency_key", "professional_id", "allow_overlap"}),
                "professional_id": professional, "actor": context.account_id, "role": context.role}
+    if payload.allow_overlap:
+        request["allow_overlap"] = True
     fingerprint = hashlib.sha256(json.dumps(jsonable_encoder(request), sort_keys=True,
                                 separators=(",", ":")).encode()).hexdigest()
     async with tenant_transaction(db, tenant):

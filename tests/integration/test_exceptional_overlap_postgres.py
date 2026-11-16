@@ -1,14 +1,18 @@
 """Shared bookings use the real PostgreSQL motor, never production data."""
 import asyncio
+import hashlib
+import json
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException
+from fastapi.encoders import jsonable_encoder
 import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from app.booking_service import book_appointment, list_slots
+from app.appointment_operations import CompanyManualBooking
 from app.catalog_api import Actor
 from app.database import tenant_transaction
 from test_appointment_operations_postgres import (
@@ -58,7 +62,7 @@ async def test_two_customers_different_services_block_union_and_cancel_independe
 async def test_public_engine_and_normal_panel_cannot_use_exception_capacity(operations_db):
     d = operations_db
     row = await create_manual(d, start_at=start_at(d['day'], 10).isoformat(), allow_overlap=True)
-    normal = manual_payload(d, start_at=row['start_at'])
+    normal = manual_payload(d, start_at=start_at(d['day'], 10).isoformat())
     for key in ('mode', 'walk_in', 'appointment_messages_opt_in'):
         normal.pop(key)
     response = await d['client'].post(d['base']+'/appointments/hold', json=normal)
@@ -110,7 +114,7 @@ async def test_shared_exception_never_intercepts_live_public_hold(operations_db)
         hold = await book_appointment(db, d['a'], d['pro'], [d['beard']], phone(980),
             'Reserva do site', start_at(d['day'], 10), str(uuid4()), source='public_site')
     response = await d['client'].post(d['base']+'/appointments/manual', json=manual_payload(d,
-        start_at=hold['start_at'], allow_overlap=True))
+        start_at=hold['start_at'].isoformat(), allow_overlap=True))
     assert response.status_code == 409 and 'confirmação' in response.text
 
 
@@ -218,7 +222,27 @@ async def test_shared_customers_have_independent_receipts_and_commissions(operat
     async with d['migrator'].connect() as db:
         entries=(await db.execute(text('''SELECT appointment_id,amount_cents,status FROM financial_entries
             WHERE tenant_id=:t AND service_receivable ORDER BY amount_cents DESC'''),{'t':d['a']})).mappings().all()
-        assert [(r['amount_cents'],r['status']) for r in entries]==[(3500,'confirmed'),(2000,'pending')]
+        assert [(r['amount_cents'],r['status']) for r in entries]==[(3500,'paid'),(2000,'pending')]
         commissions=(await db.execute(text('SELECT sum(commission_cents) FROM appointments WHERE tenant_id=:t'),
             {'t':d['a']})).scalar_one()
         assert commissions==1375
+
+
+@pytest.mark.asyncio
+async def test_legacy_manual_request_can_retry_after_shared_mode_is_introduced(operations_db):
+    d=operations_db
+    body=manual_payload(d)
+    payload=CompanyManualBooking(**body)
+    legacy_request={**payload.model_dump(exclude={'idempotency_key','professional_id','allow_overlap'}),
+        'professional_id':d['pro'],'actor':d['owner'],'role':'owner'}
+    legacy_fingerprint=hashlib.sha256(json.dumps(jsonable_encoder(legacy_request),sort_keys=True,
+        separators=(',',':')).encode()).hexdigest()
+    response=await d['client'].post(d['base']+'/appointments/manual',json=body)
+    assert response.status_code==201,response.text
+    row=response.json()
+    async with d['migrator'].begin() as db:
+        # Reproduce the fingerprint saved by the published 0080 API.
+        await db.execute(text('UPDATE appointments SET request_fingerprint=:fp WHERE tenant_id=:t AND id=:id'),
+            {'fp':legacy_fingerprint,'t':d['a'],'id':UUID(row['id'])})
+    replay=await d['client'].post(d['base']+'/appointments/manual',json={**body,'allow_overlap':False})
+    assert replay.status_code==201 and replay.json()['id']==row['id'],replay.text

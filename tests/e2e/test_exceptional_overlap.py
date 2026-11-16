@@ -47,6 +47,7 @@ def test_shared_appointments(browser_name,width,height,theme,monkeypatch):
             assert bounds[0]['right']<=bounds[1]['left']+1,bounds
             assert abs(bounds[0]['top']-bounds[1]['top'])<1,bounds
             assert min(r['height'] for r in bounds)>=44,bounds
+            cards.first.scroll_into_view_if_needed()
             page.screenshot(path=str(ARTIFACTS/f'{browser_name}-{width}-{theme}-calendar.png'),full_page=False)
             page.locator('[data-os-action=new-appointment]').click()
             form=page.locator('[data-os-form=appointment]')
