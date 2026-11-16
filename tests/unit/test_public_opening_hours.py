@@ -38,7 +38,11 @@ def test_hours_no_employee_ids_and_external_iframe_is_strictly_limited():
     assert set(result[2]) == {"weekday", "intervals"}
     assert set(result[2]["intervals"][0]) == {"open", "close"}
     csp = HEADERS["Content-Security-Policy"]
-    assert "frame-src https://www.google.com https://maps.google.com;" in csp
+    # The published portfolio also embeds Instagram; keep the complete current
+    # allowlist exact rather than accepting an arbitrary additional frame host.
+    frames = next(part.strip().split()[1:] for part in csp.split(";")
+                  if part.strip().startswith("frame-src "))
+    assert frames == ["https://www.google.com", "https://maps.google.com", "https://www.instagram.com"]
     assert "frame-ancestors 'none'" in csp
     assert "script-src 'self'" in csp
 

@@ -49,6 +49,8 @@ async def record_optout(db,tenant,phone,scope):
         birthday_opt_in=false,birthday_declined_at=clock_timestamp(),
         source='customer_request',updated_at=GREATEST(clock_timestamp(),contact_consents.updated_at+interval '1 microsecond')'''),
       {'t':tenant,'phone':phone,'scope':scope})
+    from app.appointment_consent import revoke_scoped_consents
+    await revoke_scoped_consents(db,tenant,phone,scope)
     await db.execute(text('''UPDATE automation_jobs SET status='cancelled',last_error='customer_opt_out',updated_at=clock_timestamp()
       WHERE tenant_id=:t AND contact_e164=:phone AND status='pending'
         AND (:scope='all' OR :scope='marketing' AND event IN ('inactive_60d','cancelled_7d','birthday_7d','birthday_2d','loyalty_reward','after_service','campaign')

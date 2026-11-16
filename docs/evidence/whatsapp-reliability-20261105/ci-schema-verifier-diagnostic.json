@@ -1,0 +1,201 @@
+{
+  "scope": "read-only synthetic migrated database catalog; not production",
+  "code_sha256": "cad0cae6ecaf7efbd1c3e2bdfbcdeaa76456918cb6cd0186b4991abf8e8a2bb7",
+  "readiness": {
+    "registration": true,
+    "professional_phone": false,
+    "quick_including_phone": false,
+    "accounts_including_quick": false,
+    "cakto": true
+  },
+  "catalogs": [
+    {
+      "component": "professional",
+      "query": "SELECT relkind,relrowsecurity,relforcerowsecurity,pg_get_userbyid(relowner), has_table_privilege('app_runtime',oid,'SELECT') AND has_table_privilege('app_runtime',oid,'INSERT') AND has_table_privilege('app_runtime',oid,'UPDATE') AND has_table_privilege('app_runtime',oid,'DELETE'), has_table_privilege('app_runtime',oid,'TRUNCATE,REFERENCES,TRIGGER'), has_table_privilege('app_support',oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'), EXISTS(SELECT 1 FROM aclexplode(COALESCE(relacl,acldefault('r',relowner))) a WHERE a.grantee NOT IN(relowner,(SELECT oid FROM pg_roles WHERE rolname='app_runtime')) OR (a.grantee=(SELECT oid FROM pg_roles WHERE rolname='app_runtime') AND a.is_grantable)), EXISTS(SELECT 1 FROM pg_attribute a WHERE a.attrelid=c.oid AND a.attacl IS NOT NULL) FROM pg_class c WHERE c.relnamespace='public'::regnamespace AND c.relname='professionals'",
+      "rows": [
+        [
+          "r",
+          true,
+          true,
+          "app_migrator",
+          true,
+          false,
+          false,
+          false,
+          false
+        ]
+      ]
+    },
+    {
+      "component": "professional",
+      "query": "SELECT polname,polcmd,polpermissive, ARRAY(SELECT rolname FROM pg_roles WHERE oid=ANY(polroles) ORDER BY rolname), pg_get_expr(polqual,polrelid),pg_get_expr(polwithcheck,polrelid) FROM pg_policy WHERE polrelid='public.professionals'::regclass",
+      "rows": [
+        [
+          "professionals_migrator",
+          "*",
+          true,
+          [
+            "app_migrator"
+          ],
+          "true",
+          "true"
+        ],
+        [
+          "professionals_runtime",
+          "*",
+          true,
+          [
+            "app_runtime"
+          ],
+          "(tenant_id = (NULLIF(current_setting('app.tenant_id'::text, true), ''::text))::uuid)",
+          "(tenant_id = (NULLIF(current_setting('app.tenant_id'::text, true), ''::text))::uuid)"
+        ]
+      ]
+    },
+    {
+      "component": "professional",
+      "query": "SELECT udt_name,is_nullable,character_maximum_length,column_default FROM information_schema.columns WHERE table_schema='public' AND table_name='professionals' AND column_name='phone_e164'",
+      "rows": [
+        [
+          "varchar",
+          "YES",
+          16,
+          null
+        ]
+      ]
+    },
+    {
+      "component": "professional",
+      "query": "SELECT convalidated,condeferrable,condeferred,pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid='public.professionals'::regclass AND conname='ck_professional_phone_e164'",
+      "rows": [
+        [
+          true,
+          false,
+          false,
+          "CHECK (((phone_e164 IS NULL) OR ((phone_e164)::text ~ '^(\\+55[1-9][0-9]{9,10}|\\+5959[0-9]{8})$'::text)))"
+        ]
+      ]
+    },
+    {
+      "component": "professional",
+      "query": "SELECT version_num FROM alembic_version",
+      "rows": [
+        [
+          "0071_subscription_direct"
+        ]
+      ]
+    },
+    {
+      "component": "quick",
+      "query": "SELECT p.prokind,p.prosecdef,p.proconfig, pg_get_userbyid(p.proowner), p.prorettype='pg_catalog.void'::regtype, has_function_privilege('app_runtime',p.oid,'EXECUTE'), has_function_privilege('app_support',p.oid,'EXECUTE'), EXISTS ( SELECT 1 FROM aclexplode(COALESCE( p.proacl,acldefault('f',p.proowner))) a WHERE a.grantee=0 AND a.privilege_type='EXECUTE' ) FROM pg_proc p WHERE p.oid=to_regprocedure('public.onboarding_activate_quick_tenant(uuid)')",
+      "rows": [
+        [
+          "f",
+          true,
+          [
+            "search_path=pg_catalog, public"
+          ],
+          "app_migrator",
+          true,
+          true,
+          false,
+          false
+        ]
+      ]
+    },
+    {
+      "component": "accounts",
+      "query": "SELECT c.relname,c.relrowsecurity,c.relforcerowsecurity, has_table_privilege('app_support',c.oid,'SELECT'), has_table_privilege('app_runtime',c.oid,'SELECT') FROM pg_class c WHERE c.oid IN ( to_regclass('public.admin_account_controls'), to_regclass('public.admin_account_audit'))",
+      "rows": [
+        [
+          "admin_account_controls",
+          true,
+          true,
+          true,
+          false
+        ],
+        [
+          "admin_account_audit",
+          true,
+          true,
+          true,
+          false
+        ]
+      ]
+    },
+    {
+      "component": "whatsapp",
+      "query": "SELECT data_type,is_nullable,column_default FROM information_schema.columns WHERE table_schema='public' AND table_name='tenants' AND column_name='whatsapp_channel_id'",
+      "rows": [
+        [
+          "uuid",
+          "YES",
+          null
+        ]
+      ]
+    },
+    {
+      "component": "whatsapp",
+      "query": "SELECT c.convalidated,c.condeferrable,c.condeferred,c.confdeltype, ARRAY(SELECT a.attname FROM pg_attribute a WHERE a.attrelid=c.conrelid AND a.attnum=ANY(c.conkey) ORDER BY array_position(c.conkey,a.attnum)), ARRAY(SELECT a.attname FROM pg_attribute a WHERE a.attrelid=c.confrelid AND a.attnum=ANY(c.confkey) ORDER BY array_position(c.confkey,a.attnum)) FROM pg_constraint c WHERE c.conname='fk_tenant_whatsapp_channel' AND c.contype='f' AND c.conrelid='public.tenants'::regclass AND c.confrelid='public.qr_channels'::regclass",
+      "rows": [
+        [
+          true,
+          false,
+          false,
+          "r",
+          [
+            "id",
+            "whatsapp_channel_id"
+          ],
+          [
+            "tenant_id",
+            "id"
+          ]
+        ]
+      ]
+    },
+    {
+      "component": "whatsapp",
+      "query": "SELECT i.indisunique,i.indisvalid,i.indnkeyatts, pg_get_expr(i.indpred,i.indrelid),a.attname FROM pg_index i JOIN pg_class idx ON idx.oid=i.indexrelid JOIN pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=i.indkey[0] WHERE idx.relname='ix_tenant_whatsapp_channel' AND i.indrelid='public.tenants'::regclass",
+      "rows": [
+        [
+          true,
+          true,
+          1,
+          "(whatsapp_channel_id IS NOT NULL)",
+          "whatsapp_channel_id"
+        ]
+      ]
+    },
+    {
+      "component": "whatsapp",
+      "query": "SELECT has_column_privilege('app_support','public.tenants','whatsapp_channel_id','SELECT'), has_column_privilege('app_support','public.tenants','whatsapp_channel_id','UPDATE'), has_column_privilege('app_runtime','public.tenants','whatsapp_channel_id','SELECT'), has_column_privilege('app_runtime','public.tenants','whatsapp_channel_id','UPDATE')",
+      "rows": [
+        [
+          true,
+          true,
+          true,
+          false
+        ]
+      ]
+    },
+    {
+      "component": "whatsapp",
+      "query": "SELECT conname,convalidated,pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid='public.qr_channels'::regclass AND contype='c' AND conname IN ('ck_qr_channel_senders','ck_qr_channel_private_policy')",
+      "rows": [
+        [
+          "ck_qr_channel_private_policy",
+          true,
+          "CHECK (((NOT assistant_enabled) OR (jsonb_array_length(allowed_senders) > 0)))"
+        ],
+        [
+          "ck_qr_channel_senders",
+          true,
+          "CHECK (((jsonb_typeof(allowed_senders) = 'array'::text) AND ((jsonb_array_length(allowed_senders) >= 0) AND (jsonb_array_length(allowed_senders) <= 10)) AND (NOT jsonb_path_exists(allowed_senders, '$[*]?(@.type() != \"string\")'::jsonpath))))"
+        ]
+      ]
+    }
+  ],
+  "transaction_read_only": "on",
+  "whatsapp_guard": true
+}

@@ -66,11 +66,14 @@ async def test_real_included_route_dependency_denies_premium_before_handler_and_
     state={"tenant_id":str(tenant),"tenant_status":"active","manual":{"plan_code":"essencial",
         "started_at":(datetime.now(timezone.utc)-timedelta(days=1)).isoformat(),"expires_at":None}}
     class Result:
-        def scalar_one(self): return state
+        def __init__(self, value): self.value = value
+        def scalar_one(self): return self.value
+        def scalar_one_or_none(self): return self.value
     class Database:
         async def execute(self,query,params=None):
             if "advisory" in str(query): locks.append(str(query))
-            return Result()
+            # The current entitlement contract also reads an optional Pix grant.
+            return Result(None if "orion_prepaid_plan_snapshot" in str(query) else state)
         @asynccontextmanager
         async def begin(self): yield self
         async def __aenter__(self): return self

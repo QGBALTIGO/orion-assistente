@@ -36,10 +36,10 @@ test('transporte para cliente BR/PY preserva conteúdo criptografado antes do re
   }finally{fs.rmSync(dir,{force:true,recursive:true})}
 });
 
-test('global reliable delivery is opt-in without relaxing approved pilot nor allowing bulk traffic',()=>{
+test('global reliable delivery applies to all clients without relaxing pilot authorization',()=>{
   const base={QR_AI_ENABLED:'0',QR_AI_PILOT_NUMBER:'',
     QR_RELIABLE_SEND_V2:'1',QR_FORCE_FRESH_DEVICES:'0'};
   for(const p of ['5511999998888','595992820210']){
-    assert.deepEqual(deliveryPolicy(p,base),{reliable:true,freshDevices:false,pilot:false});
+    assert.deepEqual(deliveryPolicy(p,base),{reliable:true,freshDevices:true,pilot:false});
   }
 });

@@ -1,9 +1,11 @@
 """API Orion: oito fatias técnicas, integrações externas opt-in."""
 from pathlib import Path
-from fastapi import Depends, FastAPI
-from fastapi.responses import FileResponse
+from fastapi import Depends, FastAPI, Request
+from fastapi.responses import FileResponse, RedirectResponse
 from app.catalog_api import router as catalog_router, list_services
 from app.booking_api import router as bookings_router
+from app.recurring_appointments import router as recurring_appointments_router
+from app.start_policies import router as start_policies_router
 from app.whatsapp_api import router as whatsapp_router
 from app.integrations_api import router as integrations_router
 from app.ops_api import router as ops_router
@@ -13,13 +15,16 @@ from app.billing_api import router as billing_router
 from app.cakto_api import router as cakto_router
 from app.plan_management import router as plan_management_router
 from app.orion_direct_checkout import router as direct_checkout_router
+from app.prepaid_pix_api import router as prepaid_pix_router
 from app.metrics_api import router as metrics_router
 from app.advanced_api import router as advanced_router
 from app.qr_api import router as qr_router
+from app.qr_ingress_review import router as qr_ingress_review_router
 from app.panel_auth import router as panel_auth_router
 from app.account_auth import router as account_auth_router
 from app.account_settings import router as account_settings_router
 from app.admin_accounts import router as admin_accounts_router
+from app.demo_sites import router as demo_sites_router
 from app.maintenance_access import router as maintenance_router, admin_router as maintenance_admin_router
 from app.groq_api import router as groq_router
 from app.groq_audio import router as groq_audio_router
@@ -32,11 +37,26 @@ from app.management_api import router as management_router
 from app.management_blocks import router as management_blocks_router
 from app.management_ai import router as management_ai_router
 from app.management_team import router as management_team_router, invitation_router
+from app.professional_invites import router as professional_invites_router
+from app.professional_portal import router as professional_portal_router
 from app.management_preferences import router as management_preferences_router
 from app.public_site_api import router as public_site_router
 from app.service_packages_api import router as service_packages_router
 from app.onboarding_api import router as onboarding_router
 from app.qr_channels import router as qr_channels_router
+from app.subscription_devices import router as subscription_devices_router
+from app.subscription_chatbot import router as subscription_chatbot_router
+from app.subscription_chatbot_broker import router as subscription_chatbot_broker_router
+from app.subscription_chatbot_test import router as subscription_chatbot_test_router
+from app.subscription_templates import router as subscription_templates_router
+from app.subscription_sent_messages import router as subscription_sent_messages_router
+from app.subscription_diagnostics import router as subscription_diagnostics_router
+from app.subscription_campaigns import router as subscription_campaigns_router
+from app.subscription_scheduled_messages import router as subscription_scheduled_messages_router
+from app.subscription_bulk_messages import router as subscription_bulk_messages_router
+from app.subscription_direct_messages import router as subscription_direct_messages_router
+from app.subscription_group_contacts import router as subscription_group_contacts_router
+from app.subscription_group_add import router as subscription_group_add_router
 from app.automation_api import router as automation_router
 from app.qr_channel_audio import router as qr_channel_audio_router
 from app.media_api import router as media_router
@@ -46,18 +66,107 @@ from app.inbox_conversations import router as inbox_conversations_router
 from app.communication_api import router as communication_router
 from app.workflow_drafts import router as workflow_drafts_router
 from app.orion_pwa_api import router as orion_pwa_router
+from app.dental_clinic_api import router as dental_clinic_router
+import app.dental_clinic_media  # registers protected exam endpoints on the same router
 from app.plan_routing import include_plan_router, enforce_endpoint_plan
 
 app = FastAPI(
     title="Orion Barbearias",
     description="Agenda SaaS multiempresa — desenvolvimento controlado",
     version="0.8.0",
+    openapi_url=None,
+    docs_url=None,
+    redoc_url=None,
 )
 
 
 @app.on_event("startup")
 async def startup_provider_probe():
     await probe_groq_provider()
+
+
+@app.on_event("startup")
+async def startup_baltigo_read_only_diagnostic():
+    """One-time private incident snapshot. No message bodies, people, phones or keys."""
+    import json
+    import logging
+    from datetime import datetime, timezone
+    from sqlalchemy import text as sql_text
+    from app.catalog_api import support_session_factory
+    try:
+        async with support_session_factory()() as db:
+            async with db.begin():
+                await db.execute(sql_text("SET TRANSACTION READ ONLY"))
+                links = (await db.execute(sql_text("""
+                    SELECT c.* FROM qr_channels c
+                    JOIN subscription_devices d ON d.channel_id=c.id
+                    JOIN tenants t ON t.id=d.tenant_id
+                    WHERE d.removed_at IS NULL AND c.enabled
+                      AND t.name ILIKE :company
+                    ORDER BY d.updated_at DESC LIMIT 8
+                """), {"company": "%baltigo%"})).mappings().all()
+                rows = (await db.execute(sql_text("""
+                    SELECT t.name AS company,d.status AS status,d.runtime_at,
+                      d.runtime #>> '{connection_health,state}' AS health,
+                      d.runtime #>> '{connection_health,reason}' AS reason,
+                      d.runtime #>> '{connection_health,action}' AS action,
+                      d.runtime #>> '{connection_health,ingress_blocked}' AS blocked,
+                      d.runtime #>> '{connection_health,ingress_pending}' AS pending,
+                      d.runtime #>> '{connection_health,ingress_storage_unavailable}' AS storage_error,
+                      c.enabled AS channel_enabled,
+                      c.lease_expires_at > clock_timestamp() AS lease_active,
+                      (SELECT count(*) FROM subscription_device_events e
+                       WHERE e.device_id=d.id AND e.kind IN ('text','audio')
+                         AND e.occurred_at>clock_timestamp()-interval '2 hours') AS received_2h,
+                      (SELECT count(*) FROM subscription_device_effects e
+                       WHERE e.device_id=d.id AND e.status IN ('pending','running','uncertain')) AS effects_open
+                    FROM subscription_devices d
+                    JOIN tenants t ON t.id=d.tenant_id
+                    JOIN qr_channels c ON c.id=d.channel_id
+                    WHERE d.removed_at IS NULL AND t.name ILIKE :company
+                    ORDER BY d.updated_at DESC LIMIT 8
+                """), {"company": "%baltigo%"})).mappings().all()
+        snapshot = []
+        for row in rows:
+            age = (datetime.now(timezone.utc)-row["runtime_at"]).total_seconds() if row["runtime_at"] else None
+            snapshot.append({
+                "company": str(row["company"])[:60], "status": row["status"],
+                "health": row["health"], "reason": row["reason"], "action": row["action"],
+                "blocked": row["blocked"], "pending": row["pending"],
+                "storage_error": row["storage_error"], "channel_enabled": row["channel_enabled"],
+                "lease_active": row["lease_active"],
+                "runtime_age_seconds": int(max(0,age)) if age is not None else None,
+                "received_2h": row["received_2h"], "effects_open": row["effects_open"]
+            })
+        # Private GET only; no authenticated customer panel/session needed.
+        # The scoped channel credential never enters logs.
+        from app import qr_channels as channel_transport
+        for index,link in enumerate(links):
+            if index>=len(snapshot):
+                break
+            try:
+                result = await channel_transport._bridge_control(dict(link), "device/diagnostics", "GET")
+                health = result.get("connection_health") if isinstance(result.get("connection_health"),dict) else {}
+                runtime = result.get("runtime") if isinstance(result.get("runtime"),dict) else {}
+                ingress = runtime.get("ingress") if isinstance(runtime.get("ingress"),dict) else {}
+                snapshot[index]["live"] = {
+                    "status": result.get("status"),
+                    "health": health.get("state"), "reason": health.get("reason"),
+                    "action": health.get("action"),
+                    "ingress_blocked": health.get("ingress_blocked",ingress.get("blocked")),
+                    "ingress_pending": health.get("ingress_pending",ingress.get("pending")),
+                    "ingress_retained": ingress.get("retained",0),
+                    "ingress_entries": ingress.get("entries"),
+                    "ingress_error": runtime.get("ingress_error") is not None,
+                    "storage_unavailable": health.get("ingress_storage_unavailable")
+                }
+            except Exception as error:
+                snapshot[index]["live_error"] = type(error).__name__
+        logging.getLogger("orion.readonly_diagnostics").warning(
+            "orion_baltigo_incident_read_only %s",json.dumps({"count":len(snapshot),"devices":snapshot},ensure_ascii=False))
+    except Exception as error:
+        logging.getLogger("orion.readonly_diagnostics").warning(
+            "orion_baltigo_incident_unavailable category=%s",type(error).__name__)
 
 
 @app.on_event("startup")
@@ -80,7 +189,9 @@ async def health() -> dict[str, str]:
 
 app.add_api_route("/api/v1/tenants/{tenant_id}/services", list_services,
                   methods=["GET"], tags=["Operação interna"], dependencies=[Depends(enforce_endpoint_plan)])
+include_plan_router(app, recurring_appointments_router)
 include_plan_router(app, bookings_router)
+include_plan_router(app, start_policies_router)
 include_plan_router(app, onboarding_router)
 include_plan_router(app, commercial_router)
 include_plan_router(app, whatsapp_router)
@@ -92,9 +203,11 @@ include_plan_router(app, billing_router)
 include_plan_router(app, cakto_router)
 include_plan_router(app, plan_management_router)
 include_plan_router(app, direct_checkout_router)
+include_plan_router(app, prepaid_pix_router)
 include_plan_router(app, metrics_router)
 include_plan_router(app, advanced_router)
 include_plan_router(app, qr_router)
+include_plan_router(app, qr_ingress_review_router)
 include_plan_router(app, panel_auth_router)
 include_plan_router(app, account_auth_router)
 include_plan_router(app, account_settings_router)
@@ -102,6 +215,7 @@ include_plan_router(app, account_settings_router)
 include_plan_router(app, maintenance_admin_router)
 include_plan_router(app, maintenance_router)
 include_plan_router(app, admin_accounts_router)
+include_plan_router(app, demo_sites_router)
 include_plan_router(app, groq_router)
 include_plan_router(app, groq_audio_router)
 include_plan_router(app, qr_ai_router)
@@ -109,10 +223,13 @@ include_plan_router(app, central_appointment_reply_router)
 include_plan_router(app, business_profile_router)
 include_plan_router(app, account_business_router)
 include_plan_router(app, management_router)
+include_plan_router(app, dental_clinic_router)
 include_plan_router(app, management_blocks_router)
 include_plan_router(app, management_ai_router)
 include_plan_router(app, management_team_router)
 include_plan_router(app, invitation_router)
+include_plan_router(app, professional_invites_router)
+include_plan_router(app, professional_portal_router)
 include_plan_router(app, management_preferences_router)
 from app.appointment_access_api import router as appointment_access_router
 include_plan_router(app, appointment_access_router)
@@ -121,6 +238,19 @@ include_plan_router(app, appointment_communications_router)
 include_plan_router(app, public_site_router)
 include_plan_router(app, service_packages_router)
 include_plan_router(app, qr_channels_router)
+include_plan_router(app, subscription_devices_router)
+include_plan_router(app, subscription_chatbot_router)
+include_plan_router(app, subscription_chatbot_broker_router)
+include_plan_router(app, subscription_chatbot_test_router)
+include_plan_router(app, subscription_templates_router)
+include_plan_router(app, subscription_sent_messages_router)
+include_plan_router(app, subscription_diagnostics_router)
+include_plan_router(app, subscription_campaigns_router)
+include_plan_router(app, subscription_scheduled_messages_router)
+include_plan_router(app, subscription_bulk_messages_router)
+include_plan_router(app, subscription_direct_messages_router)
+include_plan_router(app, subscription_group_contacts_router)
+include_plan_router(app, subscription_group_add_router)
 include_plan_router(app, automation_router)
 include_plan_router(app, qr_channel_audio_router)
 include_plan_router(app, media_router)
@@ -132,7 +262,6 @@ include_plan_router(app, workflow_drafts_router)
 include_plan_router(app, orion_pwa_router)
 # Specific management paths must precede the legacy two-segment catalog path.
 include_plan_router(app, catalog_router)
-
 
 @app.get("/brand/{asset}", include_in_schema=False)
 async def branding(asset: str) -> FileResponse:
@@ -159,15 +288,34 @@ async def panel_asset(asset: str) -> FileResponse:
     allowed = {"orion-suite.css": "text/css", "orion-suite.js": "text/javascript",
                "orion-plans.css": "text/css", "orion-plans.js": "text/javascript",
                "orion-fields.css": "text/css", "orion-fields.js": "text/javascript",
+               "orion-focus.css": "text/css", "orion-focus.js": "text/javascript",
                "orion-suite-live.js": "text/javascript",
                "orion-admin-center.js": "text/javascript",
+               "orion-demo-center.js": "text/javascript",
+               "orion-ingress-review.js": "text/javascript",
                "orion-communication.js": "text/javascript",
                "orion-appointment-communications.js": "text/javascript",
                "orion-pwa.js": "text/javascript",
                "orion-auth.css": "text/css",
                "orion-invite.css": "text/css", "orion-invite.js": "text/javascript",
+               "orion-professional.css": "text/css", "orion-professional.js": "text/javascript",
                "orion-onboarding.css": "text/css", "orion-onboarding.js": "text/javascript",
                "orion-channels.css": "text/css", "orion-channels.js": "text/javascript",
+               "orion-subscription-devices.css": "text/css", "orion-subscription-devices.js": "text/javascript",
+                "orion-subscription-dashboard.css": "text/css", "orion-subscription-dashboard.js": "text/javascript",
+               "orion-subscription-chatbot.css": "text/css", "orion-subscription-chatbot.js": "text/javascript",
+               "orion-subscription-chatbot-test.css": "text/css", "orion-subscription-chatbot-test.js": "text/javascript",
+               "orion-subscription-templates.css": "text/css", "orion-subscription-templates.js": "text/javascript",
+               "orion-subscription-sent-messages.css": "text/css", "orion-subscription-sent-messages.js": "text/javascript",
+               "orion-subscription-diagnostics.css": "text/css", "orion-subscription-diagnostics.js": "text/javascript",
+               "orion-subscription-campaigns.css": "text/css", "orion-subscription-campaigns.js": "text/javascript",
+               "orion-subscription-scheduled-messages.css": "text/css", "orion-subscription-scheduled-messages.js": "text/javascript",
+               "orion-subscription-bulk-messages.css": "text/css", "orion-subscription-bulk-messages.js": "text/javascript",
+               "orion-subscription-direct-messages.css": "text/css", "orion-subscription-direct-messages.js": "text/javascript",
+               "orion-subscription-group-contacts.js": "text/javascript",
+               "orion-subscription-group-add.js": "text/javascript",
+               "orion-dental-clinic.js": "text/javascript",
+               "orion-dental-clinic.css": "text/css",
                "orion-connect.js": "text/javascript",
                "orion-automations.js": "text/javascript",
                "orion-inbox.js": "text/javascript", "orion-conversations.js": "text/javascript", "orion-flows.js": "text/javascript", "orion-inbox.css": "text/css"}
@@ -181,8 +329,8 @@ async def panel_asset(asset: str) -> FileResponse:
     )
 
 
-@app.get("/panel", include_in_schema=False)
-async def panel() -> FileResponse:
+@app.get("/painel", include_in_schema=False)
+async def painel() -> FileResponse:
     """Painel HTML; dados protegidos por sessão HttpOnly com CSRF."""
     return FileResponse(
         Path(__file__).parent / "static" / "panel.html",
@@ -190,8 +338,28 @@ async def panel() -> FileResponse:
     )
 
 
+@app.get("/panel", include_in_schema=False)
+async def painel_legacy_redirect(request: Request) -> RedirectResponse:
+    """Preserva links antigos e parâmetros sem expor dados da sessão."""
+    suffix = "?" + request.url.query if request.url.query else ""
+    return RedirectResponse("/painel" + suffix, status_code=308,
+                            headers={"Cache-Control": "no-store"})
+
+
+@app.get("/profissional", include_in_schema=False)
+async def professional_page() -> FileResponse:
+    return FileResponse(Path(__file__).parent / "static" / "orion-professional.html",
+        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer",
+                 "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"})
+
+
 @app.get("/convite", include_in_schema=False)
 async def invitation_page() -> FileResponse:
     return FileResponse(Path(__file__).parent / "static" / "orion-invite.html",
         headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer",
                  "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"})
+
+# IMPORTANT: Register catch-all short protocol pages AFTER every fixed route.
+# Otherwise /painel, /convite and other one-segment URLs return 404.
+from app.short_appointment_api import router as short_appointment_router
+include_plan_router(app, short_appointment_router)

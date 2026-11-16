@@ -12,7 +12,9 @@ test('new and legacy sites with no enabled amenities hide the entire block', asy
   assert.equal(h.document.querySelectorAll('.amenity-tile').length, 0);
   assert.equal(h.document.getElementById('amenities-grid').dataset.count, '0');
   assert.equal(h.document.getElementById('amenity-detail').hidden, true);
-  assert.equal(h.document.querySelector('#amenities-section').nextElementSibling.id, 'servicos');
+  assert.equal(h.document.querySelector('.public-main > #amenities-section'),null);
+  assert.equal(h.document.querySelector('.public-main > #servicos')?.id,'servicos');
+  assert.equal(h.document.getElementById('amenities-section').closest('#address-card')?.id,'address-card');
   assert.equal(h.errors.length, 0);
 });
 
@@ -26,7 +28,12 @@ test('one, two, three or four enabled amenities render only those icons in stabl
       const tiles = [...h.document.querySelectorAll('#amenities-grid .amenity-tile')];
       assert.equal(tiles.length, count);
       assert.equal(h.document.getElementById('amenities-grid').dataset.count, String(count));
+      assert.equal(h.document.getElementById('amenities-title').textContent,'No local');
+      assert.equal(h.document.querySelector('.public-main').firstElementChild.id,'servicos');
+      assert.equal(h.document.getElementById('address-card').hidden,false);
+      assert.equal(h.document.getElementById('amenities-section').parentElement.id,'address-card');
       assert.deepEqual(tiles.map(el => el.title), amenityNames.slice(0, count));
+      assert.deepEqual(tiles.map(el => el.querySelector('.amenity-label')?.textContent),amenityNames.slice(0,count));
       assert.ok(tiles.every(el => el.querySelectorAll('svg[aria-hidden="true"]').length === 1));
       assert.ok(tiles.every(el => el.getAttribute('aria-label')?.includes('disponível')));
       assert.ok(tiles.every(el => el.getAttribute('aria-expanded') === 'false'));
@@ -107,4 +114,61 @@ test('staff without write access cannot change My Site amenity switches', async 
   assert.ok(fieldset?.disabled);
   assert.equal(fieldset.querySelector('[name=amenity_wifi]').checked,true);
   assert.equal(h.errors.length,0);
+});
+
+
+test('Amenities stay inside Onde estamos after map/address/route, never above services',async t=>{
+  const data=catalogue();Object.assign(data.site,{
+    amenity_wifi:true,amenity_parking:true,amenity_children:true,
+    address:'Rua Modelo, 123',city:'Cidade de Teste'
+  });
+  const h=await makePublic({data});t.after(()=>h.close());await flush();
+  const card=h.document.getElementById('address-card');
+  const section=h.document.getElementById('amenities-section');
+  assert.equal(card.hidden,false);
+  assert.equal(section.hidden,false);
+  assert.equal(section.parentElement,card);
+  assert.ok(h.document.getElementById('maps-link').compareDocumentPosition(section) &
+    h.window.Node.DOCUMENT_POSITION_FOLLOWING,
+    'a linha No local deve vir depois da rota e do endereço');
+  assert.equal(h.document.querySelector('.public-main').firstElementChild.id,'servicos');
+  assert.equal(h.document.querySelectorAll('.amenities-section').length,1);
+  assert.deepEqual([...section.querySelectorAll('.amenity-label')].map(n=>n.textContent),
+    ['Wi-Fi','Estacionamento','Atende crianças']);
+  assert.equal(h.errors.length,0);
+});
+
+test('An enterprise without an address can still show only its published amenities, without a fake map',async t=>{
+  const data=catalogue();
+  Object.assign(data.site,{
+    address:'',address_display:'',city:'',state:'',postal_code:'',
+    maps_url:'javascript:alert(1)',amenity_wifi:true,
+    amenity_parking:false,amenity_children:false,amenity_accessibility:false
+  });
+  const h=await makePublic({data});t.after(()=>h.close());await flush();
+  assert.equal(h.document.getElementById('address-card').hidden,false);
+  assert.equal(h.document.getElementById('location-details').hidden,true);
+  assert.equal(h.document.getElementById('map-preview').hidden,true);
+  assert.equal(h.document.getElementById('maps-link').hidden,true);
+  assert.equal(h.document.getElementById('location-map').hasAttribute('src'),false);
+  assert.equal(h.document.getElementById('location-subtitle').textContent,
+    'Confira as comodidades disponíveis.');
+  assert.equal(h.document.querySelectorAll('.amenity-tile').length,1);
+  assert.equal(h.document.querySelector('.amenity-label').textContent,'Wi-Fi');
+  assert.equal(h.errors.length,0);
+});
+
+test('Grid rules keep equal-width chips and center the third item only on phones',async()=>{
+  const {readFile}=await import('node:fs/promises');
+  const css=await readFile(new URL('../app/static/orion-public.css',import.meta.url),'utf8');
+  assert.match(css,/\.location-card \.amenities-grid\{\s*display:grid;grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+  assert.match(css,/\.location-card \.amenities-grid\[data-count="3"\] \.amenity-tile:last-child\{\s*grid-column:1\/-1;justify-self:center/);
+  assert.match(css,/@media\(min-width:720px\)/);
+  for(const [count,cols] of [[1,1],[2,2],[3,3],[4,4]]){
+    const selector='.location-card .amenities-grid[data-count="'+count+'"]';
+    assert.ok(css.includes(selector+'{grid-template-columns:'), 'layout for '+count);
+    assert.ok(css.includes('repeat('+cols+',minmax(0,1fr))')||
+      count===1, 'columns for '+count);
+  }
+  assert.doesNotMatch(css,/\.location-card \.amenities-grid\{[^}]*display:flex/);
 });

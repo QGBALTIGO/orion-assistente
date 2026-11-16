@@ -1,0 +1,269 @@
+{
+  "schema_version": 1,
+  "base": "/api/v1/tenants/{tenant_id}/subscription-whatsapp/chatbot-test",
+  "feature": "chatbot.manage",
+  "routes": {
+    "bootstrap": "GET /api/v1/tenants/10000000-0000-4000-8000-000000000001/subscription-whatsapp/chatbot-test",
+    "simulate": "POST /api/v1/tenants/10000000-0000-4000-8000-000000000001/subscription-whatsapp/chatbot-test/simulate",
+    "asset": "GET /api/v1/tenants/10000000-0000-4000-8000-000000000001/subscription-whatsapp/chatbot-test/assets/{asset_id}/content?ticket={ticket}&variant=original|thumbnail"
+  },
+  "policy": {
+    "session": "local_only",
+    "inactive_rules": true,
+    "live_hours": false,
+    "live_cooldowns": false,
+    "external_requests": false,
+    "real_messages": false,
+    "local_context_changes_on": [
+      "clear",
+      "device_change",
+      "tenant_change",
+      "unmount"
+    ]
+  },
+  "bootstrap_response": {
+    "chatbot_revision": 7,
+    "devices": [
+      {
+        "id": "20000000-0000-4000-8000-000000000001",
+        "name": "Atendimento de exemplo",
+        "status": "disconnected",
+        "phone_e164": null
+      }
+    ],
+    "capabilities": {
+      "simulate": true,
+      "include_inactive": true,
+      "private_media": true
+    },
+    "limits": {
+      "message_utf16": 400,
+      "max_outputs": 30,
+      "context_ttl_seconds": 1800
+    }
+  },
+  "simulate_request": {
+    "request_id": "50000000-0000-4000-8000-000000000001",
+    "context_id": "40000000-0000-4000-8000-000000000001",
+    "device_id": "20000000-0000-4000-8000-000000000001",
+    "expected_chatbot_revision": 7,
+    "input": {
+      "type": "text",
+      "text": "  /START  "
+    }
+  },
+  "rule_request": {
+    "request_id": "50000000-0000-4000-8000-000000000001",
+    "context_id": "40000000-0000-4000-8000-000000000001",
+    "device_id": "20000000-0000-4000-8000-000000000001",
+    "expected_chatbot_revision": 7,
+    "input": {
+      "type": "rule",
+      "rule_id": "60000000-0000-4000-8000-000000000001"
+    }
+  },
+  "selection_request": {
+    "request_id": "50000000-0000-4000-8000-000000000001",
+    "context_id": "40000000-0000-4000-8000-000000000001",
+    "device_id": "20000000-0000-4000-8000-000000000001",
+    "expected_chatbot_revision": 7,
+    "input": {
+      "type": "selection",
+      "selection_token": "eyJmaXh0dXJlIjoic3ludGhldGljIn0.c3ludGhldGljX2ZpeHR1cmVfbm90X2F1dGhvcml6ZWQ",
+      "row_id": "80000000-0000-4000-8000-000000000001"
+    }
+  },
+  "simulate_response": {
+    "request_id": "50000000-0000-4000-8000-000000000001",
+    "context_id": "40000000-0000-4000-8000-000000000001",
+    "chatbot_revision": 7,
+    "device": {
+      "id": "20000000-0000-4000-8000-000000000001",
+      "name": "Atendimento de exemplo",
+      "status": "disconnected",
+      "phone_e164": null
+    },
+    "input": {
+      "type": "text",
+      "text": "/START",
+      "rule_id": null,
+      "row_id": null
+    },
+    "outcome": "matched",
+    "matched_rule": {
+      "id": "60000000-0000-4000-8000-000000000001",
+      "keyword": "/start",
+      "match_mode": "equal",
+      "enabled": false,
+      "reason": "keyword"
+    },
+    "messages": [
+      {
+        "id": "50000000-0000-4000-8000-000000000001",
+        "type": "text",
+        "text": "Olá! Como posso ajudar?",
+        "delay_seconds": 1
+      }
+    ],
+    "keywords": [
+      {
+        "rule_id": "60000000-0000-4000-8000-000000000001",
+        "keyword": "/start",
+        "match_mode": "equal",
+        "enabled": false
+      }
+    ]
+  },
+  "message_examples": {
+    "text": {
+      "id": "50000000-0000-4000-8000-000000000001",
+      "type": "text",
+      "text": "Olá! Como posso ajudar?",
+      "delay_seconds": 1
+    },
+    "list": {
+      "id": "50000000-0000-4000-8000-000000000001",
+      "type": "list",
+      "title": "Atendimento",
+      "description": "Escolha uma opção",
+      "footer": "Orion",
+      "button_text": "Ver opções",
+      "delay_seconds": 1,
+      "selection_token": "eyJmaXh0dXJlIjoic3ludGhldGljIn0.c3ludGhldGljX2ZpeHR1cmVfbm90X2F1dGhvcml6ZWQ",
+      "expires_at": "2026-11-04T15:30:00+00:00",
+      "sections": [
+        {
+          "id": "70000000-0000-4000-8000-000000000001",
+          "title": "Opções",
+          "rows": [
+            {
+              "id": "80000000-0000-4000-8000-000000000001",
+              "title": "Informações",
+              "description": "Conheça o serviço"
+            }
+          ]
+        }
+      ]
+    },
+    "media": {
+      "id": "50000000-0000-4000-8000-000000000001",
+      "type": "media",
+      "kind": "image",
+      "caption": "Imagem da empresa",
+      "asset": {
+        "id": "90000000-0000-4000-8000-000000000001",
+        "kind": "image",
+        "mime": "image/jpeg",
+        "size": 1024,
+        "file_name": "imagem.jpg",
+        "width": 32,
+        "height": 24,
+        "duration_ms": null,
+        "content_url": "/api/v1/tenants/10000000-0000-4000-8000-000000000001/subscription-whatsapp/chatbot-test/assets/90000000-0000-4000-8000-000000000001/content?ticket=eyJmaXh0dXJlIjoic3ludGhldGljIn0.c3ludGhldGljX2ZpeHR1cmVfbm90X2F1dGhvcml6ZWQ&variant=original",
+        "thumbnail_url": "/api/v1/tenants/10000000-0000-4000-8000-000000000001/subscription-whatsapp/chatbot-test/assets/90000000-0000-4000-8000-000000000001/content?ticket=eyJmaXh0dXJlIjoic3ludGhldGljIn0.c3ludGhldGljX2ZpeHR1cmVfbm90X2F1dGhvcml6ZWQ&variant=thumbnail",
+        "thumbnail_mime": "image/jpeg",
+        "thumbnail_size": 256
+      },
+      "delay_seconds": 1
+    },
+    "carousel": {
+      "id": "50000000-0000-4000-8000-000000000001",
+      "type": "carousel",
+      "body": "Conheça as opções",
+      "cards": [
+        {
+          "title": "Opção de exemplo",
+          "body": "Descrição",
+          "button_text": "Saiba mais",
+          "image_status": "not_requested"
+        }
+      ],
+      "notice": "As imagens externas não são consultadas na simulação. Os botões deste carrossel não possuem resposta cadastrada.",
+      "delay_seconds": 1
+    },
+    "external_request": {
+      "id": "50000000-0000-4000-8000-000000000001",
+      "type": "external_request",
+      "method": "POST",
+      "url": "https://example.com/chatbot",
+      "as_file": false,
+      "custom_template": "",
+      "executed": false,
+      "text": "Etapa de URL não executada na simulação. O retorno do servidor não foi consultado.",
+      "delay_seconds": 1
+    },
+    "unavailable": {
+      "id": "50000000-0000-4000-8000-000000000001",
+      "type": "unavailable",
+      "text": "Esta resposta não pôde ser simulada. Confira as referências, tags e arquivos no Chatbot.",
+      "code": "CHATBOT_TEST_UNAVAILABLE",
+      "delay_seconds": 0
+    }
+  },
+  "no_match_response": {
+    "request_id": "50000000-0000-4000-8000-000000000001",
+    "context_id": "40000000-0000-4000-8000-000000000001",
+    "chatbot_revision": 7,
+    "device": {
+      "id": "20000000-0000-4000-8000-000000000001",
+      "name": "Atendimento de exemplo",
+      "status": "disconnected",
+      "phone_e164": null
+    },
+    "input": {
+      "type": "text",
+      "text": "/START",
+      "rule_id": null,
+      "row_id": null
+    },
+    "outcome": "no_match",
+    "matched_rule": null,
+    "messages": [
+      {
+        "id": "50000000-0000-4000-8000-000000000001",
+        "type": "text",
+        "text": "Nenhuma resposta correspondente ao seu texto para este dispositivo",
+        "delay_seconds": 0
+      }
+    ],
+    "keywords": [
+      {
+        "rule_id": "60000000-0000-4000-8000-000000000001",
+        "keyword": "/start",
+        "match_mode": "equal",
+        "enabled": false
+      }
+    ]
+  },
+  "media_types": {
+    "image": {
+      "mime": "image/jpeg",
+      "max_bytes": 5000000
+    },
+    "sticker": {
+      "mime": "image/webp",
+      "max_bytes": 500000
+    },
+    "video": {
+      "mime": "video/mp4",
+      "max_bytes": 16000000
+    },
+    "ptv": {
+      "mime": "video/mp4",
+      "max_bytes": 16000000
+    },
+    "document": {
+      "mime": "text/plain; charset=utf-8",
+      "max_bytes": 1000000
+    }
+  },
+  "thumbnail": {
+    "mime": "image/jpeg",
+    "max_bytes": 100000
+  },
+  "errors": {
+    "stale_revision": "CHATBOT_CONFLICT",
+    "invalid_context": "CHATBOT_TEST_CONTEXT_INVALID",
+    "unavailable_content": "CHATBOT_TEST_UNAVAILABLE"
+  }
+}

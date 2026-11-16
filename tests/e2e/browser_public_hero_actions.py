@@ -134,8 +134,17 @@ def test_hero_icons_align_and_share_opens_native_api_without_booking(engine, wid
             assert "Segunda-feira a sexta-feira" in hours.inner_text()
             assert "Sábado" in hours.inner_text() and "Domingo" in hours.inner_text()
             assert "Fechado" in hours.inner_text()
-            assert hours.locator(".hours-row").first.locator(".hours-shift").count()==2
-            assert hours.locator(".hours-row").first.locator(".hours-break").inner_text()=="Intervalo 12:00–13:00"
+            first_hours=hours.locator(".hours-row").first
+            opening_closing=first_hours.locator(".hours-shift")
+            interval=first_hours.locator(".hours-break")
+            assert opening_closing.count()==1, "uma faixa única de abertura e fechamento"
+            assert opening_closing.inner_text()=="09:00–18:00"
+            assert interval.inner_text()=="Intervalo 12:00–13:00"
+            main_box=opening_closing.bounding_box()
+            pause_box=interval.bounding_box()
+            assert main_box and pause_box and pause_box["y"]>=main_box["y"]+main_box["height"]-2
+            assert float(interval.evaluate("(el)=>parseFloat(getComputedStyle(el).fontSize)"))<float(
+                opening_closing.evaluate("(el)=>parseFloat(getComputedStyle(el).fontSize)"))
             assert page.locator(".map-provider").count()==0,"no duplicate Google Maps overlay"
             frame=page.locator("#location-map")
             frame_box=frame.bounding_box()

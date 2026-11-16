@@ -1,0 +1,99 @@
+name: WhatsApp transport hardening
+on:
+  push:
+    branches: [fix/whatsapp-transport-hardening-20261104]
+  pull_request:
+    paths: ['qr-bridge/**', 'app/qr_channel*', 'app/subscription*', 'scripts/check_whatsapp_regression.py', '.github/workflows/whatsapp-transport-hardening.yml']
+permissions:
+  contents: read
+concurrency:
+  group: whatsapp-hardening-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  META_LIVE_SEND: '0'
+  QR_AI_ENABLED: '0'
+  INBOX_SEND_ENABLED: '0'
+  MARKETING_EXECUTION_ENABLED: '0'
+  CAKTO_BILLING_LIVE_ENABLED: '0'
+  ORION_DIRECT_PAYMENTS_ENABLED: '0'
+  ORION_NOTIFY_SELF_ON_LINK: '0'
+  QR_BRIDGE_URL: ''
+jobs:
+  bridge:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Dependencias fixadas
+        run: npm ci --prefix qr-bridge --ignore-scripts --no-audit --no-fund
+      - name: Transporte completo e comparacao independente com a base publicada
+        run: |
+          mkdir -p /tmp/orion-wa-base
+          git archive 2d20427f23d3e380880de734d11998b56de7305b | tar -x -C /tmp/orion-wa-base
+          ln -s "$PWD/qr-bridge/node_modules" /tmp/orion-wa-base/qr-bridge/node_modules
+          set +e
+          (cd /tmp/orion-wa-base && node --test qr-bridge/test/*.test.mjs) > /tmp/bridge-baseline.log 2>&1
+          baseline_status=$?
+          node --test qr-bridge/test/*.test.mjs > /tmp/bridge-candidate.log 2>&1
+          candidate_status=$?
+          set -e
+          test "$baseline_status" -le 1
+          test "$candidate_status" -le 1
+          python scripts/check_whatsapp_regression.py /tmp/bridge-baseline.log /tmp/bridge-candidate.log /tmp/bridge-regression.json
+      - name: Todos os transportes sem o fixture legado de interface
+        run: |
+          mapfile -t tests < <(find qr-bridge/test -name '*.test.mjs' ! -name 'panel-ui.test.mjs' | sort)
+          node --test "${tests[@]}" > /tmp/bridge-transport.log 2>&1
+      - name: Auditoria das dependencias publicadas
+        run: npm audit --prefix qr-bridge --omit=dev --audit-level=high --json > /tmp/bridge-audit.json
+      - name: Imagem reproduzivel e sintaxe
+        run: |
+          node --check qr-bridge/src/server.mjs
+          node --check qr-bridge/src/channel-session.mjs
+          docker build -t orion-whatsapp-hardening qr-bridge
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: whatsapp-hardening-validation
+          path: |
+            /tmp/bridge-baseline.log
+            /tmp/bridge-candidate.log
+            /tmp/bridge-transport.log
+            /tmp/bridge-regression.json
+            /tmp/bridge-audit.json
+          retention-days: 7
+  contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: python -m pip install -c requirements.lock '.[test]'
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      - name: Contratos, webhooks, URL, canais e agendamentos
+        run: |
+          python -m pytest -q -ra tests/unit/test_subscription_devices.py tests/unit/test_subscription_device_rules.py tests/unit/test_subscription_device_audio.py tests/unit/test_subscription_devices_release.py tests/unit/test_subscription_chatbot*.py tests/unit/test_subscription_sent_messages*.py tests/unit/test_qr_channel*.py tests/unit/test_whatsapp_bridge_url_security.py tests/unit/test_qr_single_connection.py tests/unit/test_qr_admin_identity.py tests/unit/test_appointment_consent_release.py --junitxml=/tmp/whatsapp-contracts.xml
+      - run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+      - name: Formulario HTTPS e isolamento da interface
+        run: node --test ui-tests/subscription-devices.test.mjs ui-tests/subscription-chatbot*.test.mjs ui-tests/channels*.test.mjs ui-tests/single-business-context.test.mjs > /tmp/whatsapp-ui.log 2>&1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: whatsapp-hardening-contracts
+          path: |
+            /tmp/whatsapp-contracts.xml
+            /tmp/whatsapp-ui.log
+          retention-days: 7

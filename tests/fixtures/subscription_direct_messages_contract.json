@@ -1,0 +1,290 @@
+{
+  "synthetic_example": true,
+  "base": "/api/v1/tenants/{tenant_id}/subscription-whatsapp/direct-messages",
+  "feature": "direct_messages.manage",
+  "route": "enviar-mensagem",
+  "options": {
+    "devices": [
+      {
+        "id": "00000000-0000-4000-8000-000000000003",
+        "name": "Dispositivo sintético",
+        "phone_e164": "+5567999999902",
+        "status": "connected",
+        "available": true,
+        "blocked_reason": null
+      }
+    ],
+    "templates": [],
+    "timezone": "America/Cuiaba",
+    "generated_at": "2026-11-05T16:00:00+00:00",
+    "limits": {
+      "templates": 100,
+      "name_utf16": 100,
+      "text_utf16": 1000,
+      "followup_utf16": 1000,
+      "upload_bytes": 10000000,
+      "sticker_upload_bytes": 200000,
+      "ptv_seconds": 60,
+      "audio_seconds": 1800,
+      "media_extensions": [
+        "jpg",
+        "jpeg",
+        "png",
+        "webp",
+        "pdf",
+        "docx",
+        "xlsx",
+        "csv",
+        "txt",
+        "mp3",
+        "mp4",
+        "ogg",
+        "wav",
+        "opus",
+        "apk"
+      ],
+      "sticker_extensions": [
+        "jpg",
+        "jpeg",
+        "png"
+      ],
+      "ptv_extensions": [
+        "mp4"
+      ],
+      "contacts": 10,
+      "caption_utf16": 1000,
+      "review_seconds": 120
+    },
+    "chatbot_revision": 7,
+    "capabilities": {
+      "manage": true,
+      "upload": true,
+      "private_media": true,
+      "types": {
+        "text": true,
+        "image": true,
+        "video": true,
+        "audio": true,
+        "document": true,
+        "sticker": true,
+        "ptv": true,
+        "location": true
+      }
+    }
+  },
+  "contacts": {
+    "items": [
+      {
+        "key": "phone:5567999999901",
+        "phone_e164": "+5567999999901",
+        "name": "Contato sintético",
+        "available": true,
+        "blocked_reason": null,
+        "version": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "page_size": 30,
+    "pages": 1,
+    "timezone": "America/Cuiaba",
+    "generated_at": "2026-11-05T16:00:00+00:00"
+  },
+  "review_request": {
+    "idempotency_key": "00000000-0000-4000-8000-000000000008",
+    "message": {
+      "kind": "text",
+      "device_id": "00000000-0000-4000-8000-000000000003",
+      "recipients": {
+        "mode": "phone",
+        "phone": "5567999999901",
+        "contact_keys": []
+      },
+      "text": "Olá. {\"nome\":\"literal\"}"
+    }
+  },
+  "review": {
+    "request_id": "00000000-0000-4000-8000-000000000007",
+    "idempotency_key": "00000000-0000-4000-8000-000000000008",
+    "kind": "review",
+    "status": "prepared",
+    "replayed": false,
+    "created_at": "2026-11-05T16:00:00+00:00",
+    "expires_at": "2026-11-05T16:02:00+00:00",
+    "result": null,
+    "preview": {
+      "review_version": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "expires_at": "2026-11-05T16:02:00+00:00",
+      "timezone": "America/Cuiaba",
+      "total": 1,
+      "eligible": 1,
+      "blocked": 0,
+      "duplicates": 0,
+      "duplicate_destinations": 0,
+      "unique_destinations": 1,
+      "items": [
+        {
+          "row_key": "00000000-0000-4000-8000-000000000004",
+          "ordinal": 1,
+          "source": "manual",
+          "phone_e164": "+5567999999901",
+          "name": "Contato",
+          "device": {
+            "id": "00000000-0000-4000-8000-000000000003",
+            "name": "Dispositivo sintético",
+            "phone_e164": "+5567999999902"
+          },
+          "message_type": "text",
+          "template": null,
+          "message_preview": {
+            "type": "text",
+            "template_name": null,
+            "text": "Olá. {\"nome\":\"literal\"}",
+            "caption": null,
+            "followup": null,
+            "parts": [
+              {
+                "type": "text",
+                "text": "Olá. {\"nome\":\"literal\"}"
+              }
+            ]
+          },
+          "available": true,
+          "blocked_reason": null,
+          "error_code": null
+        }
+      ],
+      "kind": "text",
+      "save_template": null,
+      "warnings": []
+    },
+    "send_id": null
+  },
+  "confirmed": {
+    "request_id": "00000000-0000-4000-8000-000000000007",
+    "idempotency_key": "00000000-0000-4000-8000-000000000008",
+    "kind": "review",
+    "status": "succeeded",
+    "replayed": false,
+    "created_at": "2026-11-05T16:00:00+00:00",
+    "expires_at": "2026-11-05T16:02:00+00:00",
+    "result": {
+      "send": {
+        "version": 1,
+        "status": "pending",
+        "status_label": "Na fila",
+        "timezone": "America/Cuiaba",
+        "created_at": "2026-11-05T16:00:00+00:00",
+        "confirmed_at": "2026-11-05T16:00:00+00:00",
+        "finished_at": null,
+        "progress": {
+          "total": 1,
+          "processed": 0,
+          "pending": 1,
+          "sent": 0,
+          "failed": 0,
+          "uncertain": 0,
+          "cancelled": 0,
+          "percent": 0
+        },
+        "actions": [
+          "cancel"
+        ],
+        "send_id": "00000000-0000-4000-8000-000000000005"
+      },
+      "saved_template": null
+    },
+    "preview": null,
+    "send_id": "00000000-0000-4000-8000-000000000005"
+  },
+  "detail": {
+    "send": {
+      "version": 1,
+      "status": "pending",
+      "status_label": "Na fila",
+      "timezone": "America/Cuiaba",
+      "created_at": "2026-11-05T16:00:00+00:00",
+      "confirmed_at": "2026-11-05T16:00:00+00:00",
+      "finished_at": null,
+      "progress": {
+        "total": 1,
+        "processed": 0,
+        "pending": 1,
+        "sent": 0,
+        "failed": 0,
+        "uncertain": 0,
+        "cancelled": 0,
+        "percent": 0
+      },
+      "actions": [
+        "cancel"
+      ],
+      "send_id": "00000000-0000-4000-8000-000000000005"
+    },
+    "recipients": {
+      "items": [
+        {
+          "row_key": "00000000-0000-4000-8000-000000000004",
+          "ordinal": 1,
+          "source": "manual",
+          "phone_e164": "+5567999999901",
+          "name": "Contato",
+          "device": {
+            "id": "00000000-0000-4000-8000-000000000003",
+            "name": "Dispositivo sintético",
+            "phone_e164": "+5567999999902"
+          },
+          "message_type": "text",
+          "template": null,
+          "message_preview": {
+            "type": "text",
+            "template_name": null,
+            "text": "Olá. {\"nome\":\"literal\"}",
+            "caption": null,
+            "followup": null,
+            "parts": [
+              {
+                "type": "text",
+                "text": "Olá. {\"nome\":\"literal\"}"
+              }
+            ]
+          },
+          "error_code": null,
+          "id": "00000000-0000-4000-8000-000000000006",
+          "send_id": "00000000-0000-4000-8000-000000000005",
+          "status": "pending",
+          "status_label": "Esperando",
+          "error_message": null,
+          "parts": [],
+          "sent_at": null,
+          "created_at": "2026-11-05T16:00:00+00:00"
+        }
+      ],
+      "total": 1,
+      "page": 1,
+      "page_size": 30,
+      "pages": 1,
+      "timezone": "America/Cuiaba",
+      "generated_at": "2026-11-05T16:00:00+00:00"
+    }
+  },
+  "upload_response": {
+    "request_id": "50000000-0000-4000-8000-000000000004",
+    "chatbot_revision": 7,
+    "file_name": "orientacoes.txt",
+    "asset": {
+      "id": "70000000-0000-4000-8000-000000000001",
+      "kind": "document",
+      "mime": "text/plain; charset=utf-8",
+      "size": 26,
+      "sha256": "e2b6431ab6f4c34662c2981dfd2fcadaa63fd42c7ef2398ef89175fb4675687e",
+      "width": null,
+      "height": null,
+      "duration_ms": null,
+      "file_name": "resposta.txt",
+      "thumbnail": null,
+      "content_url": "/api/v1/tenants/{tenant_id}/subscription-whatsapp/templates/assets/70000000-0000-4000-8000-000000000001/content?expected_chatbot_revision=7&variant=original",
+      "thumbnail_url": null
+    }
+  }
+}

@@ -240,7 +240,12 @@ async def test_changed_catalog_or_published_profile_cannot_confirm_an_old_summar
         h.business["profile"]["capabilities"] = ["catalog_answers"]
     result = await h.turn()
     assert result["step"] == "context_changed" and not h.writes
-    assert h.key not in h.redis.values
+    state = json.loads(h.redis.values[h.key])
+    # The generic fixture label "Cliente" is not a useful personal name.
+    assert state == {"step": "menu", "history": [
+        {"role": "user", "content": "SIM"}, {"role": "assistant", "content": result["answer"]}]}
+    assert not set(state) & {"hold", "services", "professional", "expected_snapshot", "hold_snapshot", "consent",
+        "appointment", "confirmation_summary", "confirmation_message_id", "confirmation_expires_at"}
 
 
 @pytest.mark.asyncio
@@ -348,14 +353,16 @@ async def test_tenant_data_keeps_real_scheduling_timezone_and_catalog_when_profi
 
 @pytest.mark.asyncio
 async def test_status_authorizes_member_before_returning_truthful_feature_flags(monkeypatch):
+    from plan_fixture import install_plan_fixture
+    from app.plan_routing import include_plan_router
+    install_plan_fixture(monkeypatch,"elite")
     tenant, account = uuid4(), uuid4()
-    actor = Actor("member", account_id=account)
+    actor = {"current":Actor("member",tenant_id=tenant,account_id=account,membership_role="viewer")}
     queries = []
     class Session(EmptySession):
         async def execute(self, statement, params):
             queries.append(params)
-            assert params["account"] == account
-            role = "viewer" if params["tenant"] == tenant else None
+            role = "viewer" if params["tenant"] == tenant and params["account"] == account else None
             return SimpleNamespace(scalar_one_or_none=lambda: role)
     monkeypatch.setattr(catalog_api, "support_session_factory", lambda: Session)
     monkeypatch.setenv("BUSINESS_PROFILES_ENABLED", "1")
@@ -363,12 +370,19 @@ async def test_status_authorizes_member_before_returning_truthful_feature_flags(
     monkeypatch.setenv("QR_AI_AUDIO_ENABLED", "0")
     monkeypatch.setenv("GROQ_API_KEY", "synthetic")
     app = FastAPI()
-    app.include_router(groq_api.router)
-    app.dependency_overrides[authenticate] = lambda: actor
+    include_plan_router(app,groq_api.router)
+    app.dependency_overrides[authenticate] = lambda: actor["current"]
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
         result = await client.get(f"/api/v1/tenants/{tenant}/ai/status")
         denied = await client.get(f"/api/v1/tenants/{uuid4()}/ai/status")
-    assert result.status_code == 200 and denied.status_code == 403
+        other_account=uuid4()
+        actor["current"]=Actor("member",tenant_id=tenant,account_id=other_account,membership_role="viewer")
+        foreign_account=await client.get(f"/api/v1/tenants/{tenant}/ai/status")
+        actor["current"]=Actor("member",tenant_id=tenant,account_id=account,membership_role="professional")
+        forbidden_role=await client.get(f"/api/v1/tenants/{tenant}/ai/status")
+    assert result.status_code == 200 and denied.status_code == foreign_account.status_code == forbidden_role.status_code == 403
     assert result.json()["configured"] and result.json()["preview_enabled"]
     assert result.json()["runtime_connected"] and not result.json()["audio_preview_enabled"]
     assert len(queries) == 2
+    assert queries[0] == {"tenant":tenant,"account":account}
+    assert queries[1] == {"tenant":tenant,"account":other_account}

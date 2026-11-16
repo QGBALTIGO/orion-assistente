@@ -1,11 +1,14 @@
 /** Adapter metadata, never model instructions. No media download or side effect. */
 import {createHash} from 'node:crypto';
+import {assistantSelectionCandidate,ASSISTANT_SELECTION_TEXT} from './assistant-presentation.mjs';
 const id=value=>typeof value==='string'&&/^[a-zA-Z0-9._:-]{1,160}$/.test(value)?value:undefined;
 export function normalizeInbound(message){
   let source=message?.message||{};
   source=source.ephemeralMessage?.message||source;
   if(source.viewOnceMessage||source.viewOnceMessageV2||source.viewOnceMessageV2Extension)
     return {text:'',event:{version:1,kind:'view_once'},special:true};
+  const selection=assistantSelectionCandidate(message);
+  if(selection)return {text:ASSISTANT_SELECTION_TEXT,event:{version:1,kind:'text'},special:false,selection};
   let kind='unknown',text='',context;
   if(source.editedMessage)return {text:'',event:{version:1,kind:'edited'},special:true};
   if(source.videoMessage?.gifPlayback===true&&!source.videoMessage.caption?.trim())return {text:'',event:{version:1,kind:'sticker'},silent:true,special:false};

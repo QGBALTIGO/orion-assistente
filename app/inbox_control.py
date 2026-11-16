@@ -112,12 +112,13 @@ class Change(StrictModel):
 
 
 class SendSlot(StrictModel):
-    phone: str = Field(pattern=r"^55[1-9][0-9]{9,10}$")
+    phone: str = Field(pattern=r"^(?:55[1-9][0-9]{9,10}|5959[0-9]{8})$")
     operation_id: UUID
     fingerprint: str = Field(pattern=r"^[a-f0-9]{64}$")
-    source: Literal["assistant", "automation", "manual"]
+    source: Literal["assistant", "automation", "manual", "appointment"]
     control_revision: StrictInt | None = Field(default=None, ge=1)
     text: str | None = Field(default=None, min_length=1, max_length=1200)
+    recheck: bool = Field(default=False, strict=True)
 
 
 class FinishSlot(SendSlot):
@@ -303,7 +304,7 @@ async def control_history(tenant_id: UUID, channel_id: UUID,
 
 
 @asynccontextmanager
-async def bridge_control(request, payload):
+async def bridge_control(request, payload, *, read_only=False):
     from app.qr_channels import authenticated_channel
     identity = await authenticated_channel(request, phone=payload.phone)
     if not identity.central_adopted:
@@ -315,14 +316,25 @@ async def bridge_control(request, payload):
             from app.automation_runtime import _notice_guard, _notice_identity
             guard = _notice_identity(identity.tenant_id, payload.phone, identity)
             await _notice_guard(db, guard)
-            row = await lock_control(db, identity.tenant_id, identity.channel_id, "+"+payload.phone)
+            if read_only:
+                row = (await db.execute(text("""SELECT * FROM inbox_controls
+                    WHERE tenant_id=:t AND channel_id=:channel AND contact_e164=:phone FOR UPDATE"""),
+                    {"t": identity.tenant_id, "channel": identity.channel_id, "phone": "+"+payload.phone})).mappings().one_or_none()
+                if row is None:
+                    raise HTTPException(409, "Envio sem reserva atual")
+                row = dict(row)
+            else:
+                row = await lock_control(db, identity.tenant_id, identity.channel_id, "+"+payload.phone)
             yield db, identity, row
             await _notice_guard(db, guard)
 
 
 @router.post("/internal/qr/channels/{channel_id}/send-authorize", include_in_schema=False)
 async def authorize_send(channel_id: UUID, payload: SendSlot, request: Request):
-    async with bridge_control(request, payload) as (db, identity, row):
+    if payload.source == "appointment":
+        from app.central_appointment_transport import authorize
+        return await authorize(channel_id, payload, request)
+    async with bridge_control(request, payload, read_only=payload.recheck) as (db, identity, row):
         from app.plan_permissions import require_feature
         if payload.source == "automation":
             # The persisted job, rather than the bridge/browser label, selects
@@ -360,20 +372,30 @@ async def authorize_send(channel_id: UUID, payload: SendSlot, request: Request):
         if payload.source == "manual":
             from app.inbox_runtime import manual_slot
             await manual_slot(db, identity.tenant_id, row, payload)
+            from app.inbox_send_recheck import bind, recheck
+            await (recheck if payload.recheck else bind)(db, identity, row, payload)
             return {"authorized": True, "operation_id": payload.operation_id}
-        if row["mode"] != "ai" or row["pending_operation"] is not None:
+        if row["mode"] != "ai" or not payload.recheck and row["pending_operation"] is not None:
             raise HTTPException(409, "Atendimento ocupado ou suspenso")
         # The legacy company-wide marketing pause remains a conservative veto.
         paused = (await db.execute(text("""SELECT human_paused FROM automation_contact_state
           WHERE tenant_id=:t AND contact_e164=:phone"""), {"t": identity.tenant_id, "phone": "+"+payload.phone})).scalar_one_or_none()
         if paused and payload.source == "automation":
             raise HTTPException(409, "Atendimento suspenso")
+        if payload.recheck:
+            from app.inbox_send_recheck import recheck, automatic_current
+            await recheck(db, identity, row, payload)
+            if payload.source == "automation":
+                await automatic_current(db, identity, payload)
+            return {"authorized": True, "operation_id": payload.operation_id}
         if payload.text is not None:
             from app.inbox_runtime import record_outbound, fingerprint
             if fingerprint(payload.phone, payload.text) != payload.fingerprint:
                 raise HTTPException(409, "O texto não corresponde à operação")
             await record_outbound(db, identity.tenant_id, row, payload.operation_id, payload.source,
                                   payload.text, payload.fingerprint, status="sending")
+            from app.inbox_send_recheck import bind
+            await bind(db, identity, row, payload)
         await db.execute(text("""UPDATE inbox_controls SET pending_operation=:operation,pending_fingerprint=:fingerprint,
           pending_since=clock_timestamp() WHERE tenant_id=:t AND id=:id"""),
           {"t": identity.tenant_id, "id": row["id"], "operation": payload.operation_id, "fingerprint": payload.fingerprint})
@@ -382,6 +404,9 @@ async def authorize_send(channel_id: UUID, payload: SendSlot, request: Request):
 
 @router.post("/internal/qr/channels/{channel_id}/send-finish", include_in_schema=False)
 async def finish_send(channel_id: UUID, payload: FinishSlot, request: Request):
+    if payload.source == "appointment":
+        from app.central_appointment_transport import finish
+        return await finish(channel_id, payload, request)
     async with bridge_control(request, payload) as (db, identity, row):
         if row["pending_operation"] != payload.operation_id or row["pending_fingerprint"] != payload.fingerprint:
             raise HTTPException(409, "Recibo não corresponde ao envio pendente")

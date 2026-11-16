@@ -1,0 +1,60 @@
+name: Orion - revisão segura de mensagens retidas por dispositivo
+on:
+  pull_request:
+    paths:
+      - 'qr-bridge/src/ingress-journal.mjs'
+      - 'qr-bridge/src/assistant-ingress-review.mjs'
+      - 'qr-bridge/src/channel-session.mjs'
+      - 'qr-bridge/src/channel-manager.mjs'
+      - 'qr-bridge/src/channel-routes.mjs'
+      - 'qr-bridge/src/server.mjs'
+      - 'qr-bridge/test/device-ingress-review.test.mjs'
+      - 'qr-bridge/test/ingress-review-panel.test.mjs'
+      - 'app/qr_ingress_review.py'
+      - 'app/static/orion-ingress-review.js'
+      - 'app/static/panel.html'
+      - 'tests/unit/test_qr_ingress_review.py'
+      - '.github/workflows/subscription-device-ingress-review.yml'
+  push:
+    branches: ['security/prelaunch-hardening-20261030']
+permissions:
+  contents: read
+jobs:
+  encrypted-journal:
+    name: Bridge - 4 mensagens, backup, no-replay e isolamento
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --prefix qr-bridge --ignore-scripts --no-audit --no-fund
+      - name: Validar sintaxe e dependências
+        run: |
+          node --check qr-bridge/src/assistant-ingress-review.mjs
+          node --check qr-bridge/src/ingress-journal.mjs
+          node --check qr-bridge/src/channel-session.mjs
+          node --check qr-bridge/src/channel-manager.mjs
+          node --check qr-bridge/src/channel-routes.mjs
+          node --check qr-bridge/src/server.mjs
+          node --check app/static/orion-ingress-review.js
+      - name: Testar registros criptografados e assinatura do operador
+        run: |
+          node --test qr-bridge/test/device-ingress-review.test.mjs \
+            qr-bridge/test/assistant-ingress-review.test.mjs \
+            qr-bridge/test/ingress-journal.test.mjs \
+            qr-bridge/test/ingress-review-auth.test.mjs \
+            qr-bridge/test/ingress-review-panel.test.mjs
+  admin-api:
+    name: API - escopo, permissões, CSRF e contrato
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -c requirements.lock '.[test]'
+      - name: Compilar e testar integração administrativa isolada
+        run: |
+          python -m py_compile app/qr_ingress_review.py
+          python -m pytest -q tests/unit/test_qr_ingress_review.py

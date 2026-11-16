@@ -45,8 +45,9 @@ async def checkout_db(manual_db,monkeypatch):
                 def raise_for_status(self): pass
                 def json(self): return payload
             return Reply()
-    monkeypatch.setattr(plans,"CaktoClient",Client)
-    monkeypatch.setattr(direct,"CaktoClient",Client)
+    provider = Client()
+    monkeypatch.setattr(plans,"cached_cakto_client",lambda:provider)
+    monkeypatch.setattr(direct,"cached_cakto_client",lambda:provider)
     monkeypatch.setattr(direct.httpx,"AsyncClient",Http)
     try:
         yield c

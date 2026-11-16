@@ -11,15 +11,18 @@ async function confirmStage(h){
   h.click('#booking-next');
 }
 
-test('confirmation is compact, without duplicate price, long checkbox or privacy paragraph',async t=>{
+test('confirmation keeps one price and a separate optional appointment message preference',async t=>{
   const h=await makePublic();t.after(()=>h.close());await confirmStage(h);
   const body=h.document.getElementById('booking-body');
   assert.ok(body.classList.contains('booking-confirmation-body'));
   assert.equal(body.querySelectorAll('.review-card').length,1);
   assert.equal(body.querySelector('h3.booking-contact-heading').textContent,'Seus dados');
   assert.equal(body.querySelector('h3:not(.booking-contact-heading)'),body.querySelector('.review-card h3'));
-  assert.equal(body.querySelector('.consent-label'),null);
-  assert.equal(body.querySelector('.privacy-note'),null);
+  const messages=body.querySelector('.consent-label [name=appointment_messages_opt_in]');
+  assert.ok(messages);
+  assert.equal(messages.checked,false);
+  assert.equal(messages.required,false);
+  assert.match(body.querySelector('.privacy-note').textContent,/Opcional.*WhatsApp/);
   assert.equal(body.querySelector('[name=confirmed]'),null);
   assert.ok(body.querySelector('.review-row.total'));
   assert.match(body.querySelector('.review-row.total').textContent,/52,00/);
@@ -28,7 +31,7 @@ test('confirmation is compact, without duplicate price, long checkbox or privacy
   assert.equal(h.document.getElementById('booking-next').textContent,'Confirmar agendamento');
   assert.equal(h.document.getElementById('booking-next').disabled,false);
   assert.deepEqual([...body.querySelectorAll('#customer-form .field')].map(label=>label.textContent.replace(/\s+/g,' ').trim()),
-    ['Nome completo','WhatsApp com DDD ou DDI','Data de nascimento']);
+    ['Nome completo','WhatsApp com DDD','Data de nascimento']);
   const birth=body.querySelector('[name=customer_birth_date]');
   assert.equal(birth.type,'date');assert.equal(birth.required,true);
   assert.equal(birth.min,'1900-01-01');
@@ -43,7 +46,9 @@ test('Brazilian WhatsApp is masked while typing, pasting +55 and using 10-digit 
   const h=await makePublic();t.after(()=>h.close());await confirmStage(h);
   const input=h.document.querySelector('[name=customer_phone]');
   assert.equal(input.type,'tel');
-  assert.equal(input.placeholder,'(00) 00000-0000 ou +595 9...');
+  assert.equal(input.placeholder,'(00) 00000-0000');
+  assert.equal(input.autocomplete,'tel-national');
+  assert.equal(input.inputMode,'tel');
   for(const [typed,shown] of [
     ['86','(86'],['86972','(86) 972'],
     ['86972676282','(86) 97267-6282'],
@@ -72,7 +77,8 @@ test('submits exactly once with canonical WhatsApp, real birth date and affirmat
   assert.equal(posts[0].url,publicBase+'/appointments');
   assert.deepEqual(posts[0].body,{
     quote,start_at:firstStart,customer_name:'Cliente sintética',
-    customer_phone:'+5586972676282',customer_birth_date:'1994-04-09',confirmed:true
+    customer_phone:'+5586972676282',customer_birth_date:'1994-04-09',confirmed:true,
+    appointment_messages_opt_in:false
   });
   assert.equal(h.document.querySelector('[name=customer_birth_date]'),null);
   assert.match(h.document.getElementById('booking-body').textContent,/Agendamento confirmado!/);
@@ -98,9 +104,8 @@ test('WhatsApp abre automaticamente somente depois de o backend confirmar, com p
   const pending = new Promise(resolve => { finish = resolve; });
   const h=await makePublic({ respond: url => url.endsWith('/appointments') ? pending : undefined });
   t.after(()=>h.close());await confirmStage(h);
-  const opened=[],navigated=[];
-  const tab={opener:h.window,location:{replace:url=>navigated.push(url)}};
-  h.window.open=(url,target)=>{opened.push({url,target});return tab;};
+  const opened=[];
+  h.window.open=(url,target)=>{opened.push({url,target});return null;};
   h.fill('[name=customer_name]','Cliente sintético');
   h.fill('[name=customer_phone]','86972676282');
   h.fill('[name=customer_birth_date]','1990-07-06');
@@ -114,9 +119,11 @@ test('WhatsApp abre automaticamente somente depois de o backend confirmar, com p
   const link='https://wa.me/5567999999999?text='+encodeURIComponent(message);
   finish(response({...confirmed(),protocol:'AG-G32XU5',whatsapp_confirmation_url:link},201));
   await flush();
-  assert.deepEqual(opened,[{url:'about:blank',target:'_blank'}]);
-  assert.equal(tab.opener,null,'janela do WhatsApp não acessa a página do Orion');
-  assert.deepEqual(navigated,[link]);
+  // On iOS the confirmed appointment navigates in the CURRENT tab.
+  // jsdom doesn't implement external navigation: its warning is expected.
+  assert.deepEqual(opened,[],'não tentar criar popup bloqueado no iPhone');
+  assert.ok(h.errors.some(error=>/Not implemented: navigation/.test(error.message)),
+    'redirecionamento automático tentado só após confirmação');
   assert.match(h.document.getElementById('booking-body').textContent,/Agendamento confirmado!/);
   assert.match(h.document.getElementById('booking-body').textContent,/AG-G32XU5/);
   const fallback=h.document.querySelector('.success a[href^="https://wa.me/"]');
@@ -124,7 +131,7 @@ test('WhatsApp abre automaticamente somente depois de o backend confirmar, com p
   assert.equal(fallback.href,link);
   assert.equal(fallback.textContent,'Abrir WhatsApp novamente');
   assert.equal(fallback.target,'_blank');
-  assert.equal(h.errors.length,0);
+  assert.equal(h.errors.filter(error=>!/Not implemented: navigation/.test(error.message)).length,0);
 });
 
 test('sem URL autorizada ou com URL adulterada, agendamento continua salvo sem redirecionar',async t=>{

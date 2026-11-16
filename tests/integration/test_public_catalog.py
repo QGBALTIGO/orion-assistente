@@ -46,7 +46,7 @@ async def public_db(monkeypatch):
         pytest.skip('Requires local PostgreSQL')
     monkeypatch.setenv('SUPPORT_API_TOKEN', 'public-test-support-signing-key-at-least-32-characters')
     monkeypatch.setenv('BUSINESS_PROFILES_ENABLED', '1')
-    monkeypatch.delenv('PUBLIC_SITE_SIGNING_KEY', raising=False)
+    monkeypatch.setenv('PUBLIC_SITE_SIGNING_KEY','synthetic-public-quote-signing-secret-not-for-production')
     cache = TestQuotaCache()
     monkeypatch.setattr('app.public_site_api._redis', lambda: cache)
     app = FastAPI()

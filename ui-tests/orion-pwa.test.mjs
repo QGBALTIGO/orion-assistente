@@ -11,7 +11,7 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 8));
 
 function setup({installed=true}={}) {
   const dom = new JSDOM('<!doctype html><html><body><div id="host"></div></body></html>', {
-    url: "https://orionagenda.pro/panel", runScripts: "outside-only",
+    url: "https://orionagenda.pro/painel", runScripts: "outside-only",
   });
   const {window:w} = dom;
   Object.defineProperty(w, "isSecureContext", {value:true,configurable:true});
@@ -33,7 +33,7 @@ function setup({installed=true}={}) {
     subscribe:async options=>{assert.equal(options.userVisibleOnly,true);assert.equal(options.applicationServerKey.length,65);subCalls++;existing=sub;return sub;}
   }};
   w.navigator.serviceWorker={register:async(url,opts)=>{
-    assert.equal(url,"/pwa-sw.js");assert.equal(opts.scope,"/panel");return registration;
+    assert.equal(url,"/pwa-sw.js");assert.equal(opts.scope,"/painel");return registration;
   }};
   w.eval(client);
   const requests=[];
@@ -89,6 +89,6 @@ test("service worker always displays visible push and opens only Orion panel", a
   assert.match(shown[0][1].body,/teste do painel Orion/);
   events.notificationclick({notification:{close(){}},waitUntil:promise=>until=promise});
   await until;
-  assert.deepEqual(opened,["/panel"]);
+  assert.deepEqual(opened,["/painel"]);
   assert.ok(!worker.includes('addEventListener("fetch"'));
 });

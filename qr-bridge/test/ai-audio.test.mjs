@@ -95,3 +95,27 @@ test('shared bounded audio lifecycle has no API routing and keeps actual support
   assert.equal(result,'complete text');assert.deepEqual(calls,['audio/webm']);assert.ok(data.every(byte=>byte===0));
   assert.equal(await withAssistantAudio(voice({mimetype:'video/mp4'}),{downloadMediaMessage:async()=>assert.fail('must not download')},async()=>assert.fail('must not consume')),null);
 });
+
+test('managed transcription callback never uses global credentials or HTTP and erases its audio',async()=>{
+  const data=Buffer.from('synthetic managed audio');let calls=0;
+  const text=await transcribeAssistantAudio(voice(),{client:{},logger:{},phone:settings.phone,
+    downloadMediaMessage:async()=>data,transcribe:async payload=>{
+      calls++;assert.equal(payload.buffer,data);assert.equal(payload.phone,settings.phone);
+      assert.equal(payload.mediaType,'audio/ogg');return ' Complete safe transcript ';},
+    fetchFn:async()=>assert.fail('Managed ASR cannot fall back to the global API')});
+  assert.equal(text,'Complete safe transcript');assert.equal(calls,1);assert.ok(data.every(byte=>byte===0));
+});
+
+test('managed ASR refusal, empty and invalid result never fall back or return partial text',async()=>{
+  for(const result of [null,'','x'.repeat(1501),{text:'untrusted shape'}]){
+    const data=Buffer.from('synthetic managed audio');
+    const text=await transcribeAssistantAudio(voice(),{...settings,downloadMediaMessage:async()=>data,
+      transcribe:async()=>result,fetchFn:async()=>assert.fail('must not fall back')});
+    assert.equal(text,null);assert.ok(data.every(byte=>byte===0));
+  }
+  const data=Buffer.from('synthetic refused audio');
+  await assert.rejects(transcribeAssistantAudio(voice(),{...settings,downloadMediaMessage:async()=>data,
+    transcribe:async()=>{throw Object.assign(Error('synthetic managed refusal'),{status:403});},
+    fetchFn:async()=>assert.fail('must not fall back')}),/refusal/);
+  assert.ok(data.every(byte=>byte===0));
+});

@@ -70,7 +70,7 @@ async def test_approval_rechecks_business_assigned_after_the_invitation_was_clai
                          {"t": ctx.b, "a": ctx.new_actor.account_id})
     with pytest.raises(HTTPException) as denied:
         await management_team.review(ctx.a, row["id"],
-            management_team.InvitationReview(action="approve", expected_version=row["version"]), ctx.actor)
+            management_team.InvitationReview(action="approve", expected_version=row["version"]), Actor("support"))
     assert denied.value.status_code == 409
     assert await guest_memberships(ctx) == [(ctx.b, "viewer", True)]
     async with ctx.migration.connect() as db:
@@ -86,7 +86,7 @@ async def test_concurrent_owners_in_different_businesses_can_only_approve_one_me
     second, _ = await invitation(ctx, ctx.b)
     results = await asyncio.gather(*(
         management_team.review(tenant, row["id"],
-            management_team.InvitationReview(action="approve", expected_version=row["version"]), actor)
+            management_team.InvitationReview(action="approve", expected_version=row["version"]), Actor("support"))
         for tenant, row, actor in ((ctx.a, first, ctx.actor), (ctx.b, second, other_owner))
     ), return_exceptions=True)
     assert sum(isinstance(r, dict) for r in results) == 1

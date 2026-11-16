@@ -114,14 +114,24 @@ def qualification_server(request):
     env = {k: v for k, v in os.environ.items() if k.upper() in {"PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "HOME", "LANG", "LC_ALL"}}
     salt = secrets.token_bytes(16)
     digest = hashlib.pbkdf2_hmac("sha256", secrets.token_bytes(32), salt, 200_000)
+    from cryptography.fernet import Fernet
     env.update({
         "PYTHONPATH": str(ROOT), "PYTHONUNBUFFERED": "1",
         "APP_DATABASE_URL": runtime, "MIGRATION_DATABASE_URL": migration,
         "SUPPORT_DATABASE_URL": support, "REDIS_URL": redis_url,
         "SUPPORT_API_TOKEN": "synthetic-e2e-only-00000000000000000000000000000000000000000000000000",
+        "PUBLIC_SITE_SIGNING_KEY": secrets.token_urlsafe(48),
         "PANEL_ADMIN_USERNAME": "synthetic-disabled-operator",
         "PANEL_ADMIN_PASSWORD_HASH": "pbkdf2_sha256$200000$" + base64.urlsafe_b64encode(salt).decode() + "$" + base64.urlsafe_b64encode(digest).decode(),
-        "PANEL_REGISTRATION_ENABLED": "1", "PANEL_EMAIL_ENABLED": "0", "PANEL_TEST_MODE": "0",
+        # Sign-up needs mail configuration to issue the OTP, but no worker is
+        # started: outbox remains in this disposable PostgreSQL. The fake Resend
+        # credential cannot deliver; E2E never contacts a real provider.
+        "PANEL_REGISTRATION_ENABLED": "1", "PANEL_EMAIL_ENABLED": "1", "PANEL_TEST_MODE": "0",
+        "PANEL_EMAIL_LIVE_SEND": "1", "PANEL_EMAIL_TRANSPORT": "resend_https",
+        "PANEL_SMTP_PASSWORD": "synthetic-only-not-a-valid-provider-credential",
+        "PANEL_SMTP_FROM": "Orion E2E <no-reply@example.invalid>",
+        "PANEL_EMAIL_FERNET_KEY": Fernet.generate_key().decode(),
+        "PANEL_OTP_SECRET": secrets.token_urlsafe(48),
         "PANEL_PUBLIC_URL": origin, "ONBOARDING_ENABLED": "1", "BUSINESS_PROFILES_ENABLED": "1",
         "COMMERCIAL_CATALOG_ENABLED": "1", "COMMERCIAL_ORDERS_ENABLED": "0",
         "COMMERCIAL_FULFILLMENT_ENABLED": "0", "QR_CHANNELS_ENABLED": "0",
@@ -167,7 +177,7 @@ def qualification_server(request):
                 else:
                     pytest.fail("Real HTTPS API did not become healthy in 45s")
                 yield SimpleNamespace(origin=origin, dsn=migration_dsn, artifacts=artifacts,
-                                      native_admin=native_admin)
+                                      native_admin=native_admin, email_fernet_key=env["PANEL_EMAIL_FERNET_KEY"])
             finally:
                 process.terminate()
                 try:
@@ -177,7 +187,7 @@ def qualification_server(request):
                     process.wait(timeout=5)
                 output.flush()
                 text = (artifacts / "api.log").read_text(encoding="utf-8", errors="replace")
-                for secret in (runtime_url.password, migration_url.password, support_url.password, env["SUPPORT_API_TOKEN"], env["PANEL_ADMIN_PASSWORD_HASH"]):
+                for secret in (runtime_url.password, migration_url.password, support_url.password, env["SUPPORT_API_TOKEN"], env["PANEL_ADMIN_PASSWORD_HASH"], env["PANEL_EMAIL_FERNET_KEY"], env["PANEL_OTP_SECRET"]):
                     if secret:
                         text = text.replace(secret, "[redacted-ci-credential]")
                 (artifacts / "api.log").write_text(redact_text(text), encoding="utf-8")
@@ -246,12 +256,23 @@ class Journey:
             self.query("INSERT INTO working_hours(tenant_id,professional_id,weekday,start_time,end_time) VALUES(%s,%s,0,'09:00','18:00') RETURNING id", (identifier, pro))
         return {"id": str(identifier), "name": label}
 
-    def invitation(self, owner, tenant, invitee):
+    def invitation(self, owner, tenant, invitee, *, professional_id=None):
         token = secrets.token_urlsafe(32)
-        fingerprint = hashlib.sha256(json.dumps({"email": invitee["email"], "role": "editor"}, sort_keys=True).encode()).hexdigest()
-        row = self.query("""INSERT INTO management_team_invitations(tenant_id,email,role,token_digest,idempotency_key,fingerprint,expires_at,created_by)
-            VALUES(%s,%s,'editor',%s,%s,%s,now()+interval '1 day',%s) RETURNING id""",
-            (tenant["id"], invitee["email"], hashlib.sha256(token.encode()).hexdigest(), str(uuid4()), fingerprint, owner["id"]))[0]
+        role = "professional" if professional_id else "editor"
+        fields = ({"professional_id":str(professional_id),"email":invitee["email"]} if professional_id
+                  else {"email":invitee["email"],"role":role})
+        fingerprint = hashlib.sha256(json.dumps(fields, sort_keys=True).encode()).hexdigest()
+        if professional_id:
+            self.query("""INSERT INTO professional_portal_links
+                (tenant_id,professional_id,email,active)
+                VALUES(%s,%s,%s,false) RETURNING professional_id""",
+                (tenant["id"],professional_id,invitee["email"]))
+        row = self.query("""INSERT INTO management_team_invitations
+            (tenant_id,email,role,professional_id,token_digest,idempotency_key,
+             fingerprint,expires_at,created_by)
+            VALUES(%s,%s,%s,%s,%s,%s,%s,now()+interval '1 day',%s) RETURNING id""",
+            (tenant["id"], invitee["email"], role, professional_id, hashlib.sha256(token.encode()).hexdigest(),
+             str(uuid4()), fingerprint, owner["id"]))[0]
         return {"id": str(row["id"]), "token": token}
 
     def login(self, account, page=None):
@@ -299,7 +320,7 @@ class Journey:
         form.locator('[name="name"]').fill(name)
         form.locator('[name="niche"]').select_option("barbearia")
         form.locator('[name="activity"]').select_option(activity)
-        form.locator('[name="timezone"]').select_option("America/Cuiaba")
+        form.locator('[name="contact_phone"]').fill("(67) 99999-0001")
         return self.submit("create", "/onboarding/businesses", status=201)
 
     def location(self, *, private=False):
@@ -307,9 +328,8 @@ class Journey:
         form = self.page.locator('#orionSetup [data-ob-form="location"]')
         form.locator('[name="modality"]').select_option("onsite" if private else "online")
         if private:
-            for name, value in {"street": "Rua sintética E2E", "neighborhood": "Centro E2E", "city": "Cuiabá", "state": "MT"}.items():
+            for name, value in {"street": "Rua sintética E2E", "number": "123", "neighborhood": "Centro E2E", "city": "Cuiabá", "state": "MT"}.items():
                 form.locator(f'[name="{name}"]').fill(value)
-            form.locator('[name="no_number"]').check()
         return self.submit("location", "/steps/location")
 
     def professional(self):
@@ -339,6 +359,18 @@ class Journey:
 
     def hours(self):
         self.step("hours")
+        modern = self.page.locator('#orionSetup [data-ob-form="business-hours"]')
+        if modern.count():
+            # Current onboarding collects COMPANY hours, not professional shifts.
+            for day in (0, 2):
+                modern.locator(f'[name="hours_{day}_open"]').check()
+                modern.locator(f'[name="hours_{day}_start"]').fill("09:00")
+                modern.locator(f'[name="hours_{day}_end"]').fill("18:00")
+                modern.locator(f'[name="hours_{day}_has_break"]').check()
+                modern.locator(f'[name="hours_{day}_break_start"]').fill("12:00")
+                modern.locator(f'[name="hours_{day}_break_end"]').fill("13:00")
+            return self.submit("business-hours", "/steps/hours")
+        # Legacy onboarding stays covered until all existing tenant upgrades.
         form = self.page.locator('#orionSetup [data-ob-form="hours"]')
         form.locator('[name="weekdays"][value="0"]').check()
         form.locator('[name="weekdays"][value="2"]').check()
@@ -351,11 +383,28 @@ class Journey:
 
     def complete(self):
         from playwright.sync_api import expect
+        # Complete the current mandatory business profile and objectives via
+        # the real UI before requesting final activation.
+        if self.page.locator('#orionSetup [data-ob-step="profile"]').count():
+            self.step("profile")
+            form=self.page.locator('#orionSetup [data-ob-form="profile"]')
+            for field,value in {"operating_age":"1_to_3_years","team_size":"1_2",
+                                "monthly_revenue":"under_5k","monthly_volume":"up_to_50"}.items():
+                form.locator(f'[name="{field}"]').select_option(value)
+            self.submit("profile","/steps/profile")
+        if self.page.locator('#orionSetup [data-ob-step="goals"]').count():
+            self.step("goals")
+            form=self.page.locator('#orionSetup [data-ob-form="goals"]')
+            for field,value in {"main_challenge":"scheduling","desired_outcome":"save_time",
+                                "respondent_role":"owner"}.items():
+                form.locator(f'[name="{field}"]').select_option(value)
+            self.submit("goals","/steps/goals")
         self.step("review")
         self.page.locator('#orionSetup [name="acknowledged"]').check()
         state = self.submit("complete", "/onboarding/complete")
         assert state["status"] == "complete"
-        expect(self.page.locator('[data-ob-action="open-dashboard"]')).to_be_visible()
+        # Completion redirects immediately to Dashboard; no interstitial button.
+        expect(self.page.locator('#osNav [data-os-route="dashboard"]')).to_have_attribute("aria-current", "page")
         return state
 
     def no_activation(self, tenant):

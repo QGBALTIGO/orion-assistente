@@ -34,6 +34,30 @@ def test_professional_contact_release_matches_real_postgres_contract(local_datab
     assert not release.source_contract_ready(raw), 'An already-applied column must not be treated as an unmigrated source'
 
 
+def test_later_reviewed_schema_keeps_paraguay_phone_policy_and_whatsapp_readiness_from_another_cwd(
+        local_database_url, monkeypatch, tmp_path):
+    """Read the current catalogs; do not change a revision, grant or constraint."""
+    from scripts import backup_and_migrate_single_whatsapp as whatsapp
+
+    raw = local_database_url
+    engine = create_engine(raw, poolclass=NullPool, connect_args={
+        'options': '-c default_transaction_read_only=on -c statement_timeout=10000'})
+    try:
+        with engine.connect() as db:
+            assert db.execute(text("SELECT current_setting('transaction_read_only')")).scalar_one() == 'on'
+            version = db.execute(text('SELECT version_num FROM public.alembic_version')).scalar_one()
+            assert version not in {release.TARGET, '0052_paraguay_phone'}
+            constraint = db.execute(text("""SELECT pg_get_constraintdef(oid)
+                FROM pg_constraint WHERE conrelid='public.professionals'::regclass
+                AND conname='ck_professional_phone_e164' AND convalidated""")).scalar_one()
+            assert r'\+5959[0-9]{8}' in constraint
+        monkeypatch.chdir(tmp_path)
+        assert release.professional_contract_ready(raw, expect_phone=True)
+        assert whatsapp.schema_contract_ready(raw)
+    finally:
+        engine.dispose()
+
+
 def test_phone_migration_preserves_existing_profiles_and_refuses_contact_loss(local_database_url):
     """Exercise real DDL in a private schema, rolled back after the assertion."""
     path = Path(__file__).parents[2] / 'alembic/versions/0040_professional_phone.py'

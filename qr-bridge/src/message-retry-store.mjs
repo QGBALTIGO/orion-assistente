@@ -1,3 +1,4 @@
+import {retryIdentity,retryIdentityMatches,sameRetryIdentity} from './retry-identity.mjs';
 /**
  * Cache transitório de mensagens para o callback getMessage do Baileys.
  * WhatsApp pode solicitar reenvio de uma mensagem que não conseguiu
@@ -17,16 +18,20 @@ export function makeMessageRetryStore({max=1000,ttlMs=24*60*60*1000,clock=Date.n
       if(!key?.id || !message || typeof message!=="object")return false;
       prune();
       const id=String(key.id);
+      const identity=retryIdentity(key),previous=entries.get(id);
+      if(previous?.identity?.peer&&!sameRetryIdentity(previous.identity,identity))return false;
       if(entries.has(id))entries.delete(id);
-      entries.set(id,{message,expires:clock()+ttlMs});
+      entries.set(id,{message,identity,expires:clock()+ttlMs});
       prune();
       return true;
     },
     get(key){
       if(!key?.id)return undefined;
       prune();
-      return entries.get(String(key.id))?.message;
+      const row=entries.get(String(key.id));
+      return row&&retryIdentityMatches(row.identity,key)?row.message:undefined;
     },
+    entry(key){prune();return entries.get(String(key?.id||''));},
     size(){prune();return entries.size},
     clear(){entries.clear()}
   };

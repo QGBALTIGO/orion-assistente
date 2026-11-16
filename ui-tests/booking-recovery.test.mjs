@@ -65,6 +65,10 @@ test('confirmation retry preserves the original hold and updates the selected cu
     if (path.endsWith(`/appointments/${appointmentId}/confirm`) && ++confirmations === 1) throw new Error('A conexão caiu após confirmar.');
   }) }); t.after(() => h.close());
   await prepareBooking(h);
+  const messages = h.document.querySelector('[name=appointment_messages_opt_in]');
+  assert.equal(messages.checked, false);
+  assert.equal(messages.required, false);
+  h.click('[name=appointment_messages_opt_in]');
   h.submit('[data-os-form=appointment]'); await flush();
   const form = h.document.querySelector('[data-os-form=appointment]');
   assert.equal(form.querySelector('fieldset').disabled, true);
@@ -80,12 +84,14 @@ test('confirmation retry preserves the original hold and updates the selected cu
   // Disabled DOM fields are still writable by scripts; retries must use the stored intent.
   h.fill('#osBookingCustomer', 'Outra pessoa');
   h.fill('#osField-customer_phone', '(11) 91234-0000');
+  messages.checked = false;
   await change(h, '#osField-day', '2030-05-06');
   h.submit('[data-os-form=appointment]'); await flush();
   assert.equal(h.calls.filter(call => call.path.endsWith('/appointments/hold')).length, 1);
   assert.equal(h.calls.filter(call => call.path.endsWith(`/appointments/${appointmentId}/confirm`)).length, 2);
   const confirms = h.calls.filter(call => call.path.endsWith(`/appointments/${appointmentId}/confirm`));
   assert.equal(confirms[0].data.expected_updated_at, '2030-04-05T11:59:00.123456Z');
+  assert.equal(confirms[0].data.appointment_messages_opt_in, true);
   assert.deepEqual(plain(confirms[0].data), plain(confirms[1].data));
   assert.equal(h.calls.filter(call => call.method === 'PATCH').length, 1);
   assert.equal(h.document.getElementById('osDialog').open, false);
@@ -109,6 +115,23 @@ test('an uncertain hold request is retried with exactly the same idempotency key
   assert.deepEqual(plain(requests[1].data), plain(requests[0].data));
   assert.ok(requests[0].data.idempotency_key);
   assert.equal(h.calls.filter(call => call.path.endsWith('/confirm')).length, 1);
+  assert.equal(h.calls.find(call => call.path.endsWith('/confirm')).data.appointment_messages_opt_in, false);
+});
+
+test('changing the selected customer clears the appointment message authorization', async t => {
+  const h = await makeSuite({ initialRoute: 'agenda', respond: bookingResponse() });
+  t.after(() => h.close()); await prepareBooking(h);
+  const messages = h.document.querySelector('[name=appointment_messages_opt_in]');
+  h.click('[name=appointment_messages_opt_in]');
+  assert.equal(messages.checked, true);
+  h.fill('#osField-customer_phone', '(11) 91234-0000');
+  assert.equal(messages.checked, false);
+  h.click('[name=appointment_messages_opt_in]');
+  h.fill('#osBookingCustomer', 'Cliente sintético');
+  assert.equal(messages.checked, false);
+  h.click('[name=appointment_messages_opt_in]');
+  h.click(`[data-os-book-customer="${customerId}"]`);
+  assert.equal(messages.checked, false);
 });
 
 test('a customer phone update with a lost response is verified by id before creating the hold', async t => {

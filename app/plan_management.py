@@ -12,7 +12,7 @@ import os
 import re
 import secrets
 from uuid import uuid4
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from urllib.parse import urlsplit
 from uuid import UUID
@@ -25,12 +25,14 @@ from sqlalchemy.exc import IntegrityError
 
 from app.catalog_api import Actor, authenticate, support_session_factory
 from app.database import get_session_factory, tenant_transaction
-from app.cakto_api import CaktoClient, _subscription_id
+from app.cakto_api import cached_cakto_client, _subscription_id
 from app.account_business import account_membership_role
 from app.tenant_access import resolve_site_access
 from app.admin_accounts import require_platform_owner
 from app.plan_catalog import CODES, PLAN_FEATURES, feature_catalog
+from app.cakto_readiness import direct_environment_ready
 from app.plan_permissions import plan_state, lock_plan
+from app.workspace_policy import require_standard_workspace
 
 router = APIRouter(tags=["Planos Orion"])
 BRAZIL_DDDS = frozenset({
@@ -102,19 +104,60 @@ async def _ensure_owner(db, tenant_id: UUID, account_id: UUID):
         raise HTTPException(403, "O vínculo de proprietário não está mais ativo")
 
 
-async def require_checkout_available(db, tenant_id: UUID, account_id: UUID):
-    """A manual grant has priority; a new payment cannot replace it."""
-    state = await plan_state(db, tenant_id, lock="shared")
+async def prepaid_checkout_exists(db, tenant_id: UUID):
+    """Paid days and ambiguous reservations cannot be replaced by another bill.
+
+    The caller holds the company plan lock. Local expiry alone is not proof
+    that an external payment was never created or can no longer be paid.
+    A future bank timestamp still blocks another billing channel; it does not
+    grant access before the entitlement resolver accepts that timestamp.
+    """
+    return (await db.execute(text("""
+        SELECT 1 FROM orion_prepaid_pix_orders
+        WHERE tenant_id=:tenant AND state IN ('reserved','created','needs_review')
+        UNION ALL
+        SELECT 1 FROM orion_prepaid_pix_access
+        WHERE tenant_id=:tenant AND paid_until>now()
+          AND last_verified_payment_at IS NOT NULL
+        LIMIT 1
+    """), {"tenant": tenant_id})).scalar_one_or_none() is not None
+
+
+async def require_checkout_available(db, tenant_id: UUID, account_id: UUID,
+                                     *, channel="recurring", lock="shared"):
+    """Serialize mutually exclusive purchase channels without changing grants."""
+    if channel not in {"recurring", "pix"} or lock not in {"shared", "exclusive"}:
+        raise ValueError("Invalid checkout admission context")
+    state = await plan_state(db, tenant_id, lock=lock)
     await _ensure_owner(db, tenant_id, account_id)
+    require_standard_workspace(state, "plan.manage")
     manual = state.get("manual_assignment")
     if isinstance(manual, dict) and manual.get("active") is True:
         raise HTTPException(409, {"code": "MANUAL_PLAN_ACTIVE", "message":
             "Esta empresa possui uma atribuição manual ativa. Peça ao administrador do Orion para removê-la antes de contratar pela Cakto."})
+    if channel == "recurring":
+        conflict = await prepaid_checkout_exists(db, tenant_id)
+    else:
+        conflict = (await db.execute(text("""
+            SELECT 1 FROM subscriptions WHERE tenant_id=:tenant LIMIT 1
+        """), {"tenant": tenant_id})).scalar_one_or_none() is not None
+        if not conflict:
+            conflict = (await db.execute(text("""
+                SELECT 1 FROM orion_cakto_checkout_intents i
+                LEFT JOIN orion_direct_payment_attempts a ON a.intent_id=i.id
+                WHERE i.tenant_id=:tenant AND (
+                    i.state IN ('pending','needs_review') OR
+                    a.state IN ('reserved','created','unknown','needs_review'))
+                LIMIT 1
+            """), {"tenant": tenant_id})).scalar_one_or_none() is not None
+    if conflict:
+        raise HTTPException(409, {"code": "CHECKOUT_CHANNEL_CONFLICT", "message":
+            "Existe outro pagamento ou período pago vinculado à empresa. Consulte o pagamento existente ou o suporte antes de iniciar uma contratação diferente."})
     return state
 
 
 async def check_new_checkout_access(tenant_id: UUID, account_id: UUID):
-    """Read-only preflight; the writer rechecks under its own shared lock."""
+    """Read-only recurring preflight; the intent writer rechecks exclusively."""
     async with support_session_factory()() as db:
         async with db.begin():
             await require_checkout_available(db, tenant_id, account_id)
@@ -172,7 +215,12 @@ async def plan_overview(tenant_id: UUID, actor: Actor = Depends(authenticate), r
         "trial": dict(trial) if trial else None,
         "active_professionals": effective["limits"]["active_professionals"],
         "can_manage_plan": actor.role in {"member","admin"} and access.role == "owner",
-        "checkout_enabled": os.getenv("CAKTO_BILLING_LIVE_ENABLED", "0") == "1",
+        # A single Cakto flag cannot mean checkout is ready. These flags
+        # are a necessary preflight, not a substitute for live provider probes.
+        # New initial commercial channel: single Pix, prepaid 30 days,
+        # not a recurring subscription or automatic monthly debit.
+        "checkout_enabled": __import__("app.prepaid_pix_api",fromlist=["pix_environment_ready"]).pix_environment_ready(),
+        "payment_mode": "pix_manual_30_days",
         "trial_scope": TRIAL_SCOPE,
         "trial_requires_team_activation": True,
     }
@@ -205,7 +253,8 @@ async def request_plan_trial(tenant_id: UUID, payload: TrialRequest,
             async with db.begin():
                 current_access = await plan_state(db, tenant_id, lock="exclusive")
                 await _ensure_owner(db, tenant_id, account_id)
-                if current_access["source"] in {"manual", "cakto", "platform_admin"} and current_access["active"]:
+                require_standard_workspace(current_access, "plan.manage")
+                if current_access["source"] in {"manual", "cakto", "pix_prepaid", "platform_admin"} and current_access["active"]:
                     raise HTTPException(409, "Sua empresa já possui acesso ativo ao Orion")
                 tenant = (await db.execute(text("""
                     SELECT name FROM tenants WHERE id=:id FOR SHARE
@@ -277,7 +326,7 @@ async def admin_decide_trial(trial_id: UUID, decision: TrialDecision,
                 raise HTTPException(404, "Solicitação não encontrada")
             if row["status"] != "pending" or row["version"] != decision.expected_version:
                 raise HTTPException(409, "Solicitação alterada; atualize a lista")
-            if (decision.action == "activate" and current_access["source"] in {"manual", "cakto", "platform_admin"}
+            if (decision.action == "activate" and current_access["source"] in {"manual", "cakto", "pix_prepaid", "platform_admin"}
                     and current_access["active"]):
                 raise HTTPException(409, "Empresa já possui acesso ativo; o teste não foi consumido")
             existing = (await db.execute(text("""
@@ -351,7 +400,7 @@ async def start_plan_checkout(tenant_id: UUID, payload: CheckoutChoice,
         raise HTTPException(409, "Contratações em preparação. A integração de pagamentos ainda está em homologação.")
     await check_new_checkout_access(tenant_id, account_id)
     try:
-        offers = await CaktoClient().list_offers()
+        offers = await cached_cakto_client().list_offers()
     except (httpx.HTTPError, ValueError, RuntimeError):
         raise HTTPException(503, "Não foi possível confirmar as ofertas na Cakto") from None
     offer = _exact_offer(offers, plan)
@@ -366,7 +415,7 @@ async def start_plan_checkout(tenant_id: UUID, payload: CheckoutChoice,
         raise HTTPException(503, "Checkout seguro não configurado")
     async with support_session_factory()() as db:
         async with db.begin():
-            await require_checkout_available(db, tenant_id, account_id)
+            await require_checkout_available(db, tenant_id, account_id, lock="exclusive")
             await db.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))"),
                              {"key": "orion-checkout:" + str(tenant_id)})
             subscription = (await db.execute(text("""
@@ -436,6 +485,24 @@ def first_cakto_subscription_confirmed(event: dict, order: dict,
     return True
 
 
+def verified_checkout_paid_at(order, intent, now=None):
+    """Admission expiry bounds the payment, never delayed receipt processing."""
+    now = now or datetime.now(timezone.utc)
+    raw = order.get("paidAt")
+    created, expires = intent.get("created_at"), intent.get("expires_at")
+    if not isinstance(raw, str) or not isinstance(created, datetime) or not isinstance(expires, datetime):
+        return None
+    try:
+        paid = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        if (not paid.tzinfo or not created.tzinfo or not expires.tzinfo
+                or not created-timedelta(minutes=5) <= paid <= expires
+                or paid > now+timedelta(minutes=5)):
+            return None
+    except (ValueError, OverflowError):
+        return None
+    return paid
+
+
 async def apply_verified_cakto_payment(event: dict, order: dict,
                                                subscription: dict | None = None) -> str:
     """Fail-closed first-payment binding, scoped by a signed callback and API order."""
@@ -481,7 +548,7 @@ async def apply_verified_cakto_payment(event: dict, order: dict,
             await lock_plan(db, target, exclusive=True)
             intent = (await db.execute(text("""
                 SELECT id,tenant_id,account_id,plan_code,offer_id,expected_cents,
-                       state,expires_at FROM orion_cakto_checkout_intents
+                       state,created_at,expires_at FROM orion_cakto_checkout_intents
                 WHERE callback_hash=:hash FOR UPDATE
             """), {"hash": token_hash})).mappings().first()
             if not intent:
@@ -490,7 +557,10 @@ async def apply_verified_cakto_payment(event: dict, order: dict,
                 return "manual_review"
             if intent["state"] == "verified":
                 return "already_verified"
-            if intent["state"] != "pending" or intent["expires_at"] < datetime.now(timezone.utc):
+            paid_at = verified_checkout_paid_at(order, intent)
+            if intent["state"] != "pending" or paid_at is None:
+                return "manual_review"
+            if await prepaid_checkout_exists(db, target):
                 return "manual_review"
             # A direct API charge does not necessarily carry a hosted checkoutUrl.
             # A unique support-only reservation must match this exact order first.
@@ -550,10 +620,10 @@ async def apply_verified_cakto_payment(event: dict, order: dict,
             subscription_row = (await db.execute(text("""
                 INSERT INTO subscriptions
                   (tenant_id,plan_id,external_subscription_id,status,last_verified_payment_at)
-                VALUES (:tenant,:plan,:external,'active',now())
+                VALUES (:tenant,:plan,:external,'active',:paid_at)
                 RETURNING id
             """), {"tenant": intent["tenant_id"], "plan": plan_id,
-                   "external": subscription_id})).scalar_one()
+                   "external": subscription_id, "paid_at": paid_at})).scalar_one()
             await db.execute(text("""
                 INSERT INTO orion_cakto_bindings
                   (tenant_id,subscription_id,external_subscription_id,plan_code,last_order_id)

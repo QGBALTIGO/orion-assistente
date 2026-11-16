@@ -22,6 +22,18 @@ class RevisionRedis(MemoryRedis):
             self.deadlines[key]=qr_ai.monotonic()+ttl/1000 if ttl is not None else None
         return result
     async def eval(self, script, nkeys, *args):
+        if script == qr_ai.qr_conversation_lock._OWNED_SET:
+            key, lock_key, token, value, expiry = args
+            if self.lock_tokens.get(lock_key) != token:
+                return 0
+            await self.set(key, value, ex=expiry)
+            return 1
+        if script == qr_ai._STATE_RESTORE_OWNED_SCRIPT:
+            assert nkeys == 4
+            if self.lock_tokens.get(args[3]) != args[-1]:
+                return 0
+            args = (*args[:3], *args[4:-1])
+            script, nkeys = qr_ai._STATE_RESTORE_SCRIPT, 3
         if script == qr_ai._STATE_SNAPSHOT_SCRIPT:
             assert nkeys == 3
             rows=[]
@@ -257,7 +269,16 @@ async def test_verified_confirmation_superseded_before_reply_is_reported_without
     monkeypatch.setattr(qr_ai,"confirm_hold",confirmed_then_late)
     lost=await qr_ai.run_locked(h.tenant,"5567999999999","SIM",h.namespace,"synthetic-message",intake_revision=1)
     assert lost == {"answer":None,"step":"superseded_after_write","not_committed":False}
-    assert h.key not in client.values and receipt.key(h.tenant,"5567999999999") in client.values
+    state=json.loads(client.values[h.key])
+    assert state["step"] == "menu" and set(state) <= {"step", "history", "customer_name", "completed_task"}
+    assert state["completed_task"]["kind"] == "confirmed" and state["completed_task"]["protocol"] == "SYNTHETIC"
+    assert set(state["completed_task"]) == {"kind", "protocol", "occurred_at"}
+    assert 0 < state["completed_task"]["occurred_at"] <= datetime.now().timestamp()
+    assert 0 < len(state["history"]) <= 8 and all(set(item) == {"role", "content"}
+        and item["role"] in {"user", "assistant"} and len(item["content"]) <= 1500 for item in state["history"])
+    assert not set(state) & {"hold", "services", "professional", "expected_snapshot", "hold_snapshot", "consent",
+        "appointment", "confirmation_summary", "confirmation_message_id", "confirmation_expires_at"}
+    assert receipt.key(h.tenant,"5567999999999") in client.values
     client.seen["synthetic-correction"]=2
     result=await qr_ai.run_locked(h.tenant,"5567999999999","Pera, é sexta",h.namespace,"synthetic-correction",
         intake_revision=2,require_summary_review=True)

@@ -51,7 +51,7 @@ async def scoped_account_actor(role: str, account_id: UUID | None, route_tenant,
     else:
         async with support_session_factory()() as db:
             membership = await account_membership_role(db, account_id, tenant)
-    if membership not in {"owner", "editor", "viewer"}:
+    if membership not in {"owner", "editor", "viewer", "professional"}:
         return actor
     return Actor(role, tenant, account_id, membership)
 
@@ -228,9 +228,11 @@ async def guard_generated_service(session, tenant_id: UUID, resource: str, item_
         if values and values.get("service_id") is not None:
             identities.append(values["service_id"])
     for identity in identities:
-        kind = (await session.execute(text("SELECT catalog_kind FROM services WHERE tenant_id=:tenant AND id=:id"),
-                                      {"tenant": tenant_id, "id": identity})).scalar_one_or_none()
-        if kind is not None and kind != "base":
+        service = (await session.execute(text("SELECT catalog_kind,deleted_at FROM services WHERE tenant_id=:tenant AND id=:id"),
+                                      {"tenant": tenant_id, "id": identity})).mappings().one_or_none()
+        if service is not None and service["deleted_at"] is not None:
+            raise HTTPException(404, "Serviço não encontrado")
+        if service is not None and service["catalog_kind"] != "base":
             raise HTTPException(409, "Edite este serviço e seus profissionais pelo cadastro de combos ou adicionais")
 
 
@@ -292,7 +294,7 @@ async def list_items(tenant_id: UUID, resource: str, actor: Actor = Depends(auth
         async with tenant_transaction(session, tenant_id):
             await ensure_tenant(session, tenant_id)
             ordering = "sort_order,name,id" if resource == "services" else "id"
-            scope = " AND catalog_kind <> 'variant'" if resource == "services" else ""
+            scope = " AND catalog_kind <> 'variant' AND deleted_at IS NULL" if resource == "services" else ""
             rows = (await session.execute(
                 text(f"SELECT * FROM {resource} WHERE tenant_id = :t{scope} ORDER BY {ordering} LIMIT 200"),
                 {"t": tenant_id}
@@ -334,6 +336,8 @@ async def create_item(
                         from app.plan_permissions import require_feature
                         await require_feature(session, tenant_id, "commissions.advanced", lock="exclusive")
                 await ensure_tenant(session, tenant_id)
+                from app.start_policies import lock_schedule_edit, validate_active_policies
+                schedule_scopes = await lock_schedule_edit(session, tenant_id, resource, values=values)
                 if resource == "professional_services":
                     from app.booking_service import acquire_professional_lock
                     await acquire_professional_lock(session, tenant_id, values["professional_id"])
@@ -343,6 +347,7 @@ async def create_item(
                 if resource == "working_breaks":
                     await validate_break(session, bind)
                 await session.execute(statement, bind)
+                await validate_active_policies(session, tenant_id, schedule_scopes)
                 if resource == "professional_services":
                     # Service editor can add a link outside the staff drawer.
                     # New base links receive an explicit percentage fallback so
@@ -394,6 +399,9 @@ async def replace_item(
                         from app.plan_permissions import require_feature
                         await require_feature(session, tenant_id, "commissions.advanced", lock="exclusive")
                 await ensure_tenant(session, tenant_id)
+                from app.start_policies import lock_schedule_edit, validate_active_policies
+                schedule_scopes = await lock_schedule_edit(session, tenant_id, resource,
+                                                           values=values, item_id=item_id)
                 if resource == "professionals":
                     from app.booking_service import acquire_professional_lock
                     await acquire_professional_lock(session, tenant_id, item_id)
@@ -420,11 +428,13 @@ async def replace_item(
                     await validate_working_hour_edit(session, bind)
                 if resource == "working_breaks":
                     await validate_break(session, bind, item_id)
+                visible = " AND deleted_at IS NULL" if resource == "services" else ""
                 result = await session.execute(text(
-                    f"UPDATE {resource} SET {assignments} WHERE id = :id AND tenant_id = :tenant_id RETURNING id"
+                    f"UPDATE {resource} SET {assignments} WHERE id = :id AND tenant_id = :tenant_id{visible} RETURNING id"
                 ), bind)
                 if result.scalar_one_or_none() is None:
                     raise HTTPException(404, "Registro não encontrado")
+                await validate_active_policies(session, tenant_id, schedule_scopes)
                 await audit(session, tenant_id, "updated", resource, item_id)
     except IntegrityError as exc:
         raise HTTPException(409, "Cadastro ou vínculo inválido") from exc
@@ -443,6 +453,8 @@ async def delete_item(
         async with factory() as session:
             async with tenant_transaction(session, tenant_id):
                 await ensure_tenant(session, tenant_id)
+                from app.start_policies import lock_schedule_edit, validate_active_policies
+                schedule_scopes = await lock_schedule_edit(session, tenant_id, resource, item_id=item_id)
                 link_professional = None
                 if resource == "professional_services":
                     link_professional = (await session.execute(text("""
@@ -455,12 +467,39 @@ async def delete_item(
                 await guard_generated_service(session, tenant_id, resource, item_id)
                 from app.management_blocks import guard_catalog_block
                 await guard_catalog_block(session, tenant_id, resource, item_id=item_id, deleting=True)
-                result = await session.execute(
-                    text(f"DELETE FROM {resource} WHERE id = :id AND tenant_id = :t RETURNING id"),
-                    {"id": item_id, "t": tenant_id},
-                )
+                if resource == "services":
+                    current = (await session.execute(text("""SELECT id FROM services
+                        WHERE tenant_id=:t AND id=:id AND deleted_at IS NULL FOR UPDATE"""),
+                        {"t": tenant_id, "id": item_id})).scalar_one_or_none()
+                    if current is None:
+                        raise HTTPException(404, "Serviço não encontrado")
+                    linked = (await session.execute(text("""SELECT
+                        EXISTS(SELECT 1 FROM service_package_items i
+                            JOIN service_packages p ON p.tenant_id=i.tenant_id AND p.id=i.package_id
+                            WHERE i.tenant_id=:t AND i.service_id=:id AND p.active)
+                        OR EXISTS(SELECT 1 FROM service_packages p
+                            WHERE p.tenant_id=:t AND p.base_service_id=:id AND p.active)
+                        OR EXISTS(SELECT 1 FROM service_addons a
+                            WHERE a.tenant_id=:t AND (a.base_service_id=:id OR a.addon_service_id=:id))
+                        OR EXISTS(SELECT 1 FROM loyalty_rules l
+                            WHERE l.tenant_id=:t AND l.reward_service_id=:id AND l.active)
+                        OR EXISTS(SELECT 1 FROM appointment_return_intervals r
+                            WHERE r.tenant_id=:t AND r.service_id=:id)"""),
+                        {"t": tenant_id, "id": item_id})).scalar_one()
+                    if linked:
+                        raise HTTPException(409, "Remova os combos, adicionais ou regras ativos deste serviço antes de excluí-lo")
+                    result = await session.execute(text("""UPDATE services
+                        SET active=false,deleted_at=now()
+                        WHERE tenant_id=:t AND id=:id AND deleted_at IS NULL RETURNING id"""),
+                        {"id": item_id, "t": tenant_id})
+                else:
+                    result = await session.execute(
+                        text(f"DELETE FROM {resource} WHERE id = :id AND tenant_id = :t RETURNING id"),
+                        {"id": item_id, "t": tenant_id},
+                    )
                 if result.scalar_one_or_none() is None:
                     raise HTTPException(404, "Registro não encontrado")
+                await validate_active_policies(session, tenant_id, schedule_scopes)
                 if resource == "professional_services" and link_professional is not None:
                     await session.execute(text("""
                         UPDATE professionals SET commission_config_version=commission_config_version+1

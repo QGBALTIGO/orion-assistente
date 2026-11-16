@@ -1,12 +1,14 @@
 /** Targeted typing only. No messages, presence subscription or privacy changes. */
 export function makeAssistantTyping({socket,pilotPhone,isConnected,isAllowed,
   now=()=>performance.now(),schedule=setTimeout,cancel=clearTimeout,
-  pollMs=100,refreshMs=4000,maxDurationMs=20000,maxPauseMs=800,transactional=false}={}){
+  pollMs=100,refreshMs=4000,maxDurationMs=20000,maxPauseMs=800,transactional=false,
+  broadRecipients=false,presence='composing',pauseOnSuperseded=true}={}){
   if(typeof pilotPhone!=='function'||typeof isConnected!=='function'||typeof isAllowed!=='function'||
       !Number.isSafeInteger(pollMs)||pollMs<1||pollMs>1000||
       !Number.isSafeInteger(refreshMs)||refreshMs<pollMs||
       !Number.isSafeInteger(maxDurationMs)||maxDurationMs<1||maxDurationMs>20000||
-      typeof transactional!=='boolean'||
+      typeof transactional!=='boolean'||typeof broadRecipients!=='boolean'||typeof pauseOnSuperseded!=='boolean'||
+      !['composing','recording'].includes(presence)||
       !Number.isSafeInteger(maxPauseMs)||maxPauseMs<0||maxPauseMs>(transactional?2000:800))
     throw Error('Invalid typing presence configuration');
   let active=null;
@@ -16,7 +18,7 @@ export function makeAssistantTyping({socket,pilotPhone,isConnected,isAllowed,
     const privateJid=typeof chatJid==='string'&&chatJid.match(/^(\d{8,30})(?::\d{1,5})?@(s\.whatsapp\.net|lid)$/);
     // Transactional confirmation/notifications have their own explicit,
     // verified recipient check. The AI pilot still requires its original PN.
-    const valid=transactional?/^(?:55[1-9][0-9]{9,10}|5959[0-9]{8})$/:/^55[1-9]\d9\d{8}$/;
+    const valid=broadRecipients?/^[1-9][0-9]{7,14}$/:transactional?/^(?:55[1-9][0-9]{9,10}|5959[0-9]{8})$/:/^55[1-9]\d9\d{8}$/;
     const allowed=()=>safely(()=>typeof phone==='string'&&valid.test(phone)&&
       phone===pilotPhone()&&isConnected()===true&&isAllowed(phone)===true);
     const current=()=>allowed()&&safely(isCurrent);
@@ -29,9 +31,9 @@ export function makeAssistantTyping({socket,pilotPhone,isConnected,isAllowed,
     function fire(type){
       try{
         const result=socket.sendPresenceUpdate(type,jid);
-        if(type==='composing')inFlight=true;
-        Promise.resolve(result).catch(()=>{if(type==='composing')stop();})
-          .finally(()=>{if(type==='composing')inFlight=false;});
+        if(type===presence)inFlight=true;
+        Promise.resolve(result).catch(()=>{if(type===presence)stop();})
+          .finally(()=>{if(type===presence)inFlight=false;});
         return true;
       }catch{return false;}
     }
@@ -42,14 +44,14 @@ export function makeAssistantTyping({socket,pilotPhone,isConnected,isAllowed,
         active=null;
         // Revision changes stop this lease, but cannot pause a newer lease.
         // A replaced/disconnected socket or revoked recipient gets no traffic.
-        if(allowed())fire('paused');
+        if(allowed()&&(pauseOnSuperseded||safely(isCurrent)))fire('paused');
       }
     }
     function monitor(){
       if(stopped)return;
       if(active!==lease||!current()||now()-started>=maxDurationMs){stop();return;}
       if(!inFlight&&now()-lastComposing>=refreshMs){
-        lastComposing=now();if(!fire('composing')){stop();return;}
+        lastComposing=now();if(!fire(presence)){stop();return;}
       }
       timer=schedule(monitor,pollMs);timer?.unref?.();
     }
@@ -67,7 +69,7 @@ export function makeAssistantTyping({socket,pilotPhone,isConnected,isAllowed,
         pauseTimer=schedule(()=>{pauseResolve=null;resolve();},remaining);
       });
     }
-    if(!fire('composing'))stop();
+    if(!fire(presence))stop();
     if(!stopped){timer=schedule(monitor,pollMs);timer?.unref?.();}
     return lease;
   }

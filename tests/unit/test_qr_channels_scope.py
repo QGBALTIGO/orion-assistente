@@ -236,7 +236,7 @@ async def test_notice_only_cancels_marketing_with_assistant_off_and_shared_dedup
         url = f"/internal/qr/channels/{a.channel_id}/interaction"
         body = {"phone": PHONE, "message_id": "synthetic-id"}
         for _ in range(2):
-            assert (await client.post(url, json=body)).json() == {"recorded": True, "revision": 1}
+            assert (await client.post(url, json=body)).json() == {"recorded": True, "revision": 1, "assistant_interactions": 1, "control_revision": None}
         assert (await client.post(url, json={**body, "text": "not processed"})).status_code == 422
     assert interactions == [(a.tenant_id, "+" + PHONE)] and not calls and len(redis.events) == 2
     identities[str(a.channel_id)] = a

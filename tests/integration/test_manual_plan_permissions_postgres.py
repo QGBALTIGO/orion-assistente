@@ -58,7 +58,7 @@ async def manual_db(monkeypatch):
     finally:
         async with engine.begin() as db:
             params={"a":tenant,"b":other}
-            for table in ("tenant_plan_audit","tenant_plan_controls","orion_cakto_bindings","subscriptions",
+            for table in ("tenant_plan_audit","tenant_plan_controls","orion_cakto_checkout_intents","orion_cakto_bindings","subscriptions",
                           "orion_plan_trial_requests","professionals","tenant_memberships"):
                 await db.execute(text(f"DELETE FROM {table} WHERE tenant_id IN (:a,:b)"),params)
             await db.execute(text("DELETE FROM panel_accounts WHERE id IN (:a,:b,:c)"),{"a":account,"b":second,"c":operator})
@@ -135,12 +135,19 @@ async def test_verified_cakto_renewal_and_replay_keep_manual_elite_then_removal_
     subscription_id="synthetic-sub-"+c.tenant.hex
     previous_order="previous-"+c.tenant.hex
     current_order="current-"+c.tenant.hex
+    first_order="first-"+c.tenant.hex
     async with c.engine.begin() as db:
         identity=(await db.execute(text("""INSERT INTO subscriptions(tenant_id,plan_id,external_subscription_id,status,last_verified_payment_at)
             SELECT :tenant,id,:external,'active',now()-interval '30 days' FROM plans WHERE code='orion_essencial' RETURNING id"""),
             {"tenant":c.tenant,"external":subscription_id})).scalar_one()
         await db.execute(text("""INSERT INTO orion_cakto_bindings(tenant_id,subscription_id,external_subscription_id,plan_code,last_order_id)
             VALUES(:tenant,:id,:external,'essencial',:order)"""),{"tenant":c.tenant,"id":identity,"external":subscription_id,"order":previous_order})
+        await db.execute(text("""INSERT INTO orion_cakto_checkout_intents
+            (tenant_id,account_id,plan_code,offer_id,expected_cents,callback_hash,
+             state,expires_at,verified_at,external_order_id)
+            VALUES(:tenant,:account,'essencial','synthetic-essential-offer',2990,:hash,
+                   'verified',now()-interval '29 days',now()-interval '30 days',:first)
+        """),{"tenant":c.tenant,"account":c.account,"hash":c.tenant.hex+c.tenant.hex,"first":first_order})
     assert (await c.client.put(c.path,json=await assignment(c))).status_code==200
     event={"event_type":"subscription_renewed","external_order_id":current_order,"external_subscription_id":subscription_id,
         "external_offer_id":"synthetic-essential-offer","currency":"BRL","amount_cents":2990}
@@ -152,9 +159,12 @@ async def test_verified_cakto_renewal_and_replay_keep_manual_elite_then_removal_
         async def _get(self,path):
             assert path=="/subscriptions/"+subscription_id+"/"
             return {"id":subscription_id,"offer":"synthetic-essential-offer","recurrence_period":30,
-                    "paymentMethod":"credit_card","status":self.status,"amount":29.9}
+                    "paymentMethod":"credit_card","status":self.status,"amount":29.9,"parent_order":first_order}
         async def list_offers(self):
             return [{"id":"synthetic-essential-offer","name":"Orion Essencial","price":29.9,"status":"active","type":"subscription","recurrence_period":30}]
+        async def get_order(self,ref):
+            assert ref==current_order
+            return order
     assert await reconcile_existing_cakto_subscription(event,order,ReadOnlyProvider())=="reconciled"
     assert await reconcile_existing_cakto_subscription(event,order,ReadOnlyProvider())=="already_verified"
     state=(await c.client.get(c.path)).json()["effective_plan"]
@@ -178,8 +188,10 @@ async def test_verified_cakto_renewal_and_replay_keep_manual_elite_then_removal_
         "operation_id":str(uuid4()),"confirmation":"REMOVER ATRIBUIÇÃO"}
     result=await c.client.request("DELETE",c.path,json=removal)
     assert result.status_code==200,result.text
-    assert result.json()["effective_plan"]["source"]=="none"
-    assert result.json()["effective_plan"]["status"]=="canceled"
+    restored=result.json()["effective_plan"]
+    assert restored["source"]=="cakto" and restored["active"] is True
+    assert restored["commercial_subscription"]["status"]=="canceled"
+    assert datetime.fromisoformat(restored["valid_until"])==datetime.fromisoformat(order["paidAt"])+timedelta(days=30)
 
 
 @pytest.mark.asyncio

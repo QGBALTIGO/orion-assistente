@@ -1,0 +1,90 @@
+name: Orion - Odontologia clínica, RLS e consultórios
+on:
+  pull_request:
+    paths:
+      - 'alembic/versions/0076_dental_clinic.py'
+      - 'app/dental_clinic_*.py'
+      - 'app/main.py'
+      - 'app/professional_portal.py'
+      - 'app/static/orion-professional.*'
+      - 'app/plan_permissions.py'
+      - 'app/plan_routing.py'
+      - 'app/static/orion-dental-clinic.*'
+      - 'app/static/orion-suite.js'
+      - 'app/static/panel.html'
+      - 'scripts/backup_and_migrate_dental_clinic.py'
+      - 'scripts/wait_for_dental_schema.py'
+      - 'scripts/predeploy_one_click_links.py'
+      - 'scripts/start_api.py'
+      - 'tests/integration/test_dental_clinic_postgres.py'
+      - 'tests/unit/test_dental_clinic_unit.py'
+      - 'tests/unit/test_dental_clinic_release.py'
+      - 'tests/unit/test_start_api.py'
+      - 'ui-tests/dental-clinic.test.mjs'
+      - 'ui-tests/professional-portal.test.mjs'
+      - '.github/workflows/dental-clinic.yml'
+permissions:
+  contents: read
+jobs:
+  clinic-validation:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: synthetic_ci_admin_only
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s --health-timeout 3s --health-retries 12
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      MIGRATION_DATABASE_URL: postgresql+psycopg://app_migrator:synthetic_ci_migrator_only@127.0.0.1:5432/orion_dental_ci
+      APP_DATABASE_URL: postgresql+asyncpg://app_runtime:synthetic_ci_runtime_only@127.0.0.1:5432/orion_dental_ci
+      SUPPORT_DATABASE_URL: postgresql+asyncpg://app_support:synthetic_ci_support_only@127.0.0.1:5432/orion_dental_ci
+      REQUIRE_POSTGRES_TESTS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Criar banco e papéis restritos de teste (dados sintéticos)
+        run: |
+          PGPASSWORD=synthetic_ci_admin_only psql -U postgres -d postgres -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE app_runtime LOGIN PASSWORD 'synthetic_ci_runtime_only' NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS;
+          CREATE ROLE app_migrator LOGIN PASSWORD 'synthetic_ci_migrator_only' NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS;
+          CREATE ROLE app_support LOGIN PASSWORD 'synthetic_ci_support_only' NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS;
+          CREATE DATABASE orion_dental_ci OWNER app_migrator;
+          SQL
+          PGPASSWORD=synthetic_ci_migrator_only psql -U app_migrator -d orion_dental_ci -v ON_ERROR_STOP=1 <<'SQL'
+          REVOKE ALL ON DATABASE orion_dental_ci FROM PUBLIC;
+          GRANT CONNECT ON DATABASE orion_dental_ci TO app_runtime,app_support;
+          REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+          GRANT USAGE ON SCHEMA public TO app_runtime,app_support;
+          SQL
+      - name: Instalar dependências bloqueadas
+        run: python -m pip install --disable-pip-version-check -c requirements.lock '.[test]'
+      - name: Validar sintaxe dos módulos
+        run: |
+          python -m compileall -q app/dental_clinic_api.py app/dental_clinic_schemas.py app/dental_clinic_media.py alembic/versions/0076_dental_clinic.py
+          node --check app/static/orion-suite.js
+          node --check app/static/orion-dental-clinic.js
+          node --check app/static/orion-professional.js
+      - name: Migração 0001-0076 em PostgreSQL 16 limpo
+        run: python -m alembic upgrade 0076_dental_clinic
+      - name: Verificar contrato de papéis, RLS e migração
+        run: python -m scripts.wait_for_dental_schema
+      - name: Testar conflitos concorrentes e isolamento real entre empresas
+        run: python -m pytest -q tests/integration/test_dental_clinic_postgres.py
+      - name: Validar registros FDI, periodontia, autorização e criptografia
+        run: python -m pytest -q tests/unit/test_dental_clinic_unit.py tests/unit/test_dental_clinic_release.py tests/unit/test_start_api.py tests/unit/test_plan_permissions.py tests/unit/test_dental_workspace_context.py tests/unit/test_barbershop_layout_modes.py
+      - name: Instalar DOM isolado
+        run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+      - name: Testar a interface e regressões
+        run: node --test ui-tests/dental-clinic.test.mjs ui-tests/dental-workspace.test.mjs ui-tests/dental-patient-journey.test.mjs ui-tests/customer-form.test.mjs ui-tests/professional-portal.test.mjs

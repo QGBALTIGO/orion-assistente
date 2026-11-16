@@ -159,3 +159,30 @@ test('apresentação de histórico se adapta a 320px e aos temas do Orion',async
   assert.match(js,/customerHistoryPanel\(record\)/);
   assert.match(js,/customer-history-more/);
 });
+
+test('agenda antiga fica separada dos totais atuais e escapa os dados importados',async t=>{
+  const customer={...record,legacy_appointments:2,legacy_spent_cents:7000};
+  const h=await fixture(t,{respond:(path,method)=>{
+    if(path.includes('/legacy-history'))return {sources:[{
+      source_system:'minhaagenda.digital/Peixoto.Barbearia',source_name:'Cliente antigo',
+      source_phone:'11912345678',reported_appointments:2,reported_spent_cents:7000,
+      reported_ticket_cents:3500,history_complete:false,
+      history:[{date:'08/11/2026',time:'10:00',service:'<img src=x onerror=alert(1)>',
+        professional:'Profissional antigo',price_cents:3500}],
+    }]};
+    if(path.includes('/management/customers?'))return {items:[customer],total:1};
+    return defaultResponse(path);
+  }});
+  assert.match(h.document.getElementById('page-suite').textContent,/Agenda antiga: 2 agendamentos/);
+  h.click('[data-os-customer="'+customerId+'"]');
+  assert.match(h.document.querySelector('.os-client-stats').textContent,/Orion/);
+  assert.ok([...h.document.querySelectorAll('.os-client-hint')].some(x=>/Agenda antiga/.test(x.textContent)));
+  assert.equal(h.calls.filter(x=>x.path.includes('/legacy-history')).length,0);
+  h.click('#osCustomerLegacyHistory summary');await flush();
+  const body=h.document.querySelector('#osCustomerLegacyBody');
+  assert.match(body.textContent,/agenda antiga não forneceu os detalhes/);
+  assert.match(body.textContent,/08\/11\/2026/);
+  assert.equal(body.querySelector('img'),null);
+  assert.deepEqual(h.calls.filter(x=>x.method!=='GET'),[]);
+  assert.deepEqual(h.errors,[]);
+});

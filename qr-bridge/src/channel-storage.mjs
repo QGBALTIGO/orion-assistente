@@ -27,34 +27,41 @@ function readPrivate(file){
   const fd=fs.openSync(file,fs.constants.O_RDONLY|(fs.constants.O_NOFOLLOW||0));
   try{return fs.readFileSync(fd);}finally{fs.closeSync(fd);}
 }
-function writePrivate(file,bytes,{exclusive=false}={}){
+function writePrivate(file,bytes,{exclusive=false,isCurrent=()=>true}={}){
   const target=exclusive?file:file+'.'+randomBytes(8).toString('hex')+'.tmp';
-  const fd=fs.openSync(target,'wx',0o600);
-  try{fs.writeFileSync(fd,bytes);fs.fsyncSync(fd);}finally{fs.closeSync(fd);}
-  if(!exclusive){
-    if(fs.existsSync(file))readPrivate(file);
-    fs.renameSync(target,file);
-  }
-  if(process.platform!=='win32'){
-    const dir=fs.openSync(path.dirname(file),'r');try{fs.fsyncSync(dir);}finally{fs.closeSync(dir);}
-  }
+  const guard=()=>{if(!isCurrent())throw Error('channel_owner_superseded');};
+  guard();
+  try{
+    const fd=fs.openSync(target,'wx',0o600);
+    try{fs.writeFileSync(fd,bytes);fs.fsyncSync(fd);}finally{fs.closeSync(fd);}
+    guard();
+    if(!exclusive){
+      if(fs.existsSync(file))readPrivate(file);
+      guard();fs.renameSync(target,file);
+    }
+    if(process.platform!=='win32'){
+      const dir=fs.openSync(path.dirname(file),'r');try{fs.fsyncSync(dir);}finally{fs.closeSync(dir);}
+    }
+  }finally{if(!exclusive)fs.rmSync(target,{force:true});}
 }
-export function encryptedChannelStore({directory,secret,serialize=JSON.stringify,deserialize=JSON.parse,readOnly=false}){
+export function encryptedChannelStore({directory,secret,serialize=JSON.stringify,deserialize=JSON.parse,readOnly=false,isCurrent=()=>true}){
   privateDirectory(directory,{create:!readOnly});
   const key=Buffer.from(hkdfSync('sha256',Buffer.from(secret),Buffer.from('orion-channel-v1'),Buffer.from(directory),32));
   const file=id=>path.join(directory,digest(id)+'.enc');
   return {
     get(id){
+      if(!isCurrent())throw Error('channel_owner_superseded');
       let bytes;try{bytes=readPrivate(file(id));}catch(e){if(e.code==='ENOENT')return null;throw e;}
       const decipher=createDecipheriv('aes-256-gcm',key,bytes.subarray(0,12));
       decipher.setAAD(Buffer.from(id));decipher.setAuthTag(bytes.subarray(12,28));
-      return deserialize(Buffer.concat([decipher.update(bytes.subarray(28)),decipher.final()]).toString());
+      const value=deserialize(Buffer.concat([decipher.update(bytes.subarray(28)),decipher.final()]).toString());
+      if(!isCurrent())throw Error('channel_owner_superseded');return value;
     },
     set(id,value,options){
       if(readOnly)throw Error('read_only_channel_store');
       const iv=randomBytes(12),cipher=createCipheriv('aes-256-gcm',key,iv);cipher.setAAD(Buffer.from(id));
       const payload=Buffer.concat([cipher.update(serialize(value)),cipher.final()]);
-      writePrivate(file(id),Buffer.concat([iv,cipher.getAuthTag(),payload]),options);
+      writePrivate(file(id),Buffer.concat([iv,cipher.getAuthTag(),payload]),{...options,isCurrent});
     }
   };
 }

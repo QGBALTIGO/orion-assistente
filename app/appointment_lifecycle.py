@@ -15,7 +15,7 @@ from sqlalchemy import text
 
 REQUESTERS = frozenset({"customer", "professional", "business", "system", "unknown"})
 SOURCES = frozenset({"panel", "whatsapp_qr", "whatsapp_meta", "public_site", "system", "unknown"})
-ACTOR_ROLES = frozenset({"support", "admin", "owner", "editor", "viewer", "customer", "system", "unknown"})
+ACTOR_ROLES = frozenset({"support", "admin", "owner", "editor", "viewer", "professional", "customer", "system", "unknown"})
 CAS_SQL = """(CAST(:expected_updated_at AS timestamptz) IS NULL
     OR updated_at=CAST(:expected_updated_at AS timestamptz))"""
 
@@ -29,6 +29,22 @@ class LifecycleActor:
 
 
 SYSTEM_ACTOR = LifecycleActor(role="system", source="system")
+
+
+def completion_due_at(appointment, service_minutes=None):
+    """Automatic completion never precedes either reserved or performed time.
+
+    A preserved slot can be shorter than its service composition. An explicitly
+    entered actual duration supersedes that estimate, while the booked end
+    remains a lower bound. Manual staff completion has its separate policy.
+    """
+    minutes = appointment.get("actual_duration_min")
+    if minutes is None:
+        minutes = service_minutes
+    if minutes is None:
+        return appointment["end_at"]
+    return max(appointment["end_at"],
+               appointment["start_at"] + timedelta(minutes=int(minutes)))
 
 
 def customer_can_change(appointment, now):
@@ -68,7 +84,7 @@ def metadata(context=None, *, requested_by=None, reason=None, previous=None):
     context = context or LifecycleActor()
     if context.role not in ACTOR_ROLES or context.source not in SOURCES:
         raise ValueError("Unknown trusted appointment actor")
-    requester = requested_by or (context.role if context.role in {"customer", "system"} else "unknown")
+    requester = requested_by or (context.role if context.role in {"customer", "professional", "system"} else "unknown")
     if requester not in REQUESTERS:
         raise ValueError("Unknown appointment requester")
     if reason is not None and (not isinstance(reason, str) or len(reason) > 1000 or "\x00" in reason):
@@ -153,7 +169,7 @@ def allowed_actions(appointment, *, can_write, now=None):
         return ["confirm", "cancel"]
     if status != "confirmed":
         return []
-    actions = ["cancel", "reschedule"]
+    actions = ["cancel", "reschedule", "add_services"]
     if appointment["start_at"] <= now:
         actions.extend(["complete", "no_show"])
     return actions

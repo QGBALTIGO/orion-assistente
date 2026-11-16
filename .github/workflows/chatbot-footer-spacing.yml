@@ -1,0 +1,55 @@
+name: Orion - rodape com uma linha de respiro no WhatsApp
+
+on:
+  pull_request:
+    paths:
+      - 'app/subscription_chatbot_rules.py'
+      - 'app/subscription_sent_messages.py'
+      - 'app/static/orion-subscription-chatbot.js'
+      - 'tests/unit/test_subscription_chatbot_footer_spacing.py'
+      - 'ui-tests/subscription-chatbot-footer-spacing.test.mjs'
+      - 'tests/js/footer-spacing-wire.test.mjs'
+      - '.github/workflows/chatbot-footer-spacing.yml'
+permissions:
+  contents: read
+concurrency:
+  group: orion-footer-spacing-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      META_LIVE_SEND: '0'
+      QR_AI_ENABLED: '0'
+      INBOX_SEND_ENABLED: '0'
+      MARKETING_EXECUTION_ENABLED: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -c requirements.lock '.[test]'
+      - name: Compilacao e contratos de rodapes e envio
+        run: |
+          python -m compileall -q app/subscription_chatbot_rules.py app/subscription_sent_messages.py
+          python -m pytest -q -ra tests/unit/test_subscription_chatbot_footer_spacing.py tests/unit/test_subscription_chatbot_rules.py tests/unit/test_subscription_sent_messages.py
+
+  javascript:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+      - name: Sintaxe, proto nativo de botao/lista e previa
+        run: |
+          node --check app/static/orion-subscription-chatbot.js
+          node --test tests/js/footer-spacing-wire.test.mjs ui-tests/subscription-chatbot-footer-spacing.test.mjs ui-tests/subscription-chatbot.test.mjs

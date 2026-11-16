@@ -166,6 +166,8 @@ jobs:
         with:
           node-version: '22'
       - run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+      - name: Dependencias fixadas dos contratos reais do transporte
+        run: npm ci --prefix qr-bridge --ignore-scripts --no-audit --no-fund
       - name: Sintaxe e jornada sem rede real
         run: |
           node --check app/static/orion-connect.js

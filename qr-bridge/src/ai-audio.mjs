@@ -43,9 +43,18 @@ export async function withAssistantAudio(message,{client,downloadMediaMessage,lo
 
 /** Private legacy proxy. Its fixed URL and bridge credential stay unchanged. */
 export async function transcribeAssistantAudio(message,{
-  client,downloadMediaMessage,phone,token,apiUrl,logger,fetchFn=fetch,signal
+  client,downloadMediaMessage,phone,token,apiUrl,logger,fetchFn=fetch,signal,transcribe
 }){
-  if(!/^55[1-9]\d(?:9\d{8}|[2-5]\d{7})$/.test(phone)||typeof token!=="string"||token.length<32)return null;
+  if(!/^55[1-9]\d(?:9\d{8}|[2-5]\d{7})$/.test(phone))return null;
+  // An adopted PRIMARY uses the same fenced managed-ASR method as a managed
+  // socket. Failure never falls through to a global credential or endpoint.
+  if(typeof transcribe==='function')return withAssistantAudio(message,{client,downloadMediaMessage,logger,signal},
+    async({buffer,mediaType,signal:audioSignal})=>{
+      const result=await transcribe({phone,buffer,mediaType,signal:audioSignal});
+      if(audioSignal.aborted||typeof result!=='string')return null;
+      const text=result.trim();return text&&text.length<=1500?text:null;
+    });
+  if(typeof token!=="string"||token.length<32)return null;
   let target;
   try{
     target=new URL(apiUrl);

@@ -10,15 +10,45 @@ from fastapi.routing import APIRoute
 
 from app.catalog_api import Actor, authenticate
 from app.plan_permissions import bind_feature, reset_feature, require_tenant_feature
+from app.workspace_policy import require_standard_workspace
 
 TENANT_PREFIX = "/api/v1/tenants/{tenant_id}"
 
 
 def feature_for_path(relative, method="GET", *, resource=None, step_id=None):
     """Explicit classification; an unclassified future tenant API fails closed."""
-    if relative in {"/management/permissions", "/management/plan-overview", "/management/subscription",
-                    "/management/plan-trial", "/management/plan-checkout"} or relative.startswith("/management/plan-direct-"):
+    if relative == "/management/permissions":
+        return "account.manage"
+    if relative == "/subscription-whatsapp/group-add" or relative.startswith("/subscription-whatsapp/group-add/"):
+        return "group_add.manage"
+    if relative == "/subscription-whatsapp/group-contacts" or relative.startswith("/subscription-whatsapp/group-contacts/"):
+        return "group_contacts.manage"
+    if relative == "/subscription-whatsapp/direct-messages" or relative.startswith("/subscription-whatsapp/direct-messages/"):
+        return "direct_messages.manage"
+    if relative == "/subscription-whatsapp/bulk-messages" or relative.startswith("/subscription-whatsapp/bulk-messages/"):
+        return "bulk_messages.manage"
+    if relative == "/subscription-whatsapp/scheduled-messages" or relative.startswith("/subscription-whatsapp/scheduled-messages/"):
+        return "scheduled_messages.manage"
+    if relative == "/subscription-whatsapp/campaigns" or relative.startswith("/subscription-whatsapp/campaigns/"):
+        return "campaigns.manage"
+    if relative == "/subscription-whatsapp/diagnostics" or relative.startswith("/subscription-whatsapp/diagnostics/"):
+        return "diagnostics.manage"
+    if relative == "/subscription-whatsapp/sent-messages" or relative.startswith("/subscription-whatsapp/sent-messages/"):
+        return "sent_messages.manage"
+    if relative == "/subscription-whatsapp/templates" or relative.startswith("/subscription-whatsapp/templates/"):
+        return "templates.manage"
+    if relative == "/subscription-whatsapp/chatbot-test" or relative.startswith("/subscription-whatsapp/chatbot-test/"):
+        return "chatbot.manage"
+    if relative == "/subscription-whatsapp/chatbot" or relative.startswith("/subscription-whatsapp/chatbot/"):
+        return "account.manage" if method in {"GET", "HEAD", "OPTIONS"} or relative == "/subscription-whatsapp/chatbot/exports" and method == "POST" else "chatbot.manage"
+    if relative == "/subscription-whatsapp/devices" or relative.startswith("/subscription-whatsapp/devices/"):
+        return "devices.manage"
+    if relative in {"/management/plan-overview", "/management/subscription",
+                    "/management/plan-trial", "/management/plan-checkout"} or relative.startswith(("/management/plan-direct-","/management/plan-pix-")):
         return "plan.manage"
+    if relative.startswith("/dental/"):
+        # The module checks verified dental niche, active plan and clinician grant again.
+        return "clients.manage"
     if relative.startswith("/onboarding"):
         return "business.setup"
     if relative in {"/{resource}", "/{resource}/{item_id}"}:
@@ -30,6 +60,9 @@ def feature_for_path(relative, method="GET", *, resource=None, step_id=None):
             "schedule_blocks": "agenda.manage", "authorized_staff": "settings.manage"}.get(resource)
     if relative in {"/services"}:
         return "services.manage"
+    if relative in {"/professionals/{professional_id}/start-policies",
+                    "/professionals/{professional_id}/start-policies/{weekday}"}:
+        return "agenda.manage"
     if relative.startswith(("/availability", "/appointments", "/export/appointments", "/management/appointments", "/management/block-series", "/management/booking-selection")):
         return "agenda.manage"
     if relative.startswith("/commerce"):
@@ -113,10 +146,46 @@ def exclusive_professional_operation(relative, method, params):
         return False
     return (relative.startswith("/management/professionals") or
             relative in {"/management/plan-trial", "/management/plan-checkout"} or
-            relative.startswith("/management/plan-direct-") or
+            relative.startswith(("/management/plan-direct-","/management/plan-pix-")) or
             relative.startswith("/onboarding/complete") or
-            relative.startswith("/onboarding/steps/") and params.get("step_id") == "professionals" or
+            relative.startswith("/onboarding/steps/") and params.get("step_id") in {"business", "professionals"} or
             params.get("resource") == "professionals")
+
+
+def subscription_workspace_route(relative, method, params):
+    """Explicit metadata and subscription modules; never legacy operations."""
+    if relative == "/subscription-whatsapp/group-add" or relative.startswith("/subscription-whatsapp/group-add/"):
+        return True
+    if relative == "/subscription-whatsapp/group-contacts" or relative.startswith("/subscription-whatsapp/group-contacts/"):
+        return True
+    if relative == "/subscription-whatsapp/direct-messages" or relative.startswith("/subscription-whatsapp/direct-messages/"):
+        return True
+    if relative == "/subscription-whatsapp/bulk-messages" or relative.startswith("/subscription-whatsapp/bulk-messages/"):
+        return True
+    if relative == "/subscription-whatsapp/scheduled-messages" or relative.startswith("/subscription-whatsapp/scheduled-messages/"):
+        return True
+    if relative == "/subscription-whatsapp/campaigns" or relative.startswith("/subscription-whatsapp/campaigns/"):
+        return True
+    if relative == "/subscription-whatsapp/diagnostics" or relative.startswith("/subscription-whatsapp/diagnostics/"):
+        return True
+    if relative == "/subscription-whatsapp/sent-messages" or relative.startswith("/subscription-whatsapp/sent-messages/"):
+        return True
+    if relative == "/subscription-whatsapp/templates" or relative.startswith("/subscription-whatsapp/templates/"):
+        return True
+    if relative == "/subscription-whatsapp/devices" or relative.startswith("/subscription-whatsapp/devices/"):
+        return True
+    if relative == "/subscription-whatsapp/chatbot-test" or relative.startswith("/subscription-whatsapp/chatbot-test/"):
+        return True
+    if relative == "/subscription-whatsapp/chatbot" or relative.startswith("/subscription-whatsapp/chatbot/"):
+        return True
+    if method in {"GET", "HEAD", "OPTIONS"}:
+        return relative in {"/management/permissions", "/onboarding"}
+    if relative == "/onboarding/complete":
+        return method == "POST"
+    if relative.startswith("/onboarding/steps/"):
+        return method == "PUT" and params.get("step_id") in {
+            "business", "location", "profile", "goals", "review", "hours"}
+    return False
 
 
 async def enforce_endpoint_plan(request: Request, tenant_id: UUID, actor: Actor = Depends(authenticate)):
@@ -128,23 +197,45 @@ async def enforce_endpoint_plan(request: Request, tenant_id: UUID, actor: Actor 
     template = "/{resource}/{item_id}" if "item_id" in request.path_params and "resource" in request.path_params else "/{resource}" if "resource" in request.path_params else relative
     feature = feature_for_path(template, request.method, resource=request.path_params.get("resource"), step_id=request.path_params.get("step_id"))
     from app.catalog_api import authorize
-    # Other endpoints also recheck publication/membership/owner rules. This
-    # prevents disclosing plan state for a tenant not owned by this request.
-    authorize(actor, tenant_id, write=False)
-    if feature is None:
-        from app.catalog_schemas import RESOURCE_MODELS
-        if template in {"/{resource}", "/{resource}/{item_id}"} and request.path_params.get("resource") not in RESOURCE_MODELS:
-            raise HTTPException(404, "Recurso não encontrado")
-        raise HTTPException(403, "Recurso indisponível para este plano")
-    bypass = actor.role in {"admin", "support"} and not getattr(actor, "maintenance", False)
-    token = bind_feature(tenant_id, feature,
-        exclusive=exclusive_professional_operation(relative, request.method, request.path_params), bypass=bypass)
-    try:
-        if not bypass:
-            await require_tenant_feature(tenant_id, feature)
-        yield
-    finally:
-        reset_feature(token)
+    from contextlib import asynccontextmanager
+
+    @asynccontextmanager
+    async def verified_actor():
+        professional_dental = (relative.startswith("/dental/")
+            and actor.role == "member" and actor.membership_role == "professional")
+        if professional_dental:
+            # Never broaden the generic read-only tenant authorization: an
+            # individual professional can only enter the dental endpoints
+            # through the existing, verified professional-portal link.
+            from app.professional_portal import individual_access
+            async with individual_access(actor) as (verified_tenant, _professional):
+                if verified_tenant != tenant_id:
+                    raise HTTPException(403, "Profissional não vinculado à clínica")
+                yield
+        else:
+            # All company-wide APIs retain their original membership rules.
+            authorize(actor, tenant_id, write=False)
+            yield
+
+    async with verified_actor():
+        if feature is None:
+            from app.catalog_schemas import RESOURCE_MODELS
+            if template in {"/{resource}", "/{resource}/{item_id}"} and request.path_params.get("resource") not in RESOURCE_MODELS:
+                raise HTTPException(404, "Recurso não encontrado")
+            raise HTTPException(403, "Recurso indisponível para este plano")
+        bypass = actor.role in {"admin", "support"} and not getattr(actor, "maintenance", False)
+        workspace_allowed = subscription_workspace_route(relative, request.method, request.path_params)
+        token = bind_feature(tenant_id, feature,
+            exclusive=exclusive_professional_operation(relative, request.method, request.path_params),
+            bypass=bypass, workspace_allowed=workspace_allowed)
+        try:
+            if not bypass:
+                state = await require_tenant_feature(tenant_id, feature)
+                if not workspace_allowed:
+                    require_standard_workspace(state, feature)
+            yield
+        finally:
+            reset_feature(token)
 
 
 def include_plan_router(app, router):

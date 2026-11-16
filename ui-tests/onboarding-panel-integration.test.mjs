@@ -21,8 +21,11 @@ test('the dashboard stays covered while the authenticated entry decision is load
     if(path.startsWith('/api/v1/onboarding/entry'))return waiting.promise;
   }});t.after(()=>h.close());
   assert.ok(h.document.querySelector('#appView').classList.contains('ob-gated'));
+  assert.equal(h.element('#orionSetupAccess').hidden,true);
+  assert.equal(h.element('#sessionBoot').classList.contains('hidden'),false);
   waiting.resolve({enabled:true,kind:'dashboard',tenant_id:tenantA});await flush();
   assert.equal(h.document.querySelector('#appView').classList.contains('ob-gated'),false);
+  assert.equal(h.element('#sessionBoot').classList.contains('hidden'),true);
 });
 
 test('a failed entry request keeps a recoverable setup screen, without bypass to an empty dashboard',async t=>{

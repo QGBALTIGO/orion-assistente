@@ -1,11 +1,12 @@
 from datetime import datetime, timedelta, timezone
 from copy import deepcopy
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi import HTTPException
 from app.plan_catalog import PLAN_FEATURES, RECOVERY_FEATURES
 from app.plan_permissions import derive_plan, bind_feature, reset_feature, plan_transaction_guard
+from app import booking_service, plan_permissions
 
 NOW = datetime(2026, 10, 29, 22, tzinfo=timezone.utc)
 
@@ -84,6 +85,49 @@ def test_past_due_only_with_live_grace_and_canonical_binding():
     assert derive_plan(data,NOW+timedelta(seconds=1))["source"]=="none"
 
 
+def test_recurring_active_status_cannot_extend_a_missing_renewal_beyond_verified_30_days():
+    last_paid = NOW-timedelta(days=45)
+    state = derive_plan(snapshot(commercial=commercial(last_verified_payment_at=last_paid)), NOW)
+    assert state["active"] is False and state["status"] == "expired"
+    recent = snapshot(commercial=commercial(last_verified_payment_at=NOW-timedelta(days=8)))
+    state = derive_plan(recent, NOW)
+    assert state["active"] is True and state["valid_until"] == NOW+timedelta(days=22)
+    assert derive_plan(recent, NOW+timedelta(days=22))["active"] is False
+
+
+def test_canceled_renewal_preserves_only_the_exact_remaining_verified_paid_period():
+    last_paid = NOW - timedelta(days=1)
+    end = last_paid + timedelta(days=30)
+    data = snapshot(commercial=commercial(status="canceled", last_verified_payment_at=last_paid, grace_until=end))
+    state = derive_plan(data, NOW)
+    assert state["active"] is True and state["source"] == "cakto" and state["valid_until"] == end
+    assert state["commercial_subscription"]["status"] == "canceled"
+    assert "agenda.manage" in state["features"]
+    assert derive_plan(data, end)["active"] is False
+    assert derive_plan(data, end)["status"] == "canceled"
+
+
+@pytest.mark.parametrize("patch", [
+    {"grace_until": None}, {"grace_until": (NOW+timedelta(days=30)).isoformat()},
+    {"grace_until": "2026-11-10T12:00:00"}, {"last_verified_payment_at": None},
+    {"last_verified_payment_at": (NOW+timedelta(seconds=1)).isoformat()},
+    {"cakto_bound": False}, {"status": "suspended"},
+])
+def test_canceled_access_without_exact_bank_paid_window_or_after_refund_stays_closed(patch):
+    values = {"status": "canceled", "grace_until": NOW+timedelta(days=29), **patch}
+    assert derive_plan(snapshot(commercial=commercial(**values)), NOW)["active"] is False
+
+
+def test_manual_priority_and_inactive_tenant_rules_remain_above_a_canceled_paid_period():
+    remote = commercial(status="canceled", grace_until=NOW+timedelta(days=29))
+    state = derive_plan(snapshot("elite", commercial=remote), NOW)
+    assert state["source"] == "manual" and state["code"] == "elite"
+    assert state["commercial_subscription"]["status"] == "canceled"
+    paused = derive_plan(snapshot(commercial=remote, tenant_status="paused"), NOW)
+    assert paused["active"] is False and paused["status"] == "tenant_inactive"
+    assert set(paused["features"]) == RECOVERY_FEATURES
+
+
 @pytest.mark.parametrize("status", ["paused","suspended","canceled"])
 def test_inactive_tenant_does_not_gain_operating_rights(status):
     result=derive_plan(snapshot("elite",tenant_status=status),NOW)
@@ -147,3 +191,71 @@ async def test_transaction_rechecks_after_work_and_rolls_back_if_expired(monkeyp
             async with plan_transaction_guard(object(),tenant): pass
         assert error.value.status_code==403 and locks==[True]
     finally: reset_feature(token)
+
+
+PLAN_LOCK_TENANT = UUID(int=830)
+
+
+class PlanLockDB:
+    def __init__(self, acquired):
+        self.acquired, self.calls = acquired, []
+
+    async def execute(self, query, params):
+        self.calls.append((str(query), params))
+        acquired = self.acquired
+        class Result:
+            def scalar_one(self): return acquired
+        return Result()
+
+
+@pytest.mark.asyncio
+async def test_denied_try_lock_is_recoverable_and_never_enters_a_blocking_permission_read(monkeypatch):
+    db = PlanLockDB(False)
+    async def forbidden(*_args, **_kwargs):
+        pytest.fail("An unavailable try-lock must not enter require_feature or join its wait queue")
+    monkeypatch.setattr(plan_permissions, "require_feature", forbidden)
+    with pytest.raises(HTTPException) as error:
+        await booking_service._require_booking_feature(db, PLAN_LOCK_TENANT, nonblocking=True)
+    assert error.value.status_code == 409 and "novamente" in error.value.detail
+    assert db.calls == [("SELECT pg_try_advisory_xact_lock_shared(hashtextextended(:key,0))",
+                         {"key": plan_permissions.LOCK_PREFIX + str(PLAN_LOCK_TENANT)})]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("permitted", [True, False])
+async def test_successful_try_lock_always_rechecks_feature_without_reacquiring_lock(monkeypatch, permitted):
+    db, checks = PlanLockDB(True), []
+    denial = HTTPException(403, {"code": "PLAN_FEATURE_UNAVAILABLE"})
+    async def require_feature(session, tenant, feature, lock="shared"):
+        assert session is db and len(db.calls) == 1
+        checks.append((tenant, feature, lock))
+        if not permitted:
+            raise denial
+        return {"active": True}
+    monkeypatch.setattr(plan_permissions, "require_feature", require_feature)
+    if permitted:
+        assert await booking_service._require_booking_feature(db, PLAN_LOCK_TENANT, nonblocking=True) == {"active": True}
+    else:
+        with pytest.raises(HTTPException) as error:
+            await booking_service._require_booking_feature(db, PLAN_LOCK_TENANT, nonblocking=True)
+        assert error.value is denial
+    assert checks == [(PLAN_LOCK_TENANT, "agenda.manage", None)]
+
+
+@pytest.mark.asyncio
+async def test_internal_booking_keeps_existing_blocking_plan_permission_contract(monkeypatch):
+    db, checks = PlanLockDB(False), []
+    async def require_feature(session, tenant, feature, lock="shared"):
+        checks.append((tenant, feature, lock))
+        return {"active": True}
+    monkeypatch.setattr(plan_permissions, "require_feature", require_feature)
+    assert await booking_service._require_booking_feature(db, PLAN_LOCK_TENANT) == {"active": True}
+    assert checks == [(PLAN_LOCK_TENANT, "agenda.manage", "shared")] and db.calls == []
+
+
+@pytest.mark.asyncio
+async def test_try_lock_requires_verified_tenant_uuid():
+    db = PlanLockDB(True)
+    with pytest.raises(ValueError, match="Verified tenant UUID"):
+        await plan_permissions.try_lock_plan(db, str(PLAN_LOCK_TENANT))
+    assert db.calls == []

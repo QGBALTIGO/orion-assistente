@@ -21,12 +21,16 @@ pytestmark = pytest.mark.integration
 
 @pytest_asyncio.fixture
 async def channel_case(profiles, monkeypatch):
+    from plan_fixtures import seed_fixture_plan, clear_fixture_plans
     a, b, account, runtime, migration = profiles
     account_b = uuid4()
     monkeypatch.setenv("QR_CHANNELS_ENABLED", "1")
     monkeypatch.setenv("BUSINESS_PROFILES_ENABLED", "1")
     monkeypatch.setenv("INTEGRATION_FERNET_KEY", Fernet.generate_key().decode())
     async with migration.begin() as db:
+        # Managed-assistant regressions exercise a licensed synthetic business,
+        # using the actual entitlement resolver and role-separated PostgreSQL.
+        plan_admin = await seed_fixture_plan(db, (a, b), "elite")
         await db.execute(text("INSERT INTO panel_accounts (id,name,email,password_hash) VALUES (:id,'Synthetic account B',:email,'unused-test-hash')"),
                          {"id": account_b, "email": f"channel-{account_b}@example.test"})
         for tenant, owner_account in ((a, account), (b, account_b)):
@@ -44,6 +48,7 @@ async def channel_case(profiles, monkeypatch):
             await db.execute(text("DELETE FROM tenant_memberships WHERE tenant_id=:tenant AND account_id=:account"),
                              {"tenant": b, "account": account_b})
             await db.execute(text("DELETE FROM panel_accounts WHERE id=:account"), {"account": account_b})
+            await clear_fixture_plans(db, (a, b), (plan_admin,))
 
 
 async def create(case, *, tenant=None, key=None, activate=True):
@@ -183,6 +188,13 @@ async def test_assistant_activation_is_separate_and_invalidates_old_fence(channe
     assert result["enabled"] is True and result["assistant_enabled"] is True
     with pytest.raises(HTTPException):
         await lease(c, row, owner, "check", held["fence"])
+    # A remote revocation does not prove that this process's old socket has
+    # observed it. Preserve the original slot until its local lease expires.
+    with pytest.raises(HTTPException):
+        await lease(c, row, owner)
+    async with c.migration.begin() as db:
+        await db.execute(text("UPDATE qr_channels SET lease_expires_at=clock_timestamp()-interval '1 second' WHERE id=:id"),
+                         {"id": row["id"]})
     fresh = await lease(c, row, owner)
     assert (await channels.authenticated_channel(request(row, owner, fresh["fence"]), phone="5567999999901")).assistant_enabled is True
 

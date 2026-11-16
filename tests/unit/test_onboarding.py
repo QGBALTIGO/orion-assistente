@@ -234,10 +234,15 @@ async def test_creation_never_elevates_a_shared_operator_or_anonymous_account(ac
 @pytest.mark.asyncio
 async def test_router_rejects_missing_completion_ack_and_unknown_step(monkeypatch):
     monkeypatch.setenv("ONBOARDING_ENABLED", "1")
+    from app import plan_routing
+    async def permitted(*_args): return None
+    monkeypatch.setattr(plan_routing, "require_tenant_feature", permitted)
     app = FastAPI()
     app.include_router(router)
-    app.dependency_overrides[authenticate] = lambda: Actor("member", account_id=uuid4())
     tenant = uuid4()
+    # Payload validation is exercised as an authorized, correctly scoped owner,
+    # even when another test has already attached the production plan dependency.
+    app.dependency_overrides[authenticate] = lambda: Actor("member", tenant, uuid4(), "owner")
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="https://test") as client:
         response = await client.post(f"/api/v1/tenants/{tenant}/onboarding/complete", json={"expected_version": 0, "idempotency_key": "synthetic-final", "activate_catalog": True})
         assert response.status_code == 422
@@ -248,9 +253,13 @@ async def test_router_rejects_missing_completion_ack_and_unknown_step(monkeypatc
 @pytest.mark.asyncio
 async def test_router_validation_does_not_serialize_exception_objects(monkeypatch):
     monkeypatch.setenv("ONBOARDING_ENABLED", "1")
+    from app import plan_routing
+    async def permitted(*_args): return None
+    monkeypatch.setattr(plan_routing, "require_tenant_feature", permitted)
     app = FastAPI()
     app.include_router(router)
-    app.dependency_overrides[authenticate] = lambda: Actor("member", account_id=uuid4())
+    tenant = uuid4()
+    app.dependency_overrides[authenticate] = lambda: Actor("member", tenant, uuid4(), "owner")
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="https://test") as client:
-        response = await client.put(f"/api/v1/tenants/{uuid4()}/onboarding/steps/hours", json={"expected_version": 0, "idempotency_key": "synthetic-step", "data": {"professional_id": str(uuid4()), "weekdays": [1], "start_time": "18:00", "end_time": "09:00"}})
+        response = await client.put(f"/api/v1/tenants/{tenant}/onboarding/steps/hours", json={"expected_version": 0, "idempotency_key": "synthetic-step", "data": {"professional_id": str(uuid4()), "weekdays": [1], "start_time": "18:00", "end_time": "09:00"}})
     assert response.status_code == 422

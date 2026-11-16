@@ -535,6 +535,72 @@ def _clock(value: datetime) -> str:
     return f"{value.hour:02d}h" + (f"{value.minute:02d}" if value.minute else "")
 
 
+def displayed_slot_clocks(answer: str, slots: Sequence[datetime | str], *,
+                          timezone: str, day: date | str | None = None) -> tuple[str, ...]:
+    """Project a displayed slot block onto real instants, never FAQ time mentions.
+
+    The choices remain canonical HH:MM inputs to the existing booking engine.
+    This only recognizes this module's dated display block or the original
+    dated, numbered HH:MM producer. It does not infer availability from prose.
+    """
+    if (not isinstance(answer, str) or message_units(answer) > 1000
+            or isinstance(slots, (str, bytes)) or not isinstance(slots, Sequence)
+            or not slots or len(slots) > 1000):
+        return ()
+    try:
+        zone = ZoneInfo(timezone)
+        target = date.fromisoformat(day) if isinstance(day, str) else day
+        if target is not None and type(target) is not date:
+            return ()
+        local = []
+        instants = {}
+        for raw in slots:
+            value = datetime.fromisoformat(raw.replace("Z", "+00:00")) if isinstance(raw, str) else raw
+            if (not isinstance(value, datetime) or value.utcoffset() is None
+                    or value.second or value.microsecond):
+                return ()
+            value = value.astimezone(zone)
+            if target is not None and value.date() != target:
+                return ()
+            local.append(value)
+            instants.setdefault(value.strftime("%H:%M"), set()).add(value.timestamp())
+        days = {value.date() for value in local}
+        # A clock-only choice cannot distinguish separate days or a DST fold.
+        if len(days) != 1 or any(len(values) != 1 for values in instants.values()):
+            return ()
+    except (KeyError, ValueError, TypeError, OverflowError):
+        return ()
+    on_day = next(iter(days))
+    labels = {_clock(value): value.strftime("%H:%M") for value in local}
+    canonical = set(labels.values())
+    heading = f"*{_WEEKDAYS[on_day.weekday()].capitalize()}, {on_day:%d/%m/%Y}*"
+    legacy_heading = f"Encontrei estes horários livres para {on_day:%d/%m}:"
+    lines, displayed = answer.splitlines(), []
+    for index, line in enumerate(lines):
+        current = line.strip()
+        modern = current in {heading, "📅 " + heading}
+        legacy = current == legacy_heading
+        if not modern and not legacy:
+            continue
+        block = []
+        for row in lines[index+1:]:
+            row = row.strip()
+            if not row:
+                break
+            if legacy:
+                row = re.sub(r"^[1-9][0-9]?\. ", "", row)
+            tokens = row.split(" • ")
+            allowed = canonical if legacy else labels
+            if not all(token in allowed for token in tokens):
+                # The legacy producer ends with its separate question/note.
+                if not legacy:
+                    block = []
+                break
+            block.extend(tokens if legacy else (labels[token] for token in tokens))
+        displayed.extend(block)
+    return tuple(dict.fromkeys(displayed))[:10]
+
+
 def _booking_lines(summary: BookingSummary, *, light: bool = False) -> list[str]:
     when = summary.starts_at.astimezone(ZoneInfo(summary.timezone))
     label = "Serviço" if len(summary.services) == 1 else "Serviços"

@@ -11,7 +11,7 @@ self.addEventListener("push", event => {
     badge: "/pwa/icon-192.png",
     tag: "orion-admin-push-test",
     renotify: true,
-    data: { url: "/panel" }
+    data: { url: "/painel" }
   });
   event.waitUntil(Promise.all([shown, self.registration.setAppBadge?.(1)].filter(Boolean)));
 });
@@ -20,9 +20,9 @@ self.addEventListener("notificationclick", event => {
   event.waitUntil((async () => {
     const pages = await self.clients.matchAll({type:"window",includeUncontrolled:true});
     const current = pages.find(page => {
-      try { return new URL(page.url).pathname === "/panel"; } catch (_) { return false; }
+      try { return new URL(page.url).pathname === "/painel"; } catch (_) { return false; }
     });
     if (current) return current.focus();
-    return self.clients.openWindow("/panel");
+    return self.clients.openWindow("/painel");
   })());
 });

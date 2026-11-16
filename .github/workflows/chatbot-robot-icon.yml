@@ -1,0 +1,39 @@
+name: Orion - SVG do Chatbot
+on:
+  pull_request:
+    paths:
+      - 'app/static/orion-suite.js'
+      - 'app/static/orion-subscription-chatbot.js'
+      - 'app/static/orion-subscription-chatbot-test.js'
+      - 'ui-tests/subscription-chatbot-robot-icon.test.mjs'
+      - '.github/workflows/chatbot-robot-icon.yml'
+permissions:
+  contents: read
+concurrency:
+  group: orion-bot-icon-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  svg-ui:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      META_LIVE_SEND: '0'
+      QR_AI_ENABLED: '0'
+      INBOX_SEND_ENABLED: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Instalar dependências dos testes locais
+        run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+      - name: Sintaxe dos módulos
+        run: |
+          node --check app/static/orion-suite.js
+          node --check app/static/orion-subscription-chatbot.js
+          node --check app/static/orion-subscription-chatbot-test.js
+      - name: Robô, navegação e regressão de interfaces
+        run: |
+          node --test ui-tests/subscription-chatbot-robot-icon.test.mjs ui-tests/subscription-sidebar-spacing.test.mjs ui-tests/subscription-chatbot.test.mjs ui-tests/subscription-chatbot-test.test.mjs

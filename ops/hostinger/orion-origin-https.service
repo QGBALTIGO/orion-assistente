@@ -1,0 +1,32 @@
+[Unit]
+Description=Orion authenticated HTTPS transport to local SSH
+After=network.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+DynamicUser=yes
+LoadCredential=server.key:/etc/orion-origin-https/server.key
+LoadCredential=users.json:/etc/orion-origin-https/users.json
+ExecStart=/usr/local/libexec/orion-origin-chisel server --host 127.0.0.1 --port 18444 --keyfile ${CREDENTIALS_DIRECTORY}/server.key --authfile ${CREDENTIALS_DIRECTORY}/users.json --keepalive 15s
+UnsetEnvironment=AUTH CHISEL_KEY CHISEL_KEY_FILE
+Environment=CHISEL_WS_READ_LIMIT=524288
+Restart=always
+RestartSec=2
+TimeoutStopSec=15
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+MemoryMax=128M
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

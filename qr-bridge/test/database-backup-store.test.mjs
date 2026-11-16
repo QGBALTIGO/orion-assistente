@@ -134,7 +134,7 @@ test('bad secret, magic, authentication tag, swapped UUID and non-PGDMP plaintex
   assert.deepEqual(fs.readdirSync(h.root),[]);
   const other=await fixture(t,{secret:'short'});
   assert.equal((await other.post(id,body)).status,503,'a misconfigured local key must fail closed');
-  assert.deepEqual(fs.readdirSync(other.root),[]);
+  assert.equal(fs.existsSync(other.root),false,'No backup directory may be created without a valid key');
 });
 
 test('POST cannot overwrite an existing backup; concurrent same-ID uploads have one winner',async t=>{

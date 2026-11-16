@@ -25,7 +25,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.catalog_api import Actor, authenticate, support_session_factory
 from app.tenant_access import resolve_site_access
-from app.cakto_api import CaktoClient, BASE, ORDER_ID
+from app.cakto_api import CaktoClient, cached_cakto_client, BASE, ORDER_ID
 from app.plan_management import (
     CheckoutChoice, CODES, _ensure_owner, _owner_account, _replayable_checkout_token,
     _exact_offer, start_plan_checkout,
@@ -41,16 +41,10 @@ STATES = {"waiting_payment", "pending", "processing", "paid", "declined", "refus
 
 
 def checkout_enabled() -> bool:
-    return (os.getenv("ORION_DIRECT_PAYMENTS_ENABLED", "0") == "1"
-            and os.getenv("ORION_DIRECT_RECURRING_VERIFIED", "0") == "1"
-            # A previously shown webhook key must be rotated before real charging.
-            # Never infer that source-control CI or a sample delivery is proof.
-            and os.getenv("ORION_WEBHOOK_SECRET_ROTATED_CONFIRMED", "0") == "1"
-            and os.getenv("ORION_CAKTO_LIFECYCLE_ENABLED", "0") == "1"
-            and os.getenv("CAKTO_BILLING_LIVE_ENABLED", "0") == "1"
-            and len(os.getenv("CAKTO_WEBHOOK_SECRET", "")) >= 32
-            and bool(os.getenv("CAKTO_CLIENT_ID"))
-            and bool(os.getenv("CAKTO_CLIENT_SECRET")))
+    from app.cakto_readiness import direct_environment_ready
+    # Environment flags alone never authorize provider POST; each checkout
+    # verifies registered webhooks, recurrence and ownership again.
+    return direct_environment_ready()
 
 
 def require_enabled():
@@ -209,6 +203,15 @@ async def require_verified_webhooks(client: CaktoClient) -> None:
         offers = await client.list_offers()
     except Exception:
         raise HTTPException(503, "Não foi possível verificar a confirmação dos pagamentos.") from None
+    # A working read-only OAuth token does not authorize real charging.
+    # Require actual grants returned by Cakto's token endpoint, including
+    # card tokenization, before any checkout can create a payment.
+    scopes = frozenset({"read", "write", "orders", "subscriptions",
+                         "payments", "card_tokens"})
+    if client.granted_scopes(scopes) is not True:
+        raise HTTPException(
+            409, "A chave da Cakto ainda não está autorizada para cobranças recorrentes."
+        )
     try:
         inventory = await inventory_probe(client, offers)
     except Exception:
@@ -240,7 +243,7 @@ async def direct_config(tenant_id: UUID, actor: Actor = Depends(authenticate)):
     available = checkout_enabled()
     if available:
         try:
-            await require_verified_webhooks(CaktoClient())
+            await require_verified_webhooks(cached_cakto_client())
         except HTTPException:
             available = False
     return {"available": available,
@@ -255,7 +258,7 @@ async def direct_prepare(tenant_id: UUID, payload: DirectPrepare,
     require_enabled()
     account_id = await owner(tenant_id, actor)
     await check_new_checkout_access(tenant_id, account_id)
-    await require_verified_webhooks(CaktoClient())
+    await require_verified_webhooks(cached_cakto_client())
     # Existing reviewed endpoint checks monthly offer, price, owner, current
     # subscription and ensures only one tenant/account checkout intent.
     try:
@@ -369,7 +372,7 @@ async def direct_charge(tenant_id: UUID, data: DirectCharge,
     require_enabled()
     account_id = await owner(tenant_id,actor)
     await check_new_checkout_access(tenant_id, account_id)
-    await require_verified_webhooks(CaktoClient())
+    await require_verified_webhooks(cached_cakto_client())
     # The same tenant lock serializes embedded attempts with hosted intent creation.
     # No account details or provider token are persisted.
     async with support_session_factory()() as db:
@@ -403,7 +406,7 @@ async def direct_charge(tenant_id: UUID, data: DirectCharge,
                   "tenant":tenant_id,"account":account_id,"method":data.method})
     # Read-only confirmation of exact subscription offer, after durable reservation.
     try:
-        client = CaktoClient()
+        client = cached_cakto_client()
         offers = await client.list_offers()
         plan = CODES[intent["plan_code"]]
         offer = _exact_offer(offers,plan)

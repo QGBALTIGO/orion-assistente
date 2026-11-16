@@ -74,6 +74,33 @@ def test_shared_verified_private_backup_and_database_scope_are_reused():
     assert release.PREVIOUS == registration.TARGET
 
 
+@pytest.mark.parametrize('revision,paraguay', [
+    ('0040_professional_phone', False), ('0041_quick_onboarding_activation', False),
+    ('0051_central_protocol', False), ('0052_paraguay_phone', True),
+    ('0053_central_notifications', True), ('0059_prepaid_pix', True),
+    ('0071_subscription_direct', True),
+])
+def test_exact_reviewed_revision_ancestry_preserves_its_phone_policy(revision, paraguay):
+    constraint = release._reviewed_phone_constraint(revision)
+    assert constraint is not None and r'\+55[1-9][0-9]{9,10}' in constraint
+    assert (r'\+5959[0-9]{8}' in constraint) is paraguay
+
+
+@pytest.mark.parametrize('revision', [
+    None, True, b'0052_paraguay_phone', '', 'head', 'heads', 'base', '0052',
+    '0052_paraguay_phon', '0039_registration_confirmation', '9999_unreviewed',
+])
+def test_alias_partial_pre_phone_or_unknown_revision_cannot_choose_a_phone_policy(revision):
+    assert release._reviewed_phone_constraint(revision) is None
+
+
+def test_missing_repository_revision_graph_fails_closed(monkeypatch):
+    def unavailable():
+        raise release.CommandError('Synthetic missing repository migrations')
+    monkeypatch.setattr(release, '_revision_graph', unavailable)
+    assert release._reviewed_phone_constraint('0071_subscription_direct') is None
+
+
 def test_upgrade_follows_verified_backup_and_repeat_is_read_only(monkeypatch):
     events = configure(monkeypatch)
     assert release.main() == 0

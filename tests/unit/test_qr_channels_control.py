@@ -17,7 +17,13 @@ CLIENT = httpx.AsyncClient
 @pytest.fixture
 def control(monkeypatch):
     tenant, channel, account = uuid4(), uuid4(), uuid4()
-    actor = Actor("member", account_id=account)
+    actor = Actor("member", tenant_id=tenant, account_id=account, membership_role="owner")
+    # Importing app.main attaches the central dependency to this shared router.
+    # Keep this transport fixture independent of collection order while still
+    # running the real plan policy for an explicitly licensed synthetic owner.
+    from plan_fixture import install_plan_fixture
+    from app.plan_routing import include_plan_router
+    install_plan_fixture(monkeypatch, "elite")
     key = "synthetic-private-channel-" + "x"*40
     cipher = Fernet(Fernet.generate_key())
     row = {"id": channel, "tenant_id": tenant, "owner_account_id": account, "provider": "baileys",
@@ -48,7 +54,7 @@ def control(monkeypatch):
     monkeypatch.setattr(channels, "_cipher", lambda: cipher)
     monkeypatch.setattr(channels, "_owned_channel", owned)
     monkeypatch.setattr(httpx, "AsyncClient", lambda **kwargs: CLIENT(transport=httpx.MockTransport(provider), **kwargs))
-    api = FastAPI(); api.include_router(channels.router)
+    api = FastAPI(); include_plan_router(api, channels.router)
     api.dependency_overrides[authenticate] = lambda: actor
     return tenant, channel, row, key, checks, network, api
 
@@ -250,7 +256,11 @@ async def test_status_discloses_pairing_state_without_phone_or_code(control, mon
 @pytest.mark.parametrize("role", ["owner", "editor", "viewer", "support"])
 async def test_list_authority_and_allowlist_are_server_derived(monkeypatch, role):
     tenant, account = uuid4(), uuid4()
-    actor = Actor("support" if role == "support" else "member", account_id=account)
+    actor = Actor("support" if role == "support" else "member", tenant_id=tenant,
+                  account_id=account, membership_role=None if role == "support" else role)
+    from plan_fixture import install_plan_fixture
+    from app.plan_routing import include_plan_router
+    install_plan_fixture(monkeypatch, "elite")
     rows = [{**dict.fromkeys(channels.SAFE_FIELDS), "id": uuid4(), "tenant_id": tenant,
              "owner_account_id": account, "allowed_senders": ["5567999999901"]},
             {**dict.fromkeys(channels.SAFE_FIELDS), "id": uuid4(), "tenant_id": tenant,
@@ -266,7 +276,7 @@ async def test_list_authority_and_allowlist_are_server_derived(monkeypatch, role
     monkeypatch.setattr(channels, "support_session_factory", lambda: DB)
     async def canonical(*args, **kwargs): return rows[0], "ready"
     monkeypatch.setattr(channels, "_canonical", canonical)
-    api = FastAPI(); api.include_router(channels.router); api.dependency_overrides[authenticate] = lambda: actor
+    api = FastAPI(); include_plan_router(api, channels.router); api.dependency_overrides[authenticate] = lambda: actor
     async with CLIENT(transport=httpx.ASGITransport(app=api), base_url="https://test") as client:
         result = await client.get(f"/api/v1/tenants/{tenant}/qr-channels")
     assert result.status_code == 200

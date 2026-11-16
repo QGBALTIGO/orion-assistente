@@ -44,21 +44,35 @@ def test_catalog_fallback_matches_only_existing_explicit_names():
 
 
 @pytest.mark.asyncio
-async def test_greeting_returns_real_menu_without_llm(monkeypatch):
+async def test_greeting_stays_short_and_accepts_a_natural_service_reply_without_llm(monkeypatch):
     tenant, service = uuid4(), uuid4()
     redis = MemoryRedis()
     async def data(_):
+        assert _ == tenant
         return ({"name": "Salão Teste", "timezone": "America/Campo_Grande"},
                 [{"id": service, "name": "Corte", "duration_min": 30, "price_cents": 2500}], [])
     async def must_not_call(**_):
         raise AssertionError("Não chamar provedor para saudação simples")
     monkeypatch.setattr(qr_ai, "tenant_data", data)
     monkeypatch.setattr(qr_ai, "interpret", must_not_call)
+    monkeypatch.setattr(qr_ai, "interpret_plan", must_not_call)
+    async def no_effect(*args, **kwargs):
+        raise AssertionError("Saudação e escolha de serviço não autorizam escrita ou captura de nome")
+    for name in ("book_appointment", "confirm_hold", "reschedule_appointment", "remember_name", "list_slots"):
+        monkeypatch.setattr(qr_ai, name, no_effect)
     first = await qr_ai.turn(tenant, "5567999999999", "oi", redis, "preview:test", True)
-    assert "R$ 25,00" in first["answer"]
-    assert first["step"] == "menu"
-    chosen = await qr_ai.turn(tenant, "5567999999999", "1", redis, "preview:test", True)
-    assert chosen["step"] == "date"
+    assert first["step"] == "greeting" and first["answer"].startswith("Oi!")
+    assert "Como posso ajudar" in first["answer"] and len(first["answer"]) <= 240
+    assert "R$" not in first["answer"] and "Corte" not in first["answer"] and "_catalog_page" not in first
+    key = f"orion:qr:ai:{tenant}:preview:test"
+    state = json.loads(redis.values[key])
+    assert state["step"] == "menu" and state["menu_ids"] == [str(service)] and state["service_reply_expected"]
+    assert set(state) == {"step", "menu_ids", "service_reply_expected", "history"}
+    assert state["history"] == [{"role": "user", "content": "oi"}, {"role": "assistant", "content": first["answer"]}]
+    chosen = await qr_ai.turn(tenant, "5567999999999", "Corte", redis, "preview:test", True)
+    assert chosen["step"] == "date" and json.loads(redis.values[key])["services"] == [str(service)]
+    assert not set(json.loads(redis.values[key])) & {"hold", "hold_snapshot", "expected_snapshot", "consent",
+        "appointment", "confirmation_summary", "confirmation_message_id", "confirmation_expires_at"}
 
 
 @pytest.mark.asyncio
@@ -115,9 +129,10 @@ async def test_remarking_uses_a_fresh_summary_and_cannot_write_in_preview(monkey
         raise AssertionError("Simulação não pode alterar agendamento")
     monkeypatch.setattr(qr_ai, "tenant_data", data)
     monkeypatch.setattr(qr_ai, "offer_slots", slots)
-    monkeypatch.setattr(qr_ai, "reschedule_appointment", forbid)
+    for name in ("reschedule_appointment", "book_appointment", "confirm_hold", "remember_name"):
+        monkeypatch.setattr(qr_ai, name, forbid)
     state = {"step": "reschedule_day", "services": [str(service)],
-             "professional": str(pro), "appointment": str(appointment)}
+             "professional": str(pro), "appointment": str(appointment), "customer_name": "Lucas"}
     k = f"orion:qr:ai:{tenant}:preview:fake"
     redis.values[k] = json.dumps(state)
     business, catalog, professionals = await data(tenant)
@@ -128,7 +143,20 @@ async def test_remarking_uses_a_fresh_summary_and_cannot_write_in_preview(monkey
     assert b["step"] == "reschedule_confirm"
     proposal_identity = json.loads(redis.values[k])["confirmation_message_id"]
     c = await qr_ai.turn(tenant, "5567999999999", "não", redis, "preview:fake", True)
-    assert c["step"] == "request_closed" and k not in redis.values
+    assert c["step"] == "request_closed" and "encerrei esse pedido" in c["answer"]
+    closed = json.loads(redis.values[k])
+    assert closed["step"] == "menu" and closed["customer_name"] == "Lucas"
+    assert set(closed) == {"step", "customer_name", "history"}
+    assert 0 < len(closed["history"]) <= 8 and closed["history"][-2:] == [
+        {"role": "user", "content": "não"}, {"role": "assistant", "content": c["answer"]}]
+    assert all(set(item) == {"role", "content"} and item["role"] in {"user", "assistant"}
+        and len(item["content"]) <= 1500 for item in closed["history"])
+    assert not set(closed) & {"hold", "hold_snapshot", "expected_snapshot", "consent", "appointment", "new_start",
+        "professional", "services", "confirmation_summary", "confirmation_message_id", "confirmation_expires_at"}
+    returned = await qr_ai.turn(tenant, "5567999999999", "Oi", redis, "preview:fake", True)
+    assert returned["step"] == "greeting" and "Oi, Lucas!" in returned["answer"] and "R$" not in returned["answer"]
+    assert not set(json.loads(redis.values[k])) & {"hold", "hold_snapshot", "expected_snapshot", "consent", "appointment",
+        "confirmation_summary", "confirmation_message_id", "confirmation_expires_at", "new_start"}
     redis.values[k] = json.dumps({**state, "step": "reschedule_confirm",
                                    "new_start": "2026-11-20T14:00:00-04:00",
                                    "confirmation_summary": b["answer"],

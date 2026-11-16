@@ -23,6 +23,6 @@ test('expired Orion session has a re-login action instead of endless Google retr
  assert.match(js,/googleAuthExpired=error\?\.status===401/);
  assert.match(js,/Sua sessão do Orion expirou/);
  assert.match(js,/button\('Entrar novamente','google-sign-in'/);
- assert.match(js,/case 'google-sign-in':window\.location\.assign\('\/panel\?aba=agenda'\)/);
+ assert.match(js,/case 'google-sign-in':window\.location\.assign\('\/painel\?aba=agenda'\)/);
  assert.match(js,/button\('Tentar novamente','google-refresh'/);
 });

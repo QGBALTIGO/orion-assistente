@@ -426,9 +426,10 @@ async def test_active_greeting_escapes_customer_service_and_company_labels_witho
     saved = {"step":"professional","services":[str(service)],"customer_name":"Ana *Equipe*"}
     await redis.set(key,json.dumps(saved));await redis.set(key+":catalog-context",qr_profile.catalog_revision(business,catalog,[]))
     result = await qr_ai.turn(tenant,"5567999999999","Oi",redis,namespace,preview=True)
-    assert r"Olá, Ana \*Equipe\*!" in result["answer"]
-    assert r"Consulta \_Especial\_ SKU_250_ML" in result["answer"]
-    assert json.loads(await redis.get(key))["customer_name"] == saved["customer_name"]
+    assert r"Oi, Ana \*Equipe\*!" in result["answer"] and result["step"] == "greeting"
+    assert "Consulta" not in result["answer"] and "R$" not in result["answer"] and len(result["answer"]) <= 240
+    current = json.loads(await redis.get(key))
+    assert current["customer_name"] == saved["customer_name"] and current["services"] == saved["services"]
     menu = qr_ai.catalog_menu(business,catalog)
     assert r"Empresa \*Oficial\*" in menu and r"Consulta \_Especial\_ SKU_250_ML" in menu
 

@@ -4,6 +4,7 @@ Requires the existing booking integration fixture and runtime/migrator roles.
 All tenants, contacts and appointments are synthetic and removed by that fixture.
 """
 from copy import deepcopy
+import asyncio
 import json
 from types import SimpleNamespace
 
@@ -218,9 +219,12 @@ async def test_future_only_rejects_started_booking_without_writes_and_preserves_
 
 
 @pytest.mark.asyncio
-async def test_db_clock_crosses_start_after_qr_preflight_but_final_update_cannot_cancel(customer_cancellation, monkeypatch):
+async def test_db_clock_crosses_customer_cutoff_after_qr_preflight_but_final_update_cannot_cancel(customer_cancellation, monkeypatch):
     h = customer_cancellation
-    await _move_synthetic_booking_to_db_clock(h, 5)
+    # QR is an authenticated customer source, so the common engine's T-60min
+    # rule applies before its final UPDATE. The old +5s setup never reached
+    # that statement: the earlier customer deadline correctly rejected it.
+    await _move_synthetic_booking_to_db_clock(h, 60*60+5)
     proposal = await h.message("Quero cancelar minha reserva", requested=True, message_id="synthetic-summary")
     assert proposal["step"] == "cancel_confirm"
     before = await _persisted_cancellation_contract(h)
@@ -232,16 +236,19 @@ async def test_db_clock_crosses_start_after_qr_preflight_but_final_update_cannot
 
         async def guarded_execute(statement, parameters=None, *args, **extra):
             if str(statement).lstrip().startswith("UPDATE appointments SET status='cancelled'"):
-                future = (await execute(text("SELECT start_at>clock_timestamp() FROM appointments WHERE id=:id"),
+                future = (await execute(text("SELECT start_at>=clock_timestamp()+interval '60 minutes' FROM appointments WHERE id=:id"),
                     {"id": item_id})).scalar_one()
                 assert future is True  # Both QR preflight and backend snapshot have passed.
-                await execute(text("""
-                    SELECT pg_sleep(GREATEST(0, EXTRACT(EPOCH FROM (start_at-clock_timestamp()))) + 0.02)
-                    FROM appointments WHERE id=:id
-                """), {"id": item_id})
-                started = (await execute(text("SELECT start_at<=clock_timestamp() FROM appointments WHERE id=:id"),
+                remaining = (await execute(text("""SELECT EXTRACT(EPOCH FROM
+                    (start_at-interval '60 minutes'-clock_timestamp())) FROM appointments WHERE id=:id"""),
                     {"id": item_id})).scalar_one()
-                assert started is True
+                assert 0 < remaining <= 5
+                # A bounded application wait avoids changing PostgreSQL timeout
+                # behavior while the real transaction and final SQL stay intact.
+                await asyncio.sleep(float(remaining)+0.03)
+                crossed_cutoff = (await execute(text("SELECT start_at<clock_timestamp()+interval '60 minutes' FROM appointments WHERE id=:id"),
+                    {"id": item_id})).scalar_one()
+                assert crossed_cutoff is True
                 crossed.append(item_id)
             return await execute(statement, parameters, *args, **extra)
 

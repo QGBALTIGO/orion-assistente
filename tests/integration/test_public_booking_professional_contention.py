@@ -10,7 +10,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app import public_site_api, professional_commissions
+from app import public_site_api, professional_commissions, plan_permissions
 from app.booking_service import acquire_professional_lock, book_appointment, confirm_hold
 from test_public_catalog import public_db, publish, availability, book_body
 
@@ -31,6 +31,16 @@ async def test_public_booking_does_not_wait_on_editor_blocked_by_its_guard(publi
         quoted = response.json()
     else:
         quoted = await availability(d)
+    # The current tenant-plan barrier serializes these HTTP operations before
+    # the professional lock. Isolate the older, inner lock boundary here by
+    # keeping real shared plan locks and unchanged entitlement checks. The test
+    # below separately proves the complete production lock order without this
+    # adjustment; waiting for an editor behind an exclusive plan lock here
+    # would create a deadlock in the test's own Event, before the engine runs.
+    original_plan_lock = plan_permissions.lock_plan
+    async def shared_plan_barrier(db, tenant, exclusive=False):
+        await original_plan_lock(db, tenant, exclusive=False)
+    monkeypatch.setattr(plan_permissions, "lock_plan", shared_plan_barrier)
     guard_ready, writer_has_advisory = asyncio.Event(), asyncio.Event()
     original_writer_lock = professional_commissions.acquire_professional_lock
     async def writer_lock(db, tenant, professional):
@@ -92,6 +102,88 @@ async def test_public_booking_does_not_wait_on_editor_blocked_by_its_guard(publi
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("stage", ["book", "confirm"])
+@pytest.mark.parametrize("writer,multiple", [("archive", False), ("configuration", False), ("configuration", True)])
+async def test_actual_plan_contention_returns_recoverable_conflict_without_deadlock(public_db, monkeypatch, writer, multiple, stage):
+    """Observe real pg_locks; no lock or entitlement function is replaced."""
+    d = public_db
+    await publish(d)
+    if multiple:
+        response = await d["client"].get(d["public"] + "/availability", params=[
+            ("professional_id", str(d["pro"])), ("day", d["day"].isoformat()),
+            ("service_ids", str(d["cut"])), ("service_ids", str(d["wash"]))])
+        assert response.status_code == 200, response.text
+        quoted = response.json()
+    else:
+        quoted = await availability(d)
+    guard_ready, release_engine = asyncio.Event(), asyncio.Event()
+    boundary = "book_appointment" if stage == "book" else "confirm_hold"
+    original_engine = getattr(public_site_api, boundary)
+
+    async def paused_engine(*args, **kwargs):
+        guard_ready.set()
+        await asyncio.wait_for(release_engine.wait(), timeout=10)
+        return await original_engine(*args, **kwargs)
+
+    monkeypatch.setattr(public_site_api, boundary, paused_engine)
+    tasks = []
+    try:
+        booking = asyncio.create_task(d["client"].post(d["public"] + "/appointments", json=book_body(quoted)))
+        tasks.append(booking)
+        await asyncio.wait_for(guard_ready.wait(), timeout=5)
+        if writer == "archive":
+            edit = asyncio.create_task(d["client"].patch(d["base"] + "/professionals/" + str(d["pro"]) + "/status",
+                json={"expected_version": 1, "active": False}))
+        else:
+            edit = asyncio.create_task(d["client"].put(d["base"] + "/professionals/" + str(d["pro"]) + "/configure",
+                json={"expected_version": 1, "name": "Profissional sintético", "service_ids": [str(d["cut"])]}))
+        tasks.append(edit)
+        # Match the exact 64-bit tenant plan lock, not unrelated concurrent locks.
+        async with d["migrator"].connect() as observer:
+            async with asyncio.timeout(5):
+                while True:
+                    waiting = (await observer.execute(text("""
+                        SELECT EXISTS(SELECT 1 FROM pg_catalog.pg_locks
+                        WHERE locktype='advisory' AND mode='ExclusiveLock' AND NOT granted
+                          AND objsubid=1
+                          AND classid=((hashtextextended(:key,0) >> 32) & 4294967295)::oid
+                          AND objid=(hashtextextended(:key,0) & 4294967295)::oid)
+                    """), {"key": plan_permissions.LOCK_PREFIX + str(d["a"])})).scalar_one()
+                    if waiting:
+                        break
+                    if edit.done():
+                        early = await edit
+                        pytest.fail(f"Editor returned before the expected plan wait: {early.status_code} {early.text}")
+                    await asyncio.sleep(0.01)
+        assert not edit.done()
+        release_engine.set()
+        booked, edited = await asyncio.wait_for(asyncio.gather(booking, edit), timeout=5)
+        assert booked.status_code == 409, booked.text
+        assert "novamente" in booked.text or "instantes" in booked.text
+        assert edited.status_code == (409 if stage == "confirm" and writer == "archive" else 200), edited.text
+        async with d["migrator"].connect() as observer:
+            rows = (await observer.execute(text("SELECT status FROM appointments WHERE tenant_id=:tenant"),
+                                           {"tenant": d["a"]})).scalars().all()
+            assert rows == ([] if stage == "book" else ["hold"])
+            assert (await observer.execute(text("SELECT count(*) FROM public_booking_receipts WHERE tenant_id=:tenant"),
+                                           {"tenant": d["a"]})).scalar_one() == 0
+            assert (await observer.execute(text("""SELECT count(*) FROM customers
+                WHERE tenant_id=:tenant AND whatsapp_e164=:phone"""),
+                {"tenant": d["a"], "phone": "+5511987654321"})).scalar_one() == (0 if stage == "book" else 1)
+        if stage == "confirm" and writer == "configuration" and not multiple:
+            retry = await d["client"].post(d["public"] + "/appointments", json=book_body(quoted))
+            assert retry.status_code == 201, retry.text
+            replay = await d["client"].post(d["public"] + "/appointments", json=book_body(quoted))
+            assert replay.status_code == 201 and replay.json() == retry.json(), replay.text
+    finally:
+        release_engine.set()
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
+@pytest.mark.asyncio
 async def test_cancelling_bounded_confirmation_rolls_back_without_consuming_the_hold(public_db):
     d = public_db
     await publish(d)
@@ -100,7 +192,7 @@ async def test_cancelling_bounded_confirmation_rolls_back_without_consuming_the_
     class TrackedSession(AsyncSession):
         async def execute(self, statement, *args, **kwargs):
             result = await super().execute(statement, *args, **kwargs)
-            if "pg_try_advisory_xact_lock" in str(statement):
+            if "pg_try_advisory_xact_lock(" in str(statement):
                 tried.set()
             return result
     factory = async_sessionmaker(d["runtime"], class_=TrackedSession, expire_on_commit=False)

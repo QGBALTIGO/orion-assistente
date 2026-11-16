@@ -39,5 +39,7 @@ async def record_service_receivable(db, tenant_id, appointment):
         "notes": "Receita de serviço concluído. Marque como pago somente após receber o valor.",
     })).scalar_one_or_none()
     if inserted is not None:
+        from app.service_receipts import schedule_new
+        await schedule_new(db, tenant_id, inserted, appointment)
         await audit(db, tenant_id, "management_created", "financial_entries", inserted)
     return inserted

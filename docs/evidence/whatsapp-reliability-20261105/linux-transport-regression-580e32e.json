@@ -1,0 +1,61 @@
+{
+  "baseline": {
+    "tests": 840,
+    "pass": 821,
+    "fail": 19,
+    "cancelled": 0,
+    "skipped": 0,
+    "failures": {
+      "simulador ignora resposta de outro tenant e finally antigo não libera envio novo": 1,
+      "logout invalida prévia pendente e submit repetido não duplica POST": 1,
+      "status atrasado do simulador não substitui estado do tenant atual": 1,
+      "readiness e finally antigos não liberam tenant novo nem conta desconectada": 1,
+      "membro carrega somente empresas atribuídas para configuração e simulador": 1,
+      "runtime desligado não oferece rascunho nem estilos e logout limpa nomes e versões": 1,
+      "Testar rascunho bloqueia o tenant antigo desde a navegação, antes mesmo da lista carregar": 1,
+      "membro só busca empresas atribuídas no catálogo comercial": 1,
+      "variante não transforma preço ausente em zero e serializa os quatro tipos corretamente": 1,
+      "logout apaga catálogo, proposta e confirmação pendente; respostas antigas permanecem ignoradas": 1,
+      "cadastros de membro usam somente empresas atribuídas e papel confirmado em cada empresa": 1,
+      "editor pode cadastrar serviços mas somente proprietário altera acesso da equipe": 1,
+      "cadastro não transforma preço vazio em zero nem duplica mutação incerta": 1,
+      "respostas antigas de cadastros não cruzam tenant, categoria nem logout": 1,
+      "publicação cancelada ou com empresa/sessão alterada durante await não faz POST": 1,
+      "troca de empresa com edição exige aceite; cancelar preserva formulário e logout não restaura tenant antigo": 1,
+      "atualização com edição espera escolha e contexto fresco; cancelar ou mudar contexto não consulta dados": 1,
+      "envio manual cancelado ou com destinatário/texto/contato/sessão alterado durante confirmação não envia": 1,
+      "duplo submit e duplo Aceitar do envio manual produzem uma única tentativa de transporte": 1
+    }
+  },
+  "candidate": {
+    "tests": 881,
+    "pass": 862,
+    "fail": 19,
+    "cancelled": 0,
+    "skipped": 0,
+    "failures": {
+      "simulador ignora resposta de outro tenant e finally antigo não libera envio novo": 1,
+      "logout invalida prévia pendente e submit repetido não duplica POST": 1,
+      "status atrasado do simulador não substitui estado do tenant atual": 1,
+      "readiness e finally antigos não liberam tenant novo nem conta desconectada": 1,
+      "membro carrega somente empresas atribuídas para configuração e simulador": 1,
+      "runtime desligado não oferece rascunho nem estilos e logout limpa nomes e versões": 1,
+      "Testar rascunho bloqueia o tenant antigo desde a navegação, antes mesmo da lista carregar": 1,
+      "membro só busca empresas atribuídas no catálogo comercial": 1,
+      "variante não transforma preço ausente em zero e serializa os quatro tipos corretamente": 1,
+      "logout apaga catálogo, proposta e confirmação pendente; respostas antigas permanecem ignoradas": 1,
+      "cadastros de membro usam somente empresas atribuídas e papel confirmado em cada empresa": 1,
+      "editor pode cadastrar serviços mas somente proprietário altera acesso da equipe": 1,
+      "cadastro não transforma preço vazio em zero nem duplica mutação incerta": 1,
+      "respostas antigas de cadastros não cruzam tenant, categoria nem logout": 1,
+      "publicação cancelada ou com empresa/sessão alterada durante await não faz POST": 1,
+      "troca de empresa com edição exige aceite; cancelar preserva formulário e logout não restaura tenant antigo": 1,
+      "atualização com edição espera escolha e contexto fresco; cancelar ou mudar contexto não consulta dados": 1,
+      "envio manual cancelado ou com destinatário/texto/contato/sessão alterado durante confirmação não envia": 1,
+      "duplo submit e duplo Aceitar do envio manual produzem uma única tentativa de transporte": 1
+    }
+  },
+  "new_failures": {},
+  "resolved_failures": {},
+  "global_suite_passed": false
+}

@@ -1,0 +1,2053 @@
+{
+  "source_status": "work_in_progress_uncommitted_candidate",
+  "scope": "engineering_validation_not_security_scan",
+  "external_messages_sent": 0,
+  "actual_whatsapp_connections": 0,
+  "real_provider_delivery_verified": false,
+  "independent_unit_baseline": {
+    "suite": {
+      "name": "pytest",
+      "errors": "7",
+      "failures": "49",
+      "skipped": "10",
+      "tests": "5133",
+      "time": "111.944",
+      "timestamp": "2026-11-05T13:11:18.684114-04:00",
+      "hostname": "DESKTOP-3Q48M6B"
+    },
+    "failure_groups": {
+      "tests.unit.test_qr_api": 1,
+      "tests.unit.test_qr_profile_runtime": 1,
+      "tests.unit.test_qr_style_examples": 12,
+      "tests.unit.test_subscription_chatbot_media": 3,
+      "tests.unit.test_subscription_device_audio": 3,
+      "tests.unit.test_subscription_devices": 1,
+      "tests.unit.test_subscription_diagnostics": 1,
+      "tests.unit.test_subscription_direct_api": 21,
+      "tests.unit.test_subscription_template_apk": 2,
+      "tests.unit.test_subscription_template_pdf": 6,
+      "tests.unit.test_subscription_template_transport": 1,
+      "tests.unit.test_subscription_templates": 1
+    },
+    "skips": {
+      "real FFmpeg is required by the release job": 3,
+      "real ffmpeg/ffprobe are required": 4,
+      "real codecs required": 3
+    },
+    "failed_cases": [
+      {
+        "class": "tests.unit.test_qr_api",
+        "name_prefix": "test_qr_requires_support_and_never_exposes_api_key",
+        "name_sha256": "b5796608daf8d218666d574548e675e1f02ff87dfa1eedf200b6ee800bc71ba7",
+        "message": "AssertionError: assert '/painel?aba=dispositivo' == '/panel?aba=dispositivo'\n  \n  - /panel?aba=dispositivo\n  + /painel?aba=dispositivo\n  ?    +"
+      },
+      {
+        "class": "tests.unit.test_qr_profile_runtime",
+        "name_prefix": "test_status_authorizes_member_before_returning_truthful_feature_flags",
+        "name_sha256": "af0fd63b36faa38c6b51ef04437f25d97ad7e1405e2be2a95a40f467b9fa63b9",
+        "message": "assert (403 == 200)\n +  where 403 = <Response [403 Forbidden]>.status_code"
+      },
+      {
+        "class": "tests.unit.test_qr_style_examples",
+        "name_prefix": "test_three_visual_examples_per_style_share_one_scoped_real_slot_and_no_operations",
+        "name_sha256": "6e97a904342e3123a667c18a6033fa5d2a685c588f4f6fa6646f503c9244c1b5",
+        "message": "assert 403 == 200\n +  where 403 = <Response [403 Forbidden]>.status_code"
+      },
+      {
+        "class": "tests.unit.test_qr_style_examples",
+        "name_prefix": "test_missing_operational_facts_explain_without_fabricated_date_name_or_protocol[disabled]",
+        "name_sha256": "6add0e7597a87fb00f88be888e71d81f1e730b5506ea274b558f3b0fa624cc23",
+        "message": "assert 403 == 200\n +  where 403 = <Response [403 Forbidden]>.status_code"
+      },
+      {
+        "class": "tests.unit.test_qr_style_examples",
+        "name_prefix": "test_missing_operational_facts_explain_without_fabricated_date_name_or_protocol[products_only]",
+        "name_sha256": "e716e194ccb5f9b9864170772be33a740e7e106e6bc46255f6a77fc27b7b933a",
+        "message": "assert 403 == 200\n +  where 403 = <Response [403 Forbidden]>.status_code"
+      },
+      {
+        "class": "tests.unit.test_qr_style_examples",
+        "name_prefix": "test_missing_operational_facts_explain_without_fabricated_date_name_or_protocol[no_services]",
+        "name_sha256": "f0154ae6c849cd5c0f2a2b28c219ca1aed545f0f65846c3f98e3a7b32b4e8f30",
+        "message": "assert 403 == 200\n +  where 403 = <Response [403 Forbidden]>.status_code"
+      },
+      {
+        "class": "tests.unit.test_qr_style_examples",
+        "name_prefix": "test_missing_operational_facts_explain_without_fabricated_date_name_or_protocol[no_professional]",
+        "name_sha256": "1d2d0dae8398374d9477f497f069d57f8e0e03afe067742c4e82d748b6097135",
+        "message": "assert 403 == 200\n +  where 403 = <Response [403 Forbidden]>.status_code"
+      },
+      {
+        "class": "tests.unit.test_qr_style_examples",
+        "name_prefix": "test_missing_operational_facts_explain_without_fabricated_date_name_or_protocol[no_eligibility]",
+        "name_sha256": "ebb04f86158bf86c116244f8ca4ef314ca09c749ccc71e4a7d68e37ec48cc194",
+        "message": "assert 403 == 200\n +  where 403 = <Response [403 Forbidden]>.status_code"
+      },
+      {
+        "class": "tests.unit.test_qr_style_examples",
+        "name_prefix": "test_missing_operational_facts_explain_without_fabricated_date_name_or_protocol[no_hours]",
+        "name_sha256": "d09097a4d36a49fd6e85459d7f8814fec3148fa24b7a5e7fe2c31a69bcee81a9",
+        "message": "assert 403 == 200\n +  where 403 = <Response [403 Forbidden]>.status_code"
+      },
+      {
+        "class": "tests.unit.test_qr_style_examples",
+        "name_prefix": "test_missing_operational_facts_explain_without_fabricated_date_name_or_protocol[outside_horizon]",
+        "name_sha256": "b239db56a605018cfd820cb5af1e1362062cd066f62459fde8bbc1d5aee89aff",
+        "message": "assert 403 == 200\n +  where 403 = <Response [403 Forbidden]>.status_code"
+      },
+      {
+        "class": "tests.unit.test_qr_style_examples",
+        "name_prefix": "test_missing_operational_facts_explain_without_fabricated_date_name_or_protocol[no_slots]",
+        "name_sha256": "ec8d522edf0448811c6308b82806e73a0ecad1800d775547c042427f1f7c60cf",
+        "message": "assert 403 == 200\n +  where 403 = <Response [403 Forbidden]>.status_code"
+      },
+      {
+        "class": "tests.unit.test_qr_style_examples",
+        "name_prefix": "test_grid_deadline_keeps_price_example_and_explains_operational_absence",
+        "name_sha256": "33e0e98bcc36404109894493da5f25f7dfbd35154d2d51d8f72ec1476a946f50",
+        "message": "assert 403 == 200\n +  where 403 = <Response [403 Forbidden]>.status_code"
+      },
+      {
+        "class": "tests.unit.test_qr_style_examples",
+        "name_prefix": "test_another_tenant_is_rejected_before_catalog_or_grid_read",
+        "name_sha256": "25a462c11c794d4db101fb3fb4fbfda93da1bdce0ebd19b5bfb54b05c278f1ee",
+        "message": "AssertionError: assert (403 == 403 and [] == [('access', U...f5e36a6b9f'))]\n +  where 403 = <Response [403 Forbidden]>.status_code\n  \n  Right contains one more item: ('access', UUID('2946abdb-5b4f-476e-a1c7-76f5e36a6b9f'))\n  Use -v to get more diff)"
+      },
+      {
+        "class": "tests.unit.test_qr_style_examples",
+        "name_prefix": "test_eligibility_fallback_remains_one_grid_and_quote_uses_that_factual_bundle",
+        "name_sha256": "d6541913313e818d6506834460c432aee3e37c1eb630c81202a0027b602d8b98",
+        "message": "assert 403 == 200\n +  where 403 = <Response [403 Forbidden]>.status_code"
+      },
+      {
+        "class": "tests.unit.test_subscription_chatbot_media",
+        "name_prefix": "test_invalid_or_active_input_is_rejected_without_storage[#EXTM3U\\nhttps://127.0.0.1/internal-video]",
+        "name_sha256": "0e5dfd4d6e0e7effd4d9726282fe0481f45bdb961c9d45d7f26a512a26ac127a",
+        "message": "AssertionError: assert 503 in {415, 422}\n +  where 503 = HTTPException(status_code=503, detail={'code': 'CHATBOT_MEDIA_UNAVAILABLE', 'message': 'O preparo de vídeo está indisponível.'}).status_code\n +    where HTTPException(status_code=503, detail={'code': 'CHATBOT_MEDIA_UNAVAILABLE', 'message': 'O preparo de vídeo está indisponível.'}) = <Exceptio"
+      },
+      {
+        "class": "tests.unit.test_subscription_chatbot_media",
+        "name_prefix": "test_invalid_or_active_input_is_rejected_without_storage[not-a-video-ptv]",
+        "name_sha256": "8ff8d19ba0e2273d18858537d4bd63ec5c20179fb21b2832e24e57d62f06e903",
+        "message": "AssertionError: assert 503 in {415, 422}\n +  where 503 = HTTPException(status_code=503, detail={'code': 'CHATBOT_MEDIA_UNAVAILABLE', 'message': 'O preparo de vídeo está indisponível.'}).status_code\n +    where HTTPException(status_code=503, detail={'code': 'CHATBOT_MEDIA_UNAVAILABLE', 'message': 'O preparo de vídeo está indisponível.'}) = <Exceptio"
+      },
+      {
+        "class": "tests.unit.test_subscription_chatbot_media",
+        "name_prefix": "test_decoder_timeout_is_explicit_and_slot_is_released",
+        "name_sha256": "47f08c23d037b4c8a786ce387eb2a1501e3bd1027aaabf5dbd85179ee6385b7f",
+        "message": "AssertionError: assert 'CHATBOT_MEDIA_UNAVAILABLE' == 'CHATBOT_MEDIA_TIMEOUT'\n  \n  - CHATBOT_MEDIA_TIMEOUT\n  + CHATBOT_MEDIA_UNAVAILABLE"
+      },
+      {
+        "class": "tests.unit.test_subscription_device_audio",
+        "name_prefix": "test_real_decoder_measures_samples_and_removes_tempfiles",
+        "name_sha256": "b303896b29c162b2cb086b689dc7ebeefca7bb74083e00e626a91dbe661272ad",
+        "message": "AssertionError: CI must install the same decoders as the runtime\nassert (None)\n +  where None = <function which at 0x000001CF7E68F100>('ffmpeg')\n +    where <function which at 0x000001CF7E68F100> = shutil.which"
+      },
+      {
+        "class": "tests.unit.test_subscription_device_audio",
+        "name_prefix": "test_real_decoder_rejects_overlong_or_truncated_audio_before_provider",
+        "name_sha256": "0e9802d7b800d6f86c6e4c1c45f027e5e9400700c0f4be900f30f626a1b62d89",
+        "message": "AssertionError: assert 'DEVICE_AUDIO_UNAVAILABLE' == 'DEVICE_AUDIO_TOO_LONG'\n  \n  - DEVICE_AUDIO_TOO_LONG\n  + DEVICE_AUDIO_UNAVAILABLE"
+      },
+      {
+        "class": "tests.unit.test_subscription_device_audio",
+        "name_prefix": "test_real_30_minute_audio_is_supported_without_paid_provider",
+        "name_sha256": "78be9c3a39db8ed72603794465aacabdfce1f21d2d4cd36f09e4d1b7c47d5cf0",
+        "message": "TypeError: expected str, bytes or os.PathLike object, not NoneType"
+      },
+      {
+        "class": "tests.unit.test_subscription_devices",
+        "name_prefix": "test_new_route_isolated_without_opening_legacy_qr_and_matches_schema_fixture",
+        "name_sha256": "af043a7acf3d5d7c30c311e35211c3c41c9017bcc2b1fe6cbf8e8e16c23aeb86",
+        "message": "AssertionError: assert {'name': 'Wha...': True}, ...} == {'name': 'Wha...': True}, ...}\n  \n  Omitting 7 identical items, use -vv to show\n  Differing items:\n  {'calls': {'days': [{'weekday': 0, 'enabled': False, 'start': '09:00', 'break_start': None, ...}, {'weekday': 1, 'enab... '09:00', 'break_start': None, ...}, ...], 'holiday_off': False, 'rejec"
+      },
+      {
+        "class": "tests.unit.test_subscription_diagnostics",
+        "name_prefix": "test_shared_fixture_has_one_key_and_the_fixed_server_text",
+        "name_sha256": "2863e9dcaeec8515fb92ee92b01250845f5020ceedb1a5f701f9be534f70ec93",
+        "message": "AssertionError: assert 'Mensagem de ... do WhatsApp.' == 'Mensagem de ... do WhatsApp.'\n  \n  Skipping 48 identical leading characters in diff, use -v to show\n  - o proprietário para verificar a conexão do WhatsApp.\n  ?           ^                          ^\n  + o proprietÃ¡rio para verificar a conexÃ£o do WhatsApp.\n  ?           ^^                 "
+      },
+      {
+        "class": "tests.unit.test_subscription_direct_api",
+        "name_prefix": "test_bounded_body_and_strict_confirmation_never_create_a_request",
+        "name_sha256": "cd204fa53442a04aae6e2b26fd53aa87446ceb38986399fe3f6866f1326198b9",
+        "message": "assert (403 == 413)\n +  where 403 = <Response [403 Forbidden]>.status_code"
+      },
+      {
+        "class": "tests.unit.test_subscription_direct_api",
+        "name_prefix": "test_recovery_is_read_only_and_returns_original_send_without_bulk_identity[prepared]",
+        "name_sha256": "b37a8f343fd7a02de4aa1f709ac37b602a1b5f3df0fad29da389104f723268f5",
+        "message": "assert 403 == 200\n +  where 403 = <Response [403 Forbidden]>.status_code"
+      },
+      {
+        "class": "tests.unit.test_subscription_direct_api",
+        "name_prefix": "test_recovery_is_read_only_and_returns_original_send_without_bulk_identity[expired]",
+        "name_sha256": "4a764a6e0ddf3dce9656e83cc9c32865e4be147460ff620c58c9c0cb9246aedb",
+        "message": "assert 403 == 200\n +  where 403 = <Response [403 Forbidden]>.status_code"
+      },
+      {
+        "class": "tests.unit.test_subscription_direct_api",
+        "name_prefix": "test_recovery_is_read_only_and_returns_original_send_without_bulk_identity[succeeded]",
+        "name_sha256": "f85bd9536933a3e0482489249c56fd620ccaa93f333f7b4682b2bff24a38a0fa",
+        "message": "assert 403 == 200\n +  where 403 = <Response [403 Forbidden]>.status_code"
+      },
+      {
+        "class": "tests.unit.test_subscription_direct_api",
+        "name_prefix": "test_recovery_is_read_only_and_returns_original_send_without_bulk_identity[missing]",
+        "name_sha256": "0eb44632ae8dd83a9f1cb4e974f8d9059fe05262a514e84d09203e5f112b9ba7",
+        "message": "assert 403 == 404\n +  where 403 = <Response [403 Forbidden]>.status_code"
+      },
+      {
+        "class": "tests.unit.test_subscription_direct_api",
+        "name_prefix": "test_bulk_request_key_never_leaks_or_rebinds_into_direct_origin[/review-post-409-DIRECT_IDEMPOTENCY_",
+        "name_sha256": "bc9ac56abafd7f30452683064d9968ed48bdfb20a11c57df13761651c33bf7b7",
+        "message": "assert (403 == 409)\n +  where 403 = <Response [403 Forbidden]>.status_code"
+      },
+      {
+        "class": "tests.unit.test_subscription_direct_api",
+        "name_prefix": "test_bulk_request_key_never_leaks_or_rebinds_into_direct_origin[/154e6f52-b49f-4086-a3b9-8d06e6f6263",
+        "name_sha256": "14eeb1ac1577e52d2ea70c1a3bcd55b28e864e8fdfff1e04c12d8772240a54ad",
+        "message": "assert (403 == 409)\n +  where 403 = <Response [403 Forbidden]>.status_code"
+      },
+      {
+        "class": "tests.unit.test_subscription_direct_api",
+        "name_prefix": "test_bulk_request_key_never_leaks_or_rebinds_into_direct_origin[/confirm-post-404-DIRECT_NOT_FOUND]",
+        "name_sha256": "1461caffabb6c6befac134569f6911916c1f115c7b7267715e520a35efac43f2",
+        "message": "assert (403 == 404)\n +  where 403 = <Response [403 Forbidden]>.status_code"
+      },
+      {
+        "class": "tests.unit.test_subscription_direct_api",
+        "name_prefix": "test_bulk_request_key_never_leaks_or_rebinds_into_direct_origin[/requests/0be71a22-cd54-4fc5-a12e-ee",
+        "name_sha256": "e509e3556d6d82d4eae14477400e5c0e61e903f8e3c93c12b59f2d0f416f45e3",
+        "message": "assert (403 == 404)\n +  where 403 = <Response [403 Forbidden]>.status_code"
+      },
+      {
+        "class": "tests.unit.test_subscription_direct_api",
+        "name_prefix": "test_another_account_request_stays_private_even_with_exact_key",
+        "name_sha256": "fcf3c4092a5a6bda3ccf878f3f8446e3b2c54ee3e18ebe0cd7e464734b139361",
+        "message": "assert (403 == 404)\n +  where 403 = <Response [403 Forbidden]>.status_code"
+      },
+      {
+        "class": "tests.unit.test_subscription_direct_api",
+        "name_prefix": "test_successful_confirmation_replays_after_expiry_without_recapture_or_template_insert",
+        "name_sha256": "430e3928a967821c7f663e1cb2c08cea0b2eac8e5485605e5a31388a830ab069",
+        "message": "assert (403 == 202)\n +  where 403 = <Response [403 Forbidden]>.status_code"
+      },
+      {
+        "class": "tests.unit.test_subscription_direct_api",
+        "name_prefix": "test_invalid_confirmation_fails_before_recapture[changes0-410-DIRECT_REVIEW_EXPIRED]",
+        "name_sha256": "78272e14ca3ea3c581060016d0e446834b9475f30841ecdb35679be6da195b13",
+        "message": "assert (403 == 410)\n +  where 403 = <Response [403 Forbidden]>.status_code"
+      },
+      {
+        "class": "tests.unit.test_subscription_direct_api",
+        "name_prefix": "test_invalid_confirmation_fails_before_recapture[changes1-409-DIRECT_IDEMPOTENCY_CONFLICT]",
+        "name_sha256": "d7c49d2b02463bfe5d21800cdc1aadd525ed405aa5a0722167e14431b37d0e42",
+        "message": "assert (403 == 409)\n +  where 403 = <Response [403 Forbidden]>.status_code"
+      },
+      {
+        "class": "tests.unit.test_subscription_direct_api",
+        "name_prefix": "test_invalid_confirmation_fails_before_recapture[changes2-409-DIRECT_IDEMPOTENCY_CONFLICT]",
+        "name_sha256": "0d2b15b423cd62c4960f09d1194937d28ac94571a1076f06e6a8749bb173583f",
+        "message": "assert (403 == 409)\n +  where 403 = <Response [403 Forbidden]>.status_code"
+      },
+      {
+        "class": "tests.unit.test_subscription_direct_api",
+        "name_prefix": "test_snapshot_change_requires_new_review_before_any_send_or_template_write[message]",
+        "name_sha256": "1888d5afa8dfd226055f6e95809f21c49ecf833a6b6ab03661b7dfe631c26507",
+        "message": "assert (403 == 409)\n +  where 403 = <Response [403 Forbidden]>.status_code"
+      },
+      {
+        "class": "tests.unit.test_subscription_direct_api",
+        "name_prefix": "test_snapshot_change_requires_new_review_before_any_send_or_template_write[template_library_revision",
+        "name_sha256": "98b0bb57f63a043935fe40c6b44675fe707b83da9a5f49b100a94439acfa0838",
+        "message": "assert (403 == 409)\n +  where 403 = <Response [403 Forbidden]>.status_code"
+      },
+      {
+        "class": "tests.unit.test_subscription_direct_api",
+        "name_prefix": "test_snapshot_change_requires_new_review_before_any_send_or_template_write[media]",
+        "name_sha256": "6f8f053722e21b21b37b5aa016b5d41fdb12726a30f57712eb0ad73b18499d04",
+        "message": "assert (403 == 409)\n +  where 403 = <Response [403 Forbidden]>.status_code"
+      },
+      {
+        "class": "tests.unit.test_subscription_direct_api",
+        "name_prefix": "test_snapshot_change_requires_new_review_before_any_send_or_template_write[permission_version]",
+        "name_sha256": "5a2628e8e12f1f5910e3acca7f08ff7807034e133e4771bf2438c5ee4e17ce79",
+        "message": "assert (403 == 409)\n +  where 403 = <Response [403 Forbidden]>.status_code"
+      },
+      {
+        "class": "tests.unit.test_subscription_direct_api",
+        "name_prefix": "test_cancel_conflict_proof_uses_exact_direct_send_and_request[1-True]",
+        "name_sha256": "cdeee5a16ed4272b223e101dbcf915f05e66ea22adaaa31df22d61289a4ac0de",
+        "message": "assert (403 == 409)\n +  where 403 = <Response [403 Forbidden]>.status_code"
+      },
+      {
+        "class": "tests.unit.test_subscription_direct_api",
+        "name_prefix": "test_cancel_conflict_proof_uses_exact_direct_send_and_request[3-False]",
+        "name_sha256": "8a86515c259911eadf390cd1ce95ff3364149db18452d5a5c18354317b57f933",
+        "message": "assert (403 == 409)\n +  where 403 = <Response [403 Forbidden]>.status_code"
+      },
+      {
+        "class": "tests.unit.test_subscription_direct_api",
+        "name_prefix": "test_direct_cannot_open_or_cancel_a_bulk_batch",
+        "name_sha256": "ad5c9a9f51ca0970ac21a48fbcc5bbbd9971a76b59e931fe0992dcbae2b19308",
+        "message": "assert 403 == 404\n +  where 403 = <Response [403 Forbidden]>.status_code"
+      },
+      {
+        "class": "tests.unit.test_subscription_template_apk",
+        "name_prefix": "test_variable_string_lengths_and_non_bmp_units_are_decoded_completely[aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "name_sha256": "9ce47822bbe989bf36c88f845432ac1fa97b99e0964d1611b659ddaa018f3a23",
+        "message": "failed on setup with \"ValueError: the environment variable is longer than 32767 characters\""
+      },
+      {
+        "class": "tests.unit.test_subscription_template_apk",
+        "name_prefix": "test_input_type_and_total_size_are_bounded_before_parsing[                                          ",
+        "name_sha256": "9d66c429c67384a147657ba8691a6a6fbecf44bcf0ecaf4ab3b36fdfac4e4372",
+        "message": "failed on setup with \"ValueError: the environment variable is longer than 32767 characters\""
+      },
+      {
+        "class": "tests.unit.test_subscription_template_pdf",
+        "name_prefix": "test_common_pdf_structures_are_read_and_preserved_without_rewriting[options0]",
+        "name_sha256": "9563debe173f414bf2020da36b7440d110ca81a355d767ae0513abbd4fb80e9a",
+        "message": "failed on setup with \"AssertionError: previous item was not torn down properly\""
+      },
+      {
+        "class": "tests.unit.test_subscription_template_pdf",
+        "name_prefix": "test_common_pdf_structures_are_read_and_preserved_without_rewriting[options1]",
+        "name_sha256": "b064e6bb43d874e88f7070804806fc1effe6c72ed5db6c01bb9a80f7a2687a1a",
+        "message": "ValueError: O PDF não contém uma estrutura completa e válida dentro dos limites permitidos."
+      },
+      {
+        "class": "tests.unit.test_subscription_template_pdf",
+        "name_prefix": "test_common_pdf_structures_are_read_and_preserved_without_rewriting[options2]",
+        "name_sha256": "cb22b5e19371508b0a58323457efb59c2978184df79423b414b823acb34561b7",
+        "message": "ValueError: O PDF não contém uma estrutura completa e válida dentro dos limites permitidos."
+      },
+      {
+        "class": "tests.unit.test_subscription_template_pdf",
+        "name_prefix": "test_common_pdf_structures_are_read_and_preserved_without_rewriting[options3]",
+        "name_sha256": "3ddf6e31b63f7afaab775090fed3b48c206f3cf82c89ac4ba4410550ce118b4b",
+        "message": "ValueError: O PDF não contém uma estrutura completa e válida dentro dos limites permitidos."
+      },
+      {
+        "class": "tests.unit.test_subscription_template_pdf",
+        "name_prefix": "test_common_pdf_structures_are_read_and_preserved_without_rewriting[options4]",
+        "name_sha256": "585d8f03c21ec4b01c76d9c5011b0e3b454859383d901fa10e5183a2140bc9dc",
+        "message": "ValueError: O PDF não contém uma estrutura completa e válida dentro dos limites permitidos."
+      },
+      {
+        "class": "tests.unit.test_subscription_template_pdf",
+        "name_prefix": "test_file_envelope_and_ten_mb_bound_are_checked_before_starting_parser[%PDF-1.4\\n                   ",
+        "name_sha256": "05637eb65d7125407068b4778b6fbcdeb9e00fdc8fff097d2662291edcfb86b3",
+        "message": "failed on setup with \"ValueError: the environment variable is longer than 32767 characters\""
+      },
+      {
+        "class": "tests.unit.test_subscription_template_transport",
+        "name_prefix": "test_supported_attachments_are_content_checked_and_preserved[teste.pdf-%PDF-1.4\\n1 0 obj\\n<< /Type /",
+        "name_sha256": "d9fe85e7d7464f95bc7b37fae6a3063fe3db27abd16036e777214daa699eff47",
+        "message": "fastapi.exceptions.HTTPException: 415: {'code': 'CHATBOT_MEDIA_INVALID', 'message': 'O arquivo não corresponde a um documento PDF, DOCX, XLSX, APK ou texto válido.'}"
+      },
+      {
+        "class": "tests.unit.test_subscription_templates",
+        "name_prefix": "test_fixture_limits_and_media_contract_are_canonical",
+        "name_sha256": "36da1c96e1f94f37c11191a9557944c3ce2c5fd02af0284c57a4bc63882d7243",
+        "message": "AssertionError: assert [{'key': 'nam...o comercial'}] == [{'key': 'nam...o comercial'}]\n  \n  At index 2 diff: {'key': 'my_name', 'label': 'Nome do negÃ³cio'} != {'key': 'my_name', 'label': 'Nome do negócio'}\n  Use -v to get more diff"
+      }
+    ]
+  },
+  "final_selected_integration": {
+    "process_lease_recovery": [
+      {
+        "name": "pytest",
+        "errors": "0",
+        "failures": "0",
+        "skipped": "0",
+        "tests": "2",
+        "time": "14.456",
+        "timestamp": "2026-11-05T13:22:50.947240-04:00",
+        "hostname": "DESKTOP-3Q48M6B"
+      }
+    ],
+    "durable_pending_recovery": [
+      {
+        "name": "pytest",
+        "errors": "0",
+        "failures": "0",
+        "skipped": "0",
+        "tests": "9",
+        "time": "125.479",
+        "timestamp": "2026-11-05T13:27:50.906330-04:00",
+        "hostname": "DESKTOP-3Q48M6B"
+      }
+    ],
+    "frozen_p0_gate": [
+      {
+        "name": "pytest",
+        "errors": "0",
+        "failures": "0",
+        "skipped": "0",
+        "tests": "41",
+        "time": "104.128",
+        "timestamp": "2026-11-05T13:36:46.214194-04:00",
+        "hostname": "DESKTOP-3Q48M6B"
+      }
+    ]
+  },
+  "redis_ingress_workloads": [
+    {
+      "tenant_namespaces": 10,
+      "channels_per_tenant": 2,
+      "logical_conversations": 20,
+      "unique_ingress_events": 140,
+      "duplicate_attempts": 120,
+      "max_concurrent_conversations": 64,
+      "elapsed_seconds": 0.097,
+      "unique_events_per_second": 1436.59,
+      "duplicate_pair_roundtrip_ms": {
+        "p50": 11.026,
+        "p95": 16.298,
+        "p99": 18.355,
+        "max": 19.429
+      },
+      "assertions": [
+        "atomic_duplicate_claim",
+        "same_contact_separate_tenants_and_channels",
+        "foreign_event_cannot_authorize_turn",
+        "superseded_turn_rejected",
+        "bounded_ttl"
+      ],
+      "actual_whatsapp_connections": 0,
+      "real_provider_delivery_verified": false,
+      "database_queue_or_ai_capacity_measured": false
+    },
+    {
+      "tenant_namespaces": 100,
+      "channels_per_tenant": 2,
+      "logical_conversations": 200,
+      "unique_ingress_events": 1400,
+      "duplicate_attempts": 1200,
+      "max_concurrent_conversations": 64,
+      "elapsed_seconds": 0.963,
+      "unique_events_per_second": 1453.3,
+      "duplicate_pair_roundtrip_ms": {
+        "p50": 37.623,
+        "p95": 41.712,
+        "p99": 42.179,
+        "max": 43.847
+      },
+      "assertions": [
+        "atomic_duplicate_claim",
+        "same_contact_separate_tenants_and_channels",
+        "foreign_event_cannot_authorize_turn",
+        "superseded_turn_rejected",
+        "bounded_ttl"
+      ],
+      "actual_whatsapp_connections": 0,
+      "real_provider_delivery_verified": false,
+      "database_queue_or_ai_capacity_measured": false
+    },
+    {
+      "tenant_namespaces": 1000,
+      "channels_per_tenant": 2,
+      "logical_conversations": 2000,
+      "unique_ingress_events": 14000,
+      "duplicate_attempts": 12000,
+      "max_concurrent_conversations": 64,
+      "elapsed_seconds": 9.647,
+      "unique_events_per_second": 1451.19,
+      "duplicate_pair_roundtrip_ms": {
+        "p50": 37.357,
+        "p95": 40.778,
+        "p99": 44.853,
+        "max": 53.081
+      },
+      "assertions": [
+        "atomic_duplicate_claim",
+        "same_contact_separate_tenants_and_channels",
+        "foreign_event_cannot_authorize_turn",
+        "superseded_turn_rejected",
+        "bounded_ttl"
+      ],
+      "actual_whatsapp_connections": 0,
+      "real_provider_delivery_verified": false,
+      "database_queue_or_ai_capacity_measured": false
+    }
+  ],
+  "initial_process_test_attempt": "1 passed / 1 failed: test-only CRLF assumption, then corrected and rerun 2/2 passed",
+  "excluded_proofs": [
+    "Baileys socket stability",
+    "Signal key recovery in a physical recipient",
+    "production end-to-end throughput",
+    "database queue or AI capacity",
+    "backup/restore of production sessions"
+  ],
+  "full_broad_integration": {
+    "status": "incomplete_timeout",
+    "timeout_seconds": 1200,
+    "collected_cases": 257,
+    "complete_junit_exists": false,
+    "scope_note": "No full PostgreSQL suite pass is claimed. The later 41-case focused gate completed successfully."
+  },
+  "unit_regression_comparison": {
+    "baseline_suites": [
+      {
+        "name": "pytest",
+        "errors": "7",
+        "failures": "49",
+        "skipped": "10",
+        "tests": "5133",
+        "time": "111.944",
+        "timestamp": "2026-11-05T13:11:18.684114-04:00",
+        "hostname": "DESKTOP-3Q48M6B"
+      }
+    ],
+    "candidate_suites": [
+      {
+        "name": "pytest",
+        "errors": "7",
+        "failures": "46",
+        "skipped": "10",
+        "tests": "5177",
+        "time": "106.027",
+        "timestamp": "2026-11-05T13:34:16.297608-04:00",
+        "hostname": "DESKTOP-3Q48M6B"
+      }
+    ],
+    "normalization": {
+      "uuid_parameters": true,
+      "oversized_functions_safely_matched": 10,
+      "runtime_varying_functions_safely_matched": [
+        [
+          "tests.unit.test_qr_commerce",
+          "test_expired_or_legacy_cancel_proposal_requires_new_review"
+        ],
+        [
+          "tests.unit.test_subscription_chatbot_tags",
+          "test_valid_paths_are_accepted_by_saved_url_action"
+        ],
+        [
+          "tests.unit.test_subscription_template_transport",
+          "test_forged_or_unsafe_document_structure_is_refused"
+        ],
+        [
+          "tests.unit.test_subscription_template_transport",
+          "test_supported_attachments_are_content_checked_and_preserved"
+        ]
+      ],
+      "oversized_functions_not_safe_to_normalize": []
+    },
+    "new_failures": [],
+    "inherited_failed_cases": [
+      {
+        "class": "tests.unit.test_qr_api",
+        "base": "test_qr_requires_support_and_never_exposes_api_key",
+        "state": "failed",
+        "failures": 1,
+        "errors": 0,
+        "messages": [
+          "AssertionError: assert '/painel?aba=dispositivo' == '/panel?aba=dispositivo'\n  \n  - /panel?aba=dispositivo\n  + /painel?aba=dispositivo\n  ?    +"
+        ],
+        "raw_name_sha256": "b5796608daf8d218666d574548e675e1f02ff87dfa1eedf200b6ee800bc71ba7",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_qr_requires_support_and_never_exposes_api_key",
+        "identity": "5cab5bfd6b9975074fb84e89078b2569fd0b202891a12a1a6040cba3dca8ccc2",
+        "normalized_name_prefix": "test_qr_requires_support_and_never_exposes_api_key"
+      },
+      {
+        "class": "tests.unit.test_qr_profile_runtime",
+        "base": "test_status_authorizes_member_before_returning_truthful_feature_flags",
+        "state": "failed",
+        "failures": 1,
+        "errors": 0,
+        "messages": [
+          "assert (403 == 200)\n +  where 403 = <Response [403 Forbidden]>.status_code"
+        ],
+        "raw_name_sha256": "af0fd63b36faa38c6b51ef04437f25d97ad7e1405e2be2a95a40f467b9fa63b9",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_status_authorizes_member_before_returning_truthful_feature_flags",
+        "identity": "549cf81432d24e4c562111f1af4eb00f862ec32688552ce88cd1842c5a430d72",
+        "normalized_name_prefix": "test_status_authorizes_member_before_returning_truthful_feature_flags"
+      },
+      {
+        "class": "tests.unit.test_qr_style_examples",
+        "base": "test_three_visual_examples_per_style_share_one_scoped_real_slot_and_no_operations",
+        "state": "failed",
+        "failures": 1,
+        "errors": 0,
+        "messages": [
+          "assert 403 == 200\n +  where 403 = <Response [403 Forbidden]>.status_code"
+        ],
+        "raw_name_sha256": "6e97a904342e3123a667c18a6033fa5d2a685c588f4f6fa6646f503c9244c1b5",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_three_visual_examples_per_style_share_one_scoped_real_slot_and_no_operations",
+        "identity": "71018fea38737297a73785b3c4c7882ee689af04b722f7a947895a7e3315c754",
+        "normalized_name_prefix": "test_three_visual_examples_per_style_share_one_scoped_real_slot_and_no_operations"
+      },
+      {
+        "class": "tests.unit.test_qr_style_examples",
+        "base": "test_missing_operational_facts_explain_without_fabricated_date_name_or_protocol",
+        "state": "failed",
+        "failures": 1,
+        "errors": 0,
+        "messages": [
+          "assert 403 == 200\n +  where 403 = <Response [403 Forbidden]>.status_code"
+        ],
+        "raw_name_sha256": "6add0e7597a87fb00f88be888e71d81f1e730b5506ea274b558f3b0fa624cc23",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_missing_operational_facts_explain_without_fabricated_date_name_or_protocol[disabled]",
+        "identity": "6e399d031cff9757f902a9ab66cda59a994646597e20581db942aaef77c2dab9",
+        "normalized_name_prefix": "test_missing_operational_facts_explain_without_fabricated_date_name_or_protocol[disabled]"
+      },
+      {
+        "class": "tests.unit.test_qr_style_examples",
+        "base": "test_missing_operational_facts_explain_without_fabricated_date_name_or_protocol",
+        "state": "failed",
+        "failures": 1,
+        "errors": 0,
+        "messages": [
+          "assert 403 == 200\n +  where 403 = <Response [403 Forbidden]>.status_code"
+        ],
+        "raw_name_sha256": "e716e194ccb5f9b9864170772be33a740e7e106e6bc46255f6a77fc27b7b933a",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_missing_operational_facts_explain_without_fabricated_date_name_or_protocol[products_only]",
+        "identity": "ad77d589a04e60240f9eb7090458f4d14c6c7a3b4bd76bb45c154c4905d8a10a",
+        "normalized_name_prefix": "test_missing_operational_facts_explain_without_fabricated_date_name_or_protocol[products_only]"
+      },
+      {
+        "class": "tests.unit.test_qr_style_examples",
+        "base": "test_missing_operational_facts_explain_without_fabricated_date_name_or_protocol",
+        "state": "failed",
+        "failures": 1,
+        "errors": 0,
+        "messages": [
+          "assert 403 == 200\n +  where 403 = <Response [403 Forbidden]>.status_code"
+        ],
+        "raw_name_sha256": "f0154ae6c849cd5c0f2a2b28c219ca1aed545f0f65846c3f98e3a7b32b4e8f30",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_missing_operational_facts_explain_without_fabricated_date_name_or_protocol[no_services]",
+        "identity": "6a2521c1fed076fd78dddcb9f141601f4f2d50d43a555fee105cc07a4375fa0f",
+        "normalized_name_prefix": "test_missing_operational_facts_explain_without_fabricated_date_name_or_protocol[no_services]"
+      },
+      {
+        "class": "tests.unit.test_qr_style_examples",
+        "base": "test_missing_operational_facts_explain_without_fabricated_date_name_or_protocol",
+        "state": "failed",
+        "failures": 1,
+        "errors": 0,
+        "messages": [
+          "assert 403 == 200\n +  where 403 = <Response [403 Forbidden]>.status_code"
+        ],
+        "raw_name_sha256": "1d2d0dae8398374d9477f497f069d57f8e0e03afe067742c4e82d748b6097135",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_missing_operational_facts_explain_without_fabricated_date_name_or_protocol[no_professional]",
+        "identity": "f7261ef577dc307dd4f6b35cee3e7799ced36d8149d8345a4ffe9c010dcac458",
+        "normalized_name_prefix": "test_missing_operational_facts_explain_without_fabricated_date_name_or_protocol[no_professional]"
+      },
+      {
+        "class": "tests.unit.test_qr_style_examples",
+        "base": "test_missing_operational_facts_explain_without_fabricated_date_name_or_protocol",
+        "state": "failed",
+        "failures": 1,
+        "errors": 0,
+        "messages": [
+          "assert 403 == 200\n +  where 403 = <Response [403 Forbidden]>.status_code"
+        ],
+        "raw_name_sha256": "ebb04f86158bf86c116244f8ca4ef314ca09c749ccc71e4a7d68e37ec48cc194",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_missing_operational_facts_explain_without_fabricated_date_name_or_protocol[no_eligibility]",
+        "identity": "2819adf20a5bb6cf5ec2d77b904c2239054be6b9d3ae7a840df95f1ebb188525",
+        "normalized_name_prefix": "test_missing_operational_facts_explain_without_fabricated_date_name_or_protocol[no_eligibility]"
+      },
+      {
+        "class": "tests.unit.test_qr_style_examples",
+        "base": "test_missing_operational_facts_explain_without_fabricated_date_name_or_protocol",
+        "state": "failed",
+        "failures": 1,
+        "errors": 0,
+        "messages": [
+          "assert 403 == 200\n +  where 403 = <Response [403 Forbidden]>.status_code"
+        ],
+        "raw_name_sha256": "d09097a4d36a49fd6e85459d7f8814fec3148fa24b7a5e7fe2c31a69bcee81a9",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_missing_operational_facts_explain_without_fabricated_date_name_or_protocol[no_hours]",
+        "identity": "c2665d17aa58f70ba3f4a5f940015b94799aeaa2632240203884a4374e9908da",
+        "normalized_name_prefix": "test_missing_operational_facts_explain_without_fabricated_date_name_or_protocol[no_hours]"
+      },
+      {
+        "class": "tests.unit.test_qr_style_examples",
+        "base": "test_missing_operational_facts_explain_without_fabricated_date_name_or_protocol",
+        "state": "failed",
+        "failures": 1,
+        "errors": 0,
+        "messages": [
+          "assert 403 == 200\n +  where 403 = <Response [403 Forbidden]>.status_code"
+        ],
+        "raw_name_sha256": "b239db56a605018cfd820cb5af1e1362062cd066f62459fde8bbc1d5aee89aff",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_missing_operational_facts_explain_without_fabricated_date_name_or_protocol[outside_horizon]",
+        "identity": "5c1b1888a378f4bf6c31eb4b85dfe893ab5a91faee6dc96c3905f3bef91eca79",
+        "normalized_name_prefix": "test_missing_operational_facts_explain_without_fabricated_date_name_or_protocol[outside_horizon]"
+      },
+      {
+        "class": "tests.unit.test_qr_style_examples",
+        "base": "test_missing_operational_facts_explain_without_fabricated_date_name_or_protocol",
+        "state": "failed",
+        "failures": 1,
+        "errors": 0,
+        "messages": [
+          "assert 403 == 200\n +  where 403 = <Response [403 Forbidden]>.status_code"
+        ],
+        "raw_name_sha256": "ec8d522edf0448811c6308b82806e73a0ecad1800d775547c042427f1f7c60cf",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_missing_operational_facts_explain_without_fabricated_date_name_or_protocol[no_slots]",
+        "identity": "b8096f0ad195a62c53f910302e54aec82d0b60b808bff7c62d39b744d21347c4",
+        "normalized_name_prefix": "test_missing_operational_facts_explain_without_fabricated_date_name_or_protocol[no_slots]"
+      },
+      {
+        "class": "tests.unit.test_qr_style_examples",
+        "base": "test_grid_deadline_keeps_price_example_and_explains_operational_absence",
+        "state": "failed",
+        "failures": 1,
+        "errors": 0,
+        "messages": [
+          "assert 403 == 200\n +  where 403 = <Response [403 Forbidden]>.status_code"
+        ],
+        "raw_name_sha256": "33e0e98bcc36404109894493da5f25f7dfbd35154d2d51d8f72ec1476a946f50",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_grid_deadline_keeps_price_example_and_explains_operational_absence",
+        "identity": "db9010946978629ff13a7f2de5bba0c70134f4455af02f1b4f1a9b8ef7cd9950",
+        "normalized_name_prefix": "test_grid_deadline_keeps_price_example_and_explains_operational_absence"
+      },
+      {
+        "class": "tests.unit.test_qr_style_examples",
+        "base": "test_another_tenant_is_rejected_before_catalog_or_grid_read",
+        "state": "failed",
+        "failures": 1,
+        "errors": 0,
+        "messages": [
+          "AssertionError: assert (403 == 403 and [] == [('access', U...b4471c2695'))]\n +  where 403 = <Response [403 Forbidden]>.status_code\n  \n  Right contains one more item: ('access', UUID('{uuid}'))\n  Use -v to get more diff)"
+        ],
+        "raw_name_sha256": "25a462c11c794d4db101fb3fb4fbfda93da1bdce0ebd19b5bfb54b05c278f1ee",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_another_tenant_is_rejected_before_catalog_or_grid_read",
+        "identity": "9956c066c6cde9167398cda8e6a055937cdf28ea854e26c2f150e367bbf3e80c",
+        "normalized_name_prefix": "test_another_tenant_is_rejected_before_catalog_or_grid_read"
+      },
+      {
+        "class": "tests.unit.test_qr_style_examples",
+        "base": "test_eligibility_fallback_remains_one_grid_and_quote_uses_that_factual_bundle",
+        "state": "failed",
+        "failures": 1,
+        "errors": 0,
+        "messages": [
+          "assert 403 == 200\n +  where 403 = <Response [403 Forbidden]>.status_code"
+        ],
+        "raw_name_sha256": "d6541913313e818d6506834460c432aee3e37c1eb630c81202a0027b602d8b98",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_eligibility_fallback_remains_one_grid_and_quote_uses_that_factual_bundle",
+        "identity": "bfb156d03d6bf3f7edb59e3e5db1568a69b5e46c68b065465933e2a71c73f7d4",
+        "normalized_name_prefix": "test_eligibility_fallback_remains_one_grid_and_quote_uses_that_factual_bundle"
+      },
+      {
+        "class": "tests.unit.test_subscription_chatbot_media",
+        "base": "test_invalid_or_active_input_is_rejected_without_storage",
+        "state": "failed",
+        "failures": 1,
+        "errors": 0,
+        "messages": [
+          "AssertionError: assert 503 in {415, 422}\n +  where 503 = HTTPException(status_code=503, detail={'code': 'CHATBOT_MEDIA_UNAVAILABLE', 'message': 'O preparo de vídeo está indisponível.'}).status_code\n +    where HTTPException(status_code=503, detail={'code': 'CHATBOT_MEDIA_UNAVAILABLE', 'message': 'O preparo de vídeo está indisponível.'}) = <ExceptionInfo HTTPException(status_code=503, detail={'code': 'CHATBOT_MEDIA_UNAVAILABLE', 'message': 'O preparo de vídeo está indisponível.'}) tblen=3>.value"
+        ],
+        "raw_name_sha256": "0e5dfd4d6e0e7effd4d9726282fe0481f45bdb961c9d45d7f26a512a26ac127a",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_invalid_or_active_input_is_rejected_without_storage[#EXTM3U\\nhttps://127.0.0.1/internal-video]",
+        "identity": "b81ff8a4bcbe44f94e2d8927257406b9e4598d488049084df6aaf565798555dc",
+        "normalized_name_prefix": "test_invalid_or_active_input_is_rejected_without_storage[#EXTM3U\\nhttps://127.0.0.1/internal-video]"
+      },
+      {
+        "class": "tests.unit.test_subscription_chatbot_media",
+        "base": "test_invalid_or_active_input_is_rejected_without_storage",
+        "state": "failed",
+        "failures": 1,
+        "errors": 0,
+        "messages": [
+          "AssertionError: assert 503 in {415, 422}\n +  where 503 = HTTPException(status_code=503, detail={'code': 'CHATBOT_MEDIA_UNAVAILABLE', 'message': 'O preparo de vídeo está indisponível.'}).status_code\n +    where HTTPException(status_code=503, detail={'code': 'CHATBOT_MEDIA_UNAVAILABLE', 'message': 'O preparo de vídeo está indisponível.'}) = <ExceptionInfo HTTPException(status_code=503, detail={'code': 'CHATBOT_MEDIA_UNAVAILABLE', 'message': 'O preparo de vídeo está indisponível.'}) tblen=3>.value"
+        ],
+        "raw_name_sha256": "8ff8d19ba0e2273d18858537d4bd63ec5c20179fb21b2832e24e57d62f06e903",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_invalid_or_active_input_is_rejected_without_storage[not-a-video-ptv]",
+        "identity": "554bcff5aec0f5e7b1c35d58fdbfe5189c059f72f2b02ff4ac14b2a0e5907946",
+        "normalized_name_prefix": "test_invalid_or_active_input_is_rejected_without_storage[not-a-video-ptv]"
+      },
+      {
+        "class": "tests.unit.test_subscription_chatbot_media",
+        "base": "test_decoder_timeout_is_explicit_and_slot_is_released",
+        "state": "failed",
+        "failures": 1,
+        "errors": 0,
+        "messages": [
+          "AssertionError: assert 'CHATBOT_MEDIA_UNAVAILABLE' == 'CHATBOT_MEDIA_TIMEOUT'\n  \n  - CHATBOT_MEDIA_TIMEOUT\n  + CHATBOT_MEDIA_UNAVAILABLE"
+        ],
+        "raw_name_sha256": "47f08c23d037b4c8a786ce387eb2a1501e3bd1027aaabf5dbd85179ee6385b7f",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_decoder_timeout_is_explicit_and_slot_is_released",
+        "identity": "9ec2117380b41d8a4e3d6b262d7e292a49035a06c5ca1f78d7584280790706ad",
+        "normalized_name_prefix": "test_decoder_timeout_is_explicit_and_slot_is_released"
+      },
+      {
+        "class": "tests.unit.test_subscription_device_audio",
+        "base": "test_real_decoder_measures_samples_and_removes_tempfiles",
+        "state": "failed",
+        "failures": 1,
+        "errors": 0,
+        "messages": [
+          "AssertionError: CI must install the same decoders as the runtime\nassert (None)\n +  where None = <function which at 0x0000024EFDAE4360>('ffmpeg')\n +    where <function which at 0x0000024EFDAE4360> = shutil.which"
+        ],
+        "raw_name_sha256": "b303896b29c162b2cb086b689dc7ebeefca7bb74083e00e626a91dbe661272ad",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_real_decoder_measures_samples_and_removes_tempfiles",
+        "identity": "03aeaf047b9a07fe30e3877318579cfc5284978d863e893c392e3e3c30dc10e5",
+        "normalized_name_prefix": "test_real_decoder_measures_samples_and_removes_tempfiles"
+      },
+      {
+        "class": "tests.unit.test_subscription_device_audio",
+        "base": "test_real_decoder_rejects_overlong_or_truncated_audio_before_provider",
+        "state": "failed",
+        "failures": 1,
+        "errors": 0,
+        "messages": [
+          "AssertionError: assert 'DEVICE_AUDIO_UNAVAILABLE' == 'DEVICE_AUDIO_TOO_LONG'\n  \n  - DEVICE_AUDIO_TOO_LONG\n  + DEVICE_AUDIO_UNAVAILABLE"
+        ],
+        "raw_name_sha256": "0e9802d7b800d6f86c6e4c1c45f027e5e9400700c0f4be900f30f626a1b62d89",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_real_decoder_rejects_overlong_or_truncated_audio_before_provider",
+        "identity": "7b44561ffa9d8a8763c71b05e096665b9fc2e0c583dca794165caa89cfdc088b",
+        "normalized_name_prefix": "test_real_decoder_rejects_overlong_or_truncated_audio_before_provider"
+      },
+      {
+        "class": "tests.unit.test_subscription_device_audio",
+        "base": "test_real_30_minute_audio_is_supported_without_paid_provider",
+        "state": "failed",
+        "failures": 1,
+        "errors": 0,
+        "messages": [
+          "TypeError: expected str, bytes or os.PathLike object, not NoneType"
+        ],
+        "raw_name_sha256": "78be9c3a39db8ed72603794465aacabdfce1f21d2d4cd36f09e4d1b7c47d5cf0",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_real_30_minute_audio_is_supported_without_paid_provider",
+        "identity": "7d55e2d2e85c75f365ad95aeaf71891ef16f11befa0a89ef871e9a82dfe6d932",
+        "normalized_name_prefix": "test_real_30_minute_audio_is_supported_without_paid_provider"
+      },
+      {
+        "class": "tests.unit.test_subscription_direct_api",
+        "base": "test_bounded_body_and_strict_confirmation_never_create_a_request",
+        "state": "failed",
+        "failures": 1,
+        "errors": 0,
+        "messages": [
+          "assert (403 == 413)\n +  where 403 = <Response [403 Forbidden]>.status_code"
+        ],
+        "raw_name_sha256": "cd204fa53442a04aae6e2b26fd53aa87446ceb38986399fe3f6866f1326198b9",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_bounded_body_and_strict_confirmation_never_create_a_request",
+        "identity": "79f59df2a87b6faed84b799a04131f7b2baf6447a9b04bd16188ff17a218e931",
+        "normalized_name_prefix": "test_bounded_body_and_strict_confirmation_never_create_a_request"
+      },
+      {
+        "class": "tests.unit.test_subscription_direct_api",
+        "base": "test_recovery_is_read_only_and_returns_original_send_without_bulk_identity",
+        "state": "failed",
+        "failures": 1,
+        "errors": 0,
+        "messages": [
+          "assert 403 == 200\n +  where 403 = <Response [403 Forbidden]>.status_code"
+        ],
+        "raw_name_sha256": "b37a8f343fd7a02de4aa1f709ac37b602a1b5f3df0fad29da389104f723268f5",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_recovery_is_read_only_and_returns_original_send_without_bulk_identity[prepared]",
+        "identity": "ee354bf21566451a595d5e7fd85c13f061c242c7b11873b7b131c39330056d60",
+        "normalized_name_prefix": "test_recovery_is_read_only_and_returns_original_send_without_bulk_identity[prepared]"
+      },
+      {
+        "class": "tests.unit.test_subscription_direct_api",
+        "base": "test_recovery_is_read_only_and_returns_original_send_without_bulk_identity",
+        "state": "failed",
+        "failures": 1,
+        "errors": 0,
+        "messages": [
+          "assert 403 == 200\n +  where 403 = <Response [403 Forbidden]>.status_code"
+        ],
+        "raw_name_sha256": "4a764a6e0ddf3dce9656e83cc9c32865e4be147460ff620c58c9c0cb9246aedb",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_recovery_is_read_only_and_returns_original_send_without_bulk_identity[expired]",
+        "identity": "7b415b9d4bdc0f6ac4d500031abde47ee30875c13313db334fc1d9a2d3b8e58c",
+        "normalized_name_prefix": "test_recovery_is_read_only_and_returns_original_send_without_bulk_identity[expired]"
+      },
+      {
+        "class": "tests.unit.test_subscription_direct_api",
+        "base": "test_recovery_is_read_only_and_returns_original_send_without_bulk_identity",
+        "state": "failed",
+        "failures": 1,
+        "errors": 0,
+        "messages": [
+          "assert 403 == 200\n +  where 403 = <Response [403 Forbidden]>.status_code"
+        ],
+        "raw_name_sha256": "f85bd9536933a3e0482489249c56fd620ccaa93f333f7b4682b2bff24a38a0fa",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_recovery_is_read_only_and_returns_original_send_without_bulk_identity[succeeded]",
+        "identity": "99e606cc5c750b188672c37e2e9e142ab1f48b62a0c602e961952d1a7769b7f2",
+        "normalized_name_prefix": "test_recovery_is_read_only_and_returns_original_send_without_bulk_identity[succeeded]"
+      },
+      {
+        "class": "tests.unit.test_subscription_direct_api",
+        "base": "test_recovery_is_read_only_and_returns_original_send_without_bulk_identity",
+        "state": "failed",
+        "failures": 1,
+        "errors": 0,
+        "messages": [
+          "assert 403 == 404\n +  where 403 = <Response [403 Forbidden]>.status_code"
+        ],
+        "raw_name_sha256": "0eb44632ae8dd83a9f1cb4e974f8d9059fe05262a514e84d09203e5f112b9ba7",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_recovery_is_read_only_and_returns_original_send_without_bulk_identity[missing]",
+        "identity": "081672abd6d76e165c4f4ed8dd42730359f89f1248e314331ce3497fed258ae3",
+        "normalized_name_prefix": "test_recovery_is_read_only_and_returns_original_send_without_bulk_identity[missing]"
+      },
+      {
+        "class": "tests.unit.test_subscription_direct_api",
+        "base": "test_bulk_request_key_never_leaks_or_rebinds_into_direct_origin",
+        "state": "failed",
+        "failures": 1,
+        "errors": 0,
+        "messages": [
+          "assert (403 == 409)\n +  where 403 = <Response [403 Forbidden]>.status_code"
+        ],
+        "raw_name_sha256": "bc9ac56abafd7f30452683064d9968ed48bdfb20a11c57df13761651c33bf7b7",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_bulk_request_key_never_leaks_or_rebinds_into_direct_origin[/review-post-409-DIRECT_IDEMPOTENCY_CONFLICT]",
+        "identity": "d9d8890a31b26d199a6ef5670dcf1ac3442d64f59b1d16f6f1342a028765d30b",
+        "normalized_name_prefix": "test_bulk_request_key_never_leaks_or_rebinds_into_direct_origin[/review-post-409-DIRECT_IDEMPOTENCY_CONFLICT]"
+      },
+      {
+        "class": "tests.unit.test_subscription_direct_api",
+        "base": "test_bulk_request_key_never_leaks_or_rebinds_into_direct_origin",
+        "state": "failed",
+        "failures": 1,
+        "errors": 0,
+        "messages": [
+          "assert (403 == 409)\n +  where 403 = <Response [403 Forbidden]>.status_code"
+        ],
+        "raw_name_sha256": "008c9eabc4f7c2f3183fee923648783b112d60528157a9dd38b6b5c4dfc579a0",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_bulk_request_key_never_leaks_or_rebinds_into_direct_origin[/b691fe43-3172-4d0f-860f-ee431595ae36/actions-post-409-DIRECT_IDEMPOTENCY_CONFLICT]",
+        "identity": "2b01c705654cbde80c09f3892a20e4bf02ba1dec5eb4bfcce88642ee8f31ee2d",
+        "normalized_name_prefix": "test_bulk_request_key_never_leaks_or_rebinds_into_direct_origin[/{uuid}/actions-post-409-DIRECT_IDEMPOTENCY_CONFLICT]"
+      },
+      {
+        "class": "tests.unit.test_subscription_direct_api",
+        "base": "test_bulk_request_key_never_leaks_or_rebinds_into_direct_origin",
+        "state": "failed",
+        "failures": 1,
+        "errors": 0,
+        "messages": [
+          "assert (403 == 404)\n +  where 403 = <Response [403 Forbidden]>.status_code"
+        ],
+        "raw_name_sha256": "1461caffabb6c6befac134569f6911916c1f115c7b7267715e520a35efac43f2",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_bulk_request_key_never_leaks_or_rebinds_into_direct_origin[/confirm-post-404-DIRECT_NOT_FOUND]",
+        "identity": "a61bc0491a8f737abb8a6535afa52cdc0991db0284c9b04468dfef459e7b7d4b",
+        "normalized_name_prefix": "test_bulk_request_key_never_leaks_or_rebinds_into_direct_origin[/confirm-post-404-DIRECT_NOT_FOUND]"
+      },
+      {
+        "class": "tests.unit.test_subscription_direct_api",
+        "base": "test_bulk_request_key_never_leaks_or_rebinds_into_direct_origin",
+        "state": "failed",
+        "failures": 1,
+        "errors": 0,
+        "messages": [
+          "assert (403 == 404)\n +  where 403 = <Response [403 Forbidden]>.status_code"
+        ],
+        "raw_name_sha256": "e82cdfdd6df122e0adb8a2eafd0dff59b687a814bd9ed72cb2b806bbdb194e34",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_bulk_request_key_never_leaks_or_rebinds_into_direct_origin[/requests/d6070370-fb1f-4faa-b2e3-7125824ccdc9-get-404-DIRECT_NOT_FOUND]",
+        "identity": "ec39a6af3f90bc35778faeb36bfa5dd775099266b02095dd38f6ec1935a9049c",
+        "normalized_name_prefix": "test_bulk_request_key_never_leaks_or_rebinds_into_direct_origin[/requests/{uuid}-get-404-DIRECT_NOT_FOUND]"
+      },
+      {
+        "class": "tests.unit.test_subscription_direct_api",
+        "base": "test_another_account_request_stays_private_even_with_exact_key",
+        "state": "failed",
+        "failures": 1,
+        "errors": 0,
+        "messages": [
+          "assert (403 == 404)\n +  where 403 = <Response [403 Forbidden]>.status_code"
+        ],
+        "raw_name_sha256": "fcf3c4092a5a6bda3ccf878f3f8446e3b2c54ee3e18ebe0cd7e464734b139361",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_another_account_request_stays_private_even_with_exact_key",
+        "identity": "ab3fe4eebec4745e28e82148a393473418e53a9f4e0b9d3ccfaa6f731c00f5e0",
+        "normalized_name_prefix": "test_another_account_request_stays_private_even_with_exact_key"
+      },
+      {
+        "class": "tests.unit.test_subscription_direct_api",
+        "base": "test_successful_confirmation_replays_after_expiry_without_recapture_or_template_insert",
+        "state": "failed",
+        "failures": 1,
+        "errors": 0,
+        "messages": [
+          "assert (403 == 202)\n +  where 403 = <Response [403 Forbidden]>.status_code"
+        ],
+        "raw_name_sha256": "430e3928a967821c7f663e1cb2c08cea0b2eac8e5485605e5a31388a830ab069",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_successful_confirmation_replays_after_expiry_without_recapture_or_template_insert",
+        "identity": "87f45cba4f534e6ff88b6b89d494cd8d43650c8e805d3811bdfce62a05b1c6bb",
+        "normalized_name_prefix": "test_successful_confirmation_replays_after_expiry_without_recapture_or_template_insert"
+      },
+      {
+        "class": "tests.unit.test_subscription_direct_api",
+        "base": "test_invalid_confirmation_fails_before_recapture",
+        "state": "failed",
+        "failures": 1,
+        "errors": 0,
+        "messages": [
+          "assert (403 == 410)\n +  where 403 = <Response [403 Forbidden]>.status_code"
+        ],
+        "raw_name_sha256": "78272e14ca3ea3c581060016d0e446834b9475f30841ecdb35679be6da195b13",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_invalid_confirmation_fails_before_recapture[changes0-410-DIRECT_REVIEW_EXPIRED]",
+        "identity": "2027b76210b4ba700be2e8bf939c7dbf5ef421b40bbd1ee248d589a08c3f63d4",
+        "normalized_name_prefix": "test_invalid_confirmation_fails_before_recapture[changes0-410-DIRECT_REVIEW_EXPIRED]"
+      },
+      {
+        "class": "tests.unit.test_subscription_direct_api",
+        "base": "test_invalid_confirmation_fails_before_recapture",
+        "state": "failed",
+        "failures": 1,
+        "errors": 0,
+        "messages": [
+          "assert (403 == 409)\n +  where 403 = <Response [403 Forbidden]>.status_code"
+        ],
+        "raw_name_sha256": "d7c49d2b02463bfe5d21800cdc1aadd525ed405aa5a0722167e14431b37d0e42",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_invalid_confirmation_fails_before_recapture[changes1-409-DIRECT_IDEMPOTENCY_CONFLICT]",
+        "identity": "202e93dc316c799fd16694ff645cc179fca9bce81972cea97e6270ff4bf4a0cf",
+        "normalized_name_prefix": "test_invalid_confirmation_fails_before_recapture[changes1-409-DIRECT_IDEMPOTENCY_CONFLICT]"
+      },
+      {
+        "class": "tests.unit.test_subscription_direct_api",
+        "base": "test_invalid_confirmation_fails_before_recapture",
+        "state": "failed",
+        "failures": 1,
+        "errors": 0,
+        "messages": [
+          "assert (403 == 409)\n +  where 403 = <Response [403 Forbidden]>.status_code"
+        ],
+        "raw_name_sha256": "0d2b15b423cd62c4960f09d1194937d28ac94571a1076f06e6a8749bb173583f",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_invalid_confirmation_fails_before_recapture[changes2-409-DIRECT_IDEMPOTENCY_CONFLICT]",
+        "identity": "fc59ef315577e5e47634488d9343523c975f32c2941f6856d458bbcd7a6d482c",
+        "normalized_name_prefix": "test_invalid_confirmation_fails_before_recapture[changes2-409-DIRECT_IDEMPOTENCY_CONFLICT]"
+      },
+      {
+        "class": "tests.unit.test_subscription_direct_api",
+        "base": "test_snapshot_change_requires_new_review_before_any_send_or_template_write",
+        "state": "failed",
+        "failures": 1,
+        "errors": 0,
+        "messages": [
+          "assert (403 == 409)\n +  where 403 = <Response [403 Forbidden]>.status_code"
+        ],
+        "raw_name_sha256": "1888d5afa8dfd226055f6e95809f21c49ecf833a6b6ab03661b7dfe631c26507",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_snapshot_change_requires_new_review_before_any_send_or_template_write[message]",
+        "identity": "92e0520aa4c25cb10e2824df7983ff94c3f525c6d90141967f42a595e49f3cd3",
+        "normalized_name_prefix": "test_snapshot_change_requires_new_review_before_any_send_or_template_write[message]"
+      },
+      {
+        "class": "tests.unit.test_subscription_direct_api",
+        "base": "test_snapshot_change_requires_new_review_before_any_send_or_template_write",
+        "state": "failed",
+        "failures": 1,
+        "errors": 0,
+        "messages": [
+          "assert (403 == 409)\n +  where 403 = <Response [403 Forbidden]>.status_code"
+        ],
+        "raw_name_sha256": "98b0bb57f63a043935fe40c6b44675fe707b83da9a5f49b100a94439acfa0838",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_snapshot_change_requires_new_review_before_any_send_or_template_write[template_library_revision]",
+        "identity": "192b6467e4cf3eba57aa15d12a6ff49e9046d5c4af1fc33fb281b74a77cb020b",
+        "normalized_name_prefix": "test_snapshot_change_requires_new_review_before_any_send_or_template_write[template_library_revision]"
+      },
+      {
+        "class": "tests.unit.test_subscription_direct_api",
+        "base": "test_snapshot_change_requires_new_review_before_any_send_or_template_write",
+        "state": "failed",
+        "failures": 1,
+        "errors": 0,
+        "messages": [
+          "assert (403 == 409)\n +  where 403 = <Response [403 Forbidden]>.status_code"
+        ],
+        "raw_name_sha256": "6f8f053722e21b21b37b5aa016b5d41fdb12726a30f57712eb0ad73b18499d04",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_snapshot_change_requires_new_review_before_any_send_or_template_write[media]",
+        "identity": "9748f43f5371f5e43deef79ee8ad1a80fa3dea800175a2cd1b0ecd7818e5a370",
+        "normalized_name_prefix": "test_snapshot_change_requires_new_review_before_any_send_or_template_write[media]"
+      },
+      {
+        "class": "tests.unit.test_subscription_direct_api",
+        "base": "test_snapshot_change_requires_new_review_before_any_send_or_template_write",
+        "state": "failed",
+        "failures": 1,
+        "errors": 0,
+        "messages": [
+          "assert (403 == 409)\n +  where 403 = <Response [403 Forbidden]>.status_code"
+        ],
+        "raw_name_sha256": "5a2628e8e12f1f5910e3acca7f08ff7807034e133e4771bf2438c5ee4e17ce79",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_snapshot_change_requires_new_review_before_any_send_or_template_write[permission_version]",
+        "identity": "620e5477b379351ce2cbee6401f2de994c437fd6719867a2d2b2c780c5317f1f",
+        "normalized_name_prefix": "test_snapshot_change_requires_new_review_before_any_send_or_template_write[permission_version]"
+      },
+      {
+        "class": "tests.unit.test_subscription_direct_api",
+        "base": "test_cancel_conflict_proof_uses_exact_direct_send_and_request",
+        "state": "failed",
+        "failures": 1,
+        "errors": 0,
+        "messages": [
+          "assert (403 == 409)\n +  where 403 = <Response [403 Forbidden]>.status_code"
+        ],
+        "raw_name_sha256": "cdeee5a16ed4272b223e101dbcf915f05e66ea22adaaa31df22d61289a4ac0de",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_cancel_conflict_proof_uses_exact_direct_send_and_request[1-True]",
+        "identity": "a5cd5272bcb73b4da4009383978322b2e861277f6ff43a31b5ed4750cc33101e",
+        "normalized_name_prefix": "test_cancel_conflict_proof_uses_exact_direct_send_and_request[1-True]"
+      },
+      {
+        "class": "tests.unit.test_subscription_direct_api",
+        "base": "test_cancel_conflict_proof_uses_exact_direct_send_and_request",
+        "state": "failed",
+        "failures": 1,
+        "errors": 0,
+        "messages": [
+          "assert (403 == 409)\n +  where 403 = <Response [403 Forbidden]>.status_code"
+        ],
+        "raw_name_sha256": "8a86515c259911eadf390cd1ce95ff3364149db18452d5a5c18354317b57f933",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_cancel_conflict_proof_uses_exact_direct_send_and_request[3-False]",
+        "identity": "854b43b6b7a208c3ee2cdce755562d7cb8aa5c43510ec9864c94f0c789fc539f",
+        "normalized_name_prefix": "test_cancel_conflict_proof_uses_exact_direct_send_and_request[3-False]"
+      },
+      {
+        "class": "tests.unit.test_subscription_direct_api",
+        "base": "test_direct_cannot_open_or_cancel_a_bulk_batch",
+        "state": "failed",
+        "failures": 1,
+        "errors": 0,
+        "messages": [
+          "assert 403 == 404\n +  where 403 = <Response [403 Forbidden]>.status_code"
+        ],
+        "raw_name_sha256": "ad5c9a9f51ca0970ac21a48fbcc5bbbd9971a76b59e931fe0992dcbae2b19308",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_direct_cannot_open_or_cancel_a_bulk_batch",
+        "identity": "6717f8b05551e82526d8b5bb6fb70aa0588b4f7c5f2af3e34384f3b83d2d1fcd",
+        "normalized_name_prefix": "test_direct_cannot_open_or_cancel_a_bulk_batch"
+      },
+      {
+        "class": "tests.unit.test_subscription_template_apk",
+        "base": "test_variable_string_lengths_and_non_bmp_units_are_decoded_completely",
+        "state": "failed",
+        "failures": 0,
+        "errors": 2,
+        "messages": [
+          "failed on setup with \"ValueError: the environment variable is longer than 32767 characters\"",
+          "failed on teardown with \"ValueError: the environment variable is longer than 32767 characters\""
+        ],
+        "raw_name_sha256": "9ce47822bbe989bf36c88f845432ac1fa97b99e0964d1611b659ddaa018f3a23",
+        "identity_normalization": "unchanged_source_parameter_ordinal",
+        "name_prefix": "test_variable_string_lengths_and_non_bmp_units_are_decoded_completely[aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "identity": "9e99955f117d5aa41124eb83e0a57bb848865f39d2cb44f23facce62cfba5a3e",
+        "normalized_name_prefix": "test_variable_string_lengths_and_non_bmp_units_are_decoded_completely[unchanged-source-param-2]"
+      },
+      {
+        "class": "tests.unit.test_subscription_template_apk",
+        "base": "test_input_type_and_total_size_are_bounded_before_parsing",
+        "state": "failed",
+        "failures": 0,
+        "errors": 2,
+        "messages": [
+          "failed on setup with \"ValueError: the environment variable is longer than 32767 characters\"",
+          "failed on teardown with \"ValueError: the environment variable is longer than 32767 characters\""
+        ],
+        "raw_name_sha256": "9d66c429c67384a147657ba8691a6a6fbecf44bcf0ecaf4ab3b36fdfac4e4372",
+        "identity_normalization": "unchanged_source_parameter_ordinal",
+        "name_prefix": "test_input_type_and_total_size_are_bounded_before_parsing[                                                                                                      ",
+        "identity": "cdf25a8f20eb701b04533a3d7d6e93dcd92264a851ef33d5ccba48b49378bdff",
+        "normalized_name_prefix": "test_input_type_and_total_size_are_bounded_before_parsing[unchanged-source-param-2]"
+      },
+      {
+        "class": "tests.unit.test_subscription_template_pdf",
+        "base": "test_common_pdf_structures_are_read_and_preserved_without_rewriting",
+        "state": "failed",
+        "failures": 0,
+        "errors": 1,
+        "messages": [
+          "failed on setup with \"AssertionError: previous item was not torn down properly\""
+        ],
+        "raw_name_sha256": "9563debe173f414bf2020da36b7440d110ca81a355d767ae0513abbd4fb80e9a",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_common_pdf_structures_are_read_and_preserved_without_rewriting[options0]",
+        "identity": "3e553035a4047c1cf25bfefe8ced8e922ca8181fe54cbf9230f2542e3e467a79",
+        "normalized_name_prefix": "test_common_pdf_structures_are_read_and_preserved_without_rewriting[options0]"
+      },
+      {
+        "class": "tests.unit.test_subscription_template_pdf",
+        "base": "test_common_pdf_structures_are_read_and_preserved_without_rewriting",
+        "state": "failed",
+        "failures": 1,
+        "errors": 0,
+        "messages": [
+          "ValueError: O PDF não contém uma estrutura completa e válida dentro dos limites permitidos."
+        ],
+        "raw_name_sha256": "b064e6bb43d874e88f7070804806fc1effe6c72ed5db6c01bb9a80f7a2687a1a",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_common_pdf_structures_are_read_and_preserved_without_rewriting[options1]",
+        "identity": "20275e39780ce6b5289989daf43c5e8b3ca8bba2d8f1996ceb8c2f941257be65",
+        "normalized_name_prefix": "test_common_pdf_structures_are_read_and_preserved_without_rewriting[options1]"
+      },
+      {
+        "class": "tests.unit.test_subscription_template_pdf",
+        "base": "test_common_pdf_structures_are_read_and_preserved_without_rewriting",
+        "state": "failed",
+        "failures": 1,
+        "errors": 0,
+        "messages": [
+          "ValueError: O PDF não contém uma estrutura completa e válida dentro dos limites permitidos."
+        ],
+        "raw_name_sha256": "cb22b5e19371508b0a58323457efb59c2978184df79423b414b823acb34561b7",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_common_pdf_structures_are_read_and_preserved_without_rewriting[options2]",
+        "identity": "9a6ae2b4009b0a0d5f0eb71d3404806ff1c4bd4b2d59ea9906e2e9617cb33407",
+        "normalized_name_prefix": "test_common_pdf_structures_are_read_and_preserved_without_rewriting[options2]"
+      },
+      {
+        "class": "tests.unit.test_subscription_template_pdf",
+        "base": "test_common_pdf_structures_are_read_and_preserved_without_rewriting",
+        "state": "failed",
+        "failures": 1,
+        "errors": 0,
+        "messages": [
+          "ValueError: O PDF não contém uma estrutura completa e válida dentro dos limites permitidos."
+        ],
+        "raw_name_sha256": "3ddf6e31b63f7afaab775090fed3b48c206f3cf82c89ac4ba4410550ce118b4b",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_common_pdf_structures_are_read_and_preserved_without_rewriting[options3]",
+        "identity": "08e4d8f0ee4d68fb5da715680f000f69b6b610895e708c631ec1a6345dec39a3",
+        "normalized_name_prefix": "test_common_pdf_structures_are_read_and_preserved_without_rewriting[options3]"
+      },
+      {
+        "class": "tests.unit.test_subscription_template_pdf",
+        "base": "test_common_pdf_structures_are_read_and_preserved_without_rewriting",
+        "state": "failed",
+        "failures": 1,
+        "errors": 0,
+        "messages": [
+          "ValueError: O PDF não contém uma estrutura completa e válida dentro dos limites permitidos."
+        ],
+        "raw_name_sha256": "585d8f03c21ec4b01c76d9c5011b0e3b454859383d901fa10e5183a2140bc9dc",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_common_pdf_structures_are_read_and_preserved_without_rewriting[options4]",
+        "identity": "f452015a9bf4f344fcb4b099bc17071591bfffcda9f3329bd09d63b951cf3169",
+        "normalized_name_prefix": "test_common_pdf_structures_are_read_and_preserved_without_rewriting[options4]"
+      },
+      {
+        "class": "tests.unit.test_subscription_template_pdf",
+        "base": "test_file_envelope_and_ten_mb_bound_are_checked_before_starting_parser",
+        "state": "failed",
+        "failures": 0,
+        "errors": 2,
+        "messages": [
+          "failed on setup with \"ValueError: the environment variable is longer than 32767 characters\"",
+          "failed on teardown with \"ValueError: the environment variable is longer than 32767 characters\""
+        ],
+        "raw_name_sha256": "05637eb65d7125407068b4778b6fbcdeb9e00fdc8fff097d2662291edcfb86b3",
+        "identity_normalization": "unchanged_source_parameter_ordinal",
+        "name_prefix": "test_file_envelope_and_ten_mb_bound_are_checked_before_starting_parser[%PDF-1.4\\n                                                                               ",
+        "identity": "3ac5dadc8b79ef89e2d11083c9fb26dfabe01f6b6fd5958a8dbd6718f363800e",
+        "normalized_name_prefix": "test_file_envelope_and_ten_mb_bound_are_checked_before_starting_parser[unchanged-source-param-4]"
+      },
+      {
+        "class": "tests.unit.test_subscription_template_transport",
+        "base": "test_supported_attachments_are_content_checked_and_preserved",
+        "state": "failed",
+        "failures": 1,
+        "errors": 0,
+        "messages": [
+          "fastapi.exceptions.HTTPException: 415: {'code': 'CHATBOT_MEDIA_INVALID', 'message': 'O arquivo não corresponde a um documento PDF, DOCX, XLSX, APK ou texto válido.'}"
+        ],
+        "raw_name_sha256": "d9fe85e7d7464f95bc7b37fae6a3063fe3db27abd16036e777214daa699eff47",
+        "identity_normalization": "unchanged_source_parameter_ordinal",
+        "name_prefix": "test_supported_attachments_are_content_checked_and_preserved[teste.pdf-%PDF-1.4\\n1 0 obj\\n<< /Type /Catalog /Pages 2 0 R >>\\nendobj\\n2 0 obj\\n<< /Type /Pages /K",
+        "identity": "64a0b47af0421ada880ebc80ccde2deba4a84736b40608990589d03c24161ba4",
+        "normalized_name_prefix": "test_supported_attachments_are_content_checked_and_preserved[unchanged-source-param-0]"
+      }
+    ],
+    "changed_inherited_failure_messages": [
+      {
+        "baseline": {
+          "class": "tests.unit.test_qr_style_examples",
+          "base": "test_another_tenant_is_rejected_before_catalog_or_grid_read",
+          "state": "failed",
+          "failures": 1,
+          "errors": 0,
+          "messages": [
+            "AssertionError: assert (403 == 403 and [] == [('access', U...f5e36a6b9f'))]\n +  where 403 = <Response [403 Forbidden]>.status_code\n  \n  Right contains one more item: ('access', UUID('{uuid}'))\n  Use -v to get more diff)"
+          ],
+          "raw_name_sha256": "25a462c11c794d4db101fb3fb4fbfda93da1bdce0ebd19b5bfb54b05c278f1ee",
+          "identity_normalization": "uuid_parameters_only",
+          "name_prefix": "test_another_tenant_is_rejected_before_catalog_or_grid_read",
+          "identity": "9956c066c6cde9167398cda8e6a055937cdf28ea854e26c2f150e367bbf3e80c",
+          "normalized_name_prefix": "test_another_tenant_is_rejected_before_catalog_or_grid_read"
+        },
+        "candidate": {
+          "class": "tests.unit.test_qr_style_examples",
+          "base": "test_another_tenant_is_rejected_before_catalog_or_grid_read",
+          "state": "failed",
+          "failures": 1,
+          "errors": 0,
+          "messages": [
+            "AssertionError: assert (403 == 403 and [] == [('access', U...b4471c2695'))]\n +  where 403 = <Response [403 Forbidden]>.status_code\n  \n  Right contains one more item: ('access', UUID('{uuid}'))\n  Use -v to get more diff)"
+          ],
+          "raw_name_sha256": "25a462c11c794d4db101fb3fb4fbfda93da1bdce0ebd19b5bfb54b05c278f1ee",
+          "identity_normalization": "uuid_parameters_only",
+          "name_prefix": "test_another_tenant_is_rejected_before_catalog_or_grid_read",
+          "identity": "9956c066c6cde9167398cda8e6a055937cdf28ea854e26c2f150e367bbf3e80c",
+          "normalized_name_prefix": "test_another_tenant_is_rejected_before_catalog_or_grid_read"
+        }
+      },
+      {
+        "baseline": {
+          "class": "tests.unit.test_subscription_device_audio",
+          "base": "test_real_decoder_measures_samples_and_removes_tempfiles",
+          "state": "failed",
+          "failures": 1,
+          "errors": 0,
+          "messages": [
+            "AssertionError: CI must install the same decoders as the runtime\nassert (None)\n +  where None = <function which at 0x000001CF7E68F100>('ffmpeg')\n +    where <function which at 0x000001CF7E68F100> = shutil.which"
+          ],
+          "raw_name_sha256": "b303896b29c162b2cb086b689dc7ebeefca7bb74083e00e626a91dbe661272ad",
+          "identity_normalization": "uuid_parameters_only",
+          "name_prefix": "test_real_decoder_measures_samples_and_removes_tempfiles",
+          "identity": "03aeaf047b9a07fe30e3877318579cfc5284978d863e893c392e3e3c30dc10e5",
+          "normalized_name_prefix": "test_real_decoder_measures_samples_and_removes_tempfiles"
+        },
+        "candidate": {
+          "class": "tests.unit.test_subscription_device_audio",
+          "base": "test_real_decoder_measures_samples_and_removes_tempfiles",
+          "state": "failed",
+          "failures": 1,
+          "errors": 0,
+          "messages": [
+            "AssertionError: CI must install the same decoders as the runtime\nassert (None)\n +  where None = <function which at 0x0000024EFDAE4360>('ffmpeg')\n +    where <function which at 0x0000024EFDAE4360> = shutil.which"
+          ],
+          "raw_name_sha256": "b303896b29c162b2cb086b689dc7ebeefca7bb74083e00e626a91dbe661272ad",
+          "identity_normalization": "uuid_parameters_only",
+          "name_prefix": "test_real_decoder_measures_samples_and_removes_tempfiles",
+          "identity": "03aeaf047b9a07fe30e3877318579cfc5284978d863e893c392e3e3c30dc10e5",
+          "normalized_name_prefix": "test_real_decoder_measures_samples_and_removes_tempfiles"
+        }
+      }
+    ],
+    "resolved_failed_cases": [
+      {
+        "baseline": {
+          "class": "tests.unit.test_subscription_devices",
+          "base": "test_new_route_isolated_without_opening_legacy_qr_and_matches_schema_fixture",
+          "state": "failed",
+          "failures": 1,
+          "errors": 0,
+          "messages": [
+            "AssertionError: assert {'name': 'Wha...': True}, ...} == {'name': 'Wha...': True}, ...}\n  \n  Omitting 7 identical items, use -vv to show\n  Differing items:\n  {'calls': {'days': [{'weekday': 0, 'enabled': False, 'start': '09:00', 'break_start': None, ...}, {'weekday': 1, 'enab... '09:00', 'break_start': None, ...}, ...], 'holiday_off': False, 'reject_enabled': False, 'reply_enabled': False, ...}} != {'calls': {'days': [{'weekday': 0, 'enabled': False, 'start': '09:00', 'break_start': None, ...}, {'weekday': 1, 'enab... '09:00', 'break_start': None, ...}, ...], 'holiday_off': False, 'reject_enabled': False, 'reply_enabled': False, ...}}\n  Use -v to get more diff"
+          ],
+          "raw_name_sha256": "af043a7acf3d5d7c30c311e35211c3c41c9017bcc2b1fe6cbf8e8e16c23aeb86",
+          "identity_normalization": "uuid_parameters_only",
+          "name_prefix": "test_new_route_isolated_without_opening_legacy_qr_and_matches_schema_fixture",
+          "identity": "57a687f1a0665fad318da219394001e4ec9c42e674f075fec6809eee6fbb5a87",
+          "normalized_name_prefix": "test_new_route_isolated_without_opening_legacy_qr_and_matches_schema_fixture"
+        },
+        "candidate": {
+          "class": "tests.unit.test_subscription_devices",
+          "base": "test_new_route_isolated_without_opening_legacy_qr_and_matches_schema_fixture",
+          "state": "passed",
+          "failures": 0,
+          "errors": 0,
+          "messages": [],
+          "raw_name_sha256": "af043a7acf3d5d7c30c311e35211c3c41c9017bcc2b1fe6cbf8e8e16c23aeb86",
+          "identity_normalization": "uuid_parameters_only",
+          "name_prefix": "test_new_route_isolated_without_opening_legacy_qr_and_matches_schema_fixture",
+          "identity": "57a687f1a0665fad318da219394001e4ec9c42e674f075fec6809eee6fbb5a87",
+          "normalized_name_prefix": "test_new_route_isolated_without_opening_legacy_qr_and_matches_schema_fixture"
+        }
+      },
+      {
+        "baseline": {
+          "class": "tests.unit.test_subscription_diagnostics",
+          "base": "test_shared_fixture_has_one_key_and_the_fixed_server_text",
+          "state": "failed",
+          "failures": 1,
+          "errors": 0,
+          "messages": [
+            "AssertionError: assert 'Mensagem de ... do WhatsApp.' == 'Mensagem de ... do WhatsApp.'\n  \n  Skipping 48 identical leading characters in diff, use -v to show\n  - o proprietário para verificar a conexão do WhatsApp.\n  ?           ^                          ^\n  + o proprietÃ¡rio para verificar a conexÃ£o do WhatsApp.\n  ?           ^^                          ^^"
+          ],
+          "raw_name_sha256": "2863e9dcaeec8515fb92ee92b01250845f5020ceedb1a5f701f9be534f70ec93",
+          "identity_normalization": "uuid_parameters_only",
+          "name_prefix": "test_shared_fixture_has_one_key_and_the_fixed_server_text",
+          "identity": "d0da5f240ff92c9131bf44367a02af3e23122a88d53fcbf5974b35a1d784d01f",
+          "normalized_name_prefix": "test_shared_fixture_has_one_key_and_the_fixed_server_text"
+        },
+        "candidate": {
+          "class": "tests.unit.test_subscription_diagnostics",
+          "base": "test_shared_fixture_has_one_key_and_the_fixed_server_text",
+          "state": "passed",
+          "failures": 0,
+          "errors": 0,
+          "messages": [],
+          "raw_name_sha256": "2863e9dcaeec8515fb92ee92b01250845f5020ceedb1a5f701f9be534f70ec93",
+          "identity_normalization": "uuid_parameters_only",
+          "name_prefix": "test_shared_fixture_has_one_key_and_the_fixed_server_text",
+          "identity": "d0da5f240ff92c9131bf44367a02af3e23122a88d53fcbf5974b35a1d784d01f",
+          "normalized_name_prefix": "test_shared_fixture_has_one_key_and_the_fixed_server_text"
+        }
+      },
+      {
+        "baseline": {
+          "class": "tests.unit.test_subscription_templates",
+          "base": "test_fixture_limits_and_media_contract_are_canonical",
+          "state": "failed",
+          "failures": 1,
+          "errors": 0,
+          "messages": [
+            "AssertionError: assert [{'key': 'nam...o comercial'}] == [{'key': 'nam...o comercial'}]\n  \n  At index 2 diff: {'key': 'my_name', 'label': 'Nome do negÃ³cio'} != {'key': 'my_name', 'label': 'Nome do negócio'}\n  Use -v to get more diff"
+          ],
+          "raw_name_sha256": "36da1c96e1f94f37c11191a9557944c3ce2c5fd02af0284c57a4bc63882d7243",
+          "identity_normalization": "uuid_parameters_only",
+          "name_prefix": "test_fixture_limits_and_media_contract_are_canonical",
+          "identity": "1f7b7223da0d7bfc6ea040e4a3960a421022ccc802aad46fd1af86ed1666f620",
+          "normalized_name_prefix": "test_fixture_limits_and_media_contract_are_canonical"
+        },
+        "candidate": {
+          "class": "tests.unit.test_subscription_templates",
+          "base": "test_fixture_limits_and_media_contract_are_canonical",
+          "state": "passed",
+          "failures": 0,
+          "errors": 0,
+          "messages": [],
+          "raw_name_sha256": "36da1c96e1f94f37c11191a9557944c3ce2c5fd02af0284c57a4bc63882d7243",
+          "identity_normalization": "uuid_parameters_only",
+          "name_prefix": "test_fixture_limits_and_media_contract_are_canonical",
+          "identity": "1f7b7223da0d7bfc6ea040e4a3960a421022ccc802aad46fd1af86ed1666f620",
+          "normalized_name_prefix": "test_fixture_limits_and_media_contract_are_canonical"
+        }
+      }
+    ],
+    "added_cases": [
+      {
+        "class": "tests.unit.test_qr_batch_recovery",
+        "base": "test_parts_are_exact_bounded_message_content_not_authority",
+        "state": "passed",
+        "failures": 0,
+        "errors": 0,
+        "messages": [],
+        "raw_name_sha256": "e5382e2862e357257937f068a3226d0c4a48434fcb43392cd2053b38d144d686",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_parts_are_exact_bounded_message_content_not_authority[parts0]",
+        "identity": "ec37f3f959a6153cb028d92b5a22e773eb1a29037768d9ce0db1e0905ed74153",
+        "normalized_name_prefix": "test_parts_are_exact_bounded_message_content_not_authority[parts0]"
+      },
+      {
+        "class": "tests.unit.test_qr_batch_recovery",
+        "base": "test_parts_are_exact_bounded_message_content_not_authority",
+        "state": "passed",
+        "failures": 0,
+        "errors": 0,
+        "messages": [],
+        "raw_name_sha256": "33933019bdbb8025839d3a2fd43aeba5eeac4f546b51808eb799403c8323f1da",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_parts_are_exact_bounded_message_content_not_authority[parts1]",
+        "identity": "979d67a89bf8361f42bad3b552468990ec0dd32a643fad83ca97890f82b85ea5",
+        "normalized_name_prefix": "test_parts_are_exact_bounded_message_content_not_authority[parts1]"
+      },
+      {
+        "class": "tests.unit.test_qr_batch_recovery",
+        "base": "test_parts_are_exact_bounded_message_content_not_authority",
+        "state": "passed",
+        "failures": 0,
+        "errors": 0,
+        "messages": [],
+        "raw_name_sha256": "b2d689eabe1be36b3fac299e27322eab57ddc8f53c22945b0bb78411484a52ea",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_parts_are_exact_bounded_message_content_not_authority[parts2]",
+        "identity": "53332c3a88673c6f2a2e74716e27fd128efc68a39ac2db744d6ac0dd4794e17b",
+        "normalized_name_prefix": "test_parts_are_exact_bounded_message_content_not_authority[parts2]"
+      },
+      {
+        "class": "tests.unit.test_qr_batch_recovery",
+        "base": "test_parts_are_exact_bounded_message_content_not_authority",
+        "state": "passed",
+        "failures": 0,
+        "errors": 0,
+        "messages": [],
+        "raw_name_sha256": "3a8bc3d0d3ac01451372404cc697af33d04ab10cb628687bd98e213acabd7609",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_parts_are_exact_bounded_message_content_not_authority[parts3]",
+        "identity": "953313e27d832b70838db380b4dd048cd7fbd051755cccc1207c6a5469f08751",
+        "normalized_name_prefix": "test_parts_are_exact_bounded_message_content_not_authority[parts3]"
+      },
+      {
+        "class": "tests.unit.test_qr_batch_recovery",
+        "base": "test_parts_are_exact_bounded_message_content_not_authority",
+        "state": "passed",
+        "failures": 0,
+        "errors": 0,
+        "messages": [],
+        "raw_name_sha256": "bc96d924c5d3391fcc71eda786db7ed8e4547ee27388ba0e76457fdeb1a7d137",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_parts_are_exact_bounded_message_content_not_authority[parts4]",
+        "identity": "07e10733a161654104f1c7ad1ee76d4cbdc03dbd07d91362cee8da0e5caa1181",
+        "normalized_name_prefix": "test_parts_are_exact_bounded_message_content_not_authority[parts4]"
+      },
+      {
+        "class": "tests.unit.test_qr_batch_recovery",
+        "base": "test_mixed_batch_keeps_only_unprocessed_multiline_content_and_identity",
+        "state": "passed",
+        "failures": 0,
+        "errors": 0,
+        "messages": [],
+        "raw_name_sha256": "3174870bcb383e3677655e97f804d1b645c996992501c666330855edcfbf37ee",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_mixed_batch_keeps_only_unprocessed_multiline_content_and_identity",
+        "identity": "bf166acd2fbd0331f36854b9bfa7216b95db13e09fa47c52f11cd4f745e44927",
+        "normalized_name_prefix": "test_mixed_batch_keeps_only_unprocessed_multiline_content_and_identity"
+      },
+      {
+        "class": "tests.unit.test_qr_batch_recovery",
+        "base": "test_mixed_legacy_client_gets_clarification_without_consuming_fresh_id",
+        "state": "passed",
+        "failures": 0,
+        "errors": 0,
+        "messages": [],
+        "raw_name_sha256": "2503b21a3a05441ff3f50c09de10c753cbeb8ae014832dc2ec60dd2dc2d821c6",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_mixed_legacy_client_gets_clarification_without_consuming_fresh_id",
+        "identity": "e15cd96bbd98deffd16564fecceb4a222b7f61b6bfcbb85de859427d57c40c55",
+        "normalized_name_prefix": "test_mixed_legacy_client_gets_clarification_without_consuming_fresh_id"
+      },
+      {
+        "class": "tests.unit.test_qr_batch_recovery",
+        "base": "test_another_channel_dedupe_never_removes_new_company_content",
+        "state": "passed",
+        "failures": 0,
+        "errors": 0,
+        "messages": [],
+        "raw_name_sha256": "6662356ab77f8f76f60e326a23a24d95b0b2b9c02682612c148b8b0b3e854b71",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_another_channel_dedupe_never_removes_new_company_content",
+        "identity": "c94172ba16d6f0d924d30f96da653ae9da3cfc646e23f94b72e0ba143c2b0538",
+        "normalized_name_prefix": "test_another_channel_dedupe_never_removes_new_company_content"
+      },
+      {
+        "class": "tests.unit.test_qr_batch_recovery",
+        "base": "test_slow_authority_check_cannot_start_a_fresh_window_for_business_work",
+        "state": "passed",
+        "failures": 0,
+        "errors": 0,
+        "messages": [],
+        "raw_name_sha256": "68f11b155def05040dbed93e265d5009513c749a8c5f0f2e4377fa170ec62ffc",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_slow_authority_check_cannot_start_a_fresh_window_for_business_work",
+        "identity": "0c0b635b66c6bbc725a88234acaf581d5c355ae3c654599ce40515a47817b62f",
+        "normalized_name_prefix": "test_slow_authority_check_cannot_start_a_fresh_window_for_business_work"
+      },
+      {
+        "class": "tests.unit.test_qr_turn_ownership",
+        "base": "test_expired_conversation_owner_cannot_write_even_without_ingress_flag",
+        "state": "passed",
+        "failures": 0,
+        "errors": 0,
+        "messages": [],
+        "raw_name_sha256": "2b9da85d069bed58d6c2efa26f622d6ec6a0c094fdd61ed51c545519050c80b9",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_expired_conversation_owner_cannot_write_even_without_ingress_flag",
+        "identity": "257328a4ecc613b5334105a7cd4141efa6d45ad1ab8081475ecd0c4ee8d9cfde",
+        "normalized_name_prefix": "test_expired_conversation_owner_cannot_write_even_without_ingress_flag"
+      },
+      {
+        "class": "tests.unit.test_qr_turn_ownership",
+        "base": "test_replaced_conversation_owner_cannot_restore_its_old_state",
+        "state": "passed",
+        "failures": 0,
+        "errors": 0,
+        "messages": [],
+        "raw_name_sha256": "46a843b4ce642a36ba37aa4fe6930c63044692c1c669037269f97ab368f53f7d",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_replaced_conversation_owner_cannot_restore_its_old_state",
+        "identity": "a000f31f1616cf63e18d5161c24c732b0df720492f9c8143e4e46bf08d5ac552",
+        "normalized_name_prefix": "test_replaced_conversation_owner_cannot_restore_its_old_state"
+      },
+      {
+        "class": "tests.unit.test_qr_turn_ownership",
+        "base": "test_restore_and_owner_comparison_are_one_redis_operation",
+        "state": "passed",
+        "failures": 0,
+        "errors": 0,
+        "messages": [],
+        "raw_name_sha256": "9f101430d3d00410d8322dcc07f3ebb502b6611bfcd1d67404594d65a7a18c1f",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_restore_and_owner_comparison_are_one_redis_operation",
+        "identity": "f64635557c995bf2db17282e31cb35fd102f6170bdde31389046eee99f00fef2",
+        "normalized_name_prefix": "test_restore_and_owner_comparison_are_one_redis_operation"
+      },
+      {
+        "class": "tests.unit.test_qr_turn_ownership",
+        "base": "test_unexpected_error_after_write_is_not_permission_to_replay",
+        "state": "passed",
+        "failures": 0,
+        "errors": 0,
+        "messages": [],
+        "raw_name_sha256": "7c7b7914a95e37b3bbba85039427e1253ae08f4493b6924719ac619e1d9057c0",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_unexpected_error_after_write_is_not_permission_to_replay",
+        "identity": "ef81596340a1d69024ac7d8e4a334c54497ffb09b47638b0be0e0d885fa9b86e",
+        "normalized_name_prefix": "test_unexpected_error_after_write_is_not_permission_to_replay"
+      },
+      {
+        "class": "tests.unit.test_qr_turn_ownership",
+        "base": "test_interruption_while_recording_completion_also_consumes_written_attempt",
+        "state": "passed",
+        "failures": 0,
+        "errors": 0,
+        "messages": [],
+        "raw_name_sha256": "0193e845dd3b4111d82a431393deae16ff127add1c3984034da5e133a3920359",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_interruption_while_recording_completion_also_consumes_written_attempt",
+        "identity": "3fe52c0c11118c7eea71804577c4906cb3d29bd200ede19362b43e434c0d9247",
+        "normalized_name_prefix": "test_interruption_while_recording_completion_also_consumes_written_attempt"
+      },
+      {
+        "class": "tests.unit.test_qr_turn_ownership",
+        "base": "test_deadline_blocks_provider_that_swallows_cancellation",
+        "state": "passed",
+        "failures": 0,
+        "errors": 0,
+        "messages": [],
+        "raw_name_sha256": "5778086f656862b390b8d8a1dc7c6d36df4d3957c66792971c7d90b1c786a7d6",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_deadline_blocks_provider_that_swallows_cancellation",
+        "identity": "112168768b075e91585a1d47d90cab0e91825d9832e03a14083d546f66ddcc16",
+        "normalized_name_prefix": "test_deadline_blocks_provider_that_swallows_cancellation"
+      },
+      {
+        "class": "tests.unit.test_qr_turn_ownership",
+        "base": "test_timeout_after_write_consumes_uncertain_message_without_ingress_flag",
+        "state": "passed",
+        "failures": 0,
+        "errors": 0,
+        "messages": [],
+        "raw_name_sha256": "91c880f2a9d7f7dc3d92b7dff8d4507b887a2ab0f274d860af4ebd9946b5616f",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_timeout_after_write_consumes_uncertain_message_without_ingress_flag",
+        "identity": "08d4d0e46f1c1ebb62b0f41d4af263653918f5e7feddec269cc0b30df46db96c",
+        "normalized_name_prefix": "test_timeout_after_write_consumes_uncertain_message_without_ingress_flag"
+      },
+      {
+        "class": "tests.unit.test_qr_turn_ownership",
+        "base": "test_lease_renews_with_compare_token_and_is_released",
+        "state": "passed",
+        "failures": 0,
+        "errors": 0,
+        "messages": [],
+        "raw_name_sha256": "d8c6b5a198401e25073ba9f2e58739b2e8e0c630eb9b1661bb2d710c7db5e62d",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_lease_renews_with_compare_token_and_is_released",
+        "identity": "e2903cfed3cfc5d721baca0f034e2fb220161d9b5ac437cbe523032d4165d37b",
+        "normalized_name_prefix": "test_lease_renews_with_compare_token_and_is_released"
+      },
+      {
+        "class": "tests.unit.test_qr_turn_ownership",
+        "base": "test_failed_renewal_cancels_owner_and_cannot_write",
+        "state": "passed",
+        "failures": 0,
+        "errors": 0,
+        "messages": [],
+        "raw_name_sha256": "b17da338d50358b4fd8f71001f26aad34a2957af4b7257a6a8c0879be107217a",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_failed_renewal_cancels_owner_and_cannot_write",
+        "identity": "90aded0efd3aabf8e8f469b37752a2f686e5361a364e552d1976058b79bbd52d",
+        "normalized_name_prefix": "test_failed_renewal_cancels_owner_and_cannot_write"
+      },
+      {
+        "class": "tests.unit.test_qr_turn_ownership",
+        "base": "test_transaction_exit_rechecks_conversation_before_commit",
+        "state": "passed",
+        "failures": 0,
+        "errors": 0,
+        "messages": [],
+        "raw_name_sha256": "0895d8ad90e6d99cb290dba77902a3e1e13e3d988510a7baf6675f3ecdf84527",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_transaction_exit_rechecks_conversation_before_commit",
+        "identity": "916853cef2385ee406105230a9160011cd5eb2d5c2797308bcadcb814168f0e7",
+        "normalized_name_prefix": "test_transaction_exit_rechecks_conversation_before_commit"
+      },
+      {
+        "class": "tests.unit.test_qr_turn_ownership",
+        "base": "test_failure_cleanup_has_its_own_deadline",
+        "state": "passed",
+        "failures": 0,
+        "errors": 0,
+        "messages": [],
+        "raw_name_sha256": "e6fb2a34d58c2b6bfc6aa48889c2869390d5b35b68b4eb46e8fa30c48acbaba6",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_failure_cleanup_has_its_own_deadline",
+        "identity": "229443bbf1f0ca0d756270fc4e7eb7c37feea42ea2a1aec10b61b6eecf445f3d",
+        "normalized_name_prefix": "test_failure_cleanup_has_its_own_deadline"
+      },
+      {
+        "class": "tests.unit.test_qr_turn_ownership",
+        "base": "test_owner_audio_preview_keeps_its_independent_provider_budget",
+        "state": "passed",
+        "failures": 0,
+        "errors": 0,
+        "messages": [],
+        "raw_name_sha256": "51ee5e5c0e22a99a4e688dd24889b41eaa54b1e7f9976ad9d56135574b11f3d9",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_owner_audio_preview_keeps_its_independent_provider_budget",
+        "identity": "b4e0d5e81f4788dfce7cac724abfeff017468e70f8d7699767135cd908bd4a92",
+        "normalized_name_prefix": "test_owner_audio_preview_keeps_its_independent_provider_budget"
+      },
+      {
+        "class": "tests.unit.test_subscription_connection_health",
+        "base": "test_degraded_transport_overrides_old_open_event_without_exposing_identifiers",
+        "state": "passed",
+        "failures": 0,
+        "errors": 0,
+        "messages": [],
+        "raw_name_sha256": "6c027400d0aaf69d7406c13b6e97efd433c6ea7fc1e1dd80025259890ca08a11",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_degraded_transport_overrides_old_open_event_without_exposing_identifiers",
+        "identity": "77f7892226c5559bea6978e152da941a29282755fe55d7a32d84ebf610ea3230",
+        "normalized_name_prefix": "test_degraded_transport_overrides_old_open_event_without_exposing_identifiers"
+      },
+      {
+        "class": "tests.unit.test_subscription_connection_health",
+        "base": "test_readiness_policy",
+        "state": "passed",
+        "failures": 0,
+        "errors": 0,
+        "messages": [],
+        "raw_name_sha256": "bb2cc2730db63f0574c250ab6de7fbcfbf5dcfc28504cf25baf92de0d8cbf0d6",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_readiness_policy[reconnecting-reconnecting]",
+        "identity": "e2664c6e32a6d8bd5f7ee1b2e8b23fb2f4dc5867f498f98a808fed683d44f46a",
+        "normalized_name_prefix": "test_readiness_policy[reconnecting-reconnecting]"
+      },
+      {
+        "class": "tests.unit.test_subscription_connection_health",
+        "base": "test_readiness_policy",
+        "state": "passed",
+        "failures": 0,
+        "errors": 0,
+        "messages": [],
+        "raw_name_sha256": "f889d5f42e774b7539eb4ecb081c80bf389bb6b4b73a7ab40e7c2d5603f23f13",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_readiness_policy[needs_attention-needs_attention]",
+        "identity": "e3c6e51bfbac8f966bc251b7b0383593da91a5a95c3eb63c09129e93f029c74b",
+        "normalized_name_prefix": "test_readiness_policy[needs_attention-needs_attention]"
+      },
+      {
+        "class": "tests.unit.test_subscription_connection_health",
+        "base": "test_readiness_policy",
+        "state": "passed",
+        "failures": 0,
+        "errors": 0,
+        "messages": [],
+        "raw_name_sha256": "7051c62f772dacfe027e2982b0060798dd96b9398e28eb68cc0602a1be5b5ddb",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_readiness_policy[stopped-disconnected]",
+        "identity": "b601efac682e5ad65b9676d25fa10524e0b37e1ade82d8dddd244ba2b7005d7c",
+        "normalized_name_prefix": "test_readiness_policy[stopped-disconnected]"
+      },
+      {
+        "class": "tests.unit.test_subscription_connection_health",
+        "base": "test_readiness_policy",
+        "state": "passed",
+        "failures": 0,
+        "errors": 0,
+        "messages": [],
+        "raw_name_sha256": "e32bd9eae14d72366478a9db3dc4bb77dd0a5ce5b9c7eefdec6d3b4780e23fdb",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_readiness_policy[connected-connected]",
+        "identity": "b2e7327e4e29c6174b1fdfd6f91e83865282404a03c6bc4176952c5600c3779c",
+        "normalized_name_prefix": "test_readiness_policy[connected-connected]"
+      },
+      {
+        "class": "tests.unit.test_subscription_connection_health",
+        "base": "test_runtime_remains_compatible_without_new_health_fields",
+        "state": "passed",
+        "failures": 0,
+        "errors": 0,
+        "messages": [],
+        "raw_name_sha256": "85e0663ba4175a0abdeafb6de433a908575abb6ec9f1036c9a5b839fd17d2202",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_runtime_remains_compatible_without_new_health_fields",
+        "identity": "48f387f97c417be537adcd449f9785595b695aabc3d3ce14cd8ad03d9ba11c27",
+        "normalized_name_prefix": "test_runtime_remains_compatible_without_new_health_fields"
+      },
+      {
+        "class": "tests.unit.test_subscription_connection_health",
+        "base": "test_invalid_health_cannot_manufacture_connected_state",
+        "state": "passed",
+        "failures": 0,
+        "errors": 0,
+        "messages": [],
+        "raw_name_sha256": "36f7e8ecb19080392e3bbdd85ac955e421abdabf62b64f60c41c249c765fe7ae",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_invalid_health_cannot_manufacture_connected_state[None]",
+        "identity": "791c659b3a4d93e4482f9523f10c3b6b2ac3c22720f02f60c08004ff99d5a653",
+        "normalized_name_prefix": "test_invalid_health_cannot_manufacture_connected_state[None]"
+      },
+      {
+        "class": "tests.unit.test_subscription_connection_health",
+        "base": "test_invalid_health_cannot_manufacture_connected_state",
+        "state": "passed",
+        "failures": 0,
+        "errors": 0,
+        "messages": [],
+        "raw_name_sha256": "144a39163e898191046a96461292882221f552caa16f1a83768adb7ea4cc0bed",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_invalid_health_cannot_manufacture_connected_state[health1]",
+        "identity": "361fa451983dca2ed47e8f6434c4df7aed17be010075b5bff629c0c7ff5782ec",
+        "normalized_name_prefix": "test_invalid_health_cannot_manufacture_connected_state[health1]"
+      },
+      {
+        "class": "tests.unit.test_subscription_connection_health",
+        "base": "test_invalid_health_cannot_manufacture_connected_state",
+        "state": "passed",
+        "failures": 0,
+        "errors": 0,
+        "messages": [],
+        "raw_name_sha256": "f68ccf40c281c3d4ceb610e77b543ba91b9643e08b686865603b2f288b820de7",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_invalid_health_cannot_manufacture_connected_state[connected]",
+        "identity": "79434854715fa69e6740de4dc42683fb0fb0d63391c9ed86764d027abfbeb040",
+        "normalized_name_prefix": "test_invalid_health_cannot_manufacture_connected_state[connected]"
+      },
+      {
+        "class": "tests.unit.test_subscription_connection_health",
+        "base": "test_invalid_health_cannot_manufacture_connected_state",
+        "state": "passed",
+        "failures": 0,
+        "errors": 0,
+        "messages": [],
+        "raw_name_sha256": "0f15594e72315959fb52ee85f79406c994f35822b134baefe9df76d73090f504",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_invalid_health_cannot_manufacture_connected_state[health3]",
+        "identity": "cd7c867723d6b621a6c0956f01d9f9322dae7df362860fd74f87668bf35afe9e",
+        "normalized_name_prefix": "test_invalid_health_cannot_manufacture_connected_state[health3]"
+      },
+      {
+        "class": "tests.unit.test_subscription_connection_health",
+        "base": "test_invalid_health_cannot_manufacture_connected_state",
+        "state": "passed",
+        "failures": 0,
+        "errors": 0,
+        "messages": [],
+        "raw_name_sha256": "b1f26585f169a514f90dff30714d74b692336ca4f15985bea2544fa905fe00fa",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_invalid_health_cannot_manufacture_connected_state[health4]",
+        "identity": "97ab5e533534f74ac9a8745012247b5d9614858adfccacdfb6b61050bc8e771b",
+        "normalized_name_prefix": "test_invalid_health_cannot_manufacture_connected_state[health4]"
+      },
+      {
+        "class": "tests.unit.test_subscription_connection_health",
+        "base": "test_untrusted_health_fields_are_bounded_and_timestamp_offsets_normalized",
+        "state": "passed",
+        "failures": 0,
+        "errors": 0,
+        "messages": [],
+        "raw_name_sha256": "b3cbc1f160cff73a8552b5c596f5a50cfc72bdbdb64a4491a3f3bd7800fd3885",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_untrusted_health_fields_are_bounded_and_timestamp_offsets_normalized",
+        "identity": "ef7a27f15935f4ea602228f5630db3e19d356c77391639a8191a217147101cbf",
+        "normalized_name_prefix": "test_untrusted_health_fields_are_bounded_and_timestamp_offsets_normalized"
+      },
+      {
+        "class": "tests.unit.test_subscription_connection_health",
+        "base": "test_stored_open_event_expires_when_the_process_stops_reporting",
+        "state": "passed",
+        "failures": 0,
+        "errors": 0,
+        "messages": [],
+        "raw_name_sha256": "9ffd866d8f289cad0820a31e202eb68f098cfc1fd8d78af90c1b12eff99e1766",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_stored_open_event_expires_when_the_process_stops_reporting[10-connected]",
+        "identity": "e83d3bca4bc3373ead217a43aded1f3a270e07ae7980bcc1c9ca3184584c3e6c",
+        "normalized_name_prefix": "test_stored_open_event_expires_when_the_process_stops_reporting[10-connected]"
+      },
+      {
+        "class": "tests.unit.test_subscription_connection_health",
+        "base": "test_stored_open_event_expires_when_the_process_stops_reporting",
+        "state": "passed",
+        "failures": 0,
+        "errors": 0,
+        "messages": [],
+        "raw_name_sha256": "c887b5755a6d92ee128f80fbeae5d8273497fd37a7d7c4f39002b1063696b99b",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_stored_open_event_expires_when_the_process_stops_reporting[100-unavailable]",
+        "identity": "ee90b9930b11b535bb80f3f9e17d28dda9bbe37691d2250c085a3099a4afca4d",
+        "normalized_name_prefix": "test_stored_open_event_expires_when_the_process_stops_reporting[100-unavailable]"
+      },
+      {
+        "class": "tests.unit.test_whatsapp_pending_purpose",
+        "base": "test_reminder_final_authority_is_loaded_again_after_an_interruption",
+        "state": "passed",
+        "failures": 0,
+        "errors": 0,
+        "messages": [],
+        "raw_name_sha256": "e3551a9e2ddd907b3bbb2f738bc43234fd57d806833ce33ff48e955f4ecb8e2c",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_reminder_final_authority_is_loaded_again_after_an_interruption[current-None]",
+        "identity": "d3e7eaa3d930bb2c514575f824a8807e0442e4647d344604e79714d7ba4d5e13",
+        "normalized_name_prefix": "test_reminder_final_authority_is_loaded_again_after_an_interruption[current-None]"
+      },
+      {
+        "class": "tests.unit.test_whatsapp_pending_purpose",
+        "base": "test_reminder_final_authority_is_loaded_again_after_an_interruption",
+        "state": "passed",
+        "failures": 0,
+        "errors": 0,
+        "messages": [],
+        "raw_name_sha256": "8ae4e0a6165bda20592c0b8ca427228d1226eb6df477a8b21ff6918b6621abf1",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_reminder_final_authority_is_loaded_again_after_an_interruption[past_appointment-appointment_started]",
+        "identity": "3ddd6dc8b02d8d64bc963233f30d108385ffbc07e73f885103606a1b48a9fb77",
+        "normalized_name_prefix": "test_reminder_final_authority_is_loaded_again_after_an_interruption[past_appointment-appointment_started]"
+      },
+      {
+        "class": "tests.unit.test_whatsapp_pending_purpose",
+        "base": "test_reminder_final_authority_is_loaded_again_after_an_interruption",
+        "state": "passed",
+        "failures": 0,
+        "errors": 0,
+        "messages": [],
+        "raw_name_sha256": "d7fb1141332700e119cb2c5a9b22be7b4e3f43a8d5c1ed4b3413c2d06ad06f87",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_reminder_final_authority_is_loaded_again_after_an_interruption[cancelled_appointment-appointment_changed]",
+        "identity": "9117ef3cc7795eda3a5061e4d183a35af06c22f73d8c4e8dd2917781ee30ca06",
+        "normalized_name_prefix": "test_reminder_final_authority_is_loaded_again_after_an_interruption[cancelled_appointment-appointment_changed]"
+      },
+      {
+        "class": "tests.unit.test_whatsapp_pending_purpose",
+        "base": "test_reminder_final_authority_is_loaded_again_after_an_interruption",
+        "state": "passed",
+        "failures": 0,
+        "errors": 0,
+        "messages": [],
+        "raw_name_sha256": "effda1e33aa43dec121b36f545cc7ba287b7d203eb507e670afcab612412b46f",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_reminder_final_authority_is_loaded_again_after_an_interruption[rescheduled_appointment-appointment_changed]",
+        "identity": "7feb03675255e5d900f81591b9f365902c8adacc347e71930dd24c714d564921",
+        "normalized_name_prefix": "test_reminder_final_authority_is_loaded_again_after_an_interruption[rescheduled_appointment-appointment_changed]"
+      },
+      {
+        "class": "tests.unit.test_whatsapp_pending_purpose",
+        "base": "test_reminder_final_authority_is_loaded_again_after_an_interruption",
+        "state": "passed",
+        "failures": 0,
+        "errors": 0,
+        "messages": [],
+        "raw_name_sha256": "644b9a5aef03ed1aa97c78df68088c9a139bd5990874b366366397a747ea74ec",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_reminder_final_authority_is_loaded_again_after_an_interruption[missing_appointment-appointment_changed]",
+        "identity": "7a9f349a0fa4c1616e7d30cc71fd453c5b096149138a1dda325aef5ed7384509",
+        "normalized_name_prefix": "test_reminder_final_authority_is_loaded_again_after_an_interruption[missing_appointment-appointment_changed]"
+      },
+      {
+        "class": "tests.unit.test_whatsapp_pending_purpose",
+        "base": "test_reminder_final_authority_is_loaded_again_after_an_interruption",
+        "state": "passed",
+        "failures": 0,
+        "errors": 0,
+        "messages": [],
+        "raw_name_sha256": "2e57408c006b06688ace9f4f3348c9691c82d23ea7e2d6d77bbb1550001b5acb",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_reminder_final_authority_is_loaded_again_after_an_interruption[expired_reminder-expired]",
+        "identity": "cf0534c5d8dc0ccb3921f9001296c5b3e6bb336ceb992b2e9560124ebf540d43",
+        "normalized_name_prefix": "test_reminder_final_authority_is_loaded_again_after_an_interruption[expired_reminder-expired]"
+      },
+      {
+        "class": "tests.unit.test_whatsapp_pending_purpose",
+        "base": "test_reminder_final_authority_is_loaded_again_after_an_interruption",
+        "state": "passed",
+        "failures": 0,
+        "errors": 0,
+        "messages": [],
+        "raw_name_sha256": "e590503a9d5d156b42de5003672083d376c3b432276c8cc83af510f5f667725f",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_reminder_final_authority_is_loaded_again_after_an_interruption[human_took_over-conversation_changed]",
+        "identity": "8ca2339e42b59e94a66f44ec7d51ce64e3dc30ea1bb28b4c05578f2c472249e5",
+        "normalized_name_prefix": "test_reminder_final_authority_is_loaded_again_after_an_interruption[human_took_over-conversation_changed]"
+      },
+      {
+        "class": "tests.unit.test_whatsapp_pending_purpose",
+        "base": "test_reminder_final_authority_is_loaded_again_after_an_interruption",
+        "state": "passed",
+        "failures": 0,
+        "errors": 0,
+        "messages": [],
+        "raw_name_sha256": "fcebee34fa3d24e3bf2d7f2dd83c14fcbc7f50c3e99576502f3a4992b9ad0c81",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_reminder_final_authority_is_loaded_again_after_an_interruption[new_customer_message-conversation_changed]",
+        "identity": "8e1d05cee134e17921b39681bddd9835d9956f26e651b954decc8a24b465531a",
+        "normalized_name_prefix": "test_reminder_final_authority_is_loaded_again_after_an_interruption[new_customer_message-conversation_changed]"
+      },
+      {
+        "class": "tests.unit.test_whatsapp_pending_purpose",
+        "base": "test_reminder_final_authority_is_loaded_again_after_an_interruption",
+        "state": "passed",
+        "failures": 0,
+        "errors": 0,
+        "messages": [],
+        "raw_name_sha256": "0310eb452db15cfe8354b1d8a365945e3019a32ec6ad8d2596eee684271a7a9f",
+        "identity_normalization": "uuid_parameters_only",
+        "name_prefix": "test_reminder_final_authority_is_loaded_again_after_an_interruption[revoked_consent-consent_changed]",
+        "identity": "aa3aef06d873dd2c4f4e6e5b0cc23fbb3418422c065999adc124f7a531d35328",
+        "normalized_name_prefix": "test_reminder_final_authority_is_loaded_again_after_an_interruption[revoked_consent-consent_changed]"
+      }
+    ],
+    "removed_cases": [],
+    "regressed_skips": [],
+    "regression_gate_passed": true,
+    "entire_candidate_suite_passed": false
+  },
+  "integration_overlap_note": "The 2 process-lease recovery cases are included again in the complete 41-case frozen P0 gate; do not add them as independent coverage.",
+  "additional_selected_units": {
+    "preview_audio": [
+      {
+        "name": "pytest",
+        "errors": "0",
+        "failures": "0",
+        "skipped": "0",
+        "tests": "16",
+        "time": "3.392",
+        "timestamp": "2026-11-05T13:39:58.944900-04:00",
+        "hostname": "DESKTOP-3Q48M6B"
+      }
+    ]
+  },
+  "retained_test_services": {
+    "postgres_port": 63406,
+    "redis_port": 63407,
+    "services_file": "C:\\Users\\kayky\\AppData\\Local\\Temp\\orion-whatsapp-validation-20261105\\retained\\whatsapp-ephemeral-eoir4kbu\\services.json",
+    "parent_asked_to_keep_running": true
+  }
+}

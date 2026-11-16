@@ -153,8 +153,9 @@ async def test_new_modules_fail_closed_across_tenants_and_without_rls_scope(extr
 
 
 @pytest.mark.asyncio
-async def test_invitation_requires_claim_and_owner_review_and_never_stores_token(extras_db):
+async def test_legacy_invitation_requires_claim_and_support_review_and_never_stores_token(extras_db):
     d = extras_db
+    d["selected"]["actor"] = Actor("support", account_id=d["owner"])
     request = {"email": d["guest_email"], "role": "editor", "idempotency_key": str(uuid4())}
     result = await d["client"].post(d["base"] + "/team/invitations", json=request)
     assert result.status_code == 201, result.text
@@ -170,7 +171,7 @@ async def test_invitation_requires_claim_and_owner_review_and_never_stores_token
     accepted = await d["client"].post("/api/v1/team-invitations/accept", json={"token": token})
     assert accepted.status_code == 200 and accepted.json()["status"] == "claimed"
     assert (await d["client"].get(d["base"] + "/team")).status_code == 403
-    d["selected"]["actor"] = Actor("member", account_id=d["owner"])
+    d["selected"]["actor"] = Actor("support", account_id=d["owner"])
     approved = await d["client"].patch(d["base"] + "/team/invitations/" + invitation["id"], json={"action": "approve", "expected_version": 2})
     assert approved.status_code == 200, approved.text
     async with d["migrator"].connect() as db:
@@ -184,6 +185,7 @@ async def test_invitation_requires_claim_and_owner_review_and_never_stores_token
 @pytest.mark.asyncio
 async def test_invitation_wrong_email_unverified_account_and_expiry_are_enforced(extras_db):
     d = extras_db
+    d["selected"]["actor"] = Actor("support", account_id=d["owner"])
     result = await d["client"].post(d["base"] + "/team/invitations", json={"email": "another@example.invalid", "role": "viewer", "idempotency_key": str(uuid4())})
     token = parse_qs(urlsplit(result.json()["link"]).fragment)["token"][0]
     d["selected"]["actor"] = Actor("member", account_id=d["guest"])
@@ -262,6 +264,7 @@ async def test_ai_revalidates_membership_after_provider_returns(extras_db, monke
 @pytest.mark.asyncio
 async def test_concurrent_reviews_cannot_replace_a_membership_created_by_another_invitation(extras_db):
     d = extras_db
+    d["selected"]["actor"] = Actor("support", account_id=d["owner"])
     invitations = []
     for role in ("editor", "viewer"):
         response = await d["client"].post(d["base"] + "/team/invitations",
@@ -273,7 +276,7 @@ async def test_concurrent_reviews_cannot_replace_a_membership_created_by_another
         token = parse_qs(urlsplit(invitation["link"]).fragment)["token"][0]
         accepted = await d["client"].post("/api/v1/team-invitations/accept", json={"token": token})
         assert accepted.status_code == 200 and accepted.json()["status"] == "claimed", accepted.text
-    d["selected"]["actor"] = Actor("member", tenant_id=d["tenant"], account_id=d["owner"], membership_role="owner")
+    d["selected"]["actor"] = Actor("support", account_id=d["owner"])
     results = await asyncio.gather(*(d["client"].patch(d["base"] + "/team/invitations/" + invitation["id"],
         json={"action": "approve", "expected_version": 2}) for invitation in invitations))
     assert sorted(response.status_code for response in results) == [200, 409], [response.text for response in results]

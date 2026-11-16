@@ -77,7 +77,7 @@
       return;
     }
     try {
-      registration = await navigator.serviceWorker.register("/pwa-sw.js", {scope: "/panel"});
+      registration = await navigator.serviceWorker.register("/pwa-sw.js", {scope: "/painel"});
       const existing = await registration.pushManager.getSubscription();
       if (!host.isConnected || mountedHost !== host) return;
       if (existing) {

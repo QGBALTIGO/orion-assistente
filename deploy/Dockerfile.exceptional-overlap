@@ -1,0 +1,8 @@
+# Overlay the current published runtime with this verified feature only.
+FROM ghcr.io/qgbaltigo/orion-assistente-api@sha256:27bf43ffcd996bda2d13d45e2fdbd78715e042c14784ff5d2370ace220a83899
+ARG ORION_RELEASE_SHA
+LABEL org.opencontainers.image.source="https://github.com/QGBALTIGO/orion-assistente" org.opencontainers.image.revision="${ORION_RELEASE_SHA}"
+COPY --chown=appuser:appuser app/appointment_operations.py app/booking_service.py app/professional_portal.py app/worker.py /srv/app/app/
+COPY --chown=appuser:appuser app/static/orion-suite.js app/static/orion-professional.js /srv/app/app/static/
+COPY --chown=appuser:appuser alembic/versions/0081_exceptional_overlap.py /srv/app/alembic/versions/
+COPY --chown=appuser:appuser scripts/start_api.py scripts/wait_for_exceptional_overlap_schema.py scripts/backup_and_migrate_exceptional_overlap.py /srv/app/scripts/

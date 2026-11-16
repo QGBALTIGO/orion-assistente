@@ -10,6 +10,11 @@ from app.brazilian_fields import normalize_postal_code, normalize_state
 from app.catalog_schemas import Business, Professional, Service
 from app.commercial_schemas import Product, Variant, IdempotencyKey
 from app.management_schemas import normalize_phone
+from app.workspace_policy import SUBSCRIPTION_NICHE
+
+
+SubscriptionOffering = Literal["subscriptions", "one_time_sales", "both"]
+SUBSCRIPTION_OFFERINGS = ("subscriptions", "one_time_sales", "both")
 
 
 class Identity(ProfileModel):
@@ -18,6 +23,10 @@ class Identity(ProfileModel):
     niche: str = Field(min_length=1, max_length=80)
     other_niche: str | None = Field(default=None, min_length=1, max_length=300)
     activity: Literal["services", "products", "both"]
+    # This survey answer does not enable billing or turn subscriptions into
+    # scheduled services. Omitting it preserves historical operation hashes.
+    subscription_offering: SubscriptionOffering | None = Field(
+        default=None, exclude_if=lambda value: value is None)
     contact_phone: str | None = Field(default=None, max_length=40)
 
     @field_validator("name")
@@ -36,6 +45,11 @@ class Identity(ProfileModel):
     def other(self):
         if self.niche.casefold() in {"outro", "other"} and not self.other_niche:
             raise ValueError("Descreva o ramo do negócio")
+        if self.niche == SUBSCRIPTION_NICHE:
+            if self.activity != "products" or self.subscription_offering is None:
+                raise ValueError("Escolha assinaturas, vendas avulsas ou ambas para este negócio")
+        elif self.subscription_offering is not None:
+            raise ValueError("A oferta de assinaturas se aplica ao nicho Serviço de assinaturas")
         return self
 
 

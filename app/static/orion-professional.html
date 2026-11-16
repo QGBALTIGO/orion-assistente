@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta name="theme-color" content="#111c25">
+  <title>Minha área profissional · Orion</title>
+  <link rel="icon" href="/brand/orion-symbol.svg">
+  <link rel="stylesheet" href="/panel-assets/orion-professional.css">
+  <link rel="stylesheet" href="/panel-assets/orion-dental-clinic.css">
+  <script src="/panel-assets/orion-fields.js" defer></script>
+  <script src="/panel-assets/orion-dental-clinic.js" defer></script>
+  <script src="/panel-assets/orion-professional.js" defer></script>
+</head>
+<body>
+  <div id="boot" class="boot" role="status">Abrindo sua área profissional…</div>
+  <div id="portal" class="shell" hidden>
+    <aside class="sidebar">
+      <a class="brand" href="/profissional" aria-label="Orion, início">
+        <img id="brandLogo" src="/brand/orion-brand-light.svg" alt="Orion">
+        <span>ÁREA PROFISSIONAL</span>
+      </a>
+      <nav class="navigation" aria-label="Menu profissional">
+        <button type="button" data-page="inicio" aria-current="page"><span class="nav-icon">▦</span> Início</button>
+        <button type="button" data-page="agenda"><span class="nav-icon">▦</span> Minha agenda</button>
+        <button type="button" data-page="clinica" hidden><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5C7 2 3 4 3 9c0 4 2 8 3.2 10.2.8 1.7 2.3 1.7 3 .1l2.1-5c.4-.8 1.1-.8 1.5 0l2 5c.7 1.6 2.2 1.6 3-.1C19 17 21 13 21 9c0-5-4-7-9-4Z"/></svg></span> Clínica odontológica</button>
+        <button type="button" data-page="financeiro"><span class="nav-icon">◉</span> Meu financeiro</button>
+        <button type="button" data-page="metas"><span class="nav-icon">◎</span> Minhas metas</button>
+        <button type="button" data-page="perfil"><span class="nav-icon">◯</span> Meu perfil</button>
+      </nav>
+      <div class="sidebar-foot"><small>Seu acesso é individual. Os dados de outros profissionais não são exibidos.</small></div>
+    </aside>
+    <div class="workspace">
+      <header class="topbar">
+        <div class="company">
+          <span class="company-symbol"><img src="/brand/orion-symbol.svg" alt=""></span>
+          <div><strong id="companyName">Minha empresa</strong><small>Painel profissional</small></div>
+        </div>
+        <div class="top-actions">
+          <button type="button" class="icon-button" id="themeButton" aria-label="Alternar tema" title="Alternar tema">☾</button>
+          <button type="button" class="ghost-button" id="logoutButton">Sair</button>
+        </div>
+      </header>
+      <main class="main" id="main" tabindex="-1">
+        <div id="content" aria-live="polite"></div>
+      </main>
+    </div>
+    <nav class="mobile-nav" aria-label="Menu profissional móvel">
+      <button type="button" data-page="inicio">Início</button>
+      <button type="button" data-page="agenda">Agenda</button>
+      <button type="button" data-page="clinica" hidden>Clínica</button>
+      <button type="button" data-page="financeiro">Financeiro</button>
+      <button type="button" data-page="metas">Metas</button>
+      <button type="button" data-page="perfil">Perfil</button>
+    </nav>
+  </div>
+  <div id="modal" class="modal-layer" role="presentation" hidden>
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <div class="dialog-top"><h2 id="modalTitle">Editar</h2><button type="button" id="modalClose" class="icon-button" aria-label="Fechar">×</button></div>
+      <form id="modalForm"><div id="modalFields"></div><p id="modalError" class="form-error" role="alert"></p><div class="dialog-actions"><button type="button" id="modalCancel" class="ghost-button">Voltar</button><button type="submit" id="modalSubmit" class="button">Salvar</button></div></form>
+    </div>
+  </div>
+  <div id="toast" role="status" aria-live="polite" class="toast" hidden></div>
+</body>
+</html>

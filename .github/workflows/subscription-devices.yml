@@ -1,0 +1,261 @@
+name: Orion - dispositivos de assinaturas
+
+on:
+  pull_request:
+    paths:
+      - 'app/subscription_device*.py'
+      - 'app/qr_channels.py'
+      - 'app/plan_catalog.py'
+      - 'app/plan_permissions.py'
+      - 'app/plan_routing.py'
+      - 'app/workspace_policy.py'
+      - 'app/main.py'
+      - 'app/worker.py'
+      - 'app/static/orion-subscription-devices.*'
+      - 'app/static/orion-suite.js'
+      - 'app/static/panel.html'
+      - 'alembic/versions/0062_subscription_devices.py'
+      - 'qr-bridge/**'
+      - 'scripts/*subscription_devices*'
+      - 'scripts/backup_and_migrate_*.py'
+      - 'scripts/predeploy_one_click_links.py'
+      - 'scripts/wait_for_single_whatsapp_schema.py'
+      - 'tests/**/test_subscription_device*.py'
+      - 'tests/fixtures/subscription_devices_contract.json'
+      - 'tests/e2e/browser_subscription_devices.py'
+      - 'ui-tests/*subscription*'
+      - 'Dockerfile'
+      - '.github/workflows/subscription-devices.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: subscription-devices-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CAKTO_BILLING_LIVE_ENABLED: '0'
+  ORION_DIRECT_PAYMENTS_ENABLED: '0'
+  META_LIVE_SEND: '0'
+  QR_AI_ENABLED: '0'
+  INBOX_SEND_ENABLED: '0'
+  MARKETING_EXECUTION_ENABLED: '0'
+  ORION_NOTIFY_SELF_ON_LINK: '0'
+  QR_BRIDGE_URL: ''
+
+jobs:
+  contracts:
+    name: API, politicas, audio real e publicacao
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -c requirements.lock '.[test]'
+      - name: Mesmo decoder do runtime, sem provedor pago
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+      - name: Validar autorizacao, duracao, duplicacao e contratos existentes
+        run: |
+          python -m pytest -q -ra \
+            tests/unit/test_subscription_devices.py \
+            tests/unit/test_subscription_device_rules.py \
+            tests/unit/test_subscription_device_audio.py \
+            tests/unit/test_subscription_devices_release.py \
+            tests/unit/test_subscription_workspace.py \
+            tests/unit/test_appointment_consent_release.py \
+            tests/unit/test_manual_start_times_release.py \
+            tests/unit/test_plan_permissions.py \
+            tests/unit/test_plan_routing.py \
+            tests/unit/test_qr_channels.py \
+            tests/unit/test_qr_channels_control.py \
+            tests/unit/test_qr_channels_scope.py \
+            tests/unit/test_qr_single_connection.py \
+            tests/unit/test_qr_admin_identity.py
+
+  bridge:
+    name: Ponte - lifecycle, efeitos e isolamento do legado
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Dependencias do transporte publicado
+        run: npm install --prefix qr-bridge --ignore-scripts --no-audit --no-fund
+      - name: Transporte afetado com sockets, eventos e providers sinteticos
+        run: |
+          node --check qr-bridge/src/channel-session.mjs
+          node --check qr-bridge/src/channel-manager.mjs
+          node --check qr-bridge/src/channel-routes.mjs
+          node --check qr-bridge/src/device-runtime.mjs
+          # The complete suite was compared against production 2037d8ec:
+          # the same 49 existing failures are in audio-inbound-routing and
+          # panel-ui VM fixtures. This gate covers the changed transport and
+          # its actual shared consumers; it does not suppress new failures.
+          node --test \
+            qr-bridge/test/device-*.test.mjs \
+            qr-bridge/test/channel-*.test.mjs \
+            qr-bridge/test/bridge-auth.test.mjs \
+            qr-bridge/test/canonical-prepare.test.mjs \
+            qr-bridge/test/connected-features.test.mjs \
+            qr-bridge/test/connected-store.test.mjs \
+            qr-bridge/test/connection-notice-startup.test.mjs \
+            qr-bridge/test/core.test.mjs \
+            qr-bridge/test/e2ee-retry-hardening.test.mjs \
+            qr-bridge/test/encrypted-retry-store.test.mjs \
+            qr-bridge/test/legacy-central.test.mjs \
+            qr-bridge/test/reliable-encrypted-integration.test.mjs \
+            qr-bridge/test/reliable-send.test.mjs \
+            qr-bridge/test/send-capacity.test.mjs \
+            qr-bridge/test/wizard-journey.test.mjs
+
+  dom:
+    name: Formulario, estados, acessibilidade e navegacao
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+      - name: Componentes reais com API sintetica
+        run: |
+          node --check app/static/orion-subscription-devices.js
+          node --check app/static/orion-suite.js
+          node --test \
+            ui-tests/subscription-devices.test.mjs \
+            ui-tests/subscription-workspace.test.mjs \
+            ui-tests/channels.test.mjs \
+            ui-tests/channels-pairing.test.mjs \
+            ui-tests/single-business-context.test.mjs \
+            ui-tests/member-account-settings.test.mjs \
+            ui-tests/plan-permissions.test.mjs \
+            ui-tests/orion-suite.test.mjs
+
+  postgres:
+    name: PostgreSQL - migracao, RLS, concorrencia e quotas
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: orion_devices_ci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-only-devices-postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d orion_devices_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 15
+      redis:
+        image: redis:7
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 15
+    env:
+      APP_DATABASE_URL: postgresql+asyncpg://app_runtime:ci-devices-runtime@127.0.0.1:5432/orion_devices_ci
+      MIGRATION_DATABASE_URL: postgresql+psycopg://app_migrator:ci-devices-migrator@127.0.0.1:5432/orion_devices_ci
+      SUPPORT_DATABASE_URL: postgresql+asyncpg://app_support:ci-devices-support@127.0.0.1:5432/orion_devices_ci
+      SUPPORT_API_TOKEN: synthetic-devices-ci-token-at-least-32-characters
+      REQUIRE_POSTGRES_TESTS: '1'
+      REQUIRE_REDIS_TESTS: '1'
+      REDIS_URL: redis://127.0.0.1:6379/15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -c requirements.lock '.[test]'
+      - name: Provisionar os tres papeis no banco descartavel
+        env:
+          PGPASSWORD: ci-only-devices-postgres
+        run: |
+          psql -h 127.0.0.1 -U postgres -d orion_devices_ci -v ON_ERROR_STOP=1 \
+            -v db_name=orion_devices_ci \
+            -v runtime_password=ci-devices-runtime \
+            -v migrator_password=ci-devices-migrator \
+            -v support_password=ci-devices-support \
+            -f infra/postgres/init/001-roles.sql
+          python -m alembic upgrade head
+      - name: Validar contratos reais sem saida para provedores
+        run: |
+          python - <<'PY'
+          import ipaddress
+          import socket
+          import pytest
+          original_connect = socket.socket.connect
+          original_connect_ex = socket.socket.connect_ex
+          original_getaddrinfo = socket.getaddrinfo
+          def loopback(address):
+              host = address[0] if isinstance(address, tuple) else address
+              if host == 'localhost':
+                  return
+              try:
+                  allowed = ipaddress.ip_address(host).is_loopback
+              except (ValueError, TypeError):
+                  allowed = False
+              if not allowed:
+                  raise AssertionError('External network forbidden in device qualification')
+          def connect(sock, address):
+              loopback(address)
+              return original_connect(sock, address)
+          def connect_ex(sock, address):
+              loopback(address)
+              return original_connect_ex(sock, address)
+          def getaddrinfo(host, *args, **kwargs):
+              if host is not None:
+                  loopback((host, 0))
+              return original_getaddrinfo(host, *args, **kwargs)
+          socket.socket.connect = connect
+          socket.socket.connect_ex = connect_ex
+          socket.getaddrinfo = getaddrinfo
+          raise SystemExit(pytest.main(['-q', '-ra',
+              'tests/integration/test_subscription_devices_postgres.py',
+              'tests/integration/test_subscription_devices_release_postgres.py',
+              'tests/integration/test_subscription_workspace_postgres.py',
+              'tests/integration/test_qr_single_connection_postgres.py',
+              'tests/integration/test_qr_channels_postgres.py',
+              'tests/integration/test_qr_channels_transaction_postgres.py',
+          ]))
+          PY
+
+  browser:
+    name: Navegadores - ${{ matrix.engine }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [chromium, webkit]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Instalar o navegador de teste
+        run: |
+          python -m pip install -r tests/e2e/requirements.txt pytest
+          python -m playwright install --with-deps ${{ matrix.engine }}
+      - name: Fluxos no painel real - celular, tablet, desktop e dois temas
+        run: |
+          python -m pytest -q -ra --maxfail=1 \
+            tests/e2e/browser_subscription_devices.py \
+            tests/e2e/browser_subscription_workspace.py -k '${{ matrix.engine }}'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: subscription-devices-${{ matrix.engine }}
+          path: |
+            test-artifacts/subscription-devices/
+            test-artifacts/subscription-workspace/
+          if-no-files-found: warn
+          retention-days: 7

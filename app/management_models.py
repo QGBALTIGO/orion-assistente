@@ -136,8 +136,12 @@ async def update_row(db, tenant_id, table, identity, version, values):
         from app.financial_settlements import ensure_editable_entry, lock_professionals
         previous = await get_row(db, tenant_id, table, identity)
         await lock_professionals(db, tenant_id, [previous.get("professional_id"), values.get("professional_id")])
-        await get_row(db, tenant_id, table, identity, lock=True)
+        previous = await get_row(db, tenant_id, table, identity, lock=True)
         await ensure_editable_entry(db, tenant_id, identity)
+        from app.service_receipts import prepare_edit
+        values = await prepare_edit(db, tenant_id, previous, values)
+        if not values:
+            raise HTTPException(422, "A data do serviço é preservada; informe a data ao registrar o recebimento")
     assignments = ",".join(f"{column}=:{column}" for column in values)
     row = (await db.execute(text(f"""
         UPDATE {table} SET {assignments},version=version+1,updated_at=now()
@@ -147,6 +151,9 @@ async def update_row(db, tenant_id, table, identity, version, values):
         await get_row(db, tenant_id, table, identity)
         raise HTTPException(409, "O registro foi alterado. Atualize os dados antes de salvar novamente")
     await audit(db, tenant_id, "management_updated", table, identity)
+    if table == "financial_entries" and previous.get("service_receivable"):
+        from app.service_receipts import history as receipt_history
+        await receipt_history(db, tenant_id, identity, "edit", previous, dict(row))
     return dict(row)
 
 
@@ -179,7 +186,11 @@ CUSTOMER_SELECT = """
        (SELECT COALESCE(sum(a.total_cents),0) FROM appointments a WHERE a.tenant_id=c.tenant_id
           AND a.customer_id=c.id AND a.status='completed') AS total_spent_cents,
        (SELECT COALESCE(sum(l.points_delta),0) FROM loyalty_transactions l
-          WHERE l.tenant_id=c.tenant_id AND l.customer_id=c.id) AS loyalty_points
+          WHERE l.tenant_id=c.tenant_id AND l.customer_id=c.id) AS loyalty_points,
+       (SELECT COALESCE(sum(h.reported_appointments),0) FROM customer_legacy_history h
+          WHERE h.tenant_id=c.tenant_id AND h.customer_id=c.id) AS legacy_appointments,
+       (SELECT COALESCE(sum(h.reported_spent_cents),0) FROM customer_legacy_history h
+          WHERE h.tenant_id=c.tenant_id AND h.customer_id=c.id) AS legacy_spent_cents
     FROM customers c
 """
 
@@ -290,7 +301,7 @@ async def customer_service_history(db, tenant_id, customer_id, limit=6, offset=0
 
 
 def finance_filter(tenant_id, lower, upper, kind=None, status=None, category=None, payment_method=None, entry_type=None, professional_id=None):
-    clauses = ["e.tenant_id=:tenant", "e.occurred_at>=:lower", "e.occurred_at<:upper"]
+    clauses = ["e.tenant_id=:tenant", "COALESCE(e.received_at,e.occurred_at)>=:lower", "COALESCE(e.received_at,e.occurred_at)<:upper"]
     parameters = {"tenant": tenant_id, "lower": lower, "upper": upper}
     for name, value in (("kind", kind), ("status", status), ("category", category), ("payment_method", payment_method),
                         ("entry_type", entry_type), ("professional_id", professional_id)):
@@ -325,15 +336,19 @@ async def finance_summary(db, where, parameters, tz):
     for column, target in (("category", "by_category"), ("payment_method", "by_payment_method")):
         result[target] = [dict(row) for row in (await db.execute(text(f"SELECT {column}," + FINANCE_TOTALS +
             " FROM financial_entries e WHERE " + where + f" GROUP BY {column} ORDER BY {column}"), parameters)).mappings().all()]
-    result["daily"] = [dict(row) for row in (await db.execute(text("SELECT date(occurred_at AT TIME ZONE :tz) AS date," + FINANCE_TOTALS +
-        " FROM financial_entries e WHERE " + where + " GROUP BY date(occurred_at AT TIME ZONE :tz) ORDER BY date"),
+    result["daily"] = [dict(row) for row in (await db.execute(text("SELECT date(COALESCE(received_at,occurred_at) AT TIME ZONE :tz) AS date," + FINANCE_TOTALS +
+        " FROM financial_entries e WHERE " + where + " GROUP BY date(COALESCE(received_at,occurred_at) AT TIME ZONE :tz) ORDER BY date"),
         {**parameters, "tz": tz})).mappings().all()]
     return result
 
 
-async def finance(db, tenant_id, start_date=None, end_date=None, kind=None, status=None, category=None, payment_method=None, limit=50, offset=0, entry_type=None, professional_id=None):
+async def finance(db, tenant_id, start_date=None, end_date=None, kind=None, status=None, category=None, payment_method=None, limit=50, offset=0, entry_type=None, professional_id=None, receivables=False):
     period, lower, upper = await period_for(db, tenant_id, start_date, end_date)
     where, parameters = finance_filter(tenant_id, lower, upper, kind, status, category, payment_method, entry_type, professional_id)
+    if receivables:
+        where = "e.tenant_id=:tenant AND e.kind='income' AND e.entry_type='general' AND e.status='pending' AND e.appointment_id IS NOT NULL"
+        if professional_id:
+            where += " AND e.professional_id=:professional_id"
     summary = await finance_summary(db, where, parameters, period["timezone"])
     rows = (await db.execute(text("""
         SELECT e.*,
@@ -347,7 +362,7 @@ async def finance(db, tenant_id, start_date=None, end_date=None, kind=None, stat
         LEFT JOIN appointments a ON a.tenant_id=e.tenant_id AND a.id=e.appointment_id
         LEFT JOIN customers c ON c.tenant_id=e.tenant_id AND c.id=COALESCE(e.customer_id,a.customer_id)
         LEFT JOIN professionals p ON p.tenant_id=e.tenant_id AND p.id=COALESCE(e.professional_id,a.professional_id)
-    """ + " WHERE " + where + " ORDER BY e.occurred_at DESC,e.id LIMIT :limit OFFSET :offset"),
+    """ + " WHERE " + where + " ORDER BY COALESCE(e.received_at,e.occurred_at) DESC,e.id LIMIT :limit OFFSET :offset"),
         {**parameters, "limit": limit, "offset": offset})).mappings().all()
 
     # Enrich only the requested ledger page. Historical service snapshots are
@@ -372,8 +387,13 @@ async def finance(db, tenant_id, start_date=None, end_date=None, kind=None, stat
             })
 
     items = []
+    from app.service_receipts import settings as receipt_settings
+    policy = await receipt_settings(db, tenant_id)
     for row in rows:
         item = clean_row(row)
+        item['auto_receipt_active'] = bool(row['service_receivable'] and row['status']=='pending'
+            and not row['keep_pending'] and row['auto_receipt_due_at'] and policy['mode']=='after_24h'
+            and row['auto_receipt_policy_version']==policy['version'])
         item["customer_display_name"] = display_customer({
             "name": item["customer_name"], "phone": item.pop("_customer_phone"),
         })["display_name"]
@@ -851,11 +871,11 @@ async def marketing(db, tenant_id, limit=50, offset=0):
     return {"items": [clean_row(row) for row in rows], "total": total, "limit": limit, "offset": offset, "delivery_enabled": active}
 
 
-async def transition_appointment(db, tenant_id, appointment_id, target, payload, operator, *, automated=False):
+async def transition_appointment(db, tenant_id, appointment_id, target, payload, operator, *, automated=False, authorized_professional_id=None):
     from app.plan_permissions import require_feature
     await require_feature(db, tenant_id, "agenda.manage")
     from app.booking_service import acquire_professional_lock, history, read_appointment
-    from app.appointment_lifecycle import CAS_SQL, LifecycleActor, allowed_actions, check_expected_updated_at, operation_payload
+    from app.appointment_lifecycle import CAS_SQL, LifecycleActor, allowed_actions, check_expected_updated_at, operation_payload, completion_due_at
     if target not in ("completed", "no_show"):
         raise ValueError("Unsupported management appointment transition")
     if target == "no_show" and payload.final_total_cents is not None:
@@ -864,7 +884,7 @@ async def transition_appointment(db, tenant_id, appointment_id, target, payload,
         raise HTTPException(422, "Cupons só podem ser usados na conclusão de um atendimento")
     params = {"tenant": tenant_id, "id": appointment_id}
     professional = (await db.execute(text("SELECT professional_id FROM appointments WHERE tenant_id=:tenant AND id=:id"), params)).scalar_one_or_none()
-    if professional is None:
+    if professional is None or (authorized_professional_id is not None and professional != authorized_professional_id):
         raise HTTPException(404, "Agendamento não encontrado")
     # Match booking_service's lock order to prevent deadlocks with confirmation,
     # cancellation and rescheduling running on another worker.
@@ -872,6 +892,8 @@ async def transition_appointment(db, tenant_id, appointment_id, target, payload,
     row = (await db.execute(text("SELECT * FROM appointments WHERE tenant_id=:tenant AND id=:id FOR UPDATE"), params)).mappings().one()
     if row["professional_id"] != professional:
         raise HTTPException(409, "O profissional mudou. Atualize o agendamento")
+    if authorized_professional_id is not None and row["professional_id"] != authorized_professional_id:
+        raise HTTPException(404, "Agendamento não encontrado na sua agenda")
     context = LifecycleActor(role="system" if automated else operator,
                              source="system" if automated else "panel",
                              account_id=None if automated else db.info.get("management_actor_account_id"))
@@ -893,7 +915,14 @@ async def transition_appointment(db, tenant_id, appointment_id, target, payload,
         raise HTTPException(409, "Somente agendamentos confirmados podem receber este resultado")
     if row["start_at"] > now:
         raise HTTPException(409, "Aguarde o horário de início para registrar o resultado")
-    if automated and row["end_at"] > now:
+    completion_facts = None
+    if target == "completed":
+        completion_facts = (await db.execute(text("""SELECT
+            COALESCE(bool_or(item_origin='extra'),false) AS has_extras,
+            COALESCE(sum(COALESCE(added_duration_min,duration_snapshot_min)),0)::integer AS service_minutes
+            FROM appointment_items WHERE tenant_id=:tenant AND appointment_id=:id"""), params)).mappings().one()
+    due_at = completion_due_at(row, completion_facts["service_minutes"] if completion_facts else None)
+    if automated and due_at > now:
         raise HTTPException(409, "Aguarde o término previsto do atendimento")
     percent = None
     commission = None
@@ -932,7 +961,7 @@ async def transition_appointment(db, tenant_id, appointment_id, target, payload,
             commission_cents=:commission,
             total_cents=CAST(:net AS integer),original_total_cents=:gross,discount_cents=:discount
         WHERE tenant_id=:tenant AND id=:id AND status=:expected AND start_at<=clock_timestamp()
-          AND (NOT :automated OR end_at<=clock_timestamp())
+          AND (NOT :automated OR CAST(:completion_due_at AS timestamptz)<=clock_timestamp())
           AND """ + CAS_SQL + " RETURNING *"),
         {**params, "target": target, "now": now, "percent": percent,
          "mode": commission["mode"] if commission else None,
@@ -940,7 +969,7 @@ async def transition_appointment(db, tenant_id, appointment_id, target, payload,
          "expected": payload.expected_status,
          "expected_updated_at": payload.expected_updated_at, "net": gross-discount,
          "gross": gross if target == "completed" else None, "discount": discount,
-         "automated": automated})).mappings().one_or_none()
+         "automated": automated, "completion_due_at": due_at})).mappings().one_or_none()
     if changed is None:
         raise HTTPException(409, "O agendamento mudou. Atualize os detalhes antes de continuar")
     await history(db, tenant_id, appointment_id, target, context=context, previous=row)
@@ -951,8 +980,7 @@ async def transition_appointment(db, tenant_id, appointment_id, target, payload,
         from app.loyalty_rewards import award_completion
         from app.appointment_finance import record_service_receivable
         result["loyalty"] = await award_completion(db, tenant_id, changed, now)
-        if automated or variable:
-            await record_service_receivable(db, tenant_id, changed)
+        await record_service_receivable(db, tenant_id, changed)
     return result
 
 
@@ -977,9 +1005,15 @@ async def daily_performance(db, tenant_id, start_date=None, end_date=None, profe
     return {"period": period, "items": [dict(row) for row in rows], "legacy_rate_source": "current_profile"}
 
 
-async def commission_report(db, tenant_id, start_date=None, end_date=None):
+async def commission_report(db, tenant_id, start_date=None, end_date=None, *, professional_id=None):
+    """Optional server-authorized professional filter prevents reading colleagues' rows."""
     period, lower, upper = await period_for(db, tenant_id, start_date, end_date)
     params = {"tenant": tenant_id, "lower": lower, "upper": upper}
+    if professional_id is not None:
+        params["professional_id"] = professional_id
+    professional_where = " AND p.id=:professional_id" if professional_id is not None else ""
+    appointment_where = " AND a.professional_id=:professional_id" if professional_id is not None else ""
+    movement_where = " AND professional_id=:professional_id" if professional_id is not None else ""
     rows = (await db.execute(text("""
         SELECT p.id,p.name,p.commission_percent,p.commission_mode,
             count(a.id) FILTER (WHERE a.status='completed' AND a.start_at>=:lower AND a.start_at<:upper) AS completed,
@@ -991,7 +1025,7 @@ async def commission_report(db, tenant_id, start_date=None, end_date=None):
                 (WHERE a.status='confirmed' AND a.start_at>=:lower AND a.start_at<:upper
                     AND a.start_at>=now() AND p.commission_mode='percent'),0) AS scheduled_cents
         FROM professionals p LEFT JOIN appointments a ON a.tenant_id=p.tenant_id AND a.professional_id=p.id
-        WHERE p.tenant_id=:tenant GROUP BY p.id,p.name,p.commission_percent,p.commission_mode ORDER BY p.name,p.id
+        WHERE p.tenant_id=:tenant""" + professional_where + """ GROUP BY p.id,p.name,p.commission_percent,p.commission_mode ORDER BY p.name,p.id
     """), params)).mappings().all()
     # Forecasts for per-service professionals use each service's actual rule.
     # These are estimates for upcoming appointments, not accrued earnings.
@@ -1008,7 +1042,7 @@ async def commission_report(db, tenant_id, start_date=None, end_date=None):
             AND r.professional_id=a.professional_id AND r.service_id=i.service_id
         WHERE a.tenant_id=:tenant AND a.status='confirmed'
           AND a.start_at>=:lower AND a.start_at<:upper AND a.start_at>=now()
-          AND p.commission_mode='per_service'
+          AND p.commission_mode='per_service'""" + appointment_where + """
         ORDER BY a.id,i.item_order,i.id
     """), params)).mappings().all()
     forecasts = {}
@@ -1032,7 +1066,7 @@ async def commission_report(db, tenant_id, start_date=None, end_date=None):
           COALESCE(sum(amount_cents) FILTER (WHERE entry_type='advance' AND occurred_at>=:lower AND occurred_at<:upper),0) AS advances_cents,
           COALESCE(sum(amount_cents) FILTER (WHERE entry_type='commission_payment' AND occurred_at>=:lower AND occurred_at<:upper),0) AS payments_cents
         FROM financial_entries WHERE tenant_id=:tenant AND kind='expense' AND status='paid'
-            AND entry_type IN ('advance','commission_payment') GROUP BY professional_id
+            AND entry_type IN ('advance','commission_payment')""" + movement_where + """ GROUP BY professional_id
     """), params)).mappings().all()
     by_professional = {row["professional_id"]: row for row in movements}
     today = datetime.now(timezone.utc).astimezone(ZoneInfo(period["timezone"])).date()
@@ -1072,7 +1106,7 @@ async def income_statement(db, tenant_id, start_date=None, end_date=None):
             COALESCE(sum(amount_cents) FILTER (WHERE kind='expense' AND entry_type='general'),0) AS operating_expenses_cents,
             COALESCE(sum(amount_cents) FILTER (WHERE entry_type='advance'),0) AS advances_cents,
             COALESCE(sum(amount_cents) FILTER (WHERE entry_type='commission_payment'),0) AS commission_payments_cents
-        FROM financial_entries WHERE tenant_id=:tenant AND status='paid' AND occurred_at>=:lower AND occurred_at<:upper
+        FROM financial_entries WHERE tenant_id=:tenant AND status='paid' AND COALESCE(received_at,occurred_at)>=:lower AND COALESCE(received_at,occurred_at)<:upper
     """), params)).mappings().one())
     summary = {key: int(value) for key, value in {**service, **ledger}.items()}
     summary["gross_revenue_cents"] = summary["service_revenue_cents"] + summary["other_income_cents"]

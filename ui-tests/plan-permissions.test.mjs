@@ -37,7 +37,7 @@ test('Essencial renders performance using only allowed endpoints, without advanc
   }});t.after(()=>h.close());await flush();
   assert.equal(route(h),'desempenho');
   assert.ok(h.document.querySelector('.os-professional-results'));
-  assert.match(h.document.querySelector('.os-performance-metrics').textContent,/Atendimentos concluídos|Valor vendido/);
+  assert.match(h.document.querySelector('.os-performance-metrics').textContent,/Faturamento|Concluídos/);
   assert.ok(h.document.querySelector('[data-os-performance-history]'));
   assert.equal(h.document.querySelector('[data-os-action="new-goal"]'),null);
   assert.doesNotMatch(h.document.getElementById('osPageBody').textContent,/Vales em aberto|Resumo a receber|Comissão do período|Metas da empresa e da equipe/);

@@ -1,0 +1,22 @@
+name: Orion - verificacao de predeploy 0056 sem replay
+on:
+  pull_request:
+    paths:
+      - scripts/backup_and_migrate_registration.py
+      - scripts/backup_and_migrate_cakto.py
+      - tests/unit/test_0056_predeploy_guard.py
+      - .github/workflows/verify-one-click-predeploy.yml
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: |
+          python -m pip install -c requirements.lock ".[test]"
+          python -m py_compile scripts/backup_and_migrate_registration.py scripts/backup_and_migrate_cakto.py
+          python -m pytest -q tests/unit/test_0056_predeploy_guard.py

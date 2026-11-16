@@ -1,14 +1,10 @@
-/** Prefer pre-relay cached retries and refreshed devices for the approved pilot.
- * Exactly one relay attempt. No session/key deletion or automatic duplicate send.
+/** Shared transport guarantees for every niche and automatic/manual sender.
+ * Exactly one application relay attempt. Provider retries use the stored proto.
+ * Pilot only selects independently verified addressing; never weakens storage.
  */
 import {pilotNumber} from "./ai-pilot.mjs";
-
-export function deliveryPolicy(phone,env=process.env){
+export function deliveryPolicy(phone,env=process.env,_options={}){
   const pilot=pilotNumber(env);
-  const approvedPilot=env.QR_AI_ENABLED==="1" && pilot!==null && phone===pilot;
-  return {
-    reliable:env.QR_RELIABLE_SEND_V2==="1" || approvedPilot,
-    freshDevices:env.QR_FORCE_FRESH_DEVICES==="1" || approvedPilot,
-    pilot:approvedPilot,
-  };
+  return {reliable:true,freshDevices:true,pilot:env.QR_AI_ENABLED==="1"&&pilot!==null&&phone===pilot};
 }
+export function requiresPreRelayCache(_options={}){return true;}

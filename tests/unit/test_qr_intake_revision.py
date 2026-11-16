@@ -46,7 +46,7 @@ async def test_notice_is_private_exact_phone_and_server_bound_tenant(config, mon
         assert (await client.post("/internal/qr/ai/notice", json={**body, "tenant_id": str(uuid4())}, headers=headers)).status_code == 422
         assert (await client.post("/internal/qr/ai/notice", json={**body, "phone": "123@lid"}, headers=headers)).status_code == 422
         result = await client.post("/internal/qr/ai/notice", json=body, headers=headers)
-    assert result.status_code == 200 and result.json() == {"revision": 1}
+    assert result.status_code == 200 and result.json() == {"revision": 1, "assistant_interactions": 1}
     assert len(memory.calls) == 1 and str(config) in memory.calls[0][2]
     assert memory.closed
 

@@ -45,6 +45,15 @@ async def tenant_scope(db, tenant):
     yield db
 
 
+@pytest.fixture(autouse=True)
+def synthetic_plan_permissions(monkeypatch):
+    from app import plan_permissions
+    async def allowed(_db, _tenant, feature):
+        assert feature == 'notifications.basic'
+        return True
+    monkeypatch.setattr(plan_permissions, 'has_feature', allowed)
+
+
 @pytest.mark.asyncio
 async def test_every_company_uses_only_the_admin_connected_whatsapp(monkeypatch):
     from app import public_site_api
@@ -133,6 +142,35 @@ async def test_central_redirect_does_not_link_an_uncommitted_or_wrong_phone_book
     monkeypatch.setattr(confirmation, "tenant_transaction", tenant_scope)
     monkeypatch.setattr(confirmation, "connected_channel_phone", forbidden)
     assert await confirmation.public_followup("outro-site", {"protocol": "AG-G32XU5"}, "+5567999999902") == {}
+
+
+@pytest.mark.asyncio
+async def test_no_active_essencial_plan_never_redirects_to_admin(monkeypatch):
+    from app import public_site_api, plan_permissions
+    tenant, admin = uuid4(), uuid4()
+    db = BookingSession(uuid4())
+    db.tenant = tenant
+
+    async def resolve(_slug):
+        return tenant
+
+    async def unavailable(_db, target, feature):
+        assert target == tenant and feature == 'notifications.basic'
+        return False
+
+    async def forbidden(_tenant):
+        pytest.fail('Never reveal the central sender to an unentitled booking')
+
+    monkeypatch.setenv('APPOINTMENT_COMMUNICATIONS_ENABLED','1')
+    monkeypatch.setenv('ORION_CENTRAL_APPOINTMENT_WHATSAPP_ENABLED','1')
+    monkeypatch.setenv('QR_AI_TENANT_ID',str(admin))
+    monkeypatch.setattr(public_site_api,'resolve_public',resolve)
+    monkeypatch.setattr(confirmation,'get_session_factory',lambda:lambda:db)
+    monkeypatch.setattr(confirmation,'tenant_transaction',tenant_scope)
+    monkeypatch.setattr(confirmation,'connected_channel_phone',forbidden)
+    monkeypatch.setattr(plan_permissions,'has_feature',unavailable)
+    assert await confirmation.public_followup('unpaid-site',{
+        'protocol':'AG-G32XU5'},'+5567999999902') == {}
 
 
 @pytest.mark.asyncio

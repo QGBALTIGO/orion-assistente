@@ -312,6 +312,14 @@ async def test_actual_state_values_fingerprints_snapshot_and_http_bytes_are_iden
     before = deepcopy(facts)
     tenant = facts["business"]["id"]
     configuration = {"niche": "outro", "activity": "both", "modality": "online", "private_address": None}
+    if not managed_items:
+        # This fixture represents a completed quick questionnaire. Current
+        # quick onboarding requires these answers even with an existing catalog.
+        configuration.update(
+            business_metrics={"operating_age": "under_6_months", "team_size": "1_2",
+                              "monthly_revenue": "prefer_not_to_say", "monthly_volume": "up_to_50"},
+            business_priorities={"main_challenge": "scheduling", "desired_outcome": "more_bookings",
+                                 "respondent_role": "owner"})
     managed = {table: {str(row["id"]): True for row in facts[key]}
         for key, table in service._FACT_TABLES} if managed_items else {}
     meta = {"configuration": configuration, "managed_ids": managed, "version": 7, "is_new": True,

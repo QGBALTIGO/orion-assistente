@@ -1,0 +1,2200 @@
+{
+  "contract": "subscription_campaigns",
+  "version": 1,
+  "base": "/api/v1/tenants/{tenant_id}/subscription-whatsapp/campaigns",
+  "feature": "campaigns.manage",
+  "route": "campanhas",
+  "campaign_input": {
+    "title": "Campanha sintética de renovação",
+    "device_ids": [
+      "00000040-0000-4000-8000-000000000001"
+    ],
+    "group_ids": [
+      "00000050-0000-4000-8000-000000000001"
+    ],
+    "message_type": "text",
+    "text": "Olá, {name}! Consulte sua assinatura em nossa equipe. Contato: {phone}.",
+    "template_id": null,
+    "start_date": "2026-11-10",
+    "start_time": "09:30",
+    "timezone": "America/Sao_Paulo",
+    "window_start": "08:00",
+    "window_end": "18:00",
+    "weekdays": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "interval_seconds": 60
+  },
+  "options_response": {
+    "devices": [
+      {
+        "id": "00000040-0000-4000-8000-000000000001",
+        "name": "Dispositivo sintético",
+        "status": "connected",
+        "available": true,
+        "blocked_reason": null
+      }
+    ],
+    "templates": [
+      {
+        "id": "00000100-0000-4000-8000-000000000001",
+        "name": "Template sintético · text",
+        "kind": "text",
+        "revision": 1,
+        "available": true,
+        "blocked_reason": null
+      },
+      {
+        "id": "00000101-0000-4000-8000-000000000001",
+        "name": "Template sintético · image",
+        "kind": "image",
+        "revision": 1,
+        "available": true,
+        "blocked_reason": null
+      },
+      {
+        "id": "00000102-0000-4000-8000-000000000001",
+        "name": "Template sintético · video",
+        "kind": "video",
+        "revision": 1,
+        "available": true,
+        "blocked_reason": null
+      },
+      {
+        "id": "00000103-0000-4000-8000-000000000001",
+        "name": "Template sintético · audio",
+        "kind": "audio",
+        "revision": 1,
+        "available": true,
+        "blocked_reason": null
+      },
+      {
+        "id": "00000104-0000-4000-8000-000000000001",
+        "name": "Template sintético · document",
+        "kind": "document",
+        "revision": 1,
+        "available": true,
+        "blocked_reason": null
+      },
+      {
+        "id": "00000105-0000-4000-8000-000000000001",
+        "name": "Template sintético · sticker",
+        "kind": "sticker",
+        "revision": 1,
+        "available": true,
+        "blocked_reason": null
+      },
+      {
+        "id": "00000106-0000-4000-8000-000000000001",
+        "name": "Template sintético · ptv",
+        "kind": "ptv",
+        "revision": 1,
+        "available": true,
+        "blocked_reason": null
+      },
+      {
+        "id": "00000107-0000-4000-8000-000000000001",
+        "name": "Template sintético · location",
+        "kind": "location",
+        "revision": 1,
+        "available": true,
+        "blocked_reason": null
+      }
+    ],
+    "groups": [
+      {
+        "id": "00000050-0000-4000-8000-000000000001",
+        "name": "Grupo sintético",
+        "version": 1,
+        "member_count": 3,
+        "blocked_count": 1,
+        "archived": false
+      }
+    ],
+    "timezones": [
+      "Africa/Abidjan",
+      "Africa/Accra",
+      "Africa/Addis_Ababa",
+      "Africa/Algiers",
+      "Africa/Asmara",
+      "Africa/Asmera",
+      "Africa/Bamako",
+      "Africa/Bangui",
+      "Africa/Banjul",
+      "Africa/Bissau",
+      "Africa/Blantyre",
+      "Africa/Brazzaville",
+      "Africa/Bujumbura",
+      "Africa/Cairo",
+      "Africa/Casablanca",
+      "Africa/Ceuta",
+      "Africa/Conakry",
+      "Africa/Dakar",
+      "Africa/Dar_es_Salaam",
+      "Africa/Djibouti",
+      "Africa/Douala",
+      "Africa/El_Aaiun",
+      "Africa/Freetown",
+      "Africa/Gaborone",
+      "Africa/Harare",
+      "Africa/Johannesburg",
+      "Africa/Juba",
+      "Africa/Kampala",
+      "Africa/Khartoum",
+      "Africa/Kigali",
+      "Africa/Kinshasa",
+      "Africa/Lagos",
+      "Africa/Libreville",
+      "Africa/Lome",
+      "Africa/Luanda",
+      "Africa/Lubumbashi",
+      "Africa/Lusaka",
+      "Africa/Malabo",
+      "Africa/Maputo",
+      "Africa/Maseru",
+      "Africa/Mbabane",
+      "Africa/Mogadishu",
+      "Africa/Monrovia",
+      "Africa/Nairobi",
+      "Africa/Ndjamena",
+      "Africa/Niamey",
+      "Africa/Nouakchott",
+      "Africa/Ouagadougou",
+      "Africa/Porto-Novo",
+      "Africa/Sao_Tome",
+      "Africa/Timbuktu",
+      "Africa/Tripoli",
+      "Africa/Tunis",
+      "Africa/Windhoek",
+      "America/Adak",
+      "America/Anchorage",
+      "America/Anguilla",
+      "America/Antigua",
+      "America/Araguaina",
+      "America/Argentina/Buenos_Aires",
+      "America/Argentina/Catamarca",
+      "America/Argentina/ComodRivadavia",
+      "America/Argentina/Cordoba",
+      "America/Argentina/Jujuy",
+      "America/Argentina/La_Rioja",
+      "America/Argentina/Mendoza",
+      "America/Argentina/Rio_Gallegos",
+      "America/Argentina/Salta",
+      "America/Argentina/San_Juan",
+      "America/Argentina/San_Luis",
+      "America/Argentina/Tucuman",
+      "America/Argentina/Ushuaia",
+      "America/Aruba",
+      "America/Asuncion",
+      "America/Atikokan",
+      "America/Atka",
+      "America/Bahia",
+      "America/Bahia_Banderas",
+      "America/Barbados",
+      "America/Belem",
+      "America/Belize",
+      "America/Blanc-Sablon",
+      "America/Boa_Vista",
+      "America/Bogota",
+      "America/Boise",
+      "America/Buenos_Aires",
+      "America/Cambridge_Bay",
+      "America/Campo_Grande",
+      "America/Cancun",
+      "America/Caracas",
+      "America/Catamarca",
+      "America/Cayenne",
+      "America/Cayman",
+      "America/Chicago",
+      "America/Chihuahua",
+      "America/Ciudad_Juarez",
+      "America/Coral_Harbour",
+      "America/Cordoba",
+      "America/Costa_Rica",
+      "America/Coyhaique",
+      "America/Creston",
+      "America/Cuiaba",
+      "America/Curacao",
+      "America/Danmarkshavn",
+      "America/Dawson",
+      "America/Dawson_Creek",
+      "America/Denver",
+      "America/Detroit",
+      "America/Dominica",
+      "America/Edmonton",
+      "America/Eirunepe",
+      "America/El_Salvador",
+      "America/Ensenada",
+      "America/Fort_Nelson",
+      "America/Fort_Wayne",
+      "America/Fortaleza",
+      "America/Glace_Bay",
+      "America/Godthab",
+      "America/Goose_Bay",
+      "America/Grand_Turk",
+      "America/Grenada",
+      "America/Guadeloupe",
+      "America/Guatemala",
+      "America/Guayaquil",
+      "America/Guyana",
+      "America/Halifax",
+      "America/Havana",
+      "America/Hermosillo",
+      "America/Indiana/Indianapolis",
+      "America/Indiana/Knox",
+      "America/Indiana/Marengo",
+      "America/Indiana/Petersburg",
+      "America/Indiana/Tell_City",
+      "America/Indiana/Vevay",
+      "America/Indiana/Vincennes",
+      "America/Indiana/Winamac",
+      "America/Indianapolis",
+      "America/Inuvik",
+      "America/Iqaluit",
+      "America/Jamaica",
+      "America/Jujuy",
+      "America/Juneau",
+      "America/Kentucky/Louisville",
+      "America/Kentucky/Monticello",
+      "America/Knox_IN",
+      "America/Kralendijk",
+      "America/La_Paz",
+      "America/Lima",
+      "America/Los_Angeles",
+      "America/Louisville",
+      "America/Lower_Princes",
+      "America/Maceio",
+      "America/Managua",
+      "America/Manaus",
+      "America/Marigot",
+      "America/Martinique",
+      "America/Matamoros",
+      "America/Mazatlan",
+      "America/Mendoza",
+      "America/Menominee",
+      "America/Merida",
+      "America/Metlakatla",
+      "America/Mexico_City",
+      "America/Miquelon",
+      "America/Moncton",
+      "America/Monterrey",
+      "America/Montevideo",
+      "America/Montreal",
+      "America/Montserrat",
+      "America/Nassau",
+      "America/New_York",
+      "America/Nipigon",
+      "America/Nome",
+      "America/Noronha",
+      "America/North_Dakota/Beulah",
+      "America/North_Dakota/Center",
+      "America/North_Dakota/New_Salem",
+      "America/Nuuk",
+      "America/Ojinaga",
+      "America/Panama",
+      "America/Pangnirtung",
+      "America/Paramaribo",
+      "America/Phoenix",
+      "America/Port-au-Prince",
+      "America/Port_of_Spain",
+      "America/Porto_Acre",
+      "America/Porto_Velho",
+      "America/Puerto_Rico",
+      "America/Punta_Arenas",
+      "America/Rainy_River",
+      "America/Rankin_Inlet",
+      "America/Recife",
+      "America/Regina",
+      "America/Resolute",
+      "America/Rio_Branco",
+      "America/Rosario",
+      "America/Santa_Isabel",
+      "America/Santarem",
+      "America/Santiago",
+      "America/Santo_Domingo",
+      "America/Sao_Paulo",
+      "America/Scoresbysund",
+      "America/Shiprock",
+      "America/Sitka",
+      "America/St_Barthelemy",
+      "America/St_Johns",
+      "America/St_Kitts",
+      "America/St_Lucia",
+      "America/St_Thomas",
+      "America/St_Vincent",
+      "America/Swift_Current",
+      "America/Tegucigalpa",
+      "America/Thule",
+      "America/Thunder_Bay",
+      "America/Tijuana",
+      "America/Toronto",
+      "America/Tortola",
+      "America/Vancouver",
+      "America/Virgin",
+      "America/Whitehorse",
+      "America/Winnipeg",
+      "America/Yakutat",
+      "America/Yellowknife",
+      "Antarctica/Casey",
+      "Antarctica/Davis",
+      "Antarctica/DumontDUrville",
+      "Antarctica/Macquarie",
+      "Antarctica/Mawson",
+      "Antarctica/McMurdo",
+      "Antarctica/Palmer",
+      "Antarctica/Rothera",
+      "Antarctica/South_Pole",
+      "Antarctica/Syowa",
+      "Antarctica/Troll",
+      "Antarctica/Vostok",
+      "Arctic/Longyearbyen",
+      "Asia/Aden",
+      "Asia/Almaty",
+      "Asia/Amman",
+      "Asia/Anadyr",
+      "Asia/Aqtau",
+      "Asia/Aqtobe",
+      "Asia/Ashgabat",
+      "Asia/Ashkhabad",
+      "Asia/Atyrau",
+      "Asia/Baghdad",
+      "Asia/Bahrain",
+      "Asia/Baku",
+      "Asia/Bangkok",
+      "Asia/Barnaul",
+      "Asia/Beirut",
+      "Asia/Bishkek",
+      "Asia/Brunei",
+      "Asia/Calcutta",
+      "Asia/Chita",
+      "Asia/Choibalsan",
+      "Asia/Chongqing",
+      "Asia/Chungking",
+      "Asia/Colombo",
+      "Asia/Dacca",
+      "Asia/Damascus",
+      "Asia/Dhaka",
+      "Asia/Dili",
+      "Asia/Dubai",
+      "Asia/Dushanbe",
+      "Asia/Famagusta",
+      "Asia/Gaza",
+      "Asia/Harbin",
+      "Asia/Hebron",
+      "Asia/Ho_Chi_Minh",
+      "Asia/Hong_Kong",
+      "Asia/Hovd",
+      "Asia/Irkutsk",
+      "Asia/Istanbul",
+      "Asia/Jakarta",
+      "Asia/Jayapura",
+      "Asia/Jerusalem",
+      "Asia/Kabul",
+      "Asia/Kamchatka",
+      "Asia/Karachi",
+      "Asia/Kashgar",
+      "Asia/Kathmandu",
+      "Asia/Katmandu",
+      "Asia/Khandyga",
+      "Asia/Kolkata",
+      "Asia/Krasnoyarsk",
+      "Asia/Kuala_Lumpur",
+      "Asia/Kuching",
+      "Asia/Kuwait",
+      "Asia/Macao",
+      "Asia/Macau",
+      "Asia/Magadan",
+      "Asia/Makassar",
+      "Asia/Manila",
+      "Asia/Muscat",
+      "Asia/Nicosia",
+      "Asia/Novokuznetsk",
+      "Asia/Novosibirsk",
+      "Asia/Omsk",
+      "Asia/Oral",
+      "Asia/Phnom_Penh",
+      "Asia/Pontianak",
+      "Asia/Pyongyang",
+      "Asia/Qatar",
+      "Asia/Qostanay",
+      "Asia/Qyzylorda",
+      "Asia/Rangoon",
+      "Asia/Riyadh",
+      "Asia/Saigon",
+      "Asia/Sakhalin",
+      "Asia/Samarkand",
+      "Asia/Seoul",
+      "Asia/Shanghai",
+      "Asia/Singapore",
+      "Asia/Srednekolymsk",
+      "Asia/Taipei",
+      "Asia/Tashkent",
+      "Asia/Tbilisi",
+      "Asia/Tehran",
+      "Asia/Tel_Aviv",
+      "Asia/Thimbu",
+      "Asia/Thimphu",
+      "Asia/Tokyo",
+      "Asia/Tomsk",
+      "Asia/Ujung_Pandang",
+      "Asia/Ulaanbaatar",
+      "Asia/Ulan_Bator",
+      "Asia/Urumqi",
+      "Asia/Ust-Nera",
+      "Asia/Vientiane",
+      "Asia/Vladivostok",
+      "Asia/Yakutsk",
+      "Asia/Yangon",
+      "Asia/Yekaterinburg",
+      "Asia/Yerevan",
+      "Atlantic/Azores",
+      "Atlantic/Bermuda",
+      "Atlantic/Canary",
+      "Atlantic/Cape_Verde",
+      "Atlantic/Faeroe",
+      "Atlantic/Faroe",
+      "Atlantic/Jan_Mayen",
+      "Atlantic/Madeira",
+      "Atlantic/Reykjavik",
+      "Atlantic/South_Georgia",
+      "Atlantic/St_Helena",
+      "Atlantic/Stanley",
+      "Australia/ACT",
+      "Australia/Adelaide",
+      "Australia/Brisbane",
+      "Australia/Broken_Hill",
+      "Australia/Canberra",
+      "Australia/Currie",
+      "Australia/Darwin",
+      "Australia/Eucla",
+      "Australia/Hobart",
+      "Australia/LHI",
+      "Australia/Lindeman",
+      "Australia/Lord_Howe",
+      "Australia/Melbourne",
+      "Australia/NSW",
+      "Australia/North",
+      "Australia/Perth",
+      "Australia/Queensland",
+      "Australia/South",
+      "Australia/Sydney",
+      "Australia/Tasmania",
+      "Australia/Victoria",
+      "Australia/West",
+      "Australia/Yancowinna",
+      "Brazil/Acre",
+      "Brazil/DeNoronha",
+      "Brazil/East",
+      "Brazil/West",
+      "CET",
+      "CST6CDT",
+      "Canada/Atlantic",
+      "Canada/Central",
+      "Canada/Eastern",
+      "Canada/Mountain",
+      "Canada/Newfoundland",
+      "Canada/Pacific",
+      "Canada/Saskatchewan",
+      "Canada/Yukon",
+      "Chile/Continental",
+      "Chile/EasterIsland",
+      "Cuba",
+      "EET",
+      "EST",
+      "EST5EDT",
+      "Egypt",
+      "Eire",
+      "Etc/GMT",
+      "Etc/GMT+0",
+      "Etc/GMT+1",
+      "Etc/GMT+10",
+      "Etc/GMT+11",
+      "Etc/GMT+12",
+      "Etc/GMT+2",
+      "Etc/GMT+3",
+      "Etc/GMT+4",
+      "Etc/GMT+5",
+      "Etc/GMT+6",
+      "Etc/GMT+7",
+      "Etc/GMT+8",
+      "Etc/GMT+9",
+      "Etc/GMT-0",
+      "Etc/GMT-1",
+      "Etc/GMT-10",
+      "Etc/GMT-11",
+      "Etc/GMT-12",
+      "Etc/GMT-13",
+      "Etc/GMT-14",
+      "Etc/GMT-2",
+      "Etc/GMT-3",
+      "Etc/GMT-4",
+      "Etc/GMT-5",
+      "Etc/GMT-6",
+      "Etc/GMT-7",
+      "Etc/GMT-8",
+      "Etc/GMT-9",
+      "Etc/GMT0",
+      "Etc/Greenwich",
+      "Etc/UCT",
+      "Etc/UTC",
+      "Etc/Universal",
+      "Etc/Zulu",
+      "Europe/Amsterdam",
+      "Europe/Andorra",
+      "Europe/Astrakhan",
+      "Europe/Athens",
+      "Europe/Belfast",
+      "Europe/Belgrade",
+      "Europe/Berlin",
+      "Europe/Bratislava",
+      "Europe/Brussels",
+      "Europe/Bucharest",
+      "Europe/Budapest",
+      "Europe/Busingen",
+      "Europe/Chisinau",
+      "Europe/Copenhagen",
+      "Europe/Dublin",
+      "Europe/Gibraltar",
+      "Europe/Guernsey",
+      "Europe/Helsinki",
+      "Europe/Isle_of_Man",
+      "Europe/Istanbul",
+      "Europe/Jersey",
+      "Europe/Kaliningrad",
+      "Europe/Kiev",
+      "Europe/Kirov",
+      "Europe/Kyiv",
+      "Europe/Lisbon",
+      "Europe/Ljubljana",
+      "Europe/London",
+      "Europe/Luxembourg",
+      "Europe/Madrid",
+      "Europe/Malta",
+      "Europe/Mariehamn",
+      "Europe/Minsk",
+      "Europe/Monaco",
+      "Europe/Moscow",
+      "Europe/Nicosia",
+      "Europe/Oslo",
+      "Europe/Paris",
+      "Europe/Podgorica",
+      "Europe/Prague",
+      "Europe/Riga",
+      "Europe/Rome",
+      "Europe/Samara",
+      "Europe/San_Marino",
+      "Europe/Sarajevo",
+      "Europe/Saratov",
+      "Europe/Simferopol",
+      "Europe/Skopje",
+      "Europe/Sofia",
+      "Europe/Stockholm",
+      "Europe/Tallinn",
+      "Europe/Tirane",
+      "Europe/Tiraspol",
+      "Europe/Ulyanovsk",
+      "Europe/Uzhgorod",
+      "Europe/Vaduz",
+      "Europe/Vatican",
+      "Europe/Vienna",
+      "Europe/Vilnius",
+      "Europe/Volgograd",
+      "Europe/Warsaw",
+      "Europe/Zagreb",
+      "Europe/Zaporozhye",
+      "Europe/Zurich",
+      "GB",
+      "GB-Eire",
+      "GMT",
+      "GMT+0",
+      "GMT-0",
+      "GMT0",
+      "Greenwich",
+      "HST",
+      "Hongkong",
+      "Iceland",
+      "Indian/Antananarivo",
+      "Indian/Chagos",
+      "Indian/Christmas",
+      "Indian/Cocos",
+      "Indian/Comoro",
+      "Indian/Kerguelen",
+      "Indian/Mahe",
+      "Indian/Maldives",
+      "Indian/Mauritius",
+      "Indian/Mayotte",
+      "Indian/Reunion",
+      "Iran",
+      "Israel",
+      "Jamaica",
+      "Japan",
+      "Kwajalein",
+      "Libya",
+      "MET",
+      "MST",
+      "MST7MDT",
+      "Mexico/BajaNorte",
+      "Mexico/BajaSur",
+      "Mexico/General",
+      "NZ",
+      "NZ-CHAT",
+      "Navajo",
+      "PRC",
+      "PST8PDT",
+      "Pacific/Apia",
+      "Pacific/Auckland",
+      "Pacific/Bougainville",
+      "Pacific/Chatham",
+      "Pacific/Chuuk",
+      "Pacific/Easter",
+      "Pacific/Efate",
+      "Pacific/Enderbury",
+      "Pacific/Fakaofo",
+      "Pacific/Fiji",
+      "Pacific/Funafuti",
+      "Pacific/Galapagos",
+      "Pacific/Gambier",
+      "Pacific/Guadalcanal",
+      "Pacific/Guam",
+      "Pacific/Honolulu",
+      "Pacific/Johnston",
+      "Pacific/Kanton",
+      "Pacific/Kiritimati",
+      "Pacific/Kosrae",
+      "Pacific/Kwajalein",
+      "Pacific/Majuro",
+      "Pacific/Marquesas",
+      "Pacific/Midway",
+      "Pacific/Nauru",
+      "Pacific/Niue",
+      "Pacific/Norfolk",
+      "Pacific/Noumea",
+      "Pacific/Pago_Pago",
+      "Pacific/Palau",
+      "Pacific/Pitcairn",
+      "Pacific/Pohnpei",
+      "Pacific/Ponape",
+      "Pacific/Port_Moresby",
+      "Pacific/Rarotonga",
+      "Pacific/Saipan",
+      "Pacific/Samoa",
+      "Pacific/Tahiti",
+      "Pacific/Tarawa",
+      "Pacific/Tongatapu",
+      "Pacific/Truk",
+      "Pacific/Wake",
+      "Pacific/Wallis",
+      "Pacific/Yap",
+      "Poland",
+      "Portugal",
+      "ROC",
+      "ROK",
+      "Singapore",
+      "Turkey",
+      "UCT",
+      "US/Alaska",
+      "US/Aleutian",
+      "US/Arizona",
+      "US/Central",
+      "US/East-Indiana",
+      "US/Eastern",
+      "US/Hawaii",
+      "US/Indiana-Starke",
+      "US/Michigan",
+      "US/Mountain",
+      "US/Pacific",
+      "US/Samoa",
+      "UTC",
+      "Universal",
+      "W-SU",
+      "WET",
+      "Zulu"
+    ],
+    "timezone": "America/Sao_Paulo",
+    "limits": {
+      "groups": 100,
+      "members_per_group": 5000,
+      "recipients_per_campaign": 10000,
+      "text_utf16": 3500,
+      "interval_min_seconds": 30,
+      "interval_max_seconds": 60,
+      "contacts_per_minute": 10
+    }
+  },
+  "list_response": {
+    "items": [
+      {
+        "title": "Campanha sintética de renovação",
+        "device_ids": [
+          "00000040-0000-4000-8000-000000000001"
+        ],
+        "group_ids": [
+          "00000050-0000-4000-8000-000000000001"
+        ],
+        "message_type": "text",
+        "text": "Olá, {name}! Consulte sua assinatura em nossa equipe. Contato: {phone}.",
+        "template_id": null,
+        "start_date": "2026-11-10",
+        "start_time": "09:30",
+        "timezone": "America/Sao_Paulo",
+        "window_start": "08:00",
+        "window_end": "18:00",
+        "weekdays": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "interval_seconds": 60,
+        "id": "00000060-0000-4000-8000-000000000001",
+        "version": 1,
+        "status": "draft",
+        "status_label": "Rascunho",
+        "archived": false,
+        "devices": [
+          {
+            "id": "00000040-0000-4000-8000-000000000001",
+            "name": "Dispositivo sintético"
+          }
+        ],
+        "template_name": null,
+        "start_at": "2026-11-10T12:30:00Z",
+        "created_at": "2026-11-04T21:30:00Z",
+        "updated_at": "2026-11-04T21:30:00Z",
+        "actions": [
+          "edit",
+          "review",
+          "archive"
+        ],
+        "progress": {
+          "total": 0,
+          "processed": 0,
+          "sent": 0,
+          "pending": 0,
+          "failed": 0,
+          "uncertain": 0,
+          "cancelled": 0,
+          "percent": 0
+        }
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "page_size": 30,
+    "pages": 1,
+    "generated_at": "2026-11-04T21:30:00Z",
+    "timezone": "America/Sao_Paulo"
+  },
+  "detail_response": {
+    "campaign": {
+      "title": "Campanha sintética de renovação",
+      "device_ids": [
+        "00000040-0000-4000-8000-000000000001"
+      ],
+      "group_ids": [
+        "00000050-0000-4000-8000-000000000001"
+      ],
+      "message_type": "text",
+      "text": "Olá, {name}! Consulte sua assinatura em nossa equipe. Contato: {phone}.",
+      "template_id": null,
+      "start_date": "2026-11-10",
+      "start_time": "09:30",
+      "timezone": "America/Sao_Paulo",
+      "window_start": "08:00",
+      "window_end": "18:00",
+      "weekdays": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "interval_seconds": 60,
+      "id": "00000060-0000-4000-8000-000000000001",
+      "version": 1,
+      "status": "draft",
+      "status_label": "Rascunho",
+      "archived": false,
+      "devices": [
+        {
+          "id": "00000040-0000-4000-8000-000000000001",
+          "name": "Dispositivo sintético"
+        }
+      ],
+      "template_name": null,
+      "start_at": "2026-11-10T12:30:00Z",
+      "created_at": "2026-11-04T21:30:00Z",
+      "updated_at": "2026-11-04T21:30:00Z",
+      "actions": [
+        "edit",
+        "review",
+        "archive"
+      ],
+      "progress": {
+        "total": 0,
+        "processed": 0,
+        "sent": 0,
+        "pending": 0,
+        "failed": 0,
+        "uncertain": 0,
+        "cancelled": 0,
+        "percent": 0
+      }
+    },
+    "progress": {
+      "total": 0,
+      "processed": 0,
+      "sent": 0,
+      "pending": 0,
+      "failed": 0,
+      "uncertain": 0,
+      "cancelled": 0,
+      "percent": 0
+    },
+    "groups": [
+      {
+        "id": "00000050-0000-4000-8000-000000000001",
+        "name": "Grupo sintético",
+        "version": 1,
+        "member_count": 3,
+        "blocked_count": 1,
+        "archived": false
+      }
+    ],
+    "recipients": {
+      "items": [],
+      "total": 0,
+      "page": 1,
+      "page_size": 30,
+      "pages": 1,
+      "generated_at": "2026-11-04T21:30:00Z",
+      "timezone": "America/Sao_Paulo"
+    }
+  },
+  "recipients_response": {
+    "items": [
+      {
+        "id": "00000070-0000-4000-8000-000000000001",
+        "name": "Cliente sintético A",
+        "phone": "+5567999999911",
+        "status": "pending",
+        "status_label": "Pendente",
+        "message": "Olá, Cliente sintético A!",
+        "device": null,
+        "created_at": "2026-11-04T21:30:00Z",
+        "finished_at": null,
+        "error_code": null,
+        "reason": null,
+        "parts": []
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "page_size": 30,
+    "pages": 1,
+    "generated_at": "2026-11-04T21:30:00Z",
+    "timezone": "America/Sao_Paulo"
+  },
+  "groups_response": {
+    "items": [
+      {
+        "id": "00000050-0000-4000-8000-000000000001",
+        "name": "Grupo sintético",
+        "version": 1,
+        "member_count": 3,
+        "blocked_count": 1,
+        "archived": false
+      }
+    ],
+    "total": 1
+  },
+  "group_response": {
+    "group": {
+      "id": "00000050-0000-4000-8000-000000000001",
+      "name": "Grupo sintético",
+      "version": 1,
+      "member_count": 3,
+      "blocked_count": 1,
+      "archived": false
+    },
+    "members": [
+      {
+        "name": "Cliente sintético A",
+        "phone": "+5567999999911",
+        "blocked": false,
+        "permission_version": 0,
+        "blocked_reason": null
+      },
+      {
+        "name": "Cliente sintético B",
+        "phone": "+5567999999912",
+        "blocked": false,
+        "permission_version": 0,
+        "blocked_reason": null
+      },
+      {
+        "name": "Cliente sintético C",
+        "phone": "+5567999999913",
+        "blocked": true,
+        "permission_version": 2,
+        "blocked_reason": "Autorização de campanhas revogada."
+      }
+    ]
+  },
+  "create_request": {
+    "idempotency_key": "00000080-0000-4000-8000-000000000001",
+    "campaign": {
+      "title": "Campanha sintética de renovação",
+      "device_ids": [
+        "00000040-0000-4000-8000-000000000001"
+      ],
+      "group_ids": [
+        "00000050-0000-4000-8000-000000000001"
+      ],
+      "message_type": "text",
+      "text": "Olá, {name}! Consulte sua assinatura em nossa equipe. Contato: {phone}.",
+      "template_id": null,
+      "start_date": "2026-11-10",
+      "start_time": "09:30",
+      "timezone": "America/Sao_Paulo",
+      "window_start": "08:00",
+      "window_end": "18:00",
+      "weekdays": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "interval_seconds": 60
+    }
+  },
+  "create_response": {
+    "request_id": "00000090-0000-4000-8000-000000000001",
+    "idempotency_key": "00000080-0000-4000-8000-000000000001",
+    "kind": "create",
+    "status": "succeeded",
+    "campaign_id": "00000060-0000-4000-8000-000000000001",
+    "group_id": null,
+    "result": {
+      "campaign": {
+        "title": "Campanha sintética de renovação",
+        "device_ids": [
+          "00000040-0000-4000-8000-000000000001"
+        ],
+        "group_ids": [
+          "00000050-0000-4000-8000-000000000001"
+        ],
+        "message_type": "text",
+        "text": "Olá, {name}! Consulte sua assinatura em nossa equipe. Contato: {phone}.",
+        "template_id": null,
+        "start_date": "2026-11-10",
+        "start_time": "09:30",
+        "timezone": "America/Sao_Paulo",
+        "window_start": "08:00",
+        "window_end": "18:00",
+        "weekdays": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "interval_seconds": 60,
+        "id": "00000060-0000-4000-8000-000000000001",
+        "version": 1,
+        "status": "draft",
+        "status_label": "Rascunho",
+        "archived": false,
+        "devices": [
+          {
+            "id": "00000040-0000-4000-8000-000000000001",
+            "name": "Dispositivo sintético"
+          }
+        ],
+        "template_name": null,
+        "start_at": "2026-11-10T12:30:00Z",
+        "created_at": "2026-11-04T21:30:00Z",
+        "updated_at": "2026-11-04T21:30:00Z",
+        "actions": [
+          "edit",
+          "review",
+          "archive"
+        ],
+        "progress": {
+          "total": 0,
+          "processed": 0,
+          "sent": 0,
+          "pending": 0,
+          "failed": 0,
+          "uncertain": 0,
+          "cancelled": 0,
+          "percent": 0
+        }
+      }
+    },
+    "preview": null,
+    "replayed": false,
+    "created_at": "2026-11-04T21:30:00Z",
+    "expires_at": null
+  },
+  "update_request": {
+    "idempotency_key": "00000080-0000-4000-8000-000000000001",
+    "expected_version": 1,
+    "campaign": {
+      "title": "Campanha sintética de renovação",
+      "device_ids": [
+        "00000040-0000-4000-8000-000000000001"
+      ],
+      "group_ids": [
+        "00000050-0000-4000-8000-000000000001"
+      ],
+      "message_type": "text",
+      "text": "Olá, {name}! Consulte sua assinatura em nossa equipe. Contato: {phone}.",
+      "template_id": null,
+      "start_date": "2026-11-10",
+      "start_time": "09:30",
+      "timezone": "America/Sao_Paulo",
+      "window_start": "08:00",
+      "window_end": "18:00",
+      "weekdays": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "interval_seconds": 60
+    }
+  },
+  "update_response": {
+    "request_id": "00000090-0000-4000-8000-000000000001",
+    "idempotency_key": "00000080-0000-4000-8000-000000000001",
+    "kind": "update",
+    "status": "succeeded",
+    "campaign_id": "00000060-0000-4000-8000-000000000001",
+    "group_id": null,
+    "result": {
+      "campaign": {
+        "title": "Campanha sintética de renovação",
+        "device_ids": [
+          "00000040-0000-4000-8000-000000000001"
+        ],
+        "group_ids": [
+          "00000050-0000-4000-8000-000000000001"
+        ],
+        "message_type": "text",
+        "text": "Olá, {name}! Consulte sua assinatura em nossa equipe. Contato: {phone}.",
+        "template_id": null,
+        "start_date": "2026-11-10",
+        "start_time": "09:30",
+        "timezone": "America/Sao_Paulo",
+        "window_start": "08:00",
+        "window_end": "18:00",
+        "weekdays": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "interval_seconds": 60,
+        "id": "00000060-0000-4000-8000-000000000001",
+        "version": 2,
+        "status": "draft",
+        "status_label": "Rascunho",
+        "archived": false,
+        "devices": [
+          {
+            "id": "00000040-0000-4000-8000-000000000001",
+            "name": "Dispositivo sintético"
+          }
+        ],
+        "template_name": null,
+        "start_at": "2026-11-10T12:30:00Z",
+        "created_at": "2026-11-04T21:30:00Z",
+        "updated_at": "2026-11-04T21:30:00Z",
+        "actions": [
+          "edit",
+          "review",
+          "archive"
+        ],
+        "progress": {
+          "total": 0,
+          "processed": 0,
+          "sent": 0,
+          "pending": 0,
+          "failed": 0,
+          "uncertain": 0,
+          "cancelled": 0,
+          "percent": 0
+        }
+      }
+    },
+    "preview": null,
+    "replayed": false,
+    "created_at": "2026-11-04T21:30:00Z",
+    "expires_at": null
+  },
+  "review_request": {
+    "idempotency_key": "00000080-0000-4000-8000-000000000001",
+    "expected_version": 1
+  },
+  "review_response": {
+    "request_id": "00000090-0000-4000-8000-000000000001",
+    "idempotency_key": "00000080-0000-4000-8000-000000000001",
+    "kind": "review",
+    "status": "prepared",
+    "campaign_id": "00000060-0000-4000-8000-000000000001",
+    "group_id": null,
+    "result": null,
+    "preview": {
+      "review_version": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "expires_at": "2026-11-04T21:32:00Z",
+      "campaign": {
+        "title": "Campanha sintética de renovação",
+        "device_ids": [
+          "00000040-0000-4000-8000-000000000001"
+        ],
+        "group_ids": [
+          "00000050-0000-4000-8000-000000000001"
+        ],
+        "message_type": "text",
+        "text": "Olá, {name}! Consulte sua assinatura em nossa equipe. Contato: {phone}.",
+        "template_id": null,
+        "start_date": "2026-11-10",
+        "start_time": "09:30",
+        "timezone": "America/Sao_Paulo",
+        "window_start": "08:00",
+        "window_end": "18:00",
+        "weekdays": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "interval_seconds": 60,
+        "id": "00000060-0000-4000-8000-000000000001",
+        "version": 1,
+        "status": "draft",
+        "status_label": "Rascunho",
+        "archived": false,
+        "devices": [
+          {
+            "id": "00000040-0000-4000-8000-000000000001",
+            "name": "Dispositivo sintético"
+          }
+        ],
+        "template_name": null,
+        "start_at": "2026-11-10T12:30:00Z",
+        "created_at": "2026-11-04T21:30:00Z",
+        "updated_at": "2026-11-04T21:30:00Z",
+        "actions": [
+          "edit",
+          "review",
+          "archive"
+        ],
+        "progress": {
+          "total": 3,
+          "processed": 0,
+          "sent": 0,
+          "pending": 3,
+          "failed": 0,
+          "uncertain": 0,
+          "cancelled": 0,
+          "percent": 0
+        }
+      },
+      "total": 3,
+      "eligible": 2,
+      "blocked": 1,
+      "duplicates": 1,
+      "groups": [
+        {
+          "id": "00000050-0000-4000-8000-000000000001",
+          "name": "Grupo sintético",
+          "version": 1,
+          "member_count": 3,
+          "blocked_count": 1,
+          "archived": false
+        }
+      ],
+      "devices": [
+        {
+          "id": "00000040-0000-4000-8000-000000000001",
+          "name": "Dispositivo sintético",
+          "status": "connected",
+          "available": true,
+          "blocked_reason": null
+        }
+      ],
+      "message_preview": {
+        "type": "text",
+        "text": "Olá, {name}! Consulte sua assinatura em nossa equipe. Contato: {phone}.",
+        "caption": null,
+        "followup": null,
+        "template_name": null,
+        "parts": [
+          {
+            "type": "text",
+            "text": "Olá, {name}! Consulte sua assinatura em nossa equipe. Contato: {phone}."
+          }
+        ]
+      },
+      "schedule": {
+        "start_at": "2026-11-10T12:30:00Z",
+        "timezone": "America/Sao_Paulo",
+        "start_date": "2026-11-10",
+        "start_time": "09:30",
+        "window_start": "08:00",
+        "window_end": "18:00",
+        "weekdays": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "interval_seconds": 60
+      }
+    },
+    "replayed": false,
+    "created_at": "2026-11-04T21:30:00Z",
+    "expires_at": "2026-11-04T21:32:00Z"
+  },
+  "confirm_request": {
+    "idempotency_key": "00000080-0000-4000-8000-000000000001",
+    "review_version": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "confirmation": "AGENDAR",
+    "consent_confirmed": true
+  },
+  "confirm_response": {
+    "request_id": "00000090-0000-4000-8000-000000000001",
+    "idempotency_key": "00000080-0000-4000-8000-000000000001",
+    "kind": "review",
+    "status": "succeeded",
+    "campaign_id": "00000060-0000-4000-8000-000000000001",
+    "group_id": null,
+    "result": {
+      "campaign": {
+        "title": "Campanha sintética de renovação",
+        "device_ids": [
+          "00000040-0000-4000-8000-000000000001"
+        ],
+        "group_ids": [
+          "00000050-0000-4000-8000-000000000001"
+        ],
+        "message_type": "text",
+        "text": "Olá, {name}! Consulte sua assinatura em nossa equipe. Contato: {phone}.",
+        "template_id": null,
+        "start_date": "2026-11-10",
+        "start_time": "09:30",
+        "timezone": "America/Sao_Paulo",
+        "window_start": "08:00",
+        "window_end": "18:00",
+        "weekdays": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "interval_seconds": 60,
+        "id": "00000060-0000-4000-8000-000000000001",
+        "version": 2,
+        "status": "scheduled",
+        "status_label": "Agendada",
+        "archived": false,
+        "devices": [
+          {
+            "id": "00000040-0000-4000-8000-000000000001",
+            "name": "Dispositivo sintético"
+          }
+        ],
+        "template_name": null,
+        "start_at": "2026-11-10T12:30:00Z",
+        "created_at": "2026-11-04T21:30:00Z",
+        "updated_at": "2026-11-04T21:30:00Z",
+        "actions": [
+          "pause",
+          "edit",
+          "archive"
+        ],
+        "progress": {
+          "total": 3,
+          "processed": 0,
+          "sent": 0,
+          "pending": 3,
+          "failed": 0,
+          "uncertain": 0,
+          "cancelled": 0,
+          "percent": 0
+        }
+      },
+      "progress": {
+        "total": 3,
+        "processed": 0,
+        "sent": 0,
+        "pending": 3,
+        "failed": 0,
+        "uncertain": 0,
+        "cancelled": 0,
+        "percent": 0
+      }
+    },
+    "preview": null,
+    "replayed": false,
+    "created_at": "2026-11-04T21:30:00Z",
+    "expires_at": "2026-11-04T21:32:00Z"
+  },
+  "action_request": {
+    "idempotency_key": "00000080-0000-4000-8000-000000000001",
+    "expected_version": 2,
+    "action": "pause"
+  },
+  "action_response": {
+    "request_id": "00000090-0000-4000-8000-000000000001",
+    "idempotency_key": "00000080-0000-4000-8000-000000000001",
+    "kind": "action",
+    "status": "succeeded",
+    "campaign_id": "00000060-0000-4000-8000-000000000001",
+    "group_id": null,
+    "result": {
+      "campaign": {
+        "title": "Campanha sintética de renovação",
+        "device_ids": [
+          "00000040-0000-4000-8000-000000000001"
+        ],
+        "group_ids": [
+          "00000050-0000-4000-8000-000000000001"
+        ],
+        "message_type": "text",
+        "text": "Olá, {name}! Consulte sua assinatura em nossa equipe. Contato: {phone}.",
+        "template_id": null,
+        "start_date": "2026-11-10",
+        "start_time": "09:30",
+        "timezone": "America/Sao_Paulo",
+        "window_start": "08:00",
+        "window_end": "18:00",
+        "weekdays": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "interval_seconds": 60,
+        "id": "00000060-0000-4000-8000-000000000001",
+        "version": 3,
+        "status": "paused",
+        "status_label": "Pausada",
+        "archived": false,
+        "devices": [
+          {
+            "id": "00000040-0000-4000-8000-000000000001",
+            "name": "Dispositivo sintético"
+          }
+        ],
+        "template_name": null,
+        "start_at": "2026-11-10T12:30:00Z",
+        "created_at": "2026-11-04T21:30:00Z",
+        "updated_at": "2026-11-04T21:30:00Z",
+        "actions": [
+          "resume",
+          "edit",
+          "archive"
+        ],
+        "progress": {
+          "total": 3,
+          "processed": 0,
+          "sent": 0,
+          "pending": 3,
+          "failed": 0,
+          "uncertain": 0,
+          "cancelled": 0,
+          "percent": 0
+        }
+      }
+    },
+    "preview": null,
+    "replayed": false,
+    "created_at": "2026-11-04T21:30:00Z",
+    "expires_at": null
+  },
+  "group_create_request": {
+    "idempotency_key": "00000080-0000-4000-8000-000000000001",
+    "name": "Grupo sintético",
+    "members": [
+      {
+        "name": "Cliente sintético A",
+        "phone": "+5567999999911"
+      },
+      {
+        "name": "Cliente sintético B",
+        "phone": "+5567999999912"
+      },
+      {
+        "name": "Cliente sintético C",
+        "phone": "+5567999999913"
+      }
+    ]
+  },
+  "group_create_response": {
+    "request_id": "00000090-0000-4000-8000-000000000001",
+    "idempotency_key": "00000080-0000-4000-8000-000000000001",
+    "kind": "group_create",
+    "status": "succeeded",
+    "campaign_id": null,
+    "group_id": "00000050-0000-4000-8000-000000000001",
+    "result": {
+      "group": {
+        "id": "00000050-0000-4000-8000-000000000001",
+        "name": "Grupo sintético",
+        "version": 1,
+        "member_count": 3,
+        "blocked_count": 1,
+        "archived": false
+      },
+      "members": [
+        {
+          "name": "Cliente sintético A",
+          "phone": "+5567999999911",
+          "blocked": false,
+          "permission_version": 0,
+          "blocked_reason": null
+        },
+        {
+          "name": "Cliente sintético B",
+          "phone": "+5567999999912",
+          "blocked": false,
+          "permission_version": 0,
+          "blocked_reason": null
+        },
+        {
+          "name": "Cliente sintético C",
+          "phone": "+5567999999913",
+          "blocked": true,
+          "permission_version": 2,
+          "blocked_reason": "Autorização de campanhas revogada."
+        }
+      ]
+    },
+    "preview": null,
+    "replayed": false,
+    "created_at": "2026-11-04T21:30:00Z",
+    "expires_at": null
+  },
+  "group_update_request": {
+    "idempotency_key": "00000080-0000-4000-8000-000000000001",
+    "expected_version": 1,
+    "name": "Grupo sintético",
+    "members": [
+      {
+        "name": "Cliente sintético A",
+        "phone": "+5567999999911"
+      },
+      {
+        "name": "Cliente sintético B",
+        "phone": "+5567999999912"
+      },
+      {
+        "name": "Cliente sintético C",
+        "phone": "+5567999999913"
+      }
+    ]
+  },
+  "group_update_response": {
+    "request_id": "00000090-0000-4000-8000-000000000001",
+    "idempotency_key": "00000080-0000-4000-8000-000000000001",
+    "kind": "group_update",
+    "status": "succeeded",
+    "campaign_id": null,
+    "group_id": "00000050-0000-4000-8000-000000000001",
+    "result": {
+      "group": {
+        "id": "00000050-0000-4000-8000-000000000001",
+        "name": "Grupo sintético",
+        "version": 2,
+        "member_count": 3,
+        "blocked_count": 1,
+        "archived": false
+      },
+      "members": [
+        {
+          "name": "Cliente sintético A",
+          "phone": "+5567999999911",
+          "blocked": false,
+          "permission_version": 0,
+          "blocked_reason": null
+        },
+        {
+          "name": "Cliente sintético B",
+          "phone": "+5567999999912",
+          "blocked": false,
+          "permission_version": 0,
+          "blocked_reason": null
+        },
+        {
+          "name": "Cliente sintético C",
+          "phone": "+5567999999913",
+          "blocked": true,
+          "permission_version": 2,
+          "blocked_reason": "Autorização de campanhas revogada."
+        }
+      ]
+    },
+    "preview": null,
+    "replayed": false,
+    "created_at": "2026-11-04T21:30:00Z",
+    "expires_at": null
+  },
+  "group_archive_request": {
+    "idempotency_key": "00000080-0000-4000-8000-000000000001",
+    "expected_version": 1
+  },
+  "group_archive_response": {
+    "request_id": "00000090-0000-4000-8000-000000000001",
+    "idempotency_key": "00000080-0000-4000-8000-000000000001",
+    "kind": "group_archive",
+    "status": "succeeded",
+    "campaign_id": null,
+    "group_id": "00000050-0000-4000-8000-000000000001",
+    "result": {
+      "group": {
+        "id": "00000050-0000-4000-8000-000000000001",
+        "name": "Grupo sintético",
+        "version": 2,
+        "member_count": 3,
+        "blocked_count": 1,
+        "archived": true
+      },
+      "members": [
+        {
+          "name": "Cliente sintético A",
+          "phone": "+5567999999911",
+          "blocked": false,
+          "permission_version": 0,
+          "blocked_reason": null
+        },
+        {
+          "name": "Cliente sintético B",
+          "phone": "+5567999999912",
+          "blocked": false,
+          "permission_version": 0,
+          "blocked_reason": null
+        },
+        {
+          "name": "Cliente sintético C",
+          "phone": "+5567999999913",
+          "blocked": true,
+          "permission_version": 2,
+          "blocked_reason": "Autorização de campanhas revogada."
+        }
+      ]
+    },
+    "preview": null,
+    "replayed": false,
+    "created_at": "2026-11-04T21:30:00Z",
+    "expires_at": null
+  },
+  "group_permissions_request": {
+    "idempotency_key": "00000080-0000-4000-8000-000000000001",
+    "expected_version": 1,
+    "contacts": [
+      {
+        "phone": "+5567999999913",
+        "version": 2
+      }
+    ],
+    "evidence": "Autorização sintética recebida para esta comunicação.",
+    "confirmation": "AUTORIZAR"
+  },
+  "group_permissions_response": {
+    "request_id": "00000090-0000-4000-8000-000000000001",
+    "idempotency_key": "00000080-0000-4000-8000-000000000001",
+    "kind": "group_permissions",
+    "status": "succeeded",
+    "campaign_id": null,
+    "group_id": "00000050-0000-4000-8000-000000000001",
+    "result": {
+      "group": {
+        "id": "00000050-0000-4000-8000-000000000001",
+        "name": "Grupo sintético",
+        "version": 2,
+        "member_count": 3,
+        "blocked_count": 0,
+        "archived": false
+      },
+      "members": [
+        {
+          "name": "Cliente sintético A",
+          "phone": "+5567999999911",
+          "blocked": false,
+          "permission_version": 0,
+          "blocked_reason": null
+        },
+        {
+          "name": "Cliente sintético B",
+          "phone": "+5567999999912",
+          "blocked": false,
+          "permission_version": 0,
+          "blocked_reason": null
+        },
+        {
+          "name": "Cliente sintético C",
+          "phone": "+5567999999913",
+          "blocked": false,
+          "permission_version": 3,
+          "blocked_reason": null
+        }
+      ]
+    },
+    "preview": null,
+    "replayed": false,
+    "created_at": "2026-11-04T21:30:00Z",
+    "expires_at": null
+  },
+  "recipient_examples": {
+    "sent": {
+      "id": "00000070-0000-4000-8000-000000000001",
+      "name": "Cliente sintético A",
+      "phone": "+5567999999911",
+      "status": "sent",
+      "status_label": "Enviado",
+      "message": "Olá, Cliente sintético A!",
+      "device": {
+        "id": "00000040-0000-4000-8000-000000000001",
+        "name": "Dispositivo sintético"
+      },
+      "created_at": "2026-11-04T21:30:00Z",
+      "finished_at": "2026-11-04T21:31:00Z",
+      "error_code": null,
+      "reason": null,
+      "parts": []
+    },
+    "pending": {
+      "id": "00000071-0000-4000-8000-000000000001",
+      "name": "Cliente sintético A",
+      "phone": "+5567999999911",
+      "status": "pending",
+      "status_label": "Pendente",
+      "message": "Olá, Cliente sintético A!",
+      "device": null,
+      "created_at": "2026-11-04T21:30:00Z",
+      "finished_at": null,
+      "error_code": null,
+      "reason": null,
+      "parts": []
+    },
+    "failed": {
+      "id": "00000072-0000-4000-8000-000000000001",
+      "name": "Cliente sintético A",
+      "phone": "+5567999999911",
+      "status": "failed",
+      "status_label": "Falhou",
+      "message": "Olá, Cliente sintético A!",
+      "device": {
+        "id": "00000040-0000-4000-8000-000000000001",
+        "name": "Dispositivo sintético"
+      },
+      "created_at": "2026-11-04T21:30:00Z",
+      "finished_at": "2026-11-04T21:31:00Z",
+      "error_code": null,
+      "reason": "Situação sintética para conferência.",
+      "parts": []
+    },
+    "uncertain": {
+      "id": "00000073-0000-4000-8000-000000000001",
+      "name": "Cliente sintético A",
+      "phone": "+5567999999911",
+      "status": "uncertain",
+      "status_label": "Resultado incerto",
+      "message": "Olá, Cliente sintético A!",
+      "device": {
+        "id": "00000040-0000-4000-8000-000000000001",
+        "name": "Dispositivo sintético"
+      },
+      "created_at": "2026-11-04T21:30:00Z",
+      "finished_at": "2026-11-04T21:31:00Z",
+      "error_code": null,
+      "reason": "Situação sintética para conferência.",
+      "parts": []
+    },
+    "cancelled": {
+      "id": "00000074-0000-4000-8000-000000000001",
+      "name": "Cliente sintético A",
+      "phone": "+5567999999911",
+      "status": "cancelled",
+      "status_label": "Cancelado",
+      "message": "Olá, Cliente sintético A!",
+      "device": {
+        "id": "00000040-0000-4000-8000-000000000001",
+        "name": "Dispositivo sintético"
+      },
+      "created_at": "2026-11-04T21:30:00Z",
+      "finished_at": "2026-11-04T21:31:00Z",
+      "error_code": null,
+      "reason": "Situação sintética para conferência.",
+      "parts": []
+    }
+  },
+  "status_examples": {
+    "draft": {
+      "title": "Campanha sintética de renovação",
+      "device_ids": [
+        "00000040-0000-4000-8000-000000000001"
+      ],
+      "group_ids": [
+        "00000050-0000-4000-8000-000000000001"
+      ],
+      "message_type": "text",
+      "text": "Olá, {name}! Consulte sua assinatura em nossa equipe. Contato: {phone}.",
+      "template_id": null,
+      "start_date": "2026-11-10",
+      "start_time": "09:30",
+      "timezone": "America/Sao_Paulo",
+      "window_start": "08:00",
+      "window_end": "18:00",
+      "weekdays": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "interval_seconds": 60,
+      "id": "00000060-0000-4000-8000-000000000001",
+      "version": 1,
+      "status": "draft",
+      "status_label": "Rascunho",
+      "archived": false,
+      "devices": [
+        {
+          "id": "00000040-0000-4000-8000-000000000001",
+          "name": "Dispositivo sintético"
+        }
+      ],
+      "template_name": null,
+      "start_at": "2026-11-10T12:30:00Z",
+      "created_at": "2026-11-04T21:30:00Z",
+      "updated_at": "2026-11-04T21:30:00Z",
+      "actions": [
+        "edit",
+        "review",
+        "archive"
+      ],
+      "progress": {
+        "total": 0,
+        "processed": 0,
+        "sent": 0,
+        "pending": 0,
+        "failed": 0,
+        "uncertain": 0,
+        "cancelled": 0,
+        "percent": 0
+      }
+    },
+    "scheduled": {
+      "title": "Campanha sintética de renovação",
+      "device_ids": [
+        "00000040-0000-4000-8000-000000000001"
+      ],
+      "group_ids": [
+        "00000050-0000-4000-8000-000000000001"
+      ],
+      "message_type": "text",
+      "text": "Olá, {name}! Consulte sua assinatura em nossa equipe. Contato: {phone}.",
+      "template_id": null,
+      "start_date": "2026-11-10",
+      "start_time": "09:30",
+      "timezone": "America/Sao_Paulo",
+      "window_start": "08:00",
+      "window_end": "18:00",
+      "weekdays": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "interval_seconds": 60,
+      "id": "00000060-0000-4000-8000-000000000001",
+      "version": 1,
+      "status": "scheduled",
+      "status_label": "Agendada",
+      "archived": false,
+      "devices": [
+        {
+          "id": "00000040-0000-4000-8000-000000000001",
+          "name": "Dispositivo sintético"
+        }
+      ],
+      "template_name": null,
+      "start_at": "2026-11-10T12:30:00Z",
+      "created_at": "2026-11-04T21:30:00Z",
+      "updated_at": "2026-11-04T21:30:00Z",
+      "actions": [
+        "pause",
+        "edit",
+        "archive"
+      ],
+      "progress": {
+        "total": 3,
+        "processed": 0,
+        "sent": 0,
+        "pending": 3,
+        "failed": 0,
+        "uncertain": 0,
+        "cancelled": 0,
+        "percent": 0
+      }
+    },
+    "running": {
+      "title": "Campanha sintética de renovação",
+      "device_ids": [
+        "00000040-0000-4000-8000-000000000001"
+      ],
+      "group_ids": [
+        "00000050-0000-4000-8000-000000000001"
+      ],
+      "message_type": "text",
+      "text": "Olá, {name}! Consulte sua assinatura em nossa equipe. Contato: {phone}.",
+      "template_id": null,
+      "start_date": "2026-11-10",
+      "start_time": "09:30",
+      "timezone": "America/Sao_Paulo",
+      "window_start": "08:00",
+      "window_end": "18:00",
+      "weekdays": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "interval_seconds": 60,
+      "id": "00000060-0000-4000-8000-000000000001",
+      "version": 1,
+      "status": "running",
+      "status_label": "Em andamento",
+      "archived": false,
+      "devices": [
+        {
+          "id": "00000040-0000-4000-8000-000000000001",
+          "name": "Dispositivo sintético"
+        }
+      ],
+      "template_name": null,
+      "start_at": "2026-11-10T12:30:00Z",
+      "created_at": "2026-11-04T21:30:00Z",
+      "updated_at": "2026-11-04T21:30:00Z",
+      "actions": [
+        "pause",
+        "archive"
+      ],
+      "progress": {
+        "total": 3,
+        "processed": 0,
+        "sent": 0,
+        "pending": 3,
+        "failed": 0,
+        "uncertain": 0,
+        "cancelled": 0,
+        "percent": 0
+      }
+    },
+    "paused": {
+      "title": "Campanha sintética de renovação",
+      "device_ids": [
+        "00000040-0000-4000-8000-000000000001"
+      ],
+      "group_ids": [
+        "00000050-0000-4000-8000-000000000001"
+      ],
+      "message_type": "text",
+      "text": "Olá, {name}! Consulte sua assinatura em nossa equipe. Contato: {phone}.",
+      "template_id": null,
+      "start_date": "2026-11-10",
+      "start_time": "09:30",
+      "timezone": "America/Sao_Paulo",
+      "window_start": "08:00",
+      "window_end": "18:00",
+      "weekdays": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "interval_seconds": 60,
+      "id": "00000060-0000-4000-8000-000000000001",
+      "version": 1,
+      "status": "paused",
+      "status_label": "Pausada",
+      "archived": false,
+      "devices": [
+        {
+          "id": "00000040-0000-4000-8000-000000000001",
+          "name": "Dispositivo sintético"
+        }
+      ],
+      "template_name": null,
+      "start_at": "2026-11-10T12:30:00Z",
+      "created_at": "2026-11-04T21:30:00Z",
+      "updated_at": "2026-11-04T21:30:00Z",
+      "actions": [
+        "resume",
+        "archive"
+      ],
+      "progress": {
+        "total": 3,
+        "processed": 0,
+        "sent": 0,
+        "pending": 3,
+        "failed": 0,
+        "uncertain": 0,
+        "cancelled": 0,
+        "percent": 0
+      }
+    },
+    "completed": {
+      "title": "Campanha sintética de renovação",
+      "device_ids": [
+        "00000040-0000-4000-8000-000000000001"
+      ],
+      "group_ids": [
+        "00000050-0000-4000-8000-000000000001"
+      ],
+      "message_type": "text",
+      "text": "Olá, {name}! Consulte sua assinatura em nossa equipe. Contato: {phone}.",
+      "template_id": null,
+      "start_date": "2026-11-10",
+      "start_time": "09:30",
+      "timezone": "America/Sao_Paulo",
+      "window_start": "08:00",
+      "window_end": "18:00",
+      "weekdays": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "interval_seconds": 60,
+      "id": "00000060-0000-4000-8000-000000000001",
+      "version": 1,
+      "status": "completed",
+      "status_label": "Concluída",
+      "archived": false,
+      "devices": [
+        {
+          "id": "00000040-0000-4000-8000-000000000001",
+          "name": "Dispositivo sintético"
+        }
+      ],
+      "template_name": null,
+      "start_at": "2026-11-10T12:30:00Z",
+      "created_at": "2026-11-04T21:30:00Z",
+      "updated_at": "2026-11-04T21:30:00Z",
+      "actions": [
+        "archive"
+      ],
+      "progress": {
+        "total": 3,
+        "processed": 0,
+        "sent": 0,
+        "pending": 3,
+        "failed": 0,
+        "uncertain": 0,
+        "cancelled": 0,
+        "percent": 0
+      }
+    },
+    "cancelled": {
+      "title": "Campanha sintética de renovação",
+      "device_ids": [
+        "00000040-0000-4000-8000-000000000001"
+      ],
+      "group_ids": [
+        "00000050-0000-4000-8000-000000000001"
+      ],
+      "message_type": "text",
+      "text": "Olá, {name}! Consulte sua assinatura em nossa equipe. Contato: {phone}.",
+      "template_id": null,
+      "start_date": "2026-11-10",
+      "start_time": "09:30",
+      "timezone": "America/Sao_Paulo",
+      "window_start": "08:00",
+      "window_end": "18:00",
+      "weekdays": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "interval_seconds": 60,
+      "id": "00000060-0000-4000-8000-000000000001",
+      "version": 1,
+      "status": "cancelled",
+      "status_label": "Cancelada",
+      "archived": false,
+      "devices": [
+        {
+          "id": "00000040-0000-4000-8000-000000000001",
+          "name": "Dispositivo sintético"
+        }
+      ],
+      "template_name": null,
+      "start_at": "2026-11-10T12:30:00Z",
+      "created_at": "2026-11-04T21:30:00Z",
+      "updated_at": "2026-11-04T21:30:00Z",
+      "actions": [],
+      "progress": {
+        "total": 3,
+        "processed": 0,
+        "sent": 0,
+        "pending": 3,
+        "failed": 0,
+        "uncertain": 0,
+        "cancelled": 0,
+        "percent": 0
+      }
+    }
+  },
+  "scheduled_detail_response": {
+    "campaign": {
+      "title": "Campanha sintética de renovação",
+      "device_ids": [
+        "00000040-0000-4000-8000-000000000001"
+      ],
+      "group_ids": [
+        "00000050-0000-4000-8000-000000000001"
+      ],
+      "message_type": "text",
+      "text": "Olá, {name}! Consulte sua assinatura em nossa equipe. Contato: {phone}.",
+      "template_id": null,
+      "start_date": "2026-11-10",
+      "start_time": "09:30",
+      "timezone": "America/Sao_Paulo",
+      "window_start": "08:00",
+      "window_end": "18:00",
+      "weekdays": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "interval_seconds": 60,
+      "id": "00000060-0000-4000-8000-000000000001",
+      "version": 1,
+      "status": "scheduled",
+      "status_label": "Agendada",
+      "archived": false,
+      "devices": [
+        {
+          "id": "00000040-0000-4000-8000-000000000001",
+          "name": "Dispositivo sintético"
+        }
+      ],
+      "template_name": null,
+      "start_at": "2026-11-10T12:30:00Z",
+      "created_at": "2026-11-04T21:30:00Z",
+      "updated_at": "2026-11-04T21:30:00Z",
+      "actions": [
+        "pause",
+        "edit",
+        "archive"
+      ],
+      "progress": {
+        "total": 3,
+        "processed": 1,
+        "sent": 0,
+        "pending": 2,
+        "failed": 0,
+        "uncertain": 0,
+        "cancelled": 1,
+        "percent": 33.33
+      }
+    },
+    "progress": {
+      "total": 3,
+      "processed": 1,
+      "sent": 0,
+      "pending": 2,
+      "failed": 0,
+      "uncertain": 0,
+      "cancelled": 1,
+      "percent": 33.33
+    },
+    "groups": [
+      {
+        "id": "00000050-0000-4000-8000-000000000001",
+        "name": "Grupo sintético",
+        "version": 1,
+        "member_count": 3,
+        "blocked_count": 1,
+        "archived": false
+      }
+    ],
+    "recipients": {
+      "items": [
+        {
+          "id": "00000071-0000-4000-8000-000000000001",
+          "name": "Cliente sintético A",
+          "phone": "+5567999999911",
+          "status": "pending",
+          "status_label": "Pendente",
+          "message": "Olá, Cliente sintético A!",
+          "device": null,
+          "created_at": "2026-11-04T21:30:00Z",
+          "finished_at": null,
+          "error_code": null,
+          "reason": null,
+          "parts": []
+        },
+        {
+          "id": "00000071-0000-4000-8000-000000000002",
+          "name": "Cliente sintético B",
+          "phone": "+5567999999912",
+          "status": "pending",
+          "status_label": "Pendente",
+          "message": "Olá, Cliente sintético B!",
+          "device": null,
+          "created_at": "2026-11-04T21:30:00Z",
+          "finished_at": null,
+          "error_code": null,
+          "reason": null,
+          "parts": []
+        },
+        {
+          "id": "00000074-0000-4000-8000-000000000001",
+          "name": "Cliente sintético C",
+          "phone": "+5567999999913",
+          "status": "cancelled",
+          "status_label": "Cancelado",
+          "message": "Olá, Cliente sintético C!",
+          "device": null,
+          "created_at": "2026-11-04T21:30:00Z",
+          "finished_at": "2026-11-04T21:31:00Z",
+          "error_code": null,
+          "reason": "Situação sintética para conferência.",
+          "parts": []
+        }
+      ],
+      "total": 3,
+      "page": 1,
+      "page_size": 30,
+      "pages": 1,
+      "generated_at": "2026-11-04T21:30:00Z",
+      "timezone": "America/Sao_Paulo"
+    }
+  }
+}

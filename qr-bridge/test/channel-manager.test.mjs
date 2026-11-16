@@ -11,9 +11,197 @@ import {createChannelRoutes} from '../src/channel-routes.mjs';
 import {createChannelBroker} from '../src/channel-broker.mjs';
 import {channelDirectory,encryptedChannelStore} from '../src/channel-storage.mjs';
 import {createChannelResumeStore} from '../src/channel-resume.mjs';
+import {PREPARATION_FAILURE_REPLY} from '../src/assistant-ingress.mjs';
 
 const phone='5567999999901',other='5567999999902';
 const flush=()=>new Promise(resolve=>setImmediate(resolve));
+const assistantMenu=()=>{const id='B'.repeat(32);return {version:1,id,action:{type:'reply_buttons',text:'Resumo fictício',footer:'',
+  buttons:[{id:`oa1_${id}_0`,title:'Confirmar'},{id:`oa1_${id}_1`,title:'Corrigir'}]}};};
+
+test('preparation notification uses the exact SQL proof, normal authorization ledger and slot finish without AI',async t=>{
+  const f=fixture(t),a=f.add(),events=[];Object.assign(f.rows.get(a.id),{inbox_control:true,send_recheck:true});
+  f.broker.journal=async()=>({recorded:true});
+  f.broker.interaction=async()=>({recorded:true,revision:7,control_revision:31});
+  f.broker.forward=async()=>assert.fail('A failure notice cannot invoke assistant/business');
+  const operation=randomUUID();let auth=0;
+  f.broker.authorizeSend=async(id,key,lease,payload)=>{
+    auth++;events.push(payload.recheck?'recheck':'authorize');assert.equal(id,a.id);assert.equal(key,a.key);
+    assert.equal(lease.fence,f.rows.get(a.id).fence);assert.equal(payload.source,'assistant');
+    assert.equal(payload.control_revision,31);assert.notEqual(payload.control_revision,7);
+    assert.equal(payload.operation_id,operation);assert.equal(payload.text,PREPARATION_FAILURE_REPLY);
+    return {authorized:true,operation_id:operation};
+  };
+  const m=f.manager();await m.start(a.id,a.key);const s=f.made[0];
+  s.send=async(to,text,options)=>{await options.assertAuthorized();events.push('relay');assert.equal(to,phone);
+    assert.equal(text,PREPARATION_FAILURE_REPLY);return {id:'prepared-failure-provider'};};
+  f.broker.finishSend=async(_id,_key,_lease,payload)=>{
+    events.push('finish');assert.equal((await m.operation(a.id,a.key,operation)).accepted,true);
+    assert.equal(payload.provider_id,'prepared-failure-provider');return {released:true,operation_id:operation};
+  };
+  const proof=await s.ctx.onInbound({phone,message_id:'audio-proof',text:'',kind:'audio'});
+  const result=await s.ctx.onPreparationFailed({phone,message_ids:['audio-proof'],operation_id:operation,control_revision:31},
+    {noticeProofs:[proof],isCurrent:()=>true});
+  assert.equal(result.accepted,true);assert.equal(auth,2);assert.deepEqual(events,['authorize','recheck','relay','finish']);
+  await assert.rejects(s.ctx.onPreparationFailed({phone,message_ids:['audio-proof'],operation_id:operation,control_revision:31},
+    {noticeProofs:[proof],isCurrent:()=>true}),/proof/);
+  assert.equal(events.filter(value=>value==='relay').length,1);
+});
+
+for(const attack of ['missing_control','caller_intake_revision','cloned_proof','other_id','other_phone','revoked_current'])
+test(`preparation notification refuses ${attack} before a relay or grant`,async t=>{
+  const f=fixture(t),a=f.add();Object.assign(f.rows.get(a.id),{inbox_control:true,allowed_senders:[phone,other]});
+  f.broker.journal=async()=>({recorded:true});
+  f.broker.interaction=async()=>({recorded:true,revision:7,...(attack==='missing_control'?{}:{control_revision:31})});
+  let grants=0;f.broker.authorizeSend=async()=>{grants++;throw Error('unexpected grant');};
+  const m=f.manager();await m.start(a.id,a.key);const s=f.made[0];
+  const proof=await s.ctx.onInbound({phone,message_id:'audio-proof',text:'',kind:'audio'});
+  await assert.rejects(s.ctx.onPreparationFailed({phone:attack==='other_phone'?other:phone,
+    message_ids:[attack==='other_id'?'different-raw-id':'audio-proof'],operation_id:randomUUID(),
+    control_revision:attack==='caller_intake_revision'?7:31},
+    {noticeProofs:[attack==='cloned_proof'?{...proof}:proof],isCurrent:()=>attack!=='revoked_current'}));
+  assert.equal(grants,0);assert.equal(s.sends.length,0);assert.equal(f.forwards.length,0);
+});
+
+test('a newer SQL input denies an obsolete failure notice and an uncertain relay cannot retry',async t=>{
+  for(const mode of ['stale_control','unknown_relay']){
+    const f=fixture(t),a=f.add();Object.assign(f.rows.get(a.id),{inbox_control:true});
+    f.broker.journal=async()=>({recorded:true});f.broker.interaction=async()=>({recorded:true,revision:7,control_revision:31});
+    f.broker.authorizeSend=async(_id,_key,_lease,p)=>{if(mode==='stale_control')throw Object.assign(Error('superseded'),{status:409});
+      return {authorized:true,operation_id:p.operation_id};};
+    const m=f.manager();await m.start(a.id,a.key);const s=f.made[0];let relays=0;
+    s.send=async()=>{relays++;throw Error('synthetic lost transport result');};
+    const proof=await s.ctx.onInbound({phone,message_id:'audio-'+mode,text:'',kind:'audio'}),operation=randomUUID();
+    const result=await s.ctx.onPreparationFailed({phone,message_ids:['audio-'+mode],operation_id:operation,control_revision:31},
+      {noticeProofs:[proof],isCurrent:()=>true});
+    assert.equal(result.accepted,false);assert.equal(result.state,mode==='stale_control'?'refused':'uncertain');
+    const again=await m.send(a.id,a.key,{to:phone,text:PREPARATION_FAILURE_REPLY,operation_id:operation,source:'assistant',control_revision:31});
+    assert.equal(again.state,result.state);assert.equal(relays,mode==='stale_control'?0:1);
+  }
+});
+
+for(const step of ['disabled','duplicate','superseded','human','information','confirm'])
+test(`only an accepted fresh ${step} summary can acknowledge preparation review`,async t=>{
+  const f=fixture(t),a=f.add();f.broker.forward=async()=>({answer:['disabled','duplicate','superseded','human'].includes(step)?null:'Synthetic current reply',step});
+  const m=f.manager();await m.start(a.id,a.key);const s=f.made[0];
+  const proof=await s.ctx.onInbound({phone,message_id:'review-'+step,text:'Synthetic input'});
+  const result=await s.ctx.onMessage({phone,message_id:'review-'+step,text:'Synthetic input',require_summary_review:true},
+    {noticeProof:proof,presentationProvenance:{peer_tag:'a'.repeat(64),review_stamp:'b'.repeat(64)}});
+  assert.equal(result?.summary_review_delivered===true,step==='confirm');
+});
+
+test('presentation kind comes from backend step and action, never a supplied provenance label',async t=>{
+  const f=fixture(t),a=f.add();
+  const list={version:1,id:'B'.repeat(32),action:{type:'list',title:'Synthetic',description:'Choose',button_text:'Options',footer:'',
+    sections:[{title:'',rows:[{id:'oa1_'+'B'.repeat(32)+'_0',title:'Synthetic service'}]}]}};
+  f.broker.forward=async()=>({answer:'Synthetic current list',step:'professional',presentation:list});
+  f.broker.interaction=async()=>({recorded:true,revision:7,assistant_interactions:1});
+  const m=f.manager();await m.start(a.id,a.key);const s=f.made[0];let captured;
+  s.send=async(_to,_text,options)=>{captured=options.presentationProvenance;return {id:'scoped-list'};};
+  const proof=await s.ctx.onInbound({phone,message_id:'new-list',text:'Synthetic input'});
+  await s.ctx.onMessage({phone,message_id:'new-list',text:'Synthetic input',require_summary_review:true},
+    {noticeProof:proof,presentationProvenance:{peer_tag:'a'.repeat(64),review_stamp:'b'.repeat(64),kind:'summary'}});
+  assert.deepEqual(captured,{peer_tag:'a'.repeat(64),review_stamp:'b'.repeat(64),kind:'navigation'});
+});
+
+test('managed assistant ACK follows a persisted accepted receipt and confirmed SQL slot finish, without replay',async t=>{
+  const f=fixture(t),a=f.add(),events=[];Object.assign(f.rows.get(a.id),{inbox_control:true});
+  f.broker.journal=async()=>({recorded:true});
+  const interaction=f.broker.interaction;f.broker.interaction=async(...args)=>({...await interaction(...args),assistant_interactions:1});
+  f.broker.forward=async()=>({answer:'Resumo fictício',presentation:assistantMenu(),control_revision:1});
+  let pending=false,sends=0,acks=0;
+  f.broker.authorizeSend=async(_id,_key,_lease,p)=>{pending=true;events.push('authorize');return {authorized:true,operation_id:p.operation_id};};
+  f.broker.finishSend=async(_id,_key,_lease,p)=>{
+    events.push('finish');assert.equal(pending,true);
+    const accepted=await m.operation(a.id,a.key,p.operation_id);assert.equal(accepted.accepted,true,'Receipt must be durable before releasing the slot');
+    pending=false;return {released:true,operation_id:p.operation_id};
+  };
+  const m=f.manager();await m.start(a.id,a.key);const s=f.made[0];
+  s.send=async(_to,_text,options)=>{
+    sends++;events.push('relay');assert.equal(options.deferPresentationAck,true);
+    return {id:'synthetic-accepted-menu',acknowledgePresentation:async()=>{acks++;events.push('ack');assert.equal(pending,false);return true;}};
+  };
+  const proof=await s.ctx.onInbound({phone,message_id:'menu-slot',text:'Menu'});
+  const sent=await s.ctx.onMessage({phone,message_id:'menu-slot',text:'Menu'},{noticeProof:proof});
+  assert.equal(sent.accepted,true);assert.equal(acks,1);assert.equal(sends,1);
+  assert.deepEqual(events,['authorize','relay','finish','ack']);assert.equal(Object.hasOwn(sent,'acknowledgePresentation'),false);
+  const replayProof=await s.ctx.onInbound({phone,message_id:'menu-slot',text:'Menu'});
+  await s.ctx.onMessage({phone,message_id:'menu-slot',text:'Menu'},{noticeProof:replayProof});
+  assert.equal(sends,1);assert.equal(acks,1);
+});
+
+for(const failure of ['finish_lost','finish_unconfirmed','owner_changed','relay_uncertain'])test(`assistant deferred ACK stays closed after ${failure} and never retries the accepted/uncertain protocol`,async t=>{
+  const f=fixture(t),a=f.add();Object.assign(f.rows.get(a.id),{inbox_control:true});
+  f.broker.journal=async()=>({recorded:true});
+  const interaction=f.broker.interaction;f.broker.interaction=async(...args)=>({...await interaction(...args),assistant_interactions:1});
+  f.broker.forward=async()=>({answer:'Resumo fictício',presentation:assistantMenu(),control_revision:1});
+  f.broker.authorizeSend=async(_id,_key,_lease,p)=>({authorized:true,operation_id:p.operation_id});
+  let sends=0,acks=0,finishes=0;
+  f.broker.finishSend=async(_id,_key,_lease,p)=>{
+    finishes++;
+    if(failure==='finish_lost')throw Error('synthetic lost finish response');
+    if(failure==='finish_unconfirmed')return {released:false,operation_id:p.operation_id};
+    f.rows.get(a.id).revoked=true;return {released:true,operation_id:p.operation_id};
+  };
+  const m=f.manager();await m.start(a.id,a.key);const s=f.made[0];
+  s.send=async(_to,_text,options)=>{
+    sends++;assert.equal(options.deferPresentationAck,true);
+    if(failure==='relay_uncertain')throw Error('synthetic relay response lost after attempt');
+    return {id:'synthetic-accepted-menu',acknowledgePresentation:async()=>{acks++;return true;}};
+  };
+  const proof=await s.ctx.onInbound({phone,message_id:'menu-'+failure,text:'Menu'});
+  const result=await s.ctx.onMessage({phone,message_id:'menu-'+failure,text:'Menu'},{noticeProof:proof});
+  assert.equal(result.accepted,failure!=='relay_uncertain');assert.equal(sends,1);assert.equal(acks,0);
+  assert.equal(finishes,failure==='relay_uncertain'?0:1);
+  if(failure!=='owner_changed'){
+    const replayProof=await s.ctx.onInbound({phone,message_id:'menu-'+failure,text:'Menu'});
+    await s.ctx.onMessage({phone,message_id:'menu-'+failure,text:'Menu'},{noticeProof:replayProof});
+    assert.equal(sends,1);assert.equal(acks,0);
+  }
+});
+
+test('assistant interactions negotiate from the actual notice and old API requests and sends remain text-only',async t=>{
+  const f=fixture(t),a=f.add();let supported=false;
+  const interaction=f.broker.interaction;f.broker.interaction=async(...args)=>({...await interaction(...args),...(supported?{assistant_interactions:1}:{})});
+  f.broker.forward=async(id,key,lease,payload)=>{f.forwards.push({payload});return {answer:'Resumo fictício',presentation:assistantMenu()};};
+  const m=f.manager();await m.start(a.id,a.key);const s=f.made[0],sends=[];
+  s.send=async(to,text,options)=>{sends.push({to,text,options});return {id:'synthetic-'+sends.length};};
+  for(const id of ['old','new']){
+    supported=id==='new';const proof=await s.ctx.onInbound({phone,message_id:id,text:'Revisar'});
+    await s.ctx.onMessage({phone,message_id:id,text:'Revisar'},{noticeProof:proof});
+  }
+  assert.equal(f.forwards[0].payload.capabilities,undefined);assert.equal(sends[0].options.presentation,undefined);
+  assert.deepEqual(f.forwards[1].payload.capabilities,{assistant_interactions:1});assert.equal(sends[1].options.presentation.id,assistantMenu().id);
+  assert.equal(sends.length,2);
+});
+test('a managed presentation with an uncertain relay never generates a fallback or another send for the same input',async t=>{
+  const f=fixture(t),a=f.add();let sends=0;
+  const interaction=f.broker.interaction;f.broker.interaction=async(...args)=>({...await interaction(...args),assistant_interactions:1});
+  f.broker.forward=async()=>({answer:'Resumo fictício',presentation:assistantMenu()});
+  const m=f.manager();await m.start(a.id,a.key);const s=f.made[0];s.send=async()=>{sends++;throw Error('synthetic relay unknown');};
+  for(let i=0;i<2;i++){
+    const proof=await s.ctx.onInbound({phone,message_id:'same-input',text:'Revisar'});
+    const result=await s.ctx.onMessage({phone,message_id:'same-input',text:'Revisar'},{noticeProof:proof});
+    assert.equal(result.accepted,false);
+  }
+  assert.equal(sends,1);
+});
+test('typed selection stays one input and mixed corrections force review; ACK is a separate fenced API call',async t=>{
+  const f=fixture(t),a=f.add(),acks=[];
+  const interaction=f.broker.interaction;f.broker.interaction=async(...args)=>({...await interaction(...args),assistant_interactions:1});
+  f.broker.presentationAck=async(...args)=>{acks.push(args);return {acknowledged:true};};
+  const m=f.manager();await m.start(a.id,a.key);const ctx=f.made[0].ctx;
+  const proof=await ctx.onInbound({phone,message_id:'click',text:'[Escolha recebida]'});
+  const selection={id:assistantMenu().action.buttons[0].id,quoted_message_id:'synthetic-summary'};
+  await ctx.onMessage({phone,message_id:'click',text:'[Escolha recebida]',selection},{noticeProof:proof});
+  assert.deepEqual(f.forwards[0].payload.selection,selection);
+  const proofs=await Promise.all(['mixed1','mixed2'].map(message_id=>ctx.onInbound({phone,message_id,text:'Corrigir'})));
+  await ctx.onMessage({phone,message_id:'mixed1',message_ids:['mixed1','mixed2'],text:'[Escolha recebida]\nCorrigir',require_summary_review:true},{noticeProofs:proofs});
+  assert.equal(f.forwards[1].payload.selection,undefined);assert.equal(f.forwards[1].payload.require_summary_review,true);
+  await ctx.presentationAck({phone,presentation_id:assistantMenu().id,provider_id:'synthetic-summary'});
+  assert.equal(acks.length,1);assert.equal(acks[0][0],a.id);assert.equal(acks[0][2].fence,f.rows.get(a.id).fence);
+  f.rows.get(a.id).revoked=true;await assert.rejects(ctx.presentationAck({phone,presentation_id:assistantMenu().id,provider_id:'synthetic-summary'}));
+  assert.equal(acks.length,1);
+});
 test('an explicitly empty private policy connects with assistant off but permits no inbound or outbound recipient',async t=>{
   const f=fixture(t),a=f.add();Object.assign(f.rows.get(a.id),{allowed_senders:[],assistant_enabled:false});
   const m=f.manager();await m.start(a.id,a.key);
@@ -26,6 +214,12 @@ test('an empty private policy with assistant enabled is rejected before socket c
   const f=fixture(t),a=f.add();f.rows.get(a.id).allowed_senders=[];
   await assert.rejects(f.manager().start(a.id,a.key),/invalid_channel_lease/);assert.equal(f.made.length,0);
 });
+test('a lease cannot activate assistant and subscription consumers together on one socket without a separate grant',async t=>{
+  const f=fixture(t),a=f.add();
+  f.rows.get(a.id).device={id:randomUUID(),generation:randomUUID(),settings_revision:1,settings:{},capabilities:{}};
+  const m=f.manager();await assert.rejects(m.start(a.id,a.key),/invalid_device_lease/);
+  assert.equal(f.made.length,0);assert.equal(f.forwards.length,0);assert.equal(f.interactions.length,0);
+});
 test('channel status discloses only a connected verified PN, never a LID or a prefilled form number',async t=>{
   const f=fixture(t),a=f.add(),m=f.manager();await m.start(a.id,a.key);
   f.made[0].phone=()=>phone;let value=await m.status(a.id,a.key);
@@ -35,6 +229,31 @@ test('channel status discloses only a connected verified PN, never a LID or a pr
   f.made[0].phone=()=>phone;f.made[0].status=()=> 'qr_ready';value=await m.status(a.id,a.key);
   assert.equal(value.phone,null);assert.equal(value.phone_verified,false);
 });
+test('status reports the scoped native-list mode as unverified only for its exact tenant/device',async t=>{
+  const priorScopes=process.env.QR_NATIVE_LIST_SCOPES,priorGlobal=process.env.QR_NATIVE_INTERACTIVE_ENABLED;
+  t.after(()=>{for(const [name,value] of [['QR_NATIVE_LIST_SCOPES',priorScopes],['QR_NATIVE_INTERACTIVE_ENABLED',priorGlobal]])
+    if(value===undefined)delete process.env[name];else process.env[name]=value;});
+  const f=fixture(t),a=f.add(),device={id:randomUUID(),generation:randomUUID(),settings_revision:1,settings:{},capabilities:{}};
+  Object.assign(f.rows.get(a.id),{device,assistant_enabled:false,allowed_senders:[]});
+  process.env.QR_NATIVE_INTERACTIVE_ENABLED='0';const m=f.manager();await m.start(a.id,a.key);
+  for(const [scope,mode] of [[a.tenant+':'+device.id,'native_unverified'],[randomUUID()+':'+device.id,'text_fallback'],[a.tenant+':'+randomUUID(),'text_fallback']]){
+    process.env.QR_NATIVE_LIST_SCOPES=scope;assert.equal((await m.status(a.id,a.key)).capabilities.interactive_mode,mode);
+  }
+  assert.equal(f.made.length,1);assert.equal(f.made[0].sends.length,0);
+});
+test('URL-button support is negotiated from the current device session, absent on old/custom/legacy transports',async t=>{
+  const f=fixture(t),a=f.add(),device={id:randomUUID(),generation:randomUUID(),settings_revision:1,settings:{},capabilities:{}};
+  Object.assign(f.rows.get(a.id),{device,assistant_enabled:false,allowed_senders:[]});const m=f.manager();await m.start(a.id,a.key);
+  const session=f.made[0];assert.equal((await m.deviceStatus(a.id,a.key)).capabilities.url_button,false);
+  session.supportsUrlButton=()=>true;
+  let value=await m.deviceStatus(a.id,a.key);assert.equal(value.capabilities.url_button,true);
+  assert.equal(value.device_id,device.id);assert.equal(value.generation,device.generation);assert.equal(value.settings_revision,1);
+  session.supportsUrlButton=()=>false;assert.equal((await m.deviceStatus(a.id,a.key)).capabilities.url_button,false);
+  session.supportsUrlButton=()=>true;f.rows.get(a.id).revoked=true;
+  await assert.rejects(m.deviceStatus(a.id,a.key));assert.equal(session.closed,true);
+  const legacy=f.add();f.rows.get(legacy.id).legacy_transport=true;await m.start(legacy.id,legacy.key);
+  f.made[1].supportsUrlButton=()=>true;assert.equal((await m.status(legacy.id,legacy.key)).capabilities.url_button,false);
+});
 test('assistant-off inbound is journaled before interaction and never forwarded',async t=>{
   const f=fixture(t),a=f.add(),calls=[];Object.assign(f.rows.get(a.id),{inbox_control:true,assistant_enabled:false});
   f.broker.journal=async(id,key,lease,payload)=>{calls.push('journal');assert.equal(id,a.id);assert.equal(payload.text,'Mensagem humana');return {recorded:true};};
@@ -42,6 +261,48 @@ test('assistant-off inbound is journaled before interaction and never forwarded'
   const m=f.manager();await m.start(a.id,a.key);
   await f.made[0].ctx.onInbound({phone,message_id:'journal-1',text:'Mensagem humana',kind:'text'});
   assert.deepEqual(calls,['journal','interaction']);assert.equal(f.forwards.length,0);assert.equal(f.made[0].ctx.assistantEnabled(),false);
+});
+test('optional per-message parts are negotiated from the lease during a rolling API update',async t=>{
+  const f=fixture(t),a=f.add(),m=f.manager();let capable=false;
+  const lease=f.broker.lease;f.broker.lease=async(...args)=>({...await lease(...args),...(capable?{incoming_parts:true}:{})});
+  await m.start(a.id,a.key);const ctx=f.made[0].ctx;
+  for(const [id,enabled] of [['old-api',false],['new-api',true]]){
+    capable=enabled;const proof=await ctx.onInbound({phone,message_id:id,text:'Texto completo'});
+    await ctx.onMessage({phone,message_id:id,text:'Texto completo',parts:[{message_id:id,text:'Texto completo'}]},{noticeProof:proof});
+  }
+  assert.equal(f.forwards[0].payload.parts,undefined);
+  assert.deepEqual(f.forwards[1].payload.parts,[{message_id:'new-api',text:'Texto completo'}]);assert.equal(f.made.length,1);
+});
+
+test('central booking sends to an out-of-allowlist professional only after broker receipt grant',async t=>{
+  const f=fixture(t),a=f.add(),attempts=[];f.rows.get(a.id).inbox_control=true;
+  let approved=false;
+  f.broker.authorizeSend=async(id,key,lease,payload)=>{
+    attempts.push(payload);
+    if(!approved)throw Error('missing_committed_notification');
+    assert.equal(payload.source,'appointment');
+    assert.equal(payload.phone,other);
+    return {authorized:true,operation_id:payload.operation_id};
+  };
+  f.broker.finishSend=async()=>({released:true});
+  const m=f.manager();await m.start(a.id,a.key);
+  assert.equal(f.made[0].ctx.allowedSender(other),false,
+    'A fila de notificações nunca abre o atendimento inbound de outro número');
+  const denied=await m.send(a.id,a.key,{to:other,text:'Agendamento não autorizado',
+    operation_id:randomUUID(),source:'appointment'});
+  assert.equal(denied.state,'refused');assert.equal(f.made[0].sends.length,0);
+  approved=true;
+  const operation=randomUUID();
+  const sent=await m.send(a.id,a.key,{to:other,text:'Agendamento verificado',
+    operation_id:operation,source:'appointment'});
+  assert.equal(sent.accepted,true);
+  assert.equal(f.made[0].sends.length,1);
+  assert.equal(f.made[0].sends[0].to,other);
+  await m.send(a.id,a.key,{to:other,text:'Agendamento verificado',
+    operation_id:operation,source:'appointment'});
+  assert.equal(f.made[0].sends.length,1,'Não repetir o envio após aceite');
+  await assert.rejects(m.send(a.id,a.key,{to:other,text:'Nenhuma autorização manual',
+    operation_id:randomUUID(),source:'manual',control_revision:1}),/sender_denied/);
 });
 
 test('manual send carries the committed revision and real receipts return only to the API',async t=>{
@@ -105,6 +366,26 @@ function connectionNoticeFlag(t,value){
   t.after(()=>{if(previous===undefined)delete process.env.ORION_NOTIFY_SELF_ON_LINK;else process.env.ORION_NOTIFY_SELF_ON_LINK=previous;});
   if(value===undefined)delete process.env.ORION_NOTIFY_SELF_ON_LINK;else process.env.ORION_NOTIFY_SELF_ON_LINK=value;
 }
+
+test('only a confirmed own null answer yields the explicit silent-completion proof',async t=>{
+  const f=fixture(t),a=f.add(),m=f.manager();await m.start(a.id,a.key);const ctx=f.made[0].ctx;
+  for(const [index,result] of [undefined,null,{}, {answer:null}].entries()){
+    f.broker.forward=async()=>result;const message_id='silent-'+index;
+    const proof=await ctx.onInbound({phone,message_id,text:'Olá'});
+    const turn=()=>ctx.onMessage({phone,message_id,text:'Olá'},{noticeProof:proof});
+    if(result?.answer===null)assert.deepEqual(await turn(),{state:'committed_no_reply',not_committed:false});
+    else await assert.rejects(turn(),/invalid_channel_reply/);
+  }
+  assert.equal(f.made[0].sends.length,0);
+});
+
+test('a silent backend answer after batch authority loss does not claim known completion',async t=>{
+  const f=fixture(t),a=f.add(),m=f.manager();await m.start(a.id,a.key);const ctx=f.made[0].ctx;let current=true;
+  f.broker.forward=async()=>{current=false;return {answer:null};};
+  const proof=await ctx.onInbound({phone,message_id:'late-null',text:'Olá'});
+  assert.equal(await ctx.onMessage({phone,message_id:'late-null',text:'Olá'},{noticeProof:proof,isCurrent:()=>current}),undefined);
+  assert.equal(f.made[0].sends.length,0);
+});
 
 test('code pairing is explicit and scoped to the current started channel, never the global alias',async t=>{
   const f=fixture(t),a=f.add(),b=f.add(),m=f.manager(),calls=[];
@@ -196,6 +477,52 @@ test('a human takeover refuses transport and uncertain operations are never auto
   assert.equal(result.accepted,false);assert.equal(f.made[0].sends.length,0);
   f.broker.authorizeSend=async()=>{throw Error('must_not_retry');};
   assert.equal((await m.send(a.id,a.key,{to:phone,text:'synthetic',operation_id:operation})).accepted,false);
+});
+
+test('send recheck is strictly negotiated: old API keeps its one grant and new API rechecks the same frozen slot',async t=>{
+  for(const capability of [undefined,false,true,'true',1]){
+    const f=fixture(t),a=f.add(),permits=[];Object.assign(f.rows.get(a.id),{inbox_control:true,send_recheck:capability});
+    f.broker.authorizeSend=async(_id,_key,_lease,payload)=>{permits.push(payload);return {authorized:true,operation_id:payload.operation_id};};
+    f.broker.finishSend=async()=>({released:true});const m=f.manager();await m.start(a.id,a.key);
+    let options;f.made[0].send=async(_phone,_text,value)=>{options=value;await value.assertAuthorized?.();return {id:'stable-provider'};};
+    const operation_id=randomUUID(),result=await m.send(a.id,a.key,{to:phone,text:'Texto congelado',source:'manual',control_revision:3,operation_id});
+    assert.equal(result.accepted,true);assert.equal(options.pacing,capability===true);
+    assert.equal(f.made[0].ctx.supportsSendRecheck(),capability===true);
+    assert.equal(permits.length,capability===true?2:1);
+    assert.equal(Object.hasOwn(permits[0],'recheck'),false,'old strict request schema receives no new false/default field');
+    if(capability===true)assert.deepEqual(permits[1],{...permits[0],recheck:true});
+    await m.send(a.id,a.key,{to:phone,text:'Texto congelado',source:'manual',control_revision:3,operation_id});
+    assert.equal(permits.length,capability===true?2:1,'idempotent replay does not acquire another grant');
+  }
+});
+
+test('a recheck capability lost during a rolling update refuses before transport without falling back to an old claim',async t=>{
+  const f=fixture(t),a=f.add(),permits=[];Object.assign(f.rows.get(a.id),{inbox_control:true,send_recheck:true});
+  f.broker.authorizeSend=async(_id,_key,_lease,payload)=>{permits.push(payload);return {authorized:true,operation_id:payload.operation_id};};
+  const m=f.manager();await m.start(a.id,a.key);let relays=0;
+  f.made[0].send=async(_phone,_text,options)=>{delete f.rows.get(a.id).send_recheck;await options.assertAuthorized();relays++;return {id:'forbidden'};};
+  const result=await m.send(a.id,a.key,{to:phone,text:'Aviso',operation_id:randomUUID()});
+  assert.equal(result.accepted,false);assert.equal(relays,0);assert.equal(permits.length,1);
+});
+
+test('a verified no-send recipient preflight error refuses one operation instead of claiming an ambiguous send',async t=>{
+  const f=fixture(t),a=f.add(),m=f.manager(),id=randomUUID();
+  f.rows.get(a.id).inbox_control=true;
+  f.broker.authorizeSend=async()=>({authorized:true,operation_id:id});
+  await m.start(a.id,a.key);
+  let sends=0;
+  f.made[0].send=async()=>{
+    sends++;
+    const error=Error('private diagnostic must never be logged');
+    error.code='recipient_identity_unverified';
+    throw error;
+  };
+  const request={to:phone,text:'Teste sintético, sem dados de clientes',operation_id:id,source:'appointment'};
+  const reply=await m.send(a.id,a.key,request);
+  assert.deepEqual(reply,{operation_id:id,state:'refused',accepted:false,delivery:'not_sent'});
+  assert.deepEqual(await m.send(a.id,a.key,request),reply);
+  assert.equal(sends,1,'a refused operation is never replayed');
+  assert.equal(JSON.stringify(reply).includes('private'),false);
 });
 
 test('a provider exception after a durable grant never releases the uncertain slot',async t=>{

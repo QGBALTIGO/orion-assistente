@@ -1,0 +1,113 @@
+{
+  "source_head": "dbce9c3104d220c6b061ff1a4f31380158da4d94",
+  "base_head": "5633a2ec596f1f7884b17f6c685f296318697fe9",
+  "pull_request": 267,
+  "repository": "QGBALTIGO/orion-assistente",
+  "checkout": {
+    "synthetic_merge": "4578c72f9bc4e0e3ee463a83ba8000b6af1002e5",
+    "github_compare_changed_files": 0
+  },
+  "primary_gates": {
+    "bridge": {
+      "run_id": 42092706637,
+      "job_id": 127474656796,
+      "status": "success",
+      "critical": {
+        "tests": 345,
+        "passed": 345,
+        "failed": 0,
+        "skipped": 0
+      },
+      "npm_audit_vulnerabilities": 0,
+      "docker_image": "sha256:fc324aa12d509321cd1933557f49a32aa7af9549b0d034b30025836ec0f2f525",
+      "comparison": {
+        "baseline_tests": 876,
+        "baseline_passed": 857,
+        "baseline_failed": 19,
+        "candidate_tests": 1031,
+        "candidate_passed": 1012,
+        "candidate_failed": 19,
+        "new_failed_identities": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "global_suite_passed": false
+      },
+      "artifact": {
+        "id": 13445794341,
+        "file": "ci-transport-dbce9c3.zip",
+        "sha256": "075951f4b286cfd4eb9d4f9d4291c1259b7889bb75169ef0e9223da72231187a",
+        "digest_verified": true
+      }
+    },
+    "database": {
+      "run_id": 42092706637,
+      "job_id": 127474657042,
+      "status": "success",
+      "tests": 301,
+      "integration": 67,
+      "unit": 234,
+      "failed": 0,
+      "skipped": 0,
+      "errors": 0,
+      "artifact": {
+        "id": 13444809501,
+        "file": "ci-database-dbce9c3.zip",
+        "sha256": "05b8b0a8a8968cbeb100e97006a40b3526089970127e0e5073d56a4e1b8effca",
+        "digest_verified": true
+      }
+    },
+    "panel": {
+      "run_id": 42092694155,
+      "job_id": 127474603012,
+      "status": "success",
+      "tests": 27,
+      "passed": 27,
+      "failed": 0,
+      "skipped": 0,
+      "artifact": "No ZIP uploaded by panel job; exact decoded job log saved."
+    }
+  },
+  "security_critical": {
+    "run_id": 42092706694,
+    "status": "success",
+    "qr_job": 127474648777,
+    "qr_tests": 110,
+    "url_job": 127474649342,
+    "url_tests": 33
+  },
+  "connection_readiness": {
+    "run_id": 42092706611,
+    "contracts": {
+      "job_id": 127474648001,
+      "status": "success",
+      "node_tests": 178,
+      "dom_tests": 131,
+      "failed": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "locked_bridge_dependencies_installed": true
+    },
+    "postgres": {
+      "job_id": 127474648571,
+      "status": "queued"
+    },
+    "chromium": {
+      "job_id": 127474648408,
+      "status": "queued"
+    },
+    "webkit": {
+      "job_id": 127474648579,
+      "status": "queued"
+    }
+  },
+  "limitations": [
+    "No real WhatsApp delivery or provider socket count inferred from CI.",
+    "19 inherited panel-ui fixture failures remain; full suite is not globally green.",
+    "Other connection readiness jobs (PostgreSQL, Chromium, WebKit) remain queued; their status is not passed."
+  ],
+  "checked_at_utc": "2026-11-05 19:26:16 UTC",
+  "saved_log_sha256": {
+    "ci-panel-dbce9c3.log": "8ac0bfafd871947be1408def7fd9f51ad90311453e6bba06bd6bad2de23eefb6",
+    "ci-readiness-contracts-dbce9c3.log": "4901d479377b6e9b691e202e61bc01408d091184e25777b9b9a642ded44811e8"
+  }
+}

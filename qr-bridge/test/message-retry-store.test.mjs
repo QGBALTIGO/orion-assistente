@@ -7,7 +7,8 @@ test("getMessage devolve mensagem original para retentativa criptografada",()=>{
   const store=makeMessageRetryStore();
   const msg={conversation:"Mensagem de teste"};
   assert.equal(store.save({id:"ID-1",remoteJid:"5511999999999@s.whatsapp.net"},msg),true);
-  assert.equal(store.get({id:"ID-1",remoteJid:"outro@lid"}),msg);
+  assert.equal(store.get({id:"ID-1",remoteJid:"5511999999999@s.whatsapp.net"}),msg);
+  assert.equal(store.get({id:"ID-1",remoteJid:"outro@lid"}),undefined);
   assert.equal(store.get({id:"ID-inexistente"}),undefined);
 });
 test("cache rejeita mensagens sem ID ou corpo",()=>{

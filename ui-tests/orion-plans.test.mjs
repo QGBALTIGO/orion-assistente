@@ -27,33 +27,191 @@ function fixture(overrides={},options={}){
  window.eval(code);
  const subscription=overrides.subscription;
  const effective=subscription?planState(subscription.code?.replace('orion_','')||'essencial',{name:subscription.name,commercial_subscription:subscription,active:subscription.status==='active',limits:{max_professionals:subscription.max_professionals,active_professionals:0,excess_professionals:0}}):planState('none');
- const calls=[],overview={...base,effective_plan:effective,...overrides};
- const ctx={user:{name:'Pessoa Sintética'},tenant:{name:'Empresa Sintética'},canManage:true,isAdmin:!!options.isAdmin,
+ const calls=[],overview={...base,effective_plan:effective,...overrides};let current=options.pixCurrent||{status:'none'},chargeAttempts=0;
+ const ctx={user:{name:'Pessoa Sintética'},tenant:{name:'Empresa Sintética'},canManage:options.canManage!==false,isAdmin:!!options.isAdmin,
   request:async(path,method='GET',data)=>{calls.push({path,method,data});
    if(path==='/plan-trial'){overview.trial={status:'pending',started_at:null,ends_at:null};return{status:'pending',message:'Solicitação recebida!'};}
    if(path==='/plan-overview')return overview;
-   if(path==='/plan-direct-config')return options.directConfig||{available:false,methods:[],sdk_client_id:null};
-   if(path==='/plan-direct-prepare' && options.directConfig?.available)
-    return {status:'ready',intent_id:'synthetic-intent-id',plan_code:data.plan_code,
-            monthly_cents:overview.plans.find(plan=>plan.code===data.plan_code).monthly_cents};
-   if(path==='/plan-direct-charge' && options.directConfig?.available)
-    return {status:'pending_confirmation',intent_id:'synthetic-intent-id',
+   if(path==='/plan-pix-current'){if(options.currentUnavailable||options.currentUnavailableAfterCharge&&chargeAttempts)throw Error('synthetic current lookup unavailable');return current;}
+   if(path==='/plan-pix-config')return options.pixConfig||{available:false,methods:[],mode:'manual_30_days'};
+   if(path==='/plan-pix-charge' && options.pixConfig?.available){
+    const attempt=chargeAttempts++;
+    if(attempt<(options.chargeRejections?.length||0)){
+     current=options.rejectionCurrent||{status:'none'};
+     throw Object.assign(Error('synthetic payment form rejection'),{status:options.chargeRejections[attempt]});
+    }
+    current={status:'pending_confirmation',intent_id:'synthetic-pix-intent',
+            plan_code:data.plan_code,
+            monthly_cents:overview.plans.find(plan=>plan.code===data.plan_code).monthly_cents,
             pix_code:'00020126580014br.gov.bcb.pix.synthetic-example',
             pix_qr_data_uri:'data:image/png;base64,c3ludGhldGlj'};
-   if(path.startsWith('/plan-direct-status?') && options.directConfig?.available)
-    return {status:'pending'};
+    if(options.lostChargeResponse)throw Error('synthetic response lost after creation');return current;
+   }
+   if(path.startsWith('/plan-pix-status?') && options.pixConfig?.available)
+    return options.pixStatus||{status:'pending'};
    throw Error('Caminho não permitido: '+path);
   }};
  const root=window.document.getElementById('host');
  window.OrionPlans.mount(root,overview,ctx);
- return {window,root,calls,ctx,close:()=>dom.window.close()};
+ return {window,root,calls,ctx,overview,get current(){return current;},close:()=>dom.window.close()};
 }
 function tick(){return new Promise(resolve=>setImmediate(resolve));}
+function fillPix(f,dialog){
+ const form=dialog.querySelector('[data-pix-form]');
+ for(const [key,value] of Object.entries({name:'Pessoa Sintética',email:'synthetic@example.test',phone:'(67) 99999-1111',doc_number:'52998224725'}))form.elements.namedItem(key).value=value;
+ form.elements.namedItem('one_time').checked=true;form.elements.namedItem('understood').checked=true;
+ form.dispatchEvent(new f.window.Event('submit',{bubbles:true,cancelable:true}));
+}
+
+test('only the owner sees an enabled prepaid renewal, including when the current tier matches',()=>{
+ const active=planState('essencial',{active:true,source:'pix_prepaid'});
+ for(const options of [{canManage:false},{}]){
+  const f=fixture({effective_plan:active,can_manage_plan:false,checkout_enabled:true},options);
+  try{assert.ok([...f.root.querySelectorAll('[data-op-checkout]')].every(button=>button.disabled));
+   assert.equal(f.calls.length,0);assert.match(f.root.querySelector('.op-essencial [data-op-checkout]').textContent,/Somente proprietário/);
+  }finally{f.close();}
+ }
+});
+
+test('catalogue is the one source for displayed price, consent, charged-price precondition and professional limits',async()=>{
+ const changed=base.plans.map(plan=>plan.code==='essencial'?{...plan,monthly_cents:1234,max_professionals:3}:plan);
+ const f=fixture({plans:changed},{pixConfig:{available:true,methods:['pix'],mode:'manual_30_days'}});
+ try{
+  assert.match(f.root.querySelector('.op-essencial').textContent,/12,34/);assert.match(f.root.querySelector('.op-essencial').textContent,/até 3 profissionais/);
+  const limits=[...f.root.querySelectorAll('.op-matrix-row')].find(row=>row.textContent.includes('Profissionais permitidos'));
+  assert.match(limits.textContent,/Até 3/);
+  f.root.querySelector('[data-op-checkout=essencial]').click();await tick();await tick();
+  const dialog=f.root.querySelector('.op-checkout-dialog');assert.match(dialog.textContent,/12,34/);fillPix(f,dialog);
+  await tick();await tick();assert.equal(f.calls.filter(call=>call.method==='POST').length,1);
+  assert.equal(f.calls.find(call=>call.path==='/plan-pix-charge').data.expected_cents,1234);
+  dialog.querySelector('[data-pix-close]').click();
+ }finally{f.close();}
+});
+
+test('invalid or duplicated catalogue prices cannot open a financial form or generate a request',()=>{
+ for(const plans of [base.plans.map(plan=>({...plan,monthly_cents:0})),base.plans.map(plan=>({...plan,monthly_cents:'2990'})),
+   [...base.plans,{...base.plans[0]}]]){
+  const f=fixture({plans});try{assert.equal(f.root.querySelector('.op-essencial [data-op-checkout]').disabled,true);assert.equal(f.calls.length,0);}finally{f.close();}
+ }
+});
+
+test('reopening or reloading restores the authenticated existing Pix with its frozen amount and no new charge',async()=>{
+ const pending={status:'pending_confirmation',intent_id:'synthetic-existing',plan_code:'elite',monthly_cents:1234,
+  pix_code:'synthetic-existing-qr',pix_qr_data_uri:'data:image/png;base64,c3ludGhldGlj'};
+ for(let reload=0;reload<2;reload++){
+  const f=fixture({}, {pixCurrent:pending});try{
+   for(let reopen=0;reopen<2;reopen++){
+    f.root.querySelector('[data-op-checkout=essencial]').click();await tick();await tick();
+    const dialog=f.root.querySelector('.op-checkout-dialog');assert.ok(dialog.open);
+    assert.equal(dialog.querySelector('[data-pix-code]').value,pending.pix_code);assert.match(dialog.querySelector('.op-payment-summary').textContent,/Elite.*12,34/);
+    assert.equal(dialog.querySelector('[data-pix-form]').hidden,true);assert.match(dialog.textContent,/Nenhuma nova cobrança/);
+    dialog.querySelector('[data-pix-close]').click();
+   }
+   assert.equal(f.calls.filter(call=>call.path==='/plan-pix-current').length,2);
+   assert.equal(f.calls.some(call=>call.method==='POST'||call.path==='/plan-pix-config'),false);
+  }finally{f.close();}
+ }
+});
+
+test('an ambiguous creation response recovers only the original order through GET',async()=>{
+ const f=fixture({}, {pixConfig:{available:true,methods:['pix'],mode:'manual_30_days'},lostChargeResponse:true});
+ try{
+  f.root.querySelector('[data-op-checkout=essencial]').click();await tick();await tick();
+  const dialog=f.root.querySelector('.op-checkout-dialog');fillPix(f,dialog);await tick();await tick();await tick();
+  assert.equal(f.calls.filter(call=>call.method==='POST').length,1);assert.equal(f.calls.filter(call=>call.path==='/plan-pix-current').length,2);
+  assert.equal(dialog.querySelector('[data-pix-code]').value,f.current.pix_code);assert.equal(dialog.querySelector('[data-pix-form]').hidden,true);
+  dialog.querySelector('[data-pix-close]').click();
+ }finally{f.close();}
+});
+
+for(const httpStatus of [400,422])test(`definitive${httpStatus} plus confirmed empty recovery permits corrected data and a new explicit click`,async()=>{
+ const f=fixture({}, {pixConfig:{available:true,methods:['pix'],mode:'manual_30_days'},chargeRejections:[httpStatus]});
+ try{f.root.querySelector('[data-op-checkout=essencial]').click();await tick();await tick();
+  const dialog=f.root.querySelector('.op-checkout-dialog');fillPix(f,dialog);await tick();await tick();await tick();
+  const form=dialog.querySelector('[data-pix-form]'),submit=dialog.querySelector('[data-pix-submit]');
+  assert.equal(f.calls.filter(call=>call.method==='POST').length,1,'A rejection never sends another charge automatically');
+  assert.equal(submit.disabled,false);assert.equal(form.hidden,false);
+  form.elements.namedItem('email').value='corrected@example.test';
+  form.dispatchEvent(new f.window.Event('submit',{bubbles:true,cancelable:true}));await tick();await tick();
+  const charges=f.calls.filter(call=>call.method==='POST');assert.equal(charges.length,2);assert.equal(charges[1].data.payer.email,'corrected@example.test');
+  assert.ok(dialog.querySelector('[data-pix-code]'));dialog.querySelector('[data-pix-close]').click();
+ }finally{f.close();}
+});
+
+test('ambiguous response or unavailable recovery cannot enable a second financial POST',async()=>{
+ for(const options of [{chargeRejections:[409]},{chargeRejections:[500]},{chargeRejections:[503]},
+  {chargeRejections:[undefined]},{chargeRejections:[400],currentUnavailableAfterCharge:true},
+  {chargeRejections:[400],rejectionCurrent:{status:'pending_confirmation',intent_id:'synthetic-racing-tab',plan_code:'essencial',monthly_cents:2990}}]){
+  const f=fixture({}, {...options,pixConfig:{available:true,methods:['pix'],mode:'manual_30_days'}});
+  try{f.root.querySelector('[data-op-checkout=essencial]').click();await tick();await tick();
+   const dialog=f.root.querySelector('.op-checkout-dialog');fillPix(f,dialog);await tick();await tick();await tick();
+   assert.equal(dialog.querySelector('[data-pix-submit]').disabled,true);
+   dialog.querySelector('form').dispatchEvent(new f.window.Event('submit',{bubbles:true,cancelable:true}));await tick();
+   assert.equal(f.calls.filter(call=>call.method==='POST').length,1);dialog.querySelector('[data-pix-close]').click();
+  }finally{f.close();}
+ }
+});
+
+test('pending bank confirmation without a reusable QR keeps polling the original intent without another charge',async()=>{
+ const f=fixture({}, {pixCurrent:{status:'pending_confirmation',intent_id:'synthetic-confirming',plan_code:'essencial',monthly_cents:2990},
+  pixConfig:{available:true,methods:['pix'],mode:'manual_30_days'}});
+ try{f.root.querySelector('[data-op-checkout=essencial]').click();await tick();await tick();
+  const dialog=f.root.querySelector('.op-checkout-dialog');assert.equal(dialog.querySelector('[data-pix-code]'),null);
+  assert.equal(dialog.querySelector('[data-pix-form]').hidden,true);assert.match(dialog.textContent,/Aguardando confirmação/);
+  dialog.querySelector('[data-pix-check]').click();await tick();await tick();
+  assert.equal(f.calls.filter(call=>call.path==='/plan-pix-status?intent_id=synthetic-confirming').length,1);
+  assert.equal(f.calls.some(call=>call.method==='POST'||call.path==='/plan-pix-config'),false);dialog.querySelector('[data-pix-close]').click();
+ }finally{f.close();}
+});
+
+test('an expired paid period stops the old payment wait and offers no automatic renewal',async()=>{
+ const f=fixture({}, {pixCurrent:{status:'pending_confirmation',intent_id:'synthetic-expired',plan_code:'essencial',monthly_cents:2990},
+  pixConfig:{available:true,methods:['pix'],mode:'manual_30_days'},pixStatus:{status:'expired'}});
+ try{f.root.querySelector('[data-op-checkout=essencial]').click();await tick();await tick();
+  const dialog=f.root.querySelector('.op-checkout-dialog');dialog.querySelector('[data-pix-check]').click();await tick();await tick();
+  assert.match(dialog.querySelector('[data-pix-status]').textContent,/período encerrou/);
+  assert.equal(dialog.querySelector('[data-pix-form]').hidden,true);assert.equal(f.calls.some(call=>call.method==='POST'),false);
+  dialog.querySelector('[data-pix-close]').click();
+ }finally{f.close();}
+});
+
+test('unknown, unavailable or review-required current payment cannot expose another charge form',async()=>{
+ for(const options of [{currentUnavailable:true},{pixCurrent:{status:'review_required'}},{pixCurrent:{status:'unexpected'}}]){
+  const f=fixture({}, {...options,pixConfig:{available:true,methods:['pix'],mode:'manual_30_days'}});
+  try{f.root.querySelector('[data-op-checkout=essencial]').click();await tick();await tick();const dialog=f.root.querySelector('.op-checkout-dialog');
+   assert.equal(dialog.querySelector('[data-pix-form]').hidden,true);assert.equal(f.calls.some(call=>call.method==='POST'||call.path==='/plan-pix-config'),false);
+   dialog.querySelector('[data-pix-close]').click();
+  }finally{f.close();}
+ }
+});
 
 test('manual Elite access is shown separately from the commercial Essencial subscription without another checkout',()=>{
  const subscription={code:'orion_essencial',name:'Orion Essencial',monthly_cents:2990,max_professionals:2,status:'active'};
  const f=fixture({subscription,effective_plan:planState('elite',{source:'manual',manual_assignment:{plan_code:'elite',active:true},commercial_subscription:subscription})});
  try{assert.match(f.root.querySelector('[data-op-effective-plan]').textContent,/Elite|Liberação manual/);assert.match(f.root.querySelector('.op-account-state:not([data-op-effective-plan])').textContent,/Essencial|29,90/);assert.equal(f.root.querySelector('.op-elite [data-op-checkout]').textContent,'Plano atual');assert.equal(f.root.querySelector('.op-elite [data-op-checkout]').disabled,true);assert.equal(f.calls.some(call=>call.method==='POST'),false);}finally{f.close();}
+});
+
+test('canceling renewal keeps the server-verified paid period visible without promising another automatic charge',()=>{
+ const subscription={code:'orion_essencial',name:'Orion Essencial',monthly_cents:2990,max_professionals:2,status:'canceled',next_renewal_at:'2027-01-01T00:00:00Z'};
+ const effective=planState('essencial',{active:true,source:'cakto',valid_until:'2027-01-01T00:00:00Z',commercial_subscription:subscription});
+ const f=fixture({subscription,effective_plan:effective});try{
+  assert.match(f.root.querySelector('[data-op-effective-plan]').textContent,/Renovação cancelada.*Acesso pago até/);
+  const banner=f.root.querySelector('.op-account-state:not([data-op-effective-plan])');
+  assert.match(banner.textContent,/Renovação cancelada/);assert.match(banner.textContent,/Acesso pago até/);
+  assert.doesNotMatch(banner.textContent,/Próxima cobrança|Mensalidade/);
+  assert.equal(f.root.querySelector('.op-essencial [data-op-checkout]').disabled,true);assert.equal(f.calls.length,0);
+ }finally{f.close();}
+});
+
+test('billing unavailable is explained before checkout without starting a charge',()=>{
+ const f=fixture();
+ try{
+  const notice=f.root.querySelector('.op-billing-notice');
+  assert.ok(notice);
+  assert.match(notice.textContent,/temporariamente indisponíveis/);
+  assert.match(f.root.querySelector('.op-essencial .op-plan-caption').textContent,/nenhuma cobrança/);
+  assert.equal(f.calls.some(call=>call.method==='POST'),false);
+ }finally{f.close();}
 });
 
 test('three actual card prices, limits, recommendation and explicit AI separation',()=>{
@@ -198,158 +356,105 @@ test('current paid subscription does not offer a second purchase',()=>{
  }finally{f.close();}
 });
 
-test('clicking subscribe never navigates away; integrated Orion modal is fail closed',async()=>{
+test('clicking subscribe never redirects and checks one-time Pix server availability',async()=>{
  const f=fixture();
  try{
   f.root.querySelector('[data-op-checkout=profissional]').click();
   await tick();await tick();
   const dialog=f.root.querySelector('.op-checkout-dialog');
   assert.ok(dialog && dialog.open);
-  assert.match(dialog.textContent,/Finalizar assinatura/);
+  assert.match(dialog.textContent,/Pagar 30 dias de acesso/);
   assert.match(dialog.textContent,/R\$\s*89,90/);
   assert.match(dialog.textContent,/temporariamente indisponível/);
-  assert.equal(f.calls.filter(c=>c.path==='/plan-direct-config').length,1);
-  assert.equal(f.calls.filter(c=>c.path==='/plan-direct-charge').length,0);
-  assert.equal(f.calls.filter(c=>c.path==='/plan-checkout').length,0);
-  assert.equal(f.root.querySelector('.op-account-state:not([data-op-effective-plan])'),null);
-  assert.doesNotMatch(dialog.textContent,/cakto/i);
+  assert.equal(f.calls.filter(c=>c.path==='/plan-pix-config').length,1);
+  assert.equal(f.calls.filter(c=>c.method==='POST').length,0);
+  assert.equal(dialog.querySelector('[data-pix-form]').hidden,true);
   assert.doesNotMatch(code,/window\.location\.assign\s*\(/);
-  dialog.querySelector('[data-op-checkout-close]').click();
+  dialog.querySelector('[data-pix-close]').click();
   assert.equal(f.root.querySelector('.op-checkout-dialog'),null);
  }finally{f.close();}
 });
 
-test('Pix result stays in Orion with local QR and copy code, never activates without backend',async()=>{
- const f=fixture({}, {directConfig:{available:true,methods:['pix','card'],sdk_client_id:'synthetic-sdk-id'}});
+test('Pix QR is generated inside Orion only after owner explicitly consents',async()=>{
+ const f=fixture({}, {pixConfig:{available:true,methods:['pix'],mode:'manual_30_days'}});
  try{
   f.root.querySelector('[data-op-checkout=essencial]').click();
   await tick();await tick();
   const dialog=f.root.querySelector('.op-checkout-dialog');
   assert.ok(dialog && dialog.open);
-  assert.equal(dialog.querySelector('[data-op-payment-body]').hidden,false);
-  const form=dialog.querySelector('[data-op-payment-form]');
+  const form=dialog.querySelector('[data-pix-form]');
+  assert.equal(form.hidden,false);
   form.elements.namedItem('name').value='Pessoa Sintética';
   form.elements.namedItem('email').value='synthetic@example.test';
   form.elements.namedItem('phone').value='(67) 99999-1111';
   form.elements.namedItem('doc_number').value='52998224725';
-  form.elements.namedItem('monthly_ack').checked=true;
-  form.elements.namedItem('processor_ack').checked=true;
+  form.elements.namedItem('one_time').checked=true;
+  form.elements.namedItem('understood').checked=true;
   form.dispatchEvent(new f.window.Event('submit',{bubbles:true,cancelable:true}));
   await tick();await tick();await tick();
-  const prepared=f.calls.filter(c=>c.path==='/plan-direct-prepare');
-  const charged=f.calls.filter(c=>c.path==='/plan-direct-charge');
-  assert.equal(prepared.length,1);
-  assert.equal(charged.length,1);
-  assert.equal(charged[0].data.method,'pix');
-  assert.equal(charged[0].data.payer.doc_type,'cpf');
-  assert.equal(charged[0].data.payer.doc_number,'52998224725');
-  assert.equal(charged[0].data.card_token,null);
-  assert.deepEqual(JSON.parse(JSON.stringify(charged[0].data.three_ds)),null);
-  assert.equal(dialog.querySelector('[data-op-payment-result]').hidden,false);
-  assert.equal(dialog.querySelector('[data-op-pix-code]').value,'00020126580014br.gov.bcb.pix.synthetic-example');
-  assert.ok(dialog.querySelector('img.op-payment-qr').getAttribute('src').startsWith('data:image/png;base64,'));
-  assert.equal(f.root.querySelector('.op-account-state:not([data-op-effective-plan])'),null);
-  dialog.querySelector('[data-op-checkout-close]').click();
-  assert.equal(f.root.querySelector('.op-checkout-dialog'),null);
+  const charges=f.calls.filter(c=>c.path==='/plan-pix-charge');
+  assert.equal(charges.length,1);
+  assert.equal(charges[0].data.plan_code,'essencial');
+  assert.equal(charges[0].data.payer.doc_type,'cpf');
+  assert.equal(charges[0].data.payer.doc_number,'52998224725');
+  assert.equal(charges[0].data.consent_one_time,true);
+  assert.ok(!('card_token' in charges[0].data));
+  assert.equal(dialog.querySelector('[data-pix-result]').hidden,false);
+  assert.equal(dialog.querySelector('[data-pix-code]').value,'00020126580014br.gov.bcb.pix.synthetic-example');
+  assert.ok(dialog.querySelector('img.op-payment-qr').src.startsWith('data:image/png;base64,'));
+  assert.equal(f.calls.filter(c=>c.path==='/plan-overview').length,0,
+               'The client never grants access from an unpaid QR code.');
+  dialog.querySelector('[data-pix-close]').click();
  }finally{f.close();}
 });
 
-test('card mode never sends raw PAN/CVV to application without tokenization',async()=>{
- const f=fixture({}, {directConfig:{available:true,methods:['pix','card'],sdk_client_id:'synthetic-sdk-id'}});
+test('one-time Pix checkout does not render cards, recurring methods or banking forms',async()=>{
+ const f=fixture({}, {pixConfig:{available:true,methods:['pix'],mode:'manual_30_days'}});
  try{
   f.root.querySelector('[data-op-checkout=elite]').click();
   await tick();await tick();
-  const dialog=f.root.querySelector('.op-checkout-dialog');
-  dialog.querySelector('[data-op-payment-method=card]').click();
-  assert.equal(dialog.querySelector('[data-op-card-fields]').hidden,false);
-  assert.equal(dialog.querySelector('[name=doc_type]'),null);
-  for(const field of ['zip','state','city','street','number','complement'])
-   assert.equal(dialog.querySelector('[name='+field+']'),null,field);
-  assert.ok(dialog.querySelector('[name=card_number]').required);
-  assert.ok(dialog.querySelector('[name=cvv]').required);
-  assert.ok(dialog.querySelector('[name=card_number]').disabled===false);
-  assert.equal(f.calls.filter(c=>c.path==='/plan-direct-charge').length,0);
-  dialog.querySelector('[data-op-checkout-close]').click();
- }finally{f.close();}
-});
-
-test('credit card SDK tokenizes in browser and Orion API receives only token, not PAN/CVV',async()=>{
- const f=fixture({}, {directConfig:{available:true,methods:['pix','card'],sdk_client_id:'synthetic-sdk-id'}});
- let tokenized=false,challenged=false;
- try{
-  f.window.Cakto={CaktoSDK:class{
-   constructor(settings){assert.equal(settings.client_id,'synthetic-sdk-id');}
-   async initAntifraud(){}
-   async createToken(card){tokenized=card.cardNumber==='4111111111111111'&&card.cvv==='123';return{cardToken:'synthetic-card-token-01234567890'};}
-   async authenticate3DS(data){challenged=data.customer.amount===8990&&!('address' in data.customer);return{success:true,cavv:'synthetic-cavv',eci:'05',referenceId:'synthetic-ref',version:'2.2.0'};}
-   async completeAntifraudProfile(){}
-   getAntifraudReference(){return 'synthetic-antifraud-reference';}
-  }};
-  f.root.querySelector('[data-op-checkout=profissional]').click();
-  await tick();await tick();
   const dlg=f.root.querySelector('.op-checkout-dialog');
-  dlg.querySelector('[data-op-payment-method=card]').click();
-  const form=dlg.querySelector('form');
-  const fill=(key,value)=>{form.elements.namedItem(key).value=value;};
-  fill('name','Pessoa Sintética');fill('email','synthetic@example.test');
-  fill('phone','(67) 99999-1111');fill('doc_number','52998224725');
-  fill('holder','Pessoa Sintética');fill('card_number','4111111111111111');
-  fill('expiry','12/30');fill('cvv','123');
-  
-  form.elements.namedItem('monthly_ack').checked=true;
-  form.elements.namedItem('processor_ack').checked=true;
-  form.dispatchEvent(new f.window.Event('submit',{bubbles:true,cancelable:true}));
-  for(let i=0;i<6;i++)await tick();
-  assert.equal(tokenized,true);
-  assert.equal(challenged,true);
-  const charge=f.calls.find(c=>c.path==='/plan-direct-charge');
-  assert.ok(charge,'synthetic card token charge created');
-  assert.equal(charge.data.method,'card');
-  assert.equal(charge.data.card_token,'synthetic-card-token-01234567890');
-  assert.equal(charge.data.three_ds.eci,'05');
-  assert.equal(Object.prototype.hasOwnProperty.call(charge.data.three_ds,'xid'),false);
-  assert.equal(charge.data.antifraud_reference,'synthetic-antifraud-reference');
-  assert.equal(form.elements.namedItem('card_number').value,'');
-  assert.equal(form.elements.namedItem('cvv').value,'');
-  assert.doesNotMatch(JSON.stringify(charge.data),/4111111111111111|(?:\\b|")cvv(?:\\b|")/i);
-  dlg.querySelector('[data-op-checkout-close]').click();
+  assert.match(dlg.textContent,/Sem débito automático e sem cartão/);
+  for(const name of ['card_number','cvv','expiry','holder','doc_type','zip','street','city'])
+    assert.equal(dlg.querySelector('[name='+name+']'),null,name);
+  assert.equal(dlg.querySelector('[data-op-payment-method=card]'),null);
+  assert.doesNotMatch(code,/CaktoSDK|createToken\(|authenticate3DS\(/);
+  assert.equal(f.calls.some(c=>c.path==='/plan-direct-charge'),false);
+  dlg.querySelector('[data-pix-close]').click();
  }finally{f.close();}
 });
 
-test('one CPF/CNPJ field applies both masks and derives the correct payment document kind',async()=>{
- for(const [raw,display,kind] of [
+test('CPF and CNPJ masks correctly identify payer without selecting document type',async()=>{
+ for(const [raw,shown,kind] of [
   ['52998224725','529.982.247-25','cpf'],
   ['11444777000161','11.444.777/0001-61','cnpj']
  ]){
-  const f=fixture({}, {directConfig:{available:true,methods:['pix','card'],sdk_client_id:'synthetic'}});
+  const f=fixture({}, {pixConfig:{available:true,methods:['pix'],mode:'manual_30_days'}});
   try{
    f.root.querySelector('[data-op-checkout=essencial]').click();
    await tick();await tick();
    const dlg=f.root.querySelector('.op-checkout-dialog'),form=dlg.querySelector('form');
-   assert.equal(dlg.querySelector('[name=doc_type]'),null);
-   assert.equal(dlg.querySelectorAll('[name=doc_number]').length,1);
    const doc=form.elements.namedItem('doc_number');
-   doc.value=raw;
-   doc.dispatchEvent(new f.window.Event('input',{bubbles:true}));
-   assert.equal(doc.value,display);
+   doc.value=raw;doc.dispatchEvent(new f.window.Event('input',{bubbles:true}));
+   assert.equal(doc.value,shown);
    form.elements.namedItem('name').value='Pessoa Sintética';
    form.elements.namedItem('email').value='synthetic@example.test';
    form.elements.namedItem('phone').value='(67) 99999-1111';
-   form.elements.namedItem('monthly_ack').checked=true;
-   form.elements.namedItem('processor_ack').checked=true;
+   form.elements.namedItem('one_time').checked=true;
+   form.elements.namedItem('understood').checked=true;
    form.dispatchEvent(new f.window.Event('submit',{bubbles:true,cancelable:true}));
-   for(let i=0;i<5;i++)await tick();
-   const charged=f.calls.filter(x=>x.path==='/plan-direct-charge');
-   assert.equal(charged.length,1);
-   assert.equal(charged[0].data.payer.doc_type,kind);
-   assert.equal(charged[0].data.payer.doc_number,raw);
-   dlg.querySelector('[data-op-checkout-close]').click();
+   for(let i=0;i<4;i++)await tick();
+   const charge=f.calls.find(c=>c.path==='/plan-pix-charge');
+   assert.ok(charge);
+   assert.equal(charge.data.payer.doc_number,raw);
+   assert.equal(charge.data.payer.doc_type,kind);
+   dlg.querySelector('[data-pix-close]').click();
   }finally{f.close();}
  }
 });
 
-test('incomplete CPF or CNPJ blocks preparing and charging',async()=>{
- const f=fixture({}, {directConfig:{available:true,methods:['pix','card'],sdk_client_id:'synthetic'}});
+test('invalid CPF/CNPJ never creates Pix charge',async()=>{
+ const f=fixture({}, {pixConfig:{available:true,methods:['pix'],mode:'manual_30_days'}});
  try{
   f.root.querySelector('[data-op-checkout=elite]').click();
   await tick();await tick();
@@ -358,14 +463,26 @@ test('incomplete CPF or CNPJ blocks preparing and charging',async()=>{
   form.elements.namedItem('email').value='synthetic@example.test';
   form.elements.namedItem('phone').value='(67) 99999-1111';
   form.elements.namedItem('doc_number').value='123456789012';
-  form.elements.namedItem('monthly_ack').checked=true;
-  form.elements.namedItem('processor_ack').checked=true;
+  form.elements.namedItem('one_time').checked=true;
+  form.elements.namedItem('understood').checked=true;
   form.dispatchEvent(new f.window.Event('submit',{bubbles:true,cancelable:true}));
   await tick();await tick();
-  assert.equal(f.calls.filter(x=>x.path==='/plan-direct-prepare').length,0);
-  assert.equal(f.calls.filter(x=>x.path==='/plan-direct-charge').length,0);
+  assert.equal(f.calls.filter(c=>c.path==='/plan-pix-charge').length,0);
   assert.equal(form.elements.namedItem('doc_number').validity.customError,true);
-  dlg.querySelector('[data-op-checkout-close]').click();
+  dlg.querySelector('[data-pix-close]').click();
+ }finally{f.close();}
+});
+
+test('current prepaid subscription can renew same plan manually but not switch tiers',()=>{
+ const valid=planState('essencial',{active:true,source:'pix_prepaid',valid_until:'2027-01-01T00:00:00Z'});
+ const f=fixture({effective_plan:valid,checkout_enabled:true});
+ try{
+  assert.match(f.root.querySelector('[data-op-effective-plan]').textContent,/Pix pré-pago/);
+  assert.match(f.root.querySelector('.op-essencial [data-op-checkout]').textContent,/Renovar com Pix/);
+  assert.equal(f.root.querySelector('.op-essencial [data-op-checkout]').disabled,false);
+  assert.equal(f.root.querySelector('.op-profissional [data-op-checkout]').disabled,true);
+  assert.equal(f.root.querySelector('.op-elite [data-op-checkout]').disabled,true);
+  assert.equal(f.root.querySelector('[data-op-trial]').disabled,true);
  }finally{f.close();}
 });
 

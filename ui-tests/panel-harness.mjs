@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, webcrypto } from 'node:crypto';
 import { JSDOM, VirtualConsole } from 'jsdom';
 import { defaultResponse, flush, tenantA, planState } from './harness.mjs';
 
@@ -27,6 +27,8 @@ export async function makePanel({ role = 'support', tenantRole = 'owner',
   window.HTMLDialogElement.prototype.close = function () { this.removeAttribute('open'); this.dispatchEvent(new window.Event('close')); };
   window.confirm = () => false;
   Object.defineProperty(window.crypto, 'randomUUID', { value: randomUUID, configurable: true });
+  Object.defineProperty(window.crypto, 'subtle', { value: webcrypto.subtle, configurable: true });
+  window.TextEncoder = TextEncoder;
   Object.defineProperty(window.navigator, 'clipboard', { value: { writeText: async () => {} }, configurable: true });
   Object.defineProperty(window, 'innerWidth', { value: width, configurable: true });
   window.matchMedia = media => {
@@ -82,10 +84,11 @@ export async function makePanel({ role = 'support', tenantRole = 'owner',
   const inline = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)];
   assert.equal(inline.length, 2, 'theme bootstrap and the existing panel controller must remain present');
   window.eval(inline[0][1]);
-  for (const file of ['orion-fields.js','orion-connect.js','orion-onboarding.js','orion-channels.js','orion-automations.js'])
+  for (const file of ['orion-fields.js','orion-connect.js','orion-onboarding.js','orion-channels.js','orion-subscription-devices.js','orion-subscription-dashboard.js','orion-subscription-chatbot.js','orion-subscription-chatbot-test.js','orion-subscription-templates.js','orion-subscription-sent-messages.js','orion-subscription-diagnostics.js','orion-subscription-campaigns.js','orion-automations.js'])
     window.eval(await readFile(new URL('../app/static/'+file, import.meta.url), 'utf8'));
   window.eval(suite);
   window.eval(await readFile(new URL('../app/static/orion-admin-center.js', import.meta.url), 'utf8'));
+  window.eval(await readFile(new URL('../app/static/orion-demo-center.js', import.meta.url), 'utf8'));
   window.eval(inline[1][1]);
   await flush();
   function element(selector) { const node = document.querySelector(selector); assert.ok(node, 'missing ' + selector); return node; }

@@ -21,6 +21,7 @@ class Database:
     def __init__(self):
         self.tenant,self.account,self.intent_id=uuid4(),uuid4(),uuid4()
         self.manual=False;self.transaction=False;self.shared=False;self.checked_owner=False
+        self.prepaid=False
         self.provider_posts=0;self.provider_reads=0;self.attempt=None;self.calls=[]
         self.on_offers=None
     async def __aenter__(self): return self
@@ -29,6 +30,7 @@ class Database:
     async def execute(self,query,params=None):
         sql=str(query);self.calls.append((sql,params))
         if "pg_advisory_xact_lock" in sql: return Result()
+        if "FROM orion_prepaid_pix_orders" in sql: return Result(1 if self.prepaid else None)
         if "SELECT a.state,a.method" in sql:
             return Result({"state":self.attempt["state"],"method":"pix","intent_state":"pending"})
         if "FROM orion_cakto_checkout_intents" in sql:
@@ -56,8 +58,8 @@ class Transaction:
 def checkout(monkeypatch):
     db=Database()
     async def state(session,tenant,lock="shared"):
-        assert session is db and tenant==db.tenant and lock=="shared"
-        db.shared=True
+        assert session is db and tenant==db.tenant and lock in {"shared", "exclusive"}
+        db.shared=lock=="shared"
         return {"manual_assignment":{"plan_code":"essencial","active":True} if db.manual else None}
     async def access(*_): return SimpleNamespace(role="owner",account_id=db.account)
     async def owner(*_): return db.account
@@ -90,8 +92,9 @@ def checkout(monkeypatch):
     monkeypatch.setattr(direct,"_ensure_owner",ensure)
     monkeypatch.setattr(plans,"support_session_factory",lambda:lambda:db)
     monkeypatch.setattr(direct,"support_session_factory",lambda:lambda:db)
-    monkeypatch.setattr(plans,"CaktoClient",ReadOnlyCakto)
-    monkeypatch.setattr(direct,"CaktoClient",ReadOnlyCakto)
+    provider = ReadOnlyCakto()
+    monkeypatch.setattr(plans,"cached_cakto_client",lambda:provider)
+    monkeypatch.setattr(direct,"cached_cakto_client",lambda:provider)
     monkeypatch.setattr(direct,"require_enabled",lambda:None)
     monkeypatch.setattr(direct,"owner",owner)
     monkeypatch.setattr(direct,"require_verified_webhooks",webhooks)
@@ -117,6 +120,33 @@ async def test_manual_active_blocks_new_checkout_before_any_provider_call_or_res
         else: await direct.direct_charge(db.tenant,charge(db),Actor("member",account_id=db.account))
     assert caught.value.status_code==409 and caught.value.detail["code"]=="MANUAL_PLAN_ACTIVE"
     assert db.provider_reads==db.provider_posts==0 and db.attempt is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["hosted", "prepare", "charge"])
+async def test_prepaid_access_or_ambiguous_pix_reservation_blocks_recurring_before_provider(checkout, operation):
+    db = checkout
+    db.prepaid = True
+    with pytest.raises(HTTPException) as caught:
+        if operation == "hosted":
+            await plans.start_plan_checkout(db.tenant, plans.CheckoutChoice(plan_code="essencial"), Actor("member", account_id=db.account))
+        elif operation == "prepare":
+            await direct.direct_prepare(db.tenant, direct.DirectPrepare(plan_code="essencial"), Actor("member", account_id=db.account))
+        else:
+            await direct.direct_charge(db.tenant, charge(db), Actor("member", account_id=db.account))
+    assert caught.value.detail["code"] == "CHECKOUT_CHANNEL_CONFLICT"
+    assert db.provider_reads == db.provider_posts == 0 and db.attempt is None
+
+
+@pytest.mark.asyncio
+async def test_pix_arriving_during_offer_read_is_rechecked_by_the_exclusive_recurring_writer(checkout):
+    db = checkout
+    db.on_offers = lambda: setattr(db, "prepaid", True)
+    with pytest.raises(HTTPException) as caught:
+        await plans.start_plan_checkout(db.tenant, plans.CheckoutChoice(plan_code="essencial"), Actor("member", account_id=db.account))
+    assert caught.value.detail["code"] == "CHECKOUT_CHANNEL_CONFLICT"
+    assert db.provider_reads == 1 and db.provider_posts == 0
+    assert not any("INSERT INTO orion_cakto_checkout_intents" in sql for sql, _ in db.calls)
 
 
 @pytest.mark.asyncio

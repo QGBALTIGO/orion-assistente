@@ -122,7 +122,7 @@ async def run() -> int:
         async with httpx.AsyncClient(timeout=16,follow_redirects=False) as http:
             response=await http.post(
                 BASE+"/webhook/event_test/"+str(app_id)+"/",
-                params={"event_id":TEST_EVENT},
+                params={"event":TEST_EVENT},
                 headers={"Authorization":"Bearer "+bearer},
             )
             response.raise_for_status()

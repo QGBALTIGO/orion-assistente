@@ -1,0 +1,16 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/qr-bridge"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "08:00"
+      timezone: "America/Campo_Grande"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "deps(whatsapp)"
+    # Review PRs and pass encrypted-retry/PN-LID CI before a live deploy.
+    # Never auto-merge a major Baileys upgrade into a linked WhatsApp session.

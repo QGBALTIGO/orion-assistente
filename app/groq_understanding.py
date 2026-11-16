@@ -15,6 +15,7 @@ from pydantic import ValidationError
 
 from app.groq_ai import GROQ_URL, GroqServiceError
 from app.qr_understanding import AMBIGUITIES, INTENTS, UnderstandingPlan, build_plan
+from app.qr_catalog_context import candidates, MAX_SERVICES
 
 STRICT_MODELS = frozenset({"openai/gpt-oss-20b", "openai/gpt-oss-120b"})
 SCHEMA_VERSION = "understanding_v3"
@@ -190,6 +191,12 @@ podemos seguir' pode ser confirm. Qualquer dúvida, pergunta, hipótese ou corre
 na MESMA fala impede confirm; alteração pede um novo resumo e outra confirmação.
 Um 'não' à confirmação não significa cancelar/agendar do zero: é recusa de concluir
 agora e o backend perguntará o que precisa ajustar, preservando o contexto.
+Contexto requested_date/professional_id/requested_time/time_relation contém escolhas
+anteriores já verificadas pelo backend, não pedidos novos. Use esses dados somente
+para entender retomadas explícitas ('o mesmo horário', 'aquele profissional',
+'continuar de onde paramos'). Ausência de uma nova informação não é autorização
+para preencher ou confirmar um pedido com dados antigos. Nenhum histórico autoriza
+reserva, cancelamento, remarcação ou confirmação.
 Quando houver ambiguidade decisiva, marque só os campos incertos em ambiguities.
 Não inclua explicações, raciocínio, respostas ou campos fora do schema.
 """
@@ -205,9 +212,11 @@ async def interpret_plan(*, message: str, catalog: list[dict], professionals: li
         raise GroqServiceError(503, "Interpretação estruturada ainda não configurada")
     if not isinstance(message, str) or not message.strip() or len(message) > 1500 or len(history) > 8:
         raise GroqServiceError(422, "Mensagem ou histórico fora do limite")
-    if len(catalog) > 60 or len(professionals) > 30 or len(faqs) > 30:
+    if len(catalog) > MAX_SERVICES or len(professionals) > 30 or len(faqs) > 30:
         raise GroqServiceError(422, "Contexto de catálogo fora do limite")
     try:
+        complete_catalog = catalog
+        catalog = candidates(message, catalog, context)
         clean_catalog = [{"id": str(UUID(str(x["id"]))), "name": str(x["name"])[:120],
                           "aliases": [str(a)[:80] for a in x.get("aliases", [])[:12]]} for x in catalog]
         clean_pros = [{"id": str(UUID(str(x["id"]))), "name": str(x["name"])[:120]} for x in professionals]
@@ -220,7 +229,8 @@ async def interpret_plan(*, message: str, catalog: list[dict], professionals: li
                 raise ValueError
         # Only structured conversational hints enter the model. No secrets,
         # tenant IDs, hold tokens, external URLs or complete state are forwarded.
-        safe_context = {name: context[name] for name in ("service_ids", "step", "time_period", "hours") if name in context}
+        safe_context = {name: context[name] for name in ("service_ids", "step", "time_period", "hours",
+            "requested_date", "professional_id", "requested_time", "time_relation") if name in context}
         if "service_ids" in safe_context:
             raw_ids = safe_context["service_ids"]
             if not isinstance(raw_ids, list) or len(raw_ids) > 6:
@@ -232,6 +242,20 @@ async def interpret_plan(*, message: str, catalog: list[dict], professionals: li
                                         not re.fullmatch(r"[a-z_]{1,40}", safe_context["step"])):
             raise ValueError
         if "time_period" in safe_context and safe_context["time_period"] not in {"morning", "afternoon", "evening"}:
+            raise ValueError
+        if "requested_date" in safe_context:
+            day = date.fromisoformat(safe_context["requested_date"])
+            if day.isoformat() != safe_context["requested_date"] or reference_date and day < reference_date:
+                raise ValueError
+        if "professional_id" in safe_context:
+            selected = str(UUID(str(safe_context["professional_id"])))
+            if selected not in {row["id"] for row in clean_pros}:
+                raise ValueError
+            safe_context["professional_id"] = selected
+        if "requested_time" in safe_context and (not isinstance(safe_context["requested_time"], str) or
+                not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", safe_context["requested_time"])):
+            raise ValueError
+        if "time_relation" in safe_context and safe_context["time_relation"] not in {"exact", "after", "before", "around"}:
             raise ValueError
         if "hours" in safe_context:
             hours = safe_context["hours"]
@@ -288,7 +312,7 @@ async def interpret_plan(*, message: str, catalog: list[dict], professionals: li
         phase = "validation"
         proposal = _wire_plan(raw, schema)
         phase = "catalog_guard"
-        return build_plan(message=message, catalog=clean_catalog, professionals=clean_pros, faqs=clean_faqs,
+        return build_plan(message=message, catalog=complete_catalog, professionals=clean_pros, faqs=clean_faqs,
                           context=safe_context, reference_date=reference_date, proposal=proposal)
     except (KeyError, IndexError, TypeError, ValueError, ValidationError, AttributeError) as error:
         logging.getLogger("orion.groq").warning("understanding_invalid finish=%s diagnostic=%s", reason,

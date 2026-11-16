@@ -1,6 +1,10 @@
 """Real rendering regression for Orion's weekly hours dialog (no live account)."""
 from pathlib import Path
 import pytest
+
+# Core PostgreSQL CI has no browser; dedicated browser workflows install
+# Playwright and run these real Chromium/WebKit tests independently.
+pytest.importorskip("playwright")
 from playwright.sync_api import sync_playwright
 from scripts.plan_fixture import synthetic_plan_state
 

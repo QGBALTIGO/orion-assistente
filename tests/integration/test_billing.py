@@ -19,7 +19,7 @@ async def test_landing_uses_first_party_request_form_without_a_sales_phone(monke
         assert r.status_code==200
         assert 'id="sales-request-form"' in r.text
         assert 'action="/api/public/sales-requests"' in r.text
-        assert 'href="/panel"' in r.text
+        assert 'href="/painel"' in r.text
         assert 'name="consent" required' in r.text
         assert "após a ativação pela equipe" in r.text
         assert "Preencher o formulário não cria uma assinatura" in r.text

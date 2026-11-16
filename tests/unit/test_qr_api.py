@@ -17,8 +17,8 @@ async def test_qr_requires_support_and_never_exposes_api_key(monkeypatch):
             assert response.status_code==401
         redirect=await client.get("/conectar-whatsapp",follow_redirects=False)
         assert redirect.status_code==303
-        assert redirect.headers["location"]=="/panel?aba=dispositivo"
-        html=await client.get("/panel")
+        assert redirect.headers["location"]=="/painel?aba=dispositivo"
+        html=await client.get("/painel")
         assert html.status_code==200
         assert "bridge-token-for-test" not in html.text
         assert "QR Code" in html.text

@@ -1,6 +1,7 @@
 """Real layout and form flows with synthetic performance data, on mobile and desktop."""
 import json
 import os
+import re
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -14,6 +15,7 @@ ARTIFACTS = ROOT / "test-artifacts" / "performance-history-goals"
 BRAND = {name: ROOT / "app/static" / name for name in (
     "figtree-latin.woff2", "outfit-latin.woff2", "orion-brand-light.svg",
     "orion-brand-dark.svg", "orion-symbol.svg")}
+PANEL_CSS = "\n".join(re.findall(r"<style[^>]*>([\s\S]*?)</style>", (ROOT / "app/static/panel.html").read_text(encoding="utf-8")))
 CSS = (ROOT / "app/static/orion-suite.css").read_text(encoding="utf-8")
 JS = (ROOT / "app/static/orion-suite.js").read_text(encoding="utf-8")
 FIELDS_CSS = (Path(__file__).resolve().parents[2] / "app/static/orion-fields.css").read_text(encoding="utf-8")
@@ -39,6 +41,8 @@ def test_performance_history_goals(browser_name, width, height, theme):
     with sync_playwright() as playwright:
         engine = getattr(playwright, browser_name)
         launch = {"channel": "chrome"} if browser_name == "chromium" and os.getenv("ORION_TEST_SYSTEM_CHROME") == "1" else {}
+        if browser_name == "chromium" and os.getenv("ORION_TEST_CHROMIUM_EXECUTABLE"):
+            launch = {"executable_path": os.environ["ORION_TEST_CHROMIUM_EXECUTABLE"]}
         browser = engine.launch(**launch)
         context = browser.new_context(viewport={"width": width, "height": height}, device_scale_factor=1,
                                       is_mobile=width < 768, has_touch=width < 768)
@@ -61,6 +65,7 @@ def test_performance_history_goals(browser_name, width, height, theme):
                 status=200, content_type="text/html; charset=utf-8", body=HTML))
             page.goto("https://orion.test/panel", wait_until="domcontentloaded")
             page.evaluate("theme=>document.documentElement.dataset.theme=theme", theme)
+            page.add_style_tag(content=PANEL_CSS)
             page.add_style_tag(content=CSS)
             page.add_style_tag(content=FIELDS_CSS)
             page.add_script_tag(content="if(!crypto.randomUUID)crypto.randomUUID=()=>String(Math.random()).slice(2)+'-fixture';")
@@ -69,7 +74,7 @@ def test_performance_history_goals(browser_name, width, height, theme):
             page.add_script_tag(content=JS)
             page.add_script_tag(content=FIXTURE)
             page.evaluate("effectivePlan=>mountPerformanceFixture(effectivePlan)", synthetic_plan_state('10000000-0000-4000-8000-000000000001'))
-            page.wait_for_selector("[data-os-performance-history]")
+            page.wait_for_selector("#osPerformancePanel-overview")
 
             def no_horizontal_cut(selector):
                 boxes = page.locator(selector).evaluate_all("""nodes=>nodes.map(el=>{
@@ -80,6 +85,78 @@ def test_performance_history_goals(browser_name, width, height, theme):
                     assert box["scroll"] <= box["client"] + 2, box
 
             page.evaluate("() => document.fonts.ready")
+            ARTIFACTS.mkdir(parents=True, exist_ok=True)
+            stem = f"{browser_name}-{width}x{height}-{theme}"
+            if width >= 768:
+                shell = page.evaluate("""() => {
+                  const rail=document.querySelector('.sidebar'),title=document.querySelector('.os-main h1');
+                  const r=rail.getBoundingClientRect(),t=title.getBoundingClientRect(),s=getComputedStyle(rail);
+                  return {right:r.right,titleLeft:t.left,width:r.width,boxSizing:s.boxSizing,padding:s.padding};
+                }""")
+                assert shell['titleLeft'] >= shell['right'] + 12, shell
+                shell_detail = page.evaluate("""() => {
+                  const read=el=>{const r=el.getBoundingClientRect(),s=getComputedStyle(el);
+                    return {tag:el.tagName,class:el.className,x:r.x,right:r.right,width:r.width,
+                      boxSizing:s.boxSizing,padding:s.padding,position:s.position,overflow:s.overflow,
+                      minWidth:s.minWidth,grid:s.gridTemplateColumns};};
+                  const title=document.querySelector('.os-main h1'),r=title.getBoundingClientRect();
+                  const hit=document.elementFromPoint(r.left+1,r.top+r.height/2);
+                  return {shell:[...document.querySelectorAll('#appView,.sidebar,.sidebar>*,.content,.os-main,.os-main h1')].map(read),hit:hit&&read(hit)};
+                }""")
+                (ARTIFACTS / f"{stem}-shell.json").write_text(json.dumps(shell_detail, indent=2))
+                page.screenshot(path=str(ARTIFACTS / f"{stem}-viewport.png"), full_page=False)
+            no_horizontal_cut(".os-performance-scope,.os-performance-metrics,.os-performance-chart-card,.os-performance-selection,.os-performance-insights")
+            page.screenshot(path=str(ARTIFACTS / f"{stem}-initial.png"), full_page=True)
+            overflow = page.evaluate("""() => ({width:innerWidth,scroll:document.documentElement.scrollWidth,
+              outside:[...document.querySelectorAll('#osPageBody *')].filter(el=>{
+                const r=el.getBoundingClientRect();return r.width>0&&r.right>innerWidth+2&&
+                  !el.closest('.os-performance-chart-scroll,.os-table-scroll');
+              }).slice(0,12).map(el=>({tag:el.tagName,class:el.className,right:el.getBoundingClientRect().right}))})""")
+            assert overflow["scroll"] <= width + 2, overflow
+            scale = page.evaluate("""() => {
+              const bar=document.querySelector('.os-performance-column').getBoundingClientRect();
+              return [...document.querySelectorAll('.os-performance-y-axis>span')].map((el,i)=>{
+                const r=el.getBoundingClientRect();return Math.abs(r.top+r.height/2-(bar.top+bar.height*i/4));
+              });
+            }""")
+            assert all(error <= 1 for error in scale), scale
+            controls = page.locator("#osPerformanceMetric,#osPerformanceProfessional,#osPerformancePeriod").evaluate_all("""nodes=>nodes.map(el=>({
+              appearance:getComputedStyle(el).appearance,background:getComputedStyle(el).backgroundColor
+            }))""")
+            assert all(control["appearance"] == "none" for control in controls), controls
+            if theme == "dark":
+                assert all(control["background"] != "rgb(255, 255, 255)" for control in controls), controls
+            # Grouping, metric selection and values must work by touch as well as keyboard.
+            page.locator("[data-os-performance-group=week]").click()
+            assert page.locator("[data-os-performance-group=week]").get_attribute("aria-pressed") == "true"
+            assert 4 <= page.locator("[data-os-performance-point]").count() <= 6
+            page.select_option("#osPerformanceMetric", "completed")
+            assert "Atendimentos" in page.locator(".os-performance-chart-scroll").get_attribute("aria-label")
+            first = page.locator("[data-os-performance-point]").first
+            first.scroll_into_view_if_needed()
+            first.click()
+            assert first.get_attribute("aria-pressed") == "true"
+            first.press("End")
+            assert page.locator("[data-os-performance-point]").last.evaluate("el=>el===document.activeElement")
+            page.select_option("#osPerformanceProfessional", "51000000-0000-4000-8000-000000000002")
+            assert page.locator("[data-os-performance-history]").count() == 1
+            assert page.locator(".os-performance-metrics .os-metric>strong").nth(1).inner_text() == "2"
+            assert "75,00" in page.locator(".os-performance-metrics .os-metric>strong").first.inner_text()
+            page.select_option("#osPerformanceProfessional", "")
+            page.select_option("#osPerformanceMetric", "revenue_cents")
+            amounts = page.locator(".os-performance-selected-values strong").evaluate_all("""nodes=>nodes.map(el=>({
+              height:el.getBoundingClientRect().height,line:parseFloat(getComputedStyle(el).lineHeight),
+              scroll:el.scrollWidth,width:el.clientWidth
+            }))""")
+            assert all(amount["height"] <= amount["line"] + 1 and amount["scroll"] <= amount["width"] + 1 for amount in amounts), amounts
+            page.locator(".os-performance-chart-card").screenshot(path=str(ARTIFACTS / f"{stem}-chart.png"))
+            page.evaluate("scrollTo(0,0)")
+            page.screenshot(path=str(ARTIFACTS / f"{stem}-page.png"), full_page=True)
+            page.locator(".os-performance-details summary").click()
+            assert page.locator(".os-performance-details").evaluate("el=>el.open")
+            assert "1.750,00" in page.locator(".os-performance-details tfoot").inner_text()
+            page.locator(".os-performance-details summary").click()
+            page.locator("[data-os-performance-tab=professionals]").click()
             page.locator(".os-professional-results").scroll_into_view_if_needed()
             assert page.locator("[data-os-performance-history]").count() == 3
             button = page.locator("[data-os-performance-history]").first
@@ -107,7 +184,7 @@ def test_performance_history_goals(browser_name, width, height, theme):
               }
               const box=rect(el),eye=rect(el.querySelector('svg'));
               const name=el.parentElement.querySelector('strong'),style=getComputedStyle(name);
-              const hit={x:box.x+box.width/2,y:box.y-3};
+              const hit={x:box.x+box.width/2,y:box.y+box.height/2};
               const target=document.elementFromPoint(hit.x,hit.y),pseudo=getComputedStyle(el,'::before');
               const ancestors=[];
               for(let node=el.parentElement;node;node=node.parentElement){
@@ -138,12 +215,11 @@ def test_performance_history_goals(browser_name, width, height, theme):
             assert geometry["stableFrames"] >= 2, geometry
             assert all(face["status"] == "loaded" for face in geometry["fonts"]), geometry
             box, typography, eye, hit = (geometry[key] for key in ("box", "typography", "eye", "hit"))
-            # The affordance should read as a small action beside the name,
-            # while its touch target extends beyond its compact visual box.
+            # The professional's name is the history action, with a real touch target.
             assert 0 < eye["width"] <= typography["font"] * 1.25
             assert 0 < eye["height"] <= typography["line"]
-            assert box["width"] <= typography["line"] * 1.6
-            assert box["height"] <= typography["line"] * 1.6
+            assert box["width"] >= 44
+            assert box["height"] >= 44
             assert box["x"] >= 0 and box["x"] + box["width"] <= width
             assert geometry["hitInside"], geometry
             if width < 768:
@@ -213,6 +289,7 @@ def test_performance_history_goals(browser_name, width, height, theme):
             page.wait_for_function("!document.querySelector('#osDialog').open")
             assert button.evaluate("el=>document.activeElement===el")
 
+            page.locator("[data-os-performance-tab=goals]").click()
             page.locator("[data-os-action=new-goal]").click()
             page.select_option("#osField-scope", "company")
             assert page.locator("[data-os-goal-professional]").is_visible() is False
@@ -231,6 +308,33 @@ def test_performance_history_goals(browser_name, width, height, theme):
             assert "start_date" not in writes[0]["data"]
             page.locator(".os-performance-goals").scroll_into_view_if_needed()
             no_horizontal_cut(".os-performance-goals,.os-goal-card")
+            # Performance must use the real Finance card styling at the same viewport.
+            read_metric_style = """() => {
+              const card=document.querySelector('.os-finance-metrics>.os-metric');
+              const read=(el,keys)=>Object.fromEntries(keys.map(key=>[key,getComputedStyle(el)[key]]));
+              return {card:read(card,['padding','borderRadius','backgroundColor','borderColor','boxShadow']),
+                label:read(card.querySelector('.os-metric-head'),['fontFamily','fontSize','fontWeight','lineHeight']),
+                value:read(card.querySelector('strong'),['fontFamily','fontSize','fontWeight','lineHeight'])};
+            }"""
+            performance_style = page.evaluate(read_metric_style)
+            read_frame_style = """() => {
+              const main=document.querySelector('.os-main'),title=main.querySelector('h1');
+              const a=getComputedStyle(main),b=getComputedStyle(title);
+              return {padding:a.paddingLeft,font:b.fontFamily,size:b.fontSize,weight:b.fontWeight,line:b.lineHeight};
+            }"""
+            performance_frame = page.evaluate(read_frame_style)
+            page.evaluate("() => window.OrionSuite.open('financeiro')")
+            page.wait_for_selector(".os-finance-metrics>.os-metric")
+            assert performance_style == page.evaluate(read_metric_style)
+            assert performance_frame == page.evaluate(read_frame_style)
+            page.evaluate("scrollTo(0,0)")
+            page.screenshot(path=str(ARTIFACTS / f"{stem}-finance-reference.png"), full_page=True)
+            for route in ['clientes','agenda']:
+                page.evaluate("route => window.OrionSuite.open(route)", route)
+                page.wait_for_selector('#osCustomerSearch' if route=='clientes' else '.os-agenda-period-switch')
+                page.evaluate("scrollTo(0,0)")
+                page.screenshot(path=str(ARTIFACTS / f"{stem}-{route}-reference.png"), full_page=True)
+                assert page.evaluate("document.documentElement.scrollWidth<=innerWidth+2")
             assert not errors, errors
         finally:
             context.close()
