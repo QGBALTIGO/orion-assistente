@@ -29,7 +29,7 @@ async def confirm_service_receipt(ctx,tenant_id,entry_id):
                     {'t':tenant,'id':entry})).mappings().first()
                 if not row:return 'changed'
                 payload=ReceiptAction(action='confirm',expected_version=row['version'],
-                    idempotency_key='receipt-auto:'+str(entry)+':'+str(row['auto_receipt_policy_version']))
+                    idempotency_key='receipt-auto:'+str(entry)+':'+str(row['auto_receipt_policy_version'])+':'+str(row['version']))
                 await act(db,tenant,entry,payload,automatic=True)
                 return 'confirmed'
     except HTTPException as exc:

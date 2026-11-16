@@ -32,7 +32,7 @@ def upgrade():
         id uuid PRIMARY KEY,tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
         entry_id uuid NOT NULL,action varchar(16) NOT NULL,
         source varchar(12) NOT NULL CHECK(source IN ('manual','automatic')),
-        actor_id uuid,actor_role varchar(20) NOT NULL,
+        actor_id uuid,actor_role varchar(20) NOT NULL,actor_name varchar(160),
         details jsonb NOT NULL,occurred_at timestamptz NOT NULL DEFAULT clock_timestamp(),
         FOREIGN KEY(tenant_id,entry_id) REFERENCES financial_entries(tenant_id,id) ON DELETE CASCADE);
       CREATE INDEX ix_service_receipt_history ON service_receipt_history(tenant_id,entry_id,occurred_at,id);

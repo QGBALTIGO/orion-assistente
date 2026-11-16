@@ -47,7 +47,7 @@ async def save_settings(db, tenant, payload):
     if previous['mode']==payload.mode:
         return previous
     row=(await db.execute(text("""INSERT INTO tenant_receipt_settings(tenant_id,mode,version,activated_at)
-        VALUES(:t,:mode,1,CASE WHEN :mode='after_24h' THEN clock_timestamp() END)
+        VALUES(:t,CAST(:mode AS varchar(16)),1,CASE WHEN CAST(:mode AS varchar(16))='after_24h' THEN clock_timestamp() END)
         ON CONFLICT(tenant_id) DO UPDATE SET mode=EXCLUDED.mode,
           version=tenant_receipt_settings.version+1,activated_at=EXCLUDED.activated_at,updated_at=clock_timestamp()
         RETURNING *"""),{'t':tenant,'mode':payload.mode})).mappings().one()
@@ -81,11 +81,20 @@ def receipt_snapshot(row):
 
 
 async def history(db,tenant,entry,action,previous,current,*,automatic=False):
+    actor=None if automatic else db.info.get('management_actor_account_id')
+    actor_name=None
+    if actor is not None:
+        # Identity reads stay on the existing identity role. Runtime never gains
+        # access to accounts/memberships; the actor ID was resolved by the server.
+        from app.catalog_api import support_session_factory
+        async with support_session_factory()() as identities:
+            actor_name=(await identities.execute(text('SELECT name FROM panel_accounts WHERE id=:id'),
+                {'id':actor})).scalar_one_or_none()
     await db.execute(text("""INSERT INTO service_receipt_history
-        (id,tenant_id,entry_id,action,source,actor_id,actor_role,details)
-        VALUES(:id,:t,:entry,:action,:source,:actor,:role,CAST(:details AS jsonb))"""),
+        (id,tenant_id,entry_id,action,source,actor_id,actor_role,actor_name,details)
+        VALUES(:id,:t,:entry,:action,:source,:actor,:role,:actor_name,CAST(:details AS jsonb))"""),
         {'id':uuid4(),'t':tenant,'entry':entry,'action':action,'source':'automatic' if automatic else 'manual',
-         'actor':None if automatic else db.info.get('management_actor_account_id'),
+         'actor':actor,'actor_name':actor_name[:160] if actor_name else None,
          'role':'system' if automatic else db.info.get('management_actor_role','unknown'),
          'details':json.dumps(jsonable_encoder({'previous':receipt_snapshot(previous),'current':receipt_snapshot(current)}))})
 
@@ -98,9 +107,7 @@ async def decorate(db,tenant,row):
         and not result.get('keep_pending') and result.get('auto_receipt_due_at')
         and policy['mode']=='after_24h' and result.get('auto_receipt_policy_version')==policy['version'])
     events=(await db.execute(text("""SELECT h.action,h.source,h.actor_role,h.actor_id,h.details,h.occurred_at,
-        p.name AS actor_name FROM service_receipt_history h
-        LEFT JOIN tenant_memberships m ON m.tenant_id=h.tenant_id AND m.account_id=h.actor_id
-        LEFT JOIN panel_accounts p ON p.id=m.account_id
+        h.actor_name FROM service_receipt_history h
         WHERE h.tenant_id=:t AND h.entry_id=:id
         ORDER BY h.occurred_at DESC,h.id DESC LIMIT 25"""),{'t':tenant,'id':row['id']})).mappings().all()
     result['receipt_history']=[dict(event) for event in events]

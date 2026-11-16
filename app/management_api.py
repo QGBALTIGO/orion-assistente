@@ -297,14 +297,15 @@ async def export_finance(tenant_id: UUID, start_date: date | None = None, end_da
                          kind: Literal["income", "expense"] | None = None, status: FinanceStatus | None = None,
                          category: str | None = Query(default=None, max_length=64), payment_method: PaymentMethod | None = None,
                          entry_type: Literal["general", "advance", "commission_payment"] | None = None, professional_id: UUID | None = None,
-                         actor: Actor = Depends(authenticate)):
+                         actor: Actor = Depends(authenticate), receivables: bool = False):
     async with management_session(tenant_id, actor) as db:
-        result = await data.finance(db, tenant_id, start_date, end_date, kind, status, category, payment_method, MAX_EXPORT_ROWS, 0, entry_type, professional_id)
+        result = await data.finance(db, tenant_id, start_date, end_date, kind, status, category, payment_method, MAX_EXPORT_ROWS, 0, entry_type, professional_id, receivables)
         if result["total"] > MAX_EXPORT_ROWS:
             raise HTTPException(413, "Refine o período para exportar até 20 mil lançamentos por arquivo")
     return csv_response("financeiro-orion.csv",
         ["Data", "Tipo", "Descrição", "Valor em centavos", "Categoria", "Pagamento", "Status", "Cliente", "Profissional", "Observações"],
-        [[item.get(key) for key in ("occurred_at", "kind", "description", "amount_cents", "category", "payment_method", "status", "customer_name", "professional_name", "notes")]
+        [[(item.get('received_at') or item.get('occurred_at')) if key=='occurred_at' else item.get(key)
+          for key in ("occurred_at", "kind", "description", "amount_cents", "category", "payment_method", "status", "customer_name", "professional_name", "notes")]
          for item in result["items"]])
 
 

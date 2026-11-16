@@ -227,3 +227,25 @@ async def test_private_scanner_and_append_only_history_contract(management_db):
           has_table_privilege('app_runtime','service_receipt_history','DELETE'),
           has_table_privilege('app_support','financial_entries','SELECT')"""))).one()
         assert permissions==(True,False,False,False)
+
+
+@pytest.mark.asyncio
+async def test_explicit_resume_after_reopening_can_run_a_new_automatic_confirmation(management_db):
+    d=management_db;a,row=await completed(d,age=26,automatic=True)
+    assert await confirm_service_receipt({},str(d['a']),row['id'])=='confirmed'
+    paid=(await d['client'].get(d['base']+'/finance/receipts/'+row['id'])).json()
+    reopened=await action(d,paid,'reopen');assert reopened.status_code==200,reopened.text
+    resumed=await action(d,reopened.json(),'resume');assert resumed.status_code==200,resumed.text
+    assert await confirm_service_receipt({},str(d['a']),row['id'])=='confirmed'
+    final=(await d['client'].get(d['base']+'/finance/receipts/'+row['id'])).json()
+    assert [e['action'] for e in final['receipt_history']]==['confirm','resume','reopen','confirm']
+
+
+@pytest.mark.asyncio
+async def test_another_linked_payment_blocks_automatic_double_receipt(management_db):
+    d=management_db;a,row=await completed(d,automatic=True);await due_now(d,row)
+    await entry(d,appointment_id=a,professional_id=str(d['pro']),amount_cents=10000,status='paid')
+    assert await confirm_service_receipt({},str(d['a']),row['id'])=='changed'
+    async with d['support'].connect() as db:
+        candidates=(await db.execute(text('SELECT * FROM orion_due_service_receipts(100)'))).mappings().all()
+        assert not any(str(r['entry_id'])==row['id'] for r in candidates)
