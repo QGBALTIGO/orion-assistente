@@ -307,7 +307,9 @@ async def test_completion_snapshot_history_idempotency_and_future_guard(manageme
         history = (await db.execute(text("SELECT event,operator FROM appointment_history WHERE tenant_id=:tenant AND appointment_id=:id"),
                                    {"tenant": d["a"], "id": UUID(visit)})).all()
         assert history == [("completed", "support")]
-        assert (await db.execute(text("SELECT count(*) FROM financial_entries WHERE tenant_id=:tenant"), {"tenant": d["a"]})).scalar_one() == 0
+        receipt=(await db.execute(text("SELECT status,amount_cents,appointment_id FROM financial_entries WHERE tenant_id=:tenant"),
+            {"tenant":d["a"]})).one()
+        assert receipt==('pending',10000,UUID(visit))
         assert (await db.execute(text("SELECT appointment_id,action,status FROM calendar_outbox WHERE tenant_id=:tenant"),
                                 {"tenant": d["a"]})).all() == [(UUID(visit), "update", "pending")]
         await db.execute(text("UPDATE professionals SET commission_percent=50 WHERE id=:id"), {"id": d["pro"]})

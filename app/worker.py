@@ -20,6 +20,7 @@ from app.whatsapp_bot import reply
 from app.calendar_worker import scan_calendar_outbox,process_calendar_outbox
 from app.auto_completion import scan_due_appointments,process_due_appointment
 from app.billing_worker import reconcile_asaas_job,scan_pending_billing
+from app.receipt_worker import scan_service_receipts,confirm_service_receipt
 from app.cakto_api import scan_pending_cakto
 from app.automation_runtime import interaction,process_automation_job,reconcile_automation_job,scan_automations
 from app.inbox_runtime import process_inbox_message,scan_inbox
@@ -118,6 +119,9 @@ async def recover_events(ctx: dict):
 
 
 async def startup_plan_permissions(ctx):
+    from scripts.wait_for_service_receipts_schema import wait_for_schema as receipt_schema
+    from scripts.wait_for_agenda_schema import Settings as ReceiptSchemaSettings
+    await receipt_schema(ReceiptSchemaSettings.from_environment())
     # ARQ awaits this before consuming jobs; API predeploy performs the only
     # privileged migration/bootstrap. Existing workers continue normally.
     from scripts.wait_for_agenda_schema import Settings
@@ -232,7 +236,8 @@ async def startup_plan_permissions(ctx):
 class WorkerSettings:
     on_startup = startup_plan_permissions
     functions = [func(process_appointment_notification,name='process_appointment_notification'),infrastructure_ping,process_inbound_event,process_message_outbox,process_calendar_outbox,process_due_appointment,reconcile_asaas_job,process_automation_job,reconcile_automation_job,process_inbox_message,process_email_outbox,process_subscription_chatbot_restore,func(process_subscription_group_add,name='process_subscription_group_add',keep_result=0,max_tries=1,timeout=25),func(process_subscription_group_add_receipt,name='process_subscription_group_add_receipt',keep_result=0,max_tries=1,timeout=40)]
-    cron_jobs = [cron(scan_subscription_group_add,minute=set(range(60)),second=set(range(0,60,3))),
+    functions = functions + [func(confirm_service_receipt,name='confirm_service_receipt',keep_result=0)]
+    cron_jobs = [cron(scan_service_receipts,minute=set(range(60)),second=17),cron(scan_subscription_group_add,minute=set(range(60)),second=set(range(0,60,3))),
                  cron(cleanup_notification_payloads, minute={13}, second={10}),cron(scan_appointment_notifications, minute=set(range(60)), second=set(range(0,60,5))),
                  cron(recover_events, minute={0,5,10,15,20,25,30,35,40,45,50,55}, second=0),
                  cron(scan_calendar_outbox, minute=set(range(60)), second=10),

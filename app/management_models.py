@@ -136,8 +136,12 @@ async def update_row(db, tenant_id, table, identity, version, values):
         from app.financial_settlements import ensure_editable_entry, lock_professionals
         previous = await get_row(db, tenant_id, table, identity)
         await lock_professionals(db, tenant_id, [previous.get("professional_id"), values.get("professional_id")])
-        await get_row(db, tenant_id, table, identity, lock=True)
+        previous = await get_row(db, tenant_id, table, identity, lock=True)
         await ensure_editable_entry(db, tenant_id, identity)
+        from app.service_receipts import prepare_edit
+        values = await prepare_edit(db, tenant_id, previous, values)
+        if not values:
+            raise HTTPException(422, "A data do serviço é preservada; informe a data ao registrar o recebimento")
     assignments = ",".join(f"{column}=:{column}" for column in values)
     row = (await db.execute(text(f"""
         UPDATE {table} SET {assignments},version=version+1,updated_at=now()
@@ -147,6 +151,9 @@ async def update_row(db, tenant_id, table, identity, version, values):
         await get_row(db, tenant_id, table, identity)
         raise HTTPException(409, "O registro foi alterado. Atualize os dados antes de salvar novamente")
     await audit(db, tenant_id, "management_updated", table, identity)
+    if table == "financial_entries" and previous.get("service_receivable"):
+        from app.service_receipts import history as receipt_history
+        await receipt_history(db, tenant_id, identity, "edit", previous, dict(row))
     return dict(row)
 
 
@@ -294,7 +301,7 @@ async def customer_service_history(db, tenant_id, customer_id, limit=6, offset=0
 
 
 def finance_filter(tenant_id, lower, upper, kind=None, status=None, category=None, payment_method=None, entry_type=None, professional_id=None):
-    clauses = ["e.tenant_id=:tenant", "e.occurred_at>=:lower", "e.occurred_at<:upper"]
+    clauses = ["e.tenant_id=:tenant", "COALESCE(e.received_at,e.occurred_at)>=:lower", "COALESCE(e.received_at,e.occurred_at)<:upper"]
     parameters = {"tenant": tenant_id, "lower": lower, "upper": upper}
     for name, value in (("kind", kind), ("status", status), ("category", category), ("payment_method", payment_method),
                         ("entry_type", entry_type), ("professional_id", professional_id)):
@@ -329,15 +336,19 @@ async def finance_summary(db, where, parameters, tz):
     for column, target in (("category", "by_category"), ("payment_method", "by_payment_method")):
         result[target] = [dict(row) for row in (await db.execute(text(f"SELECT {column}," + FINANCE_TOTALS +
             " FROM financial_entries e WHERE " + where + f" GROUP BY {column} ORDER BY {column}"), parameters)).mappings().all()]
-    result["daily"] = [dict(row) for row in (await db.execute(text("SELECT date(occurred_at AT TIME ZONE :tz) AS date," + FINANCE_TOTALS +
-        " FROM financial_entries e WHERE " + where + " GROUP BY date(occurred_at AT TIME ZONE :tz) ORDER BY date"),
+    result["daily"] = [dict(row) for row in (await db.execute(text("SELECT date(COALESCE(received_at,occurred_at) AT TIME ZONE :tz) AS date," + FINANCE_TOTALS +
+        " FROM financial_entries e WHERE " + where + " GROUP BY date(COALESCE(received_at,occurred_at) AT TIME ZONE :tz) ORDER BY date"),
         {**parameters, "tz": tz})).mappings().all()]
     return result
 
 
-async def finance(db, tenant_id, start_date=None, end_date=None, kind=None, status=None, category=None, payment_method=None, limit=50, offset=0, entry_type=None, professional_id=None):
+async def finance(db, tenant_id, start_date=None, end_date=None, kind=None, status=None, category=None, payment_method=None, limit=50, offset=0, entry_type=None, professional_id=None, receivables=False):
     period, lower, upper = await period_for(db, tenant_id, start_date, end_date)
     where, parameters = finance_filter(tenant_id, lower, upper, kind, status, category, payment_method, entry_type, professional_id)
+    if receivables:
+        where = "e.tenant_id=:tenant AND e.kind='income' AND e.entry_type='general' AND e.status='pending' AND e.appointment_id IS NOT NULL"
+        if professional_id:
+            where += " AND e.professional_id=:professional_id"
     summary = await finance_summary(db, where, parameters, period["timezone"])
     rows = (await db.execute(text("""
         SELECT e.*,
@@ -351,7 +362,7 @@ async def finance(db, tenant_id, start_date=None, end_date=None, kind=None, stat
         LEFT JOIN appointments a ON a.tenant_id=e.tenant_id AND a.id=e.appointment_id
         LEFT JOIN customers c ON c.tenant_id=e.tenant_id AND c.id=COALESCE(e.customer_id,a.customer_id)
         LEFT JOIN professionals p ON p.tenant_id=e.tenant_id AND p.id=COALESCE(e.professional_id,a.professional_id)
-    """ + " WHERE " + where + " ORDER BY e.occurred_at DESC,e.id LIMIT :limit OFFSET :offset"),
+    """ + " WHERE " + where + " ORDER BY COALESCE(e.received_at,e.occurred_at) DESC,e.id LIMIT :limit OFFSET :offset"),
         {**parameters, "limit": limit, "offset": offset})).mappings().all()
 
     # Enrich only the requested ledger page. Historical service snapshots are
@@ -376,8 +387,13 @@ async def finance(db, tenant_id, start_date=None, end_date=None, kind=None, stat
             })
 
     items = []
+    from app.service_receipts import settings as receipt_settings
+    policy = await receipt_settings(db, tenant_id)
     for row in rows:
         item = clean_row(row)
+        item['auto_receipt_active'] = bool(row['service_receivable'] and row['status']=='pending'
+            and not row['keep_pending'] and row['auto_receipt_due_at'] and policy['mode']=='after_24h'
+            and row['auto_receipt_policy_version']==policy['version'])
         item["customer_display_name"] = display_customer({
             "name": item["customer_name"], "phone": item.pop("_customer_phone"),
         })["display_name"]
@@ -964,8 +980,7 @@ async def transition_appointment(db, tenant_id, appointment_id, target, payload,
         from app.loyalty_rewards import award_completion
         from app.appointment_finance import record_service_receivable
         result["loyalty"] = await award_completion(db, tenant_id, changed, now)
-        if automated or variable or row.get("booking_mode") == "exceptional" or completion_facts["has_extras"]:
-            await record_service_receivable(db, tenant_id, changed)
+        await record_service_receivable(db, tenant_id, changed)
     return result
 
 
@@ -1091,7 +1106,7 @@ async def income_statement(db, tenant_id, start_date=None, end_date=None):
             COALESCE(sum(amount_cents) FILTER (WHERE kind='expense' AND entry_type='general'),0) AS operating_expenses_cents,
             COALESCE(sum(amount_cents) FILTER (WHERE entry_type='advance'),0) AS advances_cents,
             COALESCE(sum(amount_cents) FILTER (WHERE entry_type='commission_payment'),0) AS commission_payments_cents
-        FROM financial_entries WHERE tenant_id=:tenant AND status='paid' AND occurred_at>=:lower AND occurred_at<:upper
+        FROM financial_entries WHERE tenant_id=:tenant AND status='paid' AND COALESCE(received_at,occurred_at)>=:lower AND COALESCE(received_at,occurred_at)<:upper
     """), params)).mappings().one())
     summary = {key: int(value) for key, value in {**service, **ledger}.items()}
     summary["gross_revenue_cents"] = summary["service_revenue_cents"] + summary["other_income_cents"]

@@ -29,6 +29,7 @@ from app.management_schemas import (
 from app.tenant_access import resolve_tenant_access
 from app import loyalty_rewards as rewards
 from app import financial_settlements as settlements
+from app import service_receipts as receipts
 from app.qr_api import customer_display_names, whatsapp_name_matches
 
 router = APIRouter(prefix="/api/v1/tenants/{tenant_id}/management", tags=["Gestão"])
@@ -226,9 +227,9 @@ async def list_finance(tenant_id: UUID, start_date: date | None = None, end_date
                        category: str | None = Query(default=None, max_length=64), payment_method: PaymentMethod | None = None,
                        entry_type: Literal["general", "advance", "commission_payment"] | None = None, professional_id: UUID | None = None,
                        limit: int = Query(default=50, ge=1, le=250), offset: int = Query(default=0, ge=0),
-                       actor: Actor = Depends(authenticate)):
+                       actor: Actor = Depends(authenticate), receivables: bool = False):
     async with management_session(tenant_id, actor) as db:
-        return await data.finance(db, tenant_id, start_date, end_date, kind, status, category, payment_method, limit, offset, entry_type, professional_id)
+        return await data.finance(db, tenant_id, start_date, end_date, kind, status, category, payment_method, limit, offset, entry_type, professional_id, receivables)
 
 
 @router.get("/finance/summary")
@@ -296,15 +297,68 @@ async def export_finance(tenant_id: UUID, start_date: date | None = None, end_da
                          kind: Literal["income", "expense"] | None = None, status: FinanceStatus | None = None,
                          category: str | None = Query(default=None, max_length=64), payment_method: PaymentMethod | None = None,
                          entry_type: Literal["general", "advance", "commission_payment"] | None = None, professional_id: UUID | None = None,
-                         actor: Actor = Depends(authenticate)):
+                         actor: Actor = Depends(authenticate), receivables: bool = False):
     async with management_session(tenant_id, actor) as db:
-        result = await data.finance(db, tenant_id, start_date, end_date, kind, status, category, payment_method, MAX_EXPORT_ROWS, 0, entry_type, professional_id)
+        result = await data.finance(db, tenant_id, start_date, end_date, kind, status, category, payment_method, MAX_EXPORT_ROWS, 0, entry_type, professional_id, receivables)
         if result["total"] > MAX_EXPORT_ROWS:
             raise HTTPException(413, "Refine o período para exportar até 20 mil lançamentos por arquivo")
     return csv_response("financeiro-orion.csv",
         ["Data", "Tipo", "Descrição", "Valor em centavos", "Categoria", "Pagamento", "Status", "Cliente", "Profissional", "Observações"],
-        [[item.get(key) for key in ("occurred_at", "kind", "description", "amount_cents", "category", "payment_method", "status", "customer_name", "professional_name", "notes")]
+        [[(item.get('received_at') or item.get('occurred_at')) if key=='occurred_at' else item.get(key)
+          for key in ("occurred_at", "kind", "description", "amount_cents", "category", "payment_method", "status", "customer_name", "professional_name", "notes")]
          for item in result["items"]])
+
+
+@router.get("/finance/receipts/settings")
+async def get_receipt_settings(tenant_id: UUID, actor: Actor = Depends(authenticate)):
+    async with management_session(tenant_id, actor) as db:
+        return {**await receipts.settings(db, tenant_id),
+                "can_save": db.info["management_actor_role"] in {"owner", "support", "admin"}}
+
+
+@router.put("/finance/receipts/settings")
+async def put_receipt_settings(tenant_id: UUID, payload: receipts.ReceiptSettingsSave, actor: Actor = Depends(authenticate)):
+    await resolve_tenant_access(actor, tenant_id, "publish")
+    async with management_session(tenant_id, actor, write=True) as db:
+        return {**await receipts.save_settings(db, tenant_id, payload), "can_save": True}
+
+
+@router.get("/finance/receipts/summary")
+async def get_receipt_summary(tenant_id: UUID, actor: Actor = Depends(authenticate)):
+    async with management_session(tenant_id, actor) as db:
+        return dict((await db.execute(text("""SELECT count(*) AS count,COALESCE(sum(amount_cents),0) AS amount_cents
+            FROM financial_entries WHERE tenant_id=:t AND kind='income' AND entry_type='general'
+            AND appointment_id IS NOT NULL AND status='pending'"""), {"t": tenant_id})).mappings().one())
+
+
+@router.get("/finance/receipts/appointment/{appointment_id}")
+async def get_appointment_receipts(tenant_id: UUID, appointment_id: UUID, actor: Actor = Depends(authenticate)):
+    async with management_session(tenant_id, actor) as db:
+        found = (await db.execute(text('SELECT id FROM appointments WHERE tenant_id=:t AND id=:id'),
+                                  {'t': tenant_id, 'id': appointment_id})).scalar_one_or_none()
+        if found is None:
+            raise HTTPException(404, 'Agendamento não encontrado nesta empresa')
+        entries = (await db.execute(text("""SELECT * FROM financial_entries WHERE tenant_id=:t
+            AND appointment_id=:a AND kind='income' AND entry_type='general' AND status<>'cancelled'
+            ORDER BY occurred_at,id LIMIT 20"""), {"t": tenant_id, "a": appointment_id})).mappings().all()
+        return {"items": [await receipts.decorate(db, tenant_id, row) for row in entries],
+                "can_write": db.info["management_actor_role"] in {"owner", "editor", "support", "admin"}}
+
+
+@router.get("/finance/receipts/{entry_id}")
+async def get_service_receipt(tenant_id: UUID, entry_id: UUID, actor: Actor = Depends(authenticate)):
+    async with management_session(tenant_id, actor) as db:
+        row = await data.get_row(db, tenant_id, "financial_entries", entry_id)
+        if row['kind'] != 'income' or not row.get('appointment_id'):
+            raise HTTPException(404, 'Recebimento de atendimento não encontrado')
+        return await receipts.decorate(db, tenant_id, row)
+
+
+@router.post("/finance/{entry_id}/receipt")
+async def service_receipt_action(tenant_id: UUID, entry_id: UUID, payload: receipts.ReceiptAction,
+                                 actor: Actor = Depends(authenticate)):
+    async with management_session(tenant_id, actor, write=True) as db:
+        return await receipts.act(db, tenant_id, entry_id, payload)
 
 
 @router.post("/finance", status_code=201)

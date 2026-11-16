@@ -136,12 +136,13 @@ test('read-only finance retains detail access but never offers editable controls
  assert.equal(h.calls.filter(c=>c.method!=='GET').length,0);
 });
 
-test('automatic receipts show the client name while preserving the original compact card and pencil action',async t=>{
+test('linked receipts retain the compact card, pencil and dedicated receipt action',async t=>{
  const entry=appointmentEntry();
  const h=await financeSuite('owner',{entries:[entry]});t.after(()=>h.close());
  const row=h.document.querySelector('.os-finance-ledger-table tbody tr');
  assert.equal(row.querySelector('.os-finance-primary>strong').textContent,'Atendimento Kayky');
- assert.equal(row.querySelectorAll('button').length,1);
+ assert.equal(row.querySelectorAll('button').length,2);
+ assert.ok(row.querySelector('[data-os-receipt]'));
  assert.ok(row.querySelector('.os-icon-button[data-os-finance]'));
  assert.equal(row.querySelector('[data-os-finance-detail]'),null);
  assert.doesNotMatch(row.textContent,/Ver detalhes|AG-QSQ5XW|Mariana|Corte masculino|14:00|15:00/);

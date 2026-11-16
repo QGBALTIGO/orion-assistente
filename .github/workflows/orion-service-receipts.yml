@@ -1,0 +1,123 @@
+name: Orion - Recebimentos configuráveis
+on:
+  push:
+    branches: [codex/orion-service-receipts-20261116]
+  pull_request:
+    branches: [security/prelaunch-hardening-20261030]
+    paths: ['app/service_receipts.py','app/receipt_worker.py','alembic/versions/0080_service_receipts.py','ui-tests/service-receipts.test.mjs','.github/workflows/orion-service-receipts.yml']
+permissions:
+  contents: read
+concurrency:
+  group: receipts-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  postgres:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: barber_saas
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-postgres-only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d barber_saas"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      APP_DATABASE_URL: postgresql+asyncpg://app_runtime:ci-runtime-only@localhost:5432/barber_saas
+      MIGRATION_DATABASE_URL: postgresql+psycopg://app_migrator:ci-migrator-only@localhost:5432/barber_saas
+      SUPPORT_DATABASE_URL: postgresql+asyncpg://app_support:ci-support-only@localhost:5432/barber_saas
+      SUPPORT_API_TOKEN: test-support-ci-token-of-64-characters-000000000000000000000000000
+      REQUIRE_POSTGRES_TESTS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -c requirements.lock ".[test]"
+      - name: Banco isolado com migração integral
+        env:
+          PGPASSWORD: ci-postgres-only
+        run: |
+          psql -h localhost -U postgres -d barber_saas -v ON_ERROR_STOP=1 -v db_name=barber_saas -v runtime_password=ci-runtime-only -v migrator_password=ci-migrator-only -v support_password=ci-support-only -f infra/postgres/init/001-roles.sql
+          python -m alembic upgrade head
+          python -m alembic current --check-heads
+          python -m scripts.wait_for_service_receipts_schema
+      - name: Prazos, concorrência, permissões, caixa e regressões
+        run: >-
+          pytest -q -ra tests/integration/test_service_receipts_postgres.py
+          tests/integration/test_auto_completion_postgres.py tests/integration/test_finance_entry_context.py
+          tests/integration/test_management.py tests/integration/test_appointment_operations_postgres.py
+          tests/unit/test_auto_completion.py tests/unit/test_auto_completion_communications_gate.py
+  dom:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+      - run: node --check app/static/orion-suite.js
+      - run: >-
+          node --test ui-tests/service-receipts.test.mjs ui-tests/orion-finance-mobile.test.mjs
+          ui-tests/dashboard-finance-goals.test.mjs ui-tests/plan-permissions.test.mjs
+          ui-tests/performance-charts.test.mjs ui-tests/performance-history-goals.test.mjs
+          ui-tests/orion-suite.test.mjs ui-tests/barbershop-app-layout.test.mjs
+  browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, webkit]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r tests/e2e/requirements.txt pytest
+      - run: python -m playwright install --with-deps ${{ matrix.browser }}
+      - run: python -m pytest -q -o addopts='' tests/e2e/test_service_receipts.py -k ${{ matrix.browser }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: receipts-${{ matrix.browser }}
+          path: test-artifacts/service-receipts/
+          if-no-files-found: warn
+          retention-days: 7
+  image:
+    needs: [postgres,dom,browser]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        id: build
+        with:
+          context: .
+          file: deploy/Dockerfile.receipts
+          push: true
+          tags: ghcr.io/qgbaltigo/orion-assistente-api:receipts-${{ github.sha }}
+          build-args: ORION_RELEASE_SHA=${{ github.sha }}
+      - name: Registrar imagem testada
+        env:
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: python -c 'import json,os; json.dump({"commit":os.environ["GITHUB_SHA"],"image":"ghcr.io/qgbaltigo/orion-assistente-api@"+os.environ["IMAGE_DIGEST"]},open("receipts-release.json","w"))'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: receipts-release
+          path: receipts-release.json
+          retention-days: 7

@@ -2,6 +2,32 @@
  * 768 px navigation breakpoint; 256 px desktop rail; 288 px mobile drawer.
  * All colours are semantic and honour the existing light/dark/system preference.
  */
+.os-receipt-toolbar{margin:12px 0;flex-wrap:wrap}
+.os-receipt-actions{display:flex;align-items:center;justify-content:flex-end;gap:4px}
+@media(min-width:1200px){.os-finance-ledger-table .os-finance-date,.os-finance-ledger-table .os-finance-value{white-space:nowrap}}
+[data-os-form=receipt-settings] .os-form-message:empty{display:none}
+.os-receipt-scope{margin:0 0 12px!important}
+.os-receipt-note{display:block;max-width:230px;margin-top:5px;font-size:11px;line-height:16px;color:var(--os-muted);white-space:normal;overflow-wrap:anywhere}
+.os-receipt-history{padding-left:20px;margin:12px 0;display:grid;gap:12px;font-size:13px}
+.os-receipt-history small{display:block;color:var(--os-muted);font-size:12px}
+#osAppointmentReceipts .os-summary-row{gap:12px;flex-wrap:wrap}
+.os-finance-table-scroll:has(>.os-finance-ledger-table){container:receipt-ledger / inline-size}
+@container receipt-ledger (max-width:599px){
+  .os-main[data-os-current-route=financeiro] .os-finance-ledger-table{display:block;width:100%;min-width:0;border-collapse:separate}
+  .os-finance-ledger-table>thead{display:none}
+  .os-finance-ledger-table>tbody{display:grid;grid-template-columns:minmax(0,1fr);gap:9px;min-width:0}
+  .os-finance-ledger-table>tbody>tr{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,auto);grid-template-areas:"title value" "date category" "status actions";align-items:center;gap:8px 10px;min-width:0;width:100%;padding:13px 12px;border:1px solid var(--os-border);border-radius:13px;background:var(--os-card)}
+  .os-finance-ledger-table td{display:block;min-width:0;max-width:100%;padding:0!important;border:0;font-size:12px;white-space:normal;overflow-wrap:anywhere}
+  .os-finance-ledger-table td::before{display:none}
+  .os-finance-ledger-table .os-finance-primary{grid-area:title;align-self:start}
+  .os-finance-ledger-table .os-finance-primary strong{font-size:14px;line-height:20px}
+  .os-finance-ledger-table .os-finance-value{grid-area:value;text-align:right;font-size:16px;font-weight:600}
+  .os-finance-ledger-table .os-finance-date{grid-area:date;color:var(--os-muted)}
+  .os-finance-ledger-table .os-finance-category{grid-area:category;text-align:right;color:var(--os-muted)}
+  .os-finance-ledger-table .os-finance-status{grid-area:status}
+  .os-finance-ledger-table .os-finance-actions-cell{grid-area:actions;justify-self:end}
+}
+#osAppointmentReceipts .os-summary-row small{display:block;color:var(--os-muted);font-size:12px}
 @font-face{font-family:Figtree;src:url('/brand/figtree-latin.woff2') format('woff2');font-style:normal;font-weight:300 900;font-display:swap}
 @font-face{font-family:Outfit;src:url('/brand/outfit-latin.woff2') format('woff2');font-style:normal;font-weight:100 900;font-display:swap}
 :root{--os-primary:#2e7bf6;--os-primary-hover:#2469d7;--os-bg:#f5f8fc;--os-card:#fff;--os-text:#0f1b33;--os-muted:#4e5a72;--os-border:#dce3ee;--os-soft:#e9edf3;--os-tint:#eaf2ff;--os-success:#16a34a;--os-success-bg:#e8f7ee;--os-warning:#b8860b;--os-warning-bg:#fff3dc;--os-danger:#c1272d;--os-danger-bg:#fff0f2;--os-shadow:0 1px 2px #0f1b330d;--os-font:Figtree,ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;--os-display:Outfit,ui-sans-serif,system-ui,sans-serif}
