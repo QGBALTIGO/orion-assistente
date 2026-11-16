@@ -25,7 +25,7 @@ async function suite(t,{goals={items:[goal()],templates:[]},role='owner',respond
     if(path.includes('/goals?'))return goals;
     if(path.endsWith('/professionals'))return professionals;
     return defaultResponse(path);
-  }});t.after(()=>h.close());await flush();return h;
+  }});t.after(()=>h.close());await flush();const click=h.click;h.click=selector=>{const target=h.document.querySelector(selector),panel=target?.closest('[data-os-performance-panel][hidden]');if(panel)click('[data-os-performance-tab='+panel.dataset.osPerformancePanel+']');return click(selector);};return h;
 }
 
 test('each professional, including inactive, has an accessible history button for a viewer',async t=>{
@@ -44,7 +44,7 @@ test('each professional, including inactive, has an accessible history button fo
 test('history inherits every report preset and the custom period exactly',async t=>{
   const h=await suite(t);
   for(const value of ['today','week','month','30','90']){
-    h.click('[data-os-performance-period="'+value+'"]');await flush();
+    change(h,'#osPerformancePeriod',value);await flush();
     const report=new URL(h.calls.filter(c=>c.path.includes('/performance?')).at(-1).path,'https://orion.test');
     h.click('[data-os-performance-history]');await flush();
     const read=new URL(historyCalls(h).at(-1).path,'https://orion.test');
@@ -91,7 +91,7 @@ test('history identifies both local dates for an appointment crossing midnight',
 
 test('status and paging preserve the report dates and a new status returns to the first page',async t=>{
   const h=await suite(t,{respond:path=>path.includes('/performance/professionals/')?history({has_more:true,total:51,counts:{all:51,completed:30,cancelled:21}}):undefined});
-  h.click('[data-os-performance-period="90"]');await flush();h.click('[data-os-performance-history]');await flush();
+  change(h,'#osPerformancePeriod','90');await flush();h.click('[data-os-performance-history]');await flush();
   const first=new URL(historyCalls(h).at(-1).path,'https://orion.test');
   h.click('[data-os-action=professional-history-next]');await flush();
   let read=new URL(historyCalls(h).at(-1).path,'https://orion.test');assert.equal(read.searchParams.get('offset'),'25');
@@ -182,7 +182,7 @@ test('history error can be retried, and an empty filtered page explains the resu
 
 test('company monthly goal creation needs no professional and never sends filter dates',async t=>{
   const h=await suite(t);
-  h.click('[data-os-performance-period="90"]');await flush();h.click('[data-os-action=new-goal]');await flush();
+  change(h,'#osPerformancePeriod','90');await flush();h.click('[data-os-action=new-goal]');await flush();
   change(h,'#osField-scope','company');change(h,'#osField-metric','revenue_cents');
   assert.equal(h.document.querySelector('[data-os-goal-professional]').hidden,true);
   assert.equal(h.document.querySelector('#osField-professional_id').disabled,true);

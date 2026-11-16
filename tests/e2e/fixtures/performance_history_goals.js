@@ -27,8 +27,15 @@ window.mountPerformanceFixture=effectivePlan=>{
     }
     if(path.includes('/performance/daily'))return {items:pros.map((p,i)=>({date:today,professional_id:p.id,professional_name:p.name,completed:3-i,revenue_cents:i===0?100000:i===1?7500:67500,commission_cents:i===0?10000:i===1?750:6750}))};
     if(path.includes('/performance?'))return {items:pros.map((p,i)=>({...p,completed:3-i,cancelled:i===0?1:0,revenue_cents:i===0?100000:i===1?7500:67500}))};
-    if(path.includes('/finance/commissions'))return {items:pros.map(p=>({...p,commission_mode:'percent',commission_percent:10,earned_cents:17500,advances_cents:0,payable_cents:17500}))};
+    if(path.includes('/finance/commissions'))return {items:pros.map((p,i)=>({...p,commission_mode:'percent',commission_percent:10,earned_cents:i===0?10000:i===1?750:6750,advances_cents:0,payable_cents:i===0?10000:i===1?750:6750}))};
     if(path.endsWith('/professionals'))return pros;
+
+    if(path.includes('/management/customers'))return {items:[
+      {id:'c1',name:'Ana Carolina',active:true,phone:'+5567991234567',total_appointments:8,total_spent_cents:40000,loyalty_points:8},
+      {id:'c2',name:'Carlos Eduardo',active:true,phone:'+5567992345678',total_appointments:4,total_spent_cents:20000,loyalty_points:4},
+      {id:'c3',name:'Mariana Souza',active:true,phone:'+5567993456789',total_appointments:6,total_spent_cents:30000,loyalty_points:6}],total:3};
+    if(path.includes('/management/finance/summary'))return {summary:{income_cents:175000,expense_cents:30000,balance_cents:145000,count:6,average_ticket_cents:29167,by_category:[]},daily:[{date:today,income_cents:175000,expense_cents:30000}]};
+    if(path.includes('/management/finance?'))return {items:[{id:'f1',kind:'income',description:'Atendimentos',amount_cents:175000,category:'Serviços',status:'paid',occurred_at:today+'T12:00:00Z',payment_method:'pix',version:1},{id:'f2',kind:'expense',description:'Produtos e materiais',amount_cents:30000,category:'Materiais',status:'paid',occurred_at:today+'T12:00:00Z',payment_method:'pix',version:1}],total:2};
     return {items:[],total:0};
   };
   window.OrionSuite.mount({user:{role:'member',name:'Conta de demonstração',email:'synthetic@example.invalid'},tenants:[{id:tenant,name:'Barbearia · prévia',slug:'synthetic',timezone:'America/Sao_Paulo',role:'owner'}],tenantId:tenant,initialRoute:'desempenho',request,openLegacy(){},onRouteChange(){}});
