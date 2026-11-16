@@ -2,6 +2,13 @@
  * 768 px navigation breakpoint; 256 px desktop rail; 288 px mobile drawer.
  * All colours are semantic and honour the existing light/dark/system preference.
  */
+.os-receipt-toolbar{margin:12px 0;flex-wrap:wrap}
+.os-receipt-scope{margin:0 0 12px!important}
+.os-receipt-note{display:block;max-width:230px;margin-top:5px;font-size:11px;line-height:16px;color:var(--os-muted);white-space:normal;overflow-wrap:anywhere}
+.os-receipt-history{padding-left:20px;margin:12px 0;display:grid;gap:12px;font-size:13px}
+.os-receipt-history small{display:block;color:var(--os-muted);font-size:12px}
+#osAppointmentReceipts .os-summary-row{gap:12px;flex-wrap:wrap}
+#osAppointmentReceipts .os-summary-row small{display:block;color:var(--os-muted);font-size:12px}
 @font-face{font-family:Figtree;src:url('/brand/figtree-latin.woff2') format('woff2');font-style:normal;font-weight:300 900;font-display:swap}
 @font-face{font-family:Outfit;src:url('/brand/outfit-latin.woff2') format('woff2');font-style:normal;font-weight:100 900;font-display:swap}
 :root{--os-primary:#2e7bf6;--os-primary-hover:#2469d7;--os-bg:#f5f8fc;--os-card:#fff;--os-text:#0f1b33;--os-muted:#4e5a72;--os-border:#dce3ee;--os-soft:#e9edf3;--os-tint:#eaf2ff;--os-success:#16a34a;--os-success-bg:#e8f7ee;--os-warning:#b8860b;--os-warning-bg:#fff3dc;--os-danger:#c1272d;--os-danger-bg:#fff0f2;--os-shadow:0 1px 2px #0f1b330d;--os-font:Figtree,ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;--os-display:Outfit,ui-sans-serif,system-ui,sans-serif}

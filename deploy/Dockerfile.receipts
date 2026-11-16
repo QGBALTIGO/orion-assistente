@@ -1,0 +1,8 @@
+# Keep the current production runtime and change only this reviewed feature.
+FROM ghcr.io/qgbaltigo/orion-assistente-api@sha256:8a8992b51cfaf7aaa6431acf9fa534db89d271183afcbbdf4e805484b26c177e
+ARG ORION_RELEASE_SHA
+LABEL org.opencontainers.image.source="https://github.com/QGBALTIGO/orion-assistente" org.opencontainers.image.revision="${ORION_RELEASE_SHA}"
+COPY --chown=appuser:appuser app/service_receipts.py app/receipt_worker.py app/appointment_finance.py app/management_api.py app/management_models.py app/worker.py /srv/app/app/
+COPY --chown=appuser:appuser app/static/orion-suite.js app/static/orion-suite.css /srv/app/app/static/
+COPY --chown=appuser:appuser alembic/versions/0080_service_receipts.py /srv/app/alembic/versions/
+COPY --chown=appuser:appuser scripts/start_api.py scripts/wait_for_service_receipts_schema.py scripts/backup_and_migrate_service_receipts.py /srv/app/scripts/
