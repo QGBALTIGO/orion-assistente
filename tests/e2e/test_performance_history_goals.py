@@ -94,6 +94,17 @@ def test_performance_history_goals(browser_name, width, height, theme):
                   return {right:r.right,titleLeft:t.left,width:r.width,boxSizing:s.boxSizing,padding:s.padding};
                 }""")
                 assert shell['titleLeft'] >= shell['right'] + 12, shell
+                shell_detail = page.evaluate("""() => {
+                  const read=el=>{const r=el.getBoundingClientRect(),s=getComputedStyle(el);
+                    return {tag:el.tagName,class:el.className,x:r.x,right:r.right,width:r.width,
+                      boxSizing:s.boxSizing,padding:s.padding,position:s.position,overflow:s.overflow,
+                      minWidth:s.minWidth,grid:s.gridTemplateColumns};};
+                  const title=document.querySelector('.os-main h1'),r=title.getBoundingClientRect();
+                  const hit=document.elementFromPoint(r.left+1,r.top+r.height/2);
+                  return {shell:[...document.querySelectorAll('#appView,.sidebar,.sidebar>*,.content,.os-main,.os-main h1')].map(read),hit:hit&&read(hit)};
+                }""")
+                (ARTIFACTS / f"{stem}-shell.json").write_text(json.dumps(shell_detail, indent=2))
+                page.screenshot(path=str(ARTIFACTS / f"{stem}-viewport.png"), full_page=False)
             no_horizontal_cut(".os-performance-scope,.os-performance-metrics,.os-performance-chart-card,.os-performance-selection,.os-performance-insights")
             page.screenshot(path=str(ARTIFACTS / f"{stem}-initial.png"), full_page=True)
             overflow = page.evaluate("""() => ({width:innerWidth,scroll:document.documentElement.scrollWidth,
