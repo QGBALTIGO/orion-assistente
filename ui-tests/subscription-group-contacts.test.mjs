@@ -229,7 +229,7 @@ test('Suite exposes extraction only for an active subscription owner with its fl
 test('real panel bootstrap sanitizes extraction recovery while removing an untrusted tenant URL',async t=>{
   const html=await readFile(new URL('../app/static/panel.html',import.meta.url),'utf8'),prefix=html.match(/async function showApp\([^)]*\)\{[\s\S]*?(?=\n suiteUser=)/)?.[0];assert.ok(prefix);
   const dom=new JSDOM('',{url:'https://orion.test/painel?aba=extrator-contatos&empresa=untrusted',runScripts:'outside-only'});t.after(()=>dom.window.close());dom.window.eval(source);const record=recovery();dom.window.history.replaceState({orionGroupContactsRecovery:{...record,phones:['discard'],preview_token:'discard'},unrelated:'discard'},'');
-  dom.window.eval('var authEpoch=1,suiteTenantId="",businessRows=[],businessContextReady=false,businessContextError="";function resetWizard(){};'+prefix+'\n}');await dom.window.showApp('member','Synthetic','synthetic@example.invalid');
+  dom.window.eval('var authEpoch=1,suiteTenantId="",businessRows=[],businessContextReady=false,businessContextError="";function resetWizard(){};function showSessionBoot(){};'+prefix+'\n}');await dom.window.showApp('member','Synthetic','synthetic@example.invalid');
   assert.deepEqual(copy(dom.window.history.state),{orionGroupContactsRecovery:record});assert.equal(new URL(dom.window.location).searchParams.has('empresa'),false);assert.equal(new URL(dom.window.location).searchParams.get('aba'),'extrator-contatos');
 });
 

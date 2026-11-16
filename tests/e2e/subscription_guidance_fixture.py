@@ -82,6 +82,8 @@ class Handler(DeviceHandler):
             result = deepcopy(DIAGNOSTICS_CONTRACT["list_response"])
             result.update(devices=[], selected_device_id=None, generated_at=now())
             return self.body(result)
+        if session and path == base.BASE + "/subscription-whatsapp/chatbot":
+            return self.body({"items": [], "counts": {"total": 0, "active": 0, "inactive": 0}})
         return super().do_GET()
 
     def mutate(self):

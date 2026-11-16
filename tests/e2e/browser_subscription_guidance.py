@@ -24,7 +24,9 @@ BOOTSTRAP_PATHS = {
     "/auth/me", "/auth/features", "/api/v1/account/businesses",
     "/api/v1/onboarding/entry", "/api/v1/account/business-identity",
     base.BASE + "/management/permissions",
+    base.BASE + "/management/plan-overview",
 }
+DASHBOARD_PATHS = {DEVICE_BASE, base.BASE + "/subscription-whatsapp/chatbot"}
 ARTICLE = 'article.os-help-article[data-os-guidance="warmup"]'
 AVOID_BAN_ARTICLE = 'article.os-help-article[data-os-guidance="avoid-ban"]'
 RESOLVE_BAN_ARTICLE = 'article.os-help-article[data-os-guidance="resolve-ban"]'
@@ -154,13 +156,14 @@ def test_warmup_deep_link_requires_active_subscription_workspace_and_feature(
     try:
         page.goto(fixture_url + "/panel?fixtureRole=owner&fixturePlan=elite&aba=aquecimento" + query)
         expect(page.locator("#page-suite")).to_have_attribute(
-            "data-os-current-route", "plano" if profile == "standard" else "novidades")
+            "data-os-current-route", "plano" if profile == "standard" else "dashboard")
         expect(page.locator(ARTICLE)).to_have_count(0)
         expect(page.locator('#osNav [data-os-route="aquecimento"]')).to_have_count(0)
         snapshot = report(page, fixture_url)
         assert snapshot["state"] == {"profile": profile, "active": active,
                                      "feature_granted": granted, "role": "owner"}
-        assert not any("/subscription-whatsapp/" in call["path"] for call in snapshot["calls"]), snapshot
+        assert all(call["path"] in BOOTSTRAP_PATHS | DASHBOARD_PATHS
+                   for call in snapshot["calls"]), snapshot
         assert all(call["method"] == "GET" for call in requests), requests
         assert not external, external
         assert not errors, errors
@@ -249,14 +252,15 @@ def test_avoid_ban_deep_link_requires_active_subscription_workspace_and_feature(
     try:
         page.goto(fixture_url + "/panel?fixtureRole=owner&fixturePlan=none&fixtureDiagnostics=1&aba=evitar-banimento" + query)
         expect(page.locator("#page-suite")).to_have_attribute(
-            "data-os-current-route", "plano" if profile == "standard" else "novidades")
+            "data-os-current-route", "plano" if profile == "standard" else "dashboard")
         expect(page.locator(AVOID_BAN_ARTICLE)).to_have_count(0)
         expect(page.locator('#osNav [data-os-route="evitar-banimento"]')).to_have_count(0)
         snapshot = report(page, fixture_url)
         assert snapshot["state"] == {"profile": profile, "active": active,
                                      "feature_granted": granted, "role": "owner"}
         assert snapshot["effective_plan"]["active"] is False
-        assert not any("/subscription-whatsapp/" in call["path"] for call in snapshot["calls"]), snapshot
+        assert all(call["path"] in BOOTSTRAP_PATHS | DASHBOARD_PATHS
+                   for call in snapshot["calls"]), snapshot
         assert all(call["method"] == "GET" for call in requests), requests
         assert not external, external
         assert not errors, errors
@@ -337,14 +341,15 @@ def test_resolve_ban_deep_link_requires_active_subscription_workspace_and_featur
     try:
         page.goto(fixture_url + "/panel?fixtureRole=owner&fixturePlan=none&aba=resolver-banimento" + query)
         expect(page.locator("#page-suite")).to_have_attribute(
-            "data-os-current-route", "plano" if profile == "standard" else "novidades")
+            "data-os-current-route", "plano" if profile == "standard" else "dashboard")
         expect(page.locator(RESOLVE_BAN_ARTICLE)).to_have_count(0)
         expect(page.locator('#osNav [data-os-route="resolver-banimento"]')).to_have_count(0)
         snapshot = report(page, fixture_url)
         assert snapshot["state"] == {"profile": profile, "active": active,
                                      "feature_granted": granted, "role": "owner"}
         assert snapshot["effective_plan"]["active"] is False
-        assert not any("/subscription-whatsapp/" in call["path"] for call in snapshot["calls"]), snapshot
+        assert all(call["path"] in BOOTSTRAP_PATHS | DASHBOARD_PATHS
+                   for call in snapshot["calls"]), snapshot
         assert all(call["method"] == "GET" for call in requests), requests
         assert not external, external
         assert not errors, errors

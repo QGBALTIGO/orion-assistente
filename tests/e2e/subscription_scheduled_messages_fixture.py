@@ -142,6 +142,11 @@ class Handler(ChatbotHandler):
             return self.body({"calls": session["sc_calls"], "operations": list(session["sc_requests"].values()),
                 "runs": list(session["sc_runs"].values()), "confirmations": session["sc_confirmations"],
                 "releases": session["sc_releases"], "effects": session["sc_effects"], "unexpected": session["unexpected"]})
+        if session and session["workspace_profile"] == "subscription_services" and not session["chatbot_readonly"]:
+            if path == base.BASE + "/subscription-whatsapp/sent-messages":
+                return self.body({"items": [], "counts": {"today": 0, "last_30_days": 0, "scope": "message_attempts"}})
+            if path == base.BASE + "/subscription-whatsapp/campaigns":
+                return self.body({"items": [], "total": 0})
         if not path.startswith(SCHEDULES_BASE):
             return super().do_GET()
         if session:

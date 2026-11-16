@@ -14,7 +14,7 @@ async function confirm(h){h.click('[data-sm-action=resend][data-sm-id="'+failedI
 test('message history has its own subscription permission and never opens legacy APIs',async t=>{
   const h=await makeSuite({initialRoute:'mensagens-enviadas',permissions,bridge:{tenants:[tenant]},configureWindow:window=>window.eval(source),respond:path=>path.startsWith(base+'?')?listing():defaultResponse(path)});t.after(()=>h.close());await flush();
   assert.equal(h.document.querySelector('#page-suite').dataset.osCurrentRoute,'mensagens-enviadas');assert.equal(h.document.querySelectorAll('[data-sm-row]').length,4);
-  assert.deepEqual([...h.document.querySelectorAll('#osNav [data-os-route]')].map(node=>node.dataset.osRoute),['dispositivos','chatbot','testar-chatbot','templates','mensagens-enviadas','novidades','ajuda','member']);
+  assert.deepEqual([...h.document.querySelectorAll('#osNav [data-os-route]')].map(node=>node.dataset.osRoute),['dashboard','dispositivos','chatbot','testar-chatbot','templates','mensagens-enviadas','novidades','ajuda','member']);
   assert.equal(writes(h).length,0);assert.equal(h.calls.some(call=>/\/inbox|\/devices|\/management\/dashboard/.test(call.path)),false);assert.deepEqual(h.errors,[]);
 });
 
