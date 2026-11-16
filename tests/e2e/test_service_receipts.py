@@ -19,7 +19,7 @@ HTML='''<!doctype html><html lang="pt-BR" data-theme="dark"><head><meta name="vi
 def test_receipts(browser_name,width,height,theme):
  with sync_playwright() as p:
   browser=getattr(p,browser_name).launch()
-  context=browser.new_context(viewport={'width':width,'height':height},is_mobile=width<768,has_touch=width<768)
+  context=browser.new_context(viewport={'width':width,'height':height},is_mobile=width<768,has_touch=width<768,locale='pt-BR',timezone_id='America/Sao_Paulo')
   page=context.new_page();errors=[];page.on('pageerror',lambda error:errors.append(str(error)))
   try:
    page.route('**/*',lambda route:route.abort())
@@ -47,7 +47,7 @@ def test_receipts(browser_name,width,height,theme):
      assert item['x']>=-2 and item['right']<=width+2,item
      assert item['scroll']<=item['width']+2,item
     assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+2')
-   contained();page.screenshot(path=str(ARTIFACTS/f'{stem}-finance.png'),full_page=width<768)
+   contained();contained('.os-finance-table-scroll');page.screenshot(path=str(ARTIFACTS/f'{stem}-finance.png'),full_page=width<768)
    page.locator('[data-os-action=finance-receivables]').click()
    page.wait_for_selector('.os-receipt-scope')
    assert page.evaluate("receiptFixtureCalls.some(c=>c.path.includes('receivables=true'))")

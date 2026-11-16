@@ -3,6 +3,9 @@
  * All colours are semantic and honour the existing light/dark/system preference.
  */
 .os-receipt-toolbar{margin:12px 0;flex-wrap:wrap}
+.os-receipt-actions{display:flex;align-items:center;justify-content:flex-end;gap:4px}
+@media(min-width:1200px){.os-finance-ledger-table .os-finance-date,.os-finance-ledger-table .os-finance-value{white-space:nowrap}}
+[data-os-form=receipt-settings] .os-form-message:empty{display:none}
 .os-receipt-scope{margin:0 0 12px!important}
 .os-receipt-note{display:block;max-width:230px;margin-top:5px;font-size:11px;line-height:16px;color:var(--os-muted);white-space:normal;overflow-wrap:anywhere}
 .os-receipt-history{padding-left:20px;margin:12px 0;display:grid;gap:12px;font-size:13px}

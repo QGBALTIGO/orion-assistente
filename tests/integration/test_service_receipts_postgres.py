@@ -63,8 +63,10 @@ async def test_manual_is_default_standard_completion_creates_one_receivable(mana
 @pytest.mark.asyncio
 async def test_24_hours_deadline_never_runs_early_and_duplicate_workers_settle_once(management_db):
     d=management_db;a,row=await completed(d,automatic=True)
-    end=(await d['client'].get(f"/api/v1/tenants/{d['a']}/appointments/{a}")).json()['end_at']
-    assert datetime.fromisoformat(row['auto_receipt_due_at'])==datetime.fromisoformat(end)+timedelta(hours=24)
+    async with d['migrator'].connect() as db:
+        end=(await db.execute(text('SELECT end_at FROM appointments WHERE tenant_id=:t AND id=:a'),
+            {'t':d['a'],'a':UUID(a)})).scalar_one()
+    assert datetime.fromisoformat(row['auto_receipt_due_at'])==end+timedelta(hours=24)
     assert row['auto_receipt_active']
     assert await confirm_service_receipt({},str(d['a']),row['id'])=='changed'
     await due_now(d,row)

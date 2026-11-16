@@ -1709,12 +1709,12 @@
     let html='<div class="os-table-scroll os-finance-table-scroll"><table class="os-table os-finance-data-table os-finance-ledger-table"><thead><tr><th>Descrição</th><th>Data</th><th>Categoria</th><th>Valor</th><th>Status</th><th aria-label="Ações"></th></tr></thead><tbody>'+
       entries.map(e=>{
         const id=esc(e.id),description=esc(financeEntryTitle(e)),isExpense=e.kind==='expense';
-        return '<tr class="os-finance-entry"><td data-label="Descrição" class="os-finance-primary"><strong>'+description+'</strong><small>'+esc(paymentLabels[e.payment_method]||'')+'</small></td>'+
+        return '<tr class="os-finance-entry"><td data-label="Descrição" class="os-finance-primary"><strong>'+description+'</strong><small>'+esc(paymentLabels[e.payment_method]||'')+'</small>'+(e.kind==='income'&&e.appointment_id?'<small class="os-receipt-note">'+esc(receiptInfo(e))+'</small>':'')+'</td>'+
           '<td data-label="Data" class="os-finance-date">'+fmtDate(dateKey(new Date(e.received_at||e.occurred_at)))+(history?'<small>Versão '+number(e.version)+'</small>':'')+'</td>'+
           '<td data-label="Categoria" class="os-finance-category">'+esc(e.category||'Geral')+'</td>'+
           '<td data-label="Valor" class="os-finance-value '+(isExpense?'os-negative':'os-positive')+'">'+(isExpense?'− ':'+ ')+money(e.amount_cents)+'</td>'+
-          '<td data-label="Status" class="os-finance-status">'+badge(e.status)+(e.kind==='income'&&e.appointment_id?'<small class="os-receipt-note">'+esc(receiptInfo(e))+'</small>':'')+'</td>'+
-          '<td data-label="Ações" class="os-finance-actions-cell">'+(e.kind==='income'&&e.appointment_id&&e.status!=='cancelled'?'<button type="button" class="os-button os-outline os-small" data-os-receipt="'+id+'">'+(e.status==='pending'&&writable()?'Receber':'Recebimento')+'</button>':'')+'<button type="button" class="os-icon-button" data-os-finance="'+id+'"  aria-label="Ver lançamento '+description+'">'+icon(writable()?'edit':'chevron')+'</button></td></tr>';
+          '<td data-label="Status" class="os-finance-status">'+badge(e.status)+'</td>'+
+          '<td data-label="Ações" class="os-finance-actions-cell"><div class="os-receipt-actions">'+(e.kind==='income'&&e.appointment_id&&e.status!=='cancelled'?'<button type="button" class="os-button os-outline os-small" data-os-receipt="'+id+'">'+(e.status==='pending'&&writable()?'Receber':'Ver')+'</button>':'')+'<button type="button" class="os-icon-button" data-os-finance="'+id+'"  aria-label="Ver lançamento '+description+'">'+icon(writable()?'edit':'chevron')+'</button></div></td></tr>';
       }).join('')+'</tbody></table></div>';
     if(number(data.total)>100){const offset=state.filters.financeOffset||0;html+='<div class="os-pagination os-finance-pagination"><span>'+String(offset+1)+'–'+(offset+entries.length)+' de '+number(data.total)+'</span><div class="os-actions">'+button('Anterior','finance-page-prev','os-outline os-small','left',offset?'':'disabled')+button('Próxima','finance-page-next','os-outline os-small','chevron',offset+entries.length<number(data.total)?'':'disabled')+'</div></div>';}
     return html;
