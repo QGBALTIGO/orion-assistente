@@ -136,11 +136,35 @@ test('canceling the custom picker preserves the applied period label and results
   assert.equal(columns(h).length,count);assert.equal(h.calls.length,requests);
 });
 
+test('report tabs separate overview, professionals and goals without reloading data',async t=>{
+  const h=await suite(t),requests=h.calls.length;
+  const active=()=>h.document.querySelector('[data-os-performance-tab][aria-selected=true]').dataset.osPerformanceTab;
+  const panel=key=>h.document.querySelector('[data-os-performance-panel='+key+']');
+  assert.equal(active(),'overview');assert.equal(panel('professionals').hidden,true);assert.equal(panel('goals').hidden,true);
+  h.click('[data-os-performance-tab=professionals]');assert.equal(active(),'professionals');
+  assert.equal(panel('overview').hidden,true);assert.equal(panel('professionals').hidden,false);
+  const tab=h.document.querySelector('[data-os-performance-tab=professionals]');
+  tab.dispatchEvent(new h.window.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true,cancelable:true}));
+  assert.equal(active(),'goals');assert.equal(panel('goals').hidden,false);
+  assert.equal(h.document.activeElement.dataset.osPerformanceTab,'goals');
+  change(h,'#osPerformanceProfessional','p1');assert.equal(active(),'goals');assert.equal(h.calls.length,requests);
+  change(h,'#osPerformancePeriod','week');await flush();assert.equal(active(),'goals');
+});
+
+test('Essencial exposes only the overview and professional reports',async t=>{
+  const h=await suite(t,{plan:'essencial'});
+  assert.deepEqual([...h.document.querySelectorAll('[data-os-performance-tab]')].map(el=>el.dataset.osPerformanceTab),['overview','professionals']);
+  assert.equal(h.document.querySelector('[data-os-performance-panel=goals]'),null);
+  h.click('[data-os-performance-tab=professionals]');
+  assert.equal(h.document.querySelector('[data-os-performance-panel=professionals]').hidden,false);
+  assert.equal(h.calls.some(c=>/\/goals|\/finance\/commissions|\/finance\/advances/.test(c.path)),false);
+});
+
 test('a slower previous period cannot replace a refreshed chart',async t=>{
   const pending=deferred();let delay=false;
   const h=await suite(t,{respond:path=>delay&&path.includes('/performance/daily?')&&path.includes('2026-10-31')?pending.promise:undefined});
   delay=true;await period(h,'2026-10-31','2026-11-10');
-  h.click('[data-os-performance-period=today]');await flush();
+  change(h,'#osPerformancePeriod','today');await flush();
   assert.equal(columns(h).length,1);assert.match(columns(h)[0].getAttribute('aria-label'),/15 de nov.*80,00/);
   pending.resolve({items:daily});await flush();assert.equal(columns(h).length,1);
   assert.equal(metric(h,0),centsText(8000));assert.deepEqual(h.errors,[]);
