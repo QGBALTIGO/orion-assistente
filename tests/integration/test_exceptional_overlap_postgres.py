@@ -14,7 +14,7 @@ from app.database import tenant_transaction
 from test_appointment_operations_postgres import (
     operations_db, create_manual, create_normal, extras_payload, manual_payload,
 )
-from test_booking import phone, start_at
+from test_booking import booking_db, phone, start_at
 
 pytestmark = pytest.mark.integration
 
