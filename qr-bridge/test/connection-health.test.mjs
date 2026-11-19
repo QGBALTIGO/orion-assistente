@@ -80,6 +80,13 @@ test('runtime correlation never serializes arbitrary env values, frame bytes or 
   const f=fixture();f.socket.emit('message',Buffer.from('private customer text'));f.health.disconnected(disconnectPolicy(408),1);
   assert.doesNotMatch(JSON.stringify(f.events),/private customer text/);f.health.stop();
 });
+
+test('image deployments correlate their baked commit without relying on a source-repository environment',()=>{
+  assert.equal(runtimeIdentity({ORION_BUILD_COMMIT:'b'.repeat(40)}).build_commit,'b'.repeat(40));
+  assert.equal(runtimeIdentity({ORION_BUILD_COMMIT:'b'.repeat(40),RAILWAY_GIT_COMMIT_SHA:'a'.repeat(40)}).build_commit,'b'.repeat(40));
+  assert.equal(runtimeIdentity({ORION_BUILD_COMMIT:'secret-value',RAILWAY_GIT_COMMIT_SHA:'a'.repeat(40)}).build_commit,'a'.repeat(40));
+  assert.equal(runtimeIdentity({ORION_BUILD_COMMIT:'private-value'}).build_commit,null);
+});
 test('bounded passive samples prove monitoring continues without content, probes or per-frame logs',()=>{
   const f=fixture();
   for(let index=0;index<36;index++){f.socket.emit('message',Buffer.from('private probe-free frame'));f.step();}

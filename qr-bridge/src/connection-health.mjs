@@ -6,7 +6,8 @@ import {safeDisconnectEvidence} from './disconnect-evidence.mjs';
 const processInstance=randomUUID();
 const uuid=value=>typeof value==='string'&&/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(value)?value:null;
 export function runtimeIdentity(env=process.env){
-  return {build_commit:/^[a-f0-9]{40}$/.test(env.RAILWAY_GIT_COMMIT_SHA||'')?env.RAILWAY_GIT_COMMIT_SHA:null,
+  const buildCommit=[env.ORION_BUILD_COMMIT,env.RAILWAY_GIT_COMMIT_SHA].find(value=>/^[a-f0-9]{40}$/.test(value||''));
+  return {build_commit:buildCommit||null,
     deployment_id:uuid(env.RAILWAY_DEPLOYMENT_ID),instance_id:uuid(env.RAILWAY_REPLICA_ID)||processInstance,
     baileys_version:'6.7.24',node_version:process.versions.node};
 }

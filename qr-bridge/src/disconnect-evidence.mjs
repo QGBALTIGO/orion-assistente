@@ -4,7 +4,9 @@
  * socket.js602-604 preserves the original WebSocket Error there. A bare500
  * has no evidence of a damaged Signal/auth session and remains unknown. */
 const sources=new Set(['stream_error','provider_failure','websocket_error','sdk_status','unknown']);
-const streamConditions=new Set(['conflict','restart_required']);
+const streamConditions=new Set(['conflict','restart_required','ack']);
+const ackClasses=new Set(['message','status','receipt','notification','call']);
+const ackTypes=new Set(['text','media','retry','read','read-self','played','sender','inactive','unavailable']);
 const websocketCodes=new Set(['ECONNRESET','ECONNREFUSED','ETIMEDOUT','ETIMEOUT','ENOTFOUND','EAI_AGAIN','EPIPE',
   'ENETUNREACH','EHOSTUNREACH','WS_ERR_INVALID_OPCODE','WS_ERR_INVALID_UTF8','WS_ERR_INVALID_CLOSE_CODE',
   'WS_ERR_UNEXPECTED_RSV_1','WS_ERR_UNEXPECTED_RSV_2_3','WS_ERR_EXPECTED_FIN','WS_ERR_EXPECTED_MASK',
@@ -23,6 +25,13 @@ export function safeDisconnectEvidence(value){
     result.source=source;
     const condition=value.condition;
     if(source==='stream_error'&&streamConditions.has(condition))result.condition=condition;
+    if(source==='stream_error'&&condition==='ack'){
+      // An unacknowledged stanza also maps to SDK badSession/500. These
+      // finite categories distinguish it without exposing its ID or sender.
+      const ackClass=value.ack_class,ackType=value.ack_type;
+      result.ack_class=ackClasses.has(ackClass)?ackClass:'unknown';
+      result.ack_type=ackTypes.has(ackType)?ackType:'unknown';
+    }
     if(source==='sdk_status'&&['timeout_or_lost','connection_closed'].includes(condition))result.condition=condition;
     if(['stream_error','provider_failure'].includes(source))result.provider_reason_numeric=numeric(value.provider_reason_numeric);
     const websocketCode=source==='websocket_error'?value.websocket_code:null;
@@ -38,7 +47,8 @@ export function disconnectEvidence(error){
     if(data?.tag==='stream:error'&&data.attrs&&typeof data.attrs==='object'){
       const first=Array.isArray(data.content)?data.content[0]:null;
       return safeDisconnectEvidence({source:'stream_error',condition:code===515?'restart_required':first?.tag,
-        provider_reason_numeric:numeric(data.attrs.code)});
+        provider_reason_numeric:numeric(data.attrs.code),
+        ...(first?.tag==='ack'?{ack_class:first.attrs?.class,ack_type:first.attrs?.type}:{})});
     }
     // In this SDK the only Boom.data=Error disconnect path is its public
     // WebSocket mapper. Unknown native codes stay null; messages are unread.

@@ -30,6 +30,37 @@ test('retired socket auth callbacks reject with the narrow nonfatal marker',asyn
   await assert.rejects(s.config.auth.keys.set({session:{synthetic:{}}}),error=>error instanceof StaleSocketRejection);
   assert.equal(s.sent.length,0);
 });
+
+test('managed own phone text becomes retryable across restart only for its bound recipient',async t=>{
+  const events=[];t.mock.method(console,'info',line=>{try{const event=JSON.parse(line);if(event.component==='orion-managed-transport')events.push(event);}catch{}});
+  const s=await session(t,{registered:true});s.client.ev.emit('connection.update',{connection:'open'});
+  const id='private-manual-retry',body={conversation:'private manual fixture'};
+  s.receive({id,fromMe:true},body);await flush();
+  const key={id,fromMe:true,remoteJid:phone+':2@s.whatsapp.net'};
+  assert.deepEqual(await s.config.getMessage(key),body);
+  assert.equal(s.sent.length,0);assert.equal(s.messages.length,0);
+  s.result.close();const reopened=await s.open();t.after(()=>reopened.close());
+  s.client.ev.emit('connection.update',{connection:'open'});await flush();
+  assert.deepEqual(await s.config.getMessage(key),body);
+  assert.equal(await s.config.getMessage({...key,remoteJid:self+'@s.whatsapp.net'}),undefined);
+  assert.ok(events.some(event=>event.stage==='retry_capture'&&event.category==='captured'));
+  assert.ok(events.some(event=>event.stage==='get_message'&&event.reason==='hit'));
+  assert.ok(events.some(event=>event.stage==='get_message'&&event.reason==='peer_mismatch'));
+  assert.ok(events.every(event=>event.channel_id===s.context.channelId));
+  for(const privateValue of [id,body.conversation,phone,self])assert.equal(JSON.stringify(events).includes(privateValue),false);
+});
+
+test('managed receipt telemetry records actual outgoing delivery states without treating cache hits as delivery',async t=>{
+  const events=[];t.mock.method(console,'info',line=>{try{const event=JSON.parse(line);if(event.stage==='receipt_update')events.push(event);}catch{}});
+  const s=await session(t),receipts=[];s.context.onReceipt=async(id,state)=>receipts.push({id,state});
+  const key={id:'private-delivery-id',remoteJid:phone+'@s.whatsapp.net',fromMe:true};
+  for(const status of [2,3,4])s.client.ev.emit('messages.update',[{key,update:{status}}]);
+  await flush();assert.deepEqual(events.map(event=>event.status),['server_accepted','delivered','read']);
+  assert.deepEqual(receipts.map(receipt=>receipt.state),['delivered','read']);
+  assert.equal(new Set(events.map(event=>event.trace)).size,1);
+  assert.doesNotMatch(JSON.stringify(events),/private-delivery-id|5567999999901/);
+  s.revoke();s.client.ev.emit('messages.update',[{key,update:{status:5}}]);assert.equal(events.length,3);
+});
 const assistantPresentation=()=>{const id='C'.repeat(32);return {version:1,id,action:{type:'reply_buttons',text:'Resumo fictício',footer:'',
   buttons:[{id:`oa1_${id}_0`,title:'Confirmar'},{id:`oa1_${id}_1`,title:'Corrigir'}]}};};
 async function waitFor(test){for(let i=0;i<150;i++){if(test())return;await flush();}assert.ok(test(),'Expected asynchronous assistant boundary');}

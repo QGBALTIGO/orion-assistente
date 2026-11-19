@@ -51,6 +51,28 @@ test('only SDK-supported conflict/restart stream conditions leave the helper, ne
   assert.deepEqual(disconnectEvidence(absent),{...unknown,source:'stream_error'});
 });
 
+test('the real SDK missing-ACK500 retains only finite stanza categories, never message IDs or content',()=>{
+  const native=nativeFailures();
+  for(const ackClass of ['message','status']){
+    const error=native.stream({tag:'stream:error',attrs:{},content:[{tag:'ack',
+      attrs:{class:ackClass,type:'media',id:privateValue,from:privateValue},content:Buffer.from(privateValue)}]});
+    assert.equal(error.output.statusCode,500);
+    const evidence={...unknown,source:'stream_error',condition:'ack',ack_class:ackClass,ack_type:'media'};
+    assert.deepEqual(disconnectEvidence(error),evidence);
+    const events=[],health=makeConnectionHealth({emit:event=>events.push(event)});
+    health.disconnected(disconnectPolicy(500),1,evidence);
+    assert.deepEqual(events.at(-1).disconnect_evidence,evidence);
+    assert.doesNotMatch(JSON.stringify(events),/private-phone|private-token|customer-body/);
+    health.stop();
+  }
+  assert.deepEqual(safeDisconnectEvidence({source:'stream_error',condition:'ack',ack_class:privateValue,
+    ack_type:privateValue,id:privateValue}),{...unknown,source:'stream_error',condition:'ack',ack_class:'unknown',ack_type:'unknown'});
+  let classReads=0,typeReads=0;
+  assert.deepEqual(safeDisconnectEvidence({source:'stream_error',condition:'ack',
+    get ack_class(){return ++classReads===1?'status':privateValue;},get ack_type(){return ++typeReads===1?'media':privateValue;}}),
+    {...unknown,source:'stream_error',condition:'ack',ack_class:'status',ack_type:'media'});
+});
+
 test('native transport codes have a finite allowlist; unknown error codes and messages are never emitted',()=>{
   const native=nativeFailures();
   for(const code of ['ETIMEDOUT','ECONNRESET','ENOTFOUND']){
