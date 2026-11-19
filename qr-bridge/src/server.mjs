@@ -176,6 +176,10 @@ let encryptedRetry=makeEncryptedRetryStore({
 });
 const retryStore={
   entry:key=>retryMessages.entry(key)||encryptedRetry.entry(key),
+  entryResult(key){
+    const entry=retryMessages.entry(key);
+    return entry?{reason:'hit',entry}:encryptedRetry.entryResult(key);
+  },
   save(key,message){
     if(stopping||!legacyCentral.transportCurrent())return false;
     const memory=retryMessages.save(key,message);
@@ -1100,16 +1104,17 @@ async function connect(){
       msgRetryCounterCache,
       maxMsgRetryCount:5,
       getMessage:async key=>{
+        let lookupReason;
         const content=await readAuthorizedRetry(retryStore,key,{socket:client,
           isCurrent:()=>!stopping&&mine===generation&&socket===client&&status==='connected'&&legacyCentral.transportCurrent(),
-          assertCurrent:()=>legacyCentral.assertTransportCurrent()});
+          assertCurrent:()=>legacyCentral.assertTransportCurrent(),onResult:details=>{lookupReason=details.reason;}});
         // The library also sends its OWN retry-control messages. A cache
         // miss for one of those IDs is not proof that a customer-facing
         // outgoing message is missing. Report these separately, without IDs.
         const tracked=Boolean(key?.id && (
           deliveryReceipts.has(key.id) || messages.some(m=>m.id==='out:'+key.id)
         ));
-        transport.record('get_message',key?.id,{cached:!!content,tracked});
+        transport.record('get_message',key?.id,{cached:!!content,tracked,reason:lookupReason});
         if(content)retryDiagnostics.cacheHits++;
         else {
           retryDiagnostics.cacheMisses++;

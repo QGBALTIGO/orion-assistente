@@ -31,6 +31,19 @@ test('getMessage lookups are not falsely counted as recipient retries and trace 
   assert.equal(d.snapshot().counts.retry_received,undefined);
 });
 
+test('protocol ACKs and missing-ACK disconnects correlate only through HMAC and finite categories',()=>{
+  const output=[],d=makeTransportDiagnostics({secret:'synthetic-test-only',emit:value=>output.push(value)});
+  const id='PRIVATE_STANZA',peer='5511999999901@s.whatsapp.net';
+  d.logger.debug({id,kind:'status',from:peer},'orion protocol ack sent');
+  d.logger.error({node:{tag:'stream:error',attrs:{},content:[{tag:'ack',
+    attrs:{id,class:'status',type:'media',from:peer},content:Buffer.from('private payload')}]}},'stream errored out');
+  assert.equal(output.length,2);assert.equal(output[0].stage,'protocol_ack_sent');
+  assert.equal(output[1].stage,'stream_ack_missing');assert.equal(output[1].kind,'status');
+  assert.equal(output[0].trace,output[1].trace);assert.match(output[0].trace,/^[a-f0-9]{20}$/);
+  assert.doesNotMatch(JSON.stringify(output),/PRIVATE_STANZA|5511999999901|private payload/);
+  d.logger.debug({id,kind:peer},'orion protocol ack sent');assert.equal(output.length,2);
+});
+
 test('receipt classification separates own LID companion from recipient PN primary',()=>{
   const own={id:'5511999999999:4@s.whatsapp.net',lid:'123456789012345:4@lid'};
   assert.deepEqual(receiptDiagnosticDetails({attrs:{from:'123456789012345:3@lid'}},own),{

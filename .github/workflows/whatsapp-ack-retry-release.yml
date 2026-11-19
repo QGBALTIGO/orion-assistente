@@ -1,0 +1,76 @@
+name: Validate and publish Orion WhatsApp ACK fix
+
+on:
+  push:
+    branches: [fix/whatsapp-ack-retry-20261119]
+    paths:
+      - qr-bridge/**
+      - .github/workflows/whatsapp-ack-retry-release.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: orion-whatsapp-ack-retry-release
+  cancel-in-progress: false
+
+jobs:
+  bridge:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install locked dependencies and verify the exact SDK backport
+        working-directory: qr-bridge
+        run: |
+          npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+          node scripts/patch-baileys-acks.mjs
+          node scripts/patch-baileys-acks.mjs --check
+      - name: Run all bridge runtime regression tests without live accounts
+        run: |
+          # panel-ui tests the Python application's static panel, which is
+          # outside this image. Its 19 failures also occur on the live base.
+          bridge_tests=()
+          for bridge_test in qr-bridge/test/*.test.mjs; do
+            if [[ "$bridge_test" != qr-bridge/test/panel-ui.test.mjs ]]; then
+              bridge_tests+=("$bridge_test")
+            fi
+          done
+          node --test "${bridge_tests[@]}" > /tmp/orion-bridge-tests.log 2>&1 || {
+            tail -150 /tmp/orion-bridge-tests.log
+            exit 1
+          }
+          tail -12 /tmp/orion-bridge-tests.log
+      - name: Build the tested revision without production credentials
+        env:
+          IMAGE: ghcr.io/qgbaltigo/orion-assistente-qr-bridge
+          REVISION: ${{ github.sha }}
+        run: |
+          docker build --pull \
+            --build-arg ORION_BUILD_COMMIT="$REVISION" \
+            --label org.opencontainers.image.source=https://github.com/QGBALTIGO/orion-assistente \
+            --label org.opencontainers.image.revision="$REVISION" \
+            --label org.opencontainers.image.description="Orion WhatsApp transport ACK and authorized retry recovery" \
+            -t "$IMAGE:$REVISION" qr-bridge
+          docker run --rm "$IMAGE:$REVISION" node scripts/patch-baileys-acks.mjs --check
+          docker run --rm "$IMAGE:$REVISION" node --check src/server.mjs
+          docker run --rm "$IMAGE:$REVISION" node --check src/channel-session.mjs
+      - name: Publish the immutable revision image
+        env:
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE: ghcr.io/qgbaltigo/orion-assistente-qr-bridge
+          REVISION: ${{ github.sha }}
+        run: |
+          printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker push "$IMAGE:$REVISION"
+          docker image inspect "$IMAGE:$REVISION" --format '{{json .RepoDigests}}' >> "$GITHUB_STEP_SUMMARY"
+      - name: Clear registry login
+        if: always()
+        run: docker logout ghcr.io
