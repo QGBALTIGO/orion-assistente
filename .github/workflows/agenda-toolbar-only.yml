@@ -6,6 +6,7 @@ on:
     paths:
       - app/static/orion-suite.js
       - app/static/orion-suite.css
+      - ui-tests/agenda-periods.test.mjs
       - ui-tests/agenda-lifecycle.test.mjs
       - ui-tests/android-agenda-session.test.mjs
       - ui-tests/android-agenda-browser.py
