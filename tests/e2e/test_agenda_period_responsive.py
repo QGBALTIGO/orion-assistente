@@ -11,7 +11,7 @@ CSS = (ROOT / "app/static/orion-suite.css").read_text(encoding="utf-8")
 SCRIPT = (ROOT / "app/static/orion-suite.js").read_text(encoding="utf-8")
 HELPERS = SCRIPT[SCRIPT.index("  const agendaPeriod="):SCRIPT.index("  function agendaFrame(")]
 FRAME = SCRIPT[SCRIPT.index("  function agendaFrame("):SCRIPT.index("  function syncAgendaControls()")]
-RENDERER = SCRIPT[SCRIPT.index("  function agendaRangeView("):SCRIPT.index("  function renderAgenda(){")]
+RENDERER = SCRIPT[SCRIPT.index("  function agendaTeamRangeView("):SCRIPT.index("  function renderAgenda(){")]
 
 HTML = """<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
