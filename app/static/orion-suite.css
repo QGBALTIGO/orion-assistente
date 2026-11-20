@@ -3767,6 +3767,13 @@ html:has(.os-professional-history[open]){overflow:hidden}
  .os-agenda-range-day{transition:none}
 }
 
+/* With active filters, keep the count legible rather than compressing it beside two actions. */
+@container agenda (max-width:380px){
+ .os-agenda-result-line:has(#osAgendaClear:not([hidden])){flex-wrap:wrap;row-gap:2px}
+ .os-agenda-result-line:has(#osAgendaClear:not([hidden]))>p{flex-basis:100%}
+ .os-agenda-result-line:has(#osAgendaClear:not([hidden]))>.os-agenda-result-actions{margin-left:auto}
+}
+
 /* Small mobile month headings keep the calendar navigation and list toggle separate. */
 @container agenda (max-width:360px){
  .os-agenda-month-overview>.os-agenda-range-heading{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;column-gap:8px;row-gap:8px}
