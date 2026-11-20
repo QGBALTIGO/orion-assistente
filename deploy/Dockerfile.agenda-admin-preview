@@ -6,4 +6,4 @@ LABEL org.opencontainers.image.source="https://github.com/QGBALTIGO/orion-assist
 COPY --chown=appuser:appuser app/main.py app/agenda_admin_preview.py /srv/app/app/
 COPY --chown=appuser:appuser app/static/orion-agenda-preview.html app/static/orion-agenda-preview.css app/static/orion-agenda-preview.js /srv/app/app/static/
 COPY --chown=appuser:appuser tests/unit/test_agenda_admin_preview.py /srv/app/tests/unit/
-RUN python -m py_compile /srv/app/app/main.py /srv/app/app/agenda_admin_preview.py
+RUN PYTHONPYCACHEPREFIX=/tmp/orion-compile-cache python -m py_compile /srv/app/app/main.py /srv/app/app/agenda_admin_preview.py
