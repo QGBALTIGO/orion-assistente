@@ -4366,9 +4366,10 @@
         await open('agenda');break;
       }
       case 'agenda-open':await open('agenda');break;
-      case 'agenda-reload':await loadAgenda(context());void loadGoogle();break;
+      case 'agenda-reload':await loadAgenda(context());if(agendaPeriod()==='day')void loadGoogle();break;
       case 'agenda-range-list':
-        f.agendaRangeList=!f.agendaRangeList;
+        f.agendaMode=f.agendaMode==='list'?'calendar':'list';
+        f.agendaRangeList=f.agendaMode!=='calendar';
         f.agendaFocusOffset=0;
         renderAgenda();
         if(!f.agendaRangeList)await loadAgendaFocus(context());
@@ -4494,14 +4495,14 @@
         const day=el.dataset.osOpenDay,{start,end}=agendaBounds();
         if(!/^\d{4}-\d{2}-\d{2}$/.test(day)||day<start||day>end)return;
         state.filters.agendaDay=day;state.filters.agendaFocusDay=day;
-        state.filters.agendaFocusOffset=0;state.filters.agendaRangeList=false;
+        state.filters.agendaFocusOffset=0;state.filters.agendaMode='calendar';state.filters.agendaRangeList=false;
         renderAgenda();await loadAgendaFocus(context());
         document.querySelector('[data-os-open-day="'+day+'"]')?.focus({preventScroll:true});
         return;
       }
-      if(el.dataset.osAgendaPeriod){if(!['day','week','month'].includes(el.dataset.osAgendaPeriod))return;state.filters.agendaPeriod=el.dataset.osAgendaPeriod;state.filters.agendaOffset=0;state.filters.agendaFocusDay='';state.filters.agendaFocusOffset=0;state.filters.agendaRangeList=el.dataset.osAgendaPeriod==='week';await open('agenda',{keepScroll:true});return;}
+      if(el.dataset.osAgendaPeriod){const period=el.dataset.osAgendaPeriod;if(!['day','week','month'].includes(period)||period===agendaPeriod())return;state.filters.agendaPeriod=period;state.filters.agendaMode=period==='month'?'calendar':'list';state.filters.agendaOffset=0;state.filters.agendaFocusDay='';state.filters.agendaFocusOffset=0;state.filters.agendaRangeList=period!=='month';await open('agenda',{keepScroll:true});return;}
       if(el.dataset.osDay){state.filters.agendaDay=el.dataset.osDay;state.filters.agendaOffset=0;await open('agenda',{keepScroll:true});$('osAgendaDay-'+state.filters.agendaDay)?.focus();return;}
-      if(el.dataset.osAgendaMode){if(!['list','calendar','professional'].includes(el.dataset.osAgendaMode))return;state.filters.agendaMode=el.dataset.osAgendaMode;state.filters.agendaOffset=0;clearTimeout(state.agendaSearchTimer);await open('agenda',{keepScroll:true});return;}
+      if(el.dataset.osAgendaMode){const mode=el.dataset.osAgendaMode;if(!['list','calendar','professional'].includes(mode))return;state.filters.agendaMode=mode;state.filters.agendaOffset=0;state.filters.agendaFocusDay='';state.filters.agendaFocusOffset=0;if(agendaPeriod()!=='day')state.filters.agendaRangeList=mode!=='calendar';clearTimeout(state.agendaSearchTimer);await open('agenda',{keepScroll:true});return;}
       if(el.dataset.osSettings){state.filters.settingsTab=el.dataset.osSettings;await open('configuracoes',{keepScroll:true});return;}
       if(el.dataset.osSiteRequestCopy){if(!canManageSiteRequests()||state.filters.settingsTab!=='site-requests')return;const item=rows(state.data.siteRequests).find(item=>item.id===el.dataset.requestId),key=el.dataset.osSiteRequestCopy;if(!item||!['email','phone'].includes(key)||typeof item[key]!=='string')return;const c=context();await navigator.clipboard.writeText(item[key]);if(current(c))toast(key==='email'?'E-mail copiado.':'WhatsApp copiado.');return;}
       if(el.dataset.osCustomerStatus){state.filters.customerStatus=el.dataset.osCustomerStatus;state.filters.customerOffset=0;await open('clientes',{keepScroll:true});return;}
