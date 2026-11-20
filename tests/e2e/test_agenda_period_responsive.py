@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[2]
 CSS = (ROOT / "app/static/orion-suite.css").read_text(encoding="utf-8")
 SCRIPT = (ROOT / "app/static/orion-suite.js").read_text(encoding="utf-8")
 HELPERS = SCRIPT[SCRIPT.index("  const agendaPeriod="):SCRIPT.index("  function agendaFrame(")]
+FRAME = SCRIPT[SCRIPT.index("  function agendaFrame("):SCRIPT.index("  function syncAgendaControls()")]
 RENDERER = SCRIPT[SCRIPT.index("  function agendaRangeView("):SCRIPT.index("  function renderAgenda(){")]
 
 HTML = """<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
@@ -28,7 +29,8 @@ body{background:var(--os-bg);color:var(--os-text)}
 </main></body></html>"""
 
 RUNTIME = """
-const state={filters:{agendaDay:'2026-11-13',agendaPeriod:'month',agendaFocusDay:'',agendaRangeList:false}};
+const state={filters:{agendaDay:'2026-11-13',agendaPeriod:'month',agendaFocusDay:'',agendaRangeList:false,agendaMode:'list',agendaQuery:'',agendaProfessional:'',agendaStatus:'all'}};
+const writable=()=>true;
 const dateKey=value=>value?new Date(value).toISOString().slice(0,10):'2026-11-13';
 const dayDate=day=>new Date((day||'2026-11-13')+'T12:00:00Z');
 const shiftDay=(day,count)=>{let d=dayDate(day);d.setUTCDate(d.getUTCDate()+count);return d.toISOString().slice(0,10)};
@@ -42,7 +44,13 @@ const loading=text=>'<p>'+esc(text)+'</p>';
 const appointmentRow=item=>'<button type="button" class="os-agenda-item" data-os-appointment="'+item.id+'">'+esc(item.id)+'</button>';
 const agendaEmpty=()=>'<p>Sem agendamentos</p>';
 const agendaPagination=()=>'<nav class="os-agenda-pagination"><span>Mais resultados</span></nav>';
-""" + HELPERS + RENDERER + """
+""" + HELPERS + FRAME + RENDERER + """
+window.renderDay=()=>{
+  state.filters.agendaPeriod='day';
+  state.filters.agendaMode='list';
+  document.getElementById('osPageBody').innerHTML=agendaFrame();
+  return document.querySelectorAll('[data-os-action=agenda-reload]').length;
+};
 window.renderPeriod=(period,whole,focus)=>{
   state.filters.agendaPeriod=period;
   state.filters.agendaRangeList=whole;
@@ -79,6 +87,16 @@ def test_agenda_periods_are_usable_across_mobile_tablet_desktop(engine):
                 page.locator("html").evaluate("(el,theme)=>el.dataset.theme=theme",theme)
                 for width in (320,390,768,1024,1440):
                     page.set_viewport_size({"width":width,"height":850})
+                    if width in (320,390,768,1024,1440):
+                        count=page.evaluate('window.renderDay()')
+                        assert count==1, f"Refresh button duplicated: {engine=} {theme=} {width=}"
+                        assert page.locator('.os-agenda-period-switch [data-os-agenda-period]').count()==3
+                        assert page.locator('#osAgendaSearch').is_visible()
+                        assert page.locator('#osAgendaProfessional').is_visible()
+                        assert page.locator('#osAgendaStatus').is_visible()
+                        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth + 2'), (
+                            f"Day layout horizontal overflow: {engine=} {theme=} {width=}"
+                        )
                     for period,whole,day_count in (("week",True,7),("week",False,7),("month",False,30),("month",True,30)):
                         result=page.evaluate("([period,whole])=>window.renderPeriod(period,whole,'')",[period,whole])
                         assert result["days"]==day_count
