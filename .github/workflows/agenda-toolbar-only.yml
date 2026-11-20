@@ -1,0 +1,57 @@
+name: Orion agenda toolbar only
+on:
+  push:
+    branches:
+      - codex/agenda-remove-toolbar-only-20261120
+    paths:
+      - app/static/orion-suite.js
+      - deploy/Dockerfile.agenda-toolbar-only
+      - .github/workflows/agenda-toolbar-only.yml
+permissions:
+  contents: read
+  packages: write
+jobs:
+  verify-and-publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Verify exact removal and untouched controls
+        run: |
+          node --check app/static/orion-suite.js
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('app/static/orion-suite.js').read_text()
+          a=s.index('function agendaFrame(')
+          b=s.index('function syncAgendaControls()',a)
+          block=s[a:b]
+          assert 'os-agenda-toolbar' not in block
+          assert 'Google Agenda' not in block
+          assert 'agenda-today' not in block
+          assert 'osAgendaDatePicker' not in block
+          assert 'os-agenda-week' in block
+          assert 'os-agenda-period-switch' in block
+          assert 'osAgendaFilters' in block
+          assert 'os-agenda-views' in block
+          assert 'new-appointment' in block and 'new-block' in block
+          print('Only targeted toolbar removed; all adjacent UI remains')
+          PY
+      - name: Authenticate to image registry
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$TOKEN" | docker login ghcr.io -u QGBALTIGO --password-stdin
+      - name: Build original API with only the targeted JS replacement
+        env:
+          IMAGE: ghcr.io/qgbaltigo/orion-assistente-api
+        run: |
+          docker build --pull -f deploy/Dockerfile.agenda-toolbar-only -t "$IMAGE:agenda-toolbar-only-$GITHUB_SHA" .
+          docker push "$IMAGE:agenda-toolbar-only-$GITHUB_SHA"
+          docker image inspect "$IMAGE:agenda-toolbar-only-$GITHUB_SHA" --format '{{json .RepoDigests}}' >> "$GITHUB_STEP_SUMMARY"
+      - name: Log out
+        if: always()
+        run: docker logout ghcr.io || true
