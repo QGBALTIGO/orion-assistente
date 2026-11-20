@@ -5,7 +5,7 @@ import vm from 'node:vm';
 
 const source=fs.readFileSync('app/static/orion-suite.js','utf8');
 const helpers=source.slice(source.indexOf('  const agendaPeriod='),source.indexOf('  function agendaFrame('));
-const renderer=source.slice(source.indexOf('  function agendaRangeView('),source.indexOf('  function renderAgenda(){'));
+const renderer=source.slice(source.indexOf('  function agendaTeamRangeView('),source.indexOf('  function renderAgenda(){'));
 const focused=source.slice(source.indexOf('  function agendaFocusQuery('),source.indexOf('  async function applyAgendaFilters(){'));
 assert.ok(helpers.length>100&&renderer.length>2000&&focused.length>1000);
 
