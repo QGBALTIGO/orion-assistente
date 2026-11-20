@@ -8,6 +8,7 @@ on:
       - app/agenda_admin_preview.py
       - app/static/orion-agenda-preview.*
       - tests/unit/test_agenda_admin_preview.py
+      - ui-tests/agenda-admin-preview.test.mjs
       - deploy/Dockerfile.agenda-admin-preview
       - .github/workflows/agenda-admin-preview-release.yml
   workflow_dispatch:
