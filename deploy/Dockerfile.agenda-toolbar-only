@@ -1,0 +1,3 @@
+# Overlay only the original Orion panel JavaScript; no other application changes.
+FROM ghcr.io/qgbaltigo/orion-assistente-api@sha256:7eac83c72fc8a673617aab59c7b8d979281e044c5b669644023e92fba8aa160b
+COPY --chown=appuser:appuser app/static/orion-suite.js /srv/app/app/static/orion-suite.js
