@@ -3761,3 +3761,10 @@ html:has(.os-professional-history[open]){overflow:hidden}
 @media(prefers-reduced-motion:reduce){
  .os-agenda-range-day{transition:none}
 }
+
+/* Only the existing Week/Month headings use these navigation buttons. */
+.os-agenda-range-heading>.os-agenda-period-nav{display:inline-flex;align-items:center;gap:2px;margin-left:auto;flex:0 0 auto}
+@container agenda (max-width:520px){
+ .os-agenda-month-overview>.os-agenda-range-heading h2{display:block}
+ .os-agenda-month-overview>.os-agenda-range-heading{justify-content:space-between}
+}
