@@ -1,0 +1,64 @@
+name: Test and publish Orion admin agenda preview
+on:
+  push:
+    branches:
+      - codex/agenda-admin-preview-20261120
+    paths:
+      - app/main.py
+      - app/agenda_admin_preview.py
+      - app/static/orion-agenda-preview.*
+      - tests/unit/test_agenda_admin_preview.py
+      - deploy/Dockerfile.agenda-admin-preview
+      - .github/workflows/agenda-admin-preview-release.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: write
+jobs:
+  preview:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate isolated route and frontend scripts
+        run: |
+          python3 -m py_compile app/main.py app/agenda_admin_preview.py tests/unit/test_agenda_admin_preview.py
+          node --check app/static/orion-agenda-preview.js
+          python3 - <<'PY'
+          from pathlib import Path
+          m=Path('app/main.py').read_text()
+          assert m.count('app.include_router(agenda_admin_preview_router)')==1
+          assert m.count('@app.get("/painel", include_in_schema=False)')==1
+          api=Path('app/agenda_admin_preview.py').read_text()
+          assert "ORION_AGENDA_ADMIN_PREVIEW_ENABLED" in api
+          assert "require_platform_owner" in api
+          assert "no-store" in api
+          PY
+      - name: GHCR login to read published pinned API base
+        env:
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io -u QGBALTIGO --password-stdin
+      - name: Build and run the isolated preview tests
+        env:
+          IMAGE: ghcr.io/qgbaltigo/orion-assistente-api
+        run: |
+          docker build --pull -f deploy/Dockerfile.agenda-admin-preview \
+            --build-arg ORION_PREVIEW_COMMIT="$GITHUB_SHA" \
+            -t "$IMAGE:agenda-admin-preview-$GITHUB_SHA" .
+          docker run --rm "$IMAGE:agenda-admin-preview-$GITHUB_SHA" \
+            python -m pytest -q tests/unit/test_agenda_admin_preview.py
+      - name: Publish immutable preview image
+        env:
+          IMAGE: ghcr.io/qgbaltigo/orion-assistente-api
+        run: |
+          docker push "$IMAGE:agenda-admin-preview-$GITHUB_SHA"
+          docker image inspect "$IMAGE:agenda-admin-preview-$GITHUB_SHA" \
+            --format '{{json .RepoDigests}}' >> "$GITHUB_STEP_SUMMARY"
+      - name: Clear credentials
+        if: always()
+        run: docker logout ghcr.io || true

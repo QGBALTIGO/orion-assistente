@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#080f1d">
+  <title>Orion • Laboratório da Agenda</title>
+  <link rel="icon" type="image/svg+xml" href="/brand/orion-symbol.svg">
+  <link rel="stylesheet" href="/painel/agenda-teste/agenda-preview.css">
+  <script defer src="/painel/agenda-teste/agenda-preview.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="bar-inner">
+      <a class="brand" href="/painel?aba=agenda" aria-label="Voltar ao Orion">
+        <img src="/brand/orion-symbol.svg" width="34" height="34" alt="">
+        <strong>ORION</strong><span class="brand-divider" aria-hidden="true"></span><span class="brand-sub">LAB</span>
+      </a>
+      <div class="bar-right"><span class="lab-tag"><span class="lab-pulse"></span>Prévia administrativa</span><a href="/painel?aba=agenda" class="back-link">Voltar à agenda atual <span aria-hidden="true">↗</span></a></div>
+    </div>
+  </header>
+  <main class="shell" id="app">
+    <div class="preview-note"><span class="note-dot"></span><div><strong>Experiência em teste</strong><span>Apenas para a conta administradora. Consulte agendamentos reais, mas altere ou crie registros na agenda atual.</span></div></div>
+    <section class="heading">
+      <div class="heading-copy"><span class="eyebrow">ORGANIZAÇÃO DE ATENDIMENTOS</span><h1>Agenda</h1><p>Mais clareza para visualizar sua rotina, sem navegação duplicada.</p></div>
+      <a class="primary-action" href="/painel?aba=agenda"><span aria-hidden="true">＋</span>Novo agendamento <span class="action-external" aria-hidden="true">↗</span></a>
+    </section>
+    <section class="toolbar-card" aria-label="Controle da agenda">
+      <div class="toolbar-first">
+        <div class="period-switch" role="tablist" aria-label="Período da agenda">
+          <button type="button" data-mode="day" role="tab" aria-selected="true">Dia</button>
+          <button type="button" data-mode="week" role="tab" aria-selected="false">Semana</button>
+          <button type="button" data-mode="month" role="tab" aria-selected="false">Mês</button>
+        </div>
+        <label class="business-select"><span>Empresa</span><select id="businessSelect" aria-label="Empresa"><option>Carregando empresas…</option></select></label>
+      </div>
+      <div class="toolbar-second">
+        <div class="date-navigation">
+          <button type="button" id="previous" class="square-control" aria-label="Período anterior"><span aria-hidden="true">‹</span></button>
+          <button type="button" id="dateTrigger" class="current-date" aria-label="Selecionar data"><span class="mini-calendar" aria-hidden="true">▦</span><span id="rangeLabel">Consultando data…</span><span class="small-chevron" aria-hidden="true">⌄</span></button>
+          <button type="button" id="next" class="square-control" aria-label="Próximo período"><span aria-hidden="true">›</span></button>
+          <input id="datePicker" class="visually-hidden-date" type="date" aria-label="Escolher uma data">
+        </div>
+        <div class="minor-actions"><button type="button" id="today" class="quiet-button" hidden>Hoje</button><button type="button" id="filtersToggle" class="filter-button" aria-expanded="false" aria-controls="filtersPanel"><span aria-hidden="true">☷</span> Filtros <span id="filterCount" class="filter-number" hidden>0</span></button></div>
+      </div>
+    </section>
+    <section id="filtersPanel" class="filter-panel" hidden aria-label="Filtros da agenda">
+      <label class="search-filter"><span>Buscar atendimento</span><input id="search" type="search" placeholder="Nome, telefone ou protocolo" autocomplete="off" maxlength="120"></label>
+      <label><span>Profissional</span><select id="professional"><option value="">Toda a equipe</option></select></label>
+      <label><span>Situação</span><select id="status"><option value="">Todas</option><option value="confirmed">Confirmados</option><option value="completed">Concluídos</option><option value="cancelled">Cancelados</option><option value="no_show">Não compareceram</option><option value="hold">Reservas</option></select></label>
+      <button type="button" id="clearFilters" class="clear-filter">Limpar filtros</button>
+    </section>
+    <div class="summary-row">
+      <div id="summary" class="summary" aria-live="polite"><span class="loading-copy">Consultando atendimentos…</span></div>
+      <label class="view-select" id="viewSelectWrap"><span>Exibir</span><select id="viewSelect"><option value="list">Lista</option><option value="team">Por profissional</option><option value="timeline">Linha do tempo</option></select></label>
+    </div>
+    <div id="errorRegion" role="alert" hidden></div>
+    <div id="calendarSurface" aria-live="polite"></div>
+    <section id="focusSection" aria-labelledby="focusHeading">
+      <div class="focus-heading"><div><span class="eyebrow" id="focusEyebrow">ATENDIMENTOS</span><h2 id="focusHeading">Dia selecionado</h2><p id="focusSubheading">Selecione uma data para consultar.</p></div><button type="button" id="refresh" class="refresh-button" aria-label="Atualizar agenda">↻ <span>Atualizar</span></button></div>
+      <div id="appointments" class="appointments" aria-live="polite"></div>
+    </section>
+    <footer class="preview-footer">Prévia visual restrita ao administrador · Nenhum agendamento é criado, alterado ou cancelado nesta tela. <a href="/painel?aba=agenda">Usar agenda atual</a></footer>
+  </main>
+  <dialog id="detailDialog" aria-labelledby="detailTitle" class="detail-dialog"><div class="detail-top"><span class="eyebrow">CONSULTA DE AGENDAMENTO</span><button id="detailClose" type="button" aria-label="Fechar detalhes">×</button></div><h2 id="detailTitle">Detalhes</h2><div id="detailContent"></div><a class="detail-link" href="/painel?aba=agenda">Gerenciar na agenda atual ↗</a></dialog>
+</body>
+</html>

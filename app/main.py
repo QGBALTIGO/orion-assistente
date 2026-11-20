@@ -20,6 +20,7 @@ from app.metrics_api import router as metrics_router
 from app.advanced_api import router as advanced_router
 from app.qr_api import router as qr_router
 from app.qr_ingress_review import router as qr_ingress_review_router
+from app.agenda_admin_preview import router as agenda_admin_preview_router
 from app.panel_auth import router as panel_auth_router
 from app.account_auth import router as account_auth_router
 from app.account_settings import router as account_settings_router
@@ -327,6 +328,10 @@ async def panel_asset(asset: str) -> FileResponse:
         media_type=allowed[asset],
         headers={"Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff"},
     )
+
+
+# Separate, authenticated admin-only experiment. The live panel is unchanged.
+app.include_router(agenda_admin_preview_router)
 
 
 @app.get("/painel", include_in_schema=False)

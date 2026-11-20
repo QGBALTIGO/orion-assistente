@@ -1,0 +1,9 @@
+# Isolated admin-only agenda test: overlay the EXACT published API digest.
+# No changes to normal panel assets, worker, migrations or database schema.
+FROM ghcr.io/qgbaltigo/orion-assistente-api@sha256:7eac83c72fc8a673617aab59c7b8d979281e044c5b669644023e92fba8aa160b
+ARG ORION_PREVIEW_COMMIT
+LABEL org.opencontainers.image.source="https://github.com/QGBALTIGO/orion-assistente"
+COPY --chown=appuser:appuser app/main.py app/agenda_admin_preview.py /srv/app/app/
+COPY --chown=appuser:appuser app/static/orion-agenda-preview.html app/static/orion-agenda-preview.css app/static/orion-agenda-preview.js /srv/app/app/static/
+COPY --chown=appuser:appuser tests/unit/test_agenda_admin_preview.py /srv/app/tests/unit/
+RUN python -m py_compile /srv/app/app/main.py /srv/app/app/agenda_admin_preview.py
