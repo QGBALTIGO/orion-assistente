@@ -263,6 +263,17 @@ test('busca da agenda reserva espaço para a lupa sem sobrepor o texto',async t=
   assert.equal(h.errors.length,0);
 });
 
+test('Limpar filtros só aparece com uma seleção efetivamente ativa',async t=>{
+  const h=await fixture(t,{respond:responder()});
+  const clear=h.document.getElementById('osAgendaClear');
+  assert.ok(clear,'ação de limpar filtros disponível no DOM');
+  assert.equal(clear.hidden,true,'não mostrar Limpar filtros com toda equipe e todas situações');
+  await change(h,'#osAgendaStatus','confirmed');
+  assert.equal(clear.hidden,false,'mostrar Limpar filtros após selecionar situação');
+  await change(h,'#osAgendaStatus','all');
+  assert.equal(clear.hidden,true,'ocultar novamente após remover filtro');
+});
+
 test('atualizar mantém o ícone Orion e o bloco anterior não aparece',async t=>{
   const h=await fixture(t,{respond:responder()});
   const refresh=h.document.querySelector('.os-agenda-result-actions [data-os-action=agenda-reload]');
