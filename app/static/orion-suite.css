@@ -303,10 +303,13 @@
 .os-agenda-filter{min-width:0;display:flex;flex-direction:column;gap:5px;font-size:11px;line-height:16px;color:var(--os-muted)}
 .os-main .os-agenda-filter select{min-height:44px;font-size:14px;background:var(--os-card);box-shadow:none}
 .os-agenda-view-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:16px}
-.os-agenda-views{display:flex;gap:4px;padding:4px;background:var(--os-soft);border-radius:12px;min-width:0}
-.os-agenda-views>button{display:flex;align-items:center;justify-content:center;gap:7px;min-height:40px;padding:8px 14px;background:transparent;border:0;border-radius:9px;font:500 13px/20px var(--os-font);color:var(--os-muted);cursor:pointer}
+.os-agenda-views{display:flex;flex:1 1 auto;gap:4px;padding:4px;background:var(--os-soft);border-radius:12px;min-width:0}
+.os-agenda-views>button{display:flex;flex:1 1 0;min-width:0;align-items:center;justify-content:center;gap:7px;min-height:40px;padding:8px 10px;background:transparent;border:0;border-radius:9px;font:500 13px/20px var(--os-font);color:var(--os-muted);cursor:pointer;white-space:nowrap}
 .os-agenda-views>button>.os-icon{width:16px;height:16px}
 .os-agenda-views>button[aria-selected=true]{background:var(--os-card);color:var(--os-text);box-shadow:var(--os-shadow)}
+.os-agenda-views>button:focus-visible{outline:2px solid var(--os-primary);outline-offset:-2px}
+.os-agenda-view-row>.os-agenda-refresh{display:inline-flex;box-sizing:border-box;align-items:center;justify-content:center;flex:0 0 44px;width:44px;height:44px;min-width:44px;min-height:44px;max-width:44px;padding:0;gap:0;border-radius:10px}
+.os-agenda-view-row>.os-agenda-refresh>.os-icon{display:block;flex:0 0 20px;width:20px;height:20px}
 .os-agenda-summary{display:flex;align-items:center;gap:18px;flex-wrap:wrap;padding:13px 0;border-bottom:1px solid var(--os-border)}
 .os-agenda-summary>span{font-size:11px;color:var(--os-muted)}
 .os-agenda-summary>.os-agenda-summary-item{display:flex;align-items:baseline;gap:5px;font-size:12px;color:var(--os-muted)}
@@ -513,8 +516,8 @@ html:has(.os-appointment-sheet[open]){overflow:hidden}
  .os-agenda-date-picker{flex:1}
  .os-agenda-connection{justify-content:space-between;min-width:0}
  .os-agenda-google{flex:1}
- .os-agenda-expand,.os-agenda-result-actions>.os-button[data-os-action=agenda-reload]{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;flex:0 0 44px;width:44px;min-width:44px;max-width:44px;height:44px;min-height:44px;max-height:44px;padding:0;gap:0;font-size:0;line-height:0}
- .os-agenda-expand>.os-icon,.os-agenda-result-actions>.os-button[data-os-action=agenda-reload]>.os-icon{display:block;flex:0 0 20px;width:20px;height:20px}
+ .os-agenda-expand{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;flex:0 0 44px;width:44px;min-width:44px;max-width:44px;height:44px;min-height:44px;max-height:44px;padding:0;gap:0;font-size:0;line-height:0}
+ .os-agenda-expand>.os-icon{display:block;flex:0 0 20px;width:20px;height:20px}
  .os-agenda-week{gap:2px;margin-bottom:16px}
  .os-agenda-week>.os-icon-button{flex-basis:22px;width:22px}
  .os-agenda-week .os-week-grid{gap:2px}
@@ -3788,3 +3791,15 @@ html:has(.os-professional-history[open]){overflow:hidden}
  .os-agenda-month-overview>.os-agenda-range-heading h2{display:block}
  .os-agenda-month-overview>.os-agenda-range-heading{justify-content:space-between}
 }
+
+/* One shared Agenda view selector for Day, Week and Month. At narrow widths
+   labels stay readable without clipping Saturday or floating the refresh action. */
+@container agenda (max-width:380px){
+ .os-agenda-view-row{gap:5px}
+ .os-agenda-views{gap:1px;padding:3px}
+ .os-agenda-views>button{padding:8px 3px;font-size:12px;gap:3px}
+ .os-agenda-views>button>.os-icon{display:none}
+}
+.os-agenda-period-team{grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:14px}
+.os-agenda-period-team .os-professional-heading{flex-wrap:wrap;gap:6px}
+.os-agenda-period-team .os-professional-heading>span:last-child{margin-left:auto;font-size:11px;color:var(--os-muted)}
