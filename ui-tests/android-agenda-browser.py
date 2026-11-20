@@ -83,7 +83,7 @@ def run(page,expired=False):
     if page.locator('#osMenu').is_visible():
         page.locator('#osMenu').click()
     page.locator('#osNav [data-os-route="agenda"]').click()
-    page.wait_for_function("document.querySelector('#osAgendaGoogleLabel')?.textContent?.includes('Não foi possível') || !document.querySelector('#loginView')?.classList?.contains('hidden')")
+    page.wait_for_function("document.querySelector('#osAgendaCount')?.textContent && !document.querySelector('#osAgendaCount')?.textContent.includes('Carregando') || !document.querySelector('#loginView')?.classList?.contains('hidden')")
     page.wait_for_timeout(200)
     is_login=page.locator('#loginView').evaluate("node=>!node.classList.contains('hidden')")
     if expired:
@@ -91,7 +91,8 @@ def run(page,expired=False):
     else:
         assert not is_login,(state,errors)
         assert page.locator('#page-suite').get_attribute('data-os-current-route')=='agenda'
-        assert 'Não foi possível' in page.locator('#osAgendaGoogleLabel').inner_text()
+        assert page.locator('#osAgendaGoogleLabel').count()==0
+        assert state['google']>=1,(state,errors)
         assert state['auth_me']==2,(state,errors)
         assert state['logout']==0,(state,errors)
         assert page.locator('#osAgendaCount').count()==1

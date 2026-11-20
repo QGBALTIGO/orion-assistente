@@ -48,13 +48,14 @@ def test_appointment_period_fails_closed(day, start, end):
 def test_agenda_browser_range_calculations_and_month_grid():
     script = (ROOT / "app/static/orion-suite.js").read_text(encoding="utf-8")
     helpers = script[script.index("  const agendaPeriod="):script.index("  function agendaFrame(")]
-    renderer = script[script.index("  function agendaRangeView("):script.index("  function renderAgenda(){")]
+    renderer = script[script.index("  function agendaTeamRangeView("):script.index("  function renderAgenda(){")]
     source = r"""
 const assert=require('node:assert/strict'),vm=require('node:vm');
 const helpers=EXTRACTED_HELPERS,renderer=EXTRACTED_RENDERER;
-function inspect(day,period,withList=false){
+function inspect(day,period,mode='calendar',list=[]){
   const ctx={
-    state:{filters:{agendaPeriod:period,agendaDay:day,agendaRangeList:withList}},
+    list,
+    state:{filters:{agendaPeriod:period,agendaDay:day,agendaRangeList:mode==='list',agendaMode:mode}},
     dateKey(value){return value?new Date(value).toISOString().slice(0,10):'2026-11-13';},
     dayDate(day){return new Date((day||'2026-11-13')+'T12:00:00Z');},
     shiftDay(day,n){const v=new Date(day+'T12:00:00Z');v.setUTCDate(v.getUTCDate()+n);return v.toISOString().slice(0,10);},
@@ -62,6 +63,8 @@ function inspect(day,period,withList=false){
     longDay(day){return day;},esc(value){return String(value);},
     number(value){return Number(value)||0;},
     appointmentRow(item){return '<article>'+item.id+'</article>';},
+    appointmentProfessional(item){return item.professional_id==='a'?'Ana':'Bruna';},
+    cleanColor(value,fallback){return value||fallback;},
     agendaPagination(){return '<nav>pages</nav>';},
     agendaEmpty(){return '<div>empty</div>';},
     icon(){return '';},
@@ -73,7 +76,7 @@ function inspect(day,period,withList=false){
     globalThis.out={
       bounds:agendaBounds(),label:agendaPeriodLabel(),
       next:agendaShiftMonth(state.filters.agendaDay,1),prev:agendaShiftMonth(state.filters.agendaDay,-1),
-      html:agendaRangeView([],{
+      html:agendaRangeView(list,{
         days:[{day:"2026-11-13",total:14,confirmed:12,completed:1,cancelled:1,no_show:0,hold:0}],
         total:14,has_more:false
       })
@@ -85,7 +88,15 @@ function inspect(day,period,withList=false){
 const month=inspect('2026-11-13','month'),
       week=inspect('2026-11-13','week'),
       cross=inspect('2027-01-01','week'),
-      leap=inspect('2028-02-13','month');
+      leap=inspect('2028-02-13','month'),
+      fixtures=[
+        {id:'tarde',professional_id:'b',start_at:'2026-11-15T12:00:00Z'},
+        {id:'cedo',professional_id:'a',start_at:'2026-11-13T08:00:00Z'},
+        {id:'meio',professional_id:'b',start_at:'2026-11-13T10:00:00Z'}
+      ],
+      monthList=inspect('2026-11-13','month','list',fixtures),
+      weekList=inspect('2026-11-13','week','list',fixtures),
+      monthTeam=inspect('2026-11-13','month','professional',fixtures);
 assert.deepEqual(JSON.parse(JSON.stringify(month.bounds)),{start:'2026-11-01',end:'2026-11-30'});
 assert.deepEqual(JSON.parse(JSON.stringify(week.bounds)),{start:'2026-11-08',end:'2026-11-14'});
 assert.deepEqual(JSON.parse(JSON.stringify(cross.bounds)),{start:'2026-12-27',end:'2027-01-02'});
@@ -94,11 +105,24 @@ assert.equal(month.next,'2026-12-01');
 assert.equal(month.prev,'2026-10-01');
 assert.equal((month.html.match(/data-os-open-day=/g)||[]).length,30);
 assert.equal((week.html.match(/data-os-open-day=/g)||[]).length,7);
-assert.match(month.html,/Lista do mês/);
+assert.match(month.html,/Calendário do mês/);
+assert.match(month.html,/Mês anterior/);
+assert.match(month.html,/Próximo mês/);
 assert.match(month.html,/osAgendaRangeFocusBody/);
 assert.equal((month.html.match(/aria-pressed="true"/g)||[]).length,1);
 assert.match(month.html,/14 agendamentos/);
-assert.match(week.html,/Semana inteira/);
+assert.match(week.html,/Dias da semana/);
+assert.match(week.html,/Dia selecionado/);
+assert.match(monthList.html,/Agendamentos do mês/);
+assert.match(weekList.html,/Agendamentos da semana/);
+assert.match(monthList.html,/Atendimentos do período/);
+assert.ok(!monthList.html.includes('osAgendaRangeFocusBody'));
+assert.ok(monthList.html.indexOf('cedo') < monthList.html.indexOf('meio'));
+assert.ok(monthList.html.indexOf('meio') < monthList.html.indexOf('tarde'));
+assert.match(monthTeam.html,/Por profissional/);
+assert.match(monthTeam.html,/Atendimentos por profissional/);
+assert.ok(monthTeam.html.indexOf('Ana') < monthTeam.html.indexOf('Bruna'));
+assert.ok(monthTeam.html.indexOf('meio') < monthTeam.html.indexOf('tarde'));
 assert.ok(!month.html.includes('undefined'));
 console.log('Day/week/month calendar and drill-down: OK');
 """.replace("EXTRACTED_HELPERS", json.dumps(helpers)).replace(

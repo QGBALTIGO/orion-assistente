@@ -26,6 +26,7 @@ function responder({items=[record()],google=googleOff,on}={}){return (path,metho
 };}
 async function change(h,selector,value){const input=h.document.querySelector(selector);assert.ok(input,selector);input.value=value;input.dispatchEvent(new h.window.Event('change',{bubbles:true}));await flush();return input;}
 async function openDetail(h,id=appointmentId){h.click(`[data-os-appointment="${id}"]`);await flush();}
+async function openGoogleSettings(h){h.click('[data-os-route=configuracoes]');await flush();h.click('[data-os-settings=calendar]');await flush();assert.ok(h.document.getElementById('osGoogleStatus'),'A integração continua em Configurações');}
 async function fixture(t,options={}){const h=await makeSuite({initialRoute:'agenda',...options});t.after(()=>h.close());await flush();return h;}
 const posts=h=>h.calls.filter(call=>call.method==='POST');
 
@@ -36,8 +37,8 @@ test('unverified Google connection explains the requirement and verifies only th
     if(path==='/auth/verify'){assert.equal(data.code,'123456');confirmed=true;return {ok:true};}
     if(path.endsWith('/google/status')&&confirmed)return {...googleOff,configured:true,capabilities:{can_connect:true}};
   }})});t.after(()=>h.close());await flush();
-  h.click('[data-os-action=agenda-google]');await flush();
-  assert.match(h.document.querySelector('.os-dialog').textContent,/Confirme seu e-mail/);
+  await openGoogleSettings(h);
+  assert.match(h.document.querySelector('#osGoogleStatus').textContent,/Confirme seu e-mail/);
   assert.equal(h.document.querySelector('[data-os-action=google-connect]'),null);
   h.click('[data-os-action=google-email]');assert.equal(posts(h).length,0);
   h.submit('[data-os-form=google-email]');await flush();
@@ -61,7 +62,7 @@ test('agenda displays actual names and distinct lifecycle labels without guessin
 
 test('calendar keeps cancellations and no-shows outside occupied slots and leaves them actionable for consultation',async t=>{
   const items=[record(),record({id:'cancelled-id',status:'cancelled',cancellation:{requested_by:'customer'}}),record({id:'missing-id',status:'no_show'})];
-  const h=await fixture(t,{respond:responder({items})});await change(h,'#osAgendaDatePicker','2030-04-05');h.click('[data-os-agenda-mode=calendar]');await flush();
+  const h=await fixture(t,{respond:responder({items}),configureWindow(w){const NativeDate=w.Date;w.Date=class extends NativeDate{constructor(...args){super(...(args.length?args:['2030-04-05T12:00:00Z']));}};}});h.click('[data-os-agenda-mode=calendar]');await flush();
   assert.equal(h.document.querySelectorAll('.os-calendar-booking').length,1);
   assert.equal(h.document.querySelectorAll('.os-agenda-history-list [data-os-appointment]').length,2);
   assert.equal(h.document.querySelector('.os-calendar-booking').dataset.osAppointment,appointmentId);
@@ -169,20 +170,20 @@ test('agenda tabs provide arrow navigation and a single tab stop per tab group',
 });
 
 test('Google failure is independent of agenda and does not trigger connection or retry writes',async t=>{
-  const h=await fixture(t,{respond:responder({on:path=>{if(path.endsWith('/google/status'))throw new Error('Integração temporariamente indisponível');}})});assert.ok(h.document.querySelector('[data-os-appointment]'));assert.match(h.document.getElementById('osAgendaGoogleLabel').textContent,/Não foi possível/);h.click('[data-os-action=agenda-google]');await flush();assert.match(h.document.getElementById('osDialog').textContent,/Não foi possível consultar/);assert.equal(posts(h).length,0);
+  const h=await fixture(t,{respond:responder({on:path=>{if(path.endsWith('/google/status'))throw new Error('Integração temporariamente indisponível');}})});assert.ok(h.document.querySelector('[data-os-appointment]'));await openGoogleSettings(h);assert.match(h.document.getElementById('osGoogleStatus').textContent,/Não foi possível consultar/);assert.equal(posts(h).length,0);
 });
 
 test('unconfigured Google and viewer capabilities have no operational controls',async t=>{
-  for(const google of [googleOff,{...googleOn,capabilities:{}}]){const h=await fixture(t,{respond:responder({google})});h.click('[data-os-action=agenda-google]');await flush();for(const action of ['google-connect','google-calendars','google-revoke','google-retry'])assert.equal(h.document.querySelector('[data-os-action='+action+']'),null);assert.equal(posts(h).length,0);}
+  for(const google of [googleOff,{...googleOn,capabilities:{}}]){const h=await fixture(t,{respond:responder({google})});await openGoogleSettings(h);for(const action of ['google-connect','google-calendars','google-revoke','google-retry'])assert.equal(h.document.querySelector('[data-os-action='+action+']'),null);assert.equal(posts(h).length,0);}
 });
 
 test('Google connection is explicit POST only after disclosure and rejects an unexpected authorization host',async t=>{
-  const google={...googleOn,connected:false,sync_status:'not_connected'};const h=await fixture(t,{respond:responder({google,on:(path,method)=>path.endsWith('/google/connect')&&method==='POST'?{authorization_url:'https://untrusted.example.invalid/authorize'}:undefined})});h.click('[data-os-action=agenda-google]');await flush();h.click('[data-os-action=google-connect]');await flush();assert.equal(posts(h).length,0);assert.match(h.document.getElementById('osDialog').textContent,/Telefone, observações internas e motivo do cancelamento ficam no Orion/);h.submit('[data-os-form=google-action]');await flush();assert.equal(posts(h).length,1);assert.equal(posts(h)[0].path.endsWith('/google/connect'),true);assert.match(h.document.querySelector('.os-form-message').textContent,/endereço de autorização.*não foi reconhecido/);assert.equal(h.calls.some(call=>call.path.endsWith('/google/connect')&&call.method==='GET'),false);
+  const google={...googleOn,connected:false,sync_status:'not_connected'};const h=await fixture(t,{respond:responder({google,on:(path,method)=>path.endsWith('/google/connect')&&method==='POST'?{authorization_url:'https://untrusted.example.invalid/authorize'}:undefined})});await openGoogleSettings(h);h.click('[data-os-action=google-connect]');await flush();assert.equal(posts(h).length,0);assert.match(h.document.getElementById('osDialog').textContent,/Telefone, observações internas e motivo do cancelamento ficam no Orion/);h.submit('[data-os-form=google-action]');await flush();assert.equal(posts(h).length,1);assert.equal(posts(h)[0].path.endsWith('/google/connect'),true);assert.match(h.document.querySelector('.os-form-message').textContent,/endereço de autorização.*não foi reconhecido/);assert.equal(h.calls.some(call=>call.path.endsWith('/google/connect')&&call.method==='GET'),false);
 });
 
 test('Google calendar activation requires explicit selection and preserves a locked canonical calendar',async t=>{
   const google={...googleOn,selection_pending:true,sync_status:'choose_calendar',calendar_change_locked:true,capabilities:{can_select_calendar:true}};
-  const h=await fixture(t,{respond:responder({google,on:(path,method)=>{if(path.endsWith('/google/calendars'))return {items:[{id:google.calendar_id,name:'Equipe sintética',selectable:true},{id:'other@example.invalid',name:'Outro calendário',selectable:false}],selection_pending:true,calendar_change_locked:true};if(path.endsWith('/google/calendar')&&method==='POST')return google;}})});h.click('[data-os-action=agenda-google]');await flush();h.click('[data-os-action=google-calendars]');await flush();assert.equal(posts(h).length,0);assert.equal([...h.document.querySelector('[name=calendar_id]').options].some(option=>option.value==='other@example.invalid'),false);assert.match(h.document.getElementById('osDialog').textContent,/calendário já vinculado será mantido/);h.submit('[data-os-form=google-calendar]');await flush();assert.equal(posts(h).length,1);assert.deepEqual(plain(posts(h)[0].data),{calendar_id:google.calendar_id});
+  const h=await fixture(t,{respond:responder({google,on:(path,method)=>{if(path.endsWith('/google/calendars'))return {items:[{id:google.calendar_id,name:'Equipe sintética',selectable:true},{id:'other@example.invalid',name:'Outro calendário',selectable:false}],selection_pending:true,calendar_change_locked:true};if(path.endsWith('/google/calendar')&&method==='POST')return google;}})});await openGoogleSettings(h);h.click('[data-os-action=google-calendars]');await flush();assert.equal(posts(h).length,0);assert.equal([...h.document.querySelector('[name=calendar_id]').options].some(option=>option.value==='other@example.invalid'),false);assert.match(h.document.getElementById('osDialog').textContent,/calendário já vinculado será mantido/);h.submit('[data-os-form=google-calendar]');await flush();assert.equal(posts(h).length,1);assert.deepEqual(plain(posts(h)[0].data),{calendar_id:google.calendar_id});
 });
 
 test('OAuth return uses the verified account without a company selector or automatic activation',async t=>{
@@ -202,12 +203,12 @@ test('persisted hold expiration has a distinct label and system cancellation alo
 
 test('Google primary alias accepts only canonical calendars explicitly marked selectable by the server',async t=>{
   const google={...googleOn,calendar_id:'primary',selection_pending:true,sync_status:'choose_calendar',calendar_change_locked:true,capabilities:{can_select_calendar:true}};
-  const h=await fixture(t,{respond:responder({google,on:(path,method)=>{if(path.endsWith('/google/calendars'))return {calendar_id:'primary',calendar_change_locked:true,items:[{id:'canonical@example.invalid',name:'Meu calendário',primary:true,selectable:true},{id:'blocked@example.invalid',name:'Outro calendário',selectable:false}]};if(path.endsWith('/google/calendar')&&method==='POST')return google;}})});h.click('[data-os-action=agenda-google]');await flush();h.click('[data-os-action=google-calendars]');await flush();const select=h.document.querySelector('[name=calendar_id]');assert.equal(select.value,'canonical@example.invalid');assert.equal([...select.options].some(option=>option.value==='blocked@example.invalid'),false);h.submit('[data-os-form=google-calendar]');await flush();assert.equal(posts(h)[0].data.calendar_id,'canonical@example.invalid');
+  const h=await fixture(t,{respond:responder({google,on:(path,method)=>{if(path.endsWith('/google/calendars'))return {calendar_id:'primary',calendar_change_locked:true,items:[{id:'canonical@example.invalid',name:'Meu calendário',primary:true,selectable:true},{id:'blocked@example.invalid',name:'Outro calendário',selectable:false}]};if(path.endsWith('/google/calendar')&&method==='POST')return google;}})});await openGoogleSettings(h);h.click('[data-os-action=google-calendars]');await flush();const select=h.document.querySelector('[name=calendar_id]');assert.equal(select.value,'canonical@example.invalid');assert.equal([...select.options].some(option=>option.value==='blocked@example.invalid'),false);h.submit('[data-os-form=google-calendar]');await flush();assert.equal(posts(h)[0].data.calendar_id,'canonical@example.invalid');
 });
 
 test('Google error codes become bounded Portuguese guidance and never expose an unexpected raw provider error',async t=>{
   const google={...googleOn,sync_status:'attention',last_error:'google_authorization_expired'};
-  const h=await fixture(t,{respond:responder({google,on:path=>path.includes('/google/appointments/')?{configured:true,connection_status:'active',status:'failed',sync_enabled:true,last_error:'raw-provider-private-secret'}:undefined})});h.click('[data-os-action=agenda-google]');await flush();assert.match(h.document.getElementById('osDialog').textContent,/A autorização venceu/);assert.doesNotMatch(h.document.getElementById('osDialog').textContent,/google_authorization_expired/);h.click('[data-os-action=close-dialog]');await openDetail(h);assert.doesNotMatch(h.document.getElementById('osDialog').textContent,/raw-provider-private-secret/);assert.match(h.document.getElementById('osDialog').textContent,/Confira a conexão ou peça ao suporte/);
+  const h=await fixture(t,{respond:responder({google,on:path=>path.includes('/google/appointments/')?{configured:true,connection_status:'active',status:'failed',sync_enabled:true,last_error:'raw-provider-private-secret'}:undefined})});await openGoogleSettings(h);assert.match(h.document.getElementById('osGoogleStatus').textContent,/A autorização venceu/);assert.doesNotMatch(h.document.getElementById('osGoogleStatus').textContent,/google_authorization_expired/);h.click('[data-os-route=agenda]');await flush();await openDetail(h);assert.doesNotMatch(h.document.getElementById('osDialog').textContent,/raw-provider-private-secret/);assert.match(h.document.getElementById('osDialog').textContent,/Confira a conexão ou peça ao suporte/);
 });
 
 test('Google historical exclusion and absent credentials are honest distinct conditions',async t=>{
@@ -262,37 +263,88 @@ test('busca da agenda reserva espaço para a lupa sem sobrepor o texto',async t=
   assert.equal(h.errors.length,0);
 });
 
-test('monitor e atualizar têm quadrados 44px, ícones 20px e continuam funcionais',async t=>{
+test('Limpar filtros só aparece com uma seleção efetivamente ativa',async t=>{
   const h=await fixture(t,{respond:responder()});
-  const expand=h.document.querySelector('[data-os-action=agenda-tablet]');
+  const clear=h.document.getElementById('osAgendaClear');
+  assert.ok(clear,'ação de limpar filtros disponível no DOM');
+  assert.equal(clear.hidden,true,'não mostrar Limpar filtros com toda equipe e todas situações');
+  await change(h,'#osAgendaStatus','confirmed');
+  assert.equal(clear.hidden,false,'mostrar Limpar filtros após selecionar situação');
+  await change(h,'#osAgendaStatus','all');
+  assert.equal(clear.hidden,true,'ocultar novamente após remover filtro');
+});
+
+test('atualizar mantém o ícone Orion e o bloco anterior não aparece',async t=>{
+  const h=await fixture(t,{respond:responder()});
   const refresh=h.document.querySelector('.os-agenda-view-row [data-os-action=agenda-reload]');
-  assert.ok(expand && refresh,'controles principais existem');
-  assert.equal(expand.getAttribute('aria-label'),'Ampliar agenda');
+  assert.ok(h.document.querySelector('.os-agenda-result-line #osAgendaCount'),'contagem permanece na mesma linha');
+  assert.ok(h.document.querySelector('.os-agenda-result-actions #osAgendaClear'),'limpar filtros permanece junto da contagem');
+  assert.equal(h.document.querySelectorAll('[data-os-action=agenda-reload]').length,1,'uma única ação de atualizar na Agenda');
+  assert.ok(refresh,'atualização disponível');
   assert.equal(refresh.getAttribute('aria-label'),'Atualizar agendamentos');
-  assert.equal(expand.querySelector('svg.os-icon').getAttribute('aria-hidden'),'true');
   assert.equal(refresh.querySelector('svg.os-icon').getAttribute('aria-hidden'),'true');
-  const css=await readFile(new URL('../app/static/orion-suite.css',import.meta.url),'utf8');
-  const start=css.indexOf('@container agenda (max-width:520px){');
-  assert.ok(start!==-1,'regras compactas presentes');
-  const compact=css.slice(start,css.indexOf('\n}',start));
-  const buttonRule=compact.match(/\.os-agenda-expand,\.os-agenda-view-row>\.os-button\[data-os-action=agenda-reload\]\{([^}]*)\}/)?.[1];
-  const svgRule=compact.match(/\.os-agenda-expand>\.os-icon,\.os-agenda-view-row>\.os-button\[data-os-action=agenda-reload\]>\.os-icon\{([^}]*)\}/)?.[1];
-  assert.ok(buttonRule && svgRule,'as duas ações compartilham escala');
-  for(const part of ['width:44px','min-width:44px','max-width:44px','height:44px','min-height:44px','max-height:44px','gap:0','padding:0','align-items:center','justify-content:center'])
-    assert.ok(buttonRule.includes(part),'botão compacto: '+part);
-  for(const part of ['width:20px','height:20px','flex:0 0 20px'])
-    assert.ok(svgRule.includes(part),'SVG compacto: '+part);
+  assert.equal(h.document.querySelector('[data-os-action=agenda-tablet]'),null);
+  assert.equal(h.document.querySelector('#osAgendaDatePicker'),null);
+  assert.equal(h.document.querySelector('.os-agenda-google'),null);
   const before=h.calls.length;
-  h.click('.os-agenda-view-row [data-os-action=agenda-reload]');
-  await flush();
+  h.click('.os-agenda-view-row [data-os-action=agenda-reload]');await flush();
   assert.ok(h.calls.length>before,'atualização consulta novamente a agenda');
-  assert.equal(h.calls.some(call=>call.method!=='GET'),false,'atualizar não altera dados');
-  h.click('[data-os-action=agenda-tablet]');
-  await flush();
-  assert.equal(h.document.querySelector('[data-os-action=agenda-tablet-exit]')?.getAttribute('aria-label'),'Sair da tela ampliada');
-  h.click('[data-os-action=agenda-tablet-exit]');
-  await flush();
-  assert.ok(h.document.querySelector('[data-os-action=agenda-tablet]'),'ampliar e sair permanecem disponíveis');
+  assert.equal(h.calls.some(call=>call.method!=='GET'),false);
+  assert.equal(h.errors.length,0);
+});
+
+test('Semana e Mês oferecem Lista, Calendário e Equipe sem perder o botão Atualizar',async t=>{
+  const h=await fixture(t,{respond:responder()});
+  for(const period of ['week','month']){
+    h.click('[data-os-agenda-period='+period+']');await flush();
+    for(const mode of ['list','calendar','professional']){
+      const button=h.document.querySelector('[data-os-agenda-mode='+mode+']');
+      assert.ok(button,period+': falta o modo '+mode);
+      h.click('[data-os-agenda-mode='+mode+']');await flush();
+      assert.equal(h.document.querySelector('[data-os-agenda-mode='+mode+']').getAttribute('aria-selected'),'true');
+      assert.equal(h.document.querySelectorAll('.os-agenda-view-row [data-os-action=agenda-reload]').length,1);
+      if(mode==='professional')assert.ok(h.document.querySelector('.os-agenda-team-range'),period+': equipe não renderizada');
+      if(mode==='calendar')assert.ok(h.document.querySelector('.os-agenda-period-overview'),period+': calendário não renderizado');
+      if(mode==='list')assert.ok(h.document.querySelector('.os-agenda-range-all-list'),period+': lista completa não renderizada');
+    }
+  }
+  assert.equal(h.errors.length,0);
+});
+
+test('selecionar um dia a partir da Equipe abre o Calendário no mesmo período',async t=>{
+  const h=await fixture(t,{respond:responder()});
+  for(const period of ['week','month']){
+    h.click('[data-os-agenda-period='+period+']');await flush();
+    h.click('[data-os-agenda-mode=professional]');await flush();
+    assert.ok(h.document.querySelector('.os-agenda-period-nav'),'período navegável também em Equipe');
+    if(period==='week'){
+      const first=h.document.querySelector('[data-os-open-day]');
+      assert.ok(first,'semana conserva os sete dias da faixa');
+      h.click('[data-os-open-day="'+first.dataset.osOpenDay+'"]');await flush();
+      assert.equal(h.document.querySelector('[data-os-agenda-mode=calendar]').getAttribute('aria-selected'),'true');
+      assert.ok(h.document.getElementById('osAgendaRangeFocusBody'),'detalhes do dia disponíveis');
+    }else{
+      assert.ok(h.document.querySelector('.os-agenda-month-overview .os-agenda-period-nav'));
+      assert.equal(h.document.querySelector('.os-agenda-month-calendar'),null,'Equipe não repete uma grade mensal');
+    }
+  }
+  assert.equal(h.errors.length,0);
+});
+
+test('semana e mês mantêm navegação pelos cabeçalhos existentes',async t=>{
+  const h=await fixture(t,{respond:responder()});
+  assert.ok(h.document.querySelector('.os-agenda-week'));
+  h.click('[data-os-agenda-period=week]');await flush();
+  const week=h.document.getElementById('osAgendaDate').textContent;
+  assert.ok(h.document.querySelector('.os-agenda-week-overview-wrapper [data-os-action=agenda-prev]'));
+  h.click('.os-agenda-week-overview-wrapper [data-os-action=agenda-next]');await flush();
+  assert.notEqual(h.document.getElementById('osAgendaDate').textContent,week);
+  h.click('[data-os-agenda-period=month]');await flush();
+  const month=h.document.getElementById('osAgendaDate').textContent;
+  assert.ok(h.document.querySelector('.os-agenda-month-overview [data-os-action=agenda-next]'));
+  h.click('.os-agenda-month-overview [data-os-action=agenda-next]');await flush();
+  assert.notEqual(h.document.getElementById('osAgendaDate').textContent,month);
+  assert.ok(h.document.querySelector('.os-agenda-month-calendar'));
   assert.equal(h.errors.length,0);
 });
 

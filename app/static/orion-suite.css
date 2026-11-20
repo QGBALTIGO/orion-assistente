@@ -303,15 +303,21 @@
 .os-agenda-filter{min-width:0;display:flex;flex-direction:column;gap:5px;font-size:11px;line-height:16px;color:var(--os-muted)}
 .os-main .os-agenda-filter select{min-height:44px;font-size:14px;background:var(--os-card);box-shadow:none}
 .os-agenda-view-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:16px}
-.os-agenda-views{display:flex;gap:4px;padding:4px;background:var(--os-soft);border-radius:12px;min-width:0}
-.os-agenda-views>button{display:flex;align-items:center;justify-content:center;gap:7px;min-height:40px;padding:8px 14px;background:transparent;border:0;border-radius:9px;font:500 13px/20px var(--os-font);color:var(--os-muted);cursor:pointer}
+.os-agenda-views{display:flex;flex:1 1 auto;gap:4px;padding:4px;background:var(--os-soft);border-radius:12px;min-width:0}
+.os-agenda-views>button{display:flex;flex:1 1 0;min-width:0;align-items:center;justify-content:center;gap:7px;min-height:40px;padding:8px 10px;background:transparent;border:0;border-radius:9px;font:500 13px/20px var(--os-font);color:var(--os-muted);cursor:pointer;white-space:nowrap}
 .os-agenda-views>button>.os-icon{width:16px;height:16px}
 .os-agenda-views>button[aria-selected=true]{background:var(--os-card);color:var(--os-text);box-shadow:var(--os-shadow)}
+.os-agenda-views>button:focus-visible{outline:2px solid var(--os-primary);outline-offset:-2px}
+.os-agenda-view-row>.os-agenda-refresh{display:inline-flex;box-sizing:border-box;align-items:center;justify-content:center;flex:0 0 44px;width:44px;height:44px;min-width:44px;min-height:44px;max-width:44px;padding:0;gap:0;border-radius:10px}
+.os-agenda-view-row>.os-agenda-refresh>.os-icon{display:block;flex:0 0 20px;width:20px;height:20px}
 .os-agenda-summary{display:flex;align-items:center;gap:18px;flex-wrap:wrap;padding:13px 0;border-bottom:1px solid var(--os-border)}
 .os-agenda-summary>span{font-size:11px;color:var(--os-muted)}
 .os-agenda-summary>.os-agenda-summary-item{display:flex;align-items:baseline;gap:5px;font-size:12px;color:var(--os-muted)}
 .os-agenda-summary strong{font:600 18px/24px var(--os-display);color:var(--os-text)}
 .os-agenda-result-line{display:flex;align-items:center;justify-content:space-between;min-height:48px;gap:8px;margin:5px 0}
+.os-agenda-result-line>p{min-width:0;flex:1 1 auto}
+.os-agenda-result-actions{display:flex;align-items:center;justify-content:flex-end;gap:4px;flex:0 0 auto}
+#osAgendaClear[hidden]{display:none!important}
 .os-agenda-result-line p{font-size:12px;line-height:18px}
 .os-agenda-list{border:1px solid var(--os-border);border-radius:16px;background:var(--os-card);overflow:hidden}
 .os-agenda-item{position:relative;display:grid;width:100%;max-width:100%;grid-template-columns:60px minmax(0,1fr) auto 16px;align-items:center;gap:18px;padding:20px 20px 20px 24px;border:0;border-bottom:1px solid var(--os-border);border-radius:0;background:var(--os-card);color:var(--os-text);text-align:left;font-family:var(--os-font);cursor:pointer;box-sizing:border-box}
@@ -511,8 +517,8 @@ html:has(.os-appointment-sheet[open]){overflow:hidden}
  .os-agenda-date-picker{flex:1}
  .os-agenda-connection{justify-content:space-between;min-width:0}
  .os-agenda-google{flex:1}
- .os-agenda-expand,.os-agenda-view-row>.os-button[data-os-action=agenda-reload]{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;flex:0 0 44px;width:44px;min-width:44px;max-width:44px;height:44px;min-height:44px;max-height:44px;padding:0;gap:0;font-size:0;line-height:0}
- .os-agenda-expand>.os-icon,.os-agenda-view-row>.os-button[data-os-action=agenda-reload]>.os-icon{display:block;flex:0 0 20px;width:20px;height:20px}
+ .os-agenda-expand{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;flex:0 0 44px;width:44px;min-width:44px;max-width:44px;height:44px;min-height:44px;max-height:44px;padding:0;gap:0;font-size:0;line-height:0}
+ .os-agenda-expand>.os-icon{display:block;flex:0 0 20px;width:20px;height:20px}
  .os-agenda-week{gap:2px;margin-bottom:16px}
  .os-agenda-week>.os-icon-button{flex-basis:22px;width:22px}
  .os-agenda-week .os-week-grid{gap:2px}
@@ -3734,12 +3740,15 @@ html:has(.os-professional-history[open]){overflow:hidden}
  .os-agenda-summary-range>.os-agenda-summary-item{font-size:11px;gap:3px}
  .os-agenda-range-heading{margin-bottom:8px}
  .os-agenda-range-heading h2{font-size:16px;line-height:22px}
- .os-agenda-week-overview{padding:3px;gap:2px;grid-template-columns:repeat(7,minmax(42px,1fr));scrollbar-width:none}
+ .os-agenda-week-overview{padding:3px;gap:2px;grid-template-columns:repeat(7,minmax(0,1fr));scrollbar-width:none}
  .os-agenda-week-day{min-height:68px;padding:5px 2px}
  .os-agenda-week-day .os-agenda-range-day-title small{font-size:10px}
  .os-agenda-week-day .os-agenda-range-day-title strong{font-size:16px;line-height:21px}
  .os-agenda-week-day .os-agenda-range-day-count strong{font-size:10px}
  .os-agenda-range-list-heading{flex-wrap:wrap;gap:6px;margin:11px 0}
+ .os-agenda-period-group-heading{flex-wrap:wrap;align-items:flex-start;gap:4px 12px}
+ .os-agenda-period-group-heading h3{min-width:0;overflow-wrap:anywhere}
+ .os-agenda-period-group-heading>span{margin-left:auto;white-space:nowrap}
  .os-agenda-range-list-heading h2{font-size:15px;line-height:21px}
  .os-agenda-range-list-heading p{font-size:10px;line-height:15px}
  .os-agenda-range-switch-list{min-height:36px!important;padding:7px 10px!important;font-size:12px}
@@ -3760,4 +3769,56 @@ html:has(.os-professional-history[open]){overflow:hidden}
 }
 @media(prefers-reduced-motion:reduce){
  .os-agenda-range-day{transition:none}
+}
+
+/* With active filters, keep the count legible rather than compressing it beside two actions. */
+@container agenda (max-width:380px){
+ .os-agenda-result-line:has(#osAgendaClear:not([hidden])){flex-wrap:wrap;row-gap:2px}
+ .os-agenda-result-line:has(#osAgendaClear:not([hidden]))>p{flex-basis:100%}
+ .os-agenda-result-line:has(#osAgendaClear:not([hidden]))>.os-agenda-result-actions{margin-left:auto}
+}
+
+/* Small mobile month headings keep the calendar navigation and list toggle separate. */
+@container agenda (max-width:360px){
+ .os-agenda-month-overview>.os-agenda-range-heading{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;column-gap:8px;row-gap:8px}
+ .os-agenda-month-overview>.os-agenda-range-heading h2{grid-column:1;grid-row:1;min-width:0;overflow-wrap:anywhere}
+ .os-agenda-month-overview>.os-agenda-range-heading>.os-agenda-period-nav{grid-column:2;grid-row:1;margin-left:0}
+ .os-agenda-month-overview>.os-agenda-range-heading>.os-agenda-range-switch-list{grid-column:1/-1;grid-row:2;justify-self:end}
+}
+
+/* Only the existing Week/Month headings use these navigation buttons. */
+.os-agenda-range-heading>.os-agenda-period-nav{display:inline-flex;align-items:center;gap:2px;margin-left:auto;flex:0 0 auto}
+@container agenda (max-width:520px){
+ .os-agenda-month-overview>.os-agenda-range-heading h2{display:block}
+ .os-agenda-month-overview>.os-agenda-range-heading{justify-content:space-between}
+}
+
+/* One shared Agenda view selector for Day, Week and Month. At narrow widths
+   labels stay readable without clipping Saturday or floating the refresh action. */
+@container agenda (max-width:380px){
+ .os-agenda-view-row{gap:5px}
+ .os-agenda-views{gap:1px;padding:3px}
+ .os-agenda-views>button{padding:8px 3px;font-size:12px;gap:3px}
+ .os-agenda-views>button>.os-icon{display:none}
+}
+.os-agenda-period-team{grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:14px}
+.os-agenda-period-team .os-professional-heading{flex-wrap:wrap;gap:6px}
+.os-agenda-period-team .os-professional-heading>span:last-child{margin-left:auto;font-size:11px;color:var(--os-muted)}
+
+
+/* Semana e Mês: keep the period heading in every view, and show dated bookings
+   within each professional rather than a context-free list of times. */
+.os-agenda-team-range{min-width:0;margin-top:4px}
+.os-agenda-period-team{align-items:start}
+.os-agenda-period-team .os-agenda-team-group{min-width:0;margin:0;overflow:hidden;border:1px solid var(--os-border);border-radius:14px;background:var(--os-card)}
+.os-agenda-period-team .os-professional-heading{margin:0;padding:13px 14px;background:var(--os-soft);border-bottom:1px solid var(--os-border)}
+.os-agenda-team-date-group{min-width:0;padding:12px}
+.os-agenda-team-date-group+.os-agenda-team-date-group{border-top:1px solid var(--os-border)}
+.os-agenda-team-date-title{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:4px 10px;min-width:0;margin:0 0 8px;font:600 13px/19px var(--os-display);color:var(--os-text);text-transform:none}
+.os-agenda-team-date-title>span{font:500 11px/17px var(--os-font);color:var(--os-muted)}
+.os-agenda-team-date-group>.os-agenda-list{border-radius:12px}
+@container agenda (max-width:520px){
+ .os-agenda-period-team{grid-template-columns:minmax(0,1fr)}
+ .os-agenda-team-date-group{padding:10px}
+ .os-agenda-team-date-title{font-size:12px}
 }
