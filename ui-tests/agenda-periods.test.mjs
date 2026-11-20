@@ -145,3 +145,19 @@ test('selected day request ignores stale results after selecting another day',as
   assert.match(target.innerHTML,/newer/);
   assert.doesNotMatch(target.innerHTML,/data-id="old"/);
 });
+
+test('refresh stays beside the result count and clear filters in every agenda period',()=>{
+  const start=source.indexOf('function agendaFrame(');
+  const end=source.indexOf('function syncAgendaControls()',start);
+  assert.ok(start>=0&&end>start);
+  const frame=source.slice(start,end);
+  const count=frame.indexOf('id="osAgendaCount"');
+  const refresh=frame.indexOf('data-os-action="agenda-reload"');
+  const clear=frame.indexOf('id="osAgendaClear"');
+  assert.match(frame,/os-agenda-result-actions/);
+  assert.ok(count>=0&&count<refresh&&refresh<clear);
+  assert.equal((frame.match(/data-os-action="agenda-reload"/g)||[]).length,1);
+  assert.doesNotMatch(frame,/os-agenda-range-caption/);
+  const css=fs.readFileSync('app/static/orion-suite.css','utf8');
+  assert.match(css,/\.os-agenda-result-actions>\.os-button\[data-os-action=agenda-reload\]/);
+});
