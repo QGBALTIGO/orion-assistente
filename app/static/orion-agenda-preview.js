@@ -1,158 +1,456 @@
-/* Orion Agenda LAB — somente leitura, acessível em rota protegida. */
+/* Orion Agenda: admin-only responsive redesign. Read-only, same-origin GETs only. */
 (()=>{
 "use strict";
 const $=id=>document.getElementById(id);
-const S={companies:[],company:null,people:[],mode:"day",day:"",view:"list",q:"",professional:"",status:"",range:null,focus:null,epoch:0,focusEpoch:0};
-const STATE={confirmed:"Confirmado",completed:"Concluído",cancelled:"Cancelado",no_show:"Não compareceu",hold:"Reserva temporária"};
-const WEEK=["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
-const ESC=v=>String(v??"").replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
-const N=v=>Number.isFinite(Number(v))?Number(v):0;
-const PAD=v=>String(v).padStart(2,"0");
-const ISO=(y,m,d)=>y+"-"+PAD(m)+"-"+PAD(d);
-const PARTS=d=>d.split("-").map(Number);
-const UTC=d=>{const p=PARTS(d);return new Date(Date.UTC(p[0],p[1]-1,p[2],12))};
-const SHIFT=(d,n)=>{const x=UTC(d);x.setUTCDate(x.getUTCDate()+n);return ISO(x.getUTCFullYear(),x.getUTCMonth()+1,x.getUTCDate())};
-const MONTH=(d,n)=>{const p=PARTS(d),x=new Date(Date.UTC(p[0],p[1]-1+n,1,12)),y=x.getUTCFullYear(),m=x.getUTCMonth()+1,days=new Date(Date.UTC(y,m,0,12)).getUTCDate();return ISO(y,m,Math.min(p[2],days))};
-const TODAY=zone=>{const p=Object.fromEntries(new Intl.DateTimeFormat("en-CA",{timeZone:zone||"America/Campo_Grande",day:"2-digit",month:"2-digit",year:"numeric"}).formatToParts(new Date()).map(x=>[x.type,x.value]));return p.year+"-"+p.month+"-"+p.day};
-const FMT=(day,opts)=>new Intl.DateTimeFormat("pt-BR",Object.assign({timeZone:"UTC"},opts)).format(UTC(day));
-const CAP=t=>t.charAt(0).toLocaleUpperCase("pt-BR")+t.slice(1);
-const ZONE=()=>S.company?.timezone||"America/Campo_Grande";
-const BOUNDS=()=>{
- if(S.mode==="day")return {start:S.day,end:S.day};
- if(S.mode==="week"){const a=SHIFT(S.day,-UTC(S.day).getUTCDay());return {start:a,end:SHIFT(a,6)}}
- const a=S.day.slice(0,7)+"-01";return {start:a,end:SHIFT(MONTH(a,1),-1)};
+const state={
+  companies:[],company:null,people:[],mode:"day",day:"",view:"list",
+  q:"",professional:"",status:"",period:null,focus:null,epoch:0,focusEpoch:0,companyEpoch:0
 };
-const LABEL=()=>{const b=BOUNDS();if(S.mode==="day")return CAP(FMT(S.day,{day:"numeric",month:"long",year:"numeric"}));if(S.mode==="week")return FMT(b.start,{day:"numeric",month:"short"})+" – "+FMT(b.end,{day:"numeric",month:"short",year:"numeric"});return CAP(FMT(b.start,{month:"long",year:"numeric"}));};
-async function GET(path){const r=await fetch(path,{method:"GET",credentials:"same-origin",cache:"no-store",headers:{"Accept":"application/json"}});if(!r.ok)throw Error(r.status===401?"Sessão expirada. Entre novamente no Orion.":r.status===403?"Acesso não autorizado para esta empresa.":"Falha ao consultar a agenda (HTTP "+r.status+").");return r.json();}
-function URLAPI(s){return "/api/v1/tenants/"+encodeURIComponent(S.company.id)+s}
-function PARAM(day){const b=day?{start:day,end:day}:BOUNDS(),p=new URLSearchParams({start_date:b.start,end_date:b.end,paged:"true",limit:day||S.mode==="day"?"200":"30",offset:"0"});if(S.q)p.set("q",S.q);if(S.professional)p.set("professional_id",S.professional);if(S.status)p.set("status",S.status);return p.toString()}
-function ERROR(t){$("errorRegion").hidden=!t;$("errorRegion").textContent=t||"";}
-function HEAD(){
- $("rangeLabel").textContent=LABEL();$("datePicker").value=S.day;
- const b=BOUNDS(),now=TODAY(ZONE());$("today").hidden=now>=b.start&&now<=b.end;
- document.body.className="mode-"+S.mode;
- document.querySelectorAll("[data-mode]").forEach(btn=>{const active=btn.dataset.mode===S.mode;btn.setAttribute("aria-selected",String(active));btn.tabIndex=active?0:-1});
- $("viewSelectWrap").hidden=S.mode!=="day";$("viewSelect").value=S.view;
- const n=[S.q,S.professional,S.status].filter(Boolean).length;$("filterCount").hidden=!n;$("filterCount").textContent=n;
+const STATUSES={
+  confirmed:"Confirmado",completed:"Concluído",cancelled:"Cancelado",
+  no_show:"Não compareceu",hold:"Reserva temporária"
+};
+const WEEK=["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
+const esc=value=>String(value??"").replace(/[&<>"']/g,character=>
+  ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[character]));
+const number=value=>Number.isFinite(Number(value))?Number(value):0;
+const pad=value=>String(value).padStart(2,"0");
+const iso=(year,month,day)=>year+"-"+pad(month)+"-"+pad(day);
+const parts=day=>day.split("-").map(Number);
+const utc=day=>{const p=parts(day);return new Date(Date.UTC(p[0],p[1]-1,p[2],12))};
+const shift=(day,delta)=>{const d=utc(day);d.setUTCDate(d.getUTCDate()+delta);return iso(d.getUTCFullYear(),d.getUTCMonth()+1,d.getUTCDate())};
+const shiftMonth=(day,delta)=>{const p=parts(day),d=new Date(Date.UTC(p[0],p[1]-1+delta,1,12));const y=d.getUTCFullYear(),m=d.getUTCMonth()+1,last=new Date(Date.UTC(y,m,0,12)).getUTCDate();return iso(y,m,Math.min(p[2],last))};
+const zone=()=>state.company?.timezone||"America/Campo_Grande";
+function localDate(value=new Date()){
+  const p=Object.fromEntries(new Intl.DateTimeFormat("en-CA",{timeZone:zone(),day:"2-digit",month:"2-digit",year:"numeric"}).formatToParts(value).map(x=>[x.type,x.value]));
+  return p.year+"-"+p.month+"-"+p.day;
 }
-function DAYS(){return Array.isArray(S.range?.days)?S.range.days:[]}
-function COUNTS(day){const x=DAYS().find(r=>String(r.day)===day)||{};return {total:N(x.total),confirmed:N(x.confirmed),completed:N(x.completed),cancelled:N(x.cancelled),no_show:N(x.no_show),hold:N(x.hold)}}
-function SUMMARY(){
- const rows=DAYS(),s={total:0,confirmed:0,completed:0,cancelled:0,no_show:0};
- for(const day of rows)for(const k in s)s[k]+=N(day[k]);
- if(!rows.length&&S.range){s.total=N(S.range.total);for(const a of S.range.items||[])if(Object.hasOwn(s,a.status)&&a.status!=="total")s[a.status]++}
- let h='<strong class="summary-total">'+s.total+' '+(s.total===1?"agendamento":"agendamentos")+'</strong><span class="summary-note">'+(S.mode==="day"?"no dia":S.mode==="week"?"na semana":"no mês")+'</span>';
- for(const [key,label] of [["confirmed","Confirmados"],["completed","Concluídos"],["cancelled","Cancelados"],["no_show","Faltas"]])if(s[key])h+='<span class="stat-chip" data-kind="'+key+'"><i class="stat-dot"></i><b>'+s[key]+'</b>'+label+'</span>';
- $("summary").innerHTML=h;
+const format=(day,options)=>new Intl.DateTimeFormat("pt-BR",{timeZone:"UTC",...options}).format(utc(day));
+const capitalize=text=>text.charAt(0).toLocaleUpperCase("pt-BR")+text.slice(1);
+function bounds(){
+  if(state.mode==="day")return {start:state.day,end:state.day};
+  if(state.mode==="week"){const start=shift(state.day,-utc(state.day).getUTCDay());return {start,end:shift(start,6)};}
+  const start=state.day.slice(0,7)+"-01";
+  return {start,end:shift(shiftMonth(start,1),-1)};
 }
-function DOTS(count){let h="";for(const key of ["confirmed","completed","cancelled","no_show"])if(count[key])h+='<i data-status="'+key+'"></i>';return h}
-function CALENDAR(){
- if(S.mode==="day"){$("calendarSurface").replaceChildren();return}
- const b=BOUNDS(),today=TODAY(ZONE());
- if(S.mode==="week"){
-  let h="";for(let i=0;i<7;i++){const day=SHIFT(b.start,i),count=COUNTS(day).total;
-   h+='<button type="button" data-select-day="'+day+'" aria-pressed="'+(day===S.day)+'" aria-label="'+ESC(FMT(day,{weekday:"long",day:"numeric",month:"long"})+", "+count+" agendamentos")+'" class="week-tile'+(day===S.day?" is-selected":"")+(day===today?" is-today":"")+'"><small>'+WEEK[UTC(day).getUTCDay()]+'</small><strong>'+PARTS(day)[2]+'</strong><span class="week-count">'+(count?count+" agend.":"Livre")+'</span></button>';
+function periodLabel(){
+  const b=bounds();
+  if(state.mode==="day")return capitalize(format(state.day,{day:"numeric",month:"long",year:"numeric"}));
+  if(state.mode==="week")return format(b.start,{day:"numeric",month:"short"})+" – "+format(b.end,{day:"numeric",month:"short",year:"numeric"});
+  return capitalize(format(b.start,{month:"long",year:"numeric"}));
+}
+function params(forDay,offset=0){
+  const b=forDay?{start:forDay,end:forDay}:bounds();
+  const p=new URLSearchParams({start_date:b.start,end_date:b.end,paged:"true",limit:"200",offset:String(offset)});
+  if(state.q)p.set("q",state.q);
+  if(state.professional)p.set("professional_id",state.professional);
+  if(state.status)p.set("status",state.status);
+  return p.toString();
+}
+async function GET(path){
+  const response=await fetch(path,{method:"GET",credentials:"same-origin",cache:"no-store",headers:{Accept:"application/json"}});
+  if(!response.ok){
+    if(response.status===401)throw Error("Sua sessão expirou. Acesse o Orion novamente.");
+    if(response.status===403)throw Error("Esta conta não tem permissão para consultar a empresa.");
+    throw Error("Falha ao consultar dados reais da agenda (HTTP "+response.status+").");
   }
-  $("calendarSurface").innerHTML='<section class="calendar-card"><h2>Visão da semana</h2><div class="week-grid">'+h+'</div><p class="week-description">Toque em um dia para consultar seus atendimentos.</p></section>';return;
- }
- const first=UTC(b.start),start=SHIFT(b.start,-first.getUTCDay()),cells=Math.ceil((first.getUTCDay()+UTC(b.end).getUTCDate())/7)*7;
- let h="";for(let i=0;i<cells;i++){const day=SHIFT(start,i),other=day<b.start||day>b.end,c=COUNTS(day);
-  h+='<button type="button" data-select-day="'+day+'" aria-pressed="'+(day===S.day)+'" class="month-cell'+(day===S.day?" is-selected":"")+(day===today?" is-today":"")+(other?" is-other":"")+'" aria-label="'+ESC(FMT(day,{day:"numeric",month:"long",weekday:"long"})+", "+c.total+" agendamentos")+'"><span class="month-number">'+PARTS(day)[2]+'</span>'+(c.total?'<span class="month-count">'+c.total+'</span>':"")+'<span class="month-dots" aria-hidden="true">'+(other?"":DOTS(c))+'</span></button>';
- }
- $("calendarSurface").innerHTML='<section class="calendar-card"><div class="weekday-row" aria-hidden="true">'+["D","S","T","Q","Q","S","S"].map(w=>"<span>"+w+"</span>").join("")+'</div><div class="month-grid">'+h+'</div><p class="week-description">Os pontos indicam os estados dos agendamentos. Toque em uma data para consultar.</p></section>';
+  return response.json();
 }
-const NAME=a=>String(a.customer_name||a.customer?.name||a.name||"Cliente");
-const SERVICES=a=>(Array.isArray(a.items)?a.items:[]).map(x=>x.name_snapshot||x.name||"").filter(Boolean).join(" + ")||"Serviço não informado";
-const PROFESSIONAL=a=>String(a.professional_name||S.people.find(p=>String(p.id)===String(a.professional_id))?.name||"Profissional");
-const MONEY=a=>new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL"}).format(N(a.total_cents)/100);
-function CLOCK(t){try{return new Intl.DateTimeFormat("pt-BR",{timeZone:ZONE(),hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).format(new Date(t))}catch{return "--:--"}}
-function ROW(a,i){
- const status=Object.hasOwn(STATE,a.status)?a.status:"confirmed";
- return '<button type="button" class="apt-row" data-appointment-index="'+i+'" aria-label="'+ESC("Ver atendimento de "+NAME(a)+", "+CLOCK(a.start_at))+'"><span class="apt-time"><strong>'+ESC(CLOCK(a.start_at))+'</strong><small>'+ESC(CLOCK(a.end_at))+'</small></span><span class="apt-main"><strong>'+ESC(NAME(a))+'</strong><small>'+ESC(SERVICES(a))+'</small><small class="apt-person"><i class="apt-dot"></i>'+ESC(PROFESSIONAL(a))+'</small></span><span class="apt-meta"><span class="status-badge" data-status="'+status+'">'+ESC(STATE[status])+'</span><strong class="apt-price">'+ESC(MONEY(a))+'</strong></span></button>';
+function endpoint(path){return "/api/v1/tenants/"+encodeURIComponent(state.company.id)+path;}
+async function readAppointments(forDay){
+  const initial=await GET(endpoint("/appointments?"+params(forDay)));
+  if(!initial||!Array.isArray(initial.items)||!Number.isFinite(Number(initial.total)))throw Error("Resposta de agendamentos inválida.");
+  const items=[...initial.items],max=1200;
+  while(initial.total>items.length&&items.length<max){
+    const page=await GET(endpoint("/appointments?"+params(forDay,items.length)));
+    if(!page||!Array.isArray(page.items)||!page.items.length)break;
+    items.push(...page.items);
+  }
+  return {...initial,items,partial:number(initial.total)>items.length};
 }
-function FOCUS(){
- $("focusEyebrow").textContent=S.mode==="day"?"AGENDA DO DIA":"DIA SELECIONADO";
- $("focusHeading").textContent=CAP(FMT(S.day,{weekday:"long",day:"numeric",month:"long"}));
- if(!S.focus)return;
- const data=S.focus,items=[...data.items].sort((a,b)=>String(a.start_at||"").localeCompare(String(b.start_at||"")));
- $("focusSubheading").textContent=N(data.total)+" "+(N(data.total)===1?"agendamento":"agendamentos")+" nesta data";
- if(!items.length){$("appointments").innerHTML='<div class="empty-state"><div class="empty-icon">▦</div><strong>Nenhum agendamento encontrado</strong><p>Selecione outra data ou ajuste os filtros. Para criar, use a agenda atual.</p></div>';return}
- let h="";
- if(S.view==="team"&&S.mode==="day"){
-  const groups=new Map();for(const a of items){const name=PROFESSIONAL(a);if(!groups.has(name))groups.set(name,[]);groups.get(name).push(a)}
-  h='<div class="team-list">'+[...groups].map(([name,list])=>'<section><h3 class="team-heading">'+ESC(name)+'<span>'+list.length+' atendimentos</span></h3><div class="apt-list">'+list.map(a=>ROW(a,data.items.indexOf(a))).join("")+'</div></section>').join("")+'</div>';
- }else if(S.view==="timeline"&&S.mode==="day"){
-  const groups=new Map();for(const a of items){const hr=CLOCK(a.start_at).slice(0,2)+":00";if(!groups.has(hr))groups.set(hr,[]);groups.get(hr).push(a)}
-  h='<div class="hour-grid">'+[...groups].sort(([a],[b])=>a.localeCompare(b)).map(([hr,list])=>'<div class="hour-row"><span class="hour-mark">'+ESC(hr)+'</span><div class="hour-cells">'+list.map(a=>ROW(a,data.items.indexOf(a))).join("")+'</div></div>').join("")+'</div>';
- }else h='<div class="apt-list">'+items.map(a=>ROW(a,data.items.indexOf(a))).join("")+'</div>';
- if(data.has_more)h+='<p class="week-description">Há mais atendimentos. Veja a lista completa na agenda atual.</p>';
- $("appointments").innerHTML=h;
+const setError=message=>{$("errorRegion").hidden=!message;$("errorRegion").textContent=message||""};
+function applyTheme(){
+  let mode="auto";
+  try{const v=localStorage.getItem("orion-theme");if(["auto","light","dark"].includes(v))mode=v;}catch{}
+  const systemDark=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const dark=mode==="auto"?systemDark:mode==="dark";
+  document.documentElement.dataset.theme=dark?"dark":"light";
+  document.documentElement.dataset.themePreference=mode;
+  $("themeToggle").setAttribute("aria-label",dark?"Ativar tema claro":"Ativar tema escuro");
+  $("themeColor").content=dark?"#05080f":"#f5f8fc";
+}
+function toggleTheme(){
+  const current=document.documentElement.dataset.theme;
+  try{localStorage.setItem("orion-theme",current==="dark"?"light":"dark");}catch{}
+  applyTheme();
+}
+function renderTabs(){
+  for(const button of document.querySelectorAll("[data-mode]")){
+    const selected=button.dataset.mode===state.mode;
+    button.setAttribute("aria-selected",String(selected));button.tabIndex=selected?0:-1;
+  }
+  $("dayStrip").hidden=state.mode!=="day";
+  $("rangeRow").hidden=state.mode==="day";
+  $("rangeLabel").textContent=periodLabel();
+  $("viewSelectWrap").hidden=state.mode!=="day";
+  for(const button of document.querySelectorAll("[data-view]")){
+    const selected=button.dataset.view===state.view;
+    button.setAttribute("aria-selected",String(selected));button.tabIndex=selected?0:-1;
+  }
+  const count=[state.q,state.professional,state.status].filter(Boolean).length;
+  $("filterCount").hidden=count===0;$("filterCount").textContent=String(count);
+  document.body.dataset.agendaPeriod=state.mode;
+  renderDayStrip();
+}
+function renderDayStrip(){
+  if(state.mode!=="day"){ $("dayStripGrid").replaceChildren();return; }
+  const weekStart=shift(state.day,-utc(state.day).getUTCDay()),today=localDate();
+  $("dayStripGrid").innerHTML=Array.from({length:7},(_,i)=>{
+    const day=shift(weekStart,i),selected=state.day===day;
+    return '<button type="button" class="day-cell'+(day===today?" is-today":"")+'" data-select-day="'+day+'" aria-pressed="'+selected+'" aria-label="'+esc(format(day,{weekday:"long",day:"numeric",month:"long",year:"numeric"}))+'"><small>'+WEEK[i]+'</small><strong>'+parts(day)[2]+'</strong></button>';
+  }).join("");
+}
+const daily=()=>Array.isArray(state.period?.days)?state.period.days:[];
+function dailyCounts(day){
+  const value=daily().find(x=>String(x.day)===day)||{};
+  return {total:number(value.total),confirmed:number(value.confirmed),completed:number(value.completed),cancelled:number(value.cancelled),no_show:number(value.no_show),hold:number(value.hold)};
+}
+function summary(){
+  const totals={total:0,confirmed:0,completed:0,cancelled:0,no_show:0};
+  if(daily().length){
+    for(const day of daily())for(const key in totals)totals[key]+=number(day[key]);
+  }else if(state.period){
+    totals.total=number(state.period.total);
+    for(const item of state.period.items||[])if(Object.hasOwn(totals,item.status)&&item.status!=="total")totals[item.status]++;
+  }
+  let html='<strong class="summary-total">'+totals.total+' '+(totals.total===1?"agendamento":"agendamentos")+'</strong><span class="summary-note">'+(state.mode==="day"?"no dia":state.mode==="week"?"na semana":"no mês")+'</span>';
+  for(const [key,label] of [["confirmed","Confirmados"],["completed","Concluídos"],["cancelled","Cancelamentos"],["no_show","Faltas"]]){
+    if(totals[key])html+='<span class="stat-chip" data-kind="'+key+'"><i class="stat-dot"></i><b>'+totals[key]+'</b>'+label+'</span>';
+  }
+  $("summary").innerHTML=html;
+}
+function appointmentDay(item){
+  const date=new Date(item.start_at);
+  return Number.isFinite(date.getTime())?localDate(date):"";
+}
+function time(value){
+  try{return new Intl.DateTimeFormat("pt-BR",{timeZone:zone(),hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).format(new Date(value));}
+  catch{return "--:--";}
+}
+const name=item=>String(item.customer_name||item.customer?.name||item.name||"Cliente");
+const service=item=>(Array.isArray(item.items)?item.items:[]).map(x=>x.name_snapshot||x.name||"").filter(Boolean).join(" + ")||"Serviço não informado";
+const professional=item=>String(item.professional_name||state.people.find(p=>String(p.id)===String(item.professional_id))?.name||"Profissional");
+const price=item=>new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL"}).format(number(item.total_cents)/100);
+const status=item=>Object.hasOwn(STATUSES,item.status)?item.status:"confirmed";
+function dayEvents(day){
+  return (state.period?.items||[]).filter(item=>appointmentDay(item)===day)
+    .sort((a,b)=>String(a.start_at||"").localeCompare(String(b.start_at||"")));
+}
+function dots(counts){
+  let content="";
+  for(const key of ["confirmed","completed","cancelled","no_show"])if(counts[key])content+='<i data-status="'+key+'"></i>';
+  return content;
+}
+function monthCalendar(){
+  const b=bounds(),first=utc(b.start),gap=first.getUTCDay();
+  const slots=Math.ceil((gap+utc(b.end).getUTCDate())/7)*7,start=shift(b.start,-gap),today=localDate();
+  const cells=[];
+  for(let i=0;i<slots;i++){
+    const day=shift(start,i),out=day<b.start||day>b.end,counts=dailyCounts(day),events=out?[]:dayEvents(day),more=Math.max(0,counts.total-Math.min(events.length,2));
+    let previews=events.slice(0,2).map(item=>
+      '<span class="month-event" data-status="'+status(item)+'" title="'+esc(time(item.start_at)+" · "+name(item))+'"><strong>'+esc(time(item.start_at))+'</strong> '+esc(name(item))+'</span>').join("");
+    if(more)previews+='<span class="month-more">mais +'+more+'</span>';
+    const selected=state.day===day;
+    cells.push('<button type="button" class="month-cell'+(selected?" is-selected":"")+
+      (day===today?" is-today":"")+(out?" is-other":"")+'" data-select-day="'+day+'" aria-pressed="'+selected+'" aria-label="'+
+      esc(format(day,{weekday:"long",day:"numeric",month:"long",year:"numeric"})+", "+counts.total+" agendamentos")+'">'+
+      '<span class="month-top"><span class="month-number">'+parts(day)[2]+'</span>'+(counts.total?'<span class="month-count">'+counts.total+'</span>':"")+'</span>'+
+      '<span class="month-events">'+previews+'</span>'+
+      '<span class="month-dots" aria-hidden="true">'+(out?"":dots(counts))+'</span></button>');
+  }
+  $("calendarSurface").innerHTML='<div class="month-calendar" role="group" aria-label="Calendário mensal de '+esc(periodLabel())+'">'+
+    '<div class="month-weekdays" aria-hidden="true">'+WEEK.map(value=>'<span>'+value+'</span>').join("")+'</div>'+
+    '<div class="month-grid">'+cells.join("")+'</div></div>';
+}
+function clockMinutes(value){
+  const label=time(value),m=/^(\d{2}):(\d{2})$/.exec(label);
+  return m?Math.min(1439,+m[1]*60+(+m[2])):0;
+}
+function weekWindow(){
+  const items=state.period?.items||[];
+  let min=8*60,max=19*60;
+  for(const a of items){
+    if(!a.start_at)continue;
+    const start=clockMinutes(a.start_at);
+    const dur=Math.max(10,(Date.parse(a.end_at)-Date.parse(a.start_at))/60000||40);
+    min=Math.min(min,start);max=Math.max(max,Math.min(24*60,start+dur));
+  }
+  return {first:Math.max(0,Math.floor(min/60)-1),last:Math.min(24,Math.ceil(max/60)+1)};
+}
+function weekDayEvents(day,firstHour,lastHour){
+  const items=dayEvents(day).map(item=>{
+    const start=Math.max(firstHour*60,clockMinutes(item.start_at));
+    const duration=Math.max(10,(Date.parse(item.end_at)-Date.parse(item.start_at))/60000||40);
+    return {item,start,end:Math.min(lastHour*60,start+duration)};
+  }).filter(event=>event.end>firstHour*60&&event.start<lastHour*60).sort((a,b)=>a.start-b.start||a.end-b.end);
+  // Group overlapping bookings and allocate at most two visual lanes. Everything
+  // remains accessible in the full day list, rather than squeezing names.
+  const groups=[];let group=[],until=-1;
+  for(const event of items){
+    if(group.length&&event.start>=until){groups.push(group);group=[];until=-1;}
+    group.push(event);until=Math.max(until,event.end);
+  }
+  if(group.length)groups.push(group);
+  const result=[];
+  for(const group of groups){
+    const ends=[],hidden=[];
+    for(const event of group){
+      let lane=ends.findIndex(end=>end<=event.start);
+      if(lane<0)lane=ends.length;
+      ends[lane]=event.end;event.lane=lane;
+    }
+    const laneCount=Math.min(2,ends.length);
+    group.forEach(event=>{if(event.lane<laneCount){event.lanes=laneCount;result.push(event);}else hidden.push(event)});
+    if(hidden.length){
+      const first=hidden.reduce((m,e)=>Math.min(m,e.start),Infinity);
+      result.push({aggregate:true,start:first,end:Math.min(lastHour*60,first+38),hidden:hidden.length,lanes:2,lane:1});
+    }
+  }
+  return result;
+}
+function weekCalendar(){
+  const b=bounds(),today=localDate(),hours=weekWindow(),height=(hours.last-hours.first)*76;
+  let head='<div class="week-head-time">HORA</div>',axis="";
+  for(let hour=hours.first;hour<hours.last;hour++)axis+='<div class="week-hour">'+pad(hour)+':00</div>';
+  let columns="";
+  for(let i=0;i<7;i++){
+    const day=shift(b.start,i),count=dailyCounts(day).total,selected=day===state.day;
+    head+='<button type="button" class="week-head-day'+(selected?" is-selected":"")+(day===today?" is-today":"")+
+      '" data-select-day="'+day+'" aria-label="'+esc(format(day,{weekday:"long",day:"numeric",month:"long"})+", "+count+" agendamentos")+'">'+
+      '<span class="week-head-name">'+WEEK[i]+'</span><strong>'+parts(day)[2]+'/'+pad(parts(day)[1])+'</strong>'+
+      '<small>'+count+(count===1?" agendamento":" agendamentos")+'</small></button>';
+    const events=weekDayEvents(day,hours.first,hours.last);
+    let blocks="";
+    for(const event of events){
+      const top=Math.max(1,(event.start-hours.first*60)*76/60),tall=Math.max(25,(event.end-event.start)*76/60-2);
+      const left=event.lane*(100/event.lanes),width=100/event.lanes;
+      const style='top:'+top.toFixed(1)+'px;height:'+tall.toFixed(1)+'px;left:calc('+left+'% + 2px);width:calc('+width+'% - 4px);';
+      if(event.aggregate){
+        blocks+='<button class="week-booking" type="button" data-select-day="'+day+'" style="'+style+'" title="Ver outros atendimentos"><span class="week-booking-name">+'+event.hidden+' atend.</span></button>';
+      }else{
+        const item=event.item,id=esc(item.id);
+        blocks+='<button class="week-booking" data-appointment-id="'+id+'" data-status="'+status(item)+'" type="button" style="'+style+'" title="'+
+          esc(time(item.start_at)+" · "+name(item)+" · "+service(item))+'">'+
+          '<span class="week-booking-time">'+esc(time(item.start_at))+'</span>'+
+          '<span class="week-booking-name">'+esc(name(item))+'</span>'+
+          '<span class="week-booking-service">'+esc(service(item))+'</span></button>';
+      }
+    }
+    columns+='<div class="week-column'+(day===today?" is-today":"")+'" style="grid-column:'+(i+2)+';height:'+height+'px">'+blocks+'</div>';
+  }
+  const legend='<div class="week-legend"><span><i class="legend-swatch"></i>Confirmados</span>'+
+    '<span><i class="legend-swatch completed"></i>Concluídos</span>'+
+    '<span><i class="legend-swatch cancelled"></i>Cancelados</span>'+
+    '<span><i class="legend-swatch no_show"></i>Faltas</span></div>';
+  let mobile="";
+  for(let i=0;i<7;i++){
+    const day=shift(b.start,i),count=dailyCounts(day).total;
+    mobile+='<button class="week-mobile-day'+(day===state.day?" is-selected":"")+'" data-select-day="'+day+'" type="button" aria-pressed="'+(day===state.day)+'" aria-label="'+esc(format(day,{weekday:"long",day:"numeric",month:"long"})+", "+count+" agendamentos")+'"><small>'+WEEK[i]+'</small><strong>'+parts(day)[2]+'</strong>'+(count?'<i aria-hidden="true"></i>':"")+'</button>';
+  }
+  $("calendarSurface").innerHTML='<div class="week-overview" role="group" aria-label="Grade de horários da semana">'+
+    legend+'<div class="week-scroll" tabindex="0" aria-label="Grade semanal; role horizontalmente para ver todos os dias">'+
+    '<div class="week-board">'+head+'<div class="week-axis">'+axis+'</div>'+columns+'</div></div>'+
+    '<div class="week-mobile"><div class="week-mobile-strip" role="group" aria-label="Selecionar dia desta semana">'+mobile+'</div>'+
+    '<p class="week-mobile-help">Selecione um dia para ver os atendimentos e horários abaixo.</p></div></div>';
+}
+function renderCalendar(){
+  if(state.mode==="day"){$("calendarSurface").replaceChildren();return;}
+  if(state.mode==="week")weekCalendar();else monthCalendar();
+}
+function row(item,index){
+  return '<button type="button" class="apt-row" data-appointment-index="'+index+'" aria-label="'+esc("Ver agendamento de "+name(item)+" às "+time(item.start_at))+'">'+
+    '<span class="apt-time"><strong>'+esc(time(item.start_at))+'</strong><small>'+esc(time(item.end_at))+'</small></span>'+
+    '<span class="apt-main"><strong>'+esc(name(item))+'</strong><small>'+esc(service(item))+'</small><small class="apt-person"><i class="apt-dot"></i>'+esc(professional(item))+'</small></span>'+
+    '<span class="apt-meta"><span class="status-badge" data-status="'+status(item)+'">'+esc(STATUSES[status(item)])+'</span>'+
+    '<strong class="apt-price">'+esc(price(item))+'</strong></span></button>';
+}
+function renderFocus(){
+  $("focusEyebrow").textContent=state.mode==="day"?"AGENDA DO DIA":"DIA SELECIONADO";
+  $("focusHeading").textContent=capitalize(format(state.day,{weekday:"long",day:"numeric",month:"long"}));
+  if(!state.focus)return;
+  const data=state.focus,items=[...data.items].sort((a,b)=>String(a.start_at||"").localeCompare(String(b.start_at||"")));
+  $("focusSubheading").textContent=number(data.total)+" "+(number(data.total)===1?"agendamento":"agendamentos")+" nesta data";
+  if(!items.length){
+    $("appointments").innerHTML='<div class="empty-state"><div class="empty-icon" aria-hidden="true">▦</div>'+
+      '<strong>Nenhum agendamento encontrado</strong><p>Selecione outra data ou ajuste os filtros.</p></div>';
+    return;
+  }
+  let html="";
+  if(state.view==="team"&&state.mode==="day"){
+    const groups=new Map();
+    for(const a of items){const key=professional(a);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(a);}
+    html='<div class="team-list">'+[...groups].map(([key,list])=>'<section>'+
+      '<h3 class="team-heading">'+esc(key)+'<span>'+list.length+' '+(list.length===1?"atendimento":"atendimentos")+'</span></h3>'+
+      '<div class="apt-list">'+list.map(a=>row(a,data.items.indexOf(a))).join("")+'</div></section>').join("")+'</div>';
+  }else if(state.view==="timeline"&&state.mode==="day"){
+    const grouped=new Map();
+    for(const a of items){const hour=time(a.start_at).slice(0,2)+":00";if(!grouped.has(hour))grouped.set(hour,[]);grouped.get(hour).push(a);}
+    html='<div class="hour-grid">'+[...grouped].sort(([a],[b])=>a.localeCompare(b)).map(([hour,list])=>
+      '<div class="hour-row"><span class="hour-mark">'+esc(hour)+'</span><div class="hour-cells">'+
+      list.map(a=>row(a,data.items.indexOf(a))).join("")+'</div></div>').join("")+'</div>';
+  }else{
+    html='<div class="apt-list">'+items.map(a=>row(a,data.items.indexOf(a))).join("")+'</div>';
+  }
+  if(data.partial)html+='<p class="summary-note">Há mais registros nesta data. Para consultar toda a lista, abra a Agenda original.</p>';
+  $("appointments").innerHTML=html;
 }
 async function loadFocus(){
- const epoch=++S.focusEpoch,day=S.day;
- $("appointments").innerHTML='<div class="loading-state">Consultando horários do dia…</div>';
- try{
-  const d=S.mode==="day"&&S.range?S.range:await GET(URLAPI("/appointments?"+PARAM(day)));
-  if(epoch!==S.focusEpoch||day!==S.day)return;
-  if(!d||!Array.isArray(d.items))throw Error("Resposta de atendimento inválida.");
-  S.focus=d;FOCUS();
- }catch(ex){if(epoch!==S.focusEpoch)return;S.focus=null;ERROR(ex.message);$("appointments").innerHTML='<div class="empty-state"><strong>Não foi possível consultar os horários</strong><p>Tente Atualizar.</p></div>'}
+  if(!state.company)return;
+  const epoch=++state.focusEpoch,day=state.day;
+  $("appointments").innerHTML='<div class="loading-state">Consultando atendimentos deste dia…</div>';
+  try{
+    const data=state.mode==="day"&&state.period?state.period:await readAppointments(day);
+    if(epoch!==state.focusEpoch||day!==state.day)return;
+    state.focus=data;renderFocus();
+  }catch(error){
+    if(epoch!==state.focusEpoch)return;
+    state.focus=null;setError(error.message);
+    $("appointments").innerHTML='<div class="empty-state"><strong>Não foi possível carregar os atendimentos</strong><p>Use Atualizar para tentar novamente.</p></div>';
+  }
 }
 async function refresh(){
- if(!S.company)return;const epoch=++S.epoch;++S.focusEpoch;S.range=null;S.focus=null;ERROR("");HEAD();
- $("summary").textContent="Consultando agenda real…";$("appointments").innerHTML='<div class="loading-state">Carregando atendimentos do Orion…</div>';$("calendarSurface").replaceChildren();$("refresh").disabled=true;
- try{
-  const d=await GET(URLAPI("/appointments?"+PARAM()));
-  if(epoch!==S.epoch)return;
-  if(!d||!Array.isArray(d.items)||!Array.isArray(d.days))throw Error("Dados do período indisponíveis.");
-  S.range=d;SUMMARY();CALENDAR();await loadFocus();
- }catch(ex){if(epoch!==S.epoch)return;ERROR(ex.message);$("summary").textContent="Dados indisponíveis";$("appointments").innerHTML='<div class="empty-state"><strong>Não foi possível carregar a agenda</strong><p>Confira a empresa e tente novamente.</p></div>'}
- finally{if(epoch===S.epoch)$("refresh").disabled=false}
+  if(!state.company)return;
+  const epoch=++state.epoch;++state.focusEpoch;
+  state.period=null;state.focus=null;setError("");renderTabs();
+  $("summary").textContent="Consultando agendamentos…";
+  $("appointments").innerHTML='<div class="loading-state">Carregando dados reais do Orion…</div>';
+  $("calendarSurface").replaceChildren();$("refresh").disabled=true;
+  try{
+    const data=await readAppointments();
+    if(epoch!==state.epoch)return;
+    state.period=data;summary();renderCalendar();
+    await loadFocus();
+  }catch(error){
+    if(epoch!==state.epoch)return;
+    setError(error.message);$("summary").textContent="Não foi possível consultar o período.";
+    $("appointments").innerHTML='<div class="empty-state"><strong>Agenda indisponível</strong><p>Confira a empresa e tente novamente.</p></div>';
+  }finally{
+    if(epoch===state.epoch)$("refresh").disabled=false;
+  }
 }
 async function selectCompany(id){
- const c=S.companies.find(x=>String(x.id)===String(id));if(!c)return;S.company=c;S.day=TODAY(c.timezone);S.people=[];S.professional="";
- $("professional").innerHTML='<option value="">Toda a equipe</option>';$("businessSelect").value=c.id;
- const companyEpoch=++S.epoch;
- try{const result=await GET(URLAPI("/professionals"));if(companyEpoch!==S.epoch||S.company!==c)return;S.people=Array.isArray(result)?result:(result.items||[]);$("professional").innerHTML='<option value="">Toda a equipe</option>'+S.people.filter(p=>p.active!==false).map(p=>'<option value="'+ESC(p.id)+'">'+ESC(p.name||"Profissional")+'</option>').join("")}catch(ex){if(companyEpoch===S.epoch)ERROR("Profissionais indisponíveis: "+ex.message)}
- void refresh();
+  const company=state.companies.find(c=>String(c.id)===String(id));
+  if(!company)return;
+  state.company=company;state.day=localDate();state.people=[];state.professional="";
+  $("businessSelect").value=company.id;$("professional").innerHTML='<option value="">Toda a equipe</option>';
+  const seq=++state.companyEpoch;
+  try{
+    const result=await GET(endpoint("/professionals"));
+    if(seq!==state.companyEpoch)return;
+    state.people=Array.isArray(result)?result:Array.isArray(result.items)?result.items:[];
+    $("professional").innerHTML='<option value="">Toda a equipe</option>'+
+      state.people.filter(p=>p.active!==false).map(p=>'<option value="'+esc(p.id)+'">'+esc(p.name||"Profissional")+'</option>').join("");
+  }catch(error){
+    if(seq===state.companyEpoch)setError("Profissionais indisponíveis: "+error.message);
+  }
+  if(seq===state.companyEpoch)await refresh();
 }
-function details(i){
- const a=S.focus?.items?.[i];if(!a)return;
- $("detailTitle").textContent=NAME(a);
- const fields=[["Situação",STATE[a.status]||a.status||"—"],["Data",FMT(S.day,{day:"numeric",month:"long",year:"numeric"})],["Horário",CLOCK(a.start_at)+" – "+CLOCK(a.end_at)],["Serviços",SERVICES(a)],["Profissional",PROFESSIONAL(a)],["Valor",MONEY(a)],["Protocolo",a.protocol||"—"]];
- $("detailContent").innerHTML=fields.map(([k,v])=>'<div class="detail-content-row"><span>'+ESC(k)+'</span><strong>'+ESC(v)+'</strong></div>').join("");
- $("detailDialog").showModal();
+function details(item){
+  if(!item)return;
+  $("detailTitle").textContent=name(item);
+  const fields=[
+    ["Situação",STATUSES[status(item)]],
+    ["Data",format(appointmentDay(item)||state.day,{weekday:"long",day:"numeric",month:"long",year:"numeric"})],
+    ["Horário",time(item.start_at)+" – "+time(item.end_at)],
+    ["Serviços",service(item)],["Profissional",professional(item)],
+    ["Valor",price(item)],["Protocolo",item.protocol||"—"]
+  ];
+  $("detailContent").innerHTML=fields.map(([key,value])=>
+    '<div class="detail-content-row"><span>'+esc(key)+'</span><strong>'+esc(value)+'</strong></div>').join("");
+  $("detailDialog").showModal();
 }
-function move(n){S.day=S.mode==="month"?MONTH(S.day,n):SHIFT(S.day,n*(S.mode==="week"?7:1));void refresh()}
+function changePeriod(delta){
+  state.day=state.mode==="month"?shiftMonth(state.day,delta):shift(state.day,delta*(state.mode==="week"?7:1));
+  void refresh();
+}
+function changeWeek(delta){state.day=shift(state.day,7*delta);void refresh();}
+function selectDay(day){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(day))return;
+  const b=bounds(),outside=day<b.start||day>b.end;
+  state.day=day;
+  if(outside){void refresh();return;}
+  renderTabs();renderCalendar();void loadFocus();
+}
 function bind(){
- document.querySelectorAll("[data-mode]").forEach(btn=>btn.addEventListener("click",()=>{if(S.mode===btn.dataset.mode)return;S.mode=btn.dataset.mode;void refresh()}));
- $("businessSelect").addEventListener("change",e=>void selectCompany(e.target.value));
- $("previous").addEventListener("click",()=>move(-1));$("next").addEventListener("click",()=>move(1));
- $("today").addEventListener("click",()=>{S.day=TODAY(ZONE());void refresh()});
- $("dateTrigger").addEventListener("click",()=>{try{$("datePicker").showPicker()}catch{$("datePicker").focus();$("datePicker").click()}});
- $("datePicker").addEventListener("change",e=>{if(/^\d{4}-\d{2}-\d{2}$/.test(e.target.value)){S.day=e.target.value;void refresh()}});
- $("filtersToggle").addEventListener("click",()=>{$("filtersPanel").hidden=!$("filtersPanel").hidden;$("filtersToggle").setAttribute("aria-expanded",String(!$("filtersPanel").hidden))});
- let timer; $("search").addEventListener("input",e=>{clearTimeout(timer);timer=setTimeout(()=>{S.q=e.target.value.trim();void refresh()},350)});
- $("professional").addEventListener("change",e=>{S.professional=e.target.value;void refresh()});
- $("status").addEventListener("change",e=>{S.status=e.target.value;void refresh()});
- $("clearFilters").addEventListener("click",()=>{S.q="";S.professional="";S.status="";$("search").value="";$("professional").value="";$("status").value="";void refresh()});
- $("viewSelect").addEventListener("change",e=>{S.view=e.target.value;FOCUS()});
- $("refresh").addEventListener("click",()=>void refresh());
- $("calendarSurface").addEventListener("click",e=>{const b=e.target.closest("button[data-select-day]");if(!b)return;const day=b.dataset.selectDay,range=BOUNDS();S.day=day;if(day<range.start||day>range.end){void refresh();return}HEAD();CALENDAR();void loadFocus()});
- $("appointments").addEventListener("click",e=>{const b=e.target.closest("button[data-appointment-index]");if(b)details(Number(b.dataset.appointmentIndex))});
- $("detailClose").addEventListener("click",()=>$("detailDialog").close());
- $("detailDialog").addEventListener("click",e=>{if(e.target===$("detailDialog"))$("detailDialog").close()});
+  for(const button of document.querySelectorAll("[data-mode]"))button.addEventListener("click",()=>{
+    if(state.mode===button.dataset.mode)return;
+    state.mode=button.dataset.mode;void refresh();
+  });
+  for(const button of document.querySelectorAll("[data-view]"))button.addEventListener("click",()=>{
+    state.view=button.dataset.view;renderTabs();renderFocus();
+  });
+  $("themeToggle").addEventListener("click",toggleTheme);
+  if(window.matchMedia){const media=window.matchMedia("(prefers-color-scheme: dark)");media.addEventListener?.("change",()=>{
+    if(document.documentElement.dataset.themePreference==="auto")applyTheme();
+  });}
+  $("businessSelect").addEventListener("change",event=>void selectCompany(event.target.value));
+  $("rangePrevious").addEventListener("click",()=>changePeriod(-1));
+  $("rangeNext").addEventListener("click",()=>changePeriod(1));
+  $("dayPrev").addEventListener("click",()=>changeWeek(-1));
+  $("dayNext").addEventListener("click",()=>changeWeek(1));
+  $("dayStripGrid").addEventListener("click",event=>{
+    const button=event.target.closest("[data-select-day]");if(button)selectDay(button.dataset.selectDay);
+  });
+  $("filtersToggle").addEventListener("click",()=>{
+    const panel=$("filtersPanel");panel.hidden=!panel.hidden;
+    $("filtersToggle").setAttribute("aria-expanded",String(!panel.hidden));
+  });
+  let timer;
+  $("search").addEventListener("input",event=>{
+    clearTimeout(timer);timer=setTimeout(()=>{state.q=event.target.value.trim();void refresh();},320);
+  });
+  $("professional").addEventListener("change",event=>{state.professional=event.target.value;void refresh();});
+  $("status").addEventListener("change",event=>{state.status=event.target.value;void refresh();});
+  $("clearFilters").addEventListener("click",()=>{
+    state.q="";state.professional="";state.status="";
+    $("search").value="";$("professional").value="";$("status").value="";void refresh();
+  });
+  $("refresh").addEventListener("click",()=>void refresh());
+  $("calendarSurface").addEventListener("click",event=>{
+    const appointment=event.target.closest("[data-appointment-id]");
+    if(appointment){
+      const item=(state.period?.items||[]).find(a=>String(a.id)===appointment.dataset.appointmentId);
+      if(item)details(item);return;
+    }
+    const day=event.target.closest("[data-select-day]");if(day)selectDay(day.dataset.selectDay);
+  });
+  $("appointments").addEventListener("click",event=>{
+    const button=event.target.closest("[data-appointment-index]");
+    if(button)details(state.focus?.items?.[Number(button.dataset.appointmentIndex)]);
+  });
+  $("detailClose").addEventListener("click",()=>$("detailDialog").close());
+  $("detailDialog").addEventListener("click",event=>{
+    if(event.target===$("detailDialog"))$("detailDialog").close();
+  });
 }
 async function boot(){
- bind();
- try{
-  const me=await GET("/auth/me");if(me.role!=="admin"||me.maintenance?.active)throw Error("Esta prévia é exclusiva da administração principal.");
-  const result=await GET("/api/v1/tenants");if(!Array.isArray(result))throw Error("Lista de empresas indisponível.");
-  S.companies=result.filter(x=>x&&x.id&&x.name);
-  $("businessSelect").innerHTML=S.companies.map(c=>'<option value="'+ESC(c.id)+'">'+ESC(c.name)+'</option>').join("")||'<option value="">Nenhuma empresa</option>';
-  if(S.companies.length)await selectCompany(S.companies[0].id);
-  else{$("summary").textContent="Nenhuma empresa cadastrada";$("appointments").innerHTML='<div class="empty-state">Cadastre uma empresa no painel para ver a agenda.</div>'}
- }catch(ex){ERROR(ex.message);$("summary").textContent="Acesso indisponível";$("appointments").innerHTML='<div class="empty-state"><strong>Não foi possível abrir a prévia</strong><p>Confira sua sessão no Orion.</p><p><a href="/painel?aba=agenda">Voltar à agenda atual</a></p></div>'}
+  applyTheme();bind();
+  try{
+    const account=await GET("/auth/me");
+    if(account.role!=="admin"||account.maintenance?.active)throw Error("Esta prévia é exclusiva do administrador principal.");
+    const result=await GET("/api/v1/tenants");
+    if(!Array.isArray(result))throw Error("Empresas indisponíveis.");
+    state.companies=result.filter(c=>c&&c.id&&c.name);
+    $("businessSelect").innerHTML=state.companies.map(c=>'<option value="'+esc(c.id)+'">'+esc(c.name)+'</option>').join("")||'<option value="">Nenhuma empresa</option>';
+    if(state.companies.length)await selectCompany(state.companies[0].id);
+    else{
+      $("summary").textContent="Nenhuma empresa encontrada.";
+      $("appointments").innerHTML='<div class="empty-state"><strong>Sem empresas cadastradas</strong><p>Cadastre uma empresa antes de consultar a agenda.</p></div>';
+    }
+  }catch(error){
+    setError(error.message);$("summary").textContent="Acesso indisponível";
+    $("appointments").innerHTML='<div class="empty-state"><strong>Não foi possível abrir a prévia</strong><p>Confira seu acesso administrativo no Orion.</p><p><a href="/painel?aba=agenda&agenda_original=1">Abrir Agenda original</a></p></div>';
+  }
 }
 void boot();
 })();
