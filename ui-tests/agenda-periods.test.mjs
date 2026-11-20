@@ -161,3 +161,35 @@ test('refresh stays beside the result count and clear filters in every agenda pe
   const css=fs.readFileSync('app/static/orion-suite.css','utf8');
   assert.match(css,/\.os-agenda-result-actions>\.os-button\[data-os-action=agenda-reload\]/);
 });
+
+
+test('out-of-range selected day page recovers after an appointment disappears',async()=>{
+  const ctx=context('2026-11-13','month',false,'2026-11-13');
+  ctx.state.filters.agendaFocusOffset=80;
+  ctx.apiPath=path=>path;
+  ctx.query=params=>new URLSearchParams(Object.entries(params).filter(([,v])=>v!==''&&v!=null)).toString();
+  ctx.current=()=>true;
+  ctx.context=()=>({});
+  const target={innerHTML:'',setAttribute(){},removeAttribute(){}};
+  ctx.$=id=>id==='osAgendaRangeFocusBody'?target:null;
+  const seen=[];
+  ctx.request=async path=>{
+    seen.push(path);
+    return seen.length===1
+      ?{items:[],total:3,offset:80,limit:80,has_more:false}
+      :{items:[{id:'recovered'}],total:3,offset:0,limit:80,has_more:false};
+  };
+  vm.runInNewContext(helpers+focused+'globalThis.fetchDay=loadAgendaFocus;',ctx);
+  await ctx.fetchDay();
+  assert.equal(seen.length,2,'a valid earlier page is consulted again');
+  assert.match(seen[0],/offset=80/);
+  assert.match(seen[1],/offset=0/);
+  assert.equal(ctx.state.filters.agendaFocusOffset,0);
+  assert.match(target.innerHTML,/recovered/);
+  assert.doesNotMatch(target.innerHTML,/Nenhum agendamento nesta data/);
+});
+
+test('search input invalidates stale focused-day requests before debounce',()=>{
+  const source=fs.readFileSync('app/static/orion-suite.js','utf8');
+  assert.match(source,/if\(el\.id==='osAgendaSearch'&&!state\.busy\)\{[^\n]+state\.agendaRead=\(state\.agendaRead\|\|0\)\+1;state\.agendaFocusRead=\(state\.agendaFocusRead\|\|0\)\+1;/);
+});
