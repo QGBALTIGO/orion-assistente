@@ -312,6 +312,8 @@
 .os-agenda-summary>.os-agenda-summary-item{display:flex;align-items:baseline;gap:5px;font-size:12px;color:var(--os-muted)}
 .os-agenda-summary strong{font:600 18px/24px var(--os-display);color:var(--os-text)}
 .os-agenda-result-line{display:flex;align-items:center;justify-content:space-between;min-height:48px;gap:8px;margin:5px 0}
+.os-agenda-result-line>p{min-width:0;flex:1 1 auto}
+.os-agenda-result-actions{display:flex;align-items:center;justify-content:flex-end;gap:4px;flex:0 0 auto}
 .os-agenda-result-line p{font-size:12px;line-height:18px}
 .os-agenda-list{border:1px solid var(--os-border);border-radius:16px;background:var(--os-card);overflow:hidden}
 .os-agenda-item{position:relative;display:grid;width:100%;max-width:100%;grid-template-columns:60px minmax(0,1fr) auto 16px;align-items:center;gap:18px;padding:20px 20px 20px 24px;border:0;border-bottom:1px solid var(--os-border);border-radius:0;background:var(--os-card);color:var(--os-text);text-align:left;font-family:var(--os-font);cursor:pointer;box-sizing:border-box}
@@ -511,8 +513,8 @@ html:has(.os-appointment-sheet[open]){overflow:hidden}
  .os-agenda-date-picker{flex:1}
  .os-agenda-connection{justify-content:space-between;min-width:0}
  .os-agenda-google{flex:1}
- .os-agenda-expand,.os-agenda-view-row>.os-button[data-os-action=agenda-reload]{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;flex:0 0 44px;width:44px;min-width:44px;max-width:44px;height:44px;min-height:44px;max-height:44px;padding:0;gap:0;font-size:0;line-height:0}
- .os-agenda-expand>.os-icon,.os-agenda-view-row>.os-button[data-os-action=agenda-reload]>.os-icon{display:block;flex:0 0 20px;width:20px;height:20px}
+ .os-agenda-expand,.os-agenda-result-actions>.os-button[data-os-action=agenda-reload]{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;flex:0 0 44px;width:44px;min-width:44px;max-width:44px;height:44px;min-height:44px;max-height:44px;padding:0;gap:0;font-size:0;line-height:0}
+ .os-agenda-expand>.os-icon,.os-agenda-result-actions>.os-button[data-os-action=agenda-reload]>.os-icon{display:block;flex:0 0 20px;width:20px;height:20px}
  .os-agenda-week{gap:2px;margin-bottom:16px}
  .os-agenda-week>.os-icon-button{flex-basis:22px;width:22px}
  .os-agenda-week .os-week-grid{gap:2px}
