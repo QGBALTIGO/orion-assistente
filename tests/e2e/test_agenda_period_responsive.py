@@ -10,7 +10,8 @@ ROOT = Path(__file__).resolve().parents[2]
 CSS = (ROOT / "app/static/orion-suite.css").read_text(encoding="utf-8")
 SCRIPT = (ROOT / "app/static/orion-suite.js").read_text(encoding="utf-8")
 HELPERS = SCRIPT[SCRIPT.index("  const agendaPeriod="):SCRIPT.index("  function agendaFrame(")]
-RENDERER = SCRIPT[SCRIPT.index("  function agendaRangeView("):SCRIPT.index("  function renderAgenda(){")]
+FRAME = SCRIPT[SCRIPT.index("  function agendaFrame("):SCRIPT.index("  function syncAgendaControls()")]
+RENDERER = SCRIPT[SCRIPT.index("  function agendaTeamRangeView("):SCRIPT.index("  function renderAgenda(){")]
 
 HTML = """<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -28,7 +29,10 @@ body{background:var(--os-bg);color:var(--os-text)}
 </main></body></html>"""
 
 RUNTIME = """
-const state={filters:{agendaDay:'2026-11-13',agendaPeriod:'month',agendaFocusDay:'',agendaRangeList:false}};
+const state={filters:{agendaDay:'2026-11-13',agendaPeriod:'month',agendaFocusDay:'',agendaRangeList:false,agendaMode:'list',agendaQuery:'',agendaProfessional:'',agendaStatus:'all'}};
+const writable=()=>true;
+const appointmentProfessional=a=>a.professional_name||'Equipe sintética';
+const cleanColor=(value,fallback)=>value||fallback;
 const dateKey=value=>value?new Date(value).toISOString().slice(0,10):'2026-11-13';
 const dayDate=day=>new Date((day||'2026-11-13')+'T12:00:00Z');
 const shiftDay=(day,count)=>{let d=dayDate(day);d.setUTCDate(d.getUTCDate()+count);return d.toISOString().slice(0,10)};
@@ -42,11 +46,19 @@ const loading=text=>'<p>'+esc(text)+'</p>';
 const appointmentRow=item=>'<button type="button" class="os-agenda-item" data-os-appointment="'+item.id+'">'+esc(item.id)+'</button>';
 const agendaEmpty=()=>'<p>Sem agendamentos</p>';
 const agendaPagination=()=>'<nav class="os-agenda-pagination"><span>Mais resultados</span></nav>';
-""" + HELPERS + RENDERER + """
+""" + HELPERS + FRAME + RENDERER + """
+window.renderDay=()=>{
+  state.filters.agendaPeriod='day';
+  state.filters.agendaMode='list';
+  document.getElementById('page-suite').innerHTML=agendaFrame();
+  return document.querySelectorAll('[data-os-action=agenda-reload]').length;
+};
 window.renderPeriod=(period,whole,focus)=>{
   state.filters.agendaPeriod=period;
   state.filters.agendaRangeList=whole;
+  state.filters.agendaMode=whole?'list':'calendar';
   state.filters.agendaFocusDay=focus||'';
+  document.getElementById('page-suite').innerHTML=agendaFrame();
   const data={
     days:[
       {day:'2026-11-09',total:11,confirmed:8,completed:1,cancelled:1,no_show:1,hold:0},
@@ -59,7 +71,7 @@ window.renderPeriod=(period,whole,focus)=>{
     {id:'atendimento-exemplo-2',start_at:'2026-11-13T13:00:00Z'}
   ],data);
   document.getElementById('osPageBody').innerHTML=html;
-  return {selected:agendaSelectedDay(),days:document.querySelectorAll('[data-os-open-day]').length};
+  return {selected:agendaSelectedDay(),days:document.querySelectorAll('[data-os-open-day]').length,views:document.querySelectorAll('[data-os-agenda-mode]').length,refresh:document.querySelectorAll('[data-os-action=agenda-reload]').length};
 };
 """
 
@@ -79,15 +91,45 @@ def test_agenda_periods_are_usable_across_mobile_tablet_desktop(engine):
                 page.locator("html").evaluate("(el,theme)=>el.dataset.theme=theme",theme)
                 for width in (320,390,768,1024,1440):
                     page.set_viewport_size({"width":width,"height":850})
+                    if width in (320,390,768,1024,1440):
+                        count=page.evaluate('window.renderDay()')
+                        assert count==1, f"Refresh button duplicated: {engine=} {theme=} {width=}"
+                        assert page.locator('.os-agenda-period-switch [data-os-agenda-period]').count()==3
+                        assert page.locator('#osAgendaSearch').is_visible()
+                        assert page.locator('#osAgendaProfessional').is_visible()
+                        assert page.locator('#osAgendaStatus').is_visible()
+                        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth + 2'), (
+                            f"Day layout horizontal overflow: {engine=} {theme=} {width=}"
+                        )
+                    if width in (320,390):
+                        page.locator('#osAgendaClear').evaluate('(el)=>el.hidden=false')
+                        count_and_actions=page.evaluate("""() => {
+                            const count=document.querySelector('#osAgendaCount').getBoundingClientRect();
+                            const actions=document.querySelector('.os-agenda-result-actions').getBoundingClientRect();
+                            return actions.top>=count.bottom-1 && actions.right<=innerWidth+1;
+                        }""")
+                        assert count_and_actions, f"Count/filter controls collide: {engine=} {theme=} {width=}"
                     for period,whole,day_count in (("week",True,7),("week",False,7),("month",False,30),("month",True,30)):
                         result=page.evaluate("([period,whole])=>window.renderPeriod(period,whole,'')",[period,whole])
                         assert result["days"]==day_count
+                        assert result['views']==3 and result['refresh']==1, (engine,theme,width,period,whole)
                         assert page.locator(".os-agenda-range-day").count()==day_count
                         assert page.locator('[aria-pressed=true]').count() <= 1
                         assert page.locator(".os-agenda-range-day").first.is_visible()
                         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth + 2"),(
                             f"Horizontal page overflow: {engine=} {theme=} {width=} {period=} {whole=}"
                         )
+                        buttons=page.locator('.os-agenda-view-row [data-os-agenda-mode]')
+                        assert buttons.count()==3
+                        assert page.locator('.os-agenda-view-row [data-os-action=agenda-reload]').count()==1
+                        if width in (320,390):
+                            assert page.evaluate("""() => {
+                                const tabs=document.querySelector('.os-agenda-views').getBoundingClientRect();
+                                const refresh=document.querySelector('.os-agenda-refresh').getBoundingClientRect();
+                                const view=document.querySelector('.os-agenda-view-row').getBoundingClientRect();
+                                return tabs.left>=view.left-1&&tabs.right<=refresh.left
+                                    &&refresh.right<=view.right+1;
+                            }"""),f"Toolbar overflow: {engine=} {theme=} {width=} {period=}"
                         if period=="month" and not whole:
                             assert page.locator(".os-agenda-focus-shell").is_visible()
                             assert page.locator("#osAgendaRangeFocusBody").count()==1
@@ -98,6 +140,28 @@ def test_agenda_periods_are_usable_across_mobile_tablet_desktop(engine):
                             assert page.locator("#osAgendaRangeFocusBody").count()==0
                         if period=="week" and not whole:
                             assert page.locator("#osAgendaRangeFocusBody").count()==1
+                        # The entire seven-day strip must remain visible at 320px;
+                        # overflow-x:auto alone can hide Saturday without a page-level overflow.
+                        if width in (320,390) and period=="week":
+                            visible=page.evaluate("""() => {
+                                const box=document.querySelector('.os-agenda-week-overview').getBoundingClientRect();
+                                const cells=[...document.querySelectorAll('.os-agenda-week-day')];
+                                return cells.length===7&&cells.every(el=>{
+                                    const r=el.getBoundingClientRect();
+                                    return r.left>=box.left-1&&r.right<=box.right+1;
+                                });
+                            }""")
+                            assert visible, f"Weekday clipped: {engine=} {theme=} {width=} {whole=}"
+                        if width==320 and period=="month":
+                            fits=page.evaluate("""() => {
+                                const head=document.querySelector('.os-agenda-month-overview>.os-agenda-range-heading');
+                                const title=head.querySelector('h2').getBoundingClientRect();
+                                const nav=head.querySelector('.os-agenda-period-nav').getBoundingClientRect();
+                                const bounds=head.getBoundingClientRect();
+                                return [title,nav].every(r=>r.left>=bounds.left-1&&r.right<=bounds.right+1)
+                                    && nav.left>=title.right-1;
+                            }""")
+                            assert fits, f"Month heading/navigation overlap: {engine=} {theme=} {whole=}"
                         if width in (390,1024) and period=="month" and not whole:
                             page.screenshot(path=str(output / f"{engine}-{theme}-{width}-month.png"),full_page=True)
                         if width==390 and period=="week" and whole:
