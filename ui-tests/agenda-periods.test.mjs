@@ -73,7 +73,7 @@ test('week is 7 days in one strip and whole-week list is available',()=>{
   assert.match(result.html,/Próxima semana/);
   assert.match(result.html,/appointment-one/);
   assert.match(result.html,/appointment-two/);
-  assert.match(result.html,/Atendimentos da semana/);
+  assert.match(result.html,/Agendamentos da semana/);
   assert.doesNotMatch(result.html,/osAgendaRangeFocusBody/);
 });
 test('tapping week day focuses the day without leaving the week',()=>{
