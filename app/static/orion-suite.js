@@ -1382,10 +1382,13 @@
       ' data-os-action="agenda-range-list" aria-expanded="'+whole+'">'+
       icon(whole?'calendar':'list')+'<span>'+(whole?'Ver dia':period==='week'?'Semana inteira':'Lista do mês')+
       '</span></button>';
+    const periodNavigation='<span class="os-agenda-period-nav" role="group" aria-label="Navegar '+(period==='week'?'entre semanas':'entre meses')+'">'+
+      '<button type="button" class="os-icon-button" data-os-action="agenda-prev" aria-label="'+(period==='week'?'Semana anterior':'Mês anterior')+'">'+icon('left')+'</button>'+
+      '<button type="button" class="os-icon-button" data-os-action="agenda-next" aria-label="'+(period==='week'?'Próxima semana':'Próximo mês')+'">'+icon('chevron')+'</button></span>';
     if(period==='week'){
       const strip=Array.from({length:7},(_,i)=>dayButton(shiftDay(bounds.start,i),'week')).join('');
       return '<section class="os-agenda-period-overview os-agenda-week-overview-wrapper">'+
-        '<div class="os-agenda-range-heading"><h2>Semana</h2><span>'+esc(agendaPeriodLabel())+'</span></div>'+
+        '<div class="os-agenda-range-heading"><h2>Semana</h2><span>'+esc(agendaPeriodLabel())+'</span>'+periodNavigation+'</div>'+
         '<div class="os-agenda-week-overview" role="group" aria-label="Dias da semana">'+strip+'</div></section>'+
         '<div class="os-agenda-range-list-heading"><div><h2>'+(whole?'Atendimentos da semana':'Dia selecionado')+
         '</h2><p>'+(whole?'Todos os horários, organizados por data':'Consulte os horários sem sair da semana')+
@@ -1402,7 +1405,7 @@
           dayButton(shiftDay(bounds.start,n-1),'month');
       }).join('')+'</div></div>';
     return '<section class="os-agenda-period-overview os-agenda-month-overview">'+
-      '<div class="os-agenda-range-heading"><h2>'+esc(agendaPeriodLabel())+'</h2>'+toggle+'</div>'+
+      '<div class="os-agenda-range-heading"><h2>'+esc(agendaPeriodLabel())+'</h2>'+periodNavigation+toggle+'</div>'+
       '<div class="os-agenda-range-layout'+(whole?' is-list':'')+'">'+grid+
       (whole?'':'<aside class="os-agenda-focus-shell">'+focusTitle()+'</aside>')+'</div></section>'+
       (whole?wholeList():'');
