@@ -1337,6 +1337,25 @@
   const eventMinute=value=>minuteOf(timeLabel(value));
   function agendaBlocks(){const day=state.filters.agendaDay,lower=Date.parse(localISO(day,'00:00')),upper=Date.parse(localISO(shiftDay(day,1),'00:00'));return [...(state.data.scheduleBlocks||[]).map(b=>({...b,resource:'schedule_blocks'})),...(state.data.timeOff||[]).map(b=>({...b,resource:'time_off'}))].filter(b=>Date.parse(b.starts_at)<upper&&Date.parse(b.ends_at)>lower);}
 
+  function agendaTeamRangeView(list){
+    if(!list.length)return agendaEmpty()+agendaPagination();
+    const groups=new Map();
+    for(const appointment of list){
+      const id=String(appointment.professional_id||'unassigned');
+      if(!groups.has(id))groups.set(id,{name:appointmentProfessional(appointment),color:appointment.professional_color,items:[]});
+      groups.get(id).items.push(appointment);
+    }
+    const sections=[...groups.values()].sort((a,b)=>a.name.localeCompare(b.name,'pt-BR')).map(group=>
+      '<section class="os-agenda-team-group"><div class="os-professional-heading">'+
+      '<span class="os-color-dot" style="background:'+cleanColor(group.color,'#2e7bf6')+'"></span>'+
+      '<strong>'+esc(group.name)+'</strong><span>'+group.items.length+' nesta página</span></div>'+
+      '<div class="os-agenda-list">'+group.items.map(appointmentRow).join('')+'</div></section>').join('');
+    return '<div class="os-agenda-team-range" role="region" aria-label="Atendimentos por profissional">'+
+      '<div class="os-agenda-range-list-heading"><div><h2>Equipe no período</h2>'+
+      '<p>Atendimentos organizados por profissional</p></div></div>'+
+      '<div class="os-professional-columns os-agenda-period-team">'+sections+'</div>'+
+      agendaPagination()+'</div>';
+  }
   function agendaRangeView(list,result){
     const period=agendaPeriod(),bounds=agendaBounds(),selected=agendaSelectedDay(),today=dateKey(),
       days=Array.isArray(result.days)?result.days:[],
@@ -1345,6 +1364,7 @@
       weekdays=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'],
       whole=state.filters.agendaRangeList===true,
       total=number(result.total);
+    if(state.filters.agendaMode==='professional')return agendaTeamRangeView(list);
     const markers=day=>{
       const value=counts.get(day);
       if(!value)return '';
@@ -1385,10 +1405,6 @@
       return '<div class="os-agenda-range-all-list" role="region" aria-label="Atendimentos do período">'+
         (sections||agendaEmpty())+agendaPagination()+'</div>';
     };
-    const toggle='<button type="button" class="os-button os-outline os-small os-agenda-range-switch-list"'+
-      ' data-os-action="agenda-range-list" aria-expanded="'+whole+'">'+
-      icon(whole?'calendar':'list')+'<span>'+(whole?'Ver dia':period==='week'?'Semana inteira':'Lista do mês')+
-      '</span></button>';
     const periodNavigation='<span class="os-agenda-period-nav" role="group" aria-label="Navegar '+(period==='week'?'entre semanas':'entre meses')+'">'+
       '<button type="button" class="os-icon-button" data-os-action="agenda-prev" aria-label="'+(period==='week'?'Semana anterior':'Mês anterior')+'">'+icon('left')+'</button>'+
       '<button type="button" class="os-icon-button" data-os-action="agenda-next" aria-label="'+(period==='week'?'Próxima semana':'Próximo mês')+'">'+icon('chevron')+'</button></span>';
@@ -1399,7 +1415,7 @@
         '<div class="os-agenda-week-overview" role="group" aria-label="Dias da semana">'+strip+'</div></section>'+
         '<div class="os-agenda-range-list-heading"><div><h2>'+(whole?'Atendimentos da semana':'Dia selecionado')+
         '</h2><p>'+(whole?'Todos os horários, organizados por data':'Consulte os horários sem sair da semana')+
-        '</p></div>'+toggle+'</div>'+
+        '</p></div></div>'+
         (whole?wholeList():'<section class="os-agenda-focus-shell os-agenda-week-focus">'+focusTitle()+'</section>');
     }
     const gap=dayDate(bounds.start).getUTCDay(),last=dayDate(bounds.end).getUTCDate(),
@@ -1412,7 +1428,7 @@
           dayButton(shiftDay(bounds.start,n-1),'month');
       }).join('')+'</div></div>';
     return '<section class="os-agenda-period-overview os-agenda-month-overview">'+
-      '<div class="os-agenda-range-heading"><h2>'+esc(agendaPeriodLabel())+'</h2>'+periodNavigation+toggle+'</div>'+
+      '<div class="os-agenda-range-heading"><h2>'+esc(agendaPeriodLabel())+'</h2>'+periodNavigation+'</div>'+
       '<div class="os-agenda-range-layout'+(whole?' is-list':'')+'">'+grid+
       (whole?'':'<aside class="os-agenda-focus-shell">'+focusTitle()+'</aside>')+'</div></section>'+
       (whole?wholeList():'');
