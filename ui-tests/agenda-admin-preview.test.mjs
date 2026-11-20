@@ -24,7 +24,7 @@ function createHarness() {
   const modes=['day','week','month'].map(mode=>{const b=new El('mode-'+mode);b.dataset.mode=mode;return b;});
   const views=['list','timeline','team'].map(view=>{const b=new El('view-'+view);b.dataset.view=view;return b;});
   const document={
-    documentElement:{dataset:{}},
+    documentElement:{dataset:{}},body:{dataset:{}},
     getElementById:id=>{assert.ok(elements[id],'Missing HTML id: '+id);return elements[id];},
     querySelectorAll:sel=>sel==='[data-mode]'?modes:sel==='[data-view]'?views:[]
   };
