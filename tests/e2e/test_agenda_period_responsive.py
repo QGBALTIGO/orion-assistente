@@ -98,6 +98,29 @@ def test_agenda_periods_are_usable_across_mobile_tablet_desktop(engine):
                             assert page.locator("#osAgendaRangeFocusBody").count()==0
                         if period=="week" and not whole:
                             assert page.locator("#osAgendaRangeFocusBody").count()==1
+                        # The entire seven-day strip must remain visible at 320px;
+                        # overflow-x:auto alone can hide Saturday without a page-level overflow.
+                        if width in (320,390) and period=="week":
+                            visible=page.evaluate("""() => {
+                                const box=document.querySelector('.os-agenda-week-overview').getBoundingClientRect();
+                                const cells=[...document.querySelectorAll('.os-agenda-week-day')];
+                                return cells.length===7&&cells.every(el=>{
+                                    const r=el.getBoundingClientRect();
+                                    return r.left>=box.left-1&&r.right<=box.right+1;
+                                });
+                            }""")
+                            assert visible, f"Weekday clipped: {engine=} {theme=} {width=} {whole=}"
+                        if width==320 and period=="month":
+                            fits=page.evaluate("""() => {
+                                const head=document.querySelector('.os-agenda-month-overview>.os-agenda-range-heading');
+                                const title=head.querySelector('h2').getBoundingClientRect();
+                                const nav=head.querySelector('.os-agenda-period-nav').getBoundingClientRect();
+                                const toggle=head.querySelector('.os-agenda-range-switch-list').getBoundingClientRect();
+                                const bounds=head.getBoundingClientRect();
+                                return [title,nav,toggle].every(r=>r.left>=bounds.left-1&&r.right<=bounds.right+1)
+                                    && toggle.top>=title.bottom-1 && toggle.top>=nav.bottom-1;
+                            }""")
+                            assert fits, f"Month header overlap: {engine=} {theme=} {whole=}"
                         if width in (390,1024) and period=="month" and not whole:
                             page.screenshot(path=str(output / f"{engine}-{theme}-{width}-month.png"),full_page=True)
                         if width==390 and period=="week" and whole:
