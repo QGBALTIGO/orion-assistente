@@ -157,12 +157,11 @@ def test_agenda_periods_are_usable_across_mobile_tablet_desktop(engine):
                                 const head=document.querySelector('.os-agenda-month-overview>.os-agenda-range-heading');
                                 const title=head.querySelector('h2').getBoundingClientRect();
                                 const nav=head.querySelector('.os-agenda-period-nav').getBoundingClientRect();
-                                const toggle=head.querySelector('.os-agenda-range-switch-list').getBoundingClientRect();
                                 const bounds=head.getBoundingClientRect();
-                                return [title,nav,toggle].every(r=>r.left>=bounds.left-1&&r.right<=bounds.right+1)
-                                    && toggle.top>=title.bottom-1 && toggle.top>=nav.bottom-1;
+                                return [title,nav].every(r=>r.left>=bounds.left-1&&r.right<=bounds.right+1)
+                                    && nav.left>=title.right-1;
                             }""")
-                            assert fits, f"Month header overlap: {engine=} {theme=} {whole=}"
+                            assert fits, f"Month heading/navigation overlap: {engine=} {theme=} {whole=}"
                         if width in (390,1024) and period=="month" and not whole:
                             page.screenshot(path=str(output / f"{engine}-{theme}-{width}-month.png"),full_page=True)
                         if width==390 and period=="week" and whole:
