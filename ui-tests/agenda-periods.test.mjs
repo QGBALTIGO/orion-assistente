@@ -52,6 +52,9 @@ test('compact month has 30 selectable days and inline selected-day details',()=>
   assert.match(result.html,/osAgendaRangeFocusBody/);
   assert.match(result.html,/14 agendamentos/);
   assert.match(result.html,/Lista do mês/);
+  assert.match(result.html,/data-os-action="agenda-prev"/);
+  assert.match(result.html,/data-os-action="agenda-next"/);
+  assert.match(result.html,/Mês anterior/);
   assert.match(result.html,/Abrir dia/);
   assert.equal(result.next,'2026-12-01');
   assert.equal(result.prev,'2026-10-01');
@@ -65,6 +68,9 @@ test('week is 7 days in one strip and whole-week list is available',()=>{
   assert.deepEqual(JSON.parse(JSON.stringify(result.bounds)),{start:'2026-11-08',end:'2026-11-14'});
   assert.equal((result.html.match(/data-os-open-day=/g)||[]).length,7);
   assert.match(result.html,/os-agenda-week-overview/);
+  assert.match(result.html,/data-os-action="agenda-prev"/);
+  assert.match(result.html,/data-os-action="agenda-next"/);
+  assert.match(result.html,/Próxima semana/);
   assert.match(result.html,/appointment-one/);
   assert.match(result.html,/appointment-two/);
   assert.match(result.html,/Ver dia/);
