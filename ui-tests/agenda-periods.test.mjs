@@ -11,7 +11,7 @@ assert.ok(helpers.length>100&&renderer.length>2000&&focused.length>1000);
 
 function context(day,period,whole=false,focus=''){
   return {
-    state:{route:'agenda',filters:{agendaDay:day,agendaPeriod:period,agendaRangeList:whole,agendaFocusDay:focus,agendaFocusOffset:0,agendaProfessional:'',agendaStatus:'all',agendaQuery:''},data:{},agendaFocusRead:0},
+    state:{route:'agenda',filters:{agendaDay:day,agendaPeriod:period,agendaRangeList:whole,agendaMode:whole?'list':'calendar',agendaFocusDay:focus,agendaFocusOffset:0,agendaProfessional:'',agendaStatus:'all',agendaQuery:''},data:{},agendaFocusRead:0},
     dateKey(value){return value?new Date(value).toISOString().slice(0,10):'2026-11-13';},
     dayDate(day){return new Date((day||'2026-11-13')+'T12:00:00Z');},
     shiftDay(day,n){const x=new Date(day+'T12:00:00Z');x.setUTCDate(x.getUTCDate()+n);return x.toISOString().slice(0,10);},
@@ -91,6 +91,9 @@ test('leap year, year crossover and month list',()=>{
   assert.deepEqual(JSON.parse(JSON.stringify(cross.bounds)),{start:'2026-12-27',end:'2027-01-02'});
   const expanded=inspect('2026-11-13','month',true,'',[{id:'all-one',start_at:'2026-11-13T12:00:00Z'}]);
   assert.match(expanded.html,/all-one/);
+  assert.match(expanded.html,/Agendamentos do mês/);
+  assert.match(expanded.html,/data-os-action="agenda-prev"/);
+  assert.doesNotMatch(expanded.html,/os-agenda-month-calendar/);
   assert.doesNotMatch(expanded.html,/data-os-action="agenda-range-list"/);
   assert.match(expanded.html,/data-testid="pages"/);
   assert.doesNotMatch(expanded.html,/osAgendaRangeFocusBody/);
@@ -176,13 +179,60 @@ test('week and month team view groups real appointments by professional',()=>{
   ];
   vm.runInNewContext(helpers+renderer+`
     globalThis.teamHTML=agendaRangeView(fixtures,{total:2,days:[],offset:0,limit:100,has_more:false});`,ctx);
-  assert.match(ctx.teamHTML,/Equipe no período/);
+  assert.match(ctx.teamHTML,/Por profissional/);
   assert.match(ctx.teamHTML,/Ana/);
   assert.match(ctx.teamHTML,/Bruno/);
   assert.match(ctx.teamHTML,/b1/);
   assert.match(ctx.teamHTML,/b2/);
   assert.match(ctx.teamHTML,/data-testid="pages"/);
   assert.doesNotMatch(ctx.teamHTML,/osAgendaRangeFocusBody/);
+});
+
+test('month modes preserve navigation and show one clear purpose for each mode',()=>{
+  const month=inspect('2026-11-13','month',false,'2026-11-13').html;
+  const list=inspect('2026-11-13','month',true,'',[{id:'booked',start_at:'2026-11-13T12:00:00Z'}]).html;
+  assert.match(month,/os-agenda-month-calendar/);
+  assert.match(month,/osAgendaRangeFocusBody/);
+  assert.match(list,/Agendamentos do mês/);
+  assert.match(list,/data-id="booked"/);
+  assert.doesNotMatch(list,/os-agenda-month-calendar/);
+  assert.doesNotMatch(list,/osAgendaRangeFocusBody/);
+  assert.match(list,/data-os-action="agenda-prev"/);
+  assert.match(list,/data-os-action="agenda-next"/);
+});
+
+test('week and month team views retain period context and sort cards by date then time',()=>{
+  for(const period of ['week','month']){
+    const ctx=context('2026-11-13',period,true,'');
+    ctx.state.filters.agendaMode='professional';
+    ctx.appointmentProfessional=a=>a.professional_name;
+    ctx.cleanColor=value=>value||'#2e7bf6';
+    ctx.fixtures=[
+      {id:'late',professional_id:'p1',professional_name:'Ana',start_at:'2026-11-13T16:00:00Z'},
+      {id:'early',professional_id:'p1',professional_name:'Ana',start_at:'2026-11-13T14:00:00Z'},
+      {id:'yesterday',professional_id:'p1',professional_name:'Ana',start_at:'2026-11-12T14:00:00Z'},
+      {id:'second',professional_id:'p2',professional_name:'Bruno',start_at:'2026-11-13T15:00:00Z'}
+    ];
+    vm.runInNewContext(helpers+renderer+`
+      globalThis.teamHTML=agendaRangeView(fixtures,{total:4,days:[],offset:0,limit:50,has_more:false});`,ctx);
+    const html=ctx.teamHTML;
+    assert.match(html,/Por profissional/);
+    assert.match(html,/Ana/);
+    assert.match(html,/Bruno/);
+    assert.match(html,/os-agenda-team-date-group/);
+    assert.ok(html.indexOf('data-id="yesterday"')<html.indexOf('data-id="early"'));
+    assert.ok(html.indexOf('data-id="early"')<html.indexOf('data-id="late"'));
+    assert.match(html,/data-os-action="agenda-prev"/);
+    assert.match(html,/data-os-action="agenda-next"/);
+    assert.doesNotMatch(html,/nesta página/);
+    if(period==='week')assert.equal((html.match(/data-os-open-day=/g)||[]).length,7);
+    else assert.match(html,/os-agenda-month-overview/);
+  }
+});
+
+test('inactive clear-filters action stays hidden even if the button display is overridden by CSS',()=>{
+  const css=fs.readFileSync('app/static/orion-suite.css','utf8');
+  assert.match(css,/#osAgendaClear\[hidden\]\{display:none!important\}/);
 });
 
 test('out-of-range selected day page recovers after an appointment disappears',async()=>{
