@@ -22,7 +22,7 @@ for(const width of [360,390,412]){
     await flush();
     assert.equal(agendaVisible(h),true,'an optional 401 must not close an otherwise signed-in panel');
     assert.equal(loginVisible(h),false);
-    assert.match(h.element('#osAgendaGoogleLabel').textContent,/Não foi possível/);
+    assert.equal(h.document.querySelector('#osAgendaGoogleLabel'),null,'o cartão removido não reaparece');
     assert.equal(h.calls.filter(x=>x.path==='/auth/me').length,before+1);
     assert.equal(h.calls.filter(x=>x.method!=='GET').length,0);
     assert.deepEqual(h.errors,[]);
@@ -53,7 +53,7 @@ test('network failure during /auth/me verification never guesses that the operat
   await flush();
   assert.equal(loginVisible(h),false);
   assert.equal(agendaVisible(h),true);
-  assert.match(h.element('#osAgendaGoogleLabel').textContent,/Não foi possível/);
+  assert.equal(h.document.querySelector('#osAgendaGoogleLabel'),null,'o cartão removido não reaparece');
   assert.equal(checks,2);
 });
 test('two simultaneous agenda 401 errors perform one bounded auth recheck',async t=>{
