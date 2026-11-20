@@ -1,4 +1,4 @@
 # Overlay only Orion Agenda JS/CSS over the immutable currently deployed production API image.
-# Base verified in Railway Orion Gabi, service orion-assistente on 2026-11-20 at 20:43Z.
-FROM ghcr.io/qgbaltigo/orion-assistente-api@sha256:48625da48e504cca0659909352f8b6fa27e44ab2abc3ff89cc86d3195f6dae39
+# Base verified as latest SUCCESS in Railway Orion Gabi before this UX-only revision.
+FROM ghcr.io/qgbaltigo/orion-assistente-api@sha256:a9e141f699029a4c3e53cc1898d2d32ea043555615d64aee15c7f2be8cb8da5c
 COPY --chown=appuser:appuser app/static/orion-suite.js app/static/orion-suite.css /srv/app/app/static/
