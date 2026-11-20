@@ -276,9 +276,9 @@ test('Limpar filtros só aparece com uma seleção efetivamente ativa',async t=>
 
 test('atualizar mantém o ícone Orion e o bloco anterior não aparece',async t=>{
   const h=await fixture(t,{respond:responder()});
-  const refresh=h.document.querySelector('.os-agenda-result-actions [data-os-action=agenda-reload]');
+  const refresh=h.document.querySelector('.os-agenda-view-row [data-os-action=agenda-reload]');
   assert.ok(h.document.querySelector('.os-agenda-result-line #osAgendaCount'),'contagem permanece na mesma linha');
-  assert.ok(h.document.querySelector('.os-agenda-result-actions #osAgendaClear'),'limpar filtros permanece ao lado do atualizar');
+  assert.ok(h.document.querySelector('.os-agenda-result-actions #osAgendaClear'),'limpar filtros permanece junto da contagem');
   assert.equal(h.document.querySelectorAll('[data-os-action=agenda-reload]').length,1,'uma única ação de atualizar na Agenda');
   assert.ok(refresh,'atualização disponível');
   assert.equal(refresh.getAttribute('aria-label'),'Atualizar agendamentos');
@@ -287,9 +287,27 @@ test('atualizar mantém o ícone Orion e o bloco anterior não aparece',async t=
   assert.equal(h.document.querySelector('#osAgendaDatePicker'),null);
   assert.equal(h.document.querySelector('.os-agenda-google'),null);
   const before=h.calls.length;
-  h.click('.os-agenda-result-actions [data-os-action=agenda-reload]');await flush();
+  h.click('.os-agenda-view-row [data-os-action=agenda-reload]');await flush();
   assert.ok(h.calls.length>before,'atualização consulta novamente a agenda');
   assert.equal(h.calls.some(call=>call.method!=='GET'),false);
+  assert.equal(h.errors.length,0);
+});
+
+test('Semana e Mês oferecem Lista, Calendário e Equipe sem perder o botão Atualizar',async t=>{
+  const h=await fixture(t,{respond:responder()});
+  for(const period of ['week','month']){
+    h.click('[data-os-agenda-period='+period+']');await flush();
+    for(const mode of ['list','calendar','professional']){
+      const button=h.document.querySelector('[data-os-agenda-mode='+mode+']');
+      assert.ok(button,period+': falta o modo '+mode);
+      h.click('[data-os-agenda-mode='+mode+']');await flush();
+      assert.equal(h.document.querySelector('[data-os-agenda-mode='+mode+']').getAttribute('aria-selected'),'true');
+      assert.equal(h.document.querySelectorAll('.os-agenda-view-row [data-os-action=agenda-reload]').length,1);
+      if(mode==='professional')assert.ok(h.document.querySelector('.os-agenda-team-range'),period+': equipe não renderizada');
+      if(mode==='calendar')assert.ok(h.document.querySelector('.os-agenda-period-overview'),period+': calendário não renderizado');
+      if(mode==='list')assert.ok(h.document.querySelector('.os-agenda-range-all-list'),period+': lista completa não renderizada');
+    }
+  }
   assert.equal(h.errors.length,0);
 });
 
