@@ -311,6 +311,26 @@ test('Semana e Mês oferecem Lista, Calendário e Equipe sem perder o botão Atu
   assert.equal(h.errors.length,0);
 });
 
+test('selecionar um dia a partir da Equipe abre o Calendário no mesmo período',async t=>{
+  const h=await fixture(t,{respond:responder()});
+  for(const period of ['week','month']){
+    h.click('[data-os-agenda-period='+period+']');await flush();
+    h.click('[data-os-agenda-mode=professional]');await flush();
+    assert.ok(h.document.querySelector('.os-agenda-period-nav'),'período navegável também em Equipe');
+    if(period==='week'){
+      const first=h.document.querySelector('[data-os-open-day]');
+      assert.ok(first,'semana conserva os sete dias da faixa');
+      h.click('[data-os-open-day="'+first.dataset.osOpenDay+'"]');await flush();
+      assert.equal(h.document.querySelector('[data-os-agenda-mode=calendar]').getAttribute('aria-selected'),'true');
+      assert.ok(h.document.getElementById('osAgendaRangeFocusBody'),'detalhes do dia disponíveis');
+    }else{
+      assert.ok(h.document.querySelector('.os-agenda-month-overview .os-agenda-period-nav'));
+      assert.equal(h.document.querySelector('.os-agenda-month-calendar'),null,'Equipe não repete uma grade mensal');
+    }
+  }
+  assert.equal(h.errors.length,0);
+});
+
 test('semana e mês mantêm navegação pelos cabeçalhos existentes',async t=>{
   const h=await fixture(t,{respond:responder()});
   assert.ok(h.document.querySelector('.os-agenda-week'));
