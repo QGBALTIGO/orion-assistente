@@ -97,6 +97,14 @@ def test_agenda_periods_are_usable_across_mobile_tablet_desktop(engine):
                         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth + 2'), (
                             f"Day layout horizontal overflow: {engine=} {theme=} {width=}"
                         )
+                    if width in (320,390):
+                        page.locator('#osAgendaClear').evaluate('(el)=>el.hidden=false')
+                        count_and_actions=page.evaluate("""() => {
+                            const count=document.querySelector('#osAgendaCount').getBoundingClientRect();
+                            const actions=document.querySelector('.os-agenda-result-actions').getBoundingClientRect();
+                            return actions.top>=count.bottom-1 && actions.right<=innerWidth+1;
+                        }""")
+                        assert count_and_actions, f"Count/filter controls collide: {engine=} {theme=} {width=}"
                     for period,whole,day_count in (("week",True,7),("week",False,7),("month",False,30),("month",True,30)):
                         result=page.evaluate("([period,whole])=>window.renderPeriod(period,whole,'')",[period,whole])
                         assert result["days"]==day_count
