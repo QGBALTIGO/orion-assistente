@@ -31,6 +31,8 @@ body{background:var(--os-bg);color:var(--os-text)}
 RUNTIME = """
 const state={filters:{agendaDay:'2026-11-13',agendaPeriod:'month',agendaFocusDay:'',agendaRangeList:false,agendaMode:'list',agendaQuery:'',agendaProfessional:'',agendaStatus:'all'}};
 const writable=()=>true;
+const appointmentProfessional=a=>a.professional_name||'Equipe sintética';
+const cleanColor=(value,fallback)=>value||fallback;
 const dateKey=value=>value?new Date(value).toISOString().slice(0,10):'2026-11-13';
 const dayDate=day=>new Date((day||'2026-11-13')+'T12:00:00Z');
 const shiftDay=(day,count)=>{let d=dayDate(day);d.setUTCDate(d.getUTCDate()+count);return d.toISOString().slice(0,10)};
@@ -48,13 +50,15 @@ const agendaPagination=()=>'<nav class="os-agenda-pagination"><span>Mais resulta
 window.renderDay=()=>{
   state.filters.agendaPeriod='day';
   state.filters.agendaMode='list';
-  document.getElementById('osPageBody').innerHTML=agendaFrame();
+  document.getElementById('page-suite').innerHTML=agendaFrame();
   return document.querySelectorAll('[data-os-action=agenda-reload]').length;
 };
 window.renderPeriod=(period,whole,focus)=>{
   state.filters.agendaPeriod=period;
   state.filters.agendaRangeList=whole;
+  state.filters.agendaMode=whole?'list':'calendar';
   state.filters.agendaFocusDay=focus||'';
+  document.getElementById('page-suite').innerHTML=agendaFrame();
   const data={
     days:[
       {day:'2026-11-09',total:11,confirmed:8,completed:1,cancelled:1,no_show:1,hold:0},
@@ -67,7 +71,7 @@ window.renderPeriod=(period,whole,focus)=>{
     {id:'atendimento-exemplo-2',start_at:'2026-11-13T13:00:00Z'}
   ],data);
   document.getElementById('osPageBody').innerHTML=html;
-  return {selected:agendaSelectedDay(),days:document.querySelectorAll('[data-os-open-day]').length};
+  return {selected:agendaSelectedDay(),days:document.querySelectorAll('[data-os-open-day]').length,views:document.querySelectorAll('[data-os-agenda-mode]').length,refresh:document.querySelectorAll('[data-os-action=agenda-reload]').length};
 };
 """
 
@@ -108,12 +112,24 @@ def test_agenda_periods_are_usable_across_mobile_tablet_desktop(engine):
                     for period,whole,day_count in (("week",True,7),("week",False,7),("month",False,30),("month",True,30)):
                         result=page.evaluate("([period,whole])=>window.renderPeriod(period,whole,'')",[period,whole])
                         assert result["days"]==day_count
+                        assert result['views']==3 and result['refresh']==1, (engine,theme,width,period,whole)
                         assert page.locator(".os-agenda-range-day").count()==day_count
                         assert page.locator('[aria-pressed=true]').count() <= 1
                         assert page.locator(".os-agenda-range-day").first.is_visible()
                         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth + 2"),(
                             f"Horizontal page overflow: {engine=} {theme=} {width=} {period=} {whole=}"
                         )
+                        buttons=page.locator('.os-agenda-view-row [data-os-agenda-mode]')
+                        assert buttons.count()==3
+                        assert page.locator('.os-agenda-view-row [data-os-action=agenda-reload]').count()==1
+                        if width in (320,390):
+                            assert page.evaluate("""() => {
+                                const tabs=document.querySelector('.os-agenda-views').getBoundingClientRect();
+                                const refresh=document.querySelector('.os-agenda-refresh').getBoundingClientRect();
+                                const view=document.querySelector('.os-agenda-view-row').getBoundingClientRect();
+                                return tabs.left>=view.left-1&&tabs.right<=refresh.left
+                                    &&refresh.right<=view.right+1;
+                            }"""),f"Toolbar overflow: {engine=} {theme=} {width=} {period=}"
                         if period=="month" and not whole:
                             assert page.locator(".os-agenda-focus-shell").is_visible()
                             assert page.locator("#osAgendaRangeFocusBody").count()==1
