@@ -5,15 +5,20 @@ on:
       - codex/agenda-remove-toolbar-only-20261120
     paths:
       - app/static/orion-suite.js
+      - app/static/orion-suite.css
+      - ui-tests/agenda-lifecycle.test.mjs
+      - ui-tests/android-agenda-session.test.mjs
+      - ui-tests/android-agenda-browser.py
       - deploy/Dockerfile.agenda-toolbar-only
       - .github/workflows/agenda-toolbar-only.yml
+  workflow_dispatch:
 permissions:
   contents: read
   packages: write
 jobs:
   verify-and-publish:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
@@ -21,15 +26,22 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Verify exact removal and untouched controls
+          cache: npm
+          cache-dependency-path: ui-tests/package-lock.json
+      - name: Install locked UI test dependencies
+        run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+      - name: Verify exact UI change and retained period navigation
         run: |
           node --check app/static/orion-suite.js
+          node --check ui-tests/agenda-lifecycle.test.mjs
+          node --check ui-tests/android-agenda-session.test.mjs
+          python3 -m py_compile ui-tests/android-agenda-browser.py
           python3 - <<'PY'
           from pathlib import Path
           s=Path('app/static/orion-suite.js').read_text()
-          a=s.index('function agendaFrame(')
-          b=s.index('function syncAgendaControls()',a)
-          block=s[a:b]
+          base=s.index('function agendaFrame(')
+          end=s.index('function syncAgendaControls()',base)
+          block=s[base:end]
           assert 'os-agenda-toolbar' not in block
           assert 'Google Agenda' not in block
           assert 'agenda-today' not in block
@@ -39,13 +51,22 @@ jobs:
           assert 'osAgendaFilters' in block
           assert 'os-agenda-views' in block
           assert 'new-appointment' in block and 'new-block' in block
-          print('Only targeted toolbar removed; all adjacent UI remains')
+          assert 'data-os-action="agenda-prev"' in s
+          assert 'data-os-action="agenda-next"' in s
+          assert 'Navegar entre semanas' not in s or 'os-agenda-period-nav' in s
+          assert 'os-agenda-month-calendar' in s
+          assert 'os-agenda-week-overview' in s
+          css=Path('app/static/orion-suite.css').read_text()
+          assert 'os-agenda-period-nav' in css
+          assert 'os-agenda-month-overview>.os-agenda-range-heading h2{display:block}' in css
           PY
-      - name: Authenticate to image registry
+      - name: Test actual Agenda UI, navigation and Google settings
+        run: node --test ui-tests/agenda-periods.test.mjs ui-tests/agenda-lifecycle.test.mjs ui-tests/android-agenda-session.test.mjs
+      - name: Sign in to container registry
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: printf '%s' "$TOKEN" | docker login ghcr.io -u QGBALTIGO --password-stdin
-      - name: Build original API with only the targeted JS replacement
+      - name: Build and publish isolated two-file overlay
         env:
           IMAGE: ghcr.io/qgbaltigo/orion-assistente-api
         run: |
