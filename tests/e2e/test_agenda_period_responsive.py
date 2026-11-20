@@ -53,10 +53,10 @@ window.renderDay=()=>{
   document.getElementById('page-suite').innerHTML=agendaFrame();
   return document.querySelectorAll('[data-os-action=agenda-reload]').length;
 };
-window.renderPeriod=(period,whole,focus)=>{
+window.renderPeriod=(period,whole,focus,mode)=>{
   state.filters.agendaPeriod=period;
   state.filters.agendaRangeList=whole;
-  state.filters.agendaMode=whole?'list':'calendar';
+  state.filters.agendaMode=mode||(whole?'list':'calendar');
   state.filters.agendaFocusDay=focus||'';
   document.getElementById('page-suite').innerHTML=agendaFrame();
   const data={
@@ -67,8 +67,8 @@ window.renderPeriod=(period,whole,focus)=>{
     total:25,has_more:false,offset:0,limit:100
   };
   const html=agendaRangeView([
-    {id:'atendimento-exemplo-1',start_at:'2026-11-09T12:00:00Z'},
-    {id:'atendimento-exemplo-2',start_at:'2026-11-13T13:00:00Z'}
+    {id:'atendimento-exemplo-1',professional_id:'p1',professional_name:'Ana',start_at:'2026-11-09T12:00:00Z'},
+    {id:'atendimento-exemplo-2',professional_id:'p2',professional_name:'Bruno',start_at:'2026-11-13T13:00:00Z'}
   ],data);
   document.getElementById('osPageBody').innerHTML=html;
   return {selected:agendaSelectedDay(),days:document.querySelectorAll('[data-os-open-day]').length,views:document.querySelectorAll('[data-os-agenda-mode]').length,refresh:document.querySelectorAll('[data-os-action=agenda-reload]').length};
@@ -109,13 +109,18 @@ def test_agenda_periods_are_usable_across_mobile_tablet_desktop(engine):
                             return actions.top>=count.bottom-1 && actions.right<=innerWidth+1;
                         }""")
                         assert count_and_actions, f"Count/filter controls collide: {engine=} {theme=} {width=}"
-                    for period,whole,day_count in (("week",True,7),("week",False,7),("month",False,30),("month",True,30)):
-                        result=page.evaluate("([period,whole])=>window.renderPeriod(period,whole,'')",[period,whole])
+                    for period,whole,day_count,mode in (("week",True,7,"list"),("week",False,7,"calendar"),
+                            ("week",True,7,"professional"),("month",False,30,"calendar"),
+                            ("month",True,0,"list"),("month",True,0,"professional")):
+                        result=page.evaluate("([period,whole,mode])=>window.renderPeriod(period,whole,'',mode)",[period,whole,mode])
                         assert result["days"]==day_count
                         assert result['views']==3 and result['refresh']==1, (engine,theme,width,period,whole)
                         assert page.locator(".os-agenda-range-day").count()==day_count
                         assert page.locator('[aria-pressed=true]').count() <= 1
-                        assert page.locator(".os-agenda-range-day").first.is_visible()
+                        if day_count:
+                            assert page.locator(".os-agenda-range-day").first.is_visible()
+                        else:
+                            assert page.locator(".os-agenda-range-day").count()==0
                         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth + 2"),(
                             f"Horizontal page overflow: {engine=} {theme=} {width=} {period=} {whole=}"
                         )
@@ -135,9 +140,18 @@ def test_agenda_periods_are_usable_across_mobile_tablet_desktop(engine):
                             assert page.locator("#osAgendaRangeFocusBody").count()==1
                             assert page.locator(".os-agenda-month-calendar").is_visible()
                             assert page.locator('[data-os-open-day="2026-11-13"]').get_attribute("aria-pressed")=="true"
-                        if period=="week" and whole:
+                        if period=="week" and whole and mode=="list":
                             assert page.locator(".os-agenda-range-all-list").is_visible()
                             assert page.locator("#osAgendaRangeFocusBody").count()==0
+                        if mode=="professional":
+                            assert page.locator(".os-agenda-team-range").is_visible()
+                            assert page.locator(".os-agenda-team-date-title").count()==2
+                            assert page.locator(".os-agenda-month-overview, .os-agenda-week-overview-wrapper").is_visible()
+                            assert "nesta página" not in page.locator("#osPageBody").inner_text()
+                        if period=="month" and mode=="list":
+                            assert page.locator(".os-agenda-range-all-list").is_visible()
+                            assert page.locator(".os-agenda-month-calendar").count()==0
+                            assert page.locator(".os-agenda-month-overview .os-agenda-period-nav").is_visible()
                         if period=="week" and not whole:
                             assert page.locator("#osAgendaRangeFocusBody").count()==1
                         # The entire seven-day strip must remain visible at 320px;
@@ -165,6 +179,6 @@ def test_agenda_periods_are_usable_across_mobile_tablet_desktop(engine):
                         if width in (390,1024) and period=="month" and not whole:
                             page.screenshot(path=str(output / f"{engine}-{theme}-{width}-month.png"),full_page=True)
                         if width==390 and period=="week" and whole:
-                            page.screenshot(path=str(output / f"{engine}-{theme}-390-week.png"),full_page=True)
+                            page.screenshot(path=str(output / f"{engine}-{theme}-390-week-{mode}.png"),full_page=True)
         finally:
             browser.close()
