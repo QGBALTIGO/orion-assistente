@@ -686,6 +686,21 @@
     // stale URL, programmatic link or previous account's navigation state.
     if(platformAdminOnlyPages.has(route)&&state.bridge.user?.role!=='admin')route='dashboard';
     if(state.busy&&!options.force)return;
+    // The admin uses the isolated Agenda preview by default. A verified
+    // server response is required; users and maintenance sessions retain
+    // the existing agenda, and ?agenda_original=1 is the safe escape hatch.
+    if(route==='agenda'&&platformWorkspace()&&
+       new URLSearchParams(window.location.search).get('agenda_original')!=='1'){
+      try{
+        const preview=await fetch('/painel/agenda-teste',{
+          method:'GET',credentials:'same-origin',cache:'no-store',headers:{Accept:'text/html'}
+        });
+        if(preview.ok&&state.mounted&&navigationRead===state.navigationRead){
+          window.location.assign('/painel/agenda-teste');
+          return;
+        }
+      }catch(_){/* The current operational Agenda remains the fallback. */}
+    }
     // The platform-admin customer directory is account-wide; it must remain
     // reachable even when the operator has no selected business context.
     if(route==='member'&&state.bridge.user?.role==='admin'){
