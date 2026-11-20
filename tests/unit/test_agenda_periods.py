@@ -54,6 +54,7 @@ const assert=require('node:assert/strict'),vm=require('node:vm');
 const helpers=EXTRACTED_HELPERS,renderer=EXTRACTED_RENDERER;
 function inspect(day,period,mode='calendar',list=[]){
   const ctx={
+    list,
     state:{filters:{agendaPeriod:period,agendaDay:day,agendaRangeList:mode==='list',agendaMode:mode}},
     dateKey(value){return value?new Date(value).toISOString().slice(0,10):'2026-11-13';},
     dayDate(day){return new Date((day||'2026-11-13')+'T12:00:00Z');},
