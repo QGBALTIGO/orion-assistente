@@ -265,7 +265,10 @@ test('busca da agenda reserva espaço para a lupa sem sobrepor o texto',async t=
 
 test('atualizar mantém o ícone Orion e o bloco anterior não aparece',async t=>{
   const h=await fixture(t,{respond:responder()});
-  const refresh=h.document.querySelector('.os-agenda-view-row [data-os-action=agenda-reload]');
+  const refresh=h.document.querySelector('.os-agenda-result-actions [data-os-action=agenda-reload]');
+  assert.ok(h.document.querySelector('.os-agenda-result-line #osAgendaCount'),'contagem permanece na mesma linha');
+  assert.ok(h.document.querySelector('.os-agenda-result-actions #osAgendaClear'),'limpar filtros permanece ao lado do atualizar');
+  assert.equal(h.document.querySelectorAll('[data-os-action=agenda-reload]').length,1,'uma única ação de atualizar na Agenda');
   assert.ok(refresh,'atualização disponível');
   assert.equal(refresh.getAttribute('aria-label'),'Atualizar agendamentos');
   assert.equal(refresh.querySelector('svg.os-icon').getAttribute('aria-hidden'),'true');
@@ -273,7 +276,7 @@ test('atualizar mantém o ícone Orion e o bloco anterior não aparece',async t=
   assert.equal(h.document.querySelector('#osAgendaDatePicker'),null);
   assert.equal(h.document.querySelector('.os-agenda-google'),null);
   const before=h.calls.length;
-  h.click('.os-agenda-view-row [data-os-action=agenda-reload]');await flush();
+  h.click('.os-agenda-result-actions [data-os-action=agenda-reload]');await flush();
   assert.ok(h.calls.length>before,'atualização consulta novamente a agenda');
   assert.equal(h.calls.some(call=>call.method!=='GET'),false);
   assert.equal(h.errors.length,0);
