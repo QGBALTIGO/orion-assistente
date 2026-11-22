@@ -422,7 +422,7 @@ html:has(.os-appointment-sheet[open]){overflow:hidden}
 .os-appointment-services small{color:var(--os-muted);font-size:12px}
 .os-appointment-services>li>span{white-space:nowrap}
 .os-appointment-origin{font-size:11px;line-height:16px;color:var(--os-muted);white-space:normal}
-#osBookingWalkIn[hidden],#osBookingPhone[hidden],#osBookingClock[hidden],#osBookingSlotField[hidden],#osBookingCompleted[hidden],#osBookingMessages[hidden],#osExtraPreview[hidden],#osExtraConflict[hidden]{display:none!important}
+#osBookingWalkIn[hidden],#osBookingPhone[hidden],#osBookingClock[hidden],#osBookingSlotField[hidden],#osBookingCompleted[hidden],#osExtraPreview[hidden],#osExtraConflict[hidden]{display:none!important}
 .os-extra-options{min-width:0;margin:0;padding:0;border:0}
 .os-extra-options legend{font:500 14px/20px var(--os-font);margin-bottom:8px}
 .os-extra-options .os-check{align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--os-border)}
@@ -3311,9 +3311,25 @@ html:has(.os-professional-history[open]){overflow:hidden}
 #osDialog.os-booking-dialog #osBookingModeHelp{margin:5px 0 0;font-size:12px;line-height:18px}
 #osDialog.os-booking-dialog [hidden],
 #osDialog.os-booking-dialog .os-customer-results:empty,
-#osDialog.os-booking-dialog .os-help:empty{display:none!important}
-#osDialog.os-booking-dialog .os-booking-walk-in{min-height:34px;margin:0;font-size:13px}
-#osDialog.os-booking-dialog .os-booking-notice{margin:0;padding:10px 12px;border:1px solid var(--os-border);border-radius:12px;background:var(--os-soft)}
+#osDialog.os-booking-dialog .os-help:empty,
+#osDialog.os-booking-dialog .os-fixed-preview:empty{display:none!important}
+#osDialog.os-booking-dialog :is(.os-booking-contact,.os-booking-schedule,#osBookingWhen){display:grid;gap:10px;min-width:0}
+#osDialog.os-booking-dialog .os-booking-phone-group{display:grid;gap:3px;min-width:0}
+#osDialog.os-booking-dialog .os-booking-option{min-height:36px;margin:0;font-size:13px;font-weight:500}
+#osDialog.os-booking-dialog .os-booking-schedule>.os-help{margin:0}
+#osDialog.os-booking-dialog #osBookingOverlapHelp{margin:0 0 0 25px}
+#osDialog.os-booking-dialog #osBookingClock{position:relative;min-width:0}
+#osDialog.os-booking-dialog .os-booking-time-placeholder{
+  display:none;position:absolute;inset-inline:13px 24px;top:25px;height:48px;
+  align-items:center;pointer-events:none;color:var(--os-muted);font:400 15px/1 var(--os-font);
+}
+#osDialog.os-booking-dialog #osBookingClock:has(input:invalid:not(:focus)) .os-booking-time-placeholder{display:flex}
+#osDialog.os-booking-dialog #osBookingClock input:invalid:not(:focus)::-webkit-datetime-edit{visibility:hidden}
+@media(min-width:360px){
+  #osDialog.os-booking-dialog #osBookingWhen.os-booking-date-time{
+    grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);align-items:end;
+  }
+}
 #osDialog.os-booking-dialog .os-form-grid{gap:12px}
 #osDialog.os-booking-dialog .os-fixed-preview{margin-top:0}
 #osDialog.os-booking-dialog .os-fixed-intro{margin:0;color:var(--os-muted);font-size:12px;line-height:19px}
@@ -3375,17 +3391,12 @@ html:has(.os-professional-history[open]){overflow:hidden}
 #osDialog.os-booking-dialog :is(input[type="date"],input[type="time"])::-webkit-datetime-edit{
   min-width:0;padding:0;line-height:24px;
 }
-@media(max-width:767px){
+@media(max-width:359px){
   #osDialog.os-booking-dialog [data-os-form="fixed-client"] .os-form-grid{
     grid-template-columns:minmax(0,1fr);
   }
 }
 
-
-@media(max-width:419px){
-  #osDialog.os-booking-dialog .os-form-grid{grid-template-columns:minmax(0,1fr)}
-  #osDialog.os-home-booking .os-form-actions>.os-button{font-size:14px;padding-inline:8px}
-}
 
 /* Orion barbearia - alternate navigation shell. Reuse suite design tokens only.
    The original desktop rail, drawer, themes and route components remain intact. */
@@ -3996,12 +4007,20 @@ html:has(.os-professional-history[open]){overflow:hidden}
 #osDialog.os-home-booking>form{display:flex;flex:1;flex-direction:column;gap:0;min-height:0;min-width:0;overflow:hidden}
 #osDialog.os-home-booking .os-home-booking-scroll{flex:1;min-height:0;min-width:0;padding:16px 22px;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;scroll-padding-block:16px;-webkit-overflow-scrolling:touch}
 #osDialog.os-home-booking :is(fieldset,.os-field,.os-search,.os-form,.os-form-grid,.os-service-options){min-width:0;max-width:100%;box-sizing:border-box}
-#osDialog.os-home-booking .os-home-booking-scroll>fieldset.os-form{gap:14px;margin:0;padding:0;border:0}
+#osDialog.os-home-booking .os-home-booking-scroll>fieldset.os-form{gap:12px;margin:0;padding:0;border:0}
 #osDialog.os-home-booking :is(input:not([type=checkbox]):not([type=radio]):not([type=color]),select,textarea){box-sizing:border-box;min-width:0;width:100%;max-width:100%;min-height:46px;font-size:16px;line-height:1.4;border-radius:12px;padding:10px 12px}
 #osDialog.os-home-booking input[type=date],#osDialog.os-home-booking input[type=time]{display:block;appearance:none;-webkit-appearance:none;min-inline-size:0;inline-size:100%;text-align:left}
 #osDialog.os-home-booking input::-webkit-date-and-time-value{min-width:0;text-align:left}
 #osDialog.os-home-booking input::-webkit-datetime-edit{min-width:0;padding:0}
 #osDialog.os-home-booking .os-search input{padding-left:41px!important}
+/* Keep the field surface and focus ring when WebKit paints its autofill layer. */
+#osDialog.os-home-booking input:is(:autofill,:-webkit-autofill){
+  -webkit-text-fill-color:var(--os-text);caret-color:var(--os-text);
+  box-shadow:inset 0 0 0 1000px var(--os-card);
+}
+#osDialog.os-home-booking input:is(:autofill,:-webkit-autofill):focus{
+  box-shadow:inset 0 0 0 1000px var(--os-card),0 0 0 3px color-mix(in srgb,var(--os-primary) 17%,transparent);
+}
 #osDialog.os-home-booking .os-service-options{gap:8px}
 #osDialog.os-home-booking .os-service-option{min-width:0;padding:12px;border-radius:12px;font-size:14px;line-height:1.45}
 #osDialog.os-home-booking .os-service-option strong{font-size:14px;line-height:1.45;font-weight:550}

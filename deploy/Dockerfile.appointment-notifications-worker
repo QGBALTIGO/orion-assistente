@@ -1,5 +1,5 @@
 # Preserve the worker runtime while applying the same notification logic as the API.
-FROM ghcr.io/qgbaltigo/orion-assistente-api@sha256:7eac83c72fc8a673617aab59c7b8d979281e044c5b669644023e92fba8aa160b
+FROM ghcr.io/qgbaltigo/orion-assistente-api@sha256:add498f9b499f879e46a2bd288b1daf47184c8ec72bc1735edb74d51a14cadec
 ARG ORION_HOME_COMMIT
 LABEL org.opencontainers.image.revision=$ORION_HOME_COMMIT
 COPY --chown=appuser:appuser app/appointment_notifications.py /srv/app/app/

@@ -63,12 +63,15 @@ const extrasWrites=h=>h.calls.filter(c=>c.method==='POST'&&c.path.endsWith('/ext
 test('Essencial cria horário excepcional pelo endpoint privado, no fuso da empresa, sem consultar horários públicos',async t=>{
   const h=await fixture(t);const form=await manual(h);
   assert.equal(form.elements.start_at.disabled,true);
+  assert.equal(form.elements.clock.type,'time');
+  assert.equal(form.querySelector('#osBookingClock .os-booking-time-placeholder').textContent,'hh:mm');
+  assert.equal(form.querySelector('#osBookingWhen').classList.contains('os-booking-date-time'),true);
   assert.equal(h.calls.some(c=>c.path.includes('/availability?')),false);
   h.submit('[data-os-form=appointment]');await flush();
   const calls=writes(h);assert.equal(calls.length,1);assert.equal(calls[0].path,`/api/v1/tenants/${tenantA}/appointments/manual`);
   assert.equal(calls[0].data.mode,'exceptional');assert.equal(calls[0].data.start_at,'2030-04-05T22:00:00.000Z');
   assert.equal(calls[0].data.professional_id,professionalId);assert.equal(calls[0].data.customer_phone,'+5567999999999');
-  assert.equal(calls[0].data.appointment_messages_opt_in,false);assert.equal(calls[0].data.walk_in,false);
+  assert.equal('appointment_messages_opt_in' in calls[0].data,false);assert.equal(calls[0].data.walk_in,false);
   assert.equal(h.document.getElementById('osDialog').open,false);
 });
 
@@ -77,11 +80,12 @@ test('retroativo reutiliza cliente sem telefone, preserva valor final e não aut
   h.fill('#osBookingCustomer','Cliente sem telefone');h.click(`[data-os-book-customer="${customerId}"]`);
   h.fill('[name=final_total]','85,00');h.fill('[name=actual_duration_min]','65');
   assert.equal(form.elements.customer_phone.required,false);assert.equal(form.elements.customer_phone.disabled,true);
-  assert.equal(h.document.getElementById('osBookAndNotify').disabled,true);
+  assert.equal(form.querySelectorAll('button[type=submit]').length,1);
+  assert.equal(form.querySelector('button[type=submit]').textContent,'Registrar atendimento');
   h.submit('[data-os-form=appointment]');await flush();
   const call=writes(h)[0];assert.ok(call);
   assert.equal(call.data.mode,'retroactive');assert.equal(call.data.customer_id,customerId);assert.equal(call.data.customer_phone,null);assert.equal(call.data.walk_in,true);
-  assert.equal(call.data.final_total_cents,8500);assert.equal(call.data.actual_duration_min,65);assert.equal(call.data.appointment_messages_opt_in,false);
+  assert.equal(call.data.final_total_cents,8500);assert.equal(call.data.actual_duration_min,65);assert.equal('appointment_messages_opt_in' in call.data,false);
   assert.equal(call.data.start_at,'2020-10-10T22:00:00.000Z');assert.equal(writes(h).length,1);
 });
 
@@ -91,7 +95,8 @@ test('trocar de retroativo avulso para agendamento normal restaura horário e co
   assert.equal(form.elements.walk_in.checked,false);assert.equal(form.elements.walk_in.disabled,true);
   assert.equal(form.elements.customer_phone.required,true);assert.equal(form.elements.customer_phone.disabled,false);
   assert.equal(form.elements.clock.disabled,true);assert.equal(form.elements.final_total.disabled,true);
-  assert.equal(form.elements.start_at.required,true);assert.equal(h.document.getElementById('osBookAndNotify').hidden,false);
+  assert.equal(form.elements.start_at.required,true);assert.equal(form.querySelector('button[type=submit]').textContent,'Agendar');
+  assert.equal(h.document.getElementById('osBookingOverlap').hidden,true);
   assert.equal(form.elements.day.max,'');assert.equal(writes(h).length,0);
 });
 

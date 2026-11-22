@@ -70,3 +70,27 @@ h1,h2,h3{font-family:Outfit,Figtree,sans-serif;line-height:1.2;letter-spacing:-.
  .mobile-nav[data-dental-visible=true] button{font-size:10px;min-width:0}
  .main:has(#professionalDentalWorkspace){padding-inline:12px}
 }
+
+.booking-fields { display:grid; gap:12px; }
+.booking-fields :is(.field,.services-select,#modalBookingHelp) { min-width:0; margin:0; }
+.booking-fields .field-row { grid-template-columns:minmax(0,1.4fr) minmax(0,1fr); gap:10px; }
+.booking-fields .field input { min-width:0; max-width:100%; box-sizing:border-box; }
+.booking-fields input:is([type=date],[type=time]) { appearance:none; -webkit-appearance:none; min-inline-size:0; text-align:left; }
+.booking-fields input::-webkit-date-and-time-value { min-width:0; text-align:left; }
+.booking-fields #modalBookingClock { position:relative; min-width:0; }
+.booking-fields .booking-time-placeholder {
+  display:none; position:absolute; inset-inline:13px 24px; top:25px; height:44px;
+  align-items:center; pointer-events:none; color:var(--muted);
+}
+.booking-fields #modalBookingClock:has(input:invalid:not(:focus)) .booking-time-placeholder { display:flex; }
+.booking-fields #modalBookingClock input:invalid:not(:focus)::-webkit-datetime-edit { visibility:hidden; }
+.booking-fields input:is(:autofill,:-webkit-autofill) {
+  -webkit-text-fill-color:var(--text); caret-color:var(--text); box-shadow:inset 0 0 0 1000px var(--surface);
+}
+.booking-fields input:is(:autofill,:-webkit-autofill):focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.booking-fields #modalBookingOverlap .service-choice { gap:8px; padding-block:4px; align-items:flex-start; }
+.booking-fields .service-choice input { flex-shrink:0; }
+.booking-fields :is(#modalSlots,#modalReview):empty { display:none; }
+@media(max-width:375px) {
+  .booking-fields .field-row { grid-template-columns:minmax(0,1fr); }
+}

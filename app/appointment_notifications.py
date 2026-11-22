@@ -100,16 +100,8 @@ async def enqueue_event(db, tenant, appointment, event, details, *, bulk=False):
     if event=='confirmed' and settings['professional_notice'] and not bulk:add('professional_new','professional')
     if (central and event == 'confirmed' and details.get('source') == 'panel'
             and not bulk and settings['confirmation'] and row['start_at'] > now):
-        authorized = (await db.execute(text("""
-            SELECT EXISTS (
-                SELECT 1 FROM appointment_message_consents consent
-                JOIN customers c ON c.tenant_id=consent.tenant_id AND c.id=consent.customer_id
-                WHERE consent.tenant_id=:tenant AND consent.appointment_id=:appointment
-                  AND consent.customer_id=:customer AND consent.contact_e164=c.whatsapp_e164
-                  AND consent.operational_opt_in IS TRUE AND c.active AND c.deleted_at IS NULL
-            )
-        """), {'tenant': tenant, 'appointment': appointment, 'customer': row['customer_id']})).scalar_one()
-        if authorized:
+        contact = await current_customer_contact(db, tenant, row['customer_id'], appointment)
+        if contact and not customer_consent_reason(contact, 'confirmation'):
             add('confirmation', 'customer', expiry=min(row['start_at'], now + timedelta(hours=24)))
     if event=='cancelled' and settings['cancellation'] and not bulk:
         add('professional_cancelled' if customer else 'customer_cancelled','professional' if customer else 'customer')
@@ -152,6 +144,18 @@ def customer_consent_reason(contact, event, *, requires_marketing=False):
     if requires_marketing and contact['marketing_opt_in'] is not True:
         return 'marketing_not_authorized'
     return None
+
+
+async def current_customer_contact(db, tenant, customer_id, appointment_id):
+    return (await db.execute(text('''SELECT c.whatsapp_e164,s.operational_opt_in,s.marketing_opt_in,
+            scoped.operational_opt_in AS appointment_operational_opt_in,
+            scoped.review_opt_in AS appointment_review_opt_in
+          FROM customers c LEFT JOIN contact_consents s ON s.tenant_id=c.tenant_id AND s.contact_e164=c.whatsapp_e164
+          LEFT JOIN appointment_message_consents scoped ON scoped.tenant_id=c.tenant_id
+            AND scoped.appointment_id=:appointment AND scoped.customer_id=c.id
+            AND scoped.contact_e164=c.whatsapp_e164
+          WHERE c.tenant_id=:t AND c.id=:id AND c.active AND c.deleted_at IS NULL'''),
+          {'t':tenant,'id':customer_id,'appointment':appointment_id})).mappings().first()
 
 
 async def eligibility(db, tenant, job):
@@ -201,15 +205,7 @@ async def eligibility(db, tenant, job):
         if not phone:return 'professional_contact_unavailable',None,None,None
     else:
         if row['customer_id']!=job['recipient_id']:return 'customer_changed',None,None,None
-        contact=(await db.execute(text('''SELECT c.whatsapp_e164,s.operational_opt_in,s.marketing_opt_in,
-            scoped.operational_opt_in AS appointment_operational_opt_in,
-            scoped.review_opt_in AS appointment_review_opt_in
-          FROM customers c LEFT JOIN contact_consents s ON s.tenant_id=c.tenant_id AND s.contact_e164=c.whatsapp_e164
-          LEFT JOIN appointment_message_consents scoped ON scoped.tenant_id=c.tenant_id
-            AND scoped.appointment_id=:appointment AND scoped.customer_id=c.id
-            AND scoped.contact_e164=c.whatsapp_e164
-          WHERE c.tenant_id=:t AND c.id=:id AND c.active AND c.deleted_at IS NULL'''),
-          {'t':tenant,'id':job['recipient_id'],'appointment':job['appointment_id']})).mappings().first()
+        contact=await current_customer_contact(db, tenant, job['recipient_id'], job['appointment_id'])
         reason=customer_consent_reason(contact,job['event'],requires_marketing=job.get('requires_marketing',False))
         if reason:return reason,None,None,None
         phone=contact['whatsapp_e164']

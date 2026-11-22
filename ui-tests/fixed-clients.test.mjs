@@ -7,6 +7,14 @@ const service='60000000-0000-4000-8000-000000000006';
 const seriesId='70000000-0000-4000-8000-000000000007';
 const appointmentId='80000000-0000-4000-8000-000000000008';
 const next='2030-04-05T13:00:00Z';
+function useSeriesDay(window){
+  const NativeDate=window.Date;
+  const timestamp=NativeDate.parse('2030-04-05T10:00:00Z');
+  window.Date=class extends NativeDate{
+    constructor(...args){super(...(args.length?args:[timestamp]));}
+    static now(){return timestamp;}
+  };
+}
 
 function sample(){
   return {id:seriesId,customer_id:customerId,customer_name:'João sintético',customer_phone:'+5511999990060',
@@ -74,17 +82,14 @@ async function openForm(h){
 }
 
 test('the agenda shows exactly three views and recurring bookings use the same rows and calendar as other clients',async t=>{
-  const h=await makeSuite({initialRoute:'agenda',respond:reply({existing:true})});
+  const h=await makeSuite({initialRoute:'agenda',respond:reply({existing:true}),configureWindow:useSeriesDay});
   t.after(()=>h.close());await flush();
   assert.equal(h.document.querySelector('[data-os-action=new-fixed-client]'),null);
   assert.deepEqual([...h.document.querySelectorAll('[data-os-agenda-mode]')].map(el=>el.dataset.osAgendaMode),
     ['list','calendar','professional']);
   assert.equal(h.document.querySelector('[data-os-agenda-mode=fixed]'),null);
   assert.equal(h.document.querySelector('#osAgendaView-fixed'),null);
-  const picker=h.document.querySelector('#osAgendaDatePicker');
-  picker.value=sample().first_date;
-  picker.dispatchEvent(new h.window.Event('change',{bubbles:true}));
-  await flush();
+  assert.equal(h.document.querySelector('[data-os-day][aria-selected=true]').dataset.osDay,sample().first_date);
   for(const mode of ['list','calendar','professional']){
     if(mode!=='list'){h.click('[data-os-agenda-mode='+mode+']');await flush();}
     const item=h.document.querySelector('[data-os-appointment="'+appointmentId+'"]');
@@ -110,7 +115,7 @@ test('preview precedes commit, shows dates and confirms only on second submit',a
   assert.equal(creations[0].data.occurrence_count,12);
   assert.equal(creations[0].data.customer_phone,'+5511999990060');
   assert.equal(h.document.querySelector('[data-os-agenda-mode=list]').getAttribute('aria-selected'),'true');
-  assert.equal(h.document.querySelector('#osAgendaDatePicker').value,creations[0].data.first_date);
+  assert.equal(h.document.querySelector('[data-os-day][aria-selected=true]').dataset.osDay,creations[0].data.first_date);
   assert.ok(h.document.querySelector('[data-os-appointment="'+appointmentId+'"]'));
   assert.match(h.document.getElementById('osPageBody').textContent,/João sintético/);
 });
@@ -125,11 +130,9 @@ test('conflicting preview prevents all bookings without silent partial save',asy
 });
 
 test('each recurring appointment provides a series management link without a separate tab',async t=>{
-  const h=await makeSuite({initialRoute:'agenda',respond:reply({existing:true})});
+  const h=await makeSuite({initialRoute:'agenda',respond:reply({existing:true}),configureWindow:useSeriesDay});
   t.after(()=>h.close());await flush();
-  const picker=h.document.querySelector('#osAgendaDatePicker');
-  picker.value=sample().first_date;
-  picker.dispatchEvent(new h.window.Event('change',{bubbles:true}));await flush();
+  assert.equal(h.document.querySelector('[data-os-day][aria-selected=true]').dataset.osDay,sample().first_date);
   h.click('[data-os-appointment="'+appointmentId+'"]');await flush();
   assert.ok(h.document.querySelector('[data-os-action=fixed-open-from-appointment]'));
   h.click('[data-os-action=fixed-open-from-appointment]');await flush();
@@ -185,7 +188,7 @@ test('booking dialog design is scoped to appointment flows and stays rounded on 
 
 
 test('Clientes da barbearia mostra Ativos, Fixos, Em risco e recorrências cadastradas',async t=>{
-  const h=await makeSuite({initialRoute:'clientes',respond:reply({existing:true})});
+  const h=await makeSuite({initialRoute:'clientes',respond:reply({existing:true}),configureWindow:useSeriesDay});
   t.after(()=>h.close());await flush();
   assert.deepEqual([...h.document.querySelectorAll('[data-os-customer-status]')].map(el=>el.dataset.osCustomerStatus),
     ['active','fixed','at_risk']);
@@ -199,7 +202,7 @@ test('Clientes da barbearia mostra Ativos, Fixos, Em risco e recorrências cadas
 });
 
 test('Editar fixo permite mudar sexta para quarta e duas para quatro visitas por mês',async t=>{
-  const h=await makeSuite({initialRoute:'clientes',respond:reply({existing:true})});
+  const h=await makeSuite({initialRoute:'clientes',respond:reply({existing:true}),configureWindow:useSeriesDay});
   t.after(()=>h.close());await flush();
   h.click('[data-os-customer-status=fixed]');await flush();
   h.click('[data-os-fixed-series="'+seriesId+'"]');await flush();
@@ -248,9 +251,9 @@ test('prévia de conflito ao editar impede modificar a recorrência existente',a
 test('iPhone: primeiro atendimento e horário fixo não extrapolam a grade do modal',async t=>{
   const {readFileSync}=await import('node:fs');
   const css=readFileSync(new URL('../app/static/orion-suite.css',import.meta.url),'utf8');
-  const selector='#osDialog.os-booking-dialog [data-os-form="fixed-client"] :is(input[type="date"],input[type="time"])';
+  const selector='#osDialog.os-booking-dialog :is(input[type="date"],input[type="time"])';
   const start=css.indexOf(selector+'{');
-  assert.ok(start>=0,'a correção dos campos nativos deve ser específica do agendamento fixo');
+  assert.ok(start>=0,'a correção dos campos nativos deve ser específica do agendamento');
   const declaration=css.slice(start,css.indexOf('}',start));
   for(const rule of ['-webkit-appearance:none','appearance:none','box-sizing:border-box',
                      'width:100%','min-width:0','max-width:100%',
@@ -263,6 +266,8 @@ test('iPhone: primeiro atendimento e horário fixo não extrapolam a grade do mo
   await flush();
   await openForm(h);
   const form=h.document.querySelector('[data-os-form="fixed-client"]');
+  assert.equal(form.querySelector('#osFixedPreview').childNodes.length,0);
+  assert.equal(form.querySelectorAll('button[type=submit]').length,1);
   for(const [name,type] of [['first_date','date'],['local_time','time']]){
     const input=form.querySelector('input[name="'+name+'"]');
     assert.ok(input,name+' precisa continuar nativo e editável');

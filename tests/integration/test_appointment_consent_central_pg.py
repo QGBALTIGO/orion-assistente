@@ -88,6 +88,48 @@ async def test_authorized_panel_confirmation_uses_the_central_channel_once(centr
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('role', ['owner', 'professional'])
+async def test_panel_confirmation_uses_saved_operational_permission(central_db, monkeypatch, role):
+    d = central_db
+    use_central(d, monkeypatch)
+    async with d['migrator'].begin() as db:
+        await db.execute(text("""INSERT INTO contact_consents
+            (tenant_id,contact_e164,operational_opt_in,marketing_opt_in,source)
+            VALUES(:t,:phone,true,false,'customer_request')"""), {'t': d['a'], 'phone': phone(920)})
+    appointment, _, _ = await new_booking(d, role=role, hour=10)
+    async with d['migrator'].connect() as db:
+        notice = (await db.execute(text("""
+            SELECT id FROM appointment_notifications
+            WHERE tenant_id=:t AND appointment_id=:appointment AND event='confirmation'
+              AND central_channel_id=:channel
+        """), {'t': d['a'], 'appointment': appointment['id'], 'channel': d['channel']})).scalar_one()
+    support = create_async_engine(os.environ['SUPPORT_DATABASE_URL'])
+    sent = []
+
+    async def sender(tenant, channel, number, body, operation):
+        assert (tenant, channel, number) == (d['a'], d['channel'], phone(920))
+        assert await authorize(support, d, notice, body) is True
+        sent.append(operation)
+        return {'accepted': True, 'state': 'accepted', 'operation_id': operation}
+
+    try:
+        assert await notifications.process_notification(
+            {'appointment_sender': sender}, str(d['a']), str(notice)) == 'accepted'
+        assert sent == [str(notice)]
+    finally:
+        await support.dispose()
+
+    async with d['migrator'].begin() as db:
+        await db.execute(text("""UPDATE contact_consents SET operational_opt_in=false
+            WHERE tenant_id=:t AND contact_e164=:phone"""), {'t': d['a'], 'phone': phone(920)})
+    withdrawn, _, _ = await new_booking(d, role=role, hour=12)
+    async with d['migrator'].connect() as db:
+        assert (await db.execute(text("""SELECT id FROM appointment_notifications
+            WHERE tenant_id=:t AND appointment_id=:appointment AND event='confirmation'"""),
+            {'t': d['a'], 'appointment': withdrawn['id']})).first() is None
+
+
+@pytest.mark.asyncio
 async def test_central_scoped_reminder_checks_scope_and_last_moment_withdrawal(central_db,monkeypatch):
     d=central_db;use_central(d,monkeypatch)
     appointment,_,_=await new_booking(d,opted_in=True,role='owner')

@@ -74,12 +74,11 @@ test('profissional cria excepcional após revisar, no fuso da empresa, sem aceit
 
 test('profissional registra avulso retroativo com valor final e sem mensagens',async t=>{
   const h=await portal(t);const form=await manual(h,{mode:'retroactive',walkIn:true});h.fill('final_total','85,00');h.fill('actual_duration_min','70');
-  form.elements.appointment_messages_opt_in.checked=true;
-  assert.equal(form.elements.appointment_messages_opt_in.disabled,true);assert.equal(form.elements.customer_phone.disabled,true);
+  assert.equal(form.elements.appointment_messages_opt_in,undefined);assert.equal(form.elements.customer_phone.disabled,true);
   h.submit();await flush();assert.match(h.doc.getElementById('modalReview').textContent,/recebimento pendente/);assert.equal(posts(h).length,0);
   h.submit();await flush();const body=posts(h)[0].body;
   assert.equal(body.mode,'retroactive');assert.equal(body.walk_in,true);assert.equal(body.customer_phone,null);assert.equal(body.final_total_cents,8500);assert.equal(body.actual_duration_min,70);
-  assert.equal(body.appointment_messages_opt_in,false);assert.equal(body.start_at,'2020-10-10T23:00:00.000Z');
+  assert.equal('appointment_messages_opt_in' in body,false);assert.equal(body.start_at,'2020-10-10T23:00:00.000Z');
   assert.match(h.doc.getElementById('toast').textContent,/Recebimento pendente/);
 });
 

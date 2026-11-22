@@ -1252,7 +1252,6 @@
       for(const child of [...form.children])if(!child.classList.contains('os-form-actions'))scroll.append(child);
       form.prepend(scroll);
     }
-    const search=dialog.querySelector('#osBookingCustomer');if(search)search.placeholder='Buscar nome ou telefone';
     dialog.scrollTop=0;
   }
   async function loadHomePreview(c=context(),today=dateKey(),{background=false,force=false}={}){
@@ -3776,12 +3775,12 @@
   function resetFixedPreview(){
     const d=state.dialog;if(d?.type!=='fixed-client')return;
     d.preview=null;d.previewKey='';d.key=crypto.randomUUID();
-    const target=$('osFixedPreview');if(target)target.innerHTML='<p class="os-help">Confira os dados e verifique as datas antes de confirmar.</p>';
+    $('osFixedPreview')?.replaceChildren();
     const submit=$('osDialog')?.querySelector('[data-os-form=fixed-client] button[type=submit]');
     if(submit){submit.disabled=false;submit.textContent='Verificar horários';}
     const selected=d.services.filter(s=>d.serviceIds.includes(s.id));
     const summary=$('osFixedServiceSummary');
-    if(summary)summary.textContent=selected.length?selected.length+' serviço(s) · '+selected.reduce((sum,item)=>sum+number(item.duration_min),0)+' min · '+priceLabel(selected.reduce((sum,item)=>sum+number(item.price_cents),0),selected.some(x=>x.price_mode==='from')?'from':'fixed'):'Selecione o serviço deste atendimento.';
+    if(summary)summary.textContent=selected.length?selected.length+' serviço(s) · '+selected.reduce((sum,item)=>sum+number(item.duration_min),0)+' min · '+priceLabel(selected.reduce((sum,item)=>sum+number(item.price_cents),0),selected.some(x=>x.price_mode==='from')?'from':'fixed'):'';
   }
   function filterFixedCustomers(value){
     const d=state.dialog,target=$('osFixedCustomers');if(d?.type!=='fixed-client'||!target)return;
@@ -3820,19 +3819,18 @@
         '<p id="osBookingModeHelp" class="os-help">'+(editing?
           'Altere apenas as próximas visitas. Os atendimentos anteriores e o financeiro são preservados.':
           'Escolha o dia, o horário e quantas vezes este cliente será atendido.')+'</p>'+
-        '<div class="os-field"><label for="osFixedCustomer">Cliente</label><div class="os-search os-fixed-search">'+icon('search')+
-          '<input id="osFixedCustomer" type="search" name="customer_name" placeholder="Buscar cliente ou digitar novo nome" required maxlength="120" autocomplete="off"'+(editing?' readonly':'')+'></div><div id="osFixedCustomers" class="os-customer-results"></div></div>'+
-        field('WhatsApp do cliente','customer_phone','tel',existing?.customer_phone||'','required placeholder="(67) 99999-9999"'+(editing?' readonly':''))+
+        '<div class="os-booking-contact"><div class="os-field"><label for="osFixedCustomer">Cliente</label><div class="os-search os-fixed-search">'+icon('search')+
+          '<input id="osFixedCustomer" type="search" name="customer_name" placeholder="Buscar nome ou telefone" required maxlength="120" autocomplete="off"'+(editing?' readonly':'')+'></div><div id="osFixedCustomers" class="os-customer-results"></div></div>'+
+        field('WhatsApp do cliente','customer_phone','tel',existing?.customer_phone||'','required placeholder="(67) 99999-9999"'+(editing?' readonly':''))+'</div>'+
         '<fieldset class="os-fixed-service-fieldset"><legend>Serviço</legend><div class="os-service-options">'+(d.services.length?d.services.map(item=>
-          '<button type="button" class="os-service-option" data-os-fixed-service="'+esc(item.id)+'" aria-pressed="'+d.serviceIds.includes(item.id)+'"><strong>'+esc(item.name)+'</strong><small>'+esc(priceLabel(item.price_cents,item.price_mode))+' · '+number(item.duration_min)+' min</small></button>').join(''):'<p class="os-help">Cadastre ao menos um serviço ativo.</p>')+'</div><p class="os-help" id="osFixedServiceSummary">Selecione o serviço deste atendimento.</p></fieldset>'+
+          '<button type="button" class="os-service-option" data-os-fixed-service="'+esc(item.id)+'" aria-pressed="'+d.serviceIds.includes(item.id)+'"><strong>'+esc(item.name)+'</strong><small>'+esc(priceLabel(item.price_cents,item.price_mode))+' · '+number(item.duration_min)+' min</small></button>').join(''):'<p class="os-help">Cadastre ao menos um serviço ativo.</p>')+'</div><p class="os-help" id="osFixedServiceSummary"></p></fieldset>'+
         selectField('Profissional','professional_id',[['','Selecionar profissional'],...d.professionals.map(p=>[p.id,p.name])],existing?.professional_id||preset.professionalId||'','required')+
-        '<div class="os-form-grid">'+selectField('Dia da semana','weekday',fixedWeekdays.map((name,i)=>[i,name]),weekday)+
+        '<div class="os-booking-schedule"><div class="os-form-grid">'+selectField('Dia da semana','weekday',fixedWeekdays.map((name,i)=>[i,name]),weekday)+
         field('Primeiro atendimento','first_date','date',first,'required')+'</div>'+
         '<div class="os-form-grid">'+field('Horário fixo','local_time','time',editing?String(existing.local_time).slice(0,5):'14:00','required')+
         selectField('Frequência','repeat_pattern',fixedRepeatChoices,repetition)+'</div>'+
-        field('Quantidade de próximos atendimentos','occurrence_count','number',String(quantity),'required min="2" max="52" step="1"')+
-        '<p class="os-help">2 vezes por mês reserva semanas alternadas (1ª e 3ª ou 2ª e 4ª); 4 vezes por mês reserva até quatro semanas. A prévia confirma as datas.</p>'+
-        '<div id="osFixedPreview" class="os-fixed-preview" aria-live="polite"><p class="os-help">Confira os dados e verifique as datas antes de confirmar.</p></div>';
+        field('Quantidade de próximos atendimentos','occurrence_count','number',String(quantity),'required min="2" max="52" step="1"')+'</div>'+
+        '<div id="osFixedPreview" class="os-fixed-preview" aria-live="polite"></div>';
       $('osDialog').innerHTML='<button type="button" class="os-icon-button os-close" data-os-action="close-dialog" aria-label="Fechar">'+icon('close')+'</button><h2 id="osDialogTitle">'+esc(titleText)+'</h2>'+dialogForm('fixed-client',content,'Verificar horários');
       const fixedForm=$('osDialog').querySelector('[data-os-form=fixed-client]');
       if(editing){
@@ -3915,22 +3913,21 @@
     const noServices=!d.services.length,noPros=!d.professionals.length;
     const mode=['exceptional','retroactive'].includes(d.preset?.bookingMode)?d.preset.bookingMode:'regular';
     const content='<div class="os-booking-mode">'+selectField('Tipo de registro','booking_mode',bookingModes,mode)+'<p id="osBookingModeHelp" class="os-help"></p></div>'+
-      '<div class="os-field"><label for="osBookingCustomer">Cliente</label><div class="os-search" style="max-width:none">'+icon('search')+'<input id="osBookingCustomer" name="customer_name" type="search" placeholder="Buscar nome ou telefone" required maxlength="120" autocomplete="off" aria-autocomplete="list" aria-controls="osBookingCustomers"></div><div id="osBookingCustomers" class="os-customer-results"></div><p id="osBookingCustomerHelp" class="os-help">'+(d.customers.length?'Selecione um cliente ou preencha os dados para um novo cadastro.':'Nenhum cliente cadastrado ainda.')+'</p></div>'+
-      '<div id="osBookingWalkIn" hidden>'+'<label class="os-check os-booking-walk-in"><input type="checkbox" name="walk_in"><span>Cliente avulso, sem WhatsApp</span></label>'+'</div>'+
-      '<div id="osBookingPhone">'+field('WhatsApp do cliente','customer_phone','tel','','required placeholder="(11) 91234-5678"')+'</div>'+
-      '<div id="osBookingWhen" class="os-form">'+field('Data','day','date',d.homePreview?(d.preset?.day||dateKey()):(state.filters.agendaDay||dateKey()),'required')+
-      '<div id="osBookingClock" hidden>'+field('Horário','clock','time',d.preset?.time||'','disabled')+'</div></div>'+
-      '<div id="osBookingOverlap" hidden>'+checkField('Permitir dois clientes neste horário','allow_overlap',false,'Somente neste agendamento excepcional. Cada cliente mantém seus serviços, valores e pagamentos. Limite de dois clientes simultâneos por profissional; bloqueios e folgas continuam valendo. O período ocupado permanece indisponível no site.')+'</div>'+
+      '<div class="os-booking-contact"><div class="os-field"><label for="osBookingCustomer">Cliente</label><div class="os-search" style="max-width:none">'+icon('search')+'<input id="osBookingCustomer" name="customer_name" type="search" placeholder="Buscar nome ou telefone" required maxlength="120" autocomplete="off" aria-autocomplete="list" aria-controls="osBookingCustomers"></div><div id="osBookingCustomers" class="os-customer-results"></div><p id="osBookingCustomerHelp" class="os-help">'+(d.customers.length?'Busque um cliente ou digite o nome para cadastrar.':'Nenhum cliente cadastrado ainda.')+'</p></div>'+
+      '<div class="os-booking-phone-group"><div id="osBookingPhone">'+field('WhatsApp do cliente','customer_phone','tel','','required placeholder="(11) 91234-5678"')+'</div>'+
+      '<div id="osBookingWalkIn" hidden><label class="os-check os-booking-option"><input type="checkbox" name="walk_in"><span>Cliente avulso, sem WhatsApp</span></label></div></div></div>'+
+      '<div class="os-booking-schedule"><div id="osBookingWhen" class="os-form">'+field('Data','day','date',d.homePreview?(d.preset?.day||dateKey()):(state.filters.agendaDay||dateKey()),'required')+
+      '<div id="osBookingClock" hidden>'+field('Horário','clock','time',d.preset?.time||'','disabled')+'<span class="os-booking-time-placeholder" aria-hidden="true">hh:mm</span></div></div>'+
+      '<div id="osBookingOverlap" hidden><label class="os-check os-booking-option"><input type="checkbox" name="allow_overlap" aria-describedby="osBookingOverlapHelp"><span>Permitir dois clientes neste horário</span></label>'+
+      '<p class="os-help" id="osBookingOverlapHelp">Até dois clientes simultâneos. Folgas, bloqueios e a indisponibilidade no site continuam valendo.</p></div></div>'+
       '<fieldset><legend style="font:500 14px/20px var(--os-font);margin:0 0 6px">Serviço</legend><div id="osBookingServices" class="os-service-options">'+(noServices?'<p class="os-help">Cadastre um serviço ativo antes de agendar.</p>':d.services.map(service=>'<button type="button" class="os-service-option" data-os-book-service="'+esc(service.id)+'" aria-pressed="'+d.serviceIds.includes(service.id)+'"><strong>'+esc(service.name)+'</strong><small>'+esc(priceLabel(service.price_cents,service.price_mode))+' · '+number(service.duration_min)+' min</small></button>').join(''))+'</div></fieldset>'+
       '<div id="osBookingAddons" class="hidden"></div>'+selectField('Profissional','professional_id',[['',noPros?'Nenhum profissional disponível':'Selecionar'],...d.professionals.map(pro=>[pro.id,pro.name])],d.preset?.professionalId||'','required')+
       '<div id="osBookingSlotField" class="os-field"><label for="osBookingSlot">Horário</label><select id="osBookingSlot" name="start_at" required disabled><option value="">Escolha profissional e serviço</option></select><p id="osBookingSlotHelp" class="os-help"></p></div>'+
       '<div id="osBookingSummary" class="os-summary hidden"></div>'+
-      '<div id="osBookingCompleted" class="os-form" hidden><div class="os-form-grid">'+moneyField('Valor final (R$)','final_total','text','','disabled inputmode="decimal" placeholder="0,00"')+
-      field('Duração realizada (min, opcional)','actual_duration_min','number','','disabled min="1" max="1440" step="1"')+'</div><p class="os-help">Será salvo como Concluído na data do atendimento. O recebimento será acompanhado no Financeiro.</p></div>'+
-      '<p id="osBookingMessages" class="os-help os-booking-notice" hidden>Se o cliente concordou, use “Agendar e avisar”. A Orion Agenda envia a confirmação, o lembrete e o pedido de avaliação pelo WhatsApp.</p>';
+      '<div id="osBookingCompleted" class="os-booking-schedule" hidden><div class="os-form-grid">'+moneyField('Valor final (R$)','final_total','text','','disabled inputmode="decimal" placeholder="0,00"')+
+      field('Duração real (min)','actual_duration_min','number','','disabled min="1" max="1440" step="1" placeholder="Opcional"')+'</div><p class="os-help">O atendimento será concluído e o recebimento ficará pendente no Financeiro.</p></div>';
     $('osDialog').innerHTML='<button class="os-icon-button os-close" type="button" data-os-action="close-dialog" aria-label="Fechar">'+icon('close')+'</button><h2 id="osDialogTitle">Novo agendamento</h2>'+dialogForm('appointment',content,'Agendar');
     const form=$('osDialog').querySelector('[data-os-form=appointment]');
-    form.querySelector('.os-form-actions').insertAdjacentHTML('beforeend','<button type="submit" id="osBookAndNotify" class="os-button" aria-describedby="osBookingMessages" hidden disabled>Agendar e avisar</button>');
     if(d.preset?.customerName)form.elements.customer_name.value=d.preset.customerName;
     if(d.preset?.customerPhone)form.elements.customer_phone.value=d.preset.customerPhone;
     d.bookingMode=mode;syncBookingMode();
@@ -3941,8 +3938,8 @@
   function syncBookingMode(){
     const d=state.dialog,form=$('osDialog')?.querySelector('[data-os-form=appointment]');if(d?.type!=='appointment'||!form||d.holdForm||d.manualOperation)return;
     const mode=form.elements.booking_mode.value,manual=mode!=='regular',retro=mode==='retroactive';
-    d.bookingMode=mode;$('osBookingWhen').classList.toggle('os-form-grid',manual);
-    $('osBookingModeHelp').textContent=retro?'Registre um atendimento que já terminou. Nenhum aviso ou lembrete será enviado.':manual?'Informe o horário, inclusive fora do expediente. Para compartilhar um horário ocupado, autorize a opção abaixo.':'Escolha um horário disponível na agenda.';
+    d.bookingMode=mode;$('osBookingWhen').classList.toggle('os-booking-date-time',manual);
+    $('osBookingModeHelp').textContent=retro?'Registre um atendimento que já terminou.':manual?'Informe o horário, inclusive fora do expediente.':'Escolha um horário disponível na agenda.';
     $('osBookingOverlap').hidden=mode!=='exceptional';form.elements.allow_overlap.disabled=mode!=='exceptional';if(mode!=='exceptional')form.elements.allow_overlap.checked=false;
     $('osBookingWalkIn').hidden=!manual;form.elements.walk_in.disabled=!manual;if(!manual)form.elements.walk_in.checked=false;
     const selected=d.customers.find(customer=>customer.id===d.customerId);
@@ -3952,15 +3949,9 @@
     $('osBookingClock').hidden=!manual;form.elements.clock.disabled=!manual;form.elements.clock.required=manual;
     $('osBookingSlotField').hidden=manual;form.elements.start_at.required=!manual;form.elements.start_at.disabled=manual||!d.slots.length;
     $('osBookingCompleted').hidden=!retro;form.elements.final_total.disabled=!retro;form.elements.final_total.required=retro;form.elements.actual_duration_min.disabled=!retro;
-    const notify=!retro&&!walkIn&&permitted('notifications.basic');
-    $('osBookingMessages').hidden=!notify;
-    const notifyButton=$('osBookAndNotify');
-    notifyButton.hidden=!notify;notifyButton.disabled=!notify||!d.services.length||!d.professionals.length;
-    form.querySelector('[data-os-action=close-dialog]').hidden=notify;
     form.elements.day.max=retro?dateKey():'';
     const submit=form.querySelector('[type=submit]');
     submit.textContent=retro?'Registrar atendimento':'Agendar';
-    submit.classList.toggle('os-outline',notify);
   }
   function renderBookingAddons(d){const target=$('osBookingAddons');if(!target)return;const options=d.addons||[];target.classList.toggle('hidden',!options.length);target.innerHTML=options.length?'<fieldset><legend>Adicionais (opcional)</legend><div class="os-booking-addon-options">'+options.map(item=>'<label class="os-check"><input type="checkbox" data-os-book-addon="'+esc(item.addon_service_id)+'" '+(d.addonIds.includes(item.addon_service_id)?'checked':'')+'><span>'+esc(item.name)+'<small>'+esc(priceLabel(item.price_cents,item.price_mode))+' · '+(item.add_duration?'+ '+number(item.duration_min)+' min':'sem tempo extra')+'</small></span></label>').join('')+'</div></fieldset>':'';}
   function renderBookingSummary(d,selected,prepared=null){
@@ -4033,7 +4024,6 @@
       const payload={mode,professional_id:values.professional_id,service_ids:[...d.engineServiceIds],customer_id:d.customerId||null,
         customer_name:values.customer_name.trim(),customer_phone:customerPhone,walk_in:walkIn,start_at:start,
         final_total_cents:retro?cents(values.final_total):null,actual_duration_min:actual,
-        appointment_messages_opt_in:!retro&&!walkIn&&values.appointment_messages_opt_in===true,
         allow_overlap:mode==='exceptional'&&form.elements.allow_overlap.checked};
       const selected=d.customers.find(customer=>customer.id===d.customerId);
       operation={payload:{...payload,idempotency_key:requestKey(form,payload)},day:values.day,customerUpdate:selected&&customerPhone&&customerPhoneValue(selected.phone)!==customerPhone?{id:selected.id,phone:customerPhone,version:selected.version}:null};
@@ -4066,8 +4056,7 @@
         markBusy(form,false);
         if(state.dialog===d&&d.manualOperation){
           form.querySelector('fieldset').disabled=true;
-          const notify=$('osBookAndNotify');notify.disabled=true;notify.hidden=true;
-          submit.classList.remove('os-outline');submit.textContent='Verificar este registro';
+          submit.textContent='Verificar este registro';
         }else if(state.dialog===d)syncBookingMode();
       }
       else state.busy=false;
@@ -4081,11 +4070,11 @@
   }
   function freezePendingBooking(form,d){
     form.querySelectorAll('fieldset').forEach(fieldset=>fieldset.disabled=true);
-    const notify=$('osBookAndNotify');if(notify){notify.disabled=true;notify.hidden=true;}
-    const submit=form.querySelector('button[type=submit]');if(submit){submit.disabled=!writable();submit.classList.remove('os-outline');submit.textContent=d.holdId?'Tentar confirmar a mesma reserva':'Verificar e confirmar esta reserva';}
+    const submit=form.querySelector('button[type=submit]');if(submit){submit.disabled=!writable();submit.textContent=d.holdId?'Tentar confirmar a mesma reserva':'Verificar e confirmar esta reserva';}
     if(!$('osPendingBooking'))form.querySelector('.os-home-booking-scroll').insertAdjacentHTML('afterbegin','<div id="osPendingBooking" class="os-notice os-warning">'+icon('info')+'<p>Os dados foram preservados para verificar a mesma reserva. '+(d.holdId?'Protocolo: '+esc(d.holdRecord?.protocol||d.holdId)+'. ':'')+'Tente confirmar novamente ou consulte a Agenda antes de criar outro agendamento.</p></div>');
   }
   function filterBookingCustomers(value){const d=state.dialog;if(d?.type!=='appointment'||d.holdForm||d.manualOperation)return;const q=value.toLocaleLowerCase('pt-BR').trim(),digits=q.replace(/\D/g,'');d.customerId='';const list=q?d.customers.filter(c=>c.name.toLocaleLowerCase('pt-BR').includes(q)||(digits&&(c.phone||'').replace(/\D/g,'').includes(digits))).slice(0,8):[];
+    $('osBookingCustomerHelp').textContent=d.customers.length?'Busque um cliente ou digite o nome para cadastrar.':'';
     $('osBookingCustomers').innerHTML=list.map(c=>'<button type="button" data-os-book-customer="'+esc(c.id)+'"><span>'+esc(c.name)+'</span><small>'+esc(c.phone||'Sem WhatsApp')+'</small></button>').join('');}
   function appointmentCan(a,action){return writable()&&typeof a?.updated_at==='string'&&Array.isArray(a.allowed_actions)&&a.allowed_actions.includes(action);}
   function appointmentMoment(value){return value?fmtDate(dateKey(new Date(value)))+' às '+timeLabel(value):'Não informado';}
@@ -4479,7 +4468,6 @@
         return;
       }
       if(kind==='appointment'){
-        f.appointment_messages_opt_in=event.submitter?.id==='osBookAndNotify'&&!event.submitter.disabled;
         if(d.manualOperation||form.elements.booking_mode.value!=='regular'){await submitManualAppointment(form,d,f);return;}
         if(d.selectionPending)throw Error('Aguarde a conferência dos serviços e horários.');
         if(d.selectionError)throw Error(d.selectionError);
@@ -4502,7 +4490,7 @@
             try{hold=await request(apiPath('/appointments/hold'),'POST',d.holdPayload);d.holdId=hold.id;d.holdRecord=hold;}
             catch(error){if(error.status>=400&&error.status<500){d.holdForm=null;d.holdPayload=null;d.key=crypto.randomUUID();}throw error;}
           }
-          if(!stillAccount(c))return;if(typeof hold.updated_at!=='string')throw Error('Não foi possível confirmar a versão da reserva. Consulte os detalhes na Agenda antes de continuar.');if(!d.confirmPayload)d.confirmPayload={expected_updated_at:hold.updated_at,idempotency_key:crypto.randomUUID(),appointment_messages_opt_in:values.appointment_messages_opt_in===true};const confirmed=await request(apiPath('/appointments/'+encodeURIComponent(hold.id)+'/confirm'),'POST',d.confirmPayload);if(confirmed.status!=='confirmed')throw Error('A reserva ainda não foi confirmada. Confira a agenda antes de tentar novamente.');state.filters.agendaDay=values.day;
+          if(!stillAccount(c))return;if(typeof hold.updated_at!=='string')throw Error('Não foi possível confirmar a versão da reserva. Consulte os detalhes na Agenda antes de continuar.');if(!d.confirmPayload)d.confirmPayload={expected_updated_at:hold.updated_at,idempotency_key:crypto.randomUUID()};const confirmed=await request(apiPath('/appointments/'+encodeURIComponent(hold.id)+'/confirm'),'POST',d.confirmPayload);if(confirmed.status!=='confirmed')throw Error('A reserva ainda não foi confirmada. Confira a agenda antes de tentar novamente.');state.filters.agendaDay=values.day;
         },'Agendamento confirmado. O protocolo está disponível na agenda.');
         if(state.dialog===d&&d.holdForm)freezePendingBooking(form,d);else if(state.dialog===d&&$('osPendingBooking')){form.querySelectorAll('fieldset').forEach(fieldset=>fieldset.disabled=false);$('osPendingBooking').remove();syncBookingMode();}
       }
@@ -4855,7 +4843,7 @@
       if(el.dataset.osGoal){const key=el.dataset.osGoal,r=key.startsWith('template:')?rows(state.data.goalTemplates).find(g=>'template:'+g.id===key):rows(state.data.goals).find(g=>goalKey(g)===key);if(r)await showGoal(r);return;}
       if(el.dataset.osDuration){const form=$('osDialog')?.querySelector('[data-os-form=service]');const input=form?.elements?.duration_min;if(input){input.value=el.dataset.osDuration;syncServiceDurationPresets(form);}return;}
       if(el.dataset.osBookService){const d=state.dialog;if(d?.type!=='appointment'||d.holdForm||d.manualOperation)return;const id=el.dataset.osBookService;if(d.serviceIds.includes(id))d.serviceIds=d.serviceIds.filter(s=>s!==id);else if(d.serviceIds.length<6)d.serviceIds.push(id);else{toast('Escolha até 6 serviços por agendamento.',true);return;}el.setAttribute('aria-pressed',String(d.serviceIds.includes(id)));await updateAvailability();return;}
-      if(el.dataset.osBookCustomer){const d=state.dialog;if(d?.type!=='appointment'||d.holdForm||d.manualOperation)return;const c=d.customers.find(c=>c.id===el.dataset.osBookCustomer);if(!c)return;const form=$('osDialog').querySelector('form');form.elements.customer_name.value=c.name;form.elements.customer_phone.value=sharedFields().phoneDisplay(c.phone||'');d.customerId=c.id;syncBookingMode();$('osBookingCustomers').replaceChildren();$('osBookingCustomerHelp').textContent=c.phone?'Cliente selecionado.':d.bookingMode!=='regular'?'Cliente selecionado sem WhatsApp. Informe o contato ou marque Cliente avulso.':'Este cliente ainda não tem WhatsApp. Ao confirmar, o número informado será salvo neste cadastro.';return;}
+      if(el.dataset.osBookCustomer){const d=state.dialog;if(d?.type!=='appointment'||d.holdForm||d.manualOperation)return;const c=d.customers.find(c=>c.id===el.dataset.osBookCustomer);if(!c)return;const form=$('osDialog').querySelector('form');form.elements.customer_name.value=c.name;form.elements.customer_phone.value=sharedFields().phoneDisplay(c.phone||'');d.customerId=c.id;syncBookingMode();$('osBookingCustomers').replaceChildren();$('osBookingCustomerHelp').textContent=c.phone?'':d.bookingMode!=='regular'?'Cliente selecionado sem WhatsApp. Informe o contato ou marque Cliente avulso.':'Este cliente ainda não tem WhatsApp. Ao confirmar, o número informado será salvo neste cadastro.';return;}
 
       if(el.dataset.osStartPolicyToggle!==undefined){
         const d=state.dialog,weekday=Number(el.dataset.osStartPolicyToggle);

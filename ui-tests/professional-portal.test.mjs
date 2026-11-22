@@ -136,10 +136,10 @@ test('individual portal uses dedicated scoped routes and does not expose global 
  assert.equal(h.errors.length,0);
 });
 
-for(const messagesOptIn of [false,true])test(`professional books with optional appointment messages ${messagesOptIn}`,async t=>{
+for(const lostResponse of [false,true])test(`professional booking keeps one submit and handles a lost response ${lostResponse}`,async t=>{
   let attempts=0;
   const h=await portal(t,{respond:request=>{
-    if(messagesOptIn&&request.path==='/api/v1/professional/appointments'&&request.method==='POST'&&++attempts===1)
+    if(lostResponse&&request.path==='/api/v1/professional/appointments'&&request.method==='POST'&&++attempts===1)
       throw new Error('Resposta sintética interrompida.');
   }});
   h.doc.querySelector('[data-page=agenda]').click();
@@ -150,14 +150,12 @@ for(const messagesOptIn of [false,true])test(`professional books with optional a
   assert.ok(form);
   assert.ok(form.querySelector('[name=customer_name]'),form.innerHTML);
   assert.ok(form.querySelector('[name=customer_phone]'));
-  const messages=form.querySelector('[name=appointment_messages_opt_in]');
-  assert.equal(messages.checked,false);
-  assert.equal(messages.required,false);
+  assert.equal(form.querySelector('[name=appointment_messages_opt_in]'),null);
+  assert.equal(form.querySelectorAll('button[type=submit]').length,1);
   assert.equal(form.querySelectorAll('[name=service_ids]').length,1);
   form.querySelector('[name=customer_name]').value='Cliente sintético novo';
   form.querySelector('[name=customer_phone]').value='67999999999';
   form.querySelector('[name=service_ids]').checked=true;
-  messages.checked=messagesOptIn;
   form.dispatchEvent(new h.w.Event('submit',{cancelable:true,bubbles:true}));
   await new Promise(resolve=>setTimeout(resolve,50));
   assert.equal(h.calls.filter(c=>c.method==='POST'&&c.path==='/api/v1/professional/appointments').length,0);
@@ -170,26 +168,25 @@ for(const messagesOptIn of [false,true])test(`professional books with optional a
   assert.match(h.doc.getElementById('modalReview').textContent,/Revise antes de confirmar/);
   form.dispatchEvent(new h.w.Event('submit',{cancelable:true,bubbles:true}));
   await new Promise(resolve=>setTimeout(resolve,75));
-  if(messagesOptIn){
+  if(lostResponse){
     assert.match(h.doc.getElementById('modalError').textContent,/interrompida/);
-    assert.equal(messages.disabled,true);
-    messages.checked=false;
+    assert.equal(form.querySelector('[name=customer_name]').disabled,true);
     form.querySelector('[name=customer_name]').value='Outra pessoa';
     form.dispatchEvent(new h.w.Event('submit',{cancelable:true,bubbles:true}));
     await new Promise(resolve=>setTimeout(resolve,75));
   }
   const posted=h.calls.filter(c=>c.method==='POST'&&c.path==='/api/v1/professional/appointments');
-  assert.equal(posted.length,messagesOptIn?2:1);
+  assert.equal(posted.length,lostResponse?2:1);
   assert.deepEqual(posted[0].body.service_ids,[other]);
   assert.equal(posted[0].body.customer_phone,'+5567999999999');
-  assert.equal(posted[0].body.appointment_messages_opt_in,messagesOptIn);
+  assert.equal('appointment_messages_opt_in' in posted[0].body,false);
   assert.equal(posted[0].body.marketing_opt_in,undefined);
   assert.equal(posted[0].body.professional_id,undefined);
-  if(messagesOptIn)assert.deepEqual(posted[0].body,posted[1].body);
+  if(lostResponse)assert.deepEqual(posted[0].body,posted[1].body);
   assert.equal(h.errors.length,0);
   h.doc.querySelector('[data-action=new-appointment]').click();
   await new Promise(resolve=>setTimeout(resolve,45));
-  assert.equal(h.doc.querySelector('[name=appointment_messages_opt_in]').checked,false);
+  assert.equal(h.doc.querySelector('[name=appointment_messages_opt_in]'),null);
 });
 
 

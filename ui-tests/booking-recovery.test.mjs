@@ -66,8 +66,7 @@ test('confirmation retry preserves the original hold and updates the selected cu
   }) }); t.after(() => h.close());
   await prepareBooking(h);
   assert.equal(h.document.querySelector('[name=appointment_messages_opt_in]'), null);
-  h.click('#osBookAndNotify'); await flush();
-  assert.equal(h.document.getElementById('osBookAndNotify').hidden, true);
+  h.click('[data-os-form=appointment] button[type=submit]'); await flush();
   const form = h.document.querySelector('[data-os-form=appointment]');
   assert.equal(form.querySelector('fieldset').disabled, true);
   assert.equal(form.querySelector('button[type=submit]').disabled, false);
@@ -88,7 +87,7 @@ test('confirmation retry preserves the original hold and updates the selected cu
   assert.equal(h.calls.filter(call => call.path.endsWith(`/appointments/${appointmentId}/confirm`)).length, 2);
   const confirms = h.calls.filter(call => call.path.endsWith(`/appointments/${appointmentId}/confirm`));
   assert.equal(confirms[0].data.expected_updated_at, '2030-04-05T11:59:00.123456Z');
-  assert.equal(confirms[0].data.appointment_messages_opt_in, true);
+  assert.equal('appointment_messages_opt_in' in confirms[0].data, false);
   assert.deepEqual(plain(confirms[0].data), plain(confirms[1].data));
   assert.equal(h.calls.filter(call => call.method === 'PATCH').length, 1);
   assert.equal(h.document.getElementById('osDialog').open, false);
@@ -112,18 +111,21 @@ test('an uncertain hold request is retried with exactly the same idempotency key
   assert.deepEqual(plain(requests[1].data), plain(requests[0].data));
   assert.ok(requests[0].data.idempotency_key);
   assert.equal(h.calls.filter(call => call.path.endsWith('/confirm')).length, 1);
-  assert.equal(h.calls.find(call => call.path.endsWith('/confirm')).data.appointment_messages_opt_in, false);
+  assert.equal('appointment_messages_opt_in' in h.calls.find(call => call.path.endsWith('/confirm')).data, false);
 });
 
 test('booking with the default action never attests consent on behalf of the customer', async t => {
   const h = await makeSuite({ initialRoute: 'agenda', respond: bookingResponse() });
   t.after(() => h.close()); await prepareBooking(h);
   const form = h.document.querySelector('[data-os-form=appointment]');
-  assert.match(h.document.getElementById('osBookingMessages').textContent, /Se o cliente concordou/);
+  assert.equal(form.querySelectorAll('button[type=submit]').length, 1);
+  assert.equal(form.querySelector('.os-form-actions [data-os-action=close-dialog]').textContent, 'Cancelar');
+  assert.doesNotMatch(form.textContent, /Agendar e avisar|Se o cliente concordou/);
+  assert.match(h.document.getElementById('osBookingCustomerHelp').textContent, /salvo no cadastro/);
   assert.equal(form.querySelector('button[type=submit]').textContent, 'Agendar');
   form.querySelector('button[type=submit]').click(); await flush();
   const confirmed = h.calls.find(call => call.path.endsWith('/confirm'));
-  assert.equal(confirmed.data.appointment_messages_opt_in, false);
+  assert.equal('appointment_messages_opt_in' in confirmed.data, false);
 });
 
 test('a customer phone update with a lost response is verified by id before creating the hold', async t => {

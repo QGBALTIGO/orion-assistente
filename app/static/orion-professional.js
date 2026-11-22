@@ -148,13 +148,12 @@ function openModal(action,record,trigger=null){
    fields='<div class="field"><label for="f_booking_mode">Tipo de registro</label><select id="f_booking_mode" name="booking_mode"><option value="regular">Agendamento normal</option><option value="exceptional">Horário excepcional</option><option value="retroactive">Registrar atendimento realizado</option></select></div>'+
      '<p id="modalBookingHelp" class="muted">Escolha um horário disponível na sua agenda.</p>'+
      inputField('Nome do cliente','customer_name','text','','required maxlength="120" minlength="2"')+
-     '<div id="modalWalkIn" hidden><label class="service-choice"><input type="checkbox" name="walk_in"><span>Cliente avulso, sem WhatsApp</span></label></div>'+
      '<div id="modalBookingPhone">'+inputField('WhatsApp do cliente','customer_phone','tel','',
         'required placeholder="(67) 99999-9999" autocomplete="tel-national" inputmode="tel" data-orion-field="phone" data-orion-allow-international="true"')+'</div>'+
-     '<div id="modalBookingMessages"><label class="service-choice"><input type="checkbox" name="appointment_messages_opt_in"><span>O cliente autorizou mensagens deste agendamento pelo WhatsApp<small>Inclui avisos, lembrete 1 hora antes e pedido de avaliação. Marque apenas com autorização expressa do cliente; é opcional.</small></span></label></div>'+
+     '<div id="modalWalkIn" hidden><label class="service-choice"><input type="checkbox" name="walk_in"><span>Cliente avulso, sem WhatsApp</span></label></div>'+
      '<div id="modalBookingWhen">'+inputField('Data','day','date',state.day,'required')+
-     '<div id="modalBookingClock" hidden>'+inputField('Horário','clock','time','','disabled')+'</div></div>'+
-     '<div id="modalBookingOverlap" hidden><label class="service-choice"><input type="checkbox" name="allow_overlap"><span>Permitir dois clientes neste horário<small>Somente neste agendamento excepcional. Serviços, valores e pagamentos separados. Limite de dois clientes simultâneos; bloqueios e folgas continuam valendo. O período ocupado permanece indisponível no site.</small></span></label></div>'+
+     '<div id="modalBookingClock" hidden>'+inputField('Horário','clock','time','','disabled')+'<span class="booking-time-placeholder" aria-hidden="true">hh:mm</span></div></div>'+
+     '<div id="modalBookingOverlap" hidden><label class="service-choice"><input type="checkbox" name="allow_overlap"><span>Permitir dois clientes neste horário<small>Até dois clientes simultâneos. Folgas, bloqueios e a indisponibilidade no site continuam valendo.</small></span></label></div>'+
      '<fieldset class="services-select"><legend>Serviços (até 6)</legend><div id="modalServices" class="muted">Carregando serviços…</div></fieldset>'+
      '<div id="modalCompletedFields" hidden>'+inputField('Valor final (R$)','final_total','text','','disabled inputmode="decimal" data-orion-field="money" data-field-min="0" data-field-max="1000000000" placeholder="0,00"')+
      inputField('Duração realizada (min, opcional)','actual_duration_min','number','','disabled min="1" max="1440" step="1"')+'</div>'+
@@ -183,6 +182,7 @@ function openModal(action,record,trigger=null){
  }else{
    fields='<p>Confirma esta operação no seu atendimento?</p>';
  }
+ $('modalFields').classList.toggle('booking-fields',action==='new-appointment');
  $('modalFields').innerHTML=fields;modal.hidden=false;
  $('modalSubmit').textContent=action==='new-appointment'?'Consultar horários':action==='remove-block'?'Remover':'Confirmar';
  $('modalSubmit').disabled=action==='extras';
@@ -225,13 +225,11 @@ function syncProfessionalBookingMode(){
  const d=state.modal,form=$('modalForm');if(d?.action!=='new-appointment'||d.bookingPayload)return;
  const mode=form.elements.booking_mode.value,manual=mode!=='regular',retro=mode==='retroactive';
  $('modalBookingWhen').classList.toggle('field-row',manual);
- $('modalBookingHelp').textContent=retro?'Registre um atendimento que já terminou. Nenhum aviso ou lembrete será enviado.':manual?'Informe o horário, inclusive fora do expediente. Para compartilhar um horário ocupado, autorize a opção abaixo.':'Escolha um horário disponível na sua agenda.';
+ $('modalBookingHelp').textContent=retro?'Registre um atendimento que já terminou.':manual?'Informe o horário, inclusive fora do expediente.':'Escolha um horário disponível na sua agenda.';
  $('modalBookingOverlap').hidden=mode!=='exceptional';form.elements.allow_overlap.disabled=mode!=='exceptional';if(mode!=='exceptional')form.elements.allow_overlap.checked=false;
  $('modalWalkIn').hidden=!manual;form.elements.walk_in.disabled=!manual;if(!manual)form.elements.walk_in.checked=false;
  const walkIn=manual&&form.elements.walk_in.checked;
  $('modalBookingPhone').hidden=walkIn;form.elements.customer_phone.disabled=walkIn;form.elements.customer_phone.required=!walkIn;
- $('modalBookingMessages').hidden=retro||walkIn;form.elements.appointment_messages_opt_in.disabled=retro||walkIn;
- if(retro||walkIn)form.elements.appointment_messages_opt_in.checked=false;
  $('modalBookingClock').hidden=!manual;form.elements.clock.disabled=!manual;form.elements.clock.required=manual;
  $('modalCompletedFields').hidden=!retro;form.elements.final_total.disabled=!retro;form.elements.final_total.required=retro;form.elements.actual_duration_min.disabled=!retro;
  form.elements.day.max=retro?currentDay():'';
@@ -249,7 +247,7 @@ async function submitProfessionalManual(form,d,val){
  if(actual!==null&&(!Number.isInteger(actual)||actual<1||actual>1440))throw Error('Informe uma duração entre 1 e 1440 minutos.');
  const payload={mode,service_ids,customer_name:val.customer_name.trim(),customer_phone,walk_in:walkIn,
    start_at:localStart(val.day,val.clock),final_total_cents:retro?sharedFields.parseMoney(val.final_total,{required:true,min:0,max:1000000000}):null,
-   actual_duration_min:actual,appointment_messages_opt_in:!retro&&!walkIn&&form.elements.appointment_messages_opt_in.checked,
+   actual_duration_min:actual,
    allow_overlap:mode==='exceptional'&&form.elements.allow_overlap.checked};
  const signature=JSON.stringify(payload);
  if(d.manualReviewSignature!==signature){
@@ -429,7 +427,6 @@ async function submitModal(event){
      d.bookingPayload={
        service_ids,customer_name:val.customer_name,customer_phone:international,
        start_at:slot,idempotency_key:d.key,
-       appointment_messages_opt_in:form.elements.appointment_messages_opt_in.checked,
      };
      freezeBookingForm(form,true);
      await api(base+'/appointments','POST',d.bookingPayload);
@@ -523,9 +520,6 @@ $('modalForm').addEventListener('submit',submitModal);
 $('modalForm').addEventListener('input',event=>{
  if(state.modal?.action==='new-appointment'&&!state.modal.bookingPayload&&event.target.name==='final_total'){state.modal.finalTotalTouched=true;resetProfessionalBookingReview();}
  if(state.modal?.action==='extras'&&event.target.name==='actual_duration_min')resetProfessionalExtrasPreview();
- if(state.modal?.action==='new-appointment'&&!state.modal.bookingPayload&&['customer_name','customer_phone'].includes(event.target.name)){
-   $('modalForm').elements.appointment_messages_opt_in.checked=false;
- }
 });
 document.addEventListener('change',event=>{
  const d=state.modal,el=event.target;if(d?.submitting)return;
