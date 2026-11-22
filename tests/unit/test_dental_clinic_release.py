@@ -117,6 +117,7 @@ def test_dental_workflow_rollout_only_migrates_after_its_backup(monkeypatch, cas
     monkeypatch.setenv("APP_DATABASE_URL", runtime)
     monkeypatch.setattr(workflows, "connection_values", lambda: (raw, make_url(raw)))
     monkeypatch.setattr(workflows, "release_lock", unlocked)
+    monkeypatch.setattr(workflows, "verify_key_provisioning", lambda _: None)
     monkeypatch.setattr(workflows, "predecessor_contract", lambda _: True)
     monkeypatch.setattr(workflows, "storage_values", lambda: {})
     steps = []
@@ -148,3 +149,26 @@ def test_dental_workflow_rollout_only_migrates_after_its_backup(monkeypatch, cas
     monkeypatch.setattr(workflows, "workflows_ready", validate)
     assert workflows.main() == exit_code
     assert steps == expected_steps
+
+
+def test_release_checks_if_a_first_key_can_be_created_without_reading_patient_data(monkeypatch, capsys):
+    from scripts import backup_and_migrate_dental_workflows as workflows
+
+    monkeypatch.delenv("DENTAL_DATA_KEY_B64", raising=False)
+    monkeypatch.setattr(workflows, "ciphertext_exists", lambda _: False)
+    workflows.verify_key_provisioning("synthetic-db")
+    assert '"first_key_allowed": true' in capsys.readouterr().out
+
+    monkeypatch.setattr(workflows, "ciphertext_exists", lambda _: True)
+    with pytest.raises(RuntimeError, match="dental_original_key_required"):
+        workflows.verify_key_provisioning("synthetic-db")
+    assert '"first_key_allowed": false' in capsys.readouterr().out
+
+
+def test_release_rejects_a_malformed_configured_key_without_logging_it(monkeypatch, capsys):
+    from scripts import backup_and_migrate_dental_workflows as workflows
+
+    monkeypatch.setenv("DENTAL_DATA_KEY_B64", "synthetic-invalid-key")
+    with pytest.raises(RuntimeError, match="dental_configured_key_is_invalid"):
+        workflows.verify_key_provisioning("synthetic-db")
+    assert "synthetic-invalid-key" not in capsys.readouterr().out
