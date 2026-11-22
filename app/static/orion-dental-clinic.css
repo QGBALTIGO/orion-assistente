@@ -32,6 +32,16 @@
 .os-dental-entry small{color:var(--os-muted);font-size:12px}
 .os-dental-prosthesis-card{gap:14px}
 .os-dental-prosthesis-card .os-dental-controls{align-self:end}
+.os-dental-work{container:prostheses / inline-size;max-width:1120px;width:100%;box-sizing:border-box}
+.os-dental-work-head{display:flex;align-items:center;justify-content:space-between;gap:8px 16px;flex-wrap:wrap}
+.os-dental-work-filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(11rem,100%),1fr));gap:12px}
+.os-dental-deadline{display:flex;align-items:center;gap:6px 10px;flex-wrap:wrap;font-variant-numeric:tabular-nums}
+.os-dental-prosthesis-card form{display:grid;grid-template-columns:minmax(0,22rem) max-content;justify-content:start;align-items:end}
+.os-dental-prosthesis-card form>*{min-width:0}
+@container prostheses (max-width:480px){
+  .os-dental-prosthesis-card form{grid-template-columns:minmax(0,1fr);justify-content:stretch}
+  .os-dental-prosthesis-card form .os-dental-controls{justify-content:flex-start}
+}
 .os-dental-controls{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
 .os-dental-notice{border:1px solid var(--os-border);background:var(--os-tint);color:var(--os-text);border-radius:12px;padding:12px 14px;font-size:13px;line-height:20px}
 .os-dental-error{border-color:var(--os-danger);background:var(--os-danger-bg);color:var(--os-danger)}
@@ -133,3 +143,31 @@
   .os-cash-values dd{margin:0;text-align:end}
   .os-cash-values .os-cash-long{display:block}
 }
+
+.os-directory{container-type:inline-size}
+.os-directory .os-dental-card,.os-directory-heading{max-width:960px}
+.os-directory-heading{align-items:center;display:flex;flex-wrap:wrap;gap:8px 16px}
+.os-directory .os-dental-field>span,.os-directory-guardian legend{font-weight:600;color:var(--os-text)}
+.os-directory .os-dental-field input,.os-directory .os-button{min-height:44px}
+.os-directory-search{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:10px}
+.os-directory-fields,.os-directory-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.os-directory-fields label:first-child{grid-column:1/-1}
+.os-directory-guardian .os-directory-fields label:first-child{grid-column:auto}
+.os-directory-guardian{min-width:0;border:0;border-top:1px solid var(--os-border);margin:0;padding:14px 0 0}
+.os-directory-guardian legend{padding-right:10px}
+.os-directory-list{display:grid;gap:6px;margin:0;padding:0;list-style:none}
+.os-directory-list .os-dental-patient{text-align:start;padding:11px 14px}
+.os-directory-list .os-dental-patient small{display:block;color:var(--os-muted);font-size:13px}
+.os-directory-list .os-dental-patient svg{flex:none}
+.os-directory-facts{margin:0;padding:2px 0}
+.os-directory-facts dt{color:var(--os-muted);font-size:13px}
+.os-directory-facts dd{margin:3px 0 0;overflow-wrap:anywhere}
+.os-directory [data-patient-status]:empty{display:none}
+.os-directory [data-patient-status][role=alert]{color:var(--os-danger)}
+.os-directory .os-dental-controls{align-items:center;flex-wrap:wrap}
+@container(max-width:540px){
+  .os-directory .os-dental-card{padding:16px}
+  .os-directory-fields,.os-directory-facts{grid-template-columns:minmax(0,1fr)}
+}
+
+.os-dental-workspace .os-sidebar-context{min-height:0}

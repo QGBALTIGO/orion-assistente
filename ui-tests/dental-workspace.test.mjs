@@ -15,15 +15,16 @@ test('a verified dentist business gets a grouped Orion menu with only existing m
   assert.ok(app.classList.contains('os-dental-workspace'));
   const rows=[...h.document.querySelectorAll('#osNav [data-os-route]')];
   const labels=Object.fromEntries(rows.map(el=>[el.dataset.osRoute,el.textContent.trim()]));
-  assert.equal(labels.dashboard,'Início');
-  assert.equal(labels.agenda,'Agenda clínica');
+  assert.equal(labels.dashboard,'Recepção');
+  assert.equal(labels.agenda,'Agenda');
   assert.equal(labels.clientes,'Pacientes');
-  assert.equal(labels.servicos,'Procedimentos');
-  assert.equal(labels.funcionarios,'Equipe clínica');
+  assert.equal(labels.servicos,undefined);
+  assert.equal(labels['ajustes-odonto'],'Ajustes da clínica');
+  assert.equal(labels.funcionarios,undefined);
   assert.equal(labels.inbox,'Conversas');
   assert.equal(rows.filter(el=>el.dataset.osRoute==='clientes').length,1);
-  assert.equal(rows.filter(el=>el.dataset.osRoute==='servicos').length,1);
-  assert.ok([...h.document.querySelectorAll('#osNav .os-nav-section')].some(el=>el.textContent==='Atendimento clínico'));
+  assert.equal(rows.filter(el=>el.dataset.osRoute==='ajustes-odonto').length,1);
+  assert.ok([...h.document.querySelectorAll('#osNav .os-nav-section')].some(el=>el.textContent==='Operação da clínica'));
   assert.equal(h.document.querySelector('#osNav [data-os-route=odontograma]'),null);
   assert.equal(h.document.querySelector('#osNav [data-os-route=prontuarios]'),null);
   assert.equal(app.classList.contains('os-layout-app'),false);
@@ -93,7 +94,7 @@ test('switching quickly between dental routes leaves a consistent single selecti
   const h=await makeSuite({initialRoute:'dashboard',permissions:dentalPlan()});
   t.after(()=>h.close());
   await flush();
-  const routes=['dashboard','agenda','clientes','servicos','funcionarios','financeiro'];
+  const routes=['dashboard','agenda','clientes','ajustes-odonto','financeiro'];
   for(let i=0;i<96;i++)h.click('#osNav [data-os-route='+routes[i%routes.length]+']');
   await flush();await flush();
   await h.window.OrionSuite.open('clientes');await flush();
@@ -350,4 +351,38 @@ test('falha de caixa preserva a agenda e não apresenta dinheiro fictício',asyn
   assert.match(h.document.getElementById('osCashNotice').textContent,/Não foi possível/);
   assert.equal(h.document.querySelectorAll('#osCashAmounts dd').length,0);
   assert.equal(h.document.querySelector('#osReceptionCounts dd').textContent,'2');
+});
+
+
+test('ajustes da clínica abre os campos existentes e conserva um único destino selecionado', async t=>{
+  const h=await makeSuite({initialRoute:'ajustes-odonto',permissions:dentalPlan({dental_clinical_enabled:true})});
+  t.after(()=>h.close());await flush();
+  const main=()=>h.document.querySelector('#page-suite');
+  assert.equal(main().querySelector('h1').textContent,'Ajustes da clínica');
+  assert.equal(h.document.querySelector('#osNav [data-os-route=clinica]').textContent,'Prontuários');
+  assert.equal(h.document.querySelector('#osNav [data-os-route="pacientes-odonto"]').textContent,'Pacientes');
+  assert.equal(h.document.querySelector('#osNav [data-os-route="proteses-odonto"]').textContent,'Controle de próteses');
+  assert.ok(main().querySelector('[data-os-route=clientes]').textContent.includes('Contatos da agenda'));
+  assert.equal(h.calls.some(c=>c.path.includes('/dental/patients')||c.path.includes('/dental/access')),false);
+  h.click('#osPageBody [data-os-route=servicos]');await flush();
+  assert.equal(main().querySelector('h1').textContent,'Procedimentos');
+  assert.equal(h.document.querySelector('#osNav [aria-current=page]').dataset.osRoute,'ajustes-odonto');
+  h.click('#osNav [data-os-route="ajustes-odonto"]');await flush();
+  h.click('[data-os-dental-setting="dental-chairs"]');await flush();
+  assert.ok(h.calls.some(c=>c.path.endsWith('/dental/chair-settings')));
+  h.click('#osNav [data-os-route="ajustes-odonto"]');await flush();
+  h.click('[data-os-dental-setting="dental-access"]');await flush();
+  assert.equal(main().querySelector('h1').textContent,'Acessos clínicos');
+  assert.equal(h.errors.length,0);
+});
+
+test('ajustes não oferece funções privativas à recepção e a barbearia não possui essa rota',async t=>{
+  const editor=await makeSuite({role:'editor',initialRoute:'ajustes-odonto',permissions:dentalPlan({dental_clinical_enabled:true})});
+  t.after(()=>editor.close());await flush();
+  for(const tab of ['dental-chairs','dental-intake','dental-access'])assert.equal(editor.document.querySelector('[data-os-dental-setting="'+tab+'"]'),null);
+  const barber=await makeSuite({initialRoute:'ajustes-odonto',permissions:planState('essencial',{business_niche:'barbearia'})});
+  t.after(()=>barber.close());await flush();
+  assert.equal(barber.document.querySelector('#osNav [data-os-route="ajustes-odonto"]'),null);
+  assert.notEqual(barber.document.querySelector('#page-suite').dataset.osCurrentRoute,'ajustes-odonto');
+  assert.equal(barber.calls.some(c=>c.path.includes('/dental/')),false);
 });

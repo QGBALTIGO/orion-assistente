@@ -264,6 +264,71 @@ test('an assistant cannot open prosthesis records from the worklist',async t=>{
   assert.equal(h.calls.some(call=>call.path.includes('/prostheses')),false);
 });
 
+test('dedicated prosthesis route reads only the worklist, carries both filters through pagination and a status change',async t=>{
+  const id=randomUUID(),cursor=randomUUID(),opened=[];
+  const row={id,patient_id:patient,patient_name:'Paciente sintético',deadline_state:'overdue',
+    content:{status:'working',due_date:'2026-11-01',laboratory:'Laboratório de teste',description:'Coroa sintética'},
+    actions:['delivered']};
+  let updated=false;
+  const h=makeDOM({level:'dentist',canManage:true,prostheses:(url,method)=>{
+    if(method==='PATCH'){updated=true;return {id,status:'delivered'};}
+    const filtered=url.searchParams.get('overdue_only')==='true';
+    if(filtered&&url.searchParams.get('status')==='working'){
+      if(updated)return {items:[],next_cursor:null};
+      return url.searchParams.get('cursor')===cursor?{items:[row],next_cursor:null}:{items:[],next_cursor:cursor};
+    }
+    return {items:[row],next_cursor:null};
+  }});
+  t.after(()=>h.close());
+  await h.mount({dedicatedProstheses:true,openProsthesisPatient:id=>opened.push(id)});
+  assert.deepEqual(h.calls.map(call=>call.path.split('/').pop()),['access','prostheses']);
+  assert.match(h.host.textContent,/Em atraso/);
+  const change=(name,value)=>{
+    const select=h.host.querySelector('[name="'+name+'"]');select.focus();select.value=value;
+    select.dispatchEvent(new h.window.Event('change',{bubbles:true}));
+  };
+  change('prosthesis_filter','working');await flush();
+  change('prosthesis_deadline','overdue');await flush();
+  assert.equal(h.window.document.activeElement.name,'prosthesis_deadline');
+  assert.match(h.host.textContent,/Há mais trabalhos para consultar/);
+  assert.doesNotMatch(h.host.textContent,/Nenhum trabalho em atraso/);
+  h.click('[data-dental-action=prosthesis-more]');await flush();
+  h.click('[data-dental-action=open-prosthesis-patient]');await flush();
+  assert.deepEqual(opened,[patient]);
+  assert.ok(h.calls.every(call=>!call.path.includes('/patients')));
+  h.fill('[name="prosthesis_step_'+id+'"]','delivered');h.submit('[data-dental-form=prosthesis-step]');await flush();
+  assert.ok(updated);
+  assert.equal(h.host.querySelector('[name=prosthesis_deadline]').value,'overdue');
+  assert.equal(h.host.querySelector('[name=prosthesis_filter]').value,'working');
+  assert.match(h.host.textContent,/Nenhum trabalho em atraso/);
+});
+
+test('worklist direct entry denies assistants and owners without a clinical grant before fetching records',async t=>{
+  for(const level of [null,'assistant']){
+    const h=makeDOM({level,canManage:true});t.after(()=>h.close());
+    await h.mount({dedicatedProstheses:true});
+    assert.match(h.host.textContent,/requer acesso clínico de dentista/);
+    assert.deepEqual(h.calls.map(call=>call.path.split('/').pop()),['access']);
+  }
+});
+
+test('a delayed overdue response cannot replace the subsequently selected deadline filter',async t=>{
+  let resolveOverdue;
+  const h=makeDOM({level:'dentist',prostheses:url=>url.searchParams.has('overdue_only')?
+    new Promise(resolve=>{resolveOverdue=resolve;}):{items:[],next_cursor:null}});
+  t.after(()=>h.close());
+  await h.mount({dedicatedProstheses:true});
+  for(const value of ['overdue','']){
+    const select=h.host.querySelector('[name=prosthesis_deadline]');select.value=value;
+    select.dispatchEvent(new h.window.Event('change',{bubbles:true}));await flush();
+  }
+  resolveOverdue({items:[{id:randomUUID(),patient_id:patient,patient_name:'Resposta antiga',
+    content:{status:'working',description:'Registro anterior',laboratory:'Laboratório'},actions:[]}],next_cursor:null});
+  await flush();
+  assert.equal(h.host.querySelector('[name=prosthesis_deadline]').value,'');
+  assert.doesNotMatch(h.host.textContent,/Resposta antiga/);
+});
+
 test('failed patient lookup from the worklist does not expose the previously open chart',async t=>{
   const differentPatient=randomUUID();
   const id=randomUUID();
@@ -360,4 +425,51 @@ test('an owner without a clinical grant can open stock without reading a patient
   assert.equal(h.calls.length,2);
   assert.ok(h.calls[0].path.endsWith('/access')&&h.calls[1].path.includes('/supplies?'));
   assert.equal(h.host.querySelector('[data-dental-form=record]'),null);
+});
+
+test('o diretório exige concessão e não carrega cadastros de um proprietário sem ela',async t=>{
+  const h=makeDOM();t.after(()=>h.close());
+  const paths=[];let opened=0;
+  await h.window.OrionDentalDirectory.mount({host:h.host,tenantId:tenant,canAccess:()=>true,canWrite:()=>true,
+    startNew:true,openAccess:()=>opened++,request:async path=>{
+      paths.push(path);return {can_manage:true,clinical_access:null,can_read_records:false};
+    }});
+  assert.equal(h.host.querySelector('[data-patient-editor]'),null);
+  assert.ok(paths.every(path=>path.endsWith('/dental/access')));
+  h.click('[data-patient-action=access]');assert.equal(opened,1);
+});
+
+test('a página de pacientes pesquisa no corpo da requisição e descarta resultados antigos',async t=>{
+  const h=makeDOM();t.after(()=>h.close());
+  const requests=[];let finishOld;
+  await h.window.OrionDentalDirectory.mount({host:h.host,tenantId:tenant,canAccess:()=>true,canWrite:()=>true,
+    request:async(path,method,options)=>{
+      requests.push({path,method,options});
+      if(path.endsWith('/access'))return {clinical_access:{level:'assistant'}};
+      if(options.query==='Anterior')return new Promise(resolve=>finishOld=()=>resolve({items:[patientDTO],has_more:false}));
+      if(options.query==='Atual')return {items:[],has_more:false};
+      return {items:[patientDTO],has_more:options.offset===0};
+    }});
+  h.click('[data-patient-action=next]');await flush();assert.equal(requests.at(-1).options.offset,25);
+  h.fill('[name=query]','Anterior');h.submit('[data-patient-search]');await flush();
+  h.fill('[name=query]','Atual');h.submit('[data-patient-search]');await flush();
+  finishOld();await flush();
+  assert.match(h.host.textContent,/Nenhum paciente corresponde à busca/);
+  assert.doesNotMatch(h.host.textContent,/Paciente de teste/);
+  assert.ok(requests.slice(1).every(x=>x.method==='POST'&&x.path.endsWith('/patients/search')));
+});
+
+test('um dentista abre os dados cadastrais antes de decidir entrar no prontuário',async t=>{
+  const h=makeDOM();t.after(()=>h.close());
+  const paths=[];let selected;
+  await h.window.OrionDentalDirectory.mount({host:h.host,tenantId:tenant,canAccess:()=>true,canWrite:()=>true,
+    openRecords:id=>selected=id,request:async path=>{
+      paths.push(path);if(path.endsWith('/access'))return {clinical_access:{level:'dentist'},can_read_records:true};
+      if(path.endsWith('/search'))return {items:[patientDTO],has_more:false};
+      return patientDTO;
+    }});
+  h.click('[data-patient-id]');await flush();
+  h.click('[data-patient-action=records]');
+  assert.equal(selected,patient);
+  assert.ok(paths.every(path=>!path.includes('/records')&&!path.includes('/exams')));
 });

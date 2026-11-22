@@ -34,6 +34,8 @@ on:
       - 'ui-tests/dental-reception-browser.py'
       - 'ui-tests/dental-visit-links-browser.py'
       - 'ui-tests/dental-stock-browser.py'
+      - 'ui-tests/dental-directory-browser.py'
+      - 'ui-tests/dental-prostheses-browser.py'
       - 'ui-tests/dashboard-today-preview.test.mjs'
       - 'ui-tests/professional-portal.test.mjs'
       - 'deploy/Dockerfile.dental-workflows'
@@ -111,7 +113,7 @@ jobs:
         run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
       - name: Testar a interface e regressões
         run: node --test ui-tests/dental-clinic.test.mjs ui-tests/dental-workspace.test.mjs ui-tests/dental-patient-journey.test.mjs ui-tests/customer-form.test.mjs ui-tests/professional-portal.test.mjs ui-tests/agenda-lifecycle.test.mjs ui-tests/dashboard-today-preview.test.mjs ui-tests/dashboard-finance-goals.test.mjs ui-tests/onboarding-dashboard-link.test.mjs
-      - name: Validar recepção, ficha e estoque em celular, tablet e desktop
+      - name: Validar recepção, ficha, estoque e próteses em celular, tablet e desktop
         env:
           ORION_TEST_CHROME: /usr/bin/google-chrome
         run: |
@@ -119,6 +121,9 @@ jobs:
           python ui-tests/dental-reception-browser.py
           python ui-tests/dental-visit-links-browser.py
           python ui-tests/dental-stock-browser.py
+          python ui-tests/dental-directory-browser.py
+          python ui-tests/dental-prostheses-browser.py
+          python ui-tests/dental-navigation-browser.py
       - uses: actions/upload-artifact@v4
         with:
           name: odontologia-recepcao-visual
