@@ -201,6 +201,23 @@ class ProsthesisTransition(Strict):
     entry_key: str = Field(min_length=8, max_length=120, pattern=r"^[a-zA-Z0-9._:-]+$")
 
 
+class LaboratoryCreate(Strict):
+    name: str = Field(min_length=2, max_length=120)
+    phone: str | None = Field(None, max_length=30, pattern=r"^\+?[0-9 ()-]+$")
+
+    @field_validator("phone")
+    @classmethod
+    def phone_digits(cls, value):
+        if value is not None and not 8 <= sum(char.isdigit() for char in value) <= 15:
+            raise ValueError("Telefone do laboratório inválido")
+        return value
+
+
+class LaboratoryUpdate(LaboratoryCreate):
+    active: bool = Field(strict=True)
+    expected_version: int = Field(ge=1, strict=True)
+
+
 class Insurance(Strict):
     insurer: str = Field(min_length=2,max_length=120)
     plan: str | None = Field(None,max_length=160)

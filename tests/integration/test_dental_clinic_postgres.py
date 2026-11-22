@@ -101,7 +101,7 @@ async def clinic_db():
                "room_a2":room_a2,"when":when}
     finally:
         async with migrator.begin() as db:
-            for tbl in ("dental_access_audit","dental_intake_templates","dental_room_reservations",
+            for tbl in ("dental_access_audit","dental_laboratories","dental_intake_templates","dental_room_reservations",
                         "dental_exam_files","dental_records","dental_supply_movements",
                         "dental_supplies","dental_patients","dental_rooms",
                         "dental_clinicians","appointment_history","appointment_items",
@@ -922,3 +922,60 @@ async def test_first_key_preflight_reads_presence_only_with_verified_migrator_sc
         """), {"tenant": d["b"], "patient": d["patient_b"], "cipher": b"x" * 17,
                "nonce": b"x" * 12, "digest": "0" * 64, "author": d["account_b"]})
     assert ciphertext_exists(migration_url) is True
+
+
+@pytest.mark.asyncio
+async def test_laboratory_directory_is_private_versioned_and_keeps_prior_clinical_text(clinic_api_db):
+    import httpx
+    from fastapi import FastAPI
+    from app.catalog_api import Actor, authenticate
+    from app.dental_clinic_api import router
+
+    d = clinic_api_db
+    app = FastAPI()
+    app.include_router(router)
+    actor = Actor("member", d["a"], d["account"], "owner")
+    app.dependency_overrides[authenticate] = lambda: actor
+    base = f"/api/v1/tenants/{d['a']}/dental"
+    other = f"/api/v1/tenants/{d['b']}/dental/laboratories"
+    directory = base + "/laboratories"
+    initial = {"name": "Laboratório Sintético", "phone": "(67) 99999-0000"}
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
+                                 base_url="http://test.invalid") as client:
+        created = await client.post(directory, json=initial)
+        assert created.status_code == 201, created.text
+        lab_id = created.json()["id"]
+        item = f"{directory}/{lab_id}"
+        duplicate = await client.post(directory, json={**initial, "name": "laboratório sintético"})
+        assert duplicate.status_code == 409
+        assert (await client.post(directory, json={"name":"Inválido", "phone":"--------"})).status_code == 422
+
+        records = f"{base}/patients/{d['patient_a']}/records"
+        written = await client.post(records, json={"kind":"prosthesis", "entry_key":"synthetic-lab-snapshot",
+            "content":{"laboratory":initial["name"], "description":"Prótese fictícia"}})
+        assert written.status_code == 201, written.text
+
+        update = {"name": "Laboratório Revisado", "phone": None, "active": False, "expected_version": 1}
+        edited = await client.patch(item, json=update)
+        assert edited.status_code == 200, edited.text
+        assert edited.json()["version"] == 2 and edited.json()["active"] is False
+        assert (await client.patch(item, json=update)).json()["version"] == 2
+        assert (await client.patch(item, json={**update, "active": True})).status_code == 409
+        live = await client.patch(item, json={**update, "active": True, "expected_version": 2})
+        assert live.json()["version"] == 3 and live.json()["active"] is True
+        assert (await client.get(records)).json()["items"][0]["content"]["laboratory"] == initial["name"]
+
+        actor = Actor("member", d["a"], d["assistant"], "editor")
+        assert (await client.get(directory)).status_code == 403
+        actor = Actor("member", d["b"], d["account_b"], "owner")
+        assert (await client.get(directory)).status_code == 403
+        assert (await client.get(other)).json() == {"items": []}
+        assert (await client.patch(f"{other}/{lab_id}", json=update)).status_code == 404
+
+    factory = async_sessionmaker(d["runtime"], expire_on_commit=False)
+    async with factory() as db:
+        async with tenant_transaction(db, d["a"]):
+            assert await db.scalar(text("SELECT count(*) FROM dental_laboratories")) == 0
+            await db.execute(text("SELECT set_config('app.dental_actor',:actor,true)"),
+                             {"actor": str(d["assistant"])})
+            assert await db.scalar(text("SELECT count(*) FROM dental_laboratories")) == 0

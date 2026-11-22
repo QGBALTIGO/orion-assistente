@@ -30,7 +30,8 @@ from app.plan_permissions import plan_state
 from app.tenant_access import resolve_tenant_access
 from app.dental_clinic_schemas import (
     ClinicianGrant, PatientCreate, PatientPatch, RecordCreate,
-    IntakeTemplateCreate, IntakeTemplateUpdate, ProsthesisStatus, ProsthesisTransition,
+    IntakeTemplateCreate, IntakeTemplateUpdate, LaboratoryCreate, LaboratoryUpdate,
+    ProsthesisStatus, ProsthesisTransition,
     RoomCreate, RoomRename, RoomAssign, ChairAvailability, SupplyCreate, SupplyMove, ExamUpload
 )
 
@@ -543,6 +544,60 @@ async def advance_prosthesis(tenant_id: UUID, record_id: UUID, payload: Prosthes
         identity = await save_clinical_record(db, tenant_id, patient, actor, grant["professional_id"],
                                               "prosthesis", next_content, payload.entry_key, previous=record_id)
         return {"id": identity, "status": payload.status}
+
+
+@router.get("/laboratories")
+async def dental_laboratories(tenant_id: UUID, actor: Actor = Depends(authenticate)):
+    async with clinical_session(tenant_id, actor, dentist=True) as (db, _):
+        rows = (await db.execute(text("""
+            SELECT id,name,phone,active,version FROM dental_laboratories
+            WHERE tenant_id=:tenant ORDER BY lower(name),id
+        """), {"tenant": tenant_id})).mappings().all()
+        return {"items": [dict(row) for row in rows]}
+
+
+@router.post("/laboratories", status_code=201)
+async def create_laboratory(tenant_id: UUID, payload: LaboratoryCreate, actor: Actor = Depends(authenticate)):
+    async with clinical_session(tenant_id, actor, write=True, dentist=True) as (db, _):
+        try:
+            async with db.begin_nested():
+                saved = (await db.execute(text("""
+                    INSERT INTO dental_laboratories (tenant_id,name,phone)
+                    VALUES (:tenant,:name,:phone) RETURNING id,name,phone,active,version
+                """), {"tenant": tenant_id, **payload.model_dump()})).mappings().one()
+        except IntegrityError:
+            raise HTTPException(409, "Já existe um laboratório com esse nome") from None
+        await audit(db, tenant_id, actor, "laboratory_created")
+        return dict(saved)
+
+
+@router.patch("/laboratories/{laboratory_id}")
+async def edit_laboratory(tenant_id: UUID, laboratory_id: UUID, payload: LaboratoryUpdate,
+                          actor: Actor = Depends(authenticate)):
+    async with clinical_session(tenant_id, actor, write=True, dentist=True) as (db, _):
+        scope = {"tenant": tenant_id, "id": laboratory_id}
+        current = (await db.execute(text("""
+            SELECT id,name,phone,active,version FROM dental_laboratories
+            WHERE tenant_id=:tenant AND id=:id FOR UPDATE
+        """), scope)).mappings().one_or_none()
+        if current is None:
+            raise HTTPException(404, "Laboratório não encontrado")
+        changes = payload.model_dump(exclude={"expected_version"})
+        if all(current[key] == value for key, value in changes.items()):
+            return dict(current)
+        if current["version"] != payload.expected_version:
+            raise HTTPException(409, "O cadastro mudou. Confira a versão atual.")
+        try:
+            async with db.begin_nested():
+                saved = (await db.execute(text("""
+                    UPDATE dental_laboratories SET name=:name,phone=:phone,active=:active,version=version+1
+                    WHERE tenant_id=:tenant AND id=:id
+                    RETURNING id,name,phone,active,version
+                """), {**scope, **changes})).mappings().one()
+        except IntegrityError:
+            raise HTTPException(409, "Já existe um laboratório com esse nome") from None
+        await audit(db, tenant_id, actor, "laboratory_updated")
+        return dict(saved)
 
 
 async def read_chairs(db, tenant):

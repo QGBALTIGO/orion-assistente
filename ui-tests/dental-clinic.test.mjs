@@ -32,6 +32,8 @@ const response=(path,method='GET',data,config)=>{
     return config.supplyHistory?.(new URL(path,'https://orion.test').searchParams)||{items:[],next_cursor:null};
   if(path.includes('/dental/prostheses'))
     return config.prostheses?.(new URL(path,'https://orion.test'),method,data)||{items:[],next_cursor:null};
+  if(path.includes('/dental/laboratories'))
+    return config.laboratories?.(path,method,data)||{items:[]};
   return {items:[]};
 };
 function makeDOM(config={}){
@@ -276,4 +278,37 @@ test('failed patient lookup from the worklist does not expose the previously ope
   assert.match(h.host.textContent,/Resposta não corresponde ao paciente selecionado/);
   assert.equal(h.host.querySelector('[data-dental-form=record]'),null);
   assert.equal(h.host.querySelector('[data-dental-tab=prosthesis]'),null);
+});
+
+test('laboratories are reusable after registration and inactive entries stop being suggested',async t=>{
+  const id=randomUUID(),otherId=randomUUID();
+  const initial=[{id:otherId,name:'Laboratório ativo de exemplo',phone:null,active:true,version:1}];
+  const h=makeDOM({level:'dentist',laboratories:(_path,method,data)=>{
+    if(method==='POST')return {id,...data,active:true,version:1};
+    if(method==='PATCH')return {id,name:data.name,phone:data.phone,active:data.active,version:2};
+    return {items:initial};
+  }});
+  t.after(()=>h.close());
+  await h.mount();await flush();
+  h.click('[data-dental-action=section-prostheses]');await flush();
+  h.click('[data-dental-action=section-laboratories]');await flush();
+  h.fill('[name=laboratory_name]','Laboratório recém-cadastrado');
+  h.fill('[name=laboratory_phone]','(67) 99999-0000');
+  h.submit('[data-dental-form=laboratory]');await flush();
+  assert.match(h.host.textContent,/Laboratório recém-cadastrado/);
+  assert.equal(h.calls.find(call=>call.method==='POST').data.name,'Laboratório recém-cadastrado');
+  h.click('[data-dental-action=edit-laboratory][data-id="'+id+'"]');
+  h.fill('[name=laboratory_active]','false');
+  h.submit('[data-dental-form=laboratory]');await flush();
+  const change=h.calls.find(call=>call.method==='PATCH');
+  assert.equal(change.data.expected_version,1);
+  assert.equal(change.data.active,false);
+  assert.match(h.host.textContent,/Inativo/);
+
+  h.click('[data-dental-action=section-patients]');await flush();
+  h.click('[data-dental-action=select-patient]');await flush();
+  h.click('[data-dental-tab=prosthesis]');await flush();
+  const optionValues=Array.from(h.host.querySelectorAll('#dental-laboratory-options option')).map(o=>o.value);
+  assert.deepEqual(optionValues,['Laboratório ativo de exemplo']);
+  assert.equal(h.host.querySelector('[name=laboratory]').getAttribute('list'),'dental-laboratory-options');
 });
