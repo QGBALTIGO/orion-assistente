@@ -101,7 +101,7 @@ async def clinic_db():
                "room_a2":room_a2,"when":when}
     finally:
         async with migrator.begin() as db:
-            for tbl in ("dental_access_audit","dental_room_reservations",
+            for tbl in ("dental_access_audit","dental_intake_templates","dental_room_reservations",
                         "dental_exam_files","dental_records","dental_supply_movements",
                         "dental_supplies","dental_patients","dental_rooms",
                         "dental_clinicians","appointment_history","appointment_items",
@@ -522,6 +522,51 @@ async def test_chair_inactivation_preserves_reservations_and_serializes_with_boo
             client.patch(second, json={"active": False}),
         ), timeout=15)
         assert sorted([booked.status_code, retired.status_code]) == [200, 409]
+
+
+@pytest.mark.asyncio
+async def test_intake_configuration_is_versioned_and_private(clinic_api_db):
+    import httpx
+    from fastapi import FastAPI
+    from app.catalog_api import Actor, authenticate
+    from app.dental_clinic_api import router
+
+    d = clinic_api_db
+    app = FastAPI()
+    app.include_router(router)
+    actor = Actor("member", d["a"], d["account"], "owner")
+    app.dependency_overrides[authenticate] = lambda: actor
+    base = f"/api/v1/tenants/{d['a']}/dental/intake-templates"
+    other = f"/api/v1/tenants/{d['b']}/dental/intake-templates"
+    question = {"prompt": "Pergunta sintética de teste", "active": True}
+    payload = {"name": "Modelo sintético", "questions": [question]}
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
+                                 base_url="http://test.invalid") as client:
+        assert (await client.get(base)).json() == {"items": []}
+        duplicate = await client.post(base, json={**payload, "questions": [question, question]})
+        assert duplicate.status_code == 422
+        assert question["prompt"] not in duplicate.text
+        c = await client.post(base, json=payload)
+        assert c.status_code == 201, c.text
+        template_path = base + "/" + c.json()["id"]
+        assert (await client.post(base, json=payload)).status_code == 409
+        updated_payload = {**payload, "name": "Modelo revisado", "expected_version": 1}
+        updated = await client.patch(template_path, json=updated_payload)
+        assert updated.status_code == 200 and updated.json()["version"] == 2
+        assert (await client.patch(template_path, json=updated_payload)).json()["version"] == 2
+        assert (await client.patch(template_path, json={**updated_payload, "name": "Versão antiga"})).status_code == 409
+        assert (await client.get(other)).status_code == 403
+        actor = Actor("member", d["b"], d["account_b"], "owner")
+        assert (await client.get(other)).json() == {"items": []}
+        assert (await client.patch(other+"/"+c.json()["id"], json=updated_payload)).status_code == 404
+        actor = Actor("member", d["a"], d["assistant"], "editor")
+        assert (await client.get(base)).status_code == 403
+
+    factory = async_sessionmaker(d["runtime"], expire_on_commit=False)
+    async with factory() as db:
+        async with tenant_transaction(db, d["a"]):
+            templates = (await db.execute(text("SELECT count(*) FROM dental_intake_templates"))).scalar_one()
+            assert templates == 0
 
 
 @pytest.mark.asyncio

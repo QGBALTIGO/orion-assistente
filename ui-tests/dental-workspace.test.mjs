@@ -189,3 +189,39 @@ test('inativação exige confirmação e o filtro mostra ativas e inativas',asyn
   assert.match(h.document.getElementById('osPageBody').textContent,/Nenhuma cadeira nesta situação/);
   assert.equal(h.errors.length,0);
 });
+
+test('modelos de anamnese preservam a ordem das perguntas, a situação e a versão',async t=>{
+  let template;
+  const h=await makeSuite({initialRoute:'configuracoes',
+    permissions:dentalPlan({dental_clinical_enabled:true}),respond:(path,method,body)=>{
+      if(path.endsWith('/dental/intake-templates')){
+        if(method==='GET')return {items:template?[template]:[]};
+        template={id:'10000000-0000-4000-8000-000000000007',version:1,...body};return template;
+      }
+      if(path.endsWith('/dental/intake-templates/'+template?.id)&&method==='PATCH'){
+        assert.equal(body.expected_version,1);
+        template={id:template.id,name:body.name,questions:body.questions,version:2};
+        return template;
+      }
+      return [];
+    }});
+  t.after(()=>h.close());await flush();
+  h.click('[data-os-settings=dental-intake]');await flush();
+  assert.match(h.document.getElementById('osPageBody').textContent,/Nenhum modelo de anamnese/);
+  h.click('[data-os-action=dental-intake-new]');
+  h.fill('[data-os-form=dental-intake] input[name=name]','Modelo sintético');
+  h.fill('#osIntakeQuestions [name=prompt]','Pergunta sintética A');
+  h.click('[data-os-action=dental-intake-add-question]');
+  h.fill('#osIntakeQuestions > :last-child [name=prompt]','Pergunta sintética B');
+  h.click('#osIntakeQuestions > :last-child [name=question_active]');
+  h.submit('[data-os-form=dental-intake]');await flush();
+  assert.deepEqual(JSON.parse(JSON.stringify(template.questions)),
+    [{prompt:'Pergunta sintética A',active:true},{prompt:'Pergunta sintética B',active:false}]);
+  assert.match(h.document.getElementById('osPageBody').textContent,/1 pergunta ativa/);
+  h.click('[data-os-action=dental-intake-edit]');
+  h.fill('[data-os-form=dental-intake] input[name=name]','Modelo revisado');
+  h.submit('[data-os-form=dental-intake]');await flush();
+  assert.equal(template.version,2);
+  assert.match(h.document.getElementById('osPageBody').textContent,/Modelo revisado/);
+  assert.equal(h.errors.length,0);
+});

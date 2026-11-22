@@ -29,7 +29,7 @@ from app.plan_permissions import plan_state
 from app.tenant_access import resolve_tenant_access
 from app.dental_clinic_schemas import (
     ClinicianGrant, PatientCreate, PatientPatch, RecordCreate,
-    RoomCreate, RoomRename, RoomAssign, ChairAvailability, SupplyCreate, SupplyMove, ExamUpload
+    IntakeTemplateCreate, IntakeTemplateUpdate, RoomCreate, RoomRename, RoomAssign, ChairAvailability, SupplyCreate, SupplyMove, ExamUpload
 )
 
 
@@ -164,7 +164,7 @@ async def clinical_session(tenant: UUID, actor: Actor, *, write=False, dentist=F
 
 
 @asynccontextmanager
-async def owner_session(tenant: UUID, actor: Actor):
+async def owner_session(tenant: UUID, actor: Actor, *, feature=None):
     if (actor.role != "member" or actor.maintenance or actor.tenant_id != tenant
             or actor.membership_role != "owner" or not isinstance(actor.account_id,UUID)):
         raise HTTPException(403,"Somente o proprietário da clínica pode configurar acessos clínicos.")
@@ -173,7 +173,9 @@ async def owner_session(tenant: UUID, actor: Actor):
         raise HTTPException(403,"Vínculo do proprietário não confirmado")
     async with get_session_factory()() as db:
         async with tenant_transaction(db,tenant):
-            await verify_dental_plan(db,tenant)
+            plan = await verify_dental_plan(db, tenant)
+            if feature and not plan["permissions"].get(feature):
+                raise HTTPException(403, "O plano não permite configurar este recurso")
             await db.execute(text("SELECT set_config('app.dental_actor',:actor,true)"),
                              {"actor":str(actor.account_id)})
             yield db
@@ -446,13 +448,13 @@ async def add_dental_room(tenant_id: UUID, payload: RoomCreate, actor: Actor = D
 
 @router.get("/chair-settings")
 async def list_chair_settings(tenant_id: UUID, actor: Actor = Depends(authenticate)):
-    async with owner_session(tenant_id, actor) as db:
+    async with owner_session(tenant_id, actor, feature="settings.manage") as db:
         return await read_chairs(db, tenant_id)
 
 
 @router.post("/chair-settings", status_code=201)
 async def create_chair_settings(tenant_id: UUID, payload: RoomCreate, actor: Actor = Depends(authenticate)):
-    async with owner_session(tenant_id, actor) as db:
+    async with owner_session(tenant_id, actor, feature="settings.manage") as db:
         return await create_chair(db, tenant_id, actor, payload.name)
 
 
@@ -470,7 +472,7 @@ async def chair_for_update(db, tenant, room_id):
 async def rename_chair_settings(
     tenant_id: UUID, room_id: UUID, payload: RoomRename, actor: Actor = Depends(authenticate)
 ):
-    async with owner_session(tenant_id, actor) as db:
+    async with owner_session(tenant_id, actor, feature="settings.manage") as db:
         params = {"tenant": tenant_id, "id": room_id, "name": payload.name}
         chair = await chair_for_update(db, tenant_id, room_id)
         if chair["name"] == payload.name:
@@ -493,7 +495,7 @@ async def rename_chair_settings(
 async def change_chair_availability(
     tenant_id: UUID, room_id: UUID, payload: ChairAvailability, actor: Actor = Depends(authenticate)
 ):
-    async with owner_session(tenant_id, actor) as db:
+    async with owner_session(tenant_id, actor, feature="settings.manage") as db:
         chair = await chair_for_update(db, tenant_id, room_id)
         if chair["active"] == payload.active:
             return dict(chair)
@@ -514,6 +516,68 @@ async def change_chair_availability(
             RETURNING id,name,active
         """), params)).mappings().one()
         await audit(db, tenant_id, actor, "room_activated" if payload.active else "room_inactivated")
+        return dict(updated)
+
+
+@router.get("/intake-templates")
+async def list_intake_templates(tenant_id: UUID, actor: Actor = Depends(authenticate)):
+    async with owner_session(tenant_id, actor, feature="settings.manage") as db:
+        templates = (await db.execute(text("""
+            SELECT id,name,questions,version FROM dental_intake_templates
+            WHERE tenant_id=:tenant ORDER BY lower(name),id
+        """), {"tenant": tenant_id})).mappings().all()
+        return {"items": [dict(template) for template in templates]}
+
+
+@router.post("/intake-templates", status_code=201)
+async def create_intake_template(
+    tenant_id: UUID, payload: IntakeTemplateCreate, actor: Actor = Depends(authenticate)
+):
+    async with owner_session(tenant_id, actor, feature="settings.manage") as db:
+        values = {"tenant": tenant_id, "name": payload.name,
+                  "questions": json.dumps(payload.model_dump(mode="json")["questions"])}
+        try:
+            async with db.begin_nested():
+                created = (await db.execute(text("""
+                    INSERT INTO dental_intake_templates (tenant_id,name,questions)
+                    VALUES (:tenant,:name,CAST(:questions AS jsonb))
+                    RETURNING id,name,questions,version
+                """), values)).mappings().one()
+        except IntegrityError:
+            raise HTTPException(409, "Já existe um modelo com esse nome") from None
+        await audit(db, tenant_id, actor, "intake_template_created")
+        return dict(created)
+
+
+@router.patch("/intake-templates/{template_id}")
+async def update_intake_template(
+    tenant_id: UUID, template_id: UUID, payload: IntakeTemplateUpdate,
+    actor: Actor = Depends(authenticate)
+):
+    async with owner_session(tenant_id, actor, feature="settings.manage") as db:
+        values = {"tenant": tenant_id, "id": template_id}
+        current = (await db.execute(text("""
+            SELECT id,name,questions,version FROM dental_intake_templates
+            WHERE tenant_id=:tenant AND id=:id FOR UPDATE
+        """), values)).mappings().one_or_none()
+        if not current:
+            raise HTTPException(404, "Modelo de anamnese não encontrado")
+        questions = payload.model_dump(mode="json")["questions"]
+        if current["name"] == payload.name and current["questions"] == questions:
+            return dict(current)
+        if current["version"] != payload.expected_version:
+            raise HTTPException(409, "O modelo mudou. Reabra a edição para conferir.")
+        try:
+            async with db.begin_nested():
+                updated = (await db.execute(text("""
+                    UPDATE dental_intake_templates
+                    SET name=:name,questions=CAST(:questions AS jsonb),version=version+1
+                    WHERE tenant_id=:tenant AND id=:id
+                    RETURNING id,name,questions,version
+                """), {**values, "name": payload.name, "questions": json.dumps(questions)})).mappings().one()
+        except IntegrityError:
+            raise HTTPException(409, "Já existe um modelo com esse nome") from None
+        await audit(db, tenant_id, actor, "intake_template_updated")
         return dict(updated)
 
 

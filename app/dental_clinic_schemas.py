@@ -232,6 +232,29 @@ class RoomAssign(Strict):
     room_id: UUID
 
 
+class IntakeQuestion(Strict):
+    prompt: str = Field(min_length=2, max_length=240)
+    active: bool = Field(default=True, strict=True)
+
+
+class IntakeTemplateCreate(Strict):
+    name: str = Field(min_length=2, max_length=80)
+    questions: list[IntakeQuestion] = Field(min_length=1, max_length=50)
+
+    @model_validator(mode="after")
+    def validate_questions(self):
+        prompts = {question.prompt.casefold() for question in self.questions}
+        if len(prompts) != len(self.questions):
+            raise ValueError("Use perguntas distintas")
+        if not any(question.active for question in self.questions):
+            raise ValueError("Mantenha pelo menos uma pergunta ativa")
+        return self
+
+
+class IntakeTemplateUpdate(IntakeTemplateCreate):
+    expected_version: int = Field(ge=1, strict=True)
+
+
 class SupplyCreate(Strict):
     name: str = Field(min_length=2,max_length=120)
     unit: Literal["unit","box","ml","g","kit"]

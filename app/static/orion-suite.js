@@ -117,9 +117,9 @@
   const fallbackRoute=()=>subscriptionWorkspace()?'dashboard':'plano';
   const permitted=feature=>!feature||platformWorkspace()||(!subscriptionWorkspace()||['account.manage','business.setup','devices.manage','chatbot.manage','templates.manage','sent_messages.manage','diagnostics.manage','campaigns.manage','scheduled_messages.manage','bulk_messages.manage','direct_messages.manage','whatsapp_guidance.view','group_contacts.manage','group_add.manage'].includes(feature))&&state.entitlements?.permissions?.[feature]===true;
   const routePermitted=route=>route==='clinica'?(dentalWorkspace()&&state.entitlements?.dental_clinical_enabled===true&&['owner','editor'].includes(tenant()?.role)&&permitted('clients.manage')):route==='perfil'?appLayoutEnabled():['aquecimento','evitar-banimento','resolver-banimento','extrator-contatos','adicionar-ao-grupo'].includes(route)?(subscriptionWorkspace()&&tenant()?.role==='owner'&&tenant()?.status==='active'&&permitted(routeFeatures[route])):['dispositivos','chatbot','testar-chatbot','templates','mensagens-enviadas','diagnosticos','campanhas','programadas','massa','enviar-mensagem'].includes(route)?(subscriptionWorkspace()&&permitted(routeFeatures[route])):subscriptionWorkspace()?(route==='configuracoes'?permitted('account.manage'):subscriptionRoutes.has(route)):route==='configuracoes'?(permitted('settings.manage')||permitted('business.setup')||permitted('account.manage')):permitted(routeFeatures[route]);
-  const dentalChairSettingsAllowed=()=>dentalWorkspace()&&state.entitlements?.dental_clinical_enabled===true&&
+  const dentalSettingsAllowed=()=>dentalWorkspace()&&state.entitlements?.dental_clinical_enabled===true&&
     state.bridge.user?.role==='member'&&!state.bridge.user?.maintenance?.active&&tenant()?.role==='owner'&&permitted('settings.manage');
-  const settingsTabAllowed=tab=>tab==='dental-chairs'?dentalChairSettingsAllowed():subscriptionWorkspace()?['appearance','account'].includes(tab):tab==='finance'?permitted('finance.basic'):['appearance','account'].includes(tab)||tab==='general'?(tab!=='general'||permitted('business.setup')||permitted('settings.manage')):tab==='ai'?(permitted('marketing.ai')||permitted('consultant.ai')):tab==='whatsapp'?permitted('conversations.manual'):tab==='hours'?permitted('agenda.manage'):tab==='calendar'?permitted('calendar.manage'):tab==='notifications'?permitted('notifications.basic'):tab==='site-requests'?canManageSiteRequests():platformWorkspace();
+  const settingsTabAllowed=tab=>['dental-chairs','dental-intake'].includes(tab)?dentalSettingsAllowed():subscriptionWorkspace()?['appearance','account'].includes(tab):tab==='finance'?permitted('finance.basic'):['appearance','account'].includes(tab)||tab==='general'?(tab!=='general'||permitted('business.setup')||permitted('settings.manage')):tab==='ai'?(permitted('marketing.ai')||permitted('consultant.ai')):tab==='whatsapp'?permitted('conversations.manual'):tab==='hours'?permitted('agenda.manage'):tab==='calendar'?permitted('calendar.manage'):tab==='notifications'?permitted('notifications.basic'):tab==='site-requests'?canManageSiteRequests():platformWorkspace();
   const atProfessionalLimit=()=>!platformWorkspace()&&Number.isInteger(state.entitlements?.limits?.max_professionals)&&Number(state.entitlements.limits.active_professionals)>=state.entitlements.limits.max_professionals;
   function featureForPath(path,method='GET',data){
     const suffix=path.split('/management/')[1]||'',resource=path.split('/api/v1/tenants/')[1]?.split('/')[1];
@@ -162,7 +162,7 @@
       if(type==='customer')return 'clients.manage';
       if(type.startsWith('appointment')||type==='fixed-client')return 'agenda.manage';
     }
-    if(type.startsWith('dental-chair'))return 'settings.manage';
+    if(type.startsWith('dental-chair')||type==='dental-intake')return 'settings.manage';
     return /receipt/.test(type)?'finance.basic':type==='business-preferences'?'business.setup':/goal/.test(type)?'goals.manage':/campaign|marketing/.test(type)?'marketing.campaigns':/loyalty/.test(type)?'loyalty.manage':/coupon/.test(type)?'coupons.manage':/settlement|advance|commission/.test(type)?'commissions.advanced':/professional|hours/.test(type)?'professionals.manage':routeFeatures[state.route];
   }
   function applyPermissionDOM(){
@@ -2649,7 +2649,7 @@
       if(stillAccount(c)&&state.route==='configuracoes'&&state.filters.settingsTab==='site-requests')await open('configuracoes',{keepScroll:true});
     }
   }
-  const settingsSections=[['finance','wallet','Financeiro','Recebimentos de atendimentos'],['general','settings','Negócio','Dados operacionais e fiscais'],['hours','clock','Horários','Jornada de trabalho da equipe'],['dental-chairs','tooth','Cadeiras','Consultórios e cadeiras da clínica'],['site-requests','mail','Solicitações do site','Contatos e testes solicitados'],['appearance','sun','Aparência','Tema e visual do painel'],['ai','sparkles','Uso de IA','Gerações e limite diário'],['notifications','bell','Notificações','Avisos de agendamentos'],['whatsapp','phone','WhatsApp por empresa','Conexão e atendimento'],['calendar','calendar','Google Agenda','Sincronização dos horários'],['account','shield','Minha conta','Dados de acesso ao Orion']];
+  const settingsSections=[['finance','wallet','Financeiro','Recebimentos de atendimentos'],['general','settings','Negócio','Dados operacionais e fiscais'],['hours','clock','Horários','Jornada de trabalho da equipe'],['dental-chairs','tooth','Cadeiras','Consultórios e cadeiras da clínica'],['dental-intake','book','Anamnese','Modelos de perguntas para a clínica'],['site-requests','mail','Solicitações do site','Contatos e testes solicitados'],['appearance','sun','Aparência','Tema e visual do painel'],['ai','sparkles','Uso de IA','Gerações e limite diário'],['notifications','bell','Notificações','Avisos de agendamentos'],['whatsapp','phone','WhatsApp por empresa','Conexão e atendimento'],['calendar','calendar','Google Agenda','Sincronização dos horários'],['account','shield','Minha conta','Dados de acesso ao Orion']];
   async function loadSettings(c){
     if(!settingsTabAllowed(state.filters.settingsTab))state.filters.settingsTab='account';
     // Old bookmarks and persisted settings must not reopen the retired
@@ -2663,10 +2663,11 @@
     if(!tenant()){renderSettings();return;}
     const tab=state.filters.settingsTab;
     if(tab==='general'){const data=await request(mgmt('/preferences'));if(!current(c))return;state.data.preferences=data;}
-    if(tab==='dental-chairs'){
-      const data=await request(apiPath('/dental/chair-settings'));
-      if(!current(c)||state.filters.settingsTab!==tab||!dentalChairSettingsAllowed())return;
-      state.data.dentalChairs=rows(data);
+    if(['dental-chairs','dental-intake'].includes(tab)){
+      const chairs=tab==='dental-chairs';
+      const data=await request(apiPath(chairs?'/dental/chair-settings':'/dental/intake-templates'));
+      if(!current(c)||state.filters.settingsTab!==tab||!dentalSettingsAllowed())return;
+      state.data[chairs?'dentalChairs':'dentalIntakes']=rows(data);
     }
     if(tab==='finance'){const data=await request(mgmt('/finance/receipts/settings'));if(!current(c))return;state.data.receiptSettings=data;}
     if(tab==='hours'){
@@ -2685,7 +2686,7 @@
   }
   function renderSettings(){
     const t=tenant(),isAdmin=['support','admin'].includes(state.bridge.user?.role),
-      sections=settingsSections.filter(([key])=>subscriptionWorkspace()?['appearance','account'].includes(key):key==='account'||key==='appearance'||key==='finance'&&permitted('finance.basic')||key==='general'&&(permitted('business.setup')||permitted('settings.manage'))||key==='site-requests'&&isAdmin||key==='ai'&&(permitted('marketing.ai')||permitted('consultant.ai'))||key==='hours'&&permitted('agenda.manage')||key==='calendar'&&permitted('calendar.manage')||key==='dental-chairs'&&dentalChairSettingsAllowed()||key==='notifications'&&permitted('notifications.basic')||key==='whatsapp'&&permitted('conversations.manual')),
+      sections=settingsSections.filter(([key])=>subscriptionWorkspace()?['appearance','account'].includes(key):key==='account'||key==='appearance'||key==='finance'&&permitted('finance.basic')||key==='general'&&(permitted('business.setup')||permitted('settings.manage'))||key==='site-requests'&&isAdmin||key==='ai'&&(permitted('marketing.ai')||permitted('consultant.ai'))||key==='hours'&&permitted('agenda.manage')||key==='calendar'&&permitted('calendar.manage')||['dental-chairs','dental-intake'].includes(key)&&dentalSettingsAllowed()||key==='notifications'&&permitted('notifications.basic')||key==='whatsapp'&&permitted('conversations.manual')),
       tab=sections.some(item=>item[0]===state.filters.settingsTab)?state.filters.settingsTab:'general',
       definition=sections.find(item=>item[0]===tab)||sections[0];let panel='';
     if(tab==='finance')panel=receiptSettingsForm(state.data.receiptSettings);
@@ -2693,6 +2694,7 @@
     if(tab==='general')panel=t?businessPreferencesForm(state.data.preferences):'<section class="os-card">'+empty('users','Empresa indisponível','Confirme o acesso à sua empresa para consultar as preferências.')+'</section>';
     if(tab==='hours')panel=settingsHours();
     if(tab==='dental-chairs')panel=renderDentalChairSettings();
+    if(tab==='dental-intake')panel=renderDentalIntakeSettings();
     if(tab==='calendar')panel='<section class="os-card"><div class="os-card-header"><div><h2>Google Agenda</h2><p>Sincronize os agendamentos com a agenda do seu negócio.</p></div></div><div id="osGoogleStatus">'+loading('Consultando integração…')+'</div></section>';
     if(tab==='whatsapp')panel='<section id="osManagedChannels"></section>';
     if(tab==='appearance')panel='<section class="os-card"><div class="os-card-header"><div><h2>Aparência</h2><p>Escolha como o painel será exibido neste dispositivo.</p></div></div><div class="os-appearance-options">'+[['light','sun','Claro','Painel claro, com fundo suave.'],['dark','moon','Escuro','Painel escuro, com menos luminosidade.'],['auto','monitor','Sistema','Acompanha a aparência do dispositivo.']].map(([value,symbol,label,description])=>'<button type="button" class="os-appearance-option" data-os-theme="'+value+'" aria-pressed="'+((document.documentElement.dataset.themePreference||'auto')===value)+'"><span class="os-theme-preview os-preview-'+value+'"><i></i><span><b></b><em></em><em></em><em></em></span></span><span class="os-theme-caption">'+icon(symbol)+'<strong>'+label+'</strong></span><small>'+description+'</small></button>').join('')+'</div></section>';
@@ -2732,11 +2734,39 @@
         '</div></div>').join(''):'<p class="os-help" role="status">Nenhuma cadeira nesta situação.</p>')+'</div></section>';
   }
   function showDentalChairEditor(chair=null){
-    if(!dentalChairSettingsAllowed()||state.filters.settingsTab!=='dental-chairs')return;
+    if(!dentalSettingsAllowed()||state.filters.settingsTab!=='dental-chairs')return;
     const title=chair?'Editar cadeira':'Nova cadeira';
     const content=field('Nome da cadeira','name','text',chair?.name||'',
       'required minlength="2" maxlength="80" placeholder="Ex.: Cadeira 1"');
     showDialog('dental-chair',title,dialogForm('dental-chair',content,chair?'Salvar alterações':'Cadastrar cadeira'),{record:chair});
+  }
+  function renderDentalIntakeSettings(){
+    const templates=state.data.dentalIntakes||[],create=button('Novo modelo','dental-intake-new','','plus');
+    return '<section class="os-card">'+(templates.length?
+      '<div class="os-card-header"><div><h3>Modelos de anamnese</h3></div>'+create+'</div>'+
+      templates.map(template=>{
+        const total=rows(template.questions).filter(question=>question.active).length;
+        return '<div class="os-summary-row"><span><strong>'+esc(template.name)+'</strong><small>'+
+          total+(total===1?' pergunta ativa':' perguntas ativas')+'</small></span>'+
+          button('Editar','dental-intake-edit','os-outline os-small','edit','data-id="'+esc(template.id)+'"')+'</div>';
+      }).join(''):
+      empty('book','Nenhum modelo de anamnese','Crie um conjunto reutilizável de perguntas.',create))+'</section>';
+  }
+  function intakeQuestionField(question={prompt:'',active:true}){
+    const id='osIntakeQuestion-'+crypto.randomUUID();
+    return '<div class="os-card os-form" data-os-intake-question>'+
+      '<div class="os-field"><label for="'+id+'">Pergunta</label><input id="'+id+
+      '" name="prompt" required minlength="2" maxlength="240" value="'+esc(question.prompt)+'"></div>'+
+      '<div class="os-actions"><label class="os-check"><input type="checkbox" name="question_active"'+(question.active?' checked':'')+
+      '><span>Pergunta ativa</span></label>'+button('Remover pergunta','dental-intake-remove-question','os-ghost os-small')+'</div></div>';
+  }
+  function showDentalIntakeEditor(template=null){
+    if(!dentalSettingsAllowed()||state.filters.settingsTab!=='dental-intake')return;
+    const content=field('Nome do modelo','name','text',template?.name||'','required minlength="2" maxlength="80"')+
+      '<div class="os-form" id="osIntakeQuestions">'+(template?rows(template.questions).map(intakeQuestionField).join(''):intakeQuestionField())+
+      '</div>'+button('Adicionar pergunta','dental-intake-add-question','os-outline','plus');
+    showDialog('dental-intake',template?'Editar modelo de anamnese':'Novo modelo de anamnese',
+      dialogForm('dental-intake',content,template?'Salvar alterações':'Criar modelo'),{record:template});
   }
   function businessPreferencesForm(data){
     if(!data)return loading('Carregando preferências…');const b=data.business||{},can=data.can_save===true;return '<form class="os-form os-preferences-form" data-os-form="business-preferences" data-version="'+number(data.version)+'"><fieldset class="os-form" '+(can?'':'disabled')+'><section class="os-card"><div class="os-card-header"><div><h3>Dados operacionais</h3><p>Usados internamente no sistema.</p></div></div><div class="os-form-grid">'+field('Telefone administrativo','contact_phone','tel',b.contact_phone||'','maxlength="40" placeholder="(11) 91234-5678"')+(permitted('goals.manage')?'<div data-os-feature="goals.manage">'+moneyField('Meta mensal (R$)','monthly_goal','text',currencyInput(b.monthly_goal_cents),'required inputmode="decimal"')+'</div>':'')+'</div><div class="os-preferences-divider"></div><div class="os-card-header"><div><h3>Cadastro da empresa</h3><p>Dados fiscais e jurídicos. Não aparecem no site público.</p></div></div><div class="os-form-grid">'+selectField('Tipo de documento','tax_document_kind',[['none','Não informar'],['cnpj','CNPJ'],['cpf','CPF']],b.tax_document_kind||'none')+taxDocumentField(b)+field('Nome fantasia','trade_name','text',b.trade_name||'','maxlength="160"')+field('Razão social (nome empresarial)','legal_name','text',b.legal_name||'','maxlength="160"')+'</div></section><section class="os-card"><div class="os-card-header"><div><h3>Avaliações no Google</h3><p>Prepare o convite para avaliação após um atendimento.</p></div>'+badge('draft')+'</div>'+field('Link de avaliação do Google','google_review_url','url',b.google_review_url||'','maxlength="2048" placeholder="https://…"')+'<p class="os-help os-section-gap">Copie o link de “Pedir avaliações” no Perfil da Empresa no Google ou o endereço público da sua empresa no Maps.</p><div class="os-section-gap">'+textField('Mensagem do convite','google_review_message',b.google_review_message||'','maxlength="1000"')+'</div>'+(permitted('notifications.basic')?'<div data-os-feature="notifications.basic">'+checkField('Preparar convite automático','auto_review_requested',b.auto_review_requested,'Preferência salva em rascunho. O envio automático ainda não está habilitado.')+'</div>':'')+'</section>'+(permitted('finance.advanced')?'<section class="os-card" data-os-feature="finance.advanced"><div class="os-card-header"><div><h3>Relatório semanal por WhatsApp</h3><p>Preferência para receber um resumo dos resultados da empresa.</p></div>'+badge('draft')+'</div>'+checkField('Quero receber o relatório semanal','weekly_summary_requested',b.weekly_summary_requested,'A preferência fica salva. Nenhum relatório é enviado enquanto a rotina não estiver habilitada.')+'</section>':'')+'</fieldset><div class="os-form-message" role="alert"></div><div class="os-form-actions">'+(can?'<button type="submit" class="os-button">'+icon('check')+'Salvar configurações</button>':'<p class="os-help">Apenas o proprietário pode alterar os dados operacionais e fiscais.</p>')+'</div></form>';
@@ -4474,15 +4504,29 @@
       if(kind==='automations'){const data=state.data.automations,previous=data.configuration||{},rules=automationRules().map(rule=>{const template=form.elements['rule_template_'+rule.event],enabled=form.elements['rule_enabled_'+rule.event];return {...rule,template:template?template.value:rule.template,...(template&&template.value!==rule.template?{template_source:'custom'}:{}),requested_enabled:enabled?enabled.checked:rule.requested_enabled};}),configuration={rules,...(previous.delivery_policy?{delivery_policy:previous.delivery_policy}:{}),...(permitted('relationships.manage')?{recovery_days:f.recovery_days?Number(f.recovery_days):previous.recovery_days||60}:{}),...(permitted('reception.automation')?{vacancy_requested:form.elements.vacancy_requested?form.elements.vacancy_requested.checked:previous.vacancy_requested===true}:{})};await saveForm(form,()=>request(mgmt('/marketing/automations'),'PUT',{expected_version:number(form.dataset.version),configuration}),'Rascunhos das automações salvos.');return;}
       if(kind==='receipt-settings'){await saveForm(form,()=>request(mgmt('/finance/receipts/settings'),'PUT',{mode:f.receipt_mode,expected_version:number(form.dataset.version)}),'Configuração de recebimentos salva.');return;}
       if(kind==='service-receipt'){const record=d.record,action=f.receipt_action,payload={action,expected_version:record.version,...(action==='confirm'?{payment_method:f.receipt_method,received_at:localISO(f.receipt_day,f.receipt_time)}:{})};let saved;await saveForm(form,async()=>{const result=await request(mgmt('/finance/'+encodeURIComponent(record.id)+'/receipt'),'POST',{...payload,idempotency_key:requestKey(form,payload)});if(result.id!==record.id||(action==='confirm'?result.status!=='paid':result.status!=='pending'))throw Error('O resultado do recebimento não foi confirmado.');saved=result;return result;},action==='confirm'?'Recebimento registrado.':action==='reopen'?'Recebimento voltou a pendente.':action==='hold'?'Recebimento mantido pendente.':'Regra automática retomada.');if(saved&&d.returnAppointment&&state.route==='agenda'&&d.epoch===state.epoch&&d.tenantId===state.tenantId)await showAppointmentDetail(d.returnAppointment);return;}
+      if(kind==='dental-intake'){
+        if(!dentalSettingsAllowed()||d.type!==kind||state.filters.settingsTab!=='dental-intake')return;
+        const questions=[...form.querySelectorAll('[data-os-intake-question]')].map(box=>({
+          prompt:box.querySelector('[name=prompt]').value.trim(),active:box.querySelector('[name=question_active]').checked
+        }));
+        if(!questions.some(question=>question.active))throw Error('Mantenha pelo menos uma pergunta ativa.');
+        if(new Set(questions.map(question=>question.prompt.toLocaleLowerCase('pt-BR'))).size!==questions.length)
+          throw Error('Use perguntas distintas.');
+        const template=d.record,payload={name:f.name.trim(),questions};
+        await saveForm(form,()=>template?request(apiPath('/dental/intake-templates/'+encodeURIComponent(template.id)),
+          'PATCH',{...payload,expected_version:template.version}):request(apiPath('/dental/intake-templates'),'POST',payload),
+          'Modelo de anamnese salvo.');
+        return;
+      }
       if(kind==='dental-chair-availability'){
-        if(!dentalChairSettingsAllowed()||d.type!==kind||state.filters.settingsTab!=='dental-chairs')return;
+        if(!dentalSettingsAllowed()||d.type!==kind||state.filters.settingsTab!=='dental-chairs')return;
         const chair=d.record,active=!chair.active;
         await saveForm(form,()=>request(apiPath('/dental/chair-settings/'+encodeURIComponent(chair.id)+'/availability'),
           'PATCH',{active}),active?'Cadeira reativada.':'Cadeira inativada.');
         return;
       }
       if(kind==='dental-chair'){
-        if(!dentalChairSettingsAllowed()||d.type!=='dental-chair'||state.filters.settingsTab!=='dental-chairs')return;
+        if(!dentalSettingsAllowed()||d.type!=='dental-chair'||state.filters.settingsTab!=='dental-chairs')return;
         const name=f.name?.trim(),chair=d.record;
         if(!name||name.length<2||name.length>80)throw Error('Informe um nome entre 2 e 80 caracteres.');
         await saveForm(form,()=>chair?
@@ -4793,6 +4837,31 @@
       case 'agenda-clear':f.agendaProfessional='';f.agendaStatus='all';f.agendaQuery='';f.agendaOffset=0;f.agendaFocusOffset=0;await open('agenda',{keepScroll:true});break;
       case 'agenda-page-prev':case 'agenda-page-next':{const result=state.data.agendaResult;if(!result||state.data.agendaError)return;const next=Math.max(0,f.agendaOffset+(name==='agenda-page-prev'?-1:1)*(number(result.limit)||50));if(next>=number(result.total))return;f.agendaOffset=next;await loadAgenda(context(),{catalogue:false});$('osAgendaCount')?.focus();break;}
       case 'agenda-google':await showGoogle();break;
+      case 'dental-intake-new':showDentalIntakeEditor();break;
+      case 'dental-intake-edit':{
+        const template=state.data.dentalIntakes?.find(item=>item.id===element.dataset.id);
+        if(template)showDentalIntakeEditor(template);
+        break;
+      }
+      case 'dental-intake-add-question':{
+        if(!dentalSettingsAllowed()||d?.type!=='dental-intake')break;
+        const host=$('osIntakeQuestions');
+        if(!host||host.children.length>=50)break;
+        host.insertAdjacentHTML('beforeend',intakeQuestionField());
+        host.lastElementChild.querySelector('input').focus();
+        if(host.children.length>=50)element.disabled=true;
+        break;
+      }
+      case 'dental-intake-remove-question':{
+        if(!dentalSettingsAllowed()||d?.type!=='dental-intake')break;
+        const host=$('osIntakeQuestions'),question=element.closest('[data-os-intake-question]');
+        if(!host||host.children.length<=1||!host.contains(question))break;
+        question.remove();
+        const add=$('osDialog').querySelector('[data-os-action=dental-intake-add-question]');
+        add.disabled=false;
+        add.focus();
+        break;
+      }
       case 'dental-chair-new':showDentalChairEditor();break;
       case 'dental-chair-edit':{
         const chair=state.data.dentalChairs?.find(item=>item.id===element.dataset.id);
@@ -4800,7 +4869,7 @@
         break;
       }
       case 'dental-chair-availability':{
-        if(!dentalChairSettingsAllowed()||state.filters.settingsTab!=='dental-chairs')break;
+        if(!dentalSettingsAllowed()||state.filters.settingsTab!=='dental-chairs')break;
         const chair=state.data.dentalChairs?.find(item=>item.id===element.dataset.id);
         if(!chair)break;
         const label=chair.active?'Inativar cadeira':'Reativar cadeira';
@@ -5073,7 +5142,7 @@
       if(appLayoutEligible()&&state.route==='configuracoes'&&state.filters.settingsTab==='appearance')changeAppShortcut(Number(el.dataset.osAppShortcut),el.value);
       return;
     }
-    if(el.id==='osDentalChairFilter'&&dentalChairSettingsAllowed()){
+    if(el.id==='osDentalChairFilter'&&dentalSettingsAllowed()){
       if(!['all','active','inactive'].includes(el.value))return;
       state.filters.dentalChairFilter=el.value;
       renderSettings();
