@@ -176,3 +176,4 @@
 }
 
 .os-dental-workspace .os-sidebar-context{min-height:0}
+.os-stock-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}

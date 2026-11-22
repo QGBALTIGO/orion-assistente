@@ -17,6 +17,7 @@ def verify(browser, width, height, theme):
     page.on("pageerror", lambda event: errors.append(str(event)))
     material = {"id": "30000000-0000-4000-8000-000000000001", "name": "Gaze estéril de teste",
                 "quantity": 12, "unit": "box", "version": 1}
+    csv_bytes = "\ufeffMaterial;Unidade;Saldo\r\nGaze estéril de teste;Caixa;12\r\n".encode()
 
     def serve(route):
         url = urlsplit(route.request.url)
@@ -25,6 +26,9 @@ def verify(browser, width, height, theme):
         if url.path.endswith("/dental/access"):
             return route.fulfill(json={"clinical_access": None, "can_manage_inventory": True,
                                        "can_manage": True, "can_read_records": False, "grants": []})
+        if url.path.endswith("/dental/supplies/export.csv"):
+            assert parse_qs(url.query) == {"q": ["GAZE"], "order": ["desc"]}
+            return route.fulfill(content_type="text/csv; charset=utf-8", body=csv_bytes)
         if url.path.endswith("/dental/supplies"):
             query = parse_qs(url.query).get("q", [""])[0]
             items = [material] if query.lower() in material["name"].lower() else []
@@ -53,6 +57,10 @@ def verify(browser, width, height, theme):
     page.get_by_label("Ordenação").select_option("desc")
     page.get_by_label("Buscar material").press("Enter")
     root.get_by_text("12 cx.").wait_for()
+    with page.expect_download() as downloaded:
+        root.get_by_role("button", name="Exportar CSV").press("Enter")
+    assert downloaded.value.suggested_filename == "estoque-odontologico.csv"
+    assert downloaded.value.path().read_bytes() == csv_bytes
     assert root.evaluate("""el=>[...el.querySelectorAll('h2,button,input,select,strong,summary')].filter(node=>node.checkVisibility()).every(node=>{
       const r=node.getBoundingClientRect(),bounds=el.getBoundingClientRect();
       return r.width>0&&r.left>=bounds.left-1&&r.right<=bounds.right+1&&r.right<=innerWidth+1;

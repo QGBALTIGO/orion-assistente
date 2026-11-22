@@ -427,6 +427,43 @@ test('an owner without a clinical grant can open stock without reading a patient
   assert.equal(h.host.querySelector('[data-dental-form=record]'),null);
 });
 
+test('a falha na exportação preserva a pesquisa digitada e permite repetir',async t=>{
+  const h=makeDOM({inventory:true});t.after(()=>h.close());
+  await h.mount({dedicatedStock:true});
+  const calls=[];
+  h.window.fetch=async (path,options)=>{
+    calls.push({path,options});
+    return {ok:false,status:calls.length===1?413:403};
+  };
+  h.fill('[name=stock_query]','Material pesquisado');
+  h.fill('[name=stock_order]','desc');
+  h.submit('[data-dental-form=stock-search]');await flush();
+  h.fill('[name=stock_query]','Próxima pesquisa');
+  h.click('[data-dental-action=stock-export]');await flush();
+  assert.match(h.host.querySelector('[role=alert]').textContent,/Refine a busca/);
+  assert.equal(h.host.querySelector('[name=stock_query]').value,'Próxima pesquisa');
+  assert.equal(h.host.querySelector('[data-dental-action=stock-export]').disabled,false);
+  const url=new URL(calls[0].path,'https://orion.test');
+  assert.equal(url.searchParams.get('q'),'Material pesquisado');
+  assert.equal(url.searchParams.get('order'),'desc');
+  assert.equal(calls[0].options.credentials,'same-origin');
+  h.click('[data-dental-action=stock-export]');await flush();
+  assert.match(h.host.querySelector('[role=alert]').textContent,/conta não tem acesso/);
+});
+
+test('uma exportação em andamento não duplica nem inicia download depois de sair do estoque',async t=>{
+  const h=makeDOM({inventory:true});t.after(()=>h.close());await h.mount({dedicatedStock:true});
+  let finish,requests=0,downloads=0;
+  h.window.fetch=()=>{requests++;return new Promise(resolve=>{finish=resolve;});};
+  h.window.URL.createObjectURL=()=>{downloads++;return 'blob:teste';};
+  const exportButton=h.click('[data-dental-action=stock-export]');
+  assert.equal(exportButton.disabled,true);
+  exportButton.click();assert.equal(requests,1);
+  h.window.OrionDentalClinic.unmount();
+  finish({ok:true,status:200,headers:{get:()=>'text/csv'},blob:async()=>new h.window.Blob(['material'])});
+  await flush();assert.equal(downloads,0);
+});
+
 test('o diretório exige concessão e não carrega cadastros de um proprietário sem ela',async t=>{
   const h=makeDOM();t.after(()=>h.close());
   const paths=[];let opened=0;
