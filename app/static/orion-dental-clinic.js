@@ -347,6 +347,16 @@
     const patient=state.patient;
     let content='<div class="os-dental-actions">'+button('Voltar à ficha','visits-close','os-ghost')+'</div>'+
       '<header><h2 class="os-dental-title" id="dental-visits-heading" tabindex="-1">Consultas de '+esc(patient.name)+'</h2></header>';
+    if(board.confirmation){
+      const {visit,target}=board.confirmation;
+      const title=target?'Transferir consulta':'Desvincular consulta';
+      const message=target?'A consulta '+visit.protocol+' passará de '+visit.patient_name+' para '+patient.name+'.':
+        'A consulta '+visit.protocol+' continuará na agenda após a remoção do vínculo com '+patient.name+'.';
+      return '<section class="os-dental-card os-dental-space" aria-labelledby="dental-confirm-visit">'+
+        '<h2 class="os-dental-title" id="dental-confirm-visit" tabindex="-1">'+esc(title)+'</h2><p>'+esc(message)+'</p>'+
+        '<div class="os-dental-actions">'+button('Voltar','visit-confirm-cancel','os-outline')+
+        button('Confirmar '+(target?'transferência':'desvínculo'),'visit-confirm-save','')+'</div></section>';
+    }
     if(board.error)content+=info(board.error,true)+button('Tentar novamente','visits-refresh');
     if(board.loading)return '<section class="os-dental-card os-dental-space">'+content+pending()+'</section>';
     if(!board.ready)return '<section class="os-dental-card os-dental-space">'+content+'</section>';
@@ -387,11 +397,12 @@
     }catch(e){if(active()){board.ready=false;board.error=e.message||'Não foi possível consultar os vínculos.';}}
     finally{if(active()){board.loading=false;render();}}
   }
-  async function changeVisitPatient(board,visit,target){
+  async function changeVisitPatient(board,visit,target,confirmed=false){
     if(state.submitting||board.loading)return;
-    if(target&&visit.patient_id&&visit.patient_id!==target&&
-      !confirm('Transferir a consulta '+visit.protocol+' de '+visit.patient_name+' para '+state.patient.name+'?'))return;
-    if(!target&&!confirm('Desvincular a consulta '+visit.protocol+' de '+state.patient.name+'? O agendamento continuará na agenda.'))return;
+    if(!confirmed&&(!target||(visit.patient_id&&visit.patient_id!==target))){
+      board.confirmation={visit,target};render();state.host?.querySelector('#dental-confirm-visit')?.focus();return;
+    }
+    board.confirmation=null;
     const epoch=state.epoch;state.submitting=true;state.error='';state.success='';
     try{
       await api('/appointments/'+visit.id+'/patient','PUT',{patient_id:target,expected_version:visit.version});
@@ -670,6 +681,15 @@
     if(state.visitBoard){
       if(act==='visits-more'||act==='visits-options-more'||act==='visits-refresh'){
         await fetchVisits(state.visitBoard,act==='visits-more'?'history':act==='visits-options-more'?'options':'all');return;
+      }
+      if(act==='visit-confirm-cancel'){
+        const choice=state.visitBoard.confirmation;state.visitBoard.confirmation=null;render();
+        const selector=choice?.target?'select[name="visit_id"]':'[data-dental-action="visit-unlink"][data-id="'+(choice?.visit.id||'')+'"]';
+        state.host?.querySelector(selector)?.focus();return;
+      }
+      if(act==='visit-confirm-save'&&state.visitBoard.confirmation){
+        const {visit,target}=state.visitBoard.confirmation;
+        await changeVisitPatient(state.visitBoard,visit,target,true);return;
       }
       if(act==='visit-unlink'){
         const visit=state.visitBoard.items.find(v=>v.id===btn.dataset.id);

@@ -68,8 +68,13 @@ def verify(browser, width, height, theme):
     assert not page.evaluate("document.documentElement.scrollWidth>innerWidth+1"), (width,theme)
     fixture.OUT.mkdir(parents=True,exist_ok=True)
     host.screenshot(path=str(fixture.OUT / f"paciente-consultas-{width}-{theme}.png"),animations="disabled")
-    page.on("dialog", lambda dialog: dialog.accept())
+    if width==820:
+        assert host.bounding_box()["width"]>=390
     unlink.click()
+    page.get_by_role("button", name="Voltar", exact=True).click()
+    assert len(writes)==1
+    unlink.click()
+    page.get_by_role("button", name="Confirmar desvínculo").click()
     page.get_by_text("Nenhuma consulta vinculada a este paciente.").wait_for()
     assert writes == [{"patient_id": PATIENT, "expected_version": 0},{"patient_id": None,"expected_version": 1}]
     assert not errors, errors
