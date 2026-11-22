@@ -105,3 +105,16 @@
 @container dental (max-width:720px){
   .os-dental-grid{grid-template-columns:minmax(0,1fr)}
 }
+
+.os-stock-filter{display:grid;grid-template-columns:minmax(0,2fr) minmax(120px,1fr) auto;align-items:end;gap:12px}
+.os-stock-list{list-style:none;margin:0;padding:0}
+.os-stock-list>li{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 0;border-top:1px solid var(--os-border)}
+.os-stock-list>li>div:first-child{min-width:0;overflow-wrap:anywhere}
+.os-stock-list small{display:block;color:var(--os-muted)}
+.os-stock-create summary{cursor:pointer;font-weight:600}
+.os-stock-create[open] form{margin-top:16px;align-items:end}
+@container dental (max-width:610px){
+  .os-stock-filter{grid-template-columns:minmax(0,1fr) auto}
+  .os-stock-filter>.os-dental-field:first-child{grid-column:1/-1}
+  .os-stock-list>li{align-items:start;flex-direction:column}
+}

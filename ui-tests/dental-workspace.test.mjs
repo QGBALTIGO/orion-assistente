@@ -256,3 +256,19 @@ test('recepção distingue falha de agenda vazia e retoma a consulta automaticam
   assert.equal(h.document.querySelector('#page-suite').dataset.osCurrentRoute,'agenda');
   refresh();await flush();assert.equal(attempts,3);
 });
+
+test('o menu de estoque pertence à odontologia habilitada e o endereço direto mantém a permissão', async t=>{
+  for(const [plan,visible] of [[dentalPlan({dental_clinical_enabled:true}),true],
+    [dentalPlan({dental_clinical_enabled:false}),false],
+    [planState('elite',{business_niche:'barbearia',dental_clinical_enabled:true}),false]]){
+    const h=await makeSuite({initialRoute:'dashboard',permissions:plan});
+    t.after(()=>h.close());await flush();
+    assert.equal(Boolean(h.document.querySelector('#osNav [data-os-route="estoque-odonto"]')),visible);
+    if(!visible){
+      const btn=h.document.createElement('button');btn.dataset.osRoute='estoque-odonto';
+      h.document.getElementById('appView').append(btn);btn.click();await flush();
+      assert.ok(h.calls.every(r=>!r.path.includes('/dental/supplies')));
+      assert.equal(h.document.querySelector('#osDentalClinic'),null);
+    }
+  }
+});

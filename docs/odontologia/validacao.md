@@ -41,3 +41,15 @@ A migração 0087 cria uma tabela separada e índices. Não reescreve agendament
 A ficha usa confirmação no próprio painel antes de transferir ou desfazer um vínculo. Nos testes com dois pacientes sintéticos que compartilham o telefone do responsável, uma disputa simultânea pela mesma versão resultou em uma gravação e um conflito. A repetição da mesma solicitação conservou a versão. O teste de navegador cobriu a desistência da confirmação, o retorno do foco, a navegação por teclado e quatro larguras nos dois temas. A grade da ficha usa a largura que sobra após a abertura do menu lateral.
 
 Na verificação adicional da referência, a ficha sintética apresentou cinco categorias de documentos, cada uma com criação e histórico próprios. O editor de receituário ofereceu as modalidades impressa e digital, esta última por um prestador externo. No editor impresso foram inspecionados profissional, data e seleção do medicamento. O editor foi fechado sem emitir um documento. Em Tratamentos, foram inspecionados plano, procedimento, alternância de dentição, seleção de região e acesso à evolução.
+
+O ensaio de recuperação criou uma base PostgreSQL 16 isolada na revisão 0086, com uma clínica e paciente sintéticos. Um arquivo pg_dump em formato custom foi restaurado em um segundo banco. Foram comparados os identificadores de paciente e empresa, o nome e a autoria. A cópia restaurada manteve a revisão 0086 e o RLS. A origem avançou para 0087 com zero vínculos presumidos. O ensaio não utilizou uma cópia de produção.
+
+A revisão 3f71cfe5 passou nos jobs clínicos e na geração de imagem do GitHub Actions 45076681302. O Railway preparou a troca de imagem do serviço da API e a ferramenta de aprovação registrou que a ação não foi aprovada. A criação da imagem sozinha não confirma publicação. Não houve nova concessão de acesso para testar a ficha.
+
+No CI geral, a base anterior 29573ae e 3f71cfe5 apresentaram as mesmas 19 falhas de interface do simulador e a mesma falta da dependência Playwright na coleta de três testes Python. Os testes clínicos, o ensaio de restauração e os testes específicos de regressão foram executados separadamente. O CI geral permanece pendente de correção.
+
+## Catálogo de materiais
+
+O menu Estoque abre um espaço de materiais dedicado. A busca, a ordenação alfabética e a paginação são feitas no banco para a clínica autorizada. A lista mostra os saldos reais e abre o histórico, a entrada e a saída do material selecionado. Se uma operação foi gravada e a resposta se perdeu, repetir o envio a partir do formulário conserva a chave original. O acesso usa as autorizações já existentes. A página dedicada não requisita a lista de pacientes nem seus registros clínicos.
+
+A referência financeira também foi verificada em Fluxo de Caixa → Filtrar. Foram identificadas combinações de movimentação, situação de pagamento, nota fiscal, convênio, recorrência, recibo, meio de pagamento, conta, categoria e filtros salvos. As operações estão registradas individualmente na matriz.

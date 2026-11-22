@@ -1003,13 +1003,32 @@ async def appointment_room(tenant_id:UUID,appointment_id:UUID,actor:Actor=Depend
 
 
 @router.get("/supplies")
-async def dental_supplies(tenant_id:UUID,actor:Actor=Depends(authenticate)):
-    async with clinical_session(tenant_id,actor) as (db,grant):
-        items=(await db.execute(text("""
-            SELECT id,name,unit,quantity,version FROM dental_supplies
-            WHERE tenant_id=:tenant ORDER BY name LIMIT 200
-        """),{"tenant":tenant_id})).mappings().all()
-        return {"items":[dict(x) for x in items]}
+async def dental_supplies(
+    tenant_id: UUID, actor: Actor = Depends(authenticate),
+    q: str = Query(default="", max_length=120),
+    order: Literal["asc", "desc"] = "asc",
+    cursor: UUID | None = None, limit: int = Query(default=200, ge=1, le=200),
+):
+    async with clinical_session(tenant_id, actor) as (db, _):
+        params = {"tenant": tenant_id, "query": q.strip(), "take": limit + 1}
+        scope = "tenant_id=:tenant AND strpos(lower(name),lower(CAST(:query AS text)))>0"
+        after = ""
+        # Only the two fixed directions are interpolated. Input values stay bound.
+        direction, comparison = ("DESC", "<") if order == "desc" else ("ASC", ">")
+        if cursor is not None:
+            boundary = await db.scalar(text(
+                "SELECT lower(name) FROM dental_supplies WHERE " + scope + " AND id=:id"
+            ), {**params, "id": cursor})
+            if boundary is None:
+                raise HTTPException(400, "Página de materiais inválida")
+            params.update(boundary=boundary, cursor=cursor)
+            after = f" AND (lower(name),id) {comparison} (:boundary,:cursor)"
+        items = (await db.execute(text(
+            "SELECT id,name,unit,quantity,version FROM dental_supplies WHERE " + scope + after
+            + f" ORDER BY lower(name) {direction},id {direction} LIMIT :take"
+        ), params)).mappings().all()
+        return {"items": [dict(item) for item in items[:limit]],
+                "next_cursor": items[limit - 1]["id"] if len(items) > limit else None}
 
 
 @router.post("/supplies",status_code=201)

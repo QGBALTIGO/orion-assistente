@@ -760,6 +760,19 @@ async def test_supply_history_paginates_filters_and_isolates_clinics(clinic_api_
         supply = await client.post(base, json={"name": "Gaze sintética", "unit": "box"})
         assert supply.status_code == 201, supply.text
         supply_id = supply.json()["id"]
+        for name in ("Algodão de teste", "Gaze 50% sintética", "Gaze 100% sintética"):
+            assert (await client.post(base, json={"name": name, "unit": "unit"})).status_code == 201
+        first_material = (await client.get(base, params={"q":"gAze", "order":"desc", "limit":1})).json()
+        assert [r["name"] for r in first_material["items"]] == ["Gaze sintética"]
+        next_materials = (await client.get(base, params={
+            "q":"gaze", "order":"desc", "cursor":first_material["next_cursor"]
+        })).json()
+        assert [r["name"] for r in next_materials["items"]] == ["Gaze 50% sintética", "Gaze 100% sintética"]
+        percentages = (await client.get(base, params={"q":"%"})).json()["items"]
+        assert len(percentages) == 2
+        assert not (await client.get(base, params={"q":"inexistente"})).json()["items"]
+        assert (await client.get(base, params={"q":"Algodão", "cursor":supply_id})).status_code == 400
+        assert (await client.get(base, params={"order":"inválido"})).status_code == 422
         path = f"{base}/{supply_id}/movements"
         assert (await client.get(path)).json() == {"items": [], "next_cursor": None}
         for direction, quantity, key in (("in", 10, "synthetic-initial-stock"),

@@ -14,7 +14,7 @@ const patientDTO={id:patient,name:'Paciente de teste',version:1,guardian_name:'R
   birth_date:'2001-05-06',created_at:'2026-11-01T11:00:00Z'};
 const response=(path,method='GET',data,config)=>{
   const rows=config.patients||[patientDTO];
-  if(path.endsWith('/dental/access'))return {account_id:account,can_manage:false,can_read_records:config.level==='dentist',
+  if(path.endsWith('/dental/access'))return {account_id:account,can_manage:config.canManage===true,can_read_records:config.level==='dentist',
     clinical_access:config.level?{account_id:account,level:config.level,professional_id:pro}:null,grants:[]};
   if(path.includes('/dental/patients?'))return {items:rows,total:rows.length};
   if(path.endsWith('/dental/patients'))return {id:randomUUID(),...data};
@@ -27,6 +27,8 @@ const response=(path,method='GET',data,config)=>{
   if(path.endsWith('/dental/intake-templates/clinical'))return {items:config.intakeTemplates||[]};
   if(path.endsWith('/dental/rooms'))return method==='GET'?{items:config.rooms||[]}:{id:randomUUID(),...data};
   if(path.endsWith('/room')&&method==='PUT')return {assigned:true};
+  if(path.includes('/dental/supplies?'))return config.catalog?.(new URL(path,'https://orion.test').searchParams)||{items:config.supplies||[],next_cursor:null};
+  if(path.includes('/dental/supplies/')&&method==='POST')return config.move?.(data)||{replayed:false};
   if(path.endsWith('/dental/supplies'))return method==='GET'?{items:config.supplies||[]}:{id:randomUUID(),...data};
   if(path.includes('/dental/supplies/')&&path.includes('/movements')&&method==='GET')
     return config.supplyHistory?.(new URL(path,'https://orion.test').searchParams)||{items:[],next_cursor:null};
@@ -48,7 +50,7 @@ function makeDOM(config={}){
     calls.push({path,method:method||'GET',data});
     return await response(path,method,data,config);
   };
-  const mount=()=>window.OrionDentalClinic.mount({host,request:requester,tenantId:tenant,canAccess:()=>true});
+  const mount=(options={})=>window.OrionDentalClinic.mount({host,request:requester,tenantId:tenant,canAccess:()=>true,...options});
   const click=selector=>{const node=host.querySelector(selector);assert.ok(node,'Missing '+selector);node.click();return node};
   const fill=(selector,value)=>{const node=host.querySelector(selector);assert.ok(node,'Missing '+selector);node.value=value;node.dispatchEvent(new window.Event('input',{bubbles:true}));return node};
   const submit=selector=>{const node=host.querySelector(selector);assert.ok(node,'Missing '+selector);
@@ -311,4 +313,41 @@ test('laboratories are reusable after registration and inactive entries stop bei
   const optionValues=Array.from(h.host.querySelectorAll('#dental-laboratory-options option')).map(o=>o.value);
   assert.deepEqual(optionValues,['Laboratório ativo de exemplo']);
   assert.equal(h.host.querySelector('[name=laboratory]').getAttribute('list'),'dental-laboratory-options');
+});
+
+
+test('o estoque dedicado busca, ordena e pagina sem requisitar dados de pacientes ou equipe',async t=>{
+  const first={id:randomUUID(),name:'Gaze A',unit:'box',quantity:4};
+  const second={id:randomUUID(),name:'Gaze B',unit:'box',quantity:0};
+  const h=makeDOM({level:'assistant',canManage:true,catalog:params=>{
+    if(params.get('q')==='inexistente')return {items:[],next_cursor:null};
+    if(params.has('cursor'))return {items:[second],next_cursor:null};
+    return {items:[first],next_cursor:first.id};
+  }});
+  t.after(()=>h.close());await h.mount({dedicatedStock:true});
+  assert.equal(h.host.querySelector('[data-dental-action=section-patients]'),null);
+  h.click('[data-dental-action=stock-more]');await flush();
+  assert.equal(h.host.querySelectorAll('.os-stock-list li').length,2);
+  h.fill('[name=stock_query]','inexistente');h.fill('[name=stock_order]','desc');
+  h.submit('[data-dental-form=stock-search]');await flush();
+  assert.match(h.host.textContent,/Nenhum material corresponde/);
+  assert.ok(h.calls.some(x=>x.path.includes('q=inexistente&order=desc')));
+  assert.ok(h.calls.every(x=>x.path.endsWith('/access')||x.path.includes('/dental/supplies?')));
+});
+
+test('uma queda após a movimentação conserva a operação no formulário para repetir com a mesma chave',async t=>{
+  const item={id:randomUUID(),name:'Gaze',unit:'box',quantity:6};
+  let key=null;
+  const h=makeDOM({level:'assistant',supplies:[item],move:data=>{
+    if(!key){key=data.entry_key;item.quantity-=data.quantity;throw Error('A resposta se perdeu');}
+    assert.equal(data.entry_key,key);return {replayed:true};
+  }});
+  t.after(()=>h.close());await h.mount({dedicatedStock:true});
+  h.click('[data-dental-action=supply-out]');h.fill('[name=stock_quantity]','2');
+  h.submit('[data-dental-form=stock-move]');await flush();
+  assert.match(h.host.textContent,/A resposta se perdeu/);
+  assert.equal(h.host.querySelector('[name=stock_quantity]').value,'2');
+  h.submit('[data-dental-form=stock-move]');await flush();
+  assert.equal(item.quantity,4);assert.match(h.host.textContent,/4 cx/);
+  assert.equal(h.calls.filter(x=>x.method==='POST').length,2);
 });

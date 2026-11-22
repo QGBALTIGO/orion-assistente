@@ -97,18 +97,39 @@
 
   function supplyManager(){
     if(state.supplyHistory)return supplyHistoryPanel(state.supplyHistory);
-    return '<div class="os-dental-space"><div class="os-dental-card"><h2 class="os-dental-title">Estoque e insumos</h2>'+
-      '<form data-dental-form="supply" class="os-dental-row">'+field('Insumo','name','text','','required maxlength="120"')+
-      choices('Unidade','unit',supplyUnits)+
-      '<div class="os-dental-controls"><button class="os-button" type="submit">Adicionar insumo</button></div></form></div>'+
-      '<div class="os-dental-card">'+(state.supplies.length?'<div class="os-dental-table-wrap"><table class="os-dental-table"><thead><tr><th>Insumo</th><th>Quantidade</th><th>Movimentar</th></tr></thead><tbody>'+
-       state.supplies.map(x=>{
-         const id='data-id="'+esc(x.id)+'"';
-         return '<tr><td>'+esc(x.name)+'</td><td>'+esc(supplyQuantity(x.quantity,x.unit))+'</td>'+
-           '<td><div class="os-dental-actions">'+button('Entrada','supply-in','os-outline',id)+
-           button('Saída','supply-out','os-outline',id)+button('Ver histórico','supply-history','os-ghost',id)+'</div></td></tr>';
-       }).join('')+'</tbody></table></div>':
-       '<div class="os-dental-empty">Nenhum insumo cadastrado.</div>')+'</div></div>';
+    if(state.supplyMove){
+      const {item,movement,quantity}=state.supplyMove;
+      const label=movement==='in'?'Entrada de material':'Saída de material';
+      return '<section class="os-dental-card os-dental-space" aria-labelledby="dental-stock-move">'+
+        '<header><h2 class="os-dental-title" id="dental-stock-move">'+label+'</h2><p>'+esc(item.name)+'</p></header>'+
+        '<p class="os-dental-muted">Saldo atual · '+esc(supplyQuantity(item.quantity,item.unit))+'</p>'+
+        '<form data-dental-form="stock-move" class="os-dental-space">'+
+        field('Quantidade','stock_quantity','number',quantity,'required min="1" max="1000000" step="1" inputmode="numeric"')+
+        '<div class="os-dental-actions"><button class="os-button" type="submit">Registrar '+(movement==='in'?'entrada':'saída')+'</button>'+
+        button('Voltar','stock-back','os-ghost')+'</div></form></section>';
+    }
+    const materialForm='<details class="os-dental-card os-stock-create"'+(state.stockCreateOpen?' open':'')+'><summary>Cadastrar material</summary>'+
+      '<form data-dental-form="supply" class="os-dental-row">'+field('Nome do material','name','text',state.stockDraft?.name||'','required minlength="2" maxlength="120"')+
+      choices('Unidade','unit',supplyUnits,state.stockDraft?.unit||'unit')+'<div class="os-dental-controls"><button class="os-button" type="submit">Cadastrar</button></div></form></details>';
+    const filters='<form data-dental-form="stock-search" class="os-stock-filter">'+
+      field('Buscar material','stock_query','search',state.stockQuery,'maxlength="120"')+
+      choices('Ordenação','stock_order',[['asc','Nome (A a Z)'],['desc','Nome (Z a A)']],state.stockOrder)+
+      '<button class="os-button os-outline" type="submit">Buscar</button></form>';
+    const items=state.supplies.map(item=>{
+      const id='data-id="'+esc(item.id)+'"';
+      return '<li><div><strong>'+esc(item.name)+'</strong><small>'+esc(supplyQuantity(item.quantity,item.unit))+'</small></div>'+
+        '<div class="os-dental-actions">'+button('Entrada','supply-in','os-outline',id)+button('Saída','supply-out','os-outline',id)+
+        button('Ver histórico','supply-history','os-ghost',id)+'</div></li>';
+    }).join('');
+    const more=state.stockCursor?button('Carregar mais','stock-more','os-outline',state.stockLoading?'disabled':''):'';
+    return '<div class="os-dental-space"><section class="os-dental-card os-dental-space" aria-labelledby="dental-stock-title">'+
+      '<h2 class="os-dental-title" id="dental-stock-title">Materiais</h2>'+filters+
+      (items?'<ul class="os-stock-list">'+items+'</ul>':'')+
+      (state.stockLoading?pending():'')+
+      (state.stockError?info(state.stockError,true)+button('Tentar novamente','stock-retry','os-outline'):'')+
+      (!items&&!state.stockError&&!state.stockLoading?'<p class="os-dental-empty">'+
+        (state.stockQuery?'Nenhum material corresponde à busca.':'Nenhum insumo cadastrado.')+'</p>':'')+
+      (more&&!state.stockError?'<div class="os-dental-actions">'+more+'</div>':'')+'</section>'+materialForm+'</div>';
   }
   const prosthesisStatuses=[
     ['requested','Preparação'],['ready_to_send','Pronta para envio'],['working','No laboratório'],
@@ -433,14 +454,14 @@
   function render(){
     const host=state.host;if(!host)return;
     const allowed=!!state.access?.clinical_access;
-    let html='<div class="os-dental os-dental-space">'+
-      '<div class="os-dental-toolbar"><div><p class="os-dental-kicker">Orion • Odontologia</p>'+
+    let html='<div class="os-dental os-dental-space">';
+    if(!state.dedicatedStock)html+='<div class="os-dental-toolbar"><div><p class="os-dental-kicker">Orion • Odontologia</p>'+
       '<h2 class="os-dental-title">Gestão odontológica</h2></div>'+
       '<div class="os-dental-actions">'+
         button('Pacientes','section-patients',state.section==='patients'?'':'os-outline')+
         button('Consultórios','section-rooms',state.section==='rooms'?'':'os-outline')+
         (state.access?.can_read_records?button('Próteses','section-prostheses',['prostheses','laboratories'].includes(state.section)?'':'os-outline'):'')+
-        button('Estoque','section-supplies',state.section==='supplies'?'':'os-outline')+
+        (state.stockInMenu?'':button('Estoque','section-supplies',state.section==='supplies'?'':'os-outline'))+
         button('Equipe clínica','section-access',state.section==='access'?'':'os-outline')+
       '</div></div>';
     if(state.error)html+=info(state.error,true);
@@ -448,6 +469,7 @@
     if(state.loading)html+=pending();
     else if(!state.access)html+=info('Não foi possível confirmar as permissões clínicas.',true);
     else if(state.section==='access')html+=accessManager();
+    else if(!allowed&&state.dedicatedStock)html+=info('Solicite ao proprietário da clínica acesso ao estoque.');
     else if(!allowed)html+=info('O acesso ao prontuário ainda não foi concedido a esta conta. Abra Equipe clínica se você for o proprietário.');
     else if(state.section==='rooms')html+=roomManager();
     else if(state.section==='supplies')html+=supplyManager();
@@ -496,7 +518,30 @@
     }catch(e){if(valid(epoch)&&read===state.searchRead)state.error=e?.message||'Não foi possível buscar pacientes.';}
     finally{if(valid(epoch)&&read===state.searchRead){state.loading=false;render();}}
   }
+  async function readStock(append=false){
+    const epoch=state.epoch,read=++state.stockRead;
+    const cursor=append?state.stockCursor:null;
+    const params=new URLSearchParams({q:state.stockQuery,order:state.stockOrder,limit:'30'});
+    if(cursor)params.set('cursor',cursor);
+    state.stockLoading=true;state.stockError='';state.stockFailedPage=append;
+    if(!append){state.supplies=[];state.stockCursor=null;}
+    render();
+    const active=()=>valid(epoch)&&state.section==='supplies'&&read===state.stockRead;
+    try{
+      const result=await api('/supplies?'+params);
+      if(active()){
+        const page=Array.isArray(result.items)?result.items:[];
+        state.supplies=append?state.supplies.concat(page):page;
+        state.stockCursor=result.next_cursor||null;
+      }
+    }catch(error){
+      if(active())state.stockError=error?.message||'Não foi possível carregar os materiais.';
+    }finally{
+      if(active()){state.stockLoading=false;render();}
+    }
+  }
   async function loadManagers(section){
+    if(section==='supplies')return readStock();
     const epoch=state.epoch;state.loading=true;state.error='';render();
     try{
       if(section==='rooms'){
@@ -510,9 +555,6 @@
       }else if(section==='laboratories'){
         const res=await api('/laboratories');
         if(valid(epoch))state.laboratories=res.items||[];
-      }else{
-        const res=await api('/supplies');
-        if(valid(epoch))state.supplies=res.items||[];
       }
     }catch(e){if(valid(epoch))state.error=e?.message||'Não foi possível carregar os cadastros.';}
     finally{if(valid(epoch)){state.loading=false;render();}}
@@ -656,7 +698,7 @@
     }
     const act=btn.dataset.dentalAction;
     if(act?.startsWith('section-')){
-      const section=act.slice(8);state.visitBoard=null;state.section=section;state.error='';state.success='';
+      const section=act.slice(8);if(state.dedicatedStock)return;state.supplyMove=null;state.visitBoard=null;state.section=section;state.error='';state.success='';
       state.supplyHistory=null;
       state.prostheses=null;
       if(section==='prostheses'&&state.access?.can_read_records){
@@ -752,13 +794,21 @@
       }
       return;
     }
-    if((act==='supply-in'||act==='supply-out')&&idRe.test(btn.dataset.id||'')){
-      const value=prompt('Quantidade de '+(act==='supply-in'?'entrada':'saída')+' (inteiro positivo):');
-      if(value===null)return;
-      if(!/^[1-9][0-9]{0,6}$/.test(value)){state.error='Informe um inteiro positivo até 1.000.000.';render();return;}
-      await invoke(async()=>{await api('/supplies/'+btn.dataset.id+'/movements','POST',{
-        movement:act==='supply-in'?'in':'out',quantity:Number(value),entry_key:crypto.randomUUID()});
-        const r=await api('/supplies');state.supplies=r.items||[];},'Estoque atualizado.');
+    if(act==='stock-more'||act==='stock-retry'){
+      if(!state.stockLoading)await readStock(act==='stock-more'||state.stockFailedPage);
+      return;
+    }
+    if(act==='stock-back'&&state.supplyMove){
+      const {item,movement}=state.supplyMove;
+      state.supplyMove=null;state.error='';render();
+      state.host.querySelector('[data-dental-action="supply-'+movement+'"][data-id="'+item.id+'"]')?.focus();
+      return;
+    }
+    if(act==='supply-in'||act==='supply-out'){
+      const item=state.supplies.find(entry=>entry.id===btn.dataset.id);
+      if(!item||!idRe.test(item.id))return;
+      state.supplyMove={item,movement:act==='supply-in'?'in':'out',key:crypto.randomUUID(),quantity:''};
+      state.success='';state.error='';render();state.host.querySelector('[name=stock_quantity]')?.focus();
     }
   }
   async function onSubmit(event){
@@ -766,6 +816,20 @@
     if(!form||!state.host?.contains(form))return;
     event.preventDefault();
     const kind=form.dataset.dentalForm,v=formValues(form),patient=state.patient;
+    if(kind==='stock-search'){
+      state.stockQuery=(v.stock_query||'').trim();state.stockOrder=v.stock_order==='desc'?'desc':'asc';
+      state.success='';await readStock();return;
+    }
+    if(kind==='stock-move'&&state.supplyMove){
+      const move=state.supplyMove;move.quantity=v.stock_quantity;
+      const quantity=Number(move.quantity);
+      if(!Number.isSafeInteger(quantity)||quantity<1||quantity>1000000){state.error='Informe uma quantidade entre 1 e 1.000.000.';render();return;}
+      const epoch=state.epoch;
+      return invoke(async()=>{
+        await api('/supplies/'+move.item.id+'/movements','POST',{movement:move.movement,quantity,entry_key:move.key});
+        if(valid(epoch)&&state.supplyMove===move){state.supplyMove=null;await readStock();}
+      },'Movimentação registrada.');
+    }
     if(kind==='visit-day'&&state.visitBoard&&v.visit_day){
       state.visitBoard.day=v.visit_day;await fetchVisits(state.visitBoard);return;
     }
@@ -867,8 +931,9 @@
       state.appointments=next.items||[];
     },'Consultório vinculado à consulta.');
     if(kind==='supply')return invoke(async()=>{
-      await api('/supplies','POST',{name:v.name,unit:v.unit});
-      const r=await api('/supplies');state.supplies=r.items||[];
+      const epoch=state.epoch;state.stockCreateOpen=true;state.stockDraft={name:v.name,unit:v.unit};
+      await api('/supplies','POST',{name:v.name.trim(),unit:v.unit});
+      if(valid(epoch)&&state.section==='supplies'){state.stockCreateOpen=false;state.stockDraft=null;await readStock();}
     },'Insumo cadastrado.');
     if(kind==='grant')return invoke(async()=>{
       const payload={account_id:v.account_id,professional_id:v.professional_id,level:v.level,
@@ -908,7 +973,7 @@
     const epoch=state.epoch;
     const data=await api('/access');if(!valid(epoch))return;
     state.access=data;
-    if(data.can_manage){
+    if(data.can_manage&&!state.dedicatedStock){
       const base='/api/v1/tenants/'+state.tenantId;
       const res=await Promise.allSettled([
         state.request(base+'/professionals'),state.request(base+'/management/team')]);
@@ -925,12 +990,14 @@
     state.host.addEventListener('click',onClick);
     state.host.addEventListener('submit',onSubmit);
     state.host.addEventListener('change',onChange);
-    state.loading=true;state.section='patients';state.error='';render();
+    state.dedicatedStock=options.dedicatedStock===true;state.stockInMenu=options.stockInMenu===true;
+    state.loading=true;state.section=state.dedicatedStock?'supplies':'patients';state.error='';render();
     const epoch=state.epoch;
     try{
       await fetchAccess();
       if(valid(epoch)&&state.access?.clinical_access){
-        const r=await api('/patients?limit=100');if(valid(epoch))state.patients=r.items||[];
+        if(state.dedicatedStock)await readStock();
+        else{const r=await api('/patients?limit=100');if(valid(epoch))state.patients=r.items||[];}
       }
     }catch(e){if(valid(epoch))state.error=e?.message||'Não foi possível confirmar o acesso clínico.';}
     finally{if(valid(epoch)){state.loading=false;render();}}
@@ -941,6 +1008,8 @@
     if(host){host.removeEventListener('click',onClick);host.removeEventListener('submit',onSubmit);
       host.removeEventListener('change',onChange);host.replaceChildren();}
     Object.assign(state,{host:null,request:null,tenantId:'',canAccess:null,access:null,team:[],
+      dedicatedStock:false,stockInMenu:false,stockQuery:'',stockOrder:'asc',stockCursor:null,stockFailedPage:false,
+      stockLoading:false,stockRead:0,stockError:'',stockCreateOpen:false,stockDraft:null,supplyMove:null,
       professionals:[],patients:[],patient:null,records:[],exams:[],intakeTemplates:[],rooms:[],appointments:[],
       roomDay:localToday(),roomZone:'',supplies:[],supplyHistory:null,visitBoard:null,prostheses:null,laboratories:null,labEditing:null,q:'',
       selectedTooth:11,dentition:'permanent',tab:'anamnesis',section:'patients',findings:[],
