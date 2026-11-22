@@ -259,3 +259,21 @@ test('an assistant cannot open prosthesis records from the worklist',async t=>{
   assert.equal(h.host.querySelector('[data-dental-action=section-prostheses]'),null);
   assert.equal(h.calls.some(call=>call.path.includes('/prostheses')),false);
 });
+
+test('failed patient lookup from the worklist does not expose the previously open chart',async t=>{
+  const differentPatient=randomUUID();
+  const id=randomUUID();
+  const h=makeDOM({level:'dentist',prostheses:()=>({items:[{
+    id,patient_id:differentPatient,patient_name:'Outro paciente sintético',
+    content:{laboratory:'Laboratório',description:'Prótese diferente',status:'completed'},actions:[]
+  }],next_cursor:null})});
+  t.after(()=>h.close());
+  await h.mount();await flush();
+  h.click('[data-dental-action=select-patient]');await flush();
+  assert.ok(h.host.querySelector('[data-dental-form=record]'));
+  h.click('[data-dental-action=section-prostheses]');await flush();
+  h.click('[data-dental-action=open-prosthesis-patient]');await flush();
+  assert.match(h.host.textContent,/Resposta não corresponde ao paciente selecionado/);
+  assert.equal(h.host.querySelector('[data-dental-form=record]'),null);
+  assert.equal(h.host.querySelector('[data-dental-tab=prosthesis]'),null);
+});

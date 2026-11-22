@@ -365,6 +365,9 @@
   }
   async function loadPatient(patient,tab='anamnesis'){
     const epoch=state.epoch,read=++state.patientRead;
+    if(state.patient?.id!==patient){
+      state.patient=null;state.records=[];state.exams=[];state.intakeTemplates=[];
+    }
     state.loading=true;state.error='';render();
     try{
       const authorized=state.access?.can_read_records===true;
