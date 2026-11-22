@@ -16,7 +16,7 @@
   let retainedTimeView = null; // Keep photos mounted across wizard step navigation.
   let booking = newBooking();
 
-  function newBooking() { return { step: 1, service: null, services: [], addons: [], notice: '', professional: null, day: null, start: null, quote: null, availability: null, availabilityError: null, loading: false, busy: false, result: null, name: '', phone: '', birthDate: '', appointmentMessagesOptIn: false }; }
+  function newBooking() { return { step: 1, service: null, services: [], addons: [], notice: '', professional: null, day: null, start: null, quote: null, availability: null, availabilityError: null, loading: false, busy: false, result: null, name: '', phone: '', birthDate: '' }; }
   function el(tag, cls, value) { const node = document.createElement(tag); if (cls) node.className = cls; if (value !== undefined) node.textContent = value; return node; }
   function button(text, cls, handler) { const node = el('button', cls, text); node.type = 'button'; if (handler) node.addEventListener('click', handler); return node; }
   function safeHTTPS(value) { try { const u = new URL(value); return u.protocol === 'https:' && !u.username && !u.password ? u.href : null; } catch { return null; } }
@@ -1118,21 +1118,10 @@
       label.append(field);
       form.append(label);
     }
-    const messagesLabel = el('label', 'consent-label');
-    messagesLabel.htmlFor = 'appointment_messages_opt_in';
-    const messages = el('input');
-    messages.id = 'appointment_messages_opt_in';
-    messages.name = 'appointment_messages_opt_in';
-    messages.type = 'checkbox';
-    messages.checked = booking.appointmentMessagesOptIn;
-    messages.setAttribute('aria-describedby', 'appointment-messages-note');
-    messages.addEventListener('change', () => { booking.appointmentMessagesOptIn = messages.checked; });
-    messagesLabel.append(messages, el('span', '',
-      'Quero receber pelo WhatsApp os avisos deste agendamento, um lembrete 1 hora antes e um pedido de avaliação após o atendimento.'));
-    const messagesNote = el('p', 'privacy-note',
-      'Opcional. Para ativar, envie a mensagem que será aberta no WhatsApp após a confirmação.');
-    messagesNote.id = 'appointment-messages-note';
-    form.append(messagesLabel, messagesNote);
+    if (!preview && !demo) {
+      form.append(el('p', 'privacy-note',
+        'Para receber confirmação, lembrete e pedido de avaliação, envie a mensagem que abrir no WhatsApp da Orion Agenda.'));
+    }
     body.append(form);
     fields.refresh(form);
   }
@@ -1200,7 +1189,6 @@
     booking.name = form.elements.customer_name.value;
     booking.phone = form.elements.customer_phone.value;
     booking.birthDate = form.elements.customer_birth_date.value;
-    booking.appointmentMessagesOptIn = form.elements.appointment_messages_opt_in.checked;
     if (!booking.name.trim()) {
       const nameField = form.elements.customer_name;
       nameField.setCustomValidity('Informe seu nome completo.');
@@ -1227,13 +1215,12 @@
           customer_phone: canonicalPhone,
           customer_birth_date: birthDate,
           confirmed: true,
-          appointment_messages_opt_in: booking.appointmentMessagesOptIn
+          appointment_messages_opt_in: true
         })
       });
       booking.name = '';
       booking.phone = '';
       booking.birthDate = '';
-      booking.appointmentMessagesOptIn = false;
       booking.quote = null;
       renderBooking();
       const whatsappURL = bookingWhatsAppURL(booking.result);

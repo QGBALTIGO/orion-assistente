@@ -3308,7 +3308,14 @@ html:has(.os-professional-history[open]){overflow:hidden}
 }
 #osDialog.os-booking-dialog .os-search>.os-icon{left:15px;width:18px;height:18px}
 #osDialog.os-booking-dialog .os-search input{padding-left:44px!important}
-#osDialog.os-booking-dialog #osBookingModeHelp{margin:-10px 0 0;font-size:12px;line-height:19px}
+#osDialog.os-booking-dialog #osBookingModeHelp{margin:5px 0 0;font-size:12px;line-height:18px}
+#osDialog.os-booking-dialog [hidden],
+#osDialog.os-booking-dialog .os-customer-results:empty,
+#osDialog.os-booking-dialog .os-help:empty{display:none!important}
+#osDialog.os-booking-dialog .os-booking-walk-in{min-height:34px;margin:0;font-size:13px}
+#osDialog.os-booking-dialog .os-booking-notice{margin:0;padding:10px 12px;border:1px solid var(--os-border);border-radius:12px;background:var(--os-soft)}
+#osDialog.os-booking-dialog .os-form-grid{gap:12px}
+#osDialog.os-booking-dialog .os-fixed-preview{margin-top:0}
 #osDialog.os-booking-dialog .os-fixed-intro{margin:0;color:var(--os-muted);font-size:12px;line-height:19px}
 #osDialog.os-booking-dialog .os-service-options{gap:10px}
 #osDialog.os-booking-dialog .os-service-option{
@@ -3355,17 +3362,17 @@ html:has(.os-professional-history[open]){overflow:hidden}
 #osDialog.os-booking-dialog [data-os-form="fixed-client"] .os-form-grid>.os-field{
   box-sizing:border-box;min-width:0;max-width:100%;
 }
-#osDialog.os-booking-dialog [data-os-form="fixed-client"] :is(input[type="date"],input[type="time"]){
+#osDialog.os-booking-dialog :is(input[type="date"],input[type="time"]){
   -webkit-appearance:none;appearance:none;
   box-sizing:border-box;display:block;
   width:100%;min-width:0;max-width:100%;
   min-inline-size:0;max-inline-size:100%;
   margin:0;height:48px;min-height:48px;line-height:24px;text-align:left;
 }
-#osDialog.os-booking-dialog [data-os-form="fixed-client"] :is(input[type="date"],input[type="time"])::-webkit-date-and-time-value{
+#osDialog.os-booking-dialog :is(input[type="date"],input[type="time"])::-webkit-date-and-time-value{
   min-height:24px;line-height:24px;text-align:left;
 }
-#osDialog.os-booking-dialog [data-os-form="fixed-client"] :is(input[type="date"],input[type="time"])::-webkit-datetime-edit{
+#osDialog.os-booking-dialog :is(input[type="date"],input[type="time"])::-webkit-datetime-edit{
   min-width:0;padding:0;line-height:24px;
 }
 @media(max-width:767px){
@@ -3374,6 +3381,11 @@ html:has(.os-professional-history[open]){overflow:hidden}
   }
 }
 
+
+@media(max-width:419px){
+  #osDialog.os-booking-dialog .os-form-grid{grid-template-columns:minmax(0,1fr)}
+  #osDialog.os-home-booking .os-form-actions>.os-button{font-size:14px;padding-inline:8px}
+}
 
 /* Orion barbearia - alternate navigation shell. Reuse suite design tokens only.
    The original desktop rail, drawer, themes and route components remain intact. */
@@ -3982,9 +3994,9 @@ html:has(.os-professional-history[open]){overflow:hidden}
 #osDialog.os-home-booking .os-home-booking-header>.os-close{position:static;flex-shrink:0;display:grid;place-items:center;width:36px;height:36px;min-width:36px;min-height:36px;border:1px solid var(--os-border);border-radius:50%;background:var(--os-card);color:var(--os-muted)}
 #osDialog.os-home-booking .os-home-booking-header>.os-close .os-icon{width:18px;height:18px}
 #osDialog.os-home-booking>form{display:flex;flex:1;flex-direction:column;gap:0;min-height:0;min-width:0;overflow:hidden}
-#osDialog.os-home-booking .os-home-booking-scroll{flex:1;min-height:0;min-width:0;padding:20px 22px;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;scroll-padding-block:16px;-webkit-overflow-scrolling:touch}
+#osDialog.os-home-booking .os-home-booking-scroll{flex:1;min-height:0;min-width:0;padding:16px 22px;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;scroll-padding-block:16px;-webkit-overflow-scrolling:touch}
 #osDialog.os-home-booking :is(fieldset,.os-field,.os-search,.os-form,.os-form-grid,.os-service-options){min-width:0;max-width:100%;box-sizing:border-box}
-#osDialog.os-home-booking .os-home-booking-scroll>fieldset.os-form{gap:17px;margin:0;padding:0;border:0}
+#osDialog.os-home-booking .os-home-booking-scroll>fieldset.os-form{gap:14px;margin:0;padding:0;border:0}
 #osDialog.os-home-booking :is(input:not([type=checkbox]):not([type=radio]):not([type=color]),select,textarea){box-sizing:border-box;min-width:0;width:100%;max-width:100%;min-height:46px;font-size:16px;line-height:1.4;border-radius:12px;padding:10px 12px}
 #osDialog.os-home-booking input[type=date],#osDialog.os-home-booking input[type=time]{display:block;appearance:none;-webkit-appearance:none;min-inline-size:0;inline-size:100%;text-align:left}
 #osDialog.os-home-booking input::-webkit-date-and-time-value{min-width:0;text-align:left}
@@ -4008,6 +4020,6 @@ html:has(.os-professional-history[open]){overflow:hidden}
   #osDialog.os-home-booking{width:calc(100vw - 20px);max-width:calc(100vw - 20px);height:calc(100dvh - 24px);max-height:calc(100dvh - 24px);border-radius:20px}
   #osDialog.os-home-booking .os-home-booking-header{padding:14px 16px}
   #osDialog.os-home-booking .os-home-booking-header h2{font-size:20px}
-  #osDialog.os-home-booking .os-home-booking-scroll{padding:18px 16px}
+  #osDialog.os-home-booking .os-home-booking-scroll{padding:14px 16px}
   #osDialog.os-home-booking .os-form-actions{padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px))}
 }

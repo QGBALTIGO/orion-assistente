@@ -1238,15 +1238,15 @@
     if(state.homeLiveTimer)return;
     state.homeLiveTimer=setInterval(()=>{if(state.mounted&&homePreviewEnabled()&&state.route==='dashboard'&&tenant()&&!state.busy&&document.visibilityState!=='hidden')void loadHomePreview(context(),dateKey(),{background:true}).catch(()=>{});},5000);
   }
-  function prepareHomeBooking(){
-    const dialog=$('osDialog');if(!dialog||state.dialog?.type!=='appointment'||state.dialog.homePreview!==true)return;
+  function prepareBookingDialog(){
+    const dialog=$('osDialog');if(!dialog||!['appointment','fixed-client'].includes(state.dialog?.type))return;
     dialog.classList.add('os-home-booking');
     if(!dialog.querySelector('.os-home-booking-header')){
       const heading=dialog.querySelector('#osDialogTitle'),close=dialog.querySelector('.os-close'),header=document.createElement('header');
       header.className='os-home-booking-header';heading?.setAttribute('tabindex','-1');
       if(heading)header.append(heading);if(close)header.append(close);dialog.prepend(header);
     }
-    const form=dialog.querySelector('[data-os-form=appointment]');
+    const form=dialog.querySelector('[data-os-form=appointment],[data-os-form=fixed-client]');
     if(form&&!form.querySelector('.os-home-booking-scroll')){
       const scroll=document.createElement('div');scroll.className='os-home-booking-scroll';
       for(const child of [...form.children])if(!child.classList.contains('os-form-actions'))scroll.append(child);
@@ -3795,9 +3795,9 @@
     const serviceIds=[...(preset.serviceIds||existing?.service_ids||[])];
     const titleText=editing?'Editar cliente fixo':'Novo agendamento';
     if(!showDialog('fixed-client',titleText,loading('Carregando clientes, serviços e profissionais...'),
-      {serviceIds,customers:[],services:[],professionals:[],preview:null,previewKey:'',
+      {serviceIds,customers:[],services:[],professionals:[],preview:null,previewKey:'',focusTitle:true,
        editSeriesId:editing?existing.id:null},true))return;
-    $('osDialog').classList.add('os-booking-dialog');
+    $('osDialog').classList.add('os-booking-dialog');prepareBookingDialog();
     const d=state.dialog;
     try{
       const [customers,services,professionals]=await Promise.all([
@@ -3843,8 +3843,9 @@
         if(preset.customerPhone)fixedForm.elements.customer_phone.value=preset.customerPhone;
       }
       resetFixedPreview();
+      prepareBookingDialog();$('osDialogTitle')?.focus({preventScroll:true});
       window.OrionFields?.refresh($('osDialog'));
-      if(!d.services.length||!d.professionals.length)$('osDialog').querySelector('button[type=submit]').disabled=true;
+      if(!d.services.length||!d.professionals.length)fixedForm.querySelector('button[type=submit]').disabled=true;
     }catch(error){if(stillAccount(c)&&state.dialog===d)dialogError(error);}
   }
   function fixedDraft(d,f){
@@ -3901,40 +3902,41 @@
     if(!writable()){toast('Seu acesso permite apenas consultar agendamentos.',true);return;}
     const c=context(),homePreview=homePreviewEnabled()&&state.route==='dashboard';
     if(!showDialog('appointment','Novo agendamento',loading('Carregando clientes, serviços e profissionais…'),{
-      homePreview,focusTitle:homePreview,serviceIds:[...(preset.serviceIds||[])],engineServiceIds:[],addonIds:[],addonCache:{},
+      homePreview,focusTitle:true,serviceIds:[...(preset.serviceIds||[])],engineServiceIds:[],addonIds:[],addonCache:{},
       customerId:preset.customerId||'',slots:[],availabilityVersion:0,preset
     }))return;
-    $('osDialog').classList.add('os-booking-dialog');prepareHomeBooking();const activeDialog=state.dialog;
+    $('osDialog').classList.add('os-booking-dialog');prepareBookingDialog();const activeDialog=state.dialog;
     try{const [customers,services,professionals,links]=await Promise.all([request(mgmt('/customers?limit=200&status=active')),request(apiPath('/services')),request(apiPath('/professionals')),request(apiPath('/professional_services'))]);if(!stillAccount(c)||state.dialog!==activeDialog)return;
       Object.assign(state.dialog,{customers:rows(customers),services:rows(services).filter(s=>s.active),professionals:rows(professionals).filter(p=>p.active&&p.accepts_appointments!==false),links:rows(links)});state.dialog.serviceIds=state.dialog.serviceIds.filter(id=>state.dialog.services.some(service=>service.id===id));renderAppointmentForm();if(state.dialog.serviceIds.length)await updateAvailability();
-    }catch(ex){if(stillAccount(c)&&state.dialog===activeDialog){$('osDialog').innerHTML='<button class="os-icon-button os-close" type="button" data-os-action="close-dialog" aria-label="Fechar">'+icon('close')+'</button><h2 id="osDialogTitle">Novo agendamento</h2>'+errorHTML(ex)+button('Fechar','close-dialog','os-outline');prepareHomeBooking();}}
+    }catch(ex){if(stillAccount(c)&&state.dialog===activeDialog){$('osDialog').innerHTML='<button class="os-icon-button os-close" type="button" data-os-action="close-dialog" aria-label="Fechar">'+icon('close')+'</button><h2 id="osDialogTitle">Novo agendamento</h2>'+errorHTML(ex)+button('Fechar','close-dialog','os-outline');prepareBookingDialog();}}
   }
   function renderAppointmentForm(){
     const d=state.dialog;if(d?.type!=='appointment')return;
     const noServices=!d.services.length,noPros=!d.professionals.length;
     const mode=['exceptional','retroactive'].includes(d.preset?.bookingMode)?d.preset.bookingMode:'regular';
-    const content=selectField('Tipo de registro','booking_mode',bookingModes,mode)+'<p id="osBookingModeHelp" class="os-help">Escolha um horário disponível na agenda.</p>'+
-      '<div class="os-field"><label for="osBookingCustomer">Cliente</label><div class="os-search" style="max-width:none">'+icon('search')+'<input id="osBookingCustomer" name="customer_name" type="search" placeholder="Buscar por nome ou telefone, ou digite um novo" required maxlength="120" autocomplete="off" aria-autocomplete="list" aria-controls="osBookingCustomers"></div><div id="osBookingCustomers" class="os-customer-results"></div><p id="osBookingCustomerHelp" class="os-help" style="margin-top:8px">'+(d.customers.length?'Selecione um cliente ou preencha os dados para um novo cadastro.':'Nenhum cliente cadastrado ainda.')+'</p></div>'+
-      '<div id="osBookingWalkIn" hidden>'+checkField('Cliente avulso, sem WhatsApp','walk_in',false)+'</div>'+
+    const content='<div class="os-booking-mode">'+selectField('Tipo de registro','booking_mode',bookingModes,mode)+'<p id="osBookingModeHelp" class="os-help"></p></div>'+
+      '<div class="os-field"><label for="osBookingCustomer">Cliente</label><div class="os-search" style="max-width:none">'+icon('search')+'<input id="osBookingCustomer" name="customer_name" type="search" placeholder="Buscar nome ou telefone" required maxlength="120" autocomplete="off" aria-autocomplete="list" aria-controls="osBookingCustomers"></div><div id="osBookingCustomers" class="os-customer-results"></div><p id="osBookingCustomerHelp" class="os-help">'+(d.customers.length?'Selecione um cliente ou preencha os dados para um novo cadastro.':'Nenhum cliente cadastrado ainda.')+'</p></div>'+
+      '<div id="osBookingWalkIn" hidden>'+'<label class="os-check os-booking-walk-in"><input type="checkbox" name="walk_in"><span>Cliente avulso, sem WhatsApp</span></label>'+'</div>'+
       '<div id="osBookingPhone">'+field('WhatsApp do cliente','customer_phone','tel','','required placeholder="(11) 91234-5678"')+'</div>'+
       '<div id="osBookingWhen" class="os-form">'+field('Data','day','date',d.homePreview?(d.preset?.day||dateKey()):(state.filters.agendaDay||dateKey()),'required')+
       '<div id="osBookingClock" hidden>'+field('Horário','clock','time',d.preset?.time||'','disabled')+'</div></div>'+
       '<div id="osBookingOverlap" hidden>'+checkField('Permitir dois clientes neste horário','allow_overlap',false,'Somente neste agendamento excepcional. Cada cliente mantém seus serviços, valores e pagamentos. Limite de dois clientes simultâneos por profissional; bloqueios e folgas continuam valendo. O período ocupado permanece indisponível no site.')+'</div>'+
       '<fieldset><legend style="font:500 14px/20px var(--os-font);margin:0 0 6px">Serviço</legend><div id="osBookingServices" class="os-service-options">'+(noServices?'<p class="os-help">Cadastre um serviço ativo antes de agendar.</p>':d.services.map(service=>'<button type="button" class="os-service-option" data-os-book-service="'+esc(service.id)+'" aria-pressed="'+d.serviceIds.includes(service.id)+'"><strong>'+esc(service.name)+'</strong><small>'+esc(priceLabel(service.price_cents,service.price_mode))+' · '+number(service.duration_min)+' min</small></button>').join(''))+'</div></fieldset>'+
       '<div id="osBookingAddons" class="hidden"></div>'+selectField('Profissional','professional_id',[['',noPros?'Nenhum profissional disponível':'Selecionar'],...d.professionals.map(pro=>[pro.id,pro.name])],d.preset?.professionalId||'','required')+
-      '<div id="osBookingSlotField" class="os-field"><label for="osBookingSlot">Horário</label><select id="osBookingSlot" name="start_at" required disabled><option value="">Escolha profissional e serviço</option></select><p id="osBookingSlotHelp" class="os-help" style="margin-top:6px"></p></div>'+
+      '<div id="osBookingSlotField" class="os-field"><label for="osBookingSlot">Horário</label><select id="osBookingSlot" name="start_at" required disabled><option value="">Escolha profissional e serviço</option></select><p id="osBookingSlotHelp" class="os-help"></p></div>'+
       '<div id="osBookingSummary" class="os-summary hidden"></div>'+
       '<div id="osBookingCompleted" class="os-form" hidden><div class="os-form-grid">'+moneyField('Valor final (R$)','final_total','text','','disabled inputmode="decimal" placeholder="0,00"')+
       field('Duração realizada (min, opcional)','actual_duration_min','number','','disabled min="1" max="1440" step="1"')+'</div><p class="os-help">Será salvo como Concluído na data do atendimento. O recebimento será acompanhado no Financeiro.</p></div>'+
-      '<div id="osBookingMessages">'+checkField('O cliente autorizou mensagens deste agendamento pelo WhatsApp','appointment_messages_opt_in',false,'Inclui avisos, lembrete 1 hora antes e pedido de avaliação. Marque apenas com autorização expressa do cliente; é opcional.')+'</div>';
+      '<p id="osBookingMessages" class="os-help os-booking-notice" hidden>Se o cliente concordou, use “Agendar e avisar”. A Orion Agenda envia a confirmação, o lembrete e o pedido de avaliação pelo WhatsApp.</p>';
     $('osDialog').innerHTML='<button class="os-icon-button os-close" type="button" data-os-action="close-dialog" aria-label="Fechar">'+icon('close')+'</button><h2 id="osDialogTitle">Novo agendamento</h2>'+dialogForm('appointment',content,'Agendar');
     const form=$('osDialog').querySelector('[data-os-form=appointment]');
+    form.querySelector('.os-form-actions').insertAdjacentHTML('beforeend','<button type="submit" id="osBookAndNotify" class="os-button" aria-describedby="osBookingMessages" hidden disabled>Agendar e avisar</button>');
     if(d.preset?.customerName)form.elements.customer_name.value=d.preset.customerName;
     if(d.preset?.customerPhone)form.elements.customer_phone.value=d.preset.customerPhone;
     d.bookingMode=mode;syncBookingMode();
-    if(noServices||noPros)$('osDialog').querySelector('button[type=submit]').disabled=true;
-    prepareHomeBooking();window.OrionFields?.refresh($('osDialog'));
-    if(d.homePreview)$('osDialogTitle')?.focus({preventScroll:true});
+    if(noServices||noPros)form.querySelectorAll('button[type=submit]').forEach(button=>{button.disabled=true;});
+    prepareBookingDialog();window.OrionFields?.refresh($('osDialog'));
+    $('osDialogTitle')?.focus({preventScroll:true});
   }
   function syncBookingMode(){
     const d=state.dialog,form=$('osDialog')?.querySelector('[data-os-form=appointment]');if(d?.type!=='appointment'||!form||d.holdForm||d.manualOperation)return;
@@ -3950,10 +3952,15 @@
     $('osBookingClock').hidden=!manual;form.elements.clock.disabled=!manual;form.elements.clock.required=manual;
     $('osBookingSlotField').hidden=manual;form.elements.start_at.required=!manual;form.elements.start_at.disabled=manual||!d.slots.length;
     $('osBookingCompleted').hidden=!retro;form.elements.final_total.disabled=!retro;form.elements.final_total.required=retro;form.elements.actual_duration_min.disabled=!retro;
-    $('osBookingMessages').hidden=retro||walkIn;form.elements.appointment_messages_opt_in.disabled=retro||walkIn;
-    if(retro||walkIn)form.elements.appointment_messages_opt_in.checked=false;
+    const notify=!retro&&!walkIn&&permitted('notifications.basic');
+    $('osBookingMessages').hidden=!notify;
+    const notifyButton=$('osBookAndNotify');
+    notifyButton.hidden=!notify;notifyButton.disabled=!notify||!d.services.length||!d.professionals.length;
+    form.querySelector('[data-os-action=close-dialog]').hidden=notify;
     form.elements.day.max=retro?dateKey():'';
-    const submit=form.querySelector('[type=submit]');if(submit)submit.textContent=retro?'Registrar atendimento':'Agendar';
+    const submit=form.querySelector('[type=submit]');
+    submit.textContent=retro?'Registrar atendimento':'Agendar';
+    submit.classList.toggle('os-outline',notify);
   }
   function renderBookingAddons(d){const target=$('osBookingAddons');if(!target)return;const options=d.addons||[];target.classList.toggle('hidden',!options.length);target.innerHTML=options.length?'<fieldset><legend>Adicionais (opcional)</legend><div class="os-booking-addon-options">'+options.map(item=>'<label class="os-check"><input type="checkbox" data-os-book-addon="'+esc(item.addon_service_id)+'" '+(d.addonIds.includes(item.addon_service_id)?'checked':'')+'><span>'+esc(item.name)+'<small>'+esc(priceLabel(item.price_cents,item.price_mode))+' · '+(item.add_duration?'+ '+number(item.duration_min)+' min':'sem tempo extra')+'</small></span></label>').join('')+'</div></fieldset>':'';}
   function renderBookingSummary(d,selected,prepared=null){
@@ -4026,7 +4033,7 @@
       const payload={mode,professional_id:values.professional_id,service_ids:[...d.engineServiceIds],customer_id:d.customerId||null,
         customer_name:values.customer_name.trim(),customer_phone:customerPhone,walk_in:walkIn,start_at:start,
         final_total_cents:retro?cents(values.final_total):null,actual_duration_min:actual,
-        appointment_messages_opt_in:!retro&&!walkIn&&form.elements.appointment_messages_opt_in.checked,
+        appointment_messages_opt_in:!retro&&!walkIn&&values.appointment_messages_opt_in===true,
         allow_overlap:mode==='exceptional'&&form.elements.allow_overlap.checked};
       const selected=d.customers.find(customer=>customer.id===d.customerId);
       operation={payload:{...payload,idempotency_key:requestKey(form,payload)},day:values.day,customerUpdate:selected&&customerPhone&&customerPhoneValue(selected.phone)!==customerPhone?{id:selected.id,phone:customerPhone,version:selected.version}:null};
@@ -4055,7 +4062,14 @@
       if(error.status>=400&&error.status<500&&![408,429].includes(error.status))d.manualOperation=null;
       message.textContent=(error.message||'Não foi possível registrar.')+(d.manualOperation?' Os dados foram preservados. Tente novamente para conferir a mesma solicitação.':'');
     }finally{
-      if(stillAccount(c)){markBusy(form,false);if(state.dialog===d){form.querySelector('fieldset').disabled=!!d.manualOperation;submit.textContent=d.manualOperation?'Verificar este registro':operation.payload.mode==='retroactive'?'Registrar atendimento':'Agendar';}}
+      if(stillAccount(c)){
+        markBusy(form,false);
+        if(state.dialog===d&&d.manualOperation){
+          form.querySelector('fieldset').disabled=true;
+          const notify=$('osBookAndNotify');notify.disabled=true;notify.hidden=true;
+          submit.classList.remove('os-outline');submit.textContent='Verificar este registro';
+        }else if(state.dialog===d)syncBookingMode();
+      }
       else state.busy=false;
     }
     if(!current(c)||state.dialog!==d)return;
@@ -4066,8 +4080,10 @@
     }
   }
   function freezePendingBooking(form,d){
-    form.querySelectorAll('fieldset').forEach(fieldset=>fieldset.disabled=true);const submit=form.querySelector('button[type=submit]');if(submit){submit.disabled=!writable();submit.textContent=d.holdId?'Tentar confirmar a mesma reserva':'Verificar e confirmar esta reserva';}
-    if(!$('osPendingBooking'))form.insertAdjacentHTML('afterbegin','<div id="osPendingBooking" class="os-notice os-warning">'+icon('info')+'<p>Os dados foram preservados para verificar a mesma reserva. '+(d.holdId?'Protocolo: '+esc(d.holdRecord?.protocol||d.holdId)+'. ':'')+'Tente confirmar novamente ou consulte a Agenda antes de criar outro agendamento.</p></div>');
+    form.querySelectorAll('fieldset').forEach(fieldset=>fieldset.disabled=true);
+    const notify=$('osBookAndNotify');if(notify){notify.disabled=true;notify.hidden=true;}
+    const submit=form.querySelector('button[type=submit]');if(submit){submit.disabled=!writable();submit.classList.remove('os-outline');submit.textContent=d.holdId?'Tentar confirmar a mesma reserva':'Verificar e confirmar esta reserva';}
+    if(!$('osPendingBooking'))form.querySelector('.os-home-booking-scroll').insertAdjacentHTML('afterbegin','<div id="osPendingBooking" class="os-notice os-warning">'+icon('info')+'<p>Os dados foram preservados para verificar a mesma reserva. '+(d.holdId?'Protocolo: '+esc(d.holdRecord?.protocol||d.holdId)+'. ':'')+'Tente confirmar novamente ou consulte a Agenda antes de criar outro agendamento.</p></div>');
   }
   function filterBookingCustomers(value){const d=state.dialog;if(d?.type!=='appointment'||d.holdForm||d.manualOperation)return;const q=value.toLocaleLowerCase('pt-BR').trim(),digits=q.replace(/\D/g,'');d.customerId='';const list=q?d.customers.filter(c=>c.name.toLocaleLowerCase('pt-BR').includes(q)||(digits&&(c.phone||'').replace(/\D/g,'').includes(digits))).slice(0,8):[];
     $('osBookingCustomers').innerHTML=list.map(c=>'<button type="button" data-os-book-customer="'+esc(c.id)+'"><span>'+esc(c.name)+'</span><small>'+esc(c.phone||'Sem WhatsApp')+'</small></button>').join('');}
@@ -4463,10 +4479,10 @@
         return;
       }
       if(kind==='appointment'){
+        f.appointment_messages_opt_in=event.submitter?.id==='osBookAndNotify'&&!event.submitter.disabled;
         if(d.manualOperation||form.elements.booking_mode.value!=='regular'){await submitManualAppointment(form,d,f);return;}
         if(d.selectionPending)throw Error('Aguarde a conferência dos serviços e horários.');
         if(d.selectionError)throw Error(d.selectionError);
-        if(!d.holdForm)f.appointment_messages_opt_in=form.elements.appointment_messages_opt_in.checked;
         const values=d.holdForm||f,customerPhone=customerPhoneValue(values.customer_phone);if(!/^(?:\+55[1-9][0-9]{9,10}|\+5959[0-9]{8})$/.test(customerPhone))throw Error('Para agendar, informe WhatsApp com DDD brasileiro ou celular paraguaio +595.');if(!d.serviceIds.length)throw Error('Selecione ao menos um serviço.');if(!d.holdForm&&!d.slots.includes(values.start_at))throw Error('Selecione um horário disponível.');
         await saveForm(form,async c=>{
           let hold=d.holdId?d.holdRecord:null;
@@ -4488,7 +4504,7 @@
           }
           if(!stillAccount(c))return;if(typeof hold.updated_at!=='string')throw Error('Não foi possível confirmar a versão da reserva. Consulte os detalhes na Agenda antes de continuar.');if(!d.confirmPayload)d.confirmPayload={expected_updated_at:hold.updated_at,idempotency_key:crypto.randomUUID(),appointment_messages_opt_in:values.appointment_messages_opt_in===true};const confirmed=await request(apiPath('/appointments/'+encodeURIComponent(hold.id)+'/confirm'),'POST',d.confirmPayload);if(confirmed.status!=='confirmed')throw Error('A reserva ainda não foi confirmada. Confira a agenda antes de tentar novamente.');state.filters.agendaDay=values.day;
         },'Agendamento confirmado. O protocolo está disponível na agenda.');
-        if(state.dialog===d&&d.holdForm)freezePendingBooking(form,d);else if(state.dialog===d&&$('osPendingBooking')){form.querySelectorAll('fieldset').forEach(fieldset=>fieldset.disabled=false);$('osPendingBooking').remove();const submit=form.querySelector('button[type=submit]');if(submit)submit.textContent='Agendar';}
+        if(state.dialog===d&&d.holdForm)freezePendingBooking(form,d);else if(state.dialog===d&&$('osPendingBooking')){form.querySelectorAll('fieldset').forEach(fieldset=>fieldset.disabled=false);$('osPendingBooking').remove();syncBookingMode();}
       }
       if(kind==='block'){
         const dayOff=f.block_type==='days',repeating=form.elements.repeat.checked&&!dayOff,start=dayOff?f.from_day:f.day,end=dayOff?f.to_day:repeating?f.until_date:f.day;
@@ -4839,7 +4855,7 @@
       if(el.dataset.osGoal){const key=el.dataset.osGoal,r=key.startsWith('template:')?rows(state.data.goalTemplates).find(g=>'template:'+g.id===key):rows(state.data.goals).find(g=>goalKey(g)===key);if(r)await showGoal(r);return;}
       if(el.dataset.osDuration){const form=$('osDialog')?.querySelector('[data-os-form=service]');const input=form?.elements?.duration_min;if(input){input.value=el.dataset.osDuration;syncServiceDurationPresets(form);}return;}
       if(el.dataset.osBookService){const d=state.dialog;if(d?.type!=='appointment'||d.holdForm||d.manualOperation)return;const id=el.dataset.osBookService;if(d.serviceIds.includes(id))d.serviceIds=d.serviceIds.filter(s=>s!==id);else if(d.serviceIds.length<6)d.serviceIds.push(id);else{toast('Escolha até 6 serviços por agendamento.',true);return;}el.setAttribute('aria-pressed',String(d.serviceIds.includes(id)));await updateAvailability();return;}
-      if(el.dataset.osBookCustomer){const d=state.dialog;if(d?.type!=='appointment'||d.holdForm||d.manualOperation)return;const c=d.customers.find(c=>c.id===el.dataset.osBookCustomer);if(!c)return;const form=$('osDialog').querySelector('form');form.elements.customer_name.value=c.name;form.elements.customer_phone.value=sharedFields().phoneDisplay(c.phone||'');form.elements.appointment_messages_opt_in.checked=false;d.customerId=c.id;syncBookingMode();$('osBookingCustomers').replaceChildren();$('osBookingCustomerHelp').textContent=c.phone?'Cliente selecionado.':d.bookingMode!=='regular'?'Cliente selecionado sem WhatsApp. Informe o contato ou marque Cliente avulso.':'Este cliente ainda não tem WhatsApp. Ao confirmar, o número informado será salvo neste cadastro.';return;}
+      if(el.dataset.osBookCustomer){const d=state.dialog;if(d?.type!=='appointment'||d.holdForm||d.manualOperation)return;const c=d.customers.find(c=>c.id===el.dataset.osBookCustomer);if(!c)return;const form=$('osDialog').querySelector('form');form.elements.customer_name.value=c.name;form.elements.customer_phone.value=sharedFields().phoneDisplay(c.phone||'');d.customerId=c.id;syncBookingMode();$('osBookingCustomers').replaceChildren();$('osBookingCustomerHelp').textContent=c.phone?'Cliente selecionado.':d.bookingMode!=='regular'?'Cliente selecionado sem WhatsApp. Informe o contato ou marque Cliente avulso.':'Este cliente ainda não tem WhatsApp. Ao confirmar, o número informado será salvo neste cadastro.';return;}
 
       if(el.dataset.osStartPolicyToggle!==undefined){
         const d=state.dialog,weekday=Number(el.dataset.osStartPolicyToggle);
@@ -4983,7 +4999,7 @@
     if(state.dialog?.type==='block'&&el.name==='frequency'){$('osBlockWeekdays').classList.toggle('hidden',el.value!=='weekdays');return;}
     if(state.dialog?.type==='block'&&el.name==='block_type'){$('osBlockHours').classList.toggle('hidden',el.value==='days');$('osBlockDays').classList.toggle('hidden',el.value!=='days');const form=el.closest('form');['day','start_time','end_time'].forEach(name=>form.elements[name].required=el.value==='hours');form.elements.until_date.required=el.value==='hours'&&form.elements.repeat.checked;$('osBlockDays').querySelectorAll('input').forEach(i=>i.required=el.value==='days');}
   }
-  function handleInput(event){if(!state.mounted)return;const el=event.target;markCustomerBirthChanged(el);markSiteAddressEdit(el);if(state.dialog?.type==='service'&&el.name==='duration_min')syncServiceDurationPresets(el.closest('form'));if(el.matches?.('input.os-color-native'))syncColorPicker(el);if(el.id==='osAgendaSearch'&&!state.busy){state.filters.agendaQuery=el.value;state.filters.agendaOffset=0;state.agendaRead=(state.agendaRead||0)+1;state.agendaFocusRead=(state.agendaFocusRead||0)+1;clearTimeout(state.agendaSearchTimer);state.agendaSearchTimer=setTimeout(()=>void applyAgendaFilters(),250);return;}if(el.closest('#osSiteForm'))el.closest('form').dataset.dirty='true';if(el.closest('#osSiteForm')&&!state.busy&&siteCanEdit()&&!event.isComposing){if(el.name==='slug')queueSiteSlugCheck(el);if(el.name==='postal_code')queueSiteCepLookup(el);if(el.name==='state')el.value=el.value.toUpperCase();}if(el.id==='osHelpSearch'){state.filters.helpQuery=el.value;renderHelpResults();}if(el.id==='osCustomerSearch'){state.filters.customerQuery=el.value;state.filters.customerOffset=0;state.customerRead=(state.customerRead||0)+1;clearTimeout(state.searchTimer);clearTimeout(state.agendaSearchTimer);const c=context();state.searchTimer=setTimeout(()=>loadCustomers(c).catch(ex=>{if(current(c))bodyHTML(errorHTML(ex));}),250);}if(el.id==='osResourceSearch')renderServices(el.value);if(state.dialog?.type==='appointment'&&!state.dialog.holdForm&&!state.dialog.manualOperation&&['customer_name','customer_phone'].includes(el.name)){const messages=el.form?.elements.appointment_messages_opt_in;if(messages)messages.checked=false;}if(state.dialog?.type==='appointment-extras'&&el.name==='actual_duration_min')resetExtrasPreview();if(state.dialog?.type==='appointment'&&el.name==='final_total')state.dialog.finalTotalTouched=true;if(el.id==='osBookingCustomer')filterBookingCustomers(el.value);if(el.id==='osFixedCustomer')filterFixedCustomers(el.value);if(state.dialog?.type==='fixed-client'&&el.closest('[data-os-form=fixed-client]'))resetFixedPreview();if(state.dialog?.type==='appointment'&&el.name==='customer_phone'&&state.dialog.customerId){$('osBookingCustomerHelp').textContent='Ao confirmar, o WhatsApp informado será salvo no cadastro deste cliente.';}if(state.dialog?.type==='package'&&el.name==='price')state.dialog.priceTouched=true;
+  function handleInput(event){if(!state.mounted)return;const el=event.target;markCustomerBirthChanged(el);markSiteAddressEdit(el);if(state.dialog?.type==='service'&&el.name==='duration_min')syncServiceDurationPresets(el.closest('form'));if(el.matches?.('input.os-color-native'))syncColorPicker(el);if(el.id==='osAgendaSearch'&&!state.busy){state.filters.agendaQuery=el.value;state.filters.agendaOffset=0;state.agendaRead=(state.agendaRead||0)+1;state.agendaFocusRead=(state.agendaFocusRead||0)+1;clearTimeout(state.agendaSearchTimer);state.agendaSearchTimer=setTimeout(()=>void applyAgendaFilters(),250);return;}if(el.closest('#osSiteForm'))el.closest('form').dataset.dirty='true';if(el.closest('#osSiteForm')&&!state.busy&&siteCanEdit()&&!event.isComposing){if(el.name==='slug')queueSiteSlugCheck(el);if(el.name==='postal_code')queueSiteCepLookup(el);if(el.name==='state')el.value=el.value.toUpperCase();}if(el.id==='osHelpSearch'){state.filters.helpQuery=el.value;renderHelpResults();}if(el.id==='osCustomerSearch'){state.filters.customerQuery=el.value;state.filters.customerOffset=0;state.customerRead=(state.customerRead||0)+1;clearTimeout(state.searchTimer);clearTimeout(state.agendaSearchTimer);const c=context();state.searchTimer=setTimeout(()=>loadCustomers(c).catch(ex=>{if(current(c))bodyHTML(errorHTML(ex));}),250);}if(el.id==='osResourceSearch')renderServices(el.value);if(state.dialog?.type==='appointment-extras'&&el.name==='actual_duration_min')resetExtrasPreview();if(state.dialog?.type==='appointment'&&el.name==='final_total')state.dialog.finalTotalTouched=true;if(el.id==='osBookingCustomer')filterBookingCustomers(el.value);if(el.id==='osFixedCustomer')filterFixedCustomers(el.value);if(state.dialog?.type==='fixed-client'&&el.closest('[data-os-form=fixed-client]'))resetFixedPreview();if(state.dialog?.type==='appointment'&&el.name==='customer_phone'&&state.dialog.customerId){$('osBookingCustomerHelp').textContent='Ao confirmar, o WhatsApp informado será salvo no cadastro deste cliente.';}if(state.dialog?.type==='package'&&el.name==='price')state.dialog.priceTouched=true;
     if(el.matches?.('[data-os-start-time-input]')&&state.dialog?.type==='hours'&&writable()&&!state.busy){
       const form=el.closest('[data-os-form="hours-start-policy"]'),draft=hoursStartDraft(state.dialog,Number(form?.dataset.weekday));
       if(draft)draft.pendingTime=el.value;

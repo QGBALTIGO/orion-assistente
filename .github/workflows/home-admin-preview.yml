@@ -1,10 +1,19 @@
-name: Orion Home for barbershops
+name: Orion booking and Home
 on:
   push:
     branches: [codex/home-admin-preview-20261122]
     paths:
       - app/static/orion-suite.js
       - app/static/orion-suite.css
+      - app/static/orion-public.js
+      - app/static/orion-appointment-communications.js
+      - app/appointment_notifications.py
+      - tests/integration/test_appointment_consent_central_pg.py
+      - ui-tests/booking-recovery.test.mjs
+      - ui-tests/orion-public.test.mjs
+      - ui-tests/public-confirmation-clean.test.mjs
+      - ui-tests/appointment-operations.test.mjs
+      - deploy/Dockerfile.appointment-notifications-worker
       - app/management_api.py
       - app/management_models.py
       - tests/integration/test_home_revenue_chart.py
@@ -41,16 +50,19 @@ jobs:
       - name: Validate niche, plan and account access
         run: |
           node --check app/static/orion-suite.js
-          node --test ui-tests/home-admin-preview.test.mjs ui-tests/dashboard-navigation.test.mjs ui-tests/dashboard-finance-goals.test.mjs ui-tests/admin-only-operator-navigation.test.mjs ui-tests/agenda-periods.test.mjs ui-tests/agenda-lifecycle.test.mjs ui-tests/barbershop-app-layout.test.mjs ui-tests/subscription-app-layout.test.mjs ui-tests/dental-workspace.test.mjs ui-tests/plan-permissions.test.mjs ui-tests/customer-form.test.mjs ui-tests/appointment-operations-panel.test.mjs
+          node --test ui-tests/home-admin-preview.test.mjs ui-tests/dashboard-navigation.test.mjs ui-tests/dashboard-finance-goals.test.mjs ui-tests/admin-only-operator-navigation.test.mjs ui-tests/agenda-periods.test.mjs ui-tests/agenda-lifecycle.test.mjs ui-tests/barbershop-app-layout.test.mjs ui-tests/subscription-app-layout.test.mjs ui-tests/dental-workspace.test.mjs ui-tests/plan-permissions.test.mjs ui-tests/customer-form.test.mjs ui-tests/appointment-operations-panel.test.mjs ui-tests/appointment-operations.test.mjs ui-tests/booking-recovery.test.mjs ui-tests/orion-public.test.mjs ui-tests/public-confirmation-clean.test.mjs ui-tests/public-multiservice.test.mjs
       - name: Verify the immutable published base and Home overlay
         run: |
           python3 - <<'PY'
           from pathlib import Path
           dockerfile=Path('deploy/Dockerfile.home-admin-preview').read_text()
-          assert 'FROM ghcr.io/qgbaltigo/orion-assistente-api@sha256:d6ae62c9f013e999ca892826087c2ab44641770e3daedaa41865d5557b552b09' in dockerfile
+          assert 'FROM ghcr.io/qgbaltigo/orion-assistente-api@sha256:644f6184cac4e7e2c87d0e15ce2a56b8a6ccabbcf6674ffffc2f8502aa524056' in dockerfile
           assert dockerfile.count('COPY ')==2
-          assert 'app/static/orion-suite.js app/static/orion-suite.css /srv/app/app/static/' in dockerfile
-          assert 'app/management_api.py app/management_models.py /srv/app/app/' in dockerfile
+          assert 'app/static/orion-suite.js app/static/orion-suite.css app/static/orion-public.js app/static/orion-appointment-communications.js /srv/app/app/static/' in dockerfile
+          assert 'app/appointment_notifications.py /srv/app/app/' in dockerfile
+          worker=Path('deploy/Dockerfile.appointment-notifications-worker').read_text()
+          assert 'FROM ghcr.io/qgbaltigo/orion-assistente-api@sha256:7eac83c72fc8a673617aab59c7b8d979281e044c5b669644023e92fba8aa160b' in worker
+          assert worker.count('COPY ')==1 and 'app/appointment_notifications.py /srv/app/app/' in worker
           js=Path('app/static/orion-suite.js').read_text()
           assert 'const homePreviewEnabled=()=>platformWorkspace()||barbershopHomeEligible();' in js
           assert "if(homePreviewEnabled()){await loadHomePreview(c);break;}" in js
@@ -60,18 +72,41 @@ jobs:
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: printf '%s' "$TOKEN" | docker login ghcr.io -u QGBALTIGO --password-stdin
-      - name: Build and publish the Home-only overlay
+      - name: Initialize the isolated PostgreSQL roles
+        env:
+          PG_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          docker exec -i "$PG_CONTAINER" psql -U postgres -d orion_home_test -v ON_ERROR_STOP=1 \
+            -v db_name=orion_home_test -v runtime_password=orion_runtime_test \
+            -v migrator_password=orion_migrator_test -v support_password=orion_support_test \
+            < infra/postgres/init/001-roles.sql
+      - name: Test and publish both images
         env:
           IMAGE: ghcr.io/qgbaltigo/orion-assistente-api
+          APP_DATABASE_URL: postgresql+asyncpg://app_runtime:orion_runtime_test@127.0.0.1:55432/orion_home_test
+          MIGRATION_DATABASE_URL: postgresql+psycopg://app_migrator:orion_migrator_test@127.0.0.1:55432/orion_home_test
+          SUPPORT_DATABASE_URL: postgresql+asyncpg://app_support:orion_support_test@127.0.0.1:55432/orion_home_test
+          SUPPORT_API_TOKEN: synthetic-booking-ci-only-token-000000000000000000
         run: |
-          docker build --pull -f deploy/Dockerfile.home-admin-preview --build-arg ORION_HOME_COMMIT="$GITHUB_SHA" -t "$IMAGE:home-admin-preview-$GITHUB_SHA" .
+          api_tag="$IMAGE:home-admin-preview-$GITHUB_SHA"
+          worker_tag="$IMAGE:booking-notifications-worker-$GITHUB_SHA"
+          docker build --pull -f deploy/Dockerfile.home-admin-preview --build-arg ORION_HOME_COMMIT="$GITHUB_SHA" -t "$api_tag" .
+          docker build --pull -f deploy/Dockerfile.appointment-notifications-worker --build-arg ORION_HOME_COMMIT="$GITHUB_SHA" -t "$worker_tag" .
+          docker run --rm --network host --entrypoint python -e MIGRATION_DATABASE_URL "$api_tag" -m alembic upgrade head
+          for tag in "$api_tag" "$worker_tag"; do
+            docker run --rm --network host --entrypoint python -e APP_DATABASE_URL -e MIGRATION_DATABASE_URL \
+              -e SUPPORT_DATABASE_URL -e SUPPORT_API_TOKEN -e REQUIRE_POSTGRES_TESTS=1 \
+              -v "$PWD/tests:/srv/app/tests:ro" "$tag" -m tests.run_isolated_plan_tests -q \
+              tests/integration/test_appointment_consent_central_pg.py::test_authorized_panel_confirmation_uses_the_central_channel_once
+          done
           docker run --rm --network host --entrypoint python \
             -e PYTHONPATH=/srv/app \
             -e ORION_HOME_CHART_TEST_DSN=postgresql+asyncpg://postgres:orion_chart_test@127.0.0.1:55432/orion_home_test \
             -v "$PWD/tests/integration/test_home_revenue_chart.py:/tmp/test_home_revenue_chart.py:ro" \
             "$IMAGE:home-admin-preview-$GITHUB_SHA" -m unittest discover -s /tmp -p test_home_revenue_chart.py -v
-          docker push "$IMAGE:home-admin-preview-$GITHUB_SHA"
-          docker image inspect "$IMAGE:home-admin-preview-$GITHUB_SHA" --format '{{json .RepoDigests}}' > home-admin-preview-image.json
+          docker push "$worker_tag"
+          docker push "$api_tag"
+          docker image inspect "$worker_tag" "$api_tag" --format '{{json .RepoDigests}}' > home-admin-preview-image.json
           cat home-admin-preview-image.json >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         with:

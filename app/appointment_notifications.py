@@ -62,7 +62,7 @@ async def enqueue_event(db, tenant, appointment, event, details, *, bulk=False):
     if not await has_feature(db, tenant, "notifications.basic"):return
     if event == 'services_added':
         # Adding services changes the version, but not the appointment's start.
-        # Keep only initial/reschedule notices that have never been attempted:
+        # Keep only booking and reschedule notices that have never been attempted:
         # they will compose their body from the new facts. Never duplicate a
         # delivered or ambiguous transport operation to announce this edit.
         await db.execute(text("""UPDATE appointment_notifications n
@@ -71,14 +71,14 @@ async def enqueue_event(db, tenant, appointment, event, details, *, bulk=False):
             FROM appointments a WHERE a.tenant_id=:t AND a.id=:id
               AND n.tenant_id=a.tenant_id AND n.appointment_id=a.id
               AND n.status='pending' AND n.attempts=0 AND n.attempted_at IS NULL
-              AND n.event IN ('professional_new','customer_rescheduled','professional_rescheduled')
+              AND n.event IN ('confirmation','professional_new','customer_rescheduled','professional_rescheduled')
               AND n.recipient_id=CASE WHEN n.recipient_kind='professional'
                     THEN a.professional_id ELSE a.customer_id END"""), {'t':tenant,'id':appointment})
         await db.execute(text("""UPDATE appointment_notifications n
             SET status='cancelled',last_error='appointment_changed',updated_at=clock_timestamp()
             FROM appointments a WHERE a.tenant_id=:t AND a.id=:id
               AND n.tenant_id=a.tenant_id AND n.appointment_id=a.id AND n.status='pending'
-              AND (n.event NOT IN ('professional_new','customer_rescheduled','professional_rescheduled')
+              AND (n.event NOT IN ('confirmation','professional_new','customer_rescheduled','professional_rescheduled')
                    OR n.appointment_version<>a.updated_at)"""), {'t':tenant,'id':appointment})
     # Every committed mutation invalidates old pending facts in this SAME tx.
     if event in {'confirmed','cancelled','rescheduled','completed','no_show','hold_expired'}:
@@ -98,6 +98,19 @@ async def enqueue_event(db, tenant, appointment, event, details, *, bulk=False):
     def add(kind,recipient,due=None,expiry=None,recipient_id=None):
         events.append((kind,recipient,recipient_id or row['professional_id' if recipient=='professional' else 'customer_id'],due or now,expiry or now+timedelta(hours=24)))
     if event=='confirmed' and settings['professional_notice'] and not bulk:add('professional_new','professional')
+    if (central and event == 'confirmed' and details.get('source') == 'panel'
+            and not bulk and settings['confirmation'] and row['start_at'] > now):
+        authorized = (await db.execute(text("""
+            SELECT EXISTS (
+                SELECT 1 FROM appointment_message_consents consent
+                JOIN customers c ON c.tenant_id=consent.tenant_id AND c.id=consent.customer_id
+                WHERE consent.tenant_id=:tenant AND consent.appointment_id=:appointment
+                  AND consent.customer_id=:customer AND consent.contact_e164=c.whatsapp_e164
+                  AND consent.operational_opt_in IS TRUE AND c.active AND c.deleted_at IS NULL
+            )
+        """), {'tenant': tenant, 'appointment': appointment, 'customer': row['customer_id']})).scalar_one()
+        if authorized:
+            add('confirmation', 'customer', expiry=min(row['start_at'], now + timedelta(hours=24)))
     if event=='cancelled' and settings['cancellation'] and not bulk:
         add('professional_cancelled' if customer else 'customer_cancelled','professional' if customer else 'customer')
     if event=='reschedule_proposed' and settings['rescheduling']:add('customer_proposal','customer')

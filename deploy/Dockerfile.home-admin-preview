@@ -1,7 +1,6 @@
-# Preserve production and layer the Home interface and revenue query over it.
-FROM ghcr.io/qgbaltigo/orion-assistente-api@sha256:d6ae62c9f013e999ca892826087c2ab44641770e3daedaa41865d5557b552b09
+# Layer the booking form and customer confirmations over the published API.
+FROM ghcr.io/qgbaltigo/orion-assistente-api@sha256:644f6184cac4e7e2c87d0e15ce2a56b8a6ccabbcf6674ffffc2f8502aa524056
 ARG ORION_HOME_COMMIT
 LABEL org.opencontainers.image.revision=$ORION_HOME_COMMIT
-LABEL io.orion.home-preview="barbershop-and-platform-admin"
-COPY --chown=appuser:appuser app/static/orion-suite.js app/static/orion-suite.css /srv/app/app/static/
-COPY --chown=appuser:appuser app/management_api.py app/management_models.py /srv/app/app/
+COPY --chown=appuser:appuser app/static/orion-suite.js app/static/orion-suite.css app/static/orion-public.js app/static/orion-appointment-communications.js /srv/app/app/static/
+COPY --chown=appuser:appuser app/appointment_notifications.py /srv/app/app/

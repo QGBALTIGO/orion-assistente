@@ -192,11 +192,11 @@ test('an open booking form keeps its fields, focus and scroll while Home synchro
  assert.equal(dialog.querySelector('form'),form);assert.equal(reads(h),2);assert.deepEqual(writes(h),[]);assert.deepEqual(h.errors,[]);
 });
 
-test('the booking layout remains unchanged for ordinary company accounts',async t=>{
+test('the booking dialog shares the fixed heading and scroll area with ordinary company accounts',async t=>{
  const h=await liveSetup({bridge:{user:{role:'member',name:'Conta comum'}},respond:bookingData});t.after(()=>h.close());await flush();
  h.click('[data-os-action=new-appointment]');await flush();
  assert.ok(h.document.querySelector('#osDialog.os-booking-dialog'));
- assert.equal(h.document.querySelector('#osDialog.os-home-booking'),null);
+ assert.ok(h.document.querySelector('#osDialog.os-home-booking .os-home-booking-scroll'));
  assert.equal([...h.timers.values()].some(t=>t.ms===5000),false);
  assert.deepEqual(writes(h),[]);assert.deepEqual(h.errors,[]);
 });

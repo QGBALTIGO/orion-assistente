@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from app import appointment_notifications as notifications
 from app.appointment_consent import revoke_scoped_consents
+from app.booking_service import confirm_hold
 from app.database import tenant_transaction
 from tests.integration.test_booking import booking_db, phone
 from tests.integration.test_appointment_notifications_pg import comm_db
@@ -45,6 +46,45 @@ async def authorize(support, d, operation, body, *, recipient=None, admin=None, 
             {'operation':operation,'admin':admin or d['a'],'channel':d['channel'],
              'phone':recipient.lstrip('+'),'recipient_digest':hashlib.sha256(recipient.encode()).hexdigest(),
              'body_digest':digest or hashlib.sha256(body.encode()).hexdigest()})).scalar_one()
+
+
+@pytest.mark.asyncio
+async def test_authorized_panel_confirmation_uses_the_central_channel_once(central_db, monkeypatch):
+    d = central_db
+    use_central(d, monkeypatch)
+    appointment, actor, key = await new_booking(d, opted_in=True, role='owner', hour=10)
+    unapproved, _, _ = await new_booking(d, opted_in=False, role='owner', hour=12)
+    public, _, _ = await new_booking(d, hour=14)
+    async with d['factory']() as db:
+        await confirm_hold(db, d['a'], appointment['id'], context=actor,
+            idempotency_key=key, appointment_messages_opt_in=True)
+    async with d['migrator'].connect() as db:
+        rows = (await db.execute(text("""
+            SELECT id,appointment_id,channel_id,central_channel_id FROM appointment_notifications
+            WHERE tenant_id=:tenant AND event='confirmation'
+        """), {'tenant': d['a']})).mappings().all()
+    assert len(rows) == 1
+    notice = rows[0]
+    assert notice['appointment_id'] == appointment['id']
+    assert notice['appointment_id'] not in {unapproved['id'], public['id']}
+    assert notice['channel_id'] is None and notice['central_channel_id'] == d['channel']
+    support = create_async_engine(os.environ['SUPPORT_DATABASE_URL'])
+    sent = []
+    async def sender(tenant, channel, number, body, operation):
+        assert (tenant, channel, number) == (d['a'], d['channel'], phone(920))
+        assert 'agendamento foi confirmado' in body
+        assert await authorize(support, d, notice['id'], body) is True
+        assert await authorize(support, d, notice['id'], body, recipient=phone(921)) is False
+        sent.append(operation)
+        return {'accepted': True, 'state': 'accepted', 'operation_id': operation}
+    try:
+        for _ in range(2):
+            result = await notifications.process_notification(
+                {'appointment_sender': sender}, str(d['a']), str(notice['id']))
+            assert result == 'accepted'
+        assert sent == [str(notice['id'])]
+    finally:
+        await support.dispose()
 
 
 @pytest.mark.asyncio

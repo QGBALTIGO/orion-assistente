@@ -76,9 +76,8 @@ test('retroativo reutiliza cliente sem telefone, preserva valor final e não aut
   const h=await fixture(t);const form=await manual(h,{mode:'retroactive',walkIn:true});
   h.fill('#osBookingCustomer','Cliente sem telefone');h.click(`[data-os-book-customer="${customerId}"]`);
   h.fill('[name=final_total]','85,00');h.fill('[name=actual_duration_min]','65');
-  form.elements.appointment_messages_opt_in.checked=true;
   assert.equal(form.elements.customer_phone.required,false);assert.equal(form.elements.customer_phone.disabled,true);
-  assert.equal(form.elements.appointment_messages_opt_in.disabled,true);
+  assert.equal(h.document.getElementById('osBookAndNotify').disabled,true);
   h.submit('[data-os-form=appointment]');await flush();
   const call=writes(h)[0];assert.ok(call);
   assert.equal(call.data.mode,'retroactive');assert.equal(call.data.customer_id,customerId);assert.equal(call.data.customer_phone,null);assert.equal(call.data.walk_in,true);
@@ -92,7 +91,7 @@ test('trocar de retroativo avulso para agendamento normal restaura horário e co
   assert.equal(form.elements.walk_in.checked,false);assert.equal(form.elements.walk_in.disabled,true);
   assert.equal(form.elements.customer_phone.required,true);assert.equal(form.elements.customer_phone.disabled,false);
   assert.equal(form.elements.clock.disabled,true);assert.equal(form.elements.final_total.disabled,true);
-  assert.equal(form.elements.start_at.required,true);assert.equal(form.elements.appointment_messages_opt_in.checked,false);
+  assert.equal(form.elements.start_at.required,true);assert.equal(h.document.getElementById('osBookAndNotify').hidden,false);
   assert.equal(form.elements.day.max,'');assert.equal(writes(h).length,0);
 });
 
