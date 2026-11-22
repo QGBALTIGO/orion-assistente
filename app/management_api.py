@@ -500,8 +500,13 @@ async def get_professional_history(
 
 @router.get("/performance/daily")
 async def get_daily_performance(tenant_id: UUID, start_date: date | None = None, end_date: date | None = None,
-                                professional_id: UUID | None = None, actor: Actor = Depends(authenticate)):
+                                professional_id: UUID | None = None, actor: Actor = Depends(authenticate),
+                                granularity: Literal["day", "hour"] = "day"):
+    if granularity == "hour" and (start_date is None or start_date != end_date):
+        raise HTTPException(422, "Selecione um único dia para consultar o faturamento por hora.")
     async with management_session(tenant_id, actor) as db:
+        if granularity == "hour":
+            return await data.hourly_revenue(db, tenant_id, start_date, professional_id)
         return await data.daily_performance(db, tenant_id, start_date, end_date, professional_id)
 
 

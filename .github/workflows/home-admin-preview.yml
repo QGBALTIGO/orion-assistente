@@ -5,6 +5,9 @@ on:
     paths:
       - app/static/orion-suite.js
       - app/static/orion-suite.css
+      - app/management_api.py
+      - app/management_models.py
+      - tests/integration/test_home_revenue_chart.py
       - ui-tests/home-admin-preview.test.mjs
       - deploy/Dockerfile.home-admin-preview
       - .github/workflows/home-admin-preview.yml
@@ -15,6 +18,15 @@ jobs:
   verify-and-publish:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: orion_home_test
+          POSTGRES_PASSWORD: orion_chart_test
+        ports:
+          - 55432:5432
+        options: --health-cmd="pg_isready -U postgres -d orion_home_test" --health-interval=5s --health-timeout=3s --health-retries=10
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
@@ -30,14 +42,15 @@ jobs:
         run: |
           node --check app/static/orion-suite.js
           node --test ui-tests/home-admin-preview.test.mjs ui-tests/dashboard-navigation.test.mjs ui-tests/dashboard-finance-goals.test.mjs ui-tests/admin-only-operator-navigation.test.mjs ui-tests/agenda-periods.test.mjs ui-tests/agenda-lifecycle.test.mjs ui-tests/barbershop-app-layout.test.mjs ui-tests/subscription-app-layout.test.mjs ui-tests/dental-workspace.test.mjs ui-tests/plan-permissions.test.mjs ui-tests/customer-form.test.mjs ui-tests/appointment-operations-panel.test.mjs
-      - name: Verify the immutable published base and UI-only build
+      - name: Verify the immutable published base and Home overlay
         run: |
           python3 - <<'PY'
           from pathlib import Path
           dockerfile=Path('deploy/Dockerfile.home-admin-preview').read_text()
           assert 'FROM ghcr.io/qgbaltigo/orion-assistente-api@sha256:d6ae62c9f013e999ca892826087c2ab44641770e3daedaa41865d5557b552b09' in dockerfile
-          assert dockerfile.count('COPY ')==1
+          assert dockerfile.count('COPY ')==2
           assert 'app/static/orion-suite.js app/static/orion-suite.css /srv/app/app/static/' in dockerfile
+          assert 'app/management_api.py app/management_models.py /srv/app/app/' in dockerfile
           js=Path('app/static/orion-suite.js').read_text()
           assert 'const homePreviewEnabled=()=>platformWorkspace()||barbershopHomeEligible();' in js
           assert "if(homePreviewEnabled()){await loadHomePreview(c);break;}" in js
@@ -52,6 +65,11 @@ jobs:
           IMAGE: ghcr.io/qgbaltigo/orion-assistente-api
         run: |
           docker build --pull -f deploy/Dockerfile.home-admin-preview --build-arg ORION_HOME_COMMIT="$GITHUB_SHA" -t "$IMAGE:home-admin-preview-$GITHUB_SHA" .
+          docker run --rm --network host --entrypoint python \
+            -e PYTHONPATH=/srv/app \
+            -e ORION_HOME_CHART_TEST_DSN=postgresql+asyncpg://postgres:orion_chart_test@127.0.0.1:55432/orion_home_test \
+            -v "$PWD/tests/integration/test_home_revenue_chart.py:/tmp/test_home_revenue_chart.py:ro" \
+            "$IMAGE:home-admin-preview-$GITHUB_SHA" -m unittest discover -s /tmp -p test_home_revenue_chart.py -v
           docker push "$IMAGE:home-admin-preview-$GITHUB_SHA"
           docker image inspect "$IMAGE:home-admin-preview-$GITHUB_SHA" --format '{{json .RepoDigests}}' > home-admin-preview-image.json
           cat home-admin-preview-image.json >> "$GITHUB_STEP_SUMMARY"

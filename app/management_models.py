@@ -1005,6 +1005,26 @@ async def daily_performance(db, tenant_id, start_date=None, end_date=None, profe
     return {"period": period, "items": [dict(row) for row in rows], "legacy_rate_source": "current_profile"}
 
 
+async def hourly_revenue(db, tenant_id, day, professional_id=None):
+    """Sum the final amounts by wall-clock start hour in the company's time zone."""
+    period, lower, upper = await period_for(db, tenant_id, day, day)
+    params = {"tenant": tenant_id, "lower": lower, "upper": upper, "tz": period["timezone"]}
+    professional_filter = ""
+    if professional_id is not None:
+        professional_filter = " AND a.professional_id=:professional"
+        params["professional"] = professional_id
+    rows = (await db.execute(text("""
+        SELECT EXTRACT(HOUR FROM (a.start_at AT TIME ZONE :tz))::integer AS hour,
+            count(*) AS completed, sum(a.total_cents) AS revenue_cents
+        FROM appointments a
+        WHERE a.tenant_id=:tenant AND a.status='completed' AND a.start_at>=:lower AND a.start_at<:upper
+    """ + professional_filter + " GROUP BY 1 ORDER BY 1"), params)).mappings().all()
+    return {"period": period, "granularity": "hour", "items": [
+        {"hour": row["hour"], "completed": row["completed"], "revenue_cents": int(row["revenue_cents"])}
+        for row in rows
+    ]}
+
+
 async def commission_report(db, tenant_id, start_date=None, end_date=None, *, professional_id=None):
     """Optional server-authorized professional filter prevents reading colleagues' rows."""
     period, lower, upper = await period_for(db, tenant_id, start_date, end_date)

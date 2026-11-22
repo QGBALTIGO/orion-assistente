@@ -6,7 +6,10 @@ const admin={role:'admin',name:'Kayky Teste',account_id:'90000000-0000-4000-8000
 function respond(path){
  const u=new URL(path,'https://orion.test'),period={start_date:u.searchParams.get('start_date'),end_date:u.searchParams.get('end_date'),timezone:'America/Sao_Paulo'};
  if(u.pathname.endsWith('/management/dashboard'))return {period,summary:{appointments:12,completed:6,confirmed:4,cancelled:1,no_show:1,customers:48,completed_revenue_cents:43000,average_ticket_cents:7166},professionals:[{id:'80000000-0000-4000-8000-000000000001',name:'Profissional <sintético>',active:true,appointments:12,completed:6,revenue_cents:43000}]};
- if(u.pathname.endsWith('/performance/daily'))return {period,items:[{date:period.end_date,professional_id:'80000000-0000-4000-8000-000000000001',revenue_cents:43000,completed:6}]};
+ if(u.pathname.endsWith('/performance/daily')){
+  if(u.searchParams.get('granularity')==='hour')return {period,granularity:'hour',items:[{hour:9,revenue_cents:10000,completed:2},{hour:11,revenue_cents:33000,completed:4}]};
+  return {period,items:[{date:period.end_date,professional_id:'80000000-0000-4000-8000-000000000001',revenue_cents:43000,completed:6}]};
+ }
  if(u.pathname.endsWith('/goals'))return {items:[]};
  if(u.pathname.endsWith('/appointments'))return {items:[],total:0,limit:50,offset:0,has_more:false};
  return defaultResponse(path);
@@ -36,7 +39,7 @@ test('platform administrator sees the live-data Home pilot inside the original s
  assert.match(h.document.querySelector('.os-home-metrics').textContent,/carteira ativa da empresa/);
  assert.ok(h.document.querySelector('.os-home-team-row strong').textContent.includes('<sintético>'));
  assert.equal(h.document.querySelector('.os-home-team-row sintético'),null);
- assert.equal(h.document.querySelectorAll('#osHomeTrend svg rect').length,7);
+ assert.equal(h.document.querySelectorAll('#osHomeTrend [data-os-chart-key]').length,24);
  assert.equal(h.document.querySelector('.os-home-metrics').hasAttribute('aria-busy'),false);
  assert.equal(h.document.querySelector('.mobile-nav'),null,'no prototype navigation is introduced into the real shell');
  assert.deepEqual(writes(h),[]);assert.deepEqual(h.errors,[]);
@@ -69,6 +72,11 @@ test('today/yesterday/week update real request dates without touching Agenda or 
   assert.equal(u.searchParams.get('start_date'),expected.toISOString().slice(0,10));
   assert.equal(u.searchParams.get('end_date'),period==='yesterday'?expected.toISOString().slice(0,10):today());
   assert.equal(h.document.querySelector('[data-os-period='+period+']').getAttribute('aria-pressed'),'true');
+  const chart=new URL(h.calls.filter(c=>c.path.includes('/performance/daily?')).at(-1).path,'https://orion.test');
+  assert.equal(chart.searchParams.get('start_date'),u.searchParams.get('start_date'));
+  assert.equal(chart.searchParams.get('end_date'),u.searchParams.get('end_date'));
+  assert.equal(chart.searchParams.get('granularity'),period==='week'?'day':'hour');
+  assert.equal(h.document.querySelectorAll('#osHomeTrend [data-os-chart-key]').length,period==='week'?7:24);
   const agenda=new URL(h.calls.filter(c=>c.path.includes('/appointments?')).at(-1).path,'https://orion.test');
   assert.equal(agenda.searchParams.get('day'),today(),'agenda preview explicitly stays on today');
  }
@@ -91,7 +99,7 @@ test('empty confirmed results show honest zeroes and team setup',async t=>{
  const h=await setup({respond:path=>{const d=respond(path);if(path.includes('/management/dashboard')){Object.keys(d.summary).forEach(k=>d.summary[k]=0);d.professionals=[];}if(path.includes('/performance/daily?'))d.items=[];return d;}});t.after(()=>h.close());await flush();
  assert.match(h.document.querySelector('#osHomeRevenue').textContent,/0,00/);
  assert.match(h.document.querySelector('#osHomeTeam').textContent,/Cadastrar profissional/);
- assert.match(h.document.querySelector('#osHomeTrend').textContent,/Sem conclusões/);assert.deepEqual(h.errors,[]);
+ assert.match(h.document.querySelector('#osHomeTrend').textContent,/Sem faturamento/);assert.deepEqual(h.errors,[]);
 });
 
 test('a late old-period response cannot overwrite the newly selected period or another route',async t=>{
@@ -118,7 +126,8 @@ test('large safe integer totals keep exact cent formatting and all labels remain
 test('Home has one booking action and no manual refresh or duplicate empty-state CTA',async t=>{
  const h=await liveSetup();t.after(()=>h.close());await flush();
  assert.equal(h.document.querySelectorAll('.os-home-preview [data-os-action=new-appointment]').length,1);
- assert.equal(h.document.querySelectorAll('.os-home-quick').length,2);
+ assert.deepEqual([...h.document.querySelectorAll('.os-home-quick-actions .os-home-quick')].map(button=>button.textContent),['Novo agendamento','Novo cliente','Meu site']);
+ assert.equal(h.document.querySelector('.os-home-heading [data-os-action=new-appointment]'),null);
  assert.equal([...h.document.querySelectorAll('.os-home-preview button')].some(b=>/Atualizar|Tentar novamente|Agendar cliente/.test(b.textContent)),false);
  assert.equal(h.document.querySelector('.os-home-agenda-empty button'),null);
  assert.match(h.document.querySelector('.os-home-agenda-empty').textContent,/automaticamente/);
@@ -241,7 +250,7 @@ for(const code of ['essencial','profissional','elite'])test(`barbershop ${code} 
  assert.doesNotMatch(home.textContent,/Prévia do administrador|Para acompanhar/);
  assert.equal(home.querySelectorAll('[data-os-action=new-appointment]').length,1);
  assert.match(home.querySelector('#osHomeRevenue').textContent,/430,00/);
- assert.equal(home.querySelector('#osHomeTrend').querySelectorAll('svg rect').length,7);
+ assert.equal(home.querySelectorAll('#osHomeTrend [data-os-chart-key]').length,24);
  assert.equal(home.querySelector('#osHomeGoals').hidden,code==='essencial');
  assert.equal(h.calls.some(c=>c.path.includes('/goals?')),code!=='essencial');
  assert.equal(home.querySelector('#osHomeSync').textContent,'');assert.equal(writes(h).length,0);
@@ -328,4 +337,25 @@ test('a change to another business closes Home and drops the previous barbershop
  late.resolve(respond('/management/dashboard?start_date='+today()+'&end_date='+today()));await flush();
  assert.equal(h.document.querySelector('.os-home-preview'),null);assert.ok(h.document.querySelector('.os-dashboard-today'),h.document.querySelector('#page-suite').textContent);
  assert.equal([...h.timers.values()].some(t=>t.ms===5000),false);assert.deepEqual(h.errors,[]);
+});
+
+
+test('hourly chart exposes exact amounts and weekly chart combines professionals by date',async t=>{
+ const h=await setup({respond:path=>{
+  const d=respond(path);
+  if(path.includes('/performance/daily?')){
+   if(path.includes('granularity=day'))d.items.push({date:d.period.end_date,revenue_cents:2500,completed:1});
+   else d.items.push({hour:10,revenue_cents:1900,completed:1});
+  }
+  return d;
+ }});t.after(()=>h.close());await flush();
+ const columns=()=>[...h.document.querySelectorAll('#osHomeTrend [data-os-chart-key]')];
+ const detail=()=>h.document.querySelector('#osHomeChartDetail').textContent;
+ columns()[9].click();await flush();assert.match(detail(),/^09h · R\$\s100,00$/);
+ columns()[9].focus();columns()[9].dispatchEvent(new h.window.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));
+ assert.equal(h.document.activeElement,columns()[10]);assert.match(detail(),/^10h · R\$\s19,00$/);
+ h.click('[data-os-period=week]');await flush();
+ assert.equal(columns().length,7);assert.match(detail(),/R\$\s455,00$/);
+ assert.match(columns()[6].getAttribute('aria-label'),/^\d{2}\/\d{2} · R\$\s455,00$/);
+ assert.deepEqual(h.errors,[]);
 });

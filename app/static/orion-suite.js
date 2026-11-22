@@ -1100,7 +1100,7 @@
     const period=['today','yesterday','week'].includes(state.filters.homePeriod)?state.filters.homePeriod:'today';
     const shift=n=>{const d=dayDate(today);d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10);};
     return {period,today,start:period==='week'?shift(-6):period==='yesterday'?shift(-1):today,
-      end:period==='yesterday'?shift(-1):today,trendStart:shift(-6)};
+      end:period==='yesterday'?shift(-1):today};
   }
   function homeCount(value){if(!Number.isSafeInteger(value)||value<0)throw Error('Não foi possível confirmar os indicadores.');return value;}
   function homeSummary(data,range){
@@ -1122,22 +1122,21 @@
       greeting=hour<12?'Bom dia':hour<18?'Boa tarde':'Boa noite',
       first=String(state.bridge.user?.name||'').trim().split(/\s+/)[0],
       periodName={today:'de hoje',yesterday:'de ontem',week:'dos últimos 7 dias'}[range.period];
-    const quick=(name,sub,action,symbol)=>'<button type="button" class="os-home-quick" data-os-action="'+action+'"><span>'+icon(symbol)+'</span><div><strong>'+name+'</strong><small>'+sub+'</small></div>'+icon('plus')+'</button>';
+    const quick=(name,symbol,attrs)=>'<button type="button" class="os-home-quick" '+attrs+'><span>'+icon(symbol)+'</span><strong>'+esc(name)+'</strong></button>';
     const company=state.bridge.user?.maintenance?.active?'':tenant()?.name,
       pilot=platformWorkspace()?'<span class="os-home-pilot">'+icon('shield')+'Prévia do administrador</span>':'',
-      booking=writable()&&routePermitted('agenda')?button('Novo agendamento','new-appointment','os-home-book-action','plus'):'',
-      quickActions=(writable()&&routePermitted('clientes')?quick('Novo cliente','Comece um novo relacionamento','new-customer','userPlus'):'')+
-        (routePermitted('site')?'<button type="button" class="os-home-quick" data-os-route="site"><span>'+icon('globe')+'</span><div><strong>Meu site</strong><small>Sua página de agendamento</small></div>'+icon('external')+'</button>':'');
+      quickActions=(writable()&&routePermitted('agenda')?quick('Novo agendamento','calendarPlus','data-os-action="new-appointment"'):'')+
+        (writable()&&routePermitted('clientes')?quick('Novo cliente','userPlus','data-os-action="new-customer"'):'')+
+        (routePermitted('site')?quick('Meu site','globe','data-os-route="site"'):'');
     bodyHTML('<section class="os-home-preview" aria-label="Início do negócio"><header class="os-home-heading">'+
       '<div class="os-home-greeting">'+
       (company||pilot?'<div class="os-home-identity">'+(company?'<p class="os-home-company">'+esc(company)+'</p>':'')+pilot+'</div>':'')+
       '<h1>'+greeting+(first?', '+esc(first):'')+'<span>.</span></h1><p class="os-home-date">'+esc(longDay(range.today))+'</p></div>'+
-      booking+
       '<p id="osHomeSync" role="status" aria-live="polite"></p></header>'+
       '<div class="os-home-overview"><article class="os-home-revenue" aria-labelledby="osHomeRevenueTitle"><div class="os-home-revenue-heading"><h2 id="osHomeRevenueTitle">Faturamento <span>'+periodName+'</span></h2><span class="os-home-revenue-art">'+icon('chart')+'</span></div>'+
       '<div class="os-home-periods" role="group" aria-label="Período dos indicadores">'+[['today','Hoje'],['yesterday','Ontem'],['week','7 dias']].map(([value,label])=>'<button type="button" data-os-action="home-period" data-os-period="'+value+'" aria-pressed="'+(range.period===value)+'">'+label+'</button>').join('')+'</div>'+
       '<div id="osHomeRevenue" class="os-home-revenue-result" aria-live="polite" aria-busy="true"><strong class="os-home-revenue-value">—</strong><p class="os-home-pending">Consultando faturamento…</p></div>'+
-      (permitted('performance.advanced')?'<div id="osHomeTrend" class="os-home-trend" aria-live="polite" aria-busy="true"><div class="os-home-chart-placeholder" aria-hidden="true"></div></div>':'')+
+      (permitted('performance.advanced')?'<div id="osHomeTrend" class="os-home-trend" aria-busy="true"><div class="os-home-chart-placeholder" aria-hidden="true"></div></div>':'')+
       '<div class="os-home-revenue-foot"><span>'+icon('shield')+'Atendimentos concluídos</span>'+(routePermitted('financeiro')?button('Ver financeiro','dashboard-finance-full','os-home-light-link'):'')+'</div></article>'+
       '<div id="osHomeMetrics" class="os-home-metrics" aria-label="Indicadores do período" aria-live="polite" aria-busy="true">'+homeMetric('Atendimentos','—','Consultando período…','list','agenda')+homeMetric('Clientes cadastrados','—','Consultando carteira…','users','clientes')+homeMetric('Confirmados','—','Consultando período…','clock','agenda')+homeMetric('Ticket médio','—','Consultando período…','wallet','financeiro')+'</div></div>'+
       (quickActions?'<section class="os-home-quick-actions" aria-label="Ações rápidas">'+quickActions+'</section>':'')+
@@ -1156,12 +1155,56 @@
     }).join('')+(staff.length>5?'<p class="os-home-team-note">'+staff.length+' profissionais no período. Veja a lista completa em Equipe.</p>':'');
   }
   function homeTrend(data,range){
-    if(!Array.isArray(data?.items)||data.period?.start_date!==range.trendStart||data.period?.end_date!==range.today)throw Error('A evolução do faturamento está indisponível.');
-    const points=Array.from({length:7},(_,i)=>{const d=dayDate(range.trendStart);d.setUTCDate(d.getUTCDate()+i);return {day:d.toISOString().slice(0,10),value:0};}),byDay=new Map(points.map(p=>[p.day,p]));
-    for(const row of data.items){const p=byDay.get(row.date);if(!p)throw Error('A evolução retornou um período diferente.');p.value+=homeCount(row.revenue_cents);homeCount(p.value);}
-    const max=Math.max(0,...points.map(p=>p.value));
-    const bars=points.map((p,i)=>{const h=max?p.value/max*67:0,selected=range.period==='week'||p.day===range.start;return '<g><title>'+esc(fmtDate(p.day)+': '+dashboardFinanceMoney(p.value))+'</title><rect x="'+(i*78+30)+'" y="'+(78-h)+'" width="30" height="'+(h||1)+'" rx="5" fill="currentColor" opacity="'+(selected?'.9':'.3')+'"/></g>';}).join('');
-    return '<div class="os-home-trend-label"><span>Faturamento diário · últimos 7 dias</span><span>'+(max?'':'Sem conclusões no período')+'</span></div><svg viewBox="0 0 560 88" preserveAspectRatio="none" role="img" aria-label="'+esc('Faturamento concluído por dia. '+points.map(p=>fmtDate(p.day)+': '+dashboardFinanceMoney(p.value)).join('; '))+'"><path d="M12 79H550M12 42H550M12 5H550" stroke="currentColor" stroke-opacity=".1" fill="none"/>'+bars+'</svg><div class="os-home-chart-dates">'+points.map(p=>'<span>'+esc(p.day.slice(8))+'</span>').join('')+'</div>';
+    const hourly=range.period!=='week';
+    if(!Array.isArray(data?.items)||data.period?.start_date!==range.start||data.period?.end_date!==range.end||hourly&&data.granularity!=='hour')
+      throw Error('O período do gráfico não pôde ser confirmado.');
+    const title=hourly?'Faturamento por hora':'Faturamento por dia',
+      currentHour=range.period==='today'?Number(new Intl.DateTimeFormat('en-GB',{timeZone:zone(),hour:'numeric',hourCycle:'h23'}).format(new Date())):23;
+    const points=Array.from({length:hourly?24:7},(_,index)=>{
+      const day=hourly?range.start:shiftDay(range.start,index);
+      return {id:hourly?index:day,key:hourly?day+'-'+index:day,
+        label:hourly?String(index).padStart(2,'0')+'h':fmtDate(day).slice(0,5),value:0};
+    });
+    const byId=new Map(points.map(point=>[point.id,point]));
+    for(const row of data.items){
+      const point=byId.get(hourly?row.hour:row.date);
+      if(!point)throw Error('O gráfico retornou uma data ou hora fora do período.');
+      point.value=homeCount(point.value+homeCount(row.revenue_cents));
+    }
+    const max=Math.max(...points.map(point=>point.value));
+    const unit=10**Math.floor(Math.log10(Math.max(1,max/2)));
+    const step=[1,2,5,10].find(multiplier=>2*unit*multiplier>=max)*unit;
+    const top=2*step;
+    const tickMoney=new Intl.NumberFormat('pt-BR',{notation:'compact',maximumFractionDigits:2});
+    const scale=[top,step,0].map(value=>'<span>R$ '+esc(tickMoney.format(value/100))+'</span>').join('');
+    const saved=points.find(point=>point.key===state.filters.homeChartPoint);
+    const current=points.findLast(point=>point.value>0)||points[hourly?currentHour:6]||points[0];
+    const selected=saved||current;
+    const detailFor=point=>point.label+' · '+(hourly&&point.id>currentHour&&!point.value?'Horário futuro':dashboardFinanceMoney(point.value));
+    const bars=points.map(point=>{
+      const detail=detailFor(point),active=point===selected,future=hourly&&point.id>currentHour&&!point.value;
+      return '<button type="button" class="os-home-chart-column" data-os-action="home-chart-point" data-os-chart-key="'+esc(point.key)+'" data-os-chart-detail="'+esc(detail)+'"'+
+        ' title="'+esc(detail)+'" aria-label="'+esc(detail)+'" aria-pressed="'+active+'" tabindex="'+(active?0:-1)+'"'+(future?' data-future="true"':'')+'>'+
+        (point.value?'<span class="os-home-chart-bar" style="height:'+(point.value/top*100).toFixed(3)+'%"></span>':'')+'</button>';
+    }).join('');
+    const dates=points.map((point,index)=>'<span>'+(hourly&&index%4!==0?'':esc(point.label))+'</span>').join('');
+    return '<div class="os-home-trend-label"><strong>'+title+'</strong><span id="osHomeChartDetail" aria-live="polite">'+
+      esc(max||saved?detailFor(selected):'Sem faturamento no período')+'</span></div>'+
+      '<div class="os-home-chart'+(hourly?' os-home-chart-hourly':'')+'" style="--os-chart-count:'+points.length+'">'+
+      '<div class="os-home-chart-scale" aria-hidden="true">'+(max?scale:'<span></span><span></span><span>R$ 0</span>')+'</div>'+
+      '<div class="os-home-chart-bars" role="group" aria-label="'+title+'">'+bars+'</div>'+
+      '<div class="os-home-chart-dates" aria-hidden="true">'+dates+'</div></div>';
+  }
+  function selectHomeChartPoint(button,focus=false){
+    const chart=$('osHomeTrend');
+    if(!button||!chart?.contains(button))return;
+    state.filters.homeChartPoint=button.dataset.osChartKey;
+    for(const column of chart.querySelectorAll('[data-os-chart-key]')){
+      column.tabIndex=column===button?0:-1;
+      column.setAttribute('aria-pressed',String(column===button));
+    }
+    $('osHomeChartDetail').textContent=button.dataset.osChartDetail;
+    if(focus)button.focus({preventScroll:true});
   }
   function homeAgendaFrame(today){
     return '<section class="os-card os-home-appointments" aria-labelledby="osDashboardAgendaTitle"><div class="os-home-panel-head"><div><h2 id="osDashboardAgendaTitle">Agendamentos de hoje</h2><p>'+esc(longDay(today))+'</p></div>'+button('Ver agenda','dashboard-agenda-full','os-ghost os-small')+'</div><div id="osDashboardAgendaContent" aria-live="polite" aria-busy="true">'+loading('Consultando os agendamentos…')+'</div></section>';
@@ -1185,7 +1228,7 @@
   }
   function homePatch(id,html){
     const node=$(id);if(!node||node._osHomeHTML===html)return;
-    const key=button=>button?.dataset?.osAppointment||button?.dataset?.osAction||button?.querySelector('.os-home-metric-title')?.textContent||button?.dataset?.osRoute;
+    const key=button=>button?.dataset?.osChartKey||button?.dataset?.osAppointment||button?.dataset?.osAction||button?.querySelector('.os-home-metric-title')?.textContent||button?.dataset?.osRoute;
     const focused=node.contains(document.activeElement)?key(document.activeElement):null;
     node.innerHTML=html;node._osHomeHTML=html;
     if(focused)[...node.querySelectorAll('button')].find(b=>key(b)===focused)?.focus({preventScroll:true});
@@ -1226,7 +1269,7 @@
     const readTrend=permitted('performance.advanced'),readGoals=permitted('goals.manage')&&routePermitted('desempenho'),readAgenda=routePermitted('agenda');
     const reads=await Promise.allSettled([
       request(mgmt('/dashboard?'+query({start_date:range.start,end_date:range.end}))),
-      readTrend?request(mgmt('/performance/daily?'+query({start_date:range.trendStart,end_date:today}))):null,
+      readTrend?request(mgmt('/performance/daily?'+query({start_date:range.start,end_date:range.end,granularity:range.period==='week'?'day':'hour'}))):null,
       readGoals?request(mgmt('/goals?'+query({start_date:today,end_date:today}))):null,
       readAgenda?request(apiPath('/appointments?'+query({paged:true,day:today,limit:homeAppointmentLimit,offset:0}))):null
     ]);
@@ -4579,6 +4622,7 @@
       case 'new-appointment':await showAppointment();break;
       case 'new-fixed-client':await showAppointment({bookingMode:'fixed'});break;
       case 'new-block':await showBlock();break;
+      case 'home-chart-point':selectHomeChartPoint(element);break;
       case 'home-period':{
         if(homePreviewEnabled()&&state.route==='dashboard'&&['today','yesterday','week'].includes(element.dataset.osPeriod)){state.filters.homePeriod=element.dataset.osPeriod;await loadHomePreview(context());document.querySelector('[data-os-action=home-period][data-os-period="'+state.filters.homePeriod+'"]')?.focus({preventScroll:true});}break;
       }
@@ -4947,6 +4991,13 @@
     if(state.dialog?.type==='package'&&el.name==='duration_override_min')updatePackageSummary();
     if(state.dialog?.type==='complete-appointment'&&el.name==='final_total')updateCompletionSummary();}
   function handleKeydown(event){if(!state.mounted)return;
+    const homePoint=event.target.closest?.('#osHomeTrend [data-os-chart-key]');
+    if(homePoint&&['ArrowLeft','ArrowRight','Home','End'].includes(event.key)){
+      const columns=[...$('osHomeTrend').querySelectorAll('[data-os-chart-key]')];
+      const index=columns.indexOf(homePoint),last=columns.length-1;
+      const next=event.key==='Home'?0:event.key==='End'?last:Math.max(0,Math.min(last,index+(event.key==='ArrowRight'?1:-1)));
+      event.preventDefault();selectHomeChartPoint(columns[next],true);return;
+    }
     const performanceTab=event.target.closest?.('[data-os-performance-tab]');
     if(performanceTab&&['ArrowLeft','ArrowRight','Home','End'].includes(event.key)&&!state.busy){const tabs=[...document.querySelectorAll('[data-os-performance-tab]')],index=tabs.indexOf(performanceTab),next=event.key==='Home'?0:event.key==='End'?tabs.length-1:(index+(event.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length;event.preventDefault();selectPerformanceTab(tabs[next].dataset.osPerformanceTab,true);return;}
     const point=event.target.closest?.('[data-os-performance-point]');
