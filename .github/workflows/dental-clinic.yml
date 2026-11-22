@@ -17,6 +17,7 @@ on:
       - 'app/static/orion-suite.js'
       - 'app/static/panel.html'
       - 'scripts/backup_and_migrate_dental_clinic.py'
+      - 'scripts/check_dental_key_history.py'
       - 'scripts/wait_for_dental_schema.py'
       - 'scripts/predeploy_one_click_links.py'
       - 'scripts/start_api.py'

@@ -892,3 +892,33 @@ async def test_prosthesis_worklist_preserves_versions_and_clinic_perimeters(clin
             WHERE tenant_id=:tenant AND action='prosthesis_status_changed'
         """), {"tenant": d["a"]})
         assert audit_events == 5
+
+
+@pytest.mark.asyncio
+async def test_first_key_preflight_reads_presence_only_with_verified_migrator_scope(clinic_db):
+    from scripts.check_dental_key_history import ciphertext_exists
+
+    d = clinic_db
+    migration_url = os.environ["MIGRATION_DATABASE_URL"]
+    assert ciphertext_exists(migration_url) is False
+    runtime_url = os.environ["APP_DATABASE_URL"].replace("+asyncpg", "+psycopg", 1)
+    with pytest.raises(DBAPIError):
+        ciphertext_exists(runtime_url)
+    async with d["migrator"].begin() as db:
+        await db.execute(text("""
+            INSERT INTO dental_records
+            (tenant_id,patient_id,kind,encrypted_content,nonce,digest,authored_by,professional_id,entry_key)
+            VALUES (:tenant,:patient,'prosthesis',:cipher,:nonce,:digest,:author,:professional,:key)
+        """), {"tenant": d["b"], "patient": d["patient_b"], "cipher": b"x" * 17,
+               "nonce": b"x" * 12, "digest": "0" * 64, "author": d["account_b"],
+               "professional": d["pro_b"], "key": "synthetic-ciphertext-first-key-check"})
+    assert ciphertext_exists(migration_url) is True
+    async with d["migrator"].begin() as db:
+        await db.execute(text("DELETE FROM dental_records WHERE tenant_id=:tenant"), {"tenant": d["b"]})
+        await db.execute(text("""
+            INSERT INTO dental_exam_files
+            (tenant_id,patient_id,filename,media_type,byte_count,encrypted_content,nonce,digest,authored_by)
+            VALUES (:tenant,:patient,'exame-sintetico.pdf','application/pdf',1,:cipher,:nonce,:digest,:author)
+        """), {"tenant": d["b"], "patient": d["patient_b"], "cipher": b"x" * 17,
+               "nonce": b"x" * 12, "digest": "0" * 64, "author": d["account_b"]})
+    assert ciphertext_exists(migration_url) is True

@@ -34,3 +34,5 @@ Dentistas autorizados acompanham os trabalhos da clínica na aba Próteses. Dá 
 ## Publicação
 
 O código fica na revisão isolada de Odontologia. O ambiente de produção atual não tem a variável de chave clínica disponível ao serviço. O painel só libera estas configurações com o módulo clínico habilitado pelo servidor. As migrações e os testes desta revisão foram executados em base sintética.
+
+A verificação `python -m scripts.check_dental_key_history` usa as credenciais de migração do ambiente. Ela registra somente se foi possível verificar o histórico e se uma primeira chave pode ser criada. A presença de prontuários ou exames cifrados exige recuperar a chave que já os protege. A migração da revisão ainda precisa passar pelo procedimento de backup e publicação do Orion.
