@@ -224,6 +224,10 @@ class RoomRename(RoomCreate):
     expected_name: str = Field(min_length=1, max_length=80)
 
 
+class ChairAvailability(Strict):
+    active: bool = Field(strict=True)
+
+
 class RoomAssign(Strict):
     room_id: UUID
 

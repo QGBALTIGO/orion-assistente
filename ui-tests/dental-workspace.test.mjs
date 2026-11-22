@@ -155,3 +155,37 @@ test('cadeiras não aparecem em outro nicho, manutenção, perfis da equipe ou s
     assert.equal(h.calls.some(c=>c.path.includes('/dental/chair-settings')),false);
   }
 });
+
+test('inativação exige confirmação e o filtro mostra ativas e inativas',async t=>{
+  const chair={id:'10000000-0000-4000-8000-000000000005',name:'Cadeira de avaliação',active:true};
+  const h=await makeSuite({initialRoute:'configuracoes',
+    permissions:dentalPlan({dental_clinical_enabled:true}),respond:(path,method,body)=>{
+      if(path.endsWith('/dental/chair-settings'))return {items:[{...chair}]};
+      if(path.endsWith('/availability')&&method==='PATCH'){
+        chair.active=body.active;
+        return {...chair};
+      }
+      return [];
+    }});
+  t.after(()=>h.close());await flush();
+  h.click('[data-os-settings=dental-chairs]');await flush();
+  h.click('[data-os-action=dental-chair-availability]');
+  assert.equal(chair.active,true);
+  h.submit('[data-os-form=dental-chair-availability]');await flush();
+  assert.equal(chair.active,false);
+  const filter=h.document.getElementById('osDentalChairFilter');
+  filter.value='active';
+  filter.dispatchEvent(new h.window.Event('change',{bubbles:true}));
+  await flush();
+  assert.match(h.document.getElementById('osPageBody').textContent,/Nenhuma cadeira nesta situação/);
+  const inactiveFilter=h.document.getElementById('osDentalChairFilter');
+  inactiveFilter.value='inactive';
+  inactiveFilter.dispatchEvent(new h.window.Event('change',{bubbles:true}));
+  await flush();
+  assert.match(h.document.querySelector('[data-os-action=dental-chair-availability]').getAttribute('aria-label'),/^Reativar/);
+  h.click('[data-os-action=dental-chair-availability]');
+  h.submit('[data-os-form=dental-chair-availability]');await flush();
+  assert.equal(chair.active,true);
+  assert.match(h.document.getElementById('osPageBody').textContent,/Nenhuma cadeira nesta situação/);
+  assert.equal(h.errors.length,0);
+});

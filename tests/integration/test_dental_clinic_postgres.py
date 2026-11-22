@@ -477,6 +477,54 @@ async def test_owner_manages_chairs_without_opening_clinical_records(clinic_api_
 
 
 @pytest.mark.asyncio
+async def test_chair_inactivation_preserves_reservations_and_serializes_with_booking(clinic_api_db):
+    import asyncio
+    import httpx
+    from fastapi import FastAPI
+    from app.catalog_api import Actor, authenticate
+    from app.dental_clinic_api import router
+
+    d = clinic_api_db
+    api = FastAPI()
+    api.include_router(router)
+    api.dependency_overrides[authenticate] = lambda: Actor("member", d["a"], d["account"], "owner")
+    base = f"/api/v1/tenants/{d['a']}/dental"
+    appointment = f"{base}/appointments/{d['appt_a']}/room"
+    availability = f"{base}/chair-settings/{d['room_a']}/availability"
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=api),
+                                 base_url="http://test.invalid") as client:
+        assert (await client.put(appointment, json={"room_id": str(d["room_a"])})).status_code == 200
+        assert (await client.patch(availability, json={"active": False})).status_code == 409
+
+        factory = async_sessionmaker(d["runtime"], expire_on_commit=False)
+        async with factory() as db:
+            async with tenant_transaction(db, d["a"]):
+                await db.execute(text("""
+                    UPDATE appointments SET status='completed' WHERE tenant_id=:tenant AND id=:id
+                """), {"tenant": d["a"], "id": d["appt_a"]})
+        inactive = await client.patch(availability, json={"active": False})
+        assert inactive.status_code == 200 and inactive.json()["active"] is False
+        async with factory() as db:
+            async with tenant_transaction(db, d["a"]):
+                await db.execute(text("""
+                    UPDATE appointments SET start_at=start_at WHERE tenant_id=:tenant AND id=:id
+                """), {"tenant": d["a"], "id": d["appt_a"]})
+        assert (await client.get(appointment)).json()["reservation"]["room_id"] == str(d["room_a"])
+        another = f"{base}/appointments/{d['appt_a2']}/room"
+        assert (await client.put(another, json={"room_id": str(d["room_a"])})).status_code == 409
+        active = await client.patch(availability, json={"active": True})
+        assert active.status_code == 200 and active.json()["active"] is True
+
+        second = f"{base}/chair-settings/{d['room_a2']}/availability"
+        booked, retired = await asyncio.wait_for(asyncio.gather(
+            client.put(another, json={"room_id": str(d["room_a2"])}),
+            client.patch(second, json={"active": False}),
+        ), timeout=15)
+        assert sorted([booked.status_code, retired.status_code]) == [200, 409]
+
+
+@pytest.mark.asyncio
 async def test_dental_professional_portal_link_clinician_permission_and_revocation(clinic_api_db):
     """A real invited dentist uses their professional link; cannot access other tenants."""
     import httpx

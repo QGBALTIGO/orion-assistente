@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - 'alembic/versions/0076_dental_clinic.py'
+      - 'alembic/versions/0082_dental_chair_availability.py'
       - 'app/dental_clinic_*.py'
       - 'app/main.py'
       - 'app/professional_portal.py'
@@ -21,6 +22,7 @@ on:
       - 'tests/unit/test_dental_clinic_release.py'
       - 'tests/unit/test_start_api.py'
       - 'ui-tests/dental-clinic.test.mjs'
+      - 'ui-tests/dental-workspace.test.mjs'
       - 'ui-tests/professional-portal.test.mjs'
       - '.github/workflows/dental-clinic.yml'
 permissions:
@@ -76,8 +78,8 @@ jobs:
           node --check app/static/orion-suite.js
           node --check app/static/orion-dental-clinic.js
           node --check app/static/orion-professional.js
-      - name: Migração 0001-0076 em PostgreSQL 16 limpo
-        run: python -m alembic upgrade 0076_dental_clinic
+      - name: Migrações em PostgreSQL 16 limpo
+        run: python -m alembic upgrade head
       - name: Verificar contrato de papéis, RLS e migração
         run: python -m scripts.wait_for_dental_schema
       - name: Testar conflitos concorrentes e isolamento real entre empresas

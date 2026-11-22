@@ -29,7 +29,7 @@ from app.plan_permissions import plan_state
 from app.tenant_access import resolve_tenant_access
 from app.dental_clinic_schemas import (
     ClinicianGrant, PatientCreate, PatientPatch, RecordCreate,
-    RoomCreate, RoomRename, RoomAssign, SupplyCreate, SupplyMove, ExamUpload
+    RoomCreate, RoomRename, RoomAssign, ChairAvailability, SupplyCreate, SupplyMove, ExamUpload
 )
 
 
@@ -456,18 +456,23 @@ async def create_chair_settings(tenant_id: UUID, payload: RoomCreate, actor: Act
         return await create_chair(db, tenant_id, actor, payload.name)
 
 
+async def chair_for_update(db, tenant, room_id):
+    chair = (await db.execute(text("""
+        SELECT id,name,active FROM dental_rooms
+        WHERE tenant_id=:tenant AND id=:id FOR UPDATE
+    """), {"tenant": tenant, "id": room_id})).mappings().one_or_none()
+    if not chair:
+        raise HTTPException(404, "Cadeira não encontrada nesta clínica")
+    return chair
+
+
 @router.patch("/chair-settings/{room_id}")
 async def rename_chair_settings(
     tenant_id: UUID, room_id: UUID, payload: RoomRename, actor: Actor = Depends(authenticate)
 ):
     async with owner_session(tenant_id, actor) as db:
         params = {"tenant": tenant_id, "id": room_id, "name": payload.name}
-        chair = (await db.execute(text("""
-            SELECT id,name,active FROM dental_rooms
-            WHERE tenant_id=:tenant AND id=:id FOR UPDATE
-        """), params)).mappings().one_or_none()
-        if not chair:
-            raise HTTPException(404, "Cadeira não encontrada nesta clínica")
+        chair = await chair_for_update(db, tenant_id, room_id)
         if chair["name"] == payload.name:
             return dict(chair)
         if chair["name"] != payload.expected_name:
@@ -481,6 +486,34 @@ async def rename_chair_settings(
         except IntegrityError:
             raise HTTPException(409, "Já existe uma cadeira com esse nome") from None
         await audit(db, tenant_id, actor, "room_renamed")
+        return dict(updated)
+
+
+@router.patch("/chair-settings/{room_id}/availability")
+async def change_chair_availability(
+    tenant_id: UUID, room_id: UUID, payload: ChairAvailability, actor: Actor = Depends(authenticate)
+):
+    async with owner_session(tenant_id, actor) as db:
+        chair = await chair_for_update(db, tenant_id, room_id)
+        if chair["active"] == payload.active:
+            return dict(chair)
+        params = {"tenant": tenant_id, "id": room_id, "active": payload.active}
+        if not payload.active:
+            occupied = (await db.execute(text("""
+                SELECT EXISTS (
+                    SELECT 1 FROM dental_room_reservations r JOIN appointments a
+                      ON a.tenant_id=r.tenant_id AND a.id=r.appointment_id
+                    WHERE r.tenant_id=:tenant AND r.room_id=:id AND r.active
+                      AND (a.status='confirmed' OR a.status='hold' AND a.hold_expires_at>clock_timestamp())
+                )
+            """), params)).scalar_one()
+            if occupied:
+                raise HTTPException(409, "A cadeira tem consultas em aberto. Libere essas reservas antes de inativá-la.")
+        updated = (await db.execute(text("""
+            UPDATE dental_rooms SET active=:active WHERE tenant_id=:tenant AND id=:id
+            RETURNING id,name,active
+        """), params)).mappings().one()
+        await audit(db, tenant_id, actor, "room_activated" if payload.active else "room_inactivated")
         return dict(updated)
 
 

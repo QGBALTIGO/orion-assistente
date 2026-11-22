@@ -118,7 +118,7 @@
   const permitted=feature=>!feature||platformWorkspace()||(!subscriptionWorkspace()||['account.manage','business.setup','devices.manage','chatbot.manage','templates.manage','sent_messages.manage','diagnostics.manage','campaigns.manage','scheduled_messages.manage','bulk_messages.manage','direct_messages.manage','whatsapp_guidance.view','group_contacts.manage','group_add.manage'].includes(feature))&&state.entitlements?.permissions?.[feature]===true;
   const routePermitted=route=>route==='clinica'?(dentalWorkspace()&&state.entitlements?.dental_clinical_enabled===true&&['owner','editor'].includes(tenant()?.role)&&permitted('clients.manage')):route==='perfil'?appLayoutEnabled():['aquecimento','evitar-banimento','resolver-banimento','extrator-contatos','adicionar-ao-grupo'].includes(route)?(subscriptionWorkspace()&&tenant()?.role==='owner'&&tenant()?.status==='active'&&permitted(routeFeatures[route])):['dispositivos','chatbot','testar-chatbot','templates','mensagens-enviadas','diagnosticos','campanhas','programadas','massa','enviar-mensagem'].includes(route)?(subscriptionWorkspace()&&permitted(routeFeatures[route])):subscriptionWorkspace()?(route==='configuracoes'?permitted('account.manage'):subscriptionRoutes.has(route)):route==='configuracoes'?(permitted('settings.manage')||permitted('business.setup')||permitted('account.manage')):permitted(routeFeatures[route]);
   const dentalChairSettingsAllowed=()=>dentalWorkspace()&&state.entitlements?.dental_clinical_enabled===true&&
-    state.bridge.user?.role==='member'&&!state.bridge.user?.maintenance?.active&&tenant()?.role==='owner';
+    state.bridge.user?.role==='member'&&!state.bridge.user?.maintenance?.active&&tenant()?.role==='owner'&&permitted('settings.manage');
   const settingsTabAllowed=tab=>tab==='dental-chairs'?dentalChairSettingsAllowed():subscriptionWorkspace()?['appearance','account'].includes(tab):tab==='finance'?permitted('finance.basic'):['appearance','account'].includes(tab)||tab==='general'?(tab!=='general'||permitted('business.setup')||permitted('settings.manage')):tab==='ai'?(permitted('marketing.ai')||permitted('consultant.ai')):tab==='whatsapp'?permitted('conversations.manual'):tab==='hours'?permitted('agenda.manage'):tab==='calendar'?permitted('calendar.manage'):tab==='notifications'?permitted('notifications.basic'):tab==='site-requests'?canManageSiteRequests():platformWorkspace();
   const atProfessionalLimit=()=>!platformWorkspace()&&Number.isInteger(state.entitlements?.limits?.max_professionals)&&Number(state.entitlements.limits.active_professionals)>=state.entitlements.limits.max_professionals;
   function featureForPath(path,method='GET',data){
@@ -162,7 +162,7 @@
       if(type==='customer')return 'clients.manage';
       if(type.startsWith('appointment')||type==='fixed-client')return 'agenda.manage';
     }
-    if(type==='dental-chair')return 'settings.manage';
+    if(type.startsWith('dental-chair'))return 'settings.manage';
     return /receipt/.test(type)?'finance.basic':type==='business-preferences'?'business.setup':/goal/.test(type)?'goals.manage':/campaign|marketing/.test(type)?'marketing.campaigns':/loyalty/.test(type)?'loyalty.manage':/coupon/.test(type)?'coupons.manage':/settlement|advance|commission/.test(type)?'commissions.advanced':/professional|hours/.test(type)?'professionals.manage':routeFeatures[state.route];
   }
   function applyPermissionDOM(){
@@ -2714,15 +2714,22 @@
     if(tab==='whatsapp'&&t)window.OrionChannels?.mount({host:$('osManagedChannels'),request,tenantId:state.tenantId});
   }
   function renderDentalChairSettings(){
-    const chairs=state.data.dentalChairs||[];
+    const chairs=state.data.dentalChairs||[],filter=state.filters.dentalChairFilter||'all';
     const create=button('Nova cadeira','dental-chair-new','','plus');
-    return '<section class="os-card">'+(chairs.length?
-      '<div class="os-card-header"><div><h3>Cadeiras cadastradas</h3><p>'+chairs.length+(chairs.length===1?' cadeira':' cadeiras')+
-      '</p></div>'+create+'</div><div>'+chairs.map(chair=>'<div class="os-summary-row"><span><strong>'+esc(chair.name)+
-        '</strong><small>'+(chair.active?'Ativa':'Inativa')+'</small></span>'+
-        button('Editar','dental-chair-edit','os-outline os-small','edit','data-id="'+esc(chair.id)+
-          '" aria-label="Editar '+esc(chair.name)+'"')+'</div>').join('')+'</div>':
-      empty('tooth','Nenhuma cadeira cadastrada','Cadastre uma cadeira para vinculá-la às consultas da clínica.',create))+'</section>';
+    if(!chairs.length)return '<section class="os-card">'+
+      empty('tooth','Nenhuma cadeira cadastrada','Cadastre uma cadeira para vinculá-la às consultas da clínica.',create)+'</section>';
+    const visible=chairs.filter(chair=>filter==='all'||chair.active===(filter==='active'));
+    return '<section class="os-card"><div class="os-card-header"><div><h3>Cadeiras cadastradas</h3></div>'+create+'</div>'+
+      '<div class="os-field os-section-gap"><label for="osDentalChairFilter">Exibir</label><select id="osDentalChairFilter">'+
+      [['all','Todas'],['active','Ativas'],['inactive','Inativas']].map(([value,label])=>
+        '<option value="'+value+'"'+(value===filter?' selected':'')+'>'+label+'</option>').join('')+
+      '</select></div><div class="os-section-gap">'+(visible.length?visible.map(chair=>
+        '<div class="os-summary-row"><span><strong>'+esc(chair.name)+'</strong><small>'+(chair.active?'Ativa':'Inativa')+'</small></span>'+
+        '<div class="os-actions">'+button('Editar','dental-chair-edit','os-outline os-small','edit','data-id="'+esc(chair.id)+
+          '" aria-label="Editar '+esc(chair.name)+'"')+
+        button(chair.active?'Inativar':'Reativar','dental-chair-availability','os-ghost os-small','',
+          'data-id="'+esc(chair.id)+'" aria-label="'+(chair.active?'Inativar ':'Reativar ')+esc(chair.name)+'"')+
+        '</div></div>').join(''):'<p class="os-help" role="status">Nenhuma cadeira nesta situação.</p>')+'</div></section>';
   }
   function showDentalChairEditor(chair=null){
     if(!dentalChairSettingsAllowed()||state.filters.settingsTab!=='dental-chairs')return;
@@ -4467,6 +4474,13 @@
       if(kind==='automations'){const data=state.data.automations,previous=data.configuration||{},rules=automationRules().map(rule=>{const template=form.elements['rule_template_'+rule.event],enabled=form.elements['rule_enabled_'+rule.event];return {...rule,template:template?template.value:rule.template,...(template&&template.value!==rule.template?{template_source:'custom'}:{}),requested_enabled:enabled?enabled.checked:rule.requested_enabled};}),configuration={rules,...(previous.delivery_policy?{delivery_policy:previous.delivery_policy}:{}),...(permitted('relationships.manage')?{recovery_days:f.recovery_days?Number(f.recovery_days):previous.recovery_days||60}:{}),...(permitted('reception.automation')?{vacancy_requested:form.elements.vacancy_requested?form.elements.vacancy_requested.checked:previous.vacancy_requested===true}:{})};await saveForm(form,()=>request(mgmt('/marketing/automations'),'PUT',{expected_version:number(form.dataset.version),configuration}),'Rascunhos das automações salvos.');return;}
       if(kind==='receipt-settings'){await saveForm(form,()=>request(mgmt('/finance/receipts/settings'),'PUT',{mode:f.receipt_mode,expected_version:number(form.dataset.version)}),'Configuração de recebimentos salva.');return;}
       if(kind==='service-receipt'){const record=d.record,action=f.receipt_action,payload={action,expected_version:record.version,...(action==='confirm'?{payment_method:f.receipt_method,received_at:localISO(f.receipt_day,f.receipt_time)}:{})};let saved;await saveForm(form,async()=>{const result=await request(mgmt('/finance/'+encodeURIComponent(record.id)+'/receipt'),'POST',{...payload,idempotency_key:requestKey(form,payload)});if(result.id!==record.id||(action==='confirm'?result.status!=='paid':result.status!=='pending'))throw Error('O resultado do recebimento não foi confirmado.');saved=result;return result;},action==='confirm'?'Recebimento registrado.':action==='reopen'?'Recebimento voltou a pendente.':action==='hold'?'Recebimento mantido pendente.':'Regra automática retomada.');if(saved&&d.returnAppointment&&state.route==='agenda'&&d.epoch===state.epoch&&d.tenantId===state.tenantId)await showAppointmentDetail(d.returnAppointment);return;}
+      if(kind==='dental-chair-availability'){
+        if(!dentalChairSettingsAllowed()||d.type!==kind||state.filters.settingsTab!=='dental-chairs')return;
+        const chair=d.record,active=!chair.active;
+        await saveForm(form,()=>request(apiPath('/dental/chair-settings/'+encodeURIComponent(chair.id)+'/availability'),
+          'PATCH',{active}),active?'Cadeira reativada.':'Cadeira inativada.');
+        return;
+      }
       if(kind==='dental-chair'){
         if(!dentalChairSettingsAllowed()||d.type!=='dental-chair'||state.filters.settingsTab!=='dental-chairs')return;
         const name=f.name?.trim(),chair=d.record;
@@ -4785,6 +4799,17 @@
         if(chair)showDentalChairEditor(chair);
         break;
       }
+      case 'dental-chair-availability':{
+        if(!dentalChairSettingsAllowed()||state.filters.settingsTab!=='dental-chairs')break;
+        const chair=state.data.dentalChairs?.find(item=>item.id===element.dataset.id);
+        if(!chair)break;
+        const label=chair.active?'Inativar cadeira':'Reativar cadeira';
+        const content='<p><strong>'+esc(chair.name)+'</strong></p><p>'+
+          (chair.active?'A cadeira sairá das opções de reserva. O histórico permanece disponível.':
+            'A cadeira ficará disponível para novas reservas.')+'</p>';
+        showDialog('dental-chair-availability',label,dialogForm('dental-chair-availability',content,label),{record:chair});
+        break;
+      }
       case 'google-refresh':await loadGoogle({handleReturn:false});break;
       case 'google-sign-in':window.location.assign('/painel?aba=agenda');break;
       case 'google-calendars':await showGoogleCalendars();break;
@@ -5046,6 +5071,13 @@
     if(state.dialog?.action==='reschedule'&&el.name==='day'){await loadRescheduleAvailability();return;}
     if(el.dataset.osAppShortcut!==undefined){
       if(appLayoutEligible()&&state.route==='configuracoes'&&state.filters.settingsTab==='appearance')changeAppShortcut(Number(el.dataset.osAppShortcut),el.value);
+      return;
+    }
+    if(el.id==='osDentalChairFilter'&&dentalChairSettingsAllowed()){
+      if(!['all','active','inactive'].includes(el.value))return;
+      state.filters.dentalChairFilter=el.value;
+      renderSettings();
+      $('osDentalChairFilter')?.focus({preventScroll:true});
       return;
     }
     if(el.id==='osSettingsSection'){state.filters.settingsTab=el.value;await open('configuracoes',{keepScroll:true});return;}
