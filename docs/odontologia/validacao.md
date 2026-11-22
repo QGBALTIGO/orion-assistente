@@ -71,3 +71,13 @@ Nas clínicas com o módulo habilitado, a navegação apresenta “Pacientes” 
 A busca pelo nome ou número do paciente ou responsável transmite o termo no corpo da requisição, devolve apenas os dados necessários à identificação e permite percorrer as páginas. A ficha administrativa e o quadro de consultas funcionam sem carregar exames ou registros clínicos. A chave de cadastro é específica da empresa e do autor. Repetir o envio após perder a resposta recupera a mesma pessoa e gera um único evento de criação. Cadastro independente pelo mesmo responsável continua possível. A alteração preserva as tabelas e os identificadores existentes.
 
 Foram usados PostgreSQL 16 com papéis restritos, um navegador com duas pessoas sintéticas da mesma família e testes de autorização, concorrência, alteração de cadastro e navegação. O acesso administrativo não concede validação de documentos ou autorização clínica. A medição em produção permanece pendente.
+
+## Controle de próteses e prazos
+
+No painel autenticado do Simples Dental, o quadro apresentou cinco etapas. O filtro de atraso pode ser combinado com profissional, etiqueta ou laboratório. A criação solicita paciente, profissional e descrição do serviço. O formulário vazio manteve o salvamento desabilitado. A inspeção terminou sem gravar dados.
+
+A Orion ganhou uma entrada própria para o controle de próteses. O filtro de prazo combina com a etapa e permanece selecionado após atualizar um trabalho. O banco usa a meia-noite local da clínica. Um trabalho com vencimento hoje recebe uma indicação própria. Concluídos, cancelados e sem data ficam fora dos atrasos. Os filtros por profissional, etiqueta e laboratório e a associação de uma consulta de prova ou entrega continuam registrados para implementação.
+
+Uma verificação com 200 trabalhos encerrados confirmou que a página seguinte alcança o trabalho atrasado mais antigo. O teste também cobriu dois fusos em dias distintos, mudança de etapa, papéis com e sem acesso clínico e isolamento entre clínicas. No navegador, o módulo abriu a ficha pela identidade do paciente após ação explícita e preservou os filtros durante a atualização de etapa. Foram verificadas quatro larguras de tela, em claro e escuro. Não há migração nesta entrega.
+
+O cadastro de pacientes no PR 362 passou na validação do GitHub no workflow 45079834880. A versão do estoque permanece preparada para aprovação no Railway. O caixa, o cadastro e os prazos aguardam a sequência de publicação e verificação em produção.
