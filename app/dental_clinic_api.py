@@ -26,12 +26,13 @@ from sqlalchemy.exc import IntegrityError
 from app.catalog_api import Actor, authenticate, support_session_factory
 from app.account_business import account_membership_role
 from app.database import get_session_factory, tenant_transaction
+from app.management_schemas import normalize_phone
 from app.plan_permissions import plan_state
 from app.tenant_access import resolve_tenant_access
 from app.dental_clinic_schemas import (
     ClinicianGrant, PatientCreate, PatientPatch, RecordCreate,
     IntakeTemplateCreate, IntakeTemplateUpdate, LaboratoryCreate, LaboratoryUpdate,
-    ProsthesisStatus, ProsthesisTransition,
+    ProsthesisAppointment, ProsthesisStatus, ProsthesisTransition,
     RoomCreate, RoomRename, RoomAssign, ChairAvailability, SupplyCreate, SupplyMove, ExamUpload
 )
 
@@ -423,7 +424,8 @@ async def resolve_intake_snapshot(db, tenant, patient, actor, payload):
     return None, content
 
 
-async def save_clinical_record(db, tenant, patient, actor, professional, kind, content, key, *, previous=None):
+async def save_clinical_record(db, tenant, patient, actor, professional, kind, content, key, *,
+                               previous=None, action="clinical_record_created"):
     identity = uuid4()
     data = json.dumps(content, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
     nonce, cipher, digest = seal(data, tenant, patient, kind, identity)
@@ -437,7 +439,6 @@ async def save_clinical_record(db, tenant, patient, actor, professional, kind, c
            "content": cipher, "nonce": nonce, "digest": digest, "actor": actor.account_id,
            "professional": professional, "key": key, "previous": previous})).scalar_one_or_none()
     if inserted is not None:
-        action = "clinical_record_created" if previous is None else "prosthesis_status_changed"
         await audit(db, tenant, actor, action, patient)
         return inserted
     prior = (await db.execute(text("""
@@ -516,34 +517,124 @@ async def prostheses(tenant_id: UUID, actor: Actor = Depends(authenticate),
         return {"items": items, "next_cursor": rows[checked - 1]["id"] if len(rows) > checked else None}
 
 
+async def prosthesis_record(db, tenant, record_id):
+    scope = {"tenant": tenant, "id": record_id}
+    record = (await db.execute(text("""
+        SELECT id,patient_id,encrypted_content,nonce,digest FROM dental_records
+        WHERE tenant_id=:tenant AND id=:id AND kind='prosthesis'
+    """), scope)).mappings().one_or_none()
+    if record is None:
+        raise HTTPException(404, "Trabalho protético não encontrado")
+    return record
+
+
+async def lock_prosthesis_version(db, tenant, record_id, entry_key):
+    # A status change and a visit link both append to the same clinical record.
+    await db.execute(text("""
+        SELECT pg_advisory_xact_lock(hashtextextended('orion-prosthesis:' || CAST(:id AS text), 0))
+    """), {"id": str(record_id)})
+    existing_key = await db.scalar(text("""
+        SELECT entry_key FROM dental_records WHERE tenant_id=:tenant AND previous_prosthesis_id=:id
+    """), {"tenant": tenant, "id": record_id})
+    if existing_key is not None and existing_key != entry_key:
+        raise HTTPException(409, "O trabalho foi atualizado. Consulte a situação atual.")
+    return existing_key is not None
+
+
 @router.patch("/prostheses/{record_id}/status")
 async def advance_prosthesis(tenant_id: UUID, record_id: UUID, payload: ProsthesisTransition,
                             actor: Actor = Depends(authenticate)):
     async with clinical_session(tenant_id, actor, write=True, dentist=True) as (db, grant):
-        scope = {"tenant": tenant_id, "id": record_id}
-        record = (await db.execute(text("""
-            SELECT id,patient_id,encrypted_content,nonce,digest FROM dental_records
-            WHERE tenant_id=:tenant AND id=:id AND kind='prosthesis'
-        """), scope)).mappings().one_or_none()
-        if record is None:
-            raise HTTPException(404, "Trabalho protético não encontrado")
-        # Appending a successor never requires UPDATE privileges on the clinical record.
-        await db.execute(text("""
-            SELECT pg_advisory_xact_lock(hashtextextended('orion-prosthesis:' || CAST(:id AS text), 0))
-        """), {"id": str(record_id)})
+        record = await prosthesis_record(db, tenant_id, record_id)
         patient = record["patient_id"]
         content = json.loads(unseal(record, tenant_id, patient, "prosthesis"))
         if payload.status not in PROSTHESIS_TRANSITIONS.get(content["status"], ()):
             raise HTTPException(409, "Essa mudança de etapa não está disponível")
         next_content = {**content, "status": payload.status}
-        successor = (await db.execute(text("""
-            SELECT id,entry_key FROM dental_records WHERE tenant_id=:tenant AND previous_prosthesis_id=:id
-        """), scope)).mappings().one_or_none()
-        if successor and successor["entry_key"] != payload.entry_key:
-            raise HTTPException(409, "A etapa já mudou. Consulte a situação atual.")
+        await lock_prosthesis_version(db, tenant_id, record_id, payload.entry_key)
         identity = await save_clinical_record(db, tenant_id, patient, actor, grant["professional_id"],
-                                              "prosthesis", next_content, payload.entry_key, previous=record_id)
+                                              "prosthesis", next_content, payload.entry_key, previous=record_id,
+                                              action="prosthesis_status_changed")
         return {"id": identity, "status": payload.status}
+
+
+async def prosthesis_agenda_customer(db, tenant, patient, *, lock=False):
+    customer_id = patient["customer_id"]
+    try:
+        phone = normalize_phone(patient["contact_phone"]) if customer_id is None else None
+    except ValueError:
+        return None
+    statement = """
+        SELECT id,name FROM customers WHERE tenant_id=:tenant AND deleted_at IS NULL
+        AND (id=:customer OR (CAST(:customer AS uuid) IS NULL AND whatsapp_e164=:phone))
+    """
+    return (await db.execute(text(statement + (" FOR SHARE" if lock else "")),
+                             {"tenant": tenant, "customer": customer_id, "phone": phone})).mappings().one_or_none()
+
+
+@router.get("/prostheses/{record_id}/appointments")
+async def prosthesis_appointments(tenant_id: UUID, record_id: UUID, actor: Actor = Depends(authenticate)):
+    async with clinical_session(tenant_id, actor, dentist=True) as (db, _):
+        record = await prosthesis_record(db, tenant_id, record_id)
+        patient_id = record["patient_id"]
+        patient = await patient_row(db, tenant_id, patient_id)
+        content = json.loads(unseal(record, tenant_id, patient_id, "prosthesis"))
+        customer = await prosthesis_agenda_customer(db, tenant_id, patient)
+        await audit(db, tenant_id, actor, "prosthesis_appointments_read", patient_id)
+        if customer is None:
+            return {"customer_name": None, "matched_by_phone": False, "items": [], "linked": None}
+        linked_id = content.get("appointment_id")
+        options = (await db.execute(text("""
+            SELECT a.id,a.start_at,a.end_at,a.status,p.name AS professional_name
+            FROM appointments a JOIN professionals p ON p.tenant_id=a.tenant_id AND p.id=a.professional_id
+            WHERE a.tenant_id=:tenant AND a.customer_id=:customer
+              AND (a.id=CAST(:linked AS uuid) OR (a.status='confirmed' AND a.start_at>=now()))
+            ORDER BY (a.id=CAST(:linked AS uuid)) DESC NULLS LAST,a.start_at,a.id
+            LIMIT 51
+        """), {"tenant": tenant_id, "customer": customer["id"], "linked": linked_id})).mappings().all()
+        linked = next((dict(item) for item in options if str(item["id"]) == linked_id), None)
+        items = [dict(item) for item in options if str(item["id"]) != linked_id][:50]
+        zone = await db.scalar(text("SELECT timezone FROM tenants WHERE id=:tenant"), {"tenant": tenant_id})
+        return {"customer_name": customer["name"], "matched_by_phone": patient["customer_id"] is None,
+                "items": items, "linked": linked, "timezone": zone}
+
+
+@router.patch("/prostheses/{record_id}/appointment")
+async def link_prosthesis_appointment(tenant_id: UUID, record_id: UUID, payload: ProsthesisAppointment,
+                                      actor: Actor = Depends(authenticate)):
+    async with clinical_session(tenant_id, actor, write=True, dentist=True) as (db, grant):
+        record = await prosthesis_record(db, tenant_id, record_id)
+        patient_id = record["patient_id"]
+        content = json.loads(unseal(record, tenant_id, patient_id, "prosthesis"))
+        if content["status"] != "delivered":
+            raise HTTPException(409, "Registre o recebimento antes de alterar a consulta vinculada.")
+        replay = await lock_prosthesis_version(db, tenant_id, record_id, payload.entry_key)
+        chosen = str(payload.appointment_id) if payload.appointment_id is not None else None
+        if chosen == content.get("appointment_id") and not replay:
+            return {"id": record_id, "appointment_id": chosen}
+        if chosen is not None and not replay:
+            patient = await patient_row(db, tenant_id, patient_id, lock=True)
+            customer = await prosthesis_agenda_customer(db, tenant_id, patient, lock=True)
+            if customer is None:
+                raise HTTPException(409, "Confira o cadastro deste paciente na agenda antes de vincular uma consulta.")
+            eligible = await db.scalar(text("""
+                SELECT id FROM appointments
+                WHERE tenant_id=:tenant AND customer_id=:customer AND id=:appointment
+                  AND status='confirmed' AND start_at>=now()
+                FOR SHARE
+            """), {"tenant": tenant_id, "customer": customer["id"], "appointment": payload.appointment_id})
+            if eligible is None:
+                raise HTTPException(404, "Consulta confirmada não encontrada para este paciente")
+        next_content = {**content}
+        if chosen is None:
+            next_content.pop("appointment_id", None)
+        else:
+            next_content["appointment_id"] = chosen
+        action = "prosthesis_appointment_linked" if chosen else "prosthesis_appointment_unlinked"
+        identity = await save_clinical_record(db, tenant_id, patient_id, actor, grant["professional_id"],
+                                              "prosthesis", next_content, payload.entry_key, previous=record_id,
+                                              action=action)
+        return {"id": identity, "appointment_id": chosen}
 
 
 @router.get("/laboratories")
