@@ -1302,3 +1302,92 @@ async def test_patient_directory_shared_contact_name_only_and_retry(clinic_api_d
             SELECT count(*) FROM dental_access_audit WHERE tenant_id=:tenant AND patient_id=:id AND action='patient_created'
         """), {"tenant":d["a"],"id":UUID(identity)})).scalar_one()
         assert event_count == 1
+
+
+@pytest.mark.asyncio
+async def test_prosthesis_visit_uses_explicit_patient_identity_and_hides_transferred_consultations(clinic_api_db):
+    import asyncio
+    import httpx
+    from fastapi import FastAPI
+    from app.catalog_api import Actor, authenticate
+    from app.dental_clinic_api import router
+
+    data = clinic_api_db
+    app = FastAPI()
+    app.include_router(router)
+    actor = Actor("member", data["a"], data["account"], "owner")
+    app.dependency_overrides[authenticate] = lambda: actor
+    base = f"/api/v1/tenants/{data['a']}/dental"
+    patient = str(data["patient_a"])
+    first, second = str(data["appt_a"]), str(data["appt_a2"])
+    api = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=api,base_url="http://test.invalid") as client:
+        sibling = (await client.post(base+"/patients",json={"name":"Irmã sintética","guardian_phone":"67999991234"})).json()["id"]
+        async with data["migrator"].begin() as db:
+            await db.execute(text("UPDATE dental_patients SET guardian_phone='67999991234' WHERE id=:id"), {"id":data["patient_a"]})
+        async def identify(visit,who,version):
+            res=await client.put(base+f"/appointments/{visit}/patient",json={"patient_id":who,"expected_version":version})
+            assert res.status_code == 200,res.text
+        async def create(key):
+            res=await client.post(base+f"/patients/{patient}/records",json={"kind":"prosthesis","entry_key":key,
+                "content":{"laboratory":"Laboratório de teste","description":"Coroa sintética","status":"delivered"}})
+            assert res.status_code == 201,res.text
+            return res.json()["id"]
+        async def board(record,**params):
+            res=await client.get(base+f"/prostheses/{record}/visits",params=params)
+            assert res.status_code == 200,res.text
+            return res.json()
+        async def choose(record,visit,version,key,purpose="try_in"):
+            return await client.patch(base+f"/prostheses/{record}/visit",json={"appointment_id":visit,"identity_version":version,
+                "purpose":purpose,"entry_key":key})
+        root=await create("test-fit-work-order")
+        assert (await board(root))["items"] == []
+        assert (await choose(root,first,1,"test-unassigned-order")).status_code == 404
+        await identify(first,patient,0)
+        await identify(second,sibling,0)
+        options=await board(root)
+        assert [(r["id"],r["identity_version"]) for r in options["items"]] == [(first,1)]
+        assert (await choose(root,second,1,"test-sibling-mismatch")).status_code == 404
+        saved=await choose(root,first,1,"test-fit-appointment")
+        assert saved.status_code == 200,saved.text
+        fitted=saved.json()["id"]
+        assert (await choose(root,first,1,"test-fit-appointment")).json()["id"] == fitted
+        assert (await choose(root,first,1,"test-fit-appointment","delivery")).status_code == 409
+        assert (await board(fitted))["linked"]["id"] == first
+        stored=(await client.get(base+f"/patients/{patient}/records")).json()
+        assert first not in str(stored) and sibling not in str(stored)
+        assert any(r["content"].get("visit_purpose")=="try_in" for r in stored["items"])
+        await identify(first,sibling,1)
+        hidden=await board(fitted)
+        assert hidden["linked"] is None and hidden["items"] == [] and first not in str(hidden)
+        assert (await choose(fitted,first,1,"test-stale-sibling")).status_code == 404
+        await identify(first,patient,2)
+        current=await board(fitted)
+        assert current["linked"] is None and current["items"][0]["identity_version"]==3
+        assert (await choose(fitted,first,1,"test-old-binding")).status_code == 409
+        updated=await choose(fitted,first,3,"test-new-binding","delivery")
+        assert updated.status_code == 200,updated.text
+        delivery=updated.json()["id"]
+        await identify(second,patient,1)
+        page=await board(delivery,limit=1)
+        next_page=await board(delivery,limit=1,offset=1)
+        assert page["has_more"] and not next_page["has_more"]
+        assert {page["items"][0]["id"],next_page["items"][0]["id"]} == {first,second}
+        assert (await client.patch(base+f"/prostheses/{delivery}/visit",json={"appointment_id":first,"entry_key":"missing-version"})).status_code==422
+        removed=await choose(delivery,None,None,"test-remove-fitting",None)
+        assert removed.status_code==200,removed.text
+        assert (await board(removed.json()["id"]))["purpose"] is None
+        assert (await choose(delivery,None,None,"test-remove-fitting",None)).json()==removed.json()
+        race=removed.json()["id"]
+        results=await asyncio.wait_for(asyncio.gather(
+            choose(race,first,3,"test-race-fit-a"),choose(race,second,2,"test-race-fit-b","delivery")),timeout=8)
+        assert sorted(r.status_code for r in results)==[200,409]
+        async with data["migrator"].begin() as db:
+            await db.execute(text("UPDATE appointments SET status='cancelled' WHERE id=:id"),{"id":data["appt_a2"]})
+        assert (await choose(await create("test-order-cancelled"),second,2,"test-cancelled-appointment")).status_code==404
+        actor=Actor("member",data["a"],data["assistant"],"editor")
+        assert (await client.get(base+f"/prostheses/{race}/visits")).status_code==403
+        assert (await choose(race,first,3,"test-assistant-link")).status_code==403
+        actor=Actor("member",data["b"],data["account_b"],"owner")
+        assert (await client.get(base+f"/prostheses/{race}/visits")).status_code==403
+        assert (await client.get(f"/api/v1/tenants/{data['b']}/dental/prostheses/{race}/visits")).status_code==404

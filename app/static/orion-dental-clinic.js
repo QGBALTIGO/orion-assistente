@@ -141,12 +141,36 @@
     delivered:'Registrar recebimento',completed:'Concluir acompanhamento',cancelled:'Cancelar acompanhamento'
   };
   const formatDueDate=value=>/^\d{4}-\d{2}-\d{2}$/.test(value||'')?value.split('-').reverse().join('/'):'Sem prazo';
+  const visitPurposes=[['try_in','Prova'],['delivery','Entrega']];
+  function prosthesisVisitPanel(item,panel){
+    const title='<h4>Consulta de prova ou entrega</h4>';
+    const retry=button('Consultar novamente','prosthesis-visits-retry','os-outline');
+    if(!panel.ready)return '<section class="os-dental-step">'+title+(panel.error?info(panel.error,true)+retry:pending())+'</section>';
+    const describe=visit=>new Intl.DateTimeFormat('pt-BR',{dateStyle:'short',timeStyle:'short',timeZone:panel.zone})
+      .format(new Date(visit.start_at))+' · '+visit.professional;
+    const purpose=Object.fromEntries(visitPurposes)[panel.purpose];
+    const linked=panel.linked?row(purpose,describe(panel.linked)+' · '+(visitStatus[panel.linked.status]||'Consulta')):
+      panel.purpose?'<p>O vínculo anterior está indisponível para este paciente.</p>':'';
+    const editable=item.content.status==='delivered';
+    let fields='';
+    if(editable&&panel.options.length){
+      fields='<form data-dental-form="prosthesis-visit" class="os-dental-visit-form">'+
+        choices('Consulta do paciente','prosthesis_visit',[['','Selecione uma consulta'],...panel.options.map(v=>[v.id,describe(v)])],
+          panel.selection,'required')+choices('Finalidade','prosthesis_purpose',[['','Selecione'],...visitPurposes],panel.chosenPurpose,'required')+
+        '<button class="os-button" type="submit">Salvar vínculo</button></form>';
+    }else if(editable&&!linked)fields='<p class="os-dental-muted">Nenhuma consulta futura confirmada está vinculada à ficha deste paciente.</p>';
+    return '<section class="os-dental-step" aria-label="Consulta de prova ou entrega">'+title+linked+fields+
+      (panel.loading?pending():'')+(panel.error?info(panel.error,true)+retry:'')+
+      (panel.hasMore&&!panel.loading&&!panel.error?button('Mais consultas','prosthesis-visits-more'):'')+
+      (editable&&panel.purpose?'<div class="os-dental-actions">'+button('Desvincular consulta','prosthesis-visit-remove','os-ghost')+'</div>':'')+'</section>';
+  }
 
   function prosthesisManager(){
     const board=state.prostheses;
     const cards=(board?.items||[]).map(item=>{
       const content=item.content;
       const id=esc(item.id);
+      const panel=board.visit?.id===item.id?board.visit:null;
       const pendingStep=board.change?.id===item.id?board.change.status:'';
       const steps=(item.actions||[]).map(status=>[
         status,status==='working'&&content.status==='delivered'?'Devolver ao laboratório':prosthesisAction[status]
@@ -162,7 +186,11 @@
         (steps.length?'<form class="os-dental-row" data-dental-form="prosthesis-step" data-id="'+id+'">'+
           choices('Próxima ação','prosthesis_step_'+item.id,[['','Selecione uma ação'],...steps],pendingStep,'required')+
           '<div class="os-dental-controls"><button type="submit" class="os-button">Atualizar etapa</button></div></form>':'')+
-        '<div class="os-dental-actions">'+button('Abrir prontuário','open-prosthesis-patient','os-ghost','data-id="'+id+'"')+'</div>'+
+        '<div class="os-dental-actions">'+
+        (content.status==='delivered'||content.visit_purpose?button(panel?'Fechar consultas':content.visit_purpose?'Ver consulta vinculada':'Vincular consulta',
+          'prosthesis-visits','os-outline','data-id="'+id+'" aria-expanded="'+Boolean(panel)+'"'):'')+
+        button('Abrir prontuário','open-prosthesis-patient','os-ghost','data-id="'+id+'"')+'</div>'+
+        (panel?prosthesisVisitPanel(item,panel):'')+
         '</article>';
     }).join('');
     return '<section class="os-dental-card os-dental-space os-dental-work"><header class="os-dental-work-head">'+
@@ -626,6 +654,47 @@
     state.prostheses={status,overdue,items:[],nextCursor:null,loading:false,error:'',change:null};
     return loadProstheses(state.prostheses);
   }
+  async function readProsthesisVisits(board,panel){
+    if(panel.loading)return;
+    const epoch=state.epoch;
+    const current=()=>valid(epoch)&&state.prostheses===board&&board.visit===panel;
+    panel.loading=true;panel.error='';render();
+    try{
+      const result=await api('/prostheses/'+panel.id+'/visits?limit=25&offset='+panel.offset);
+      if(!current())return;
+      if(!Array.isArray(result?.items)||typeof result.has_more!=='boolean'||!result.timezone)throw Error();
+      const known=new Set(panel.options.map(row=>row.id));
+      panel.options.push(...result.items.filter(row=>!known.has(row.id)));
+      panel.zone=result.timezone;panel.linked=result.linked;panel.purpose=result.purpose;
+      if(!panel.ready){panel.selection=result.linked?.id||'';panel.chosenPurpose=result.purpose||'';}
+      panel.offset+=result.items.length;panel.hasMore=result.has_more;panel.ready=true;
+    }catch{if(current())panel.error='Não foi possível consultar os horários deste paciente.';}
+    finally{if(current()){panel.loading=false;render();}}
+  }
+  function openProsthesisVisits(board,id){
+    const panel=board.visit={id,options:[],offset:0,loading:false,ready:false,selection:'',chosenPurpose:'',change:null};
+    return readProsthesisVisits(board,panel);
+  }
+  async function saveProsthesisVisit(board,remove=false){
+    const panel=board.visit;
+    if(!panel?.ready||state.submitting)return;
+    if(!board.items.some(item=>item.id===panel.id&&item.content.status==='delivered'))return;
+    const chosen=remove?null:panel.options.find(visit=>visit.id===panel.selection);
+    if(remove){if(!panel.purpose||!confirm('Desvincular a consulta deste trabalho protético?'))return;}
+    else if(!chosen||!visitPurposes.some(([value])=>value===panel.chosenPurpose))return;
+    const data={appointment_id:chosen?.id||null,identity_version:chosen?.identity_version||null,purpose:remove?null:panel.chosenPurpose};
+    const action=JSON.stringify(data);
+    if(panel.change?.action!==action)panel.change={action,key:crypto.randomUUID()};
+    const epoch=state.epoch;
+    return invoke(async()=>{
+      const result=await api('/prostheses/'+panel.id+'/visit','PATCH',{...data,entry_key:panel.change.key});
+      if(!idRe.test(result?.id||''))throw Error('Não foi possível confirmar o vínculo.');
+      if(!valid(epoch)||state.prostheses!==board||board.visit!==panel)return;
+      const reading=selectProstheses(board.status,board.overdue),fresh=state.prostheses;
+      await reading;
+      if(valid(epoch)&&state.prostheses===fresh&&fresh.items.some(row=>row.id===result.id))await openProsthesisVisits(fresh,result.id);
+    },remove?'Consulta desvinculada.':'Consulta vinculada à prótese.');
+  }
   function addFinding(){
     const form=state.host?.querySelector('[data-dental-form=record]');if(!form)return;
     const v=formValues(form),tooth=Number(state.selectedTooth),face=v.face;
@@ -794,6 +863,16 @@
     if(act==='prosthesis-more'&&state.prostheses){
       await loadProstheses(state.prostheses);return;
     }
+    if(act==='prosthesis-visits'&&state.prostheses){
+      const board=state.prostheses,id=btn.dataset.id;
+      if(board.visit?.id===id){board.visit=null;render();return;}
+      if(board.items.some(item=>item.id===id&&(item.content.status==='delivered'||item.content.visit_purpose)))await openProsthesisVisits(board,id);
+      return;
+    }
+    if(['prosthesis-visits-more','prosthesis-visits-retry'].includes(act)&&state.prostheses?.visit){
+      await readProsthesisVisits(state.prostheses,state.prostheses.visit);return;
+    }
+    if(act==='prosthesis-visit-remove'&&state.prostheses){await saveProsthesisVisit(state.prostheses,true);return;}
     if(act==='edit-laboratory'&&state.section==='laboratories'){
       const item=state.laboratories?.find(lab=>lab.id===btn.dataset.id);
       if(item){state.labEditing={...item};state.error='';state.success='';render();}
@@ -833,6 +912,10 @@
     if(!form||!state.host?.contains(form))return;
     event.preventDefault();
     const kind=form.dataset.dentalForm,v=formValues(form),patient=state.patient;
+    if(kind==='prosthesis-visit'&&state.prostheses?.visit){
+      state.prostheses.visit.selection=v.prosthesis_visit;state.prostheses.visit.chosenPurpose=v.prosthesis_purpose;
+      await saveProsthesisVisit(state.prostheses);return;
+    }
     if(kind==='stock-search'){
       state.stockQuery=(v.stock_query||'').trim();state.stockOrder=v.stock_order==='desc'?'desc':'asc';
       state.success='';await readStock();return;
@@ -963,6 +1046,8 @@
   function onChange(event){
     const el=event.target;
     if(!state.host?.contains(el))return;
+    if(state.prostheses?.visit&&el.name==='prosthesis_visit'){state.prostheses.visit.selection=el.value;return;}
+    if(state.prostheses?.visit&&el.name==='prosthesis_purpose'){state.prostheses.visit.chosenPurpose=el.value;return;}
     if(['prosthesis_filter','prosthesis_deadline'].includes(el.name)&&state.prostheses){
       state.success='';
       state.error='';

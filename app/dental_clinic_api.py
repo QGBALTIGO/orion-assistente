@@ -31,7 +31,7 @@ from app.tenant_access import resolve_tenant_access
 from app.dental_clinic_schemas import (
     ClinicianGrant, PatientRegistration, PatientSearch, PatientPatch, VisitPatientLink, RecordCreate,
     IntakeTemplateCreate, IntakeTemplateUpdate, LaboratoryCreate, LaboratoryUpdate,
-    ProsthesisStatus, ProsthesisTransition,
+    ProsthesisStatus, ProsthesisTransition, ProsthesisVisit,
     RoomCreate, RoomRename, RoomAssign, ChairAvailability, SupplyCreate, SupplyMove, ExamUpload
 )
 
@@ -456,6 +456,8 @@ async def list_dental_records(tenant_id:UUID,patient_id:UUID,
         result=[]
         for row in records:
             data=json.loads(unseal(row,tenant_id,patient_id,row["kind"]))
+            if row["kind"] == "prosthesis":
+                data = public_prosthesis_content(data)
             result.append({"id":row["id"],"kind":row["kind"],"content":data,
                            "authored_by":row["authored_by"],"professional_id":row["professional_id"],
                            "created_at":row["created_at"]})
@@ -502,7 +504,8 @@ async def resolve_intake_snapshot(db, tenant, patient, actor, payload):
     return None, content
 
 
-async def save_clinical_record(db, tenant, patient, actor, professional, kind, content, key, *, previous=None):
+async def save_clinical_record(db, tenant, patient, actor, professional, kind, content, key, *,
+                               previous=None, action="clinical_record_created"):
     identity = uuid4()
     data = json.dumps(content, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
     nonce, cipher, digest = seal(data, tenant, patient, kind, identity)
@@ -516,7 +519,6 @@ async def save_clinical_record(db, tenant, patient, actor, professional, kind, c
            "content": cipher, "nonce": nonce, "digest": digest, "actor": actor.account_id,
            "professional": professional, "key": key, "previous": previous})).scalar_one_or_none()
     if inserted is not None:
-        action = "clinical_record_created" if previous is None else "prosthesis_status_changed"
         await audit(db, tenant, actor, action, patient)
         return inserted
     prior = (await db.execute(text("""
@@ -550,6 +552,15 @@ PROSTHESIS_TRANSITIONS = {
     "working": ("delivered", "cancelled"),
     "delivered": ("completed", "working", "cancelled"),
 }
+
+
+def public_prosthesis_content(content):
+    # An appointment may later be transferred. Resolve its identity and details at the point of access.
+    details = dict(content)
+    visit = details.pop("visit", None)
+    if visit:
+        details["visit_purpose"] = visit["purpose"]
+    return details
 
 
 @router.get("/prostheses")
@@ -603,7 +614,8 @@ async def prostheses(tenant_id: UUID, actor: Actor = Depends(authenticate),
             items.append({"id": record["id"], "patient_id": record["patient_id"],
                           "patient_name": record["patient_name"], "created_at": record["created_at"],
                           "deadline_state": deadline_state,
-                          "content": content, "actions": PROSTHESIS_TRANSITIONS.get(content["status"], ())})
+                          "content": public_prosthesis_content(content),
+                          "actions": PROSTHESIS_TRANSITIONS.get(content["status"], ())})
             if len(items) == limit:
                 break
         await audit(db, tenant_id, actor, "prosthesis_worklist_read")
@@ -611,33 +623,42 @@ async def prostheses(tenant_id: UUID, actor: Actor = Depends(authenticate),
                 "next_cursor": rows[checked - 1]["id"] if len(rows) > checked else None}
 
 
+async def read_prosthesis(db, tenant, record_id):
+    record = (await db.execute(text("""
+        SELECT id,patient_id,encrypted_content,nonce,digest FROM dental_records
+        WHERE tenant_id=:tenant AND id=:id AND kind='prosthesis'
+    """), {"tenant": tenant, "id": record_id})).mappings().one_or_none()
+    if record is None:
+        raise HTTPException(404, "Trabalho protético não encontrado")
+    patient = record["patient_id"]
+    return patient, json.loads(unseal(record, tenant, patient, "prosthesis"))
+
+
+async def lock_prosthesis(db, tenant, record_id, key):
+    # Both agenda and status mutations append to this immutable version.
+    await db.execute(text("""
+        SELECT pg_advisory_xact_lock(hashtextextended('orion-prosthesis:' || CAST(:id AS text), 0))
+    """), {"id": str(record_id)})
+    successor = await db.scalar(text("""
+        SELECT entry_key FROM dental_records WHERE tenant_id=:tenant AND previous_prosthesis_id=:id
+    """), {"tenant": tenant, "id": record_id})
+    if successor is not None and successor != key:
+        raise HTTPException(409, "O trabalho já mudou. Consulte a situação atual.")
+    return successor is not None
+
+
 @router.patch("/prostheses/{record_id}/status")
 async def advance_prosthesis(tenant_id: UUID, record_id: UUID, payload: ProsthesisTransition,
                             actor: Actor = Depends(authenticate)):
     async with clinical_session(tenant_id, actor, write=True, dentist=True) as (db, grant):
-        scope = {"tenant": tenant_id, "id": record_id}
-        record = (await db.execute(text("""
-            SELECT id,patient_id,encrypted_content,nonce,digest FROM dental_records
-            WHERE tenant_id=:tenant AND id=:id AND kind='prosthesis'
-        """), scope)).mappings().one_or_none()
-        if record is None:
-            raise HTTPException(404, "Trabalho protético não encontrado")
-        # Appending a successor never requires UPDATE privileges on the clinical record.
-        await db.execute(text("""
-            SELECT pg_advisory_xact_lock(hashtextextended('orion-prosthesis:' || CAST(:id AS text), 0))
-        """), {"id": str(record_id)})
-        patient = record["patient_id"]
-        content = json.loads(unseal(record, tenant_id, patient, "prosthesis"))
+        patient, content = await read_prosthesis(db, tenant_id, record_id)
+        await lock_prosthesis(db, tenant_id, record_id, payload.entry_key)
         if payload.status not in PROSTHESIS_TRANSITIONS.get(content["status"], ()):
             raise HTTPException(409, "Essa mudança de etapa não está disponível")
         next_content = {**content, "status": payload.status}
-        successor = (await db.execute(text("""
-            SELECT id,entry_key FROM dental_records WHERE tenant_id=:tenant AND previous_prosthesis_id=:id
-        """), scope)).mappings().one_or_none()
-        if successor and successor["entry_key"] != payload.entry_key:
-            raise HTTPException(409, "A etapa já mudou. Consulte a situação atual.")
         identity = await save_clinical_record(db, tenant_id, patient, actor, grant["professional_id"],
-                                              "prosthesis", next_content, payload.entry_key, previous=record_id)
+                                              "prosthesis", next_content, payload.entry_key, previous=record_id,
+                                              action="prosthesis_status_changed")
         return {"id": identity, "status": payload.status}
 
 
@@ -890,6 +911,91 @@ VISIT_PROFESSIONAL = " AND (CAST(:professional AS uuid) IS NULL OR a.professiona
 
 def visit_professional(actor, grant):
     return grant["professional_id"] if actor.membership_role == "professional" else None
+
+
+@router.get("/prostheses/{record_id}/visits")
+async def prosthesis_visits(tenant_id: UUID, record_id: UUID, actor: Actor = Depends(authenticate),
+                           limit: int = Query(25, ge=1, le=100), offset: int = Query(0, ge=0)):
+    async with clinical_session(tenant_id, actor, dentist=True) as (db, grant):
+        patient, content = await read_prosthesis(db, tenant_id, record_id)
+        stored = content.get("visit")
+        params = {"tenant":tenant_id, "patient":patient, "professional":visit_professional(actor, grant),
+                  "linked":UUID(stored["appointment_id"]) if stored else None,
+                  "identity_version":stored["identity_version"] if stored else None,
+                  "limit":limit+1, "offset":offset}
+        visits = """
+            SELECT a.id,a.start_at,a.status,p.name AS professional,link.version AS identity_version
+            FROM appointments a JOIN professionals p ON p.tenant_id=a.tenant_id AND p.id=a.professional_id
+        """ + CURRENT_VISIT_PATIENT + """
+            WHERE a.tenant_id=:tenant AND link.patient_id=:patient
+        """ + VISIT_PROFESSIONAL
+        linked = None
+        if stored:
+            linked = (await db.execute(text(visits + """
+                AND a.id=:linked AND link.version=:identity_version
+            """),params)).mappings().one_or_none()
+        options = []
+        if content["status"] == "delivered":
+            options = (await db.execute(text(visits + """
+                AND a.status='confirmed' AND a.start_at>=CURRENT_TIMESTAMP
+                ORDER BY a.start_at,a.id LIMIT :limit OFFSET :offset
+            """),params)).mappings().all()
+        zone = await db.scalar(text("SELECT timezone FROM tenants WHERE id=:tenant"), params)
+        await audit(db, tenant_id, actor, "prosthesis_visits_read", patient)
+        return {"items":[dict(item) for item in options[:limit]], "has_more":len(options)>limit,
+                "linked":dict(linked) if linked else None, "purpose":stored["purpose"] if stored else None,
+                "timezone":zone}
+
+
+@router.patch("/prostheses/{record_id}/visit")
+async def set_prosthesis_visit(tenant_id: UUID, record_id: UUID, payload: ProsthesisVisit,
+                              actor: Actor = Depends(authenticate)):
+    async with clinical_session(tenant_id, actor, write=True, dentist=True) as (db, grant):
+        patient, content = await read_prosthesis(db, tenant_id, record_id)
+        if content["status"] != "delivered":
+            raise HTTPException(409, "Registre o recebimento da peça antes de vincular uma consulta.")
+        replay = await lock_prosthesis(db, tenant_id, record_id, payload.entry_key)
+        old = content.get("visit")
+        chosen = None
+        if payload.appointment_id:
+            chosen = {"appointment_id":str(payload.appointment_id), "identity_version":payload.identity_version,
+                      "purpose":payload.purpose}
+        professional = visit_professional(actor, grant)
+        old_appointment = UUID(old["appointment_id"]) if old and professional is not None else None
+        appointment_ids = {value for value in (old_appointment, payload.appointment_id) if value}
+        if appointment_ids and not replay:
+            # All writers lock the actual booking. A fixed order also permits two concurrent replacements.
+            locked = (await db.execute(text("""
+                SELECT a.id,(a.status='confirmed' AND a.start_at>=CURRENT_TIMESTAMP) AS eligible
+                FROM appointments a
+                WHERE a.tenant_id=:tenant AND a.id=ANY(CAST(:ids AS uuid[]))
+            """ + VISIT_PROFESSIONAL + " ORDER BY a.id FOR UPDATE"),
+                {"tenant":tenant_id,"ids":list(appointment_ids),"professional":professional})).all()
+            eligible = dict(locked)
+            if old_appointment and old_appointment not in eligible:
+                raise HTTPException(403, "O vínculo existente pertence a outra agenda profissional.")
+            if chosen and not eligible.get(payload.appointment_id):
+                raise HTTPException(404, "Consulta confirmada indisponível para este paciente.")
+        if chosen and not replay:
+            # A separate statement observes the identity committed by any reassignment that held the lock.
+            identity = (await db.execute(text("""
+                SELECT patient_id,version FROM dental_visit_patient_events
+                WHERE tenant_id=:tenant AND appointment_id=:appointment ORDER BY version DESC LIMIT 1
+            """),{"tenant":tenant_id,"appointment":payload.appointment_id})).mappings().one_or_none()
+            if not identity or identity["patient_id"] != patient:
+                raise HTTPException(404, "Consulta confirmada indisponível para este paciente.")
+            if identity["version"] != payload.identity_version:
+                raise HTTPException(409, "A identificação da consulta mudou. Consulte a agenda novamente.")
+        if chosen == old and not replay:
+            return {"id":record_id}
+        if chosen is None:
+            content.pop("visit",None)
+        else:
+            content["visit"] = chosen
+        saved = await save_clinical_record(db, tenant_id, patient, actor, grant["professional_id"],
+                                           "prosthesis", content, payload.entry_key, previous=record_id,
+                                           action="prosthesis_visit_linked" if chosen else "prosthesis_visit_removed")
+        return {"id":saved}
 
 
 @router.get("/visit-options")

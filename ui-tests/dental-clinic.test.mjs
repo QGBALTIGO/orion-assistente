@@ -473,3 +473,48 @@ test('um dentista abre os dados cadastrais antes de decidir entrar no prontuári
   assert.equal(selected,patient);
   assert.ok(paths.every(path=>!path.includes('/records')&&!path.includes('/exams')));
 });
+
+
+test('prótese recebida usa a consulta da ficha, preserva a finalidade e repete uma resposta perdida uma só vez',async t=>{
+  const first=randomUUID(),next=randomUUID(),visit=randomUUID();
+  let work=first,linked=false;
+  const writes=[];
+  const h=makeDOM({level:'dentist',prostheses:(url,method,body)=>{
+    const v={id:visit,identity_version:3,start_at:'2026-11-30T15:00:00Z',professional:'Dentista de teste',status:'confirmed'};
+    if(url.pathname.endsWith('/visits'))return {items:[v],has_more:false,timezone:'America/Campo_Grande',linked:linked?v:null,purpose:linked?'delivery':null};
+    if(url.pathname.endsWith('/visit')){
+      writes.push(body);work=next;linked=true;
+      if(writes.length===1)throw Error('Resposta perdida');
+      return {id:next};
+    }
+    return {items:[{id:work,patient_id:patient,patient_name:'Pessoa sintética',actions:[],content:{
+      status:'delivered',description:'Coroa de teste',laboratory:'Laboratório',visit_purpose:linked?'delivery':null
+    }}],next_cursor:null};
+  }});
+  t.after(()=>h.close());await h.mount({dedicatedProstheses:true});
+  h.click('[data-dental-action=prosthesis-visits]');await flush();
+  h.fill('[name=prosthesis_visit]',visit);h.fill('[name=prosthesis_purpose]','delivery');
+  h.submit('[data-dental-form=prosthesis-visit]');await flush();
+  assert.match(h.host.textContent,/Resposta perdida/);
+  h.submit('[data-dental-form=prosthesis-visit]');await flush();
+  assert.equal(writes.length,2);assert.equal(writes[0].entry_key,writes[1].entry_key);
+  assert.equal(writes[0].identity_version,3);assert.equal(writes[0].appointment_id,visit);
+  assert.match(h.host.textContent,/Consulta vinculada à prótese/);
+  assert.equal(h.host.querySelector('[name=prosthesis_purpose]').value,'delivery');
+  assert.equal(h.calls.some(c=>c.path.includes('/patients?')||c.path.includes('/exams')),false);
+});
+
+test('prótese não revela horário de um vínculo indisponível e não fabrica opções para a entrega',async t=>{
+  const work=randomUUID();
+  const h=makeDOM({level:'dentist',prostheses:url=>url.pathname.endsWith('/visits')?
+    {items:[],linked:null,purpose:'try_in',has_more:false,timezone:'America/Campo_Grande'}:
+    {items:[{id:work,patient_id:patient,patient_name:'Pessoa sintética',actions:[],content:{
+      status:'completed',description:'Coroa de teste',laboratory:'Laboratório',visit_purpose:'try_in'
+    }}],next_cursor:null}
+  });
+  t.after(()=>h.close());await h.mount({dedicatedProstheses:true});
+  h.click('[data-dental-action=prosthesis-visits]');await flush();
+  assert.match(h.host.textContent,/vínculo anterior está indisponível/);
+  assert.equal(h.host.querySelector('[data-dental-form=prosthesis-visit]'),null);
+  assert.equal(h.host.querySelector('[data-dental-action=prosthesis-visit-remove]'),null);
+});
