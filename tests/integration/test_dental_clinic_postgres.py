@@ -431,6 +431,52 @@ async def test_dental_http_schedule_select_and_conflict_is_real(clinic_api_db):
 
 
 @pytest.mark.asyncio
+async def test_owner_manages_chairs_without_opening_clinical_records(clinic_api_db):
+    import httpx
+    from fastapi import FastAPI
+    from app.catalog_api import Actor, authenticate
+    from app.dental_clinic_api import router
+
+    d = clinic_api_db
+    app = FastAPI()
+    app.include_router(router)
+    actor = Actor("member", d["a"], d["account"], "owner")
+    app.dependency_overrides[authenticate] = lambda: actor
+    primary = f"/api/v1/tenants/{d['a']}/dental/chair-settings"
+    secondary = f"/api/v1/tenants/{d['b']}/dental/chair-settings"
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
+                                 base_url="http://test.invalid") as client:
+        assert (await client.get(secondary)).status_code == 403
+        created = await client.post(primary, json={"name": "Cadeira sintética"})
+        assert created.status_code == 201, created.text
+        chair_id = created.json()["id"]
+        chair_path = primary + "/" + chair_id
+        assert (await client.post(primary, json={"name": "Cadeira sintética"})).status_code == 409
+        renamed = await client.patch(chair_path,
+            json={"name": "Cadeira de avaliação", "expected_name": "Cadeira sintética"})
+        assert renamed.status_code == 200, renamed.text
+        assert renamed.json() == {"id": chair_id, "active": True, "name": "Cadeira de avaliação"}
+        assert (await client.patch(chair_path,
+            json={"name": "Nome antigo", "expected_name": "Cadeira sintética"})).status_code == 409
+        assert (await client.get(primary)).headers["cache-control"].startswith("no-store")
+
+        actor = Actor("member", d["a"], d["assistant"], "editor")
+        assert (await client.get(primary)).status_code == 403
+        assert (await client.patch(chair_path,
+            json={"name": "Recusado", "expected_name": "Cadeira de avaliação"})).status_code == 403
+        actor = Actor("member", d["b"], d["account_b"], "owner")
+        assert (await client.get(secondary)).json() == {"items": []}
+        assert (await client.patch(secondary + "/" + chair_id,
+            json={"name": "Recusado", "expected_name": "Cadeira de avaliação"})).status_code == 404
+        async with d["migrator"].begin() as db:
+            await db.execute(text("""UPDATE business_onboarding
+                SET configuration='{"niche":"barbearia"}'::jsonb WHERE tenant_id=:tenant
+            """), {"tenant": d["b"]})
+        assert (await client.get(secondary)).status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_dental_professional_portal_link_clinician_permission_and_revocation(clinic_api_db):
     """A real invited dentist uses their professional link; cannot access other tenants."""
     import httpx

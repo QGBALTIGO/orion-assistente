@@ -220,6 +220,10 @@ class RoomCreate(Strict):
     name: str = Field(min_length=2,max_length=80)
 
 
+class RoomRename(RoomCreate):
+    expected_name: str = Field(min_length=1, max_length=80)
+
+
 class RoomAssign(Strict):
     room_id: UUID
 

@@ -29,7 +29,7 @@ from app.plan_permissions import plan_state
 from app.tenant_access import resolve_tenant_access
 from app.dental_clinic_schemas import (
     ClinicianGrant, PatientCreate, PatientPatch, RecordCreate,
-    RoomCreate, RoomAssign, SupplyCreate, SupplyMove, ExamUpload
+    RoomCreate, RoomRename, RoomAssign, SupplyCreate, SupplyMove, ExamUpload
 )
 
 
@@ -411,28 +411,77 @@ async def append_dental_record(tenant_id:UUID,patient_id:UUID,payload:RecordCrea
                 "recorded":True,"qualified_signature":False}
 
 
+async def read_chairs(db, tenant):
+    rows = (await db.execute(text("""
+        SELECT id,name,active FROM dental_rooms WHERE tenant_id=:tenant
+        ORDER BY lower(name),id
+    """), {"tenant": tenant})).mappings().all()
+    return {"items": [dict(row) for row in rows]}
+
+
+async def create_chair(db, tenant, actor, name):
+    try:
+        async with db.begin_nested():
+            chair = (await db.execute(text("""
+                INSERT INTO dental_rooms (tenant_id,name) VALUES (:tenant,:name)
+                RETURNING id,name,active
+            """), {"tenant": tenant, "name": name})).mappings().one()
+    except IntegrityError:
+        raise HTTPException(409, "Já existe uma cadeira com esse nome") from None
+    await audit(db, tenant, actor, "room_created")
+    return dict(chair)
+
+
 @router.get("/rooms")
-async def dental_rooms(tenant_id:UUID,actor:Actor=Depends(authenticate)):
-    async with clinical_session(tenant_id,actor) as (db,grant):
-        rows=(await db.execute(text("""
-            SELECT id,name,active FROM dental_rooms WHERE tenant_id=:tenant ORDER BY name
-        """),{"tenant":tenant_id})).mappings().all()
-        return {"items":[dict(row) for row in rows]}
+async def dental_rooms(tenant_id: UUID, actor: Actor = Depends(authenticate)):
+    async with clinical_session(tenant_id, actor) as (db, _):
+        return await read_chairs(db, tenant_id)
 
 
-@router.post("/rooms",status_code=201)
-async def add_dental_room(tenant_id:UUID,payload:RoomCreate,actor:Actor=Depends(authenticate)):
-    async with clinical_session(tenant_id,actor,write=True) as (db,grant):
-        rid=uuid4()
+@router.post("/rooms", status_code=201)
+async def add_dental_room(tenant_id: UUID, payload: RoomCreate, actor: Actor = Depends(authenticate)):
+    async with clinical_session(tenant_id, actor, write=True) as (db, _):
+        return await create_chair(db, tenant_id, actor, payload.name)
+
+
+@router.get("/chair-settings")
+async def list_chair_settings(tenant_id: UUID, actor: Actor = Depends(authenticate)):
+    async with owner_session(tenant_id, actor) as db:
+        return await read_chairs(db, tenant_id)
+
+
+@router.post("/chair-settings", status_code=201)
+async def create_chair_settings(tenant_id: UUID, payload: RoomCreate, actor: Actor = Depends(authenticate)):
+    async with owner_session(tenant_id, actor) as db:
+        return await create_chair(db, tenant_id, actor, payload.name)
+
+
+@router.patch("/chair-settings/{room_id}")
+async def rename_chair_settings(
+    tenant_id: UUID, room_id: UUID, payload: RoomRename, actor: Actor = Depends(authenticate)
+):
+    async with owner_session(tenant_id, actor) as db:
+        params = {"tenant": tenant_id, "id": room_id, "name": payload.name}
+        chair = (await db.execute(text("""
+            SELECT id,name,active FROM dental_rooms
+            WHERE tenant_id=:tenant AND id=:id FOR UPDATE
+        """), params)).mappings().one_or_none()
+        if not chair:
+            raise HTTPException(404, "Cadeira não encontrada nesta clínica")
+        if chair["name"] == payload.name:
+            return dict(chair)
+        if chair["name"] != payload.expected_name:
+            raise HTTPException(409, "O nome da cadeira mudou. Reabra o cadastro para conferir.")
         try:
             async with db.begin_nested():
-                await db.execute(text("""
-                    INSERT INTO dental_rooms (id,tenant_id,name) VALUES(:id,:tenant,:name)
-                """),{"id":rid,"tenant":tenant_id,"name":payload.name})
+                updated = (await db.execute(text("""
+                    UPDATE dental_rooms SET name=:name WHERE tenant_id=:tenant AND id=:id
+                    RETURNING id,name,active
+                """), params)).mappings().one()
         except IntegrityError:
-            raise HTTPException(409,"Este consultório já está cadastrado") from None
-        await audit(db,tenant_id,actor,"room_created")
-        return {"id":rid,"name":payload.name,"active":True}
+            raise HTTPException(409, "Já existe uma cadeira com esse nome") from None
+        await audit(db, tenant_id, actor, "room_renamed")
+        return dict(updated)
 
 
 @router.get("/appointments")

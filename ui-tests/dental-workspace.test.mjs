@@ -107,3 +107,51 @@ test('dental styles use the existing Orion tokens and mobile breakpoints',()=>{
   assert.match(css,/@media\(max-width:767px\)/);
   assert.match(css,/@media\(prefers-reduced-motion:reduce\)/);
 });
+
+test('o proprietário odontológico cadastra e renomeia uma cadeira nas configurações',async t=>{
+  const id='10000000-0000-4000-8000-000000000003';
+  const chairs=[];
+  const h=await makeSuite({initialRoute:'configuracoes',
+    permissions:dentalPlan({dental_clinical_enabled:true}),respond:(path,method,body)=>{
+      if(path.endsWith('/dental/chair-settings')){
+        if(method==='GET')return {items:[...chairs]};
+        chairs.push({id,active:true,name:body.name});
+        return chairs[0];
+      }
+      if(path.endsWith('/dental/chair-settings/'+id)&&method==='PATCH'){
+        assert.equal(body.expected_name,chairs[0].name);
+        chairs[0]={...chairs[0],name:body.name};
+        return chairs[0];
+      }
+      return [];
+    }});
+  t.after(()=>h.close());await flush();
+  h.click('[data-os-settings="dental-chairs"]');await flush();
+  assert.match(h.document.getElementById('osPageBody').textContent,/Nenhuma cadeira cadastrada/);
+  h.click('[data-os-action=dental-chair-new]');
+  h.fill('[data-os-form=dental-chair] input[name=name]','  Cadeira 1  ');
+  h.submit('[data-os-form=dental-chair]');await flush();
+  assert.equal(chairs[0].name,'Cadeira 1');
+  assert.match(h.document.getElementById('osPageBody').textContent,/Cadeira 1/);
+  h.click('[data-os-action=dental-chair-edit]');
+  assert.equal(h.document.querySelector('[data-os-form=dental-chair] [name=name]').value,'Cadeira 1');
+  h.fill('[data-os-form=dental-chair] input[name=name]','Sala de avaliação');
+  h.submit('[data-os-form=dental-chair]');await flush();
+  assert.match(h.document.getElementById('osPageBody').textContent,/Sala de avaliação/);
+  assert.deepEqual(h.calls.filter(c=>c.path.includes('/dental/chair-settings')&&c.method!=='GET').map(c=>c.method),['POST','PATCH']);
+  assert.equal(h.errors.length,0);
+});
+
+test('cadeiras não aparecem em outro nicho, manutenção, perfis da equipe ou sem habilitação clínica',async t=>{
+  for(const options of [
+    {permissions:planState('elite',{business_niche:'barbearia',dental_clinical_enabled:true})},
+    {permissions:dentalPlan({dental_clinical_enabled:true}),role:'editor'},
+    {permissions:dentalPlan({dental_clinical_enabled:true}),bridge:{user:{role:'admin',maintenance:{active:true}}}},
+    {permissions:dentalPlan({dental_clinical_enabled:false})}
+  ]){
+    const h=await makeSuite({initialRoute:'configuracoes',...options});
+    t.after(()=>h.close());await flush();
+    assert.equal(h.document.querySelector('[data-os-settings="dental-chairs"]'),null);
+    assert.equal(h.calls.some(c=>c.path.includes('/dental/chair-settings')),false);
+  }
+});
