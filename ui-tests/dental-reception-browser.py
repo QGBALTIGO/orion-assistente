@@ -17,7 +17,7 @@ FEATURES = ["workspace.access","dashboard.basic","agenda.manage","clients.manage
             "professionals.manage","finance.basic","notifications.basic","settings.manage","plan.manage","account.manage"]
 PLAN = {"code":"essencial","active":True,"name":"Essencial","revision":"visual-fixture","features":FEATURES,
         "permissions":dict.fromkeys(FEATURES,True),"limits":{"max_professionals":2},"business_niche":"odontologia",
-        "workspace_profile":"standard","platform_workspace":False,"layout_modes":["classic"]}
+        "workspace_profile":"standard","platform_workspace":False,"layout_modes":["classic"],"dental_clinical_enabled":True}
 SNAPSHOT = {"day":"2026-11-22","timezone":"America/Campo_Grande","counts":{"confirmed":7,"completed":3,"cancelled":1,"no_show":0},
             "upcoming":[{"start_at":"2026-11-22T19:30:00Z","end_at":"2026-11-22T20:10:00Z","professional":"Dra. Ana Oliveira"},
                         {"start_at":"2026-11-22T20:30:00Z","end_at":"2026-11-22T21:15:00Z","professional":"Dr. Miguel de Albuquerque e Vasconcelos"}]}
@@ -48,6 +48,8 @@ def serve(route):
         "/api/v1/onboarding/entry":{"enabled":False,"kind":"dashboard"},
         f"/api/v1/tenants/{TENANT}/management/permissions":{"effective_plan":PLAN},
         f"/api/v1/tenants/{TENANT}/dental/reception/today":SNAPSHOT,
+        f"/api/v1/tenants/{TENANT}/dental/reception/chair-occupancy":{"day":SNAPSHOT["day"],"hours_status":"open",
+            "active_chairs":2,"capacity_seconds":57600,"reserved_seconds":18900},
     }
     return route.fulfill(json=values.get(path,[]))
 
@@ -80,6 +82,13 @@ def verify(browser, width, height, theme):
     assert not any(metrics[k] for k in ("overlap","overflow","outside","wrappedLabel")), (width,theme,metrics)
     assert metrics["columns"]==(2 if width<=820 else 4), (width,metrics)
     assert metrics["fg"]!=metrics["bg"]
+    occupancy = page.get_by_role("region",name="Ocupação das cadeiras hoje")
+    progress = occupancy.get_by_role("progressbar",name="Parcela do expediente reservada")
+    progress.wait_for()
+    assert progress.evaluate("p=>p.value/p.max") == 18900/57600
+    assert occupancy.locator("strong").inner_text()=="32,8%"
+    assert occupancy.locator("p").first.inner_text()=="Tempo reservado · 5 h 15 min de 16 h"
+    occupancy.screenshot(path=str(OUT/f"cadeiras-{width}-{theme}.png"),animations="disabled")
     finance = page.locator("#osCashAmounts")
     finance.get_by_text("R$", exact=False).first.wait_for()
     finance_values = [text.replace("\xa0", " ") for text in finance.locator("dd").all_text_contents()]

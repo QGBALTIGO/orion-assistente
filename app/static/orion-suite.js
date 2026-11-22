@@ -1374,6 +1374,30 @@
     ['confirmed','Confirmadas','calendar'],['completed','Concluídas','check'],
     ['cancelled','Canceladas','close'],['no_show','Faltas','clock']
   ];
+  function chairTime(seconds){
+    if(seconds>0&&seconds<60)return 'menos de 1 min';
+    const minutes=Math.floor(seconds/60),hours=Math.floor(minutes/60);
+    if(!hours)return minutes+' min';
+    return hours+' h'+(minutes%60?' '+minutes%60+' min':'');
+  }
+  function chairOccupancyMarkup(metric){
+    const {hours_status:status,active_chairs:chairs,capacity_seconds:capacity,reserved_seconds:reserved}=metric||{};
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(metric?.day)||!Number.isSafeInteger(chairs)||chairs<0||
+       !['open','closed','unconfigured'].includes(status))throw Error('Resumo de cadeiras incompleto');
+    const unknown=status==='unconfigured';
+    if(unknown?(capacity!==null||reserved!==null):(!Number.isSafeInteger(capacity)||!Number.isSafeInteger(reserved)||
+       reserved<0||reserved>capacity||((status==='closed'||chairs===0)&&capacity!==0)))throw Error('Resumo de cadeiras inconsistente');
+    let empty='';
+    if(!chairs)empty='Nenhuma cadeira ativa na clínica.';
+    else if(unknown)empty='Cadastre o expediente da clínica para calcular a ocupação.';
+    else if(status==='closed'||!capacity)empty='Sem expediente previsto para hoje.';
+    if(empty)return '<p class="os-reception-empty">'+empty+'</p>';
+    const percent=new Intl.NumberFormat('pt-BR',{style:'percent',maximumFractionDigits:1}).format(reserved/capacity);
+    const chairLabel=chairs===1?'1 cadeira ativa':chairs+' cadeiras ativas';
+    return '<div class="os-chair-heading"><strong>'+esc(percent)+'</strong><span>'+chairLabel+'</span></div>'+
+      '<progress aria-label="Parcela do expediente reservada" max="'+capacity+'" value="'+reserved+'">'+esc(percent)+'</progress>'+
+      '<p>Tempo reservado · '+chairTime(reserved)+' de '+chairTime(capacity)+'</p>';
+  }
   async function mountDentalReception(c){
     const shortcuts=[];
     if(writable()&&routePermitted('agenda'))shortcuts.push(button('Nova consulta','new-appointment','','plus'));
@@ -1389,6 +1413,9 @@
       '<section class="os-card os-reception-card" aria-labelledby="osProximasTitle"><header><h2 id="osProximasTitle">Próximas consultas</h2></header>'+
       '<div id="osReceptionUpcoming" aria-busy="true"></div></section>'+
       '<p id="osReceptionNotice" class="os-reception-notice" role="status"></p>'+
+      (state.entitlements?.dental_clinical_enabled===true?'<section class="os-card os-reception-card" aria-labelledby="osChairTitle"><header><h2 id="osChairTitle">Ocupação das cadeiras hoje</h2></header>'+
+        '<div id="osChairOccupancy" class="os-chair-occupancy" aria-busy="true">'+loading('Consultando as reservas…')+'</div>'+
+        '<p id="osChairNotice" class="os-reception-notice" role="status"></p></section>':'')+
       (financeLink?'<section class="os-card os-reception-card" aria-labelledby="osCashTitle"><header><h2 id="osCashTitle">Caixa da clínica</h2>'+financeLink+'</header>'+
         '<div id="osCashRange" class="os-pill-tabs os-cash-range" role="group" aria-label="Período do caixa">'+
         '<button type="button" class="os-pill-tab" data-cash-range="day" aria-pressed="true">Hoje</button>'+
@@ -1426,6 +1453,25 @@
         if(!lastSnapshot){counts.replaceChildren();upcoming.replaceChildren();}
         notice.textContent=lastSnapshot?'Exibindo a última consulta à agenda. Tentando reconectar…':'Não foi possível consultar a agenda da clínica. Tentando novamente…';
       }finally{busy=false;if(current(c))upcoming.setAttribute('aria-busy','false');}
+    }
+    const chairView=$('osChairOccupancy'),chairNotice=$('osChairNotice');
+    let chairsBusy=false,chairSnapshot='',chairDay='';
+    async function refreshChairs(){
+      if(!chairView||chairsBusy||!current(c))return;
+      chairsBusy=true;
+      try{
+        const metric=await request(apiPath('/dental/reception/chair-occupancy'));
+        if(!current(c))return;
+        const markup=chairOccupancyMarkup(metric);
+        if(markup!==chairSnapshot){chairView.innerHTML=markup;chairSnapshot=markup;}
+        chairDay=metric.day;chairNotice.textContent='';
+      }catch{
+        if(!current(c))return;
+        if(!chairSnapshot||chairDay!==dateKey()){chairView.replaceChildren();chairSnapshot='';}
+        chairNotice.textContent=chairSnapshot?'Exibindo a última leitura das cadeiras. Tentando reconectar…':'Não foi possível consultar a ocupação. Tentando novamente…';
+      }finally{
+        chairsBusy=false;if(current(c))chairView.setAttribute('aria-busy','false');
+      }
     }
     const cashAmounts=$('osCashAmounts'),cashNotice=$('osCashNotice'),rangePicker=$('osCashRange');
     let cashRange='day',cashRequest=0,activeKey='',shownKey='',lastReadAt=0;
@@ -1468,8 +1514,8 @@
       for(const choice of rangePicker.querySelectorAll('button'))choice.setAttribute('aria-pressed',String(choice===target));
       void refreshCash();
     });
-    state.clockTimer=setInterval(()=>{if(document.visibilityState!=='hidden'){void refresh();void refreshCash();}},30000);
-    await Promise.all([refresh(),refreshCash()]);
+    state.clockTimer=setInterval(()=>{if(document.visibilityState!=='hidden'){void refresh();void refreshChairs();void refreshCash();}},30000);
+    await Promise.all([refresh(),refreshChairs(),refreshCash()]);
   }
   function renderDashboard(data,today=dateKey()){
     const s=data.summary||{},t=tenant(),can=writable(),hours=Number(new Intl.DateTimeFormat('en-GB',{hour:'2-digit',hourCycle:'h23',timeZone:zone()}).format(new Date()));

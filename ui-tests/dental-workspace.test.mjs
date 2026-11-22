@@ -386,3 +386,51 @@ test('ajustes não oferece funções privativas à recepção e a barbearia não
   assert.notEqual(barber.document.querySelector('#page-suite').dataset.osCurrentRoute,'ajustes-odonto');
   assert.equal(barber.calls.some(c=>c.path.includes('/dental/')),false);
 });
+
+test('ocupação da recepção usa o expediente real e recupera a leitura sem bloquear a agenda',async t=>{
+  let refresh,requests=0;
+  const day=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Campo_Grande',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+  const counts={confirmed:3,completed:0,cancelled:0,no_show:0};
+  const samples=[
+    {active_chairs:2,hours_status:'open',capacity_seconds:57600,reserved_seconds:18900},
+    {active_chairs:2,hours_status:'open',capacity_seconds:50,reserved_seconds:75},
+    {active_chairs:2,hours_status:'unconfigured',capacity_seconds:null,reserved_seconds:null},
+    {active_chairs:2,hours_status:'closed',capacity_seconds:0,reserved_seconds:0},
+    {active_chairs:0,hours_status:'open',capacity_seconds:0,reserved_seconds:0},
+    {active_chairs:2,hours_status:'open',capacity_seconds:57600,reserved_seconds:0}
+  ];
+  const h=await makeSuite({initialRoute:'dashboard',permissions:dentalPlan({dental_clinical_enabled:true}),
+    configureWindow(w){
+      const original=w.setInterval.bind(w);
+      w.setInterval=(fn,ms,...args)=>{if(ms===30000){refresh=fn;return 0;}return original(fn,ms,...args);};
+      Object.defineProperty(w.document,'visibilityState',{value:'visible'});
+    },respond(path){
+      if(path.endsWith('/dental/reception/today'))return {day,timezone:'America/Campo_Grande',counts,upcoming:[]};
+      if(path.endsWith('/dental/reception/chair-occupancy'))return {day,...samples[requests++]};
+      return [];
+    }});
+  t.after(()=>h.close());await flush();
+  const card=h.document.querySelector('#osChairOccupancy'),notice=h.document.querySelector('#osChairNotice');
+  assert.equal(card.querySelector('strong').textContent,'32,8%');
+  assert.equal(card.querySelector('progress').value,18900);
+  assert.match(card.textContent,/5 h 15 min de 16 h/);
+  refresh();await flush();assert.match(notice.textContent,/última leitura/);
+  assert.equal(card.querySelector('progress').value,18900);
+  assert.equal(h.document.querySelector('#osReceptionCounts dd').textContent,'3');
+  for(const message of [/Cadastre o expediente/,/Sem expediente/,/Nenhuma cadeira ativa/]){
+    refresh();await flush();assert.match(card.textContent,message);assert.equal(card.querySelector('progress'),null);
+    assert.equal(notice.textContent,'');
+  }
+  refresh();await flush();assert.equal(card.querySelector('progress').value,0);
+  h.click('[data-os-action=dashboard-agenda-full]');await flush();refresh();await flush();
+  assert.equal(requests,6);
+});
+
+test('o painel sem cadeiras habilitadas não consulta nem exibe a métrica',async t=>{
+  for(const plan of [dentalPlan({dental_clinical_enabled:false}),planState('essencial',{business_niche:'barbearia'})]){
+    const h=await makeSuite({initialRoute:'dashboard',permissions:plan});
+    t.after(()=>h.close());await flush();
+    assert.equal(h.document.querySelector('#osChairOccupancy'),null);
+    assert.equal(h.calls.some(call=>call.path.endsWith('/chair-occupancy')),false);
+  }
+});
