@@ -176,8 +176,12 @@ async def test_completed_and_no_show_require_current_version_and_emit_one_transa
     async with d["migrator"].connect() as db:
         assert (await db.execute(text("SELECT action,status FROM calendar_outbox WHERE appointment_id=:id"),
                                 {"id": UUID(identity)})).one() == ("update", "pending")
-        assert (await db.execute(text("SELECT count(*) FROM financial_entries WHERE tenant_id=:tenant"),
-                                 {"tenant": d["a"]})).scalar_one() == 0
+        entries = (await db.execute(text("""
+            SELECT appointment_id,kind,status,amount_cents,service_receivable
+            FROM financial_entries WHERE tenant_id=:tenant
+        """), {"tenant": d["a"]})).all()
+        expected_entries = [(UUID(identity), "income", "pending", 10000, True)] if target == "complete" else []
+        assert entries == expected_entries
         assert (await db.execute(text("SELECT count(*) FROM management_requests WHERE entity_id=:id"), {"id": UUID(identity)})).scalar_one() == 1
 
 
