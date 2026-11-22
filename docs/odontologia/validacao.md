@@ -72,6 +72,16 @@ A busca pelo nome ou número do paciente ou responsável transmite o termo no co
 
 Foram usados PostgreSQL 16 com papéis restritos, um navegador com duas pessoas sintéticas da mesma família e testes de autorização, concorrência, alteração de cadastro e navegação. O acesso administrativo não concede validação de documentos ou autorização clínica. A medição em produção permanece pendente.
 
+## Controle de próteses e prazos
+
+No painel autenticado do Simples Dental, o quadro apresentou cinco etapas. O filtro de atraso pode ser combinado com profissional, etiqueta ou laboratório. A criação solicita paciente, profissional e descrição do serviço. O formulário vazio manteve o salvamento desabilitado. A inspeção terminou sem gravar dados.
+
+A Orion ganhou uma entrada própria para o controle de próteses. O filtro de prazo combina com a etapa e permanece selecionado após atualizar um trabalho. O banco usa a meia-noite local da clínica. Um trabalho com vencimento hoje recebe uma indicação própria. Concluídos, cancelados e sem data ficam fora dos atrasos. Os filtros por profissional, etiqueta e laboratório e a associação de uma consulta de prova ou entrega continuam registrados para implementação.
+
+Uma verificação com 200 trabalhos encerrados confirmou que a página seguinte alcança o trabalho atrasado mais antigo. O teste também cobriu dois fusos em dias distintos, mudança de etapa, papéis com e sem acesso clínico e isolamento entre clínicas. No navegador, o módulo abriu a ficha pela identidade do paciente após ação explícita e preservou os filtros durante a atualização de etapa. Foram verificadas quatro larguras de tela, em claro e escuro. Não há migração nesta entrega.
+
+O cadastro de pacientes no PR 362 passou na validação do GitHub no workflow 45079834880. A versão do estoque permanece preparada para aprovação no Railway. O caixa, o cadastro e os prazos aguardam a sequência de publicação e verificação em produção.
+
 ## Acesso administrativo ao estoque
 
 A publicação da revisão 73650175 foi confirmada no Railway em 22/11/2026, implantação 4bcd5bee-ac50-487f-9ca9-b871a1ba3b94. Na conta da proprietária da clínica Ana Clara, o menu Estoque abriu a rota correta e pediu uma concessão clínica indevida. A correção passa a verificar a propriedade ativa da empresa exclusivamente nos endpoints de materiais e movimentações. O catálogo dedicado carrega somente permissões e materiais. Os endpoints de exames e prontuários continuam verificando a concessão profissional.

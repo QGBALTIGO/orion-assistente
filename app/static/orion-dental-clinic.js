@@ -151,24 +151,29 @@
       const steps=(item.actions||[]).map(status=>[
         status,status==='working'&&content.status==='delivered'?'Devolver ao laboratório':prosthesisAction[status]
       ]);
+      const deadline=item.deadline_state==='overdue'?'<span class="os-badge os-danger">Em atraso</span>':
+        item.deadline_state==='today'?'<span class="os-badge">Vence hoje</span>':'';
       return '<article class="os-dental-entry os-dental-prosthesis-card">'+
         '<div class="os-dental-row"><div><h3>'+esc(item.patient_name)+'</h3>'+
         '<p>'+esc(content.description)+'</p></div><div><span class="os-dental-label">Etapa atual</span>'+
         '<p><strong>'+esc(prosthesisStatus[content.status])+'</strong></p></div></div>'+
         '<div class="os-dental-row"><div><span class="os-dental-label">Laboratório</span><p>'+esc(content.laboratory)+'</p></div>'+
-        '<div><span class="os-dental-label">Prazo estimado</span><p>'+esc(formatDueDate(content.due_date))+'</p></div></div>'+
+        '<div><span class="os-dental-label">Prazo estimado</span><p class="os-dental-deadline">'+esc(formatDueDate(content.due_date))+deadline+'</p></div></div>'+
         (steps.length?'<form class="os-dental-row" data-dental-form="prosthesis-step" data-id="'+id+'">'+
           choices('Próxima ação','prosthesis_step_'+item.id,[['','Selecione uma ação'],...steps],pendingStep,'required')+
           '<div class="os-dental-controls"><button type="submit" class="os-button">Atualizar etapa</button></div></form>':'')+
         '<div class="os-dental-actions">'+button('Abrir prontuário','open-prosthesis-patient','os-ghost','data-id="'+id+'"')+'</div>'+
         '</article>';
     }).join('');
-    return '<section class="os-dental-card os-dental-space"><div class="os-dental-actions">'+
-      '<h2 class="os-dental-title">Próteses</h2>'+button('Laboratórios','section-laboratories')+'</div>'+
+    return '<section class="os-dental-card os-dental-space os-dental-work"><header class="os-dental-work-head">'+
+      '<h2 class="os-dental-title">'+(state.dedicatedProstheses?'Trabalhos protéticos':'Próteses')+'</h2>'+button('Laboratórios','section-laboratories')+'</header>'+
+      '<div class="os-dental-work-filters">'+
       choices('Etapa','prosthesis_filter',[['','Todas as etapas'],...prosthesisStatuses],board?.status||'')+
+      choices('Prazo','prosthesis_deadline',[['','Todos os prazos'],['overdue','Somente em atraso']],board?.overdue?'overdue':'')+'</div>'+
       cards+(board?.loading?pending():'')+
       (board?.error?info(board.error,true)+'<div class="os-dental-actions">'+button('Tentar novamente','prosthesis-more')+'</div>':'')+
-      (!cards&&!board?.loading&&!board?.error?'<p class="os-dental-empty">Nenhuma prótese encontrada.</p>':'')+
+      (!cards&&!board?.loading&&!board?.error?'<p class="os-dental-empty">'+
+        (board?.nextCursor?'Há mais trabalhos para consultar.':board?.overdue?'Nenhum trabalho em atraso para este filtro.':'Nenhuma prótese encontrada.')+'</p>':'')+
       (!board?.loading&&board?.nextCursor&&!board?.error?
         '<div class="os-dental-actions">'+button('Carregar mais','prosthesis-more')+'</div>':'')+'</section>';
   }
@@ -453,14 +458,16 @@
   }
   function render(){
     const host=state.host;if(!host)return;
+    const focusedFilter=host.contains(document.activeElement)&&['prosthesis_filter','prosthesis_deadline'].includes(document.activeElement?.name)?
+      document.activeElement.name:null;
     const allowed=!!state.access?.clinical_access;
     let html='<div class="os-dental os-dental-space">';
-    if(!state.dedicatedStock&&!state.visitsOnly)html+='<div class="os-dental-toolbar"><div><p class="os-dental-kicker">Orion • Odontologia</p>'+
+    if(!state.dedicatedStock&&!state.dedicatedProstheses&&!state.visitsOnly)html+='<div class="os-dental-toolbar"><div><p class="os-dental-kicker">Orion • Odontologia</p>'+
       '<h2 class="os-dental-title">Gestão odontológica</h2></div>'+
       '<div class="os-dental-actions">'+
         button('Pacientes','section-patients',state.section==='patients'?'':'os-outline')+
         button('Consultórios','section-rooms',state.section==='rooms'?'':'os-outline')+
-        (state.access?.can_read_records?button('Próteses','section-prostheses',['prostheses','laboratories'].includes(state.section)?'':'os-outline'):'')+
+        (!state.prosthesesInMenu&&state.access?.can_read_records?button('Próteses','section-prostheses',['prostheses','laboratories'].includes(state.section)?'':'os-outline'):'')+
         (state.stockInMenu?'':button('Estoque','section-supplies',state.section==='supplies'?'':'os-outline'))+
         button('Equipe clínica','section-access',state.section==='access'?'':'os-outline')+
       '</div></div>';
@@ -470,6 +477,7 @@
     else if(!state.access)html+=info('Não foi possível confirmar as permissões clínicas.',true);
     else if(state.section==='access')html+=accessManager();
     else if(state.section==='supplies'&&(state.access.can_manage_inventory||allowed))html+=supplyManager();
+    else if(state.dedicatedProstheses&&!state.access.can_read_records)html+=info('O controle de próteses requer acesso clínico de dentista.');
     else if(!allowed&&state.dedicatedStock)html+=info('Solicite ao proprietário da clínica acesso ao estoque.');
     else if(!allowed)html+=info('O acesso ao prontuário ainda não foi concedido a esta conta. Abra Equipe clínica se você for o proprietário.');
     else if(state.visitsOnly)html+=state.visitBoard?visitsPanel(state.visitBoard):button('Voltar aos pacientes','visits-close');
@@ -481,6 +489,7 @@
        (state.creatingPatient||state.editingPatient?patientCreate():patientPanel())+'</div></div>';
     html+='</div>';
     host.innerHTML=html;
+    if(focusedFilter)host.querySelector('[name="'+focusedFilter+'"]')?.focus({preventScroll:true});
   }
   async function invoke(fn,success){
     if(state.submitting)return;
@@ -596,12 +605,15 @@
     render();
     const query=new URLSearchParams();
     if(board.status)query.set('status',board.status);
+    if(board.overdue)query.set('overdue_only','true');
     if(board.nextCursor)query.set('cursor',board.nextCursor);
     try{
       const params=query.toString();
       const result=await api('/prostheses'+(params?'?'+params:''));
       if(current()){
-        board.items.push(...result.items);
+        if(!Array.isArray(result?.items))throw Error('Não foi possível ler os trabalhos protéticos.');
+        const listed=new Set(board.items.map(item=>item.id));
+        board.items.push(...result.items.filter(item=>!listed.has(item.id)));
         board.nextCursor=result.next_cursor;
       }
     }catch(error){
@@ -610,8 +622,8 @@
       if(current()){board.loading=false;render();}
     }
   }
-  function selectProstheses(status=''){
-    state.prostheses={status,items:[],nextCursor:null,loading:false,error:'',change:null};
+  function selectProstheses(status='',overdue=false){
+    state.prostheses={status,overdue,items:[],nextCursor:null,loading:false,error:'',change:null};
     return loadProstheses(state.prostheses);
   }
   function addFinding(){
@@ -699,7 +711,9 @@
     }
     const act=btn.dataset.dentalAction;
     if(act?.startsWith('section-')){
-      const section=act.slice(8);if(state.dedicatedStock)return;state.supplyMove=null;state.visitBoard=null;state.section=section;state.error='';state.success='';
+      const section=act.slice(8);
+      if(state.dedicatedStock||(state.dedicatedProstheses&&!['prostheses','laboratories'].includes(section)))return;
+      state.supplyMove=null;state.visitBoard=null;state.section=section;state.error='';state.success='';
       state.supplyHistory=null;
       state.prostheses=null;
       if(section==='prostheses'&&state.access?.can_read_records){
@@ -791,6 +805,7 @@
     if(act==='open-prosthesis-patient'&&state.prostheses){
       const patient=state.prostheses.items.find(item=>item.id===btn.dataset.id)?.patient_id;
       if(idRe.test(patient||'')){
+        if(state.dedicatedProstheses){state.openProsthesisPatient?.(patient);return;}
         state.section='patients';state.prostheses=null;state.creatingPatient=false;state.editingPatient=false;
         await loadPatient(patient,'prosthesis');
       }
@@ -869,7 +884,7 @@
       const epoch=state.epoch;
       return invoke(async()=>{
         await api('/prostheses/'+id+'/status','PATCH',{status,entry_key:board.change.key});
-        if(valid(epoch)&&state.prostheses===board)await selectProstheses(board.status);
+        if(valid(epoch)&&state.prostheses===board)await selectProstheses(board.status,board.overdue);
       },'Etapa da prótese atualizada.');
     }
     if(kind==='search'){state.q=v.q||'';await refreshPatients();return;}
@@ -948,10 +963,12 @@
   function onChange(event){
     const el=event.target;
     if(!state.host?.contains(el))return;
-    if(el.name==='prosthesis_filter'&&state.prostheses){
+    if(['prosthesis_filter','prosthesis_deadline'].includes(el.name)&&state.prostheses){
       state.success='';
       state.error='';
-      void selectProstheses(el.value);
+      const board=state.prostheses;
+      void selectProstheses(el.name==='prosthesis_filter'?el.value:board.status,
+        el.name==='prosthesis_deadline'?el.value==='overdue':board.overdue);
       return;
     }
     if(el.name==='supply_history_movement'&&state.supplyHistory){
@@ -975,7 +992,7 @@
     const epoch=state.epoch;
     const data=await api('/access');if(!valid(epoch))return;
     state.access=data;
-    if(data.can_manage&&!state.dedicatedStock&&!state.visitsOnly){
+    if(data.can_manage&&!state.dedicatedStock&&!state.dedicatedProstheses&&!state.visitsOnly){
       const base='/api/v1/tenants/'+state.tenantId;
       const res=await Promise.allSettled([
         state.request(base+'/professionals'),state.request(base+'/management/team')]);
@@ -993,16 +1010,19 @@
     state.host.addEventListener('submit',onSubmit);
     state.host.addEventListener('change',onChange);
     state.dedicatedStock=options.dedicatedStock===true;state.stockInMenu=options.stockInMenu===true;
+    state.dedicatedProstheses=options.dedicatedProstheses===true;state.prosthesesInMenu=options.prosthesesInMenu===true;
+    state.openProsthesisPatient=options.openProsthesisPatient;
     state.visitsOnly=options.visitsOnly===true&&idRe.test(options.initialPatient||'');
     state.returnToDirectory=options.returnToDirectory;
-    state.loading=true;state.section=state.dedicatedStock?'supplies':options.team?'access':'patients';state.error='';render();
+    state.loading=true;state.section=state.dedicatedStock?'supplies':state.dedicatedProstheses?'prostheses':options.team?'access':'patients';state.error='';render();
     const epoch=state.epoch;
     try{
       await fetchAccess();
       if(valid(epoch)&&state.dedicatedStock&&(state.access?.can_manage_inventory||state.access?.clinical_access)){
         await readStock();
       }else if(valid(epoch)&&state.access?.clinical_access){
-        if(state.visitsOnly){
+        if(state.dedicatedProstheses){if(state.access.can_read_records)await selectProstheses();}
+        else if(state.visitsOnly){
           const patient=await api('/patients/'+options.initialPatient);
           if(!valid(epoch))return;
           if(patient?.id!==options.initialPatient)throw Error('A consulta não corresponde ao paciente selecionado.');
@@ -1012,7 +1032,7 @@
         }else if(state.section!=='access'){
           const r=await api('/patients?limit=100');if(!valid(epoch))return;
           state.patients=r.items||[];
-          if(idRe.test(options.initialPatient||''))await loadPatient(options.initialPatient);
+          if(idRe.test(options.initialPatient||''))await loadPatient(options.initialPatient,options.initialTab==='prosthesis'?'prosthesis':'anamnesis');
         }
       }
     }catch(e){if(valid(epoch))state.error=e?.message||'Não foi possível confirmar o acesso clínico.';}
@@ -1024,6 +1044,7 @@
     if(host){host.removeEventListener('click',onClick);host.removeEventListener('submit',onSubmit);
       host.removeEventListener('change',onChange);host.replaceChildren();}
     Object.assign(state,{host:null,request:null,tenantId:'',canAccess:null,access:null,team:[],
+      dedicatedProstheses:false,prosthesesInMenu:false,openProsthesisPatient:null,
       dedicatedStock:false,visitsOnly:false,returnToDirectory:null,stockInMenu:false,stockQuery:'',stockOrder:'asc',stockCursor:null,stockFailedPage:false,
       stockLoading:false,stockRead:0,stockError:'',stockCreateOpen:false,stockDraft:null,supplyMove:null,
       professionals:[],patients:[],patient:null,records:[],exams:[],intakeTemplates:[],rooms:[],appointments:[],
