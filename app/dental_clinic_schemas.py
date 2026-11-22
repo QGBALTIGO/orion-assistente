@@ -3,7 +3,7 @@ from datetime import date
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import UUID4, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class Strict(BaseModel):
@@ -49,9 +49,20 @@ class PatientCreate(Strict):
     @field_validator("contact_phone","guardian_phone")
     @classmethod
     def valid_phone(cls, value):
-        if value is not None and (len(value)<8 or not all(c in "+0123456789 ()-" for c in value)):
+        if value is not None and (not 8 <= sum(c in "0123456789" for c in value) <= 15
+                                  or not all(c in "+0123456789 ()-" for c in value)):
             raise ValueError("Telefone inválido")
         return value
+
+
+class PatientRegistration(PatientCreate):
+    request_id: UUID4 | None = None
+
+
+class PatientSearch(Strict):
+    query: str = Field("", max_length=120)
+    limit: int = Field(30, ge=1, le=100)
+    offset: int = Field(0, ge=0)
 
 
 class VisitPatientLink(Strict):

@@ -11,7 +11,7 @@ import secrets
 from contextlib import asynccontextmanager
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Literal
-from uuid import UUID, uuid4
+from uuid import UUID, uuid4, uuid5
 from zoneinfo import ZoneInfo
 
 from cryptography.exceptions import InvalidTag
@@ -29,7 +29,7 @@ from app.database import get_session_factory, tenant_transaction
 from app.plan_permissions import plan_state
 from app.tenant_access import resolve_tenant_access
 from app.dental_clinic_schemas import (
-    ClinicianGrant, PatientCreate, PatientPatch, VisitPatientLink, RecordCreate,
+    ClinicianGrant, PatientRegistration, PatientSearch, PatientPatch, VisitPatientLink, RecordCreate,
     IntakeTemplateCreate, IntakeTemplateUpdate, LaboratoryCreate, LaboratoryUpdate,
     ProsthesisStatus, ProsthesisTransition,
     RoomCreate, RoomRename, RoomAssign, ChairAvailability, SupplyCreate, SupplyMove, ExamUpload
@@ -349,26 +349,57 @@ async def list_dental_patients(tenant_id:UUID,q:str=Query("",max_length=120),
         return {"items":[dict(x) for x in result],"total":count}
 
 
+@router.post("/patients/search")
+async def search_patient_directory(tenant_id: UUID, payload: PatientSearch, actor: Actor = Depends(authenticate)):
+    async with clinical_session(tenant_id, actor) as (db, grant):
+        term = payload.query
+        digits = "".join(c for c in term if c in "0123456789")
+        search_phone = len(digits) >= 4 and all(c in "+0123456789 ()-" for c in term)
+        if search_phone:
+            where = """(regexp_replace(coalesce(contact_phone,''), '[^0-9]', '', 'g') LIKE :term
+                       OR regexp_replace(coalesce(guardian_phone,''), '[^0-9]', '', 'g') LIKE :term)"""
+            pattern = f"%{digits}%"
+        else:
+            where = "name ILIKE :term ESCAPE '!'"
+            pattern = "%" + term.replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%"
+        result = (await db.execute(text(f"""
+            SELECT id, name, birth_date, guardian_name
+            FROM dental_patients WHERE tenant_id=:tenant AND {where}
+            ORDER BY lower(name), id LIMIT :limit OFFSET :offset
+        """), {"tenant":tenant_id, "term":pattern, "limit":payload.limit + 1,
+               "offset":payload.offset})).mappings().all()
+        await audit(db, tenant_id, actor, "patient_directory_read")
+        return {"items":[dict(item) for item in result[:payload.limit]],
+                "has_more":len(result)>payload.limit}
+
+
 @router.post("/patients",status_code=201)
-async def create_dental_patient(tenant_id:UUID,payload:PatientCreate,actor:Actor=Depends(authenticate)):
+async def create_dental_patient(tenant_id:UUID,payload:PatientRegistration,actor:Actor=Depends(authenticate)):
     async with clinical_session(tenant_id,actor,write=True) as (db,grant):
         if payload.customer_id is not None:
             ok=(await db.execute(text("""
                 SELECT id FROM customers WHERE tenant_id=:tenant AND id=:customer AND deleted_at IS NULL
             """),{"tenant":tenant_id,"customer":payload.customer_id})).scalar_one_or_none()
             if not ok:raise HTTPException(404,"Cliente administrativo não pertence a esta clínica")
-        identity=uuid4()
-        await db.execute(text("""
+        identity = uuid5(tenant_id, f"register:{actor.account_id}:{payload.request_id}") if payload.request_id else uuid4()
+        inserted = (await db.execute(text("""
             INSERT INTO dental_patients
              (id,tenant_id,customer_id,name,birth_date,guardian_name,guardian_phone,
               contact_phone,created_by)
             VALUES (:id,:tenant,:customer,:name,:birth,:guardian,:guardian_phone,:phone,:actor)
+            ON CONFLICT (id) DO NOTHING RETURNING id
         """),{"id":identity,"tenant":tenant_id,"customer":payload.customer_id,
                "name":payload.name,"birth":payload.birth_date,
                "guardian":payload.guardian_name,"guardian_phone":payload.guardian_phone,
-               "phone":payload.contact_phone,"actor":actor.account_id})
-        await audit(db,tenant_id,actor,"patient_created",identity)
-        return await patient_row(db,tenant_id,identity)
+               "phone":payload.contact_phone,"actor":actor.account_id})).scalar_one_or_none()
+        patient = await patient_row(db,tenant_id,identity)
+        if inserted is None:
+            original = payload.model_dump(exclude={"request_id"})
+            if any(patient[key] != value for key, value in original.items()):
+                raise HTTPException(409, "Este cadastro já foi salvo com outros dados. Consulte o paciente antes de continuar.")
+        else:
+            await audit(db,tenant_id,actor,"patient_created",identity)
+        return patient
 
 
 @router.get("/patients/{patient_id}")

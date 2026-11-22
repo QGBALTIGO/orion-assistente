@@ -34,6 +34,7 @@ on:
       - 'ui-tests/dental-reception-browser.py'
       - 'ui-tests/dental-visit-links-browser.py'
       - 'ui-tests/dental-stock-browser.py'
+      - 'ui-tests/dental-directory-browser.py'
       - 'ui-tests/dashboard-today-preview.test.mjs'
       - 'ui-tests/professional-portal.test.mjs'
       - 'deploy/Dockerfile.dental-workflows'
@@ -119,6 +120,7 @@ jobs:
           python ui-tests/dental-reception-browser.py
           python ui-tests/dental-visit-links-browser.py
           python ui-tests/dental-stock-browser.py
+          python ui-tests/dental-directory-browser.py
       - uses: actions/upload-artifact@v4
         with:
           name: odontologia-recepcao-visual
