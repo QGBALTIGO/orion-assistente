@@ -1127,9 +1127,11 @@
       booking=writable()&&routePermitted('agenda')?button('Novo agendamento','new-appointment','','plus'):'',
       quickActions=(writable()&&routePermitted('clientes')?quick('Novo cliente','Comece um novo relacionamento','new-customer','userPlus'):'')+
         (routePermitted('site')?'<button type="button" class="os-home-quick" data-os-route="site"><span>'+icon('globe')+'</span><div><strong>Meu site</strong><small>Sua página de agendamento</small></div>'+icon('external')+'</button>':'');
-    bodyHTML('<section class="os-home-preview" aria-label="Início do negócio"><div class="os-home-heading"><div><p class="os-overline">Seu negócio, bem acompanhado</p><h1>'+greeting+(first?', '+esc(first):'')+'<span>.</span></h1><p>'+esc(longDay(range.today))+'</p></div>'+
-      (pilot||booking?'<div class="os-home-heading-actions">'+pilot+booking+'</div>':'')+'</div>'+
-      '<div class="os-home-context"><span>Visão geral de '+esc(tenant()?.name||'seu negócio')+'</span><span id="osHomeSync" role="status" aria-live="polite"></span></div>'+
+    bodyHTML('<section class="os-home-preview" aria-label="Início do negócio"><header class="os-home-heading">'+
+      '<div class="os-home-greeting"><p class="os-overline">Seu negócio, bem acompanhado</p><h1>'+greeting+(first?', '+esc(first):'')+'<span>.</span></h1><p class="os-home-date">'+esc(longDay(range.today))+'</p></div>'+
+      '<p class="os-home-context">Visão geral de '+esc(tenant()?.name||'seu negócio')+'</p>'+
+      (pilot||booking?'<div class="os-home-heading-actions">'+pilot+booking+'</div>':'')+
+      '<p id="osHomeSync" role="status" aria-live="polite"></p></header>'+
       '<div class="os-home-overview"><article class="os-home-revenue" aria-labelledby="osHomeRevenueTitle"><div class="os-home-revenue-heading"><h2 id="osHomeRevenueTitle">Faturamento <span>'+periodName+'</span></h2><span class="os-home-revenue-art">'+icon('chart')+'</span></div>'+
       '<div class="os-home-periods" role="group" aria-label="Período dos indicadores">'+[['today','Hoje'],['yesterday','Ontem'],['week','7 dias']].map(([value,label])=>'<button type="button" data-os-action="home-period" data-os-period="'+value+'" aria-pressed="'+(range.period===value)+'">'+label+'</button>').join('')+'</div>'+
       '<div id="osHomeRevenue" class="os-home-revenue-result" aria-live="polite" aria-busy="true"><strong class="os-home-revenue-value">—</strong><p class="os-home-pending">Consultando faturamento…</p></div>'+
