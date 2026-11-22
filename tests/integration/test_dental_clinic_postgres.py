@@ -1132,3 +1132,52 @@ async def test_explicit_visit_identity_is_audited_and_independent_of_booking_con
         assert all(e["actor_account_id"] == d["assistant"] for e in events)
         assert not await db.scalar(text("""SELECT has_table_privilege('app_runtime',
             'dental_visit_patient_events','UPDATE,DELETE,TRUNCATE')"""))
+
+
+@pytest.mark.asyncio
+async def test_patient_directory_shared_contact_name_only_and_retry(clinic_api_db):
+    import asyncio
+    from uuid import UUID
+    import httpx
+    from fastapi import FastAPI
+    from app.catalog_api import Actor, authenticate
+    from app.dental_clinic_api import router
+
+    d = clinic_api_db
+    api = FastAPI()
+    api.include_router(router)
+    api.dependency_overrides[authenticate] = lambda: Actor("member", d["a"], d["account"], "owner")
+    base = f"/api/v1/tenants/{d['a']}/dental/patients"
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=api), base_url="http://test.invalid") as client:
+        family = {"guardian_name":"Pessoa sintética", "guardian_phone":"(67) 99999-8765"}
+        first = {"name":"Ana % Sintética", "request_id":str(uuid4()), **family}
+        responses = await asyncio.gather(*(client.post(base, json=first) for _ in range(2)))
+        assert [r.status_code for r in responses] == [201,201]
+        identity = responses[0].json()["id"]
+        assert identity == responses[1].json()["id"]
+        changed = await client.post(base, json={**first, "name":"Outro nome"})
+        assert changed.status_code == 409
+        second = await client.post(base, json={"name":"Bia Sintética", "request_id":str(uuid4()), **family})
+        assert second.status_code == 201 and second.json()["id"] != identity
+        minimal = await client.post(base, json={"name":"Somente Nome"})
+        assert minimal.status_code == 201 and minimal.json()["contact_phone"] is None
+        invalid = await client.post(base, json={"name":"Telefone inválido", "contact_phone":"--------0"})
+        assert invalid.status_code == 422
+        search = await client.post(base + "/search", json={"query":"999998765","limit":1})
+        result = search.json()
+        assert search.status_code == 200 and result["has_more"]
+        assert [x["id"] for x in result["items"]] == [identity]
+        assert "contact_phone" not in result["items"][0]
+        assert "no-store" in search.headers["cache-control"]
+        next_page = (await client.post(base + "/search", json={"query":"(67) 99999-8765","limit":1,"offset":1})).json()
+        assert not next_page["has_more"] and next_page["items"][0]["id"] == second.json()["id"]
+        by_name = (await client.post(base + "/search", json={"query":"%"})).json()
+        assert [p["id"] for p in by_name["items"]] == [identity]
+        assert (await client.post(base + "/search", json={"query":"zzzz"})).json()["items"] == []
+        other = f"/api/v1/tenants/{d['b']}/dental/patients/search"
+        assert (await client.post(other, json={"query":"Sintética"})).status_code in (403,404)
+    async with d["migrator"].begin() as db:
+        event_count = (await db.execute(text("""
+            SELECT count(*) FROM dental_access_audit WHERE tenant_id=:tenant AND patient_id=:id AND action='patient_created'
+        """), {"tenant":d["a"],"id":UUID(identity)})).scalar_one()
+        assert event_count == 1

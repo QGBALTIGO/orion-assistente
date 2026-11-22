@@ -351,3 +351,50 @@ test('uma queda após a movimentação conserva a operação no formulário para
   assert.equal(item.quantity,4);assert.match(h.host.textContent,/4 cx/);
   assert.equal(h.calls.filter(x=>x.method==='POST').length,2);
 });
+
+test('o diretório exige concessão e não carrega cadastros de um proprietário sem ela',async t=>{
+  const h=makeDOM();t.after(()=>h.close());
+  const paths=[];let opened=0;
+  await h.window.OrionDentalDirectory.mount({host:h.host,tenantId:tenant,canAccess:()=>true,canWrite:()=>true,
+    startNew:true,openAccess:()=>opened++,request:async path=>{
+      paths.push(path);return {can_manage:true,clinical_access:null,can_read_records:false};
+    }});
+  assert.equal(h.host.querySelector('[data-patient-editor]'),null);
+  assert.ok(paths.every(path=>path.endsWith('/dental/access')));
+  h.click('[data-patient-action=access]');assert.equal(opened,1);
+});
+
+test('a página de pacientes pesquisa no corpo da requisição e descarta resultados antigos',async t=>{
+  const h=makeDOM();t.after(()=>h.close());
+  const requests=[];let finishOld;
+  await h.window.OrionDentalDirectory.mount({host:h.host,tenantId:tenant,canAccess:()=>true,canWrite:()=>true,
+    request:async(path,method,options)=>{
+      requests.push({path,method,options});
+      if(path.endsWith('/access'))return {clinical_access:{level:'assistant'}};
+      if(options.query==='Anterior')return new Promise(resolve=>finishOld=()=>resolve({items:[patientDTO],has_more:false}));
+      if(options.query==='Atual')return {items:[],has_more:false};
+      return {items:[patientDTO],has_more:options.offset===0};
+    }});
+  h.click('[data-patient-action=next]');await flush();assert.equal(requests.at(-1).options.offset,25);
+  h.fill('[name=query]','Anterior');h.submit('[data-patient-search]');await flush();
+  h.fill('[name=query]','Atual');h.submit('[data-patient-search]');await flush();
+  finishOld();await flush();
+  assert.match(h.host.textContent,/Nenhum paciente corresponde à busca/);
+  assert.doesNotMatch(h.host.textContent,/Paciente de teste/);
+  assert.ok(requests.slice(1).every(x=>x.method==='POST'&&x.path.endsWith('/patients/search')));
+});
+
+test('um dentista abre os dados cadastrais antes de decidir entrar no prontuário',async t=>{
+  const h=makeDOM();t.after(()=>h.close());
+  const paths=[];let selected;
+  await h.window.OrionDentalDirectory.mount({host:h.host,tenantId:tenant,canAccess:()=>true,canWrite:()=>true,
+    openRecords:id=>selected=id,request:async path=>{
+      paths.push(path);if(path.endsWith('/access'))return {clinical_access:{level:'dentist'},can_read_records:true};
+      if(path.endsWith('/search'))return {items:[patientDTO],has_more:false};
+      return patientDTO;
+    }});
+  h.click('[data-patient-id]');await flush();
+  h.click('[data-patient-action=records]');
+  assert.equal(selected,patient);
+  assert.ok(paths.every(path=>!path.includes('/records')&&!path.includes('/exams')));
+});
