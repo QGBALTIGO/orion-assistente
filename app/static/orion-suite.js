@@ -4143,7 +4143,7 @@
       '<div class="os-appointment-state-row">'+appointmentBadge(a)+'</div>'+
       '<div class="os-appointment-customer"><span class="os-avatar" aria-hidden="true">'+esc(initials(name))+'</span>'+
       '<div><h3>'+esc(name)+'</h3><p>'+esc(phone?sharedFields().phoneDisplay(phone):'WhatsApp não informado')+'</p></div>'+
-      (phone?button('','appointment-copy-phone','os-icon-button','copy','aria-label="Copiar WhatsApp do cliente" title="Copiar WhatsApp do cliente"'):'')+'</div>'+
+      (phone?button('','appointment-copy-phone','os-icon-button os-ghost','copy','aria-label="Copiar WhatsApp do cliente" title="Copiar WhatsApp do cliente"'):'')+'</div>'+
       '<div class="os-appointment-overview-facts"><div class="os-appointment-when">'+icon('calendar')+
       '<div><strong>'+esc(day)+'</strong>'+(hours?'<span>'+esc(hours)+(duration?' · '+duration+' min':'')+'</span>':'')+'</div></div>'+
       '<div class="os-appointment-when">'+icon('users')+'<div><span>Profissional</span><strong>'+esc(appointmentProfessional(a))+'</strong></div></div></div>'+
