@@ -143,13 +143,13 @@ test('weekly geometry fits all seven days and both arrows at phone, tablet and d
   try{
     const file=join(temporary,'fixture.html');
     fs.writeFileSync(file,'<!doctype html><html lang="pt-BR"><meta charset="utf-8"><style>'+css+
-      '\n*{box-sizing:border-box}body{margin:16px}</style><pre id="test-result"></pre>'+
+      '\n*{box-sizing:border-box}body{margin:16px}.case{padding-inline:0}</style><pre id="test-result"></pre>'+
       fixtures.join('')+'<script>('+measure.toString()+')()</script></html>');
     const output=execFileSync(process.env.ORION_LAYOUT_BROWSER,
       ['--headless','--no-sandbox','--disable-dev-shm-usage','--disable-gpu',
         '--disable-background-networking','--disable-extensions','--no-first-run',
         '--user-data-dir='+join(temporary,'browser-profile'),'--dump-dom',pathToFileURL(file).href],
-      {encoding:'utf8',timeout:30000,maxBuffer:2*1024*1024});
+      {encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:30000,maxBuffer:2*1024*1024});
     const match=output.match(/<pre id="test-result">([^<]+)<[/]pre>/);
     assert.ok(match,'o navegador precisa calcular a geometria da grade');
     const result=JSON.parse(match[1]);
