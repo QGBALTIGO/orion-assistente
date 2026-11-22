@@ -44,7 +44,7 @@ Na verificação adicional da referência, a ficha sintética apresentou cinco c
 
 O ensaio de recuperação criou uma base PostgreSQL 16 isolada na revisão 0086, com uma clínica e paciente sintéticos. Um arquivo pg_dump em formato custom foi restaurado em um segundo banco. Foram comparados os identificadores de paciente e empresa, o nome e a autoria. A cópia restaurada manteve a revisão 0086 e o RLS. A origem avançou para 0087 com zero vínculos presumidos. O ensaio não utilizou uma cópia de produção.
 
-A revisão 3f71cfe5 passou nos jobs clínicos e na geração de imagem do GitHub Actions 45076681302. O Railway preparou a troca de imagem do serviço da API e a ferramenta de aprovação registrou que a ação não foi aprovada. A criação da imagem sozinha não confirma publicação. Não houve nova concessão de acesso para testar a ficha.
+A revisão `3f71cfe5` passou no CI clínico 45076681302. O Railway concluiu a implantação `a531922f-c855-4e69-8fc5-b0c54d0ac7c7`. O serviço registrou o esquema clínico pronto. Foram conferidos os arquivos de JavaScript e CSS por conteúdo em ambos os domínios, a saúde do serviço, a resposta 401 sem sessão e a disponibilidade do site público da Barbearia Peixoto. O painel autenticado exibiu a restrição de acesso ao prontuário na conta sem concessão. O fluxo de escrita foi executado apenas com pacientes sintéticos em banco de teste.
 
 No CI geral, a base anterior 29573ae e 3f71cfe5 apresentaram as mesmas 19 falhas de interface do simulador e a mesma falta da dependência Playwright na coleta de três testes Python. Os testes clínicos, o ensaio de restauração e os testes específicos de regressão foram executados separadamente. O CI geral permanece pendente de correção.
 
@@ -53,3 +53,10 @@ No CI geral, a base anterior 29573ae e 3f71cfe5 apresentaram as mesmas 19 falhas
 O menu Estoque abre um espaço de materiais dedicado. A busca, a ordenação alfabética e a paginação são feitas no banco para a clínica autorizada. A lista mostra os saldos reais e abre o histórico, a entrada e a saída do material selecionado. Se uma operação foi gravada e a resposta se perdeu, repetir o envio a partir do formulário conserva a chave original. O acesso usa as autorizações já existentes. A página dedicada não requisita a lista de pacientes nem seus registros clínicos.
 
 A referência financeira também foi verificada em Fluxo de Caixa → Filtrar. Foram identificadas combinações de movimentação, situação de pagamento, nota fiscal, convênio, recorrência, recibo, meio de pagamento, conta, categoria e filtros salvos. As operações estão registradas individualmente na matriz.
+
+
+## Caixa da clínica na recepção
+
+O caixa resume os recebimentos, as despesas pagas, o saldo e as receitas em aberto do período selecionado. “Hoje” e “Mês até hoje” obedecem ao fuso da empresa. A consulta usa a permissão financeira e o mesmo livro de lançamentos do Financeiro. Uma consulta finalizada só entra no recebido quando há um lançamento pago. Para pendências, o período seleciona a data do lançamento. O resumo não substitui o extrato individual ou o controle de parcelas por paciente.
+
+Na base PostgreSQL 16 sintética, um pagamento às 23h25 locais foi atribuído ao dia correto, mesmo com data UTC já no dia seguinte. A consulta concluída sem recebimento e as movimentações de outra empresa não entraram no caixa. O navegador verificou teclado, quatro larguras e os dois temas. Foram simuladas indisponibilidade do financeiro e chegada tardia da consulta mensal após voltar à opção “Hoje”.

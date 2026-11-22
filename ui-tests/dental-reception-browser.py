@@ -3,7 +3,7 @@ import json
 import mimetypes
 import os
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 from playwright.sync_api import sync_playwright
 
@@ -36,6 +36,11 @@ def serve(route):
         if file.is_file():
             return route.fulfill(content_type=mimetypes.guess_type(file.name)[0] or "application/octet-stream",body=file.read_bytes())
         return route.fulfill(status=404,body="")
+    if path.endswith("/management/finance/summary"):
+        query = parse_qs(url.query)
+        return route.fulfill(json={"period": {"start_date": query["start_date"][0], "end_date": query["end_date"][0]},
+                                   "summary": {"income_cents": 24590, "expense_cents": 10000, "balance_cents": 14590,
+                                               "pending_income_cents": 19700}})
     values = {
         "/auth/me":{"authenticated":True,"role":"member","csrf":"synthetic-test","name":"Pessoa sintética","email":"recepcao@example.invalid"},
         "/auth/features":{"registration":False,"passwordRecovery":False},
@@ -61,7 +66,7 @@ def verify(browser, width, height, theme):
     assert page.locator("#osReceptionUpcoming time").first.inner_text()=="15:30"
     metrics=page.locator(".os-reception").evaluate("""root=>{
       const rect=node=>node.getBoundingClientRect();
-      const cells=[...root.querySelectorAll('dl>div')].map(rect);
+      const cells=[...root.querySelectorAll('.os-reception-metrics>div')].map(rect);
       const overlap=(a,b)=>Math.min(a.right,b.right)-Math.max(a.left,b.left)>1 &&
                            Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top)>1;
       return {overflow:document.documentElement.scrollWidth>innerWidth+1,
@@ -69,12 +74,22 @@ def verify(browser, width, height, theme):
           const b=rect(node);return b.left < -1 || b.right>innerWidth+1 || node.scrollWidth>node.clientWidth+2;
         }),overlap:cells.some((a,i)=>cells.slice(i+1).some(b=>overlap(a,b))),
         columns:new Set(cells.map(c=>Math.round(c.left))).size,
-        wrappedLabel:[...root.querySelectorAll('dt span')].some(node=>node.getBoundingClientRect().height>parseFloat(getComputedStyle(node).lineHeight)+2),
+        wrappedLabel:[...root.querySelectorAll('.os-reception-metrics dt span')].some(node=>node.getBoundingClientRect().height>parseFloat(getComputedStyle(node).lineHeight)+2),
         fg:getComputedStyle(root.querySelector('h2')).color,bg:getComputedStyle(root.querySelector('.os-reception-card')).backgroundColor};
     }""")
     assert not any(metrics[k] for k in ("overlap","overflow","outside","wrappedLabel")), (width,theme,metrics)
     assert metrics["columns"]==(2 if width<=820 else 4), (width,metrics)
     assert metrics["fg"]!=metrics["bg"]
+    finance = page.locator("#osCashAmounts")
+    finance.get_by_text("R$", exact=False).first.wait_for()
+    finance_values = [text.replace("\xa0", " ") for text in finance.locator("dd").all_text_contents()]
+    assert finance_values == ["R$ 245,90","R$ 100,00","R$ 145,90","R$ 197,00"], finance_values
+    range_button=page.get_by_role("button",name="Mês até hoje")
+    range_button.focus()
+    range_button.press("Enter")
+    assert range_button.get_attribute("aria-pressed")=="true"
+    finance.get_by_text("R$", exact=False).first.wait_for()
+    finance.screenshot(path=str(OUT/f"caixa-{width}-{theme}.png"),animations="disabled")
     button=page.get_by_role("button",name="Ver agenda",exact=True)
     page.screenshot(path=str(OUT/f"recepcao-{width}-{theme}.png"),animations="disabled")
     button.focus()

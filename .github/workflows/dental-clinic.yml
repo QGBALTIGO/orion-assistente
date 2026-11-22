@@ -25,6 +25,7 @@ on:
       - 'scripts/predeploy_one_click_links.py'
       - 'scripts/start_api.py'
       - 'tests/integration/test_dental_clinic_postgres.py'
+      - 'tests/integration/test_management.py'
       - 'tests/unit/test_dental_clinic_unit.py'
       - 'tests/unit/test_dental_clinic_release.py'
       - 'tests/unit/test_start_api.py'
@@ -101,7 +102,9 @@ jobs:
           raise SystemExit(0 if workflows_ready(os.environ["MIGRATION_DATABASE_URL"]) else 3)
           PY
       - name: Testar conflitos concorrentes e isolamento real entre empresas
-        run: PYTHONPATH=tests python -m pytest -q tests/integration/test_dental_clinic_postgres.py
+        run: >-
+          PYTHONPATH=tests python -m pytest -q tests/integration/test_dental_clinic_postgres.py
+          tests/integration/test_management.py::test_dental_reception_cash_by_local_payment_day_and_tenant
       - name: Validar registros FDI, periodontia, autorização e criptografia
         run: python -m pytest -q tests/unit/test_dental_clinic_unit.py tests/unit/test_dental_clinic_release.py tests/unit/test_start_api.py tests/unit/test_plan_permissions.py tests/unit/test_dental_workspace_context.py tests/unit/test_barbershop_layout_modes.py
       - name: Instalar DOM isolado

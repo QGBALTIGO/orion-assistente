@@ -686,3 +686,36 @@ async def test_settlement_rechecks_ledger_changes_and_serializes_different_reque
     final_preview = await settlement_preview(d)
     assert final_preview["summary"]["payable_cents"] == final_preview["summary"]["balance_cents"] == 0
     assert (await c.get(base + "/finance/settlements")).json()["total"] == 1
+
+
+@pytest.mark.asyncio
+async def test_dental_reception_cash_by_local_payment_day_and_tenant(management_db):
+    d = management_db
+    # 23:25 in Campo Grande is already the next UTC calendar day.
+    paid = datetime(2026, 11, 23, 3, 25, tzinfo=timezone.utc)
+    previous = paid - timedelta(days=1)
+    following = paid + timedelta(hours=1)
+    async with d["migrator"].begin() as db:
+        await db.execute(text("UPDATE tenants SET timezone='America/Campo_Grande' WHERE id=:id"), {"id": d["a"]})
+        entries = [(d["a"], "income", "paid", 12500, previous, paid),
+                   (d["a"], "expense", "paid", 19500, paid, None),
+                   (d["a"], "income", "pending", 2450, paid, None),
+                   (d["a"], "income", "paid", 7500, paid, following),
+                   (d["b"], "income", "paid", 8800, paid, None)]
+        for tenant, kind, status, cents, occurred, received in entries:
+            await db.execute(text("""
+                INSERT INTO financial_entries(tenant_id,kind,description,status,amount_cents,occurred_at,received_at)
+                VALUES (:tenant,:kind,'Movimento de teste',:status,:cents,:occurred,:received)
+            """), {"tenant":tenant, "kind":kind, "status":status, "cents":cents,
+                   "occurred":occurred, "received":received})
+    # A completed appointment alone is not money received.
+    person = await customer(d)
+    await appointment(d, person["id"], status="completed", start_at=paid, amount=99900)
+    period = {"start_date":"2026-11-22", "end_date":"2026-11-22"}
+    response = await d["client"].get(d["base"] + "/finance/summary", params=period)
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert result["period"] == {**period, "timezone":"America/Campo_Grande"}
+    fields = ("income_cents","expense_cents","balance_cents","pending_income_cents")
+    assert tuple(result["summary"][name] for name in fields) == (12500,19500,-7000,2450)
+    assert result["summary"]["completed"] == 1

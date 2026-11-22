@@ -118,3 +118,18 @@
   .os-stock-filter>.os-dental-field:first-child{grid-column:1/-1}
   .os-stock-list>li{align-items:start;flex-direction:column}
 }
+
+.os-reception .os-cash-range{display:inline-flex;width:auto;margin:12px 0}
+.os-cash-range .os-pill-tab{min-height:44px}
+.os-cash-range .os-pill-tab[aria-pressed=true]{background:var(--os-card);color:var(--os-text);box-shadow:var(--os-shadow)}
+.os-cash-values{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:0}
+.os-cash-values>div{min-width:0;padding:12px;border:1px solid var(--os-border);border-radius:12px}
+.os-cash-values dt{font:500 14px/1.35 var(--os-font);color:var(--os-muted)}
+.os-cash-values dd{margin:6px 0 0;font:600 clamp(18px,2vw,25px)/1.2 var(--os-display);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.os-cash-values .os-cash-long{grid-column:1/-1}
+@container reception (max-width:360px){
+  .os-cash-values{grid-template-columns:minmax(0,1fr)}
+  .os-cash-values>div{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .os-cash-values dd{margin:0;text-align:end}
+  .os-cash-values .os-cash-long{display:block}
+}

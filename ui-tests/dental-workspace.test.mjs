@@ -42,7 +42,7 @@ test('recepção usa o resumo administrativo, horários locais e ações de cons
   assert.match(main.textContent,/Consultas de hoje/);
   assert.match(main.textContent,/Nova consulta/);
   assert.match(main.textContent,/Novo paciente/);
-  assert.deepEqual([...main.querySelectorAll('dd')].map(el=>el.textContent),['7','3','1','0']);
+  assert.deepEqual([...main.querySelectorAll('#osReceptionCounts dd')].map(el=>el.textContent),['7','3','1','0']);
   assert.equal(main.querySelector('time').textContent,'12:30');
   assert.equal(main.querySelectorAll('[data-os-action=new-appointment]').length,1);
   assert.ok(calls.some(path=>path.endsWith('/dental/reception/today')));
@@ -271,4 +271,83 @@ test('o menu de estoque pertence à odontologia habilitada e o endereço direto 
       assert.equal(h.document.querySelector('#osDentalClinic'),null);
     }
   }
+});
+
+
+test('o caixa exibe o dinheiro pago e a receita pendente do período selecionado', async t=>{
+  const requests=[];
+  const h=await makeSuite({initialRoute:'dashboard',permissions:dentalPlan(),respond(path){
+    if(path.includes('/management/finance/summary?')){
+      const q=new URL(path,'https://orion.test').searchParams;
+      const start=q.get('start_date'),end=q.get('end_date');requests.push({start,end});
+      return {period:{start_date:start,end_date:end},summary:{income_cents:12345,expense_cents:14800,
+        pending_income_cents:2000,balance_cents:-2455}};
+    }
+    return [];
+  }});
+  t.after(()=>h.close());await flush();
+  const amounts=()=>[...h.document.querySelectorAll('#osCashAmounts dd')].map(x=>x.textContent.replace(/\s/g,' '));
+  assert.deepEqual(amounts(),['R$ 123,45','R$ 148,00','-R$ 24,55','R$ 20,00']);
+  assert.equal(requests[0].start,requests[0].end);
+  h.click('[data-cash-range=month]');await flush();
+  assert.ok(requests.at(-1).start.endsWith('-01'));
+  assert.equal(h.document.querySelector('[data-cash-range=month]').getAttribute('aria-pressed'),'true');
+  assert.equal(h.document.querySelectorAll('#osPageBody [data-os-route=financeiro]').length,1);
+});
+
+test('financeiro restrito não é consultado pela recepção',async t=>{
+  const plan=dentalPlan();plan.permissions['finance.basic']=false;
+  const h=await makeSuite({initialRoute:'dashboard',permissions:plan});t.after(()=>h.close());await flush();
+  assert.equal(h.document.getElementById('osCashAmounts'),null);
+  assert.ok(!h.calls.some(c=>c.path.includes('/management/finance/summary')));
+});
+
+test('resposta mensal atrasada não substitui o caixa do dia selecionado', async t=>{
+  let finishMonth;
+  let dayReads=0;
+  const h=await makeSuite({
+    initialRoute:'dashboard',permissions:dentalPlan(),
+    configureWindow(w){
+      const BrowserDate=w.Date;
+      w.Date=class extends BrowserDate{
+        constructor(...args){super(...(args.length?args:['2026-11-22T22:00:00Z']));}
+      };
+    },
+    respond(path){
+      if(!path.includes('/management/finance/summary?'))return [];
+      const query=new URL(path,'https://orion.test').searchParams;
+      const period={start_date:query.get('start_date'),end_date:query.get('end_date')};
+      function report(cents){
+        return {period,summary:{income_cents:cents,expense_cents:0,balance_cents:cents,pending_income_cents:0}};
+      }
+      if(period.start_date===period.end_date)return report(++dayReads*10000);
+      return new Promise(resolve=>{finishMonth=()=>resolve(report(999900));});
+    }
+  });
+  t.after(()=>h.close());
+  await flush();
+  h.click('[data-cash-range=month]');
+  await flush();
+  assert.equal(typeof finishMonth,'function');
+  assert.equal(h.document.querySelector('#osCashAmounts dd'),null);
+  h.click('[data-cash-range=day]');
+  await flush();
+  finishMonth();
+  await flush();
+  assert.equal(h.document.querySelector('#osCashAmounts dd').textContent.replace(/\s/g,' '),'R$ 200,00');
+  assert.equal(h.document.querySelector('[data-cash-range=day]').getAttribute('aria-pressed'),'true');
+  assert.equal(h.document.querySelector('#osCashAmounts').getAttribute('aria-busy'),'false');
+});
+
+test('falha de caixa preserva a agenda e não apresenta dinheiro fictício',async t=>{
+  const h=await makeSuite({initialRoute:'dashboard',permissions:dentalPlan(),respond(path){
+    if(path.endsWith('/dental/reception/today'))return {day:'2026-11-22',timezone:'America/Campo_Grande',
+      counts:{confirmed:2,completed:0,cancelled:0,no_show:0},upcoming:[]};
+    if(path.includes('/finance/summary'))throw Error('Caixa temporariamente indisponível');
+    return [];
+  }});
+  t.after(()=>h.close());await flush();
+  assert.match(h.document.getElementById('osCashNotice').textContent,/Não foi possível/);
+  assert.equal(h.document.querySelectorAll('#osCashAmounts dd').length,0);
+  assert.equal(h.document.querySelector('#osReceptionCounts dd').textContent,'2');
 });

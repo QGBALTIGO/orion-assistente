@@ -1333,7 +1333,11 @@
       '<section class="os-card os-reception-card" aria-labelledby="osProximasTitle"><header><h2 id="osProximasTitle">Próximas consultas</h2></header>'+
       '<div id="osReceptionUpcoming" aria-busy="true"></div></section>'+
       '<p id="osReceptionNotice" class="os-reception-notice" role="status"></p>'+
-      (financeLink?'<footer>'+financeLink+'</footer>':'')+'</section>');
+      (financeLink?'<section class="os-card os-reception-card" aria-labelledby="osCashTitle"><header><h2 id="osCashTitle">Caixa da clínica</h2>'+financeLink+'</header>'+
+        '<div id="osCashRange" class="os-pill-tabs os-cash-range" role="group" aria-label="Período do caixa">'+
+        '<button type="button" class="os-pill-tab" data-cash-range="day" aria-pressed="true">Hoje</button>'+
+        '<button type="button" class="os-pill-tab" data-cash-range="month" aria-pressed="false">Mês até hoje</button></div>'+
+        '<div id="osCashAmounts" aria-busy="true">'+loading('Consultando o caixa…')+'</div><p class="os-reception-notice" id="osCashNotice" role="status"></p></section>':'')+'</section>');
     const counts=$('osReceptionCounts'),upcoming=$('osReceptionUpcoming'),notice=$('osReceptionNotice');
     let busy=false,lastSnapshot='';
     async function refresh(){
@@ -1367,8 +1371,49 @@
         notice.textContent=lastSnapshot?'Exibindo a última consulta à agenda. Tentando reconectar…':'Não foi possível consultar a agenda da clínica. Tentando novamente…';
       }finally{busy=false;if(current(c))upcoming.setAttribute('aria-busy','false');}
     }
-    state.clockTimer=setInterval(()=>{if(document.visibilityState!=='hidden')void refresh();},30000);
-    await refresh();
+    const cashAmounts=$('osCashAmounts'),cashNotice=$('osCashNotice'),rangePicker=$('osCashRange');
+    let cashRange='day',cashRequest=0,activeKey='',shownKey='',lastReadAt=0;
+    async function refreshCash(){
+      if(!cashAmounts||!current(c)||!routePermitted('financeiro'))return;
+      const end=dateKey(),start=cashRange==='day'?end:end.slice(0,8)+'01',key=start+'/'+end;
+      if(activeKey===key||(shownKey===key&&Date.now()-lastReadAt<60000))return;
+      activeKey=key;const version=++cashRequest;
+      if(shownKey!==key){
+        shownKey='';cashAmounts.innerHTML=loading('Consultando o caixa…');cashNotice.textContent='';
+      }
+      cashAmounts.setAttribute('aria-busy','true');
+      try{
+        const result=await request(mgmt('/finance/summary?start_date='+start+'&end_date='+end));
+        if(!current(c)||version!==cashRequest||!routePermitted('financeiro'))return;
+        const financial=result?.summary,period=result?.period;
+        const metrics=[['income_cents','Recebido'],['expense_cents','Despesas pagas'],
+          ['balance_cents','Saldo do período'],['pending_income_cents','Receitas em aberto']];
+        if(period?.start_date!==start||period?.end_date!==end||
+           !metrics.every(([k])=>Number.isSafeInteger(financial?.[k])&&(k==='balance_cents'||financial[k]>=0))||
+           financial.balance_cents!==financial.income_cents-financial.expense_cents)
+          throw Error('Resumo inconsistente.');
+        cashAmounts.innerHTML='<dl class="os-cash-values">'+metrics.map(([k,label])=>{
+          const amount=dashboardFinanceMoney(financial[k]);
+          return '<div'+(amount.length>15?' class="os-cash-long"':'')+'><dt>'+label+'</dt><dd>'+esc(amount)+'</dd></div>';
+        }).join('')+'</dl>';
+        cashNotice.textContent='';shownKey=key;lastReadAt=Date.now();
+      }catch{
+        if(!current(c)||version!==cashRequest)return;
+        if(!shownKey)cashAmounts.replaceChildren();
+        cashNotice.textContent=shownKey===key?'Exibindo a última leitura do caixa. Tentando reconectar…':'Não foi possível consultar o caixa deste período. Tentando novamente…';
+      }finally{
+        if(current(c)&&version===cashRequest){activeKey='';cashAmounts.setAttribute('aria-busy','false');}
+      }
+    }
+    rangePicker?.addEventListener('click',event=>{
+      const target=event.target.closest('[data-cash-range]');
+      if(!target||!rangePicker.contains(target))return;
+      cashRange=target.dataset.cashRange;
+      for(const choice of rangePicker.querySelectorAll('button'))choice.setAttribute('aria-pressed',String(choice===target));
+      void refreshCash();
+    });
+    state.clockTimer=setInterval(()=>{if(document.visibilityState!=='hidden'){void refresh();void refreshCash();}},30000);
+    await Promise.all([refresh(),refreshCash()]);
   }
   function renderDashboard(data,today=dateKey()){
     const s=data.summary||{},t=tenant(),can=writable(),hours=Number(new Intl.DateTimeFormat('en-GB',{hour:'2-digit',hourCycle:'h23',timeZone:zone()}).format(new Date()));
