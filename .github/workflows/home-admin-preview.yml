@@ -61,10 +61,9 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           dockerfile=Path('deploy/Dockerfile.home-admin-preview').read_text()
-          assert 'FROM ghcr.io/qgbaltigo/orion-assistente-api@sha256:7239230643bd7c6574eb477dfa063eee50ef3ccf43ee4fe91e75e231d31b6d56' in dockerfile
-          assert dockerfile.count('COPY ')==2
-          assert 'app/static/orion-suite.js app/static/orion-suite.css app/static/orion-professional.js app/static/orion-professional.css /srv/app/app/static/' in dockerfile
-          assert 'app/appointment_notifications.py /srv/app/app/' in dockerfile
+          assert 'FROM ghcr.io/qgbaltigo/orion-assistente-api@sha256:1fc11b4557c729338c42e8790ec4efa26c5300ed1e7eb5ea13df976c015d57d0' in dockerfile
+          assert dockerfile.count('COPY ')==1
+          assert 'app/static/orion-suite.js app/static/orion-suite.css /srv/app/app/static/' in dockerfile
           worker=Path('deploy/Dockerfile.appointment-notifications-worker').read_text()
           assert 'FROM ghcr.io/qgbaltigo/orion-assistente-api@sha256:add498f9b499f879e46a2bd288b1daf47184c8ec72bc1735edb74d51a14cadec' in worker
           assert worker.count('COPY ')==1 and 'app/appointment_notifications.py /srv/app/app/' in worker

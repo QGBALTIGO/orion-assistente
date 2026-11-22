@@ -15,7 +15,6 @@ function responder({items=[record()],google=googleOff,on}={}){return (path,metho
   const custom=on?.(path,method,data);if(custom!==undefined)return custom;
   const url=new URL(path,'https://orion.test');
   if(url.pathname.endsWith('/google/status'))return google;
-  if(/\/google\/appointments\/.+\/status$/.test(url.pathname))return {status:'not_queued',sync_enabled:false,connection_status:'not_connected'};
   if(url.pathname.endsWith('/appointments')){const offset=Number(url.searchParams.get('offset')||0),limit=Number(url.searchParams.get('limit')||50);return {items:items.slice(offset,offset+limit),total:items.length,offset,limit,has_more:offset+limit<items.length};}
   if(/\/appointments\/[a-zA-Z0-9-]+$/.test(url.pathname))return items.find(item=>url.pathname.endsWith('/'+item.id))||record();
   if(url.pathname.endsWith('/professionals'))return [{id:professionalId,name:'Equipe sintética',active:true,accepts_appointments:true,color:'#336699'}];
@@ -26,6 +25,12 @@ function responder({items=[record()],google=googleOff,on}={}){return (path,metho
 };}
 async function change(h,selector,value){const input=h.document.querySelector(selector);assert.ok(input,selector);input.value=value;input.dispatchEvent(new h.window.Event('change',{bubbles:true}));await flush();return input;}
 async function openDetail(h,id=appointmentId){h.click(`[data-os-appointment="${id}"]`);await flush();}
+function clickAppointmentAction(h,name){
+  const target=h.document.querySelector('[data-os-action="'+name+'"]');
+  assert.ok(target,name);
+  if(target.closest('#osAppointmentOptions[hidden]'))h.click('#osAppointmentMore');
+  h.click('[data-os-action="'+name+'"]');
+}
 async function openGoogleSettings(h){h.click('[data-os-route=configuracoes]');await flush();h.click('[data-os-settings=calendar]');await flush();assert.ok(h.document.getElementById('osGoogleStatus'),'A integração continua em Configurações');}
 async function fixture(t,options={}){const h=await makeSuite({initialRoute:'agenda',...options});t.after(()=>h.close());await flush();return h;}
 const posts=h=>h.calls.filter(call=>call.method==='POST');
@@ -128,40 +133,40 @@ test('viewer and absent server capabilities prevent appointment mutations',async
 });
 
 for(const requestedBy of ['customer','professional','business'])test('cancellation records explicit '+requestedBy+' origin with exact version, reason, and one operation',async t=>{
-  let a=record();const pending=deferred();const h=await fixture(t,{respond:responder({on:(path,method,data)=>{if(path.endsWith('/appointments/'+appointmentId)&&method==='GET')return a;if(path.endsWith('/cancel')&&method==='POST')return pending.promise;}})});await openDetail(h);h.click('[data-os-action=cancel-appointment]');await flush();
+  let a=record();const pending=deferred();const h=await fixture(t,{respond:responder({on:(path,method,data)=>{if(path.endsWith('/appointments/'+appointmentId)&&method==='GET')return a;if(path.endsWith('/cancel')&&method==='POST')return pending.promise;}})});await openDetail(h);clickAppointmentAction(h,'cancel-appointment');await flush();
   assert.equal(h.document.querySelector('[name=requested_by]:checked'),null,'do not infer requester from operator role');h.click('[name=requested_by][value='+requestedBy+']');h.fill('[name=reason]','Motivo sintético <seguro>');h.submit('[data-os-form=appointment-action]');h.submit('[data-os-form=appointment-action]');await flush();
   const writes=posts(h);assert.equal(writes.length,1);assert.equal(writes[0].data.expected_updated_at,version);assert.equal(writes[0].data.requested_by,requestedBy);assert.equal(writes[0].data.reason,'Motivo sintético <seguro>');assert.match(writes[0].data.idempotency_key,/^[a-f0-9-]{36}$/);assert.equal(h.document.querySelector('.os-close').disabled,true);
   a=record({status:'cancelled',allowed_actions:[],cancellation:{requested_by:requestedBy,reason:writes[0].data.reason},updated_at:'2030-04-05T12:10:00.123456Z'});pending.resolve(a);await flush();assert.match(h.document.getElementById('osDialog').textContent,/Cancelamento registrado/);assert.equal(posts(h).length,1);assert.equal(h.document.getElementById('osDialog').querySelector('seguro'),null);
 });
 
 test('conflict reloads fresh details and requires another deliberate review without repeating the operation',async t=>{
-  let reads=0;const h=await fixture(t,{respond:responder({on:(path,method)=>{if(path.endsWith('/appointments/'+appointmentId)&&method==='GET')return ++reads>1?record({status:'cancelled',allowed_actions:[],cancellation:{requested_by:'professional'}}):record();if(path.endsWith('/cancel')&&method==='POST')throw Object.assign(new Error('O agendamento mudou'),{status:409});}})});await openDetail(h);h.click('[data-os-action=cancel-appointment]');h.click('[name=requested_by][value=customer]');h.submit('[data-os-form=appointment-action]');await flush();
+  let reads=0;const h=await fixture(t,{respond:responder({on:(path,method)=>{if(path.endsWith('/appointments/'+appointmentId)&&method==='GET')return ++reads>1?record({status:'cancelled',allowed_actions:[],cancellation:{requested_by:'professional'}}):record();if(path.endsWith('/cancel')&&method==='POST')throw Object.assign(new Error('O agendamento mudou'),{status:409});}})});await openDetail(h);clickAppointmentAction(h,'cancel-appointment');h.click('[name=requested_by][value=customer]');h.submit('[data-os-form=appointment-action]');await flush();
   assert.equal(posts(h).length,1);assert.equal(reads,2);assert.match(h.document.getElementById('osDialog').textContent,/Os detalhes foram atualizados/);assert.match(h.document.getElementById('osDialog').textContent,/Cancelado pelo profissional/);assert.equal(h.document.querySelector('[data-os-form=appointment-action]'),null);
 });
 
 test('an uncertain mutation freezes its intent and retries the identical version and idempotency key',async t=>{
-  let attempts=0,a=record();const h=await fixture(t,{respond:responder({on:(path,method)=>{if(path.endsWith('/appointments/'+appointmentId)&&method==='GET')return a;if(path.endsWith('/cancel')&&method==='POST'){if(++attempts===1)throw new Error('Resposta perdida');a=record({status:'cancelled',allowed_actions:[],cancellation:{requested_by:'customer'}});return a;}}})});await openDetail(h);h.click('[data-os-action=cancel-appointment]');h.click('[name=requested_by][value=customer]');h.fill('[name=reason]','Primeira intenção');h.submit('[data-os-form=appointment-action]');await flush();
+  let attempts=0,a=record();const h=await fixture(t,{respond:responder({on:(path,method)=>{if(path.endsWith('/appointments/'+appointmentId)&&method==='GET')return a;if(path.endsWith('/cancel')&&method==='POST'){if(++attempts===1)throw new Error('Resposta perdida');a=record({status:'cancelled',allowed_actions:[],cancellation:{requested_by:'customer'}});return a;}}})});await openDetail(h);clickAppointmentAction(h,'cancel-appointment');h.click('[name=requested_by][value=customer]');h.fill('[name=reason]','Primeira intenção');h.submit('[data-os-form=appointment-action]');await flush();
   assert.equal(h.document.querySelector('[data-os-form=appointment-action] fieldset').disabled,true);h.fill('[name=reason]','Texto alterado por script');h.submit('[data-os-form=appointment-action]');await flush();assert.equal(posts(h).length,2);assert.deepEqual(plain(posts(h)[0].data),plain(posts(h)[1].data));assert.equal(posts(h)[1].data.reason,'Primeira intenção');
 });
 
 test('rescheduling excludes only the current booking from availability and submits the selected server slot',async t=>{
-  let a=record();const h=await fixture(t,{respond:responder({on:(path,method,data)=>{if(path.endsWith('/appointments/'+appointmentId)&&method==='GET')return a;if(path.endsWith('/reschedule')&&method==='POST'){a={...a,start_at:data.start_at,end_at:'2030-04-05T13:30:00Z'};return a;}}})});await openDetail(h);h.click('[data-os-action=reschedule-appointment]');await flush();
+  let a=record();const h=await fixture(t,{respond:responder({on:(path,method,data)=>{if(path.endsWith('/appointments/'+appointmentId)&&method==='GET')return a;if(path.endsWith('/reschedule')&&method==='POST'){a={...a,start_at:data.start_at,end_at:'2030-04-05T13:30:00Z'};return a;}}})});await openDetail(h);clickAppointmentAction(h,'reschedule-appointment');await flush();
   const request=h.calls.find(call=>call.path.includes('/availability?')),q=new URL(request.path,'https://orion.test').searchParams;assert.equal(q.get('appointment_id'),appointmentId);assert.equal(q.get('professional_id'),professionalId);assert.deepEqual(q.getAll('service_ids'),[serviceId]);assert.equal([...h.document.querySelector('#osRescheduleSlot').options].some(option=>option.value==='2030-04-05T12:00:00Z'),false);
   h.fill('#osRescheduleSlot','2030-04-05T13:00:00Z');h.submit('[data-os-form=appointment-action]');await flush();assert.equal(posts(h).length,1);assert.equal(posts(h)[0].data.start_at,'2030-04-05T13:00:00Z');assert.equal(posts(h)[0].data.expected_updated_at,version);assert.equal('professional_id' in posts(h)[0].data,false);
 });
 
 test('a stale availability response cannot restore slots for a previous reschedule date',async t=>{
-  const pending=deferred();const h=await fixture(t,{respond:responder({on:path=>{if(path.includes('/availability?')){const day=new URL(path,'https://orion.test').searchParams.get('day');if(day==='2030-04-05')return pending.promise;return {slots:['2030-04-06T14:00:00Z'],timezone:'America/Sao_Paulo'};}}})});await openDetail(h);h.click('[data-os-action=reschedule-appointment]');await flush();await change(h,'[data-os-form=appointment-action] [name=day]','2030-04-06');pending.resolve({slots:['2030-04-05T13:00:00Z']});await flush();assert.deepEqual([...h.document.querySelector('#osRescheduleSlot').options].map(option=>option.value),['','2030-04-06T14:00:00Z']);
+  const pending=deferred();const h=await fixture(t,{respond:responder({on:path=>{if(path.includes('/availability?')){const day=new URL(path,'https://orion.test').searchParams.get('day');if(day==='2030-04-05')return pending.promise;return {slots:['2030-04-06T14:00:00Z'],timezone:'America/Sao_Paulo'};}}})});await openDetail(h);clickAppointmentAction(h,'reschedule-appointment');await flush();await change(h,'[data-os-form=appointment-action] [name=day]','2030-04-06');pending.resolve({slots:['2030-04-05T13:00:00Z']});await flush();assert.deepEqual([...h.document.querySelector('#osRescheduleSlot').options].map(option=>option.value),['','2030-04-06T14:00:00Z']);
 });
 
 for(const [action,status] of [['no-show','no_show'],['complete','completed']])test(action+' uses lifecycle guard while completion remains separate from payment',async t=>{
-  let a=record();const h=await fixture(t,{respond:responder({on:(path,method)=>{if(path.endsWith('/appointments/'+appointmentId)&&method==='GET')return a;if(path.endsWith('/'+action)&&method==='POST'){a=record({status,allowed_actions:[]});return a;}}})});await openDetail(h);h.click('[data-os-action='+(action==='complete'?'complete-appointment':'no-show-appointment')+']');await flush();h.submit('[data-os-form='+(action==='complete'?'complete-appointment':'appointment-action')+']');await flush();const write=posts(h)[0];assert.equal(write.data.expected_updated_at,version);assert.equal(write.data.expected_status,'confirmed');assert.match(write.path,new RegExp('/management/appointments/'+appointmentId+'/'+action+'$'));assert.equal(h.calls.some(call=>call.path.includes('/finance')&&call.method!=='GET'),false);if(action==='complete')assert.match(h.document.getElementById('osDialog').textContent,/recebimento.*separadamente/s);
+  let a=record();const h=await fixture(t,{respond:responder({on:(path,method)=>{if(path.endsWith('/appointments/'+appointmentId)&&method==='GET')return a;if(path.endsWith('/'+action)&&method==='POST'){a=record({status,allowed_actions:[]});return a;}}})});await openDetail(h);clickAppointmentAction(h,action==='complete'?'complete-appointment':'no-show-appointment');await flush();h.submit('[data-os-form='+(action==='complete'?'complete-appointment':'appointment-action')+']');await flush();const write=posts(h)[0];assert.equal(write.data.expected_updated_at,version);assert.equal(write.data.expected_status,'confirmed');assert.match(write.path,new RegExp('/management/appointments/'+appointmentId+'/'+action+'$'));assert.equal(h.calls.some(call=>call.path.includes('/finance')&&call.method!=='GET'),false);if(action==='complete')assert.match(h.document.getElementById('osDialog').textContent,/recebimento.*separadamente/s);
 });
 
 test('closing the drawer restores focus and Escape is blocked only while a mutation is in flight',async t=>{
   const pending=deferred();const h=await fixture(t,{respond:responder({on:(path,method)=>path.endsWith('/cancel')&&method==='POST'?pending.promise:undefined})});
   const row=h.document.querySelector('[data-os-appointment]');row.focus();await openDetail(h);let cancel=new h.window.Event('cancel',{cancelable:true});h.document.getElementById('osDialog').dispatchEvent(cancel);assert.equal(h.document.getElementById('osDialog').open,false);assert.equal(h.document.activeElement,row);
-  await openDetail(h);h.click('[data-os-action=cancel-appointment]');h.click('[name=requested_by][value=customer]');h.submit('[data-os-form=appointment-action]');await flush();h.document.getElementById('osDialog').dispatchEvent(new h.window.Event('cancel',{cancelable:true}));assert.equal(h.document.getElementById('osDialog').open,true);pending.reject(Object.assign(new Error('Não permitido'),{status:422}));await flush();h.document.getElementById('osDialog').dispatchEvent(new h.window.Event('cancel',{cancelable:true}));assert.equal(h.document.getElementById('osDialog').open,false);
+  await openDetail(h);clickAppointmentAction(h,'cancel-appointment');h.click('[name=requested_by][value=customer]');h.submit('[data-os-form=appointment-action]');await flush();h.document.getElementById('osDialog').dispatchEvent(new h.window.Event('cancel',{cancelable:true}));assert.equal(h.document.getElementById('osDialog').open,true);pending.reject(Object.assign(new Error('Não permitido'),{status:422}));await flush();h.document.getElementById('osDialog').dispatchEvent(new h.window.Event('cancel',{cancelable:true}));assert.equal(h.document.getElementById('osDialog').open,false);
 });
 
 test('agenda tabs provide arrow navigation and a single tab stop per tab group',async t=>{
@@ -191,14 +196,23 @@ test('OAuth return uses the verified account without a company selector or autom
   const h=await makeSuite({initialRoute:'agenda',respond:responder({google,on:path=>{if(path.endsWith('/google/status')&&++reads===1)return status.promise;if(path.endsWith('/google/calendars'))return {items:[{id:google.calendar_id,name:'Equipe sintética',selectable:true}],selection_pending:true,calendar_change_locked:false};}})});t.after(()=>h.close());h.window.history.replaceState({},'','/panel?aba=agenda&google=choose');status.resolve(google);await flush();assert.ok(h.document.querySelector('[data-os-form=google-calendar]'));assert.equal(posts(h).length,0);assert.equal(new URL(h.window.location.href).searchParams.has('google'),false);assert.equal(h.document.querySelector('[name=calendar_id]').value,'');
 });
 
-test('late Google appointment sync cannot replace another detail and private contact actions only copy',async t=>{
-  const late=deferred(),b=record({id:'appointment-second',customer_display_name:'Pessoa B'}),copied=[];
-  const h=await fixture(t,{respond:responder({items:[record(),b],on:path=>path.endsWith('/google/appointments/'+appointmentId+'/status')?late.promise:undefined})});h.window.navigator.clipboard.writeText=async value=>copied.push(value);await openDetail(h);h.click('[data-os-action=appointment-copy-phone]');await flush();h.click('[data-os-action=appointment-copy-protocol]');await flush();assert.deepEqual(copied,['+5511999990000','ORION-SYNTHETIC']);h.click('[data-os-action=close-dialog]');await openDetail(h,b.id);late.resolve({status:'failed',last_error:'Erro do primeiro compromisso',sync_enabled:true});await flush();assert.doesNotMatch(h.document.getElementById('osDialog').textContent,/Erro do primeiro compromisso/);assert.equal(posts(h).length,0);
+test('atalhos do resumo copiam telefone e protocolo do agendamento aberto',async t=>{
+  const b=record({id:'appointment-second',customer_display_name:'Pessoa B',protocol:'ORION-SECOND',customer_phone:null}),copied=[];
+  const h=await fixture(t,{respond:responder({items:[record(),b]})});
+  h.window.navigator.clipboard.writeText=async value=>copied.push(value);
+  await openDetail(h);
+  h.click('[data-os-action=appointment-copy-phone]');await flush();
+  h.click('[data-os-action=appointment-copy-protocol]');await flush();
+  h.click('[data-os-action=close-dialog]');await openDetail(h,b.id);
+  assert.equal(h.document.querySelector('[data-os-action=appointment-copy-phone]'),null);
+  h.click('[data-os-action=appointment-copy-protocol]');await flush();
+  assert.deepEqual(copied,['+5511999990000','ORION-SYNTHETIC','ORION-SECOND']);
+  assert.equal(posts(h).length,0);
 });
 
 test('persisted hold expiration has a distinct label and system cancellation alone does not imply expiration',async t=>{
   const expired=record({id:'expired-id',status:'cancelled',allowed_actions:[],cancellation:{event:'hold_expired',requested_by:'system'}}),cancelled=record({id:'system-id',status:'cancelled',allowed_actions:[],cancellation:{event:'cancelled',requested_by:'system'}});
-  const h=await fixture(t,{respond:responder({items:[expired,cancelled]})});assert.match(h.document.querySelector('[data-os-appointment=expired-id]').textContent,/Reserva expirada/);assert.doesNotMatch(h.document.querySelector('[data-os-appointment=system-id]').textContent,/expirada/);await openDetail(h,'expired-id');assert.match(h.document.getElementById('osDialog').textContent,/não foi confirmada dentro do prazo/);
+  const h=await fixture(t,{respond:responder({items:[expired,cancelled]})});assert.match(h.document.querySelector('[data-os-appointment=expired-id]').textContent,/Reserva expirada/);assert.doesNotMatch(h.document.querySelector('[data-os-appointment=system-id]').textContent,/expirada/);await openDetail(h,'expired-id');assert.match(h.document.getElementById('osDialog').textContent,/O prazo para confirmar terminou/);
 });
 
 test('Google primary alias accepts only canonical calendars explicitly marked selectable by the server',async t=>{
@@ -206,14 +220,18 @@ test('Google primary alias accepts only canonical calendars explicitly marked se
   const h=await fixture(t,{respond:responder({google,on:(path,method)=>{if(path.endsWith('/google/calendars'))return {calendar_id:'primary',calendar_change_locked:true,items:[{id:'canonical@example.invalid',name:'Meu calendário',primary:true,selectable:true},{id:'blocked@example.invalid',name:'Outro calendário',selectable:false}]};if(path.endsWith('/google/calendar')&&method==='POST')return google;}})});await openGoogleSettings(h);h.click('[data-os-action=google-calendars]');await flush();const select=h.document.querySelector('[name=calendar_id]');assert.equal(select.value,'canonical@example.invalid');assert.equal([...select.options].some(option=>option.value==='blocked@example.invalid'),false);h.submit('[data-os-form=google-calendar]');await flush();assert.equal(posts(h)[0].data.calendar_id,'canonical@example.invalid');
 });
 
-test('Google error codes become bounded Portuguese guidance and never expose an unexpected raw provider error',async t=>{
+test('a integração Google continua apenas nas configurações da empresa',async t=>{
   const google={...googleOn,sync_status:'attention',last_error:'google_authorization_expired'};
-  const h=await fixture(t,{respond:responder({google,on:path=>path.includes('/google/appointments/')?{configured:true,connection_status:'active',status:'failed',sync_enabled:true,last_error:'raw-provider-private-secret'}:undefined})});await openGoogleSettings(h);assert.match(h.document.getElementById('osGoogleStatus').textContent,/A autorização venceu/);assert.doesNotMatch(h.document.getElementById('osGoogleStatus').textContent,/google_authorization_expired/);h.click('[data-os-route=agenda]');await flush();await openDetail(h);assert.doesNotMatch(h.document.getElementById('osDialog').textContent,/raw-provider-private-secret/);assert.match(h.document.getElementById('osDialog').textContent,/Confira a conexão ou peça ao suporte/);
+  const h=await fixture(t,{respond:responder({google})});
+  await openGoogleSettings(h);
+  assert.match(h.document.getElementById('osGoogleStatus').textContent,/A autorização venceu/);
+  h.click('[data-os-route=agenda]');await flush();await openDetail(h);
+  const dialog=h.document.getElementById('osDialog');
+  assert.doesNotMatch(dialog.textContent,/Google Agenda|Ver conexão|Sincronização/);
+  assert.equal(h.calls.some(call=>call.path.includes('/google/appointments/')),false);
+  assert.equal(posts(h).length,0);
 });
 
-test('Google historical exclusion and absent credentials are honest distinct conditions',async t=>{
-  for(const data of [{status:'outside_initial_sync',configured:true,sync_enabled:true,connection_status:'active'},{status:'pending',configured:false,sync_enabled:true,connection_status:'not_connected'}]){const h=await fixture(t,{respond:responder({on:path=>path.includes('/google/appointments/')?data:undefined})});await openDetail(h);const text=h.document.getElementById('osAppointmentGoogle').textContent;if(data.status==='outside_initial_sync')assert.match(text,/Anterior à conexão.*não faz parte da sincronização inicial/s);else assert.match(text,/ainda não está configurada/);assert.equal(posts(h).length,0);}
-});
 test('toque em agendamento preserva o cartão como origem mesmo se Safari mantiver foco na área inteira',async t=>{
   const h=await fixture(t,{respond:responder()});
   const panel=h.document.getElementById('osPageBody');
@@ -358,51 +376,75 @@ test('ícone atualizar usa arcos equilibrados e setas do mesmo padrão da suíte
     'mantém o SVG e o viewBox padronizados do Orion');
 });
 
-test('detalhes usam botões só de ícone sem estilos de botões com texto',async t=>{
-  const h=await fixture(t,{respond:responder()});
-  await openDetail(h);
-  const dialog=h.document.getElementById('osDialog');
+test('detalhes têm uma ação principal e um menu que fecha sem descartar o agendamento',async t=>{
+  const h=await fixture(t,{respond:responder()});await openDetail(h);
+  const dialog=h.document.getElementById('osDialog'),footer=dialog.querySelector('footer');
   const close=dialog.querySelector('.os-appointment-sheet-header>.os-close');
-  const refresh=dialog.querySelector('.os-appointment-section-title>.os-appointment-google-refresh');
-  assert.ok(close && refresh,'fechar e atualizar visíveis nos detalhes');
-  assert.equal(close.dataset.osAction,'close-dialog');
-  assert.equal(refresh.dataset.osAction,'appointment-google-refresh');
+  const toggle=h.document.getElementById('osAppointmentMore'),options=h.document.getElementById('osAppointmentOptions');
+  assert.equal(close.type,'button');
   assert.equal(close.getAttribute('aria-label'),'Fechar detalhes do agendamento');
-  assert.equal(refresh.getAttribute('aria-label'),'Atualizar sincronização deste agendamento');
-  for(const btn of [close,refresh]){
-    assert.equal(btn.tagName,'BUTTON');
-    assert.equal(btn.type,'button');
-    assert.equal(btn.classList.contains('os-icon-button'),true);
-    assert.equal(btn.classList.contains('os-button'),false,'não herda padding e estilo de botão de texto');
-    assert.equal(btn.querySelector('svg.os-icon')?.getAttribute('aria-hidden'),'true');
-  }
-  const before=h.calls.filter(c=>c.path.includes('/google/appointments/')).length;
-  h.click('.os-appointment-google-refresh');await flush();
-  const after=h.calls.filter(c=>c.path.includes('/google/appointments/')).length;
-  assert.ok(after>before,'o botão ainda atualiza a sincronização');
-  assert.equal(posts(h).length,0,'atualização apenas consulta');
-  h.click('.os-appointment-sheet-header>.os-close');await flush();
-  assert.equal(dialog.open,false,'fechar permanece funcional');
+  assert.equal(close.querySelector('svg.os-icon')?.getAttribute('aria-hidden'),'true');
+  assert.equal(footer.querySelector(':scope > [data-os-action=complete-appointment]').textContent,'Finalizar atendimento');
+  assert.equal(footer.children.length,2);
+  assert.equal(options.hidden,true);
+  assert.equal(toggle.getAttribute('aria-controls'),options.id);
+  assert.equal(toggle.getAttribute('aria-expanded'),'false');
+  h.click('#osAppointmentMore');await flush();
+  assert.equal(options.hidden,false);
+  assert.equal(toggle.getAttribute('aria-expanded'),'true');
+  assert.deepEqual([...options.querySelectorAll('button')].map(button=>button.textContent),
+    ['Remarcar','Registrar falta','Cancelar agendamento']);
+  options.querySelector('button').focus();
+  dialog.dispatchEvent(new h.window.Event('cancel',{cancelable:true}));
+  assert.equal(dialog.open,true);
+  assert.equal(options.hidden,true);
+  assert.equal(h.document.activeElement,toggle);
+  h.click('#osAppointmentMore');h.click('.os-appointment-overview');
+  assert.equal(options.hidden,true);
   assert.equal(posts(h).length,0);
+  h.click('.os-appointment-sheet-header>.os-close');await flush();
+  assert.equal(dialog.open,false);
   assert.equal(h.errors.length,0);
 });
 
-test('CSS mantém X e atualizar quadrados, centrados e adaptados ao celular',async ()=>{
-  const css=await readFile(new URL('../app/static/orion-suite.css',import.meta.url),'utf8');
-  const close='.os-dialog.os-appointment-sheet .os-appointment-sheet-header>.os-close';
-  const refresh='.os-dialog.os-appointment-sheet .os-appointment-section-title>.os-appointment-google-refresh';
-  const base=css.match(/\.os-dialog\.os-appointment-sheet \.os-appointment-sheet-header>\.os-close,\s*\.os-dialog\.os-appointment-sheet \.os-appointment-section-title>\.os-appointment-google-refresh\{([^}]*)\}/)?.[1];
-  assert.ok(base,'estilo específico deve superar .os-dialog .os-close');
-  for(const rule of ['position:static','display:inline-flex','box-sizing:border-box','align-items:center','justify-content:center','flex:0 0 44px','width:44px','height:44px','min-width:44px','min-height:44px','padding:0','gap:0','border-radius:12px']){
-    assert.ok(base.includes(rule),rule);
-  }
-  const icons=css.match(/\.os-dialog\.os-appointment-sheet \.os-appointment-sheet-header>\.os-close>\.os-icon,\s*\.os-dialog\.os-appointment-sheet \.os-appointment-section-title>\.os-appointment-google-refresh>\.os-icon\{([^}]*)\}/)?.[1];
-  for(const rule of ['display:block','flex:0 0 20px','width:20px','height:20px'])
-    assert.ok(icons?.includes(rule),'icon size: '+rule);
-  const mobile=css.match(/@media\(max-width:639px\)\{\s*\.os-dialog\.os-sheet\.os-appointment-sheet[\s\S]*?\.os-dialog\.os-appointment-sheet \.os-appointment-sheet-header>\.os-close,\s*\.os-dialog\.os-appointment-sheet \.os-appointment-section-title>\.os-appointment-google-refresh\{([^}]*)\}/)?.[1];
-  assert.ok(mobile,'regras compactas dos dois botões');
-  for(const rule of ['flex-basis:48px','width:48px','height:48px','min-width:48px','min-height:48px'])
-    assert.ok(mobile.includes(rule),rule);
-  assert.match(css,/\.os-icon-button:focus-visible|\.os-icon-button:focus-visible/,
-    'anel de foco por teclado continua disponível');
+test('rodapé respeita reserva, horário futuro, atendimento encerrado e consulta',async t=>{
+  const hold=record({id:'hold-1',status:'hold',hold_expires_at:'2099-01-01T00:00:00Z',allowed_actions:['confirm','cancel']});
+  const future=record({id:'future-1',allowed_actions:['reschedule','cancel','add_services']});
+  const completed=record({id:'completed-1',status:'completed',allowed_actions:[]});
+  const expired=record({id:'expired-1',status:'hold',hold_expires_at:'2020-01-01T00:00:00Z',allowed_actions:[]});
+  const h=await fixture(t,{respond:responder({items:[hold,future,completed,expired]})});
+  const dialog=h.document.getElementById('osDialog');
+  await openDetail(h,hold.id);
+  assert.equal(dialog.querySelector('footer > .os-button').textContent,'Confirmar reserva');
+  assert.equal(dialog.querySelector('#osAppointmentOptions button').textContent,'Cancelar agendamento');
+  clickAppointmentAction(h,'cancel-appointment');await flush();
+  assert.equal(dialog.querySelector('button[type=submit]').classList.contains('os-danger'),true);
+  assert.equal(posts(h).length,0);
+  h.click('[data-os-action=appointment-back]');await flush();
+  assert.equal(dialog.querySelector('#osAppointmentOptions').hidden,true);
+  h.click('[data-os-action=close-dialog]');
+  await openDetail(h,future.id);
+  assert.equal(dialog.querySelector('footer > .os-button').textContent,'Remarcar');
+  assert.equal(dialog.querySelector('[data-os-action=appointment-extras]').textContent,'Adicionar serviços');
+  assert.equal(dialog.querySelector('[data-os-action=no-show-appointment]'),null);
+  h.click('[data-os-action=close-dialog]');
+  await openDetail(h,completed.id);
+  assert.equal(dialog.querySelector('footer'),null);
+  assert.match(dialog.textContent,/Recebimento/);
+  h.click('[data-os-action=close-dialog]');
+  await openDetail(h,expired.id);
+  assert.equal(dialog.querySelector('footer'),null);
+  assert.match(dialog.textContent,/O prazo para confirmar terminou/);
+});
+
+test('resumo, protocolo e histórico usam o fuso do registro e mostram virada de data',async t=>{
+  const a=record({timezone:'America/Campo_Grande',start_at:'2030-04-06T03:50:00Z',end_at:'2030-04-06T04:20:00Z'});
+  const h=await fixture(t,{respond:responder({items:[a]})});await openDetail(h);
+  const dialog=h.document.getElementById('osDialog'),overview=dialog.querySelector('.os-appointment-overview');
+  assert.match(overview.textContent,/5 de abril de 2030/);
+  assert.match(overview.textContent,/23:50 – 06\/04\/2030 às 00:20 · 30 min/);
+  assert.match(overview.textContent,/\(11\) 99999-0000/);
+  assert.equal(overview.querySelector('[data-os-action=appointment-copy-protocol]').getAttribute('aria-label'),'Copiar protocolo');
+  assert.match(dialog.querySelector('.os-appointment-history').textContent,/05\/04\/2030 às 07:00/);
+  assert.equal(h.calls.some(call=>call.path.includes('/google/appointments/')),false);
 });
