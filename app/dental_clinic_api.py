@@ -380,13 +380,56 @@ async def list_dental_records(tenant_id:UUID,patient_id:UUID,
         return {"items":result}
 
 
+async def resolve_intake_snapshot(db, tenant, patient, actor, payload):
+    content = dict(payload.content)
+    submission = content.pop("intake_template")
+    prior = (await db.execute(text("""
+        SELECT id,patient_id,authored_by,kind,encrypted_content,nonce,digest FROM dental_records
+        WHERE tenant_id=:tenant AND entry_key=:key
+    """), {"tenant": tenant, "key": payload.entry_key})).mappings().one_or_none()
+    if prior:
+        if prior["patient_id"] != patient or prior["authored_by"] != actor.account_id or prior["kind"] != "anamnesis":
+            raise HTTPException(409, "Chave de registro utilizada para outro conteúdo")
+        stored = json.loads(unseal(prior, tenant, patient, "anamnesis"))
+        snapshot = stored.pop("intake_template", None)
+        if (not snapshot or stored != content or snapshot["template_id"] != submission["template_id"]
+                or snapshot["version"] != submission["version"]
+                or [item["answer"] for item in snapshot["responses"]] != submission["answers"]):
+            raise HTTPException(409, "Chave de registro utilizada para outro conteúdo")
+        return prior["id"], None
+
+    template = (await db.execute(text("""
+        SELECT name,version,questions FROM dental_intake_templates
+        WHERE tenant_id=:tenant AND id=CAST(:id AS uuid) FOR SHARE
+    """), {"tenant": tenant, "id": submission["template_id"]})).mappings().one_or_none()
+    if not template:
+        raise HTTPException(404, "Modelo de anamnese não encontrado")
+    if template["version"] != submission["version"]:
+        raise HTTPException(409, "O modelo mudou. Reabra a anamnese antes de registrar as respostas.")
+    prompts = [question["prompt"] for question in template["questions"] if question["active"]]
+    answers = submission["answers"]
+    if len(answers) != len(prompts):
+        raise HTTPException(422, "Confira as respostas das perguntas ativas")
+    content["intake_template"] = {
+        "template_id": submission["template_id"], "name": template["name"], "version": template["version"],
+        "responses": [{"prompt": prompt, "answer": answer} for prompt, answer in zip(prompts, answers)],
+    }
+    return None, content
+
+
 @router.post("/patients/{patient_id}/records",status_code=201)
 async def append_dental_record(tenant_id:UUID,patient_id:UUID,payload:RecordCreate,
                                actor:Actor=Depends(authenticate)):
     async with clinical_session(tenant_id,actor,write=True,dentist=True) as (db,grant):
         await patient_row(db,tenant_id,patient_id)
+        content = payload.content
+        if payload.kind == "anamnesis" and "intake_template" in content:
+            prior_id, content = await resolve_intake_snapshot(db, tenant_id, patient_id, actor, payload)
+            if prior_id is not None:
+                return {"id": prior_id, "patient_id": patient_id, "kind": payload.kind,
+                        "recorded": True, "qualified_signature": False}
         identity=uuid4()
-        data=json.dumps(payload.content,ensure_ascii=False,sort_keys=True,separators=(",",":")).encode()
+        data=json.dumps(content,ensure_ascii=False,sort_keys=True,separators=(",",":")).encode()
         nonce,cipher,digest=seal(data,tenant_id,patient_id,payload.kind,identity)
         inserted=(await db.execute(text("""
             INSERT INTO dental_records
@@ -527,6 +570,19 @@ async def list_intake_templates(tenant_id: UUID, actor: Actor = Depends(authenti
             WHERE tenant_id=:tenant ORDER BY lower(name),id
         """), {"tenant": tenant_id})).mappings().all()
         return {"items": [dict(template) for template in templates]}
+
+
+@router.get("/intake-templates/clinical")
+async def clinical_intake_templates(tenant_id: UUID, actor: Actor = Depends(authenticate)):
+    async with clinical_session(tenant_id, actor, dentist=True) as (db, _):
+        templates = (await db.execute(text("""
+            SELECT id,name,questions,version FROM dental_intake_templates
+            WHERE tenant_id=:tenant ORDER BY lower(name),id
+        """), {"tenant": tenant_id})).mappings().all()
+        return {"items": [
+            {**template, "questions": [q["prompt"] for q in template["questions"] if q["active"]]}
+            for template in templates
+        ]}
 
 
 @router.post("/intake-templates", status_code=201)

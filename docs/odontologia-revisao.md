@@ -21,7 +21,7 @@ A tela de Configurações consulta o mesmo cadastro de consultórios usado pela 
 
 ## Modelos de anamnese
 
-A tela de Configurações permite cadastrar modelos, adicionar e editar perguntas e alternar a situação de cada pergunta. Gravações concorrentes conferem a versão. O editor não recebe respostas de pacientes.
+A tela de Configurações permite cadastrar modelos, adicionar e editar perguntas e alternar a situação de cada pergunta. Gravações concorrentes conferem a versão. O dentista autorizado pode usar os modelos no prontuário. O registro cifrado guarda as perguntas da versão escolhida e as respectivas respostas. Alterar um modelo não modifica registros já gravados.
 
 ## Publicação
 

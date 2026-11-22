@@ -570,6 +570,66 @@ async def test_intake_configuration_is_versioned_and_private(clinic_api_db):
 
 
 @pytest.mark.asyncio
+async def test_anamnesis_uses_canonical_template_snapshot_and_preserves_history(clinic_api_db):
+    import httpx
+    from fastapi import FastAPI
+    from app.catalog_api import Actor, authenticate
+    from app.dental_clinic_api import router
+
+    d = clinic_api_db
+    app = FastAPI()
+    app.include_router(router)
+    actor = Actor("member", d["a"], d["account"], "owner")
+    app.dependency_overrides[authenticate] = lambda: actor
+    base = f"/api/v1/tenants/{d['a']}/dental"
+    record_path = f"{base}/patients/{d['patient_a']}/records"
+    prompt = "Pergunta de demonstração"
+    answer = "Resposta inteiramente sintética"
+    original = {"name": "Modelo de demonstração",
+                "questions": [{"prompt": prompt, "active": True},
+                              {"prompt": "Inativa", "active": False}]}
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
+                                 base_url="http://test.invalid") as client:
+        created = await client.post(base+"/intake-templates", json=original)
+        assert created.status_code == 201, created.text
+        template_id = created.json()["id"]
+        templates = await client.get(base+"/intake-templates/clinical")
+        assert templates.json()["items"][0]["questions"] == [prompt]
+        content = {"complaint": "Descrição sintética", "answered_by": "clinician",
+                   "intake_template": {"template_id": template_id, "version": 1, "answers": [answer]}}
+        booking = {"kind": "anamnesis", "entry_key": "synthetic-intake-record", "content": content}
+        saved = await client.post(record_path, json=booking)
+        assert saved.status_code == 201, saved.text
+        record_id = saved.json()["id"]
+
+        modified = await client.patch(base+"/intake-templates/"+template_id,
+            json={**original, "questions": [{"prompt": "Pergunta revisada", "active": True}],
+                  "expected_version": 1})
+        assert modified.status_code == 200, modified.text
+        retry = await client.post(record_path, json=booking)
+        assert retry.status_code == 201 and retry.json()["id"] == record_id
+        conflicting_retry = {**booking, "content": {**content, "complaint": "Descrição diferente"}}
+        assert (await client.post(record_path, json=conflicting_retry)).status_code == 409
+        stale = await client.post(record_path, json={**booking, "entry_key": "new-stale-intake"})
+        assert stale.status_code == 409
+        history = await client.get(record_path, params={"kind": "anamnesis"})
+        assert history.json()["items"][0]["content"]["intake_template"] == {
+            "template_id": template_id, "version": 1, "name": original["name"],
+            "responses": [{"prompt": prompt, "answer": answer}],
+        }
+
+        actor = Actor("member", d["a"], d["assistant"], "editor")
+        assert (await client.get(base+"/intake-templates/clinical")).status_code == 403
+        assert (await client.get(record_path)).status_code == 403
+
+    async with d["migrator"].begin() as db:
+        encrypted = (await db.execute(text("""
+            SELECT encrypted_content FROM dental_records WHERE id=CAST(:id AS uuid)
+        """), {"id": record_id})).scalar_one()
+        assert answer.encode() not in encrypted and prompt.encode() not in encrypted
+
+
+@pytest.mark.asyncio
 async def test_dental_professional_portal_link_clinician_permission_and_revocation(clinic_api_db):
     """A real invited dentist uses their professional link; cannot access other tenants."""
     import httpx

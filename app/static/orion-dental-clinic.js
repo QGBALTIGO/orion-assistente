@@ -18,7 +18,7 @@
     return d.getFullYear()+'-'+n(d.getMonth()+1)+'-'+n(d.getDate());
   }
   const state={host:null,request:null,tenantId:'',canAccess:null,epoch:0,access:null,team:[],professionals:[],
-    patients:[],patient:null,records:[],exams:[],rooms:[],appointments:[],roomDay:localToday(),
+    patients:[],patient:null,records:[],exams:[],intakeTemplates:[],rooms:[],appointments:[],roomDay:localToday(),
     roomZone:'',supplies:[],q:'',selectedTooth:11,
     dentition:'permanent',tab:'anamnesis',section:'patients',findings:[],periodontal:[],stages:[],
     error:'',success:'',loading:false,submitting:false,patientRead:0,searchRead:0};
@@ -151,6 +151,12 @@
       button('Retirar etapa','remove-stage','os-ghost','data-index="'+i+'"')+'</div>').join('')+'</div>':
       '<p class="os-dental-muted">Adicione pelo menos uma etapa. Nenhum procedimento será marcado como concluído automaticamente.</p>';
   }
+  function intakeTemplateFields(){
+    if(!state.intakeTemplates.length)return '';
+    return choices('Modelo de anamnese','intake_template',[
+      ['','Anamnese padrão'],...state.intakeTemplates.map(template=>[template.id,template.name])
+    ])+'<div class="os-dental-space" data-dental-intake-answers></div>';
+  }
   function editor(kind){
     const header='<div class="os-dental-space"><div class="os-dental-card os-dental-space"><h3>Registrar '+esc(nameFor(kind))+'</h3>'+
       info('O Orion registra autoria e horário e impede alteração silenciosa. Registro armazenado não equivale a assinatura digital certificada.');
@@ -165,7 +171,7 @@
       button('Baixar','download-exam','os-outline','data-id="'+esc(x.id)+'"')+'</div>').join(''):
       '<div class="os-dental-empty">Nenhum exame anexado.</div>')+'</div></div>';
     let fields='';
-    if(kind==='anamnesis')fields=field('Queixa principal','complaint','textarea','','required maxlength="2500"')+
+    if(kind==='anamnesis')fields=intakeTemplateFields()+field('Queixa principal','complaint','textarea','','required maxlength="2500"')+
       field('Histórico médico declarado','medical_history','textarea','','maxlength="4000"')+
       field('Alergias declaradas','declared_allergies','textarea','','maxlength="2000"')+
       field('Medicamentos declarados','declared_medications','textarea','','maxlength="2000"')+
@@ -219,7 +225,10 @@
       (s.bleeding===null||s.bleeding===undefined?'':s.bleeding?' · Sangramento':' · Sem sangramento')).join(' | ')+'</small></div>').join('')+'</div>';
     if(kind==='treatment'||kind==='budget')return '<p>'+esc(data.description||'')+'</p>'+
       '<div class="os-dental-space">'+(data.stages||data.items||[]).map(s=>'<div class="os-dental-entry">'+esc(s.description)+' · '+esc(s.tooth||'')+'</div>').join('')+'</div>';
-    return Object.entries(safeItem(data)).map(([k,v])=>
+    const snapshot=kind==='anamnesis'?data.intake_template:null;
+    return (snapshot?'<div class="os-dental-space"><h4>'+esc(snapshot.name)+'</h4>'+
+      (snapshot.responses||[]).map(answer=>row(answer.prompt,answer.answer||'Sem resposta')).join('')+'</div>':'')+
+      Object.entries(safeItem(data)).filter(([key])=>key!=='intake_template').map(([k,v])=>
       '<div class="os-dental-row"><strong>'+esc(k.replace(/_/g,' '))+'</strong><span>'+
        esc(typeof v==='object'?JSON.stringify(v):v)+'</span></div>').join('');
   }
@@ -285,13 +294,15 @@
     state.loading=true;state.error='';render();
     try{
       const authorized=state.access?.can_read_records===true;
-      const [detail,records,exams]=await Promise.all([
+      const [detail,records,exams,templates]=await Promise.all([
         api('/patients/'+patient),
         authorized?api('/patients/'+patient+'/records?limit=100'):Promise.resolve({items:[]}),
-        authorized?api('/patients/'+patient+'/exams'):Promise.resolve({items:[]})]);
+        authorized?api('/patients/'+patient+'/exams'):Promise.resolve({items:[]}),
+        authorized?api('/intake-templates/clinical').catch(()=>({items:[]})):Promise.resolve({items:[]})]);
       if(!valid(epoch)||read!==state.patientRead)return;
       if(detail?.id!==patient)throw Error('Resposta não corresponde ao paciente selecionado.');
       state.patient=detail;state.records=records.items||[];state.exams=exams.items||[];
+      state.intakeTemplates=templates.items||[];
       state.tab='anamnesis';state.findings=[];state.periodontal=[];state.stages=[];
     }catch(e){if(valid(epoch)&&read===state.patientRead)state.error=e?.message||'Falha ao consultar paciente.';}
     finally{if(valid(epoch)&&read===state.patientRead){state.loading=false;render();}}
@@ -356,9 +367,14 @@
   }
   function recordPayload(form){
     const v=formValues(form),kind=form.dataset.kind;
-    if(kind==='anamnesis')return {complaint:v.complaint,medical_history:v.medical_history||null,
-      declared_allergies:v.declared_allergies||null,declared_medications:v.declared_medications||null,
-      observations:v.observations||null,answered_by:v.answered_by};
+    if(kind==='anamnesis'){
+      const template=state.intakeTemplates.find(item=>item.id===v.intake_template);
+      return {complaint:v.complaint,medical_history:v.medical_history||null,
+        declared_allergies:v.declared_allergies||null,declared_medications:v.declared_medications||null,
+        observations:v.observations||null,answered_by:v.answered_by,
+        ...(template?{intake_template:{template_id:template.id,version:template.version,
+          answers:[...form.querySelectorAll('[data-dental-intake-answers] textarea')].map(el=>el.value.trim())}}:{})};
+    }
     if(kind==='odontogram')return {dentition:state.dentition,findings:state.findings,narrative:v.narrative||null};
     if(kind==='periodontal')return {teeth:state.periodontal,note:v.note||null};
     if(kind==='progress')return {description:v.description,...(v.appointment_id?{appointment_id:v.appointment_id}:{})};
@@ -500,6 +516,13 @@
   function onChange(event){
     const el=event.target;
     if(!state.host?.contains(el))return;
+    if(el.name==='intake_template'){
+      const template=state.intakeTemplates.find(item=>item.id===el.value);
+      const answers=el.form?.querySelector('[data-dental-intake-answers]');
+      if(answers)answers.innerHTML=(template?.questions||[]).map((prompt,i)=>
+        field(prompt,'intake_answer_'+i,'textarea','','maxlength="1000"')).join('');
+      return;
+    }
     if(el.name==='dentition'){
       state.dentition=el.value;state.selectedTooth=state.dentition==='deciduous'?55:11;
       state.findings=[];render();
@@ -542,7 +565,7 @@
     if(host){host.removeEventListener('click',onClick);host.removeEventListener('submit',onSubmit);
       host.removeEventListener('change',onChange);host.replaceChildren();}
     Object.assign(state,{host:null,request:null,tenantId:'',canAccess:null,access:null,team:[],
-      professionals:[],patients:[],patient:null,records:[],exams:[],rooms:[],appointments:[],
+      professionals:[],patients:[],patient:null,records:[],exams:[],intakeTemplates:[],rooms:[],appointments:[],
       roomDay:localToday(),roomZone:'',supplies:[],q:'',
       selectedTooth:11,dentition:'permanent',tab:'anamnesis',section:'patients',findings:[],
       periodontal:[],stages:[],creatingPatient:false,editingPatient:false,

@@ -1,6 +1,6 @@
 """Validated dental inputs. No defaults that fabricate clinical findings."""
 from datetime import date
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -127,6 +127,12 @@ class Periodontal(Strict):
         return self
 
 
+class IntakeSubmission(Strict):
+    template_id: UUID
+    version: int = Field(ge=1, strict=True)
+    answers: list[Annotated[str, Field(max_length=1000)]] = Field(min_length=1, max_length=50)
+
+
 class Anamnesis(Strict):
     complaint: str = Field(min_length=2,max_length=2500)
     medical_history: str | None = Field(None,max_length=4000)
@@ -134,6 +140,7 @@ class Anamnesis(Strict):
     declared_medications: str | None = Field(None,max_length=2000)
     observations: str | None = Field(None,max_length=2500)
     answered_by: Literal["patient","guardian","clinician"]
+    intake_template: IntakeSubmission | None = None
 
 
 class Progress(Strict):

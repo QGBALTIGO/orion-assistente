@@ -24,6 +24,7 @@ const response=(path,method='GET',data,config)=>{
   if(path.includes('/dental/appointments?'))return {
     timezone:'America/Campo_Grande',items:config.appointments||[]};
   if(path.endsWith('/dental/patients/'+patient+'/records')&&method==='POST')return {id:randomUUID(),recorded:true};
+  if(path.endsWith('/dental/intake-templates/clinical'))return {items:config.intakeTemplates||[]};
   if(path.endsWith('/dental/rooms'))return method==='GET'?{items:config.rooms||[]}:{id:randomUUID(),...data};
   if(path.endsWith('/room')&&method==='PUT')return {assigned:true};
   if(path.endsWith('/dental/supplies'))return method==='GET'?{items:[]}:{id:randomUUID(),...data};
@@ -158,4 +159,22 @@ test('consultório selects actual confirmed appointment without exposing interna
   assert.equal(writes.length,1);
   assert.equal(writes[0].path,'/api/v1/tenants/'+tenant+'/dental/appointments/'+appointment+'/room');
   assert.equal(writes[0].data.room_id,room);
+});
+
+test('dentista seleciona um modelo e envia respostas, com a versão, ao prontuário existente',async t=>{
+  const template={id:'64444444-4444-4444-8444-444444444444',name:'Modelo sintético',version:3,questions:['Pergunta A','Pergunta B']};
+  const h=makeDOM({level:'dentist',intakeTemplates:[template]});t.after(()=>h.close());
+  await h.mount();h.click('[data-dental-action=select-patient]');await flush();
+  const select=h.host.querySelector('[name=intake_template]');
+  assert.ok(select,'o formulário oferece modelos configurados');
+  select.value=template.id;
+  select.dispatchEvent(new h.window.Event('change',{bubbles:true}));
+  h.fill('[name=complaint]','Queixa de teste');
+  h.fill('[name=intake_answer_0]','Resposta sintética');
+  h.submit('[data-dental-form=record][data-kind=anamnesis]');await flush();
+  const call=h.calls.find(c=>c.method==='POST'&&c.path.endsWith('/records'));
+  assert.ok(call);
+  assert.deepEqual(JSON.parse(JSON.stringify(call.data.content.intake_template)),
+    {template_id:template.id,version:3,answers:['Resposta sintética','']});
+  assert.equal(h.window.localStorage.length,0);
 });
