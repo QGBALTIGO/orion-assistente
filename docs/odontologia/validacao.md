@@ -60,3 +60,14 @@ A referência financeira também foi verificada em Fluxo de Caixa → Filtrar. F
 O caixa resume os recebimentos, as despesas pagas, o saldo e as receitas em aberto do período selecionado. “Hoje” e “Mês até hoje” obedecem ao fuso da empresa. A consulta usa a permissão financeira e o mesmo livro de lançamentos do Financeiro. Uma consulta finalizada só entra no recebido quando há um lançamento pago. Para pendências, o período seleciona a data do lançamento. O resumo não substitui o extrato individual ou o controle de parcelas por paciente.
 
 Na base PostgreSQL 16 sintética, um pagamento às 23h25 locais foi atribuído ao dia correto, mesmo com data UTC já no dia seguinte. A consulta concluída sem recebimento e as movimentações de outra empresa não entraram no caixa. O navegador verificou teclado, quatro larguras e os dois temas. Foram simuladas indisponibilidade do financeiro e chegada tardia da consulta mensal após voltar à opção “Hoje”.
+
+
+O caixa passou na validação do PR 361, revisão `25e1ad8e`. O estoque passou na validação do PR 360 e na construção da imagem pelo workflow 45078476485. No registro desta etapa, o Railway mantinha preparada a troca para a imagem do estoque no serviço da API. O controle de aprovação recusou a aplicação imediata. A imagem da ficha de pacientes continuava ativa.
+
+## Cadastro de pacientes
+
+Nas clínicas com o módulo habilitado, a navegação apresenta “Pacientes” para as pessoas atendidas e “Contatos da agenda” para os cadastros administrativos históricos. O atalho da Recepção abre o mesmo cadastro odontológico protegido. Quem ainda precisa de uma concessão vê a orientação adequada. Um proprietário pode abrir as permissões existentes. O diretório guarda o nome, a data de nascimento, o telefone de contato e os dados do responsável. A consulta do prontuário requer uma ação explícita de um profissional autorizado.
+
+A busca pelo nome ou número do paciente ou responsável transmite o termo no corpo da requisição, devolve apenas os dados necessários à identificação e permite percorrer as páginas. A ficha administrativa e o quadro de consultas funcionam sem carregar exames ou registros clínicos. A chave de cadastro é específica da empresa e do autor. Repetir o envio após perder a resposta recupera a mesma pessoa e gera um único evento de criação. Cadastro independente pelo mesmo responsável continua possível. A alteração preserva as tabelas e os identificadores existentes.
+
+Foram usados PostgreSQL 16 com papéis restritos, um navegador com duas pessoas sintéticas da mesma família e testes de autorização, concorrência, alteração de cadastro e navegação. O acesso administrativo não concede validação de documentos ou autorização clínica. A medição em produção permanece pendente.
