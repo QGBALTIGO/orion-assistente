@@ -169,3 +169,5 @@
   .os-directory .os-dental-card{padding:16px}
   .os-directory-fields,.os-directory-facts{grid-template-columns:minmax(0,1fr)}
 }
+
+.os-dental-workspace .os-sidebar-context{min-height:0}
