@@ -30,6 +30,8 @@
 .os-dental-entry{padding:14px;border:1px solid var(--os-border);border-radius:11px;background:var(--os-card);display:grid;gap:6px;overflow-wrap:anywhere}
 .os-dental-entry p{white-space:pre-wrap;overflow-wrap:anywhere;color:var(--os-text);font-size:14px}
 .os-dental-entry small{color:var(--os-muted);font-size:12px}
+.os-dental-prosthesis-card{gap:14px}
+.os-dental-prosthesis-card .os-dental-controls{align-self:end}
 .os-dental-controls{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
 .os-dental-notice{border:1px solid var(--os-border);background:var(--os-tint);color:var(--os-text);border-radius:12px;padding:12px 14px;font-size:13px;line-height:20px}
 .os-dental-error{border-color:var(--os-danger);background:var(--os-danger-bg);color:var(--os-danger)}

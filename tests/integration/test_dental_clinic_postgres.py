@@ -785,3 +785,110 @@ async def test_supply_history_paginates_filters_and_isolates_clinics(clinic_api_
         actor = Actor("member", d["b"], d["account_b"], "owner")
         assert (await client.get(path)).status_code == 403
         assert (await client.get(f"{other}/{supply_id}/movements")).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_prosthesis_worklist_preserves_versions_and_clinic_perimeters(clinic_api_db):
+    import asyncio
+
+    import httpx
+    from fastapi import FastAPI
+    from app.catalog_api import Actor, authenticate
+    from app.dental_clinic_api import router
+
+    d = clinic_api_db
+    app = FastAPI()
+    app.include_router(router)
+    actor = Actor("member", d["a"], d["account"], "owner")
+    app.dependency_overrides[authenticate] = lambda: actor
+    base = f"/api/v1/tenants/{d['a']}/dental"
+    other = f"/api/v1/tenants/{d['b']}/dental"
+    history_path = f"{base}/patients/{d['patient_a']}/records"
+    work_path = f"{base}/prostheses"
+    request = {"kind": "prosthesis", "entry_key": "synthetic-prosthesis-first",
+               "content": {"laboratory": "Laboratório sintético", "description": "Peça de teste",
+                           "due_date": "2027-01-10", "status": "requested"}}
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
+                                 base_url="http://test.invalid") as client:
+        created = await client.post(history_path, json=request)
+        assert created.status_code == 201, created.text
+        initial = created.json()["id"]
+        assert (await client.post(history_path, json=request)).json()["id"] == initial
+
+        second = await client.post(history_path, json={
+            **request, "entry_key": "synthetic-prosthesis-legacy",
+            "content": {**request["content"], "status": "delivered",
+                        "description": "Peça registrada antes da mudança"}
+        })
+        assert second.status_code == 201, second.text
+        legacy = second.json()["id"]
+        page = await client.get(work_path, params={"limit": 1})
+        assert page.status_code == 200, page.text
+        assert "no-store" in page.headers["cache-control"]
+        assert page.json()["items"][0]["id"] == legacy
+        older = await client.get(work_path, params={"cursor": page.json()["next_cursor"]})
+        assert [row["id"] for row in older.json()["items"]] == [initial]
+        found = await client.get(work_path, params={"status": "requested", "limit": 1})
+        assert [row["id"] for row in found.json()["items"]] == [initial]
+
+        async def transition(record_id, status, key):
+            return await client.patch(f"{work_path}/{record_id}/status",
+                                      json={"status": status, "entry_key": key})
+
+        blocked = await transition(initial, "completed", "synthetic-invalid-step")
+        assert blocked.status_code == 409
+        prepared = await transition(initial, "ready_to_send", "synthetic-ready-step")
+        assert prepared.status_code == 200, prepared.text
+        prepared_id = prepared.json()["id"]
+        assert (await transition(initial, "ready_to_send", "synthetic-ready-step")).json()["id"] == prepared_id
+        assert (await transition(initial, "cancelled", "synthetic-stale-step")).status_code == 409
+
+        contenders = await asyncio.wait_for(asyncio.gather(
+            transition(prepared_id, "working", "synthetic-lab-step"),
+            transition(prepared_id, "cancelled", "synthetic-cancel-step"),
+        ), timeout=12)
+        assert sorted(result.status_code for result in contenders) == [200, 409]
+        result = next(result.json() for result in contenders if result.status_code == 200)
+        assert result["status"] in {"working", "cancelled"}
+
+        returned = await transition(legacy, "working", "synthetic-return-to-lab")
+        assert returned.status_code == 200, returned.text
+        received = await transition(returned.json()["id"], "delivered", "synthetic-received")
+        complete = await transition(received.json()["id"], "completed", "synthetic-complete")
+        assert complete.status_code == 200, complete.text
+        assert (await transition(complete.json()["id"], "working", "synthetic-after-complete")).status_code == 409
+
+        overview = (await client.get(work_path)).json()["items"]
+        assert {item["id"] for item in overview} == {complete.json()["id"], result["id"]}
+        assert all(item["content"]["due_date"] == "2027-01-10" for item in overview)
+        assert (await client.get(work_path, params={"status": "requested"})).json()["items"] == []
+
+        history = (await client.get(history_path, params={"kind": "prosthesis"})).json()["items"]
+        by_id = {row["id"]: row for row in history}
+        assert len(history) == 7
+        assert by_id[initial]["content"]["status"] == "requested"
+        assert by_id[prepared_id]["previous_prosthesis_id"] == initial
+        assert by_id[result["id"]]["previous_prosthesis_id"] == prepared_id
+
+        actor = Actor("member", d["a"], d["assistant"], "editor")
+        assert (await client.get(work_path)).status_code == 403
+        assert (await transition(prepared_id, "working", "synthetic-assistant-step")).status_code == 403
+        actor = Actor("member", d["b"], d["account_b"], "owner")
+        assert (await client.get(work_path)).status_code == 403
+        assert (await client.get(other+"/prostheses")).json()["items"] == []
+        assert (await client.get(other+"/prostheses", params={"cursor": initial})).status_code == 400
+        assert (await client.patch(other+f"/prostheses/{initial}/status",
+                                   json={"status": "ready_to_send", "entry_key": "synthetic-another-clinic"})).status_code == 404
+
+    async with d["migrator"].connect() as db:
+        protected = (await db.execute(text("""
+            SELECT encrypted_content FROM dental_records WHERE tenant_id=:tenant AND kind='prosthesis'
+        """), {"tenant": d["a"]})).scalars().all()
+        assert len(protected) == 7
+        assert all(b"Laborat" not in ciphertext and b"requested" not in ciphertext for ciphertext in protected)
+        audit_events = await db.scalar(text("""
+            SELECT count(*) FROM dental_access_audit
+            WHERE tenant_id=:tenant AND action='prosthesis_status_changed'
+        """), {"tenant": d["a"]})
+        assert audit_events == 5

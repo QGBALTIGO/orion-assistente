@@ -30,7 +30,8 @@ from app.plan_permissions import plan_state
 from app.tenant_access import resolve_tenant_access
 from app.dental_clinic_schemas import (
     ClinicianGrant, PatientCreate, PatientPatch, RecordCreate,
-    IntakeTemplateCreate, IntakeTemplateUpdate, RoomCreate, RoomRename, RoomAssign, ChairAvailability, SupplyCreate, SupplyMove, ExamUpload
+    IntakeTemplateCreate, IntakeTemplateUpdate, ProsthesisStatus, ProsthesisTransition,
+    RoomCreate, RoomRename, RoomAssign, ChairAvailability, SupplyCreate, SupplyMove, ExamUpload
 )
 
 
@@ -366,7 +367,8 @@ async def list_dental_records(tenant_id:UUID,patient_id:UUID,
             "budget","insurance","prosthesis","exam_note","certificate","referral"):
             raise HTTPException(422,"Tipo de registro inválido")
         records=(await db.execute(text("""
-            SELECT id,kind,encrypted_content,nonce,digest,authored_by,professional_id,created_at
+            SELECT id,kind,encrypted_content,nonce,digest,authored_by,professional_id,created_at,
+                   previous_prosthesis_id
             FROM dental_records WHERE tenant_id=:tenant AND patient_id=:patient
               AND (CAST(:kind AS varchar) IS NULL OR kind=:kind)
             ORDER BY created_at DESC,id DESC LIMIT :limit
@@ -377,6 +379,8 @@ async def list_dental_records(tenant_id:UUID,patient_id:UUID,
             result.append({"id":row["id"],"kind":row["kind"],"content":data,
                            "authored_by":row["authored_by"],"professional_id":row["professional_id"],
                            "created_at":row["created_at"]})
+            if row["previous_prosthesis_id"] is not None:
+                result[-1]["previous_prosthesis_id"] = row["previous_prosthesis_id"]
         await audit(db,tenant_id,actor,"clinical_records_read",patient_id)
         return {"items":result}
 
@@ -418,43 +422,127 @@ async def resolve_intake_snapshot(db, tenant, patient, actor, payload):
     return None, content
 
 
-@router.post("/patients/{patient_id}/records",status_code=201)
-async def append_dental_record(tenant_id:UUID,patient_id:UUID,payload:RecordCreate,
-                               actor:Actor=Depends(authenticate)):
-    async with clinical_session(tenant_id,actor,write=True,dentist=True) as (db,grant):
-        await patient_row(db,tenant_id,patient_id)
-        content = payload.content
+async def save_clinical_record(db, tenant, patient, actor, professional, kind, content, key, *, previous=None):
+    identity = uuid4()
+    data = json.dumps(content, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+    nonce, cipher, digest = seal(data, tenant, patient, kind, identity)
+    inserted = (await db.execute(text("""
+        INSERT INTO dental_records
+          (id,tenant_id,patient_id,kind,encrypted_content,nonce,digest,
+           authored_by,professional_id,entry_key,previous_prosthesis_id)
+        VALUES (:id,:tenant,:patient,:kind,:content,:nonce,:digest,:actor,:professional,:key,:previous)
+        ON CONFLICT(tenant_id,entry_key) DO NOTHING RETURNING id
+    """), {"id": identity, "tenant": tenant, "patient": patient, "kind": kind,
+           "content": cipher, "nonce": nonce, "digest": digest, "actor": actor.account_id,
+           "professional": professional, "key": key, "previous": previous})).scalar_one_or_none()
+    if inserted is not None:
+        action = "clinical_record_created" if previous is None else "prosthesis_status_changed"
+        await audit(db, tenant, actor, action, patient)
+        return inserted
+    prior = (await db.execute(text("""
+        SELECT id,patient_id,kind,digest,authored_by,previous_prosthesis_id FROM dental_records
+        WHERE tenant_id=:tenant AND entry_key=:key
+    """), {"tenant": tenant, "key": key})).mappings().one()
+    if (prior["patient_id"] != patient or prior["kind"] != kind or prior["digest"] != digest
+            or prior["authored_by"] != actor.account_id or prior["previous_prosthesis_id"] != previous):
+        raise HTTPException(409, "Chave de registro utilizada para outro conteúdo")
+    return prior["id"]
+
+
+@router.post("/patients/{patient_id}/records", status_code=201)
+async def append_dental_record(tenant_id: UUID, patient_id: UUID, payload: RecordCreate,
+                               actor: Actor = Depends(authenticate)):
+    async with clinical_session(tenant_id, actor, write=True, dentist=True) as (db, grant):
+        await patient_row(db, tenant_id, patient_id)
+        identity, content = None, payload.content
         if payload.kind == "anamnesis" and "intake_template" in content:
-            prior_id, content = await resolve_intake_snapshot(db, tenant_id, patient_id, actor, payload)
-            if prior_id is not None:
-                return {"id": prior_id, "patient_id": patient_id, "kind": payload.kind,
-                        "recorded": True, "qualified_signature": False}
-        identity=uuid4()
-        data=json.dumps(content,ensure_ascii=False,sort_keys=True,separators=(",",":")).encode()
-        nonce,cipher,digest=seal(data,tenant_id,patient_id,payload.kind,identity)
-        inserted=(await db.execute(text("""
-            INSERT INTO dental_records
-              (id,tenant_id,patient_id,kind,encrypted_content,nonce,digest,
-               authored_by,professional_id,entry_key)
-            VALUES (:id,:tenant,:patient,:kind,:content,:nonce,:digest,:actor,:professional,:key)
-            ON CONFLICT(tenant_id,entry_key) DO NOTHING RETURNING id
-        """),{"id":identity,"tenant":tenant_id,"patient":patient_id,"kind":payload.kind,
-               "content":cipher,"nonce":nonce,"digest":digest,
-               "actor":actor.account_id,"professional":grant["professional_id"],
-               "key":payload.entry_key})).scalar_one_or_none()
-        if inserted is None:
-            prior=(await db.execute(text("""
-                SELECT id,patient_id,kind,digest,authored_by FROM dental_records
-                WHERE tenant_id=:tenant AND entry_key=:key
-            """),{"tenant":tenant_id,"key":payload.entry_key})).mappings().one()
-            if (prior["patient_id"]!=patient_id or prior["kind"]!=payload.kind
-                    or prior["digest"]!=digest or prior["authored_by"]!=actor.account_id):
-                raise HTTPException(409,"Chave de registro utilizada para outro conteúdo")
-            identity=prior["id"]
-        else:
-            await audit(db,tenant_id,actor,"clinical_record_created",patient_id)
-        return {"id":identity,"patient_id":patient_id,"kind":payload.kind,
-                "recorded":True,"qualified_signature":False}
+            identity, content = await resolve_intake_snapshot(db, tenant_id, patient_id, actor, payload)
+        if identity is None:
+            identity = await save_clinical_record(db, tenant_id, patient_id, actor, grant["professional_id"],
+                                                  payload.kind, content, payload.entry_key)
+        return {"id": identity, "patient_id": patient_id, "kind": payload.kind,
+                "recorded": True, "qualified_signature": False}
+
+
+PROSTHESIS_TRANSITIONS = {
+    "requested": ("ready_to_send", "cancelled"),
+    "ready_to_send": ("working", "requested", "cancelled"),
+    "working": ("delivered", "cancelled"),
+    "delivered": ("completed", "working", "cancelled"),
+}
+
+
+@router.get("/prostheses")
+async def prostheses(tenant_id: UUID, actor: Actor = Depends(authenticate),
+                     cursor: UUID | None = None, status: ProsthesisStatus | None = None,
+                     limit: int = Query(30, ge=1, le=50)):
+    async with clinical_session(tenant_id, actor, dentist=True) as (db, _):
+        # A prior version remains a valid page boundary after a concurrent status change.
+        boundary = None
+        if cursor is not None:
+            boundary = await db.scalar(text("""
+                SELECT created_at FROM dental_records
+                WHERE tenant_id=:tenant AND id=:cursor AND kind='prosthesis'
+            """), {"tenant": tenant_id, "cursor": cursor})
+            if boundary is None:
+                raise HTTPException(400, "Página de próteses inválida")
+        scan_limit = 200 if status is not None else limit
+        rows = (await db.execute(text("""
+            SELECT r.id,r.patient_id,r.encrypted_content,r.nonce,r.digest,r.created_at,p.name AS patient_name
+            FROM dental_records r JOIN dental_patients p ON p.tenant_id=r.tenant_id AND p.id=r.patient_id
+            WHERE r.tenant_id=:tenant AND r.kind='prosthesis'
+              AND (CAST(:before AS timestamptz) IS NULL OR (r.created_at,r.id)<(:before,:cursor))
+              AND NOT EXISTS (
+                SELECT 1 FROM dental_records newer
+                WHERE newer.tenant_id=r.tenant_id AND newer.previous_prosthesis_id=r.id
+              )
+            ORDER BY r.created_at DESC,r.id DESC LIMIT :limit
+        """), {"tenant": tenant_id, "before": boundary, "cursor": cursor,
+               "limit": scan_limit + 1})).mappings().all()
+        items = []
+        checked = 0
+        for record in rows[:scan_limit]:
+            checked += 1
+            content = json.loads(unseal(record, tenant_id, record["patient_id"], "prosthesis"))
+            if status is not None and content["status"] != status:
+                continue
+            items.append({"id": record["id"], "patient_id": record["patient_id"],
+                          "patient_name": record["patient_name"], "created_at": record["created_at"],
+                          "content": content, "actions": PROSTHESIS_TRANSITIONS.get(content["status"], ())})
+            if len(items) == limit:
+                break
+        await audit(db, tenant_id, actor, "prosthesis_worklist_read")
+        return {"items": items, "next_cursor": rows[checked - 1]["id"] if len(rows) > checked else None}
+
+
+@router.patch("/prostheses/{record_id}/status")
+async def advance_prosthesis(tenant_id: UUID, record_id: UUID, payload: ProsthesisTransition,
+                            actor: Actor = Depends(authenticate)):
+    async with clinical_session(tenant_id, actor, write=True, dentist=True) as (db, grant):
+        scope = {"tenant": tenant_id, "id": record_id}
+        record = (await db.execute(text("""
+            SELECT id,patient_id,encrypted_content,nonce,digest FROM dental_records
+            WHERE tenant_id=:tenant AND id=:id AND kind='prosthesis'
+        """), scope)).mappings().one_or_none()
+        if record is None:
+            raise HTTPException(404, "Trabalho protético não encontrado")
+        # Appending a successor never requires UPDATE privileges on the clinical record.
+        await db.execute(text("""
+            SELECT pg_advisory_xact_lock(hashtextextended('orion-prosthesis:' || CAST(:id AS text), 0))
+        """), {"id": str(record_id)})
+        patient = record["patient_id"]
+        content = json.loads(unseal(record, tenant_id, patient, "prosthesis"))
+        if payload.status not in PROSTHESIS_TRANSITIONS.get(content["status"], ()):
+            raise HTTPException(409, "Essa mudança de etapa não está disponível")
+        next_content = {**content, "status": payload.status}
+        successor = (await db.execute(text("""
+            SELECT id,entry_key FROM dental_records WHERE tenant_id=:tenant AND previous_prosthesis_id=:id
+        """), scope)).mappings().one_or_none()
+        if successor and successor["entry_key"] != payload.entry_key:
+            raise HTTPException(409, "A etapa já mudou. Consulte a situação atual.")
+        identity = await save_clinical_record(db, tenant_id, patient, actor, grant["professional_id"],
+                                              "prosthesis", next_content, payload.entry_key, previous=record_id)
+        return {"id": identity, "status": payload.status}
 
 
 async def read_chairs(db, tenant):

@@ -30,6 +30,8 @@ const response=(path,method='GET',data,config)=>{
   if(path.endsWith('/dental/supplies'))return method==='GET'?{items:config.supplies||[]}:{id:randomUUID(),...data};
   if(path.includes('/dental/supplies/')&&path.includes('/movements')&&method==='GET')
     return config.supplyHistory?.(new URL(path,'https://orion.test').searchParams)||{items:[],next_cursor:null};
+  if(path.includes('/dental/prostheses'))
+    return config.prostheses?.(new URL(path,'https://orion.test'),method,data)||{items:[],next_cursor:null};
   return {items:[]};
 };
 function makeDOM(config={}){
@@ -209,4 +211,51 @@ test('stock history paginates and filters entries without affecting the balance'
   assert.match(h.host.textContent,/13 cx\./);
   assert.equal(h.window.document.activeElement.dataset.dentalAction,'supply-history');
   assert.ok(h.calls.every(call=>call.method==='GET'));
+});
+
+test('worklist filters phases, updates the selected work and opens its clinical record',async t=>{
+  const id=randomUUID();
+  const nextId=randomUUID();
+  let saved=false;
+  const initial={id,patient_id:patient,patient_name:'Paciente de demonstração',
+    content:{laboratory:'Laboratório de teste',description:'Prótese sintética',status:'requested',due_date:'2027-01-09'},
+    actions:['ready_to_send','cancelled']};
+  const h=makeDOM({level:'dentist',prostheses:(url,method)=>{
+    if(method==='PATCH'){saved=true;return {id:nextId,status:'ready_to_send'};}
+    const filter=url.searchParams.get('status');
+    const next={...initial,id:nextId,content:{...initial.content,status:'ready_to_send'},actions:['working','requested','cancelled']};
+    return {items:filter==='cancelled'?[]:[saved?next:initial],next_cursor:null};
+  }});
+  t.after(()=>h.close());
+  await h.mount();await flush();
+  h.click('[data-dental-action=section-prostheses]');await flush();
+  assert.match(h.host.textContent,/Paciente de demonstração/);
+  assert.match(h.host.textContent,/09\/01\/2027/);
+  const selectFilter=value=>{
+    const filter=h.host.querySelector('select[name=prosthesis_filter]');
+    filter.value=value;
+    filter.dispatchEvent(new h.window.Event('change',{bubbles:true}));
+  };
+  selectFilter('cancelled');await flush();
+  assert.match(h.host.textContent,/Nenhuma prótese encontrada/);
+  assert.ok(h.calls.some(call=>call.path.endsWith('/prostheses?status=cancelled')));
+  selectFilter('');await flush();
+  h.fill('select[name="prosthesis_step_'+id+'"]','ready_to_send');
+  h.submit('[data-dental-form=prosthesis-step]');await flush();
+  const change=h.calls.find(call=>call.method==='PATCH');
+  assert.ok(change.path.endsWith('/prostheses/'+id+'/status'));
+  assert.equal(change.data.status,'ready_to_send');
+  assert.ok(change.data.entry_key);
+  assert.match(h.host.textContent,/Pronta para envio/);
+  assert.equal(h.host.querySelector('[data-dental-form=prosthesis-step]').dataset.id,nextId);
+  h.click('[data-dental-action=open-prosthesis-patient]');await flush();
+  assert.ok(h.host.querySelector('[data-dental-tab="prosthesis"][aria-selected=true]'));
+  assert.ok(h.calls.some(call=>call.path.endsWith('/patients/'+patient+'/records?limit=100')));
+});
+
+test('an assistant cannot open prosthesis records from the worklist',async t=>{
+  const h=makeDOM({level:'assistant'});t.after(()=>h.close());
+  await h.mount();await flush();
+  assert.equal(h.host.querySelector('[data-dental-action=section-prostheses]'),null);
+  assert.equal(h.calls.some(call=>call.path.includes('/prostheses')),false);
 });

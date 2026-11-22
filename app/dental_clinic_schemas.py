@@ -186,11 +186,19 @@ class PlainDocument(Strict):
     state: Literal["draft","recorded"] = "draft"
 
 
+ProsthesisStatus = Literal["requested", "ready_to_send", "working", "delivered", "completed", "cancelled"]
+
+
 class Prosthesis(Strict):
     laboratory: str = Field(min_length=2,max_length=120)
     description: str = Field(min_length=3,max_length=3000)
     due_date: date | None = None
-    status: Literal["requested","working","delivered","cancelled"] = "requested"
+    status: ProsthesisStatus = "requested"
+
+
+class ProsthesisTransition(Strict):
+    status: ProsthesisStatus
+    entry_key: str = Field(min_length=8, max_length=120, pattern=r"^[a-zA-Z0-9._:-]+$")
 
 
 class Insurance(Strict):

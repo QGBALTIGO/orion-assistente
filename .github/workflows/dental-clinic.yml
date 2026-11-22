@@ -6,6 +6,7 @@ on:
       - 'alembic/versions/0082_dental_chair_availability.py'
       - 'alembic/versions/0083_dental_intake_templates.py'
       - 'alembic/versions/0084_dental_supply_history.py'
+      - 'alembic/versions/0085_dental_prosthesis_tracking.py'
       - 'app/dental_clinic_*.py'
       - 'app/main.py'
       - 'app/professional_portal.py'

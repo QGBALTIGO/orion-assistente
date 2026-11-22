@@ -10,7 +10,7 @@ A referência é a conta autenticada do Simples Dental. A implementação usa o 
 | Vendas | Oportunidades, busca, filtros e criação | Fluxo pendente |
 | Financeiro | Fluxo de caixa, fechamento, transações, nota fiscal, comissões e carteira | Recursos do Orion existentes. Comparação de fechamento, transações e integrações pendente |
 | Simples Pay e Loja | Módulos visíveis na navegação | Fluxos transacionais pendentes |
-| Próteses | Criação, filtro e acompanhamento em etapas até a conclusão | Registro clínico existente. Quadro de operação pendente |
+| Próteses | Criação, filtro e acompanhamento até a conclusão | Lista de trabalhos por etapa e atualização do prontuário implementadas. Cadastro de laboratórios, coleta e vínculos com agenda pendentes |
 | Marketing | Indicações, comunicação, site e link de agendamento | Site e agenda pública existentes. Paridade dos fluxos pendente |
 | Estoque | Entrada, saldo, histórico de retiradas e exportação | Histórico por insumo com filtro de entradas e saídas e paginação implementado. Exportação pendente |
 | Ajustes | Clínica, equipe, planos, anamnese, contrato, categorias, contas, cadeiras, comunicação e integrações | Cadeiras implementado e testado. Editor de modelos de anamnese implementado e testado. Demais ajustes pendentes |
@@ -26,6 +26,10 @@ A tela de Configurações permite cadastrar modelos, adicionar e editar pergunta
 ## Histórico do estoque
 
 A equipe com acesso clínico pode consultar entradas e saídas por insumo, com data, quantidade e filtro por tipo. O histórico usa o registro de movimentações do Orion e inclui operações anteriores à revisão. Paginação, retentativas de gravação e isolamento entre clínicas foram testados com PostgreSQL.
+
+## Próteses
+
+Dentistas autorizados acompanham os trabalhos da clínica na aba Próteses. Dá para filtrar por etapa, conferir laboratório e prazo, registrar envio, recebimento, devolução ao laboratório, conclusão ou cancelamento e abrir o prontuário correspondente. O cadastro inicial permanece na ficha do paciente. Cada mudança grava uma versão cifrada e auditada com vínculo à versão anterior. A lista usa a situação mais recente. Os registros anteriores à revisão aparecem na lista com sua etapa original.
 
 ## Publicação
 

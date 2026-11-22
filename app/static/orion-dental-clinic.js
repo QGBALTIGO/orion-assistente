@@ -19,7 +19,7 @@
   }
   const state={host:null,request:null,tenantId:'',canAccess:null,epoch:0,access:null,team:[],professionals:[],
     patients:[],patient:null,records:[],exams:[],intakeTemplates:[],rooms:[],appointments:[],roomDay:localToday(),
-    roomZone:'',supplies:[],supplyHistory:null,q:'',selectedTooth:11,
+    roomZone:'',supplies:[],supplyHistory:null,prostheses:null,q:'',selectedTooth:11,
     dentition:'permanent',tab:'anamnesis',section:'patients',findings:[],periodontal:[],stages:[],
     error:'',success:'',loading:false,submitting:false,patientRead:0,searchRead:0};
   const endpoint=path=>'/api/v1/tenants/'+state.tenantId+'/dental'+path;
@@ -109,6 +109,46 @@
            button('Saída','supply-out','os-outline',id)+button('Ver histórico','supply-history','os-ghost',id)+'</div></td></tr>';
        }).join('')+'</tbody></table></div>':
        '<div class="os-dental-empty">Nenhum insumo cadastrado.</div>')+'</div></div>';
+  }
+  const prosthesisStatuses=[
+    ['requested','Preparação'],['ready_to_send','Pronta para envio'],['working','No laboratório'],
+    ['delivered','Recebida'],['completed','Concluída'],['cancelled','Cancelada']
+  ];
+  const prosthesisStatus=Object.fromEntries(prosthesisStatuses);
+  const prosthesisAction={
+    requested:'Voltar para preparação',ready_to_send:'Marcar pronta para envio',working:'Registrar envio ao laboratório',
+    delivered:'Registrar recebimento',completed:'Concluir acompanhamento',cancelled:'Cancelar acompanhamento'
+  };
+  const formatDueDate=value=>/^\d{4}-\d{2}-\d{2}$/.test(value||'')?value.split('-').reverse().join('/'):'Sem prazo';
+
+  function prosthesisManager(){
+    const board=state.prostheses;
+    const cards=(board?.items||[]).map(item=>{
+      const content=item.content;
+      const id=esc(item.id);
+      const pendingStep=board.change?.id===item.id?board.change.status:'';
+      const steps=(item.actions||[]).map(status=>[
+        status,status==='working'&&content.status==='delivered'?'Devolver ao laboratório':prosthesisAction[status]
+      ]);
+      return '<article class="os-dental-entry os-dental-prosthesis-card">'+
+        '<div class="os-dental-row"><div><h3>'+esc(item.patient_name)+'</h3>'+
+        '<p>'+esc(content.description)+'</p></div><div><span class="os-dental-label">Etapa atual</span>'+
+        '<p><strong>'+esc(prosthesisStatus[content.status])+'</strong></p></div></div>'+
+        '<div class="os-dental-row"><div><span class="os-dental-label">Laboratório</span><p>'+esc(content.laboratory)+'</p></div>'+
+        '<div><span class="os-dental-label">Prazo estimado</span><p>'+esc(formatDueDate(content.due_date))+'</p></div></div>'+
+        (steps.length?'<form class="os-dental-row" data-dental-form="prosthesis-step" data-id="'+id+'">'+
+          choices('Próxima ação','prosthesis_step_'+item.id,[['','Selecione uma ação'],...steps],pendingStep,'required')+
+          '<div class="os-dental-controls"><button type="submit" class="os-button">Atualizar etapa</button></div></form>':'')+
+        '<div class="os-dental-actions">'+button('Abrir prontuário','open-prosthesis-patient','os-ghost','data-id="'+id+'"')+'</div>'+
+        '</article>';
+    }).join('');
+    return '<section class="os-dental-card os-dental-space"><h2 class="os-dental-title">Próteses</h2>'+
+      choices('Etapa','prosthesis_filter',[['','Todas as etapas'],...prosthesisStatuses],board?.status||'')+
+      cards+(board?.loading?pending():'')+
+      (board?.error?info(board.error,true)+'<div class="os-dental-actions">'+button('Tentar novamente','prosthesis-more')+'</div>':'')+
+      (!cards&&!board?.loading&&!board?.error?'<p class="os-dental-empty">Nenhuma prótese encontrada.</p>':'')+
+      (!board?.loading&&board?.nextCursor&&!board?.error?
+        '<div class="os-dental-actions">'+button('Carregar mais','prosthesis-more')+'</div>':'')+'</section>';
   }
   function accessManager(){
     const canManage=state.access?.can_manage;
@@ -232,7 +272,7 @@
     else if(kind==='prosthesis')fields=field('Laboratório','laboratory','text','','required maxlength="120"')+
       field('Serviço ou peça','description','textarea','','required maxlength="3000"')+
       field('Prazo estimado','due_date','date')+
-      choices('Situação','status',[['requested','Solicitado'],['working','Em produção'],['delivered','Entregue'],['cancelled','Cancelado']]);
+      choices('Etapa inicial','status',prosthesisStatuses);
     else if(kind==='insurance')fields=field('Convênio / operadora','insurer','text','','required maxlength="120"')+
       field('Plano / contrato','plan','text','','maxlength="160"')+
       choices('Elegibilidade','eligibility',[['not_verified','Não verificada'],['verified_manually','Conferida manualmente'],['rejected','Negada']])+
@@ -255,6 +295,8 @@
       (s.bleeding===null||s.bleeding===undefined?'':s.bleeding?' · Sangramento':' · Sem sangramento')).join(' | ')+'</small></div>').join('')+'</div>';
     if(kind==='treatment'||kind==='budget')return '<p>'+esc(data.description||'')+'</p>'+
       '<div class="os-dental-space">'+(data.stages||data.items||[]).map(s=>'<div class="os-dental-entry">'+esc(s.description)+' · '+esc(s.tooth||'')+'</div>').join('')+'</div>';
+    if(kind==='prosthesis')return row('Etapa',prosthesisStatus[data.status])+row('Laboratório',data.laboratory)+
+      row('Serviço ou peça',data.description)+row('Prazo estimado',formatDueDate(data.due_date));
     const snapshot=kind==='anamnesis'?data.intake_template:null;
     return (snapshot?'<div class="os-dental-space"><h4>'+esc(snapshot.name)+'</h4>'+
       (snapshot.responses||[]).map(answer=>row(answer.prompt,answer.answer||'Sem resposta')).join('')+'</div>':'')+
@@ -295,6 +337,7 @@
       '<div class="os-dental-actions">'+
         button('Pacientes','section-patients',state.section==='patients'?'':'os-outline')+
         button('Consultórios','section-rooms',state.section==='rooms'?'':'os-outline')+
+        (state.access?.can_read_records?button('Próteses','section-prostheses',state.section==='prostheses'?'':'os-outline'):'')+
         button('Estoque','section-supplies',state.section==='supplies'?'':'os-outline')+
         button('Equipe clínica','section-access',state.section==='access'?'':'os-outline')+
       '</div></div>';
@@ -306,6 +349,7 @@
     else if(!allowed)html+=info('O acesso ao prontuário ainda não foi concedido a esta conta. Abra Equipe clínica se você for o proprietário.');
     else if(state.section==='rooms')html+=roomManager();
     else if(state.section==='supplies')html+=supplyManager();
+    else if(state.section==='prostheses'&&state.access?.can_read_records)html+=prosthesisManager();
     else if(state.section==='patients')html+=
        '<div class="os-dental-grid">'+patientList()+'<div class="os-dental-space">'+
        (state.creatingPatient||state.editingPatient?patientCreate():patientPanel())+'</div></div>';
@@ -319,7 +363,7 @@
     catch(error){if(valid(epoch)){state.error=error?.message||'Não foi possível salvar.';render();}}
     finally{state.submitting=false;}
   }
-  async function loadPatient(patient){
+  async function loadPatient(patient,tab='anamnesis'){
     const epoch=state.epoch,read=++state.patientRead;
     state.loading=true;state.error='';render();
     try{
@@ -333,7 +377,7 @@
       if(detail?.id!==patient)throw Error('Resposta não corresponde ao paciente selecionado.');
       state.patient=detail;state.records=records.items||[];state.exams=exams.items||[];
       state.intakeTemplates=templates.items||[];
-      state.tab='anamnesis';state.findings=[];state.periodontal=[];state.stages=[];
+      state.tab=tab;state.findings=[];state.periodontal=[];state.stages=[];
     }catch(e){if(valid(epoch)&&read===state.patientRead)state.error=e?.message||'Falha ao consultar paciente.';}
     finally{if(valid(epoch)&&read===state.patientRead){state.loading=false;render();}}
   }
@@ -388,6 +432,33 @@
   function selectSupplyHistory(supply,movement=''){
     state.supplyHistory={supply,movement,items:[],nextCursor:null,loading:false,error:''};
     return loadSupplyHistory(state.supplyHistory);
+  }
+  async function loadProstheses(board){
+    if(board.loading)return;
+    const epoch=state.epoch;
+    const current=()=>valid(epoch)&&state.prostheses===board;
+    board.loading=true;
+    board.error='';
+    render();
+    const query=new URLSearchParams();
+    if(board.status)query.set('status',board.status);
+    if(board.nextCursor)query.set('cursor',board.nextCursor);
+    try{
+      const params=query.toString();
+      const result=await api('/prostheses'+(params?'?'+params:''));
+      if(current()){
+        board.items.push(...result.items);
+        board.nextCursor=result.next_cursor;
+      }
+    }catch(error){
+      if(current())board.error=error?.message||'Não foi possível consultar as próteses.';
+    }finally{
+      if(current()){board.loading=false;render();}
+    }
+  }
+  function selectProstheses(status=''){
+    state.prostheses={status,items:[],nextCursor:null,loading:false,error:'',change:null};
+    return loadProstheses(state.prostheses);
   }
   function addFinding(){
     const form=state.host?.querySelector('[data-dental-form=record]');if(!form)return;
@@ -464,6 +535,10 @@
     if(act?.startsWith('section-')){
       const section=act.slice(8);state.section=section;state.error='';state.success='';
       state.supplyHistory=null;
+      state.prostheses=null;
+      if(section==='prostheses'&&state.access?.can_read_records){
+        await selectProstheses();return;
+      }
       render();
       if(section==='rooms'||section==='supplies')await loadManagers(section);
       return;
@@ -504,6 +579,17 @@
     if(act==='supply-history-more'&&state.supplyHistory){
       await loadSupplyHistory(state.supplyHistory);return;
     }
+    if(act==='prosthesis-more'&&state.prostheses){
+      await loadProstheses(state.prostheses);return;
+    }
+    if(act==='open-prosthesis-patient'&&state.prostheses){
+      const patient=state.prostheses.items.find(item=>item.id===btn.dataset.id)?.patient_id;
+      if(idRe.test(patient||'')){
+        state.section='patients';state.prostheses=null;state.creatingPatient=false;state.editingPatient=false;
+        await loadPatient(patient,'prosthesis');
+      }
+      return;
+    }
     if((act==='supply-in'||act==='supply-out')&&idRe.test(btn.dataset.id||'')){
       const value=prompt('Quantidade de '+(act==='supply-in'?'entrada':'saída')+' (inteiro positivo):');
       if(value===null)return;
@@ -518,6 +604,20 @@
     if(!form||!state.host?.contains(form))return;
     event.preventDefault();
     const kind=form.dataset.dentalForm,v=formValues(form),patient=state.patient;
+    if(kind==='prosthesis-step'&&state.prostheses){
+      const board=state.prostheses,id=form.dataset.id;
+      const item=board.items.find(item=>item.id===id);
+      const status=v['prosthesis_step_'+id];
+      if(!item?.actions?.includes(status)||state.submitting)return;
+      if(status==='cancelled'&&!confirm('Cancelar o acompanhamento desta prótese?'))return;
+      if(board.change?.id!==id||board.change.status!==status)
+        board.change={id,status,key:crypto.randomUUID()};
+      const epoch=state.epoch;
+      return invoke(async()=>{
+        await api('/prostheses/'+id+'/status','PATCH',{status,entry_key:board.change.key});
+        if(valid(epoch)&&state.prostheses===board)await selectProstheses(board.status);
+      },'Etapa da prótese atualizada.');
+    }
     if(kind==='search'){state.q=v.q||'';await refreshPatients();return;}
     if(kind==='patient')return invoke(async()=>{
       const payload={name:v.name,birth_date:v.birth_date||null,contact_phone:v.contact_phone||null,
@@ -593,6 +693,12 @@
   function onChange(event){
     const el=event.target;
     if(!state.host?.contains(el))return;
+    if(el.name==='prosthesis_filter'&&state.prostheses){
+      state.success='';
+      state.error='';
+      void selectProstheses(el.value);
+      return;
+    }
     if(el.name==='supply_history_movement'&&state.supplyHistory){
       const history=state.supplyHistory;
       void selectSupplyHistory(history.supply,el.value);
@@ -648,7 +754,7 @@
       host.removeEventListener('change',onChange);host.replaceChildren();}
     Object.assign(state,{host:null,request:null,tenantId:'',canAccess:null,access:null,team:[],
       professionals:[],patients:[],patient:null,records:[],exams:[],intakeTemplates:[],rooms:[],appointments:[],
-      roomDay:localToday(),roomZone:'',supplies:[],supplyHistory:null,q:'',
+      roomDay:localToday(),roomZone:'',supplies:[],supplyHistory:null,prostheses:null,q:'',
       selectedTooth:11,dentition:'permanent',tab:'anamnesis',section:'patients',findings:[],
       periodontal:[],stages:[],creatingPatient:false,editingPatient:false,
       error:'',success:'',loading:false,submitting:false,patientRead:0,searchRead:0});
