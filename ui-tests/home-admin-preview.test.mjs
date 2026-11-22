@@ -55,8 +55,8 @@ for(const role of ['member','support'])test(role+' cannot enable Home through UR
  assert.deepEqual(writes(h),[]);assert.deepEqual(h.errors,[]);
 });
 
-test('maintenance impersonation keeps the business Home',async t=>{
- const h=await setup({bridge:{user:{...admin,maintenance:{active:true}}}});t.after(()=>h.close());await flush();
+test('maintenance of a business outside the rollout uses its original Home',async t=>{
+ const h=await setup({bridge:{user:{role:'member',name:'Conta sintética',maintenance:{active:true}}}});t.after(()=>h.close());await flush();
  assert.equal(h.document.querySelector('.os-home-preview'),null);assert.ok(h.document.querySelector('.os-dashboard-today'));
 });
 
@@ -216,6 +216,23 @@ const barberPlan=(code='elite',overrides={})=>planState(code,{business_niche:nul
 const barberMember={role:'member',name:'Responsável pela Barbearia',email:'responsavel@example.invalid'};
 const barberSetup=opts=>liveSetup({bridge:{user:barberMember},permissions:barberPlan(),...opts});
 const homeGoal=()=>({items:[{id:'goal-synthetic',scope:'company',professional_id:null,active:true,metric:'revenue_cents',start_date:today(),end_date:today(),target_value:100000,actual_value:43000}]});
+
+test('barbershop maintenance in App mode uses the new Home and the customer plan',async t=>{
+ const h=await barberSetup({
+  bridge:{user:{...barberMember,maintenance:{active:true,company:'Barbearia sintética'}}},
+  permissions:barberPlan('essencial'),
+  configureWindow:w=>w.localStorage.setItem('orion-navigation-v1:'+tenantA+':'+barberMember.email,'app')
+ });t.after(()=>h.close());await flush();
+ const home=h.document.querySelector('.os-home-preview');assert.ok(home,'maintenance of a confirmed barbershop gets the same Home');
+ assert.ok(h.document.querySelector('#appView').classList.contains('os-layout-app'));
+ assert.doesNotMatch(home.textContent,/Prévia do administrador/);
+ assert.match(home.querySelector('#osHomeRevenue').textContent,/430,00/);
+ assert.equal(home.querySelector('#osHomeGoals').hidden,true);
+ assert.equal(h.calls.some(c=>c.path.includes('/goals?')),false);
+ assert.equal(h.calls.some(c=>c.path.endsWith('/management/permissions')),true);
+ assert.equal(h.document.querySelector('#osNav [data-os-route=conversas]'),null);
+ assert.deepEqual(writes(h),[]);assert.deepEqual(h.errors,[]);
+});
 
 for(const code of ['essencial','profissional','elite'])test(`barbershop ${code} receives the approved Home with its plan's data`,async t=>{
  const h=await barberSetup({permissions:barberPlan(code),respond:path=>path.includes('/goals?')?homeGoal():respond(path)});t.after(()=>h.close());await flush();

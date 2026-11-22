@@ -108,7 +108,7 @@
   const dentalWorkspace=()=>!platformWorkspace()&&!subscriptionWorkspace()&&state.entitlements?.business_niche==='odontologia';
   function barbershopHomeEligible(){
     const plan=state.entitlements;
-    if(!plan||plan.workspace_profile!=='standard'||subscriptionWorkspace()||state.bridge.user?.maintenance?.active)return false;
+    if(!plan||plan.workspace_profile!=='standard'||subscriptionWorkspace())return false;
     // The current entitlement advertises App layout for barbershops and subscriptions only.
     return plan.business_niche==null?plan.layout_modes?.includes('app')===true:plan.business_niche==='barbearia';
   }
