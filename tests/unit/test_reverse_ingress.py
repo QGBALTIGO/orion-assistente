@@ -351,18 +351,30 @@ def test_direct_module_invocation_reexecs_before_processing_configuration(monkey
     assert "MIGRATION_DATABASE_URL" in source
 
 
-def test_clean_supervisor_checks_both_schemas_once_before_api_or_ssh_children(environment, monkeypatch):
+@pytest.mark.parametrize("dental_enabled,first_barrier", [
+    (False, "scripts.wait_for_fixed_client_monthly_schema"),
+    (True, "scripts.wait_for_dental_schema"),
+])
+def test_clean_supervisor_checks_each_schema_before_api_or_ssh_children(
+    environment, monkeypatch, dental_enabled, first_barrier
+):
+    environment["ORION_DENTAL_0076_RELEASE_ENABLED"] = "1" if dental_enabled else "0"
     monkeypatch.setattr(ingress.os, "environ", environment)
     events = []
-    barriers = ["scripts.wait_for_fixed_client_monthly_schema", "scripts.wait_for_commercial_demos_schema"]
+    barriers = [
+        (first_barrier, 95),
+        ("scripts.wait_for_exceptional_overlap_schema", 30),
+        ("scripts.wait_for_commercial_demos_schema", 95),
+    ]
 
     def probe(command, **kwargs):
-        assert command == [ingress.sys.executable, "-m", barriers[len(events)]]
-        assert kwargs["check"] is True and kwargs["timeout"] == 95
+        module, timeout = barriers[len(events)]
+        assert command == [ingress.sys.executable, "-m", module]
+        assert kwargs["check"] is True and kwargs["timeout"] == timeout
         assert not set(kwargs["env"]) & (start_api.ONE_TIME_KEYS | start_api.SSH_KEYS)
         assert kwargs["env"]["APP_DATABASE_URL"] == "synthetic-runtime"
         assert kwargs["env"]["WEB_CONCURRENCY"] == "3"
-        events.append(command[2])
+        events.append((command[2], kwargs["timeout"]))
 
     def supervise(source):
         assert source == environment and not set(source) & start_api.ONE_TIME_KEYS

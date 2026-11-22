@@ -6,6 +6,7 @@ from pathlib import Path
 
 from alembic.config import Config
 from alembic.script import ScriptDirectory
+from reviewed_schema import assert_reviewed_schema_head
 import pytest
 
 from scripts import backup_and_migrate_cakto_recovery as release
@@ -52,7 +53,7 @@ def test_reviewed_successors_keep_the_additive_chain_after_published_0072():
     cfg.set_main_option("path_separator", "os")
     cfg.set_main_option("script_location", str(ROOT / "alembic"))
     graph = ScriptDirectory.from_config(cfg)
-    assert graph.get_heads() == ["0079_service_archive"]
+    assert_reviewed_schema_head(graph)
     assert graph.get_revision("0077_commercial_demos").down_revision == "0076_dental_clinic"
     assert graph.get_revision("0076_dental_clinic").down_revision == "0075_fixed_client_monthly"
     assert graph.get_revision("0075_fixed_client_monthly").down_revision == "0074_fixed_client_series"

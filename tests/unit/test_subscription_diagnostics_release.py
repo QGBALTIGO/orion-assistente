@@ -3,6 +3,7 @@ from pathlib import Path
 
 from alembic.config import Config
 from alembic.script import ScriptDirectory
+from reviewed_schema import assert_reviewed_schema_head
 import pytest
 
 from scripts import backup_and_migrate_subscription_diagnostics as release
@@ -50,7 +51,7 @@ def test_diagnostics_extends_published_agenda_as_the_only_migration_head():
     config.set_main_option("path_separator", "os")
     config.set_main_option("script_location", str(root / "alembic"))
     scripts = ScriptDirectory.from_config(config)
-    assert scripts.get_heads() == ["0079_service_archive"]
+    assert_reviewed_schema_head(scripts)
     assert scripts.get_revision("0077_commercial_demos").down_revision == "0076_dental_clinic"
     assert scripts.get_revision("0076_dental_clinic").down_revision == "0075_fixed_client_monthly"
     assert scripts.get_revision("0075_fixed_client_monthly").down_revision == "0074_fixed_client_series"

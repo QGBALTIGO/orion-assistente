@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 from alembic.config import Config
 from alembic.script import ScriptDirectory
+from reviewed_schema import assert_reviewed_schema_head
 import pytest
 
 from scripts import backup_and_migrate_subscription_group_add as release
@@ -46,7 +47,7 @@ def test_group_add_is_a_single_additive_head_after_published_direct_messages():
     config.set_main_option("path_separator", "os")
     config.set_main_option("script_location", str(ROOT / "alembic"))
     migrations = ScriptDirectory.from_config(config)
-    assert migrations.get_heads() == ["0079_service_archive"]
+    assert_reviewed_schema_head(migrations)
     assert migrations.get_revision("0077_commercial_demos").down_revision == "0076_dental_clinic"
     assert migrations.get_revision("0076_dental_clinic").down_revision == "0075_fixed_client_monthly"
     assert migrations.get_revision("0075_fixed_client_monthly").down_revision == "0074_fixed_client_series"
@@ -304,20 +305,25 @@ async def test_readiness_wait_is_bounded_and_does_not_turn_missing_schema_into_s
         assert elapsed[0] == 1
 
 
-@pytest.mark.parametrize("failed_barrier", [0, 1, None])
-def test_api_cannot_serve_before_both_readonly_schema_barriers(monkeypatch, failed_barrier):
+@pytest.mark.parametrize("failed_barrier", [0, 1, 2, None])
+def test_api_cannot_serve_before_all_readonly_schema_barriers(monkeypatch, failed_barrier):
     from scripts import start_api
 
     events = []
-    barriers = ["scripts.wait_for_fixed_client_monthly_schema", "scripts.wait_for_commercial_demos_schema"]
+    barriers = [
+        ("scripts.wait_for_fixed_client_monthly_schema", 95),
+        ("scripts.wait_for_exceptional_overlap_schema", 30),
+        ("scripts.wait_for_commercial_demos_schema", 95),
+    ]
     monkeypatch.setattr(start_api.os, "environ", {"PORT": "8080", "APP_DATABASE_URL": "synthetic-runtime"})
 
     def wait(command, **kwargs):
         index = len(events)
-        assert command == [start_api.sys.executable, "-m", barriers[index]]
-        assert kwargs["check"] is True and kwargs["timeout"] == 95
+        module, timeout = barriers[index]
+        assert command == [start_api.sys.executable, "-m", module]
+        assert kwargs["check"] is True and kwargs["timeout"] == timeout
         assert "MIGRATION_DATABASE_URL" not in kwargs["env"]
-        events.append(command[2])
+        events.append((command[2], kwargs["timeout"]))
         if index == failed_barrier:
             raise start_api.subprocess.CalledProcessError(1, command)
 
@@ -343,7 +349,7 @@ async def test_worker_startup_does_not_consume_jobs_before_0072_is_ready(monkeyp
     from app import worker
     from scripts.wait_for_agenda_schema import Settings
 
-    order = ["plan_permissions", "appointment_consent", "subscription_devices", "subscription_chatbot",
+    order = ["exceptional_overlap", "plan_permissions", "appointment_consent", "subscription_devices", "subscription_chatbot",
         "subscription_templates", "subscription_sent_messages", "appointment_operations", "subscription_diagnostics",
         "subscription_campaigns", "subscription_scheduled_messages", "subscription_bulk", "subscription_direct",
         "subscription_group_add", "cakto_recovery", "fixed_client"]
