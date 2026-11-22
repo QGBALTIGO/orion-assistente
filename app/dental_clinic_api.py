@@ -274,6 +274,7 @@ async def dental_access(tenant_id: UUID,actor:Actor=Depends(authenticate)):
                     """),{"tenant":tenant_id})).mappings().all()]
                 return {"can_manage":role=="owner","account_id":actor.account_id,
                         "clinical_access":dict(row) if row else None,"grants":grants,
+                        "can_manage_inventory":role=="owner" or row is not None,
                         "can_read_records":bool(row and row["level"] == "dentist"),
                         "data_encryption_configured":bool(os.environ.get("DENTAL_DATA_KEY_B64")),
                         "electronic_signatures_homologated":False}
@@ -1002,6 +1003,17 @@ async def appointment_room(tenant_id:UUID,appointment_id:UUID,actor:Actor=Depend
         return {"reservation":dict(row) if row else None}
 
 
+@asynccontextmanager
+async def inventory_session(tenant: UUID, actor: Actor, *, write=False):
+    # The owner can administer stock without a clinical grant. This scope is exclusive to inventory.
+    if actor.membership_role == "owner":
+        async with owner_session(tenant, actor) as db:
+            yield db
+    else:
+        async with clinical_session(tenant, actor, write=write) as (db, _):
+            yield db
+
+
 @router.get("/supplies")
 async def dental_supplies(
     tenant_id: UUID, actor: Actor = Depends(authenticate),
@@ -1009,7 +1021,7 @@ async def dental_supplies(
     order: Literal["asc", "desc"] = "asc",
     cursor: UUID | None = None, limit: int = Query(default=200, ge=1, le=200),
 ):
-    async with clinical_session(tenant_id, actor) as (db, _):
+    async with inventory_session(tenant_id, actor) as db:
         params = {"tenant": tenant_id, "query": q.strip(), "take": limit + 1}
         scope = "tenant_id=:tenant AND strpos(lower(name),lower(CAST(:query AS text)))>0"
         after = ""
@@ -1033,7 +1045,7 @@ async def dental_supplies(
 
 @router.post("/supplies",status_code=201)
 async def add_supply(tenant_id:UUID,payload:SupplyCreate,actor:Actor=Depends(authenticate)):
-    async with clinical_session(tenant_id,actor,write=True) as (db,grant):
+    async with inventory_session(tenant_id, actor, write=True) as db:
         identity=uuid4()
         try:
             async with db.begin_nested():
@@ -1053,7 +1065,7 @@ async def supply_history(
     movement: Literal["in", "out"] | None = None, cursor: UUID | None = None,
     limit: int = Query(30, ge=1, le=100),
 ):
-    async with clinical_session(tenant_id, actor) as (db, _):
+    async with inventory_session(tenant_id, actor) as db:
         scope = {"tenant": tenant_id, "supply": supply_id}
         exists = await db.scalar(text("""
             SELECT id FROM dental_supplies WHERE tenant_id=:tenant AND id=:supply
@@ -1087,7 +1099,7 @@ async def supply_history(
 @router.post("/supplies/{supply_id}/movements")
 async def move_supply(tenant_id:UUID,supply_id:UUID,payload:SupplyMove,
                       actor:Actor=Depends(authenticate)):
-    async with clinical_session(tenant_id,actor,write=True) as (db,grant):
+    async with inventory_session(tenant_id, actor, write=True) as db:
         current=(await db.execute(text("""
             SELECT id,quantity,unit,version FROM dental_supplies
             WHERE tenant_id=:tenant AND id=:id FOR UPDATE
