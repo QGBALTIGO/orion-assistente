@@ -101,7 +101,7 @@ async def clinic_db():
                "room_a2":room_a2,"when":when}
     finally:
         async with migrator.begin() as db:
-            for tbl in ("dental_access_audit","dental_laboratories","dental_intake_templates","dental_room_reservations",
+            for tbl in ("dental_visit_patient_events","dental_access_audit","dental_laboratories","dental_intake_templates","dental_room_reservations",
                         "dental_exam_files","dental_records","dental_supply_movements",
                         "dental_supplies","dental_patients","dental_rooms",
                         "dental_clinicians","appointment_history","appointment_items",
@@ -1045,3 +1045,77 @@ async def test_reception_rechecks_membership_and_niche_without_a_clinical_grant(
             await db.execute(text("UPDATE business_onboarding SET configuration=CAST(:data AS jsonb) WHERE tenant_id=:tenant"),
                              {"tenant":d["a"],"data":'{"niche":"barbearia"}'})
         assert (await client.get(path(d["a"]))).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_explicit_visit_identity_is_audited_and_independent_of_booking_contact(clinic_api_db):
+    import asyncio
+    from zoneinfo import ZoneInfo
+
+    import httpx
+    from fastapi import FastAPI
+    from app.catalog_api import Actor, authenticate
+    from app.dental_clinic_api import router
+
+    d = clinic_api_db
+    web = FastAPI()
+    web.include_router(router)
+    web.dependency_overrides[authenticate] = lambda: Actor("member", d["a"], d["assistant"], "editor")
+    base = f"/api/v1/tenants/{d['a']}/dental"
+    appointment = str(d["appt_a"])
+    endpoint = base + "/appointments/" + appointment + "/patient"
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=web), base_url="https://test.invalid") as client:
+        # Family members use one booking contact; there is no inferred relationship.
+        siblings = []
+        for name in ("Paciente sintético Alfa", "Paciente sintético Beta"):
+            saved = await client.post(base + "/patients", json={"name": name, "guardian_phone": "67999999999"})
+            assert saved.status_code == 201
+            siblings.append(saved.json()["id"])
+        day = d["when"].astimezone(ZoneInfo("America/Campo_Grande")).date().isoformat()
+        options = await client.get(base + "/visit-options", params={"day": day, "limit": 1})
+        assert options.status_code == 200, options.text
+        assert options.json()["has_more"] and options.json()["items"][0]["version"] == 0
+        page2 = await client.get(base + "/visit-options", params={"day": day, "limit": 1, "offset": 1})
+        assert options.json()["items"][0]["id"] != page2.json()["items"][0]["id"]
+        assert all(x["patient_id"] is None for x in [*options.json()["items"], *page2.json()["items"]])
+        assert (await client.get(base + "/visit-options", params={"day": "9999-12-31"})).status_code == 422
+
+        def history(patient):
+            return base + "/patients/" + patient + "/visits"
+
+        assert (await client.get(history(siblings[0]))).json()["items"] == []
+        # Two different choices from the same stale page cannot both commit.
+        responses = await asyncio.gather(*(client.put(endpoint, json={"patient_id": who, "expected_version": 0})
+                                           for who in siblings))
+        assert sorted(r.status_code for r in responses) == [200, 409]
+        winner = next(r.json()["patient_id"] for r in responses if r.status_code == 200)
+        other = next(who for who in siblings if who != winner)
+        replay = await client.put(endpoint, json={"patient_id": winner, "expected_version": 0})
+        assert replay.json()["version"] == 1
+        assert [x["id"] for x in (await client.get(history(winner))).json()["items"]] == [appointment]
+        assert (await client.get(history(other))).json()["items"] == []
+        foreign = await client.put(endpoint, json={"patient_id": str(d["patient_b"]), "expected_version": 1})
+        assert foreign.status_code == 404
+        moved = await client.put(endpoint, json={"patient_id": other, "expected_version": 1})
+        assert moved.json()["version"] == 2
+        assert (await client.get(history(winner))).json()["items"] == []
+        assert [x["id"] for x in (await client.get(history(other))).json()["items"]] == [appointment]
+        assert (await client.put(endpoint, json={"patient_id": None, "expected_version": 2})).json()["version"] == 3
+        assert (await client.get(history(other))).json()["items"] == []
+        assert (await client.get(base + "/patients/" + other + "/records")).status_code == 403
+        web.dependency_overrides[authenticate] = lambda: Actor("member", d["b"], d["account_b"], "owner")
+        assert (await client.get(history(other))).status_code == 403
+        other_base = f"/api/v1/tenants/{d['b']}/dental"
+        assert (await client.get(other_base + "/patients/" + other + "/visits")).status_code == 404
+        assert (await client.put(other_base + "/appointments/" + appointment + "/patient",
+                                 json={"patient_id": str(d["patient_b"]), "expected_version": 0})).status_code == 404
+
+    async with d["migrator"].connect() as db:
+        events = (await db.execute(text("""SELECT patient_id,version,actor_account_id FROM dental_visit_patient_events
+            WHERE tenant_id=:t AND appointment_id=:visit ORDER BY version"""),
+            {"t": d["a"], "visit": d["appt_a"]})).mappings().all()
+        assert [(str(e["patient_id"]) if e["patient_id"] else None, e["version"]) for e in events] == [
+            (winner, 1), (other, 2), (None, 3)]
+        assert all(e["actor_account_id"] == d["assistant"] for e in events)
+        assert not await db.scalar(text("""SELECT has_table_privilege('app_runtime',
+            'dental_visit_patient_events','UPDATE,DELETE,TRUNCATE')"""))

@@ -118,7 +118,7 @@ def test_dental_workflow_rollout_only_migrates_after_its_backup(monkeypatch, cas
     monkeypatch.setattr(workflows, "connection_values", lambda: (raw, make_url(raw)))
     monkeypatch.setattr(workflows, "release_lock", unlocked)
     monkeypatch.setattr(workflows, "verify_key_provisioning", lambda _: None)
-    monkeypatch.setattr(workflows, "predecessor_contract", lambda _: True)
+    monkeypatch.setattr(workflows, "source_ready", lambda raw, revision: True)
     monkeypatch.setattr(workflows, "storage_values", lambda: {})
     steps = []
     revisions = [workflows.TARGET] if case == "already_published" else [
@@ -128,7 +128,7 @@ def test_dental_workflow_rollout_only_migrates_after_its_backup(monkeypatch, cas
     monkeypatch.setattr(workflows, "migrated_version", lambda _: next(current))
 
     def backup(url, settings, archive, **details):
-        assert details == {"backup_context": "dental-workflows-0086",
+        assert details == {"backup_context": "dental-patient-visits-0087",
                            "schema_revision": workflows.PREVIOUS, "preserve_ownership": True}
         steps.append("backup")
         if case == "backup_failed":

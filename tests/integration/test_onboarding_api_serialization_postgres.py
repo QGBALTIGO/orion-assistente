@@ -15,14 +15,14 @@ from sqlalchemy import text
 
 from app import onboarding_api as api, onboarding_service as service
 from app.panel_auth import COOKIE, _hash_cookie
-from test_onboarding_postgres import onboarding_db  # noqa: F401
+from test_onboarding_postgres import new_business_context, onboarding_db  # noqa: F401
 
 pytestmark = pytest.mark.integration
 
 
 @pytest_asyncio.fixture
-async def authenticated_http(onboarding_db, monkeypatch):
-    ctx = onboarding_db
+async def authenticated_http(onboarding_db, monkeypatch, request):
+    ctx = new_business_context(onboarding_db) if getattr(request, "param", None) == "new_business" else onboarding_db
     url = os.getenv("REDIS_URL")
     if not url:
         if os.getenv("REQUIRE_REDIS_TESTS") == "1": pytest.fail("Real disposable Redis required")
@@ -63,10 +63,11 @@ async def assert_current(ctx, client, tenant):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("authenticated_http", ["new_business"], indirect=True)
 async def test_actual_http_create_all_steps_replay_and_complete_keep_state_and_database(authenticated_http):
     ctx, client, _csrf = authenticated_http
     payload = {"name": "Empresa JSON sintética", "timezone": "America/Cuiaba", "niche": "barbearia",
-        "activity": "both", "idempotency_key": str(uuid4())}
+        "activity": "both", "contact_phone": "+5567999900000", "idempotency_key": str(uuid4())}
     created = await client.post("/api/v1/onboarding/businesses", json=payload)
     assert created.status_code == 201
     tenant = UUID(created.json()["tenant_id"]); base = f"/api/v1/tenants/{tenant}/onboarding"
@@ -75,11 +76,15 @@ async def test_actual_http_create_all_steps_replay_and_complete_keep_state_and_d
     same_response(await client.post("/api/v1/onboarding/businesses", json=payload), state, 201)
     same_response(await client.get("/api/v1/onboarding/entry"), await service.entry(ctx.actor))
 
+    from plan_fixtures import seed_fixture_plan
+    async with ctx.migration.begin() as db:
+        ctx.plan_admins.append(await seed_fixture_plan(db,(tenant,),"essencial"))
+
     async def save(step, data):
         nonlocal state
         body = {"expected_version": state["version"], "idempotency_key": str(uuid4()), "data": data}
         response = await client.put(base + "/steps/" + step, json=body)
-        assert response.status_code == 200
+        assert response.status_code == 200, response.text
         current = await service.get_state(ctx.actor, tenant)
         async with ctx.migration.connect() as db:
             result = (await db.execute(text("SELECT result FROM business_onboarding_operations WHERE tenant_id=:t AND idempotency_key=:k"),
@@ -96,9 +101,13 @@ async def test_actual_http_create_all_steps_replay_and_complete_keep_state_and_d
         state = current
         return result
 
-    await save("business", {"name": "Empresa JSON revisada", "timezone": "America/Cuiaba", "niche": "barbearia", "activity": "both"})
+    await save("business", {"contact_phone": "+5567999900000", "name": "Empresa JSON revisada", "timezone": "America/Cuiaba", "niche": "barbearia", "activity": "both"})
     await save("location", {"modality": "online"})
-    professional = (await save("professionals", {"item": {"name": "Pessoa sintética", "commission_percent": "12.50"}, "self_provider": True}))["id"]
+    commission = await client.put(base + "/steps/professionals", json={
+        "expected_version": state["version"], "idempotency_key": str(uuid4()),
+        "data": {"item": {"name": "Pessoa sintética", "commission_percent": "12.50"}}})
+    assert commission.status_code == 409 and commission.json()["detail"]["code"] == "TENANT_INACTIVE"
+    professional = (await save("professionals", {"item": {"name": "Pessoa sintética", "commission_percent": "0.00"}, "self_provider": True}))["id"]
     item = await save("catalog", {"kind": "service", "item": {"name": "Serviço sintético", "price_cents": 3500,
         "duration_min": 40, "prep_min": 5, "cleanup_min": 10}, "professional_ids": [professional]})
     product = await save("catalog", {"kind": "product", "item": {"name": "Produto sintético"},
@@ -108,7 +117,7 @@ async def test_actual_http_create_all_steps_replay_and_complete_keep_state_and_d
     await save("channels", {"assistant_name": "Assistente sintética", "style_rules": {},
         "capabilities": ["catalog_answers"], "expected_profile_generation": state["channels"]["assistant"]["generation"]})
     await save("review", {"acknowledged": True})
-    assert state["catalog"]["professionals"][0]["commission_percent"] == 12.5
+    assert state["catalog"]["professionals"][0]["commission_percent"] == 0
     assert state["catalog"]["hours"][0]["start_time"] == "09:00:00"
     assert state["catalog"]["products"][0]["variants"][0]["unit_price_cents"] is None
     assert not state["pending"]

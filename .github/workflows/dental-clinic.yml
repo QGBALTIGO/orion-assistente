@@ -8,6 +8,7 @@ on:
       - 'alembic/versions/0084_dental_supply_history.py'
       - 'alembic/versions/0085_dental_prosthesis_tracking.py'
       - 'alembic/versions/0086_dental_laboratories.py'
+      - 'alembic/versions/0087_dental_patient_visits.py'
       - 'app/dental_clinic_*.py'
       - 'app/main.py'
       - 'app/professional_portal.py'
@@ -30,6 +31,7 @@ on:
       - 'ui-tests/dental-clinic.test.mjs'
       - 'ui-tests/dental-workspace.test.mjs'
       - 'ui-tests/dental-reception-browser.py'
+      - 'ui-tests/dental-visit-links-browser.py'
       - 'ui-tests/dashboard-today-preview.test.mjs'
       - 'ui-tests/professional-portal.test.mjs'
       - 'deploy/Dockerfile.dental-workflows'
@@ -111,6 +113,7 @@ jobs:
         run: |
           python -m pip install --disable-pip-version-check 'playwright==1.62.0'
           python ui-tests/dental-reception-browser.py
+          python ui-tests/dental-visit-links-browser.py
       - uses: actions/upload-artifact@v4
         with:
           name: odontologia-recepcao-visual
@@ -144,8 +147,8 @@ jobs:
           test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
           tag="$IMAGE:dental-$RELEASE_SHA"
           docker build --pull --platform linux/amd64 -f deploy/Dockerfile.dental-workflows --build-arg ORION_DENTAL_COMMIT="$RELEASE_SHA" -t "$tag" .
-          docker run --rm --entrypoint python "$tag" -c 'from app.dental_clinic_api import router; from scripts.backup_and_migrate_dental_workflows import TARGET; assert len(router.routes) > 20 and TARGET == "0086_dental_laboratories"'
-          docker run --rm --entrypoint python "$tag" -c 'from alembic.config import Config; from alembic.script import ScriptDirectory; assert ScriptDirectory.from_config(Config("alembic.ini")).get_current_head() == "0086_dental_laboratories"'
+          docker run --rm --entrypoint python "$tag" -c 'from app.dental_clinic_api import router; from scripts.backup_and_migrate_dental_workflows import TARGET; assert len(router.routes) > 20 and TARGET == "0087_dental_patient_visits"'
+          docker run --rm --entrypoint python "$tag" -c 'from alembic.config import Config; from alembic.script import ScriptDirectory; assert ScriptDirectory.from_config(Config("alembic.ini")).get_current_head() == "0087_dental_patient_visits"'
           docker push "$tag"
           docker image inspect "$tag" --format '{{index .RepoDigests 0}}' > dental-release-image.txt
           printf '%s\n' "$RELEASE_SHA" >> dental-release-image.txt

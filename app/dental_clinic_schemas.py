@@ -54,6 +54,11 @@ class PatientCreate(Strict):
         return value
 
 
+class VisitPatientLink(Strict):
+    patient_id: UUID | None
+    expected_version: int = Field(ge=0, le=2147483646, strict=True)
+
+
 class PatientPatch(PatientCreate):
     expected_version: int = Field(ge=1)
 

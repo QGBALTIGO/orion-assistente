@@ -29,7 +29,7 @@ from app.database import get_session_factory, tenant_transaction
 from app.plan_permissions import plan_state
 from app.tenant_access import resolve_tenant_access
 from app.dental_clinic_schemas import (
-    ClinicianGrant, PatientCreate, PatientPatch, RecordCreate,
+    ClinicianGrant, PatientCreate, PatientPatch, VisitPatientLink, RecordCreate,
     IntakeTemplateCreate, IntakeTemplateUpdate, LaboratoryCreate, LaboratoryUpdate,
     ProsthesisStatus, ProsthesisTransition,
     RoomCreate, RoomRename, RoomAssign, ChairAvailability, SupplyCreate, SupplyMove, ExamUpload
@@ -826,6 +826,115 @@ async def update_intake_template(
             raise HTTPException(409, "Já existe um modelo com esse nome") from None
         await audit(db, tenant_id, actor, "intake_template_updated")
         return dict(updated)
+
+
+# The booking contact belongs to the shared scheduler. A patient belongs to the
+# clinic and is linked only by an explicit, versioned choice from its directory.
+CURRENT_VISIT_PATIENT = """
+    LEFT JOIN LATERAL (
+        SELECT e.patient_id, e.version FROM dental_visit_patient_events e
+        WHERE e.tenant_id=a.tenant_id AND e.appointment_id=a.id
+        ORDER BY e.version DESC LIMIT 1
+    ) link ON true
+"""
+VISIT_PROFESSIONAL = " AND (CAST(:professional AS uuid) IS NULL OR a.professional_id=:professional)"
+
+
+def visit_professional(actor, grant):
+    return grant["professional_id"] if actor.membership_role == "professional" else None
+
+
+@router.get("/visit-options")
+async def visit_options(tenant_id: UUID, day: date | None = None,
+                       limit: int = Query(30, ge=1, le=100),
+                       offset: int = Query(0, ge=0), actor: Actor = Depends(authenticate)):
+    async with clinical_session(tenant_id, actor) as (db, grant):
+        zone_name = await db.scalar(text("SELECT timezone FROM tenants WHERE id=:tenant"), {"tenant": tenant_id})
+        zone = ZoneInfo(zone_name)
+        local_day = day or datetime.now(zone).date()
+        if local_day.year < 1900 or local_day.year > 9998:
+            raise HTTPException(422, "Data fora do período da agenda")
+        start = datetime.combine(local_day, time.min, zone)
+        end = datetime.combine(local_day + timedelta(days=1), time.min, zone)
+        params = {"tenant": tenant_id, "lower": start, "upper": end, "limit": limit + 1,
+                  "offset": offset, "professional": visit_professional(actor, grant)}
+        visits = (await db.execute(text("""
+            SELECT a.id, a.protocol, a.start_at, a.status, staff.name AS professional,
+                   contact.name AS booking_contact, link.patient_id, p.name AS patient_name,
+                   COALESCE(link.version,0) AS version
+            FROM appointments a
+            JOIN professionals staff ON staff.tenant_id=a.tenant_id AND staff.id=a.professional_id
+            JOIN customers contact ON contact.tenant_id=a.tenant_id AND contact.id=a.customer_id
+        """ + CURRENT_VISIT_PATIENT + """
+            LEFT JOIN dental_patients p ON p.tenant_id=a.tenant_id AND p.id=link.patient_id
+            WHERE a.tenant_id=:tenant AND a.start_at>=:lower AND a.start_at<:upper
+              AND a.status IN ('confirmed','completed','cancelled','no_show')
+        """ + VISIT_PROFESSIONAL + " ORDER BY a.start_at,a.id LIMIT :limit OFFSET :offset"),
+            params)).mappings().all()
+        await audit(db, tenant_id, actor, "visit_identity_directory_read")
+        return {"day": local_day, "timezone": zone_name, "items": [dict(r) for r in visits[:limit]],
+                "has_more": len(visits) > limit}
+
+
+@router.get("/patients/{patient_id}/visits")
+async def patient_visits(tenant_id: UUID, patient_id: UUID,
+                        limit: int = Query(30, ge=1, le=100),
+                        offset: int = Query(0, ge=0), actor: Actor = Depends(authenticate)):
+    async with clinical_session(tenant_id, actor) as (db, grant):
+        await patient_row(db, tenant_id, patient_id)
+        params = {"tenant": tenant_id, "patient": patient_id, "limit": limit + 1,
+                  "offset": offset, "professional": visit_professional(actor, grant)}
+        visits = (await db.execute(text("""
+            SELECT a.id, a.protocol, a.start_at, a.status, staff.name AS professional,
+                   e.version, t.timezone
+            FROM dental_visit_patient_events e
+            JOIN appointments a ON a.tenant_id=e.tenant_id AND a.id=e.appointment_id
+            JOIN tenants t ON t.id=e.tenant_id
+            JOIN professionals staff ON staff.tenant_id=a.tenant_id AND staff.id=a.professional_id
+            WHERE e.tenant_id=:tenant AND e.patient_id=:patient
+              AND NOT EXISTS (SELECT 1 FROM dental_visit_patient_events n
+                  WHERE n.tenant_id=e.tenant_id AND n.appointment_id=e.appointment_id AND n.version>e.version)
+        """ + VISIT_PROFESSIONAL + " ORDER BY a.start_at DESC,a.id LIMIT :limit OFFSET :offset"),
+            params)).mappings().all()
+        await audit(db, tenant_id, actor, "patient_visits_read", patient_id)
+        return {"items": [dict(r) for r in visits[:limit]], "has_more": len(visits) > limit}
+
+
+@router.put("/appointments/{appointment_id}/patient")
+async def link_visit_patient(tenant_id: UUID, appointment_id: UUID, payload: VisitPatientLink,
+                             actor: Actor = Depends(authenticate)):
+    async with clinical_session(tenant_id, actor, write=True) as (db, grant):
+        params = {"tenant": tenant_id, "appointment": appointment_id, "actor": actor.account_id,
+                  "patient": payload.patient_id, "professional": visit_professional(actor, grant)}
+        # Lock the shared visit, including the initial assignment which has no prior event to lock.
+        visit = await db.scalar(text("""
+            SELECT a.id FROM appointments a WHERE a.tenant_id=:tenant AND a.id=:appointment
+              AND a.status IN ('confirmed','completed','cancelled','no_show')
+        """ + VISIT_PROFESSIONAL + " FOR UPDATE"), params)
+        if visit is None:
+            raise HTTPException(404, "Consulta indisponível nesta agenda")
+        if payload.patient_id is not None:
+            await patient_row(db, tenant_id, payload.patient_id)
+        previous = (await db.execute(text("""
+            SELECT patient_id,version,actor_account_id FROM dental_visit_patient_events
+            WHERE tenant_id=:tenant AND appointment_id=:appointment ORDER BY version DESC LIMIT 1
+        """), params)).mappings().one_or_none()
+        version = previous["version"] if previous else 0
+        current_patient = previous["patient_id"] if previous else None
+        if payload.expected_version != version:
+            replay = (previous and version == payload.expected_version + 1 and
+                      current_patient == payload.patient_id and previous["actor_account_id"] == actor.account_id)
+            if not replay:
+                raise HTTPException(409, "O vínculo mudou. Consulte a agenda novamente.")
+        elif current_patient != payload.patient_id:
+            version += 1
+            await db.execute(text("""
+                INSERT INTO dental_visit_patient_events (tenant_id,appointment_id,patient_id,version,actor_account_id)
+                VALUES (:tenant,:appointment,:patient,:version,:actor)
+            """), {**params, "version": version})
+            await audit(db, tenant_id, actor, "visit_identity_linked" if payload.patient_id else "visit_identity_removed",
+                        payload.patient_id or current_patient)
+        return {"appointment_id": appointment_id, "patient_id": payload.patient_id, "version": version}
 
 
 @router.get("/appointments")
