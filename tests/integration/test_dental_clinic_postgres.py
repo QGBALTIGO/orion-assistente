@@ -1135,10 +1135,18 @@ async def test_reception_rechecks_membership_and_niche_without_a_clinical_grant(
         assert "no-store" in result.headers["Cache-Control"]
         assert result.json()["upcoming"] == []
         assert (await client.get(path(d["b"]))).status_code == 403
+        chairs = path(d["a"]).removesuffix("today") + "chair-occupancy"
+        assert (await client.get(chairs)).status_code == 404
+        monkeypatch.setenv("ORION_DENTAL_CLINIC_ENABLED", "1")
+        admin_view = await client.get(chairs)
+        assert admin_view.status_code == 200 and "no-store" in admin_view.headers["Cache-Control"]
+        assert set(admin_view.json()) == {"day","hours_status","active_chairs","capacity_seconds","reserved_seconds"}
+        assert (await client.get(path(d["b"]).removesuffix("today") + "chair-occupancy")).status_code == 403
         async with d["migrator"].begin() as db:
             await db.execute(text("UPDATE business_onboarding SET configuration=CAST(:data AS jsonb) WHERE tenant_id=:tenant"),
                              {"tenant":d["a"],"data":'{"niche":"barbearia"}'})
         assert (await client.get(path(d["a"]))).status_code == 404
+        assert (await client.get(chairs)).status_code == 404
 
 
 @pytest.mark.asyncio
@@ -1466,3 +1474,58 @@ async def test_prosthesis_visit_uses_explicit_patient_identity_and_hides_transfe
         actor=Actor("member",data["b"],data["account_b"],"owner")
         assert (await client.get(base+f"/prostheses/{race}/visits")).status_code==403
         assert (await client.get(f"/api/v1/tenants/{data['b']}/dental/prostheses/{race}/visits")).status_code==404
+
+
+@pytest.mark.asyncio
+async def test_reception_chair_occupancy_clips_reservations_to_each_chairs_local_hours(clinic_api_db):
+    import json
+    from zoneinfo import ZoneInfo
+    from app.dental_clinic_api import chair_occupancy_snapshot
+
+    d = clinic_api_db
+    zone = ZoneInfo("America/Campo_Grande")
+    midnight = datetime(2030, 5, 6, tzinfo=zone)
+    as_of = midnight + timedelta(hours=23, minutes=30)
+    week = {"days": [{"weekday": i, "open": False} for i in range(7)]}
+    week["days"][midnight.weekday()] = {"weekday": midnight.weekday(), "open": True,
+        "start_time": "08:00", "end_time": "17:00", "break_start": "12:00", "break_end": "13:00"}
+    async with d["migrator"].begin() as db:
+        await db.execute(text("UPDATE tenants SET timezone=:tz WHERE id=:tenant"), {"tz": zone.key, "tenant": d["a"]})
+        await db.execute(text("""UPDATE business_onboarding SET configuration=jsonb_set(configuration,
+            '{business_opening_hours}',CAST(:week AS jsonb)) WHERE tenant_id=:tenant"""),
+            {"week": json.dumps(week), "tenant": d["a"]})
+        for appointment, chair, start, end in [
+            (d["appt_a"], d["room_a"], midnight+timedelta(hours=10, minutes=30), midnight+timedelta(hours=14)),
+            (d["appt_a2"], d["room_a2"], midnight-timedelta(minutes=30), midnight+timedelta(hours=10, minutes=45)),
+        ]:
+            await db.execute(text("""UPDATE appointments SET start_at=:start,occupied_from=:start,
+                end_at=:end,occupied_until=:end WHERE tenant_id=:t AND id=:id"""),
+                {"t": d["a"], "id": appointment, "start": start, "end": end})
+            await db.execute(text("""INSERT INTO dental_room_reservations (tenant_id,appointment_id,room_id,period)
+                VALUES (:t,:appointment,:chair,'empty'::tstzrange)"""), {"t": d["a"], "appointment": appointment, "chair": chair})
+        await db.execute(text("INSERT INTO dental_rooms (tenant_id,name,active) VALUES (:t,'Cadeira desativada',false)"), {"t": d["a"]})
+        await db.execute(text("INSERT INTO dental_rooms (tenant_id,name) VALUES (:t,'Outra clínica')"), {"t": d["b"]})
+
+    factory = async_sessionmaker(d["runtime"], expire_on_commit=False)
+    async def read(tenant, stamp=as_of):
+        async with factory() as session, tenant_transaction(session, tenant):
+            return await chair_occupancy_snapshot(session, tenant, stamp)
+
+    assert await read(d["a"]) == {"day": midnight.date(), "hours_status": "open",
+        "active_chairs": 2, "capacity_seconds": 16*3600, "reserved_seconds": 5*3600+15*60}
+    closed = await read(d["a"], as_of+timedelta(days=1))
+    assert (closed["hours_status"], closed["capacity_seconds"], closed["reserved_seconds"]) == ("closed", 0, 0)
+    other = await read(d["b"])
+    assert (other["active_chairs"], other["hours_status"], other["reserved_seconds"], other["capacity_seconds"]) == (1, "unconfigured", None, None)
+    async with d["migrator"].begin() as db:
+        await db.execute(text("UPDATE appointments SET status='completed' WHERE id=:id"), {"id": d["appt_a"]})
+        await db.execute(text("UPDATE appointments SET status='hold',hold_expires_at=:stamp WHERE id=:id"), {"id": d["appt_a2"], "stamp": as_of})
+    assert (await read(d["a"], as_of-timedelta(seconds=1)))["reserved_seconds"] == 5*3600+15*60
+    assert (await read(d["a"]))["reserved_seconds"] == 2*3600+30*60
+    async with d["migrator"].begin() as db:
+        await db.execute(text("UPDATE appointments SET status='cancelled' WHERE id=:id"), {"id": d["appt_a"]})
+    assert (await read(d["a"]))["reserved_seconds"] == 0
+    async with d["migrator"].begin() as db:
+        await db.execute(text("UPDATE dental_rooms SET active=false WHERE tenant_id=:t"), {"t": d["a"]})
+    empty = await read(d["a"])
+    assert (empty["active_chairs"], empty["reserved_seconds"], empty["capacity_seconds"]) == (0, 0, 0)

@@ -19,6 +19,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.exceptions import RequestValidationError
 from fastapi.routing import APIRoute
+from pydantic import ValidationError
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
@@ -28,6 +29,7 @@ from app.account_business import account_membership_role
 from app.csv_export import csv_document
 from app.database import get_session_factory, tenant_transaction
 from app.plan_permissions import plan_state
+from app.onboarding_schemas import BusinessOpeningHours
 from app.tenant_access import resolve_tenant_access
 from app.dental_clinic_schemas import (
     ClinicianGrant, PatientRegistration, PatientSearch, PatientPatch, VisitPatientLink, RecordCreate,
@@ -237,8 +239,8 @@ async def reception_snapshot(db, tenant_id: UUID, as_of: datetime):
             "upcoming": row["upcoming"]}
 
 
-@router.get("/reception/today")
-async def reception_today(tenant_id: UUID, actor: Actor = Depends(authenticate)):
+@asynccontextmanager
+async def reception_session(tenant_id: UUID, actor: Actor):
     from app.management_api import management_session
 
     async with management_session(tenant_id, actor) as db:
@@ -247,7 +249,77 @@ async def reception_today(tenant_id: UUID, actor: Actor = Depends(authenticate))
             raise HTTPException(404, "Recepção disponível apenas para clínicas odontológicas")
         if not plan.get("active") or not plan.get("permissions", {}).get("dashboard.basic"):
             raise HTTPException(403, "O acesso ao painel da clínica está indisponível")
+        yield db, plan
+
+
+@router.get("/reception/today")
+async def reception_today(tenant_id: UUID, actor: Actor = Depends(authenticate)):
+    async with reception_session(tenant_id, actor) as (db, _):
         return await reception_snapshot(db, tenant_id, datetime.now(timezone.utc))
+
+
+def chair_open_windows(configuration, day: date, zone: ZoneInfo):
+    """Return UTC intervals from the same local weekday and breaks used by onboarding."""
+    try:
+        week = BusinessOpeningHours.model_validate(configuration)
+    except ValidationError:
+        return "unconfigured", []
+    schedule = next(entry for entry in week.days if entry.weekday == day.weekday())
+    if not schedule.open:
+        return "closed", []
+    intervals = [(schedule.start_time, schedule.end_time)]
+    if schedule.break_start is not None:
+        intervals = [(schedule.start_time, schedule.break_start), (schedule.break_end, schedule.end_time)]
+    windows = []
+    for opening, closing in intervals:
+        start = datetime.combine(day, opening, zone).astimezone(timezone.utc)
+        end = datetime.combine(day, closing, zone).astimezone(timezone.utc)
+        if start < end:
+            windows.append((start, end))
+    return "open", windows
+
+
+async def chair_occupancy_snapshot(db, tenant: UUID, as_of: datetime):
+    settings = (await db.execute(text("""
+        SELECT t.timezone, b.configuration->'business_opening_hours' AS hours
+        FROM tenants t LEFT JOIN business_onboarding b ON b.tenant_id=t.id WHERE t.id=:tenant
+    """), {"tenant": tenant})).mappings().one()
+    zone = ZoneInfo(settings["timezone"])
+    day = as_of.astimezone(zone).date()
+    status, windows = chair_open_windows(settings["hours"], day, zone)
+    # The room exclusion constraint prevents double counting on one chair. Reservations
+    # on different chairs count independently, and only their overlap with opening hours counts.
+    row = (await db.execute(text("""
+        WITH rooms AS MATERIALIZED (
+            SELECT id FROM dental_rooms WHERE tenant_id=:tenant AND active
+        ), windows AS (
+            SELECT tstzrange(opens, closes, '[)') AS period
+            FROM unnest(CAST(:starts AS timestamptz[]), CAST(:ends AS timestamptz[])) AS w(opens, closes)
+        ), booked AS (
+            SELECT r.period * w.period AS portion
+            FROM windows w JOIN dental_room_reservations r ON r.tenant_id=:tenant
+                AND r.active AND r.period && w.period
+            JOIN rooms ON rooms.id=r.room_id
+            JOIN appointments a ON a.tenant_id=r.tenant_id AND a.id=r.appointment_id
+            WHERE a.status IN ('confirmed','completed') OR (a.status='hold' AND a.hold_expires_at>:as_of)
+        )
+        SELECT (SELECT count(*) FROM rooms) AS chairs,
+               floor(COALESCE(sum(extract(epoch FROM upper(portion)-lower(portion))),0))::bigint AS reserved
+        FROM booked
+    """), {"tenant": tenant, "starts": [start for start, _ in windows],
+           "ends": [end for _, end in windows], "as_of": as_of})).mappings().one()
+    capacity = sum((end-start).total_seconds() for start, end in windows) * row["chairs"]
+    return {"day": day, "hours_status": status, "active_chairs": row["chairs"],
+            "capacity_seconds": int(capacity) if status != "unconfigured" else None,
+            "reserved_seconds": row["reserved"] if status != "unconfigured" else None}
+
+
+@router.get("/reception/chair-occupancy")
+async def reception_chair_occupancy(tenant_id: UUID, actor: Actor = Depends(authenticate)):
+    async with reception_session(tenant_id, actor) as (db, plan):
+        if not plan.get("dental_clinical_enabled"):
+            raise HTTPException(404, "Cadeiras indisponíveis para esta clínica")
+        return await chair_occupancy_snapshot(db, tenant_id, datetime.now(timezone.utc))
 
 
 @router.get("/access")

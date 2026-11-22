@@ -213,3 +213,19 @@ async def test_legacy_viewer_and_support_cannot_claim_professional_clinical_role
             async with verified_clinical_membership(tenant,actor,write=False):
                 pass
         assert blocked.value.status_code==403
+
+
+def test_chair_hours_preserve_local_weekday_and_actual_elapsed_time_at_dst():
+    from datetime import date, timedelta
+    from zoneinfo import ZoneInfo
+    from app.dental_clinic_api import chair_open_windows
+
+    zone = ZoneInfo("America/New_York")
+    week = {"days": [{"weekday": day, "open": False} for day in range(7)]}
+    week["days"][6] = {"weekday": 6, "open": True, "start_time": "00:00", "end_time": "04:00"}
+    for day, elapsed in [(date(2026, 3, 8), 3), (date(2026, 11, 1), 5)]:
+        status, [(start, end)] = chair_open_windows(week, day, zone)
+        assert status == "open" and end-start == timedelta(hours=elapsed)
+    assert chair_open_windows(week, date(2026, 11, 2), zone) == ("closed", [])
+    for incomplete in (None, {}, {"days": [{}]}):
+        assert chair_open_windows(incomplete, date(2026, 11, 1), zone) == ("unconfigured", [])

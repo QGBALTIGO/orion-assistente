@@ -134,6 +134,15 @@
   .os-stock-list>li{align-items:start;flex-direction:column}
 }
 
+.os-chair-occupancy:not(:empty){margin-top:12px}
+.os-chair-heading{display:flex;align-items:baseline;gap:8px 16px;flex-wrap:wrap}
+.os-chair-heading strong{font:650 clamp(24px,3vw,32px)/1.2 var(--os-display);font-variant-numeric:tabular-nums}
+.os-chair-heading span,.os-chair-occupancy p{color:var(--os-muted)}
+.os-chair-occupancy progress{display:block;width:100%;height:8px;margin:10px 0;border:0;border-radius:8px;overflow:hidden;appearance:none;background:var(--os-border);color:var(--os-primary);accent-color:var(--os-primary)}
+.os-chair-occupancy progress::-webkit-progress-bar{background:var(--os-border)}
+.os-chair-occupancy progress::-webkit-progress-value{background:var(--os-primary)}
+.os-chair-occupancy progress::-moz-progress-bar{background:var(--os-primary)}
+
 .os-reception .os-cash-range{display:inline-flex;width:auto;margin:12px 0}
 .os-cash-range .os-pill-tab{min-height:44px}
 .os-cash-range .os-pill-tab[aria-pressed=true]{background:var(--os-card);color:var(--os-text);box-shadow:var(--os-shadow)}
