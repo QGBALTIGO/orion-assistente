@@ -60,3 +60,9 @@ A referência financeira também foi verificada em Fluxo de Caixa → Filtrar. F
 O caixa resume os recebimentos, as despesas pagas, o saldo e as receitas em aberto do período selecionado. “Hoje” e “Mês até hoje” obedecem ao fuso da empresa. A consulta usa a permissão financeira e o mesmo livro de lançamentos do Financeiro. Uma consulta finalizada só entra no recebido quando há um lançamento pago. Para pendências, o período seleciona a data do lançamento. O resumo não substitui o extrato individual ou o controle de parcelas por paciente.
 
 Na base PostgreSQL 16 sintética, um pagamento às 23h25 locais foi atribuído ao dia correto, mesmo com data UTC já no dia seguinte. A consulta concluída sem recebimento e as movimentações de outra empresa não entraram no caixa. O navegador verificou teclado, quatro larguras e os dois temas. Foram simuladas indisponibilidade do financeiro e chegada tardia da consulta mensal após voltar à opção “Hoje”.
+
+## Acesso administrativo ao estoque
+
+A publicação da revisão 73650175 foi confirmada no Railway em 22/11/2026, implantação 4bcd5bee-ac50-487f-9ca9-b871a1ba3b94. Na conta da proprietária da clínica Ana Clara, o menu Estoque abriu a rota correta e pediu uma concessão clínica indevida. A correção passa a verificar a propriedade ativa da empresa exclusivamente nos endpoints de materiais e movimentações. O catálogo dedicado carrega somente permissões e materiais. Os endpoints de exames e prontuários continuam verificando a concessão profissional.
+
+Com dados sintéticos passaram 21 testes de integração com PostgreSQL 16, 102 testes unitários e 135 testes de interface. O navegador validou a busca, inclusão e movimentação de materiais em quatro larguras nos dois temas. O cenário da titular sem concessão agora é explícito no navegador e no banco. A verificação autenticada da correção em produção está pendente.

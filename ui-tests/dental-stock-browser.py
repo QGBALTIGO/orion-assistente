@@ -23,7 +23,7 @@ def verify(browser, width, height, theme):
         if url.path.endswith("/management/permissions"):
             return route.fulfill(json={"effective_plan": {**shell.PLAN, "dental_clinical_enabled": True}})
         if url.path.endswith("/dental/access"):
-            return route.fulfill(json={"clinical_access": {"level": "assistant"},
+            return route.fulfill(json={"clinical_access": None, "can_manage_inventory": True,
                                        "can_manage": True, "can_read_records": False, "grants": []})
         if url.path.endswith("/dental/supplies"):
             query = parse_qs(url.query).get("q", [""])[0]

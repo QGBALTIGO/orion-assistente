@@ -14,7 +14,7 @@ const patientDTO={id:patient,name:'Paciente de teste',version:1,guardian_name:'R
   birth_date:'2001-05-06',created_at:'2026-11-01T11:00:00Z'};
 const response=(path,method='GET',data,config)=>{
   const rows=config.patients||[patientDTO];
-  if(path.endsWith('/dental/access'))return {account_id:account,can_manage:config.canManage===true,can_read_records:config.level==='dentist',
+  if(path.endsWith('/dental/access'))return {account_id:account,can_manage:config.canManage===true,can_manage_inventory:config.inventory===true,can_read_records:config.level==='dentist',
     clinical_access:config.level?{account_id:account,level:config.level,professional_id:pro}:null,grants:[]};
   if(path.includes('/dental/patients?'))return {items:rows,total:rows.length};
   if(path.endsWith('/dental/patients'))return {id:randomUUID(),...data};
@@ -350,4 +350,14 @@ test('uma queda após a movimentação conserva a operação no formulário para
   h.submit('[data-dental-form=stock-move]');await flush();
   assert.equal(item.quantity,4);assert.match(h.host.textContent,/4 cx/);
   assert.equal(h.calls.filter(x=>x.method==='POST').length,2);
+});
+
+
+test('an owner without a clinical grant can open stock without reading a patient or professional record',async t=>{
+  const h=makeDOM({level:null,canManage:true,inventory:true,supplies:[{id:randomUUID(),name:'Gaze',unit:'box',quantity:2}]});
+  t.after(()=>h.close());await h.mount({dedicatedStock:true});
+  assert.match(h.host.textContent,/Gaze/);
+  assert.equal(h.calls.length,2);
+  assert.ok(h.calls[0].path.endsWith('/access')&&h.calls[1].path.includes('/supplies?'));
+  assert.equal(h.host.querySelector('[data-dental-form=record]'),null);
 });

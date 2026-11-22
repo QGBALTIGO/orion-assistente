@@ -1132,3 +1132,44 @@ async def test_explicit_visit_identity_is_audited_and_independent_of_booking_con
         assert all(e["actor_account_id"] == d["assistant"] for e in events)
         assert not await db.scalar(text("""SELECT has_table_privilege('app_runtime',
             'dental_visit_patient_events','UPDATE,DELETE,TRUNCATE')"""))
+
+
+@pytest.mark.asyncio
+async def test_owner_manages_only_administrative_stock_without_a_clinical_grant(clinic_api_db):
+    import httpx
+    from fastapi import FastAPI
+    from app.catalog_api import Actor, authenticate
+    from app.dental_clinic_api import router
+
+    d = clinic_api_db
+    app = FastAPI()
+    app.include_router(router)
+    base = f"/api/v1/tenants/{d['a']}/dental"
+    other = f"/api/v1/tenants/{d['b']}/dental"
+    actor = Actor("member", d["a"], d["account"], "owner")
+    app.dependency_overrides[authenticate] = lambda: actor
+    async with d["migrator"].begin() as db:
+        await db.execute(text("UPDATE dental_clinicians SET enabled=false WHERE tenant_id=:tenant"), {"tenant": d["a"]})
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test.invalid") as client:
+        access = (await client.get(base+"/access")).json()
+        assert access["can_manage_inventory"] is True
+        assert access["clinical_access"] is None and access["can_read_records"] is False
+        created = await client.post(base+"/supplies",json={"name":"Gaze sintética","unit":"box"})
+        assert created.status_code == 201,created.text
+        stock_id = created.json()["id"]
+        path = base+f"/supplies/{stock_id}/movements"
+        params = {"movement":"in","quantity":4,"entry_key":"owner-stock-in-synthetic"}
+        assert (await client.post(path,json=params)).status_code == 200
+        assert (await client.post(path,json=params)).json()["replayed"]
+        assert [r["quantity"] for r in (await client.get(path)).json()["items"]] == [4]
+        listing = (await client.get(base+"/supplies",params={"q":"Gaze"})).json()["items"]
+        assert [(i["id"],i["quantity"]) for i in listing] == [(stock_id,4)]
+        for address in ("/patients", f"/patients/{d['patient_a']}/records", f"/patients/{d['patient_a']}/exams","/prostheses"):
+            assert (await client.get(base+address)).status_code == 403
+        assert (await client.get(other+"/supplies")).status_code == 403
+        actor = Actor("member", d["a"], d["assistant"], "editor")
+        assert (await client.get(base+"/access")).json()["can_manage_inventory"] is False
+        assert (await client.get(base+"/supplies")).status_code == 403
+        assert (await client.post(path,json=params)).status_code == 403
+        actor = Actor("member", d["a"], d["assistant"], "owner")
+        assert (await client.get(base+"/supplies")).status_code == 403

@@ -469,10 +469,10 @@
     if(state.loading)html+=pending();
     else if(!state.access)html+=info('Não foi possível confirmar as permissões clínicas.',true);
     else if(state.section==='access')html+=accessManager();
+    else if(state.section==='supplies'&&(state.access.can_manage_inventory||allowed))html+=supplyManager();
     else if(!allowed&&state.dedicatedStock)html+=info('Solicite ao proprietário da clínica acesso ao estoque.');
     else if(!allowed)html+=info('O acesso ao prontuário ainda não foi concedido a esta conta. Abra Equipe clínica se você for o proprietário.');
     else if(state.section==='rooms')html+=roomManager();
-    else if(state.section==='supplies')html+=supplyManager();
     else if(state.section==='prostheses'&&state.access?.can_read_records)html+=prosthesisManager();
     else if(state.section==='laboratories'&&state.access?.can_read_records)html+=laboratoryManager();
     else if(state.section==='patients')html+=
@@ -995,9 +995,10 @@
     const epoch=state.epoch;
     try{
       await fetchAccess();
-      if(valid(epoch)&&state.access?.clinical_access){
-        if(state.dedicatedStock)await readStock();
-        else{const r=await api('/patients?limit=100');if(valid(epoch))state.patients=r.items||[];}
+      if(valid(epoch)&&state.dedicatedStock&&(state.access?.can_manage_inventory||state.access?.clinical_access)){
+        await readStock();
+      }else if(valid(epoch)&&state.access?.clinical_access){
+        const r=await api('/patients?limit=100');if(valid(epoch))state.patients=r.items||[];
       }
     }catch(e){if(valid(epoch))state.error=e?.message||'Não foi possível confirmar o acesso clínico.';}
     finally{if(valid(epoch)){state.loading=false;render();}}
