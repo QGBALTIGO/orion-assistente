@@ -19,6 +19,10 @@ def verify(browser, width, height, theme):
             "content": {"laboratory": "Laboratório de teste", "description": "Coroa provisória de teste",
                         "status": "working", "due_date": "2026-11-21"}, "deadline_state":"overdue", "actions":["delivered"]}
     errors, writes, dental_reads = [], [], []
+    visit_id = "50000000-0000-4000-8000-000000000002"
+    visit = {"id":visit_id,"start_at":"2026-11-24T14:30:00Z","professional":"Dentista de teste",
+             "status":"confirmed","identity_version":2}
+    visit_writes = []
     page.on("pageerror", lambda error: errors.append(str(error)))
 
     def serve(route):
@@ -42,6 +46,18 @@ def verify(browser, width, height, theme):
             work["id"] = "40000000-0000-4000-8000-000000000003"
             work["actions"] = ["completed"]
             return route.fulfill(json={"id":work["id"],"status":"delivered"})
+        if path.endswith("/visits") and "/prostheses/" in path:
+            return route.fulfill(json={"items":[visit],"has_more":False,"timezone":"America/Campo_Grande",
+                                       "linked":visit if visit_writes else None,
+                                       "purpose":"try_in" if visit_writes else None})
+        if path.endswith("/visit") and "/prostheses/" in path:
+            data = route.request.post_data_json
+            assert route.request.method == "PATCH" and data["entry_key"]
+            assert data["appointment_id"] == visit_id and data["identity_version"] == 2 and data["purpose"] == "try_in"
+            visit_writes.append(data)
+            work["id"] = "40000000-0000-4000-8000-000000000005"
+            work["content"]["visit_purpose"] = "try_in"
+            return route.fulfill(json={"id":work["id"]})
         if path.endswith("/dental/laboratories"):
             return route.fulfill(json={"items":[]})
         if path.endswith("/dental/patients"):
@@ -76,6 +92,16 @@ def verify(browser, width, height, theme):
     assert root.get_by_label("Prazo",exact=True).input_value() == "overdue"
     root.get_by_label("Etapa",exact=True).select_option("delivered")
     root.get_by_text("Em atraso",exact=True).wait_for()
+    root.get_by_role("button",name="Vincular consulta").click()
+    root.get_by_label("Consulta do paciente").select_option(visit_id)
+    root.get_by_label("Finalidade").select_option("try_in")
+    root.get_by_role("button",name="Salvar vínculo").focus()
+    root.get_by_role("button",name="Salvar vínculo").press("Enter")
+    root.get_by_text("Consulta vinculada à prótese.",exact=True).wait_for()
+    assert root.get_by_label("Finalidade").input_value()=="try_in" and len(visit_writes)==1
+    assert not page.evaluate("document.documentElement.scrollWidth>innerWidth+1")
+    root.locator('[aria-label="Consulta de prova ou entrega"]').screenshot(
+        path=str(shell.OUT/f"protese-consulta-{width}-{theme}.png"),animations="disabled")
     root.get_by_role("button",name="Laboratórios",exact=True).click()
     root.get_by_role("heading",name="Laboratórios",exact=True).wait_for()
     root.get_by_role("button",name="Voltar às próteses").click()

@@ -36,8 +36,13 @@
 .os-dental-work-head{display:flex;align-items:center;justify-content:space-between;gap:8px 16px;flex-wrap:wrap}
 .os-dental-work-filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(11rem,100%),1fr));gap:12px}
 .os-dental-deadline{display:flex;align-items:center;gap:6px 10px;flex-wrap:wrap;font-variant-numeric:tabular-nums}
-.os-dental-prosthesis-card form{display:grid;grid-template-columns:minmax(0,22rem) max-content;justify-content:start;align-items:end}
+.os-dental-prosthesis-card form{display:grid;gap:12px;grid-template-columns:minmax(0,22rem) max-content;justify-content:start;align-items:end}
 .os-dental-prosthesis-card form>*{min-width:0}
+.os-dental-prosthesis-card .os-dental-visit-form{grid-template-columns:minmax(0,22rem) minmax(6rem,10rem) max-content}
+.os-dental-visit-form .os-button{justify-self:start}
+@container prostheses (max-width:650px){
+  .os-dental-prosthesis-card .os-dental-visit-form{grid-template-columns:minmax(0,1fr)}
+}
 @container prostheses (max-width:480px){
   .os-dental-prosthesis-card form{grid-template-columns:minmax(0,1fr);justify-content:stretch}
   .os-dental-prosthesis-card form .os-dental-controls{justify-content:flex-start}

@@ -217,6 +217,22 @@ class ProsthesisTransition(Strict):
     entry_key: str = Field(min_length=8, max_length=120, pattern=r"^[a-zA-Z0-9._:-]+$")
 
 
+class ProsthesisVisit(Strict):
+    appointment_id: UUID | None
+    identity_version: int | None = Field(None, ge=1, strict=True)
+    purpose: Literal["try_in", "delivery"] | None = None
+    entry_key: str = Field(min_length=8, max_length=120, pattern=r"^[a-zA-Z0-9._:-]+$")
+
+    @model_validator(mode="after")
+    def check_visit(self):
+        if self.appointment_id is None:
+            if self.identity_version is not None or self.purpose is not None:
+                raise ValueError("Ao desvincular, informe somente a operação.")
+        elif self.identity_version is None or self.purpose is None:
+            raise ValueError("Selecione a consulta e a finalidade.")
+        return self
+
+
 class LaboratoryCreate(Strict):
     name: str = Field(min_length=2, max_length=120)
     phone: str | None = Field(None, max_length=30, pattern=r"^\+?[0-9 ()-]+$")
