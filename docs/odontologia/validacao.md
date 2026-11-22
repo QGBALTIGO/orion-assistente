@@ -99,3 +99,11 @@ O teste de navegação abre o menu real do painel em 320, 390, 820 e 1440 px, no
 O profissional pode vincular uma peça recebida a uma consulta futura confirmada da ficha do mesmo paciente. Pode registrar prova ou entrega, substituir a consulta e desfazer o vínculo. A seleção guarda a versão da identidade registrada na agenda. Se o atendimento for posteriormente atribuído a outro paciente, a ficha anterior deixa de mostrar os dados do horário. Cada mudança cria uma versão do trabalho com autoria e evento de auditoria. Nenhum paciente é inferido a partir de um telefone compartilhado.
 
 A API consulta as autorizações da clínica e, para um dentista com portal profissional, limita as opções à própria agenda. A correção foi exercitada com 23 testes de integração em PostgreSQL 16 e 142 testes de interface. O teste real de navegador percorreu filtro, recebimento, vínculo, finalidade, laboratório e abertura da ficha em oito combinações de largura e tema. O caso de resposta perdida preservou a mesma chave de operação em ambas as tentativas. A versão não introduz uma migração. A liberação e a conferência em produção estão pendentes.
+
+## Caixa em produção e exportação do inventário da clínica
+
+A recepção da conta Dentista Ana Clara exibiu o Caixa da clínica na publicação Railway `4f7df4b2-4f0b-457b-89dd-f99065054df1`, commit `25e1ad8e`. A seleção mudou de Hoje para Mês até hoje e voltou. Os arquivos da versão corresponderam byte a byte nos dois domínios. Saúde do serviço e site público da Barbearia Peixoto responderam com HTTP 200. A consulta odontológica anônima retornou 401.
+
+A exportação de materiais usa os filtros e a ordenação aplicados na lista da clínica. O arquivo contém material, unidade e saldo. Um resultado vazio contém os cabeçalhos. Cada exportação bem-sucedida registra o autor sem dados de paciente. A verificação cobriu 25 testes em PostgreSQL, 102 unitários, 147 de interface e o download do arquivo real por teclado em oito combinações de largura e tema. A publicação da exportação permanece pendente.
+
+No Simples Dental, a tela Vendas mostrou as etapas Em aberto, Em andamento, Ganha e Perdida. Uma chamada para encontrar oportunidades ofereceu analisar a base existente com IA. A conta permaneceu com essa ativação pendente. Os fluxos internos após a ativação ainda precisam de uma base de demonstração autorizada.

@@ -123,7 +123,10 @@
     }).join('');
     const more=state.stockCursor?button('Carregar mais','stock-more','os-outline',state.stockLoading?'disabled':''):'';
     return '<div class="os-dental-space"><section class="os-dental-card os-dental-space" aria-labelledby="dental-stock-title">'+
-      '<h2 class="os-dental-title" id="dental-stock-title">Materiais</h2>'+filters+
+      '<div class="os-stock-heading"><h2 class="os-dental-title" id="dental-stock-title">Materiais</h2>'+
+        button('Exportar CSV','stock-export','os-outline',state.stockExporting?'disabled aria-busy="true"':'')+'</div>'+
+      '<div data-stock-export-feedback'+(state.stockExportError?'':' hidden')+'>'+
+        (state.stockExportError?info(state.stockExportError,true):'')+'</div>'+filters+
       (items?'<ul class="os-stock-list">'+items+'</ul>':'')+
       (state.stockLoading?pending():'')+
       (state.stockError?info(state.stockError,true)+button('Tentar novamente','stock-retry','os-outline'):'')+
@@ -556,6 +559,44 @@
     }catch(e){if(valid(epoch)&&read===state.searchRead)state.error=e?.message||'Não foi possível buscar pacientes.';}
     finally{if(valid(epoch)&&read===state.searchRead){state.loading=false;render();}}
   }
+  async function exportStock(){
+    if(state.stockExporting||!valid(state.epoch)||state.section!=='supplies')return;
+    const epoch=state.epoch;
+    function updateControl(){
+      const button=state.host.querySelector('[data-dental-action="stock-export"]');
+      const feedback=state.host.querySelector('[data-stock-export-feedback]');
+      if(button){
+        button.disabled=state.stockExporting;
+        button.setAttribute('aria-busy',String(state.stockExporting));
+      }
+      if(feedback){
+        feedback.hidden=!state.stockExportError;
+        feedback.innerHTML=state.stockExportError?info(state.stockExportError,true):'';
+      }
+    }
+    state.stockExporting=true;state.stockExportError='';updateControl();
+    try{
+      const params=new URLSearchParams({q:state.stockQuery,order:state.stockOrder});
+      const response=await fetch(endpoint('/supplies/export.csv?'+params),{
+        credentials:'same-origin',cache:'no-store',redirect:'error',headers:{Accept:'text/csv'}
+      });
+      if(response.status===413)throw Error('Refine a busca para exportar até 20 mil materiais por arquivo.');
+      if(response.status===401)throw Error('A sessão expirou. Entre novamente para exportar.');
+      if(response.status===403)throw Error('Sua conta não tem acesso à exportação do estoque.');
+      if(!response.ok||!response.headers.get('content-type')?.startsWith('text/csv'))throw Error('Não foi possível exportar o estoque. Tente novamente.');
+      const file=await response.blob();
+      if(!valid(epoch)||state.section!=='supplies')return;
+      const url=URL.createObjectURL(file),link=document.createElement('a');
+      link.href=url;link.download='estoque-odontologico.csv';document.body.append(link);
+      try{link.click();}finally{link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+    }catch(error){
+      if(valid(epoch)&&state.section==='supplies')state.stockExportError=error?.message||'Não foi possível exportar o estoque.';
+    }finally{
+      if(valid(epoch)){
+        state.stockExporting=false;updateControl();
+      }
+    }
+  }
   async function readStock(append=false){
     const epoch=state.epoch,read=++state.stockRead;
     const cursor=append?state.stockCursor:null;
@@ -890,6 +931,7 @@
       }
       return;
     }
+    if(act==='stock-export'){await exportStock();return;}
     if(act==='stock-more'||act==='stock-retry'){
       if(!state.stockLoading)await readStock(act==='stock-more'||state.stockFailedPage);
       return;
@@ -1131,7 +1173,7 @@
     Object.assign(state,{host:null,request:null,tenantId:'',canAccess:null,access:null,team:[],
       dedicatedProstheses:false,prosthesesInMenu:false,openProsthesisPatient:null,
       dedicatedStock:false,visitsOnly:false,returnToDirectory:null,stockInMenu:false,stockQuery:'',stockOrder:'asc',stockCursor:null,stockFailedPage:false,
-      stockLoading:false,stockRead:0,stockError:'',stockCreateOpen:false,stockDraft:null,supplyMove:null,
+      stockLoading:false,stockRead:0,stockError:'',stockExporting:false,stockExportError:'',stockCreateOpen:false,stockDraft:null,supplyMove:null,
       professionals:[],patients:[],patient:null,records:[],exams:[],intakeTemplates:[],rooms:[],appointments:[],
       roomDay:localToday(),roomZone:'',supplies:[],supplyHistory:null,visitBoard:null,prostheses:null,laboratories:null,labEditing:null,q:'',
       selectedTooth:11,dentition:'permanent',tab:'anamnesis',section:'patients',findings:[],

@@ -1256,6 +1256,72 @@ async def test_owner_manages_only_administrative_stock_without_a_clinical_grant(
         assert (await client.get(base+"/supplies")).status_code == 403
 
 @pytest.mark.asyncio
+async def test_stock_export_filters_tenant_and_audits_successful_downloads(clinic_api_db, monkeypatch):
+    import csv
+    import io
+    import httpx
+    from fastapi import FastAPI
+    from app.catalog_api import Actor, authenticate
+    from app.dental_clinic_api import router
+
+    d = clinic_api_db
+    app = FastAPI()
+    app.include_router(router)
+    monkeypatch.setenv("SUPPORT_API_TOKEN", os.urandom(32).hex())
+    url = f"/api/v1/tenants/{d['a']}/dental/supplies/export.csv"
+    other = f"/api/v1/tenants/{d['b']}/dental/supplies/export.csv"
+    actor = Actor("member", d["a"], d["account"], "owner")
+    async with d["migrator"].begin() as db:
+        await db.execute(text("""
+            UPDATE dental_clinicians SET enabled=false WHERE tenant_id=:a AND account_id=:owner
+        """), {"a": d["a"], "owner": d["account"]})
+        await db.execute(text("""
+            INSERT INTO dental_supplies(tenant_id,name,unit,quantity) VALUES
+            (:a,'=Gaze; teste','box',5),(:a,'Gaze estéril','unit',7),(:a,'Seringa','ml',2),
+            (:b,'Gaze de outra clínica','kit',19)
+        """), {"a": d["a"], "b": d["b"]})
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test.invalid") as client:
+        assert (await client.get(url)).status_code == 401
+        app.dependency_overrides[authenticate] = lambda: actor
+        response = await client.get(url, params={"q": "GAZE", "order": "desc"})
+        assert response.status_code == 200, response.text
+        assert response.content.startswith(b"\xef\xbb\xbf")
+        assert "text/csv" in response.headers["content-type"]
+        assert "no-store" in response.headers["cache-control"]
+        assert 'filename="estoque-odontologico.csv"' in response.headers["content-disposition"]
+
+        def records(res):
+            return list(csv.reader(io.StringIO(res.content.decode("utf-8-sig")), delimiter=";"))
+
+        header = ["Material", "Unidade", "Saldo"]
+        assert records(response) == [header, ["Gaze estéril", "Unidade", "7"], ["'=Gaze; teste", "Caixa", "5"]]
+        assert records(await client.get(url, params={"q": "%"})) == [header]
+        assert (await client.get(other)).status_code == 403
+        assert (await client.get(url, params={"order": "invalid"})).status_code == 422
+        actor = Actor("member", d["a"], d["assistant"], "editor")
+        assert len(records(await client.get(url))) == 4
+        async with d["migrator"].begin() as db:
+            await db.execute(text("""
+                UPDATE dental_clinicians SET enabled=false WHERE tenant_id=:a AND account_id=:assistant
+            """), {"a": d["a"], "assistant": d["assistant"]})
+        assert (await client.get(url)).status_code == 403
+        actor = Actor("member", d["a"], d["account"], "owner")
+        async with d["migrator"].begin() as db:
+            await db.execute(text("""
+                INSERT INTO dental_supplies(tenant_id,name,unit)
+                SELECT :a,'Volume sintético '||s,'unit' FROM generate_series(1,20001) AS s
+            """), {"a": d["a"]})
+        assert (await client.get(url, params={"q": "Volume sintético"})).status_code == 413
+        async with d["migrator"].begin() as db:
+            exports = (await db.execute(text("""
+                SELECT actor_account_id,patient_id FROM dental_access_audit
+                WHERE tenant_id=:a AND action='supplies_exported'
+            """), {"a": d["a"]})).all()
+        assert sorted(str(row[0]) for row in exports) == sorted(map(str, (d["account"], d["account"], d["assistant"])))
+        assert all(row[1] is None for row in exports)
+
+
+@pytest.mark.asyncio
 async def test_patient_directory_shared_contact_name_only_and_retry(clinic_api_db):
     import asyncio
     from uuid import UUID

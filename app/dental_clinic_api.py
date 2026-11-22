@@ -25,6 +25,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.catalog_api import Actor, authenticate, support_session_factory
 from app.account_business import account_membership_role
+from app.csv_export import csv_document
 from app.database import get_session_factory, tenant_transaction
 from app.plan_permissions import plan_state
 from app.tenant_access import resolve_tenant_access
@@ -1167,6 +1168,26 @@ async def inventory_session(tenant: UUID, actor: Actor, *, write=False):
             yield db
 
 
+async def stock_rows(db, tenant_id: UUID, query: str, order: str, limit: int, cursor: UUID | None = None):
+    params = {"tenant": tenant_id, "query": query.strip(), "take": limit + 1}
+    scope = "tenant_id=:tenant AND strpos(lower(name),lower(CAST(:query AS text)))>0"
+    after = ""
+    # Only the two fixed directions are interpolated. Input values stay bound.
+    direction, comparison = ("DESC", "<") if order == "desc" else ("ASC", ">")
+    if cursor is not None:
+        boundary = await db.scalar(text(
+            "SELECT lower(name) FROM dental_supplies WHERE " + scope + " AND id=:id"
+        ), {**params, "id": cursor})
+        if boundary is None:
+            raise HTTPException(400, "Página de materiais inválida")
+        params.update(boundary=boundary, cursor=cursor)
+        after = f" AND (lower(name),id) {comparison} (:boundary,:cursor)"
+    return (await db.execute(text(
+        "SELECT id,name,unit,quantity,version FROM dental_supplies WHERE " + scope + after
+        + f" ORDER BY lower(name) {direction},id {direction} LIMIT :take"
+    ), params)).mappings().all()
+
+
 @router.get("/supplies")
 async def dental_supplies(
     tenant_id: UUID, actor: Actor = Depends(authenticate),
@@ -1175,25 +1196,29 @@ async def dental_supplies(
     cursor: UUID | None = None, limit: int = Query(default=200, ge=1, le=200),
 ):
     async with inventory_session(tenant_id, actor) as db:
-        params = {"tenant": tenant_id, "query": q.strip(), "take": limit + 1}
-        scope = "tenant_id=:tenant AND strpos(lower(name),lower(CAST(:query AS text)))>0"
-        after = ""
-        # Only the two fixed directions are interpolated. Input values stay bound.
-        direction, comparison = ("DESC", "<") if order == "desc" else ("ASC", ">")
-        if cursor is not None:
-            boundary = await db.scalar(text(
-                "SELECT lower(name) FROM dental_supplies WHERE " + scope + " AND id=:id"
-            ), {**params, "id": cursor})
-            if boundary is None:
-                raise HTTPException(400, "Página de materiais inválida")
-            params.update(boundary=boundary, cursor=cursor)
-            after = f" AND (lower(name),id) {comparison} (:boundary,:cursor)"
-        items = (await db.execute(text(
-            "SELECT id,name,unit,quantity,version FROM dental_supplies WHERE " + scope + after
-            + f" ORDER BY lower(name) {direction},id {direction} LIMIT :take"
-        ), params)).mappings().all()
+        items = await stock_rows(db, tenant_id, q, order, limit, cursor)
         return {"items": [dict(item) for item in items[:limit]],
                 "next_cursor": items[limit - 1]["id"] if len(items) > limit else None}
+
+
+@router.get("/supplies/export.csv")
+async def export_dental_stock(
+    tenant_id: UUID, actor: Actor = Depends(authenticate),
+    q: str = Query(default="", max_length=120), order: Literal["asc", "desc"] = "asc",
+):
+    limit = 20000
+    units = {"unit": "Unidade", "box": "Caixa", "kit": "Kit", "ml": "mL", "g": "Grama"}
+    async with inventory_session(tenant_id, actor) as db:
+        items = await stock_rows(db, tenant_id, q, order, limit)
+        if len(items) > limit:
+            raise HTTPException(413, "Refine a busca para exportar até 20 mil materiais por arquivo.")
+        await audit(db, tenant_id, actor, "supplies_exported")
+        body = csv_document(["Material", "Unidade", "Saldo"], [
+            (item["name"], units.get(item["unit"], item["unit"]), item["quantity"]) for item in items
+        ])
+    return Response(content=body, media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": 'attachment; filename="estoque-odontologico.csv"',
+                             "Cache-Control": "no-store"})
 
 
 @router.post("/supplies",status_code=201)
