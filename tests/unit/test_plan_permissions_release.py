@@ -57,12 +57,12 @@ async def test_worker_waits_for_completed_initial_grants_before_jobs(monkeypatch
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("blocked", [None, *range(15)])
+@pytest.mark.parametrize("blocked", [None, *range(16)])
 async def test_arq_startup_awaits_every_readonly_barrier_before_jobs(monkeypatch, blocked):
     import importlib
     from app.worker import WorkerSettings
     from scripts.wait_for_agenda_schema import Settings
-    order = ("plan_permissions", "appointment_consent", "subscription_devices", "subscription_chatbot",
+    order = ("exceptional_overlap", "plan_permissions", "appointment_consent", "subscription_devices", "subscription_chatbot",
              "subscription_templates", "subscription_sent_messages", "appointment_operations", "subscription_diagnostics",
              "subscription_campaigns", "subscription_scheduled_messages", "subscription_bulk", "subscription_direct",
              "subscription_group_add", "cakto_recovery", "fixed_client")

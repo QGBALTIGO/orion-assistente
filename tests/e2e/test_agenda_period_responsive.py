@@ -78,10 +78,10 @@ window.renderPeriod=(period,whole,focus,mode)=>{
 
 @pytest.mark.parametrize("engine", ["chromium", "webkit"])
 def test_agenda_periods_are_usable_across_mobile_tablet_desktop(engine):
-    output = ROOT / "test-results" / "agenda-periods"
+    output = Path(os.environ.get("ORION_VISUAL_DIR", ROOT / "test-results" / "agenda-periods"))
     output.mkdir(parents=True, exist_ok=True)
     with sync_playwright() as pw:
-        browser = getattr(pw, engine).launch()
+        browser = getattr(pw, engine).launch(executable_path=os.environ.get("ORION_TEST_CHROME") if engine == "chromium" else None)
         page = browser.new_page(viewport={"width":390,"height":844},device_scale_factor=1,locale="pt-BR")
         try:
             page.set_content(HTML,wait_until="domcontentloaded")
@@ -158,12 +158,17 @@ def test_agenda_periods_are_usable_across_mobile_tablet_desktop(engine):
                         # overflow-x:auto alone can hide Saturday without a page-level overflow.
                         if width in (320,390) and period=="week":
                             visible=page.evaluate("""() => {
-                                const box=document.querySelector('.os-agenda-week-overview').getBoundingClientRect();
-                                const cells=[...document.querySelectorAll('.os-agenda-week-day')];
-                                return cells.length===7&&cells.every(el=>{
-                                    const r=el.getBoundingClientRect();
-                                    return r.left>=box.left-1&&r.right<=box.right+1;
-                                });
+                                const strip=document.querySelector('[role="group"][aria-label="Dias da semana"]');
+                                const title=strip?.previousElementSibling;
+                                if(!strip||!title)return false;
+                                const box=strip.getBoundingClientRect();
+                                const days=[...strip.querySelectorAll('button[data-os-open-day]')]
+                                    .map(button=>button.getBoundingClientRect());
+                                return days.length===7&&title.getBoundingClientRect().bottom<=box.top+1
+                                    &&days[0].left-box.left<12&&box.right-days[6].right<12
+                                    &&days.every((r,i)=>r.width>=24&&r.height>=44&&r.top>=box.top
+                                        &&r.left>=box.left&&r.right<=box.right+1
+                                        &&(i===0||r.left>=days[i-1].right-1));
                             }""")
                             assert visible, f"Weekday clipped: {engine=} {theme=} {width=} {whole=}"
                         if width==320 and period=="month":
