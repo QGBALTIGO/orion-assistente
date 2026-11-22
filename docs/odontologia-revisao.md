@@ -12,7 +12,7 @@ A referência é a conta autenticada do Simples Dental. A implementação usa o 
 | Simples Pay e Loja | Módulos visíveis na navegação | Fluxos transacionais pendentes |
 | Próteses | Criação, filtro e acompanhamento em etapas até a conclusão | Registro clínico existente. Quadro de operação pendente |
 | Marketing | Indicações, comunicação, site e link de agendamento | Site e agenda pública existentes. Paridade dos fluxos pendente |
-| Estoque | Entrada, saldo, histórico de retiradas e exportação | Movimentação clínica existente. Experiência e exportação pendentes |
+| Estoque | Entrada, saldo, histórico de retiradas e exportação | Histórico por insumo com filtro de entradas e saídas e paginação implementado. Exportação pendente |
 | Ajustes | Clínica, equipe, planos, anamnese, contrato, categorias, contas, cadeiras, comunicação e integrações | Cadeiras implementado e testado. Editor de modelos de anamnese implementado e testado. Demais ajustes pendentes |
 
 ## Cadeiras
@@ -22,6 +22,10 @@ A tela de Configurações consulta o mesmo cadastro de consultórios usado pela 
 ## Modelos de anamnese
 
 A tela de Configurações permite cadastrar modelos, adicionar e editar perguntas e alternar a situação de cada pergunta. Gravações concorrentes conferem a versão. O dentista autorizado pode usar os modelos no prontuário. O registro cifrado guarda as perguntas da versão escolhida e as respectivas respostas. Alterar um modelo não modifica registros já gravados.
+
+## Histórico do estoque
+
+A equipe com acesso clínico pode consultar entradas e saídas por insumo, com data, quantidade e filtro por tipo. O histórico usa o registro de movimentações do Orion e inclui operações anteriores à revisão. Paginação, retentativas de gravação e isolamento entre clínicas foram testados com PostgreSQL.
 
 ## Publicação
 

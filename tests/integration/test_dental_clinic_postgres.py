@@ -739,3 +739,49 @@ async def test_dental_professional_portal_link_clinician_permission_and_revocati
             """),{"tenant":d["a"],"account":professional_account})
             await db.execute(text("DELETE FROM panel_accounts WHERE id=:account"),
                              {"account":professional_account})
+
+
+@pytest.mark.asyncio
+async def test_supply_history_paginates_filters_and_isolates_clinics(clinic_api_db):
+    import httpx
+    from fastapi import FastAPI
+    from app.catalog_api import Actor, authenticate
+    from app.dental_clinic_api import router
+
+    d = clinic_api_db
+    app = FastAPI()
+    app.include_router(router)
+    actor = Actor("member", d["a"], d["account"], "owner")
+    app.dependency_overrides[authenticate] = lambda: actor
+    base = f"/api/v1/tenants/{d['a']}/dental/supplies"
+    other = f"/api/v1/tenants/{d['b']}/dental/supplies"
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
+                                 base_url="http://test.invalid") as client:
+        supply = await client.post(base, json={"name": "Gaze sintética", "unit": "box"})
+        assert supply.status_code == 201, supply.text
+        supply_id = supply.json()["id"]
+        path = f"{base}/{supply_id}/movements"
+        assert (await client.get(path)).json() == {"items": [], "next_cursor": None}
+        for direction, quantity, key in (("in", 10, "synthetic-initial-stock"),
+                                          ("out", 2, "synthetic-stock-withdrawal"),
+                                          ("in", 5, "synthetic-stock-replenishment")):
+            movement = {"movement": direction, "quantity": quantity, "entry_key": key}
+            assert (await client.post(path, json=movement)).status_code == 200
+            assert (await client.post(path, json=movement)).json()["replayed"] is True
+        first = await client.get(path, params={"limit": 2})
+        assert first.status_code == 200, first.text
+        assert "no-store" in first.headers["cache-control"]
+        first_page = first.json()
+        assert [(item["movement"], item["quantity"]) for item in first_page["items"]] == [("in", 5), ("out", 2)]
+        assert set(first_page["items"][0]) == {"id", "movement", "quantity", "occurred_at"}
+        assert first_page["next_cursor"] == first_page["items"][-1]["id"]
+        next_page = (await client.get(path, params={"cursor": first_page["next_cursor"]})).json()
+        assert [item["quantity"] for item in next_page["items"]] == [10]
+        assert next_page["next_cursor"] is None
+        assert (await client.get(path, params={"movement": "in", "cursor": first_page["next_cursor"]})).status_code == 400
+        actor = Actor("member", d["a"], d["assistant"], "editor")
+        withdrawals = (await client.get(path, params={"movement": "out"})).json()
+        assert [item["quantity"] for item in withdrawals["items"]] == [2]
+        actor = Actor("member", d["b"], d["account_b"], "owner")
+        assert (await client.get(path)).status_code == 403
+        assert (await client.get(f"{other}/{supply_id}/movements")).status_code == 404

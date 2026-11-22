@@ -27,7 +27,9 @@ const response=(path,method='GET',data,config)=>{
   if(path.endsWith('/dental/intake-templates/clinical'))return {items:config.intakeTemplates||[]};
   if(path.endsWith('/dental/rooms'))return method==='GET'?{items:config.rooms||[]}:{id:randomUUID(),...data};
   if(path.endsWith('/room')&&method==='PUT')return {assigned:true};
-  if(path.endsWith('/dental/supplies'))return method==='GET'?{items:[]}:{id:randomUUID(),...data};
+  if(path.endsWith('/dental/supplies'))return method==='GET'?{items:config.supplies||[]}:{id:randomUUID(),...data};
+  if(path.includes('/dental/supplies/')&&path.includes('/movements')&&method==='GET')
+    return config.supplyHistory?.(new URL(path,'https://orion.test').searchParams)||{items:[],next_cursor:null};
   return {items:[]};
 };
 function makeDOM(config={}){
@@ -177,4 +179,34 @@ test('dentista seleciona um modelo e envia respostas, com a versão, ao prontuá
   assert.deepEqual(JSON.parse(JSON.stringify(call.data.content.intake_template)),
     {template_id:template.id,version:3,answers:['Resposta sintética','']});
   assert.equal(h.window.localStorage.length,0);
+});
+
+test('stock history paginates and filters entries without affecting the balance',async t=>{
+  const supply={id:randomUUID(),name:'Gaze de teste',quantity:13,unit:'box'};
+  const newest={id:randomUUID(),movement:'in',quantity:10,occurred_at:'2026-11-01T18:00:00Z'};
+  const older={id:randomUUID(),movement:'out',quantity:2,occurred_at:'2026-11-01T17:00:00Z'};
+  const h=makeDOM({level:'assistant',supplies:[supply],supplyHistory:params=>{
+    if(params.get('movement')==='out'||params.has('cursor'))return {items:[older],next_cursor:null};
+    return {items:[newest],next_cursor:newest.id};
+  }});
+  t.after(()=>h.close());
+  await h.mount();await flush();
+  h.click('[data-dental-action=section-supplies]');await flush();
+  assert.match(h.host.textContent,/13 cx\./);
+  h.click('[data-dental-action=supply-history]');await flush();
+  assert.match(h.host.textContent,/Histórico de movimentações/);
+  assert.match(h.host.textContent,/10 cx\./);
+  h.click('[data-dental-action=supply-history-more]');await flush();
+  assert.equal(h.host.querySelectorAll('tbody tr').length,2);
+  assert.ok(h.calls.some(call=>call.path.endsWith('cursor='+newest.id)));
+  const filter=h.host.querySelector('select[name=supply_history_movement]');
+  filter.value='out';
+  filter.dispatchEvent(new h.window.Event('change',{bubbles:true}));
+  await flush();
+  assert.equal(h.host.querySelectorAll('tbody tr').length,1);
+  assert.match(h.host.querySelector('tbody').textContent,/Saída.*2 cx\./);
+  h.click('[data-dental-action=supply-history-close]');await flush();
+  assert.match(h.host.textContent,/13 cx\./);
+  assert.equal(h.window.document.activeElement.dataset.dentalAction,'supply-history');
+  assert.ok(h.calls.every(call=>call.method==='GET'));
 });

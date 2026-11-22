@@ -10,6 +10,7 @@ import os
 import secrets
 from contextlib import asynccontextmanager
 from datetime import date, datetime, time, timedelta, timezone
+from typing import Literal
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
@@ -726,6 +727,43 @@ async def add_supply(tenant_id:UUID,payload:SupplyCreate,actor:Actor=Depends(aut
             raise HTTPException(409,"Insumo já cadastrado") from None
         await audit(db,tenant_id,actor,"supply_created")
         return {"id":identity,"name":payload.name,"unit":payload.unit,"quantity":0}
+
+
+@router.get("/supplies/{supply_id}/movements")
+async def supply_history(
+    tenant_id: UUID, supply_id: UUID, actor: Actor = Depends(authenticate),
+    movement: Literal["in", "out"] | None = None, cursor: UUID | None = None,
+    limit: int = Query(30, ge=1, le=100),
+):
+    async with clinical_session(tenant_id, actor) as (db, _):
+        scope = {"tenant": tenant_id, "supply": supply_id}
+        exists = await db.scalar(text("""
+            SELECT id FROM dental_supplies WHERE tenant_id=:tenant AND id=:supply
+        """), scope)
+        if exists is None:
+            raise HTTPException(404, "Insumo não encontrado")
+        boundary = None
+        if cursor is not None:
+            boundary = (await db.execute(text("""
+                SELECT occurred_at,movement FROM dental_supply_movements
+                WHERE tenant_id=:tenant AND supply_id=:supply AND id=:cursor
+            """), {**scope, "cursor": cursor})).mappings().one_or_none()
+            if boundary is None or (movement is not None and boundary["movement"] != movement):
+                raise HTTPException(400, "Página do histórico inválida")
+        rows = (await db.execute(text("""
+            SELECT id,movement,quantity,occurred_at FROM dental_supply_movements
+            WHERE tenant_id=:tenant AND supply_id=:supply
+              AND (CAST(:movement AS varchar) IS NULL OR movement=:movement)
+              AND (CAST(:before AS timestamptz) IS NULL OR (occurred_at,id)<(:before,:cursor))
+            ORDER BY occurred_at DESC,id DESC LIMIT :limit
+        """), {
+            **scope, "movement": movement, "before": boundary["occurred_at"] if boundary else None,
+            "cursor": cursor, "limit": limit + 1,
+        })).mappings().all()
+        return {
+            "items": [dict(row) for row in rows[:limit]],
+            "next_cursor": rows[limit - 1]["id"] if len(rows) > limit else None,
+        }
 
 
 @router.post("/supplies/{supply_id}/movements")

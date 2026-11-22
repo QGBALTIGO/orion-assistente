@@ -19,7 +19,7 @@
   }
   const state={host:null,request:null,tenantId:'',canAccess:null,epoch:0,access:null,team:[],professionals:[],
     patients:[],patient:null,records:[],exams:[],intakeTemplates:[],rooms:[],appointments:[],roomDay:localToday(),
-    roomZone:'',supplies:[],q:'',selectedTooth:11,
+    roomZone:'',supplies:[],supplyHistory:null,q:'',selectedTooth:11,
     dentition:'permanent',tab:'anamnesis',section:'patients',findings:[],periodontal:[],stages:[],
     error:'',success:'',loading:false,submitting:false,patientRead:0,searchRead:0};
   const endpoint=path=>'/api/v1/tenants/'+state.tenantId+'/dental'+path;
@@ -70,14 +70,44 @@
        '<p class="os-dental-empty">Não há consultas confirmadas para o dia selecionado.</p>')+
        '</div></div>';
   }
+  const supplyUnits=[['unit','Unidade'],['box','Caixa'],['ml','mL'],['g','Grama'],['kit','Kit']];
+  const supplyQuantity=(quantity,unit)=>new Intl.NumberFormat('pt-BR').format(quantity)+' '+
+    ({unit:'un.',box:'cx.',ml:'mL',g:'g',kit:quantity===1?'kit':'kits'}[unit]||unit);
+
+  function supplyHistoryPanel(history){
+    const rows=history.items.map(item=>'<tr><td>'+esc(fmtDate(item.occurred_at))+'</td><td>'+
+      (item.movement==='in'?'Entrada':'Saída')+'</td><td>'+
+      esc(supplyQuantity(item.quantity,history.supply.unit))+'</td></tr>').join('');
+    return '<section class="os-dental-card os-dental-space" aria-labelledby="dental-stock-history">'+
+      '<div class="os-dental-actions">'+button('Voltar ao estoque','supply-history-close','os-ghost')+'</div>'+
+      '<header><h2 class="os-dental-title" id="dental-stock-history" tabindex="-1">Histórico de movimentações</h2>'+
+      '<p class="os-dental-muted">'+esc(history.supply.name)+'</p></header>'+
+      choices('Tipo de movimentação','supply_history_movement',[
+        ['','Todas'],['in','Entradas'],['out','Saídas']],history.movement)+
+      (rows?'<div class="os-dental-table-wrap"><table class="os-dental-table"><thead><tr>'+
+        '<th scope="col">Data e hora</th><th scope="col">Tipo</th><th scope="col">Quantidade</th></tr></thead>'+
+        '<tbody>'+rows+'</tbody></table></div>':'')+
+      (history.loading?pending():'')+
+      (history.error?info(history.error,true)+'<div class="os-dental-actions">'+button('Tentar novamente','supply-history-more')+'</div>':'')+
+      (!history.loading&&!history.error&&!rows?'<p class="os-dental-empty">Nenhuma movimentação neste filtro.</p>':'')+
+      (!history.loading&&!history.error&&history.nextCursor?
+        '<div class="os-dental-actions">'+button('Carregar mais','supply-history-more')+'</div>':'')+
+      '</section>';
+  }
+
   function supplyManager(){
+    if(state.supplyHistory)return supplyHistoryPanel(state.supplyHistory);
     return '<div class="os-dental-space"><div class="os-dental-card"><h2 class="os-dental-title">Estoque e insumos</h2>'+
-      '<p class="os-dental-muted">Entradas e saídas são transações registradas; estoque nunca pode ficar negativo.</p>'+
       '<form data-dental-form="supply" class="os-dental-row">'+field('Insumo','name','text','','required maxlength="120"')+
-      choices('Unidade','unit',[['unit','Unidade'],['box','Caixa'],['ml','mL'],['g','Grama'],['kit','Kit']])+
-      '<div class="os-dental-field"><label>Cadastro</label><button class="os-button" type="submit">Adicionar</button></div></form></div>'+
+      choices('Unidade','unit',supplyUnits)+
+      '<div class="os-dental-controls"><button class="os-button" type="submit">Adicionar insumo</button></div></form></div>'+
       '<div class="os-dental-card">'+(state.supplies.length?'<div class="os-dental-table-wrap"><table class="os-dental-table"><thead><tr><th>Insumo</th><th>Quantidade</th><th>Movimentar</th></tr></thead><tbody>'+
-       state.supplies.map(x=>'<tr><td>'+esc(x.name)+'</td><td>'+esc(x.quantity)+' '+esc(x.unit)+'</td><td>'+button('Entrada','supply-in','os-outline','data-id="'+esc(x.id)+'"')+' '+button('Saída','supply-out','os-outline','data-id="'+esc(x.id)+'"')+'</td></tr>').join('')+'</tbody></table></div>':
+       state.supplies.map(x=>{
+         const id='data-id="'+esc(x.id)+'"';
+         return '<tr><td>'+esc(x.name)+'</td><td>'+esc(supplyQuantity(x.quantity,x.unit))+'</td>'+
+           '<td><div class="os-dental-actions">'+button('Entrada','supply-in','os-outline',id)+
+           button('Saída','supply-out','os-outline',id)+button('Ver histórico','supply-history','os-ghost',id)+'</div></td></tr>';
+       }).join('')+'</tbody></table></div>':
        '<div class="os-dental-empty">Nenhum insumo cadastrado.</div>')+'</div></div>';
   }
   function accessManager(){
@@ -332,6 +362,33 @@
     }catch(e){if(valid(epoch))state.error=e?.message||'Não foi possível carregar os cadastros.';}
     finally{if(valid(epoch)){state.loading=false;render();}}
   }
+  async function loadSupplyHistory(history){
+    if(history.loading)return;
+    const epoch=state.epoch;
+    history.loading=true;
+    history.error='';
+    render();
+    const query=new URLSearchParams();
+    if(history.movement)query.set('movement',history.movement);
+    if(history.nextCursor)query.set('cursor',history.nextCursor);
+    try{
+      const suffix=query.toString();
+      const res=await api('/supplies/'+history.supply.id+'/movements'+(suffix?'?'+suffix:''));
+      if(valid(epoch)&&history===state.supplyHistory){
+        history.items.push(...res.items);
+        history.nextCursor=res.next_cursor;
+      }
+    }catch(e){
+      if(valid(epoch)&&history===state.supplyHistory)
+        history.error=e?.message||'Não foi possível carregar o histórico.';
+    }finally{
+      if(valid(epoch)&&history===state.supplyHistory){history.loading=false;render();}
+    }
+  }
+  function selectSupplyHistory(supply,movement=''){
+    state.supplyHistory={supply,movement,items:[],nextCursor:null,loading:false,error:''};
+    return loadSupplyHistory(state.supplyHistory);
+  }
   function addFinding(){
     const form=state.host?.querySelector('[data-dental-form=record]');if(!form)return;
     const v=formValues(form),tooth=Number(state.selectedTooth),face=v.face;
@@ -406,6 +463,7 @@
     const act=btn.dataset.dentalAction;
     if(act?.startsWith('section-')){
       const section=act.slice(8);state.section=section;state.error='';state.success='';
+      state.supplyHistory=null;
       render();
       if(section==='rooms'||section==='supplies')await loadManagers(section);
       return;
@@ -426,6 +484,25 @@
     }
     if(act==='download-exam'&&idRe.test(btn.dataset.id||'')){
       await invoke(()=>downloadExam(btn.dataset.id),'Exame disponibilizado para download.');return;
+    }
+    if(act==='supply-history'){
+      const supply=state.supplies.find(item=>item.id===btn.dataset.id);
+      if(supply){
+        await selectSupplyHistory(supply);
+        if(state.supplyHistory?.supply===supply)
+          state.host?.querySelector('#dental-stock-history')?.focus();
+      }
+      return;
+    }
+    if(act==='supply-history-close'){
+      const supply=state.supplyHistory?.supply;
+      state.supplyHistory=null;
+      render();
+      if(idRe.test(supply?.id||''))state.host?.querySelector('[data-dental-action="supply-history"][data-id="'+supply.id+'"]')?.focus();
+      return;
+    }
+    if(act==='supply-history-more'&&state.supplyHistory){
+      await loadSupplyHistory(state.supplyHistory);return;
     }
     if((act==='supply-in'||act==='supply-out')&&idRe.test(btn.dataset.id||'')){
       const value=prompt('Quantidade de '+(act==='supply-in'?'entrada':'saída')+' (inteiro positivo):');
@@ -516,6 +593,11 @@
   function onChange(event){
     const el=event.target;
     if(!state.host?.contains(el))return;
+    if(el.name==='supply_history_movement'&&state.supplyHistory){
+      const history=state.supplyHistory;
+      void selectSupplyHistory(history.supply,el.value);
+      return;
+    }
     if(el.name==='intake_template'){
       const template=state.intakeTemplates.find(item=>item.id===el.value);
       const answers=el.form?.querySelector('[data-dental-intake-answers]');
@@ -566,7 +648,7 @@
       host.removeEventListener('change',onChange);host.replaceChildren();}
     Object.assign(state,{host:null,request:null,tenantId:'',canAccess:null,access:null,team:[],
       professionals:[],patients:[],patient:null,records:[],exams:[],intakeTemplates:[],rooms:[],appointments:[],
-      roomDay:localToday(),roomZone:'',supplies:[],q:'',
+      roomDay:localToday(),roomZone:'',supplies:[],supplyHistory:null,q:'',
       selectedTooth:11,dentition:'permanent',tab:'anamnesis',section:'patients',findings:[],
       periodontal:[],stages:[],creatingPatient:false,editingPatient:false,
       error:'',success:'',loading:false,submitting:false,patientRead:0,searchRead:0});
