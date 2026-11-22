@@ -30,18 +30,23 @@ test('a verified dentist business gets a grouped Orion menu with only existing m
   assert.equal(h.errors.length,0);
 });
 
-test('dashboard uses the live management data contract and has actual booking and patient actions',async t=>{
+test('recepção usa o resumo administrativo, horários locais e ações de consulta e paciente',async t=>{
   const calls=[];
   const h=await makeSuite({initialRoute:'dashboard',permissions:dentalPlan(),
-    respond:(path)=>{calls.push(path);if(path.includes('/management/dashboard'))
-      return {summary:{appointments:7,completed:3,customers:12,cancelled:1,no_show:0}};
+    respond:(path)=>{calls.push(path);if(path.endsWith('/dental/reception/today'))
+      return {day:'2026-11-22',timezone:'America/Campo_Grande',counts:{confirmed:7,completed:3,cancelled:1,no_show:0},
+        upcoming:[{start_at:'2026-11-22T16:30:00Z',end_at:'2026-11-22T17:10:00Z',professional:'Profissional sintético'}]};
       return [];}});
   t.after(()=>h.close());await flush();
   const main=h.document.getElementById('osPageBody');
   assert.match(main.textContent,/Consultas de hoje/);
   assert.match(main.textContent,/Nova consulta/);
   assert.match(main.textContent,/Novo paciente/);
-  assert.ok(calls.some(path=>path.includes('/management/dashboard')));
+  assert.deepEqual([...main.querySelectorAll('dd')].map(el=>el.textContent),['7','3','1','0']);
+  assert.equal(main.querySelector('time').textContent,'12:30');
+  assert.equal(main.querySelectorAll('[data-os-action=new-appointment]').length,1);
+  assert.ok(calls.some(path=>path.endsWith('/dental/reception/today')));
+  assert.ok(!calls.some(path=>path.includes('/records')||path.includes('/management/dashboard')));
   assert.ok(!main.textContent.includes('Sorriso Prime'));
   h.click('#osNav [data-os-route=clientes]');await flush();
   assert.match(h.document.querySelector('.os-client-heading h1').textContent,/Pacientes/);
@@ -224,4 +229,30 @@ test('modelos de anamnese preservam a ordem das perguntas, a situação e a vers
   assert.equal(template.version,2);
   assert.match(h.document.getElementById('osPageBody').textContent,/Modelo revisado/);
   assert.equal(h.errors.length,0);
+});
+
+test('recepção distingue falha de agenda vazia e retoma a consulta automaticamente',async t=>{
+  let refresh,attempts=0;
+  const h=await makeSuite({initialRoute:'dashboard',permissions:dentalPlan(),configureWindow(w){
+    const interval=w.setInterval.bind(w);
+    w.setInterval=(func,ms,...args)=>{if(ms===30000){refresh=func;return 0;}return interval(func,ms,...args);};
+    Object.defineProperty(w.document,'visibilityState',{value:'visible'});
+  },respond(path){
+    if(!path.endsWith('/dental/reception/today'))return [];
+    attempts++;
+    if(attempts===1||attempts===3)throw Error('Falha temporária');
+    return {day:'2026-11-22',timezone:'America/Campo_Grande',counts:{confirmed:0,completed:0,cancelled:0,no_show:0},upcoming:[]};
+  }});
+  t.after(()=>h.close());await flush();
+  assert.equal(h.document.querySelectorAll('#osReceptionCounts dd').length,0);
+  assert.match(h.document.querySelector('#osReceptionNotice').textContent,/Não foi possível/);
+  refresh();await flush();
+  assert.equal(h.document.querySelectorAll('#osReceptionCounts dd').length,4);
+  assert.match(h.document.querySelector('#osReceptionUpcoming').textContent,/Nenhuma consulta confirmada/);
+  refresh();await flush();
+  assert.equal(h.document.querySelectorAll('#osReceptionCounts dd').length,4);
+  assert.match(h.document.querySelector('#osReceptionNotice').textContent,/última consulta/);
+  h.click('[data-os-action=dashboard-agenda-full]');await flush();
+  assert.equal(h.document.querySelector('#page-suite').dataset.osCurrentRoute,'agenda');
+  refresh();await flush();assert.equal(attempts,3);
 });

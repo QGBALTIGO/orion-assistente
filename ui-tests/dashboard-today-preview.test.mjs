@@ -58,7 +58,8 @@ test('Dashboard preview is limited to eight verified rows and opens the complete
   assert.equal(h.document.querySelectorAll('.os-dashboard-agenda-list .os-agenda-item').length,8);
   assert.match(h.document.getElementById('osDashboardAgendaContent').textContent,/Exibindo 8 de 87/);
   await h.window.OrionSuite.open('agenda'); await flush();
-  h.click('[data-os-action=agenda-next]'); await flush();
+  h.click('[data-os-action=week-next]'); await flush();
+  assert.notEqual(new URL(h.calls.filter(x=>x.path.includes('/appointments?')).at(-1).path,'https://orion.test').searchParams.get('day'),today());
   // Previously selected dates in the full Agenda must not leak into today's preview.
   await h.window.OrionSuite.open('dashboard'); await flush();
   assert.equal(new URL(h.calls.filter(x=>isPreviewRead(x.path)).at(-1).path,'https://orion.test').searchParams.get('day'),today());

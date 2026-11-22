@@ -872,6 +872,7 @@
                direct:routePermitted('enviar-mensagem'),diagnostics:routePermitted('diagnosticos')}});
            break;
          }
+         if(dentalWorkspace()){await mountDentalReception(c);break;}
          if(homePreviewEnabled()){await loadHomePreview(c);break;}
          const today=dateKey();const d=await request(mgmt('/dashboard?'+query({start_date:today,end_date:today})));
          if(!current(c))return;state.data.dashboard=d;renderDashboard(d,today);
@@ -1312,13 +1313,68 @@
     if(state.homeAgain){state.homeAgain=false;await loadHomePreview(context(),dateKey(),{background:true,force:true});}
   }
 
+  const receptionStatuses=[
+    ['confirmed','Confirmadas','calendar'],['completed','Concluídas','check'],
+    ['cancelled','Canceladas','close'],['no_show','Faltas','clock']
+  ];
+  async function mountDentalReception(c){
+    const shortcuts=[];
+    if(writable()&&routePermitted('agenda'))shortcuts.push(button('Nova consulta','new-appointment','','plus'));
+    if(writable()&&routePermitted('clientes'))shortcuts.push(button('Novo paciente','new-customer','os-outline','userPlus'));
+    const agendaLink=routePermitted('agenda')?button('Ver agenda','dashboard-agenda-full','os-ghost os-small','calendar'):'';
+    const financeLink=routePermitted('financeiro')?routeButton('Ver financeiro','financeiro','os-ghost os-small','wallet'):'';
+    bodyHTML('<section class="os-reception" aria-labelledby="osReceptionTitle">'+
+      '<header class="os-reception-head"><div><h1 id="osReceptionTitle">Recepção</h1><p>'+esc(tenant()?.name||'')+'</p></div>'+
+      (shortcuts.length?'<div class="os-reception-actions">'+shortcuts.join('')+'</div>':'')+'</header>'+
+      '<section class="os-card os-reception-card" aria-labelledby="osConsultasTitle"><header><div><h2 id="osConsultasTitle">Consultas de hoje</h2>'+
+      '<p id="osReceptionDate"></p></div>'+agendaLink+'</header><div id="osReceptionCounts">'+loading('Consultando a agenda…')+'</div></section>'+
+      '<section class="os-card os-reception-card" aria-labelledby="osProximasTitle"><header><h2 id="osProximasTitle">Próximas consultas</h2></header>'+
+      '<div id="osReceptionUpcoming" aria-busy="true"></div></section>'+
+      '<p id="osReceptionNotice" class="os-reception-notice" role="status"></p>'+
+      (financeLink?'<footer>'+financeLink+'</footer>':'')+'</section>');
+    const counts=$('osReceptionCounts'),upcoming=$('osReceptionUpcoming'),notice=$('osReceptionNotice');
+    let busy=false,lastSnapshot='';
+    async function refresh(){
+      if(busy||!current(c))return;
+      busy=true;
+      try{
+        const data=await request(apiPath('/dental/reception/today'));
+        if(!current(c))return;
+        if(!data||!/^\d{4}-\d{2}-\d{2}$/.test(data.day)||!data.timezone||
+           !receptionStatuses.every(([key])=>Number.isSafeInteger(data.counts?.[key])&&data.counts[key]>=0)||
+           !Array.isArray(data.upcoming)||data.upcoming.length>5||
+           data.upcoming.some(slot=>!slot||typeof slot.professional!=='string'||
+             !Number.isFinite(Date.parse(slot.start_at))||!(Date.parse(slot.end_at)>Date.parse(slot.start_at))))
+          throw Error('Resposta incompleta');
+        const clock=new Intl.DateTimeFormat('pt-BR',{timeZone:data.timezone,hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
+        const snapshot=JSON.stringify([data.day,data.timezone,data.counts,data.upcoming]);
+        notice.textContent='';
+        if(snapshot!==lastSnapshot){
+          $('osReceptionDate').textContent=longDay(data.day);
+          counts.innerHTML='<dl class="os-reception-metrics">'+receptionStatuses.map(([key,label,symbol])=>
+            '<div><dt>'+icon(symbol)+'<span>'+esc(label)+'</span></dt><dd>'+data.counts[key]+'</dd></div>').join('')+'</dl>';
+          upcoming.innerHTML=data.upcoming.length?'<ol class="os-reception-visits">'+data.upcoming.map(slot=>
+            '<li><time datetime="'+esc(slot.start_at)+'">'+esc(clock.format(new Date(slot.start_at)))+'</time>'+
+            '<span>'+esc(slot.professional)+'</span><small>Até '+esc(clock.format(new Date(slot.end_at)))+'</small></li>').join('')+'</ol>':
+            '<p class="os-reception-empty">Nenhuma consulta confirmada para o restante do dia.</p>';
+          lastSnapshot=snapshot;
+        }
+      }catch{
+        if(!current(c))return;
+        if(!lastSnapshot){counts.replaceChildren();upcoming.replaceChildren();}
+        notice.textContent=lastSnapshot?'Exibindo a última consulta à agenda. Tentando reconectar…':'Não foi possível consultar a agenda da clínica. Tentando novamente…';
+      }finally{busy=false;if(current(c))upcoming.setAttribute('aria-busy','false');}
+    }
+    state.clockTimer=setInterval(()=>{if(document.visibilityState!=='hidden')void refresh();},30000);
+    await refresh();
+  }
   function renderDashboard(data,today=dateKey()){
     const s=data.summary||{},t=tenant(),can=writable(),hours=Number(new Intl.DateTimeFormat('en-GB',{hour:'2-digit',hourCycle:'h23',timeZone:zone()}).format(new Date()));
     const greeting=hours<12?'Bom dia':hours<18?'Boa tarde':'Boa noite';
     const quick=(titleText,sub,action,symbol,primary=false)=>'<button type="button" class="os-quick-action'+(primary?' os-primary':'')+'" data-os-action="'+action+'"'+(!can&&action!=='agenda-open'?' disabled':'')+'><span class="os-action-icon">'+icon(symbol)+'</span><div><strong>'+esc(titleText)+'</strong><small>'+esc(sub)+'</small></div>'+icon('chevron')+'</button>';
     let html='<div class="os-dashboard-title"><p class="os-date-label">'+esc(longDay(dateKey()))+'</p><h1>'+esc(routeLabel('dashboard'))+'</h1><p class="os-dashboard-greeting">'+greeting+', '+esc(t?.name||'seu negócio')+'.</p></div>'+(!can?'<div class="os-notice os-readonly">'+icon('lock')+'<p>Seu acesso a esta empresa é somente para consulta.</p></div>':'')+'<div class="os-space">';
-    html+='<section class="os-quick-actions" aria-label="Ações rápidas">'+quick(dentalWorkspace()?'Nova consulta':'Novo agendamento','Marque um horário em segundos','new-appointment','calendarPlus',true)+quick(dentalWorkspace()?'Novo paciente':'Novo cliente','Cadastre nome e telefone','new-customer','userPlus')+'</section>';
-    html+='<section class="os-dashboard-today"><h2 class="os-today-title">'+(dentalWorkspace()?'Consultas de hoje':'Hoje no seu negócio')+'</h2><div class="os-stats">'+[[s.appointments,dentalWorkspace()?'Agendadas':'Agendados'],[s.completed,dentalWorkspace()?'Concluídas':'Atendidos'],[number(s.cancelled)+number(s.no_show),'Cancel. / faltas']].map(([v,l])=>'<div class="os-stat"><strong>'+number(v)+'</strong><small>'+l+'</small></div>').join('')+'</div>'+dashboardAgendaFrame(today)+dashboardFinanceFrame()+'</section></div>';
+    html+='<section class="os-quick-actions" aria-label="Ações rápidas">'+quick('Novo agendamento','Marque um horário em segundos','new-appointment','calendarPlus',true)+quick('Novo cliente','Cadastre nome e telefone','new-customer','userPlus')+'</section>';
+    html+='<section class="os-dashboard-today"><h2 class="os-today-title">'+'Hoje no seu negócio'+'</h2><div class="os-stats">'+[[s.appointments,'Agendados'],[s.completed,'Atendidos'],[number(s.cancelled)+number(s.no_show),'Cancel. / faltas']].map(([v,l])=>'<div class="os-stat"><strong>'+number(v)+'</strong><small>'+l+'</small></div>').join('')+'</div>'+dashboardAgendaFrame(today)+dashboardFinanceFrame()+'</section></div>';
     bodyHTML(html);
   }
   const agendaStates={

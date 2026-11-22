@@ -979,3 +979,69 @@ async def test_laboratory_directory_is_private_versioned_and_keeps_prior_clinica
             await db.execute(text("SELECT set_config('app.dental_actor',:actor,true)"),
                              {"actor": str(d["assistant"])})
             assert await db.scalar(text("SELECT count(*) FROM dental_laboratories")) == 0
+
+
+@pytest.mark.asyncio
+async def test_dental_reception_aggregates_real_slots_in_the_clinic_day(clinic_db):
+    from datetime import time
+    from zoneinfo import ZoneInfo
+    from app.dental_clinic_api import reception_snapshot
+
+    d = clinic_db
+    zone = ZoneInfo("America/Campo_Grande")
+    date_at_clinic = d["when"].astimezone(zone).date()
+    midnight = datetime.combine(date_at_clinic, time.min, tzinfo=zone)
+    # At 23:20 in MS the UTC calendar has already crossed midnight.
+    start = midnight + timedelta(hours=23, minutes=20)
+    async with d["migrator"].begin() as connection:
+        await connection.execute(text("UPDATE tenants SET timezone=:tz WHERE id=:id"),
+                                 {"tz": zone.key, "id": d["a"]})
+        await connection.execute(text("""
+            UPDATE appointments SET start_at=:start, end_at=:end,
+                occupied_from=:start, occupied_until=:end
+            WHERE tenant_id=:tenant
+        """), {"start": start, "end": start+timedelta(minutes=30), "tenant": d["a"]})
+    factory = async_sessionmaker(d["runtime"], expire_on_commit=False)
+    async with factory() as session:
+        async with tenant_transaction(session, d["a"]):
+            snapshot = await reception_snapshot(session, d["a"], start-timedelta(minutes=1))
+            assert snapshot["day"] == date_at_clinic
+            assert snapshot["counts"] == {"confirmed":2,"completed":0,"cancelled":0,"no_show":0}
+            assert len(snapshot["upcoming"]) == 2
+            assert all(set(slot) == {"start_at","end_at","professional"} for slot in snapshot["upcoming"])
+            assert datetime.fromisoformat(snapshot["upcoming"][0]["start_at"]) == start
+            assert not (await reception_snapshot(session, d["a"], start+timedelta(minutes=1)))["upcoming"]
+            tomorrow = await reception_snapshot(session, d["a"], midnight+timedelta(days=1))
+            assert not any(tomorrow["counts"].values())
+        async with tenant_transaction(session, d["b"]):
+            other = await reception_snapshot(session, d["b"], start)
+            assert not any(other["counts"].values()) and other["upcoming"] == []
+
+
+@pytest.mark.asyncio
+async def test_reception_rechecks_membership_and_niche_without_a_clinical_grant(clinic_api_db, monkeypatch):
+    import httpx
+    from fastapi import FastAPI
+    from app.catalog_api import Actor, authenticate
+    from app.dental_clinic_api import router
+
+    d = clinic_api_db
+    monkeypatch.setenv("ORION_DENTAL_CLINIC_ENABLED", "0")
+    async with d["migrator"].begin() as db:
+        await db.execute(text("UPDATE dental_clinicians SET enabled=false WHERE tenant_id=:tenant"),
+                         {"tenant": d["a"]})
+    api = FastAPI()
+    api.include_router(router)
+    api.dependency_overrides[authenticate] = lambda: Actor("member",d["a"],d["assistant"],"editor")
+    def path(tenant):
+        return f"/api/v1/tenants/{tenant}/dental/reception/today"
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=api),base_url="http://test.invalid") as client:
+        result = await client.get(path(d["a"]))
+        assert result.status_code == 200, result.text
+        assert "no-store" in result.headers["Cache-Control"]
+        assert result.json()["upcoming"] == []
+        assert (await client.get(path(d["b"]))).status_code == 403
+        async with d["migrator"].begin() as db:
+            await db.execute(text("UPDATE business_onboarding SET configuration=CAST(:data AS jsonb) WHERE tenant_id=:tenant"),
+                             {"tenant":d["a"],"data":'{"niche":"barbearia"}'})
+        assert (await client.get(path(d["a"]))).status_code == 404

@@ -202,6 +202,53 @@ async def patient_row(db,tenant,patient, *, lock=False):
     return dict(result)
 
 
+async def reception_snapshot(db, tenant_id: UUID, as_of: datetime):
+    zone_name = (await db.execute(text("SELECT timezone FROM tenants WHERE id=:tenant"),
+                                  {"tenant": tenant_id})).scalar_one()
+    zone = ZoneInfo(zone_name)
+    day = as_of.astimezone(zone).date()
+    start = datetime.combine(day, time.min, zone)
+    end = datetime.combine(day + timedelta(days=1), time.min, zone)
+    # Counts and the upcoming slots must describe the same committed agenda.
+    row = (await db.execute(text("""
+        WITH visits AS MATERIALIZED (
+            SELECT a.status, a.start_at, a.end_at, a.professional_id, a.id
+            FROM appointments a
+            WHERE a.tenant_id=:tenant AND a.start_at>=:start AND a.start_at<:end
+              AND a.status IN ('confirmed','completed','cancelled','no_show')
+        ), upcoming AS (
+            SELECT v.start_at, v.end_at, p.name AS professional, v.id
+            FROM visits v JOIN professionals p ON p.tenant_id=:tenant AND p.id=v.professional_id
+            WHERE v.status='confirmed' AND v.start_at>=:as_of
+            ORDER BY v.start_at, v.id LIMIT 5
+        )
+        SELECT count(*) FILTER (WHERE status='confirmed') AS confirmed,
+               count(*) FILTER (WHERE status='completed') AS completed,
+               count(*) FILTER (WHERE status='cancelled') AS cancelled,
+               count(*) FILTER (WHERE status='no_show') AS no_show,
+               COALESCE((SELECT jsonb_agg(jsonb_build_object(
+                   'start_at', start_at, 'end_at', end_at, 'professional', professional
+               ) ORDER BY start_at,id) FROM upcoming), '[]'::jsonb) AS upcoming
+        FROM visits
+    """), {"tenant": tenant_id, "start": start, "end": end, "as_of": as_of})).mappings().one()
+    return {"day": day, "timezone": zone_name, "as_of": as_of,
+            "counts": {k: row[k] for k in ("confirmed","completed","cancelled","no_show")},
+            "upcoming": row["upcoming"]}
+
+
+@router.get("/reception/today")
+async def reception_today(tenant_id: UUID, actor: Actor = Depends(authenticate)):
+    from app.management_api import management_session
+
+    async with management_session(tenant_id, actor) as db:
+        plan = await plan_state(db, tenant_id)
+        if plan.get("business_niche") != "odontologia" or plan.get("platform_workspace"):
+            raise HTTPException(404, "Recepção disponível apenas para clínicas odontológicas")
+        if not plan.get("active") or not plan.get("permissions", {}).get("dashboard.basic"):
+            raise HTTPException(403, "O acesso ao painel da clínica está indisponível")
+        return await reception_snapshot(db, tenant_id, datetime.now(timezone.utc))
+
+
 @router.get("/access")
 async def dental_access(tenant_id: UUID,actor:Actor=Depends(authenticate)):
     async with verified_clinical_membership(tenant_id, actor) as (role, linked_professional):
