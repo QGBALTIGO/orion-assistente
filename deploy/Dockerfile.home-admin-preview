@@ -2,5 +2,5 @@
 FROM ghcr.io/qgbaltigo/orion-assistente-api@sha256:d6ae62c9f013e999ca892826087c2ab44641770e3daedaa41865d5557b552b09
 ARG ORION_HOME_COMMIT
 LABEL org.opencontainers.image.revision=$ORION_HOME_COMMIT
-LABEL io.orion.home-preview="platform-admin-only"
+LABEL io.orion.home-preview="barbershop-and-platform-admin"
 COPY --chown=appuser:appuser app/static/orion-suite.js app/static/orion-suite.css /srv/app/app/static/

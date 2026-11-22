@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {makeSuite,flush,deferred,defaultResponse,tenantA} from './harness.mjs';
+import {makeSuite,flush,deferred,defaultResponse,planState,tenantA,tenantB} from './harness.mjs';
 const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 const admin={role:'admin',name:'Kayky Teste',account_id:'90000000-0000-4000-8000-000000000001'};
 function respond(path){
@@ -129,15 +129,15 @@ test('Home has one booking action and no manual refresh or duplicate empty-state
 test('background synchronization updates changed values without remounting Home or unchanged content',async t=>{
  let revenue=43000;
  const h=await liveSetup({respond:path=>{const d=respond(path);if(path.includes('/management/dashboard?'))d.summary.completed_revenue_cents=revenue;return d;}});t.after(()=>h.close());await flush();
- const page=h.document.querySelector('.os-home-preview'),metrics=h.document.querySelector('.os-home-metric'),agenda=h.document.querySelector('.os-home-agenda-empty');metrics.focus();
+ const page=h.document.querySelector('.os-home-preview'),metrics=h.document.querySelectorAll('.os-home-metric')[2],agenda=h.document.querySelector('.os-home-agenda-empty');metrics.focus();
  await h.tick();assert.equal(reads(h),2);
  assert.equal(h.document.querySelector('.os-home-preview'),page);
- assert.equal(h.document.querySelector('.os-home-metric'),metrics);assert.equal(h.document.activeElement,metrics);
+ assert.equal(h.document.querySelectorAll('.os-home-metric')[2],metrics);assert.equal(h.document.activeElement,metrics);
  assert.equal(h.document.querySelector('.os-home-agenda-empty'),agenda);
  revenue=54000;await h.tick();
  assert.match(h.document.querySelector('#osHomeRevenue').textContent,/540,00/);
  assert.equal(h.document.querySelector('.os-home-preview'),page);
- assert.equal(h.document.activeElement.dataset.osRoute,'agenda');assert.equal(h.document.querySelector('.os-home-agenda-empty'),agenda);
+ assert.equal(h.document.activeElement.querySelector('.os-home-metric-title').textContent,'Confirmados');assert.equal(h.document.querySelector('.os-home-agenda-empty'),agenda);
  assert.deepEqual(h.errors,[]);
 });
 
@@ -210,4 +210,105 @@ test('saving a customer immediately queues a fresh read after an in-flight sync 
  assert.equal(saved,true);assert.equal(h.document.querySelector('#osDialog').open,false);assert.equal(reads(h),2);
  pending.resolve(respond('/management/dashboard?start_date='+today()+'&end_date='+today()));await flush();
  assert.equal(reads(h),3);assert.equal(h.document.querySelector('.os-home-preview'),home);assert.equal(h.document.querySelectorAll('.os-home-metric>strong')[1].textContent,'49');assert.equal(writes(h).length,1);assert.deepEqual(h.errors,[]);
+});
+
+const barberPlan=(code='elite',overrides={})=>planState(code,{business_niche:null,workspace_profile:'standard',layout_modes:['classic','app'],...overrides});
+const barberMember={role:'member',name:'Responsável pela Barbearia',email:'responsavel@example.invalid'};
+const barberSetup=opts=>liveSetup({bridge:{user:barberMember},permissions:barberPlan(),...opts});
+const homeGoal=()=>({items:[{id:'goal-synthetic',scope:'company',professional_id:null,active:true,metric:'revenue_cents',start_date:today(),end_date:today(),target_value:100000,actual_value:43000}]});
+
+for(const code of ['essencial','profissional','elite'])test(`barbershop ${code} receives the approved Home with its plan's data`,async t=>{
+ const h=await barberSetup({permissions:barberPlan(code),respond:path=>path.includes('/goals?')?homeGoal():respond(path)});t.after(()=>h.close());await flush();
+ const home=h.document.querySelector('.os-home-preview');assert.ok(home);
+ assert.equal(h.document.querySelector('#osNav [data-os-route=dashboard]').textContent,'Início');
+ assert.doesNotMatch(home.textContent,/Prévia do administrador|Para acompanhar/);
+ assert.equal(home.querySelectorAll('[data-os-action=new-appointment]').length,1);
+ assert.match(home.querySelector('#osHomeRevenue').textContent,/430,00/);
+ assert.equal(home.querySelector('#osHomeTrend').querySelectorAll('svg rect').length,7);
+ assert.equal(home.querySelector('#osHomeGoals').hidden,code==='essencial');
+ assert.equal(h.calls.some(c=>c.path.includes('/goals?')),code!=='essencial');
+ assert.equal(home.querySelector('#osHomeSync').textContent,'');assert.equal(writes(h).length,0);
+ if(code!=='essencial'){
+  const shortcut=home.querySelector('[data-os-action=dashboard-goals-full]');
+  assert.equal(shortcut.className,home.querySelector('.os-home-team [data-os-route=funcionarios]').className);
+  assert.equal(shortcut.querySelector('svg'),null);
+  assert.equal(home.querySelector('[role=progressbar]').getAttribute('aria-valuenow'),'43');
+  h.click('[data-os-action=dashboard-goals-full]');await flush();
+  assert.equal(h.document.querySelector('#page-suite').dataset.osCurrentRoute,'desempenho');
+ }
+ assert.deepEqual(h.errors,[]);
+});
+
+test('viewer can read appointments but receives no creation or mutation controls',async t=>{
+ const record={id:'appointment-test',status:'confirmed',start_at:today()+'T15:00:00Z',end_at:today()+'T15:40:00Z',updated_at:today()+'T13:00:00Z',customer_name:'Cliente de consulta',professional_name:'Profissional de teste',total_cents:4000,items:[{name_snapshot:'Corte'}],allowed_actions:['cancel','complete','reschedule']};
+ const h=await barberSetup({role:'viewer',respond:path=>path.endsWith('/appointments/appointment-test')?record:path.includes('/appointments?')?{items:[record],total:1}:respond(path)});t.after(()=>h.close());await flush();
+ const home=h.document.querySelector('.os-home-preview');assert.ok(home);
+ assert.equal(home.querySelector('[data-os-action=new-appointment],[data-os-action=new-customer]'),null);
+ assert.equal(home.querySelector('[data-os-route=site]').hidden,false);
+ h.click('[data-os-appointment=appointment-test]');await flush();
+ const modal=h.document.querySelector('#osDialog');assert.ok(modal.open);assert.match(modal.textContent,/Cliente de consulta/);
+ assert.equal(modal.querySelector('[data-os-action=complete-appointment],[data-os-action=cancel-appointment],[data-os-action=reschedule-appointment]'),null);
+ assert.equal(writes(h).length,0);assert.deepEqual(h.errors,[]);
+});
+
+test('editor schedules from Home on the current business day and sees the result without a page reload',async t=>{
+ const start=today()+'T15:00:00Z',appointmentId='home-new-appointment';let booked=false,reserved=false;
+ const h=await barberSetup({role:'editor',respond:(path,method,data)=>{
+  if(path.includes('/availability?'))return {slots:[start],timezone:'America/Sao_Paulo'};
+  if(path.endsWith('/appointments/hold')&&method==='POST'){assert.equal(data.start_at,start);reserved=true;return {id:appointmentId,status:'hold',updated_at:today()+'T13:00:00Z'};}
+  if(path.endsWith(`/appointments/${appointmentId}/confirm`)&&method==='POST'){assert.equal(reserved,true);booked=true;return {id:appointmentId,status:'confirmed'};}
+  if(path.includes('/appointments?')&&booked)return {items:[{id:appointmentId,status:'confirmed',customer_name:'Cliente recém-agendado',professional_name:'Profissional sintético',start_at:start,end_at:today()+'T16:00:00Z',items:[{name_snapshot:'Corte + Barba sintético'}],total_cents:6000}],total:1};
+  if(path.includes('/management/dashboard?')&&booked){const d=respond(path);d.summary.appointments++;d.summary.confirmed++;return d;}
+  return bookingData(path);
+ }});t.after(()=>h.close());await flush();
+ const home=h.document.querySelector('.os-home-preview');
+ h.click('.os-home-preview [data-os-action=new-appointment]');await flush();
+ const form=h.document.querySelector('#osDialog [data-os-form=appointment]');assert.equal(form.elements.day.value,today());
+ assert.ok(form.closest('.os-home-booking'));
+ h.fill('#osBookingCustomer','Cliente recém-agendado');h.fill('#osField-customer_phone','(11) 98765-4321');
+ form.elements.professional_id.value='professional-test';form.elements.professional_id.dispatchEvent(new h.window.Event('change',{bubbles:true}));
+ h.click('[data-os-book-service=service-test]');await flush();
+ h.fill('#osBookingSlot',start);h.submit('[data-os-form=appointment]');await flush();
+ assert.equal(booked,true);assert.equal(h.document.querySelector('#osDialog').open,false);
+ assert.equal(h.document.querySelector('.os-home-preview'),home);
+ assert.match(home.querySelector(`[data-os-appointment=${appointmentId}]`).textContent,/Cliente recém-agendado/);
+ assert.equal(home.querySelectorAll('.os-home-metric>strong')[2].textContent,'5');
+ assert.equal(writes(h).length,2);assert.deepEqual(h.errors,[]);
+});
+
+test('Home requests only the eight displayed appointments and keeps the total from the server',async t=>{
+ const record={id:'appointment',status:'confirmed',start_at:today()+'T14:00:00Z',end_at:today()+'T14:30:00Z',total_cents:4000,items:[{name_snapshot:'Corte'}]};
+ const h=await barberSetup({respond:path=>{
+  if(!path.includes('/appointments?'))return respond(path);
+  const q=new URL(path,'https://orion.test').searchParams;assert.equal(q.get('limit'),'8');assert.equal(q.get('day'),today());
+  return {items:Array.from({length:8},(_,i)=>({...record,id:'appointment-'+i,customer_name:'Pessoa '+i})),total:13,limit:8,offset:0,has_more:true};
+ }});t.after(()=>h.close());await flush();
+ assert.equal(h.document.querySelectorAll('.os-home-appointment').length,8);
+ assert.match(h.document.querySelector('.os-home-agenda-summary').textContent,/13 agendamentos hoje/);
+ assert.match(h.document.querySelector('.os-home-agenda-summary').textContent,/Exibindo 8/);
+ assert.deepEqual(h.errors,[]);
+});
+
+test('dentistry, subscriptions and other niches stay on their respective dashboards',async t=>{
+ const cases=[{workspace_profile:'standard',business_niche:'odontologia',layout_modes:['classic']},{workspace_profile:'standard',business_niche:'estetica',layout_modes:['classic','app']},{workspace_profile:'subscription_services',business_niche:null,layout_modes:['classic','app']}];
+ for(const profile of cases){
+  const h=await barberSetup({permissions:planState('elite',profile),respond});
+  try{await flush();assert.equal(h.document.querySelector('.os-home-preview'),null);
+   assert.equal([...h.timers.values()].some(t=>t.ms===5000),false);
+   if(profile.workspace_profile==='subscription_services')assert.ok(h.document.querySelector('#osSubscriptionDashboard'));
+   else assert.ok(h.document.querySelector('.os-dashboard-today'));
+   assert.deepEqual(h.errors,[]);
+  }finally{h.close();}
+ }
+});
+
+test('a change to another business closes Home and drops the previous barbershop read',async t=>{
+ const late=deferred();let wait=false;
+ const h=await barberSetup({permissions:path=>({effective_plan:path.includes(tenantB)?planState('elite',{workspace_profile:'standard',layout_modes:['classic']}):barberPlan()}),respond:path=>wait&&path.includes(tenantA)&&path.includes('/management/dashboard?')?late.promise:respond(path)});t.after(()=>h.close());await flush();
+ assert.ok(h.document.querySelector('.os-home-preview'));
+ wait=true;await h.tick();
+ h.window.OrionSuite.sync({tenantId:tenantB,tenants:[{id:tenantB,name:'Outra empresa',timezone:'America/Sao_Paulo',role:'owner',workspace_profile:'standard'}]});await flush();
+ late.resolve(respond('/management/dashboard?start_date='+today()+'&end_date='+today()));await flush();
+ assert.equal(h.document.querySelector('.os-home-preview'),null);assert.ok(h.document.querySelector('.os-dashboard-today'),h.document.querySelector('#page-suite').textContent);
+ assert.equal([...h.timers.values()].some(t=>t.ms===5000),false);assert.deepEqual(h.errors,[]);
 });

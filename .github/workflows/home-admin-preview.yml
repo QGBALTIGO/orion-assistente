@@ -1,4 +1,4 @@
-name: Orion Home admin-only preview
+name: Orion Home for barbershops
 on:
   push:
     branches: [codex/home-admin-preview-20261122]
@@ -26,10 +26,10 @@ jobs:
           cache-dependency-path: ui-tests/package-lock.json
       - name: Install locked test dependencies
         run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
-      - name: Validate admin gating, genuine totals and retained routes
+      - name: Validate niche, plan and account access
         run: |
           node --check app/static/orion-suite.js
-          node --test ui-tests/home-admin-preview.test.mjs ui-tests/dashboard-navigation.test.mjs ui-tests/dashboard-finance-goals.test.mjs ui-tests/admin-only-operator-navigation.test.mjs ui-tests/agenda-periods.test.mjs ui-tests/agenda-lifecycle.test.mjs ui-tests/barbershop-app-layout.test.mjs ui-tests/subscription-app-layout.test.mjs
+          node --test ui-tests/home-admin-preview.test.mjs ui-tests/dashboard-navigation.test.mjs ui-tests/dashboard-finance-goals.test.mjs ui-tests/admin-only-operator-navigation.test.mjs ui-tests/agenda-periods.test.mjs ui-tests/agenda-lifecycle.test.mjs ui-tests/barbershop-app-layout.test.mjs ui-tests/subscription-app-layout.test.mjs ui-tests/dental-workspace.test.mjs ui-tests/plan-permissions.test.mjs ui-tests/customer-form.test.mjs ui-tests/appointment-operations-panel.test.mjs
       - name: Verify the immutable published base and UI-only build
         run: |
           python3 - <<'PY'
@@ -39,7 +39,7 @@ jobs:
           assert dockerfile.count('COPY ')==1
           assert 'app/static/orion-suite.js app/static/orion-suite.css /srv/app/app/static/' in dockerfile
           js=Path('app/static/orion-suite.js').read_text()
-          assert 'const homePreviewEnabled=()=>platformWorkspace();' in js
+          assert 'const homePreviewEnabled=()=>platformWorkspace()||barbershopHomeEligible();' in js
           assert "if(homePreviewEnabled()){await loadHomePreview(c);break;}" in js
           assert 'const platformWorkspace=()=>state.bridge.user?.role===\'admin\'&&!state.bridge.user?.maintenance?.active;' in js
           PY
