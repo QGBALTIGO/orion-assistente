@@ -1294,7 +1294,16 @@ async def test_stock_export_filters_tenant_and_audits_successful_downloads(clini
             return list(csv.reader(io.StringIO(res.content.decode("utf-8-sig")), delimiter=";"))
 
         header = ["Material", "Unidade", "Saldo"]
-        assert records(response) == [header, ["Gaze estéril", "Unidade", "7"], ["'=Gaze; teste", "Caixa", "5"]]
+        exported = records(response)
+        assert exported[0] == header
+        expected = {"Gaze estéril": ["Gaze estéril", "Unidade", "7"],
+                    "=Gaze; teste": ["'=Gaze; teste", "Caixa", "5"]}
+        listing = url.removesuffix("/export.csv")
+        by_name = (await client.get(listing, params={"q": "GAZE", "order": "desc"})).json()["items"]
+        assert {item["name"] for item in by_name} == set(expected)
+        assert exported[1:] == [expected[item["name"]] for item in by_name]
+        ascending = records(await client.get(url, params={"q": "GAZE", "order": "asc"}))
+        assert ascending[1:] == list(reversed(exported[1:]))
         assert records(await client.get(url, params={"q": "%"})) == [header]
         assert (await client.get(other)).status_code == 403
         assert (await client.get(url, params={"order": "invalid"})).status_code == 422
@@ -1317,7 +1326,7 @@ async def test_stock_export_filters_tenant_and_audits_successful_downloads(clini
                 SELECT actor_account_id,patient_id FROM dental_access_audit
                 WHERE tenant_id=:a AND action='supplies_exported'
             """), {"a": d["a"]})).all()
-        assert sorted(str(row[0]) for row in exports) == sorted(map(str, (d["account"], d["account"], d["assistant"])))
+        assert sorted(str(row[0]) for row in exports) == sorted(map(str, (d["account"], d["account"], d["account"], d["assistant"])))
         assert all(row[1] is None for row in exports)
 
 
