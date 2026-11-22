@@ -908,6 +908,87 @@ async def test_prosthesis_worklist_preserves_versions_and_clinic_perimeters(clin
 
 
 @pytest.mark.asyncio
+async def test_prosthesis_deadlines_follow_clinic_day_and_continue_after_empty_scan(clinic_api_db):
+    import json
+    from zoneinfo import ZoneInfo
+
+    import httpx
+    from fastapi import FastAPI
+    from app.catalog_api import Actor, authenticate
+    from app.dental_clinic_api import router, seal
+
+    d = clinic_api_db
+    app = FastAPI()
+    app.include_router(router)
+    actor = Actor("member", d["a"], d["account"], "owner")
+    app.dependency_overrides[authenticate] = lambda: actor
+    base = f"/api/v1/tenants/{d['a']}/dental"
+    board = base + "/prostheses"
+    clinic_zone = "Pacific/Kiritimati"
+    async with d["migrator"].begin() as db:
+        await db.execute(text("UPDATE tenants SET timezone=:tz WHERE id=:id"), {"tz": clinic_zone, "id": d["a"]})
+    day = datetime.now(ZoneInfo(clinic_zone)).date()
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test.invalid") as client:
+        async def read(**filters):
+            result = await client.get(board, params=filters)
+            assert result.status_code == 200, result.text
+            return result.json()
+
+        record_ids = {}
+        cases = {"past": ("working", -1), "today": ("delivered", 0), "future": ("requested", 1),
+                 "undated": ("working", None), "completed": ("completed", -2), "cancelled": ("cancelled", -2)}
+        for key, (status, offset) in cases.items():
+            result = await client.post(f"{base}/patients/{d['patient_a']}/records", json={
+                "kind": "prosthesis", "entry_key": "test-deadline-"+key,
+                "content": {"laboratory": "Laboratório sintético", "description": "Peça de teste "+key,
+                            "due_date": (day+timedelta(days=offset)).isoformat() if offset is not None else None,
+                            "status": status}})
+            assert result.status_code == 201, result.text
+            record_ids[key] = result.json()["id"]
+        page = await read()
+        assert page["clinic_day"] == day.isoformat()
+        by_id = {row["id"]: row["deadline_state"] for row in page["items"]}
+        assert by_id == {record_ids[key]: value for key,value in
+                         {"past":"overdue", "today":"today", "future":"upcoming", "undated":None,
+                          "completed":None, "cancelled":None}.items()}
+        assert (await read(overdue_only=True, status="completed"))["items"] == []
+        assert [item["id"] for item in (await read(overdue_only=True, status="working"))["items"]] == [record_ids["past"]]
+
+        async with d["migrator"].begin() as db:
+            await db.execute(text("UPDATE tenants SET timezone='Etc/GMT+12' WHERE id=:id"), {"id": d["a"]})
+        assert (await read(overdue_only=True))["items"] == []
+
+        # The first encrypted scan contains 200 ineligible records; the next cursor must reach the older match.
+        async with d["migrator"].begin() as db:
+            await db.execute(text("UPDATE tenants SET timezone=:tz WHERE id=:id"), {"tz":clinic_zone, "id":d["a"]})
+            content = json.dumps({"laboratory":"Laboratório sintético","description":"Concluído",
+                                  "status":"completed","due_date":day.isoformat()}).encode()
+            inserts = []
+            for _ in range(200):
+                identity = uuid4()
+                nonce, cipher, digest = seal(content, d["a"], d["patient_a"], "prosthesis", identity)
+                inserts.append({"id":identity,"tenant":d["a"],"patient":d["patient_a"],"cipher":cipher,
+                                "nonce":nonce,"digest":digest,"author":d["account"],"pro":d["pro_a"],"key":str(identity)})
+            await db.execute(text("""
+                INSERT INTO dental_records(id,tenant_id,patient_id,kind,encrypted_content,nonce,digest,
+                                          authored_by,professional_id,entry_key)
+                VALUES (:id,:tenant,:patient,'prosthesis',:cipher,:nonce,:digest,:author,:pro,:key)
+            """),inserts)
+        first = await read(overdue_only=True, limit=1)
+        assert first["items"] == [] and first["next_cursor"]
+        following = await read(overdue_only=True, limit=1, cursor=first["next_cursor"])
+        assert [item["id"] for item in following["items"]] == [record_ids["past"]]
+        assert following["next_cursor"] is None
+        actor = Actor("member", d["a"], d["assistant"], "editor")
+        assert (await client.get(board, params={"overdue_only":True})).status_code == 403
+        actor = Actor("member", d["b"], d["account_b"], "owner")
+        assert (await client.get(board, params={"overdue_only":True})).status_code == 403
+        other = f"/api/v1/tenants/{d['b']}/dental/prostheses"
+        assert (await client.get(other, params={"overdue_only":True})).json()["items"] == []
+
+
+@pytest.mark.asyncio
 async def test_first_key_preflight_reads_presence_only_with_verified_migrator_scope(clinic_db):
     from scripts.check_dental_key_history import ciphertext_exists
 

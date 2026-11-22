@@ -554,8 +554,11 @@ PROSTHESIS_TRANSITIONS = {
 @router.get("/prostheses")
 async def prostheses(tenant_id: UUID, actor: Actor = Depends(authenticate),
                      cursor: UUID | None = None, status: ProsthesisStatus | None = None,
-                     limit: int = Query(30, ge=1, le=50)):
+                     limit: int = Query(30, ge=1, le=50), overdue_only: bool = False):
     async with clinical_session(tenant_id, actor, dentist=True) as (db, _):
+        clinic_day = await db.scalar(text("""
+            SELECT (CURRENT_TIMESTAMP AT TIME ZONE timezone)::date FROM tenants WHERE id=:tenant
+        """), {"tenant": tenant_id})
         # A prior version remains a valid page boundary after a concurrent status change.
         boundary = None
         if cursor is not None:
@@ -565,7 +568,7 @@ async def prostheses(tenant_id: UUID, actor: Actor = Depends(authenticate),
             """), {"tenant": tenant_id, "cursor": cursor})
             if boundary is None:
                 raise HTTPException(400, "Página de próteses inválida")
-        scan_limit = 200 if status is not None else limit
+        scan_limit = 200 if status is not None or overdue_only else limit
         rows = (await db.execute(text("""
             SELECT r.id,r.patient_id,r.encrypted_content,r.nonce,r.digest,r.created_at,p.name AS patient_name
             FROM dental_records r JOIN dental_patients p ON p.tenant_id=r.tenant_id AND p.id=r.patient_id
@@ -585,13 +588,26 @@ async def prostheses(tenant_id: UUID, actor: Actor = Depends(authenticate),
             content = json.loads(unseal(record, tenant_id, record["patient_id"], "prosthesis"))
             if status is not None and content["status"] != status:
                 continue
+            deadline_state = None
+            if content.get("due_date") and content["status"] not in ("completed", "cancelled"):
+                due = date.fromisoformat(content["due_date"])
+                if due < clinic_day:
+                    deadline_state = "overdue"
+                elif due == clinic_day:
+                    deadline_state = "today"
+                else:
+                    deadline_state = "upcoming"
+            if overdue_only and deadline_state != "overdue":
+                continue
             items.append({"id": record["id"], "patient_id": record["patient_id"],
                           "patient_name": record["patient_name"], "created_at": record["created_at"],
+                          "deadline_state": deadline_state,
                           "content": content, "actions": PROSTHESIS_TRANSITIONS.get(content["status"], ())})
             if len(items) == limit:
                 break
         await audit(db, tenant_id, actor, "prosthesis_worklist_read")
-        return {"items": items, "next_cursor": rows[checked - 1]["id"] if len(rows) > checked else None}
+        return {"items": items, "clinic_day": clinic_day,
+                "next_cursor": rows[checked - 1]["id"] if len(rows) > checked else None}
 
 
 @router.patch("/prostheses/{record_id}/status")

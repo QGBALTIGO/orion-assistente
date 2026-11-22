@@ -264,6 +264,71 @@ test('an assistant cannot open prosthesis records from the worklist',async t=>{
   assert.equal(h.calls.some(call=>call.path.includes('/prostheses')),false);
 });
 
+test('dedicated prosthesis route reads only the worklist, carries both filters through pagination and a status change',async t=>{
+  const id=randomUUID(),cursor=randomUUID(),opened=[];
+  const row={id,patient_id:patient,patient_name:'Paciente sintético',deadline_state:'overdue',
+    content:{status:'working',due_date:'2026-11-01',laboratory:'Laboratório de teste',description:'Coroa sintética'},
+    actions:['delivered']};
+  let updated=false;
+  const h=makeDOM({level:'dentist',canManage:true,prostheses:(url,method)=>{
+    if(method==='PATCH'){updated=true;return {id,status:'delivered'};}
+    const filtered=url.searchParams.get('overdue_only')==='true';
+    if(filtered&&url.searchParams.get('status')==='working'){
+      if(updated)return {items:[],next_cursor:null};
+      return url.searchParams.get('cursor')===cursor?{items:[row],next_cursor:null}:{items:[],next_cursor:cursor};
+    }
+    return {items:[row],next_cursor:null};
+  }});
+  t.after(()=>h.close());
+  await h.mount({dedicatedProstheses:true,openProsthesisPatient:id=>opened.push(id)});
+  assert.deepEqual(h.calls.map(call=>call.path.split('/').pop()),['access','prostheses']);
+  assert.match(h.host.textContent,/Em atraso/);
+  const change=(name,value)=>{
+    const select=h.host.querySelector('[name="'+name+'"]');select.focus();select.value=value;
+    select.dispatchEvent(new h.window.Event('change',{bubbles:true}));
+  };
+  change('prosthesis_filter','working');await flush();
+  change('prosthesis_deadline','overdue');await flush();
+  assert.equal(h.window.document.activeElement.name,'prosthesis_deadline');
+  assert.match(h.host.textContent,/Há mais trabalhos para consultar/);
+  assert.doesNotMatch(h.host.textContent,/Nenhum trabalho em atraso/);
+  h.click('[data-dental-action=prosthesis-more]');await flush();
+  h.click('[data-dental-action=open-prosthesis-patient]');await flush();
+  assert.deepEqual(opened,[patient]);
+  assert.ok(h.calls.every(call=>!call.path.includes('/patients')));
+  h.fill('[name="prosthesis_step_'+id+'"]','delivered');h.submit('[data-dental-form=prosthesis-step]');await flush();
+  assert.ok(updated);
+  assert.equal(h.host.querySelector('[name=prosthesis_deadline]').value,'overdue');
+  assert.equal(h.host.querySelector('[name=prosthesis_filter]').value,'working');
+  assert.match(h.host.textContent,/Nenhum trabalho em atraso/);
+});
+
+test('worklist direct entry denies assistants and owners without a clinical grant before fetching records',async t=>{
+  for(const level of [null,'assistant']){
+    const h=makeDOM({level,canManage:true});t.after(()=>h.close());
+    await h.mount({dedicatedProstheses:true});
+    assert.match(h.host.textContent,/requer acesso clínico de dentista/);
+    assert.deepEqual(h.calls.map(call=>call.path.split('/').pop()),['access']);
+  }
+});
+
+test('a delayed overdue response cannot replace the subsequently selected deadline filter',async t=>{
+  let resolveOverdue;
+  const h=makeDOM({level:'dentist',prostheses:url=>url.searchParams.has('overdue_only')?
+    new Promise(resolve=>{resolveOverdue=resolve;}):{items:[],next_cursor:null}});
+  t.after(()=>h.close());
+  await h.mount({dedicatedProstheses:true});
+  for(const value of ['overdue','']){
+    const select=h.host.querySelector('[name=prosthesis_deadline]');select.value=value;
+    select.dispatchEvent(new h.window.Event('change',{bubbles:true}));await flush();
+  }
+  resolveOverdue({items:[{id:randomUUID(),patient_id:patient,patient_name:'Resposta antiga',
+    content:{status:'working',description:'Registro anterior',laboratory:'Laboratório'},actions:[]}],next_cursor:null});
+  await flush();
+  assert.equal(h.host.querySelector('[name=prosthesis_deadline]').value,'');
+  assert.doesNotMatch(h.host.textContent,/Resposta antiga/);
+});
+
 test('failed patient lookup from the worklist does not expose the previously open chart',async t=>{
   const differentPatient=randomUUID();
   const id=randomUUID();
