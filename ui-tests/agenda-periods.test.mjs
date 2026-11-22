@@ -1,7 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import vm from 'node:vm';
+import { JSDOM } from 'jsdom';
 
 const source=fs.readFileSync('app/static/orion-suite.js','utf8');
 const helpers=source.slice(source.indexOf('  const agendaPeriod='),source.indexOf('  function agendaFrame('));
@@ -67,7 +72,16 @@ test('week is 7 days in one strip and whole-week list is available',()=>{
   const result=inspect('2026-11-13','week',true,'',items);
   assert.deepEqual(JSON.parse(JSON.stringify(result.bounds)),{start:'2026-11-08',end:'2026-11-14'});
   assert.equal((result.html.match(/data-os-open-day=/g)||[]).length,7);
-  assert.match(result.html,/os-agenda-week-overview/);
+  const document = JSDOM.fragment(result.html);
+  const wrapper = document.querySelector('.os-agenda-week-overview-wrapper');
+  const strip = wrapper.querySelector(':scope > .os-agenda-week-days');
+  assert.deepEqual([...strip.children].map(button => button.dataset.osOpenDay),
+    ['2026-11-08','2026-11-09','2026-11-10','2026-11-11','2026-11-12','2026-11-13','2026-11-14']);
+  assert.equal(strip.querySelector('[data-os-action=agenda-prev]'),null);
+  assert.ok(wrapper.querySelector(':scope > .os-agenda-range-heading [data-os-action=agenda-next]'));
+  const css=fs.readFileSync('app/static/orion-suite.css','utf8');
+  assert.match(css,/\.os-agenda-week-days\s*\{[^}]*grid-template-columns:repeat\(7,minmax\(0,1fr\)\)/);
+  assert.doesNotMatch(css,/\.os-agenda-week-overview(?:[\s{,>:.]|$)/);
   assert.match(result.html,/data-os-action="agenda-prev"/);
   assert.match(result.html,/data-os-action="agenda-next"/);
   assert.match(result.html,/Próxima semana/);
@@ -82,6 +96,68 @@ test('tapping week day focuses the day without leaving the week',()=>{
   assert.match(result.html,/osAgendaRangeFocusBody/);
   assert.match(result.html,/Dia selecionado/);
   assert.equal((result.html.match(/aria-pressed="true"/g)||[]).length,1);
+});
+test('weekly geometry fits all seven days and both arrows at phone, tablet and desktop widths',
+  {skip:!process.env.ORION_LAYOUT_BROWSER,timeout:35000},()=>{
+  const css=fs.readFileSync('app/static/orion-suite.css','utf8');
+  const fixtures=[['2026-11-22',false],['2026-12-27',true]].flatMap(([start,yearEnd])=>
+    [320,375,430,768,1280].flatMap(width=>['list','calendar','professional'].map(mode=>{
+      const ctx=context(start,'week');
+      ctx.state.filters.agendaMode=mode;
+      ctx.state.filters.agendaDay=ctx.shiftDay(start,2);
+      ctx.counts=Array.from({length:7},(_,i)=>({day:ctx.shiftDay(start,i),total:i===3?0:240,
+        ...(i===3?{}:{confirmed:112,completed:78,cancelled:35,no_show:12,hold:3})}));
+      vm.runInNewContext(helpers+renderer+
+        'globalThis.fixture=agendaRangeView([],{days:counts});',ctx);
+      return '<main class="os-main case" data-os-current-route="agenda" style="width:'+(width-32)+
+        'px" data-case="'+width+'px '+mode+(yearEnd?' (virada do ano)':'')+'">'+ctx.fixture+'</main>';
+    })));
+  function measure(){
+    const failures=[];
+    for(const main of document.querySelectorAll('.case')){
+      const heading=main.querySelector('.os-agenda-range-heading');
+      const strip=main.querySelector('[aria-label="Dias da semana"]');
+      const cells=[...strip.children],boxes=cells.map(el=>el.getBoundingClientRect());
+      const board=strip.getBoundingClientRect(),outer=main.getBoundingClientRect();
+      const title=heading.querySelector('h2').getBoundingClientRect();
+      const nav=heading.querySelector('.os-agenda-period-nav').getBoundingClientRect();
+      const buttons=[...heading.querySelectorAll('button')].map(el=>el.getBoundingClientRect());
+      const fullWidth=Math.abs(board.width-outer.width)<1;
+      const headerFits=heading.getBoundingClientRect().bottom<=board.top+1&&
+        title.right<=nav.left+1&&nav.right<=outer.right+1&&buttons.length===2&&
+        buttons.every(rect=>rect.width>=32&&rect.height>=32)&&buttons[0].right<=buttons[1].left;
+      const daysFit=boxes.length===7&&boxes.every((rect,i)=>
+        rect.width>=32&&rect.height>=44&&Math.abs(rect.top-boxes[0].top)<1&&
+        rect.left>=board.left&&rect.right<=board.right+1&&(!i||rect.left>=boxes[i-1].right));
+      const markersFit=cells.every((cell,i)=>[...cell.querySelectorAll('.os-agenda-range-dots i')].every(dot=>{
+        const box=dot.getBoundingClientRect();
+        return box.left>=boxes[i].left-1&&box.right<=boxes[i].right+1;
+      }));
+      if(!(fullWidth&&headerFits&&daysFit&&markersFit))
+        failures.push({case:main.dataset.case,fullWidth,headerFits,daysFit,markersFit});
+    }
+    document.getElementById('test-result').textContent=JSON.stringify({
+      failures,count:document.querySelectorAll('.case').length});
+  }
+  const temporary=fs.mkdtempSync(join(tmpdir(),'orion-week-layout-'));
+  try{
+    const file=join(temporary,'fixture.html');
+    fs.writeFileSync(file,'<!doctype html><html lang="pt-BR"><meta charset="utf-8"><style>'+css+
+      '\n*{box-sizing:border-box}body{margin:16px}</style><pre id="test-result"></pre>'+
+      fixtures.join('')+'<script>('+measure.toString()+')()</script></html>');
+    const output=execFileSync(process.env.ORION_LAYOUT_BROWSER,
+      ['--headless','--no-sandbox','--disable-dev-shm-usage','--disable-gpu',
+        '--disable-background-networking','--disable-extensions','--no-first-run',
+        '--user-data-dir='+join(temporary,'browser-profile'),'--dump-dom',pathToFileURL(file).href],
+      {encoding:'utf8',timeout:30000,maxBuffer:2*1024*1024});
+    const match=output.match(/<pre id="test-result">([^<]+)<[/]pre>/);
+    assert.ok(match,'o navegador precisa calcular a geometria da grade');
+    const result=JSON.parse(match[1]);
+    assert.equal(result.count,30);
+    assert.deepEqual(result.failures,[]);
+  }finally{
+    fs.rmSync(temporary,{recursive:true,force:true});
+  }
 });
 test('leap year, year crossover and month list',()=>{
   const leap=inspect('2028-02-13','month');

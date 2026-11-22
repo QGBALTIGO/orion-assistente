@@ -1,5 +1,5 @@
 # Layer the Orion panel changes over the published API.
-FROM ghcr.io/qgbaltigo/orion-assistente-api@sha256:1fc11b4557c729338c42e8790ec4efa26c5300ed1e7eb5ea13df976c015d57d0
+FROM ghcr.io/qgbaltigo/orion-assistente-api@sha256:cc9cef65b6852700d6506e3fe7d149363245d60e0007b93885cf58c2246e5491
 ARG ORION_HOME_COMMIT
 LABEL org.opencontainers.image.revision=$ORION_HOME_COMMIT
 COPY --chown=appuser:appuser app/static/orion-suite.js app/static/orion-suite.css /srv/app/app/static/

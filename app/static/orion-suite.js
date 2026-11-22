@@ -1651,14 +1651,14 @@
     const periodNavigation='<span class="os-agenda-period-nav" role="group" aria-label="Navegar '+(period==='week'?'entre semanas':'entre meses')+'">'+
       '<button type="button" class="os-icon-button" data-os-action="agenda-prev" aria-label="'+(period==='week'?'Semana anterior':'Mês anterior')+'">'+icon('left')+'</button>'+
       '<button type="button" class="os-icon-button" data-os-action="agenda-next" aria-label="'+(period==='week'?'Próxima semana':'Próximo mês')+'">'+icon('chevron')+'</button></span>';
-    const periodHeader='<section class="os-agenda-period-overview os-agenda-'+period+'-overview'+(period==='week'?' os-agenda-week-overview-wrapper':'')+'">'+
-      '<div class="os-agenda-range-heading"><h2>'+(period==='week'?'Semana':esc(agendaPeriodLabel()))+'</h2>'+
-      (period==='week'?'<span>'+esc(agendaPeriodLabel())+'</span>':'')+periodNavigation+'</div>';
+    const overviewClass=period==='week'?'os-agenda-week-overview-wrapper':'os-agenda-month-overview';
+    const periodHeader='<section class="os-agenda-period-overview '+overviewClass+'">'+
+      '<div class="os-agenda-range-heading"><h2>'+esc(agendaPeriodLabel())+'</h2>'+periodNavigation+'</div>';
     const listIntro='<div class="os-agenda-range-list-heading"><div><h2>Agendamentos '+(period==='week'?'da semana':'do mês')+'</h2>'+
       '<p>Todos os horários, organizados por data.</p></div></div>';
     if(period==='week'){
       const strip=Array.from({length:7},(_,i)=>dayButton(shiftDay(bounds.start,i),'week')).join('');
-      const overview=periodHeader+'<div class="os-agenda-week-overview" role="group" aria-label="Dias da semana">'+strip+'</div></section>';
+      const overview=periodHeader+'<div class="os-agenda-week-days" role="group" aria-label="Dias da semana">'+strip+'</div></section>';
       if(mode==='professional')return overview+agendaTeamRangeView(list);
       if(mode==='list')return overview+listIntro+wholeList();
       return overview+'<div class="os-agenda-range-list-heading"><div><h2>Dia selecionado</h2>'+
@@ -4757,11 +4757,16 @@
       case 'agenda-today':f.agendaOffset=0;f.agendaDay=dateKey();f.agendaFocusDay=dateKey();f.agendaFocusOffset=0;await open('agenda',{keepScroll:true});break;
       case 'agenda-prev':case 'agenda-next':case 'week-prev':case 'week-next':{
         f.agendaOffset=0;f.agendaFocusDay='';f.agendaFocusOffset=0;
-        const delta=name.endsWith('prev')?-1:1;
-        f.agendaDay=name.startsWith('week-')?shiftDay(f.agendaDay,delta*7):
-          agendaPeriod()==='month'?agendaShiftMonth(f.agendaDay,delta):
-          shiftDay(f.agendaDay,delta*(agendaPeriod()==='week'?7:1));
-        await open('agenda',{keepScroll:true});break;
+        const delta=name.endsWith('prev')?-1:1,period=agendaPeriod();
+        const restoreWeekNav=period==='week'&&document.activeElement===element;
+        const day=name.startsWith('week-')?shiftDay(f.agendaDay,delta*7):
+          period==='month'?agendaShiftMonth(f.agendaDay,delta):
+          shiftDay(f.agendaDay,delta*(period==='week'?7:1));
+        f.agendaDay=day;
+        await open('agenda',{keepScroll:true});
+        if(restoreWeekNav&&state.route==='agenda'&&agendaPeriod()==='week'&&state.filters.agendaDay===day)
+          document.querySelector('.os-agenda-week-overview-wrapper [data-os-action="'+name+'"]')?.focus({preventScroll:true});
+        break;
       }
       case 'customer-history-more':if(d?.type==='customer')await loadCustomerServiceHistory(d,{append:true});break;
       case 'customer-history-retry':if(d?.type==='customer')await loadCustomerServiceHistory(d,{append:!!d.historyRetryAppend});break;
@@ -4853,8 +4858,9 @@
         if(!/^\d{4}-\d{2}-\d{2}$/.test(day)||day<start||day>end)return;
         state.filters.agendaDay=day;state.filters.agendaFocusDay=day;
         state.filters.agendaFocusOffset=0;state.filters.agendaMode='calendar';state.filters.agendaRangeList=false;
-        renderAgenda();await loadAgendaFocus(context());
+        renderAgenda();
         document.querySelector('[data-os-open-day="'+day+'"]')?.focus({preventScroll:true});
+        await loadAgendaFocus(context());
         return;
       }
       if(el.dataset.osAgendaPeriod){const period=el.dataset.osAgendaPeriod;if(!['day','week','month'].includes(period)||period===agendaPeriod())return;state.filters.agendaPeriod=period;state.filters.agendaMode=period==='month'?'calendar':'list';state.filters.agendaOffset=0;state.filters.agendaFocusDay='';state.filters.agendaFocusOffset=0;state.filters.agendaRangeList=period!=='month';await open('agenda',{keepScroll:true});return;}

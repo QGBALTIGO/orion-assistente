@@ -355,8 +355,11 @@ test('semana e mês mantêm navegação pelos cabeçalhos existentes',async t=>{
   h.click('[data-os-agenda-period=week]');await flush();
   const week=h.document.getElementById('osAgendaDate').textContent;
   assert.ok(h.document.querySelector('.os-agenda-week-overview-wrapper [data-os-action=agenda-prev]'));
-  h.click('.os-agenda-week-overview-wrapper [data-os-action=agenda-next]');await flush();
+  const weekNext='.os-agenda-week-overview-wrapper [data-os-action=agenda-next]';
+  h.document.querySelector(weekNext).focus();
+  h.click(weekNext);await flush();
   assert.notEqual(h.document.getElementById('osAgendaDate').textContent,week);
+  assert.equal(h.document.activeElement,h.document.querySelector(weekNext));
   h.click('[data-os-agenda-period=month]');await flush();
   const month=h.document.getElementById('osAgendaDate').textContent;
   assert.ok(h.document.querySelector('.os-agenda-month-overview [data-os-action=agenda-next]'));

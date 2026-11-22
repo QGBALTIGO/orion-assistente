@@ -3700,7 +3700,15 @@ html:has(.os-professional-history[open]){overflow:hidden}
 .os-agenda-dot-cancelled{background:#bb6672}
 .os-agenda-dot-no_show{background:#9858c2}
 .os-agenda-dot-hold{background:#b38c2c}
-.os-agenda-week-overview{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px;background:var(--os-card);border:1px solid var(--os-border);border-radius:14px;padding:5px;overflow-x:auto;scrollbar-width:thin}
+.os-agenda-week-overview-wrapper>.os-agenda-range-heading{
+  display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px;
+}
+.os-agenda-week-overview-wrapper>.os-agenda-range-heading h2{min-width:0;overflow-wrap:break-word}
+.os-agenda-week-days{
+  box-sizing:border-box;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));
+  gap:3px;width:100%;min-width:0;padding:5px;
+  border:1px solid var(--os-border);border-radius:14px;background:var(--os-card);
+}
 .os-agenda-week-day{min-height:79px;border-radius:10px}
 .os-agenda-week-day.is-today:not(.is-selected) .os-agenda-range-day-title strong{color:var(--os-primary)}
 .os-agenda-week-day.is-selected{background:var(--os-primary);color:white}
@@ -3768,7 +3776,6 @@ html:has(.os-professional-history[open]){overflow:hidden}
  .os-agenda-focus-body{max-height:none;overflow:visible}
 }
 @container agenda (max-width:760px){
- .os-agenda-week-overview{grid-template-columns:repeat(7,minmax(44px,1fr))}
  .os-agenda-week-day{min-height:73px}
  .os-agenda-month-day{min-height:72px}
  .os-agenda-toolbar-range .os-agenda-date-tools{gap:6px}
@@ -3789,7 +3796,9 @@ html:has(.os-professional-history[open]){overflow:hidden}
  .os-agenda-summary-range>.os-agenda-summary-item{font-size:11px;gap:3px}
  .os-agenda-range-heading{margin-bottom:8px}
  .os-agenda-range-heading h2{font-size:16px;line-height:22px}
- .os-agenda-week-overview{padding:3px;gap:2px;grid-template-columns:repeat(7,minmax(0,1fr));scrollbar-width:none}
+ .os-agenda-week-days{padding:3px;gap:2px}
+ .os-agenda-week-day .os-agenda-range-dots{gap:2px}
+ .os-agenda-week-day .os-agenda-range-dots i{width:4px;height:4px;flex-basis:4px}
  .os-agenda-week-day{min-height:68px;padding:5px 2px}
  .os-agenda-week-day .os-agenda-range-day-title small{font-size:10px}
  .os-agenda-week-day .os-agenda-range-day-title strong{font-size:16px;line-height:21px}

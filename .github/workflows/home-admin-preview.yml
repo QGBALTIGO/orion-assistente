@@ -23,6 +23,8 @@ on:
       - app/management_models.py
       - tests/integration/test_home_revenue_chart.py
       - ui-tests/home-admin-preview.test.mjs
+      - ui-tests/agenda-periods.test.mjs
+      - ui-tests/agenda-lifecycle.test.mjs
       - deploy/Dockerfile.home-admin-preview
       - .github/workflows/home-admin-preview.yml
 permissions:
@@ -52,7 +54,9 @@ jobs:
           cache-dependency-path: ui-tests/package-lock.json
       - name: Install locked test dependencies
         run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
-      - name: Validate niche, plan and account access
+      - name: Validate niche, plan, account access and weekly layout
+        env:
+          ORION_LAYOUT_BROWSER: google-chrome
         run: |
           node --check app/static/orion-suite.js
           node --test ui-tests/home-admin-preview.test.mjs ui-tests/dashboard-navigation.test.mjs ui-tests/dashboard-finance-goals.test.mjs ui-tests/admin-only-operator-navigation.test.mjs ui-tests/agenda-periods.test.mjs ui-tests/agenda-lifecycle.test.mjs ui-tests/barbershop-app-layout.test.mjs ui-tests/subscription-app-layout.test.mjs ui-tests/dental-workspace.test.mjs ui-tests/plan-permissions.test.mjs ui-tests/customer-form.test.mjs ui-tests/appointment-operations-panel.test.mjs ui-tests/appointment-operations.test.mjs ui-tests/booking-recovery.test.mjs ui-tests/fixed-clients.test.mjs ui-tests/professional-portal.test.mjs ui-tests/appointment-operations-professional.test.mjs ui-tests/orion-public.test.mjs ui-tests/public-confirmation-clean.test.mjs ui-tests/public-multiservice.test.mjs
@@ -61,7 +65,7 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           dockerfile=Path('deploy/Dockerfile.home-admin-preview').read_text()
-          assert 'FROM ghcr.io/qgbaltigo/orion-assistente-api@sha256:1fc11b4557c729338c42e8790ec4efa26c5300ed1e7eb5ea13df976c015d57d0' in dockerfile
+          assert 'FROM ghcr.io/qgbaltigo/orion-assistente-api@sha256:cc9cef65b6852700d6506e3fe7d149363245d60e0007b93885cf58c2246e5491' in dockerfile
           assert dockerfile.count('COPY ')==1
           assert 'app/static/orion-suite.js app/static/orion-suite.css /srv/app/app/static/' in dockerfile
           worker=Path('deploy/Dockerfile.appointment-notifications-worker').read_text()
