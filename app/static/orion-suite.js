@@ -106,7 +106,7 @@
   const subscriptionWorkspace=()=>workspaceProfile()==='subscription_services';
   // A niche comes from the server's verified entitlement, never from a URL or storage.
   const dentalWorkspace=()=>!platformWorkspace()&&!subscriptionWorkspace()&&state.entitlements?.business_niche==='odontologia';
-  const routeLabel=route=>dentalWorkspace()?({dashboard:'Início',agenda:'Agenda clínica',clientes:'Pacientes',servicos:'Procedimentos',funcionarios:'Equipe clínica',inbox:'Conversas'})[route]||routeNames[route]:subscriptionWorkspace()&&route==='dashboard'?'Início':routeNames[route];
+  const routeLabel=route=>route==='dashboard'&&platformWorkspace()?'Início':dentalWorkspace()?({dashboard:'Início',agenda:'Agenda clínica',clientes:'Pacientes',servicos:'Procedimentos',funcionarios:'Equipe clínica',inbox:'Conversas'})[route]||routeNames[route]:subscriptionWorkspace()&&route==='dashboard'?'Início':routeNames[route];
   const fallbackRoute=()=>subscriptionWorkspace()?'dashboard':'plano';
   const permitted=feature=>!feature||platformWorkspace()||(!subscriptionWorkspace()||['account.manage','business.setup','devices.manage','chatbot.manage','templates.manage','sent_messages.manage','diagnostics.manage','campaigns.manage','scheduled_messages.manage','bulk_messages.manage','direct_messages.manage','whatsapp_guidance.view','group_contacts.manage','group_add.manage'].includes(feature))&&state.entitlements?.permissions?.[feature]===true;
   const routePermitted=route=>route==='clinica'?(dentalWorkspace()&&state.entitlements?.dental_clinical_enabled===true&&['owner','editor'].includes(tenant()?.role)&&permitted('clients.manage')):route==='perfil'?appLayoutEnabled():['aquecimento','evitar-banimento','resolver-banimento','extrator-contatos','adicionar-ao-grupo'].includes(route)?(subscriptionWorkspace()&&tenant()?.role==='owner'&&tenant()?.status==='active'&&permitted(routeFeatures[route])):['dispositivos','chatbot','testar-chatbot','templates','mensagens-enviadas','diagnosticos','campanhas','programadas','massa','enviar-mensagem'].includes(route)?(subscriptionWorkspace()&&permitted(routeFeatures[route])):subscriptionWorkspace()?(route==='configuracoes'?permitted('account.manage'):subscriptionRoutes.has(route)):route==='configuracoes'?(permitted('settings.manage')||permitted('business.setup')||permitted('account.manage')):permitted(routeFeatures[route]);
@@ -854,6 +854,7 @@
                direct:routePermitted('enviar-mensagem'),diagnostics:routePermitted('diagnosticos')}});
            break;
          }
+         if(homePreviewEnabled()){await loadHomePreview(c);break;}
          const today=dateKey();const d=await request(mgmt('/dashboard?'+query({start_date:today,end_date:today})));
          if(!current(c))return;state.data.dashboard=d;renderDashboard(d,today);
          await Promise.all([loadDashboardAgenda(c,today),loadDashboardFinance(c,today)]);break;
@@ -1075,6 +1076,110 @@
       goalsTarget.hidden=false;
     }
   }
+  // Home pilot: the identity comes exclusively from the authenticated bridge.
+  // Company owners/editors/viewers and support keep the published dashboard.
+  const homePreviewEnabled=()=>platformWorkspace();
+  function homeRange(today=dateKey()){
+    const period=['today','yesterday','week'].includes(state.filters.homePeriod)?state.filters.homePeriod:'today';
+    const shift=n=>{const d=dayDate(today);d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10);};
+    return {period,today,start:period==='week'?shift(-6):period==='yesterday'?shift(-1):today,
+      end:period==='yesterday'?shift(-1):today,trendStart:shift(-6)};
+  }
+  function homeCount(value){if(!Number.isSafeInteger(value)||value<0)throw Error('Não foi possível confirmar os indicadores.');return value;}
+  function homeSummary(data,range){
+    const s=data?.summary;
+    if(!s||data.period?.start_date!==range.start||data.period?.end_date!==range.end)throw Error('O período dos indicadores não pôde ser confirmado.');
+    for(const key of ['appointments','completed','confirmed','customers','completed_revenue_cents'])homeCount(s[key]);
+    if(s.completed>s.appointments||s.confirmed>s.appointments)throw Error('Os indicadores estão incompletos. Atualize para conferir.');
+    return s;
+  }
+  function homeMetric(titleText,value,caption,symbol,route){
+    const label=titleText+': '+value+'. '+caption;
+    return '<button type="button" class="os-home-metric" data-os-route="'+route+'" aria-label="'+esc(label)+'">'+
+      '<span class="os-home-metric-title">'+esc(titleText)+'</span><strong title="'+esc(value)+'">'+esc(value)+'</strong>'+
+      '<small>'+esc(caption)+'</small><span class="os-home-metric-art">'+icon(symbol)+'</span></button>';
+  }
+  function homeFrame(range){
+    const hour=Number(new Intl.DateTimeFormat('en-GB',{hour:'2-digit',hourCycle:'h23',timeZone:zone()}).format(new Date())),
+      greeting=hour<12?'Bom dia':hour<18?'Boa tarde':'Boa noite',
+      first=String(state.bridge.user?.name||'').trim().split(/\s+/)[0],
+      periodName={today:'de hoje',yesterday:'de ontem',week:'dos últimos 7 dias'}[range.period];
+    const quick=(name,sub,action,symbol)=>'<button type="button" class="os-home-quick" data-os-action="'+action+'"><span>'+icon(symbol)+'</span><div><strong>'+name+'</strong><small>'+sub+'</small></div>'+icon('plus')+'</button>';
+    bodyHTML('<section class="os-home-preview" aria-label="Início do negócio"><div class="os-home-heading"><div><p class="os-overline">Seu negócio, bem acompanhado</p><h1>'+greeting+(first?', '+esc(first):'')+'<span>.</span></h1><p>'+esc(longDay(range.today))+'</p></div><div class="os-home-heading-actions"><span class="os-home-pilot">'+icon('shield')+'Prévia do administrador</span>'+button('Novo agendamento','new-appointment','','plus')+'</div></div>'+
+      '<div class="os-home-context"><span>Visão geral de '+esc(tenant()?.name||'seu negócio')+'</span><button type="button" class="os-home-refresh" data-os-action="home-refresh" aria-label="Atualizar início">'+icon('refresh')+'<span>Atualizar</span></button></div>'+
+      '<div class="os-home-overview"><article class="os-home-revenue" aria-labelledby="osHomeRevenueTitle"><div class="os-home-revenue-heading"><h2 id="osHomeRevenueTitle">Faturamento <span>'+periodName+'</span></h2><span class="os-home-revenue-art">'+icon('chart')+'</span></div>'+
+      '<div class="os-home-periods" role="group" aria-label="Período dos indicadores">'+[['today','Hoje'],['yesterday','Ontem'],['week','7 dias']].map(([value,label])=>'<button type="button" data-os-action="home-period" data-os-period="'+value+'" aria-pressed="'+(range.period===value)+'">'+label+'</button>').join('')+'</div>'+
+      '<div id="osHomeRevenue" class="os-home-revenue-result" aria-live="polite" aria-busy="true"><strong class="os-home-revenue-value">—</strong><p class="os-home-pending">Consultando faturamento…</p></div><div id="osHomeTrend" class="os-home-trend" aria-live="polite" aria-busy="true"><div class="os-home-chart-placeholder" aria-hidden="true"></div></div>'+
+      '<div class="os-home-revenue-foot"><span>'+icon('shield')+'Atendimentos concluídos</span>'+button('Ver financeiro','dashboard-finance-full','os-home-light-link')+'</div></article>'+
+      '<div id="osHomeMetrics" class="os-home-metrics" aria-label="Indicadores do período" aria-live="polite" aria-busy="true">'+homeMetric('Atendimentos','—','Consultando período…','list','agenda')+homeMetric('Clientes cadastrados','—','Consultando carteira…','users','clientes')+homeMetric('Confirmados','—','Consultando período…','clock','agenda')+homeMetric('Ticket médio','—','Consultando período…','wallet','financeiro')+'</div></div>'+
+      '<section class="os-home-quick-actions" aria-label="Ações rápidas">'+quick('Agendar cliente','Encontre o próximo horário','new-appointment','calendarPlus')+quick('Novo cliente','Comece um novo relacionamento','new-customer','userPlus')+'<button type="button" class="os-home-quick" data-os-route="site"><span>'+icon('globe')+'</span><div><strong>Meu site</strong><small>Sua página de agendamento</small></div>'+icon('external')+'</button></section>'+
+      '<div class="os-home-lower"><div class="os-home-agenda">'+dashboardAgendaFrame(range.today)+'</div><aside class="os-home-side"><section class="os-card os-home-attention"><div class="os-home-panel-head"><h2>Para acompanhar</h2><small>'+esc(range.period==='today'?'Hoje':range.period==='yesterday'?'Ontem':'Últimos 7 dias')+'</small></div><div id="osHomeAttention" aria-live="polite"><p class="os-home-muted-message">Consultando o período…</p></div></section><section class="os-card os-home-team"><div class="os-home-panel-head"><h2>Equipe no período</h2>'+routeButton('Ver equipe','funcionarios','os-ghost os-small')+'</div><div id="osHomeTeam" aria-live="polite"><p class="os-home-muted-message">Consultando a equipe…</p></div></section><section id="osHomeGoals" class="os-card os-dashboard-goals" aria-live="polite" hidden></section></aside></div></section>');
+  }
+  function homeTeam(data){
+    if(!Array.isArray(data.professionals))return '<p class="os-home-muted-message">Não foi possível consultar a equipe.</p>';
+    const staff=data.professionals.filter(p=>p.active||Number(p.appointments)>0);
+    if(!staff.length)return '<div class="os-home-empty-team">'+icon('users')+'<p>Sua equipe começa por aqui.</p>'+routeButton('Cadastrar profissional','funcionarios','os-outline os-small')+'</div>';
+    return staff.slice(0,5).map(p=>{
+      let value='—';try{value=dashboardFinanceMoney(homeCount(p.revenue_cents));}catch{}
+      const name=String(p.name||'Profissional'),completed=Number.isSafeInteger(p.completed)?p.completed:null,count=Number.isSafeInteger(p.appointments)?p.appointments:null;
+      return '<div class="os-home-team-row"><span class="os-home-avatar" aria-hidden="true">'+esc(name.slice(0,1).toLocaleUpperCase('pt-BR'))+'</span><div><strong>'+esc(name)+'</strong><small>'+(completed!==null&&count!==null?completed+' de '+count+' concluídos':'Resumo indisponível')+'</small></div><strong class="os-home-team-money">'+esc(value)+'</strong></div>';
+    }).join('')+(staff.length>5?'<p class="os-home-team-note">'+staff.length+' profissionais no período. Veja a lista completa em Equipe.</p>':'');
+  }
+  function homeAttention(s){
+    return '<div class="os-home-attention-row"><span>'+icon('calendar')+'</span><div><strong>'+s.confirmed+' '+(s.confirmed===1?'horário confirmado':'horários confirmados')+'</strong><small>Atendimentos ainda não concluídos</small></div></div>'+
+      '<div class="os-home-attention-row"><span>'+icon('users')+'</span><div><strong>'+s.customers+' '+(s.customers===1?'cliente cadastrado':'clientes cadastrados')+'</strong><small>Carteira ativa da empresa</small></div></div>';
+  }
+  function homeTrend(data,range){
+    if(!Array.isArray(data?.items)||data.period?.start_date!==range.trendStart||data.period?.end_date!==range.today)throw Error('A evolução do faturamento está indisponível.');
+    const points=Array.from({length:7},(_,i)=>{const d=dayDate(range.trendStart);d.setUTCDate(d.getUTCDate()+i);return {day:d.toISOString().slice(0,10),value:0};}),byDay=new Map(points.map(p=>[p.day,p]));
+    for(const row of data.items){const p=byDay.get(row.date);if(!p)throw Error('A evolução retornou um período diferente.');p.value+=homeCount(row.revenue_cents);homeCount(p.value);}
+    const max=Math.max(0,...points.map(p=>p.value));
+    const bars=points.map((p,i)=>{const h=max?p.value/max*67:0,selected=range.period==='week'||p.day===range.start;return '<g><title>'+esc(fmtDate(p.day)+': '+dashboardFinanceMoney(p.value))+'</title><rect x="'+(i*78+30)+'" y="'+(78-h)+'" width="30" height="'+(h||1)+'" rx="5" fill="currentColor" opacity="'+(selected?'.9':'.3')+'"/></g>';}).join('');
+    return '<div class="os-home-trend-label"><span>Faturamento diário · últimos 7 dias</span><span>'+(max?'':'Sem conclusões no período')+'</span></div><svg viewBox="0 0 560 88" preserveAspectRatio="none" role="img" aria-label="'+esc('Faturamento concluído por dia. '+points.map(p=>fmtDate(p.day)+': '+dashboardFinanceMoney(p.value)).join('; '))+'"><path d="M12 79H550M12 42H550M12 5H550" stroke="currentColor" stroke-opacity=".1" fill="none"/>'+bars+'</svg><div class="os-home-chart-dates">'+points.map(p=>'<span>'+esc(p.day.slice(8))+'</span>').join('')+'</div>';
+  }
+  async function loadHomePreview(c=context(),today=dateKey()){
+    if(!current(c)||!homePreviewEnabled())return;
+    const range=homeRange(today),read=state.homePreviewRead=(state.homePreviewRead||0)+1;
+    state.data.homePreview=null;homeFrame(range);
+    const valid=()=>current(c)&&homePreviewEnabled()&&read===state.homePreviewRead;
+    const agenda=loadDashboardAgenda(c,today);
+    const reads=await Promise.allSettled([
+      request(mgmt('/dashboard?'+query({start_date:range.start,end_date:range.end}))),
+      request(mgmt('/performance/daily?'+query({start_date:range.trendStart,end_date:today}))),
+      request(mgmt('/goals?'+query({start_date:today,end_date:today})))
+    ]);
+    if(!valid())return;
+    const [summary,trend,goals]=reads;
+    try{
+      if(summary.status!=='fulfilled')throw summary.reason;
+      const data=summary.value,s=homeSummary(data,range),revenue=dashboardFinanceMoney(s.completed_revenue_cents),
+        caption=range.period==='today'?'no dia':range.period==='yesterday'?'ontem':'nos últimos 7 dias';
+      state.data.homePreview={range,data};state.data.dashboard=data;
+      $('osHomeRevenue').innerHTML='<strong class="os-home-revenue-value'+(revenue.length>17?' os-home-long-value':'')+'" title="'+esc(revenue)+'">'+esc(revenue)+'</strong><div class="os-home-revenue-description"><span>'+s.completed+' '+(s.completed===1?'atendimento concluído':'atendimentos concluídos')+'</span><span>'+esc(fmtDate(range.start)+(range.start!==range.end?' a '+fmtDate(range.end):''))+'</span></div>';
+      const ticket=s.completed?Math.round(s.completed_revenue_cents/s.completed):0;
+      $('osHomeMetrics').innerHTML=homeMetric('Atendimentos',s.completed+' / '+s.appointments,'concluídos '+caption,'list','agenda')+
+        homeMetric('Clientes cadastrados',s.customers.toLocaleString('pt-BR'),'carteira ativa da empresa','users','clientes')+
+        homeMetric('Confirmados',s.confirmed.toLocaleString('pt-BR'),'a atender '+caption,'clock','agenda')+
+        homeMetric('Ticket médio',dashboardFinanceMoney(ticket),'por atendimento concluído','wallet','financeiro');
+      $('osHomeAttention').innerHTML=homeAttention(s);$('osHomeTeam').innerHTML=homeTeam(data);
+    }catch(error){
+      $('osHomeRevenue').innerHTML='<p class="os-home-revenue-error" role="alert">Não foi possível consultar o faturamento.</p>'+button('Tentar novamente','home-refresh','os-home-light-link');
+      $('osHomeMetrics').innerHTML='<div class="os-home-error" role="alert">'+icon('info')+'<strong>Indicadores indisponíveis</strong><p>'+esc(error?.message||'Confira sua conexão e tente novamente.')+'</p>'+button('Tentar novamente','home-refresh','os-outline os-small')+'</div>';
+      $('osHomeAttention').innerHTML='<p class="os-home-muted-message">Atualize o Início para consultar os avisos do período.</p>';
+      $('osHomeTeam').innerHTML='<p class="os-home-muted-message">Resumo da equipe indisponível.</p>';
+    }finally{if(valid()){ $('osHomeRevenue').removeAttribute('aria-busy');$('osHomeMetrics').removeAttribute('aria-busy');}}
+    try{if(trend.status!=='fulfilled')throw trend.reason;$('osHomeTrend').innerHTML=homeTrend(trend.value,range);}
+    catch{$('osHomeTrend').innerHTML='<p class="os-home-trend-error" role="status">Evolução indisponível. Os valores acima continuam independentes.</p>';}
+    finally{if(valid())$('osHomeTrend').removeAttribute('aria-busy');}
+    try{
+      if(goals.status!=='fulfilled')throw goals.reason;
+      if(!Array.isArray(goals.value?.items))throw Error('Resposta incompleta.');
+      const active=activeTeamGoals(goals.value.items,today),target=$('osHomeGoals');
+      if(active.length){target.innerHTML=dashboardGoalContent(active);target.hidden=false;}
+    }catch{const target=$('osHomeGoals');target.innerHTML='<p class="os-home-muted-message">Não foi possível consultar as metas.</p>'+button('Tentar novamente','home-refresh','os-ghost os-small');target.hidden=false;}
+    await agenda;
+  }
+
   function renderDashboard(data,today=dateKey()){
     const s=data.summary||{},t=tenant(),can=writable(),hours=Number(new Intl.DateTimeFormat('en-GB',{hour:'2-digit',hourCycle:'h23',timeZone:zone()}).format(new Date()));
     const greeting=hours<12?'Bom dia':hours<18?'Boa tarde':'Boa noite';
@@ -4369,6 +4474,10 @@
       case 'new-appointment':await showAppointment();break;
       case 'new-fixed-client':await showAppointment({bookingMode:'fixed'});break;
       case 'new-block':await showBlock();break;
+      case 'home-period':{
+        if(homePreviewEnabled()&&state.route==='dashboard'&&['today','yesterday','week'].includes(element.dataset.osPeriod)){state.filters.homePeriod=element.dataset.osPeriod;await loadHomePreview(context());document.querySelector('[data-os-action=home-period][data-os-period="'+state.filters.homePeriod+'"]')?.focus({preventScroll:true});}break;
+      }
+      case 'home-refresh':if(homePreviewEnabled()&&state.route==='dashboard')await loadHomePreview(context());break;
       case 'dashboard-finance-refresh':if(state.route==='dashboard')await loadDashboardFinance(context(),dateKey());break;
       case 'dashboard-finance-full':f.financeTab='entries';await open('financeiro');break;
       case 'dashboard-goals-full':state.filters.performanceTab='goals';await open('desempenho');break;
