@@ -1114,7 +1114,7 @@
       '<div class="os-home-revenue-foot"><span>'+icon('shield')+'Atendimentos concluídos</span>'+button('Ver financeiro','dashboard-finance-full','os-home-light-link')+'</div></article>'+
       '<div id="osHomeMetrics" class="os-home-metrics" aria-label="Indicadores do período" aria-live="polite" aria-busy="true">'+homeMetric('Atendimentos','—','Consultando período…','list','agenda')+homeMetric('Clientes cadastrados','—','Consultando carteira…','users','clientes')+homeMetric('Confirmados','—','Consultando período…','clock','agenda')+homeMetric('Ticket médio','—','Consultando período…','wallet','financeiro')+'</div></div>'+
       '<section class="os-home-quick-actions" aria-label="Ações rápidas">'+quick('Novo cliente','Comece um novo relacionamento','new-customer','userPlus')+'<button type="button" class="os-home-quick" data-os-route="site"><span>'+icon('globe')+'</span><div><strong>Meu site</strong><small>Sua página de agendamento</small></div>'+icon('external')+'</button></section>'+
-      '<div class="os-home-lower"><div class="os-home-agenda">'+homeAgendaFrame(range.today)+'</div><aside class="os-home-side"><section class="os-card os-home-attention"><div class="os-home-panel-head"><h2>Para acompanhar</h2><small>'+esc(range.period==='today'?'Hoje':range.period==='yesterday'?'Ontem':'Últimos 7 dias')+'</small></div><div id="osHomeAttention" aria-live="polite"><p class="os-home-muted-message">Consultando o período…</p></div></section><section class="os-card os-home-team"><div class="os-home-panel-head"><h2>Equipe no período</h2>'+routeButton('Ver equipe','funcionarios','os-ghost os-small')+'</div><div id="osHomeTeam" aria-live="polite"><p class="os-home-muted-message">Consultando a equipe…</p></div></section><section id="osHomeGoals" class="os-card os-dashboard-goals" aria-live="polite" hidden></section></aside></div></section>');
+      '<div class="os-home-lower"><div class="os-home-agenda">'+homeAgendaFrame(range.today)+'</div><aside class="os-home-side"><section class="os-card os-home-team"><div class="os-home-panel-head"><h2>Equipe no período</h2>'+routeButton('Ver equipe','funcionarios','os-ghost os-small')+'</div><div id="osHomeTeam" aria-live="polite"><p class="os-home-muted-message">Consultando a equipe…</p></div></section><section id="osHomeGoals" class="os-card os-dashboard-goals" aria-live="polite" hidden></section></aside></div></section>');
   }
   function homeTeam(data){
     if(!Array.isArray(data.professionals))return '<p class="os-home-muted-message">Não foi possível consultar a equipe.</p>';
@@ -1125,10 +1125,6 @@
       const name=String(p.name||'Profissional'),completed=Number.isSafeInteger(p.completed)?p.completed:null,count=Number.isSafeInteger(p.appointments)?p.appointments:null;
       return '<div class="os-home-team-row"><span class="os-home-avatar" aria-hidden="true">'+esc(name.slice(0,1).toLocaleUpperCase('pt-BR'))+'</span><div><strong>'+esc(name)+'</strong><small>'+(completed!==null&&count!==null?completed+' de '+count+' concluídos':'Resumo indisponível')+'</small></div><strong class="os-home-team-money">'+esc(value)+'</strong></div>';
     }).join('')+(staff.length>5?'<p class="os-home-team-note">'+staff.length+' profissionais no período. Veja a lista completa em Equipe.</p>':'');
-  }
-  function homeAttention(s){
-    return '<div class="os-home-attention-row"><span>'+icon('calendar')+'</span><div><strong>'+s.confirmed+' '+(s.confirmed===1?'horário confirmado':'horários confirmados')+'</strong><small>Atendimentos ainda não concluídos</small></div></div>'+
-      '<div class="os-home-attention-row"><span>'+icon('users')+'</span><div><strong>'+s.customers+' '+(s.customers===1?'cliente cadastrado':'clientes cadastrados')+'</strong><small>Carteira ativa da empresa</small></div></div>';
   }
   function homeTrend(data,range){
     if(!Array.isArray(data?.items)||data.period?.start_date!==range.trendStart||data.period?.end_date!==range.today)throw Error('A evolução do faturamento está indisponível.');
@@ -1207,13 +1203,13 @@
       homePatch('osHomeRevenue','<strong class="os-home-revenue-value'+(revenue.length>17?' os-home-long-value':'')+'" title="'+esc(revenue)+'">'+esc(revenue)+'</strong><div class="os-home-revenue-description"><span>'+s.completed+' '+(s.completed===1?'atendimento concluído':'atendimentos concluídos')+'</span><span>'+esc(fmtDate(range.start)+(range.start!==range.end?' a '+fmtDate(range.end):''))+'</span></div>');
       const ticket=s.completed?Math.round(s.completed_revenue_cents/s.completed):0;
       homePatch('osHomeMetrics',homeMetric('Atendimentos',s.completed+' / '+s.appointments,'concluídos '+caption,'list','agenda')+homeMetric('Clientes cadastrados',s.customers.toLocaleString('pt-BR'),'carteira ativa da empresa','users','clientes')+homeMetric('Confirmados',s.confirmed.toLocaleString('pt-BR'),'a atender '+caption,'clock','agenda')+homeMetric('Ticket médio',dashboardFinanceMoney(ticket),'por atendimento concluído','wallet','financeiro'));
-      homePatch('osHomeAttention',homeAttention(s));homePatch('osHomeTeam',homeTeam(data));
+      homePatch('osHomeTeam',homeTeam(data));
     }catch(error){
       failed=true;
       if(!keep){
         homePatch('osHomeRevenue','<p class="os-home-revenue-error" role="alert">Não foi possível consultar o faturamento.</p>');
         homePatch('osHomeMetrics','<div class="os-home-error" role="alert">'+icon('info')+'<strong>Indicadores indisponíveis</strong><p>'+esc(error?.message||'Tentando reconectar automaticamente.')+'</p></div>');
-        homePatch('osHomeAttention','<p class="os-home-muted-message">Aguardando a próxima sincronização automática.</p>');homePatch('osHomeTeam','<p class="os-home-muted-message">Resumo da equipe indisponível.</p>');
+        homePatch('osHomeTeam','<p class="os-home-muted-message">Resumo da equipe indisponível.</p>');
       }
     }
     try{if(trend.status!=='fulfilled')throw trend.reason;homePatch('osHomeTrend',homeTrend(trend.value,range));}
