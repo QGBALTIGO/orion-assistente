@@ -676,8 +676,9 @@
       else setPerformancePeriod(f.performancePeriod||'month');
     }
   }
-  function legacyOpened(route){if(state.mounted&&subscriptionWorkspace()&&!routePermitted(route)){void open(fallbackRoute(),{force:true});return;}if(route==='cadastros'){void open(subscriptionWorkspace()?'dashboard':'configuracoes',{force:true});return;}if(!state.mounted||!legacyPages.has(route))return;if(platformAdminOnlyPages.has(route)&&state.bridge.user?.role!=='admin'){void open('dashboard',{force:true});return;}clearSiteLookups();preservePerformancePeriod(route);state.route=route;state.load++;state.filters.agendaTablet=false;clearInterval(state.clockTimer);$('appView')?.classList.remove('os-tablet-mode');closeNotifications();closeDialog();selectedNav();$('page-suite').classList.add('hidden');$('osConsultantFab')?.classList.add('hidden');drawer(false);document.title=routeLabel(route)+' · Orion';}
+  function legacyOpened(route){stopHomeLive();if(state.mounted&&subscriptionWorkspace()&&!routePermitted(route)){void open(fallbackRoute(),{force:true});return;}if(route==='cadastros'){void open(subscriptionWorkspace()?'dashboard':'configuracoes',{force:true});return;}if(!state.mounted||!legacyPages.has(route))return;if(platformAdminOnlyPages.has(route)&&state.bridge.user?.role!=='admin'){void open('dashboard',{force:true});return;}clearSiteLookups();preservePerformancePeriod(route);state.route=route;state.load++;state.filters.agendaTablet=false;clearInterval(state.clockTimer);$('appView')?.classList.remove('os-tablet-mode');closeNotifications();closeDialog();selectedNav();$('page-suite').classList.add('hidden');$('osConsultantFab')?.classList.add('hidden');drawer(false);document.title=routeLabel(route)+' · Orion';}
   async function open(route,options={}){
+    if(route!=='dashboard')stopHomeLive();
     route=routeAliases.get(route)||route;
     const navigationRead=state.navigationRead=(state.navigationRead||0)+1;state.pendingRoute=route;
     if(route==='cadastros')route=subscriptionWorkspace()?'dashboard':'configuracoes';
@@ -1106,14 +1107,14 @@
       periodName={today:'de hoje',yesterday:'de ontem',week:'dos últimos 7 dias'}[range.period];
     const quick=(name,sub,action,symbol)=>'<button type="button" class="os-home-quick" data-os-action="'+action+'"><span>'+icon(symbol)+'</span><div><strong>'+name+'</strong><small>'+sub+'</small></div>'+icon('plus')+'</button>';
     bodyHTML('<section class="os-home-preview" aria-label="Início do negócio"><div class="os-home-heading"><div><p class="os-overline">Seu negócio, bem acompanhado</p><h1>'+greeting+(first?', '+esc(first):'')+'<span>.</span></h1><p>'+esc(longDay(range.today))+'</p></div><div class="os-home-heading-actions"><span class="os-home-pilot">'+icon('shield')+'Prévia do administrador</span>'+button('Novo agendamento','new-appointment','','plus')+'</div></div>'+
-      '<div class="os-home-context"><span>Visão geral de '+esc(tenant()?.name||'seu negócio')+'</span><button type="button" class="os-home-refresh" data-os-action="home-refresh" aria-label="Atualizar início">'+icon('refresh')+'<span>Atualizar</span></button></div>'+
+      '<div class="os-home-context"><span>Visão geral de '+esc(tenant()?.name||'seu negócio')+'</span><span id="osHomeSync" role="status" aria-live="polite"></span></div>'+
       '<div class="os-home-overview"><article class="os-home-revenue" aria-labelledby="osHomeRevenueTitle"><div class="os-home-revenue-heading"><h2 id="osHomeRevenueTitle">Faturamento <span>'+periodName+'</span></h2><span class="os-home-revenue-art">'+icon('chart')+'</span></div>'+
       '<div class="os-home-periods" role="group" aria-label="Período dos indicadores">'+[['today','Hoje'],['yesterday','Ontem'],['week','7 dias']].map(([value,label])=>'<button type="button" data-os-action="home-period" data-os-period="'+value+'" aria-pressed="'+(range.period===value)+'">'+label+'</button>').join('')+'</div>'+
       '<div id="osHomeRevenue" class="os-home-revenue-result" aria-live="polite" aria-busy="true"><strong class="os-home-revenue-value">—</strong><p class="os-home-pending">Consultando faturamento…</p></div><div id="osHomeTrend" class="os-home-trend" aria-live="polite" aria-busy="true"><div class="os-home-chart-placeholder" aria-hidden="true"></div></div>'+
       '<div class="os-home-revenue-foot"><span>'+icon('shield')+'Atendimentos concluídos</span>'+button('Ver financeiro','dashboard-finance-full','os-home-light-link')+'</div></article>'+
       '<div id="osHomeMetrics" class="os-home-metrics" aria-label="Indicadores do período" aria-live="polite" aria-busy="true">'+homeMetric('Atendimentos','—','Consultando período…','list','agenda')+homeMetric('Clientes cadastrados','—','Consultando carteira…','users','clientes')+homeMetric('Confirmados','—','Consultando período…','clock','agenda')+homeMetric('Ticket médio','—','Consultando período…','wallet','financeiro')+'</div></div>'+
-      '<section class="os-home-quick-actions" aria-label="Ações rápidas">'+quick('Agendar cliente','Encontre o próximo horário','new-appointment','calendarPlus')+quick('Novo cliente','Comece um novo relacionamento','new-customer','userPlus')+'<button type="button" class="os-home-quick" data-os-route="site"><span>'+icon('globe')+'</span><div><strong>Meu site</strong><small>Sua página de agendamento</small></div>'+icon('external')+'</button></section>'+
-      '<div class="os-home-lower"><div class="os-home-agenda">'+dashboardAgendaFrame(range.today)+'</div><aside class="os-home-side"><section class="os-card os-home-attention"><div class="os-home-panel-head"><h2>Para acompanhar</h2><small>'+esc(range.period==='today'?'Hoje':range.period==='yesterday'?'Ontem':'Últimos 7 dias')+'</small></div><div id="osHomeAttention" aria-live="polite"><p class="os-home-muted-message">Consultando o período…</p></div></section><section class="os-card os-home-team"><div class="os-home-panel-head"><h2>Equipe no período</h2>'+routeButton('Ver equipe','funcionarios','os-ghost os-small')+'</div><div id="osHomeTeam" aria-live="polite"><p class="os-home-muted-message">Consultando a equipe…</p></div></section><section id="osHomeGoals" class="os-card os-dashboard-goals" aria-live="polite" hidden></section></aside></div></section>');
+      '<section class="os-home-quick-actions" aria-label="Ações rápidas">'+quick('Novo cliente','Comece um novo relacionamento','new-customer','userPlus')+'<button type="button" class="os-home-quick" data-os-route="site"><span>'+icon('globe')+'</span><div><strong>Meu site</strong><small>Sua página de agendamento</small></div>'+icon('external')+'</button></section>'+
+      '<div class="os-home-lower"><div class="os-home-agenda">'+homeAgendaFrame(range.today)+'</div><aside class="os-home-side"><section class="os-card os-home-attention"><div class="os-home-panel-head"><h2>Para acompanhar</h2><small>'+esc(range.period==='today'?'Hoje':range.period==='yesterday'?'Ontem':'Últimos 7 dias')+'</small></div><div id="osHomeAttention" aria-live="polite"><p class="os-home-muted-message">Consultando o período…</p></div></section><section class="os-card os-home-team"><div class="os-home-panel-head"><h2>Equipe no período</h2>'+routeButton('Ver equipe','funcionarios','os-ghost os-small')+'</div><div id="osHomeTeam" aria-live="polite"><p class="os-home-muted-message">Consultando a equipe…</p></div></section><section id="osHomeGoals" class="os-card os-dashboard-goals" aria-live="polite" hidden></section></aside></div></section>');
   }
   function homeTeam(data){
     if(!Array.isArray(data.professionals))return '<p class="os-home-muted-message">Não foi possível consultar a equipe.</p>';
@@ -1137,47 +1138,97 @@
     const bars=points.map((p,i)=>{const h=max?p.value/max*67:0,selected=range.period==='week'||p.day===range.start;return '<g><title>'+esc(fmtDate(p.day)+': '+dashboardFinanceMoney(p.value))+'</title><rect x="'+(i*78+30)+'" y="'+(78-h)+'" width="30" height="'+(h||1)+'" rx="5" fill="currentColor" opacity="'+(selected?'.9':'.3')+'"/></g>';}).join('');
     return '<div class="os-home-trend-label"><span>Faturamento diário · últimos 7 dias</span><span>'+(max?'':'Sem conclusões no período')+'</span></div><svg viewBox="0 0 560 88" preserveAspectRatio="none" role="img" aria-label="'+esc('Faturamento concluído por dia. '+points.map(p=>fmtDate(p.day)+': '+dashboardFinanceMoney(p.value)).join('; '))+'"><path d="M12 79H550M12 42H550M12 5H550" stroke="currentColor" stroke-opacity=".1" fill="none"/>'+bars+'</svg><div class="os-home-chart-dates">'+points.map(p=>'<span>'+esc(p.day.slice(8))+'</span>').join('')+'</div>';
   }
-  async function loadHomePreview(c=context(),today=dateKey()){
-    if(!current(c)||!homePreviewEnabled())return;
-    const range=homeRange(today),read=state.homePreviewRead=(state.homePreviewRead||0)+1;
-    state.data.homePreview=null;homeFrame(range);
-    const valid=()=>current(c)&&homePreviewEnabled()&&read===state.homePreviewRead;
-    const agenda=loadDashboardAgenda(c,today);
+  function homeAgendaFrame(today){
+    return '<section class="os-card os-home-appointments" aria-labelledby="osDashboardAgendaTitle"><div class="os-home-panel-head"><div><h2 id="osDashboardAgendaTitle">Agendamentos de hoje</h2><p>'+esc(longDay(today))+'</p></div>'+button('Ver agenda','dashboard-agenda-full','os-ghost os-small')+'</div><div id="osDashboardAgendaContent" aria-live="polite" aria-busy="true">'+loading('Consultando os agendamentos…')+'</div></section>';
+  }
+  function homeAgendaResult(result,today){
+    if(Array.isArray(result))result={items:result,total:result.length};
+    if(!result||!Array.isArray(result.items)||!Number.isInteger(Number(result.total))||Number(result.total)<result.items.length||result.items.length>50||(Number(result.total)>0&&!result.items.length))throw Error('A consulta de agendamentos retornou dados incompletos.');
+    if(result.items.some(a=>!a||typeof a.id!=='string'||typeof a.start_at!=='string'||!Number.isFinite(Date.parse(a.start_at))||dateKey(new Date(a.start_at))!==today))throw Error('O dia dos agendamentos não pôde ser confirmado.');
+    const total=Number(result.total),shown=result.items.slice(0,8);
+    const html=total?'<div class="os-home-agenda-summary"><span>'+total+' agendamento'+(total===1?'':'s')+' hoje</span>'+(total>shown.length?'<span>Exibindo '+shown.length+'</span>':'')+'</div><div class="os-home-appointment-list">'+shown.map(a=>'<button type="button" class="os-home-appointment" data-os-appointment="'+esc(a.id)+'" aria-label="'+esc('Ver agendamento de '+appointmentName(a)+', às '+timeLabel(a.start_at))+'"><time>'+esc(timeLabel(a.start_at))+'</time><span class="os-home-appointment-person"><strong>'+esc(appointmentName(a))+'</strong><small>'+esc(appointmentProfessional(a))+' · '+appointmentDuration(a)+' min</small><small>'+esc((a.items||[]).map(i=>i.name_snapshot).join(' + ')||'Serviços do agendamento')+'</small></span><span class="os-home-appointment-state">'+appointmentBadge(a)+'<strong>'+esc(priceLabel(a.total_cents,a.status==='completed'?'fixed':a.price_mode))+'</strong></span></button>').join('')+'</div>':
+      '<div class="os-home-agenda-empty"><span aria-hidden="true">'+icon('calendar')+'</span><div><strong>Nenhum agendamento para hoje</strong><p>Os novos horários aparecem aqui automaticamente.</p></div></div>';
+    return {data:{...result,day:today},html};
+  }
+  function homePatch(id,html){
+    const node=$(id);if(!node||node._osHomeHTML===html)return;
+    const focused=node.contains(document.activeElement)?document.activeElement:null,
+      route=focused?.dataset?.osRoute,appointment=focused?.dataset?.osAppointment;
+    node.innerHTML=html;node._osHomeHTML=html;
+    if(route||appointment){const replacement=[...node.querySelectorAll('button')].find(b=>route?b.dataset.osRoute===route:b.dataset.osAppointment===appointment);replacement?.focus({preventScroll:true});}
+  }
+  function stopHomeLive(){clearInterval(state.homeLiveTimer);state.homeLiveTimer=null;state.homePending=null;state.homePreviewRead=(state.homePreviewRead||0)+1;state.homeNextRead=0;state.homeAgain=false;}
+  function ensureHomeLive(){
+    if(state.homeLiveTimer)return;
+    state.homeLiveTimer=setInterval(()=>{if(state.mounted&&homePreviewEnabled()&&state.route==='dashboard'&&tenant()&&!state.busy&&document.visibilityState!=='hidden')void loadHomePreview(context(),dateKey(),{background:true}).catch(()=>{});},5000);
+  }
+  function prepareHomeBooking(){
+    const dialog=$('osDialog');if(!dialog||state.dialog?.type!=='appointment'||state.dialog.homePreview!==true)return;
+    dialog.classList.add('os-home-booking');
+    if(!dialog.querySelector('.os-home-booking-header')){
+      const heading=dialog.querySelector('#osDialogTitle'),close=dialog.querySelector('.os-close'),header=document.createElement('header');
+      header.className='os-home-booking-header';heading?.setAttribute('tabindex','-1');
+      if(heading)header.append(heading);if(close)header.append(close);dialog.prepend(header);
+    }
+    const form=dialog.querySelector('[data-os-form=appointment]');
+    if(form&&!form.querySelector('.os-home-booking-scroll')){
+      const scroll=document.createElement('div');scroll.className='os-home-booking-scroll';
+      for(const child of [...form.children])if(!child.classList.contains('os-form-actions'))scroll.append(child);
+      form.prepend(scroll);
+    }
+    const search=dialog.querySelector('#osBookingCustomer');if(search)search.placeholder='Buscar nome ou telefone';
+    dialog.scrollTop=0;
+  }
+  async function loadHomePreview(c=context(),today=dateKey(),{background=false,force=false}={}){
+    if(!current(c)||!homePreviewEnabled()||state.route!=='dashboard')return;
+    const range=homeRange(today),pending=state.homePending;
+    if(background&&pending&&current(pending.context)){if(force)state.homeAgain=true;return;}
+    if(background&&!force&&Date.now()<(state.homeNextRead||0))return;
+    if(!background)state.homeAgain=false;
+    const read=state.homePreviewRead=(state.homePreviewRead||0)+1,previous=state.data.homePreview,
+      keep=background&&!!document.querySelector('.os-home-preview')&&previous?.range?.today===today&&previous?.range?.period===range.period;
+    if(!keep){state.data.homePreview=null;homeFrame(range);}
+    ensureHomeLive();
+    const token=state.homePending={context:c,read},valid=()=>current(c)&&homePreviewEnabled()&&state.route==='dashboard'&&read===state.homePreviewRead;
     const reads=await Promise.allSettled([
       request(mgmt('/dashboard?'+query({start_date:range.start,end_date:range.end}))),
       request(mgmt('/performance/daily?'+query({start_date:range.trendStart,end_date:today}))),
-      request(mgmt('/goals?'+query({start_date:today,end_date:today})))
+      request(mgmt('/goals?'+query({start_date:today,end_date:today}))),
+      request(apiPath('/appointments?'+query({paged:true,day:today,limit:50,offset:0})))
     ]);
+    if(state.homePending===token)state.homePending=null;
     if(!valid())return;
-    const [summary,trend,goals]=reads;
+    const [summary,trend,goals,agenda]=reads;let failed=false;
     try{
       if(summary.status!=='fulfilled')throw summary.reason;
       const data=summary.value,s=homeSummary(data,range),revenue=dashboardFinanceMoney(s.completed_revenue_cents),
         caption=range.period==='today'?'no dia':range.period==='yesterday'?'ontem':'nos últimos 7 dias';
       state.data.homePreview={range,data};state.data.dashboard=data;
-      $('osHomeRevenue').innerHTML='<strong class="os-home-revenue-value'+(revenue.length>17?' os-home-long-value':'')+'" title="'+esc(revenue)+'">'+esc(revenue)+'</strong><div class="os-home-revenue-description"><span>'+s.completed+' '+(s.completed===1?'atendimento concluído':'atendimentos concluídos')+'</span><span>'+esc(fmtDate(range.start)+(range.start!==range.end?' a '+fmtDate(range.end):''))+'</span></div>';
+      homePatch('osHomeRevenue','<strong class="os-home-revenue-value'+(revenue.length>17?' os-home-long-value':'')+'" title="'+esc(revenue)+'">'+esc(revenue)+'</strong><div class="os-home-revenue-description"><span>'+s.completed+' '+(s.completed===1?'atendimento concluído':'atendimentos concluídos')+'</span><span>'+esc(fmtDate(range.start)+(range.start!==range.end?' a '+fmtDate(range.end):''))+'</span></div>');
       const ticket=s.completed?Math.round(s.completed_revenue_cents/s.completed):0;
-      $('osHomeMetrics').innerHTML=homeMetric('Atendimentos',s.completed+' / '+s.appointments,'concluídos '+caption,'list','agenda')+
-        homeMetric('Clientes cadastrados',s.customers.toLocaleString('pt-BR'),'carteira ativa da empresa','users','clientes')+
-        homeMetric('Confirmados',s.confirmed.toLocaleString('pt-BR'),'a atender '+caption,'clock','agenda')+
-        homeMetric('Ticket médio',dashboardFinanceMoney(ticket),'por atendimento concluído','wallet','financeiro');
-      $('osHomeAttention').innerHTML=homeAttention(s);$('osHomeTeam').innerHTML=homeTeam(data);
+      homePatch('osHomeMetrics',homeMetric('Atendimentos',s.completed+' / '+s.appointments,'concluídos '+caption,'list','agenda')+homeMetric('Clientes cadastrados',s.customers.toLocaleString('pt-BR'),'carteira ativa da empresa','users','clientes')+homeMetric('Confirmados',s.confirmed.toLocaleString('pt-BR'),'a atender '+caption,'clock','agenda')+homeMetric('Ticket médio',dashboardFinanceMoney(ticket),'por atendimento concluído','wallet','financeiro'));
+      homePatch('osHomeAttention',homeAttention(s));homePatch('osHomeTeam',homeTeam(data));
     }catch(error){
-      $('osHomeRevenue').innerHTML='<p class="os-home-revenue-error" role="alert">Não foi possível consultar o faturamento.</p>'+button('Tentar novamente','home-refresh','os-home-light-link');
-      $('osHomeMetrics').innerHTML='<div class="os-home-error" role="alert">'+icon('info')+'<strong>Indicadores indisponíveis</strong><p>'+esc(error?.message||'Confira sua conexão e tente novamente.')+'</p>'+button('Tentar novamente','home-refresh','os-outline os-small')+'</div>';
-      $('osHomeAttention').innerHTML='<p class="os-home-muted-message">Atualize o Início para consultar os avisos do período.</p>';
-      $('osHomeTeam').innerHTML='<p class="os-home-muted-message">Resumo da equipe indisponível.</p>';
-    }finally{if(valid()){ $('osHomeRevenue').removeAttribute('aria-busy');$('osHomeMetrics').removeAttribute('aria-busy');}}
-    try{if(trend.status!=='fulfilled')throw trend.reason;$('osHomeTrend').innerHTML=homeTrend(trend.value,range);}
-    catch{$('osHomeTrend').innerHTML='<p class="os-home-trend-error" role="status">Evolução indisponível. Os valores acima continuam independentes.</p>';}
-    finally{if(valid())$('osHomeTrend').removeAttribute('aria-busy');}
+      failed=true;
+      if(!keep){
+        homePatch('osHomeRevenue','<p class="os-home-revenue-error" role="alert">Não foi possível consultar o faturamento.</p>');
+        homePatch('osHomeMetrics','<div class="os-home-error" role="alert">'+icon('info')+'<strong>Indicadores indisponíveis</strong><p>'+esc(error?.message||'Tentando reconectar automaticamente.')+'</p></div>');
+        homePatch('osHomeAttention','<p class="os-home-muted-message">Aguardando a próxima sincronização automática.</p>');homePatch('osHomeTeam','<p class="os-home-muted-message">Resumo da equipe indisponível.</p>');
+      }
+    }
+    try{if(trend.status!=='fulfilled')throw trend.reason;homePatch('osHomeTrend',homeTrend(trend.value,range));}
+    catch{failed=true;if(!keep)homePatch('osHomeTrend','<p class="os-home-trend-error" role="status">Evolução indisponível. A reconexão é automática.</p>');}
     try{
-      if(goals.status!=='fulfilled')throw goals.reason;
-      if(!Array.isArray(goals.value?.items))throw Error('Resposta incompleta.');
-      const active=activeTeamGoals(goals.value.items,today),target=$('osHomeGoals');
-      if(active.length){target.innerHTML=dashboardGoalContent(active);target.hidden=false;}
-    }catch{const target=$('osHomeGoals');target.innerHTML='<p class="os-home-muted-message">Não foi possível consultar as metas.</p>'+button('Tentar novamente','home-refresh','os-ghost os-small');target.hidden=false;}
-    await agenda;
+      if(goals.status!=='fulfilled')throw goals.reason;if(!Array.isArray(goals.value?.items))throw Error('Resposta incompleta.');
+      const active=activeTeamGoals(goals.value.items,today),target=$('osHomeGoals');homePatch('osHomeGoals',active.length?dashboardGoalContent(active):'');target.hidden=!active.length;
+    }catch{failed=true;if(!keep){homePatch('osHomeGoals','<p class="os-home-muted-message">As metas serão consultadas novamente automaticamente.</p>');$('osHomeGoals').hidden=false;}}
+    try{if(agenda.status!=='fulfilled')throw agenda.reason;const result=homeAgendaResult(agenda.value,today);state.data.dashboardAgenda=result.data;homePatch('osDashboardAgendaContent',result.html);}
+    catch{failed=true;if(!keep){state.data.dashboardAgenda=null;homePatch('osDashboardAgendaContent','<div class="os-home-agenda-error" role="status">'+icon('info')+'<div><strong>Agenda temporariamente indisponível</strong><p>Reconectando automaticamente.</p></div></div>');}}
+    for(const id of ['osHomeRevenue','osHomeMetrics','osHomeTrend','osDashboardAgendaContent'])$(id)?.removeAttribute('aria-busy');
+    state.homeFailures=failed?Math.min(3,(state.homeFailures||0)+1):0;
+    state.homeNextRead=failed?Date.now()+Math.min(30000,5000*2**(state.homeFailures-1)):0;
+    if($('osHomeSync'))$('osHomeSync').textContent=failed?(keep?'Dados da última consulta · reconectando…':'Reconectando automaticamente…'):'';
+    if(state.homeAgain){state.homeAgain=false;await loadHomePreview(context(),dateKey(),{background:true,force:true});}
   }
 
   function renderDashboard(data,today=dateKey()){
@@ -2822,7 +2873,7 @@
   async function saveForm(form,operation,message){if(state.busy||!writable())return;const c=context(),d=state.dialog;const error=form.querySelector('.os-form-message');if(error)error.textContent='';markBusy(form,true);let ok=false;
     try{const result=await operation(c);if(!stillAccount(c))return;ok=true;toast(typeof message==='function'?message(result):message);}
     catch(ex){if(stillAccount(c)){if(error)error.textContent=ex.message||'Não foi possível salvar. Tente novamente.';else toast(ex.message,true);}}
-    finally{if(stillAccount(c)){markBusy(form,false);if(ok){closeDialog();if(current(c))await open(state.route,{keepScroll:true});}}else{state.busy=false;if(d&&state.dialog===d)closeDialog(true);}}
+    finally{if(stillAccount(c)){markBusy(form,false);if(ok){closeDialog();if(current(c)){if(homePreviewEnabled()&&state.route==='dashboard')await loadHomePreview(context(),dateKey(),{background:true,force:true});else await open(state.route,{keepScroll:true});}}}else{state.busy=false;if(d&&state.dialog===d)closeDialog(true);}}
   }
   function getValues(form){return Object.fromEntries(new FormData(form));}
   // Customer fields reuse the exact original names and IDs; only their presentation changes.
@@ -3766,10 +3817,10 @@
       setAppointmentSheet('Cliente fixo',content,writable()&&future.length?button('Editar recorrência','fixed-edit','','edit')+button('Fechar','close-dialog','os-ghost')+button('Encerrar horários','fixed-stop','os-outline os-appointment-cancel','close'):button('Fechar','close-dialog','os-outline'));
     }catch(error){if(stillAccount(c)&&state.dialog===d)setAppointmentSheet('Cliente fixo','<div class="os-appointment-scroll">'+errorHTML(error)+'</div>',button('Fechar','close-dialog','os-outline'));}
   }
-  async function showAppointment(preset={}){if(preset.bookingMode==='fixed'){await showFixedClient(preset);return;}if(!writable()){toast('Seu acesso permite apenas consultar agendamentos.',true);return;}const c=context();showDialog('appointment','Novo agendamento',loading('Carregando clientes, serviços e profissionais…'),{serviceIds:[...(preset.serviceIds||[])],engineServiceIds:[],addonIds:[],addonCache:{},customerId:preset.customerId||'',slots:[],availabilityVersion:0,preset});$('osDialog').classList.add('os-booking-dialog');const activeDialog=state.dialog;
+  async function showAppointment(preset={}){if(preset.bookingMode==='fixed'){await showFixedClient(preset);return;}if(!writable()){toast('Seu acesso permite apenas consultar agendamentos.',true);return;}const c=context();showDialog('appointment','Novo agendamento',loading('Carregando clientes, serviços e profissionais…'),{homePreview:homePreviewEnabled()&&state.route==='dashboard',focusTitle:homePreviewEnabled()&&state.route==='dashboard',serviceIds:[...(preset.serviceIds||[])],engineServiceIds:[],addonIds:[],addonCache:{},customerId:preset.customerId||'',slots:[],availabilityVersion:0,preset});$('osDialog').classList.add('os-booking-dialog');prepareHomeBooking();const activeDialog=state.dialog;
     try{const [customers,services,professionals,links]=await Promise.all([request(mgmt('/customers?limit=200&status=active')),request(apiPath('/services')),request(apiPath('/professionals')),request(apiPath('/professional_services'))]);if(!stillAccount(c)||state.dialog!==activeDialog)return;
       Object.assign(state.dialog,{customers:rows(customers),services:rows(services).filter(s=>s.active),professionals:rows(professionals).filter(p=>p.active&&p.accepts_appointments!==false),links:rows(links)});state.dialog.serviceIds=state.dialog.serviceIds.filter(id=>state.dialog.services.some(service=>service.id===id));renderAppointmentForm();if(state.dialog.serviceIds.length)await updateAvailability();
-    }catch(ex){if(stillAccount(c)&&state.dialog===activeDialog)$('osDialog').innerHTML='<button class="os-icon-button os-close" type="button" data-os-action="close-dialog" aria-label="Fechar">'+icon('close')+'</button><h2 id="osDialogTitle">Novo agendamento</h2>'+errorHTML(ex)+button('Fechar','close-dialog','os-outline');}
+    }catch(ex){if(stillAccount(c)&&state.dialog===activeDialog){$('osDialog').innerHTML='<button class="os-icon-button os-close" type="button" data-os-action="close-dialog" aria-label="Fechar">'+icon('close')+'</button><h2 id="osDialogTitle">Novo agendamento</h2>'+errorHTML(ex)+button('Fechar','close-dialog','os-outline');prepareHomeBooking();}}
   }
   function renderAppointmentForm(){
     const d=state.dialog;if(d?.type!=='appointment')return;
@@ -3795,7 +3846,7 @@
     if(d.preset?.customerPhone)form.elements.customer_phone.value=d.preset.customerPhone;
     d.bookingMode=mode;syncBookingMode();
     if(noServices||noPros)$('osDialog').querySelector('button[type=submit]').disabled=true;
-    window.OrionFields?.refresh($('osDialog'));
+    prepareHomeBooking();window.OrionFields?.refresh($('osDialog'));
   }
   function syncBookingMode(){
     const d=state.dialog,form=$('osDialog')?.querySelector('[data-os-form=appointment]');if(d?.type!=='appointment'||!form||d.holdForm||d.manualOperation)return;
@@ -4477,7 +4528,6 @@
       case 'home-period':{
         if(homePreviewEnabled()&&state.route==='dashboard'&&['today','yesterday','week'].includes(element.dataset.osPeriod)){state.filters.homePeriod=element.dataset.osPeriod;await loadHomePreview(context());document.querySelector('[data-os-action=home-period][data-os-period="'+state.filters.homePeriod+'"]')?.focus({preventScroll:true});}break;
       }
-      case 'home-refresh':if(homePreviewEnabled()&&state.route==='dashboard')await loadHomePreview(context());break;
       case 'dashboard-finance-refresh':if(state.route==='dashboard')await loadDashboardFinance(context(),dateKey());break;
       case 'dashboard-finance-full':f.financeTab='entries';await open('financeiro');break;
       case 'dashboard-goals-full':state.filters.performanceTab='goals';await open('desempenho');break;
@@ -4872,6 +4922,7 @@
   }
   async function refreshLiveRoute(){
     if(state.mounted&&tenant()&&document.visibilityState!=='hidden')await refreshPermissions({reconcile:true});
+    if(state.mounted&&homePreviewEnabled()&&state.route==='dashboard'){if(document.visibilityState!=='hidden'&&!state.busy)await loadHomePreview(context(),dateKey(),{background:true});return;}
     if(!state.mounted||!tenant()||state.busy||state.dialog||document.visibilityState==='hidden')return;
     if(document.activeElement?.matches?.('input,select,textarea,[contenteditable=true]'))return;
     const c=context();
@@ -4882,7 +4933,7 @@
       await loadRoute();
     }
   }
-  function refreshAccess(event){if(state.mounted&&tenant()&&document.visibilityState!=='hidden')void refreshPermissions({reconcile:event?.detail?.preservePage!==true});}
+  function refreshAccess(event){if(state.mounted&&homePreviewEnabled()&&state.route==='dashboard'&&document.visibilityState!=='hidden')void loadHomePreview(context(),dateKey(),{background:true,force:true}).catch(()=>{});if(state.mounted&&tenant()&&document.visibilityState!=='hidden')void refreshPermissions({reconcile:event?.detail?.preservePage!==true});}
   function mount(bridge){
     if(state.mounted){sync(bridge);return;}
     state.bridge=bridge||{};state.mounted=true;state.epoch++;state.load++;state.tenantId=accountTenantId();state.workspaceProfile=tenant()?.workspace_profile||null;state.filters.agendaDay=dateKey();resetPeriod();
@@ -4890,6 +4941,6 @@
     state.observer=new MutationObserver(()=>applyThemeState());state.observer.observe(document.documentElement,{attributes:true,attributeFilter:['data-theme','data-theme-preference']});
     const desired=bridge?.initialRoute||'dashboard';void open(appPages.has(desired)?desired:'dashboard');
   }
-  function destroy(){$('appView')?.classList.remove('os-dental-workspace');window.OrionDentalClinic?.unmount?.();window.OrionSubscriptionGroupAdd?.clearContext();window.OrionSubscriptionGroupContacts?.clearContext();window.OrionSubscriptionDirectMessages?.clearContext();window.OrionSubscriptionBulkMessages?.clearContext();window.OrionSubscriptionScheduledMessages?.clearContext();window.OrionSubscriptionCampaigns?.clearContext();window.OrionSubscriptionDiagnostics?.clearContext();window.OrionSubscriptionSentMessages?.clearContext();window.OrionSubscriptionGroupAdd?.unmount();window.OrionSubscriptionGroupContacts?.unmount();window.OrionSubscriptionDirectMessages?.unmount();window.OrionSubscriptionBulkMessages?.unmount();window.OrionSubscriptionScheduledMessages?.unmount();window.OrionSubscriptionCampaigns?.unmount();window.OrionSubscriptionDiagnostics?.unmount();window.OrionSubscriptionSentMessages?.unmount();window.OrionSubscriptionTemplates?.unmount();window.OrionSubscriptionChatbotTest?.unmount();window.OrionSubscriptionChatbot?.unmount();window.OrionSubscriptionDevices?.unmount();window.OrionSubscriptionDashboard?.unmount();window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionCommunication?.unmount();window.OrionInbox?.unmount();state.mounted=false;clearInterval(state.clockTimer);clearInterval(state.liveRefreshTimer);state.epoch++;state.load++;state.busy=false;state.imageUploading=false;clearTimeout(state.searchTimer);clearTimeout(state.agendaSearchTimer);clearSiteLookups();closeDialog(true);state.data={};state.bridge={};state.tenantId='';state.workspaceProfile=null;state.filters=defaultFilters();state.appShortcutDraft=null;applyAppLayout();closeNotifications();$('osNotificationsPanel')?.replaceChildren();$('osNotificationDot')?.classList.add('hidden');clearTimeout(state.permissionExpiryTimer);state.permissionExpiryTimer=null;if(state.permissionChannel){state.permissionChannel.onmessage=null;state.permissionChannel.close();state.permissionChannel=null;}state.permissionObserver?.disconnect();state.permissionObserver=null;window.removeEventListener('focus',refreshAccess);document.removeEventListener('visibilitychange',refreshAccess);window.removeEventListener('orion:plan-changed',refreshAccess);state.entitlements=null;state.permissionPending=null;state.observer?.disconnect();state.observer=null;document.removeEventListener('click',handleClick);document.removeEventListener('change',handleChange);document.removeEventListener('input',handleInput);document.removeEventListener('focusout',handleSiteFocusOut);document.removeEventListener('compositionend',handleSiteCompositionEnd);document.removeEventListener('submit',submitForm);document.removeEventListener('keydown',handleKeydown);document.removeEventListener('pointerdown',handleServicePointerDown);document.removeEventListener('pointermove',handleServicePointerMove);document.removeEventListener('pointerup',handleServicePointerUp);document.removeEventListener('pointercancel',clearServiceDrag);clearServiceDrag();$('osDialog')?.removeEventListener('cancel',onDialogCancel);$('page-suite')?.replaceChildren();$('osNav')?.replaceChildren();$('osSidebarContext')?.replaceChildren();$('osToastRegion')?.replaceChildren();$('appView')?.classList.remove('os-menu-open','os-tablet-mode');}
+  function destroy(){stopHomeLive();$('appView')?.classList.remove('os-dental-workspace');window.OrionDentalClinic?.unmount?.();window.OrionSubscriptionGroupAdd?.clearContext();window.OrionSubscriptionGroupContacts?.clearContext();window.OrionSubscriptionDirectMessages?.clearContext();window.OrionSubscriptionBulkMessages?.clearContext();window.OrionSubscriptionScheduledMessages?.clearContext();window.OrionSubscriptionCampaigns?.clearContext();window.OrionSubscriptionDiagnostics?.clearContext();window.OrionSubscriptionSentMessages?.clearContext();window.OrionSubscriptionGroupAdd?.unmount();window.OrionSubscriptionGroupContacts?.unmount();window.OrionSubscriptionDirectMessages?.unmount();window.OrionSubscriptionBulkMessages?.unmount();window.OrionSubscriptionScheduledMessages?.unmount();window.OrionSubscriptionCampaigns?.unmount();window.OrionSubscriptionDiagnostics?.unmount();window.OrionSubscriptionSentMessages?.unmount();window.OrionSubscriptionTemplates?.unmount();window.OrionSubscriptionChatbotTest?.unmount();window.OrionSubscriptionChatbot?.unmount();window.OrionSubscriptionDevices?.unmount();window.OrionSubscriptionDashboard?.unmount();window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionCommunication?.unmount();window.OrionInbox?.unmount();state.mounted=false;clearInterval(state.clockTimer);clearInterval(state.liveRefreshTimer);state.epoch++;state.load++;state.busy=false;state.imageUploading=false;clearTimeout(state.searchTimer);clearTimeout(state.agendaSearchTimer);clearSiteLookups();closeDialog(true);state.data={};state.bridge={};state.tenantId='';state.workspaceProfile=null;state.filters=defaultFilters();state.appShortcutDraft=null;applyAppLayout();closeNotifications();$('osNotificationsPanel')?.replaceChildren();$('osNotificationDot')?.classList.add('hidden');clearTimeout(state.permissionExpiryTimer);state.permissionExpiryTimer=null;if(state.permissionChannel){state.permissionChannel.onmessage=null;state.permissionChannel.close();state.permissionChannel=null;}state.permissionObserver?.disconnect();state.permissionObserver=null;window.removeEventListener('focus',refreshAccess);document.removeEventListener('visibilitychange',refreshAccess);window.removeEventListener('orion:plan-changed',refreshAccess);state.entitlements=null;state.permissionPending=null;state.observer?.disconnect();state.observer=null;document.removeEventListener('click',handleClick);document.removeEventListener('change',handleChange);document.removeEventListener('input',handleInput);document.removeEventListener('focusout',handleSiteFocusOut);document.removeEventListener('compositionend',handleSiteCompositionEnd);document.removeEventListener('submit',submitForm);document.removeEventListener('keydown',handleKeydown);document.removeEventListener('pointerdown',handleServicePointerDown);document.removeEventListener('pointermove',handleServicePointerMove);document.removeEventListener('pointerup',handleServicePointerUp);document.removeEventListener('pointercancel',clearServiceDrag);clearServiceDrag();$('osDialog')?.removeEventListener('cancel',onDialogCancel);$('page-suite')?.replaceChildren();$('osNav')?.replaceChildren();$('osSidebarContext')?.replaceChildren();$('osToastRegion')?.replaceChildren();$('appView')?.classList.remove('os-menu-open','os-tablet-mode');}
   window.OrionSuite=Object.freeze({mount,sync,destroy,open,legacyOpened,workspaceProfile});
 })();
