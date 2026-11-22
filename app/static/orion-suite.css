@@ -3892,7 +3892,7 @@ html:has(.os-professional-history[open]){overflow:hidden}
 .os-home-preview .os-home-team-row>div>strong{font-size:13px;font-weight:600;display:block;overflow-wrap:anywhere}
 .os-home-preview .os-home-team-row small{font-size:11px;color:var(--os-muted);display:block;margin-top:3px}
 .os-home-preview .os-home-team-money{font-size:13px;max-width:45%;text-align:right;overflow-wrap:anywhere;font-weight:550;font-variant-numeric:tabular-nums}
-.os-home-preview .os-home-side .os-dashboard-goals-head{padding:20px;gap:10px;flex-wrap:wrap}
+.os-home-preview .os-home-side .os-dashboard-goals-head{padding:20px;gap:10px}
 .os-home-preview .os-home-side .os-dashboard-goals-heading>.os-square-icon{display:none}
 .os-home-preview .os-home-side .os-dashboard-goals-heading h3{font-size:18px;letter-spacing:-.2px}
 .os-home-preview .os-home-side .os-dashboard-goals-content{padding:0 20px 20px}

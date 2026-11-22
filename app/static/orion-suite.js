@@ -1008,7 +1008,7 @@
         actual:list.reduce((n,g)=>n+g.actual_value,0)};
     }).filter(Boolean);
   }
-  function dashboardGoalContent(groups){
+  function dashboardGoalContent(groups,{homePreview=false}={}){
     if(!groups.length)return '';
     const goalBar=g=>{
       const percent=g.target?g.actual/g.target*100:0,
@@ -1027,10 +1027,14 @@
         '<div class="os-dashboard-goal-values"><span>Realizado <strong>'+esc(value(g.actual))+'</strong></span>'+
         '<span>Meta <strong>'+esc(value(g.target))+'</strong></span></div></div>';
     };
-    return '<div class="os-dashboard-goals-head"><div class="os-dashboard-goals-heading">'+
+    const headerClass='os-dashboard-goals-head'+(homePreview?' os-home-panel-head':'');
+    const performanceButton=homePreview
+      ?button('Ver desempenho','dashboard-goals-full','os-ghost os-small')
+      :button('Ver desempenho','dashboard-goals-full','os-outline os-small','chevron');
+    return '<div class="'+headerClass+'"><div class="os-dashboard-goals-heading">'+
       '<span class="os-square-icon" aria-hidden="true">'+icon('target')+'</span>'+
       '<div><p class="os-dashboard-finance-eyebrow">OBJETIVOS</p><h3>'+(groups.some(g=>g.scope==='company')?'Metas da empresa':'Meta da equipe')+'</h3></div></div>'+
-      button('Ver desempenho','dashboard-goals-full','os-outline os-small','chevron')+'</div>'+
+      performanceButton+'</div>'+
       '<div class="os-dashboard-goals-content">'+groups.map(goalBar).join('')+
       '<p class="os-dashboard-goals-note">Progresso considerando o período definido para cada meta ativa.</p></div>';
   }
@@ -1216,7 +1220,9 @@
     catch{failed=true;if(!keep)homePatch('osHomeTrend','<p class="os-home-trend-error" role="status">Evolução indisponível. A reconexão é automática.</p>');}
     try{
       if(goals.status!=='fulfilled')throw goals.reason;if(!Array.isArray(goals.value?.items))throw Error('Resposta incompleta.');
-      const active=activeTeamGoals(goals.value.items,today),target=$('osHomeGoals');homePatch('osHomeGoals',active.length?dashboardGoalContent(active):'');target.hidden=!active.length;
+      const active=activeTeamGoals(goals.value.items,today),target=$('osHomeGoals');
+      homePatch('osHomeGoals',dashboardGoalContent(active,{homePreview:true}));
+      target.hidden=!active.length;
     }catch{failed=true;if(!keep){homePatch('osHomeGoals','<p class="os-home-muted-message">As metas serão consultadas novamente automaticamente.</p>');$('osHomeGoals').hidden=false;}}
     try{if(agenda.status!=='fulfilled')throw agenda.reason;const result=homeAgendaResult(agenda.value,today);state.data.dashboardAgenda=result.data;homePatch('osDashboardAgendaContent',result.html);}
     catch{failed=true;if(!keep){state.data.dashboardAgenda=null;homePatch('osDashboardAgendaContent','<div class="os-home-agenda-error" role="status">'+icon('info')+'<div><strong>Agenda temporariamente indisponível</strong><p>Reconectando automaticamente.</p></div></div>');}}
