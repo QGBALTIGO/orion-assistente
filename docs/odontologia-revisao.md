@@ -10,7 +10,7 @@ A referência é a conta autenticada do Simples Dental. A implementação usa o 
 | Vendas | Oportunidades, busca, filtros e criação | Fluxo pendente |
 | Financeiro | Fluxo de caixa, fechamento, transações, nota fiscal, comissões e carteira | Recursos do Orion existentes. Comparação de fechamento, transações e integrações pendente |
 | Simples Pay e Loja | Módulos visíveis na navegação | Fluxos transacionais pendentes |
-| Próteses | Criação, filtro e acompanhamento até a conclusão | Lista de trabalhos por etapa, atualização do prontuário e cadastro de laboratórios implementados. Coleta e vínculos com agenda pendentes |
+| Próteses | Criação, filtro e acompanhamento até a conclusão | Lista de trabalhos por etapa, atualização do prontuário, cadastro de laboratórios e vínculo com consultas existentes implementados. Solicitação de coleta pendente |
 | Marketing | Indicações, comunicação, site e link de agendamento | Site e agenda pública existentes. Paridade dos fluxos pendente |
 | Estoque | Entrada, saldo, histórico de retiradas e exportação | Histórico por insumo com filtro de entradas e saídas e paginação implementado. Exportação pendente |
 | Ajustes | Clínica, equipe, planos, anamnese, contrato, categorias, contas, cadeiras, comunicação e integrações | Cadeiras implementado e testado. Editor de modelos de anamnese implementado e testado. Demais ajustes pendentes |
@@ -32,6 +32,8 @@ A equipe com acesso clínico pode consultar entradas e saídas por insumo, com d
 Dentistas autorizados acompanham os trabalhos da clínica na aba Próteses. Dá para filtrar por etapa, conferir laboratório e prazo, registrar envio, recebimento, devolução ao laboratório, conclusão ou cancelamento e abrir o prontuário correspondente. O cadastro inicial permanece na ficha do paciente. Cada mudança grava uma versão cifrada e auditada com vínculo à versão anterior. A lista usa a situação mais recente. Os registros anteriores à revisão aparecem na lista com sua etapa original.
 
 Em Próteses, a seção Laboratórios permite cadastrar nome e telefone e editar a situação do cadastro. Laboratórios ativos aparecem como sugestões para novos trabalhos. O prontuário preserva o nome informado quando o trabalho foi registrado.
+
+Na etapa Recebida, o dentista pode vincular ou desvincular uma consulta confirmada da agenda. O painel mostra o cadastro da agenda para conferência e indica quando a correspondência vem do telefone. Cada vínculo é registrado em uma nova versão cifrada do prontuário.
 
 ## Publicação
 

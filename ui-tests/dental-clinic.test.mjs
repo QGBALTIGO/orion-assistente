@@ -312,3 +312,42 @@ test('laboratories are reusable after registration and inactive entries stop bei
   assert.deepEqual(optionValues,['Laboratório ativo de exemplo']);
   assert.equal(h.host.querySelector('[name=laboratory]').getAttribute('list'),'dental-laboratory-options');
 });
+
+test('dentist can link or remove an existing consultation without editing the agenda',async t=>{
+  const firstId=randomUUID(),linkedId=randomUUID(),detachedId=randomUUID();
+  const visitId=randomUUID();
+  const visit={id:visitId,start_at:'2027-02-06T12:30:00Z',end_at:'2027-02-06T13:00:00Z',
+    status:'confirmed',professional_name:'Profissional de teste'};
+  let currentId=firstId,currentVisit=null;
+  const h=makeDOM({level:'dentist',prostheses:(url,method,data)=>{
+    if(method==='PATCH'&&url.pathname.endsWith('/appointment')){
+      currentVisit=data.appointment_id;
+      currentId=currentVisit?linkedId:detachedId;
+      return {id:currentId,appointment_id:currentVisit};
+    }
+    if(url.pathname.endsWith('/appointments'))return {
+      customer_name:'Cadastro sintético na agenda',matched_by_phone:true,timezone:'America/Campo_Grande',
+      items:currentVisit?[]:[visit],linked:currentVisit?visit:null
+    };
+    return {items:[{id:currentId,patient_id:patient,patient_name:'Paciente de teste',
+      content:{laboratory:'Laboratório',description:'Peça',status:'delivered',appointment_id:currentVisit},actions:['completed']}],
+      next_cursor:null};
+  }});
+  t.after(()=>h.close());
+  await h.mount();await flush();
+  h.click('[data-dental-action=section-prostheses]');await flush();
+  h.click('[data-dental-action=open-prosthesis-appointments]');await flush();
+  assert.match(h.host.textContent,/Cadastro sintético na agenda/);
+  assert.match(h.host.textContent,/06\/02\/2027.*08:30/);
+  h.fill('[name="prosthesis_appointment_'+firstId+'"]',visitId);
+  h.submit('[data-dental-form=prosthesis-appointment]');await flush();
+  assert.match(h.host.textContent,/Consulta vinculada à prótese/);
+  assert.match(h.host.textContent,/Consulta vinculada.*Confirmada/);
+  h.fill('[name="prosthesis_appointment_'+linkedId+'"]','remove');
+  h.submit('[data-dental-form=prosthesis-appointment]');await flush();
+  assert.match(h.host.textContent,/Vínculo removido/);
+  const writes=h.calls.filter(call=>call.method!=='GET');
+  assert.deepEqual(writes.map(call=>[call.method,call.path.split('/').at(-1),call.data.appointment_id]),
+    [['PATCH','appointment',visitId],['PATCH','appointment',null]]);
+  assert.ok(writes.every(call=>call.data.entry_key));
+});

@@ -97,6 +97,7 @@ async def clinic_db():
                "account":account,"assistant":assistant,"account_b":account_b,
                "pro_a":pro_a,"pro_a2":pro_a2,"pro_b":pro_b,
                "patient_a":patient_a,"patient_b":patient_b,
+               "customer_a":customer_a,"customer_b":customer_b,
                "appt_a":appt_a,"appt_a2":appt_a2,"room_a":room_a,
                "room_a2":room_a2,"when":when}
     finally:
@@ -892,6 +893,109 @@ async def test_prosthesis_worklist_preserves_versions_and_clinic_perimeters(clin
             WHERE tenant_id=:tenant AND action='prosthesis_status_changed'
         """), {"tenant": d["a"]})
         assert audit_events == 5
+
+
+@pytest.mark.asyncio
+async def test_prosthesis_links_only_its_patients_confirmed_consultations(clinic_api_db):
+    import asyncio
+    import httpx
+    from fastapi import FastAPI
+    from app.catalog_api import Actor, authenticate
+    from app.dental_clinic_api import router
+
+    d = clinic_api_db
+    app = FastAPI()
+    app.include_router(router)
+    actor = Actor("member", d["a"], d["account"], "owner")
+    app.dependency_overrides[authenticate] = lambda: actor
+    base = f"/api/v1/tenants/{d['a']}/dental"
+    records = f"{base}/patients/{d['patient_a']}/records"
+    other_customer, wrong_appointment = uuid4(), uuid4()
+    payload = {"kind": "prosthesis", "entry_key": "synthetic-visit-prosthesis",
+               "content": {"laboratory": "Laboratório de teste", "description": "Peça sintética", "status": "working"}}
+
+    async with d["migrator"].begin() as db:
+        await db.execute(text("""
+            INSERT INTO customers(id,tenant_id,name) VALUES (:id,:tenant,'Outro cadastro sintético')
+        """), {"id": other_customer, "tenant": d["a"]})
+        await db.execute(text("""
+            INSERT INTO appointments(id,tenant_id,customer_id,professional_id,protocol,
+                idempotency_key,request_fingerprint,start_at,end_at,occupied_from,occupied_until,status,total_cents)
+            VALUES (:id,:tenant,:customer,:professional,:protocol,:key,:fingerprint,
+                    :start,:end,:start,:end,'confirmed',1000)
+        """), {"id": wrong_appointment, "tenant": d["a"], "customer": other_customer, "professional": d["pro_a"],
+               "protocol": protocol(), "key": str(wrong_appointment), "fingerprint": "0" * 64,
+               "start": d["when"] + timedelta(hours=2), "end": d["when"] + timedelta(hours=3)})
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test.invalid") as client:
+        created = await client.post(records, json=payload)
+        assert created.status_code == 201, created.text
+        root = created.json()["id"]
+
+        async def link(record, appointment, key):
+            return await client.patch(f"{base}/prostheses/{record}/appointment",
+                                      json={"appointment_id": str(appointment) if appointment else None, "entry_key": key})
+
+        assert (await link(root, d["appt_a"], "synthetic-before-received")).status_code == 409
+        advanced = await client.patch(f"{base}/prostheses/{root}/status",
+                                      json={"status": "delivered", "entry_key": "synthetic-visit-received"})
+        assert advanced.status_code == 200, advanced.text
+        received = advanced.json()["id"]
+        missing = (await client.get(f"{base}/prostheses/{received}/appointments")).json()
+        assert missing["customer_name"] is None and missing["items"] == []
+        assert (await link(received, d["appt_a"], "synthetic-no-customer")).status_code == 409
+
+        async with d["migrator"].begin() as db:
+            await db.execute(text("""
+                UPDATE dental_patients SET contact_phone='(67) 99877-0011' WHERE tenant_id=:tenant AND id=:patient
+            """), {"tenant": d["a"], "patient": d["patient_a"]})
+            await db.execute(text("""
+                UPDATE customers SET whatsapp_e164='+5567998770011' WHERE tenant_id=:tenant AND id=:id
+            """), {"tenant": d["a"], "id": d["customer_a"]})
+        options = await client.get(f"{base}/prostheses/{received}/appointments")
+        assert options.status_code == 200, options.text
+        assert "no-store" in options.headers["cache-control"]
+        assert options.json()["matched_by_phone"] is True
+        assert {item["id"] for item in options.json()["items"]} == {str(d["appt_a"]), str(d["appt_a2"])}
+        assert (await link(received, wrong_appointment, "synthetic-foreign-customer")).status_code == 404
+
+        attached = await link(received, d["appt_a"], "synthetic-attach-first-visit")
+        assert attached.status_code == 200, attached.text
+        first = attached.json()["id"]
+        replayed = await link(received, d["appt_a"], "synthetic-attach-first-visit")
+        assert replayed.json() == attached.json()
+        assert (await link(received, d["appt_a2"], "synthetic-visit-stale-write")).status_code == 409
+
+        listing = (await client.get(f"{base}/prostheses/{first}/appointments")).json()
+        assert listing["linked"]["id"] == str(d["appt_a"])
+        assert [row["id"] for row in listing["items"]] == [str(d["appt_a2"])]
+        history = (await client.get(records, params={"kind": "prosthesis"})).json()["items"]
+        assert history[0]["content"]["appointment_id"] == str(d["appt_a"])
+        assert "appointment_id" not in history[1]["content"]
+
+        detached = await link(first, None, "synthetic-detach-first-visit")
+        assert detached.status_code == 200, detached.text
+        detached_id = detached.json()["id"]
+        assert detached.json()["appointment_id"] is None
+        concurrent = await asyncio.wait_for(asyncio.gather(
+            link(detached_id, d["appt_a2"], "synthetic-visit-concurrent"),
+            client.patch(f"{base}/prostheses/{detached_id}/status",
+                         json={"status": "completed", "entry_key": "synthetic-visit-concurrent-status"}),
+        ), timeout=12)
+        assert sorted(response.status_code for response in concurrent) == [200, 409]
+        actor = Actor("member", d["a"], d["assistant"], "editor")
+        assert (await client.get(f"{base}/prostheses/{first}/appointments")).status_code == 403
+        actor = Actor("member", d["b"], d["account_b"], "owner")
+        assert (await client.get(f"{base}/prostheses/{first}/appointments")).status_code == 403
+        other_base = f"/api/v1/tenants/{d['b']}/dental"
+        assert (await client.patch(f"{other_base}/prostheses/{first}/appointment",
+                                  json={"appointment_id": str(d["appt_a"]), "entry_key": "synthetic-other-visit"})).status_code == 404
+
+    async with d["migrator"].connect() as db:
+        live = (await db.execute(text("""
+            SELECT status,start_at FROM appointments WHERE tenant_id=:tenant AND id=:id
+        """), {"tenant": d["a"], "id": d["appt_a"]})).mappings().one()
+        assert live["status"] == "confirmed" and live["start_at"] == d["when"]
 
 
 @pytest.mark.asyncio

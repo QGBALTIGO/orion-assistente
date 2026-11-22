@@ -201,6 +201,11 @@ class ProsthesisTransition(Strict):
     entry_key: str = Field(min_length=8, max_length=120, pattern=r"^[a-zA-Z0-9._:-]+$")
 
 
+class ProsthesisAppointment(Strict):
+    appointment_id: UUID | None
+    entry_key: str = Field(min_length=8, max_length=120, pattern=r"^[a-zA-Z0-9._:-]+$")
+
+
 class LaboratoryCreate(Strict):
     name: str = Field(min_length=2, max_length=120)
     phone: str | None = Field(None, max_length=30, pattern=r"^\+?[0-9 ()-]+$")
