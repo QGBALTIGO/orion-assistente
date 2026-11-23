@@ -37,7 +37,7 @@ from app.dental_clinic_schemas import (
     IntakeTemplateCreate, IntakeTemplateUpdate, LaboratoryCreate, LaboratoryUpdate,
     ProsthesisStatus, ProsthesisTransition, ProsthesisVisit,
     RoomCreate, RoomRename, RoomAssign, ChairAvailability, SupplyCreate, SupplyMove, ExamUpload,
-    SalesStage, SalesOpportunity, SalesOpportunitySearch
+    SalesStage, SalesOpportunity, SalesOpportunitySearch, SalesPatientSearch
 )
 
 
@@ -847,14 +847,29 @@ async def add_dental_sales_stage(tenant_id: UUID, payload: SalesStage, actor: Ac
 @router.post("/sales/opportunities", status_code=201)
 async def create_sales_opportunity(tenant_id: UUID, payload: SalesOpportunity, actor: Actor = Depends(authenticate)):
     async with owner_session(tenant_id, actor, feature="settings.manage") as db:
-        details = json.dumps({"title": payload.title, "description": payload.description},
+        patient = None
+        if payload.patient_id is not None:
+            patient = (await db.execute(text("""
+                SELECT * FROM public.dental_sales_patient_identity(:patient)
+            """), {"patient": payload.patient_id})).mappings().one_or_none()
+            if patient is None:
+                raise HTTPException(404, "Paciente indisponível nesta clínica")
+            patient = dict(patient)
+            patient["id"] = str(patient["id"])
+            if patient["birth_date"] is not None:
+                patient["birth_date"] = patient["birth_date"].isoformat()
+        details = json.dumps({"title": payload.title, "description": payload.description,
+                              "patient": patient},
                              ensure_ascii=False, sort_keys=True).encode()
         nonce, ciphertext, digest = seal(details, tenant_id, payload.id, "sales_opportunity", payload.id)
         stored = (await db.execute(text("""
-            INSERT INTO dental_sales_opportunities (tenant_id,id,created_by,nonce,encrypted_content,digest)
-            VALUES (:tenant,:id,:account,:nonce,:body,:digest) ON CONFLICT (tenant_id,id) DO NOTHING
+            INSERT INTO dental_sales_opportunities
+              (tenant_id,id,created_by,patient_id,nonce,encrypted_content,digest)
+            VALUES (:tenant,:id,:account,:patient,:nonce,:body,:digest)
+            ON CONFLICT (tenant_id,id) DO NOTHING
             RETURNING created_at
-        """), {"tenant": tenant_id, "id": payload.id, "account": actor.account_id, "nonce": nonce,
+        """), {"tenant": tenant_id, "id": payload.id, "account": actor.account_id,
+               "patient": payload.patient_id, "nonce": nonce,
                "body": ciphertext, "digest": digest})).one_or_none()
         if stored is None:
             stored = (await db.execute(text("""
@@ -866,7 +881,8 @@ async def create_sales_opportunity(tenant_id: UUID, payload: SalesOpportunity, a
         else:
             await audit(db, tenant_id, actor, "sales_opportunity_created")
         return {"id": payload.id, "created_at": stored.created_at, "created_by": actor.account_id,
-                "title": payload.title, "description": payload.description}
+                "title": payload.title, "description": payload.description,
+                "patient_id": payload.patient_id, "patient": patient}
 
 
 @router.get("/sales/opportunities")
@@ -900,7 +916,7 @@ async def sales_opportunity_page(db, tenant_id, before, limit, start_date, end_d
         conditions.append("created_at < ((CAST(:end_day AS date) + 1)::timestamp AT TIME ZONE :zone)")
         params["end_day"] = end_date
     if before:
-        point = (await db.execute(text("""SELECT id,created_by,created_at,nonce,encrypted_content,digest
+        point = (await db.execute(text("""SELECT id,created_by,created_at,patient_id,nonce,encrypted_content,digest
                                        FROM dental_sales_opportunities WHERE """
                                        + " AND ".join(conditions) + " AND id=:id"),
                                   {**params, "id": before})).mappings().one_or_none()
@@ -914,7 +930,7 @@ async def sales_opportunity_page(db, tenant_id, before, limit, start_date, end_d
         conditions.append("(created_at,id)<(:at,:id)")
         params.update(at=point["created_at"], id=point["id"])
     statement = text("""
-        SELECT id,created_by,created_at,nonce,encrypted_content,digest FROM dental_sales_opportunities
+        SELECT id,created_by,created_at,patient_id,nonce,encrypted_content,digest FROM dental_sales_opportunities
         WHERE """ + " AND ".join(conditions) + " ORDER BY created_at DESC,id DESC" +
         ("" if needle else " LIMIT :limit"))
     rows = []
@@ -936,7 +952,8 @@ async def sales_opportunity_page(db, tenant_id, before, limit, start_date, end_d
     items = []
     for row, details in rows[:limit]:
         items.append({"id": row["id"], "created_at": row["created_at"], "created_by": row["created_by"],
-                      "title": details["title"], "description": details["description"]})
+                      "title": details["title"], "description": details["description"],
+                      "patient_id": row["patient_id"], "patient": details.get("patient")})
     return {"items": items, "next": items[-1]["id"] if len(rows)>limit else None}
 
 
@@ -948,6 +965,20 @@ async def search_sales_opportunities(tenant_id: UUID, payload: SalesOpportunityS
                                               payload.start_date, payload.end_date, payload.query)
         await audit(db, tenant_id, actor, "sales_opportunities_searched")
         return result
+
+
+@router.post("/sales/patients/search")
+async def search_sales_patients(tenant_id: UUID, payload: SalesPatientSearch,
+                                actor: Actor = Depends(authenticate)):
+    """Return identity fields only; a shared phone deliberately yields every match."""
+    async with owner_session(tenant_id, actor, feature="settings.manage") as db:
+        rows = (await db.execute(text("""
+            SELECT * FROM public.dental_sales_patient_options(:term,:limit,:offset)
+        """), {"term": payload.query, "limit": payload.limit + 1,
+               "offset": payload.offset})).mappings().all()
+        await audit(db, tenant_id, actor, "sales_patient_options_read")
+        return {"items": [dict(row) for row in rows[:payload.limit]],
+                "has_more": len(rows) > payload.limit}
 
 
 async def read_chairs(db, tenant):

@@ -15,6 +15,10 @@ def check_menu(browser, width, height, theme):
     page = browser.new_page(viewport={"width":width,"height":height}, color_scheme=theme, locale="pt-BR")
     errors, accesses = [], []
     opportunities = []
+    patients = [
+        {"id":"10000000-0000-4000-8000-000000000011","name":"Paciente Sintético Dois","birth_date":"2016-08-09","guardian_name":"Responsável Comum"},
+        {"id":"10000000-0000-4000-8000-000000000012","name":"Paciente Sintético Um","birth_date":"2012-03-04","guardian_name":"Responsável Comum"},
+    ]
     stages = [
         {"id": key, "name": name, "custom": False}
         for key, name in [("open", "Em aberto"), ("in_progress", "Em andamento"),
@@ -32,6 +36,10 @@ def check_menu(browser, width, height, theme):
             return route.fulfill(json={"clinical_access":None,"can_manage":True,"can_manage_inventory":True,"grants":[]})
         if path.endswith("/dental/chair-settings"):
             return route.fulfill(json={"items":[]})
+        if path.endswith("/dental/sales/patients/search"):
+            details = route.request.post_data_json
+            assert details == {"query":"999990099","limit":20,"offset":0}
+            return route.fulfill(json={"items":patients,"has_more":False})
         if path.endswith("/dental/sales/opportunities/search"):
             details = route.request.post_data_json
             assert 2 <= len(details["query"]) <= 80
@@ -43,7 +51,8 @@ def check_menu(browser, width, height, theme):
             if route.request.method == "POST":
                 details = route.request.post_data_json
                 assert details["id"] and details["description"] == "Retorno solicitado pela família."
-                item = {**details, "created_by":"conta-sintética", "created_at":"2026-11-22T15:00:00Z"}
+                assert details["patient_id"] == patients[1]["id"]
+                item = {**details, "patient":patients[1], "created_by":"conta-sintética", "created_at":"2026-11-22T15:00:00Z"}
                 opportunities.insert(0, item)
                 return route.fulfill(status=201,json=item)
             query = parse_qs(urlsplit(route.request.url).query)
@@ -126,6 +135,15 @@ def check_menu(browser, width, height, theme):
     create.press("Enter")
     page.get_by_label("Título", exact=True).fill("Avaliação da família")
     page.get_by_label("Descrição (opcional)").fill("Retorno solicitado pela família.")
+    page.get_by_placeholder("Nome ou telefone").fill("999990099")
+    page.get_by_role("button",name="Buscar",exact=True).press("Enter")
+    choices = page.locator(".os-sales-patient-option")
+    choices.first.wait_for()
+    assert choices.count() == 2
+    choices.filter(has_text="Paciente Sintético Um").press("Enter")
+    selected = page.locator(".os-sales-patient-selected")
+    assert "Responsável Comum" in selected.inner_text()
+    assert selected.get_by_role("button",name="Trocar",exact=True).bounding_box()["height"] >= 44
     page.get_by_role("button", name="Criar oportunidade", exact=True).press("Enter")
     page.get_by_text("Avaliação da família", exact=True).wait_for()
     assert len(opportunities) == 1

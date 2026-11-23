@@ -197,6 +197,8 @@
 .os-dental-sales-list li{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding-block:14px;border-top:1px solid var(--os-border)}
 .os-dental-sales-list li>div{min-width:0;overflow-wrap:anywhere}
 .os-dental-sales-list li p{margin:4px 0 0;white-space:pre-wrap;color:var(--os-muted)}
+.os-dental-sales-patient{display:flex;align-items:center;gap:6px;margin-top:5px;color:var(--os-muted)}
+.os-dental-sales-patient .os-icon{width:16px;height:16px;flex:none}
 .os-dental-sales-list li time{flex:none;font-size:.86rem;color:var(--os-muted)}
 #osDentalSalesPager:not(:empty){padding:8px 14px}
 
@@ -229,3 +231,20 @@
 .os-dental-sales-period .os-form-actions{margin-top:12px}
 #osDentalSalesPeriod input[type=date]{min-width:0;max-width:100%;min-height:44px}
 .os-dental-sales-period .os-button{min-height:44px}
+
+.os-sales-patient-picker{border-top:1px solid var(--os-border);padding-top:16px}
+.os-sales-patient-picker h3{margin:0 0 4px;font-size:1rem}
+.os-sales-patient-picker>.os-help{margin:0 0 12px}
+.os-sales-patient-picker .os-search{display:flex;max-width:none;gap:8px}
+.os-sales-patient-picker .os-search>input{padding-right:12px}
+.os-sales-patient-picker .os-search>.os-button{position:static;flex:none;min-width:88px;min-height:44px}
+.os-sales-patient-results{margin-top:12px}
+.os-sales-patient-results [role=list]{display:grid;gap:8px}
+.os-sales-patient-option{display:flex;flex-direction:column;align-items:flex-start;width:100%;min-height:52px;padding:10px 12px;border:1px solid var(--os-border);border-radius:10px;background:var(--os-card);color:var(--os-text);text-align:left}
+.os-sales-patient-option:hover,.os-sales-patient-option:focus-visible{border-color:var(--os-primary);outline:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--os-primary) 18%,transparent)}
+.os-sales-patient-option span,.os-sales-patient-selected small{display:block;margin-top:3px;color:var(--os-muted);font-size:.86rem}
+.os-sales-patient-selected{display:flex;align-items:center;gap:10px;padding:12px;border:1px solid var(--os-primary);border-radius:10px;background:var(--os-tint)}
+.os-sales-patient-selected>.os-icon{flex:none;color:var(--os-primary)}
+.os-sales-patient-selected>span{min-width:0;flex:1;overflow-wrap:anywhere}
+.os-sales-patient-selected>.os-button{flex:none;min-height:44px}
+@media(max-width:480px){.os-sales-patient-picker .os-search{flex-wrap:wrap}.os-sales-patient-picker .os-search>.os-button{width:100%}}

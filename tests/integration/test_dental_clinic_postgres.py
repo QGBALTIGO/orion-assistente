@@ -1,5 +1,5 @@
 """Real PostgreSQL RLS and room-overlap tests. No production credentials or data."""
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 import os
 from uuid import uuid4
 
@@ -1665,7 +1665,67 @@ async def test_dental_sales_opportunity_is_private_repeatable_and_paged(clinic_a
         async with tenant_transaction(db,d["a"]):
             await db.execute(text("SELECT set_config('app.dental_actor',:actor,true)"),{"actor":str(d["assistant"])})
             assert await db.scalar(text("SELECT count(*) FROM dental_sales_opportunities")) == 0
-            await db.execute(text("SELECT set_config('app.dental_actor',:actor,true)"),{"actor":str(d["account_b"])})
+
+
+@pytest.mark.asyncio
+async def test_sales_patient_link_is_explicit_for_shared_phone_and_tenant_scoped(clinic_api_db):
+    import httpx
+    from fastapi import FastAPI
+    from app.catalog_api import Actor, authenticate
+    from app.dental_clinic_api import router
+
+    d = clinic_api_db
+    first, second, foreign = uuid4(), uuid4(), uuid4()
+    shared = "+55 (67) 99999-0099"
+    async with d["migrator"].begin() as db:
+        for patient_id, tenant, creator, name, birth, guardian in [
+            (first, d["a"], d["account"], "Paciente Sintético Um", date(2012, 3, 4), "Responsável Comum"),
+            (second, d["a"], d["account"], "Paciente Sintético Dois", date(2016, 8, 9), "Responsável Comum"),
+            (foreign, d["b"], d["account_b"], "Paciente Outra Clínica", date(2010, 1, 2), "Outro Responsável"),
+        ]:
+            await db.execute(text("""
+                INSERT INTO dental_patients
+                  (id,tenant_id,name,birth_date,guardian_name,guardian_phone,created_by)
+                VALUES (:id,:tenant,:name,:birth,:guardian,:phone,:creator)
+            """), {"id":patient_id,"tenant":tenant,"name":name,"birth":birth,
+                   "guardian":guardian,"phone":shared,"creator":creator})
+    web = FastAPI();web.include_router(router)
+    actor = Actor("member", d["a"], d["account"], "owner")
+    web.dependency_overrides[authenticate] = lambda: actor
+    base = f"/api/v1/tenants/{d['a']}/dental/sales"
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=web), base_url="https://synthetic.test") as client:
+        choices = await client.post(base+"/patients/search", json={"query":"999990099","limit":20,"offset":0})
+        assert choices.status_code == 200
+        assert [item["id"] for item in choices.json()["items"]] == list(map(str, [second, first]))
+        assert all(set(item) == {"id","name","birth_date","guardian_name"} for item in choices.json()["items"])
+        opportunity = {"id":str(uuid4()),"patient_id":str(first),"title":"Avaliação sintética","description":"Sem dados clínicos"}
+        created = await client.post(base+"/opportunities", json=opportunity)
+        assert created.status_code == 201
+        assert created.json()["patient_id"] == str(first)
+        assert created.json()["patient"]["name"] == "Paciente Sintético Um"
+        listed = await client.get(base+"/opportunities")
+        assert listed.json()["items"][0]["patient_id"] == str(first)
+        assert listed.json()["items"][0]["patient"]["guardian_name"] == "Responsável Comum"
+        assert (await client.post(base+"/opportunities", json={**opportunity,"id":str(uuid4()),
+                                                                "patient_id":str(foreign)})).status_code == 404
+        replay = await client.post(base+"/opportunities", json={**opportunity,"patient_id":str(second)})
+        assert replay.status_code == 409
+        actor = Actor("member", d["a"], d["assistant"], "editor")
+        assert (await client.post(base+"/patients/search", json={"query":"Paciente"})).status_code == 403
+    async with d["migrator"].begin() as db:
+        assert await db.scalar(text("""SELECT count(*) FROM dental_access_audit
+            WHERE tenant_id=:tenant AND action='sales_patient_options_read'"""), {"tenant":d["a"]}) == 1
+        stored = (await db.execute(text("""SELECT patient_id,encrypted_content
+            FROM dental_sales_opportunities WHERE tenant_id=:tenant AND id=:id"""),
+            {"tenant":d["a"],"id":opportunity["id"]})).one()
+        assert stored.patient_id == first
+        assert "Paciente Sintético".encode() not in bytes(stored.encrypted_content)
+    async with async_sessionmaker(d["runtime"])() as db:
+        async with tenant_transaction(db, d["b"]):
+            await db.execute(
+                text("SELECT set_config('app.dental_actor',:actor,true)"),
+                {"actor": str(d["account_b"])},
+            )
             assert await db.scalar(text("SELECT count(*) FROM dental_sales_opportunities")) == 0
 
 

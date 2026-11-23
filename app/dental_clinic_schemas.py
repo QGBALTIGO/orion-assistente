@@ -282,8 +282,15 @@ class RecordCreate(Strict):
 
 class SalesOpportunity(Strict):
     id: UUID4
+    patient_id: UUID4 | None = None
     title: str = Field(min_length=1, max_length=40, pattern=r"^[^\x00-\x1F\x7F]+$")
     description: str = Field(default="", max_length=300)
+
+
+class SalesPatientSearch(Strict):
+    query: str = Field(min_length=2, max_length=120, pattern=r"^[^\x00-\x1F\x7F]+$")
+    limit: int = Field(20, ge=1, le=30, strict=True)
+    offset: int = Field(0, ge=0, strict=True)
 
 
 class SalesOpportunitySearch(Strict):

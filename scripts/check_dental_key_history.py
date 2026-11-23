@@ -38,7 +38,8 @@ def ciphertext_exists(raw):
         with engine.connect() as db:
             db.execute(text("SET LOCAL ROLE app_migrator"))
             sales_table = db.scalar(text("SELECT to_regclass('public.dental_sales_opportunities') IS NOT NULL"))
-            if sales_table is not True and db.scalar(text("SELECT version_num FROM public.alembic_version")) == "0088_dental_sales_opportunities":
+            if sales_table is not True and db.scalar(text("SELECT version_num FROM public.alembic_version")) in {
+                    "0088_dental_sales_opportunities", "0089_dental_sales_patient_link"}:
                 raise RuntimeError("dental_sales_history_scope_not_verified")
             if db.scalar(text(MIGRATOR_SCOPE), {"expected": 3 if sales_table else 2}) is not True:
                 raise RuntimeError("dental_key_history_scope_not_verified")

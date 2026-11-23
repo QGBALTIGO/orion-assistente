@@ -21,8 +21,8 @@ from scripts.wait_for_exceptional_overlap_schema import schema_ready as overlap_
 
 
 LABORATORIES = "0086_dental_laboratories"
-PREVIOUS = "0087_dental_patient_visits"
-TARGET = "0088_dental_sales_opportunities"
+PREVIOUS = "0088_dental_sales_opportunities"
+TARGET = "0089_dental_sales_patient_link"
 WORKFLOW_CONTRACT = """
 SELECT COALESCE((
     SELECT count(*)=2 AND bool_and(
@@ -90,6 +90,27 @@ AND EXISTS (SELECT 1 FROM pg_proc p WHERE p.oid=to_regprocedure('public.dental_s
 """
 
 
+SALES_PATIENT_CONTRACT = """
+SELECT EXISTS (
+    SELECT 1 FROM pg_attribute
+    WHERE attrelid=to_regclass('public.dental_sales_opportunities')
+      AND attname='patient_id' AND NOT attisdropped
+) AND EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conrelid=to_regclass('public.dental_sales_opportunities')
+      AND conname='fk_dental_sales_patient' AND convalidated
+) AND EXISTS (
+    SELECT 1 FROM pg_index WHERE indexrelid=to_regclass('public.ix_dental_sales_patient')
+      AND indisvalid AND indisready
+) AND (SELECT count(*)=2 AND bool_and(
+      p.prosecdef AND p.proconfig=ARRAY['search_path=pg_catalog']
+      AND has_function_privilege('app_runtime',p.oid,'EXECUTE')
+      AND NOT has_function_privilege('app_support',p.oid,'EXECUTE'))
+    FROM pg_proc p WHERE p.oid IN (
+      to_regprocedure('public.dental_sales_patient_identity(uuid)'),
+      to_regprocedure('public.dental_sales_patient_options(text,integer,integer)')))
+"""
+
+
 def complete_contract(raw, include_visits, include_sales=False):
     if not predecessor_contract(raw):
         return False
@@ -106,12 +127,22 @@ def complete_contract(raw, include_visits, include_sales=False):
 
 
 def workflows_ready(raw):
-    return migrated_version(raw) == TARGET and complete_contract(raw, include_visits=True, include_sales=True)
+    if migrated_version(raw) != TARGET or not complete_contract(raw, include_visits=True, include_sales=True):
+        return False
+    engine = create_engine(raw, poolclass=NullPool, connect_args={
+        "options": "-c default_transaction_read_only=on -c statement_timeout=12000"
+    })
+    try:
+        with engine.connect() as db:
+            return db.scalar(text(SALES_PATIENT_CONTRACT)) is True
+    finally:
+        engine.dispose()
 
 
 def source_ready(raw, revision):
-    if revision in (LABORATORIES, PREVIOUS):
-        return complete_contract(raw, include_visits=revision == PREVIOUS)
+    if revision in (LABORATORIES, "0087_dental_patient_visits", PREVIOUS):
+        return complete_contract(raw, include_visits=revision != LABORATORIES,
+                                 include_sales=revision == PREVIOUS)
     return predecessor_contract(raw)
 
 
@@ -141,7 +172,7 @@ def main():
             raise RuntimeError("dental_workflow_database_scope_mismatch")
         with release_lock(raw):
             current = migrated_version(raw)
-            if current not in (LEGACY, LABORATORIES, PREVIOUS, TARGET):
+            if current not in (LEGACY, LABORATORIES, "0087_dental_patient_visits", PREVIOUS, TARGET):
                 raise RuntimeError("dental_workflow_source_schema_not_approved")
             verify_key_provisioning(raw)
             if current != TARGET:
@@ -149,7 +180,7 @@ def main():
                     raise RuntimeError("dental_workflow_source_schema_not_approved")
                 with tempfile.TemporaryDirectory(prefix="orion-dental-workflows-") as folder:
                     perform_backup(url, storage_values(), Path(folder) / "backup.dump",
-                                   backup_context="dental-sales-opportunities-0088", schema_revision=current,
+                                   backup_context="dental-sales-patient-link-0089", schema_revision=current,
                                    preserve_ownership=True)
                 if migrated_version(raw) != current or not source_ready(raw, current):
                     raise RuntimeError("dental_workflow_source_changed_after_backup")
