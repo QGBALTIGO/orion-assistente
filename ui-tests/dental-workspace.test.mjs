@@ -460,8 +460,8 @@ test('ajustes da clínica salvam a etapa de vendas e a recarregam ao voltar',asy
   assert.equal(editor.document.querySelector('[data-os-dental-setting=dental-sales-stages]'),null);
 });
 
-test('vendas preserva a tentativa de cadastro e carrega as oportunidades da clínica',async t=>{
-  const all=[],posts=[],searches=[];
+test('vendas preserva o cadastro e inicia acompanhamento com uma transição idempotente',async t=>{
+  const all=[],posts=[],searches=[],starts=[];
   const patients=[
     {id:'10000000-0000-4000-8000-000000000011',name:'Paciente Sintético Dois',birth_date:'2016-08-09',guardian_name:'Responsável Comum'},
     {id:'10000000-0000-4000-8000-000000000012',name:'Paciente Sintético Um',birth_date:'2012-03-04',guardian_name:'Responsável Comum'}
@@ -472,6 +472,13 @@ test('vendas preserva a tentativa de cadastro e carrega as oportunidades da clí
       assert.equal(payload.query,'999990099');return {items:patients,has_more:false};
     }
     if(!path.includes('/dental/sales/opportunities'))return [];
+    if(method==='POST'&&path.endsWith('/start')){
+      const item=all.find(row=>path.includes('/'+row.id+'/start'));assert.ok(item);
+      starts.push({...payload});assert.equal(payload.expected_version,1);
+      assert.match(payload.request_id,/^[a-f\d-]{36}$/i);
+      item.stage='in_progress';item.stage_name='Em andamento';item.version=2;
+      return {id:item.id,stage:item.stage,stage_name:item.stage_name,version:item.version,changed_at:'2026-11-22T15:01:00Z'};
+    }
     if(method==='POST'&&path.endsWith('/search')){
       searches.push(payload);
       return {items:all.filter(item=>(item.title+' '+item.description).toLowerCase().includes(payload.query.toLowerCase())),next:null};
@@ -479,7 +486,8 @@ test('vendas preserva a tentativa de cadastro e carrega as oportunidades da clí
     if(method==='POST'){
       posts.push({...payload});
       if(fail){fail=false;throw new Error('Falha temporária');}
-      all.push({...payload,created_at:'2026-11-22T15:00:00Z'});
+      all.push({...payload,created_at:'2026-11-22T15:00:00Z',stage:'open',stage_name:'Em aberto',version:1,
+        patient:patients.find(patient=>patient.id===payload.patient_id)||null});
       return all[0];
     }
     if(path.includes('?before='))return {items:[{id:'old',title:'Oportunidade anterior',description:'',created_at:'2026-11-20T15:00:00Z'}],next:null};
@@ -498,9 +506,14 @@ test('vendas preserva a tentativa de cadastro e carrega as oportunidades da clí
   h.submit('[data-os-form=dental-sales-opportunity]');await flush();
   assert.equal(posts.length,2);assert.equal(posts[0].id,posts[1].id);
   assert.equal(posts[0].patient_id,patients[1].id);assert.equal(posts[1].patient_id,patients[1].id);
-  const list=h.document.getElementById('osDentalSalesList');
+  let list=h.document.getElementById('osDentalSalesList');
   assert.ok(list.textContent.includes('<script>nota de teste</script>'));assert.equal(list.querySelector('script'),null);
-  h.click('[data-os-action=dental-opportunity-more]');await flush();
+  assert.match(list.textContent,/Em aberto/);
+  h.click('[data-os-action=dental-opportunity-start]');await flush();await flush();
+  assert.equal(starts.length,1);assert.match(h.document.getElementById('osDentalSalesList').textContent,/Em andamento/);
+  assert.equal(h.document.querySelector('[data-os-action=dental-opportunity-start]'),null);
+  list=h.document.getElementById('osDentalSalesList');
+  h.click('[data-os-action=dental-opportunity-more]');await flush();await flush();
   assert.equal(list.children.length,2);assert.equal(h.document.activeElement,list.children[1]);
   h.fill('[name=sales_query]','nota de teste');h.submit('#osDentalSalesSearch');await flush();
   assert.equal(JSON.stringify(searches.at(-1)),JSON.stringify({query:'nota de teste'}));

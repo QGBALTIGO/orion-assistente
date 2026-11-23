@@ -9,6 +9,7 @@
   'use strict';
   const $ = id => document.getElementById(id);
   const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   const paths = {
     menu:'M4 6h16M4 12h16M4 18h16', close:'m6 6 12 12M6 18 18 6',
     chevron:'m9 5 7 7-7 7', left:'m15 5-7 7 7 7', down:'m6 9 6 6 6-6',
@@ -2997,12 +2998,14 @@
         query,...(start?{start_date:start}:{}),...(end?{end_date:end}:{}),...(older?{before:older}:{})
       }):await request(apiPath('/dental/sales/opportunities')+(encoded?'?'+encoded:''));
       if(!current(c)||!dentalSettingsAllowed())return;
-      const list=data.items.map(item=>'<li><div><strong>'+esc(item.title)+'</strong>'+
+      const list=data.items.map(item=>'<li data-sales-opportunity="'+esc(item.id)+'"><div><div class="os-dental-sales-title"><strong>'+esc(item.title)+'</strong>'+
+        '<span class="os-status '+(item.stage==='in_progress'?'is-progress':'')+'">'+esc(item.stage_name||'Em aberto')+'</span></div>'+
         (item.patient?'<small class="os-dental-sales-patient">'+icon('user')+esc(item.patient.name)+
           (item.patient.birth_date?' · '+esc(fmtDate(item.patient.birth_date)):'')+'</small>':'')+
-        (item.description?'<p>'+esc(item.description)+'</p>':'')+'</div><time datetime="'+esc(item.created_at)+'">'+
+        (item.description?'<p>'+esc(item.description)+'</p>':'')+'</div><div class="os-dental-sales-meta"><time datetime="'+esc(item.created_at)+'">'+
         esc(new Intl.DateTimeFormat('pt-BR',{timeZone:tenant()?.timezone||'America/Sao_Paulo'}).format(new Date(item.created_at)))+
-        '</time></li>').join('');
+        '</time>'+(item.stage==='open'?button('Iniciar acompanhamento','dental-opportunity-start','os-outline os-small','arrowRight',
+          'data-id="'+esc(item.id)+'" data-version="'+esc(item.version)+'"'):'')+'</div></li>').join('');
       const next=data.next?button('Carregar mais','dental-opportunity-more','os-ghost','','data-before="'+esc(data.next)+'"'):'';
       if(more){
         if(!more.isConnected)return;
@@ -3014,13 +3017,32 @@
         return;
       }
       $('osPageBody').innerHTML='<section class="os-card" aria-labelledby="osSalesHeading">'+
-        '<div class="os-card-header"><h2 id="osSalesHeading" tabindex="-1">Oportunidades em aberto</h2></div>'+
+        '<div class="os-card-header"><h2 id="osSalesHeading" tabindex="-1">Oportunidades</h2></div>'+
         (list?'<ul id="osDentalSalesList" class="os-dental-sales-list">'+list+'</ul><div id="osDentalSalesPager">'+next+'</div>':
           (query?empty('search','Nenhuma oportunidade encontrada','Revise o paciente, o título ou a descrição informada.'):
           start||end?empty('calendar','Nenhuma oportunidade neste período','Ajuste as datas para consultar outras oportunidades.'):
           empty('layers','Nenhuma oportunidade em aberto','Cadastre uma negociação para acompanhá-la aqui.')))+'</section>';
     }finally{
       if(more?.isConnected)more.disabled=false;
+    }
+  }
+  async function startDentalOpportunity(element){
+    if(state.route!=='vendas-odonto'||!dentalSettingsAllowed()||element.disabled)return;
+    const id=element.dataset.id,version=Number(element.dataset.version);
+    if(!uuidRe.test(id||'')||!Number.isInteger(version)||version<1)return;
+    element.dataset.requestId||=crypto.randomUUID();
+    element.disabled=true;
+    try{
+      const result=await request(apiPath('/dental/sales/opportunities/'+encodeURIComponent(id)+'/start'),'POST',{
+        expected_version:version,request_id:element.dataset.requestId
+      });
+      if(result.id!==id||result.stage!=='in_progress'||result.version!==version+1)
+        throw Error('A movimentação não foi confirmada.');
+      toast('Oportunidade movida para Em andamento.');
+      await open('vendas-odonto',{keepScroll:true});
+      if(state.route==='vendas-odonto')$('osSalesHeading')?.focus({preventScroll:true});
+    }finally{
+      if(element.isConnected)element.disabled=false;
     }
   }
   function renderDentalSalesStages(){
@@ -5226,6 +5248,9 @@
       }
       case 'dental-opportunity-more':
         if(state.route==='vendas-odonto'&&dentalSettingsAllowed())await loadDentalOpportunities(context(),element);
+        break;
+      case 'dental-opportunity-start':
+        await startDentalOpportunity(element);
         break;
       case 'dental-sales-stage-new':
         if(dentalSettingsAllowed()&&state.filters.settingsTab==='dental-sales-stages'){

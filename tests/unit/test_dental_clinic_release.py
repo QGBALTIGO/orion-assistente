@@ -128,7 +128,7 @@ def test_dental_workflow_rollout_only_migrates_after_its_backup(monkeypatch, cas
     monkeypatch.setattr(workflows, "migrated_version", lambda _: next(current))
 
     def backup(url, settings, archive, **details):
-        assert details == {"backup_context": "dental-sales-patient-link-0089",
+        assert details == {"backup_context": "dental-sales-follow-up-0090",
                            "schema_revision": workflows.PREVIOUS, "preserve_ownership": True}
         steps.append("backup")
         if case == "backup_failed":
@@ -179,8 +179,9 @@ def test_0089_links_one_explicit_patient_without_phone_identity_inference():
     from scripts import backup_and_migrate_dental_workflows as workflows
 
     migration = (Path(__file__).parents[2] / "alembic/versions/0089_dental_sales_patient_link.py").read_text()
-    assert workflows.PREVIOUS == "0088_dental_sales_opportunities"
-    assert workflows.TARGET == "0089_dental_sales_patient_link"
+    assert workflows.SALES == "0088_dental_sales_opportunities"
+    assert workflows.PREVIOUS == "0089_dental_sales_patient_link"
+    assert workflows.TARGET == "0090_dental_sales_follow_up"
     assert 'down_revision = "0088_dental_sales_opportunities"' in migration
     assert "FOREIGN KEY (tenant_id,patient_id)" in migration
     assert "dental_sales_patient_options" in migration
@@ -188,3 +189,18 @@ def test_0089_links_one_explicit_patient_without_phone_identity_inference():
     assert "ORDER BY lower(p.name),p.id" in migration
     assert "WHERE patient_id IS NOT NULL" in migration
     assert "Preserve os vínculos de pacientes" in migration
+
+
+def test_0090_moves_sales_to_follow_up_with_append_only_history():
+    from pathlib import Path
+    from scripts import backup_and_migrate_dental_workflows as workflows
+
+    migration = (Path(__file__).parents[2] / "alembic/versions/0090_dental_sales_follow_up.py").read_text()
+    assert workflows.PREVIOUS == "0089_dental_sales_patient_link"
+    assert workflows.TARGET == "0090_dental_sales_follow_up"
+    assert 'down_revision = "0089_dental_sales_patient_link"' in migration
+    assert "dental_sales_opportunity_events" in migration
+    assert "UNIQUE (tenant_id,opportunity_id,request_id)" in migration
+    assert "GRANT UPDATE(stage_key,version)" in migration
+    assert "GRANT SELECT,INSERT" in migration
+    assert "Preserve o histórico das oportunidades" in migration

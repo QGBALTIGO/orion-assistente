@@ -21,8 +21,9 @@ from scripts.wait_for_exceptional_overlap_schema import schema_ready as overlap_
 
 
 LABORATORIES = "0086_dental_laboratories"
-PREVIOUS = "0088_dental_sales_opportunities"
-TARGET = "0089_dental_sales_patient_link"
+SALES = "0088_dental_sales_opportunities"
+PREVIOUS = "0089_dental_sales_patient_link"
+TARGET = "0090_dental_sales_follow_up"
 WORKFLOW_CONTRACT = """
 SELECT COALESCE((
     SELECT count(*)=2 AND bool_and(
@@ -80,7 +81,7 @@ SELECT EXISTS (
       AND has_table_privilege('app_runtime',t.oid,'INSERT')
       AND NOT has_table_privilege('app_runtime',t.oid,'UPDATE,DELETE,TRUNCATE')
       AND NOT has_table_privilege('app_support',t.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE')
-) AND (SELECT count(*)=3 FROM pg_policy WHERE polrelid=to_regclass('public.dental_sales_opportunities'))
+) AND (SELECT count(*) IN (3,4) FROM pg_policy WHERE polrelid=to_regclass('public.dental_sales_opportunities'))
 AND EXISTS (SELECT 1 FROM pg_index WHERE indexrelid=to_regclass('public.ix_dental_sales_created')
             AND indisvalid AND indisready)
 AND EXISTS (SELECT 1 FROM pg_proc p WHERE p.oid=to_regprocedure('public.dental_sales_owner()')
@@ -111,6 +112,30 @@ SELECT EXISTS (
 """
 
 
+SALES_FOLLOW_UP_CONTRACT = """
+SELECT EXISTS (
+    SELECT 1 FROM pg_class t WHERE t.oid=to_regclass('public.dental_sales_opportunity_events')
+      AND t.relrowsecurity AND t.relforcerowsecurity
+      AND has_table_privilege('app_runtime',t.oid,'SELECT,INSERT')
+      AND NOT has_table_privilege('app_runtime',t.oid,'UPDATE,DELETE,TRUNCATE')
+      AND NOT has_table_privilege('app_support',t.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE')
+) AND (SELECT count(*)=3 FROM pg_policy
+       WHERE polrelid=to_regclass('public.dental_sales_opportunity_events'))
+AND EXISTS (SELECT 1 FROM pg_policy WHERE polrelid=to_regclass('public.dental_sales_opportunities')
+            AND polname='sales_transition')
+AND has_column_privilege('app_runtime','public.dental_sales_opportunities','stage_key','UPDATE')
+AND has_column_privilege('app_runtime','public.dental_sales_opportunities','version','UPDATE')
+AND NOT has_table_privilege('app_runtime','public.dental_sales_opportunities','UPDATE')
+AND (SELECT count(*)=2 FROM pg_attribute
+     WHERE attrelid=to_regclass('public.dental_sales_opportunities')
+       AND attname IN ('stage_key','version') AND NOT attisdropped)
+AND EXISTS (SELECT 1 FROM pg_index WHERE indexrelid=to_regclass('public.ix_dental_sales_stage')
+            AND indisvalid AND indisready)
+AND EXISTS (SELECT 1 FROM pg_index WHERE indexrelid=to_regclass('public.ix_dental_sales_events_created')
+            AND indisvalid AND indisready)
+"""
+
+
 def complete_contract(raw, include_visits, include_sales=False):
     if not predecessor_contract(raw):
         return False
@@ -134,15 +159,28 @@ def workflows_ready(raw):
     })
     try:
         with engine.connect() as db:
-            return db.scalar(text(SALES_PATIENT_CONTRACT)) is True
+            return (db.scalar(text(SALES_PATIENT_CONTRACT)) is True
+                    and db.scalar(text(SALES_FOLLOW_UP_CONTRACT)) is True)
     finally:
         engine.dispose()
 
 
 def source_ready(raw, revision):
-    if revision in (LABORATORIES, "0087_dental_patient_visits", PREVIOUS):
-        return complete_contract(raw, include_visits=revision != LABORATORIES,
-                                 include_sales=revision == PREVIOUS)
+    if revision in (LABORATORIES, "0087_dental_patient_visits", SALES, PREVIOUS):
+        include_sales = revision in (SALES, PREVIOUS)
+        if not complete_contract(raw, include_visits=revision != LABORATORIES,
+                                 include_sales=include_sales):
+            return False
+        if revision == PREVIOUS:
+            engine = create_engine(raw, poolclass=NullPool, connect_args={
+                "options": "-c default_transaction_read_only=on -c statement_timeout=12000"
+            })
+            try:
+                with engine.connect() as db:
+                    return db.scalar(text(SALES_PATIENT_CONTRACT)) is True
+            finally:
+                engine.dispose()
+        return True
     return predecessor_contract(raw)
 
 
@@ -172,7 +210,7 @@ def main():
             raise RuntimeError("dental_workflow_database_scope_mismatch")
         with release_lock(raw):
             current = migrated_version(raw)
-            if current not in (LEGACY, LABORATORIES, "0087_dental_patient_visits", PREVIOUS, TARGET):
+            if current not in (LEGACY, LABORATORIES, "0087_dental_patient_visits", SALES, PREVIOUS, TARGET):
                 raise RuntimeError("dental_workflow_source_schema_not_approved")
             verify_key_provisioning(raw)
             if current != TARGET:
@@ -180,7 +218,7 @@ def main():
                     raise RuntimeError("dental_workflow_source_schema_not_approved")
                 with tempfile.TemporaryDirectory(prefix="orion-dental-workflows-") as folder:
                     perform_backup(url, storage_values(), Path(folder) / "backup.dump",
-                                   backup_context="dental-sales-patient-link-0089", schema_revision=current,
+                                   backup_context="dental-sales-follow-up-0090", schema_revision=current,
                                    preserve_ownership=True)
                 if migrated_version(raw) != current or not source_ready(raw, current):
                     raise RuntimeError("dental_workflow_source_changed_after_backup")

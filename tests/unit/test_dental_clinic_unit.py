@@ -14,7 +14,7 @@ from app.dental_clinic_api import (
 )
 from app.dental_clinic_schemas import (
     ClinicianGrant, PatientCreate, RecordCreate, Odontogram, Periodontal,
-    Anamnesis, ExamUpload, Budget, FDI_ALL, SalesOpportunitySearch
+    Anamnesis, ExamUpload, Budget, FDI_ALL, SalesOpportunitySearch, SalesOpportunityStart
 )
 
 
@@ -107,6 +107,15 @@ def test_sales_search_uses_linked_patient_name_but_not_contact_identity():
     assert "paciente sintetico um" in surface
     assert "responsavel comum" not in surface
     assert "99999" not in surface
+
+
+def test_sales_follow_up_requires_version_and_unique_request():
+    request_id = uuid4()
+    payload = SalesOpportunityStart(expected_version=1, request_id=request_id)
+    assert payload.expected_version == 1 and payload.request_id == request_id
+    for value in [0, -1, 1.0, "1", True]:
+        with pytest.raises(ValidationError):
+            SalesOpportunityStart(expected_version=value, request_id=request_id)
 
 
 def test_budget_approval_is_not_accepted_as_electronic_signature():
