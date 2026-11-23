@@ -203,3 +203,18 @@
 @media(max-width:760px){
   .os-title-row [data-os-action="dental-opportunity-new"],#osDentalSalesPager button{min-height:44px}
 }
+
+.os-dental-sales-period{padding:0 16px;margin-bottom:14px}
+.os-dental-sales-period summary small{display:block;color:var(--os-muted);font-size:.83rem;font-weight:400}
+#osSalesHeading{width:fit-content}
+#osSalesHeading:focus-visible{outline:2px solid var(--os-primary);outline-offset:3px;border-radius:3px}
+.os-dental-sales-period summary{display:flex;align-items:center;gap:8px;cursor:pointer;min-height:44px;font-weight:600}
+.os-dental-sales-period summary::after{content:"";margin-inline-start:auto;border:solid currentColor;border-width:0 1.5px 1.5px 0;width:7px;height:7px;transform:rotate(45deg)}
+.os-dental-sales-period[open] summary::after{transform:rotate(225deg)}
+.os-dental-sales-period summary::-webkit-details-marker{display:none}
+.os-dental-sales-period summary svg{width:18px;height:18px;flex:none}
+.os-dental-sales-period form{padding:4px 0 14px}
+.os-dental-sales-period .os-form-message:empty{display:none}
+.os-dental-sales-period .os-form-actions{margin-top:12px}
+#osDentalSalesPeriod input[type=date]{min-width:0;max-width:100%;min-height:44px}
+.os-dental-sales-period .os-button{min-height:44px}

@@ -1648,3 +1648,48 @@ async def test_dental_sales_opportunity_is_private_repeatable_and_paged(clinic_a
             assert await db.scalar(text("SELECT count(*) FROM dental_sales_opportunities")) == 0
             await db.execute(text("SELECT set_config('app.dental_actor',:actor,true)"),{"actor":str(d["account_b"])})
             assert await db.scalar(text("SELECT count(*) FROM dental_sales_opportunities")) == 0
+
+
+async def test_opportunity_period_uses_clinic_midnight_and_scopes_pagination(clinic_api_db):
+    import httpx
+    from fastapi import FastAPI
+    from app.catalog_api import Actor, authenticate
+    from app.dental_clinic_api import router
+
+    d = clinic_api_db
+    web = FastAPI()
+    web.include_router(router)
+    web.dependency_overrides[authenticate] = lambda: Actor("member", d["a"], d["account"], "owner")
+    path = f"/api/v1/tenants/{d['a']}/dental/sales/opportunities"
+    # March 8 spans 23 hours in the chosen synthetic clinic's timezone.
+    times = ["2026-03-08T04:59:59+00:00", "2026-03-08T05:00:00+00:00",
+             "2026-03-09T03:59:59+00:00", "2026-03-09T04:00:00+00:00"]
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=web), base_url="https://synthetic.test") as client:
+        ids = []
+        for i in range(len(times)):
+            oid = uuid4()
+            created = await client.post(path, json={"id":str(oid), "title":f"Orçamento sintético {i}"})
+            assert created.status_code == 201
+            ids.append(oid)
+        async with d["migrator"].begin() as db:
+            await db.execute(text("UPDATE tenants SET timezone='America/New_York' WHERE id=:id"), {"id":d["a"]})
+            for oid, instant in zip(ids, times):
+                await db.execute(text("UPDATE dental_sales_opportunities SET created_at=:at WHERE tenant_id=:t AND id=:id"),
+                                 {"at":datetime.fromisoformat(instant),"t":d["a"],"id":oid})
+        period = {"start_date":"2026-03-08","end_date":"2026-03-08"}
+        first = (await client.get(path, params={**period,"limit":1})).json()
+        assert [row["id"] for row in first["items"]] == [str(ids[2])]
+        second = (await client.get(path, params={**period,"before":first["next"]})).json()
+        assert [row["id"] for row in second["items"]] == [str(ids[1])]
+        assert second["next"] is None
+        assert (await client.get(path, params={**period,"before":str(ids[3])})).status_code == 400
+        for params, expected in [
+            ({"start_date":"2026-03-09"},[ids[3]]),
+            ({"end_date":"2026-03-07"},[ids[0]]),
+            ({"start_date":"2026-03-10"},[]),
+        ]:
+            reply = await client.get(path,params=params)
+            assert reply.status_code == 200
+            assert [row["id"] for row in reply.json()["items"]] == list(map(str,expected))
+        for invalid in [{"start_date":"2026-02-30"},{"start_date":"2026-03-09","end_date":"2026-03-08"}]:
+            assert (await client.get(path,params=invalid)).status_code == 422

@@ -2,7 +2,7 @@
 import importlib.util
 import os
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 from playwright.sync_api import sync_playwright
 
@@ -39,7 +39,12 @@ def check_menu(browser, width, height, theme):
                 item = {**details, "created_by":"conta-sintética", "created_at":"2026-11-22T15:00:00Z"}
                 opportunities.insert(0, item)
                 return route.fulfill(status=201,json=item)
-            return route.fulfill(json={"items": opportunities, "next": None})
+            query = parse_qs(urlsplit(route.request.url).query)
+            start = query.get("start_date", [""])[0]
+            end = query.get("end_date", [""])[0]
+            visible = [item for item in opportunities
+                       if (not start or item["created_at"][:10] >= start) and (not end or item["created_at"][:10] <= end)]
+            return route.fulfill(json={"items": visible, "next": None})
         if path.endswith("/dental/sales/stages"):
             if route.request.method == "POST":
                 data = route.request.post_data_json
@@ -124,6 +129,21 @@ def check_menu(browser, width, height, theme):
     }"""), (width,theme)
     assert not page.evaluate("document.documentElement.scrollWidth > innerWidth+1"), (width,theme)
     page.screenshot(path=str(shell.OUT/f"vendas-{width}-{theme}.png"), animations="disabled")
+    picker = page.locator(".os-dental-sales-period")
+    picker.locator("summary").press("Enter")
+    picker.get_by_label("De",exact=True).fill("2026-11-23")
+    picker.get_by_role("button",name="Aplicar período").press("Enter")
+    page.get_by_text("Nenhuma oportunidade neste período",exact=True).wait_for()
+    assert not page.evaluate("document.documentElement.scrollWidth>innerWidth+1"), (width,theme)
+    controls = picker.evaluate("""el=>[...el.querySelectorAll('input,button,summary')].map(n=>{
+        const b=n.getBoundingClientRect();return [n.name||n.textContent, b.left, b.right, b.height];
+    })""")
+    assert all(left>=0 and right<=width+1 and size>=44 for _,left,right,size in controls), (width,theme,controls)
+    assert picker.locator("summary").inner_text().endswith("23/11/2026")
+    page.locator("#osToastRegion .os-toast").first.wait_for(state="hidden",timeout=10000)
+    page.screenshot(path=str(shell.OUT/f"periodo-vendas-{width}-{theme}.png"),animations="disabled")
+    picker.get_by_role("button",name="Limpar período").press("Enter")
+    row.get_by_text(opportunities[0]["title"],exact=True).wait_for()
     opportunities[0]["title"] = "R" * 40
     opportunities[0]["description"] = "D" * 300
     page.reload(wait_until="domcontentloaded")

@@ -499,3 +499,28 @@ test('a área de vendas odontológicas só aparece para a titular autorizada',as
     assert.equal(h.calls.some(call=>call.path.includes('/sales/opportunities')),false);
   }
 });
+
+test('o período de criação valida datas, acompanha a paginação e limpa o filtro',async t=>{
+  const reads=[],sample={id:'abc',title:'Retorno no período',description:'',created_at:'2026-11-22T14:00:00Z'};
+  const h=await makeSuite({initialRoute:'vendas-odonto',permissions:dentalPlan({dental_clinical_enabled:true}),respond(path){
+    if(!path.includes('/dental/sales/opportunities'))return [];
+    const query=new URL(path,'https://synthetic.test').searchParams;reads.push(query);
+    if(query.has('before'))return {items:[{...sample,id:'def'}],next:null};
+    if(query.get('start_date')==='2027-01-01')return {items:[],next:null};
+    return {items:[sample],next:'abc'};
+  }});t.after(()=>h.close());await flush();
+  const period='#osDentalSalesPeriod';
+  h.fill('[name=sales_start]','2026-11-23');h.fill('[name=sales_end]','2026-11-22');
+  h.submit(period);await flush();assert.equal(reads.length,1);
+  assert.ok(h.document.querySelector(period+' [role=alert]').textContent.includes('posterior'));
+  assert.equal(h.document.activeElement.name,'sales_end');
+  h.fill('[name=sales_start]','2026-11-22');h.submit(period);await flush();
+  assert.deepEqual(Object.fromEntries(reads.at(-1)),{start_date:'2026-11-22',end_date:'2026-11-22'});
+  h.click('[data-os-action=dental-opportunity-more]');await flush();
+  assert.deepEqual(Object.fromEntries(reads.at(-1)),{start_date:'2026-11-22',end_date:'2026-11-22',before:'abc'});
+  h.fill('[name=sales_start]','2027-01-01');h.fill('[name=sales_end]','');h.submit(period);await flush();
+  assert.ok(h.document.querySelector('#osPageBody').textContent.includes('Nenhuma oportunidade neste período'));
+  h.click('[data-os-action=dental-sales-clear]');await flush();
+  assert.equal(reads.at(-1).toString(),'');assert.equal(h.document.querySelector('[name=sales_start]').value,'');
+  assert.equal(h.document.activeElement.id,'osSalesHeading');
+});

@@ -159,3 +159,9 @@ Passaram 28 testes com PostgreSQL, 692 unitários, 152 de interface e oito combi
 A simulação do painel executava o controlador real, mas ainda esperava um seletor que permitia trocar de empresa. O painel atual vincula cada conta a uma única empresa. A suíte agora consulta o vínculo confirmado, verifica o isolamento após sair e entrar com outra conta e testa perfis de proprietário, editor e leitor. Uma resposta atrasada da empresa anterior não pode aparecer na próxima sessão. O teste de envio manual também verifica o identificador da operação e uma única requisição. O teste de preço usa o campo monetário real em reais e confere o valor enviado em centavos.
 
 Na base anterior, 19 dos 79 casos falhavam. Após atualizar o ambiente de teste e as expectativas, os 79 passaram com Node 24, sem credenciais nem mensagens reais. Estes ajustes afetam exclusivamente testes. A execução integral do transporte com as dependências do WhatsApp e a imagem Docker tem verificação separada no GitHub.
+
+## Período de criação das oportunidades
+
+A titular pode consultar oportunidades abertas por data inicial, data final ou ambas. O período é inclusivo no calendário da clínica. A lista e as páginas seguintes usam o mesmo filtro. As datas e o fuso são aplicados no PostgreSQL sobre o instante de criação. Uma página pertencente a outro período é recusada. O filtro não altera oportunidades.
+
+Foram verificados os limites da meia-noite, um dia de 23 horas, datas invertidas e limpeza do período. A tela mostra o intervalo aplicado em português e distingue uma busca vazia de uma clínica sem oportunidades. O escopo desta entrega é a lista de oportunidades abertas. Outros estágios e seus totais ainda estão na matriz. A publicação continua dependente das entregas anteriores. O esquema do banco permanece na revisão 0088.

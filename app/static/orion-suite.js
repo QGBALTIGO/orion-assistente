@@ -222,7 +222,7 @@
       finally{if(state.permissionPending===pending)state.permissionPending=null;}
     })();state.permissionPending=pending;return pending;
   }
-  const defaultFilters=()=>({customerQuery:'',customerStatus:'active',customerRisk:30,customerOffset:0,agendaMode:'list',agendaPeriod:'day',agendaRangeList:false,agendaFocusDay:'',agendaFocusOffset:0,agendaDay:'',agendaTablet:false,agendaProfessional:'',agendaStatus:'all',agendaQuery:'',agendaOffset:0,financeKind:'',financeStatus:'',financeFiltersOpen:false,financeReceivables:false,financeTab:'entries',performancePeriod:'month',performanceDay:'',performanceGroup:'day',performanceTab:'overview',performanceMetric:'revenue_cents',performanceProfessional:'',performancePoint:'',performanceRange:null,staffTab:'professionals',staffStatus:'active',marketingTab:'overview',marketingQueueStatus:'all',loyaltyTab:'ranking',loyaltyOffset:0,couponStatus:'all',periodStart:'',periodEnd:'',settingsTab:'general',appHoursView:'hours',siteRequestStatus:'all',siteRequestIntent:'all',siteRequestQuery:'',siteRequestOffset:0,siteTab:'dashboard',helpQuery:'',helpCategory:'all',helpArticle:'',newsFilter:'all',notificationsUnread:false});
+  const defaultFilters=()=>({dentalSalesStart:'',dentalSalesEnd:'',customerQuery:'',customerStatus:'active',customerRisk:30,customerOffset:0,agendaMode:'list',agendaPeriod:'day',agendaRangeList:false,agendaFocusDay:'',agendaFocusOffset:0,agendaDay:'',agendaTablet:false,agendaProfessional:'',agendaStatus:'all',agendaQuery:'',agendaOffset:0,financeKind:'',financeStatus:'',financeFiltersOpen:false,financeReceivables:false,financeTab:'entries',performancePeriod:'month',performanceDay:'',performanceGroup:'day',performanceTab:'overview',performanceMetric:'revenue_cents',performanceProfessional:'',performancePoint:'',performanceRange:null,staffTab:'professionals',staffStatus:'active',marketingTab:'overview',marketingQueueStatus:'all',loyaltyTab:'ranking',loyaltyOffset:0,couponStatus:'all',periodStart:'',periodEnd:'',settingsTab:'general',appHoursView:'hours',siteRequestStatus:'all',siteRequestIntent:'all',siteRequestQuery:'',siteRequestOffset:0,siteTab:'dashboard',helpQuery:'',helpCategory:'all',helpArticle:'',newsFilter:'all',notificationsUnread:false});
   const state={bridge:{},mounted:false,epoch:0,load:0,route:'dashboard',tenantId:'',layoutMode:'classic',appShortcutDraft:null,data:{},filters:defaultFilters(),dialog:null,busy:false,imageUploading:false,searchTimer:null,drawerTrigger:null,observer:null};
   const rows = value => Array.isArray(value)?value:Array.isArray(value?.items)?value.items:[];
   const number = value => Number.isFinite(Number(value))?Number(value):0;
@@ -827,7 +827,7 @@
     if(state.route==='pacientes-odonto')html='<div id="osPageBody"><section id="osDentalDirectory"></section></div>';
     if(state.route==='proteses-odonto')html='<div class="os-title-row"><h1>Controle de próteses</h1></div><div id="osPageBody"><section id="osDentalClinic"></section></div>';
     if(state.route==='vendas-odonto')html=title('Vendas','',writable()?button('Nova oportunidade','dental-opportunity-new','','plus'):'')+
-      '<div id="osPageBody">'+loading('Carregando oportunidades…')+'</div>';
+      dentalSalesPeriodForm()+'<div id="osPageBody">'+loading('Carregando oportunidades…')+'</div>';
     if(state.route==='estoque-odonto')html=title('Estoque odontológico','Materiais, saldos e movimentações da clínica.')+'<div id="osPageBody"><section id="osDentalClinic"></section></div>';
     if(state.route==='inbox')html=title('Central de atendimento','Acompanhe suas conversas e atendimentos.')+'<div id="osPageBody"><div id="osInboxHost"></div></div>';
     if(state.route==='dashboard'){html=subscriptionWorkspace()?'<div id="osPageBody"><section id="osSubscriptionDashboard">'+(window.OrionSubscriptionDashboard?.placeholder?.()||loading('Preparando seu painel…'))+'</section></div>':'<div id="osPageBody">'+loading('Carregando o resumo do seu negócio…')+'</div>';}
@@ -2938,12 +2938,40 @@
     if(tab==='calendar'&&t)void loadGoogle();
     if(tab==='whatsapp'&&t)window.OrionChannels?.mount({host:$('osManagedChannels'),request,tenantId:state.tenantId});
   }
+  function dentalSalesPeriodForm(){
+    const {dentalSalesStart:start,dentalSalesEnd:end}=state.filters;
+    const selected=start&&end?(start===end?fmtDate(start):fmtDate(start)+' a '+fmtDate(end)):
+      start?'A partir de '+fmtDate(start):end?'Até '+fmtDate(end):'';
+    return '<details class="os-card os-dental-sales-period"'+(selected?' open':'')+'>'+
+      '<summary>'+icon('calendar')+'<span>Período de criação'+
+      (selected?'<small>'+esc(selected)+'</small>':'')+'</span></summary><form id="osDentalSalesPeriod">'+
+      '<div class="os-form-grid">'+field('De','sales_start','date',start)+field('Até','sales_end','date',end)+'</div>'+
+      '<p class="os-form-message" role="alert"></p><div class="os-form-actions">'+
+      '<button class="os-button" type="submit">Aplicar período</button>'+
+      button('Limpar período','dental-sales-clear','os-ghost')+'</div></form></details>';
+  }
+  async function applyDentalSalesPeriod(form,clear=false){
+    if(state.route!=='vendas-odonto'||!dentalSettingsAllowed())return;
+    const start=clear?'':form.elements.sales_start.value,end=clear?'':form.elements.sales_end.value;
+    if(start&&end&&start>end){
+      form.querySelector('.os-form-message').textContent='A data final deve ser igual ou posterior à inicial.';
+      form.elements.sales_end.focus();return;
+    }
+    state.filters.dentalSalesStart=start;state.filters.dentalSalesEnd=end;
+    await open('vendas-odonto',{keepScroll:true});
+    if(state.route==='vendas-odonto')$('osSalesHeading')?.focus({preventScroll:true});
+  }
   async function loadDentalOpportunities(c, more){
     if(!dentalSettingsAllowed()||!current(c))return;
     const older=more?.dataset.before;
+    const params=new URLSearchParams(),{dentalSalesStart:start,dentalSalesEnd:end}=state.filters;
+    if(start)params.set('start_date',start);
+    if(end)params.set('end_date',end);
+    if(older)params.set('before',older);
     if(more)more.disabled=true;
     try{
-      const data=await request(apiPath('/dental/sales/opportunities')+(older?'?before='+encodeURIComponent(older):''));
+      const query=params.toString();
+      const data=await request(apiPath('/dental/sales/opportunities')+(query?'?'+query:''));
       if(!current(c)||!dentalSettingsAllowed())return;
       const list=data.items.map(item=>'<li><div><strong>'+esc(item.title)+'</strong>'+
         (item.description?'<p>'+esc(item.description)+'</p>':'')+'</div><time datetime="'+esc(item.created_at)+'">'+
@@ -2960,9 +2988,9 @@
         return;
       }
       $('osPageBody').innerHTML='<section class="os-card" aria-labelledby="osSalesHeading">'+
-        '<div class="os-card-header"><h2 id="osSalesHeading">Oportunidades em aberto</h2></div>'+
+        '<div class="os-card-header"><h2 id="osSalesHeading" tabindex="-1">Oportunidades em aberto</h2></div>'+
         (list?'<ul id="osDentalSalesList" class="os-dental-sales-list">'+list+'</ul><div id="osDentalSalesPager">'+next+'</div>':
-          empty('layers','Nenhuma oportunidade em aberto','Cadastre uma negociação para acompanhá-la aqui.'))+'</section>';
+          (start||end?empty('calendar','Nenhuma oportunidade neste período','Ajuste as datas para consultar outras oportunidades.'):empty('layers','Nenhuma oportunidade em aberto','Cadastre uma negociação para acompanhá-la aqui.')))+'</section>';
     }finally{
       if(more?.isConnected)more.disabled=false;
     }
@@ -4750,6 +4778,7 @@
   function deleteResource(kind,record){if(!record||!writable())return;const specs={customer:['Excluir cliente','O cadastro de '+customerDisplayName(record)+' será removido do diretório. O histórico de atendimentos será preservado.','/customers/','Cliente excluído.'],finance:['Cancelar lançamento','Este lançamento será cancelado, mantendo o histórico financeiro.','/finance/','Lançamento cancelado.'],campaign:['Excluir rascunho','O rascunho '+record.name+' será arquivado.','/marketing/','Rascunho excluído.'],loyalty:['Desativar programa','O programa '+record.name+' será desativado. Os pontos já registrados serão preservados.','/loyalty/rules/','Programa desativado.'],goal:['Desativar meta','A meta selecionada deixará de ficar ativa.','/goals/','Meta desativada.']};const spec=specs[kind];if(!spec)return;const path=mgmt(spec[2]+encodeURIComponent(record.id));confirmMutation(spec[0],spec[1],()=>request(path,'DELETE',{expected_version:record.version}),spec[3]);}
   async function submitForm(event){
     const form=event.target.closest('form');if(!form)return;
+    if(form.id==='osDentalSalesPeriod'){event.preventDefault();await applyDentalSalesPeriod(form);return;}
     if(form.id==='osAgendaFilters'){event.preventDefault();await applyAgendaFilters();return;}
     if(form.id==='osSiteRequestFilters'){event.preventDefault();await applySiteRequestFilters(form);return;}
     if(form.id==='osPeriodForm'){event.preventDefault();const f=getValues(form);if(f.start_date>f.end_date){toast('A data final deve ser igual ou posterior à inicial.',true);return;}const days=(dayDate(f.end_date)-dayDate(f.start_date))/86400000;if(!Number.isFinite(days)||days>=366||Number(f.start_date.slice(0,4))<1900||Number(f.end_date.slice(0,4))>2100){toast('Selecione um período de até 366 dias, entre 1900 e 2100.',true);return;}state.filters.periodStart=f.start_date;state.filters.periodEnd=f.end_date;state.filters.performancePeriod='custom';state.filters.performancePoint='';closeDialog();await open(state.route,{keepScroll:true});return;}
@@ -5120,6 +5149,10 @@
           '<div class="os-field"><label for="osSaleDescription">Descrição (opcional)</label>'+
           '<textarea id="osSaleDescription" name="description" maxlength="300" rows="3"></textarea></div>';
         showDialog('dental-sales-opportunity','Nova oportunidade',dialogForm('dental-sales-opportunity',content,'Criar oportunidade'));
+        break;
+      }
+      case 'dental-sales-clear':{
+        const form=$('osDentalSalesPeriod');if(form)await applyDentalSalesPeriod(form,true);
         break;
       }
       case 'dental-opportunity-more':
