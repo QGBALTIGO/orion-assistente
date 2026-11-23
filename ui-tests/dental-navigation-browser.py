@@ -14,6 +14,7 @@ spec.loader.exec_module(shell)
 def check_menu(browser, width, height, theme):
     page = browser.new_page(viewport={"width":width,"height":height}, color_scheme=theme, locale="pt-BR")
     errors, accesses = [], []
+    opportunities = []
     stages = [
         {"id": key, "name": name, "custom": False}
         for key, name in [("open", "Em aberto"), ("in_progress", "Em andamento"),
@@ -31,6 +32,14 @@ def check_menu(browser, width, height, theme):
             return route.fulfill(json={"clinical_access":None,"can_manage":True,"can_manage_inventory":True,"grants":[]})
         if path.endswith("/dental/chair-settings"):
             return route.fulfill(json={"items":[]})
+        if path.endswith("/dental/sales/opportunities"):
+            if route.request.method == "POST":
+                details = route.request.post_data_json
+                assert details["id"] and details["description"] == "Retorno solicitado pela família."
+                item = {**details, "created_by":"conta-sintética", "created_at":"2026-11-22T15:00:00Z"}
+                opportunities.insert(0, item)
+                return route.fulfill(status=201,json=item)
+            return route.fulfill(json={"items": opportunities, "next": None})
         if path.endswith("/dental/sales/stages"):
             if route.request.method == "POST":
                 data = route.request.post_data_json
@@ -97,6 +106,31 @@ def check_menu(browser, width, height, theme):
     assert not page.evaluate("document.documentElement.scrollWidth > innerWidth + 1"), (width, theme)
     stage_list.scroll_into_view_if_needed()
     page.screenshot(path=str(shell.OUT / f"etapas-{width}-{theme}.png"), animations="disabled")
+    menu().get_by_role("button", name="Vendas", exact=True).press("Enter")
+    page.get_by_text("Nenhuma oportunidade em aberto", exact=True).wait_for()
+    create = page.get_by_role("button", name="Nova oportunidade", exact=True)
+    if width <= 760:
+        assert create.bounding_box()["height"] >= 44, (width, theme)
+    create.press("Enter")
+    page.get_by_label("Título", exact=True).fill("Avaliação da família")
+    page.get_by_label("Descrição (opcional)").fill("Retorno solicitado pela família.")
+    page.get_by_role("button", name="Criar oportunidade", exact=True).press("Enter")
+    page.get_by_text("Avaliação da família", exact=True).wait_for()
+    assert len(opportunities) == 1
+    row = page.locator("#osDentalSalesList li").first
+    assert row.evaluate("""el=>{
+       const title=el.firstElementChild.getBoundingClientRect(), date=el.lastElementChild.getBoundingClientRect();
+       return title.right<=date.left+1 && date.right<=innerWidth+1;
+    }"""), (width,theme)
+    assert not page.evaluate("document.documentElement.scrollWidth > innerWidth+1"), (width,theme)
+    page.screenshot(path=str(shell.OUT/f"vendas-{width}-{theme}.png"), animations="disabled")
+    opportunities[0]["title"] = "R" * 40
+    opportunities[0]["description"] = "D" * 300
+    page.reload(wait_until="domcontentloaded")
+    page.get_by_text("R" * 40, exact=True).wait_for()
+    assert row.evaluate("""el=>el.scrollWidth<=el.clientWidth+1 &&
+       el.firstElementChild.getBoundingClientRect().right <= el.lastElementChild.getBoundingClientRect().left+1""")
+    assert not page.evaluate("document.documentElement.scrollWidth>innerWidth+1")
     assert not errors,errors
     page.close()
 
@@ -109,4 +143,4 @@ if __name__=="__main__":
             for theme in ["light","dark"]:
                 check_menu(browser,w,h,theme)
         browser.close()
-    print("Menu, cadeiras e criação de etapa aprovados em oito combinações de tela e tema.")
+    print("Menu, cadeiras, etapas e oportunidades aprovados em oito combinações de tela e tema.")

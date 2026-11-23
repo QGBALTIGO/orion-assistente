@@ -12,6 +12,7 @@ REVIEWED_SUCCESSORS = (
     "0085_dental_prosthesis_tracking",
     "0086_dental_laboratories",
     "0087_dental_patient_visits",
+    "0088_dental_sales_opportunities",
 )
 
 

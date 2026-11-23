@@ -35,7 +35,7 @@ from app.dental_clinic_schemas import (
     ClinicianGrant, PatientRegistration, PatientSearch, PatientPatch, VisitPatientLink, RecordCreate,
     IntakeTemplateCreate, IntakeTemplateUpdate, LaboratoryCreate, LaboratoryUpdate,
     ProsthesisStatus, ProsthesisTransition, ProsthesisVisit,
-    RoomCreate, RoomRename, RoomAssign, ChairAvailability, SupplyCreate, SupplyMove, ExamUpload, SalesStage
+    RoomCreate, RoomRename, RoomAssign, ChairAvailability, SupplyCreate, SupplyMove, ExamUpload, SalesStage, SalesOpportunity
 )
 
 
@@ -840,6 +840,57 @@ async def add_dental_sales_stage(tenant_id: UUID, payload: SalesStage, actor: Ac
         """), {"tenant": tenant_id, "stages": json.dumps(custom)})
         await audit(db, tenant_id, actor, "sales_stage_created")
         return {"items": sales_stage_rows(custom)}
+
+
+@router.post("/sales/opportunities", status_code=201)
+async def create_sales_opportunity(tenant_id: UUID, payload: SalesOpportunity, actor: Actor = Depends(authenticate)):
+    async with owner_session(tenant_id, actor, feature="settings.manage") as db:
+        details = json.dumps({"title": payload.title, "description": payload.description},
+                             ensure_ascii=False, sort_keys=True).encode()
+        nonce, ciphertext, digest = seal(details, tenant_id, payload.id, "sales_opportunity", payload.id)
+        stored = (await db.execute(text("""
+            INSERT INTO dental_sales_opportunities (tenant_id,id,created_by,nonce,encrypted_content,digest)
+            VALUES (:tenant,:id,:account,:nonce,:body,:digest) ON CONFLICT (tenant_id,id) DO NOTHING
+            RETURNING created_at
+        """), {"tenant": tenant_id, "id": payload.id, "account": actor.account_id, "nonce": nonce,
+               "body": ciphertext, "digest": digest})).one_or_none()
+        if stored is None:
+            stored = (await db.execute(text("""
+                SELECT created_at,created_by,digest FROM dental_sales_opportunities
+                WHERE tenant_id=:tenant AND id=:id
+            """), {"tenant": tenant_id, "id": payload.id})).one()
+            if stored.created_by != actor.account_id or not secrets.compare_digest(stored.digest, digest):
+                raise HTTPException(409, "Este envio já foi usado para outra oportunidade")
+        else:
+            await audit(db, tenant_id, actor, "sales_opportunity_created")
+        return {"id": payload.id, "created_at": stored.created_at, "created_by": actor.account_id,
+                "title": payload.title, "description": payload.description}
+
+
+@router.get("/sales/opportunities")
+async def list_sales_opportunities(tenant_id: UUID, before: UUID | None = None,
+                                   limit: int = Query(25, ge=1, le=50), actor: Actor = Depends(authenticate)):
+    async with owner_session(tenant_id, actor, feature="settings.manage") as db:
+        params = {"tenant": tenant_id, "limit": limit + 1}
+        cursor = ""
+        if before:
+            point = (await db.execute(text("""
+                SELECT created_at,id FROM dental_sales_opportunities WHERE tenant_id=:tenant AND id=:id
+            """), {"tenant": tenant_id, "id": before})).one_or_none()
+            if point is None:
+                raise HTTPException(400, "Página de oportunidades inválida")
+            cursor = "AND (created_at,id)<(:at,:id)"
+            params.update(at=point.created_at, id=point.id)
+        rows = (await db.execute(text("""
+            SELECT id,created_by,created_at,nonce,encrypted_content,digest FROM dental_sales_opportunities
+            WHERE tenant_id=:tenant """ + cursor + " ORDER BY created_at DESC,id DESC LIMIT :limit"), params)).mappings().all()
+        items = []
+        for row in rows[:limit]:
+            details = json.loads(unseal(row, tenant_id, row["id"], "sales_opportunity"))
+            items.append({"id": row["id"], "created_at": row["created_at"], "created_by": row["created_by"],
+                          "title": details["title"], "description": details["description"]})
+        await audit(db, tenant_id, actor, "sales_opportunities_read")
+        return {"items": items, "next": items[-1]["id"] if len(rows)>limit else None}
 
 
 async def read_chairs(db, tenant):

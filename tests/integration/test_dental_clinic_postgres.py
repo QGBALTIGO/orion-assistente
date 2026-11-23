@@ -101,7 +101,7 @@ async def clinic_db():
                "room_a2":room_a2,"when":when}
     finally:
         async with migrator.begin() as db:
-            for tbl in ("dental_visit_patient_events","dental_access_audit","dental_laboratories","dental_intake_templates","dental_room_reservations",
+            for tbl in ("dental_sales_opportunities","dental_visit_patient_events","dental_access_audit","dental_laboratories","dental_intake_templates","dental_room_reservations",
                         "dental_exam_files","dental_records","dental_supply_movements",
                         "dental_supplies","dental_patients","dental_rooms",
                         "dental_clinicians","appointment_history","appointment_items",
@@ -1585,3 +1585,66 @@ async def test_sales_stages_are_owned_by_clinic_and_concurrent_creates_are_idemp
             await db.execute(text("""UPDATE business_onboarding SET configuration=jsonb_set(configuration,'{niche}','"barbearia"'::jsonb)
                                   WHERE tenant_id=:t"""),{"t":d["b"]})
         assert (await client.get(other)).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_dental_sales_opportunity_is_private_repeatable_and_paged(clinic_api_db):
+    import asyncio
+    import httpx
+    from fastapi import FastAPI
+    from app.catalog_api import Actor, authenticate
+    from app.dental_clinic_api import router
+    from scripts.check_dental_key_history import ciphertext_exists
+    from scripts.backup_and_migrate_dental_workflows import workflows_ready
+    from scripts.backup_and_migrate_fixed_client_monthly import schema_ready
+
+    d = clinic_api_db
+    web = FastAPI()
+    web.include_router(router)
+    actor = Actor("member", d["a"], d["account"], "owner")
+    web.dependency_overrides[authenticate] = lambda: actor
+    path = f"/api/v1/tenants/{d['a']}/dental/sales/opportunities"
+    other = path.replace(str(d["a"]), str(d["b"]))
+    migration_url = os.environ["MIGRATION_DATABASE_URL"]
+    assert workflows_ready(migration_url) and schema_ready(migration_url)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=web), base_url="https://synthetic.test") as client:
+        assert (await client.get(path)).json() == {"items": [], "next": None}
+        assert (await client.get(other)).status_code == 403
+        first = {"id": str(uuid4()), "title":"Retorno de orçamento", "description":"Contato sintético do funil."}
+        failed = await client.post(path, json={**first, "title":"  "})
+        assert failed.status_code == 422
+        assert (await client.post(path,json={**first,"title":"x"*41})).status_code == 422
+        assert (await client.post(path,json={**first,"description":"x"*301})).status_code == 422
+        results = await asyncio.gather(*(client.post(path,json=first) for _ in range(4)))
+        assert [r.status_code for r in results] == [201]*4, [r.text for r in results]
+        assert len({r.json()["created_at"] for r in results}) == 1
+        assert (await client.post(path,json={**first,"title":"Título diferente"})).status_code == 409
+        assert ciphertext_exists(migration_url) is True
+        second = {**first, "id":str(uuid4()), "title":"X"*40, "description":""}
+        assert (await client.post(path,json=second)).status_code == 201
+        page = await client.get(path,params={"limit":1})
+        assert page.headers["Cache-Control"].startswith("no-store")
+        assert page.json()["items"][0]["id"] == second["id"]
+        older = (await client.get(path,params={"limit":1,"before":page.json()["next"]})).json()
+        assert older["items"][0]["description"] == first["description"] and older["next"] is None
+        assert (await client.get(path,params={"before":str(uuid4())})).status_code == 400
+        actor = Actor("member", d["a"], d["assistant"], "editor")
+        assert (await client.get(path)).status_code == 403
+        assert (await client.post(path,json=first)).status_code == 403
+        actor = Actor("member", d["b"], d["account_b"], "owner")
+        assert (await client.get(other)).json()["items"] == []
+        assert (await client.get(other,params={"before":first["id"]})).status_code == 400
+        assert (await client.get(path)).status_code == 403
+    async with d["migrator"].begin() as db:
+        count = await db.scalar(text("SELECT count(*) FROM dental_access_audit WHERE tenant_id=:t AND action='sales_opportunity_created'"),
+                                {"t":d["a"]})
+        assert count == 2
+        blob = await db.scalar(text("SELECT encrypted_content FROM dental_sales_opportunities WHERE tenant_id=:t AND id=:i"),
+                               {"t":d["a"],"i":first["id"]})
+        assert first["title"].encode() not in bytes(blob) and first["description"].encode() not in bytes(blob)
+    async with async_sessionmaker(d["runtime"])() as db:
+        async with tenant_transaction(db,d["a"]):
+            await db.execute(text("SELECT set_config('app.dental_actor',:actor,true)"),{"actor":str(d["assistant"])})
+            assert await db.scalar(text("SELECT count(*) FROM dental_sales_opportunities")) == 0
+            await db.execute(text("SELECT set_config('app.dental_actor',:actor,true)"),{"actor":str(d["account_b"])})
+            assert await db.scalar(text("SELECT count(*) FROM dental_sales_opportunities")) == 0

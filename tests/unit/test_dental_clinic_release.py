@@ -128,7 +128,7 @@ def test_dental_workflow_rollout_only_migrates_after_its_backup(monkeypatch, cas
     monkeypatch.setattr(workflows, "migrated_version", lambda _: next(current))
 
     def backup(url, settings, archive, **details):
-        assert details == {"backup_context": "dental-patient-visits-0087",
+        assert details == {"backup_context": "dental-sales-opportunities-0088",
                            "schema_revision": workflows.PREVIOUS, "preserve_ownership": True}
         steps.append("backup")
         if case == "backup_failed":

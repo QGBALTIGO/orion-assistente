@@ -459,3 +459,43 @@ test('ajustes da clínica salvam a etapa de vendas e a recarregam ao voltar',asy
   t.after(()=>editor.close());await flush();
   assert.equal(editor.document.querySelector('[data-os-dental-setting=dental-sales-stages]'),null);
 });
+
+test('vendas preserva a tentativa de cadastro e carrega as oportunidades da clínica',async t=>{
+  const all=[],posts=[];
+  let fail=true;
+  const h=await makeSuite({initialRoute:'vendas-odonto',permissions:dentalPlan({dental_clinical_enabled:true}),respond(path,method,payload){
+    if(!path.includes('/dental/sales/opportunities'))return [];
+    if(method==='POST'){
+      posts.push({...payload});
+      if(fail){fail=false;throw new Error('Falha temporária');}
+      all.push({...payload,created_at:'2026-11-22T15:00:00Z'});
+      return all[0];
+    }
+    if(path.includes('?before='))return {items:[{id:'old',title:'Oportunidade anterior',description:'',created_at:'2026-11-20T15:00:00Z'}],next:null};
+    return {items:all,next:all.length?all[0].id:null};
+  }});t.after(()=>h.close());await flush();
+  const nav=h.document.querySelector('#osNav [data-os-route="vendas-odonto"]');assert.equal(nav.textContent,'Vendas');
+  assert.match(h.document.querySelector('#osPageBody').textContent,/Nenhuma oportunidade em aberto/);
+  h.click('[data-os-action=dental-opportunity-new]');
+  h.fill('[name=title]','Retorno sintético');h.fill('[name=description]','<script>nota de teste</script>');
+  h.submit('[data-os-form=dental-sales-opportunity]');await flush();
+  assert.equal(h.document.querySelector('[name=title]').value,'Retorno sintético');
+  h.submit('[data-os-form=dental-sales-opportunity]');await flush();
+  assert.equal(posts.length,2);assert.equal(posts[0].id,posts[1].id);
+  const list=h.document.getElementById('osDentalSalesList');
+  assert.ok(list.textContent.includes('<script>nota de teste</script>'));assert.equal(list.querySelector('script'),null);
+  h.click('[data-os-action=dental-opportunity-more]');await flush();
+  assert.equal(list.children.length,2);assert.equal(h.document.activeElement,list.children[1]);
+});
+
+test('a área de vendas odontológicas só aparece para a titular autorizada',async t=>{
+  for(const config of [
+    {role:'editor',permissions:dentalPlan({dental_clinical_enabled:true})},
+    {permissions:planState('essencial',{business_niche:'barbearia'})},
+    {permissions:dentalPlan({dental_clinical_enabled:false})}
+  ]){
+    const h=await makeSuite({...config,initialRoute:'dashboard'});t.after(()=>h.close());await flush();
+    assert.equal(h.document.querySelector('#osNav [data-os-route="vendas-odonto"]'),null);
+    assert.equal(h.calls.some(call=>call.path.includes('/sales/opportunities')),false);
+  }
+});
