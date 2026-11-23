@@ -78,14 +78,42 @@ function panelHarness(){
     set textContent(value){this._textNode=String(value)?{nodeType:3,textContent:String(value)}:null;this.children=[]}
     get firstChild(){return this._textNode||this.children[0]||null}
     addEventListener(type,callback){(this.listeners[type]??=[]).push(callback)}
-    append(...children){this.children.push(...children);for(const child of children)if(typeof child==='object')child.parent=this}
+    append(...children){
+      this.children.push(...children);
+      for(const child of children){
+        if(typeof child!=='object'||child===null)continue;
+        child.parent=this;
+        if(child.id)nodes.set(child.id,child);
+      }
+    }
     get parentElement(){return this.parent||null}
     before(...children){if(!this.parent)return;const parent=this.parent;parent.children.splice(parent.children.indexOf(this),0,...children);for(const child of children)if(child&&typeof child==='object')child.parent=parent}
     after(...children){if(!this.parent)return;const parent=this.parent;parent.children.splice(parent.children.indexOf(this)+1,0,...children);for(const child of children)if(child&&typeof child==='object')child.parent=parent}
     replaceChildren(...children){this.children=[];this.options=[];this.textContent="";this.append(...children);for(const child of children)if(child&&Object.hasOwn(child,'value'))this.options.push(child);if(this.options.length)this.value=this.options[0].value}
     remove(){if(this.parent)this.parent.children=this.parent.children.filter(x=>x!==this)}
-    setAttribute(){}
-    removeAttribute(){}
+    getAttribute(key){return this.attributes?.get(key)??null}
+    setAttribute(key,value){(this.attributes??=new Map()).set(key,String(value))}
+    removeAttribute(key){this.attributes?.delete(key)}
+    get ownerDocument(){return context.document}
+    matches(selector){
+      if(selector===':disabled')return this.disabled;
+      return Object.hasOwn(this.dataset,'orionField')&&selector.split(',').includes(this.tagName.toLowerCase()+'[data-orion-field]');
+    }
+    closest(selector){
+      if(selector!=='[data-field-wrapper]')return null;
+      for(let el=this.parent;el;el=el.parent)if(Object.hasOwn(el.dataset,'fieldWrapper'))return el;
+      return null;
+    }
+    insertAdjacentElement(position,element){assert.equal(position,'afterend');this.after(element)}
+    get validity(){return {customError:!!this.validationMessage}}
+    setCustomValidity(message){this.validationMessage=message}
+    reset(){
+      for(const id of formControls.get(this.id)||[]){
+        const input=node(id);
+        input.value=input.defaultValue||'';
+        input.checked=input.defaultChecked||false;
+      }
+    }
     focus(){this.focusCount++;activeElement=this}
     showModal(){this.open=true;this.modalCalls=(this.modalCalls||0)+1}
     close(){this.open=false}
@@ -94,14 +122,19 @@ function panelHarness(){
     querySelectorAll(){return []}
     add(option){this.options.push(option);if(this.options.length===1)this.value=option.value}
   }
+  const formControls=new Map([...panel.matchAll(/<form\b[^>]*\bid="([^"]+)"[^>]*>([\s\S]*?)<\/form>/g)].map(([,id,markup])=>[
+    id,[...markup.matchAll(/<(?:input|select|textarea)\b[^>]*\bid="([^"]+)"/g)].map(match=>match[1])
+  ]));
   const nodes=new Map(),requests=[];let fakeNow;
   const node=id=>{
+    if(nodes.has(id))return nodes.get(id);
     assert.ok(panel.includes('id="'+id+'"'),"unknown panel element "+id);
-    if(!nodes.has(id))nodes.set(id,new Element());
+    if(!nodes.has(id)){const el=new Element();el.id=id;nodes.set(id,el)}
     return nodes.get(id);
   };
   const context={
-    document:eventTarget({getElementById:node,createElement:tag=>new Element(tag),
+    document:eventTarget({getElementById:id=>nodes.get(id)??(panel.includes('id="'+id+'"')?node(id):null),
+      createElement:tag=>new Element(tag),
       querySelector:()=>new Element(),querySelectorAll:()=>[],documentElement:{dataset:{}},get activeElement(){return activeElement}}),
     window:eventTarget({matchMedia:()=>({matches:false,addEventListener(){}})}),
     // This lightweight DOM has no CSS engine; an unset custom property is empty.
@@ -134,9 +167,10 @@ function panelHarness(){
       setRole:value=>{loginRole=value},
       authenticate:()=>{csrf="synthetic-csrf"},
       // Test-only account change; the runtime scope guard is NOT replaced.
-      verifiedBusiness:id=>{
+      verifiedBusiness:(id,role='owner')=>{
         if(!/^tenant-(a|b|m)$/.test(id))throw Error('invalid synthetic business');
-        businessRows=[{id,name:'Empresa sintética',role:'owner'}];
+        if(!['owner','editor','viewer'].includes(role))throw Error('invalid synthetic role');
+        businessRows=[{id,name:'Empresa sintética',role}];
         suiteTenantId=id;businessContextReady=true;businessContextError='';
       },
       deviceStatus:()=>deviceStatus};
@@ -300,7 +334,7 @@ test('simulador ignora resposta de outro tenant e finally antigo não libera env
   const first=submitPreview(h,'pergunta da empresa A');
   const old=h.take(previewUrl('tenant-a'),'POST');
   h.ui.verifiedBusiness('tenant-b');h.node('aiTenant').value='tenant-b';
-  const changed=h.node('aiTenant').listeners.change[0]();
+  const changed=h.ui.aiLoadTenants();
   h.take(businessUrl('tenant-b')).respond(snapshot('Empresa B'));
   h.take(aiStatusUrl('tenant-b')).respond({configured:true,preview_enabled:true});await changed;
   await tick();
@@ -349,7 +383,7 @@ test('status atrasado do simulador não substitui estado do tenant atual',async(
   const h=panelHarness();h.node('aiTenant').value='tenant-a';
   const first=h.ui.aiCheckStatus(),old=h.take(aiStatusUrl('tenant-a'));
   h.ui.verifiedBusiness('tenant-b');h.node('aiTenant').value='tenant-b';
-  const second=h.node('aiTenant').listeners.change[0]();
+  const second=h.ui.aiLoadTenants();
   h.take(aiStatusUrl('tenant-b')).respond({configured:true,preview_enabled:true});await second;
   old.reject(Error('empresa A indisponível'));await first;
   assert.equal(h.node('aiStatus').textContent,'Prévia disponível');
@@ -383,7 +417,7 @@ test('falha de status invalida readiness anterior e botão de atualização recu
 
 test('readiness e finally antigos não liberam tenant novo nem conta desconectada',async()=>{
   const h=panelHarness();await readyAi(h,'tenant-a');const pendingA=h.ui.aiCheckStatus(),oldA=h.take(aiStatusUrl('tenant-a'));
-  h.ui.verifiedBusiness('tenant-b');h.node('aiTenant').value='tenant-b';const changed=h.node('aiTenant').listeners.change[0]();h.take(businessUrl('tenant-b')).respond(snapshot('Empresa B'));
+  h.ui.verifiedBusiness('tenant-b');h.node('aiTenant').value='tenant-b';const changed=h.ui.aiLoadTenants();h.take(businessUrl('tenant-b')).respond(snapshot('Empresa B'));
   const newB=h.take(aiStatusUrl('tenant-b'));oldA.respond({configured:true,preview_enabled:true,audio_preview_enabled:true});await pendingA;
   assert.equal(h.node('aiSend').disabled,true);assert.equal(h.node('aiStatusRefresh').disabled,true);newB.respond({configured:true,preview_enabled:false,audio_preview_enabled:false});await changed;await tick();
   assert.equal(h.node('aiSend').disabled,true);assert.equal(h.node('aiAudioFile').disabled,true);
@@ -543,13 +577,18 @@ test('perfil desativado e capacidades sem implementação têm apresentação ve
   assert.match(panel,/Produtos, estoque e pedidos são configurados separadamente/);assert.match(panel,/Responder com voz — indisponível/);
 });
 
-test('membro carrega somente empresas atribuídas para configuração e simulador',async()=>{
+test('simulador utiliza a empresa verificada na sessão do membro',async()=>{
   const h=panelHarness();h.ui.setRole('member');
-  const loading=h.ui.loadBusinesses();h.take('/api/v1/account/businesses').respond([{id:'tenant-m',name:'Empresa atribuída',role:'editor'}]);await tick();
-  h.take(businessUrl('tenant-m')).respond(snapshot());h.take(businessUrl('tenant-m','/history')).respond(history());await loading;
-  const aiLoading=h.ui.aiLoadTenants();h.take('/api/v1/account/businesses').respond([{id:'tenant-m',name:'Empresa atribuída'}]);await tick();
-  h.take(businessUrl('tenant-m')).respond(snapshot());h.take(aiStatusUrl('tenant-m')).respond({configured:true,preview_enabled:true});await aiLoading;
-  assert.equal(h.requests.some(x=>x.url==='/api/v1/tenants'),false);assert.equal(h.node('aiTenant').value,'tenant-m');
+  const membership=h.ui.loadBusinesses({resolveSetup:false});
+  h.take('/api/v1/account/businesses').respond([{id:'tenant-m',name:'Empresa atribuída',role:'editor'}]);
+  assert.equal(await membership,true);
+  const aiLoading=h.ui.aiLoadTenants();
+  h.take(businessUrl('tenant-m')).respond(snapshot());
+  h.take(aiStatusUrl('tenant-m')).respond({configured:true,preview_enabled:true});
+  await aiLoading;
+  assert.equal(h.requests.filter(x=>x.url==='/api/v1/account/businesses').length,1);
+  assert.equal(h.requests.some(x=>x.url==='/api/v1/tenants'||x.url.includes('/tenant-a/')),false);
+  assert.equal(h.node('aiTenant').value,'tenant-m');
 });
 
 test('comparação usa catálogo real e DOM seguro; edição invalida exemplo pendente',async()=>{
@@ -599,13 +638,12 @@ test('carregamento de rascunho bloqueia texto e áudio até versão explícita e
   assert.equal(JSON.parse(request.options.body).profile_version,draftId);request.respond({answer:'Resposta do rascunho',step:'menu'});await sending;
 });
 
-test('Testar rascunho bloqueia o tenant antigo desde a navegação, antes mesmo da lista carregar',async()=>{
-  const h=panelHarness();await loadBusiness(h,'tenant-b',snapshot('Empresa B'));
+test('Testar rascunho usa apenas a empresa autenticada desde a navegação administrativa',async()=>{
+  const h=panelHarness();h.ui.setRole('admin');await loadBusiness(h,'tenant-b',snapshot('Empresa B'));
   h.node('aiTenant').value='tenant-a';h.ui.aiBubble('Conversa anterior da empresa A','in');
   h.ui.openBusinessPreview(true);
   assert.equal(h.node('aiSend').disabled,true);assert.equal(h.node('aiMessages').children.length,0);
-  await submitPreview(h,'durante lista de empresas');assert.equal(h.requests.filter(x=>x.options.method==='POST').length,0);
-  h.take('/api/v1/tenants').respond([{id:'tenant-a',name:'Empresa A'},{id:'tenant-b',name:'Empresa B'}]);await tick();
+  assert.equal(h.requests.some(x=>x.url==='/api/v1/tenants'||x.url.includes('/tenant-a/')),false);
   assert.equal(h.node('aiTenant').value,'tenant-b');assert.equal(h.node('aiSend').disabled,true);
   await submitPreview(h,'durante carregamento do rascunho');assert.equal(h.requests.filter(x=>x.options.method==='POST').length,0);
   h.take(businessUrl('tenant-b')).respond(snapshot('Empresa B'));h.take(aiStatusUrl('tenant-b')).respond({configured:true,preview_enabled:true});await tick();
@@ -728,8 +766,11 @@ test('status distingue catálogo manual de atendimento automático; leitura não
 });
 
 test('membro só busca empresas atribuídas no catálogo comercial',async()=>{
-  const h=panelHarness();h.ui.setRole('member');const loading=h.ui.loadCommerceTenants();
-  h.take('/api/v1/account/businesses').respond([{id:'tenant-m',name:'Empresa atribuída'}]);await tick();
+  const h=panelHarness();h.ui.setRole('member');
+  const membership=h.ui.loadBusinesses({resolveSetup:false});
+  h.take('/api/v1/account/businesses').respond([{id:'tenant-m',name:'Empresa atribuída',role:'viewer'}]);
+  assert.equal(await membership,true);
+  const loading=h.ui.loadCommerceTenants();
   h.take(commerceUrl('tenant-m','/status')).respond(commerceAccess());await tick();h.take(commerceUrl('tenant-m','/products')).respond([]);await loading;
   assert.equal(h.requests.some(x=>x.url==='/api/v1/tenants'),false);assert.equal(h.node('comTenant').value,'tenant-m');
 });
@@ -747,7 +788,7 @@ test('produto novo é inativo; gravação preserva fatos oficiais e nunca duplic
 test('variante não transforma preço ausente em zero e serializa os quatro tipos corretamente',async()=>{
   const h=panelHarness();await loadCommerce(h);h.ui.commerceSelectProduct(productId);h.node('comVariantName').value='Nova opção';
   for(const kind of ['on_request','custom']){h.node('comPriceKind').value=kind;h.node('comPrice').value='999,99';assert.equal(h.ui.commerceVariantPayload().unit_price_cents,null);}
-  h.node('comPriceKind').value='fixed';h.node('comPrice').value='';const count=h.requests.length;await h.ui.commerceSave('variant');assert.equal(h.requests.length,count);assert.match(h.node('comFeedback').textContent,/Preço vazio não é zero/);
+  h.node('comPriceKind').value='fixed';h.node('comPrice').value='';const count=h.requests.length;await h.ui.commerceSave('variant');assert.equal(h.requests.length,count);assert.match(h.node('comFeedback').textContent,/Informe o valor em reais/);
   h.node('comPrice').value='0';assert.equal(h.ui.commerceVariantPayload().unit_price_cents,0,'zero só é aceito se informado explicitamente');
   h.node('comPriceKind').value='from';h.node('comPrice').value='12,90';assert.equal(h.ui.commerceVariantPayload().unit_price_cents,1290);
   h.node('comPrice').value='1,234';assert.throws(()=>h.ui.commerceVariantPayload(),/valor em reais/);
@@ -931,42 +972,51 @@ test('resultado complementar atrasado não atravessa seleção de produto ou ten
   await loadCommerce(h,'tenant-b',commerceAccess(),[commercialProduct(),relatedProduct()]);assert.equal(h.node('comComplementReason').value,'');assert.equal(h.node('comComplementApproved').checked,false);
 });
 
-async function loadLegacyCatalog(h,rows=[{id:'tenant-a',name:'Empresa A',role:'owner'}],resource='services'){
-  h.ui.setRole('member');h.node('resource').value=resource;const loading=h.ui.loadTenants();h.take('/api/v1/account/businesses').respond(rows);await tick();
-  if(rows.length)h.take('/api/v1/tenants/'+rows[0].id+'/'+resource).respond([]);await loading;
+async function loadLegacyCatalog(h,id='tenant-a',role='owner'){
+  h.ui.setRole('member');h.node('resource').value='services';
+  const membership=h.ui.loadBusinesses({resolveSetup:false});
+  h.take('/api/v1/account/businesses').respond([{id,name:'Empresa sintética',role}]);
+  assert.equal(await membership,true);
+  const loading=h.ui.loadTenants();
+  h.take('/api/v1/tenants/'+id+'/services').respond([]);
+  return loading;
 }
-const recordEvent=(h,inputs=[])=>{const form=h.node('recordForm');form.querySelectorAll=()=>inputs;return {preventDefault(){},target:form}};
+
+const recordEvent=(h,inputs=[])=>{const form=h.node('recordForm');form.querySelectorAll=selector=>selector==='input'?inputs:inputs.filter(input=>input.dataset?.orionField);return {preventDefault(){},target:form}};
 
 test('cadastros de membro usam somente empresas atribuídas e papel confirmado em cada empresa',async()=>{
-  const h=panelHarness();await loadLegacyCatalog(h,[{id:'tenant-a',name:'Empresa A',role:'owner'},{id:'tenant-b',name:'Empresa B',role:'viewer'}]);
+  const h=panelHarness();await loadLegacyCatalog(h);
   assert.equal(h.requests.some(x=>x.url==='/api/v1/tenants'),false);assert.equal(h.node('recordFields').disabled,false);
-  h.ui.verifiedBusiness('tenant-b');h.node('tenant').value='tenant-b';const reading=h.ui.loadRecords();assert.equal(h.node('recordFields').disabled,true);
+  h.ui.showLogin();await loadLegacyCatalog(h,'tenant-b','viewer');
+  const reading=h.ui.loadRecords();assert.equal(h.node('recordFields').disabled,true);
   h.take('/api/v1/tenants/tenant-b/services').respond([{name:'Registro somente da empresa B'}]);await reading;
   assert.match(h.node('catalogAccess').textContent,/somente leitura/);const count=h.requests.length;await h.ui.submitRecord(recordEvent(h));assert.equal(h.requests.length,count);
   h.node('tenant').value='tenant-forged';await h.ui.loadRecords();await h.ui.submitRecord(recordEvent(h));assert.equal(h.requests.length,count);
 });
 
 test('editor pode cadastrar serviços mas somente proprietário altera acesso da equipe',async()=>{
-  const h=panelHarness();await loadLegacyCatalog(h,[{id:'tenant-a',name:'Empresa A',role:'editor'}]);assert.equal(h.node('recordFields').disabled,false);
+  const h=panelHarness();await loadLegacyCatalog(h,'tenant-a','editor');assert.equal(h.node('recordFields').disabled,false);
   h.node('resource').value='authorized_staff';const reading=h.ui.loadRecords();h.take('/api/v1/tenants/tenant-a/authorized_staff').respond([]);await reading;
   assert.equal(h.node('recordFields').disabled,true);assert.match(h.node('catalogAccess').textContent,/Somente o proprietário/);
   const count=h.requests.length;await h.ui.submitRecord(recordEvent(h));assert.equal(h.requests.length,count);
 });
 
 test('cadastro não transforma preço vazio em zero nem duplica mutação incerta',async()=>{
-  const h=panelHarness();await loadLegacyCatalog(h);const price={name:'price_cents',type:'number',value:'',required:true};
-  let event=recordEvent(h,[price]);const count=h.requests.length;await h.ui.submitRecord(event);assert.equal(h.requests.length,count);assert.match(h.node('notice').textContent,/não é zero/);
-  price.value='3500';const saving=h.ui.submitRecord(event),request=h.take('/api/v1/tenants/tenant-a/services','POST');assert.deepEqual(JSON.parse(request.options.body),{price_cents:3500});
+  const h=panelHarness();await loadLegacyCatalog(h);const price=h.node('record-price_cents');price.value='';
+  assert.equal(price.dataset.orionField,'money');
+  let event=recordEvent(h,[price]);const count=h.requests.length;await h.ui.submitRecord(event);assert.equal(h.requests.length,count);assert.match(price.validationMessage,/Informe o valor em reais/);
+  price.value='35,00';const saving=h.ui.submitRecord(event),request=h.take('/api/v1/tenants/tenant-a/services','POST');assert.deepEqual(JSON.parse(request.options.body),{price_cents:3500});
   assert.equal(h.node('recordFields').disabled,true);await h.ui.submitRecord(event);assert.equal(h.requests.filter(x=>x.options.method==='POST').length,1);
   request.reject(Error('Resultado incerto'));await saving;await h.ui.submitRecord(event);assert.equal(h.requests.filter(x=>x.options.method==='POST').length,1);assert.equal(h.node('recordFields').disabled,true);
   const refresh=h.ui.loadRecords();h.take('/api/v1/tenants/tenant-a/services').respond([{name:'Serviço salvo pelo servidor'}]);await refresh;assert.equal(h.node('recordFields').disabled,false);
 });
 
 test('respostas antigas de cadastros não cruzam tenant, categoria nem logout',async()=>{
-  const h=panelHarness();await loadLegacyCatalog(h,[{id:'tenant-a',name:'Empresa A',role:'owner'},{id:'tenant-b',name:'Empresa B',role:'owner'}]);
-  const oldRead=h.ui.loadRecords(),old=h.take('/api/v1/tenants/tenant-a/services');h.ui.verifiedBusiness('tenant-b');h.node('tenant').value='tenant-b';const newRead=h.ui.loadRecords();h.take('/api/v1/tenants/tenant-b/services').respond([{name:'Serviço B'}]);await newRead;
+  const h=panelHarness();await loadLegacyCatalog(h);
+  const oldRead=h.ui.loadRecords(),old=h.take('/api/v1/tenants/tenant-a/services');
+  h.ui.showLogin();await loadLegacyCatalog(h,'tenant-b');const newRead=h.ui.loadRecords();h.take('/api/v1/tenants/tenant-b/services').respond([{name:'Serviço B'}]);await newRead;
   old.respond([{name:'Serviço A privado'}]);await oldRead;assert.match(h.node('records').textContent,/Serviço B/);assert.doesNotMatch(h.node('records').textContent,/privado/);
-  const saving=h.ui.submitRecord(recordEvent(h,[{name:'name',type:'text',value:'Profissional novo',required:true}])),post=h.take('/api/v1/tenants/tenant-b/services','POST');h.ui.showLogin();
+  const saving=h.ui.submitRecord(recordEvent(h,[{name:'name',type:'text',value:'Profissional novo',required:true,dataset:{}}])),post=h.take('/api/v1/tenants/tenant-b/services','POST');h.ui.showLogin();
   post.respond({id:'new-record'});await saving;assert.equal(h.node('records').textContent,'');assert.equal(h.node('tenant').value,'');assert.equal(h.node('recordFields').disabled,true);
 });
 
@@ -1016,14 +1066,21 @@ test('restauração revisada aguarda aceite e envia uma única versão com gera�
   assert.equal(h.requests.filter(x=>x.url.endsWith('/rollback')).length,1);
 });
 
-test('troca de empresa com edição exige aceite; cancelar preserva formulário e logout não restaura tenant antigo',async()=>{
-  const h=panelHarness();await loadBusiness(h);h.node('bizDescription').value='Edição a preservar';h.ui.businessChanged();h.node('businessTenant').value='tenant-b';
-  let before=h.requests.length;const cancelled=h.node('businessTenant').listeners.change[0]();await cancelAction(h);await cancelled;
-  assert.equal(h.node('businessTenant').value,'tenant-a');assert.equal(h.node('bizDescription').value,'Edição a preservar');assert.equal(h.requests.length,before);
-  h.ui.verifiedBusiness('tenant-b');h.node('businessTenant').value='tenant-b';const changed=h.node('businessTenant').listeners.change[0]();await acceptAction(h);
-  h.take(businessUrl('tenant-b')).respond(snapshot('Empresa B'));h.take(businessUrl('tenant-b','/history')).respond(history());await changed;assert.equal(h.node('bizName').value,'Empresa B');
-  h.ui.businessChanged();h.node('businessTenant').value='tenant-a';before=h.requests.length;const loggedOut=h.node('businessTenant').listeners.change[0]();h.ui.showLogin();await acceptAction(h);await loggedOut;
-  assert.equal(h.node('businessTenant').value,'');assert.equal(h.requests.length,before);
+test('um rascunho não revela outra empresa e o logout apaga a edição e os campos da conta',async()=>{
+  const h=panelHarness();await loadBusiness(h);
+  h.node('bizDescription').value='Edição privada da empresa A';h.ui.businessChanged();
+  h.node('memberBusinessName').value='Nome da primeira conta';
+  h.node('memberCurrentPassword').value='valor sintético';
+  assert.equal(h.node('businessTenant').listeners.change,undefined);
+  h.node('businessTenant').value='tenant-b';
+  const before=h.requests.length;
+  const access=await h.ui.loadBusinessProfile();
+  assert.equal(access.ok,false);assert.equal(h.requests.length,before);
+  h.ui.showLogin();
+  for(const id of ['bizDescription','businessTenant','memberBusinessName','memberCurrentPassword'])assert.equal(h.node(id).value,'');
+  await loadBusiness(h,'tenant-b',snapshot('Empresa B'));
+  assert.equal(h.node('bizName').value,'Empresa B');
+  assert.doesNotMatch(h.node('bizDescription').value,/privada/);
 });
 
 test('atualização com edição espera escolha e contexto fresco; cancelar ou mudar contexto não consulta dados',async()=>{
@@ -1061,7 +1118,9 @@ test('envio manual cancelado ou com destinatário/texto/contato/sessão alterado
 test('duplo submit e duplo Aceitar do envio manual produzem uma única tentativa de transporte',async()=>{
   const h=panelHarness();await connect(h);h.node('chatPhone').value=phoneA;h.node('chatText').value='Uma tentativa';
   const send=()=>h.node('sendForm').listeners.submit[0]({preventDefault(){}}),sending=send();await send();assert.equal(h.node('actionConfirm').modalCalls,1);
-  h.node('actionConfirmAccept').listeners.click[0]();h.node('actionConfirmAccept').listeners.click[0]();await tick();const post=h.take('/api/v1/qr/send','POST');assert.deepEqual(JSON.parse(post.options.body),{phone:phoneA,text:'Uma tentativa'});
+  h.node('actionConfirmAccept').listeners.click[0]();h.node('actionConfirmAccept').listeners.click[0]();await tick();const post=h.take('/api/v1/qr/send','POST');
+  const {operation_id,...delivery}=JSON.parse(post.options.body);
+  assert.match(operation_id,/^[a-f0-9-]{36}$/i);assert.deepEqual(delivery,{phone:phoneA,text:'Uma tentativa'});
   await send();post.reject(Error('Resultado incerto'));await sending;assert.equal(h.requests.filter(x=>x.url==='/api/v1/qr/send').length,1);assert.equal(h.node('sendButton').disabled,false);
 });
 
