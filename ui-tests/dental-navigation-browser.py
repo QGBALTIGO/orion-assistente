@@ -138,6 +138,7 @@ def check_menu(browser, width, height, theme):
     page.get_by_placeholder("Nome ou telefone").fill("999990099")
     page.get_by_role("button",name="Buscar",exact=True).press("Enter")
     choices = page.locator(".os-sales-patient-option")
+    choices.first.wait_for()
     assert choices.count() == 2
     choices.filter(has_text="Paciente Sintético Um").press("Enter")
     selected = page.locator(".os-sales-patient-selected")
