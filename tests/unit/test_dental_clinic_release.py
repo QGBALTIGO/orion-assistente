@@ -99,3 +99,76 @@ def test_0076_has_one_parent_matching_existing_monthly_migration():
     assert 'down_revision = "0075_fixed_client_monthly"' in source
     assert 'EXCLUDE USING gist' in source
     assert 'FORCE ROW LEVEL SECURITY' in source
+
+
+@pytest.mark.parametrize("case,exit_code,expected_steps", [
+    ("publish", 0, ["backup", "upgrade", "validate"]),
+    ("already_published", 0, ["validate"]),
+    ("backup_failed", 3, ["backup"]),
+    ("source_changed", 3, ["backup"]),
+    ("wrong_scope", 3, []),
+])
+def test_dental_workflow_rollout_only_migrates_after_its_backup(monkeypatch, case, exit_code, expected_steps):
+    from sqlalchemy.engine import make_url
+    from scripts import backup_and_migrate_dental_workflows as workflows
+
+    raw = "postgresql+psycopg://fixture:synthetic@127.0.0.1:5542/synthetic"
+    runtime = "postgresql+asyncpg://runtime@127.0.0.1:5542/" + ("other" if case == "wrong_scope" else "synthetic")
+    monkeypatch.setenv("APP_DATABASE_URL", runtime)
+    monkeypatch.setattr(workflows, "connection_values", lambda: (raw, make_url(raw)))
+    monkeypatch.setattr(workflows, "release_lock", unlocked)
+    monkeypatch.setattr(workflows, "verify_key_provisioning", lambda _: None)
+    monkeypatch.setattr(workflows, "source_ready", lambda raw, revision: True)
+    monkeypatch.setattr(workflows, "storage_values", lambda: {})
+    steps = []
+    revisions = [workflows.TARGET] if case == "already_published" else [
+        workflows.PREVIOUS, "0082_unexpected" if case == "source_changed" else workflows.PREVIOUS
+    ]
+    current = iter(revisions)
+    monkeypatch.setattr(workflows, "migrated_version", lambda _: next(current))
+
+    def backup(url, settings, archive, **details):
+        assert details == {"backup_context": "dental-patient-visits-0087",
+                           "schema_revision": workflows.PREVIOUS, "preserve_ownership": True}
+        steps.append("backup")
+        if case == "backup_failed":
+            raise RuntimeError("synthetic backup failure")
+
+    def migrate(command, **details):
+        assert steps == ["backup"]
+        assert command[-3:] == ["alembic", "upgrade", workflows.TARGET]
+        assert details["env"]["ORION_MIGRATION_SWITCH_ROLE"] == "1"
+        steps.append("upgrade")
+
+    def validate(_):
+        steps.append("validate")
+        return True
+
+    monkeypatch.setattr(workflows, "perform_backup", backup)
+    monkeypatch.setattr(workflows.subprocess, "run", migrate)
+    monkeypatch.setattr(workflows, "workflows_ready", validate)
+    assert workflows.main() == exit_code
+    assert steps == expected_steps
+
+
+def test_release_checks_if_a_first_key_can_be_created_without_reading_patient_data(monkeypatch, capsys):
+    from scripts import backup_and_migrate_dental_workflows as workflows
+
+    monkeypatch.delenv("DENTAL_DATA_KEY_B64", raising=False)
+    monkeypatch.setattr(workflows, "ciphertext_exists", lambda _: False)
+    workflows.verify_key_provisioning("synthetic-db")
+    assert '"first_key_allowed": true' in capsys.readouterr().out
+
+    monkeypatch.setattr(workflows, "ciphertext_exists", lambda _: True)
+    with pytest.raises(RuntimeError, match="dental_original_key_required"):
+        workflows.verify_key_provisioning("synthetic-db")
+    assert '"first_key_allowed": false' in capsys.readouterr().out
+
+
+def test_release_rejects_a_malformed_configured_key_without_logging_it(monkeypatch, capsys):
+    from scripts import backup_and_migrate_dental_workflows as workflows
+
+    monkeypatch.setenv("DENTAL_DATA_KEY_B64", "synthetic-invalid-key")
+    with pytest.raises(RuntimeError, match="dental_configured_key_is_invalid"):
+        workflows.verify_key_provisioning("synthetic-db")
+    assert "synthetic-invalid-key" not in capsys.readouterr().out

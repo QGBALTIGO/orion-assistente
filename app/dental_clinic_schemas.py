@@ -1,9 +1,9 @@
 """Validated dental inputs. No defaults that fabricate clinical findings."""
 from datetime import date
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import UUID4, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class Strict(BaseModel):
@@ -49,9 +49,25 @@ class PatientCreate(Strict):
     @field_validator("contact_phone","guardian_phone")
     @classmethod
     def valid_phone(cls, value):
-        if value is not None and (len(value)<8 or not all(c in "+0123456789 ()-" for c in value)):
+        if value is not None and (not 8 <= sum(c in "0123456789" for c in value) <= 15
+                                  or not all(c in "+0123456789 ()-" for c in value)):
             raise ValueError("Telefone inválido")
         return value
+
+
+class PatientRegistration(PatientCreate):
+    request_id: UUID4 | None = None
+
+
+class PatientSearch(Strict):
+    query: str = Field("", max_length=120)
+    limit: int = Field(30, ge=1, le=100)
+    offset: int = Field(0, ge=0)
+
+
+class VisitPatientLink(Strict):
+    patient_id: UUID | None
+    expected_version: int = Field(ge=0, le=2147483646, strict=True)
 
 
 class PatientPatch(PatientCreate):
@@ -127,6 +143,12 @@ class Periodontal(Strict):
         return self
 
 
+class IntakeSubmission(Strict):
+    template_id: UUID
+    version: int = Field(ge=1, strict=True)
+    answers: list[Annotated[str, Field(max_length=1000)]] = Field(min_length=1, max_length=50)
+
+
 class Anamnesis(Strict):
     complaint: str = Field(min_length=2,max_length=2500)
     medical_history: str | None = Field(None,max_length=4000)
@@ -134,6 +156,7 @@ class Anamnesis(Strict):
     declared_medications: str | None = Field(None,max_length=2000)
     observations: str | None = Field(None,max_length=2500)
     answered_by: Literal["patient","guardian","clinician"]
+    intake_template: IntakeSubmission | None = None
 
 
 class Progress(Strict):
@@ -179,11 +202,36 @@ class PlainDocument(Strict):
     state: Literal["draft","recorded"] = "draft"
 
 
+ProsthesisStatus = Literal["requested", "ready_to_send", "working", "delivered", "completed", "cancelled"]
+
+
 class Prosthesis(Strict):
     laboratory: str = Field(min_length=2,max_length=120)
     description: str = Field(min_length=3,max_length=3000)
     due_date: date | None = None
-    status: Literal["requested","working","delivered","cancelled"] = "requested"
+    status: ProsthesisStatus = "requested"
+
+
+class ProsthesisTransition(Strict):
+    status: ProsthesisStatus
+    entry_key: str = Field(min_length=8, max_length=120, pattern=r"^[a-zA-Z0-9._:-]+$")
+
+
+class LaboratoryCreate(Strict):
+    name: str = Field(min_length=2, max_length=120)
+    phone: str | None = Field(None, max_length=30, pattern=r"^\+?[0-9 ()-]+$")
+
+    @field_validator("phone")
+    @classmethod
+    def phone_digits(cls, value):
+        if value is not None and not 8 <= sum(char.isdigit() for char in value) <= 15:
+            raise ValueError("Telefone do laboratório inválido")
+        return value
+
+
+class LaboratoryUpdate(LaboratoryCreate):
+    active: bool = Field(strict=True)
+    expected_version: int = Field(ge=1, strict=True)
 
 
 class Insurance(Strict):
@@ -220,8 +268,39 @@ class RoomCreate(Strict):
     name: str = Field(min_length=2,max_length=80)
 
 
+class RoomRename(RoomCreate):
+    expected_name: str = Field(min_length=1, max_length=80)
+
+
+class ChairAvailability(Strict):
+    active: bool = Field(strict=True)
+
+
 class RoomAssign(Strict):
     room_id: UUID
+
+
+class IntakeQuestion(Strict):
+    prompt: str = Field(min_length=2, max_length=240)
+    active: bool = Field(default=True, strict=True)
+
+
+class IntakeTemplateCreate(Strict):
+    name: str = Field(min_length=2, max_length=80)
+    questions: list[IntakeQuestion] = Field(min_length=1, max_length=50)
+
+    @model_validator(mode="after")
+    def validate_questions(self):
+        prompts = {question.prompt.casefold() for question in self.questions}
+        if len(prompts) != len(self.questions):
+            raise ValueError("Use perguntas distintas")
+        if not any(question.active for question in self.questions):
+            raise ValueError("Mantenha pelo menos uma pergunta ativa")
+        return self
+
+
+class IntakeTemplateUpdate(IntakeTemplateCreate):
+    expected_version: int = Field(ge=1, strict=True)
 
 
 class SupplyCreate(Strict):

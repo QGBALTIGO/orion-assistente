@@ -30,18 +30,23 @@ test('a verified dentist business gets a grouped Orion menu with only existing m
   assert.equal(h.errors.length,0);
 });
 
-test('dashboard uses the live management data contract and has actual booking and patient actions',async t=>{
+test('recepção usa o resumo administrativo, horários locais e ações de consulta e paciente',async t=>{
   const calls=[];
   const h=await makeSuite({initialRoute:'dashboard',permissions:dentalPlan(),
-    respond:(path)=>{calls.push(path);if(path.includes('/management/dashboard'))
-      return {summary:{appointments:7,completed:3,customers:12,cancelled:1,no_show:0}};
+    respond:(path)=>{calls.push(path);if(path.endsWith('/dental/reception/today'))
+      return {day:'2026-11-22',timezone:'America/Campo_Grande',counts:{confirmed:7,completed:3,cancelled:1,no_show:0},
+        upcoming:[{start_at:'2026-11-22T16:30:00Z',end_at:'2026-11-22T17:10:00Z',professional:'Profissional sintético'}]};
       return [];}});
   t.after(()=>h.close());await flush();
   const main=h.document.getElementById('osPageBody');
   assert.match(main.textContent,/Consultas de hoje/);
   assert.match(main.textContent,/Nova consulta/);
   assert.match(main.textContent,/Novo paciente/);
-  assert.ok(calls.some(path=>path.includes('/management/dashboard')));
+  assert.deepEqual([...main.querySelectorAll('#osReceptionCounts dd')].map(el=>el.textContent),['7','3','1','0']);
+  assert.equal(main.querySelector('time').textContent,'12:30');
+  assert.equal(main.querySelectorAll('[data-os-action=new-appointment]').length,1);
+  assert.ok(calls.some(path=>path.endsWith('/dental/reception/today')));
+  assert.ok(!calls.some(path=>path.includes('/records')||path.includes('/management/dashboard')));
   assert.ok(!main.textContent.includes('Sorriso Prime'));
   h.click('#osNav [data-os-route=clientes]');await flush();
   assert.match(h.document.querySelector('.os-client-heading h1').textContent,/Pacientes/);
@@ -106,4 +111,243 @@ test('dental styles use the existing Orion tokens and mobile breakpoints',()=>{
   assert.match(css,/--os-font:/);
   assert.match(css,/@media\(max-width:767px\)/);
   assert.match(css,/@media\(prefers-reduced-motion:reduce\)/);
+});
+
+test('o proprietário odontológico cadastra e renomeia uma cadeira nas configurações',async t=>{
+  const id='10000000-0000-4000-8000-000000000003';
+  const chairs=[];
+  const h=await makeSuite({initialRoute:'configuracoes',
+    permissions:dentalPlan({dental_clinical_enabled:true}),respond:(path,method,body)=>{
+      if(path.endsWith('/dental/chair-settings')){
+        if(method==='GET')return {items:[...chairs]};
+        chairs.push({id,active:true,name:body.name});
+        return chairs[0];
+      }
+      if(path.endsWith('/dental/chair-settings/'+id)&&method==='PATCH'){
+        assert.equal(body.expected_name,chairs[0].name);
+        chairs[0]={...chairs[0],name:body.name};
+        return chairs[0];
+      }
+      return [];
+    }});
+  t.after(()=>h.close());await flush();
+  h.click('[data-os-settings="dental-chairs"]');await flush();
+  assert.match(h.document.getElementById('osPageBody').textContent,/Nenhuma cadeira cadastrada/);
+  h.click('[data-os-action=dental-chair-new]');
+  h.fill('[data-os-form=dental-chair] input[name=name]','  Cadeira 1  ');
+  h.submit('[data-os-form=dental-chair]');await flush();
+  assert.equal(chairs[0].name,'Cadeira 1');
+  assert.match(h.document.getElementById('osPageBody').textContent,/Cadeira 1/);
+  h.click('[data-os-action=dental-chair-edit]');
+  assert.equal(h.document.querySelector('[data-os-form=dental-chair] [name=name]').value,'Cadeira 1');
+  h.fill('[data-os-form=dental-chair] input[name=name]','Sala de avaliação');
+  h.submit('[data-os-form=dental-chair]');await flush();
+  assert.match(h.document.getElementById('osPageBody').textContent,/Sala de avaliação/);
+  assert.deepEqual(h.calls.filter(c=>c.path.includes('/dental/chair-settings')&&c.method!=='GET').map(c=>c.method),['POST','PATCH']);
+  assert.equal(h.errors.length,0);
+});
+
+test('cadeiras não aparecem em outro nicho, manutenção, perfis da equipe ou sem habilitação clínica',async t=>{
+  for(const options of [
+    {permissions:planState('elite',{business_niche:'barbearia',dental_clinical_enabled:true})},
+    {permissions:dentalPlan({dental_clinical_enabled:true}),role:'editor'},
+    {permissions:dentalPlan({dental_clinical_enabled:true}),bridge:{user:{role:'admin',maintenance:{active:true}}}},
+    {permissions:dentalPlan({dental_clinical_enabled:false})}
+  ]){
+    const h=await makeSuite({initialRoute:'configuracoes',...options});
+    t.after(()=>h.close());await flush();
+    assert.equal(h.document.querySelector('[data-os-settings="dental-chairs"]'),null);
+    assert.equal(h.calls.some(c=>c.path.includes('/dental/chair-settings')),false);
+  }
+});
+
+test('inativação exige confirmação e o filtro mostra ativas e inativas',async t=>{
+  const chair={id:'10000000-0000-4000-8000-000000000005',name:'Cadeira de avaliação',active:true};
+  const h=await makeSuite({initialRoute:'configuracoes',
+    permissions:dentalPlan({dental_clinical_enabled:true}),respond:(path,method,body)=>{
+      if(path.endsWith('/dental/chair-settings'))return {items:[{...chair}]};
+      if(path.endsWith('/availability')&&method==='PATCH'){
+        chair.active=body.active;
+        return {...chair};
+      }
+      return [];
+    }});
+  t.after(()=>h.close());await flush();
+  h.click('[data-os-settings=dental-chairs]');await flush();
+  h.click('[data-os-action=dental-chair-availability]');
+  assert.equal(chair.active,true);
+  h.submit('[data-os-form=dental-chair-availability]');await flush();
+  assert.equal(chair.active,false);
+  const filter=h.document.getElementById('osDentalChairFilter');
+  filter.value='active';
+  filter.dispatchEvent(new h.window.Event('change',{bubbles:true}));
+  await flush();
+  assert.match(h.document.getElementById('osPageBody').textContent,/Nenhuma cadeira nesta situação/);
+  const inactiveFilter=h.document.getElementById('osDentalChairFilter');
+  inactiveFilter.value='inactive';
+  inactiveFilter.dispatchEvent(new h.window.Event('change',{bubbles:true}));
+  await flush();
+  assert.match(h.document.querySelector('[data-os-action=dental-chair-availability]').getAttribute('aria-label'),/^Reativar/);
+  h.click('[data-os-action=dental-chair-availability]');
+  h.submit('[data-os-form=dental-chair-availability]');await flush();
+  assert.equal(chair.active,true);
+  assert.match(h.document.getElementById('osPageBody').textContent,/Nenhuma cadeira nesta situação/);
+  assert.equal(h.errors.length,0);
+});
+
+test('modelos de anamnese preservam a ordem das perguntas, a situação e a versão',async t=>{
+  let template;
+  const h=await makeSuite({initialRoute:'configuracoes',
+    permissions:dentalPlan({dental_clinical_enabled:true}),respond:(path,method,body)=>{
+      if(path.endsWith('/dental/intake-templates')){
+        if(method==='GET')return {items:template?[template]:[]};
+        template={id:'10000000-0000-4000-8000-000000000007',version:1,...body};return template;
+      }
+      if(path.endsWith('/dental/intake-templates/'+template?.id)&&method==='PATCH'){
+        assert.equal(body.expected_version,1);
+        template={id:template.id,name:body.name,questions:body.questions,version:2};
+        return template;
+      }
+      return [];
+    }});
+  t.after(()=>h.close());await flush();
+  h.click('[data-os-settings=dental-intake]');await flush();
+  assert.match(h.document.getElementById('osPageBody').textContent,/Nenhum modelo de anamnese/);
+  h.click('[data-os-action=dental-intake-new]');
+  h.fill('[data-os-form=dental-intake] input[name=name]','Modelo sintético');
+  h.fill('#osIntakeQuestions [name=prompt]','Pergunta sintética A');
+  h.click('[data-os-action=dental-intake-add-question]');
+  h.fill('#osIntakeQuestions > :last-child [name=prompt]','Pergunta sintética B');
+  h.click('#osIntakeQuestions > :last-child [name=question_active]');
+  h.submit('[data-os-form=dental-intake]');await flush();
+  assert.deepEqual(JSON.parse(JSON.stringify(template.questions)),
+    [{prompt:'Pergunta sintética A',active:true},{prompt:'Pergunta sintética B',active:false}]);
+  assert.match(h.document.getElementById('osPageBody').textContent,/1 pergunta ativa/);
+  h.click('[data-os-action=dental-intake-edit]');
+  h.fill('[data-os-form=dental-intake] input[name=name]','Modelo revisado');
+  h.submit('[data-os-form=dental-intake]');await flush();
+  assert.equal(template.version,2);
+  assert.match(h.document.getElementById('osPageBody').textContent,/Modelo revisado/);
+  assert.equal(h.errors.length,0);
+});
+
+test('recepção distingue falha de agenda vazia e retoma a consulta automaticamente',async t=>{
+  let refresh,attempts=0;
+  const h=await makeSuite({initialRoute:'dashboard',permissions:dentalPlan(),configureWindow(w){
+    const interval=w.setInterval.bind(w);
+    w.setInterval=(func,ms,...args)=>{if(ms===30000){refresh=func;return 0;}return interval(func,ms,...args);};
+    Object.defineProperty(w.document,'visibilityState',{value:'visible'});
+  },respond(path){
+    if(!path.endsWith('/dental/reception/today'))return [];
+    attempts++;
+    if(attempts===1||attempts===3)throw Error('Falha temporária');
+    return {day:'2026-11-22',timezone:'America/Campo_Grande',counts:{confirmed:0,completed:0,cancelled:0,no_show:0},upcoming:[]};
+  }});
+  t.after(()=>h.close());await flush();
+  assert.equal(h.document.querySelectorAll('#osReceptionCounts dd').length,0);
+  assert.match(h.document.querySelector('#osReceptionNotice').textContent,/Não foi possível/);
+  refresh();await flush();
+  assert.equal(h.document.querySelectorAll('#osReceptionCounts dd').length,4);
+  assert.match(h.document.querySelector('#osReceptionUpcoming').textContent,/Nenhuma consulta confirmada/);
+  refresh();await flush();
+  assert.equal(h.document.querySelectorAll('#osReceptionCounts dd').length,4);
+  assert.match(h.document.querySelector('#osReceptionNotice').textContent,/última consulta/);
+  h.click('[data-os-action=dashboard-agenda-full]');await flush();
+  assert.equal(h.document.querySelector('#page-suite').dataset.osCurrentRoute,'agenda');
+  refresh();await flush();assert.equal(attempts,3);
+});
+
+test('o menu de estoque pertence à odontologia habilitada e o endereço direto mantém a permissão', async t=>{
+  for(const [plan,visible] of [[dentalPlan({dental_clinical_enabled:true}),true],
+    [dentalPlan({dental_clinical_enabled:false}),false],
+    [planState('elite',{business_niche:'barbearia',dental_clinical_enabled:true}),false]]){
+    const h=await makeSuite({initialRoute:'dashboard',permissions:plan});
+    t.after(()=>h.close());await flush();
+    assert.equal(Boolean(h.document.querySelector('#osNav [data-os-route="estoque-odonto"]')),visible);
+    if(!visible){
+      const btn=h.document.createElement('button');btn.dataset.osRoute='estoque-odonto';
+      h.document.getElementById('appView').append(btn);btn.click();await flush();
+      assert.ok(h.calls.every(r=>!r.path.includes('/dental/supplies')));
+      assert.equal(h.document.querySelector('#osDentalClinic'),null);
+    }
+  }
+});
+
+
+test('o caixa exibe o dinheiro pago e a receita pendente do período selecionado', async t=>{
+  const requests=[];
+  const h=await makeSuite({initialRoute:'dashboard',permissions:dentalPlan(),respond(path){
+    if(path.includes('/management/finance/summary?')){
+      const q=new URL(path,'https://orion.test').searchParams;
+      const start=q.get('start_date'),end=q.get('end_date');requests.push({start,end});
+      return {period:{start_date:start,end_date:end},summary:{income_cents:12345,expense_cents:14800,
+        pending_income_cents:2000,balance_cents:-2455}};
+    }
+    return [];
+  }});
+  t.after(()=>h.close());await flush();
+  const amounts=()=>[...h.document.querySelectorAll('#osCashAmounts dd')].map(x=>x.textContent.replace(/\s/g,' '));
+  assert.deepEqual(amounts(),['R$ 123,45','R$ 148,00','-R$ 24,55','R$ 20,00']);
+  assert.equal(requests[0].start,requests[0].end);
+  h.click('[data-cash-range=month]');await flush();
+  assert.ok(requests.at(-1).start.endsWith('-01'));
+  assert.equal(h.document.querySelector('[data-cash-range=month]').getAttribute('aria-pressed'),'true');
+  assert.equal(h.document.querySelectorAll('#osPageBody [data-os-route=financeiro]').length,1);
+});
+
+test('financeiro restrito não é consultado pela recepção',async t=>{
+  const plan=dentalPlan();plan.permissions['finance.basic']=false;
+  const h=await makeSuite({initialRoute:'dashboard',permissions:plan});t.after(()=>h.close());await flush();
+  assert.equal(h.document.getElementById('osCashAmounts'),null);
+  assert.ok(!h.calls.some(c=>c.path.includes('/management/finance/summary')));
+});
+
+test('resposta mensal atrasada não substitui o caixa do dia selecionado', async t=>{
+  let finishMonth;
+  let dayReads=0;
+  const h=await makeSuite({
+    initialRoute:'dashboard',permissions:dentalPlan(),
+    configureWindow(w){
+      const BrowserDate=w.Date;
+      w.Date=class extends BrowserDate{
+        constructor(...args){super(...(args.length?args:['2026-11-22T22:00:00Z']));}
+      };
+    },
+    respond(path){
+      if(!path.includes('/management/finance/summary?'))return [];
+      const query=new URL(path,'https://orion.test').searchParams;
+      const period={start_date:query.get('start_date'),end_date:query.get('end_date')};
+      function report(cents){
+        return {period,summary:{income_cents:cents,expense_cents:0,balance_cents:cents,pending_income_cents:0}};
+      }
+      if(period.start_date===period.end_date)return report(++dayReads*10000);
+      return new Promise(resolve=>{finishMonth=()=>resolve(report(999900));});
+    }
+  });
+  t.after(()=>h.close());
+  await flush();
+  h.click('[data-cash-range=month]');
+  await flush();
+  assert.equal(typeof finishMonth,'function');
+  assert.equal(h.document.querySelector('#osCashAmounts dd'),null);
+  h.click('[data-cash-range=day]');
+  await flush();
+  finishMonth();
+  await flush();
+  assert.equal(h.document.querySelector('#osCashAmounts dd').textContent.replace(/\s/g,' '),'R$ 200,00');
+  assert.equal(h.document.querySelector('[data-cash-range=day]').getAttribute('aria-pressed'),'true');
+  assert.equal(h.document.querySelector('#osCashAmounts').getAttribute('aria-busy'),'false');
+});
+
+test('falha de caixa preserva a agenda e não apresenta dinheiro fictício',async t=>{
+  const h=await makeSuite({initialRoute:'dashboard',permissions:dentalPlan(),respond(path){
+    if(path.endsWith('/dental/reception/today'))return {day:'2026-11-22',timezone:'America/Campo_Grande',
+      counts:{confirmed:2,completed:0,cancelled:0,no_show:0},upcoming:[]};
+    if(path.includes('/finance/summary'))throw Error('Caixa temporariamente indisponível');
+    return [];
+  }});
+  t.after(()=>h.close());await flush();
+  assert.match(h.document.getElementById('osCashNotice').textContent,/Não foi possível/);
+  assert.equal(h.document.querySelectorAll('#osCashAmounts dd').length,0);
+  assert.equal(h.document.querySelector('#osReceptionCounts dd').textContent,'2');
 });

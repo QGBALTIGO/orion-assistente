@@ -1,5 +1,5 @@
 /* Orion Dental: inherit the exact Orion palette, font and form control design. */
-.os-dental{color:var(--os-text);font:inherit;min-width:0}
+.os-dental{color:var(--os-text);font:inherit;min-width:0;container:dental / inline-size}
 .os-dental :where(h2,h3,p){margin:0}
 .os-dental-toolbar,.os-dental-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .os-dental-toolbar{justify-content:space-between;margin-bottom:18px}
@@ -30,6 +30,8 @@
 .os-dental-entry{padding:14px;border:1px solid var(--os-border);border-radius:11px;background:var(--os-card);display:grid;gap:6px;overflow-wrap:anywhere}
 .os-dental-entry p{white-space:pre-wrap;overflow-wrap:anywhere;color:var(--os-text);font-size:14px}
 .os-dental-entry small{color:var(--os-muted);font-size:12px}
+.os-dental-prosthesis-card{gap:14px}
+.os-dental-prosthesis-card .os-dental-controls{align-self:end}
 .os-dental-controls{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
 .os-dental-notice{border:1px solid var(--os-border);background:var(--os-tint);color:var(--os-text);border-radius:12px;padding:12px 14px;font-size:13px;line-height:20px}
 .os-dental-error{border-color:var(--os-danger);background:var(--os-danger-bg);color:var(--os-danger)}
@@ -55,3 +57,105 @@
 @media(max-width:767px){.os-dental-grid{display:grid;grid-template-columns:minmax(0,1fr)}.os-dental-card{padding:15px;border-radius:13px}.os-dental-list{max-height:280px}.os-dental-odontogram{grid-template-columns:repeat(8,minmax(30px,1fr))}.os-dental-tabs{margin-inline:-4px;padding-inline:4px}.os-dental-face-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.os-dental-row>*{min-width:120px}}
 @media(max-width:359px){.os-dental-odontogram{grid-template-columns:repeat(8,minmax(28px,1fr))}.os-dental-tooth{font-size:11px;min-height:44px}.os-dental-face-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.os-dental-field :is(input,select,textarea){font-size:16px}}
 @media(prefers-reduced-motion:reduce){.os-dental *, .os-dental *::before, .os-dental *::after{scroll-behavior:auto;animation-duration:.01ms!important;transition-duration:.01ms!important}}
+
+.os-dental-workspace .os-reception{container:reception / inline-size;width:100%;box-sizing:border-box;display:grid;gap:18px;max-width:1120px;margin-inline:auto;color:var(--os-text)}
+.os-reception :is(h1,h2,p,dl,dd,ol){margin:0}
+.os-reception-head,.os-reception-card>header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.os-reception-head{padding-block:2px 4px}
+.os-reception-head h1{font:650 clamp(26px,3vw,36px)/1.15 var(--os-display)}
+.os-reception-head p,.os-reception-card>header p{margin-top:4px;color:var(--os-muted);overflow-wrap:anywhere}
+.os-reception-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.os-reception .os-reception-card{margin:0;padding:clamp(16px,2.5vw,28px);min-width:0}
+.os-reception-card h2{font:600 clamp(18px,2vw,22px)/1.25 var(--os-display)}
+.os-reception-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--os-border);border:1px solid var(--os-border);border-radius:12px;overflow:hidden}
+.os-reception #osReceptionCounts:not(:empty),.os-reception #osReceptionUpcoming:not(:empty){margin-top:16px}
+.os-reception-metrics>div{min-width:0;padding:14px;background:var(--os-card)}
+.os-reception-metrics dt{display:flex;align-items:center;gap:7px;color:var(--os-muted);font-size:14px;overflow-wrap:anywhere}
+.os-reception-metrics dt .os-icon{flex:none;width:17px;height:17px;color:var(--os-primary)}
+.os-reception-metrics dd{margin-top:7px;font:650 30px/1.2 var(--os-display);font-variant-numeric:tabular-nums}
+.os-reception-visits{list-style:none;padding:0}
+.os-reception-visits li{display:grid;grid-template-columns:4.5rem minmax(0,1fr) auto;align-items:baseline;gap:12px;padding-block:12px}
+.os-reception-visits li+li{border-top:1px solid var(--os-border)}
+.os-reception-visits li :is(span,small){overflow-wrap:anywhere}
+.os-reception-visits time{font:600 18px/1.3 var(--os-display);font-variant-numeric:tabular-nums}
+.os-reception-visits small,.os-reception-empty,.os-reception-notice{color:var(--os-muted)}
+.os-reception-notice:empty{display:none}
+.os-reception footer{justify-self:start}
+.os-reception .os-button{min-height:44px}
+@container reception (max-width:700px){
+  .os-reception-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:680px){
+  .os-dental-workspace .os-reception{gap:12px}
+  .os-reception-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .os-reception-head{align-items:flex-start;flex-direction:column}
+  .os-reception-visits li{grid-template-columns:3.3rem minmax(0,1fr) auto;gap:8px}
+}
+@container reception (max-width:350px){
+  .os-reception-metrics>div{padding:11px 8px}
+  .os-reception-metrics dt{gap:4px;font-size:13px}
+}
+.os-dental-linked-visits{list-style:none;margin:0;padding:0}
+.os-dental-linked-visits li,.os-dental-visit-search{display:flex;gap:12px;align-items:end;justify-content:space-between;flex-wrap:wrap}
+.os-dental-linked-visits li{align-items:center;padding:10px 0;border-bottom:1px solid var(--os-border)}
+.os-dental-linked-visits li>div{flex:1 1 14rem;min-width:0;overflow-wrap:anywhere}
+.os-dental-linked-visits small{display:block;color:var(--os-muted);margin-top:3px}
+.os-dental-visit-search .os-dental-field{flex:1 1 10rem;min-width:0}
+
+@container dental (max-width:720px){
+  .os-dental-grid{grid-template-columns:minmax(0,1fr)}
+}
+
+.os-stock-filter{display:grid;grid-template-columns:minmax(0,2fr) minmax(120px,1fr) auto;align-items:end;gap:12px}
+.os-stock-list{list-style:none;margin:0;padding:0}
+.os-stock-list>li{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 0;border-top:1px solid var(--os-border)}
+.os-stock-list>li>div:first-child{min-width:0;overflow-wrap:anywhere}
+.os-stock-list small{display:block;color:var(--os-muted)}
+.os-stock-create summary{cursor:pointer;font-weight:600}
+.os-stock-create[open] form{margin-top:16px;align-items:end}
+@container dental (max-width:610px){
+  .os-stock-filter{grid-template-columns:minmax(0,1fr) auto}
+  .os-stock-filter>.os-dental-field:first-child{grid-column:1/-1}
+  .os-stock-list>li{align-items:start;flex-direction:column}
+}
+
+.os-reception .os-cash-range{display:inline-flex;width:auto;margin:12px 0}
+.os-cash-range .os-pill-tab{min-height:44px}
+.os-cash-range .os-pill-tab[aria-pressed=true]{background:var(--os-card);color:var(--os-text);box-shadow:var(--os-shadow)}
+.os-cash-values{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:0}
+.os-cash-values>div{min-width:0;padding:12px;border:1px solid var(--os-border);border-radius:12px}
+.os-cash-values dt{font:500 14px/1.35 var(--os-font);color:var(--os-muted)}
+.os-cash-values dd{margin:6px 0 0;font:600 clamp(18px,2vw,25px)/1.2 var(--os-display);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.os-cash-values .os-cash-long{grid-column:1/-1}
+@container reception (max-width:360px){
+  .os-cash-values{grid-template-columns:minmax(0,1fr)}
+  .os-cash-values>div{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .os-cash-values dd{margin:0;text-align:end}
+  .os-cash-values .os-cash-long{display:block}
+}
+
+.os-directory{container-type:inline-size}
+.os-directory .os-dental-card,.os-directory-heading{max-width:960px}
+.os-directory-heading{align-items:center;display:flex;flex-wrap:wrap;gap:8px 16px}
+.os-directory .os-dental-field>span,.os-directory-guardian legend{font-weight:600;color:var(--os-text)}
+.os-directory .os-dental-field input,.os-directory .os-button{min-height:44px}
+.os-directory-search{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:10px}
+.os-directory-fields,.os-directory-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.os-directory-fields label:first-child{grid-column:1/-1}
+.os-directory-guardian .os-directory-fields label:first-child{grid-column:auto}
+.os-directory-guardian{min-width:0;border:0;border-top:1px solid var(--os-border);margin:0;padding:14px 0 0}
+.os-directory-guardian legend{padding-right:10px}
+.os-directory-list{display:grid;gap:6px;margin:0;padding:0;list-style:none}
+.os-directory-list .os-dental-patient{text-align:start;padding:11px 14px}
+.os-directory-list .os-dental-patient small{display:block;color:var(--os-muted);font-size:13px}
+.os-directory-list .os-dental-patient svg{flex:none}
+.os-directory-facts{margin:0;padding:2px 0}
+.os-directory-facts dt{color:var(--os-muted);font-size:13px}
+.os-directory-facts dd{margin:3px 0 0;overflow-wrap:anywhere}
+.os-directory [data-patient-status]:empty{display:none}
+.os-directory [data-patient-status][role=alert]{color:var(--os-danger)}
+.os-directory .os-dental-controls{align-items:center;flex-wrap:wrap}
+@container(max-width:540px){
+  .os-directory .os-dental-card{padding:16px}
+  .os-directory-fields,.os-directory-facts{grid-template-columns:minmax(0,1fr)}
+}

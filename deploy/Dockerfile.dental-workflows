@@ -1,0 +1,8 @@
+# Keep the published API, worker protocol and ingress as the immutable base.
+FROM ghcr.io/qgbaltigo/orion-assistente-api@sha256:d100358d61e1fd4c0a68dc1fa745f9316d36a45c4a34e38732138ec208f907c0
+ARG ORION_DENTAL_COMMIT
+LABEL org.opencontainers.image.revision=$ORION_DENTAL_COMMIT
+COPY --chown=appuser:appuser app/dental_clinic_api.py app/dental_clinic_schemas.py /srv/app/app/
+COPY --chown=appuser:appuser app/static/orion-dental-clinic.css app/static/orion-dental-clinic.js app/static/orion-suite.js /srv/app/app/static/
+COPY --chown=appuser:appuser alembic/versions/0082_dental_chair_availability.py alembic/versions/0083_dental_intake_templates.py alembic/versions/0084_dental_supply_history.py alembic/versions/0085_dental_prosthesis_tracking.py alembic/versions/0086_dental_laboratories.py alembic/versions/0087_dental_patient_visits.py /srv/app/alembic/versions/
+COPY --chown=appuser:appuser scripts/backup_and_migrate_dental_workflows.py scripts/check_dental_key_history.py /srv/app/scripts/
