@@ -47,7 +47,7 @@
         !value.site || typeof value.site.title !== 'string' ||
         !Array.isArray(value.services) || !Array.isArray(value.professionals) ||
         !Array.isArray(value.opening_hours) || typeof value.timezone !== 'string' ||
-        !/^\\d{4}-\\d{2}-\\d{2}$/.test(value.today || '')) {
+        !/^\d{4}-\d{2}-\d{2}$/.test(value.today || '')) {
       removeStored(catalogueKey);
       return null;
     }
@@ -66,9 +66,9 @@
         entry.expiresAt <= Date.now() || !value ||
         typeof value.name !== 'string' || !value.name.trim() || value.name.length > 120 ||
         typeof value.phone !== 'string' ||
-        !/^(?:\\+55[1-9][0-9]{9,10}|\\+5959[0-9]{8})$/.test(value.phone) ||
+        !/^(?:\+55[1-9][0-9]{9,10}|\+5959[0-9]{8})$/.test(value.phone) ||
         typeof value.birthDate !== 'string' ||
-        !/^\\d{4}-\\d{2}-\\d{2}$/.test(value.birthDate) ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(value.birthDate) ||
         value.birthDate < '1900-01-01' || value.birthDate > (data?.today || '9999-12-31')) {
       removeStored(customerKey);
       return null;
