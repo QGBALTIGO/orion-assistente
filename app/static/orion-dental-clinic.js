@@ -20,7 +20,8 @@
   const state={host:null,request:null,tenantId:'',canAccess:null,epoch:0,access:null,team:[],professionals:[],
     patients:[],patient:null,records:[],exams:[],intakeTemplates:[],rooms:[],appointments:[],roomDay:localToday(),
     roomZone:'',supplies:[],supplyHistory:null,visitBoard:null,prostheses:null,laboratories:null,labEditing:null,q:'',selectedTooth:11,
-    dentition:'permanent',tab:'anamnesis',section:'patients',findings:[],periodontal:[],stages:[],
+    dentition:'permanent',tab:'anamnesis',section:'patients',findings:[],chartDraft:{notes:{},narrative:''},
+    recordAttempts:new Map(),periodontal:[],stages:[],
     error:'',success:'',loading:false,submitting:false,patientRead:0,searchRead:0};
   const endpoint=path=>'/api/v1/tenants/'+state.tenantId+'/dental'+path;
   const valid=epoch=>state.host&&state.host.isConnected&&state.epoch===epoch&&state.canAccess?.()===true;
@@ -28,10 +29,25 @@
   const formValues=form=>Object.fromEntries(new FormData(form).entries());
   function info(message,error=false){return '<div class="os-dental-notice'+(error?' os-dental-error':'')+'" role="'+(error?'alert':'status')+'">'+esc(message)+'</div>';}
   const pending=()=>'<div class="os-dental-muted" role="status">Carregando informações protegidas…</div>';
-  const icons='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5C7 2 3 4 3 9c0 4 2 8 3.2 10.2.8 1.7 2.3 1.7 3 .1l2.1-5c.4-.8 1.1-.8 1.5 0l2 5c.7 1.6 2.2 1.6 3-.1C19 17 21 13 21 9c0-5-4-7-9-4Z"/></svg>';
+  const toothPaths={
+    incisor:'M7 3.5Q12 2 17 3.5L16.6 9Q16.4 11 14.8 12.5L13 20Q12.6 22 11.7 21.2Q10.3 19.3 9.4 12.4Q7.6 10.9 7.4 9Z',
+    canine:'M7.5 6.2L11 3.2Q12 2.3 13 3.2L16.8 5.8Q18.1 9.7 14.6 12.8L12.6 21Q12 22.5 11.4 21Q9.9 16.2 9.5 12.7Q6.9 10.5 7.5 6.2Z',
+    premolar:'M5.8 6Q7.4 2 10.5 4.1Q12 5.2 13.6 4.1Q17.3 2 18.1 6.3Q19 10 15.7 13L13.6 20Q12.9 22 12.1 19.8L11.4 15.5L10 20Q9 21.8 8.6 19.3L8.4 13Q5 9.8 5.8 6Z',
+    molar:'M3.5 7Q4.4 2.5 8.2 4Q10.4 5.1 12.6 4Q16.7 2.2 19.3 5Q21.4 7.7 19 12L17.5 19Q16.9 21.7 15.4 20.3L12.6 14.4Q12.1 13.5 11.6 14.6L8.7 20.4Q7.4 22 6.6 19.6L5.2 13.3Q3 10 3.5 7Z'
+  };
+  function toothGlyph(number){
+    const position=number%10,quadrant=Math.floor(number/10);
+    const type=position<3?'incisor':position===3?'canine':quadrant<=4&&position<6?'premolar':'molar';
+    const upper=[1,2,5,6].includes(quadrant);
+    return '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="'+toothPaths[type]+'"'+
+      (upper?' transform="translate(0 24) scale(1 -1)"':'')+'/></svg>';
+  }
   const adult=[18,17,16,15,14,13,12,11,21,22,23,24,25,26,27,28,
                48,47,46,45,44,43,42,41,31,32,33,34,35,36,37,38];
   const child=[55,54,53,52,51,61,62,63,64,65,85,84,83,82,81,71,72,73,74,75];
+  const toothFaces={M:'Mesial',D:'Distal',V:'Vestibular',L:'Lingual',O:'Oclusal',I:'Incisal',G:'Geral'};
+  const toothFindings={caries:'Cárie',restoration:'Restauração',crown:'Coroa',fracture:'Fratura',
+    absent:'Ausente',implant:'Implante',healthy:'Sem alteração observada',watch:'Acompanhar'};
   const toothOptions=[['','Selecione'],...adult.concat(child).map(n=>[String(n),String(n)])];
   const topics=[
     ['anamnesis','Anamnese'],['odontogram','Odontograma'],['periodontal','Periodontia'],
@@ -280,15 +296,49 @@
       '<div class="os-dental-controls">'+button('Cancelar','cancel-patient')+
       '<button type="submit" class="os-button">'+(editing?'Salvar alterações':'Cadastrar paciente')+'</button></div></form></div>';
   }
+  function clearOdontogram(){
+    state.chartDraft={notes:{},narrative:''};
+    state.findings=[];state.dentition='permanent';state.selectedTooth=11;
+  }
+  function chartInput(event){
+    const el=event.target;
+    if(!el.closest?.('form[data-kind=odontogram]'))return;
+    if(el.name==='narrative')state.chartDraft.narrative=el.value;
+    if(['face','finding','finding_note'].includes(el.name)){
+      const note=state.chartDraft.notes[state.selectedTooth]||{};
+      note[el.name]=el.value;
+      if(Object.values(note).some(Boolean))state.chartDraft.notes[state.selectedTooth]=note;
+      else delete state.chartDraft.notes[state.selectedTooth];
+    }
+  }
   function toothGrid(){
-    const values=state.dentition==='permanent'?adult:state.dentition==='deciduous'?child:adult.concat(child);
+    const dentitions=state.dentition==='mixed'?[['Permanente',adult],['Decídua',child]]:
+      state.dentition==='permanent'?[['Permanente',adult]]:[['Decídua',child]];
+    function quadrant(teeth,label){
+      const buttons=teeth.map(n=>{
+        const marked=state.findings.filter(item=>item.tooth===n).length;
+        return '<button type="button" class="os-dental-tooth" data-dental-tooth="'+n+'" aria-pressed="'+
+          (n===state.selectedTooth)+'" aria-label="Dente '+n+(marked?', com registro':'')+'"'+
+          (marked?' data-marked="true"':'')+'>'+toothGlyph(n)+'<span>'+n+'</span>'+
+          (marked?'<i class="os-odont-mark" aria-hidden="true"></i>':'')+'</button>';
+      }).join('');
+      return '<div class="os-odont-quadrant" role="group" aria-label="'+label+'"><h5>'+label+
+        '</h5><div class="os-odont-teeth">'+buttons+'</div></div>';
+    }
     return '<div class="os-dental-odontogram" role="group" aria-label="Selecionar dente FDI">'+
-      values.map(n=>'<button type="button" class="os-dental-tooth" data-dental-tooth="'+n+
-      '" aria-pressed="'+String(state.selectedTooth===n)+'" title="Dente '+n+'">'+icons+'<span>'+n+'</span></button>').join('')+'</div>';
+      dentitions.map(([label,teeth])=>{
+        const size=teeth.length/4;
+        return '<section class="os-odont-set" aria-label="Dentição '+label.toLowerCase()+'">'+
+          (dentitions.length>1?'<h4>Dentição '+label.toLowerCase()+'</h4>':'')+
+          '<div class="os-odont-arch">'+quadrant(teeth.slice(0,size),'Superior direito')+
+          quadrant(teeth.slice(size,2*size),'Superior esquerdo')+'</div>'+
+          '<div class="os-odont-arch">'+quadrant(teeth.slice(2*size,3*size),'Inferior direito')+
+          quadrant(teeth.slice(3*size),'Inferior esquerdo')+'</div></section>';
+      }).join('')+(state.findings.length?'<p class="os-odont-legend"><i class="os-odont-mark" aria-hidden="true"></i>Face registrada nesta avaliação</p>':'')+'</div>';
   }
   function findingList(){
     return state.findings.length?'<div class="os-dental-table-wrap"><table class="os-dental-table"><thead><tr><th>Dente</th><th>Face</th><th>Registro</th><th></th></tr></thead><tbody>'+
-      state.findings.map((x,i)=>'<tr><td>'+esc(x.tooth)+'</td><td>'+esc(x.face)+'</td><td>'+esc(x.finding)+'</td><td>'+
+      state.findings.map((x,i)=>'<tr><td>'+esc(x.tooth)+'</td><td>'+esc(toothFaces[x.face])+'</td><td>'+esc(toothFindings[x.finding])+'</td><td>'+
       button('Retirar','remove-finding','os-ghost','data-index="'+i+'"')+'</td></tr>').join('')+'</tbody></table></div>':'<p class="os-dental-muted">Nenhuma face registrada. Não há dentes classificados automaticamente como saudáveis.</p>';
   }
   function periodList(){
@@ -323,6 +373,7 @@
       button('Baixar','download-exam','os-outline','data-id="'+esc(x.id)+'"')+'</div>').join(''):
       '<div class="os-dental-empty">Nenhum exame anexado.</div>')+'</div></div>';
     let fields='';
+    const faceDraft=state.chartDraft.notes[state.selectedTooth]||{};
     if(kind==='anamnesis')fields=intakeTemplateFields()+field('Queixa principal','complaint','textarea','','required maxlength="2500"')+
       field('Histórico médico declarado','medical_history','textarea','','maxlength="4000"')+
       field('Alergias declaradas','declared_allergies','textarea','','maxlength="2000"')+
@@ -330,12 +381,13 @@
       field('Observações adicionais','observations','textarea','','maxlength="2500"')+
       choices('Quem respondeu','answered_by',[['patient','Paciente'],['guardian','Responsável'],['clinician','Profissional']]);
     else if(kind==='odontogram')fields=choices('Dentição','dentition',[['permanent','Permanente'],['deciduous','Decídua'],['mixed','Mista']],state.dentition)+
-      toothGrid()+'<p class="os-dental-muted">Dente selecionado: <strong>'+state.selectedTooth+'</strong></p>'+
-      '<div class="os-dental-row">'+choices('Face','face',[['M','Mesial'],['D','Distal'],['V','Vestibular'],['L','Lingual'],['O','Oclusal'],['I','Incisal'],['G','Geral']])+
-      choices('Achado informado pelo profissional','finding',[['caries','Cárie'],['restoration','Restauração'],['crown','Coroa'],['fracture','Fratura'],['absent','Ausente'],['implant','Implante'],['healthy','Sem alteração observada'],['watch','Acompanhar']])+'</div>'+
-      field('Nota da face','finding_note','text','','maxlength="300"')+
-      button('Adicionar registro da face','add-finding')+findingList()+
-      field('Observação do odontograma','narrative','textarea','','maxlength="3000"');
+      toothGrid()+'<p class="os-dental-muted" aria-live="polite">Dente selecionado <strong>'+state.selectedTooth+'</strong></p>'+
+      '<div class="os-dental-row">'+choices('Face','face',[['','Selecione a face'],...Object.entries(toothFaces)],faceDraft.face)+
+      choices('Achado informado pelo profissional','finding',[['','Selecione o achado'],...Object.entries(toothFindings)],faceDraft.finding)+'</div>'+
+      field('Nota da face','finding_note','text',faceDraft.finding_note||'','maxlength="300"')+
+      '<div class="os-dental-controls">'+button('Adicionar registro da face','add-finding')+
+      button('Limpar campos da face','clear-face','os-ghost')+'</div>'+findingList()+
+      field('Observação do odontograma','narrative','textarea',state.chartDraft.narrative,'maxlength="3000"');
     else if(kind==='periodontal')fields=choices('Dente FDI','period_tooth',toothOptions)+
       '<p class="os-dental-muted">Seis sítios, por ordem: MV, V, DV, ML, L, DL. Campos em branco permanecem não registrados.</p>'+
       '<div class="os-dental-face-grid">'+['MV','V','DV','ML','L','DL'].map((x,i)=>'<div class="os-dental-step">'+
@@ -365,13 +417,15 @@
     else fields=field('Conteúdo do documento','text','textarea','','required maxlength="8000"')+
       field('Referência (opcional)','reference','text','','maxlength="400"')+
       '<p class="os-dental-muted">Documento em rascunho. Não é receituário, atestado ou consentimento assinado digitalmente.</p>';
-    return header+'<form data-dental-form="record" data-kind="'+esc(kind)+'" class="os-dental-space">'+fields+
+    const saving=state.savingRecord?.patient===state.patient?.id&&state.savingRecord?.kind===kind;
+    return header+'<form data-dental-form="record" data-kind="'+esc(kind)+'" class="os-dental-space"'+(saving?' inert aria-busy="true"':'')+'>'+fields+
       '<div class="os-dental-controls"><button type="submit" class="os-button">Salvar registro clínico</button></div></form></div>'+
       '<div class="os-dental-card"><h3>Histórico de '+esc(nameFor(kind))+'</h3>'+recordHistory(kind)+'</div></div>';
   }
   function recordValue(kind,data){
     if(kind==='odontogram')return '<div class="os-dental-table-wrap"><table class="os-dental-table"><thead><tr><th>Dente</th><th>Face</th><th>Registro</th></tr></thead><tbody>'+
-      (data.findings||[]).map(f=>'<tr><td>'+esc(f.tooth)+'</td><td>'+esc(f.face)+'</td><td>'+esc(f.finding)+(f.note?' · '+esc(f.note):'')+'</td></tr>').join('')+'</tbody></table></div>';
+      (data.findings||[]).map(f=>'<tr><td>'+esc(f.tooth)+'</td><td>'+esc(toothFaces[f.face]||f.face)+'</td><td>'+esc(toothFindings[f.finding]||f.finding)+(f.note?' · '+esc(f.note):'')+'</td></tr>').join('')+'</tbody></table>'+
+      (data.narrative?'<p>'+esc(data.narrative)+'</p>':'')+'</div>';
     if(kind==='periodontal')return '<div class="os-dental-space">'+(data.teeth||[]).map(t=>
       '<div class="os-dental-entry"><strong>FDI '+esc(t.tooth)+'</strong><small>'+
       (t.sites||[]).map((s,i)=>['MV','V','DV','ML','L','DL'][i]+': '+(s.depth_mm==null?'—':s.depth_mm+' mm')+
@@ -522,16 +576,17 @@
     host.innerHTML=html;
     if(focusedFilter)host.querySelector('[name="'+focusedFilter+'"]')?.focus({preventScroll:true});
   }
-  async function invoke(fn,success){
+  async function invoke(fn,success,stillCurrent=()=>true){
     if(state.submitting)return;
     const epoch=state.epoch;state.submitting=true;state.error='';state.success='';
-    try{await fn();if(valid(epoch)){state.success=success||'Registro salvo com segurança.';render();}}
-    catch(error){if(valid(epoch)){state.error=error?.message||'Não foi possível salvar.';render();}}
-    finally{state.submitting=false;}
+    try{await fn();if(valid(epoch)&&stillCurrent()){state.success=success||'Registro salvo com segurança.';render();}}
+    catch(error){if(valid(epoch)&&stillCurrent()){state.error=error?.message||'Não foi possível salvar.';render();}}
+    finally{if(state.epoch===epoch)state.submitting=false;}
   }
   async function loadPatient(patient,tab='anamnesis'){
     const epoch=state.epoch,read=++state.patientRead;state.visitBoard=null;
     if(state.patient?.id!==patient){
+      clearOdontogram();state.recordAttempts.clear();
       state.patient=null;state.records=[];state.exams=[];state.intakeTemplates=[];
     }
     state.loading=true;state.error='';render();
@@ -548,7 +603,7 @@
       state.patient=detail;state.records=records.items||[];state.exams=exams.items||[];
       state.intakeTemplates=templates.items||[];
       if(labs)state.laboratories=labs.items;
-      state.tab=tab;state.findings=[];state.periodontal=[];state.stages=[];
+      state.tab=tab;state.periodontal=[];state.stages=[];
     }catch(e){if(valid(epoch)&&read===state.patientRead)state.error=e?.message||'Falha ao consultar paciente.';}
     finally{if(valid(epoch)&&read===state.patientRead){state.loading=false;render();}}
   }
@@ -739,9 +794,13 @@
   function addFinding(){
     const form=state.host?.querySelector('[data-dental-form=record]');if(!form)return;
     const v=formValues(form),tooth=Number(state.selectedTooth),face=v.face;
+    if(!Object.hasOwn(toothFaces,face)||!Object.hasOwn(toothFindings,v.finding)){
+      state.error='Selecione a face e o achado antes de adicionar o registro.';render();return;
+    }
     if(state.findings.some(x=>x.tooth===tooth&&x.face===face)){state.error='Esta face já está na lista.';render();return;}
     if(state.findings.length>=160){state.error='Limite de faces atingido.';render();return;}
     state.findings.push({tooth,face,finding:v.finding,...(v.finding_note?{note:v.finding_note}:{})});
+    delete state.chartDraft.notes[tooth];
     state.error='';render();
   }
   function addPeriod(){
@@ -805,9 +864,13 @@
   async function onClick(event){
     const btn=event.target.closest('[data-dental-action],[data-dental-tab],[data-dental-tooth]');
     if(!btn||!state.host?.contains(btn))return;
-    if(btn.dataset.dentalTooth){state.selectedTooth=Number(btn.dataset.dentalTooth);render();return;}
+    if(btn.dataset.dentalTooth){
+      state.selectedTooth=Number(btn.dataset.dentalTooth);state.error='';render();
+      state.host.querySelector('[data-dental-tooth="'+state.selectedTooth+'"]')?.focus({preventScroll:true});
+      return;
+    }
     if(btn.dataset.dentalTab){
-      state.tab=btn.dataset.dentalTab;state.findings=[];state.periodontal=[];state.stages=[];state.error='';render();
+      state.tab=btn.dataset.dentalTab;state.periodontal=[];state.stages=[];state.error='';render();
       if(state.tab==='prosthesis'&&state.laboratories===null&&state.access?.can_read_records){
         const epoch=state.epoch;
         const labs=await api('/laboratories').catch(()=>null);
@@ -872,6 +935,10 @@
       state.creatingPatient=false;state.editingPatient=false;await loadPatient(btn.dataset.id);return;}
     if(act==='refresh-patient'&&state.patient){await loadPatient(state.patient.id);return;}
     if(act==='add-finding'){addFinding();return;}
+    if(act==='clear-face'){
+      delete state.chartDraft.notes[state.selectedTooth];state.error='';render();
+      state.host.querySelector('[name=face]')?.focus({preventScroll:true});return;
+    }
     if(act==='add-period'){addPeriod();return;}
     if(act==='add-stage'){addStage();return;}
     if(act==='remove-finding'){state.findings.splice(Number(btn.dataset.index),1);render();return;}
@@ -1024,6 +1091,7 @@
         });
       }else{
         const created=await api('/patients','POST',payload);
+        clearOdontogram();state.recordAttempts.clear();
         state.patient={...created};
       }
       const updatedId=state.patient?.id;
@@ -1032,14 +1100,40 @@
       if(updatedId)await loadPatient(updatedId);
     },state.editingPatient?'Cadastro atualizado.':'Paciente cadastrado.');
     if(kind==='record'){
-      if(!patient)return;
-      const payload={kind:form.dataset.kind,content:recordPayload(form),entry_key:crypto.randomUUID()};
+      if(!patient||state.submitting)return;
+      const recordKind=form.dataset.kind,epoch=state.epoch;
+      if(recordKind==='odontogram'){
+        const pendingTooth=Object.keys(state.chartDraft.notes)[0];
+        if(pendingTooth||!state.findings.length){
+          state.error=pendingTooth?'Adicione ou limpe os campos da face no dente '+pendingTooth+' antes de salvar.':
+            'Adicione um registro de face antes de salvar o odontograma.';
+          if(pendingTooth)state.selectedTooth=Number(pendingTooth);
+          render();return;
+        }
+      }
+      const content=recordPayload(form),fingerprint=JSON.stringify(content);
+      let attempt=state.recordAttempts.get(recordKind);
+      if(!attempt||attempt.fingerprint!==fingerprint){
+        attempt={fingerprint,key:crypto.randomUUID()};
+        state.recordAttempts.set(recordKind,attempt);
+      }
+      const payload={kind:recordKind,content,entry_key:attempt.key};
+      const activePatient=()=>valid(epoch)&&state.patient?.id===patient.id&&state.recordAttempts.get(recordKind)===attempt;
+      const samePatient=()=>valid(epoch)&&state.patient?.id===patient.id;
+      const savingRecord=state.savingRecord={patient:patient.id,kind:recordKind};
+      form.inert=true;form.setAttribute('aria-busy','true');
       return invoke(async()=>{
-        await api('/patients/'+patient.id+'/records','POST',payload);
-        const r=await api('/patients/'+patient.id+'/records?limit=100');
-        if(state.patient?.id!==patient.id)return;
-        state.records=r.items||[];state.findings=[];state.periodontal=[];state.stages=[];
-      },'Registro clínico gravado e auditado.');
+        try{
+          await api('/patients/'+patient.id+'/records','POST',payload);
+          if(!activePatient())return;
+          const r=await api('/patients/'+patient.id+'/records?limit=100');
+          if(!activePatient())return;
+          state.records=r.items||[];state.recordAttempts.delete(recordKind);
+          if(recordKind==='odontogram')clearOdontogram();
+          if(recordKind==='periodontal')state.periodontal=[];
+          if(recordKind==='treatment'||recordKind==='budget')state.stages=[];
+        }finally{if(state.savingRecord===savingRecord)state.savingRecord=null;}
+      },'Registro clínico gravado e auditado.',samePatient);
     }
     if(kind==='exam'&&patient)return invoke(async()=>{
       const file=form.querySelector('[name=file]').files?.[0];
@@ -1088,6 +1182,7 @@
   function onChange(event){
     const el=event.target;
     if(!state.host?.contains(el))return;
+    chartInput(event);
     if(state.prostheses?.visit&&el.name==='prosthesis_visit'){state.prostheses.visit.selection=el.value;return;}
     if(state.prostheses?.visit&&el.name==='prosthesis_purpose'){state.prostheses.visit.chosenPurpose=el.value;return;}
     if(['prosthesis_filter','prosthesis_deadline'].includes(el.name)&&state.prostheses){
@@ -1111,8 +1206,15 @@
       return;
     }
     if(el.name==='dentition'){
-      state.dentition=el.value;state.selectedTooth=state.dentition==='deciduous'?55:11;
-      state.findings=[];render();
+      const next=el.value,includes=tooth=>next==='mixed'||(next==='permanent'?tooth<50:tooth>=50);
+      const marked=[...state.findings.map(f=>f.tooth),...Object.keys(state.chartDraft.notes).map(Number)];
+      if(marked.some(tooth=>!includes(tooth))){
+        state.error='Há registros em dentes fora desta dentição. Retire esses registros ou selecione a dentição mista.';
+      }else{
+        state.error='';state.dentition=next;
+        if(!includes(state.selectedTooth))state.selectedTooth=next==='deciduous'?55:11;
+      }
+      render();state.host.querySelector('[name=dentition]')?.focus({preventScroll:true});
     }
   }
   async function fetchAccess(){
@@ -1136,6 +1238,7 @@
     state.host.addEventListener('click',onClick);
     state.host.addEventListener('submit',onSubmit);
     state.host.addEventListener('change',onChange);
+    state.host.addEventListener('input',chartInput);
     state.dedicatedStock=options.dedicatedStock===true;state.stockInMenu=options.stockInMenu===true;
     state.dedicatedProstheses=options.dedicatedProstheses===true;state.prosthesesInMenu=options.prosthesesInMenu===true;
     state.openProsthesisPatient=options.openProsthesisPatient;
@@ -1169,14 +1272,15 @@
     state.epoch++;
     const host=state.host;
     if(host){host.removeEventListener('click',onClick);host.removeEventListener('submit',onSubmit);
-      host.removeEventListener('change',onChange);host.replaceChildren();}
+      host.removeEventListener('change',onChange);host.removeEventListener('input',chartInput);host.replaceChildren();}
+    clearOdontogram();state.recordAttempts.clear();
     Object.assign(state,{host:null,request:null,tenantId:'',canAccess:null,access:null,team:[],
       dedicatedProstheses:false,prosthesesInMenu:false,openProsthesisPatient:null,
       dedicatedStock:false,visitsOnly:false,returnToDirectory:null,stockInMenu:false,stockQuery:'',stockOrder:'asc',stockCursor:null,stockFailedPage:false,
       stockLoading:false,stockRead:0,stockError:'',stockExporting:false,stockExportError:'',stockCreateOpen:false,stockDraft:null,supplyMove:null,
       professionals:[],patients:[],patient:null,records:[],exams:[],intakeTemplates:[],rooms:[],appointments:[],
       roomDay:localToday(),roomZone:'',supplies:[],supplyHistory:null,visitBoard:null,prostheses:null,laboratories:null,labEditing:null,q:'',
-      selectedTooth:11,dentition:'permanent',tab:'anamnesis',section:'patients',findings:[],
+      savingRecord:null,tab:'anamnesis',section:'patients',
       periodontal:[],stages:[],creatingPatient:false,editingPatient:false,
       error:'',success:'',loading:false,submitting:false,patientRead:0,searchRead:0});
   }

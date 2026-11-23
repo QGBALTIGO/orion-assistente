@@ -1585,3 +1585,37 @@ async def test_sales_stages_are_owned_by_clinic_and_concurrent_creates_are_idemp
             await db.execute(text("""UPDATE business_onboarding SET configuration=jsonb_set(configuration,'{niche}','"barbearia"'::jsonb)
                                   WHERE tenant_id=:t"""),{"t":d["b"]})
         assert (await client.get(other)).status_code == 404
+
+
+async def test_odontogram_retries_store_one_complete_private_evaluation(clinic_api_db):
+    import asyncio
+    import httpx
+    from fastapi import FastAPI
+    from app.catalog_api import Actor, authenticate
+    from app.dental_clinic_api import router
+
+    d = clinic_api_db
+    web = FastAPI()
+    web.include_router(router)
+    actor = Actor("member", d["a"], d["account"], "owner")
+    web.dependency_overrides[authenticate] = lambda: actor
+    path = f"/api/v1/tenants/{d['a']}/dental/patients/{d['patient_a']}/records"
+    content = {"dentition": "mixed", "narrative": "Observação sintética de teste",
+               "findings": [{"tooth": 11, "face": "M", "finding": "watch", "note": "Nota A"},
+                            {"tooth": 55, "face": "V", "finding": "restoration", "note": "Nota B"}]}
+    payload = {"kind": "odontogram", "entry_key": str(uuid4()), "content": content}
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=web), base_url="https://test.invalid") as client:
+        res = await asyncio.gather(*[client.post(path, json=payload) for _ in range(4)])
+        assert [r.status_code for r in res] == [201] * 4
+        assert len({r.json()["id"] for r in res}) == 1
+        assert (await client.post(path, json={**payload, "content":{**content, "narrative":"Outro texto"}})).status_code == 409
+        items = (await client.get(path)).json()["items"]
+        assert len(items) == 1 and items[0]["content"] == content
+        assert items[0]["professional_id"] == str(d["pro_a"])
+        assert (await client.get(path.replace(str(d["patient_a"]), str(d["patient_b"])))).status_code == 404
+        actor = Actor("member", d["a"], d["assistant"], "editor")
+        assert (await client.get(path)).status_code == 403
+        assert (await client.post(path, json=payload)).status_code == 403
+    async with d["migrator"].begin() as db:
+        assert await db.scalar(text("SELECT count(*) FROM dental_access_audit WHERE tenant_id=:t AND patient_id=:p AND action='clinical_record_created'"),
+                               {"t":d["a"], "p":d["patient_a"]}) == 1

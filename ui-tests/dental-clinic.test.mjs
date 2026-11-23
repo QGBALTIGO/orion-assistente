@@ -18,12 +18,14 @@ const response=(path,method='GET',data,config)=>{
     clinical_access:config.level?{account_id:account,level:config.level,professional_id:pro}:null,grants:[]};
   if(path.includes('/dental/patients?'))return {items:rows,total:rows.length};
   if(path.endsWith('/dental/patients'))return {id:randomUUID(),...data};
-  if(path.includes('/dental/patients/'+patient+'/records?'))return {items:[]};
+  if(path.includes('/dental/patients/'+patient+'/records?'))return {items:config.records||[]};
   if(path.includes('/dental/patients/'+patient+'/exams')&&method==='GET')return {items:[]};
-  if(path.endsWith('/dental/patients/'+patient))return patientDTO;
+  const individual=rows.find(item=>path.endsWith('/dental/patients/'+item.id));
+  if(individual)return individual;
   if(path.includes('/dental/appointments?'))return {
     timezone:'America/Campo_Grande',items:config.appointments||[]};
-  if(path.endsWith('/dental/patients/'+patient+'/records')&&method==='POST')return {id:randomUUID(),recorded:true};
+  if(path.endsWith('/dental/patients/'+patient+'/records')&&method==='POST')
+    return config.recordSubmit?config.recordSubmit(data):{id:randomUUID(),recorded:true};
   if(path.endsWith('/dental/intake-templates/clinical'))return {items:config.intakeTemplates||[]};
   if(path.endsWith('/dental/rooms'))return method==='GET'?{items:config.rooms||[]}:{id:randomUUID(),...data};
   if(path.endsWith('/room')&&method==='PUT')return {assigned:true};
@@ -88,6 +90,10 @@ test('dentist sees 32 permanent teeth and can record one explicit finding only',
   h.click('[data-dental-tooth="18"]');
   assert.equal(h.host.querySelector('.os-dental-tooth[aria-pressed=true]').dataset.dentalTooth,'18');
   h.click('[data-dental-action=add-finding]');await flush();
+  assert.match(h.host.textContent,/Selecione a face e o achado/);
+  assert.equal(h.host.querySelectorAll('[data-marked=true]').length,0);
+  h.fill('[name=face]','M');h.fill('[name=finding]','watch');
+  h.click('[data-dental-action=add-finding]');await flush();
   assert.match(h.host.textContent,/18/);
   assert.match(h.host.textContent,/watch|Acompanhar|caries|Cárie/);
   h.submit('[data-dental-form=record]');await flush();
@@ -97,6 +103,65 @@ test('dentist sees 32 permanent teeth and can record one explicit finding only',
   assert.equal(writes[0].data.content.findings.length,1);
   assert.equal(writes[0].data.content.findings[0].tooth,18);
   assert.equal(writes[0].data.content.findings[0].face,'M');
+  assert.equal(writes[0].data.content.findings[0].finding,'watch');
+});
+
+test('tooth drafts survive switching arches and tabs but are cleared for the next patient',async t=>{
+  const second={...patientDTO,id:randomUUID(),name:'Paciente Beta'};
+  const h=makeDOM({level:'dentist',patients:[patientDTO,second]});t.after(()=>h.close());
+  await h.mount();h.click('[data-dental-action=select-patient]');await flush();
+  h.click('[data-dental-tab=odontogram]');
+  h.fill('[name=narrative]','Observação sintética do primeiro paciente');
+  h.fill('[name=face]','V');h.fill('[name=finding_note]','Nota apenas para o dente 11');
+  h.click('[data-dental-tooth="18"]');
+  assert.equal(h.host.querySelector('[name=finding_note]').value,'');
+  assert.match(h.host.querySelector('[name=narrative]').value,/primeiro paciente/);
+  h.click('[data-dental-tooth="11"]');
+  assert.equal(h.host.querySelector('[name=finding_note]').value,'Nota apenas para o dente 11');
+  const changeDentition=value=>{
+    const el=h.host.querySelector('[name=dentition]');el.value=value;
+    el.dispatchEvent(new h.window.Event('change',{bubbles:true}));
+  };
+  changeDentition('deciduous');
+  assert.equal(h.host.querySelector('[name=dentition]').value,'permanent');
+  changeDentition('mixed');
+  assert.equal(h.host.querySelectorAll('.os-odont-quadrant').length,8);
+  assert.equal(h.host.querySelectorAll('[data-dental-tooth]').length,52);
+  h.fill('[name=finding]','watch');h.click('[data-dental-action=add-finding]');
+  assert.equal(h.host.querySelector('[data-dental-tooth="11"]').dataset.marked,'true');
+  h.click('[data-dental-tab=progress]');h.click('[data-dental-tab=odontogram]');
+  assert.equal(h.host.querySelector('[data-dental-tooth="11"]').dataset.marked,'true');
+  h.click('[data-dental-tooth="55"]');h.fill('[name=finding_note]','Ainda incompleta');
+  h.submit('[data-dental-form=record]');await flush();
+  assert.match(h.host.textContent,/dente 55 antes de salvar/);
+  assert.equal(h.calls.filter(x=>x.method==='POST'&&x.path.endsWith('/records')).length,0);
+  h.click('[data-dental-action=clear-face]');
+  h.click('[data-dental-action=select-patient][data-id="'+second.id+'"]');await flush();
+  h.click('[data-dental-tab=odontogram]');
+  assert.equal(h.host.querySelector('[name=narrative]').value,'');
+  assert.equal(h.host.querySelector('[name=finding_note]').value,'');
+  assert.equal(h.host.querySelector('[data-marked=true]'),null);
+  assert.equal(h.host.querySelectorAll('[data-dental-tooth]').length,32);
+  assert.equal(h.window.localStorage.length,0);
+});
+
+test('an interrupted clinical save can be retried without a duplicate entry or lost chart note',async t=>{
+  const recorded=new Set();let tries=0;
+  const h=makeDOM({level:'dentist',recordSubmit:data=>{
+    recorded.add(data.entry_key);
+    if(++tries===1)throw Error('Conexão interrompida');
+    return {id:patient,recorded:true};
+  }});t.after(()=>h.close());
+  await h.mount();h.click('[data-dental-action=select-patient]');await flush();h.click('[data-dental-tab=odontogram]');
+  h.fill('[name=narrative]','Observação sintética');
+  h.fill('[name=face]','V');h.fill('[name=finding]','restoration');
+  h.click('[data-dental-action=add-finding]');h.submit('[data-dental-form=record]');await flush();
+  assert.equal(h.host.querySelector('[name=narrative]').value,'Observação sintética');
+  assert.equal(h.host.querySelectorAll('[data-marked=true]').length,1);
+  h.submit('[data-dental-form=record]');await flush();
+  assert.equal(tries,2);assert.equal(recorded.size,1);
+  assert.equal(h.host.querySelectorAll('[data-marked=true]').length,0);
+  assert.equal(h.host.querySelector('[name=narrative]').value,'');
 });
 
 test('periodontal sites keep null for all unmeasured locations instead of inventing 2mm',async t=>{
