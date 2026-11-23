@@ -298,7 +298,7 @@
   }
   function clearOdontogram(){
     state.chartDraft={notes:{},narrative:''};
-    state.findings=[];state.dentition='permanent';state.selectedTooth=11;
+    state.findings=[];state.dentition='permanent';state.selectedTooth=11;state.toothHistory=null;
   }
   function chartInput(event){
     const el=event.target;
@@ -341,6 +341,45 @@
       state.findings.map((x,i)=>'<tr><td>'+esc(x.tooth)+'</td><td>'+esc(toothFaces[x.face])+'</td><td>'+esc(toothFindings[x.finding])+'</td><td>'+
       button('Retirar','remove-finding','os-ghost','data-index="'+i+'"')+'</td></tr>').join('')+'</tbody></table></div>':'<p class="os-dental-muted">Nenhuma face registrada. Não há dentes classificados automaticamente como saudáveis.</p>';
   }
+  function toothHistoryPanel(){
+    const board=state.toothHistory;
+    if(!board)return button('Histórico do dente '+state.selectedTooth,'tooth-history','os-ghost');
+    const records=board.items.map(item=>'<li><strong>'+esc(fmtDate(item.recorded_at))+'</strong><span>'+
+      esc(item.professional)+'</span><ul>'+item.findings.map(f=>'<li>'+esc(toothFaces[f.face]||f.face)+' · '+
+        esc(toothFindings[f.finding]||f.finding)+(f.note?' · '+esc(f.note):'')+'</li>').join('')+'</ul></li>').join('');
+    let result='';
+    if(records)result='<ol class="os-odont-history-list">'+records+'</ol>';
+    else if(!board.loading&&!board.error)result='<p class="os-dental-muted">'+
+      (board.cursor?'O dente não aparece nas avaliações consultadas até aqui.':'Nenhum registro anterior para este dente.')+'</p>';
+    return '<section class="os-odont-history" aria-label="Histórico do dente '+board.tooth+'">'+
+      '<header class="os-dental-toolbar"><h4 id="osToothHistoryHeading" tabindex="-1">Histórico do dente '+board.tooth+
+      '</h4>'+button('Fechar histórico','tooth-history-close','os-ghost')+'</header>'+result+
+      (board.error?info(board.error,true):'')+
+      (board.loading?'<p role="status">Consultando avaliações…</p>':board.error||board.cursor?
+        button(board.error?'Tentar novamente':'Consultar avaliações anteriores','tooth-history-more'):'')+'</section>';
+  }
+  async function readToothHistory(append){
+    const epoch=state.epoch,patient=state.patient?.id,tooth=state.selectedTooth;
+    if(!patient||!state.access?.can_read_records||state.tab!=='odontogram')return;
+    const board=append?state.toothHistory:(state.toothHistory={patient,tooth,items:[],cursor:null});
+    if(!board||board.loading||board.patient!==patient||board.tooth!==tooth)return;
+    board.loading=true;board.error='';render();
+    state.host?.querySelector('#osToothHistoryHeading')?.focus({preventScroll:true});
+    try{
+      const response=await api('/patients/'+patient+'/odontogram/history','POST',
+        {tooth,...(board.cursor?{before:board.cursor}:{})});
+      if(!valid(epoch)||state.toothHistory!==board)return;
+      if(response.tooth!==tooth||!Array.isArray(response.items))throw Error();
+      board.items.push(...response.items);board.cursor=response.next_cursor||null;
+    }catch{
+      if(valid(epoch)&&state.toothHistory===board)board.error='Não foi possível carregar o histórico deste dente.';
+    }finally{
+      if(valid(epoch)&&state.toothHistory===board){
+        board.loading=false;render();
+        state.host?.querySelector('#osToothHistoryHeading')?.focus({preventScroll:true});
+      }
+    }
+  }
   function periodList(){
     return state.periodontal.length?'<div class="os-dental-entry"><strong>'+state.periodontal.length+' dente(s) medido(s)</strong>'+
       state.periodontal.map(t=>'<small>FDI '+esc(t.tooth)+' · '+t.sites.map(s=>s.depth_mm==null?'—':s.depth_mm+' mm').join(' / ')+'</small>').join('')+'</div>':
@@ -381,7 +420,7 @@
       field('Observações adicionais','observations','textarea','','maxlength="2500"')+
       choices('Quem respondeu','answered_by',[['patient','Paciente'],['guardian','Responsável'],['clinician','Profissional']]);
     else if(kind==='odontogram')fields=choices('Dentição','dentition',[['permanent','Permanente'],['deciduous','Decídua'],['mixed','Mista']],state.dentition)+
-      toothGrid()+'<p class="os-dental-muted" aria-live="polite">Dente selecionado <strong>'+state.selectedTooth+'</strong></p>'+
+      toothGrid()+'<p class="os-dental-muted" aria-live="polite">Dente selecionado <strong>'+state.selectedTooth+'</strong></p>'+toothHistoryPanel()+
       '<div class="os-dental-row">'+choices('Face','face',[['','Selecione a face'],...Object.entries(toothFaces)],faceDraft.face)+
       choices('Achado informado pelo profissional','finding',[['','Selecione o achado'],...Object.entries(toothFindings)],faceDraft.finding)+'</div>'+
       field('Nota da face','finding_note','text',faceDraft.finding_note||'','maxlength="300"')+
@@ -865,11 +904,14 @@
     const btn=event.target.closest('[data-dental-action],[data-dental-tab],[data-dental-tooth]');
     if(!btn||!state.host?.contains(btn))return;
     if(btn.dataset.dentalTooth){
-      state.selectedTooth=Number(btn.dataset.dentalTooth);state.error='';render();
+      const next=Number(btn.dataset.dentalTooth);
+      if(next!==state.selectedTooth)state.toothHistory=null;
+      state.selectedTooth=next;state.error='';render();
       state.host.querySelector('[data-dental-tooth="'+state.selectedTooth+'"]')?.focus({preventScroll:true});
       return;
     }
     if(btn.dataset.dentalTab){
+      if(btn.dataset.dentalTab!==state.tab)state.toothHistory=null;
       state.tab=btn.dataset.dentalTab;state.periodontal=[];state.stages=[];state.error='';render();
       if(state.tab==='prosthesis'&&state.laboratories===null&&state.access?.can_read_records){
         const epoch=state.epoch;
@@ -935,6 +977,10 @@
       state.creatingPatient=false;state.editingPatient=false;await loadPatient(btn.dataset.id);return;}
     if(act==='refresh-patient'&&state.patient){await loadPatient(state.patient.id);return;}
     if(act==='add-finding'){addFinding();return;}
+    if(act==='tooth-history'||act==='tooth-history-more'){await readToothHistory(act==='tooth-history-more');return;}
+    if(act==='tooth-history-close'){
+      state.toothHistory=null;render();state.host.querySelector('[data-dental-action=tooth-history]')?.focus({preventScroll:true});return;
+    }
     if(act==='clear-face'){
       delete state.chartDraft.notes[state.selectedTooth];state.error='';render();
       state.host.querySelector('[name=face]')?.focus({preventScroll:true});return;
@@ -1107,7 +1153,9 @@
         if(pendingTooth||!state.findings.length){
           state.error=pendingTooth?'Adicione ou limpe os campos da face no dente '+pendingTooth+' antes de salvar.':
             'Adicione um registro de face antes de salvar o odontograma.';
-          if(pendingTooth)state.selectedTooth=Number(pendingTooth);
+          if(pendingTooth&&state.selectedTooth!==Number(pendingTooth)){
+            state.toothHistory=null;state.selectedTooth=Number(pendingTooth);
+          }
           render();return;
         }
       }
@@ -1212,7 +1260,7 @@
         state.error='Há registros em dentes fora desta dentição. Retire esses registros ou selecione a dentição mista.';
       }else{
         state.error='';state.dentition=next;
-        if(!includes(state.selectedTooth))state.selectedTooth=next==='deciduous'?55:11;
+        if(!includes(state.selectedTooth)){state.toothHistory=null;state.selectedTooth=next==='deciduous'?55:11;}
       }
       render();state.host.querySelector('[name=dentition]')?.focus({preventScroll:true});
     }

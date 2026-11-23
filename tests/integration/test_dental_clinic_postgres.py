@@ -1619,3 +1619,56 @@ async def test_odontogram_retries_store_one_complete_private_evaluation(clinic_a
     async with d["migrator"].begin() as db:
         assert await db.scalar(text("SELECT count(*) FROM dental_access_audit WHERE tenant_id=:t AND patient_id=:p AND action='clinical_record_created'"),
                                {"t":d["a"], "p":d["patient_a"]}) == 1
+
+
+async def test_history_pages_are_scoped_to_the_patient_tooth_and_dentist(clinic_api_db):
+    import httpx
+    from fastapi import FastAPI
+    from app.catalog_api import Actor, authenticate
+    from app.dental_clinic_api import router
+
+    d = clinic_api_db
+    web = FastAPI()
+    web.include_router(router)
+    actor = Actor("member", d["a"], d["account"], "owner")
+    web.dependency_overrides[authenticate] = lambda: actor
+    base = f"/api/v1/tenants/{d['a']}/dental/patients/{d['patient_a']}"
+    query = {"tooth":11, "limit":1}
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=web), base_url="https://test.invalid") as client:
+        async def record(findings, other_base=base):
+            r = await client.post(other_base + "/records",json={
+                "kind":"odontogram", "entry_key":str(uuid4()),
+                "content":{"dentition":"mixed", "findings":findings, "narrative":"Reservada à avaliação completa"}})
+            assert r.status_code == 201, r.text
+            return r.json()["id"]
+
+        other = {"tooth":55, "face":"V", "finding":"watch", "note":"Nota de outro dente"}
+        first = await record([{"tooth":11,"face":"M","finding":"restoration","note":"Anterior"},other])
+        second = await record([{"tooth":11,"face":"M","finding":"watch","note":"Posterior"}])
+        third = await record([other])
+        history = base + "/odontogram/history"
+        r = await client.post(history,json=query)
+        assert r.status_code == 200 and "no-store" in r.headers["Cache-Control"]
+        assert r.json() == {"tooth":11,"items":[],"next_cursor":third}
+        r = await client.post(history,json={**query,"before":third})
+        assert [e["id"] for e in r.json()["items"]] == [second] and r.json()["next_cursor"] == second
+        r = await client.post(history,json={**query,"before":second})
+        item, = r.json()["items"]
+        assert item["id"] == first and r.json()["next_cursor"] is None
+        assert item["professional"] and item["recorded_at"]
+        assert item["findings"] == [{"tooth":11,"face":"M","finding":"restoration","note":"Anterior"}]
+        assert "Nota de outro dente" not in r.text and "Reservada" not in r.text
+        assert (await client.post(history,json={**query,"tooth":19})).status_code == 422
+        unauthorized = history.replace(str(d["patient_a"]),str(d["patient_b"]))
+        assert (await client.post(unauthorized,json=query)).status_code == 404
+        actor = Actor("member", d["b"], d["account_b"], "owner")
+        other_base = f"/api/v1/tenants/{d['b']}/dental/patients/{d['patient_b']}"
+        foreign = await record([other],other_base)
+        assert (await client.post(history,json=query)).status_code == 403
+        actor = Actor("member", d["a"], d["account"], "owner")
+        assert (await client.post(history,json={**query,"before":foreign})).status_code == 400
+        actor = Actor("member", d["a"], d["assistant"], "editor")
+        assert (await client.post(history,json=query)).status_code == 403
+    async with d["migrator"].begin() as db:
+        assert await db.scalar(text("SELECT count(*) FROM dental_access_audit WHERE tenant_id=:t AND patient_id=:p AND action='tooth_history_read'"),
+                               {"t":d["a"],"p":d["patient_a"]}) == 3

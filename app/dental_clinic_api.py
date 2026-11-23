@@ -35,7 +35,8 @@ from app.dental_clinic_schemas import (
     ClinicianGrant, PatientRegistration, PatientSearch, PatientPatch, VisitPatientLink, RecordCreate,
     IntakeTemplateCreate, IntakeTemplateUpdate, LaboratoryCreate, LaboratoryUpdate,
     ProsthesisStatus, ProsthesisTransition, ProsthesisVisit,
-    RoomCreate, RoomRename, RoomAssign, ChairAvailability, SupplyCreate, SupplyMove, ExamUpload, SalesStage
+    RoomCreate, RoomRename, RoomAssign, ChairAvailability, SupplyCreate, SupplyMove, ExamUpload, SalesStage,
+    ToothHistoryQuery,
 )
 
 
@@ -538,6 +539,40 @@ async def list_dental_records(tenant_id:UUID,patient_id:UUID,
                 result[-1]["previous_prosthesis_id"] = row["previous_prosthesis_id"]
         await audit(db,tenant_id,actor,"clinical_records_read",patient_id)
         return {"items":result}
+
+
+@router.post("/patients/{patient_id}/odontogram/history")
+async def tooth_history(tenant_id: UUID, patient_id: UUID, payload: ToothHistoryQuery,
+                       actor: Actor = Depends(authenticate)):
+    async with clinical_session(tenant_id, actor, dentist=True) as (db, _):
+        tooth, before, limit = payload.tooth, payload.before, payload.limit
+        await patient_row(db, tenant_id, patient_id)
+        params = {"tenant":tenant_id, "patient":patient_id, "take":limit + 1}
+        scope = "r.tenant_id=:tenant AND r.patient_id=:patient AND r.kind='odontogram'"
+        if before is not None:
+            params["before"] = before
+            timestamp = await db.scalar(text(
+                "SELECT r.created_at FROM dental_records r WHERE " + scope + " AND r.id=:before"
+            ), params)
+            if timestamp is None:
+                raise HTTPException(400, "Página de avaliações inválida")
+            params["time"] = timestamp
+            scope += " AND (r.created_at,r.id)<(:time,:before)"
+        # Findings are encrypted per evaluation. Bound decryption to one page, and
+        # advance by the last evaluation examined even when it has no matching tooth.
+        records = (await db.execute(text("""
+            SELECT r.id,r.created_at,r.nonce,r.encrypted_content,r.digest,p.name AS professional
+            FROM dental_records r JOIN professionals p ON p.tenant_id=r.tenant_id AND p.id=r.professional_id
+            WHERE """ + scope + " ORDER BY r.created_at DESC,r.id DESC LIMIT :take"), params)).mappings().all()
+        items = []
+        for row in records[:limit]:
+            content = json.loads(unseal(row, tenant_id, patient_id, "odontogram"))
+            findings = [entry for entry in content["findings"] if entry["tooth"] == tooth]
+            if findings:
+                items.append({"id":row["id"], "recorded_at":row["created_at"],
+                              "professional":row["professional"], "findings":findings})
+        await audit(db, tenant_id, actor, "tooth_history_read", patient_id)
+        return {"tooth":tooth, "items":items, "next_cursor":records[limit-1]["id"] if len(records)>limit else None}
 
 
 async def resolve_intake_snapshot(db, tenant, patient, actor, payload):
