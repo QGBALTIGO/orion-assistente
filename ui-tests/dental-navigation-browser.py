@@ -32,6 +32,13 @@ def check_menu(browser, width, height, theme):
             return route.fulfill(json={"clinical_access":None,"can_manage":True,"can_manage_inventory":True,"grants":[]})
         if path.endswith("/dental/chair-settings"):
             return route.fulfill(json={"items":[]})
+        if path.endswith("/dental/sales/opportunities/search"):
+            details = route.request.post_data_json
+            assert 2 <= len(details["query"]) <= 80
+            query = details["query"].casefold()
+            visible = [item for item in opportunities
+                       if query in (item["title"] + " " + item["description"]).casefold()]
+            return route.fulfill(json={"items":visible,"next":None})
         if path.endswith("/dental/sales/opportunities"):
             if route.request.method == "POST":
                 details = route.request.post_data_json
@@ -122,6 +129,16 @@ def check_menu(browser, width, height, theme):
     page.get_by_role("button", name="Criar oportunidade", exact=True).press("Enter")
     page.get_by_text("Avaliação da família", exact=True).wait_for()
     assert len(opportunities) == 1
+    search = page.get_by_role("search")
+    search.get_by_label("Buscar oportunidades por título ou descrição").fill("família")
+    search.get_by_role("button",name="Buscar oportunidades").press("Enter")
+    page.get_by_text("Avaliação da família",exact=True).wait_for()
+    assert search.get_by_role("button",name="Limpar busca").count() == 1
+    controls = search.evaluate("""el=>[...el.querySelectorAll('input,button')].map(n=>{
+        const b=n.getBoundingClientRect();return [b.left,b.right,b.height];
+    })""")
+    assert all(left>=0 and right<=width+1 and size>=40 for left,right,size in controls),(width,theme,controls)
+    search.get_by_role("button",name="Limpar busca").press("Enter")
     row = page.locator("#osDentalSalesList li").first
     assert row.evaluate("""el=>{
        const title=el.firstElementChild.getBoundingClientRect(), date=el.lastElementChild.getBoundingClientRect();

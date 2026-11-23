@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import secrets
+import unicodedata
 from contextlib import asynccontextmanager
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Literal
@@ -35,7 +36,8 @@ from app.dental_clinic_schemas import (
     ClinicianGrant, PatientRegistration, PatientSearch, PatientPatch, VisitPatientLink, RecordCreate,
     IntakeTemplateCreate, IntakeTemplateUpdate, LaboratoryCreate, LaboratoryUpdate,
     ProsthesisStatus, ProsthesisTransition, ProsthesisVisit,
-    RoomCreate, RoomRename, RoomAssign, ChairAvailability, SupplyCreate, SupplyMove, ExamUpload, SalesStage, SalesOpportunity
+    RoomCreate, RoomRename, RoomAssign, ChairAvailability, SupplyCreate, SupplyMove, ExamUpload,
+    SalesStage, SalesOpportunity, SalesOpportunitySearch
 )
 
 
@@ -875,35 +877,77 @@ async def list_sales_opportunities(tenant_id: UUID, before: UUID | None = None,
     async with owner_session(tenant_id, actor, feature="settings.manage") as db:
         if start_date and end_date and start_date > end_date:
             raise HTTPException(422, "A data final deve ser igual ou posterior à inicial")
-        params = {"tenant": tenant_id, "limit": limit + 1}
-        conditions = ["tenant_id=:tenant"]
-        if start_date or end_date:
-            params["zone"] = await db.scalar(text("SELECT timezone FROM tenants WHERE id=:tenant"), params)
-        if start_date:
-            conditions.append("created_at >= (CAST(:start_day AS date)::timestamp AT TIME ZONE :zone)")
-            params["start_day"] = start_date
-        if end_date:
-            conditions.append("created_at < ((CAST(:end_day AS date) + 1)::timestamp AT TIME ZONE :zone)")
-            params["end_day"] = end_date
-        if before:
-            point = (await db.execute(text("SELECT created_at,id FROM dental_sales_opportunities WHERE "
-                                           + " AND ".join(conditions) + " AND id=:id"),
-                                      {**params, "id": before})).one_or_none()
-            if point is None:
-                raise HTTPException(400, "Página de oportunidades inválida")
-            conditions.append("(created_at,id)<(:at,:id)")
-            params.update(at=point.created_at, id=point.id)
-        rows = (await db.execute(text("""
-            SELECT id,created_by,created_at,nonce,encrypted_content,digest FROM dental_sales_opportunities
-            WHERE """ + " AND ".join(conditions) + " ORDER BY created_at DESC,id DESC LIMIT :limit"),
-                                 params)).mappings().all()
-        items = []
-        for row in rows[:limit]:
-            details = json.loads(unseal(row, tenant_id, row["id"], "sales_opportunity"))
-            items.append({"id": row["id"], "created_at": row["created_at"], "created_by": row["created_by"],
-                          "title": details["title"], "description": details["description"]})
+        result = await sales_opportunity_page(db, tenant_id, before, limit, start_date, end_date)
         await audit(db, tenant_id, actor, "sales_opportunities_read")
-        return {"items": items, "next": items[-1]["id"] if len(rows)>limit else None}
+        return result
+
+
+def normalized_sales_text(value: str):
+    decomposed = unicodedata.normalize("NFKD", value).casefold()
+    return " ".join("".join(char for char in decomposed if not unicodedata.combining(char)).split())
+
+
+async def sales_opportunity_page(db, tenant_id, before, limit, start_date, end_date, query=None):
+    needle = normalized_sales_text(query or "")
+    params = {"tenant": tenant_id, "limit": limit + 1}
+    conditions = ["tenant_id=:tenant"]
+    if start_date or end_date:
+        params["zone"] = await db.scalar(text("SELECT timezone FROM tenants WHERE id=:tenant"), params)
+    if start_date:
+        conditions.append("created_at >= (CAST(:start_day AS date)::timestamp AT TIME ZONE :zone)")
+        params["start_day"] = start_date
+    if end_date:
+        conditions.append("created_at < ((CAST(:end_day AS date) + 1)::timestamp AT TIME ZONE :zone)")
+        params["end_day"] = end_date
+    if before:
+        point = (await db.execute(text("""SELECT id,created_by,created_at,nonce,encrypted_content,digest
+                                       FROM dental_sales_opportunities WHERE """
+                                       + " AND ".join(conditions) + " AND id=:id"),
+                                  {**params, "id": before})).mappings().one_or_none()
+        if point is None:
+            raise HTTPException(400, "Página de oportunidades inválida")
+        if needle:
+            details = json.loads(unseal(point, tenant_id, point["id"], "sales_opportunity"))
+            searchable = normalized_sales_text(details["title"] + " " + details["description"])
+            if needle not in searchable:
+                raise HTTPException(400, "Página de oportunidades inválida")
+        conditions.append("(created_at,id)<(:at,:id)")
+        params.update(at=point["created_at"], id=point["id"])
+    statement = text("""
+        SELECT id,created_by,created_at,nonce,encrypted_content,digest FROM dental_sales_opportunities
+        WHERE """ + " AND ".join(conditions) + " ORDER BY created_at DESC,id DESC" +
+        ("" if needle else " LIMIT :limit"))
+    rows = []
+    if needle:
+        streamed = await db.stream(statement, params)
+        try:
+            async for row in streamed.mappings():
+                details = json.loads(unseal(row, tenant_id, row["id"], "sales_opportunity"))
+                searchable = normalized_sales_text(details["title"] + " " + details["description"])
+                if needle in searchable:
+                    rows.append((row, details))
+                    if len(rows) > limit:
+                        break
+        finally:
+            await streamed.close()
+    else:
+        found = (await db.execute(statement, params)).mappings().all()
+        rows = [(row, json.loads(unseal(row, tenant_id, row["id"], "sales_opportunity"))) for row in found]
+    items = []
+    for row, details in rows[:limit]:
+        items.append({"id": row["id"], "created_at": row["created_at"], "created_by": row["created_by"],
+                      "title": details["title"], "description": details["description"]})
+    return {"items": items, "next": items[-1]["id"] if len(rows)>limit else None}
+
+
+@router.post("/sales/opportunities/search")
+async def search_sales_opportunities(tenant_id: UUID, payload: SalesOpportunitySearch,
+                                     actor: Actor = Depends(authenticate)):
+    async with owner_session(tenant_id, actor, feature="settings.manage") as db:
+        result = await sales_opportunity_page(db, tenant_id, payload.before, payload.limit,
+                                              payload.start_date, payload.end_date, payload.query)
+        await audit(db, tenant_id, actor, "sales_opportunities_searched")
+        return result
 
 
 async def read_chairs(db, tenant):

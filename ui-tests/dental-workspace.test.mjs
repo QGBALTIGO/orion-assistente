@@ -461,10 +461,14 @@ test('ajustes da clínica salvam a etapa de vendas e a recarregam ao voltar',asy
 });
 
 test('vendas preserva a tentativa de cadastro e carrega as oportunidades da clínica',async t=>{
-  const all=[],posts=[];
+  const all=[],posts=[],searches=[];
   let fail=true;
   const h=await makeSuite({initialRoute:'vendas-odonto',permissions:dentalPlan({dental_clinical_enabled:true}),respond(path,method,payload){
     if(!path.includes('/dental/sales/opportunities'))return [];
+    if(method==='POST'&&path.endsWith('/search')){
+      searches.push(payload);
+      return {items:all.filter(item=>(item.title+' '+item.description).toLowerCase().includes(payload.query.toLowerCase())),next:null};
+    }
     if(method==='POST'){
       posts.push({...payload});
       if(fail){fail=false;throw new Error('Falha temporária');}
@@ -486,6 +490,14 @@ test('vendas preserva a tentativa de cadastro e carrega as oportunidades da clí
   assert.ok(list.textContent.includes('<script>nota de teste</script>'));assert.equal(list.querySelector('script'),null);
   h.click('[data-os-action=dental-opportunity-more]');await flush();
   assert.equal(list.children.length,2);assert.equal(h.document.activeElement,list.children[1]);
+  h.fill('[name=sales_query]','nota de teste');h.submit('#osDentalSalesSearch');await flush();
+  assert.equal(JSON.stringify(searches.at(-1)),JSON.stringify({query:'nota de teste'}));
+  assert.equal(h.document.querySelectorAll('#osDentalSalesList li').length,1);
+  h.click('[data-os-action=dental-sales-search-clear]');await flush();
+  assert.equal(h.document.querySelector('[name=sales_query]').value,'');
+  h.fill('[name=sales_query]','x');h.submit('#osDentalSalesSearch');await flush();
+  assert.match(h.document.querySelector('#osDentalSalesSearch [role=alert]').textContent,/2 caracteres/);
+  assert.equal(h.document.activeElement.name,'sales_query');
 });
 
 test('a área de vendas odontológicas só aparece para a titular autorizada',async t=>{

@@ -171,3 +171,11 @@ Foram verificados os limites da meia-noite, um dia de 23 horas, datas invertidas
 O teste compartilhado de seleção do painel ainda esperava a interface genérica na odontologia. A nova verificação confirma a recepção e seus indicadores reais para a empresa odontológica. Também confirma que uma empresa de estética abre o próprio painel, assinaturas abre a área de assinaturas e só a clínica consulta o serviço de recepção. Os 53 testes conjuntos do espaço odontológico e do Início, incluindo barbearia, passaram localmente. Nenhum arquivo de execução foi alterado nesta correção.
 
 Na revisão anterior das sessões e da idempotência de mensagens, o GitHub confirmou depois os 1.413 testes do conector de WhatsApp. A etapa seguinte do fluxo geral executou 1.797 testes do painel e encontrou 32 falhas. A expectativa antiga do painel odontológico foi uma delas. A aprovação do conector não equivale à aprovação de toda a suíte de interface.
+
+## Busca protegida de oportunidades
+
+A titular pode pesquisar oportunidades abertas pelo título ou pela descrição. O termo é enviado no corpo privado da requisição, não na URL, e não cria um índice em texto aberto. A leitura continua limitada à clínica ativa e à permissão de gestão. A comparação ignora diferenças entre maiúsculas, espaços e acentos, preserva o período escolhido e valida que o cursor pertence ao mesmo resultado.
+
+Os dados sintéticos cobrem paginação, busca em título e descrição, termo inexistente, entrada curta, cursor incompatível, período, papel sem acesso e auditoria. Passaram localmente 104 testes unitários e 153 testes da interface. O navegador foi ampliado para oito combinações de tela e tema. O Chromium local não iniciou por uma restrição de socket do ambiente, portanto a verificação geométrica fica a cargo do mesmo fluxo de navegador no CI odontológico.
+
+A busca por paciente não foi simulada pelo telefone. Ela permanece separada até que a oportunidade possua o vínculo explícito com o identificador do paciente. Esta entrega não altera o esquema 0088 e não requer migração ou backup de produção.

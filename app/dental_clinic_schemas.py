@@ -286,6 +286,20 @@ class SalesOpportunity(Strict):
     description: str = Field(default="", max_length=300)
 
 
+class SalesOpportunitySearch(Strict):
+    query: str = Field(min_length=2, max_length=80, pattern=r"^[^\x00-\x1F\x7F]+$")
+    before: UUID4 | None = None
+    limit: int = Field(25, ge=1, le=50, strict=True)
+    start_date: date | None = None
+    end_date: date | None = None
+
+    @model_validator(mode="after")
+    def valid_period(self):
+        if self.start_date and self.end_date and self.start_date > self.end_date:
+            raise ValueError("A data final deve ser igual ou posterior à inicial")
+        return self
+
+
 class SalesStage(Strict):
     id: UUID4
     name: str = Field(min_length=1, max_length=16)

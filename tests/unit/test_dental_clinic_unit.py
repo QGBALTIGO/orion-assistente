@@ -8,10 +8,10 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 
 from app.catalog_api import Actor
-from app.dental_clinic_api import key_material, seal, unseal, require_member
+from app.dental_clinic_api import key_material, seal, unseal, require_member, normalized_sales_text
 from app.dental_clinic_schemas import (
     ClinicianGrant, PatientCreate, RecordCreate, Odontogram, Periodontal,
-    Anamnesis, ExamUpload, Budget, FDI_ALL
+    Anamnesis, ExamUpload, Budget, FDI_ALL, SalesOpportunitySearch
 )
 
 
@@ -79,6 +79,15 @@ def test_patient_guardian_phone_is_not_unique_or_used_as_identity():
     one=PatientCreate(name="Irmão mais velho",guardian_phone="(67) 99999-0000")
     two=PatientCreate(name="Irmã mais nova",guardian_phone="(67) 99999-0000")
     assert one.name!=two.name and one.guardian_phone==two.guardian_phone
+
+
+def test_sales_search_is_bounded_and_accent_insensitive():
+    payload=SalesOpportunitySearch(query="  ORÇAMENTO   sintético  ",limit=25)
+    assert payload.query == "ORÇAMENTO   sintético"
+    assert normalized_sales_text(payload.query) == "orcamento sintetico"
+    for query in ("x", " ", "x"*81, "texto\nindevido"):
+        with pytest.raises(ValidationError):
+            SalesOpportunitySearch(query=query)
 
 
 def test_budget_approval_is_not_accepted_as_electronic_signature():
