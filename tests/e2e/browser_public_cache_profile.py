@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 
+import pytest
 from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -81,9 +82,10 @@ def enter_confirmation(page):
     page.locator("#customer-form").wait_for()
 
 
-def test_catalogue_is_fast_offline_but_never_allows_stale_booking():
+@pytest.mark.parametrize('browser_name', ['chromium', 'webkit'])
+def test_catalogue_is_fast_offline_but_never_allows_stale_booking(browser_name):
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(headless=True)
+        browser = getattr(playwright, browser_name).launch(headless=True)
         context = browser.new_context(locale="pt-BR",
                                       viewport={"width": 390, "height": 820})
         page = context.new_page()
@@ -109,9 +111,10 @@ def test_catalogue_is_fast_offline_but_never_allows_stale_booking():
             browser.close()
 
 
-def test_opt_in_customer_profile_restores_and_can_be_cleared():
+@pytest.mark.parametrize('browser_name', ['chromium', 'webkit'])
+def test_opt_in_customer_profile_restores_and_can_be_cleared(browser_name):
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(headless=True)
+        browser = getattr(playwright, browser_name).launch(headless=True)
         context = browser.new_context(locale="pt-BR",
                                       viewport={"width": 390, "height": 820})
         page = context.new_page()
