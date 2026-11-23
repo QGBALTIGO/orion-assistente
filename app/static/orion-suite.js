@@ -2998,6 +2998,8 @@
       }):await request(apiPath('/dental/sales/opportunities')+(encoded?'?'+encoded:''));
       if(!current(c)||!dentalSettingsAllowed())return;
       const list=data.items.map(item=>'<li><div><strong>'+esc(item.title)+'</strong>'+
+        (item.patient?'<small class="os-dental-sales-patient">'+icon('user')+esc(item.patient.name)+
+          (item.patient.birth_date?' · '+esc(fmtDate(item.patient.birth_date)):'')+'</small>':'')+
         (item.description?'<p>'+esc(item.description)+'</p>':'')+'</div><time datetime="'+esc(item.created_at)+'">'+
         esc(new Intl.DateTimeFormat('pt-BR',{timeZone:tenant()?.timezone||'America/Sao_Paulo'}).format(new Date(item.created_at)))+
         '</time></li>').join('');
@@ -4823,7 +4825,7 @@
         if(d.type!==kind||state.route!=='vendas-odonto'||!dentalSettingsAllowed())return;
         const title=f.title.trim(),description=f.description.trim();
         if(!title||[...title].length>40||[...description].length>300)throw Error('Confira o título e a descrição da oportunidade.');
-        const details={title,description};
+        const details={title,description,patient_id:d.patient?.id||null};
         const payload={...details,id:requestKey(form,details)};
         await saveForm(form,()=>request(apiPath('/dental/sales/opportunities'),'POST',payload),'Oportunidade cadastrada.');
         return;
@@ -5174,9 +5176,45 @@
         if(state.route!=='vendas-odonto'||!dentalSettingsAllowed()||!writable())break;
         const content=field('Título','title','text','','required maxlength="40"')+
           '<div class="os-field"><label for="osSaleDescription">Descrição (opcional)</label>'+
-          '<textarea id="osSaleDescription" name="description" maxlength="300" rows="3"></textarea></div>';
+          '<textarea id="osSaleDescription" name="description" maxlength="300" rows="3"></textarea></div>'+
+          '<section class="os-sales-patient-picker" aria-labelledby="osSalesPatientLabel">'+
+          '<h3 id="osSalesPatientLabel">Paciente (opcional)</h3><p class="os-help">Busque por nome ou telefone e selecione a pessoa correta. Um telefone pode pertencer a vários pacientes.</p>'+
+          '<div class="os-search">'+icon('search')+'<input id="osSalesPatientQuery" type="search" minlength="2" maxlength="120" autocomplete="off" placeholder="Nome ou telefone">'+
+          button('Buscar','dental-sales-patient-search','os-outline os-small')+'</div>'+
+          '<div id="osSalesPatientResults" class="os-sales-patient-results" aria-live="polite"></div></section>';
         showDialog('dental-sales-opportunity','Nova oportunidade',dialogForm('dental-sales-opportunity',content,'Criar oportunidade'));
         break;
+      }
+      case 'dental-sales-patient-search':{
+        if(d?.type!=='dental-sales-opportunity'||state.route!=='vendas-odonto')break;
+        const input=$('osSalesPatientQuery'),host=$('osSalesPatientResults'),query=input?.value.trim();
+        if(!input||!host)break;
+        if(!query||[...query].length<2){host.innerHTML='<p class="os-form-message">Digite pelo menos 2 caracteres.</p>';input.focus();break;}
+        element.disabled=true;host.innerHTML='<p class="os-help">Buscando pacientes…</p>';
+        try{
+          const data=await request(apiPath('/dental/sales/patients/search'),'POST',{query,limit:20,offset:0});
+          if(state.dialog!==d||!host.isConnected)return;
+          d.patientOptions=data.items;
+          host.innerHTML=data.items.length?'<div role="list" aria-label="Pacientes encontrados">'+data.items.map(patient=>
+            '<button type="button" class="os-sales-patient-option" data-os-action="dental-sales-patient-select" data-id="'+esc(patient.id)+'" role="listitem">'+
+            '<strong>'+esc(patient.name)+'</strong><span>'+(patient.birth_date?'Nascimento: '+esc(fmtDate(patient.birth_date)):'Nascimento não informado')+
+            (patient.guardian_name?' · Responsável: '+esc(patient.guardian_name):'')+'</span></button>').join('')+'</div>'+
+            (data.has_more?'<p class="os-help">Refine a busca para ver outros resultados.</p>':''):
+            '<p class="os-help">Nenhum paciente encontrado.</p>';
+        }catch(error){if(state.dialog===d&&host.isConnected)host.innerHTML='<p class="os-form-message">'+esc(error.message)+'</p>';}
+        finally{if(element.isConnected)element.disabled=false;}
+        break;
+      }
+      case 'dental-sales-patient-select':{
+        if(d?.type!=='dental-sales-opportunity')break;
+        const patient=d.patientOptions?.find(item=>item.id===element.dataset.id);if(!patient)break;
+        d.patient=patient;
+        const host=$('osSalesPatientResults');if(host)host.innerHTML='<div class="os-sales-patient-selected">'+icon('check')+'<span><strong>'+esc(patient.name)+'</strong><small>'+(patient.birth_date?'Nascimento: '+esc(fmtDate(patient.birth_date)):'Nascimento não informado')+(patient.guardian_name?' · Responsável: '+esc(patient.guardian_name):'')+'</small></span>'+button('Trocar','dental-sales-patient-clear','os-ghost os-small')+'</div>';
+        break;
+      }
+      case 'dental-sales-patient-clear':{
+        if(d?.type!=='dental-sales-opportunity')break;d.patient=null;d.patientOptions=[];
+        const input=$('osSalesPatientQuery'),host=$('osSalesPatientResults');if(input)input.value='';if(host)host.replaceChildren();input?.focus();break;
       }
       case 'dental-sales-clear':{
         const form=$('osDentalSalesPeriod');if(form)await applyDentalSalesPeriod(form,true);

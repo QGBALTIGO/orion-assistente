@@ -462,8 +462,15 @@ test('ajustes da clínica salvam a etapa de vendas e a recarregam ao voltar',asy
 
 test('vendas preserva a tentativa de cadastro e carrega as oportunidades da clínica',async t=>{
   const all=[],posts=[],searches=[];
+  const patients=[
+    {id:'10000000-0000-4000-8000-000000000011',name:'Paciente Sintético Dois',birth_date:'2016-08-09',guardian_name:'Responsável Comum'},
+    {id:'10000000-0000-4000-8000-000000000012',name:'Paciente Sintético Um',birth_date:'2012-03-04',guardian_name:'Responsável Comum'}
+  ];
   let fail=true;
   const h=await makeSuite({initialRoute:'vendas-odonto',permissions:dentalPlan({dental_clinical_enabled:true}),respond(path,method,payload){
+    if(path.endsWith('/dental/sales/patients/search')){
+      assert.equal(payload.query,'999990099');return {items:patients,has_more:false};
+    }
     if(!path.includes('/dental/sales/opportunities'))return [];
     if(method==='POST'&&path.endsWith('/search')){
       searches.push(payload);
@@ -482,10 +489,15 @@ test('vendas preserva a tentativa de cadastro e carrega as oportunidades da clí
   assert.match(h.document.querySelector('#osPageBody').textContent,/Nenhuma oportunidade em aberto/);
   h.click('[data-os-action=dental-opportunity-new]');
   h.fill('[name=title]','Retorno sintético');h.fill('[name=description]','<script>nota de teste</script>');
+  h.fill('#osSalesPatientQuery','999990099');h.click('[data-os-action=dental-sales-patient-search]');await flush();
+  assert.equal(h.document.querySelectorAll('.os-sales-patient-option').length,2);
+  assert.match(h.document.getElementById('osSalesPatientResults').textContent,/Responsável Comum/);
+  h.click('.os-sales-patient-option[data-id="10000000-0000-4000-8000-000000000012"]');
   h.submit('[data-os-form=dental-sales-opportunity]');await flush();
   assert.equal(h.document.querySelector('[name=title]').value,'Retorno sintético');
   h.submit('[data-os-form=dental-sales-opportunity]');await flush();
   assert.equal(posts.length,2);assert.equal(posts[0].id,posts[1].id);
+  assert.equal(posts[0].patient_id,patients[1].id);assert.equal(posts[1].patient_id,patients[1].id);
   const list=h.document.getElementById('osDentalSalesList');
   assert.ok(list.textContent.includes('<script>nota de teste</script>'));assert.equal(list.querySelector('script'),null);
   h.click('[data-os-action=dental-opportunity-more]');await flush();
