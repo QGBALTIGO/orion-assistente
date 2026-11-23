@@ -803,3 +803,24 @@ body{background:var(--bg);color:var(--text);min-width:0}
   .identity-text .hero-address-locality{font-size:10px}
   .identity-text .online-label{margin-top:6px}
 }
+
+/* Public catalogue freshness and opt-in returning-customer details. */
+.catalogue-refresh-status{margin-top:10px;color:var(--muted);font-size:12px;line-height:1.5}
+.booking-confirmation-body .booking-form .remember-customer{
+  grid-column:1/-1;display:flex;align-items:flex-start;gap:11px;min-width:0;
+  padding:12px 13px;border:1px solid var(--border);border-radius:12px;
+  background:var(--bg);cursor:pointer;color:var(--text)
+}
+.booking-confirmation-body .booking-form .remember-customer>input{
+  flex:0 0 auto;width:18px;height:18px;min-height:18px;margin:2px 0 0;
+  accent-color:var(--primary)
+}
+.booking-confirmation-body .booking-form .remember-customer>span{min-width:0;display:grid;gap:3px}
+.booking-confirmation-body .booking-form .remember-customer strong{font:650 13px/19px Figtree,system-ui,sans-serif}
+.booking-confirmation-body .booking-form .remember-customer small{font:400 12px/18px Figtree,system-ui,sans-serif;color:var(--muted)}
+.booking-confirmation-body .booking-form .forget-customer{
+  grid-column:1/-1;justify-self:start;padding:4px 0;
+  background:transparent;color:var(--muted);font:600 12px/18px Figtree,system-ui,sans-serif;
+  text-decoration:underline;text-underline-offset:3px
+}
+.booking-confirmation-body .booking-form .forget-customer:hover{color:var(--primary)}
