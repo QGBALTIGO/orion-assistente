@@ -1,0 +1,17 @@
+# The exact Railway production API image as of 2026-11-23 10:01 UTC.
+# Keeps all unrelated deployed functionality and package versions unchanged.
+FROM ghcr.io/qgbaltigo/orion-assistente-api@sha256:aaef00199480a01a526d2cc297f3b79ec41a48d888d342cd018f97e3b07689c7
+
+USER root
+COPY scripts/patch_public_cache_overlay.py /tmp/patch_public_cache_overlay.py
+COPY .ci-baseline/ /tmp/orion-public-base/
+COPY app/static/orion-public.js /tmp/orion-public-edited/app/static/orion-public.js
+COPY app/static/orion-public.css /tmp/orion-public-edited/app/static/orion-public.css
+COPY app/public_site_api.py /tmp/orion-public-edited/app/public_site_api.py
+
+RUN python /tmp/patch_public_cache_overlay.py \
+    && python -m py_compile /srv/app/app/public_site_api.py \
+    && rm -rf /tmp/orion-public-base /tmp/orion-public-edited /tmp/patch_public_cache_overlay.py
+
+USER appuser
+WORKDIR /srv/app
