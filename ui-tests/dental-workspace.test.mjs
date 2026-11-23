@@ -56,6 +56,29 @@ test('recepção usa o resumo administrativo, horários locais e ações de cons
   assert.equal(h.errors.length,0);
 });
 
+test('clinical journey on reception links only to protected real Orion modules',async t=>{
+  const h=await makeSuite({initialRoute:'dashboard',permissions:dentalPlan({dental_clinical_enabled:true})});
+  t.after(()=>h.close());await flush();
+  const journey=h.document.querySelector('.os-dental-journey-card');
+  assert.ok(journey,'reception should present contextual clinical navigation');
+  assert.equal(journey.querySelectorAll('[data-os-dental-entry]').length,4);
+  assert.match(journey.textContent,/Odontograma/);
+  assert.match(journey.textContent,/Planos de tratamento/);
+  assert.equal(h.calls.some(x=>/\/dental\/patients\/.+\/records/.test(x.path)),false);
+  h.click('[data-os-dental-entry=odontogram]');await flush();
+  assert.equal(h.document.querySelector('#page-suite').dataset.osCurrentRoute,'clinica');
+  assert.ok(h.document.querySelector('#osDentalClinic'));
+  assert.equal(h.errors.length,0);
+});
+
+test('clinical journey is never surfaced in a regular non-dental business',async t=>{
+  const h=await makeSuite({initialRoute:'dashboard',permissions:planState('elite',{business_niche:'barbearia',dental_clinical_enabled:true})});
+  t.after(()=>h.close());await flush();
+  assert.equal(h.document.querySelector('.os-dental-journey-card'),null);
+  assert.equal(h.document.querySelector('[data-os-dental-entry]'),null);
+  assert.equal(h.errors.length,0);
+});
+
 test('dental procedures remain the normal writable service catalogue, not a second booking engine',async t=>{
   const h=await makeSuite({initialRoute:'servicos',permissions:dentalPlan()});
   t.after(()=>h.close());await flush();

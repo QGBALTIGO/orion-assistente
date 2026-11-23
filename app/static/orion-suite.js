@@ -900,7 +900,7 @@
           accountId:state.bridge.user?.id||state.bridge.user?.account_id||null,
           dedicatedStock:state.route==='estoque-odonto',stockInMenu:true,
           dedicatedProstheses:state.route==='proteses-odonto',prosthesesInMenu:true,
-          initialTab:options.dentalTab==='prosthesis'?'prosthesis':undefined,
+          initialTab:['anamnesis','odontogram','periodontal','treatment','exams','budget','prosthesis'].includes(options.dentalTab)?options.dentalTab:undefined,
           openProsthesisPatient:id=>open('clinica',{dentalPatient:id,dentalTab:'prosthesis'}),
           initialPatient:options.dentalPatient,visitsOnly:options.dentalVisitsOnly===true,team:options.dentalTeam===true,
           returnToDirectory:()=>open('pacientes-odonto'),
@@ -1409,6 +1409,28 @@
   }
   async function mountDentalReception(c){
     const shortcuts=[];
+    // Contextual access to the real clinical modules, not synthetic preview pages.
+    // Every destination passes through the existing route/role checks.
+    const dentalActions=[];
+    const journeyItem=(symbol,label,description,attrs)=>
+      '<button type="button" class="os-dental-journey-action" '+attrs+'>'+
+      '<span class="os-dental-journey-icon" aria-hidden="true">'+icon(symbol)+'</span>'+
+      '<span><strong>'+esc(label)+'</strong><small>'+esc(description)+'</small></span>'+icon('chevron')+'</button>';
+    if(routePermitted('pacientes-odonto'))
+      dentalActions.push(journeyItem('users','Pacientes','Cadastro e histórico de consultas','data-os-route="pacientes-odonto"'));
+    else if(routePermitted('clientes'))
+      dentalActions.push(journeyItem('users','Contatos da agenda','Cadastros administrativos','data-os-route="clientes"'));
+    if(routePermitted('clinica')){
+      dentalActions.push(journeyItem('clipboard','Anamnese e prontuários','Registro clínico autorizado','data-os-dental-entry="anamnesis"'));
+      dentalActions.push(journeyItem('tooth','Odontograma','Dentes e achados por face','data-os-dental-entry="odontogram"'));
+      dentalActions.push(journeyItem('fileCheck','Planos de tratamento','Etapas e acompanhamento','data-os-dental-entry="treatment"'));
+      dentalActions.push(journeyItem('wallet','Orçamentos','Planejamento e valores','data-os-dental-entry="budget"'));
+    }
+    const dentalJourney=dentalActions.length?'<section class="os-card os-reception-card os-dental-journey-card" aria-labelledby="osDentalJourneyTitle">'+
+      '<header><div><h2 id="osDentalJourneyTitle">Jornada do paciente</h2>'+
+      '<p>Abra uma área clínica no fluxo da Orion, com as permissões da equipe.</p></div></header>'+
+      '<div class="os-dental-journey-links">'+dentalActions.join('')+'</div></section>':'';
+
     if(writable()&&routePermitted('agenda'))shortcuts.push(button('Nova consulta','new-appointment','','plus'));
     if(writable()&&routePermitted('pacientes-odonto'))shortcuts.push(button('Novo paciente','new-dental-patient','os-outline','userPlus'));
     else if(writable()&&routePermitted('clientes'))shortcuts.push(button(dedicatedPatients()?'Novo contato':'Novo paciente','new-customer','os-outline','userPlus'));
@@ -1419,6 +1441,7 @@
       (shortcuts.length?'<div class="os-reception-actions">'+shortcuts.join('')+'</div>':'')+'</header>'+
       '<section class="os-card os-reception-card" aria-labelledby="osConsultasTitle"><header><div><h2 id="osConsultasTitle">Consultas de hoje</h2>'+
       '<p id="osReceptionDate"></p></div>'+agendaLink+'</header><div id="osReceptionCounts">'+loading('Consultando a agenda…')+'</div></section>'+
+      dentalJourney+
       '<section class="os-card os-reception-card" aria-labelledby="osProximasTitle"><header><h2 id="osProximasTitle">Próximas consultas</h2></header>'+
       '<div id="osReceptionUpcoming" aria-busy="true"></div></section>'+
       '<p id="osReceptionNotice" class="os-reception-notice" role="status"></p>'+
@@ -5394,7 +5417,13 @@
         if(state.route!=='ajustes-odonto'||!dentalWorkspace()||!routePermitted('configuracoes')||!settingsTabAllowed(tab))return;
         state.filters.settingsTab=tab;await open('configuracoes');return;
       }
-      if(el.dataset.osRoute){if(dentalWorkspace()&&state.route==='ajustes-odonto'&&el.dataset.osRoute==='configuracoes')state.filters.settingsTab=settingsTabAllowed('general')?'general':'account';if(appLayoutEnabled()&&state.route==='perfil'&&el.dataset.osRoute==='configuracoes')state.filters.settingsTab='general';await open(el.dataset.osRoute);return;}
+      if(el.dataset.osDentalEntry){
+      const tab=el.dataset.osDentalEntry;
+      if(dentalWorkspace()&&routePermitted('clinica')&&['anamnesis','odontogram','periodontal','treatment','exams','budget'].includes(tab))
+        await open('clinica',{dentalTab:tab});
+      return;
+    }
+    if(el.dataset.osRoute){if(dentalWorkspace()&&state.route==='ajustes-odonto'&&el.dataset.osRoute==='configuracoes')state.filters.settingsTab=settingsTabAllowed('general')?'general':'account';if(appLayoutEnabled()&&state.route==='perfil'&&el.dataset.osRoute==='configuracoes')state.filters.settingsTab='general';await open(el.dataset.osRoute);return;}
       if(el.dataset.osOpenDay){
         const day=el.dataset.osOpenDay,{start,end}=agendaBounds();
         if(!/^\d{4}-\d{2}-\d{2}$/.test(day)||day<start||day>end)return;

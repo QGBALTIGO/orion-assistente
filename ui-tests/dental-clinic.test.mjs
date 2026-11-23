@@ -99,6 +99,46 @@ test('dentist sees 32 permanent teeth and can record one explicit finding only',
   assert.equal(writes[0].data.content.findings[0].face,'M');
 });
 
+test('patient chart organizes index modules into clinical groups without exposing records',async t=>{
+  const h=makeDOM({level:'dentist'});t.after(()=>h.close());
+  await h.mount();await flush();
+  assert.equal(h.host.querySelector('.os-dental-module-card'),null,'clinical navigator is not shown before patient selection');
+  h.click('[data-dental-action=select-patient]');await flush();
+  const navigation=h.host.querySelector('.os-dental-module-groups');
+  assert.ok(navigation);
+  assert.deepEqual([...navigation.querySelectorAll('h4')].map(x=>x.textContent),
+    ['Avaliação e diagnóstico','Tratamento e evolução','Exames e documentos']);
+  assert.equal(navigation.querySelectorAll('[data-dental-tab]').length,13);
+  assert.equal(navigation.querySelectorAll('[aria-selected=true]').length,1);
+  h.click('[data-dental-tab=treatment]');await flush();
+  assert.equal(h.host.querySelector('[data-dental-tab=treatment]').getAttribute('aria-selected'),'true');
+  assert.equal(h.host.querySelectorAll('[data-dental-tab][aria-selected=true]').length,1);
+  assert.match(h.host.querySelector('#dental-clinical-editor').textContent,/Plano de tratamento/);
+  assert.equal(h.calls.some(x=>x.method==='POST'),false);
+});
+
+test('odontogram uses the index tooth illustration with explicit findings only',async t=>{
+  const h=makeDOM({level:'dentist'});t.after(()=>h.close());
+  await h.mount();await flush();h.click('[data-dental-action=select-patient]');await flush();
+  h.click('[data-dental-tab=odontogram]');await flush();
+  const chart=h.host.querySelector('.os-dental-odontogram');
+  assert.ok(chart);
+  assert.equal(chart.querySelectorAll('.os-dental-arch').length,2);
+  assert.equal(chart.querySelectorAll('.os-dental-tooth-svg').length,32);
+  assert.equal(chart.querySelectorAll('.os-dental-tooth.has-finding').length,0);
+  assert.match(chart.getAttribute('aria-label'),/dente FDI/);
+  h.click('[data-dental-tooth="18"]');await flush();
+  assert.equal(h.host.querySelector('[data-dental-tooth="18"]').getAttribute('aria-pressed'),'true');
+  h.click('[data-dental-action=add-finding]');await flush();
+  assert.equal(h.host.querySelectorAll('.os-dental-tooth.has-finding').length,1);
+  const select=h.host.querySelector('[name=dentition]');
+  select.value='deciduous';select.dispatchEvent(new h.window.Event('change',{bubbles:true}));await flush();
+  assert.equal(h.host.querySelectorAll('[data-dental-tooth]').length,20);
+  assert.equal(h.host.querySelectorAll('.os-dental-arch').length,2);
+  assert.equal(h.host.querySelectorAll('.os-dental-tooth.has-finding').length,0,'unsaved finding is cleared when dentition changes');
+  assert.equal(h.calls.some(x=>x.method==='POST'),false);
+});
+
 test('periodontal sites keep null for all unmeasured locations instead of inventing 2mm',async t=>{
   const h=makeDOM({level:'dentist'});t.after(()=>h.close());
   await h.mount();await flush();
