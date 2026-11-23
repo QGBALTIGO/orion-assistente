@@ -132,13 +132,15 @@ def check_menu(browser, width, height, theme):
     search = page.get_by_role("search")
     search.get_by_label("Buscar oportunidades por título ou descrição").fill("família")
     search.get_by_role("button",name="Buscar oportunidades").press("Enter")
+    clear_search = search.get_by_role("button",name="Limpar busca")
+    clear_search.wait_for()
     page.get_by_text("Avaliação da família",exact=True).wait_for()
-    assert search.get_by_role("button",name="Limpar busca").count() == 1
+    assert clear_search.count() == 1
     controls = search.evaluate("""el=>[...el.querySelectorAll('input,button')].map(n=>{
         const b=n.getBoundingClientRect();return [b.left,b.right,b.height];
     })""")
     assert all(left>=0 and right<=width+1 and size>=44 for left,right,size in controls),(width,theme,controls)
-    search.get_by_role("button",name="Limpar busca").press("Enter")
+    clear_search.press("Enter")
     row = page.locator("#osDentalSalesList li").first
     assert row.evaluate("""el=>{
        const title=el.firstElementChild.getBoundingClientRect(), date=el.lastElementChild.getBoundingClientRect();
