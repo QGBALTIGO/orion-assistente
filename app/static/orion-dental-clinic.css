@@ -202,7 +202,7 @@
 
 .os-dental-sales-search{display:flex;align-items:center;gap:10px;padding:12px;margin-bottom:14px}
 .os-dental-sales-search .os-search{display:flex;max-width:none;min-width:0}
-.os-dental-sales-search .os-search input{min-height:44px;padding-right:48px!important}
+.os-main #osDentalSalesQuery{min-height:44px;padding-right:48px!important}
 .os-dental-sales-search .os-search .os-icon-button{position:absolute;right:2px;top:50%;width:44px;height:44px;transform:translateY(-50%);color:var(--os-primary)}
 .os-dental-sales-search>.os-button{flex:none;min-height:44px}
 .os-dental-sales-search .os-form-message:empty{display:none}
