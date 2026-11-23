@@ -202,7 +202,7 @@ def check_menu(browser, width, height, theme):
     start.wait_for(state="visible")
     assert start.bounding_box()["height"] >= 44
     start.press("Enter")
-    page.get_by_text("Em andamento",exact=True).wait_for()
+    row.get_by_text("Em andamento",exact=True).wait_for()
     assert opportunities[0]["stage"] == "in_progress" and opportunities[0]["version"] == 2
     assert row.get_by_role("button",name="Iniciar acompanhamento",exact=True).count() == 0
     lose = row.get_by_role("button",name="Registrar perda",exact=True)
@@ -211,7 +211,7 @@ def check_menu(browser, width, height, theme):
     dialog = page.get_by_role("dialog")
     dialog.get_by_role("heading",name="Registrar oportunidade como perdida",exact=True).wait_for()
     dialog.get_by_role("button",name="Confirmar",exact=True).press("Enter")
-    page.get_by_text("Perdida",exact=True).wait_for()
+    row.get_by_text("Perdida",exact=True).wait_for()
     assert opportunities[0]["stage"] == "lost" and opportunities[0]["version"] == 3
     assert row.get_by_role("button",name="Registrar perda",exact=True).count() == 0
     filters = page.locator("#osDentalSalesFilters")
