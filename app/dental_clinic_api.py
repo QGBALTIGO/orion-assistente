@@ -869,21 +869,34 @@ async def create_sales_opportunity(tenant_id: UUID, payload: SalesOpportunity, a
 
 @router.get("/sales/opportunities")
 async def list_sales_opportunities(tenant_id: UUID, before: UUID | None = None,
-                                   limit: int = Query(25, ge=1, le=50), actor: Actor = Depends(authenticate)):
+                                   limit: int = Query(25, ge=1, le=50),
+                                   start_date: date | None = None, end_date: date | None = None,
+                                   actor: Actor = Depends(authenticate)):
     async with owner_session(tenant_id, actor, feature="settings.manage") as db:
+        if start_date and end_date and start_date > end_date:
+            raise HTTPException(422, "A data final deve ser igual ou posterior à inicial")
         params = {"tenant": tenant_id, "limit": limit + 1}
-        cursor = ""
+        conditions = ["tenant_id=:tenant"]
+        if start_date or end_date:
+            params["zone"] = await db.scalar(text("SELECT timezone FROM tenants WHERE id=:tenant"), params)
+        if start_date:
+            conditions.append("created_at >= (CAST(:start_day AS date)::timestamp AT TIME ZONE :zone)")
+            params["start_day"] = start_date
+        if end_date:
+            conditions.append("created_at < ((CAST(:end_day AS date) + 1)::timestamp AT TIME ZONE :zone)")
+            params["end_day"] = end_date
         if before:
-            point = (await db.execute(text("""
-                SELECT created_at,id FROM dental_sales_opportunities WHERE tenant_id=:tenant AND id=:id
-            """), {"tenant": tenant_id, "id": before})).one_or_none()
+            point = (await db.execute(text("SELECT created_at,id FROM dental_sales_opportunities WHERE "
+                                           + " AND ".join(conditions) + " AND id=:id"),
+                                      {**params, "id": before})).one_or_none()
             if point is None:
                 raise HTTPException(400, "Página de oportunidades inválida")
-            cursor = "AND (created_at,id)<(:at,:id)"
+            conditions.append("(created_at,id)<(:at,:id)")
             params.update(at=point.created_at, id=point.id)
         rows = (await db.execute(text("""
             SELECT id,created_by,created_at,nonce,encrypted_content,digest FROM dental_sales_opportunities
-            WHERE tenant_id=:tenant """ + cursor + " ORDER BY created_at DESC,id DESC LIMIT :limit"), params)).mappings().all()
+            WHERE """ + " AND ".join(conditions) + " ORDER BY created_at DESC,id DESC LIMIT :limit"),
+                                 params)).mappings().all()
         items = []
         for row in rows[:limit]:
             details = json.loads(unseal(row, tenant_id, row["id"], "sales_opportunity"))
