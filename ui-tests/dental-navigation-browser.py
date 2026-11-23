@@ -137,7 +137,7 @@ def check_menu(browser, width, height, theme):
     controls = search.evaluate("""el=>[...el.querySelectorAll('input,button')].map(n=>{
         const b=n.getBoundingClientRect();return [b.left,b.right,b.height];
     })""")
-    assert all(left>=0 and right<=width+1 and size>=40 for left,right,size in controls),(width,theme,controls)
+    assert all(left>=0 and right<=width+1 and size>=44 for left,right,size in controls),(width,theme,controls)
     search.get_by_role("button",name="Limpar busca").press("Enter")
     row = page.locator("#osDentalSalesList li").first
     assert row.evaluate("""el=>{
