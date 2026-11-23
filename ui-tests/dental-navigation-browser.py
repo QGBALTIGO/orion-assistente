@@ -57,10 +57,20 @@ def check_menu(browser, width, height, theme):
             return route.fulfill(json={"id":item["id"],"stage":item["stage"],
                 "stage_name":item["stage_name"],"version":item["version"],
                 "changed_at":"2026-11-22T15:01:00Z"})
+        if path.endswith("/lose") and "/dental/sales/opportunities/" in path:
+            details = route.request.post_data_json
+            item = next(row for row in opportunities if f"/{row['id']}/lose" in path)
+            assert details["expected_version"] == item["version"] == 2
+            assert len(details["request_id"]) == 36
+            item.update(stage="lost",stage_name="Perdida",version=3)
+            return route.fulfill(json={"id":item["id"],"stage":item["stage"],
+                "stage_name":item["stage_name"],"version":item["version"],
+                "changed_at":"2026-11-22T15:02:00Z"})
         if path.endswith("/dental/sales/opportunities"):
             if route.request.method == "POST":
                 details = route.request.post_data_json
-                assert details["id"] and details["description"] == "Retorno solicitado pela família."
+                assert details.get("id"), details
+                assert details.get("description") == "Retorno solicitado pela família.", details
                 assert details["patient_id"] == patients[1]["id"]
                 item = {**details, "patient":patients[1], "created_by":"conta-sintética",
                         "created_at":"2026-11-22T15:00:00Z", "stage":"open",
@@ -156,7 +166,12 @@ def check_menu(browser, width, height, theme):
     selected = page.locator(".os-sales-patient-selected")
     assert "Responsável Comum" in selected.inner_text()
     assert selected.get_by_role("button",name="Trocar",exact=True).bounding_box()["height"] >= 44
-    page.get_by_role("button", name="Criar oportunidade", exact=True).press("Enter")
+    opportunity_form = page.locator('[data-os-form="dental-sales-opportunity"]')
+    assert opportunity_form.get_by_label("Título", exact=True).input_value() == "Avaliação da família"
+    assert opportunity_form.get_by_label("Descrição (opcional)").input_value() == "Retorno solicitado pela família."
+    create_opportunity = opportunity_form.get_by_role("button", name="Criar oportunidade", exact=True)
+    assert create_opportunity.is_enabled()
+    create_opportunity.click()
     page.get_by_text("Avaliação da família", exact=True).wait_for()
     assert len(opportunities) == 1
     search = page.get_by_role("search")
@@ -186,6 +201,15 @@ def check_menu(browser, width, height, theme):
     page.get_by_text("Em andamento",exact=True).wait_for()
     assert opportunities[0]["stage"] == "in_progress" and opportunities[0]["version"] == 2
     assert row.get_by_role("button",name="Iniciar acompanhamento",exact=True).count() == 0
+    lose = row.get_by_role("button",name="Registrar perda",exact=True)
+    assert lose.bounding_box()["height"] >= 44
+    lose.press("Enter")
+    dialog = page.get_by_role("dialog")
+    dialog.get_by_role("heading",name="Registrar oportunidade como perdida",exact=True).wait_for()
+    dialog.get_by_role("button",name="Confirmar",exact=True).press("Enter")
+    page.get_by_text("Perdida",exact=True).wait_for()
+    assert opportunities[0]["stage"] == "lost" and opportunities[0]["version"] == 3
+    assert row.get_by_role("button",name="Registrar perda",exact=True).count() == 0
     assert not page.evaluate("document.documentElement.scrollWidth > innerWidth+1"), (width,theme)
     page.screenshot(path=str(shell.OUT/f"vendas-{width}-{theme}.png"), animations="disabled")
     picker = page.locator(".os-dental-sales-period")

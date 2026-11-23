@@ -935,6 +935,53 @@ async def start_sales_opportunity(tenant_id: UUID, opportunity_id: UUID,
                 "version": saved.version, "changed_at": event.created_at}
 
 
+@router.post("/sales/opportunities/{opportunity_id}/lose")
+async def lose_sales_opportunity(tenant_id: UUID, opportunity_id: UUID,
+                                 payload: SalesOpportunityStart,
+                                 actor: Actor = Depends(authenticate)):
+    """Close an active administrative follow-up without changing patient identity."""
+    async with owner_session(tenant_id, actor, feature="settings.manage") as db:
+        current = (await db.execute(text("""
+            SELECT id,stage_key,version FROM dental_sales_opportunities
+            WHERE tenant_id=:tenant AND id=:id FOR UPDATE
+        """), {"tenant": tenant_id, "id": opportunity_id})).mappings().one_or_none()
+        if current is None:
+            raise HTTPException(404, "Oportunidade não encontrada")
+        replay = (await db.execute(text("""
+            SELECT version,to_stage,created_at FROM dental_sales_opportunity_events
+            WHERE tenant_id=:tenant AND opportunity_id=:id AND request_id=:request
+        """), {"tenant": tenant_id, "id": opportunity_id,
+                 "request": payload.request_id})).mappings().one_or_none()
+        if replay is not None:
+            if replay["to_stage"] != "lost" or current["version"] < replay["version"]:
+                raise HTTPException(409, "Não foi possível confirmar esta movimentação")
+            return {"id": opportunity_id, "stage": "lost", "stage_name": "Perdida",
+                    "version": replay["version"], "changed_at": replay["created_at"]}
+        if current["version"] != payload.expected_version:
+            raise HTTPException(409, "A oportunidade mudou. Atualize a lista antes de continuar.")
+        if current["stage_key"] != "in_progress":
+            raise HTTPException(409, "Somente oportunidades Em andamento podem ser registradas como perdidas")
+        saved = (await db.execute(text("""
+            UPDATE dental_sales_opportunities
+            SET stage_key='lost',version=version+1
+            WHERE tenant_id=:tenant AND id=:id AND version=:version AND stage_key='in_progress'
+            RETURNING version
+        """), {"tenant": tenant_id, "id": opportunity_id,
+                 "version": payload.expected_version})).one_or_none()
+        if saved is None:
+            raise HTTPException(409, "A oportunidade mudou. Atualize a lista antes de continuar.")
+        event = (await db.execute(text("""
+            INSERT INTO dental_sales_opportunity_events
+              (tenant_id,opportunity_id,version,request_id,from_stage,to_stage,actor_account_id)
+            VALUES (:tenant,:id,:version,:request,'in_progress','lost',:actor)
+            RETURNING created_at
+        """), {"tenant": tenant_id, "id": opportunity_id, "version": saved.version,
+                 "request": payload.request_id, "actor": actor.account_id})).one()
+        await audit(db, tenant_id, actor, "sales_opportunity_lost")
+        return {"id": opportunity_id, "stage": "lost", "stage_name": "Perdida",
+                "version": saved.version, "changed_at": event.created_at}
+
+
 @router.get("/sales/opportunities")
 async def list_sales_opportunities(tenant_id: UUID, before: UUID | None = None,
                                    limit: int = Query(25, ge=1, le=50),

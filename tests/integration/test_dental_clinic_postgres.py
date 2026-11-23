@@ -1763,24 +1763,43 @@ async def test_sales_follow_up_is_versioned_repeatable_and_tenant_scoped(clinic_
         listed = (await client.get(base)).json()["items"]
         assert listed[0]["stage"] == "in_progress"
         assert listed[0]["stage_name"] == "Em andamento" and listed[0]["version"] == 2
+        lose_request = str(uuid4())
+        lost = await asyncio.gather(*(client.post(
+            base+f"/{opportunity['id']}/lose",
+            json={"expected_version":2,"request_id":lose_request},
+        ) for _ in range(4)))
+        assert [reply.status_code for reply in lost] == [200]*4, [reply.text for reply in lost]
+        assert {(reply.json()["stage"],reply.json()["version"]) for reply in lost} == {("lost",3)}
+        listed = (await client.get(base)).json()["items"]
+        assert listed[0]["stage_name"] == "Perdida" and listed[0]["version"] == 3
         conflict = await client.post(base+f"/{opportunity['id']}/start",
                                      json={"expected_version":1,"request_id":str(uuid4())})
         assert conflict.status_code == 409
         assert (await client.post(base+f"/{uuid4()}/start",
                                   json={"expected_version":1,"request_id":str(uuid4())})).status_code == 404
+        assert (await client.post(base+f"/{uuid4()}/lose",
+                                  json={"expected_version":2,"request_id":str(uuid4())})).status_code == 404
         actor = Actor("member", d["a"], d["assistant"], "editor")
         assert (await client.post(base+f"/{opportunity['id']}/start",
-                                  json={"expected_version":2,"request_id":str(uuid4())})).status_code == 403
+                                  json={"expected_version":3,"request_id":str(uuid4())})).status_code == 403
+        assert (await client.post(base+f"/{opportunity['id']}/lose",
+                                  json={"expected_version":3,"request_id":str(uuid4())})).status_code == 403
         actor = Actor("member", d["b"], d["account_b"], "owner")
         foreign = base.replace(str(d["a"]),str(d["b"]))+f"/{opportunity['id']}/start"
-        assert (await client.post(foreign,json={"expected_version":2,
+        assert (await client.post(foreign,json={"expected_version":3,
+                                                "request_id":str(uuid4())})).status_code == 404
+        foreign = base.replace(str(d["a"]),str(d["b"]))+f"/{opportunity['id']}/lose"
+        assert (await client.post(foreign,json={"expected_version":3,
                                                 "request_id":str(uuid4())})).status_code == 404
     async with d["migrator"].begin() as db:
         assert await db.scalar(text("""SELECT count(*) FROM dental_sales_opportunity_events
             WHERE tenant_id=:tenant AND opportunity_id=:id"""),
-            {"tenant":d["a"],"id":opportunity["id"]}) == 1
+            {"tenant":d["a"],"id":opportunity["id"]}) == 2
         assert await db.scalar(text("""SELECT count(*) FROM dental_access_audit
             WHERE tenant_id=:tenant AND action='sales_opportunity_follow_up_started'"""),
+            {"tenant":d["a"]}) == 1
+        assert await db.scalar(text("""SELECT count(*) FROM dental_access_audit
+            WHERE tenant_id=:tenant AND action='sales_opportunity_lost'"""),
             {"tenant":d["a"]}) == 1
     async with async_sessionmaker(d["runtime"])() as db:
         async with tenant_transaction(db,d["b"]):
