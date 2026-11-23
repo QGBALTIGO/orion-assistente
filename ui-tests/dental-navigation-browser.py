@@ -171,7 +171,9 @@ def check_menu(browser, width, height, theme):
     })""")
     assert all(left>=0 and right<=width+1 and size>=44 for left,right,size in controls),(width,theme,controls)
     clear_search.press("Enter")
+    clear_search.wait_for(state="detached")
     row = page.locator("#osDentalSalesList li").first
+    row.get_by_text(opportunities[0]["title"],exact=True).wait_for()
     assert row.evaluate("""(el)=>{
        const title=el.firstElementChild.getBoundingClientRect(), meta=el.lastElementChild.getBoundingClientRect();
        const bounded=el.scrollWidth<=el.clientWidth+1&&title.left>=-1&&title.right<=innerWidth+1&&meta.right<=innerWidth+1;
