@@ -9,7 +9,7 @@ from scripts.backup_and_migrate_commissions import connection_values
 
 
 MIGRATOR_SCOPE = """
-SELECT COUNT(*)=2 AND bool_and(
+SELECT COUNT(*)=:expected AND bool_and(
   has_table_privilege(current_user,c.oid,'SELECT')
   AND EXISTS (
     SELECT 1 FROM pg_catalog.pg_policy p
@@ -24,7 +24,8 @@ SELECT COUNT(*)=2 AND bool_and(
 )
 FROM pg_catalog.pg_class c
 WHERE c.oid IN (pg_catalog.to_regclass('public.dental_records'),
-                pg_catalog.to_regclass('public.dental_exam_files'))
+                pg_catalog.to_regclass('public.dental_exam_files'),
+                pg_catalog.to_regclass('public.dental_sales_opportunities'))
 """
 
 
@@ -36,12 +37,16 @@ def ciphertext_exists(raw):
     try:
         with engine.connect() as db:
             db.execute(text("SET LOCAL ROLE app_migrator"))
-            if db.scalar(text(MIGRATOR_SCOPE)) is not True:
+            sales_table = db.scalar(text("SELECT to_regclass('public.dental_sales_opportunities') IS NOT NULL"))
+            if sales_table is not True and db.scalar(text("SELECT version_num FROM public.alembic_version")) == "0088_dental_sales_opportunities":
+                raise RuntimeError("dental_sales_history_scope_not_verified")
+            if db.scalar(text(MIGRATOR_SCOPE), {"expected": 3 if sales_table else 2}) is not True:
                 raise RuntimeError("dental_key_history_scope_not_verified")
+            sales_check = " OR EXISTS (SELECT 1 FROM public.dental_sales_opportunities)" if sales_table else ""
             return db.scalar(text("""
                 SELECT EXISTS (SELECT 1 FROM public.dental_records)
                     OR EXISTS (SELECT 1 FROM public.dental_exam_files)
-            """)) is True
+            """ + sales_check)) is True
     finally:
         engine.dispose()
 

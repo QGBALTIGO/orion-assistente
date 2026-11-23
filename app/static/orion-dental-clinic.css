@@ -192,3 +192,14 @@
 .os-sales-stages li+li{border-top:1px solid var(--os-border)}
 .os-sales-stages span{font-weight:600;overflow-wrap:anywhere}
 .os-sales-stages small{color:var(--os-muted)}
+
+.os-dental-sales-list{list-style:none;margin:0;padding:0}
+.os-dental-sales-list li{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding-block:14px;border-top:1px solid var(--os-border)}
+.os-dental-sales-list li>div{min-width:0;overflow-wrap:anywhere}
+.os-dental-sales-list li p{margin:4px 0 0;white-space:pre-wrap;color:var(--os-muted)}
+.os-dental-sales-list li time{flex:none;font-size:.86rem;color:var(--os-muted)}
+#osDentalSalesPager:not(:empty){padding:8px 14px}
+
+@media(max-width:760px){
+  .os-title-row [data-os-action="dental-opportunity-new"],#osDentalSalesPager button{min-height:44px}
+}
