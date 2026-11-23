@@ -903,6 +903,14 @@ def normalized_sales_text(value: str):
     return " ".join("".join(char for char in decomposed if not unicodedata.combining(char)).split())
 
 
+def sales_opportunity_search_text(details: dict):
+    """Build the private search surface without treating contact data as identity."""
+    patient = details.get("patient") or {}
+    return normalized_sales_text(" ".join(filter(None, (
+        details.get("title"), details.get("description"), patient.get("name"),
+    ))))
+
+
 async def sales_opportunity_page(db, tenant_id, before, limit, start_date, end_date, query=None):
     needle = normalized_sales_text(query or "")
     params = {"tenant": tenant_id, "limit": limit + 1}
@@ -924,7 +932,7 @@ async def sales_opportunity_page(db, tenant_id, before, limit, start_date, end_d
             raise HTTPException(400, "Página de oportunidades inválida")
         if needle:
             details = json.loads(unseal(point, tenant_id, point["id"], "sales_opportunity"))
-            searchable = normalized_sales_text(details["title"] + " " + details["description"])
+            searchable = sales_opportunity_search_text(details)
             if needle not in searchable:
                 raise HTTPException(400, "Página de oportunidades inválida")
         conditions.append("(created_at,id)<(:at,:id)")
@@ -939,7 +947,7 @@ async def sales_opportunity_page(db, tenant_id, before, limit, start_date, end_d
         try:
             async for row in streamed.mappings():
                 details = json.loads(unseal(row, tenant_id, row["id"], "sales_opportunity"))
-                searchable = normalized_sales_text(details["title"] + " " + details["description"])
+                searchable = sales_opportunity_search_text(details)
                 if needle in searchable:
                     rows.append((row, details))
                     if len(rows) > limit:

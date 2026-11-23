@@ -2953,10 +2953,10 @@
   function dentalSalesSearchForm(){
     const query=state.filters.dentalSalesQuery;
     return '<form id="osDentalSalesSearch" class="os-card os-dental-sales-search" role="search">'+
-      '<label class="os-sr-only" for="osDentalSalesQuery">Buscar oportunidades por título ou descrição</label>'+
+      '<label class="os-sr-only" for="osDentalSalesQuery">Buscar oportunidades por paciente, título ou descrição</label>'+
       '<div class="os-search">'+icon('search')+
       '<input id="osDentalSalesQuery" name="sales_query" type="search" minlength="2" maxlength="80" '+
-      'placeholder="Buscar por título ou descrição" value="'+esc(query)+'" autocomplete="off">'+
+      'placeholder="Paciente, título ou descrição" value="'+esc(query)+'" autocomplete="off">'+
       '<button class="os-icon-button" type="submit" aria-label="Buscar oportunidades">'+icon('search')+'</button></div>'+
       (query?button('Limpar busca','dental-sales-search-clear','os-ghost os-small'):'')+
       '<p class="os-form-message" role="alert"></p></form>';
@@ -3016,7 +3016,7 @@
       $('osPageBody').innerHTML='<section class="os-card" aria-labelledby="osSalesHeading">'+
         '<div class="os-card-header"><h2 id="osSalesHeading" tabindex="-1">Oportunidades em aberto</h2></div>'+
         (list?'<ul id="osDentalSalesList" class="os-dental-sales-list">'+list+'</ul><div id="osDentalSalesPager">'+next+'</div>':
-          (query?empty('search','Nenhuma oportunidade encontrada','Revise o título ou a descrição informada.'):
+          (query?empty('search','Nenhuma oportunidade encontrada','Revise o paciente, o título ou a descrição informada.'):
           start||end?empty('calendar','Nenhuma oportunidade neste período','Ajuste as datas para consultar outras oportunidades.'):
           empty('layers','Nenhuma oportunidade em aberto','Cadastre uma negociação para acompanhá-la aqui.')))+'</section>';
     }finally{

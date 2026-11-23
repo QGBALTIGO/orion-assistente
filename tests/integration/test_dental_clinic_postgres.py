@@ -1706,6 +1706,12 @@ async def test_sales_patient_link_is_explicit_for_shared_phone_and_tenant_scoped
         listed = await client.get(base+"/opportunities")
         assert listed.json()["items"][0]["patient_id"] == str(first)
         assert listed.json()["items"][0]["patient"]["guardian_name"] == "Responsável Comum"
+        by_patient = await client.post(base+"/opportunities/search", json={"query":"PACIENTE SINTETICO UM"})
+        assert [item["id"] for item in by_patient.json()["items"]] == [opportunity["id"]]
+        assert (await client.post(base+"/opportunities/search",
+                                  json={"query":"Paciente Sintético Dois"})).json()["items"] == []
+        assert (await client.post(base+"/opportunities/search",
+                                  json={"query":"999990099"})).json()["items"] == []
         assert (await client.post(base+"/opportunities", json={**opportunity,"id":str(uuid4()),
                                                                 "patient_id":str(foreign)})).status_code == 404
         replay = await client.post(base+"/opportunities", json={**opportunity,"patient_id":str(second)})
