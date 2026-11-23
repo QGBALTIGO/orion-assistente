@@ -1628,9 +1628,25 @@ async def test_dental_sales_opportunity_is_private_repeatable_and_paged(clinic_a
         older = (await client.get(path,params={"limit":1,"before":page.json()["next"]})).json()
         assert older["items"][0]["description"] == first["description"] and older["next"] is None
         assert (await client.get(path,params={"before":str(uuid4())})).status_code == 400
+        third = {**first, "id":str(uuid4()), "title":"Orcamento complementar", "description":"Retorno futuro"}
+        assert (await client.post(path,json=third)).status_code == 201
+        search = path + "/search"
+        found = await client.post(search,json={"query":"ORÇAMENTO", "limit":1})
+        assert found.status_code == 200
+        assert [item["id"] for item in found.json()["items"]] == [third["id"]]
+        continued = await client.post(search,json={"query":"orcamento", "limit":1,
+                                                    "before":found.json()["next"]})
+        assert [item["id"] for item in continued.json()["items"]] == [first["id"]]
+        assert continued.json()["next"] is None
+        by_description = await client.post(search,json={"query":"CONTATO SINTETICO"})
+        assert [item["id"] for item in by_description.json()["items"]] == [first["id"]]
+        assert (await client.post(search,json={"query":"orcamento", "before":second["id"]})).status_code == 400
+        assert (await client.post(search,json={"query":"x"})).status_code == 422
+        assert (await client.post(search,json={"query":"sem resultado"})).json() == {"items":[],"next":None}
         actor = Actor("member", d["a"], d["assistant"], "editor")
         assert (await client.get(path)).status_code == 403
         assert (await client.post(path,json=first)).status_code == 403
+        assert (await client.post(search,json={"query":"orcamento"})).status_code == 403
         actor = Actor("member", d["b"], d["account_b"], "owner")
         assert (await client.get(other)).json()["items"] == []
         assert (await client.get(other,params={"before":first["id"]})).status_code == 400
@@ -1638,7 +1654,10 @@ async def test_dental_sales_opportunity_is_private_repeatable_and_paged(clinic_a
     async with d["migrator"].begin() as db:
         count = await db.scalar(text("SELECT count(*) FROM dental_access_audit WHERE tenant_id=:t AND action='sales_opportunity_created'"),
                                 {"t":d["a"]})
-        assert count == 2
+        assert count == 3
+        searches = await db.scalar(text("SELECT count(*) FROM dental_access_audit WHERE tenant_id=:t AND action='sales_opportunities_searched'"),
+                                   {"t":d["a"]})
+        assert searches == 4
         blob = await db.scalar(text("SELECT encrypted_content FROM dental_sales_opportunities WHERE tenant_id=:t AND id=:i"),
                                {"t":d["a"],"i":first["id"]})
         assert first["title"].encode() not in bytes(blob) and first["description"].encode() not in bytes(blob)
@@ -1682,6 +1701,8 @@ async def test_opportunity_period_uses_clinic_midnight_and_scopes_pagination(cli
         second = (await client.get(path, params={**period,"before":first["next"]})).json()
         assert [row["id"] for row in second["items"]] == [str(ids[1])]
         assert second["next"] is None
+        searched = await client.post(path+"/search",json={"query":"orcamento sintetico",**period})
+        assert [row["id"] for row in searched.json()["items"]] == list(map(str,[ids[2],ids[1]]))
         assert (await client.get(path, params={**period,"before":str(ids[3])})).status_code == 400
         for params, expected in [
             ({"start_date":"2026-03-09"},[ids[3]]),

@@ -222,7 +222,7 @@
       finally{if(state.permissionPending===pending)state.permissionPending=null;}
     })();state.permissionPending=pending;return pending;
   }
-  const defaultFilters=()=>({dentalSalesStart:'',dentalSalesEnd:'',customerQuery:'',customerStatus:'active',customerRisk:30,customerOffset:0,agendaMode:'list',agendaPeriod:'day',agendaRangeList:false,agendaFocusDay:'',agendaFocusOffset:0,agendaDay:'',agendaTablet:false,agendaProfessional:'',agendaStatus:'all',agendaQuery:'',agendaOffset:0,financeKind:'',financeStatus:'',financeFiltersOpen:false,financeReceivables:false,financeTab:'entries',performancePeriod:'month',performanceDay:'',performanceGroup:'day',performanceTab:'overview',performanceMetric:'revenue_cents',performanceProfessional:'',performancePoint:'',performanceRange:null,staffTab:'professionals',staffStatus:'active',marketingTab:'overview',marketingQueueStatus:'all',loyaltyTab:'ranking',loyaltyOffset:0,couponStatus:'all',periodStart:'',periodEnd:'',settingsTab:'general',appHoursView:'hours',siteRequestStatus:'all',siteRequestIntent:'all',siteRequestQuery:'',siteRequestOffset:0,siteTab:'dashboard',helpQuery:'',helpCategory:'all',helpArticle:'',newsFilter:'all',notificationsUnread:false});
+  const defaultFilters=()=>({dentalSalesQuery:'',dentalSalesStart:'',dentalSalesEnd:'',customerQuery:'',customerStatus:'active',customerRisk:30,customerOffset:0,agendaMode:'list',agendaPeriod:'day',agendaRangeList:false,agendaFocusDay:'',agendaFocusOffset:0,agendaDay:'',agendaTablet:false,agendaProfessional:'',agendaStatus:'all',agendaQuery:'',agendaOffset:0,financeKind:'',financeStatus:'',financeFiltersOpen:false,financeReceivables:false,financeTab:'entries',performancePeriod:'month',performanceDay:'',performanceGroup:'day',performanceTab:'overview',performanceMetric:'revenue_cents',performanceProfessional:'',performancePoint:'',performanceRange:null,staffTab:'professionals',staffStatus:'active',marketingTab:'overview',marketingQueueStatus:'all',loyaltyTab:'ranking',loyaltyOffset:0,couponStatus:'all',periodStart:'',periodEnd:'',settingsTab:'general',appHoursView:'hours',siteRequestStatus:'all',siteRequestIntent:'all',siteRequestQuery:'',siteRequestOffset:0,siteTab:'dashboard',helpQuery:'',helpCategory:'all',helpArticle:'',newsFilter:'all',notificationsUnread:false});
   const state={bridge:{},mounted:false,epoch:0,load:0,route:'dashboard',tenantId:'',layoutMode:'classic',appShortcutDraft:null,data:{},filters:defaultFilters(),dialog:null,busy:false,imageUploading:false,searchTimer:null,drawerTrigger:null,observer:null};
   const rows = value => Array.isArray(value)?value:Array.isArray(value?.items)?value.items:[];
   const number = value => Number.isFinite(Number(value))?Number(value):0;
@@ -827,7 +827,7 @@
     if(state.route==='pacientes-odonto')html='<div id="osPageBody"><section id="osDentalDirectory"></section></div>';
     if(state.route==='proteses-odonto')html='<div class="os-title-row"><h1>Controle de próteses</h1></div><div id="osPageBody"><section id="osDentalClinic"></section></div>';
     if(state.route==='vendas-odonto')html=title('Vendas','',writable()?button('Nova oportunidade','dental-opportunity-new','','plus'):'')+
-      dentalSalesPeriodForm()+'<div id="osPageBody">'+loading('Carregando oportunidades…')+'</div>';
+      dentalSalesSearchForm()+dentalSalesPeriodForm()+'<div id="osPageBody">'+loading('Carregando oportunidades…')+'</div>';
     if(state.route==='estoque-odonto')html=title('Estoque odontológico','Materiais, saldos e movimentações da clínica.')+'<div id="osPageBody"><section id="osDentalClinic"></section></div>';
     if(state.route==='inbox')html=title('Central de atendimento','Acompanhe suas conversas e atendimentos.')+'<div id="osPageBody"><div id="osInboxHost"></div></div>';
     if(state.route==='dashboard'){html=subscriptionWorkspace()?'<div id="osPageBody"><section id="osSubscriptionDashboard">'+(window.OrionSubscriptionDashboard?.placeholder?.()||loading('Preparando seu painel…'))+'</section></div>':'<div id="osPageBody">'+loading('Carregando o resumo do seu negócio…')+'</div>';}
@@ -2950,6 +2950,28 @@
       '<button class="os-button" type="submit">Aplicar período</button>'+
       button('Limpar período','dental-sales-clear','os-ghost')+'</div></form></details>';
   }
+  function dentalSalesSearchForm(){
+    const query=state.filters.dentalSalesQuery;
+    return '<form id="osDentalSalesSearch" class="os-card os-dental-sales-search" role="search">'+
+      '<label class="os-sr-only" for="osDentalSalesQuery">Buscar oportunidades por título ou descrição</label>'+
+      '<div class="os-search">'+icon('search')+
+      '<input id="osDentalSalesQuery" name="sales_query" type="search" minlength="2" maxlength="80" '+
+      'placeholder="Buscar por título ou descrição" value="'+esc(query)+'" autocomplete="off">'+
+      '<button class="os-icon-button" type="submit" aria-label="Buscar oportunidades">'+icon('search')+'</button></div>'+
+      (query?button('Limpar busca','dental-sales-search-clear','os-ghost os-small'):'')+
+      '<p class="os-form-message" role="alert"></p></form>';
+  }
+  async function applyDentalSalesSearch(form,clear=false){
+    if(state.route!=='vendas-odonto'||!dentalSettingsAllowed())return;
+    const query=clear?'':form.elements.sales_query.value.trim().replace(/\s+/g,' ');
+    const message=form.querySelector('.os-form-message');
+    if(query&&[...query].length<2){
+      message.textContent='Digite pelo menos 2 caracteres.';form.elements.sales_query.focus();return;
+    }
+    state.filters.dentalSalesQuery=query;
+    await open('vendas-odonto',{keepScroll:true});
+    if(state.route==='vendas-odonto')$('osSalesHeading')?.focus({preventScroll:true});
+  }
   async function applyDentalSalesPeriod(form,clear=false){
     if(state.route!=='vendas-odonto'||!dentalSettingsAllowed())return;
     const start=clear?'':form.elements.sales_start.value,end=clear?'':form.elements.sales_end.value;
@@ -2964,14 +2986,16 @@
   async function loadDentalOpportunities(c, more){
     if(!dentalSettingsAllowed()||!current(c))return;
     const older=more?.dataset.before;
-    const params=new URLSearchParams(),{dentalSalesStart:start,dentalSalesEnd:end}=state.filters;
+    const params=new URLSearchParams(),{dentalSalesQuery:query,dentalSalesStart:start,dentalSalesEnd:end}=state.filters;
     if(start)params.set('start_date',start);
     if(end)params.set('end_date',end);
     if(older)params.set('before',older);
     if(more)more.disabled=true;
     try{
-      const query=params.toString();
-      const data=await request(apiPath('/dental/sales/opportunities')+(query?'?'+query:''));
+      const encoded=params.toString();
+      const data=query?await request(apiPath('/dental/sales/opportunities/search'),'POST',{
+        query,...(start?{start_date:start}:{}),...(end?{end_date:end}:{}),...(older?{before:older}:{})
+      }):await request(apiPath('/dental/sales/opportunities')+(encoded?'?'+encoded:''));
       if(!current(c)||!dentalSettingsAllowed())return;
       const list=data.items.map(item=>'<li><div><strong>'+esc(item.title)+'</strong>'+
         (item.description?'<p>'+esc(item.description)+'</p>':'')+'</div><time datetime="'+esc(item.created_at)+'">'+
@@ -2990,7 +3014,9 @@
       $('osPageBody').innerHTML='<section class="os-card" aria-labelledby="osSalesHeading">'+
         '<div class="os-card-header"><h2 id="osSalesHeading" tabindex="-1">Oportunidades em aberto</h2></div>'+
         (list?'<ul id="osDentalSalesList" class="os-dental-sales-list">'+list+'</ul><div id="osDentalSalesPager">'+next+'</div>':
-          (start||end?empty('calendar','Nenhuma oportunidade neste período','Ajuste as datas para consultar outras oportunidades.'):empty('layers','Nenhuma oportunidade em aberto','Cadastre uma negociação para acompanhá-la aqui.')))+'</section>';
+          (query?empty('search','Nenhuma oportunidade encontrada','Revise o título ou a descrição informada.'):
+          start||end?empty('calendar','Nenhuma oportunidade neste período','Ajuste as datas para consultar outras oportunidades.'):
+          empty('layers','Nenhuma oportunidade em aberto','Cadastre uma negociação para acompanhá-la aqui.')))+'</section>';
     }finally{
       if(more?.isConnected)more.disabled=false;
     }
@@ -4778,6 +4804,7 @@
   function deleteResource(kind,record){if(!record||!writable())return;const specs={customer:['Excluir cliente','O cadastro de '+customerDisplayName(record)+' será removido do diretório. O histórico de atendimentos será preservado.','/customers/','Cliente excluído.'],finance:['Cancelar lançamento','Este lançamento será cancelado, mantendo o histórico financeiro.','/finance/','Lançamento cancelado.'],campaign:['Excluir rascunho','O rascunho '+record.name+' será arquivado.','/marketing/','Rascunho excluído.'],loyalty:['Desativar programa','O programa '+record.name+' será desativado. Os pontos já registrados serão preservados.','/loyalty/rules/','Programa desativado.'],goal:['Desativar meta','A meta selecionada deixará de ficar ativa.','/goals/','Meta desativada.']};const spec=specs[kind];if(!spec)return;const path=mgmt(spec[2]+encodeURIComponent(record.id));confirmMutation(spec[0],spec[1],()=>request(path,'DELETE',{expected_version:record.version}),spec[3]);}
   async function submitForm(event){
     const form=event.target.closest('form');if(!form)return;
+    if(form.id==='osDentalSalesSearch'){event.preventDefault();await applyDentalSalesSearch(form);return;}
     if(form.id==='osDentalSalesPeriod'){event.preventDefault();await applyDentalSalesPeriod(form);return;}
     if(form.id==='osAgendaFilters'){event.preventDefault();await applyAgendaFilters();return;}
     if(form.id==='osSiteRequestFilters'){event.preventDefault();await applySiteRequestFilters(form);return;}
@@ -5153,6 +5180,10 @@
       }
       case 'dental-sales-clear':{
         const form=$('osDentalSalesPeriod');if(form)await applyDentalSalesPeriod(form,true);
+        break;
+      }
+      case 'dental-sales-search-clear':{
+        const form=$('osDentalSalesSearch');if(form)await applyDentalSalesSearch(form,true);
         break;
       }
       case 'dental-opportunity-more':

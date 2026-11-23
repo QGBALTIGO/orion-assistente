@@ -165,3 +165,17 @@ Na base anterior, 19 dos 79 casos falhavam. Após atualizar o ambiente de teste 
 A titular pode consultar oportunidades abertas por data inicial, data final ou ambas. O período é inclusivo no calendário da clínica. A lista e as páginas seguintes usam o mesmo filtro. As datas e o fuso são aplicados no PostgreSQL sobre o instante de criação. Uma página pertencente a outro período é recusada. O filtro não altera oportunidades.
 
 Foram verificados os limites da meia-noite, um dia de 23 horas, datas invertidas e limpeza do período. A tela mostra o intervalo aplicado em português e distingue uma busca vazia de uma clínica sem oportunidades. O escopo desta entrega é a lista de oportunidades abertas. Outros estágios e seus totais ainda estão na matriz. A publicação continua dependente das entregas anteriores. O esquema do banco permanece na revisão 0088.
+
+## Destino do Início por nicho
+
+O teste compartilhado de seleção do painel ainda esperava a interface genérica na odontologia. A nova verificação confirma a recepção e seus indicadores reais para a empresa odontológica. Também confirma que uma empresa de estética abre o próprio painel, assinaturas abre a área de assinaturas e só a clínica consulta o serviço de recepção. Os 53 testes conjuntos do espaço odontológico e do Início, incluindo barbearia, passaram localmente. Nenhum arquivo de execução foi alterado nesta correção.
+
+Na revisão anterior das sessões e da idempotência de mensagens, o GitHub confirmou depois os 1.413 testes do conector de WhatsApp. A etapa seguinte do fluxo geral executou 1.797 testes do painel e encontrou 32 falhas. A expectativa antiga do painel odontológico foi uma delas. A aprovação do conector não equivale à aprovação de toda a suíte de interface.
+
+## Busca protegida de oportunidades
+
+A titular pode pesquisar oportunidades abertas pelo título ou pela descrição. O termo é enviado no corpo privado da requisição, não na URL, e não cria um índice em texto aberto. A leitura continua limitada à clínica ativa e à permissão de gestão. A comparação ignora diferenças entre maiúsculas, espaços e acentos, preserva o período escolhido e valida que o cursor pertence ao mesmo resultado.
+
+Os dados sintéticos cobrem paginação, busca em título e descrição, termo inexistente, entrada curta, cursor incompatível, período, papel sem acesso e auditoria. A execução `45102344003` aprovou 30 testes PostgreSQL 16, 104 testes unitários e 153 testes da interface. O navegador percorreu 320, 390, 820 e 1440 px nos temas claro e escuro, validando teclado, foco, ausência de transbordamento e áreas de toque de 44 px. A verificação encontrou e corrigiu antes da aprovação a altura de 36 px do campo em celular e uma espera incorreta do teste pelo botão condicional de limpeza. As regressões compartilhadas `45102344005` e `45102344125` também passaram.
+
+A busca por paciente não foi simulada pelo telefone. Ela permanece separada até que a oportunidade possua o vínculo explícito com o identificador do paciente. Esta entrega não altera o esquema 0088 e não requer migração ou backup de produção. Está no PR 378, commit remoto `8135195d`, ainda sem publicação: o Railway continua no commit `95d3bb76`, e a alteração cancelada `12e76b71-8a64-4874-a4b8-f505ab73db14` não foi repetida.
