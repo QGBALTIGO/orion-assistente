@@ -1,0 +1,58 @@
+name: Orion - cache do site publico e cliente recorrente
+
+on:
+  push:
+    branches: [codex/orion-public-cache-profile-20261123]
+    paths:
+      - 'app/public_site_api.py'
+      - 'app/static/orion-public.js'
+      - 'app/static/orion-public.css'
+      - 'tests/unit/test_public_site_asset_cache.py'
+      - 'tests/e2e/browser_public_cache_profile.py'
+      - '.github/workflows/public-cache-profile-20261123.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    name: Sintaxe, assets e contratos de cache
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validar sintaxe
+        run: |
+          node --check app/static/orion-public.js
+          python -m py_compile app/public_site_api.py tests/unit/test_public_site_asset_cache.py
+      - name: Preparar dependencias Python
+        run: python -m pip install -c requirements.lock ".[test]"
+      - name: Testar fingerprint e regras de cache
+        run: python -m pytest -q -ra tests/unit/test_public_site_asset_cache.py
+      - name: Executar regressao DOM publica
+        run: |
+          npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+          node --test ui-tests/orion-public.test.mjs
+
+  browser:
+    name: Cliente recorrente em Chromium e Safari WebKit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Instalar Playwright e navegadores
+        run: |
+          python -m pip install -r tests/e2e/requirements.txt pytest
+          python -m playwright install --with-deps chromium webkit
+      - name: Validar cache offline, consentimento, preenchimento e exclusao
+        run: python -m pytest -q -ra tests/e2e/browser_public_cache_profile.py
