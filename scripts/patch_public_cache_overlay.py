@@ -52,7 +52,7 @@ def patch_file(base: str, edited: str, current: str, path: str) -> tuple[str, in
             right = "".join(before[i1:i1 + 3])
             anchor = left + right
             count = current.count(anchor)
-            if not left or not right or count != 1:
+            if count != 1 or (not left and not right):
                 raise RuntimeError(
                     f"{path}:{i1+1}: refused insertion; context matched {count}"
                 )
