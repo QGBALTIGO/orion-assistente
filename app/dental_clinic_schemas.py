@@ -91,6 +91,19 @@ FDI_ALL = frozenset((quadrant*10+tooth for quadrant in range(1,9)
                      for tooth in range(1,9 if quadrant<=4 else 6)))
 
 
+class ToothHistoryQuery(Strict):
+    tooth: int = Field(strict=True)
+    before: UUID | None = None
+    limit: int = Field(25, ge=1, le=40)
+
+    @field_validator("tooth")
+    @classmethod
+    def valid_tooth(cls, value):
+        if value not in FDI_ALL:
+            raise ValueError("Número FDI inválido")
+        return value
+
+
 class Odontogram(Strict):
     dentition: Literal["permanent","deciduous","mixed"]
     findings: list[ToothFinding] = Field(min_length=1,max_length=160)

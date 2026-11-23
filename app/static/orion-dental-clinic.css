@@ -67,6 +67,13 @@
 .os-odont-mark{display:inline-block;width:6px;height:10px;border:solid var(--os-primary);border-width:0 2px 2px 0;transform:rotate(40deg)}
 .os-dental-tooth .os-odont-mark{position:absolute;top:4px;right:5px}
 .os-odont-legend{display:flex;align-items:center;gap:9px;margin:0;color:var(--os-muted);font-size:13px}
+.os-odont-history{display:grid;gap:12px;padding:14px;border:1px solid var(--os-border);border-radius:12px;min-width:0}
+.os-odont-history :is(h4,p,ol,ul){margin:0}
+.os-odont-history-list{display:grid;gap:10px;padding:0;list-style:none}
+.os-odont-history-list>li{display:grid;gap:4px;overflow-wrap:anywhere}
+.os-odont-history-list>li+li{padding-top:10px;border-top:1px solid var(--os-border)}
+.os-odont-history-list>li>span{color:var(--os-muted);font-size:13px}
+.os-odont-history-list ul{padding-inline-start:18px}
 .os-dental-tooth[aria-pressed=true]{border-color:var(--os-primary);outline:1px solid var(--os-primary);background:var(--os-tint)}
 .os-dental-tooth[aria-pressed=true] svg{stroke:var(--os-primary)}
 .os-dental-face-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px}

@@ -17,6 +17,8 @@ const response=(path,method='GET',data,config)=>{
   if(path.endsWith('/dental/access'))return {account_id:account,can_manage:config.canManage===true,can_manage_inventory:config.inventory===true,can_read_records:config.level==='dentist',
     clinical_access:config.level?{account_id:account,level:config.level,professional_id:pro}:null,grants:[]};
   if(path.includes('/dental/patients?'))return {items:rows,total:rows.length};
+  if(path.endsWith('/odontogram/history')&&method==='POST')
+    return config.toothHistory?config.toothHistory(data):{tooth:data.tooth,items:[],next_cursor:null};
   if(path.endsWith('/dental/patients'))return {id:randomUUID(),...data};
   if(path.includes('/dental/patients/'+patient+'/records?'))return {items:config.records||[]};
   if(path.includes('/dental/patients/'+patient+'/exams')&&method==='GET')return {items:[]};
@@ -162,6 +164,33 @@ test('an interrupted clinical save can be retried without a duplicate entry or l
   assert.equal(tries,2);assert.equal(recorded.size,1);
   assert.equal(h.host.querySelectorAll('[data-marked=true]').length,0);
   assert.equal(h.host.querySelector('[name=narrative]').value,'');
+});
+
+test('tooth history handles an empty page, a failed page and a late response for a different tooth',async t=>{
+  const cursor=randomUUID(),itemId=randomUUID();let attempts=0,late;
+  const h=makeDOM({level:'dentist',toothHistory:async({tooth,before})=>{
+    if(tooth===18)return new Promise(resolve=>{late=resolve;});
+    if(!before)return {tooth,items:[],next_cursor:cursor};
+    assert.equal(before,cursor);
+    if(++attempts===1)throw Error('Leitura indisponível');
+    return {tooth,items:[{id:itemId,recorded_at:'2026-11-10T15:00:00Z',professional:'Profissional de teste',
+      findings:[{tooth,face:'V',finding:'watch',note:'Nota exclusivamente do dente 11'}]}],next_cursor:null};
+  }});t.after(()=>h.close());await h.mount();
+  h.click('[data-dental-action=select-patient]');await flush();h.click('[data-dental-tab=odontogram]');
+  h.fill('[name=narrative]','Preservar este rascunho');
+  h.click('[data-dental-action=tooth-history]');await flush();
+  assert.match(h.host.textContent,/não aparece nas avaliações consultadas/);
+  h.click('[data-dental-action=tooth-history-more]');await flush();
+  assert.match(h.host.textContent,/Não foi possível carregar o histórico/);
+  h.click('[data-dental-action=tooth-history-more]');await flush();
+  assert.match(h.host.querySelector('.os-odont-history').textContent,/Vestibular · Acompanhar · Nota exclusivamente do dente 11/);
+  assert.equal(h.host.querySelector('[data-dental-action=tooth-history-more]'),null);
+  assert.equal(h.host.querySelector('[name=narrative]').value,'Preservar este rascunho');
+  h.click('[data-dental-tooth="18"]');h.click('[data-dental-action=tooth-history]');await flush();
+  h.click('[data-dental-tooth="21"]');late({tooth:18,items:[],next_cursor:null});await flush();
+  assert.equal(h.host.querySelector('.os-odont-history'),null);
+  assert.match(h.host.querySelector('[data-dental-action=tooth-history]').textContent,/21/);
+  assert.equal(h.calls.some(call=>call.path.includes('/teeth/')||call.path.includes('?tooth=')),false);
 });
 
 test('periodontal sites keep null for all unmeasured locations instead of inventing 2mm',async t=>{

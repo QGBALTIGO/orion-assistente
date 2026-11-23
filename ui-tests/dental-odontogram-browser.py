@@ -29,6 +29,11 @@ def verify(browser, width, height, theme):
             return route.fulfill(json={"items":[patient]})
         if path.endswith("/dental/patients/" + PATIENT):
             return route.fulfill(json=patient)
+        if path.endswith("/odontogram/history"):
+            number=route.request.post_data_json["tooth"]
+            history=[{"id":r["id"],"recorded_at":r["created_at"],"professional":"Profissional sintético",
+                      "findings":[f for f in r["content"]["findings"] if f["tooth"]==number]} for r in records]
+            return route.fulfill(json={"tooth":number,"items":[item for item in history if item["findings"]],"next_cursor":None})
         if path.endswith("/records"):
             if route.request.method == "POST":
                 payload = route.request.post_data_json
@@ -79,6 +84,15 @@ def verify(browser, width, height, theme):
     page.get_by_text("Registro clínico gravado e auditado.",exact=True).wait_for()
     page.locator("details.os-dental-entry summary").click()
     assert page.locator("details.os-dental-entry").get_by_text("Observação sintética",exact=True).is_visible()
+    chart.get_by_role("button",name="Dente 18",exact=True).press("Enter")
+    form.get_by_role("button",name="Histórico do dente 18").press("Enter")
+    history = form.get_by_role("region",name="Histórico do dente 18")
+    history.get_by_text("Vestibular · Acompanhar · Nota sintética").wait_for()
+    assert history.get_by_text("Profissional sintético").is_visible()
+    history.evaluate("el => el.scrollIntoView({block:'center',behavior:'instant'})")
+    history.screenshot(path=str(shell.OUT/f"historico-dente-{width}-{theme}.png"),animations="disabled")
+    history.get_by_role("button",name="Fechar histórico").press("Enter")
+    assert form.get_by_role("button",name="Histórico do dente 18").evaluate("b => document.activeElement === b")
     assert records[0]["content"]["findings"] == [{"tooth":18,"face":"V","finding":"watch","note":"Nota sintética"}]
     assert not errors, errors
     page.close()
