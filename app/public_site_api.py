@@ -11,6 +11,7 @@ import json
 import os
 import re
 import secrets
+from functools import lru_cache
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from uuid import UUID
@@ -39,6 +40,28 @@ from app.site_branding import effective_hide_orion_brand
 router=APIRouter(tags=["Site público"])
 UTC=timezone.utc
 STATIC=Path(__file__).parent/'static'
+PUBLIC_ASSETS={
+    'orion-public.css':'text/css', 'orion-public.js':'text/javascript',
+    'orion-fields.css':'text/css', 'orion-fields.js':'text/javascript',
+    'orion-focus.css':'text/css', 'orion-focus.js':'text/javascript',
+    'orion-public-theme.js':'text/javascript'
+}
+
+
+@lru_cache(maxsize=1)
+def public_asset_versions() -> dict[str, str]:
+    """A new deployment gets new URLs; unchanged assets stay cached on the device."""
+    return {asset: hashlib.sha256((STATIC/asset).read_bytes()).hexdigest()[:16]
+            for asset in PUBLIC_ASSETS}
+
+
+def version_public_assets(html: str) -> str:
+    for asset, version in public_asset_versions().items():
+        html = html.replace(f'"/public-assets/{asset}"',
+                            f'"/public-assets/{asset}?v={version}"')
+    return html
+
+
 PUBLIC_FIELDS=('title','description','slug','theme_color','logo_url','cover_url','address','city','state','postal_code',
                'address_number','address_complement','neighborhood','address_no_number',
                'contact_phone','whatsapp_phone','instagram_url','maps_url','facebook_url','tiktok_url','external_url',
@@ -665,20 +688,21 @@ async def public_page(slug:str,request:Request):
                 ON CONFLICT (tenant_id,day) DO UPDATE SET visits=public_site_daily_metrics.visits+1"""),{'tenant':tenant,'zone':site['timezone']})
     headers={**HEADERS,'Content-Security-Policy':HEADERS['Content-Security-Policy'].replace(
         "script-src 'self'", "script-src 'self' 'sha256-"+schema_hash+"'")}
-    return HTMLResponse(rendered,headers=headers)
+    return HTMLResponse(version_public_assets(rendered),headers=headers)
 
 
 @router.get('/app/site-preview/{tenant_id}',include_in_schema=False)
 async def preview_page(tenant_id:UUID,actor:Actor=Depends(authenticate)):
     await resolve_tenant_access(actor,tenant_id,'read')
-    return FileResponse(STATIC/'orion-public.html',headers={**HEADERS,'X-Robots-Tag':'noindex, nofollow'})
+    return HTMLResponse(version_public_assets((STATIC/'orion-public.html').read_text(encoding='utf-8')),
+                        headers={**HEADERS,'X-Robots-Tag':'noindex, nofollow'})
 
 
 @router.get('/public-assets/{asset}',include_in_schema=False)
-async def public_asset(asset:str):
-    allowed={'orion-public.css':'text/css','orion-public.js':'text/javascript',
-             'orion-fields.css':'text/css','orion-fields.js':'text/javascript',
-             'orion-focus.css':'text/css','orion-focus.js':'text/javascript',
-             'orion-public-theme.js':'text/javascript'}
-    if asset not in allowed:raise HTTPException(404)
-    return FileResponse(STATIC/asset,media_type=allowed[asset],headers={'Cache-Control':'no-cache','X-Content-Type-Options':'nosniff'})
+async def public_asset(asset:str,request:Request):
+    if asset not in PUBLIC_ASSETS:raise HTTPException(404)
+    version = request.query_params.get('v')
+    immutable = version is not None and version == public_asset_versions()[asset]
+    cache_control = 'public, max-age=31536000, immutable' if immutable else 'no-cache'
+    return FileResponse(STATIC/asset,media_type=PUBLIC_ASSETS[asset],
+                        headers={'Cache-Control':cache_control,'X-Content-Type-Options':'nosniff'})
