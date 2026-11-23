@@ -1,5 +1,5 @@
 """Real PostgreSQL RLS and room-overlap tests. No production credentials or data."""
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 import os
 from uuid import uuid4
 
