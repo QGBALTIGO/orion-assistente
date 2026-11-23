@@ -121,7 +121,7 @@
   const routePermitted=route=>route==='ajustes-odonto'?dentalWorkspace():['clinica','estoque-odonto','pacientes-odonto','proteses-odonto'].includes(route)?(dentalWorkspace()&&state.entitlements?.dental_clinical_enabled===true&&['owner','editor'].includes(tenant()?.role)&&permitted('clients.manage')):route==='perfil'?appLayoutEnabled():['aquecimento','evitar-banimento','resolver-banimento','extrator-contatos','adicionar-ao-grupo'].includes(route)?(subscriptionWorkspace()&&tenant()?.role==='owner'&&tenant()?.status==='active'&&permitted(routeFeatures[route])):['dispositivos','chatbot','testar-chatbot','templates','mensagens-enviadas','diagnosticos','campanhas','programadas','massa','enviar-mensagem'].includes(route)?(subscriptionWorkspace()&&permitted(routeFeatures[route])):subscriptionWorkspace()?(route==='configuracoes'?permitted('account.manage'):subscriptionRoutes.has(route)):route==='configuracoes'?(permitted('settings.manage')||permitted('business.setup')||permitted('account.manage')):permitted(routeFeatures[route]);
   const dentalSettingsAllowed=()=>dentalWorkspace()&&state.entitlements?.dental_clinical_enabled===true&&
     state.bridge.user?.role==='member'&&!state.bridge.user?.maintenance?.active&&tenant()?.role==='owner'&&permitted('settings.manage');
-  const settingsTabAllowed=tab=>['dental-chairs','dental-intake'].includes(tab)?dentalSettingsAllowed():subscriptionWorkspace()?['appearance','account'].includes(tab):tab==='finance'?permitted('finance.basic'):['appearance','account'].includes(tab)||tab==='general'?(tab!=='general'||permitted('business.setup')||permitted('settings.manage')):tab==='ai'?(permitted('marketing.ai')||permitted('consultant.ai')):tab==='whatsapp'?permitted('conversations.manual'):tab==='hours'?permitted('agenda.manage'):tab==='calendar'?permitted('calendar.manage'):tab==='notifications'?permitted('notifications.basic'):tab==='site-requests'?canManageSiteRequests():platformWorkspace();
+  const settingsTabAllowed=tab=>['dental-chairs','dental-intake','dental-sales-stages'].includes(tab)?dentalSettingsAllowed():subscriptionWorkspace()?['appearance','account'].includes(tab):tab==='finance'?permitted('finance.basic'):['appearance','account'].includes(tab)||tab==='general'?(tab!=='general'||permitted('business.setup')||permitted('settings.manage')):tab==='ai'?(permitted('marketing.ai')||permitted('consultant.ai')):tab==='whatsapp'?permitted('conversations.manual'):tab==='hours'?permitted('agenda.manage'):tab==='calendar'?permitted('calendar.manage'):tab==='notifications'?permitted('notifications.basic'):tab==='site-requests'?canManageSiteRequests():platformWorkspace();
   const atProfessionalLimit=()=>!platformWorkspace()&&Number.isInteger(state.entitlements?.limits?.max_professionals)&&Number(state.entitlements.limits.active_professionals)>=state.entitlements.limits.max_professionals;
   function featureForPath(path,method='GET',data){
     const suffix=path.split('/management/')[1]||'',resource=path.split('/api/v1/tenants/')[1]?.split('/')[1];
@@ -164,7 +164,7 @@
       if(type==='customer')return 'clients.manage';
       if(type.startsWith('appointment')||type==='fixed-client')return 'agenda.manage';
     }
-    if(type.startsWith('dental-chair')||type==='dental-intake')return 'settings.manage';
+    if(type.startsWith('dental-chair')||type==='dental-intake'||type==='dental-sales-stage')return 'settings.manage';
     return /receipt/.test(type)?'finance.basic':type==='business-preferences'?'business.setup':/goal/.test(type)?'goals.manage':/campaign|marketing/.test(type)?'marketing.campaigns':/loyalty/.test(type)?'loyalty.manage':/coupon/.test(type)?'coupons.manage':/settlement|advance|commission/.test(type)?'commissions.advanced':/professional|hours/.test(type)?'professionals.manage':routeFeatures[state.route];
   }
   function applyPermissionDOM(){
@@ -458,6 +458,7 @@
         ...(dedicatedPatients()&&routePermitted('pacientes-odonto')?[['clientes','users','Contatos da agenda']]:[]),
         ['site','globe','Site da clínica'],
         ['configuracoes','settings','Preferências da clínica'],
+        ['configuracoes','layers','Etapas de vendas','dental-sales-stages'],
         ['plano','credit','Plano da clínica']
       ]]
     ];
@@ -843,7 +844,12 @@
     if(state.route==='fidelizacao')html=title('Fidelização','Programa de pontos, cupons automáticos e ações de retenção para trazer o cliente de volta.')+readOnly+'<div id="osPageBody">'+loading('Carregando o programa de fidelidade…')+'</div>';
     if(state.route==='consultor')html=title('Consultor IA','Encontre oportunidades a partir dos dados do seu negócio.')+'<div id="osPageBody">'+loading('Analisando os dados disponíveis…')+'</div>';
     if(state.route==='plano')html='<div id="osPageBody">'+loading('Consultando os planos do Orion…')+'</div>';
-    if(state.route==='configuracoes')html=appLayoutEnabled()&&state.filters.settingsTab==='hours'?title('Horários','Expediente, pausas e bloqueios dos profissionais.')+'<div id="osPageBody">'+loading('Carregando horários…')+'</div>':title('Configurações','Gerencie sua empresa, horários e preferências.')+'<div id="osPageBody">'+loading('Carregando configurações…')+'</div>';
+    if(state.route==='configuracoes'){
+      const hours=appLayoutEnabled()&&state.filters.settingsTab==='hours';
+      const heading=hours?title('Horários','Expediente, pausas e bloqueios dos profissionais.'):
+        dentalWorkspace()?title('Ajustes da clínica',''):title('Configurações','Gerencie sua empresa, horários e preferências.');
+      html=heading+'<div id="osPageBody">'+loading(hours?'Carregando horários…':'Carregando configurações…')+'</div>';
+    }
     if(['ajuda','aquecimento','evitar-banimento','resolver-banimento'].includes(state.route))html='<div id="osPageBody"></div>';
     if(state.route==='novidades')html=title('Novidades','O que você já pode fazer no seu painel Orion.')+'<div id="osPageBody"></div>';
     pageHTML(html);
@@ -2854,7 +2860,7 @@
       if(stillAccount(c)&&state.route==='configuracoes'&&state.filters.settingsTab==='site-requests')await open('configuracoes',{keepScroll:true});
     }
   }
-  const settingsSections=[['finance','wallet','Financeiro','Recebimentos de atendimentos'],['general','settings','Negócio','Dados operacionais e fiscais'],['hours','clock','Horários','Jornada de trabalho da equipe'],['dental-chairs','tooth','Cadeiras','Consultórios e cadeiras da clínica'],['dental-intake','book','Anamnese','Modelos de perguntas para a clínica'],['site-requests','mail','Solicitações do site','Contatos e testes solicitados'],['appearance','sun','Aparência','Tema e visual do painel'],['ai','sparkles','Uso de IA','Gerações e limite diário'],['notifications','bell','Notificações','Avisos de agendamentos'],['whatsapp','phone','WhatsApp por empresa','Conexão e atendimento'],['calendar','calendar','Google Agenda','Sincronização dos horários'],['account','shield','Minha conta','Dados de acesso ao Orion']];
+  const settingsSections=[['finance','wallet','Financeiro','Recebimentos de atendimentos'],['general','settings','Negócio','Dados operacionais e fiscais'],['hours','clock','Horários','Jornada de trabalho da equipe'],['dental-chairs','tooth','Cadeiras','Consultórios e cadeiras da clínica'],['dental-intake','book','Anamnese','Modelos de perguntas para a clínica'],['dental-sales-stages','layers','Etapas de vendas','Organização do funil da clínica'],['site-requests','mail','Solicitações do site','Contatos e testes solicitados'],['appearance','sun','Aparência','Tema e visual do painel'],['ai','sparkles','Uso de IA','Gerações e limite diário'],['notifications','bell','Notificações','Avisos de agendamentos'],['whatsapp','phone','WhatsApp por empresa','Conexão e atendimento'],['calendar','calendar','Google Agenda','Sincronização dos horários'],['account','shield','Minha conta','Dados de acesso ao Orion']];
   async function loadSettings(c){
     if(!settingsTabAllowed(state.filters.settingsTab))state.filters.settingsTab='account';
     // Old bookmarks and persisted settings must not reopen the retired
@@ -2868,6 +2874,14 @@
     if(!tenant()){renderSettings();return;}
     const tab=state.filters.settingsTab;
     if(tab==='general'){const data=await request(mgmt('/preferences'));if(!current(c))return;state.data.preferences=data;}
+    if(tab==='dental-sales-stages'){
+      const result=await request(apiPath('/dental/sales/stages'));
+      if(!current(c)||state.filters.settingsTab!==tab||!dentalSettingsAllowed())return;
+      if(!Array.isArray(result?.items)||!result.items.length||result.items.some(stage=>
+        typeof stage.id!=='string'||typeof stage.name!=='string'||typeof stage.custom!=='boolean'))
+        throw Error('Não foi possível carregar as etapas de vendas.');
+      state.data.dentalSalesStages=result.items;
+    }
     if(['dental-chairs','dental-intake'].includes(tab)){
       const chairs=tab==='dental-chairs';
       const data=await request(apiPath(chairs?'/dental/chair-settings':'/dental/intake-templates'));
@@ -2891,7 +2905,7 @@
   }
   function renderSettings(){
     const t=tenant(),isAdmin=['support','admin'].includes(state.bridge.user?.role),
-      sections=settingsSections.filter(([key])=>subscriptionWorkspace()?['appearance','account'].includes(key):key==='account'||key==='appearance'||key==='finance'&&permitted('finance.basic')||key==='general'&&(permitted('business.setup')||permitted('settings.manage'))||key==='site-requests'&&isAdmin||key==='ai'&&(permitted('marketing.ai')||permitted('consultant.ai'))||key==='hours'&&permitted('agenda.manage')||key==='calendar'&&permitted('calendar.manage')||['dental-chairs','dental-intake'].includes(key)&&dentalSettingsAllowed()||key==='notifications'&&permitted('notifications.basic')||key==='whatsapp'&&permitted('conversations.manual')),
+      sections=settingsSections.filter(([key])=>subscriptionWorkspace()?['appearance','account'].includes(key):key==='account'||key==='appearance'||key==='finance'&&permitted('finance.basic')||key==='general'&&(permitted('business.setup')||permitted('settings.manage'))||key==='site-requests'&&isAdmin||key==='ai'&&(permitted('marketing.ai')||permitted('consultant.ai'))||key==='hours'&&permitted('agenda.manage')||key==='calendar'&&permitted('calendar.manage')||['dental-chairs','dental-intake','dental-sales-stages'].includes(key)&&dentalSettingsAllowed()||key==='notifications'&&permitted('notifications.basic')||key==='whatsapp'&&permitted('conversations.manual')),
       tab=sections.some(item=>item[0]===state.filters.settingsTab)?state.filters.settingsTab:'general',
       definition=sections.find(item=>item[0]===tab)||sections[0];let panel='';
     if(tab==='finance')panel=receiptSettingsForm(state.data.receiptSettings);
@@ -2900,6 +2914,7 @@
     if(tab==='hours')panel=settingsHours();
     if(tab==='dental-chairs')panel=renderDentalChairSettings();
     if(tab==='dental-intake')panel=renderDentalIntakeSettings();
+    if(tab==='dental-sales-stages')panel=renderDentalSalesStages();
     if(tab==='calendar')panel='<section class="os-card"><div class="os-card-header"><div><h2>Google Agenda</h2><p>Sincronize os agendamentos com a agenda do seu negócio.</p></div></div><div id="osGoogleStatus">'+loading('Consultando integração…')+'</div></section>';
     if(tab==='whatsapp')panel='<section id="osManagedChannels"></section>';
     if(tab==='appearance')panel='<section class="os-card"><div class="os-card-header"><div><h2>Aparência</h2><p>Escolha como o painel será exibido neste dispositivo.</p></div></div><div class="os-appearance-options">'+[['light','sun','Claro','Painel claro, com fundo suave.'],['dark','moon','Escuro','Painel escuro, com menos luminosidade.'],['auto','monitor','Sistema','Acompanha a aparência do dispositivo.']].map(([value,symbol,label,description])=>'<button type="button" class="os-appearance-option" data-os-theme="'+value+'" aria-pressed="'+((document.documentElement.dataset.themePreference||'auto')===value)+'"><span class="os-theme-preview os-preview-'+value+'"><i></i><span><b></b><em></em><em></em><em></em></span></span><span class="os-theme-caption">'+icon(symbol)+'<strong>'+label+'</strong></span><small>'+description+'</small></button>').join('')+'</div></section>';
@@ -2919,6 +2934,13 @@
     }
     if(tab==='calendar'&&t)void loadGoogle();
     if(tab==='whatsapp'&&t)window.OrionChannels?.mount({host:$('osManagedChannels'),request,tenantId:state.tenantId});
+  }
+  function renderDentalSalesStages(){
+    const stages=state.data.dentalSalesStages;
+    return '<section class="os-card"><div class="os-card-header"><h3>Etapas do funil</h3>'+
+      button('Nova etapa','dental-sales-stage-new','','plus')+'</div>'+
+      '<ol class="os-sales-stages" aria-label="Ordem das etapas">'+stages.map(stage=>
+        '<li><span>'+esc(stage.name)+'</span><small>'+(stage.custom?'Personalizada':'Padrão')+'</small></li>').join('')+'</ol></section>';
   }
   function renderDentalChairSettings(){
     const chairs=state.data.dentalChairs||[],filter=state.filters.dentalChairFilter||'all';
@@ -4709,6 +4731,14 @@
       if(kind==='automations'){const data=state.data.automations,previous=data.configuration||{},rules=automationRules().map(rule=>{const template=form.elements['rule_template_'+rule.event],enabled=form.elements['rule_enabled_'+rule.event];return {...rule,template:template?template.value:rule.template,...(template&&template.value!==rule.template?{template_source:'custom'}:{}),requested_enabled:enabled?enabled.checked:rule.requested_enabled};}),configuration={rules,...(previous.delivery_policy?{delivery_policy:previous.delivery_policy}:{}),...(permitted('relationships.manage')?{recovery_days:f.recovery_days?Number(f.recovery_days):previous.recovery_days||60}:{}),...(permitted('reception.automation')?{vacancy_requested:form.elements.vacancy_requested?form.elements.vacancy_requested.checked:previous.vacancy_requested===true}:{})};await saveForm(form,()=>request(mgmt('/marketing/automations'),'PUT',{expected_version:number(form.dataset.version),configuration}),'Rascunhos das automações salvos.');return;}
       if(kind==='receipt-settings'){await saveForm(form,()=>request(mgmt('/finance/receipts/settings'),'PUT',{mode:f.receipt_mode,expected_version:number(form.dataset.version)}),'Configuração de recebimentos salva.');return;}
       if(kind==='service-receipt'){const record=d.record,action=f.receipt_action,payload={action,expected_version:record.version,...(action==='confirm'?{payment_method:f.receipt_method,received_at:localISO(f.receipt_day,f.receipt_time)}:{})};let saved;await saveForm(form,async()=>{const result=await request(mgmt('/finance/'+encodeURIComponent(record.id)+'/receipt'),'POST',{...payload,idempotency_key:requestKey(form,payload)});if(result.id!==record.id||(action==='confirm'?result.status!=='paid':result.status!=='pending'))throw Error('O resultado do recebimento não foi confirmado.');saved=result;return result;},action==='confirm'?'Recebimento registrado.':action==='reopen'?'Recebimento voltou a pendente.':action==='hold'?'Recebimento mantido pendente.':'Regra automática retomada.');if(saved&&d.returnAppointment&&state.route==='agenda'&&d.epoch===state.epoch&&d.tenantId===state.tenantId)await showAppointmentDetail(d.returnAppointment);return;}
+      if(kind==='dental-sales-stage'){
+        if(!dentalSettingsAllowed()||d.type!==kind||state.filters.settingsTab!=='dental-sales-stages')return;
+        const name=f.name.trim().replace(/\s+/g,' ');
+        if(!name||[...name].length>16)throw Error('Informe um nome de até 16 caracteres.');
+        const payload={id:requestKey(form,{name}),name};
+        await saveForm(form,()=>request(apiPath('/dental/sales/stages'),'POST',payload),'Etapa cadastrada.');
+        return;
+      }
       if(kind==='dental-intake'){
         if(!dentalSettingsAllowed()||d.type!==kind||state.filters.settingsTab!=='dental-intake')return;
         const questions=[...form.querySelectorAll('[data-os-intake-question]')].map(box=>({
@@ -5043,6 +5073,12 @@
       case 'agenda-clear':f.agendaProfessional='';f.agendaStatus='all';f.agendaQuery='';f.agendaOffset=0;f.agendaFocusOffset=0;await open('agenda',{keepScroll:true});break;
       case 'agenda-page-prev':case 'agenda-page-next':{const result=state.data.agendaResult;if(!result||state.data.agendaError)return;const next=Math.max(0,f.agendaOffset+(name==='agenda-page-prev'?-1:1)*(number(result.limit)||50));if(next>=number(result.total))return;f.agendaOffset=next;await loadAgenda(context(),{catalogue:false});$('osAgendaCount')?.focus();break;}
       case 'agenda-google':await showGoogle();break;
+      case 'dental-sales-stage-new':
+        if(dentalSettingsAllowed()&&state.filters.settingsTab==='dental-sales-stages'){
+          const content=field('Nome da etapa','name','text','','required maxlength="16"');
+          showDialog('dental-sales-stage','Nova etapa de vendas',dialogForm('dental-sales-stage',content,'Criar etapa'));
+        }
+        break;
       case 'dental-intake-new':showDentalIntakeEditor();break;
       case 'dental-intake-edit':{
         const template=state.data.dentalIntakes?.find(item=>item.id===element.dataset.id);

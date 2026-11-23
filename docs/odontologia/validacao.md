@@ -129,3 +129,13 @@ O diagnóstico da recorrência parava no marcador de 0079 e comunicava falha mes
 A validação semanal agora mede os sete botões e as duas extremidades da grade visível. O Chromium percorreu dia, semana e mês em cinco tamanhos, em claro e escuro. A suíte complementar passou em 14 testes, incluindo 30 combinações geométricas. Foram mantidas as verificações de privilégios e os testes de navegador no CI. Falhas independentes identificadas nos testes de contraste das estrelas de avaliação e de interpretação de conflitos no WhatsApp seguem em investigação.
 
 A auditoria de Vendas abriu os formulários de etapa e oportunidade e o painel de filtros. Foram conferidos o título obrigatório, os limites dos textos, o seletor opcional de paciente, o rótulo e os quatro filtros. Os formulários de referência foram fechados sem gravar registros.
+
+## Estoque da proprietária em produção
+
+Em 22/11/2026 à noite, a Railway concluiu a implantação ba71466c-c0c3-4c64-824d-2c270e4f444d da revisão 95d3bb76. A titular da clínica Dentista Ana Clara abriu o catálogo e pesquisou um termo sintético. A tela apresentou “Nenhum material corresponde à busca”. Em seguida, a recepção carregou os indicadores de consultas e caixa. Nenhum material ou permissão foi alterado. Nos dois domínios foram aprovadas 12 verificações de arquivos, saúde, site de agendamento de barbearia e recusa da consulta anônima. O serviço informou prontidão.
+
+## Etapas de vendas da clínica
+
+Em Ajustes da clínica, a titular pode criar uma etapa com nome de até 16 caracteres. As etapas pertencem à clínica e aparecem na ordem de cadastro entre as etapas abertas e os resultados finais. O servidor registra a criação uma única vez, mesmo com envios simultâneos. Também preserva mudanças concorrentes no cadastro da clínica e oculta os nomes internos da resposta compartilhada de onboarding.
+
+Foram aprovados 27 testes com PostgreSQL, 103 testes unitários do módulo e componentes compartilhados, 551 de onboarding e 150 de interface. No Chromium, o formulário foi aberto e enviado pelo teclado em quatro larguras de 320 a 1440 px e nos dois temas. Esta entrega cobre o cadastro de etapas. O registro e a movimentação de oportunidades, o vínculo com paciente e o acompanhamento de orçamentos têm itens próprios na matriz. A verificação desta função em produção permanece pendente.

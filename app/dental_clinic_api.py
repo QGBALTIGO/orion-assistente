@@ -19,7 +19,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.exceptions import RequestValidationError
 from fastapi.routing import APIRoute
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
@@ -35,7 +35,7 @@ from app.dental_clinic_schemas import (
     ClinicianGrant, PatientRegistration, PatientSearch, PatientPatch, VisitPatientLink, RecordCreate,
     IntakeTemplateCreate, IntakeTemplateUpdate, LaboratoryCreate, LaboratoryUpdate,
     ProsthesisStatus, ProsthesisTransition, ProsthesisVisit,
-    RoomCreate, RoomRename, RoomAssign, ChairAvailability, SupplyCreate, SupplyMove, ExamUpload
+    RoomCreate, RoomRename, RoomAssign, ChairAvailability, SupplyCreate, SupplyMove, ExamUpload, SalesStage
 )
 
 
@@ -787,6 +787,59 @@ async def edit_laboratory(tenant_id: UUID, laboratory_id: UUID, payload: Laborat
             raise HTTPException(409, "Já existe um laboratório com esse nome") from None
         await audit(db, tenant_id, actor, "laboratory_updated")
         return dict(saved)
+
+
+SALES_OPEN = (("open", "Em aberto"), ("in_progress", "Em andamento"))
+SALES_CLOSED = (("won", "Ganha"), ("lost", "Perdida"))
+SALES_STAGE_LIST = TypeAdapter(list[SalesStage])
+
+
+def sales_stage_rows(custom):
+    def fixed(stages):
+        return [{"id": key, "name": label, "custom": False} for key, label in stages]
+    return [*fixed(SALES_OPEN), *[{**stage, "custom": True} for stage in custom], *fixed(SALES_CLOSED)]
+
+
+async def read_custom_sales_stages(db, tenant, *, lock=False):
+    sql = "SELECT configuration FROM business_onboarding WHERE tenant_id=:tenant"
+    row = (await db.execute(text(sql + (" FOR UPDATE" if lock else "")), {"tenant": tenant})).one_or_none()
+    if not row:
+        raise HTTPException(404, "Configuração da clínica não encontrada")
+    try:
+        saved = SALES_STAGE_LIST.validate_python(row.configuration.get("dental_sales_stages", []))
+    except ValidationError:
+        raise HTTPException(409, "Não foi possível validar as etapas salvas da clínica") from None
+    return [stage.model_dump(mode="json") for stage in saved]
+
+
+@router.get("/sales/stages")
+async def dental_sales_stages(tenant_id: UUID, actor: Actor = Depends(authenticate)):
+    async with owner_session(tenant_id, actor, feature="settings.manage") as db:
+        return {"items": sales_stage_rows(await read_custom_sales_stages(db, tenant_id))}
+
+
+@router.post("/sales/stages", status_code=201)
+async def add_dental_sales_stage(tenant_id: UUID, payload: SalesStage, actor: Actor = Depends(authenticate)):
+    async with owner_session(tenant_id, actor, feature="settings.manage") as db:
+        custom = await read_custom_sales_stages(db, tenant_id, lock=True)
+        new_stage = payload.model_dump(mode="json")
+        for stage in sales_stage_rows(custom):
+            if stage["id"] == new_stage["id"]:
+                if stage["name"] == payload.name:
+                    return {"items": sales_stage_rows(custom)}
+                raise HTTPException(409, "A etapa já foi cadastrada com outro nome")
+            if stage["name"].casefold() == payload.name.casefold():
+                raise HTTPException(409, "A clínica já possui uma etapa com esse nome")
+        custom.append(new_stage)
+        # The onboarding editor uses the same row lock and version. Change only this
+        # key so a concurrent edit to clinic hours, identity or team is preserved.
+        await db.execute(text("""
+            UPDATE business_onboarding SET configuration=jsonb_set(configuration,
+                '{dental_sales_stages}', CAST(:stages AS jsonb)), version=version+1, updated_at=now()
+            WHERE tenant_id=:tenant
+        """), {"tenant": tenant_id, "stages": json.dumps(custom)})
+        await audit(db, tenant_id, actor, "sales_stage_created")
+        return {"items": sales_stage_rows(custom)}
 
 
 async def read_chairs(db, tenant):

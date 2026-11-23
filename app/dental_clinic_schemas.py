@@ -280,6 +280,18 @@ class RecordCreate(Strict):
         return self
 
 
+class SalesStage(Strict):
+    id: UUID4
+    name: str = Field(min_length=1, max_length=16)
+
+    @field_validator("name")
+    @classmethod
+    def stage_name(cls, value):
+        if not value.isprintable():
+            raise ValueError("Use uma única linha para o nome da etapa")
+        return " ".join(value.split())
+
+
 class RoomCreate(Strict):
     name: str = Field(min_length=2,max_length=80)
 

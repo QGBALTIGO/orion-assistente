@@ -14,6 +14,11 @@ spec.loader.exec_module(shell)
 def check_menu(browser, width, height, theme):
     page = browser.new_page(viewport={"width":width,"height":height}, color_scheme=theme, locale="pt-BR")
     errors, accesses = [], []
+    stages = [
+        {"id": key, "name": name, "custom": False}
+        for key, name in [("open", "Em aberto"), ("in_progress", "Em andamento"),
+                          ("won", "Ganha"), ("lost", "Perdida")]
+    ]
     page.on("pageerror", lambda error: errors.append(str(error)))
 
     def serve(route):
@@ -26,6 +31,12 @@ def check_menu(browser, width, height, theme):
             return route.fulfill(json={"clinical_access":None,"can_manage":True,"can_manage_inventory":True,"grants":[]})
         if path.endswith("/dental/chair-settings"):
             return route.fulfill(json={"items":[]})
+        if path.endswith("/dental/sales/stages"):
+            if route.request.method == "POST":
+                data = route.request.post_data_json
+                assert data["name"] == "Em revisão" and data["id"]
+                stages.insert(2, {**data, "custom": True})
+            return route.fulfill(json={"items": stages})
         return shell.serve(route)
 
     def menu():
@@ -69,6 +80,23 @@ def check_menu(browser, width, height, theme):
     page.get_by_text("Nenhuma cadeira cadastrada",exact=True).wait_for(timeout=8000)
     assert "chair-settings" in accesses
     assert menu().locator('[aria-current="page"]').inner_text() == "Ajustes da clínica"
+    menu().get_by_role("button", name="Ajustes da clínica", exact=True).click()
+    group.get_by_role("button", name="Etapas de vendas", exact=True).click()
+    group.get_by_role("button", name="Nova etapa", exact=True).press("Enter")
+    assert page.get_by_role("heading", name="Ajustes da clínica", exact=True).count() == 1
+    page.get_by_label("Nome da etapa").fill("Em revisão")
+    page.get_by_role("button", name="Criar etapa", exact=True).press("Enter")
+    stage_list = group.get_by_role("list", name="Ordem das etapas")
+    stage_list.get_by_text("Em revisão", exact=True).wait_for()
+    assert [r["name"] for r in stages] == ["Em aberto", "Em andamento", "Em revisão", "Ganha", "Perdida"]
+    assert stage_list.evaluate("""el => [...el.children].every(row => {
+        const label = row.firstElementChild.getBoundingClientRect();
+        const type = row.lastElementChild.getBoundingClientRect();
+        return label.right <= type.left + 1 && type.right <= window.innerWidth + 1;
+    })"""), (width, theme)
+    assert not page.evaluate("document.documentElement.scrollWidth > innerWidth + 1"), (width, theme)
+    stage_list.scroll_into_view_if_needed()
+    page.screenshot(path=str(shell.OUT / f"etapas-{width}-{theme}.png"), animations="disabled")
     assert not errors,errors
     page.close()
 
@@ -81,4 +109,4 @@ if __name__=="__main__":
             for theme in ["light","dark"]:
                 check_menu(browser,w,h,theme)
         browser.close()
-    print("Menu, ajustes e abertura das cadeiras aprovados em oito combinações de tela e tema.")
+    print("Menu, cadeiras e criação de etapa aprovados em oito combinações de tela e tema.")

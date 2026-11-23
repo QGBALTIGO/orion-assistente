@@ -1529,3 +1529,59 @@ async def test_reception_chair_occupancy_clips_reservations_to_each_chairs_local
         await db.execute(text("UPDATE dental_rooms SET active=false WHERE tenant_id=:t"), {"t": d["a"]})
     empty = await read(d["a"])
     assert (empty["active_chairs"], empty["reserved_seconds"], empty["capacity_seconds"]) == (0, 0, 0)
+
+
+@pytest.mark.asyncio
+async def test_sales_stages_are_owned_by_clinic_and_concurrent_creates_are_idempotent(clinic_api_db):
+    import asyncio
+    import httpx
+    from fastapi import FastAPI
+    from app.catalog_api import Actor, authenticate
+    from app.dental_clinic_api import router
+
+    d = clinic_api_db
+    web = FastAPI()
+    web.include_router(router)
+    actor = Actor("member", d["a"], d["account"], "owner")
+    web.dependency_overrides[authenticate] = lambda: actor
+    path = f"/api/v1/tenants/{d['a']}/dental/sales/stages"
+    other = path.replace(str(d["a"]), str(d["b"]))
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=web), base_url="https://test.invalid") as client:
+        initial = await client.get(path)
+        assert initial.status_code == 200 and "no-store" in initial.headers["Cache-Control"]
+        assert [s["id"] for s in initial.json()["items"]] == ["open","in_progress","won","lost"]
+        assert (await client.get(other)).status_code == 403
+        payload = {"id": str(uuid4()), "name":"Aguardando guia"}
+        saved = await asyncio.gather(client.post(path,json=payload),client.post(path,json=payload))
+        assert all(result.status_code == 201 for result in saved), [result.text for result in saved]
+        assert saved[0].json() == saved[1].json()
+        assert sum(s["custom"] for s in saved[0].json()["items"]) == 1
+        assert (await client.post(path,json={**payload,"name":"Outro nome"})).status_code == 409
+        assert (await client.post(path,json={"id":str(uuid4()),"name":"AGUARDANDO GUIA"})).status_code == 409
+        assert (await client.post(path,json={"id":str(uuid4()),"name":"  Ganha  "})).status_code == 409
+        assert (await client.post(path,json={"id":str(uuid4()),"name":"x"*17})).status_code == 422
+        separate = await asyncio.gather(*[client.post(path,json={"id":str(uuid4()),"name":label}) for label in ("Em revisão","Retorno")])
+        assert all(result.status_code == 201 for result in separate)
+        after = (await client.get(path)).json()["items"]
+        assert [s["id"] for s in after if not s["custom"]] == ["open","in_progress","won","lost"]
+        assert {s["name"] for s in after[2:-2]} == {"Aguardando guia","Em revisão","Retorno"}
+        actor = Actor("member", d["a"], d["assistant"], "editor")
+        assert (await client.get(path)).status_code == 403
+        assert (await client.post(path,json={"id":str(uuid4()),"name":"Bloqueada"})).status_code == 403
+        from types import SimpleNamespace
+        from app.onboarding_service import _state
+        async with async_sessionmaker(d["runtime"])() as db:
+            async with tenant_transaction(db, d["a"]):
+                onboarding = await _state(db, d["a"], SimpleNamespace(role="editor"))
+        assert onboarding["configuration"]["niche"] == "odontologia"
+        assert "dental_sales_stages" not in onboarding["configuration"]
+        actor = Actor("member", d["b"], d["account_b"], "owner")
+        assert not any(s["custom"] for s in (await client.get(other)).json()["items"])
+        async with d["migrator"].begin() as db:
+            assert (await db.execute(text("SELECT count(*) FROM dental_access_audit WHERE tenant_id=:t AND action='sales_stage_created'"),
+                                     {"t":d["a"]})).scalar_one() == 3
+            assert (await db.execute(text("SELECT configuration->>'niche' FROM business_onboarding WHERE tenant_id=:t"),
+                                     {"t":d["a"]})).scalar_one() == "odontologia"
+            await db.execute(text("""UPDATE business_onboarding SET configuration=jsonb_set(configuration,'{niche}','"barbearia"'::jsonb)
+                                  WHERE tenant_id=:t"""),{"t":d["b"]})
+        assert (await client.get(other)).status_code == 404

@@ -518,7 +518,8 @@ async def _state(db, tenant, access):
               "steps": [{"id": k, "label": label, "required": k not in {"channels", "review"}
                          and (k not in {"hours", "professionals"} or configuration.get("activity") != "products"),
                          "complete": k not in missing and (k != "review" or bool(configuration.get("reviewed")))} for k, label in step_labels.items()],
-              "configuration": configuration, "catalog": catalog,
+              "configuration": ({k: v for k, v in configuration.items() if k != "dental_sales_stages"}
+                                if "dental_sales_stages" in configuration else configuration), "catalog": catalog,
               "snapshot": prepared_digests.snapshot if prepared_digests is not None else _snapshot(configuration, managed, facts),
               "channels": {"assistant": {"status": "draft" if channels.get("draft") else "published" if channels.get("published") else "not_configured",
                            "generation": channels["generation"], "profile": channels.get("draft") or channels.get("published") or BusinessProfile().model_dump(mode="json")},
