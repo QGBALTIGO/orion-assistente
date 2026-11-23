@@ -214,12 +214,19 @@
 .os-dental-sales-search>.os-button{flex:none;min-height:44px}
 .os-dental-sales-search .os-form-message:empty{display:none}
 .os-dental-sales-search .os-form-message{flex-basis:100%;margin:0;color:var(--os-danger)}
+.os-dental-sales-filters{display:flex;align-items:end;justify-content:space-between;gap:12px;padding:12px 16px;margin-bottom:14px}
+.os-dental-sales-filters .os-field{flex:1;max-width:360px;margin:0}
+.os-dental-sales-filters .os-form-actions{margin:0;flex:none}
 
 @media(max-width:760px){
   .os-title-row [data-os-action="dental-opportunity-new"],#osDentalSalesPager button{min-height:44px}
   .os-dental-sales-search{flex-wrap:wrap}
   .os-dental-sales-search .os-search{flex-basis:100%}
   .os-dental-sales-search>.os-button{width:100%}
+  .os-dental-sales-filters{align-items:stretch;flex-direction:column}
+  .os-dental-sales-filters .os-field{max-width:none}
+  .os-dental-sales-filters .os-form-actions{display:grid;grid-template-columns:1fr}
+  .os-dental-sales-filters .os-button{width:100%;min-height:44px}
   .os-dental-sales-list li{display:grid;grid-template-columns:minmax(0,1fr)}
   .os-dental-sales-meta{justify-items:stretch}
   .os-dental-sales-meta .os-button{width:100%}

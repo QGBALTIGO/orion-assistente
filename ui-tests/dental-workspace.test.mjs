@@ -488,7 +488,8 @@ test('vendas preserva o cadastro e registra acompanhamento perdido com transi√ß√
     }
     if(method==='POST'&&path.endsWith('/search')){
       searches.push(payload);
-      return {items:all.filter(item=>(item.title+' '+item.description).toLowerCase().includes(payload.query.toLowerCase())),next:null};
+      return {items:all.filter(item=>(!payload.stage||item.stage===payload.stage)&&
+        (item.title+' '+item.description).toLowerCase().includes(payload.query.toLowerCase())),next:null};
     }
     if(method==='POST'){
       posts.push({...payload});
@@ -497,8 +498,10 @@ test('vendas preserva o cadastro e registra acompanhamento perdido com transi√ß√
         patient:patients.find(patient=>patient.id===payload.patient_id)||null});
       return all[0];
     }
-    if(path.includes('?before='))return {items:[{id:'old',title:'Oportunidade anterior',description:'',created_at:'2026-11-20T15:00:00Z'}],next:null};
-    return {items:all,next:all.length?all[0].id:null};
+    const query=new URL(path,'https://synthetic.test').searchParams;
+    if(query.has('before'))return {items:[{id:'old',title:'Oportunidade anterior',description:'',created_at:'2026-11-20T15:00:00Z'}],next:null};
+    const visible=query.has('stage')?all.filter(item=>item.stage===query.get('stage')):all;
+    return {items:visible,next:visible.length?visible[0].id:null};
   }});t.after(()=>h.close());await flush();
   const nav=h.document.querySelector('#osNav [data-os-route="vendas-odonto"]');assert.equal(nav.textContent,'Vendas');
   assert.match(h.document.querySelector('#osPageBody').textContent,/Nenhuma oportunidade em aberto/);
@@ -524,6 +527,13 @@ test('vendas preserva o cadastro e registra acompanhamento perdido com transi√ß√
   h.submit('[data-os-form=confirm]');await flush();await flush();
   assert.equal(losses.length,1);assert.match(h.document.getElementById('osDentalSalesList').textContent,/Perdida/);
   assert.equal(h.document.querySelector('[data-os-action=dental-opportunity-lose]'),null);
+  h.fill('[name=sales_stage]','lost');h.submit('#osDentalSalesFilters');await flush();await flush();
+  assert.match(h.calls.at(-1).path,/stage=lost/);
+  assert.equal(h.document.querySelectorAll('#osDentalSalesList li').length,1);
+  h.fill('[name=sales_stage]','open');h.submit('#osDentalSalesFilters');await flush();await flush();
+  assert.match(h.document.querySelector('#osPageBody').textContent,/Nenhuma oportunidade nesta etapa/);
+  h.click('[data-os-action=dental-sales-filter-clear]');await flush();await flush();
+  assert.equal(h.document.querySelector('[name=sales_stage]').value,'all');
   list=h.document.getElementById('osDentalSalesList');
   h.click('[data-os-action=dental-opportunity-more]');await flush();await flush();
   assert.equal(list.children.length,2);assert.equal(h.document.activeElement,list.children[1]);

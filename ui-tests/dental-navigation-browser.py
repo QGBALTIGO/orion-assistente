@@ -45,7 +45,8 @@ def check_menu(browser, width, height, theme):
             assert 2 <= len(details["query"]) <= 80
             query = details["query"].casefold()
             visible = [item for item in opportunities
-                       if query in (item["title"] + " " + item["description"] + " " +
+                       if (not details.get("stage") or item["stage"] == details["stage"])
+                       and query in (item["title"] + " " + item["description"] + " " +
                                     (item.get("patient") or {}).get("name", "")).casefold()]
             return route.fulfill(json={"items":visible,"next":None})
         if path.endswith("/start") and "/dental/sales/opportunities/" in path:
@@ -80,8 +81,11 @@ def check_menu(browser, width, height, theme):
             query = parse_qs(urlsplit(route.request.url).query)
             start = query.get("start_date", [""])[0]
             end = query.get("end_date", [""])[0]
+            stage = query.get("stage", [""])[0]
             visible = [item for item in opportunities
-                       if (not start or item["created_at"][:10] >= start) and (not end or item["created_at"][:10] <= end)]
+                       if (not start or item["created_at"][:10] >= start)
+                       and (not end or item["created_at"][:10] <= end)
+                       and (not stage or item["stage"] == stage)]
             return route.fulfill(json={"items": visible, "next": None})
         if path.endswith("/dental/sales/stages"):
             if route.request.method == "POST":
@@ -210,6 +214,19 @@ def check_menu(browser, width, height, theme):
     page.get_by_text("Perdida",exact=True).wait_for()
     assert opportunities[0]["stage"] == "lost" and opportunities[0]["version"] == 3
     assert row.get_by_role("button",name="Registrar perda",exact=True).count() == 0
+    filters = page.locator("#osDentalSalesFilters")
+    filters.get_by_label("Etapa", exact=True).select_option("lost")
+    filters.get_by_role("button", name="Aplicar filtro", exact=True).press("Enter")
+    page.get_by_text("Avaliação da família", exact=True).wait_for()
+    filters.get_by_label("Etapa", exact=True).select_option("open")
+    filters.get_by_role("button", name="Aplicar filtro", exact=True).press("Enter")
+    page.get_by_text("Nenhuma oportunidade nesta etapa", exact=True).wait_for()
+    filter_controls = filters.evaluate("""el=>[...el.querySelectorAll('select,button')].map(n=>{
+        const b=n.getBoundingClientRect();return [b.left,b.right,b.height];
+    })""")
+    assert all(left>=0 and right<=width+1 and size>=44 for left,right,size in filter_controls), (width,theme,filter_controls)
+    filters.get_by_role("button", name="Limpar filtro", exact=True).press("Enter")
+    page.get_by_text("Avaliação da família", exact=True).wait_for()
     assert not page.evaluate("document.documentElement.scrollWidth > innerWidth+1"), (width,theme)
     page.screenshot(path=str(shell.OUT/f"vendas-{width}-{theme}.png"), animations="disabled")
     picker = page.locator(".os-dental-sales-period")

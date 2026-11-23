@@ -299,6 +299,7 @@ class SalesOpportunitySearch(Strict):
     limit: int = Field(25, ge=1, le=50, strict=True)
     start_date: date | None = None
     end_date: date | None = None
+    stage: Literal["open", "in_progress", "won", "lost"] | None = None
 
     @model_validator(mode="after")
     def valid_period(self):
