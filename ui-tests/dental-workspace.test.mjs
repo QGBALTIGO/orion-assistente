@@ -434,3 +434,28 @@ test('o painel sem cadeiras habilitadas não consulta nem exibe a métrica',asyn
     assert.equal(h.calls.some(call=>call.path.endsWith('/chair-occupancy')),false);
   }
 });
+
+test('ajustes da clínica salvam a etapa de vendas e a recarregam ao voltar',async t=>{
+  const stages=[{id:'open',name:'Em aberto',custom:false},{id:'in_progress',name:'Em andamento',custom:false},
+    {id:'won',name:'Ganha',custom:false},{id:'lost',name:'Perdida',custom:false}];
+  let creates=0;
+  const h=await makeSuite({initialRoute:'ajustes-odonto',permissions:dentalPlan({dental_clinical_enabled:true}),respond(path,method,payload){
+    if(!path.endsWith('/dental/sales/stages'))return [];
+    if(method==='POST'){
+      assert.match(payload.id,/^[a-f\d-]{36}$/i);assert.equal(payload.name,'Aguardando guia');creates++;
+      stages.splice(2,0,{id:payload.id,name:payload.name,custom:true});
+    }
+    return {items:stages.map(s=>({...s}))};
+  }});t.after(()=>h.close());await flush();
+  const open=()=>h.click('[data-os-dental-setting=dental-sales-stages]');
+  open();await flush();
+  assert.equal(h.document.querySelectorAll('.os-sales-stages li').length,4);
+  h.click('[data-os-action=dental-sales-stage-new]');h.fill('[data-os-form=dental-sales-stage] input[name=name]','Aguardando guia');
+  h.submit('[data-os-form=dental-sales-stage]');await flush();
+  assert.equal(creates,1);assert.match(h.document.querySelector('.os-sales-stages').textContent,/Aguardando guiaPersonalizada/);
+  h.click('#osNav [data-os-route=ajustes-odonto]');await flush();open();await flush();
+  assert.equal(h.document.querySelectorAll('.os-sales-stages li').length,5);
+  const editor=await makeSuite({role:'editor',initialRoute:'ajustes-odonto',permissions:dentalPlan({dental_clinical_enabled:true})});
+  t.after(()=>editor.close());await flush();
+  assert.equal(editor.document.querySelector('[data-os-dental-setting=dental-sales-stages]'),null);
+});
