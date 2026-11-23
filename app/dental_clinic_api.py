@@ -855,6 +855,7 @@ async def create_sales_opportunity(tenant_id: UUID, payload: SalesOpportunity, a
             if patient is None:
                 raise HTTPException(404, "Paciente indisponível nesta clínica")
             patient = dict(patient)
+            patient["id"] = str(patient["id"])
             if patient["birth_date"] is not None:
                 patient["birth_date"] = patient["birth_date"].isoformat()
         details = json.dumps({"title": payload.title, "description": payload.description,
