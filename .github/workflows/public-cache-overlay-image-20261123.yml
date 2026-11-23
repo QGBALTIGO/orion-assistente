@@ -1,0 +1,58 @@
+name: Orion - preparo seguro da imagem de cache publico
+
+on:
+  push:
+    branches: [codex/orion-public-cache-profile-20261123]
+    paths:
+      - 'Dockerfile.public-cache-overlay'
+      - 'scripts/patch_public_cache_overlay.py'
+      - '.github/workflows/public-cache-overlay-image-20261123.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-overlay:
+    name: Patch verificado sobre imagem atual (sem deploy automatico)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Extrair somente baseline verificada da branch anterior
+        run: |
+          set -euo pipefail
+          BASE=330678900320304616f3236e7a457636135789b9
+          for path in app/static/orion-public.js app/static/orion-public.css app/public_site_api.py; do
+            mkdir -p ".ci-baseline/$(dirname "$path")"
+            git show "$BASE:$path" > ".ci-baseline/$path"
+          done
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Construir delta sobre imagem exata de producao
+        env:
+          IMAGE: ghcr.io/qgbaltigo/orion-assistente-api:cache-profile-${{ github.sha }}
+        run: |
+          set -euo pipefail
+          docker build --platform linux/amd64 -f Dockerfile.public-cache-overlay -t "$IMAGE" .
+          cid=$(docker create "$IMAGE")
+          trap 'docker rm -f "$cid" >/dev/null 2>&1 || true' EXIT
+          docker cp "$cid:/srv/app/app/static/orion-public.js" /tmp/orion-public-overlay.js
+          node --check /tmp/orion-public-overlay.js
+          docker run --rm --user root \
+            -v "$PWD/tests/unit/test_public_site_asset_cache.py:/tmp/test_public_site_asset_cache.py:ro" \
+            "$IMAGE" python -m pytest -q -ra /tmp/test_public_site_asset_cache.py
+          echo "Overlay image built and tested; no Railway source changed."
+      - name: Publicar imagem candidata versionada no GHCR
+        env:
+          IMAGE: ghcr.io/qgbaltigo/orion-assistente-api:cache-profile-${{ github.sha }}
+        run: docker push "$IMAGE"
