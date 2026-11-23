@@ -178,6 +178,7 @@ def check_menu(browser, width, height, theme):
        return bounded&&(innerWidth<=760?meta.top>=title.bottom-1:title.right<=meta.left+1);
     }"""), (width,theme)
     start = row.get_by_role("button",name="Iniciar acompanhamento",exact=True)
+    start.wait_for(state="visible")
     assert start.bounding_box()["height"] >= 44
     start.press("Enter")
     page.get_by_text("Em andamento",exact=True).wait_for()
