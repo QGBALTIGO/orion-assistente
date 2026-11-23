@@ -219,7 +219,7 @@ def check_menu(browser, width, height, theme):
     filters.get_by_role("button", name="Aplicar filtro", exact=True).press("Enter")
     page.get_by_text("Avaliação da família", exact=True).wait_for()
     filters.get_by_label("Etapa", exact=True).select_option("open")
-    filters.get_by_role("button", name="Aplicar filtro", exact=True).press("Enter")
+    filters.get_by_role("button", name="Aplicar filtro", exact=True).click()
     page.get_by_text("Nenhuma oportunidade nesta etapa", exact=True).wait_for()
     filter_controls = filters.evaluate("""el=>[...el.querySelectorAll('select,button')].map(n=>{
         const b=n.getBoundingClientRect();return [b.left,b.right,b.height];
