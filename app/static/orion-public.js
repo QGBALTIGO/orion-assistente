@@ -15,8 +15,93 @@
   let data, category = 'Todos', requestSequence = 0, availabilityController;
   let retainedTimeView = null; // Keep photos mounted across wizard step navigation.
   let booking = newBooking();
+  // Public-only catalogue: instant repeat visits, always revalidated before booking.
+  // Never store live availability, quotes, tokens or appointments on the device.
+  const publicSlug = !preview && !demo ? slugMatch?.[1] : null;
+  const catalogueKey = publicSlug ? 'orion:public:catalogue:v1:' + publicSlug : null;
+  const customerKey = publicSlug ? 'orion:public:customer:v1:' + publicSlug : null;
+  const catalogueLifetime = 30 * 24 * 60 * 60 * 1000;
+  const customerLifetime = 90 * 24 * 60 * 60 * 1000;
+  let catalogueVerified = !publicSlug;
 
-  function newBooking() { return { step: 1, service: null, services: [], addons: [], notice: '', professional: null, day: null, start: null, quote: null, availability: null, availabilityError: null, loading: false, busy: false, result: null, name: '', phone: '', birthDate: '' }; }
+  function readStored(key) {
+    if (!key) return null;
+    try { return JSON.parse(localStorage.getItem(key) || 'null'); }
+    catch { return null; } // Storage may be disabled in private browsing.
+  }
+  function removeStored(key) {
+    if (!key) return;
+    try { localStorage.removeItem(key); } catch { /* Storage unavailable. */ }
+  }
+  function writeStored(key, value) {
+    if (!key) return false;
+    try { localStorage.setItem(key, JSON.stringify(value)); return true; }
+    catch { return false; }
+  }
+  function readCatalogueCache() {
+    const entry = readStored(catalogueKey);
+    if (!entry) return null;
+    const value = entry.value;
+    if (entry.version !== 1 || !Number.isSafeInteger(entry.expiresAt) ||
+        entry.expiresAt <= Date.now() || !value || typeof value !== 'object' ||
+        !value.site || typeof value.site.title !== 'string' ||
+        !Array.isArray(value.services) || !Array.isArray(value.professionals) ||
+        !Array.isArray(value.opening_hours) || typeof value.timezone !== 'string' ||
+        !/^\\d{4}-\\d{2}-\\d{2}$/.test(value.today || '')) {
+      removeStored(catalogueKey);
+      return null;
+    }
+    return value;
+  }
+  function rememberCatalogue(value) {
+    writeStored(catalogueKey, {
+      version: 1, expiresAt: Date.now() + catalogueLifetime, value
+    });
+  }
+  function readSavedCustomer() {
+    const entry = readStored(customerKey);
+    if (!entry) return null;
+    const value = entry.value;
+    if (entry.version !== 1 || !Number.isSafeInteger(entry.expiresAt) ||
+        entry.expiresAt <= Date.now() || !value ||
+        typeof value.name !== 'string' || !value.name.trim() || value.name.length > 120 ||
+        typeof value.phone !== 'string' ||
+        !/^(?:\\+55[1-9][0-9]{9,10}|\\+5959[0-9]{8})$/.test(value.phone) ||
+        typeof value.birthDate !== 'string' ||
+        !/^\\d{4}-\\d{2}-\\d{2}$/.test(value.birthDate) ||
+        value.birthDate < '1900-01-01' || value.birthDate > (data?.today || '9999-12-31')) {
+      removeStored(customerKey);
+      return null;
+    }
+    return value;
+  }
+  function rememberCustomer(name, phone, birthDate) {
+    writeStored(customerKey, {
+      version: 1, expiresAt: Date.now() + customerLifetime,
+      value: { name: name.trim(), phone, birthDate }
+    });
+  }
+  function updateCatalogueAccess(error = false) {
+    if (!publicSlug || !data) return;
+    const pending = !catalogueVerified;
+    $('hero-book').disabled = pending || !data.services.length;
+    $('footer-book').disabled = pending || !data.services.length;
+    $('services-grid').querySelectorAll('button.service-card')
+      .forEach(node => { node.disabled = pending; });
+    let status = $('catalogue-refresh-status');
+    if (!status) {
+      status = el('p', 'small muted catalogue-refresh-status');
+      status.id = 'catalogue-refresh-status';
+      document.querySelector('.hero-actions').after(status);
+      status.setAttribute('role', 'status');
+    }
+    status.textContent = error
+      ? 'Não foi possível atualizar as informações. Recarregue a página para agendar.'
+      : 'Atualizando as informações antes de liberar os agendamentos…';
+    status.hidden = !pending;
+  }
+
+  function newBooking() { return { step: 1, service: null, services: [], addons: [], notice: '', professional: null, day: null, start: null, quote: null, availability: null, availabilityError: null, loading: false, busy: false, result: null, name: '', phone: '', birthDate: '', remember: false }; }
   function el(tag, cls, value) { const node = document.createElement(tag); if (cls) node.className = cls; if (value !== undefined) node.textContent = value; return node; }
   function button(text, cls, handler) { const node = el('button', cls, text); node.type = 'button'; if (handler) node.addEventListener('click', handler); return node; }
   function safeHTTPS(value) { try { const u = new URL(value); return u.protocol === 'https:' && !u.username && !u.password ? u.href : null; } catch { return null; } }
@@ -329,6 +414,7 @@
 
   function serviceCard(service, handler, isSelected = false, imagePriority = 'lazy') {
     const card = button('', 'service-card', handler); card.setAttribute('aria-pressed', String(isSelected));
+    if (publicSlug && !catalogueVerified) card.disabled = true;
     const thumb = el('span', 'service-thumb'); color(thumb, '--service-color', service.color); picture(thumb, service.image_url, '✂', imagePriority);
     const detail = el('span', 'service-detail');
     if (service.catalog_kind === 'combo') detail.append(el('span', 'tag', service.featured ? 'COMBO EM DESTAQUE' : 'COMBO'));
@@ -469,8 +555,17 @@
   }
 
   function openBooking(service = null) {
+    if (publicSlug && !catalogueVerified) return; // A cached catalogue is read-only until validated.
     if (demo && !data.services.length) return;
-    booking = newBooking(); retainedTimeView = null; booking.service = service; booking.services = service ? [service] : []; booking.day = data.today;
+    booking = newBooking();
+    const savedCustomer = readSavedCustomer();
+    if (savedCustomer) {
+      booking.name = savedCustomer.name;
+      booking.phone = savedCustomer.phone;
+      booking.birthDate = savedCustomer.birthDate;
+      booking.remember = true;
+    }
+    retainedTimeView = null; booking.service = service; booking.services = service ? [service] : []; booking.day = data.today;
     $('booking-shop').textContent = data.site.title; showError(); renderBooking();
     dialog.showModal(); document.body.classList.add('booking-open');
   }
@@ -1118,6 +1213,33 @@
       label.append(field);
       form.append(label);
     }
+    if (customerKey) {
+      const rememberLabel = el('label', 'remember-customer');
+      const rememberInput = el('input');
+      rememberInput.type = 'checkbox';
+      rememberInput.name = 'remember_customer';
+      rememberInput.checked = booking.remember;
+      const description = el('span');
+      description.append(el('strong', '', 'Lembrar meus dados neste aparelho'),
+        el('small', '', 'Opcional. Salva nome, WhatsApp e nascimento somente neste navegador por até 90 dias. Evite em aparelhos compartilhados.'));
+      rememberLabel.append(rememberInput, description);
+      rememberInput.addEventListener('change', () => {
+        booking.remember = rememberInput.checked;
+        if (!booking.remember) {
+          removeStored(customerKey);
+          form.querySelector('.forget-customer')?.remove();
+        }
+      });
+      form.append(rememberLabel);
+      if (readSavedCustomer()) {
+        form.append(button('Esquecer dados salvos', 'forget-customer', () => {
+          removeStored(customerKey);
+          booking.remember = false;
+          rememberInput.checked = false;
+          form.querySelector('.forget-customer')?.remove();
+        }));
+      }
+    }
     if (!preview && !demo) {
       form.append(el('p', 'privacy-note',
         'Para receber confirmação, lembrete e pedido de avaliação, envie a mensagem que abrir no WhatsApp da Orion Agenda.'));
@@ -1218,6 +1340,8 @@
           appointment_messages_opt_in: true
         })
       });
+      if (booking.remember) rememberCustomer(booking.name, canonicalPhone, birthDate);
+      else removeStored(customerKey);
       booking.name = '';
       booking.phone = '';
       booking.birthDate = '';
@@ -1386,15 +1510,46 @@
     try { if (navigator.share) await navigator.share({ title: data.site.title, url }); else { await navigator.clipboard.writeText(url); message.textContent = 'Link copiado.'; message.hidden = false; } }
     catch (error) { if (error.name !== 'AbortError') { message.textContent = 'Copie o endereço do site na barra do navegador para compartilhar.'; message.hidden = false; } }
   });
+  let cachedCatalogue = readCatalogueCache();
+  if (cachedCatalogue) {
+    try {
+      data = cachedCatalogue;
+      renderPage();
+      updateCatalogueAccess();
+    } catch {
+      cachedCatalogue = null;
+      data = null;
+      removeStored(catalogueKey);
+      $('site-content').hidden = true;
+      $('page-message').hidden = false;
+    }
+  }
   api().then(result => {
     if (demo && (result.demo !== true || result.preview !== true || result.booking_enabled !== false))
       throw new Error('Esta demonstração não está disponível.');
-    data = result; renderPage();
+    const changed = !cachedCatalogue || JSON.stringify(cachedCatalogue) !== JSON.stringify(result);
+    data = result;
+    catalogueVerified = true;
+    rememberCatalogue(result);
+    if (changed) renderPage();
+    updateCatalogueAccess();
     const params=new URLSearchParams(location.search),ids=(params.get('servicos')||'').split(',').filter(Boolean);
-    if(!preview&&ids.length&&ids.length<=6&&new Set(ids).size===ids.length&&ids.every(id=>data.services.some(s=>s.id===id))){
+    if(!preview&&!demo&&ids.length&&ids.length<=6&&new Set(ids).size===ids.length&&ids.every(id=>data.services.some(s=>s.id===id))){
       openBooking(ids[0]);booking.services=ids;
       const professional=params.get('profissional');if(eligibleProfessionals().some(p=>p.id===professional))booking.professional=professional;
       renderBooking();
     }
-  }).catch(error => { const node = $('page-message'); node.replaceChildren(el('h1', '', error.status === 404 ? 'Página indisponível' : 'Não foi possível carregar o site'), el('p', 'muted', error.status === 404 ? (demo ? 'Esta demonstração expirou ou deixou de estar disponível.' : 'Este endereço ainda não foi publicado ou deixou de estar disponível.') : error.message)); });
+  }).catch(error => {
+    if (cachedCatalogue && ![403, 404, 410].includes(error.status)) {
+      updateCatalogueAccess(true); // Public information is visible but bookings stay blocked.
+      return;
+    }
+    removeStored(catalogueKey);
+    $('site-content').hidden = true;
+    const node = $('page-message');
+    node.hidden = false;
+    node.replaceChildren(el('h1', '', error.status === 404 ? 'Página indisponível' : 'Não foi possível carregar o site'),
+      el('p', 'muted', error.status === 404 ?
+        (demo ? 'Esta demonstração expirou ou deixou de estar disponível.' : 'Este endereço ainda não foi publicado ou deixou de estar disponível.') : error.message));
+  });
 })();
