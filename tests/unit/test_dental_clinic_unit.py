@@ -8,7 +8,10 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 
 from app.catalog_api import Actor
-from app.dental_clinic_api import key_material, seal, unseal, require_member, normalized_sales_text
+from app.dental_clinic_api import (
+    key_material, seal, unseal, require_member, normalized_sales_text,
+    sales_opportunity_search_text,
+)
 from app.dental_clinic_schemas import (
     ClinicianGrant, PatientCreate, RecordCreate, Odontogram, Periodontal,
     Anamnesis, ExamUpload, Budget, FDI_ALL, SalesOpportunitySearch
@@ -88,6 +91,22 @@ def test_sales_search_is_bounded_and_accent_insensitive():
     for query in ("x", " ", "x"*81, "texto\nindevido"):
         with pytest.raises(ValidationError):
             SalesOpportunitySearch(query=query)
+
+
+def test_sales_search_uses_linked_patient_name_but_not_contact_identity():
+    details = {
+        "title": "Avaliação inicial",
+        "description": "Retorno do orçamento",
+        "patient": {
+            "name": "Paciente Sintético Um",
+            "guardian_name": "Responsável Comum",
+            "guardian_phone": "+55 67 99999-0099",
+        },
+    }
+    surface = sales_opportunity_search_text(details)
+    assert "paciente sintetico um" in surface
+    assert "responsavel comum" not in surface
+    assert "99999" not in surface
 
 
 def test_budget_approval_is_not_accepted_as_electronic_signature():

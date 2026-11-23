@@ -45,7 +45,8 @@ def check_menu(browser, width, height, theme):
             assert 2 <= len(details["query"]) <= 80
             query = details["query"].casefold()
             visible = [item for item in opportunities
-                       if query in (item["title"] + " " + item["description"]).casefold()]
+                       if query in (item["title"] + " " + item["description"] + " " +
+                                    (item.get("patient") or {}).get("name", "")).casefold()]
             return route.fulfill(json={"items":visible,"next":None})
         if path.endswith("/dental/sales/opportunities"):
             if route.request.method == "POST":
@@ -148,7 +149,7 @@ def check_menu(browser, width, height, theme):
     page.get_by_text("Avaliação da família", exact=True).wait_for()
     assert len(opportunities) == 1
     search = page.get_by_role("search")
-    search.get_by_label("Buscar oportunidades por título ou descrição").fill("família")
+    search.get_by_label("Buscar oportunidades por paciente, título ou descrição").fill("Paciente Sintético Um")
     search.get_by_role("button",name="Buscar oportunidades").press("Enter")
     clear_search = search.get_by_role("button",name="Limpar busca")
     clear_search.wait_for()
