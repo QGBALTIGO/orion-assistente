@@ -318,10 +318,20 @@ test('Home requests only the eight displayed appointments and keeps the total fr
 test('dentistry, subscriptions and other niches stay on their respective dashboards',async t=>{
  const cases=[{workspace_profile:'standard',business_niche:'odontologia',layout_modes:['classic']},{workspace_profile:'standard',business_niche:'estetica',layout_modes:['classic','app']},{workspace_profile:'subscription_services',business_niche:null,layout_modes:['classic','app']}];
  for(const profile of cases){
-  const h=await barberSetup({permissions:planState('elite',profile),respond});
+  const h=await barberSetup({permissions:planState('elite',profile),respond(path){
+   if(path.endsWith('/dental/reception/today'))return {day:today(),timezone:'America/Sao_Paulo',
+     counts:{confirmed:2,completed:1,cancelled:0,no_show:0},upcoming:[]};
+   return respond(path);
+  }});
   try{await flush();assert.equal(h.document.querySelector('.os-home-preview'),null);
    assert.equal([...h.timers.values()].some(t=>t.ms===5000),false);
-   if(profile.workspace_profile==='subscription_services')assert.ok(h.document.querySelector('#osSubscriptionDashboard'));
+   const dental=profile.business_niche==='odontologia';
+   assert.equal(h.calls.some(call=>call.path.endsWith('/dental/reception/today')),dental);
+   if(dental){
+    assert.equal(h.document.getElementById('osReceptionTitle').textContent,'Recepção');
+    assert.deepEqual([...h.document.querySelectorAll('#osReceptionCounts dd')].map(n=>n.textContent),['2','1','0','0']);
+    assert.equal(h.document.querySelector('.os-dashboard-today'),null);
+   }else if(profile.workspace_profile==='subscription_services')assert.ok(h.document.querySelector('#osSubscriptionDashboard'));
    else assert.ok(h.document.querySelector('.os-dashboard-today'));
    assert.deepEqual(h.errors,[]);
   }finally{h.close();}

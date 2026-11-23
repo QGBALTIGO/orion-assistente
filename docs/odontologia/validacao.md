@@ -165,3 +165,9 @@ Na base anterior, 19 dos 79 casos falhavam. Após atualizar o ambiente de teste 
 A titular pode consultar oportunidades abertas por data inicial, data final ou ambas. O período é inclusivo no calendário da clínica. A lista e as páginas seguintes usam o mesmo filtro. As datas e o fuso são aplicados no PostgreSQL sobre o instante de criação. Uma página pertencente a outro período é recusada. O filtro não altera oportunidades.
 
 Foram verificados os limites da meia-noite, um dia de 23 horas, datas invertidas e limpeza do período. A tela mostra o intervalo aplicado em português e distingue uma busca vazia de uma clínica sem oportunidades. O escopo desta entrega é a lista de oportunidades abertas. Outros estágios e seus totais ainda estão na matriz. A publicação continua dependente das entregas anteriores. O esquema do banco permanece na revisão 0088.
+
+## Destino do Início por nicho
+
+O teste compartilhado de seleção do painel ainda esperava a interface genérica na odontologia. A nova verificação confirma a recepção e seus indicadores reais para a empresa odontológica. Também confirma que uma empresa de estética abre o próprio painel, assinaturas abre a área de assinaturas e só a clínica consulta o serviço de recepção. Os 53 testes conjuntos do espaço odontológico e do Início, incluindo barbearia, passaram localmente. Nenhum arquivo de execução foi alterado nesta correção.
+
+Na revisão anterior das sessões e da idempotência de mensagens, o GitHub confirmou depois os 1.413 testes do conector de WhatsApp. A etapa seguinte do fluxo geral executou 1.797 testes do painel e encontrou 32 falhas. A expectativa antiga do painel odontológico foi uma delas. A aprovação do conector não equivale à aprovação de toda a suíte de interface.
