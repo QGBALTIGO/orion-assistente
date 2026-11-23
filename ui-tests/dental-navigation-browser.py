@@ -57,6 +57,15 @@ def check_menu(browser, width, height, theme):
             return route.fulfill(json={"id":item["id"],"stage":item["stage"],
                 "stage_name":item["stage_name"],"version":item["version"],
                 "changed_at":"2026-11-22T15:01:00Z"})
+        if path.endswith("/lose") and "/dental/sales/opportunities/" in path:
+            details = route.request.post_data_json
+            item = next(row for row in opportunities if f"/{row['id']}/lose" in path)
+            assert details["expected_version"] == item["version"] == 2
+            assert len(details["request_id"]) == 36
+            item.update(stage="lost",stage_name="Perdida",version=3)
+            return route.fulfill(json={"id":item["id"],"stage":item["stage"],
+                "stage_name":item["stage_name"],"version":item["version"],
+                "changed_at":"2026-11-22T15:02:00Z"})
         if path.endswith("/dental/sales/opportunities"):
             if route.request.method == "POST":
                 details = route.request.post_data_json
@@ -186,6 +195,15 @@ def check_menu(browser, width, height, theme):
     page.get_by_text("Em andamento",exact=True).wait_for()
     assert opportunities[0]["stage"] == "in_progress" and opportunities[0]["version"] == 2
     assert row.get_by_role("button",name="Iniciar acompanhamento",exact=True).count() == 0
+    lose = row.get_by_role("button",name="Registrar perda",exact=True)
+    assert lose.bounding_box()["height"] >= 44
+    lose.press("Enter")
+    dialog = page.get_by_role("dialog")
+    dialog.get_by_role("heading",name="Registrar oportunidade como perdida",exact=True).wait_for()
+    dialog.get_by_role("button",name="Confirmar",exact=True).press("Enter")
+    page.get_by_text("Perdida",exact=True).wait_for()
+    assert opportunities[0]["stage"] == "lost" and opportunities[0]["version"] == 3
+    assert row.get_by_role("button",name="Registrar perda",exact=True).count() == 0
     assert not page.evaluate("document.documentElement.scrollWidth > innerWidth+1"), (width,theme)
     page.screenshot(path=str(shell.OUT/f"vendas-{width}-{theme}.png"), animations="disabled")
     picker = page.locator(".os-dental-sales-period")

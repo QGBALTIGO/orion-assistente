@@ -3005,6 +3005,8 @@
         (item.description?'<p>'+esc(item.description)+'</p>':'')+'</div><div class="os-dental-sales-meta"><time datetime="'+esc(item.created_at)+'">'+
         esc(new Intl.DateTimeFormat('pt-BR',{timeZone:tenant()?.timezone||'America/Sao_Paulo'}).format(new Date(item.created_at)))+
         '</time>'+(item.stage==='open'?button('Iniciar acompanhamento','dental-opportunity-start','os-outline os-small','arrowRight',
+          'data-id="'+esc(item.id)+'" data-version="'+esc(item.version)+'"'):
+          item.stage==='in_progress'?button('Registrar perda','dental-opportunity-lose','os-outline os-small','close',
           'data-id="'+esc(item.id)+'" data-version="'+esc(item.version)+'"'):'')+'</div></li>').join('');
       const next=data.next?button('Carregar mais','dental-opportunity-more','os-ghost','','data-before="'+esc(data.next)+'"'):'';
       if(more){
@@ -3044,6 +3046,22 @@
     }finally{
       if(element.isConnected)element.disabled=false;
     }
+  }
+  function loseDentalOpportunity(element){
+    if(state.route!=='vendas-odonto'||!dentalSettingsAllowed()||element.disabled)return;
+    const id=element.dataset.id,version=Number(element.dataset.version);
+    if(!uuidRe.test(id||'')||!Number.isInteger(version)||version<1)return;
+    const requestId=crypto.randomUUID();
+    confirmMutation('Registrar oportunidade como perdida',
+      'Confirme que o paciente não aprovou a proposta. A oportunidade e todo o histórico serão preservados.',
+      async()=>{
+        const result=await request(apiPath('/dental/sales/opportunities/'+encodeURIComponent(id)+'/lose'),'POST',{
+          expected_version:version,request_id:requestId
+        });
+        if(result.id!==id||result.stage!=='lost'||result.version!==version+1)
+          throw Error('A movimentação não foi confirmada.');
+        return result;
+      },'Oportunidade registrada como Perdida.');
   }
   function renderDentalSalesStages(){
     const stages=state.data.dentalSalesStages;
@@ -5251,6 +5269,9 @@
         break;
       case 'dental-opportunity-start':
         await startDentalOpportunity(element);
+        break;
+      case 'dental-opportunity-lose':
+        loseDentalOpportunity(element);
         break;
       case 'dental-sales-stage-new':
         if(dentalSettingsAllowed()&&state.filters.settingsTab==='dental-sales-stages'){

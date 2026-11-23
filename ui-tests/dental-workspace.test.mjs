@@ -460,8 +460,8 @@ test('ajustes da clínica salvam a etapa de vendas e a recarregam ao voltar',asy
   assert.equal(editor.document.querySelector('[data-os-dental-setting=dental-sales-stages]'),null);
 });
 
-test('vendas preserva o cadastro e inicia acompanhamento com uma transição idempotente',async t=>{
-  const all=[],posts=[],searches=[],starts=[];
+test('vendas preserva o cadastro e registra acompanhamento perdido com transições idempotentes',async t=>{
+  const all=[],posts=[],searches=[],starts=[],losses=[];
   const patients=[
     {id:'10000000-0000-4000-8000-000000000011',name:'Paciente Sintético Dois',birth_date:'2016-08-09',guardian_name:'Responsável Comum'},
     {id:'10000000-0000-4000-8000-000000000012',name:'Paciente Sintético Um',birth_date:'2012-03-04',guardian_name:'Responsável Comum'}
@@ -478,6 +478,13 @@ test('vendas preserva o cadastro e inicia acompanhamento com uma transição ide
       assert.match(payload.request_id,/^[a-f\d-]{36}$/i);
       item.stage='in_progress';item.stage_name='Em andamento';item.version=2;
       return {id:item.id,stage:item.stage,stage_name:item.stage_name,version:item.version,changed_at:'2026-11-22T15:01:00Z'};
+    }
+    if(method==='POST'&&path.endsWith('/lose')){
+      const item=all.find(row=>path.includes('/'+row.id+'/lose'));assert.ok(item);
+      losses.push({...payload});assert.equal(payload.expected_version,2);
+      assert.match(payload.request_id,/^[a-f\d-]{36}$/i);
+      item.stage='lost';item.stage_name='Perdida';item.version=3;
+      return {id:item.id,stage:item.stage,stage_name:item.stage_name,version:item.version,changed_at:'2026-11-22T15:02:00Z'};
     }
     if(method==='POST'&&path.endsWith('/search')){
       searches.push(payload);
@@ -512,6 +519,11 @@ test('vendas preserva o cadastro e inicia acompanhamento com uma transição ide
   h.click('[data-os-action=dental-opportunity-start]');await flush();await flush();
   assert.equal(starts.length,1);assert.match(h.document.getElementById('osDentalSalesList').textContent,/Em andamento/);
   assert.equal(h.document.querySelector('[data-os-action=dental-opportunity-start]'),null);
+  h.click('[data-os-action=dental-opportunity-lose]');await flush();
+  assert.match(h.document.getElementById('osDialogTitle').textContent,/Registrar oportunidade como perdida/);
+  h.submit('[data-os-form=confirm]');await flush();await flush();
+  assert.equal(losses.length,1);assert.match(h.document.getElementById('osDentalSalesList').textContent,/Perdida/);
+  assert.equal(h.document.querySelector('[data-os-action=dental-opportunity-lose]'),null);
   list=h.document.getElementById('osDentalSalesList');
   h.click('[data-os-action=dental-opportunity-more]');await flush();await flush();
   assert.equal(list.children.length,2);assert.equal(h.document.activeElement,list.children[1]);
