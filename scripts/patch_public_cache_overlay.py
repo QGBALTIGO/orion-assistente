@@ -48,15 +48,25 @@ def patch_file(base: str, edited: str, current: str, path: str) -> tuple[str, in
         else:
             # Insertions have no old body. Require unique context on both sides
             # to avoid inserting into an unrelated location in the live image.
-            left = "".join(before[max(0, i1 - 3):i1])
-            right = "".join(before[i1:i1 + 3])
-            anchor = left + right
-            count = current.count(anchor)
-            if count != 1 or (not left and not right):
+            # Later edits have already been applied; right-hand context can
+            # change. Left-hand baseline lines are still intact in reverse order.
+            inserted = False
+            for width in (2, 3, 5, 8, 12, 20):
+                left = "".join(before[max(0, i1 - width):i1])
+                if left and current.count(left) == 1:
+                    current = current.replace(left, left + new, 1)
+                    inserted = True
+                    break
+            if not inserted and i1 == 0:
+                right = "".join(before[i1:i1 + 8])
+                if right and current.count(right) == 1:
+                    current = current.replace(right, new + right, 1)
+                    inserted = True
+            if not inserted:
                 raise RuntimeError(
-                    f"{path}:{i1+1}: refused insertion; context matched {count}"
+                    f"{path}:{i1+1}: refused insertion; unique preceding "
+                    "baseline context not found"
                 )
-            current = current.replace(anchor, left + new + right, 1)
     return current, len(operations)
 
 
