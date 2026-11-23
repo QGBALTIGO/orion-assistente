@@ -48,12 +48,23 @@ def check_menu(browser, width, height, theme):
                        if query in (item["title"] + " " + item["description"] + " " +
                                     (item.get("patient") or {}).get("name", "")).casefold()]
             return route.fulfill(json={"items":visible,"next":None})
+        if path.endswith("/start") and "/dental/sales/opportunities/" in path:
+            details = route.request.post_data_json
+            item = next(row for row in opportunities if f"/{row['id']}/start" in path)
+            assert details["expected_version"] == item["version"] == 1
+            assert len(details["request_id"]) == 36
+            item.update(stage="in_progress",stage_name="Em andamento",version=2)
+            return route.fulfill(json={"id":item["id"],"stage":item["stage"],
+                "stage_name":item["stage_name"],"version":item["version"],
+                "changed_at":"2026-11-22T15:01:00Z"})
         if path.endswith("/dental/sales/opportunities"):
             if route.request.method == "POST":
                 details = route.request.post_data_json
                 assert details["id"] and details["description"] == "Retorno solicitado pela família."
                 assert details["patient_id"] == patients[1]["id"]
-                item = {**details, "patient":patients[1], "created_by":"conta-sintética", "created_at":"2026-11-22T15:00:00Z"}
+                item = {**details, "patient":patients[1], "created_by":"conta-sintética",
+                        "created_at":"2026-11-22T15:00:00Z", "stage":"open",
+                        "stage_name":"Em aberto", "version":1}
                 opportunities.insert(0, item)
                 return route.fulfill(status=201,json=item)
             query = parse_qs(urlsplit(route.request.url).query)
@@ -160,11 +171,21 @@ def check_menu(browser, width, height, theme):
     })""")
     assert all(left>=0 and right<=width+1 and size>=44 for left,right,size in controls),(width,theme,controls)
     clear_search.press("Enter")
+    clear_search.wait_for(state="detached")
     row = page.locator("#osDentalSalesList li").first
-    assert row.evaluate("""el=>{
-       const title=el.firstElementChild.getBoundingClientRect(), date=el.lastElementChild.getBoundingClientRect();
-       return title.right<=date.left+1 && date.right<=innerWidth+1;
+    row.get_by_text(opportunities[0]["title"],exact=True).wait_for()
+    assert row.evaluate("""(el)=>{
+       const title=el.firstElementChild.getBoundingClientRect(), meta=el.lastElementChild.getBoundingClientRect();
+       const bounded=el.scrollWidth<=el.clientWidth+1&&title.left>=-1&&title.right<=innerWidth+1&&meta.right<=innerWidth+1;
+       return bounded&&(innerWidth<=760?meta.top>=title.bottom-1:title.right<=meta.left+1);
     }"""), (width,theme)
+    start = row.get_by_role("button",name="Iniciar acompanhamento",exact=True)
+    start.wait_for(state="visible")
+    assert start.bounding_box()["height"] >= 44
+    start.press("Enter")
+    page.get_by_text("Em andamento",exact=True).wait_for()
+    assert opportunities[0]["stage"] == "in_progress" and opportunities[0]["version"] == 2
+    assert row.get_by_role("button",name="Iniciar acompanhamento",exact=True).count() == 0
     assert not page.evaluate("document.documentElement.scrollWidth > innerWidth+1"), (width,theme)
     page.screenshot(path=str(shell.OUT/f"vendas-{width}-{theme}.png"), animations="disabled")
     picker = page.locator(".os-dental-sales-period")
@@ -187,7 +208,8 @@ def check_menu(browser, width, height, theme):
     page.reload(wait_until="domcontentloaded")
     page.get_by_text("R" * 40, exact=True).wait_for()
     assert row.evaluate("""el=>el.scrollWidth<=el.clientWidth+1 &&
-       el.firstElementChild.getBoundingClientRect().right <= el.lastElementChild.getBoundingClientRect().left+1""")
+       (innerWidth<=760?el.lastElementChild.getBoundingClientRect().top>=el.firstElementChild.getBoundingClientRect().bottom-1:
+       el.firstElementChild.getBoundingClientRect().right <= el.lastElementChild.getBoundingClientRect().left+1)""")
     assert not page.evaluate("document.documentElement.scrollWidth>innerWidth+1")
     assert not errors,errors
     page.close()

@@ -11,6 +11,7 @@ on:
       - 'alembic/versions/0087_dental_patient_visits.py'
       - 'alembic/versions/0088_dental_sales_opportunities.py'
       - 'alembic/versions/0089_dental_sales_patient_link.py'
+      - 'alembic/versions/0090_dental_sales_follow_up.py'
       - 'app/dental_clinic_*.py'
       - 'app/onboarding_service.py'
       - 'app/main.py'
@@ -162,12 +163,13 @@ jobs:
           test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
           tag="$IMAGE:dental-$RELEASE_SHA"
           docker build --pull --platform linux/amd64 -f deploy/Dockerfile.dental-workflows --build-arg ORION_DENTAL_COMMIT="$RELEASE_SHA" -t "$tag" .
-          docker run --rm --entrypoint python "$tag" -c 'from app.dental_clinic_api import router; from scripts.backup_and_migrate_dental_workflows import TARGET; assert len(router.routes) > 20 and TARGET == "0089_dental_sales_patient_link"'
-          docker run --rm --entrypoint python "$tag" -c 'from alembic.config import Config; from alembic.script import ScriptDirectory; assert ScriptDirectory.from_config(Config("alembic.ini")).get_current_head() == "0089_dental_sales_patient_link"'
+          docker run --rm --entrypoint python "$tag" -c 'from app.dental_clinic_api import router; from scripts.backup_and_migrate_dental_workflows import TARGET; assert len(router.routes) > 20 and TARGET == "0090_dental_sales_follow_up"'
+          docker run --rm --entrypoint python "$tag" -c 'from alembic.config import Config; from alembic.script import ScriptDirectory; assert ScriptDirectory.from_config(Config("alembic.ini")).get_current_head() == "0090_dental_sales_follow_up"'
           sha256sum app/onboarding_service.py app/dental_clinic_api.py app/dental_clinic_schemas.py \
             app/static/orion-dental-clinic.js app/static/orion-dental-clinic.css app/static/orion-suite.js \
             scripts/backup_and_migrate_dental_workflows.py scripts/backup_and_migrate_fixed_client_monthly.py \
-            scripts/check_dental_key_history.py alembic/versions/008[2-9]_dental_*.py | \
+            scripts/check_dental_key_history.py alembic/versions/008[2-9]_dental_*.py \
+            alembic/versions/0090_dental_sales_follow_up.py | \
             docker run --rm -i -w /srv/app --entrypoint sha256sum "$tag" --strict --check -
           docker push "$tag"
           docker image inspect "$tag" --format '{{index .RepoDigests 0}}' > dental-release-image.txt

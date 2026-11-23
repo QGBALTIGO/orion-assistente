@@ -14,6 +14,7 @@ REVIEWED_SUCCESSORS = (
     "0087_dental_patient_visits",
     "0088_dental_sales_opportunities",
     "0089_dental_sales_patient_link",
+    "0090_dental_sales_follow_up",
 )
 
 

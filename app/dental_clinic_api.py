@@ -37,7 +37,7 @@ from app.dental_clinic_schemas import (
     IntakeTemplateCreate, IntakeTemplateUpdate, LaboratoryCreate, LaboratoryUpdate,
     ProsthesisStatus, ProsthesisTransition, ProsthesisVisit,
     RoomCreate, RoomRename, RoomAssign, ChairAvailability, SupplyCreate, SupplyMove, ExamUpload,
-    SalesStage, SalesOpportunity, SalesOpportunitySearch, SalesPatientSearch
+    SalesStage, SalesOpportunity, SalesOpportunitySearch, SalesOpportunityStart, SalesPatientSearch
 )
 
 
@@ -867,13 +867,13 @@ async def create_sales_opportunity(tenant_id: UUID, payload: SalesOpportunity, a
               (tenant_id,id,created_by,patient_id,nonce,encrypted_content,digest)
             VALUES (:tenant,:id,:account,:patient,:nonce,:body,:digest)
             ON CONFLICT (tenant_id,id) DO NOTHING
-            RETURNING created_at
+            RETURNING created_at,stage_key,version
         """), {"tenant": tenant_id, "id": payload.id, "account": actor.account_id,
                "patient": payload.patient_id, "nonce": nonce,
                "body": ciphertext, "digest": digest})).one_or_none()
         if stored is None:
             stored = (await db.execute(text("""
-                SELECT created_at,created_by,digest FROM dental_sales_opportunities
+                SELECT created_at,created_by,digest,stage_key,version FROM dental_sales_opportunities
                 WHERE tenant_id=:tenant AND id=:id
             """), {"tenant": tenant_id, "id": payload.id})).one()
             if stored.created_by != actor.account_id or not secrets.compare_digest(stored.digest, digest):
@@ -882,7 +882,57 @@ async def create_sales_opportunity(tenant_id: UUID, payload: SalesOpportunity, a
             await audit(db, tenant_id, actor, "sales_opportunity_created")
         return {"id": payload.id, "created_at": stored.created_at, "created_by": actor.account_id,
                 "title": payload.title, "description": payload.description,
-                "patient_id": payload.patient_id, "patient": patient}
+                "patient_id": payload.patient_id, "patient": patient,
+                "stage": stored.stage_key,
+                "stage_name": dict((*SALES_OPEN, *SALES_CLOSED)).get(stored.stage_key, "Etapa personalizada"),
+                "version": stored.version}
+
+
+@router.post("/sales/opportunities/{opportunity_id}/start")
+async def start_sales_opportunity(tenant_id: UUID, opportunity_id: UUID,
+                                  payload: SalesOpportunityStart,
+                                  actor: Actor = Depends(authenticate)):
+    """Start administrative follow-up without changing the linked patient identity."""
+    async with owner_session(tenant_id, actor, feature="settings.manage") as db:
+        current = (await db.execute(text("""
+            SELECT id,stage_key,version FROM dental_sales_opportunities
+            WHERE tenant_id=:tenant AND id=:id FOR UPDATE
+        """), {"tenant": tenant_id, "id": opportunity_id})).mappings().one_or_none()
+        if current is None:
+            raise HTTPException(404, "Oportunidade não encontrada")
+        replay = (await db.execute(text("""
+            SELECT version,to_stage,created_at FROM dental_sales_opportunity_events
+            WHERE tenant_id=:tenant AND opportunity_id=:id AND request_id=:request
+        """), {"tenant": tenant_id, "id": opportunity_id,
+                 "request": payload.request_id})).mappings().one_or_none()
+        if replay is not None:
+            if replay["to_stage"] != "in_progress" or current["version"] < replay["version"]:
+                raise HTTPException(409, "Não foi possível confirmar esta movimentação")
+            return {"id": opportunity_id, "stage": "in_progress", "stage_name": "Em andamento",
+                    "version": replay["version"], "changed_at": replay["created_at"]}
+        if current["version"] != payload.expected_version:
+            raise HTTPException(409, "A oportunidade mudou. Atualize a lista antes de continuar.")
+        if current["stage_key"] != "open":
+            raise HTTPException(409, "A oportunidade já saiu da etapa Em aberto")
+        saved = (await db.execute(text("""
+            UPDATE dental_sales_opportunities
+            SET stage_key='in_progress',version=version+1
+            WHERE tenant_id=:tenant AND id=:id AND version=:version AND stage_key='open'
+            RETURNING version
+        """), {"tenant": tenant_id, "id": opportunity_id,
+                 "version": payload.expected_version})).one_or_none()
+        if saved is None:
+            raise HTTPException(409, "A oportunidade mudou. Atualize a lista antes de continuar.")
+        event = (await db.execute(text("""
+            INSERT INTO dental_sales_opportunity_events
+              (tenant_id,opportunity_id,version,request_id,from_stage,to_stage,actor_account_id)
+            VALUES (:tenant,:id,:version,:request,'open','in_progress',:actor)
+            RETURNING created_at
+        """), {"tenant": tenant_id, "id": opportunity_id, "version": saved.version,
+                 "request": payload.request_id, "actor": actor.account_id})).one()
+        await audit(db, tenant_id, actor, "sales_opportunity_follow_up_started")
+        return {"id": opportunity_id, "stage": "in_progress", "stage_name": "Em andamento",
+                "version": saved.version, "changed_at": event.created_at}
 
 
 @router.get("/sales/opportunities")
@@ -938,7 +988,7 @@ async def sales_opportunity_page(db, tenant_id, before, limit, start_date, end_d
         conditions.append("(created_at,id)<(:at,:id)")
         params.update(at=point["created_at"], id=point["id"])
     statement = text("""
-        SELECT id,created_by,created_at,patient_id,nonce,encrypted_content,digest FROM dental_sales_opportunities
+        SELECT id,created_by,created_at,patient_id,stage_key,version,nonce,encrypted_content,digest FROM dental_sales_opportunities
         WHERE """ + " AND ".join(conditions) + " ORDER BY created_at DESC,id DESC" +
         ("" if needle else " LIMIT :limit"))
     rows = []
@@ -961,7 +1011,10 @@ async def sales_opportunity_page(db, tenant_id, before, limit, start_date, end_d
     for row, details in rows[:limit]:
         items.append({"id": row["id"], "created_at": row["created_at"], "created_by": row["created_by"],
                       "title": details["title"], "description": details["description"],
-                      "patient_id": row["patient_id"], "patient": details.get("patient")})
+                      "patient_id": row["patient_id"], "patient": details.get("patient"),
+                      "stage": row["stage_key"],
+                      "stage_name": dict((*SALES_OPEN, *SALES_CLOSED)).get(row["stage_key"], "Etapa personalizada"),
+                      "version": row["version"]})
     return {"items": items, "next": items[-1]["id"] if len(rows)>limit else None}
 
 

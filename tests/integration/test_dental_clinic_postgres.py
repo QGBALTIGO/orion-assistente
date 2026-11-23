@@ -101,7 +101,7 @@ async def clinic_db():
                "room_a2":room_a2,"when":when}
     finally:
         async with migrator.begin() as db:
-            for tbl in ("dental_sales_opportunities","dental_visit_patient_events","dental_access_audit","dental_laboratories","dental_intake_templates","dental_room_reservations",
+            for tbl in ("dental_sales_opportunity_events","dental_sales_opportunities","dental_visit_patient_events","dental_access_audit","dental_laboratories","dental_intake_templates","dental_room_reservations",
                         "dental_exam_files","dental_records","dental_supply_movements",
                         "dental_supplies","dental_patients","dental_rooms",
                         "dental_clinicians","appointment_history","appointment_items",
@@ -1733,6 +1733,60 @@ async def test_sales_patient_link_is_explicit_for_shared_phone_and_tenant_scoped
                 {"actor": str(d["account_b"])},
             )
             assert await db.scalar(text("SELECT count(*) FROM dental_sales_opportunities")) == 0
+
+
+@pytest.mark.asyncio
+async def test_sales_follow_up_is_versioned_repeatable_and_tenant_scoped(clinic_api_db):
+    import asyncio
+    import httpx
+    from fastapi import FastAPI
+    from app.catalog_api import Actor, authenticate
+    from app.dental_clinic_api import router
+
+    d = clinic_api_db
+    web = FastAPI(); web.include_router(router)
+    actor = Actor("member", d["a"], d["account"], "owner")
+    web.dependency_overrides[authenticate] = lambda: actor
+    base = f"/api/v1/tenants/{d['a']}/dental/sales/opportunities"
+    opportunity = {"id":str(uuid4()), "title":"Avaliação sintética", "description":"Acompanhar retorno"}
+    request_id = str(uuid4())
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=web), base_url="https://synthetic.test") as client:
+        created = await client.post(base, json=opportunity)
+        assert created.status_code == 201
+        assert created.json()["stage"] == "open" and created.json()["version"] == 1
+        results = await asyncio.gather(*(client.post(
+            base+f"/{opportunity['id']}/start",
+            json={"expected_version":1,"request_id":request_id},
+        ) for _ in range(4)))
+        assert [reply.status_code for reply in results] == [200]*4, [reply.text for reply in results]
+        assert {(reply.json()["stage"],reply.json()["version"]) for reply in results} == {("in_progress",2)}
+        listed = (await client.get(base)).json()["items"]
+        assert listed[0]["stage"] == "in_progress"
+        assert listed[0]["stage_name"] == "Em andamento" and listed[0]["version"] == 2
+        conflict = await client.post(base+f"/{opportunity['id']}/start",
+                                     json={"expected_version":1,"request_id":str(uuid4())})
+        assert conflict.status_code == 409
+        assert (await client.post(base+f"/{uuid4()}/start",
+                                  json={"expected_version":1,"request_id":str(uuid4())})).status_code == 404
+        actor = Actor("member", d["a"], d["assistant"], "editor")
+        assert (await client.post(base+f"/{opportunity['id']}/start",
+                                  json={"expected_version":2,"request_id":str(uuid4())})).status_code == 403
+        actor = Actor("member", d["b"], d["account_b"], "owner")
+        foreign = base.replace(str(d["a"]),str(d["b"]))+f"/{opportunity['id']}/start"
+        assert (await client.post(foreign,json={"expected_version":2,
+                                                "request_id":str(uuid4())})).status_code == 404
+    async with d["migrator"].begin() as db:
+        assert await db.scalar(text("""SELECT count(*) FROM dental_sales_opportunity_events
+            WHERE tenant_id=:tenant AND opportunity_id=:id"""),
+            {"tenant":d["a"],"id":opportunity["id"]}) == 1
+        assert await db.scalar(text("""SELECT count(*) FROM dental_access_audit
+            WHERE tenant_id=:tenant AND action='sales_opportunity_follow_up_started'"""),
+            {"tenant":d["a"]}) == 1
+    async with async_sessionmaker(d["runtime"])() as db:
+        async with tenant_transaction(db,d["b"]):
+            await db.execute(text("SELECT set_config('app.dental_actor',:actor,true)"),
+                             {"actor":str(d["account_b"])})
+            assert await db.scalar(text("SELECT count(*) FROM dental_sales_opportunity_events")) == 0
 
 
 async def test_opportunity_period_uses_clinic_midnight_and_scopes_pagination(clinic_api_db):

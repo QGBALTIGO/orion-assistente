@@ -307,6 +307,11 @@ class SalesOpportunitySearch(Strict):
         return self
 
 
+class SalesOpportunityStart(Strict):
+    expected_version: int = Field(ge=1, strict=True)
+    request_id: UUID4
+
+
 class SalesStage(Strict):
     id: UUID4
     name: str = Field(min_length=1, max_length=16)
