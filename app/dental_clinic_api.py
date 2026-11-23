@@ -986,11 +986,13 @@ async def lose_sales_opportunity(tenant_id: UUID, opportunity_id: UUID,
 async def list_sales_opportunities(tenant_id: UUID, before: UUID | None = None,
                                    limit: int = Query(25, ge=1, le=50),
                                    start_date: date | None = None, end_date: date | None = None,
+                                   stage: Literal["open", "in_progress", "won", "lost"] | None = None,
                                    actor: Actor = Depends(authenticate)):
     async with owner_session(tenant_id, actor, feature="settings.manage") as db:
         if start_date and end_date and start_date > end_date:
             raise HTTPException(422, "A data final deve ser igual ou posterior à inicial")
-        result = await sales_opportunity_page(db, tenant_id, before, limit, start_date, end_date)
+        result = await sales_opportunity_page(db, tenant_id, before, limit, start_date, end_date,
+                                              stage=stage)
         await audit(db, tenant_id, actor, "sales_opportunities_read")
         return result
 
@@ -1008,10 +1010,14 @@ def sales_opportunity_search_text(details: dict):
     ))))
 
 
-async def sales_opportunity_page(db, tenant_id, before, limit, start_date, end_date, query=None):
+async def sales_opportunity_page(db, tenant_id, before, limit, start_date, end_date, query=None,
+                                 stage=None):
     needle = normalized_sales_text(query or "")
     params = {"tenant": tenant_id, "limit": limit + 1}
     conditions = ["tenant_id=:tenant"]
+    if stage:
+        conditions.append("stage_key=:stage")
+        params["stage"] = stage
     if start_date or end_date:
         params["zone"] = await db.scalar(text("SELECT timezone FROM tenants WHERE id=:tenant"), params)
     if start_date:
@@ -1070,7 +1076,8 @@ async def search_sales_opportunities(tenant_id: UUID, payload: SalesOpportunityS
                                      actor: Actor = Depends(authenticate)):
     async with owner_session(tenant_id, actor, feature="settings.manage") as db:
         result = await sales_opportunity_page(db, tenant_id, payload.before, payload.limit,
-                                              payload.start_date, payload.end_date, payload.query)
+                                              payload.start_date, payload.end_date, payload.query,
+                                              payload.stage)
         await audit(db, tenant_id, actor, "sales_opportunities_searched")
         return result
 
