@@ -929,8 +929,8 @@
     if(act==='edit-patient'&&state.patient){state.editingPatient=true;state.creatingPatient=false;render();return;}
     if(act==='cancel-patient'){state.creatingPatient=false;state.editingPatient=false;render();return;}
     if(act==='select-patient'&&idRe.test(btn.dataset.id||'')){
-      state.creatingPatient=false;state.editingPatient=false;await loadPatient(btn.dataset.id);return;}
-    if(act==='refresh-patient'&&state.patient){await loadPatient(state.patient.id);return;}
+      state.creatingPatient=false;state.editingPatient=false;await loadPatient(btn.dataset.id,state.tab);return;}
+    if(act==='refresh-patient'&&state.patient){await loadPatient(state.patient.id,state.tab);return;}
     if(act==='add-finding'){addFinding();return;}
     if(act==='add-period'){addPeriod();return;}
     if(act==='add-stage'){addStage();return;}
@@ -1089,7 +1089,7 @@
       const updatedId=state.patient?.id;
       state.creatingPatient=false;state.editingPatient=false;state.q='';
       const res=await api('/patients?limit=100');state.patients=res.items||[];
-      if(updatedId)await loadPatient(updatedId);
+      if(updatedId)await loadPatient(updatedId,state.tab);
     },state.editingPatient?'Cadastro atualizado.':'Paciente cadastrado.');
     if(kind==='record'){
       if(!patient)return;
@@ -1201,7 +1201,8 @@
     state.openProsthesisPatient=options.openProsthesisPatient;
     state.visitsOnly=options.visitsOnly===true&&idRe.test(options.initialPatient||'');
     state.returnToDirectory=options.returnToDirectory;
-    state.loading=true;state.section=state.dedicatedStock?'supplies':state.dedicatedProstheses?'prostheses':options.team?'access':'patients';state.error='';render();
+    state.loading=true;state.section=state.dedicatedStock?'supplies':state.dedicatedProstheses?'prostheses':options.team?'access':'patients';
+    state.tab=topics.some(([kind])=>kind===options.initialTab)?options.initialTab:'anamnesis';state.error='';render();
     const epoch=state.epoch;
     try{
       await fetchAccess();
@@ -1219,7 +1220,7 @@
         }else if(state.section!=='access'){
           const r=await api('/patients?limit=100');if(!valid(epoch))return;
           state.patients=r.items||[];
-          if(idRe.test(options.initialPatient||''))await loadPatient(options.initialPatient,options.initialTab==='prosthesis'?'prosthesis':'anamnesis');
+          if(idRe.test(options.initialPatient||''))await loadPatient(options.initialPatient,state.tab);
         }
       }
     }catch(e){if(valid(epoch))state.error=e?.message||'Não foi possível confirmar o acesso clínico.';}
