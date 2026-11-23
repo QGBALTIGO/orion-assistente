@@ -1718,8 +1718,14 @@ async def test_sales_patient_link_is_explicit_for_shared_phone_and_tenant_scoped
         stored = (await db.execute(text("""SELECT patient_id,encrypted_content
             FROM dental_sales_opportunities WHERE tenant_id=:tenant AND id=:id"""),
             {"tenant":d["a"],"id":opportunity["id"]})).one()
-        assert stored.patient_id == first and b"Paciente Sintético" not in bytes(stored.encrypted_content)
-            await db.execute(text("SELECT set_config('app.dental_actor',:actor,true)"),{"actor":str(d["account_b"])})
+        assert stored.patient_id == first
+        assert "Paciente Sintético".encode() not in bytes(stored.encrypted_content)
+    async with async_sessionmaker(d["runtime"])() as db:
+        async with tenant_transaction(db, d["b"]):
+            await db.execute(
+                text("SELECT set_config('app.dental_actor',:actor,true)"),
+                {"actor": str(d["account_b"])},
+            )
             assert await db.scalar(text("SELECT count(*) FROM dental_sales_opportunities")) == 0
 
 
