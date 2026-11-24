@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import secrets
+import unicodedata
 from contextlib import asynccontextmanager
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Literal
@@ -19,20 +20,25 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.exceptions import RequestValidationError
 from fastapi.routing import APIRoute
+from pydantic import TypeAdapter, ValidationError
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from app.catalog_api import Actor, authenticate, support_session_factory
 from app.account_business import account_membership_role
+from app.csv_export import csv_document
 from app.database import get_session_factory, tenant_transaction
 from app.plan_permissions import plan_state
+from app.onboarding_schemas import BusinessOpeningHours
 from app.tenant_access import resolve_tenant_access
 from app.dental_clinic_schemas import (
     ClinicianGrant, PatientRegistration, PatientSearch, PatientPatch, VisitPatientLink, RecordCreate,
     IntakeTemplateCreate, IntakeTemplateUpdate, LaboratoryCreate, LaboratoryUpdate,
-    ProsthesisStatus, ProsthesisTransition,
-    RoomCreate, RoomRename, RoomAssign, ChairAvailability, SupplyCreate, SupplyMove, ExamUpload
+    ProsthesisStatus, ProsthesisTransition, ProsthesisVisit,
+    RoomCreate, RoomRename, RoomAssign, ChairAvailability, SupplyCreate, SupplyMove, ExamUpload,
+    SalesStage, SalesOpportunity, SalesOpportunitySearch, SalesPatientSearch,
+    InsurancePlanCreate, InsurancePlanUpdate
 )
 
 
@@ -236,8 +242,8 @@ async def reception_snapshot(db, tenant_id: UUID, as_of: datetime):
             "upcoming": row["upcoming"]}
 
 
-@router.get("/reception/today")
-async def reception_today(tenant_id: UUID, actor: Actor = Depends(authenticate)):
+@asynccontextmanager
+async def reception_session(tenant_id: UUID, actor: Actor):
     from app.management_api import management_session
 
     async with management_session(tenant_id, actor) as db:
@@ -246,7 +252,77 @@ async def reception_today(tenant_id: UUID, actor: Actor = Depends(authenticate))
             raise HTTPException(404, "Recepção disponível apenas para clínicas odontológicas")
         if not plan.get("active") or not plan.get("permissions", {}).get("dashboard.basic"):
             raise HTTPException(403, "O acesso ao painel da clínica está indisponível")
+        yield db, plan
+
+
+@router.get("/reception/today")
+async def reception_today(tenant_id: UUID, actor: Actor = Depends(authenticate)):
+    async with reception_session(tenant_id, actor) as (db, _):
         return await reception_snapshot(db, tenant_id, datetime.now(timezone.utc))
+
+
+def chair_open_windows(configuration, day: date, zone: ZoneInfo):
+    """Return UTC intervals from the same local weekday and breaks used by onboarding."""
+    try:
+        week = BusinessOpeningHours.model_validate(configuration)
+    except ValidationError:
+        return "unconfigured", []
+    schedule = next(entry for entry in week.days if entry.weekday == day.weekday())
+    if not schedule.open:
+        return "closed", []
+    intervals = [(schedule.start_time, schedule.end_time)]
+    if schedule.break_start is not None:
+        intervals = [(schedule.start_time, schedule.break_start), (schedule.break_end, schedule.end_time)]
+    windows = []
+    for opening, closing in intervals:
+        start = datetime.combine(day, opening, zone).astimezone(timezone.utc)
+        end = datetime.combine(day, closing, zone).astimezone(timezone.utc)
+        if start < end:
+            windows.append((start, end))
+    return "open", windows
+
+
+async def chair_occupancy_snapshot(db, tenant: UUID, as_of: datetime):
+    settings = (await db.execute(text("""
+        SELECT t.timezone, b.configuration->'business_opening_hours' AS hours
+        FROM tenants t LEFT JOIN business_onboarding b ON b.tenant_id=t.id WHERE t.id=:tenant
+    """), {"tenant": tenant})).mappings().one()
+    zone = ZoneInfo(settings["timezone"])
+    day = as_of.astimezone(zone).date()
+    status, windows = chair_open_windows(settings["hours"], day, zone)
+    # The room exclusion constraint prevents double counting on one chair. Reservations
+    # on different chairs count independently, and only their overlap with opening hours counts.
+    row = (await db.execute(text("""
+        WITH rooms AS MATERIALIZED (
+            SELECT id FROM dental_rooms WHERE tenant_id=:tenant AND active
+        ), windows AS (
+            SELECT tstzrange(opens, closes, '[)') AS period
+            FROM unnest(CAST(:starts AS timestamptz[]), CAST(:ends AS timestamptz[])) AS w(opens, closes)
+        ), booked AS (
+            SELECT r.period * w.period AS portion
+            FROM windows w JOIN dental_room_reservations r ON r.tenant_id=:tenant
+                AND r.active AND r.period && w.period
+            JOIN rooms ON rooms.id=r.room_id
+            JOIN appointments a ON a.tenant_id=r.tenant_id AND a.id=r.appointment_id
+            WHERE a.status IN ('confirmed','completed') OR (a.status='hold' AND a.hold_expires_at>:as_of)
+        )
+        SELECT (SELECT count(*) FROM rooms) AS chairs,
+               floor(COALESCE(sum(extract(epoch FROM upper(portion)-lower(portion))),0))::bigint AS reserved
+        FROM booked
+    """), {"tenant": tenant, "starts": [start for start, _ in windows],
+           "ends": [end for _, end in windows], "as_of": as_of})).mappings().one()
+    capacity = sum((end-start).total_seconds() for start, end in windows) * row["chairs"]
+    return {"day": day, "hours_status": status, "active_chairs": row["chairs"],
+            "capacity_seconds": int(capacity) if status != "unconfigured" else None,
+            "reserved_seconds": row["reserved"] if status != "unconfigured" else None}
+
+
+@router.get("/reception/chair-occupancy")
+async def reception_chair_occupancy(tenant_id: UUID, actor: Actor = Depends(authenticate)):
+    async with reception_session(tenant_id, actor) as (db, plan):
+        if not plan.get("dental_clinical_enabled"):
+            raise HTTPException(404, "Cadeiras indisponíveis para esta clínica")
+        return await chair_occupancy_snapshot(db, tenant_id, datetime.now(timezone.utc))
 
 
 @router.get("/access")
@@ -456,6 +532,8 @@ async def list_dental_records(tenant_id:UUID,patient_id:UUID,
         result=[]
         for row in records:
             data=json.loads(unseal(row,tenant_id,patient_id,row["kind"]))
+            if row["kind"] == "prosthesis":
+                data = public_prosthesis_content(data)
             result.append({"id":row["id"],"kind":row["kind"],"content":data,
                            "authored_by":row["authored_by"],"professional_id":row["professional_id"],
                            "created_at":row["created_at"]})
@@ -502,7 +580,8 @@ async def resolve_intake_snapshot(db, tenant, patient, actor, payload):
     return None, content
 
 
-async def save_clinical_record(db, tenant, patient, actor, professional, kind, content, key, *, previous=None):
+async def save_clinical_record(db, tenant, patient, actor, professional, kind, content, key, *,
+                               previous=None, action="clinical_record_created"):
     identity = uuid4()
     data = json.dumps(content, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
     nonce, cipher, digest = seal(data, tenant, patient, kind, identity)
@@ -516,7 +595,6 @@ async def save_clinical_record(db, tenant, patient, actor, professional, kind, c
            "content": cipher, "nonce": nonce, "digest": digest, "actor": actor.account_id,
            "professional": professional, "key": key, "previous": previous})).scalar_one_or_none()
     if inserted is not None:
-        action = "clinical_record_created" if previous is None else "prosthesis_status_changed"
         await audit(db, tenant, actor, action, patient)
         return inserted
     prior = (await db.execute(text("""
@@ -552,11 +630,23 @@ PROSTHESIS_TRANSITIONS = {
 }
 
 
+def public_prosthesis_content(content):
+    # An appointment may later be transferred. Resolve its identity and details at the point of access.
+    details = dict(content)
+    visit = details.pop("visit", None)
+    if visit:
+        details["visit_purpose"] = visit["purpose"]
+    return details
+
+
 @router.get("/prostheses")
 async def prostheses(tenant_id: UUID, actor: Actor = Depends(authenticate),
                      cursor: UUID | None = None, status: ProsthesisStatus | None = None,
-                     limit: int = Query(30, ge=1, le=50)):
+                     limit: int = Query(30, ge=1, le=50), overdue_only: bool = False):
     async with clinical_session(tenant_id, actor, dentist=True) as (db, _):
+        clinic_day = await db.scalar(text("""
+            SELECT (CURRENT_TIMESTAMP AT TIME ZONE timezone)::date FROM tenants WHERE id=:tenant
+        """), {"tenant": tenant_id})
         # A prior version remains a valid page boundary after a concurrent status change.
         boundary = None
         if cursor is not None:
@@ -566,7 +656,7 @@ async def prostheses(tenant_id: UUID, actor: Actor = Depends(authenticate),
             """), {"tenant": tenant_id, "cursor": cursor})
             if boundary is None:
                 raise HTTPException(400, "Página de próteses inválida")
-        scan_limit = 200 if status is not None else limit
+        scan_limit = 200 if status is not None or overdue_only else limit
         rows = (await db.execute(text("""
             SELECT r.id,r.patient_id,r.encrypted_content,r.nonce,r.digest,r.created_at,p.name AS patient_name
             FROM dental_records r JOIN dental_patients p ON p.tenant_id=r.tenant_id AND p.id=r.patient_id
@@ -586,42 +676,65 @@ async def prostheses(tenant_id: UUID, actor: Actor = Depends(authenticate),
             content = json.loads(unseal(record, tenant_id, record["patient_id"], "prosthesis"))
             if status is not None and content["status"] != status:
                 continue
+            deadline_state = None
+            if content.get("due_date") and content["status"] not in ("completed", "cancelled"):
+                due = date.fromisoformat(content["due_date"])
+                if due < clinic_day:
+                    deadline_state = "overdue"
+                elif due == clinic_day:
+                    deadline_state = "today"
+                else:
+                    deadline_state = "upcoming"
+            if overdue_only and deadline_state != "overdue":
+                continue
             items.append({"id": record["id"], "patient_id": record["patient_id"],
                           "patient_name": record["patient_name"], "created_at": record["created_at"],
-                          "content": content, "actions": PROSTHESIS_TRANSITIONS.get(content["status"], ())})
+                          "deadline_state": deadline_state,
+                          "content": public_prosthesis_content(content),
+                          "actions": PROSTHESIS_TRANSITIONS.get(content["status"], ())})
             if len(items) == limit:
                 break
         await audit(db, tenant_id, actor, "prosthesis_worklist_read")
-        return {"items": items, "next_cursor": rows[checked - 1]["id"] if len(rows) > checked else None}
+        return {"items": items, "clinic_day": clinic_day,
+                "next_cursor": rows[checked - 1]["id"] if len(rows) > checked else None}
+
+
+async def read_prosthesis(db, tenant, record_id):
+    record = (await db.execute(text("""
+        SELECT id,patient_id,encrypted_content,nonce,digest FROM dental_records
+        WHERE tenant_id=:tenant AND id=:id AND kind='prosthesis'
+    """), {"tenant": tenant, "id": record_id})).mappings().one_or_none()
+    if record is None:
+        raise HTTPException(404, "Trabalho protético não encontrado")
+    patient = record["patient_id"]
+    return patient, json.loads(unseal(record, tenant, patient, "prosthesis"))
+
+
+async def lock_prosthesis(db, tenant, record_id, key):
+    # Both agenda and status mutations append to this immutable version.
+    await db.execute(text("""
+        SELECT pg_advisory_xact_lock(hashtextextended('orion-prosthesis:' || CAST(:id AS text), 0))
+    """), {"id": str(record_id)})
+    successor = await db.scalar(text("""
+        SELECT entry_key FROM dental_records WHERE tenant_id=:tenant AND previous_prosthesis_id=:id
+    """), {"tenant": tenant, "id": record_id})
+    if successor is not None and successor != key:
+        raise HTTPException(409, "O trabalho já mudou. Consulte a situação atual.")
+    return successor is not None
 
 
 @router.patch("/prostheses/{record_id}/status")
 async def advance_prosthesis(tenant_id: UUID, record_id: UUID, payload: ProsthesisTransition,
                             actor: Actor = Depends(authenticate)):
     async with clinical_session(tenant_id, actor, write=True, dentist=True) as (db, grant):
-        scope = {"tenant": tenant_id, "id": record_id}
-        record = (await db.execute(text("""
-            SELECT id,patient_id,encrypted_content,nonce,digest FROM dental_records
-            WHERE tenant_id=:tenant AND id=:id AND kind='prosthesis'
-        """), scope)).mappings().one_or_none()
-        if record is None:
-            raise HTTPException(404, "Trabalho protético não encontrado")
-        # Appending a successor never requires UPDATE privileges on the clinical record.
-        await db.execute(text("""
-            SELECT pg_advisory_xact_lock(hashtextextended('orion-prosthesis:' || CAST(:id AS text), 0))
-        """), {"id": str(record_id)})
-        patient = record["patient_id"]
-        content = json.loads(unseal(record, tenant_id, patient, "prosthesis"))
+        patient, content = await read_prosthesis(db, tenant_id, record_id)
+        await lock_prosthesis(db, tenant_id, record_id, payload.entry_key)
         if payload.status not in PROSTHESIS_TRANSITIONS.get(content["status"], ()):
             raise HTTPException(409, "Essa mudança de etapa não está disponível")
         next_content = {**content, "status": payload.status}
-        successor = (await db.execute(text("""
-            SELECT id,entry_key FROM dental_records WHERE tenant_id=:tenant AND previous_prosthesis_id=:id
-        """), scope)).mappings().one_or_none()
-        if successor and successor["entry_key"] != payload.entry_key:
-            raise HTTPException(409, "A etapa já mudou. Consulte a situação atual.")
         identity = await save_clinical_record(db, tenant_id, patient, actor, grant["professional_id"],
-                                              "prosthesis", next_content, payload.entry_key, previous=record_id)
+                                              "prosthesis", next_content, payload.entry_key, previous=record_id,
+                                              action="prosthesis_status_changed")
         return {"id": identity, "status": payload.status}
 
 
@@ -679,6 +792,204 @@ async def edit_laboratory(tenant_id: UUID, laboratory_id: UUID, payload: Laborat
         return dict(saved)
 
 
+SALES_OPEN = (("open", "Em aberto"), ("in_progress", "Em andamento"))
+SALES_CLOSED = (("won", "Ganha"), ("lost", "Perdida"))
+SALES_STAGE_LIST = TypeAdapter(list[SalesStage])
+
+
+def sales_stage_rows(custom):
+    def fixed(stages):
+        return [{"id": key, "name": label, "custom": False} for key, label in stages]
+    return [*fixed(SALES_OPEN), *[{**stage, "custom": True} for stage in custom], *fixed(SALES_CLOSED)]
+
+
+async def read_custom_sales_stages(db, tenant, *, lock=False):
+    sql = "SELECT configuration FROM business_onboarding WHERE tenant_id=:tenant"
+    row = (await db.execute(text(sql + (" FOR UPDATE" if lock else "")), {"tenant": tenant})).one_or_none()
+    if not row:
+        raise HTTPException(404, "Configuração da clínica não encontrada")
+    try:
+        saved = SALES_STAGE_LIST.validate_python(row.configuration.get("dental_sales_stages", []))
+    except ValidationError:
+        raise HTTPException(409, "Não foi possível validar as etapas salvas da clínica") from None
+    return [stage.model_dump(mode="json") for stage in saved]
+
+
+@router.get("/sales/stages")
+async def dental_sales_stages(tenant_id: UUID, actor: Actor = Depends(authenticate)):
+    async with owner_session(tenant_id, actor, feature="settings.manage") as db:
+        return {"items": sales_stage_rows(await read_custom_sales_stages(db, tenant_id))}
+
+
+@router.post("/sales/stages", status_code=201)
+async def add_dental_sales_stage(tenant_id: UUID, payload: SalesStage, actor: Actor = Depends(authenticate)):
+    async with owner_session(tenant_id, actor, feature="settings.manage") as db:
+        custom = await read_custom_sales_stages(db, tenant_id, lock=True)
+        new_stage = payload.model_dump(mode="json")
+        for stage in sales_stage_rows(custom):
+            if stage["id"] == new_stage["id"]:
+                if stage["name"] == payload.name:
+                    return {"items": sales_stage_rows(custom)}
+                raise HTTPException(409, "A etapa já foi cadastrada com outro nome")
+            if stage["name"].casefold() == payload.name.casefold():
+                raise HTTPException(409, "A clínica já possui uma etapa com esse nome")
+        custom.append(new_stage)
+        # The onboarding editor uses the same row lock and version. Change only this
+        # key so a concurrent edit to clinic hours, identity or team is preserved.
+        await db.execute(text("""
+            UPDATE business_onboarding SET configuration=jsonb_set(configuration,
+                '{dental_sales_stages}', CAST(:stages AS jsonb)), version=version+1, updated_at=now()
+            WHERE tenant_id=:tenant
+        """), {"tenant": tenant_id, "stages": json.dumps(custom)})
+        await audit(db, tenant_id, actor, "sales_stage_created")
+        return {"items": sales_stage_rows(custom)}
+
+
+@router.post("/sales/opportunities", status_code=201)
+async def create_sales_opportunity(tenant_id: UUID, payload: SalesOpportunity, actor: Actor = Depends(authenticate)):
+    async with owner_session(tenant_id, actor, feature="settings.manage") as db:
+        patient = None
+        if payload.patient_id is not None:
+            patient = (await db.execute(text("""
+                SELECT * FROM public.dental_sales_patient_identity(:patient)
+            """), {"patient": payload.patient_id})).mappings().one_or_none()
+            if patient is None:
+                raise HTTPException(404, "Paciente indisponível nesta clínica")
+            patient = dict(patient)
+            patient["id"] = str(patient["id"])
+            if patient["birth_date"] is not None:
+                patient["birth_date"] = patient["birth_date"].isoformat()
+        details = json.dumps({"title": payload.title, "description": payload.description,
+                              "patient": patient},
+                             ensure_ascii=False, sort_keys=True).encode()
+        nonce, ciphertext, digest = seal(details, tenant_id, payload.id, "sales_opportunity", payload.id)
+        stored = (await db.execute(text("""
+            INSERT INTO dental_sales_opportunities
+              (tenant_id,id,created_by,patient_id,nonce,encrypted_content,digest)
+            VALUES (:tenant,:id,:account,:patient,:nonce,:body,:digest)
+            ON CONFLICT (tenant_id,id) DO NOTHING
+            RETURNING created_at
+        """), {"tenant": tenant_id, "id": payload.id, "account": actor.account_id,
+               "patient": payload.patient_id, "nonce": nonce,
+               "body": ciphertext, "digest": digest})).one_or_none()
+        if stored is None:
+            stored = (await db.execute(text("""
+                SELECT created_at,created_by,digest FROM dental_sales_opportunities
+                WHERE tenant_id=:tenant AND id=:id
+            """), {"tenant": tenant_id, "id": payload.id})).one()
+            if stored.created_by != actor.account_id or not secrets.compare_digest(stored.digest, digest):
+                raise HTTPException(409, "Este envio já foi usado para outra oportunidade")
+        else:
+            await audit(db, tenant_id, actor, "sales_opportunity_created")
+        return {"id": payload.id, "created_at": stored.created_at, "created_by": actor.account_id,
+                "title": payload.title, "description": payload.description,
+                "patient_id": payload.patient_id, "patient": patient}
+
+
+@router.get("/sales/opportunities")
+async def list_sales_opportunities(tenant_id: UUID, before: UUID | None = None,
+                                   limit: int = Query(25, ge=1, le=50),
+                                   start_date: date | None = None, end_date: date | None = None,
+                                   actor: Actor = Depends(authenticate)):
+    async with owner_session(tenant_id, actor, feature="settings.manage") as db:
+        if start_date and end_date and start_date > end_date:
+            raise HTTPException(422, "A data final deve ser igual ou posterior à inicial")
+        result = await sales_opportunity_page(db, tenant_id, before, limit, start_date, end_date)
+        await audit(db, tenant_id, actor, "sales_opportunities_read")
+        return result
+
+
+def normalized_sales_text(value: str):
+    decomposed = unicodedata.normalize("NFKD", value).casefold()
+    return " ".join("".join(char for char in decomposed if not unicodedata.combining(char)).split())
+
+
+def sales_opportunity_search_text(details: dict):
+    """Build the private search surface without treating contact data as identity."""
+    patient = details.get("patient") or {}
+    return normalized_sales_text(" ".join(filter(None, (
+        details.get("title"), details.get("description"), patient.get("name"),
+    ))))
+
+
+async def sales_opportunity_page(db, tenant_id, before, limit, start_date, end_date, query=None):
+    needle = normalized_sales_text(query or "")
+    params = {"tenant": tenant_id, "limit": limit + 1}
+    conditions = ["tenant_id=:tenant"]
+    if start_date or end_date:
+        params["zone"] = await db.scalar(text("SELECT timezone FROM tenants WHERE id=:tenant"), params)
+    if start_date:
+        conditions.append("created_at >= (CAST(:start_day AS date)::timestamp AT TIME ZONE :zone)")
+        params["start_day"] = start_date
+    if end_date:
+        conditions.append("created_at < ((CAST(:end_day AS date) + 1)::timestamp AT TIME ZONE :zone)")
+        params["end_day"] = end_date
+    if before:
+        point = (await db.execute(text("""SELECT id,created_by,created_at,patient_id,nonce,encrypted_content,digest
+                                       FROM dental_sales_opportunities WHERE """
+                                       + " AND ".join(conditions) + " AND id=:id"),
+                                  {**params, "id": before})).mappings().one_or_none()
+        if point is None:
+            raise HTTPException(400, "Página de oportunidades inválida")
+        if needle:
+            details = json.loads(unseal(point, tenant_id, point["id"], "sales_opportunity"))
+            searchable = sales_opportunity_search_text(details)
+            if needle not in searchable:
+                raise HTTPException(400, "Página de oportunidades inválida")
+        conditions.append("(created_at,id)<(:at,:id)")
+        params.update(at=point["created_at"], id=point["id"])
+    statement = text("""
+        SELECT id,created_by,created_at,patient_id,nonce,encrypted_content,digest FROM dental_sales_opportunities
+        WHERE """ + " AND ".join(conditions) + " ORDER BY created_at DESC,id DESC" +
+        ("" if needle else " LIMIT :limit"))
+    rows = []
+    if needle:
+        streamed = await db.stream(statement, params)
+        try:
+            async for row in streamed.mappings():
+                details = json.loads(unseal(row, tenant_id, row["id"], "sales_opportunity"))
+                searchable = sales_opportunity_search_text(details)
+                if needle in searchable:
+                    rows.append((row, details))
+                    if len(rows) > limit:
+                        break
+        finally:
+            await streamed.close()
+    else:
+        found = (await db.execute(statement, params)).mappings().all()
+        rows = [(row, json.loads(unseal(row, tenant_id, row["id"], "sales_opportunity"))) for row in found]
+    items = []
+    for row, details in rows[:limit]:
+        items.append({"id": row["id"], "created_at": row["created_at"], "created_by": row["created_by"],
+                      "title": details["title"], "description": details["description"],
+                      "patient_id": row["patient_id"], "patient": details.get("patient")})
+    return {"items": items, "next": items[-1]["id"] if len(rows)>limit else None}
+
+
+@router.post("/sales/opportunities/search")
+async def search_sales_opportunities(tenant_id: UUID, payload: SalesOpportunitySearch,
+                                     actor: Actor = Depends(authenticate)):
+    async with owner_session(tenant_id, actor, feature="settings.manage") as db:
+        result = await sales_opportunity_page(db, tenant_id, payload.before, payload.limit,
+                                              payload.start_date, payload.end_date, payload.query)
+        await audit(db, tenant_id, actor, "sales_opportunities_searched")
+        return result
+
+
+@router.post("/sales/patients/search")
+async def search_sales_patients(tenant_id: UUID, payload: SalesPatientSearch,
+                                actor: Actor = Depends(authenticate)):
+    """Return identity fields only; a shared phone deliberately yields every match."""
+    async with owner_session(tenant_id, actor, feature="settings.manage") as db:
+        rows = (await db.execute(text("""
+            SELECT * FROM public.dental_sales_patient_options(:term,:limit,:offset)
+        """), {"term": payload.query, "limit": payload.limit + 1,
+               "offset": payload.offset})).mappings().all()
+        await audit(db, tenant_id, actor, "sales_patient_options_read")
+        return {"items": [dict(row) for row in rows[:payload.limit]],
+                "has_more": len(rows) > payload.limit}
+
+
 async def read_chairs(db, tenant):
     rows = (await db.execute(text("""
         SELECT id,name,active FROM dental_rooms WHERE tenant_id=:tenant
@@ -698,6 +1009,80 @@ async def create_chair(db, tenant, actor, name):
         raise HTTPException(409, "Já existe uma cadeira com esse nome") from None
     await audit(db, tenant, actor, "room_created")
     return dict(chair)
+
+
+INSURANCE_PLAN_COLUMNS = "id, insurer, plan, covered_procedures, active, version"
+
+
+@router.get("/insurance-plans")
+async def list_insurance_plans(
+    tenant_id: UUID, limit: int = Query(30, ge=1, le=100), offset: int = Query(0, ge=0),
+    actor: Actor = Depends(authenticate),
+):
+    async with owner_session(tenant_id, actor, feature="settings.manage") as db:
+        result = (await db.execute(text(f"""
+            SELECT {INSURANCE_PLAN_COLUMNS}
+            FROM dental_insurance_plans WHERE tenant_id=:tenant
+            ORDER BY active DESC, lower(insurer), lower(plan), id
+            LIMIT :limit OFFSET :offset
+        """), {"tenant": tenant_id, "limit": limit + 1, "offset": offset})).mappings().all()
+        return {"items": [dict(row) for row in result[:limit]], "has_more": len(result) > limit}
+
+
+@router.post("/insurance-plans", status_code=201)
+async def create_insurance_plan(tenant_id: UUID, payload: InsurancePlanCreate, actor: Actor = Depends(authenticate)):
+    values = payload.model_dump()
+    async with owner_session(tenant_id, actor, feature="settings.manage") as db:
+        try:
+            row = (await db.execute(text(f"""
+                INSERT INTO dental_insurance_plans (tenant_id, id, insurer, plan, covered_procedures)
+                VALUES (:tenant, :id, :insurer, :plan, :covered_procedures)
+                ON CONFLICT (tenant_id, id) DO NOTHING
+                RETURNING {INSURANCE_PLAN_COLUMNS}
+            """), {"tenant": tenant_id, **values})).mappings().one_or_none()
+        except IntegrityError:
+            raise HTTPException(409, "Já existe um convênio com essa operadora e plano.") from None
+        if row is not None:
+            await audit(db, tenant_id, actor, "insurance_plan_created")
+            return dict(row)
+        row = (await db.execute(text(f"""
+            SELECT {INSURANCE_PLAN_COLUMNS} FROM dental_insurance_plans
+            WHERE tenant_id=:tenant AND id=:id
+        """), {"tenant": tenant_id, "id": payload.id})).mappings().one()
+        if any(row[key] != values[key] for key in ("insurer", "plan", "covered_procedures")):
+            raise HTTPException(409, "O convênio já foi cadastrado. Atualize a lista antes de continuar.")
+        return dict(row)
+
+
+@router.patch("/insurance-plans/{plan_id}")
+async def update_insurance_plan(
+    tenant_id: UUID, plan_id: UUID, payload: InsurancePlanUpdate, actor: Actor = Depends(authenticate),
+):
+    values = payload.model_dump()
+    async with owner_session(tenant_id, actor, feature="settings.manage") as db:
+        try:
+            row = (await db.execute(text(f"""
+                UPDATE dental_insurance_plans
+                SET insurer=:insurer, plan=:plan, covered_procedures=:covered_procedures,
+                    active=:active, version=version+1
+                WHERE tenant_id=:tenant AND id=:id AND version=:expected_version
+                RETURNING {INSURANCE_PLAN_COLUMNS}
+            """), {"tenant": tenant_id, "id": plan_id, **values})).mappings().one_or_none()
+        except IntegrityError:
+            raise HTTPException(409, "Já existe um convênio com essa operadora e plano.") from None
+        if row is None:
+            current = (await db.execute(text(f"""
+                SELECT {INSURANCE_PLAN_COLUMNS} FROM dental_insurance_plans
+                WHERE tenant_id=:tenant AND id=:id
+            """), {"tenant": tenant_id, "id": plan_id})).mappings().one_or_none()
+            if current is None:
+                raise HTTPException(404, "Convênio não encontrado.")
+            fields = ("insurer", "plan", "covered_procedures", "active")
+            if current["version"] == payload.expected_version + 1 and all(current[key] == values[key] for key in fields):
+                return dict(current)
+            raise HTTPException(409, "O convênio foi alterado. Atualize a lista antes de editar.")
+        await audit(db, tenant_id, actor, "insurance_plan_updated")
+        return dict(row)
 
 
 @router.get("/rooms")
@@ -876,6 +1261,91 @@ def visit_professional(actor, grant):
     return grant["professional_id"] if actor.membership_role == "professional" else None
 
 
+@router.get("/prostheses/{record_id}/visits")
+async def prosthesis_visits(tenant_id: UUID, record_id: UUID, actor: Actor = Depends(authenticate),
+                           limit: int = Query(25, ge=1, le=100), offset: int = Query(0, ge=0)):
+    async with clinical_session(tenant_id, actor, dentist=True) as (db, grant):
+        patient, content = await read_prosthesis(db, tenant_id, record_id)
+        stored = content.get("visit")
+        params = {"tenant":tenant_id, "patient":patient, "professional":visit_professional(actor, grant),
+                  "linked":UUID(stored["appointment_id"]) if stored else None,
+                  "identity_version":stored["identity_version"] if stored else None,
+                  "limit":limit+1, "offset":offset}
+        visits = """
+            SELECT a.id,a.start_at,a.status,p.name AS professional,link.version AS identity_version
+            FROM appointments a JOIN professionals p ON p.tenant_id=a.tenant_id AND p.id=a.professional_id
+        """ + CURRENT_VISIT_PATIENT + """
+            WHERE a.tenant_id=:tenant AND link.patient_id=:patient
+        """ + VISIT_PROFESSIONAL
+        linked = None
+        if stored:
+            linked = (await db.execute(text(visits + """
+                AND a.id=:linked AND link.version=:identity_version
+            """),params)).mappings().one_or_none()
+        options = []
+        if content["status"] == "delivered":
+            options = (await db.execute(text(visits + """
+                AND a.status='confirmed' AND a.start_at>=CURRENT_TIMESTAMP
+                ORDER BY a.start_at,a.id LIMIT :limit OFFSET :offset
+            """),params)).mappings().all()
+        zone = await db.scalar(text("SELECT timezone FROM tenants WHERE id=:tenant"), params)
+        await audit(db, tenant_id, actor, "prosthesis_visits_read", patient)
+        return {"items":[dict(item) for item in options[:limit]], "has_more":len(options)>limit,
+                "linked":dict(linked) if linked else None, "purpose":stored["purpose"] if stored else None,
+                "timezone":zone}
+
+
+@router.patch("/prostheses/{record_id}/visit")
+async def set_prosthesis_visit(tenant_id: UUID, record_id: UUID, payload: ProsthesisVisit,
+                              actor: Actor = Depends(authenticate)):
+    async with clinical_session(tenant_id, actor, write=True, dentist=True) as (db, grant):
+        patient, content = await read_prosthesis(db, tenant_id, record_id)
+        if content["status"] != "delivered":
+            raise HTTPException(409, "Registre o recebimento da peça antes de vincular uma consulta.")
+        replay = await lock_prosthesis(db, tenant_id, record_id, payload.entry_key)
+        old = content.get("visit")
+        chosen = None
+        if payload.appointment_id:
+            chosen = {"appointment_id":str(payload.appointment_id), "identity_version":payload.identity_version,
+                      "purpose":payload.purpose}
+        professional = visit_professional(actor, grant)
+        old_appointment = UUID(old["appointment_id"]) if old and professional is not None else None
+        appointment_ids = {value for value in (old_appointment, payload.appointment_id) if value}
+        if appointment_ids and not replay:
+            # All writers lock the actual booking. A fixed order also permits two concurrent replacements.
+            locked = (await db.execute(text("""
+                SELECT a.id,(a.status='confirmed' AND a.start_at>=CURRENT_TIMESTAMP) AS eligible
+                FROM appointments a
+                WHERE a.tenant_id=:tenant AND a.id=ANY(CAST(:ids AS uuid[]))
+            """ + VISIT_PROFESSIONAL + " ORDER BY a.id FOR UPDATE"),
+                {"tenant":tenant_id,"ids":list(appointment_ids),"professional":professional})).all()
+            eligible = dict(locked)
+            if old_appointment and old_appointment not in eligible:
+                raise HTTPException(403, "O vínculo existente pertence a outra agenda profissional.")
+            if chosen and not eligible.get(payload.appointment_id):
+                raise HTTPException(404, "Consulta confirmada indisponível para este paciente.")
+        if chosen and not replay:
+            # A separate statement observes the identity committed by any reassignment that held the lock.
+            identity = (await db.execute(text("""
+                SELECT patient_id,version FROM dental_visit_patient_events
+                WHERE tenant_id=:tenant AND appointment_id=:appointment ORDER BY version DESC LIMIT 1
+            """),{"tenant":tenant_id,"appointment":payload.appointment_id})).mappings().one_or_none()
+            if not identity or identity["patient_id"] != patient:
+                raise HTTPException(404, "Consulta confirmada indisponível para este paciente.")
+            if identity["version"] != payload.identity_version:
+                raise HTTPException(409, "A identificação da consulta mudou. Consulte a agenda novamente.")
+        if chosen == old and not replay:
+            return {"id":record_id}
+        if chosen is None:
+            content.pop("visit",None)
+        else:
+            content["visit"] = chosen
+        saved = await save_clinical_record(db, tenant_id, patient, actor, grant["professional_id"],
+                                           "prosthesis", content, payload.entry_key, previous=record_id,
+                                           action="prosthesis_visit_linked" if chosen else "prosthesis_visit_removed")
+        return {"id":saved}
+
+
 @router.get("/visit-options")
 async def visit_options(tenant_id: UUID, day: date | None = None,
                        limit: int = Query(30, ge=1, le=100),
@@ -1045,6 +1515,26 @@ async def inventory_session(tenant: UUID, actor: Actor, *, write=False):
             yield db
 
 
+async def stock_rows(db, tenant_id: UUID, query: str, order: str, limit: int, cursor: UUID | None = None):
+    params = {"tenant": tenant_id, "query": query.strip(), "take": limit + 1}
+    scope = "tenant_id=:tenant AND strpos(lower(name),lower(CAST(:query AS text)))>0"
+    after = ""
+    # Only the two fixed directions are interpolated. Input values stay bound.
+    direction, comparison = ("DESC", "<") if order == "desc" else ("ASC", ">")
+    if cursor is not None:
+        boundary = await db.scalar(text(
+            "SELECT lower(name) FROM dental_supplies WHERE " + scope + " AND id=:id"
+        ), {**params, "id": cursor})
+        if boundary is None:
+            raise HTTPException(400, "Página de materiais inválida")
+        params.update(boundary=boundary, cursor=cursor)
+        after = f" AND (lower(name),id) {comparison} (:boundary,:cursor)"
+    return (await db.execute(text(
+        "SELECT id,name,unit,quantity,version FROM dental_supplies WHERE " + scope + after
+        + f" ORDER BY lower(name) {direction},id {direction} LIMIT :take"
+    ), params)).mappings().all()
+
+
 @router.get("/supplies")
 async def dental_supplies(
     tenant_id: UUID, actor: Actor = Depends(authenticate),
@@ -1053,25 +1543,29 @@ async def dental_supplies(
     cursor: UUID | None = None, limit: int = Query(default=200, ge=1, le=200),
 ):
     async with inventory_session(tenant_id, actor) as db:
-        params = {"tenant": tenant_id, "query": q.strip(), "take": limit + 1}
-        scope = "tenant_id=:tenant AND strpos(lower(name),lower(CAST(:query AS text)))>0"
-        after = ""
-        # Only the two fixed directions are interpolated. Input values stay bound.
-        direction, comparison = ("DESC", "<") if order == "desc" else ("ASC", ">")
-        if cursor is not None:
-            boundary = await db.scalar(text(
-                "SELECT lower(name) FROM dental_supplies WHERE " + scope + " AND id=:id"
-            ), {**params, "id": cursor})
-            if boundary is None:
-                raise HTTPException(400, "Página de materiais inválida")
-            params.update(boundary=boundary, cursor=cursor)
-            after = f" AND (lower(name),id) {comparison} (:boundary,:cursor)"
-        items = (await db.execute(text(
-            "SELECT id,name,unit,quantity,version FROM dental_supplies WHERE " + scope + after
-            + f" ORDER BY lower(name) {direction},id {direction} LIMIT :take"
-        ), params)).mappings().all()
+        items = await stock_rows(db, tenant_id, q, order, limit, cursor)
         return {"items": [dict(item) for item in items[:limit]],
                 "next_cursor": items[limit - 1]["id"] if len(items) > limit else None}
+
+
+@router.get("/supplies/export.csv")
+async def export_dental_stock(
+    tenant_id: UUID, actor: Actor = Depends(authenticate),
+    q: str = Query(default="", max_length=120), order: Literal["asc", "desc"] = "asc",
+):
+    limit = 20000
+    units = {"unit": "Unidade", "box": "Caixa", "kit": "Kit", "ml": "mL", "g": "Grama"}
+    async with inventory_session(tenant_id, actor) as db:
+        items = await stock_rows(db, tenant_id, q, order, limit)
+        if len(items) > limit:
+            raise HTTPException(413, "Refine a busca para exportar até 20 mil materiais por arquivo.")
+        await audit(db, tenant_id, actor, "supplies_exported")
+        body = csv_document(["Material", "Unidade", "Saldo"], [
+            (item["name"], units.get(item["unit"], item["unit"]), item["quantity"]) for item in items
+        ])
+    return Response(content=body, media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": 'attachment; filename="estoque-odontologico.csv"',
+                             "Cache-Control": "no-store"})
 
 
 @router.post("/supplies",status_code=201)

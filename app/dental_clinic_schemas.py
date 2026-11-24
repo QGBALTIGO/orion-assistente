@@ -217,6 +217,22 @@ class ProsthesisTransition(Strict):
     entry_key: str = Field(min_length=8, max_length=120, pattern=r"^[a-zA-Z0-9._:-]+$")
 
 
+class ProsthesisVisit(Strict):
+    appointment_id: UUID | None
+    identity_version: int | None = Field(None, ge=1, strict=True)
+    purpose: Literal["try_in", "delivery"] | None = None
+    entry_key: str = Field(min_length=8, max_length=120, pattern=r"^[a-zA-Z0-9._:-]+$")
+
+    @model_validator(mode="after")
+    def check_visit(self):
+        if self.appointment_id is None:
+            if self.identity_version is not None or self.purpose is not None:
+                raise ValueError("Ao desvincular, informe somente a operação.")
+        elif self.identity_version is None or self.purpose is None:
+            raise ValueError("Selecione a consulta e a finalidade.")
+        return self
+
+
 class LaboratoryCreate(Strict):
     name: str = Field(min_length=2, max_length=120)
     phone: str | None = Field(None, max_length=30, pattern=r"^\+?[0-9 ()-]+$")
@@ -230,6 +246,21 @@ class LaboratoryCreate(Strict):
 
 
 class LaboratoryUpdate(LaboratoryCreate):
+    active: bool = Field(strict=True)
+    expected_version: int = Field(ge=1, strict=True)
+
+
+class InsurancePlan(Strict):
+    insurer: str = Field(min_length=2, max_length=120)
+    plan: str = Field(min_length=2, max_length=160)
+    covered_procedures: str | None = Field(None, max_length=2000)
+
+
+class InsurancePlanCreate(InsurancePlan):
+    id: UUID
+
+
+class InsurancePlanUpdate(InsurancePlan):
     active: bool = Field(strict=True)
     expected_version: int = Field(ge=1, strict=True)
 
@@ -262,6 +293,45 @@ class RecordCreate(Strict):
         model=PAYLOADS[self.kind]
         self.content=model.model_validate(self.content).model_dump(mode="json",exclude_none=True)
         return self
+
+
+class SalesOpportunity(Strict):
+    id: UUID4
+    patient_id: UUID4 | None = None
+    title: str = Field(min_length=1, max_length=40, pattern=r"^[^\x00-\x1F\x7F]+$")
+    description: str = Field(default="", max_length=300)
+
+
+class SalesPatientSearch(Strict):
+    query: str = Field(min_length=2, max_length=120, pattern=r"^[^\x00-\x1F\x7F]+$")
+    limit: int = Field(20, ge=1, le=30, strict=True)
+    offset: int = Field(0, ge=0, strict=True)
+
+
+class SalesOpportunitySearch(Strict):
+    query: str = Field(min_length=2, max_length=80, pattern=r"^[^\x00-\x1F\x7F]+$")
+    before: UUID4 | None = None
+    limit: int = Field(25, ge=1, le=50, strict=True)
+    start_date: date | None = None
+    end_date: date | None = None
+
+    @model_validator(mode="after")
+    def valid_period(self):
+        if self.start_date and self.end_date and self.start_date > self.end_date:
+            raise ValueError("A data final deve ser igual ou posterior à inicial")
+        return self
+
+
+class SalesStage(Strict):
+    id: UUID4
+    name: str = Field(min_length=1, max_length=16)
+
+    @field_validator("name")
+    @classmethod
+    def stage_name(cls, value):
+        if not value.isprintable():
+            raise ValueError("Use uma única linha para o nome da etapa")
+        return " ".join(value.split())
 
 
 class RoomCreate(Strict):

@@ -1,8 +1,8 @@
 """Subscription audience overlays; preserve existing customers, groups and opt-outs."""
 from alembic import op
 
-revision = "0088_subscription_audience"
-down_revision = "0087_dental_patient_visits"
+revision = "0092_subscription_audience"
+down_revision = "0091_dental_insurance_plans"
 branch_labels = None
 depends_on = None
 

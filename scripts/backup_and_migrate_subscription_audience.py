@@ -17,12 +17,14 @@ from sqlalchemy.pool import NullPool
 
 from scripts.apply_variable_combo_migration import migrated_version
 from scripts.backup_and_migrate_commissions import connection_values, perform_backup, storage_values
-from scripts.backup_and_migrate_dental_workflows import complete_contract, verify_key_provisioning
+from scripts.backup_and_migrate_dental_workflows import (
+    complete_contract, verify_key_provisioning, SALES_PATIENT_CONTRACT, INSURANCE_CONTRACT,
+)
 from scripts.backup_and_migrate_exceptional_overlap import release_lock
 
 
-PREVIOUS = "0087_dental_patient_visits"
-TARGET = "0088_subscription_audience"
+PREVIOUS = "0091_dental_insurance_plans"
+TARGET = "0092_subscription_audience"
 AUDIENCE_CONTRACT = """
 SELECT COALESCE((
   SELECT count(*)=3 AND bool_and(
@@ -73,20 +75,31 @@ AND COALESCE((SELECT count(*)=2 AND bool_and(indisvalid AND indisready)
 """
 
 
-def audience_contract(raw: str) -> bool:
+def read_contract(raw: str, query: str) -> bool:
     engine = create_engine(raw, poolclass=NullPool, connect_args={
         "options": "-c default_transaction_read_only=on -c statement_timeout=12000"
     })
     try:
         with engine.connect() as db:
-            return db.scalar(text(AUDIENCE_CONTRACT)) is True
+            return db.scalar(text(query)) is True
     finally:
         engine.dispose()
 
 
+def audience_contract(raw: str) -> bool:
+    return read_contract(raw, AUDIENCE_CONTRACT)
+
+
+def preserved_contract(raw: str) -> bool:
+    # Inspect contracts independently of the old release gate's pinned head.
+    return (complete_contract(raw, include_visits=True, include_sales=True)
+            and read_contract(raw, "SELECT COALESCE((" + SALES_PATIENT_CONTRACT
+                              + "),false) AND COALESCE((" + INSURANCE_CONTRACT + "),false)"))
+
+
 def schema_ready(raw: str) -> bool:
     return (migrated_version(raw) == TARGET
-            and complete_contract(raw, include_visits=True)
+            and preserved_contract(raw)
             and audience_contract(raw))
 
 
@@ -101,14 +114,14 @@ def main() -> int:
             if current not in (PREVIOUS, TARGET):
                 raise RuntimeError("subscription_audience_source_schema_not_approved")
             verify_key_provisioning(raw)
-            if not complete_contract(raw, include_visits=True):
+            if not preserved_contract(raw):
                 raise RuntimeError("subscription_audience_predecessor_contract_invalid")
             if current != TARGET:
                 with tempfile.TemporaryDirectory(prefix="orion-subscription-audience-") as folder:
                     perform_backup(url, storage_values(), Path(folder) / "backup.dump",
-                                   backup_context="subscription-audience-0088", schema_revision=current,
+                                   backup_context="subscription-audience-0092", schema_revision=current,
                                    preserve_ownership=True)
-                if migrated_version(raw) != current or not complete_contract(raw, include_visits=True):
+                if migrated_version(raw) != current or not preserved_contract(raw):
                     raise RuntimeError("subscription_audience_source_changed_after_backup")
                 subprocess.run([sys.executable, "-m", "alembic", "upgrade", TARGET],
                                env={**os.environ, "ORION_MIGRATION_SWITCH_ROLE": "1"},

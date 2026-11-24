@@ -44,6 +44,18 @@ def schema_ready(raw):
     if current == "0079_service_archive":
         from scripts.wait_for_service_archive_schema import schema_ready as successor_ready
         return successor_ready(raw) is True
+    if current == "0080_service_receipts":
+        from scripts.wait_for_service_receipts_schema import schema_ready as successor_ready
+        return successor_ready(raw) is True
+    if current == "0081_exceptional_overlap":
+        from scripts.wait_for_exceptional_overlap_schema import schema_ready as successor_ready
+        return successor_ready(raw) is True
+    if current in {"0088_dental_sales_opportunities", "0089_dental_sales_patient_link", "0091_dental_insurance_plans"}:
+        from scripts.backup_and_migrate_dental_workflows import workflows_ready
+        return workflows_ready(raw) is True
+    if current in {"0086_dental_laboratories", "0087_dental_patient_visits"}:
+        from scripts.backup_and_migrate_dental_workflows import complete_contract
+        return complete_contract(raw, include_visits=current == "0087_dental_patient_visits") is True
     if current != TARGET:
         return False
     engine = create_engine(raw, poolclass=NullPool, connect_args={

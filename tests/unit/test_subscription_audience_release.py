@@ -21,7 +21,7 @@ def prepare(monkeypatch, *, version=None, after_backup=None, scope=True,
     monkeypatch.setattr(release, "connection_values", lambda: (raw, make_url(raw)))
     monkeypatch.setattr(release, "release_lock", locked)
     monkeypatch.setattr(release, "verify_key_provisioning", lambda _: None)
-    monkeypatch.setattr(release, "complete_contract", lambda raw, include_visits: predecessor)
+    monkeypatch.setattr(release, "preserved_contract", lambda raw: predecessor)
     monkeypatch.setattr(release, "schema_ready", lambda _: postcondition)
     monkeypatch.setattr(release, "storage_values", lambda: {})
     values = iter([version or release.PREVIOUS, after_backup or release.PREVIOUS])
@@ -29,7 +29,7 @@ def prepare(monkeypatch, *, version=None, after_backup=None, scope=True,
     steps = []
 
     def backup(url, storage, path, **kwargs):
-        assert kwargs == {"backup_context": "subscription-audience-0088",
+        assert kwargs == {"backup_context": "subscription-audience-0092",
                           "schema_revision": release.PREVIOUS, "preserve_ownership": True}
         assert steps == []
         steps.append("private_backup")

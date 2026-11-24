@@ -2,7 +2,7 @@
   "schema_version": 1,
   "services": {
     "api": {
-      "base_image": "ghcr.io/qgbaltigo/orion-assistente-api@sha256:b0d30e92ce6b15909220f76dc13b0b932019ef4c8c22b75dab10dfe08a6cc12a",
+      "base_image": "ghcr.io/qgbaltigo/orion-assistente-api@sha256:ccd592fbf7f1cde2a322da36f58c8237426eab717da5edf8cb955dd196bb1087",
       "files": [
         {
           "source": "app/main.py",
@@ -52,7 +52,7 @@
         {
           "source": "app/static/orion-suite.js",
           "target": "/srv/app/app/static/orion-suite.js",
-          "base_sha256": "cdd37a0ccd77c776f6c3ee1d3b5dd4933d2a93c066b9a7e4eeb5b6eaf90e29e3"
+          "base_sha256": "92e703a50099899840fc9141cfcb9974073cff8f2e617bffc26ff5d0e83fbf95"
         },
         {
           "source": "app/static/orion-subscription-number-check.js",
@@ -125,8 +125,8 @@
           "base_sha256": null
         },
         {
-          "source": "alembic/versions/0088_subscription_audience.py",
-          "target": "/srv/app/alembic/versions/0088_subscription_audience.py",
+          "source": "alembic/versions/0092_subscription_audience.py",
+          "target": "/srv/app/alembic/versions/0092_subscription_audience.py",
           "base_sha256": null
         },
         {

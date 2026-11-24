@@ -19,7 +19,7 @@ from urllib.parse import urlsplit
 
 SERVICES = {
     "api": {
-        "base_image": "ghcr.io/qgbaltigo/orion-assistente-api@sha256:b0d30e92ce6b15909220f76dc13b0b932019ef4c8c22b75dab10dfe08a6cc12a",
+        "base_image": "ghcr.io/qgbaltigo/orion-assistente-api@sha256:ccd592fbf7f1cde2a322da36f58c8237426eab717da5edf8cb955dd196bb1087",
         "root": "/srv/app", "owner": "appuser:appuser", "runtime": "python",
     },
     "worker": {
@@ -258,11 +258,20 @@ def build(root, manifest_path, manifest, revision, release_id, output):
         lines = ["FROM " + base,
                  'LABEL org.opencontainers.image.revision="' + revision + '"',
                  'LABEL io.orion.release="subscription-audience"']
-        for index, entry in enumerate(files):
-            local = f"overlay-{index}"
-            shutil.copyfile(root / entry["source"], context / local)
-            lines.append("COPY --chown=" + definition["owner"] + " --chmod=0644 " +
-                         json.dumps([local, entry["target"]]))
+        # One layer avoids exhausting overlayfs depth on the inherited images.
+        # The payload is assembled from the manifest, never the repository tree.
+        payload = context / "payload"
+        payload.mkdir(mode=0o755)
+        for entry in files:
+            relative = PurePosixPath(entry["target"]).relative_to(definition["root"])
+            local = payload.joinpath(*relative.parts)
+            local.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(root / entry["source"], local)
+            local.chmod(0o644)
+        for directory in (payload, *(path for path in payload.rglob("*") if path.is_dir())):
+            directory.chmod(0o755)
+        lines.append("COPY --chown=" + definition["owner"] + " " +
+                     json.dumps(["payload/", definition["root"] + "/"]))
         (context / "Dockerfile").write_text("\n".join(lines) + "\n")
         run(["docker", "build", "--platform", "linux/amd64", "--pull=false", "--no-cache",
              "--tag", tag, str(context)])

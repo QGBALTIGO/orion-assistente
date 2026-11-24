@@ -32,6 +32,21 @@
 .os-dental-entry small{color:var(--os-muted);font-size:12px}
 .os-dental-prosthesis-card{gap:14px}
 .os-dental-prosthesis-card .os-dental-controls{align-self:end}
+.os-dental-work{container:prostheses / inline-size;max-width:1120px;width:100%;box-sizing:border-box}
+.os-dental-work-head{display:flex;align-items:center;justify-content:space-between;gap:8px 16px;flex-wrap:wrap}
+.os-dental-work-filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(11rem,100%),1fr));gap:12px}
+.os-dental-deadline{display:flex;align-items:center;gap:6px 10px;flex-wrap:wrap;font-variant-numeric:tabular-nums}
+.os-dental-prosthesis-card form{display:grid;gap:12px;grid-template-columns:minmax(0,22rem) max-content;justify-content:start;align-items:end}
+.os-dental-prosthesis-card form>*{min-width:0}
+.os-dental-prosthesis-card .os-dental-visit-form{grid-template-columns:minmax(0,22rem) minmax(6rem,10rem) max-content}
+.os-dental-visit-form .os-button{justify-self:start}
+@container prostheses (max-width:650px){
+  .os-dental-prosthesis-card .os-dental-visit-form{grid-template-columns:minmax(0,1fr)}
+}
+@container prostheses (max-width:480px){
+  .os-dental-prosthesis-card form{grid-template-columns:minmax(0,1fr);justify-content:stretch}
+  .os-dental-prosthesis-card form .os-dental-controls{justify-content:flex-start}
+}
 .os-dental-controls{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
 .os-dental-notice{border:1px solid var(--os-border);background:var(--os-tint);color:var(--os-text);border-radius:12px;padding:12px 14px;font-size:13px;line-height:20px}
 .os-dental-error{border-color:var(--os-danger);background:var(--os-danger-bg);color:var(--os-danger)}
@@ -119,6 +134,15 @@
   .os-stock-list>li{align-items:start;flex-direction:column}
 }
 
+.os-chair-occupancy:not(:empty){margin-top:12px}
+.os-chair-heading{display:flex;align-items:baseline;gap:8px 16px;flex-wrap:wrap}
+.os-chair-heading strong{font:650 clamp(24px,3vw,32px)/1.2 var(--os-display);font-variant-numeric:tabular-nums}
+.os-chair-heading span,.os-chair-occupancy p{color:var(--os-muted)}
+.os-chair-occupancy progress{display:block;width:100%;height:8px;margin:10px 0;border:0;border-radius:8px;overflow:hidden;appearance:none;background:var(--os-border);color:var(--os-primary);accent-color:var(--os-primary)}
+.os-chair-occupancy progress::-webkit-progress-bar{background:var(--os-border)}
+.os-chair-occupancy progress::-webkit-progress-value{background:var(--os-primary)}
+.os-chair-occupancy progress::-moz-progress-bar{background:var(--os-primary)}
+
 .os-reception .os-cash-range{display:inline-flex;width:auto;margin:12px 0}
 .os-cash-range .os-pill-tab{min-height:44px}
 .os-cash-range .os-pill-tab[aria-pressed=true]{background:var(--os-card);color:var(--os-text);box-shadow:var(--os-shadow)}
@@ -158,4 +182,146 @@
 @container(max-width:540px){
   .os-directory .os-dental-card{padding:16px}
   .os-directory-fields,.os-directory-facts{grid-template-columns:minmax(0,1fr)}
+}
+
+.os-dental-workspace .os-sidebar-context{min-height:0}
+.os-stock-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+
+.os-dental-workspace .os-sales-stages{list-style:none;padding:0;margin:0}
+.os-sales-stages li{display:flex;align-items:baseline;justify-content:space-between;gap:8px 16px;flex-wrap:wrap;padding-block:12px}
+.os-sales-stages li+li{border-top:1px solid var(--os-border)}
+.os-sales-stages span{font-weight:600;overflow-wrap:anywhere}
+.os-sales-stages small{color:var(--os-muted)}
+
+.os-dental-sales-list{list-style:none;margin:0;padding:0}
+.os-dental-sales-list li{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding-block:14px;border-top:1px solid var(--os-border)}
+.os-dental-sales-list li>div{min-width:0;overflow-wrap:anywhere}
+.os-dental-sales-list li p{margin:4px 0 0;white-space:pre-wrap;color:var(--os-muted)}
+.os-dental-sales-patient{display:flex;align-items:center;gap:6px;margin-top:5px;color:var(--os-muted)}
+.os-dental-sales-patient .os-icon{width:16px;height:16px;flex:none}
+.os-dental-sales-list li time{flex:none;font-size:.86rem;color:var(--os-muted)}
+#osDentalSalesPager:not(:empty){padding:8px 14px}
+
+.os-dental-sales-search{display:flex;align-items:center;gap:10px;padding:12px;margin-bottom:14px}
+.os-dental-sales-search .os-search{display:flex;max-width:none;min-width:0}
+.os-main #osDentalSalesQuery{min-height:44px;padding-right:48px!important}
+.os-dental-sales-search .os-search .os-icon-button{position:absolute;right:2px;top:50%;width:44px;height:44px;transform:translateY(-50%);color:var(--os-primary)}
+.os-dental-sales-search>.os-button{flex:none;min-height:44px}
+.os-dental-sales-search .os-form-message:empty{display:none}
+.os-dental-sales-search .os-form-message{flex-basis:100%;margin:0;color:var(--os-danger)}
+
+@media(max-width:760px){
+  .os-title-row [data-os-action="dental-opportunity-new"],#osDentalSalesPager button{min-height:44px}
+  .os-dental-sales-search{flex-wrap:wrap}
+  .os-dental-sales-search .os-search{flex-basis:100%}
+  .os-dental-sales-search>.os-button{width:100%}
+}
+
+.os-dental-sales-period{padding:0 16px;margin-bottom:14px}
+.os-dental-sales-period summary small{display:block;color:var(--os-muted);font-size:.83rem;font-weight:400}
+#osSalesHeading{width:fit-content}
+#osSalesHeading:focus-visible{outline:2px solid var(--os-primary);outline-offset:3px;border-radius:3px}
+.os-dental-sales-period summary{display:flex;align-items:center;gap:8px;cursor:pointer;min-height:44px;font-weight:600}
+.os-dental-sales-period summary::after{content:"";margin-inline-start:auto;border:solid currentColor;border-width:0 1.5px 1.5px 0;width:7px;height:7px;transform:rotate(45deg)}
+.os-dental-sales-period[open] summary::after{transform:rotate(225deg)}
+.os-dental-sales-period summary::-webkit-details-marker{display:none}
+.os-dental-sales-period summary svg{width:18px;height:18px;flex:none}
+.os-dental-sales-period form{padding:4px 0 14px}
+.os-dental-sales-period .os-form-message:empty{display:none}
+.os-dental-sales-period .os-form-actions{margin-top:12px}
+#osDentalSalesPeriod input[type=date]{min-width:0;max-width:100%;min-height:44px}
+.os-dental-sales-period .os-button{min-height:44px}
+
+.os-sales-patient-picker{border-top:1px solid var(--os-border);padding-top:16px}
+.os-sales-patient-picker h3{margin:0 0 4px;font-size:1rem}
+.os-sales-patient-picker>.os-help{margin:0 0 12px}
+.os-sales-patient-picker .os-search{display:flex;max-width:none;gap:8px}
+.os-sales-patient-picker .os-search>input{padding-right:12px}
+.os-sales-patient-picker .os-search>.os-button{position:static;flex:none;min-width:88px;min-height:44px}
+.os-sales-patient-results{margin-top:12px}
+.os-sales-patient-results [role=list]{display:grid;gap:8px}
+.os-sales-patient-option{display:flex;flex-direction:column;align-items:flex-start;width:100%;min-height:52px;padding:10px 12px;border:1px solid var(--os-border);border-radius:10px;background:var(--os-card);color:var(--os-text);text-align:left}
+.os-sales-patient-option:hover,.os-sales-patient-option:focus-visible{border-color:var(--os-primary);outline:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--os-primary) 18%,transparent)}
+.os-sales-patient-option span,.os-sales-patient-selected small{display:block;margin-top:3px;color:var(--os-muted);font-size:.86rem}
+.os-sales-patient-selected{display:flex;align-items:center;gap:10px;padding:12px;border:1px solid var(--os-primary);border-radius:10px;background:var(--os-tint)}
+.os-sales-patient-selected>.os-icon{flex:none;color:var(--os-primary)}
+.os-sales-patient-selected>span{min-width:0;flex:1;overflow-wrap:anywhere}
+.os-sales-patient-selected>.os-button{flex:none;min-height:44px}
+@media(max-width:480px){.os-sales-patient-picker .os-search{flex-wrap:wrap}.os-sales-patient-picker .os-search>.os-button{width:100%}}
+
+
+/* Dental index parity: clinical navigation and anatomical chart.
+   Scoped to clinical workspace, reusing Orion surface, typography and focus tokens. */
+.os-dental-module-card{padding:20px}
+.os-dental-module-heading{display:flex;justify-content:space-between;align-items:end;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.os-dental-module-heading h3{font:600 18px/25px var(--os-display);color:var(--os-text);margin:3px 0 0}
+.os-dental-module-groups{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:start;gap:16px}
+.os-dental-module-group{min-width:0}
+.os-dental-module-group h4{font:600 11px/16px var(--os-font);letter-spacing:.055em;text-transform:uppercase;color:var(--os-muted);margin:0 0 8px}
+.os-dental-module-list{display:grid;grid-template-columns:minmax(0,1fr);gap:6px}
+.os-dental-module-link{appearance:none;display:flex;align-items:center;justify-content:space-between;text-align:left;gap:10px;min-height:40px;padding:9px 12px;border:1px solid var(--os-border);border-radius:10px;background:var(--os-card);color:var(--os-text);font:500 13px/19px var(--os-font);cursor:pointer}
+.os-dental-module-link:hover{background:var(--os-soft)}
+.os-dental-module-link[aria-selected=true]{background:var(--os-tint);border-color:var(--os-primary);color:var(--os-primary);font-weight:650}
+.os-dental-module-link[aria-selected=true]::after{content:"";width:6px;height:6px;border-radius:50%;background:var(--os-primary);flex:none}
+.os-dental-module-link:focus-visible{outline:3px solid color-mix(in srgb,var(--os-primary) 50%,transparent);outline-offset:2px}
+#dental-clinical-editor{min-width:0}
+.os-dental-chart-viewport{max-width:100%;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:thin;padding:4px 2px 12px}
+.os-dental-odontogram{display:grid;grid-template-columns:minmax(0,1fr)!important;gap:18px;overflow:visible;min-width:max-content;padding-bottom:0}
+.os-dental-arch{display:grid;gap:8px}
+.os-dental-arch-label{font:500 12px/17px var(--os-font);color:var(--os-muted);margin:0}
+.os-dental-arch-line{display:grid;grid-template-columns:repeat(var(--teeth-per-half),minmax(36px,1fr)) 14px repeat(var(--teeth-per-half),minmax(36px,1fr));gap:4px;align-items:stretch}
+.os-dental-midline{display:block}
+.os-dental-arch-line .os-dental-tooth{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-width:36px;min-height:88px;padding:4px 1px;border-radius:10px}
+.os-dental-tooth-svg{width:30px!important;height:58px!important;flex:none;stroke-width:1.5;stroke:var(--os-muted);fill:var(--os-bg)}
+.os-dental-tooth-svg .os-dental-tooth-root{fill:color-mix(in srgb,var(--os-muted) 8%,var(--os-card));stroke:var(--os-muted)}
+.os-dental-tooth-svg .os-dental-tooth-crown{fill:var(--os-card);stroke:var(--os-muted)}
+.os-dental-tooth.has-finding{border-color:color-mix(in srgb,var(--os-warning) 60%,var(--os-border));background:var(--os-warning-bg)}
+.os-dental-tooth.has-finding .os-dental-tooth-crown{fill:var(--os-warning-bg)}
+.os-dental-tooth[aria-pressed=true]{border-color:var(--os-primary);box-shadow:0 0 0 1px var(--os-primary);background:var(--os-tint)}
+.os-dental-tooth[aria-pressed=true] .os-dental-tooth-crown{fill:var(--os-tint);stroke:var(--os-primary)}
+.os-dental-tooth-number{font:600 11px/14px var(--os-font);font-variant-numeric:tabular-nums}
+@container dental (max-width:840px){
+  .os-dental-module-groups{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@container dental (max-width:540px){
+  .os-dental-module-groups{grid-template-columns:minmax(0,1fr);gap:14px}
+  .os-dental-module-list{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .os-dental-module-card{padding:16px}
+}
+@media(max-width:359px){
+  .os-dental-module-list{grid-template-columns:minmax(0,1fr)}
+}
+
+
+/* Orion reception: real-data clinical quick paths from the index prototype. */
+.os-dental-workspace .os-dental-journey-card{display:grid;gap:14px}
+.os-dental-workspace .os-dental-journey-card header{margin-bottom:0}
+.os-dental-workspace .os-dental-journey-card header p{font-size:13px;line-height:19px;color:var(--os-muted);margin:4px 0 0}
+.os-dental-workspace .os-dental-journey-links{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.os-dental-workspace .os-dental-journey-action{display:flex;align-items:center;gap:12px;text-align:left;min-width:0;min-height:76px;padding:14px;border:1px solid var(--os-border);background:var(--os-card);color:var(--os-text);border-radius:14px;cursor:pointer}
+.os-dental-workspace .os-dental-journey-action:hover{border-color:var(--os-primary);background:var(--os-tint)}
+.os-dental-workspace .os-dental-journey-action:focus-visible{outline:3px solid color-mix(in srgb,var(--os-primary) 50%,transparent);outline-offset:2px}
+.os-dental-workspace .os-dental-journey-action>span:nth-child(2){display:grid;gap:3px;min-width:0;flex:1}
+.os-dental-workspace .os-dental-journey-action strong{font:600 14px/19px var(--os-font);color:var(--os-text)}
+.os-dental-workspace .os-dental-journey-action small{font:400 12px/17px var(--os-font);color:var(--os-muted)}
+.os-dental-workspace .os-dental-journey-icon{display:grid;place-items:center;flex:none;width:42px;height:42px;border-radius:13px;background:var(--os-tint);color:var(--os-primary)}
+.os-dental-workspace .os-dental-journey-icon .os-icon{width:21px;height:21px}
+.os-dental-workspace .os-dental-journey-action>.os-icon{width:16px;height:16px;flex:none;color:var(--os-muted)}
+@media(max-width:680px){
+ .os-dental-workspace .os-dental-journey-links{grid-template-columns:minmax(0,1fr)}
+}
+
+.os-dental-insurance-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.os-dental-insurance-list .os-dental-entry {
+  overflow-wrap: anywhere;
+}
+
+.os-dental-insurance-list .os-button {
+  min-height: 44px;
+  justify-self: start;
 }

@@ -149,8 +149,16 @@ class OverlayReleaseTests(unittest.TestCase):
         self.assertFalse(any("push" in command for command in calls))
         for name in release.SERVICES:
             context = output / name
-            self.assertEqual(sorted(item.name for item in context.iterdir()), ["Dockerfile", "overlay-0"])
+            self.assertEqual(sorted(item.name for item in context.iterdir()), ["Dockerfile", "payload"])
+            expected = {str(Path(entry["target"]).relative_to(release.SERVICES[name]["root"]))
+                        for entry in self.manifest["services"][name]["files"]}
+            actual = {str(path.relative_to(context / "payload"))
+                      for path in (context / "payload").rglob("*") if path.is_file()}
+            self.assertEqual(actual, expected)
+            for path in (context / "payload").rglob("*"):
+                self.assertEqual(path.stat().st_mode & 0o777, 0o755 if path.is_dir() else 0o644)
             dockerfile = (context / "Dockerfile").read_text()
+            self.assertEqual(sum(line.startswith("COPY ") for line in dockerfile.splitlines()), 1)
             self.assertNotIn("RUN ", dockerfile)
             self.assertNotIn("CMD ", dockerfile)
             self.assertIn(self.manifest["services"][name]["base_image"], dockerfile)
