@@ -160,7 +160,7 @@
       birthLabel.append(birthInput); form.append(birthLabel);
       const keep=el('label','customer-area-check');
       check=el('input'); check.type='checkbox'; check.name='remember'; check.checked=true;
-      keep.append(check,el('span','','Manter conectado neste aparelho por 30 dias.'));
+      keep.append(check,el('span','','Manter conectado neste aparelho por 30 dias. Desmarque se for compartilhado.'));
       form.append(keep);
     }
     form.append(button(loginMethod === 'birth_date' ? 'Acessar minha conta' : 'Continuar','customer-area-button',null,'submit'));
@@ -346,6 +346,7 @@
   }
   function acceptDashboard(result) {
     if (!result || result.authenticated!==true || !result.profile || !result.stats) throw Error('Não foi possível carregar sua área.');
+    if (result.login_method === 'birth_date') loginMethod='birth_date';
     dashboard=result; tabs.hidden=false; currentPhone=''; setTab('overview');
   }
   function cleanup() {
