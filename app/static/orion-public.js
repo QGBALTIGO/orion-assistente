@@ -1230,7 +1230,7 @@
       rememberInput.checked = booking.remember;
       const description = el('span');
       description.append(el('strong', '', 'Lembrar meus dados neste aparelho'),
-        el('small', '', 'Opcional. Salva nome, WhatsApp e nascimento somente neste navegador por até 90 dias. Evite em aparelhos compartilhados.'));
+        el('small', '', 'Opcional. Lembra seus dados neste navegador por até 90 dias e mantém sua área do cliente conectada por 30 dias, quando disponível. Evite aparelhos compartilhados.'));
       rememberLabel.append(rememberInput, description);
       rememberInput.addEventListener('change', () => {
         booking.remember = rememberInput.checked;
@@ -1346,7 +1346,8 @@
           customer_phone: canonicalPhone,
           customer_birth_date: birthDate,
           confirmed: true,
-          appointment_messages_opt_in: true
+          appointment_messages_opt_in: true,
+          customer_portal_remember: booking.remember === true
         })
       });
       if (booking.remember) rememberCustomer(booking.name, canonicalPhone, birthDate);
@@ -1468,6 +1469,15 @@
     const calendar = button('Baixar para outros calendários (.ics)',
       'outline success-action success-action-secondary', downloadCalendar);
     addAction(calendar, SUCCESS_ACTION_ICONS.calendar, 'Baixar para outros calendários (.ics)');
+    if ($('customer-area-trigger') && !$('customer-area-trigger').hidden) {
+      const profile = button('Minha área do cliente', 'outline success-action success-action-secondary', () => {
+        closeBooking();
+        $('customer-area-trigger').click();
+      });
+      actions.append(profile);
+      if (booking.result.customer_area_connected === true)
+        success.append(el('p','small muted','Sua área do cliente já está conectada neste aparelho.'));
+    }
     success.append(actions);
     body.append(success);
   }
