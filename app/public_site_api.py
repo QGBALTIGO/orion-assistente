@@ -18,7 +18,7 @@ from uuid import UUID
 from weakref import WeakKeyDictionary
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from pydantic import AwareDatetime, Field, StrictBool, StrictInt, field_validator
 from redis.exceptions import RedisError
@@ -104,6 +104,7 @@ class PublicBooking(CleanModel):
     customer_birth_date: date | None=None
     confirmed: StrictBool
     appointment_messages_opt_in: StrictBool=False
+    customer_portal_remember: StrictBool=False
 
     @field_validator('customer_phone')
     @classmethod
@@ -619,7 +620,7 @@ async def _public_book_saved(slug:str,payload:PublicBooking,request:Request,_cap
 
 
 @router.post('/api/v1/public/sites/{slug}/appointments',status_code=201)
-async def public_book(slug:str,payload:PublicBooking,request:Request,_capacity=Depends(booking_capacity)):
+async def public_book(slug:str,payload:PublicBooking,request:Request,response:Response,_capacity=Depends(booking_capacity)):
     result=await _public_book_saved(slug,payload,request,_capacity)
     from app import appointment_access as access
     from app.appointment_confirmation import public_followup
@@ -646,7 +647,17 @@ async def public_book(slug:str,payload:PublicBooking,request:Request,_capacity=D
     except Exception:
         # A communication failure never undoes or hides a committed booking.
         followup={'communication_state':'unavailable'}
-    return {**result,**followup,'protocol':public_code}
+    connected=False
+    if payload.customer_portal_remember and payload.customer_birth_date and result['status']=='confirmed':
+        try:
+            from app.public_customer_area import connect_after_booking
+            connected=await connect_after_booking(slug,request,response,payload.customer_phone,payload.customer_birth_date)
+        except Exception:
+            # Session setup is optional and never changes the committed booking.
+            # No customer data, birth date or credential is logged.
+            connected=False
+    response.headers['Cache-Control']='private, no-store'
+    return {**result,**followup,'protocol':public_code,'customer_area_connected':connected}
 
 
 @router.get('/api/v1/tenants/{tenant_id}/management/site/metrics')
