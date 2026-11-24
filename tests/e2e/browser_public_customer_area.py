@@ -38,7 +38,8 @@ def boot_portal(page):
     ("chromium", 390, "light"), ("webkit", 390, "dark"),
     ("chromium", 1280, "dark"),
 ])
-def test_account_flow(browser_name, width, theme):
+@pytest.mark.parametrize("login_method", ["birth_date", "private_link"])
+def test_account_flow(browser_name, width, theme, login_method):
     with sync_playwright() as playwright:
         browser = getattr(playwright, browser_name).launch(headless=True)
         context = browser.new_context(locale="pt-BR",
@@ -48,6 +49,11 @@ def test_account_flow(browser_name, width, theme):
         page.on("pageerror", lambda error: errors.append(str(error)))
         state, posted = {"offline": False}, []
         session = {"valid": False}
+        authenticated = {**DASHBOARD}
+        anonymous = {"available":True,"authenticated":False}
+        if login_method == "birth_date":
+            authenticated["login_method"] = "birth_date"
+            anonymous["login_method"] = "birth_date"
         routes(page, state, posted)
         def account(route):
             request = route.request
@@ -55,14 +61,20 @@ def test_account_flow(browser_name, width, theme):
             payload = request.post_data_json if request.method == "POST" and request.post_data else {}
             calls.append((request.method, path, payload))
             if path == "":
-                value = DASHBOARD if session["valid"] else {"available": True, "authenticated": False}
+                value = authenticated if session["valid"] else anonymous
             elif path == "/enter":
                 assert payload["phone"] == PHONE
-                value = {"authenticated": False, "proof_required": True}
+                if login_method == "birth_date":
+                    assert payload["birth_date"] == "1990-07-06" and payload["remember"] is True
+                    session["valid"] = True
+                    value = authenticated
+                else:
+                    value = {"authenticated": False, "proof_required": True}
             elif path == "/link-login":
+                assert login_method == "private_link"
                 assert payload["phone"] == PHONE and payload["remember"] is True
                 session["valid"] = True
-                value = DASHBOARD
+                value = authenticated
             elif path.startswith("/appointments?"):
                 assert session["valid"]
                 items = [{**ITEM,"status":"completed"}, {**ITEM,"status":"cancelled"}, ITEM]
@@ -87,13 +99,19 @@ def test_account_flow(browser_name, width, theme):
             expect(dialog.get_by_text("Acesse sua área do cliente")).to_be_visible()
             expect(dialog.get_by_text(PROFILE["name"], exact=True)).to_have_count(0)
             dialog.locator('input[name="phone"]').fill("86972676282")
-            dialog.get_by_role("button", name="Continuar").click()
-            expect(dialog.get_by_text("Primeiro acesso neste aparelho")).to_be_visible()
-            expect(dialog.get_by_text("Não enviamos SMS", exact=False)).to_be_visible()
-            assert not session["valid"]
-            dialog.locator('input[name="booking_link"]').fill(
-                "https://orionagenda.pro/AG-ABCDEF#" + "a"*27)
-            dialog.get_by_role("button", name="Acessar minha conta").click()
+            if login_method == "birth_date":
+                expect(dialog.locator('input[name="birth_date"]')).to_be_visible()
+                expect(dialog.locator('input[name="booking_link"]')).to_have_count(0)
+                dialog.locator('input[name="birth_date"]').fill("1990-07-06")
+                dialog.get_by_role("button", name="Acessar minha conta").click()
+            else:
+                dialog.get_by_role("button", name="Continuar").click()
+                expect(dialog.get_by_text("Primeiro acesso neste aparelho")).to_be_visible()
+                expect(dialog.get_by_text("Não enviamos SMS", exact=False)).to_be_visible()
+                assert not session["valid"]
+                dialog.locator('input[name="booking_link"]').fill(
+                    "https://orionagenda.pro/AG-ABCDEF#" + "a"*27)
+                dialog.get_by_role("button", name="Acessar minha conta").click()
             expect(dialog.get_by_text("Olá, Cliente!")).to_be_visible()
             expect(dialog.get_by_text("Total em serviços realizados")).to_be_visible()
             expect(dialog.get_by_text("Próximos agendamentos")).to_be_visible()
@@ -120,6 +138,9 @@ def test_account_flow(browser_name, width, theme):
             dialog.get_by_role("button",name="Sair da conta").click()
             expect(dialog.get_by_text("Acesse sua área do cliente")).to_be_visible()
             assert not session["valid"]
+            if login_method == "birth_date":
+                expect(dialog.locator('input[name="birth_date"]')).to_be_visible()
+                assert not any(path == "/link-login" for _,path,_ in calls)
             assert not posted and not errors, (posted, errors)
         finally:
             context.close()
