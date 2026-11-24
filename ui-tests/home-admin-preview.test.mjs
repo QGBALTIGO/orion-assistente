@@ -315,13 +315,14 @@ test('Home requests only the eight displayed appointments and keeps the total fr
  assert.deepEqual(h.errors,[]);
 });
 
-test('dentistry, subscriptions and other niches stay on their respective dashboards',async t=>{
+test('dentistry, subscriptions and other niches keep their respective start pages',async t=>{
  const cases=[{workspace_profile:'standard',business_niche:'odontologia',layout_modes:['classic']},{workspace_profile:'standard',business_niche:'estetica',layout_modes:['classic','app']},{workspace_profile:'subscription_services',business_niche:null,layout_modes:['classic','app']}];
  for(const profile of cases){
   const h=await barberSetup({permissions:planState('elite',profile),respond});
   try{await flush();assert.equal(h.document.querySelector('.os-home-preview'),null);
    assert.equal([...h.timers.values()].some(t=>t.ms===5000),false);
    if(profile.workspace_profile==='subscription_services')assert.ok(h.document.querySelector('#osSubscriptionDashboard'));
+   else if(profile.business_niche==='odontologia')assert.equal(h.document.getElementById('page-suite').dataset.osCurrentRoute,'novidades');
    else assert.ok(h.document.querySelector('.os-dashboard-today'));
    assert.deepEqual(h.errors,[]);
   }finally{h.close();}

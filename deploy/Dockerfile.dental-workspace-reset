@@ -1,0 +1,4 @@
+FROM ghcr.io/qgbaltigo/orion-assistente-api@sha256:f3555637e600a167bd181e0db4665ef3ca302e0890cd747ce9e0a984be2e2d13
+ARG ORION_REVISION
+LABEL org.opencontainers.image.revision=${ORION_REVISION}
+COPY --chown=appuser:appuser app/static/orion-suite.js /srv/app/app/static/orion-suite.js

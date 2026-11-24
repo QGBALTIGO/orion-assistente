@@ -1,0 +1,58 @@
+name: Orion - Painel de odontologia
+on:
+  push:
+    branches: [codex/orion-dentista-painel-20261124]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-and-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    permissions:
+      contents: read
+      packages: write
+    env:
+      BASE_IMAGE: ghcr.io/qgbaltigo/orion-assistente-api@sha256:f3555637e600a167bd181e0db4665ef3ca302e0890cd747ce9e0a984be2e2d13
+      IMAGE: ghcr.io/qgbaltigo/orion-assistente-api:dental-workspace-reset-${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Testar navegação, conta e outros nichos
+        run: |
+          node --check app/static/orion-suite.js
+          npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+          node --test ui-tests/dental-workspace.test.mjs ui-tests/dental-patient-journey.test.mjs ui-tests/dental-clinic.test.mjs ui-tests/member-account-settings.test.mjs ui-tests/dashboard-navigation.test.mjs ui-tests/home-admin-preview.test.mjs ui-tests/plan-permissions.test.mjs ui-tests/subscription-workspace.test.mjs ui-tests/barbershop-app-layout.test.mjs
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Conferir o arquivo original na imagem em produção
+        run: |
+          set -euo pipefail
+          container=$(docker create --platform linux/amd64 "$BASE_IMAGE")
+          trap 'docker rm "$container" >/dev/null' EXIT
+          docker cp "$container:/srv/app/app/static/orion-suite.js" /tmp/orion-suite-production.js
+          git show 79802e2c4bbfa0d02a5ef28469d9d5757cf0d699:app/static/orion-suite.js > /tmp/orion-suite-expected.js
+          cmp /tmp/orion-suite-production.js /tmp/orion-suite-expected.js
+      - name: Conferir e publicar a imagem candidata
+        run: |
+          set -euo pipefail
+          docker build --platform linux/amd64 -f deploy/Dockerfile.dental-workspace-reset --build-arg ORION_REVISION="$GITHUB_SHA" -t "$IMAGE" .
+          container=$(docker create "$IMAGE")
+          trap 'docker rm "$container" >/dev/null' EXIT
+          docker cp "$container:/srv/app/app/static/orion-suite.js" /tmp/orion-suite-candidate.js
+          cmp app/static/orion-suite.js /tmp/orion-suite-candidate.js
+          docker push "$IMAGE"
+          docker image inspect "$IMAGE" --format '{{index .RepoDigests 0}}' | tee dental-workspace-image.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dental-workspace-image
+          path: dental-workspace-image.txt
