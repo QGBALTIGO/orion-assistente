@@ -44,7 +44,9 @@ PUBLIC_ASSETS={
     'orion-public.css':'text/css', 'orion-public.js':'text/javascript',
     'orion-fields.css':'text/css', 'orion-fields.js':'text/javascript',
     'orion-focus.css':'text/css', 'orion-focus.js':'text/javascript',
-    'orion-public-theme.js':'text/javascript'
+    'orion-public-theme.js':'text/javascript',
+    'orion-customer-area.css':'text/css',
+    'orion-customer-area.js':'text/javascript'
 }
 
 
