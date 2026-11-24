@@ -1,0 +1,15 @@
+# Use the exact live image, preserving every other Orion module.
+FROM ghcr.io/qgbaltigo/orion-assistente-api@sha256:201d61d3db659f2553ceed1934794af89ae41d945b09a44e35d8e25282254072
+USER root
+COPY scripts/patch_public_cache_overlay.py /tmp/patch_public_cache_overlay.py
+COPY scripts/patch_customer_birthdate_overlay.py /tmp/patch_customer_birthdate_overlay.py
+COPY .ci-baseline/ /tmp/orion-birth-base/
+COPY app/public_customer_area.py /tmp/orion-birth-edited/app/public_customer_area.py
+COPY app/public_site_api.py /tmp/orion-birth-edited/app/public_site_api.py
+COPY app/static/orion-public.js /tmp/orion-birth-edited/app/static/orion-public.js
+COPY app/static/orion-customer-area.js /tmp/orion-birth-edited/app/static/orion-customer-area.js
+RUN python /tmp/patch_customer_birthdate_overlay.py \
+    && python -m py_compile /srv/app/app/public_customer_area.py /srv/app/app/public_site_api.py \
+    && rm -rf /tmp/orion-birth-base /tmp/orion-birth-edited /tmp/patch_customer_birthdate_overlay.py /tmp/patch_public_cache_overlay.py /tmp/__pycache__
+USER appuser
+WORKDIR /srv/app
