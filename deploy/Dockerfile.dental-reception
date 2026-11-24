@@ -1,0 +1,9 @@
+FROM ghcr.io/qgbaltigo/orion-assistente-api@sha256:663563d41054bbd3cafafa42918bf07c58eca3e998fbcc318869c88e25cac2db AS previous-panel
+ARG ORION_DENTAL_COMMIT
+LABEL org.opencontainers.image.revision=$ORION_DENTAL_COMMIT
+COPY --chown=appuser:appuser alembic/versions/0093_dental_reception.py /srv/app/alembic/versions/
+COPY --chown=appuser:appuser scripts/backup_and_migrate_dental_workflows.py scripts/backup_and_migrate_fixed_client_monthly.py scripts/backup_and_migrate_subscription_audience.py /srv/app/scripts/
+
+FROM previous-panel AS reception
+COPY --chown=appuser:appuser app/main.py app/plan_routing.py app/booking_service.py app/professional_commissions.py app/dental_reception.py app/dental_reception_schemas.py /srv/app/app/
+COPY --chown=appuser:appuser app/static/panel.html app/static/orion-suite.js app/static/orion-dental-clinic.css app/static/orion-dental-reception.js /srv/app/app/static/

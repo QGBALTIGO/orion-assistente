@@ -29,8 +29,11 @@ ELITE_FEATURES = PRO_FEATURES | frozenset({
 })
 PLAN_FEATURES = {"essencial": BASE_FEATURES, "profissional": PRO_FEATURES, "elite": ELITE_FEATURES}
 RECOVERY_FEATURES = frozenset({"plan.manage", "account.manage", "business.setup"})
-ALL_FEATURES = ELITE_FEATURES | RECOVERY_FEATURES | {"commerce.admin", "devices.manage", "chatbot.manage", "templates.manage", "sent_messages.manage", "diagnostics.manage", "campaigns.manage", "scheduled_messages.manage", "bulk_messages.manage", "direct_messages.manage", "group_contacts.manage", "group_add.manage", "whatsapp_guidance.view"}
+ALL_FEATURES = ELITE_FEATURES | RECOVERY_FEATURES | {"commerce.admin", "devices.manage", "chatbot.manage", "templates.manage", "sent_messages.manage", "diagnostics.manage", "campaigns.manage", "scheduled_messages.manage", "bulk_messages.manage", "direct_messages.manage", "group_contacts.manage", "group_add.manage", "number_check.manage", "whatsapp_link.manage", "audience.manage", "whatsapp_guidance.view"}
 FEATURE_LABELS = {
+    "number_check.manage": "Verificador de números WhatsApp",
+    "whatsapp_link.manage": "Link e QR do WhatsApp",
+    "audience.manage": "Contatos e grupos de assinaturas",
     "group_add.manage": "Adicionar contatos ao grupo do WhatsApp de assinaturas",
     "group_contacts.manage": "Extrator de contatos de grupos do WhatsApp de assinaturas",
     "whatsapp_guidance.view": "Orientações de WhatsApp de assinaturas",

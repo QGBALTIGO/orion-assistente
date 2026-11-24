@@ -122,7 +122,7 @@ def test_dental_workflow_rollout_only_migrates_after_its_backup(monkeypatch, cas
     monkeypatch.setattr(workflows, "source_ready", lambda raw, revision: True)
     monkeypatch.setattr(workflows, "storage_values", lambda: {})
     steps = []
-    source = workflows.SALES_PATIENT
+    source = workflows.AUDIENCE
     revisions = [workflows.TARGET, workflows.TARGET] if case == "already_published" else [
         source, "0082_unexpected" if case == "source_changed" else source,
         source if case == "upgrade_did_not_advance" else workflows.TARGET,
@@ -131,7 +131,7 @@ def test_dental_workflow_rollout_only_migrates_after_its_backup(monkeypatch, cas
     monkeypatch.setattr(workflows, "migrated_version", lambda _: next(current))
 
     def backup(url, settings, archive, **details):
-        assert details == {"backup_context": "dental-insurance-plans-0091",
+        assert details == {"backup_context": "dental-reception-0093",
                            "schema_revision": source, "preserve_ownership": True}
         steps.append("backup")
         if case == "backup_failed":

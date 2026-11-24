@@ -18,8 +18,8 @@ DESTINATIONS = {
     "Periodontia":"periodontia-odonto","Exames e imagens":"exames-odonto",
     "Procedimentos":"servicos","Orçamentos":"orcamentos-odonto","Prótese e laboratório":"proteses-odonto",
     "Consultórios":"consultorios-odonto","Financeiro":"financeiro","Estoque":"estoque-odonto",
-    "Convênios":"convenios-odonto","Equipe":"funcionarios","Relatórios":"desempenho",
-    "Conversas":"inbox","Meu site":"site",
+    "Convênios":"convenios-odonto","Profissionais":"funcionarios","Relatórios":"desempenho","Ajustes da clínica":"ajustes-odonto",
+    "Conversas":"inbox","Agendamento online":"site",
 }
 PLAN = dict(shell["PLAN"])
 PLAN["permissions"] = {**PLAN["permissions"], "site.manage": True, "conversations.manual": True,
@@ -114,4 +114,4 @@ if __name__ == "__main__":
         webkit = playwright.webkit.launch()
         check(webkit,playwright.devices["iPhone 13"],"light")
         webkit.close()
-    print("20 destinos, jornada, odontograma e convênios em 10 combinações de tela, navegador e tema.")
+    print("21 destinos, jornada, odontograma e convênios em 10 combinações de tela, navegador e tema.")

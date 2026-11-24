@@ -23,7 +23,9 @@ from scripts.wait_for_exceptional_overlap_schema import schema_ready as overlap_
 LABORATORIES = "0086_dental_laboratories"
 PREVIOUS = "0088_dental_sales_opportunities"
 SALES_PATIENT = "0089_dental_sales_patient_link"
-TARGET = "0091_dental_insurance_plans"
+INSURANCE = "0091_dental_insurance_plans"
+AUDIENCE = "0092_subscription_audience"
+TARGET = "0093_dental_reception"
 WORKFLOW_CONTRACT = """
 SELECT COALESCE((
     SELECT count(*)=2 AND bool_and(
@@ -65,7 +67,8 @@ SELECT EXISTS (
       AND has_table_privilege('app_runtime',t.oid,'INSERT')
       AND NOT has_table_privilege('app_runtime',t.oid,'UPDATE,DELETE,TRUNCATE')
       AND NOT has_table_privilege('app_support',t.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE')
-) AND (SELECT count(*)=3 FROM pg_policy WHERE polrelid=to_regclass('public.dental_visit_patient_events'))
+) AND (SELECT count(*)=3 FROM pg_policy WHERE polrelid=to_regclass('public.dental_visit_patient_events')
+       AND polname IN ('visit_patient_migration','visit_patient_read','visit_patient_append'))
 AND (SELECT count(*)=2 FROM pg_constraint WHERE conrelid=to_regclass('public.dental_visit_patient_events')
        AND contype='f' AND array_length(conkey,1)=2 AND convalidated)
 AND EXISTS (SELECT 1 FROM pg_index WHERE indexrelid=to_regclass('public.ix_dental_patient_visits')
@@ -121,9 +124,34 @@ SELECT EXISTS (
       AND has_table_privilege('app_runtime',t.oid,'UPDATE')
       AND NOT has_table_privilege('app_runtime',t.oid,'DELETE,TRUNCATE')
       AND NOT has_table_privilege('app_support',t.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE')
-) AND (SELECT count(*)=2 FROM pg_policy WHERE polrelid=to_regclass('public.dental_insurance_plans'))
+) AND (SELECT count(*)=2 FROM pg_policy WHERE polrelid=to_regclass('public.dental_insurance_plans')
+       AND polname IN ('dental_insurance_plan_migrator','dental_insurance_plan_owner'))
 AND EXISTS (SELECT 1 FROM pg_index WHERE indexrelid=to_regclass('public.uq_dental_insurance_plan')
             AND indisvalid AND indisready AND indisunique)
+"""
+
+RECEPTION_CONTRACT = """
+SELECT (SELECT count(*)=2 AND bool_and(
+      t.relrowsecurity AND t.relforcerowsecurity
+      AND has_table_privilege('app_runtime',t.oid,'SELECT')
+      AND has_table_privilege('app_runtime',t.oid,'INSERT')
+      AND has_table_privilege('app_runtime',t.oid,'UPDATE')
+      AND NOT has_table_privilege('app_runtime',t.oid,'DELETE,TRUNCATE')
+      AND NOT has_table_privilege('app_support',t.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE'))
+    FROM pg_class t WHERE t.oid IN (to_regclass('public.dental_professional_profiles'),
+                                   to_regclass('public.dental_reception_appointments')))
+AND EXISTS (SELECT 1 FROM pg_proc p WHERE p.oid=to_regprocedure('public.dental_reception_member()')
+            AND p.prosecdef AND p.proconfig=ARRAY['search_path=pg_catalog']
+            AND has_function_privilege('app_runtime',p.oid,'EXECUTE')
+            AND NOT has_function_privilege('app_support',p.oid,'EXECUTE'))
+AND (SELECT count(*)=2 FROM pg_attribute
+     WHERE NOT attisdropped AND attnotnull AND
+       ((attrelid=to_regclass('public.appointments') AND attname='preserve_catalog_snapshot')
+        OR (attrelid=to_regclass('public.dental_patients') AND attname='administrative_profile')))
+AND (SELECT count(*)=5 FROM pg_policy WHERE polrelid=to_regclass('public.dental_visit_patient_events'))
+AND (SELECT count(*)=3 FROM pg_policy WHERE polrelid=to_regclass('public.dental_insurance_plans'))
+AND EXISTS (SELECT 1 FROM pg_policy WHERE polrelid=to_regclass('public.dental_patients')
+            AND polname='patients_reception')
 """
 
 
@@ -144,21 +172,26 @@ def complete_contract(raw, include_visits, include_sales=False):
 
 def workflows_ready(raw):
     revision = migrated_version(raw)
-    if revision not in {SALES_PATIENT, TARGET} or not complete_contract(raw, include_visits=True, include_sales=True):
+    if revision not in {SALES_PATIENT, INSURANCE, AUDIENCE, TARGET} or not complete_contract(raw, include_visits=True, include_sales=True):
         return False
+    if revision in {AUDIENCE, TARGET}:
+        from scripts.backup_and_migrate_subscription_audience import audience_contract
+        if not audience_contract(raw):
+            return False
     engine = create_engine(raw, poolclass=NullPool, connect_args={
         "options": "-c default_transaction_read_only=on -c statement_timeout=12000"
     })
     try:
         with engine.connect() as db:
             return (db.scalar(text(SALES_PATIENT_CONTRACT)) is True
-                    and (revision != TARGET or db.scalar(text(INSURANCE_CONTRACT)) is True))
+                    and (revision == SALES_PATIENT or db.scalar(text(INSURANCE_CONTRACT)) is True)
+                    and (revision != TARGET or db.scalar(text(RECEPTION_CONTRACT)) is True))
     finally:
         engine.dispose()
 
 
 def source_ready(raw, revision):
-    if revision == SALES_PATIENT:
+    if revision in {SALES_PATIENT, INSURANCE, AUDIENCE}:
         return workflows_ready(raw)
     if revision in (LABORATORIES, "0087_dental_patient_visits", PREVIOUS):
         return complete_contract(raw, include_visits=revision != LABORATORIES,
@@ -192,7 +225,7 @@ def main():
             raise RuntimeError("dental_workflow_database_scope_mismatch")
         with release_lock(raw):
             current = migrated_version(raw)
-            if current not in (LEGACY, LABORATORIES, "0087_dental_patient_visits", PREVIOUS, SALES_PATIENT, TARGET):
+            if current not in (LEGACY, LABORATORIES, "0087_dental_patient_visits", PREVIOUS, SALES_PATIENT, INSURANCE, AUDIENCE, TARGET):
                 raise RuntimeError("dental_workflow_source_schema_not_approved")
             verify_key_provisioning(raw)
             if current != TARGET:
@@ -200,7 +233,7 @@ def main():
                     raise RuntimeError("dental_workflow_source_schema_not_approved")
                 with tempfile.TemporaryDirectory(prefix="orion-dental-workflows-") as folder:
                     perform_backup(url, storage_values(), Path(folder) / "backup.dump",
-                                   backup_context="dental-insurance-plans-0091", schema_revision=current,
+                                   backup_context="dental-reception-0093", schema_revision=current,
                                    preserve_ownership=True)
                 if migrated_version(raw) != current or not source_ready(raw, current):
                     raise RuntimeError("dental_workflow_source_changed_after_backup")

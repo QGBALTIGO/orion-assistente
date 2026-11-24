@@ -11,13 +11,14 @@ import json
 import os
 import re
 import secrets
+from functools import lru_cache
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from uuid import UUID
 from weakref import WeakKeyDictionary
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from pydantic import AwareDatetime, Field, StrictBool, StrictInt, field_validator
 from redis.exceptions import RedisError
@@ -39,6 +40,30 @@ from app.site_branding import effective_hide_orion_brand
 router=APIRouter(tags=["Site público"])
 UTC=timezone.utc
 STATIC=Path(__file__).parent/'static'
+PUBLIC_ASSETS={
+    'orion-public.css':'text/css', 'orion-public.js':'text/javascript',
+    'orion-fields.css':'text/css', 'orion-fields.js':'text/javascript',
+    'orion-focus.css':'text/css', 'orion-focus.js':'text/javascript',
+    'orion-public-theme.js':'text/javascript',
+    'orion-customer-area.css':'text/css',
+    'orion-customer-area.js':'text/javascript'
+}
+
+
+@lru_cache(maxsize=1)
+def public_asset_versions() -> dict[str, str]:
+    """A new deployment gets new URLs; unchanged assets stay cached on the device."""
+    return {asset: hashlib.sha256((STATIC/asset).read_bytes()).hexdigest()[:16]
+            for asset in PUBLIC_ASSETS}
+
+
+def version_public_assets(html: str) -> str:
+    for asset, version in public_asset_versions().items():
+        html = html.replace(f'"/public-assets/{asset}"',
+                            f'"/public-assets/{asset}?v={version}"')
+    return html
+
+
 PUBLIC_FIELDS=('title','description','slug','theme_color','logo_url','cover_url','address','city','state','postal_code',
                'address_number','address_complement','neighborhood','address_no_number',
                'contact_phone','whatsapp_phone','instagram_url','maps_url','facebook_url','tiktok_url','external_url',
@@ -79,6 +104,7 @@ class PublicBooking(CleanModel):
     customer_birth_date: date | None=None
     confirmed: StrictBool
     appointment_messages_opt_in: StrictBool=False
+    customer_portal_remember: StrictBool=False
 
     @field_validator('customer_phone')
     @classmethod
@@ -409,13 +435,8 @@ async def public_catalogue(slug:str,request:Request):
         async with tenant_transaction(db,tenant):
             await published_guard(db,tenant,slug)
             result=await catalogue(db,tenant)
-    from app.appointment_confirmation import central_admin_phone, central_admin_whatsapp_enabled
-    if central_admin_whatsapp_enabled():
-        # The public WhatsApp contact is the platform reception, never the
-        # company's own number. Resolve the currently verified admin connection
-        # at request time so relinking does not require editing company sites.
-        number=await central_admin_phone()
-        result['site']['whatsapp_phone']='+'+number if number else None
+    # Contact links belong to this company's published site. The platform
+    # channel used for booking notifications must not replace these fields.
     return result
 
 
@@ -594,7 +615,7 @@ async def _public_book_saved(slug:str,payload:PublicBooking,request:Request,_cap
 
 
 @router.post('/api/v1/public/sites/{slug}/appointments',status_code=201)
-async def public_book(slug:str,payload:PublicBooking,request:Request,_capacity=Depends(booking_capacity)):
+async def public_book(slug:str,payload:PublicBooking,request:Request,response:Response,_capacity=Depends(booking_capacity)):
     result=await _public_book_saved(slug,payload,request,_capacity)
     from app import appointment_access as access
     from app.appointment_confirmation import public_followup
@@ -621,7 +642,17 @@ async def public_book(slug:str,payload:PublicBooking,request:Request,_capacity=D
     except Exception:
         # A communication failure never undoes or hides a committed booking.
         followup={'communication_state':'unavailable'}
-    return {**result,**followup,'protocol':public_code}
+    connected=False
+    if payload.customer_portal_remember and payload.customer_birth_date and result['status']=='confirmed':
+        try:
+            from app.public_customer_area import connect_after_booking
+            connected=await connect_after_booking(slug,request,response,payload.customer_phone,payload.customer_birth_date)
+        except Exception:
+            # Session setup is optional and never changes the committed booking.
+            # No customer data, birth date or credential is logged.
+            connected=False
+    response.headers['Cache-Control']='private, no-store'
+    return {**result,**followup,'protocol':public_code,'customer_area_connected':connected}
 
 
 @router.get('/api/v1/tenants/{tenant_id}/management/site/metrics')
@@ -665,20 +696,21 @@ async def public_page(slug:str,request:Request):
                 ON CONFLICT (tenant_id,day) DO UPDATE SET visits=public_site_daily_metrics.visits+1"""),{'tenant':tenant,'zone':site['timezone']})
     headers={**HEADERS,'Content-Security-Policy':HEADERS['Content-Security-Policy'].replace(
         "script-src 'self'", "script-src 'self' 'sha256-"+schema_hash+"'")}
-    return HTMLResponse(rendered,headers=headers)
+    return HTMLResponse(version_public_assets(rendered),headers=headers)
 
 
 @router.get('/app/site-preview/{tenant_id}',include_in_schema=False)
 async def preview_page(tenant_id:UUID,actor:Actor=Depends(authenticate)):
     await resolve_tenant_access(actor,tenant_id,'read')
-    return FileResponse(STATIC/'orion-public.html',headers={**HEADERS,'X-Robots-Tag':'noindex, nofollow'})
+    return HTMLResponse(version_public_assets((STATIC/'orion-public.html').read_text(encoding='utf-8')),
+                        headers={**HEADERS,'X-Robots-Tag':'noindex, nofollow'})
 
 
 @router.get('/public-assets/{asset}',include_in_schema=False)
-async def public_asset(asset:str):
-    allowed={'orion-public.css':'text/css','orion-public.js':'text/javascript',
-             'orion-fields.css':'text/css','orion-fields.js':'text/javascript',
-             'orion-focus.css':'text/css','orion-focus.js':'text/javascript',
-             'orion-public-theme.js':'text/javascript'}
-    if asset not in allowed:raise HTTPException(404)
-    return FileResponse(STATIC/asset,media_type=allowed[asset],headers={'Cache-Control':'no-cache','X-Content-Type-Options':'nosniff'})
+async def public_asset(asset:str,request:Request):
+    if asset not in PUBLIC_ASSETS:raise HTTPException(404)
+    version = request.query_params.get('v')
+    immutable = version is not None and version == public_asset_versions()[asset]
+    cache_control = 'public, max-age=31536000, immutable' if immutable else 'no-cache'
+    return FileResponse(STATIC/asset,media_type=PUBLIC_ASSETS[asset],
+                        headers={'Cache-Control':cache_control,'X-Content-Type-Options':'nosniff'})

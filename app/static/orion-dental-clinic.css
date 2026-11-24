@@ -325,3 +325,36 @@
   min-height: 44px;
   justify-self: start;
 }
+
+#osDentalBooking [hidden] { display: none !important; }
+#osDentalBooking .os-dental-booking-patient,
+#osDentalBooking .os-dental-controls { display: grid; gap: 8px; }
+#osDentalBooking .os-dental-controls { grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); }
+#osDentalBooking .os-directory-list { max-height: 240px; overflow: auto; }
+#osDentalBooking .os-directory-list:empty { display: none; }
+#osDentalBooking .os-directory-fields label:first-child { grid-column: auto; }
+.os-dental-selected {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--os-border);
+  border-radius: 10px;
+  background: var(--os-tint);
+  overflow-wrap: anywhere;
+}
+.os-dental-selected small { display: block; color: var(--os-muted); }
+#osDentalBooking [data-dental-booking-status][role=alert],
+.os-directory [data-dental-status][role=alert] { color: var(--os-danger); }
+#osDentalBooking .os-dental-field input,
+#osDentalBooking .os-dental-field select,
+#osDentalBooking .os-dental-field textarea { min-height: 44px; }
+.os-directory .os-directory-facts dd { overflow-wrap: anywhere; }
+.os-directory .os-pill-tab[aria-pressed=true] { background: var(--os-tint); color: var(--os-primary); }
+.os-dental-reception-note { white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 540px) {
+  #osDentalBooking .os-directory-fields { grid-template-columns: minmax(0, 1fr); }
+  .os-directory .os-directory-search { grid-template-columns: minmax(0, 1fr) auto; }
+}

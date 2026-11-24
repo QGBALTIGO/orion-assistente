@@ -657,6 +657,8 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
 <link rel="stylesheet" href="/panel-assets/orion-subscription-scheduled-messages.css">
 <link rel="stylesheet" href="/panel-assets/orion-subscription-bulk-messages.css">
 <link rel="stylesheet" href="/panel-assets/orion-subscription-direct-messages.css">
+<link rel="stylesheet" href="/panel-assets/orion-subscription-tools.css">
+<link rel="stylesheet" href="/panel-assets/orion-subscription-audience.css">
 <link rel="stylesheet" href="/panel-assets/orion-inbox.css">
 <style>
 #appView.ob-gated .content > .page,#appView.ob-gated #osConsultantFab{display:none!important}
@@ -1375,6 +1377,9 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
 <script src="/panel-assets/orion-subscription-direct-messages.js"></script>
 <script src="/panel-assets/orion-subscription-group-contacts.js"></script>
 <script src="/panel-assets/orion-subscription-group-add.js"></script>
+<script src="/panel-assets/orion-subscription-number-check.js"></script>
+<script src="/panel-assets/orion-subscription-whatsapp-link.js"></script>
+<script src="/panel-assets/orion-subscription-audience.js"></script>
 <script src="/panel-assets/orion-communication.js"></script>
 <script src="/panel-assets/orion-automations.js"></script>
 <script src="/panel-assets/orion-flows.js"></script>
@@ -1383,6 +1388,7 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
 <script src="/panel-assets/orion-plans.js"></script>
 <script src="/panel-assets/orion-suite-live.js"></script>
 <script src="/panel-assets/orion-dental-clinic.js"></script>
+<script src="/panel-assets/orion-dental-reception.js"></script>
 <script src="/panel-assets/orion-pwa.js" defer></script>
 <script src="/panel-assets/orion-admin-center.js"></script>
 <script src="/panel-assets/orion-demo-center.js"></script>
@@ -1559,7 +1565,7 @@ function blockBusinessContext(message){
  resetBusinessState();resetCommerceState();resetCatalogState();resetAiConversation();clearAiProfileState();resetChatState();
  ++statusSequence;connectedSnapshot=null;
  clearInterval(statusTimer);clearInterval(chatTimer);clearInterval(wizardClocks);statusTimer=null;chatTimer=null;wizardClocks=null;
- window.OrionSubscriptionDiagnostics?.unmount();window.OrionSubscriptionSentMessages?.unmount();window.OrionSubscriptionTemplates?.unmount();window.OrionSubscriptionChatbotTest?.unmount();window.OrionSubscriptionChatbot?.unmount();window.OrionSubscriptionDevices?.unmount();window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionCommunication?.unmount();window.OrionInbox?.unmount();renderAccountBusiness();
+ window.OrionSubscriptionAudience?.clearContext();window.OrionSubscriptionNumberCheck?.clearContext();window.OrionSubscriptionWhatsappLink?.clearContext();window.OrionSubscriptionDiagnostics?.unmount();window.OrionSubscriptionSentMessages?.unmount();window.OrionSubscriptionTemplates?.unmount();window.OrionSubscriptionChatbotTest?.unmount();window.OrionSubscriptionChatbot?.unmount();window.OrionSubscriptionDevices?.unmount();window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionCommunication?.unmount();window.OrionInbox?.unmount();renderAccountBusiness();
  window.OrionSuite?.sync({tenants:[],tenantId:"",businessContextReady:false,businessContextError});
  showBusinessContextError(businessContextError);
 }
@@ -2032,7 +2038,7 @@ function showLogin(){
  window.OrionAdminCenter?.reset();
  $("orionMaintenanceBanner")?.classList.add("hidden");
  ++setupResolving;setupEntryReady=false;window.OrionOnboarding?.unmount();setupController=null;setSetupGate(false);
- window.OrionSubscriptionDiagnostics?.unmount();window.OrionSubscriptionSentMessages?.unmount();window.OrionSubscriptionTemplates?.unmount();window.OrionSubscriptionChatbotTest?.unmount();window.OrionSubscriptionChatbot?.unmount();window.OrionSubscriptionDevices?.unmount();window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionCommunication?.unmount();window.OrionInbox?.unmount();
+ window.OrionSubscriptionAudience?.clearContext();window.OrionSubscriptionNumberCheck?.clearContext();window.OrionSubscriptionWhatsappLink?.clearContext();window.OrionSubscriptionDiagnostics?.unmount();window.OrionSubscriptionSentMessages?.unmount();window.OrionSubscriptionTemplates?.unmount();window.OrionSubscriptionChatbotTest?.unmount();window.OrionSubscriptionChatbot?.unmount();window.OrionSubscriptionDevices?.unmount();window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionCommunication?.unmount();window.OrionInbox?.unmount();
  window.OrionSuite?.destroy();suiteUser=null;suiteTenantId="";businessContextReady=false;businessContextError="";
  memberBusinessOriginal=null;$("memberBusinessForm").reset();$("memberPasswordForm").reset();
  memberFeedback("memberBusinessFeedback","");memberFeedback("memberPasswordFeedback","");
@@ -3282,7 +3288,7 @@ async function loadBusinesses({resolveSetup:resolveAfter=true}={}){
      return false;
    }
    const id=rows.length===1?rows[0].id:"";
-   if(suiteTenantId!==id){resetBusinessState();resetCommerceState();resetCatalogState();resetAiConversation();clearAiProfileState();window.OrionSubscriptionDiagnostics?.unmount();window.OrionSubscriptionSentMessages?.unmount();window.OrionSubscriptionTemplates?.unmount();window.OrionSubscriptionChatbotTest?.unmount();window.OrionSubscriptionChatbot?.unmount();window.OrionSubscriptionDevices?.unmount();window.OrionChannels?.unmount();window.OrionAutomations?.unmount()}
+   if(suiteTenantId!==id){resetBusinessState();resetCommerceState();resetCatalogState();resetAiConversation();clearAiProfileState();window.OrionSubscriptionAudience?.clearContext();window.OrionSubscriptionNumberCheck?.clearContext();window.OrionSubscriptionWhatsappLink?.clearContext();window.OrionSubscriptionDiagnostics?.unmount();window.OrionSubscriptionSentMessages?.unmount();window.OrionSubscriptionTemplates?.unmount();window.OrionSubscriptionChatbotTest?.unmount();window.OrionSubscriptionChatbot?.unmount();window.OrionSubscriptionDevices?.unmount();window.OrionChannels?.unmount();window.OrionAutomations?.unmount()}
    suiteTenantId=id;businessContextReady=true;businessContextError="";
    businessRows=rows;
    syncSetupAccess(rows[0]?.workspace_profile);

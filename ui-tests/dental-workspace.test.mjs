@@ -8,7 +8,7 @@ function dentalPlan(overrides={}) {
     business_niche:'odontologia',revision:'synthetic-dental-v1',...overrides});
 }
 
-test('a clínica odontológica tem o menu do ZIP e mantém Ajuda e conta', async t => {
+test('a clínica odontológica destaca profissionais, ajustes e os canais de atendimento', async t => {
   const h=await makeSuite({initialRoute:'dashboard',permissions:dentalPlan({dental_clinical_enabled:true})});
   t.after(()=>h.close());await flush();
   const app=h.document.getElementById('appView');
@@ -17,7 +17,7 @@ test('a clínica odontológica tem o menu do ZIP e mantém Ajuda e conta', async
   assert.deepEqual(labels,[
     'Dashboard','Agenda','Pacientes','Prontuários','Planos de tratamento',
     'Jornada do paciente','Odontograma','Periodontia','Exames e imagens','Procedimentos','Orçamentos','Prótese e laboratório',
-    'Consultórios','Financeiro','Estoque','Convênios','Equipe','Relatórios','Conversas','Meu site',
+    'Consultórios','Financeiro','Estoque','Convênios','Profissionais','Relatórios','Ajustes da clínica','Conversas','Agendamento online',
     'Novidades','Base de conhecimento','Minha conta'
   ]);
   assert.deepEqual([...h.document.querySelectorAll('#osNav .os-nav-section')].map(el=>el.textContent),

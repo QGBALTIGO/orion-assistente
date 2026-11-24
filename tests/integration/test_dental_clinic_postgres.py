@@ -101,11 +101,12 @@ async def clinic_db():
                "room_a2":room_a2,"when":when}
     finally:
         async with migrator.begin() as db:
-            for tbl in ("dental_insurance_plans","dental_sales_opportunities","dental_visit_patient_events","dental_access_audit","dental_laboratories","dental_intake_templates","dental_room_reservations",
+            for tbl in ("dental_reception_appointments","dental_professional_profiles","dental_insurance_plans","dental_sales_opportunities","dental_visit_patient_events","dental_access_audit","dental_laboratories","dental_intake_templates","dental_room_reservations",
                         "dental_exam_files","dental_records","dental_supply_movements",
                         "dental_supplies","dental_patients","dental_rooms",
-                        "dental_clinicians","appointment_history","appointment_items",
-                        "appointments","customers","professionals"):
+                        "dental_clinicians","appointment_history","calendar_outbox","appointment_items",
+                        "appointments","customers","management_requests","tenant_audit","professional_services","working_hours",
+                        "services","usage_counters","professionals"):
                 await db.execute(text(f"DELETE FROM public.{tbl} WHERE tenant_id IN (:a,:b)"),
                                  {"a":a,"b":b})
             await db.execute(text("DELETE FROM public.tenants WHERE id IN (:a,:b)"),{"a":a,"b":b})

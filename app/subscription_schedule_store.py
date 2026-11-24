@@ -196,6 +196,11 @@ CATALOG_SQL = """WITH catalog AS (
 ) """
 
 
+from app.subscription_audience_catalog import extend_catalog, extend_source_valid
+
+CATALOG_SQL = extend_catalog(CATALOG_SQL)
+
+
 SELECTION_SQL = CATALOG_SQL + """, direct AS (
  SELECT DISTINCT phone FROM catalog WHERE :all_contacts OR phone=ANY(CAST(:phones AS text[]))
 ), members AS (
@@ -246,7 +251,7 @@ async def selected_contacts(db, tenant, selection):
         raise fail("SCHEDULE_CONFLICT")
     contacts = []
     for row in rows:
-        if not row["origins"] or len(row["origins"]) > 101:
+        if not row["origins"] or len(row["origins"]) > 102:
             raise fail("SCHEDULE_LIMIT", 422)
         bounded_json(row["origins"], 131072)
         name = next((value for raw in row["names"] if (value := useful_name(raw))), "+" + row["phone"])
@@ -280,7 +285,7 @@ async def contacts_page(db, tenant, q, page, now, zone):
 def source_valid_sql(alias="r"):
     if re.fullmatch(r"[a-z][a-z0-9_]*", alias) is None:
         raise ValueError("Internal SQL alias required")
-    return f"""EXISTS(
+    legacy = f"""EXISTS(
         SELECT 1 FROM jsonb_to_recordset({alias}.origins) o(
           kind text,id uuid,group_id uuid,phone text,version bigint,created_at timestamptz,updated_at timestamptz)
         LEFT JOIN customers c ON o.kind='customer' AND c.tenant_id={alias}.tenant_id AND c.id=o.id
@@ -293,12 +298,13 @@ def source_valid_sql(alias="r"):
           OR o.kind='group_member' AND m.removed_at IS NULL AND g.archived_at IS NULL
             AND m.created_at=o.created_at AND m.updated_at=o.updated_at))"""
 
+    return extend_source_valid(legacy, alias)
 
 SOURCE_VALID_SQL = source_valid_sql()
 
 
 async def sources_valid(db, tenant, origins, phone):
-    if not isinstance(origins, list) or not origins or len(origins) > 101:
+    if not isinstance(origins, list) or not origins or len(origins) > 102:
         return False
     try:
         bounded_json(origins, 131072)

@@ -82,7 +82,7 @@ def check_menu(browser, width, height, theme):
     page.evaluate("(theme)=>document.documentElement.dataset.theme=theme",theme)
     page.evaluate("document.fonts.ready")
     nav = menu()
-    for label in ["Dashboard","Agenda","Pacientes","Prontuários","Prótese e laboratório","Estoque","Financeiro","Equipe","Procedimentos"]:
+    for label in ["Dashboard","Agenda","Pacientes","Prontuários","Prótese e laboratório","Estoque","Financeiro","Profissionais","Procedimentos"]:
         assert nav.get_by_role("button",name=label,exact=True).count() == 1, (width,label)
     sidebar_context=page.locator("#osSidebarContext")
     assert sidebar_context.evaluate("""el=>{
@@ -91,8 +91,7 @@ def check_menu(browser, width, height, theme):
     }"""),(width,theme)
     shell.OUT.mkdir(parents=True,exist_ok=True)
     page.screenshot(path=str(shell.OUT/f"menu-{width}-{theme}.png"),animations="disabled")
-    nav.get_by_role("button",name="Equipe",exact=True).press("Enter")
-    page.get_by_role("button",name="Ajustes da clínica",exact=True).press("Enter")
+    nav.get_by_role("button",name="Ajustes da clínica",exact=True).press("Enter")
     page.get_by_role("heading",name="Ajustes da clínica",exact=True).wait_for()
     group = page.locator("#osPageBody")
     chair = group.get_by_role("button",name="Consultórios e cadeiras",exact=True)
@@ -108,8 +107,7 @@ def check_menu(browser, width, height, theme):
     page.get_by_text("Nenhuma cadeira cadastrada",exact=True).wait_for(timeout=8000)
     assert "chair-settings" in accesses
     assert menu().locator('[aria-current="page"]').inner_text() == "Consultórios"
-    menu().get_by_role("button", name="Equipe", exact=True).click()
-    page.get_by_role("button",name="Ajustes da clínica",exact=True).press("Enter")
+    menu().get_by_role("button", name="Ajustes da clínica", exact=True).click()
     group.get_by_role("button", name="Etapas de vendas", exact=True).click()
     group.get_by_role("button", name="Nova etapa", exact=True).press("Enter")
     assert page.get_by_role("heading", name="Ajustes da clínica", exact=True).count() == 1

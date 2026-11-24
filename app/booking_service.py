@@ -149,14 +149,17 @@ async def rescheduling_items(s, tenant, appointment, catalogue_items):
     The live catalogue still authorizes the professional/service relationship.
     Its prices and durations cannot silently replace items already charged as
     extras, nor turn a configured no-time add-on into a longer reservation.
+    Reception can also preserve a consultation's individually chosen duration.
     Legacy appointments without extras retain their existing re-quote policy.
     """
-    saved = (await s.execute(text("""SELECT service_id,name_snapshot,duration_snapshot_min,
-        price_snapshot_cents,price_mode_snapshot,prep_snapshot_min,cleanup_snapshot_min,
-        item_origin,added_duration_min FROM appointment_items
-        WHERE tenant_id=:t AND appointment_id=:id ORDER BY item_order"""),
+    saved = (await s.execute(text("""SELECT item.service_id,item.name_snapshot,item.duration_snapshot_min,
+        item.price_snapshot_cents,item.price_mode_snapshot,item.prep_snapshot_min,item.cleanup_snapshot_min,
+        item.item_origin,item.added_duration_min,appointment.preserve_catalog_snapshot
+        FROM appointment_items item JOIN appointments appointment
+          ON appointment.tenant_id=item.tenant_id AND appointment.id=item.appointment_id
+        WHERE item.tenant_id=:t AND item.appointment_id=:id ORDER BY item.item_order"""),
         {"t": tenant, "id": appointment})).mappings().all()
-    if not any(item["item_origin"] == "extra" for item in saved):
+    if not any(item["item_origin"] == "extra" or item["preserve_catalog_snapshot"] for item in saved):
         return catalogue_items, False
     if [item["service_id"] for item in saved] != [item["id"] for item in catalogue_items]:
         fail(409, "Os serviços deste atendimento mudaram. Atualize os detalhes")
@@ -947,7 +950,8 @@ async def reschedule_appointment(s: AsyncSession, tenant: UUID, item_id: UUID,
             fail(409, "Somente reservas confirmadas podem ser remarcadas")
         await require_customer_deadline(s, row, context)
         from app.onboarding_service import require_operational_ready
-        await require_operational_ready(s, tenant, "rescheduling")
+        if not row["preserve_catalog_snapshot"] or context.source != "panel" or context.role not in {"owner", "editor"}:
+            await require_operational_ready(s, tenant, "rescheduling")
         ids = list((await s.execute(text("""
             SELECT service_id FROM appointment_items WHERE tenant_id=:tenant
             AND appointment_id=:id ORDER BY item_order

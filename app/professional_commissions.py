@@ -197,7 +197,7 @@ async def list_commission_rules(db, tenant_id):
     return {"items": [dict(item) for item in records]}
 
 
-async def save_professional_configuration(db, tenant_id, payload, professional_id=None):
+async def save_professional_configuration(db, tenant_id, payload, professional_id=None, *, identity_details=None):
     """Create or replace base-service assignments and rates in one transaction."""
     from app.plan_limits import lock_professionals, ensure_professional_activation
     await lock_professionals(db, tenant_id)
@@ -218,6 +218,8 @@ async def save_professional_configuration(db, tenant_id, payload, professional_i
         # Keep receipts from before the phone field compatible with old callers.
         if "phone_e164" not in payload.model_fields_set:
             identity_payload.pop("phone_e164", None)
+        if identity_details is not None:
+            identity_payload["dental_profile"] = identity_details
         identity, replay = await request_identity(
             db, tenant_id, "professional_configuration", payload.idempotency_key,
             identity_payload,

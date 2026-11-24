@@ -1,0 +1,8 @@
+/* Layout only; controls, typography and colors are shared with the Orion suite. */
+.os-whatsapp-link-layout{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:var(--os-space-5,1.25rem);align-items:start}
+.os-whatsapp-link-layout>.os-card{min-width:0}
+.os-whatsapp-qr{display:grid;gap:1rem;justify-items:start;margin-top:1rem}
+.os-whatsapp-qr img{display:block;width:240px;max-width:100%;height:auto;aspect-ratio:1;background:#fff;image-rendering:pixelated}
+.os-whatsapp-link-layout [data-wl-preview]{min-width:0}
+.os-whatsapp-link-layout .os-form-actions{flex-wrap:wrap}
+@media(max-width:800px){.os-whatsapp-link-layout{grid-template-columns:minmax(0,1fr)}}

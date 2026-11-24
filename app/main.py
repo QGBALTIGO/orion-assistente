@@ -57,6 +57,9 @@ from app.subscription_bulk_messages import router as subscription_bulk_messages_
 from app.subscription_direct_messages import router as subscription_direct_messages_router
 from app.subscription_group_contacts import router as subscription_group_contacts_router
 from app.subscription_group_add import router as subscription_group_add_router
+from app.subscription_number_check import router as subscription_number_check_router
+from app.subscription_whatsapp_link import router as subscription_whatsapp_link_router
+from app.subscription_audience import router as subscription_audience_router
 from app.automation_api import router as automation_router
 from app.qr_channel_audio import router as qr_channel_audio_router
 from app.media_api import router as media_router
@@ -67,6 +70,7 @@ from app.communication_api import router as communication_router
 from app.workflow_drafts import router as workflow_drafts_router
 from app.orion_pwa_api import router as orion_pwa_router
 from app.dental_clinic_api import router as dental_clinic_router
+from app.dental_reception import router as dental_reception_router
 import app.dental_clinic_media  # registers protected exam endpoints on the same router
 from app.plan_routing import include_plan_router, enforce_endpoint_plan
 
@@ -224,6 +228,7 @@ include_plan_router(app, business_profile_router)
 include_plan_router(app, account_business_router)
 include_plan_router(app, management_router)
 include_plan_router(app, dental_clinic_router)
+include_plan_router(app, dental_reception_router)
 include_plan_router(app, management_blocks_router)
 include_plan_router(app, management_ai_router)
 include_plan_router(app, management_team_router)
@@ -236,6 +241,8 @@ include_plan_router(app, appointment_access_router)
 from app.appointment_communications_api import router as appointment_communications_router
 include_plan_router(app, appointment_communications_router)
 include_plan_router(app, public_site_router)
+from app.public_customer_area import router as public_customer_area_router
+include_plan_router(app, public_customer_area_router)
 include_plan_router(app, service_packages_router)
 include_plan_router(app, qr_channels_router)
 include_plan_router(app, subscription_devices_router)
@@ -251,6 +258,9 @@ include_plan_router(app, subscription_bulk_messages_router)
 include_plan_router(app, subscription_direct_messages_router)
 include_plan_router(app, subscription_group_contacts_router)
 include_plan_router(app, subscription_group_add_router)
+include_plan_router(app, subscription_number_check_router)
+include_plan_router(app, subscription_whatsapp_link_router)
+include_plan_router(app, subscription_audience_router)
 include_plan_router(app, automation_router)
 include_plan_router(app, qr_channel_audio_router)
 include_plan_router(app, media_router)
@@ -314,7 +324,11 @@ async def panel_asset(asset: str) -> FileResponse:
                "orion-subscription-direct-messages.css": "text/css", "orion-subscription-direct-messages.js": "text/javascript",
                "orion-subscription-group-contacts.js": "text/javascript",
                "orion-subscription-group-add.js": "text/javascript",
+               "orion-subscription-number-check.js": "text/javascript", "orion-subscription-tools.css": "text/css",
+               "orion-subscription-whatsapp-link.js": "text/javascript",
+               "orion-subscription-audience.js": "text/javascript", "orion-subscription-audience.css": "text/css",
                "orion-dental-clinic.js": "text/javascript",
+               "orion-dental-reception.js": "text/javascript",
                "orion-dental-clinic.css": "text/css",
                "orion-connect.js": "text/javascript",
                "orion-automations.js": "text/javascript",

@@ -27,12 +27,12 @@ def verify(browser, width, height, theme):
             return route.fulfill(json={"clinical_access":{"level":"assistant"}, "can_read_records":False, "can_manage":False})
         if "/dental/" in path:
             reads.append((method,path))
-        if path.endswith("/dental/patients/search"):
+        if path.endswith("/dental/reception/patients/search"):
             assert method == "POST"
             query = route.request.post_data_json["query"].lower()
             found = [p for p in patients.values() if query in p["name"].lower() or query in "67999991030"]
             return route.fulfill(json={"items":found,"has_more":False})
-        if path.endswith("/dental/patients") and method == "POST":
+        if path.endswith("/dental/reception/patients") and method == "POST":
             data = route.request.post_data_json
             submissions.append(data)
             key = data["request_id"]
@@ -45,7 +45,7 @@ def verify(browser, width, height, theme):
             return route.fulfill(json={"items":[],"has_more":False})
         if path.endswith("/visit-options"):
             return route.fulfill(json={"day":"2026-11-22","timezone":"America/Campo_Grande","items":[],"has_more":False})
-        if "/dental/patients/" in path:
+        if "/dental/reception/patients/" in path:
             value=next((p for p in patients.values() if path.endswith(p["id"])),None)
             if value:
                 if method == "PATCH":
@@ -60,31 +60,37 @@ def verify(browser, width, height, theme):
     page.get_by_role("button",name="Novo paciente",exact=True).click(timeout=15000)
     page.evaluate("(value)=>document.documentElement.dataset.theme=value",theme)
     page.evaluate("document.fonts.ready")
-    form = page.locator("[data-patient-editor]")
-    form.get_by_label("Nome completo").fill("Ana de Teste")
-    form.get_by_label("Nome do responsável").fill(family)
-    form.get_by_label("Telefone do responsável").fill(tel)
+    form = page.locator("[data-dental-patient-editor]")
+    form.get_by_label("Nome do paciente").fill("Ana de Teste")
+    form.locator("summary").get_by_text("Responsável legal",exact=True).click()
+    form.get_by_label("Nome do responsável legal").fill(family)
+    form.get_by_label("Celular do responsável",exact=True).fill(tel)
     submit = form.get_by_role("button",name="Cadastrar paciente")
     submit.press("Enter")
     page.locator("#osDentalDirectory [role=alert]").wait_for()
-    assert form.get_by_label("Nome completo").input_value() == "Ana de Teste"
+    assert form.get_by_label("Nome do paciente").input_value() == "Ana de Teste"
     submit.press("Enter")
     person=page.locator("#osDentalDirectory")
     person.get_by_role("heading",name="Ana de Teste").wait_for()
     assert len(submissions)==2 and submissions[0]["request_id"]==submissions[1]["request_id"]
-    assert not person.get_by_role("button",name="Abrir prontuário").count()
+    assert not any(path.endswith("/access") for _,path in reads)
+    person.get_by_role("button",name="Clínica",exact=True).click()
+    person.get_by_text("Os dados clínicos exigem acesso de cirurgião-dentista.").wait_for()
+    assert not person.get_by_role("button",name="Prontuário",exact=True).count()
     person.get_by_role("button",name="Editar cadastro").click()
-    form.get_by_label("Nome completo").fill("Ana Helena de Teste")
+    form.get_by_label("Nome do paciente").fill("Ana Helena de Teste")
     form.get_by_role("button",name="Salvar alterações").press("Enter")
     person.get_by_role("heading",name="Ana Helena de Teste").wait_for()
     person.get_by_role("button",name="Voltar aos pacientes").click()
     person.get_by_role("button",name="Novo paciente",exact=True).click()
-    form.get_by_label("Nome completo").fill("Bia de Teste")
-    form.get_by_label("Telefone do responsável").fill(tel)
+    form.get_by_label("Nome do paciente").fill("Bia de Teste")
+    form.locator("summary").get_by_text("Responsável legal",exact=True).click()
+    form.get_by_label("Nome do responsável legal").fill(family)
+    form.get_by_label("Celular do responsável",exact=True).fill(tel)
     submit.press("Enter")
     person.get_by_role("heading",name="Bia de Teste").wait_for()
     person.get_by_role("button",name="Voltar aos pacientes").click()
-    search = person.get_by_label("Nome ou telefone")
+    search = person.get_by_label("Buscar pacientes")
     search.fill("999991030")
     search.press("Enter")
     person.get_by_role("button",name="Ana Helena de Teste",exact=False).wait_for()
@@ -97,8 +103,8 @@ def verify(browser, width, height, theme):
     shell.OUT.mkdir(parents=True,exist_ok=True)
     person.screenshot(path=str(shell.OUT/f"pacientes-{width}-{theme}.png"),animations="disabled")
     person.get_by_role("button",name="Bia de Teste",exact=False).click()
-    person.get_by_role("button",name="Consultas do paciente").click()
-    page.get_by_text("Nenhuma consulta vinculada a este paciente.").wait_for()
+    person.get_by_role("button",name="Consultas",exact=True).click()
+    page.get_by_text("Nenhuma consulta vinculada.").wait_for()
     assert all("/records" not in path and "/exams" not in path for _,path in reads)
     assert not errors,errors
     page.close()

@@ -15,8 +15,9 @@ jobs:
       contents: read
       packages: write
     env:
-      BASE_IMAGE: ghcr.io/qgbaltigo/orion-assistente-api@sha256:b0d30e92ce6b15909220f76dc13b0b932019ef4c8c22b75dab10dfe08a6cc12a
+      BASE_IMAGE: ghcr.io/qgbaltigo/orion-assistente-api@sha256:663563d41054bbd3cafafa42918bf07c58eca3e998fbcc318869c88e25cac2db
       IMAGE: ghcr.io/qgbaltigo/orion-assistente-api:odontologia-producao-${{ github.sha }}
+      RESTORE_IMAGE: ghcr.io/qgbaltigo/orion-assistente-api:odontologia-retorno-${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -26,8 +27,9 @@ jobs:
         run: |
           node --check app/static/orion-suite.js
           node --check app/static/orion-dental-clinic.js
+          node --check app/static/orion-dental-reception.js
           npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
-          node --test --test-reporter=dot ui-tests/dental-workspace.test.mjs ui-tests/dental-clinic.test.mjs ui-tests/dental-patient-journey.test.mjs ui-tests/barbershop-app-layout.test.mjs ui-tests/subscription-workspace.test.mjs ui-tests/home-admin-preview.test.mjs ui-tests/member-account-settings.test.mjs ui-tests/dashboard-navigation.test.mjs ui-tests/plan-permissions.test.mjs
+          node --test --test-reporter=dot ui-tests/dental-workspace.test.mjs ui-tests/dental-clinic.test.mjs ui-tests/dental-patient-journey.test.mjs ui-tests/barbershop-app-layout.test.mjs ui-tests/subscription-workspace.test.mjs ui-tests/home-admin-preview.test.mjs ui-tests/member-account-settings.test.mjs ui-tests/dashboard-navigation.test.mjs ui-tests/plan-permissions.test.mjs ui-tests/appointment-operations-panel.test.mjs ui-tests/agenda-lifecycle.test.mjs ui-tests/professional-commissions.test.mjs
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -40,32 +42,42 @@ jobs:
           import hashlib
           from pathlib import Path
           expected = {
-            "panel.html": "b735a318934252b0a4f2b2f3e13ad55818722100",
-            "orion-suite.js": "bbddeba8a1cc4306be35f778559f449e60731c4b",
-            "orion-dental-clinic.js": "d7de72b8d0db808d427fa749d971b2e94e969338",
-            "orion-dental-clinic.css": "7c1708a5cfb5fbf1be86d801129208e1e4aa2d0b",
+            "app/main.py": "0dc258f20be6fa58e12aba953dad5e6f39c85c72",
+            "app/booking_service.py": "8c268ce6a635632507411c5ed63ed9d94652408b",
+            "app/plan_routing.py": "65fc841227f5f9bd53d7441193498360d22dd517",
+            "app/professional_commissions.py": "e004b9dba05a29115e91159b01baa92eb5512cc7",
+            "app/static/panel.html": "a31cea1f4cda5af6f9ae53a5ef57f95f8e59732c",
+            "app/static/orion-suite.js": "fc047a94b0d60811aa11f0d1f2a7a7558508000a",
+            "app/static/orion-dental-clinic.js": "ffb1b6ddda51c8458f0323fa022d2957853ed043",
+            "app/static/orion-dental-clinic.css": "40763bb61cb9806c5a00dbeb042ec00155763901",
           }
           for name, digest in expected.items():
-              data = (Path("app/static") / name).read_bytes()
+              data = Path(name).read_bytes()
               assert hashlib.sha1(b"blob %d" % len(data) + bytes(1) + data).hexdigest() == digest, name
           '
       - name: Construir e validar imagem candidata
         run: |
           set -euo pipefail
-          docker build --platform linux/amd64 -f deploy/Dockerfile.dental-workflows --build-arg ORION_DENTAL_COMMIT="$GITHUB_SHA" -t "$IMAGE" .
+          docker build --platform linux/amd64 -f deploy/Dockerfile.dental-reception --build-arg ORION_DENTAL_COMMIT="$GITHUB_SHA" -t "$IMAGE" .
           docker run --rm --entrypoint python "$IMAGE" -c '
           from alembic.config import Config
           from alembic.script import ScriptDirectory
-          from app.dental_clinic_api import router
+          from app.dental_reception import router
           from scripts.backup_and_migrate_dental_workflows import TARGET
-          assert ScriptDirectory.from_config(Config("alembic.ini")).get_current_head() == TARGET == "0091_dental_insurance_plans"
-          assert sum(route.path.endswith("/insurance-plans") for route in router.routes) == 2
+          assert ScriptDirectory.from_config(Config("alembic.ini")).get_current_head() == TARGET == "0093_dental_reception"
+          assert any(route.path.endswith("/booking-options") for route in router.routes)
+          assert any(route.path.endswith("/reception/appointments") and "POST" in route.methods for route in router.routes)
           '
           docker run --rm --entrypoint pg_dump "$IMAGE" --version
-          sha256sum app/static/orion-suite.js app/static/orion-dental-clinic.js app/static/orion-dental-clinic.css app/dental_clinic_api.py app/dental_clinic_schemas.py alembic/versions/0091_dental_insurance_plans.py | docker run --rm -i -w /srv/app --entrypoint sha256sum "$IMAGE" --strict --check -
+          sha256sum app/main.py app/plan_routing.py app/booking_service.py app/professional_commissions.py app/dental_reception.py app/dental_reception_schemas.py app/static/panel.html app/static/orion-dental-reception.js app/static/orion-suite.js app/static/orion-dental-clinic.css alembic/versions/0093_dental_reception.py scripts/backup_and_migrate_dental_workflows.py scripts/backup_and_migrate_subscription_audience.py | docker run --rm -i -w /srv/app --entrypoint sha256sum "$IMAGE" --strict --check -
+          docker build --platform linux/amd64 -f deploy/Dockerfile.dental-reception --target previous-panel --build-arg ORION_DENTAL_COMMIT="$GITHUB_SHA" -t "$RESTORE_IMAGE" .
+          docker push "$RESTORE_IMAGE"
+          docker image inspect "$RESTORE_IMAGE" --format '{{index .RepoDigests 0}}' > odontologia-retorno-image.txt
           docker push "$IMAGE"
           docker image inspect "$IMAGE" --format '{{index .RepoDigests 0}}' | tee odontologia-producao-image.txt
       - uses: actions/upload-artifact@v4
         with:
           name: odontologia-producao-image
-          path: odontologia-producao-image.txt
+          path: |
+            odontologia-producao-image.txt
+            odontologia-retorno-image.txt
