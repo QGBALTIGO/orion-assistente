@@ -1,0 +1,27 @@
+name: Orion - Botões de agendamento e avaliação
+on:
+  push:
+    branches: [codex/orion-appointment-buttons-20261124]
+permissions:
+  contents: read
+  packages: write
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Validar e publicar a ponte WhatsApp
+        run: |
+          set -euo pipefail
+          image="ghcr.io/qgbaltigo/orion-assistente-qr-bridge:appointment-buttons-$GITHUB_SHA"
+          docker build --platform linux/amd64 --build-arg SOURCE_REVISION="$GITHUB_SHA" \
+            -f deploy/Dockerfile.appointment-buttons -t "$image" .
+          docker run --rm -v "$PWD/qr-bridge/test:/srv/qr/test:ro" --entrypoint node "$image" \
+            --test test/appointment-link-button.test.mjs test/appointment-confirmation.test.mjs test/url-button.test.mjs test/reliable-send.test.mjs
+          docker push "$image"

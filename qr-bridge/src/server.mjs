@@ -44,7 +44,8 @@ import {makeContactNameSync} from './contact-name-forward.mjs';
 import {transcriberConfig,cleanPictureUrl,transcribeAudio,handleCallOffers} from "./connected-features.mjs";
 import {protectSignalSessionLogs} from "./signal-log-safety.mjs";
 import {forwardAssistant,registerAssistantIngress,acknowledgeAssistantPresentation} from "./ai-forward.mjs";
-import {createAssistantPresentationStore,relayAssistantPresentation,assistantNativeMode,ASSISTANT_SELECTION_TEXT} from './assistant-presentation.mjs';
+import {buildAssistantPresentation,createAssistantPresentationStore,relayAssistantPresentation,assistantNativeMode,ASSISTANT_SELECTION_TEXT} from './assistant-presentation.mjs';
+import {appointmentLinkButton} from './appointment-link-button.mjs';
 import {isBookingProtocolMessage,fetchBookingProtocolConfirmation,resolveBookingSenderPhone} from "./appointment-confirmation.mjs";
 import {makeBookingIntakeGuard} from './booking-intake-guard.mjs';
 import {allowAssistantRecipient,allowAssistantAudio,pilotNumber} from "./ai-pilot.mjs";
@@ -710,7 +711,7 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false,authRegistra
             // Capacity is admitted before composing starts. Presence reflects
             // a pending authenticated reply, never a rate-limited backlog.
             const result=await sendLegacyRaw(phone,response,{
-              waitForCapacity:true,isCurrent:intakeCurrent,transactionalTyping:true});
+              waitForCapacity:true,isCurrent:intakeCurrent,transactionalTyping:true,bookingProtocolReply:true});
             transport.record(result?.accepted?'booking_protocol_sent':'booking_protocol_unconfirmed',traceId);
           }catch(error){
             if(!sendAttempted)handledBookingProtocols.delete(key);
@@ -1241,7 +1242,7 @@ async function sendLegacyProtocol(phone,action,{isCurrent=()=>false,assertAuthor
     return {accepted:true,id:sent.key.id};
   });}finally{built?.dispose();}
 }
-async function sendLegacyRaw(phone,text,{waitForCapacity=false,isCurrent=()=>true,transactionalTyping=false,source='automation',assertAuthorized,pacing=true,presentation,presentationAck,deferPresentationAck=false,presentationProvenance}={}){
+async function sendLegacyRaw(phone,text,{waitForCapacity=false,isCurrent=()=>true,transactionalTyping=false,source='automation',assertAuthorized,pacing=true,presentation,presentationAck,deferPresentationAck=false,presentationProvenance,bookingProtocolReply=false}={}){
   if(presentation&&source!=='assistant')throw Error('assistant_presentation_denied');
   const target=validPhone(phone);
   if(status!=="connected"||!socket)throw Error("O WhatsApp não está conectado");
@@ -1286,9 +1287,10 @@ async function sendLegacyRaw(phone,text,{waitForCapacity=false,isCurrent=()=>tru
   // original authorized lookup. Presence/FIFO follow that proved recipient;
   // the business authorization remains bound to the original frozen grant.
   const presencePhone=normalizeFromJid(destination)||target;
+  const linkButton=(source==='appointment'||bookingProtocolReply)?appointmentLinkButton(text):null;
   await authorize();
   return socketOutgoingPresence.get(selectedSocket).run({phone:presencePhone,chatJid:destination,isCurrent:current,
-    assertAuthorized:authorize,action:presentation?.action||{type:'text',text},pacing},async({beforeSend})=>{
+    assertAuthorized:authorize,action:presentation?.action||linkButton?.action||{type:'text',text},pacing},async({beforeSend})=>{
   await beforeSend();
   // An appointment is a transactional message: its exact encrypted retry
   // source MUST exist before the first network send, regardless of the
@@ -1307,6 +1309,27 @@ async function sendLegacyRaw(phone,text,{waitForCapacity=false,isCurrent=()=>tru
       relay:async(recipient,message,options)=>{await authorize();return selectedSocket.relayMessage(recipient,message,options);},
       onPrepared:msg=>{retryDiagnostics.prepared++;deliveryReceipts.set(msg.key.id,'pending');deliveryStart.set(msg.key.id,Date.now());
         pushMessage({id:'out:'+msg.key.id,phone:target,body:text.trim(),direction:'out',at:Date.now(),delivery:'pending'});}});
+  }else if(linkButton){
+    const built=await buildAssistantPresentation(linkButton,{
+      sdk:{proto},interactiveMode:'native',assertCurrent:authorize,isCurrent:current});
+    try {
+      result=await sendStoredProtocol({
+        jid:destination,recipientProof,store:retryStore,isCurrent:current,assertAuthorized:authorize,
+        makeMessage:async recipient=>generateWAMessageFromContent(recipient,built.content,{
+          userJid:selectedSocket.user.id,messageId:generateMessageIDV2(selectedSocket.user.id)}),
+        relay:async(recipient,message,options)=>{
+          await authorize();
+          return selectedSocket.relayMessage(recipient,message,{...options,...built.relayOptions});
+        },
+        onPrepared:msg=>{
+          retryDiagnostics.prepared++;
+          deliveryReceipts.set(msg.key.id,'pending');
+          deliveryStart.set(msg.key.id,Date.now());
+          transport.record('appointment_button_prepared',msg.key.id,{kind});
+          pushMessage({id:'out:'+msg.key.id,phone:target,body:text.trim(),direction:'out',at:Date.now(),delivery:'pending'});
+        }
+      });
+    }finally{built.dispose();}
   }else if(requiresPreRelayCache({reliable,source})){
     result=await sendStoredText({
       jid:destination,recipientProof,text:text.trim(),store:retryStore,freshDevices,

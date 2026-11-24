@@ -1,0 +1,6 @@
+FROM ghcr.io/qgbaltigo/orion-assistente-qr-bridge@sha256:9eed68c600b91871b058e05d49b84028510745348cb6d849eea792586c889bd1
+ARG SOURCE_REVISION
+LABEL org.opencontainers.image.revision=$SOURCE_REVISION
+RUN node -e "const b=require('node:fs').readFileSync('/srv/qr/src/server.mjs'); const hash=require('node:crypto').createHash('sha1').update('blob '+b.length).update(Buffer.from([0])).update(b).digest('hex'); if(hash!=='058168189500ffdafee0f3ba9172062a469a4767')process.exit(1)"
+COPY qr-bridge/src/appointment-link-button.mjs qr-bridge/src/server.mjs /srv/qr/src/
+RUN node --check /srv/qr/src/server.mjs && node --check /srv/qr/src/appointment-link-button.mjs
