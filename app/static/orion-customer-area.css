@@ -108,3 +108,5 @@ html[data-theme="dark"] .customer-area-status[data-status="completed"]{color:#72
  .customer-area-card-head{align-items:flex-start}
 }
 @media(prefers-reduced-motion:reduce){.customer-area-button,.customer-area-secondary{transition:none}}
+
+body.customer-area-open{overflow:hidden;}
