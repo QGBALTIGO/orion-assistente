@@ -205,6 +205,10 @@
 .os-dental-sales-summary-grid button[aria-pressed=true]{border-color:var(--os-primary);background:var(--os-tint);color:var(--os-primary)}
 .os-dental-sales-summary-grid button:focus-visible,#osSalesFunnelHeading:focus-visible{outline:2px solid var(--os-primary);outline-offset:2px}
 
+@media(max-width:980px){
+  .os-dental-sales-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+
 .os-dental-sales-list{list-style:none;margin:0;padding:0}
 .os-dental-sales-list li{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding-block:14px;border-top:1px solid var(--os-border)}
 .os-dental-sales-list li>div{min-width:0;overflow-wrap:anywhere}
