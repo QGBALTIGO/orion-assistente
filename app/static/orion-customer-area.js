@@ -339,6 +339,10 @@
     cleanup(); controller=new AbortController(); const epoch=generation;
     refreshCompany(); showLoading();
     dialog.showModal(); document.body.classList.add('customer-area-open');
+    await loadAccount(epoch);
+  }
+  async function loadAccount(epoch) {
+    showLoading();
     try {
       const state=await api();
       if (!live(epoch)) return;
@@ -349,7 +353,7 @@
     } catch(error) {
       if (live(epoch) && error.name!=='AbortError') {
         resetBody(); root.append(empty('Não foi possível carregar','Verifique sua conexão e tente novamente.'),
-          button('Tentar novamente','customer-area-button',()=>{dialog.close();open();}));
+          button('Tentar novamente','customer-area-button',()=>{controller?.abort();controller=new AbortController();generation++;loadAccount(generation);}));
       }
     }
   }
