@@ -29,11 +29,33 @@ test('contact cards use configured safe destinations, visible channel labels and
     assert.equal(item.querySelectorAll('.social-link-label').length,1);
     assert.equal(item.querySelector('.social-link-label').textContent,item.textContent);
   }
-  assert.equal(items[0].href, 'https://wa.me/5511999999999');
+  assert.equal(items[0].href, 'https://wa.me/551133334444');
   assert.equal(items[1].getAttribute('href'), 'tel:+551133334444');
   assert.equal(items[1].getAttribute('target'), null);
   assert.ok(items.slice(2).every(item => item.target === '_blank' && item.rel.includes('noopener')));
   assert.equal(h.errors.length, 0);
+});
+
+test('WhatsApp uses the company contact field, with legacy support and no invented destination', async t => {
+  const cases = [
+    {name:'company contact only',contact:'+5511988881111',legacy:null,expected:'https://wa.me/5511988881111'},
+    {name:'another company contact overrides its legacy field',contact:'+5521977772222',legacy:'+5531966663333',expected:'https://wa.me/5521977772222'},
+    {name:'legacy site without the primary contact',contact:null,legacy:'+5531966663333',expected:'https://wa.me/5531966663333'},
+    {name:'company without a phone',contact:null,legacy:null,expected:null},
+    {name:'invalid configured phone',contact:'javascript:alert(1)',legacy:null,expected:null}
+  ];
+  for (const scenario of cases) {
+    await t.test(scenario.name, async t => {
+      const data=catalogue();
+      Object.assign(data.site,{contact_phone:scenario.contact,whatsapp_phone:scenario.legacy});
+      const h=await makePublic({data});t.after(()=>h.close());await flush();
+      const link=h.document.querySelector('#contact-links .social-link--whatsapp');
+      assert.equal(link?.getAttribute('href')??null,scenario.expected);
+      assert.equal(h.document.querySelectorAll('#contact-links .social-link--whatsapp').length,scenario.expected?1:0);
+      if(link) assert.equal(link.querySelector('.social-link-label').textContent,'WhatsApp');
+      assert.equal(h.errors.length,0);
+    });
+  }
 });
 
 test('contact icon links cannot inject javascript: URLs or markup', async t => {

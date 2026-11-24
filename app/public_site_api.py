@@ -435,13 +435,8 @@ async def public_catalogue(slug:str,request:Request):
         async with tenant_transaction(db,tenant):
             await published_guard(db,tenant,slug)
             result=await catalogue(db,tenant)
-    from app.appointment_confirmation import central_admin_phone, central_admin_whatsapp_enabled
-    if central_admin_whatsapp_enabled():
-        # The public WhatsApp contact is the platform reception, never the
-        # company's own number. Resolve the currently verified admin connection
-        # at request time so relinking does not require editing company sites.
-        number=await central_admin_phone()
-        result['site']['whatsapp_phone']='+'+number if number else None
+    # Contact links belong to this company's published site. The platform
+    # channel used for booking notifications must not replace these fields.
     return result
 
 

@@ -19,7 +19,7 @@ DATA={
     'booking_horizon_days':60,
     'site':{
         'title':'Barbearia de teste','theme_color':'#ffcc00','show_prices':True,
-        'whatsapp_phone':'+5511999999999','contact_phone':'+551133334444',
+        'whatsapp_phone':None,'contact_phone':'+5511999999999',
         'instagram_url':'https://instagram.com/orion',
         'tiktok_url':'https://tiktok.com/@orion',
         'facebook_url':'https://facebook.com/orion'

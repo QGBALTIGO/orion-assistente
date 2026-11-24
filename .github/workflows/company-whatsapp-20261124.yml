@@ -1,0 +1,88 @@
+name: Orion - WhatsApp da empresa no site
+on:
+  push:
+    branches: [codex/orion-company-whatsapp-20261124]
+    paths:
+      - 'app/public_site_api.py'
+      - 'app/static/orion-public.js'
+      - 'tests/unit/test_central_booking_whatsapp.py'
+      - 'tests/e2e/browser_public_contact_theme.py'
+      - 'ui-tests/public-contact-theme.test.mjs'
+      - 'Dockerfile.company-whatsapp-overlay'
+      - '.github/workflows/company-whatsapp-20261124.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  contacts:
+    name: Contato da empresa em Chromium e WebKit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    container:
+      image: mcr.microsoft.com/playwright/python:v1.56.0-noble@sha256:a7f6cf3ae520c9d670ad956572c13747ed5abdbba5123a01526f873ed1662528
+      options: --init
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Preparar testes existentes
+        run: |
+          node --check app/static/orion-public.js
+          npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+          python -m pip install -r tests/e2e/requirements.txt pytest
+      - name: Conferir numero, legado, ausencia e links seguros
+        run: node --test ui-tests/public-contact-theme.test.mjs
+      - name: Conferir contatos no celular, tablet e desktop
+        run: python -m pytest -q -ra tests/e2e/browser_public_contact_theme.py
+  image:
+    name: Isolamento entre empresas e imagem candidata
+    needs: contacts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    env:
+      BASE_IMAGE: ghcr.io/qgbaltigo/orion-assistente-api@sha256:918b917d0829bedebaefa929d262bb68411b0c3fb773b018ad20f6f4339c8dad
+      IMAGE: ghcr.io/qgbaltigo/orion-assistente-api:company-whatsapp-${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Conferir baseline dos dois arquivos na imagem atual
+        run: |
+          set -euo pipefail
+          BASELINE_COMMIT=d6d98faf94b579dadbe1f9345bfaf39930e89737
+          docker pull --platform linux/amd64 "$BASE_IMAGE"
+          container_id=$(docker create "$BASE_IMAGE")
+          trap 'docker rm -f "$container_id" >/dev/null 2>&1 || true' EXIT
+          for path in app/public_site_api.py app/static/orion-public.js; do
+            mkdir -p ".ci-baseline/$(dirname "$path")" ".ci-image/$(dirname "$path")"
+            git show "$BASELINE_COMMIT:$path" > ".ci-baseline/$path"
+            docker cp "$container_id:/srv/app/$path" ".ci-image/$path"
+            cmp ".ci-baseline/$path" ".ci-image/$path"
+          done
+      - name: Construir e conferir imagem candidata
+        run: |
+          set -euo pipefail
+          docker build --platform linux/amd64 -f Dockerfile.company-whatsapp-overlay --build-arg ORION_CONTACT_COMMIT="$GITHUB_SHA" -t "$IMAGE" .
+          container_id=$(docker create "$IMAGE")
+          trap 'docker rm -f "$container_id" >/dev/null 2>&1 || true' EXIT
+          for path in app/public_site_api.py app/static/orion-public.js; do
+            docker cp "$container_id:/srv/app/$path" ".ci-image/$path"
+            cmp "$path" ".ci-image/$path"
+          done
+      - name: Validar contatos independentes e confirmacoes existentes
+        run: |
+          docker run --rm --network none --cap-drop ALL --security-opt no-new-privileges \
+            --entrypoint python --workdir /srv/app \
+            --mount "type=bind,source=$GITHUB_WORKSPACE/tests,target=/srv/app/tests,readonly" \
+            "$IMAGE" -m pytest -q -ra -p no:cacheprovider tests/unit/test_central_booking_whatsapp.py
+      - name: Publicar somente a imagem aprovada nos testes
+        run: docker push "$IMAGE"

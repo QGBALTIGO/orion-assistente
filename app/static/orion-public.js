@@ -510,8 +510,11 @@
     $('team-grid').replaceChildren(...data.professionals.map(person => { const card = el('article', 'team-card'); const portrait = el('div', 'portrait'); color(portrait, '--person-color', person.color); picture(portrait, person.image_url, initials(person.name)); const info = el('div', 'person-info'); info.append(el('strong', '', person.name)); if (person.specialty) info.append(el('p', '', person.specialty)); card.append(portrait, info); return card; }));
     $('equipe').hidden = !data.professionals.length;
     const contacts = [];
-    if (/^\+[1-9]\d{9,14}$/.test(site.whatsapp_phone || ''))
-      contacts.push(contactAnchor('Conversar no WhatsApp', 'whatsapp', 'https://wa.me/' + site.whatsapp_phone.slice(1)));
+    // "Telefone de contato (WhatsApp)" in Meu Site is the public destination.
+    // Keep older sites that only configured the separate WhatsApp field working.
+    const whatsappPhone = site.contact_phone || site.whatsapp_phone;
+    if (/^\+[1-9]\d{9,14}$/.test(whatsappPhone || ''))
+      contacts.push(contactAnchor('Conversar no WhatsApp', 'whatsapp', 'https://wa.me/' + whatsappPhone.slice(1)));
     if (/^\+[1-9]\d{9,14}$/.test(site.contact_phone || ''))
       contacts.push(contactAnchor('Ligar para ' + site.contact_phone, 'phone', 'tel:' + site.contact_phone, true));
     for (const [field, name, kind] of [

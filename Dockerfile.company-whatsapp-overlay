@@ -1,0 +1,6 @@
+# Preserve the current production release and replace only the public contact path.
+FROM ghcr.io/qgbaltigo/orion-assistente-api@sha256:918b917d0829bedebaefa929d262bb68411b0c3fb773b018ad20f6f4339c8dad
+ARG ORION_CONTACT_COMMIT
+LABEL org.opencontainers.image.revision=$ORION_CONTACT_COMMIT
+COPY --chown=appuser:appuser app/public_site_api.py /srv/app/app/public_site_api.py
+COPY --chown=appuser:appuser app/static/orion-public.js /srv/app/app/static/orion-public.js

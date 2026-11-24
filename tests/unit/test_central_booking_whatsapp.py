@@ -227,36 +227,71 @@ async def test_switching_admin_whatsapp_changes_all_next_links_without_hardcoded
 
 
 @pytest.mark.asyncio
-async def test_public_contact_also_tracks_only_the_active_admin_number(monkeypatch):
+@pytest.mark.parametrize(
+    "central_enabled,central_number",
+    [("0", "556781234567"), ("1", "556781234567"), ("1", None)],
+    ids=["central-disabled", "central-connected", "central-unavailable"],
+)
+async def test_public_contacts_preserve_company_fields_without_consulting_central(
+    monkeypatch, central_enabled, central_number
+):
     from app import public_site_api as site_api
-    admin,tenant=uuid4(),uuid4()
-    db=BookingSession(uuid4())
-    db.tenant=tenant
-    active={"phone":"556781234567"}
 
-    async def no_limit(*_args):return None
-    async def resolve(_slug):return tenant
-    async def published(*_args):return None
-    async def site_catalogue(*_args):
-        return {"site":{"whatsapp_phone":"+5567999999901"},"services":[]}
-    async def admin_phone(connected_tenant):
-        assert connected_tenant==admin
-        return active["phone"]
+    companies = {
+        "empresa-a": (uuid4(), {
+            "contact_phone": "+5567999999901",
+            "whatsapp_phone": "+5567999999902",
+        }),
+        "empresa-b": (uuid4(), {
+            "contact_phone": "+5511999999903",
+            "whatsapp_phone": "+5511999999904",
+        }),
+        "sem-contato": (uuid4(), {
+            "contact_phone": None,
+            "whatsapp_phone": None,
+        }),
+    }
+    by_tenant = dict(companies.values())
+    db = BookingSession(uuid4())
+    central_calls = []
+    catalogue_calls = []
 
-    monkeypatch.setenv("QR_AI_TENANT_ID",str(admin))
-    monkeypatch.setenv("ORION_CENTRAL_APPOINTMENT_WHATSAPP_ENABLED","1")
-    monkeypatch.setattr(site_api,"public_limit",no_limit)
-    monkeypatch.setattr(site_api,"resolve_public",resolve)
-    monkeypatch.setattr(site_api,"published_guard",published)
-    monkeypatch.setattr(site_api,"catalogue",site_catalogue)
-    monkeypatch.setattr(site_api,"get_session_factory",lambda:lambda:db)
-    monkeypatch.setattr(site_api,"tenant_transaction",tenant_scope)
-    monkeypatch.setattr(confirmation,"connected_channel_phone",admin_phone)
-    first=await site_api.public_catalogue("barbearia-peixoto",object())
-    assert first["site"]["whatsapp_phone"]=="+556781234567"
-    active["phone"]="5567912345678"
-    second=await site_api.public_catalogue("barbearia-peixoto",object())
-    assert second["site"]["whatsapp_phone"]=="+5567912345678"
-    active["phone"]=None
-    offline=await site_api.public_catalogue("barbearia-peixoto",object())
-    assert offline["site"]["whatsapp_phone"] is None
+    async def no_limit(_request, slug, action):
+        assert slug in companies and action == "catalogue"
+
+    async def resolve(slug):
+        db.tenant = companies[slug][0]
+        return db.tenant
+
+    async def published(session, tenant, slug):
+        assert session is db and tenant == companies[slug][0]
+
+    async def site_catalogue(session, tenant):
+        assert session is db and tenant == db.tenant
+        catalogue_calls.append(tenant)
+        return {"site": dict(by_tenant[tenant]), "services": []}
+
+    async def admin_phone():
+        central_calls.append(True)
+        return central_number
+
+    monkeypatch.setenv("QR_AI_TENANT_ID", str(uuid4()))
+    monkeypatch.setenv("ORION_CENTRAL_APPOINTMENT_WHATSAPP_ENABLED", central_enabled)
+    monkeypatch.setattr(site_api, "public_limit", no_limit)
+    monkeypatch.setattr(site_api, "resolve_public", resolve)
+    monkeypatch.setattr(site_api, "published_guard", published)
+    monkeypatch.setattr(site_api, "catalogue", site_catalogue)
+    monkeypatch.setattr(site_api, "get_session_factory", lambda: lambda: db)
+    monkeypatch.setattr(site_api, "tenant_transaction", tenant_scope)
+    monkeypatch.setattr(confirmation, "central_admin_phone", admin_phone)
+
+    # The renderer owns contact/legacy precedence. The API preserves each
+    # company's published fields, including an explicitly absent contact.
+    slugs = ("empresa-a", "empresa-b", "sem-contato", "empresa-a")
+    for slug in slugs:
+        result = await site_api.public_catalogue(slug, object())
+        assert result["site"] == companies[slug][1]
+
+    assert catalogue_calls == [companies[slug][0] for slug in slugs]
+    assert central_calls == [], "Public contacts must not query the Orion connection"
+
