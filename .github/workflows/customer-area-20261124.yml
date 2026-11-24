@@ -92,7 +92,23 @@ jobs:
             -e APP_DATABASE_URL -e MIGRATION_DATABASE_URL -e SUPPORT_DATABASE_URL -e REDIS_URL -e REQUIRE_POSTGRES_TESTS \
             -v "$PWD/tests:/srv/app/tests:ro" "$IMAGE" \
             python -m pytest -q -ra tests/unit/test_public_customer_area.py tests/unit/test_public_site_asset_cache.py tests/integration/test_public_customer_area_pg.py
-          docker run --rm --user root "$IMAGE" python -c "from app.main import app; from fastapi.routing import APIRoute; assert any(isinstance(r, APIRoute) and r.path == '/api/v1/public/sites/{slug}/account' for r in app.routes)"
+          docker run --rm -i --user root "$IMAGE" python - <<'PY'
+          import asyncio
+          import httpx
+          from unittest.mock import AsyncMock, patch
+          from uuid import uuid4
+          from app.main import app
+
+          async def verify():
+              with patch("app.public_customer_area.resolve_public", new=AsyncMock(return_value=uuid4())), patch("app.public_customer_area.enabled", return_value=False):
+                  async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="https://orionagenda.pro") as client:
+                      response = await client.get("/api/v1/public/sites/empresa-sintetica/account")
+                      assert response.status_code == 200, (response.status_code, response.text)
+                      assert response.json() == {"available": False, "authenticated": False}, response.text
+              print("Customer area route HTTP smoke passed")
+
+          asyncio.run(verify())
+          PY
       - name: Publicar imagem candidata imutavel (sem alterar Railway)
         run: docker push "$IMAGE"
   browser:
