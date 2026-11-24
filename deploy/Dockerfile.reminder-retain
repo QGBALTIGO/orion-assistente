@@ -10,5 +10,6 @@ FROM verified AS api
 
 FROM verified AS worker
 COPY --chown=appuser:appuser deploy/orion_reminder_live_probe.py /srv/app/app/orion_reminder_live_probe.py
+COPY --chown=appuser:appuser deploy/orion_reminder_test_once.py /srv/app/app/orion_reminder_test_once.py
 COPY --chown=appuser:appuser deploy/attach_reminder_release_probe.py /tmp/attach_reminder_release_probe.py
-RUN python /tmp/attach_reminder_release_probe.py && python -m py_compile /srv/app/app/worker.py /srv/app/app/orion_reminder_live_probe.py
+RUN python /tmp/attach_reminder_release_probe.py && python -m py_compile /srv/app/app/worker.py /srv/app/app/orion_reminder_live_probe.py /srv/app/app/orion_reminder_test_once.py

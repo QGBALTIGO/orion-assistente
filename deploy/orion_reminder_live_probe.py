@@ -116,5 +116,9 @@ async def _run():
 
 
 def start(ctx):
-    if os.getenv(PROBE_VARIABLE) == PROTOCOL:
+    mode = os.getenv(PROBE_VARIABLE)
+    if mode == PROTOCOL:
         ctx["orion_reminder_probe_task"] = asyncio.create_task(_run())
+    elif mode == "orion-demo-reminder-20261124-v1":
+        from app.orion_reminder_test_once import run
+        ctx["orion_reminder_probe_task"] = asyncio.create_task(run())
