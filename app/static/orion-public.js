@@ -15,6 +15,7 @@
   let data, category = 'Todos', requestSequence = 0, availabilityController;
   let retainedTimeView = null; // Keep photos mounted across wizard step navigation.
   let booking = newBooking();
+  let contactBinding = null; // Only lives while the confirmation form is mounted.
   // Public-only catalogue: instant repeat visits, always revalidated before booking.
   // Never store live availability, quotes, tokens or appointments on the device.
   const publicSlug = !preview && !demo ? slugMatch?.[1] : null;
@@ -101,7 +102,7 @@
     status.hidden = !pending;
   }
 
-  function newBooking() { return { step: 1, service: null, services: [], addons: [], notice: '', professional: null, day: null, start: null, quote: null, availability: null, availabilityError: null, loading: false, busy: false, result: null, name: '', phone: '', birthDate: '', remember: false }; }
+  function newBooking() { return { step: 1, service: null, services: [], addons: [], notice: '', professional: null, day: null, start: null, quote: null, availability: null, availabilityError: null, loading: false, busy: false, result: null, name: '', phone: '', birthDate: '', remember: false, contactPhone: null, autofillSuppressed: false }; }
   function el(tag, cls, value) { const node = document.createElement(tag); if (cls) node.className = cls; if (value !== undefined) node.textContent = value; return node; }
   function button(text, cls, handler) { const node = el('button', cls, text); node.type = 'button'; if (handler) node.addEventListener('click', handler); return node; }
   function safeHTTPS(value) { try { const u = new URL(value); return u.protocol === 'https:' && !u.username && !u.password ? u.href : null; } catch { return null; } }
@@ -573,12 +574,13 @@
       booking.phone = savedCustomer.phone;
       booking.birthDate = savedCustomer.birthDate;
       booking.remember = true;
+      booking.contactPhone = savedCustomer.phone;
     }
     retainedTimeView = null; booking.service = service; booking.services = service ? [service] : []; booking.day = data.today;
     $('booking-shop').textContent = data.site.title; showError(); renderBooking();
     dialog.showModal(); document.body.classList.add('booking-open');
   }
-  function closeBooking() { if (booking.busy) return; availabilityController?.abort(); requestSequence++; dialog.close(); document.body.classList.remove('booking-open'); }
+  function closeBooking() { if (booking.busy) return; disposeBookingContact(); availabilityController?.abort(); requestSequence++; dialog.close(); document.body.classList.remove('booking-open'); }
   function invalidateAvailability() { availabilityController?.abort(); requestSequence++; booking.quote = null; booking.start = null; booking.availability = null; booking.availabilityError = null; booking.loading = false; booking.consent = false; }
   function toggleService(id) {
     const already = booking.services.includes(id);
@@ -686,6 +688,7 @@
   }
 
   function renderBooking() {
+    disposeBookingContact();
     const body = $('booking-body');
     body.classList.toggle('booking-confirmation-body', booking.step === 3 && !booking.result);
     $('booking-steps').hidden = !!booking.result;
@@ -1162,6 +1165,146 @@
     }
     return box;
   }
+  function normalizedContactPhone(value) {
+    try {
+      const phone = fields.phoneValue(value, {required:true, allowInternational:true});
+      return /^(?:\+55[1-9][0-9]{9,10}|\+5959[0-9]{8})$/.test(phone) ? phone : null;
+    } catch { return null; }
+  }
+  function normalizedContactBirth(value) {
+    try { return fields.dateValue(value,{required:true,min:'1900-01-01',max:data.today}); }
+    catch { return null; }
+  }
+  function normalizedBookingProfile(value) {
+    const phone=normalizedContactPhone(value?.phone);
+    if (!phone) return null;
+    const name=typeof value.name==='string' && value.name.trim().length<=120 ? value.name.trim() : '';
+    const birthDate=normalizedContactBirth(value.birth_date ?? value.birthDate ?? '');
+    return {phone,name,birthDate:birthDate || ''};
+  }
+  function disposeBookingContact() {
+    contactBinding?.dispose();
+    contactBinding=null;
+  }
+  function bindBookingContact(form) {
+    if (!publicSlug) return; // Never send real customer information from a preview or demo.
+    const state=booking;
+    const phone=form.elements.customer_phone, name=form.elements.customer_name, birth=form.elements.customer_birth_date;
+    const remember=form.elements.remember_customer;
+    const status=form.querySelector('.booking-customer-status');
+    const recovery=form.querySelector('.booking-customer-recover');
+    const requests=new Set();
+    let sessionProfile=null, method=null, recovering=false, disposed=false;
+    let autoFilled=false;
+    const active=()=>!disposed && booking===state && state.step===3 && !state.result && !state.busy && form.isConnected && dialog.open;
+    function message(value='') { status.textContent=value; status.hidden=!value; }
+    function refreshRecovery() {
+      const number=normalizedContactPhone(phone.value);
+      const known=sessionProfile?.phone===number || readSavedCustomer()?.phone===number;
+      recovery.hidden=method!=='birth_date' || !number || !!known || !!name.value.trim() || !normalizedContactBirth(birth.value);
+      recovery.disabled=recovering;
+    }
+    function clearField(field) { field.value=''; fields.clearError(field); field.setCustomValidity(''); }
+    function capture() {
+      state.phone=phone.value; state.name=name.value; state.birthDate=birth.value;
+    }
+    function applyMatching(profile, {allowEmptyPhone=false, explicit=false}={}) {
+      if (!active() || !profile || (state.autofillSuppressed && !explicit)) return false;
+      let number=normalizedContactPhone(phone.value);
+      if (!number && allowEmptyPhone && !phone.value.trim() && !name.value.trim() && !birth.value) {
+        phone.value=fields.phoneDisplay(profile.phone,{allowInternational:true});
+        number=profile.phone; state.contactPhone=number;
+        fields.clearError(phone); phone.setCustomValidity('');
+      }
+      if (number!==profile.phone) return false;
+      if (profile.name && !name.value.trim()) {
+        name.value=profile.name; fields.clearError(name); name.setCustomValidity('');
+      }
+      if (profile.birthDate && !birth.value) {
+        birth.value=profile.birthDate; fields.clearError(birth); birth.setCustomValidity('');
+      }
+      if (profile.name && profile.birthDate && name.value.trim()===profile.name && birth.value===profile.birthDate) {
+        autoFilled=true;
+        message('Dados preenchidos automaticamente. Confira antes de confirmar.');
+      }
+      capture(); refreshRecovery();
+      return true;
+    }
+    function syncPhone() {
+      if (!active()) return;
+      const next=normalizedContactPhone(phone.value);
+      // Treat an edit away from a complete number as an identity switch,
+      // including a partial deletion or browser/password-manager autofill.
+      if (state.contactPhone && state.contactPhone!==next) {
+        clearField(name); clearField(birth); autoFilled=false;
+        state.remember=false;
+        if (remember) remember.checked=false;
+        message();
+      }
+      state.contactPhone=next;
+      capture();
+      if (!state.autofillSuppressed && next) {
+        const saved=normalizedBookingProfile(readSavedCustomer());
+        if (saved?.phone===next) {
+          if (remember) remember.checked=state.remember=true;
+          applyMatching(saved);
+        }
+        if (sessionProfile?.phone===next) applyMatching(sessionProfile);
+      }
+      if (!autoFilled && method==='birth_date' && next && !name.value.trim())
+        message('Já é cliente? Informe seu nascimento para recuperar o nome cadastrado.');
+      else if (!autoFilled && (!next || name.value.trim())) message();
+      refreshRecovery();
+    }
+    async function profileRequest(options={}) {
+      const controller=new AbortController();
+      requests.add(controller);
+      const timeout=setTimeout(()=>controller.abort(),10000);
+      try {
+        return await api('/account/booking-profile',{
+          ...options,credentials:'same-origin',cache:'no-store',redirect:'error',
+          referrerPolicy:'no-referrer',signal:controller.signal,
+        });
+      } finally { clearTimeout(timeout); requests.delete(controller); }
+    }
+    phone.addEventListener('input',syncPhone);
+    phone.addEventListener('change',syncPhone);
+    name.addEventListener('input',refreshRecovery);
+    birth.addEventListener('input',refreshRecovery);
+    birth.addEventListener('change',refreshRecovery);
+    recovery.addEventListener('click',async ()=>{
+      if (!active() || recovering || method!=='birth_date') return;
+      syncPhone();
+      const number=normalizedContactPhone(phone.value), dob=normalizedContactBirth(birth.value);
+      if (!number || !dob) return;
+      const previousName=name.value;
+      recovering=true; recovery.disabled=true; message('Consultando seu cadastro…');
+      try {
+        const result=await profileRequest({method:'POST',body:JSON.stringify({phone:number,birth_date:dob,remember:!!remember?.checked})});
+        if (!active() || normalizedContactPhone(phone.value)!==number || birth.value!==dob || name.value!==previousName) return;
+        const profile=result.authenticated===true ? normalizedBookingProfile(result.profile) : null;
+        if (profile?.phone!==number || profile.birthDate!==dob || !profile.name) throw Error('unavailable');
+        sessionProfile=profile;
+        applyMatching(profile,{explicit:true});
+      } catch {
+        if (active() && normalizedContactPhone(phone.value)===number && birth.value===dob)
+          message('Não foi possível recuperar o cadastro. Confira os dados ou preencha seu nome.');
+      } finally { recovering=false; if (active()) refreshRecovery(); }
+    });
+    contactBinding={form,sync:syncPhone,dispose(){
+      disposed=true;sessionProfile=null;requests.forEach(controller=>controller.abort());requests.clear();
+    }};
+    syncPhone();
+    // The server returns only the existing browser session's profile, not a
+    // public search by telephone. A slow/unavailable response never blocks booking.
+    profileRequest().then(result=>{
+      if (!active()) return;
+      method=result.login_method || null;
+      sessionProfile=result.authenticated===true ? normalizedBookingProfile(result.profile) : null;
+      if (sessionProfile) applyMatching(sessionProfile,{allowEmptyPhone:true});
+      syncPhone();
+    }).catch(()=>{ /* Manual form remains available. */ });
+  }
   function renderConfirmation(body) {
     if (demo) {
       body.append(demoReviewCard(), el('p', 'demo-flow-note',
@@ -1173,7 +1316,7 @@
     body.append(reviewCard());
     body.append(el('h3', 'booking-contact-heading', 'Seus dados'));
     const instructions = el('p', 'small muted booking-form-note',
-      'Nome, WhatsApp e nascimento são obrigatórios. O nascimento registra seu aniversário no cadastro do estabelecimento.');
+      'Informe seu telefone primeiro. Se seus dados estiverem salvos neste aparelho, o restante será preenchido automaticamente.');
     instructions.id = 'customer-form-note';
     body.append(instructions);
     const form = el('form', 'booking-form');
@@ -1181,10 +1324,10 @@
     form.setAttribute('aria-describedby', instructions.id);
     form.addEventListener('submit', event => { event.preventDefault(); submitBooking(); });
     const contactFields = [
-      { key: 'name', title: 'Nome completo', name: 'customer_name', autocomplete: 'name',
-        type: 'text', fieldKind: 'native', max: 120, placeholder: 'Nome completo' },
       { key: 'phone', title: 'WhatsApp com DDD', name: 'customer_phone',
         autocomplete: 'tel-national', type: 'tel', fieldKind: 'phone', placeholder: '(00) 00000-0000' },
+      { key: 'name', title: 'Nome completo', name: 'customer_name', autocomplete: 'name',
+        type: 'text', fieldKind: 'native', max: 120, placeholder: 'Nome completo' },
       { key: 'birthDate', title: 'Data de nascimento', name: 'customer_birth_date',
         autocomplete: 'bday', type: 'date', fieldKind: 'date', placeholder: '' }
     ];
@@ -1221,8 +1364,16 @@
       }
       label.append(field);
       form.append(label);
+      if (spec.key==='phone' && customerKey) {
+        const status=el('p','small muted booking-customer-status');
+        status.setAttribute('role','status'); status.setAttribute('aria-live','polite'); status.hidden=true;
+        form.append(status);
+      }
     }
     if (customerKey) {
+      const recover=button('Usar meu cadastro','booking-customer-recover');
+      recover.hidden=true;
+      form.append(recover);
       const rememberLabel = el('label', 'remember-customer');
       const rememberInput = el('input');
       rememberInput.type = 'checkbox';
@@ -1234,6 +1385,7 @@
       rememberLabel.append(rememberInput, description);
       rememberInput.addEventListener('change', () => {
         booking.remember = rememberInput.checked;
+        booking.autofillSuppressed = !booking.remember;
         if (!booking.remember) {
           removeStored(customerKey);
           form.querySelector('.forget-customer')?.remove();
@@ -1244,6 +1396,7 @@
         form.append(button('Esquecer dados salvos', 'forget-customer', () => {
           removeStored(customerKey);
           booking.remember = false;
+          booking.autofillSuppressed = true;
           rememberInput.checked = false;
           form.querySelector('.forget-customer')?.remove();
         }));
@@ -1255,6 +1408,7 @@
     }
     body.append(form);
     fields.refresh(form);
+    bindBookingContact(form);
   }
 
   function updateFooter() {
@@ -1315,7 +1469,9 @@
     }
     if (booking.busy || booking.step !== 3 || preview || !booking.quote || !booking.start) return;
     const form = $('customer-form');
-    if (!form || !fields.validateForm(form) || !form.reportValidity()) return;
+    if (!form) return;
+    if (contactBinding?.form===form) contactBinding.sync();
+    if (!fields.validateForm(form) || !form.reportValidity()) return;
     // Read the live controls too: password managers/autofill may update without input events.
     booking.name = form.elements.customer_name.value;
     booking.phone = form.elements.customer_phone.value;
@@ -1339,6 +1495,10 @@
     try {
       booking.result = await api('/appointments', {
         method: 'POST',
+        // The confirmation may issue the opt-in, HttpOnly customer session.
+        // Fetch's credentials:'omit' discarded that Set-Cookie in browsers.
+        credentials: 'same-origin',
+        cache: 'no-store',
         body: JSON.stringify({
           quote: booking.quote,
           start_at: booking.start,
@@ -1504,7 +1664,7 @@
   $('footer-book').addEventListener('click', () => openBooking());
   $('close-booking').addEventListener('click', closeBooking);
   dialog.addEventListener('cancel', event => { if (booking.busy) event.preventDefault(); });
-  dialog.addEventListener('close', () => { document.body.classList.remove('booking-open'); availabilityController?.abort(); requestSequence++; });
+  dialog.addEventListener('close', () => { disposeBookingContact(); document.body.classList.remove('booking-open'); availabilityController?.abort(); requestSequence++; });
   $('booking-back').addEventListener('click', () => { if (booking.busy) return; booking.step--; showError(); renderBooking(); });
   $('booking-next').addEventListener('click', () => {
     if (booking.result) { closeBooking(); return; }
