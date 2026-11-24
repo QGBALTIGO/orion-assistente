@@ -1,0 +1,10 @@
+# Keep all production application logic untouched; replace only the portal CSS.
+FROM ghcr.io/qgbaltigo/orion-assistente-api@sha256:5a485d17d5a9c420a9de5b4901ef3458fe70e5b0f4fe9433af636de2c7aa4f43
+USER root
+COPY .ci-baseline/orion-customer-area.css /tmp/orion-customer-area-baseline.css
+COPY app/static/orion-customer-area.css /tmp/orion-customer-area-mobile.css
+RUN cmp /srv/app/app/static/orion-customer-area.css /tmp/orion-customer-area-baseline.css \
+    && cp /tmp/orion-customer-area-mobile.css /srv/app/app/static/orion-customer-area.css \
+    && rm /tmp/orion-customer-area-baseline.css /tmp/orion-customer-area-mobile.css
+USER appuser
+WORKDIR /srv/app
