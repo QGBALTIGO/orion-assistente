@@ -1,0 +1,18 @@
+# Preserve the exact currently deployed API image, including its previous cache fixes.
+FROM ghcr.io/qgbaltigo/orion-assistente-api@sha256:43b1441989261b0b864fd6e1508ffba2a63de7c04ef21475654e6ceb69ae85c0
+USER root
+COPY scripts/patch_public_cache_overlay.py /tmp/patch_public_cache_overlay.py
+COPY scripts/patch_customer_area_overlay.py /tmp/patch_customer_area_overlay.py
+COPY .ci-baseline/ /tmp/orion-area-base/
+COPY app/main.py /tmp/orion-area-edited/app/main.py
+COPY app/public_site_api.py /tmp/orion-area-edited/app/public_site_api.py
+COPY app/static/orion-public.html /tmp/orion-area-edited/app/static/orion-public.html
+COPY app/static/orion-public.js /tmp/orion-area-edited/app/static/orion-public.js
+COPY app/public_customer_area.py /srv/app/app/public_customer_area.py
+COPY app/static/orion-customer-area.css /srv/app/app/static/orion-customer-area.css
+COPY app/static/orion-customer-area.js /srv/app/app/static/orion-customer-area.js
+RUN python /tmp/patch_customer_area_overlay.py \
+    && python -m py_compile /srv/app/app/main.py /srv/app/app/public_site_api.py /srv/app/app/public_customer_area.py \
+    && rm -rf /tmp/orion-area-base /tmp/orion-area-edited /tmp/patch_customer_area_overlay.py /tmp/patch_public_cache_overlay.py /tmp/__pycache__
+USER appuser
+WORKDIR /srv/app
