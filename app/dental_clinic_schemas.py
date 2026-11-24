@@ -184,6 +184,7 @@ class Treatment(Strict):
 
 
 class Budget(Strict):
+    proposal_date: date
     description: str = Field(min_length=3,max_length=3000)
     items: list[Stage] = Field(min_length=1,max_length=60)
     total_cents: int = Field(ge=0,le=100000000)

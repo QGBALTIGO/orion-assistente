@@ -21,6 +21,7 @@
     patients:[],patient:null,records:[],exams:[],intakeTemplates:[],rooms:[],appointments:[],roomDay:localToday(),
     roomZone:'',supplies:[],supplyHistory:null,visitBoard:null,prostheses:null,laboratories:null,labEditing:null,q:'',selectedTooth:11,
     dentition:'permanent',tab:'anamnesis',section:'patients',findings:[],periodontal:[],stages:[],
+    budgetDraft:{proposal_date:localToday(),description:''},
     error:'',success:'',loading:false,submitting:false,patientRead:0,searchRead:0};
   const endpoint=path=>'/api/v1/tenants/'+state.tenantId+'/dental'+path;
   const valid=epoch=>state.host&&state.host.isConnected&&state.epoch===epoch&&state.canAccess?.()===true;
@@ -344,7 +345,8 @@
         choices('Sangramento '+x,'bleeding_'+i,[['','Não registrado'],['true','Sim'],['false','Não']])+'</div>').join('')+'</div>'+
       button('Adicionar dente medido','add-period')+periodList()+
       field('Observações clínicas','note','textarea','','maxlength="3000"');
-    else if(kind==='treatment'||kind==='budget')fields=field('Descrição','description','textarea','','required maxlength="3000"')+
+    else if(kind==='treatment'||kind==='budget')fields=(kind==='budget'?field('Data da proposta','proposal_date','date',state.budgetDraft.proposal_date,'required'):'')+
+      field('Descrição','description','textarea',kind==='budget'?state.budgetDraft.description:'','required maxlength="3000"')+
       '<div class="os-dental-row">'+field('Etapa / procedimento','stage_description','text','','maxlength="400"')+
       choices('Dente (opcional)','stage_tooth',toothOptions)+
       field('Estimativa em reais (opcional)','stage_price','number','','min="0" step="0.01"')+'</div>'+
@@ -376,7 +378,8 @@
       '<div class="os-dental-entry"><strong>FDI '+esc(t.tooth)+'</strong><small>'+
       (t.sites||[]).map((s,i)=>['MV','V','DV','ML','L','DL'][i]+': '+(s.depth_mm==null?'—':s.depth_mm+' mm')+
       (s.bleeding===null||s.bleeding===undefined?'':s.bleeding?' · Sangramento':' · Sem sangramento')).join(' | ')+'</small></div>').join('')+'</div>';
-    if(kind==='treatment'||kind==='budget')return '<p>'+esc(data.description||'')+'</p>'+
+    if(kind==='treatment'||kind==='budget')return (kind==='budget'?row('Data da proposta',dateInput(data.proposal_date).split('-').reverse().join('/')||'Não informada'):'')+
+      '<p>'+esc(data.description||'')+'</p>'+
       '<div class="os-dental-space">'+(data.stages||data.items||[]).map(s=>'<div class="os-dental-entry">'+esc(s.description)+' · '+esc(s.tooth||'')+'</div>').join('')+'</div>';
     if(kind==='prosthesis')return row('Etapa',prosthesisStatus[data.status])+row('Laboratório',data.laboratory)+
       row('Serviço ou peça',data.description)+row('Prazo estimado',formatDueDate(data.due_date));
@@ -760,7 +763,9 @@
   }
   function addStage(){
     const form=state.host?.querySelector('[data-dental-form=record]');if(!form)return;
-    const v=formValues(form);if(!String(v.stage_description||'').trim()){state.error='Descreva a etapa.';render();return;}
+    const v=formValues(form);
+    if(form.dataset.kind==='budget')state.budgetDraft={proposal_date:v.proposal_date,description:v.description};
+    if(!String(v.stage_description||'').trim()){state.error='Descreva a etapa.';render();return;}
     const cents=v.stage_price===''?null:Math.round(Number(v.stage_price)*100);
     if(cents!==null&&(!Number.isSafeInteger(cents)||cents<0||cents>100000000)){
       state.error='Informe um valor válido.';render();return;
@@ -783,7 +788,7 @@
     if(kind==='periodontal')return {teeth:state.periodontal,note:v.note||null};
     if(kind==='progress')return {description:v.description,...(v.appointment_id?{appointment_id:v.appointment_id}:{})};
     if(kind==='treatment')return {description:v.description,stages:state.stages,note:v.note||null};
-    if(kind==='budget')return {description:v.description,items:state.stages,
+    if(kind==='budget')return {proposal_date:v.proposal_date,description:v.description,items:state.stages,
       total_cents:state.stages.reduce((sum,x)=>sum+(x.estimate_cents||0),0),status:'draft'};
     if(kind==='prosthesis')return {laboratory:v.laboratory,description:v.description,
       due_date:v.due_date||null,status:v.status};
@@ -875,7 +880,13 @@
     if(act==='add-period'){addPeriod();return;}
     if(act==='add-stage'){addStage();return;}
     if(act==='remove-finding'){state.findings.splice(Number(btn.dataset.index),1);render();return;}
-    if(act==='remove-stage'){state.stages.splice(Number(btn.dataset.index),1);render();return;}
+    if(act==='remove-stage'){
+      const form=state.host?.querySelector('[data-dental-form=record]');
+      if(form?.dataset.kind==='budget'){
+        const values=formValues(form);state.budgetDraft={proposal_date:values.proposal_date,description:values.description};
+      }
+      state.stages.splice(Number(btn.dataset.index),1);render();return;
+    }
     if(act==='revoke'&&idRe.test(btn.dataset.account||'')&&confirm('Revogar o acesso clínico desta conta?')){
       await invoke(async()=>{await api('/clinicians/'+btn.dataset.account,'DELETE');await fetchAccess();},'Acesso revogado.');return;
     }
@@ -1039,6 +1050,7 @@
         const r=await api('/patients/'+patient.id+'/records?limit=100');
         if(state.patient?.id!==patient.id)return;
         state.records=r.items||[];state.findings=[];state.periodontal=[];state.stages=[];
+        if(form.dataset.kind==='budget')state.budgetDraft={proposal_date:localToday(),description:''};
       },'Registro clínico gravado e auditado.');
     }
     if(kind==='exam'&&patient)return invoke(async()=>{
@@ -1177,6 +1189,7 @@
       professionals:[],patients:[],patient:null,records:[],exams:[],intakeTemplates:[],rooms:[],appointments:[],
       roomDay:localToday(),roomZone:'',supplies:[],supplyHistory:null,visitBoard:null,prostheses:null,laboratories:null,labEditing:null,q:'',
       selectedTooth:11,dentition:'permanent',tab:'anamnesis',section:'patients',findings:[],
+      budgetDraft:{proposal_date:localToday(),description:''},
       periodontal:[],stages:[],creatingPatient:false,editingPatient:false,
       error:'',success:'',loading:false,submitting:false,patientRead:0,searchRead:0});
   }

@@ -119,6 +119,28 @@ test('periodontal sites keep null for all unmeasured locations instead of invent
     assert.equal(site.depth_mm,null);
 });
 
+test('budget draft keeps the explicit date and description while procedures are added',async t=>{
+  const h=makeDOM({level:'dentist'});t.after(()=>h.close());
+  await h.mount();await flush();
+  h.click('[data-dental-action=select-patient]');await flush();
+  h.click('[data-dental-tab=budget]');await flush();
+  h.fill('input[name=proposal_date]','2026-11-22');
+  h.fill('textarea[name=description]','Proposta sintética individual');
+  h.fill('input[name=stage_description]','Procedimento sintético');
+  h.fill('input[name=stage_price]','123.45');
+  h.click('[data-dental-action=add-stage]');await flush();
+  assert.equal(h.host.querySelector('input[name=proposal_date]').value,'2026-11-22');
+  assert.equal(h.host.querySelector('textarea[name=description]').value,'Proposta sintética individual');
+  h.submit('[data-dental-form=record]');await flush();
+  const write=h.calls.find(x=>x.method==='POST'&&x.path.endsWith('/records'));
+  assert.equal(write.data.kind,'budget');
+  assert.equal(write.data.content.proposal_date,'2026-11-22');
+  assert.equal(write.data.content.description,'Proposta sintética individual');
+  assert.equal(write.data.content.items.length,1);
+  assert.equal(write.data.content.total_cents,12345);
+  assert.equal(write.data.content.status,'draft');
+});
+
 test('patient names and clinical content are escaped and never persisted in localStorage',async t=>{
   const unsafe='<img src=x onerror=alert(1)>';
   const h=makeDOM({level:'dentist',patients:[{...patientDTO,name:unsafe}]});t.after(()=>h.close());
