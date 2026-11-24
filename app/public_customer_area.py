@@ -461,7 +461,8 @@ async def state(slug: str, request: Request):
     return reply({"available": method is not None, "authenticated": False})
 
 
-async def birth_login_claims(slug, request, tenant, phone, birth, *, include_dashboard):
+async def birth_login_claims(slug, request, tenant, phone, birth, *, include_dashboard,
+                             include_profile=False):
     """One shared verifier for manual and opt-in post-booking login."""
     await birth_attempt_limits(request, tenant, phone)
     async with get_session_factory()() as db:
@@ -474,9 +475,14 @@ async def birth_login_claims(slug, request, tenant, phone, birth, *, include_das
                 fail(403, BIRTH_FAILURE)
             claims = make_claims(tenant, customer, customer["appointment_id"],
                                  auth_method="birth_date")
-            data = await dashboard(db, tenant, customer, site["timezone"]) if include_dashboard else None
-            if data is not None:
+            if include_dashboard:
+                data = await dashboard(db, tenant, customer, site["timezone"])
                 data["login_method"] = "birth_date"
+            elif include_profile:
+                data = {"authenticated": True, "profile": profile_data(customer),
+                        "login_method": "birth_date"}
+            else:
+                data = None
     return claims, data
 
 
@@ -493,6 +499,49 @@ async def connect_after_booking(slug, request, response, phone, birth):
     claims, _ = await birth_login_claims(slug, request, tenant, phone, birth, include_dashboard=False)
     await issue_session(request, tenant, claims, response, True)
     return True
+
+
+@router.get("/booking-profile")
+@sanitized_database_errors
+async def booking_profile(slug: str, request: Request):
+    """Return only the current authenticated customer's booking fields.
+
+    Never accepts a phone lookup, enumerates customers, or returns appointments.
+    Anonymous callers may learn the public login method, not customer existence.
+    """
+    tenant = await resolve_public(slug)
+    if not enabled():
+        return reply({"authenticated": False, "login_method": None})
+    await public_limit(request, str(tenant), "customer-booking-profile", 120, 300)
+    claims = await read_session(request, tenant)
+    if claims is not None:
+        async with get_session_factory()() as db:
+            async with tenant_transaction(db, tenant, repeatable_read=True):
+                await published_guard(db, tenant, slug)
+                customer = await verified_customer(db, tenant, claims)
+                if customer:
+                    method = "birth_date" if await barber_access(db, tenant) else "private_link"
+                    return reply({"authenticated": True, "profile": profile_data(customer),
+                                  "login_method": method})
+    method = await login_method(slug, tenant)
+    return reply({"authenticated": False, "login_method": method})
+
+
+@router.post("/booking-profile")
+@sanitized_database_errors
+async def recover_booking_profile(slug: str, payload: EnterInput, request: Request):
+    """Explicit phone + DOB verification shares the portal's attempt budgets."""
+    require_enabled()
+    validate_origin(request)
+    if payload.birth_date is None:
+        fail(422, "Informe a data de nascimento.")
+    tenant = await resolve_public(slug)
+    claims, data = await birth_login_claims(
+        slug, request, tenant, payload.phone, payload.birth_date,
+        include_dashboard=False, include_profile=True)
+    response = reply(data)
+    await issue_session(request, tenant, claims, response, payload.remember)
+    return response
 
 
 @router.post("/enter")
