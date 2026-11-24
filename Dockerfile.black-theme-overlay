@@ -1,0 +1,18 @@
+# Retain the latest production image and replace only the public theme assets.
+# Their baseline comes from the public-site branch, not the later dental source.
+FROM ghcr.io/qgbaltigo/orion-assistente-api@sha256:8da07d20dc4624822050b6c4250eb38d0e101b34b9d8e5104de4b45de99a295b
+USER root
+COPY .ci-baseline/ /tmp/orion-black-theme-baseline/
+COPY app/static/orion-public.css /tmp/orion-black-theme-edited/app/static/orion-public.css
+COPY app/static/orion-public-theme.js /tmp/orion-black-theme-edited/app/static/orion-public-theme.js
+COPY app/static/orion-public.js /tmp/orion-black-theme-edited/app/static/orion-public.js
+RUN set -e; \
+    for file in app/static/orion-public.css app/static/orion-public-theme.js app/static/orion-public.js; do \
+      cmp "/srv/app/$file" "/tmp/orion-black-theme-baseline/$file"; \
+    done; \
+    for file in app/static/orion-public.css app/static/orion-public-theme.js app/static/orion-public.js; do \
+      cp "/tmp/orion-black-theme-edited/$file" "/srv/app/$file"; \
+    done; \
+    rm -rf /tmp/orion-black-theme-baseline /tmp/orion-black-theme-edited
+USER appuser
+WORKDIR /srv/app

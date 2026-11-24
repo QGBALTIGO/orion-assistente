@@ -72,7 +72,7 @@ test('theme icon defaults to system (not panel preference), toggles opposite and
   assert.equal(root.dataset.themePreference,'dark');
   assert.equal(h.window.localStorage.getItem('orion-public-theme'),'dark');
   assert.match(toggle.getAttribute('aria-label'),/manual.*modo claro/);
-  assert.equal(h.document.querySelector('meta[name=theme-color]').content,'#080d18');
+  assert.equal(h.document.querySelector('meta[name=theme-color]').content,'#000000');
   h.click('#public-theme-toggle');
   assert.equal(root.dataset.theme,'light');
   assert.equal(root.dataset.themePreference,'auto');

@@ -21,7 +21,7 @@
     root.dataset.themePreference = preference;
     root.dataset.theme = current;
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.content = current === 'dark' ? '#080d18' : '#f5f8fc';
+    if (meta) meta.content = current === 'dark' ? '#000000' : '#f5f8fc';
     const button = document.getElementById('public-theme-toggle');
     if (button) {
       const nextLabel = current === 'dark' ? 'claro' : 'escuro';

@@ -488,7 +488,7 @@
     const hex = /^#[0-9a-f]{6}$/i.test(site.theme_color || '') ? site.theme_color.slice(1) : '2e7bf6';
     const luminance = [0, 2, 4].map(i => parseInt(hex.slice(i, i + 2), 16) / 255).map(v => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4).reduce((n, v, i) => n + v * [.2126, .7152, .0722][i], 0);
     document.documentElement.style.setProperty('--primary-ink', luminance > .179 ? '#0a1425' : '#ffffff');
-    document.querySelector('meta[name=theme-color]').content = `#${hex}`;
+    document.querySelector('meta[name=theme-color]').content = document.documentElement.dataset.theme === 'dark' ? '#000000' : `#${hex}`;
     const cover = safeImageURL(site.cover_url); if (cover) { const image = el('img'); image.src = cover; image.alt = ''; image.loading = 'eager'; image.fetchPriority = 'high'; image.decoding = 'async'; image.referrerPolicy = 'no-referrer'; image.style.width = '100%'; image.style.height = '100%'; $('cover').replaceChildren(image); }
     picture($('site-logo'), site.logo_url, initials(site.title), 'hero');
     $('site-title').textContent = site.title; $('footer-title').textContent = site.title;
