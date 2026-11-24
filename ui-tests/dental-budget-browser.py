@@ -100,7 +100,9 @@ def verify(browser, width, height, theme):
                     full_page=True, animations="disabled")
     root.get_by_role("button", name="Salvar registro clínico", exact=True).click()
     root.get_by_text("Registro clínico gravado e auditado.", exact=True).wait_for()
-    root.get_by_text("22/11/2026", exact=True).wait_for()
+    history = root.locator('details.os-dental-entry').filter(has_text="Procedimento sintético").first
+    history.locator("summary").click()
+    history.get_by_text("22/11/2026", exact=True).wait_for()
     assert len(writes) == 1
     content = writes[0]["content"]
     assert writes[0]["kind"] == "budget"
