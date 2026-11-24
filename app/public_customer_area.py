@@ -1,9 +1,8 @@
-"""Private, phone-first customer area for a published Orion site.
+"""Customer area for published Orion sites.
 
-A typed phone and browser autofill are identifiers, never authentication.
-Only possession of an already-issued private appointment link creates a
-customer session. Existing verified browsers return without codes or messages.
-No outbound messaging, booking mutation, or anonymous CRM lookup is provided.
+Barbershops accept the existing customer's phone and complete birth date,
+with strict attempt limits and a real prior booking. Other business types
+retain private-link verification. All access remains scoped to the tenant.
 """
 import hashlib
 import hmac
@@ -11,7 +10,7 @@ import json
 import os
 import re
 import secrets
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Literal
 from urllib.parse import urlsplit
 from uuid import UUID
@@ -30,7 +29,7 @@ from app.catalog_schemas import StrictModel
 from app.database import get_session_factory, tenant_transaction
 from app.management_schemas import normalize_phone
 from app.panel_auth import _redis
-from app.plan_permissions import has_feature
+from app.plan_permissions import has_feature, lock_plan
 from app.public_origins import canonical_public_origin, legacy_public_origins
 from app.public_site_api import public_limit, published_guard, resolve_public
 from app.short_appointment_api import validate_origin
@@ -67,7 +66,6 @@ def fail(status, message):
 
 def enabled():
     return (os.getenv("ORION_CUSTOMER_PORTAL_ENABLED", "1") == "1"
-            and access.enabled()
             and len(os.getenv("INTEGRATION_FERNET_KEY", "")) >= 32
             and bool(os.getenv("REDIS_URL")))
 
@@ -89,6 +87,18 @@ class PhoneInput(StrictModel):
         return result
 
 
+class EnterInput(PhoneInput):
+    birth_date: date | None = None
+    remember: StrictBool = True
+
+    @field_validator("birth_date")
+    @classmethod
+    def valid_birth(cls, value):
+        if value is not None and not date(1900, 1, 1) <= value <= datetime.now(timezone.utc).date():
+            raise ValueError("Confira a data de nascimento.")
+        return value
+
+
 class LinkInput(PhoneInput):
     booking_link: str = Field(min_length=20, max_length=650)
     remember: StrictBool = True
@@ -100,6 +110,78 @@ def phone_fingerprint(phone):
         fail(503, "A área do cliente está temporariamente indisponível.")
     return hmac.new(secret.encode(), ("orion:customer-area:phone:v1:" + phone).encode(),
                     hashlib.sha256).hexdigest()
+
+
+def birth_fingerprint(phone, birth):
+    secret = os.environ.get("INTEGRATION_FERNET_KEY", "")
+    if len(secret) < 32:
+        fail(503, "A área do cliente está temporariamente indisponível.")
+    return hmac.new(secret.encode(),
+                    ("orion:customer-area:birth:v1:" + phone + "|" + birth.isoformat()).encode(),
+                    hashlib.sha256).hexdigest()
+
+
+BIRTH_FAILURE = "Não foi possível acessar. Confira seu telefone e data de nascimento cadastrados. Se ainda não agendou, faça seu primeiro agendamento. Para corrigir dados antigos, fale com o estabelecimento."
+
+
+async def barber_access(db, tenant):
+    """Allow simplified login only for an explicitly identified barbershop.
+
+    Match the existing onboarding/profile source of truth; never infer from
+    the public site title or let a client select its own business type.
+    """
+    await lock_plan(db, tenant)
+    return (await db.execute(text("""
+        SELECT CASE WHEN b.tenant_id IS NOT NULL
+                    THEN b.configuration->>'niche' = 'barbearia'
+                    ELSE p.profile->'categories' = '["barbearia"]'::jsonb END
+        FROM (VALUES (1)) AS anchor(value)
+        LEFT JOIN business_onboarding b ON b.tenant_id=:t
+        LEFT JOIN business_profile_state s ON s.tenant_id=:t
+        LEFT JOIN business_profile_versions p
+          ON p.tenant_id=s.tenant_id AND p.id=s.published_version_id
+    """), {"t": tenant})).scalar_one() is True
+
+
+async def login_method(slug, tenant):
+    async with get_session_factory()() as db:
+        async with tenant_transaction(db, tenant):
+            await published_guard(db, tenant, slug)
+            if await barber_access(db, tenant):
+                return "birth_date"
+    return "private_link" if access.enabled() else None
+
+
+async def birth_attempt_limits(request, tenant, phone):
+    fingerprint = phone_fingerprint(phone)
+    await public_limit(request, str(tenant), "customer-birth-ip", 20, 300)
+    await public_limit(request, str(tenant), "customer-birth-phone", 5, 86400,
+                       subject=fingerprint)
+    # The same telephone cannot be guessed without limit using site aliases,
+    # other company slugs, a new cookie, or the booking convenience path.
+    await public_limit(request, "all", "customer-birth-phone-global", 10, 86400,
+                       subject=fingerprint)
+
+
+async def birth_customer(db, tenant, phone, birth):
+    """Only existing non-deleted customers with a real accepted appointment.
+
+    A cancelled hold is not a completed first booking. A public booking may
+    initialize a new customer's DOB, but never overwrites an existing DOB.
+    """
+    return (await db.execute(text("""
+        SELECT c.id,c.name,c.whatsapp_e164,c.birth_date,c.version,a.id AS appointment_id
+        FROM customers c JOIN appointments a
+          ON a.tenant_id=c.tenant_id AND a.customer_id=c.id
+        WHERE c.tenant_id=:t AND c.whatsapp_e164=:phone AND c.birth_date=:birth
+          AND c.active AND c.deleted_at IS NULL AND NOT a.customer_access_blocked
+          AND (a.status IN ('confirmed','completed','no_show') OR
+               (a.status='cancelled' AND EXISTS(
+                   SELECT 1 FROM appointment_history h
+                   WHERE h.tenant_id=a.tenant_id AND h.appointment_id=a.id
+                     AND h.event='confirmed')))
+        ORDER BY a.start_at DESC,a.id DESC LIMIT 1 FOR SHARE OF a,c
+    """), {"t": tenant, "phone": phone, "birth": birth})).mappings().one_or_none()
 
 
 def cookie_name(tenant):
@@ -121,14 +203,18 @@ async def cache_call(operation):
         await cache.aclose()
 
 
-def make_claims(tenant, customer, appointment, legacy_digest=None):
-    return {
+def make_claims(tenant, customer, appointment, legacy_digest=None, *, auth_method="private_link"):
+    claims = {
         "tenant": str(tenant), "customer": str(customer["id"]),
         "version": int(customer["version"]),
         "phone_hash": phone_fingerprint(customer["whatsapp_e164"]),
         "appointment": str(appointment),
         "legacy_digest": legacy_digest,
+        "auth_method": auth_method,
     }
+    if auth_method == "birth_date":
+        claims["birth_hash"] = birth_fingerprint(customer["whatsapp_e164"], customer["birth_date"])
+    return claims
 
 
 async def read_session(request, tenant):
@@ -144,6 +230,11 @@ async def read_session(request, tenant):
             return None
         UUID(claims["customer"])
         UUID(claims["appointment"])
+        method = claims.get("auth_method", "private_link")
+        if method not in {"private_link", "birth_date"}:
+            return None
+        if method == "birth_date" and not DIGEST.fullmatch(claims.get("birth_hash", "")):
+            return None
         legacy = claims.get("legacy_digest")
         if legacy is not None and not DIGEST.fullmatch(legacy):
             return None
@@ -205,16 +296,25 @@ async def customer_from_appointment(db, tenant, appointment, customer=None):
 
 
 async def verified_customer(db, tenant, claims):
-    try:
-        access.require_tenant(tenant)
-    except HTTPException:
-        return None
+    birth_login = claims.get("auth_method") == "birth_date"
+    if birth_login:
+        if not await barber_access(db, tenant):
+            return None
+    else:
+        try:
+            access.require_tenant(tenant)
+        except HTTPException:
+            return None
     row = await customer_from_appointment(
         db, tenant, UUID(claims["appointment"]), UUID(claims["customer"]))
     if (not row or not row["whatsapp_e164"] or row["version"] != claims["version"]
             or not hmac.compare_digest(phone_fingerprint(row["whatsapp_e164"]),
                                        claims["phone_hash"])):
         return None
+    if birth_login:
+        if not row["birth_date"] or not hmac.compare_digest(
+                birth_fingerprint(row["whatsapp_e164"], row["birth_date"]), claims["birth_hash"]):
+            return None
     if claims.get("legacy_digest"):
         try:
             identity = await access.verify(db, tenant, claims["legacy_digest"])
@@ -350,21 +450,67 @@ async def state(slug: str, request: Request):
         return reply({"available": False, "authenticated": False})
     await public_limit(request, str(tenant), "customer-state", 120, 300)
     result = await existing_dashboard(request, slug, tenant)
-    return reply(result or {"available": True, "authenticated": False})
+    if result:
+        return reply(result)
+    method = await login_method(slug, tenant)
+    if method == "birth_date":
+        return reply({"available": True, "authenticated": False, "login_method": method})
+    return reply({"available": method is not None, "authenticated": False})
+
+
+async def birth_login_claims(slug, request, tenant, phone, birth, *, include_dashboard):
+    """One shared verifier for manual and opt-in post-booking login."""
+    await birth_attempt_limits(request, tenant, phone)
+    async with get_session_factory()() as db:
+        async with tenant_transaction(db, tenant, repeatable_read=True):
+            site = await published_guard(db, tenant, slug)
+            if not await barber_access(db, tenant):
+                fail(403, BIRTH_FAILURE)
+            customer = await birth_customer(db, tenant, phone, birth)
+            if not customer:
+                fail(403, BIRTH_FAILURE)
+            claims = make_claims(tenant, customer, customer["appointment_id"],
+                                 auth_method="birth_date")
+            data = await dashboard(db, tenant, customer, site["timezone"]) if include_dashboard else None
+    return claims, data
+
+
+async def connect_after_booking(slug, request, response, phone, birth):
+    """Only on an explicitly opted-in, committed reservation, with matching DOB.
+
+    A failed account connection must never change a successful booking.
+    """
+    if not enabled() or birth is None:
+        return False
+    tenant = await resolve_public(slug)
+    if await login_method(slug, tenant) != "birth_date":
+        return False
+    claims, _ = await birth_login_claims(slug, request, tenant, phone, birth, include_dashboard=False)
+    await issue_session(request, tenant, claims, response, True)
+    return True
 
 
 @router.post("/enter")
 @sanitized_database_errors
-async def enter(slug: str, payload: PhoneInput, request: Request):
+async def enter(slug: str, payload: EnterInput, request: Request):
     require_enabled()
     validate_origin(request)
     tenant = await resolve_public(slug)
+    if payload.birth_date is not None:
+        claims, data = await birth_login_claims(slug, request, tenant, payload.phone,
+                                               payload.birth_date, include_dashboard=True)
+        response = reply(data)
+        await issue_session(request, tenant, claims, response, payload.remember)
+        return response
     await public_limit(request, str(tenant), "customer-enter-ip", 15, 300)
     await public_limit(request, "all", "customer-enter-phone", 12, 300,
                        subject=phone_fingerprint(payload.phone))
-    # Identical result for registered and unregistered numbers in a new browser.
     result = await existing_dashboard(request, slug, tenant, payload.phone)
-    return reply(result or NEEDS_LINK)
+    if result:
+        return reply(result)
+    if await login_method(slug, tenant) == "birth_date":
+        return reply({"authenticated": False, "birth_date_required": True})
+    return reply(NEEDS_LINK)
 
 
 @router.post("/link-login")
