@@ -1638,6 +1638,21 @@ async def test_dental_sales_opportunity_is_private_repeatable_and_paged(clinic_a
         assert [item["id"] for item in filtered.json()["items"]] == [first["id"]]
         assert (await client.get(path,params={"stage":"lost"})).json() == {"items":[],"next":None}
         assert (await client.get(path,params={"stage":"in_progress","before":second["id"]})).status_code == 400
+        summary = path + "/summary"
+        totals = (await client.post(summary,json={})).json()
+        assert totals == {"items":[
+            {"stage":"open","name":"Em aberto","count":2},
+            {"stage":"in_progress","name":"Em andamento","count":1},
+            {"stage":"won","name":"Ganha","count":0},
+            {"stage":"lost","name":"Perdida","count":0},
+        ],"total":3,"currency_totals_available":False}
+        searched_totals = (await client.post(summary,json={"query":"ORÇAMENTO"})).json()
+        assert searched_totals["total"] == 2
+        assert [item["count"] for item in searched_totals["items"]] == [1,1,0,0]
+        description_totals = (await client.post(summary,json={"query":"CONTATO SINTETICO"})).json()
+        assert description_totals["total"] == 1
+        assert [item["count"] for item in description_totals["items"]] == [0,1,0,0]
+        assert (await client.post(summary,json={"query":"x"})).status_code == 422
         search = path + "/search"
         found = await client.post(search,json={"query":"ORÇAMENTO", "limit":1})
         assert found.status_code == 200
@@ -1658,6 +1673,7 @@ async def test_dental_sales_opportunity_is_private_repeatable_and_paged(clinic_a
         assert (await client.get(path)).status_code == 403
         assert (await client.post(path,json=first)).status_code == 403
         assert (await client.post(search,json={"query":"orcamento"})).status_code == 403
+        assert (await client.post(summary,json={})).status_code == 403
         actor = Actor("member", d["b"], d["account_b"], "owner")
         assert (await client.get(other)).json()["items"] == []
         assert (await client.get(other,params={"before":first["id"]})).status_code == 400
@@ -1669,6 +1685,9 @@ async def test_dental_sales_opportunity_is_private_repeatable_and_paged(clinic_a
         searches = await db.scalar(text("SELECT count(*) FROM dental_access_audit WHERE tenant_id=:t AND action='sales_opportunities_searched'"),
                                    {"t":d["a"]})
         assert searches == 5
+        summaries = await db.scalar(text("SELECT count(*) FROM dental_access_audit WHERE tenant_id=:t AND action='sales_opportunity_summary_read'"),
+                                    {"t":d["a"]})
+        assert summaries == 3
         blob = await db.scalar(text("SELECT encrypted_content FROM dental_sales_opportunities WHERE tenant_id=:t AND id=:i"),
                                {"t":d["a"],"i":first["id"]})
         assert first["title"].encode() not in bytes(blob) and first["description"].encode() not in bytes(blob)
@@ -1853,6 +1872,9 @@ async def test_opportunity_period_uses_clinic_midnight_and_scopes_pagination(cli
         assert second["next"] is None
         searched = await client.post(path+"/search",json={"query":"orcamento sintetico",**period})
         assert [row["id"] for row in searched.json()["items"]] == list(map(str,[ids[2],ids[1]]))
+        period_totals = (await client.post(path+"/summary",json=period)).json()
+        assert period_totals["total"] == 2
+        assert [item["count"] for item in period_totals["items"]] == [2,0,0,0]
         assert (await client.get(path, params={**period,"before":str(ids[3])})).status_code == 400
         for params, expected in [
             ({"start_date":"2026-03-09"},[ids[3]]),
@@ -1864,3 +1886,4 @@ async def test_opportunity_period_uses_clinic_midnight_and_scopes_pagination(cli
             assert [row["id"] for row in reply.json()["items"]] == list(map(str,expected))
         for invalid in [{"start_date":"2026-02-30"},{"start_date":"2026-03-09","end_date":"2026-03-08"}]:
             assert (await client.get(path,params=invalid)).status_code == 422
+            assert (await client.post(path+"/summary",json=invalid)).status_code == 422

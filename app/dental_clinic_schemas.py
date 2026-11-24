@@ -308,6 +308,19 @@ class SalesOpportunitySearch(Strict):
         return self
 
 
+class SalesOpportunitySummary(Strict):
+    query: str | None = Field(None, min_length=2, max_length=80,
+                              pattern=r"^[^\x00-\x1F\x7F]+$")
+    start_date: date | None = None
+    end_date: date | None = None
+
+    @model_validator(mode="after")
+    def valid_period(self):
+        if self.start_date and self.end_date and self.start_date > self.end_date:
+            raise ValueError("A data final deve ser igual ou posterior à inicial")
+        return self
+
+
 class SalesOpportunityStart(Strict):
     expected_version: int = Field(ge=1, strict=True)
     request_id: UUID4

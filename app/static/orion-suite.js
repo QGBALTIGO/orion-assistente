@@ -2971,6 +2971,17 @@
       '</select></div><div class="os-form-actions"><button class="os-button os-outline" type="submit">Aplicar filtro</button>'+
       (selected!=='all'?button('Limpar filtro','dental-sales-filter-clear','os-ghost'):'')+'</div></form>';
   }
+  function dentalSalesSummary(summary,selected){
+    if(!summary?.items?.length)return '';
+    return '<section class="os-card os-dental-sales-summary" aria-labelledby="osSalesFunnelHeading">'+
+      '<div class="os-dental-sales-summary-heading"><div><h2 id="osSalesFunnelHeading" tabindex="-1">Funil de oportunidades</h2>'+
+      '<p>'+esc(summary.total)+' '+(summary.total===1?'oportunidade no recorte atual':'oportunidades no recorte atual')+'</p></div>'+
+      '<small>Valores serão exibidos após o vínculo real com orçamentos.</small></div>'+
+      '<div class="os-dental-sales-summary-grid" role="list">'+summary.items.map(item=>
+        '<button type="button" role="listitem" data-os-action="dental-sales-summary-filter" data-stage="'+esc(item.stage)+'" '+
+        'aria-pressed="'+(selected===item.stage)+'"><span>'+esc(item.name)+'</span><strong>'+esc(item.count)+'</strong></button>').join('')+
+      '</div></section>';
+  }
   async function applyDentalSalesSearch(form,clear=false){
     if(state.route!=='vendas-odonto'||!dentalSettingsAllowed())return;
     const query=clear?'':form.elements.sales_query.value.trim().replace(/\s+/g,' ');
@@ -3012,9 +3023,13 @@
     if(more)more.disabled=true;
     try{
       const encoded=params.toString();
-      const data=query?await request(apiPath('/dental/sales/opportunities/search'),'POST',{
+      const listRequest=query?request(apiPath('/dental/sales/opportunities/search'),'POST',{
         query,...(stage&&stage!=='all'?{stage}:{}),...(start?{start_date:start}:{}),...(end?{end_date:end}:{}),...(older?{before:older}:{})
-      }):await request(apiPath('/dental/sales/opportunities')+(encoded?'?'+encoded:''));
+      }):request(apiPath('/dental/sales/opportunities')+(encoded?'?'+encoded:''));
+      const summaryRequest=more?null:request(apiPath('/dental/sales/opportunities/summary'),'POST',{
+        ...(query?{query}:{}),...(start?{start_date:start}:{}),...(end?{end_date:end}:{})
+      });
+      const [data,summary]=more?[await listRequest,null]:await Promise.all([listRequest,summaryRequest]);
       if(!current(c)||!dentalSettingsAllowed())return;
       const list=data.items.map(item=>'<li data-sales-opportunity="'+esc(item.id)+'"><div><div class="os-dental-sales-title"><strong>'+esc(item.title)+'</strong>'+
         '<span class="os-status '+(item.stage==='in_progress'?'is-progress':'')+'">'+esc(item.stage_name||'Em aberto')+'</span></div>'+
@@ -3036,7 +3051,7 @@
         if(item){item.tabIndex=-1;item.focus({preventScroll:true});}
         return;
       }
-      $('osPageBody').innerHTML='<section class="os-card" aria-labelledby="osSalesHeading">'+
+      $('osPageBody').innerHTML=dentalSalesSummary(summary,stage)+'<section class="os-card" aria-labelledby="osSalesHeading">'+
         '<div class="os-card-header"><h2 id="osSalesHeading" tabindex="-1">Oportunidades</h2></div>'+
         (list?'<ul id="osDentalSalesList" class="os-dental-sales-list">'+list+'</ul><div id="osDentalSalesPager">'+next+'</div>':
           (query?empty('search','Nenhuma oportunidade encontrada','Revise o paciente, o título, a descrição ou os filtros informados.'):
@@ -5286,6 +5301,15 @@
       }
       case 'dental-sales-filter-clear':{
         const form=$('osDentalSalesFilters');if(form)await applyDentalSalesFilters(form,true);
+        break;
+      }
+      case 'dental-sales-summary-filter':{
+        const stage=element.dataset.stage;
+        if(state.route==='vendas-odonto'&&dentalSettingsAllowed()&&['open','in_progress','won','lost'].includes(stage)){
+          state.filters.dentalSalesStage=state.filters.dentalSalesStage===stage?'all':stage;
+          await open('vendas-odonto',{keepScroll:true});
+          if(state.route==='vendas-odonto')$('osSalesFunnelHeading')?.focus({preventScroll:true});
+        }
         break;
       }
       case 'dental-opportunity-more':

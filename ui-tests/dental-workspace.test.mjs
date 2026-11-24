@@ -461,7 +461,7 @@ test('ajustes da clínica salvam a etapa de vendas e a recarregam ao voltar',asy
 });
 
 test('vendas preserva o cadastro e registra acompanhamento perdido com transições idempotentes',async t=>{
-  const all=[],posts=[],searches=[],starts=[],losses=[];
+  const all=[],posts=[],searches=[],summaries=[],starts=[],losses=[];
   const patients=[
     {id:'10000000-0000-4000-8000-000000000011',name:'Paciente Sintético Dois',birth_date:'2016-08-09',guardian_name:'Responsável Comum'},
     {id:'10000000-0000-4000-8000-000000000012',name:'Paciente Sintético Um',birth_date:'2012-03-04',guardian_name:'Responsável Comum'}
@@ -472,6 +472,14 @@ test('vendas preserva o cadastro e registra acompanhamento perdido com transiç�
       assert.equal(payload.query,'999990099');return {items:patients,has_more:false};
     }
     if(!path.includes('/dental/sales/opportunities'))return [];
+    if(method==='POST'&&path.endsWith('/summary')){
+      summaries.push({...payload});
+      const visible=payload.query?all.filter(item=>(item.title+' '+item.description+' '+(item.patient?.name||''))
+        .toLowerCase().includes(payload.query.toLowerCase())):all;
+      const labels={open:'Em aberto',in_progress:'Em andamento',won:'Ganha',lost:'Perdida'};
+      return {items:Object.entries(labels).map(([stage,name])=>({stage,name,count:visible.filter(item=>item.stage===stage).length})),
+        total:visible.length,currency_totals_available:false};
+    }
     if(method==='POST'&&path.endsWith('/start')){
       const item=all.find(row=>path.includes('/'+row.id+'/start'));assert.ok(item);
       starts.push({...payload});assert.equal(payload.expected_version,1);
@@ -505,6 +513,7 @@ test('vendas preserva o cadastro e registra acompanhamento perdido com transiç�
   }});t.after(()=>h.close());await flush();
   const nav=h.document.querySelector('#osNav [data-os-route="vendas-odonto"]');assert.equal(nav.textContent,'Vendas');
   assert.match(h.document.querySelector('#osPageBody').textContent,/Nenhuma oportunidade em aberto/);
+  assert.equal(h.document.querySelector('.os-dental-sales-summary [data-stage=open] strong').textContent,'0');
   h.click('[data-os-action=dental-opportunity-new]');
   h.fill('[name=title]','Retorno sintético');h.fill('[name=description]','<script>nota de teste</script>');
   h.fill('#osSalesPatientQuery','999990099');h.click('[data-os-action=dental-sales-patient-search]');await flush();
@@ -527,8 +536,15 @@ test('vendas preserva o cadastro e registra acompanhamento perdido com transiç�
   h.submit('[data-os-form=confirm]');await flush();await flush();
   assert.equal(losses.length,1);assert.match(h.document.getElementById('osDentalSalesList').textContent,/Perdida/);
   assert.equal(h.document.querySelector('[data-os-action=dental-opportunity-lose]'),null);
+  const lostTotal=h.document.querySelector('.os-dental-sales-summary [data-stage=lost]');
+  assert.equal(lostTotal.querySelector('strong').textContent,'1');
+  h.click('.os-dental-sales-summary [data-stage=lost]');await flush();await flush();
+  assert.equal(h.document.querySelector('[name=sales_stage]').value,'lost');
+  assert.equal(h.document.querySelectorAll('#osDentalSalesList li').length,1);
+  h.click('.os-dental-sales-summary [data-stage=lost]');await flush();await flush();
+  assert.equal(h.document.querySelector('[name=sales_stage]').value,'all');
   h.fill('[name=sales_stage]','lost');h.submit('#osDentalSalesFilters');await flush();await flush();
-  assert.match(h.calls.at(-1).path,/stage=lost/);
+  assert.match(h.calls.filter(call=>!call.path.endsWith('/summary')).at(-1).path,/stage=lost/);
   assert.equal(h.document.querySelectorAll('#osDentalSalesList li').length,1);
   h.fill('[name=sales_stage]','open');h.submit('#osDentalSalesFilters');await flush();await flush();
   assert.match(h.document.querySelector('#osPageBody').textContent,/Nenhuma oportunidade nesta etapa/);
@@ -539,6 +555,7 @@ test('vendas preserva o cadastro e registra acompanhamento perdido com transiç�
   assert.equal(list.children.length,2);assert.equal(h.document.activeElement,list.children[1]);
   h.fill('[name=sales_query]','nota de teste');h.submit('#osDentalSalesSearch');await flush();
   assert.equal(JSON.stringify(searches.at(-1)),JSON.stringify({query:'nota de teste'}));
+  assert.equal(JSON.stringify(summaries.at(-1)),JSON.stringify({query:'nota de teste'}));
   assert.equal(h.document.querySelectorAll('#osDentalSalesList li').length,1);
   h.click('[data-os-action=dental-sales-search-clear]');await flush();
   assert.equal(h.document.querySelector('[name=sales_query]').value,'');
@@ -560,9 +577,15 @@ test('a área de vendas odontológicas só aparece para a titular autorizada',as
 });
 
 test('o período de criação valida datas, acompanha a paginação e limpa o filtro',async t=>{
-  const reads=[],sample={id:'abc',title:'Retorno no período',description:'',created_at:'2026-11-22T14:00:00Z'};
-  const h=await makeSuite({initialRoute:'vendas-odonto',permissions:dentalPlan({dental_clinical_enabled:true}),respond(path){
+  const reads=[],summaryReads=[],sample={id:'abc',title:'Retorno no período',description:'',created_at:'2026-11-22T14:00:00Z'};
+  const h=await makeSuite({initialRoute:'vendas-odonto',permissions:dentalPlan({dental_clinical_enabled:true}),respond(path,method,payload){
     if(!path.includes('/dental/sales/opportunities'))return [];
+    if(path.endsWith('/summary')){
+      summaryReads.push(payload);
+      const count=payload.start_date==='2027-01-01'?0:1;
+      return {items:[{stage:'open',name:'Em aberto',count},{stage:'in_progress',name:'Em andamento',count:0},
+        {stage:'won',name:'Ganha',count:0},{stage:'lost',name:'Perdida',count:0}],total:count,currency_totals_available:false};
+    }
     const query=new URL(path,'https://synthetic.test').searchParams;reads.push(query);
     if(query.has('before'))return {items:[{...sample,id:'def'}],next:null};
     if(query.get('start_date')==='2027-01-01')return {items:[],next:null};
@@ -575,6 +598,7 @@ test('o período de criação valida datas, acompanha a paginação e limpa o fi
   assert.equal(h.document.activeElement.name,'sales_end');
   h.fill('[name=sales_start]','2026-11-22');h.submit(period);await flush();
   assert.deepEqual(Object.fromEntries(reads.at(-1)),{start_date:'2026-11-22',end_date:'2026-11-22'});
+  assert.equal(JSON.stringify(summaryReads.at(-1)),JSON.stringify({start_date:'2026-11-22',end_date:'2026-11-22'}));
   h.click('[data-os-action=dental-opportunity-more]');await flush();
   assert.deepEqual(Object.fromEntries(reads.at(-1)),{start_date:'2026-11-22',end_date:'2026-11-22',before:'abc'});
   h.fill('[name=sales_start]','2027-01-01');h.fill('[name=sales_end]','');h.submit(period);await flush();
