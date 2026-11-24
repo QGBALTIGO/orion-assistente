@@ -84,10 +84,10 @@ def test_compact_confirmation_birth_and_phone(browser_name,width,theme):
             assert page.locator('.privacy-note').count()==0
             assert page.locator('[name=confirmed]').count()==0
             assert page.locator('#booking-total').is_hidden()
-            assert page.locator('.review-row.total').count()==1
-            assert page.locator('.review-row.total').inner_text().count('40,00')==1
+            assert page.locator('.booking-summary-price').count()==1
+            assert page.locator('.booking-summary-price').inner_text().count('40,00')==1
             assert page.locator('.booking-footer-confirm').count()==1
-            fields=form.locator('input')
+            fields=form.locator('.field input')
             assert fields.count()==3
 
             phone=form.locator('[name=customer_phone]')
@@ -124,3 +124,4 @@ def test_compact_confirmation_birth_and_phone(browser_name,width,theme):
             assert not errors,errors
         finally:
             browser.close()
+

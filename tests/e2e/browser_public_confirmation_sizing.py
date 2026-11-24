@@ -53,8 +53,16 @@ def test_native_fields_and_actions_have_one_scale(browser_name, width, height, t
                       'orion-fields.js': ('text/javascript', FIELDS_JS)}
             def asset(route):
                 name = urlsplit(route.request.url).path.rsplit('/', 1)[-1]
-                mime, body = assets[name]
-                route.fulfill(status=200, content_type=mime, body=body)
+                if name in assets:
+                    mime, body = assets[name]
+                    route.fulfill(status=200, content_type=mime, body=body)
+                else:
+                    path = ROOT / 'app/static' / name
+                    if path.is_file() and path.suffix in ('.js', '.css'):
+                        mime = 'text/css' if path.suffix == '.css' else 'text/javascript'
+                        route.fulfill(status=200, content_type=mime, body=path.read_bytes())
+                    else:
+                        route.abort()
             page.route('**/public-assets/*', asset)
             def font(route):
                 name = urlsplit(route.request.url).path.rsplit('/', 1)[-1]
@@ -102,7 +110,7 @@ def test_native_fields_and_actions_have_one_scale(browser_name, width, height, t
                   };
                   return {viewport:innerWidth, document:document.documentElement.scrollWidth,
                     dialog:box(document.querySelector('#booking-dialog')),
-                    inputs:[...document.querySelectorAll('#customer-form input')].map(box),
+                    inputs:[...document.querySelectorAll('#customer-form .field input')].map(box),
                     back:box(document.querySelector('#booking-back')),
                     next:box(document.querySelector('#booking-next')),
                     footer:box(document.querySelector('.booking-footer'))};
@@ -153,3 +161,4 @@ def test_native_fields_and_actions_have_one_scale(browser_name, width, height, t
             if not page.is_closed():
                 page.screenshot(path=str(ARTIFACTS / f'{stem}-final.png'), full_page=True)
             browser.close()
+

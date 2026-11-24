@@ -1,0 +1,16 @@
+# Replace only the reviewed booking presentation on the exact production image.
+FROM ghcr.io/qgbaltigo/orion-assistente-api@sha256:c7c6f6bacdd11a82413a8b98bdb45dae91344af85a9f7277e478db2a44bb931b
+USER root
+COPY .ci-baseline/ /tmp/orion-booking-clean-baseline/
+COPY app/static/orion-public.js /tmp/orion-booking-clean-edited/app/static/orion-public.js
+COPY app/static/orion-public.css /tmp/orion-booking-clean-edited/app/static/orion-public.css
+RUN set -e; \
+    for file in app/static/orion-public.js app/static/orion-public.css; do \
+      cmp "/srv/app/$file" "/tmp/orion-booking-clean-baseline/$file"; \
+    done; \
+    for file in app/static/orion-public.js app/static/orion-public.css; do \
+      cp "/tmp/orion-booking-clean-edited/$file" "/srv/app/$file"; \
+    done; \
+    rm -rf /tmp/orion-booking-clean-baseline /tmp/orion-booking-clean-edited
+USER appuser
+WORKDIR /srv/app

@@ -1117,15 +1117,48 @@
 
   function reviewCard(result = null) {
     if (demo) return demoReviewCard();
-    const box = el('div', 'review-card'); box.append(el('h3', '', 'Seu atendimento'));
+    const box = el('div', 'review-card');
     const person = result?.professional || data.professionals.find(p => p.id === booking.professional)?.name;
     const services = result?.services || booking.availability?.services ||
       [...selectedServices().map(s => s.name), ...selectedAddons().map(a => a.name)];
     const start = result?.start_at || booking.start;
-    const lines = [['Serviços', services.filter(Boolean).join(' + ')], ['Profissional', person], ['Data', new Intl.DateTimeFormat('pt-BR', { dateStyle: 'long', timeZone: data.timezone }).format(new Date(start))], ['Horário', slotTime(start)]];
     const minutes = result?.end_at ?
       Math.round((new Date(result.end_at) - new Date(start)) / 60000) :
       (booking.availability?.duration_min ?? selectionTotal().minutes);
+    const estimate = booking.availability || selectionTotal();
+    const variable = (result?.price_mode || estimate.price_mode) === 'from';
+    if (!result) {
+      box.classList.add('booking-summary');
+      box.setAttribute('role', 'group');
+      box.setAttribute('aria-label', 'Resumo do agendamento');
+      const header = el('div', 'booking-summary-header');
+      const details = el('div', 'booking-summary-details');
+      details.append(el('h3', '', services.filter(Boolean).join(' + ')));
+      const meta = [person];
+      if (Number.isFinite(minutes) && minutes > 0) meta.push(duration(minutes));
+      details.append(el('p', 'booking-summary-meta', meta.filter(Boolean).join(' · ')));
+      const price = el('div', 'booking-summary-price');
+      price.setAttribute('aria-label', variable ? 'Valor mínimo previsto' : 'Valor do atendimento');
+      if (variable) price.append(el('span', '', 'A partir de'));
+      price.append(el('strong', '', priceText(estimate.price_cents ?? estimate.price, 'fixed')));
+      header.append(details, price);
+      const schedule = el('div', 'booking-summary-schedule');
+      const date = el('time', 'booking-summary-date', new Intl.DateTimeFormat('pt-BR', {
+        day: 'numeric', month: 'short', year: 'numeric', timeZone: data.timezone
+      }).format(new Date(start)));
+      date.dateTime = start;
+      const time = el('span', 'booking-summary-time', slotTime(start));
+      if (Number.isFinite(minutes) && minutes > 0) {
+        const end = slotTime(new Date(new Date(start).getTime() + minutes * 60000));
+        time.textContent += ' – ' + end;
+        time.setAttribute('aria-label', `Horário: ${slotTime(start)}. Término previsto: ${end}.`);
+      }
+      schedule.append(date, time);
+      box.append(header, schedule);
+      return box;
+    }
+    box.append(el('h3', '', 'Seu atendimento'));
+    const lines = [['Serviços', services.filter(Boolean).join(' + ')], ['Profissional', person], ['Data', new Intl.DateTimeFormat('pt-BR', { dateStyle: 'long', timeZone: data.timezone }).format(new Date(start))], ['Horário', slotTime(start)]];
     if (Number.isFinite(minutes) && minutes > 0) {
       lines.push(['Duração', duration(minutes)]);
       lines.push([result ? 'Término' : 'Término previsto',
@@ -1133,8 +1166,6 @@
     }
     if (result?.protocol) lines.push(['Protocolo', result.protocol]);
     for (const [key, value] of lines) { const row = el('div', 'review-row'); row.append(el('span', '', key), el('strong', '', value)); box.append(row); }
-    const estimate = booking.availability || selectionTotal();
-    const variable = (result?.price_mode || estimate.price_mode) === 'from';
     const total = el('div', 'review-row total');
     total.append(el('span', '', variable?'Valor mínimo previsto':'Valor do atendimento'),
       el('strong', '', priceText(result?.price_cents ?? estimate.price_cents ?? estimate.price,variable?'from':'fixed')));
@@ -1225,7 +1256,7 @@
       }
       if (profile.name && profile.birthDate && name.value.trim()===profile.name && birth.value===profile.birthDate) {
         autoFilled=true;
-        message('Dados preenchidos automaticamente. Confira antes de confirmar.');
+        message('Dados preenchidos');
       }
       capture(); refreshRecovery();
       return true;
@@ -1251,9 +1282,7 @@
         }
         if (sessionProfile?.phone===next) applyMatching(sessionProfile);
       }
-      if (!autoFilled && method==='birth_date' && next && !name.value.trim())
-        message('Já é cliente? Informe seu nascimento para recuperar o nome cadastrado.');
-      else if (!autoFilled && (!next || name.value.trim())) message();
+      if (!autoFilled) message();
       refreshRecovery();
     }
     async function profileRequest(options={}) {
@@ -1278,7 +1307,7 @@
       const number=normalizedContactPhone(phone.value), dob=normalizedContactBirth(birth.value);
       if (!number || !dob) return;
       const previousName=name.value;
-      recovering=true; recovery.disabled=true; message('Consultando seu cadastro…');
+      recovering=true; recovery.disabled=true; message('Buscando cadastro…');
       try {
         const result=await profileRequest({method:'POST',body:JSON.stringify({phone:number,birth_date:dob,remember:!!remember?.checked})});
         if (!active() || normalizedContactPhone(phone.value)!==number || birth.value!==dob || name.value!==previousName) return;
@@ -1288,7 +1317,7 @@
         applyMatching(profile,{explicit:true});
       } catch {
         if (active() && normalizedContactPhone(phone.value)===number && birth.value===dob)
-          message('Não foi possível recuperar o cadastro. Confira os dados ou preencha seu nome.');
+          message('Não foi possível recuperar. Preencha seu nome.');
       } finally { recovering=false; if (active()) refreshRecovery(); }
     });
     contactBinding={form,sync:syncPhone,dispose(){
@@ -1315,19 +1344,14 @@
     // The separate message preference is optional and never confirms a booking.
     body.append(reviewCard());
     body.append(el('h3', 'booking-contact-heading', 'Seus dados'));
-    const instructions = el('p', 'small muted booking-form-note',
-      'Informe seu telefone primeiro. Se seus dados estiverem salvos neste aparelho, o restante será preenchido automaticamente.');
-    instructions.id = 'customer-form-note';
-    body.append(instructions);
     const form = el('form', 'booking-form');
     form.id = 'customer-form';
-    form.setAttribute('aria-describedby', instructions.id);
     form.addEventListener('submit', event => { event.preventDefault(); submitBooking(); });
     const contactFields = [
       { key: 'phone', title: 'WhatsApp com DDD', name: 'customer_phone',
         autocomplete: 'tel-national', type: 'tel', fieldKind: 'phone', placeholder: '(00) 00000-0000' },
       { key: 'name', title: 'Nome completo', name: 'customer_name', autocomplete: 'name',
-        type: 'text', fieldKind: 'native', max: 120, placeholder: 'Nome completo' },
+        type: 'text', fieldKind: 'native', max: 120, placeholder: '' },
       { key: 'birthDate', title: 'Data de nascimento', name: 'customer_birth_date',
         autocomplete: 'bday', type: 'date', fieldKind: 'date', placeholder: '' }
     ];
@@ -1379,9 +1403,7 @@
       rememberInput.type = 'checkbox';
       rememberInput.name = 'remember_customer';
       rememberInput.checked = booking.remember;
-      const description = el('span');
-      description.append(el('strong', '', 'Lembrar meus dados neste aparelho'),
-        el('small', '', 'Opcional. Lembra seus dados neste navegador por até 90 dias e mantém sua área do cliente conectada por 30 dias, quando disponível. Evite aparelhos compartilhados.'));
+      const description = el('span', '', 'Lembrar neste aparelho');
       rememberLabel.append(rememberInput, description);
       rememberInput.addEventListener('change', () => {
         booking.remember = rememberInput.checked;
@@ -1393,7 +1415,7 @@
       });
       form.append(rememberLabel);
       if (readSavedCustomer()) {
-        form.append(button('Esquecer dados salvos', 'forget-customer', () => {
+        form.append(button('Esquecer dados', 'forget-customer', () => {
           removeStored(customerKey);
           booking.remember = false;
           booking.autofillSuppressed = true;
@@ -1401,10 +1423,6 @@
           form.querySelector('.forget-customer')?.remove();
         }));
       }
-    }
-    if (!preview && !demo) {
-      form.append(el('p', 'privacy-note',
-        'Para receber confirmação, lembrete e pedido de avaliação, envie a mensagem que abrir no WhatsApp da Orion Agenda.'));
     }
     body.append(form);
     fields.refresh(form);
@@ -1732,3 +1750,4 @@
         (demo ? 'Esta demonstração expirou ou deixou de estar disponível.' : 'Este endereço ainda não foi publicado ou deixou de estar disponível.') : error.message));
   });
 })();
+

@@ -1,0 +1,91 @@
+name: Orion - Agendamento mais limpo
+on:
+  push:
+    branches: [codex/orion-booking-clean-20261124]
+    paths:
+      - 'app/static/orion-public.js'
+      - 'app/static/orion-public.css'
+      - 'tests/e2e/browser_public_confirmation_clean.py'
+      - 'tests/e2e/browser_public_confirmation_sizing.py'
+      - 'tests/e2e/browser_public_cache_profile.py'
+      - 'tests/e2e/browser_public_booking_autofill.py'
+      - 'Dockerfile.booking-clean-overlay'
+      - '.github/workflows/booking-clean-20261124.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  browser:
+    name: Confirmacao e preenchimento automatico em Chromium/WebKit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    container:
+      image: mcr.microsoft.com/playwright/python:v1.56.0-noble@sha256:a7f6cf3ae520c9d670ad956572c13747ed5abdbba5123a01526f873ed1662528
+      options: --init
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verificar sintaxe e instalar dependencias dos testes
+        run: |
+          node --check app/static/orion-public.js
+          python -m pip install -r tests/e2e/requirements.txt pytest
+      - name: Testar confirmacao, telas pequenas e perfil salvo
+        run: >-
+          python -m pytest -q -ra
+          tests/e2e/browser_public_confirmation_clean.py
+          tests/e2e/browser_public_confirmation_sizing.py
+          tests/e2e/browser_public_cache_profile.py
+          tests/e2e/browser_public_booking_autofill.py
+      - name: Guardar capturas para revisao visual
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: booking-clean-${{ github.sha }}
+          path: test-artifacts/confirmation-sizing/
+          if-no-files-found: error
+          retention-days: 7
+  image:
+    name: Publicar overlay somente apos os testes
+    needs: browser
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/qgbaltigo/orion-assistente-api:booking-clean-${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Preparar baseline exato da producao
+        run: |
+          set -euo pipefail
+          BASELINE_COMMIT=771d62467ef52d556b475860c3f6a2084acfc3ae
+          for path in app/static/orion-public.js app/static/orion-public.css; do
+            mkdir -p ".ci-baseline/$(dirname "$path")"
+            git show "$BASELINE_COMMIT:$path" > ".ci-baseline/$path"
+          done
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Construir e conferir os arquivos da imagem
+        run: |
+          set -euo pipefail
+          docker build --platform linux/amd64 -f Dockerfile.booking-clean-overlay -t "$IMAGE" .
+          container_id=$(docker create "$IMAGE")
+          trap 'docker rm -f "$container_id" >/dev/null 2>&1 || true' EXIT
+          docker cp "$container_id:/srv/app/app/static/orion-public.js" /tmp/orion-public-reviewed.js
+          docker cp "$container_id:/srv/app/app/static/orion-public.css" /tmp/orion-public-reviewed.css
+          cmp app/static/orion-public.js /tmp/orion-public-reviewed.js
+          cmp app/static/orion-public.css /tmp/orion-public-reviewed.css
+          node --check /tmp/orion-public-reviewed.js
+      - name: Publicar imagem candidata sem alterar Railway
+        run: docker push "$IMAGE"

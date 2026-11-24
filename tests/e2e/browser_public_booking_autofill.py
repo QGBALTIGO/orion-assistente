@@ -145,7 +145,7 @@ def test_real_browser_accepts_first_booking_cookie_and_autofills_return(browser_
                 expect(phone).to_have_value("(86) 97267-6282",timeout=12000)
                 expect(name).to_have_value(PROFILE["name"])
                 expect(birth).to_have_value(DOB)
-                expect(form.locator(".booking-customer-status")).to_contain_text("preenchidos automaticamente")
+                expect(form.locator(".booking-customer-status")).to_have_text("Dados preenchidos")
                 assert any(verified for _,verified in profile_calls),profile_calls
                 assert page.evaluate("(key)=>localStorage.getItem(key)",KEY) is None
                 calls_before=len(profile_calls)
@@ -192,7 +192,7 @@ def test_new_device_recovers_only_after_explicit_birthdate_verification(browser_
             enter_confirmation(page)
             form,phone,name,birth=form_fields(page)
             phone.fill("86972676282")
-            expect(form.locator(".booking-customer-status")).to_contain_text("Já é cliente?")
+            expect(form.locator(".booking-customer-status")).not_to_be_visible()
             expect(name).to_have_value("")
             expect(birth).to_have_value("")
             expect(form.locator(".booking-customer-recover")).not_to_be_visible()
@@ -205,7 +205,7 @@ def test_new_device_recovers_only_after_explicit_birthdate_verification(browser_
             form.locator(".booking-customer-recover").click()
             expect(name).to_have_value(PROFILE["name"])
             expect(birth).to_have_value(DOB)
-            expect(form.locator(".booking-customer-status")).to_contain_text("preenchidos automaticamente")
+            expect(form.locator(".booking-customer-status")).to_have_text("Dados preenchidos")
             assert len(attempts)==2
             assert not posted and not errors,(posted,errors)
             assert page.evaluate("(key)=>localStorage.getItem(key)",KEY) is None
@@ -261,3 +261,4 @@ def test_local_cache_and_late_session_never_mix_two_people(browser_name):
         finally:
             context.close()
             browser.close()
+
