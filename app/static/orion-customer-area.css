@@ -24,6 +24,7 @@ body.public-customer-white-label .customer-area-dialog .customer-orion-brand{dis
  border:1px solid var(--border);border-radius:22px;background:var(--card);
  color:var(--text);box-shadow:0 24px 90px #0004;
  overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;
+ scroll-padding-top:calc(var(--portal-header-height) + 12px);scroll-padding-bottom:16px;
  -webkit-text-size-adjust:100%;text-size-adjust:100%;
 }
 .customer-area-dialog::backdrop{background:#10182880;backdrop-filter:blur(4px);}
@@ -124,7 +125,8 @@ html[data-theme="dark"] #customer-area-dialog .customer-area-field>input[type=da
 .customer-area-status[data-status="cancelled"],.customer-area-status[data-status="no_show"]{background:var(--soft);color:var(--muted)}
 html[data-theme="dark"] .customer-area-status[data-status="confirmed"]{color:#8abaff}
 html[data-theme="dark"] .customer-area-status[data-status="completed"]{color:#72d99a}
-.customer-area-card-meta{display:flex;flex-wrap:wrap;gap:5px 9px;color:var(--muted);font-size:12px;line-height:1.5;}
+ .customer-area-card-meta{display:flex;flex-wrap:wrap;gap:5px 9px;color:var(--muted);font-size:12px;line-height:1.5;min-width:0;}
+.customer-area-card-meta>span{min-width:0;max-width:100%;overflow-wrap:anywhere}
 .customer-area-card-price{font-size:14px;font-weight:700;font-variant-numeric:tabular-nums}
 .customer-area-empty{padding:22px 14px;text-align:center;border:1px dashed var(--border);border-radius:13px;display:flex;flex-direction:column;gap:5px}
 .customer-area-empty strong{font-size:14px}
@@ -138,6 +140,7 @@ html[data-theme="dark"] .customer-area-status[data-status="completed"]{color:#72
 .customer-area-detail dd{margin:0;font-size:15px;font-weight:600;overflow-wrap:anywhere}
 .customer-area-busy{display:flex;align-items:center;justify-content:center;min-height:150px;gap:10px;color:var(--muted);font-size:13px}
 .customer-area-dialog button:focus-visible,.customer-area-dialog input:focus-visible{outline:2px solid var(--portal-accent);outline-offset:3px}
+.customer-area-dialog:has(.customer-area-tabs:not([hidden])){scroll-padding-top:calc(var(--portal-header-height) + 70px)}
 @media(max-width:600px), (max-height:500px) and (pointer:coarse){
  .customer-area-dialog{
    --portal-pad-left:max(16px,env(safe-area-inset-left,0px));
