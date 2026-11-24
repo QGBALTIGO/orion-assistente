@@ -86,9 +86,15 @@ def verify(browser, width, height, theme):
     assert description.input_value() == "Proposta sintética individual"
     root.get_by_text("Procedimento sintético", exact=True).wait_for()
     assert not page.evaluate("document.documentElement.scrollWidth>innerWidth+1"), (width, theme)
-    assert root.evaluate("""el=>[...el.querySelectorAll('input,textarea,select,button')].every(node=>{
-        const box=node.getBoundingClientRect();return !box.width||(box.left>=-1&&box.right<=innerWidth+1);
-    })"""), (width, theme)
+    budget_form = root.locator('[data-dental-form="record"]')
+    assert budget_form.evaluate("""form=>{
+        const bounds=form.getBoundingClientRect();
+        return form.scrollWidth<=form.clientWidth+1 &&
+          [...form.querySelectorAll('input,textarea,select,button')].every(node=>{
+            const box=node.getBoundingClientRect();
+            return !box.width||(box.left>=bounds.left-1&&box.right<=bounds.right+1&&box.right<=innerWidth+1);
+          });
+    }"""), (width, theme)
     shell.OUT.mkdir(parents=True, exist_ok=True)
     page.screenshot(path=str(shell.OUT / f"orcamento-rascunho-{width}-{theme}.png"),
                     full_page=True, animations="disabled")
