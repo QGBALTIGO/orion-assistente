@@ -1,0 +1,145 @@
+{
+  "contacts": {
+    "items": [
+      {
+        "key": "phone:5567999991234",
+        "name": "Ana Souza",
+        "telegram": null,
+        "email": "ana@example.test",
+        "notes": "Contato sintético para demonstração.",
+        "chatbot_enabled": true,
+        "audio_transcription_enabled": false,
+        "plan_name": "Mensal",
+        "price_cents": 2590,
+        "due_date": null,
+        "service_username": "ana-demo",
+        "password_configured": true,
+        "phone_e164": "+5567999991234",
+        "groups": [
+          {
+            "id": "10000000-0000-4000-8000-000000000001",
+            "name": "Clientes mensais"
+          }
+        ],
+        "group_ids": [
+          "10000000-0000-4000-8000-000000000001"
+        ],
+        "version": "60bea8a8f4d8b3a097f2e509c2bf1bb26294605b8470696a89e62c2eb34954fb"
+      },
+      {
+        "key": "contact:20000000-0000-4000-8000-000000000001",
+        "name": "Contato Telegram",
+        "telegram": "@pessoa_demo",
+        "email": "ana@example.test",
+        "notes": "Contato sintético para demonstração.",
+        "chatbot_enabled": true,
+        "audio_transcription_enabled": false,
+        "plan_name": "Mensal",
+        "price_cents": 2590,
+        "due_date": null,
+        "service_username": "ana-demo",
+        "password_configured": false,
+        "phone_e164": null,
+        "groups": [],
+        "group_ids": [],
+        "version": "f55f356c40b35e52f17aa03cb6b1d4196346a215348a6735f6220a093b21fe4c"
+      }
+    ],
+    "total": 2,
+    "page": 1,
+    "page_size": 30,
+    "pages": 1
+  },
+  "groups": {
+    "items": [
+      {
+        "id": "10000000-0000-4000-8000-000000000001",
+        "name": "Clientes mensais",
+        "version": 3,
+        "member_count": 1,
+        "whatsapp_count": 1,
+        "telegram_count": 0,
+        "blocked_count": 0,
+        "archived": false
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "page_size": 100,
+    "pages": 1
+  },
+  "group_detail": {
+    "group": {
+      "id": "10000000-0000-4000-8000-000000000001",
+      "name": "Clientes mensais",
+      "version": 3,
+      "member_count": 1,
+      "whatsapp_count": 1,
+      "telegram_count": 0,
+      "blocked_count": 0,
+      "archived": false
+    },
+    "contact_keys": [
+      "phone:5567999991234"
+    ]
+  },
+  "options": {
+    "groups": [
+      {
+        "id": "10000000-0000-4000-8000-000000000001",
+        "name": "Clientes mensais",
+        "version": 3,
+        "member_count": 1,
+        "whatsapp_count": 1,
+        "telegram_count": 0,
+        "blocked_count": 0,
+        "archived": false
+      }
+    ],
+    "limits": {
+      "contacts": 100000,
+      "groups": 100,
+      "members_per_group": 5000,
+      "import_rows": 20000,
+      "import_bytes": 8388608,
+      "page_size": 100
+    },
+    "defaults": {
+      "default_country": "BR",
+      "chatbot_enabled": true,
+      "audio_transcription_enabled": true
+    }
+  },
+  "preview": {
+    "preview_token": "fixture-preview-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "counts": {
+      "total": 4211,
+      "valid": 4210,
+      "invalid": 1,
+      "duplicates": 2,
+      "blank": 0,
+      "unique": 4208,
+      "existing": 3,
+      "new": 4205
+    },
+    "errors": [
+      {
+        "line": 23,
+        "code": "invalid_row",
+        "message": "O telefone está vazio"
+      }
+    ],
+    "sample": [
+      {
+        "line": 2,
+        "name": "Ana Souza",
+        "phone_e164": "+5567999991234",
+        "duplicate": false,
+        "existing": true
+      }
+    ],
+    "can_commit": false,
+    "can_skip_invalid": true,
+    "expires_at": "2026-11-24T23:59:00+00:00"
+  }
+}

@@ -1,0 +1,130 @@
+name: Orion - Publico e ferramentas de assinaturas
+
+on:
+  push:
+    branches: [codex/orion-subscription-audience-20261124]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: subscription-audience-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  interface:
+    name: Interface e navegacao existentes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+      - name: Ferramentas, Publico e isolamento dos nichos
+        run: |
+          node --check app/static/orion-subscription-number-check.js
+          node --check app/static/orion-subscription-whatsapp-link.js
+          node --check app/static/orion-subscription-audience.js
+          node --check app/static/orion-suite.js
+          node --test \
+            ui-tests/subscription-tools.test.mjs \
+            ui-tests/subscription-audience.test.mjs \
+            ui-tests/subscription-audience-navigation.test.mjs \
+            ui-tests/subscription-workspace.test.mjs \
+            ui-tests/dashboard-navigation.test.mjs \
+            ui-tests/member-account-settings.test.mjs \
+            ui-tests/plan-permissions.test.mjs \
+            ui-tests/dental-workspace.test.mjs
+
+  candidates:
+    name: Imagens candidatas, banco real e artefatos
+    needs: interface
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      packages: write
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: orion_subscription_audience_ci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-only-audience-postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d orion_subscription_audience_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      redis:
+        image: redis:7
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 15
+    env:
+      APP_DATABASE_URL: postgresql+asyncpg://app_runtime:ci-audience-runtime@127.0.0.1:5432/orion_subscription_audience_ci
+      MIGRATION_DATABASE_URL: postgresql+psycopg://app_migrator:ci-audience-migrator@127.0.0.1:5432/orion_subscription_audience_ci
+      SUPPORT_DATABASE_URL: postgresql+asyncpg://app_support:ci-audience-support@127.0.0.1:5432/orion_subscription_audience_ci
+      SUPPORT_API_TOKEN: synthetic-audience-ci-token-at-least-32-characters
+      REQUIRE_POSTGRES_TESTS: '1'
+      REQUIRE_REDIS_TESTS: '1'
+      REDIS_URL: redis://127.0.0.1:6379/15
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validar manifesto e protecoes do empacotamento
+        run: |
+          python -m unittest discover -s tests/unit -p test_subscription_audience_release_overlay.py -v
+          python scripts/subscription_audience_release_overlay.py validate
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Construir somente os arquivos declarados sobre os digests revisados
+        run: |
+          python scripts/subscription_audience_release_overlay.py build \
+            --revision "$GITHUB_SHA" --release-id "$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+      - name: Testar cada candidata com suas dependencias herdadas
+        run: |
+          for service in api worker bridge; do
+            python scripts/subscription_audience_release_overlay.py test \
+              --revision "$GITHUB_SHA" --service "$service" --phase unit
+          done
+      - name: Preparar PostgreSQL descartavel com os tres papeis reais
+        env:
+          POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          docker exec -i "$POSTGRES_CONTAINER" psql -U postgres -d orion_subscription_audience_ci \
+            -v ON_ERROR_STOP=1 -v db_name=orion_subscription_audience_ci \
+            -v runtime_password=ci-audience-runtime \
+            -v migrator_password=ci-audience-migrator \
+            -v support_password=ci-audience-support \
+            < infra/postgres/init/001-roles.sql
+          docker exec -i "$POSTGRES_CONTAINER" psql -U postgres -d orion_subscription_audience_ci \
+            -v ON_ERROR_STOP=1 <<'SQL'
+          ALTER DATABASE orion_subscription_audience_ci OWNER TO app_migrator;
+          CREATE EXTENSION IF NOT EXISTS btree_gist;
+          SQL
+          python scripts/subscription_audience_release_overlay.py migrate --revision "$GITHUB_SHA"
+      - name: Validar migracao, RLS, importacao e preferencias sem rede externa
+        run: |
+          for service in api worker bridge; do
+            python scripts/subscription_audience_release_overlay.py test \
+              --revision "$GITHUB_SHA" --service "$service" --phase integration
+          done
+      - name: Publicar tags unicas apos todos os testes
+        run: python scripts/subscription_audience_release_overlay.py publish --revision "$GITHUB_SHA"
+      - name: Registrar digests, commit e hashes de cada arquivo
+        uses: actions/upload-artifact@v4
+        with:
+          name: subscription-audience-release-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/orion-subscription-audience-release/subscription-audience-release.json
+          if-no-files-found: error
+          retention-days: 30

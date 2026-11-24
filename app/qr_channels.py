@@ -597,6 +597,7 @@ async def _bridge_control(row, action, method, payload=None):
         group_read = action in {
             "device/group-add/groups", "device/group-add/members",
             "device/group-contacts/groups", "device/group-contacts/members",
+            "device/number-check/check",
         }
         # Read-only group queries can take longer while WhatsApp synchronizes.
         # Every other control, especially group participant mutations, retains

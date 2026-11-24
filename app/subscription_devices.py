@@ -750,6 +750,15 @@ async def _event_effects(db, device_id, event_id):
     return await available_effects(db, device_id, event_id)
 
 
+def _contact_effect_allowed(effect, preferences):
+    """Contact switches are independent; call rejection and webhooks keep theirs."""
+    if effect["purpose"] in {"absence", "call_reply"}:
+        return preferences["chatbot_enabled"]
+    if effect["type"] == "transcribe" or effect["purpose"] == "transcription_reply":
+        return preferences["audio_transcription_enabled"]
+    return True
+
+
 @router.post(INTERNAL + "/event")
 async def device_event(channel_id: UUID, payload: DeviceEvent, request: Request):
     async with _private_transaction(request) as (db, row, transport, _, fence):
@@ -779,6 +788,10 @@ async def device_event(channel_id: UUID, payload: DeviceEvent, request: Request)
             await _store_runtime(db, row, status_data)
         rejected_call = None
         device_effects = effects_for_event(row["settings"], data, now=now, audio_available=audio_capable()) if payload.origin == "contact" else []
+        if device_effects:
+            from app.subscription_audience_store import preferences
+            contact = await preferences(db, row["tenant_id"], data.get("phone"))
+            device_effects = [effect for effect in device_effects if _contact_effect_allowed(effect, contact)]
         for index, effect in enumerate(device_effects):
             effect_id = await _insert_effect(db, row, event_id, str(index), effect,
                 previous=rejected_call if effect["purpose"] == "call_reply" else None)
@@ -926,6 +939,11 @@ async def _policy_still_allows(db, row, effect):
                              {"t": row["tenant_id"], "e": effect["event_id"]})).scalar_one()
     if effect["type"] == "webhook":
         return row["settings"]["webhook"]["enabled"] and row["settings"]["webhook"]["url"] == effect["payload"]["url"]
+    if effect["purpose"] in {"absence", "call_reply", "transcription_reply"} or effect["type"] == "transcribe":
+        from app.subscription_audience_store import preferences
+        contact = await preferences(db, row["tenant_id"], effect["payload"].get("phone"))
+        if not _contact_effect_allowed(effect, contact):
+            return False
     if effect["purpose"] == "transcription_reply":
         return row["settings"]["transcription"]["enabled"]
     candidates = effects_for_event(row["settings"], event, audio_available=audio_capable())

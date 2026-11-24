@@ -32,27 +32,47 @@ export function makeEncryptedRetryStore({
     const hash=createHmac("sha256",key).update(String(id)).digest("hex");
     return path.join(directory,hash+".enc");
   }
+  // Process-local reasons for recent evictions contain only opaque filenames.
+  // They are bounded and expiring, and never make an evicted proto retryable.
+  // After a process restart an already removed record is honestly "absent".
+  const removals=new Map();
+  function rememberRemoval(target,reason){
+    const name=path.basename(target);removals.delete(name);
+    removals.set(name,{reason,expires:now()+ttlMs});
+    for(const [item,value] of removals)if(value.expires<=now())removals.delete(item);
+    while(removals.size>2000)removals.delete(removals.keys().next().value);
+  }
+  function missingReason(target){
+    const name=path.basename(target),removed=removals.get(name);
+    if(removed?.expires>now())return removed.reason;
+    removals.delete(name);return 'absent';
+  }
   function prune(){
     const list=fs.readdirSync(directory).filter(x=>/^[a-f0-9]{64}\.enc$/.test(x));
     const sorted=list.map(name=>{const stat=fs.lstatSync(path.join(directory,name));return {name,mtime:stat.mtimeMs,size:stat.size};}).sort((a,b)=>a.mtime-b.mtime);
     for(const entry of [...sorted]){
       if(entry.mtime<now()-ttlMs){
         fs.rmSync(path.join(directory,entry.name),{force:true});
+        rememberRemoval(entry.name,'expired');
         sorted.splice(sorted.indexOf(entry),1);
       }
     }
     let total=sorted.reduce((sum,entry)=>sum+entry.size,0);
     while(sorted.length>max||(maxTotalBytes!==undefined&&total>maxTotalBytes)){
       const oldest=sorted.shift();total-=oldest.size;fs.rmSync(path.join(directory,oldest.name),{force:true});
+      rememberRemoval(oldest.name,'capacity_evicted');
     }
   }
-  function save(keyData,message){
+  function save(keyData,message,{origin='bridge_generated'}={}){
     if(!keyData?.id || !message || typeof message!=="object")return false;
+    if(!['bridge_generated','linked_self'].includes(origin))return false;
     try{
       const id=String(keyData.id);
       const identity=retryIdentity(keyData),old=entry(keyData);
       if(old?.identity?.peer&&!sameRetryIdentity(old.identity,identity))return false;
-      const payload=Buffer.from(serialize({expires:now()+ttlMs,message,identity}),"utf8");
+      // A replayed linked-phone echo cannot relabel a bridge-generated send.
+      if(old?.origin==='bridge_generated'&&origin==='linked_self')return false;
+      const payload=Buffer.from(serialize({expires:now()+ttlMs,message,identity,origin}),"utf8");
       if(payload.length>maxPayloadBytes){payload.fill(0);return false;}
       const iv=randomBytes(12);
       const cipher=createCipheriv("aes-256-gcm",key,iv);
@@ -71,6 +91,7 @@ export function makeEncryptedRetryStore({
           fs.fsyncSync(fd);
         }finally{fs.closeSync(fd)}
         fs.renameSync(tmp,target);
+        removals.delete(path.basename(target));
         // Persist the filename as well as the ciphertext on Linux volumes.
         if(process.platform!=='win32'){
           const directoryFd=fs.openSync(directory,"r");
@@ -84,34 +105,53 @@ export function makeEncryptedRetryStore({
       return false;
     }
   }
-  function entry(keyData){
-    if(!keyData?.id)return undefined;
+  // Internal lookup only: callers may emit `reason`, never the returned entry.
+  // Authentication/recipient checks remain in readAuthorizedRetry.
+  function entryResult(keyData){
+    if(!keyData?.id)return {reason:'invalid_id'};
     const target=file(keyData.id);
+    let record;
     try{
-      const fd=fs.openSync(target,fs.constants.O_RDONLY|(fs.constants.O_NOFOLLOW||0));let record;
-      try{const stat=fs.fstatSync(fd);if(!stat.isFile()||stat.size>maxPayloadBytes*2+2048)return undefined;
-        record=JSON.parse(fs.readFileSync(fd,'utf8'));
+      const fd=fs.openSync(target,fs.constants.O_RDONLY|(fs.constants.O_NOFOLLOW||0));
+      try{const stat=fs.fstatSync(fd);if(!stat.isFile())return {reason:'unsafe_file'};
+        if(stat.size>maxPayloadBytes*2+2048)return {reason:'oversized_record'};
+        const contents=fs.readFileSync(fd,'utf8');
+        try{record=JSON.parse(contents);}catch{return {reason:'corrupt_record'};}
       }finally{fs.closeSync(fd);}
-      if(![1,2].includes(record.v))return undefined;
+    }catch(error){
+      return {reason:error?.code==='ENOENT'?missingReason(target):error?.code==='ELOOP'?'unsafe_file':'storage_error'};
+    }
+    if(!record||typeof record!=='object'||Array.isArray(record))return {reason:'corrupt_record'};
+    if(![1,2].includes(record.v))return {reason:'unsupported_format'};
+    if(!['iv','tag','ciphertext'].every(name=>typeof record[name]==='string'))return {reason:'corrupt_record'};
+    let plaintext;
+    try{
       const decipher=createDecipheriv("aes-256-gcm",key,Buffer.from(record.iv,"base64"));
       decipher.setAAD(Buffer.from(record.v===2?"orion-retry-v2\0"+path.resolve(directory)+"\0"+String(keyData.id):"orion-retry-v1"));
       decipher.setAuthTag(Buffer.from(record.tag,"base64"));
-      const plaintext=Buffer.concat([
+      plaintext=Buffer.concat([
         decipher.update(Buffer.from(record.ciphertext,"base64")),decipher.final()]);
-      let parsed;try{parsed=deserialize(plaintext.toString("utf8"));}finally{plaintext.fill(0);}
-      if(!Number.isFinite(parsed.expires)||parsed.expires<=now()){
-        fs.rmSync(target,{force:true});
-        return undefined;
-      }
-      return {message:parsed.message,identity:parsed.identity,expires:parsed.expires};
     }catch{
-      return undefined;
+      return {reason:'decryption_failed'};
     }
+    let parsed;
+    try{parsed=deserialize(plaintext.toString('utf8'));}
+    catch{return {reason:'corrupt_record'};}
+    finally{plaintext.fill(0);}
+    if(!parsed||!Number.isFinite(parsed.expires)||!parsed.message||typeof parsed.message!=='object')return {reason:'corrupt_record'};
+    if(parsed.expires<=now()){
+      try{fs.rmSync(target,{force:true});rememberRemoval(target,'expired');}catch{}
+      return {reason:'expired'};
+    }
+    return {reason:'hit',entry:{message:parsed.message,identity:parsed.identity,expires:parsed.expires,
+      origin:parsed.origin==='linked_self'?'linked_self':'bridge_generated'}};
   }
+  function entry(keyData){return entryResult(keyData).entry;}
   function get(keyData){const row=entry(keyData);return row&&retryIdentityMatches(row.identity,keyData)?row.message:undefined;}
-  return {save,get,entry,prune,clear(){
+  return {save,get,entry,entryResult,prune,clear(){
     for(const name of fs.readdirSync(directory)){
       if(/^[a-f0-9]{64}\.enc$/.test(name))fs.rmSync(path.join(directory,name),{force:true});
     }
+    removals.clear();
   }};
 }

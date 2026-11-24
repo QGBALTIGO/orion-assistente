@@ -1,0 +1,243 @@
+{
+  "schema_version": 1,
+  "services": {
+    "api": {
+      "base_image": "ghcr.io/qgbaltigo/orion-assistente-api@sha256:b0d30e92ce6b15909220f76dc13b0b932019ef4c8c22b75dab10dfe08a6cc12a",
+      "files": [
+        {
+          "source": "app/main.py",
+          "target": "/srv/app/app/main.py",
+          "base_sha256": "10271f21775834b9cff4696c09c8516380b2a8ad2a5afb755503555f7a3b6d4f"
+        },
+        {
+          "source": "app/plan_catalog.py",
+          "target": "/srv/app/app/plan_catalog.py",
+          "base_sha256": "21df1254c5fdf115456530041cf62775924ca38b56ea4bcde241ef5b4e65f816"
+        },
+        {
+          "source": "app/plan_routing.py",
+          "target": "/srv/app/app/plan_routing.py",
+          "base_sha256": "8238b9f71c139353346677b1f98400d6c2d3a688231a7ffbee3d39d6bc4c7312"
+        },
+        {
+          "source": "app/qr_channels.py",
+          "target": "/srv/app/app/qr_channels.py",
+          "base_sha256": "25be21d4593a5e10c6ad477129e25e9bb89196a2f12fb3339a4b2feba89df649"
+        },
+        {
+          "source": "app/workspace_policy.py",
+          "target": "/srv/app/app/workspace_policy.py",
+          "base_sha256": "c9e2abf3cd941ca542fab95c2e2db76f519b59157ad213949de1e56b4c071192"
+        },
+        {
+          "source": "app/subscription_chatbot_engine.py",
+          "target": "/srv/app/app/subscription_chatbot_engine.py",
+          "base_sha256": "441bad20219474304e178001f74f241fe1b7e28c7bc918f75dc3b633d9d4fc89"
+        },
+        {
+          "source": "app/subscription_devices.py",
+          "target": "/srv/app/app/subscription_devices.py",
+          "base_sha256": "4a9124786f4b79bec235428d2165ed91edcdeee5cf8591fe2e15c478c519a5b2"
+        },
+        {
+          "source": "app/subscription_schedule_store.py",
+          "target": "/srv/app/app/subscription_schedule_store.py",
+          "base_sha256": "dceb1ee482d7ed8f2c0c79f76c856246e42de2690eb21e54580a0fe68953b233"
+        },
+        {
+          "source": "app/static/panel.html",
+          "target": "/srv/app/app/static/panel.html",
+          "base_sha256": "1945c5ec34e6fa004fc81dccc2c6dbd3d70cbde839b067cd6bb0f99456fe1faf"
+        },
+        {
+          "source": "app/static/orion-suite.js",
+          "target": "/srv/app/app/static/orion-suite.js",
+          "base_sha256": "cdd37a0ccd77c776f6c3ee1d3b5dd4933d2a93c066b9a7e4eeb5b6eaf90e29e3"
+        },
+        {
+          "source": "app/static/orion-subscription-number-check.js",
+          "target": "/srv/app/app/static/orion-subscription-number-check.js",
+          "base_sha256": null
+        },
+        {
+          "source": "app/static/orion-subscription-whatsapp-link.js",
+          "target": "/srv/app/app/static/orion-subscription-whatsapp-link.js",
+          "base_sha256": null
+        },
+        {
+          "source": "app/static/orion-subscription-tools.css",
+          "target": "/srv/app/app/static/orion-subscription-tools.css",
+          "base_sha256": null
+        },
+        {
+          "source": "app/static/orion-subscription-audience.js",
+          "target": "/srv/app/app/static/orion-subscription-audience.js",
+          "base_sha256": null
+        },
+        {
+          "source": "app/static/orion-subscription-audience.css",
+          "target": "/srv/app/app/static/orion-subscription-audience.css",
+          "base_sha256": null
+        },
+        {
+          "source": "app/subscription_audience.py",
+          "target": "/srv/app/app/subscription_audience.py",
+          "base_sha256": null
+        },
+        {
+          "source": "app/subscription_audience_catalog.py",
+          "target": "/srv/app/app/subscription_audience_catalog.py",
+          "base_sha256": null
+        },
+        {
+          "source": "app/subscription_audience_import.py",
+          "target": "/srv/app/app/subscription_audience_import.py",
+          "base_sha256": null
+        },
+        {
+          "source": "app/subscription_audience_schemas.py",
+          "target": "/srv/app/app/subscription_audience_schemas.py",
+          "base_sha256": null
+        },
+        {
+          "source": "app/subscription_audience_store.py",
+          "target": "/srv/app/app/subscription_audience_store.py",
+          "base_sha256": null
+        },
+        {
+          "source": "app/subscription_number_check.py",
+          "target": "/srv/app/app/subscription_number_check.py",
+          "base_sha256": null
+        },
+        {
+          "source": "app/subscription_number_check_schemas.py",
+          "target": "/srv/app/app/subscription_number_check_schemas.py",
+          "base_sha256": null
+        },
+        {
+          "source": "app/subscription_whatsapp_link.py",
+          "target": "/srv/app/app/subscription_whatsapp_link.py",
+          "base_sha256": null
+        },
+        {
+          "source": "app/subscription_whatsapp_link_schemas.py",
+          "target": "/srv/app/app/subscription_whatsapp_link_schemas.py",
+          "base_sha256": null
+        },
+        {
+          "source": "alembic/versions/0088_subscription_audience.py",
+          "target": "/srv/app/alembic/versions/0088_subscription_audience.py",
+          "base_sha256": null
+        },
+        {
+          "source": "scripts/backup_and_migrate_subscription_audience.py",
+          "target": "/srv/app/scripts/backup_and_migrate_subscription_audience.py",
+          "base_sha256": null
+        }
+      ],
+      "tests": {
+        "unit": [
+          "tests/unit/test_subscription_number_check.py",
+          "tests/unit/test_subscription_whatsapp_link.py",
+          "tests/unit/test_subscription_audience.py",
+          "tests/unit/test_subscription_audience_runtime.py",
+          "tests/unit/test_subscription_audience_release.py",
+          "tests/unit/test_subscription_workspace.py",
+          "tests/unit/test_whatsapp_send_recheck.py",
+          "tests/unit/test_subscription_bulk_wiring.py",
+          "tests/unit/test_subscription_scheduled_wiring.py"
+        ],
+        "integration": [
+          "tests/integration/test_subscription_audience_postgres.py",
+          "tests/integration/test_subscription_tools_postgres.py",
+          "tests/integration/test_subscription_audience_runtime_postgres.py",
+          "tests/integration/test_subscription_audience_release_postgres.py"
+        ]
+      }
+    },
+    "worker": {
+      "base_image": "ghcr.io/qgbaltigo/orion-assistente-api@sha256:8848dca7a0db8cc88c90eca4f57fefdc4a8c1e04ce37aac137d0fada3b74b568",
+      "files": [
+        {
+          "source": "app/subscription_chatbot_engine.py",
+          "target": "/srv/app/app/subscription_chatbot_engine.py",
+          "base_sha256": "441bad20219474304e178001f74f241fe1b7e28c7bc918f75dc3b633d9d4fc89"
+        },
+        {
+          "source": "app/subscription_devices.py",
+          "target": "/srv/app/app/subscription_devices.py",
+          "base_sha256": "4a9124786f4b79bec235428d2165ed91edcdeee5cf8591fe2e15c478c519a5b2"
+        },
+        {
+          "source": "app/subscription_schedule_store.py",
+          "target": "/srv/app/app/subscription_schedule_store.py",
+          "base_sha256": "dceb1ee482d7ed8f2c0c79f76c856246e42de2690eb21e54580a0fe68953b233"
+        },
+        {
+          "source": "app/subscription_audience_store.py",
+          "target": "/srv/app/app/subscription_audience_store.py",
+          "base_sha256": null
+        },
+        {
+          "source": "app/subscription_audience_schemas.py",
+          "target": "/srv/app/app/subscription_audience_schemas.py",
+          "base_sha256": null
+        },
+        {
+          "source": "app/subscription_audience_import.py",
+          "target": "/srv/app/app/subscription_audience_import.py",
+          "base_sha256": null
+        },
+        {
+          "source": "app/subscription_audience_catalog.py",
+          "target": "/srv/app/app/subscription_audience_catalog.py",
+          "base_sha256": null
+        }
+      ],
+      "tests": {
+        "unit": [
+          "tests/unit/test_subscription_audience_runtime.py",
+          "tests/unit/test_whatsapp_send_recheck.py"
+        ],
+        "integration": []
+      }
+    },
+    "bridge": {
+      "base_image": "ghcr.io/qgbaltigo/orion-assistente-qr-bridge@sha256:e374f21ad9d3bd8e0c68c13a60f7c73a7334439833561e0c447165b08dce6d45",
+      "files": [
+        {
+          "source": "qr-bridge/src/channel-routes.mjs",
+          "target": "/srv/qr/src/channel-routes.mjs",
+          "base_sha256": "6bfd53f015b014214e6c574c6e671874d63e5bccfa8bd1d932a8cef0003f9d63"
+        },
+        {
+          "source": "qr-bridge/src/channel-manager.mjs",
+          "target": "/srv/qr/src/channel-manager.mjs",
+          "base_sha256": "9d94604fbb2dc116cff9e686cdd3d1a5406c7ca4156b9162f2646a9359eee41b"
+        },
+        {
+          "source": "qr-bridge/src/channel-session.mjs",
+          "target": "/srv/qr/src/channel-session.mjs",
+          "base_sha256": "a6dbea3f4e3e8cc040b83f3364ce775f05c9f65595d6eb464271874c1e8e3e0f"
+        },
+        {
+          "source": "qr-bridge/src/device-number-check.mjs",
+          "target": "/srv/qr/src/device-number-check.mjs",
+          "base_sha256": null
+        }
+      ],
+      "tests": {
+        "unit": [
+          "qr-bridge/test/device-number-check.test.mjs",
+          "qr-bridge/test/device-group-contacts.test.mjs",
+          "qr-bridge/test/device-group-add.test.mjs",
+          "qr-bridge/test/recipient-lookup.test.mjs",
+          "qr-bridge/test/channel-manager.test.mjs",
+          "qr-bridge/test/channel-session.test.mjs",
+          "qr-bridge/test/device-runtime.test.mjs"
+        ],
+        "integration": []
+      }
+    }
+  }
+}

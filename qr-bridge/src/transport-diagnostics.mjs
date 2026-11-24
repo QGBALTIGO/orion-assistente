@@ -1,4 +1,11 @@
 import {createHmac} from 'node:crypto';
+import {disconnectEvidence} from './disconnect-evidence.mjs';
+
+const retryReasons=new Set(['absent','expired','capacity_evicted','invalid_id','unsafe_file','oversized_record',
+  'corrupt_record','unsupported_format','decryption_failed','storage_error','invalid_peer','invalid_direction',
+  'invalid_participant','participant_mismatch','unbound_identity','stored_direction','identity_id_mismatch',
+  'invalid_content','peer_mismatch','alias_proof_unavailable','alias_proof_denied','alias_proof_timeout',
+  'alias_proof_error','stale_session','authorization_failed','hit','hit_verified_alias']);
 
 function privateAddress(jid){
   const match=typeof jid==='string'&&jid.match(/^(\d+)(?::(\d+))?@(s\.whatsapp\.net|lid)$/);
@@ -104,6 +111,7 @@ export function makeTransportDiagnostics({secret,now=Date.now,emit=()=>{}}){
       if(typeof value==='boolean'||(typeof value==='number'&&Number.isFinite(value)))safe[name]=value;
       else if(typeof value==='string'&&/^[a-zA-Z0-9_-]{1,40}$/.test(value))safe[name]=value;
     }
+    if(retryReasons.has(details.reason))safe.reason=details.reason;
     const event={at:now(),stage,trace:tag(id),...safe};
     events.push(event);if(events.length>200)events.shift();
     emit(event);
@@ -115,6 +123,14 @@ export function makeTransportDiagnostics({secret,now=Date.now,emit=()=>{}}){
     if(msg==='failed to decrypt message'){
       const error=String(obj.err?.message||'');
       record('decrypt_failed',id,{error:error.includes('Bad MAC')?'bad_mac':error.includes('Key used')?'counter':error.includes('No session')?'missing_session':'other'});
+    }else if(msg==='orion protocol ack sent'){
+      if(['message','status'].includes(obj.kind))record('protocol_ack_sent',id,{kind:obj.kind});
+    }else if(msg==='stream errored out'){
+      const evidence=disconnectEvidence({isBoom:true,output:{statusCode:500},data:obj.node});
+      if(evidence.condition==='ack'){
+        const ack=Array.isArray(obj.node?.content)?obj.node.content[0]:null;
+        record('stream_ack_missing',ack?.attrs?.id,{kind:evidence.ack_class,type:evidence.ack_type});
+      }
     }else if(msg==='recv retry request')record('retry_received',id);
     else if(msg==='sent retry receipt')record('retry_requested',id,{count:obj.retryCount});
     else if(msg==='error in sending message again'){
