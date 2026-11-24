@@ -60,25 +60,28 @@ async def enqueue_event(db, tenant, appointment, event, details, *, bulk=False):
     if not central and not access.tenant_enabled(tenant):return
     from app.plan_permissions import has_feature
     if not await has_feature(db, tenant, "notifications.basic"):return
+    reminder_preserved = False
     if event == 'services_added':
-        # Adding services changes the version, but not the appointment's start.
-        # Keep only booking and reschedule notices that have never been attempted:
-        # they will compose their body from the new facts. Never duplicate a
-        # delivered or ambiguous transport operation to announce this edit.
-        await db.execute(text("""UPDATE appointment_notifications n
+        # The start time is unchanged. Preserve the pending reminder's operation
+        # and original delivery window, even when its due time has already passed.
+        # Only operations with no transport attempt can be updated.
+        retained = await db.execute(text("""UPDATE appointment_notifications n
             SET appointment_version=a.updated_at,body_encrypted=NULL,
                 updated_at=clock_timestamp()
             FROM appointments a WHERE a.tenant_id=:t AND a.id=:id
               AND n.tenant_id=a.tenant_id AND n.appointment_id=a.id
-              AND n.status='pending' AND n.attempts=0 AND n.attempted_at IS NULL
-              AND n.event IN ('confirmation','professional_new','customer_rescheduled','professional_rescheduled')
+              AND n.status='pending' AND n.attempted_at IS NULL
+              AND (n.event='reminder' OR (n.attempts=0 AND n.event IN (
+                    'confirmation','professional_new','customer_rescheduled','professional_rescheduled')))
               AND n.recipient_id=CASE WHEN n.recipient_kind='professional'
-                    THEN a.professional_id ELSE a.customer_id END"""), {'t':tenant,'id':appointment})
+                    THEN a.professional_id ELSE a.customer_id END
+            RETURNING n.event"""), {'t':tenant,'id':appointment})
+        reminder_preserved = 'reminder' in retained.scalars().all()
         await db.execute(text("""UPDATE appointment_notifications n
             SET status='cancelled',last_error='appointment_changed',updated_at=clock_timestamp()
             FROM appointments a WHERE a.tenant_id=:t AND a.id=:id
               AND n.tenant_id=a.tenant_id AND n.appointment_id=a.id AND n.status='pending'
-              AND (n.event NOT IN ('confirmation','professional_new','customer_rescheduled','professional_rescheduled')
+              AND (n.event NOT IN ('confirmation','professional_new','customer_rescheduled','professional_rescheduled','reminder')
                    OR n.appointment_version<>a.updated_at)"""), {'t':tenant,'id':appointment})
     # Every committed mutation invalidates old pending facts in this SAME tx.
     if event in {'confirmed','cancelled','rescheduled','completed','no_show','hold_expired'}:
@@ -112,7 +115,7 @@ async def enqueue_event(db, tenant, appointment, event, details, *, bulk=False):
     if row['status']=='confirmed' and event in {'confirmed','rescheduled','services_added'} and settings['reminder']:
         due=row['start_at']-timedelta(hours=1)
         # Never invent 'one hour' for an appointment created after that instant.
-        if due>=now:add('reminder','customer',due,due+timedelta(minutes=2))
+        if not reminder_preserved and due >= now: add('reminder','customer',due,due+timedelta(minutes=2))
     if event=='completed' and settings['review'] and (await completion_evidence(db,tenant,appointment)).can_review:
         due=now+timedelta(minutes=settings['review_delay_min'])
         add('review','customer',due,due+timedelta(hours=24))

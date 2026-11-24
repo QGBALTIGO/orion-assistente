@@ -1,6 +1,7 @@
 """Real transactional events, recipient isolation and ambiguous-send recovery."""
 import asyncio
 import json
+from datetime import timedelta
 from uuid import uuid4
 
 from cryptography.fernet import Fernet
@@ -185,6 +186,55 @@ async def test_reschedule_creates_new_version_and_cancels_old_reminder(comm_db):
     reminders=[r for r in items if r['event']=='reminder']
     assert len(reminders)==2 and sum(r['status']=='pending' for r in reminders)==1
     assert any(r['event']=='professional_rescheduled' and r['recipient_id']==d['pro'] for r in items)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("seconds_until_due", [-20, 60])
+async def test_adding_services_preserves_unsent_reminder_and_its_window(comm_db, seconds_until_due):
+    d = comm_db
+    appointment = await booking(d)
+    reminder = next(event for event in await jobs(d) if event["event"] == "reminder")
+    async with d["migrator"].begin() as db:
+        now = (await db.execute(text("SELECT clock_timestamp()"))).scalar_one()
+        due = now + timedelta(seconds=seconds_until_due)
+        starts = due + timedelta(hours=1)
+        await db.execute(text("""
+            UPDATE appointments SET
+                end_at=end_at+(:starts-start_at),
+                occupied_from=occupied_from+(:starts-start_at),
+                occupied_until=occupied_until+(:starts-start_at),
+                start_at=:starts, updated_at=clock_timestamp()
+            WHERE tenant_id=:tenant AND id=:booking
+        """), {"starts": starts, "tenant": d["a"], "booking": appointment["id"]})
+        expiry = due + timedelta(minutes=2)
+        await db.execute(text("""
+            UPDATE appointment_notifications SET due_at=:due, expires_at=:expiry
+            WHERE tenant_id=:tenant AND id=:reminder
+        """), {"due": due, "expiry": expiry, "tenant": d["a"], "reminder": reminder["id"]})
+
+    async with d["factory"]() as db:
+        async with tenant_transaction(db, d["a"]):
+            await notifications.enqueue_event(db, d["a"], appointment["id"], "services_added", {})
+
+    reminders = [event for event in await jobs(d) if event["event"] == "reminder"]
+    assert len(reminders) == 1
+    updated = reminders[0]
+    assert updated["id"] == reminder["id"]
+    assert updated["status"] == "pending"
+    assert updated["appointment_version"] > reminder["appointment_version"]
+    assert (updated["due_at"], updated["expires_at"]) == (due, expiry)
+
+    if seconds_until_due < 0:
+        sends = []
+
+        async def send(tenant, channel, phone_number, body, operation):
+            sends.append((tenant, channel, phone_number, operation))
+            return {"accepted": True, "state": "accepted"}
+
+        args = ({"appointment_sender": send}, str(d["a"]), str(reminder["id"]))
+        assert await notifications.process_notification(*args) == "accepted"
+        assert await notifications.process_notification(*args) == "accepted"
+        assert sends == [(d["a"], d["channel"], phone(920), str(reminder["id"]))]
 
 
 @pytest.mark.asyncio

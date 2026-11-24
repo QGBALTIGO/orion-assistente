@@ -1,0 +1,45 @@
+name: Orion - Publicação da preservação de lembretes
+on:
+  push:
+    branches: [codex/orion-preserve-reminder-release-20261124]
+permissions:
+  contents: read
+  packages: write
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: api
+            base: ghcr.io/qgbaltigo/orion-assistente-api@sha256:fd4f2328485bc5cbd0b6211fcf6f03dc9624afe225519d8496499b203c7e1194
+          - service: worker
+            base: ghcr.io/qgbaltigo/orion-assistente-api@sha256:c07b144c397ccfe2edb4b1e31ff3ff482adcbea74ffb673a8ab7e6e41c5a543a
+    env:
+      BASE_IMAGE: ${{ matrix.base }}
+      TARGET: ${{ matrix.service }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Construir, validar e publicar imagem
+        run: |
+          set -euo pipefail
+          image="ghcr.io/qgbaltigo/orion-assistente-api:reminder-retain-${TARGET}-${GITHUB_SHA}"
+          docker build --platform linux/amd64 --target "$TARGET" --build-arg BASE_IMAGE="$BASE_IMAGE" \
+            --build-arg ORION_RELEASE_COMMIT="$GITHUB_SHA" -f deploy/Dockerfile.reminder-retain -t "$image" .
+          sha256sum app/appointment_notifications.py | docker run --rm -i -w /srv/app --entrypoint sha256sum "$image" --strict --check -
+          if [ "$TARGET" = worker ]; then
+            docker run --rm --entrypoint python "$image" -c 'from app.worker import WorkerSettings; assert WorkerSettings.on_startup.__name__ == "startup_with_reminder_release_probe"'
+          fi
+          docker push "$image"
+          docker image inspect "$image" --format '{{index .RepoDigests 0}}' | tee "reminder-retain-${TARGET}-image.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reminder-retain-${{ matrix.service }}-image
+          path: reminder-retain-${{ matrix.service }}-image.txt

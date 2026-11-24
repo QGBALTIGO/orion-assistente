@@ -1,0 +1,14 @@
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE} AS verified
+ARG ORION_RELEASE_COMMIT
+LABEL org.opencontainers.image.revision=$ORION_RELEASE_COMMIT
+RUN python -c "from hashlib import sha1; from pathlib import Path; d=Path('/srv/app/app/appointment_notifications.py').read_bytes(); assert sha1(b'blob %d' % len(d)+bytes(1)+d).hexdigest() == 'b130a6b6f546e088fa0e22df7c48c9ec123b4fc4'"
+COPY --chown=appuser:appuser app/appointment_notifications.py /srv/app/app/appointment_notifications.py
+RUN python -m py_compile /srv/app/app/appointment_notifications.py
+
+FROM verified AS api
+
+FROM verified AS worker
+COPY --chown=appuser:appuser deploy/orion_reminder_live_probe.py /srv/app/app/orion_reminder_live_probe.py
+COPY --chown=appuser:appuser deploy/attach_reminder_release_probe.py /tmp/attach_reminder_release_probe.py
+RUN python /tmp/attach_reminder_release_probe.py && python -m py_compile /srv/app/app/worker.py /srv/app/app/orion_reminder_live_probe.py
