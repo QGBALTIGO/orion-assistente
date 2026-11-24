@@ -400,6 +400,7 @@ test('ocupação da recepção usa o expediente real e recupera a leitura sem bl
     {active_chairs:2,hours_status:'open',capacity_seconds:57600,reserved_seconds:0}
   ];
   const h=await makeSuite({initialRoute:'dashboard',permissions:dentalPlan({dental_clinical_enabled:true}),
+    bridge:{tenants:[{id:tenantA,name:'Empresa A',slug:'empresa-a',timezone:'America/Campo_Grande',role:'owner'}]},
     configureWindow(w){
       const original=w.setInterval.bind(w);
       w.setInterval=(fn,ms,...args)=>{if(ms===30000){refresh=fn;return 0;}return original(fn,ms,...args);};
