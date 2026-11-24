@@ -1085,10 +1085,23 @@ async def sales_opportunity_summary(db, tenant_id, start_date, end_date, query=N
     if end_date:
         conditions.append("created_at < ((CAST(:end_day AS date) + 1)::timestamp AT TIME ZONE :zone)")
         params["end_day"] = end_date
+    counts = {key: 0 for key, _ in (*SALES_OPEN, *SALES_CLOSED)}
+    if not needle:
+        statement = text("""
+            SELECT stage_key,COUNT(*) AS total
+            FROM dental_sales_opportunities WHERE """ + " AND ".join(conditions) +
+            " GROUP BY stage_key")
+        rows = (await db.execute(statement, params)).mappings().all()
+        for row in rows:
+            if row["stage_key"] in counts:
+                counts[row["stage_key"]] = row["total"]
+        names = dict((*SALES_OPEN, *SALES_CLOSED))
+        items = [{"stage": key, "name": names[key], "count": counts[key]} for key in counts]
+        return {"items": items, "total": sum(counts.values()),
+                "currency_totals_available": False}
     statement = text("""
         SELECT id,stage_key,nonce,encrypted_content,digest
         FROM dental_sales_opportunities WHERE """ + " AND ".join(conditions))
-    counts = {key: 0 for key, _ in (*SALES_OPEN, *SALES_CLOSED)}
     rows = (await db.execute(statement, params)).mappings().all()
     for row in rows:
         if needle:
