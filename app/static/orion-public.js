@@ -526,6 +526,15 @@
     $('contact-links').dataset.count = String(validContacts.length);
     $('contact-section').hidden = validContacts.length === 0;
     $('orion-credit').hidden = demo ? false : !!site.hide_orion_brand; $('preview-banner').hidden = !(preview || demo);
+    // Only real published sites expose the private customer portal.
+    const customerToolbar = $('customer-area-trigger');
+    if (customerToolbar) {
+      const show = !preview && !demo && !!publicSlug;
+      customerToolbar.hidden = !show;
+      $('public-toolbar-brand').hidden = !show || !!site.hide_orion_brand;
+      document.body.classList.toggle('public-customer-toolbar', show);
+      document.body.classList.toggle('public-customer-white-label', !!site.hide_orion_brand);
+    }
     if (demo) renderDemoIdentity();
     $('site-content').hidden = false; $('page-message').hidden = true;
   }
