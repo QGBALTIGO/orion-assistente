@@ -45,7 +45,7 @@ jobs:
             "app/site_publication.py": "e426f59a56a64da8c54efd0511709e8890f21e3c",
             "app/static/orion-dental-clinic.css": "4eb52a19312da1c86c45a01d4d5bc5c9578d7653",
             "app/static/orion-suite.js": "3489902b63ef7cb6df0defb80c24783ccbc56c79",
-            "app/static/orion-public.js": "23f360f332f5e032e13d1b0182153e1ade2b38d6",
+            "app/static/orion-public.js": "543219d43adf71a588d06340bcc3412322ea160f",
           }
           for name, digest in expected.items():
               data = Path(name).read_bytes()
