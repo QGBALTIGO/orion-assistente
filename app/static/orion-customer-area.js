@@ -12,7 +12,7 @@
   const customerKey = 'orion:public:customer:v1:' + slug;
   let generation = 0, controller = null, dashboard = null;
   let activeTab = 'overview', currentPhone = '', historyStatus = 'all', history = null;
-  let historySequence = 0, working = false;
+  let historySequence = 0, working = false, loginMethod = 'private_link';
   const moneyFormat = new Intl.NumberFormat('pt-BR', {style:'currency',currency:'BRL'});
   const numberFormat = new Intl.NumberFormat('pt-BR');
   const statusNames = {confirmed:'Agendado',completed:'Concluído',cancelled:'Cancelado',no_show:'Não compareceu'};
@@ -133,7 +133,7 @@
   function loginNote() {
     const note = el('div','customer-area-login-note');
     note.append(el('h4','','Ainda não é cliente?'),
-      el('p','customer-area-muted','Faça seu primeiro agendamento neste estabelecimento para começar. Se já é cliente, use o link privado de um agendamento anterior no primeiro acesso deste aparelho.'),
+      el('p','customer-area-muted',loginMethod === 'birth_date' ? 'Sua área do cliente é criada automaticamente no primeiro agendamento. Não precisa fazer outro cadastro.' : 'Faça seu primeiro agendamento neste estabelecimento para começar. Se já é cliente, use o link privado de um agendamento anterior no primeiro acesso deste aparelho.'),
       button('Agendar horário','customer-area-secondary',openBooking));
     return note;
   }
@@ -150,7 +150,20 @@
     input.placeholder='(00) 00000-0000'; input.value=displayPhone(phone);
     input.addEventListener('blur',() => { input.value=displayPhone(input.value); });
     label.append(input);
-    form.append(label,button('Continuar','customer-area-button',null,'submit'));
+    form.append(label);
+    let birthInput = null, check = null;
+    if (loginMethod === 'birth_date') {
+      const birthLabel=el('label','customer-area-field','Data de nascimento');
+      birthInput=el('input'); birthInput.type='date'; birthInput.name='birth_date';
+      birthInput.autocomplete='bday'; birthInput.lang='pt-BR'; birthInput.required=true;
+      birthInput.min='1900-01-01'; birthInput.max=new Date().toISOString().slice(0,10);
+      birthLabel.append(birthInput); form.append(birthLabel);
+      const keep=el('label','customer-area-check');
+      check=el('input'); check.type='checkbox'; check.name='remember'; check.checked=true;
+      keep.append(check,el('span','','Manter conectado neste aparelho por 30 dias.'));
+      form.append(keep);
+    }
+    form.append(button(loginMethod === 'birth_date' ? 'Acessar minha conta' : 'Continuar','customer-area-button',null,'submit'));
     form.addEventListener('submit',async event => {
       event.preventDefault(); if (working) return;
       showNotice();
@@ -158,10 +171,17 @@
       catch (error) { showNotice(error.message,true); input.focus(); return; }
       const epoch = generation; busy(true);
       try {
-        const result = await api('/enter','POST',{phone:currentPhone});
+        const payload={phone:currentPhone};
+        if (birthInput) {
+          payload.birth_date=fields.dateValue(birthInput.value,{required:true,min:'1900-01-01',max:birthInput.max});
+          payload.remember=check.checked;
+        }
+        const result = await api('/enter','POST',payload);
         if (!live(epoch)) return;
         if (result.authenticated) acceptDashboard(result);
-        else showLink();
+        else if (result.birth_date_required) { loginMethod='birth_date'; showLogin(currentPhone); }
+        else if (loginMethod === 'private_link') showLink();
+        else showNotice('Confira seu telefone e data de nascimento cadastrados.',true);
       } catch (error) { if (live(epoch) && error.name!=='AbortError') showNotice(error.message,true); }
       finally { if (live(epoch)) busy(false); }
     });
@@ -349,7 +369,7 @@
       if (state.authenticated) acceptDashboard(state);
       else if (state.available===false) {
         resetBody(); root.append(empty('Área do cliente indisponível','Tente novamente mais tarde.'),button('Agendar horário','customer-area-secondary',openBooking));
-      } else showLogin();
+      } else { loginMethod=state.login_method==='birth_date'?'birth_date':'private_link'; showLogin(); }
     } catch(error) {
       if (live(epoch) && error.name!=='AbortError') {
         resetBody(); root.append(empty('Não foi possível carregar','Verifique sua conexão e tente novamente.'),
