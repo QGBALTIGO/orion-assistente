@@ -14,7 +14,8 @@ from app.dental_clinic_api import (
 )
 from app.dental_clinic_schemas import (
     ClinicianGrant, PatientCreate, RecordCreate, Odontogram, Periodontal,
-    Anamnesis, ExamUpload, Budget, FDI_ALL, SalesOpportunitySearch, SalesOpportunityStart
+    Anamnesis, ExamUpload, Budget, FDI_ALL, SalesOpportunitySearch, SalesOpportunitySummary,
+    SalesOpportunityStart
 )
 
 
@@ -91,6 +92,15 @@ def test_sales_search_is_bounded_and_accent_insensitive():
     for query in ("x", " ", "x"*81, "texto\nindevido"):
         with pytest.raises(ValidationError):
             SalesOpportunitySearch(query=query)
+
+
+def test_sales_summary_accepts_an_empty_private_query_but_validates_its_period():
+    assert SalesOpportunitySummary().query is None
+    assert SalesOpportunitySummary(query="  ORÇAMENTO  ").query == "ORÇAMENTO"
+    for payload in ({"query":"x"},{"query":"texto\nindevido"},
+                    {"start_date":"2026-11-23","end_date":"2026-11-22"}):
+        with pytest.raises(ValidationError):
+            SalesOpportunitySummary.model_validate(payload)
 
 
 def test_sales_search_uses_linked_patient_name_but_not_contact_identity():

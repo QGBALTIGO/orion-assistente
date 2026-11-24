@@ -193,6 +193,22 @@
 .os-sales-stages span{font-weight:600;overflow-wrap:anywhere}
 .os-sales-stages small{color:var(--os-muted)}
 
+.os-dental-sales-summary{margin-bottom:14px;padding:16px}
+.os-dental-sales-summary-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px}
+.os-dental-sales-summary-heading h2{margin:0;font-size:1.05rem}
+.os-dental-sales-summary-heading p,.os-dental-sales-summary-heading small{margin:3px 0 0;color:var(--os-muted)}
+.os-dental-sales-summary-heading small{max-width:320px;text-align:right}
+.os-dental-sales-summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.os-dental-sales-summary-grid button{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;min-height:58px;padding:10px 12px;border:1px solid var(--os-border);border-radius:10px;background:var(--os-soft);color:var(--os-text);text-align:left}
+.os-dental-sales-summary-grid button span{min-width:0;overflow-wrap:anywhere;color:var(--os-muted);font-size:.86rem;font-weight:600}
+.os-dental-sales-summary-grid button strong{font-size:1.35rem}
+.os-dental-sales-summary-grid button[aria-pressed=true]{border-color:var(--os-primary);background:var(--os-tint);color:var(--os-primary)}
+.os-dental-sales-summary-grid button:focus-visible,#osSalesFunnelHeading:focus-visible{outline:2px solid var(--os-primary);outline-offset:2px}
+
+@media(max-width:980px){
+  .os-dental-sales-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+
 .os-dental-sales-list{list-style:none;margin:0;padding:0}
 .os-dental-sales-list li{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding-block:14px;border-top:1px solid var(--os-border)}
 .os-dental-sales-list li>div{min-width:0;overflow-wrap:anywhere}
@@ -232,6 +248,9 @@
   .os-dental-sales-list li{display:grid;grid-template-columns:minmax(0,1fr)}
   .os-dental-sales-meta{justify-items:stretch}
   .os-dental-sales-meta .os-button{width:100%}
+  .os-dental-sales-summary-heading{display:block}
+  .os-dental-sales-summary-heading small{display:block;max-width:none;text-align:left}
+  .os-dental-sales-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
 
 .os-dental-sales-period{padding:0 16px;margin-bottom:14px}

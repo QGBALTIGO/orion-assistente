@@ -37,7 +37,8 @@ from app.dental_clinic_schemas import (
     IntakeTemplateCreate, IntakeTemplateUpdate, LaboratoryCreate, LaboratoryUpdate,
     ProsthesisStatus, ProsthesisTransition, ProsthesisVisit,
     RoomCreate, RoomRename, RoomAssign, ChairAvailability, SupplyCreate, SupplyMove, ExamUpload,
-    SalesStage, SalesOpportunity, SalesOpportunitySearch, SalesOpportunityStart, SalesPatientSearch
+    SalesStage, SalesOpportunity, SalesOpportunitySearch, SalesOpportunitySummary,
+    SalesOpportunityStart, SalesPatientSearch
 )
 
 
@@ -1069,6 +1070,59 @@ async def sales_opportunity_page(db, tenant_id, before, limit, start_date, end_d
                       "stage_name": dict((*SALES_OPEN, *SALES_CLOSED)).get(row["stage_key"], "Etapa personalizada"),
                       "version": row["version"]})
     return {"items": items, "next": items[-1]["id"] if len(rows)>limit else None}
+
+
+async def sales_opportunity_summary(db, tenant_id, start_date, end_date, query=None):
+    """Count the encrypted funnel without inventing financial amounts."""
+    needle = normalized_sales_text(query or "")
+    params = {"tenant": tenant_id}
+    conditions = ["tenant_id=:tenant"]
+    if start_date or end_date:
+        params["zone"] = await db.scalar(text("SELECT timezone FROM tenants WHERE id=:tenant"), params)
+    if start_date:
+        conditions.append("created_at >= (CAST(:start_day AS date)::timestamp AT TIME ZONE :zone)")
+        params["start_day"] = start_date
+    if end_date:
+        conditions.append("created_at < ((CAST(:end_day AS date) + 1)::timestamp AT TIME ZONE :zone)")
+        params["end_day"] = end_date
+    counts = {key: 0 for key, _ in (*SALES_OPEN, *SALES_CLOSED)}
+    if not needle:
+        statement = text("""
+            SELECT stage_key,COUNT(*) AS total
+            FROM dental_sales_opportunities WHERE """ + " AND ".join(conditions) +
+            " GROUP BY stage_key")
+        rows = (await db.execute(statement, params)).mappings().all()
+        for row in rows:
+            if row["stage_key"] in counts:
+                counts[row["stage_key"]] = row["total"]
+        names = dict((*SALES_OPEN, *SALES_CLOSED))
+        items = [{"stage": key, "name": names[key], "count": counts[key]} for key in counts]
+        return {"items": items, "total": sum(counts.values()),
+                "currency_totals_available": False}
+    statement = text("""
+        SELECT id,stage_key,nonce,encrypted_content,digest
+        FROM dental_sales_opportunities WHERE """ + " AND ".join(conditions))
+    rows = (await db.execute(statement, params)).mappings().all()
+    for row in rows:
+        if needle:
+            details = json.loads(unseal(row, tenant_id, row["id"], "sales_opportunity"))
+            if needle not in sales_opportunity_search_text(details):
+                continue
+        if row["stage_key"] in counts:
+            counts[row["stage_key"]] += 1
+    names = dict((*SALES_OPEN, *SALES_CLOSED))
+    items = [{"stage": key, "name": names[key], "count": counts[key]} for key in counts]
+    return {"items": items, "total": sum(counts.values()), "currency_totals_available": False}
+
+
+@router.post("/sales/opportunities/summary")
+async def summarize_sales_opportunities(tenant_id: UUID, payload: SalesOpportunitySummary,
+                                        actor: Actor = Depends(authenticate)):
+    async with owner_session(tenant_id, actor, feature="settings.manage") as db:
+        result = await sales_opportunity_summary(db, tenant_id, payload.start_date,
+                                                 payload.end_date, payload.query)
+        await audit(db, tenant_id, actor, "sales_opportunity_summary_read")
+        return result
 
 
 @router.post("/sales/opportunities/search")

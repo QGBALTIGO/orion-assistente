@@ -40,6 +40,19 @@ def check_menu(browser, width, height, theme):
             details = route.request.post_data_json
             assert details == {"query":"999990099","limit":20,"offset":0}
             return route.fulfill(json={"items":patients,"has_more":False})
+        if path.endswith("/dental/sales/opportunities/summary"):
+            details = route.request.post_data_json
+            query = details.get("query", "").casefold()
+            start, end = details.get("start_date", ""), details.get("end_date", "")
+            visible = [item for item in opportunities
+                       if (not query or query in (item["title"] + " " + item["description"] + " " +
+                                                  (item.get("patient") or {}).get("name", "")).casefold())
+                       and (not start or item["created_at"][:10] >= start)
+                       and (not end or item["created_at"][:10] <= end)]
+            names = [("open","Em aberto"),("in_progress","Em andamento"),("won","Ganha"),("lost","Perdida")]
+            return route.fulfill(json={"items":[{"stage":key,"name":name,
+                "count":sum(item["stage"] == key for item in visible)} for key,name in names],
+                "total":len(visible),"currency_totals_available":False})
         if path.endswith("/dental/sales/opportunities/search"):
             details = route.request.post_data_json
             assert 2 <= len(details["query"]) <= 80
@@ -155,6 +168,8 @@ def check_menu(browser, width, height, theme):
     page.screenshot(path=str(shell.OUT / f"etapas-{width}-{theme}.png"), animations="disabled")
     menu().get_by_role("button", name="Vendas", exact=True).press("Enter")
     page.get_by_text("Nenhuma oportunidade em aberto", exact=True).wait_for()
+    funnel = page.locator(".os-dental-sales-summary")
+    assert funnel.locator('[data-stage="open"] strong').inner_text() == "0"
     create = page.get_by_role("button", name="Nova oportunidade", exact=True)
     if width <= 760:
         assert create.bounding_box()["height"] >= 44, (width, theme)
@@ -178,6 +193,7 @@ def check_menu(browser, width, height, theme):
     create_opportunity.click()
     page.get_by_text("Avaliação da família", exact=True).wait_for()
     assert len(opportunities) == 1
+    assert funnel.locator('[data-stage="open"] strong').inner_text() == "1"
     search = page.get_by_role("search")
     search.get_by_label("Buscar oportunidades por paciente, título ou descrição").fill("Paciente Sintético Um")
     search.get_by_role("button",name="Buscar oportunidades").press("Enter")
@@ -204,6 +220,7 @@ def check_menu(browser, width, height, theme):
     start.press("Enter")
     row.get_by_text("Em andamento",exact=True).wait_for()
     assert opportunities[0]["stage"] == "in_progress" and opportunities[0]["version"] == 2
+    assert funnel.locator('[data-stage="in_progress"] strong').inner_text() == "1"
     assert row.get_by_role("button",name="Iniciar acompanhamento",exact=True).count() == 0
     lose = row.get_by_role("button",name="Registrar perda",exact=True)
     assert lose.bounding_box()["height"] >= 44
@@ -213,13 +230,16 @@ def check_menu(browser, width, height, theme):
     dialog.get_by_role("button",name="Confirmar",exact=True).press("Enter")
     row.get_by_text("Perdida",exact=True).wait_for()
     assert opportunities[0]["stage"] == "lost" and opportunities[0]["version"] == 3
+    assert funnel.locator('[data-stage="lost"] strong').inner_text() == "1"
     assert row.get_by_role("button",name="Registrar perda",exact=True).count() == 0
     filters = page.locator("#osDentalSalesFilters")
     filters.get_by_label("Etapa", exact=True).select_option("lost")
     filters.get_by_role("button", name="Aplicar filtro", exact=True).press("Enter")
+    page.wait_for_function("document.querySelector('.os-dental-sales-summary [data-stage=lost]')?.getAttribute('aria-pressed')==='true'")
     page.get_by_text("Avaliação da família", exact=True).wait_for()
     filters.get_by_label("Etapa", exact=True).select_option("open")
     filters.get_by_role("button", name="Aplicar filtro", exact=True).click()
+    page.wait_for_function("document.querySelector('.os-dental-sales-summary [data-stage=open]')?.getAttribute('aria-pressed')==='true'")
     page.get_by_text("Nenhuma oportunidade nesta etapa", exact=True).wait_for()
     filter_controls = filters.evaluate("""el=>[...el.querySelectorAll('select,button')].map(n=>{
         const b=n.getBoundingClientRect();return [b.left,b.right,b.height];
