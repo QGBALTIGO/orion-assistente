@@ -122,21 +122,24 @@
 :root[data-theme="light"]{color-scheme:light}
 :root[data-theme="dark"]{
   color-scheme:dark;
-  --bg:#080d18;
-  --card:#111b2b;
-  --text:#f0f5fd;
-  --muted:#a8b7cc;
-  --border:#2a3950;
-  --soft:#1b2a40;
+  --bg:#000000;
+  --card:#121212;
+  --text:#f5f5f5;
+  --muted:#b5b5b5;
+  --border:#333333;
+  --soft:#222222;
 }
 body{background:var(--bg);color:var(--text);min-width:0}
-:root[data-theme="dark"] .preview-banner{background:#142a49;color:#cfe2fa;border-bottom-color:#345071}
+:root[data-theme="dark"] .cover{background-color:var(--bg);background-image:linear-gradient(130deg,#181818,#000000)}
+:root[data-theme="dark"] .category:not([aria-pressed=true]){color:var(--text)}
+:root[data-theme="dark"] .preview-banner{background:var(--soft);color:var(--text);border-bottom-color:var(--border)}
 :root[data-theme="dark"] .tag{background:color-mix(in srgb,var(--primary) 17%,var(--card))}
 :root[data-theme="dark"] .booking-steps li.done{background:#19372b;color:#86dfac}
 :root[data-theme="dark"] .error-message{background:#3a1c27;color:#ffb6c2;border-color:#794251}
 :root[data-theme="dark"] .success-check{background:#183a2b;color:#8ee4aa}
-:root[data-theme="dark"] .preview-note{background:#183151;border-color:#35557e;color:#d5e6ff}
-:root[data-theme="dark"] .booking-dialog::backdrop{background:#020611bf}
+:root[data-theme="dark"] .preview-note{background:var(--soft);border-color:var(--border);color:var(--text)}
+:root[data-theme="dark"] .booking-dialog::backdrop,
+:root[data-theme="dark"] .customer-area-dialog::backdrop{background:#000000bf}
 .search-wrap:focus-within{border-color:color-mix(in srgb,var(--primary) 54%,var(--border));box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 13%,transparent)}
 
 /* Bare sun/moon glyph, retaining an invisible 44px touch target. */
@@ -803,3 +806,55 @@ body{background:var(--bg);color:var(--text);min-width:0}
   .identity-text .hero-address-locality{font-size:10px}
   .identity-text .online-label{margin-top:6px}
 }
+
+/* Public catalogue freshness and opt-in returning-customer details. */
+.catalogue-refresh-status{margin-top:10px;color:var(--muted);font-size:12px;line-height:1.5}
+.booking-confirmation-body .booking-form .remember-customer{
+  grid-column:1/-1;display:flex;align-items:center;gap:10px;min-width:0;
+  min-height:44px;padding:6px 0;border:0;background:transparent;
+  cursor:pointer;color:var(--muted);font:500 13px/20px Figtree,system-ui,sans-serif
+}
+.booking-confirmation-body .booking-form .remember-customer>input{
+  flex:0 0 auto;width:18px;height:18px;min-height:18px;margin:0;
+  accent-color:var(--primary)
+}
+.booking-confirmation-body .booking-form .remember-customer>span{min-width:0}
+.booking-confirmation-body .booking-form .forget-customer{
+  grid-column:1/-1;justify-self:start;padding:4px 0;
+  background:transparent;color:var(--muted);font:600 12px/18px Figtree,system-ui,sans-serif;
+  text-decoration:underline;text-underline-offset:3px
+}
+.booking-confirmation-body .booking-form .forget-customer:hover{color:var(--primary)}
+
+/* Returning-client assistance: keep the existing booking form and its layout. */
+.booking-confirmation-body .booking-form .booking-customer-status{
+  grid-column:1/-1;min-width:0;margin:-4px 0 0;
+  color:var(--muted);font:500 12px/18px Figtree,system-ui,sans-serif;
+  overflow-wrap:anywhere
+}
+.booking-confirmation-body .booking-form .booking-customer-recover{
+  grid-column:1/-1;justify-self:start;min-width:0;max-width:100%;
+  min-height:40px;padding:8px 12px;border:1px solid var(--border);
+  border-radius:10px;background:var(--card);color:var(--text);
+  font:600 13px/19px Figtree,system-ui,sans-serif;white-space:normal;text-align:start
+}
+.booking-confirmation-body .booking-form .booking-customer-recover:hover{background:var(--soft)}
+
+/* Confirmation uses one compact appointment card and quiet, optional assistance. */
+#booking-dialog .booking-confirmation-body .review-card.booking-summary{
+  padding:16px;margin-bottom:22px;border-radius:16px;
+  background:color-mix(in srgb,var(--primary) 3%,var(--card))
+}
+.booking-summary-header{display:flex;align-items:flex-start;gap:16px;min-width:0}
+.booking-summary-details{min-width:0;flex:1}
+#booking-dialog .booking-confirmation-body .review-card.booking-summary h3{
+  margin:0;font:650 17px/23px Outfit,Figtree,sans-serif;
+  letter-spacing:-.01em;overflow-wrap:anywhere
+}
+.booking-summary-meta{margin-top:5px;color:var(--muted);font:450 13px/19px Figtree,system-ui,sans-serif;overflow-wrap:anywhere}
+.booking-summary-price{display:grid;gap:2px;flex:0 1 auto;min-width:0;max-width:48%;text-align:right}
+.booking-summary-price>span{color:var(--muted);font:450 11px/16px Figtree,system-ui,sans-serif}
+.booking-summary-price>strong{color:var(--text);font:700 18px/24px Outfit,Figtree,sans-serif;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.booking-summary-schedule{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:5px 14px;margin-top:13px;padding-top:12px;border-top:1px solid var(--border);font:500 13px/20px Figtree,system-ui,sans-serif}
+.booking-summary-date{min-width:0;color:var(--muted)}
+.booking-summary-time{color:var(--text);font-weight:650;font-variant-numeric:tabular-nums;white-space:nowrap}

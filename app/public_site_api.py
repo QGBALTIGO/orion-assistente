@@ -14,6 +14,7 @@ import secrets
 from functools import lru_cache
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
+from typing import Literal
 from uuid import UUID
 from weakref import WeakKeyDictionary
 from zoneinfo import ZoneInfo
@@ -88,10 +89,23 @@ async def booking_capacity():
     finally:gate.release()
 
 
+class DentalOnlineProcedure(CleanModel):
+    procedure_id: UUID
+    purpose: Literal["evaluation", "return"]
+
+
 class Publication(CleanModel):
     expected_version: StrictInt=Field(ge=1)
     enabled: StrictBool
     restore_previous: StrictBool=False
+    dental_procedures: list[DentalOnlineProcedure] | None = Field(None, max_length=250)
+
+    @field_validator("dental_procedures")
+    @classmethod
+    def validate_dental_procedures(cls, items):
+        if items is not None and len({item.procedure_id for item in items}) != len(items):
+            raise ValueError("Escolha um tipo de consulta por procedimento")
+        return items
 
 
 class PublicBooking(CleanModel):
@@ -338,7 +352,11 @@ def public_opening_hours(entries):
 
 async def catalogue(db,tenant,*,preview=False):
     site=(await db.execute(text('SELECT * FROM management_site_preferences WHERE tenant_id=:tenant'),{'tenant':tenant})).mappings().one_or_none()
-    shop=(await db.execute(text('SELECT name,timezone,booking_horizon_days FROM tenants WHERE id=:tenant'),{'tenant':tenant})).mappings().one()
+    shop=(await db.execute(text("""
+        SELECT t.name,t.timezone,t.booking_horizon_days,b.configuration->>'niche' AS niche
+        FROM tenants t LEFT JOIN business_onboarding b ON b.tenant_id=t.id
+        WHERE t.id=:tenant
+    """),{'tenant':tenant})).mappings().one()
     source = site if preview else ((site or {}).get('public_snapshot') or {})
     if preview:
         source = {**(source or {}), **await read_address_fields(db, tenant)}
@@ -403,12 +421,34 @@ async def catalogue(db,tenant,*,preview=False):
             'opening_hours':public_hours,'timezone':shop['timezone'],'booking_horizon_days':shop['booking_horizon_days'],
             'today':datetime.now(ZoneInfo(shop['timezone'])).date().isoformat(),'preview':preview,
             'published':bool(site and site['public_enabled']), 'booking_enabled':not preview and bool(site and site['public_enabled'])}
-    return result if preview else project_catalogue_visuals(result,(site or {}).get('public_snapshot'))
+    snapshot = (site or {}).get('public_snapshot')
+    if shop.get('niche') == 'odontologia':
+        result['dental_site'] = True
+        if not preview:
+            result = restrict_dental_catalogue(result, (snapshot or {}).get('_dental_booking'))
+    return result if preview else project_catalogue_visuals(result, snapshot)
+
+
+def restrict_dental_catalogue(content, procedures):
+    if content.get('dental_site') is not True or not isinstance(procedures, dict):
+        return content
+    services = [{**item, 'addons': [], 'dental_visit_type': procedures[str(item['id'])]}
+                for item in content['services']
+                if item.get('catalog_kind') == 'base' and str(item['id']) in procedures]
+    eligible = {identity for item in services for identity in item['professional_ids']}
+    return {**content, 'dental_single_procedure': True, 'services': services,
+            'professionals': [item for item in content['professionals'] if item['id'] in eligible]}
 
 
 def check_published_selection(site,professional,services,addons=(),components=None):
     """A guessed ID cannot book an entity absent from the published visual version."""
-    saved=(site.get('public_snapshot') or {}).get('_catalogue')
+    snapshot = site.get('public_snapshot') or {}
+    procedures = snapshot.get('_dental_booking')
+    if isinstance(procedures, dict) and (
+        len(services) != 1 or str(services[0]) not in procedures or addons or components
+    ):
+        raise HTTPException(422, 'Escolha um tipo de consulta liberado pela clínica')
+    saved = snapshot.get('_catalogue')
     if not isinstance(saved,dict):return
     people={str(item['id']) for item in saved.get('professionals',[])}
     available={str(item['id']):item for item in saved.get('services',[])}
@@ -442,7 +482,16 @@ async def public_catalogue(slug:str,request:Request):
 
 @router.get('/api/v1/tenants/{tenant_id}/management/site/preview')
 async def preview_catalogue(tenant_id:UUID,actor:Actor=Depends(authenticate)):
-    async with management_session(tenant_id,actor) as db:return await catalogue(db,tenant_id,preview=True)
+    async with management_session(tenant_id,actor) as db:
+        content = await catalogue(db,tenant_id,preview=True)
+        if content.get('dental_site') is not True:
+            return content
+        rules = (await db.execute(text("""
+            SELECT public_snapshot->'_dental_booking'
+            FROM management_site_preferences WHERE tenant_id=:tenant
+        """), {'tenant':tenant_id})).scalar_one_or_none()
+        # A new clinical site's draft exposes no unselected treatment.
+        return restrict_dental_catalogue(content, rules if isinstance(rules, dict) else {})
 
 
 @router.post('/api/v1/tenants/{tenant_id}/management/site/publication')

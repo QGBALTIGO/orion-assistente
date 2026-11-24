@@ -89,7 +89,7 @@ async def public_db(monkeypatch):
         async with migrator.begin() as db:
             for table in ('public_site_publications','public_site_slugs','public_booking_receipts','public_site_daily_metrics','loyalty_redemptions','loyalty_appointment_awards','loyalty_transactions','loyalty_coupons','commission_advance_allocations','commission_settlements','financial_entries',
                           'calendar_outbox','appointment_history','appointment_items','appointments','customers',
-                          'service_package_items','service_addons','service_packages','management_site_preferences','management_preferences','working_breaks','working_hours','schedule_blocks','time_off','professional_services','services','professionals','usage_counters','tenant_audit','tenant_memberships'):
+                          'service_package_items','service_addons','service_packages','management_site_preferences','management_preferences','working_breaks','working_hours','schedule_blocks','time_off','professional_services','services','professionals','usage_counters','tenant_audit','business_onboarding','tenant_memberships'):
                 if (await db.execute(text('SELECT to_regclass(:table)'),{'table':table})).scalar_one():
                     await db.execute(text(f'DELETE FROM {table} WHERE tenant_id IN (:a,:b)'),{'a':ids['a'],'b':ids['b']})
             await clear_fixture_plans(db,(ids['a'],ids['b']),(plan_admin,))
@@ -238,7 +238,9 @@ async def test_public_booking_real_snapshot_consent_replay_conflict_and_metrics(
     result=await asyncio.wait_for(c.post(d['public']+'/appointments',json=payload),20)
     assert result.status_code==201,result.text
     item=result.json();assert item['status']=='confirmed' and item['price_cents']==3000
-    assert set(item)=={'status','protocol','start_at','end_at','price_cents','price_mode','timezone','professional','services'}
+    assert set(item)=={'status','protocol','start_at','end_at','price_cents','price_mode','timezone',
+                       'professional','services','customer_area_connected'}
+    assert item['customer_area_connected'] is False
     assert item['price_mode']=='fixed'
     replay=await c.post(d['public']+'/appointments',json=payload)
     assert replay.status_code==201 and replay.json()['protocol']==item['protocol'],replay.text

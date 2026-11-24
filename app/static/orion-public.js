@@ -102,7 +102,10 @@
     status.hidden = !pending;
   }
 
-  function newBooking() { return { step: 1, service: null, services: [], addons: [], notice: '', professional: null, day: null, start: null, quote: null, availability: null, availabilityError: null, loading: false, busy: false, result: null, name: '', phone: '', birthDate: '', remember: false, contactPhone: null, autofillSuppressed: false }; }
+  const dentalSite = () => data?.dental_site === true && !demo;
+  const singleDentalProcedure = () => dentalSite() && data.dental_single_procedure === true;
+  const dentalPurpose = value => ({evaluation:'Avaliação',return:'Retorno'}[value] || '');
+  function newBooking() { return { step: 1, service: null, services: [], addons: [], notice: '', professional: null, day: null, start: null, quote: null, availability: null, availabilityError: null, loading: false, busy: false, result: null, name: '', phone: '', birthDate: '', remember: false, messagesAllowed: false, contactPhone: null, autofillSuppressed: false }; }
   function el(tag, cls, value) { const node = document.createElement(tag); if (cls) node.className = cls; if (value !== undefined) node.textContent = value; return node; }
   function button(text, cls, handler) { const node = el('button', cls, text); node.type = 'button'; if (handler) node.addEventListener('click', handler); return node; }
   function safeHTTPS(value) { try { const u = new URL(value); return u.protocol === 'https:' && !u.username && !u.password ? u.href : null; } catch { return null; } }
@@ -416,9 +419,11 @@
   function serviceCard(service, handler, isSelected = false, imagePriority = 'lazy') {
     const card = button('', 'service-card', handler); card.setAttribute('aria-pressed', String(isSelected));
     if (publicSlug && !catalogueVerified) card.disabled = true;
-    const thumb = el('span', 'service-thumb'); color(thumb, '--service-color', service.color); picture(thumb, service.image_url, '✂', imagePriority);
+    const thumb = el('span', 'service-thumb'); color(thumb, '--service-color', service.color); picture(thumb, service.image_url, dentalSite() ? initials(service.name) : '✂', imagePriority);
     const detail = el('span', 'service-detail');
     if (service.catalog_kind === 'combo') detail.append(el('span', 'tag', service.featured ? 'COMBO EM DESTAQUE' : 'COMBO'));
+    if (singleDentalProcedure() && dentalPurpose(service.dental_visit_type))
+      detail.append(el('span', 'tag', dentalPurpose(service.dental_visit_type)));
     detail.append(el('strong', '', service.name));
     if (service.description) detail.append(el('p', '', service.description));
     const meta = el('span', 'service-meta');
@@ -440,7 +445,7 @@
     const term = $('service-search').value.trim().toLocaleLowerCase('pt-BR');
     const items = data.services.filter(s => (category === 'Todos' || (s.category || 'Serviços') === category) && `${s.name} ${s.description || ''}`.toLocaleLowerCase('pt-BR').includes(term));
     $('services-grid').replaceChildren(...items.map((s, i) => serviceCard(s, () => openBooking(s.id), false, i < 2 ? 'eager' : 'lazy')));
-    if (!items.length) $('services-grid').append(el('p', 'empty', data.services.length ? 'Nenhum serviço encontrado. Tente outra busca.' : demo ? 'Catálogo a confirmar. Os serviços serão exibidos após a revisão da empresa.' : 'Não há serviços disponíveis para agendamento neste momento.'));
+    if (!items.length) $('services-grid').append(el('p', 'empty', data.services.length ? 'Nenhum serviço encontrado. Tente outra busca.' : demo ? 'Catálogo a confirmar. Os serviços serão exibidos após a revisão da empresa.' : dentalSite() ? 'Nenhuma consulta está disponível para agendamento online.' : 'Não há serviços disponíveis para agendamento neste momento.'));
   }
 
   const AMENITY_ICONS = {"wifi":"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.9\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M2 8.8a15.3 15.3 0 0 1 20 0\"/><path d=\"M5.3 12.3a10 10 0 0 1 13.4 0\"/><path d=\"M8.7 15.8a4.7 4.7 0 0 1 6.6 0\"/><circle cx=\"12\" cy=\"19.4\" r=\"1\" fill=\"currentColor\" stroke=\"none\"/></svg>","parking":"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.9\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M5.4 11l1.5-4.8A2.2 2.2 0 0 1 9 4.7h6a2.2 2.2 0 0 1 2.1 1.5l1.5 4.8\"/><path d=\"M4.5 11h15a1.5 1.5 0 0 1 1.5 1.5V17H3v-4.5A1.5 1.5 0 0 1 4.5 11Z\"/><path d=\"M5.5 17v2.5h2V17M16.5 17v2.5h2V17\"/><circle cx=\"6.8\" cy=\"14.1\" r=\".9\" fill=\"currentColor\" stroke=\"none\"/><circle cx=\"17.2\" cy=\"14.1\" r=\".9\" fill=\"currentColor\" stroke=\"none\"/></svg>","accessibility":"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.85\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"11\" cy=\"3.7\" r=\"1.4\"/><path d=\"M11 6.6v5.3h5.2l2.7 5.3M11 9.5h4.3\"/><circle cx=\"9.1\" cy=\"16.1\" r=\"4.15\"/></svg>","children":"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.9\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"13.3\" r=\"7.7\"/><path d=\"M7 7.3A3.3 3.3 0 0 1 10 4c1.4 0 2.2.8 2.2 2.1M5 11.6a2.8 2.8 0 0 0 0 4.6M19 11.6a2.8 2.8 0 0 1 0 4.6\"/><path d=\"M9.1 12.6h.01M14.9 12.6h.01M9.5 16a3.6 3.6 0 0 0 5 0\"/></svg>"};
@@ -540,7 +545,34 @@
       document.body.classList.toggle('public-customer-white-label', !!site.hide_orion_brand);
     }
     if (demo) renderDemoIdentity();
+    if (dentalSite()) renderDentalSiteIdentity();
     $('site-content').hidden = false; $('page-message').hidden = true;
+  }
+
+  function renderDentalSiteIdentity() {
+    const available = data.services.length > 0;
+    for (const id of ['hero-book', 'footer-book']) {
+      const control = $(id);
+      for (const node of control.childNodes)
+        if (node.nodeType === Node.TEXT_NODE) node.textContent = 'Agendar consulta ';
+      control.hidden = !available;
+    }
+    const services = $('servicos');
+    services.hidden = !available;
+    document.querySelector('.skip').href = available ? '#servicos' : '#site-title';
+    document.querySelector('.skip').textContent = available ? 'Ir para consultas' : 'Ir para a clínica';
+    document.querySelector('.public-booking-callout').hidden = !available;
+    document.querySelector('.info-grid').setAttribute('aria-label', 'Informações da clínica');
+    $('services-title').textContent = 'Consultas disponíveis';
+    $('services-title').nextElementSibling.textContent = 'Consulte os horários liberados pela clínica.';
+    $('service-search').placeholder = 'Buscar consulta';
+    $('service-search').setAttribute('aria-label', 'Buscar consulta');
+    $('footer-booking-title').textContent = 'Agende uma consulta';
+    $('booking-title').textContent = 'Agendar consulta';
+    const firstStep = $('booking-steps').querySelector('[data-step="1"]');
+    firstStep.replaceChildren(el('span', '', '1'), document.createTextNode(' Consulta'));
+    const online = document.querySelector('.online-label');
+    online.hidden = !available;
   }
 
   function renderDemoIdentity() {
@@ -569,7 +601,7 @@
 
   function openBooking(service = null) {
     if (publicSlug && !catalogueVerified) return; // A cached catalogue is read-only until validated.
-    if (demo && !data.services.length) return;
+    if ((demo || dentalSite()) && !data.services.length) return;
     booking = newBooking();
     const savedCustomer = readSavedCustomer();
     if (savedCustomer) {
@@ -587,6 +619,17 @@
   function invalidateAvailability() { availabilityController?.abort(); requestSequence++; booking.quote = null; booking.start = null; booking.availability = null; booking.availabilityError = null; booking.loading = false; booking.consent = false; }
   function toggleService(id) {
     const already = booking.services.includes(id);
+    if (singleDentalProcedure()) {
+      invalidateAvailability();
+      booking.services = already ? [] : [id];
+      booking.service = booking.services[0] || null;
+      booking.addons = [];
+      if (!eligibleProfessionals().some(person => person.id === booking.professional)) booking.professional = null;
+      retainedTimeView = null;
+      showError();
+      refreshServiceSelection();
+      return;
+    }
     if (!already && booking.services.length >= 6) {
       showError('Você pode escolher até 6 serviços por agendamento.');
       return;
@@ -621,7 +664,7 @@
   function selectionWarning() {
     if (booking.services.length > 0 && demoTeamPending()) return 'Equipe a confirmar';
     if (booking.services.length > 0 && !eligibleProfessionals().length)
-      return 'Nenhum profissional realiza todos esses serviços. Retire um dos itens para continuar.';
+      return singleDentalProcedure() ? 'Nenhum profissional disponível para esta consulta.' : 'Nenhum profissional realiza todos esses serviços. Retire um dos itens para continuar.';
     return booking.notice;
   }
   function refreshSelectionSummary() {
@@ -629,12 +672,12 @@
           warning = $('booking-selection-warning');
     if (!count || !summary || !warning) return;
     const amount = selectionTotal(), quantity = booking.services.length;
-    count.textContent = quantity + (quantity === 1 ? ' serviço selecionado' : ' serviços selecionados');
+    count.textContent = singleDentalProcedure() ? (quantity ? 'Consulta selecionada' : '') : quantity + (quantity === 1 ? ' serviço selecionado' : ' serviços selecionados');
     summary.replaceChildren();
     if (quantity) {
       if (!demo || knownDuration(amount.minutes)) summary.append(el('span', '', 'Tempo total: ' + duration(amount.minutes)));
       if (data.site.show_prices) summary.append(el('strong', '', priceText(amount.price, amount.price_mode)));
-    } else summary.append(el('span', '', 'Selecione os serviços que deseja realizar no mesmo horário.'));
+    } else if (!singleDentalProcedure()) summary.append(el('span', '', 'Selecione os serviços que deseja realizar no mesmo horário.'));
     warning.textContent = selectionWarning();
     warning.hidden = !warning.textContent;
   }
@@ -721,7 +764,8 @@
 
   function renderSelection(body) {
     const intro = el('div', 'booking-selection-intro');
-    intro.append(el('h3', '', 'Escolha seus serviços'),
+    if (singleDentalProcedure()) intro.append(el('h3', '', 'Qual consulta você precisa?'));
+    else intro.append(el('h3', '', 'Escolha seus serviços'),
       el('p', 'small muted', 'Selecione um ou mais serviços para realizar no mesmo horário.'));
     const count = el('span', 'booking-selected-count'); count.id = 'booking-selected-count';
     intro.append(count);
@@ -1346,14 +1390,26 @@
     // The confirmation button itself is the affirmative booking action.
     // The separate message preference is optional and never confirms a booking.
     body.append(reviewCard());
-    body.append(el('h3', 'booking-contact-heading', 'Seus dados'));
+    body.append(el('h3', 'booking-contact-heading', dentalSite() ? 'Dados do paciente' : 'Seus dados'));
+    if (dentalSite()) {
+      const contactPhone = data.site.contact_phone || data.site.whatsapp_phone;
+      const help = el('p', 'small muted', 'Use seus dados para marcar sua própria consulta. Para outra pessoa, combine o horário com a recepção.');
+      if (/^\+[1-9]\d{9,14}$/.test(contactPhone || '')) {
+        const link = el('a', '', 'Falar com a recepção');
+        link.href = 'https://wa.me/' + contactPhone.slice(1);
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        help.append(document.createTextNode(' '), link);
+      }
+      body.append(help);
+    }
     const form = el('form', 'booking-form');
     form.id = 'customer-form';
     form.addEventListener('submit', event => { event.preventDefault(); submitBooking(); });
     const contactFields = [
       { key: 'phone', title: 'WhatsApp com DDD', name: 'customer_phone',
         autocomplete: 'tel-national', type: 'tel', fieldKind: 'phone', placeholder: '(00) 00000-0000' },
-      { key: 'name', title: 'Nome completo', name: 'customer_name', autocomplete: 'name',
+      { key: 'name', title: dentalSite() ? 'Nome completo do paciente' : 'Nome completo', name: 'customer_name', autocomplete: 'name',
         type: 'text', fieldKind: 'native', max: 120, placeholder: '' },
       { key: 'birthDate', title: 'Data de nascimento', name: 'customer_birth_date',
         autocomplete: 'bday', type: 'date', fieldKind: 'date', placeholder: '' }
@@ -1427,6 +1483,16 @@
         }));
       }
     }
+    if (dentalSite()) {
+      const consent = el('label', 'remember-customer');
+      const checkbox = el('input');
+      checkbox.type = 'checkbox';
+      checkbox.name = 'appointment_messages_opt_in';
+      checkbox.checked = booking.messagesAllowed;
+      checkbox.addEventListener('change', () => { booking.messagesAllowed = checkbox.checked; });
+      consent.append(checkbox, el('span', '', 'Aceito receber confirmações e lembretes desta consulta por WhatsApp'));
+      form.append(consent);
+    }
     body.append(form);
     fields.refresh(form);
     bindBookingContact(form);
@@ -1452,7 +1518,7 @@
           booking.availability?.price_mode || amount.price_mode)));
     }
     next.textContent = booking.result ? 'Concluir' :
-      booking.busy ? 'Confirmando…' : confirmStep ? (demo ? 'Concluir simulação' : 'Confirmar agendamento') : 'Continuar →';
+      booking.busy ? 'Confirmando…' : confirmStep ? (demo ? 'Concluir simulação' : (dentalSite() ? 'Confirmar consulta' : 'Confirmar agendamento')) : 'Continuar →';
     next.disabled = booking.busy || (!booking.result &&
       (booking.step === 1 ? !booking.services.length || (!eligibleProfessionals().length && !demoTeamPending()) :
        booking.step === 2 ? !booking.start || (!demo && !booking.quote) || booking.loading || preview ||
@@ -1527,7 +1593,7 @@
           customer_phone: canonicalPhone,
           customer_birth_date: birthDate,
           confirmed: true,
-          appointment_messages_opt_in: true,
+          appointment_messages_opt_in: dentalSite() ? form.elements.appointment_messages_opt_in.checked : true,
           customer_portal_remember: booking.remember === true
         })
       });
@@ -1539,7 +1605,7 @@
       booking.quote = null;
       renderBooking();
       const whatsappURL = bookingWhatsAppURL(booking.result);
-      if (whatsappURL) openBookingWhatsApp(whatsappURL);
+      if (whatsappURL && !dentalSite()) openBookingWhatsApp(whatsappURL);
     } catch (error) {
       if ([404, 409, 422].includes(error.status)) {
         invalidateAvailability();
@@ -1595,7 +1661,7 @@
     }
     const success = el('div', 'success');
     success.append(el('div', 'success-check', '✓'),
-      el('h3', '', 'Agendamento confirmado!'),
+      el('h3', '', dentalSite() ? 'Consulta confirmada' : 'Agendamento confirmado!'),
       el('p', '', 'Seu horário está reservado. Guarde o protocolo e chegue no horário combinado.'),
       reviewCard(booking.result));
 
@@ -1617,7 +1683,7 @@
       wa.href = whatsappURL;
       wa.target = '_blank';
       wa.rel = 'noopener noreferrer';
-      addAction(wa, CONTACT_ICONS.whatsapp, 'Abrir WhatsApp novamente');
+      addAction(wa, CONTACT_ICONS.whatsapp, dentalSite() ? 'Abrir WhatsApp' : 'Abrir WhatsApp novamente');
     } else {
       success.append(el('p', 'small muted',
         'Seu agendamento foi salvo, mas o WhatsApp do Orion está indisponível neste momento. Guarde o protocolo.'));
@@ -1734,7 +1800,7 @@
     if (changed) renderPage();
     updateCatalogueAccess();
     const params=new URLSearchParams(location.search),ids=(params.get('servicos')||'').split(',').filter(Boolean);
-    if(!preview&&!demo&&ids.length&&ids.length<=6&&new Set(ids).size===ids.length&&ids.every(id=>data.services.some(s=>s.id===id))){
+    if(!preview&&!demo&&ids.length&&ids.length<=(singleDentalProcedure()?1:6)&&new Set(ids).size===ids.length&&ids.every(id=>data.services.some(s=>s.id===id))){
       openBooking(ids[0]);booking.services=ids;
       const professional=params.get('profissional');if(eligibleProfessionals().some(p=>p.id===professional))booking.professional=professional;
       renderBooking();

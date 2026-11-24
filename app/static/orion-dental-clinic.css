@@ -326,6 +326,11 @@
   justify-self: start;
 }
 
+#osDialog.os-sheet:has(#osDentalBooking) {
+  width: min(512px, 100%);
+  max-width: 100%;
+  box-sizing: border-box;
+}
 #osDentalBooking [hidden] { display: none !important; }
 #osDentalBooking .os-dental-booking-patient,
 #osDentalBooking .os-dental-controls { display: grid; gap: 8px; }

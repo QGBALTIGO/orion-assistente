@@ -214,11 +214,22 @@ async def publication_status(tenant, actor):
                     "blocked" if row["version"] and issues else "not_published")
                 if row["published"] and issues:
                     state = "blocked"
+                dental_options = {}
+                if content.get("dental_site") is True:
+                    preferences = (await db.execute(text("""
+                        SELECT public_snapshot->'_dental_booking' FROM management_site_preferences
+                        WHERE tenant_id=:tenant
+                    """), {"tenant": tenant})).scalar_one_or_none()
+                    previous = preferences if isinstance(preferences, dict) else {}
+                    dental_options = {"dental_procedures": [
+                        {"id": item["id"], "name": item["name"], "purpose": previous.get(str(item["id"]))}
+                        for item in content["services"] if item.get("catalog_kind") == "base"
+                    ]}
                 return {"state": state, "can_edit": access.role in {"owner", "editor", "admin", "support"},
                         "can_publish": access.role == "owner", "ready": not issues, "issues": issues,
                         "draft_version": row["version"], "public_version": row.get("public_version", 0),
                         "published_at": row.get("public_enabled_at"), "public_url": row["public_url"],
-                        "history": [dict(item) for item in history], **access_details}
+                        "history": [dict(item) for item in history], **access_details, **dental_options}
     except SQLAlchemyError:
         raise HTTPException(503, "A publicação está temporariamente indisponível. Tente novamente") from None
 
@@ -233,7 +244,7 @@ async def apply_publication(tenant, payload, actor):
 
 async def _apply_publication(tenant, payload, access):
     from app.management_models import site as read_site
-    from app.public_site_api import PUBLIC_FIELDS, catalogue
+    from app.public_site_api import PUBLIC_FIELDS, catalogue, restrict_dental_catalogue
     from app.site_address import read_address_fields
     if access.role != "owner":
         raise HTTPException(403, "Somente o proprietário pode publicar ou retirar este site")
@@ -257,11 +268,23 @@ async def _apply_publication(tenant, payload, access):
                     candidate = dict(snapshot)
                 else:
                     candidate = current
+                procedures = None
                 if payload.enabled:
                     content = await catalogue(db, tenant, preview=True)
                     if payload.restore_previous:
                         from app.public_site_rendering import project_catalogue_visuals
+                        content = restrict_dental_catalogue(content, candidate.get("_dental_booking"))
                         content = project_catalogue_visuals(content, candidate)
+                    elif content.get("dental_site") is True:
+                        dental_procedures = getattr(payload, "dental_procedures", None)
+                        if not dental_procedures:
+                            raise HTTPException(422, "Selecione as avaliações ou os retornos liberados no site")
+                        procedures = {str(item.procedure_id): item.purpose for item in dental_procedures}
+                        content = restrict_dental_catalogue(content, procedures)
+                        if len(content["services"]) != len(procedures):
+                            raise HTTPException(422, "Há procedimentos sem profissional ou indisponíveis. Atualize e confira a seleção.")
+                    elif getattr(payload, "dental_procedures", None) is not None:
+                        raise HTTPException(422, "Configuração disponível para clínicas odontológicas")
                     issues = await technical_issues(db, tenant, candidate, content=content)
                     if issues:
                         infrastructure_failure = any(item["code"] in {"redis_unavailable", "booking_signing_unavailable"} for item in issues)
@@ -275,6 +298,8 @@ async def _apply_publication(tenant, payload, access):
                                      {"tenant": tenant, "slug": slug})
                     if not payload.restore_previous:
                         snapshot = {key: current[key] for key in PUBLIC_FIELDS}
+                        if procedures is not None:
+                            snapshot["_dental_booking"] = procedures
                         snapshot["_catalogue"] = {key: content[key] for key in ("services", "professionals", "opening_hours")}
                         snapshot = jsonable_encoder(snapshot)
                 version = current["version"] + 1

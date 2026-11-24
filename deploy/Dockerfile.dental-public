@@ -1,0 +1,5 @@
+FROM ghcr.io/qgbaltigo/orion-assistente-api@sha256:f4474d1d9606ff816a79342350f28aaf2a739f506579aef70c3e1dd26286747c
+ARG ORION_DENTAL_COMMIT
+LABEL org.opencontainers.image.revision=$ORION_DENTAL_COMMIT
+COPY --chown=appuser:appuser app/public_site_api.py app/site_publication.py app/management_models.py /srv/app/app/
+COPY --chown=appuser:appuser app/static/orion-public.js app/static/orion-suite.js app/static/orion-dental-clinic.css /srv/app/app/static/

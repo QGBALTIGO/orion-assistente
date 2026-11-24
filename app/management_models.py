@@ -814,9 +814,10 @@ async def site(db, tenant_id):
             snapshot.setdefault(key, default)
     has_changes = bool(snapshot and draft != {field: snapshot.get(field) for field in PUBLIC_FIELDS})
     if snapshot and snapshot.get("_catalogue") is not None and not has_changes:
-        from app.public_site_api import catalogue
+        from app.public_site_api import catalogue, restrict_dental_catalogue
         from app.public_site_rendering import visual_catalogue_fingerprint
         current_catalogue = await catalogue(db, tenant_id, preview=True)
+        current_catalogue = restrict_dental_catalogue(current_catalogue, snapshot.get('_dental_booking'))
         has_changes = visual_catalogue_fingerprint(current_catalogue) != visual_catalogue_fingerprint(snapshot["_catalogue"])
     return {**result, "published": published, "public_enabled": published,
             "hide_orion_brand_locked": site_branding.ORION_BRAND_HIDING_LOCKED,

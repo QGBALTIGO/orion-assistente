@@ -15,9 +15,8 @@ jobs:
       contents: read
       packages: write
     env:
-      BASE_IMAGE: ghcr.io/qgbaltigo/orion-assistente-api@sha256:663563d41054bbd3cafafa42918bf07c58eca3e998fbcc318869c88e25cac2db
+      BASE_IMAGE: ghcr.io/qgbaltigo/orion-assistente-api@sha256:f4474d1d9606ff816a79342350f28aaf2a739f506579aef70c3e1dd26286747c
       IMAGE: ghcr.io/qgbaltigo/orion-assistente-api:odontologia-producao-${{ github.sha }}
-      RESTORE_IMAGE: ghcr.io/qgbaltigo/orion-assistente-api:odontologia-retorno-${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -26,10 +25,9 @@ jobs:
       - name: Conferir odontologia e os demais nichos
         run: |
           node --check app/static/orion-suite.js
-          node --check app/static/orion-dental-clinic.js
-          node --check app/static/orion-dental-reception.js
+          node --check app/static/orion-public.js
           npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
-          node --test --test-reporter=dot ui-tests/dental-workspace.test.mjs ui-tests/dental-clinic.test.mjs ui-tests/dental-patient-journey.test.mjs ui-tests/barbershop-app-layout.test.mjs ui-tests/subscription-workspace.test.mjs ui-tests/home-admin-preview.test.mjs ui-tests/member-account-settings.test.mjs ui-tests/dashboard-navigation.test.mjs ui-tests/plan-permissions.test.mjs ui-tests/appointment-operations-panel.test.mjs ui-tests/agenda-lifecycle.test.mjs ui-tests/professional-commissions.test.mjs
+          node --test --test-reporter=dot ui-tests/dental-workspace.test.mjs ui-tests/dental-clinic.test.mjs ui-tests/dental-patient-journey.test.mjs ui-tests/barbershop-app-layout.test.mjs ui-tests/subscription-workspace.test.mjs ui-tests/home-admin-preview.test.mjs ui-tests/member-account-settings.test.mjs ui-tests/dashboard-navigation.test.mjs ui-tests/plan-permissions.test.mjs ui-tests/appointment-operations-panel.test.mjs ui-tests/agenda-lifecycle.test.mjs ui-tests/professional-commissions.test.mjs ui-tests/customer-whatsapp-shortcut.test.mjs ui-tests/public-contact-theme.test.mjs
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -42,14 +40,12 @@ jobs:
           import hashlib
           from pathlib import Path
           expected = {
-            "app/main.py": "0dc258f20be6fa58e12aba953dad5e6f39c85c72",
-            "app/booking_service.py": "8c268ce6a635632507411c5ed63ed9d94652408b",
-            "app/plan_routing.py": "65fc841227f5f9bd53d7441193498360d22dd517",
-            "app/professional_commissions.py": "e004b9dba05a29115e91159b01baa92eb5512cc7",
-            "app/static/panel.html": "a31cea1f4cda5af6f9ae53a5ef57f95f8e59732c",
-            "app/static/orion-suite.js": "fc047a94b0d60811aa11f0d1f2a7a7558508000a",
-            "app/static/orion-dental-clinic.js": "ffb1b6ddda51c8458f0323fa022d2957853ed043",
-            "app/static/orion-dental-clinic.css": "40763bb61cb9806c5a00dbeb042ec00155763901",
+            "app/management_models.py": "6cfc7cfe0ca55af3aff9432d6f6173fa64caf7b0",
+            "app/public_site_api.py": "19467c49f0f5688d3d9614028e327c632e36e0f0",
+            "app/site_publication.py": "e426f59a56a64da8c54efd0511709e8890f21e3c",
+            "app/static/orion-dental-clinic.css": "4eb52a19312da1c86c45a01d4d5bc5c9578d7653",
+            "app/static/orion-suite.js": "3489902b63ef7cb6df0defb80c24783ccbc56c79",
+            "app/static/orion-public.js": "23f360f332f5e032e13d1b0182153e1ade2b38d6",
           }
           for name, digest in expected.items():
               data = Path(name).read_bytes()
@@ -58,23 +54,20 @@ jobs:
       - name: Construir e validar imagem candidata
         run: |
           set -euo pipefail
-          docker build --platform linux/amd64 -f deploy/Dockerfile.dental-reception --build-arg ORION_DENTAL_COMMIT="$GITHUB_SHA" -t "$IMAGE" .
+          docker build --platform linux/amd64 -f deploy/Dockerfile.dental-public --build-arg ORION_DENTAL_COMMIT="$GITHUB_SHA" -t "$IMAGE" .
           docker run --rm --entrypoint python "$IMAGE" -c '
           from alembic.config import Config
           from alembic.script import ScriptDirectory
           from app.dental_reception import router
-          from scripts.backup_and_migrate_dental_workflows import TARGET
-          assert ScriptDirectory.from_config(Config("alembic.ini")).get_current_head() == TARGET == "0093_dental_reception"
+          from app.public_site_api import Publication
+          assert ScriptDirectory.from_config(Config("alembic.ini")).get_current_head() == "0093_dental_reception"
+          assert "dental_procedures" in Publication.model_fields
           assert any(route.path.endswith("/booking-options") for route in router.routes)
-          assert any(route.path.endswith("/reception/appointments") and "POST" in route.methods for route in router.routes)
           '
-          docker run --rm --entrypoint pg_dump "$IMAGE" --version
-          sha256sum app/main.py app/plan_routing.py app/booking_service.py app/professional_commissions.py app/dental_reception.py app/dental_reception_schemas.py app/static/panel.html app/static/orion-dental-reception.js app/static/orion-suite.js app/static/orion-dental-clinic.css alembic/versions/0093_dental_reception.py scripts/backup_and_migrate_dental_workflows.py scripts/backup_and_migrate_subscription_audience.py | docker run --rm -i -w /srv/app --entrypoint sha256sum "$IMAGE" --strict --check -
-          docker build --platform linux/amd64 -f deploy/Dockerfile.dental-reception --target previous-panel --build-arg ORION_DENTAL_COMMIT="$GITHUB_SHA" -t "$RESTORE_IMAGE" .
-          docker push "$RESTORE_IMAGE"
-          docker image inspect "$RESTORE_IMAGE" --format '{{index .RepoDigests 0}}' > odontologia-retorno-image.txt
+          sha256sum app/management_models.py app/public_site_api.py app/site_publication.py app/static/orion-dental-clinic.css app/static/orion-suite.js app/static/orion-public.js | docker run --rm -i -w /srv/app --entrypoint sha256sum "$IMAGE" --strict --check -
           docker push "$IMAGE"
           docker image inspect "$IMAGE" --format '{{index .RepoDigests 0}}' | tee odontologia-producao-image.txt
+          echo "$BASE_IMAGE" > odontologia-retorno-image.txt
       - uses: actions/upload-artifact@v4
         with:
           name: odontologia-producao-image

@@ -92,3 +92,62 @@ async def test_public_booking_summary_confirmation_and_replay_keep_published_nam
     replay = await d['client'].post(d['public']+'/appointments', json=body)
     assert replay.status_code == 201, replay.text
     assert replay.json() == booked
+
+@pytest.mark.asyncio
+async def test_dental_site_publishes_only_owner_selected_evaluations_and_returns(public_db):
+    d = public_db
+    async with d['migrator'].begin() as db:
+        await db.execute(text("""
+            INSERT INTO business_onboarding(tenant_id,created_by,configuration)
+            VALUES(:tenant,:owner,'{"niche":"odontologia"}'::jsonb)
+        """), {'tenant': d['a'], 'owner': d['owner']})
+        for key, name in [('cut', 'Avaliação odontológica'), ('beard', 'Consulta de retorno'), ('wash', 'Cirurgia interna')]:
+            await db.execute(text("UPDATE services SET name=:name WHERE id=:id"), {'name': name, 'id': d[key]})
+
+    saved = await save_site(d, title='Clínica odontológica sintética')
+    client, base, public = d['client'], d['base'], d['public']
+    initial = await client.get(base+'/site/preview')
+    assert initial.status_code == 200 and initial.json()['dental_site']
+    assert initial.json()['services'] == [] and not initial.json()['booking_enabled']
+    publication = (await client.get(base+'/site/publication')).json()
+    assert {row['name'] for row in publication['dental_procedures']} == {
+        'Avaliação odontológica', 'Consulta de retorno', 'Cirurgia interna'}
+    assert (await client.get(public)).status_code == 404
+
+    action = {'expected_version': saved['version'], 'enabled': True}
+    path = base+'/site/publication'
+    assert (await client.post(path, json=action)).status_code == 422
+    foreign = {'procedure_id': str(d['foreign']), 'purpose': 'evaluation'}
+    assert (await client.post(path, json={**action, 'dental_procedures': [foreign]})).status_code == 422
+    procedures = [{'procedure_id': str(d['cut']), 'purpose': 'evaluation'},
+                  {'procedure_id': str(d['beard']), 'purpose': 'return'}]
+    status = await publish(d, dental_procedures=procedures)
+    assert status['published'] and not status['has_unpublished_changes']
+
+    route = (await client.get(public)).json()
+    assert route['dental_single_procedure'] and route['booking_enabled']
+    assert {row['name']: row['dental_visit_type'] for row in route['services']} == {
+        'Avaliação odontológica': 'evaluation', 'Consulta de retorno': 'return'}
+    assert str(d['wash']) not in str(route)
+    selection = {'professional_id': str(d['pro']), 'day': d['day'].isoformat()}
+    for invalid in (
+        {'service_id': str(d['wash'])},
+        {'service_id': str(d['cut']), 'addon_ids': [str(d['wash'])]},
+        {'service_ids': [str(d['cut']), str(d['beard'])]},
+    ):
+        response = await client.get(public+'/availability', params={**selection, **invalid})
+        assert response.status_code == 422
+
+    quote = await availability(d, service=d['cut'])
+    request = {**book_body(quote), 'customer_birth_date': '1992-05-21'}
+    booked = await client.post(public+'/appointments', json=request)
+    assert booked.status_code == 201, booked.text
+    assert booked.json()['status'] == 'confirmed' and booked.json()['services'] == ['Avaliação odontológica']
+    replay = await client.post(public+'/appointments', json=request)
+    assert replay.status_code == 201 and replay.json() == booked.json()
+
+    offline = await client.post(path, json={'expected_version': status['version'], 'enabled': False})
+    assert offline.status_code == 200 and (await client.get(public)).status_code == 404
+    await publish(d, restore_previous=True)
+    restored = (await client.get(public)).json()
+    assert {row['id'] for row in restored['services']} == {str(d['cut']), str(d['beard'])}

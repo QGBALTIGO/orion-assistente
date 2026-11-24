@@ -57,6 +57,10 @@ async def test_qr_ai_does_not_reformat_official_confirmation(monkeypatch):
         async def get(self, key):
             return None
 
+        async def set(self, key, value, *, ex):
+            assert key.startswith("orion:qr:ai:")
+            assert value and ex > 0
+
     monkeypatch.setattr(qr_ai, "_turn", mocked_turn)
     result = await qr_ai.turn(uuid4(), "5567999999999", "Protocolo: AG-G32XU5", RedisStub(), "test")
     text = result["answer"]

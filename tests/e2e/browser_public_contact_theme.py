@@ -19,7 +19,7 @@ DATA={
     'booking_horizon_days':60,
     'site':{
         'title':'Barbearia de teste','theme_color':'#ffcc00','show_prices':True,
-        'whatsapp_phone':'+5511999999999','contact_phone':'+551133334444',
+        'whatsapp_phone':None,'contact_phone':'+5511999999999',
         'instagram_url':'https://instagram.com/orion',
         'tiktok_url':'https://tiktok.com/@orion',
         'facebook_url':'https://facebook.com/orion'
@@ -98,7 +98,7 @@ def test_public_contacts_and_theme_responsive(engine,width):
             assert toggle.locator('.appearance-moon').is_visible()
             assert not toggle.locator('.appearance-sun').is_visible()
             assert page.locator('#contact-section').evaluate(
-                '(el)=>getComputedStyle(el).backgroundColor')=='rgb(17, 27, 43)'
+                '(el)=>getComputedStyle(el).backgroundColor')=='rgb(18, 18, 18)'
             assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth + 2')
             toggle.click()
             assert page.evaluate('document.documentElement.dataset.theme')=='light'
