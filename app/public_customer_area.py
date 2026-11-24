@@ -439,7 +439,10 @@ async def existing_dashboard(request, slug, tenant, phone=None):
             customer = await verified_customer(db, tenant, claims)
             if not customer or (phone and not hmac.compare_digest(customer["whatsapp_e164"], phone)):
                 return None
-            return await dashboard(db, tenant, customer, site["timezone"])
+            data = await dashboard(db, tenant, customer, site["timezone"])
+            if claims.get("auth_method") == "birth_date" or await barber_access(db, tenant):
+                data["login_method"] = "birth_date"
+            return data
 
 
 @router.get("")
@@ -472,6 +475,8 @@ async def birth_login_claims(slug, request, tenant, phone, birth, *, include_das
             claims = make_claims(tenant, customer, customer["appointment_id"],
                                  auth_method="birth_date")
             data = await dashboard(db, tenant, customer, site["timezone"]) if include_dashboard else None
+            if data is not None:
+                data["login_method"] = "birth_date"
     return claims, data
 
 
@@ -532,6 +537,8 @@ async def link_login(slug: str, payload: LinkInput, request: Request):
             customer, appointment, legacy_digest = verified
             claims = make_claims(tenant, customer, appointment, legacy_digest)
             data = await dashboard(db, tenant, customer, site["timezone"])
+            if await barber_access(db, tenant):
+                data["login_method"] = "birth_date"
     response = reply(data)
     await issue_session(request, tenant, claims, response, payload.remember)
     return response
