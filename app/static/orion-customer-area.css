@@ -1,5 +1,5 @@
 /* Public customer portal, isolated from booking and staff panels. */
-body.public-customer-toolbar .hero .public-toolbar{position:relative;inset:auto;min-height:56px;width:100%;max-width:none;padding:5px max(12px,calc((100% - 1152px)/2));box-sizing:border-box;background:var(--card);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:flex-start;gap:5px;pointer-events:auto;}
+body.public-customer-toolbar .hero .public-toolbar{position:relative;inset:auto;min-height:56px;width:100%;max-width:none;padding:5px max(12px,calc((100% - 1152px)/2));box-sizing:border-box;background:var(--card);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:flex-end;gap:5px;pointer-events:auto;}
 body.public-customer-toolbar .hero .cover{order:1}
 body.public-customer-toolbar .hero{display:flex;flex-direction:column}
 body.public-customer-toolbar .hero .identity-wrap{order:2;width:100%}
@@ -7,7 +7,7 @@ body.public-customer-toolbar .hero .public-toolbar{order:0}
 body.public-customer-toolbar .public-toolbar .appearance-trigger{width:44px;height:44px;min-width:44px;border-radius:11px;display:grid;place-items:center;background:transparent;color:var(--text);box-shadow:none;pointer-events:auto;}
 body.public-customer-toolbar .public-toolbar .appearance-trigger .appearance-symbol{filter:none;width:22px;height:22px;}
 body.public-customer-toolbar .public-toolbar .appearance-trigger:hover{background:var(--soft)}
-#public-toolbar-brand{margin-left:auto;padding-right:4px;display:flex;align-items:center}
+#public-toolbar-brand{margin-left:0;margin-right:auto;padding-left:4px;display:flex;align-items:center}
 .customer-orion-brand{display:inline-flex;align-items:center;flex-shrink:0;}
 .customer-orion-brand img{width:92px;height:auto;object-fit:contain}
 .customer-brand-dark{display:none!important}

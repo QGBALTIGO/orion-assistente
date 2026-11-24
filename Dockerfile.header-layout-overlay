@@ -1,0 +1,16 @@
+# Replace only the reviewed public header layout on the exact production image.
+FROM ghcr.io/qgbaltigo/orion-assistente-api@sha256:c8562f59d6f5b50d1bab3cff907bbff5ad2fe84a99210f077af2ff91a628fc31
+USER root
+COPY .ci-baseline/ /tmp/orion-header-layout-baseline/
+COPY app/static/orion-public.html /tmp/orion-header-layout-edited/app/static/orion-public.html
+COPY app/static/orion-customer-area.css /tmp/orion-header-layout-edited/app/static/orion-customer-area.css
+RUN set -e; \
+    for file in app/static/orion-public.html app/static/orion-customer-area.css; do \
+      cmp "/srv/app/$file" "/tmp/orion-header-layout-baseline/$file"; \
+    done; \
+    for file in app/static/orion-public.html app/static/orion-customer-area.css; do \
+      cp "/tmp/orion-header-layout-edited/$file" "/srv/app/$file"; \
+    done; \
+    rm -rf /tmp/orion-header-layout-baseline /tmp/orion-header-layout-edited
+USER appuser
+WORKDIR /srv/app
