@@ -37,7 +37,8 @@ from app.dental_clinic_schemas import (
     IntakeTemplateCreate, IntakeTemplateUpdate, LaboratoryCreate, LaboratoryUpdate,
     ProsthesisStatus, ProsthesisTransition, ProsthesisVisit,
     RoomCreate, RoomRename, RoomAssign, ChairAvailability, SupplyCreate, SupplyMove, ExamUpload,
-    SalesStage, SalesOpportunity, SalesOpportunitySearch, SalesPatientSearch
+    SalesStage, SalesOpportunity, SalesOpportunitySearch, SalesPatientSearch,
+    InsurancePlanCreate, InsurancePlanUpdate
 )
 
 
@@ -1008,6 +1009,80 @@ async def create_chair(db, tenant, actor, name):
         raise HTTPException(409, "Já existe uma cadeira com esse nome") from None
     await audit(db, tenant, actor, "room_created")
     return dict(chair)
+
+
+INSURANCE_PLAN_COLUMNS = "id, insurer, plan, covered_procedures, active, version"
+
+
+@router.get("/insurance-plans")
+async def list_insurance_plans(
+    tenant_id: UUID, limit: int = Query(30, ge=1, le=100), offset: int = Query(0, ge=0),
+    actor: Actor = Depends(authenticate),
+):
+    async with owner_session(tenant_id, actor, feature="settings.manage") as db:
+        result = (await db.execute(text(f"""
+            SELECT {INSURANCE_PLAN_COLUMNS}
+            FROM dental_insurance_plans WHERE tenant_id=:tenant
+            ORDER BY active DESC, lower(insurer), lower(plan), id
+            LIMIT :limit OFFSET :offset
+        """), {"tenant": tenant_id, "limit": limit + 1, "offset": offset})).mappings().all()
+        return {"items": [dict(row) for row in result[:limit]], "has_more": len(result) > limit}
+
+
+@router.post("/insurance-plans", status_code=201)
+async def create_insurance_plan(tenant_id: UUID, payload: InsurancePlanCreate, actor: Actor = Depends(authenticate)):
+    values = payload.model_dump()
+    async with owner_session(tenant_id, actor, feature="settings.manage") as db:
+        try:
+            row = (await db.execute(text(f"""
+                INSERT INTO dental_insurance_plans (tenant_id, id, insurer, plan, covered_procedures)
+                VALUES (:tenant, :id, :insurer, :plan, :covered_procedures)
+                ON CONFLICT (tenant_id, id) DO NOTHING
+                RETURNING {INSURANCE_PLAN_COLUMNS}
+            """), {"tenant": tenant_id, **values})).mappings().one_or_none()
+        except IntegrityError:
+            raise HTTPException(409, "Já existe um convênio com essa operadora e plano.") from None
+        if row is not None:
+            await audit(db, tenant_id, actor, "insurance_plan_created")
+            return dict(row)
+        row = (await db.execute(text(f"""
+            SELECT {INSURANCE_PLAN_COLUMNS} FROM dental_insurance_plans
+            WHERE tenant_id=:tenant AND id=:id
+        """), {"tenant": tenant_id, "id": payload.id})).mappings().one()
+        if any(row[key] != values[key] for key in ("insurer", "plan", "covered_procedures")):
+            raise HTTPException(409, "O convênio já foi cadastrado. Atualize a lista antes de continuar.")
+        return dict(row)
+
+
+@router.patch("/insurance-plans/{plan_id}")
+async def update_insurance_plan(
+    tenant_id: UUID, plan_id: UUID, payload: InsurancePlanUpdate, actor: Actor = Depends(authenticate),
+):
+    values = payload.model_dump()
+    async with owner_session(tenant_id, actor, feature="settings.manage") as db:
+        try:
+            row = (await db.execute(text(f"""
+                UPDATE dental_insurance_plans
+                SET insurer=:insurer, plan=:plan, covered_procedures=:covered_procedures,
+                    active=:active, version=version+1
+                WHERE tenant_id=:tenant AND id=:id AND version=:expected_version
+                RETURNING {INSURANCE_PLAN_COLUMNS}
+            """), {"tenant": tenant_id, "id": plan_id, **values})).mappings().one_or_none()
+        except IntegrityError:
+            raise HTTPException(409, "Já existe um convênio com essa operadora e plano.") from None
+        if row is None:
+            current = (await db.execute(text(f"""
+                SELECT {INSURANCE_PLAN_COLUMNS} FROM dental_insurance_plans
+                WHERE tenant_id=:tenant AND id=:id
+            """), {"tenant": tenant_id, "id": plan_id})).mappings().one_or_none()
+            if current is None:
+                raise HTTPException(404, "Convênio não encontrado.")
+            fields = ("insurer", "plan", "covered_procedures", "active")
+            if current["version"] == payload.expected_version + 1 and all(current[key] == values[key] for key in fields):
+                return dict(current)
+            raise HTTPException(409, "O convênio foi alterado. Atualize a lista antes de editar.")
+        await audit(db, tenant_id, actor, "insurance_plan_updated")
+        return dict(row)
 
 
 @router.get("/rooms")

@@ -101,7 +101,7 @@ async def clinic_db():
                "room_a2":room_a2,"when":when}
     finally:
         async with migrator.begin() as db:
-            for tbl in ("dental_sales_opportunities","dental_visit_patient_events","dental_access_audit","dental_laboratories","dental_intake_templates","dental_room_reservations",
+            for tbl in ("dental_insurance_plans","dental_sales_opportunities","dental_visit_patient_events","dental_access_audit","dental_laboratories","dental_intake_templates","dental_room_reservations",
                         "dental_exam_files","dental_records","dental_supply_movements",
                         "dental_supplies","dental_patients","dental_rooms",
                         "dental_clinicians","appointment_history","appointment_items",
@@ -1780,3 +1780,44 @@ async def test_opportunity_period_uses_clinic_midnight_and_scopes_pagination(cli
             assert [row["id"] for row in reply.json()["items"]] == list(map(str,expected))
         for invalid in [{"start_date":"2026-02-30"},{"start_date":"2026-03-09","end_date":"2026-03-08"}]:
             assert (await client.get(path,params=invalid)).status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_insurance_catalog_is_versioned_and_isolated(clinic_api_db):
+    import asyncio
+    import httpx
+    from fastapi import FastAPI
+    from app.catalog_api import Actor, authenticate
+    from app.dental_clinic_api import router
+
+    d = clinic_api_db
+    web = FastAPI()
+    web.include_router(router)
+    actor = Actor("member", d["a"], d["account"], "owner")
+    web.dependency_overrides[authenticate] = lambda: actor
+    path = f"/api/v1/tenants/{d['a']}/dental/insurance-plans"
+    other = path.replace(str(d["a"]), str(d["b"]))
+    plan = {"id": str(uuid4()), "insurer": "Operadora sintética", "plan": "Plano de teste",
+            "covered_procedures": "Avaliação"}
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=web), base_url="https://synthetic.test") as client:
+        assert (await client.get(path)).json() == {"items": [], "has_more": False}
+        created = await asyncio.gather(*(client.post(path, json=plan) for _ in range(2)))
+        assert [response.status_code for response in created] == [201, 201]
+        assert created[0].json() == created[1].json()
+        assert created[0].json()["version"] == 1
+        assert (await client.post(path, json={**plan, "id": str(uuid4()), "plan": plan["plan"].upper()})).status_code == 409
+        update = {key: value for key, value in plan.items() if key != "id"}
+        update.update(active=False, expected_version=1)
+        target = path + "/" + plan["id"]
+        changed = await client.patch(target, json=update)
+        assert changed.status_code == 200 and changed.json()["version"] == 2
+        assert (await client.patch(target, json=update)).json() == changed.json()
+        assert (await client.patch(target, json={**update, "active": True})).status_code == 409
+        assert (await client.get(path)).json()["items"][0]["active"] is False
+        actor = Actor("member", d["a"], d["assistant"], "editor")
+        assert (await client.get(path)).status_code == 403
+        assert (await client.patch(target, json=update)).status_code == 403
+        actor = Actor("member", d["b"], d["account_b"], "owner")
+        assert (await client.get(other)).json()["items"] == []
+        assert (await client.patch(other + "/" + plan["id"], json=update)).status_code == 404
+        assert (await client.get(path)).status_code == 403

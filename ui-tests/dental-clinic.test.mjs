@@ -14,6 +14,7 @@ const patientDTO={id:patient,name:'Paciente de teste',version:1,guardian_name:'R
   birth_date:'2001-05-06',created_at:'2026-11-01T11:00:00Z'};
 const response=(path,method='GET',data,config)=>{
   const rows=config.patients||[patientDTO];
+  if(path.includes('/dental/insurance-plans'))return config.insurance?.(path,method,data)||{items:[],has_more:false};
   if(path.endsWith('/dental/access'))return {account_id:account,can_manage:config.canManage===true,can_manage_inventory:config.inventory===true,can_read_records:config.level==='dentist',
     clinical_access:config.level?{account_id:account,level:config.level,professional_id:pro}:null,grants:[]};
   if(path.includes('/dental/patients?'))return {items:rows,total:rows.length};
@@ -594,4 +595,49 @@ test('prótese não revela horário de um vínculo indisponível e não fabrica 
   assert.match(h.host.textContent,/vínculo anterior está indisponível/);
   assert.equal(h.host.querySelector('[data-dental-form=prosthesis-visit]'),null);
   assert.equal(h.host.querySelector('[data-dental-action=prosthesis-visit-remove]'),null);
+});
+
+
+test('o catálogo do convênio grava e edita pela API e não consulta dados clínicos',async t=>{
+  let plan;
+  const h=makeDOM({canManage:true,insurance(path,method,data){
+    if(method==='POST')plan={...data,active:true,version:1};
+    if(method==='PATCH'){
+      assert.equal(data.expected_version,1);
+      plan={...plan,active:data.active,version:2};
+    }
+    return {items:plan?[plan]:[],has_more:false};
+  }});
+  t.after(()=>h.close());
+  await h.mount({insuranceDirectory:true,visibleTabs:['insurance']});
+  h.click('[data-dental-action=insurance-new]');
+  h.fill('[name=insurer]','Operadora sintética');
+  h.fill('[name=plan]','Plano A');
+  h.fill('[name=covered_procedures]','Avaliação');
+  h.submit('[data-dental-form=insurance-plan]');await flush();
+  assert.match(h.host.textContent,/Operadora sintética · Plano A/);
+  h.click('[data-dental-action=insurance-edit]');
+  h.fill('[name=active]','false');
+  h.submit('[data-dental-form=insurance-plan]');await flush();
+  assert.match(h.host.textContent,/Inativo/);
+  assert.deepEqual(h.calls.filter(call=>call.path.includes('/dental')).map(call=>call.method),['GET','GET','POST','GET','PATCH','GET']);
+  assert.ok(h.calls.every(call=>!call.path.includes('/patients')));
+});
+
+test('o plano de tratamento mantém a descrição ao incluir várias etapas',async t=>{
+  const h=makeDOM({level:'dentist'});
+  t.after(()=>h.close());
+  await h.mount({initialTab:'treatment',visibleTabs:['treatment'],initialPatient:patient});
+  assert.equal(h.host.querySelector('[data-dental-tab]'),null);
+  h.fill('[name=description]','Plano sintético');
+  h.fill('[name=note]','Nota sintética');
+  h.fill('[name=stage_description]','Etapa inicial');
+  h.fill('[name=stage_state]','in_progress');
+  h.click('[data-dental-action=add-stage]');
+  assert.equal(h.host.querySelector('[name=description]').value,'Plano sintético');
+  assert.equal(h.host.querySelector('[name=note]').value,'Nota sintética');
+  h.submit('[data-dental-form=record]');await flush();
+  const record=h.calls.find(call=>call.method==='POST'&&call.path.endsWith('/records'));
+  assert.equal(record.data.content.description,'Plano sintético');
+  assert.equal(record.data.content.stages[0].state,'in_progress');
 });

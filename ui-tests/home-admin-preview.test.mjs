@@ -328,7 +328,7 @@ test('dentistry, subscriptions and other niches stay on their respective dashboa
    const dental=profile.business_niche==='odontologia';
    assert.equal(h.calls.some(call=>call.path.endsWith('/dental/reception/today')),dental);
    if(dental){
-    assert.equal(h.document.getElementById('osReceptionTitle').textContent,'Recepção');
+    assert.equal(h.document.getElementById('osReceptionTitle').textContent,'Dashboard');
     assert.deepEqual([...h.document.querySelectorAll('#osReceptionCounts dd')].map(n=>n.textContent),['2','1','0','0']);
     assert.equal(h.document.querySelector('.os-dashboard-today'),null);
    }else if(profile.workspace_profile==='subscription_services')assert.ok(h.document.querySelector('#osSubscriptionDashboard'));

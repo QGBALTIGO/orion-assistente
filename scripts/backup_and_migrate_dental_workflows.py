@@ -22,7 +22,8 @@ from scripts.wait_for_exceptional_overlap_schema import schema_ready as overlap_
 
 LABORATORIES = "0086_dental_laboratories"
 PREVIOUS = "0088_dental_sales_opportunities"
-TARGET = "0089_dental_sales_patient_link"
+SALES_PATIENT = "0089_dental_sales_patient_link"
+TARGET = "0091_dental_insurance_plans"
 WORKFLOW_CONTRACT = """
 SELECT COALESCE((
     SELECT count(*)=2 AND bool_and(
@@ -111,6 +112,21 @@ SELECT EXISTS (
 """
 
 
+INSURANCE_CONTRACT = """
+SELECT EXISTS (
+    SELECT 1 FROM pg_class t WHERE t.oid=to_regclass('public.dental_insurance_plans')
+      AND t.relrowsecurity AND t.relforcerowsecurity
+      AND has_table_privilege('app_runtime',t.oid,'SELECT')
+      AND has_table_privilege('app_runtime',t.oid,'INSERT')
+      AND has_table_privilege('app_runtime',t.oid,'UPDATE')
+      AND NOT has_table_privilege('app_runtime',t.oid,'DELETE,TRUNCATE')
+      AND NOT has_table_privilege('app_support',t.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE')
+) AND (SELECT count(*)=2 FROM pg_policy WHERE polrelid=to_regclass('public.dental_insurance_plans'))
+AND EXISTS (SELECT 1 FROM pg_index WHERE indexrelid=to_regclass('public.uq_dental_insurance_plan')
+            AND indisvalid AND indisready AND indisunique)
+"""
+
+
 def complete_contract(raw, include_visits, include_sales=False):
     if not predecessor_contract(raw):
         return False
@@ -127,19 +143,23 @@ def complete_contract(raw, include_visits, include_sales=False):
 
 
 def workflows_ready(raw):
-    if migrated_version(raw) != TARGET or not complete_contract(raw, include_visits=True, include_sales=True):
+    revision = migrated_version(raw)
+    if revision not in {SALES_PATIENT, TARGET} or not complete_contract(raw, include_visits=True, include_sales=True):
         return False
     engine = create_engine(raw, poolclass=NullPool, connect_args={
         "options": "-c default_transaction_read_only=on -c statement_timeout=12000"
     })
     try:
         with engine.connect() as db:
-            return db.scalar(text(SALES_PATIENT_CONTRACT)) is True
+            return (db.scalar(text(SALES_PATIENT_CONTRACT)) is True
+                    and (revision != TARGET or db.scalar(text(INSURANCE_CONTRACT)) is True))
     finally:
         engine.dispose()
 
 
 def source_ready(raw, revision):
+    if revision == SALES_PATIENT:
+        return workflows_ready(raw)
     if revision in (LABORATORIES, "0087_dental_patient_visits", PREVIOUS):
         return complete_contract(raw, include_visits=revision != LABORATORIES,
                                  include_sales=revision == PREVIOUS)
@@ -172,7 +192,7 @@ def main():
             raise RuntimeError("dental_workflow_database_scope_mismatch")
         with release_lock(raw):
             current = migrated_version(raw)
-            if current not in (LEGACY, LABORATORIES, "0087_dental_patient_visits", PREVIOUS, TARGET):
+            if current not in (LEGACY, LABORATORIES, "0087_dental_patient_visits", PREVIOUS, SALES_PATIENT, TARGET):
                 raise RuntimeError("dental_workflow_source_schema_not_approved")
             verify_key_provisioning(raw)
             if current != TARGET:
@@ -180,14 +200,14 @@ def main():
                     raise RuntimeError("dental_workflow_source_schema_not_approved")
                 with tempfile.TemporaryDirectory(prefix="orion-dental-workflows-") as folder:
                     perform_backup(url, storage_values(), Path(folder) / "backup.dump",
-                                   backup_context="dental-sales-patient-link-0089", schema_revision=current,
+                                   backup_context="dental-insurance-plans-0091", schema_revision=current,
                                    preserve_ownership=True)
                 if migrated_version(raw) != current or not source_ready(raw, current):
                     raise RuntimeError("dental_workflow_source_changed_after_backup")
                 subprocess.run([sys.executable, "-m", "alembic", "upgrade", TARGET],
                                env={**os.environ, "ORION_MIGRATION_SWITCH_ROLE": "1"},
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=600, check=True)
-            if not workflows_ready(raw):
+            if migrated_version(raw) != TARGET or not workflows_ready(raw):
                 raise RuntimeError("dental_workflow_schema_invalid")
         print("orion_dental_workflow_schema_ready", flush=True)
         return 0

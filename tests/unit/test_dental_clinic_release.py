@@ -106,6 +106,7 @@ def test_0076_has_one_parent_matching_existing_monthly_migration():
     ("already_published", 0, ["validate"]),
     ("backup_failed", 3, ["backup"]),
     ("source_changed", 3, ["backup"]),
+    ("upgrade_did_not_advance", 3, ["backup", "upgrade"]),
     ("wrong_scope", 3, []),
 ])
 def test_dental_workflow_rollout_only_migrates_after_its_backup(monkeypatch, case, exit_code, expected_steps):
@@ -121,15 +122,17 @@ def test_dental_workflow_rollout_only_migrates_after_its_backup(monkeypatch, cas
     monkeypatch.setattr(workflows, "source_ready", lambda raw, revision: True)
     monkeypatch.setattr(workflows, "storage_values", lambda: {})
     steps = []
-    revisions = [workflows.TARGET] if case == "already_published" else [
-        workflows.PREVIOUS, "0082_unexpected" if case == "source_changed" else workflows.PREVIOUS
+    source = workflows.SALES_PATIENT
+    revisions = [workflows.TARGET, workflows.TARGET] if case == "already_published" else [
+        source, "0082_unexpected" if case == "source_changed" else source,
+        source if case == "upgrade_did_not_advance" else workflows.TARGET,
     ]
     current = iter(revisions)
     monkeypatch.setattr(workflows, "migrated_version", lambda _: next(current))
 
     def backup(url, settings, archive, **details):
-        assert details == {"backup_context": "dental-sales-patient-link-0089",
-                           "schema_revision": workflows.PREVIOUS, "preserve_ownership": True}
+        assert details == {"backup_context": "dental-insurance-plans-0091",
+                           "schema_revision": source, "preserve_ownership": True}
         steps.append("backup")
         if case == "backup_failed":
             raise RuntimeError("synthetic backup failure")
@@ -178,9 +181,9 @@ def test_0089_links_one_explicit_patient_without_phone_identity_inference():
     from pathlib import Path
     from scripts import backup_and_migrate_dental_workflows as workflows
 
-    migration = (Path(__file__).parents[2] / "alembic/versions/0089_dental_sales_patient_link.py").read_text()
+    migration = (Path(__file__).parents[2] / "alembic/versions/0089_dental_sales_patient_link.py").read_text(encoding="utf-8")
     assert workflows.PREVIOUS == "0088_dental_sales_opportunities"
-    assert workflows.TARGET == "0089_dental_sales_patient_link"
+    assert workflows.SALES_PATIENT == "0089_dental_sales_patient_link"
     assert 'down_revision = "0088_dental_sales_opportunities"' in migration
     assert "FOREIGN KEY (tenant_id,patient_id)" in migration
     assert "dental_sales_patient_options" in migration

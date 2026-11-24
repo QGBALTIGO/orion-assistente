@@ -78,14 +78,12 @@ def check_menu(browser, width, height, theme):
 
     page.route("**/*", serve)
     page.goto(shell.ORIGIN+"/panel?aba=dashboard",wait_until="domcontentloaded")
-    page.get_by_role("heading",name="Recepção",exact=True).wait_for(timeout=15000)
+    page.get_by_role("heading",name="Dashboard",exact=True).wait_for(timeout=15000)
     page.evaluate("(theme)=>document.documentElement.dataset.theme=theme",theme)
     page.evaluate("document.fonts.ready")
     nav = menu()
-    for label in ["Recepção","Agenda","Pacientes","Prontuários","Controle de próteses","Estoque","Financeiro","Ajustes da clínica"]:
+    for label in ["Dashboard","Agenda","Pacientes","Prontuários","Prótese e laboratório","Estoque","Financeiro","Equipe","Procedimentos"]:
         assert nav.get_by_role("button",name=label,exact=True).count() == 1, (width,label)
-    assert not nav.get_by_role("button",name="Procedimentos",exact=True).count()
-    assert not nav.get_by_role("button",name="Equipe clínica",exact=True).count()
     sidebar_context=page.locator("#osSidebarContext")
     assert sidebar_context.evaluate("""el=>{
         const end=el.querySelector('.os-sidebar-badges').getBoundingClientRect().bottom;
@@ -93,9 +91,8 @@ def check_menu(browser, width, height, theme):
     }"""),(width,theme)
     shell.OUT.mkdir(parents=True,exist_ok=True)
     page.screenshot(path=str(shell.OUT/f"menu-{width}-{theme}.png"),animations="disabled")
-    setup = nav.get_by_role("button",name="Ajustes da clínica",exact=True)
-    setup.focus()
-    setup.press("Enter")
+    nav.get_by_role("button",name="Equipe",exact=True).press("Enter")
+    page.get_by_role("button",name="Ajustes da clínica",exact=True).press("Enter")
     page.get_by_role("heading",name="Ajustes da clínica",exact=True).wait_for()
     group = page.locator("#osPageBody")
     chair = group.get_by_role("button",name="Consultórios e cadeiras",exact=True)
@@ -110,8 +107,9 @@ def check_menu(browser, width, height, theme):
     chair.press("Enter")
     page.get_by_text("Nenhuma cadeira cadastrada",exact=True).wait_for(timeout=8000)
     assert "chair-settings" in accesses
-    assert menu().locator('[aria-current="page"]').inner_text() == "Ajustes da clínica"
-    menu().get_by_role("button", name="Ajustes da clínica", exact=True).click()
+    assert menu().locator('[aria-current="page"]').inner_text() == "Consultórios"
+    menu().get_by_role("button", name="Equipe", exact=True).click()
+    page.get_by_role("button",name="Ajustes da clínica",exact=True).press("Enter")
     group.get_by_role("button", name="Etapas de vendas", exact=True).click()
     group.get_by_role("button", name="Nova etapa", exact=True).press("Enter")
     assert page.get_by_role("heading", name="Ajustes da clínica", exact=True).count() == 1
@@ -128,7 +126,8 @@ def check_menu(browser, width, height, theme):
     assert not page.evaluate("document.documentElement.scrollWidth > innerWidth + 1"), (width, theme)
     stage_list.scroll_into_view_if_needed()
     page.screenshot(path=str(shell.OUT / f"etapas-{width}-{theme}.png"), animations="disabled")
-    menu().get_by_role("button", name="Vendas", exact=True).press("Enter")
+    menu().get_by_role("button", name="Orçamentos", exact=True).press("Enter")
+    page.get_by_role("button", name="Oportunidades", exact=True).press("Enter")
     page.get_by_text("Nenhuma oportunidade em aberto", exact=True).wait_for()
     create = page.get_by_role("button", name="Nova oportunidade", exact=True)
     if width <= 760:

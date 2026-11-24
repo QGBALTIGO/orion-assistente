@@ -8,27 +8,22 @@ function dentalPlan(overrides={}) {
     business_niche:'odontologia',revision:'synthetic-dental-v1',...overrides});
 }
 
-test('a verified dentist business gets a grouped Orion menu with only existing modules', async t => {
-  const h=await makeSuite({initialRoute:'dashboard',permissions:dentalPlan()});
+test('a clínica odontológica tem o menu do ZIP e mantém Ajuda e conta', async t => {
+  const h=await makeSuite({initialRoute:'dashboard',permissions:dentalPlan({dental_clinical_enabled:true})});
   t.after(()=>h.close());await flush();
   const app=h.document.getElementById('appView');
   assert.ok(app.classList.contains('os-dental-workspace'));
-  const rows=[...h.document.querySelectorAll('#osNav [data-os-route]')];
-  const labels=Object.fromEntries(rows.map(el=>[el.dataset.osRoute,el.textContent.trim()]));
-  assert.equal(labels.dashboard,'Recepção');
-  assert.equal(labels.agenda,'Agenda');
-  assert.equal(labels.clientes,'Pacientes');
-  assert.equal(labels.servicos,undefined);
-  assert.equal(labels['ajustes-odonto'],'Ajustes da clínica');
-  assert.equal(labels.funcionarios,undefined);
-  assert.equal(labels.inbox,'Conversas');
-  assert.equal(rows.filter(el=>el.dataset.osRoute==='clientes').length,1);
-  assert.equal(rows.filter(el=>el.dataset.osRoute==='ajustes-odonto').length,1);
-  assert.ok([...h.document.querySelectorAll('#osNav .os-nav-section')].some(el=>el.textContent==='Operação da clínica'));
-  assert.equal(h.document.querySelector('#osNav [data-os-route=odontograma]'),null);
-  assert.equal(h.document.querySelector('#osNav [data-os-route=prontuarios]'),null);
+  const labels=[...h.document.querySelectorAll('#osNav [data-os-route]')].map(el=>el.textContent.trim());
+  assert.deepEqual(labels,[
+    'Dashboard','Agenda','Pacientes','Prontuários','Planos de tratamento',
+    'Jornada do paciente','Odontograma','Periodontia','Exames e imagens','Procedimentos','Orçamentos','Prótese e laboratório',
+    'Consultórios','Financeiro','Estoque','Convênios','Equipe','Relatórios','Conversas','Meu site',
+    'Novidades','Base de conhecimento','Minha conta'
+  ]);
+  assert.deepEqual([...h.document.querySelectorAll('#osNav .os-nav-section')].map(el=>el.textContent),
+    ['Odontologia','Gestão','Atendimento','Ajuda e conta']);
   assert.equal(app.classList.contains('os-layout-app'),false);
-  assert.equal(h.errors.length,0);
+  assert.deepEqual(h.errors,[]);
 });
 
 test('recepção usa o resumo administrativo, horários locais e ações de consulta e paciente',async t=>{
@@ -49,15 +44,15 @@ test('recepção usa o resumo administrativo, horários locais e ações de cons
   assert.ok(calls.some(path=>path.endsWith('/dental/reception/today')));
   assert.ok(!calls.some(path=>path.includes('/records')||path.includes('/management/dashboard')));
   assert.ok(!main.textContent.includes('Sorriso Prime'));
-  h.click('#osNav [data-os-route=clientes]');await flush();
-  assert.match(h.document.querySelector('.os-client-heading h1').textContent,/Pacientes/);
-  assert.ok(h.document.querySelector('[data-os-action=new-customer]'));
-  assert.equal(h.document.querySelector('#osNav [data-os-route=clientes]')?.getAttribute('aria-current'),'page');
+  h.click('#osNav [data-os-route=agenda]');await flush();
+  assert.equal(h.document.querySelector('#osNav [data-os-route=agenda]')?.getAttribute('aria-current'),'page');
   assert.equal(h.errors.length,0);
 });
 
 test('clinical journey on reception links only to protected real Orion modules',async t=>{
-  const h=await makeSuite({initialRoute:'dashboard',permissions:dentalPlan({dental_clinical_enabled:true})});
+  const clinic=readFileSync(new URL('../app/static/orion-dental-clinic.js',import.meta.url),'utf8');
+  const h=await makeSuite({initialRoute:'dashboard',permissions:dentalPlan({dental_clinical_enabled:true}),
+    configureWindow:window=>window.eval(clinic)});
   t.after(()=>h.close());await flush();
   const journey=h.document.querySelector('.os-dental-journey-card');
   assert.ok(journey,'reception should present contextual clinical navigation');
@@ -66,7 +61,7 @@ test('clinical journey on reception links only to protected real Orion modules',
   assert.match(journey.textContent,/Planos de tratamento/);
   assert.equal(h.calls.some(x=>/\/dental\/patients\/.+\/records/.test(x.path)),false);
   h.click('[data-os-dental-entry=odontogram]');await flush();
-  assert.equal(h.document.querySelector('#page-suite').dataset.osCurrentRoute,'clinica');
+  assert.equal(h.document.querySelector('#page-suite').dataset.osCurrentRoute,'odontograma-odonto');
   assert.ok(h.document.querySelector('#osDentalClinic'));
   assert.equal(h.errors.length,0);
 });
@@ -117,13 +112,13 @@ test('switching quickly between dental routes leaves a consistent single selecti
   const h=await makeSuite({initialRoute:'dashboard',permissions:dentalPlan()});
   t.after(()=>h.close());
   await flush();
-  const routes=['dashboard','agenda','clientes','ajustes-odonto','financeiro'];
+  const routes=['dashboard','agenda','servicos','funcionarios','financeiro'];
   for(let i=0;i<96;i++)h.click('#osNav [data-os-route='+routes[i%routes.length]+']');
   await flush();await flush();
-  await h.window.OrionSuite.open('clientes');await flush();
-  assert.equal(h.document.querySelector('#page-suite').dataset.osCurrentRoute,'clientes');
+  await h.window.OrionSuite.open('servicos');await flush();
+  assert.equal(h.document.querySelector('#page-suite').dataset.osCurrentRoute,'servicos');
   assert.equal(h.document.querySelectorAll('#osNav [aria-current=page]').length,1);
-  assert.equal(h.document.querySelector('#osNav [aria-current=page]').dataset.osRoute,'clientes');
+  assert.equal(h.document.querySelector('#osNav [aria-current=page]').dataset.osRoute,'servicos');
   assert.equal(h.errors.length,0);
 });
 
@@ -384,16 +379,16 @@ test('ajustes da clínica abre os campos existentes e conserva um único destino
   assert.equal(main().querySelector('h1').textContent,'Ajustes da clínica');
   assert.equal(h.document.querySelector('#osNav [data-os-route=clinica]').textContent,'Prontuários');
   assert.equal(h.document.querySelector('#osNav [data-os-route="pacientes-odonto"]').textContent,'Pacientes');
-  assert.equal(h.document.querySelector('#osNav [data-os-route="proteses-odonto"]').textContent,'Controle de próteses');
+  assert.equal(h.document.querySelector('#osNav [data-os-route="proteses-odonto"]').textContent,'Prótese e laboratório');
   assert.ok(main().querySelector('[data-os-route=clientes]').textContent.includes('Contatos da agenda'));
   assert.equal(h.calls.some(c=>c.path.includes('/dental/patients')||c.path.includes('/dental/access')),false);
   h.click('#osPageBody [data-os-route=servicos]');await flush();
   assert.equal(main().querySelector('h1').textContent,'Procedimentos');
-  assert.equal(h.document.querySelector('#osNav [aria-current=page]').dataset.osRoute,'ajustes-odonto');
-  h.click('#osNav [data-os-route="ajustes-odonto"]');await flush();
+  assert.equal(h.document.querySelector('#osNav [aria-current=page]').dataset.osRoute,'servicos');
+  await h.window.OrionSuite.open('ajustes-odonto');await flush();
   h.click('[data-os-dental-setting="dental-chairs"]');await flush();
   assert.ok(h.calls.some(c=>c.path.endsWith('/dental/chair-settings')));
-  h.click('#osNav [data-os-route="ajustes-odonto"]');await flush();
+  await h.window.OrionSuite.open('ajustes-odonto');await flush();
   h.click('[data-os-dental-setting="dental-access"]');await flush();
   assert.equal(main().querySelector('h1').textContent,'Acessos clínicos');
   assert.equal(h.errors.length,0);
@@ -476,7 +471,7 @@ test('ajustes da clínica salvam a etapa de vendas e a recarregam ao voltar',asy
   h.click('[data-os-action=dental-sales-stage-new]');h.fill('[data-os-form=dental-sales-stage] input[name=name]','Aguardando guia');
   h.submit('[data-os-form=dental-sales-stage]');await flush();
   assert.equal(creates,1);assert.match(h.document.querySelector('.os-sales-stages').textContent,/Aguardando guiaPersonalizada/);
-  h.click('#osNav [data-os-route=ajustes-odonto]');await flush();open();await flush();
+  await h.window.OrionSuite.open('ajustes-odonto');await flush();open();await flush();
   assert.equal(h.document.querySelectorAll('.os-sales-stages li').length,5);
   const editor=await makeSuite({role:'editor',initialRoute:'ajustes-odonto',permissions:dentalPlan({dental_clinical_enabled:true})});
   t.after(()=>editor.close());await flush();
@@ -508,7 +503,7 @@ test('vendas preserva a tentativa de cadastro e carrega as oportunidades da clí
     if(path.includes('?before='))return {items:[{id:'old',title:'Oportunidade anterior',description:'',created_at:'2026-11-20T15:00:00Z'}],next:null};
     return {items:all,next:all.length?all[0].id:null};
   }});t.after(()=>h.close());await flush();
-  const nav=h.document.querySelector('#osNav [data-os-route="vendas-odonto"]');assert.equal(nav.textContent,'Vendas');
+  assert.equal(h.document.querySelector('#osNav [aria-current=page]').dataset.osRoute,'orcamentos-odonto');
   assert.match(h.document.querySelector('#osPageBody').textContent,/Nenhuma oportunidade em aberto/);
   h.click('[data-os-action=dental-opportunity-new]');
   h.fill('[name=title]','Retorno sintético');h.fill('[name=description]','<script>nota de teste</script>');

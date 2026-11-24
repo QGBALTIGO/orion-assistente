@@ -68,7 +68,7 @@ def verify(browser, width, height, theme):
 
     page.route("**/*", serve)
     page.goto(shell.ORIGIN+"/panel?aba=proteses-odonto", wait_until="domcontentloaded")
-    page.get_by_role("heading", name="Controle de próteses", exact=True).wait_for(timeout=15000)
+    page.get_by_role("heading", name="Prótese e laboratório", exact=True).wait_for(timeout=15000)
     root = page.locator("#osDentalClinic")
     root.get_by_text("Em atraso",exact=True).wait_for()
     page.evaluate("(theme)=>document.documentElement.dataset.theme=theme",theme)
@@ -107,8 +107,8 @@ def verify(browser, width, height, theme):
     root.get_by_role("button",name="Voltar às próteses").click()
     assert not any("patients" in path or "exams" in path or "records" in path for path in dental_reads)
     root.get_by_role("button",name="Abrir prontuário").click()
-    root.get_by_role("tab",name="Próteses").wait_for()
-    assert root.get_by_role("tab",name="Próteses").get_attribute("aria-selected") == "true"
+    root.locator('form[data-dental-form="record"][data-kind="prosthesis"]').wait_for()
+    assert page.locator("#page-suite").get_attribute("data-os-current-route") == "clinica"
     assert len(writes) == 1 and not errors,errors
     page.close()
 

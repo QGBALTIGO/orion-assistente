@@ -45,7 +45,7 @@ def verify(browser, width, height, theme):
 
     page.route("**/*", serve)
     page.goto(shell.ORIGIN + "/panel?aba=estoque-odonto", wait_until="domcontentloaded")
-    page.get_by_role("heading", name="Estoque odontológico").wait_for(timeout=13000)
+    page.get_by_role("heading", name="Estoque", exact=True, level=1).wait_for(timeout=13000)
     page.get_by_text(material["name"], exact=True).wait_for()
     page.evaluate("(theme)=>document.documentElement.dataset.theme=theme", theme)
     page.evaluate("document.fonts.ready")

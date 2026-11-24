@@ -75,7 +75,30 @@
   const circles={users:'<circle cx="9" cy="7" r="4"/>',userPlus:'<circle cx="9" cy="7" r="4"/>',scissors:'<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/>',clock:'<circle cx="12" cy="12" r="10"/>',search:'<circle cx="10.5" cy="10.5" r="7.5"/>',sun:'<circle cx="12" cy="12" r="4"/>',info:'<circle cx="12" cy="12" r="10"/>',help:'<circle cx="12" cy="12" r="10"/>',globe:'<circle cx="12" cy="12" r="10"/>',block:'<circle cx="12" cy="12" r="10"/>',target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/>',instagram:'<circle cx="12" cy="12" r="4"/>'};
   const icon = name => '<svg class="os-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">'+(circles[name]||'')+'<path d="'+(paths[name]||paths.info)+'"/></svg>';
   const compactDisclosureSummary = label => '<summary><span class="os-detail-toggle-icon" aria-hidden="true">'+icon('plus')+icon('minus')+'</span><span>'+esc(label)+'</span></summary>';
-  const routeNames={dispositivos:'Dispositivos',chatbot:'Chatbot','testar-chatbot':'Testar Chatbot',templates:'Templates','mensagens-enviadas':'Mensagens Enviadas',diagnosticos:'Diagnósticos',campanhas:'Campanhas',programadas:'Mensagens Programadas',massa:'Mensagem em Massa','enviar-mensagem':'Enviar Mensagem',aquecimento:'Aquecimento','evitar-banimento':'Evitar Banimento','resolver-banimento':'Resolver Banimento','extrator-contatos':'Extrator de contatos de grupos','adicionar-ao-grupo':'Adicionar contatos ao grupo',inbox:'Central de atendimento',dashboard:'Dashboard',perfil:'Perfil',agenda:'Agenda',clientes:'Clientes',clinica:'Clínica odontológica','pacientes-odonto':'Pacientes','proteses-odonto':'Controle de próteses','estoque-odonto':'Estoque','vendas-odonto':'Vendas','ajustes-odonto':'Ajustes da clínica',servicos:'Serviços',funcionarios:'Funcionários',financeiro:'Financeiro',desempenho:'Meu desempenho',marketing:'Marketing IA',site:'Meu site',fidelizacao:'Fidelização',consultor:'Consultor IA',plano:'Plano',configuracoes:'Configurações',novidades:'Novidades',ajuda:'Base de conhecimento',dispositivo:'Conectar WhatsApp',conversas:'Conversas',ai:'Testar atendimento',empresa:'Configurar atendimento',catalogo:'Catálogo e pedidos',cadastros:'Administração do atendimento',member:'Minha conta'};
+  const dentalViews={
+    clinica:{label:'Prontuários',tab:'anamnesis',tabs:['anamnesis','progress','consent','certificate','referral']},
+    'planos-odonto':{label:'Planos de tratamento',tab:'treatment'},
+    'jornada-odonto':{label:'Jornada do paciente',journey:true},
+    'odontograma-odonto':{label:'Odontograma',tab:'odontogram'},
+    'periodontia-odonto':{label:'Periodontia',tab:'periodontal'},
+    'exames-odonto':{label:'Exames e imagens',tab:'exams',tabs:['exams','exam_note']},
+    'orcamentos-odonto':{label:'Orçamentos',tab:'budget'},
+    'proteses-odonto':{label:'Prótese e laboratório',prostheses:true},
+    'consultorios-odonto':{label:'Consultórios',rooms:true},
+    'estoque-odonto':{label:'Estoque',stock:true},
+    'convenios-odonto':{label:'Convênios',tab:'insurance',insurance:true}
+  };
+  const dentalNavigation=[
+    ['', [['dashboard','dashboard'],['agenda','calendar'],['pacientes-odonto','users'],['clinica','fileCheck'],['planos-odonto','layers']]],
+    ['Odontologia', [['jornada-odonto','activity'],['odontograma-odonto','tooth'],['periodontia-odonto','activity'],
+      ['exames-odonto','fileCheck'],['servicos','tooth'],['orcamentos-odonto','credit'],['proteses-odonto','prosthesis']]],
+    ['Gestão', [['consultorios-odonto','building'],['financeiro','wallet'],['estoque-odonto','box'],
+      ['convenios-odonto','shield'],['funcionarios','badgeUser'],['desempenho','chart']]],
+    ['Atendimento', [['inbox','chat'],['site','globe']]]
+  ];
+  const dentalTabRoutes={anamnesis:'clinica',treatment:'planos-odonto',odontogram:'odontograma-odonto',
+    periodontal:'periodontia-odonto',exams:'exames-odonto',budget:'orcamentos-odonto',insurance:'convenios-odonto'};
+  const routeNames={...Object.fromEntries(Object.entries(dentalViews).map(([route,{label}])=>[route,label])),dispositivos:'Dispositivos',chatbot:'Chatbot','testar-chatbot':'Testar Chatbot',templates:'Templates','mensagens-enviadas':'Mensagens Enviadas',diagnosticos:'Diagnósticos',campanhas:'Campanhas',programadas:'Mensagens Programadas',massa:'Mensagem em Massa','enviar-mensagem':'Enviar Mensagem',aquecimento:'Aquecimento','evitar-banimento':'Evitar Banimento','resolver-banimento':'Resolver Banimento','extrator-contatos':'Extrator de contatos de grupos','adicionar-ao-grupo':'Adicionar contatos ao grupo',inbox:'Central de atendimento',dashboard:'Dashboard',perfil:'Perfil',agenda:'Agenda',clientes:'Clientes','pacientes-odonto':'Pacientes','vendas-odonto':'Vendas','ajustes-odonto':'Ajustes da clínica',servicos:'Serviços',funcionarios:'Funcionários',financeiro:'Financeiro',desempenho:'Meu desempenho',marketing:'Marketing IA',site:'Meu site',fidelizacao:'Fidelização',consultor:'Consultor IA',plano:'Plano',configuracoes:'Configurações',novidades:'Novidades',ajuda:'Base de conhecimento',dispositivo:'Conectar WhatsApp',conversas:'Conversas',ai:'Testar atendimento',empresa:'Configurar atendimento',catalogo:'Catálogo e pedidos',cadastros:'Administração do atendimento',member:'Minha conta'};
   const routeAliases=new Map([['acelerar','dashboard']]);
   const mainNav=[['dispositivos','phone'],['chatbot','bot'],['testar-chatbot','flask'],['templates','layers'],['mensagens-enviadas','fileCheck'],['diagnosticos','activity'],['campanhas','megaphone'],['programadas','calendarClock'],['massa','broadcast'],['enviar-mensagem','send'],['aquecimento','flame'],['evitar-banimento','shieldCheck'],['resolver-banimento','shieldAlert'],['extrator-contatos','usersSearch'],['adicionar-ao-grupo','userPlus'],['dashboard','dashboard'],['agenda','calendar'],['clientes','users'],['clinica','tooth'],['pacientes-odonto','users'],['proteses-odonto','prosthesis'],['estoque-odonto','box'],['vendas-odonto','layers'],['ajustes-odonto','settings'],['inbox','chat'],['servicos','scissors'],['funcionarios','badgeUser'],['financeiro','wallet'],['desempenho','chart'],['marketing','sparkles'],['site','globe'],['fidelizacao','gift'],['consultor','brain'],['plano','credit'],['configuracoes','settings']];
   const toolNavRoutes=['extrator-contatos','adicionar-ao-grupo','aquecimento','evitar-banimento','resolver-banimento'];
@@ -115,10 +138,10 @@
   }
   const homePreviewEnabled=()=>platformWorkspace()||barbershopHomeEligible();
   const dedicatedPatients=()=>dentalWorkspace()&&state.entitlements?.dental_clinical_enabled===true;
-  const routeLabel=route=>route==='dashboard'&&homePreviewEnabled()?'Início':dentalWorkspace()?({dashboard:'Recepção',agenda:'Agenda',clientes:dedicatedPatients()?'Contatos da agenda':'Pacientes',clinica:'Prontuários',servicos:'Procedimentos',funcionarios:'Equipe clínica',desempenho:'Indicadores',inbox:'Conversas'})[route]||routeNames[route]:subscriptionWorkspace()&&route==='dashboard'?'Início':routeNames[route];
-  const fallbackRoute=()=>subscriptionWorkspace()?'dashboard':'plano';
+  const routeLabel=route=>route==='dashboard'&&homePreviewEnabled()?'Início':dentalWorkspace()?({clientes:dedicatedPatients()?'Contatos da agenda':'Pacientes',servicos:'Procedimentos',funcionarios:'Equipe',desempenho:'Relatórios',inbox:'Conversas'})[route]||routeNames[route]:subscriptionWorkspace()&&route==='dashboard'?'Início':routeNames[route];
+  const fallbackRoute=()=>dentalWorkspace()&&permitted('dashboard.basic')?'dashboard':subscriptionWorkspace()?'dashboard':'plano';
   const permitted=feature=>!feature||platformWorkspace()||(!subscriptionWorkspace()||['account.manage','business.setup','devices.manage','chatbot.manage','templates.manage','sent_messages.manage','diagnostics.manage','campaigns.manage','scheduled_messages.manage','bulk_messages.manage','direct_messages.manage','whatsapp_guidance.view','group_contacts.manage','group_add.manage'].includes(feature))&&state.entitlements?.permissions?.[feature]===true;
-  const routePermitted=route=>route==='vendas-odonto'?dentalSettingsAllowed():route==='ajustes-odonto'?dentalWorkspace():['clinica','estoque-odonto','pacientes-odonto','proteses-odonto'].includes(route)?(dentalWorkspace()&&state.entitlements?.dental_clinical_enabled===true&&['owner','editor'].includes(tenant()?.role)&&permitted('clients.manage')):route==='perfil'?appLayoutEnabled():['aquecimento','evitar-banimento','resolver-banimento','extrator-contatos','adicionar-ao-grupo'].includes(route)?(subscriptionWorkspace()&&tenant()?.role==='owner'&&tenant()?.status==='active'&&permitted(routeFeatures[route])):['dispositivos','chatbot','testar-chatbot','templates','mensagens-enviadas','diagnosticos','campanhas','programadas','massa','enviar-mensagem'].includes(route)?(subscriptionWorkspace()&&permitted(routeFeatures[route])):subscriptionWorkspace()?(route==='configuracoes'?permitted('account.manage'):subscriptionRoutes.has(route)):route==='configuracoes'?(permitted('settings.manage')||permitted('business.setup')||permitted('account.manage')):permitted(routeFeatures[route]);
+  const routePermitted=route=>route==='vendas-odonto'?dentalSettingsAllowed():route==='ajustes-odonto'?dentalWorkspace():(Object.hasOwn(dentalViews,route)||route==='pacientes-odonto')?(dentalWorkspace()&&state.entitlements?.dental_clinical_enabled===true&&state.bridge.user?.role==='member'&&!state.bridge.user?.maintenance?.active&&['owner','editor'].includes(tenant()?.role)&&permitted('clients.manage')):route==='perfil'?appLayoutEnabled():['aquecimento','evitar-banimento','resolver-banimento','extrator-contatos','adicionar-ao-grupo'].includes(route)?(subscriptionWorkspace()&&tenant()?.role==='owner'&&tenant()?.status==='active'&&permitted(routeFeatures[route])):['dispositivos','chatbot','testar-chatbot','templates','mensagens-enviadas','diagnosticos','campanhas','programadas','massa','enviar-mensagem'].includes(route)?(subscriptionWorkspace()&&permitted(routeFeatures[route])):subscriptionWorkspace()?(route==='configuracoes'?permitted('account.manage'):subscriptionRoutes.has(route)):route==='configuracoes'?(permitted('settings.manage')||permitted('business.setup')||permitted('account.manage')):permitted(routeFeatures[route]);
   const dentalSettingsAllowed=()=>dentalWorkspace()&&state.entitlements?.dental_clinical_enabled===true&&
     state.bridge.user?.role==='member'&&!state.bridge.user?.maintenance?.active&&tenant()?.role==='owner'&&permitted('settings.manage');
   const settingsTabAllowed=tab=>['dental-chairs','dental-intake','dental-sales-stages'].includes(tab)?dentalSettingsAllowed():subscriptionWorkspace()?['appearance','account'].includes(tab):tab==='finance'?permitted('finance.basic'):['appearance','account'].includes(tab)||tab==='general'?(tab!=='general'||permitted('business.setup')||permitted('settings.manage')):tab==='ai'?(permitted('marketing.ai')||permitted('consultant.ai')):tab==='whatsapp'?permitted('conversations.manual'):tab==='hours'?permitted('agenda.manage'):tab==='calendar'?permitted('calendar.manage'):tab==='notifications'?permitted('notifications.basic'):tab==='site-requests'?canManageSiteRequests():platformWorkspace();
@@ -409,7 +432,11 @@
   function selectedNav(){
     let active=state.route==='cadastros'?'configuracoes':state.route;
     const channels=active==='configuracoes'&&state.filters.settingsTab==='whatsapp'&&!!document.querySelector('#osNav [data-os-action="managed-whatsapp"]');
-    if(dentalWorkspace()&&dentalSetupRoutes().has(active))active='ajustes-odonto';
+    if(dentalWorkspace()){
+      if(active==='configuracoes')active=state.filters.settingsTab==='dental-chairs'?'consultorios-odonto':'funcionarios';
+      else if(active==='ajustes-odonto')active='funcionarios';
+      else if(active==='vendas-odonto')active='orcamentos-odonto';
+    }
     document.querySelectorAll('.os-nav-link').forEach(link=>{
       if(channels?link.dataset.osAction==='managed-whatsapp':link.dataset.osRoute===active)link.setAttribute('aria-current','page');
       else link.removeAttribute('aria-current');
@@ -465,9 +492,6 @@
     return groups.map(([heading,entries])=>[heading,entries.filter(([route,,,tab])=>
       routePermitted(route)&&(!tab||tab==='dental-access'||settingsTabAllowed(tab)))]).filter(([,entries])=>entries.length);
   }
-  function dentalSetupRoutes(){
-    return new Set(dentalSetupGroups().flatMap(([,entries])=>entries.map(([route])=>route).filter(route=>route!=='clinica')));
-  }
   function dentalSetupPage(){
     const groups=dentalSetupGroups().map(([heading,entries])=>{
       const items=entries.map(([route,symbol,label,tab])=>
@@ -484,19 +508,15 @@
     $('osSidebarContext').classList.toggle('os-sidebar-context--subscription',subscriptionWorkspace());
     $('osSidebarContext').innerHTML='<div class="os-overline">Meu negócio</div><div class="os-tenant-name">'+esc(t?.name||(businessAccessError()?'Acesso pendente':state.bridge.businessContextReady===false?'Conferindo empresa…':'Sua empresa'))+'</div><div class="os-sidebar-badges"><span class="os-badge">'+esc(isAdmin?'Administração':t?.role==='viewer'?'Consulta':t?.role==='editor'?'Equipe':'Minha empresa')+'</span></div>'+(t&&!subscriptionWorkspace()&&!dentalWorkspace()?'<button type="button" class="os-side-site" data-os-route="site">meu site '+icon('external')+'</button>':'');
     const navItem=([route,symbol],extra='')=>'<button type="button" class="os-nav-link'+extra+'" data-os-route="'+route+'" title="'+esc(routeLabel(route))+'">'+icon(symbol)+'<span>'+esc(routeLabel(route))+'</span></button>';
-    let nav=subscriptionWorkspace()?'':isAdmin?navItem(['dispositivo','phone'],' os-nav-connection'):t&&permitted('conversations.manual')?'<button type="button" class="os-nav-link os-nav-connection" data-os-action="managed-whatsapp" title="Conectar WhatsApp">'+icon('phone')+'<span>Conectar WhatsApp</span></button>':'';
+    let nav=dentalWorkspace()||subscriptionWorkspace()?'':isAdmin?navItem(['dispositivo','phone'],' os-nav-connection'):t&&permitted('conversations.manual')?'<button type="button" class="os-nav-link os-nav-connection" data-os-action="managed-whatsapp" title="Conectar WhatsApp">'+icon('phone')+'<span>Conectar WhatsApp</span></button>':'';
     const navAvailable=mainNav.filter(([route])=>routePermitted(route)&&!(subscriptionWorkspace()&&route==='configuracoes'));
     const permittedNav=subscriptionWorkspace()?[...navAvailable.filter(([route])=>route==='dashboard'),...navAvailable.filter(([route])=>route!=='dashboard')]:navAvailable;
     if(dentalWorkspace()){
-      const groups=[
-        ['Atendimento',['dashboard','agenda',dedicatedPatients()&&routePermitted('pacientes-odonto')?'pacientes-odonto':'clientes','clinica']],
-        ['Operação da clínica',['proteses-odonto','estoque-odonto','vendas-odonto','financeiro','desempenho']],
-        ['Relacionamento',['inbox','marketing','fidelizacao','consultor']],
-        ['Administração',['ajustes-odonto']]
-      ];
-      for(const [heading,routes] of groups){
-        const items=routes.map(route=>permittedNav.find(item=>item[0]===route)).filter(Boolean);
-        if(items.length)nav+='<div class="os-nav-section">'+heading+'</div>'+items.map(item=>navItem(item)).join('');
+      for(const [heading,routes] of dentalNavigation){
+        const items=routes.filter(([route])=>routePermitted(route));
+        if(!items.length)continue;
+        if(heading)nav+='<div class="os-nav-section">'+esc(heading)+'</div>';
+        nav+=items.map(item=>navItem(item)).join('');
       }
     }else{
       nav+='<div class="os-nav-section">Gestão</div>'+permittedNav.filter(([route])=>!toolNavRoutes.includes(route)).map(item=>navItem(item)).join('');
@@ -521,7 +541,7 @@
 
   // Navigation is a presentation layer. All booking, finance and access logic stays shared.
   // Authorization is server-derived from the verified business niche.
-  const appLayoutEligible=()=>!!tenant()&&!platformWorkspace()&&state.entitlements?.layout_modes?.includes('app')===true;
+  const appLayoutEligible=()=>!!tenant()&&!platformWorkspace()&&!dentalWorkspace()&&state.entitlements?.layout_modes?.includes('app')===true;
   const appLayoutEnabled=()=>state.layoutMode==='app'&&appLayoutEligible();
   const appLayoutKey=()=>state.tenantId&&(state.bridge.user?.id||state.bridge.user?.email)?
     'orion-navigation-v1:'+state.tenantId+':'+String(state.bridge.user.id||state.bridge.user.email).toLowerCase():null;
@@ -823,24 +843,29 @@
     if(state.route==='chatbot')html='<div id="osPageBody"><section id="osSubscriptionChatbot"></section></div>';
     if(state.route==='testar-chatbot')html='<div id="osPageBody"><section id="osSubscriptionChatbotTest"></section></div>';
     if(state.route==='ajustes-odonto')html=dentalSetupPage();
-    if(state.route==='clinica')html=title(options.dentalTeam?'Acessos clínicos':'Prontuários','')+'<div id="osPageBody"><section id="osDentalClinic"></section></div>';
+    if(Object.hasOwn(dentalViews,state.route)){
+      const chairSettings=state.route==='consultorios-odonto'&&dentalSettingsAllowed()?
+        '<button type="button" class="os-button os-outline" data-os-route="configuracoes" data-os-dental-setting="dental-chairs">'+icon('settings')+'Configurar consultórios</button>':'';
+      const opportunities=state.route==='orcamentos-odonto'&&routePermitted('vendas-odonto')?
+        routeButton('Oportunidades','vendas-odonto','os-outline','layers'):'';
+      html=title(options.dentalTeam?'Acessos clínicos':routeLabel(state.route),'',chairSettings+opportunities)+'<div id="osPageBody"><section id="osDentalClinic"></section></div>';
+    }
     if(state.route==='pacientes-odonto')html='<div id="osPageBody"><section id="osDentalDirectory"></section></div>';
-    if(state.route==='proteses-odonto')html='<div class="os-title-row"><h1>Controle de próteses</h1></div><div id="osPageBody"><section id="osDentalClinic"></section></div>';
     if(state.route==='vendas-odonto')html=title('Vendas','',writable()?button('Nova oportunidade','dental-opportunity-new','','plus'):'')+
       dentalSalesSearchForm()+dentalSalesPeriodForm()+'<div id="osPageBody">'+loading('Carregando oportunidades…')+'</div>';
-    if(state.route==='estoque-odonto')html=title('Estoque odontológico','Materiais, saldos e movimentações da clínica.')+'<div id="osPageBody"><section id="osDentalClinic"></section></div>';
-    if(state.route==='inbox')html=title('Central de atendimento','Acompanhe suas conversas e atendimentos.')+'<div id="osPageBody"><div id="osInboxHost"></div></div>';
+    if(state.route==='inbox')html=title(routeLabel('inbox'),'Acompanhe suas conversas e atendimentos.')+'<div id="osPageBody"><div id="osInboxHost"></div></div>';
     if(state.route==='dashboard'){html=subscriptionWorkspace()?'<div id="osPageBody"><section id="osSubscriptionDashboard">'+(window.OrionSubscriptionDashboard?.placeholder?.()||loading('Preparando seu painel…'))+'</section></div>':'<div id="osPageBody">'+loading('Carregando o resumo do seu negócio…')+'</div>';}
     if(state.route==='perfil'&&appLayoutEnabled())html='<div id="osPageBody">'+appProfileView()+'</div>';
     if(state.route==='agenda')html=agendaFrame(readOnly);
     if(state.route==='clientes')html='<div class="os-title-row os-client-heading"><div><h1>'+esc(routeLabel('clientes'))+'</h1><p id="osCustomersCount">'+(dedicatedPatients()?'Carregando contatos…':dentalWorkspace()?'Carregando pacientes…':'Carregando clientes…')+'</p></div><div class="os-actions">'+button(dedicatedPatients()?'Novo contato':dentalWorkspace()?'Novo paciente':f.customerStatus==='fixed'?'Novo fixo':'Novo cliente',!dentalWorkspace()&&f.customerStatus==='fixed'?'new-fixed-client':'new-customer','','plus',can?'':'disabled')+'</div></div>'+readOnly+'<div class="os-search os-client-search">'+icon('search')+'<input id="osCustomerSearch" type="search" placeholder="Buscar por nome ou telefone..." aria-label="Buscar clientes por nome, telefone ou e-mail" value="'+esc(f.customerQuery)+'"></div><div class="os-client-filters"><div class="os-pill-tabs" role="tablist" aria-label="Situação dos clientes">'+(dentalWorkspace()?[['active','Ativos'],['inactive','Inativos']]:[['active','Ativos'],['fixed','Fixos'],['at_risk','Em risco']]).map(([v,label])=>'<button type="button" class="os-pill-tab" role="tab" aria-selected="'+(f.customerStatus===v)+'" data-os-customer-status="'+v+'">'+label+'</button>').join('')+'</div>'+(dentalWorkspace()?'':button('Aniversariantes','customer-birthdays',f.customerStatus==='birthday'?'':'os-outline','gift','aria-pressed="'+(f.customerStatus==='birthday')+'"'))+'<button class="os-icon-button" type="button" data-os-action="export-customers" title="Exportar clientes em CSV" aria-label="Exportar clientes em CSV">'+icon('download')+'</button></div>'+(f.customerStatus==='at_risk'?'<div class="os-client-risk"><span>Sem retornar há mais de</span>'+[30,60,90].map(n=>'<button class="os-button os-small '+(f.customerRisk===n?'':'os-outline')+'" type="button" data-os-customer-risk="'+n+'">'+n+' dias</button>').join('')+'</div>':f.customerStatus==='birthday'?'<p class="os-help" style="margin-bottom:16px">Aniversariantes desta semana, de domingo a sábado.</p>':'')+'<div id="osPageBody">'+loading('Carregando clientes…')+'</div>';
     if(state.route==='servicos')html=title(routeLabel('servicos'),dentalWorkspace()?'Cadastre os procedimentos oferecidos pela clínica, com duração e valores.':'Cadastre, ative e organize os serviços oferecidos pela sua empresa.')+readOnly+'<div id="osPageBody">'+loading('Carregando serviços…')+'</div>';
-    if(state.route==='funcionarios')html=title(routeLabel('funcionarios'),'Gerencie os profissionais, a equipe e as permissões de acesso ao painel.')+readOnly+'<div class="os-pill-tabs os-staff-tabs" role="tablist" aria-label="Funcionários">'+[['professionals','Profissionais'],['permissions','Equipe & Permissões']].map(([v,l])=>'<button type="button" class="os-pill-tab" role="tab" aria-selected="'+(f.staffTab===v)+'" data-os-staff-tab="'+v+'">'+l+'</button>').join('')+'</div><div id="osPageBody">'+loading('Carregando profissionais…')+'</div>';
+    if(state.route==='funcionarios')html=title(routeLabel('funcionarios'),'Gerencie os profissionais, a equipe e as permissões de acesso ao painel.',
+      dentalSettingsAllowed()?routeButton('Ajustes da clínica','ajustes-odonto','os-outline','settings'):'')+readOnly+'<div class="os-pill-tabs os-staff-tabs" role="tablist" aria-label="Funcionários">'+[['professionals','Profissionais'],['permissions','Equipe & Permissões']].map(([v,l])=>'<button type="button" class="os-pill-tab" role="tab" aria-selected="'+(f.staffTab===v)+'" data-os-staff-tab="'+v+'">'+l+'</button>').join('')+'</div><div id="osPageBody">'+loading('Carregando profissionais…')+'</div>';
     if(state.route==='financeiro')html='<div class="os-title-row os-finance-heading">'+
       '<div class="os-finance-title-line"><h1>Financeiro</h1></div>'+
       '<div class="os-actions os-finance-toolbar os-finance-period-row">'+financeMonthPicker()+button('Hoje','finance-today','os-outline os-small')+button('Novo lançamento','new-expense','os-finance-add','plus',can?'':'disabled')+'</div></div>'+
       readOnly+'<div id="osPageBody">'+loading('Carregando movimentações…')+'</div>';
-    if(state.route==='desempenho')html='<div class="os-title-row os-finance-heading os-performance-heading"><div class="os-finance-title-line"><h1>Meu desempenho</h1></div><div class="os-actions">'+button('Atualizar','refresh-performance','os-outline os-small','refresh')+'</div></div>'+performancePeriodFilters()+'<div id="osPageBody">'+loading('Calculando o desempenho…')+'</div>';
+    if(state.route==='desempenho')html='<div class="os-title-row os-finance-heading os-performance-heading"><div class="os-finance-title-line"><h1>'+esc(routeLabel('desempenho'))+'</h1></div><div class="os-actions">'+button('Atualizar','refresh-performance','os-outline os-small','refresh')+'</div></div>'+performancePeriodFilters()+'<div id="osPageBody">'+loading('Calculando o desempenho…')+'</div>';
     if(state.route==='marketing')html=title('Marketing IA','Mensagens automáticas, recuperação de clientes e campanhas em um só lugar')+readOnly+'<div id="osPageBody">'+loading('Carregando campanhas…')+'</div>';
     if(state.route==='site')html=title('Meu Site','Acompanhe os acessos e agendamentos da sua página.')+readOnly+'<div id="osPageBody">'+loading('Carregando sua página…')+'</div>';
     if(state.route==='fidelizacao')html=title('Fidelização','Programa de pontos, cupons automáticos e ações de retenção para trazer o cliente de volta.')+readOnly+'<div id="osPageBody">'+loading('Carregando o programa de fidelidade…')+'</div>';
@@ -879,7 +904,28 @@
     const [entries,summary,commissions,dre,professionals,advances,payments,settlements,receiptSummary]=await Promise.all([request(mgmt('/finance?'+query({start_date:f.periodStart,end_date:f.periodEnd,kind:history?'':f.financeKind,status:history?'':f.financeStatus,receivables:!history&&f.financeReceivables?'true':undefined,limit:100,offset:f.financeOffset||0}))),request(mgmt('/finance/summary?'+periodQuery())),(permitted('commissions.advanced')?request(mgmt('/finance/commissions?'+periodQuery())):Promise.resolve({items:[]})),(permitted('finance.advanced')?request(mgmt('/finance/dre?'+periodQuery())):Promise.resolve({summary:{}})),request(apiPath('/professionals')),(permitted('commissions.advanced')?request(mgmt('/finance/advances?'+periodQuery()+'&status='+(f.advanceStatus||'all')+'&limit=100&offset='+(f.advanceOffset||0))):Promise.resolve({items:[]})),(permitted('commissions.advanced')?request(mgmt('/finance?'+periodQuery()+'&entry_type=commission_payment&limit=100&offset='+(f.paymentOffset||0))):Promise.resolve({items:[]})),(permitted('commissions.advanced')?request(mgmt('/finance/settlements?limit=50&offset='+(f.settlementOffset||0))):Promise.resolve({items:[]})),request(mgmt('/finance/receipts/summary'))]);
     if(!current(c))return;Object.assign(state.data,{finance:entries,financeSummary:summary,commissions,dre,professionals:rows(professionals),financeAdvances:advances,financePayments:payments,settlements,receiptSummary});renderFinance(entries);
   }
+  async function loadDentalView(view,c,options){
+    if(!window.OrionDentalClinic)throw Error('Módulo clínico indisponível. Atualize o painel.');
+    const route=state.route;
+    const extraRecord=route==='clinica'&&options.dentalTab==='prosthesis';
+    await window.OrionDentalClinic.mount({host:$('osDentalClinic'),request,tenantId:state.tenantId,
+      accountId:state.bridge.user?.id||state.bridge.user?.account_id||null,
+      dedicatedStock:view.stock===true,stockInMenu:true,
+      dedicatedProstheses:view.prostheses===true,prosthesesInMenu:true,
+      dedicatedRooms:view.rooms===true,journey:view.journey===true,
+      insuranceDirectory:view.insurance===true&&dentalSettingsAllowed()&&!options.patientInsurance,
+      openPatientInsurance:()=>open('convenios-odonto',{patientInsurance:true}),
+      initialTab:extraRecord?'prosthesis':view.tab,
+      visibleTabs:extraRecord?['prosthesis']:view.tabs||(view.tab?[view.tab]:null),
+      openProsthesisPatient:id=>open('clinica',{dentalPatient:id,dentalTab:'prosthesis'}),
+      initialPatient:options.dentalPatient,visitsOnly:options.dentalVisitsOnly===true,team:options.dentalTeam===true,
+      openJourney:id=>open('jornada-odonto',{dentalPatient:id}),
+      openClinicalTopic:(kind,id)=>open(dentalTabRoutes[kind]||'clinica',{dentalPatient:id,patientInsurance:kind==='insurance'}),
+      returnToDirectory:()=>open('pacientes-odonto'),
+      canAccess:()=>current(c)&&routePermitted(route)});
+  }
   async function loadRoute(options={}){const c=context();try{
+    if(Object.hasOwn(dentalViews,state.route)){await loadDentalView(dentalViews[state.route],c,options);return;}
     switch(state.route){
       case 'vendas-odonto':await loadDentalOpportunities(c);break;
       case 'pacientes-odonto':
@@ -888,23 +934,9 @@
           host:$('osDentalDirectory'),request,tenantId:state.tenantId,
           canAccess:()=>current(c)&&routePermitted('pacientes-odonto'),canWrite:writable,startNew:options.newDentalPatient===true,
           openAccess:()=>open('clinica',{dentalTeam:true}),
-          openVisits:id=>open('clinica',{dentalPatient:id,dentalVisitsOnly:true}),
+          openVisits:id=>open('jornada-odonto',{dentalPatient:id}),
           openRecords:id=>open('clinica',{dentalPatient:id})
         });
-        break;
-      case 'proteses-odonto':
-      case 'estoque-odonto':
-      case 'clinica':
-        if(!window.OrionDentalClinic)throw Error('Módulo clínico indisponível. Atualize o painel.');
-        await window.OrionDentalClinic.mount({host:$('osDentalClinic'),request,tenantId:state.tenantId,
-          accountId:state.bridge.user?.id||state.bridge.user?.account_id||null,
-          dedicatedStock:state.route==='estoque-odonto',stockInMenu:true,
-          dedicatedProstheses:state.route==='proteses-odonto',prosthesesInMenu:true,
-          initialTab:['anamnesis','odontogram','periodontal','treatment','exams','budget','prosthesis'].includes(options.dentalTab)?options.dentalTab:undefined,
-          openProsthesisPatient:id=>open('clinica',{dentalPatient:id,dentalTab:'prosthesis'}),
-          initialPatient:options.dentalPatient,visitsOnly:options.dentalVisitsOnly===true,team:options.dentalTeam===true,
-          returnToDirectory:()=>open('pacientes-odonto'),
-          canAccess:()=>current(c)&&routePermitted(state.route)});
         break;
       case 'adicionar-ao-grupo':if(!window.OrionSubscriptionGroupAdd)throw Error('Não foi possível abrir Adicionar contatos ao grupo. Atualize o painel.');await window.OrionSubscriptionGroupAdd.mount({host:$('osSubscriptionGroupAdd'),request,tenantId:state.tenantId,accountKey:state.bridge.user?.email?state.bridge.user.email+'|'+state.bridge.user.role:null,canWrite:()=>writable(),canOpenDevices:()=>routePermitted('dispositivos'),canAccess:()=>state.mounted&&c.epoch===state.epoch&&c.tenantId===state.tenantId&&c.load===state.load&&state.route==='adicionar-ao-grupo'&&routePermitted('adicionar-ao-grupo')});break;
       case 'extrator-contatos':if(!window.OrionSubscriptionGroupContacts)throw Error('Não foi possível abrir o Extrator de contatos de grupos. Atualize o painel.');await window.OrionSubscriptionGroupContacts.mount({host:$('osSubscriptionGroupContacts'),request,tenantId:state.tenantId,accountKey:state.bridge.user?.email?state.bridge.user.email+'|'+state.bridge.user.role:null,canWrite:()=>writable(),canOpenDevices:()=>routePermitted('dispositivos'),canAccess:()=>state.mounted&&c.epoch===state.epoch&&c.tenantId===state.tenantId&&c.load===state.load&&state.route==='extrator-contatos'&&routePermitted('extrator-contatos')});break;
@@ -1437,7 +1469,7 @@
     const agendaLink=routePermitted('agenda')?button('Ver agenda','dashboard-agenda-full','os-ghost os-small','calendar'):'';
     const financeLink=routePermitted('financeiro')?routeButton('Ver financeiro','financeiro','os-ghost os-small','wallet'):'';
     bodyHTML('<section class="os-reception" aria-labelledby="osReceptionTitle">'+
-      '<header class="os-reception-head"><div><h1 id="osReceptionTitle">Recepção</h1><p>'+esc(tenant()?.name||'')+'</p></div>'+
+      '<header class="os-reception-head"><div><h1 id="osReceptionTitle">Dashboard</h1><p>'+esc(tenant()?.name||'')+'</p></div>'+
       (shortcuts.length?'<div class="os-reception-actions">'+shortcuts.join('')+'</div>':'')+'</header>'+
       '<section class="os-card os-reception-card" aria-labelledby="osConsultasTitle"><header><div><h2 id="osConsultasTitle">Consultas de hoje</h2>'+
       '<p id="osReceptionDate"></p></div>'+agendaLink+'</header><div id="osReceptionCounts">'+loading('Consultando a agenda…')+'</div></section>'+
@@ -5414,13 +5446,14 @@
           if(state.route==='ajustes-odonto'&&dentalSettingsAllowed()&&routePermitted('clinica'))await open('clinica',{dentalTeam:true});
           return;
         }
-        if(state.route!=='ajustes-odonto'||!dentalWorkspace()||!routePermitted('configuracoes')||!settingsTabAllowed(tab))return;
+        const fromChair=state.route==='consultorios-odonto'&&tab==='dental-chairs';
+        if((state.route!=='ajustes-odonto'&&!fromChair)||!dentalWorkspace()||!routePermitted('configuracoes')||!settingsTabAllowed(tab))return;
         state.filters.settingsTab=tab;await open('configuracoes');return;
       }
       if(el.dataset.osDentalEntry){
       const tab=el.dataset.osDentalEntry;
-      if(dentalWorkspace()&&routePermitted('clinica')&&['anamnesis','odontogram','periodontal','treatment','exams','budget'].includes(tab))
-        await open('clinica',{dentalTab:tab});
+      const route=Object.hasOwn(dentalTabRoutes,tab)?dentalTabRoutes[tab]:null;
+      if(dentalWorkspace()&&route&&routePermitted(route))await open(route);
       return;
     }
     if(el.dataset.osRoute){if(dentalWorkspace()&&state.route==='ajustes-odonto'&&el.dataset.osRoute==='configuracoes')state.filters.settingsTab=settingsTabAllowed('general')?'general':'account';if(appLayoutEnabled()&&state.route==='perfil'&&el.dataset.osRoute==='configuracoes')state.filters.settingsTab='general';await open(el.dataset.osRoute);return;}

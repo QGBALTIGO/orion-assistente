@@ -250,6 +250,21 @@ class LaboratoryUpdate(LaboratoryCreate):
     expected_version: int = Field(ge=1, strict=True)
 
 
+class InsurancePlan(Strict):
+    insurer: str = Field(min_length=2, max_length=120)
+    plan: str = Field(min_length=2, max_length=160)
+    covered_procedures: str | None = Field(None, max_length=2000)
+
+
+class InsurancePlanCreate(InsurancePlan):
+    id: UUID
+
+
+class InsurancePlanUpdate(InsurancePlan):
+    active: bool = Field(strict=True)
+    expected_version: int = Field(ge=1, strict=True)
+
+
 class Insurance(Strict):
     insurer: str = Field(min_length=2,max_length=120)
     plan: str | None = Field(None,max_length=160)

@@ -310,3 +310,18 @@
 @media(max-width:680px){
  .os-dental-workspace .os-dental-journey-links{grid-template-columns:minmax(0,1fr)}
 }
+
+.os-dental-insurance-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.os-dental-insurance-list .os-dental-entry {
+  overflow-wrap: anywhere;
+}
+
+.os-dental-insurance-list .os-button {
+  min-height: 44px;
+  justify-self: start;
+}

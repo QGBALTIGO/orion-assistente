@@ -63,7 +63,7 @@ def verify(browser, width, height, theme):
     page.locator("#osReceptionCounts dd").first.wait_for(timeout=13000)
     page.evaluate("(theme)=>document.documentElement.dataset.theme=theme",theme)
     page.evaluate("document.fonts.ready")
-    assert page.get_by_role("heading",name="Recepção",exact=True).count()==1
+    assert page.get_by_role("heading",name="Dashboard",exact=True).count()==1
     assert page.locator("#osReceptionCounts dd").all_text_contents()==["7","3","1","0"]
     assert page.locator("#osReceptionUpcoming time").first.inner_text()=="15:30"
     metrics=page.locator(".os-reception").evaluate("""root=>{

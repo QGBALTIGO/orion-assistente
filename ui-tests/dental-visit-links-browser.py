@@ -51,7 +51,7 @@ def verify(browser, width, height, theme):
     page.goto(fixture.ORIGIN + "/panel?aba=clinica", wait_until="domcontentloaded")
     page.evaluate("(theme)=>document.documentElement.dataset.theme=theme", theme)
     page.get_by_role("button", name="Paciente Alfa", exact=False).first.click()
-    page.get_by_role("button", name="Consultas do paciente").click()
+    page.locator("#page-suite").get_by_role("button", name="Jornada do paciente").click()
     page.get_by_text("Nenhuma consulta vinculada a este paciente.").wait_for()
     page.get_by_label("Consulta na agenda").select_option(VISIT)
     action = page.get_by_role("button", name="Vincular ao paciente")
