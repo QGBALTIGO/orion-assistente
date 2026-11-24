@@ -369,6 +369,16 @@ async def test_dental_http_patient_records_exams_and_clinical_role_restrictions(
         assert "no-store" in records.headers["cache-control"]
         no_record=await client.get(base+"/patients/"+patients[1]+"/records")
         assert no_record.status_code==200 and no_record.json()["items"]==[]
+        budget={"kind":"budget","content":{
+            "proposal_date":"2026-11-22","description":"Proposta sintética individual",
+            "items":[{"description":"Procedimento sintético","estimate_cents":12345}],
+            "total_cents":12345,"status":"draft"},"entry_key":str(uuid4())}
+        created_budget=await client.post(base+"/patients/"+patients[0]+"/records",json=budget)
+        assert created_budget.status_code==201,created_budget.text
+        listed_budget=await client.get(base+"/patients/"+patients[0]+"/records",params={"kind":"budget"})
+        assert listed_budget.status_code==200
+        assert listed_budget.json()["items"][0]["content"]["proposal_date"]=="2026-11-22"
+        assert (await client.get(base+"/patients/"+patients[1]+"/records",params={"kind":"budget"})).json()["items"]==[]
         invalid=await client.post(base+"/patients/"+patients[0]+"/records",json={
             "kind":"anamnesis","content":{"complaint":"SEGREDO-NAO-ECOAR"},
             "entry_key":str(uuid4())})

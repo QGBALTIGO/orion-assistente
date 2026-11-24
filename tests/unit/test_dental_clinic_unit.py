@@ -1,6 +1,7 @@
 """Clinical records fail closed, validate real FDI surfaces and never invent measurements."""
 import base64
 import os
+from datetime import date
 from uuid import uuid4
 
 import pytest
@@ -130,7 +131,17 @@ def test_sales_follow_up_requires_version_and_unique_request():
 
 def test_budget_approval_is_not_accepted_as_electronic_signature():
     with pytest.raises(ValidationError):
-        Budget(description="Tratamento",items=[{"description":"Procedimento"}],total_cents=100, status="approved")
+        Budget(proposal_date=date(2026,11,22), description="Tratamento",
+               items=[{"description":"Procedimento"}],total_cents=100, status="approved")
+
+
+def test_budget_draft_requires_an_explicit_proposal_date():
+    budget = Budget(proposal_date=date(2026,11,22), description="Tratamento de teste",
+                    items=[{"description":"Procedimento sintético"}], total_cents=100)
+    assert budget.proposal_date == date(2026,11,22) and budget.status == "draft"
+    with pytest.raises(ValidationError):
+        Budget(description="Tratamento de teste",
+               items=[{"description":"Procedimento sintético"}], total_cents=100)
 
 
 def test_medical_write_requires_member_with_real_account_and_no_maintenance():

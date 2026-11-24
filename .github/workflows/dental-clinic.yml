@@ -42,6 +42,7 @@ on:
       - 'ui-tests/dental-directory-browser.py'
       - 'ui-tests/dental-navigation-browser.py'
       - 'ui-tests/dental-prostheses-browser.py'
+      - 'ui-tests/dental-budget-browser.py'
       - 'ui-tests/dashboard-today-preview.test.mjs'
       - 'ui-tests/professional-portal.test.mjs'
       - 'deploy/Dockerfile.dental-workflows'
@@ -129,6 +130,7 @@ jobs:
           python ui-tests/dental-stock-browser.py
           python ui-tests/dental-directory-browser.py
           python ui-tests/dental-prostheses-browser.py
+          python ui-tests/dental-budget-browser.py
           python ui-tests/dental-navigation-browser.py
       - uses: actions/upload-artifact@v4
         with:
