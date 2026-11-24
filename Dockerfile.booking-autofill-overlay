@@ -1,0 +1,16 @@
+# Apply only the reviewed booking form and private profile API changes.
+FROM ghcr.io/qgbaltigo/orion-assistente-api@sha256:6d21577f1bd0eadef475da7d3ec7f008abf5c2bbbb59de303f12e26a1f83fa93
+USER root
+COPY .ci-baseline/ /tmp/orion-autofill-baseline/
+COPY app/public_customer_area.py /tmp/orion-autofill-edited/app/public_customer_area.py
+COPY app/static/orion-public.js /tmp/orion-autofill-edited/app/static/orion-public.js
+COPY app/static/orion-public.css /tmp/orion-autofill-edited/app/static/orion-public.css
+RUN set -e; \
+    for file in app/public_customer_area.py app/static/orion-public.js app/static/orion-public.css; do \
+      cmp "/srv/app/$file" "/tmp/orion-autofill-baseline/$file"; \
+      cp "/tmp/orion-autofill-edited/$file" "/srv/app/$file"; \
+    done; \
+    python -m py_compile /srv/app/app/public_customer_area.py; \
+    rm -rf /tmp/orion-autofill-baseline /tmp/orion-autofill-edited
+USER appuser
+WORKDIR /srv/app
