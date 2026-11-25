@@ -8,3 +8,25 @@
 .qc-actions{margin-top:16px}.qc-form .qc-actions{margin-top:0}.qc-connection{margin-top:20px}.qc-connection .qc-note{margin:0}.qc-countdown{font-variant-numeric:tabular-nums}.qc-root[aria-busy=true]{cursor:progress}
 @container orion-channels (max-width:900px){.qc-heading{flex-direction:column}.qc-header-actions{width:100%;align-items:stretch}.qc-header-actions>.os-button{white-space:nowrap;flex:0 0 auto}}
 @media(max-width:480px){.qc-root,#appView.orion-suite-enabled>.content>.page.qc-root{padding:20px 16px 30px}#osManagedChannels.qc-root{padding:0}.qc-actions>.os-button{flex:1 1 auto}}
+.os-connect .wizard-method,
+.qc-connection .wizard-method {
+  display: grid;
+  grid-template-columns: 24px minmax(0,1fr);
+  justify-content: start;
+  text-align: left;
+  column-gap: 10px;
+  row-gap: 2px;
+  min-height: 70px;
+  padding: 10px 12px;
+}
+.os-connect .wizard-method-icon,
+.qc-connection .wizard-method-icon { grid-row: span 2; }
+.os-connect .wizard-method-icon svg,
+.qc-connection .wizard-method-icon svg { width: 23px; height: 23px; }
+.wizard-card .os-connect-steps { margin: 0 0 16px; }
+@media(max-width:380px) {
+  .os-connect .wizard-method,
+  .qc-connection .wizard-method { grid-template-columns: minmax(0,1fr); }
+  .os-connect .wizard-method-icon,
+  .qc-connection .wizard-method-icon { grid-row: auto; justify-self: start; }
+}

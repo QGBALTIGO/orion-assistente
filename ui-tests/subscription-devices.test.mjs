@@ -68,17 +68,19 @@ test('the one-device limit explains the limit without offering plans or attempti
   assert.equal(writes(h).length,0);
 });
 
-test('creation is explicit, idempotent and never connects or enables features',async t=>{
+test('creation opens the connection screen without connecting or enabling features',async t=>{
+  let created;
   const h=await makeDevices({data:listing([]),respond(path,method,payload){
-    if(path===base&&method==='POST')return {device:device({name:payload.name})};
+    if(path===base&&method==='POST')return {device:created=device({name:payload.name})};
+    if(path===base+'/'+deviceId&&method==='GET')return {device:created};
   }});t.after(()=>h.close());
   h.click(act('create'));await flush();assert.equal(writes(h).length,0);
   h.fill(field('new_name'),'Atendimento sintético');h.submit(form('dialog'));await flush();
   assert.equal(writes(h).length,1);
   assert.deepEqual(Object.keys(writes(h)[0].data).sort(),['idempotency_key','name']);
   assert.match(writes(h)[0].data.idempotency_key,/^[a-f0-9-]{36}$/);
-  assert.equal(h.element('[data-sd-card] h2').textContent,'Atendimento sintético');
-  assert.equal(h.controller.getState().view,'list');
+  assert.equal(h.element('.os-device-connection-heading h1').textContent,'Atendimento sintético');
+  assert.equal(h.controller.getState().view,'connect');
   assert.equal(h.calls.some(call=>/\/actions|\/pair|\/qr$/.test(call.path)),false);
   assert.deepEqual(h.errors,[]);
 });
@@ -96,28 +98,27 @@ test('an uncertain create never repeats automatically and an explicit retry keep
   assert.equal(h.controller.getState().pending,null);
 });
 
-test('connection and its tutorial are read only until the explicit prepare confirmation',async t=>{
+test('connection is read only until Connect, then shows the QR when preparation completes',async t=>{
   let polls=0;
   const h=await makeDevices({respond(path,method,payload,server){
     if(path.endsWith('/actions')&&method==='POST')return operation(payload.action,device(),'pending');
     if(path.endsWith('/operations/'+operationId)){polls++;server.data.items=[ready()];return operation('connect',ready(),'succeeded');}
   }});t.after(()=>h.close());
   h.click(act('open-connect'));await flush();assert.equal(writes(h).length,0);
-  h.click(act('connect'));await flush();assert.equal(writes(h).length,0);
-  h.submit(form('dialog'));await flush();assert.equal(writes(h).length,1);
+  h.click(act('connect'));await flush();assert.equal(writes(h).length,1);
+  assert.equal(h.document.querySelector(form('dialog')),null);
   assert.equal(writes(h)[0].data.action,'connect');assert.equal(h.controller.getState().operationStatus,'pending');
   await h.tick(2000);assert.equal(polls,1);assert.equal(h.controller.getState().pending,null);
-  assert.equal(h.document.querySelectorAll('.wizard-timeline-step').length,7);
-  assert.equal(h.calls.some(call=>/\/qr$|\/pair$/.test(call.path)),false);
+  assert.ok(h.element('[data-sd-qr] img'));
+  assert.equal(h.calls.filter(call=>call.path.endsWith('/qr')).length,1);
+  assert.equal(h.calls.some(call=>call.path.endsWith('/pair')),false);
   assert.deepEqual(h.errors,[]);
 });
 
-test('QR is shown only after its tutorial and expiry never fetches a replacement',async t=>{
+test('opening a ready connection shows its QR and expiry never fetches a replacement',async t=>{
   const h=await makeDevices({data:listing([ready()])});t.after(()=>h.close());
-  h.click(act('open-connect'));await flush();
-  h.click('[data-sd-method=qr]');await flush();
   assert.equal(h.calls.some(call=>call.path.endsWith('/qr')),false);
-  h.click(act('tutorial-next'));await flush();
+  h.click(act('open-connect'));await flush();
   assert.ok(h.element('[data-sd-qr] img').src.startsWith('data:image/png;base64,'));
   assert.equal(h.calls.filter(call=>call.path.endsWith('/qr')).length,1);
   await h.tick(45000);
@@ -134,7 +135,7 @@ test('pairing normalizes the number; hidden codes retain TTL and survive status 
       return {...copy(contract.pair_response),code:'abcd1234'};
     }
   }});t.after(()=>h.close());
-  h.click(act('open-connect'));await flush();h.click(act('tutorial-next'));await flush();
+  h.click(act('open-connect'));await flush();h.click('[data-sd-method=code]');await flush();
   h.fill(field('pair_phone'),'(67) 99999-9901');h.submit(form('pair'));await flush();
   assert.equal(writes(h)[0].data.phone,'5567999999901');
   assert.equal(h.element('[data-sd-code]').textContent,'ABCD-1234');
@@ -169,7 +170,7 @@ test('delete has cancel and repair alternatives and removes the card only after 
     if(path.endsWith('/operations/'+operationId)){server.data=listing([]);return operation('remove',null,'succeeded');}
   }});t.after(()=>h.close());
   h.click(act('remove'));await flush();
-  assert.ok(h.element(act('alternative-settings')));assert.ok(h.element(act('alternative-relink')));
+  assert.ok(h.element(act('alternative-settings')));assert.equal(h.document.querySelector(act('alternative-relink')),null);
   h.click(act('close-dialog'));assert.equal(writes(h).length,0);
   h.click(act('remove'));h.submit(form('dialog'));await flush();
   assert.ok(h.element('[data-sd-card]'));assert.equal(writes(h)[0].data.action,'remove');
@@ -325,7 +326,7 @@ test('late pairing cannot expose a code after hiding or unmount, and hidden scre
     const h=await makeDevices({data:listing([ready()]),respond(path,method){
       if(path.endsWith('/pair')&&method==='POST')return late.promise;
     }});t.after(()=>h.close());
-    h.click(act('open-connect'));await flush();h.click(act('tutorial-next'));await flush();
+    h.click(act('open-connect'));await flush();h.click('[data-sd-method=code]');await flush();
     h.fill(field('pair_phone'),'(67) 99999-9901');h.submit(form('pair'));await flush();
     if(mode==='hidden')await h.visibility(true);else h.controller.unmount();
     late.resolve(contract.pair_response);await flush();

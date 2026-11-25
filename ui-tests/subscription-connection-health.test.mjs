@@ -33,8 +33,28 @@ test('confirmed logout offers an explicit relink while opening it never performs
     connection_health:{state:'needs_attention',action:'reauthenticate',reason:'logged_out'}});
   const h=await makeDevices({data:listing([item])});t.after(()=>h.close());await flush();
   h.click('[data-sd-action="open-connect"]');await flush();
-  assert.match(h.document.body.textContent,/WhatsApp desvinculou/);
+  assert.match(h.document.body.textContent,/WhatsApp pediu uma nova autenticação/);
   assert.ok(h.document.querySelector('[data-sd-action="relink"]'));
+  assert.equal(h.calls.filter(c=>c.method!=='GET').length,0);
+});
+
+test('a relink confirmation cannot reset a session that recovered in the meantime',async t=>{
+  const original=device(),capabilities={...original.capabilities,relink:true};
+  const disconnected=device({status:'logged_out',capabilities});
+  const restored=device({status:'connected',capabilities,
+    connection_health:{state:'connected',action:'reauthenticate',reason:'logged_out'}});
+  let current=disconnected;
+  const h=await makeDevices({data:listing([disconnected]),respond(path){
+    if(path.endsWith('/'+disconnected.id))return {device:current};
+  }});t.after(()=>h.close());
+  h.click('[data-sd-action="open-connect"]');await flush();
+  h.click('[data-sd-action="relink"]');
+  assert.match(h.element('dialog h2').textContent,/Vincular novamente/);
+  assert.equal(h.calls.filter(c=>c.method!=='GET').length,0);
+  current=restored;
+  h.submit('[data-sd-form="dialog"]');await flush();
+  assert.match(h.document.body.textContent,/WhatsApp conectado/);
+  assert.equal(h.document.querySelector('[data-sd-action="relink"]'),null);
   assert.equal(h.calls.filter(c=>c.method!=='GET').length,0);
 });
 

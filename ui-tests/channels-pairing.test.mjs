@@ -7,16 +7,16 @@ const writes=h=>h.calls.filter(call=>call.method!=='GET');
 const pairCalls=h=>h.calls.filter(call=>call.path.endsWith('/pair'));
 const status=(row,state='qr_ready',pair=true)=>({...runtime(row,state),capabilities:{pair}});
 const result=(row,extra={})=>({...runtime(row,'pairing'),code:'abcd1234',expires_in_ms:79000,...extra});
-const continueTutorial=h=>{if(h.document.querySelector('[data-qc-action=tutorial-next]'))h.click('[data-qc-action=tutorial-next]');};
-const stepCount=h=>h.element('[data-qc-tutorial]').querySelectorAll('[role=listitem],li').length;
-const submitPair=(h,phone='(67) 99999-9901')=>{continueTutorial(h);h.fill('[data-qc-pair-phone]',phone);h.element('[data-qc-form=pair]').dispatchEvent(new h.window.Event('submit',{bubbles:true,cancelable:true}));};
+const submitPair=(h,phone='(67) 99999-9901')=>{h.fill('[data-qc-pair-phone]',phone);h.element('[data-qc-form=pair]').dispatchEvent(new h.window.Event('submit',{bubbles:true,cancelable:true}));};
 
-test('opening or changing connection methods never starts a session or requests QR/code',async t=>{
+test('opening is read only and choosing QR reads it directly without requesting a pairing code',async t=>{
   const row=item({enabled:true}),h=await makeChannels({data:listing([row]),respond:path=>path.endsWith('/status')?status(row):undefined});t.after(()=>h.close());
   assert.equal(h.element('[data-qc-method=code]').getAttribute('aria-pressed'),'true');
-  h.click('[data-qc-method=qr]');h.click('[data-qc-method=code]');await h.tick(15000);
-  assert.deepEqual(writes(h),[]);assert.equal(h.calls.some(call=>/\/(qr|pair)$/.test(call.path)),false);
-  assert.equal(stepCount(h),7);assert.ok(h.element('[data-qc-action=tutorial-next]'));assert.equal(h.document.querySelector('[data-qc-form=pair]'),null);
+  assert.ok(h.element('[data-qc-form=pair]'));assert.equal(h.calls.filter(call=>call.path.endsWith('/qr')).length,0);
+  h.click('[data-qc-method=qr]');await flush();assert.ok(h.element('[data-qc-qr] img'));
+  h.click('[data-qc-method=code]');await h.tick(15000);
+  assert.ok(h.element('[data-qc-form=pair]'));assert.equal(h.calls.filter(call=>call.path.endsWith('/qr')).length,1);
+  assert.deepEqual(writes(h),[]);
 });
 
 test('pairing requires explicit permission and operational capability; neither alone offers the form',async t=>{
@@ -27,21 +27,29 @@ test('pairing requires explicit permission and operational capability; neither a
   }
   const denied=await makeChannels({data:listing([row],{capabilities:{pair:false}}),respond:path=>path.endsWith('/status')?status(row):undefined});assert.equal(denied.document.querySelector('[data-qc-form=pair]'),null);denied.close();
   const h=await makeChannels({data:listing([row]),respond:path=>path.endsWith('/status')?status(row):undefined});t.after(()=>h.close());
-  continueTutorial(h);assert.ok(h.element('[data-qc-form=pair]'));assert.equal(h.element('[data-qc-form=pair] button[type=submit]').disabled,false);
+  assert.ok(h.element('[data-qc-form=pair]'));assert.equal(h.element('[data-qc-form=pair] button[type=submit]').disabled,false);
 });
 
-test('the heading describes QR only until code capability becomes available, preserving both seven-step tutorials',async t=>{
+test('QR only is shown until the server allows pairing by number',async t=>{
   const row=item({enabled:true});let codeAvailable=false;
   const h=await makeChannels({data:listing([row]),respond:path=>path.endsWith('/status')?status(row,'qr_ready',codeAvailable):undefined});t.after(()=>h.close());
-  const initial=h.element('[data-qc-connection] .wizard-heading');assert.match(initial.querySelector('h2').textContent,/Conectar por QR Code/);assert.match(initial.querySelector('p').textContent,/outro aparelho.*QR Code/);assert.doesNotMatch(initial.querySelector('p').textContent,/código|próprio celular/i);assert.equal(h.document.querySelector('[data-qc-method=code]'),null);assert.equal(h.document.querySelector('[data-qc-form=pair]'),null);assert.equal(stepCount(h),7);
-  codeAvailable=true;await h.tick(5000);const available=h.element('[data-qc-connection] .wizard-heading');assert.equal(available.querySelector('h2').textContent,'Escolha como conectar');assert.match(available.querySelector('p').textContent,/No próprio celular, use o código/);assert.equal(h.element('[data-qc-method=code]').getAttribute('aria-pressed'),'true');assert.equal(stepCount(h),7);assert.equal(h.document.querySelector('[data-qc-form=pair]'),null);assert.deepEqual(writes(h),[]);assert.equal(h.calls.some(call=>/\/(qr|pair)$/.test(call.path)),false);
-  assert.match(h.window.OrionConnectView.heading(),/No próprio celular, use o código/);
+  const initial=h.element('[data-qc-connection] .wizard-heading');
+  assert.match(initial.querySelector('h2').textContent,/Conectar por QR Code/);
+  assert.match(initial.querySelector('p').textContent,/outro aparelho.*QR Code/);
+  assert.equal(h.document.querySelector('[data-qc-method=code]'),null);
+  codeAvailable=true;await h.tick(5000);
+  const available=h.element('[data-qc-connection] .wizard-heading');
+  assert.equal(available.querySelector('h2').textContent,'Escolha como conectar');
+  assert.match(available.querySelector('p').textContent,/QR Code.*número/);
+  assert.equal(h.element('[data-qc-method=code]').getAttribute('aria-pressed'),'true');
+  assert.ok(h.element('[data-qc-form=pair]'));
+  assert.deepEqual(writes(h),[]);
 });
 
 test('code generation waits for fresh connection readiness and cannot enable or start a channel',async t=>{
   for(const state of ['connecting','stopped','pairing','pair_failed','pair_expired','logged_out']){
     const row=item({enabled:true}),h=await makeChannels({data:listing([row]),respond:path=>path.endsWith('/status')?status(row,state):undefined});
-    continueTutorial(h);assert.equal(h.element('[data-qc-form=pair] button[type=submit]').disabled,true);submitPair(h);await flush();assert.deepEqual(writes(h),[]);h.close();
+    assert.equal(h.element('[data-qc-form=pair] button[type=submit]').disabled,true);submitPair(h);await flush();assert.deepEqual(writes(h),[]);h.close();
   }
   const h=await makeChannels({data:listing([item()])});t.after(()=>h.close());assert.equal(h.document.querySelector('[data-qc-form=pair]'),null);
 });
@@ -49,7 +57,7 @@ test('code generation waits for fresh connection readiness and cannot enable or 
 test('an explicitly started capable session defaults to code without fetching QR imagery',async t=>{
   const row=item({enabled:true});let started=false;
   const h=await makeChannels({data:listing([row]),respond:(path,method)=>path.endsWith('/start')&&method==='POST'?(started=true,status(row,'connecting')):path.endsWith('/status')?status(row,started?'qr_ready':'stopped',started):undefined});t.after(()=>h.close());
-  h.click('[data-qc-action=connect]');h.submit();await flush();await h.tick(5000);
+  h.click('[data-qc-action=connect]');await flush();await h.tick(5000);
   assert.equal(h.element('[data-qc-method=code]').getAttribute('aria-pressed'),'true');assert.equal(h.calls.some(call=>/\/(qr|pair)$/.test(call.path)),false);
   assert.deepEqual(writes(h),[{path:base+'/'+channelA+'/start',method:'POST',data:{expected_revision:1}}]);
 });
@@ -62,7 +70,7 @@ test('explicit pairing normalizes phone and code, copies the visible code and ne
   const observed=JSON.stringify({state:h.controller.getState(),logs:h.logs,local:[...Object.keys(h.window.localStorage)],session:[...Object.keys(h.window.sessionStorage)],url:h.window.location.href});
   assert.equal(observed.includes('ABCD-1234'),false);assert.equal(observed.includes('5511987654321'),false);assert.equal(observed.includes('(11) 98765-4321'),false);
   assert.equal(h.window.localStorage.length,0);assert.equal(h.window.sessionStorage.length,0);
-  h.click('[data-qc-method=qr]');assert.equal(h.document.querySelector('[data-qc-pair-code]'),null);continueTutorial(h);assert.equal(h.element('[data-qc-action=qr]').disabled,true);
+  h.click('[data-qc-method=qr]');assert.equal(h.document.querySelector('[data-qc-pair-code]'),null);assert.equal(h.element('[data-qc-action=qr]').disabled,true);
   h.click('[data-qc-method=code]');assert.equal(h.element('[data-qc-pair-code]').textContent,'ABCD-1234');assert.equal(pairCalls(h).length,1);
 });
 
@@ -124,24 +132,29 @@ test('a code that expires while hidden is erased and cannot be revealed or regen
 
 test('unchanged polling preserves the phone node, value, selection and expanded preferences',async t=>{
   const row=item({enabled:true}),h=await makeChannels({data:listing([row]),respond:path=>path.endsWith('/status')?status(row):undefined});t.after(()=>h.close());
-  continueTutorial(h);const input=h.fill('[data-qc-pair-phone]','(67) 99999-9901');input.focus();input.setSelectionRange(6,9);const details=h.element('[data-qc-disclosure=about]');details.open=true;
+  const input=h.fill('[data-qc-pair-phone]','(67) 99999-9901');input.focus();input.setSelectionRange(6,9);const details=h.element('[data-qc-disclosure=about]');details.open=true;
   await h.tick(15000);assert.equal(h.element('[data-qc-pair-phone]'),input);assert.equal(h.document.activeElement,input);assert.equal(input.value,'(67) 99999-9901');assert.equal(input.selectionStart,6);assert.equal(input.selectionEnd,9);assert.equal(h.element('[data-qc-disclosure=about]'),details);assert.equal(details.open,true);
 });
 
-test('the original seven-step tutorial gates each method without pairing writes and preserves progress in the same context',async t=>{
+test('the direct connection card handles preparation and preserves preferences when switching methods',async t=>{
   const row=item({enabled:true});let phase='connecting';
   const h=await makeChannels({data:listing([row]),respond:path=>path.endsWith('/status')?status(row,phase):undefined});t.after(()=>h.close());
-  assert.equal(stepCount(h),7);assert.equal(h.document.querySelector('[data-qc-form=pair]'),null);assert.match(h.element('[data-qc-action=tutorial-next]').textContent,/Concluí os passos e estou pronto para prosseguir/);
-  h.element('[data-qc-disclosure=about]').open=true;continueTutorial(h);assert.ok(h.element('[data-qc-form=pair]'));assert.deepEqual(writes(h),[]);assert.equal(h.calls.some(call=>call.path.endsWith('/qr')),false);
-  phase='qr_ready';await h.tick(5000);assert.equal(h.document.querySelector('[data-qc-tutorial]'),null);assert.equal(h.element('[data-qc-disclosure=about]').open,true);
-  h.click('[data-qc-method=qr]');assert.equal(stepCount(h),7);assert.equal(h.calls.some(call=>call.path.endsWith('/qr')),false);
-  h.click('[data-qc-method=code]');assert.equal(h.document.querySelector('[data-qc-tutorial]'),null);assert.ok(h.element('[data-qc-form=pair]'));
-  h.click('[data-qc-action=tutorial-back]');assert.equal(stepCount(h),7);continueTutorial(h);assert.ok(h.element('[data-qc-form=pair]'));assert.deepEqual(writes(h),[]);
+  assert.match(h.element('.os-connect-steps').textContent,/Aparelhos conectados/);
+  assert.equal(h.element('[data-qc-form=pair] button[type=submit]').disabled,true);
+  h.element('[data-qc-disclosure=about]').open=true;
+  phase='qr_ready';await h.tick(5000);
+  assert.equal(h.element('[data-qc-form=pair] button[type=submit]').disabled,false);
+  h.click('[data-qc-method=qr]');await flush();
+  assert.ok(h.element('[data-qc-qr] img'));
+  h.click('[data-qc-method=code]');
+  assert.ok(h.element('[data-qc-form=pair]'));
+  assert.equal(h.element('[data-qc-disclosure=about]').open,true);
+  assert.deepEqual(writes(h),[]);
 });
 
 test('polling preserves a valid QR node and expiry never fetches another image',async t=>{
   const row=item({enabled:true}),h=await makeChannels({data:listing([row]),respond:path=>path.endsWith('/status')?status(row):undefined});t.after(()=>h.close());
-  h.click('[data-qc-method=qr]');continueTutorial(h);await flush();const img=h.element('[data-qc-qr] img');assert.ok(img.src.startsWith(png));
+  h.click('[data-qc-method=qr]');await flush();const img=h.element('[data-qc-qr] img');assert.ok(img.src.startsWith(png));
   await h.tick(15000);assert.equal(h.element('[data-qc-qr] img'),img);await h.tick(31000);assert.equal(h.document.querySelector('[data-qc-qr]'),null);assert.equal(h.calls.filter(call=>call.path.endsWith('/qr')).length,1);
 });
 
@@ -182,7 +195,7 @@ test('connected, revoked and provider-failed states clear active code and preser
   for(const next of ['connected','logged_out','pair_failed']){
     const row=item({enabled:true,assistant_enabled:true});let phase='qr_ready';
     const h=await makeChannels({data:listing([row]),respond:(path,method)=>path.endsWith('/pair')&&method==='POST'?(phase='pairing',result(row)):path.endsWith('/status')?status(row,phase):undefined});
-    submitPair(h);await flush();phase=next;await h.tick(5000);assert.equal(h.document.querySelector('[data-qc-pair-code]'),null);assert.equal(h.controller.getState().hasPair,false);assert.equal(h.controller.getState().items[0].assistant_enabled,true);assert.equal(pairCalls(h).length,1);assert.equal(h.document.querySelector('[data-qc-action=connect]'),null);if(next!=='connected'){h.click('[data-qc-method=qr]');continueTutorial(h);assert.equal(h.element('[data-qc-action=qr]').disabled,true);}h.close();
+    submitPair(h);await flush();phase=next;await h.tick(5000);assert.equal(h.document.querySelector('[data-qc-pair-code]'),null);assert.equal(h.controller.getState().hasPair,false);assert.equal(h.controller.getState().items[0].assistant_enabled,true);assert.equal(pairCalls(h).length,1);assert.equal(h.document.querySelector('[data-qc-action=connect]'),null);if(next!=='connected'){h.click('[data-qc-method=qr]');assert.equal(h.element('[data-qc-action=qr]').disabled,true);}h.close();
   }
 });
 
@@ -200,12 +213,12 @@ test('a changed canonical binding clears pairing credentials and drafts instead 
   const a=item({enabled:true}),b=item({id:channelB,label:'Segundo canal',enabled:true});let paired=false;
   const h=await makeChannels({data:listing([a]),respond:(path,method)=>path.endsWith('/pair')&&method==='POST'?(paired=true,result(a)):path.endsWith('/status')?status(path.includes(channelB)?b:a,path.includes(channelB)||!paired?'qr_ready':'pairing'):undefined});t.after(()=>h.close());
   submitPair(h,'(11) 98765-4321');await flush();assert.equal(h.controller.getState().hasPair,true);h.server.data=listing([b]);h.click('[data-qc-action=refresh]');await flush();
-  assert.equal(h.controller.getState().hasPair,false);assert.equal(stepCount(h),7);continueTutorial(h);assert.equal(h.element('[data-qc-pair-phone]').value,'');assert.equal(h.document.querySelector('[data-qc-pair-code]'),null);
-  h.server.data=listing([a]);h.click('[data-qc-action=refresh]');await flush();assert.equal(h.document.querySelector('[data-qc-pair-code]'),null);assert.equal(stepCount(h),7);continueTutorial(h);assert.equal(h.element('[data-qc-pair-phone]').value,'');assert.equal(pairCalls(h).length,1);
+  assert.equal(h.controller.getState().hasPair,false);assert.equal(h.element('[data-qc-pair-phone]').value,'');assert.equal(h.document.querySelector('[data-qc-pair-code]'),null);
+  h.server.data=listing([a]);h.click('[data-qc-action=refresh]');await flush();assert.equal(h.document.querySelector('[data-qc-pair-code]'),null);assert.equal(h.element('[data-qc-pair-phone]').value,'');assert.equal(pairCalls(h).length,1);
 });
 
 test('a failed QR read after an explicit start does not create a background retry loop',async t=>{
   const row=item({enabled:true});let started=false;
   const h=await makeChannels({data:listing([row]),respond:(path,method)=>{if(path.endsWith('/start')&&method==='POST'){started=true;return runtime(row,'connecting');}if(path.endsWith('/status'))return runtime(row,started?'qr_ready':'stopped');if(path.endsWith('/qr'))throw Object.assign(Error('unavailable'),{status:503});}});t.after(()=>h.close());
-  h.click('[data-qc-action=connect]');h.submit();await flush();await h.tick(5000);continueTutorial(h);await flush();await h.tick(30000);assert.equal(h.calls.filter(call=>call.path.endsWith('/qr')).length,1);assert.equal(writes(h).length,1);assert.equal(h.controller.getState().hasQR,false);
+  h.click('[data-qc-action=connect]');await flush();await h.tick(5000);h.click('[data-qc-action=qr]');await flush();await h.tick(30000);assert.equal(h.calls.filter(call=>call.path.endsWith('/qr')).length,1);assert.equal(writes(h).length,1);assert.equal(h.controller.getState().hasQR,false);
 });

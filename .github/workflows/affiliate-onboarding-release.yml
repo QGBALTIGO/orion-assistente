@@ -1,4 +1,4 @@
-name: Orion Afiliados - configuração inicial
+name: Orion - conexão WhatsApp
 on:
   push:
     branches: [codex/orion-afiliados-onboarding-20261125]
@@ -15,17 +15,17 @@ jobs:
       contents: read
       packages: write
     env:
-      BASE_IMAGE: ghcr.io/qgbaltigo/orion-assistente-api@sha256:1932dcbe0fb5017960faff8908795dd511f574e9a8eb98259ffca5c1242d041b
-      IMAGE: ghcr.io/qgbaltigo/orion-assistente-api:afiliados-onboarding-${{ github.sha }}
+      BASE_IMAGE: ghcr.io/qgbaltigo/orion-assistente-api@sha256:aee7d569662ce21521ad70e4e2959f448200802a5948c6aaaf1b0805a7d5b5ba
+      IMAGE: ghcr.io/qgbaltigo/orion-assistente-api:whatsapp-connection-${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Testar a criação de empresas e os nichos existentes
+      - name: Testar conexão, permissões e nichos
         run: |
           npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
-          node --test --test-reporter=dot ui-tests/onboarding-affiliates.test.mjs ui-tests/onboarding-subscription-niche.test.mjs ui-tests/onboarding-entry.test.mjs ui-tests/onboarding-save.test.mjs ui-tests/subscription-workspace.test.mjs ui-tests/subscription-devices.test.mjs ui-tests/barbershop-app-layout.test.mjs
+          node --test --test-reporter=dot ui-tests/channels.test.mjs ui-tests/channels-pairing.test.mjs ui-tests/subscription-devices.test.mjs ui-tests/subscription-connection-health.test.mjs ui-tests/mobile-atendimento.test.mjs ui-tests/fields-auth.test.mjs ui-tests/fields-onboarding-channels.test.mjs ui-tests/onboarding-affiliates.test.mjs ui-tests/barbershop-app-layout.test.mjs ui-tests/subscription-workspace.test.mjs
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -37,13 +37,11 @@ jobs:
           import hashlib
           from pathlib import Path
           expected = {
-              "app/affiliate_workspace.py": "86f0b8bad297151fa2b9d6c9b92aa78c2740de67",
-              "app/plan_permissions.py": "db3b6acc5762e968d67cc44852b50d328f5f6135",
-              "app/subscription_devices.py": "e34b3b28a8558979e7daa49c3b0f008e29de8ad3",
-              "app/static/orion-subscription-devices.css": "80231905e53117c45ff4704cf82f37922156131b",
-              "app/static/orion-subscription-devices.js": "933154c94d343acc31b814c6836b5b1f50bbeae3",
-              "app/static/orion-suite.js": "243e42eaf08190d20789f7812b2c00ad6a509914",
-              "app/static/panel.html": "03a3b5a34c803c5d15d9ec94ccce84550b43b440",
+              "app/static/orion-connect.js": "1d1e646a5419b32095a58a3d5af87715962146fa",
+              "app/static/orion-channels.js": "c3f7a4b74cdd0865e5f04291bbb62951bbf38d79",
+              "app/static/orion-subscription-devices.js": "9195d7a4ba8a7291b1e6ceeb122b8838f9e5ec57",
+              "app/static/orion-channels.css": "54faa7b1525ec58292f2f2e11de634577b3f401b",
+              "app/static/panel.html": "e5696136f354584f84499ad834caf2f82cdbeff6",
           }
           for name, digest in expected.items():
               data = Path(name).read_bytes()
@@ -53,19 +51,12 @@ jobs:
         run: |
           docker build -f deploy/Dockerfile.affiliate-onboarding --build-arg ORION_RELEASE="$GITHUB_SHA" -t "$IMAGE" .
           docker run --rm --entrypoint python "$IMAGE" -c '
-          from app.onboarding_schemas import CreateBusiness
           from app.main import app
-          from app.plan_permissions import derive_plan
           from pathlib import Path
           from app.workspace_policy import workspace_profile
           assert workspace_profile("afiliados") == "affiliate"
           assert "/api/v1/afiliados/{tenant_id}" in app.openapi()["paths"]
-          assert Path("app/static/orion-affiliate-workspace.js").is_file()
-          plan = derive_plan({"niche": "afiliados", "tenant_status": "active"})
-          assert plan["layout_modes"] == ["classic", "app"]
-          assert set(plan["features"]) == {"account.manage", "business.setup", "devices.manage"}
-          CreateBusiness(name="Afiliados", timezone="America/Cuiaba", niche="afiliados",
-                         activity="products", affiliate_activity="offers", idempotency_key="synthetic-test")
+          assert "os-connect-steps" in Path("app/static/orion-connect.js").read_text()
           '
           docker push "$IMAGE"
           docker image inspect "$IMAGE" --format '{{index .RepoDigests 0}}' | tee affiliate-onboarding-image.txt

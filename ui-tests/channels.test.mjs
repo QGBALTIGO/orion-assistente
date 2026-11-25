@@ -4,7 +4,7 @@ import {makeChannels,item,listing,runtime,tenantA,tenantB,channelA,channelB,png,
 const base='/api/v1/tenants/'+tenantA+'/qr-channels';
 const writes=h=>h.calls.filter(call=>call.method!=='GET');
 const state=(row,status='stopped',extra={})=>({...runtime(row,status),...extra});
-const openConfirm=h=>{h.click('[data-qc-action=connect]');h.submit();};
+const startConnection=h=>h.click('[data-qc-action=connect]');
 
 function connectServer({missing=false,loseProvision=false}={}){
   const row=item({assistant_activation_allowed:false,allowed_senders:[]});let provisioned=!missing,provisions=0;
@@ -23,44 +23,46 @@ test('opening the single canonical connection is read only and never exposes a d
   assert.doesNotMatch(h.element('#channels').textContent,/Nome técnico privado|5567999999901|Seus dispositivos|principal|teste/i);assert.equal(JSON.stringify(h.controller.getState()).includes('allowed_senders'),false);
 });
 
-test('a company without a connection only provisions after explicit confirmation, then enables and starts its one canonical record',async t=>{
+test('a company without a connection only provisions after an explicit connection click, then enables and starts its one canonical record',async t=>{
   const server=connectServer({missing:true}),h=await makeChannels({data:listing([]),respond:server.respond});t.after(()=>h.close());
-  assert.ok(h.element('[data-qc-empty]'));assert.deepEqual(writes(h),[]);h.click('[data-qc-action=connect]');h.click('[data-qc-action=cancel-confirm]');assert.deepEqual(writes(h),[]);
-  h.click('[data-qc-action=connect]');const form=h.element('[data-qc-form=confirm]');form.dispatchEvent(new h.window.Event('submit',{bubbles:true,cancelable:true}));form.dispatchEvent(new h.window.Event('submit',{bubbles:true,cancelable:true}));await flush();const calls=writes(h);assert.equal(calls.length,3);assert.equal(calls[0].path,base+'/provision');assert.deepEqual(Object.keys(calls[0].data),['idempotency_key']);assert.match(calls[0].data.idempotency_key,/^[a-f0-9-]{36}$/);
+  assert.ok(h.element('[data-qc-empty]'));assert.deepEqual(writes(h),[]);
+  const connect=h.element('[data-qc-action=connect]');connect.click();connect.click();await flush();
+  assert.equal(h.document.querySelector('[data-qc-form=confirm]'),null);
+  const calls=writes(h);assert.equal(calls.length,3);assert.equal(calls[0].path,base+'/provision');assert.deepEqual(Object.keys(calls[0].data),['idempotency_key']);assert.match(calls[0].data.idempotency_key,/^[a-f0-9-]{36}$/);
   assert.deepEqual(calls[1],{path:base+'/'+channelA,method:'PATCH',data:{expected_revision:1,enabled:true}});assert.deepEqual(calls[2],{path:base+'/'+channelA+'/start',method:'POST',data:{expected_revision:2}});
   assert.equal(h.controller.getState().connection.assistant_enabled,false);assert.equal(h.controller.getState().connection.id,channelA);assert.equal(h.controller.getState().runtime.status,'connecting');assert.equal(h.document.querySelector('[data-qc-empty]'),null);assert.ok(h.element('[data-qc-assistant-reason]'));
   assert.equal(calls.some(call=>'allowed_senders' in call.data||'phone' in call.data||'assistant_enabled' in call.data),false);
 });
 
 test('a disabled canonical connection is reused without registering another one',async t=>{
-  const server=connectServer(),h=await makeChannels({data:listing([server.row]),respond:server.respond});t.after(()=>h.close());openConfirm(h);await flush();assert.equal(writes(h).length,2);assert.equal(writes(h).some(call=>call.path.endsWith('/provision')),false);assert.equal(h.controller.getState().connection.id,channelA);
+  const server=connectServer(),h=await makeChannels({data:listing([server.row]),respond:server.respond});t.after(()=>h.close());startConnection(h);await flush();assert.equal(writes(h).length,2);assert.equal(writes(h).some(call=>call.path.endsWith('/provision')),false);assert.equal(h.controller.getState().connection.id,channelA);
 });
 
 test('an enabled stopped connection starts independently with its current revision',async t=>{
-  const row=item({enabled:true}),h=await makeChannels({data:listing([row]),respond:(path,method)=>method==='POST'?state(row,'connecting'):undefined});t.after(()=>h.close());openConfirm(h);await flush();assert.deepEqual(writes(h),[{path:base+'/'+channelA+'/start',method:'POST',data:{expected_revision:1}}]);
+  const row=item({enabled:true}),h=await makeChannels({data:listing([row]),respond:(path,method)=>method==='POST'?state(row,'connecting'):undefined});t.after(()=>h.close());startConnection(h);await flush();assert.deepEqual(writes(h),[{path:base+'/'+channelA+'/start',method:'POST',data:{expected_revision:1}}]);
 });
 
 test('an uncertain provisioning response never repeats automatically and an authoritative lookup can resume the same connection',async t=>{
-  const server=connectServer({missing:true,loseProvision:true}),h=await makeChannels({data:listing([]),respond:server.respond});t.after(()=>h.close());openConfirm(h);await flush();assert.equal(h.controller.getState().uncertain,true);await h.tick(20000);assert.equal(writes(h).length,1);
-  h.click('[data-qc-action=refresh]');await flush();assert.equal(h.controller.getState().connection.id,channelA);assert.equal(h.controller.getState().uncertain,false);assert.equal(writes(h).length,1);openConfirm(h);await flush();assert.equal(writes(h).filter(call=>call.path.endsWith('/provision')).length,1);assert.equal(writes(h).length,3);
+  const server=connectServer({missing:true,loseProvision:true}),h=await makeChannels({data:listing([]),respond:server.respond});t.after(()=>h.close());startConnection(h);await flush();assert.equal(h.controller.getState().uncertain,true);await h.tick(20000);assert.equal(writes(h).length,1);
+  h.click('[data-qc-action=refresh]');await flush();assert.equal(h.controller.getState().connection.id,channelA);assert.equal(h.controller.getState().uncertain,false);assert.equal(writes(h).length,1);startConnection(h);await flush();assert.equal(writes(h).filter(call=>call.path.endsWith('/provision')).length,1);assert.equal(writes(h).length,3);
 });
 
 test('an explicit provisioning retry reuses the exact idempotent intent instead of adding another connection',async t=>{
   let attempts=0;const row=item({assistant_activation_allowed:false,allowed_senders:[]});
   const h=await makeChannels({data:listing([]),respond:(path,method,data,server)=>{if(path.endsWith('/provision')){if(++attempts===1)throw Error('unknown');server.data=listing([row]);return server.data;}if(method==='PATCH')return item({enabled:true,revision:2,assistant_activation_allowed:false});if(path.endsWith('/start'))return state(item({enabled:true,revision:2}),'connecting');}});t.after(()=>h.close());
-  openConfirm(h);await flush();h.click('[data-qc-action=retry-provision]');await flush();const requests=writes(h).filter(call=>call.path.endsWith('/provision'));assert.equal(requests.length,2);assert.deepEqual(requests[0],requests[1]);assert.equal(h.controller.getState().connection.id,channelA);
+  startConnection(h);await flush();h.click('[data-qc-action=retry-provision]');await flush();const requests=writes(h).filter(call=>call.path.endsWith('/provision'));assert.equal(requests.length,2);assert.deepEqual(requests[0],requests[1]);assert.equal(h.controller.getState().connection.id,channelA);
 });
 
 test('uncertain enable or start outcomes cannot automatically repeat commands',async t=>{
-  for(const failure of ['enable','start']){const row=item(),h=await makeChannels({data:listing([row]),respond:(path,method)=>{if(method==='PATCH'){if(failure==='enable')throw Error('unknown');return item({enabled:true,revision:2});}if(method==='POST')throw Error('unknown');}});openConfirm(h);await flush();assert.equal(h.controller.getState().uncertain,true);const count=writes(h).length;await h.tick(30000);assert.equal(writes(h).length,count);h.close();}
+  for(const failure of ['enable','start']){const row=item(),h=await makeChannels({data:listing([row]),respond:(path,method)=>{if(method==='PATCH'){if(failure==='enable')throw Error('unknown');return item({enabled:true,revision:2});}if(method==='POST')throw Error('unknown');}});startConnection(h);await flush();assert.equal(h.controller.getState().uncertain,true);const count=writes(h).length;await h.tick(30000);assert.equal(writes(h).length,count);h.close();}
 });
 
 test('a delayed provision result cannot enable or start a connection after the company changes',async t=>{
-  const late=deferred(),h=await makeChannels({data:listing([]),respond:(path,method)=>path.endsWith('/provision')?late.promise:path.startsWith('/api/v1/tenants/'+tenantB)?listing([]):undefined});t.after(()=>h.close());openConfirm(h);await flush();await h.controller.setTenant(tenantB);late.resolve(listing([item()]));await flush();assert.equal(writes(h).length,1);assert.equal(h.controller.getState().tenantId,tenantB);assert.equal(h.controller.getState().connection,null);
+  const late=deferred(),h=await makeChannels({data:listing([]),respond:(path,method)=>path.endsWith('/provision')?late.promise:path.startsWith('/api/v1/tenants/'+tenantB)?listing([]):undefined});t.after(()=>h.close());startConnection(h);await flush();await h.controller.setTenant(tenantB);late.resolve(listing([item()]));await flush();assert.equal(writes(h).length,1);assert.equal(h.controller.getState().tenantId,tenantB);assert.equal(h.controller.getState().connection,null);
 });
 
 test('hiding the screen while enable is pending cannot start its session afterward',async t=>{
-  const late=deferred(),h=await makeChannels({respond:(path,method)=>method==='PATCH'?late.promise:undefined});t.after(()=>h.close());openConfirm(h);await flush();await h.visibility(true);late.resolve(item({enabled:true,revision:2}));await flush();assert.equal(writes(h).length,1);assert.equal(writes(h).some(call=>call.path.endsWith('/start')),false);
+  const late=deferred(),h=await makeChannels({respond:(path,method)=>method==='PATCH'?late.promise:undefined});t.after(()=>h.close());startConnection(h);await flush();await h.visibility(true);late.resolve(item({enabled:true,revision:2}));await flush();assert.equal(writes(h).length,1);assert.equal(writes(h).some(call=>call.path.endsWith('/start')),false);
 });
 
 test('ambiguous or foreign canonical data fails closed without choosing a historical record',async t=>{
@@ -131,13 +133,13 @@ test('the authorized canonical alias prepares explicitly without global APIs, ch
   const row=item({enabled:true,legacy_transport:true});let phase='qr_expired';
   const caps={prepare:true,recover:true,qr:true,pair:true,start:true,stop:false,change_state:false,change_assistant:true};
   const h=await makeChannels({data:listing([row],{capabilities:caps}),respond:(path,method,data)=>path.endsWith('/status')?state(row,phase,{capabilities:{pair:true}}):path.endsWith('/prepare')?(phase='connecting',state(row,phase)):undefined});t.after(()=>h.close());
-  h.click('[data-qc-action=prepare]');assert.deepEqual(writes(h),[]);h.click('[data-qc-action=cancel-confirm]');assert.deepEqual(writes(h),[]);h.click('[data-qc-action=prepare]');h.submit();await flush();assert.deepEqual(writes(h),[{path:base+'/'+channelA+'/prepare',method:'POST',data:{expected_revision:1,mode:'reconnect'}}]);assert.equal(h.controller.getState().runtime.status,'connecting');assert.equal(h.calls.some(call=>call.path.startsWith('/api/v1/qr/')||/recover$/.test(call.path)),false);
+  assert.deepEqual(writes(h),[]);h.click('[data-qc-action=prepare]');await flush();assert.deepEqual(writes(h),[{path:base+'/'+channelA+'/prepare',method:'POST',data:{expected_revision:1,mode:'reconnect'}}]);assert.equal(h.controller.getState().runtime.status,'connecting');assert.equal(h.calls.some(call=>call.path.startsWith('/api/v1/qr/')||/recover$/.test(call.path)),false);
 });
 
 test('a fresh active, pairing, revoked or uncertain alias state interrupts preparation without a different mutation',async t=>{
   const row=item({enabled:true,legacy_transport:true}),caps={prepare:true,recover:true,qr:true,pair:true,start:true,change_assistant:true};
   for(const next of ['connected','pairing','logged_out','pair_failed','error']){
-    let phase='qr_expired';const h=await makeChannels({data:listing([row],{capabilities:caps}),respond:path=>path.endsWith('/status')?state(row,phase,{capabilities:{pair:true}}):undefined});h.click('[data-qc-action=prepare]');phase=next;h.submit();await flush();assert.deepEqual(writes(h),[],next);assert.equal(h.controller.getState().runtime.status,next);if(['logged_out','pair_failed'].includes(next))assert.ok(h.element('[data-qc-action=recover]'));h.close();
+    let phase='qr_expired';const h=await makeChannels({data:listing([row],{capabilities:caps}),respond:path=>path.endsWith('/status')?state(row,phase,{capabilities:{pair:true}}):undefined});phase=next;h.click('[data-qc-action=prepare]');await flush();assert.deepEqual(writes(h),[],next);assert.equal(h.controller.getState().runtime.status,next);if(['logged_out','pair_failed'].includes(next))assert.ok(h.element('[data-qc-action=recover]'));h.close();
   }
 });
 

@@ -812,7 +812,7 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
     <div class="brand"><img class="orion-brand-image" data-orion-logo src="/brand/orion-brand-dark.svg" alt="Orion — Recepcionista Digital" width="180" height="63"></div>
     <div id="sidebarLabel" class="side-label">Gerenciamento</div>
     <nav class="nav" aria-label="Páginas do painel">
-      <button class="nav-item hidden" data-page="member" data-member-only> <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1Z"/><path d="M9 21v-7h6v7"/></svg></span>Início</button>
+      <button class="nav-item hidden" data-page="member" data-member-only> <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z"/></svg></span>Dashboard</button>
       <button class="nav-item" data-page="dispositivo" data-admin-only><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M10 5h4m-3 14h2"/></svg></span>Conectar dispositivo</button>
       <button class="nav-item" data-page="conversas" data-admin-only data-platform-admin-only><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 3h12a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3H8l-5 3V6a3 3 0 0 1 3-3Z"/><path d="M8 8h8M8 12h5"/></svg></span>Conversas</button>
       <button class="nav-item hidden" id="aiNav" data-page="ai" data-platform-admin-only><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="7" width="18" height="14" rx="3"/><path d="M12 3v4m-5 6h.01M17 13h.01M8 17h8"/></svg></span>Testar atendimento</button>
@@ -855,7 +855,7 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
     </header>
     <section id="page-member" class="page hidden" aria-labelledby="memberWelcome">
       <div class="header">
-        <div><div class="eyebrow">Orion / Início</div><h1 id="memberWelcome">Bem-vindo ao Orion</h1>
+        <div><div class="eyebrow">Orion / Dashboard</div><h1 id="memberWelcome">Bem-vindo ao Orion</h1>
           <p class="subhead">Seu espaço para acompanhar sua conta.</p></div>
       </div>
       <section class="member-overview" aria-labelledby="memberProfileHeading">
@@ -1038,27 +1038,21 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
         <div class="wizard-heading">
           <span class="hidden">VINCULAR DISPOSITIVO</span>
           <h2>Escolha como conectar</h2>
-          <p>No próprio celular, use o código. Se estiver em outro aparelho, escaneie o QR Code.</p>
+          <p>Use o QR Code em outro aparelho ou vincule pelo número neste celular.</p>
         </div>
         <div class="wizard-methods" role="group" aria-label="Escolha a forma de conexão">
-          <button type="button" class="wizard-method" data-method="qr" aria-pressed="false"><span class="wizard-method-icon"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="6" height="6" rx="1"/><rect x="15" y="3" width="6" height="6" rx="1"/><rect x="3" y="15" width="6" height="6" rx="1"/><path d="M15 15h2v2h4v4h-6v-2m6-6v2"/></svg></span><strong>QR Code</strong><span>Escaneie com seu telefone</span></button>
-          <button type="button" class="wizard-method" data-method="code" aria-pressed="false"><span class="wizard-method-icon"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M10 5h4m-3 14h2"/></svg></span><strong>Código</strong><span>Digite no seu telefone</span></button>
+          <button type="button" class="wizard-method" data-method="qr" aria-pressed="false"><span class="wizard-method-icon"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="6" height="6" rx="1"/><rect x="15" y="3" width="6" height="6" rx="1"/><rect x="3" y="15" width="6" height="6" rx="1"/><path d="M15 15h2v2h4v4h-6v-2m6-6v2"/></svg></span><strong>QR Code</strong><span>Escaneie pelo WhatsApp</span></button>
+          <button type="button" class="wizard-method" data-method="code" aria-pressed="false"><span class="wizard-method-icon"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M10 5h4m-3 14h2"/></svg></span><strong>Código pelo número</strong><span>Use o mesmo celular</span></button>
         </div>
         <div class="wizard-card" id="wizardCard">
           <div class="os-notice os-connect-notice hidden" id="wizardRecoveryArea" role="alert">
             <h3>Prepare um novo vínculo</h3>
             <p>O WhatsApp encerrou ou recusou a conexão anterior. Prepare o vínculo antes de gerar outro código.</p>
-            <div class="os-actions"><button id="wizardRecover" type="button" class="os-button os-large hidden">Refazer vínculo</button></div>
+            <div class="os-actions"><button id="wizardRecover" type="button" class="os-button os-large hidden">Vincular novamente</button></div>
           </div>
-          <div id="wizardTutorial" class="wizard-pane">
-            <div class="wizard-tutorial-heading"><h3>Prepare o WhatsApp no seu celular</h3><p>Siga as orientações e continue quando estiver pronto.</p></div>
-            <div id="guideSteps"></div>
-            <button id="wizardNext" type="button" class="os-button os-large os-full wizard-continue">Concluí os passos e estou pronto para prosseguir</button>
-          </div>
+          <div id="guideSteps"></div>
           <div id="qrPanel" class="hidden">
-            <span class="hidden">ETAPA FINAL • QR CODE</span>
             <h3>Escaneie o código</h3>
-            <p class="os-help">Abra <strong>Dispositivos conectados</strong> e escaneie usando o WhatsApp do celular.</p>
             <div class="os-help os-connect-expiry">Tempo restante: <strong id="qrCountdown" aria-live="off">—</strong></div>
             <div id="qrBox" class="os-connect-qr">
               <div id="qrEmpty" class="os-empty os-compact os-connect-placeholder">
@@ -1071,13 +1065,11 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
             <p id="qrStatus" class="os-help os-connect-feedback" role="status" aria-live="polite"></p>
             <p id="qrFeedback" class="os-help" aria-live="polite">Aguardando resposta do WhatsApp…</p>
             <div class="os-form-actions">
-              <button id="wizardQrBack" class="os-button os-large os-ghost" type="button">Voltar</button>
-              <button id="refreshQr" type="button" class="os-button os-large">Atualizar conexão</button>
+              <button id="refreshQr" type="button" class="os-button os-large">Gerar novo QR Code</button>
             </div>
             <button id="startQr" type="button" class="hidden">Preparar QR Code</button>
           </div>
           <div id="codePanel" class="hidden">
-            <span class="hidden">ETAPA FINAL • CÓDIGO</span>
             <div id="wizardCodeInput">
               <h3>Informe o número do WhatsApp</h3>
               <p class="os-help">Informe o número que usa no aparelho a conectar.</p>
@@ -1115,7 +1107,7 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
         <div id="wizardLegacySupport" class="hidden" aria-hidden="true">
           <div id="connectedBanner"><span id="connectedPhone"></span><button id="openChats" type="button">Abrir conversas</button></div>
           <button id="statusRefresh" type="button">Atualizar status</button>
-          <button id="repairConnection" type="button">Refazer vínculo</button>
+          <button id="repairConnection" type="button">Vincular novamente</button>
           <span id="deviceState"></span><span id="ingestionState"></span><span id="inboxState"></span>
         </div>
       </div>
@@ -1635,9 +1627,9 @@ let csrf="",page="dispositivo",method="code",showQr=false,deviceStatus="starting
 let messageSequence=0,lastPanelSend=null,manualSendRequest=null,manualSendSequence=0,manualSendIdentity=null;
 let chatRows=[],chatLoadSequence=0,recipientSequence=0,chatSending=false,chatSavedScroll=0;
 const chatDrafts=new Map();
-let wizardStep="tutorial",wizardAttempted=false,wizardSuccessUntil=0,
+let wizardStep="code_form",wizardAttempted=false,wizardSuccessUntil=0,
     wizardSuccessDone=false,wizardQrDeadline=0,wizardClocks=null,statusSequence=0,
-    wizardBusy=false,wizardOperation=0,wizardQrRead=0,wizardUncertain=false,wizardCodeExpired=false,wizardTutorialDone={code:false,qr:false};
+    wizardBusy=false,wizardOperation=0,wizardQrRead=0,wizardUncertain=false,wizardCodeExpired=false;
 const connectView=window.OrionConnectView;
 const fields={
  authorized_staff:[["phone_e164","Telefone (+55...)","text"],["role","Papel (owner/barber/assistant)","text"],["active","Ativo","checkbox"]],
@@ -2353,7 +2345,7 @@ function clearWizardCodes(){
 }
 function resetWizard(){
  ++wizardOperation;++statusSequence;wizardBusy=false;wizardUncertain=false;wizardCodeExpired=false;
- method="code";wizardStep="tutorial";wizardTutorialDone={code:false,qr:false};wizardAttempted=false;wizardSuccessDone=false;wizardSuccessUntil=0;
+ method="code";wizardStep="code_form";wizardAttempted=false;wizardSuccessDone=false;wizardSuccessUntil=0;
  clearWizardCodes();$("pairPhone").value="";$("codeStatus").textContent="";$("qrStatus").textContent="";
  $("guideSteps").innerHTML=connectView.instructions("code");$("guideSteps").dataset.guideMethod="code";
  renderGuide();
@@ -2387,9 +2379,10 @@ function renderGuide(){
  const qrNeedsPreparation=["qr_expired","qr_delayed"].includes(deviceStatus);
  const prepareHint="A conexão precisa ser preparada para gerar o código. Use Preparar novo código.";
  const waitHint="Preparando a conexão. O botão será liberado quando estiver pronta.";
- const panes={tutorial:"wizardTutorial",qr:"qrPanel",code_form:"codePanel",code_ready:"codePanel",success:"wizardSuccess"};
- for(const id of ["wizardTutorial","qrPanel","codePanel","wizardSuccess"])
-   $(id).classList.toggle("hidden",attention||(revoked&&!["tutorial","success"].includes(wizardStep))||id!==panes[wizardStep]);
+ const panes={qr:"qrPanel",code_form:"codePanel",code_ready:"codePanel",success:"wizardSuccess"};
+ $("guideSteps").classList.toggle("hidden",attention||revoked||wizardStep==="success");
+ for(const id of ["qrPanel","codePanel","wizardSuccess"])
+   $(id).classList.toggle("hidden",attention||revoked&&wizardStep!=="success"||id!==panes[wizardStep]);
  document.querySelectorAll("[data-method]").forEach(x=>{
    x.setAttribute("aria-pressed",String(wizardStep!=="success"&&x.dataset.method===method));
    x.classList.toggle("active",wizardStep!=="success"&&x.dataset.method===method);x.disabled=locked;
@@ -2397,22 +2390,20 @@ function renderGuide(){
  $("wizardCard").setAttribute("aria-busy",String(wizardBusy));
  $("wizardRecoveryArea").classList.toggle("hidden",!revoked);
  $("wizardRecover").classList.toggle("hidden",!revoked);$("wizardRecover").disabled=wizardBusy;
- $("wizardRecover").textContent=wizardBusy?"Preparando…":"Refazer vínculo";
+ $("wizardRecover").textContent=wizardBusy?"Preparando…":"Vincular novamente";
  $("wizardCodeInput").classList.toggle("hidden",wizardStep!=="code_form");
  $("codeResult").classList.toggle("hidden",wizardStep!=="code_ready");
  $("wizardGenerate").disabled=locked||wizardCodeExpired||deviceStatus!=="qr_ready";
  $("wizardGenerate").textContent=wizardBusy?"Gerando código…":"Gerar código";
  $("pairPhone").disabled=locked||deviceStatus==="pairing";
- $("wizardCodeBack").classList.toggle("hidden",!["code_ready","code_form"].includes(wizardStep));
- $("wizardCodeBack").textContent=wizardStep==="code_ready"?"Alterar número":"Voltar";
+ $("wizardCodeBack").classList.toggle("hidden",wizardStep!=="code_ready");
+ $("wizardCodeBack").textContent="Alterar número";
  $("wizardCodeBack").disabled=wizardBusy||wizardUncertain;
  $("retryCode").classList.toggle("hidden",!(qrNeedsPreparation||wizardCodeExpired||wizardUncertain||wizardStep==="code_ready"||deviceStatus==="pair_expired"||deviceStatus==="pairing"||deviceStatus==="error"));
  $("retryCode").disabled=wizardBusy||wizardUncertain||deviceStatus==="connected"||attention||deviceStatus==="pairing"||revoked;
  $("copyCode").disabled=wizardBusy||!pairExpiresAt||Date.now()>=pairExpiresAt;
  $("wizardCheckStatus").classList.toggle("hidden",!(wizardUncertain||["starting","connecting","reconnecting","error","pairing"].includes(deviceStatus)));
  $("wizardCheckStatus").disabled=wizardBusy;
- $("wizardNext").disabled=locked||deviceStatus==="pairing";
- $("wizardQrBack").disabled=wizardBusy||wizardUncertain;
  $("refreshQr").disabled=locked||deviceStatus==="pairing";
  if(wizardStep==="code_form"&&!wizardBusy&&!wizardUncertain){
    if(qrNeedsPreparation)$("codeStatus").textContent=prepareHint;
@@ -2420,23 +2411,19 @@ function renderGuide(){
    else if(deviceStatus==="qr_ready"&&!wizardCodeExpired&&[prepareHint,waitHint].includes($("codeStatus").textContent))$("codeStatus").textContent="";
  }
 }
-function selectWizardMode(next){
+async function selectWizardMode(next){
  if(!["qr","code"].includes(next)||wizardBusy||wizardUncertain||deviceStatus==="connected"||["logged_out","pair_failed"].includes(deviceStatus))return;
  method=next;showQr=false;
- wizardStep=next==="code"&&pairExpiresAt>Date.now()?"code_ready":next==="code"&&wizardTutorialDone.code?"code_form":"tutorial";
+ wizardStep=next==="qr"?"qr":pairExpiresAt>Date.now()?"code_ready":"code_form";
  renderGuide();updateWizardClocks();
+ if(next==="qr"&&!["starting","connecting","reconnecting","pairing"].includes(deviceStatus)){
+   wizardAttempted=true;await attemptQrRefresh();
+ }else if(next==="code"&&wizardStep==="code_form")$("pairPhone").focus({preventScroll:true});
 }
-document.querySelectorAll("[data-method]").forEach(x=>x.addEventListener("click",()=>selectWizardMode(x.dataset.method)));
-$("wizardNext").addEventListener("click",async()=>{
- if(wizardStep!=="tutorial"||wizardBusy||wizardUncertain||["connected","pairing","logged_out","pair_failed"].includes(deviceStatus))return;
- wizardTutorialDone[method]=true;
- if(method==="code"){wizardStep="code_form";renderGuide();$("pairPhone").focus();return}
- wizardStep="qr";wizardAttempted=true;renderGuide();await attemptQrRefresh();
-});
-$("wizardQrBack").addEventListener("click",()=>{if(wizardBusy||wizardUncertain)return;showQr=false;wizardStep="tutorial";renderGuide()});
+document.querySelectorAll("[data-method]").forEach(x=>x.addEventListener("click",()=>void selectWizardMode(x.dataset.method)));
 $("wizardCodeBack").addEventListener("click",()=>{
- if(wizardBusy||wizardUncertain)return;
- wizardStep=wizardStep==="code_ready"?"code_form":"tutorial";renderGuide();if(wizardStep==="code_form")$("pairPhone").focus();
+ if(wizardBusy||wizardUncertain||wizardStep!=="code_ready")return;
+ wizardStep="code_form";renderGuide();$("pairPhone").focus();
 });
 $("wizardRecover").addEventListener("click",()=>{$("repairConnection").click()});
 $("wizardCheckStatus").addEventListener("click",updateStatus);
@@ -2666,7 +2653,7 @@ async function updateStatus({snapshot}={}){
   }
   if(attention||!active&&previous==="connected"){
     if(attention&&wizardBusy){++wizardOperation;wizardBusy=false}
-    wizardStep=method==="code"?"code_form":"tutorial";wizardSuccessDone=false;
+    wizardStep=method==="code"?"code_form":"qr";wizardSuccessDone=false;
     wizardSuccessUntil=0;wizardAttempted=false;showQr=false;renderGuide();
   }
   renderConnectedCenter(result);
@@ -2702,12 +2689,12 @@ async function updateStatus({snapshot}={}){
     $("codeStatus").textContent="✓ O dispositivo foi conectado.";
   }else if(result.status==="pair_failed"||result.status==="logged_out"){
     if(wizardBusy){++wizardOperation;wizardBusy=false}
-    clearWizardCodes();wizardUncertain=false;wizardStep="tutorial";$("codeResult").classList.add("hidden");
-    $("codeStatus").textContent="O WhatsApp recusou ou revogou esta sessão. Clique em Refazer vínculo para gerar uma sessão nova.";
+    clearWizardCodes();wizardUncertain=false;wizardStep=method==="code"?"code_form":"qr";$("codeResult").classList.add("hidden");
+    $("codeStatus").textContent="O WhatsApp recusou ou revogou esta sessão. Clique em Vincular novamente para gerar uma sessão nova.";
     if(showQr&&method==="qr")await updateQr();
   }else if(result.status==="pair_expired"||
     (result.status==="pairing"&&pairExpiresAt>0&&Date.now()>pairExpiresAt)){
-    clearWizardCodes();wizardCodeExpired=true;wizardUncertain=false;wizardStep=method==="code"?"code_form":"tutorial";
+    clearWizardCodes();wizardCodeExpired=true;wizardUncertain=false;wizardStep=method==="code"?"code_form":"qr";
     $("codeStatus").textContent="O código expirou. Prepare um novo código para continuar.";
   }else if(!attention&&showQr&&page==="dispositivo"&&method==="qr")await updateQr();
   if(result.status==="qr_ready"&&!wizardUncertain&&!wizardCodeExpired&&$("codeStatus").textContent.startsWith("Preparando"))$("codeStatus").textContent="";
@@ -2754,7 +2741,7 @@ async function updateQr(){
    $("qrEmpty").classList.toggle("is-expired",failed||expired||delayed);
    $("qrEmpty").querySelector("strong").textContent=expired?"O QR expirou":failed?"Conexão indisponível":delayed?"QR indisponível":"Preparando QR Code…";
    $("qrStatus").textContent=failed?"Não foi possível preparar o QR.":expired?"O QR anterior expirou.":delayed?"A conexão está demorando mais que o normal.":info.status==="pairing"?"Aguardando o código no celular.":"Preparando QR Code…";
-   $("qrFeedback").textContent=failed?"Consulte a conexão antes de tentar novamente.":expired||delayed?"Use Atualizar conexão para uma nova tentativa.":info.status==="pairing"?"Conclua a autorização pelo código já solicitado.":"Aguarde a resposta do WhatsApp.";
+   $("qrFeedback").textContent=failed?"Consulte a conexão antes de tentar novamente.":expired||delayed?"Gere um novo QR Code para tentar de novo.":info.status==="pairing"?"Conclua a autorização pelo código já solicitado.":"Aguarde a resposta do WhatsApp.";
    if(failed||expired||delayed)showQr=false;
   }
  }catch(ex){if(current()){$("qrStatus").textContent=ex.message;$("qrEmpty").classList.add("is-expired")}}
@@ -2800,7 +2787,7 @@ $("pairForm").addEventListener("submit",async ev=>{
 async function prepareWizardConnection(recover){
  if(wizardBusy||wizardUncertain||["connected","pairing"].includes(deviceStatus)||(!recover&&["logged_out","pair_failed"].includes(deviceStatus)))return;
  const epoch=authEpoch,before=wizardOperation,selectedMethod=method;
- if(!await confirmAction(recover?"O WhatsApp encerrou o vínculo anterior. Preparar uma nova conexão?":"Preparar uma nova tentativa? O código anterior deixará de funcionar.",$(recover?"wizardRecover":"retryCode")))return;
+ if(recover&&!await confirmAction("O WhatsApp encerrou o vínculo anterior. Preparar uma nova conexão?",$("wizardRecover")))return;
  if(epoch!==authEpoch||before!==wizardOperation||selectedMethod!==method||wizardBusy||wizardUncertain||["connected","pairing"].includes(deviceStatus)||(!recover&&["logged_out","pair_failed"].includes(deviceStatus)))return;
  const operation=++wizardOperation,current=()=>epoch===authEpoch&&operation===wizardOperation;
  wizardBusy=true;renderGuide();
@@ -2821,8 +2808,7 @@ async function prepareWizardConnection(recover){
    }
    await api(recover?"/api/v1/qr/recover":"/api/v1/qr/reconnect","POST",{});if(!current())return;
    clearWizardCodes();wizardCodeExpired=false;wizardUncertain=false;deviceStatus="connecting";
-   if(recover){wizardStep="tutorial";wizardTutorialDone={code:false,qr:false}}
-   else wizardStep=method==="code"&&wizardTutorialDone.code?"code_form":"tutorial";
+   wizardStep=method==="code"?"code_form":"qr";
    $("codeStatus").textContent="Preparando a conexão. O botão será liberado quando estiver pronta.";
    await updateStatus();
  }catch(ex){if(current()){wizardUncertain=true;$("codeStatus").textContent=ex.message+" Consulte a conexão antes de tentar novamente.";$("qrStatus").textContent=ex.message}}

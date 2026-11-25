@@ -70,18 +70,14 @@ test('member deep links and direct navigation never load the global WhatsApp ope
   assert.equal(h.errors.length, 0);
 });
 
-test('the top connection entry keeps the pairing wizard, authenticated request and code expiry', async t => {
+test('the top connection entry shows the pairing form directly, with authentication and code expiry', async t => {
   const h = await makePanel({ deviceStatus: 'qr_ready', respond: (path, method) => {
     if (path === '/api/v1/qr/pair' && method === 'POST') return { status: 'pairing', code: 'ABCD-1234', expiresIn: 1 };
   } }); t.after(() => h.close());
   h.click('#osNav [data-os-route=dispositivo]'); await flush();
   h.click('[data-method=code]');
-  assert.equal(h.element('#wizardTutorial').classList.contains('hidden'), false);
-  assert.equal(h.document.querySelectorAll('#guideSteps .wizard-timeline-step[role=listitem]').length, 7);
-  assert.deepEqual(writes(h), [], 'reading the original seven steps does not start a pairing attempt');
-  h.click('#wizardNext'); await flush();
   assert.equal(h.element('#wizardCodeInput').classList.contains('hidden'), false);
-  assert.equal(h.element('#wizardTutorial').classList.contains('hidden'), true);
+  assert.match(h.element('#guideSteps').textContent, /Aparelhos conectados/);
   assert.deepEqual(writes(h), [], 'opening the wizard alone does not request a pairing attempt');
   h.fill('#pairPhone', '(11) 99999-0001'); h.submit('#pairForm'); await flush();
   const mutations = writes(h); assert.equal(mutations.length, 1);

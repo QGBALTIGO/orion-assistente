@@ -15,7 +15,6 @@ async function makeCodeConnection(respond){
     if(path.endsWith('/status'))return {...runtime(row,'qr_ready'),capabilities:{pair:true}};
     if(path.endsWith('/pair')&&method==='POST')return {...runtime(row,'pairing'),code:'TEST-0001',expires_in_ms:79000};
   }});
-  h.click('[data-qc-action=tutorial-next]');
   return h;
 }
 
@@ -161,13 +160,13 @@ test('pairing validation rejection keeps the formatted phone across rerenders wi
   const h=await makeCodeConnection((path,method)=>{if(path.endsWith('/pair')&&method==='POST')throw Object.assign(Error('Rejeição sintética'),{status:422});});t.after(()=>h.close());
   h.fill('[data-qc-pair-phone]','5555991234567');h.submit();await flush();
   assert.equal(h.element('[data-qc-pair-phone]').value,'(55) 99123-4567');assert.deepEqual(writes(h)[0].data,{expected_revision:1,phone:'5555991234567'});assert.equal(h.controller.getState().uncertain,false);
-  h.click('[data-qc-action=tutorial-back]');h.click('[data-qc-action=tutorial-next]');assert.equal(h.element('[data-qc-pair-phone]').value,'(55) 99123-4567');h.submit();await flush();
+  h.click('[data-qc-method=qr]');await flush();h.click('[data-qc-method=code]');assert.equal(h.element('[data-qc-pair-phone]').value,'(55) 99123-4567');h.submit();await flush();
   assert.equal(writes(h).length,2);assert.deepEqual(writes(h)[1].data,writes(h)[0].data);assert.deepEqual(h.errors,[]);
 });
 
 test('pairing phone composition finishes before formatting and remount retains one submit handler',async t=>{
   const h=await makeCodeConnection();t.after(()=>h.close());
-  h.controller.unmount();h.window.OrionChannels.mount(h.bridge);await flush();h.click('[data-qc-action=tutorial-next]');
+  h.controller.unmount();h.window.OrionChannels.mount(h.bridge);await flush();
   const input=h.element('[data-qc-pair-phone]');input.value='55991234567';input.dispatchEvent(new h.window.InputEvent('input',{bubbles:true,isComposing:true}));assert.equal(input.value,'55991234567');input.dispatchEvent(new h.window.CompositionEvent('compositionend',{bubbles:true}));assert.equal(input.value,'(55) 99123-4567');
   h.submit();await flush();assert.equal(writes(h).length,1);assert.deepEqual(writes(h)[0].data,{expected_revision:1,phone:'5555991234567'});assert.deepEqual(h.errors,[]);
 });

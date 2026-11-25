@@ -51,7 +51,7 @@
     if(!host||typeof bridge?.request!=='function'||!uuid(bridge.tenantId))throw Error('Não foi possível confirmar a empresa deste dispositivo.');
     const fields=window.OrionFields,connectView=window.OrionConnectView;
     if(!fields||!connectView)throw Error('Atualize o painel para abrir Dispositivos.');
-    const state={mounted:true,epoch:1,read:0,view:'list',id:null,items:[],usage:null,capabilities:{},loaded:false,loading:false,busy:false,feedback:'',error:false,dialog:null,pending:null,operation:null,settings:null,settingsRevision:null,settingsCapabilities:{},settingsStale:false,formFingerprint:null,method:'code',tutorial:{code:false,qr:false},phoneDraft:'',qr:null,pair:null,pairHidden:false};
+    const state={mounted:true,epoch:1,read:0,view:'list',id:null,items:[],usage:null,capabilities:{},loaded:false,loading:false,busy:false,feedback:'',error:false,dialog:null,pending:null,operation:null,settings:null,settingsRevision:null,settingsCapabilities:{},settingsStale:false,formFingerprint:null,method:'qr',phoneDraft:'',qr:null,pair:null,pairHidden:false};
     const releaseFields=fields.bind(host);
     let pollTimer=null,expiryTimer=null,clockTimer=null,lastHTML='';
     host.classList.add('os-devices');
@@ -118,7 +118,7 @@
       const actions={reauthenticate:'O WhatsApp desvinculou este número. Conecte-o novamente.',inspect_provider_restriction:'O WhatsApp restringiu esta conexão. Confira a situação do número antes de tentar novamente.',inspect_client_compatibility:'A conexão precisa de uma revisão de compatibilidade pelo suporte.',inspect_session_ownership:'O número foi aberto em outra conexão. Confira os dispositivos vinculados.',inspect_session_state:'A conexão precisa de revisão pelo suporte antes de tentar novamente.',retry_connection:'Confira o estado da conexão antes de tentar novamente.'};
       const notes=[];
       if(value.stale===true)notes.push('O estado está desatualizado. Ainda não foi possível confirmar a conexão.');
-      if(value.action&&actions[value.action])notes.push(actions[value.action]);
+      if(value.action&&actions[value.action]&&!(item.status==='connected'&&value.action==='reauthenticate'))notes.push(actions[value.action]);
       if(value.reason==='outbound_preparation_failed')notes.push('O WhatsApp está conectado, mas respostas recentes falharam antes do envio. O suporte Orion precisa conferir a preparação das respostas. Mensagens antigas não serão reenviadas automaticamente.');
       if(value.ingress_storage_unavailable===true)notes.push('Não foi possível guardar novas mensagens com segurança. O suporte precisa conferir o armazenamento desta conexão.');
       else if(Number.isSafeInteger(value.ingress_blocked)&&value.ingress_blocked>0){
@@ -137,12 +137,12 @@
       const avatar=safeImage(item.profile?.avatar_url),verifiedPhone=item.phone?fields.phoneDisplay('+'+item.phone,{allowInternational:true}):'',connected=item.status==='connected',outboundDegraded=item.status==='degraded'&&item.connection_health?.reason==='outbound_preparation_failed',linked=connected||outboundDegraded,stats=item.metrics||{},caps=item.capabilities||{},retained=hasRetainedMessages(item);
       const badge='<span class="os-badge '+(connected?'os-success':['error','logged_out','pair_failed','unavailable','degraded','needs_attention'].includes(item.status)?'os-warning':'os-neutral')+'">'+esc(statuses[item.status])+'</span>';
       const actionEnabled=canWrite(),attr='data-sd-device="'+item.id+'"';
-      const menu=[button('Abrir conexão','open-connect','','link',attr),...(caps.settings?[button('Configurações','settings','','settings',attr)]:[]),...(!retained&&!outboundDegraded&&caps.restart?[button('Reiniciar conexão','restart','','refresh',attr+(!actionEnabled?' disabled':''))]:[]),...(!outboundDegraded&&caps.relink?[button('Refazer vínculo','relink','','link',attr+(!actionEnabled?' disabled':''))]:[]),...(caps.remove?[button('Excluir dispositivo','remove','os-device-danger','trash',attr+(!actionEnabled?' disabled':''))]:[])].join('');
+      const menu=[button('Abrir conexão','open-connect','','link',attr),...(caps.settings?[button('Configurações','settings','','settings',attr)]:[]),...(!retained&&!outboundDegraded&&caps.restart?[button('Reiniciar conexão','restart','','refresh',attr+(!actionEnabled?' disabled':''))]:[]),...(connected&&caps.relink?[button('Trocar número','switch-number','','link',attr+(!actionEnabled?' disabled':''))]:[]),...(caps.remove?[button('Excluir dispositivo','remove','os-device-danger','trash',attr+(!actionEnabled?' disabled':''))]:[])].join('');
       const lastSeen=dateTime(item.last_seen_at,stats.timezone),tracking=dateTime(stats.tracking_since,stats.timezone);
       const health=connectionHealth(item)||(item.last_error?'<p class="os-device-health" data-error="true">'+esc(typeof item.last_error==='string'?item.last_error:'A conexão precisa de atenção. Atualize o estado.')+'</p>':lastSeen?'<p class="os-device-health">Última atualização: '+esc(lastSeen)+'</p>':'');
       const featureSettings=caps.settings===true&&canManage();
       const features=object(item.features)?'<div class="os-device-features">'+[['transcription','Transcrição de áudio','mic','transcription'],['call_blocking','Bloqueio de ligações','shield','calls']].map(([key,label,symbol,section])=>'<button type="button" class="os-device-feature" '+(featureSettings?'data-sd-action="settings" '+attr+' data-sd-open-section="'+section+'"':'disabled')+'><span>'+icon(symbol)+esc(label)+'</span><span class="os-badge '+(item.features[key]===true?'os-success':'os-neutral')+'" title="Preferência salva do dispositivo">'+(item.features[key]===true?'Ativado':'Desativado')+'</span></button>').join('')+'</div>':'';
-      return '<article class="os-card os-device-card" data-sd-card="'+item.id+'"><div class="os-device-card-top"><div class="os-device-identity"><div class="os-device-avatar">'+(avatar?'<img src="'+esc(avatar)+'" alt="" loading="lazy" referrerpolicy="no-referrer">':icon('phone'))+'</div><div><h2>'+esc(item.name)+'</h2><div class="os-device-status-line">'+badge+'</div>'+(verifiedPhone?'<p class="os-device-phone">'+esc(verifiedPhone)+'</p>':'')+'</div></div><details class="os-device-menu" data-sd-device="'+item.id+'"><summary class="os-button os-outline" aria-label="Opções de '+esc(item.name)+'">'+icon('more')+'<span>Opções</span></summary><div>'+menu+'</div></details></div><div class="os-device-metrics" aria-label="Mensagens registradas">'+[['today','Hoje'],['last_7_days','7 dias'],['last_30_days','30 dias'],['total','Total']].map(([key,label])=>'<div class="os-device-metric"><strong>'+count(stats.available===true?stats[key]:null)+'</strong><span>'+label+'</span></div>').join('')+'</div><p class="os-help os-device-metrics-note">'+(stats.available===true?'Mensagens registradas pelo Orion'+(tracking?' desde '+esc(tracking):'')+'.':'As métricas ainda não estão disponíveis.')+'</p>'+health+'<div class="os-device-card-actions">'+button(linked?'Ver conexão':'Conectar','open-connect','', 'link',attr)+(caps.settings?button('Configurações','settings','os-outline','settings',attr):'')+(!retained&&!outboundDegraded&&caps.restart?button('Reiniciar','restart','os-outline','refresh',attr+(!actionEnabled?' disabled':'')):'')+'</div>'+features+'</article>';
+      return '<article class="os-card os-device-card" data-sd-card="'+item.id+'"><div class="os-device-card-top"><div class="os-device-identity"><div class="os-device-avatar">'+(avatar?'<img src="'+esc(avatar)+'" alt="" loading="lazy" referrerpolicy="no-referrer">':icon('phone'))+'</div><div><h2>'+esc(item.name)+'</h2><div class="os-device-status-line">'+badge+'</div>'+(verifiedPhone?'<p class="os-device-phone">'+esc(verifiedPhone)+'</p>':'')+'</div></div><details class="os-device-menu" data-sd-device="'+item.id+'"><summary class="os-button os-outline" aria-label="Opções de '+esc(item.name)+'">'+icon('more')+'<span>Opções</span></summary><div>'+menu+'</div></details></div><div class="os-device-metrics" aria-label="Mensagens registradas">'+[['today','Hoje'],['last_7_days','7 dias'],['last_30_days','30 dias'],['total','Total']].map(([key,label])=>'<div class="os-device-metric"><strong>'+count(stats.available===true?stats[key]:null)+'</strong><span>'+label+'</span></div>').join('')+'</div><p class="os-help os-device-metrics-note">'+(stats.available===true?'Mensagens registradas pelo Orion'+(tracking?' desde '+esc(tracking):'')+'.':'As métricas ainda não estão disponíveis.')+'</p>'+health+'<div class="os-device-card-actions">'+button(linked?'Ver conexão':'Conectar','open-connect','', 'link',attr)+(caps.settings?button('Configurações','settings','os-outline','settings',attr):'')+'</div>'+features+'</article>';
     }
     function renderList(){
       const usage=state.usage,limit=usage?'<div class="os-devices-usage"><span class="os-badge os-neutral">'+count(usage.used)+' de '+count(usage.limit)+'</span><span>'+((usage.limit===1)?'dispositivo em uso':'dispositivos em uso')+'</span></div>':'';
@@ -151,28 +151,31 @@
       const body=!state.loaded?loading('Conferindo os dispositivos…'):state.items.length?'<div class="os-devices-list">'+state.items.map(card).join('')+'</div>':'<section class="os-card os-empty"><div class="os-square-icon">'+icon('phone')+'</div><h2>Nenhum dispositivo cadastrado</h2><p>Crie o dispositivo da sua empresa para começar a conexão com o WhatsApp.</p>'+(canManage()?button('Criar dispositivo','create','','plus',!canWrite()?'disabled':''):'')+'</section>';
       paint(header+limit+feedbackHTML()+pendingHTML()+body);
     }
+    const needsRelink=item=>item?.status==='logged_out'||item?.status==='needs_attention'&&item.connection_health?.action==='reauthenticate';
     function connectionBody(item){
-      const locked=!canWrite(),codeVisible=item.capabilities.pair===true||!!state.pair||state.pending?.kind==='pair'||item.status==='pairing',mode=state.method==='code'&&codeVisible?'code':'qr';
+      const locked=!canWrite(),codeVisible=item.capabilities.pair===true||!!state.pair||state.pending?.kind==='pair'||['starting','connecting','qr_expired','qr_delayed','pair_expired','pairing'].includes(item.status),mode=state.method==='code'&&codeVisible?'code':'qr';
+      if(needsRelink(item)){
+        return '<section class="os-card"><h2>Vincule o WhatsApp novamente</h2><p>O WhatsApp pediu uma nova autenticação para este dispositivo.</p><div class="os-actions">'+
+          (item.capabilities.relink?button('Vincular novamente','relink','','link',locked?'disabled':''):'')+'</div></section>';
+      }
       if(['degraded','needs_attention','unavailable','reconnecting'].includes(item.status)){
-        const relink=item.status==='needs_attention'&&item.connection_health?.action==='reauthenticate'&&item.capabilities.relink;
         const retry=item.status==='unavailable'&&item.capabilities.connect;
-        return '<section class="os-card"><h2>'+esc(statuses[item.status])+'</h2>'+connectionHealth(item)+'<div class="os-actions">'+button('Conferir estado','refresh','os-outline','refresh')+(relink?button('Conectar novamente','relink','os-outline','link',locked?'disabled':''):'')+(retry?button('Preparar conexão','connect','','link',locked?'disabled':''):'')+'</div></section>';
+        return '<section class="os-card"><h2>'+esc(statuses[item.status])+'</h2>'+connectionHealth(item)+''+(retry?'<div class="os-actions">'+button('Tentar conexão','connect','','link',locked?'disabled':'')+'</div>':'')+'</section>';
       }
-      if(item.status==='connected')return '<section class="os-card os-device-connected"><div class="os-square-icon">'+icon('check')+'</div><h2>WhatsApp conectado</h2><p>'+(item.phone?esc(fields.phoneDisplay('+'+item.phone,{allowInternational:true})):'O WhatsApp confirmou a conexão.')+'</p><div class="os-actions">'+button('Conferir estado','refresh','os-outline','refresh')+(item.capabilities.relink?button('Atualizar conexão','relink','os-outline','link',locked?'disabled':''):'')+'</div></section>';
+      if(item.status==='connected')return '<section class="os-card os-device-connected"><div class="os-square-icon">'+icon('check')+'</div><h2>WhatsApp conectado</h2><p>'+(item.phone?esc(fields.phoneDisplay('+'+item.phone,{allowInternational:true})):'O WhatsApp confirmou a conexão.')+'</p></section>';
       if(item.capabilities.qr!==true&&!codeVisible&&!state.qr){
-        return '<section class="os-card"><h2>'+esc(statuses[item.status])+'</h2><p>'+(item.capabilities.connect?'Prepare a conexão para vincular este dispositivo ao WhatsApp.':['starting','connecting','reconnecting'].includes(item.status)?'Aguarde enquanto a conexão fica pronta.':'Confira o estado para ver as ações disponíveis para este dispositivo.')+'</p><div class="os-actions">'+(item.capabilities.connect?button('Preparar conexão','connect','','link',locked?'disabled':''):'')+(item.capabilities.relink?button('Refazer vínculo','relink','os-outline','refresh',locked?'disabled':''):'')+button('Conferir estado','refresh','os-outline','refresh')+'</div></section>';
+        return '<section class="os-card"><h2>'+esc(statuses[item.status])+'</h2><p>'+(item.capabilities.connect?'Prepare a conexão para vincular este dispositivo ao WhatsApp.':['starting','connecting','reconnecting'].includes(item.status)?'Aguarde enquanto a conexão fica pronta.':'Confira o estado para ver as ações disponíveis para este dispositivo.')+'</p><div class="os-actions">'+(item.capabilities.connect?button('Conectar WhatsApp','connect','','link',locked?'disabled':''):'')+'</div></section>';
       }
-      const methods=codeVisible?'<div class="wizard-methods" role="group" aria-label="Escolha a forma de conexão">'+connectView.methods(mode,'data-qc-method',locked).replaceAll('data-qc-method','data-sd-method')+'</div>':'';
-      if(!state.tutorial[mode])return connectView.heading(codeVisible)+methods+'<section class="wizard-card"><div class="wizard-tutorial-heading"><h3>Prepare o WhatsApp no seu celular</h3><p>Continue quando estiver pronto para vincular este dispositivo.</p></div>'+connectView.instructions(mode)+button('Concluí os passos e estou pronto para prosseguir','tutorial-next','wizard-primary os-full wizard-continue','',locked?'disabled':'')+'</section>';
+      const methods=codeVisible?'<div class="wizard-methods" role="group" aria-label="Escolha a forma de conexão">'+connectView.methods(mode,'data-sd-method',locked)+'</div>':'';
       let content='';
       if(mode==='qr'){
-        content=state.qr?'<section data-sd-qr><h3>Escaneie com o WhatsApp</h3><div class="wizard-qr-wrap"><img src="'+esc(state.qr.image)+'" alt="QR temporário para conectar o WhatsApp da sua empresa" width="240" height="240"></div><p class="wizard-qr-time">Expira em <strong data-sd-expiry>—</strong></p><div class="os-device-code-actions">'+button('Ocultar QR Code','hide-qr')+'</div></section>':'<h3>Conectar por QR Code</h3><p>Use o WhatsApp do aparelho que será conectado para escanear o código.</p><div class="os-actions">'+button('Mostrar QR Code','qr','','',locked||item.capabilities.qr!==true||!!state.pair?'disabled':'')+'</div>';
+        content=state.qr?'<section data-sd-qr><h3>Escaneie com o WhatsApp</h3><div class="wizard-qr-wrap"><img src="'+esc(state.qr.image)+'" alt="QR temporário para conectar o WhatsApp da sua empresa" width="240" height="240"></div><p class="wizard-qr-time">Expira em <strong data-sd-expiry>—</strong></p><div class="os-device-code-actions">'+button('Ocultar QR Code','hide-qr')+'</div></section>':'<h3>Conectar por QR Code</h3><p>Use o WhatsApp do aparelho que será conectado para escanear o código.</p><div class="os-actions">'+button('Mostrar QR Code','qr','','',locked||item.capabilities.qr!==true||!!state.pair||item.status==='pairing'?'disabled':'')+'</div>';
       }else if(state.pair){
         content=state.pairHidden?'<h3>Código oculto</h3><p>O código continua válido até expirar.</p><p class="wizard-qr-time">Expira em <strong data-sd-expiry>—</strong></p><div class="os-device-code-actions">'+button('Mostrar código','show-code')+'</div>':'<section class="wizard-code-result" data-sd-pair><h3>Digite este código no WhatsApp</h3><output class="code-box" data-sd-code>'+esc(state.pair.code)+'</output><p class="wizard-qr-time">Expira em <strong data-sd-expiry>—</strong></p><div class="os-device-code-actions">'+button('Copiar código','copy-code','','copy')+button('Ocultar código','hide-code')+'</div></section>';
       }else{
         content='<h3>Informe o número do WhatsApp</h3><p>Use o número do aparelho que será conectado, com DDD.</p><form class="os-form" data-sd-form="pair">'+input('Número do WhatsApp','pair_phone',state.phoneDraft,'tel','data-orion-field="phone" data-orion-international="true" inputmode="tel" autocomplete="tel" required placeholder="(00) 00000-0000"','Para outro país, inclua + e o código do país.')+'<div class="os-form-actions"><button type="submit" class="os-button"'+(locked||item.capabilities.pair!==true||item.status!=='qr_ready'?' disabled':'')+'>Gerar código</button></div></form>';
       }
-      return connectView.heading(codeVisible)+methods+'<section class="wizard-card">'+content+(!state.qr&&!state.pair?'<div class="wizard-steps-actions">'+button('Voltar aos passos','tutorial-back')+'</div>':'')+'</section>';
+      return connectView.heading(codeVisible)+methods+'<section class="wizard-card">'+connectView.instructions(mode)+content+'</section>';
     }
     function renderConnection(){
       const item=device();if(!item){paint(feedbackHTML()+loading('Conferindo a conexão…'));return;}
@@ -253,9 +256,9 @@
       }catch(error){if(current(epoch,read)){state.stale=true;feedback(errorMessage(error),true);}}
       finally{if(current(epoch,read)){state.loading=false;render();schedule();}}
     }
-    async function loadDetail(){
+    async function loadDetail(opening=false){
       if(!visible()||state.busy||state.loading||!state.id)return;
-      const epoch=state.epoch,read=++state.read,id=state.id;state.loading=true;
+      const epoch=state.epoch,read=++state.read,id=state.id,previous=device()?.status;state.loading=true;
       try{
         const result=await request(path(id));
         if(!current(epoch,read)||id!==state.id)return;
@@ -264,13 +267,14 @@
         if(state.pending?.kind==='pair'&&!['pairing','pair_failed','connecting','reconnecting'].includes(item.status)){state.pending=null;feedback('Estado conferido. Continue pela ação disponível.');}
       }catch(error){if(current(epoch,read)){state.stale=true;feedback(errorMessage(error),true);}}
       finally{if(current(epoch,read)){state.loading=false;render();schedule();}}
+      if(current(epoch,read)&&state.method==='qr'&&(opening||previous!=='qr_ready')&&device()?.status==='qr_ready')await showQR();
     }
     function navigate(view,id=null){
-      pause();state.epoch++;state.view=view;state.id=id;state.loading=false;state.stale=false;state.method='code';state.tutorial={code:false,qr:false};state.phoneDraft='';state.settings=null;state.settingsRevision=null;state.settingsStale=false;state.formFingerprint=null;lastHTML='';closeDialog(true);feedback('');
+      pause();state.epoch++;state.view=view;state.id=id;state.loading=false;state.stale=false;state.method='qr';state.phoneDraft='';state.settings=null;state.settingsRevision=null;state.settingsStale=false;state.formFingerprint=null;lastHTML='';closeDialog(true);feedback('');
     }
     async function openConnection(id){
       if(!state.items.some(item=>item.id===id))return;
-      navigate('connect',id);render();await loadDetail();
+      navigate('connect',id);render();await loadDetail(true);
     }
     async function back(){
       if(state.busy)return;
@@ -375,27 +379,27 @@
     function openDialog(kind,title,body,meta={}){
       if(state.busy)return;closeDialog();clearTimeout(pollTimer);pollTimer=null;
       const element=document.createElement('dialog');element.className='os-dialog os-device-dialog';element.setAttribute('aria-labelledby','sd-dialog-title');
-      const danger=['remove','discard'].includes(kind),confirm=meta.confirm||({create:'Criar dispositivo',connect:'Preparar conexão',restart:'Reiniciar conexão',relink:'Atualizar conexão',remove:'Excluir dispositivo',discard:'Descartar alterações'}[kind]||'Confirmar');
+      const danger=['remove','discard'].includes(kind),confirm=meta.confirm||({create:'Criar dispositivo',restart:'Reiniciar conexão',relink:'Vincular novamente',remove:'Excluir dispositivo',discard:'Descartar alterações'}[kind]||'Confirmar');
       element.innerHTML='<button type="button" class="os-icon-button os-close" data-sd-action="close-dialog" aria-label="Fechar">'+icon('close')+'</button><h2 id="sd-dialog-title">'+esc(title)+'</h2><form class="os-form" data-sd-form="dialog">'+body+'<div class="os-form-message" role="alert"></div><div class="os-form-actions">'+button('Cancelar','close-dialog','os-outline')+'<button type="submit" class="os-button'+(danger?' os-danger':'')+'">'+esc(confirm)+'</button></div></form>';
       state.dialog={kind,element,trigger:document.activeElement,key:crypto.randomUUID(),id:state.id,...meta};
       element.addEventListener('click',click);element.addEventListener('submit',submit);element.addEventListener('cancel',cancelDialog);document.body.append(element);fields.refresh(element);element.showModal();
       element.querySelector('input:not([disabled]),button:not(.os-close)')?.focus({preventScroll:true});
     }
-    function confirmAction(action,id=state.id){
-      const item=state.items.find(row=>row.id===id);
-      if(!canDevice(action,item))return;
-      const texts={connect:['Preparar conexão?','O Orion vai preparar este dispositivo. Depois, você poderá vincular o WhatsApp por QR Code ou código.'],restart:['Reiniciar conexão?','A conexão será interrompida por alguns instantes. O vínculo com o WhatsApp será preservado.'],relink:['Atualizar conexão?','O vínculo atual será encerrado para permitir uma nova conexão. Você precisará vincular o WhatsApp novamente.'],remove:['Excluir dispositivo?','O dispositivo e suas configurações serão removidos do Orion. A conexão será encerrada. Para conectar novamente, será necessário criar outro dispositivo.']};
-      const [title,description]=texts[action];
+    function confirmAction(intent,id=state.id){
+      const item=state.items.find(row=>row.id===id),action=intent==='switch-number'?'relink':intent;
+      if(!canDevice(action,item)||action==='relink'&&(intent==='switch-number'?item.status!=='connected':!needsRelink(item)))return;
+      const texts={restart:['Reiniciar conexão?','A conexão será interrompida por alguns instantes. O vínculo com o WhatsApp será preservado.'],relink:['Vincular novamente?','O WhatsApp pediu uma nova autenticação. Confirme para gerar outro QR Code ou código.'],remove:['Excluir dispositivo?','O dispositivo e suas configurações serão removidos do Orion. A conexão será encerrada. Para conectar novamente, será necessário criar outro dispositivo.']};
+      const [title,description]=intent==='switch-number'?['Trocar número?','Você vai encerrar o vínculo atual para conectar outro número.']:texts[action];
       let content='<p>'+esc(description)+'</p><div class="os-notice"><strong>'+esc(item.name)+'</strong></div>';
-      if(action==='remove')content+='<p>Se você precisa corrigir a conexão ou alterar uma preferência, use uma destas opções:</p><div class="os-device-dialog-alternatives">'+(item.capabilities.settings?button('Editar configurações','alternative-settings','os-outline','settings'):'')+(item.capabilities.relink?button('Refazer vínculo','alternative-relink','os-outline','link'):'')+'</div>';
-      openDialog(action,title,content,{id,revision:item.revision});
+      if(action==='remove')content+='<p>Se você precisa corrigir a conexão ou alterar uma preferência, use uma destas opções:</p><div class="os-device-dialog-alternatives">'+(item.capabilities.settings?button('Editar configurações','alternative-settings','os-outline','settings'):'')+(needsRelink(item)&&item.capabilities.relink?button('Vincular novamente','alternative-relink','os-outline','link'):'')+'</div>';
+      openDialog(action,title,content,{id,revision:item.revision,intent,confirm:intent==='switch-number'?'Trocar número':action==='relink'?'Vincular novamente':undefined});
     }
     async function createDevice(name,key){
       if(!canManage()||state.busy||state.pending&&!(state.pending.kind==='create'&&state.pending.key===key))return;
       const epoch=state.epoch,operation={kind:'create',name,key};setBusy(true);clearTimeout(pollTimer);pollTimer=null;
       try{
         const result=await request(base,'POST',{name,idempotency_key:key});if(!current(epoch))return;
-        const item=deviceDTO(result?.device);state.pending=null;updateDevice(item);state.usage={used:1,limit:1};state.canCreate=false;setBusy(false);closeDialog(true);state.view='list';state.id=null;feedback('Dispositivo criado. Abra a conexão para vincular o WhatsApp.');render();schedule();
+        const item=deviceDTO(result?.device);state.pending=null;updateDevice(item);state.usage={used:1,limit:1};state.canCreate=false;setBusy(false);closeDialog(true);await openConnection(item.id);
       }catch(error){
         if(current(epoch)){setBusy(false);if(uncertain(error)){state.pending=operation;closeDialog(true);feedback('Não foi possível confirmar a criação. Confira a lista antes de tentar novamente.',true);render();}else if(state.dialog){state.dialog.element.querySelector('.os-form-message').textContent=errorMessage(error);}else feedback(errorMessage(error),true);}
       }finally{if(current(epoch))setBusy(false);}
@@ -433,19 +437,22 @@
         if(!current(epoch))return;
         await acceptOperation(result,id,action);
         setBusy(false);closeDialog(true);
-        if(action==='connect'||action==='relink'){state.view='connect';state.id=id;state.method='code';state.tutorial={code:false,qr:false};}
+        if(action==='connect'||action==='relink'){state.view='connect';state.id=id;}
       }catch(error){if(current(epoch)){if(!uncertain(error))state.pending=null;state.stale=Number(error.status)===409;setBusy(false);closeDialog(true);feedback(errorMessage(error),true);}}
       finally{if(current(epoch)){setBusy(false);render();schedule(state.operation?2000:5000);}}
+      if(current(epoch)&&state.id===id&&['connect','relink'].includes(action)&&device()?.status==='qr_ready')await showQR();
     }
     async function pollOperation(){
       if(!visible()||state.busy||state.loading||!state.operation)return;
-      const epoch=state.epoch,op=state.operation;state.loading=true;
+      const epoch=state.epoch,op=state.operation;state.loading=true;let ready=false;
       try{
         const result=await request(path(op.device_id,'/operations/'+encodeURIComponent(op.id)));
         if(!current(epoch)||state.operation?.id!==op.id)return;
         await acceptOperation(result,op.device_id,op.action,op.id);
+        ready=result.operation.status==='succeeded'&&['connect','relink'].includes(op.action);
       }catch(error){if(current(epoch)){feedback(errorMessage(error),true);}}
       finally{if(current(epoch)){state.loading=false;render();if(state.operation?.status!=='uncertain')schedule(state.operation?2000:5000);}}
+      if(current(epoch)&&ready&&state.id===op.device_id&&device()?.status==='qr_ready')await showQR();
     }
     async function reconcile(){
       if(state.busy)return;
@@ -470,7 +477,7 @@
     }
     async function showQR(){
       const item=device();
-      if(state.view!=='connect'||!state.tutorial.qr||!canDevice('qr',item)||state.pair)return;
+      if(state.view!=='connect'||state.method!=='qr'||state.qr||!canDevice('qr',item)||state.pair||item.status==='pairing')return;
       const epoch=state.epoch,id=item.id,revision=item.revision,read=++state.read;setBusy(true);clearCredentials();clearTimeout(pollTimer);pollTimer=null;
       try{
         const result=await request(path(id,'/qr'));
@@ -483,7 +490,7 @@
     }
     async function pair(form){
       const item=device();
-      if(!form.reportValidity()||!state.tutorial.code||!canDevice('pair',item)||item.status!=='qr_ready'||state.pair)return;
+      if(!form.reportValidity()||state.method!=='code'||!canDevice('pair',item)||item.status!=='qr_ready'||state.pair)return;
       let phone;try{phone=fields.phoneValue(form.querySelector('[data-sd-field="pair_phone"]').value,{required:true,allowInternational:true}).slice(1);}catch(error){feedback(error.message,true);return;}
       if(!/^[1-9]\d{7,14}$/.test(phone)){feedback('Informe um número completo com DDD.',true);return;}
       const epoch=state.epoch,id=item.id,revision=item.revision,read=++state.read;
@@ -531,9 +538,11 @@
       if(action==='close-dialog'){closeDialog();return;}
       if(state.busy)return;
       if(target.dataset.sdMethod){
-        const item=device(),codeVisible=item?.capabilities.pair===true||!!state.pair;
-        if(state.view!=='connect'||!canWrite()||!codeVisible)return;
-        state.method=target.dataset.sdMethod==='code'?'code':'qr';render();schedule();return;
+        if(state.view!=='connect'||!canWrite())return;
+        state.method=target.dataset.sdMethod==='code'?'code':'qr';render();schedule();
+        if(state.method==='qr'&&device()?.status==='qr_ready')await showQR();
+        else host.querySelector('#sd-pair-phone')?.focus({preventScroll:true});
+        return;
       }
       if(action==='refresh'){if(state.pending)await reconcile();else if(state.view==='connect')await loadDetail();else await loadList();return;}
       if(action==='back'){await back();return;}
@@ -566,11 +575,14 @@
         feedback('Reiniciar não remove mensagens que precisam de revisão. Mantenha o vínculo e consulte o suporte Orion.',true);
         return;
       }
-      if(['connect','restart','relink','remove'].includes(action)){confirmAction(action,id);return;}
-      if(action==='tutorial-next'){
-        if(!canWrite()||!device())return;const mode=state.method==='code'&&(device().capabilities.pair||state.pair)?'code':'qr';state.tutorial[mode]=true;render();if(mode==='qr')await showQR();else host.querySelector('#sd-pair-phone')?.focus();return;
+      if(action==='connect'){
+        const item=device();
+        if(item&&canDevice('connect',item)&&!needsRelink(item)){
+          await performAction('connect',item.id,item.revision,crypto.randomUUID());
+        }
+        return;
       }
-      if(action==='tutorial-back'){if(state.qr||state.pair)return;state.tutorial[state.method]=false;render();return;}
+      if(['restart','relink','switch-number','remove'].includes(action)){confirmAction(action,id);return;}
       if(action==='qr'){await showQR();return;}
       if(action==='hide-qr'){clearCredentials();render();return;}
       if(action==='hide-code'){if(!state.pair)return;state.pairHidden=true;render();host.querySelector('[data-sd-action="show-code"]')?.focus({preventScroll:true});return;}
@@ -594,9 +606,24 @@
       if(dialog.kind==='discard'){state.pending?.kind==='settings'&&(state.pending=null);closeDialog();navigate('list');render();await loadList();return;}
       if(dialog.kind==='reload'){const id=dialog.id;state.pending?.kind==='settings'&&(state.pending=null);closeDialog();await openSettings(id);return;}
       if(dialog.kind==='create'){const name=form.querySelector('[data-sd-field="new_name"]').value.trim();if(!name)return;await createDevice(name,dialog.key);return;}
-      if(['connect','restart','relink','remove'].includes(dialog.kind)){
-        const item=state.items.find(row=>row.id===dialog.id);
+      if(['restart','relink','remove'].includes(dialog.kind)){
+        let item=state.items.find(row=>row.id===dialog.id);
         if(!item||item.revision!==dialog.revision){closeDialog();feedback('O dispositivo mudou. Confira o estado antes de continuar.',true);return;}
+        if(dialog.kind==='relink'){
+          const epoch=state.epoch;
+          setBusy(true);
+          try{
+            const result=await request(path(dialog.id));
+            if(!current(epoch)||!visible()||state.dialog!==dialog)return;
+            if(result?.device?.id!==dialog.id)throw Error('foreign_device_response');
+            item=updateDevice(result.device);
+            const needsNewLink=dialog.intent==='switch-number'?item.status==='connected':needsRelink(item);
+            if(!needsNewLink||item.revision!==dialog.revision||!item.capabilities.relink){
+              closeDialog(true);feedback('O estado da conexão mudou. Confira o dispositivo antes de continuar.');render();return;
+            }
+          }catch(error){if(current(epoch)){closeDialog(true);feedback(errorMessage(error),true);render();}return;}
+          finally{if(current(epoch))setBusy(false);}
+        }
         if(dialog.kind==='restart'&&hasRetainedMessages(item)){
           closeDialog();feedback('Reiniciar não remove mensagens retidas. Consulte o suporte Orion antes de retomar as respostas automáticas.',true);return;
         }
