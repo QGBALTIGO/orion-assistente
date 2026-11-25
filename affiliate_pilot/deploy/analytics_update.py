@@ -123,6 +123,8 @@ def main(manifest_path):
     run(str(PYTHON), "-c", "from affiliate_pilot.main import app; from app.affiliate_analytics import analytics_report_valid; assert any(r.path == '/api/analytics' for r in app.routes)", cwd=release)
     override = Path("/etc/systemd/system") / (NAME + ".service.d/20-release.conf")
     original = override.read_bytes() if override.exists() else None
+    published_path = PRIVATE / "published.json"
+    original_published = published_path.read_bytes()
     try:
         override.parent.mkdir(mode=0o755, exist_ok=True)
         override.write_text("[Service]\nWorkingDirectory=" + str(release) + "\n")
@@ -146,8 +148,7 @@ def main(manifest_path):
         sys.path.insert(0, str(release))
         from app.affiliate_analytics import analytics_report_valid
         assert analytics_report_valid(report, period="30d")
-        published_path = PRIVATE / "published.json"
-        published = json.loads(published_path.read_text())
+        published = json.loads(original_published)
         published_path.write_text(json.dumps({**published, "commit": commit, "health": health}, indent=2))
         receipt = {"commit": commit, "health": health, "same_whatsapp_process": True,
                    "same_geekhunter_process": True, "anonymous_blocked": True,
@@ -156,6 +157,7 @@ def main(manifest_path):
         (PRIVATE / ("analytics-release-" + commit[:12] + ".json")).write_text(json.dumps(receipt, indent=2))
         print(json.dumps(receipt, ensure_ascii=True), flush=True)
     except BaseException:
+        published_path.write_bytes(original_published)
         if original is None:
             override.unlink(missing_ok=True)
         else:
