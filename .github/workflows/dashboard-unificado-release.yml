@@ -42,9 +42,53 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Consolidar as camadas e comprovar equivalência da base
+        run: |
+          mkdir -p "$RUNNER_TEMP/orion-crane"
+          curl -fsSL --retry 3 https://github.com/google/go-containerregistry/releases/download/v0.22.1/go-containerregistry_Linux_x86_64.tar.gz -o "$RUNNER_TEMP/orion-crane/archive.tar.gz"
+          printf '%s  %s\n' '0ab7a1d6932a213aed964ce97666c3077fe691c8606413674a8b3e0b9ec4cda0' "$RUNNER_TEMP/orion-crane/archive.tar.gz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/orion-crane/archive.tar.gz" -C "$RUNNER_TEMP/orion-crane" crane
+          CRANE="$RUNNER_TEMP/orion-crane/crane"
+          "$CRANE" config "$BASE_IMAGE" > original-config.json
+          ORION_FLAT_BASE="$("$CRANE" flatten "$BASE_IMAGE" --tag "ghcr.io/qgbaltigo/orion-assistente-api:dashboard-base-$GITHUB_SHA")"
+          "$CRANE" config "$ORION_FLAT_BASE" > flat-config.json
+          "$CRANE" manifest "$ORION_FLAT_BASE" > flat-manifest.json
+          cat > "$RUNNER_TEMP/orion-image-inventory.py" <<'PY'
+          import hashlib, json, sys, tarfile
+          inventory = {}
+          with tarfile.open(fileobj=sys.stdin.buffer, mode="r|") as archive:
+              for member in archive:
+                  name = member.name.removeprefix("./").rstrip("/")
+                  record = [member.type.decode("latin1"), member.mode, member.uid,
+                            member.gid, member.linkname, member.size, member.mtime,
+                            member.pax_headers]
+                  if member.isfile():
+                      digest = hashlib.sha256()
+                      with archive.extractfile(member) as data:
+                          while chunk := data.read(1024 * 1024):
+                              digest.update(chunk)
+                      record.append(digest.hexdigest())
+                  inventory[name] = record
+          json.dump(inventory, sys.stdout, sort_keys=True)
+          PY
+          "$CRANE" export "$BASE_IMAGE" - | python "$RUNNER_TEMP/orion-image-inventory.py" > original-files.json
+          "$CRANE" export "$ORION_FLAT_BASE" - | python "$RUNNER_TEMP/orion-image-inventory.py" > flat-files.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          def read(name): return json.loads(Path(name).read_text())
+          original, flat = read("original-config.json"), read("flat-config.json")
+          for key in ("config", "architecture", "os", "os.version", "os.features", "variant"):
+              assert original.get(key) == flat.get(key), key
+          original_files, flat_files = read("original-files.json"), read("flat-files.json")
+          assert original_files == flat_files, "O filesystem consolidado deve ser idêntico ao original."
+          assert len(read("flat-manifest.json")["layers"]) == 1
+          print(f"Base consolidada: configuração e {len(original_files)} entradas preservadas.")
+          PY
+          printf 'FLAT_BASE_IMAGE=%s\n' "$ORION_FLAT_BASE" >> "$GITHUB_ENV"
       - name: Conferir os arquivos originais da imagem publicada
         run: |
-          docker run --rm --entrypoint python "$BASE_IMAGE" -c '
+          docker run --rm --entrypoint python "$FLAT_BASE_IMAGE" -c '
           import hashlib
           from pathlib import Path
           expected = {
@@ -59,7 +103,7 @@ jobs:
           '
       - name: Construir e conferir os quatro arquivos de interface
         run: |
-          docker build -f deploy/Dockerfile.dashboard-unificado --build-arg ORION_RELEASE="$GITHUB_SHA" -t "$IMAGE" .
+          docker build -f deploy/Dockerfile.dashboard-unificado --build-arg BASE_IMAGE="$FLAT_BASE_IMAGE" --build-arg ORION_RELEASE="$GITHUB_SHA" -t "$IMAGE" .
           docker run --rm --entrypoint python -v "$GITHUB_WORKSPACE/app/static:/review:ro" "$IMAGE" -c '
           from pathlib import Path
           for name in ("orion-suite.js", "orion-affiliate-workspace.js", "orion-subscription-dashboard.js", "panel.html"):
