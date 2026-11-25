@@ -265,6 +265,7 @@
         if(result?.device?.id!==id)throw Error('foreign_device_response');
         const item=updateDevice(result.device);state.stale=false;
         if(state.pending?.kind==='pair'&&!['pairing','pair_failed','connecting','reconnecting'].includes(item.status)){state.pending=null;feedback('Estado conferido. Continue pela ação disponível.');}
+        if(previous!=='connected'&&item.status==='connected')feedback('');
       }catch(error){if(current(epoch,read)){state.stale=true;feedback(errorMessage(error),true);}}
       finally{if(current(epoch,read)){state.loading=false;render();schedule();}}
       if(current(epoch,read)&&state.method==='qr'&&(opening||previous!=='qr_ready')&&device()?.status==='qr_ready')await showQR();

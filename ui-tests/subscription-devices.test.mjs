@@ -115,7 +115,7 @@ test('connection is read only until Connect, then shows the QR when preparation 
   assert.deepEqual(h.errors,[]);
 });
 
-test('opening a ready connection shows its QR and expiry never fetches a replacement',async t=>{
+test('QR expiry never fetches a replacement and confirmation clears the expiry notice',async t=>{
   const h=await makeDevices({data:listing([ready()])});t.after(()=>h.close());
   assert.equal(h.calls.some(call=>call.path.endsWith('/qr')),false);
   h.click(act('open-connect'));await flush();
@@ -123,6 +123,12 @@ test('opening a ready connection shows its QR and expiry never fetches a replace
   assert.equal(h.calls.filter(call=>call.path.endsWith('/qr')).length,1);
   await h.tick(45000);
   assert.equal(h.document.querySelector('[data-sd-qr]'),null);
+  assert.equal(h.calls.filter(call=>call.path.endsWith('/qr')).length,1);
+  assert.match(h.element('[data-sd-feedback]').textContent,/QR Code expirou/);
+  h.server.data.items=[ready({status:'connected',phone_verified:true,phone:'5567999999901'})];
+  await h.tick(5000);
+  assert.match(h.element('.os-device-connected h2').textContent,/WhatsApp conectado/);
+  assert.equal(h.element('[data-sd-feedback]').hidden,true);
   assert.equal(h.calls.filter(call=>call.path.endsWith('/qr')).length,1);
   assert.equal(writes(h).length,0);
   assert.deepEqual(h.errors,[]);
