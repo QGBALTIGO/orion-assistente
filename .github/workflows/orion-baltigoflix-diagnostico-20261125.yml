@@ -1,0 +1,25 @@
+name: Orion - Diagnóstico BaltigoFlix
+on:
+  push:
+    branches: [codex/orion-baltigoflix-diagnostico-20261125]
+permissions:
+  contents: read
+  packages: write
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publicar imagem de diagnóstico com leitura restrita
+        run: |
+          set -euo pipefail
+          image="ghcr.io/qgbaltigo/orion-assistente-api:baltigoflix-diagnostico-$GITHUB_SHA"
+          docker build --platform linux/amd64 --build-arg SOURCE_REVISION="$GITHUB_SHA" -f deploy/Dockerfile.baltigoflix-diagnostico -t "$image" .
+          docker run --rm --entrypoint python "$image" -c 'from app.worker import WorkerSettings; assert WorkerSettings.on_startup.__name__ == "startup_with_reminder_release_probe"; from app.baltigoflix_incident_probe import collect'
+          docker push "$image"
