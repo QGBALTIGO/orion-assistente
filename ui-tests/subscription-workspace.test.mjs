@@ -20,7 +20,7 @@ function assertSubscriptionShell(h,devices=true){
   assert.deepEqual([...h.document.querySelectorAll('#osNav [data-os-route]')]
     .map(node=>node.dataset.osRoute),devices?utility:['dashboard',...utility.slice(3)]);
   assert.deepEqual([...h.document.querySelectorAll('#osNav .os-nav-section')]
-    .map(node=>node.textContent),['Gestão','Ajuda e conta']);
+    .map(node=>node.textContent),devices?['Gestão','WhatsApp','Ajuda e conta']:['Gestão','Ajuda e conta']);
   assert.equal(h.document.querySelector('#osSidebarContext .os-side-site'),null);
   assert.equal(h.document.querySelector('#osNav [data-os-action=managed-whatsapp]'),null);
   assert.equal(h.document.querySelector('#osNotificationsToggle').closest('.os-notifications').hidden,true);

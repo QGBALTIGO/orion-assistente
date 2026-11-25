@@ -8,12 +8,13 @@ const idFor = index => `40000000-0000-4000-8000-${String(index).padStart(12, '0'
 const customerResponse = items => path => path.includes('/management/customers') ? { items, total: items.length } : defaultResponse(path);
 const mobileNames = document => Array.from(document.querySelectorAll('.os-client-mobile-main strong'), element => element.textContent);
 
+const sidebarGroups=(nav,item=node=>node.textContent)=>[...nav.children].reduce((groups,node)=>{
+ if(node.classList.contains('os-nav-section'))groups.push([node.textContent,[]]);
+ else if(groups.length&&node.dataset.osRoute)groups.at(-1)[1].push(item(node));
+ return groups;
+},[]);
+
 test('Barbearia groups the sidebar in the requested order and keeps plan permissions',async t=>{
- const groupsFor=nav=>[...nav.children].reduce((groups,node)=>{
-  if(node.classList.contains('os-nav-section'))groups.push([node.textContent,[]]);
-  else if(groups.length&&node.dataset.osRoute)groups.at(-1)[1].push(node.textContent);
-  return groups;
- },[]);
  const permissions=code=>planState(code,{business_niche:null,workspace_profile:'standard',layout_modes:['classic','app']});
  const management=['Gestão',['Dashboard','Agenda','Clientes','Serviços','Funcionários']];
  const finance=['Financeiro',['Financeiro','Meu desempenho']];
@@ -27,9 +28,47 @@ test('Barbearia groups the sidebar in the requested order and keeps plan permiss
  ]){
   const h=await makeSuite({initialRoute:code==='none'?'plano':'dashboard',permissions:permissions(code)});
   t.after(()=>h.close());await flush();
-  assert.ok(h.document.getElementById('appView').classList.contains('os-barbershop-workspace'));
-  assert.deepEqual(groupsFor(h.document.getElementById('osNav')),expected);
+  assert.ok(h.document.getElementById('appView').classList.contains('os-structured-workspace'));
+  assert.deepEqual(sidebarGroups(h.document.getElementById('osNav')),expected);
   assert.equal(h.document.querySelector('#osSidebarContext [data-os-route=site]'),null);
+  assert.deepEqual(h.errors,[]);
+ }
+});
+
+test('Odontologia groups clinical and operational tabs and keeps restricted routes out of the menu',async t=>{
+ const permissions=planState('elite',{workspace_profile:'standard',business_niche:'odontologia',dental_clinical_enabled:true});
+ for(const role of ['owner','viewer']){
+  const h=await makeSuite({initialRoute:'novidades',role,permissions});
+  t.after(()=>h.close());await flush();
+  const groups=new Map(sidebarGroups(h.document.getElementById('osNav'),node=>node.dataset.osRoute));
+  assert.ok(h.document.getElementById('appView').classList.contains('os-structured-workspace'));
+  assert.deepEqual(groups.get('Atendimento'),['inbox','site']);
+  assert.equal(groups.has('Odontologia'),true);
+  assert.equal(groups.get('Odontologia').includes('clinica'),role==='owner');
+  assert.equal(groups.get('Gestão').includes('pacientes-odonto'),role==='owner');
+  assert.equal(groups.get('Administração').includes('ajustes-odonto'),true);
+  assert.deepEqual(groups.get('Ajuda e conta'),['novidades','ajuda','member']);
+  assert.deepEqual(h.errors,[]);
+ }
+});
+
+test('Afiliados groups publishing separately and keeps affiliate tabs limited to active owners',async t=>{
+ for(const role of ['owner','viewer']){
+  const h=await makeSuite({initialRoute:'novidades',permissions:planState('elite',{workspace_profile:'affiliate'}),
+   bridge:{tenants:[{id:tenantA,role,status:'active',workspace_profile:'affiliate'}]}});
+  t.after(()=>h.close());await flush();
+  const nav=h.document.getElementById('osNav');
+  const groups=sidebarGroups(nav,node=>node.dataset.osRoute);
+  assert.ok(h.document.getElementById('appView').classList.contains('os-structured-workspace'));
+  assert.deepEqual(groups,[
+   ...(role==='owner'?[
+    ['Gestão',['dashboard','afiliados-ofertas']],
+    ['Publicação',['afiliados-automacoes','afiliados-fila']],
+    ['Configuração',['afiliados-plataformas','afiliados-conexoes','afiliados-templates']],
+   ]:[]),
+   ['Ajuda e conta',['novidades','ajuda','member']],
+  ]);
+  assert.ok(nav.querySelector('[data-os-app-settings=appearance]'));
   assert.deepEqual(h.errors,[]);
  }
 });

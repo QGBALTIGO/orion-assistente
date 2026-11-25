@@ -15,13 +15,14 @@ test('a clínica odontológica destaca profissionais, ajustes e os canais de ate
   assert.ok(app.classList.contains('os-dental-workspace'));
   const labels=[...h.document.querySelectorAll('#osNav [data-os-route]')].map(el=>el.textContent.trim());
   assert.deepEqual(labels,[
-    'Dashboard','Agenda','Pacientes','Prontuários','Planos de tratamento',
-    'Jornada do paciente','Odontograma','Periodontia','Exames e imagens','Procedimentos','Orçamentos','Prótese e laboratório',
-    'Consultórios','Financeiro','Estoque','Convênios','Profissionais','Relatórios','Ajustes da clínica','Conversas','Agendamento online',
+    'Dashboard','Agenda','Pacientes','Profissionais',
+    'Prontuários','Jornada do paciente','Planos de tratamento','Odontograma','Periodontia','Exames e imagens','Procedimentos','Prótese e laboratório',
+    'Conversas','Agendamento online','Financeiro','Orçamentos','Convênios','Relatórios',
+    'Consultórios','Estoque','Ajustes da clínica',
     'Novidades','Base de conhecimento','Minha conta'
   ]);
   assert.deepEqual([...h.document.querySelectorAll('#osNav .os-nav-section')].map(el=>el.textContent),
-    ['Odontologia','Gestão','Atendimento','Ajuda e conta']);
+    ['Gestão','Odontologia','Atendimento','Financeiro','Administração','Ajuda e conta']);
   assert.equal(app.classList.contains('os-layout-app'),false);
   assert.deepEqual(h.errors,[]);
 });

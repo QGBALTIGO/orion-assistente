@@ -32,9 +32,9 @@ test('compact spacing is removed when another ordinary account is loaded',async 
 });
 
 const subscriptionManagementRoutes=[
-  'dispositivos','chatbot','testar-chatbot','templates','mensagens-enviadas','diagnosticos',
-  'campanhas','programadas','massa','enviar-mensagem','extrator-contatos','adicionar-ao-grupo',
-  'aquecimento','evitar-banimento','resolver-banimento',
+  'dispositivos','chatbot','testar-chatbot','enviar-mensagem','massa','programadas','campanhas',
+  'templates','mensagens-enviadas','extrator-contatos','adicionar-ao-grupo','aquecimento',
+  'evitar-banimento','resolver-banimento','diagnosticos',
 ];
 const subscriptionManagementFeatures=[
   'account.manage','devices.manage','chatbot.manage','templates.manage','sent_messages.manage',
@@ -104,7 +104,7 @@ const navigationGroups=h=>{
   return groups;
 };
 
-test('subscription services groups five tools after management and before help',async t=>{
+test('subscription services organizes WhatsApp, messages, tools and administration',async t=>{
   const permissions=Object.fromEntries(subscriptionManagementFeatures.map(feature=>[feature,true]));
   const h=await makeSuite({
     initialRoute:'aquecimento',
@@ -116,16 +116,17 @@ test('subscription services groups five tools after management and before help',
   });
   t.after(()=>h.close());await flush();
   const groups=navigationGroups(h);
-  assert.deepEqual([...groups.keys()],['Gestão','Ferramentas','Ajuda e conta']);
+  assert.deepEqual([...groups.keys()],['Gestão','WhatsApp','Mensagens','Ferramentas','Administração','Ajuda e conta']);
+  assert.ok(h.document.getElementById('appView').classList.contains('os-structured-workspace'));
+  assert.ok(h.document.querySelector('#osNav [data-os-app-settings=appearance]'));
   assert.deepEqual(groups.get('Ferramentas'),[
     'extrator-contatos','adicionar-ao-grupo','aquecimento',
     'evitar-banimento','resolver-banimento',
   ]);
-  assert.deepEqual(groups.get('Gestão'),[
-    'dashboard','dispositivos','chatbot','testar-chatbot','templates',
-    'mensagens-enviadas','diagnosticos','campanhas','programadas',
-    'massa','enviar-mensagem',
-  ]);
+  assert.deepEqual(groups.get('Gestão'),['dashboard']);
+  assert.deepEqual(groups.get('WhatsApp'),['dispositivos','chatbot','testar-chatbot']);
+  assert.deepEqual(groups.get('Mensagens'),['enviar-mensagem','massa','programadas','campanhas','templates','mensagens-enviadas']);
+  assert.deepEqual(groups.get('Administração'),['diagnosticos']);
   const routes=[...h.document.querySelectorAll('#osNav [data-os-route]')]
     .map(node=>node.getAttribute('data-os-route'));
   assert.equal(new Set(routes).size,routes.length,'routes must not appear in both sections');
