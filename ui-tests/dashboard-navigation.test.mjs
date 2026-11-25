@@ -14,7 +14,7 @@ test('Barbearia groups the sidebar in the requested order and keeps plan permiss
   else if(groups.length&&node.dataset.osRoute)groups.at(-1)[1].push(node.textContent);
   return groups;
  },[]);
- const permissions=code=>planState(code,{business_niche:'barbearia',workspace_profile:'standard'});
+ const permissions=code=>planState(code,{business_niche:null,workspace_profile:'standard',layout_modes:['classic','app']});
  const management=['Gestão',['Dashboard','Agenda','Clientes','Serviços','Funcionários']];
  const finance=['Financeiro',['Financeiro','Meu desempenho']];
  const admin=['Administração',['Plano','Configurações']];

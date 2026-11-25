@@ -577,7 +577,7 @@
   function renderSidebar(){
     const focused=document.activeElement,previousFocus=focused?.closest?.('#osNav')?{route:focused.dataset.osRoute,action:focused.dataset.osAction}:null;
     const t=tenant(),isAdmin=['support','admin'].includes(state.bridge.user?.role);
-    const barbershop=!platformWorkspace()&&state.entitlements?.business_niche==='barbearia'&&workspaceProfile()==='standard';
+    const barbershop=!platformWorkspace()&&barbershopHomeEligible();
     $('appView')?.classList.toggle('os-dental-workspace',dentalWorkspace());
     $('appView')?.classList.toggle('os-barbershop-workspace',barbershop);
     $('osSidebarContext').classList.toggle('os-sidebar-context--subscription',subscriptionWorkspace()||affiliateWorkspace());
