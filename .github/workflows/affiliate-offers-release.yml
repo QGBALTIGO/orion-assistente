@@ -113,7 +113,7 @@ jobs:
           await import("./src/channel-routes.mjs");
           console.log("Imagem QR corresponde ao código revisado.");
           '
-          docker run --rm -v "$GITHUB_WORKSPACE/qr-bridge/test:/srv/qr/test:ro" "$QR_IMAGE" node --test --test-reporter=dot test/affiliate-offers.test.mjs test/affiliate-manager.test.mjs test/channel-manager.test.mjs test/device-group-contacts.test.mjs test/device-group-add.test.mjs test/channel-resume.test.mjs
+          docker run --rm -v "$GITHUB_WORKSPACE/qr-bridge/test:/srv/qr/test:ro" -v "$GITHUB_WORKSPACE/tests/fixtures:/srv/tests/fixtures:ro" "$QR_IMAGE" node --test --test-reporter=spec test/affiliate-offers.test.mjs test/affiliate-manager.test.mjs test/channel-manager.test.mjs test/device-group-contacts.test.mjs test/device-group-add.test.mjs test/channel-resume.test.mjs
       - name: Publicar imagens verificadas
         run: |
           docker push "$API_IMAGE"
