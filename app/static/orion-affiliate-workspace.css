@@ -438,7 +438,7 @@ a.af-dashboard-kpi:hover { background: color-mix(in srgb,var(--os-tint) 35%,var(
 .af-auto-overview > div > span { display: flex; align-items: center; gap: 7px; color: var(--os-muted); font-size: 11px; }
 .af-auto-overview .os-icon { width: 15px; height: 15px; color: var(--os-primary); }
 .af-auto-overview strong { font: 550 29px/1.1 var(--os-display); letter-spacing: -.6px; }
-.af-auto-overview small { display: block; margin-top: 6px; font: 400 11px/1.4 var(--os-font); letter-spacing: 0; color: var(--os-muted); overflow-wrap: anywhere; }
+.af-auto-overview small { display: block; min-height: 2.8em; margin-top: 6px; font: 400 11px/1.4 var(--os-font); letter-spacing: 0; color: var(--os-muted); overflow-wrap: anywhere; }
 .af-auto-overview strong.af-auto-next { font: 550 16px/1.5 var(--os-font); letter-spacing: -.2px; }
 .af-auto-grid { display: grid; grid-template-columns: minmax(0,1fr); gap: 20px; align-items: start; }
 .af-auto-rules, .af-auto-rule-list { display: grid; gap: 14px; min-width: 0; }
@@ -574,8 +574,10 @@ a.af-dashboard-kpi:hover { background: color-mix(in srgb,var(--os-tint) 35%,var(
   .af-auto-overview > div:last-child { grid-column: 1/-1; }
   .af-auto-panel { padding: 17px; border-radius: 16px; }
   .af-auto-rules > .af-auto-section-head { align-items: flex-start; flex-direction: column; }
-  .af-auto-card-head { flex-wrap: wrap; }
-  .af-auto-card-head > .os-badge { margin-left: 49px; }
+  .af-auto-card-head { display: grid; grid-template-columns: 38px minmax(0,1fr); align-items: start; }
+  .af-auto-card-head > .af-auto-card-icon { grid-column: 1; grid-row: 1; }
+  .af-auto-card-head > div { grid-column: 2; grid-row: 1; }
+  .af-auto-card-head > .os-badge { grid-column: 2; grid-row: 2; justify-self: start; margin-left: 0; }
   .af-auto-card-head h3 { font-size: 19px; }
   .af-auto-execution { gap: 13px; }
   .af-rule-steps { grid-template-columns: repeat(2,minmax(0,1fr)); }

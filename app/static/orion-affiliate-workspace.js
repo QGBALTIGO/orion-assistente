@@ -867,7 +867,7 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
       <dl class="af-auto-execution"><div><dt>Última busca</dt><dd>${html(latest)}</dd>${execution?`<small>${html(execution.reason)}</small>`:""}</div><div><dt>Próxima busca</dt><dd>${html(rule.active?(rule.next_at?date(rule.next_at,rule.timezone):"Sem horário definido"):"Automação pausada")}</dd><small>${html(rule.timezone)}</small></div></dl>
       ${blocked||runtime?.can_activate===false?`<p class="af-auto-alert">${icon("info")}<span>${html(runtime.reason||"Revise as conexões e os destinos desta automação.")}</span></p>`:""}
       ${activity||jobs.length?`<div class="af-auto-deliveries" aria-label="${activity?"Resultados da automação":"Envios recentes"}">${activity||published?`<span data-automation-kpi="published" class="${published?"is-success":""}">${icon("check")}${published} ${activity?"enviadas hoje":published===1?"publicada recentemente":"publicadas recentemente"}</span>`:""}${approval?`<span data-automation-kpi="approval">${approval} em revisão</span>`:""}${queued?`<span data-automation-kpi="pending">${queued} na fila</span>`:""}${failed?`<span data-automation-kpi="failed" class="is-warning">${failed} ${failed===1?"ocorrência":"ocorrências"}</span>`:""}</div>`:""}
-      <footer><button type="button" class="os-button os-outline" data-act="edit-rule" data-value="${html(rule.id)}" aria-disabled="${ruleSaveBusy}">${icon("edit")}Editar</button><button type="button" class="os-button${rule.active?" os-outline":""}" data-act="${rule.active?"pause-rule":"start-rule"}" data-value="${html(rule.id)}" aria-disabled="${busy}" aria-busy="${busy}"${!rule.active&&runtime?.can_activate===false?" disabled":""}>${busy?'<span class="os-spinner" aria-hidden="true"></span>':icon(rule.active?"clock":"check")}${busy?"Atualizando…":rule.active?"Pausar":"Ativar"}</button></footer></article>`;
+      <footer><button type="button" class="os-button os-outline" data-act="edit-rule" data-value="${html(rule.id)}" aria-disabled="${ruleSaveBusy}">${icon("edit")}Editar</button><button type="button" class="os-button${rule.active?" os-outline":""}" data-rule-toggle="${html(rule.id)}" data-act="${rule.active?"pause-rule":"start-rule"}" data-value="${html(rule.id)}" aria-disabled="${busy}" aria-busy="${busy}"${!rule.active&&runtime?.can_activate===false?" disabled":""}>${busy?'<span class="os-spinner" aria-hidden="true"></span>':icon(rule.active?"clock":"check")}${busy?"Atualizando…":rule.active?"Pausar":"Ativar"}</button></footer></article>`;
   }
 
   function automations() {
@@ -942,7 +942,7 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
   // chart dates and cards mounted during both user interactions and polling.
   function dashboardNodeKey(node) {
     if (node.nodeType!==1) return null;
-    for (const name of ["id","data-automation-section","data-automation-card","data-automation-decision","data-rule-panel","data-rule-step","data-rule-niche","data-rule-destination","data-rule-filter","data-offer-section","data-offer-draft","data-offer-destination-row","data-offer-destination","data-offer-phrase","data-offer-tab","data-offer-product","data-offer-notice","data-offer-job","data-dashboard-date","data-dashboard-period","data-dashboard-metric","data-dashboard-publications","data-dashboard-card","data-dashboard-kpi","data-dashboard-step","data-dashboard-notice","data-act","aria-labelledby"]) {
+    for (const name of ["id","data-automation-section","data-automation-card","data-automation-decision","data-rule-panel","data-rule-step","data-rule-niche","data-rule-destination","data-rule-filter","data-rule-toggle","data-offer-section","data-offer-draft","data-offer-destination-row","data-offer-destination","data-offer-phrase","data-offer-tab","data-offer-product","data-offer-notice","data-offer-job","data-dashboard-date","data-dashboard-period","data-dashboard-metric","data-dashboard-publications","data-dashboard-card","data-dashboard-kpi","data-dashboard-step","data-dashboard-notice","data-act","aria-labelledby"]) {
       if (node.hasAttribute(name)) return `${node.nodeName}:${name}:${node.getAttribute(name)}`;
     }
     const name = node.getAttribute("class")?.split(/\s+/)[0];
@@ -1220,7 +1220,10 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     const next=template.content.firstElementChild;if(!next)return;
     const focused=root.contains(document.activeElement)?document.activeElement:null;
     const visible=node=>{const rect=node.getBoundingClientRect();return rect.height>0&&rect.bottom>56&&rect.top<window.innerHeight;};
-    const anchor=focused&&visible(focused)?focused:[...root.querySelectorAll('[data-automation-section],.af-auto-heading')].find(visible);
+    const focusedCard=focused?.closest('[data-automation-card]');
+    const anchor=focusedCard&&visible(focusedCard)?focusedCard:focused&&visible(focused)?focused:
+      [...root.querySelectorAll('[data-automation-card]')].find(visible)||
+      [...root.querySelectorAll('[data-automation-section],.af-auto-heading')].find(visible);
     const top=anchor?.getBoundingClientRect().top,x=window.scrollX,y=window.scrollY;
     const selection=focused&&typeof focused.selectionStart==='number'?[focused.selectionStart,focused.selectionEnd,focused.selectionDirection]:null;
     patchDashboardNode(current,next);syncRuleControls();

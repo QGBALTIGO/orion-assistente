@@ -187,12 +187,33 @@ test('Mudanças digitadas durante save bem-sucedido continuam no editor como nã
 
 test('Pausar e ativar na lista exigem confirmar e mantêm edição e o card montado',async t=>{
   const h=await harness(t);h.click('[data-act=edit-rule]');const name=h.input('#af-rule-name','Rascunho independente');
-  const card=h.get('[data-automation-card="'+RULE+'"]');h.click('[data-act=pause-rule]');await flush();
+  const card=h.get('[data-automation-card="'+RULE+'"]'),toggle=card.querySelector('[data-rule-toggle]');
+  toggle.focus();h.click('[data-act=pause-rule]');await flush();
   h.confirm('cancel');await flush();assert.equal(h.writes().length,0);
   h.click('[data-act=pause-rule]');await flush();h.confirm();await flush();
   assert.equal(h.get('[data-automation-card="'+RULE+'"]'),card);assert.equal(h.get('#af-rule-name'),name);assert.equal(name.value,'Rascunho independente');
+  assert.equal(h.get('[data-act=start-rule]'),toggle);assert.equal(h.document.activeElement,toggle);
   h.click('[data-act=start-rule]');await flush();h.confirm();await flush();
+  assert.equal(h.get('[data-act=pause-rule]'),toggle);assert.equal(h.document.activeElement,toggle);
   assert.deepEqual(h.writes().map(call=>call.payload.active),[false,true]);assert.equal(h.get('#af-rule-name').value,'Rascunho independente');
+});
+
+test('Atualizar uma automação preserva a posição do card quando o conteúdo anterior muda de altura',async t=>{
+  const pending=deferred(),h=await harness(t,{activate:()=>pending.promise});
+  const card=h.get('[data-automation-card="'+RULE+'"]'),toggle=h.get('[data-rule-toggle="'+RULE+'"]');
+  let scroll=500;
+  Object.defineProperty(h.window,'scrollY',{get:()=>scroll,configurable:true});
+  h.window.scrollTo=options=>{scroll=options.top;h.jumps.push(options);};
+  card.getBoundingClientRect=()=>{
+    const top=600-(h.host.querySelector('[data-act=start-rule]')?22:0)-scroll;
+    return {top,bottom:top+450,height:450};
+  };
+  toggle.focus();h.click('[data-act=pause-rule]');await flush();h.confirm();await flush();
+  const before=card.getBoundingClientRect().top;
+  pending.resolve({...h.data.rule[0],active:false,next_at:null,runtime:{status:'paused',can_activate:true,reason:null}});await flush();
+  assert.equal(h.get('[data-act=start-rule]'),toggle);assert.equal(h.document.activeElement,toggle);
+  assert.equal(card.getBoundingClientRect().top,before);assert.equal(scroll,478);
+  assert.equal(h.jumps.length,1);assert.equal(h.writes().length,1);
 });
 
 test('Validação local identifica a etapa e não consulta APIs com dados incompletos',async t=>{
