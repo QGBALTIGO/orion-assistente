@@ -316,6 +316,10 @@ async def plan_overview(tenant_id: UUID, actor: Actor = Depends(authenticate), r
                 if actor.maintenance:
                     revised["trial_eligible"] = False
                     revised.pop("manual_pix", None)
+                    if can_manage and embedded:
+                        revised["maintenance_checkout_urls"] = {
+                            code: plan["checkout_url"] for code, plan in CODES.items()
+                        }
                 ended = None
                 if (embedded and can_manage and not actor.maintenance
                         and os.getenv("ORION_BARBER_RECONTRACT_ENABLED", "0") == "1"

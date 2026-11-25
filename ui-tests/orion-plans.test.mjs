@@ -148,15 +148,21 @@ test('maintenance shows plan changes without ordering or opening e-mail',async()
  }finally{f.close();}
 });
 
-test('maintenance keeps all three subscription buttons and shares the chosen plan without opening a payment',()=>{
- const f=fixture({barbershop:{maintenance:true,period_days:30},embedded_checkout_enabled:true});
+test('maintenance opens the real offer in a scrollable frame without any payment intent',async()=>{
+ const links=Object.fromEntries(Object.entries(checkoutIds).map(([code,id])=>[code,'https://pay.cakto.com.br/'+id]));
+ const f=fixture({barbershop:{maintenance:true,period_days:30,maintenance_checkout_urls:links},embedded_checkout_enabled:true});
  try{
-  const actions=[...f.root.querySelectorAll('[data-op-share-plan]')];
+  f.ctx.canPurchase=()=>false;
+  const actions=[...f.root.querySelectorAll('[data-op-checkout]')];
   assert.deepEqual(actions.map(button=>button.textContent),['Assinar Essencial','Assinar Profissional','Assinar Elite']);
-  actions[1].click();
+  actions[2].click();await tick();
   const dialog=f.root.querySelector('dialog');
-  assert.equal(dialog.querySelector('input').value,'https://orionagenda.pro/painel?aba=plano&plano=profissional');
-  assert.equal(dialog.querySelector('iframe'),null);
+  const frame=dialog.querySelector('.op-cakto-inspection iframe');
+  assert.equal(frame.src,links.elite);
+  assert.equal(frame.getAttribute('sandbox'),'allow-scripts allow-same-origin');
+  assert.ok(frame.hasAttribute('inert'));
+  assert.equal(frame.hasAttribute('allow'),false);
+  assert.doesNotMatch(dialog.textContent,/Copiar link|Ver checkout|Prévia/);
   assert.deepEqual(f.calls,[]);
  }finally{f.close();}
 });
