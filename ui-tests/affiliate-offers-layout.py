@@ -209,26 +209,48 @@ def exercise(page, control, data, name, output, send_calls):
 
     phrase = '[data-offer-phrase="two"]'
     focus(phrase)
-    prior = before(phrase)
+    control["hold_phrase"] = True
     page.locator(phrase).click()
+    page.wait_for_function("document.querySelector('[data-offer-phrase=\"two\"]').getAttribute('aria-disabled')==='true'")
+    # Safari removes pointer focus before dispatching click. Preserve the native
+    # result while the response is pending, then verify keyboard focus separately.
+    prior = before(phrase)
+    assert control["held_phrases"]
+    control["hold_phrase"] = False
+    for route, payload in control["held_phrases"]:
+        route.fulfill(status=200, content_type="application/json", body=json.dumps(payload, ensure_ascii=False))
+    control["held_phrases"].clear()
     page.wait_for_function("document.querySelector('[data-offer-phrase=\"two\"]').getAttribute('aria-pressed')==='true'")
     page.locator('[data-offer-section="preview"][aria-busy="false"]').wait_for()
-    after("phrase-choice-keeps-focus-and-position", prior, phrase)
+    page.wait_for_function("document.querySelector('[data-offer-phrase=\"two\"]').getAttribute('aria-disabled')==='false'")
+    after("pointer-phrase-keeps-native-focus-and-position", prior, phrase)
+
+    phrase = '[data-offer-phrase="three"]'
+    focus(phrase)
+    prior = before(phrase)
+    page.keyboard.press("Enter")
+    page.wait_for_function("document.querySelector('[data-offer-phrase=\"three\"]').getAttribute('aria-pressed')==='true' && document.querySelector('[data-offer-phrase=\"three\"]').getAttribute('aria-disabled')==='false'")
+    after("keyboard-phrase-keeps-focus-and-position", prior, phrase)
 
     target = '[data-offer-destination="' + DEST[0] + '"]'
     place('[data-offer-section="targets"]')
     focus(target)
     prior = before(target)
-    page.locator(target).check()
+    page.keyboard.press("Space")
+    assert page.locator(target).is_checked()
     after("destination-selection-is-local", prior, target)
     focus("[data-offer-all]")
     prior = before("[data-offer-all]")
-    page.locator("[data-offer-all]").check()
+    page.keyboard.press("Space")
     assert page.locator("[data-offer-destination]:checked").count() == 3
     assert not page.locator('[data-offer-destination="' + DEST[3] + '"]').is_checked()
     after("select-all-excludes-unverified-destination", prior, "[data-offer-all]")
 
     control["hold_preview"] = True
+    control["hold_card"] = True
+    # A distinct public image revision prevents an earlier decoded card from
+    # hiding a layout shift when the JSON response arrives before its PNG.
+    data["offer"][0]["image"] = ORIGIN + "/synthetic-product.png?revision=delayed"
     place(settings)
     focus("#preview-template")
     prior = before(settings)
@@ -244,20 +266,42 @@ def exercise(page, control, data, name, output, send_calls):
         route.fulfill(status=200, content_type="application/json", body=json.dumps(payload, ensure_ascii=False))
     control["held"].clear()
     page.locator('[data-offer-section="preview"][aria-busy="false"]').wait_for()
-    page.wait_for_function("document.querySelector('.af-offer-card-image')?.complete")
+    page.wait_for_function("document.querySelector('.af-offer-card-image') && !document.querySelector('.af-offer-card-image').complete")
     after("late-preview-preserves-where-user-moved", prior, target, exact=False)
+    assert control["held_cards"], "The card must still be pending when its reserved geometry is checked"
+    prior = before(target)
+    pending_card = page.locator(".af-offer-card-image").bounding_box()
+    control["hold_card"] = False
+    for route, body in control["held_cards"]:
+        route.fulfill(status=200, content_type="image/png", headers={"Cache-Control": "no-store"}, body=body)
+    control["held_cards"].clear()
+    page.wait_for_function("document.querySelector('.af-offer-card-image')?.complete")
+    after("late-card-image-keeps-visible-control", prior, target)
+    loaded_card = page.locator(".af-offer-card-image").bounding_box()
+    assert abs(loaded_card["height"] - pending_card["height"]) <= 1, (pending_card, loaded_card)
+
+    prior = before(target)
+    control["fail_card"] = True
+    page.locator(".af-offer-card-image").evaluate("n=>{window.__offerQA.cardSrc=n.src;n.src+='&qa=unavailable';}")
+    page.wait_for_function("document.querySelector('.af-offer-card-image')?.complete && document.querySelector('.af-offer-card-image').naturalWidth===0")
+    after("unavailable-card-image-keeps-visible-control", prior, target)
+    unavailable_card = page.locator(".af-offer-card-image").bounding_box()
+    assert abs(unavailable_card["height"] - loaded_card["height"]) <= 1, (loaded_card, unavailable_card)
+    control["fail_card"] = False
+    page.locator(".af-offer-card-image").evaluate("n=>{n.src=window.__offerQA.cardSrc;}")
+    page.wait_for_function("document.querySelector('.af-offer-card-image')?.complete && document.querySelector('.af-offer-card-image').naturalWidth>0")
 
     button = '[data-act="offer-send"]'
     place(button, 330)
     focus(button)
     prior = before(button)
     control["fail_send"] = True
-    page.locator(button).click()
+    page.keyboard.press("Enter")
     page.locator('[data-offer-notice="send"]').wait_for()
     after("failed-send-keeps-selected-destinations", prior, button, exact=False)
     assert len(send_calls) == 1
     control["fail_send"] = False
-    page.locator(button).click()
+    page.keyboard.press("Enter")
     page.locator("[data-offer-send-result]").wait_for()
     assert len(send_calls) == 2 and send_calls[0] == send_calls[1], send_calls
     assert send_calls[-1]["destinations"] == sorted(DEST[:3])
@@ -302,7 +346,7 @@ def exercise(page, control, data, name, output, send_calls):
 
 def run(context, width, theme, layout, engine, output):
     data = workspace()
-    control = {"manual": False, "hold_preview": False, "held": [], "fail_send": False,
+    control = {"manual": False, "hold_preview": False, "held": [], "hold_phrase": False, "held_phrases": [], "hold_card": False, "held_cards": [], "fail_card": False, "fail_send": False,
                "batch_final": False, "batch_reads": 0}
     calls, errors, blocked, send_calls = [], [], [], []
     batches = {}
@@ -382,11 +426,19 @@ def run(context, width, theme, layout, engine, output):
             elif action == "card.png" and method == "GET":
                 template_id = parse_qs(url.query).get("template", ["default"])[0]
                 template = next(item for item in data["template"] if item["id"] == template_id)
-                route.fulfill(status=200, content_type="image/png", body=card_png(row, template, PHOTO))
+                if control["fail_card"]:
+                    route.fulfill(status=503, content_type="text/plain", body="Synthetic unavailable card")
+                elif control["hold_card"]:
+                    control["held_cards"].append((route, card_png(row, template, PHOTO)))
+                else:
+                    route.fulfill(status=200, content_type="image/png", headers={"Cache-Control": "no-store"}, body=card_png(row, template, PHOTO))
             elif action == "phrase" and method == "PUT":
                 row["phrase"] = request.post_data_json["text"]
                 row["phrase_source"] = "manual"
-                fulfill(row)
+                if control["hold_phrase"]:
+                    control["held_phrases"].append((route, copy.deepcopy(row)))
+                else:
+                    fulfill(row)
             elif action == "phrases" and method == "POST":
                 fulfill({"suggestions": PHRASES})
             elif not action and method == "PUT":

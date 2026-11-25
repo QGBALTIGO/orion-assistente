@@ -453,7 +453,8 @@ a.af-dashboard-kpi:hover { background: color-mix(in srgb,var(--os-tint) 35%,var(
 .af-offer-preview-heading > span { font-size: 10px; color: var(--os-muted); }
 .af-offer-message { border: 1px solid var(--os-border); border-radius: 12px; background: var(--os-card); overflow: hidden; min-width: 0; }
 .af-offer-card-wrap { padding: 10px; display: flex; justify-content: center; border-bottom: 1px solid var(--os-border); }
-.af-offer-card-image { display: block; width: auto; max-width: 100%; height: auto; max-height: 300px; object-fit: contain; border-radius: 8px; }
+.af-offer-card-frame { position: relative; width: min(100%,calc(var(--af-offer-card-height,300px) * 900 / 970)); aspect-ratio: 900 / 970; border-radius: 8px; overflow: hidden; }
+.af-offer-card-image { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: contain; }
 .af-offer-caption { max-height: 154px; overflow: hidden; padding: 14px; color: var(--os-text); white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; line-height: 1.6; }
 .af-offer-caption.is-expanded { max-height: none; }
 .af-offer-preview-loading { display: flex; align-items: center; gap: 8px; min-height: 90px; color: var(--os-muted); }
@@ -524,7 +525,7 @@ a.af-dashboard-kpi:hover { background: color-mix(in srgb,var(--os-tint) 35%,var(
 @container affiliate-offers (min-width: 850px) {
   .af-offer-composer-grid { grid-template-columns: minmax(0,1.04fr) minmax(0,1fr); grid-template-areas: "settings preview" "targets preview"; column-gap: 26px; }
   .af-offer-preview { padding: 18px; }
-  .af-offer-card-image { max-height: 350px; }
+  .af-offer-card-frame { --af-offer-card-height: 350px; }
   .af-offer-search-form { grid-template-columns: minmax(0,1.4fr) minmax(0,1fr) minmax(0,.8fr) auto; }
   .af-offer-search-keyword, .af-offer-search-form > button { grid-column: auto; }
   .af-offer-catalog-results { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; }
@@ -555,7 +556,7 @@ a.af-dashboard-kpi:hover { background: color-mix(in srgb,var(--os-tint) 35%,var(
   .af-offer-template-heading h2, .af-offer-target-heading h2, .af-offer-preview-heading h2 { font-size: 16px; }
   .af-offer-composer-grid { gap: 20px; }
   .af-offer-preview { padding: 12px; }
-  .af-offer-card-image { max-height: 230px; }
+  .af-offer-card-frame { --af-offer-card-height: 230px; }
   .af-offer-caption { font-size: 11px; padding: 12px; max-height: 142px; }
   .af-offer-preview-actions .os-button { font-size: 10px; gap: 5px; }
   .af-offer-preview-actions .os-icon { width: 14px; height: 14px; }

@@ -617,7 +617,7 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
       '<div class="af-offer-preview-heading"><h2 id="af-offer-preview-title">Prévia da publicação</h2><span aria-live="polite">'+(offerPreviewBusy?"Atualizando…":"")+'</span></div>'+
       offerAlert(offerPreviewError,"preview")+
       '<div class="af-offer-message">'+
-        (preview?.media==="card"?'<div class="af-offer-card-wrap"><img class="af-offer-card-image" src="'+html(image)+'" alt="Card da oferta: '+html(row.title||"produto")+'" width="900" height="970"></div>':"")+
+        (preview?.media==="card"?'<div class="af-offer-card-wrap"><div class="af-offer-card-frame"><img class="af-offer-card-image" src="'+html(image)+'" alt="Card da oferta: '+html(row.title||"produto")+'" width="900" height="970"></div></div>':"")+
         '<div class="af-offer-caption'+(offerPreviewExpanded?" is-expanded":"")+'" id="offer-text">'+
           (preview?offerCaption(preview.html):'<span class="af-offer-preview-loading">'+icon("refresh")+'Preparando sua prévia…</span>')+'</div>'+
         (fold?'<button type="button" class="af-offer-text-button af-offer-expand" data-act="offer-expand" aria-expanded="'+offerPreviewExpanded+'" aria-controls="offer-text">'+
