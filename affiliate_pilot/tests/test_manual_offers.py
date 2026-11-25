@@ -455,6 +455,38 @@ def test_orion_groups_without_test_flag_and_channel_permission_loss_use_tenant_t
         assert store.history(company_id) == []
 
 
+def test_orion_state_keeps_offers_available_when_whatsapp_status_is_unavailable(store, monkeypatch):
+    key = Fernet.generate_key()
+    signer = Fernet(key)
+    monkeypatch.setenv("ORION_AFFILIATE_WORKSPACE_KEY", key.decode())
+    tenant_id = "a" * 32
+    user = store.orion_workspace(tenant_id, "Synthetic Orion")
+    company_id = user["id"]
+    store.put(company_id, "offer", OFFER, prepared_offer())
+    store.put(company_id, "destination", DESTINATIONS[0],
+              {"name": "Meu grupo", "mode": "whatsapp_group", "verified": True,
+               "address": "123456789012@g.us", "connection_version": "orion:device:generation:1"})
+
+    class WhatsApp:
+        async def control(self, company, path, **params):
+            assert company == company_id and path == "status" and not params
+            raise ProviderError("permissions", "Conecte e atualize o WhatsApp desta conta.")
+
+    app = create_app(store, origin=BASE, sending=False, start_worker=False)
+    with TestClient(app) as client:
+        app.state.engine.manual_transport = WhatsApp()
+        claim = {"tenant": tenant_id, "name": "Synthetic Orion", "method": "GET", "path": "/api/state"}
+        response = client.get("/api/state", headers={
+            "X-Orion-Affiliate-Access": signer.encrypt(json.dumps(claim).encode()).decode()})
+        assert response.status_code == 200, response.text
+        state = response.json()
+        assert state["offer"][0]["id"] == OFFER
+        assert state["destination"][0]["verified"] is False
+        assert "WhatsApp" in state["destination"][0]["issue"]
+        assert state["jobs"] == []
+        assert store.get(company_id, "destination", DESTINATIONS[0])["verified"] is True
+
+
 def test_destination_rotation_between_enqueue_and_dispatch_prevents_delivery(store):
     tenant = company(store)
     offer, template, destinations, _ = records(store, tenant)

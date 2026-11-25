@@ -428,7 +428,7 @@ def run(context, width, theme, layout, engine, output):
         "localStorage.setItem(" + json.dumps(f"orion-navigation-v1:{TENANT}:{EMAIL}") + "," + json.dumps(layout) + ");")
     name = f"{layout}-{width}-{theme}"
     try:
-        page.goto(ORIGIN + "/panel?aba=ofertas", wait_until="domcontentloaded")
+        page.goto(ORIGIN + "/panel?aba=afiliados-ofertas", wait_until="domcontentloaded")
         page.locator(".af-offers-workspace").wait_for()
         page.evaluate("document.fonts.ready")
         page.evaluate("""async()=>{

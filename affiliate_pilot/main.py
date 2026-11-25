@@ -322,7 +322,7 @@ def create_app(store=None, *, sending=None, origin=None, start_worker=True):
         if any(d["verified"] and d["mode"].startswith("whatsapp_") for d in result["destination"]):
             try:
                 wa_version = (await whatsapp(user, "status")).get("version")
-            except HTTPException:
+            except (HTTPException, ProviderError):
                 pass
         for destination in result["destination"]:
             if destination["mode"] == "telegram" and destination["connection_version"] != telegram.get("version"):

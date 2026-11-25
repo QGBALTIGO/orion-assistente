@@ -3503,20 +3503,20 @@
       'Ao salvar, a Orion testa se a conta consegue consultar ofertas. Se a validação falhar, confira as credenciais no Portal de Afiliados da Shopee e tente novamente.',
       'Com a plataforma conectada, abra Ofertas para buscar produtos e preparar o link de afiliado.'
     ]],
-    ['af-oferta','ofertas','Como preparar uma oferta com card e link','Busque um produto ou cole o link da Shopee e revise a publicação.','afiliados-ofertas',[
-      'Em Ofertas, cole um link da Shopee ou use a busca por categoria, palavra-chave e ordenação.',
-      'Abra a prévia, escolha o template e confira a foto, o valor, o desconto e o link de afiliado. A frase da oferta pode ser revisada na própria tela.',
-      'Copie a legenda e baixe o card para publicar manualmente. Se houver um destino autorizado na prévia, use a fila para preparar a publicação.'
+    ['af-oferta','ofertas','Como preparar uma oferta com card e link','Cole o link do produto, revise a oferta e escolha onde enviar.','afiliados-ofertas',[
+      'Em Ofertas, cole o link de uma das lojas disponíveis ou busque um produto no Catálogo Shopee. Confira o nome, o preço e a imagem; complete os campos que a loja não informou.',
+      'Escolha o template e uma sugestão de frase ou escreva a sua. A Shopee conectada gera seu link de afiliado; para outras lojas, informe o link próprio do seu programa de afiliados.',
+      'Selecione um, vários ou todos os destinos habilitados e clique em Enviar. Acompanhe o resultado de cada publicação na própria tela ou em Fila e histórico. Você também pode copiar a legenda e baixar o card.'
     ]],
     ['af-whatsapp','canais','Como vincular um aparelho do WhatsApp','Use o mesmo fluxo de conexão da Orion, por QR Code ou código.','afiliados-whatsapp',[
       'Abra Conexões e destinos, escolha Gerenciar WhatsApp e crie o dispositivo da empresa. Abra a conexão e escolha QR Code ou código, conforme as opções mostradas.',
       'No celular, abra Aparelhos conectados no WhatsApp e conclua o vínculo. Volte à Orion e confira se a conexão aparece como Conectado.',
-      'O aparelho fica vinculado à empresa selecionada. Adicionar um canal em Destinos é uma etapa separada. A tela informa quando o destino ainda exige publicação assistida.'
+      'O aparelho fica vinculado à empresa selecionada. Em Destinos, escolha um grupo administrado por essa conta ou informe o link do canal e verifique a administração para habilitar os envios.'
     ]],
     ['af-destino','canais','Como cadastrar um canal ou grupo','Configure o destino e confira o estado da administração.','afiliados-conexoes',[
       'Em Conexões e destinos, informe o nome do destino, selecione a plataforma e preencha a identificação ou o link solicitado.',
       'Para Telegram, conecte um bot dedicado e torne a conta e o bot administradores do destino. Use o identificador exibido pelo canal ou grupo.',
-      'Confira o estado do destino após salvar. Em Publicação assistida, copie a legenda e baixe o card em Ofertas para postar no próprio canal ou grupo.'
+      'Para WhatsApp, consulte os grupos da conta conectada ou informe o link do canal e verifique a administração. Depois de salvar e verificar o destino, ele fica disponível para seleção em Ofertas.'
     ]],
     ['af-template','templates','Como editar a legenda e o card','Altere o texto, o formato e a identidade visual da oferta.','afiliados-templates',[
       'Abra Templates e edite um modelo existente ou crie um novo. Use as variáveis disponíveis para inserir título, preços, vendas e link da oferta.',
