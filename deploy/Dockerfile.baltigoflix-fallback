@@ -1,0 +1,6 @@
+FROM ghcr.io/qgbaltigo/orion-assistente-api@sha256:fd459d305ebb3f4587a206e2737734a193e42f1afc505cdb99d234e1e790240f
+ARG SOURCE_REVISION
+LABEL org.opencontainers.image.revision=$SOURCE_REVISION
+COPY --chown=appuser:appuser deploy/baltigoflix_fallback_repair.py /srv/app/app/baltigoflix_fallback_repair.py
+RUN python -c "from pathlib import Path; p=Path('/srv/app/app/worker.py'); d=p.read_bytes(); anchor=b'    start(ctx)\n'; assert d.count(anchor)==1 and b'async def startup_with_reminder_release_probe(ctx):' in d; out=d.replace(anchor,anchor+b'    import os\n    if os.getenv(\"ORION_BALTIGO_FALLBACK_REPAIR\") == \"baltigoflix-20261125\":\n        import asyncio\n        from app.baltigoflix_fallback_repair import repair\n        ctx[\"baltigo_fallback_repair\"] = asyncio.create_task(repair())\n'); compile(out,str(p),'exec'); p.write_bytes(out)"
+RUN python -c "from pathlib import Path; p=Path('/srv/app/app/baltigoflix_fallback_repair.py'); compile(p.read_bytes(),str(p),'exec')"

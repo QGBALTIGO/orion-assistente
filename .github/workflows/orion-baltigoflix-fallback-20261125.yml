@@ -1,0 +1,25 @@
+name: Orion - Fallback da BaltigoFlix
+on:
+  push:
+    branches: [codex/orion-baltigoflix-fallback-20261125]
+permissions:
+  contents: read
+  packages: write
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Validar e publicar o ajuste limitado à BaltigoFlix
+        run: |
+          set -euo pipefail
+          image="ghcr.io/qgbaltigo/orion-assistente-api:baltigoflix-fallback-$GITHUB_SHA"
+          docker build --platform linux/amd64 --build-arg SOURCE_REVISION="$GITHUB_SHA" -f deploy/Dockerfile.baltigoflix-fallback -t "$image" .
+          docker run --rm --entrypoint python "$image" -c 'from uuid import uuid4; from app.baltigoflix_fallback_repair import fallback_definition; assert fallback_definition(uuid4())["keyword"] == "*****"'
+          docker push "$image"
