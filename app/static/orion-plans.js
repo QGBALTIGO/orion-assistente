@@ -533,6 +533,40 @@ function barberDate(value,zone) {
  catch{return '';}
 }
 
+function sharePlan(root, button, data) {
+ const code=button.dataset.opSharePlan,plan=catalogPlan(data.plans,code);
+ if(!data.barbershop?.maintenance||!plan||root.querySelector('.op-checkout-dialog'))return;
+ const url=new URL('/painel',location.origin);
+ url.searchParams.set('aba','plano');
+ url.searchParams.set('plano',code);
+ const modal=document.createElement('dialog');
+ modal.className='os-dialog op-dialog op-checkout-dialog op-change-dialog';
+ modal.setAttribute('aria-label','Assinar '+plan.name);
+ modal.innerHTML='<h2>Assinar '+escapeHTML(plan.name.replace(/^Orion /,''))+'</h2><p>'+price(plan.monthly_cents)+' / 30 dias</p>'
+  +'<p>O titular conclui a assinatura na própria conta da Orion.</p>'
+  +'<label class="op-plan-share">Link para o titular<input type="text" readonly></label>'
+  +'<p data-plan-copy-status role="status" hidden></p><div class="op-payment-actions">'
+  +'<button type="button" class="op-btn op-btn-primary" data-plan-copy>Copiar link</button>'
+  +'<button type="button" class="op-btn op-btn-secondary" data-plan-share-close>Voltar aos planos</button></div>';
+ const input=modal.querySelector('input'),status=modal.querySelector('[data-plan-copy-status]');
+ input.value=url.href;
+ const close=()=>{modal.remove();button.focus({preventScroll:true});};
+ mounted.closeCheckout=()=>modal.remove();
+ modal.addEventListener('cancel',event=>{event.preventDefault();close();});
+ modal.querySelector('[data-plan-share-close]').addEventListener('click',close);
+ modal.querySelector('[data-plan-copy]').addEventListener('click',async()=>{
+  status.hidden=false;
+  try{
+   await navigator.clipboard.writeText(input.value);
+   status.textContent='Link copiado.';
+  }catch{
+   input.focus();input.select();
+   status.textContent='Copie o link selecionado.';
+  }
+ });
+ root.append(modal);modal.showModal();
+}
+
 function openPlanChange(root, button, data) {
  const plan=catalogPlan(data.plans,button.dataset.opChangePlan);
  if(!plan||root.querySelector('.op-checkout-dialog'))return;
@@ -630,13 +664,16 @@ function renderBarbershop(data, canManage) {
   const manualAdvance=manual&&detail.manual_pix?.available===true&&!existing&&!blocked&&!conflict&&
    !detail.manual_pix.blocked_plan_codes?.includes(code);
   const allowed=canManage&&!detail.maintenance&&!!plan&&(recurring||resumePix||renew||manualAdvance);
+  const share=canManage&&detail.maintenance&&!!plan&&recurring&&!existing;
   const shortName=name.replace(/^Orion /,'');
   const oldPlan=canonical(sub?.code);
   const label=existing?'Acompanhar pagamento':renew||manualAdvance&&active?'Renovar antecipadamente':manualAdvance?'Mudar para '+shortName:
    detail.can_recontract?(code===oldPlan?'Renovar '+shortName:'Mudar para '+shortName):'Assinar '+shortName;
   const action=allowed?'<button class="op-btn '+(plan.recommended||active?'op-btn-primary':'op-btn-secondary')+'" type="button" data-op-checkout="'+code+'"'
    +(resumePix?' data-op-resume-pix':manualAdvance?' data-op-renew-pix data-op-manual-renewal':renew?' data-op-renew-pix':' data-op-embedded')+'>'
-   +escapeHTML(label)+'</button>':active?'<span class="op-plan-caption">Plano atual</span>':
+   +escapeHTML(label)+'</button>':share?
+    '<button class="op-btn '+(plan.recommended?'op-btn-primary':'op-btn-secondary')+'" type="button" data-op-share-plan="'+code+'">'+escapeHTML(label)+'</button>':
+    active?'<span class="op-plan-caption">Plano atual</span>':
    canManage&&plan&&locked&&!existing&&!blocked&&!conflict?
     '<button class="op-btn op-btn-secondary" type="button" data-op-change-plan="'+code+'">Mudar para '+escapeHTML(shortName)+'</button>':'';
   const features=(Array.isArray(plan?.benefits)?plan.benefits:[]).map(feature=>'<li>'+ic('check')+'<span>'+escapeHTML(feature)+'</span></li>').join('');
@@ -732,6 +769,13 @@ function mount(root,data,ctx){
  mounted={root,ctx,data};
  timezone=ctx.tenant?.timezone||'America/Sao_Paulo';
  render(root,data,ctx);
+ if(data.barbershop&&!data.barbershop.maintenance){
+  const wanted=new URLSearchParams(location.search).get('plano');
+  if(defs.some(plan=>plan.code===wanted)){
+   const selected=root.querySelector('[data-op-checkout="'+wanted+'"],[data-op-change-plan="'+wanted+'"]');
+   selected?.focus();
+  }
+ }
  mounted.trialRefresh=setInterval(async()=>{
   if(!root.isConnected||mounted?.root!==root||mounted.data.barbershop==null||
      mounted.data.effective_plan?.source!=='trial'||root.querySelector('dialog[open]')||
@@ -752,6 +796,8 @@ function mount(root,data,ctx){
   const action=event.target.closest('[data-op-start-trial],[data-op-support],[data-op-welcome]');
   if(action&&!action.disabled){event.preventDefault();await barberAction(root,ctx,action,action.hasAttribute('data-op-start-trial'));return;}
   const trial=event.target.closest('[data-op-trial]'),checkoutButton=event.target.closest('[data-op-checkout]');
+  const shared=event.target.closest('[data-op-share-plan]');
+  if(shared){event.preventDefault();sharePlan(root,shared,mounted?.root===root?mounted.data:data);return;}
   const change=event.target.closest('[data-op-change-plan]');
   if(change){event.preventDefault();openPlanChange(root,change,mounted?.root===root?mounted.data:data);return;}
   if(trial&&!trial.disabled){event.preventDefault();renderTrialDialog(root,data,ctx);}

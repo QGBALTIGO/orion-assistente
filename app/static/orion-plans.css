@@ -371,6 +371,8 @@
 .op-change-dialog h2 { margin: 0 0 8px; font: 650 22px/1.25 var(--os-display); }
 .op-change-dialog p { margin: 0 0 14px; color: var(--os-muted); line-height: 1.5; }
 .op-change-dialog .op-payment-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
+.op-plan-share { display: grid; gap: 8px; font-size: 13px; }
+.op-plan-share input { min-width: 0; width: 100%; box-sizing: border-box; color: inherit; background: var(--os-bg); border: 1px solid var(--os-border); border-radius: 8px; padding: 10px 12px; font: inherit; }
 .op-embedded-checkout [hidden] { display: none; }
 .op-cakto-frame {
   display: block;

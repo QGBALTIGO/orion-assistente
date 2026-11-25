@@ -16,7 +16,7 @@ const base={
 };
 function fixture(overrides={},options={}){
  const dom=new JSDOM('<!doctype html><html lang="pt-BR"><body><div id="host"></div></body></html>',
-    {url:'https://orionagenda.pro/panel',runScripts:'dangerously'});
+    {url:options.url||'https://orionagenda.pro/panel',runScripts:'dangerously'});
  const {window}=dom;
  Object.defineProperty(window.HTMLDialogElement.prototype,'showModal',{configurable:true,value:function(){this.open=true;}});
  Object.defineProperty(window.HTMLDialogElement.prototype,'close',{configurable:true,value:function(){this.open=false;}});
@@ -144,6 +144,28 @@ test('maintenance shows plan changes without ordering or opening e-mail',async()
   const dialog=f.root.querySelector('dialog');
   assert.match(dialog.textContent,/Mudar para Elite.*conta do titular/);
   assert.equal(dialog.querySelector('a'),null);
+  assert.deepEqual(f.calls,[]);
+ }finally{f.close();}
+});
+
+test('maintenance keeps all three subscription buttons and shares the chosen plan without opening a payment',()=>{
+ const f=fixture({barbershop:{maintenance:true,period_days:30},embedded_checkout_enabled:true});
+ try{
+  const actions=[...f.root.querySelectorAll('[data-op-share-plan]')];
+  assert.deepEqual(actions.map(button=>button.textContent),['Assinar Essencial','Assinar Profissional','Assinar Elite']);
+  actions[1].click();
+  const dialog=f.root.querySelector('dialog');
+  assert.equal(dialog.querySelector('input').value,'https://orionagenda.pro/painel?aba=plano&plano=profissional');
+  assert.equal(dialog.querySelector('iframe'),null);
+  assert.deepEqual(f.calls,[]);
+ }finally{f.close();}
+});
+
+test('a shared plan selects the matching owner checkout without starting an intent',()=>{
+ const f=fixture({barbershop:{period_days:30},embedded_checkout_enabled:true},
+  {url:'https://orionagenda.pro/painel?aba=plano&plano=elite'});
+ try{
+  assert.equal(f.window.document.activeElement.dataset.opCheckout,'elite');
   assert.deepEqual(f.calls,[]);
  }finally{f.close();}
 });
