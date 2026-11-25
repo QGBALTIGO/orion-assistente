@@ -1,4 +1,4 @@
-"""Use the tenant's existing Orion connection for explicit manual offer sends."""
+"""Use the tenant's existing Orion connection for authorized offer sends."""
 from __future__ import annotations
 
 import base64
@@ -58,6 +58,8 @@ class OrionWhatsAppTransport:
                 return data
             if action == "send" and response.status_code >= 500:
                 raise ProviderError("unknown", "O WhatsApp ainda não confirmou o envio. Confira o histórico antes de tentar novamente.")
+            if response.status_code >= 500:
+                raise ProviderError("connection", "O WhatsApp está temporariamente indisponível. A conexão será consultada novamente.")
             message = data.get("detail") if isinstance(data, dict) else None
             # Only the private fixed endpoint can supply this small user-facing
             # validation message; no provider body, token or headers are copied.

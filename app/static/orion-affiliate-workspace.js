@@ -78,6 +78,23 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
   let historySearch = "";
   let editTemplate = "default";
   let editRule = null;
+  const ruleSteps = [["products","Produtos"],["destinations","Destinos"],["schedule","Frequência"],["template","Modelo"]];
+  const ruleNumberFields = ["interval","daily","repeat_hours","sort"];
+  const ruleOptionalNumbers = ["min_price","max_price","min_rating","min_commission","min_sales","min_discount"];
+  let ruleDraft = null;
+  let ruleDraftKey = null;
+  let ruleDraftRevision = 0;
+  let ruleEditorVersion = 0;
+  let ruleStep = "products";
+  let ruleFilter = "all";
+  let ruleNicheFilter = "";
+  let ruleAdvancedOpen = false;
+  let ruleWindowBeforeAllDay = {opens:"09:00",closes:"21:00"};
+  let ruleSaveBusy = false;
+  let ruleRefreshBusy = false;
+  let ruleError = "";
+  let ruleListError = "";
+  const ruleActionBusy = new Set();
   let navVersion = 0;
   let searchVersion = 0;
   let viewVersion = 0;
@@ -139,8 +156,10 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
   const selectField = (label, name, options, id="af-"+name) =>
     `<div class="os-field" data-field-wrapper><label for="${id}">${label}</label><select data-orion-field="native" id="${id}" name="${name}">${options}</select></div>`;
   const templates = selected => state.template.map(row => option(row.id,row.name,selected)).join("");
-  const ruleDestinations = () => state.destination.filter(row => row.verified &&
-    (row.mode === "whatsapp_channel" || row.mode === "telegram" && row.test));
+  const automationDestinations = () => Array.isArray(state.automation_destinations)?state.automation_destinations.map(row=>
+    ({...state.destination.find(destination=>destination.id===row.id),...row})):state.destination.map(row=>
+    ({...row,eligible:row.verified&&["whatsapp_group","whatsapp_channel","telegram"].includes(row.mode),reason:row.issue}));
+  const ruleDestinations = () => automationDestinations().filter(row=>row.eligible);
   const connected = name => state.connection.find(row => row.id === name);
   const defaultMedia = name => ({telegram:"Telegram",whatsapp_group:"Grupo do WhatsApp",whatsapp_channel:"Canal do WhatsApp"})[name];
   const brand = name => `<img src="${assetsRoot}/brands/${name}.${name==="whatsapp"?"svg":"png"}" alt="" width="42" height="42">`;
@@ -747,95 +766,120 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     </div>`;
   }
 
-  function decisions() {
-    return state.decision.length?`<div class="af-list">${state.decision.slice(0,6).map(d=>`<div class="af-item"><div><strong>${html(d.rule)}</strong>
-      <small>${html(d.reason)}${d.niche?` · ${html(state.niches.find(n=>n.id===d.niche)?.name || d.niche)}`:""}</small></div></div>`).join("")}</div>`
-      :empty("Sem execuções registradas","O resultado das próximas buscas aparecerá aqui.","activity");
+  function ruleExecution(rule) {
+    if(rule.activity?.last_execution)return rule.activity.last_execution;
+    const matches=state.decision.filter(row=>row.rule_id===rule.id || (!row.rule_id&&row.rule===rule.name&&state.rule.filter(item=>item.name===rule.name).length===1));
+    return matches.find(row=>row.executed_at)||matches[0];
   }
 
+  function decisions() {
+    const labels={prepared:"Ofertas preparadas",blocked:"Precisa de atenção",empty:"Sem oferta nesta busca",failed:"Falha na busca",missed:"Janela encerrada"};
+    return state.decision.length?`<ol class="af-auto-activity">${state.decision.slice(0,6).map(row=>`<li data-automation-decision="${html(row.id)}">
+      <span class="af-auto-activity-dot${["failed","blocked"].includes(row.status)?" is-warning":""}"></span><div><div class="af-auto-activity-head"><strong>${html(row.rule)}</strong>${row.executed_at?`<time>${html(date(row.executed_at,state.rule.find(rule=>rule.id===row.rule_id)?.timezone))}</time>`:""}</div>
+      ${labels[row.status]?`<span class="af-auto-activity-status">${html(labels[row.status])}</span>`:""}<p>${html(row.reason)}</p>${row.niche?`<small>${html(state.niches.find(niche=>niche.id===row.niche)?.name||row.niche)}</small>`:""}</div></li>`).join("")}</ol>`:
+      `<div class="af-auto-empty"><span>${icon("activity")}</span><h3>As próximas buscas aparecem aqui</h3><p>Acompanhe os produtos encontrados e o resultado de cada execução.</p></div>`;
+  }
 
-  function ruleEditor(rule, available) {
-    const input = (name,label,value="",type="text",attributes="") =>
-      `<label>${label}<input type="${type}" name="${name}" value="${html(rule[name] ?? value)}" ${attributes}></label>`;
-    const chosen = state.niches.filter(n=>rule.niches?.includes(n.id)).length;
-    const days = ["Seg","Ter","Qua","Qui","Sex","Sáb","Dom"];
-    return card(editRule==="new"?"Nova automação":"Editar automação",`
-      <form class="os-form af-form" data-form="rule">
-        ${input("name","Nome da automação","","text","required maxlength=80")}
-        <div class="af-grid">
-          <div class="af-task-section">
-            <h3>Seleção de produtos</h3>
-            <fieldset class="af-niches"><legend>Nichos da Shopee</legend>
-              <div class="af-row af-niche-head">
-                <label class="os-check"><input type="checkbox" data-select-niches${chosen===state.niches.length?" checked":""}> Selecionar todos</label>
-                <small data-niche-count role="status">${chosen} de ${state.niches.length} selecionadas</small>
-              </div>
-              <label>Buscar categoria <span class="af-search">${icon("search")}<input type="search" data-niche-filter placeholder="Ex.: Beleza"></span></label>
-              <div class="af-cols af-niche-list">${state.niches.map(n=>`<label class="os-check af-check-tile" data-niche-name="${html(n.name)}">
-                <input type="checkbox" name="niches" value="${html(n.id)}"${rule.niches?.includes(n.id)?" checked":""}> ${html(n.name)}</label>`).join("")}</div>
-              <p class="af-copy" data-niche-empty role="status" hidden>Nenhuma categoria encontrada.</p>
-            </fieldset>
-            ${input("keyword","Palavra-chave adicional","","text","maxlength=80")}
-            ${selectField("Ordenar na Shopee","sort",`${Object.entries(state.sorts).map(([key,value])=>option(key,value,String(rule.sort || 2))).join("")}`)}
-            <details class="af-disclosure">
-              <summary>Filtros avançados</summary>
-              <div class="af-task-section">
-                <label>Palavras bloqueadas <input name="blocked" maxlength="700" placeholder="Separe por vírgula" value="${html(rule.blocked?.join(", "))}"></label>
-                <div class="af-cols">${input("min_price","Preço mínimo (R$)","","number","min=0 step=.01")}${input("max_price","Preço máximo (R$)","","number","min=0 step=.01")}</div>
-                <div class="af-cols">${input("min_rating","Avaliação mínima","","number","min=0 max=5 step=.1")}${input("min_commission","Comissão mínima (%)","","number","min=0 max=100 step=.1")}</div>
-                <div class="af-cols">${input("min_sales","Vendas mínimas","","number","min=0 max=1000000")}${input("min_discount","Desconto mínimo (%)","","number","min=0 max=99")}</div>
-              </div>
-            </details>
-          </div>
-          <div class="af-task-section">
-            <h3>Publicação e horários</h3>
-            <fieldset class="af-niches"><legend>Destinos</legend>
-              ${available.length?available.map(d=>`<label class="os-check af-check-tile">
-                <input type="checkbox" name="destinations" value="${html(d.id)}"${rule.destinations?.includes(d.id)?" checked":""}>
-                ${html(d.name)} <small>${html(defaultMedia(d.mode))}</small></label>`).join("") :
-                `<p>Verifique a administração de um canal do WhatsApp ou de um destino de teste no Telegram.</p>${link("Abrir conexões","conexoes","link")}`}
-            </fieldset>
-            ${selectField("Template","template_id",`${templates(rule.template_id || state.deal_template)}`)}
-            <div class="af-cols">${input("opens","Início da janela","09:00","time","required")}${input("closes","Fim da janela","21:00","time","required")}</div>
-            <small>Para publicar o dia inteiro, use 00:00 nos dois campos.</small>
-            ${input("timezone","Fuso horário","America/Cuiaba","text","required")}
-            <fieldset><legend>Dias da semana</legend><div class="af-row">${days.map((day,i)=>`<label class="os-check af-check-tile">
-              <input type="checkbox" name="days" value="${i}"${!rule.days || rule.days.includes(i)?" checked":""}> ${day}</label>`).join("")}</div></fieldset>
-            <div class="af-cols">${input("interval","Intervalo (min)","90","number","required min=10 max=1440")}${input("daily","Limite por dia","8","number","required min=1 max=48")}</div>
-            ${input("repeat_hours","Não repetir produto (horas)","48","number","required min=1 max=720")}
-            ${selectField("Modo","mode",`${option("review","Revisar antes de publicar",rule.mode)}${option("automatic","Envio automático",rule.mode)}`)}
-            <p class="af-hint">${icon("info")}${state.promotech_automation?"A regra autorizada do PromoTech aceita envio automático a partir de 30 minutos.":"Os destinos só publicam automaticamente após autorização."}</p>
-          </div>
-        </div>
-        <div class="os-form-actions af-action-strip">${btn("Fechar editor","close-rule")}${submit(rule.active?"Salvar e pausar":"Salvar regra pausada","check",!available.length)}</div>
-      </form>`,"edit","","af-rule-editor");
+  function ruleDraftSummary() {
+    if (!ruleDraft) return "";
+    const destinations=automationDestinations().filter(row=>ruleDraft.destinations.includes(row.id));
+    const selectedTemplate=state.template.find(row=>row.id===ruleDraft.template_id);
+    const categories=ruleDraft.niches.length;
+    const productText=categories?`${categories} ${categories===1?"categoria":"categorias"}${ruleDraft.keyword?" · "+ruleDraft.keyword:""}`:ruleDraft.keyword||"Escolha os produtos";
+    return `<aside class="af-rule-summary" data-rule-summary aria-label="Resumo da automação"><span class="af-auto-eyebrow">Sua programação</span><h3>${html(ruleDraft.name||"Nova automação")}</h3>
+      <dl><div><dt>${icon("box")}Produtos</dt><dd>${html(productText)}</dd></div>
+      <div><dt>${icon("send")}Destinos</dt><dd>${html(destinations.map(row=>row.name).join(", ")||"Selecione os destinos")}</dd></div>
+      <div><dt>${icon("clock")}Frequência</dt><dd>A cada ${html(ruleDraft.interval||"—")} min · até ${html(ruleDraft.daily||"—")}/dia por destino</dd><dd>${html(ruleWindow(ruleDraft))} · ${ruleDraft.days.length} ${ruleDraft.days.length===1?"dia":"dias"}/semana</dd></div>
+      <div><dt>${icon("layers")}Publicação</dt><dd>${html(selectedTemplate?.name||"Selecione um modelo")}</dd><dd>${ruleDraft.mode==="automatic"?"Envio automático":"Revisão antes do envio"}</dd></div></dl>
+      <p>${html(ruleDraft.timezone)}</p></aside>`;
+  }
+
+  function ruleEditor() {
+    const rule=ruleDraft;
+    if (!rule) return '<div data-automation-section="editor" hidden></div>';
+    const input=(name,label,attributes="",type="text")=>`<label for="af-rule-${name}">${html(label)}<input id="af-rule-${name}" type="${type}" name="${name}" data-rule-field value="${html(rule[name]??"")}" ${attributes}></label>`;
+    const available=automationDestinations();
+    for(const ident of rule.destinations)if(!available.some(row=>row.id===ident))available.push({id:ident,name:"Destino indisponível",mode:"",eligible:false,reason:"Remova este destino ou configure a conexão novamente."});
+    const eligible=available.filter(row=>row.eligible),chosen=rule.niches.length;
+    const days=["Seg","Ter","Qua","Qui","Sex","Sáb","Dom"];
+    const timezones=[["America/Campo_Grande","Campo Grande"],["America/Cuiaba","Cuiabá"],["America/Sao_Paulo","Brasília / São Paulo"],["America/Manaus","Manaus"],["America/Rio_Branco","Rio Branco"],["America/Noronha","Fernando de Noronha"]];
+    if(!timezones.some(([key])=>key===rule.timezone))timezones.push([rule.timezone,rule.timezone]);
+    const selectedTemplate=state.template.find(row=>row.id===rule.template_id);
+    const index=ruleSteps.findIndex(([key])=>key===ruleStep);
+    const allDay=rule.opens==="00:00"&&rule.closes==="00:00";
+    const panel=(key,number,title,description,body)=>`<section class="af-rule-panel" id="af-rule-panel-${key}" data-rule-panel="${key}" aria-labelledby="af-rule-${key}-title"${ruleStep===key?"":" hidden"}><header><span class="af-auto-eyebrow">Etapa ${number} de 4</span><h3 id="af-rule-${key}-title" tabindex="-1">${title}</h3><p>${description}</p></header>${body}</section>`;
+    return `<section class="af-auto-panel af-rule-editor" data-automation-section="editor" aria-labelledby="af-rule-editor-title">
+      <header class="af-auto-section-head"><div><span class="af-auto-eyebrow">${editRule==="new"?"Nova rotina":"Configuração"}</span><h2 id="af-rule-editor-title" tabindex="-1">${editRule==="new"?"Crie sua automação":"Editar automação"}</h2></div><button type="button" class="af-auto-text-button" data-act="close-rule" aria-disabled="${ruleSaveBusy}">${icon("close")}Fechar</button></header>
+      <form class="os-form af-form" data-form="rule" novalidate aria-busy="${ruleSaveBusy}">
+        <div class="af-rule-name">${input("name","Nome da automação",'required maxlength="80" placeholder="Ex.: Achados de tecnologia"')}</div>
+        <nav class="af-rule-steps" aria-label="Etapas da automação">${ruleSteps.map(([key,label],position)=>`<button type="button" data-rule-step="${key}" aria-current="${key===ruleStep?"step":"false"}" aria-controls="af-rule-panel-${key}"><span>${position+1}</span>${label}</button>`).join("")}</nav>
+        <div class="af-rule-editor-body"><div class="af-rule-fields">
+        ${panel("products",1,"Quais produtos você quer publicar?","Busque na Shopee por categorias, por palavra-chave ou combine os dois.",`
+          ${input("keyword","Palavra-chave",'maxlength="80" placeholder="Ex.: fone bluetooth, cafeteira"')}
+          <fieldset class="af-rule-categories"><legend>Categorias</legend><div class="af-rule-choice-head"><label class="os-check"><input type="checkbox" data-select-niches${chosen===state.niches.length&&chosen?" checked":""}> Todas as categorias</label><span data-niche-count>${chosen} selecionadas</span></div>
+          <label class="af-rule-search"><span class="os-sr-only">Buscar categoria</span>${icon("search")}<input type="search" data-niche-filter placeholder="Buscar categoria" value="${html(ruleNicheFilter)}"></label>
+          <div class="af-rule-category-list">${state.niches.map(row=>`<label class="os-check af-rule-choice" data-niche-name="${html(row.name)}" data-rule-niche="${html(row.id)}"${normalize(row.name).includes(normalize(ruleNicheFilter))?"":" hidden"}><input type="checkbox" name="niches" data-rule-field value="${html(row.id)}"${rule.niches.includes(row.id)?" checked":""}><span>${html(row.name)}</span></label>`).join("")}</div>
+          <p class="af-auto-muted" data-niche-empty${state.niches.some(row=>normalize(row.name).includes(normalize(ruleNicheFilter)))?" hidden":""}>Nenhuma categoria encontrada.</p></fieldset>
+          ${selectField("Prioridade na busca","sort",Object.entries(state.sorts).map(([key,label])=>option(key,label,String(rule.sort))).join(""),"af-rule-sort")}
+          <details class="af-rule-advanced" data-rule-disclosure="advanced"${ruleAdvancedOpen?" open":""}><summary>Refinar os produtos${ruleOptionalNumbers.some(key=>rule[key]!==""&&rule[key]!=null)||rule.blocked?" · filtros definidos":""}</summary><div>
+          <div class="af-rule-field-pair">${input("min_price","Preço mínimo (R$)",'min="0" max="100000" step=".01"',"number")}${input("max_price","Preço máximo (R$)",'min="0" max="100000" step=".01"',"number")}</div>
+          <div class="af-rule-field-pair">${input("min_rating","Avaliação mínima",'min="0" max="5" step=".1"',"number")}${input("min_commission","Comissão mínima (%)",'min="0" max="100" step=".1"',"number")}</div>
+          <div class="af-rule-field-pair">${input("min_sales","Vendas mínimas",'min="0" max="1000000" step="1"',"number")}${input("min_discount","Desconto mínimo (%)",'min="0" max="99" step="1"',"number")}</div>
+          ${input("blocked","Evitar palavras",'maxlength="700" placeholder="Separe por vírgula"')}</div></details>`)}
+        ${panel("destinations",2,"Onde as ofertas devem aparecer?","Escolha até 5 destinos que já estão conectados à sua conta.",`
+          <div class="af-rule-choice-head"><strong data-rule-destination-count>${rule.destinations.length} ${rule.destinations.length===1?"selecionado":"selecionados"}</strong>${eligible.length>0&&eligible.length<=5?`<label class="os-check"><input type="checkbox" data-rule-all-destinations${eligible.every(row=>rule.destinations.includes(row.id))?" checked":""}> Selecionar todos</label>`:""}</div>
+          <div class="af-rule-destination-list">${available.map(row=>`<label class="af-rule-destination${row.eligible?"":" is-unavailable"}" data-rule-destination="${html(row.id)}"><input type="checkbox" name="destinations" data-rule-field value="${html(row.id)}"${rule.destinations.includes(row.id)?" checked":""}${row.eligible||rule.destinations.includes(row.id)?"":" disabled"}><span class="af-rule-destination-icon">${icon(row.mode==="telegram"?"send":"chat")}</span><span><strong>${html(row.name)}</strong><small>${html(defaultMedia(row.mode)||row.mode)}</small>${!row.eligible?`<small class="af-rule-destination-reason">${html(row.reason||"Verifique este destino em Conexões.")}</small>`:""}</span>${row.eligible?`<span class="af-rule-choice-check">${icon("check")}</span>`:""}</label>`).join("")||`<div class="af-auto-empty"><span>${icon("link")}</span><h3>Conecte seu primeiro destino</h3><p>Adicione um grupo ou canal do WhatsApp, ou um destino no Telegram.</p></div>`}</div>
+          ${link("Gerenciar conexões","conexoes","link")}`)}
+        ${panel("schedule",3,"Quando a automação deve funcionar?","Defina o ritmo das publicações e os horários permitidos.",`
+          <div class="af-rule-field-pair">${input("interval","Intervalo em minutos",'required min="10" max="1440" step="1"',"number")}${input("daily","Limite diário por destino",'required min="1" max="48" step="1"',"number")}</div>
+          <div class="af-rule-presets" aria-label="Intervalos sugeridos">${[30,60,90,180].map(value=>`<button type="button" data-rule-interval="${value}" aria-pressed="${String(rule.interval)===String(value)}">${value<60?value+" min":value===90?"1h30":value/60+" h"}</button>`).join("")}</div>
+          <fieldset class="af-rule-days"><legend>Dias da semana</legend><div>${days.map((day,position)=>`<label><input type="checkbox" name="days" data-rule-field value="${position}"${rule.days.includes(position)?" checked":""}><span>${day}</span></label>`).join("")}</div><div class="af-rule-day-actions"><button type="button" data-rule-days="all">Todos os dias</button><button type="button" data-rule-days="weekdays">Dias úteis</button></div></fieldset>
+          <div class="af-rule-choice-head"><strong>Horário de funcionamento</strong><label class="os-check"><input type="checkbox" data-rule-all-day${allDay?" checked":""}> Dia inteiro</label></div>
+          <div class="af-rule-field-pair" data-rule-window${allDay?" hidden":""}>${input("opens","Das",'required',"time")}${input("closes","Até",'required',"time")}</div>
+          ${selectField("Fuso horário","timezone",timezones.map(([value,label])=>option(value,label,rule.timezone)).join(""),"af-rule-timezone")}
+          ${input("repeat_hours","Não repetir o mesmo produto por (horas)",'required min="1" max="720" step="1"',"number")}`)}
+        ${panel("template",4,"Como você quer publicar?","Escolha o modelo da mensagem e revise sua programação.",`
+          ${selectField("Modelo da publicação","template_id",templates(rule.template_id),"af-rule-template")}
+          <div class="af-rule-template-preview" data-rule-template-summary>${icon("layers")}<span><strong>${html(selectedTemplate?.name||"Selecione um modelo")}</strong><small>${selectedTemplate?.media==="text"?"Somente texto":"Card e legenda"}${selectedTemplate?.brand?" · "+html(selectedTemplate.brand):""}</small></span></div>
+          <fieldset class="af-rule-modes"><legend>Modo de publicação</legend>${[["automatic","Enviar automaticamente","Publica nos destinos escolhidos dentro da sua programação.","repeat"],["review","Revisar antes de enviar","As ofertas ficam na fila aguardando sua aprovação.","eye"]].map(([value,title,description,glyph])=>`<label class="af-rule-mode"><input type="radio" name="mode" data-rule-field value="${value}"${rule.mode===value?" checked":""}><span>${icon(glyph)}<strong>${title}</strong><small>${description}</small></span></label>`).join("")}</fieldset>`)}
+        </div>${ruleDraftSummary()}</div>
+        <div data-rule-feedback>${ruleError?`<p class="af-auto-alert" role="alert">${icon("info")}<span>${html(ruleError)}</span></p>`:""}</div>
+        <footer class="af-rule-editor-actions"><div>${index?`<button type="button" class="os-button os-outline" data-rule-back>Voltar</button>`:`<button type="button" class="af-auto-text-button" data-act="close-rule" aria-disabled="${ruleSaveBusy}">Cancelar edição</button>`}</div><div>${index<3?`<button type="button" class="os-button" data-rule-next>Continuar${icon("arrow")}</button>`:
+          `<button id="af-rule-save-paused" type="submit" class="os-button os-outline" name="intent" value="paused" aria-disabled="${ruleSaveBusy}">${ruleSaveBusy?"Salvando…":"Salvar pausada"}</button><button id="af-rule-save-active" type="submit" class="os-button" name="intent" value="active" aria-disabled="${ruleSaveBusy}" aria-busy="${ruleSaveBusy}">${ruleSaveBusy?'<span class="os-spinner" aria-hidden="true"></span>':icon("check")}${ruleSaveBusy?"Salvando…":"Salvar e ativar"}</button>`}</div></footer>
+      </form></section>`;
+  }
+
+  function automationCard(rule) {
+    const execution=ruleExecution(rule),runtime=rule.runtime;
+    const jobs=state.jobs.filter(job=>job.doc?.rule?.id===rule.id);
+    const activity=Number.isFinite(rule.activity?.published_today)?rule.activity:null;
+    const published=activity?.published_today??jobs.filter(job=>job.status==="published").length;
+    const approval=activity?.approval??jobs.filter(job=>job.status==="approval").length;
+    const queued=activity?.pending??jobs.filter(job=>["queued","preparing","dispatching"].includes(job.status)).length;
+    const failed=activity?(activity.failed||0)+(activity.unknown||0):jobs.filter(job=>attentionStates.includes(job.status)).length;
+    const busy=ruleActionBusy.has(rule.id),blocked=runtime?.status==="blocked";
+    const status=blocked?"Precisa de atenção":rule.active?"Ativa":"Pausada";
+    const destinations=(rule.destinations||[]).map(ident=>state.destination.find(row=>row.id===ident)).filter(Boolean);
+    const latest=execution?.executed_at?date(execution.executed_at,rule.timezone):execution?"Registrada sem horário":"Ainda não executada";
+    return `<article class="af-auto-panel af-automation-card" data-automation-card="${html(rule.id)}"><header class="af-auto-card-head"><span class="af-auto-card-icon">${icon("repeat")}</span><div><h3>${html(rule.name)}</h3><span>${rule.mode==="automatic"?"Envio automático":"Revisão antes do envio"}</span></div>${pill(status,blocked?"warning":rule.active?"success":"neutral")}</header>
+      <div class="af-auto-destinations">${destinations.map(row=>`<span>${icon(row.mode==="telegram"?"send":"chat")}${html(row.name)}</span>`).join("")||'<span>Nenhum destino configurado</span>'}</div>
+      <div class="af-auto-schedule"><span>${icon("clock")}A cada ${html(rule.interval)} min</span><span>${icon("calendar")}${html(ruleWindow(rule))}</span><span>Até ${html(rule.daily)}/dia por destino</span></div>
+      <dl class="af-auto-execution"><div><dt>Última busca</dt><dd>${html(latest)}</dd>${execution?`<small>${html(execution.reason)}</small>`:""}</div><div><dt>Próxima busca</dt><dd>${html(rule.active?(rule.next_at?date(rule.next_at,rule.timezone):"Sem horário definido"):"Automação pausada")}</dd><small>${html(rule.timezone)}</small></div></dl>
+      ${blocked||runtime?.can_activate===false?`<p class="af-auto-alert">${icon("info")}<span>${html(runtime.reason||"Revise as conexões e os destinos desta automação.")}</span></p>`:""}
+      ${activity||jobs.length?`<div class="af-auto-deliveries" aria-label="${activity?"Resultados da automação":"Envios recentes"}">${activity||published?`<span data-automation-kpi="published" class="${published?"is-success":""}">${icon("check")}${published} ${activity?"enviadas hoje":published===1?"publicada recentemente":"publicadas recentemente"}</span>`:""}${approval?`<span data-automation-kpi="approval">${approval} em revisão</span>`:""}${queued?`<span data-automation-kpi="pending">${queued} na fila</span>`:""}${failed?`<span data-automation-kpi="failed" class="is-warning">${failed} ${failed===1?"ocorrência":"ocorrências"}</span>`:""}</div>`:""}
+      <footer><button type="button" class="os-button os-outline" data-act="edit-rule" data-value="${html(rule.id)}" aria-disabled="${ruleSaveBusy}">${icon("edit")}Editar</button><button type="button" class="os-button${rule.active?" os-outline":""}" data-act="${rule.active?"pause-rule":"start-rule"}" data-value="${html(rule.id)}" aria-disabled="${busy}" aria-busy="${busy}"${!rule.active&&runtime?.can_activate===false?" disabled":""}>${busy?'<span class="os-spinner" aria-hidden="true"></span>':icon(rule.active?"clock":"check")}${busy?"Atualizando…":rule.active?"Pausar":"Ativar"}</button></footer></article>`;
   }
 
   function automations() {
-    const rule = state.rule.find(r=>r.id===editRule) || {};
-    const lists = state.rule.map(r=>`<article class="os-card af-card af-automation-card">
-      <header class="af-card-head">${square("repeat")}<div><h2>${html(r.name)}</h2><p>${html(ruleDestNames(r) || "Sem destinos")}</p></div></header>
-      <div class="af-row">${pill(r.active?"Ativa":"Pausada",r.active?"success":"neutral")}${pill(r.mode==="automatic"?"Envio automático":"Envio com revisão")}</div>
-      <dl class="af-rule-stats">
-      <div><dt>Categorias</dt><dd>${r.niches?.length ? `${r.niches.length} ${r.niches.length===1?"selecionada":"selecionadas"}` : html(r.keyword || "Todas")}</dd></div>
-        <div><dt>Frequência</dt><dd>A cada ${r.interval} min</dd></div>
-        <div><dt>Janela</dt><dd>${html(ruleWindow(r))}</dd></div>
-      </dl>
-      <p class="af-hint">${icon("clock")}${r.active?`Próxima execução: ${ruleDate(r)} (${html(r.timezone)})`:`Até ${r.daily} publicações por dia · ${html(r.timezone)}`}</p>
-      <div class="af-row af-action-strip">${btn("Editar","edit-rule",r.id)}${btn(r.active?"Pausar":"Ativar",r.active?"pause-rule":"start-rule",r.id,!r.active)}</div>
-    </article>`).join("");
-    return heading("Automações","Defina o que publicar, onde enviar e com que frequência.",btn("Nova automação","new-rule","",true)) +
-      `<div class="af-page">
-        ${editRule?ruleEditor(rule,ruleDestinations()):""}
-        <div class="af-sheet">
-          <section class="af-stack" aria-label="Regras cadastradas">
-            <h2>Minhas automações</h2>
-            ${lists||`<div class="os-card af-card">${empty("Nenhuma automação",
-              "Escolha as categorias e prepare a primeira rotina de publicação.","repeat")}</div>`}
-          </section>
-          ${card("Últimas execuções",decisions(),"activity","Resultado da busca de ofertas por regra")}
-        </div>
-      </div>`;
+    const active=activeRules().length,blocked=state.rule.filter(rule=>rule.runtime?.status==="blocked").length;
+    const upcoming=activeRules().filter(rule=>rule.next_at).sort((a,b)=>a.next_at-b.next_at)[0];
+    const rules=state.rule.filter(rule=>ruleFilter==="all"||ruleFilter==="active"&&rule.active||ruleFilter==="paused"&&!rule.active);
+    return `<div class="af-automations-workspace"><header class="af-auto-heading"><div><span class="af-auto-eyebrow">Afiliados</span><h1>Automações</h1><p>Suas ofertas, nos destinos certos, no ritmo que você escolhe.</p></div><div><button type="button" class="os-icon-button" data-act="refresh-automations" aria-label="Atualizar automações" aria-busy="${ruleRefreshBusy}" aria-disabled="${ruleRefreshBusy}">${icon("refresh")}</button>${btn("Nova automação","new-rule","",true)}</div></header>
+      <div class="af-auto-overview" data-automation-section="overview"><div><span>${icon("repeat")}Programações ativas</span><strong>${active}<small>${blocked?blocked+" precisam de atenção":active===1?"automação ativa":"automações ativas"}</small></strong></div><div><span>${icon("clock")}Em pausa</span><strong>${state.rule.length-active}<small>salvas para retomar</small></strong></div><div><span>${icon("calendarClock")}Próxima busca</span><strong class="af-auto-next">${html(upcoming?date(upcoming.next_at,upcoming.timezone):"Sem programação")}<small>${html(upcoming?.name||"Crie sua primeira rotina")}</small></strong></div></div>
+      ${ruleEditor()}
+      <div data-automation-section="feedback">${ruleListError?`<p class="af-auto-alert" role="alert">${icon("info")}<span>${html(ruleListError)}</span></p>`:""}</div>
+      <div class="af-auto-grid"><section class="af-auto-rules" data-automation-section="list" aria-labelledby="af-auto-list-title"><header class="af-auto-section-head"><h2 id="af-auto-list-title">Suas automações <span>${state.rule.length}</span></h2><div class="af-auto-filters" role="group" aria-label="Filtrar automações">${[["all","Todas"],["active","Ativas"],["paused","Pausadas"]].map(([key,label])=>`<button type="button" data-rule-filter="${key}" aria-pressed="${ruleFilter===key}">${label}</button>`).join("")}</div></header><div class="af-auto-rule-list">${rules.map(automationCard).join("")||`<div class="af-auto-panel af-auto-empty"><span>${icon("repeat")}</span><h3>${state.rule.length?"Nenhuma automação neste filtro":"Crie sua primeira automação"}</h3><p>${state.rule.length?"Escolha outro filtro para ver suas programações.":"Defina os produtos, os destinos e a frequência. O Orion cuida das próximas buscas."}</p>${!state.rule.length?btn("Começar agora","new-rule","",true):""}</div>`}</div></section>
+      <section class="af-auto-panel af-auto-history" data-automation-section="history" aria-labelledby="af-auto-history-title"><header class="af-auto-section-head"><div><span class="af-auto-eyebrow">Acompanhamento</span><h2 id="af-auto-history-title">Últimas buscas</h2></div>${icon("activity")}</header>${decisions()}<a class="af-auto-text-button" href="#fila">Ver fila e publicações${icon("arrow")}</a></section></div></div>`;
   }
 
   function history() {
@@ -851,9 +895,9 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
       const provider = dest?.mode?.startsWith("whatsapp")?"WhatsApp":"Telegram";
       return `<tr data-history-status="${html(job.status)}" data-history-text="${html(normalize(job.doc.offer.title+" "+(dest?.name||"")))}">
         <th scope="row"><strong>${html(job.doc.offer.title)}</strong><small>${html(dest?.name || "Destino removido")}</small></th>
-        <td>${jobPill(job)}${job.error||job.receipt?`<small>${html(job.error || `Confirmada pelo ${provider} · #${job.receipt}`)}</small>`:""}</td>
+        <td>${jobPill(job)}${job.error||job.status==="published"&&job.receipt?`<small>${html(job.error || `Envio confirmado pelo ${provider}`)}</small>`:""}</td>
         <td>${date(when,job.doc.rule?.timezone)}</td>
-        <td>${job.status==="approval"&&state.sending?btn("Aprovar teste","approve",job.id,true):""}
+        <td>${job.status==="approval"&&(job.doc?.automation?.mode==="review"||state.sending)?btn(job.doc?.automation?.mode==="review"?"Aprovar envio":"Aprovar teste","approve",job.id,true):""}
           ${["approval","queued","paused","expired","failed"].includes(job.status)?btn("Cancelar","cancel-job",job.id):""}</td>
       </tr>`;
     }).join("");
@@ -898,7 +942,7 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
   // chart dates and cards mounted during both user interactions and polling.
   function dashboardNodeKey(node) {
     if (node.nodeType!==1) return null;
-    for (const name of ["id","data-offer-section","data-offer-draft","data-offer-destination-row","data-offer-destination","data-offer-phrase","data-offer-tab","data-offer-product","data-offer-notice","data-offer-job","data-dashboard-date","data-dashboard-period","data-dashboard-metric","data-dashboard-publications","data-dashboard-card","data-dashboard-kpi","data-dashboard-step","data-dashboard-notice","data-act","aria-labelledby"]) {
+    for (const name of ["id","data-automation-section","data-automation-card","data-automation-decision","data-rule-panel","data-rule-step","data-rule-niche","data-rule-destination","data-rule-filter","data-offer-section","data-offer-draft","data-offer-destination-row","data-offer-destination","data-offer-phrase","data-offer-tab","data-offer-product","data-offer-notice","data-offer-job","data-dashboard-date","data-dashboard-period","data-dashboard-metric","data-dashboard-publications","data-dashboard-card","data-dashboard-kpi","data-dashboard-step","data-dashboard-notice","data-act","aria-labelledby"]) {
       if (node.hasAttribute(name)) return `${node.nodeName}:${name}:${node.getAttribute(name)}`;
     }
     const name = node.getAttribute("class")?.split(/\s+/)[0];
@@ -1136,10 +1180,182 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     window.OrionFields?.refresh(current);
   }
 
+  function syncRuleControls() {
+    for(const button of content.querySelectorAll('[data-act="start-rule"]')) {
+      const rule=state.rule.find(row=>row.id===button.dataset.value);
+      button.disabled=rule?.runtime?.can_activate===false;
+    }
+    const form=content.querySelector('[data-form="rule"]');
+    if (!form||!ruleDraft) return;
+    form.setAttribute('aria-busy',String(ruleSaveBusy));
+    for (const field of form.querySelectorAll('[data-rule-field],select[name]')) {
+      const name=field.name;
+      if (!(name in ruleDraft)) continue;
+      if (field.type==="checkbox") field.checked=ruleDraft[name].includes(name==="days"?Number(field.value):field.value);
+      else if (field.type==="radio") field.checked=ruleDraft[name]===field.value;
+      else if (field.value!==String(ruleDraft[name]??"")) field.value=ruleDraft[name]??"";
+    }
+    const all=form.querySelector('[data-select-niches]'),items=[...form.querySelectorAll('input[name="niches"]')];
+    const selected=items.filter(field=>field.checked).length;
+    if (all) {all.checked=items.length>0&&selected===items.length;all.indeterminate=selected>0&&selected<items.length;}
+    const count=form.querySelector('[data-niche-count]');
+    if(count)count.textContent=ruleDraft.niches.length+' selecionadas';
+    const allDestinations=form.querySelector('[data-rule-all-destinations]'),available=ruleDestinations();
+    if(allDestinations){allDestinations.checked=available.length>0&&available.every(row=>ruleDraft.destinations.includes(row.id));allDestinations.indeterminate=ruleDraft.destinations.length>0&&!allDestinations.checked;}
+    const destinations=form.querySelector('[data-rule-destination-count]');
+    if(destinations)destinations.textContent=ruleDraft.destinations.length+(ruleDraft.destinations.length===1?' selecionado':' selecionados');
+    for (const panel of form.querySelectorAll('[data-rule-panel]')) panel.hidden=panel.dataset.rulePanel!==ruleStep;
+    for (const button of form.querySelectorAll('[data-rule-step]')) button.setAttribute('aria-current',button.dataset.ruleStep===ruleStep?'step':'false');
+    for (const button of form.querySelectorAll('[data-rule-interval]')) button.setAttribute('aria-pressed',String(button.dataset.ruleInterval===String(ruleDraft.interval)));
+    for (const row of form.querySelectorAll('[data-niche-name]')) row.hidden=!normalize(row.dataset.nicheName).includes(normalize(ruleNicheFilter));
+    const empty=form.querySelector('[data-niche-empty]');
+    if(empty)empty.hidden=[...form.querySelectorAll('[data-niche-name]')].some(row=>!row.hidden);
+  }
+
+  function updateAutomations(selector='.af-automations-workspace',markup=automations()) {
+    const root=content.querySelector('.af-automations-workspace');
+    const current=root?.matches(selector)?root:root?.querySelector(selector);
+    if(!current)return;
+    const template=document.createElement('template');template.innerHTML=markup;
+    const next=template.content.firstElementChild;if(!next)return;
+    const focused=root.contains(document.activeElement)?document.activeElement:null;
+    const visible=node=>{const rect=node.getBoundingClientRect();return rect.height>0&&rect.bottom>56&&rect.top<window.innerHeight;};
+    const anchor=focused&&visible(focused)?focused:[...root.querySelectorAll('[data-automation-section],.af-auto-heading')].find(visible);
+    const top=anchor?.getBoundingClientRect().top,x=window.scrollX,y=window.scrollY;
+    const selection=focused&&typeof focused.selectionStart==='number'?[focused.selectionStart,focused.selectionEnd,focused.selectionDirection]:null;
+    patchDashboardNode(current,next);syncRuleControls();
+    if(focused?.isConnected&&!focused.disabled){
+      if(document.activeElement!==focused)focused.focus({preventScroll:true});
+      if(selection)focused.setSelectionRange(...selection);
+    }
+    const target=anchor?.isConnected?window.scrollY+anchor.getBoundingClientRect().top-top:y;
+    if(Math.abs(window.scrollY-target)>.5)window.scrollTo({left:x,top:target,behavior:'instant'});
+    window.OrionFields?.refresh(current);
+  }
+
+  function changeRuleDraft(field,refresh=true) {
+    if(!ruleDraft||!field.name||!(field.name in ruleDraft))return;
+    const key=field.name;
+    let value=field.value;
+    if(field.type==='checkbox'){
+      const selected=new Set(ruleDraft[key]),item=key==='days'?Number(value):value;
+      if(field.checked)selected.add(item);else selected.delete(item);
+      value=[...selected];
+    }else if(field.type==='radio'&&!field.checked)return;
+    if(JSON.stringify(ruleDraft[key])===JSON.stringify(value))return;
+    ruleDraft[key]=value;ruleDraftRevision++;ruleError='';
+    if(refresh){updateAutomations('[data-rule-summary]',ruleDraftSummary());updateAutomations('[data-rule-feedback]','<div data-rule-feedback></div>');}
+  }
+
+  function openRuleEditor(ident) {
+    if(ruleSaveBusy)return;
+    const saved=state.rule.find(row=>row.id===ident);
+    const defaults={name:'',keyword:'',niches:[],sort:'2',blocked:'',min_price:'',max_price:'',min_rating:'',min_commission:'',min_sales:'',min_discount:'',
+      destinations:[],template_id:state.deal_template||state.template[0]?.id||'default',days:[0,1,2,3,4,5,6],opens:'09:00',closes:'21:00',timezone:'America/Campo_Grande',interval:'90',daily:'8',repeat_hours:'48',mode:'automatic'};
+    ruleDraft=Object.fromEntries(Object.entries(defaults).map(([key,value])=>[key,saved?.[key]??value]));
+    ruleDraft.blocked=Array.isArray(ruleDraft.blocked)?ruleDraft.blocked.join(', '):ruleDraft.blocked;
+    for(const key of ['niches','destinations','days'])ruleDraft[key]=[...ruleDraft[key]];
+    ruleWindowBeforeAllDay=ruleDraft.opens==='00:00'&&ruleDraft.closes==='00:00'?{opens:'09:00',closes:'21:00'}:{opens:ruleDraft.opens,closes:ruleDraft.closes};
+    editRule=saved?.id||'new';ruleDraftKey=saved?.id||id();ruleEditorVersion++;ruleDraftRevision=0;
+    ruleNicheFilter='';ruleAdvancedOpen=false;ruleStep='products';ruleError='';
+    render();focusSection('.af-rule-editor');
+  }
+
+  function validateRule(step=null) {
+    const form=content.querySelector('[data-form="rule"]');
+    if(!ruleDraft||!form)return false;
+    const fail=(message,section,field)=>{
+      ruleError=message;ruleStep=section;render();
+      content.querySelector(field||'[data-rule-feedback]')?.focus({preventScroll:true});return false;
+    };
+    if(!ruleDraft.name.trim())return fail('Dê um nome para esta automação.','products','#af-rule-name');
+    if((!step||step==='products')&&!ruleDraft.keyword.trim()&&!ruleDraft.niches.length)return fail('Escolha uma categoria ou informe uma palavra-chave.','products','#af-rule-keyword');
+    if(!step||step==='destinations'){
+      if(!ruleDraft.destinations.length)return fail('Selecione pelo menos um destino.','destinations','#af-rule-destinations-title');
+      if(ruleDraft.destinations.length>5)return fail('Selecione até 5 destinos por automação.','destinations','#af-rule-destinations-title');
+      const available=new Set(ruleDestinations().map(row=>row.id));
+      if(ruleDraft.destinations.some(key=>!available.has(key)))return fail('Um dos destinos selecionados precisa ser verificado em Conexões. Revise sua seleção.','destinations','#af-rule-destinations-title');
+    }
+    if(!step||step==='schedule'){
+      if(!ruleDraft.days.length)return fail('Escolha pelo menos um dia da semana.','schedule','#af-rule-schedule-title');
+      if(!/^\d{2}:\d{2}$/.test(ruleDraft.opens)||!/^\d{2}:\d{2}$/.test(ruleDraft.closes)||!(ruleDraft.opens==='00:00'&&ruleDraft.closes==='00:00')&&ruleDraft.opens>=ruleDraft.closes)
+        return fail('O horário final precisa ser depois do inicial. Use Dia inteiro para funcionar 24 horas.','schedule','#af-rule-opens');
+      try{new Intl.DateTimeFormat('pt-BR',{timeZone:ruleDraft.timezone}).format();}catch{return fail('Selecione um fuso horário válido.','schedule','#af-rule-timezone');}
+    }
+    if(!step||step==='products'){
+      const blocked=ruleDraft.blocked.split(',').map(value=>value.trim()).filter(Boolean);
+      if(blocked.length>20||blocked.some(value=>value.length>60)){ruleAdvancedOpen=true;return fail('Use até 20 palavras bloqueadas, com no máximo 60 caracteres cada.','products','#af-rule-blocked');}
+      if(ruleDraft.min_price!==''&&ruleDraft.max_price!==''&&Number(ruleDraft.min_price)>Number(ruleDraft.max_price)){ruleAdvancedOpen=true;return fail('O preço máximo precisa ser maior ou igual ao mínimo.','products','#af-rule-max_price');}
+    }
+    for(const field of form.querySelectorAll('input[name],select[name]')){
+      const section=field.closest('[data-rule-panel]')?.dataset.rulePanel||'products';
+      if(step&&section!==step)continue;
+      if(!field.disabled&&!field.checkValidity()){
+        if(field.closest('[data-rule-disclosure]'))ruleAdvancedOpen=true;
+        return fail('Confira o valor de '+(form.querySelector('label[for="'+CSS.escape(field.id)+'"]')?.firstChild.textContent||field.name)+'.',section,field.id?'#'+CSS.escape(field.id):null);
+      }
+    }
+    if((!step||step==='template')&&!state.template.some(row=>row.id===ruleDraft.template_id))return fail('Escolha um modelo de publicação disponível.','template','#af-rule-template');
+    return true;
+  }
+
+  function setRuleStep(next,validate=false) {
+    if(!ruleDraft||!ruleSteps.some(([key])=>key===next))return;
+    if(validate&&!validateRule(ruleStep))return;
+    ruleStep=next;ruleError='';render();
+    content.querySelector('#af-rule-'+next+'-title')?.focus({preventScroll:true});
+  }
+
+  function saveRuleRow(row) {
+    // A read started before this mutation must not restore an older schedule.
+    stateVersion++;stateLoading=false;
+    const index=state.rule.findIndex(item=>item.id===row.id);
+    const previous=index>=0?state.rule[index]:{};
+    const saved={...previous,...row};
+    if(!row.runtime)delete saved.runtime;
+    if(index>=0)state.rule[index]=saved;else state.rule.unshift(saved);
+  }
+
+  async function saveAutomation(activate=false) {
+    if(ruleSaveBusy||!ruleDraft||ruleActionBusy.size)return;
+    const form=content.querySelector('[data-form="rule"]');
+    for(const field of form.querySelectorAll('[data-rule-field],select[name]'))changeRuleDraft(field,false);
+    if(!validateRule())return;
+    const value={...ruleDraft,days:[...ruleDraft.days],destinations:[...ruleDraft.destinations],niches:[...ruleDraft.niches],blocked:ruleDraft.blocked.split(',').map(word=>word.trim()).filter(Boolean)};
+    for(const key of ruleNumberFields)value[key]=Number(value[key]);
+    for(const key of ruleOptionalNumbers)value[key]=value[key]===''?null:Number(value[key]);
+    const key=ruleDraftKey,revision=ruleDraftRevision,editorVersion=ruleEditorVersion;
+    let stored=false;
+    ruleSaveBusy=true;ruleError='';render();
+    try{
+      const saved=await api('rules/'+encodeURIComponent(key),'PUT',value);
+      if(controller.signal.aborted)return;
+      stored=true;saveRuleRow(saved);
+      if(editorVersion===ruleEditorVersion)editRule=saved.id;
+      if(activate){
+        const active=await api('rules/'+encodeURIComponent(saved.id)+'/activate','POST',{active:true});
+        if(controller.signal.aborted)return;
+        saveRuleRow(active);
+      }
+      if(editorVersion===ruleEditorVersion&&revision===ruleDraftRevision){editRule=null;ruleDraft=null;ruleDraftKey=null;ruleEditorVersion++;}
+      else if(editorVersion===ruleEditorVersion)ruleError='A programação foi salva. As alterações feitas durante o salvamento ainda estão em edição.';
+      notify(activate?'Automação salva e ativada.':'Automação salva e pausada.');
+    }catch(error){
+      if(!controller.signal.aborted&&editorVersion===ruleEditorVersion)ruleError=(stored&&activate?'Configuração salva e pausada. Não foi possível ativar: ':'')+(error.message||'Não foi possível salvar esta automação.');
+    }finally{
+      ruleSaveBusy=false;
+      if(!controller.signal.aborted&&route==='automacoes')render();
+    }
+  }
+
   function render() {
     if (!state || controller.signal.aborted) return;
     if (route==="dashboard" && content.querySelector(".af-dashboard")) {
       updateDashboard(".af-dashboard",dashboard());
+      return;
+    }
+    if (route==="automacoes" && content.querySelector(".af-automations-workspace")) {
+      updateAutomations();
       return;
     }
     if (route==="ofertas" && content.querySelector(".af-offers-workspace")) {
@@ -1148,6 +1364,7 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     }
     content.innerHTML = views[route]();
     if (route==="ofertas") syncOfferControls();
+    if (route==="automacoes") syncRuleControls();
     const all = $("[data-select-niches]");
     if (all) all.indeterminate = !all.checked && !!all.form.querySelector("input[name=niches]:checked");
     filterHistory();
@@ -1534,38 +1751,25 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
       await open("fila");
       notify("Publicação guardada para revisão.");
     },
-    rule: async form=>{
-      const current = state.rule.find(r=>r.id===editRule);
-      const value=Object.fromEntries(form);
-      value.days=form.getAll("days").map(Number);
-      value.destinations=form.getAll("destinations");
-      value.niches=form.getAll("niches");
-      if (!value.destinations.length) throw new Error("Escolha pelo menos um destino.");
-      if (!value.days.length) throw new Error("Escolha pelo menos um dia da semana.");
-      value.blocked=value.blocked.split(",").map(s=>s.trim()).filter(Boolean);
-      for (const key of ["interval","daily","repeat_hours","sort"]) value[key]=Number(value[key]);
-      for (const key of ["min_price","max_price","min_rating","min_commission","min_sales","min_discount"]) {
-        value[key]=value[key]===""?null:Number(value[key]);
-      }
-      if (current?.active && !await confirmAction("Salvar e pausar automação?",
-        `${current.name} ficará pausada até você ativá-la novamente.`,"Salvar e pausar")) return;
-      await api("rules/"+(current?.id||id()),"PUT",value);
-      editRule=null;
-      await reload();
-      notify("Regra salva como pausada.");
-    },
+    rule: async (form,submitter)=>saveAutomation(submitter?.value==="active"),
   };
 
   async function toggleRule(ident, active) {
-    const rule = state.rule.find(r=>r.id===ident);
-    const label = active?"Ativar automação":"Pausar automação";
-    const detail = active?
-      `${rule.name} · ${ruleWindow(rule)}, a cada ${rule.interval} minutos, até ${rule.daily} publicações por dia.`:
+    const rule=state.rule.find(row=>row.id===ident);
+    if(!rule||ruleSaveBusy||ruleActionBusy.has(ident)||active&&rule.runtime?.can_activate===false)return;
+    ruleActionBusy.add(ident);ruleListError='';
+    const label=active?'Ativar automação':'Pausar automação';
+    const detail=active?`${rule.name} · ${ruleWindow(rule)}, a cada ${rule.interval} minutos, até ${rule.daily} publicações por destino/dia.`:
       `${rule.name} deixará de programar novas ofertas até ser reativada.`;
-    if (!await confirmAction(label+"?",detail,label)) return;
-    await api("rules/"+ident+"/activate","POST",{active});
-    await reload();
-    notify(active?"Automação ativada.":"Automação pausada.");
+    try{
+      if(!await confirmAction(label+'?',detail,label))return;
+      if(controller.signal.aborted)return;
+      if(route==='automacoes')render();
+      const saved=await api('rules/'+ident+'/activate','POST',{active});
+      if(controller.signal.aborted)return;
+      saveRuleRow(saved);notify(active?'Automação ativada.':'Automação pausada.');
+    }catch(error){if(!controller.signal.aborted)ruleListError=error.message||'Não foi possível atualizar a automação.';}
+    finally{ruleActionBusy.delete(ident);if(!controller.signal.aborted&&route==='automacoes')render();}
   }
 
   async function disconnect(name) {
@@ -1693,14 +1897,29 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     },
     "new-template": async ()=>{ editTemplate="new"; render(); focusSection(".af-rule-editor"); },
     "edit-template": async ident=>{ editTemplate=ident; render(); focusSection(".af-rule-editor"); },
-    "new-rule": async ()=>{ editRule="new"; render(); focusSection(".af-rule-editor"); },
-    "edit-rule": async ident=>{ editRule=ident; render(); focusSection(".af-rule-editor"); },
-    "close-rule": async ()=>{ editRule=null; render(); content.querySelector("[data-act=new-rule]").focus(); },
+    "new-rule": async ()=>openRuleEditor('new'),
+    "edit-rule": async ident=>openRuleEditor(ident),
+    "close-rule": async ()=>{
+      if(ruleSaveBusy)return;
+      editRule=null;ruleDraft=null;ruleDraftKey=null;ruleError='';ruleEditorVersion++;
+      render();content.querySelector('[data-act="new-rule"]')?.focus({preventScroll:true});
+    },
+    "refresh-automations": async ()=>{
+      if(ruleRefreshBusy)return;
+      ruleRefreshBusy=true;ruleListError='';render();
+      try{await reload();}catch(error){ruleListError=error.message||'Não foi possível atualizar as automações.';}
+      finally{ruleRefreshBusy=false;if(!controller.signal.aborted&&route==='automacoes')render();}
+    },
     "start-rule": ident=>toggleRule(ident,true),
     "pause-rule": ident=>toggleRule(ident,false),
     approve: async ident=>{
-      if (!await confirmAction("Publicar teste?","O teste será enviado ao destino escolhido para esta publicação.","Publicar teste")) return;
-      await api("jobs/"+ident,"POST",{action:"approve",confirm_test:true});
+      const job=state.jobs.find(row=>row.id===ident);
+      const recurringReview=job?.doc?.automation?.mode==="review";
+      if(!job||job.status!=="approval"||!recurringReview&&!state.sending)return;
+      const destination=state.destination.find(row=>row.id===job.destination);
+      const detail=recurringReview?`${job.doc.offer.title} entrará na fila de envio para ${destination?.name||"o destino desta publicação"}.`:"O teste será enviado ao destino escolhido para esta publicação.";
+      if (!await confirmAction(recurringReview?"Aprovar envio?":"Publicar teste?",detail,recurringReview?"Aprovar envio":"Publicar teste")) return;
+      await api("jobs/"+ident,"POST",{action:"approve",...(recurringReview?{}:{confirm_test:true})});
       await reload();
       notify("Publicação aprovada.");
     },
@@ -1729,15 +1948,16 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     if (!state || !Object.hasOwn(formActions,form.dataset.form)) return;
     event.preventDefault();
     const button=event.submitter;
-    const keepFocus=!!form.closest(".af-offers-workspace")&&document.activeElement===button;
-    if (button&&!form.closest(".af-offers-workspace")) button.disabled=true;
+    const keepFocus=!!form.closest(".af-offers-workspace,.af-automations-workspace")&&document.activeElement===button;
+    if (button&&!form.closest(".af-offers-workspace,.af-automations-workspace")) button.disabled=true;
     form.setAttribute("aria-busy","true");
-    try { await formActions[form.dataset.form](new FormData(form)); }
+    try { await formActions[form.dataset.form](new FormData(form),button); }
     catch(error){ notify(error.message,true); }
     finally {
       if (button) button.disabled=false;
       form.removeAttribute("aria-busy");
       if (form.closest(".af-offers-workspace")) syncOfferControls();
+      if (form.closest(".af-automations-workspace")) syncRuleControls();
       if (keepFocus&&button?.isConnected&&!button.disabled&&document.activeElement===document.body) button.focus({preventScroll:true});
     }
   }, {signal: controller.signal});
@@ -1753,6 +1973,20 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
       return;
     }
     if (!state) return;
+    const ruleNavigation=event.target.closest('[data-rule-step],[data-rule-next],[data-rule-back]');
+    if(ruleNavigation&&ruleDraft){
+      const index=ruleSteps.findIndex(([key])=>key===ruleStep);
+      const next=ruleNavigation.dataset.ruleStep||ruleSteps[index+(ruleNavigation.hasAttribute('data-rule-next')?1:-1)]?.[0];
+      setRuleStep(next,ruleNavigation.hasAttribute('data-rule-next'));return;
+    }
+    const rulePreset=event.target.closest('[data-rule-interval],[data-rule-days]');
+    if(rulePreset&&ruleDraft){
+      if(rulePreset.hasAttribute('data-rule-interval'))ruleDraft.interval=rulePreset.dataset.ruleInterval;
+      else ruleDraft.days=rulePreset.dataset.ruleDays==='all'?[0,1,2,3,4,5,6]:[0,1,2,3,4];
+      ruleDraftRevision++;ruleError='';render();return;
+    }
+    const automationFilter=event.target.closest('[data-rule-filter]');
+    if(automationFilter){ruleFilter=automationFilter.dataset.ruleFilter;render();return;}
     const period = event.target.closest("[data-dashboard-period]");
     if (period && Object.hasOwn(dashboardPeriods,period.dataset.dashboardPeriod)) {
       if (analyticsPeriod!==period.dataset.dashboardPeriod) {
@@ -1800,13 +2034,14 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     if (filter) { historyFilter=filter.dataset.historyFilter;filterHistory();return; }
     const button=event.target.closest("[data-act]");
     if (!button || !Object.hasOwn(actions,button.dataset.act)) return;
-    const keepFocus=!!button.closest(".af-offers-workspace")&&document.activeElement===button;
-    if (!button.closest(".af-offers-workspace")) button.disabled=true;
+    const keepFocus=!!button.closest(".af-offers-workspace,.af-automations-workspace")&&document.activeElement===button;
+    if (!button.closest(".af-offers-workspace,.af-automations-workspace")) button.disabled=true;
     try { await actions[button.dataset.act](button.dataset.value); }
     catch(error) { notify(error.message,true); }
     finally {
       button.disabled=false;
       if (button.closest(".af-offers-workspace")) syncOfferControls();
+      if (button.closest(".af-automations-workspace")) syncRuleControls();
       if (keepFocus&&document.activeElement===document.body) {
         if (button.isConnected&&!button.disabled) button.focus({preventScroll:true});
         else if (route==="ofertas") content.querySelector("[data-offer-send-result]")?.focus({preventScroll:true});
@@ -1835,6 +2070,18 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
   }, {signal:controller.signal});
 
   content.addEventListener("change",async event=>{
+    if(event.target.closest('[data-form="rule"]')&&ruleDraft){
+      const field=event.target;
+      if(field.hasAttribute('data-select-niches')){ruleDraft.niches=field.checked?state.niches.map(row=>row.id):[];ruleDraftRevision++;}
+      else if(field.hasAttribute('data-rule-all-destinations')){if(field.checked&&ruleDestinations().length>5){ruleError='Selecione até 5 destinos por automação.';render();return;}ruleDraft.destinations=field.checked?ruleDestinations().map(row=>row.id):[];ruleDraftRevision++;}
+      else if(field.hasAttribute('data-rule-all-day')){
+        if(field.checked){ruleWindowBeforeAllDay={opens:ruleDraft.opens,closes:ruleDraft.closes};ruleDraft.opens='00:00';ruleDraft.closes='00:00';}
+        else Object.assign(ruleDraft,ruleWindowBeforeAllDay);
+        ruleDraftRevision++;
+      }
+      else changeRuleDraft(field,false);
+      ruleError='';render();return;
+    }
     if (event.target.id==="af-whatsapp-group") {
       const group=whatsappGroups?.find(row=>row.address===event.target.value);
       const form=event.target.form;
@@ -1917,6 +2164,11 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
 
   content.addEventListener("input",event=>{
     const field=event.target;
+    if(field.closest('[data-form="rule"]')&&ruleDraft){
+      if(field.hasAttribute('data-niche-filter')){ruleNicheFilter=field.value;syncRuleControls();}
+      else if(!['checkbox','radio'].includes(field.type))changeRuleDraft(field);
+      return;
+    }
     if (field.matches("[data-offer-input]")) {
       offerInput[field.dataset.offerInput]=field.value;
       if (field.dataset.offerInput==="url" && (offerError||offerFailure||offerLinkChoices)) {
@@ -1957,6 +2209,7 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     field.form.querySelector("[data-niche-empty]").hidden=visible>0;
   }, {signal: controller.signal});
   content.addEventListener("toggle",event=>{
+    if(event.target.dataset?.ruleDisclosure==='advanced')ruleAdvancedOpen=event.target.open;
     const key=event.target.dataset?.offerDisclosure;
     if (key==="drafts") offerDraftsOpen=event.target.open;
     else if (key==="stores") offerStoresOpen=event.target.open;

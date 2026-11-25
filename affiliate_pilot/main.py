@@ -26,11 +26,11 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr, StringConstraints
 from .engine import DEMO, Engine
 from .analytics import Analytics
 from .niches import NICHES, PUBLIC_NICHES, SORTS, search_niche
-from .offers import caption, formatted_html, next_slot, render_card, validate_length, validate_template
+from .offers import caption, formatted_html, local_day_start, next_slot, render_card, validate_length, validate_template
 from .phrase import configured, generate_phrase, initial_phrase, phrase_suggestions
 from .promotech import PromoTech
 from .providers import ProviderError, Shopee, Telegram
-from .store import DEAL_TEMPLATE_ID, ManualSendConflict, Store
+from .store import AutomationConflict, DEAL_TEMPLATE_ID, ManualSendConflict, Store, destination_identity
 from .whatsapp_transport import OrionWhatsAppTransport
 
 
@@ -123,7 +123,7 @@ class Plan(Input):
     days: list[Annotated[int, Field(ge=0, le=6)]] = Field(min_length=1, max_length=7)
     opens: str = Field(pattern=r"^\d{2}:\d{2}$")
     closes: str = Field(pattern=r"^\d{2}:\d{2}$")
-    timezone: str = Field(default="America/Cuiaba", max_length=70)
+    timezone: str = Field(default="America/Campo_Grande", max_length=70)
     interval: int = Field(ge=10, le=1440)
     daily: int = Field(ge=1, le=48)
     repeat_hours: int = Field(default=48, ge=1, le=720)
@@ -208,6 +208,10 @@ def create_app(store=None, *, sending=None, origin=None, start_worker=True):
     async def provider_error(request, exc):
         return JSONResponse({"detail": exc.message, "code": exc.code}, 429 if exc.code == "rate" else 422)
 
+    @app.exception_handler(AutomationConflict)
+    async def automation_conflict(request, exc):
+        return JSONResponse({"detail": str(exc), "code": "AUTOMATION_CHANGED"}, status_code=409)
+
     def current(request: Request):
         if signed := request.headers.get("X-Orion-Affiliate-Access"):
             if bridge is None or len(signed) > 2048:
@@ -263,6 +267,16 @@ def create_app(store=None, *, sending=None, origin=None, start_worker=True):
 
     def batch_response(batch, created=False):
         return {"batch_id": batch["batch_id"], "created": created, "jobs": batch["jobs"]}
+
+    def rule_response(company, rule):
+        try:
+            day_start = local_day_start(int(time.time()), rule.get("timezone") or "America/Campo_Grande")
+        except (ValueError, ZoneInfoNotFoundError):
+            day_start = local_day_start(int(time.time()), "America/Campo_Grande")
+        result = {**rule, "runtime": app.state.engine.automation_rule_runtime(company, rule),
+                  "activity": app.state.store.automation_activity(company, rule, day_start)}
+        result.pop("automation_authorization", None)
+        return result
 
     @app.get("/")
     def index():
@@ -320,9 +334,13 @@ def create_app(store=None, *, sending=None, origin=None, start_worker=True):
             result[kind] = app.state.store.list(company, kind, limit=40)
         telegram = next((connection for connection in result["connection"] if connection["id"] == "telegram"), {})
         wa_version = None
+        wa_connected = None
         if any(d["verified"] and d["mode"].startswith("whatsapp_") for d in result["destination"]):
             try:
-                wa_version = (await whatsapp(user, "status")).get("version")
+                wa_status = await whatsapp(user, "status")
+                wa_version = wa_status.get("version")
+                if str(wa_version or "").startswith("orion:"):
+                    wa_connected = wa_status.get("available") is True
             except (HTTPException, ProviderError):
                 pass
         for destination in result["destination"]:
@@ -331,6 +349,23 @@ def create_app(store=None, *, sending=None, origin=None, start_worker=True):
             if (destination["verified"] and destination["mode"].startswith("whatsapp_")
                     and destination.get("connection_version") != wa_version):
                 destination.update(verified=False, issue="Confirme a administração com o WhatsApp vinculado.")
+        result["automation_destinations"] = []
+        for destination in result["destination"]:
+            eligible, reason = app.state.engine.automation_destination_capability(company, destination, None)
+            if destination["mode"].startswith("whatsapp_") and wa_connected is False:
+                eligible, reason = False, "Reconecte seu WhatsApp para retomar os envios deste destino."
+            result["automation_destinations"].append({"id": destination["id"], "name": destination.get("name") or "Destino",
+                "mode": destination["mode"], "eligible": eligible, "reason": reason})
+        result["rule"] = [rule_response(company, rule) for rule in result["rule"]]
+        capabilities = {entry["id"]: entry for entry in result["automation_destinations"]}
+        for rule in result["rule"]:
+            if not app.state.store.orion_tenant(company):
+                continue
+            blocked = next((capabilities.get(ident) for ident in rule.get("destinations", [])
+                            if not capabilities.get(ident, {}).get("eligible")), None)
+            if blocked:
+                rule["runtime"].update(status="blocked" if rule.get("active") else "paused",
+                                       can_activate=False, reason=blocked["reason"])
         return result
 
     @app.get("/api/analytics")
@@ -737,6 +772,10 @@ def create_app(store=None, *, sending=None, origin=None, start_worker=True):
             raise HTTPException(404, "Publicação não encontrada.")
         job = rows[0]
         if payload.action == "approve":
+            if job["doc"].get("automation"):
+                if not app.state.store.approve_automation(company, ident):
+                    raise HTTPException(409, "A publicação expirou ou a automação mudou. Confira a regra e prepare uma nova ocorrência.")
+                return {"ok": True}
             if not sending or not payload.confirm_test:
                 raise HTTPException(409, "Envio real bloqueado neste piloto. A aprovação está disponível após a liberação do teste.")
             if job["expires"] <= time.time():
@@ -756,10 +795,18 @@ def create_app(store=None, *, sending=None, origin=None, start_worker=True):
         if (not payload.keyword.strip() and not payload.niches) or set(payload.niches) - NICHES.keys():
             raise HTTPException(422, "Escolha um ou mais nichos da Shopee ou preencha uma palavra-chave.")
         required(company, "template", payload.template_id)
+        if len(set(payload.destinations)) != len(payload.destinations):
+            raise HTTPException(422, "Cada destino deve aparecer apenas uma vez na automação.")
+        orion = app.state.store.orion_tenant(company)
         for dest in payload.destinations:
             item = required(company, "destination", dest)
-            if not item["verified"] or not (item["mode"] == "whatsapp_channel" or
-                                            item["mode"] == "telegram" and item["test"]):
+            if orion:
+                eligible, reason = app.state.engine.automation_destination_capability(company, item,
+                    {"id": ident, **payload.model_dump()})
+                if not eligible:
+                    raise HTTPException(422, f"{item.get('name') or 'Destino'}: {reason}")
+            elif not item["verified"] or not (item["mode"] == "whatsapp_channel" or
+                                              item["mode"] == "telegram" and item["test"]):
                 raise HTTPException(422, "Escolha um canal WhatsApp verificado ou um destino Telegram de teste.")
         try:
             ZoneInfo(payload.timezone)
@@ -772,24 +819,65 @@ def create_app(store=None, *, sending=None, origin=None, start_worker=True):
         except (ValueError, ZoneInfoNotFoundError):
             raise HTTPException(422, "Confira o horário inicial, final, fuso e faixa de preço.") from None
         doc = {**payload.model_dump(), "keyword": payload.keyword.strip(), "niches": list(dict.fromkeys(payload.niches)),
+               "days": list(dict.fromkeys(payload.days)), "revision": uuid4().hex,
                "active": False, "next_at": None, "niche_cursor": 0}
         binding = app.state.engine.promotech
         if binding and company == binding.binding["company"] and ident == binding.binding["rule"] and payload.mode == "automatic":
             if payload.interval < 30 or payload.destinations != [binding.binding["destination"]]:
                 raise HTTPException(422, "A automação do PromoTech precisa de intervalo de pelo menos 30 minutos e de um único canal.")
-        return app.state.store.put(company, "rule", ident, doc)
+        previous = app.state.store.get(company, "rule", ident)
+        if previous and previous.get("niches") == doc["niches"]:
+            doc["niche_cursor"] = previous.get("niche_cursor", 0)
+        saved = app.state.store.save_rule(company, ident, doc, expected=previous)
+        return rule_response(company, saved)
 
     @app.post("/api/rules/{ident}/activate")
-    def activate_rule(ident: Identifier, payload: Toggle, user=User):
+    async def activate_rule(ident: Identifier, payload: Toggle, user=User):
         company = user["id"]
         rule = required(company, "rule", ident)
+        orion = app.state.store.orion_tenant(company)
+        if payload.active == rule.get("active"):
+            if not payload.active or not orion:
+                return rule_response(company, rule)
+            runtime = app.state.engine.automation_rule_runtime(company, rule)
+            if runtime.get("status") in {"ready", "review"}:
+                return rule_response(company, rule)
+        previous = dict(rule)
+        rule = {**rule, "revision": uuid4().hex}
+        rule.pop("automation_authorization", None)
         if payload.active:
-            app.state.engine.shopee(company)
+            _, shopee_version = app.state.engine.shopee(company)
+            if orion:
+                destinations = [required(company, "destination", dest) for dest in rule["destinations"]]
+                if not destinations or len({d["id"] for d in destinations}) != len(destinations):
+                    raise HTTPException(422, "Confira os destinos da automação.")
+                async def verify(destination):
+                    eligible, reason = app.state.engine.automation_destination_capability(company, destination, rule)
+                    if not eligible:
+                        raise HTTPException(422, f"{destination.get('name') or 'Destino'}: {reason}")
+                    if destination["mode"] == "telegram":
+                        transport, credentials, _ = app.state.engine.telegram(company)
+                        proof = await transport.verify_destination(destination["chat_id"], credentials["bot_id"], credentials["operator"])
+                        if proof.get("chat_id") != destination["chat_id"]:
+                            raise HTTPException(409, "O Telegram retornou outro destino. Confira a configuração.")
+                    else:
+                        proof = await app.state.engine.manual_transport.verify(company, destination)
+                        address = destination.get("channel_jid") if destination["mode"] == "whatsapp_channel" else destination.get("address")
+                        if proof.get("version") != destination["connection_version"] or proof.get("address") != address:
+                            raise HTTPException(409, "A conexão do WhatsApp mudou. Verifique o destino novamente.")
+                    return destination["id"], destination_identity(destination)
+                try:
+                    async with asyncio.timeout(25):
+                        verified = await asyncio.gather(*(verify(destination) for destination in destinations))
+                except TimeoutError:
+                    raise HTTPException(504, "Uma conexão demorou para confirmar o destino. A ativação não foi concluída; tente novamente.") from None
+                rule["automation_authorization"] = {"revision": rule["revision"], "authorized_at": int(time.time()),
+                    "destinations": dict(verified), "shopee_version": shopee_version}
         rule["active"] = payload.active
         rule["next_at"] = next_slot(rule, int(time.time()) + 2) if payload.active else None
-        saved = app.state.store.put(company, "rule", ident, rule)
-        app.state.store.audit(company, "rule:enable" if payload.active else "rule:pause")
-        return saved
+        saved = app.state.store.save_rule(company, ident, rule, expected=previous,
+                                          action="rule:enable" if payload.active else "rule:pause")
+        return rule_response(company, saved)
 
     return app
 

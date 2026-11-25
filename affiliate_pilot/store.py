@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import re
 import secrets
 import sqlite3
 import time
@@ -44,6 +45,10 @@ PRICE_RECORDS = 2000
 
 
 class ManualSendConflict(ValueError):
+    pass
+
+
+class AutomationConflict(ValueError):
     pass
 
 
@@ -104,6 +109,7 @@ class Store:
                 db.execute("ALTER TABLE job ADD COLUMN published_at INTEGER")
             db.execute("UPDATE job SET published_at=changed WHERE status='published' AND published_at IS NULL")
             db.execute("CREATE INDEX IF NOT EXISTS job_publication ON job(company,published_at)")
+            db.execute("CREATE INDEX IF NOT EXISTS job_rule_history ON job(company,json_extract(doc,'$.rule.id'),changed)")
             db.commit()
 
     @contextmanager
@@ -264,6 +270,129 @@ class Store:
                              (company, kind, id)).fetchone()
         return {"id": id, **json.loads(row["doc"])} if row else None
 
+    def orion_tenant(self, company, *, db=None):
+        if db is None:
+            with self.connect() as connection:
+                return self.orion_tenant(company, db=connection)
+        row = db.execute("SELECT username FROM company WHERE id=?", (company,)).fetchone()
+        match = re.fullmatch(r"orion-([a-f0-9]{32})", row["username"] if row else "")
+        return match[1] if match else None
+
+    def save_rule(self, company, ident, doc, *, expected=None, action="rule:save"):
+        """Replace one rule and revoke its pending occurrences in the same transaction."""
+        now = int(time.time())
+        with self.connect(True) as db:
+            row = db.execute("SELECT doc FROM record WHERE company=? AND kind='rule' AND id=?",
+                             (company, ident)).fetchone()
+            current = {"id": ident, **json.loads(row["doc"])} if row else None
+            if current != expected:
+                raise AutomationConflict("A automação mudou durante a edição. Atualize os dados e tente novamente.")
+            saved = self.put(company, "rule", ident, doc, db=db)
+            if doc.get("active") and self.orion_tenant(company, db=db):
+                proof = doc.get("automation_authorization") or {}
+                if set(proof.get("destinations") or {}) != set(doc.get("destinations") or []):
+                    raise AutomationConflict("Confira os destinos antes de ativar a automação.")
+                for destination_id, identity in (proof.get("destinations") or {}).items():
+                    authorization = {"rule_id": ident, "revision": doc.get("revision"),
+                                     "destination": identity, "shopee_version": proof.get("shopee_version"),
+                                     "mode": doc.get("mode")}
+                    if not self._automation_context_valid(db, company, destination_id, authorization, require_approval=False):
+                        raise AutomationConflict("Uma conexão ou destino mudou durante a ativação. Confira e tente novamente.")
+            db.execute("""UPDATE job SET status='cancelled',error=?,lease=0,changed=?
+                          WHERE company=? AND json_extract(doc,'$.rule.id')=?
+                            AND status IN ('approval','queued','preparing')""",
+                       ("A automação foi alterada ou pausada. Esta ocorrência foi substituída.", now, company, ident))
+            self.audit(company, action, db=db)
+            return saved
+
+    def _automation_context_valid(self, db, company, destination_id, authorization, *, require_approval=True):
+        if not isinstance(authorization, dict) or not self.orion_tenant(company, db=db):
+            return False
+        revision = authorization.get("revision")
+        rule_id = authorization.get("rule_id")
+        if not isinstance(revision, str) or not re.fullmatch(r"[a-f0-9]{32}", revision):
+            return False
+        rule_row = db.execute("SELECT doc FROM record WHERE company=? AND kind='rule' AND id=?",
+                              (company, rule_id)).fetchone()
+        destination_row = db.execute("SELECT doc FROM record WHERE company=? AND kind='destination' AND id=?",
+                                     (company, destination_id)).fetchone()
+        if not rule_row or not destination_row:
+            return False
+        rule = json.loads(rule_row["doc"])
+        destination = {"id": destination_id, **json.loads(destination_row["doc"])}
+        proof = rule.get("automation_authorization") or {}
+        mode = rule.get("mode")
+        if (not rule.get("active") or rule.get("revision") != revision or proof.get("revision") != revision
+                or type(proof.get("authorized_at")) is not int or proof["authorized_at"] <= 0
+                or destination_id not in rule.get("destinations", [])
+                or mode not in {"automatic", "review"} or authorization.get("mode") != mode
+                or not destination.get("verified")):
+            return False
+        identity = destination_identity(destination)
+        if (authorization.get("destination") != identity
+                or (proof.get("destinations") or {}).get(destination_id) != identity):
+            return False
+        if mode == "review" and require_approval:
+            approved = authorization.get("approved_at")
+            if type(approved) is not int or not proof["authorized_at"] <= approved <= int(time.time()):
+                return False
+        versions = dict(db.execute("SELECT kind,version FROM secret WHERE company=?", (company,)))
+        if (not versions.get("shopee") or versions["shopee"] != authorization.get("shopee_version")
+                or versions["shopee"] != proof.get("shopee_version")):
+            return False
+        if destination.get("mode") == "telegram":
+            return bool(versions.get("telegram") and destination.get("connection_version") == versions["telegram"]
+                        and type(destination.get("chat_id")) is int and destination["chat_id"] < 0)
+        return (destination.get("mode") in {"whatsapp_group", "whatsapp_channel"}
+                and str(destination.get("connection_version", "")).startswith("orion:"))
+
+    def approve_automation(self, company, ident):
+        now = int(time.time())
+        with self.connect(True) as db:
+            row = db.execute("SELECT * FROM job WHERE company=? AND id=?", (company, ident)).fetchone()
+            if not row or row["status"] != "approval" or row["expires"] <= now:
+                return False
+            doc = json.loads(row["doc"])
+            authorization = doc.get("automation")
+            if (not self._automation_context_valid(db, company, row["destination"], authorization,
+                                                   require_approval=False)
+                    or authorization.get("mode") != "review"):
+                return False
+            doc["automation"] = {**authorization, "approved_at": now}
+            db.execute("UPDATE job SET status='queued',doc=?,changed=? WHERE company=? AND id=? AND status='approval'",
+                       (encode(doc), now, company, ident))
+            self.audit(company, "automation:approve", db=db)
+            return True
+
+    def automation_activity(self, company, rule, day_start):
+        with self.connect() as db:
+            counts = {row["status"]: row["total"] for row in db.execute("""
+                SELECT status,count(*) AS total FROM job
+                 WHERE company=? AND json_extract(doc,'$.rule.id')=? GROUP BY status
+            """, (company, rule["id"]))}
+            published = db.execute("""SELECT count(*) AS today,max(published_at) AS last_at FROM job
+                    WHERE company=? AND json_extract(doc,'$.rule.id')=? AND status='published'
+                      AND published_at>=?""", (company, rule["id"], day_start)).fetchone()
+            last_published = db.execute("""SELECT max(published_at) FROM job
+                    WHERE company=? AND json_extract(doc,'$.rule.id')=? AND status='published'""",
+                    (company, rule["id"])).fetchone()[0]
+            unique_name = db.execute("""SELECT count(*) FROM record WHERE company=? AND kind='rule'
+                                        AND json_extract(doc,'$.name')=?""", (company, rule.get("name"))).fetchone()[0] == 1
+            decision = db.execute("""SELECT doc,at FROM record WHERE company=? AND kind='decision'
+                  AND (json_extract(doc,'$.rule_id')=? OR
+                       (? AND json_extract(doc,'$.rule_id') IS NULL AND json_extract(doc,'$.rule')=?))
+                  ORDER BY at DESC,id DESC LIMIT 1""",
+                  (company, rule["id"], unique_name, rule.get("name"))).fetchone()
+            failure = db.execute("""SELECT error,changed,status FROM job
+                  WHERE company=? AND json_extract(doc,'$.rule.id')=? AND status IN ('failed','unknown','paused')
+                  ORDER BY changed DESC LIMIT 1""", (company, rule["id"])).fetchone()
+        last_execution = ({**json.loads(decision["doc"]), "executed_at": decision["at"]} if decision else None)
+        return {"published_today": published["today"], "published_total": counts.get("published", 0),
+                "pending": sum(counts.get(status, 0) for status in ("queued", "preparing", "dispatching")),
+                "approval": counts.get("approval", 0), "failed": counts.get("failed", 0),
+                "unknown": counts.get("unknown", 0), "last_published_at": last_published,
+                "last_execution": last_execution, "last_error": dict(failure) if failure else None}
+
     def list(self, company, kind, limit=100):
         with self.connect() as db:
             rows = db.execute("""
@@ -323,9 +452,14 @@ class Store:
                 return self.audit(company, action, db=connection)
         db.execute("INSERT INTO audit VALUES(?,?,?)", (company, action, int(time.time())))
 
-    def enqueue(self, company, destination, offer, template, due, *, approval, rule=None, repeat_hours=0):
+    def enqueue(self, company, destination, offer, template, due, *, approval, rule=None, repeat_hours=0, automation=None):
         now = int(time.time())
         with self.connect(True) as db:
+            if automation is not None:
+                if (not rule or automation.get("rule_id") != rule.get("id")
+                        or not self._automation_context_valid(db, company, destination, automation, require_approval=False)
+                        or bool(approval) != (automation.get("mode") == "review")):
+                    raise AutomationConflict("A autorização da automação mudou. Ative a regra novamente.")
             existing = db.execute("""
                 SELECT id FROM job WHERE company=? AND destination=? AND product=? AND
                   ((occurrence=?) OR (changed>=? AND status IN
@@ -338,7 +472,8 @@ class Store:
                 INSERT INTO job(id,company,destination,product,occurrence,due,expires,status,doc,changed)
                 VALUES(?,?,?,?,?,?,?,?,?,?)
             """, (job, company, destination, offer["identity"], due, due, due + 1800,
-                  "approval" if approval else "queued", encode({"offer": offer, "template": template, "rule": rule}),
+                  "approval" if approval else "queued", encode({"offer": offer, "template": template, "rule": rule,
+                         **({"automation": automation} if automation is not None else {})}),
                   now))
             return job, True
 
@@ -466,7 +601,8 @@ class Store:
             row = db.execute("""
                 SELECT * FROM job WHERE status='queued' AND due<=? AND
                     (? OR (company=? AND destination=? AND json_extract(doc,'$.rule.id')=?)
-                       OR json_type(doc,'$.manual.request_id')='text')
+                       OR json_type(doc,'$.manual.request_id')='text'
+                       OR json_type(doc,'$.automation')='object')
                 ORDER BY due,id LIMIT 1
             """, (now, telegram, binding.get("company"), binding.get("destination"), binding.get("rule"))).fetchone()
             if row:
@@ -475,14 +611,22 @@ class Store:
                 return {**self.decode_job(row), "attempts": row["attempts"] + 1}
         return None
 
-    def dispatch(self, job, snapshot, expected_shopee, expected_telegram, *, promotech=None, manual=False):
+    def dispatch(self, job, snapshot, expected_shopee, expected_telegram, *, promotech=None, manual=False, automation=False):
         now = int(time.time())
         company = job["company"]
         with self.connect(True) as db:
             versions = dict(db.execute("SELECT kind,version FROM secret WHERE company=?", (company,)))
             if (not manual or expected_shopee is not None) and versions.get("shopee") != expected_shopee:
                 return False
-            if manual:
+            if automation:
+                authorization = job["doc"].get("automation")
+                if (manual or promotech or snapshot.get("automation") != authorization
+                        or not self._automation_context_valid(db, company, job["destination"], authorization)):
+                    return False
+                if (authorization["destination"]["mode"] == "telegram"
+                        and versions.get("telegram") != expected_telegram):
+                    return False
+            elif manual:
                 authorization = job["doc"].get("manual") or {}
                 batch = self.manual_batch(company, authorization.get("request_id"), db=db)
                 destination = db.execute("SELECT doc FROM record WHERE company=? AND kind='destination' AND id=?",

@@ -1,0 +1,85 @@
+name: Orion - Automações de Afiliados
+on:
+  push:
+    branches: ['codex/afiliados-automacoes-20261125*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      packages: write
+    env:
+      API_BASE: ghcr.io/qgbaltigo/orion-assistente-api@sha256:e1d8dfa7ccaff217f04184c694b90b15e8c50f0c36a06d7d67aa657f195f03ea
+      API_IMAGE: ghcr.io/qgbaltigo/orion-assistente-api:affiliate-automations-${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validar autorização, fila e regressões de Ofertas e Dashboard
+        run: |
+          python -m pip install -r affiliate_pilot/requirements.txt pytest pytest-asyncio
+          PYTHONPATH=. python -m pytest -q affiliate_pilot/tests
+          npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+          node --check app/static/orion-suite.js
+          node --input-type=module --check < app/static/orion-affiliate-workspace.js
+          node --test --test-reporter=spec ui-tests/affiliate-automations.test.mjs ui-tests/affiliate-offers.test.mjs ui-tests/affiliate-dashboard.test.mjs ui-tests/affiliate-dashboard-updates.test.mjs
+      - name: Conferir responsividade e edição em Chromium e WebKit
+        run: |
+          python -m pip install playwright==1.58.0
+          python -m playwright install --with-deps chromium webkit
+          python ui-tests/affiliate-automations-layout.py --engine chromium
+          python ui-tests/affiliate-automations-layout.py --engine webkit --widths 320 430 --themes dark
+          python ui-tests/affiliate-automations-layout.py --engine chromium --widths 430 --themes dark --layouts app --states empty no-destinations blocked
+          python ui-tests/affiliate-offers-layout.py --widths 320 430 1280 --themes dark
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: affiliate-automations-browser
+          path: |
+            artifacts/affiliate-automations/
+            artifacts/affiliate-offers/
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Conferir a base publicada
+        run: |
+          docker run --rm --entrypoint python "$API_BASE" -c '
+          import hashlib
+          from pathlib import Path
+          expected = {
+            "orion-suite.js": "41c4f0fa4961c89905abb6afb8692a1861e1e8e881a2777e3b2c9d259ef17563",
+            "orion-affiliate-workspace.js": "725a743ec5f2c095ea210abfeaafbd7f75a307757e26bf3ae712b9b0ad8fd8bb",
+            "orion-affiliate-workspace.css": "f252d12e1f3517ea618e31eed269522c0a1bd617fc0df8afe1b42f276f557c7d",
+          }
+          for name, digest in expected.items():
+            assert hashlib.sha256(Path("app/static", name).read_bytes()).hexdigest() == digest, name
+          print("Base de produção conferida.")
+          '
+      - name: Construir e conferir a atualização da interface
+        run: |
+          docker build -f deploy/Dockerfile.affiliate-automations --build-arg BASE_IMAGE="$API_BASE" --build-arg ORION_RELEASE="$GITHUB_SHA" -t "$API_IMAGE" .
+          docker run --rm --entrypoint python -v "$GITHUB_WORKSPACE/app/static:/review:ro" "$API_IMAGE" -c '
+          from pathlib import Path
+          for name in ("orion-suite.js", "orion-affiliate-workspace.js", "orion-affiliate-workspace.css"):
+            assert Path("app/static", name).read_bytes() == Path("/review", name).read_bytes(), name
+          print("Imagem corresponde ao código validado.")
+          '
+          docker push "$API_IMAGE"
+          docker image inspect "$API_IMAGE" --format '{{index .RepoDigests 0}}' > affiliate-automations-api-image.txt
+          cat affiliate-automations-api-image.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: affiliate-automations-image
+          path: affiliate-automations-api-image.txt
