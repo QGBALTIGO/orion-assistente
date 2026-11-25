@@ -85,7 +85,7 @@ function harness(role='admin',{reply=async()=>({status:'needs_attention'})}={}){
   assert.ok(bindings,'Use the actual diagnostic event registrations');
   const roleRule=controller.match(/const isAdmin=role==="support"\|\|role==="admin";[\s\S]*?document\.querySelectorAll\("\[data-admin-only\]"\)\.forEach\([^\n]+/)[0];
   const source=`let csrf='synthetic',authEpoch=1,statusSequence=0,deviceStatus='starting',lastDeviceStatus='starting',loginRole=${JSON.stringify(role)},page='dispositivo';
-    let method='code',wizardBusy=false,wizardUncertain=false,wizardStep='tutorial',wizardAttempted=false,wizardSuccessDone=false,wizardSuccessUntil=0,
+    let method='code',wizardBusy=false,wizardUncertain=false,wizardStep='code_form',wizardAttempted=false,wizardSuccessDone=false,wizardSuccessUntil=0,
       wizardCodeExpired=false,wizardQrRead=0,wizardQrDeadline=0,pairExpiresAt=0,showQr=false,wizardOperation=0;
     ${definition('sessionNeedsAttention',true)}
     ${definition('clearWizardCodes')}
@@ -118,7 +118,7 @@ test(`a verified linked ${state} session shows honest attention rather than pair
   const h=harness();h.view.showOldQr();await h.view.load(linked(state));
   assert.equal(visible(h.node('deviceAttention')),true);
   assert.match(h.node('deviceAttentionTitle').textContent,new RegExp(label));
-  assert.equal(visible(h.node('disconnectedWizard')),false);assert.equal(visible(h.node('wizardTutorial')),false);
+  assert.equal(visible(h.node('disconnectedWizard')),false);assert.equal(visible(h.node('wizardCodeInput')),false);
   assert.equal(visible(h.node('connectedCenter')),false,'An attention state must not look automation-ready');
   assert.equal(h.node('globalStatus').textContent,label);assert.equal(h.node('refreshQr').disabled,true);
   assert.equal(h.qrReads.length,0,'Attention must not request another QR');assert.equal(h.requests.length,0);
@@ -130,7 +130,7 @@ for(const facts of [{},{messagesEnabled:true},{phone_verified:true},{messagesEna
 test(`${state} without strict verified session facts cannot claim a linked session: ${JSON.stringify(facts)}`,async()=>{
   const h=harness();await h.view.load({status:state,...facts});
   assert.equal(visible(h.node('deviceAttention')),false);assert.equal(visible(h.node('connectedCenter')),false);
-  assert.equal(visible(h.node('disconnectedWizard')),true);assert.equal(visible(h.node('wizardTutorial')),true);
+  assert.equal(visible(h.node('disconnectedWizard')),true);assert.equal(visible(h.node('wizardCodeInput')),true);
 });
 
 test('healthy, attention, healthy and logged-out transitions preserve their distinct views',async()=>{

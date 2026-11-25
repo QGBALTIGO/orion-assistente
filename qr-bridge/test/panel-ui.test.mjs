@@ -19,8 +19,8 @@ test("QR indica atraso de 25 segundos, expiração e falha",()=>{
   for(const state of ["qr_delayed","qr_expired","pair_failed","logged_out"]){
     assert.ok(panel.includes(state),state+" missing from UI");
   }
-  assert.match(panel,/<button id="refreshQr"[^>]*>Atualizar conexão<\/button>/);
-  assert.match(panel,/Refazer vínculo/);
+  assert.match(panel,/<button id="refreshQr"[^>]*>Gerar novo QR Code<\/button>/);
+  assert.match(panel,/Vincular novamente/);
   assert.match(panel,/waitingSeconds>=25/);
 });
 

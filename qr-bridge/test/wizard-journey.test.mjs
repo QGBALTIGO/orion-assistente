@@ -6,12 +6,12 @@ import vm from "node:vm";
 const html=fs.readFileSync(new URL("../../app/static/panel.html",import.meta.url),"utf8");
 const fields=fs.readFileSync(new URL("../../app/static/orion-fields.js",import.meta.url),"utf8");
 const connectView=fs.readFileSync(new URL("../../app/static/orion-connect.js",import.meta.url),"utf8");
-const connectCSS=fs.readFileSync(new URL("../../app/static/orion-suite.css",import.meta.url),"utf8");
+const connectCSS=fs.readFileSync(new URL("../../app/static/orion-suite.css",import.meta.url),"utf8")+
+  fs.readFileSync(new URL("../../app/static/orion-channels.css",import.meta.url),"utf8");
 const script=[...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].at(-1)?.[1];
 assert.ok(script,"O painel deve incluir seu controlador JavaScript");
 const ids=new Set([...html.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]));
-const required=["disconnectedWizard","wizardTutorial","guideSteps",
-  "wizardNext","wizardSuccess","wizardOpenCenter",
+const required=["disconnectedWizard","guideSteps","wizardSuccess","wizardOpenCenter",
   "qrPanel","qrCountdown","qrImage","codePanel","pairForm","pairCode","copyCode",
   "retryCode","wizardRecover","connectedCenter"];
 test("todos os elementos do wizard existem e cada ID é único",()=>{
@@ -23,26 +23,25 @@ test("todos os elementos do wizard existem e cada ID é único",()=>{
   assert.match(html,/orion-connect\.js/);
 });
 
-test("a apresentação comum separa sete passos de Código e QR sem instrução contraditória",()=>{
+test("a apresentação comum explica QR e código sem etapas intermediárias",()=>{
   const context={window:{}};
   vm.runInNewContext(connectView,context);
   const view=context.window.OrionConnectView;
   const code=view.instructions("code"),qr=view.instructions("qr");
-  assert.equal((code.match(/role="listitem"/g)||[]).length,7);
-  assert.equal((qr.match(/role="listitem"/g)||[]).length,7);
-  assert.equal((code.match(/wizard-timeline-dot edge/g)||[]).length,2);
-  assert.equal((code.match(/<strong>/g)||[]).length,7);
-  assert.equal((code.match(/<p>/g)||[]).length,7);
-  for(let step=1;step<=7;step++)assert.match(code,new RegExp('PASSO '+step));
+  for(const guide of [code,qr]){
+    assert.match(guide,/<p class="os-help os-connect-steps">/);
+    assert.match(guide,/Aparelhos conectados.*Conectar um aparelho/);
+    assert.doesNotMatch(guide,/role="listitem"/);
+  }
   assert.match(code,/Conectar com número de telefone/);
-  assert.doesNotMatch(code,/câmera|escane|QR Code/i);
-  assert.match(qr,/câmera.*QR Code/);
+  assert.doesNotMatch(code,/escane|QR Code/i);
+  assert.match(qr,/escaneie o QR Code/);
   assert.doesNotMatch(qr,/número de telefone/);
   assert.match(view.methods("code"),/data-method="code" aria-pressed="true"/);
   assert.match(view.methods("qr","data-qc-method"),/data-qc-method="qr" aria-pressed="true"/);
   assert.ok(view.methods("code").indexOf('data-method="qr"')<view.methods("code").indexOf('data-method="code"'));
-  assert.match(view.methods("code"),/Escaneie com seu telefone/);
-  assert.match(view.methods("code"),/Digite no seu telefone/);
+  assert.match(view.methods("code"),/Escaneie pelo WhatsApp/);
+  assert.match(view.methods("code"),/Use o mesmo celular/);
   assert.equal(view.normalizeCode("abcdefgh"),"ABCD-EFGH");
   assert.throws(()=>view.normalizeCode("not-a-code"));
   assert.throws(()=>view.instructions("unexpected"));
@@ -76,7 +75,7 @@ function harness(initialStatus="qr_ready",{deferPair=false}={}){
     constructor(id=""){this.id=id;this.style={};this.value=id==="resource"?"authorized_staff":"";
       this.dataset={};this.disabled=false;this.checked=false;this.textContent="";
       this.src="";this.listeners=new Map();this.attributes={};this.options=[];
-      const states=new Set(["wizardTutorial","qrPanel","codePanel","wizardSuccess","authThemeMenu"]);
+      const states=new Set(["qrPanel","codePanel","wizardSuccess","authThemeMenu"]);
       this.classes=new Set(states.has(id)?["hidden"]:[]);
       this.classList={
         add:x=>this.classes.add(x),remove:x=>this.classes.delete(x),
@@ -208,60 +207,38 @@ function harness(initialStatus="qr_ready",{deferPair=false}={}){
 
 async function openCodeForm(h){
   await h.tabs[1].click();
-  if(!h.byId("wizardTutorial").classList.contains("hidden"))await h.byId("wizardNext").click();
   assert.equal(h.byId("codePanel").classList.contains("hidden"),false);
-  assert.equal(h.byId("wizardTutorial").classList.contains("hidden"),true);
 }
 
-test("Código inicia no tutorial original sem gerar vínculo nem pedir QR na montagem",async()=>{
+test("Código abre direto e a montagem não gera vínculo nem pede QR",async()=>{
   const h=harness();
-  assert.equal(h.byId("codePanel").classList.contains("hidden"),true);
-  assert.equal(h.byId("wizardTutorial").classList.contains("hidden"),false);
+  assert.equal(h.byId("codePanel").classList.contains("hidden"),false);
   assert.equal(h.tabs[1].getAttribute("aria-pressed"),"true");
   assert.equal(h.calls.some(x=>x.url==="/api/v1/qr/image"||x.url==="/api/v1/qr/pair"),false);
 });
 
-test("o tutorial original mostra sete passos completos e abre o formulário Código com um clique sem POST",async()=>{
+test("a troca de método preserva o telefone e a instrução do formulário",async()=>{
   const h=harness();
   await h.byId("loginForm").fire("submit");
   await h.flush();await h.flush();
-  assert.equal((h.byId("guideSteps").innerHTML.match(/role="listitem"/g)||[]).length,7);
+  await openCodeForm(h);
   assert.match(h.byId("guideSteps").innerHTML,/Conectar com número de telefone/);
-  assert.doesNotMatch(h.byId("guideSteps").innerHTML,/câmera|escane|QR Code/i);
-  assert.match(html,/Concluí os passos e estou pronto para prosseguir/);
-  await openCodeForm(h);
-  assert.equal(h.byId("wizardCodeInput").classList.contains("hidden"),false);
-  assert.equal(h.calls.some(x=>x.url==="/api/v1/qr/image"||x.url==="/api/v1/qr/pair"),false);
-});
-
-test("Voltar do formulário Código retorna ao tutorial sem apagar o telefone nem solicitar vínculo",async()=>{
-  const h=harness();
-  await h.byId("loginForm").fire("submit");
-  await h.flush();await h.flush();
-  await openCodeForm(h);
   h.byId("pairPhone").value="11 99999-9999";
-  await h.byId("wizardCodeBack").click();
-  assert.equal(h.byId("wizardTutorial").classList.contains("hidden"),false);
-  assert.equal(h.byId("codePanel").classList.contains("hidden"),true);
-  await h.byId("wizardNext").click();
+  await h.tabs[0].click();await h.flush();
+  await openCodeForm(h);
   assert.equal(h.byId("pairPhone").value,"11 99999-9999");
   assert.equal(h.byId("wizardCodeInput").classList.contains("hidden"),false);
-  assert.equal(h.calls.some(x=>x.url==="/api/v1/qr/pair"||x.url==="/api/v1/qr/image"),false);
+  assert.equal(h.calls.some(x=>x.url==="/api/v1/qr/pair"),false);
 });
 
-test("QR: sete passos próprios, geração somente após ação explícita e prazo real",async()=>{
+test("QR abre ao escolher o método e informa o prazo",async()=>{
   const h=harness();
   await h.byId("loginForm").fire("submit");
   await h.flush();await h.flush();
   assert.equal(h.calls.some(x=>x.url==="/api/v1/qr/image"),false);
-  await h.tabs[0].click();
-  assert.equal(h.byId("wizardTutorial").classList.contains("hidden"),false);
-  assert.equal((h.byId("guideSteps").innerHTML.match(/role="listitem"/g)||[]).length,7);
-  assert.match(h.byId("guideSteps").innerHTML,/câmera/);
-  assert.equal(h.calls.some(x=>x.url==="/api/v1/qr/image"),false);
-  await h.byId("wizardNext").click();
-  await h.flush();await h.flush();
+  await h.tabs[0].click();await h.flush();
   assert.equal(h.byId("qrPanel").classList.contains("hidden"),false);
+  assert.match(h.byId("guideSteps").innerHTML,/escaneie o QR Code/);
   assert.ok(h.calls.some(x=>x.url==="/api/v1/qr/image"));
   assert.match(h.byId("qrImage").src,/^data:image\/png;base64,/);
   assert.match(h.byId("qrCountdown").textContent,/s$/);
@@ -329,28 +306,25 @@ test("WA-LIVE-01: QR expirado ou demorado oferece preparo explícito e mantém o
     h.byId("pairPhone").value="11 99999-9999";
     assert.equal(h.byId("wizardGenerate").disabled,true);assert.equal(h.byId("retryCode").classList.contains("hidden"),false);
     assert.match(h.byId("codeStatus").textContent,/precisa ser preparada.*Preparar novo código/);
-    let pending=h.byId("retryCode").click();await h.flush();assert.equal(h.byId("actionConfirm").open,true);
-    await h.byId("actionConfirmCancel").click();await pending;
     assert.equal(h.calls.some(x=>/\/qr\/(reconnect|recover|pair)$/.test(x.url)),false);
-    pending=h.byId("retryCode").click();await h.flush();await h.byId("actionConfirmAccept").click();await pending;
+    await h.byId("retryCode").click();
+    assert.notEqual(h.byId("actionConfirm").open,true);
     assert.equal(h.calls.filter(x=>x.url==="/api/v1/qr/reconnect").length,1);
     assert.equal(h.calls.some(x=>/\/qr\/(recover|pair|image)$/.test(x.url)),false);
     assert.equal(h.byId("pairPhone").value,"11 99999-9999");assert.equal(h.tabs[1].getAttribute("aria-pressed"),"true");
-    assert.equal(h.byId("wizardTutorial").classList.contains("hidden"),true);assert.equal(h.byId("wizardCodeInput").classList.contains("hidden"),false);
+    assert.equal(h.byId("wizardCodeInput").classList.contains("hidden"),false);
     assert.equal(h.byId("wizardGenerate").disabled,true);assert.match(h.byId("codeStatus").textContent,/Preparando/);
     h.setStatus("qr_ready");await h.byId("statusRefresh").click();
     assert.equal(h.byId("wizardGenerate").disabled,false);assert.equal(h.byId("codeStatus").textContent,"");
-    await h.tabs[0].click();await h.tabs[1].click();assert.equal(h.byId("wizardTutorial").classList.contains("hidden"),true);
     assert.equal(h.calls.filter(x=>x.url==="/api/v1/qr/reconnect").length,1);assert.equal(h.calls.some(x=>/\/qr\/(recover|pair|image)$/.test(x.url)),false);
   }
 });
 
-test("WA-LIVE-01: a consulta após confirmar interrompe preparo quando a conexão ficou ativa, em pareamento ou revogada",async()=>{
+test("WA-LIVE-01: a consulta ao pedir um novo código interrompe o preparo quando a conexão ficou ativa, em pareamento ou revogada",async()=>{
   for(const next of ["connected","pairing","logged_out","pair_failed"]){
     const h=harness("qr_expired");await h.byId("loginForm").fire("submit");await h.flush();await h.flush();await openCodeForm(h);
     h.byId("pairPhone").value="11 99999-9999";const before=h.calls.filter(x=>x.url==="/api/v1/qr/status").length;
-    const pending=h.byId("retryCode").click();await h.flush();assert.equal(h.byId("actionConfirm").open,true);
-    h.setStatus(next);await h.byId("actionConfirmAccept").click();await pending;
+    h.setStatus(next);await h.byId("retryCode").click();
     assert.equal(h.calls.filter(x=>x.url==="/api/v1/qr/status").length,before+1,"A própria consulta validada deve orientar a tela");
     assert.equal(h.calls.some(x=>/\/qr\/(recover|reconnect|pair|image)$/.test(x.url)),false,next);
     assert.equal(h.byId("pairPhone").value,"11 99999-9999");assert.equal(h.byId("wizardGenerate").disabled,true);
@@ -360,13 +334,13 @@ test("WA-LIVE-01: a consulta após confirmar interrompe preparo quando a conexã
   }
 });
 
-test("WA-LIVE-01: estado pronto ou espera recente após confirmar não reinicia uma conexão saudável",async()=>{
+test("WA-LIVE-01: estado pronto ou espera recente ao pedir um novo código não reinicia uma conexão saudável",async()=>{
   for(const next of ["qr_ready","starting","connecting","reconnecting"]){
     const h=harness("qr_delayed");await h.byId("loginForm").fire("submit");await h.flush();await h.flush();await openCodeForm(h);
-    h.byId("pairPhone").value="11 99999-9999";const pending=h.byId("retryCode").click();await h.flush();h.setStatus(next,3);
-    await h.byId("actionConfirmAccept").click();await pending;
+    h.byId("pairPhone").value="11 99999-9999";h.setStatus(next,3);
+    await h.byId("retryCode").click();
     assert.equal(h.calls.some(x=>/\/qr\/(recover|reconnect|pair|image)$/.test(x.url)),false,next);
-    assert.equal(h.byId("wizardTutorial").classList.contains("hidden"),true);assert.equal(h.byId("pairPhone").value,"11 99999-9999");
+    assert.equal(h.byId("pairPhone").value,"11 99999-9999");
     assert.equal(h.byId("wizardGenerate").disabled,next!=="qr_ready");
     if(next==="qr_ready")assert.equal(h.byId("codeStatus").textContent,"");else assert.match(h.byId("codeStatus").textContent,/Preparando/);
   }
@@ -375,17 +349,18 @@ test("WA-LIVE-01: estado pronto ou espera recente após confirmar não reinicia 
 test("WA-LIVE-01: consulta indisponível ou estado desconhecido não envia preparo e bloqueia repetição incerta",async()=>{
   for(const failure of ["network","unknown"]){
     const h=harness("qr_expired");await h.byId("loginForm").fire("submit");await h.flush();await h.flush();await openCodeForm(h);
-    const pending=h.byId("retryCode").click();await h.flush();if(failure==="network")h.failStatus(503);else h.setStatus("unexpected");
-    await h.byId("actionConfirmAccept").click();await pending;
+    if(failure==="network")h.failStatus(503);else h.setStatus("unexpected");
+    await h.byId("retryCode").click();
     assert.equal(h.calls.some(x=>/\/qr\/(recover|reconnect|pair|image)$/.test(x.url)),false);
     assert.equal(h.byId("wizardGenerate").disabled,true);assert.equal(h.byId("retryCode").disabled,true);assert.equal(h.byId("wizardCheckStatus").classList.contains("hidden"),false);
-    const calls=h.calls.length;await h.byId("retryCode").click();assert.equal(h.calls.length,calls);assert.equal(h.byId("actionConfirm").open,false);
+    const calls=h.calls.length;await h.byId("retryCode").click();assert.equal(h.calls.length,calls);assert.notEqual(h.byId("actionConfirm").open,true);
   }
 });
 
-test("WA-LIVE-01: sair da conta durante a confirmação impede preparo na sessão seguinte",async()=>{
-  const h=harness("qr_expired");await h.byId("loginForm").fire("submit");await h.flush();await h.flush();await openCodeForm(h);
-  const pending=h.byId("retryCode").click();await h.flush();await h.byId("logout").click();
+test("WA-LIVE-01: sair da conta durante a confirmação impede recuperar na sessão seguinte",async()=>{
+  const h=harness("logged_out");await h.byId("loginForm").fire("submit");await h.flush();await h.flush();
+  const pending=h.byId("repairConnection").click();await h.flush();
+  assert.equal(h.byId("actionConfirm").open,true);await h.byId("logout").click();
   await h.byId("actionConfirmAccept").click();await pending;
   assert.equal(h.calls.some(x=>/\/qr\/(recover|reconnect|pair|image)$/.test(x.url)),false);
 });
@@ -435,7 +410,7 @@ test("trocar o método oculta o código e permite retomar o mesmo código válid
  assert.equal(h.byId("codeResult").classList.contains("hidden"),false);
  const calls=h.calls.filter(x=>x.url==="/api/v1/qr/pair").length;
  await h.tabs[0].click();
- assert.equal(h.byId("wizardTutorial").classList.contains("hidden"),false);
+ assert.equal(h.byId("qrPanel").classList.contains("hidden"),false);
  assert.equal(h.byId("codePanel").classList.contains("hidden"),true);
  assert.equal(h.calls.some(x=>x.url==="/api/v1/qr/image"),false);
  await openCodeForm(h);
@@ -450,7 +425,6 @@ test("QR expira no tempo anunciado e só atualiza ao clicar",async()=>{
  await h.byId("loginForm").fire("submit");
  await h.flush();
  await h.tabs[0].click();
- await h.byId("wizardNext").click();
  await h.flush();
  const before=h.calls.filter(x=>x.url==="/api/v1/qr/image").length;
  assert.ok(before>=1);
@@ -490,14 +464,14 @@ test("CSS garante dispositivos móveis, tablets e redução de movimento",()=>{
  assert.match(html.match(/<form\b[^>]*id="pairForm"[^>]*>/)?.[0]||"",/class="[^"]*\bos-form\b/);
  const wizardCardTag=html.match(/<div\b[^>]*id="wizardCard"[^>]*>/)?.[0]||"";
  assert.match(wizardCardTag,/class="[^"]*\bwizard-card\b/);
- assert.doesNotMatch(wizardCardTag,/\bos-card\b/,"O tutorial deve usar somente o card original, sem a cascata do card genérico");
+ assert.doesNotMatch(wizardCardTag,/\bos-card\b/,"A conexão usa o card compartilhado de pareamento");
  assert.match(connectView,/Conectar com número de telefone/);
- assert.match(connectView,/wizard-timeline-step|wizard-timeline-dot/);
- assert.match(connectCSS,/\.wizard-timeline-step\{/);
+ assert.match(connectView,/os-connect-steps/);
+ assert.match(connectCSS,/\.os-connect \.wizard-method/);
  assert.doesNotMatch(html,/Conexão não oficial, limitada ao número que você administra/);
  assert.doesNotMatch(html,/Ambiente de homologação/);
  assert.doesNotMatch(html,/wizardPrevious|wizardTutorialClose|wizardStepCount/);
- assert.equal([...html.matchAll(/id="wizardNext"/g)].length,1);
+ assert.doesNotMatch(html,/id="wizard(?:Next|Tutorial|QrBack)"/);
  assert.match(html,/aria-pressed=/);
 });
 

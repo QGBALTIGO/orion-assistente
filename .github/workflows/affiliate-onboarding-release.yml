@@ -25,7 +25,7 @@ jobs:
       - name: Testar conexão, permissões e nichos
         run: |
           npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
-          node --test --test-reporter=dot ui-tests/channels.test.mjs ui-tests/channels-pairing.test.mjs ui-tests/subscription-devices.test.mjs ui-tests/subscription-connection-health.test.mjs ui-tests/mobile-atendimento.test.mjs ui-tests/fields-auth.test.mjs ui-tests/fields-onboarding-channels.test.mjs ui-tests/onboarding-affiliates.test.mjs ui-tests/barbershop-app-layout.test.mjs ui-tests/subscription-workspace.test.mjs
+          node --test --test-reporter=dot ui-tests/channels.test.mjs ui-tests/channels-pairing.test.mjs ui-tests/subscription-devices.test.mjs ui-tests/subscription-connection-health.test.mjs ui-tests/mobile-atendimento.test.mjs ui-tests/fields-auth.test.mjs ui-tests/fields-onboarding-channels.test.mjs ui-tests/onboarding-affiliates.test.mjs ui-tests/barbershop-app-layout.test.mjs ui-tests/subscription-workspace.test.mjs qr-bridge/test/wizard-journey.test.mjs qr-bridge/test/panel-ui.test.mjs tests/ui/connection-attention-panel.test.mjs
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
