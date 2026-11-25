@@ -64,6 +64,39 @@
 .os-side-site{display:inline-flex;align-items:center;gap:6px;background:var(--os-tint);color:var(--os-primary);border:1px solid color-mix(in srgb,var(--os-primary) 25%,transparent);border-radius:30px;padding:5px 12px;font:600 12px/16px var(--os-font);margin-top:8px;cursor:pointer;text-decoration:none}
 .os-side-site .os-icon{width:14px;height:14px}
 .os-nav{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:12px;scrollbar-width:thin;scrollbar-color:var(--os-border) transparent}
+.orion-suite-enabled.os-barbershop-workspace>.sidebar{
+  height:100vh;
+  height:100dvh;
+  min-height:0;
+  overflow:hidden;
+}
+.orion-suite-enabled.os-barbershop-workspace>.sidebar>.os-nav{
+  flex:1 1 0;
+  overflow-x:hidden;
+  touch-action:pan-y pinch-zoom;
+  -webkit-overflow-scrolling:touch;
+}
+.orion-suite-enabled.os-barbershop-workspace>.sidebar>.sidebar-bottom{
+  display:block;
+}
+@media(min-width:768px){
+  .orion-suite-enabled.os-barbershop-workspace>.sidebar{
+    position:sticky;
+    top:0;
+    align-self:start;
+  }
+}
+@media(max-height:440px){
+  .orion-suite-enabled.os-barbershop-workspace>.sidebar>.brand{
+    height:48px;
+    min-height:48px;
+  }
+  .orion-suite-enabled.os-barbershop-workspace>.sidebar>.brand img{height:36px}
+  .orion-suite-enabled.os-barbershop-workspace>.sidebar>.os-sidebar-context{
+    min-height:0;
+    padding-block:8px;
+  }
+}
 .os-nav-link{appearance:none;display:flex;width:100%;min-width:0;min-height:36px;align-items:center;gap:12px;padding:8px 12px;margin:0 0 4px;border:0;border-radius:10px;background:transparent;color:var(--os-text);font:400 14px/20px var(--os-font);text-align:left;text-decoration:none;cursor:pointer;transition:background .2s,color .2s,transform .2s,box-shadow .2s}
 .os-nav-link>span{min-width:0;overflow-wrap:break-word}
 .os-nav-link .os-icon{width:20px;height:20px;flex-shrink:0}

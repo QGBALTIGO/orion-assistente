@@ -1,12 +1,38 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { makeSuite, flush, deferred, defaultResponse, customer, customerId, tenantA } from './harness.mjs';
+import { makeSuite, flush, deferred, defaultResponse, customer, customerId, planState, tenantA } from './harness.mjs';
 
 const admin = { role: 'admin', name: 'Admin sintético', email: 'admin@example.invalid' };
 const phone = '+5511912345678';
 const idFor = index => `40000000-0000-4000-8000-${String(index).padStart(12, '0')}`;
 const customerResponse = items => path => path.includes('/management/customers') ? { items, total: items.length } : defaultResponse(path);
 const mobileNames = document => Array.from(document.querySelectorAll('.os-client-mobile-main strong'), element => element.textContent);
+
+test('Barbearia groups the sidebar in the requested order and keeps plan permissions',async t=>{
+ const groupsFor=nav=>[...nav.children].reduce((groups,node)=>{
+  if(node.classList.contains('os-nav-section'))groups.push([node.textContent,[]]);
+  else if(groups.length&&node.dataset.osRoute)groups.at(-1)[1].push(node.textContent);
+  return groups;
+ },[]);
+ const permissions=code=>planState(code,{business_niche:'barbearia',workspace_profile:'standard'});
+ const management=['Gestão',['Dashboard','Agenda','Clientes','Serviços','Funcionários']];
+ const finance=['Financeiro',['Financeiro','Meu desempenho']];
+ const admin=['Administração',['Plano','Configurações']];
+ const help=['Ajuda e conta',['Novidades','Base de conhecimento','Minha conta']];
+ for(const [code,expected] of [
+  ['elite',[management,['Atendimento',['Central de atendimento','Meu site']],finance,
+   ['Crescimento',['Marketing IA','Fidelização','Consultor IA']],admin,help]],
+  ['essencial',[management,['Atendimento',['Meu site']],finance,admin,help]],
+  ['none',[admin,help]],
+ ]){
+  const h=await makeSuite({initialRoute:code==='none'?'plano':'dashboard',permissions:permissions(code)});
+  t.after(()=>h.close());await flush();
+  assert.ok(h.document.getElementById('appView').classList.contains('os-barbershop-workspace'));
+  assert.deepEqual(groupsFor(h.document.getElementById('osNav')),expected);
+  assert.equal(h.document.querySelector('#osSidebarContext [data-os-route=site]'),null);
+  assert.deepEqual(h.errors,[]);
+ }
+});
 
 for(const role of ['owner','editor','viewer'])test(`WhatsApp shortcut opens only the tenant channels for ${role}, without starting a session`,async t=>{
   const opened=[],mounted=[];

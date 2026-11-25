@@ -30,6 +30,7 @@
       "app/static/orion-onboarding.js": "app/static/orion-onboarding.js",
       "app/static/orion-plans.css": "app/static/orion-plans.css",
       "app/static/orion-plans.js": "app/static/orion-plans.js",
+      "app/static/orion-suite.css": "app/static/orion-suite.css",
       "app/static/panel.html": "app/static/panel.html",
       "scripts/backup_and_migrate_plan_cycle.py": "scripts/backup_and_migrate_plan_cycle.py"
     },
@@ -54,8 +55,11 @@
       "app/static/orion-onboarding.js": "36ad9d4cc2cbbdefed5f463131cccb8981d07d8d",
       "app/static/orion-plans.css": "1467548039d6f0ae0c7572b754595de01173124b",
       "app/static/orion-plans.js": "debb841e97e39978ae20ba184773b4f67075cece",
+      "app/static/orion-suite.css": "f9c8a900dd18919e59bb713f8491bbad375f5d49",
+      "app/static/orion-suite.js": "664bf542ea397419b69a063317d71267dff7e22c",
       "app/static/panel.html": "24b52c7c21b116d58c4de3f50ebdd73794c93647"
-    }
+    },
+    "patch": "api.patch"
   },
   "qr": {
     "copy": {
