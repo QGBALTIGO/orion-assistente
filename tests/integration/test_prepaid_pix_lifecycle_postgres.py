@@ -374,7 +374,7 @@ async def test_administrative_plan_change_waits_for_started_provider_post(pix_db
     result=await asyncio.wait_for(payment,10)
     granted=await asyncio.wait_for(change,10)
     assert result["status"]=="pending_confirmation" and len(c.posts)==1
-    assert granted.status_code==200 and granted.json()["effective_plan"]["source"]=="manual"
+    assert granted.status_code==409
 
 
 @pytest.mark.asyncio

@@ -73,7 +73,7 @@ const legacyCentral=createLegacyCentral({
   sessionDigest:()=>pairedNumber?createHmac('sha256',KEY).update('orion:preserved-primary-session:v1\0'+pairedNumber).digest('hex'):null,
   status:()=>status,rawSend:(phone,text,options)=>sendLegacyRaw(phone,text,options),
   onTransportLeaseLost:()=>stopPrimaryTransport('lease_lost'),publicHealth:()=>primaryHealth.snapshot(),
-  outgoingReady:source=>source==='manual'||primaryIngressCanAutomate?.()===true});
+  outgoingReady:source=>source==='manual'||source==='welcome'&&process.env.ORION_WELCOME_WHATSAPP==='1'||primaryIngressCanAutomate?.()===true});
 const channelRoutes=createChannelRoutes({sessionFactory:context=>context.legacyTransport?
   legacyCentral.attach(context):createBaileysChannelSession(context)});
 
@@ -1260,7 +1260,7 @@ async function sendLegacyRaw(phone,text,{waitForCapacity=false,isCurrent=()=>tru
   // The legacy 8-digit candidate is allowed only after an empty exact lookup
   // and exactly one positive provider lookup of its regulated counterpart.
   let verifiedRecipient=null;
-  if(source==='appointment'){
+  if(source==='appointment'||source==='welcome'){
     verifiedRecipient=await resolveTransactionalRecipient(
       target,candidate=>selectedSocket.onWhatsApp(candidate),
       {isCurrent:current,ownPhone:pairedNumber});

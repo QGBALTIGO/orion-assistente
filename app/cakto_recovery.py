@@ -58,6 +58,8 @@ def receipt(event_type, order, *, offer_id, callback_hash=None):
     safe = {name:order.get(name) for name in (
         "id", "status", "subscription", "amount", "currency", "paidAt",
         "refundedAt", "chargedbackAt", "canceledAt")}
+    if event_type == "refund_requested":
+        safe["updatedAt"] = order.get("updatedAt")
     safe.update({"offer_type":"main", "offer":{"id":offer_id}})
     result = normalized_events({"event":event_type,"data":safe})[0]
     result["callback_hash"] = callback_hash
@@ -192,7 +194,7 @@ async def binding_receipts(client, row):
         return []
     if subscription.get("status") == "canceled":
         order = next(order for order in orders if order["id"]==row["last_order_id"])
-        event = {"refunded":"refund","chargedback":"chargeback","MED":"chargeback"}.get(
+        event = {"refund_requested":"refund_requested","refunded":"refund","chargedback":"chargeback","MED":"chargeback"}.get(
             order.get("status"),"subscription_canceled")
         return ([receipt(event,order,offer_id=intent["offer_id"])]
                 if order_matches(order,order_id=order["id"],offer_id=intent["offer_id"],
@@ -214,7 +216,7 @@ async def binding_receipts(client, row):
     if not order_matches(latest,order_id=latest["id"],offer_id=intent["offer_id"],
                          cents=intent["expected_cents"],subscription_id=sub_id):
         return []
-    event = {"paid":"subscription_renewed","refunded":"refund",
+    event = {"paid":"subscription_renewed","refunded":"refund","refund_requested":"refund_requested",
              "chargedback":"chargeback","MED":"chargeback"}.get(latest.get("status"))
     if event == "subscription_renewed" and (subscription.get("status") != "active"
             or latest["id"]==row["last_order_id"]):

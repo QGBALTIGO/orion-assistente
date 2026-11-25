@@ -1,0 +1,54 @@
+name: Orion - Ciclo de planos da Barbearia
+on:
+  push:
+    branches: [codex/orion-planos-ciclo-barbearia-20261125]
+
+permissions:
+  contents: read
+
+jobs:
+  interface:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+      - run: node --test --test-reporter=dot ui-tests/orion-plans.test.mjs ui-tests/admin-plan-management.test.mjs ui-tests/admin-unassigned-plan.test.mjs ui-tests/onboarding-completion-access.test.mjs
+  package:
+    needs: [interface]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - surface: api
+            repository: orion-assistente-api
+          - surface: worker
+            repository: orion-assistente-api
+          - surface: qr
+            repository: orion-assistente-qr-bridge
+    env:
+      IMAGE: ghcr.io/qgbaltigo/${{ matrix.repository }}:plan-cycle-${{ matrix.surface }}-${{ github.sha }}
+      SURFACE: ${{ matrix.surface }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - run: python scripts/package_orion_plan_cycle.py "$SURFACE" "$IMAGE" "$GITHUB_SHA"
+      - name: Conferir o ambiente empacotado
+        run: |
+          case "$SURFACE" in
+            api) docker run --rm --entrypoint python "$IMAGE" -c 'from app.main import app; from scripts.backup_and_migrate_plan_cycle import TARGET; assert TARGET == "0097_confirmed_billing_state"; assert app.openapi()["paths"]["/api/v1/tenants/{tenant_id}/management/plan-trial/activate"]' ;;
+            worker) docker run --rm --entrypoint python "$IMAGE" -c 'from app.worker import WorkerSettings; assert any("scan_welcome_outbox" in job.name for job in WorkerSettings.cron_jobs)' ;;
+            qr) docker run --rm --entrypoint node "$IMAGE" --check src/server.mjs ;;
+          esac
+      - run: docker push "$IMAGE"

@@ -44,6 +44,10 @@ def derive_plan(snapshot, now=None):
     """Pure authority decision. Unknown/unverified commercial codes grant nothing."""
     now = now or datetime.now(timezone.utc)
     manual, commercial, trial = (snapshot.get(key) for key in ("manual", "commercial", "trial"))
+    scheduled = snapshot.get("manual_schedule")
+    scheduled_from = _date(scheduled.get("started_at")) if isinstance(scheduled, dict) else None
+    if scheduled_from is not None and scheduled_from <= now:
+        manual, scheduled = scheduled, None
     used = max(0, int(snapshot.get("active_professionals") or 0))
     manual_code = manual.get("plan_code") if isinstance(manual, dict) else None
     manual_valid = bool(manual_code in CODES and _date(manual.get("started_at")) is not None
@@ -53,8 +57,15 @@ def derive_plan(snapshot, now=None):
                     "expires_at": manual.get("expires_at"), "active": manual_valid} if manual_code else None)
     code, source, status, until = None, "none", "no_access", None
     platform = snapshot.get("platform_workspace") is True
+    billing = snapshot.get("confirmed_billing") or {}
+    financial_hold = bool(billing.get("hold")) or (
+        snapshot.get("niche") == "barbearia" and os.getenv("ORION_BARBER_PLAN_CYCLE", "0") == "1"
+        and isinstance(commercial, dict) and commercial.get("cakto_bound") is True
+        and commercial.get("status") == "suspended")
     if platform:
         source, status = "platform_admin", "active"
+    elif financial_hold:
+        status = "suspended"
     elif manual_valid:
         code, source, status, until = manual_code, "manual", "active", manual.get("expires_at")
     elif isinstance(commercial, dict):
@@ -63,15 +74,17 @@ def derive_plan(snapshot, now=None):
         paid_until = _date(commercial.get("grace_until"))
         active_paid_until = (last_paid + timedelta(days=30)
                              if last_paid is not None and last_paid <= now else None)
+        if active_paid_until and billing.get("channel") == "cakto" and _date(billing.get("paid_at")) == last_paid:
+            active_paid_until = _date(billing.get("period_ends_at")) or active_paid_until
         # Cancellation stops renewal, not an already paid, bank-verified
         # 30-day period. The lifecycle writer supplies its exact end; neither
         # a missing date nor an arbitrary future grace can extend this access.
         canceled_paid = bool(commercial.get("status") == "canceled" and last_paid and last_paid <= now and paid_until
-                             and now < paid_until <= last_paid + timedelta(days=30))
+                             and now < paid_until <= active_paid_until)
         paid_valid = (mapped is not None and commercial.get("cakto_bound") is True
             and last_paid is not None and last_paid <= now
             and (commercial.get("status") == "active" and active_paid_until > now or
-                 commercial.get("status") == "past_due" and _future(commercial.get("grace_until"), now)
+                 commercial.get("status") == "past_due" and bool(paid_until and now < paid_until <= active_paid_until)
                  or canceled_paid))
         if paid_valid:
             code, source, status = mapped, "cakto", "active"
@@ -84,13 +97,13 @@ def derive_plan(snapshot, now=None):
     # Prepaid Pix is a separate verified commercial grant, never a provider
     # subscription. Manual admin grants and active recurring contracts win.
     prepaid = snapshot.get("prepaid")
-    if (source == "none" and isinstance(prepaid, dict)
+    if (source == "none" and not financial_hold and isinstance(prepaid, dict)
             and prepaid.get("plan_code") in CODES
             and _date(prepaid.get("last_verified_payment_at")) is not None
             and _date(prepaid["last_verified_payment_at"]) <= now
             and _future(prepaid.get("paid_until"), now)):
         code, source, status, until = prepaid["plan_code"], "pix_prepaid", "active", prepaid["paid_until"]
-    if source == "none" and isinstance(trial, dict) and trial.get("status") == "active" and _future(trial.get("ends_at"), now):
+    if source == "none" and not financial_hold and isinstance(trial, dict) and trial.get("status") == "active" and _future(trial.get("ends_at"), now):
         if _date(trial.get("started_at")) is not None and _date(trial["started_at"]) <= now:
             code, source, status, until = "essencial", "trial", "active", trial["ends_at"]
     if (source == "none" and status == "no_access"
@@ -134,6 +147,10 @@ def derive_plan(snapshot, now=None):
         "limits": {"max_professionals": maximum, "active_professionals": used,
                    "excess_professionals": max(0, used - maximum) if maximum is not None else 0},
         "manual_assignment": manual_view, "commercial_subscription": commercial, "trial": trial}
+    if scheduled is not None:
+        result["scheduled_manual_assignment"] = scheduled
+    if billing:
+        result["billing"] = billing
     revision_input = {**result, "tenant_id": str(snapshot.get("tenant_id"))}
     result["revision"] = hashlib.sha256(json.dumps(revision_input, sort_keys=True, default=str, separators=(",", ":")).encode()).hexdigest()
     return result
@@ -173,7 +190,9 @@ async def plan_state(db, tenant_id, lock="shared"):
         await lock_plan(db, tenant_id, exclusive=lock == "exclusive")
     snapshot = (await db.execute(text("""SELECT public.orion_plan_snapshot(:tenant)
         || jsonb_build_object('niche', (SELECT configuration->>'niche'
-            FROM public.business_onboarding WHERE tenant_id=:tenant))"""),
+            FROM public.business_onboarding WHERE tenant_id=:tenant),
+            'manual_schedule', public.orion_manual_schedule(:tenant),
+            'confirmed_billing', public.orion_confirmed_billing_snapshot(:tenant))"""),
         {"tenant": tenant_id})).scalar_one()
     if snapshot is None:
         raise HTTPException(404, "Empresa não encontrada")

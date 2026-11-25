@@ -10,6 +10,8 @@ from app.account_auth import _storage
 
 
 async def _erase_locked(session, account, actor, reason):
+    from app.plan_trial_benefits import remember_trial_before_erasure
+    await remember_trial_before_erasure(session, account)
     # Login identifiers and the old password are irreversibly
     # replaced, while referenced UUIDs keep FK/audit integrity.
     await session.execute(text("""

@@ -62,6 +62,7 @@ class Identity(ProfileModel):
 
 class CreateBusiness(Identity):
     idempotency_key: IdempotencyKey
+    welcome_whatsapp_opt_in: StrictBool | None = Field(default=None, exclude_if=lambda value: value is None)
 
 
 class Address(ProfileModel):

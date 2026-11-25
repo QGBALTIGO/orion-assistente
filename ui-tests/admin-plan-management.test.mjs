@@ -5,17 +5,19 @@ import {planState,tenantA,flush,deferred} from './harness.mjs';
 
 const account={id:'90000000-0000-4000-8000-000000000009',company_id:tenantA,can_manage_plan:true,name:'Responsável sintético',company_name:'Empresa sintética',email:'plan@example.invalid',state:'active',auth_version:7,created_at:'2026-10-01T00:00:00Z'};
 const path='/api/v1/admin/accounts/'+account.id+'/companies/'+tenantA+'/plan';
+const manualOptions={plans:['essencial','profissional','elite'].map(code=>({code,name:'Orion '+code,max_professionals:10})),duration_months:[1,3,6,12]};
 async function fixture({state=planState('essencial',{revision:'a'.repeat(64),version:0}),save,history=[]}={}){
-  const value={company:{id:tenantA,name:'Empresa sintética',account_id:account.id,active_professionals:2},effective_plan:state,history};
+  const value={company:{id:tenantA,name:'Empresa sintética',account_id:account.id,active_professionals:2},effective_plan:state,history,manual_options:manualOptions};
   const h=await makePanel({role:'admin',initialRoute:'member',respond:async(url,method,data)=>{
     if(url===path){if(method==='GET')return value;if(save)return save(url,method,data,value);value.effective_plan=planState(method==='DELETE'?'essencial':data.plan_code,{revision:'b'.repeat(64),version:1});return value;}
+    if(url===path+'/quote')return {...data,expected_revision:value.effective_plan.revision,kind:'activation',timezone:'America/Cuiaba',starts_at:'2026-11-25T19:00:00Z',ends_at:'2026-12-25T19:00:00Z'};
     if(url==='/api/v1/admin/accounts/stats')return {total:1,active:1};
     if(url.startsWith('/api/v1/admin/accounts?'))return {items:[{...account,effective_plan:value.effective_plan}],total:1,page:1,page_size:20};
     if(url==='/api/v1/admin/accounts/'+account.id)return {account,history:[]};
   }});await flush();h.click('#osNav [data-os-route=member]');await flush();return {...h,value};
 }
 const mutations=h=>h.calls.filter(call=>['PUT','DELETE'].includes(call.method));
-const open=async h=>{h.click('#adminClientCenter .os-table [data-admin-control=plan]');await flush();};
+const open=async h=>{h.click('#adminClientCenter .os-table [data-admin-control=plan]');await flush();h.element('#adminManualPlan').value='essencial';h.element('#adminManualDuration').value='1';};
 
 test('existing administration exposes plan filters and opens the shared modal with authoritative company state',async t=>{
   const h=await fixture();t.after(()=>h.close());await open(h);
@@ -41,7 +43,7 @@ test('plan history shows an administrator name or the general administrator labe
       previous_plan:{name:'Orion Essencial'},new_plan:{name:'Orion Elite'}}];
     const h=await fixture({history});t.after(()=>h.close());await open(h);
     const text=h.element('#osDialog .os-disclosure-body').textContent;
-    assert.ok(text.includes('Administrador: '+(actorName||'Administrador geral')));
+    assert.ok(text.includes(actorName||'Administrador Orion'));
     assert.equal(text.includes(actorId),false);
     assert.equal(h.value.history[0].actor_id,actorId);
     assert.equal(mutations(h).length,0);
@@ -50,29 +52,29 @@ test('plan history shows an administrator name or the general administrator labe
 
 test('manual assignment requires review and sends the company-scoped CAS without payments or account version changes',async t=>{
   const h=await fixture();t.after(()=>h.close());await open(h);h.element('#adminManualPlan').value='elite';h.fill('#adminManualReason','Liberação administrativa');h.submit('[data-admin-form=plan]');await flush();
-  assert.equal(mutations(h).length,0);assert.match(h.element('#osDialog').textContent,/Confirmar alteração|Nenhuma cobrança/);h.submit('[data-admin-form=plan-confirm]');await flush();
-  const [call]=mutations(h);assert.equal(mutations(h).length,1);assert.equal(call.path,path);assert.equal(call.data.expected_version,0);assert.equal(call.data.expected_revision,'a'.repeat(64));assert.equal(call.data.confirmation,'ALTERAR PLANO');assert.equal(call.data.plan_code,'elite');assert.equal(call.data.access_type,'indefinite');assert.equal(call.data.expires_at,null);assert.match(call.data.operation_id,/^[0-9a-f-]{36}$/);assert.equal('auth_version' in call.data,false);assert.equal(h.calls.some(call=>/checkout|charge|logout/.test(call.path)),false);assert.deepEqual(h.errors,[]);
+  assert.equal(mutations(h).length,0);assert.match(h.element('#osDialog').textContent,/Confirmar vigência|sem cobrança/);h.submit('[data-admin-form=plan-confirm]');await flush();
+  const [call]=mutations(h);assert.equal(mutations(h).length,1);assert.equal(call.path,path);assert.equal(call.data.expected_version,0);assert.equal(call.data.expected_revision,'a'.repeat(64));assert.equal(call.data.confirmation,'ALTERAR PLANO');assert.equal(call.data.plan_code,'elite');assert.equal(call.data.duration_months,1);assert.equal(call.data.transition,'activation');assert.match(call.data.operation_id,/^[0-9a-f-]{36}$/);assert.equal('auth_version' in call.data,false);assert.equal(h.calls.some(call=>/checkout|charge|logout/.test(call.path)),false);assert.deepEqual(h.errors,[]);
 });
 
-test('temporary access requires a future date and preserves its draft through the review back button',async t=>{
-  const h=await fixture();t.after(()=>h.close());await open(h);const type=h.element('#adminManualAccess');type.value='temporary';type.dispatchEvent(new h.window.Event('change',{bubbles:true}));const input=h.element('#adminManualExpires');assert.equal(input.required,true);assert.equal(input.disabled,false);
-  input.value='2020-01-01T12:00';h.submit('[data-admin-form=plan]');await flush();assert.equal(h.document.querySelector('[data-admin-form=plan-confirm]'),null);assert.equal(mutations(h).length,0);
-  input.value='2099-11-01T12:00';h.fill('#adminManualReason','Teste temporário');h.submit('[data-admin-form=plan]');await flush();h.click('[data-admin-control=plan-back]');assert.equal(h.element('#adminManualExpires').value,'2099-11-01T12:00');assert.equal(h.element('#adminManualReason').value,'Teste temporário');
-  h.submit('[data-admin-form=plan]');h.submit('[data-admin-form=plan-confirm]');await flush();assert.equal(mutations(h)[0].data.access_type,'temporary');assert.ok(mutations(h)[0].data.expires_at.endsWith('Z'));
+test('a calendar term is mandatory and its draft survives the review back button',async t=>{
+  const h=await fixture();t.after(()=>h.close());await open(h);const input=h.element('#adminManualDuration');assert.equal(input.required,true);
+  input.value='';h.submit('[data-admin-form=plan]');await flush();assert.equal(h.document.querySelector('[data-admin-form=plan-confirm]'),null);assert.equal(mutations(h).length,0);
+  input.value='6';h.fill('#adminManualReason','Teste temporário');h.submit('[data-admin-form=plan]');await flush();h.click('[data-admin-control=plan-back]');assert.equal(h.element('#adminManualDuration').value,'6');assert.equal(h.element('#adminManualReason').value,'Teste temporário');
+  h.submit('[data-admin-form=plan]');await flush();h.submit('[data-admin-form=plan-confirm]');await flush();assert.equal(mutations(h)[0].data.duration_months,6);assert.equal('expires_at' in mutations(h)[0].data,false);
 });
 
 test('removing an assignment has separate confirmation and preserves billing identity',async t=>{
-  const h=await fixture({state:planState('elite',{revision:'c'.repeat(64),version:4,manual_assignment:{plan_code:'elite',active:true,expires_at:null}})});t.after(()=>h.close());await open(h);h.click('[data-admin-control=remove-plan]');await flush();assert.equal(mutations(h).length,0);assert.match(h.element('#osDialog').textContent,/recalculado pela assinatura comercial/);h.submit('[data-admin-form=plan-confirm]');await flush();assert.equal(mutations(h).length,1);assert.equal(mutations(h)[0].method,'DELETE');assert.equal(mutations(h)[0].data.confirmation,'REMOVER ATRIBUIÇÃO');assert.equal(mutations(h)[0].data.expected_version,4);assert.equal('plan_code' in mutations(h)[0].data,false);
+  const h=await fixture({state:planState('elite',{revision:'c'.repeat(64),version:4,manual_assignment:{plan_code:'elite',active:true,expires_at:null}})});t.after(()=>h.close());await open(h);h.click('[data-admin-control=remove-plan]');await flush();assert.equal(mutations(h).length,0);assert.match(h.element('#osDialog').textContent,/recalcular o acesso/);h.submit('[data-admin-form=plan-confirm]');await flush();assert.equal(mutations(h).length,1);assert.equal(mutations(h)[0].method,'DELETE');assert.equal(mutations(h)[0].data.confirmation,'REMOVER ATRIBUIÇÃO');assert.equal(mutations(h)[0].data.expected_version,4);assert.equal('plan_code' in mutations(h)[0].data,false);
 });
 
 test('a conflict or unknown outcome never automatically repeats the manual mutation',async t=>{
   for(const status of [409,503]){
-    const h=await fixture({save:()=>{throw Object.assign(Error('Estado mudou'),{status});}});t.after(()=>h.close());await open(h);h.submit('[data-admin-form=plan]');h.submit('[data-admin-form=plan-confirm]');await flush();assert.equal(mutations(h).length,1);assert.ok(h.element('[data-admin-form=plan-confirm] [type=submit]').disabled);assert.ok(h.element('[data-admin-control=plan][data-account-id]'));h.submit('[data-admin-form=plan-confirm]');await flush();assert.equal(mutations(h).length,1);
+    const h=await fixture({save:()=>{throw Object.assign(Error('Estado mudou'),{status});}});t.after(()=>h.close());await open(h);h.submit('[data-admin-form=plan]');await flush();h.submit('[data-admin-form=plan-confirm]');await flush();assert.equal(mutations(h).length,1);assert.ok(h.element('[data-admin-form=plan-confirm] [type=submit]').disabled);assert.ok(h.element('[data-admin-control=plan][data-account-id]'));h.submit('[data-admin-form=plan-confirm]');await flush();assert.equal(mutations(h).length,1);
   }
 });
 
 test('Escape cannot close a pending save and reset discards a late administrative result',async t=>{
-  const pending=deferred(),h=await fixture({save:()=>pending.promise});t.after(()=>h.close());await open(h);h.submit('[data-admin-form=plan]');h.submit('[data-admin-form=plan-confirm]');await flush();
+  const pending=deferred(),h=await fixture({save:()=>pending.promise});t.after(()=>h.close());await open(h);h.submit('[data-admin-form=plan]');await flush();h.submit('[data-admin-form=plan-confirm]');await flush();
   const event=new h.window.Event('cancel',{cancelable:true});h.element('#osDialog').dispatchEvent(event);assert.equal(event.defaultPrevented,true);assert.equal(h.element('#osDialog').open,true);
   h.window.OrionAdminCenter.reset();pending.resolve(h.value);await flush();assert.equal(h.element('#osDialog').open,false);assert.equal(mutations(h).length,1);
 });

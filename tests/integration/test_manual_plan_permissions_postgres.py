@@ -71,8 +71,11 @@ async def assignment(c, code="elite", **extra):
     response=await c.client.get(c.path)
     assert response.status_code==200,response.text
     state=response.json()["effective_plan"]
+    old = state.get("manual_assignment") or {}
+    transition = "downgrade" if old.get("active") and old.get("plan_code") == "elite" and code != "elite" else "activation"
     return {"expected_version":state["version"],"expected_revision":state["revision"],
-        "operation_id":str(uuid4()),"confirmation":"ALTERAR PLANO","plan_code":code,"access_type":"indefinite",**extra}
+        "operation_id":str(uuid4()),"confirmation":"ALTERAR PLANO","plan_code":code,
+        "duration_months":1,"transition":transition,**extra}
 
 
 @pytest.mark.asyncio
@@ -177,7 +180,12 @@ async def test_verified_cakto_renewal_and_replay_keep_manual_elite_then_removal_
     # A verified cancellation also updates the commercial record while manual
     # access remains authoritative; its NULL paid_at must preserve the receipt.
     paid_at=result.json()["effective_plan"]["commercial_subscription"]["last_verified_payment_at"]
-    assert (await c.client.put(c.path,json=await assignment(c))).status_code==200
+    # This pre-existing overlapping grant is preserved until it expires.
+    async with c.engine.begin() as db:
+        await db.execute(text("""
+            UPDATE tenant_plan_controls SET manual_plan_code='elite',manual_started_at=now(),
+                manual_expires_at=now()+interval '30 days',manual_actor_id=:actor WHERE tenant_id=:tenant
+        """), {"actor":c.operator,"tenant":c.tenant})
     assert await reconcile_existing_cakto_subscription(
         {**event,"event_type":"subscription_canceled"},order,ReadOnlyProvider("canceled"))=="reconciled"
     state=(await c.client.get(c.path)).json()["effective_plan"]
@@ -204,7 +212,8 @@ async def test_downgrade_keeps_all_eight_professional_rows_and_existing_financia
         before=(await db.execute(text("SELECT * FROM professionals WHERE tenant_id=:tenant ORDER BY id"),{"tenant":c.tenant})).all()
     response=await c.client.put(c.path,json=await assignment(c,"essencial"))
     assert response.status_code==200,response.text
-    assert response.json()["effective_plan"]["limits"]=={"max_professionals":2,"active_professionals":8,"excess_professionals":6}
+    effective=response.json()["effective_plan"]
+    assert effective["code"]=="elite" and effective["scheduled_manual_assignment"]["plan_code"]=="essencial"
     async with c.engine.connect() as db:
         after=(await db.execute(text("SELECT * FROM professionals WHERE tenant_id=:tenant ORDER BY id"),{"tenant":c.tenant})).all()
     assert before==after
@@ -237,10 +246,14 @@ async def test_temporary_manual_expiry_uses_the_same_real_snapshot_and_restores_
             (tenant_id,account_id,full_name,company_name,whatsapp_e164,status,started_at,ends_at)
             VALUES(:tenant,:account,'Pessoa Sintética','Empresa Sintética','+5567999999901','active',now()-interval '1 hour',now()+interval '3 days')"""),
             {"tenant":c.tenant,"account":c.account})
-    expiry=datetime.now(timezone.utc)+timedelta(days=1)
-    response=await c.client.put(c.path,json=await assignment(c,access_type="temporary",expires_at=expiry.isoformat()))
+    response=await c.client.put(c.path,json=await assignment(c))
     assert response.status_code==200,response.text
     assert response.json()["effective_plan"]["source"]=="manual"
+    async with c.engine.begin() as db:
+        expiry=(await db.execute(text("""
+            UPDATE tenant_plan_controls SET manual_expires_at=now()+interval '1 day'
+            WHERE tenant_id=:tenant RETURNING manual_expires_at
+        """), {"tenant":c.tenant})).scalar_one()
     async with c.engine.connect() as db:
         snapshot=(await db.execute(text("SELECT public.orion_plan_snapshot(:tenant)"),{"tenant":c.tenant})).scalar_one()
         before=(await db.execute(text("SELECT version,manual_plan_code,manual_expires_at FROM tenant_plan_controls WHERE tenant_id=:tenant"),{"tenant":c.tenant})).one()
@@ -282,8 +295,11 @@ async def company_assignment(c,code="elite",**extra):
     response=await c.client.get(path)
     assert response.status_code==200,response.text
     state=response.json()["effective_plan"]
+    old = state.get("manual_assignment") or {}
+    transition = "downgrade" if old.get("active") and old.get("plan_code") == "elite" and code != "elite" else "activation"
     return {"expected_version":state["version"],"expected_revision":state["revision"],
-        "operation_id":str(uuid4()),"confirmation":"ALTERAR PLANO","plan_code":code,"access_type":"indefinite",**extra}
+        "operation_id":str(uuid4()),"confirmation":"ALTERAR PLANO","plan_code":code,
+        "duration_months":1,"transition":transition,**extra}
 
 
 @pytest.mark.asyncio
@@ -307,7 +323,7 @@ async def test_orphan_company_plan_read_grant_change_remove_replay_and_cas_prese
     stale={**payload,"operation_id":str(uuid4()),"plan_code":"essencial"}
     assert (await c.client.put(path,json=stale)).status_code==409
     changed=await c.client.put(path,json=await company_assignment(c,"profissional"))
-    assert changed.status_code==200 and changed.json()["effective_plan"]["code"]=="profissional"
+    assert changed.status_code==200 and changed.json()["effective_plan"]["scheduled_manual_assignment"]["plan_code"]=="profissional"
     state=changed.json()["effective_plan"]
     removal={"expected_version":state["version"],"expected_revision":state["revision"],
         "operation_id":str(uuid4()),"confirmation":"REMOVER ATRIBUIÇÃO"}

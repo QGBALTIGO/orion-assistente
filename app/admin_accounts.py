@@ -13,14 +13,16 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.encoders import jsonable_encoder
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from app.account_auth import _storage
 from app.panel_auth import panel_actor
-from app.plan_catalog import CODES
-from app.plan_permissions import derive_plan, plan_state, lock_plan
+from app.plan_catalog import CODES, commercial_catalog
+from app.plan_permissions import _date, derive_plan, plan_state, lock_plan
+from app.manual_plan_terms import MANUAL_MONTHS, preview as preview_manual_term
+from app.workspace_policy import STANDARD_WORKSPACE
 from app.account_business import lock_account_business
 
 router=APIRouter(prefix="/api/v1/admin/accounts",tags=["Administração de clientes"])
@@ -79,22 +81,22 @@ class PlanOperation(BaseModel):
         return value or None
 
 
-class ManualPlanAssignment(PlanOperation):
-    confirmation: Literal["ALTERAR PLANO"]
+class ManualPlanSelection(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     plan_code: Literal["essencial", "profissional", "elite"]
-    access_type: Literal["indefinite", "temporary"]
-    expires_at: datetime | None = None
+    duration_months: Literal[1, 3, 6, 12]
 
-    @model_validator(mode="after")
-    def valid_window(self):
-        if self.access_type == "indefinite":
-            if self.expires_at is not None:
-                raise ValueError("A liberação sem prazo não possui data de expiração")
-        elif self.expires_at is None or self.expires_at.tzinfo is None:
-            raise ValueError("Informe uma data de expiração com fuso horário")
-        else:
-            self.expires_at = self.expires_at.astimezone(timezone.utc)
-        return self
+    @field_validator("duration_months", mode="before")
+    @classmethod
+    def strict_months(cls, value):
+        if type(value) is not int:
+            raise ValueError("Selecione a duração em meses")
+        return value
+
+
+class ManualPlanAssignment(PlanOperation, ManualPlanSelection):
+    confirmation: Literal["ALTERAR PLANO"]
+    transition: Literal["activation", "renewal", "upgrade", "downgrade"]
 
 
 class ManualPlanRemoval(PlanOperation):
@@ -112,6 +114,8 @@ ACCOUNT_QUERY = """
            COALESCE(company.company_count,0) AS company_count,
            CASE WHEN company.company_count=1 THEN public.orion_plan_snapshot(company.company_id)
              || jsonb_build_object('prepaid',public.orion_prepaid_plan_snapshot(company.company_id),
+                  'manual_schedule',public.orion_manual_schedule(company.company_id),
+                  'confirmed_billing',public.orion_confirmed_billing_snapshot(company.company_id),
                   'niche',(SELECT configuration->>'niche' FROM business_onboarding
                            WHERE tenant_id=company.company_id)) END AS plan_snapshot
     FROM panel_accounts a LEFT JOIN admin_account_controls c ON c.account_id=a.id
@@ -261,14 +265,14 @@ async def account_detail(account_id:UUID,admin:UUID=Depends(require_platform_own
 
 async def _plan_company(db, account_id, tenant_id, *, lock=False):
     if account_id is None:
-        row=(await db.execute(text("""SELECT t.id,t.name,t.status,NULL::uuid AS account_id,
+        row=(await db.execute(text("""SELECT t.id,t.name,t.status,t.timezone,NULL::uuid AS account_id,
             CASE WHEN """+MANAGEABLE_COMPANY_OWNER+""" THEN 'assigned' ELSE 'unassigned' END AS owner_status
             FROM tenants t WHERE t.id=:tenant"""+(" FOR SHARE OF t" if lock else "")),
             {"tenant":tenant_id})).mappings().one_or_none()
         if row is None:
             raise HTTPException(404,"Empresa não encontrada")
         return dict(row)
-    row = (await db.execute(text("""SELECT t.id,t.name,t.status,a.id AS account_id,
+    row = (await db.execute(text("""SELECT t.id,t.name,t.status,t.timezone,a.id AS account_id,
             m.role AS membership_role,COALESCE(c.state,'active') AS account_state,
             (SELECT count(*) FROM tenant_memberships active_memberships
              WHERE active_memberships.account_id=a.id AND active_memberships.active) AS company_count
@@ -290,19 +294,24 @@ async def _plan_company(db, account_id, tenant_id, *, lock=False):
 
 
 async def _plan_history(db, tenant_id):
-    rows = (await db.execute(text("""SELECT id,actor_id,operation_id,action,previous_plan,new_plan,
-            reason,access_type,expires_at,occurred_at FROM tenant_plan_audit
-        WHERE tenant_id=:tenant ORDER BY occurred_at DESC,id DESC LIMIT 50"""), {"tenant": tenant_id})).mappings().all()
+    rows = (await db.execute(text("""SELECT h.id,h.actor_id,h.operation_id,h.action,h.previous_plan,h.new_plan,
+            h.reason,h.access_type,h.expires_at,h.occurred_at,h.duration_months,h.term_starts_at,a.name AS actor_name
+        FROM tenant_plan_audit h LEFT JOIN panel_accounts a ON a.id=h.actor_id
+        WHERE h.tenant_id=:tenant ORDER BY h.occurred_at DESC,h.id DESC LIMIT 50"""), {"tenant": tenant_id})).mappings().all()
     return [dict(row) for row in rows]
 
 
 async def _plan_envelope(db, company, state, *, replayed=False):
-    company_view={"id":company["id"],"name":company["name"],"status":company["status"],
+    company_view={"id":company["id"],"name":company["name"],"status":company["status"],"timezone":company.get("timezone"),
         "account_id":company["account_id"],"active_professionals":state["limits"]["active_professionals"],
         "can_manage_plan":not state["platform_workspace"]}
     if company["account_id"] is None:
         company_view["owner_status"]=company["owner_status"]
-    return {"company":company_view,
+    available = not state["platform_workspace"] and state["workspace_profile"] == STANDARD_WORKSPACE
+    return {"company":company_view, "manual_options": {
+                "plans": commercial_catalog(state.get("business_niche")) if available else [],
+                "duration_months": MANUAL_MONTHS if available else [],
+            },
             "effective_plan": state, "history": await _plan_history(db, company["id"]), "replayed": replayed}
 
 
@@ -333,6 +342,29 @@ def _plan_fingerprint(account_id, tenant_id, action, payload):
     return hashlib.sha256(json.dumps(body,sort_keys=True,separators=(",", ":")).encode()).hexdigest()
 
 
+async def _quote_company_plan(account_id, tenant_id, payload):
+    async with _storage()() as db:
+        async with db.begin():
+            await _plan_company(db, account_id, tenant_id)
+            state = await plan_state(db, tenant_id)
+            quote = await preview_manual_term(db, tenant_id, state, payload.plan_code, payload.duration_months)
+            return {**quote, "plan_code": payload.plan_code, "expected_revision": state["revision"]}
+
+
+@router.post("/companies/{tenant_id}/plan/quote")
+async def quote_direct_company_plan(tenant_id: UUID, payload: ManualPlanSelection, response: Response,
+                                    admin: UUID = Depends(require_platform_owner)):
+    response.headers["Cache-Control"] = "no-store"
+    return await _quote_company_plan(None, tenant_id, payload)
+
+
+@router.post("/{account_id}/companies/{tenant_id}/plan/quote")
+async def quote_account_company_plan(account_id: UUID, tenant_id: UUID, payload: ManualPlanSelection,
+                                     response: Response, admin: UUID = Depends(require_platform_owner)):
+    response.headers["Cache-Control"] = "no-store"
+    return await _quote_company_plan(account_id, tenant_id, payload)
+
+
 async def _change_company_plan(account_id, tenant_id, payload, admin, action):
     fingerprint = _plan_fingerprint(account_id, tenant_id, action, payload)
     try:
@@ -358,26 +390,43 @@ async def _change_company_plan(account_id, tenant_id, payload, admin, action):
                     raise HTTPException(409,"O plano mudou. Atualize a ficha antes de confirmar novamente")
                 if previous["platform_workspace"]:
                     raise HTTPException(409,"O acesso administrativo integral é preservado nesta empresa")
+                months, term_start = None, None
                 if action == "manual_assign":
-                    if payload.expires_at is not None and payload.expires_at <= datetime.now(timezone.utc):
-                        raise HTTPException(422,"A expiração precisa estar no futuro")
-                    changed = (await db.execute(text("""INSERT INTO tenant_plan_controls
+                    term = await preview_manual_term(db, tenant_id, previous, payload.plan_code, payload.duration_months)
+                    if term["kind"] != payload.transition:
+                        raise HTTPException(409, "A vigência mudou. Confira as novas datas antes de confirmar.")
+                    values = {"tenant":tenant_id,"code":payload.plan_code,"expires":term["ends_at"],
+                              "starts":term["starts_at"],"admin":admin,"reason":payload.reason,
+                              "version":payload.expected_version}
+                    if term["kind"] == "downgrade":
+                        active = previous["manual_assignment"]
+                        # Also works when the previous scheduled term has taken effect.
+                        values.update(current_code=active["plan_code"], current_start=_date(active["started_at"]))
+                        query = """UPDATE tenant_plan_controls SET version=version+1,
+                            manual_plan_code=:current_code,manual_started_at=:current_start,
+                            manual_expires_at=:starts,manual_next_code=:code,
+                            manual_next_starts_at=:starts,manual_next_ends_at=:expires,updated_at=clock_timestamp()
+                            WHERE tenant_id=:tenant AND version=:version RETURNING version"""
+                    else:
+                        query = """INSERT INTO tenant_plan_controls
                         (tenant_id,version,manual_plan_code,manual_started_at,manual_expires_at,manual_actor_id,manual_reason)
-                        VALUES (:tenant,1,:code,clock_timestamp(),:expires,:admin,:reason)
+                        VALUES (:tenant,1,:code,:starts,:expires,:admin,:reason)
                         ON CONFLICT(tenant_id) DO UPDATE SET
                             version=tenant_plan_controls.version+1,manual_plan_code=EXCLUDED.manual_plan_code,
                             manual_started_at=EXCLUDED.manual_started_at,manual_expires_at=EXCLUDED.manual_expires_at,
                             manual_actor_id=EXCLUDED.manual_actor_id,manual_reason=EXCLUDED.manual_reason,updated_at=clock_timestamp()
-                        WHERE tenant_plan_controls.version=:version RETURNING version"""),
-                        {"tenant":tenant_id,"code":payload.plan_code,"expires":payload.expires_at,
-                         "admin":admin,"reason":payload.reason,"version":payload.expected_version})).scalar_one_or_none()
-                    access_type, expires = payload.access_type, payload.expires_at
+                            ,manual_next_code=NULL,manual_next_starts_at=NULL,manual_next_ends_at=NULL
+                        WHERE tenant_plan_controls.version=:version RETURNING version"""
+                    changed = (await db.execute(text(query), values)).scalar_one_or_none()
+                    access_type, expires = "temporary", term["ends_at"]
+                    months, term_start = payload.duration_months, term["added_period_start"]
                 else:
                     if previous["manual_assignment"] is None:
                         raise HTTPException(409,"Não existe atribuição manual para remover")
                     changed = (await db.execute(text("""UPDATE tenant_plan_controls SET version=version+1,
                         manual_plan_code=NULL,manual_started_at=NULL,manual_expires_at=NULL,manual_actor_id=NULL,
-                        manual_reason=NULL,updated_at=clock_timestamp()
+                        manual_reason=NULL,manual_next_code=NULL,manual_next_starts_at=NULL,manual_next_ends_at=NULL,
+                        updated_at=clock_timestamp()
                         WHERE tenant_id=:tenant AND version=:version AND manual_plan_code IS NOT NULL RETURNING version"""),
                         {"tenant":tenant_id,"version":payload.expected_version})).scalar_one_or_none()
                     access_type, expires = None, None
@@ -385,12 +434,13 @@ async def _change_company_plan(account_id, tenant_id, payload, admin, action):
                     raise HTTPException(409,"O plano mudou. Atualize a ficha")
                 current = await plan_state(db,tenant_id,lock=None)
                 await db.execute(text("""INSERT INTO tenant_plan_audit
-                    (id,tenant_id,actor_id,operation_id,action,previous_plan,new_plan,reason,access_type,expires_at,request_fingerprint)
+                    (id,tenant_id,actor_id,operation_id,action,previous_plan,new_plan,reason,access_type,expires_at,request_fingerprint,duration_months,term_starts_at)
                     VALUES (:id,:tenant,:actor,:operation,:action,CAST(:previous AS jsonb),CAST(:new AS jsonb),
-                            :reason,:access_type,:expires,:fingerprint)"""),
+                            :reason,:access_type,:expires,:fingerprint,:months,:term_start)"""),
                     {"id":uuid4(),"tenant":tenant_id,"actor":admin,"operation":payload.operation_id,"action":action,
                      "previous":json.dumps(jsonable_encoder(previous)),"new":json.dumps(jsonable_encoder(current)),
-                     "reason":payload.reason,"access_type":access_type,"expires":expires,"fingerprint":fingerprint})
+                     "reason":payload.reason,"access_type":access_type,"expires":expires,"fingerprint":fingerprint,
+                     "months":months,"term_start":term_start})
                 return await _plan_envelope(db,company,current)
     except IntegrityError:
         raise HTTPException(409,"Operação concorrente ou já registrada. Atualize a ficha") from None

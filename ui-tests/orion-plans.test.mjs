@@ -31,6 +31,8 @@ function fixture(overrides={},options={}){
  const ctx={user:{name:'Pessoa Sintética'},tenant:{name:'Empresa Sintética'},canManage:options.canManage!==false,isAdmin:!!options.isAdmin,
   request:async(path,method='GET',data)=>{calls.push({path,method,data});
    if(path==='/plan-trial'){overview.trial={status:'pending',started_at:null,ends_at:null};return{status:'pending',message:'Solicitação recebida!'};}
+   if(path==='/plan-trial/activate'&&options.activateTrial)return options.activateTrial(overview,data);
+   if(path==='/plan-support'&&options.support)return options.support();
    if(path==='/plan-overview')return overview;
    if(path==='/plan-checkout'&&options.embeddedReply)return await options.embeddedReply(data);
    if(path.startsWith('/plan-checkout?')&&options.embeddedStatus)return options.embeddedStatus;
@@ -59,6 +61,47 @@ function fixture(overrides={},options={}){
  return {window,root,calls,ctx,overview,get current(){return current;},close:()=>dom.window.close()};
 }
 function tick(){return new Promise(resolve=>setImmediate(resolve));}
+
+test('Barbearia shows the server catalogue and one explicit 168-hour evaluation without comparison controls',async()=>{
+ const barbershop={trial_eligible:true,period_days:30,timezone:'America/Cuiaba'};
+ const plans=base.plans.map(plan=>({...plan,description:'Recurso confirmado',benefits:['Agenda'],recommended:plan.code==='profissional',period_days:30}));
+ const fixtureApp=fixture({barbershop,plans,embedded_checkout_enabled:true},{activateTrial(overview,input){
+  assert.equal(input.confirmed,true);
+  overview.trial={status:'active',started_at:'2026-11-25T18:30:00Z',ends_at:'2026-12-02T18:30:00Z'};
+  overview.barbershop={...barbershop,trial_eligible:false,trial_remaining_seconds:168*3600};
+  overview.effective_plan=planState('essencial',{source:'trial',active:true});
+ }});
+ try{
+  assert.equal(fixtureApp.root.querySelectorAll('.op-plan').length,3);
+  assert.equal(fixtureApp.root.querySelector('.op-compare,.op-matrix,[data-op-only-differences]'),null);
+  assert.match(fixtureApp.root.querySelector('.op-profissional').textContent,/Recomendado.*89,90.*30 dias.*6 profissionais/);
+  assert.equal(fixtureApp.calls.length,0);
+  fixtureApp.root.querySelector('[data-op-start-trial]').click();
+  await tick();await tick();
+  assert.equal(fixtureApp.root.querySelector('[data-op-start-trial]'),null);
+  assert.match(fixtureApp.root.querySelector('[data-op-effective-plan]').textContent,/7 d 0 h 0 min/);
+  assert.equal(fixtureApp.root.querySelectorAll('[data-op-embedded]:enabled').length,3);
+  assert.equal(fixtureApp.calls.filter(call=>call.method==='POST').length,1);
+ }finally{fixtureApp.close();}
+});
+
+test('Barbearia keeps support available during a financial hold and resolves the number per click',async()=>{
+ const barbershop={trial_eligible:false,period_days:30,timezone:'America/Cuiaba'};
+ const state=planState('none',{source:'none',active:false,billing:{hold:'refund_requested'}});
+ let reads=0;
+ const f=fixture({barbershop,effective_plan:state,embedded_checkout_enabled:true},{support(){
+  return {url:++reads===1?'https://wa.me/5567999990101?text=Orion':null};
+ }});
+ try{
+  assert.match(f.root.querySelector('[data-op-effective-plan]').textContent,/Reembolso em análise/);
+  assert.equal(f.root.querySelectorAll('[data-op-checkout]:enabled').length,0);
+  f.root.querySelector('.op-support [data-op-support]').click();await tick();
+  assert.equal(f.root.querySelector('.op-support-result a')?.hostname,'wa.me');
+  f.root.querySelector('.op-support [data-op-support]').click();await tick();
+  assert.match(f.root.querySelector('.op-support-result').textContent,/temporariamente indisponível/);
+  assert.equal(reads,2);
+ }finally{f.close();}
+});
 function fillPix(f,dialog){
  const form=dialog.querySelector('[data-pix-form]');
  for(const [key,value] of Object.entries({name:'Pessoa Sintética',email:'synthetic@example.test',phone:'(67) 99999-1111',doc_number:'52998224725'}))form.elements.namedItem(key).value=value;

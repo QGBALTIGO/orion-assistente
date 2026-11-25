@@ -115,7 +115,7 @@ class SendSlot(StrictModel):
     phone: str = Field(pattern=r"^(?:55[1-9][0-9]{9,10}|5959[0-9]{8})$")
     operation_id: UUID
     fingerprint: str = Field(pattern=r"^[a-f0-9]{64}$")
-    source: Literal["assistant", "automation", "manual", "appointment"]
+    source: Literal["assistant", "automation", "manual", "appointment", "welcome"]
     control_revision: StrictInt | None = Field(default=None, ge=1)
     text: str | None = Field(default=None, min_length=1, max_length=1200)
     recheck: bool = Field(default=False, strict=True)
@@ -331,6 +331,9 @@ async def bridge_control(request, payload, *, read_only=False):
 
 @router.post("/internal/qr/channels/{channel_id}/send-authorize", include_in_schema=False)
 async def authorize_send(channel_id: UUID, payload: SendSlot, request: Request):
+    if payload.source == "welcome":
+        from app.orion_welcome import authorize
+        return await authorize(channel_id, payload, request)
     if payload.source == "appointment":
         from app.central_appointment_transport import authorize
         return await authorize(channel_id, payload, request)
@@ -404,6 +407,10 @@ async def authorize_send(channel_id: UUID, payload: SendSlot, request: Request):
 
 @router.post("/internal/qr/channels/{channel_id}/send-finish", include_in_schema=False)
 async def finish_send(channel_id: UUID, payload: FinishSlot, request: Request):
+    if payload.source == "welcome":
+        from app.orion_welcome import authorize
+        await authorize(channel_id, payload, request)
+        return {"released": True, "operation_id": payload.operation_id}
     if payload.source == "appointment":
         from app.central_appointment_transport import finish
         return await finish(channel_id, payload, request)

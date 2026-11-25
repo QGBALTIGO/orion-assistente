@@ -233,6 +233,9 @@ async def startup_plan_permissions(ctx):
                   + type(exc).__name__, flush=True)
 
 
+from app.orion_welcome import scan_welcome_outbox
+
+
 class WorkerSettings:
     on_startup = startup_plan_permissions
     functions = [func(process_appointment_notification,name='process_appointment_notification'),infrastructure_ping,process_inbound_event,process_message_outbox,process_calendar_outbox,process_due_appointment,reconcile_asaas_job,process_automation_job,reconcile_automation_job,process_inbox_message,process_email_outbox,process_subscription_chatbot_restore,func(process_subscription_group_add,name='process_subscription_group_add',keep_result=0,max_tries=1,timeout=25),func(process_subscription_group_add_receipt,name='process_subscription_group_add_receipt',keep_result=0,max_tries=1,timeout=40)]
@@ -247,6 +250,7 @@ class WorkerSettings:
                  cron(scan_automations, minute=set(range(60)), second=20),
                  cron(scan_inbox,minute=set(range(60)),second={5,35}),
                  cron(scan_email_outbox,minute=set(range(60)),second={0,15,30,45}),
+                 cron(scan_welcome_outbox,minute=set(range(60)),second=28,timeout=35),
                  cron(scan_subscription_chatbot,minute=set(range(60)),second={7,37}),
                  cron(backup_subscription_chatbots,minute={2,17,32,47},second=22),
                  # Retention-aware, irreversible login removal after 30 days.

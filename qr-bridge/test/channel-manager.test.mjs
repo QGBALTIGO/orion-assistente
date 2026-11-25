@@ -305,6 +305,33 @@ test('central booking sends to an out-of-allowlist professional only after broke
     operation_id:randomUUID(),source:'manual',control_revision:1}),/sender_denied/);
 });
 
+test('administrative welcome requires an exact durable grant and never repeats an uncertain send',async t=>{
+  const f=fixture(t),a=f.add(),operation=randomUUID();
+  const grants=[];
+  f.broker.authorizeSend=async(_id,_key,_lease,payload)=>{
+    grants.push(payload);
+    return {authorized:payload.operation_id===operation&&payload.phone===other&&payload.text==='Boas-vindas sintéticas',
+      operation_id:payload.operation_id};
+  };
+  const m=f.manager();await m.start(a.id,a.key);
+  const send={to:other,text:'Boas-vindas sintéticas',operation_id:operation,source:'welcome'};
+  const refused=await m.send(a.id,a.key,{...send,operation_id:randomUUID()});
+  assert.equal(refused.state,'refused');
+  assert.equal(f.made[0].sends.length,0);
+  assert.equal(f.made[0].ctx.allowedSender(other),false);
+  f.made[0].send=async function(to,text,options){
+    await options.assertAuthorized();
+    this.sends.push({to,text});
+    throw Error('synthetic acknowledgement lost after relay attempt');
+  };
+  const first=await m.send(a.id,a.key,send);
+  const repeated=await m.send(a.id,a.key,send);
+  assert.equal(first.state,repeated.state);
+  assert.equal(first.state,'uncertain');
+  assert.equal(f.made[0].sends.length,1);
+  assert.ok(grants.every(item=>item.source==='welcome'&&item.phone===other));
+});
+
 test('manual send carries the committed revision and real receipts return only to the API',async t=>{
   const f=fixture(t),a=f.add(),permits=[],finished=[],receipts=[];f.rows.get(a.id).inbox_control=true;
   f.broker.authorizeSend=async(id,key,lease,payload)=>{permits.push(payload);return {authorized:true,operation_id:payload.operation_id};};

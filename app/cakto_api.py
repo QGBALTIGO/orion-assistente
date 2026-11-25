@@ -13,6 +13,7 @@ import json
 import os
 import re
 import time
+from datetime import timezone
 from decimal import Decimal, InvalidOperation
 from functools import lru_cache
 
@@ -30,7 +31,7 @@ BASE = "https://api.cakto.com.br/public_api"
 ORDER_ID = re.compile(r"^[A-Za-z0-9_-]{1,255}$")
 EVENTS = frozenset({
     "purchase_approved", "purchase_refused", "subscription_renewed",
-    "subscription_canceled", "refund", "chargeback",
+    "subscription_canceled", "refund_requested", "refund", "chargeback",
 })
 RECOVERY_TIMEOUT_SECONDS = 25
 SCAN_TIMEOUT_SECONDS = 70
@@ -131,6 +132,13 @@ def normalized_events(payload: dict) -> list[dict]:
             "charged_back_at": item.get("chargedbackAt"),
             "canceled_at": item.get("canceledAt"),
         }
+        if event == "refund_requested":
+            from app.cakto_recovery import instant
+            refund = item.get("refundRequest")
+            requested = (refund.get("requestedAt") if isinstance(refund, dict) else None) or item.get("updatedAt")
+            timestamp = instant(requested)
+            if timestamp is not None:
+                identity["requested_at"] = timestamp.astimezone(timezone.utc).isoformat()
         digest = hashlib.sha256(
             json.dumps(identity, sort_keys=True, separators=(",", ":"),
                        ensure_ascii=True).encode()
@@ -481,6 +489,7 @@ def verify_order_event(event: dict, order: dict) -> str:
         "purchase_approved": {"paid"},
         "subscription_renewed": {"paid"},
         "purchase_refused": {"refused"},
+        "refund_requested": {"refund_requested"},
         "refund": {"refunded"},
         "chargeback": {"chargedback", "MED"},
     }
@@ -499,6 +508,7 @@ async def recover_provider_receipts(client):
     """Collect independent GET proofs, then persist before ordinary verification."""
     from app.prepaid_pix_recovery import recover_prepaid_provider_receipts
     from app.cakto_recovery import recover_recurring_provider_receipts
+    from app.confirmed_billing import recover_withdrawn_refunds
 
     async def collect(recover):
         saved = 0
@@ -520,6 +530,13 @@ async def recover_provider_receipts(client):
         tasks.append(group.create_task(collect(recover_prepaid_provider_receipts)))
         if os.getenv("ORION_CAKTO_LIFECYCLE_ENABLED","0") == "1":
             tasks.append(group.create_task(collect(recover_recurring_provider_receipts)))
+        async def reconcile_holds():
+            try:
+                async with asyncio.timeout(RECOVERY_TIMEOUT_SECONDS):
+                    await recover_withdrawn_refunds(client)
+            except (TimeoutError, SQLAlchemyError):
+                pass
+        group.create_task(reconcile_holds())
     return sum(task.result() for task in tasks)
 
 
@@ -565,8 +582,8 @@ async def _claim_pending_cakto(limit):
                   AND (:lifecycle_enabled
                        OR event_type NOT IN (
                           'subscription_renewed','subscription_canceled',
-                          'purchase_refused','refund','chargeback')
-                       OR (event_type IN ('purchase_refused','refund','chargeback')
+                          'purchase_refused','refund_requested','refund','chargeback')
+                       OR (event_type IN ('purchase_refused','refund_requested','refund','chargeback')
                            AND EXISTS (
                              SELECT 1 FROM orion_prepaid_pix_orders p
                               WHERE p.external_order_id=cakto_webhook_events.external_order_id
@@ -617,7 +634,7 @@ async def _verify_cakto_receipt(client,row):
                 return
             if linked == "manual_review":
                 state = "manual_review"
-        if state == "verified" and row["event_type"] in {"purchase_refused","refund","chargeback"}:
+        if state == "verified" and row["event_type"] in {"purchase_refused","refund_requested","refund","chargeback"}:
             from app.prepaid_pix_reconcile import reconcile_prepaid_reversal
             prepaid_reversal=await reconcile_prepaid_reversal(row,order)
             if prepaid_reversal!="not_prepaid":

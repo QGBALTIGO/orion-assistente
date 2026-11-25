@@ -1569,7 +1569,7 @@ function startBusinessSession(){
  if(!wizardClocks)wizardClocks=setInterval(updateWizardClocks,1000);
  void updateStatus();
 }
-async function openCompletedBusinessDashboard(epoch,host,{refreshBusinesses=false}={}){
+async function openCompletedBusinessDashboard(epoch,host,{refreshBusinesses=false,route="dashboard"}={}){
  // Recheck the tenant binding after completion. A stale session must not
  // switch companies or reveal a different account's Dashboard.
  if(epoch!==authEpoch)return;
@@ -1577,7 +1577,7 @@ async function openCompletedBusinessDashboard(epoch,host,{refreshBusinesses=fals
  if(epoch!==authEpoch||!accountBusiness())return;
  setSetupGate(false);
  host.hidden=true;
- await window.OrionSuite?.open("dashboard",{force:true});
+ await window.OrionSuite?.open(route,{force:true});
 }
 function mountSetup(){
  window.OrionOnboarding?.unmount();
@@ -1586,7 +1586,7 @@ function mountSetup(){
  const epoch=authEpoch;
  setupController=window.OrionOnboarding?.mount({host,request:api,user:suiteUser,
   async onTenantChange(){if(epoch!==authEpoch)return;await loadBusinesses({resolveSetup:false});startBusinessSession()},
-  async onComplete(){await openCompletedBusinessDashboard(epoch,host,{refreshBusinesses:true})},
+  async onComplete(data){await openCompletedBusinessDashboard(epoch,host,{refreshBusinesses:true,route:data?.configuration?.niche==="barbearia"?"plano":"dashboard"})},
   async onOpenPanel(){await openCompletedBusinessDashboard(epoch,host)},
   openLegacy(target){if(epoch!==authEpoch||!accountBusiness())return;setSetupGate(false);host.hidden=true;window.OrionSuite?.open(target==="dispositivo"?"configuracoes":target)},
   logout:()=>$("logout")?.click()

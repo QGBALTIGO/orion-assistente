@@ -40,6 +40,17 @@
 .op-current-metrics small{font-size:11px;color:var(--os-muted)}.op-current-metrics strong{font-size:14px}
 .op-feedback{padding:12px 14px;border:1px solid var(--os-border);border-radius:10px;background:var(--os-tint);font-size:13px}
 .op-feedback[hidden]{display:none}
+.op-barbershop .op-account-state{align-items:flex-start}
+.op-barbershop .op-current-metrics{min-width:0}
+.op-barbershop .op-plan-features{display:flex}
+.op-barbershop .op-elite{grid-column:auto}
+.op-support,.op-recovery-note{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;min-width:0}
+.op-support{padding:18px 20px;background:var(--os-card);border:1px solid var(--os-border);border-radius:15px}
+.op-support h2{font:650 17px/1.35 var(--os-display);margin:0 0 6px}
+.op-support p,.op-support-result{font-size:13px;color:var(--os-muted);margin:0}
+.op-support-result:not(:empty){flex-basis:100%}
+@media(min-width:768px){.op-page.op-barbershop .op-plans-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:767px){.op-barbershop .op-free-trial>.op-btn{white-space:normal}.op-support>.op-btn{width:100%}}
 .op-section-title h2{font:650 22px/1.3 var(--os-display)}.op-section-title p{font-size:13px;color:var(--os-muted);margin:6px 0 16px}
 
 /* Comparison uses an aligned table on desktop and readable feature cards on mobile. */

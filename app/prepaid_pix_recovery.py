@@ -70,7 +70,7 @@ def provider_receipt(order,record):
     if not verified_pix_order_binding(order,record):
         return None
     event={"paid":"purchase_approved","refused":"purchase_refused",
-           "refunded":"refund","chargedback":"chargeback","MED":"chargeback"}.get(order.get("status"))
+           "refund_requested":"refund_requested","refunded":"refund","chargedback":"chargeback","MED":"chargeback"}.get(order.get("status"))
     if event is None:
         return None
     identity={"origin":"provider_read","event":event,"order":order["id"],

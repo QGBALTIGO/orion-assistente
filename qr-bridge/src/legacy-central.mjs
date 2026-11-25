@@ -59,11 +59,13 @@ export function createLegacyCentral({env=process.env,fetchImpl=fetch,start,send,
       connectionHealth:()=>publicHealth?.(),
       close(){if(context===value){context=null;onTransportLeaseLost();}},
       async send(phone,text,{isCurrent=()=>true,transactionalTyping=false,source='automation',assertAuthorized,pacing=true,presentation,deferPresentationAck=false,presentationProvenance}={}){
-        if(context!==value||!value.isCurrent()||!matching()||!(value.allowedSender(phone)||source==='appointment')||!isCurrent()||!outgoingReady(source))throw Error('legacy_send_revoked');
+        const allowed=()=>value.allowedSender(phone)||source==='appointment'||
+          source==='welcome'&&env.ORION_WELCOME_WHATSAPP==='1'&&typeof assertAuthorized==='function';
+        if(context!==value||!value.isCurrent()||!matching()||!allowed()||!isCurrent()||!outgoingReady(source))throw Error('legacy_send_revoked');
         await value.assertCurrent();
         const result=await rawSend(phone,text,{waitForCapacity:true,transactionalTyping,source,assertAuthorized,pacing,
           ...(presentation?{presentation,deferPresentationAck,presentationProvenance,presentationAck:payload=>value.presentationAck(payload)}:{}),isCurrent:()=>
-          context===value&&value.isCurrent()&&matching()&&(value.allowedSender(phone)||source==='appointment')&&isCurrent()&&outgoingReady(source)});
+          context===value&&value.isCurrent()&&matching()&&allowed()&&isCurrent()&&outgoingReady(source)});
         const id=result?.accepted===true&&typeof result.id==='string'?result.id.replace(/^out:/,''):null;
         if(!id)throw Error('legacy_send_unknown');
         return {id,...(typeof result.acknowledgePresentation==='function'?{acknowledgePresentation:result.acknowledgePresentation}:{})};

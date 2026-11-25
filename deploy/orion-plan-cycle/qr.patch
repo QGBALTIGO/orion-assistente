@@ -1,0 +1,69 @@
+--- a/src/channel-manager.mjs
++++ b/src/channel-manager.mjs
+@@ -376,7 +376,8 @@
+     const c=contexts.get(id);if(!c)throw Error('channel_not_started');
+     await validate(c,key);const phone=validPhone(to);
+     if(typeof operationCurrent!=='function'||operationCurrent()!==true)throw Error('channel_operation_superseded');
+-    if(source!=='appointment'&&!c.allowed.has(phone))throw Error('channel_sender_denied');
++    const transactional=['appointment','welcome'].includes(source);
++    if(!transactional&&!c.allowed.has(phone))throw Error('channel_sender_denied');
+     if(typeof text!=='string'||!text.trim()||text.length>1200)throw Error('invalid_channel_message');
+     const fingerprint=digest(JSON.stringify([phone,text]));
+     const ledgerFingerprint=presentationProvenance?digest(JSON.stringify([phone,text,presentation||null,presentationProvenance])):
+@@ -395,14 +396,14 @@
+       await validate(c,key);
+       if(!c.session||operationCurrent()!==true)throw Error('channel_not_connected_or_superseded');
+       const slot={phone,operation_id,fingerprint,source,text,...(['assistant','manual'].includes(source)?{control_revision}:{} )};
+-      const needsPermit=c.inboxControl===true||control_revision!==undefined||source==='appointment';
++      const needsPermit=c.inboxControl===true||control_revision!==undefined||transactional;
+       if(needsPermit){
+         if(typeof broker.authorizeSend!=='function')throw Error('inbox_control_unavailable');
+         const permit=await broker.authorizeSend(c.id,c.key,{owner,fence:c.fence},slot);
+         if(permit?.authorized!==true||permit.operation_id!==operation_id)throw Error('inbox_send_refused');
+       }
+       const wireRecheck=c.sendRecheck===true;
+-      const recheck=needsPermit&&(wireRecheck||source==='appointment')?async()=>{
++      const recheck=needsPermit&&(wireRecheck||transactional)?async()=>{
+         await validate(c,key);if(operationCurrent()!==true)throw Error('channel_operation_superseded');
+         if(wireRecheck&&c.sendRecheck!==true)throw Error('send_recheck_unavailable');
+         const permit=await broker.authorizeSend(c.id,c.key,{owner,fence:c.fence},{...slot,...(wireRecheck?{recheck:true}:{})});
+@@ -410,7 +411,7 @@
+         requireCurrent(c);if(operationCurrent()!==true)throw Error('channel_operation_superseded');
+       }:null;
+       attempted=true;
+-      const result=await c.session.send(phone,text,{isCurrent:operationCurrent,transactionalTyping:source==='automation'||source==='appointment',source,
++      const result=await c.session.send(phone,text,{isCurrent:operationCurrent,transactionalTyping:source==='automation'||transactional,source,
+         pacing:!needsPermit||!!recheck,...(presentation?{presentation,deferPresentationAck:true,
+           ...(presentationProvenance?{presentationProvenance}:{})}:{}),...(recheck?{assertAuthorized:recheck}:{})});requireCurrent(c);
+       if(typeof result?.id!=='string'||!/^[a-zA-Z0-9._:-]{1,160}$/.test(result.id))throw Error('channel_send_unknown');
+--- a/src/channel-routes.mjs
++++ b/src/channel-routes.mjs
+@@ -161,7 +161,7 @@
+       else {
+         const input=await body(req),required=action==='send'?['to','text','operation_id']:action==='pair'?['phone']:[],allowed=[...required,...(action==='send'?['source','control_revision']:[])];
+         if(Object.keys(input).some(k=>!allowed.includes(k))||required.some(k=>!(k in input))||
+-          ('source' in input&&!(input.source==='appointment'&&input.control_revision===undefined||input.source==='manual'&&Number.isSafeInteger(input.control_revision)&&input.control_revision>=1))||
++          ('source' in input&&!(['appointment','welcome'].includes(input.source)&&input.control_revision===undefined||input.source==='manual'&&Number.isSafeInteger(input.control_revision)&&input.control_revision>=1))||
+           ('control_revision' in input&&input.source!=='manual')||
+           (action==='pair'&&(typeof input.phone!=='string'||input.phone!==input.phone.trim()||!/^[1-9]\d{7,14}$/.test(input.phone))))throw Error('invalid_channel_request');
+         if(action==='start')result=await api.start(id,key);
+--- a/src/server.mjs
++++ b/src/server.mjs
+@@ -74,7 +74,7 @@
+   sessionDigest:()=>pairedNumber?createHmac('sha256',KEY).update('orion:preserved-primary-session:v1\0'+pairedNumber).digest('hex'):null,
+   status:()=>status,rawSend:(phone,text,options)=>sendLegacyRaw(phone,text,options),
+   onTransportLeaseLost:()=>stopPrimaryTransport('lease_lost'),publicHealth:()=>primaryHealth.snapshot(),
+-  outgoingReady:source=>source==='manual'||primaryIngressCanAutomate?.()===true});
++  outgoingReady:source=>source==='manual'||source==='welcome'&&process.env.ORION_WELCOME_WHATSAPP==='1'||primaryIngressCanAutomate?.()===true});
+ const channelRoutes=createChannelRoutes({sessionFactory:context=>context.legacyTransport?
+   legacyCentral.attach(context):createBaileysChannelSession(context)});
+
+@@ -1266,7 +1266,7 @@
+   // The legacy 8-digit candidate is allowed only after an empty exact lookup
+   // and exactly one positive provider lookup of its regulated counterpart.
+   let verifiedRecipient=null;
+-  if(source==='appointment'){
++  if(source==='appointment'||source==='welcome'){
+     verifiedRecipient=await resolveTransactionalRecipient(
+       target,candidate=>selectedSocket.onWhatsApp(candidate),
+       {isCurrent:current,ownPhone:pairedNumber});

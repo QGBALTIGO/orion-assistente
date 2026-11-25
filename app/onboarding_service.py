@@ -565,6 +565,7 @@ async def _invitations(db, account):
 
 
 async def entry(actor, tenant_id=None):
+    from app.orion_welcome import ready as welcome_ready
     if not enabled():
         return {"enabled": False, "kind": "dashboard", "create_allowed": False, "businesses": [], "invitations": []}
     if not isinstance(actor.account_id, UUID):
@@ -582,6 +583,7 @@ async def entry(actor, tenant_id=None):
             {"a": actor.account_id})).mappings().all()]
         history_without_access = (not rows and actor.role not in {"support", "admin"}
                                   and await has_business_history(db, actor.account_id))
+        offer_welcome = not rows and actor.role == "member" and bool(account["verified_at"]) and await welcome_ready(db)
     if len(rows) > 1 or history_without_access:
         return jsonable_encoder({"enabled": True, "kind": "business_conflict", "create_allowed": False,
             "account": {"verified": bool(account["verified_at"]), "name": account["name"], "email": account["email"]},
@@ -616,6 +618,7 @@ async def entry(actor, tenant_id=None):
         "businesses": rows, "invitations": invitations, "tenant_id": selected["id"] if selected else None,
         "current_step": selected["current_step"] if selected else "business", "reason": "owner_setup_pending" if kind == "blocked" else None,
         "available_niches": AVAILABLE_NICHES,
+        **({"welcome_whatsapp_available": True} if offer_welcome else {}),
         **({"affiliate_available": True} if affiliate_workspace_available() else {})})
 
 
@@ -663,7 +666,8 @@ async def create_business(actor, payload):
                                   "status": "active" if affiliate else "paused"})
                 await db.execute(text("INSERT INTO tenant_memberships(tenant_id,account_id,role) VALUES(:t,:a,'owner')"), {"t": tenant, "a": actor.account_id})
                 await db.execute(text("INSERT INTO tenant_membership_events(tenant_id,account_id,actor_account_id,role,active) VALUES(:t,:a,:a,'owner',true)"), {"t": tenant, "a": actor.account_id})
-                configuration = {k: v for k, v in values.items() if k not in {"name", "timezone"}}
+                configuration = {k: v for k, v in values.items()
+                                 if k not in {"name", "timezone", "welcome_whatsapp_opt_in"}}
                 await db.execute(text("""INSERT INTO business_onboarding(tenant_id,created_by,is_new,configuration,current_step,version,completed_at)
                     VALUES(:t,:a,true,CAST(:c AS jsonb),:step,1,CASE WHEN :affiliate THEN now() ELSE NULL END)"""),
                     {"t": tenant, "a": actor.account_id, "c": json.dumps(configuration),
@@ -675,6 +679,10 @@ async def create_business(actor, payload):
                     {"t": tenant, "key": payload.idempotency_key, "a": actor.account_id,
                      "fp": fingerprint, "r": json.dumps({"tenant_id": str(tenant)})})
                 await db.execute(text("INSERT INTO platform_audit(tenant_id,action) VALUES(:t,'onboarding_created')"), {"t": tenant})
+                if (values["niche"] == "barbearia" and payload.welcome_whatsapp_opt_in is True
+                        and actor.role == "member" and account["verified_at"]):
+                    from app.orion_welcome import enqueue
+                    await enqueue(db, tenant, actor.account_id, payload.contact_phone)
     return await get_state(actor, tenant)
 
 

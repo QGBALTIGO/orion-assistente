@@ -50,7 +50,9 @@ def feature_for_path(relative, method="GET", *, resource=None, step_id=None):
     if relative == "/subscription-whatsapp/devices" or relative.startswith("/subscription-whatsapp/devices/"):
         return "devices.manage"
     if relative in {"/management/plan-overview", "/management/subscription",
-                    "/management/plan-trial", "/management/plan-checkout"} or relative.startswith(("/management/plan-direct-","/management/plan-pix-")):
+                    "/management/plan-trial", "/management/plan-trial/activate",
+                    "/management/plan-support", "/management/plan-welcome",
+                    "/management/plan-checkout"} or relative.startswith(("/management/plan-direct-","/management/plan-pix-")):
         return "plan.manage"
     if relative.startswith("/dental/"):
         # The module checks verified dental niche, active plan and clinician grant again.
@@ -151,7 +153,7 @@ def exclusive_professional_operation(relative, method, params):
     if method in {"GET", "HEAD", "OPTIONS"}:
         return False
     return (relative.startswith(("/management/professionals", "/dental/reception/professionals")) or
-            relative in {"/management/plan-trial", "/management/plan-checkout"} or
+            relative in {"/management/plan-trial", "/management/plan-trial/activate", "/management/plan-checkout"} or
             relative.startswith(("/management/plan-direct-","/management/plan-pix-")) or
             relative.startswith("/onboarding/complete") or
             relative.startswith("/onboarding/steps/") and params.get("step_id") in {"business", "professionals"} or

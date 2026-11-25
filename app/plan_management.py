@@ -15,7 +15,7 @@ import secrets
 from uuid import uuid4
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 from uuid import UUID
 
 import httpx
@@ -30,7 +30,8 @@ from app.cakto_api import cached_cakto_client, _subscription_id
 from app.account_business import account_membership_role
 from app.tenant_access import resolve_site_access
 from app.admin_accounts import require_platform_owner
-from app.plan_catalog import CODES, PLAN_FEATURES, feature_catalog
+from app.plan_catalog import BARBERSHOP_CATALOG, CODES, commercial_catalog, feature_catalog
+from app import plan_trial_benefits as trial_benefits
 from app.cakto_readiness import direct_environment_ready, webhook_secret_valid
 from app.plan_permissions import plan_state, lock_plan
 from app.workspace_policy import require_standard_workspace
@@ -93,6 +94,16 @@ class TrialDecision(BaseModel):
     reason: str | None = Field(default=None, max_length=500)
 
 
+class TrialActivation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    confirmed: StrictBool
+
+
+class WelcomePreference(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    authorized: StrictBool
+
+
 def _owner_account(access, actor) -> UUID:
     if (actor.role not in {"member", "admin"} or access.role != "owner"
             or not isinstance(access.account_id, UUID)):
@@ -135,6 +146,8 @@ async def require_checkout_available(db, tenant_id: UUID, account_id: UUID,
     await _ensure_owner(db, tenant_id, account_id)
     require_standard_workspace(state, "plan.manage")
     manual = state.get("manual_assignment")
+    if (state.get("billing") or {}).get("hold") in {"refund_requested", "chargeback"}:
+        raise HTTPException(409, "Existe uma análise financeira aberta para esta empresa. Consulte o suporte.")
     if isinstance(manual, dict) and manual.get("active") is True:
         raise HTTPException(409, {"code": "MANUAL_PLAN_ACTIVE", "message":
             "Esta empresa possui uma atribuição manual ativa. Peça ao administrador do Orion para removê-la antes de contratar pela Cakto."})
@@ -167,9 +180,7 @@ async def check_new_checkout_access(tenant_id: UUID, account_id: UUID):
 
 
 def _catalog():
-    return [{"code": key, "name": plan["name"], "monthly_cents": plan["price_cents"],
-             "max_professionals": plan["max_professionals"],
-             "feature_ids": sorted(PLAN_FEATURES[key])} for key, plan in CODES.items()]
+    return commercial_catalog()
 
 
 def _subscription_name(row):
@@ -232,10 +243,15 @@ async def plan_overview(tenant_id: UUID, actor: Actor = Depends(authenticate), r
     if response is not None:
         response.headers["Cache-Control"] = "no-store"
     access = await resolve_site_access(actor, tenant_id)
+    can_manage = actor.role in {"member", "admin"} and access.role == "owner"
+    revised = None
     async with support_session_factory()() as db:
         async with db.begin():
             effective = await plan_state(db, tenant_id)
-            embedded = embedded_checkout_enabled() and await _is_barbershop(db, tenant_id)
+            barbershop = (os.getenv("ORION_BARBER_PLAN_CYCLE", "0") == "1"
+                          and not effective.get("platform_workspace")
+                          and await _is_barbershop(db, tenant_id))
+            embedded = embedded_checkout_enabled() and (barbershop or await _is_barbershop(db, tenant_id))
             row = (await db.execute(text("""
                 SELECT s.id,s.status,s.trial_ends_at,s.grace_until,
                        s.last_verified_payment_at,p.name,p.code,p.monthly_cents,p.max_professionals
@@ -247,12 +263,14 @@ async def plan_overview(tenant_id: UUID, actor: Actor = Depends(authenticate), r
                        requested_at,started_at,ends_at,version
                 FROM orion_plan_trial_requests WHERE tenant_id=:tenant
             """), {"tenant": tenant_id})).mappings().first()
+            if barbershop:
+                revised = await barber_plan_details(db, tenant_id, access, can_manage, effective, row, trial)
     if trial and trial["status"] == "active" and trial["ends_at"] and (
         trial["ends_at"] <= datetime.now(timezone.utc)
     ):
         trial = {**trial, "status": "expired"}
     return {
-        "plans": _catalog(),
+        "plans": commercial_catalog("barbearia") if revised else _catalog(),
         "feature_catalog": feature_catalog(),
         "effective_plan": effective,
         "manual_assignment": effective["manual_assignment"],
@@ -261,7 +279,7 @@ async def plan_overview(tenant_id: UUID, actor: Actor = Depends(authenticate), r
         "subscription": _subscription_name(row),
         "trial": dict(trial) if trial else None,
         "active_professionals": effective["limits"]["active_professionals"],
-        "can_manage_plan": actor.role in {"member","admin"} and access.role == "owner",
+        "can_manage_plan": can_manage,
         # A single Cakto flag cannot mean checkout is ready. These flags
         # are a necessary preflight, not a substitute for live provider probes.
         # New initial commercial channel: single Pix, prepaid 30 days,
@@ -270,8 +288,150 @@ async def plan_overview(tenant_id: UUID, actor: Actor = Depends(authenticate), r
         "payment_mode": "pix_manual_30_days",
         "embedded_checkout_enabled": embedded,
         "trial_scope": TRIAL_SCOPE,
-        "trial_requires_team_activation": True,
+        "trial_requires_team_activation": revised is None,
+        **({"barbershop": revised} if revised else {}),
     }
+
+
+async def barber_plan_details(db, tenant, access, can_manage, effective, subscription, trial):
+    company = (await db.execute(text("""
+        SELECT timezone, clock_timestamp() AS server_now FROM tenants WHERE id=:tenant
+    """), {"tenant": tenant})).mappings().one()
+    now = company["server_now"]
+    source = effective["source"]
+    result = {"server_now": now, "timezone": company["timezone"],
+              "trial_hours": BARBERSHOP_CATALOG["trial_hours"], "trial_eligible": False,
+              "period_days": BARBERSHOP_CATALOG["period_days"]}
+    if can_manage and isinstance(access.account_id, UUID):
+        pending = (await db.execute(text("""
+            SELECT plan_code,state,channel FROM (
+                SELECT plan_code,state,'pix' AS channel,created_at FROM orion_prepaid_pix_orders
+                WHERE tenant_id=:tenant AND account_id=:account AND state IN ('reserved','created','needs_review','declined')
+                UNION ALL
+                SELECT plan_code,state,'cakto' AS channel,created_at FROM orion_cakto_checkout_intents
+                WHERE tenant_id=:tenant AND account_id=:account
+                  AND (state='needs_review' OR (state='pending' AND expires_at>now()))
+            ) p ORDER BY created_at DESC LIMIT 1
+        """), {"tenant": tenant, "account": access.account_id})).mappings().one_or_none()
+        if pending:
+            result["payment"] = dict(pending)
+    from app.orion_welcome import ready as welcome_ready
+    if can_manage and isinstance(access.account_id, UUID) and await welcome_ready(db):
+        welcome = (await db.execute(text("""
+            SELECT w.status, w.revoked_at IS NOT NULL AS revoked,
+                   w.recipient IS DISTINCT FROM o.configuration->>'contact_phone' AS phone_changed
+            FROM orion_welcome_outbox w JOIN business_onboarding o ON o.tenant_id=w.tenant_id
+            WHERE w.tenant_id=:tenant AND w.account_id=:account
+        """), {"tenant": tenant, "account": access.account_id})).mappings().one_or_none()
+        if welcome:
+            result["welcome"] = dict(welcome)
+    if can_manage and isinstance(access.account_id, UUID) and not trial and not subscription and source == "none":
+        if await trial_benefits.automatic_trials_ready(db):
+            owner = await trial_benefits.verified_trial_owner(db, tenant, access.account_id)
+            result["trial_eligible"] = await trial_benefits.eligible(db, tenant, access.account_id, owner)
+    if (effective.get("manual_assignment") or {}).get("active"):
+        return result
+    if subscription and (effective.get("commercial_subscription") or {}).get("cakto_bound"):
+        contract = (await db.execute(text("""
+            SELECT min(verified_at) FROM orion_cakto_checkout_intents
+            WHERE tenant_id=:tenant AND state='verified'
+        """), {"tenant": tenant})).scalar_one_or_none()
+        verified_billing = effective.get("billing") or {}
+        result.update(contract_confirmed_at=contract,
+                      last_payment_at=subscription["last_verified_payment_at"],
+                      period_started_at=(verified_billing.get("period_started_at")
+                                         or subscription["last_verified_payment_at"]) if source == "cakto" else None)
+        if source == "cakto" and subscription["status"] == "active":
+            from app.plan_permissions import _date
+            renewal = _date(verified_billing.get("next_payment_at"))
+            if renewal and renewal > now:
+                result["next_payment_at"] = renewal
+    elif source == "pix_prepaid":
+        row = (await db.execute(text("""
+            SELECT a.last_verified_payment_at, o.amount_cents
+            FROM orion_prepaid_pix_access a
+            LEFT JOIN LATERAL (
+                SELECT expected_cents AS amount_cents FROM orion_prepaid_pix_orders
+                WHERE tenant_id=a.tenant_id AND state='paid' AND paid_at=a.last_verified_payment_at
+                LIMIT 1
+            ) o ON true
+            WHERE a.tenant_id=:tenant
+        """), {"tenant": tenant})).mappings().one_or_none()
+        if row:
+            result.update(last_payment_at=row["last_verified_payment_at"], amount_cents=row["amount_cents"],
+                          period_started_at=(effective.get("billing") or {}).get("period_started_at"))
+    if source == "trial" and trial and trial["ends_at"]:
+        result["trial_remaining_seconds"] = max(0, int((trial["ends_at"] - now).total_seconds()))
+    return result
+
+
+@router.post("/api/v1/tenants/{tenant_id}/management/plan-trial/activate")
+async def activate_plan_trial(tenant_id: UUID, payload: TrialActivation,
+                              actor: Actor = Depends(authenticate)):
+    access = await resolve_site_access(actor, tenant_id)
+    account_id = _owner_account(access, actor)
+    if not payload.confirmed:
+        raise HTTPException(422, "Confirme o início do teste de 7 dias")
+    if os.getenv("ORION_BARBER_PLAN_CYCLE", "0") != "1":
+        raise HTTPException(409, "O teste automático está indisponível")
+    async with support_session_factory()() as db:
+        async with db.begin():
+            state = await plan_state(db, tenant_id, lock="exclusive")
+            await _ensure_owner(db, tenant_id, account_id)
+            require_standard_workspace(state, "plan.manage")
+            if not await trial_benefits.automatic_trials_ready(db):
+                raise HTTPException(409, "O teste automático está indisponível")
+            owner = await trial_benefits.verified_trial_owner(db, tenant_id, account_id)
+            if not owner:
+                raise HTTPException(403, "O teste exige uma conta pessoal com e-mail confirmado e uma barbearia elegível")
+            duration = BARBERSHOP_CATALOG["trial_hours"]
+            replay = (await db.execute(text("""
+                SELECT id,started_at,ends_at FROM orion_plan_trial_requests
+                WHERE tenant_id=:tenant AND account_id=:account AND whatsapp_e164 IS NULL
+            """), {"tenant": tenant_id, "account": account_id})).mappings().one_or_none()
+            if replay:
+                return dict(replay)
+            if state["source"] != "none" or not await trial_benefits.eligible(db, tenant_id, account_id, owner):
+                raise HTTPException(409, "Esta empresa ou conta já possui um teste ou contratação registrada")
+            if not await trial_benefits.claim_benefit(db, trial_benefits.identity_digest(owner["email"])):
+                raise HTTPException(409, "A conta já utilizou o teste grátis")
+            row = (await db.execute(text("""
+                WITH activation AS (SELECT clock_timestamp() AS started)
+                INSERT INTO orion_plan_trial_requests
+                    (tenant_id,account_id,full_name,company_name,status,started_at,ends_at)
+                SELECT :tenant,:account,:name,:company,'active',started,started+make_interval(hours=>:hours)
+                FROM activation RETURNING id,started_at,ends_at
+            """), {"tenant": tenant_id, "account": account_id, "name": owner["name"][:120],
+                   "company": owner["company_name"], "hours": duration})).mappings().one()
+            return dict(row)
+
+
+@router.get("/api/v1/tenants/{tenant_id}/management/plan-support")
+async def plan_support(tenant_id: UUID, response: Response, actor: Actor = Depends(authenticate)):
+    await resolve_site_access(actor, tenant_id)
+    response.headers["Cache-Control"] = "no-store"
+    from app.plan_support import support_url
+    return {"url": await support_url()}
+
+
+@router.put("/api/v1/tenants/{tenant_id}/management/plan-welcome")
+async def plan_welcome(tenant_id: UUID, payload: WelcomePreference, actor: Actor = Depends(authenticate)):
+    from app.orion_welcome import consent
+    account_id = _owner_account(await resolve_site_access(actor, tenant_id), actor)
+    async with support_session_factory()() as db:
+        async with db.begin():
+            await _ensure_owner(db, tenant_id, account_id)
+            phone = None
+            if payload.authorized:
+                phone = (await db.execute(text("""
+                    SELECT configuration->>'contact_phone' FROM business_onboarding
+                    WHERE tenant_id=:tenant AND configuration->>'niche'='barbearia'
+                """), {"tenant": tenant_id})).scalar_one_or_none()
+                if not phone:
+                    raise HTTPException(409, "Salve o novo WhatsApp comercial antes de confirmar o contato")
+            if not await consent(db, tenant_id, account_id, phone):
+                raise HTTPException(409, "A preferência de contato não está mais pendente")
+    return {"authorized": payload.authorized}
 
 
 @router.get("/api/v1/tenants/{tenant_id}/management/permissions")
@@ -302,6 +462,8 @@ async def request_plan_trial(tenant_id: UUID, payload: TrialRequest,
                 current_access = await plan_state(db, tenant_id, lock="exclusive")
                 await _ensure_owner(db, tenant_id, account_id)
                 require_standard_workspace(current_access, "plan.manage")
+                if os.getenv("ORION_BARBER_PLAN_CYCLE", "0") == "1" and await _is_barbershop(db, tenant_id):
+                    raise HTTPException(409, "Abra os planos da barbearia para consultar a elegibilidade do teste de 7 dias")
                 if current_access["source"] in {"manual", "cakto", "pix_prepaid", "platform_admin"} and current_access["active"]:
                     raise HTTPException(409, "Sua empresa já possui acesso ativo ao Orion")
                 tenant = (await db.execute(text("""
@@ -338,7 +500,7 @@ async def request_plan_trial(tenant_id: UUID, payload: TrialRequest,
 @router.get("/api/v1/admin/plan-trials")
 async def admin_list_plan_trials(admin: UUID = Depends(require_platform_owner),
                                  status: str = "all"):
-    if status not in {"all","pending","active","expired","rejected"}:
+    if status not in {"all","pending","active","expired","rejected","superseded"}:
         raise HTTPException(422, "Filtro inválido")
     async with support_session_factory()() as db:
         records = (await db.execute(text("""
@@ -719,4 +881,12 @@ async def apply_verified_cakto_payment(event: dict, order: dict,
                 SET state='verified',external_order_id=:order_id,verified_at=now()
                 WHERE id=:id
             """), {"id": intent["id"], "order_id": order_id})
+            from app import confirmed_billing
+            if await confirmed_billing.tracked(db, target):
+                from app.cakto_subscription_lifecycle import _order_instant
+                renewal = _order_instant(subscription, "next_payment_date")
+                await confirmed_billing.record(db, target, order_id, "cakto", paid_at, intent["expected_cents"],
+                    start=paid_at, end=paid_at + timedelta(days=30),
+                    next_payment=renewal if renewal and renewal > paid_at else None)
+                await trial_benefits.finish_for_payment(db, target)
     return "activated"

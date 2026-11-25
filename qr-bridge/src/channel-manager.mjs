@@ -374,7 +374,8 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
     const c=contexts.get(id);if(!c)throw Error('channel_not_started');
     await validate(c,key);const phone=validPhone(to);
     if(typeof operationCurrent!=='function'||operationCurrent()!==true)throw Error('channel_operation_superseded');
-    if(source!=='appointment'&&!c.allowed.has(phone))throw Error('channel_sender_denied');
+    const transactional=['appointment','welcome'].includes(source);
+    if(!transactional&&!c.allowed.has(phone))throw Error('channel_sender_denied');
     if(typeof text!=='string'||!text.trim()||text.length>1200)throw Error('invalid_channel_message');
     const fingerprint=digest(JSON.stringify([phone,text]));
     const ledgerFingerprint=presentationProvenance?digest(JSON.stringify([phone,text,presentation||null,presentationProvenance])):
@@ -393,14 +394,14 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
       await validate(c,key);
       if(!c.session||operationCurrent()!==true)throw Error('channel_not_connected_or_superseded');
       const slot={phone,operation_id,fingerprint,source,text,...(['assistant','manual'].includes(source)?{control_revision}:{} )};
-      const needsPermit=c.inboxControl===true||control_revision!==undefined||source==='appointment';
+      const needsPermit=c.inboxControl===true||control_revision!==undefined||transactional;
       if(needsPermit){
         if(typeof broker.authorizeSend!=='function')throw Error('inbox_control_unavailable');
         const permit=await broker.authorizeSend(c.id,c.key,{owner,fence:c.fence},slot);
         if(permit?.authorized!==true||permit.operation_id!==operation_id)throw Error('inbox_send_refused');
       }
       const wireRecheck=c.sendRecheck===true;
-      const recheck=needsPermit&&(wireRecheck||source==='appointment')?async()=>{
+      const recheck=needsPermit&&(wireRecheck||transactional)?async()=>{
         await validate(c,key);if(operationCurrent()!==true)throw Error('channel_operation_superseded');
         if(wireRecheck&&c.sendRecheck!==true)throw Error('send_recheck_unavailable');
         const permit=await broker.authorizeSend(c.id,c.key,{owner,fence:c.fence},{...slot,...(wireRecheck?{recheck:true}:{})});
@@ -408,7 +409,7 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
         requireCurrent(c);if(operationCurrent()!==true)throw Error('channel_operation_superseded');
       }:null;
       attempted=true;
-      const result=await c.session.send(phone,text,{isCurrent:operationCurrent,transactionalTyping:source==='automation'||source==='appointment',source,
+      const result=await c.session.send(phone,text,{isCurrent:operationCurrent,transactionalTyping:source==='automation'||transactional,source,
         pacing:!needsPermit||!!recheck,...(presentation?{presentation,deferPresentationAck:true,
           ...(presentationProvenance?{presentationProvenance}:{})}:{}),...(recheck?{assertAuthorized:recheck}:{})});requireCurrent(c);
       if(typeof result?.id!=='string'||!/^[a-zA-Z0-9._:-]{1,160}$/.test(result.id))throw Error('channel_send_unknown');

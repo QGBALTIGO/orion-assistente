@@ -1,0 +1,99 @@
+{
+  "api": {
+    "copy": {
+      "alembic/versions/0094_barbershop_trial_benefits.py": "alembic/versions/0094_barbershop_trial_benefits.py",
+      "alembic/versions/0095_orion_welcome_outbox.py": "alembic/versions/0095_orion_welcome_outbox.py",
+      "alembic/versions/0096_manual_subscription_terms.py": "alembic/versions/0096_manual_subscription_terms.py",
+      "alembic/versions/0097_orion_confirmed_billing_state.py": "alembic/versions/0097_orion_confirmed_billing_state.py",
+      "app/account_erasure.py": "app/account_erasure.py",
+      "app/admin_accounts.py": "app/admin_accounts.py",
+      "app/cakto_api.py": "app/cakto_api.py",
+      "app/cakto_recovery.py": "app/cakto_recovery.py",
+      "app/cakto_subscription_lifecycle.py": "app/cakto_subscription_lifecycle.py",
+      "app/confirmed_billing.py": "app/confirmed_billing.py",
+      "app/inbox_control.py": "app/inbox_control.py",
+      "app/manual_plan_terms.py": "app/manual_plan_terms.py",
+      "app/onboarding_schemas.py": "app/onboarding_schemas.py",
+      "app/onboarding_service.py": "app/onboarding_service.py",
+      "app/orion_welcome.py": "app/orion_welcome.py",
+      "app/plan_catalog.py": "app/plan_catalog.py",
+      "app/plan_management.py": "app/plan_management.py",
+      "app/plan_permissions.py": "app/plan_permissions.py",
+      "app/plan_routing.py": "app/plan_routing.py",
+      "app/plan_support.py": "app/plan_support.py",
+      "app/plan_trial_benefits.py": "app/plan_trial_benefits.py",
+      "app/prepaid_pix_reconcile.py": "app/prepaid_pix_reconcile.py",
+      "app/prepaid_pix_recovery.py": "app/prepaid_pix_recovery.py",
+      "app/static/orion-admin-center.js": "app/static/orion-admin-center.js",
+      "app/static/orion-onboarding.js": "app/static/orion-onboarding.js",
+      "app/static/orion-plans.css": "app/static/orion-plans.css",
+      "app/static/orion-plans.js": "app/static/orion-plans.js",
+      "app/static/panel.html": "app/static/panel.html",
+      "scripts/backup_and_migrate_plan_cycle.py": "scripts/backup_and_migrate_plan_cycle.py"
+    },
+    "image": "ghcr.io/qgbaltigo/orion-assistente-api@sha256:e1d8dfa7ccaff217f04184c694b90b15e8c50f0c36a06d7d67aa657f195f03ea",
+    "originals": {
+      "app/account_erasure.py": "d264706131cbad6aad4c94a5d6838d05719df5af",
+      "app/admin_accounts.py": "8aaf16ece2eb4c76fc39d95dc6351d8533e4eb53",
+      "app/cakto_api.py": "5968124f1dc36e223e58546f6c9dc718ba85f290",
+      "app/cakto_recovery.py": "334b8510396be15cd9a3fe3752de768e7ac21c22",
+      "app/cakto_subscription_lifecycle.py": "e4f9801b33fdc9980c1f5efa35311184bade0e33",
+      "app/inbox_control.py": "06e0afb8c8b8f58f158e1fbb81b7c8cdde08df50",
+      "app/onboarding_schemas.py": "f0414ae5472bac0723ee5177acca9a8a11a9f626",
+      "app/onboarding_service.py": "2606bc4a181ea35ffdc47c8d7e615c1eddb3fbd9",
+      "app/plan_catalog.py": "dca88c05cb1394b0ac87a5502f898f38d9cd3f76",
+      "app/plan_management.py": "250aea3a83f79bd1c854ff091fe207d0c5e25ba7",
+      "app/plan_permissions.py": "01601066969ad27991d18738b230efdbdc83e52d",
+      "app/plan_routing.py": "d9b04173f17770e3c27e02e1a4347fbcdfccadbe",
+      "app/prepaid_pix_reconcile.py": "0cf05a56245d52cc636e4a1fbad7b0e2790e3719",
+      "app/prepaid_pix_recovery.py": "05fd2231fb62d6680ba92243cb78343e3f5318e0",
+      "app/static/orion-admin-center.js": "6223a6cb8e52ceeaf2e37c6df41318b3beab973f",
+      "app/static/orion-onboarding.js": "36ad9d4cc2cbbdefed5f463131cccb8981d07d8d",
+      "app/static/orion-plans.css": "1467548039d6f0ae0c7572b754595de01173124b",
+      "app/static/orion-plans.js": "debb841e97e39978ae20ba184773b4f67075cece",
+      "app/static/panel.html": "24b52c7c21b116d58c4de3f50ebdd73794c93647"
+    }
+  },
+  "qr": {
+    "copy": {
+      "qr-bridge/src/legacy-central.mjs": "src/legacy-central.mjs"
+    },
+    "image": "ghcr.io/qgbaltigo/orion-assistente-qr-bridge@sha256:3e0605c91307526d486a5f0d308eab2ea4120e32be50ecb96a95879e702f6e41",
+    "originals": {
+      "src/channel-manager.mjs": "60284ed7f8217f74c702399e4099df43c303bf65",
+      "src/channel-routes.mjs": "e886ea0dbf132a4cfa05403e2e0966def62ae6ca",
+      "src/legacy-central.mjs": "a43e3afa9c8d5b5e569393ba848dda938894ce60",
+      "src/server.mjs": "a6b3c5234d08ad39d9f7a31124da9cb21eca0e28"
+    },
+    "patch": "qr.patch"
+  },
+  "worker": {
+    "copy": {
+      "app/account_erasure.py": "app/account_erasure.py",
+      "app/cakto_api.py": "app/cakto_api.py",
+      "app/cakto_recovery.py": "app/cakto_recovery.py",
+      "app/cakto_subscription_lifecycle.py": "app/cakto_subscription_lifecycle.py",
+      "app/confirmed_billing.py": "app/confirmed_billing.py",
+      "app/orion_welcome.py": "app/orion_welcome.py",
+      "app/plan_management.py": "app/plan_management.py",
+      "app/plan_support.py": "app/plan_support.py",
+      "app/plan_trial_benefits.py": "app/plan_trial_benefits.py",
+      "app/prepaid_pix_reconcile.py": "app/prepaid_pix_reconcile.py",
+      "app/prepaid_pix_recovery.py": "app/prepaid_pix_recovery.py"
+    },
+    "image": "ghcr.io/qgbaltigo/orion-assistente-api@sha256:fd459d305ebb3f4587a206e2737734a193e42f1afc505cdb99d234e1e790240f",
+    "originals": {
+      "app/account_erasure.py": "d264706131cbad6aad4c94a5d6838d05719df5af",
+      "app/cakto_api.py": "5968124f1dc36e223e58546f6c9dc718ba85f290",
+      "app/cakto_recovery.py": "334b8510396be15cd9a3fe3752de768e7ac21c22",
+      "app/cakto_subscription_lifecycle.py": "e4f9801b33fdc9980c1f5efa35311184bade0e33",
+      "app/plan_catalog.py": "d8d48b0ffdba403414e4051a31a30f31c968c143",
+      "app/plan_management.py": "4e5a5e370b98da6b44fc2cd6803947420712d927",
+      "app/plan_permissions.py": "4dce4c5d85d9b16157bef9fe4e24ea5dcb50dd30",
+      "app/prepaid_pix_reconcile.py": "0cf05a56245d52cc636e4a1fbad7b0e2790e3719",
+      "app/prepaid_pix_recovery.py": "05fd2231fb62d6680ba92243cb78343e3f5318e0",
+      "app/worker.py": "4a5830c87d56989e9b7365af776971f2007ed5c6"
+    },
+    "patch": "worker.patch"
+  }
+}

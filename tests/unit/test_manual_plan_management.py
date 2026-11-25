@@ -20,6 +20,7 @@ class Result:
     def scalar_one_or_none(self): return self.value
     def mappings(self): return self
     def one_or_none(self): return self.value
+    def one(self): return self.value
     def first(self): return self.value
     def all(self): return self.value
 
@@ -62,6 +63,8 @@ class Database:
             return Result({"id":self.tenant,"name":"Empresa Sintética","status":"active",
                            "account_id":None,"owner_status":self.owner_status})
         if "AS plan_snapshot" in sql: return Result(self.account_rows)
+        if "clock_timestamp() AS now" in sql:
+            return Result({"timezone":"America/Cuiaba","now":datetime.now(timezone.utc),"payment_in_progress":False})
         if "m.role AS membership_role" in sql:
             if params != {"account": self.account, "tenant": self.tenant}: return Result()
             return Result({"id":self.tenant,"name":"Empresa Sintética","status":"active","account_id":self.account,
@@ -71,11 +74,15 @@ class Database:
         if "INSERT INTO tenant_plan_controls" in sql:
             if self.control["version"] != params["version"]: return Result()
             self.control = {"version":self.control["version"]+1,"manual":{"plan_code":params["code"],
-                "started_at":datetime.now(timezone.utc),"expires_at":params["expires"]}}
+                "started_at":params["starts"],"expires_at":params["expires"]}}
             return Result(self.control["version"])
         if "UPDATE tenant_plan_controls" in sql:
             if self.control["version"] != params["version"] or self.control["manual"] is None: return Result()
-            self.control = {"version":self.control["version"]+1,"manual":None}
+            if "manual_next_code=:code" in sql:
+                self.control["version"]+=1
+                self.control["manual_schedule"]={"plan_code":params["code"],"started_at":params["starts"],"expires_at":params["expires"]}
+            else:
+                self.control = {"version":self.control["version"]+1,"manual":None}
             return Result(self.control["version"])
         if "INSERT INTO tenant_plan_audit" in sql:
             self.audits.append({"id":params["id"],"tenant_id":params["tenant"],"actor_id":params["actor"],
@@ -115,7 +122,7 @@ def change(db, **kwargs):
     state = db.state()
     return admin.ManualPlanAssignment.model_validate({"expected_version":state["version"],
         "expected_revision":state["revision"],"operation_id":str(uuid4()),"confirmation":"ALTERAR PLANO",
-        "plan_code":"elite","access_type":"indefinite",**kwargs})
+        "plan_code":"elite","duration_months":1,"transition":"activation",**kwargs})
 
 
 @pytest.mark.asyncio
@@ -164,7 +171,7 @@ async def test_only_the_explicit_unique_owner_company_can_be_changed(case, damag
 
 @pytest.mark.parametrize("extra", [
     {"expected_version":True},{"confirmation":"SIM"},{"plan_code":"inventado"},
-    {"access_type":"temporary"},{"access_type":"temporary","expires_at":"2030-01-01T12:00:00"},
+    {"access_type":"indefinite"},{"duration_months":2},{"duration_months":True},
     {"expires_at":"2030-01-01T12:00:00Z"},{"owner_account_id":str(uuid4())},
     {"platform_account_id":str(uuid4())},{"auth_version":0},{"expected_revision":"unknown"},
 ])
@@ -174,12 +181,12 @@ def test_manual_payload_rejects_ambiguous_or_injected_authority(extra):
 
 
 @pytest.mark.asyncio
-async def test_expired_temporary_assignment_does_not_consume_an_operation(case):
+async def test_mismatched_calendar_transition_does_not_consume_an_operation(case):
     db=case
-    payload=change(db,access_type="temporary",expires_at=datetime.now(timezone.utc)-timedelta(seconds=1))
+    payload=change(db,transition="renewal")
     with pytest.raises(HTTPException) as caught:
         await admin._change_company_plan(db.account,db.tenant,payload,db.operator,"manual_assign")
-    assert caught.value.status_code == 422 and db.control["version"] == 1 and not db.audits
+    assert caught.value.status_code == 409 and db.control["version"] == 1 and not db.audits
 
 
 @pytest.mark.asyncio
@@ -205,8 +212,11 @@ async def test_downgrade_records_excess_without_archiving_or_removing_staff(case
     db=case
     await admin._change_company_plan(db.account,db.tenant,change(db),db.operator,"manual_assign")
     db.professionals=8
-    result=await admin._change_company_plan(db.account,db.tenant,change(db,plan_code="essencial"),db.operator,"manual_assign")
-    assert result["effective_plan"]["limits"] == {"max_professionals":2,"active_professionals":8,"excess_professionals":6}
+    result=await admin._change_company_plan(db.account,db.tenant,change(db,plan_code="essencial",transition="downgrade"),db.operator,"manual_assign")
+    period=result["effective_plan"]["scheduled_manual_assignment"]
+    assert result["effective_plan"]["code"] == "elite" and period["plan_code"] == "essencial"
+    at_cutover=derive_plan(db.snapshot(),period["started_at"])
+    assert at_cutover["limits"] == {"max_professionals":2,"active_professionals":8,"excess_professionals":6}
     assert not any("UPDATE professionals" in sql or "DELETE FROM" in sql for sql,_ in db.calls)
 
 

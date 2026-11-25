@@ -1,0 +1,5 @@
+ARG ORION_BASE
+FROM ${ORION_BASE}
+ARG ORION_RELEASE
+LABEL org.opencontainers.image.revision=$ORION_RELEASE
+COPY . /

@@ -28,6 +28,26 @@ ELITE_FEATURES = PRO_FEATURES | frozenset({
     "reception.ai", "whatsapp.ai_booking", "reception.automation",
 })
 PLAN_FEATURES = {"essencial": BASE_FEATURES, "profissional": PRO_FEATURES, "elite": ELITE_FEATURES}
+BARBERSHOP_CATALOG = {
+    "period_days": 30,
+    "trial_hours": 168,
+    "trial_plan": "essencial",
+    "offers": {
+        "essencial": {
+            "description": "Organize a agenda e os atendimentos da barbearia.",
+            "benefits": ("agenda.manage", "clients.manage", "services.manage", "site.manage", "finance.basic"),
+        },
+        "profissional": {
+            "description": "Acompanhe a equipe e fortaleça o relacionamento com os clientes.",
+            "benefits": ("goals.manage", "commissions.advanced", "finance.advanced", "relationships.manage", "loyalty.manage"),
+        },
+        "elite": {
+            "description": "Atenda e agende pelo WhatsApp com a recepcionista IA.",
+            "benefits": ("reception.ai", "whatsapp.ai_booking", "reception.automation"),
+        },
+    },
+}
+NICHE_CATALOGS = {"barbearia": BARBERSHOP_CATALOG}
 RECOVERY_FEATURES = frozenset({"plan.manage", "account.manage", "business.setup"})
 ALL_FEATURES = ELITE_FEATURES | RECOVERY_FEATURES | {"commerce.admin", "devices.manage", "chatbot.manage", "templates.manage", "sent_messages.manage", "diagnostics.manage", "campaigns.manage", "scheduled_messages.manage", "bulk_messages.manage", "direct_messages.manage", "group_contacts.manage", "group_add.manage", "number_check.manage", "whatsapp_link.manage", "audience.manage", "whatsapp_guidance.view"}
 FEATURE_LABELS = {
@@ -79,4 +99,19 @@ def feature_catalog():
     rows.append({"id": "support.priority", "name": "Suporte prioritário",
                  "implemented": False, "mode": "unavailable", "plans": ["elite"],
                  "description": "Não há um fluxo de suporte prioritário implementado no painel."})
+    return rows
+
+
+def commercial_catalog(niche=None):
+    niche_catalog = NICHE_CATALOGS.get(niche)
+    rows = []
+    for code, plan in CODES.items():
+        row = {"code": code, "name": plan["name"], "monthly_cents": plan["price_cents"],
+               "max_professionals": plan["max_professionals"], "feature_ids": sorted(PLAN_FEATURES[code])}
+        if niche_catalog:
+            offer = niche_catalog["offers"][code]
+            row.update(period_days=niche_catalog["period_days"], description=offer["description"],
+                       benefits=[FEATURE_LABELS[feature] for feature in offer["benefits"]],
+                       recommended=code == "profissional")
+        rows.append(row)
     return rows

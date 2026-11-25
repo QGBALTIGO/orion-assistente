@@ -110,13 +110,11 @@ async def reconcile_prepaid_receipt(event,order):
                 await _ensure_owner(db,rec["tenant_id"],rec["account_id"])
             except HTTPException:
                 return "manual_review"
-            # Do not grant when a manual plan or legacy recurring bill exists.
-            manual=(await db.execute(text("""
-                SELECT manual_plan_code,manual_started_at,manual_expires_at
-                  FROM tenant_plan_controls WHERE tenant_id=:tenant
-            """),{"tenant":rec["tenant_id"]})).mappings().first()
-            if manual and manual["manual_plan_code"] and manual["manual_started_at"] and (
-                manual["manual_expires_at"] is None or manual["manual_expires_at"]>now):
+            # Use the current entitlement, including scheduled manual terms
+            # that became effective while a bank confirmation was in flight.
+            from app.plan_permissions import plan_state
+            effective = await plan_state(db, rec["tenant_id"], lock=None)
+            if (effective.get("manual_assignment") or {}).get("active"):
                 return "manual_review"
             if (await db.execute(text("""
                 SELECT 1 FROM subscriptions WHERE tenant_id=:tenant
@@ -149,13 +147,18 @@ async def reconcile_prepaid_receipt(event,order):
                     updated_at=now()
                 WHERE id=:id AND state IN ('created','needs_review')
             """),{"id":rec["id"],"paid_at":paid,"old":previous})
+            from app import confirmed_billing, plan_trial_benefits
+            if await confirmed_billing.tracked(db, rec["tenant_id"]):
+                await confirmed_billing.record(db, rec["tenant_id"], order_id, "pix_prepaid",
+                    paid, rec["expected_cents"], start=start, end=end)
+                await plan_trial_benefits.finish_for_payment(db, rec["tenant_id"])
             return "activated"
 
 
 async def reconcile_prepaid_reversal(event,order):
     """A past refunded payment cannot revoke a newer paid period."""
     event_type=event.get("event_type")
-    if event_type not in {"refund","chargeback","purchase_refused"}:
+    if event_type not in {"refund_requested","refund","chargeback","purchase_refused"}:
         return "not_prepaid"
     order_id=event.get("external_order_id")
     if not isinstance(order_id,str):
@@ -185,8 +188,10 @@ async def reconcile_prepaid_reversal(event,order):
                 """),{"id":rec["id"]})
                 return "reconciled"
             if order.get("status") not in {
-                    "refund":{"refunded"},"chargeback":{"chargedback","MED"}
+                    "refund_requested":{"refund_requested"},"refund":{"refunded"},"chargeback":{"chargedback","MED"}
             }[event_type]:
+                return "manual_review"
+            if event_type == "refund_requested" and rec["state"] != "paid":
                 return "manual_review"
             # A refund can arrive before its approval webhook. Bank proof closes
             # this unpaid local attempt without granting or revoking any days.
@@ -203,6 +208,21 @@ async def reconcile_prepaid_reversal(event,order):
                 WHERE tenant_id=:tenant FOR UPDATE
             """),{"tenant":rec["tenant_id"]})).mappings().first()
             if not access or access["last_order_id"]!=order_id:
+                return "manual_review"
+            from app import confirmed_billing
+            if await confirmed_billing.tracked(db, rec["tenant_id"]):
+                from app.cakto_subscription_lifecycle import _order_paid_at
+                if not rec["paid_at"] or rec["paid_at"] != _order_paid_at(order):
+                    return "manual_review"
+                hold = {"refund_requested":"refund_requested", "refund":"refunded", "chargeback":"chargeback"}[event_type]
+                existing = await confirmed_billing.current_order(db, rec["tenant_id"], order_id, "pix_prepaid")
+                if (existing or {}).get("hold") in {"refunded", "chargeback"} and hold == "refund_requested":
+                    return "already_verified"
+                await confirmed_billing.record(db, rec["tenant_id"], order_id, "pix_prepaid",
+                    rec["paid_at"], rec["expected_cents"], hold=hold)
+                if event_type != "refund":
+                    return "reconciled"
+            elif event_type == "refund_requested":
                 return "manual_review"
             now=datetime.now(timezone.utc)
             previous=rec["previous_paid_until"]

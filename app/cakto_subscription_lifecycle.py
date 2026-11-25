@@ -15,11 +15,12 @@ from app.catalog_api import support_session_factory
 from app.cakto_api import ORDER_ID, _subscription_id
 from app.plan_catalog import CODES
 from app.plan_permissions import lock_plan
+from app import confirmed_billing
 
 
 LIFECYCLE_EVENTS = frozenset({
     "subscription_renewed", "subscription_canceled",
-    "purchase_refused", "refund", "chargeback",
+    "purchase_refused", "refund_requested", "refund", "chargeback",
 })
 
 
@@ -111,11 +112,13 @@ def lifecycle_decision(event: dict, order: dict, subscription: dict,
             return "manual_review"  # Never reactivate a cancelled tenant from old receipt.
         return "renewed"
 
-    if event_type in ("refund", "chargeback"):
-        expected = {"refund":{"refunded"}, "chargeback":{"chargedback","MED"}}
+    if event_type in ("refund_requested", "refund", "chargeback"):
+        expected = {"refund_requested":{"refund_requested"}, "refund":{"refunded"}, "chargeback":{"chargedback","MED"}}
         if (order.get("status") not in expected[event_type]
                 or binding.get("last_order_id") != order_id):
             return "manual_review"  # Old refunded order must not suspend a newer one.
+        if event_type == "refund_requested":
+            return "refund_requested"
         # Reversal is still verified/audited, but cannot erase a definitive
         # cancellation and let a previously fetched active snapshot reactivate it.
         return "canceled" if binding.get("local_status") == "canceled" else "suspended"
@@ -135,7 +138,7 @@ def lifecycle_decision(event: dict, order: dict, subscription: dict,
     return "manual_review"
 
 
-def canceled_paid_until(order, binding, *, expected_offer, now=None):
+def canceled_paid_until(order, binding, *, expected_offer, now=None, confirmed_end=None):
     """Preserve only the exact, unexpired paid cycle; cancellation never renews it."""
     now = now or datetime.now(timezone.utc)
     verified = binding.get("last_verified_payment_at")
@@ -150,7 +153,7 @@ def canceled_paid_until(order, binding, *, expected_offer, now=None):
             or not amount_matches(order.get("amount"),binding.get("monthly_cents"))
             or (offer is not None and (not isinstance(offer,dict) or offer.get("id") != expected_offer))):
         return None
-    deadline = paid_at + timedelta(days=30)
+    deadline = confirmed_end or paid_at + timedelta(days=30)
     if deadline<=now:
         return None
     if binding.get("local_status") == "canceled":
@@ -242,13 +245,45 @@ async def reconcile_existing_cakto_subscription(event: dict, order: dict, client
                                          expected_offer=intent["offer_id"])
             if action == "already_verified":
                 return "already_verified"
-            if action not in ("renewed","canceled","suspended","past_due"):
+            if action not in ("renewed","canceled","suspended","past_due","refund_requested"):
+                return "manual_review"
+            tracked = await confirmed_billing.tracked(db, tenant)
+            previous_paid = binding["last_verified_payment_at"]
+            previous_period = (await confirmed_billing.current_order(db, tenant, binding["last_order_id"], "cakto")
+                               if tracked else None)
+            previous_end = ((previous_period or {}).get("period_ends_at")
+                            or (previous_paid + timedelta(days=30) if previous_paid else None))
+            event_type = event["event_type"]
+            if tracked and event_type in {"refund_requested","refund","chargeback"}:
+                if not previous_paid or _order_paid_at(order) != previous_paid:
+                    return "manual_review"
+                hold = {"refund_requested":"refund_requested", "refund":"refunded", "chargeback":"chargeback"}[event_type]
+                if (previous_period or {}).get("hold") in {"refunded", "chargeback"} and hold == "refund_requested":
+                    return "already_verified"
+                await confirmed_billing.record(db, tenant, binding["last_order_id"], "cakto", previous_paid,
+                    plan["price_cents"], start=previous_paid, end=previous_end, hold=hold)
+                return "reconciled"
+            if action == "refund_requested":
                 return "manual_review"
 
             new_status = {"renewed":"active","canceled":"canceled",
                           "suspended":"suspended","past_due":"past_due"}[action]
-            grace_until = (canceled_paid_until(last_order,binding,expected_offer=intent["offer_id"])
+            grace_until = (canceled_paid_until(last_order,binding,expected_offer=intent["offer_id"],
+                                                confirmed_end=previous_end if tracked else None)
                            if event["event_type"] == "subscription_canceled" else None)
+            if (tracked and action == "canceled" and not grace_until and previous_end
+                    and previous_end > datetime.now(timezone.utc)
+                    and (previous_period or {}).get("hold") in {"refund_requested", "chargeback"}
+                    and isinstance(last_order, dict) and last_order.get("id") == binding["last_order_id"]
+                    and _order_paid_at(last_order) == previous_paid):
+                # Retain the separately proven window in case the pending
+                # financial hold is reversed. Repeated cancellation cannot
+                # extend a window already shortened by the verified result.
+                grace_until = (min(previous_end, binding["grace_until"])
+                               if binding["local_status"] == "canceled" and binding["grace_until"]
+                               else previous_end if binding["local_status"] != "canceled" else None)
+            if tracked and action == "past_due" and previous_end and previous_end > datetime.now(timezone.utc):
+                grace_until = previous_end
             await db.execute(text("""
                 UPDATE subscriptions SET status=CAST(:status AS varchar(20)), updated_at=now(),
                     grace_until=:grace_until,
@@ -263,6 +298,14 @@ async def reconcile_existing_cakto_subscription(event: dict, order: dict, client
                 "paid_at":_order_paid_at(order) if action=="renewed" else None,
             })
             if action == "renewed":
+                if tracked:
+                    paid = _order_paid_at(order)
+                    carryover = previous_end if not (previous_period or {}).get("hold") else None
+                    start = max(paid, carryover) if carryover else paid
+                    renewal = _order_instant(remote_subscription, "next_payment_date")
+                    await confirmed_billing.record(db, tenant, event["external_order_id"], "cakto", paid,
+                        plan["price_cents"], start=start, end=start + timedelta(days=30),
+                        next_payment=renewal if renewal and renewal > paid else None)
                 await db.execute(text("""
                     UPDATE orion_cakto_bindings
                     SET last_order_id=:order_id,last_verified_at=now()

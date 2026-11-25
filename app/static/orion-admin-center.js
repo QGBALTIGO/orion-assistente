@@ -280,22 +280,23 @@
   function validPlanEnvelope(value,target){return target&&value?.company?.id===target.companyId&&(target.kind==='company'?value.company.account_id===null:value.company.account_id===target.accountId)&&value.company.can_manage_plan!==false&&value.effective_plan&&Number.isInteger(value.effective_plan.version)&&/^[a-f0-9]{64}$/.test(value.effective_plan.revision);}
   function planSummary(value,target){
     const p=value.effective_plan,c=value.company,subscription=p.commercial_subscription;
-    return '<div class="os-summary">'+[['Empresa',c.name],...(target?.kind==='company'?[['Situação da empresa',companyStatus(c)],['Vínculo do proprietário',({assigned:'Conta de proprietário disponível',unassigned:'Conta de proprietário indisponível'})[c.owner_status]||'Vínculo não confirmado']]:[]),['Plano liberado',p.name||'Sem plano ativo'],['Origem',sourceNames[p.source]||p.source],['Situação do acesso',p.active?'Ativo':'Sem acesso ativo'],['Assinatura comercial',subscription?.name||subscription?.plan_code||'Sem assinatura'],['Situação da assinatura',subscriptionLabel(subscription)],['Profissionais ativos',String(p.limits?.active_professionals??c.active_professionals??0)+' / '+String(p.limits?.max_professionals??'—')]].map(([key,text])=>'<div class="os-summary-row"><span>'+esc(key)+'</span><strong>'+esc(text||'—')+'</strong></div>').join('')+'</div>';
+    const assignment=p.manual_assignment,next=p.scheduled_manual_assignment;
+    return '<div class="os-summary">'+[['Empresa',c.name],...(target?.kind==='company'?[['Situação da empresa',companyStatus(c)],['Vínculo do proprietário',({assigned:'Conta de proprietário disponível',unassigned:'Conta de proprietário indisponível'})[c.owner_status]||'Vínculo não confirmado']]:[]),['Plano liberado',p.name||'Sem plano ativo'],['Origem',sourceNames[p.source]||p.source],['Situação do acesso',p.active?'Ativo':'Sem acesso ativo'],['Assinatura comercial',subscription?.name||subscription?.plan_code||'Sem assinatura'],['Situação da assinatura',subscriptionLabel(subscription)],['Profissionais ativos',String(p.limits?.active_professionals??c.active_professionals??0)+' / '+String(p.limits?.max_professionals??'—')],...(assignment?[['Vencimento manual',assignment.expires_at?new Date(assignment.expires_at).toLocaleString('pt-BR',{timeZone:c.timezone||'America/Sao_Paulo'}):'Liberação antiga sem vencimento cadastrado']]:[]),...(next?[['Troca programada',planNames[next.plan_code]+' em '+new Date(next.started_at).toLocaleString('pt-BR',{timeZone:c.timezone||'America/Sao_Paulo'})]]:[])].map(([key,text])=>'<div class="os-summary-row"><span>'+esc(key)+'</span><strong>'+esc(text||'—')+'</strong></div>').join('')+'</div>';
   }
   function renderPlanForm(a,value,draft){
     const assignment=value.effective_plan.manual_assignment;
-    const expiry=assignment?.expires_at?new Date(assignment.expires_at):null;
-    const expiryInput=expiry&&!Number.isNaN(expiry.getTime())?new Date(expiry.getTime()-expiry.getTimezoneOffset()*60000).toISOString().slice(0,16):'';
-    draft=draft||{plan_code:assignment?.plan_code||value.effective_plan.code||'essencial',access_type:assignment?.expires_at?'temporary':'indefinite',expires_at:expiryInput,reason:''};
+    const options=value.manual_options;
+    const durationLabels={1:'1 mês',3:'3 meses',6:'6 meses',12:'Anual (12 meses)'};
+    draft=draft||{plan_code:assignment?.plan_code||'',duration_months:'',reason:''};
     const history=value.history||[];
-    openDialog('plan','Gerenciar plano',planSummary(value,a)+'<form class="os-form" data-admin-form="plan">'+
-      '<div class="os-field"><label for="adminManualPlan">Plano</label><select id="adminManualPlan" name="plan_code" required>'+Object.entries(planNames).map(([code,name])=>'<option value="'+code+'"'+(code===draft.plan_code?' selected':'')+'>'+name+'</option>').join('')+'</select></div>'+
-      '<div class="os-field"><label for="adminManualAccess">Tipo de liberação</label><select id="adminManualAccess" name="access_type"><option value="indefinite"'+(draft.access_type==='indefinite'?' selected':'')+'>Acesso manual sem prazo definido</option><option value="temporary"'+(draft.access_type==='temporary'?' selected':'')+'>Acesso manual temporário</option></select></div>'+
-      '<div class="os-field" data-admin-expiration '+(draft.access_type==='temporary'?'':'hidden')+'><label for="adminManualExpires">Expiração (data e hora no seu fuso)</label><input id="adminManualExpires" type="datetime-local" name="expires_at" value="'+esc(draft.expires_at)+'" '+(draft.access_type==='temporary'?'required':'disabled')+'></div>'+
+    const termForm=options?.plans?.length?'<form class="os-form" data-admin-form="plan">'+
+      '<div class="os-field"><label for="adminManualPlan">Plano</label><select id="adminManualPlan" name="plan_code" required><option value="">Escolha o plano</option>'+options.plans.map(plan=>'<option value="'+esc(plan.code)+'"'+(plan.code===draft.plan_code?' selected':'')+'>'+esc(plan.name)+'</option>').join('')+'</select></div>'+
+      '<div class="os-field"><label for="adminManualDuration">Período de validade</label><select id="adminManualDuration" name="duration_months" required><option value="">Escolha o período</option>'+options.duration_months.map(months=>'<option value="'+esc(months)+'"'+(String(months)===draft.duration_months?' selected':'')+'>'+esc(durationLabels[months])+'</option>').join('')+'</select></div>'+
       '<div class="os-field"><label for="adminManualReason">Motivo (opcional)</label><textarea id="adminManualReason" name="reason" rows="2" maxlength="500">'+esc(draft.reason)+'</textarea></div>'+
-      '<p class="os-help">Esta liberação não gera cobrança e não altera a assinatura comercial.</p><div class="os-form-message" role="alert"></div><div class="os-form-actions">'+btn('Cancelar','close',{cls:'os-button os-outline',text:'Cancelar',icon:'close'})+'<button type="submit" class="os-button">Salvar alteração</button></div></form>'+
+      '<p class="os-help">A liberação manual é válida pelo prazo concedido e expira sem renovação automática.</p><div class="os-form-message" role="alert"></div><div class="os-form-actions">'+btn('Cancelar','close',{cls:'os-button os-outline',text:'Cancelar',icon:'close'})+'<button type="submit" class="os-button">Revisar vigência</button></div></form>':'<p class="os-help">O catálogo de assinaturas manuais ainda está indisponível neste nicho.</p>';
+    openDialog('plan','Gerenciar plano',planSummary(value,a)+termForm+
       (assignment?'<div class="os-form-actions">'+btn('Remover atribuição manual','remove-plan',{cls:'os-button os-outline',text:'Remover atribuição manual',icon:'refresh'})+'</div>':'')+
-      '<details class="os-more-fields"><summary>Histórico de planos</summary><div class="os-disclosure-body">'+(history.length?history.map(event=>'<div class="os-summary-row"><span>'+esc(event.action==='manual_remove'?'Atribuição removida':'Plano alterado')+' · '+esc(new Date(event.occurred_at).toLocaleString('pt-BR'))+'</span><strong>'+esc(event.previous_plan?.name||'Sem acesso')+' → '+esc(event.new_plan?.name||'Sem acesso')+'</strong></div><p class="os-help">'+esc(event.reason||'Sem motivo informado')+' · Administrador: '+esc(event.actor_name||'Administrador geral')+(event.expires_at?' · até '+esc(new Date(event.expires_at).toLocaleString('pt-BR')):'')+'</p>').join(''):'<p class="os-help">Nenhuma alteração manual registrada.</p>')+'</div></details>',a);
+      '<details class="os-more-fields"><summary>Histórico de planos</summary><div class="os-disclosure-body">'+(history.length?history.map(event=>'<div class="os-summary-row"><span>'+esc(event.action==='manual_remove'?'Atribuição removida':'Plano alterado')+' · '+esc(new Date(event.occurred_at).toLocaleString('pt-BR'))+'</span><strong>'+esc(event.previous_plan?.name||'Sem acesso')+' → '+esc(planNames[event.new_plan?.scheduled_manual_assignment?.plan_code]||event.new_plan?.name||'Sem acesso')+'</strong></div><p class="os-help">'+esc(event.reason||'Sem motivo informado')+' · '+esc(event.actor_name||'Administrador Orion')+(event.duration_months?' · '+esc(durationLabels[event.duration_months]):'')+(event.expires_at?' · até '+esc(new Date(event.expires_at).toLocaleString('pt-BR',{timeZone:value.company.timezone||'America/Sao_Paulo'})):'')+'</p>').join(''):'<p class="os-help">Nenhuma alteração manual registrada.</p>')+'</div></details>',a);
     state.planEnvelope=value;state.planDraft=draft;state.planIntent=null;
   }
   async function showPlan(kind,id){
@@ -304,18 +305,34 @@
     try{const value=await state.request(planPath(a));if(epoch!==state.epoch||read!==state.modalRead||!isAdmin())return;if(!validPlanEnvelope(value,a))throw Error('Não foi possível confirmar o plano da empresa selecionada.');renderPlanForm(a,value);}
     catch(error){if(epoch===state.epoch&&read===state.modalRead)feedback(error.message,true);}
   }
-  function reviewPlan(remove=false){
+  async function reviewPlan(remove=false){
     const a=state.selected,value=state.planEnvelope;if(!a||!validPlanEnvelope(value,a))return;
     const form=$('osDialog').querySelector('[data-admin-form=plan]');
     if(!remove&&!form?.reportValidity())return;
-    const draft=form?Object.fromEntries(new FormData(form)):state.planDraft;
-    let expires=null;
-    if(!remove&&draft.access_type==='temporary'){
-      const date=new Date(draft.expires_at);if(!Number.isFinite(date.getTime())||date.getTime()<=Date.now()){feedback('Escolha uma data de expiração futura.',true);return;}expires=date.toISOString();
+    const draft=form?Object.fromEntries(new FormData(form)):state.planDraft||{};
+    const selection={plan_code:draft.plan_code,duration_months:Number(draft.duration_months)};
+    let term=null;
+    const epoch=state.epoch, read=++state.modalRead;
+    if(!remove){
+      if(state.busy)return;
+      state.busy=true;
+      try{
+        term=await state.request(planPath(a)+'/quote','POST',selection);
+        if(epoch!==state.epoch||read!==state.modalRead||!isAdmin()||state.selected!==a)return;
+        if(term?.expected_revision!==value.effective_plan.revision||term.plan_code!==selection.plan_code||term.duration_months!==selection.duration_months)throw Error('O plano mudou. Confira o estado atualizado.');
+      }catch(error){if(epoch===state.epoch&&read===state.modalRead)feedback(error.message,true);return;}
+      finally{if(epoch===state.epoch)state.busy=false;}
     }
     state.planDraft=draft;
-    const payload={expected_version:value.effective_plan.version,expected_revision:value.effective_plan.revision,operation_id:crypto.randomUUID(),confirmation:remove?'REMOVER ATRIBUIÇÃO':'ALTERAR PLANO',reason:(draft.reason||'').trim(),...(!remove?{plan_code:draft.plan_code,access_type:draft.access_type,expires_at:expires}:{})};
-    openDialog('plan-review',remove?'Remover atribuição manual?':'Confirmar alteração de plano',planSummary(value,a)+'<div class="os-notice"><p>'+esc(remove?'O plano será recalculado pela assinatura comercial ou pelo teste grátis válido.':'A empresa receberá o plano '+planNames[draft.plan_code]+(expires?' até '+new Date(expires).toLocaleString('pt-BR'): ' sem prazo definido')+'.')+'</p></div><p class="os-help">Os dados da empresa, o vínculo do proprietário e a assinatura comercial serão preservados. Nenhuma cobrança será gerada.</p><form class="os-form" data-admin-form="plan-confirm"><div class="os-form-message" role="alert"></div><div class="os-form-actions">'+btn('Voltar','plan-back',{cls:'os-button os-outline',icon:'left',text:'Voltar'})+'<button type="submit" class="os-button">'+(remove?'Confirmar remoção':'Confirmar alteração')+'</button></div></form>',a);
+    const payload={expected_version:value.effective_plan.version,expected_revision:value.effective_plan.revision,operation_id:crypto.randomUUID(),confirmation:remove?'REMOVER ATRIBUIÇÃO':'ALTERAR PLANO',reason:(draft.reason||'').trim(),...(!remove?{...selection,transition:term.kind}:{})};
+    const when=value=>new Date(value).toLocaleString('pt-BR',{timeZone:term.timezone});
+    const plan=value.manual_options?.plans?.find(item=>item.code===draft.plan_code);
+    const excess=(value.effective_plan.limits?.active_professionals||0)-(plan?.max_professionals||0);
+    const note=remove?'O sistema vai recalcular o acesso após encerrar a vigência manual.':
+      plan.name+' de '+when(term.starts_at)+' até '+when(term.ends_at)+'.'+
+      (term.kind==='renewal'?' O novo período começa no vencimento atual.':term.kind==='downgrade'?' O plano atual fica ativo até a troca programada.':term.kind==='upgrade'?' A troca começa na confirmação e os dias restantes são preservados.':'')+
+      (excess>0?' Há '+excess+' profissionais acima do limite do plano de destino. Ajuste a equipe para liberar novas ativações.':'');
+    openDialog('plan-review',remove?'Remover atribuição manual?':'Confirmar vigência',planSummary(value,a)+'<div class="os-notice"><p>'+esc(note)+'</p></div><p class="os-help">A vigência é registrada no Orion, sem cobrança.</p><form class="os-form" data-admin-form="plan-confirm"><div class="os-form-message" role="alert"></div><div class="os-form-actions">'+btn('Voltar','plan-back',{cls:'os-button os-outline',icon:'left',text:'Voltar'})+'<button type="submit" class="os-button">'+(remove?'Confirmar remoção':'Confirmar assinatura manual')+'</button></div></form>',a);
     state.planIntent={path:planPath(a),method:remove?'DELETE':'PUT',payload};
   }
   async function savePlan(form){
@@ -447,7 +464,6 @@
   document.addEventListener('change',event=>{
     if(!isAdmin())return;const el=event.target;
     if(el.matches('[data-admin-plan-filter]')){state[el.dataset.adminPlanFilter]=el.value;state.page=1;void load();}
-    if(state.owned&&el.id==='adminManualAccess'){const area=$('osDialog').querySelector('[data-admin-expiration]'),input=area.querySelector('input'),temporary=el.value==='temporary';area.hidden=!temporary;input.disabled=!temporary;input.required=temporary;}
   });
   document.addEventListener("keydown",event=>{
     const tab=event.target.closest("[data-admin-status]");

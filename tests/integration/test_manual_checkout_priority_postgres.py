@@ -77,8 +77,9 @@ def charge(identity):
 
 @pytest.mark.asyncio
 async def test_manual_priority_blocks_all_new_checkout_forms_without_changing_existing_intent(checkout_db):
-    c=checkout_db;identity=await intent(c)
+    c=checkout_db
     assert (await c.client.put(c.path,json=await assignment(c,"essencial"))).status_code==200
+    identity=await intent(c)  # Synthetic historical coexistence.
     actor=Actor("member",c.tenant,c.account,"owner")
     for action in (
         lambda:plans.start_plan_checkout(c.tenant,plans.CheckoutChoice(plan_code="essencial"),actor),
@@ -93,20 +94,18 @@ async def test_manual_priority_blocks_all_new_checkout_forms_without_changing_ex
 
 
 @pytest.mark.asyncio
-async def test_manual_committed_after_durable_reservation_blocks_unsent_provider_attempt(checkout_db):
+async def test_manual_change_after_durable_reservation_is_blocked(checkout_db):
     c=checkout_db;identity=await intent(c)
     async def grant():
         c.on_offers=None
         response=await c.client.put(c.path,json=await assignment(c))
-        assert response.status_code==200,response.text
+        assert response.status_code==409,response.text
     c.on_offers=grant
-    with pytest.raises(HTTPException) as caught:
-        await direct.direct_charge(c.tenant,charge(identity),Actor("member",c.tenant,c.account,"owner"))
-    assert caught.value.detail["code"]=="MANUAL_PLAN_ACTIVE" and c.provider_posts==0
+    response = await direct.direct_charge(c.tenant,charge(identity),Actor("member",c.tenant,c.account,"owner"))
+    assert response["status"]=="pending_confirmation" and c.provider_posts==1
     async with c.engine.connect() as db:
         row=(await db.execute(text("SELECT state,external_order_id FROM orion_direct_payment_attempts WHERE intent_id=:id"),{"id":identity})).one()
-    assert row.state=="needs_review" and row.external_order_id is None
-    assert (await direct.direct_status(c.tenant,identity,Actor("member",c.tenant,c.account,"owner")))["status"]=="review_required"
+    assert row.state=="created" and row.external_order_id=="synthetic-created-order"
 
 
 @pytest.mark.asyncio
@@ -131,8 +130,8 @@ async def test_manual_change_waits_for_already_started_provider_request_without_
         release.set()
     paid=await asyncio.wait_for(payment,10)
     changed=await asyncio.wait_for(administrative,10)
-    assert paid["status"]=="pending_confirmation" and changed.status_code==200
-    assert changed.json()["effective_plan"]["source"]=="manual" and c.provider_posts==1
+    assert paid["status"]=="pending_confirmation" and changed.status_code==409
+    assert c.provider_posts==1
     async with c.engine.connect() as db:
         row=(await db.execute(text("SELECT state,external_order_id FROM orion_direct_payment_attempts WHERE intent_id=:id"),{"id":identity})).one()
     assert row.state=="created" and row.external_order_id=="synthetic-created-order"

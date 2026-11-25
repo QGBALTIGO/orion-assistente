@@ -7,7 +7,8 @@ const unassigned='/api/v1/admin/accounts/companies/unassigned';
 const companyPath=id=>'/api/v1/admin/accounts/companies/'+id+'/plan';
 const account={id:'90000000-0000-4000-8000-000000000009',company_id:tenantA,can_manage_plan:true,name:'Responsável sintético',company_name:'Empresa com conta',email:'plan@example.invalid',state:'active',auth_version:7};
 const row=(id=tenantB,overrides={})=>({id,name:'Empresa pendente sintética',status:'active',owner_status:'unassigned',can_manage_plan:true,active_professionals:0,effective_plan:planState('essencial',{revision:'a'.repeat(64),version:0,manual_assignment:{plan_code:'essencial',active:true,expires_at:null}}),...overrides});
-const envelope=c=>({company:{id:c.id,name:c.name,status:c.status,account_id:null,owner_status:c.owner_status,can_manage_plan:c.can_manage_plan,active_professionals:c.active_professionals},effective_plan:c.effective_plan,history:[],replayed:false});
+const manualOptions={plans:['essencial','profissional','elite'].map(code=>({code,name:'Orion '+code,max_professionals:10})),duration_months:[1,3,6,12]};
+const envelope=c=>({manual_options:manualOptions,company:{id:c.id,name:c.name,status:c.status,account_id:null,owner_status:c.owner_status,can_manage_plan:c.can_manage_plan,active_professionals:c.active_professionals},effective_plan:c.effective_plan,history:[],replayed:false});
 async function fixture({companies=[row()],accounts=[account],initialRoute='plano',enter=true,respond}={}){
   const values=new Map(companies.map(c=>[c.id,envelope(c)]));
   const server={companies,accounts,values};
@@ -16,6 +17,8 @@ async function fixture({companies=[row()],accounts=[account],initialRoute='plano
     if(path===unassigned)return {companies:server.companies.map(c=>({...c,effective_plan:server.values.get(c.id).effective_plan}))};
     if(path.startsWith('/api/v1/admin/accounts?'))return {items:server.accounts,total:server.accounts.length,page:1,page_size:20};
     if(path==='/api/v1/admin/accounts/stats')return {total:server.accounts.length,active:server.accounts.length};
+    const quoteFor=[...server.values.keys()].find(id=>path===companyPath(id)+'/quote');
+    if(quoteFor)return {...data,expected_revision:server.values.get(quoteFor).effective_plan.revision,kind:'activation',timezone:'America/Cuiaba',starts_at:'2026-11-25T19:00:00Z',ends_at:'2026-12-25T19:00:00Z'};
     const id=[...server.values.keys()].find(id=>path===companyPath(id));
     if(id){
       const value=server.values.get(id);if(method==='GET')return value;
@@ -27,8 +30,8 @@ async function fixture({companies=[row()],accounts=[account],initialRoute='plano
   if(enter){h.click('#osNav [data-os-route=member]');await flush();}
   return {...h,server};
 }
-const writes=h=>h.calls.filter(c=>c.method!=='GET'&&c.path!=='/auth/logout');
-const open=async(h,id=tenantB)=>{h.click('#adminUnassignedCompanies [data-admin-control=plan][data-company-id="'+id+'"]');await flush();};
+const writes=h=>h.calls.filter(c=>['PUT','DELETE'].includes(c.method));
+const open=async(h,id=tenantB)=>{h.click('#adminUnassignedCompanies [data-admin-control=plan][data-company-id="'+id+'"]');await flush();const duration=h.document.querySelector('#adminManualDuration');if(duration)duration.value='1';};
 const change=async(h,key,value)=>{const el=h.element('[data-admin-plan-filter='+key+']');el.value=value;el.dispatchEvent(new h.window.Event('change',{bubbles:true}));await flush();};
 
 test('pending companies are separate business targets and only manageable owner accounts suppress duplicates',async t=>{
@@ -48,7 +51,7 @@ test('a paused company uses the direct company route and CAS after review withou
   const h=await fixture({companies:[row(tenantB,{status:'paused',effective_plan:planState('essencial',{active:false,revision:'a'.repeat(64),version:3,manual_assignment:{plan_code:'essencial',active:true}})})]});t.after(()=>h.close());
   await open(h);assert.match(h.element('#osDialog').textContent,/Pausada|Conta de proprietário indisponível/);
   h.element('#adminManualPlan').value='elite';h.fill('#adminManualReason','Liberação sintética');h.submit('[data-admin-form=plan]');await flush();assert.equal(writes(h).length,0);
-  assert.match(h.element('#osDialog').textContent,/vínculo do proprietário/);
+  assert.match(h.element('#osDialog').textContent,/vigência é registrada/);
   h.submit('[data-admin-form=plan-confirm]');await flush();
   const [call]=writes(h);assert.equal(writes(h).length,1);assert.equal(call.path,companyPath(tenantB));assert.equal(call.method,'PUT');
   assert.equal(call.data.expected_version,3);assert.equal(call.data.expected_revision,'a'.repeat(64));assert.equal(call.data.confirmation,'ALTERAR PLANO');assert.match(call.data.operation_id,/^[a-f0-9-]{36}$/);
@@ -58,9 +61,9 @@ test('a paused company uses the direct company route and CAS after review withou
 });
 
 test('company history, removal and Escape reuse the shared modal and preserve focus on its company trigger',async t=>{
-  const h=await fixture();t.after(()=>h.close());await open(h);h.submit('[data-admin-form=plan]');h.submit('[data-admin-form=plan-confirm]');await flush();
+  const h=await fixture();t.after(()=>h.close());await open(h);h.submit('[data-admin-form=plan]');await flush();h.submit('[data-admin-form=plan-confirm]');await flush();
   const trigger=h.element('#adminUnassignedCompanies [data-admin-control=plan]');trigger.focus();trigger.click();await flush();
-  assert.match(h.element('#osDialog .os-disclosure-body').textContent,/Administrador geral/);
+  assert.match(h.element('#osDialog .os-disclosure-body').textContent,/Administrador Orion/);
   assert.equal(h.element('#osDialog .os-disclosure-body').textContent.includes('50000000-0000-4000-8000-000000000005'),false);
   h.element('#osDialog').dispatchEvent(new h.window.Event('cancel',{cancelable:true}));assert.equal(h.document.activeElement,trigger);
   trigger.click();await flush();h.click('[data-admin-control=remove-plan]');await flush();assert.equal(writes(h).length,1);
@@ -96,7 +99,7 @@ test('a confirmed company change invalidates permissions before an optional comp
   const h=await fixture({respond:path=>{if(path===unassigned&&++reads>1)return pending.promise;}});t.after(()=>h.close());
   const events=[],broadcasts=[];h.window.addEventListener('orion:plan-changed',()=>events.push(true));
   h.window.BroadcastChannel=class{postMessage(value){broadcasts.push(value);}close(){}};
-  await open(h);h.submit('[data-admin-form=plan]');h.submit('[data-admin-form=plan-confirm]');await flush();
+  await open(h);h.submit('[data-admin-form=plan]');await flush();h.submit('[data-admin-form=plan-confirm]');await flush();
   assert.equal(writes(h).length,1);assert.equal(events.length,1);assert.equal(broadcasts.length,1);assert.equal(broadcasts[0].tenantId,tenantB);
   pending.resolve({companies:[row()]});await flush();assert.equal(events.length,1);assert.equal(writes(h).length,1);
 });
@@ -105,7 +108,7 @@ test('409 or unknown company writes never repeat automatically and Conferir esta
   for(const status of [409,503]){
     const h=await fixture({respond:(path,method,data,server)=>{
       if(path===companyPath(tenantB)&&method==='PUT'){server.companies=[];throw Object.assign(Error('Conferir estado'),{status});}
-    }});t.after(()=>h.close());await open(h);h.submit('[data-admin-form=plan]');h.submit('[data-admin-form=plan-confirm]');await flush();
+    }});t.after(()=>h.close());await open(h);h.submit('[data-admin-form=plan]');await flush();h.submit('[data-admin-form=plan-confirm]');await flush();
     assert.equal(writes(h).length,1);h.submit('[data-admin-form=plan-confirm]');await flush();assert.equal(writes(h).length,1);
     h.click('#osDialog [data-admin-control=plan][data-plan-target=company]');await flush();assert.ok(h.element('#adminManualPlan'));
     assert.equal(h.calls.filter(c=>c.path===companyPath(tenantB)&&c.method==='GET').length,2);
@@ -124,7 +127,7 @@ test('late company reads cannot repopulate the directory after reset and a compa
 test('a newly available owner updates the company summary without changing the explicit company target',async t=>{
   const h=await fixture({respond:(path,method,data,server)=>{if(path===companyPath(tenantB)&&method==='GET'){const value=server.values.get(tenantB);value.company.owner_status='assigned';return value;}}});t.after(()=>h.close());
   await open(h);assert.match(h.element('#osDialog').textContent,/Conta de proprietário disponível/);
-  h.submit('[data-admin-form=plan]');h.submit('[data-admin-form=plan-confirm]');await flush();assert.equal(writes(h)[0].path,companyPath(tenantB));assert.equal(h.server.values.get(tenantB).company.account_id,null);
+  h.submit('[data-admin-form=plan]');await flush();h.submit('[data-admin-form=plan-confirm]');await flush();assert.equal(writes(h)[0].path,companyPath(tenantB));assert.equal(h.server.values.get(tenantB).company.account_id,null);
 });
 
 test('a foreign company envelope cannot open a plan form or create an intent',async t=>{

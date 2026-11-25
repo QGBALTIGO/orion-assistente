@@ -97,13 +97,11 @@ async def save(case, state, step, data):
 
 async def ready(case, *, offering=None, activity="services"):
     payload = {"name": "Empresa HTTP sintética", "timezone": "America/Cuiaba",
-               "niche": "servico_assinaturas" if offering else "outro",
+               "niche": "servico_assinaturas" if offering else "barbearia",
                "activity": "products" if offering else activity,
                "contact_phone": "+5567999999901", "idempotency_key": str(uuid4())}
     if offering:
         payload["subscription_offering"] = offering
-    else:
-        payload["other_niche"] = "Empresa sintética"
     created = await case.client.post("/api/v1/onboarding/businesses", json=payload)
     assert created.status_code == 201, created.text
     state = await save(case, created.json(), "location", {"modality": "online"})
