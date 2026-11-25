@@ -98,9 +98,9 @@ def test_prepare_partial_product_and_complete_preview_without_creating_jobs(stor
 
     async def extract(url, *, shopee=None):
         assert url == "https://www.amazon.com.br/dp/B0C1234567"
-        return prepared_offer(title=None, price=None, price_max=None, currency=None,
+        return prepared_offer(price=None, price_max=None, currency=None,
                               affiliate_url=None, affiliate_status="not_converted",
-                              extraction={"status": "partial", "missing": ["title", "price", "image"]})
+                              extraction={"status": "partial", "missing": ["price", "image"]})
 
     monkeypatch.setattr(marketplaces, "extract_offer", extract)
     with TestClient(create_app(store, origin=BASE, sending=False, start_worker=False)) as client:
@@ -109,7 +109,7 @@ def test_prepare_partial_product_and_complete_preview_without_creating_jobs(stor
                              json={"url": "https://www.amazon.com.br/dp/B0C1234567"})
         assert result.status_code == 200
         draft = result.json()
-        assert draft["title"] is None and draft["price"] is None
+        assert draft["title"] == "Lâmpada para leitura — edição café" and draft["price"] is None
         assert draft["affiliate_status"] == "required" and draft["phrase"]
         path = f"/api/offers/{draft['id']}"
         preview = client.get(path + f"/preview?template={TEXT_TEMPLATE}").json()
@@ -126,6 +126,70 @@ def test_prepare_partial_product_and_complete_preview_without_creating_jobs(stor
         assert OWN_LINK in preview["text"]
         assert all(item["eligible"] for item in preview["destinations"])
         assert store.history(tenant) == [], "prepare/edit/preview must never publish or enqueue"
+
+
+@pytest.mark.parametrize("status,code,message", [
+    (503, "unavailable", "A loja não disponibilizou essa página."),
+    (404, "unavailable", "A página do produto não foi encontrada."),
+    (403, "blocked", "A loja restringiu a leitura automática."),
+])
+def test_empty_extraction_requires_manual_choice_and_never_saves_on_retry(store, monkeypatch, status, code, message):
+    from affiliate_pilot import marketplaces
+    tenant = company(store)
+    records(store, tenant)
+    original = store.list(tenant, "offer")
+    url = "https://amzn.to/synthetic-product"
+
+    async def extract(value, *, shopee=None):
+        assert value == url
+        return prepared_offer(title=None, price=None, price_max=None, currency=None, image=None,
+                              affiliate_url=None, affiliate_status="not_converted", source_url=value,
+                              extraction={"status": "blocked" if status == 403 else "partial", "code": code,
+                                          "reason": message, "http_status": status,
+                                          "missing": ["title", "price", "currency", "image", "rating"]})
+
+    monkeypatch.setattr(marketplaces, "extract_offer", extract)
+    with TestClient(create_app(store, origin=BASE, sending=False, start_worker=False)) as client:
+        login(client)
+        for _ in range(2):
+            result = client.post("/api/offers", headers=ORIGIN, json={"url": url, "note": "Minha observação"})
+            assert result.status_code == 422
+            detail = result.json()["detail"]
+            assert detail["code"] == "PRODUCT_EXTRACTION_EMPTY"
+            assert detail["message"] == message and detail["source_url"] == url
+            assert detail["manual_available"] is True
+            assert detail["extraction"]["http_status"] == status
+            assert store.list(tenant, "offer") == original
+            assert store.history(tenant) == []
+
+        manual = client.post("/api/offers", headers=ORIGIN,
+                             json={"url": url, "note": "Minha observação", "allow_manual": True})
+        assert manual.status_code == 200
+        draft = manual.json()
+        assert draft["title"] is None and draft["affiliate_url"] is None
+        assert draft["extraction"]["manual_requested"] is True
+        assert draft["note"] == "Minha observação" and draft["source_url"] == url
+        assert len(store.list(tenant, "offer")) == len(original) + 1
+        assert store.get(tenant, "offer", OFFER) == original[0]
+        assert store.history(tenant) == []
+
+
+def test_manual_choice_does_not_bypass_url_validation(store, monkeypatch):
+    from affiliate_pilot import marketplaces
+    tenant = company(store)
+
+    async def extract(*args, **kwargs):
+        raise ProviderError("retailer", "Essa loja ainda não está na lista de lojas aceitas.")
+
+    monkeypatch.setattr(marketplaces, "extract_offer", extract)
+    with TestClient(create_app(store, origin=BASE, sending=False, start_worker=False)) as client:
+        login(client)
+        result = client.post("/api/offers", headers=ORIGIN,
+                             json={"url": "https://unsupported.example/product", "allow_manual": True})
+        assert result.status_code == 422
+        assert result.json()["code"] == "retailer"
+        assert store.list(tenant, "offer") == []
+        assert store.history(tenant) == []
 
 
 def test_batch_has_exact_selected_destinations_and_retries_keep_same_jobs(store):

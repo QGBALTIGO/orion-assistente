@@ -73,6 +73,7 @@ class Destination(Input):
 class OfferInput(Input):
     url: str = Field(max_length=2048)
     note: str = Field(default="", max_length=300)
+    allow_manual: bool = False
 
 
 class OfferEdit(Input):
@@ -535,6 +536,17 @@ def create_app(store=None, *, sending=None, origin=None, start_worker=True):
         credentials, _ = app.state.store.credentials(company, "shopee")
         provider = app.state.engine.shopee(company)[0] if credentials else None
         offer = await extract_offer(payload.url.strip(), shopee=provider)
+        if not any(offer.get(field) for field in ("title", "price", "image")):
+            extraction = dict(offer.get("extraction") or {})
+            if not payload.allow_manual:
+                raise HTTPException(422, detail={
+                    "code": "PRODUCT_EXTRACTION_EMPTY",
+                    "message": extraction.get("reason") or "Não foi possível ler os dados deste produto. Tente novamente.",
+                    "extraction": extraction,
+                    "source_url": payload.url.strip(),
+                    "manual_available": True,
+                })
+            offer["extraction"] = {**extraction, "manual_requested": True}
         if offer.get("platform") == "shopee" and provider:
             try:
                 offer = await app.state.engine.ready_offer(company, offer)

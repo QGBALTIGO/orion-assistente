@@ -35,6 +35,7 @@ OUT = ROOT / "artifacts/affiliate-offers"
 OFFER = "a" * 32
 ALT = "b" * 32
 DEST = ["c" * 32, "d" * 32, "e" * 32, "f" * 32]
+EMPTY_PRODUCT_URL = "https://amzn.to/synthetic-unavailable-product"
 PHRASES = [
     {"id": "one", "text": "Um toque de praticidade para a sua rotina.", "source": "fallback"},
     {"id": "two", "text": "Conheça os detalhes e escolha a sua versão favorita.", "source": "fallback"},
@@ -341,6 +342,44 @@ def exercise(page, control, data, name, output, send_calls):
     assert data["offer"][0]["currency"] == "BRL"
     assert data["offer"][0]["affiliate_status"] == "provided"
     assert len(send_calls) == 2, "Completing an imported offer must not publish it"
+
+    # An unavailable product is an inline failure, not a replacement for the
+    # prepared offer. The exact synthetic URL is handled entirely by respond().
+    existing_offers = copy.deepcopy(data["offer"])
+    page.evaluate("window.__offerQA.failureComposer=document.querySelector('[data-offer-section=\"composer\"]')")
+    page.locator("#af-offer-url").fill(EMPTY_PRODUCT_URL)
+    with page.expect_response(lambda response: response.url == ORIGIN + API + "offers") as failed:
+        page.locator('[data-form="offer"] button[type="submit"]').click()
+    assert failed.value.status == 422
+    page.locator('[data-act="offer-retry"]').wait_for(state="visible")
+    page.locator('[data-act="offer-manual"]').wait_for(state="visible")
+    assert "não disponibilizou" in page.locator('[data-offer-notice="prepare"]').inner_text()
+    assert page.locator("#af-offer-url").input_value() == EMPTY_PRODUCT_URL
+    assert page.evaluate("window.__offerQA.failureComposer===document.querySelector('[data-offer-section=\"composer\"]')")
+    assert page.locator("#af-offer-affiliate-edit").input_value() == "https://amzn.to/synthetic-own-link"
+    assert data["offer"] == existing_offers, "A failed extraction must not create a draft"
+    place("[data-offer-prepare-feedback]", 190)
+    failure_layout = layout_metrics(page)
+    page.screenshot(path=str(output / (name + "-failure-viewport.png")), animations="disabled")
+
+    with page.expect_response(lambda response: response.url == ORIGIN + API + "offers") as retried:
+        page.locator('[data-act="offer-retry"]').click()
+    assert retried.value.status == 422
+    page.locator('[data-act="offer-manual"][aria-disabled="false"]').wait_for()
+    assert page.locator("#af-offer-url").input_value() == EMPTY_PRODUCT_URL
+    assert data["offer"] == existing_offers, "Retrying must not create an empty draft"
+    page.locator('[data-act="offer-manual"]').click()
+    page.locator('[data-offer-notice="extraction"]').wait_for()
+    page.locator('[data-offer-section="preview"][aria-busy="false"]').wait_for()
+    assert "Preenchimento manual" in page.locator('[data-offer-notice="extraction"]').inner_text()
+    assert len(data["offer"]) == len(existing_offers) + 1
+    assert data["offer"][0]["extraction"]["manual_requested"] is True
+    assert data["offer"][1:] == existing_offers
+    assert page.locator('[data-act="offer-send"]').is_disabled()
+    assert len(send_calls) == 2, "An explicit manual draft must never publish"
+    records.append({"step": "empty-product-recovery-and-deliberate-manual-draft", "failure_layout": failure_layout,
+                    "manual_layout": layout_metrics(page), "existing_offer_preserved": True})
+    (output / (name + "-interactions.json")).write_text(json.dumps(records, ensure_ascii=False, indent=2))
     return records
 
 
@@ -408,7 +447,21 @@ def run(context, width, theme, layout, engine, output):
             fulfill(data)
         elif path == API + "offers" and method == "POST":
             payload = request.post_data_json
-            assert set(payload) == {"url", "note"}, payload
+            assert {"url", "note"} <= set(payload) <= {"url", "note", "allow_manual"}, payload
+            if payload["url"] == EMPTY_PRODUCT_URL:
+                if payload.get("allow_manual") is not True:
+                    fulfill({"detail": {"code": "PRODUCT_EXTRACTION_EMPTY",
+                                        "message": "A loja não disponibilizou essa página.",
+                                        "source_url": EMPTY_PRODUCT_URL, "manual_available": True,
+                                        "extraction": {"status": "partial", "code": "unavailable", "http_status": 503}}}, 422)
+                else:
+                    row = {**offer(True), "id": "9" * 32, "title": None, "price": None, "currency": None,
+                           "image": None, "source_url": EMPTY_PRODUCT_URL,
+                           "extraction": {"status": "partial", "manual_requested": True}}
+                    data["offer"].insert(0, row)
+                    fulfill(row)
+                return
+            assert "allow_manual" not in payload, payload
             row = offer(control["manual"])
             data["offer"] = [row]
             fulfill(row)

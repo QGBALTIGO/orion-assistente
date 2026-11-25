@@ -43,6 +43,7 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
   let offerInput = {url:"",note:""};
   let offerBusy = false;
   let offerError = "";
+  let offerFailure = null;
   let offerPreviewBusy = false;
   let offerPreviewError = "";
   let offerPreviewRequest = null;
@@ -535,6 +536,28 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
   const offerSubmit = (label,glyph,busy=false,disabled=false) => '<button class="os-button" type="submit"'+(disabled?" disabled":"")+
     ' aria-disabled="'+(busy||disabled)+'" aria-busy="'+busy+'">'+(busy?'<span class="os-spinner" aria-hidden="true"></span>':icon(glyph))+'<span>'+html(label)+'</span></button>';
 
+  function offerPrepareFeedback() {
+    const failure=offerFailure?.url===offerInput.url.trim()?offerFailure:null;
+    return '<div data-offer-prepare-feedback>'+offerAlert(offerError||(offerBusy?failure?.message:""),"prepare")+
+      (failure?'<div class="af-offer-recovery-actions"><button type="button" class="os-button os-outline" data-act="offer-retry" aria-disabled="'+offerBusy+'" aria-busy="'+offerBusy+'">'+icon("refresh")+'Tentar novamente</button>'+
+        '<button type="button" class="af-offer-text-button" data-act="offer-manual" aria-disabled="'+offerBusy+'">'+icon("edit")+'Preencher manualmente</button></div>':"")+'</div>';
+  }
+
+  function offerExtractionNotice(row) {
+    const extraction=row.extraction;
+    if (!extraction || row.demo) return "";
+    const missing=[];
+    if (!row.title) missing.push("nome");
+    if (row.price==null) missing.push("preço");
+    else if (row.currency!=="BRL") missing.push("preço em reais");
+    if (!row.image && preview?.media!=="text") missing.push("imagem");
+    if (!missing.length) return "";
+    const fields=missing.length>1?missing.slice(0,-1).join(", ")+" e "+missing.at(-1):missing[0];
+    const reason=extraction.manual_requested?"Preenchimento manual. Adicione "+fields+" para preparar a publicação.":
+      "A leitura do produto ficou incompleta. Confira "+fields+" antes de publicar.";
+    return offerAlert(reason,"extraction");
+  }
+
   function offerSource() {
     const shops=Array.isArray(state.retailers)?state.retailers:[];
     const results=(catalog||[]).map(row=>{
@@ -557,10 +580,10 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
           '<label class="af-offer-url-label" for="af-offer-url"><span class="os-sr-only">Link do produto</span><span class="af-offer-input-icon" aria-hidden="true">'+icon("link")+'</span>'+
           '<input id="af-offer-url" name="url" type="url" required maxlength="2048" inputmode="url" autocomplete="off" placeholder="Cole o link do produto" value="'+html(offerInput.url)+'" data-offer-input="url"></label>'+
           offerSubmit(offerBusy?"Preparando…":"Gerar prévia","arrow",offerBusy)+
-        '</form>'+offerAlert(offerError,"prepare")+
+        '</form>'+offerPrepareFeedback()+
         '<div class="af-offer-source-extra">'+
           '<details class="af-offer-note" data-offer-disclosure="note"'+(offerNoteOpen?" open":"")+'><summary>Adicionar observação</summary><label class="os-sr-only" for="af-offer-note">Observação da oferta</label><input id="af-offer-note" maxlength="300" name="note" placeholder="Uma informação para incluir na legenda" value="'+html(offerInput.note)+'" data-offer-input="note"></details>'+
-          (shops.length?'<details class="af-offer-stores" data-offer-disclosure="stores"'+(offerStoresOpen?" open":"")+'><summary>'+shops.length+' lojas disponíveis</summary><div>'+shops.map(shop=>'<span>'+html(shop.name)+'</span>').join("")+'</div></details>':"")+
+          (shops.length?'<details class="af-offer-stores" data-offer-disclosure="stores"'+(offerStoresOpen?" open":"")+'><summary>Links de '+shops.length+' lojas</summary><div>'+shops.map(shop=>'<span>'+html(shop.name)+'</span>').join("")+'</div></details>':"")+
         '</div></div><div id="offer-catalog"'+(offerTab==="catalog"?"":" hidden")+'>'+
           '<form class="os-form af-form af-offer-search-form" data-form="search">'+
             '<label class="af-offer-search-keyword">Buscar produto<input name="keyword" placeholder="Ex.: fone sem fio" maxlength="80" value="'+html(searchQuery.keyword)+'" data-offer-search="keyword"></label>'+
@@ -574,6 +597,7 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
   function offerProductEditor(row) {
     const missingLink=!row.affiliate_url && !row.demo;
     return '<div class="af-offer-product" data-offer-section="product">'+
+      offerExtractionNotice(row)+
       '<div class="af-offer-product-summary"><span class="af-offer-product-symbol">'+icon("box")+'</span><div><span class="af-offer-retailer">'+html(row.demo?"Exemplo":offerRetailer(row))+'</span><h2>'+html(row.title||"Complete os detalhes do produto")+'</h2>'+
       '<div class="af-offer-product-price">'+(row.price!=null?'<strong>'+html(offerPrice(row))+'</strong>':'<span>Adicione o preço</span>')+
       (row.affiliate_url?'<button type="button" data-act="copy-link" data-value="'+html(row.id)+'">'+icon("copy")+'Copiar link</button>':"")+'</div></div></div>'+
@@ -1313,22 +1337,30 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     }
   }
 
-  async function prepareOffer(url,note="") {
+  async function prepareOffer(url,note="",allowManual=false) {
     if (offerBusy) return;
+    const attempt={url:String(url||"").trim(),note:String(note||"").trim()};
+    if (allowManual && offerFailure?.url!==attempt.url) return;
     const origin=viewVersion;
     const version=navVersion;
-    offerInput={url:String(url||"").trim(),note:String(note||"").trim()};
+    offerInput={...attempt};
+    if (offerFailure?.url!==attempt.url) offerFailure=null;
     offerBusy=true;
     offerError="";
     render();
     try {
-      const saved=await api("offers","POST",offerInput);
+      const saved=await api("offers","POST",{...attempt,...(allowManual?{allow_manual:true}:{})});
       if (!offerCurrent(version,origin)) return;
       saveOfferRow(saved);
+      if (offerInput.url.trim()!==attempt.url) return;
+      offerFailure=null;
       await openOffer(saved.id);
     } catch(error) {
-      if (!controller.signal.aborted&&origin===viewVersion&&route==="ofertas") {
+      if (offerCurrent(version,origin)&&offerInput.url.trim()===attempt.url) {
         offerError=error.message||"Não foi possível preparar esta oferta.";
+        const detail=error.detail;
+        offerFailure=detail?.code==="PRODUCT_EXTRACTION_EMPTY"&&detail.manual_available===true&&detail.source_url===attempt.url?
+          {url:attempt.url,message:offerError}:null;
       }
     } finally {
       if (!controller.signal.aborted&&origin===viewVersion&&route==="ofertas") {
@@ -1565,6 +1597,12 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
       updateOffers('[data-offer-section="preview"]',offerPreview());
     },
     "offer-send": sendOffer,
+    "offer-retry": async ()=>{
+      if (offerFailure?.url===offerInput.url.trim()) await prepareOffer(offerInput.url,offerInput.note);
+    },
+    "offer-manual": async ()=>{
+      if (offerFailure?.url===offerInput.url.trim()) await prepareOffer(offerInput.url,offerInput.note,true);
+    },
     "offer-new": async ()=>{
       navVersion++;
       offerPreviewRequest?.abort();
@@ -1575,6 +1613,7 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
       offerPreviewError="";
       offerInput={url:"",note:""};
       offerError="";
+      offerFailure=null;
       offerDetailsError="";
       offerDetailsOpen=false;
       offerDetailsDirty=false;
@@ -1843,6 +1882,11 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     const field=event.target;
     if (field.matches("[data-offer-input]")) {
       offerInput[field.dataset.offerInput]=field.value;
+      if (field.dataset.offerInput==="url" && (offerError||offerFailure)) {
+        offerError="";
+        offerFailure=null;
+        updateOffers('[data-offer-prepare-feedback]',offerPrepareFeedback());
+      }
       return;
     }
     if (field.matches("[data-offer-search]")) {

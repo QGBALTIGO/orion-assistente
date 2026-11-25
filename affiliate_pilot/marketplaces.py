@@ -21,6 +21,7 @@ import zlib
 from collections import OrderedDict
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
+from email.utils import parsedate_to_datetime
 from html.parser import HTMLParser
 from urllib.parse import parse_qsl, quote, unquote, urlencode, urljoin, urlsplit, urlunsplit
 
@@ -47,9 +48,10 @@ def _retailer(ident, name, domain, *aliases, shorts=()):
 
 
 RETAILERS = (
-    _retailer("amazon", "Amazon", "amazon.com.br", shorts=("amzn.to", "a.co")),
+    _retailer("amazon", "Amazon", "amazon.com.br",
+              shorts=("amzn.to", "a.co", "amzon.promo", "link.amazon", "amzlinks.in")),
     _retailer("mercado_livre", "Mercado Livre", "mercadolivre.com.br", "produto.mercadolivre.com.br",
-              shorts=("mercadolivre.com", "www.mercadolivre.com", "meli.la")),
+              shorts=("mercadolivre.com", "www.mercadolivre.com", "meli.la", "meli.promo")),
     _retailer("shopee", "Shopee", "shopee.com.br", "m.shopee.com.br", shorts=("s.shopee.com.br", "shope.ee")),
     _retailer("aliexpress", "AliExpress", "aliexpress.com", "pt.aliexpress.com", "m.aliexpress.com",
               "m.pt.aliexpress.com", shorts=("s.click.aliexpress.com", "a.aliexpress.com")),
@@ -206,6 +208,8 @@ class Document:
     status: int
     headers: dict[str, str]
     body: bytes
+    redirect_chain: tuple[str, ...] = ()
+    stop_reason: str | None = None
 
 
 async def _request_once(url: str, *, accept: str, limit: int) -> Document:
@@ -251,16 +255,57 @@ async def _request_once(url: str, *, accept: str, limit: int) -> Document:
 
 async def _fetch_document(url: str, retailer: Retailer) -> Document:
     visited = set()
+    chain = []
+    retried = False
+
+    def result(response, *, stop_reason=None):
+        return Document(response.url, response.status, response.headers, response.body,
+                        tuple(chain), stop_reason)
+
     for _ in range(MAX_REDIRECTS + 1):
         url = checked_product_url(url, retailer.id)
         if url in visited:
             raise ProviderError("redirect", "O link da loja está redirecionando em círculo.")
         visited.add(url)
+        chain.append(url)
         response = await _request_once(url, accept="text/html,application/ld+json,application/json;q=0.8", limit=HTML_LIMIT)
+        if response.status in {502, 503, 504}:
+            markup = response.body.decode("utf-8", "replace")
+            if _blocked_markup(markup, retailer, failed_response=True):
+                return result(response, stop_reason="blocked")
+            delay = None if retried else _retry_delay(response.headers.get("retry-after"))
+            if delay is not None:
+                # Retry this exact public URL once, within the caller's existing
+                # deadline. No alternative endpoint, identity or session is used.
+                retried = True
+                await asyncio.sleep(delay)
+                response = await _request_once(url, accept="text/html,application/ld+json,application/json;q=0.8", limit=HTML_LIMIT)
+                if response.status in {502, 503, 504} and _blocked_markup(response.body.decode("utf-8", "replace"), retailer, failed_response=True):
+                    return result(response, stop_reason="blocked")
+        target = None
         if response.status in {301, 302, 303, 307, 308} and response.headers.get("location"):
-            url = urljoin(url, response.headers["location"])
+            target = urljoin(url, response.headers["location"])
+        elif response.status == 200 and urlsplit(url).hostname in retailer.short_domains:
+            content_type = response.headers.get("content-type", "").partition(";")[0].lower()
+            if content_type in {"text/html", "application/xhtml+xml"}:
+                markup = response.body.decode("utf-8", "replace")
+                if _blocked_markup(markup, retailer):
+                    return result(response, stop_reason="blocked")
+                metadata = _Metadata()
+                metadata.feed(markup)
+                if metadata.refresh:
+                    target = urljoin(url, metadata.refresh)
+        if target:
+            target = checked_product_url(target, retailer.id)
+            stop_reason = _restricted_route(target)
+            if stop_reason:
+                # Record the declared destination, but never request a login,
+                # challenge, device-configuration or error page.
+                chain.append(target)
+                return result(response, stop_reason=stop_reason)
+            url = target
             continue
-        return response
+        return result(response)
     raise ProviderError("redirect", "O link tem redirecionamentos demais. Cole o endereço final do produto.")
 
 
@@ -338,6 +383,53 @@ class _Metadata(HTMLParser):
 
     def first(self, *keys):
         return next((self.meta[key][0] for key in keys if self.meta.get(key)), None)
+
+
+def _retry_delay(value):
+    """Honor short Retry-After values; never retry earlier than a longer one."""
+    if value is None:
+        return 0.25
+    try:
+        value = value.strip()
+        if re.fullmatch(r"\d+", value):
+            delay = int(value)
+        else:
+            date = parsedate_to_datetime(value)
+            if date.tzinfo is None:
+                return None
+            delay = max(0, date.timestamp() - time.time())
+        return delay if 0 <= delay <= 2 else None
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def _restricted_route(url):
+    path = urlsplit(url).path
+    for _ in range(2):
+        path = unquote(path)
+    if re.search(r"(?:^|/)(?:ap/(?:signin|cvf)|login|signin|sign-in|auth|captcha|challenge|webdevice|config)(?:/|;|$)", path, re.I):
+        return "blocked"
+    if re.search(r"(?:^|/)(?:error|errors)(?:/|;|$)", path, re.I):
+        return "unavailable"
+    return None
+
+
+def _blocked_markup(markup, retailer, metadata=None, *, failed_response=False):
+    if metadata is None:
+        metadata = _Metadata()
+        metadata.feed(markup[:HTML_LIMIT])
+    return bool(
+        re.search(r"^(?:access denied|robot check|just a moment|attention required|security (?:check|verification)|verifica[cç][aã]o de seguran[cç]a|403 forbidden)\b",
+                  metadata.title.strip(), re.I)
+        # A product header can contain an auxiliary login form or verification
+        # widget. Only a failed HTTP response uses these explicit challenge
+        # endpoints to suppress a retry; successful product pages do not.
+        or (failed_response and re.search(r"<form\b[^>]*\baction\s*=\s*['\"][^'\"]*/errors/validateCaptcha(?:[?/'\"])", markup, re.I))
+        or (failed_response and re.search(r"<script\b[^>]*\bsrc\s*=\s*['\"][^'\"]*/challenge-platform/", markup, re.I))
+        or (retailer.id == "mercado_livre" and re.search(r"Para continuar.{0,300}?acesse sua conta", markup, re.S | re.I))
+        or (retailer.id == "shein" and "risk_streamline_assets" in markup and not metadata.first("og:title"))
+        or (retailer.id == "temu" and "static.kwcdn.com/upload-static/assets/chl/" in markup and not metadata.first("og:title"))
+    )
 
 
 def _text(value, limit=240):
@@ -648,11 +740,7 @@ def parse_html_offer(markup: str, url: str, retailer: Retailer | None = None):
     metadata = _Metadata()
     metadata.feed(markup[:HTML_LIMIT])
     row = _base_offer(retailer, url)
-    if re.search(r"^(?:access denied|robot check|just a moment|attention required|security (?:check|verification)|verifica[cç][aã]o de seguran[cç]a|403 forbidden)\b", metadata.title.strip(), re.I):
-        return _finish(row, "public_page", status="blocked", reason="A loja pediu uma verificação de acesso. Preencha os dados do produto para continuar.", code="blocked")
-    if ((retailer.id == "mercado_livre" and re.search(r"Para continuar.{0,300}?acesse sua conta", markup, re.S | re.I))
-            or (retailer.id == "shein" and "risk_streamline_assets" in markup and not metadata.first("og:title"))
-            or (retailer.id == "temu" and "static.kwcdn.com/upload-static/assets/chl/" in markup and not metadata.first("og:title"))):
+    if _blocked_markup(markup, retailer, metadata):
         return _finish(row, "public_page", status="blocked", reason="A loja pediu login ou uma verificação de acesso. Preencha os dados do produto na revisão.", code="blocked")
     canonical = metadata.canonical or metadata.first("og:url")
     if canonical:
@@ -802,23 +890,49 @@ async def resolve_shopee_url(url: str) -> tuple[int, int]:
 
 async def _public_offer(url, retailer):
     row = _base_offer(retailer, url)
+    row.update(resolved_url=url, http_status=None, redirect_chain=[url])
     try:
         async with asyncio.timeout(FETCH_BUDGET):
             response = await _fetch_document(url, retailer)
-            if response.status in {401, 403, 429}:
-                return _finish(row, "public_page", status="blocked", reason="A loja restringiu a leitura automática. Preencha os dados na revisão.", code="blocked")
+            chain = list(response.redirect_chain or (response.url,))
+            context = {"source_url": url, "resolved_url": chain[-1],
+                       "http_status": response.status, "redirect_chain": chain}
+            row.update(context)
+            route_status = _restricted_route(response.url)
+            social_page = retailer.id == "mercado_livre" and re.match(r"^/social(?:/|$)", urlsplit(response.url).path, re.I)
+            if response.stop_reason == "blocked" or route_status == "blocked" or response.status in {401, 403, 429}:
+                return _finish(row, "public_page", status="blocked", reason="A loja pediu login ou uma verificação de acesso. Não foi possível consultar o produto.", code="blocked")
+            if social_page and response.status in {404, 410}:
+                return _finish(row, "public_page", status="not_product", reason="Esse link abre um perfil ou uma lista do Mercado Livre. Cole o link de um produto.", code="not_product")
+            if response.stop_reason == "unavailable" or route_status == "unavailable" or response.status in {404, 410}:
+                return _finish(row, "public_page", status="unavailable", reason="Esse link não está disponível ou expirou. Confira o endereço do produto.", code="unavailable")
+            if response.status in {408, 425} or 500 <= response.status <= 599:
+                return _finish(row, "public_page", status="temporary", reason="A loja está indisponível no momento. Tente novamente em instantes.", code="temporary")
             if response.status != 200:
-                return _finish(row, "public_page", reason="A loja não disponibilizou essa página. Confira o link ou preencha os dados na revisão.", code="unavailable")
+                return _finish(row, "public_page", status="unavailable", reason="A loja não disponibilizou essa página. Confira o endereço do produto.", code="unavailable")
             content_type = response.headers.get("content-type", "").partition(";")[0].lower()
             if content_type not in {"text/html", "application/xhtml+xml", "application/ld+json"}:
-                return _finish(row, "public_page", reason="Esse endereço não retornou uma página de produto.", code="content_type")
+                return _finish(row, "public_page", status="not_product", reason="Esse endereço não retornou uma página de produto.", code="content_type")
             markup = response.body.decode("utf-8", "replace")
             if content_type == "application/ld+json":
                 markup = '<script type="application/ld+json">' + markup + '</script>'
             row = parse_html_offer(markup, response.url, retailer)
-            row["source_url"] = url
+            row.update(context)
             if row["extraction"]["status"] == "blocked":
                 return row
+            if social_page:
+                # Some social landing pages embed an identifiable Product.
+                # Keep those facts; a profile title/avatar alone is not one.
+                social_metadata = _Metadata()
+                social_metadata.feed(markup)
+                product_metadata = (row["extraction"]["method"] == "json_ld"
+                                    or (row.get("title") and row.get("price"))
+                                    or (social_metadata.first("og:type") in {"product", "og:product"}
+                                        and row.get("title") and (row.get("price") or row.get("image"))))
+                if not product_metadata:
+                    row = _base_offer(retailer, response.url)
+                    row.update(context)
+                    return _finish(row, "public_page", status="not_product", reason="Esse link abre um perfil ou uma lista do Mercado Livre. Cole o link de um produto.", code="not_product")
             # This is a public, documented endpoint on the SAME storefront.
             # It is only consulted when the successful HTML identifies VTEX;
             # a 403/challenge never causes a different endpoint to be tried.
@@ -838,6 +952,9 @@ async def _public_offer(url, retailer):
                             row = _finish(row, "json_ld+vtex" if row["extraction"]["method"] == "json_ld" else "vtex_public_catalogue")
                 except (ProviderError, ValueError, RecursionError):
                     pass
+            if not any(row.get(key) for key in ("title", "price", "image")):
+                return _finish(row, row["extraction"]["method"], status="not_product",
+                               reason="A página não trouxe dados de um produto. Confira o link.", code="not_product")
             return row
     except TimeoutError:
         return _finish(row, "public_page", reason="A consulta à loja demorou demais. Você pode preencher os dados na revisão.", code="timeout")
@@ -866,7 +983,8 @@ async def _cached_public_offer(url, retailer):
                 result = await _public_offer(url, retailer)
                 # Short negative caching prevents retry storms, without keeping
                 # a temporarily blocked page for the full product TTL.
-                ttl = CACHE_SECONDS if result.get("title") else 20
+                transient = result.get("extraction", {}).get("code") in {"temporary", "network", "timeout"}
+                ttl = 2 if transient else (CACHE_SECONDS if result.get("title") else 20)
                 _cache[url] = (time.monotonic() + ttl, copy.deepcopy(result))
                 _cache.move_to_end(url)
                 while len(_cache) > CACHE_LIMIT:

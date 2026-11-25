@@ -610,3 +610,350 @@ def test_shopee_api_normalization_retains_existing_ids_and_unknowns():
     offer = normalize_offer({"shopId": "11", "itemId": "8", "productName": "Fone", "ratingStar": "99"})
     assert offer["shop"] == 11 and offer["item"] == 8 and offer["platform"] == "shopee"
     assert offer["rating"] is None and offer["price"] is None and offer["images"] == []
+
+
+@pytest.mark.parametrize("host,platform", [
+    ("amzon.promo", "amazon"), ("link.amazon", "amazon"),
+    ("amzlinks.in", "amazon"), ("meli.promo", "mercado_livre"),
+])
+def test_observed_shortener_hosts_are_exact_and_bound_to_one_platform(host, platform):
+    url = f"https://{host}/s/example?tag=owner-fixture-20"
+    assert mp.retailer_for_url(url).id == platform
+    assert mp.checked_affiliate_url(url, platform) == url
+    for wrong in (f"https://www.{host}/x", f"https://{host}.evil.example/x"):
+        with pytest.raises(ProviderError):
+            mp.checked_product_url(wrong)
+    with pytest.raises(ProviderError):
+        mp.checked_product_url(url, "shopee")
+
+
+def test_observed_amazon_shortener_chain_keeps_each_url_and_attribution_separate(monkeypatch):
+    chain = ["https://amzon.promo/s/hxR0xZ", "https://link.amazon/B0hMf4A8k",
+             "https://amzlinks.in/B0hMf4A8k",
+             "https://www.amazon.com.br/Sony-PlayStation/dp/B0GWNKJDCZ?tag=owner-fixture-20&linkId=keep%3Dthis&ref_=as_li_ss_tl"]
+    calls = []
+
+    def handle(request):
+        actual = str(request.url.copy_with(host=request.headers["host"]))
+        calls.append(actual)
+        assert actual == chain[len(calls) - 1]
+        if len(calls) < len(chain):
+            return httpx.Response(302, headers={"location": chain[len(calls)]})
+        return httpx.Response(200, text=AMAZON_HTML.replace("B09ZXN77L2", "B0GWNKJDCZ"),
+                              headers={"content-type": "text/html"})
+
+    mock_http(monkeypatch, handle)
+    offer = asyncio.run(mp.extract_offer(chain[0]))
+    assert calls == chain and offer["redirect_chain"] == chain
+    assert offer["source_url"] == chain[0] and offer["resolved_url"] == chain[-1]
+    assert offer["catalog_url"] == chain[-1] and offer["http_status"] == 200
+    assert offer["identity"] == "amazon:B0GWNKJDCZ"
+    assert offer["title"] == "Produto principal" and offer["price"] == "399.00"
+    assert offer["affiliate_url"] is None and offer["affiliate_status"] == "not_converted"
+
+
+def test_observed_meli_promo_chain_preserves_blocked_destination_without_retry(monkeypatch):
+    calls = []
+
+    def handle(request):
+        calls.append(request.headers["host"])
+        if len(calls) == 1:
+            return httpx.Response(302, headers={"location": "https://meli.la/1v5xsww"})
+        return httpx.Response(403, text="Access denied", headers={"content-type": "text/html"})
+
+    mock_http(monkeypatch, handle)
+    offer = asyncio.run(mp.extract_offer("https://meli.promo/s/aKaakx"))
+    assert calls == ["meli.promo", "meli.la"]
+    assert offer["source_url"] == "https://meli.promo/s/aKaakx"
+    assert offer["resolved_url"] == "https://meli.la/1v5xsww" and offer["http_status"] == 403
+    assert offer["extraction"]["status"] == "blocked" and offer["title"] is None
+
+
+@pytest.mark.parametrize("status", [200, 404])
+def test_mercado_livre_social_profile_and_lists_are_not_products(monkeypatch, status):
+    chain = ["https://meli.la/11F9L45", "https://www.mercadolivre.com.br/social/sk20250723214017?matt_tool=fixture",
+             "https://www.mercadolivre.com.br/social/sk20250723214017/lists"]
+    calls = []
+
+    def handle(request):
+        calls.append(str(request.url.copy_with(host=request.headers["host"])))
+        if len(calls) < len(chain):
+            return httpx.Response(301 if len(calls) == 1 else 302, headers={"location": chain[len(calls)]})
+        return httpx.Response(status, text='<title>Perfil social</title><meta property="og:title" content="Minhas ofertas">',
+                              headers={"content-type": "text/html"})
+
+    mock_http(monkeypatch, handle)
+    offer = asyncio.run(mp.extract_offer(chain[0]))
+    assert calls == chain and offer["redirect_chain"] == chain
+    assert offer["resolved_url"] == chain[-1] and offer["http_status"] == status
+    assert offer["extraction"]["status"] == offer["extraction"]["code"] == "not_product"
+    assert "perfil ou uma lista" in offer["extraction"]["reason"]
+    assert offer["title"] is None and offer["price"] is None and offer["image"] is None
+
+
+def test_exact_amazon_503_shape_is_retried_once_without_following_error_page(monkeypatch):
+    source = "https://amzn.to/3QLdZgA"
+    target = "https://www.amazon.com.br/dp/B0FY6Y9WZT?th=1&linkCode=sl2&tag=owner-fixture-20&ref_=as_li_ss_tl"
+    calls, waits = [], []
+
+    async def sleep(delay):
+        waits.append(delay)
+
+    def handle(request):
+        actual = str(request.url.copy_with(host=request.headers["host"]))
+        calls.append(actual)
+        if actual == source:
+            return httpx.Response(301, headers={"location": target})
+        assert actual == target
+        return httpx.Response(503, text='''<html><head><noscript><meta http-equiv="refresh"
+          content="0; url=https://www.amazon.com.br/error/500"></noscript>
+          <script>window.location.replace("https://www.amazon.com.br/error/500");</script></head></html>''',
+                              headers={"content-type": "text/html"})
+
+    monkeypatch.setattr(mp.asyncio, "sleep", sleep)
+    mock_http(monkeypatch, handle)
+    offer = asyncio.run(mp.extract_offer(source))
+    assert calls == [source, target, target] and waits == [0.25]
+    assert offer["redirect_chain"] == [source, target]
+    assert offer["source_url"] == source and offer["resolved_url"] == target and offer["http_status"] == 503
+    assert offer["extraction"]["status"] == offer["extraction"]["code"] == "temporary"
+    assert offer["title"] is None and offer["price"] is None and offer["image"] is None
+
+
+@pytest.mark.parametrize("status", [502, 503, 504])
+def test_one_transient_retry_can_recover_the_same_product(monkeypatch, status):
+    calls, waits = [], []
+
+    async def sleep(delay):
+        waits.append(delay)
+
+    def handle(request):
+        calls.append(str(request.url))
+        if len(calls) == 1:
+            return httpx.Response(status, text="Temporary error", headers={"retry-after": "1"})
+        return httpx.Response(200, text=markup(), headers={"content-type": "text/html"})
+
+    monkeypatch.setattr(mp.asyncio, "sleep", sleep)
+    mock_http(monkeypatch, handle)
+    offer = asyncio.run(mp.extract_offer(PRODUCT_URL))
+    assert len(calls) == 2 and calls[0] == calls[1] and waits == [1]
+    assert offer["title"] == "Mouse RGB" and offer["http_status"] == 200
+
+
+@pytest.mark.parametrize("status,page,headers,expected", [
+    (401, "Unauthorized", {}, "blocked"), (403, "Forbidden", {}, "blocked"),
+    (429, "Slow down", {"retry-after": "1"}, "blocked"),
+    (503, "Temporary error", {"retry-after": "120"}, "temporary"),
+    (503, "Temporary error", {"retry-after": "invalid"}, "temporary"),
+    (503, "<title>Robot Check</title>", {}, "blocked"),
+    (503, '<form action="/errors/validateCaptcha"></form>', {}, "blocked"),
+    (404, "Link não encontrado ou expirado.", {}, "unavailable"),
+    (410, "Gone", {}, "unavailable"),
+])
+def test_access_failures_challenges_and_expired_links_are_never_retried(monkeypatch, status, page, headers, expected):
+    calls = []
+
+    def handle(request):
+        calls.append(request)
+        return httpx.Response(status, text=page, headers={"content-type": "text/html", **headers})
+
+    mock_http(monkeypatch, handle)
+    offer = asyncio.run(mp.extract_offer("https://amzon.promo/s/hxR0xZ"))
+    assert len(calls) == 1 and offer["http_status"] == status
+    assert offer["extraction"]["status"] == expected
+    assert offer["title"] is None and offer["price"] is None
+
+
+def test_retry_after_http_date_is_respected_without_extending_the_budget(monkeypatch):
+    from email.utils import formatdate
+    monkeypatch.setattr(mp.time, "time", lambda: 1_800_000_000)
+    assert mp._retry_delay(formatdate(1_800_000_001, usegmt=True)) == 1
+    assert mp._retry_delay(formatdate(1_800_000_003, usegmt=True)) is None
+    assert mp._retry_delay("2") == 2 and mp._retry_delay("3") is None
+
+
+def test_only_one_retry_is_shared_by_the_whole_redirect_chain(monkeypatch):
+    calls, waits = [], []
+
+    async def sleep(delay):
+        waits.append(delay)
+
+    def handle(request):
+        calls.append(request.headers["host"])
+        if len(calls) == 1:
+            return httpx.Response(502, text="Temporary error")
+        if len(calls) == 2:
+            return httpx.Response(302, headers={"location": AMAZON_URL})
+        return httpx.Response(503, text="Temporary error")
+
+    monkeypatch.setattr(mp.asyncio, "sleep", sleep)
+    mock_http(monkeypatch, handle)
+    offer = asyncio.run(mp.extract_offer("https://amzn.to/example"))
+    assert calls == ["amzn.to", "amzn.to", "www.amazon.com.br"] and waits == [0.25]
+    assert offer["http_status"] == 503 and offer["extraction"]["status"] == "temporary"
+
+
+def test_shortener_html_refresh_follows_same_retailer_and_keeps_query(monkeypatch):
+    target = AMAZON_URL + "?tag=owner-fixture-20&linkId=keep%3Dthis"
+    calls = []
+
+    def handle(request):
+        calls.append(request.headers["host"])
+        if len(calls) == 1:
+            return httpx.Response(200, text='<meta http-equiv="refresh" content="0; url=' + target.replace("&", "&amp;") + '">',
+                                  headers={"content-type": "text/html; charset=utf-8"})
+        assert str(request.url.copy_with(host=request.headers["host"])) == target
+        return httpx.Response(200, text=AMAZON_HTML, headers={"content-type": "text/html"})
+
+    mock_http(monkeypatch, handle)
+    offer = asyncio.run(mp.extract_offer("https://link.amazon/example"))
+    assert calls == ["link.amazon", "www.amazon.com.br"]
+    assert offer["resolved_url"] == target and offer["price"] == "399.00"
+
+
+@pytest.mark.parametrize("target", [
+    "https://www.amazon.com.br/ap/signin?return_to=product",
+    "https://www.amazon.com.br/captcha/verify", "https://www.amazon.com.br/webdevice/config",
+    "https://www.amazon.com.br/config/registration", "https://www.amazon.com.br/error/500",
+])
+@pytest.mark.parametrize("kind", ["http", "meta"])
+def test_shortener_never_requests_auth_configuration_or_error_destinations(monkeypatch, target, kind):
+    calls = []
+
+    def handle(request):
+        calls.append(request)
+        if kind == "http":
+            return httpx.Response(302, headers={"location": target})
+        return httpx.Response(200, text='<meta http-equiv="refresh" content="0; url=' + target + '">',
+                              headers={"content-type": "text/html"})
+
+    mock_http(monkeypatch, handle)
+    offer = asyncio.run(mp.extract_offer("https://amzn.to/example"))
+    assert len(calls) == 1 and offer["resolved_url"] == target
+    assert offer["extraction"]["status"] == ("unavailable" if "/error/" in target else "blocked")
+    assert offer["title"] is None and offer["price"] is None
+
+
+@pytest.mark.parametrize("target", ["https://www.mercadolivre.com.br/p/MLB123", "https://127.0.0.1/admin",
+                                    "https://amazon.com.br.evil.example/product"])
+def test_shortener_meta_refresh_cannot_leave_retailer_or_reach_private_hosts(monkeypatch, target):
+    calls = []
+
+    def handle(request):
+        calls.append(request)
+        return httpx.Response(200, text='<meta http-equiv="refresh" content="0; url=' + target + '">',
+                              headers={"content-type": "text/html"})
+
+    mock_http(monkeypatch, handle)
+    with pytest.raises(ProviderError):
+        asyncio.run(mp.extract_offer("https://amzon.promo/s/example"))
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize("url,page", [
+    (AMAZON_URL, '<meta http-equiv="refresh" content="0; url=https://www.amazon.com.br/dp/B000000000">'),
+    ("https://amzn.to/example", '<script>location.href="https://www.amazon.com.br/dp/B000000000";</script>'),
+])
+def test_storefront_refresh_and_shortener_javascript_are_not_executed(monkeypatch, url, page):
+    calls = []
+
+    def handle(request):
+        calls.append(request)
+        return httpx.Response(200, text=page, headers={"content-type": "text/html"})
+
+    mock_http(monkeypatch, handle)
+    offer = asyncio.run(mp.extract_offer(url))
+    assert len(calls) == 1 and offer["resolved_url"] == url
+    assert offer["extraction"]["status"] == "not_product" and offer["title"] is None
+
+
+def test_shortener_challenge_does_not_follow_its_meta_refresh(monkeypatch):
+    calls = []
+
+    def handle(request):
+        calls.append(request)
+        return httpx.Response(200, text='<title>Just a moment...</title><meta http-equiv="refresh" content="0; url=' + AMAZON_URL + '">',
+                              headers={"content-type": "text/html"})
+
+    mock_http(monkeypatch, handle)
+    offer = asyncio.run(mp.extract_offer("https://amzn.to/example"))
+    assert len(calls) == 1 and offer["extraction"]["status"] == "blocked"
+
+
+@pytest.mark.parametrize("code,ttl", [("temporary", 2), ("network", 2), ("timeout", 2),
+                                     ("blocked", 20), ("unavailable", 20), ("not_product", 20)])
+def test_transient_failure_cache_allows_a_prompt_retry_without_retry_storms(monkeypatch, code, ttl):
+    now, calls = [100.0], []
+    monkeypatch.setattr(mp.time, "monotonic", lambda: now[0])
+
+    async def public(url, retailer):
+        calls.append(url)
+        return mp._finish(mp._base_offer(retailer, url), "public_page", status=code, code=code)
+
+    monkeypatch.setattr(mp, "_public_offer", public)
+
+    async def run():
+        first = await mp._cached_public_offer(AMAZON_URL, mp.BY_ID["amazon"])
+        first["source_url"] = "caller-edited"
+        now[0] += ttl - 0.1
+        second = await mp._cached_public_offer(AMAZON_URL, mp.BY_ID["amazon"])
+        assert len(calls) == 1 and second["source_url"] == AMAZON_URL
+        now[0] += 0.2
+        await mp._cached_public_offer(AMAZON_URL, mp.BY_ID["amazon"])
+        assert len(calls) == 2
+
+    asyncio.run(run())
+
+
+def test_transient_retry_does_not_extend_public_fetch_deadline(monkeypatch):
+    calls = []
+    monkeypatch.setattr(mp, "FETCH_BUDGET", 0.01)
+
+    def handle(request):
+        calls.append(request)
+        return httpx.Response(503, text="Temporary error", headers={"retry-after": "2"})
+
+    mock_http(monkeypatch, handle)
+    offer = asyncio.run(mp.extract_offer(AMAZON_URL))
+    assert len(calls) == 1 and offer["extraction"]["code"] == "timeout"
+
+
+@pytest.mark.parametrize("action", ["/signin", "/login", "/account/login", "/errors/validateCaptcha"])
+def test_auxiliary_header_forms_do_not_hide_real_product_metadata(monkeypatch, action):
+    page = '<header><form action="' + action + '"><input name="email"></form></header>' + markup()
+    mock_http(monkeypatch, lambda request: httpx.Response(200, text=page, headers={"content-type": "text/html"}))
+    offer = asyncio.run(mp.extract_offer(PRODUCT_URL))
+    assert offer["title"] == "Mouse RGB" and offer["price"] == "99.90"
+    assert offer["extraction"]["status"] == "complete" and offer["http_status"] == 200
+
+
+@pytest.mark.parametrize("format", ["json_ld", "open_graph"])
+def test_social_landing_with_real_product_metadata_is_still_read(monkeypatch, format):
+    social = "https://www.mercadolivre.com.br/social/fixture/lists"
+    canonical = "https://www.mercadolivre.com.br/p/MLB26004393"
+    product = {**PRODUCT, "url": canonical}
+    if format == "json_ld":
+        page = markup(product, '<link rel="canonical" href="' + canonical + '">')
+    else:
+        page = ('<meta property="og:type" content="product"><meta property="og:title" content="Mouse RGB">'
+                '<meta property="og:image" content="' + IMAGE_URL + '">'
+                '<meta property="og:url" content="' + canonical + '">')
+    mock_http(monkeypatch, lambda request: httpx.Response(200, text=page, headers={"content-type": "text/html"}))
+    offer = asyncio.run(mp.extract_offer(social))
+    assert offer["title"] == "Mouse RGB" and offer["image"] == IMAGE_URL
+    assert offer["identity"] == "mercado_livre:MLB26004393"
+    assert offer["resolved_url"] == social and offer["catalog_url"] == canonical
+    assert offer["extraction"]["status"] in {"partial", "complete"}
+
+
+def test_social_page_temporary_failure_is_not_misclassified_as_non_product(monkeypatch):
+    calls = []
+
+    def handle(request):
+        calls.append(request)
+        return httpx.Response(503, text="Temporary error", headers={"retry-after": "120"})
+
+    mock_http(monkeypatch, handle)
+    offer = asyncio.run(mp.extract_offer("https://www.mercadolivre.com.br/social/fixture/lists"))
+    assert len(calls) == 1 and offer["http_status"] == 503
+    assert offer["extraction"]["status"] == "temporary"

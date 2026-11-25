@@ -27,6 +27,13 @@ function offer(overrides={}) {
     phrase_source:'fallback',currency:'BRL',...overrides};
 }
 
+function emptyProductError(url) {
+  return Object.assign(new Error('A loja não disponibilizou essa página.'),{status:422,detail:{
+    code:'PRODUCT_EXTRACTION_EMPTY',message:'A loja não disponibilizou essa página.',source_url:url,
+    manual_available:true,extraction:{status:'partial',code:'unavailable',http_status:503},
+  }});
+}
+
 function workspace() {
   return {company:'Ofertas sintéticas',niches:[],offer:[],decision:[],product_flag:[],rule:[],jobs:[],
     sorts:{2:'Mais vendidos'},deal_template:'default',
@@ -159,7 +166,7 @@ test('Ofertas começa com entrada compacta e rascunhos recolhidos, sem solicitar
   assert.equal(h.get('[data-offer-disclosure="drafts"]').open,false);
   assert.match(h.get('[data-form="offer"]').textContent,/Gerar prévia/);
   assert.equal(h.get('#af-offer-url').placeholder,'Cole o link do produto');
-  assert.equal(h.get('[data-offer-disclosure="stores"] summary').textContent,'3 lojas disponíveis');
+  assert.equal(h.get('[data-offer-disclosure="stores"] summary').textContent,'Links de 3 lojas');
   assert.equal(h.writes().length,0);
 });
 
@@ -249,10 +256,13 @@ test('Outras frases não aplicam texto nem enviam; frase personalizada é salva 
 });
 
 test('Produto de outra loja importa sem inventar afiliação e permite completar dados e link próprio',async t=>{
-  const h=await harness(t,{prepare:()=>offer({retailer:'amazon',retailer_name:'Amazon',title:null,price:null,
-    image:null,affiliate_url:null,affiliate_status:'not_converted',link_status:'required'})});
+  const h=await harness(t,{prepare:()=>offer({retailer:'amazon',retailer_name:'Amazon',title:'Luminária de escritório',price:null,
+    image:null,affiliate_url:null,affiliate_status:'not_converted',link_status:'required',
+    extraction:{status:'partial',missing:['price','image','rating']}})});
   await h.prepare('https://www.amazon.com.br/dp/SYNTHETIC');
   assert.equal(h.get('[data-offer-disclosure="details"]').open,true);
+  assert.match(h.get('[data-offer-notice="extraction"]').textContent,/preço e imagem/);
+  assert.doesNotMatch(h.get('[data-offer-notice="extraction"]').textContent,/avaliação|rating/);
   assert.ok(h.get('[data-form="offer-own-link"]'));
   assert.doesNotMatch(h.get('[data-offer-section="product"]').textContent,/gerado pela Shopee|Link gerado/);
   h.input('#af-offer-title','Luminária de escritório com conexão USB');
@@ -260,6 +270,7 @@ test('Produto de outra loja importa sem inventar afiliação e permite completar
   h.input('#af-offer-image','https://orion.test/luminaria.png');
   h.submit('[data-form="offer-details"]');await flush();
   assert.equal(h.data.offer[0].price,'189.90');
+  assert.equal(h.host.querySelector('[data-offer-notice="extraction"]'),null);
   assert.match(h.get('[data-offer-section="product"]').textContent,/189,90/);
   h.input('#af-offer-affiliate','https://amzn.to/synthetic-own-link');
   h.submit('[data-form="offer-own-link"]');await flush();
@@ -269,6 +280,96 @@ test('Produto de outra loja importa sem inventar afiliação e permite completar
   h.check('[data-offer-destination="'+IDS.channel+'"]');
   assert.equal(h.get('[data-act="offer-send"]').disabled,false);
   assert.equal(h.sends().length,0);
+});
+
+test('Falha de extração e nova tentativa preservam rascunho, edição, link, nota, foco e seleção',async t=>{
+  const h=await harness(t,{initialOffer:offer(),prepare:payload=>{throw emptyProductError(payload.url);}});
+  h.click('[data-act="open-offer"]');await flush();
+  h.change('#preview-template',ALTERNATE);await flush();
+  h.check('[data-offer-destination="'+IDS.telegram+'"]');
+  const composer=h.get('[data-offer-section="composer"]');
+  const own=h.input('#af-offer-affiliate-edit','https://s.shopee.com.br/my-unsaved-link');
+  const phrase=h.input('#af-offer-phrase','Uma frase ainda em edição.');
+  h.input('#af-offer-note','Minha observação');
+  const input=h.input('#af-offer-url','https://amzn.to/synthetic-unavailable');
+  input.focus();input.setSelectionRange(8,15);
+  let jumps=0;
+  h.window.HTMLElement.prototype.scrollIntoView=()=>{jumps++;};
+  h.submit('[data-form="offer"]');await flush();
+  assert.equal(h.data.offer.length,1);
+  assert.equal(h.get('[data-offer-section="composer"]'),composer);
+  assert.equal(h.get('#af-offer-affiliate-edit'),own);
+  assert.equal(own.value,'https://s.shopee.com.br/my-unsaved-link');
+  assert.equal(h.get('#af-offer-phrase'),phrase);
+  assert.equal(phrase.value,'Uma frase ainda em edição.');
+  assert.equal(h.get('#af-offer-note').value,'Minha observação');
+  assert.equal(h.get('#preview-template').value,ALTERNATE);
+  assert.equal(h.get('[data-offer-destination="'+IDS.telegram+'"]').checked,true);
+  assert.equal(h.document.activeElement,input);
+  assert.equal(input.selectionStart,8);
+  assert.match(h.get('[data-offer-notice="prepare"]').textContent,/não disponibilizou/);
+  const retry=h.get('[data-act="offer-retry"]');retry.focus();retry.click();await flush();
+  assert.equal(h.get('[data-act="offer-retry"]'),retry);
+  assert.equal(h.document.activeElement,retry);
+  assert.equal(h.data.offer.length,1);
+  assert.equal(h.get('#af-offer-affiliate-edit').value,'https://s.shopee.com.br/my-unsaved-link');
+  assert.equal(jumps,0);
+  const attempts=h.calls.filter(call=>call.path===apiRoot+'offers');
+  assert.equal(attempts.length,2);
+  assert.ok(attempts.every(call=>call.payload.allow_manual!==true));
+  assert.equal(h.sends().length,0);
+});
+
+test('Preenchimento manual só começa por escolha explícita após falha e nunca vale para o próximo link',async t=>{
+  const h=await harness(t,{prepare:payload=>{
+    if (!payload.allow_manual) throw emptyProductError(payload.url);
+    return offer({title:null,price:null,image:null,currency:null,affiliate_url:null,
+      source_url:payload.url,extraction:{status:'partial',manual_requested:true}});
+  }});
+  const first='https://amzn.to/synthetic-first',second='https://amzn.to/synthetic-second';
+  await h.prepare(first);
+  assert.equal(h.data.offer.length,0);
+  assert.equal(h.get('[data-offer-section="composer"]').hidden,true);
+  h.input('#af-offer-url',second);
+  assert.equal(h.host.querySelector('[data-act="offer-manual"]'),null);
+  h.input('#af-offer-url',first);
+  assert.equal(h.host.querySelector('[data-act="offer-manual"]'),null);
+  await h.prepare(first);
+  h.click('[data-act="offer-manual"]');await flush();
+  assert.equal(h.data.offer.length,1);
+  assert.match(h.get('[data-offer-notice="extraction"]').textContent,/Preenchimento manual/);
+  assert.equal(h.get('[data-act="offer-send"]').disabled,true);
+  const manual=h.calls.filter(call=>call.payload?.allow_manual===true);
+  assert.equal(manual.length,1);
+  assert.equal(manual[0].payload.url,first);
+  await h.prepare(second);
+  assert.equal(h.data.offer.length,1);
+  assert.equal(h.calls.filter(call=>call.payload?.allow_manual===true).length,1);
+  assert.equal(h.calls.filter(call=>call.path===apiRoot+'offers').at(-1).payload.allow_manual,undefined);
+  assert.equal(h.sends().length,0);
+});
+
+test('Erro de um link anterior não autoriza preenchimento manual do endereço digitado durante a consulta',async t=>{
+  const pending=deferred();
+  const first='https://amzn.to/synthetic-first',second='https://amzn.to/synthetic-second';
+  const h=await harness(t,{prepare:()=>pending.promise});
+  h.input('#af-offer-url',first);h.submit('[data-form="offer"]');await flush();
+  const input=h.input('#af-offer-url',second);input.focus();
+  pending.reject(emptyProductError(first));await flush();
+  assert.equal(h.get('#af-offer-url').value,second);
+  assert.equal(h.document.activeElement,input);
+  assert.equal(h.host.querySelector('[data-act="offer-manual"]'),null);
+  assert.equal(h.host.querySelector('[data-offer-notice="prepare"]'),null);
+  assert.equal(h.data.offer.length,0);
+});
+
+test('Avaliação ausente não gera aviso e imagem opcional some do aviso no template de texto',async t=>{
+  const h=await harness(t,{prepare:()=>offer({image:null,rating:null,
+    extraction:{status:'partial',missing:['image','rating']}})});
+  await h.prepare();
+  assert.match(h.get('[data-offer-notice="extraction"]').textContent,/imagem/);
+  h.change('#preview-template',ALTERNATE);await flush();
+  assert.equal(h.host.querySelector('[data-offer-notice="extraction"]'),null);
 });
 
 test('Erro ao preparar mantém o link editável e oferece contexto junto ao formulário',async t=>{

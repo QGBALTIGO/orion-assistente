@@ -401,6 +401,9 @@ a.af-dashboard-kpi:hover { background: color-mix(in srgb,var(--os-tint) 35%,var(
 .af-offer-alert { display: flex; align-items: flex-start; gap: 8px; padding: 11px 13px; margin-top: 12px !important; color: var(--os-text); font-size: 12px; line-height: 1.5; background: color-mix(in srgb,var(--os-warning,#cc8a25) 9%,var(--os-card)); border: 1px solid color-mix(in srgb,var(--os-warning,#cc8a25) 24%,var(--os-border)); border-radius: 10px; }
 .af-offer-alert .os-icon { color: var(--os-warning,#cc8a25); margin-top: 1px; width: 16px; height: 16px; }
 .af-offer-alert span { min-width: 0; overflow-wrap: anywhere; }
+.af-offer-recovery-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; margin-top: 10px; }
+.af-offer-recovery-actions > .os-button { min-height: 40px; font-size: 12px; }
+.af-offer-recovery-actions > [aria-disabled="true"] { opacity: .6; cursor: wait; }
 .af-offer-composer-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
 .af-offer-text-button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 36px; border: 0; padding: 4px 0; background: transparent; color: var(--os-primary); font: 500 11px/1.4 var(--os-font); cursor: pointer; }
 .af-offer-text-button .os-icon { width: 15px; height: 15px; }
