@@ -121,6 +121,12 @@ def blocked_by_hours(device):
                 and business_state(device["settings"]) != "open")
 
 
+async def _contact_allows(db, device, phone, *, audio=False):
+    from app.subscription_audience_store import preferences
+    contact = await preferences(db, device["tenant_id"], phone)
+    return bool(contact["chatbot_enabled"] and (not audio or contact["audio_transcription_enabled"]))
+
+
 async def _ignore(db, run, code):
     await db.execute(text("""UPDATE subscription_chatbot_runs SET status='ignored',error_code=:code,
         updated_at=clock_timestamp(),finished_at=clock_timestamp() WHERE tenant_id=:t AND id=:id"""),
@@ -134,6 +140,8 @@ async def _ignore(db, run, code):
 async def _input(db, device, event_id, data, fence, *, origin=None, forced_rule=None, job=None):
     current = await store.revision(db, device["tenant_id"])
     if data.get("chatbot_revision") != current:
+        return None
+    if not await _contact_allows(db, device, data.get("phone"), audio=data.get("kind") == "audio"):
         return None
     origin = origin or data.get("origin", "contact")
     value = data.get("text") or ""
@@ -321,10 +329,15 @@ async def drain_contact(db, device, phone):
         {"t": device["tenant_id"], "d": device["id"], "phone": phone})).mappings().all()
     if not queue:
         return
+    from app.subscription_audience_store import preferences
+    contact = await preferences(db, device["tenant_id"], phone)
     current = await store.revision(db, device["tenant_id"])
     graph = await store.load_graph(db, device["tenant_id"])
     for original in queue:
         run = dict(original)
+        if not contact["chatbot_enabled"] or run["input_kind"] == "audio" and not contact["audio_transcription_enabled"]:
+            await _ignore(db, run, "CHATBOT_CONTACT_DISABLED")
+            continue
         if (run["chatbot_revision"] != current or run["settings_revision"] != device["revision"]
                 or run["generation"] != device["generation"] or run["actor_account_id"] != device["owner_account_id"]):
             await _ignore(db, run, "CHATBOT_EFFECT_REVOKED")
@@ -374,6 +387,10 @@ async def complete_transcript(db, device, event_id, transcript, predecessor=None
         {"t": device["tenant_id"], "d": device["id"], "event": event_id})).mappings().one_or_none()
     if not run:
         return
+    if not await _contact_allows(db, device, run["phone"], audio=True):
+        await _ignore(db, run, "CHATBOT_CONTACT_DISABLED")
+        await drain_contact(db, device, run["phone"])
+        return
     context = dict(run["input_context"])
     context["transcription_predecessor"] = str(predecessor) if predecessor else None
     await db.execute(text("""UPDATE subscription_chatbot_runs SET input_text=:value,input_context=CAST(:context AS jsonb),
@@ -388,6 +405,9 @@ async def create_test(db, tenant, actor, rule, payload, job):
         raise store.fail("CHATBOT_CAPABILITY_UNAVAILABLE", 409, "Conecte o dispositivo antes de enviar o teste.")
     if rule["device_id"] is not None and rule["device_id"] != device["id"]:
         raise store.fail("CHATBOT_INVALID_GRAPH", 422, "A resposta pertence a outro dispositivo.")
+    if not await _contact_allows(db, device, payload.phone):
+        raise store.fail("CHATBOT_CONTACT_DISABLED", 409,
+                         "O Chatbot está desativado para este contato. Ative-o em Público antes de enviar o teste.")
     now = datetime.now(timezone.utc)
     data = {"phone": payload.phone, "text": rule["keyword"], "name": "Contato de teste", "kind": "text",
             "origin": "test_response", "occurred_at": now.isoformat(), "chatbot_revision": payload.expected_chatbot_revision,
@@ -398,6 +418,10 @@ async def create_test(db, tenant, actor, rule, payload, job):
         {"t": tenant, "d": device["id"], "g": device["generation"], "provider": "chatbot-test:"+str(job["id"]),
          "at": now, "payload": store.encode(data)})).scalar_one()
     run = await _input(db, device, event_id, data, transport["fence"], origin="test_response", forced_rule=rule, job=job)
+    if run is None:
+        # The caller owns the transaction; raising rolls back the test job and
+        # event as well, without admitting or sending any partial operation.
+        raise store.fail("CHATBOT_CONFLICT")
     await drain_contact(db, device, run["phone"])
 
 
@@ -411,6 +435,8 @@ async def policy_allows(db, device, effect):
                            {"t": device["tenant_id"], "id": effect["chatbot_run_id"]})).mappings().one_or_none()
     if (not run or run["actor_account_id"] != device["owner_account_id"] or run["generation"] != device["generation"]
             or run["status"] not in {"planned", "succeeded"}):
+        return False
+    if not await _contact_allows(db, device, run["phone"], audio=run["input_kind"] == "audio"):
         return False
     rule = (await db.execute(text("SELECT * FROM subscription_chatbot_rules WHERE tenant_id=:t AND id=:id AND removed_at IS NULL"),
                             {"t": device["tenant_id"], "id": run["rule_id"]})).mappings().one_or_none()

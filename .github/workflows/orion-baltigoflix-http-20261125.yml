@@ -39,6 +39,6 @@ jobs:
           if [[ "$SERVICE" == "api" ]]; then
             docker run --rm --entrypoint python "$image" -c 'from app.subscription_chatbot_engine import HTTP_NOTICE_ERRORS; assert "CHATBOT_HTTP_TIMEOUT" in HTTP_NOTICE_ERRORS'
           else
-            docker run --rm -v "$PWD/qr-bridge/test:/srv/qr/test:ro" --entrypoint node "$image" --test test/chatbot-runtime.test.mjs
+            docker run --rm -v "$PWD/qr-bridge/test:/srv/qr/test:ro" -v "$PWD/tests/fixtures:/srv/tests/fixtures:ro" --entrypoint node "$image" --test test/chatbot-runtime.test.mjs
           fi
           docker push "$image"

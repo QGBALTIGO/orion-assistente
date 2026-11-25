@@ -4,7 +4,7 @@ ARG RELEASE_REVISION
 LABEL org.opencontainers.image.revision=$RELEASE_REVISION
 
 FROM source AS api
-RUN python -c "from hashlib import sha1; from pathlib import Path; p=Path('/srv/app/app/subscription_chatbot_engine.py'); b=p.read_bytes(); assert sha1(b'blob %d' % len(b)+bytes(1)+b).hexdigest()=='9d11bd547d63f37dce010f8ea4303db5255fd680'"
+RUN python -c "from hashlib import sha1; from pathlib import Path; p=Path('/srv/app/app/subscription_chatbot_engine.py'); b=p.read_bytes(); assert sha1(b'blob %d' % len(b)+bytes(1)+b).hexdigest()=='3a23a386c4657ec3c0ec042b268fe943f6f1066b'"
 COPY --chown=appuser:appuser app/subscription_chatbot_engine.py /srv/app/app/subscription_chatbot_engine.py
 RUN python -c "from pathlib import Path; p=Path('/srv/app/app/subscription_chatbot_engine.py'); compile(p.read_bytes(),str(p),'exec')"
 
