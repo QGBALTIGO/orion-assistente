@@ -4,6 +4,7 @@ import {makeConnectionHealth,disconnectPolicy} from './connection-health.mjs';
 import {selectWaWebVersion} from './wa-version-policy.mjs';
 import {makeTransportDiagnostics} from './transport-diagnostics.mjs';
 import {readAuthorizedRetry} from './retry-identity.mjs';
+import {captureManagedRetryMessages,isBridgeRetryMessage} from './managed-retry-capture.mjs';
 /** A Baileys instance per context; shared helpers, no copy of the legacy server.
  * Private allowlisted text and opt-in bounded audio; no legacy AI routing.
  * Calls/history importing remain disabled. ASR never grants booking authority.
@@ -38,6 +39,8 @@ import {createDeviceProxy} from './device-network.mjs';
 import {currentDiagnosticMessage} from './device-diagnostic-message.mjs';
 import {createDeviceGroupContacts} from './device-group-contacts.mjs';
 import {createGroupAddSocket} from './device-group-add.mjs';
+import {createDeviceNumberCheck,createNumberCheckLookup} from './device-number-check.mjs';
+import {createAffiliateOfferSocket} from './affiliate-offers.mjs';
 import {classifyPairedAuth} from './paired-auth-state.mjs';
 import {chatbotInteractiveMode} from './interactive-mode.mjs';
 import {lookupRecipient} from './recipient-lookup.mjs';
@@ -51,8 +54,10 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
   const makeSocket=mod.default,openedAt=now();
   const diagnostics=makeTransportDiagnostics({secret:context.secret,now,emit:event=>{
     if(['decrypt_failed','retry_received','retry_send_failed','retry_content_missing','get_message','server_rejected','auth_write_failed',
+      'protocol_ack_sent','stream_ack_missing','retry_capture','receipt_update',
       'assistant_selection','assistant_presentation'].includes(event.stage))
-      console.info(JSON.stringify({component:'orion-managed-transport',...event}));
+      console.info(JSON.stringify({component:'orion-managed-transport',
+        channel_id:channelId(context.channelId)?context.channelId:null,...event}));
   }});
   const silent=diagnostics.logger;
   let deviceRuntime=null,deviceIngressReviewer=null,deviceIngressScope=null,deviceIngressEpoch=null,deviceIngressJournal=null,assistantIngress=null,assistantIdentity=null,assistantFault=null,assistantTimer=null,assistantReplaying=false;
@@ -245,13 +250,18 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
     callOfferCache:makeBoundedCache({max:1000,ttlMs:300000,now}),
     ...proxyTransport?.socket,
     shouldSyncHistoryMessage:()=>false,getMessage:async key=>{
-      const message=await readAuthorizedRetry(retryStore,key,{socket:client,isCurrent:current,assertCurrent:guarded});
-      diagnostics.record('get_message',key?.id,{cached:!!message});return message;
+      return readAuthorizedRetry(retryStore,key,{socket:client,isCurrent:current,assertCurrent:guarded,
+        onResult:details=>diagnostics.record('get_message',key?.id,details)});
     }});
   health.watch(client.ws);
   const outgoingPresence=makeOutgoingPresence({socket:client,isConnected:()=>state==='connected'&&current(),typingFactory,now:presenceNow,schedule,cancel});
   const close=()=>{if(closed)return;closed=true;state='stopped';qrValue=null;pairAttempt=null;cancel(pairTimer);cancel(noticeTimer);cancel(assistantTimer);assistantIngress?.abandon();abort.abort();health.stop();deviceRuntime?.close();proxyTransport?.close();outgoingPresence.close();for(const lease of typingLeases)lease.stop();typingLeases.clear();client.ev.removeAllListeners();try{client.end(undefined);}catch{}};
   const groupContacts=createDeviceGroupContacts({...deviceOptions.groupContactsOptions,client,isCurrent:current,
+    isConnected:()=>state==='connected',deviceSnapshot:()=>context.deviceSnapshot?.(),schedule,cancel});
+  const affiliate=createAffiliateOfferSocket({client,sdk:mod,logger:silent,isCurrent:current,
+    isConnected:()=>state==='connected',deviceSnapshot:()=>context.deviceSnapshot?.(),schedule,cancel});
+  const numberCheck=createDeviceNumberCheck({...deviceOptions.numberCheckOptions,client,
+    lookupNumbers:createNumberCheckLookup({client,USyncQuery:mod.USyncQuery,USyncUser:mod.USyncUser}),isCurrent:current,
     isConnected:()=>state==='connected',deviceSnapshot:()=>context.deviceSnapshot?.(),schedule,cancel});
   const groupMutationReady=()=>{
       const runtime=deviceRuntime?.diagnostics(),readiness=health.snapshot();
@@ -447,7 +457,7 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
       now,openedAt,schedule,cancel,downloadOptions:proxyTransport.download,
       capacity:context.deviceSendCapacity,
       sendText:(phone,text,options)=>relayText(phone,text,{...options,device:true}),sendChatbot:relayChatbot,
-      isGeneratedMessage:key=>!!retryStore.get(key),
+      isGeneratedMessage:key=>isBridgeRetryMessage(retryStore,key),
       resolveSelection:(message,phone)=>resolveFallbackSelection(selectionStore,message,phone),...deviceOptions.runtimeOptions,
       ingressJournal,onIngressError:ingressFailure});
   }
@@ -550,6 +560,12 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
     }
   });
   client.ev.on('messages.update',updates=>{
+    if(!current())return;
+    for(const item of updates||[]){
+      const delivery=deliveryFromAck(item.update?.status);
+      if(item.key?.fromMe===true&&item.key.id&&delivery)
+        diagnostics.record('receipt_update',item.key.id,{status:delivery});
+    }
     if(deviceRuntime){deviceRuntime.receipts(updates);return;}
     for(const item of updates){const delivery=deliveryFromAck(item.update?.status);
       if(current()&&['delivered','read'].includes(delivery))context.onReceipt(item.key?.id,delivery).catch(()=>{});
@@ -670,8 +686,16 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
       });
     }
   }
-  client.ev.on('messages.upsert',receive);
-  return {close,groupContacts,groupAdd,status:()=>{expirePairing();return state;},
+  client.ev.on('messages.upsert',event=>{
+    // Own echoes are retry material only. Keep customer admission synchronous:
+    // the SDK event emitter does not await async listeners before its ACK.
+    void captureManagedRetryMessages(event,{store:retryStore,isCurrent:current,
+      assertCurrent:guarded,now,record:diagnostics.record}).catch(()=>{
+      diagnostics.record('retry_capture',null,{category:'storage_failed',cached:false});
+    });
+    receive(event);
+  });
+  return {close,groupContacts,groupAdd,numberCheck,affiliate,status:()=>{expirePairing();return state;},
     connectionHealth:()=>health.snapshot(),
     ingressDiagnostics,
     deviceSettingsChanged:()=>deviceRuntime?.sync(),

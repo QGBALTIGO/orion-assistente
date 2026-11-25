@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
 import re
@@ -8,6 +9,7 @@ import secrets
 import time
 from contextlib import asynccontextmanager
 from datetime import time as wall_time
+from decimal import Decimal
 from pathlib import Path
 from typing import Annotated, Literal
 from uuid import uuid4
@@ -25,10 +27,11 @@ from .engine import DEMO, Engine
 from .analytics import Analytics
 from .niches import NICHES, PUBLIC_NICHES, SORTS, search_niche
 from .offers import caption, formatted_html, next_slot, render_card, validate_length, validate_template
-from .phrase import configured, generate_phrase
+from .phrase import configured, generate_phrase, initial_phrase, phrase_suggestions
 from .promotech import PromoTech
-from .providers import PRODUCT_HOSTS, SHORT_HOSTS, ProviderError, Shopee, Telegram, checked_url, resolve_product
-from .store import DEAL_TEMPLATE_ID, Store
+from .providers import ProviderError, Shopee, Telegram
+from .store import DEAL_TEMPLATE_ID, ManualSendConflict, Store
+from .whatsapp_transport import OrionWhatsAppTransport
 
 
 HERE = Path(__file__).resolve().parent
@@ -70,6 +73,20 @@ class Destination(Input):
 class OfferInput(Input):
     url: str = Field(max_length=2048)
     note: str = Field(default="", max_length=300)
+
+
+class OfferEdit(Input):
+    title: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=300)] | None = None
+    price: Decimal | None = Field(default=None, gt=0, le=100000000, max_digits=12, decimal_places=2)
+    image: str | None = Field(default=None, max_length=2048)
+    affiliate_url: str | None = Field(default=None, max_length=2048)
+
+
+class ManualSend(Input):
+    template: Identifier = "default"
+    destinations: list[Identifier] = Field(min_length=1, max_length=100)
+    request_id: str = Field(pattern=r"^[a-f0-9]{32}$")
+    preview_token: str = Field(pattern=r"^[a-f0-9]{64}$")
 
 
 class ProductFlag(Input):
@@ -147,7 +164,8 @@ def create_app(store=None, *, sending=None, origin=None, start_worker=True):
             Path(os.environ.get("AFFILIATE_DATABASE", "/data/affiliates.sqlite3")),
             os.environ["AFFILIATE_MASTER_KEY"],
         )
-        app.state.engine = Engine(app.state.store, sending, PromoTech.configured())
+        app.state.engine = Engine(app.state.store, sending, PromoTech.configured(),
+                                  manual_transport=OrionWhatsAppTransport(app.state.store))
         app.state.analytics = Analytics(app.state.store)
         if token := os.getenv("AFFILIATE_BOOTSTRAP_PASSWORD"):
             app.state.store.bootstrap(os.getenv("AFFILIATE_BOOTSTRAP_USER", "piloto"), token,
@@ -211,6 +229,8 @@ def create_app(store=None, *, sending=None, origin=None, start_worker=True):
     User = Depends(current)
 
     async def whatsapp(user, path, method="GET", **params):
+        if user["username"].startswith("orion-") and method == "GET" and path in {"status", "groups", "channel"}:
+            return await app.state.engine.manual_transport.control(user["id"], path, **params)
         if not wa_token or not wa_port or user["username"] != wa_owner:
             raise HTTPException(503, "O conector WhatsApp dedicado está indisponível para esta conta.")
         try:
@@ -235,6 +255,13 @@ def create_app(store=None, *, sending=None, origin=None, start_worker=True):
         if value is None:
             raise HTTPException(404, "Registro não encontrado nesta conta.")
         return value
+
+    def preview_token(company, offer, template):
+        value = json.dumps([company, offer, template], sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+        return hashlib.sha256(value.encode()).hexdigest()
+
+    def batch_response(batch, created=False):
+        return {"batch_id": batch["batch_id"], "created": created, "jobs": batch["jobs"]}
 
     @app.get("/")
     def index():
@@ -278,11 +305,13 @@ def create_app(store=None, *, sending=None, origin=None, start_worker=True):
 
     @app.get("/api/state")
     async def state(user=User):
+        from .marketplaces import retailer_options
         company = user["id"]
         result = {"company": user["name"], "sending": sending, "jobs": app.state.store.history(company),
                   "niches": [{"id": ident, **data} for ident, data in PUBLIC_NICHES.items()],
                   "sorts": SORTS, "phrase_ai": configured() or bool(app.state.store.credentials(company, "groq")[0]),
                   "deal_template": DEAL_TEMPLATE_ID,
+                  "retailers": retailer_options(),
                   "promotech_automation": bool(app.state.engine.promotech and
                        app.state.engine.promotech.binding["company"] == company),
                   "whatsapp_link_available": bool(wa_token and wa_port and user["username"] == wa_owner)}
@@ -314,6 +343,7 @@ def create_app(store=None, *, sending=None, origin=None, start_worker=True):
             raise HTTPException(422, "Selecione um fuso horário válido para o relatório.") from None
         return await app.state.analytics.report(user["id"], period=period, timezone=timezone)
 
+    @app.get("/api/whatsapp/status")
     @app.get("/api/connection/whatsapp")
     async def whatsapp_status(user=User):
         data = await whatsapp(user, "status")
@@ -337,10 +367,11 @@ def create_app(store=None, *, sending=None, origin=None, start_worker=True):
         app.state.store.audit(user["id"], "whatsapp:unlink")
         return result
 
+    @app.get("/api/whatsapp/groups")
     @app.get("/api/connection/whatsapp/groups")
     async def whatsapp_groups(user=User):
         data = await whatsapp(user, "groups")
-        return {"groups": data["groups"], "truncated": data["truncated"]}
+        return {"groups": data["groups"], "truncated": bool(data.get("truncated", False))}
 
     @app.put("/api/platforms/shopee")
     async def shopee_save(payload: ShopeeKeys, user=User):
@@ -435,7 +466,7 @@ def create_app(store=None, *, sending=None, origin=None, start_worker=True):
             for old in app.state.store.list(company, "destination"):
                 if old.get("chat_id") == doc["chat_id"] and old["id"] != ident:
                     raise HTTPException(409, "Esse destino já está cadastrado.")
-        elif payload.mode == "whatsapp_group" and address and payload.test:
+        elif payload.mode == "whatsapp_group" and address and (payload.test or user["username"].startswith("orion-")):
             if not re.fullmatch(r"[1-9]\d{5,21}(?:-\d{5,18})?@g\.us", address):
                 raise HTTPException(422, "Escolha um grupo retornado pela conta conectada.")
             checked = await whatsapp(user, "groups", address=address)
@@ -445,7 +476,7 @@ def create_app(store=None, *, sending=None, origin=None, start_worker=True):
                 raise HTTPException(409, "Esse grupo já está cadastrado.")
             doc = {"name": payload.name, "mode": payload.mode, "address": entry["address"],
                    "title": entry["title"], "test": False, "verified": True, "checked_at": int(time.time()),
-                   "connection_version": checked["version"], "issue": "Administração verificada. Publicação assistida."}
+                   "connection_version": checked["version"], "issue": "Administração verificada."}
         else:
             doc = {"name": payload.name, "mode": payload.mode, "address": address,
                    "verified": False, "test": False, "issue": "Publicação assistida. Administração não verificada."}
@@ -465,6 +496,11 @@ def create_app(store=None, *, sending=None, origin=None, start_worker=True):
             raise HTTPException(422, "Cadastre o link completo do canal, no formato https://whatsapp.com/channel/…")
         try:
             proof = await whatsapp(user, "channel", invite=match[1])
+        except ProviderError as exc:
+            if exc.code == "permissions" and destination["verified"]:
+                app.state.store.update_destination(company, destination,
+                    {"verified": False, "issue": exc.message}, "whatsapp:channel_permission_lost")
+            raise
         except HTTPException as exc:
             if exc.status_code == 422 and destination["verified"]:
                 app.state.store.update_destination(company, destination,
@@ -472,7 +508,7 @@ def create_app(store=None, *, sending=None, origin=None, start_worker=True):
             raise
         update = {"title": proof["title"], "channel_jid": proof["address"], "role": proof["role"],
                   "verified": True, "checked_at": int(time.time()), "connection_version": proof["version"],
-                  "issue": "Administração verificada. Publicação assistida."}
+                  "issue": "Administração verificada."}
         saved = app.state.store.update_destination(company, destination, update, "whatsapp:channel_verified")
         if not saved:
             raise HTTPException(409, "O destino mudou enquanto era verificado. Tente novamente.")
@@ -494,22 +530,61 @@ def create_app(store=None, *, sending=None, origin=None, start_worker=True):
 
     @app.post("/api/offers")
     async def prepare(payload: OfferInput, user=User):
+        from .marketplaces import extract_offer
         company = user["id"]
-        if re.search(r"(^|\.)amazon\.com\.br$|(^|\.)mercadolivre\.com\.br$",
-                     (re.split(r"/", payload.url, maxsplit=3) + ["", "", ""])[2].lower()):
-            raise HTTPException(422, "Integração ainda não habilitada. O piloto processa somente links da Shopee Brasil.")
-        provider, _ = app.state.engine.shopee(company)
-        url = payload.url.strip()
-        checked_url(url, PRODUCT_HOSTS | SHORT_HOSTS)
-        known = next((row for row in app.state.store.list(company, "offer")
-                      if row.get("affiliate_url") == url and not row.get("demo")), None)
-        try:
-            shop, item = ((known["shop"], known["item"]) if known else
-                          await asyncio.wait_for(resolve_product(url), 26))
-        except TimeoutError:
-            raise ProviderError("link", "O endereço demorou a responder. Tente colar o link completo do produto.") from None
-        offer = await app.state.engine.ready_offer(company, await provider.detail(shop, item))
-        return app.state.store.put(company, "offer", uuid4().hex, {**offer, "note": payload.note.strip()})
+        credentials, _ = app.state.store.credentials(company, "shopee")
+        provider = app.state.engine.shopee(company)[0] if credentials else None
+        offer = await extract_offer(payload.url.strip(), shopee=provider)
+        if offer.get("platform") == "shopee" and provider:
+            try:
+                offer = await app.state.engine.ready_offer(company, offer)
+            except ProviderError as exc:
+                offer = {**offer, "affiliate_url": None, "affiliate_status": "required", "link_status": "required", "affiliate_error": exc.message}
+        else:
+            offer = {**offer, "affiliate_status": "required", "link_status": "required"}
+        phrase, source = initial_phrase(offer)
+        offer = {**offer, "note": payload.note.strip(), "phrase": offer.get("phrase") or phrase,
+                 "phrase_source": offer.get("phrase_source") or source}
+        return app.state.store.put(company, "offer", uuid4().hex, offer)
+
+    @app.put("/api/offers/{ident}")
+    def edit_offer(ident: str, payload: OfferEdit, user=User):
+        from .marketplaces import checked_affiliate_url, checked_image_url
+        company = user["id"]
+        row = required(company, "offer", ident)
+        if row.get("demo"):
+            raise HTTPException(422, "Prepare um produto real para editar e publicar.")
+        platform = row.get("platform") or "shopee"
+        changes = {}
+        source_values = dict(row.get("source_values") or {})
+        for field in payload.model_fields_set:
+            value = getattr(payload, field)
+            source_values.setdefault(field, row.get(field))
+            if field == "title":
+                if value is None:
+                    raise HTTPException(422, "Informe o nome do produto.")
+                changes[field] = value
+            elif field == "price":
+                changes.update(price=format(value, ".2f") if value is not None else None,
+                               price_max=format(value, ".2f") if value is not None else None,
+                               previous_price=None, discount_rate=None, currency="BRL", currency_source="user")
+            elif field == "image":
+                image = checked_image_url(value.strip(), platform) if value and value.strip() else None
+                changes.update(image=image, images=[image] if image else [])
+            elif field == "affiliate_url":
+                link = checked_affiliate_url(value.strip(), platform) if value and value.strip() else None
+                changes.update(affiliate_url=link, affiliate_status="provided" if link else "required",
+                               link_status="provided" if link else "required",
+                               link_source="Informado pelo usuário" if link else None, link_version=None,
+                               tracking_status="unavailable", tracking_token=None, utm_content=None)
+        manual_fields = sorted(set(row.get("manual_fields", [])) | set(payload.model_fields_set))
+        row = {**row, **changes, "manual_fields": manual_fields, "source_values": source_values}
+        extraction = dict(row.get("extraction") or {})
+        missing = [field for field in ("title", "price", "image") if not row.get(field)]
+        extraction.update(status="partial" if missing else "complete", missing=missing,
+                          manually_edited=manual_fields)
+        row["extraction"] = extraction
+        return app.state.store.put(company, "offer", ident, row)
 
     @app.post("/api/offers/demo")
     def example(user=User):
@@ -529,6 +604,17 @@ def create_app(store=None, *, sending=None, origin=None, start_worker=True):
         text = " ".join(payload.text.split())
         return app.state.store.put(company, "offer", ident, {**row, "phrase": text, "phrase_source": "manual"})
 
+    @app.post("/api/offers/{ident}/phrases")
+    async def suggest_offer_phrases(ident: str, user=User):
+        company = user["id"]
+        row = required(company, "offer", ident)
+        generation = int(row.get("phrase_generation") or 0) + 1
+        suggestions = await app.state.engine.suggestions(company, row, generation)
+        current_row = required(company, "offer", ident)
+        saved = app.state.store.put(company, "offer", ident,
+                                    {**current_row, "phrase_suggestions": suggestions, "phrase_generation": generation})
+        return {"suggestions": suggestions, "phrase": saved.get("phrase"), "phrase_source": saved.get("phrase_source")}
+
     @app.put("/api/product-flag/{key}")
     def set_flag(key: str, payload: ProductFlag, user=User):
         if not re.fullmatch(r"shopee:\d{1,18}:\d{1,18}", key):
@@ -547,9 +633,18 @@ def create_app(store=None, *, sending=None, origin=None, start_worker=True):
         selected = required(company, "template", template)
         dest = required(company, "destination", destination) if destination else None
         text = caption(row, selected, dest["name"] if dest else "")
-        validate_length(text, selected["media"])
+        issue = app.state.engine.manual_offer_issue(company, row, selected)
+        destinations = app.state.engine.manual_destinations(company)
+        if issue is None and not any(destination["eligible"] for destination in destinations):
+            issue = "Conecte e verifique pelo menos um destino para enviar."
+        suggestions = phrase_suggestions(row, row.get("phrase_generation") or 0)
         return {"text": text, "offer": row, "media": selected["media"],
-                "html": formatted_html(text) if selected.get("style") == "whatsapp" else None}
+                "html": formatted_html(text) if selected.get("style") == "whatsapp" else None,
+                "template": {key: selected[key] for key in ("id", "name", "media", "layout")},
+                "card_url": f"/api/offers/{ident}/card.png?template={template}" if selected["media"] == "card" else None,
+                "destinations": destinations, "suggestions": suggestions,
+                "send": {"enabled": issue is None, "reason": issue,
+                         "preview_token": preview_token(company, row, selected)}}
 
     @app.get("/api/offers/{ident}/card.png")
     async def preview_image(ident: str, template: Identifier = "default", user=User):
@@ -558,6 +653,44 @@ def create_app(store=None, *, sending=None, origin=None, start_worker=True):
         async with render_slots:
             image = await render_card(row, selected)
         return Response(image, media_type="image/png")
+
+    @app.post("/api/offers/{ident}/send")
+    def manual_send(ident: str, payload: ManualSend, user=User):
+        company = user["id"]
+        if len(set(payload.destinations)) != len(payload.destinations):
+            raise HTTPException(422, "Cada destino deve aparecer apenas uma vez na seleção.")
+        fingerprint = hashlib.sha256(json.dumps([ident, payload.template, sorted(payload.destinations),
+                                                 payload.preview_token], separators=(",", ":")).encode()).hexdigest()
+        previous = app.state.store.manual_batch(company, payload.request_id)
+        if previous:
+            if previous["fingerprint"] != fingerprint:
+                raise HTTPException(409, "Esta solicitação já foi usada para outra seleção. Atualize a prévia.")
+            return batch_response(previous)
+        row = required(company, "offer", ident)
+        selected = required(company, "template", payload.template)
+        if not secrets.compare_digest(payload.preview_token, preview_token(company, row, selected)):
+            raise HTTPException(409, "A oferta ou o template mudou. Atualize a prévia antes de enviar.")
+        if issue := app.state.engine.manual_offer_issue(company, row, selected):
+            raise HTTPException(422, issue)
+        destinations = [required(company, "destination", item) for item in payload.destinations]
+        for destination in destinations:
+            eligible, reason = app.state.engine.manual_destination_capability(company, destination)
+            if not eligible:
+                raise HTTPException(422, reason)
+            validate_length(caption(row, selected, destination["name"]), selected["media"])
+        try:
+            batch, created = app.state.store.enqueue_manual(company, payload.request_id, fingerprint,
+                                                           row, selected, destinations)
+        except ManualSendConflict as exc:
+            raise HTTPException(409, str(exc)) from None
+        return batch_response(batch, created)
+
+    @app.get("/api/send-batches/{request_id}")
+    def manual_send_status(request_id: Identifier, user=User):
+        batch = app.state.store.manual_batch(user["id"], request_id)
+        if batch is None:
+            raise HTTPException(404, "Envio não encontrado nesta conta.")
+        return batch_response(batch)
 
     @app.post("/api/offers/{ident}/queue")
     def schedule(ident: str, payload: QueueInput, user=User):

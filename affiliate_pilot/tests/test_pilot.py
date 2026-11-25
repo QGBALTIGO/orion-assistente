@@ -160,7 +160,7 @@ def test_promotech_caption_uses_native_markers_and_reliable_fields():
     text = caption(row, DEAL_TEMPLATE)
     rendered = formatted_html(text)
     assert "🔥 *Fone" in text and "_Confira uma opção" in text and "✅ Por *R$ 59,90 (21% OFF)*" in text
-    assert "⭐ _4,8 de avaliação +11,4 mil vendidos_" in text
+    assert "⭐ _4,8/5 de avaliação +11,4 mil vendidos_" in text
     assert "❌ De" not in text and "#Eletrônicos" in text
     assert row["affiliate_url"] in text and "<strong>" in rendered and "<em>" in rendered
     assert "<adaptador>" not in rendered

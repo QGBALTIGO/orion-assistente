@@ -40,6 +40,38 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
   let catalog = null;
   let searchQuery = {keyword:"", niche:"", sort:"2"};
   let offerTab = "link";
+  let offerInput = {url:"",note:""};
+  let offerBusy = false;
+  let offerError = "";
+  let offerPreviewBusy = false;
+  let offerPreviewError = "";
+  let offerPreviewRequest = null;
+  let offerSuggestions = [];
+  let offerSuggestionsBusy = false;
+  let offerPhraseValue = "";
+  let offerPhraseBusy = false;
+  let offerPhraseOpen = false;
+  let offerDetails = {title:"",price:"",image:"",affiliate_url:""};
+  let offerDetailsOpen = false;
+  let offerDetailsDirty = false;
+  let offerDetailsBusy = false;
+  let offerDetailsError = "";
+  let offerDestinations = new Set();
+  let offerSendBusy = false;
+  let offerSendError = "";
+  let offerSendResult = null;
+  let offerSendIntent = null;
+  const offerSendPollDelays = [2000,3000,5000,8000];
+  let offerSendPollTimer = null;
+  let offerSendPollAttempts = 0;
+  let offerSendPollRequest = null;
+  let offerDraftsOpen = false;
+  let offerStoresOpen = false;
+  let offerNoteOpen = false;
+  let offerPreviewExpanded = false;
+  let whatsappGroups = null;
+  let whatsappGroupsBusy = false;
+  let whatsappGroupsError = "";
   let historyFilter = "all";
   let historySearch = "";
   let editTemplate = "default";
@@ -105,7 +137,6 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
   const selectField = (label, name, options, id="af-"+name) =>
     `<div class="os-field" data-field-wrapper><label for="${id}">${label}</label><select data-orion-field="native" id="${id}" name="${name}">${options}</select></div>`;
   const templates = selected => state.template.map(row => option(row.id,row.name,selected)).join("");
-  const destinations = () => state.destination.filter(row => row.mode === "telegram" && row.test && row.verified);
   const ruleDestinations = () => state.destination.filter(row => row.verified &&
     (row.mode === "whatsapp_channel" || row.mode === "telegram" && row.test));
   const connected = name => state.connection.find(row => row.id === name);
@@ -397,6 +428,33 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
       </section></div>`;
   }
 
+
+  function whatsappGroupPicker() {
+    const rows=Array.isArray(whatsappGroups)?whatsappGroups:[];
+    return '<div class="af-whatsapp-group-picker" data-wa-group-content>'+
+      '<button type="button" class="os-button os-outline" data-act="load-wa-groups"'+(whatsappGroupsBusy?" disabled":"")+
+      ' aria-busy="'+whatsappGroupsBusy+'">'+icon(whatsappGroupsBusy?"refresh":"users")+
+      (whatsappGroupsBusy?"Consultando grupos…":whatsappGroups?"Atualizar grupos":"Buscar grupos do WhatsApp")+'</button>'+
+      (whatsappGroups?'<label for="af-whatsapp-group">Grupo da conta conectada<select id="af-whatsapp-group" name="whatsapp_group" data-orion-field="native">'+
+        option("","Selecione um grupo")+rows.map(group=>{
+          const added=state.destination.some(destination=>destination.mode==="whatsapp_group"&&destination.address===group.address);
+          return '<option value="'+html(group.address)+'"'+(added?" disabled":"")+'>'+html(group.title)+(added?" · Já cadastrado":"")+'</option>';
+        }).join("")+'</select></label>'+
+        (!rows.length?'<p class="os-help">Nenhum grupo disponível nesta conexão.</p>':""):"")+
+      (whatsappGroupsError?'<p class="os-notice os-error" role="alert">'+html(whatsappGroupsError)+'</p>':"")+'</div>';
+  }
+
+  function updateWhatsappGroupPicker() {
+    const current=content.querySelector("[data-wa-group-content]");
+    if (!current) return;
+    const template=document.createElement("template");
+    template.innerHTML=whatsappGroupPicker();
+    patchDashboardNode(current,template.content.firstElementChild);
+    const select=current.querySelector("select");
+    if (select) select.required=current.closest("form")?.elements.mode.value==="whatsapp_group";
+    window.OrionFields?.refresh(current);
+  }
+
   function connections() {
     const tg = connected("telegram");
     const linked = tg?.status==="connected";
@@ -409,6 +467,7 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     const all = state.destination.map(d=>`<div class="af-item"><div><strong>${html(d.name)}</strong>
         <small>${html(defaultMedia(d.mode))}${d.issue?` · ${html(d.issue)}`:""}</small></div>
       <div class="af-row">${pill(d.verified?"Verificado":d.mode==="telegram"?"Verificação pendente":"Publicação assistida",d.verified?"success":"neutral")}
+        ${d.mode==="whatsapp_channel"?btn(d.verified?"Verificar novamente":"Verificar canal","verify-wa-channel",d.id):""}
         ${btn("Remover","remove-dest",d.id)}</div></div>`).join("");
     return heading("Conexões e destinos","Vincule a conta que publica e confirme a administração de cada canal ou grupo.") + `
       <div class="af-page"><div class="af-grid">
@@ -428,91 +487,210 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
         ${card("Cadastrar destino",`<form class="os-form af-form" data-form="destination">
           <label>Nome <input name="name" required maxlength="80" placeholder="Ex.: Meu canal de ofertas"></label>
           ${selectField("Tipo","mode",`${Object.keys({telegram:0,whatsapp_group:0,whatsapp_channel:0}).map(m=>option(m,defaultMedia(m),"telegram")).join("")}`)}
-          <label><span data-address-label>ID numérico ou @ do Telegram</span> <input name="address" maxlength="180" placeholder="@canal_publico ou ID -100…"></label>
-          <label class="os-check af-test-destination"><input name="test" type="checkbox"> É um destino de teste e autorizo validar a administração.</label>
-          <p class="os-help" data-assisted-destination hidden>Para publicar, copie a legenda e baixe o card em Ofertas.</p>
+          <label data-destination-address><span data-address-label>ID numérico ou @ do Telegram</span> <input name="address" maxlength="180" placeholder="@canal_publico ou ID -100…"></label>
+          <div data-wa-group-picker hidden>${whatsappGroupPicker()}</div>
+          <label class="os-check af-test-destination"><input name="test" type="checkbox"> Usar também nos testes de automação.</label>
+          <p class="os-help" data-assisted-destination hidden>Depois de salvar, verifique a administração do canal.</p>
           <div class="os-form-actions">${submit("Salvar destino")}</div></form>`,"plus")}
       </div></div>`;
   }
 
 
+
+  const currentOffer = () => state.offer.find(row=>row.id===opened) || null;
+  const offerRetailer = row => row?.retailer_name || (row?.platform==="shopee" || row?.shop ? "Shopee" : row?.store || "Oferta");
+  const offerUrl = value => {
+    if (!value) return "";
+    try {
+      const url=new URL(value,window.location.origin);
+      return url.protocol==="https:" || url.origin===window.location.origin ? url.href : "";
+    } catch { return ""; }
+  };
+  const offerPriceInput = value => value==null?"":Number(value).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});
+  const offerPrice = row => {
+    if (row?.price==null || !Number.isFinite(Number(row.price))) return "Preço indisponível";
+    if (!/^[A-Z]{3}$/.test(row.currency||"")) return "Preço a confirmar";
+    try { return Number(row.price).toLocaleString("pt-BR",{style:"currency",currency:row.currency}); }
+    catch { return "Preço a confirmar"; }
+  };
+  const offerCaption = value => {
+    if (!value) return html(preview?.text || "");
+    const source=document.createElement("template");
+    source.innerHTML=String(value);
+    const clean=node=>{
+      if (node.nodeType===3) return html(node.nodeValue);
+      if (node.nodeType!==1) return "";
+      const children=[...node.childNodes].map(clean).join("");
+      const tag=node.tagName.toLowerCase();
+      return ["strong","em","s"].includes(tag)?"<"+tag+">"+children+"</"+tag+">":tag==="br"?"\n":children;
+    };
+    return [...source.content.childNodes].map(clean).join("");
+  };
+  const offerCardUrl = row => apiRoot+"offers/"+encodeURIComponent(row.id)+"/card.png?template="+encodeURIComponent(chosenTemplate)+
+    "&v="+encodeURIComponent([row.title,row.price,row.image].join("|"));
+  const offerDestinationRows = () => Array.isArray(preview?.destinations)?preview.destinations:
+    state.destination.map(row=>({...row,eligible:false,reason:"Atualize a prévia para verificar este destino."}));
+  const eligibleOfferDestinations = () => offerDestinationRows().filter(row=>row.eligible);
+  const offerAlert = (text,key) => text?'<p class="af-offer-alert" role="alert" data-offer-notice="'+key+'">'+icon("info")+'<span>'+html(text)+'</span></p>':"";
+  const offerSubmit = (label,glyph,busy=false,disabled=false) => '<button class="os-button" type="submit"'+(disabled?" disabled":"")+
+    ' aria-disabled="'+(busy||disabled)+'" aria-busy="'+busy+'">'+(busy?'<span class="os-spinner" aria-hidden="true"></span>':icon(glyph))+'<span>'+html(label)+'</span></button>';
+
+  function offerSource() {
+    const shops=Array.isArray(state.retailers)?state.retailers:[];
+    const results=(catalog||[]).map(row=>{
+      const flag=state.product_flag.find(item=>item.id===row.identity);
+      const photo=offerUrl(row.image);
+      return '<article class="af-offer-catalog-item" data-offer-product="'+html(row.identity||row.catalog_url)+'">'+
+        (photo?'<img src="'+html(photo)+'" alt="" loading="lazy" referrerpolicy="no-referrer" width="64" height="64">':'<span class="af-offer-product-symbol">'+icon("box")+'</span>')+
+        '<div><h3>'+html(row.title)+'</h3><strong>'+html(offerPrice(row))+'</strong><div class="af-offer-catalog-actions">'+
+        btn("Preparar","prepare-result",row.catalog_url,true)+
+        '<button type="button" class="os-icon-button" data-act="favorite" data-value="'+html(row.identity)+'" aria-label="'+(flag?.favorite?"Remover dos favoritos":"Favoritar")+'" aria-pressed="'+!!flag?.favorite+'">'+icon("gift")+'</button>'+
+        '<button type="button" class="os-icon-button" data-act="block" data-value="'+html(row.identity)+'" aria-label="'+(flag?.blocked?"Desbloquear produto":"Bloquear produto")+'" aria-pressed="'+!!flag?.blocked+'">'+icon("block")+'</button>'+
+        '</div></div></article>';
+    }).join("");
+    return '<section class="af-offer-source af-offer-panel" data-offer-section="source" aria-labelledby="af-offer-source-title">'+
+      '<div class="af-offer-source-head"><h2 id="af-offer-source-title">Prepare uma oferta</h2><div class="af-offer-tabs" role="group" aria-label="Como encontrar o produto">'+
+      [["link","Por link","link"],["catalog","Catálogo Shopee","search"]].map(([key,label,glyph])=>
+        '<button type="button" data-offer-tab="'+key+'" aria-pressed="'+(offerTab===key)+'" aria-controls="offer-'+key+'">'+icon(glyph)+html(label)+'</button>').join("")+
+      '</div></div><div id="offer-link"'+(offerTab==="link"?"":" hidden")+'>'+
+        '<form class="os-form af-form af-offer-link-form" data-form="offer" aria-busy="'+offerBusy+'">'+
+          '<label class="af-offer-url-label" for="af-offer-url"><span class="os-sr-only">Link do produto</span><span class="af-offer-input-icon" aria-hidden="true">'+icon("link")+'</span>'+
+          '<input id="af-offer-url" name="url" type="url" required maxlength="2048" inputmode="url" autocomplete="off" placeholder="Cole o link do produto" value="'+html(offerInput.url)+'" data-offer-input="url"></label>'+
+          offerSubmit(offerBusy?"Preparando…":"Gerar prévia","arrow",offerBusy)+
+        '</form>'+offerAlert(offerError,"prepare")+
+        '<div class="af-offer-source-extra">'+
+          '<details class="af-offer-note" data-offer-disclosure="note"'+(offerNoteOpen?" open":"")+'><summary>Adicionar observação</summary><label class="os-sr-only" for="af-offer-note">Observação da oferta</label><input id="af-offer-note" maxlength="300" name="note" placeholder="Uma informação para incluir na legenda" value="'+html(offerInput.note)+'" data-offer-input="note"></details>'+
+          (shops.length?'<details class="af-offer-stores" data-offer-disclosure="stores"'+(offerStoresOpen?" open":"")+'><summary>'+shops.length+' lojas disponíveis</summary><div>'+shops.map(shop=>'<span>'+html(shop.name)+'</span>').join("")+'</div></details>':"")+
+        '</div></div><div id="offer-catalog"'+(offerTab==="catalog"?"":" hidden")+'>'+
+          '<form class="os-form af-form af-offer-search-form" data-form="search">'+
+            '<label class="af-offer-search-keyword">Buscar produto<input name="keyword" placeholder="Ex.: fone sem fio" maxlength="80" value="'+html(searchQuery.keyword)+'" data-offer-search="keyword"></label>'+
+            selectField("Categoria","niche",option("","Todas as categorias",searchQuery.niche)+state.niches.map(row=>option(row.id,row.name,searchQuery.niche)).join(""),"catalog-category")+
+            selectField("Ordenar","sort",Object.entries(state.sorts).map(([key,label])=>option(key,label,searchQuery.sort)).join(""),"catalog-sort")+
+            offerSubmit("Pesquisar","search")+
+          '</form>'+(catalog?'<div class="af-offer-catalog-results">'+(results||empty("Nenhuma oferta encontrada","Tente outra busca ou categoria.","search"))+'</div>':"")+
+        '</div></section>';
+  }
+
+  function offerProductEditor(row) {
+    const missingLink=!row.affiliate_url && !row.demo;
+    return '<div class="af-offer-product" data-offer-section="product">'+
+      '<div class="af-offer-product-summary"><span class="af-offer-product-symbol">'+icon("box")+'</span><div><span class="af-offer-retailer">'+html(row.demo?"Exemplo":offerRetailer(row))+'</span><h2>'+html(row.title||"Complete os detalhes do produto")+'</h2>'+
+      '<div class="af-offer-product-price">'+(row.price!=null?'<strong>'+html(offerPrice(row))+'</strong>':'<span>Adicione o preço</span>')+
+      (row.affiliate_url?'<button type="button" data-act="copy-link" data-value="'+html(row.id)+'">'+icon("copy")+'Copiar link</button>':"")+'</div></div></div>'+
+      '<details class="af-offer-details" data-offer-disclosure="details"'+(offerDetailsOpen?" open":"")+'><summary>'+icon("edit")+'Editar detalhes do produto</summary>'+
+      '<form class="os-form af-form" data-form="offer-details" aria-busy="'+offerDetailsBusy+'">'+
+        '<label for="af-offer-title">Nome do produto<input id="af-offer-title" name="title" maxlength="300" value="'+html(offerDetails.title)+'" data-offer-detail="title"></label>'+
+        (row.price!=null&&row.currency!=="BRL"?'<p class="af-offer-currency-note">Preço da loja: '+html(offerPrice(row))+'. Informe o valor em reais.</p>':"")+
+        '<div class="af-offer-detail-grid"><label for="af-offer-price">Preço (R$)<input id="af-offer-price" name="price" inputmode="decimal" data-orion-field="money" placeholder="0,00" value="'+html(offerDetails.price)+'" data-offer-detail="price"></label>'+
+        '<label for="af-offer-image">Link da imagem<input id="af-offer-image" name="image" type="url" maxlength="2048" placeholder="https://…" value="'+html(offerDetails.image)+'" data-offer-detail="image"></label></div>'+
+        (!missingLink?'<label for="af-offer-affiliate-edit">Seu link de afiliado<input id="af-offer-affiliate-edit" name="affiliate_url" type="url" maxlength="2048" value="'+html(offerDetails.affiliate_url)+'" data-offer-detail="affiliate_url"></label>':"")+
+        '<div class="af-offer-inline-actions">'+offerSubmit("Salvar detalhes","check",offerDetailsBusy)+'</div></form></details>'+
+      (missingLink?'<form class="os-form af-form af-offer-own-link" data-form="offer-own-link" aria-busy="'+offerDetailsBusy+'">'+
+        '<label for="af-offer-affiliate">Seu link de afiliado<span class="af-offer-own-link-input"><input id="af-offer-affiliate" name="affiliate_url" type="url" required maxlength="2048" placeholder="Cole o link gerado na sua conta" value="'+html(offerDetails.affiliate_url)+'" data-offer-detail="affiliate_url">'+offerSubmit("Salvar link","check",offerDetailsBusy)+'</span></label></form>':"")+
+      offerAlert(offerDetailsError,"details")+'</div>';
+  }
+
+  function offerSettings(row) {
+    const suggestions=offerSuggestions.slice(0,3);
+    const current=row.phrase||"";
+    return '<section class="af-offer-settings" data-offer-section="settings" aria-labelledby="af-offer-template-title">'+
+      '<div class="af-offer-template-heading"><div><h2 id="af-offer-template-title">Template e legenda</h2><p>Deixe a oferta com a sua identidade.</p></div>'+icon("layers")+'</div>'+
+      '<div class="af-form">'+selectField("Template","template",templates(chosenTemplate),"preview-template")+'</div>'+
+      '<div class="af-offer-phrase-heading"><h3>Escolha uma frase</h3><button type="button" class="af-offer-text-button" data-act="offer-phrases"'+' aria-disabled="'+offerSuggestionsBusy+'"'+' aria-busy="'+offerSuggestionsBusy+'">'+icon(offerSuggestionsBusy?"refresh":"sparkles")+(offerSuggestionsBusy?"Gerando…":"Outras frases")+'</button></div>'+
+      '<div class="af-offer-suggestions" role="group" aria-label="Frases para a oferta">'+suggestions.map((suggestion,index)=>
+        '<button type="button" data-offer-phrase="'+html(suggestion.id||String(index))+'" aria-pressed="'+(suggestion.text===current)+'"'+' aria-disabled="'+offerPhraseBusy+'"'+'><span class="af-offer-phrase-check" aria-hidden="true">'+icon("check")+'</span><span>'+html(suggestion.text)+'</span></button>').join("")+
+        (!suggestions.length&&current?'<p class="af-offer-current-phrase">'+html(current)+'</p>':"")+'</div>'+
+      '<details class="af-offer-custom-phrase" data-offer-disclosure="phrase"'+(offerPhraseOpen?" open":"")+'><summary>'+icon("edit")+'Escrever minha frase</summary>'+
+        '<form class="os-form af-form" data-form="phrase" aria-busy="'+offerPhraseBusy+'"><label class="os-sr-only" for="af-offer-phrase">Frase da oferta</label>'+
+        '<textarea id="af-offer-phrase" name="text" maxlength="155" rows="2" placeholder="Escreva uma abertura para esta oferta" data-offer-phrase-input>'+html(offerPhraseValue)+'</textarea>'+
+        '<div class="af-offer-inline-actions"><small data-offer-phrase-count>'+offerPhraseValue.length+'/155</small>'+offerSubmit("Aplicar frase","check",offerPhraseBusy)+'</div></form></details>'+
+    '</section>';
+  }
+
   function offerPreview() {
-    const row = state.offer.find(o=>o.id===opened);
-    if (!row) return card("Prévia da publicação",empty("Sua oferta aparece aqui",
-      "Gere uma prévia por link, encontre um produto no catálogo ou abra um rascunho.","eye"),"eye","","af-preview");
-    const image = `${apiRoot}offers/${encodeURIComponent(opened)}/card.png?template=${encodeURIComponent(chosenTemplate)}`;
-    return card("Prévia da publicação",`<div class="af-preview-layout">
-      <div class="af-form">${selectField("Template","template",`${templates(chosenTemplate)}`,"preview-template")}</div>
-      <div class="af-preview-meta">${row.demo?pill("Dados de demonstração","warning"):pill("Link gerado pela Shopee","success")}
-        ${row.fetched_at?`<span class="af-muted">Consulta em ${date(row.fetched_at)}</span>`:""}</div>
-      ${!row.demo && !row.availability?`<div class="af-hint">${icon("info")} Estoque por variante não confirmado pela Shopee.</div>`:""}
-      <div class="af-message" aria-label="Mensagem no WhatsApp">
-        <div class="af-message-head"><img src="${assetsRoot}/brands/whatsapp.svg" alt="" width="20" height="20"><strong>Mensagem no WhatsApp</strong></div>
-        <div class="af-message-body">
-          ${preview?.media==="card"?`<img class="af-card-image" src="${image}" alt="Card gerado a partir do rascunho" width="900" height="970">`:""}
-          <div class="af-pre" id="offer-text">${preview?.html ?? html(preview?.text || "Carregando prévia…")}</div>
-        </div>
-      </div>
-      ${preview?`<div class="af-row">
-        ${btn("Copiar texto","copy")}
-        ${row.affiliate_url?btn("Copiar link","copy-link",opened):""}
-        ${preview.media==="card"?`<a class="os-button os-outline" href="${image}" download="oferta-orion.png">${icon("download")}Baixar card</a>`:""}
-      </div>`:""}
-      <details class="af-disclosure" ${row.phrase?"open":""}>
-        <summary>Editar frase da oferta</summary>
-        <form class="os-form af-form" data-form="phrase">
-          <label>Frase da oferta <textarea name="text" maxlength="155" rows="2">${html(row.phrase || "")}</textarea></label>
-          <div class="af-row">${btn(state.phrase_ai?"Gerar frase com IA":"Usar sugestão padrão","ai-phrase",opened)}
-          ${submit("Salvar frase")}
-          ${row.phrase_source ? pill(row.phrase_source==="groq"?"Gerada pela Groq":row.phrase_source==="manual"?"Editada":"Sugestão padrão") : ""}</div>
-        </form>
-      </details>
-      ${!row.demo && destinations().length?`<details class="af-disclosure"><summary>Enviar para revisão</summary>
-        <form class="os-form af-form" data-form="queue">
-          ${selectField("Destino de teste","destination",`${destinations().map(d=>option(d.id,d.name)).join("")}`)}
-          <label>Agendar (horário deste dispositivo) <input name="due" type="datetime-local"></label>
-          <div class="os-form-actions">${submit("Colocar para revisão","clock")}</div>
-        </form></details>`:""}
-    </div>`,"eye","","af-preview");
+    const row=currentOffer();
+    if (!row) return "";
+    const image=offerCardUrl(row);
+    const full=String(preview?.text||"");
+    const fold=full.length>280||full.split("\n").length>6;
+    return '<section class="af-offer-preview" data-offer-section="preview" aria-labelledby="af-offer-preview-title" aria-busy="'+offerPreviewBusy+'">'+
+      '<div class="af-offer-preview-heading"><h2 id="af-offer-preview-title">Prévia da publicação</h2><span aria-live="polite">'+(offerPreviewBusy?"Atualizando…":"")+'</span></div>'+
+      offerAlert(offerPreviewError,"preview")+
+      '<div class="af-offer-message">'+
+        (preview?.media==="card"?'<div class="af-offer-card-wrap"><img class="af-offer-card-image" src="'+html(image)+'" alt="Card da oferta: '+html(row.title||"produto")+'" width="900" height="970"></div>':"")+
+        '<div class="af-offer-caption'+(offerPreviewExpanded?" is-expanded":"")+'" id="offer-text">'+
+          (preview?offerCaption(preview.html):'<span class="af-offer-preview-loading">'+icon("refresh")+'Preparando sua prévia…</span>')+'</div>'+
+        (fold?'<button type="button" class="af-offer-text-button af-offer-expand" data-act="offer-expand" aria-expanded="'+offerPreviewExpanded+'" aria-controls="offer-text">'+
+          (offerPreviewExpanded?"Recolher legenda":"Ver legenda completa")+icon(offerPreviewExpanded?"arrowUp":"down")+'</button>':"")+
+      '</div>'+
+      '<div class="af-offer-preview-actions">'+
+        '<button type="button" class="os-button os-outline" data-act="copy"'+(!preview?" disabled":"")+'>'+icon("copy")+'Copiar legenda</button>'+
+        (preview?.media==="card"?'<a class="os-button os-outline" href="'+html(image)+'" download="oferta-orion.png">'+icon("download")+'Baixar card</a>':"")+
+      '</div></section>';
+  }
+
+
+  function offerSendStatus() {
+    const jobs=Array.isArray(offerSendResult?.jobs)?offerSendResult.jobs:[];
+    const published=jobs.filter(job=>job.status==="published").length;
+    const pending=jobs.some(job=>["queued","preparing","dispatching"].includes(job.status));
+    const title=published===jobs.length&&jobs.length?
+      (jobs.length===1?"Oferta publicada":"Publicações concluídas"):pending?
+      jobs.length+" "+(jobs.length===1?"publicação":"publicações")+" na fila":"Confira os envios";
+    return '<div class="af-offer-send-success" role="status" data-offer-send-result tabindex="-1">'+icon(published===jobs.length?"check":"clock")+
+      '<div><strong>'+html(title)+'</strong><ul class="af-offer-send-status">'+jobs.map(job=>{
+        const destination=offerDestinationRows().find(row=>row.id===job.destination);
+        return '<li data-offer-job="'+html(job.id)+'"><span>'+html(destination?.name||"Destino")+'</span>'+jobPill(job)+
+          (job.error?'<small>'+html(job.error)+'</small>':"")+'</li>';
+      }).join("")+'</ul><a href="#fila">Acompanhar envios '+icon("arrow")+'</a></div></div>';
+  }
+
+  function offerTargets() {
+    const rows=offerDestinationRows();
+    const available=rows.filter(row=>row.eligible);
+    const selected=available.filter(row=>offerDestinations.has(row.id));
+    const all=available.length>0&&selected.length===available.length;
+    const canSend=offerCanSend(true);
+    const busy=offerSendBusy;
+    const reason=offerDetailsDirty?"Salve os detalhes para atualizar a prévia.":offerPhraseValue!==(currentOffer()?.phrase||"")?
+      "Aplique a frase para atualizar a prévia.":!preview?.send?.enabled?preview?.send?.reason:"";
+    const sent=offerSendResult;
+    return '<section class="af-offer-targets" data-offer-section="targets" aria-labelledby="af-offer-target-title">'+
+      '<div class="af-offer-target-heading"><div><h2 id="af-offer-target-title">Onde publicar</h2><p>Selecione um ou mais destinos.</p></div><a href="#conexoes" aria-label="Gerenciar destinos">'+icon("settings")+'</a></div>'+
+      (rows.length?'<div class="af-offer-target-toolbar"><label><input type="checkbox" data-offer-all'+(all?" checked":"")+(available.length?"":" disabled")+'>Selecionar todos</label><span data-offer-target-count>'+selected.length+' selecionado'+(selected.length===1?"":"s")+'</span></div>'+
+        '<div class="af-offer-target-list">'+rows.map(row=>'<label class="af-offer-target'+(!row.eligible?" is-unavailable":"")+'" data-offer-destination-row="'+html(row.id)+'">'+
+          '<input type="checkbox" data-offer-destination="'+html(row.id)+'" value="'+html(row.id)+'"'+(offerDestinations.has(row.id)&&row.eligible?" checked":"")+(row.eligible&&!busy?"":" disabled")+'>'+
+          '<span class="af-offer-target-icon" aria-hidden="true">'+icon(row.mode==="telegram"?"send":row.mode==="whatsapp_channel"?"broadcast":"users")+'</span><span><strong>'+html(row.name)+'</strong>'+
+          '<small>'+html(row.eligible?defaultMedia(row.mode)||row.mode:row.reason||"Verifique este destino em Conexões.")+'</small></span></label>').join("")+'</div>':
+        '<div class="af-offer-no-destinations">'+icon("broadcast")+'<p>Adicione um canal ou grupo para publicar sua oferta.</p><a class="os-button os-outline" href="#conexoes">'+icon("plus")+'Adicionar destino</a></div>')+
+      offerAlert(offerSendError,"send")+
+      (sent?offerSendStatus():
+        '<div class="af-offer-send-footer">'+(reason?'<p>'+html(reason)+'</p>':"")+
+          '<button type="button" class="os-button" data-act="offer-send"'+(!canSend||!selected.length?" disabled":"")+' aria-disabled="'+busy+'" aria-busy="'+busy+'">'+
+          (busy?'<span class="os-spinner" aria-hidden="true"></span>':icon("send"))+'<span>'+(busy?"Preparando envios…":selected.length?"Enviar para "+selected.length+" destino"+(selected.length===1?"":"s"):"Escolha os destinos")+'</span></button></div>')+
+    '</section>';
+  }
+
+  function offerComposer() {
+    const row=currentOffer();
+    return '<section class="af-offer-composer af-offer-panel" data-offer-section="composer"'+(row?"":" hidden")+' aria-labelledby="af-offer-composer-title">'+
+      (row?'<div class="af-offer-composer-head"><h2 id="af-offer-composer-title" tabindex="-1">Sua publicação</h2><button type="button" class="af-offer-text-button" data-act="offer-new">'+icon("plus")+'Nova oferta</button></div>'+
+        offerProductEditor(row)+'<div class="af-offer-composer-grid">'+offerSettings(row)+offerPreview()+offerTargets()+'</div>':"")+'</section>';
+  }
+
+  function offerDrafts() {
+    const rows=[...state.offer].slice(0,12);
+    return '<details class="af-offer-drafts af-offer-panel" data-offer-disclosure="drafts"'+(offerDraftsOpen?" open":"")+'><summary><span>'+icon("fileCheck")+'Rascunhos<span class="af-offer-draft-count">'+state.offer.length+'</span></span>'+icon("down")+'</summary>'+
+      (rows.length?'<div class="af-offer-draft-list">'+rows.map(row=>'<button type="button" data-act="open-offer" data-offer-draft="'+html(row.id)+'" data-value="'+html(row.id)+'" aria-current="'+(row.id===opened)+'">'+
+        '<span class="af-offer-draft-icon">'+icon(row.demo?"flask":"box")+'</span><span><strong>'+html(row.title||"Oferta para completar")+'</strong><small>'+html(offerRetailer(row))+(row.price!=null?" · "+html(offerPrice(row)):"")+'</small></span>'+icon("chevron")+'</button>').join("")+'</div>':
+        '<p class="af-offer-draft-empty">As ofertas que você preparar ficam salvas aqui.</p>')+'</details>';
   }
 
   function offers() {
-    const drafts = state.offer.map(o=>`<div class="af-item"><div><strong>${html(o.title)}</strong>
-      <small>${o.demo?"Demonstração":html(money(o.price))}</small></div>${btn("Ver prévia","open-offer",o.id)}</div>`).join("");
-    const results = catalog?.map(o=>{
-      const flag=state.product_flag.find(f=>f.id===o.identity);
-      return `<div class="af-item"><div><strong>${html(o.title)}</strong><small>${html(money(o.price))}</small>
-        <div class="af-row af-subtext">${btn("Preparar","prepare-result",o.catalog_url)}
-        ${btn(flag?.favorite?"Desfavoritar":"Favoritar","favorite",o.identity)}
-        ${btn(flag?.blocked?"Desbloquear":"Bloquear","block",o.identity)}</div></div></div>`;
-    }).join("");
-    return heading("Ofertas","Encontre um produto da Shopee e prepare a publicação com seu link de afiliado.",
-      btn("Ver exemplo","demo")) + `<div class="af-sheet af-offers"><div class="af-stack">
-        ${card("Preparar oferta",`<div class="af-offer-panels">
-          <div class="af-status-tabs af-switcher" role="group" aria-label="Como encontrar o produto">
-            ${[["link","Por link","link"],["catalog","Catálogo Shopee","search"]].map(([key,label,glyph])=>`
-            <button class="os-button os-outline" type="button" data-offer-tab="${key}" aria-pressed="${key===offerTab}" aria-controls="offer-${key}">${icon(glyph)}${label}</button>`).join("")}
-          </div>
-          <div id="offer-link" ${offerTab==="link"?"":"hidden"}>
-            <form class="os-form af-form" data-form="offer">
-              <label>Link do produto Shopee <input name="url" required type="url" placeholder="https://shopee.com.br/product/…"></label>
-              <label>Observação (opcional) <input name="note" maxlength="300"></label>
-              <div class="os-form-actions">${submit("Gerar link e prévia","arrow")}</div>
-            </form>
-          </div>
-          <div id="offer-catalog" ${offerTab==="catalog"?"":"hidden"}>
-            <form class="os-form af-form" data-form="search">
-              <label>Palavra-chave <input name="keyword" placeholder="Ex.: mouse sem fio" maxlength="80" value="${html(searchQuery.keyword)}"></label>
-              <div class="af-field"><label for="catalog-category">Categoria</label>
-                <select data-orion-field="native" name="niche" id="catalog-category">${option("","Todas as categorias",searchQuery.niche)}${state.niches.map(n=>option(n.id,n.name,searchQuery.niche)).join("")}</select></div>
-              ${selectField("Ordenar na Shopee","sort",`${Object.entries(state.sorts).map(([k,v])=>option(k,v,searchQuery.sort)).join("")}`)}
-              <div class="os-form-actions">${submit("Pesquisar","search")}</div>
-            </form>
-            ${catalog?`<div class="af-list af-action-strip">${results||empty("Nenhuma oferta encontrada","Tente outra palavra-chave ou categoria.","search")}</div>`:""}
-          </div>
-        </div>`,"box")}
-        ${card("Rascunhos",drafts?`<div class="af-list">${drafts}</div>`:empty("Sem rascunhos","As ofertas preparadas ficam aqui.","fileCheck"),"fileCheck")}
-      </div>${offerPreview()}</div>`;
+    return '<div class="af-offers-workspace">'+
+      '<header class="af-offers-heading"><div><span class="af-offers-eyebrow">Afiliados</span><h1>Ofertas</h1><p>Um link, a sua identidade e os destinos certos.</p></div>'+
+        '<button type="button" class="os-button os-outline" data-act="demo">'+icon("eye")+'Ver exemplo</button></header>'+
+      offerSource()+offerComposer()+offerDrafts()+'</div>';
   }
 
   function templatePage() {
@@ -691,7 +869,7 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
   // chart dates and cards mounted during both user interactions and polling.
   function dashboardNodeKey(node) {
     if (node.nodeType!==1) return null;
-    for (const name of ["id","data-dashboard-date","data-dashboard-period","data-dashboard-metric","data-dashboard-publications","data-dashboard-card","data-dashboard-kpi","data-dashboard-step","data-dashboard-notice","data-act","aria-labelledby"]) {
+    for (const name of ["id","data-offer-section","data-offer-draft","data-offer-destination-row","data-offer-destination","data-offer-phrase","data-offer-tab","data-offer-product","data-offer-notice","data-offer-job","data-dashboard-date","data-dashboard-period","data-dashboard-metric","data-dashboard-publications","data-dashboard-card","data-dashboard-kpi","data-dashboard-step","data-dashboard-notice","data-act","aria-labelledby"]) {
       if (node.hasAttribute(name)) return `${node.nodeName}:${name}:${node.getAttribute(name)}`;
     }
     const name = node.getAttribute("class")?.split(/\s+/)[0];
@@ -784,13 +962,163 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     content.querySelector(".af-dashboard-overview")?.setAttribute("aria-busy",String(busy));
   }
 
+
+  function offerCurrent(version, origin=viewVersion) {
+    return !controller.signal.aborted && route==="ofertas" && version===navVersion && origin===viewVersion;
+  }
+
+  function saveOfferRow(row) {
+    if (!row?.id) return;
+    const index=state.offer.findIndex(item=>item.id===row.id);
+    if (index<0) state.offer.unshift(row);
+    else state.offer[index]=row;
+  }
+
+  function resetOfferSend() {
+    cancelOfferSendPoll(true);
+    offerSendIntent=null;
+    offerSendResult=null;
+    offerSendError="";
+  }
+
+  function cancelOfferSendPoll(reset=false) {
+    if (offerSendPollTimer!==null) window.clearTimeout(offerSendPollTimer);
+    offerSendPollTimer=null;
+    offerSendPollRequest?.abort();
+    offerSendPollRequest=null;
+    if (reset) offerSendPollAttempts=0;
+  }
+
+  function scheduleOfferSendPoll() {
+    if (offerSendPollTimer!==null||offerSendPollRequest||document.hidden||route!=="ofertas"||
+        controller.signal.aborted||offerSendPollAttempts>=offerSendPollDelays.length||
+        !offerSendResult?.jobs?.some(job=>["queued","preparing","dispatching"].includes(job.status))) return;
+    const key=opened,origin=viewVersion,requestId=offerSendIntent?.payload.request_id;
+    if (!requestId) return;
+    offerSendPollTimer=window.setTimeout(async()=>{
+      offerSendPollTimer=null;
+      if (route!=="ofertas"||origin!==viewVersion||opened!==key||controller.signal.aborted) return;
+      offerSendPollAttempts++;
+      const pendingRequest=new AbortController();
+      offerSendPollRequest=pendingRequest;
+      try {
+        const result=await api("send-batches/"+encodeURIComponent(requestId),"GET",undefined,pendingRequest.signal);
+        if (route!=="ofertas"||origin!==viewVersion||opened!==key||controller.signal.aborted||
+            requestId!==offerSendIntent?.payload.request_id) return;
+        offerSendResult=result;
+        offerSendError="";
+        render();
+      } catch(error) {
+        if (!controller.signal.aborted&&origin===viewVersion&&opened===key&&error.name!=="AbortError") {
+          offerSendError="Não foi possível atualizar os envios. Confira o andamento na fila.";
+          render();
+        }
+      } finally {
+        if (offerSendPollRequest===pendingRequest) {
+          offerSendPollRequest=null;
+          scheduleOfferSendPoll();
+        }
+      }
+    },offerSendPollDelays[offerSendPollAttempts]);
+  }
+
+  function setOfferDetails(row) {
+    offerDetails={title:row?.title||"",price:row?.currency==="BRL"?offerPriceInput(row?.price):"",image:row?.image||"",affiliate_url:row?.affiliate_url||""};
+    offerDetailsDirty=false;
+  }
+
+  function setOfferSuggestions(rows) {
+    const phrase=currentOffer()?.phrase;
+    const unique=new Map((Array.isArray(rows)?rows:[]).filter(row=>row?.text).map((row,index)=>[row.text,{...row,id:String(row.id||index)}]));
+    if (phrase && !unique.has(phrase)) unique.set(phrase,{id:"current",text:phrase,source:currentOffer()?.phrase_source});
+    const previous=offerSuggestions.map(row=>row.text);
+    offerSuggestions=[...previous.map(text=>unique.get(text)).filter(Boolean),
+      ...[...unique.values()].filter(row=>!previous.includes(row.text))];
+  }
+
+  function offerCanSend(ignoreSending=false) {
+    return preview?.send?.enabled===true && !!preview?.send?.preview_token && !offerPreviewBusy &&
+      !offerPhraseBusy && !offerDetailsBusy && !offerDetailsDirty &&
+      offerPhraseValue===(currentOffer()?.phrase||"") && (ignoreSending||!offerSendBusy);
+  }
+
+  function syncOfferControls() {
+    if (route!=="ofertas") return;
+    for (const field of content.querySelectorAll("[data-offer-input]")) {
+      const value=offerInput[field.dataset.offerInput]||"";
+      if (field.value!==value) field.value=value;
+    }
+    for (const field of content.querySelectorAll("[data-offer-detail]")) {
+      const value=offerDetails[field.dataset.offerDetail]||"";
+      if (field.value!==value) field.value=value;
+      field.disabled=offerDetailsBusy||offerSendBusy;
+    }
+    const phrase=content.querySelector("[data-offer-phrase-input]");
+    if (phrase) {
+      if (phrase.value!==offerPhraseValue) phrase.value=offerPhraseValue;
+      phrase.disabled=offerPhraseBusy||offerSendBusy;
+    }
+    const selected=content.querySelector("#preview-template");
+    if (selected) { selected.value=chosenTemplate;selected.disabled=offerSendBusy; }
+    const allowed=new Set(eligibleOfferDestinations().map(row=>row.id));
+    for (const field of content.querySelectorAll("[data-offer-destination]")) {
+      field.checked=allowed.has(field.value)&&offerDestinations.has(field.value);
+      field.disabled=!allowed.has(field.value)||offerSendBusy;
+    }
+    const count=[...offerDestinations].filter(key=>allowed.has(key)).length;
+    const all=content.querySelector("[data-offer-all]");
+    if (all) {
+      all.checked=allowed.size>0&&count===allowed.size;
+      all.indeterminate=count>0&&count<allowed.size;
+      all.disabled=!allowed.size||offerSendBusy;
+    }
+    const send=content.querySelector('[data-act="offer-send"]');
+    if (send) send.disabled=!offerCanSend(true)||!count;
+    for (const button of content.querySelectorAll("[data-offer-phrase]")) {
+      button.disabled=offerSendBusy;
+      button.setAttribute("aria-disabled",String(offerPhraseBusy||offerSendBusy));
+    }
+    const suggestions=content.querySelector('[data-act="offer-phrases"]');
+    if (suggestions) suggestions.disabled=offerSendBusy;
+  }
+
+  function updateOffers(selector=".af-offers-workspace", markup=offers()) {
+    const root=content.querySelector(".af-offers-workspace");
+    const current=root?.matches(selector)?root:root?.querySelector(selector);
+    if (!current) return;
+    const template=document.createElement("template");
+    template.innerHTML=markup;
+    const next=template.content.firstElementChild;
+    if (!next) return;
+    const focused=root.contains(document.activeElement)?document.activeElement:null;
+    const visible=node=>{
+      const rect=node.getBoundingClientRect();
+      return rect.height>0 && rect.bottom>56 && rect.top<window.innerHeight;
+    };
+    const anchor=selector!==".af-offers-workspace"&&visible(current)?current:
+      focused&&visible(focused)?focused:[...root.querySelectorAll("[data-offer-section], .af-offers-heading")].find(visible);
+    const top=anchor?.getBoundingClientRect().top;
+    const x=window.scrollX,y=window.scrollY;
+    patchDashboardNode(current,next);
+    syncOfferControls();
+    if (focused?.isConnected && document.activeElement!==focused && !focused.disabled) focused.focus({preventScroll:true});
+    const target=anchor?.isConnected?window.scrollY+anchor.getBoundingClientRect().top-top:y;
+    if (Math.abs(window.scrollY-target)>.5) window.scrollTo({left:x,top:target,behavior:"instant"});
+    window.OrionFields?.refresh(current);
+  }
+
   function render() {
     if (!state || controller.signal.aborted) return;
     if (route==="dashboard" && content.querySelector(".af-dashboard")) {
       updateDashboard(".af-dashboard",dashboard());
       return;
     }
+    if (route==="ofertas" && content.querySelector(".af-offers-workspace")) {
+      updateOffers();
+      return;
+    }
     content.innerHTML = views[route]();
+    if (route==="ofertas") syncOfferControls();
     const all = $("[data-select-niches]");
     if (all) all.indeterminate = !all.checked && !!all.form.querySelector("input[name=niches]:checked");
     filterHistory();
@@ -930,22 +1258,154 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     header.scrollIntoView({block:"nearest"});
   }
 
+
   async function openOffer(value, focus=true) {
-    opened=value;
-    preview=null;
-    const version=++navVersion;
     if (route!=="ofertas") await open("ofertas");
+    const origin=viewVersion;
+    const changed=opened!==value;
+    const beforeFocus=document.activeElement;
+    opened=value;
+    if (changed) {
+      preview=null;
+      offerSuggestions=[];
+      offerDestinations=new Set();
+      offerPreviewExpanded=false;
+      offerPhraseOpen=false;
+      offerDetailsError="";
+      const row=currentOffer();
+      setOfferDetails(row);
+      offerDetailsOpen=!!row&&(!row.title||row.price==null||row.currency!=="BRL");
+      offerPhraseValue=row?.phrase||"";
+      resetOfferSend();
+    }
+    const version=++navVersion;
+    offerPreviewRequest?.abort();
+    const pendingRequest=new AbortController();
+    offerPreviewRequest=pendingRequest;
+    offerPreviewBusy=true;
+    offerPreviewError="";
     render();
-    const response=await api(`offers/${encodeURIComponent(value)}/preview?template=${encodeURIComponent(chosenTemplate)}`);
-    if (version===navVersion) {
+    try {
+      const response=await api("offers/"+encodeURIComponent(value)+"/preview?template="+encodeURIComponent(chosenTemplate),"GET",undefined,pendingRequest.signal);
+      if (!offerCurrent(version,origin)) return;
+      const phraseEdited=offerPhraseValue!==(currentOffer()?.phrase||"");
       preview=response;
-      if (route!=="ofertas") return;
-      render();
-      if (focus) focusSection(".af-preview");
-      else $("#preview-template")?.focus({preventScroll:true});
+      saveOfferRow(response.offer);
+      if (!offerDetailsDirty) setOfferDetails(currentOffer());
+      if (!phraseEdited) offerPhraseValue=currentOffer()?.phrase||"";
+      setOfferSuggestions(response.suggestions);
+      const allowed=new Set(eligibleOfferDestinations().map(row=>row.id));
+      offerDestinations=new Set([...offerDestinations].filter(key=>allowed.has(key)));
+    } catch(error) {
+      if (!offerCurrent(version,origin)||error.name==="AbortError") return;
+      offerPreviewError=error.message||"Não foi possível carregar a prévia. Tente novamente.";
+    } finally {
+      if (offerCurrent(version,origin)) {
+        offerPreviewBusy=false;
+        offerPreviewRequest=null;
+        render();
+        if (focus && changed && (document.activeElement===beforeFocus || document.activeElement===document.body)) {
+          const title=content.querySelector("#af-offer-composer-title");
+          title?.focus({preventScroll:true});
+          title?.scrollIntoView({block:"nearest",behavior:"instant"});
+        }
+      }
     }
   }
 
+  async function prepareOffer(url,note="") {
+    if (offerBusy) return;
+    const origin=viewVersion;
+    const version=navVersion;
+    offerInput={url:String(url||"").trim(),note:String(note||"").trim()};
+    offerBusy=true;
+    offerError="";
+    render();
+    try {
+      const saved=await api("offers","POST",offerInput);
+      if (!offerCurrent(version,origin)) return;
+      saveOfferRow(saved);
+      await openOffer(saved.id);
+    } catch(error) {
+      if (!controller.signal.aborted&&origin===viewVersion&&route==="ofertas") {
+        offerError=error.message||"Não foi possível preparar esta oferta.";
+      }
+    } finally {
+      if (!controller.signal.aborted&&origin===viewVersion&&route==="ofertas") {
+        offerBusy=false;
+        render();
+      }
+    }
+  }
+
+  async function saveOfferDetails(values) {
+    if (!opened||offerDetailsBusy||offerSendBusy) return;
+    const key=opened,origin=viewVersion,version=navVersion;
+    offerDetailsBusy=true;
+    offerDetailsError="";
+    render();
+    try {
+      const saved=await api("offers/"+encodeURIComponent(key),"PUT",values);
+      if (!offerCurrent(version,origin)||opened!==key) return;
+      saveOfferRow(saved);
+      setOfferDetails(saved);
+      resetOfferSend();
+      await openOffer(key,false);
+    } catch(error) {
+      if (!controller.signal.aborted&&origin===viewVersion&&opened===key) offerDetailsError=error.message||"Não foi possível salvar os detalhes.";
+    } finally {
+      if (!controller.signal.aborted&&origin===viewVersion&&opened===key) {offerDetailsBusy=false;render();}
+    }
+  }
+
+  async function applyOfferPhrase(text) {
+    if (!opened||offerPhraseBusy||offerSendBusy) return;
+    const key=opened,origin=viewVersion,version=navVersion;
+    const focused=document.activeElement;
+    offerPhraseBusy=true;
+    offerPreviewError="";
+    render();
+    try {
+      const saved=await api("offers/"+encodeURIComponent(key)+"/phrase","PUT",{text:String(text||"")});
+      if (!offerCurrent(version,origin)||opened!==key) return;
+      saveOfferRow(saved);
+      offerPhraseValue=saved.phrase||"";
+      resetOfferSend();
+      await openOffer(key,false);
+    } catch(error) {
+      if (!controller.signal.aborted&&origin===viewVersion&&opened===key) offerPreviewError=error.message||"Não foi possível atualizar a frase.";
+    } finally {
+      if (!controller.signal.aborted&&origin===viewVersion&&opened===key) {
+        offerPhraseBusy=false;
+        render();
+        if (focused?.isConnected&&document.activeElement===document.body) focused.focus({preventScroll:true});
+      }
+    }
+  }
+
+  async function sendOffer() {
+    if (!offerCanSend()) return;
+    const selected=eligibleOfferDestinations().filter(row=>offerDestinations.has(row.id)).map(row=>row.id).sort();
+    if (!selected.length) return;
+    const key=opened,origin=viewVersion;
+    const token=preview.send.preview_token;
+    const fingerprint=JSON.stringify([key,chosenTemplate,selected,token]);
+    if (offerSendIntent?.fingerprint!==fingerprint) offerSendIntent={fingerprint,payload:{template:chosenTemplate,destinations:selected,preview_token:token,request_id:id()}};
+    const payload={...offerSendIntent.payload,destinations:[...offerSendIntent.payload.destinations]};
+    offerSendBusy=true;
+    offerSendError="";
+    render();
+    try {
+      const result=await api("offers/"+encodeURIComponent(key)+"/send","POST",payload);
+      if (controller.signal.aborted||origin!==viewVersion||opened!==key) return;
+      offerSendResult=result;
+      scheduleOfferSendPoll();
+    } catch(error) {
+      if (!controller.signal.aborted&&origin===viewVersion&&opened===key) offerSendError=error.message||"Não foi possível confirmar o envio. Tente novamente.";
+    } finally {
+      if (!controller.signal.aborted&&origin===viewVersion&&opened===key) {offerSendBusy=false;render();}
+    }
+  }
 
   const formActions = {
     shopee: async form=>{
@@ -965,16 +1425,36 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     },
     destination: async form=>{
       await api("destinations/"+id(),"PUT",{
-        name:form.get("name"),mode:form.get("mode"),address:form.get("address"),test:form.has("test"),
+        name:form.get("name"),mode:form.get("mode"),address:form.get("mode")==="whatsapp_group"?form.get("whatsapp_group"):form.get("address"),test:form.has("test"),
       });
       await reload();
       notify("Destino salvo.");
     },
-    offer: async form=>{
-      const saved=await api("offers","POST",{url:form.get("url"),note:form.get("note")});
-      await reload();
-      await openOffer(saved.id);
+
+    offer: async form=>prepareOffer(form.get("url"),offerInput.note),
+    "offer-details": async form=>{
+      const current=currentOffer();
+      const values={};
+      const title=String(form.get("title")||"").trim(),image=String(form.get("image")||"").trim();
+      if (title!==(current?.title||"")) values.title=title;
+      if (image!==(current?.image||"")) values.image=image;
+      const raw=String(form.get("price")||"").trim();
+      if (raw) {
+        const cents=window.OrionFields?.parseMoney?window.OrionFields.parseMoney(raw,{min:1}):(()=>{
+          const normalized=raw.includes(",")?raw.replace(/\./g,"").replace(",","."):raw;
+          if (!/^\d+(?:\.\d{1,2})?$/.test(normalized)||Number(normalized)<=0) throw new Error("Informe um preço válido, como 149,90.");
+          return Math.round(Number(normalized)*100);
+        })();
+        if (current?.currency!=="BRL"||cents!==Math.round(Number(current?.price)*100)) values.price=(cents/100).toFixed(2);
+      }
+      if (form.has("affiliate_url")) {
+        const url=String(form.get("affiliate_url")||"").trim();
+        if (url!==(current?.affiliate_url||"")) values.affiliate_url=url;
+      }
+      if (!Object.keys(values).length) {setOfferDetails(current);render();return;}
+      await saveOfferDetails(values);
     },
+    "offer-own-link": async form=>saveOfferDetails({affiliate_url:String(form.get("affiliate_url")||"").trim()}),
     search: async form=>{
       const filters=Object.fromEntries(form);
       const version=++searchVersion, originView=viewVersion, originRoute=route;
@@ -991,13 +1471,8 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
         if (current()) throw error;
       }
     },
-    phrase: async form=>{
-      const key=opened;
-      await api("offers/"+key+"/phrase","PUT",{text:form.get("text")});
-      await reload();
-      await openOffer(key);
-      notify("Frase atualizada na prévia.");
-    },
+
+    phrase: async form=>applyOfferPhrase(form.get("text")),
     template: async form=>{
       const key=editTemplate==="new"?id():editTemplate;
       await api("templates/"+key,"PUT",Object.fromEntries(form));
@@ -1060,21 +1535,91 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
 
   const actions = {
     refresh: async ()=>{if (await reload() && route!=="dashboard") notify("Dados atualizados.");},
-    demo: async ()=>{ const sample=await api("offers/demo","POST"); await reload(); await openOffer(sample.id); },
-    "open-offer": openOffer,
-    "ai-phrase": async ident=>{
-      const row=await api("offers/"+ident+"/phrase","POST");
-      await reload();
-      await openOffer(ident);
-      notify(row.phrase_source==="groq"?"Frase gerada pela Groq.":"Sugestão pronta para editar.");
+
+    demo: async ()=>{
+      const origin=viewVersion;
+      const sample=await api("offers/demo","POST");
+      if (controller.signal.aborted||origin!==viewVersion) return;
+      saveOfferRow(sample);
+      await openOffer(sample.id);
     },
-    "prepare-result": async url=>formActions.offer(new Map([["url",url],["note",""]])),
+    "open-offer": openOffer,
+    "ai-phrase": async ()=>actions["offer-phrases"](),
+    "offer-phrases": async ()=>{
+      if (!opened||offerSuggestionsBusy||offerSendBusy) return;
+      const key=opened,version=navVersion,origin=viewVersion;
+      offerSuggestionsBusy=true;
+      render();
+      try {
+        const result=await api("offers/"+encodeURIComponent(key)+"/phrases","POST",{});
+        if (!offerCurrent(version,origin)||opened!==key) return;
+        setOfferSuggestions(Array.isArray(result)?result:result.suggestions);
+      } catch(error) {
+        if (offerCurrent(version,origin)) notify(error.message,true);
+      } finally {
+        if (offerCurrent(version,origin)) {offerSuggestionsBusy=false;render();}
+      }
+    },
+    "offer-expand": async ()=>{
+      offerPreviewExpanded=!offerPreviewExpanded;
+      updateOffers('[data-offer-section="preview"]',offerPreview());
+    },
+    "offer-send": sendOffer,
+    "offer-new": async ()=>{
+      navVersion++;
+      offerPreviewRequest?.abort();
+      offerPreviewRequest=null;
+      opened=null;
+      preview=null;
+      offerPreviewBusy=false;
+      offerPreviewError="";
+      offerInput={url:"",note:""};
+      offerError="";
+      offerDetailsError="";
+      offerDetailsOpen=false;
+      offerDetailsDirty=false;
+      offerPhraseOpen=false;
+      offerDestinations=new Set();
+      offerSuggestions=[];
+      resetOfferSend();
+      offerTab="link";
+      render();
+      const input=content.querySelector("#af-offer-url");
+      input?.focus({preventScroll:true});
+      input?.scrollIntoView({block:"nearest",behavior:"instant"});
+    },
+    "prepare-result": async url=>prepareOffer(url),
     copy: async ()=>{ if(preview) {await navigator.clipboard.writeText(preview.text); notify("Texto copiado.");} },
     "copy-link": async ident=>{
       const row=state.offer.find(o=>o.id===ident);
       if (row?.affiliate_url) {await navigator.clipboard.writeText(row.affiliate_url);notify("Link copiado.");}
     },
     "verify-tg": async ()=>{ await api("connection/telegram/verify","POST"); await reload(); notify("Telegram vinculado."); },
+    "verify-wa-channel": async ident=>{
+      await api("destinations/"+encodeURIComponent(ident)+"/verify-channel","POST",{});
+      await reload();
+      notify("Administração do canal verificada.");
+    },
+    "load-wa-groups": async ()=>{
+      if (whatsappGroupsBusy) return;
+      const origin=viewVersion;
+      whatsappGroupsBusy=true;
+      whatsappGroupsError="";
+      updateWhatsappGroupPicker();
+      try {
+        const status=await api("whatsapp/status");
+        if (controller.signal.aborted||origin!==viewVersion) return;
+        if (status.status!=="connected") throw new Error("Conecte o WhatsApp da sua empresa antes de buscar os grupos.");
+        const result=await api("whatsapp/groups");
+        if (controller.signal.aborted||origin!==viewVersion) return;
+        whatsappGroups=Array.isArray(result.groups)?result.groups:[];
+      } catch(error) {
+        if (!controller.signal.aborted&&origin===viewVersion) whatsappGroupsError=error.message;
+      } finally {
+        whatsappGroupsBusy=false;
+        if (!controller.signal.aborted&&origin===viewVersion) updateWhatsappGroupPicker();
+      }
+    },
 
     revoke: disconnect,
     "revoke-groq": async ()=>{
@@ -1128,11 +1673,17 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     if (!state || !Object.hasOwn(formActions,form.dataset.form)) return;
     event.preventDefault();
     const button=event.submitter;
-    if (button) button.disabled=true;
+    const keepFocus=!!form.closest(".af-offers-workspace")&&document.activeElement===button;
+    if (button&&!form.closest(".af-offers-workspace")) button.disabled=true;
     form.setAttribute("aria-busy","true");
     try { await formActions[form.dataset.form](new FormData(form)); }
     catch(error){ notify(error.message,true); }
-    finally { if (button) button.disabled=false; form.removeAttribute("aria-busy"); }
+    finally {
+      if (button) button.disabled=false;
+      form.removeAttribute("aria-busy");
+      if (form.closest(".af-offers-workspace")) syncOfferControls();
+      if (keepFocus&&button?.isConnected&&!button.disabled&&document.activeElement===document.body) button.focus({preventScroll:true});
+    }
   }, {signal: controller.signal});
 
   content.addEventListener("click",async event=>{
@@ -1172,6 +1723,12 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
       updateDashboard(".af-dashboard-publications",dashboardPublications(dashboardSnapshot()));
       return;
     }
+    const phrase=event.target.closest("[data-offer-phrase]");
+    if (phrase) {
+      const suggestion=offerSuggestions.find(row=>String(row.id)===phrase.dataset.offerPhrase);
+      if (suggestion) await applyOfferPhrase(suggestion.text);
+      return;
+    }
     const tab=event.target.closest("[data-offer-tab]");
     const filter=event.target.closest("[data-history-filter]");
     if (tab) {
@@ -1187,10 +1744,18 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     if (filter) { historyFilter=filter.dataset.historyFilter;filterHistory();return; }
     const button=event.target.closest("[data-act]");
     if (!button || !Object.hasOwn(actions,button.dataset.act)) return;
-    button.disabled=true;
+    const keepFocus=!!button.closest(".af-offers-workspace")&&document.activeElement===button;
+    if (!button.closest(".af-offers-workspace")) button.disabled=true;
     try { await actions[button.dataset.act](button.dataset.value); }
     catch(error) { notify(error.message,true); }
-    finally { button.disabled=false; }
+    finally {
+      button.disabled=false;
+      if (button.closest(".af-offers-workspace")) syncOfferControls();
+      if (keepFocus&&document.activeElement===document.body) {
+        if (button.isConnected&&!button.disabled) button.focus({preventScroll:true});
+        else if (route==="ofertas") content.querySelector("[data-offer-send-result]")?.focus({preventScroll:true});
+      }
+    }
   }, {signal: controller.signal});
 
   content.addEventListener("focusin",event=>{
@@ -1209,9 +1774,32 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
   document.addEventListener("visibilitychange",()=>{
     if (document.hidden) cancelAnalyticsPoll();
     else if (route==="dashboard" && !analyticsLoading) scheduleAnalyticsPoll(analyticsVersion);
+    if (document.hidden) cancelOfferSendPoll();
+    else if (route==="ofertas") scheduleOfferSendPoll();
   }, {signal:controller.signal});
 
   content.addEventListener("change",async event=>{
+    if (event.target.id==="af-whatsapp-group") {
+      const group=whatsappGroups?.find(row=>row.address===event.target.value);
+      const form=event.target.form;
+      if (group&&form) {
+        form.elements.address.value=group.address;
+        if (!form.elements.name.value.trim()) form.elements.name.value=group.title;
+      }
+      return;
+    }
+    if (event.target.matches("[data-offer-destination], [data-offer-all]")) {
+      if (offerSendBusy) return;
+      const allowed=new Set(eligibleOfferDestinations().map(row=>row.id));
+      if (event.target.matches("[data-offer-all]")) offerDestinations=event.target.checked?allowed:new Set();
+      else if (allowed.has(event.target.value)) {
+        if (event.target.checked) offerDestinations.add(event.target.value);
+        else offerDestinations.delete(event.target.value);
+      }
+      resetOfferSend();
+      updateOffers('[data-offer-section="targets"]',offerTargets());
+      return;
+    }
     if (event.target.matches("[data-select-niches],input[name=niches]")) {
       const form=event.target.form;
       const all=form.querySelector("[data-select-niches]");
@@ -1233,19 +1821,49 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
       form.querySelector("[data-address-label]").textContent=label;
       form.elements.address.placeholder=hint;
       const assisted=event.target.value!=="telegram";
+      const group=event.target.value==="whatsapp_group";
+      form.querySelector("[data-destination-address]").hidden=group;
+      form.querySelector("[data-wa-group-picker]").hidden=!group;
+      const groupSelect=form.querySelector("#af-whatsapp-group");
+      if (groupSelect) {groupSelect.required=group;groupSelect.disabled=!group;}
       form.querySelector(".af-test-destination").hidden=assisted;
       form.elements.test.disabled=assisted;
-      form.querySelector("[data-assisted-destination]").hidden=!assisted;
+      form.querySelector("[data-assisted-destination]").hidden=event.target.value!=="whatsapp_channel";
       return;
     }
     if (event.target.id!=="preview-template"||!opened) return;
+    if (offerSendBusy) return;
     chosenTemplate=event.target.value;
+    resetOfferSend();
     try { await openOffer(opened,false); }
     catch(error) { notify(error.message,true); }
   }, {signal: controller.signal});
 
   content.addEventListener("input",event=>{
     const field=event.target;
+    if (field.matches("[data-offer-input]")) {
+      offerInput[field.dataset.offerInput]=field.value;
+      return;
+    }
+    if (field.matches("[data-offer-search]")) {
+      searchQuery[field.dataset.offerSearch]=field.value;
+      return;
+    }
+    if (field.matches("[data-offer-detail]")) {
+      offerDetails[field.dataset.offerDetail]=field.value;
+      offerDetailsDirty=true;
+      resetOfferSend();
+      syncOfferControls();
+      return;
+    }
+    if (field.matches("[data-offer-phrase-input]")) {
+      offerPhraseValue=field.value;
+      const count=content.querySelector("[data-offer-phrase-count]");
+      if (count) count.textContent=offerPhraseValue.length+"/155";
+      resetOfferSend();
+      syncOfferControls();
+      return;
+    }
     if (field.id==="filter-history") { historySearch=field.value;filterHistory();return; }
     if (!field.matches("[data-niche-filter]")) return;
     const term=normalize(field.value);
@@ -1256,12 +1874,29 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     }
     field.form.querySelector("[data-niche-empty]").hidden=visible>0;
   }, {signal: controller.signal});
+  content.addEventListener("toggle",event=>{
+    const key=event.target.dataset?.offerDisclosure;
+    if (key==="drafts") offerDraftsOpen=event.target.open;
+    else if (key==="stores") offerStoresOpen=event.target.open;
+    else if (key==="details") offerDetailsOpen=event.target.open;
+    else if (key==="phrase") offerPhraseOpen=event.target.open;
+    else if (key==="note") offerNoteOpen=event.target.open;
+  }, {capture:true,signal:controller.signal});
   void reload().catch(showError);
   return {
     setView(next) {
       if (Object.hasOwn(views,next) && route!==next) {
         viewVersion++;
         navVersion++;
+        offerPreviewRequest?.abort();
+        offerPreviewRequest=null;
+        offerPreviewBusy=false;
+        offerBusy=false;
+        offerPhraseBusy=false;
+        offerSuggestionsBusy=false;
+        offerDetailsBusy=false;
+        offerSendBusy=false;
+        cancelOfferSendPoll();
         if (state) stateVersion++;
         stateLoading=false;
         cancelAnalyticsPoll(true);
@@ -1271,11 +1906,15 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
         route=next;
         render();
         if (route==="dashboard" && state) void loadAnalytics();
+        else if (route==="ofertas") scheduleOfferSendPoll();
       }
     },
     unmount() {
       viewVersion++;
       navVersion++;
+      offerPreviewRequest?.abort();
+      offerPreviewRequest=null;
+      cancelOfferSendPoll(true);
       stateVersion++;
       cancelAnalyticsPoll(true);
       analyticsRequest?.abort();

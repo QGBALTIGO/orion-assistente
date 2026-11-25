@@ -3,10 +3,12 @@ from __future__ import annotations
 import asyncio
 import io
 import re
-import textwrap
+import unicodedata
 from datetime import datetime, time as wall_time, timedelta
 from decimal import Decimal, InvalidOperation
+from functools import lru_cache
 from html import escape
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from PIL import Image, ImageDraw, ImageFont, ImageOps, UnidentifiedImageError
@@ -21,17 +23,26 @@ TOKENS = {
     "frase_ia", "avaliacao_vendas", "preco_destaque", "hashtags",
 }
 TOKEN = re.compile(r"\{([a-z_]+)\}")
+FONT_ROOT = Path(__file__).resolve().parent / "static" / "fonts"
 
 
-def money(price):
+def retailer_label(offer):
+    return str(offer.get("retailer_name") or offer.get("platform_name") or
+               ("Shopee" if str(offer.get("identity", "")).startswith("shopee:") or offer.get("shop") else "Loja"))
+
+
+def money(price, currency="BRL"):
     if price is None:
         return ""
     value = f"{Decimal(price):,.2f}".translate(str.maketrans({",": ".", ".": ","}))
-    return f"R$ {value}"
+    return f"{'R$' if currency == 'BRL' else currency} {value}"
 
 
 def price_label(row):
-    price = money(row.get("price"))
+    currency = row.get("currency") or ("BRL" if not row.get("platform") else None)
+    if row.get("price") is not None and currency is None:
+        return "Preço sem moeda confirmada"
+    price = money(row.get("price"), currency)
     end = row.get("price_max")
     return f"A partir de {price}" if price and end and Decimal(end) > Decimal(row["price"]) else price
 
@@ -91,13 +102,18 @@ def caption(offer, template, destination=""):
     if price.startswith("A partir de "):
         text = text.replace("\n✅ Por *{preco_destaque}*\n", "\n✅ *{preco_destaque}*\n")
     rate = discount_rate(offer)
-    highlights = [f"{Decimal(offer['rating']):.1f}".replace(".", ",") + " de avaliação"] if offer.get("rating") else []
+    rating = f"{Decimal(offer['rating']):.1f}".replace(".", ",") if offer.get("rating") else ""
+    if rating and offer.get("rating_scale"):
+        rating += "/" + format(Decimal(str(offer["rating_scale"])).normalize(), "f")
+    highlights = [rating + " de avaliação"] if rating else []
     if sales := sold_label(offer.get("sales")):
         highlights.append(sales)
-    niche = offer.get("niche") or niche_for_offer(offer)
+    niche = offer.get("niche") or niche_for_offer({**offer, "title": offer.get("title") or "",
+                                                 "categories": offer.get("categories") or []})
+    currency = offer.get("currency") or ("BRL" if not offer.get("platform") else None)
     fields = {
-        "produto": offer["title"], "loja": offer.get("store") or "",
-        "preco": price, "preco_anterior": money(previous_price(offer)),
+        "produto": offer.get("title") or "", "loja": offer.get("store") or "",
+        "preco": price, "preco_anterior": money(previous_price(offer), currency) if currency else "",
         "desconto": f"{rate}% OFF" if rate and not price.startswith("A partir") else "",
         "cupom": (offer.get("coupon") or {}).get("code", ""),
         "condicoes": (offer.get("coupon") or {}).get("conditions", ""),
@@ -107,8 +123,9 @@ def caption(offer, template, destination=""):
         "frase_ia": offer.get("phrase") or "",
         "avaliacao_vendas": " ".join(highlights),
         "preco_destaque": f"{price} ({rate}% OFF)" if rate and price and not price.startswith("A partir") else price,
-        "hashtags": " ".join(("#Oferta", "#Shopee", "#" + NICHES[niche]["tag"], "#Promoção")) if niche in NICHES
-                    else "#Oferta #Shopee #Promoção",
+        "hashtags": " ".join(("#Oferta", "#" + re.sub(r"\W", "", retailer_label(offer)),
+                              "#" + NICHES[niche]["tag"], "#Promoção")) if niche in NICHES
+                    else "#Oferta #" + re.sub(r"\W", "", retailer_label(offer)) + " #Promoção",
     }
     result = []
     for line in text.splitlines():
@@ -125,7 +142,7 @@ def caption(offer, template, destination=""):
     final = re.sub(r"\n{3,}", "\n\n", final)
     if fields["link"] and fields["link"] not in final:
         final = f"{final}\n{fields['link']}".strip()
-    return final or offer["title"]
+    return final or offer.get("title") or ""
 
 def formatted_html(text):
     pattern = re.compile(r"https://[^\s<>]+|([*_~])([^*_~\n]+)\1")
@@ -164,33 +181,87 @@ def safe_product_photo(raw):
         return None
 
 
+@lru_cache(maxsize=64)
+def card_font(size, bold=False):
+    # Runtime assets are bundled with their SIL OFL; no system font/download is
+    # required, and accented Portuguese glyphs are available in both weights.
+    return ImageFont.truetype(str(FONT_ROOT / ("Figtree-Bold.ttf" if bold else "Figtree-Regular.ttf")), size)
+
+
+def card_text(value):
+    return " ".join(unicodedata.normalize("NFC", str(value or "")).split())
+
+
+def fit_text(draw, text, width, size, *, bold=False, minimum=18):
+    text = card_text(text)
+    while size > minimum and draw.textlength(text, font=card_font(size, bold)) > width:
+        size -= 1
+    font = card_font(size, bold)
+    while text and draw.textlength(text, font=font) > width:
+        text = text[:-2].rstrip() + "…" if len(text) > 1 else ""
+    return text, font
+
+
+def wrap_card_text(draw, text, font, width, max_lines=3):
+    """Wrap by rendered glyph width, including long unbroken product names."""
+    words = card_text(text).split()
+    lines, current = [], ""
+    for word in words:
+        candidate = f"{current} {word}".strip()
+        if draw.textlength(candidate, font=font) <= width:
+            current = candidate
+            continue
+        if current:
+            lines.append(current)
+            current = ""
+        while word and draw.textlength(word, font=font) > width:
+            end = 1
+            while end < len(word) and draw.textlength(word[:end + 1], font=font) <= width:
+                end += 1
+            lines.append(word[:end])
+            word = word[end:]
+        current = word
+    if current:
+        lines.append(current)
+    if len(lines) > max_lines:
+        lines = lines[:max_lines]
+        last = lines[-1].rstrip()
+        while last and draw.textlength(last + "…", font=font) > width:
+            last = last[:-1].rstrip()
+        lines[-1] = last + "…"
+    return lines
+
+
 def card_png(offer, template, raw_photo=None):
     image = Image.new("RGB", (900, 970), "#f5f8fc")
     draw = ImageDraw.Draw(image)
-    font = lambda size: ImageFont.load_default(size=size)
     accent = {"simple": "#2e7bf6", "discount": "#176e54", "coupon": "#6750bb"}[template["layout"]]
     draw.rounded_rectangle((24, 24, 876, 946), radius=35, fill="#ffffff", outline="#dce3ee", width=3)
     draw.rounded_rectangle((53, 52, 847, 128), radius=20, fill=accent)
-    draw.text((76, 72), (template.get("brand") or "Orion Afiliados")[:32], font=font(33), fill="#ffffff")
+    brand, brand_font = fit_text(draw, (template.get("brand") or "Orion Afiliados")[:32], 748, 33, bold=True)
+    draw.text((76, 73), brand, font=brand_font, fill="#ffffff", anchor="lt")
     photo = safe_product_photo(raw_photo)
     if photo:
         photo.thumbnail((760, 498))
         image.paste(photo, ((900 - photo.width) // 2, 147 + (498 - photo.height) // 2))
     else:
         draw.rounded_rectangle((53, 146, 847, 645), radius=24, fill="#eaf2ff")
-        draw.text((450, 395), "Imagem não disponível", anchor="mm", font=font(31), fill="#4e5a72")
-    lines = textwrap.wrap(offer["title"], width=43, max_lines=3, placeholder="…")
-    draw.multiline_text((57, 674), "\n".join(lines), font=font(32), spacing=3, fill="#0f1b33")
-    draw.text((57, 806), price_label(offer) or "Preço não confirmado", font=font(44), fill=accent)
+        draw.text((450, 395), "Imagem não disponível", anchor="mm", font=card_font(31), fill="#4e5a72")
+    title_font = card_font(32, True)
+    for index, line in enumerate(wrap_card_text(draw, offer["title"], title_font, 786)):
+        draw.text((57, 666 + index * 43), line, font=title_font, fill="#0f1b33", anchor="lt")
+    price, price_font = fit_text(draw, price_label(offer) or "Preço não confirmado", 786, 44, bold=True, minimum=28)
+    draw.text((57, 806), price, font=price_font, fill=accent, anchor="lt")
     rate = discount_rate(offer)
     badge = (f"{rate}% OFF" if template["layout"] == "discount" and rate
              and not price_label(offer).startswith("A partir") else None)
     if template["layout"] == "coupon" and offer.get("coupon"):
         badge = "Cupom: " + offer["coupon"]["code"]
     if badge:
-        draw.text((57, 872), badge[:40], font=font(25), fill="#0f1b33")
-    draw.text((57, 913), "Demonstração" if offer.get("demo") else "Publicidade • Shopee",
-              font=font(16), fill="#4e5a72")
+        badge, badge_font = fit_text(draw, badge, 786, 25)
+        draw.text((57, 877), badge, font=badge_font, fill="#0f1b33", anchor="lt")
+    footer, footer_font = fit_text(draw, "Demonstração" if offer.get("demo") else "Publicidade • " + retailer_label(offer), 786, 16, minimum=14)
+    draw.text((57, 917), footer, font=footer_font, fill="#4e5a72", anchor="lt")
     saved = io.BytesIO()
     image.save(saved, "PNG", optimize=False)
     return saved.getvalue()
@@ -206,7 +277,7 @@ async def render_card(offer, template):
 
 async def render_channel_card(offer, template):
     if not offer.get("image"):
-        raise ProviderError("image", "A Shopee não retornou foto para o card.")
+        raise ProviderError("image", "O produto não possui uma foto para o card.")
     raw = await product_image(offer["image"])
     if safe_product_photo(raw) is None:
         raise ProviderError("image", "A foto da oferta não pôde ser usada no card.")

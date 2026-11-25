@@ -17,19 +17,23 @@ from sqlalchemy import text
 from app.catalog_api import Actor, authenticate, support_session_factory
 from app.affiliate_analytics import analytics_report_valid, build_analytics_fallback, state_snapshot_valid
 from app.workspace_policy import AFFILIATE_NICHE
+from app.affiliate_whatsapp import router as whatsapp_router
 
 
 router = APIRouter()
+router.include_router(whatsapp_router)
 UPSTREAM = "https://orion-afiliados-piloto.187-77-255-164.sslip.io"
 NO_STORE = {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"}
 MAX_REQUEST = 64 * 1024
 MAX_RESPONSE = 4 * 1024 * 1024
 API_ACTIONS = {
-    "GET": r"state|catalog|offers/[a-f0-9]{32}/(?:preview|card\.png)|offers/demo/(?:preview|card\.png)",
-    "POST": (r"offers|offers/demo|offers/(?:demo|[a-f0-9]{32})/(?:phrase|queue)|connection/telegram/verify|"
+    "GET": (r"state|catalog|(?:connection/)?whatsapp/(?:status|groups)|send-batches/[a-f0-9]{32}|"
+            r"offers/[a-f0-9]{32}/(?:preview|card\.png)|offers/demo/(?:preview|card\.png)"),
+    "POST": (r"offers|offers/demo|offers/(?:demo|[a-f0-9]{32})/(?:phrase|phrases|queue|send)|connection/telegram/verify|"
+             r"destinations/[a-f0-9]{32}/verify-channel|"
              r"rules/[a-f0-9]{32}/activate|jobs/[a-f0-9]{32}"),
     "PUT": (r"platforms/(?:shopee|groq)|connection/telegram|destinations/[a-f0-9]{32}|"
-            r"templates/(?:default|[a-f0-9]{32})|offers/(?:demo|[a-f0-9]{32})/phrase|"
+            r"templates/(?:default|[a-f0-9]{32})|offers/(?:demo|[a-f0-9]{32})(?:/phrase)?|"
             r"rules/[a-f0-9]{32}|product-flag/shopee:\d+:\d+"),
     "DELETE": r"platforms/groq|connection/(?:shopee|telegram)|destinations/[a-f0-9]{32}",
 }

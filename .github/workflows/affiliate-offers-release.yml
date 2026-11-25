@@ -1,0 +1,119 @@
+name: Orion - Ofertas e destinos de Afiliados
+on:
+  push:
+    branches: [codex/afiliados-ofertas-multiloja-20261125]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      packages: write
+    env:
+      API_BASE: ghcr.io/qgbaltigo/orion-assistente-api@sha256:27bba1dc68b801ffab2ffb0572745abfe8db20be16120e6d1c11400fc3833991
+      QR_BASE: ghcr.io/qgbaltigo/orion-assistente-qr-bridge@sha256:0ef401c3d9f9236c68fd6154b18176d63ac6a263bdbef5c41fdf96e54f5540d5
+      API_IMAGE: ghcr.io/qgbaltigo/orion-assistente-api:affiliate-offers-${{ github.sha }}
+      QR_IMAGE: ghcr.io/qgbaltigo/orion-assistente-qr-bridge:affiliate-offers-${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verificar autorização, relatórios e interface
+        run: |
+          python -m pip install -e '.[test]'
+          python -m pytest -q tests/unit/test_affiliate_analytics.py tests/unit/test_affiliate_analytics_api.py tests/unit/test_affiliate_whatsapp.py
+          npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+          node --check app/static/orion-suite.js
+          node --input-type=module --check < app/static/orion-affiliate-workspace.js
+          node --test --test-reporter=dot ui-tests/affiliate-offers.test.mjs ui-tests/affiliate-dashboard.test.mjs ui-tests/affiliate-dashboard-updates.test.mjs ui-tests/drawer-focus.test.mjs ui-tests/dashboard-navigation.test.mjs ui-tests/home-admin-preview.test.mjs ui-tests/subscription-workspace.test.mjs ui-tests/subscription-app-layout.test.mjs ui-tests/barbershop-app-layout.test.mjs ui-tests/dental-workspace.test.mjs ui-tests/onboarding-affiliates.test.mjs
+      - name: Verificar extração, Unicode, fila e envio explícito sem publicar
+        run: |
+          python -m venv /tmp/orion-affiliate-pilot-tests
+          /tmp/orion-affiliate-pilot-tests/bin/pip install -r affiliate_pilot/requirements.txt pytest pytest-asyncio
+          PYTHONPATH=. /tmp/orion-affiliate-pilot-tests/bin/python -m pytest -q affiliate_pilot/tests
+      - name: Conferir responsividade e interações em Chromium e WebKit
+        run: |
+          python -m pip install playwright==1.58.0
+          python -m playwright install --with-deps chromium webkit
+          python ui-tests/affiliate-offers-layout.py
+          python ui-tests/affiliate-offers-layout.py --engine webkit --widths 320 430 --themes dark
+          python ui-tests/affiliate-dashboard-layout.py --widths 320 430 1440 --themes dark
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: affiliate-offers-browser
+          path: |
+            artifacts/affiliate-offers/
+            artifacts/affiliate-dashboard/
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Conferir os arquivos das versões publicadas
+        run: |
+          docker run --rm --entrypoint python "$API_BASE" -c '
+          import hashlib
+          from pathlib import Path
+          expected = {
+            "app/static/orion-suite.js": "efeb02e5fecc52020c6dd85d0ebd034acb11abfb57d5523fad79a05ce00503e2",
+            "app/affiliate_workspace.py": "66ff641c3777d162cbad7946415f767415e64d9ebc600f0aa916e6ec1e7ac663",
+            "app/static/orion-affiliate-workspace.js": "2489d1a6af7b8877feeb9465ac36190adbdff8038dfe8b5edd8ef94c53c7a34e",
+            "app/static/orion-affiliate-workspace.css": "c665d81398efd92719dc5e4e2966fc50a7fe084ce469cb236ffb0fb9c52b80eb",
+          }
+          for name, digest in expected.items():
+            assert hashlib.sha256(Path(name).read_bytes()).hexdigest() == digest, name
+          print("API base de produção conferida.")
+          '
+          docker run --rm "$QR_BASE" node --input-type=module -e '
+          import {readFileSync} from "node:fs";
+          import {createHash} from "node:crypto";
+          const expected={
+            "src/channel-routes.mjs":"82044de040ecc986b1b83a72bbfedd44e485894be41e1cae4c31355b9d3e1bf8",
+            "src/channel-manager.mjs":"2fb19e5829a512fb3aabc04e8c8442723c5b41304e501f4bcd9cb975393816de",
+            "src/channel-session.mjs":"e02a291072f19b542bf41888cc88f12aa06dd6717b91b4a4b8e217b41114ad32"
+          };
+          for(const [name,hash] of Object.entries(expected))if(createHash("sha256").update(readFileSync(name)).digest("hex")!==hash)throw Error(name);
+          console.log("Transporte base de produção conferido.");
+          '
+      - name: Construir API e transporte com alterações isoladas
+        run: |
+          docker build -f deploy/Dockerfile.affiliate-offers --build-arg BASE_IMAGE="$API_BASE" --build-arg ORION_RELEASE="$GITHUB_SHA" -t "$API_IMAGE" .
+          docker build -f deploy/Dockerfile.affiliate-offers-qr --build-arg BASE_IMAGE="$QR_BASE" --build-arg ORION_RELEASE="$GITHUB_SHA" -t "$QR_IMAGE" .
+          docker run --rm --entrypoint python -v "$GITHUB_WORKSPACE/app:/review:ro" "$API_IMAGE" -c '
+          from pathlib import Path
+          for name in ("affiliate_workspace.py", "affiliate_whatsapp.py", "static/orion-affiliate-workspace.js", "static/orion-affiliate-workspace.css", "static/orion-suite.js"):
+            assert Path("app", name).read_bytes() == Path("/review", name).read_bytes(), name
+          from app.affiliate_workspace import router
+          assert any(route.path.endswith("/api/analytics") for route in router.routes)
+          assert any(route.path.endswith("/bridge/whatsapp/{action}") for route in router.routes)
+          print("Imagem API corresponde ao código revisado.")
+          '
+          docker run --rm -v "$GITHUB_WORKSPACE/qr-bridge/src:/review:ro" "$QR_IMAGE" node --input-type=module -e '
+          import {readFileSync} from "node:fs";
+          for(const name of ["channel-routes.mjs","channel-manager.mjs","channel-session.mjs","affiliate-offers.mjs"])
+            if(!readFileSync("src/"+name).equals(readFileSync("/review/"+name)))throw Error(name);
+          await import("./src/channel-routes.mjs");
+          console.log("Imagem QR corresponde ao código revisado.");
+          '
+          docker run --rm -v "$GITHUB_WORKSPACE/qr-bridge/test:/srv/qr/test:ro" "$QR_IMAGE" node --test --test-reporter=dot test/affiliate-offers.test.mjs test/affiliate-manager.test.mjs test/channel-manager.test.mjs test/device-group-contacts.test.mjs test/device-group-add.test.mjs test/channel-resume.test.mjs
+      - name: Publicar imagens verificadas
+        run: |
+          docker push "$API_IMAGE"
+          docker push "$QR_IMAGE"
+          docker image inspect "$API_IMAGE" --format '{{index .RepoDigests 0}}' > affiliate-offers-api-image.txt
+          docker image inspect "$QR_IMAGE" --format '{{index .RepoDigests 0}}' > affiliate-offers-qr-image.txt
+          cat affiliate-offers-api-image.txt affiliate-offers-qr-image.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: affiliate-offers-images
+          path: affiliate-offers-*-image.txt

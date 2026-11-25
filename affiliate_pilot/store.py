@@ -43,6 +43,15 @@ PRICE_WINDOW = 7 * 86400
 PRICE_RECORDS = 2000
 
 
+class ManualSendConflict(ValueError):
+    pass
+
+
+def destination_identity(destination):
+    return {key: destination.get(key) for key in
+            ("id", "mode", "connection_version", "chat_id", "address", "channel_jid")}
+
+
 class Store:
     def __init__(self, path: Path, key: str):
         self.path = path
@@ -333,6 +342,66 @@ class Store:
                   now))
             return job, True
 
+    def manual_batch(self, company, request_id, *, db=None):
+        if db is None:
+            with self.connect() as connection:
+                return self.manual_batch(company, request_id, db=connection)
+        row = db.execute("SELECT doc FROM record WHERE company=? AND kind='manual_send' AND id=?",
+                         (company, request_id)).fetchone()
+        if not row:
+            return None
+        batch = json.loads(row["doc"])
+        ids = batch["jobs"]
+        placeholders = ",".join("?" for _ in ids)
+        jobs = db.execute(f"SELECT id,destination,status,error FROM job WHERE company=? AND id IN ({placeholders})",
+                          (company, *ids)).fetchall()
+        by_id = {job["id"]: dict(job) for job in jobs}
+        return {**batch, "batch_id": request_id, "jobs": [by_id[ident] for ident in ids if ident in by_id]}
+
+    def enqueue_manual(self, company, request_id, fingerprint, offer, template, destinations):
+        """Persist the complete selection and all jobs in one idempotent transaction."""
+        now = int(time.time())
+        with self.connect(True) as db:
+            previous = self.manual_batch(company, request_id, db=db)
+            if previous:
+                if previous["fingerprint"] != fingerprint:
+                    raise ManualSendConflict("Esta solicitação já foi usada para outra seleção. Atualize a prévia.")
+                return previous, False
+            for kind, expected in (("offer", offer), ("template", template)):
+                current = db.execute("SELECT doc FROM record WHERE company=? AND kind=? AND id=?",
+                                     (company, kind, expected["id"])).fetchone()
+                if current is None or {"id": expected["id"], **json.loads(current["doc"])} != expected:
+                    raise ManualSendConflict("A oferta ou o template mudou. Atualize a prévia antes de enviar.")
+            for destination in destinations:
+                current = db.execute("SELECT doc FROM record WHERE company=? AND kind='destination' AND id=?",
+                                     (company, destination["id"])).fetchone()
+                if current is None or {"id": destination["id"], **json.loads(current["doc"])} != destination:
+                    raise ManualSendConflict("Um destino mudou. Confira a seleção antes de enviar.")
+            jobs = []
+            for destination in destinations:
+                ident = uuid4().hex
+                # Legacy occurrence values are Unix seconds. A negative intent
+                # key keeps explicit manual batches independent of recurring
+                # scheduling and of another user action within the same second.
+                occurrence = -int(digest(request_id)[:15], 16) - 1
+                while db.execute("SELECT 1 FROM job WHERE company=? AND destination=? AND product=? AND occurrence=?",
+                                 (company, destination["id"], offer["identity"], occurrence)).fetchone():
+                    occurrence -= 1
+                manual = {"request_id": request_id, "authorized_at": now,
+                          "destination": destination_identity(destination),
+                          "destination_name": destination.get("name") or "Destino"}
+                doc = {"offer": offer, "template": template, "rule": None, "manual": manual}
+                db.execute("""INSERT INTO job(id,company,destination,product,occurrence,due,expires,status,doc,changed)
+                              VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                           (ident, company, destination["id"], offer["identity"], occurrence, now, now+1800,
+                            "queued", encode(doc), now))
+                jobs.append(ident)
+            self.put(company, "manual_send", request_id,
+                     {"fingerprint": fingerprint, "offer": offer["id"], "template": template["id"],
+                      "jobs": jobs, "created_at": now}, db=db)
+            self.audit(company, "offer:manual_send", db=db)
+            return self.manual_batch(company, request_id, db=db), True
+
     def history(self, company, id=None):
         with self.connect() as db:
             rows = db.execute("""
@@ -396,7 +465,8 @@ class Store:
             binding = promotech or {}
             row = db.execute("""
                 SELECT * FROM job WHERE status='queued' AND due<=? AND
-                    (? OR (company=? AND destination=? AND json_extract(doc,'$.rule.id')=?))
+                    (? OR (company=? AND destination=? AND json_extract(doc,'$.rule.id')=?)
+                       OR json_type(doc,'$.manual.request_id')='text')
                 ORDER BY due,id LIMIT 1
             """, (now, telegram, binding.get("company"), binding.get("destination"), binding.get("rule"))).fetchone()
             if row:
@@ -405,14 +475,26 @@ class Store:
                 return {**self.decode_job(row), "attempts": row["attempts"] + 1}
         return None
 
-    def dispatch(self, job, snapshot, expected_shopee, expected_telegram, *, promotech=None):
+    def dispatch(self, job, snapshot, expected_shopee, expected_telegram, *, promotech=None, manual=False):
         now = int(time.time())
         company = job["company"]
         with self.connect(True) as db:
             versions = dict(db.execute("SELECT kind,version FROM secret WHERE company=?", (company,)))
-            if versions.get("shopee") != expected_shopee:
+            if (not manual or expected_shopee is not None) and versions.get("shopee") != expected_shopee:
                 return False
-            if promotech:
+            if manual:
+                authorization = job["doc"].get("manual") or {}
+                batch = self.manual_batch(company, authorization.get("request_id"), db=db)
+                destination = db.execute("SELECT doc FROM record WHERE company=? AND kind='destination' AND id=?",
+                                         (company, job["destination"])).fetchone()
+                if not batch or job["id"] not in {item["id"] for item in batch["jobs"]} or not destination:
+                    return False
+                destination = {"id": job["destination"], **json.loads(destination["doc"])}
+                if not destination.get("verified") or destination_identity(destination) != authorization.get("destination"):
+                    return False
+                if destination["mode"] == "telegram" and versions.get("telegram") != expected_telegram:
+                    return False
+            elif promotech:
                 rule = db.execute("SELECT doc FROM record WHERE company=? AND kind='rule' AND id=?",
                                   (company, promotech.binding["rule"])).fetchone()
                 dest = db.execute("SELECT doc FROM record WHERE company=? AND kind='destination' AND id=?",

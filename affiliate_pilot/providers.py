@@ -8,7 +8,7 @@ import re
 import socket
 import time
 from decimal import Decimal, InvalidOperation
-from urllib.parse import parse_qsl, urljoin, urlsplit
+from urllib.parse import parse_qsl, unquote, urlsplit
 
 import httpx
 
@@ -55,55 +55,35 @@ async def check_dns(host: str):
 
 
 def product_ids(url: str) -> tuple[int, int] | None:
-    parts = urlsplit(url)
-    if parts.hostname not in PRODUCT_HOSTS:
+    try:
+        parts = urlsplit(url)
+        if parts.scheme != "https" or parts.netloc.lower() not in PRODUCT_HOSTS:
+            return None
+        path = parts.path
+        for _ in range(2):
+            path = unquote(path)
+        if re.search(r"[\x00-\x1f\x7f\\]", path):
+            return None
+        # Official short links can point at /opaanlp/shop/item. These IDs
+        # describe the same product as /product/shop/item and require no page
+        # fetch or browser challenge to be interpreted.
+        match = re.search(r"^/(?:product|opaanlp)/(\d{1,18})/(\d{1,18})(?:/|$)", path)
+        if not match:
+            match = re.search(r"(?:^|[./-])i\.(\d{1,18})\.(\d{1,18})(?:/|$)", path)
+        ids = tuple(map(int, match.groups())) if match else None
+        return ids if ids and all(0 < value < 10**18 for value in ids) else None
+    except (ValueError, TypeError, UnicodeError):
         return None
-    match = re.search(r"/product/(\d{1,18})/(\d{1,18})(?:/|$)", parts.path)
-    if not match:
-        match = re.search(r"(?:^|[./-])i\.(\d{1,18})\.(\d{1,18})(?:/|$)", parts.path)
-    return tuple(map(int, match.groups())) if match else None
 
 
 async def resolve_product(url: str) -> tuple[int, int]:
-    async with httpx.AsyncClient(timeout=7, follow_redirects=False, trust_env=False) as client:
-        for _ in range(6):
-            host = checked_url(url, PRODUCT_HOSTS | SHORT_HOSTS)
-            if ids := product_ids(url):
-                return ids
-            await check_dns(host)
-            try:
-                async with client.stream("GET", url, headers={"User-Agent": "Mozilla/5.0"}) as response:
-                    if not response.is_redirect or not response.headers.get("location"):
-                        break
-                    url = urljoin(url, response.headers["location"])
-            except httpx.HTTPError:
-                break
-    raise ProviderError("link", "Não consegui identificar a loja e o produto nesse link Shopee Brasil.")
+    from .marketplaces import resolve_shopee_url
+    return await resolve_shopee_url(url)
 
 
 async def product_image(url: str) -> bytes:
-    async with httpx.AsyncClient(timeout=6, follow_redirects=False, trust_env=False) as client:
-        for _ in range(4):
-            await check_dns(checked_url(url, IMAGE_HOSTS))
-            try:
-                async with client.stream("GET", url) as response:
-                    if response.is_redirect and response.headers.get("location"):
-                        url = urljoin(url, response.headers["location"])
-                        continue
-                    response.raise_for_status()
-                    if response.headers.get("content-type", "").partition(";")[0] not in {
-                        "image/jpeg", "image/png", "image/webp",
-                    }:
-                        break
-                    data = bytearray()
-                    async for chunk in response.aiter_bytes():
-                        data.extend(chunk)
-                        if len(data) > 3_000_000:
-                            raise ProviderError("image", "A imagem do produto excede o limite de 3 MB.")
-                    return bytes(data)
-            except httpx.HTTPError:
-                break
-    raise ProviderError("image", "A imagem da Shopee não pôde ser carregada.")
+    from .marketplaces import fetch_product_image
+    return await fetch_product_image(url)
 
 
 def decimal_text(value) -> str | None:
@@ -130,12 +110,16 @@ def normalize_offer(node):
     categories = node.get("productCatIds")
     sales = node.get("sales")
     discount = node.get("priceDiscountRate")
+    rating = decimal_text(node.get("ratingStar"))
     return {
         "shop": shop, "item": item, "identity": f"shopee:{shop}:{item}", "title": title,
+        "platform": "shopee", "retailer": "shopee", "retailer_name": "Shopee",
         "store": str(node.get("shopName") or "").strip()[:120], "image": image,
+        "images": [image] if image else [],
         "price": decimal_text(node.get("priceMin")) or decimal_text(node.get("price")),
         "price_max": decimal_text(node.get("priceMax")), "commission": decimal_text(node.get("commissionRate")),
-        "rating": decimal_text(node.get("ratingStar")), "currency": "BRL", "variant": None,
+        "rating": rating if rating and Decimal(rating) <= 5 else None,
+        "rating_scale": "5", "review_count": None, "currency": "BRL", "variant": None,
         "categories": [item for item in categories if type(item) is int and item > 0]
                       if isinstance(categories, list) else [],
         "sales": sales if type(sales) is int and sales > 0 else None,

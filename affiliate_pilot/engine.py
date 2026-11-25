@@ -3,13 +3,15 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from decimal import Decimal, InvalidOperation
 from uuid import uuid4
 
 from .niches import NICHES, matches_niche, search_niche
 from .offers import (caption, eligible, formatted_html, local_day_start, next_slot, preference,
-                     render_card, render_channel_card, validate_length)
-from .phrase import generate_phrase
+                     render_card, render_channel_card, validate_length, card_text)
+from .phrase import generate_phrase, generate_suggestions, initial_phrase
 from .providers import ProviderError, Shopee, Telegram
+from .store import destination_identity
 
 log = logging.getLogger("orion.affiliate")
 
@@ -20,10 +22,11 @@ DEMO = {
 
 
 class Engine:
-    def __init__(self, store, sending, promotech=None):
+    def __init__(self, store, sending, promotech=None, manual_transport=None):
         self.store = store
         self.sending = sending
         self.promotech = promotech
+        self.manual_transport = manual_transport
         self.last_tick = 0
 
     def shopee(self, company):
@@ -42,11 +45,173 @@ class Engine:
         provider, version = self.shopee(company)
         link = await provider.affiliate_link(row, f"orion{company[:10]}")
         priced, = self.store.record_prices(company, [row])
-        return {**priced, "affiliate_url": link, "link_version": version, "link_source": "Shopee generateShortLink"}
+        phrase, source = initial_phrase(priced)
+        return {**priced, "platform": "shopee", "retailer_name": "Shopee", "affiliate_url": link,
+                "affiliate_status": "generated", "link_status": "generated", "link_version": version, "link_source": "Shopee generateShortLink",
+                "phrase": priced.get("phrase") or phrase, "phrase_source": priced.get("phrase_source") or source}
 
     async def phrase(self, company, offer):
         secret, _ = self.store.credentials(company, "groq")
         return await generate_phrase(offer, (secret or {}).get("key"))
+
+    async def suggestions(self, company, offer, generation=0):
+        secret, _ = self.store.credentials(company, "groq")
+        return await generate_suggestions(offer, (secret or {}).get("key"), generation)
+
+    def manual_destination_capability(self, company, destination):
+        if not destination.get("verified"):
+            return False, "Verifique a administração deste destino antes de enviar."
+        if destination.get("mode") == "telegram":
+            account, version = self.store.credentials(company, "telegram")
+            if not account or not account.get("operator") or not account.get("bot_id"):
+                return False, "Conecte e confirme sua conta no Telegram."
+            if destination.get("connection_version") != version:
+                return False, "Verifique este destino com o bot conectado atualmente."
+            if not isinstance(destination.get("chat_id"), int) or destination["chat_id"] >= 0:
+                return False, "Verifique o grupo ou canal do Telegram."
+            return True, None
+        if destination.get("mode") in {"whatsapp_group", "whatsapp_channel"}:
+            if not self.manual_transport or not self.manual_transport.available(company):
+                return False, "O envio manual do WhatsApp está indisponível nesta conta."
+            if not str(destination.get("connection_version", "")).startswith("orion:"):
+                return False, "Verifique este destino com o WhatsApp conectado ao Orion."
+            return True, None
+        return False, "Este tipo de destino não permite publicação."
+
+    def manual_destinations(self, company):
+        result = []
+        for destination in self.store.list(company, "destination"):
+            eligible, reason = self.manual_destination_capability(company, destination)
+            result.append({"id": destination["id"], "name": destination.get("name") or "Destino",
+                           "mode": destination["mode"], "eligible": eligible, "reason": reason})
+        return result
+
+    def manual_offer_issue(self, company, offer, template):
+        from .marketplaces import checked_affiliate_url
+        if offer.get("demo"):
+            return "A demonstração não pode ser publicada. Prepare um produto real."
+        if offer.get("availability") is False:
+            return "A loja informou que este produto está indisponível. Atualize a oferta quando ele voltar ao estoque."
+        if not str(offer.get("title") or "").strip():
+            return "Informe o nome do produto."
+        try:
+            price = Decimal(str(offer.get("price")))
+            if not price.is_finite() or price <= 0:
+                raise InvalidOperation
+        except (InvalidOperation, ValueError, TypeError):
+            return "Informe e confira o preço do produto."
+        if offer.get("currency") != "BRL":
+            return "Confirme o preço em reais antes de enviar esta oferta."
+        if not offer.get("affiliate_url"):
+            return "Adicione seu link próprio de afiliado para esta oferta."
+        platform = offer.get("platform") or "shopee"
+        try:
+            checked_affiliate_url(offer["affiliate_url"], platform)
+        except ProviderError as exc:
+            return exc.message
+        attribution = offer.get("affiliate_status")
+        if attribution == "provided":
+            pass
+        elif platform == "shopee" and offer.get("link_source") == "Shopee generateShortLink":
+            secret, version = self.store.credentials(company, "shopee")
+            if not secret or offer.get("link_version") != version:
+                return "Gere novamente a oferta com a conta Shopee atual."
+        else:
+            return "Adicione e confira seu link próprio de afiliado."
+        if template["media"] == "card" and not offer.get("image"):
+            return "Adicione uma imagem do produto ou escolha um template somente de texto."
+        try:
+            validate_length(caption(offer, template), template["media"])
+        except ProviderError as exc:
+            return exc.message
+        return None
+
+    async def manual_offer(self, job):
+        from .marketplaces import checked_affiliate_url, checked_product_url
+        old, company = job["doc"]["offer"], job["company"]
+        issue = self.manual_offer_issue(company, old, job["doc"]["template"])
+        if issue:
+            raise ProviderError("attribution", issue)
+        if old.get("affiliate_status") == "provided":
+            return {**old, "affiliate_url": checked_affiliate_url(old["affiliate_url"], old.get("platform") or "shopee"),
+                    "link_status": "provided", "tracking_status": "unavailable", "tracking_token": None, "utm_content": None}, None
+        provider, version = self.shopee(company)
+        if (old.get("extraction") or {}).get("api_unavailable") is True:
+            # This path was explicitly reviewed in the manual composer. Its
+            # product fields came from public metadata/user edits, not a failed
+            # affiliate catalog response. Only attribution is renewed here.
+            canonical = f"https://shopee.com.br/product/{old.get('shop')}/{old.get('item')}"
+            if (old.get("identity") != f"shopee:{old.get('shop')}:{old.get('item')}"
+                    or checked_product_url(old.get("catalog_url"), "shopee") != canonical):
+                raise ProviderError("attribution", "A origem do produto mudou. Prepare a oferta novamente.")
+            fresh = old
+        else:
+            fresh = await provider.detail(old["shop"], old["item"])
+            original = old.get("source_values") or {}
+            expected_title = original.get("title") or old.get("title")
+            changed = fresh.get("identity") != old["identity"] or card_text(fresh.get("title")) != card_text(expected_title)
+            try:
+                changed = changed or any(Decimal(str(fresh.get(key) or fresh.get("price"))) !=
+                                         Decimal(str(old.get(key) or old.get("price"))) for key in ("price", "price_max"))
+            except (InvalidOperation, ValueError, TypeError):
+                changed = True
+            if changed:
+                raise ProviderError("review", "O produto ou preço mudou. Atualize a oferta e confira a prévia antes de enviar novamente.")
+        tracking = await provider.tracked_affiliate_link(fresh, "orionj" + job["id"])
+        offer = {**old, **tracking, "platform": "shopee", "retailer_name": "Shopee",
+                 "affiliate_status": "generated", "link_status": "generated", "link_version": version, "link_source": "Shopee generateShortLink"}
+        return offer, version
+
+    async def dispatch_manual(self, job, destination):
+        company, doc = job["company"], job["doc"]
+        authorization = doc.get("manual") or {}
+        if not destination or destination_identity(destination) != authorization.get("destination"):
+            raise ProviderError("attribution", "O destino mudou. Confira a seleção e prepare um novo envio.")
+        eligible, reason = self.manual_destination_capability(company, destination)
+        if not eligible:
+            raise ProviderError("permissions", reason)
+        telegram_version = None
+        if destination["mode"] == "telegram":
+            transport, account, telegram_version = self.telegram(company)
+            now = int(time.time())
+            telegram_ids = [row["id"] for row in self.store.list(company, "destination") if row["mode"] == "telegram"]
+            if self.store.recent_publications(company, telegram_ids, now-10):
+                self.store.finish(job, "queued", retry=now+12, error="Respeitando o intervalo da conexão.")
+                return
+            proof = await transport.verify_destination(destination["chat_id"], account["bot_id"], account["operator"])
+            if proof.get("chat_id") != destination["chat_id"]:
+                raise ProviderError("permissions", "A verificação retornou outro destino Telegram.")
+        else:
+            proof = await self.manual_transport.verify(company, destination)
+            if proof.get("version") != destination["connection_version"]:
+                raise ProviderError("permissions", "A conta WhatsApp mudou. Verifique novamente o destino.")
+            expected_address = destination.get("chat_id") if destination["mode"] == "telegram" else (
+                destination.get("channel_jid") if destination["mode"] == "whatsapp_channel" else destination.get("address"))
+            if proof.get("address") != expected_address:
+                raise ProviderError("permissions", "A verificação retornou outro destino WhatsApp.")
+        offer, shopee_version = await self.manual_offer(job)
+        template = doc["template"]
+        text = caption(offer, template, authorization.get("destination_name") or destination["name"])
+        validate_length(text, template["media"])
+        media, thumbnail = None, None
+        if template["media"] == "card":
+            if destination["mode"] == "telegram":
+                media = await render_card(offer, template)
+            else:
+                media, thumbnail = await render_channel_card(offer, template)
+        if not self.store.dispatch(job, {**doc, "offer": offer, "published_text": text},
+                                   shopee_version, telegram_version, manual=True):
+            self.store.finish(job, "paused", error="A oferta, a conexão ou a autorização mudou antes do envio.")
+            return
+        if destination["mode"] == "telegram":
+            if template.get("style") == "whatsapp":
+                receipt = await transport.publish(destination["chat_id"], formatted_html(text), media, html=True)
+            else:
+                receipt = await transport.publish(destination["chat_id"], text, media)
+        else:
+            receipt = await self.manual_transport.publish(job["id"], company, destination,
+                                                          text, offer["affiliate_url"], media, thumbnail)
+        self.store.finish(job, "published", receipt=receipt)
 
     async def plan_rule(self, company, rule_id, rule, now):
         due = rule["next_at"]
@@ -168,6 +333,9 @@ class Engine:
         company, doc = job["company"], job["doc"]
         try:
             destination = self.store.get(company, "destination", job["destination"])
+            if doc.get("manual"):
+                await self.dispatch_manual(job, destination)
+                return
             if destination and destination["mode"] == "whatsapp_channel":
                 await self.dispatch_promotech(job, destination)
                 return
@@ -228,11 +396,11 @@ class Engine:
         except ProviderError as exc:
             if exc.code == "unknown":
                 self.store.finish(job, "unknown", error=exc.message)
-            elif exc.code in {"access", "permissions", "attribution"}:
+            elif exc.code in {"access", "permissions", "attribution", "review"}:
                 self.store.finish(job, "paused", error=exc.message)
                 if exc.code == "permissions" and destination:
-                    self.store.put(company, "destination", destination["id"],
-                                   {**destination, "verified": False, "issue": exc.message})
+                    self.store.update_destination(company, destination,
+                                                  {"verified": False, "issue": exc.message}, "destination:permission_lost")
             elif exc.code in {"rate", "network"} and job["attempts"] < 3:
                 backoff = exc.retry_after or (30 * 2 ** (job["attempts"] - 1))
                 self.store.finish(job, "queued", error=exc.message, retry=int(time.time()) + backoff)
@@ -249,8 +417,8 @@ class Engine:
                         await asyncio.wait_for(self.plan_rule(company, rule_id, rule, now), 80)
                     except Exception as exc:
                         log.warning("Affiliate rule interrupted: %s", type(exc).__name__)
-                if (self.sending or self.promotech) and (job := self.store.claim(
-                        telegram=self.sending, promotech=self.promotech.binding if self.promotech else None)):
+                if job := self.store.claim(telegram=self.sending,
+                                           promotech=self.promotech.binding if self.promotech else None):
                     try:
                         await asyncio.wait_for(self.dispatch_job(job), 90)
                     except Exception as exc:

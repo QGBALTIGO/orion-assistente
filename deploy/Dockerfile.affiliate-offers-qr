@@ -1,0 +1,5 @@
+ARG BASE_IMAGE=ghcr.io/qgbaltigo/orion-assistente-qr-bridge@sha256:0ef401c3d9f9236c68fd6154b18176d63ac6a263bdbef5c41fdf96e54f5540d5
+FROM ${BASE_IMAGE}
+ARG ORION_RELEASE
+LABEL org.opencontainers.image.revision=$ORION_RELEASE
+COPY qr-bridge/src/channel-routes.mjs qr-bridge/src/channel-manager.mjs qr-bridge/src/channel-session.mjs qr-bridge/src/affiliate-offers.mjs /srv/qr/src/

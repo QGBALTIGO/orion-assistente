@@ -13,6 +13,8 @@ import {deviceStorage,deviceControlLedger} from './device-storage.mjs';
 import {createDeviceDiagnostics} from './device-diagnostics.mjs';
 import {validGroupContactsRequest} from './device-group-contacts.mjs';
 import {createDeviceGroupAdd,validGroupAddRequest} from './device-group-add.mjs';
+import {validNumberCheckRequest} from './device-number-check.mjs';
+import {validAffiliateRequest} from './affiliate-offers.mjs';
 import {chatbotInteractiveMode} from './interactive-mode.mjs';
 import {assistantSelection,validateAssistantPresentation} from './assistant-presentation.mjs';
 import {PREPARATION_FAILURE_REPLY} from './assistant-ingress.mjs';
@@ -497,6 +499,59 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
         result.settings_revision!==input.settings_revision)throw rejected('context_changed');
     return result;
   }
+  async function deviceNumberCheck(id,key,input){
+    const rejected=reason=>Object.assign(Error('number_check_unavailable'),{numberCheckReason:reason});
+    if(!channelId(id)||!validNumberCheckRequest(input))throw rejected('invalid_request');
+    const c=contexts.get(id),session=c?.session,socketGeneration=c?.generation;
+    const matches=()=>!!(c&&current(c)&&sameKey(c.key,key)&&c.session===session&&c.generation===socketGeneration&&
+      c.device?.id===input.device_id&&c.device.generation===input.generation&&c.device.settings_revision===input.settings_revision&&
+      session?.status?.()==='connected'&&typeof session.numberCheck==='function');
+    if(!matches())throw rejected('context_changed');
+    const authorize=async()=>{
+      if(!matches())throw rejected('context_changed');
+      try{await validate(c,key);}catch{throw rejected('context_changed');}
+      if(!matches())throw rejected('context_changed');
+    };
+    const result=await session.numberCheck(input,{authorize});
+    // Recheck SQL authority even after a bounded/partial provider response.
+    await authorize();
+    if(result?.device_id!==input.device_id||result.generation!==input.generation||
+        result.settings_revision!==input.settings_revision)throw rejected('context_changed');
+    return result;
+  }
+  async function affiliateOffer(id,key,action,input){
+    if(!channelId(id)||!validAffiliateRequest(action,input))throw Error('affiliate_request_invalid');
+    const c=contexts.get(id),session=c?.session,generation=c?.generation;
+    const matches=()=>!!(c&&current(c)&&sameKey(c.key,key)&&c.session===session&&c.generation===generation&&
+      !c.assistant&&!c.legacyTransport&&c.device?.id===input.device_id&&c.device.generation===input.generation&&
+      c.device.settings_revision===input.settings_revision&&session?.status?.()==='connected'&&typeof session.affiliate==='function');
+    const authorize=async()=>{if(!matches())throw Error('affiliate_context_changed');await validate(c,key);
+      if(!matches())throw Error('affiliate_context_changed');};
+    await authorize();
+    if(action!=='send')return session.affiliate(action,input,{authorize});
+    const fingerprint=digest(JSON.stringify(['affiliate-offer-v1',input]));
+    const reserved=c.ledger.reserve(input.operation_id,fingerprint);
+    const outcome=row=>({...scopeOf(c.device),state:row.state==='accepted'?'sent':row.state==='refused'?'refused':'unknown',
+      accepted:row.accepted===true,provider_id:row.provider_id||null});
+    if(!reserved.fresh)return outcome(reserved.record);
+    let attempted=false;
+    const work=async()=>{
+      try{
+        await authorize();
+        const result=await session.affiliate(action,input,{authorize,beforeAttempt:async()=>{await authorize();attempted=true;}});
+        const entry={fingerprint,state:result.accepted===true?'accepted':'uncertain',accepted:result.accepted===true,
+          delivery:'unknown',provider_id:result.provider_id||null};
+        c.ledger.save(input.operation_id,entry);return outcome(entry);
+      }catch{
+        const entry={fingerprint,state:attempted?'uncertain':'refused',accepted:false,delivery:attempted?'unknown':'not_sent'};
+        c.ledger.save(input.operation_id,entry);return outcome(entry);
+      }
+    };
+    // Keep publications on one device ordered while allowing read-only UI
+    // work. The persistent ledger fences repeats across process restarts.
+    const pending=(c.affiliateTail||Promise.resolve()).then(work);
+    c.affiliateTail=pending.catch(()=>{});return pending;
+  }
   async function deviceStatus(id,key){
     const c=contexts.get(id);
     if(!c){
@@ -612,7 +667,7 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
       throw Error('device_operation_unavailable');
     }finally{deviceControls.delete(id);}
   }
-  return {start,status,pair,send,operation,deviceStatus,deviceOperation,reviewDeviceIngress,deviceControl,deviceGroupContacts,deviceGroupAdd,
+  return {start,status,pair,send,operation,deviceStatus,deviceOperation,reviewDeviceIngress,deviceControl,deviceGroupContacts,deviceGroupAdd,deviceNumberCheck,affiliateOffer,
     deviceProxyTest:(id,key,input)=>diagnostics.dispatch(id,key,input),
     deviceDiagnosticOperation:(id,key,requestId)=>diagnostics.read(id,key,requestId),
     async deviceDiagnostics(id,key){const state=await deviceStatus(id,key);return {...state,runtime:contexts.get(id)?.session?.deviceDiagnostics?.()||null};},
