@@ -1,0 +1,59 @@
+name: Orion - Checkout Cakto de Barbearia
+on:
+  push:
+    branches: [codex/orion-barbearia-checkout-cakto-20261125]
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    env:
+      BASE_IMAGE: ghcr.io/qgbaltigo/orion-assistente-api@sha256:a28c2f7da2d853d587a3a147f9f8349a4d83137b196065fa2909223307cbd255
+      IMAGE: ghcr.io/qgbaltigo/orion-assistente-api:barber-embedded-${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Testar os planos e o checkout embutido
+        run: |
+          npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+          node --test --test-reporter=dot ui-tests/orion-plans.test.mjs ui-tests/plan-permissions.test.mjs
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Validar os arquivos ativos
+        run: |
+          docker run --rm --entrypoint python "$BASE_IMAGE" -c '
+          import hashlib
+          from pathlib import Path
+          originals = {
+              "app/plan_management.py": "4e5a5e370b98da6b44fc2cd6803947420712d927",
+              "app/static/orion-plans.js": "a64b9bdcead93bab4c6b4971c940067f650eedca",
+              "app/static/orion-plans.css": "7202156dc15900922ccca771480f6ac903e2399e",
+          }
+          for name, expected in originals.items():
+              data = Path(name).read_bytes()
+              assert hashlib.sha1(b"blob %d" % len(data) + bytes(1) + data).hexdigest() == expected, name
+          '
+      - name: Construir e verificar o checkout
+        run: |
+          docker build -f deploy/Dockerfile.barber-checkout --build-arg ORION_RELEASE="$GITHUB_SHA" -t "$IMAGE" .
+          docker run --rm --entrypoint python "$IMAGE" -c '
+          from app.main import app
+          from app.plan_management import embedded_checkout_enabled
+          from scripts.probe_barber_checkout_read_only import check
+          assert not embedded_checkout_enabled()
+          route = app.openapi()["paths"]["/api/v1/tenants/{tenant_id}/management/plan-checkout"]
+          assert set(route) == {"get", "post"}
+          '
+          docker push "$IMAGE"
+          docker image inspect "$IMAGE" --format '{{index .RepoDigests 0}}'

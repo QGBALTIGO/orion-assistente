@@ -1,0 +1,6 @@
+FROM ghcr.io/qgbaltigo/orion-assistente-api@sha256:a28c2f7da2d853d587a3a147f9f8349a4d83137b196065fa2909223307cbd255
+ARG ORION_RELEASE
+LABEL org.opencontainers.image.revision=$ORION_RELEASE
+COPY --chown=appuser:appuser app/plan_management.py /srv/app/app/
+COPY --chown=appuser:appuser app/static/orion-plans.js app/static/orion-plans.css /srv/app/app/static/
+COPY --chown=appuser:appuser scripts/probe_barber_checkout_read_only.py /srv/app/scripts/

@@ -19,7 +19,7 @@ from uuid import UUID
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Response
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, field_validator
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
@@ -30,7 +30,7 @@ from app.account_business import account_membership_role
 from app.tenant_access import resolve_site_access
 from app.admin_accounts import require_platform_owner
 from app.plan_catalog import CODES, PLAN_FEATURES, feature_catalog
-from app.cakto_readiness import direct_environment_ready
+from app.cakto_readiness import direct_environment_ready, webhook_secret_valid
 from app.plan_permissions import plan_state, lock_plan
 from app.workspace_policy import require_standard_workspace
 
@@ -81,6 +81,8 @@ class TrialRequest(BaseModel):
 class CheckoutChoice(BaseModel):
     model_config = ConfigDict(extra="forbid")
     plan_code: str
+    embedded: StrictBool = False
+    expected_cents: StrictInt | None = Field(default=None, gt=0)
 
 
 class TrialDecision(BaseModel):
@@ -181,6 +183,42 @@ def _subscription_name(row):
             "next_renewal_at": None}
 
 
+def embedded_checkout_enabled():
+    return (os.getenv("ORION_BARBER_CAKTO_EMBEDDED", "0") == "1"
+            and os.getenv("ORION_CAKTO_LIFECYCLE_ENABLED", "0") == "1"
+            and webhook_secret_valid() and cached_cakto_client().configured)
+
+
+async def _is_barbershop(db, tenant_id):
+    return (await db.execute(text("""SELECT configuration->>'niche'
+        FROM public.business_onboarding WHERE tenant_id=:tenant"""),
+        {"tenant": tenant_id})).scalar_one_or_none() == "barbearia"
+
+
+async def verify_embedded_checkout(client, offers):
+    """Authenticate the monthly offers and the existing payment lifecycle before opening checkout."""
+    from scripts.probe_orion_webhooks_read_only import probe as inventory_probe
+    from scripts.probe_orion_webhook_history_read_only import probe as history_probe
+
+    if (client.granted_scopes(frozenset({"read", "orders", "subscriptions"})) is not True
+            or not all(_exact_offer(offers, plan) for plan in CODES.values())):
+        raise HTTPException(409, "As ofertas mensais da Cakto ainda precisam de validação.")
+    try:
+        inventory = await inventory_probe(client, offers)
+    except (httpx.HTTPError, ValueError, RuntimeError):
+        inventory = {}
+    if inventory.get("offer_matches") == 3 and inventory.get("webhook_ready") == 3:
+        return
+    try:
+        history = await history_probe(client, offers)
+    except (httpx.HTTPError, ValueError, RuntimeError):
+        raise HTTPException(503, "Não foi possível conferir o webhook da Cakto.") from None
+    if not (history.get("offer_matches") == history.get("webhook_ready")
+            == history.get("required_event_coverage") == history.get("product_coverage") == 3
+            and history.get("recent_verified_deliveries", 0) >= 6):
+        raise HTTPException(409, "A confirmação das assinaturas pela Cakto ainda precisa de validação.")
+
+
 @router.get("/api/v1/tenants/{tenant_id}/management/plan-overview")
 async def plan_overview(tenant_id: UUID, actor: Actor = Depends(authenticate), response: Response = None):
     if response is not None:
@@ -189,6 +227,7 @@ async def plan_overview(tenant_id: UUID, actor: Actor = Depends(authenticate), r
     async with support_session_factory()() as db:
         async with db.begin():
             effective = await plan_state(db, tenant_id)
+            embedded = embedded_checkout_enabled() and await _is_barbershop(db, tenant_id)
             row = (await db.execute(text("""
                 SELECT s.id,s.status,s.trial_ends_at,s.grace_until,
                        s.last_verified_payment_at,p.name,p.code,p.monthly_cents,p.max_professionals
@@ -221,6 +260,7 @@ async def plan_overview(tenant_id: UUID, actor: Actor = Depends(authenticate), r
         # not a recurring subscription or automatic monthly debit.
         "checkout_enabled": __import__("app.prepaid_pix_api",fromlist=["pix_environment_ready"]).pix_environment_ready(),
         "payment_mode": "pix_manual_30_days",
+        "embedded_checkout_enabled": embedded,
         "trial_scope": TRIAL_SCOPE,
         "trial_requires_team_activation": True,
     }
@@ -396,16 +436,28 @@ async def start_plan_checkout(tenant_id: UUID, payload: CheckoutChoice,
     plan = CODES.get(payload.plan_code)
     if not plan:
         raise HTTPException(422, "Escolha um plano válido")
-    if os.getenv("CAKTO_BILLING_LIVE_ENABLED", "0") != "1":
+    if payload.embedded:
+        if not embedded_checkout_enabled():
+            raise HTTPException(409, "O checkout da Barbearia ainda está indisponível.")
+        if payload.expected_cents != plan["price_cents"]:
+            raise HTTPException(409, "O preço mudou. Atualize os planos antes de continuar.")
+    elif os.getenv("CAKTO_BILLING_LIVE_ENABLED", "0") != "1":
         raise HTTPException(409, "Contratações em preparação. A integração de pagamentos ainda está em homologação.")
     await check_new_checkout_access(tenant_id, account_id)
+    if payload.embedded:
+        async with support_session_factory()() as db:
+            if not await _is_barbershop(db, tenant_id):
+                raise HTTPException(403, "O checkout integrado está disponível na Barbearia.")
+    client = cached_cakto_client()
     try:
-        offers = await cached_cakto_client().list_offers()
+        offers = await client.list_offers()
     except (httpx.HTTPError, ValueError, RuntimeError):
         raise HTTPException(503, "Não foi possível confirmar as ofertas na Cakto") from None
     offer = _exact_offer(offers, plan)
     if offer is None:
         raise HTTPException(409, "A oferta mensal deste plano ainda não corresponde ao valor apresentado. Nenhuma cobrança foi iniciada.")
+    if payload.embedded:
+        await verify_embedded_checkout(client, offers)
     # An explicit allowlist is checked after the offer name, price and recurrence.
     checkout = plan["checkout_url"]
     # Only approved checkout host and path are redirectable.
@@ -416,6 +468,8 @@ async def start_plan_checkout(tenant_id: UUID, payload: CheckoutChoice,
     async with support_session_factory()() as db:
         async with db.begin():
             await require_checkout_available(db, tenant_id, account_id, lock="exclusive")
+            if payload.embedded and not await _is_barbershop(db, tenant_id):
+                raise HTTPException(403, "O checkout integrado está disponível na Barbearia.")
             await db.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))"),
                              {"key": "orion-checkout:" + str(tenant_id)})
             subscription = (await db.execute(text("""
@@ -424,18 +478,21 @@ async def start_plan_checkout(tenant_id: UUID, payload: CheckoutChoice,
             if subscription is not None:
                 raise HTTPException(409, "Esta empresa já possui um registro de assinatura. Regularização ou troca exige confirmação específica.")
             previous = (await db.execute(text("""
-                SELECT id,account_id,plan_code,offer_id,expected_cents,callback_hash
-                FROM orion_cakto_checkout_intents
+                SELECT id,account_id,plan_code,offer_id,expected_cents,callback_hash,
+                       EXISTS(SELECT 1 FROM orion_direct_payment_attempts a WHERE a.intent_id=i.id) AS has_direct_attempt
+                FROM orion_cakto_checkout_intents i
                 WHERE tenant_id=:tenant AND state='pending' AND expires_at>now()
                 ORDER BY created_at DESC LIMIT 1 FOR UPDATE
             """), {"tenant": tenant_id})).mappings().first()
             if previous:
-                if (previous["account_id"] != account_id
+                if (payload.embedded and previous.get("has_direct_attempt")
+                        or previous["account_id"] != account_id
                         or previous["plan_code"] != payload.plan_code
                         or previous["offer_id"] != offer["id"]
                         or previous["expected_cents"] != plan["price_cents"]):
                     raise HTTPException(409, "Existe uma contratação diferente em andamento. Confirme com o suporte antes de trocar.")
-                token = _replayable_checkout_token(tenant_id, previous["id"], payload.plan_code)
+                intent_id = previous["id"]
+                token = _replayable_checkout_token(tenant_id, intent_id, payload.plan_code)
                 if not secrets.compare_digest(hashlib.sha256(token.encode()).hexdigest(),
                                                previous["callback_hash"]):
                     raise HTTPException(409, "Uma tentativa anterior precisa de revisão. Entre em contato com o suporte.")
@@ -452,7 +509,25 @@ async def start_plan_checkout(tenant_id: UUID, payload: CheckoutChoice,
                        "cents": plan["price_cents"], "digest": digest})
     return {"checkout_url": _checkout_url(checkout, token),
             "plan_code": payload.plan_code, "monthly_cents": plan["price_cents"],
-            "status": "pending_payment"}
+            "status": "pending_payment", **({"intent_id": str(intent_id)} if payload.embedded else {})}
+
+
+@router.get("/api/v1/tenants/{tenant_id}/management/plan-checkout")
+async def embedded_checkout_status(tenant_id: UUID, intent_id: UUID, response: Response,
+                                   actor: Actor = Depends(authenticate)):
+    response.headers["Cache-Control"] = "no-store"
+    account_id = _owner_account(await resolve_site_access(actor, tenant_id), actor)
+    async with support_session_factory()() as db:
+        row = (await db.execute(text("""
+            SELECT plan_code, state, expires_at <= now() AS expired
+            FROM orion_cakto_checkout_intents
+            WHERE id=:intent AND tenant_id=:tenant AND account_id=:account
+        """), {"intent": intent_id, "tenant": tenant_id, "account": account_id})).mappings().first()
+    if row is None:
+        raise HTTPException(404, "Checkout não encontrado.")
+    status = ("verified" if row["state"] == "verified" else
+              "expired" if row["expired"] else "pending_payment")
+    return {"status": status, "plan_code": row["plan_code"]}
 
 
 def first_cakto_subscription_confirmed(event: dict, order: dict,

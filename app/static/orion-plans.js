@@ -47,9 +47,10 @@ function catalogPlan(plans,code){
   Number.isSafeInteger(plan.monthly_cents)&&plan.monthly_cents>0&&
   Number.isSafeInteger(plan.max_professionals)&&plan.max_professionals>0?plan:null;
 }
-function renderCard(def, server, currentCode, currentActive, allowed, ctx, source, checkoutConfigured) {
+function renderCard(def, server, currentCode, currentActive, allowed, ctx, source, checkoutConfigured, embedded) {
  const chosen=catalogPlan(server,def.code);
  const same=currentActive&&currentCode===def.code;
+ const useEmbedded=embedded&&!currentActive;
  const badge=def.code==='profissional'?'<span class="op-recommended">Recomendado</span>':'';
  let actionLabel='Assinar '+(def.code==='profissional'?'Profissional':def.code==='essencial'?'Essencial':'Elite');
  let disabled='';
@@ -60,11 +61,12 @@ function renderCard(def, server, currentCode, currentActive, allowed, ctx, sourc
  const features=def.features.map(feature=>'<li>'+ic('check')+'<span>'+escapeHTML(feature)+'</span></li>').join('');
  return '<article class="op-plan op-'+def.code+(same?' op-current':'')+'" aria-label="'+escapeHTML(def.name)+'">'
    +'<header class="op-plan-head"><div class="op-plan-heading"><h3>'+escapeHTML(def.name)+'</h3>'+badge+'</div><p>'+escapeHTML(def.intro)+'</p></header>'
-   +'<div class="op-price"><strong>'+(chosen?price(chosen.monthly_cents):'Preço indisponível')+'</strong><span>/30 dias</span></div>'
+   +'<div class="op-price"><strong>'+(chosen?price(chosen.monthly_cents):'Preço indisponível')+'</strong><span>'+(useEmbedded?'/mês':'/30 dias')+'</span></div>'
    +'<p class="op-per-company">por empresa · '+(chosen?'até '+chosen.max_professionals+' profissionais':'limite indisponível')+'</p>'
    +'<div class="op-plan-divider"></div><ul class="op-plan-features">'+features+'</ul>'
-   +'<div class="op-plan-bottom"><button class="op-btn '+(def.code==='profissional'?'op-btn-primary':'op-btn-secondary')+'" type="button" data-op-checkout="'+def.code+'" '+disabled+'>'+escapeHTML(actionLabel)+'</button>'
-   +'<span class="op-plan-caption">'+(same?'Seu plano vigente':checkoutConfigured?'Pagamento protegido, sujeito à verificação.':'Pagamento temporariamente indisponível; nenhuma cobrança será gerada.')+'</span></div></article>';
+   +'<div class="op-plan-bottom"><button class="op-btn '+(def.code==='profissional'?'op-btn-primary':'op-btn-secondary')+'" type="button" data-op-checkout="'+def.code+'"'+(useEmbedded?' data-op-embedded':'')+' '+disabled+'>'+escapeHTML(actionLabel)+'</button>'
+   +(useEmbedded&&checkoutConfigured&&!disabled?'<button class="op-btn op-btn-secondary" type="button" data-op-checkout="'+def.code+'">Pagar 30 dias com Pix</button>':'')
+   +'<span class="op-plan-caption">'+(same?'Seu plano vigente':useEmbedded?'Assinatura mensal pela Cakto.':checkoutConfigured?'Pagamento protegido, sujeito à verificação.':'Pagamento temporariamente indisponível; nenhuma cobrança será gerada.')+'</span></div></article>';
 }
 function hasPlanDifference(feature){
  return feature[1]!==feature[2]||feature[2]!==feature[3];
@@ -440,17 +442,85 @@ async function pixCheckout(root,code,ctx,data){
  }catch{status.textContent='Não foi possível validar o Pix. Nenhuma cobrança criada.';}
 }
 
+async function openEmbeddedCheckout(root,button,ctx,data){
+ const code=button.dataset.opCheckout,plan=catalogPlan(data.plans,code);
+ if(!plan||data.embedded_checkout_enabled!==true||data.can_manage_plan!==true||ctx.canManage!==true||
+    root.querySelector('.op-checkout-dialog')||ctx.canPurchase?.()===false)return;
+ const modal=document.createElement('dialog');
+ modal.className='os-dialog op-dialog op-checkout-dialog op-embedded-checkout';
+ modal.setAttribute('aria-label','Assinatura mensal pela Cakto');
+ modal.innerHTML='<header class="op-embedded-header"><div><h2>'+escapeHTML(plan.name)+'</h2>'
+   +'<p>'+price(plan.monthly_cents)+' por mês · pagamento pela Cakto</p></div>'
+   +'<button type="button" class="op-btn op-btn-secondary" data-embedded-close>Voltar aos planos</button></header>'
+   +'<p class="op-payment-banner" data-embedded-status role="status" aria-live="polite">Abrindo o checkout…</p>'
+   +'<button type="button" class="op-btn op-btn-secondary" data-embedded-check hidden>Verificar pagamento</button>';
+ root.append(modal);
+ const status=modal.querySelector('[data-embedded-status]'),refresh=modal.querySelector('[data-embedded-check]');
+ let timer,intent,frame,busy=false,finished=false;
+ const current=()=>modal.isConnected&&mounted?.root===root&&mounted?.ctx===ctx;
+ const cleanup=()=>{window.clearInterval(timer);modal.remove();};
+ const close=()=>{cleanup();button.focus({preventScroll:true});};
+ mounted.closeCheckout=cleanup;
+ modal.addEventListener('cancel',event=>{event.preventDefault();close();});
+ modal.querySelector('[data-embedded-close]').addEventListener('click',close);
+ modal.showModal();
+
+ async function poll(){
+  if(!current()||!intent||busy||finished)return;
+  busy=true;
+  try{
+   const answer=await ctx.request('/plan-checkout?intent_id='+encodeURIComponent(intent));
+   if(!current()||answer.plan_code!==code)return;
+   if(answer.status==='verified'){
+    window.clearInterval(timer);finished=true;frame.remove();refresh.hidden=true;
+    status.textContent='Pagamento confirmado. Seu plano está ativo.';
+    window.dispatchEvent(new CustomEvent('orion:plan-changed',{detail:{preservePage:true}}));
+    const fresh=await ctx.request('/plan-overview');
+    if(current()){close();render(root,fresh,ctx);}
+   }else if(answer.status==='expired'){
+    window.clearInterval(timer);finished=true;frame.remove();refresh.hidden=true;
+    status.textContent='Este checkout expirou. Volte aos planos para continuar.';
+   }else status.textContent='Aguardando confirmação da Cakto.';
+  }catch{if(current()&&!finished)status.textContent='A confirmação está indisponível agora. Você pode verificar novamente.';}
+  finally{busy=false;}
+ }
+ refresh.addEventListener('click',()=>void poll());
+ try{
+  const result=await ctx.request('/plan-checkout','POST',{plan_code:code,embedded:true,expected_cents:plan.monthly_cents});
+  if(!current())return;
+  const url=new URL(result.checkout_url),callback=url.searchParams.get('callback');
+  if(result.plan_code!==code||result.monthly_cents!==plan.monthly_cents||result.status!=='pending_payment'||
+     !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(result.intent_id||'')||
+     url.origin!=='https://pay.cakto.com.br'||url.username||url.password||url.hash||
+     !/^\/[A-Za-z0-9_-]+$/.test(url.pathname)||!/^orion_[A-Za-z0-9_-]{43}$/.test(callback||'')||
+     url.searchParams.get('sck')!==callback||[...url.searchParams].length!==2)
+    throw Error('O Orion não conseguiu validar este checkout.');
+  intent=result.intent_id;
+  frame=document.createElement('iframe');frame.className='op-cakto-frame';frame.title='Checkout seguro da Cakto';
+  frame.referrerPolicy='no-referrer';
+  frame.setAttribute('sandbox','allow-forms allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox');
+  frame.setAttribute('allow','payment https://pay.cakto.com.br');
+  frame.src=url.href;modal.append(frame);refresh.hidden=false;
+  status.textContent='Aguardando confirmação da Cakto.';
+  timer=window.setInterval(()=>{if(!document.hidden)void poll();},12000);
+ }catch(error){
+  if(current())status.textContent=typeof error.status==='number'&&error.message
+    ?error.message:'Não foi possível abrir o checkout da Cakto. Volte aos planos e tente novamente.';
+ }
+}
+
 function render(root,data,ctx){
  if(!root.isConnected)return;
  if(mounted?.root===root)mounted.data=data;
  const plans=Array.isArray(data.plans)?data.plans:[],sub=data.subscription,
  currentCode=canonical(data.effective_plan?.code),currentActive=data.effective_plan?.active===true;
  const canManage=!!data.effective_plan&&!!data.can_manage_plan&&!!ctx.canManage;
+ const embedded=data.embedded_checkout_enabled===true;
  root.innerHTML='<div class="op-page"><header class="op-heading"><span class="op-eyebrow">PLANOS ORION</span><h2>Escolha o plano ideal para sua empresa</h2><p>Tudo o que você precisa para organizar seus agendamentos, gerenciar seu negócio e oferecer uma experiência melhor aos seus clientes.</p></header>'
  +effectiveBanner(data)+subscriptionBanner(data)
  +'<div id="opPlanFeedback" class="op-feedback" role="status" aria-live="polite" hidden></div>'
- +(!data.checkout_enabled?'<p class="op-billing-notice" role="status">As contratações estão temporariamente indisponíveis enquanto a integração de pagamentos é validada. Nenhuma cobrança será gerada.</p>':'')
- +'<section aria-label="Planos pré-pagos de 30 dias"><div class="op-plans-grid">'+defs.map(def=>renderCard(def,plans,currentCode,currentActive,canManage,ctx,data.effective_plan?.source,!!data.checkout_enabled)).join('')+'</div>'
+ +(!data.checkout_enabled&&!embedded?'<p class="op-billing-notice" role="status">As contratações estão temporariamente indisponíveis enquanto a integração de pagamentos é validada. Nenhuma cobrança será gerada.</p>':'')
+ +'<section aria-label="'+(embedded?'Planos de Barbearia':'Planos pré-pagos de 30 dias')+'"><div class="op-plans-grid">'+defs.map(def=>renderCard(def,plans,currentCode,currentActive,canManage,ctx,data.effective_plan?.source,!!data.checkout_enabled,embedded)).join('')+'</div>'
  +'<p class="op-footnote">*Recursos de mensagens, automações e IA exigem configuração, canal conectado e disponibilidade da funcionalidade. O Marketing IA e o Consultor IA não realizam agendamentos pelo WhatsApp; essa recepcionista é exclusiva do Elite.</p></section>'
  +(Array.isArray(data.feature_catalog)&&data.feature_catalog.some(item=>item.implemented===false)?'<p class="os-help" data-op-unavailable>'+data.feature_catalog.filter(item=>item.implemented===false).map(item=>escapeHTML(item.name)+': '+escapeHTML(item.description||'Indisponível nesta versão.')).join(' ')+'</p>':'')
  +renderTrial(data,canManage)
@@ -467,7 +537,12 @@ function mount(root,data,ctx){
  root.addEventListener('click',root._orionPlansClick=async event=>{
   const trial=event.target.closest('[data-op-trial]'),checkoutButton=event.target.closest('[data-op-checkout]');
   if(trial&&!trial.disabled){event.preventDefault();renderTrialDialog(root,data,ctx);}
-  if(checkoutButton&&!checkoutButton.disabled){event.preventDefault();await pixCheckout(root,checkoutButton.dataset.opCheckout,ctx,mounted?.root===root?mounted.data:data);}
+  if(checkoutButton&&!checkoutButton.disabled){
+   event.preventDefault();
+   const currentData=mounted?.root===root?mounted.data:data;
+   if(checkoutButton.hasAttribute('data-op-embedded'))await openEmbeddedCheckout(root,checkoutButton,ctx,currentData);
+   else await pixCheckout(root,checkoutButton.dataset.opCheckout,ctx,currentData);
+  }
  });
  root.addEventListener('change',root._orionPlansChange=event=>{
   if(!event.target.matches('[data-op-only-differences]'))return;
@@ -477,6 +552,7 @@ function mount(root,data,ctx){
  });
 }
 function unmount(){
+ mounted?.closeCheckout?.();
  if(mounted?.root?._orionPlansClick)mounted.root.removeEventListener('click',mounted.root._orionPlansClick);
  if(mounted?.root)delete mounted.root._orionPlansClick;
  if(mounted?.root?._orionPlansChange)mounted.root.removeEventListener('change',mounted.root._orionPlansChange);

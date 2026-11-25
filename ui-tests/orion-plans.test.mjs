@@ -32,6 +32,9 @@ function fixture(overrides={},options={}){
   request:async(path,method='GET',data)=>{calls.push({path,method,data});
    if(path==='/plan-trial'){overview.trial={status:'pending',started_at:null,ends_at:null};return{status:'pending',message:'Solicitação recebida!'};}
    if(path==='/plan-overview')return overview;
+   if(path==='/plan-checkout'&&options.embeddedReply)return await options.embeddedReply(data);
+   if(path.startsWith('/plan-checkout?')&&options.embeddedStatus)return options.embeddedStatus;
+
    if(path==='/plan-pix-current'){if(options.currentUnavailable||options.currentUnavailableAfterCharge&&chargeAttempts)throw Error('synthetic current lookup unavailable');return current;}
    if(path==='/plan-pix-config')return options.pixConfig||{available:false,methods:[],mode:'manual_30_days'};
    if(path==='/plan-pix-charge' && options.pixConfig?.available){
@@ -62,6 +65,47 @@ function fillPix(f,dialog){
  form.elements.namedItem('one_time').checked=true;form.elements.namedItem('understood').checked=true;
  form.dispatchEvent(new f.window.Event('submit',{bubbles:true,cancelable:true}));
 }
+
+const checkoutIds={essencial:'3bdhdkc_1219844',profissional:'3652fm4',elite:'v4md8n3'};
+const tracker='orion_'+'A'.repeat(43);
+const intent='11111111-1111-4111-8111-111111111111';
+function embeddedReply(data,origin='https://pay.cakto.com.br'){
+ return {checkout_url:origin+'/'+checkoutIds[data.plan_code]+'?callback='+tracker+'&sck='+tracker,
+         plan_code:data.plan_code,monthly_cents:data.expected_cents,status:'pending_payment',intent_id:intent};
+}
+
+for(const plan of base.plans)test('the monthly checkout opens inside Orion for '+plan.code,async()=>{
+ const f=fixture({embedded_checkout_enabled:true},{embeddedReply,embeddedStatus:{plan_code:plan.code,status:'pending_payment'}});
+ try{
+  const button=f.root.querySelector('[data-op-checkout='+plan.code+'][data-op-embedded]');
+  assert.match(button.closest('article').textContent,/Assinatura mensal/);
+  const location=f.window.location.href;
+  button.click();button.click();await tick();
+  const iframe=f.root.querySelector('iframe');
+  assert.equal(new URL(iframe.src).pathname,'/'+checkoutIds[plan.code]);
+  assert.equal(f.window.location.href,location);
+  assert.equal(iframe.getAttribute('sandbox').includes('allow-top-navigation'),false);
+  assert.deepEqual(JSON.parse(JSON.stringify(f.calls)),[{path:'/plan-checkout',method:'POST',
+    data:{plan_code:plan.code,embedded:true,expected_cents:plan.monthly_cents}}]);
+  f.root.querySelector('[data-embedded-check]').click();await tick();
+  assert.equal(f.calls[1].path,'/plan-checkout?intent_id='+intent);
+  assert.match(f.root.querySelector('[data-embedded-status]').textContent,/Aguardando confirmação/);
+  f.root.querySelector('[data-embedded-close]').click();
+  assert.equal(f.root.querySelector('iframe'),null);
+ }finally{f.close();}
+});
+
+test('an untrusted checkout cannot navigate or display, and Pix retains its own action',async()=>{
+ const f=fixture({embedded_checkout_enabled:true,checkout_enabled:true},{
+  embeddedReply:data=>embeddedReply(data,'https://other.example.test')});
+ try{
+  assert.equal(f.root.querySelectorAll('[data-op-embedded]').length,3);
+  assert.equal(f.root.querySelectorAll('[data-op-checkout]:not([data-op-embedded])').length,3);
+  f.root.querySelector('[data-op-embedded]').click();await tick();
+  assert.equal(f.root.querySelector('iframe'),null);
+  assert.match(f.root.querySelector('[data-embedded-status]').textContent,/Não foi possível/);
+ }finally{f.close();}
+});
 
 test('only the owner sees an enabled prepaid renewal, including when the current tier matches',()=>{
  const active=planState('essencial',{active:true,source:'pix_prepaid'});

@@ -316,3 +316,19 @@
 @media(prefers-reduced-motion:reduce){
  .op-payment-method,.op-checkout-dialog .op-payment-field input{transition:none}
 }
+
+.op-embedded-checkout {
+  width: min(920px, calc(100vw - 24px));
+  max-width: none;
+  height: min(830px, calc(100dvh - 24px));
+  max-height: none;
+  padding: 16px;
+  overflow: hidden;
+}
+.op-embedded-checkout[open] { display: flex; flex-direction: column; gap: 10px; }
+.op-embedded-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.op-embedded-header h2, .op-embedded-header p { margin: 0; }
+.op-embedded-header p { margin-top: 4px; }
+.op-embedded-checkout .op-payment-banner { margin: 0; }
+.op-embedded-checkout [data-embedded-check]:not([hidden]) { align-self: flex-start; }
+.op-cakto-frame { width: 100%; min-height: 0; flex: 1; border: 0; border-radius: 12px; background: #fff; }
