@@ -165,6 +165,7 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
   }
 
   function dashboardSourceMessage(snapshot) {
+    if (analyticsError && !snapshot.data) return "Não foi possível consultar os relatórios agora. Tente atualizar novamente.";
     if (snapshot.financial && snapshot.source.status==="partial") return "Relatório parcial da Shopee. Os valores podem mudar.";
     if (snapshot.financial && snapshot.source.status==="syncing") return "A Shopee está atualizando o relatório.";
     if (snapshot.financial) return dashboardNumber(snapshot.summary.commission_cents)===null?"A comissão ainda não foi informada no relatório de vendas.":"Comissões informadas pela Shopee, sujeitas à validação e a cancelamentos.";
@@ -352,7 +353,7 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
       <header class="af-dashboard-heading"><div><span class="af-dashboard-eyebrow">Afiliados</span><h1>Dashboard</h1></div><div class="af-dashboard-heading-actions">${link("Nova oferta","ofertas","plus",true)}</div><p>Suas ofertas, seus canais e seus próximos resultados.</p></header>
       <div class="af-dashboard-toolbar"><div class="af-dashboard-periods" role="group" aria-label="Período dos resultados">${Object.entries(dashboardPeriods).map(([key,label])=>`<button type="button" data-dashboard-period="${key}" aria-pressed="${key===analyticsPeriod}">${html(label)}</button>`).join("")}</div>
         <div class="af-dashboard-freshness"><span>${analyticsLoading?"Atualizando…":`Consultado ${dashboardTime(updated,{hour:"2-digit",minute:"2-digit"},timeZone)}`}</span><button class="os-icon-button" type="button" data-act="refresh" aria-label="Atualizar Dashboard" title="Atualizar os dados disponíveis"${analyticsLoading?" disabled":""}>${icon("refresh")}</button></div></div>
-      ${analyticsError && snapshot.data?`<div class="af-dashboard-alert" role="status">${icon("info")}<p>Não foi possível atualizar os resultados. Mantivemos os últimos dados confirmados deste período.</p></div>`:""}
+      ${analyticsError?`<div class="af-dashboard-alert" role="status">${icon("info")}<p>${snapshot.data?"Não foi possível atualizar os resultados. Mantivemos os últimos dados confirmados deste período.":"Não foi possível consultar os relatórios agora. Tente atualizar novamente."}</p></div>`:""}
       <div class="af-dashboard-overview" aria-busy="${analyticsLoading}">${dashboardHero(snapshot)}${dashboardKpis(snapshot)}</div>
       ${attention?`<a href="#fila" class="af-dashboard-alert af-dashboard-alert-warning">${icon("shieldAlert")}<p><strong>${attention} ${attention===1?"publicação precisa":"publicações precisam"} de atenção</strong><span>Revise as ocorrências entre as últimas ${snapshot.sampleLimit} publicações.</span></p>${icon("chevron")}</a>`:""}
       <div class="af-dashboard-workspace">${dashboardChart(snapshot)}${dashboardOperation(snapshot)}</div>

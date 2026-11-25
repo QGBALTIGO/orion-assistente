@@ -356,6 +356,7 @@ a.af-dashboard-kpi:hover { background: color-mix(in srgb,var(--os-tint) 35%,var(
 }
 @media (max-width: 767px) {
   .os-main:has(.af-dashboard) { padding: 16px; }
+  .os-layout-app .os-main:has(.af-dashboard) { padding-bottom: calc(110px + env(safe-area-inset-bottom, 0px)); }
 }
 @media (prefers-reduced-motion: reduce) {
   .af-dashboard *, .af-dashboard *::before, .af-dashboard *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }

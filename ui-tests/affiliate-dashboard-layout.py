@@ -1,6 +1,6 @@
 """Offline browser QA for the affiliate Dashboard in the complete Orion panel.
 
-Run: python ui-tests/affiliate-dashboard-layout.py
+Run: python ui-tests/affiliate-dashboard-layout.py [--engine chromium|webkit]
 Synthetic financial fixtures exercise a future integrated report; the unavailable
 fixture reflects the current capability. Every network request is intercepted,
 and non-GET requests fail. No production session, account or contact is used.
@@ -130,7 +130,7 @@ def report(period: str, ready: bool) -> dict:
     }
 
 
-def run(context, width: int, theme: str, layout: str, state_name: str) -> dict:
+def run(context, width: int, theme: str, layout: str, state_name: str, engine: str, output: Path) -> dict:
     ready = state_name == 'ready'
     calls, errors, blocked = [], [], []
     page = context.new_page()
@@ -210,6 +210,11 @@ def run(context, width: int, theme: str, layout: str, state_name: str) -> dict:
     page.goto(ORIGIN + '/panel?aba=dashboard', wait_until='domcontentloaded')
     page.locator('.af-dashboard-overview[aria-busy="false"]').wait_for(timeout=15000)
     page.evaluate('document.fonts.ready')
+    page.evaluate('''async () => {
+      const sidebar=document.querySelector('#appView > .sidebar');
+      await Promise.all((sidebar?.getAnimations() || []).map(animation=>animation.finished.catch(()=>{})));
+      await new Promise(resolve=>requestAnimationFrame(resolve));
+    }''')
     assert page.locator('.af-dashboard h1').inner_text() == 'Dashboard'
     assert page.locator('[data-dashboard-period][aria-pressed="true"]').get_attribute('data-dashboard-period') == 'month'
     assert page.locator('#appView').evaluate('(node)=>node.classList.contains("os-layout-app")') == (layout == 'app')
@@ -238,7 +243,8 @@ def run(context, width: int, theme: str, layout: str, state_name: str) -> dict:
     page.evaluate('window.scrollTo(0, 0)')
     metrics = page.evaluate('''() => {
       const root=document.querySelector('.af-dashboard');
-      const rect=node=>{const r=node.getBoundingClientRect();return {left:r.left,right:r.right,width:r.width,height:r.height};};
+      const rect=node=>{const r=node.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,width:r.width,height:r.height};};
+      const sidebar=document.querySelector('#appView > .sidebar');
       const cards=[...root.querySelectorAll('.af-dashboard-revenue,.af-dashboard-kpi,.af-dashboard-panel')].map(node=>({
         kind:node.className,rect:rect(node),clientWidth:node.clientWidth,scrollWidth:node.scrollWidth
       }));
@@ -251,21 +257,57 @@ def run(context, width: int, theme: str, layout: str, state_name: str) -> dict:
           clippedText.push({text:node.textContent,rect:rect(node),card:rect(card)});
       }
       return {viewport:innerWidth,documentWidth:document.documentElement.scrollWidth,
-        theme:document.documentElement.dataset.theme,root:rect(root),cards,clippedText,
+        theme:document.documentElement.dataset.theme,root:rect(root),sidebar:rect(sidebar),
+        gutter:root.getBoundingClientRect().left-sidebar.getBoundingClientRect().right,cards,clippedText,
         periodButtons:[...root.querySelectorAll('[data-dashboard-period]')].map(node=>({label:node.textContent,...rect(node)}))};
     }''')
     name = f'{state_name}-{layout}-{width}-{theme}'
-    page.screenshot(path=str(OUT / (name + '.png')), full_page=True)
-    metrics.update(width=width, layout=layout, state=state_name, screenshot=name + '.png')
+    page.screenshot(path=str(output / (name + '.png')), full_page=True)
+    metrics.update(engine=engine, width=width, layout=layout, state=state_name, screenshot=name + '.png')
+
+    def save_metrics():
+        (output / (name + '.json')).write_text(json.dumps(metrics, ensure_ascii=False, indent=2), encoding='utf-8')
+
+    save_metrics()
     assert metrics['theme'] == theme, metrics
     assert metrics['documentWidth'] <= width + 1, metrics
     assert metrics['root']['left'] >= -1 and metrics['root']['right'] <= width + 1, metrics
+    if layout == 'classic' and width >= 768:
+        assert metrics['gutter'] >= 16, (name, metrics['sidebar'], metrics['root'], metrics['gutter'])
     for card in metrics['cards']:
         assert card['rect']['left'] >= -1 and card['rect']['right'] <= width + 1, (name, card)
         assert card['scrollWidth'] <= card['clientWidth'] + 2, (name, card)
     assert not metrics['clippedText'], (name, metrics['clippedText'])
     for button in metrics['periodButtons']:
         assert button['height'] >= 40 and button['left'] >= -1 and button['right'] <= width + 1, (name, button)
+
+    if layout == 'app' and width < 768:
+        page.evaluate('''async () => {
+          window.scrollTo(0,document.documentElement.scrollHeight);
+          await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+        }''')
+        bottom = page.evaluate('''() => {
+          const link=document.querySelector('.af-dashboard-footnote a');
+          const dock=document.querySelector('#osAppDock');
+          const rect=node=>{const r=node.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,width:r.width,height:r.height};};
+          const bounds=link.getBoundingClientRect(),dx=Math.min(2,bounds.width/4),dy=Math.min(2,bounds.height/4);
+          const points=[[bounds.left+dx,bounds.top+dy],[bounds.right-dx,bounds.top+dy],
+            [bounds.left+dx,bounds.bottom-dy],[bounds.right-dx,bounds.bottom-dy],
+            [(bounds.left+bounds.right)/2,(bounds.top+bounds.bottom)/2]];
+          return {link:rect(link),dock:rect(dock),scrollY,
+            withinViewport:bounds.top>=0&&bounds.bottom<=innerHeight&&bounds.left>=0&&bounds.right<=innerWidth,
+            hits:points.map(([x,y])=>{const target=document.elementFromPoint(x,y);return !!target&&(target===link||link.contains(target));})};
+        }''')
+        metrics['bottom_check'] = bottom
+        page.screenshot(path=str(output / (name + '-bottom.png')))
+        save_metrics()
+        assert bottom['withinViewport'], (name, bottom)
+        assert bottom['link']['bottom'] <= bottom['dock']['top'], (name, bottom)
+        assert all(bottom['hits']), (name, bottom)
+        page.evaluate('''async () => {
+          window.scrollTo(0,0);
+          await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+        }''')
 
     if width == 430 and theme == 'light':
         if ready:
@@ -283,23 +325,31 @@ def run(context, width: int, theme: str, layout: str, state_name: str) -> dict:
     assert not errors and not blocked, (name, errors, blocked)
     assert all(method == 'GET' for method, _ in calls)
     metrics['get_requests'] = len(calls)
+    save_metrics()
     return metrics
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--engine', choices=['chromium', 'webkit'], default='chromium')
     parser.add_argument('--widths', type=int, nargs='+', default=[1280, 768, 430, 360, 320])
     parser.add_argument('--themes', nargs='+', choices=['light', 'dark'], default=['light', 'dark'])
     parser.add_argument('--layouts', nargs='+', choices=['classic', 'app'], default=['classic', 'app'])
     parser.add_argument('--states', nargs='+', choices=['ready', 'unavailable'], default=['ready', 'unavailable'])
     args = parser.parse_args()
-    OUT.mkdir(parents=True, exist_ok=True)
+    output = OUT / args.engine
+    output.mkdir(parents=True, exist_ok=True)
     measurements = []
     with sync_playwright() as playwright:
-        bundled = Path(playwright.chromium.executable_path)
-        executable = str(bundled) if bundled.is_file() else (
-            os.getenv('ORION_TEST_BROWSER') or shutil.which('chromium') or shutil.which('google-chrome'))
-        browser = playwright.chromium.launch(**({'executable_path': executable} if executable else {}), args=['--no-sandbox'])
+        engine = getattr(playwright, args.engine)
+        bundled = Path(engine.executable_path)
+        executable = str(bundled) if bundled.is_file() else None
+        if not executable and args.engine == 'chromium':
+            executable = os.getenv('ORION_TEST_BROWSER') or shutil.which('chromium') or shutil.which('google-chrome')
+        launch = {'executable_path': executable} if executable else {}
+        if args.engine == 'chromium':
+            launch['args'] = ['--no-sandbox']
+        browser = engine.launch(**launch)
         try:
             for width in args.widths:
                 for theme in args.themes:
@@ -309,14 +359,14 @@ def main() -> None:
                                 is_mobile=width < 768, has_touch=width < 768,
                                 device_scale_factor=1, service_workers='block')
                             try:
-                                measurements.append(run(context, width, theme, layout, state_name))
-                                print(f'PASS {width}px {theme} {layout} {state_name}', flush=True)
+                                measurements.append(run(context, width, theme, layout, state_name, args.engine, output))
+                                print(f'PASS {args.engine} {width}px {theme} {layout} {state_name}', flush=True)
                             finally:
                                 context.close()
         finally:
             browser.close()
-            (OUT / 'measurements.json').write_text(json.dumps(measurements, ensure_ascii=False, indent=2), encoding='utf-8')
-    print(f'PASS: {len(measurements)} states; zero writes or external requests; screenshots in {OUT}')
+            (output / 'measurements.json').write_text(json.dumps(measurements, ensure_ascii=False, indent=2), encoding='utf-8')
+    print(f'PASS: {len(measurements)} {args.engine} states; zero writes or external requests; screenshots in {output}')
 
 
 if __name__ == '__main__':

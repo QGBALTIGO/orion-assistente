@@ -118,6 +118,30 @@ test('Afiliados informa indisponibilidade financeira sem inventar zeros ou hist�
   }
 });
 
+test('Afiliados preserva a operação na primeira falha do relatório e permite tentar novamente sem concluir ausência de integração', async t=>{
+  let attempts=0;
+  const h = await dashboard(t, {analytics:period=>++attempts===1
+    ? jsonResponse({detail:'Relatório temporariamente indisponível'},503)
+    : report(period, {ready:true})});
+  assert.equal(attempts, 1);
+  assert.match(h.element('.af-dashboard-alert[role="status"]').textContent, /Não foi possível consultar os relatórios agora/);
+  assert.match(h.element('.af-dashboard-revenue').textContent, /Tente atualizar novamente/);
+  assert.doesNotMatch(h.element('.af-dashboard').textContent, /relatório de vendas ainda não integrado/i);
+  assert.doesNotMatch(h.element('.af-dashboard').textContent, /R\$\s*0,00/);
+  assert.equal(h.document.querySelector('.af-dashboard-revenue-value'), null);
+  assert.equal(kpi(h,'published_snapshot'), '1');
+  assert.equal(kpi(h,'pending'), '1');
+  assert.match(h.element('.af-dashboard-operation').textContent, /Conectada/);
+  const refresh=h.element('.af-dashboard [data-act="refresh"]');
+  assert.match(refresh.getAttribute('aria-label'), /Atualizar/);
+  assert.equal(refresh.disabled, false);
+  h.click('.af-dashboard [data-act="refresh"]');
+  await flush();
+  assert.equal(attempts, 2);
+  assert.equal(h.document.querySelector('.af-dashboard-alert[role="status"]'), null);
+  assert.match(kpi(h,'commission_cents'), /124,00/);
+});
+
 test('Afiliados distingue valor vendido, comissão estimada e comissão validada explicitamente informada', async t=>{
   const h = await dashboard(t, {analytics:period=>report(period, {ready:true, validated:8400})});
   assert.match(kpi(h,'commission_cents'), /124,00/);
