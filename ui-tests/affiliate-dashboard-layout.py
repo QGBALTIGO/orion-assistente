@@ -159,7 +159,8 @@ def run(context, width: int, theme: str, layout: str, state_name: str) -> dict:
             return
         if path.startswith(('/panel-assets/', '/brand/')) or path.startswith('/api/v1/afiliados-assets/workspace.'):
             name = path.rsplit('/', 1)[-1]
-            name = {'workspace.js': 'orion-affiliate-workspace.js',
+            name = {'orion-suite-live.js': 'orion-suite.js',
+                    'workspace.js': 'orion-affiliate-workspace.js',
                     'workspace.css': 'orion-affiliate-workspace.css'}.get(name, name)
             asset = ROOT / 'app/static' / name
             if asset.is_file():
