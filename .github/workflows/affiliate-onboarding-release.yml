@@ -15,7 +15,7 @@ jobs:
       contents: read
       packages: write
     env:
-      BASE_IMAGE: ghcr.io/qgbaltigo/orion-assistente-api@sha256:aee7d569662ce21521ad70e4e2959f448200802a5948c6aaaf1b0805a7d5b5ba
+      BASE_IMAGE: ghcr.io/qgbaltigo/orion-assistente-api@sha256:1cf9d43f482740519774cb3bb6b72f06dcf7f44f042a02a11f9bbe0a36f955dd
       IMAGE: ghcr.io/qgbaltigo/orion-assistente-api:whatsapp-connection-${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
