@@ -15,7 +15,7 @@ jobs:
       contents: read
       packages: write
     env:
-      API_BASE: ghcr.io/qgbaltigo/orion-assistente-api@sha256:a28c2f7da2d853d587a3a147f9f8349a4d83137b196065fa2909223307cbd255
+      API_BASE: ghcr.io/qgbaltigo/orion-assistente-api@sha256:20efed6c5792f803000fc61210e9167c739994e99c708d47b1a6f278f47d458a
       API_IMAGE: ghcr.io/qgbaltigo/orion-assistente-api:affiliate-shortlinks-${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
