@@ -926,3 +926,59 @@ a.af-dashboard-kpi:hover { background: color-mix(in srgb,var(--os-tint) 35%,var(
 @media (prefers-reduced-motion: reduce) {
   .af-history-workspace *, .af-history-workspace *::before, .af-history-workspace *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+
+/* Affiliate platforms: consistent workspace, responsive to the actual panel width. */
+.os-main:has(.af-platforms-workspace){padding:28px;}
+.af-native-content:has(>.af-platforms-workspace){container:affiliate-platforms / inline-size;min-width:0;}
+.af-platforms-workspace{display:grid;gap:24px;min-width:0;overflow-anchor:none;}
+.af-platforms-workspace *, .af-platforms-workspace *::before,.af-platforms-workspace *::after{box-sizing:border-box;}
+.af-platforms-workspace :is(h1,h2,h3,p){margin:0;}
+.af-platforms-workspace .os-icon{width:18px;height:18px;flex:0 0 auto;}
+.af-platforms-workspace :is(a,button,input,summary):focus-visible{outline:2px solid var(--os-primary);outline-offset:3px;}
+.af-platforms-heading{display:flex;justify-content:space-between;align-items:center;gap:16px;min-width:0;}
+.af-platforms-heading>div{min-width:0;}
+.af-platforms-eyebrow{color:var(--os-muted);font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;}
+.af-platforms-heading h1{margin-top:3px;font:550 34px/1.2 var(--os-display);letter-spacing:-.8px;}
+.af-platforms-heading p,.af-platforms-section-head p{color:var(--os-muted);font-size:13px;line-height:1.55;margin-top:7px;}
+.af-platforms-heading .os-icon-button{width:44px;height:44px;flex:0 0 44px;}
+.af-platforms-heading [aria-busy=true] .os-icon{animation:af-history-spin 1.4s linear infinite;}
+.af-platforms-section{display:grid;gap:12px;min-width:0;}
+.af-platforms-section-head h2{font:550 20px/1.4 var(--os-display);letter-spacing:-.4px;}
+.af-platforms-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:start;gap:14px;min-width:0;}
+.af-platform-tile{display:grid;gap:13px;min-width:0;padding:21px;border:1px solid var(--os-border);border-radius:18px;background:var(--os-card);box-shadow:var(--os-shadow);}
+.af-platform-tile-head{display:grid;grid-template-columns:44px minmax(0,1fr) auto;align-items:center;gap:10px;min-width:0;}
+.af-platform-brand{display:grid;place-items:center;width:44px;height:44px;border:1px solid var(--os-border);border-radius:12px;background:#fff;overflow:hidden;}
+.af-platform-brand img{display:block;width:100%;height:100%;object-fit:contain;padding:6px;}
+[data-platform-card=groq] .af-platform-brand{color:var(--os-primary);background:var(--os-tint);}
+.af-platform-brand>.os-icon{width:23px;height:23px;}
+.af-platform-tile h3{font:550 18px/1.25 var(--os-display);letter-spacing:-.3px;overflow-wrap:anywhere;}
+.af-platform-tile-head p{font-size:11px;line-height:1.4;color:var(--os-muted);margin-top:4px;}
+.af-platform-tile .os-badge{white-space:normal;overflow-wrap:anywhere;text-align:center;max-width:125px;}
+.af-platform-description,.af-platform-note,.af-platform-settings-body>p{color:var(--os-muted);font-size:13px;line-height:1.55;overflow-wrap:anywhere;}
+.af-platform-note{font-size:12px;}
+.af-platform-account{display:flex;align-items:center;gap:7px;min-width:0;color:var(--os-text);font-size:12px;line-height:1.5;}
+.af-platform-account .os-icon{width:15px;height:15px;color:var(--os-primary);}
+.af-platform-account span{min-width:0;overflow-wrap:anywhere;}
+.af-platform-resources{display:flex;align-items:center;flex-wrap:wrap;gap:5px 14px;padding-top:4px;}
+.os-main .af-platform-resource{display:inline-flex;align-items:center;gap:6px;min-width:0;min-height:40px;color:var(--os-primary);font-size:12px;line-height:1.4;text-decoration:none;font-weight:500;}
+.af-platform-resource span{overflow-wrap:anywhere;}
+.af-platform-resource .os-icon{width:14px;height:14px;}
+.af-platform-external{font-size:14px;flex-shrink:0;}
+.af-platform-settings{min-width:0;border-top:1px solid var(--os-border);padding-top:5px;}
+.af-platform-settings>summary{display:flex;align-items:center;gap:8px;min-height:44px;cursor:pointer;color:var(--os-text);font-size:13px;font-weight:550;list-style:none;}
+.af-platform-settings>summary::-webkit-details-marker{display:none;}
+.af-platform-settings>summary>.os-icon{color:var(--os-primary);width:16px;height:16px;}
+.af-platform-chevron{display:flex;margin-left:auto;color:var(--os-muted);}
+.af-platform-chevron .os-icon{width:16px;height:16px;transform:rotate(90deg);}
+.af-platform-settings[open] .af-platform-chevron .os-icon{transform:rotate(-90deg);}
+.af-platform-settings-body{display:grid;gap:13px;padding-top:8px;min-width:0;}
+.af-platform-settings-body .os-form{display:grid;gap:13px;min-width:0;}
+.af-platform-settings-body input{width:100%;min-width:0;max-width:100%;min-height:44px;font-size:14px;}
+.af-platform-form-actions{display:flex;flex-wrap:wrap;gap:8px;min-width:0;}
+.af-platform-form-actions .os-button{min-height:44px;max-width:100%;font-size:13px;white-space:normal;}
+@container affiliate-platforms (min-width:1080px){.af-platforms-grid{grid-template-columns:repeat(3,minmax(0,1fr));}}
+@container affiliate-platforms (max-width:680px){.af-platforms-grid{grid-template-columns:minmax(0,1fr);}.af-platforms-workspace{gap:20px;}.af-platforms-heading h1{font-size:29px;}.af-platform-tile{padding:17px;border-radius:16px;}.af-platforms-heading p{font-size:12px;}}
+@container affiliate-platforms (max-width:350px){.af-platform-tile{padding:14px;}.af-platform-tile-head{grid-template-columns:40px minmax(0,1fr);gap:8px;}.af-platform-brand{width:40px;height:40px;}.af-platform-tile-head .os-badge{grid-column:2;justify-self:start;}.af-platforms-heading h1{font-size:27px;}.af-platform-form-actions .os-button{flex:1 1 100%;}}
+@media(max-width:767px){.os-main:has(.af-platforms-workspace){padding:16px;}.af-platform-settings-body input{font-size:16px;}.os-layout-app .os-main:has(.af-platforms-workspace){padding-bottom:calc(110px + env(safe-area-inset-bottom,0px));}}
+@media(prefers-reduced-motion:reduce){.af-platforms-workspace *, .af-platforms-workspace *::before,.af-platforms-workspace *::after{animation:none!important;transition:none!important;scroll-behavior:auto!important;}}

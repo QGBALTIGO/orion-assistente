@@ -1,0 +1,78 @@
+name: Orion - Plataformas de Afiliados
+on:
+  push:
+    branches: ['codex/afiliados-plataformas-20261125*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    env:
+      API_BASE: ghcr.io/qgbaltigo/orion-assistente-api@sha256:721234ad521461d96867f61de432b2a3bed44e96d95be1678e0cb8d67e51a244
+      API_IMAGE: ghcr.io/qgbaltigo/orion-assistente-api:affiliate-platforms-${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validar plataformas e interações existentes de Afiliados
+        run: |
+          npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+          node --check app/static/orion-suite.js
+          node --input-type=module --check < app/static/orion-affiliate-workspace.js
+          node --test --test-reporter=spec ui-tests/affiliate-platforms.test.mjs ui-tests/affiliate-history.test.mjs ui-tests/affiliate-automations.test.mjs ui-tests/affiliate-offers.test.mjs ui-tests/affiliate-dashboard.test.mjs ui-tests/affiliate-dashboard-updates.test.mjs
+      - name: Conferir layout e navegação em Chromium e WebKit
+        run: |
+          python -m pip install playwright==1.58.0
+          python -m playwright install --with-deps chromium webkit
+          python ui-tests/affiliate-platforms-layout.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: affiliate-platforms-browser
+          path: artifacts/affiliate-platforms/
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Conferir a base publicada
+        run: |
+          docker run --rm --entrypoint python "$API_BASE" -c '
+          import hashlib
+          from pathlib import Path
+          expected = {
+            "orion-suite.js": "8d5bbf63a107d803151242d6168d836ec97740f3fa946a79f580391741116575",
+            "orion-affiliate-workspace.js": "286267187f37d785d54395cad3fb42a37077b468692ef47b4fcf7f727430896d",
+            "orion-affiliate-workspace.css": "26672e6d05fc194876bb80902f137d697415e6c19c5efa1a09b8d62324416b73",
+          }
+          for name, digest in expected.items():
+            assert hashlib.sha256(Path("app/static", name).read_bytes()).hexdigest() == digest, name
+          print("Base de produção conferida.")
+          '
+      - name: Construir e conferir a atualização da interface
+        run: |
+          docker build -f deploy/Dockerfile.affiliate-platforms --build-arg BASE_IMAGE="$API_BASE" --build-arg ORION_RELEASE="$GITHUB_SHA" -t "$API_IMAGE" .
+          docker run --rm --entrypoint python -v "$GITHUB_WORKSPACE/app/static:/review:ro" "$API_IMAGE" -c '
+          from pathlib import Path
+          for name in ("orion-suite.js", "orion-affiliate-workspace.js", "orion-affiliate-workspace.css"):
+            assert Path("app/static", name).read_bytes() == Path("/review", name).read_bytes(), name
+          print("Imagem corresponde ao código validado.")
+          '
+          docker push "$API_IMAGE"
+          docker image inspect "$API_IMAGE" --format '{{index .RepoDigests 0}}' > affiliate-platforms-api-image.txt
+          cat affiliate-platforms-api-image.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: affiliate-platforms-image
+          path: affiliate-platforms-api-image.txt

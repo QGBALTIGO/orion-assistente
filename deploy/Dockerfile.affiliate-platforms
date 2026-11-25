@@ -1,0 +1,5 @@
+ARG BASE_IMAGE=ghcr.io/qgbaltigo/orion-assistente-api@sha256:721234ad521461d96867f61de432b2a3bed44e96d95be1678e0cb8d67e51a244
+FROM ${BASE_IMAGE}
+ARG ORION_RELEASE
+LABEL org.opencontainers.image.revision=$ORION_RELEASE
+COPY --chown=appuser:appuser app/static/orion-affiliate-workspace.js app/static/orion-affiliate-workspace.css app/static/orion-suite.js /srv/app/app/static/

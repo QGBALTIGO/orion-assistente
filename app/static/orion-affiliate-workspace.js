@@ -424,36 +424,81 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     </div>`;
   }
 
+
+  const platformResources = Object.freeze({
+    shopee: {name:"Shopee", url:"https://affiliate.shopee.com.br/open_api", label:"Obter credenciais", guide:"https://affiliate.shopee.com.br/", guideLabel:"Portal de afiliados"},
+    groq: {name:"Groq", url:"https://console.groq.com/keys", label:"Criar chave de API", guide:"https://console.groq.com/docs/quickstart", guideLabel:"Documentação"},
+    amazon: {name:"Amazon", url:"https://associados.amazon.com.br/creatorsapi/docs/en-us/onboarding/register-for-creators-api", label:"Como obter a API", guide:"https://associados.amazon.com.br/", guideLabel:"Portal de associados"},
+    "mercado-livre": {name:"Mercado Livre", url:"https://www.mercadolivre.com.br/l/afiliados-gere-seus-links", label:"Portal e geração de links", guide:"https://developers.mercadolivre.com.br/pt_br/api-docs", guideLabel:"API geral"}
+  });
+  function platformExternal(key,guide=false) {
+    const resource=platformResources[key];
+    return `<a class="af-platform-resource" href="${html(guide?resource.guide:resource.url)}" target="_blank" rel="noopener noreferrer">${icon("link")}<span>${html(guide?resource.guideLabel:resource.label)}</span><span class="af-platform-external" aria-hidden="true">↗</span></a>`;
+  }
+  function platformCard(key) {
+    const resource=platformResources[key], connection=connected(key), linked=connection?.status==="connected";
+    const planned=key==="amazon"||key==="mercado-livre";
+    const shared=key==="groq"&&!linked&&!!state.phrase_ai;
+    const version=JSON.stringify([linked,shared,connection?.account??null,connection?.verified??null]);
+    const title=planned?"Planejada":linked?"Conectada":shared?"Disponível":key==="groq"?"Opcional":"Não conectada";
+    const description={
+      shopee:"Links próprios, catálogo de ofertas e relatórios de vendas e comissões.",
+      groq:"Sugestões de legendas para suas ofertas. A conexão é opcional.",
+      amazon:"A integração automática ainda não está disponível na Orion.",
+      "mercado-livre":"A integração de afiliados ainda não está disponível na Orion."
+    }[key];
+    const instructions=key==="shopee"?"Entre no portal da Shopee, abra a seção Open API e solicite acesso, caso necessário. Use o App ID e o segredo da API.":key==="groq"?"Crie uma chave no console oficial e cole aqui. Sem uma chave própria, a Orion mantém as sugestões padrão ou o serviço disponível.":"";
+    const form=key==="shopee"?`<form class="os-form af-form" data-form="shopee"><label for="af-shopee-app-id">App ID<input id="af-shopee-app-id" name="app_id" inputmode="numeric" pattern="[0-9]+" required autocomplete="off"></label><label for="af-shopee-secret">Segredo da API<input id="af-shopee-secret" name="key" type="password" autocomplete="new-password" required minlength="10"></label><div class="af-platform-form-actions">${submit(linked?"Validar e atualizar":"Validar e conectar","link")}${linked?btn("Desconectar","revoke","shopee"):""}</div></form>`:
+      key==="groq"?`<form class="os-form af-form" data-form="groq"><label for="af-groq-key">Chave da API<input id="af-groq-key" name="key" type="password" autocomplete="new-password" required></label><div class="af-platform-form-actions">${submit(linked?"Validar e atualizar":"Validar e conectar","link")}${linked?btn("Desconectar","revoke-groq"):""}</div></form>`:"";
+    return `<article class="af-platform-tile" data-platform-card="${key}" data-platform-version="${html(version)}">
+      <div class="af-platform-tile-head"><span class="af-platform-brand" aria-hidden="true">${key==="groq"?icon("sparkles"):brand(key)}</span><div><h3>${resource.name}</h3><p>${key==="groq"?"Inteligência artificial":"Marketplace"}</p></div>${pill(title,linked||shared?"success":"neutral")}</div>
+      <p class="af-platform-description">${description}</p>
+      ${key==="shopee"&&linked?`<div class="af-platform-account">${icon("shield")}<span>Conta ${html(connection.account||"conectada")}</span></div>`:""}
+      ${key==="amazon"?'<p class="af-platform-note">A Creators API exige uma conta de associado elegível.</p>':key==="mercado-livre"?'<p class="af-platform-note">A API geral não garante acesso à geração de links de afiliado.</p>':""}
+      <div class="af-platform-resources">${platformExternal(key)}${platformExternal(key,true)}</div>
+      ${planned?"":`<details class="af-platform-settings"><summary>${icon(linked?"edit":"link")}<span>${linked?"Gerenciar conexão":key==="groq"?"Configurar chave":"Conectar Shopee"}</span><span class="af-platform-chevron">${icon("chevron")}</span></summary><div class="af-platform-settings-body"><p>${instructions}</p>${form}</div></details>`}
+    </article>`;
+  }
+  let platformBusy=false;
+  function syncPlatformControls() {
+    const root=content.querySelector(".af-platforms-workspace");
+    if(!root)return;
+    for(const button of root.querySelectorAll("button[type=submit],[data-act=revoke],[data-act=revoke-groq],[data-act=refresh]")) {
+      button.disabled=platformBusy;
+      button.setAttribute("aria-busy",String(platformBusy));
+    }
+  }
+  function updatePlatforms() {
+    const root=content.querySelector(".af-platforms-workspace");
+    if(!root)return;
+    const y=window.scrollY,x=window.scrollX;
+    const focused=root.contains(document.activeElement)?document.activeElement:null;
+    const anchor=focused?.closest("[data-platform-card]")||[...root.querySelectorAll("[data-platform-card]")].find(node=>{const r=node.getBoundingClientRect();return r.bottom>60&&r.top<window.innerHeight;});
+    const top=anchor?.getBoundingClientRect().top;
+    for(const key of Object.keys(platformResources)){
+      const current=root.querySelector('[data-platform-card="'+key+'"]');
+      const template=document.createElement("template");template.innerHTML=platformCard(key);
+      const next=template.content.firstElementChild;
+      if(!current||current.dataset.platformVersion===next.dataset.platformVersion)continue;
+      const wasOpen=current.querySelector("details")?.open;
+      if(wasOpen&&next.querySelector("details"))next.querySelector("details").open=true;
+      const restore=current.contains(focused);
+      const values=!platformBusy?[...current.querySelectorAll("input")].map(field=>[field.name,field.value]):[];
+      current.replaceWith(next);
+      for(const [name,value] of values){const field=next.querySelector('input[name="'+name+'"]');if(field)field.value=value;}
+      if(restore)next.querySelector("summary")?.focus({preventScroll:true});
+    }
+    syncPlatformControls();
+    window.OrionFields?.refresh(root);
+    const target=anchor?.isConnected?window.scrollY+anchor.getBoundingClientRect().top-top:y;
+    if(Math.abs(window.scrollY-target)>.5)window.scrollTo({left:x,top:target,behavior:"instant"});
+  }
   function platforms() {
-    const shopee = connected("shopee");
-    const linked = shopee?.status==="connected";
-    const groq = connected("groq")?.status==="connected";
-    const shopeeForm = `<form class="os-form af-form" data-form="shopee">
-      <label>App ID <input name="app_id" inputmode="numeric" pattern="[0-9]+" required></label>
-      <label>Segredo da API <input name="key" type="password" autocomplete="new-password" required minlength="10"></label>
-      <div class="af-row">${submit("Validar e conectar","link")}${linked?btn("Desconectar","revoke","shopee"):""}</div></form>`;
-    const groqForm = `<form class="os-form af-form" data-form="groq">
-      <label>Chave da Groq <input name="key" type="password" autocomplete="new-password" required></label>
-      <div class="af-row">${submit("Validar e conectar","link")}${groq?btn("Desconectar","revoke-groq"):""}</div></form>`;
-    return heading("Plataformas","Gerencie a conta da Shopee e o serviço que sugere as frases das ofertas.") +
-      `<div class="af-page"><div class="af-grid">
-        <section class="os-card af-card">
-          ${officialLogo("shopee","Shopee",linked?pill("Conectada","success"):pill("Não conectada"))}
-          <div class="af-stack"><p>${linked?`Conta ${html(shopee.account)} · validada em ${date(shopee.verified)}`:"Use o App ID e o segredo da API de Afiliados Shopee Brasil."}</p>
-          ${linked?settings("Gerenciar credenciais da Shopee",shopeeForm):shopeeForm}</div>
-        </section>
-        <section class="os-card af-card">
-          ${officialLogo("groq","Groq",state.phrase_ai?pill("Disponível","success"):pill("Chave necessária"))}
-          <div class="af-stack"><p>Sugere uma frase para a legenda. Preço, desconto e link vêm da Shopee.</p>
-          ${state.phrase_ai?settings("Gerenciar credenciais da Groq",groqForm):groqForm}</div>
-        </section>
-      </div>
-      <section class="af-stack" aria-label="Próximas plataformas">
-        <h2>Próximas plataformas</h2>
-        <div class="af-grid">${[["amazon","Amazon"],["mercado-livre","Mercado Livre"]].map(([key,label])=>`
-          <section class="os-card af-card">${officialLogo(key,label,pill("Planejada"))}
-          <p>Conexão e links de afiliado ainda indisponíveis.</p></section>`).join("")}</div>
-      </section></div>`;
+    return `<div class="af-platforms-workspace">
+      <header class="af-platforms-heading"><div><span class="af-platforms-eyebrow">Afiliados</span><h1>Plataformas</h1><p>Conecte suas contas e gerencie as integrações.</p></div><button class="os-icon-button" type="button" data-act="refresh" aria-label="Atualizar plataformas" title="Atualizar plataformas">${icon("refresh")}</button></header>
+      <section class="af-platforms-section" aria-labelledby="af-marketplaces-title"><div class="af-platforms-section-head"><h2 id="af-marketplaces-title">Marketplaces</h2><p>Programas de afiliados e acesso às APIs.</p></div><div class="af-platforms-grid">${["shopee","amazon","mercado-livre"].map(platformCard).join("")}</div></section>
+      <section class="af-platforms-section" aria-labelledby="af-ai-title"><div class="af-platforms-section-head"><h2 id="af-ai-title">Inteligência artificial</h2></div><div class="af-platforms-grid">${platformCard("groq")}</div></section>
+    </div>`;
   }
 
 
@@ -1423,6 +1468,10 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
       updateDashboard(".af-dashboard",dashboard());
       return;
     }
+    if (route==="plataformas" && content.querySelector(".af-platforms-workspace")) {
+      updatePlatforms();
+      return;
+    }
     if (route==="fila" && content.querySelector(".af-history-workspace")) {
       updateHistory();
       return;
@@ -1436,6 +1485,7 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
       return;
     }
     content.innerHTML = views[route]();
+    if (route==="plataformas") syncPlatformControls();
     if (route==="ofertas") syncOfferControls();
     if (route==="automacoes") syncRuleControls();
     const all = $("[data-select-niches]");
@@ -2034,15 +2084,20 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     const form=event.target;
     if (!state || !Object.hasOwn(formActions,form.dataset.form)) return;
     event.preventDefault();
+    const platformForm=!!form.closest(".af-platforms-workspace");
+    if(platformForm&&platformBusy)return;
+    const formData=new FormData(form);
+    if(platformForm){platformBusy=true;syncPlatformControls();}
     const button=event.submitter;
     const keepFocus=!!form.closest(".af-offers-workspace,.af-automations-workspace,.af-history-workspace")&&document.activeElement===button;
     if (button&&!form.closest(".af-offers-workspace,.af-automations-workspace,.af-history-workspace")) button.disabled=true;
     form.setAttribute("aria-busy","true");
-    try { await formActions[form.dataset.form](new FormData(form),button); }
+    try { await formActions[form.dataset.form](formData,button); if(platformForm)form.reset(); }
     catch(error){ notify(error.message,true); }
     finally {
       if (button) button.disabled=false;
       form.removeAttribute("aria-busy");
+      if(platformForm){platformBusy=false;syncPlatformControls();}
       if (form.closest(".af-offers-workspace")) syncOfferControls();
       if (form.closest(".af-automations-workspace")) syncRuleControls();
       if (keepFocus&&button?.isConnected&&!button.disabled&&document.activeElement===document.body) button.focus({preventScroll:true});
@@ -2136,12 +2191,16 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     }
     const button=event.target.closest("[data-act]");
     if (!button || !Object.hasOwn(actions,button.dataset.act)) return;
+    const platformAction=!!button.closest(".af-platforms-workspace");
+    if(platformAction&&platformBusy)return;
+    if(platformAction){platformBusy=true;syncPlatformControls();}
     const keepFocus=!!button.closest(".af-offers-workspace,.af-automations-workspace,.af-history-workspace")&&document.activeElement===button;
     if (!button.closest(".af-offers-workspace,.af-automations-workspace,.af-history-workspace")) button.disabled=true;
     try { await actions[button.dataset.act](button.dataset.value); }
     catch(error) { notify(error.message,true); }
     finally {
       button.disabled=false;
+      if(platformAction){platformBusy=false;syncPlatformControls();}
       if (button.closest(".af-offers-workspace")) syncOfferControls();
       if (button.closest(".af-automations-workspace")) syncRuleControls();
       if (keepFocus&&document.activeElement===document.body) {
