@@ -61,7 +61,7 @@ test('Afiliados usa o painel principal, as rotas do nicho e a área nativa da co
   await flush();
   assert.equal(h.element('#orionSetup').hidden,true);
   assert.equal(h.element('#osAffiliateView').tagName,'SECTION');
-  assert.ok(h.element('#osAffiliateView .af-overview'));
+  assert.ok(h.element('#osAffiliateView .af-dashboard'));
   assert.equal(h.document.querySelector('iframe'),null);
   assert.equal(h.element('#sidebarAccountName').textContent,'Conta sintética');
   assert.equal(h.element('#sidebarAccountType').textContent,'Minha conta');

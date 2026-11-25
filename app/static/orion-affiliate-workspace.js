@@ -45,6 +45,22 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
   let editTemplate = "default";
   let editRule = null;
   let navVersion = 0;
+  const dashboardPeriods = {today:"Hoje", "7d":"7 dias", "30d":"30 dias", month:"Este mês"};
+  const dashboardMetrics = {
+    commission_cents:{label:"Comissões", singular:"Comissão estimada", currency:true, glyph:"wallet"},
+    orders:{label:"Pedidos", singular:"Pedidos", currency:false, glyph:"box"},
+    published:{label:"Publicações", singular:"Publicações", currency:false, glyph:"send"},
+  };
+  const analyticsCache = new Map();
+  let analyticsPeriod = "month";
+  let analyticsMetric = "commission_cents";
+  let analyticsMetricChosen = false;
+  let analyticsLoading = false;
+  let analyticsError = false;
+  let analyticsVersion = 0;
+  let chartSelected = null;
+  let publicationTab = "upcoming";
+  let stateUpdatedAt = null;
   function notify(text, error=false) {
     if (!controller.signal.aborted) showNotice(text, error);
   }
@@ -107,60 +123,242 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
       ${jobPill(job)}</li>`).join("")}</ul>`;
   }
 
-  function dashboard() {
-    const shopeeConnected = connected("shopee")?.status==="connected";
-    const active = activeRules();
-    const verified = state.destination.filter(d=>d.verified);
-    const next = active.filter(r=>r.next_at).sort((a,b)=>a.next_at-b.next_at)[0];
-    const published = state.jobs.filter(job=>job.status==="published").length;
-    const metrics = [
-      ["Publicadas","send",published,"Entre as últimas 120 publicações registradas."],
-      ["Na fila","clock",pending().length,"Programadas, em revisão ou em envio."],
-      ["Automações ativas","repeat",active.length,"Regras habilitadas no painel."],
-      ["Destinos verificados","shieldCheck",verified.length,"Canais e grupos com administração verificada."],
-    ];
-    const operation = [
-      ["Shopee","box",shopeeConnected?"Conta de afiliados validada":"Conecte sua conta para buscar produtos e gerar links.",
-        shopeeConnected?"Conectada":"Pendente","plataformas",shopeeConnected],
-      ["Destinos","link",verified.length?verified.slice(0,2).map(d=>d.name).join(", "):"Cadastre um canal ou grupo administrado.",
-        verified.length?`${verified.length} ${verified.length===1?"verificado":"verificados"}`:"Pendente","conexoes",verified.length>0],
-      ["Automações","repeat",next?`${next.name} · ${ruleDate(next)}`:"Configure uma regra para programar suas próximas ofertas.",
-        next?"Programada":"Sem próxima execução","automacoes",!!next],
-    ];
-    const shortcuts = [
-      ["Buscar ofertas","Filtre por categoria ou cole um link","search","ofertas"],
-      ["Editar templates","Personalize o card e a legenda","layers","templates"],
-      ["Acompanhar a fila","Consulte publicações e erros","fileCheck","fila"],
-    ];
-    return `<div class="os-subdash af-overview">
-      <header class="os-subdash-head">
-        <div><h1>Dashboard</h1><p>Acompanhe as ofertas, os canais e as publicações programadas.</p></div>
-        <div class="af-heading-actions">${btn("Atualizar","refresh")}${link("Preparar oferta","ofertas","plus",true)}</div>
-      </header>
-      <div class="os-subdash-stats" aria-label="Indicadores de publicações">${metrics.map(([label,glyph,value,help])=>`
-        <article class="os-card os-subdash-stat"><div class="os-subdash-stat-header">${square(glyph)}<span>${label}</span></div>
-        <strong class="os-subdash-stat-number">${value.toLocaleString("pt-BR")}</strong><p>${help}</p></article>`).join("")}</div>
-      <div class="os-subdash-panels">
-        <section class="os-card os-subdash-panel">
-          <div class="os-subdash-panel-heading">${square("activity")}<div><h2>Operação</h2><p>Conexões e próxima execução</p></div></div>
-          <div class="os-subdash-health-list">${operation.map(([title,glyph,text,status,path,ok])=>`
-            <div class="os-subdash-health-row"><span class="os-subdash-health-icon">${icon(glyph)}</span>
-            <div class="os-subdash-health-main"><strong>${title}</strong><small>${html(text)}</small></div>
-            <div class="os-subdash-health-side">${pill(status,ok?"success":"neutral")}<a class="os-icon-button" href="#${path}" aria-label="Abrir ${title}">${icon("chevron")}</a></div></div>`).join("")}
-            ${needingAttention().length?`<p class="af-hint">${icon("info")}<a href="#fila">${needingAttention().length} publicação(ões) precisam de atenção</a></p>`:""}
-          </div>
-        </section>
-        <section class="os-card os-subdash-panel">
-          <div class="os-subdash-panel-heading">${square("send")}<div><h2>Atividade recente</h2><p>Últimas publicações registradas</p></div></div>
-          ${activityList(state.jobs.slice(0,4))}
-          <div class="os-subdash-panel-footer">${link("Ver histórico","fila","arrow")}</div>
-        </section>
+
+  const dashboardNumber = value => typeof value === "number" && Number.isFinite(value) ? value : null;
+  const dashboardCount = value => dashboardNumber(value) === null ? "—" : value.toLocaleString("pt-BR");
+  const dashboardMoney = value => dashboardNumber(value) === null ? "—" : money(value / 100);
+  const dashboardTime = (value, options={dateStyle:"short",timeStyle:"short"}, timeZone="America/Sao_Paulo") => {
+    if (!value) return "Ainda não atualizado";
+    const parsed = new Date(typeof value === "number" ? value * (value < 1e12 ? 1000 : 1) : value);
+    if (Number.isNaN(parsed.getTime())) return "Ainda não atualizado";
+    try { return parsed.toLocaleString("pt-BR",{...options,timeZone}); }
+    catch { return parsed.toLocaleString("pt-BR",options); }
+  };
+  const dashboardDay = value => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value))) return "Data indisponível";
+    return new Date(value+"T12:00:00Z").toLocaleDateString("pt-BR",{day:"2-digit",month:"short",timeZone:"UTC"});
+  };
+  const dashboardExternal = (label="Abrir relatórios Shopee") =>
+    `<a class="af-dashboard-text-link" href="https://affiliate.shopee.com.br/" target="_blank" rel="noopener noreferrer">${html(label)}${icon("external")}</a>`;
+  const dashboardEmpty = (title, detail, glyph="chart", action="") =>
+    `<div class="af-dashboard-empty"><span class="af-dashboard-empty-icon" aria-hidden="true">${icon(glyph)}</span><strong>${html(title)}</strong><p>${html(detail)}</p>${action}</div>`;
+
+  function dashboardSnapshot() {
+    const data = analyticsCache.get(analyticsPeriod);
+    const summary = data?.summary || {};
+    const jobs = state.jobs || [];
+    const published = jobs.filter(job=>job.status==="published").length;
+    const pendingCount = pending().length;
+    const failed = jobs.filter(job=>job.status==="failed").length;
+    const source = data?.sources?.sales || {status:connected("shopee")?.status==="connected"?"unavailable":"not_connected"};
+    const publications = data?.sources?.publications || {status:"partial",complete:false,scope:"latest_120"};
+    const financial = [summary.commission_cents,summary.sales_cents ?? summary.gross_sales_cents,summary.orders].some(value=>dashboardNumber(value)!==null);
+    return {
+      data, summary, source, publications, financial,
+      publishedSnapshot:dashboardNumber(data?.operation?.published_snapshot) ?? published,
+      pendingSnapshot:dashboardNumber(data?.operation?.pending_snapshot) ?? dashboardNumber(summary.pending) ?? pendingCount,
+      failedSnapshot:dashboardNumber(data?.operation?.failed_snapshot) ?? dashboardNumber(summary.failed) ?? failed,
+      rules:dashboardNumber(summary.active_rules) ?? activeRules().length,
+      verified:dashboardNumber(summary.verified_destinations) ?? state.destination.filter(row=>row.verified).length,
+      sampleLimit:dashboardNumber(data?.operation?.sample_limit) ?? 120,
+    };
+  }
+
+  function dashboardSourceMessage(snapshot) {
+    if (snapshot.financial && snapshot.source.status==="partial") return "Relatório parcial da Shopee. Os valores podem mudar.";
+    if (snapshot.financial && snapshot.source.status==="syncing") return "A Shopee está atualizando o relatório.";
+    if (snapshot.financial) return dashboardNumber(snapshot.summary.commission_cents)===null?"A comissão ainda não foi informada no relatório de vendas.":"Comissões informadas pela Shopee, sujeitas à validação e a cancelamentos.";
+    if (analyticsLoading) return "Consultando os resultados disponíveis…";
+    if (snapshot.source.status==="not_connected") return "Conecte sua conta para preparar ofertas com seu link de afiliado.";
+    if (snapshot.source.status==="error") return "Não foi possível consultar o relatório de vendas agora.";
+    if (snapshot.source.status==="syncing") return "O primeiro relatório de vendas está sendo preparado.";
+    return "Relatório de vendas ainda não integrado.";
+  }
+
+  function dashboardHero(snapshot) {
+    const {summary,financial,source} = snapshot;
+    const commission = dashboardNumber(summary.commission_cents);
+    const validated = dashboardNumber(summary.validated_commission_cents ?? summary.approved_commission_cents);
+    const first = snapshot.publishedSnapshot===0;
+    const status = financial ? source.status==="partial"?"Relatório parcial":"Shopee Afiliados" : "Seu negócio de afiliados";
+    return `<section class="af-dashboard-revenue" aria-labelledby="af-revenue-title">
+      <header><span class="af-dashboard-eyebrow">${html(status)}</span><span class="af-dashboard-revenue-icon" aria-hidden="true">${icon("wallet")}</span></header>
+      <div class="af-dashboard-revenue-main">
+        <h2 id="af-revenue-title">Comissão estimada</h2>
+        ${commission!==null?`<strong data-dashboard-kpi="commission_cents" class="af-dashboard-revenue-value${Math.abs(commission)>=1e9?" af-dashboard-long-value":""}">${dashboardMoney(commission)}</strong>
+          <p>${html(dashboardPeriods[analyticsPeriod])} · sua comissão sobre as vendas atribuídas</p>`:
+          `<strong class="af-dashboard-revenue-intro">${first?"Uma boa oferta.<br>Seu próximo resultado.":"Cada oferta abre<br>uma nova oportunidade."}</strong>
+          <p>${html(dashboardSourceMessage(snapshot))}</p>`}
       </div>
-      <section class="os-subdash-actions">
-        <header class="os-subdash-section-title"><h2>Ações rápidas</h2></header>
-        <div class="os-subdash-action-grid">${shortcuts.map(([label,note,glyph,path])=>`<a class="os-subdash-action os-card af-subdash-actions" href="#${path}">
-          ${square(glyph)}<span class="os-subdash-action-copy"><strong>${label}</strong><small>${note}</small></span>${icon("chevron")}</a>`).join("")}</div>
-      </section>
+      ${commission!==null?`<div class="af-dashboard-revenue-validation"><span>Comissão validada</span><strong data-dashboard-kpi="validated_commission_cents">${dashboardMoney(validated)}</strong>
+        <small>${validated===null?"Ainda não informada pela Shopee":"Informada no relatório; não representa valor recebido."}</small></div>`:
+        `<div class="af-dashboard-revenue-actions">${link(first?"Preparar primeira oferta":"Preparar oferta","ofertas","plus",true)}</div>`}
+      <footer><span>${icon("info")}${commission!==null?"Estimativa sujeita à validação":financial?"Comissão ainda não informada":"Vendas e comissões: consulte o relatório"}</span>${dashboardExternal("Ver na Shopee")}</footer>
+    </section>`;
+  }
+
+  function dashboardKpis(snapshot) {
+    const {summary,financial,publications} = snapshot;
+    const scopedPublications = dashboardNumber(summary.published);
+    const publishedValue = scopedPublications ?? snapshot.publishedSnapshot;
+    const publishedNote = scopedPublications!==null ? publications.complete?"Confirmadas no período":"Contagem parcial do período" : `Últimas ${snapshot.sampleLimit} publicações`;
+    const metrics = financial ? [
+      {key:"sales_cents",label:"Vendas geradas",value:dashboardMoney(summary.sales_cents ?? summary.gross_sales_cents),note:"Valor dos pedidos atribuídos",glyph:"chart"},
+      {key:"orders",label:"Pedidos",value:dashboardCount(summary.orders),note:"Atribuídos pela Shopee",glyph:"box"},
+      {key:"published",label:"Publicações",value:dashboardCount(publishedValue),note:publishedNote,glyph:"send",href:"fila"},
+      {key:"clicks",label:"Cliques",value:dashboardNumber(summary.clicks)!==null?dashboardCount(summary.clicks):"Na Shopee",note:dashboardNumber(summary.clicks)!==null?"Informados pela fonte":"Disponíveis no relatório da Shopee",glyph:"external",external:true},
+    ] : [
+      {key:"published_snapshot",label:"Publicadas",value:dashboardCount(snapshot.publishedSnapshot),note:`Últimas ${snapshot.sampleLimit} publicações`,glyph:"send",href:"fila"},
+      {key:"pending",label:"Na fila",value:dashboardCount(snapshot.pendingSnapshot),note:"Programadas ou em revisão",glyph:"clock",href:"fila"},
+      {key:"active_rules",label:"Automações",value:dashboardCount(snapshot.rules),note:"Regras ativas",glyph:"repeat",href:"automacoes"},
+      {key:"verified_destinations",label:"Destinos",value:dashboardCount(snapshot.verified),note:"Verificados para publicar",glyph:"shieldCheck",href:"conexoes"},
+    ];
+    return `<section class="af-dashboard-kpis" aria-label="${financial?"Indicadores do período":"Sua operação agora"}">${metrics.map(metric=>{
+      const tag = metric.href || metric.external ? "a" : "article";
+      const attributes = metric.external ? ' href="https://affiliate.shopee.com.br/" target="_blank" rel="noopener noreferrer"' : metric.href?` href="#${metric.href}"`:"";
+      const valueClass = metric.value==="Na Shopee"?"af-dashboard-kpi-word":metric.key==="sales_cents"?`af-dashboard-kpi-currency${metric.value.length>13?" af-dashboard-kpi-long":""}`:"";
+      return `<${tag} class="af-dashboard-kpi"${attributes}><span class="af-dashboard-kpi-label">${html(metric.label)}${icon(metric.glyph)}</span><strong data-dashboard-kpi="${metric.key}"${valueClass?` class="${valueClass}"`:""}>${html(metric.value)}</strong><small>${html(metric.note)}</small></${tag}>`;
+    }).join("")}</section>`;
+  }
+
+  function dashboardChartModel(snapshot=dashboardSnapshot()) {
+    const metric = analyticsMetric==="commission_cents" && !snapshot.financial && !analyticsMetricChosen ? "published" : analyticsMetric;
+    const rows = Array.isArray(snapshot.data?.series) ? snapshot.data.series.filter(row=>/^\d{4}-\d{2}-\d{2}$/.test(String(row.date))).slice(0,366) : [];
+    const points = rows.map(row=>({date:row.date,value:dashboardNumber(row[metric])}));
+    const selected = Math.min(Math.max(chartSelected ?? Math.max(points.length-1,0),0),Math.max(points.length-1,0));
+    return {metric,config:dashboardMetrics[metric],points,selected};
+  }
+
+  function dashboardChart(snapshot) {
+    const {metric,config,points,selected} = dashboardChartModel(snapshot);
+    const known = points.filter(point=>point.value!==null);
+    const total = dashboardNumber(snapshot.summary[metric]);
+    const range = snapshot.data?.period;
+    const dates = range?.start_date && range?.end_date ? `${dashboardDay(range.start_date)} – ${dashboardDay(range.end_date)}` : dashboardPeriods[analyticsPeriod];
+    const unavailable = metric!=="published" ? dashboardSourceMessage(snapshot) : snapshot.publications.complete?"Sem informações diárias neste período.":`O resumo considera as últimas ${snapshot.sampleLimit} publicações. O histórico completo por dia ainda não está disponível.`;
+    let plot;
+    if (!known.length) {
+      const first = metric==="published" && snapshot.publishedSnapshot===0;
+      plot = dashboardEmpty(first?"Sua primeira publicação começa aqui":metric==="published"?"Histórico diário ainda indisponível":"Seus resultados, direto da fonte",
+        first?"Prepare uma oferta e acompanhe os próximos envios por aqui.":unavailable,
+        config.glyph,first?link("Buscar uma oferta","ofertas","search"):metric==="published"?link("Ver fila e histórico","fila","arrow"):dashboardExternal());
+    } else {
+      const min = Math.min(0,...known.map(point=>point.value));
+      const max = Math.max(...known.map(point=>point.value),config.currency?100:1);
+      const span = Math.max(max-min,1);
+      const x = index => points.length===1?320:18+(index/(points.length-1))*604;
+      const y = value => 158-((value-min)/span)*138;
+      const baseline = y(0);
+      const segments = [];
+      let segment = [];
+      points.forEach((point,index)=>{
+        if (point.value===null) { if(segment.length) segments.push(segment); segment=[]; }
+        else segment.push({x:x(index),y:y(point.value)});
+      });
+      if (segment.length) segments.push(segment);
+      const lines = segments.map(items=>{
+        const line = items.map((point,index)=>`${index?"L":"M"}${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(" ");
+        return `<path class="af-dashboard-chart-area" d="${line} L${items.at(-1).x},${baseline} L${items[0].x},${baseline} Z"/><path class="af-dashboard-chart-line" d="${line}"/>`;
+      }).join("");
+      const bars = points.map((point,index)=>{
+        if (point.value===null) return "";
+        const width = Math.min(28,480/Math.max(points.length,1));
+        return `<rect class="af-dashboard-chart-bar" x="${x(index)-width/2}" y="${Math.min(y(point.value),baseline)}" width="${width}" height="${Math.abs(y(point.value)-baseline)}" rx="3"/>`;
+      }).join("");
+      const format = value=>config.currency?dashboardMoney(value):dashboardCount(value);
+      plot = `<div class="af-dashboard-chart-readout" role="status" aria-live="polite"><span data-dashboard-point-date>${dashboardDay(points[selected].date)}</span><strong data-dashboard-point-value>${format(points[selected].value)}</strong><small>${html(config.singular)}</small></div>
+        <div class="af-dashboard-chart-layout"><div class="af-dashboard-chart-scale" aria-hidden="true"><span>${config.currency?money(max/100).replace(",00",""):dashboardCount(max)}</span><span>${config.currency?money((min+span/2)/100).replace(",00",""):Number((min+span/2).toFixed(1)).toLocaleString("pt-BR")}</span><span>${config.currency?money(min/100).replace(",00",""):dashboardCount(min)}</span></div>
+        <div class="af-dashboard-chart-plot"><svg viewBox="0 0 640 180" preserveAspectRatio="none" role="img" aria-labelledby="af-chart-title af-chart-desc">
+          <title id="af-chart-title">${html(config.label)} por dia</title><desc id="af-chart-desc">${html(dates)}. Use as setas ou selecione um dia para consultar o valor exato. Dias sem informação não são representados como zero.</desc>
+          ${[20,89,158].map(line=>`<line class="af-dashboard-chart-grid" x1="0" y1="${line}" x2="640" y2="${line}"/>`).join("")}
+          ${metric==="commission_cents"?lines:bars}
+          ${metric==="commission_cents"?points.map((point,index)=>point.value===null?"":`<circle class="af-dashboard-chart-dot" data-chart-dot="${index}" cx="${x(index)}" cy="${y(point.value)}" r="${index===selected?4.5:2.4}"/>`).join(""):""}
+        </svg><div class="af-dashboard-chart-hits" role="group" aria-label="Valores diários de ${html(config.label.toLowerCase())}">${points.map((point,index)=>`<button type="button" data-dashboard-point="${index}" tabindex="${index===selected?0:-1}" aria-pressed="${index===selected}" aria-label="${html(dashboardDay(point.date)+": "+format(point.value)+(point.value===null?" · sem informação":""))}" title="${html(dashboardDay(point.date)+": "+format(point.value))}" style="left:${(x(index)/640*100).toFixed(4)}%;width:${Math.min(100,100/points.length).toFixed(4)}%"><span class="os-sr-only">${dashboardDay(point.date)}</span></button>`).join("")}</div></div></div>
+        <div class="af-dashboard-chart-axis" aria-hidden="true"><span>${dashboardDay(points[0].date)}</span>${points.length>2?`<span>${dashboardDay(points[Math.floor((points.length-1)/2)].date)}</span>`:""}<span>${points.length>1?dashboardDay(points.at(-1).date):""}</span></div>
+        <div class="af-dashboard-chart-controls"><span>${known.every(point=>point.value===0)?"Nenhum resultado registrado neste período.":"Selecione um dia para ver os detalhes."}</span><div><button type="button" class="os-icon-button" data-dashboard-step="-1" aria-label="Dia anterior"${selected===0?" disabled":""}>${icon("left")}</button><button type="button" class="os-icon-button" data-dashboard-step="1" aria-label="Próximo dia"${selected===points.length-1?" disabled":""}>${icon("chevron")}</button></div></div>`;
+    }
+    return `<section class="af-dashboard-panel af-dashboard-performance" aria-labelledby="af-performance-title"><header class="af-dashboard-panel-head"><div><h2 id="af-performance-title">Desempenho no período</h2><p>${html(dates)}${snapshot.source.status==="partial" && metric!=="published"?" · relatório parcial":""}</p></div>${total!==null?`<span class="af-dashboard-chart-total"><small>${html(config.singular)}</small><strong>${config.currency?dashboardMoney(total):dashboardCount(total)}</strong></span>`:""}</header>
+      <div class="af-dashboard-metric-tabs" role="group" aria-label="Métrica do gráfico">${Object.entries(dashboardMetrics).map(([key,item])=>`<button type="button" data-dashboard-metric="${key}" aria-pressed="${key===metric}">${icon(item.glyph)}${html(item.label)}</button>`).join("")}</div>
+      ${plot}
+      <p class="af-dashboard-source-note">${metric==="published"?(snapshot.publications.complete?"Fonte: publicações confirmadas pelo Orion.":"Histórico diário completo ainda indisponível."):"Fonte: relatório de afiliados Shopee. Comissão estimada não é valor recebido."}</p>
+    </section>`;
+  }
+
+  function dashboardOperation(snapshot) {
+    const shopee = connected("shopee")?.status==="connected";
+    const next = activeRules().filter(rule=>rule.next_at).sort((a,b)=>a.next_at-b.next_at)[0];
+    const rows = [
+      {label:"Conta Shopee",description:shopee?"Pronta para buscar e preparar ofertas":"Conecte sua conta de afiliados",value:shopee?"Conectada":"Conectar",glyph:"box",href:"plataformas",ok:shopee},
+      {label:"Destinos",description:snapshot.verified?`${snapshot.verified} ${snapshot.verified===1?"destino verificado":"destinos verificados"}`:"Adicione um canal ou grupo",value:snapshot.verified?"Prontos":"Configurar",glyph:"send",href:"conexoes",ok:snapshot.verified>0},
+      {label:"Automações",description:snapshot.rules?`${snapshot.rules} ${snapshot.rules===1?"regra ativa":"regras ativas"}`:"Programe suas próximas ofertas",value:snapshot.rules?"Ativas":"Criar regra",glyph:"repeat",href:"automacoes",ok:snapshot.rules>0},
+    ];
+    return `<section class="af-dashboard-panel af-dashboard-operation" aria-labelledby="af-operation-title"><header class="af-dashboard-panel-head"><div><h2 id="af-operation-title">Sua operação</h2><p>Conexões e automações</p></div><span class="af-dashboard-live-dot${shopee && snapshot.verified?" is-ready":""}" aria-hidden="true"></span></header>
+      <div class="af-dashboard-operation-list">${rows.map(row=>`<a href="#${row.href}" class="af-dashboard-operation-row"><span class="af-dashboard-row-icon" aria-hidden="true">${icon(row.glyph)}</span><span class="af-dashboard-row-copy"><strong>${html(row.label)}</strong><small>${html(row.description)}</small></span><span class="af-dashboard-operation-state${row.ok?" is-ready":""}">${row.ok?icon("check"):icon("chevron")}<span class="os-sr-only">${html(row.value)}</span></span></a>`).join("")}</div>
+      <div class="af-dashboard-next-run"><span>${icon("calendarClock")}Próxima automação</span>${next?`<strong>${html(next.name)}</strong><small>${html(ruleDate(next))}</small>`:`<strong>Uma rotina que trabalha por você</strong><small>Escolha os produtos, os destinos e os horários.</small>`}<a href="#automacoes" class="af-dashboard-text-link">${next?"Ver programação":"Configurar automação"}${icon("arrow")}</a></div>
+    </section>`;
+  }
+
+  function dashboardProducts(snapshot) {
+    const products = (Array.isArray(snapshot.data?.products)?snapshot.data.products:[]).slice().sort((a,b)=>
+      (dashboardNumber(b.commission_cents)??dashboardNumber(b.orders)??0)-(dashboardNumber(a.commission_cents)??dashboardNumber(a.orders)??0)).slice(0,5);
+    if (!snapshot.financial && !products.length) return "";
+    const max = Math.max(1,...products.map(row=>dashboardNumber(row.commission_cents)??0));
+    return `<section class="af-dashboard-panel" aria-labelledby="af-products-title"><header class="af-dashboard-panel-head"><div><h2 id="af-products-title">Produtos em destaque</h2><p>Comissões atribuídas pela Shopee</p></div>${icon("box")}</header>
+      ${products.length?`<ol class="af-dashboard-rank-list">${products.map((row,index)=>{
+        const commission = dashboardNumber(row.commission_cents);
+        const orders = dashboardNumber(row.orders);
+        return `<li><span class="af-dashboard-rank-number">${index+1}</span><div class="af-dashboard-rank-copy"><strong>${html(row.title || row.name || "Produto sem título")}</strong><small>${orders!==null?`${dashboardCount(orders)} ${orders===1?"pedido":"pedidos"}`:"Pedidos ainda não informados"}</small>${commission!==null?`<span class="af-dashboard-rank-track" aria-hidden="true"><span style="width:${Math.max(0,Math.min(100,commission/max*100))}%"></span></span>`:""}</div><strong class="af-dashboard-rank-value">${dashboardMoney(commission)}</strong></li>`;
+      }).join("")}</ol>`:dashboardEmpty("Seu próximo destaque está por vir","Os produtos aparecem quando houver vendas atribuídas no período.","box",link("Buscar ofertas","ofertas","search"))}
+      <footer class="af-dashboard-panel-foot">${dashboardExternal("Conferir relatório completo")}</footer></section>`;
+  }
+
+  function dashboardDestinations(snapshot) {
+    const sourceRows = Array.isArray(snapshot.data?.destinations)?snapshot.data.destinations:null;
+    const rows = (sourceRows || state.destination.map(destination=>({...destination,published_snapshot:state.jobs.filter(job=>job.destination===destination.id&&job.status==="published").length})))
+      .slice().sort((a,b)=>(dashboardNumber(b.published)??dashboardNumber(b.published_snapshot)??0)-(dashboardNumber(a.published)??dashboardNumber(a.published_snapshot)??0)).slice(0,5);
+    const complete = snapshot.publications.complete===true;
+    const max = Math.max(1,...rows.map(row=>dashboardNumber(row.published)??dashboardNumber(row.published_snapshot)??0));
+    return `<section class="af-dashboard-panel" aria-labelledby="af-destinations-title"><header class="af-dashboard-panel-head"><div><h2 id="af-destinations-title">Onde você publica</h2><p>${complete?"Publicações confirmadas no período":`Resumo das últimas ${snapshot.sampleLimit} publicações`}</p></div>${icon("broadcast")}</header>
+      ${rows.length?`<ul class="af-dashboard-rank-list af-dashboard-destination-list">${rows.map(row=>{
+        const count = dashboardNumber(row.published)??dashboardNumber(row.published_snapshot);
+        return `<li><span class="af-dashboard-row-icon" aria-hidden="true">${icon(row.mode?.startsWith("whatsapp")?"chat":"send")}</span><div class="af-dashboard-rank-copy"><strong>${html(row.name || "Destino")}</strong><small>${html(defaultMedia(row.mode)||"Canal de publicação")}${dashboardNumber(row.orders)!==null?` · ${dashboardCount(row.orders)} pedidos atribuídos`:""}</small>${count!==null && count>0?`<span class="af-dashboard-rank-track" aria-hidden="true"><span style="width:${Math.max(0,Math.min(100,count/max*100))}%"></span></span>`:""}</div><span class="af-dashboard-rank-value"><strong>${dashboardCount(count)}</strong><small>${count===1?"publicação":"publicações"}</small></span></li>`;
+      }).join("")}</ul>`:dashboardEmpty("Sua audiência começa em um destino","Conecte um canal ou grupo para receber suas ofertas.","send",link("Adicionar destino","conexoes","plus"))}
+      <footer class="af-dashboard-panel-foot"><a href="#conexoes" class="af-dashboard-text-link">Gerenciar destinos${icon("arrow")}</a>${!complete?'<span>Vendas por destino dependem de atribuição no relatório.</span>':""}</footer></section>`;
+  }
+
+  function dashboardPublications(snapshot) {
+    const upcoming = Array.isArray(snapshot.data?.upcoming)?snapshot.data.upcoming:pending().slice().sort((a,b)=>(a.due||Infinity)-(b.due||Infinity));
+    const recent = Array.isArray(snapshot.data?.recent)?snapshot.data.recent:state.jobs;
+    const jobs = (publicationTab==="upcoming"?upcoming:recent).slice(0,5);
+    if (!upcoming.length && !recent.length) return "";
+    return `<section class="af-dashboard-panel af-dashboard-publications" aria-labelledby="af-publications-title"><header class="af-dashboard-panel-head"><div><h2 id="af-publications-title">Publicações</h2><p>Fila atual e atividade mais recente</p></div><a href="#fila" class="af-dashboard-text-link">Ver histórico${icon("arrow")}</a></header>
+      <div class="af-dashboard-publication-tabs" role="group" aria-label="Publicações exibidas"><button type="button" data-dashboard-publications="upcoming" aria-pressed="${publicationTab==="upcoming"}">Próximas <span>${dashboardCount(upcoming.length)}</span></button><button type="button" data-dashboard-publications="recent" aria-pressed="${publicationTab==="recent"}">Recentes</button></div>
+      ${jobs.length?`<ul class="af-dashboard-job-list">${jobs.map(job=>{
+        const destination = state.destination.find(row=>row.id===(job.destination_id||job.destination));
+        const when = publicationTab==="upcoming"?(job.scheduled_at||job.due):(job.published_at||job.changed);
+        const whenLabel = when?dashboardTime(when,undefined,job.doc?.rule?.timezone):publicationTab==="recent"?"Horário não informado":job.status==="approval"?"Aguardando revisão":"Sem horário definido";
+        return `<li><span class="af-dashboard-row-icon" aria-hidden="true">${icon(job.status==="published"?"check":"clock")}</span><div class="af-dashboard-job-copy"><strong>${html(job.title||job.doc?.offer?.title||"Oferta preparada")}</strong><small>${html(job.destination_name||destination?.name||"Destino removido")}</small></div><span class="af-dashboard-job-time">${html(whenLabel)}</span>${jobPill(job)}</li>`;
+      }).join("")}</ul>`:dashboardEmpty("Sua fila está livre","Prepare outra oferta ou configure uma automação para manter seus canais ativos.","calendarClock",link("Preparar oferta","ofertas","plus"))}
+      <footer class="af-dashboard-panel-foot"><span>${snapshot.data?.sources?.publications?.complete?"Fila atual, independente do período selecionado.":`Últimas ${snapshot.sampleLimit} publicações registradas. A fila é independente do período.`}</span></footer></section>`;
+  }
+
+  function dashboard() {
+    const snapshot = dashboardSnapshot();
+    const products = dashboardProducts(snapshot);
+    const updated = snapshot.data?.updated_at || stateUpdatedAt;
+    const timeZone = snapshot.data?.period?.timezone || "America/Sao_Paulo";
+    const attention = needingAttention().length;
+    return `<div class="af-dashboard">
+      <header class="af-dashboard-heading"><div><span class="af-dashboard-eyebrow">Afiliados</span><h1>Dashboard</h1></div><div class="af-dashboard-heading-actions">${link("Nova oferta","ofertas","plus",true)}</div><p>Suas ofertas, seus canais e seus próximos resultados.</p></header>
+      <div class="af-dashboard-toolbar"><div class="af-dashboard-periods" role="group" aria-label="Período dos resultados">${Object.entries(dashboardPeriods).map(([key,label])=>`<button type="button" data-dashboard-period="${key}" aria-pressed="${key===analyticsPeriod}">${html(label)}</button>`).join("")}</div>
+        <div class="af-dashboard-freshness"><span>${analyticsLoading?"Atualizando…":`Consultado ${dashboardTime(updated,{hour:"2-digit",minute:"2-digit"},timeZone)}`}</span><button class="os-icon-button" type="button" data-act="refresh" aria-label="Atualizar Dashboard" title="Atualizar os dados disponíveis"${analyticsLoading?" disabled":""}>${icon("refresh")}</button></div></div>
+      ${analyticsError && snapshot.data?`<div class="af-dashboard-alert" role="status">${icon("info")}<p>Não foi possível atualizar os resultados. Mantivemos os últimos dados confirmados deste período.</p></div>`:""}
+      <div class="af-dashboard-overview" aria-busy="${analyticsLoading}">${dashboardHero(snapshot)}${dashboardKpis(snapshot)}</div>
+      ${attention?`<a href="#fila" class="af-dashboard-alert af-dashboard-alert-warning">${icon("shieldAlert")}<p><strong>${attention} ${attention===1?"publicação precisa":"publicações precisam"} de atenção</strong><span>Revise as ocorrências entre as últimas ${snapshot.sampleLimit} publicações.</span></p>${icon("chevron")}</a>`:""}
+      <div class="af-dashboard-workspace">${dashboardChart(snapshot)}${dashboardOperation(snapshot)}</div>
+      <div class="af-dashboard-rankings${products?"":" af-dashboard-rankings-single"}">${products}${dashboardDestinations(snapshot)}</div>
+      ${dashboardPublications(snapshot)}
+      <footer class="af-dashboard-footnote"><span>${icon("info")}Vendas geradas são o valor dos pedidos. Sua receita de afiliado é a comissão.</span><span>Cliques disponíveis no relatório da Shopee.${dashboardExternal("Abrir relatório")}</span></footer>
     </div>`;
   }
 
@@ -487,19 +685,74 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
   const views = {dashboard,plataformas:platforms,conexoes:connections,ofertas:offers,templates:templatePage,automacoes:automations,fila:history};
   function render() {
     if (!state || controller.signal.aborted) return;
+    const focused = route==="dashboard" && content.contains(document.activeElement) ? document.activeElement : null;
+    const focusKey = focused && ["dashboardPeriod","dashboardMetric","dashboardPublications"].find(key=>focused.dataset[key]);
+    const focusValue = focusKey ? focused.dataset[focusKey] : null;
     content.innerHTML = views[route]();
     const all = $("[data-select-niches]");
     if (all) all.indeterminate = !all.checked && !!all.form.querySelector("input[name=niches]:checked");
     filterHistory();
     window.OrionFields?.refresh(content);
+    if (focusKey) {
+      const target = [...content.querySelectorAll("button")].find(button=>button.dataset[focusKey]===focusValue);
+      target?.focus({preventScroll:true});
+    }
+  }
+
+  async function loadAnalytics() {
+    if (!state || controller.signal.aborted) return;
+    const period = analyticsPeriod;
+    const version = ++analyticsVersion;
+    analyticsLoading = true;
+    analyticsError = false;
+    if (route==="dashboard") render();
+    try {
+      const result = await api("analytics?period="+encodeURIComponent(period));
+      if (controller.signal.aborted || version!==analyticsVersion || period!==analyticsPeriod) return;
+      if (!result || !result.summary || !result.sources || result.period?.key!==period) throw new Error("Relatório indisponível.");
+      if (result.sources.sales?.status==="error" && analyticsCache.has(period)) {
+        analyticsError = true;
+        return;
+      }
+      analyticsCache.set(period,result);
+    } catch (error) {
+      if (controller.signal.aborted || version!==analyticsVersion || period!==analyticsPeriod) return;
+      analyticsError = true;
+    } finally {
+      if (!controller.signal.aborted && version===analyticsVersion && period===analyticsPeriod) {
+        analyticsLoading = false;
+        if (route==="dashboard") render();
+      }
+    }
+  }
+
+  function selectDashboardPoint(index, focus=false) {
+    const model = dashboardChartModel();
+    if (!model.points.length) return;
+    chartSelected = Math.min(Math.max(Number(index)||0,0),model.points.length-1);
+    const point = model.points[chartSelected];
+    const dateNode = content.querySelector("[data-dashboard-point-date]");
+    const valueNode = content.querySelector("[data-dashboard-point-value]");
+    if (dateNode) dateNode.textContent = dashboardDay(point.date);
+    if (valueNode) valueNode.textContent = model.config.currency?dashboardMoney(point.value):dashboardCount(point.value);
+    for (const button of content.querySelectorAll("[data-dashboard-point]")) {
+      const selected = Number(button.dataset.dashboardPoint)===chartSelected;
+      button.setAttribute("aria-pressed",String(selected));
+      button.tabIndex = selected?0:-1;
+      if (selected && focus) button.focus({preventScroll:true});
+    }
+    for (const dot of content.querySelectorAll("[data-chart-dot]")) dot.setAttribute("r",Number(dot.dataset.chartDot)===chartSelected?"4.5":"2.4");
+    for (const step of content.querySelectorAll("[data-dashboard-step]")) step.disabled = Number(step.dataset.dashboardStep)<0?chartSelected===0:chartSelected===model.points.length-1;
   }
 
   async function reload() {
     const result = await api("state");
     if (controller.signal.aborted) return;
     state = result;
+    stateUpdatedAt = Date.now();
     if (!chosenTemplate) chosenTemplate=state.deal_template || "default";
     render();
+    if (route==="dashboard") await loadAnalytics();
   }
 
   function showError(error) {
@@ -642,7 +895,7 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
   }
 
   const actions = {
-    refresh: async ()=>{await reload();notify("Dados atualizados.");},
+    refresh: async ()=>{await reload();notify(route==="dashboard"?"Consulta concluída. Os dados disponíveis estão no painel.":"Dados atualizados.");},
     demo: async ()=>{ const sample=await api("offers/demo","POST"); await reload(); await openOffer(sample.id); },
     "open-offer": openOffer,
     "ai-phrase": async ident=>{
@@ -729,6 +982,33 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
       return;
     }
     if (!state) return;
+    const period = event.target.closest("[data-dashboard-period]");
+    if (period && Object.hasOwn(dashboardPeriods,period.dataset.dashboardPeriod)) {
+      if (analyticsPeriod!==period.dataset.dashboardPeriod) {
+        analyticsPeriod = period.dataset.dashboardPeriod;
+        chartSelected = null;
+        await loadAnalytics();
+      }
+      return;
+    }
+    const metric = event.target.closest("[data-dashboard-metric]");
+    if (metric && Object.hasOwn(dashboardMetrics,metric.dataset.dashboardMetric)) {
+      analyticsMetric = metric.dataset.dashboardMetric;
+      analyticsMetricChosen = true;
+      chartSelected = null;
+      render();
+      return;
+    }
+    const point = event.target.closest("[data-dashboard-point]");
+    if (point) { selectDashboardPoint(point.dataset.dashboardPoint);return; }
+    const step = event.target.closest("[data-dashboard-step]");
+    if (step) { selectDashboardPoint(dashboardChartModel().selected+Number(step.dataset.dashboardStep),true);return; }
+    const publications = event.target.closest("[data-dashboard-publications]");
+    if (publications && ["upcoming","recent"].includes(publications.dataset.dashboardPublications)) {
+      publicationTab = publications.dataset.dashboardPublications;
+      render();
+      return;
+    }
     const tab=event.target.closest("[data-offer-tab]");
     const filter=event.target.closest("[data-history-filter]");
     if (tab) {
@@ -749,6 +1029,19 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     catch(error) { notify(error.message,true); }
     finally { button.disabled=false; }
   }, {signal: controller.signal});
+
+  content.addEventListener("focusin",event=>{
+    const point = event.target.closest("[data-dashboard-point]");
+    if (point && state) selectDashboardPoint(point.dataset.dashboardPoint);
+  }, {signal:controller.signal});
+  content.addEventListener("keydown",event=>{
+    const point = event.target.closest("[data-dashboard-point]");
+    if (!point || !state || !["ArrowLeft","ArrowRight","Home","End"].includes(event.key)) return;
+    event.preventDefault();
+    const model = dashboardChartModel();
+    const next = event.key==="Home"?0:event.key==="End"?model.points.length-1:Number(point.dataset.dashboardPoint)+(event.key==="ArrowLeft"?-1:1);
+    selectDashboardPoint(next,true);
+  }, {signal:controller.signal});
 
   content.addEventListener("change",async event=>{
     if (event.target.matches("[data-select-niches],input[name=niches]")) {
@@ -798,7 +1091,11 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
   void reload().catch(showError);
   return {
     setView(next) {
-      if (Object.hasOwn(views,next) && route!==next) {route=next;render();}
+      if (Object.hasOwn(views,next) && route!==next) {
+        route=next;
+        render();
+        if (route==="dashboard" && state) void loadAnalytics();
+      }
     },
     unmount() {
       const dialog = $("#osAffiliateDialog");

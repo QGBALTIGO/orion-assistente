@@ -1,9 +1,11 @@
 """Serve the Afiliados workspace through the active Orion account session."""
+import asyncio
 from functools import lru_cache
 import json
 import os
 from pathlib import Path
 import re
+from typing import Literal
 from uuid import UUID
 
 from cryptography.fernet import Fernet
@@ -13,6 +15,7 @@ import httpx
 from sqlalchemy import text
 
 from app.catalog_api import Actor, authenticate, support_session_factory
+from app.affiliate_analytics import analytics_report_valid, build_analytics_fallback, state_snapshot_valid
 from app.workspace_policy import AFFILIATE_NICHE
 
 
@@ -113,6 +116,70 @@ async def workspace_page(tenant_id: UUID, actor: Actor = Depends(authenticate)):
     if not available():
         raise HTTPException(503, "O painel de Afiliados está indisponível no momento")
     return Response(status_code=303, headers={**NO_STORE, "Location": "/painel?aba=dashboard"})
+
+
+@router.get("/afiliados/{tenant_id}/api/analytics", include_in_schema=False)
+async def workspace_analytics(
+    tenant_id: UUID,
+    period: Literal["today", "7d", "30d", "month"] = "month",
+    actor: Actor = Depends(authenticate),
+):
+    """Read the provider report, or describe the limited operational snapshot.
+
+    An absent report endpoint is a capability gap, never an empty sales report.
+    Both reads use the same verified owner and tenant-bound signed claims as
+    the existing workspace. No credentials or report data are kept in the UI.
+    """
+    company = await affiliate_owner(actor, tenant_id)
+    signer = cipher(os.getenv("ORION_AFFILIATE_WORKSPACE_KEY", ""))
+    if signer is None:
+        raise HTTPException(503, "O painel de Afiliados está indisponível no momento")
+    try:
+        async with asyncio.timeout(25):
+            return await _read_workspace_analytics(signer, tenant_id, company, period)
+    except TimeoutError:
+        raise HTTPException(504, "A atualização dos relatórios demorou mais que o esperado. Tente novamente.") from None
+
+
+async def _read_workspace_analytics(signer, tenant_id, company, period):
+    async def read(path, params=None):
+        claim = json.dumps({"tenant": tenant_id.hex, "name": company,
+                            "method": "GET", "path": path}).encode()
+        headers = {"X-Orion-Affiliate-Access": signer.encrypt(claim).decode()}
+        return await fetch_upstream("GET", path, headers=headers, params=params)
+
+    status, mime, content = await read("/api/analytics", {"period": period})
+    if status == 200:
+        try:
+            report = json.loads(content) if mime == "application/json" else None
+            valid = analytics_report_valid(report, period=period)
+        except (ValueError, UnicodeError):
+            valid = False
+        if not valid:
+            raise HTTPException(502, "O relatório de Afiliados retornou uma resposta inesperada")
+        return Response(content, media_type="application/json", headers=NO_STORE)
+    if status not in {404, 405, 501}:
+        # An authorization or transient provider failure must not masquerade
+        # as a successful, empty report and replace confirmed cached values.
+        raise HTTPException(status if status in {401, 403, 429} else 502,
+                            "Não foi possível atualizar os relatórios de Afiliados")
+
+    status, mime, content = await read("/api/state")
+    if status != 200 or mime != "application/json":
+        raise HTTPException(status if status in {401, 403, 429} else 502,
+                            "Não foi possível atualizar a atividade de Afiliados")
+    try:
+        state = json.loads(content)
+        if not state_snapshot_valid(state):
+            raise ValueError
+    except (ValueError, UnicodeError):
+        raise HTTPException(502, "A atividade de Afiliados retornou uma resposta inesperada") from None
+    async with support_session_factory()() as db:
+        timezone = (await db.execute(text("SELECT timezone FROM tenants WHERE id=:tenant"),
+                                    {"tenant": tenant_id})).scalar_one_or_none()
+    report = build_analytics_fallback(state, period=period,
+                                      timezone=timezone or "America/Campo_Grande")
+    return Response(json.dumps(report, ensure_ascii=False), media_type="application/json", headers=NO_STORE)
 
 
 @router.api_route("/afiliados/{tenant_id}/api/{path:path}", methods=list(API_ACTIONS), include_in_schema=False)
