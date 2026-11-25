@@ -1,0 +1,57 @@
+name: Orion - Nichos disponíveis
+on:
+  push:
+    branches: [codex/orion-nichos-disponiveis-20261125]
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    env:
+      BASE_IMAGE: ghcr.io/qgbaltigo/orion-assistente-api@sha256:3d1bdbf9f501f3797fa684a14e867ceb2d8adf42c43d01b6bd2299e450a8c8f5
+      IMAGE: ghcr.io/qgbaltigo/orion-assistente-api:onboarding-niches-${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Testar cadastro de empresas
+        run: |
+          npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+          node --test --test-reporter=dot ui-tests/onboarding-entry.test.mjs ui-tests/onboarding-save.test.mjs ui-tests/onboarding-affiliates.test.mjs ui-tests/onboarding-subscription-niche.test.mjs ui-tests/fields-onboarding-channels.test.mjs
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Validar os arquivos do ambiente ativo
+        run: |
+          docker run --rm --entrypoint python "$BASE_IMAGE" -c '
+          import hashlib
+          from pathlib import Path
+          originals = {
+              "app/onboarding_service.py": "0ed4ffb5b6070b77e5653461bcea00c1e3db18cd",
+              "app/static/orion-onboarding.js": "b226cb4f1c76dcf4c51d7255ec1a38fadf181235",
+          }
+          for filename, expected in originals.items():
+              data = Path(filename).read_bytes()
+              actual = hashlib.sha1(b"blob %d" % len(data) + bytes(1) + data).hexdigest()
+              assert actual == expected, filename
+          '
+      - name: Construir e verificar o cadastro da Orion
+        run: |
+          docker build -f deploy/Dockerfile.onboarding-niches --build-arg ORION_RELEASE="$GITHUB_SHA" -t "$IMAGE" .
+          docker run --rm --entrypoint python "$IMAGE" -c '
+          from app.main import app
+          from app.onboarding_service import AVAILABLE_NICHES
+          assert AVAILABLE_NICHES == ("barbearia", "odontologia", "servico_assinaturas", "afiliados")
+          assert "/api/v1/onboarding/businesses" in app.openapi()["paths"]
+          '
+          docker push "$IMAGE"
+          docker image inspect "$IMAGE" --format '{{index .RepoDigests 0}}'

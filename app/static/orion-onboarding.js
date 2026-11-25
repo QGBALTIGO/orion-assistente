@@ -21,6 +21,7 @@
   const check = (name,label,checked=false,help='',value='on') => '<label class="ob-check"><input type="checkbox" name="'+esc(name)+'" value="'+esc(value)+'"'+(checked?' checked':'')+'><span><strong>'+esc(label)+'</strong>'+(help?'<small>'+esc(help)+'</small>':'')+'</span></label>';
   const subscriptionNiche = 'servico_assinaturas';
   const affiliateNiche = 'afiliados';
+  const defaultAvailableNiches = ['barbearia','odontologia',subscriptionNiche,affiliateNiche];
   const niches = [['','Selecione o nicho'],['barbearia','Barbearia'],['salao','Salão de beleza'],['odontologia','Odontologia'],['estetica','Estética'],['clinica','Clínica'],['pet_shop','Pet shop'],['aulas','Aulas'],[subscriptionNiche,'Serviço de assinaturas'],[affiliateNiche,'Afiliados'],['outro','Outro']];
   const activities = [['','Selecione a atividade'],['services','Serviços com agendamento'],['products','Produtos'],['both','Serviços e produtos']];
   const subscriptionOfferings = [['','Selecione a atividade'],['subscriptions','Assinaturas'],['one_time_sales','Vendas avulsas'],['both','Assinaturas e vendas avulsas']];
@@ -96,15 +97,18 @@
     function form(body,label='Salvar e continuar',type=state.step) {return '<form class="ob-form" data-ob-form="'+esc(type)+'"><fieldset '+(state.data?.can_edit===false?'disabled':'')+'>'+body+'<div class="ob-actions">'+button('Voltar','back')+'<button type="submit" class="ob-button" data-ob-write>'+esc(label)+'</button></div></fieldset></form>';}
     function businessForm(create=false) {
       const c=state.data?.configuration||{},name=state.data?.name||'',
-        currentNiche=String(c.niche||'').toLowerCase()==='other'?'outro':c.niche||'',
-        availableNiches=niches.filter(([value])=>value!==affiliateNiche||(create&&state.entry?.affiliate_available)),
-        nicheChoices=availableNiches.some(([value])=>value===currentNiche)?availableNiches:[...availableNiches,[currentNiche,currentNiche]],
+        currentNiche=create?'':String(c.niche||'').toLowerCase()==='other'?'outro':c.niche||'',
+        enabledNiches=Array.isArray(state.entry?.available_niches)?state.entry.available_niches:defaultAvailableNiches,
+        nicheChoices=niches.filter(([value])=>!value||value===currentNiche||
+          enabledNiches.includes(value)&&(value!==affiliateNiche||create&&state.entry?.affiliate_available)),
+        otherNiche=nicheChoices.some(([value])=>value==='outro'),
         choices=activityChoices(currentNiche),storedActivity=businessActivityValue(c),
         currentActivity=choices.some(([value])=>value===storedActivity)?storedActivity:'';
+      if(currentNiche&&!nicheChoices.some(([value])=>value===currentNiche))nicheChoices.push([currentNiche,currentNiche]);
       return form('<div class="ob-fields ob-business-fields">'+
         field('name','Nome do negócio',name,'required maxlength="160" autocomplete="organization" autocapitalize="words" placeholder="Ex.: Barbearia Peixoto" data-ob-business-name','Como sua empresa será identificada no Orion.')+
         select('niche','Nicho principal',nicheChoices,currentNiche,'required')+
-        '<div class="ob-field" data-ob-other-niche><label for="ob-other_niche">Qual é o seu negócio?</label><input id="ob-other_niche" name="other_niche" maxlength="120" value="'+esc(c.other_niche||'')+'"></div>'+
+        (otherNiche?'<div class="ob-field" data-ob-other-niche><label for="ob-other_niche">Qual é o seu negócio?</label><input id="ob-other_niche" name="other_niche" maxlength="120" value="'+esc(c.other_niche||'')+'"></div>':'')+
         select('activity','O que você oferece',choices,currentActivity,'required data-ob-activity-group="'+activityGroup(currentNiche)+'"')+
         field('contact_phone','WhatsApp comercial',c.contact_phone||'','type="tel" required autocomplete="tel" inputmode="tel" placeholder="(00) 00000-0000" data-orion-field="phone"')+
         '</div>',create?'Criar meu negócio':'Salvar e continuar',create?'create':'business');

@@ -43,6 +43,8 @@ LEGACY_LABELS = {"business": "Empresa", "location": "Atendimento e endereço", "
 LABELS = {"business": "Empresa", "location": "Atendimento e endereço",
           "profile": "Perfil da empresa", "hours": "Expediente", "goals": "Desafios e objetivos", "review": "Revisão"}
 
+AVAILABLE_NICHES = ("barbearia", "odontologia", SUBSCRIPTION_NICHE, AFFILIATE_NICHE)
+
 
 def enabled():
     return os.getenv("ONBOARDING_ENABLED", "0") == "1"
@@ -613,6 +615,7 @@ async def entry(actor, tenant_id=None):
         "account": {"verified": bool(account["verified_at"]), "name": account["name"], "email": account["email"]},
         "businesses": rows, "invitations": invitations, "tenant_id": selected["id"] if selected else None,
         "current_step": selected["current_step"] if selected else "business", "reason": "owner_setup_pending" if kind == "blocked" else None,
+        "available_niches": AVAILABLE_NICHES,
         **({"affiliate_available": True} if affiliate_workspace_available() else {})})
 
 
@@ -643,6 +646,8 @@ async def create_business(actor, payload):
             else:
                 # Preserve retries of older confirmed operations; require the
                 # WhatsApp only on new creation intents.
+                if payload.niche not in AVAILABLE_NICHES:
+                    raise HTTPException(422, "Esse nicho está temporariamente indisponível para novos negócios")
                 if affiliate and not affiliate_workspace_available():
                     raise HTTPException(503, "A criação de espaços de Afiliados está indisponível no momento")
                 if affiliate and (actor.role != "member" or not account["verified_at"]):

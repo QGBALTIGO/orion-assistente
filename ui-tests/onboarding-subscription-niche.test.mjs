@@ -43,15 +43,15 @@ test('new niche uses one required native select with exactly the three requested
   assert.equal(select.checkValidity(),false);
   assert.deepEqual(choices(h),offerings);
   assert.equal(select.labels[0].textContent,'O que você oferece');
-  assert.equal(h.element('[data-ob-other-niche]').hidden,true);
-  assert.equal(h.element('.ob-business-fields').querySelectorAll(':scope > .ob-field').length,5);
+  assert.equal(h.document.querySelector('[data-ob-other-niche]'),null);
+  assert.equal(h.element('.ob-business-fields').querySelectorAll(':scope > .ob-field').length,4);
   assert.deepEqual(writes(h),[]);assert.deepEqual(h.errors,[]);
 });
 
 test('switching business families clears even the shared both value, while ordinary niches keep it',async t=>{
   const state=fullState();state.configuration.activity='both';
   const h=await makeOnboarding({data:state});t.after(()=>h.close());
-  h.change('[name=niche]','salao');assert.equal(h.element('[name=activity]').value,'both');
+  h.change('[name=niche]','odontologia');assert.equal(h.element('[name=activity]').value,'both');
   h.change('[name=niche]',niche);assert.equal(h.element('[name=activity]').value,'');
   h.change('[name=activity]','both');
   h.change('[name=niche]','barbearia');

@@ -12,10 +12,35 @@ test('new member sees required WhatsApp without a timezone picker or footer and 
   const h=await makeOnboarding({decision:entry({tenant_id:null,businesses:[]})});t.after(()=>h.close());assert.equal(h.element('[name=name]').value,'');assert.equal(h.element('[name=niche]').value,'');assert.equal(h.document.querySelector('[name=timezone]'),null);
   assert.equal(h.element('[name=contact_phone]').required,true);
   assert.doesNotMatch(h.element('[data-ob-form=create]').textContent,/A conexão do WhatsApp será feita depois/);
-  assert.equal(h.element('[data-ob-form=create]').querySelectorAll('.ob-business-fields > .ob-field').length,5);
+  assert.equal(h.element('[data-ob-form=create]').querySelectorAll('.ob-business-fields > .ob-field').length,4);
   assert.match(h.element('[name=contact_phone]').getAttribute('placeholder'),/\(00\)/);
   assert.doesNotMatch(h.element('#setup').textContent,/Os dados confirmados ficam salvos neste negócio/);assert.deepEqual(h.calls.filter(c=>c.method!=='GET'),[]);assert.equal(h.document.activeElement,h.element('[data-ob-title]'));
 });
+test('o cadastro oferece só os quatro nichos disponíveis',async t=>{
+  const h=await makeOnboarding({decision:entry({tenant_id:null,businesses:[],
+    affiliate_available:true,available_niches:['barbearia','odontologia','servico_assinaturas','afiliados']})});
+  t.after(()=>h.close());
+  const select=h.element('[name=niche]');
+  assert.deepEqual(Array.from(select.options).filter(o=>o.value).map(o=>[o.value,o.textContent]),[
+    ['barbearia','Barbearia'],['odontologia','Odontologia'],
+    ['servico_assinaturas','Serviço de assinaturas'],['afiliados','Afiliados'],
+  ]);
+  assert.equal(h.document.querySelector('[name=other_niche]'),null);
+});
+
+test('um negócio existente mantém seu nicho antigo e pode editar os demais dados',async t=>{
+  for(const [niche,other,label] of [['salao',null,'Salão de beleza'],['outro','Oficina','Outro']]){
+    const state=fullState();Object.assign(state.configuration,{niche,other_niche:other});
+    const h=await makeOnboarding({data:state});t.after(()=>h.close());
+    const select=h.element('[name=niche]');
+    assert.equal(select.value,niche);
+    assert.equal(select.selectedOptions[0].textContent,label);
+    assert.equal(Array.from(select.options).some(o=>o.value==='pet_shop'),false);
+    if(other)assert.equal(h.element('[name=other_niche]').value,other);
+    assert.equal(h.calls.filter(c=>c.method!=='GET').length,0);
+  }
+});
+
 test('nicho e atividade têm placeholders visíveis, mas nunca selecionáveis como respostas',async t=>{
   for(const [label,decision] of [
     ['primeira empresa',entry({tenant_id:null,businesses:[]})],

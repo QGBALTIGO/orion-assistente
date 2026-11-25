@@ -171,3 +171,36 @@ async def test_administrative_identity_cannot_register_a_personal_business(monke
     assert denied.value.detail == "Entre com sua conta pessoal para criar a empresa"
     assert len(db.calls) == 2 and not db.results
     assert all("INSERT " not in sql and "UPDATE " not in sql and "DELETE " not in sql for sql, _ in db.calls)
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("replay", [False, True])
+async def test_closed_niches_reject_new_creation_and_preserve_saved_operations(monkeypatch, replay):
+    account, tenant = uuid4(), uuid4()
+    actor = Actor("member", account_id=account)
+    payload = onboarding_schemas.CreateBusiness(
+        name="Salão sintético", niche="salao", activity="services",
+        timezone="America/Cuiaba", contact_phone="+5567999999901", idempotency_key=str(uuid4()),
+    )
+    fingerprint = onboarding_service.digest({
+        "account": account, "data": payload.model_dump(mode="json", exclude={"idempotency_key"}),
+    })
+    history = [{"tenant_id": tenant, "fingerprint": fingerprint}] if replay else []
+    db = DB(None, [{"personal_account": True, "verified_at": True}], history)
+    monkeypatch.setenv("ONBOARDING_ENABLED", "1")
+    monkeypatch.setenv("BUSINESS_PROFILES_ENABLED", "1")
+    monkeypatch.setattr(onboarding_service, "support_session_factory", lambda: lambda: db)
+
+    async def saved_state(received_actor, received_tenant):
+        assert replay and received_actor == actor and received_tenant == tenant
+        return {"tenant_id": tenant}
+
+    monkeypatch.setattr(onboarding_service, "get_state", saved_state)
+    if replay:
+        assert await onboarding_service.create_business(actor, payload) == {"tenant_id": tenant}
+    else:
+        with pytest.raises(HTTPException) as denied:
+            await onboarding_service.create_business(actor, payload)
+        assert denied.value.status_code == 422
+        assert "temporariamente indisponível" in denied.value.detail
+    assert len(db.calls) == 3 and not db.results
+    assert all("INSERT " not in sql and "UPDATE " not in sql and "DELETE " not in sql for sql, _ in db.calls)
