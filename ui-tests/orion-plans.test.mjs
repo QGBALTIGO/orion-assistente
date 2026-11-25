@@ -33,9 +33,9 @@ function fixture(overrides={},options={}){
    if(path==='/plan-trial'){overview.trial={status:'pending',started_at:null,ends_at:null};return{status:'pending',message:'Solicitação recebida!'};}
    if(path==='/plan-trial/activate'&&options.activateTrial)return options.activateTrial(overview,data);
    if(path==='/plan-support'&&options.support)return options.support();
+   if(path==='/plan-support?renewal=1'&&options.renewalSupport)return options.renewalSupport();
    if(path==='/plan-overview')return overview;
    if(path==='/plan-checkout'&&options.embeddedReply)return await options.embeddedReply(data);
-   if(path.startsWith('/plan-checkout-preview?')&&options.previewReply)return options.previewReply;
    if(path.startsWith('/plan-checkout?')&&options.embeddedStatus)return options.embeddedStatus;
 
    if(path==='/plan-pix-current'){if(options.currentUnavailable||options.currentUnavailableAfterCharge&&chargeAttempts)throw Error('synthetic current lookup unavailable');return current;}
@@ -131,28 +131,43 @@ function embeddedReply(data,origin='https://pay.cakto.com.br'){
          plan_code:data.plan_code,monthly_cents:data.expected_cents,status:'pending_payment',intent_id:intent};
 }
 
-test('manual access shows the real checkout in a read-only iframe without a charge or intent',async()=>{
+test('manual access offers a renewal request without checkout or a payment intent',async()=>{
  const effective=planState('essencial',{source:'manual',active:true});
- const f=fixture({barbershop:{checkout_preview:true,period_days:30},effective_plan:effective,embedded_checkout_enabled:true},{
-  previewReply:{checkout_url:'https://pay.cakto.com.br/'+checkoutIds.elite,plan_code:'elite',monthly_cents:13990,provider_verified:true}});
+ const f=fixture({barbershop:{maintenance:true,period_days:30},effective_plan:effective,embedded_checkout_enabled:true},{
+  renewalSupport:()=>({url:'mailto:suporte@example.test?body=Renovar'})});
  try{
-  f.ctx.canPurchase=()=>false;
-  assert.equal(f.root.querySelector('.op-essencial [data-op-checkout]').disabled,true);
-  const button=f.root.querySelector('.op-elite [data-op-checkout-preview]');
-  assert.equal(button.textContent,'Ver checkout');
+  assert.match(f.root.querySelector('.op-essencial').textContent,/Plano atual/);
+  assert.equal(f.root.querySelector('[data-op-checkout]'),null);
+  assert.doesNotMatch(f.root.textContent,/Ver checkout|Prévia/);
+  const button=f.root.querySelector('[data-op-renew-request]');
+  assert.equal(button.textContent,'Solicitar renovação');
   button.click();await tick();
-  const iframe=f.root.querySelector('iframe');
-  assert.equal(iframe.getAttribute('sandbox'),'allow-scripts allow-same-origin');
-  assert.ok(iframe.hasAttribute('inert'));
-  assert.equal(new URL(iframe.src).search,'');
-  assert.equal(f.root.querySelector('[data-embedded-check]').hidden,true);
-  assert.deepEqual(f.calls,[{path:'/plan-checkout-preview?plan_code=elite',method:'GET',data:undefined}]);
+  assert.equal(f.root.querySelector('.op-renew-result a').protocol,'mailto:');
+  assert.deepEqual(f.calls,[{path:'/plan-support?renewal=1',method:'GET',data:undefined}]);
+ }finally{f.close();}
+});
+
+test('only the current prepaid plan offers advance renewal and opens its payment form',async()=>{
+ const f=fixture({barbershop:{period_days:30},effective_plan:planState('essencial',{source:'pix_prepaid',active:true}),
+   checkout_enabled:true,embedded_checkout_enabled:true},{pixConfig:{available:true,methods:['pix'],mode:'manual_30_days'}});
+ try{
+  const buttons=f.root.querySelectorAll('[data-op-checkout]');
+  assert.equal(buttons.length,1);
+  assert.equal(buttons[0].dataset.opCheckout,'essencial');
+  assert.equal(buttons[0].textContent,'Renovar antecipadamente');
+  buttons[0].click();await tick();
+  const dialog=f.root.querySelector('dialog');
+  assert.match(dialog.textContent,/30 dias são somados ao seu período atual/);
+  assert.equal(dialog.querySelector('form').hidden,false);
+  assert.deepEqual(f.calls.map(call=>call.path),['/plan-pix-current','/plan-pix-config']);
  }finally{f.close();}
 });
 
 for(const plan of base.plans)test('the monthly checkout opens inside Orion for '+plan.code,async()=>{
  const f=fixture({embedded_checkout_enabled:true},{embeddedReply,embeddedStatus:{plan_code:plan.code,status:'pending_payment'}});
  try{
+  let check;
+  f.window.setInterval=fn=>{check=fn;return 1;};
   const button=f.root.querySelector('[data-op-checkout='+plan.code+'][data-op-embedded]');
   assert.match(button.closest('article').textContent,/Assinatura mensal/);
   const location=f.window.location.href;
@@ -163,9 +178,12 @@ for(const plan of base.plans)test('the monthly checkout opens inside Orion for '
   assert.equal(iframe.getAttribute('sandbox').includes('allow-top-navigation'),false);
   assert.deepEqual(JSON.parse(JSON.stringify(f.calls)),[{path:'/plan-checkout',method:'POST',
     data:{plan_code:plan.code,embedded:true,expected_cents:plan.monthly_cents}}]);
-  f.root.querySelector('[data-embedded-check]').click();await tick();
+  assert.equal(f.root.querySelector('[data-embedded-check]'),null);
+  iframe.dispatchEvent(new f.window.Event('load'));
+  assert.equal(f.root.querySelector('[data-embedded-status]').hidden,true);
+  if(!f.window.document.hidden){check();await tick();}
+  else{Object.defineProperty(f.window.document,'hidden',{configurable:true,value:false});check();await tick();}
   assert.equal(f.calls[1].path,'/plan-checkout?intent_id='+intent);
-  assert.match(f.root.querySelector('[data-embedded-status]').textContent,/Aguardando confirmação/);
   f.root.querySelector('[data-embedded-close]').click();
   assert.equal(f.root.querySelector('iframe'),null);
  }finally{f.close();}

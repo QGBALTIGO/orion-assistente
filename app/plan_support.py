@@ -33,8 +33,9 @@ async def administrative_channel():
     return None
 
 
-async def support_url():
-    message = "Olá! Preciso de ajuda com o plano da minha empresa no Orion."
+async def support_url(*, renewal=False):
+    message = ("Olá! Quero renovar o plano da minha empresa no Orion antes do vencimento."
+               if renewal else "Olá! Preciso de ajuda com o plano da minha empresa no Orion.")
     try:
         async with asyncio.timeout(2):
             selected = await administrative_channel()

@@ -265,7 +265,7 @@ async def plan_overview(tenant_id: UUID, actor: Actor = Depends(authenticate), r
             """), {"tenant": tenant_id})).mappings().first()
             if barbershop:
                 revised = await barber_plan_details(db, tenant_id, access, can_manage, effective, row, trial)
-                revised["checkout_preview"] = can_manage and (actor.maintenance or effective["source"] == "manual")
+                revised["maintenance"] = actor.maintenance
                 if actor.maintenance:
                     revised["trial_eligible"] = False
     if trial and trial["status"] == "active" and trial["ends_at"] and (
@@ -413,11 +413,12 @@ async def activate_plan_trial(tenant_id: UUID, payload: TrialActivation,
 
 
 @router.get("/api/v1/tenants/{tenant_id}/management/plan-support")
-async def plan_support(tenant_id: UUID, response: Response, actor: Actor = Depends(authenticate)):
+async def plan_support(tenant_id: UUID, response: Response, actor: Actor = Depends(authenticate),
+                       renewal: bool = False):
     await resolve_site_access(actor, tenant_id)
     response.headers["Cache-Control"] = "no-store"
     from app.plan_support import support_url
-    return {"url": await support_url()}
+    return {"url": await support_url(renewal=renewal)}
 
 
 @router.put("/api/v1/tenants/{tenant_id}/management/plan-welcome")
@@ -610,7 +611,7 @@ async def start_plan_checkout(tenant_id: UUID, payload: CheckoutChoice,
     access = await resolve_site_access(actor, tenant_id)
     account_id = _owner_account(access, actor)
     if actor.maintenance:
-        raise HTTPException(403, "Use a prévia do checkout durante a manutenção.")
+        raise HTTPException(403, "Somente o proprietário pode contratar o plano na própria conta.")
     plan = CODES.get(payload.plan_code)
     if not plan:
         raise HTTPException(422, "Escolha um plano válido")
@@ -688,34 +689,6 @@ async def start_plan_checkout(tenant_id: UUID, payload: CheckoutChoice,
     return {"checkout_url": _checkout_url(checkout, token),
             "plan_code": payload.plan_code, "monthly_cents": plan["price_cents"],
             "status": "pending_payment", **({"intent_id": str(intent_id)} if payload.embedded else {})}
-
-
-@router.get("/api/v1/tenants/{tenant_id}/management/plan-checkout-preview")
-async def preview_plan_checkout(tenant_id: UUID, plan_code: str, response: Response,
-                                actor: Actor = Depends(authenticate)):
-    """Inspect the public offer without an intent, customer data or a payment token."""
-    response.headers["Cache-Control"] = "no-store"
-    _owner_account(await resolve_site_access(actor, tenant_id), actor)
-    plan = CODES.get(plan_code)
-    if not plan:
-        raise HTTPException(422, "Escolha um plano válido")
-    async with support_session_factory()() as db:
-        if not await _is_barbershop(db, tenant_id):
-            raise HTTPException(404, "Prévia de checkout indisponível")
-        state = await plan_state(db, tenant_id)
-    if not actor.maintenance and state.get("source") != "manual":
-        raise HTTPException(403, "Abra o checkout pelo botão do plano.")
-    verified = False
-    if embedded_checkout_enabled():
-        try:
-            client = cached_cakto_client()
-            offers = await client.list_offers()
-            await verify_embedded_checkout(client, offers)
-            verified = True
-        except (HTTPException, httpx.HTTPError, ValueError, RuntimeError):
-            pass
-    return {"checkout_url": plan["checkout_url"], "plan_code": plan_code,
-            "monthly_cents": plan["price_cents"], "provider_verified": verified}
 
 
 @router.get("/api/v1/tenants/{tenant_id}/management/plan-checkout")

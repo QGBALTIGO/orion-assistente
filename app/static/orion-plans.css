@@ -349,5 +349,5 @@
 .op-embedded-header h2, .op-embedded-header p { margin: 0; }
 .op-embedded-header p { margin-top: 4px; }
 .op-embedded-checkout .op-payment-banner { margin: 0; }
-.op-embedded-checkout [data-embedded-check]:not([hidden]) { align-self: flex-start; }
+.op-embedded-checkout [hidden] { display: none; }
 .op-cakto-frame { width: 100%; min-height: 0; flex: 1; border: 0; border-radius: 12px; background: #fff; }
