@@ -479,51 +479,134 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     template.innerHTML=whatsappGroupPicker();
     patchDashboardNode(current,template.content.firstElementChild);
     const select=current.querySelector("select");
-    if (select) select.required=current.closest("form")?.elements.mode.value==="whatsapp_group";
+    if (select) { const group=current.closest("form")?.elements.mode.value==="whatsapp_group";select.required=group;select.disabled=!group; }
     window.OrionFields?.refresh(current);
   }
 
-  function connections() {
-    const tg = connected("telegram");
-    const linked = tg?.status==="connected";
-    const pairing = tg?.status==="pairing";
-    const tgForm = `<form class="os-form af-form" data-form="telegram">
-      <label>Token do bot <input name="token" type="password" autocomplete="new-password" required></label>
-      <label class="os-check"><input name="dedicated" type="checkbox" required> Este bot é dedicado às publicações de Afiliados.</label>
-      <div class="af-row">${submit("Vincular bot","link")}${linked||pairing?btn("Desconectar","revoke","telegram"):""}</div>
-      </form>`;
-    const all = state.destination.map(d=>`<div class="af-item"><div><strong>${html(d.name)}</strong>
-        <small>${html(defaultMedia(d.mode))}${d.issue?` · ${html(d.issue)}`:""}</small></div>
-      <div class="af-row">${pill(d.verified?"Verificado":d.mode==="telegram"?"Verificação pendente":"Publicação assistida",d.verified?"success":"neutral")}
-        ${d.mode==="whatsapp_channel"?btn(d.verified?"Verificar novamente":"Verificar canal","verify-wa-channel",d.id):""}
-        ${btn("Remover","remove-dest",d.id)}</div></div>`).join("");
-    return heading("Conexões e destinos","Vincule a conta que publica e confirme a administração de cada canal ou grupo.") + `
-      <div class="af-page"><div class="af-grid">
-        <section class="os-card af-card">
-          <header class="af-platform">${brand("whatsapp")}<div><h2>WhatsApp</h2></div></header>
-          <p>Conecte o aparelho da sua empresa usando o fluxo de dispositivos da Orion.</p>
-          <div class="os-form-actions">${whatsappAvailable ? '<button class="os-button" type="button" data-os-route="afiliados-whatsapp">'+icon("phone")+'Gerenciar WhatsApp</button>' : '<p class="os-help">A conexão do WhatsApp está indisponível neste momento.</p>'}</div>
-        </section>
-        <section class="os-card af-card">
-          ${officialLogo("telegram","Telegram",pill(linked?"Vinculado":pairing?"Vínculo pendente":"Não vinculado",linked?"success":pairing?"warning":"neutral"))}
-          <div class="af-stack"><p>${linked?`Bot @${html(tg.username)} vinculado.`:"Vincule um bot dedicado. O bot e sua conta devem administrar o destino."}</p>
-          ${pairing?`<div class="af-row"><a href="${html(tg.pair_url)}" target="_blank" rel="noopener noreferrer">Abrir o bot e tocar em Iniciar</a>${btn("Confirmar vínculo","verify-tg","",true)}</div>`:""}
-          ${linked||pairing?settings("Gerenciar credenciais do Telegram",tgForm):tgForm}</div>
-        </section>
-      </div><div class="af-sheet">
-        ${card("Destinos cadastrados",all?`<div class="af-list">${all}</div>`:empty("Nenhum destino cadastrado","Cadastre um canal ou verifique um grupo administrado.","link"),"list")}
-        ${card("Cadastrar destino",`<form class="os-form af-form" data-form="destination">
-          <label>Nome <input name="name" required maxlength="80" placeholder="Ex.: Meu canal de ofertas"></label>
-          ${selectField("Tipo","mode",`${Object.keys({telegram:0,whatsapp_group:0,whatsapp_channel:0}).map(m=>option(m,defaultMedia(m),"telegram")).join("")}`)}
-          <label data-destination-address><span data-address-label>ID numérico ou @ do Telegram</span> <input name="address" maxlength="180" placeholder="@canal_publico ou ID -100…"></label>
-          <div data-wa-group-picker hidden>${whatsappGroupPicker()}</div>
-          <label class="os-check af-test-destination"><input name="test" type="checkbox"> Usar também nos testes de automação.</label>
-          <p class="os-help" data-assisted-destination hidden>Depois de salvar, verifique a administração do canal.</p>
-          <div class="os-form-actions">${submit("Salvar destino")}</div></form>`,"plus")}
-      </div></div>`;
+
+  // Connections and destinations share the same visual and interaction patterns as
+  // the other affiliate views; refreshes never remount a credential/destination form.
+  let connectionsFilter = "all";
+  let connectionsRefreshBusy = false;
+  let connectionsError = "";
+  const connectionFormBusy = new Set();
+  const connectionActionBusy = new Set();
+
+  function connectionPlatform(mode) { return mode==="telegram"?"telegram":"whatsapp"; }
+  function destinationStatus(d) {
+    if(d.issue) return pill("Atenção","warning");
+    return d.verified?pill("Verificado","success"):pill("Pendente","neutral");
+  }
+  function connectionSummary() {
+    const rows=state.destination||[];
+    const verified=rows.filter(d=>d.verified&&!d.issue).length;
+    return '<div class="af-connection-summary" data-connection-summary>'+
+      '<div><span>'+icon("link")+'Destinos</span><strong>'+rows.length+'</strong></div>'+
+      '<div><span>'+icon("check")+'Verificados</span><strong>'+verified+'</strong></div>'+
+      '<div><span>'+icon("info")+'Pendentes</span><strong>'+(rows.length-verified)+'</strong></div></div>';
+  }
+  function connectionAccount(name) {
+    const tg=connected("telegram"), linked=tg?.status==="connected", pairing=tg?.status==="pairing";
+    const count=(state.destination||[]).filter(d=>connectionPlatform(d.mode)===name).length;
+    const number=count+" "+(count===1?"destino":"destinos");
+    const telegram=name==="telegram";
+    return '<div class="af-connection-account-main" data-connection-account="'+name+'">'+
+      '<div class="af-connection-account-identity">'+brand(name)+'<div><h3>'+(telegram?"Telegram":"WhatsApp")+'</h3><p>'+
+      (telegram?(linked?'@'+html(String(tg.username||"").replace(/^@/,"")):pairing?"Confirme o vínculo do bot":"Nenhum bot vinculado"):"Dispositivos da Orion")+
+      '</p></div></div><div class="af-connection-account-meta">'+
+      (telegram?pill(linked?"Vinculado":pairing?"Vínculo pendente":"Não vinculado",linked?"success":pairing?"warning":"neutral"):"")+
+      '<span>'+html(number)+'</span></div></div>';
+  }
+  function connectionPairing() {
+    const tg=connected("telegram"), pairing=tg?.status==="pairing";
+    const url=offerUrl(tg?.pair_url);
+    return '<div data-connection-pairing class="af-connection-pairing"'+(!pairing?" hidden":"")+'>'+
+      (pairing?'<p>Abra o bot no Telegram e toque em Iniciar para concluir.</p><div class="af-connection-actions">'+
+        (url?'<a class="os-button os-outline" href="'+html(url)+'" target="_blank" rel="noopener noreferrer">Abrir bot</a>':"")+
+        btn("Confirmar vínculo","verify-tg","",true)+'</div>':"")+'</div>';
+  }
+  function connectionRevoke() {
+    const tg=connected("telegram");
+    return '<span data-connection-revoke>'+(['connected','pairing'].includes(tg?.status)?btn("Desconectar","revoke","telegram"):"")+'</span>';
+  }
+  function connectionDestinations() {
+    const rows=state.destination||[];
+    const groups=[["all","Todos",rows.length],["whatsapp","WhatsApp",rows.filter(d=>connectionPlatform(d.mode)==="whatsapp").length],["telegram","Telegram",rows.filter(d=>d.mode==="telegram").length]];
+    const visible=rows.filter(d=>connectionsFilter==="all"||connectionPlatform(d.mode)===connectionsFilter);
+    const items=visible.map(d=>{
+      const mode=defaultMedia(d.mode)||"Destino";
+      const name=connectionPlatform(d.mode);
+      const actionBusy=connectionActionBusy.has("verify-wa-channel:"+d.id)||connectionActionBusy.has("remove-dest:"+d.id);
+      return '<article class="af-connection-destination" data-connection-dest="'+html(d.id)+'">'+
+        '<div class="af-connection-destination-icon">'+brand(name)+'</div>'+
+        '<div class="af-connection-destination-info"><strong>'+html(d.name)+'</strong><span>'+html(mode)+'</span>'+
+        (d.issue?'<p class="af-connection-issue">'+html(d.issue)+'</p>':"")+'</div>'+
+        '<div class="af-connection-destination-status">'+destinationStatus(d)+'</div>'+
+        '<div class="af-connection-destination-actions"'+(actionBusy?' aria-busy="true"':"")+'>'+
+        (d.mode==="whatsapp_channel"?'<button class="os-button os-outline" type="button" data-act="verify-wa-channel" data-value="'+html(d.id)+'"'+(actionBusy?' disabled':"")+'>'+icon("refresh")+(d.verified?"Verificar":"Verificar canal")+'</button>':"")+
+        '<button class="os-button os-outline af-connection-remove" type="button" data-act="remove-dest" data-value="'+html(d.id)+'" aria-label="Remover '+html(d.name)+'"'+(actionBusy?' disabled':"")+'>'+icon("trash")+'<span>Remover</span></button></div></article>';
+    }).join("");
+    return '<section class="af-connection-panel" data-connection-destinations aria-labelledby="af-connections-dest-title">'+
+      '<header class="af-connection-panel-heading"><div><h2 id="af-connections-dest-title">Destinos cadastrados</h2><p>Grupos e canais disponíveis para publicar.</p></div>'+
+      btn("Novo destino","new-destination","",true)+'</header>'+
+      '<div class="af-connection-filters" role="group" aria-label="Filtrar destinos">'+groups.map(([key,label,count])=>
+        '<button type="button" data-connection-filter="'+key+'" aria-pressed="'+(connectionsFilter===key)+'">'+label+' <span>'+count+'</span></button>').join("")+'</div>'+
+      '<div class="af-connection-list">'+(items||'<div class="af-connection-empty">'+square("link")+'<h3>'+(rows.length?"Nenhum destino neste filtro":"Cadastre seu primeiro destino")+'</h3><p>'+(rows.length?"Selecione outro filtro para ver os destinos.":"Escolha um grupo ou canal em que você tenha permissão para publicar.")+'</p></div>')+'</div></section>';
   }
 
-
+  function connections() {
+    const tg=connected("telegram"), linked=tg?.status==="connected", pairing=tg?.status==="pairing";
+    return '<div class="af-connections-workspace">'+
+      '<header class="af-history-heading"><div><span class="af-eyebrow">AFILIADOS</span><h1>Conexões e destinos</h1><p>Gerencie suas contas, grupos e canais de publicação.</p></div>'+
+      '<button type="button" class="os-icon-button os-outline" data-act="refresh-connections" aria-label="Atualizar conexões" title="Atualizar conexões" aria-busy="'+connectionsRefreshBusy+'"'+(connectionsRefreshBusy?' disabled':"")+'>'+icon("refresh")+'</button></header>'+
+      connectionSummary()+
+      '<div data-connection-feedback>'+(connectionsError?'<p class="os-notice os-error" role="alert">'+html(connectionsError)+'</p>':"")+'</div>'+
+      '<section class="af-connection-panel" aria-labelledby="af-connections-accounts"><header class="af-connection-panel-heading"><div><h2 id="af-connections-accounts">Contas de envio</h2><p>Conecte os dispositivos e bots que publicam suas ofertas.</p></div></header>'+
+      '<div class="af-connection-accounts">'+
+      '<article class="af-connection-account">'+connectionAccount("whatsapp")+
+      (whatsappAvailable?'<button class="os-button os-outline af-connection-manage" type="button" data-os-route="afiliados-whatsapp">'+icon("phone")+'Gerenciar WhatsApp'+icon("arrow")+'</button>':'<p class="af-connection-issue">Gerenciamento do WhatsApp indisponível.</p>')+'</article>'+
+      '<article class="af-connection-account">'+connectionAccount("telegram")+connectionPairing()+
+      '<details id="af-telegram-credentials" class="af-connection-disclosure"'+(!linked&&!pairing?" open":"")+'><summary>'+icon("settings")+'<span>Gerenciar bot do Telegram</span>'+icon("chevronDown")+'</summary>'+
+      '<form class="os-form af-form" data-form="telegram"><label>Token do bot <input name="token" type="password" autocomplete="new-password" required></label>'+
+      '<label class="os-check"><input name="dedicated" type="checkbox" required> Este bot é dedicado às publicações de Afiliados.</label>'+
+      '<div class="af-connection-actions">'+submit("Vincular bot","link")+connectionRevoke()+'</div></form></details></article></div></section>'+
+      connectionDestinations()+
+      '<details id="af-destination-editor" class="af-connection-panel af-connection-editor"'+(!(state.destination||[]).length?" open":"")+'>'+
+      '<summary><div>'+square("plus")+'<div><h2>Cadastrar destino</h2><p>Adicione um grupo ou canal.</p></div></div>'+icon("chevronDown")+'</summary>'+
+      '<form class="os-form af-form" data-form="destination">'+
+      selectField("Tipo de destino","mode",Object.keys({telegram:0,whatsapp_group:0,whatsapp_channel:0}).map(m=>option(m,defaultMedia(m),"telegram")).join(""))+
+      '<div data-wa-group-picker hidden>'+whatsappGroupPicker()+'</div>'+
+      '<label data-destination-address><span data-address-label>ID numérico ou @ do Telegram</span><input name="address" required maxlength="180" placeholder="@canal_publico ou ID -100…"></label>'+
+      '<label>Nome do destino<input name="name" required maxlength="80" placeholder="Ex.: Meu canal de ofertas"></label>'+
+      '<details class="af-test-destination af-connection-disclosure"><summary><span>Opções avançadas</span>'+icon("chevronDown")+'</summary><label class="os-check"><input name="test" type="checkbox"> Usar também nos testes de automação.</label></details>'+
+      '<p class="os-help" data-assisted-destination hidden>Depois de salvar, verifique a administração do canal.</p>'+
+      '<div class="af-connection-actions">'+submit("Salvar destino")+'</div></form></details></div>';
+  }
+  function updateConnections() {
+    const root=content.querySelector(".af-connections-workspace");
+    if(!root)return;
+    const template=document.createElement("template");template.innerHTML=connections();
+    const next=template.content.firstElementChild;
+    const focused=root.contains(document.activeElement)?document.activeElement:null;
+    const visible=node=>{const rect=node.getBoundingClientRect();return rect.height>0&&rect.bottom>56&&rect.top<window.innerHeight;};
+    const anchor=focused?.closest("[data-connection-dest],.af-connection-account,.af-connection-editor")||
+      [...root.querySelectorAll("[data-connection-dest],.af-connection-panel")].find(visible);
+    const top=anchor?.getBoundingClientRect().top,x=window.scrollX,y=window.scrollY;
+    const selection=focused&&typeof focused.selectionStart==="number"?[focused.selectionStart,focused.selectionEnd,focused.selectionDirection]:null;
+    for(const selector of ["[data-connection-summary]","[data-connection-feedback]","[data-connection-account=whatsapp]","[data-connection-account=telegram]","[data-connection-pairing]","[data-connection-revoke]","[data-connection-destinations]"]){
+      const current=root.querySelector(selector),desired=next.querySelector(selector);
+      if(current&&desired)patchDashboardNode(current,desired);
+    }
+    const refresh=root.querySelector('[data-act="refresh-connections"]');
+    if(refresh){refresh.disabled=connectionsRefreshBusy;refresh.setAttribute("aria-busy",String(connectionsRefreshBusy));}
+    if(focused?.isConnected&&!focused.disabled){
+      if(document.activeElement!==focused)focused.focus({preventScroll:true});
+      if(selection)focused.setSelectionRange(...selection);
+    }
+    const target=anchor?.isConnected&&visible(anchor)?window.scrollY+anchor.getBoundingClientRect().top-top:y;
+    if(Math.abs(window.scrollY-target)>.5)window.scrollTo({left:x,top:target,behavior:"instant"});
+    window.OrionFields?.refresh(root);
+  }
 
   const currentOffer = () => state.offer.find(row=>row.id===opened) || null;
   const offerRetailer = row => row?.retailer_name || (row?.platform==="shopee" || row?.shop ? "Shopee" : row?.store || "Oferta");
@@ -1008,7 +1091,7 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
   // chart dates and cards mounted during both user interactions and polling.
   function dashboardNodeKey(node) {
     if (node.nodeType!==1) return null;
-    for (const name of ["id","data-history-job","data-history-filter","data-history-details","data-history-detail","data-history-overview","data-automation-section","data-automation-card","data-automation-decision","data-rule-panel","data-rule-step","data-rule-niche","data-rule-destination","data-rule-filter","data-rule-toggle","data-offer-section","data-offer-draft","data-offer-destination-row","data-offer-destination","data-offer-phrase","data-offer-tab","data-offer-product","data-offer-notice","data-offer-job","data-dashboard-date","data-dashboard-period","data-dashboard-metric","data-dashboard-publications","data-dashboard-card","data-dashboard-kpi","data-dashboard-step","data-dashboard-notice","data-act","aria-labelledby"]) {
+    for (const name of ["id","data-connection-dest","data-connection-filter","data-connection-account","data-history-job","data-history-filter","data-history-details","data-history-detail","data-history-overview","data-automation-section","data-automation-card","data-automation-decision","data-rule-panel","data-rule-step","data-rule-niche","data-rule-destination","data-rule-filter","data-rule-toggle","data-offer-section","data-offer-draft","data-offer-destination-row","data-offer-destination","data-offer-phrase","data-offer-tab","data-offer-product","data-offer-notice","data-offer-job","data-dashboard-date","data-dashboard-period","data-dashboard-metric","data-dashboard-publications","data-dashboard-card","data-dashboard-kpi","data-dashboard-step","data-dashboard-notice","data-act","aria-labelledby"]) {
       if (node.hasAttribute(name)) return `${node.nodeName}:${name}:${node.getAttribute(name)}`;
     }
     const name = node.getAttribute("class")?.split(/\s+/)[0];
@@ -1423,6 +1506,10 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
       updateDashboard(".af-dashboard",dashboard());
       return;
     }
+    if (route==="conexoes" && content.querySelector(".af-connections-workspace")) {
+      updateConnections();
+      return;
+    }
     if (route==="fila" && content.querySelector(".af-history-workspace")) {
       updateHistory();
       return;
@@ -1753,6 +1840,8 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     },
     telegram: async form=>{
       await api("connection/telegram","PUT",{token:form.get("token"),dedicated:form.has("dedicated")});
+      const credential=content.querySelector('[data-form="telegram"] input[name="token"]');
+      if(credential&&credential.value===form.get("token"))credential.value="";
       await reload();
       notify("Abra o bot no Telegram para confirmar o vínculo.");
     },
@@ -1760,7 +1849,13 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
       await api("destinations/"+id(),"PUT",{
         name:form.get("name"),mode:form.get("mode"),address:form.get("mode")==="whatsapp_group"?form.get("whatsapp_group"):form.get("address"),test:form.has("test"),
       });
+      const editor=content.querySelector('[data-form="destination"]');
+      if(editor&&editor.elements.name.value===form.get("name")&&editor.elements.mode.value===form.get("mode")&&editor.elements.address.value===(form.get("address")||"")){
+        editor.elements.name.value="";editor.elements.address.value="";
+        if(editor.elements.whatsapp_group)editor.elements.whatsapp_group.value="";
+      }
       await reload();
+      if(route==="conexoes")updateWhatsappGroupPicker();
       notify("Destino salvo.");
     },
 
@@ -1927,6 +2022,16 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
       const row=state.offer.find(o=>o.id===ident);
       if (row?.affiliate_url) {await navigator.clipboard.writeText(row.affiliate_url);notify("Link copiado.");}
     },
+    "new-destination": async ()=>{
+      const editor=$("#af-destination-editor");
+      if(editor){editor.open=true;editor.querySelector("select")?.focus({preventScroll:true});editor.scrollIntoView({block:"nearest",behavior:"instant"});}
+    },
+    "refresh-connections": async ()=>{
+      if(connectionsRefreshBusy)return;
+      connectionsRefreshBusy=true;connectionsError="";render();
+      try{await reload();}catch(error){connectionsError=error.message||"Não foi possível atualizar as conexões.";}
+      finally{connectionsRefreshBusy=false;if(!controller.signal.aborted&&route==="conexoes")render();}
+    },
     "verify-tg": async ()=>{ await api("connection/telegram/verify","POST"); await reload(); notify("Telegram vinculado."); },
     "verify-wa-channel": async ident=>{
       await api("destinations/"+encodeURIComponent(ident)+"/verify-channel","POST",{});
@@ -1963,8 +2068,9 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     },
     "remove-dest": async ident=>{
       const name = state.destination.find(d=>d.id===ident)?.name;
-      if (!await confirmAction("Remover destino?",`${name} deixará de aparecer entre os destinos disponíveis para publicação.`,"Remover",true)) return;
-      await api("destinations/"+ident,"DELETE");
+      const active=(state.rule||[]).filter(rule=>rule.active&&(rule.destinations||[]).includes(ident)).length;
+      if (!await confirmAction("Remover destino?",`${name} deixará de aparecer entre os destinos disponíveis para publicação.${active?` Este destino está em ${active} automação(ões) ativa(s); revise as regras após remover.`:""}`,"Remover",true)) return;
+      await api("destinations/"+encodeURIComponent(ident),"DELETE");
       await reload();
       notify("Destino removido.");
     },
@@ -2035,12 +2141,16 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     if (!state || !Object.hasOwn(formActions,form.dataset.form)) return;
     event.preventDefault();
     const button=event.submitter;
+    const connectionForm=form.closest(".af-connections-workspace")?form.dataset.form:null;
+    if(connectionForm&&connectionFormBusy.has(connectionForm))return;
+    if(connectionForm)connectionFormBusy.add(connectionForm);
     const keepFocus=!!form.closest(".af-offers-workspace,.af-automations-workspace,.af-history-workspace")&&document.activeElement===button;
     if (button&&!form.closest(".af-offers-workspace,.af-automations-workspace,.af-history-workspace")) button.disabled=true;
     form.setAttribute("aria-busy","true");
     try { await formActions[form.dataset.form](new FormData(form),button); }
     catch(error){ notify(error.message,true); }
     finally {
+      if(connectionForm)connectionFormBusy.delete(connectionForm);
       if (button) button.disabled=false;
       form.removeAttribute("aria-busy");
       if (form.closest(".af-offers-workspace")) syncOfferControls();
@@ -2134,14 +2244,23 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
       historySearch="";historyDestination="";historyFilter="all";historyLimit=20;
       $("#filter-history").value="";filterHistory();$("#filter-history").focus({preventScroll:true});return;
     }
+    const connectionFilter=event.target.closest("[data-connection-filter]");
+    if(connectionFilter&&["all","whatsapp","telegram"].includes(connectionFilter.dataset.connectionFilter)){
+      connectionsFilter=connectionFilter.dataset.connectionFilter;render();return;
+    }
     const button=event.target.closest("[data-act]");
     if (!button || !Object.hasOwn(actions,button.dataset.act)) return;
+    const connectionKey=button.closest(".af-connections-workspace")?button.dataset.act+":"+(button.dataset.value||""):null;
+    if(connectionKey&&connectionActionBusy.has(connectionKey))return;
+    if(connectionKey)connectionActionBusy.add(connectionKey);
     const keepFocus=!!button.closest(".af-offers-workspace,.af-automations-workspace,.af-history-workspace")&&document.activeElement===button;
     if (!button.closest(".af-offers-workspace,.af-automations-workspace,.af-history-workspace")) button.disabled=true;
     try { await actions[button.dataset.act](button.dataset.value); }
     catch(error) { notify(error.message,true); }
     finally {
+      if(connectionKey)connectionActionBusy.delete(connectionKey);
       button.disabled=false;
+      if(connectionKey&&route==="conexoes"&&!controller.signal.aborted)updateConnections();
       if (button.closest(".af-offers-workspace")) syncOfferControls();
       if (button.closest(".af-automations-workspace")) syncRuleControls();
       if (keepFocus&&document.activeElement===document.body) {
@@ -2229,9 +2348,11 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
       }[event.target.value];
       form.querySelector("[data-address-label]").textContent=label;
       form.elements.address.placeholder=hint;
+      form.elements.address.value="";
       const assisted=event.target.value!=="telegram";
       const group=event.target.value==="whatsapp_group";
       form.querySelector("[data-destination-address]").hidden=group;
+      form.elements.address.required=!group;
       form.querySelector("[data-wa-group-picker]").hidden=!group;
       const groupSelect=form.querySelector("#af-whatsapp-group");
       if (groupSelect) {groupSelect.required=group;groupSelect.disabled=!group;}
