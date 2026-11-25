@@ -419,6 +419,43 @@ test('HTTP response is encrypted before persistence and recovery repeats no exte
   assert.equal(f.httpResults[1].chatbot_revision,1);assert.equal(f.sends.length,0);
 });
 
+test('a known HTTP timeout survives lost finish and reconciliation does not repeat the POST',async t=>{
+  const f=await fixture(t),action=f.effect({type:'http',url:'https://hooks.example.com/',method:'POST',data:{}});
+  let lose=true;
+  f.behavior.event=async row=>row.kind==='text'?[action]:[];
+  f.behavior.http=async ({onRequestAttempt})=>{
+    onRequestAttempt();
+    throw Object.assign(Error('private provider transport detail'),{code:'CHATBOT_HTTP_TIMEOUT'});
+  };
+  f.behavior.finish=async ({operation_id,state})=>{
+    if(lose)throw Error('lost confirmation');
+    return {operation_id,state,effects:[]};
+  };
+  f.receive('http-timeout');
+  await until(()=>f.httpCalls.length===1&&f.session.deviceDiagnostics().pending===0);
+  assert.equal(f.finished.length,0);
+  f.session.close();await f.open();lose=false;
+  f.behavior.pending=async()=>({effects:[],reconcile:[{...action,device_id:f.state.id,generation:f.state.generation,settings_revision:1}]});
+  await f.poll();await f.poll();
+  assert.equal(f.httpCalls.length,1);
+  assert.equal(f.finished.length,1);
+  assert.equal(f.finished[0].error_code,'CHATBOT_HTTP_TIMEOUT');
+  assert.equal(f.finished[0].state,'uncertain');
+  assert.equal(f.finished[0].reconcile,true);
+});
+
+test('a destination rejection before request is not recorded as an attempted POST',async t=>{
+  const f=await fixture(t),action=f.effect({type:'http',url:'https://hooks.example.com/',method:'POST',data:{}});
+  f.behavior.event=async row=>row.kind==='text'?[action]:[];
+  f.behavior.http=async ()=>{throw Error('device_destination_refused');};
+  f.behavior.finish=async ({operation_id,state})=>({operation_id,state,effects:[]});
+  f.receive('http-rejected');
+  await until(()=>f.finished.length===1);
+  assert.equal(f.finished[0].error_code,'CHATBOT_HTTP_DESTINATION_REFUSED');
+  assert.equal(f.finished[0].state,'not_sent');
+  assert.equal(f.sends.length,0);
+});
+
 test('successors wait from predecessor acceptance, and already-due recovered actions do not add the configured delay again',async t=>{
   const f=await fixture(t),first=f.effect({type:'text',text:'Primeira'}),second=f.effect({type:'text',text:'Segunda'},{delay:1,due:f.now+1000});
   f.behavior.event=async row=>row.kind==='text'?[first]:[];

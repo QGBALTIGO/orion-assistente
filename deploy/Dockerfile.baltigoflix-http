@@ -1,0 +1,14 @@
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE} AS source
+ARG RELEASE_REVISION
+LABEL org.opencontainers.image.revision=$RELEASE_REVISION
+
+FROM source AS api
+RUN python -c "from hashlib import sha1; from pathlib import Path; p=Path('/srv/app/app/subscription_chatbot_engine.py'); b=p.read_bytes(); assert sha1(b'blob %d' % len(b)+bytes(1)+b).hexdigest()=='9d11bd547d63f37dce010f8ea4303db5255fd680'"
+COPY --chown=appuser:appuser app/subscription_chatbot_engine.py /srv/app/app/subscription_chatbot_engine.py
+RUN python -c "from pathlib import Path; p=Path('/srv/app/app/subscription_chatbot_engine.py'); compile(p.read_bytes(),str(p),'exec')"
+
+FROM source AS bridge
+RUN node -e "const fs=require('node:fs'), c=require('node:crypto'); for(const [f,h] of [['chatbot-network.mjs','da966bf17c66ee1f78339a6637c9e4bf81e68552'],['chatbot-runtime.mjs','d054d8e637da5bea42f30a4afed127625f09bd18']]){const b=fs.readFileSync('/srv/qr/src/'+f);if(c.createHash('sha1').update('blob '+b.length).update(Buffer.from([0])).update(b).digest('hex')!==h)process.exit(1)}"
+COPY qr-bridge/src/chatbot-network.mjs qr-bridge/src/chatbot-runtime.mjs /srv/qr/src/
+RUN node --check /srv/qr/src/chatbot-network.mjs && node --check /srv/qr/src/chatbot-runtime.mjs

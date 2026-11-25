@@ -2,6 +2,7 @@
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 import hashlib
+import os
 import secrets
 import time
 from uuid import UUID, uuid4
@@ -12,6 +13,22 @@ from sqlalchemy import text
 from app import subscription_chatbot_store as store
 from app import subscription_chatbot_rules as rules
 from app.subscription_device_rules import business_state
+
+
+HTTP_NOTICE_KEY = "chatbot:http-failure-notice"
+HTTP_NOTICE_TEXT = (
+    "Não consegui confirmar o resultado dessa consulta agora. "
+    "Se precisar de ajuda, fale com nossa equipe por aqui."
+)
+HTTP_NOTICE_ERRORS = frozenset({
+    "CHATBOT_HTTP_INVALID", "CHATBOT_HTTP_DESTINATION_REFUSED", "CHATBOT_HTTP_REDIRECT",
+    "CHATBOT_HTTP_STATUS", "CHATBOT_HTTP_STATUS_4XX", "CHATBOT_HTTP_STATUS_5XX",
+    "CHATBOT_HTTP_ENCODING", "CHATBOT_HTTP_TOO_LARGE", "CHATBOT_HTTP_INCOMPLETE",
+    "CHATBOT_HTTP_UNAVAILABLE", "CHATBOT_HTTP_EMPTY", "CHATBOT_HTTP_TIMEOUT",
+    "CHATBOT_HTTP_CONTENT_TYPE", "CHATBOT_HTTP_JSON_INVALID", "CHATBOT_HTTP_JSON_LIMIT",
+    "CHATBOT_HTTP_JSON_NUMBER", "CHATBOT_HTTP_JSON_STRING", "CHATBOT_HTTP_JSON_KEY",
+    "CHATBOT_HTTP_RESULT_INVALID",
+})
 
 
 def descriptor(effect):
@@ -453,6 +470,26 @@ async def authorize_effect(db, device, effect, owner, fence, payload):
         "payload": effect["payload"]})
 
 
+async def _http_failure_notice(db, device, effect, run, state):
+    if (os.getenv("ORION_CHATBOT_HTTP_NOTICE_TENANT") != str(device["tenant_id"])
+            or state not in {"failed", "not_sent", "uncertain"}
+            or effect["payload"]["action"]["type"] != "http" or run["origin"] != "contact"
+            or not run["phone"] or effect["generation"] != device["generation"]
+            or effect["settings_revision"] != device["revision"]
+            or effect["expires_at"] <= datetime.now(timezone.utc)):
+        return None
+    code = (await db.execute(text("""SELECT error_code FROM subscription_device_effects
+        WHERE tenant_id=:t AND id=:id"""),
+        {"t": device["tenant_id"], "id": effect["id"]})).scalar_one()
+    if code not in HTTP_NOTICE_ERRORS or not await policy_allows(db, device, effect):
+        return None
+    # This text carries no HTTP result and is independent of the failed tail.
+    # The ordinary effect ledger deduplicates finish reconciliation.
+    return await put_effect(db, device, run, {
+        "delay_seconds": 1, "action": {"type": "text", "text": HTTP_NOTICE_TEXT},
+    }, HTTP_NOTICE_KEY)
+
+
 async def after_effect_finish(db, device, effect, state):
     if effect["type"] == "transcribe" and state in {"failed", "uncertain", "not_sent"}:
         run = (await db.execute(text("""SELECT * FROM subscription_chatbot_runs WHERE tenant_id=:t
@@ -472,11 +509,15 @@ async def after_effect_finish(db, device, effect, state):
         return [descriptor(child) for child in children]
     run = (await db.execute(text("SELECT * FROM subscription_chatbot_runs WHERE tenant_id=:t AND id=:id FOR UPDATE"),
                            {"t": device["tenant_id"], "id": effect["chatbot_run_id"]})).mappings().one()
-    if state in {"failed", "not_sent"}:
+    notice = await _http_failure_notice(db, device, effect, run, state)
+    if state in {"failed", "not_sent"} or notice is not None:
         await db.execute(text("""UPDATE subscription_device_effects SET status='not_sent',
             error_code='chatbot_predecessor_failed',finished_at=clock_timestamp()
-            WHERE tenant_id=:t AND chatbot_run_id=:run AND status='pending'"""),
-            {"t": device["tenant_id"], "run": run["id"]})
+            WHERE tenant_id=:t AND chatbot_run_id=:run AND status='pending'
+              AND (CAST(:notice AS uuid) IS NULL OR id<>CAST(:notice AS uuid))"""),
+            {"t": device["tenant_id"], "run": run["id"], "notice": notice["id"] if notice else None})
+    if notice and notice["status"] in {"pending", "running"}:
+        return [descriptor(notice)] if notice["status"] == "pending" else []
     stats = (await db.execute(text("""SELECT count(*) FILTER(WHERE status<>'accepted') AS unfinished,
         count(*) FILTER(WHERE status IN ('failed','not_sent','uncertain')) AS failed,
         count(*) FILTER(WHERE status='accepted' AND payload->'action'->>'type'<>'http') AS accepted_messages
@@ -487,7 +528,7 @@ async def after_effect_finish(db, device, effect, state):
         if run["job_id"]:
             await store.complete_job(db, run["job_id"], {"accepted_messages": stats["accepted_messages"]})
     elif stats["failed"]:
-        if state != "uncertain":
+        if state != "uncertain" or effect["effect_key"] == HTTP_NOTICE_KEY:
             await db.execute(text("UPDATE subscription_chatbot_runs SET status='failed',finished_at=clock_timestamp() WHERE id=:id"), {"id": run["id"]})
         if run["job_id"]:
             await db.execute(text("""UPDATE subscription_chatbot_jobs SET status='failed',error_code='CHATBOT_DELIVERY_UNCONFIRMED',

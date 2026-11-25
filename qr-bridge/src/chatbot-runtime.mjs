@@ -1,7 +1,7 @@
 /** Runs only server-derived Chatbot effects. It has no matching rules, legacy
  * assistant, arbitrary send endpoint or automatic retry of external effects. */
 import {channelId,digest} from './channel-storage.mjs';
-import {requestChatbotJSON} from './chatbot-network.mjs';
+import {chatbotHttpFailure,requestChatbotJSON,safeChatbotHttpFailure} from './chatbot-network.mjs';
 import {messageFailureCode,safeMessageFailureCode} from './device-message-failure.mjs';
 
 const phone=value=>typeof value==='string'&&/^[1-9]\d{7,14}$/.test(value);
@@ -34,9 +34,17 @@ export function createChatbotRuntime(context,{ledger,capacity,sendChatbot,
     try{
       const result=await context.deviceEffectFinish({...scope(expected,item.chatbot_revision),operation_id:item.operation_id,state,...extra});
       if(current(expected,item.chatbot_revision)&&Array.isArray(result?.effects)&&result.effects.length<=32)await onEffects(result.effects,{expected});
+      return result?.operation_id===item.operation_id&&result?.state===state;
     }catch{/* Ledger evidence survives a lost finish response. No resend. */}
   }
   const recordScope=(record,expected,item)=>record?.chatbot_revision===item.chatbot_revision&&record.device_id===expected.id&&record.generation===expected.generation;
+  async function reportHttpFailure(expected,item,record){
+    if(record.failure_reported)return;
+    const state=record.state==='refused'?'not_sent':'uncertain';
+    const finished=await finish({...expected,settings_revision:record.settings_revision},item,state,
+      {reconcile:true,error_code:record.error_code});
+    if(finished)ledger.save(item.operation_id,{...record,failure_reported:true});
+  }
   async function recover(expected,item,record,{reconcile=false}={}){
     if(!recordScope(record,expected,item))return;
     if(record.state==='http_result'&&record.response_json){
@@ -48,6 +56,11 @@ export function createChatbotRuntime(context,{ledger,capacity,sendChatbot,
       if(result?.recorded!==true||result.operation_id!==item.operation_id)throw error('CHATBOT_RESULT_UNCONFIRMED');
       ledger.save(item.operation_id,{...record,state:'accepted',accepted:true,response_json:undefined});
       if(current(expected,item.chatbot_revision)&&Array.isArray(result?.effects)&&result.effects.length<=32)await onEffects(result.effects,{expected});
+      return;
+    }
+    if(item.action_type==='http'&&safeChatbotHttpFailure(record.error_code)&&
+        ['refused','uncertain'].includes(record.state)){
+      await reportHttpFailure(expected,item,record);
       return;
     }
     if(record.accepted||record.state==='refused')await finish({...expected,settings_revision:record.settings_revision},item,
@@ -94,9 +107,10 @@ export function createChatbotRuntime(context,{ledger,capacity,sendChatbot,
       ledger.save(id,reserved.record);
       const active=()=>current(expected,rev)&&!abort.signal.aborted;
       if(data.action.type==='http'){
-        await recheck();attempted=true;
+        await recheck();
         const result=await httpRequest({url:data.action.url,method:data.action.method,data:data.action.data,
-          signal:abort.signal,isCurrent:active,assertCurrent:recheck,requestId:id});
+          signal:abort.signal,isCurrent:active,assertCurrent:recheck,requestId:id,
+          onRequestAttempt:()=>{attempted=true;}});
         // Record a complete response before asking the API to derive text/TXT.
         // A crash after this point can repeat only that idempotent persistence.
         const record={...reserved.record,state:'http_result',response_json:result.json};ledger.save(id,record);
@@ -122,10 +136,17 @@ export function createChatbotRuntime(context,{ledger,capacity,sendChatbot,
         // A durable HTTP response remains available for result reconciliation.
         const old=ledger.get(id);
         if(old?.state!=='http_result'&&!old?.accepted){
-          const error_code=item.action_type==='http'?(current(expected,rev)?'CHATBOT_EFFECT_FAILED':'CHATBOT_REVOKED'):
+          const error_code=item.action_type==='http'?(current(expected,rev)?chatbotHttpFailure(failure):'CHATBOT_REVOKED'):
             messageFailureCode(failure,{beforeSend:!attempted,current:current(expected,rev),chatbot:true});
-          if(reserved?.fresh&&!attempted)ledger.save(id,{...reserved.record,state:'refused',accepted:false,delivery:'not_sent',error_code});
-          await finish(expected,item,attempted?'uncertain':'not_sent',{error_code});
+          if(item.action_type==='http'&&reserved?.fresh&&safeChatbotHttpFailure(error_code)){
+            const record={...reserved.record,state:attempted?'uncertain':'refused',
+              accepted:false,delivery:attempted?'unknown':'not_sent',error_code};
+            ledger.save(id,record);
+            await reportHttpFailure(expected,item,record);
+          }else{
+            if(reserved?.fresh&&!attempted)ledger.save(id,{...reserved.record,state:'refused',accepted:false,delivery:'not_sent',error_code});
+            await finish(expected,item,attempted?'uncertain':'not_sent',{error_code});
+          }
         }
       }
     }finally{abort.abort();controllers.delete(entry);inflight.delete(id);}

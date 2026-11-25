@@ -9,6 +9,20 @@ export const CHATBOT_HTTP_MAX_BYTES=512*1024;
 export const CHATBOT_IMAGE_MAX_BYTES=8_000_000;
 const error=code=>Object.assign(Error(code),{code});
 const plain=value=>value!==null&&typeof value==='object'&&!Array.isArray(value)&&Object.getPrototypeOf(value)===Object.prototype;
+const failureCodes=new Set([
+  'CHATBOT_HTTP_INVALID','CHATBOT_HTTP_DESTINATION_REFUSED','CHATBOT_HTTP_REDIRECT',
+  'CHATBOT_HTTP_STATUS','CHATBOT_HTTP_STATUS_4XX','CHATBOT_HTTP_STATUS_5XX',
+  'CHATBOT_HTTP_ENCODING','CHATBOT_HTTP_TOO_LARGE','CHATBOT_HTTP_INCOMPLETE',
+  'CHATBOT_HTTP_UNAVAILABLE','CHATBOT_HTTP_EMPTY','CHATBOT_HTTP_TIMEOUT',
+  'CHATBOT_HTTP_CONTENT_TYPE','CHATBOT_HTTP_JSON_INVALID','CHATBOT_HTTP_JSON_LIMIT',
+  'CHATBOT_HTTP_JSON_NUMBER','CHATBOT_HTTP_JSON_STRING','CHATBOT_HTTP_JSON_KEY'
+]);
+export const safeChatbotHttpFailure=value=>failureCodes.has(value)?value:undefined;
+export function chatbotHttpFailure(failure){
+  if(failure?.code==='CHATBOT_REVOKED'||failure?.message==='device_request_aborted')return 'CHATBOT_REVOKED';
+  if(failure?.message==='device_destination_refused')return 'CHATBOT_HTTP_DESTINATION_REFUSED';
+  return safeChatbotHttpFailure(failure?.code)||'CHATBOT_HTTP_UNAVAILABLE';
+}
 
 function boundedJSON(value){
   if(!plain(value)&&!Array.isArray(value))throw error('CHATBOT_HTTP_JSON_INVALID');
@@ -36,7 +50,7 @@ function boundedJSON(value){
 /** The response body stays owned by this call and is erased on every failure. */
 async function publicRequest({url,method='GET',body,signal,isCurrent=()=>true,assertCurrent=async()=>{},
   lookup=dnsLookup,requestHttp=http.request,requestHttps=https.request,timeoutMs=10000,maxBytes=CHATBOT_HTTP_MAX_BYTES,
-  accept='application/json',requestId}){
+  accept='application/json',requestId,onRequestAttempt=()=>{}}){
   if(!['GET','POST'].includes(method)||!Number.isSafeInteger(maxBytes)||maxBytes<1||maxBytes>CHATBOT_IMAGE_MAX_BYTES||
       !Number.isSafeInteger(timeoutMs)||timeoutMs<1||timeoutMs>15000||
       (body!==undefined&&(!Buffer.isBuffer(body)||body.length>CHATBOT_HTTP_MAX_BYTES))||
@@ -60,6 +74,7 @@ async function publicRequest({url,method='GET',body,signal,isCurrent=()=>true,as
     };
     try{
       const requestFn=target.url.protocol==='https:'?requestHttps:requestHttp;
+      onRequestAttempt();
       request=requestFn(target.url,{method,agent:false,minVersion:'TLSv1.2',rejectUnauthorized:true,lookup:pinnedLookup,
         headers:{'Accept':accept,'Accept-Encoding':'identity','User-Agent':'Orion-Chatbot/1',
           ...(requestId?{'X-Orion-Operation-Id':requestId}:{}),
@@ -67,7 +82,10 @@ async function publicRequest({url,method='GET',body,signal,isCurrent=()=>true,as
         response=res;
         if(done){res.destroy();return;}
         const status=Number(res.statusCode);
-        if(status<200||status>=300)return stop(status>=300&&status<400?'CHATBOT_HTTP_REDIRECT':'CHATBOT_HTTP_STATUS');
+        if(status<200||status>=300)return stop(
+          status>=300&&status<400?'CHATBOT_HTTP_REDIRECT':
+          status>=400&&status<500?'CHATBOT_HTTP_STATUS_4XX':
+          status>=500&&status<600?'CHATBOT_HTTP_STATUS_5XX':'CHATBOT_HTTP_STATUS');
         const encoding=String(res.headers?.['content-encoding']||'identity').trim().toLowerCase();
         if(encoding&&encoding!=='identity')return stop('CHATBOT_HTTP_ENCODING');
         const length=res.headers?.['content-length'];

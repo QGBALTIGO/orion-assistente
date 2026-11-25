@@ -1,0 +1,44 @@
+name: Orion - Tratamento de falhas HTTP do Chatbot
+on:
+  push:
+    branches: [codex/orion-baltigoflix-http-20261125]
+permissions:
+  contents: read
+  packages: write
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: api
+            package: orion-assistente-api
+            base: ghcr.io/qgbaltigo/orion-assistente-api@sha256:200a6b6dd844ca2bea869105d5c7f783032bf7b0808f37ea92eca0d2a9a44608
+          - service: bridge
+            package: orion-assistente-qr-bridge
+            base: ghcr.io/qgbaltigo/orion-assistente-qr-bridge@sha256:e4049da80ced490d00e7d643178d0103fd82e6d6f92beb3f16b0d269bc78499a
+    env:
+      BASE_IMAGE: ${{ matrix.base }}
+      SERVICE: ${{ matrix.service }}
+      PACKAGE: ${{ matrix.package }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Validar e publicar imagem
+        run: |
+          set -euo pipefail
+          image="ghcr.io/qgbaltigo/$PACKAGE:baltigoflix-http-$GITHUB_SHA"
+          docker build --platform linux/amd64 --target "$SERVICE" --build-arg BASE_IMAGE="$BASE_IMAGE" \
+            --build-arg RELEASE_REVISION="$GITHUB_SHA" -f deploy/Dockerfile.baltigoflix-http -t "$image" .
+          if [[ "$SERVICE" == "api" ]]; then
+            docker run --rm --entrypoint python "$image" -c 'from app.subscription_chatbot_engine import HTTP_NOTICE_ERRORS; assert "CHATBOT_HTTP_TIMEOUT" in HTTP_NOTICE_ERRORS'
+          else
+            docker run --rm -v "$PWD/qr-bridge/test:/srv/qr/test:ro" --entrypoint node "$image" --test test/chatbot-runtime.test.mjs
+          fi
+          docker push "$image"
