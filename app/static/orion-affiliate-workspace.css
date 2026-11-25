@@ -334,8 +334,10 @@ a.af-dashboard-kpi:hover { background: color-mix(in srgb,var(--os-tint) 35%,var(
   .af-dashboard-kpi small { font-size: 10px; }
   .af-dashboard-metric-tabs button { font-size: 10px; }
   .af-dashboard-panel-head h2 { font-size: 17px; }
+  .af-dashboard-performance > .af-dashboard-panel-head { display: grid; grid-template-columns: minmax(0,1fr) 108px; min-height: 68px; }
+  .af-dashboard-chart-total { min-width: 0; }
   .af-dashboard-chart-total small { font-size: 9px; }
-  .af-dashboard-chart-total strong { font-size: 13px; }
+  .af-dashboard-chart-total strong { font-size: 13px; white-space: normal; overflow-wrap: anywhere; }
   .af-dashboard-chart-scale { font-size: 8px; }
   .af-dashboard-chart-layout { column-gap: 6px; }
   .af-dashboard-rank-list li { column-gap: 7px; }

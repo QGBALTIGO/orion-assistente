@@ -757,7 +757,8 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
       const rect=node.getBoundingClientRect();
       return rect.height>0 && rect.bottom>0 && rect.top<window.innerHeight;
     };
-    const anchor=focused && visible(focused)?focused:[...root.querySelectorAll(".af-dashboard-toolbar, section, .af-dashboard-heading")].find(visible);
+    const anchor=selector!==".af-dashboard" && visible(current)?current:
+      focused && visible(focused)?focused:[...root.querySelectorAll(".af-dashboard-toolbar, section, .af-dashboard-heading")].find(visible);
     const top=anchor?.getBoundingClientRect().top;
     const scrollX=window.scrollX;
     const scrollY=window.scrollY;
