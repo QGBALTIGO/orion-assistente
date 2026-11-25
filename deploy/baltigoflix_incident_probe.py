@@ -3,6 +3,7 @@ import json
 import os
 import re
 from datetime import datetime, timezone
+from urllib.parse import urlsplit
 
 from psycopg import AsyncConnection
 from psycopg.rows import dict_row
@@ -48,6 +49,29 @@ WHERE tenant_id=%(tenant)s AND device_id=%(device)s
 GROUP BY type,status,error_code ORDER BY latest DESC LIMIT 24
 """
 
+HTTP_EFFECTS = """
+SELECT f.created_at, f.finished_at, f.status, f.error_code, f.attempts,
+       f.payload#>>'{action,method}' AS method, f.payload#>>'{action,url}' AS url,
+       f.payload#>>'{action,as_file}' AS as_file,
+       (f.result->>'http_fingerprint') IS NOT NULL AS has_response,
+       r.input_kind, r.origin, (r.chatbot_revision=%(rev)s) AS current_revision
+FROM subscription_device_effects f
+JOIN subscription_chatbot_runs r ON r.id=f.chatbot_run_id AND r.tenant_id=f.tenant_id
+WHERE f.tenant_id=%(tenant)s AND f.device_id=%(device)s
+  AND f.type='chatbot_action' AND f.payload#>>'{action,type}'='http'
+ORDER BY f.created_at DESC LIMIT 28
+"""
+
+FALLBACK = """
+SELECT r.created_at, r.status AS run, r.error_code, f.status AS effect, f.attempts,
+       f.provider_id IS NOT NULL AS provider_id_present
+FROM subscription_chatbot_runs r
+LEFT JOIN subscription_device_effects f ON f.tenant_id=r.tenant_id AND f.chatbot_run_id=r.id
+WHERE r.tenant_id=%(tenant)s AND r.device_id=%(device)s
+  AND r.rule_id='95bc1a3b-45c3-497a-bb75-9e1e81f968fa'
+ORDER BY r.created_at DESC LIMIT 24
+"""
+
 
 def _log(state, **fields):
     print("orion_baltigoflix_triage " + json.dumps({"state": state, **fields}, default=str), flush=True)
@@ -82,6 +106,18 @@ async def collect():
                 for item in row["effects"]:
                     item["error"] = _safe_code(item["error"])
                 _log("inbound", **row)
+            for row in await (await db.execute(HTTP_EFFECTS, params)).fetchall():
+                url = row.pop("url")
+                target = urlsplit(url or "")
+                host = target.hostname
+                row["destination_host"] = host if host and re.fullmatch(r"[a-z0-9.-]{1,253}", host) else None
+                row["scheme"] = target.scheme if target.scheme in {"http", "https"} else None
+                row["has_query"] = bool(target.query)
+                row["error_code"] = _safe_code(row["error_code"])
+                _log("http_effect", **row)
+            for row in await (await db.execute(FALLBACK, params)).fetchall():
+                row["error_code"] = _safe_code(row["error_code"])
+                _log("fallback", **row)
             _log("complete")
     except Exception as exc:
         _log("error", kind=type(exc).__name__, sqlstate=getattr(exc, "sqlstate", None))
