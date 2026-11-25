@@ -1,16 +1,19 @@
 """Recurring Orion offers: synthetic catalog, SQLite and transports; no external sends."""
 import asyncio
+import io
+import re
 from datetime import datetime, timezone
 from uuid import uuid4
 
 import httpx
 import pytest
 from cryptography.fernet import Fernet
+from PIL import Image
 
 from affiliate_pilot.engine import Engine
 from affiliate_pilot.niches import PUBLIC_NICHES
 from affiliate_pilot.promotech import PromoTech
-from affiliate_pilot.providers import ProviderError, normalize_offer
+from affiliate_pilot.providers import ProviderError, Shopee, normalize_offer
 from affiliate_pilot.store import AutomationConflict, Store, destination_identity
 
 
@@ -344,3 +347,114 @@ def test_authorization_changed_during_enqueue_records_a_block_instead_of_review(
     assert plan(ctx, rule) == []
     decision = ctx["store"].list(ctx["company"], "decision")[0]
     assert decision["status"] == "blocked" and decision["jobs_created"] == 0
+
+
+def projected_catalog(ctx, *, fallback=False, count=1, detail_changes=None):
+    """Return only requested GraphQL fields, unlike a fully populated catalog mock."""
+    provider = Shopee("synthetic", "unused")
+    queries, details = [], []
+    photo = "https://down-br.img.susercontent.com/file/synthetic"
+
+    def product(item):
+        return {"itemId": item, "shopId": 11, "productName": "Halter sintético " + str(item),
+                "priceMin": "59.90", "priceMax": "59.90", "ratingStar": "4.8", "commissionRate": "0.1",
+                "shopName": "Loja sintética", "productCatIds": [100637], "sales": 150,
+                "priceDiscountRate": 10, "imageUrl": photo}
+
+    async def graphql(query, variables):
+        queries.append(query)
+        if query.startswith("mutation Short"):
+            return {"generateShortLink": {"shortLink": "https://s.shopee.com.br/synthetic"}}
+        fields = re.search(r"nodes\{([^}]+)\}", query)[1].split()
+        if query.startswith("query Offers"):
+            if fallback and "imageUrl" in fields:
+                raise ProviderError("schema", "Consulta ampla indisponível no catálogo sintético")
+            nodes = [product(8 + offset) for offset in range(count)]
+        else:
+            assert query.startswith("query Detail")
+            item = int(re.search(r"itemId:(\d+)", query)[1])
+            details.append(item)
+            node = product(item)
+            if detail_changes:
+                node.update(detail_changes(item))
+            nodes = [node]
+        return {"productOfferV2": {"nodes": [{field: node[field] for field in fields if field in node} for node in nodes]}}
+
+    provider.graphql = graphql
+    ctx["engine"].shopee = lambda company: (provider, ctx["store"].credentials(company, "shopee")[1])
+    ctx["store"].put(ctx["company"], "template", TEMPLATE, {**ctx["template"], "media": "card"})
+    return queries, details, photo
+
+
+@pytest.mark.parametrize("fallback", [False, True])
+def test_real_graphql_projection_prepares_cards_and_enriches_only_missing_search_images(context, fallback):
+    ctx = context
+    queries, details, photo = projected_catalog(ctx, fallback=fallback)
+    jobs = plan(ctx, save_rule(ctx, niches=["esportes"]))
+    assert "imageUrl" in queries[0]
+    assert details == ([8] if fallback else [])
+    assert len(jobs) == 2 and all(job["status"] == "queued" for job in jobs)
+    assert all(job["doc"]["offer"]["image"] == photo and job["product"] == "shopee:11:8" for job in jobs)
+    assert ctx["store"].list(ctx["company"], "decision")[0]["status"] == "prepared"
+
+
+@pytest.mark.parametrize("changes", [
+    {"imageUrl": None}, {"itemId": 999}, {"productCatIds": [100535]}, {"priceMin": "199.90", "priceMax": "199.90"},
+])
+def test_card_enrichment_skips_missing_images_wrong_identity_category_or_ineligible_price(context, changes):
+    ctx = context
+    _, details, photo = projected_catalog(ctx, fallback=True, count=2,
+        detail_changes=lambda item: changes if item == 8 else {})
+    jobs = plan(ctx, save_rule(ctx, niches=["esportes"], max_price=100))
+    assert details == [8, 9]
+    assert len(jobs) == 2
+    assert all(job["product"] == "shopee:11:9" and job["doc"]["offer"]["image"] == photo for job in jobs)
+
+
+def test_card_enrichment_is_bounded_and_reports_missing_images_without_queueing_placeholders(context):
+    ctx = context
+    _, details, _ = projected_catalog(ctx, fallback=True, count=8, detail_changes=lambda item: {"imageUrl": None})
+    assert plan(ctx, save_rule(ctx, niches=["esportes"])) == []
+    assert details == [8, 9, 10, 11]
+    decision = ctx["store"].list(ctx["company"], "decision")[0]
+    assert decision["status"] == "empty" and decision["jobs_created"] == 0
+    assert "imagem" in decision["reason"]
+
+
+@pytest.mark.parametrize("photo_result", ["valid", "invalid", "error", "timeout"])
+def test_recurring_telegram_card_requires_downloaded_photo_and_never_sends_placeholder(context, monkeypatch, photo_result):
+    ctx = context
+    ctx["store"].put(ctx["company"], "template", TEMPLATE, {**ctx["template"], "media": "card"})
+    downloaded, media_sent = [], []
+    photo = io.BytesIO()
+    Image.new("RGB", (80, 80), "#cc0000").save(photo, "PNG")
+
+    async def download(url):
+        downloaded.append(url)
+        if photo_result == "error":
+            raise ProviderError("image", "A foto não está disponível.")
+        if photo_result == "timeout":
+            raise TimeoutError
+        return photo.getvalue() if photo_result == "valid" else b"not an image"
+
+    monkeypatch.setattr("affiliate_pilot.engine.product_image", download)
+    transport, account, version = ctx["engine"].telegram(ctx["company"])
+    publish = transport.publish
+
+    async def capture(chat_id, text, media=None, **kwargs):
+        media_sent.append(media)
+        return await publish(chat_id, text, media, **kwargs)
+
+    transport.publish = capture
+    ctx["engine"].telegram = lambda company: (transport, account, version)
+    assert len(plan(ctx, save_rule(ctx, selected=[TELEGRAM], niches=["moda"]))) == 1
+    result = dispatch(ctx)
+    assert downloaded == [ctx["fresh"]["image"]]
+    if photo_result == "valid":
+        assert result["status"] == "published" and len(ctx["sent"]) == len(media_sent) == 1
+        with Image.open(io.BytesIO(media_sent[0])) as card:
+            assert card.size == (900, 970) and card.getpixel((450, 396)) == (204, 0, 0)
+    else:
+        assert result["status"] == ("queued" if photo_result == "timeout" else "failed")
+        assert not ctx["sent"] and not media_sent
+        assert "foto" in result["error"].lower()

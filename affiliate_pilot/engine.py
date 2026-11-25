@@ -9,9 +9,9 @@ from uuid import uuid4
 
 from .niches import NICHES, matches_niche, search_niche
 from .offers import (caption, eligible, formatted_html, local_day_start, next_slot, preference,
-                     render_card, render_channel_card, validate_length, card_text)
+                     render_card, render_channel_card, validate_length, card_text, card_png, safe_product_photo)
 from .phrase import generate_phrase, generate_suggestions, initial_phrase
-from .providers import ProviderError, Shopee, Telegram
+from .providers import ProviderError, Shopee, Telegram, product_image
 from .store import AutomationConflict, destination_identity
 
 log = logging.getLogger("orion.affiliate")
@@ -348,12 +348,34 @@ class Engine:
             else:
                 rows = await connection.search(keyword, limit=12)
             rows = self.store.record_prices(company, rows)
-            candidates = sorted((row for row in rows if eligible(row, rule)
-                                 and (not scoped_automation or template["media"] != "card" or row.get("image"))),
-                                key=preference, reverse=True)
+            candidates = sorted((row for row in rows if eligible(row, rule)), key=preference, reverse=True)
             if not candidates:
                 raise ProviderError("filter", "Nenhuma oferta atendeu aos filtros desta execução.")
+            missing_images = rejected_details = 0
             for row in candidates[:4]:
+                if scoped_automation and template["media"] == "card" and not row.get("image"):
+                    try:
+                        detailed = await connection.detail(row["shop"], row["item"])
+                    except ProviderError as exc:
+                        if exc.code != "product":
+                            raise
+                        rejected_details += 1
+                        continue
+                    if detailed.get("identity") != row["identity"]:
+                        rejected_details += 1
+                        continue
+                    # The compatible detail projection can omit categories;
+                    # retain the same item's category proved by the search.
+                    detailed = {**detailed, "categories": detailed.get("categories") or row.get("categories", [])}
+                    detailed, = self.store.record_prices(company, [detailed])
+                    if (detailed.get("availability") is False or not eligible(detailed, rule)
+                            or niche and not matches_niche(niche, detailed)):
+                        rejected_details += 1
+                        continue
+                    if not detailed.get("image"):
+                        missing_images += 1
+                        continue
+                    row = detailed
                 prepared = await self.ready_offer(company, row)
                 if niche:
                     prepared["niche"] = niche
@@ -380,6 +402,10 @@ class Engine:
                 if len(chosen) == len(destinations):
                     break
             message = f"{len(chosen)} publicação(ões) preparadas." if chosen else "Ofertas descartadas pela regra de repetição."
+            if not chosen and missing_images:
+                message = "Não houve nova oferta com imagem disponível para este card."
+            elif not chosen and rejected_details:
+                message = "As ofertas consultadas mudaram ou não atenderam aos filtros na confirmação."
             status = "prepared" if chosen else "empty"
             if legacy_blocked:
                 status, message = "blocked", legacy_blocked + " As ofertas preparadas aguardam revisão; nenhum envio automático foi liberado."
@@ -466,6 +492,9 @@ class Engine:
         if fresh.get("availability") is False or not eligible(fresh, current_filters):
             self.store.finish(job, "expired", error="A oferta mudou e saiu dos filtros.")
             return
+        if doc["template"]["media"] == "card" and not (fresh.get("image") or old.get("image")):
+            self.store.finish(job, "expired", error="A loja não disponibilizou uma imagem válida para o card.")
+            return
         tracking = await provider.tracked_affiliate_link(fresh, "orionj" + job["id"])
         offer = {**fresh, **tracking, "image": fresh.get("image") or old.get("image"),
                  "affiliate_status": "generated", "link_status": "generated",
@@ -477,7 +506,13 @@ class Engine:
         media, thumbnail = None, None
         if template["media"] == "card":
             if destination["mode"] == "telegram":
-                media = await render_card(offer, template)
+                try:
+                    photo = await asyncio.wait_for(product_image(offer["image"]), 10)
+                except TimeoutError as exc:
+                    raise ProviderError("network", "A foto da oferta demorou a responder. O envio será tentado novamente.") from exc
+                if safe_product_photo(photo) is None:
+                    raise ProviderError("image", "A foto da oferta não pôde ser usada no card.")
+                media = await asyncio.to_thread(card_png, offer, template, photo)
             else:
                 media, thumbnail = await render_channel_card(offer, template)
         if not within_limits():

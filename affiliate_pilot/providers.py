@@ -173,7 +173,7 @@ class Shopee:
         def query(arguments, fields):
             return "query Offers{productOfferV2(" + ",".join(arguments) + "){nodes{" + fields + "}}}"
         try:
-            data = await self.graphql(query(params, FIELDS + MERCHANDISING), {})
+            data = await self.graphql(query(params, FIELDS + MERCHANDISING + " imageUrl"), {})
             rows = self.nodes(data)
         except ProviderError as exc:
             if exc.code != "schema":
