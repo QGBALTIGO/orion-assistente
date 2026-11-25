@@ -31,7 +31,7 @@
       "app/static/panel.html": "app/static/panel.html",
       "scripts/backup_and_migrate_plan_cycle.py": "scripts/backup_and_migrate_plan_cycle.py"
     },
-    "image": "ghcr.io/qgbaltigo/orion-assistente-api@sha256:a3e896a13ad77fce175caf52648f009887a91eb1a5537599fd783aa84622eed3",
+    "image": "ghcr.io/qgbaltigo/orion-assistente-api@sha256:721234ad521461d96867f61de432b2a3bed44e96d95be1678e0cb8d67e51a244",
     "originals": {
       "app/account_erasure.py": "d264706131cbad6aad4c94a5d6838d05719df5af",
       "app/admin_accounts.py": "8aaf16ece2eb4c76fc39d95dc6351d8533e4eb53",
