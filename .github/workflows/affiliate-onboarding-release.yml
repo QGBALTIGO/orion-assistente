@@ -15,7 +15,7 @@ jobs:
       contents: read
       packages: write
     env:
-      BASE_IMAGE: ghcr.io/qgbaltigo/orion-assistente-api@sha256:1b09ad0caa4015565558ed110081f31a45c0d93657eadcf25a80d7c47086c0f2
+      BASE_IMAGE: ghcr.io/qgbaltigo/orion-assistente-api@sha256:dd90220799706c522f6de3b933065162e78389ca0a857b162f24ccef1a682e77
       IMAGE: ghcr.io/qgbaltigo/orion-assistente-api:afiliados-onboarding-${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
@@ -37,10 +37,8 @@ jobs:
           import hashlib
           from pathlib import Path
           expected = {
-              "app/affiliate_workspace.py": "465780743ad435e151eb81aab5a2003af9eaca16",
-              "app/static/orion-onboarding.js": "b6ddcf02ed50f4506350967f7c5db057bc46e622",
-              "app/static/orion-suite.js": "4dd4f1460d39f75bac46d1915e031da660006306",
-              "app/static/panel.html": "e843df48af0248575279b518614ef8db36eab714",
+              "app/plan_permissions.py": "54eea5186b66365c39bfa3eec49f7b23f7c8d683",
+              "app/static/orion-suite.js": "5056042a58159ab4b66ce58b409f1e5316a65f69",
           }
           for name, digest in expected.items():
               data = Path(name).read_bytes()
@@ -52,11 +50,15 @@ jobs:
           docker run --rm --entrypoint python "$IMAGE" -c '
           from app.onboarding_schemas import CreateBusiness
           from app.main import app
+          from app.plan_permissions import derive_plan
           from pathlib import Path
           from app.workspace_policy import workspace_profile
           assert workspace_profile("afiliados") == "affiliate"
           assert "/api/v1/afiliados/{tenant_id}" in app.openapi()["paths"]
           assert Path("app/static/orion-affiliate-embed.js").is_file()
+          plan = derive_plan({"niche": "afiliados", "tenant_status": "active"})
+          assert plan["layout_modes"] == ["classic", "app"]
+          assert set(plan["features"]) == {"account.manage", "business.setup"}
           CreateBusiness(name="Afiliados", timezone="America/Cuiaba", niche="afiliados",
                          activity="products", affiliate_activity="offers", idempotency_key="synthetic-test")
           '

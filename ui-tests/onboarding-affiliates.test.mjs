@@ -43,7 +43,9 @@ test('Afiliados cria um espaço com atividade própria e abre o painel correspon
 test('Afiliados usa o painel principal, as rotas do nicho e a área nativa da conta',async t=>{
   const business={id:tenantA,name:'Canal de Ofertas',role:'owner',status:'active',
     slug:'canal-de-ofertas',timezone:'America/Cuiaba',workspace_profile:'affiliate'};
-  const h=await makePanel({role:'member',initialRoute:'plano',permissions:planState('none',{workspace_profile:'affiliate'}),
+  const h=await makePanel({role:'member',initialRoute:'plano',permissions:planState('none',{
+    workspace_profile:'affiliate',layout_modes:['classic','app']
+  }),
     respond(path){
       if(path==='/api/v1/account/businesses')return [business];
       if(path==='/api/v1/onboarding/entry')return entry({kind:'affiliate',create_allowed:false,businesses:[business]});
@@ -70,5 +72,34 @@ test('Afiliados usa o painel principal, as rotas do nicho e a área nativa da co
   await flush();
   assert.equal(new URL(h.window.location.href).searchParams.get('aba'),'ajuda');
   assert.equal(h.document.querySelector('#osAffiliateView'),null);
+  h.click('#osNav [data-os-app-settings=appearance]');
+  await flush();
+  assert.equal(h.element('#osAppDock').hidden,true);
+  h.click('[data-os-layout=app]');
+  await flush();
+  const shortcuts=()=>[...h.element('#osAppDock').querySelectorAll('[data-os-app-tab]')].map(el=>el.dataset.osAppTab);
+  assert.deepEqual(shortcuts(),['dashboard','afiliados-ofertas','afiliados-automacoes','afiliados-fila','perfil']);
+  const offerSlot=h.element('select[data-os-app-shortcut="1"]');
+  assert.equal([...offerSlot.options].some(option=>option.value==='agenda'),false);
+  offerSlot.value='afiliados-plataformas';
+  offerSlot.dispatchEvent(new h.window.Event('change',{bubbles:true}));
+  h.click('[data-os-action=app-shortcuts-save]');
+  await flush();
+  assert.deepEqual(shortcuts(),['dashboard','afiliados-plataformas','afiliados-automacoes','afiliados-fila','perfil']);
+  h.click('#osAppDock [data-os-app-tab=afiliados-plataformas]');
+  await flush();
+  assert.equal(h.element('#osAffiliateView').getAttribute('src'),'/api/v1/afiliados/'+tenantA+'?embed=1#plataformas');
+  h.click('#osAppDock [data-os-app-tab=perfil]');
+  await flush();
+  assert.match(h.element('#osPageBody').textContent,/Plataformas.*Conexões e destinos.*Templates/);
+  assert.match(h.element('#osPageBody').textContent,/Ajuda e conta.*Novidades.*Base de conhecimento.*Minha conta.*Sair com segurança/);
+  h.click('#osPageBody [data-os-app-settings=appearance]');
+  await flush();
+  h.click('[data-os-layout=classic]');
+  await flush();
+  assert.equal(h.element('#osAppDock').hidden,true);
+  h.click('[data-os-layout=app]');
+  await flush();
+  assert.equal(shortcuts()[1],'afiliados-plataformas');
   assert.deepEqual(h.errors,[]);
 });

@@ -124,7 +124,9 @@ def derive_plan(snapshot, now=None):
         "workspace_profile": profile,
         # Server-verified UI context only. It grants no clinical or billing permissions.
         "business_niche": "odontologia" if snapshot.get("niche") == "odontologia" and not platform else None,
-        "layout_modes": ["classic", "app"] if snapshot.get("niche") in {"barbearia", "servico_assinaturas"} and not platform else ["classic"],
+        "layout_modes": ["classic", "app"] if not platform and (
+            snapshot.get("niche") == "barbearia" or profile in {AFFILIATE_WORKSPACE, SUBSCRIPTION_WORKSPACE}
+        ) else ["classic"],
         "features": features, "permissions": {key: key in features for key in sorted(ALL_FEATURES)},
         "limits": {"max_professionals": maximum, "active_professionals": used,
                    "excess_professionals": max(0, used - maximum) if maximum is not None else 0},

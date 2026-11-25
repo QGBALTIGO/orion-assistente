@@ -122,9 +122,11 @@
     ['programadas','calendarClock','Programadas'],['massa','broadcast','Mensagem em massa'],
     ['extrator-contatos','usersSearch','Extrator de contatos'],['adicionar-ao-grupo','userPlus','Adicionar ao grupo'],
     ['verificador-numeros','check','Verificar números'],['link-whatsapp','link','Link do WhatsApp'],
-    ['contatos','users','Contatos'],['grupos-contatos','list','Grupos de contatos']
+    ['contatos','users','Contatos'],['grupos-contatos','list','Grupos de contatos'],
+    ...affiliateNavigation.flatMap(([,items])=>items.filter(([route])=>route!=='dashboard')
+      .map(([route,label,symbol])=>[route,symbol,label]))
   ];
-  const appDefaultShortcuts=()=>subscriptionWorkspace()?
+  const appDefaultShortcuts=()=>affiliateWorkspace()?['dashboard','afiliados-ofertas','afiliados-automacoes','afiliados-fila']:subscriptionWorkspace()?
     ['chatbot','templates','enviar-mensagem','diagnosticos']:['dashboard','agenda','servicos','hours'];
   const appProfileShortcut=['perfil','user','Perfil'];
   const legacyPages=new Set(['dispositivo','conversas','ai','empresa','catalogo','cadastros','member']);
@@ -145,7 +147,7 @@
   function barbershopHomeEligible(){
     const plan=state.entitlements;
     if(!plan||plan.workspace_profile!=='standard'||subscriptionWorkspace())return false;
-    // The current entitlement advertises App layout for barbershops and subscriptions only.
+    // The standard workspace uses App layout eligibility to identify barbershops on legacy responses.
     return plan.business_niche==null?plan.layout_modes?.includes('app')===true:plan.business_niche==='barbearia';
   }
   const homePreviewEnabled=()=>platformWorkspace()||barbershopHomeEligible();
@@ -154,7 +156,8 @@
   const fallbackRoute=()=>affiliateWorkspace()||subscriptionWorkspace()||dentalWorkspace()&&permitted('dashboard.basic')?'dashboard':'plano';
   const permitted=feature=>!feature||platformWorkspace()||(!affiliateWorkspace()||['account.manage','business.setup'].includes(feature))&&(!subscriptionWorkspace()||['account.manage','business.setup','devices.manage','chatbot.manage','templates.manage','sent_messages.manage','diagnostics.manage','campaigns.manage','scheduled_messages.manage','bulk_messages.manage','direct_messages.manage','whatsapp_guidance.view','group_contacts.manage','group_add.manage','number_check.manage','whatsapp_link.manage','audience.manage'].includes(feature))&&state.entitlements?.permissions?.[feature]===true;
   const routePermitted=route=>{
-    if(affiliateWorkspace())return affiliatePanelRoute(route)||['novidades','ajuda','member'].includes(route)||route==='configuracoes'&&permitted('account.manage');
+    if(affiliateWorkspace())return affiliatePanelRoute(route)||['novidades','ajuda','member'].includes(route)||
+      route==='configuracoes'&&permitted('account.manage')||route==='perfil'&&appLayoutEnabled();
     if(route.startsWith('afiliados-'))return false;
     return route==='vendas-odonto'?dentalSettingsAllowed():route==='ajustes-odonto'?dentalWorkspace():(Object.hasOwn(dentalViews,route)||route==='pacientes-odonto')?(dentalWorkspace()&&state.entitlements?.dental_clinical_enabled===true&&state.bridge.user?.role==='member'&&!state.bridge.user?.maintenance?.active&&['owner','editor'].includes(tenant()?.role)&&permitted('clients.manage')):route==='perfil'?appLayoutEnabled():['aquecimento','evitar-banimento','resolver-banimento','extrator-contatos','adicionar-ao-grupo','verificador-numeros','link-whatsapp','contatos','grupos-contatos'].includes(route)?(subscriptionWorkspace()&&tenant()?.role==='owner'&&tenant()?.status==='active'&&permitted(routeFeatures[route])):['dispositivos','chatbot','testar-chatbot','templates','mensagens-enviadas','diagnosticos','campanhas','programadas','massa','enviar-mensagem'].includes(route)?(subscriptionWorkspace()&&permitted(routeFeatures[route])):subscriptionWorkspace()?(route==='configuracoes'?permitted('account.manage'):subscriptionRoutes.has(route)):route==='configuracoes'?(permitted('settings.manage')||permitted('business.setup')||permitted('account.manage')):permitted(routeFeatures[route]);
   };
@@ -604,7 +607,7 @@
 
   // Navigation is a presentation layer. All booking, finance and access logic stays shared.
   // Authorization is server-derived from the verified business niche.
-  const appLayoutEligible=()=>!!tenant()&&!platformWorkspace()&&!dentalWorkspace()&&state.entitlements?.layout_modes?.includes('app')===true;
+  const appLayoutEligible=()=>!!tenant()&&!platformWorkspace()&&!dentalWorkspace()&&(!affiliateWorkspace()||affiliateOwner())&&state.entitlements?.layout_modes?.includes('app')===true;
   const appLayoutEnabled=()=>state.layoutMode==='app'&&appLayoutEligible();
   const appLayoutKey=()=>state.tenantId&&(state.bridge.user?.id||state.bridge.user?.email)?
     'orion-navigation-v1:'+state.tenantId+':'+String(state.bridge.user.id||state.bridge.user.email).toLowerCase():null;
@@ -615,7 +618,8 @@
   // Stored locally, scoped to the authenticated account and single company.
   // Only server-authorized routes can ever become interactive shortcuts.
   const appShortcutKey=()=>{
-    const key=appLayoutKey();return key?'orion-quick-tabs-v1:'+key.slice('orion-navigation-v1:'.length)+(subscriptionWorkspace()?':subscription_services':''):null;
+    const key=appLayoutKey(),suffix=(subscriptionWorkspace()||affiliateWorkspace())?':'+workspaceProfile():'';
+    return key?'orion-quick-tabs-v1:'+key.slice('orion-navigation-v1:'.length)+suffix:null;
   };
   const appTabAllowed=tab=>tab==='perfil'?appLayoutEnabled():
     tab==='hours'?routePermitted('configuracoes')&&settingsTabAllowed('hours'):
@@ -755,7 +759,11 @@
     toast('Layout '+(mode==='app'?'Aplicativo':'Clássico')+' ativado.'+(stored?'':' Esta escolha não pôde ser salva neste navegador.'));
   }
   function appProfileView(){
-    const groups=subscriptionWorkspace()?[
+    const isAffiliate=affiliateWorkspace();
+    const groups=isAffiliate?[
+      ...affiliateNavigation.map(([heading,items])=>[heading,items.map(([route,,symbol])=>[route,symbol])]),
+      ['Ajuda e conta',[['novidades','bell'],['ajuda','book'],['member','user']]],
+    ]:subscriptionWorkspace()?[
       ['Visão geral',[['dashboard','home']]],
       ['Atendimento e chatbot',[['dispositivos','phone'],['chatbot','bot'],['testar-chatbot','flask'],['templates','layers'],['mensagens-enviadas','fileCheck'],['diagnosticos','activity']]],
       ['Envios e campanhas',[['enviar-mensagem','send'],['programadas','calendarClock'],['campanhas','megaphone'],['massa','broadcast']]],
@@ -771,10 +779,12 @@
     const sections=groups.map(([heading,items],i)=>{
       const allowed=items.filter(([route])=>route==='hours'?appTabAllowed('hours'):routePermitted(route));if(!allowed.length)return '';
       const rows=allowed.map(([route,symbol])=>
-        '<button type="button" class="os-app-profile-item" '+(route==='hours'?'data-os-app-tab="hours"':'data-os-route="'+route+'"')+'><span class="os-app-profile-item-icon">'+icon(symbol)+'</span><span>'+esc(route==='hours'?'Horários':routeNames[route])+'</span>'+icon('chevron')+'</button>').join('');
-      const appearance=['Site e configurações','Configurações e conta'].includes(heading)&&settingsTabAllowed('appearance')?
+        '<button type="button" class="os-app-profile-item" '+(route==='hours'?'data-os-app-tab="hours"':'data-os-route="'+route+'"')+'><span class="os-app-profile-item-icon">'+icon(symbol)+'</span><span>'+esc(route==='hours'?'Horários':isAffiliate?routeLabel(route):routeNames[route])+'</span>'+icon('chevron')+'</button>').join('');
+      const appearance=(['Site e configurações','Configurações e conta'].includes(heading)||isAffiliate&&heading==='Configuração')&&settingsTabAllowed('appearance')?
         '<button type="button" class="os-app-profile-item" data-os-app-settings="appearance"><span class="os-app-profile-item-icon">'+icon('sun')+'</span><span>Aparência</span>'+icon('chevron')+'</button>':'';
-      return '<section class="os-app-profile-group" aria-labelledby="osAppProfileGroup'+i+'"><h2 id="osAppProfileGroup'+i+'">'+esc(heading)+'</h2><div class="os-app-profile-items">'+rows+appearance+'</div></section>';
+      const logout=isAffiliate&&heading==='Ajuda e conta'?
+        '<button type="button" class="os-app-profile-item" data-os-action="logout"><span class="os-app-profile-item-icon">'+icon('logout')+'</span><span>Sair com segurança</span>'+icon('chevron')+'</button>':'';
+      return '<section class="os-app-profile-group" aria-labelledby="osAppProfileGroup'+i+'"><h2 id="osAppProfileGroup'+i+'">'+esc(heading)+'</h2><div class="os-app-profile-items">'+rows+appearance+logout+'</div></section>';
     }).join('');
     return '<div class="os-app-profile-view"><header class="os-app-profile-title"><h1>Perfil</h1><p>Seu negócio e todas as ferramentas do Orion.</p></header>'+
       '<div class="os-app-profile-hero"><span class="os-avatar" aria-hidden="true">'+esc(initials(tenant()?.name||'Orion'))+'</span><div><strong>'+esc(tenant()?.name||'Minha empresa')+'</strong><small>'+esc(state.bridge.user?.name||'Minha conta')+'</small></div></div>'+

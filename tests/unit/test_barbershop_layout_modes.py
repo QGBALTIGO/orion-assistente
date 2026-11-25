@@ -1,4 +1,4 @@
-"""Only barbershops may see the optional application navigation shell."""
+"""The optional App layout follows the verified business niche."""
 from app.plan_permissions import derive_plan
 
 
@@ -46,3 +46,11 @@ def test_subscription_services_receives_app_layout_without_gaining_extra_permiss
 
 def test_platform_admin_in_subscription_niche_still_uses_classic_only():
     assert derive_plan(snapshot("servico_assinaturas", platform=True))["layout_modes"] == ["classic"]
+
+
+def test_affiliates_receive_app_layout_with_only_their_existing_permissions():
+    result = derive_plan(snapshot("afiliados"))
+    assert result["layout_modes"] == ["classic", "app"]
+    assert result["workspace_profile"] == "affiliate"
+    assert set(result["features"]) == {"account.manage", "business.setup"}
+    assert derive_plan(snapshot("afiliados", platform=True))["layout_modes"] == ["classic"]

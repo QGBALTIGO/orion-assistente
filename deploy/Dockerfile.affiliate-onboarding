@@ -1,5 +1,5 @@
-FROM ghcr.io/qgbaltigo/orion-assistente-api@sha256:1b09ad0caa4015565558ed110081f31a45c0d93657eadcf25a80d7c47086c0f2
+FROM ghcr.io/qgbaltigo/orion-assistente-api@sha256:dd90220799706c522f6de3b933065162e78389ca0a857b162f24ccef1a682e77
 ARG ORION_RELEASE
 LABEL org.opencontainers.image.revision=$ORION_RELEASE
-COPY --chown=appuser:appuser app/affiliate_workspace.py /srv/app/app/
-COPY --chown=appuser:appuser app/static/panel.html app/static/orion-onboarding.js app/static/orion-suite.js app/static/orion-affiliate-embed.css app/static/orion-affiliate-embed.js /srv/app/app/static/
+COPY --chown=appuser:appuser app/plan_permissions.py /srv/app/app/
+COPY --chown=appuser:appuser app/static/orion-suite.js /srv/app/app/static/
