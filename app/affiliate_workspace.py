@@ -2,6 +2,7 @@
 from functools import lru_cache
 import json
 import os
+from pathlib import Path
 import re
 from uuid import UUID
 
@@ -39,6 +40,10 @@ ASSETS = {
        for name, mime in (("shopee.png", "image/png"), ("amazon.png", "image/png"),
                           ("mercado-livre.png", "image/png"), ("telegram.png", "image/png"),
                           ("whatsapp.svg", "image/svg+xml"))},
+}
+EMBED_ASSETS = {
+    "embed.css": ("orion-affiliate-embed.css", "text/css"),
+    "embed.js": ("orion-affiliate-embed.js", "text/javascript"),
 }
 
 
@@ -93,6 +98,10 @@ async def fetch_upstream(method, path, *, headers=None, params=None, body=None):
 
 @router.get("/afiliados-assets/{name:path}")
 async def assets(name: str):
+    if available() and name in EMBED_ASSETS:
+        filename, mime = EMBED_ASSETS[name]
+        content = Path(__file__).with_name("static").joinpath(filename).read_bytes()
+        return Response(content, media_type=mime, headers={**NO_STORE, "Cache-Control": "public, max-age=120"})
     asset = ASSETS.get(name)
     if asset is None or not available():
         raise HTTPException(404)
@@ -104,10 +113,12 @@ async def assets(name: str):
 
 
 @router.get("/afiliados/{tenant_id}")
-async def workspace_page(tenant_id: UUID, actor: Actor = Depends(authenticate)):
+async def workspace_page(tenant_id: UUID, embed: bool = False, actor: Actor = Depends(authenticate)):
     await affiliate_owner(actor, tenant_id)
     if not available():
         raise HTTPException(503, "O painel de Afiliados está indisponível no momento")
+    if not embed:
+        return Response(status_code=303, headers={**NO_STORE, "Location": "/painel?aba=dashboard"})
     status, mime, content = await fetch_upstream("GET", "/")
     if status != 200 or mime != "text/html" or b'id="appView"' not in content:
         raise HTTPException(502, "Página de Afiliados indisponível")
@@ -116,9 +127,12 @@ async def workspace_page(tenant_id: UUID, actor: Actor = Depends(authenticate)):
                .replace(b'href="/design/', b'href="/api/v1/afiliados-assets/design/')
                .replace(b'href="/assets/', b'href="/api/v1/afiliados-assets/')
                .replace(b'src="/assets/', b'src="/api/v1/afiliados-assets/'))
-    headers = {**NO_STORE, "Referrer-Policy": "no-referrer", "X-Frame-Options": "DENY",
+    content = content.replace(b"</head>",
+        b'<link rel="stylesheet" href="/api/v1/afiliados-assets/embed.css">'
+        b'<script src="/api/v1/afiliados-assets/embed.js" defer></script></head>', 1)
+    headers = {**NO_STORE, "Referrer-Policy": "no-referrer", "X-Frame-Options": "SAMEORIGIN",
                "Content-Security-Policy": "default-src 'self'; img-src 'self' data: blob:; "
-               "base-uri 'none'; frame-ancestors 'none'; form-action 'self'"}
+               "base-uri 'none'; frame-ancestors 'self'; form-action 'self'"}
     return Response(content, media_type="text/html", headers=headers)
 
 

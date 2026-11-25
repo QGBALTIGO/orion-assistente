@@ -1,0 +1,33 @@
+#appView.orion-suite-enabled:not([hidden]) {
+  display: block;
+  min-height: 0;
+}
+
+#appView > .sidebar, #workspace > .os-header, #appView > #scrim {
+  display: none !important;
+}
+
+#workspace > #page-suite {
+  width: 100%;
+  max-width: none;
+  min-height: 0;
+  padding: 0;
+}
+
+#loginView .auth-shell {
+  max-width: 540px;
+  min-height: 0;
+  display: block;
+  margin: 0 auto;
+}
+
+#loginView .auth-visual, #loginView .auth-toolbar, #loginView .auth-mobile-brand, #loginView #login {
+  display: none;
+}
+
+#loginView .auth-right {
+  min-height: 0;
+  padding: 12px;
+}
+
+body { overflow-x: hidden; }

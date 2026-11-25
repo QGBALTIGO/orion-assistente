@@ -644,6 +644,7 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
 <link rel="stylesheet" href="/panel-assets/orion-plans.css">
 <link rel="stylesheet" href="/panel-assets/orion-auth.css">
 <link rel="stylesheet" href="/panel-assets/orion-fields.css">
+<style>.os-affiliate-view{display:block;width:100%;min-width:0;border:0}</style>
 <link rel="stylesheet" href="/panel-assets/orion-onboarding.css">
 <link rel="stylesheet" href="/panel-assets/orion-channels.css">
 <link rel="stylesheet" href="/panel-assets/orion-subscription-devices.css">
@@ -1609,7 +1610,7 @@ async function resolveSetup(options={}){
   if(epoch!==authEpoch||sequence!==setupResolving||!entry)return;
  if(entry.kind==="business_conflict"){blockBusinessContext(entry.message||"Sua conta está vinculada a mais de uma empresa. Entre em contato com o suporte para regularizar o vínculo.");return}
  if(setupPlanRequested&&accountBusiness()&&accountBusiness().workspace_profile!=="affiliate"){setSetupGate(false);$("orionSetup").hidden=true;await window.OrionSuite?.open('plano',{force:true});return;}
-  setupEntryReady=true;setSetupGate(entry.kind!=="dashboard");
+  setupEntryReady=true;setSetupGate(!["dashboard","affiliate"].includes(entry.kind));
  }catch{if(epoch===authEpoch&&sequence===setupResolving){setupEntryReady=false;setSetupGate(true)}}
 }
 function suiteBridge(initialRoute){

@@ -15,7 +15,7 @@ jobs:
       contents: read
       packages: write
     env:
-      BASE_IMAGE: ghcr.io/qgbaltigo/orion-assistente-api@sha256:8c19cfcec8a4f1dd26390c42a8e0ed993f37351d097a76beb3727525c46d2569
+      BASE_IMAGE: ghcr.io/qgbaltigo/orion-assistente-api@sha256:1b09ad0caa4015565558ed110081f31a45c0d93657eadcf25a80d7c47086c0f2
       IMAGE: ghcr.io/qgbaltigo/orion-assistente-api:afiliados-onboarding-${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
@@ -37,14 +37,10 @@ jobs:
           import hashlib
           from pathlib import Path
           expected = {
-              "app/account_business.py": "5a758febe620081c7251f2ed12a0e8e2086d4e80",
-              "app/onboarding_api.py": "6b80746be59835de45100a74b89f7bb0864465f7",
-              "app/onboarding_schemas.py": "3f8570b6287a02c5c049a777e65deebca7860824",
-              "app/onboarding_service.py": "5d87d6bb619dd0f3003806455b7d341fa7938cad",
-              "app/plan_permissions.py": "4dce4c5d85d9b16157bef9fe4e24ea5dcb50dd30",
-              "app/static/orion-onboarding.js": "eda3193181506dafa477c68d4e815e0f733bf75d",
-              "app/static/panel.html": "367b5fad6e7955fa7dd745d2bd0febc6724e8f02",
-              "app/workspace_policy.py": "cfdb0b986cb036182c012fa7a1bffe2d197cd6ba",
+              "app/affiliate_workspace.py": "465780743ad435e151eb81aab5a2003af9eaca16",
+              "app/static/orion-onboarding.js": "b6ddcf02ed50f4506350967f7c5db057bc46e622",
+              "app/static/orion-suite.js": "4dd4f1460d39f75bac46d1915e031da660006306",
+              "app/static/panel.html": "e843df48af0248575279b518614ef8db36eab714",
           }
           for name, digest in expected.items():
               data = Path(name).read_bytes()
@@ -56,9 +52,11 @@ jobs:
           docker run --rm --entrypoint python "$IMAGE" -c '
           from app.onboarding_schemas import CreateBusiness
           from app.main import app
+          from pathlib import Path
           from app.workspace_policy import workspace_profile
           assert workspace_profile("afiliados") == "affiliate"
           assert "/api/v1/afiliados/{tenant_id}" in app.openapi()["paths"]
+          assert Path("app/static/orion-affiliate-embed.js").is_file()
           CreateBusiness(name="Afiliados", timezone="America/Cuiaba", niche="afiliados",
                          activity="products", affiliate_activity="offers", idempotency_key="synthetic-test")
           '
