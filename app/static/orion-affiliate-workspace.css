@@ -926,3 +926,126 @@ a.af-dashboard-kpi:hover { background: color-mix(in srgb,var(--os-tint) 35%,var(
 @media (prefers-reduced-motion: reduce) {
   .af-history-workspace *, .af-history-workspace *::before, .af-history-workspace *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+
+/* Affiliate connections: account cards and a compact, responsive destination list. */
+.os-main:has(.af-connections-workspace) { padding: 28px; }
+.af-native-content:has(> .af-connections-workspace) { container: affiliate-connections / inline-size; min-width: 0; }
+.af-connections-workspace { display: grid; gap: 20px; min-width: 0; overflow-anchor: none; }
+.af-connections-workspace *, .af-connections-workspace *::before, .af-connections-workspace *::after { box-sizing: border-box; }
+.af-connections-workspace :is(h1,h2,h3,p,fieldset) { margin: 0; }
+.af-connections-workspace [hidden], .af-connections-workspace [data-connection-feedback]:empty, .af-connections-workspace [data-connection-revoke]:empty { display: none !important; }
+.af-connections-workspace .af-eyebrow { font-size: 11px; font-weight: 600; color: var(--os-muted); letter-spacing: 1.2px; }
+.af-connections-workspace .os-icon { width: 18px; height: 18px; flex: 0 0 auto; }
+.af-connections-workspace .os-button { min-height: 44px; font-size: 12px; gap: 7px; white-space: normal; }
+.af-connections-workspace :is(button,a,input,select,summary):focus-visible { outline: 2px solid var(--os-primary); outline-offset: 3px; }
+.af-connection-summary { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; min-width: 0; }
+.af-connection-summary > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; padding: 18px 20px; border: 1px solid var(--os-border); border-radius: 15px; background: var(--os-card); }
+.af-connection-summary > div > span { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--os-muted); }
+.af-connection-summary .os-icon { color: var(--os-primary); width: 16px; height: 16px; }
+.af-connection-summary > div:nth-child(2) .os-icon { color: var(--os-success,#299267); }
+.af-connection-summary > div:nth-child(3) .os-icon { color: var(--os-warning,#ce932f); }
+.af-connection-summary strong { font: 550 28px/1.1 var(--os-display); letter-spacing: -.5px; font-variant-numeric: tabular-nums; }
+.af-connection-panel { min-width: 0; padding: 22px; border: 1px solid var(--os-border); border-radius: 18px; background: var(--os-card); box-shadow: var(--os-shadow); }
+.af-connection-panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+.af-connection-panel-heading > div { min-width: 0; }
+.af-connection-panel-heading h2,.af-connection-editor h2 { font: 550 20px/1.35 var(--os-display); letter-spacing: -.4px; }
+.af-connection-panel-heading p,.af-connection-editor summary p { color: var(--os-muted); font-size: 12px; line-height: 1.5; margin-top: 4px; }
+.af-connection-panel-heading > button { flex-shrink: 0; }
+.af-connection-accounts { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; align-items: start; }
+.af-connection-account { display: grid; gap: 13px; min-width: 0; padding: 15px; border: 1px solid var(--os-border); border-radius: 13px; background: var(--os-bg); }
+.af-connection-account-main { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
+.af-connection-account-identity { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.af-connection-account-identity > div { min-width: 0; }
+.af-connection-account-identity img,.af-connection-destination-icon img { display: block; width: 40px; height: 40px; flex: 0 0 40px; object-fit: contain; padding: 6px; border-radius: 11px; background: white; border: 1px solid var(--os-border); }
+.af-connection-account-identity h3 { font: 550 17px/1.3 var(--os-display); }
+.af-connection-account-identity p { font-size: 12px; line-height: 1.5; color: var(--os-muted); overflow-wrap: anywhere; margin-top: 2px; }
+.af-connection-account-meta { display: grid; gap: 4px; justify-items: end; min-width: 0; font-size: 11px; color: var(--os-muted); text-align: end; }
+.af-connection-account-meta .os-badge { max-width: 100%; white-space: normal; text-align: center; overflow-wrap: anywhere; }
+.af-connection-manage { display: flex; align-items: center; justify-content: flex-start; width: 100%; }
+.af-connection-manage .os-icon:last-child { margin-left: auto; }
+.af-connection-disclosure { min-width: 0; border: 1px solid var(--os-border); border-radius: 10px; }
+.af-connection-disclosure summary,.af-connection-editor > summary { display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none; min-height: 44px; color: var(--os-text); }
+.af-connection-disclosure summary { padding: 10px 12px; font-size: 12px; font-weight: 500; }
+.af-connection-disclosure summary::-webkit-details-marker,.af-connection-editor > summary::-webkit-details-marker { display: none; }
+.af-connection-disclosure summary > span { flex: 1; min-width: 0; }
+.af-connection-disclosure summary > .os-icon:first-child { color: var(--os-primary); }
+.af-connection-disclosure summary > .os-icon:last-child,.af-connection-editor > summary > .os-icon { color: var(--os-muted); margin-left: auto; }
+.af-connection-disclosure[open] > summary > .os-icon:last-child,.af-connection-editor[open] > summary > .os-icon { transform: rotate(180deg); }
+.af-connection-disclosure[open] > summary { border-bottom: 1px solid var(--os-border); }
+.af-connection-disclosure > form,.af-connection-disclosure > label { padding: 12px; }
+.af-connection-pairing { display: grid; gap: 9px; border-top: 1px solid var(--os-border); padding-top: 10px; min-width: 0; font-size: 12px; }
+.af-connection-pairing p { color: var(--os-muted); line-height: 1.5; }
+.af-connection-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.af-connection-actions > * { min-width: 0; max-width: 100%; }
+.af-connection-filters { display: flex; flex-wrap: wrap; gap: 5px; padding: 3px; border: 1px solid var(--os-border); border-radius: 11px; background: var(--os-bg); margin-bottom: 10px; }
+.af-connection-filters button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; flex: 1; min-width: 0; min-height: 39px; padding: 6px 8px; background: transparent; color: var(--os-muted); border: 1px solid transparent; border-radius: 8px; font: 500 12px/1.4 var(--os-font); cursor: pointer; }
+.af-connection-filters button span { font-size: 10px; border-radius: 5px; padding: 1px 4px; background: color-mix(in srgb,var(--os-muted) 9%,transparent); }
+.af-connection-filters button[aria-pressed="true"] { color: var(--os-primary); background: var(--os-card); border-color: var(--os-border); }
+.af-connection-list { display: grid; min-width: 0; }
+.af-connection-destination { display: grid; grid-template-columns: 36px minmax(0,1fr) minmax(80px,auto) minmax(0,auto); grid-template-areas: "image info status actions"; align-items: center; gap: 10px; min-width: 0; padding: 13px 0; border-bottom: 1px solid var(--os-border); }
+.af-connection-destination:last-child { border-bottom: 0; padding-bottom: 0; }
+.af-connection-destination-icon { grid-area: image; }
+.af-connection-destination-icon img { width: 36px; height: 36px; padding: 5px; border-radius: 10px; }
+.af-connection-destination-info { grid-area: info; display: grid; gap: 4px; min-width: 0; }
+.af-connection-destination-info strong { font-size: 14px; line-height: 1.4; overflow-wrap: anywhere; }
+.af-connection-destination-info > span { font-size: 11px; color: var(--os-muted); line-height: 1.45; }
+.af-connection-issue { font-size: 12px; color: var(--os-muted); overflow-wrap: anywhere; line-height: 1.5; }
+.af-connection-destination-status { grid-area: status; justify-self: start; }
+.af-connection-destination-status .os-badge { white-space: normal; overflow-wrap: anywhere; max-width: 100%; }
+.af-connection-destination-actions { grid-area: actions; display: flex; justify-content: flex-end; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.af-connection-destination-actions .os-button { min-height: 38px; padding: 7px 10px; }
+.af-connection-destination-actions .os-icon { width: 15px; height: 15px; }
+.af-connection-remove { color: var(--os-muted); }
+.af-connection-empty { display: grid; justify-items: center; gap: 8px; min-width: 0; padding: 30px 12px; text-align: center; }
+.af-connection-empty h3 { font-size: 16px; }
+.af-connection-empty p { max-width: 35ch; font-size: 12px; color: var(--os-muted); line-height: 1.5; }
+.af-connection-editor > summary { justify-content: space-between; }
+.af-connection-editor > summary > div { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.af-connection-editor[open] > summary { margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid var(--os-border); }
+.af-connections-workspace .af-form { display: grid; gap: 14px; min-width: 0; }
+.af-connections-workspace .af-form label:not(.os-check),.af-connections-workspace .os-field > label { font-size: 12px; }
+.af-connections-workspace .af-form :is(input:not([type=checkbox]),select) { width: 100%; min-width: 0; max-width: 100%; min-height: 44px; font-size: 14px; }
+.af-connections-workspace .os-check { white-space: normal; line-height: 1.5; font-size: 12px; }
+.af-connections-workspace .af-whatsapp-group-picker { display: grid; gap: 10px; min-width: 0; }
+@container affiliate-connections (max-width: 750px) {
+  .af-connection-accounts { grid-template-columns: minmax(0,1fr); }
+  .af-connection-destination { grid-template-columns: 36px minmax(0,1fr) auto; grid-template-areas: "image info status" ". actions actions"; gap: 8px 10px; }
+  .af-connection-destination-actions { justify-content: flex-start; }
+}
+@container affiliate-connections (max-width: 560px) {
+  .af-connections-workspace { gap: 16px; }
+  .af-history-heading h1 { font-size: 29px; }
+  .af-connection-summary { gap: 7px; }
+  .af-connection-summary > div { display: grid; gap: 8px; padding: 12px 9px; border-radius: 12px; }
+  .af-connection-summary > div > span { gap: 4px; font-size: 10px; }
+  .af-connection-summary .os-icon { width: 13px; height: 13px; }
+  .af-connection-summary strong { font-size: 24px; }
+  .af-connection-panel { padding: 15px; border-radius: 16px; }
+  .af-connection-panel-heading { gap: 10px; align-items: flex-start; }
+  .af-connection-panel-heading h2,.af-connection-editor h2 { font-size: 18px; }
+  .af-connection-panel-heading > button { font-size: 11px; padding-inline: 10px; }
+  .af-connection-account { padding: 12px; gap: 10px; }
+  .af-connection-destination { grid-template-columns: 34px minmax(0,1fr); grid-template-areas: "image info" ". status" ". actions"; gap: 7px 9px; }
+  .af-connection-destination-actions .os-button { min-height: 40px; }
+  .af-connection-destination-info strong { font-size: 13px; }
+  .af-connections-workspace .af-form :is(input:not([type=checkbox]),select) { font-size: 16px; }
+}
+@container affiliate-connections (max-width: 335px) {
+  .af-connection-panel-heading { flex-wrap: wrap; }
+  .af-connection-panel-heading > button { width: 100%; }
+  .af-connection-summary .os-icon { display: none; }
+  .af-connection-filters button { font-size: 10px; padding-inline: 3px; gap: 3px; }
+  .af-connection-account-main { align-items: flex-start; }
+  .af-connection-account-meta { font-size: 10px; }
+  .af-connection-account-meta .os-badge { font-size: 10px; }
+  .af-connection-account-identity img { width: 34px; height: 34px; flex-basis: 34px; }
+}
+@media(max-width: 760px) {
+  .os-main:has(.af-connections-workspace) { padding: 16px; }
+  .os-layout-app .os-main:has(.af-connections-workspace) { padding-bottom: calc(110px + env(safe-area-inset-bottom,0px)); }
+  .af-connections-workspace .af-form :is(input:not([type=checkbox]),select) { font-size: 16px; }
+}
+@media(prefers-reduced-motion:reduce) {
+  .af-connections-workspace *, .af-connections-workspace *::before, .af-connections-workspace *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
