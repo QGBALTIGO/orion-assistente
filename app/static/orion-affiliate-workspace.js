@@ -28,7 +28,7 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
   const attentionStates = ["failed","paused","unknown","expired"];
   const actionIcons = {
     refresh:"refresh", demo:"eye", "open-offer":"eye", "new-template":"plus", "edit-template":"edit",
-    "new-rule":"plus", "edit-rule":"edit", "close-rule":"close", copy:"copy", "copy-link":"link",
+    "new-rule":"plus", "new-destination":"plus", "edit-rule":"edit", "close-rule":"close", copy:"copy", "copy-link":"link",
     "ai-phrase":"sparkles", "start-rule":"check",
     "remove-dest":"trash", "cancel-job":"close", "prepare-result":"plus",
   };
@@ -566,19 +566,19 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
       '<article class="af-connection-account">'+connectionAccount("whatsapp")+
       (whatsappAvailable?'<button class="os-button os-outline af-connection-manage" type="button" data-os-route="afiliados-whatsapp">'+icon("phone")+'Gerenciar WhatsApp'+icon("arrow")+'</button>':'<p class="af-connection-issue">Gerenciamento do WhatsApp indisponível.</p>')+'</article>'+
       '<article class="af-connection-account">'+connectionAccount("telegram")+connectionPairing()+
-      '<details id="af-telegram-credentials" class="af-connection-disclosure"'+(!linked&&!pairing?" open":"")+'><summary>'+icon("settings")+'<span>Gerenciar bot do Telegram</span>'+icon("chevronDown")+'</summary>'+
+      '<details id="af-telegram-credentials" class="af-connection-disclosure"'+(!linked&&!pairing?" open":"")+'><summary>'+icon("settings")+'<span>Gerenciar bot do Telegram</span>'+icon("down")+'</summary>'+
       '<form class="os-form af-form" data-form="telegram"><label>Token do bot <input name="token" type="password" autocomplete="new-password" required></label>'+
       '<label class="os-check"><input name="dedicated" type="checkbox" required> Este bot é dedicado às publicações de Afiliados.</label>'+
       '<div class="af-connection-actions">'+submit("Vincular bot","link")+connectionRevoke()+'</div></form></details></article></div></section>'+
       connectionDestinations()+
       '<details id="af-destination-editor" class="af-connection-panel af-connection-editor"'+(!(state.destination||[]).length?" open":"")+'>'+
-      '<summary><div>'+square("plus")+'<div><h2>Cadastrar destino</h2><p>Adicione um grupo ou canal.</p></div></div>'+icon("chevronDown")+'</summary>'+
+      '<summary><div>'+square("plus")+'<div><h2>Cadastrar destino</h2><p>Adicione um grupo ou canal.</p></div></div>'+icon("down")+'</summary>'+
       '<form class="os-form af-form" data-form="destination">'+
       selectField("Tipo de destino","mode",Object.keys({telegram:0,whatsapp_group:0,whatsapp_channel:0}).map(m=>option(m,defaultMedia(m),"telegram")).join(""))+
       '<div data-wa-group-picker hidden>'+whatsappGroupPicker()+'</div>'+
       '<label data-destination-address><span data-address-label>ID numérico ou @ do Telegram</span><input name="address" required maxlength="180" placeholder="@canal_publico ou ID -100…"></label>'+
       '<label>Nome do destino<input name="name" required maxlength="80" placeholder="Ex.: Meu canal de ofertas"></label>'+
-      '<details class="af-test-destination af-connection-disclosure"><summary><span>Opções avançadas</span>'+icon("chevronDown")+'</summary><label class="os-check"><input name="test" type="checkbox"> Usar também nos testes de automação.</label></details>'+
+      '<details class="af-test-destination af-connection-disclosure"><summary><span>Opções avançadas</span>'+icon("down")+'</summary><label class="os-check"><input name="test" type="checkbox"> Usar também nos testes de automação.</label></details>'+
       '<p class="os-help" data-assisted-destination hidden>Depois de salvar, verifique a administração do canal.</p>'+
       '<div class="af-connection-actions">'+submit("Salvar destino")+'</div></form></details></div>';
   }
@@ -2251,8 +2251,9 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     const button=event.target.closest("[data-act]");
     if (!button || !Object.hasOwn(actions,button.dataset.act)) return;
     const connectionKey=button.closest(".af-connections-workspace")?button.dataset.act+":"+(button.dataset.value||""):null;
-    if(connectionKey&&connectionActionBusy.has(connectionKey))return;
+    if(connectionKey&&(connectionActionBusy.has(connectionKey)||(["verify-wa-channel","remove-dest"].includes(button.dataset.act)&&(["verify-wa-channel:","remove-dest:"].some(prefix=>connectionActionBusy.has(prefix+button.dataset.value))))))return;
     if(connectionKey)connectionActionBusy.add(connectionKey);
+    if(connectionKey&&["verify-wa-channel","remove-dest"].includes(button.dataset.act))updateConnections();
     const keepFocus=!!button.closest(".af-offers-workspace,.af-automations-workspace,.af-history-workspace")&&document.activeElement===button;
     if (!button.closest(".af-offers-workspace,.af-automations-workspace,.af-history-workspace")) button.disabled=true;
     try { await actions[button.dataset.act](button.dataset.value); }
