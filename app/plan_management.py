@@ -5,6 +5,7 @@ is awarded by a redirect, an email address, a trial request or a checkout click.
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import hmac
@@ -181,6 +182,13 @@ def _subscription_name(row):
             "grace_until": row["grace_until"],
             "last_verified_payment_at": row["last_verified_payment_at"],
             "next_renewal_at": None}
+
+
+@router.on_event("startup")
+async def start_barbershop_checkout_probe():
+    if os.getenv("ORION_BARBER_CAKTO_DIAGNOSTICS", "0") == "1":
+        from scripts.probe_barber_checkout_read_only import check
+        asyncio.create_task(check())
 
 
 def embedded_checkout_enabled():
