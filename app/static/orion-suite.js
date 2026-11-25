@@ -463,13 +463,13 @@
     if(window.OrionAffiliateWorkspace)return Promise.resolve(window.OrionAffiliateWorkspace);
     if(!affiliateAssets){
       const css=document.createElement('link');
-      css.rel='stylesheet';css.href='/api/v1/afiliados-assets/workspace.css?v=af-dashboard-20261125';
+      css.rel='stylesheet';css.href='/api/v1/afiliados-assets/workspace.css?v=af-dashboard-interacoes-20261125';
       const styled=new Promise((resolve,reject)=>{
         css.onload=resolve;
         css.onerror=()=>reject(Error('O estilo de Afiliados não pôde ser carregado.'));
       });
       document.head.append(css);
-      affiliateAssets=Promise.all([import('/api/v1/afiliados-assets/workspace.js?v=af-dashboard-20261125'),styled])
+      affiliateAssets=Promise.all([import('/api/v1/afiliados-assets/workspace.js?v=af-dashboard-interacoes-20261125'),styled])
         .then(([workspace])=>workspace).catch(error=>{affiliateAssets=null;css.remove();throw error;});
     }
     return affiliateAssets;
@@ -817,7 +817,21 @@
       '</div><div class="os-app-hours-panel" role="tabpanel">'+(mode==='blocks'?appBlocksView():settingsHours())+'</div></section>';
   }
 
-  function drawer(open){const app=$('appView'),side=$('osSidebar');if(!app||!side)return;app.classList.toggle('os-menu-open',open);$('osMenu').setAttribute('aria-expanded',String(open));if(open){state.drawerTrigger=document.activeElement;side.querySelector('button')?.focus();}else state.drawerTrigger?.focus?.();}
+  function drawer(open){
+    const app=$('appView'),side=$('osSidebar');if(!app||!side)return;
+    const wasOpen=app.classList.contains('os-menu-open');
+    if(open){
+      if(wasOpen)return;
+      state.drawerTrigger=document.activeElement;
+      app.classList.add('os-menu-open');$('osMenu').setAttribute('aria-expanded','true');
+      side.querySelector('button')?.focus();
+      return;
+    }
+    const trigger=state.drawerTrigger;state.drawerTrigger=null;
+    if(!wasOpen)return;
+    app.classList.remove('os-menu-open');$('osMenu').setAttribute('aria-expanded','false');
+    if(trigger?.isConnected)trigger.focus?.({preventScroll:true});
+  }
   function resetPeriod(){const today=dateKey(),d=dayDate(today);d.setUTCMonth(d.getUTCMonth()+1,0);state.filters.periodStart=today.slice(0,8)+'01';state.filters.periodEnd=d.toISOString().slice(0,10);state.filters.performancePeriod='month';state.filters.performanceDay=today;}
   function preservePerformancePeriod(nextRoute){
     const f=state.filters;

@@ -45,6 +45,10 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
   let editTemplate = "default";
   let editRule = null;
   let navVersion = 0;
+  let searchVersion = 0;
+  let viewVersion = 0;
+  let stateVersion = 0;
+  let stateLoading = false;
   const dashboardPeriods = {today:"Hoje", "7d":"7 dias", "30d":"30 dias", month:"Este mês"};
   const dashboardMetrics = {
     commission_cents:{label:"Comissões", singular:"Comissão bruta estimada", currency:true, glyph:"wallet"},
@@ -58,17 +62,18 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
   let analyticsLoading = false;
   let analyticsError = false;
   let analyticsVersion = 0;
+  let analyticsRequest = null;
+  let analyticsDisplayedPeriod = null;
   const analyticsPollDelays = [5000,10000,15000,15000,20000,25000];
   let analyticsPollTimer = null;
   let analyticsPollAttempts = 0;
-  let chartSelected = null;
+  let chartSelectedDate = null;
   let publicationTab = "upcoming";
-  let stateUpdatedAt = null;
   function notify(text, error=false) {
     if (!controller.signal.aborted) showNotice(text, error);
   }
-  async function api(path, method="GET", payload) {
-    return request(apiRoot + path, method, payload, {signal:controller.signal});
+  async function api(path, method="GET", payload, signal=controller.signal) {
+    return request(apiRoot + path, method, payload, {signal});
   }
   function confirmAction(title, detail, label, danger=false) {
     const dialog = $("#osAffiliateDialog");
@@ -141,16 +146,14 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value))) return "Data indisponível";
     return new Date(value+"T12:00:00Z").toLocaleDateString("pt-BR",{day:"2-digit",month:"short",timeZone:"UTC"});
   };
-  const dashboardExternal = (label="Abrir relatórios Shopee") =>
-    `<a class="af-dashboard-text-link" href="https://affiliate.shopee.com.br/" target="_blank" rel="noopener noreferrer">${html(label)}${icon("external")}</a>`;
   const dashboardEmpty = (title, detail, glyph="chart", action="") =>
     `<div class="af-dashboard-empty"><span class="af-dashboard-empty-icon" aria-hidden="true">${icon(glyph)}</span><strong>${html(title)}</strong><p>${html(detail)}</p>${action}</div>`;
   const dashboardHasFinancialData = data => [data?.summary?.commission_cents,data?.summary?.sales_cents ?? data?.summary?.gross_sales_cents,data?.summary?.orders].some(value=>dashboardNumber(value)!==null);
-  const dashboardAccountScope = snapshot => snapshot.source.scope==="account";
-  const dashboardReportScope = snapshot => dashboardAccountScope(snapshot)?snapshot.source.status==="not_connected"?"Conta Shopee":"Conta Shopee conectada":"Relatório Shopee";
 
   function dashboardSnapshot() {
-    const data = analyticsCache.get(analyticsPeriod);
+    // Keep the displayed period in place while the next period is loading.
+    // Its own date labels remain visible until the new response is ready.
+    const data = analyticsCache.get(analyticsPeriod) || (analyticsLoading ? analyticsCache.get(analyticsDisplayedPeriod) : null);
     const summary = data?.summary || {};
     const jobs = state.jobs || [];
     const published = jobs.filter(job=>job.status==="published").length;
@@ -171,48 +174,30 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
   }
 
   function dashboardSourceMessage(snapshot) {
-    if (analyticsError && !snapshot.data) return "Não foi possível consultar os relatórios agora. Tente atualizar novamente.";
-    if (snapshot.source.status==="error") return snapshot.financial?"Não foi possível atualizar o relatório. Os últimos valores confirmados continuam disponíveis.":"Não foi possível consultar o relatório de vendas agora. Tente atualizar novamente.";
-    if (snapshot.source.status==="partial") return snapshot.financial?"Relatório parcial da Shopee. Os valores podem mudar.":"A Shopee retornou um relatório incompleto. Tente atualizar novamente.";
-    if (snapshot.source.status==="syncing") return analyticsPollAttempts>=analyticsPollDelays.length?"O relatório continua em atualização. Use Atualizar para consultar novamente.":snapshot.financial?"Atualizando o relatório. Mantivemos os últimos valores; esta tela será atualizada automaticamente.":"O primeiro relatório está sendo preparado. Esta tela será atualizada automaticamente.";
-    if (snapshot.financial) return dashboardNumber(snapshot.summary.commission_cents)===null?"A comissão ainda não foi informada no relatório de vendas.":"Comissão bruta estimada, antes do repasse à rede (MCN), sujeita à validação e a cancelamentos.";
-    if (analyticsLoading) return "Consultando os resultados disponíveis…";
+    if (analyticsError || snapshot.source.status==="error") return "Não foi possível atualizar. Tente novamente.";
+    if (snapshot.source.status==="partial") return "Resultados parciais deste período.";
+    if (snapshot.source.status==="syncing" || analyticsLoading) return "Buscando seus resultados…";
+    if (snapshot.financial) return "Sem dados para esta métrica no período.";
     if (snapshot.source.status==="not_connected") return "Conecte sua conta para preparar ofertas com seu link de afiliado.";
-    return "Relatório de vendas ainda não integrado.";
-  }
-
-  function dashboardReportStatus(snapshot) {
-    if (!snapshot.data && !analyticsError) return "";
-    const status = analyticsError?"error":snapshot.source.status;
-    const labels = {ready:"Relatório disponível",syncing:"Atualizando relatório",partial:"Relatório parcial",error:"Falha na atualização",not_connected:"Conta não conectada",unavailable:"Relatório indisponível"};
-    const updated = snapshot.source.updated_at;
-    return `<div class="af-dashboard-report-status" data-dashboard-report-status="${html(status)}" role="status">
-      <span>${icon(status==="syncing"?"refresh":status==="error"?"info":"fileCheck")}<strong>${html(labels[status] || "Relatório indisponível")}</strong></span>
-      ${updated?`<span data-dashboard-report-updated>Dados de ${html(dashboardTime(updated,undefined,snapshot.data?.period?.timezone))}</span>`:""}
-      ${dashboardAccountScope(snapshot)?`<span data-dashboard-report-scope>${html(dashboardReportScope(snapshot))} · todos os links da conta</span>`:""}
-      ${["syncing","partial"].includes(status)?`<small>${html(dashboardSourceMessage(snapshot))}</small>`:""}
-    </div>`;
+    return "Seus resultados aparecerão aqui.";
   }
 
   function dashboardHero(snapshot) {
-    const {summary,financial} = snapshot;
+    const {summary} = snapshot;
     const commission = dashboardNumber(summary.commission_cents);
     const validated = dashboardNumber(summary.validated_commission_cents ?? summary.approved_commission_cents);
     const first = snapshot.publishedSnapshot===0 && !(dashboardNumber(summary.published)>0);
-    const status = financial ? dashboardReportScope(snapshot) : "Seu negócio de afiliados";
     return `<section class="af-dashboard-revenue" aria-labelledby="af-revenue-title">
-      <header><span class="af-dashboard-eyebrow">${html(status)}</span><span class="af-dashboard-revenue-icon" aria-hidden="true">${icon("wallet")}</span></header>
+      <header><span class="af-dashboard-eyebrow">Seus resultados</span><span class="af-dashboard-revenue-icon" aria-hidden="true">${icon("wallet")}</span></header>
       <div class="af-dashboard-revenue-main">
         <h2 id="af-revenue-title">Comissão bruta estimada</h2>
         ${commission!==null?`<strong data-dashboard-kpi="commission_cents" class="af-dashboard-revenue-value${Math.abs(commission)>=1e9?" af-dashboard-long-value":""}">${dashboardMoney(commission)}</strong>
-          <p>${html(dashboardPeriods[analyticsPeriod])} · ${dashboardAccountScope(snapshot)?"resultados de todos os links da conta":"comissões informadas pela Shopee"}</p>`:
+          <p>${html(dashboardPeriods[snapshot.data?.period?.key || analyticsPeriod])}</p>`:
           `<strong class="af-dashboard-revenue-intro">${first?"Uma boa oferta.<br>Seu próximo resultado.":"Cada oferta abre<br>uma nova oportunidade."}</strong>
           <p>${html(dashboardSourceMessage(snapshot))}</p>`}
       </div>
-      ${commission!==null?`<div class="af-dashboard-revenue-validation"><span>Comissão validada</span><strong data-dashboard-kpi="validated_commission_cents">${dashboardMoney(validated)}</strong>
-        <small>${validated===null?"Este relatório não informa validação ou pagamentos.":"Informada no relatório; não representa valor recebido."}</small></div>`:
+      ${commission!==null?`<div class="af-dashboard-revenue-validation"><span>Comissão validada</span><strong data-dashboard-kpi="validated_commission_cents">${dashboardMoney(validated)}</strong></div>`:
         `<div class="af-dashboard-revenue-actions">${link(first?"Preparar primeira oferta":"Preparar oferta","ofertas","plus",true)}</div>`}
-      <footer><span>${icon("info")}${commission!==null?"Antes do repasse à rede (MCN)":financial?"Comissão ainda não informada":"Vendas e comissões: consulte o relatório"}</span>${dashboardExternal("Ver na Shopee")}</footer>
     </section>`;
   }
 
@@ -222,10 +207,10 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     const publishedValue = scopedPublications ?? snapshot.publishedSnapshot;
     const publishedNote = scopedPublications!==null ? publications.complete?"Confirmadas no período":"Contagem parcial do período" : `Últimas ${snapshot.sampleLimit} publicações`;
     const metrics = financial ? [
-      {key:"sales_cents",label:"Vendas geradas",value:dashboardMoney(summary.sales_cents ?? summary.gross_sales_cents),note:"Valor pago informado pela Shopee",glyph:"chart"},
-      {key:"orders",label:"Pedidos",value:dashboardCount(summary.orders),note:dashboardAccountScope(snapshot)?"Vendas da conta conectada":"Atribuídos pela Shopee",glyph:"box"},
+      {key:"sales_cents",label:"Vendas geradas",value:dashboardMoney(summary.sales_cents ?? summary.gross_sales_cents),glyph:"chart"},
+      {key:"orders",label:"Pedidos",value:dashboardCount(summary.orders),glyph:"box"},
       {key:"published",label:"Publicações",value:dashboardCount(publishedValue),note:publishedNote,glyph:"send",href:"fila"},
-      {key:"clicks",label:"Cliques",value:dashboardNumber(summary.clicks)!==null?dashboardCount(summary.clicks):"Na Shopee",note:dashboardNumber(summary.clicks)!==null?"Informados pela fonte":"Disponíveis no relatório da Shopee",glyph:"external",external:true},
+      {key:"clicks",label:"Cliques",value:dashboardCount(summary.clicks),glyph:"external",external:true},
     ] : [
       {key:scopedPublications!==null?"published":"published_snapshot",label:"Publicadas",value:dashboardCount(publishedValue),note:publishedNote,glyph:"send",href:"fila"},
       {key:"pending",label:"Na fila",value:dashboardCount(snapshot.pendingSnapshot),note:"Programadas ou em revisão",glyph:"clock",href:"fila"},
@@ -235,8 +220,8 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     return `<section class="af-dashboard-kpis" aria-label="${financial?"Indicadores do período":"Sua operação agora"}">${metrics.map(metric=>{
       const tag = metric.href || metric.external ? "a" : "article";
       const attributes = metric.external ? ' href="https://affiliate.shopee.com.br/" target="_blank" rel="noopener noreferrer"' : metric.href?` href="#${metric.href}"`:"";
-      const valueClass = metric.value==="Na Shopee"?"af-dashboard-kpi-word":metric.key==="sales_cents"?`af-dashboard-kpi-currency${metric.value.length>13?" af-dashboard-kpi-long":""}`:"";
-      return `<${tag} class="af-dashboard-kpi"${attributes}><span class="af-dashboard-kpi-label">${html(metric.label)}${icon(metric.glyph)}</span><strong data-dashboard-kpi="${metric.key}"${valueClass?` class="${valueClass}"`:""}>${html(metric.value)}</strong><small>${html(metric.note)}</small></${tag}>`;
+      const valueClass = metric.key==="sales_cents"?`af-dashboard-kpi-currency${metric.value.length>13?" af-dashboard-kpi-long":""}`:"";
+      return `<${tag} class="af-dashboard-kpi" data-dashboard-card="${metric.key}"${attributes}><span class="af-dashboard-kpi-label">${html(metric.label)}${icon(metric.glyph)}</span><strong data-dashboard-kpi="${metric.key}"${valueClass?` class="${valueClass}"`:""}>${html(metric.value)}</strong>${metric.note?`<small>${html(metric.note)}</small>`:""}</${tag}>`;
     }).join("")}</section>`;
   }
 
@@ -244,7 +229,8 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     const metric = analyticsMetric==="commission_cents" && !snapshot.financial && !analyticsMetricChosen ? "published" : analyticsMetric;
     const rows = Array.isArray(snapshot.data?.series) ? snapshot.data.series.filter(row=>/^\d{4}-\d{2}-\d{2}$/.test(String(row.date))).slice(0,366) : [];
     const points = rows.map(row=>({date:row.date,value:dashboardNumber(row[metric])}));
-    const selected = Math.min(Math.max(chartSelected ?? Math.max(points.length-1,0),0),Math.max(points.length-1,0));
+    const selectedDate = points.findIndex(point=>point.date===chartSelectedDate);
+    const selected = selectedDate>=0?selectedDate:Math.max(points.length-1,0);
     return {metric,config:dashboardMetrics[metric],points,selected};
   }
 
@@ -254,13 +240,13 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     const total = dashboardNumber(snapshot.summary[metric]);
     const range = snapshot.data?.period;
     const dates = range?.start_date && range?.end_date ? `${dashboardDay(range.start_date)} – ${dashboardDay(range.end_date)}` : dashboardPeriods[analyticsPeriod];
-    const unavailable = metric!=="published" ? dashboardSourceMessage(snapshot) : snapshot.publications.complete?"Sem informações diárias neste período.":`O resumo considera as últimas ${snapshot.sampleLimit} publicações. O histórico completo por dia ainda não está disponível.`;
+    const unavailable = metric!=="published" ? dashboardSourceMessage(snapshot) : "Sem informações diárias neste período.";
     let plot;
     if (!known.length) {
       const first = metric==="published" && snapshot.publishedSnapshot===0;
-      plot = dashboardEmpty(first?"Sua primeira publicação começa aqui":metric==="published"?"Histórico diário ainda indisponível":"Seus resultados, direto da fonte",
+      plot = dashboardEmpty(first?"Sua primeira publicação começa aqui":metric==="published"?"Histórico diário indisponível":"Sem resultados disponíveis",
         first?"Prepare uma oferta e acompanhe os próximos envios por aqui.":unavailable,
-        config.glyph,first?link("Buscar uma oferta","ofertas","search"):metric==="published"?link("Ver fila e histórico","fila","arrow"):dashboardExternal());
+        config.glyph,first?link("Buscar uma oferta","ofertas","search"):metric==="published"?link("Ver fila e histórico","fila","arrow"):"");
     } else {
       const min = Math.min(0,...known.map(point=>point.value));
       const max = Math.max(...known.map(point=>point.value),config.currency?100:1);
@@ -292,14 +278,13 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
           ${[20,89,158].map(line=>`<line class="af-dashboard-chart-grid" x1="0" y1="${line}" x2="640" y2="${line}"/>`).join("")}
           ${metric==="commission_cents"?lines:bars}
           ${metric==="commission_cents"?points.map((point,index)=>point.value===null?"":`<circle class="af-dashboard-chart-dot" data-chart-dot="${index}" cx="${x(index)}" cy="${y(point.value)}" r="${index===selected?4.5:2.4}"/>`).join(""):""}
-        </svg><div class="af-dashboard-chart-hits" role="group" aria-label="Valores diários de ${html(config.label.toLowerCase())}">${points.map((point,index)=>`<button type="button" data-dashboard-point="${index}" tabindex="${index===selected?0:-1}" aria-pressed="${index===selected}" aria-label="${html(dashboardDay(point.date)+": "+format(point.value)+(point.value===null?" · sem informação":""))}" title="${html(dashboardDay(point.date)+": "+format(point.value))}" style="left:${(x(index)/640*100).toFixed(4)}%;width:${Math.min(100,100/points.length).toFixed(4)}%"><span class="os-sr-only">${dashboardDay(point.date)}</span></button>`).join("")}</div></div></div>
+        </svg><div class="af-dashboard-chart-hits" role="group" aria-label="Valores diários de ${html(config.label.toLowerCase())}">${points.map((point,index)=>`<button type="button" data-dashboard-point="${index}" data-dashboard-date="${point.date}" tabindex="${index===selected?0:-1}" aria-pressed="${index===selected}" aria-label="${html(dashboardDay(point.date)+": "+format(point.value)+(point.value===null?" · sem informação":""))}" title="${html(dashboardDay(point.date)+": "+format(point.value))}" style="left:${(x(index)/640*100).toFixed(4)}%;width:${Math.min(100,100/points.length).toFixed(4)}%"><span class="os-sr-only">${dashboardDay(point.date)}</span></button>`).join("")}</div></div></div>
         <div class="af-dashboard-chart-axis" aria-hidden="true"><span>${dashboardDay(points[0].date)}</span>${points.length>2?`<span>${dashboardDay(points[Math.floor((points.length-1)/2)].date)}</span>`:""}<span>${points.length>1?dashboardDay(points.at(-1).date):""}</span></div>
         <div class="af-dashboard-chart-controls"><span>${known.every(point=>point.value===0)?"Nenhum resultado registrado neste período.":"Selecione um dia para ver os detalhes."}</span><div><button type="button" class="os-icon-button" data-dashboard-step="-1" aria-label="Dia anterior"${selected===0?" disabled":""}>${icon("left")}</button><button type="button" class="os-icon-button" data-dashboard-step="1" aria-label="Próximo dia"${selected===points.length-1?" disabled":""}>${icon("chevron")}</button></div></div>`;
     }
     return `<section class="af-dashboard-panel af-dashboard-performance" aria-labelledby="af-performance-title"><header class="af-dashboard-panel-head"><div><h2 id="af-performance-title">Desempenho no período</h2><p>${html(dates)}${snapshot.source.status==="partial" && metric!=="published"?" · relatório parcial":""}</p></div>${total!==null?`<span class="af-dashboard-chart-total"><small>${html(config.singular)}</small><strong>${config.currency?dashboardMoney(total):dashboardCount(total)}</strong></span>`:""}</header>
       <div class="af-dashboard-metric-tabs" role="group" aria-label="Métrica do gráfico">${Object.entries(dashboardMetrics).map(([key,item])=>`<button type="button" data-dashboard-metric="${key}" aria-pressed="${key===metric}">${icon(item.glyph)}${html(item.label)}</button>`).join("")}</div>
-      ${plot}
-      <p class="af-dashboard-source-note">${metric==="published"?(snapshot.publications.complete?"Fonte: publicações confirmadas pelo Orion.":"Histórico diário completo ainda indisponível."):dashboardAccountScope(snapshot)?"Fonte: conta Shopee conectada, incluindo todos os links. Comissão bruta estimada não é valor recebido.":"Fonte: relatório de afiliados Shopee. Comissão bruta estimada não é valor recebido."}</p>
+      <div class="af-dashboard-chart-body">${plot}</div>
     </section>`;
   }
 
@@ -322,13 +307,13 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
       (dashboardNumber(b.commission_cents)??dashboardNumber(b.orders)??0)-(dashboardNumber(a.commission_cents)??dashboardNumber(a.orders)??0)).slice(0,5);
     if (!snapshot.financial && !products.length) return "";
     const max = Math.max(1,...products.map(row=>dashboardNumber(row.commission_cents)??0));
-    return `<section class="af-dashboard-panel" aria-labelledby="af-products-title"><header class="af-dashboard-panel-head"><div><h2 id="af-products-title">Produtos em destaque</h2><p>${dashboardAccountScope(snapshot)?"Comissões estimadas da conta Shopee":"Comissões atribuídas pela Shopee"}</p></div>${icon("box")}</header>
+    return `<section class="af-dashboard-panel" aria-labelledby="af-products-title"><header class="af-dashboard-panel-head"><div><h2 id="af-products-title">Produtos em destaque</h2></div>${icon("box")}</header>
       ${products.length?`<ol class="af-dashboard-rank-list">${products.map((row,index)=>{
         const commission = dashboardNumber(row.commission_cents);
         const orders = dashboardNumber(row.orders);
         return `<li><span class="af-dashboard-rank-number">${index+1}</span><div class="af-dashboard-rank-copy"><strong>${html(row.title || row.name || "Produto sem título")}</strong><small>${orders!==null?`${dashboardCount(orders)} ${orders===1?"pedido":"pedidos"}`:"Pedidos ainda não informados"}</small>${commission!==null?`<span class="af-dashboard-rank-track" aria-hidden="true"><span style="width:${Math.max(0,Math.min(100,commission/max*100))}%"></span></span>`:""}</div><strong class="af-dashboard-rank-value">${dashboardMoney(commission)}</strong></li>`;
       }).join("")}</ol>`:dashboardEmpty("Seu próximo destaque está por vir","Os produtos aparecem quando houver vendas atribuídas no período.","box",link("Buscar ofertas","ofertas","search"))}
-      <footer class="af-dashboard-panel-foot">${dashboardExternal("Conferir relatório completo")}</footer></section>`;
+      </section>`;
   }
 
   function dashboardDestinations(snapshot) {
@@ -342,7 +327,7 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
         const count = dashboardNumber(row.published)??dashboardNumber(row.published_snapshot);
         return `<li><span class="af-dashboard-row-icon" aria-hidden="true">${icon(row.mode?.startsWith("whatsapp")?"chat":"send")}</span><div class="af-dashboard-rank-copy"><strong>${html(row.name || "Destino")}</strong><small>${html(defaultMedia(row.mode)||"Canal de publicação")}${dashboardNumber(row.orders)!==null?` · ${dashboardCount(row.orders)} pedidos atribuídos`:""}</small>${count!==null && count>0?`<span class="af-dashboard-rank-track" aria-hidden="true"><span style="width:${Math.max(0,Math.min(100,count/max*100))}%"></span></span>`:""}</div><span class="af-dashboard-rank-value"><strong>${dashboardCount(count)}</strong><small>${count===1?"publicação":"publicações"}</small></span></li>`;
       }).join("")}</ul>`:dashboardEmpty("Sua audiência começa em um destino","Conecte um canal ou grupo para receber suas ofertas.","send",link("Adicionar destino","conexoes","plus"))}
-      <footer class="af-dashboard-panel-foot"><a href="#conexoes" class="af-dashboard-text-link">Gerenciar destinos${icon("arrow")}</a>${!complete?'<span>Vendas por destino dependem de atribuição no relatório.</span>':""}</footer></section>`;
+      <footer class="af-dashboard-panel-foot"><a href="#conexoes" class="af-dashboard-text-link">Gerenciar destinos${icon("arrow")}</a></footer></section>`;
   }
 
   function dashboardPublications(snapshot) {
@@ -352,34 +337,31 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     if (!upcoming.length && !recent.length) return "";
     return `<section class="af-dashboard-panel af-dashboard-publications" aria-labelledby="af-publications-title"><header class="af-dashboard-panel-head"><div><h2 id="af-publications-title">Publicações</h2><p>Fila atual e atividade mais recente</p></div><a href="#fila" class="af-dashboard-text-link">Ver histórico${icon("arrow")}</a></header>
       <div class="af-dashboard-publication-tabs" role="group" aria-label="Publicações exibidas"><button type="button" data-dashboard-publications="upcoming" aria-pressed="${publicationTab==="upcoming"}">Próximas <span>${dashboardCount(upcoming.length)}</span></button><button type="button" data-dashboard-publications="recent" aria-pressed="${publicationTab==="recent"}">Recentes</button></div>
-      ${jobs.length?`<ul class="af-dashboard-job-list">${jobs.map(job=>{
+      <div class="af-dashboard-publication-list">${jobs.length?`<ul class="af-dashboard-job-list">${jobs.map(job=>{
         const destination = state.destination.find(row=>row.id===(job.destination_id||job.destination));
         const when = publicationTab==="upcoming"?(job.scheduled_at||job.due):(job.published_at||job.changed);
         const whenLabel = when?dashboardTime(when,undefined,job.doc?.rule?.timezone):publicationTab==="recent"?"Horário não informado":job.status==="approval"?"Aguardando revisão":"Sem horário definido";
         return `<li><span class="af-dashboard-row-icon" aria-hidden="true">${icon(job.status==="published"?"check":"clock")}</span><div class="af-dashboard-job-copy"><strong>${html(job.title||job.doc?.offer?.title||"Oferta preparada")}</strong><small>${html(job.destination_name||destination?.name||"Destino removido")}</small></div><span class="af-dashboard-job-time">${html(whenLabel)}</span>${jobPill(job)}</li>`;
-      }).join("")}</ul>`:dashboardEmpty("Sua fila está livre","Prepare outra oferta ou configure uma automação para manter seus canais ativos.","calendarClock",link("Preparar oferta","ofertas","plus"))}
-      <footer class="af-dashboard-panel-foot"><span>${snapshot.data?.sources?.publications?.complete?"Fila atual, independente do período selecionado.":`Últimas ${snapshot.sampleLimit} publicações registradas. A fila é independente do período.`}</span></footer></section>`;
+      }).join("")}</ul>`:dashboardEmpty("Sua fila está livre","Prepare outra oferta ou configure uma automação para manter seus canais ativos.","calendarClock",link("Preparar oferta","ofertas","plus"))}</div></section>`;
   }
 
   function dashboard() {
     const snapshot = dashboardSnapshot();
     const products = dashboardProducts(snapshot);
-    const updated = snapshot.data?.updated_at || stateUpdatedAt;
-    const timeZone = snapshot.data?.period?.timezone || "America/Sao_Paulo";
+    const busy = analyticsLoading || stateLoading;
+    const syncing = snapshot.source.status==="syncing" && analyticsPollAttempts<analyticsPollDelays.length;
     const completeFailures = snapshot.publications.complete && dashboardNumber(snapshot.summary.failed)>0;
     const attention = completeFailures?snapshot.summary.failed:needingAttention().length;
     return `<div class="af-dashboard">
       <header class="af-dashboard-heading"><div><span class="af-dashboard-eyebrow">Afiliados</span><h1>Dashboard</h1></div><div class="af-dashboard-heading-actions">${link("Nova oferta","ofertas","plus",true)}</div><p>Suas ofertas, seus canais e seus próximos resultados.</p></header>
       <div class="af-dashboard-toolbar"><div class="af-dashboard-periods" role="group" aria-label="Período dos resultados">${Object.entries(dashboardPeriods).map(([key,label])=>`<button type="button" data-dashboard-period="${key}" aria-pressed="${key===analyticsPeriod}">${html(label)}</button>`).join("")}</div>
-        <div class="af-dashboard-freshness"><span>${analyticsLoading?"Atualizando…":`Consultado ${dashboardTime(updated,{hour:"2-digit",minute:"2-digit"},timeZone)}`}</span><button class="os-icon-button" type="button" data-act="refresh" aria-label="Atualizar Dashboard" title="Atualizar os dados disponíveis"${analyticsLoading?" disabled":""}>${icon("refresh")}</button></div></div>
-      ${dashboardReportStatus(snapshot)}
-      ${analyticsError?`<div class="af-dashboard-alert" role="status">${icon("info")}<p>${snapshot.data?"Não foi possível atualizar os resultados. Mantivemos os últimos dados confirmados deste período.":"Não foi possível consultar os relatórios agora. Tente atualizar novamente."}</p></div>`:""}
-      <div class="af-dashboard-overview" aria-busy="${analyticsLoading}">${dashboardHero(snapshot)}${dashboardKpis(snapshot)}</div>
+        <div class="af-dashboard-freshness"><button class="os-icon-button" type="button" data-act="refresh" aria-label="Atualizar Dashboard" aria-busy="${busy || syncing}" title="Atualizar Dashboard"${busy?" disabled":""}>${icon("refresh")}</button></div></div>
+      ${analyticsError?`<div class="af-dashboard-alert" data-dashboard-notice="analytics" role="status">${icon("info")}<p>Não foi possível atualizar. Tente novamente.</p></div>`:""}
+      <div class="af-dashboard-overview" aria-busy="${busy}">${dashboardHero(snapshot)}${dashboardKpis(snapshot)}</div>
       ${attention?`<a href="#fila" class="af-dashboard-alert af-dashboard-alert-warning">${icon("shieldAlert")}<p><strong>${attention} ${completeFailures?(attention===1?"publicação com falha":"publicações com falha"):(attention===1?"publicação precisa de atenção":"publicações precisam de atenção")}</strong><span>${completeFailures?"Revise os envios com falha na fila.":`Revise as ocorrências entre as últimas ${snapshot.sampleLimit} publicações.`}</span></p>${icon("chevron")}</a>`:""}
       <div class="af-dashboard-workspace">${dashboardChart(snapshot)}${dashboardOperation(snapshot)}</div>
       <div class="af-dashboard-rankings${products?"":" af-dashboard-rankings-single"}">${products}${dashboardDestinations(snapshot)}</div>
       ${dashboardPublications(snapshot)}
-      <footer class="af-dashboard-footnote"><span>${icon("info")}Vendas geradas são o valor pago informado pela Shopee. Comissão bruta estimada não é saldo disponível ou valor recebido.</span><span>Cliques disponíveis no relatório da Shopee.${dashboardExternal("Abrir relatório")}</span></footer>
     </div>`;
   }
 
@@ -704,20 +686,114 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
   }
 
   const views = {dashboard,plataformas:platforms,conexoes:connections,ofertas:offers,templates:templatePage,automacoes:automations,fila:history};
+
+  // Reconcile only the Dashboard's rendered nodes. Stable keys keep controls,
+  // chart dates and cards mounted during both user interactions and polling.
+  function dashboardNodeKey(node) {
+    if (node.nodeType!==1) return null;
+    for (const name of ["id","data-dashboard-date","data-dashboard-period","data-dashboard-metric","data-dashboard-publications","data-dashboard-card","data-dashboard-kpi","data-dashboard-step","data-dashboard-notice","data-act","aria-labelledby"]) {
+      if (node.hasAttribute(name)) return `${node.nodeName}:${name}:${node.getAttribute(name)}`;
+    }
+    const name = node.getAttribute("class")?.split(/\s+/)[0];
+    return name ? `${node.nodeName}:class:${name}` : null;
+  }
+
+  function patchDashboardNode(current, next) {
+    if (current.isEqualNode(next)) return;
+    if (current.nodeType!==1) {
+      if (current.nodeValue!==next.nodeValue) current.nodeValue=next.nodeValue;
+      return;
+    }
+    for (const attribute of [...current.attributes]) {
+      if (!next.hasAttribute(attribute.name)) current.removeAttribute(attribute.name);
+    }
+    for (const attribute of next.attributes) {
+      if (current.getAttribute(attribute.name)!==attribute.value) current.setAttribute(attribute.name,attribute.value);
+    }
+    const compatible = (a,b) => a && a.nodeType===b.nodeType && a.nodeName===b.nodeName && a.namespaceURI===b.namespaceURI;
+    const counts=nodes=>{
+      const result=new Map();
+      for (const node of nodes) {
+        const key=dashboardNodeKey(node);
+        if (key) result.set(key,(result.get(key)||0)+1);
+      }
+      return result;
+    };
+    const before=counts(current.childNodes);
+    const after=counts(next.childNodes);
+    const keyFor=node=>{
+      const key=dashboardNodeKey(node);
+      return (before.get(key)||0)<=1 && (after.get(key)||0)<=1 ? key : null;
+    };
+    const keyed = new Map([...current.childNodes].map(node=>[keyFor(node),node]).filter(([key])=>key));
+    const wanted = new Set([...next.childNodes].map(keyFor).filter(Boolean));
+    for (const [key,node] of keyed) if (!wanted.has(key)) node.remove();
+    let cursor = current.firstChild;
+    for (const desired of [...next.childNodes]) {
+      const key = keyFor(desired);
+      let node = key ? keyed.get(key) : cursor && !keyFor(cursor) && compatible(cursor,desired) ? cursor : null;
+      if (!compatible(node,desired)) node=desired.cloneNode(true);
+      if (node!==cursor) current.insertBefore(node,cursor);
+      patchDashboardNode(node,desired);
+      cursor=node.nextSibling;
+    }
+    while (cursor) {
+      const obsolete=cursor;
+      cursor=cursor.nextSibling;
+      obsolete.remove();
+    }
+  }
+
+  function updateDashboard(selector, markup) {
+    const current = content.querySelector(selector);
+    if (!current) return;
+    const template=document.createElement("template");
+    template.innerHTML=markup;
+    const next=template.content.firstElementChild;
+    if (!next) return;
+    const root=content.querySelector(".af-dashboard");
+    const focused=root.contains(document.activeElement)?document.activeElement:null;
+    const visible=node=>{
+      const rect=node.getBoundingClientRect();
+      return rect.height>0 && rect.bottom>0 && rect.top<window.innerHeight;
+    };
+    const anchor=focused && visible(focused)?focused:[...root.querySelectorAll(".af-dashboard-toolbar, section, .af-dashboard-heading")].find(visible);
+    const top=anchor?.getBoundingClientRect().top;
+    const scrollX=window.scrollX;
+    const scrollY=window.scrollY;
+    patchDashboardNode(current,next);
+    // A date can leave the selected range. Restore keyboard focus locally only
+    // when its focused point actually disappeared, never on background updates.
+    if (focused && !focused.isConnected && focused.hasAttribute("data-dashboard-point")) {
+      content.querySelector('[data-dashboard-point][aria-pressed="true"]')?.focus({preventScroll:true});
+    }
+    const targetY=anchor?.isConnected?window.scrollY+anchor.getBoundingClientRect().top-top:scrollY;
+    if (Math.abs(window.scrollY-targetY)>.5) window.scrollTo({left:scrollX,top:targetY,behavior:"instant"});
+  }
+
+  function updateDashboardBusy() {
+    if (route!=="dashboard" || controller.signal.aborted) return;
+    const busy=stateLoading || analyticsLoading;
+    const syncing=analyticsCache.get(analyticsPeriod)?.sources?.sales?.status==="syncing" && analyticsPollAttempts<analyticsPollDelays.length;
+    const button=content.querySelector('[data-act="refresh"]');
+    if (button) {
+      button.disabled=busy;
+      button.setAttribute("aria-busy",String(busy || syncing));
+    }
+    content.querySelector(".af-dashboard-overview")?.setAttribute("aria-busy",String(busy));
+  }
+
   function render() {
     if (!state || controller.signal.aborted) return;
-    const focused = route==="dashboard" && content.contains(document.activeElement) ? document.activeElement : null;
-    const focusKey = focused && ["dashboardPeriod","dashboardMetric","dashboardPublications"].find(key=>focused.dataset[key]);
-    const focusValue = focusKey ? focused.dataset[focusKey] : null;
+    if (route==="dashboard" && content.querySelector(".af-dashboard")) {
+      updateDashboard(".af-dashboard",dashboard());
+      return;
+    }
     content.innerHTML = views[route]();
     const all = $("[data-select-niches]");
     if (all) all.indeterminate = !all.checked && !!all.form.querySelector("input[name=niches]:checked");
     filterHistory();
     window.OrionFields?.refresh(content);
-    if (focusKey) {
-      const target = [...content.querySelectorAll("button")].find(button=>button.dataset[focusKey]===focusValue);
-      target?.focus({preventScroll:true});
-    }
   }
 
   function cancelAnalyticsPoll(reset=false) {
@@ -747,17 +823,21 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     cancelAnalyticsPoll(!poll);
     const period = analyticsPeriod;
     const version = ++analyticsVersion;
+    analyticsRequest?.abort();
+    const requestController=new AbortController();
+    analyticsRequest=requestController;
     analyticsLoading = true;
     analyticsError = false;
     if (route==="dashboard") render();
     try {
-      const result = await api("analytics?period="+encodeURIComponent(period));
+      const result = await api("analytics?period="+encodeURIComponent(period),"GET",undefined,requestController.signal);
       if (controller.signal.aborted || version!==analyticsVersion || period!==analyticsPeriod) return;
       if (!result || !result.summary || !result.sources || result.period?.key!==period) throw new Error("Relatório indisponível.");
       const cached = analyticsCache.get(period);
       const status = result.sources.sales?.status;
       const preserve = dashboardHasFinancialData(cached) && (status==="error" || ["syncing","partial"].includes(status) && !dashboardHasFinancialData(result));
       analyticsCache.set(period,preserve?retainAnalyticsValues(cached,result):result);
+      analyticsDisplayedPeriod=period;
       analyticsError = status==="error";
     } catch (error) {
       if (controller.signal.aborted || version!==analyticsVersion || period!==analyticsPeriod) return;
@@ -767,6 +847,7 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     } finally {
       if (!controller.signal.aborted && version===analyticsVersion && period===analyticsPeriod) {
         analyticsLoading = false;
+        analyticsRequest=null;
         if (route==="dashboard") render();
         scheduleAnalyticsPoll(version);
       }
@@ -776,39 +857,57 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
   function selectDashboardPoint(index, focus=false) {
     const model = dashboardChartModel();
     if (!model.points.length) return;
-    chartSelected = Math.min(Math.max(Number(index)||0,0),model.points.length-1);
-    const point = model.points[chartSelected];
+    const selectedIndex = Math.min(Math.max(Number(index)||0,0),model.points.length-1);
+    const point = model.points[selectedIndex];
+    chartSelectedDate=point.date;
     const dateNode = content.querySelector("[data-dashboard-point-date]");
     const valueNode = content.querySelector("[data-dashboard-point-value]");
     if (dateNode) dateNode.textContent = dashboardDay(point.date);
     if (valueNode) valueNode.textContent = model.config.currency?dashboardMoney(point.value):dashboardCount(point.value);
     for (const button of content.querySelectorAll("[data-dashboard-point]")) {
-      const selected = Number(button.dataset.dashboardPoint)===chartSelected;
+      const selected = Number(button.dataset.dashboardPoint)===selectedIndex;
       button.setAttribute("aria-pressed",String(selected));
       button.tabIndex = selected?0:-1;
       if (selected && focus) button.focus({preventScroll:true});
     }
-    for (const dot of content.querySelectorAll("[data-chart-dot]")) dot.setAttribute("r",Number(dot.dataset.chartDot)===chartSelected?"4.5":"2.4");
-    for (const step of content.querySelectorAll("[data-dashboard-step]")) step.disabled = Number(step.dataset.dashboardStep)<0?chartSelected===0:chartSelected===model.points.length-1;
+    for (const dot of content.querySelectorAll("[data-chart-dot]")) dot.setAttribute("r",Number(dot.dataset.chartDot)===selectedIndex?"4.5":"2.4");
+    for (const step of content.querySelectorAll("[data-dashboard-step]")) step.disabled = Number(step.dataset.dashboardStep)<0?selectedIndex===0:selectedIndex===model.points.length-1;
   }
 
   async function reload() {
-    const result = await api("state");
-    if (controller.signal.aborted) return;
-    const identity = connection => JSON.stringify([connection?.status,connection?.version || connection?.account,connection?.verified]);
-    if (state && identity(connected("shopee"))!==identity(result.connection?.find(row=>row.id==="shopee"))) {
-      cancelAnalyticsPoll(true);
-      analyticsVersion++;
-      analyticsCache.clear();
-      analyticsError = false;
-      analyticsLoading = false;
-      chartSelected = null;
+    const version=++stateVersion;
+    const viewAtStart=viewVersion;
+    const initial=!state;
+    stateLoading=true;
+    updateDashboardBusy();
+    try {
+      const result = await api("state");
+      if (controller.signal.aborted || version!==stateVersion || !initial && viewAtStart!==viewVersion) return false;
+      const identity = connection => JSON.stringify([connection?.status,connection?.version || connection?.account,connection?.verified]);
+      if (state && identity(connected("shopee"))!==identity(result.connection?.find(row=>row.id==="shopee"))) {
+        cancelAnalyticsPoll(true);
+        analyticsRequest?.abort();
+        analyticsVersion++;
+        analyticsCache.clear();
+        analyticsDisplayedPeriod=null;
+        analyticsError = false;
+        analyticsLoading = false;
+        chartSelectedDate = null;
+      }
+      state = result;
+      if (!chosenTemplate) chosenTemplate=state.deal_template || "default";
+      render();
+      if (route==="dashboard") await loadAnalytics();
+      return true;
+    } catch (error) {
+      if (controller.signal.aborted || version!==stateVersion || !initial && viewAtStart!==viewVersion) return false;
+      throw error;
+    } finally {
+      if (version===stateVersion) {
+        stateLoading=false;
+        updateDashboardBusy();
+      }
     }
-    state = result;
-    stateUpdatedAt = Date.now();
-    if (!chosenTemplate) chosenTemplate=state.deal_template || "default";
-    render();
-    if (route==="dashboard") await loadAnalytics();
   }
 
   function showError(error) {
@@ -877,11 +976,19 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     },
     search: async form=>{
       const filters=Object.fromEntries(form);
-      catalog=await api("catalog?"+new URLSearchParams(filters));
-      searchQuery=filters;
-      render();
-      content.querySelector("[data-form=search] button")?.focus({preventScroll:true});
-      notify(`${catalog.length} oferta(s) encontrada(s).`);
+      const version=++searchVersion, originView=viewVersion, originRoute=route;
+      const current=()=>!controller.signal.aborted && version===searchVersion && originView===viewVersion && originRoute===route;
+      try {
+        const result=await api("catalog?"+new URLSearchParams(filters));
+        if (!current()) return;
+        catalog=result;
+        searchQuery=filters;
+        render();
+        content.querySelector("[data-form=search] button")?.focus({preventScroll:true});
+        notify(`${catalog.length} oferta(s) encontrada(s).`);
+      } catch(error) {
+        if (current()) throw error;
+      }
     },
     phrase: async form=>{
       const key=opened;
@@ -951,7 +1058,7 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
   }
 
   const actions = {
-    refresh: async ()=>{await reload();notify(route==="dashboard"?"Consulta concluída. Os dados disponíveis estão no painel.":"Dados atualizados.");},
+    refresh: async ()=>{if (await reload() && route!=="dashboard") notify("Dados atualizados.");},
     demo: async ()=>{ const sample=await api("offers/demo","POST"); await reload(); await openOffer(sample.id); },
     "open-offer": openOffer,
     "ai-phrase": async ident=>{
@@ -1042,7 +1149,7 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     if (period && Object.hasOwn(dashboardPeriods,period.dataset.dashboardPeriod)) {
       if (analyticsPeriod!==period.dataset.dashboardPeriod) {
         analyticsPeriod = period.dataset.dashboardPeriod;
-        chartSelected = null;
+        chartSelectedDate = null;
         await loadAnalytics();
       }
       return;
@@ -1051,8 +1158,7 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     if (metric && Object.hasOwn(dashboardMetrics,metric.dataset.dashboardMetric)) {
       analyticsMetric = metric.dataset.dashboardMetric;
       analyticsMetricChosen = true;
-      chartSelected = null;
-      render();
+      updateDashboard(".af-dashboard-performance",dashboardChart(dashboardSnapshot()));
       return;
     }
     const point = event.target.closest("[data-dashboard-point]");
@@ -1062,7 +1168,7 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     const publications = event.target.closest("[data-dashboard-publications]");
     if (publications && ["upcoming","recent"].includes(publications.dataset.dashboardPublications)) {
       publicationTab = publications.dataset.dashboardPublications;
-      render();
+      updateDashboard(".af-dashboard-publications",dashboardPublications(dashboardSnapshot()));
       return;
     }
     const tab=event.target.closest("[data-offer-tab]");
@@ -1153,7 +1259,12 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
   return {
     setView(next) {
       if (Object.hasOwn(views,next) && route!==next) {
+        viewVersion++;
+        navVersion++;
+        if (state) stateVersion++;
+        stateLoading=false;
         cancelAnalyticsPoll(true);
+        analyticsRequest?.abort();
         analyticsVersion++;
         analyticsLoading = false;
         route=next;
@@ -1162,7 +1273,11 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
       }
     },
     unmount() {
+      viewVersion++;
+      navVersion++;
+      stateVersion++;
       cancelAnalyticsPoll(true);
+      analyticsRequest?.abort();
       analyticsVersion++;
       const dialog = $("#osAffiliateDialog");
       if (dialog?.open) dialog.close("cancel");

@@ -101,7 +101,7 @@ test('Afiliados informa indisponibilidade financeira sem inventar zeros ou hist�
   const h = await dashboard(t);
   assert.equal(h.element('.af-dashboard h1').textContent, 'Dashboard');
   assert.equal(chosenPeriod(h), 'month');
-  assert.match(h.element('.af-dashboard-revenue').textContent, /relatório de vendas ainda não integrado/i);
+  assert.match(h.element('.af-dashboard-revenue').textContent, /Seus resultados aparecerão aqui/i);
   assert.equal(h.document.querySelector('.af-dashboard-revenue-value'), null);
   assert.equal(h.document.querySelector('[data-dashboard-kpi="sales_cents"]'), null);
   assert.doesNotMatch(h.element('.af-dashboard').textContent, /R\$\s*0,00/);
@@ -110,7 +110,7 @@ test('Afiliados informa indisponibilidade financeira sem inventar zeros ou hist�
   assert.match(h.element('.af-dashboard-kpis').textContent, /Na fila\s*1/);
   assert.equal(h.document.querySelectorAll('[data-dashboard-point]').length, 0);
   h.click('[data-dashboard-metric="commission_cents"]');
-  assert.match(h.element('.af-dashboard-performance').textContent, /direto da fonte/i);
+  assert.match(h.element('.af-dashboard-performance').textContent, /Sem resultados disponíveis/i);
   assert.equal(h.document.querySelector('.af-dashboard-chart-total'), null);
   for (const link of h.document.querySelectorAll('.af-dashboard a[target="_blank"]')) {
     assert.equal(link.href, 'https://affiliate.shopee.com.br/');
@@ -124,8 +124,8 @@ test('Afiliados preserva a operação na primeira falha do relatório e permite 
     ? jsonResponse({detail:'Relatório temporariamente indisponível'},503)
     : report(period, {ready:true})});
   assert.equal(attempts, 1);
-  assert.match(h.element('.af-dashboard-alert[role="status"]').textContent, /Não foi possível consultar os relatórios agora/);
-  assert.match(h.element('.af-dashboard-revenue').textContent, /Tente atualizar novamente/);
+  assert.match(h.element('.af-dashboard-alert[role="status"]').textContent, /Não foi possível atualizar/);
+  assert.match(h.element('.af-dashboard-revenue').textContent, /Tente novamente/);
   assert.doesNotMatch(h.element('.af-dashboard').textContent, /relatório de vendas ainda não integrado/i);
   assert.doesNotMatch(h.element('.af-dashboard').textContent, /R\$\s*0,00/);
   assert.equal(h.document.querySelector('.af-dashboard-revenue-value'), null);
@@ -149,10 +149,10 @@ test('Afiliados distingue valor vendido, comissão estimada e comissão validada
   assert.match(kpi(h,'validated_commission_cents'), /84,00/);
   assert.match(kpi(h,'orders'), /11/);
   assert.match(kpi(h,'published'), /18/);
-  assert.match(kpi(h,'clicks'), /Na Shopee/);
+  assert.equal(kpi(h,'clicks'), '—');
   assert.doesNotMatch(kpi(h,'clicks'), /\b0\b/);
-  assert.match(h.element('.af-dashboard-revenue-validation').textContent, /não representa valor recebido/);
-  assert.match(h.element('.af-dashboard-footnote').textContent, /Comissão bruta estimada não é saldo disponível ou valor recebido/);
+  assert.match(h.element('.af-dashboard-revenue-validation').textContent, /Comissão validada/);
+  assert.equal(h.document.querySelector('.af-dashboard-footnote'), null);
   assert.equal(h.document.querySelectorAll('[data-dashboard-point]').length, 3);
 });
 
@@ -168,7 +168,7 @@ test('Afiliados mantém comissão validada desconhecida e representa zero apenas
   assert.match(kpi(h,'sales_cents'), /0,00/);
   assert.match(kpi(h,'validated_commission_cents'), /—/);
   assert.doesNotMatch(kpi(h,'validated_commission_cents'), /0,00/);
-  assert.match(h.element('.af-dashboard-revenue-validation').textContent, /não informa validação ou pagamentos/);
+  assert.equal(kpi(h,'validated_commission_cents'), '—');
   assert.match(h.element('.af-dashboard-performance').textContent, /Nenhum resultado registrado/);
 });
 
@@ -210,7 +210,7 @@ test('Afiliados preserva o último relatório do mesmo período na falha e não 
   h.click('.af-dashboard [data-act="refresh"]');
   await flush();
   assert.match(kpi(h,'commission_cents'), /124,00/);
-  assert.match(h.element('.af-dashboard-alert[role="status"]').textContent, /Mantivemos os últimos dados confirmados deste período/);
+  assert.match(h.element('.af-dashboard-alert[role="status"]').textContent, /Não foi possível atualizar/);
   assert.equal(h.element('.af-dashboard-overview').getAttribute('aria-busy'), 'false');
   h.click('[data-dashboard-period="7d"]');
   await flush();
@@ -246,9 +246,9 @@ test('Afiliados permite consultar o gráfico com teclado, mantém dias sem dados
   assert.match(h.element('[data-dashboard-point-value]').textContent, /46,00/);
   h.click('[data-dashboard-metric="orders"]');
   assert.equal(h.element('[data-dashboard-metric="orders"]').getAttribute('aria-pressed'), 'true');
-  assert.equal(h.element('[data-dashboard-point-value]').textContent, '7');
+  assert.equal(h.element('[data-dashboard-point-value]').textContent, '4');
   h.click('[data-dashboard-metric="published"]');
-  assert.equal(h.element('[data-dashboard-point-value]').textContent, '7');
+  assert.equal(h.element('[data-dashboard-point-value]').textContent, '5');
   assert.equal(h.document.querySelectorAll('[data-dashboard-point][tabindex="0"]').length, 1);
   assert.match(h.element('.af-dashboard-job-list').textContent, /Oferta programada de teste/);
   h.click('[data-dashboard-publications="recent"]');
@@ -303,7 +303,7 @@ function pollClock(t, h) {
   };
 }
 
-test('Afiliados identifica resultados de todos os links da conta e comissão bruta antes do repasse à rede', async t=>{
+test('Afiliados mantém os valores e rótulos financeiros sem frases repetidas de fonte ou relatório', async t=>{
   const data = report('month', {ready:true, commission:96});
   data.summary.sales_cents = 2988;
   data.summary.orders = 2;
@@ -312,14 +312,9 @@ test('Afiliados identifica resultados de todos os links da conta e comissão bru
   assert.match(kpi(h,'commission_cents'), /0,96/);
   assert.match(kpi(h,'sales_cents'), /29,88/);
   assert.equal(kpi(h,'orders'), '2');
-  assert.match(h.element('[data-dashboard-report-scope]').textContent, /Conta Shopee conectada.*todos os links da conta/);
-  assert.match(h.element('.af-dashboard-revenue-main').textContent, /resultados de todos os links da conta/);
-  assert.match(h.element('.af-dashboard-revenue footer').textContent, /Antes do repasse à rede \(MCN\)/);
-  assert.match(h.element('.af-dashboard-footnote').textContent, /valor pago informado pela Shopee/);
-  assert.match(h.element('[data-dashboard-report-updated]').textContent, /10:30/);
-  assert.doesNotMatch(h.element('[data-dashboard-report-updated]').textContent, /11:00/);
-  assert.match(h.element('#af-products-title').parentElement.textContent, /Comissões estimadas da conta Shopee/);
-  assert.match(h.element('.af-dashboard-source-note').textContent, /incluindo todos os links/);
+  assert.match(h.element('.af-dashboard-revenue-main').textContent, /Este mês/);
+  assert.equal(h.document.querySelector('.af-dashboard-report-status, .af-dashboard-source-note, .af-dashboard-footnote'), null);
+  assert.doesNotMatch(h.element('.af-dashboard').textContent, /Relatório disponível|Dados de|todos os links da conta|Fonte:|valor recebido|saldo disponível|Cliques disponíveis|Abrir relatório|Conferir relatório completo/);
   assert.equal(kpi(h,'validated_commission_cents'), '—');
 });
 
@@ -342,7 +337,7 @@ test('Afiliados usa totais completos de publicações e fila mesmo sem relatóri
   assert.match(h.element('.af-dashboard-destination-list').textContent, /325/);
 });
 
-test('Afiliados mantém valores e a data da fonte enquanto sincroniza e mostra relatório parcial ou falha com cache', async t=>{
+test('Afiliados mantém valores enquanto sincroniza e indica relatório parcial ou falha com cache', async t=>{
   let current = report('month', {ready:true});
   const h = await dashboard(t, {analytics:()=>current});
   const clock = pollClock(t,h);
@@ -351,9 +346,7 @@ test('Afiliados mantém valores e a data da fonte enquanto sincroniza e mostra r
   h.click('.af-dashboard [data-act=\"refresh\"]');
   await flush();
   assert.match(kpi(h,'commission_cents'), /124,00/);
-  assert.ok(h.element('[data-dashboard-report-status=\"syncing\"]'));
-  assert.match(h.element('[data-dashboard-report-status]').textContent, /automaticamente/);
-  assert.match(h.element('[data-dashboard-report-updated]').textContent, /10:30/);
+  assert.equal(h.element('.af-dashboard [data-act="refresh"]').getAttribute('aria-busy'), 'true');
   assert.equal(clock.size, 1);
 
   current = report('month', {ready:true,commission:9900});
@@ -361,8 +354,7 @@ test('Afiliados mantém valores e a data da fonte enquanto sincroniza e mostra r
   h.click('.af-dashboard [data-act=\"refresh\"]');
   await flush();
   assert.match(kpi(h,'commission_cents'), /99,00/);
-  assert.ok(h.element('[data-dashboard-report-status=\"partial\"]'));
-  assert.match(h.element('[data-dashboard-report-status]').textContent, /Relatório parcial/);
+  assert.match(h.element('.af-dashboard-performance .af-dashboard-panel-head').textContent, /relatório parcial/);
   assert.equal(clock.size, 0);
 
   current = report('month', {ready:true,commission:999999});
@@ -370,8 +362,7 @@ test('Afiliados mantém valores e a data da fonte enquanto sincroniza e mostra r
   h.click('.af-dashboard [data-act=\"refresh\"]');
   await flush();
   assert.match(kpi(h,'commission_cents'), /99,00/);
-  assert.ok(h.element('[data-dashboard-report-status=\"error\"]'));
-  assert.match(h.element('.af-dashboard-alert[role=\"status\"]').textContent, /Mantivemos os últimos dados confirmados/);
+  assert.match(h.element('.af-dashboard-alert[role=\"status\"]').textContent, /Não foi possível atualizar/);
   assert.equal(clock.size, 0);
 });
 
@@ -380,7 +371,6 @@ test('Afiliados mostra o cache do servidor com aviso quando a primeira resposta 
   data.sources.sales.status = 'error';
   const h = await dashboard(t, {analytics:()=>data});
   assert.match(kpi(h,'commission_cents'), /96,00/);
-  assert.ok(h.element('[data-dashboard-report-status=\"error\"]'));
   assert.match(h.element('.af-dashboard-alert[role=\"status\"]').textContent, /Não foi possível atualizar/);
   assert.doesNotMatch(h.element('.af-dashboard').textContent, /Relatório de vendas ainda não integrado/);
 });
@@ -404,7 +394,7 @@ test('Afiliados consulta novamente a sincronização inicial e para automaticame
   await clock.next();
   assert.equal(requests, 3);
   assert.match(kpi(h,'commission_cents'), /0,96/);
-  assert.ok(h.element('[data-dashboard-report-status=\"ready\"]'));
+  assert.equal(h.element('.af-dashboard [data-act="refresh"]').getAttribute('aria-busy'), 'false');
   assert.equal(clock.size, 0);
 });
 
@@ -423,7 +413,8 @@ test('Afiliados limita as consultas automáticas e permite nova tentativa manual
   for (let i=0;i<6;i++) await clock.next();
   assert.equal(requests, 7, 'initial request plus six bounded checks');
   assert.equal(clock.size, 0);
-  assert.match(h.element('[data-dashboard-report-status]').textContent, /Use Atualizar para consultar novamente/);
+  assert.equal(h.element('.af-dashboard [data-act="refresh"]').getAttribute('aria-busy'), 'false');
+  assert.equal(h.element('.af-dashboard [data-act="refresh"]').disabled, false);
   h.click('.af-dashboard [data-act=\"refresh\"]');
   await flush();
   assert.equal(requests, 8);

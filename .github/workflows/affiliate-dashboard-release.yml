@@ -1,7 +1,7 @@
 name: Orion - Dashboard de Afiliados
 on:
   push:
-    branches: [codex/afiliados-dashboard-performance-20261125]
+    branches: [codex/afiliados-dashboard-performance-20261125, codex/afiliados-dashboard-interacoes-20261125]
     paths:
       - affiliate_pilot/**
       - app/affiliate_analytics.py
@@ -12,6 +12,7 @@ on:
       - tests/unit/test_affiliate_analytics*.py
       - ui-tests/affiliate-dashboard*
       - ui-tests/onboarding-affiliates.test.mjs
+      - ui-tests/drawer-focus.test.mjs
       - deploy/Dockerfile.affiliate-dashboard
       - .github/workflows/affiliate-dashboard-release.yml
   workflow_dispatch:
@@ -27,7 +28,7 @@ jobs:
       contents: read
       packages: write
     env:
-      BASE_IMAGE: ghcr.io/qgbaltigo/orion-assistente-api@sha256:35c4c774ecb075d548bacc663c2fc472b5de3c4e9611e925e5ff73bea4d9c18b
+      BASE_IMAGE: ghcr.io/qgbaltigo/orion-assistente-api@sha256:8ed93e4c8293f24c0c24384787e7742b75fe49fe8537af4a09d6174ae7cfcc11
       IMAGE: ghcr.io/qgbaltigo/orion-assistente-api:affiliate-dashboard-${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
@@ -44,7 +45,7 @@ jobs:
           npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
           node --check app/static/orion-suite.js
           node --input-type=module --check < app/static/orion-affiliate-workspace.js
-          node --test --test-reporter=dot ui-tests/affiliate-dashboard.test.mjs ui-tests/dashboard-navigation.test.mjs ui-tests/home-admin-preview.test.mjs ui-tests/subscription-workspace.test.mjs ui-tests/subscription-app-layout.test.mjs ui-tests/barbershop-app-layout.test.mjs ui-tests/dental-workspace.test.mjs ui-tests/onboarding-affiliates.test.mjs
+          node --test --test-reporter=dot ui-tests/affiliate-dashboard.test.mjs ui-tests/affiliate-dashboard-updates.test.mjs ui-tests/drawer-focus.test.mjs ui-tests/dashboard-navigation.test.mjs ui-tests/home-admin-preview.test.mjs ui-tests/subscription-workspace.test.mjs ui-tests/subscription-app-layout.test.mjs ui-tests/barbershop-app-layout.test.mjs ui-tests/dental-workspace.test.mjs ui-tests/onboarding-affiliates.test.mjs
       - name: Verificar o serviço de relatórios com as dependências da VPS
         run: |
           python -m venv /tmp/orion-affiliate-pilot-tests
@@ -72,9 +73,11 @@ jobs:
           import hashlib
           from pathlib import Path
           expected = {
-              "app/affiliate_workspace.py": "a3ff0e44e46a2f16f339ae27f0058f065d7033c007f02ec66fd06807c14c806a",
-              "app/static/orion-affiliate-workspace.js": "8048b34c56b9640d933ceea8cb2bc129d1ed20f59705bfe1b2ed8735f72556a5",
-              "app/static/orion-affiliate-workspace.css": "09f4b3d7158998c7d178962dfe69349295d1750d43bd2f2e72f5150bbf635b00",
+              "app/static/orion-suite.js": "5cc47c1f036ecbb90b71ea131a83774db9f899fb28549f974a5e878d0befb527",
+              "app/affiliate_analytics.py": "c110ae97566c2715389bf677da93f7edeecefaae01cac790197cdd80d2714d4a",
+              "app/affiliate_workspace.py": "66ff641c3777d162cbad7946415f767415e64d9ebc600f0aa916e6ec1e7ac663",
+              "app/static/orion-affiliate-workspace.js": "c8ca79333c88a2c64de2f6788628c0dc64382b51c45b0e22f38981405001baa0",
+              "app/static/orion-affiliate-workspace.css": "6fb263fbd1cba6b3dda426191aad038e37fea765fc584da18926d71e9a5460f8",
           }
           for name, digest in expected.items():
               assert hashlib.sha256(Path(name).read_bytes()).hexdigest() == digest, name
@@ -85,7 +88,7 @@ jobs:
           docker build -f deploy/Dockerfile.affiliate-dashboard --build-arg BASE_IMAGE="$BASE_IMAGE" --build-arg ORION_RELEASE="$GITHUB_SHA" -t "$IMAGE" .
           docker run --rm --entrypoint python -v "$GITHUB_WORKSPACE/app:/review:ro" "$IMAGE" -c '
           from pathlib import Path
-          for name in ("affiliate_workspace.py", "affiliate_analytics.py", "static/orion-affiliate-workspace.js", "static/orion-affiliate-workspace.css"):
+          for name in ("affiliate_workspace.py", "affiliate_analytics.py", "static/orion-affiliate-workspace.js", "static/orion-affiliate-workspace.css", "static/orion-suite.js"):
               assert Path("app", name).read_bytes() == Path("/review", name).read_bytes(), name
           from app.affiliate_workspace import router
           assert any(route.path.endswith("/api/analytics") for route in router.routes)

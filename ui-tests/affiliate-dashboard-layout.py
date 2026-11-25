@@ -1,8 +1,8 @@
 """Offline browser QA for the affiliate Dashboard in the complete Orion panel.
 
 Run: python ui-tests/affiliate-dashboard-layout.py [--engine chromium|webkit]
-Synthetic financial fixtures exercise a future integrated report; the unavailable
-fixture reflects the current capability. Every network request is intercepted,
+Synthetic financial fixtures exercise integrated and unavailable reports.
+Every network request is intercepted,
 and non-GET requests fail. No production session, account or contact is used.
 """
 from __future__ import annotations
@@ -132,11 +132,206 @@ def report(period: str, ready: bool) -> dict:
     }
 
 
+def exercise_interactions(page, control: dict, name: str, output: Path) -> list:
+    """Use the mounted panel, real clicks, held HTTP and the real app timers."""
+    records = []
+
+    def settled():
+        page.evaluate('''() => new Promise(resolve =>
+          requestAnimationFrame(() => requestAnimationFrame(resolve)))''')
+
+    def place(selector: str, top: int = 130):
+        page.evaluate('''({selector,top}) => {
+          const node=document.querySelector(selector);
+          window.scrollTo({top:scrollY+node.getBoundingClientRect().top-top,behavior:'instant'});
+        }''', {'selector': selector, 'top': top})
+        settled()
+
+    def focus(selector: str):
+        page.locator(selector).evaluate('(node)=>node.focus({preventScroll:true})')
+        settled()
+
+    page.evaluate('''() => {
+      const selectors=['.af-dashboard','.af-dashboard-performance','.af-dashboard-publications','.af-dashboard-periods'];
+      const nodes=Object.fromEntries(selectors.map(selector=>[selector,document.querySelector(selector)]));
+      for(const attribute of ['data-dashboard-period','data-dashboard-metric','data-dashboard-publications']) {
+        for(const node of document.querySelectorAll('['+attribute+']'))
+          nodes['['+attribute+'="'+node.getAttribute(attribute)+'"]']=node;
+      }
+      window.__affiliateQA={
+        nodes,
+        days:Object.fromEntries([...document.querySelectorAll('[data-dashboard-date]')].map(node=>
+          [node.dataset.dashboardDate,node])),
+        frames:[],running:false,traceId:0
+      };
+    }''')
+
+    def before(anchor: str) -> dict:
+        settled()
+        return page.evaluate('''(anchor) => {
+          const qa=window.__affiliateQA;
+          qa.focus=document.activeElement;
+          qa.frames=[];
+          qa.running=true;
+          const traceId=++qa.traceId;
+          const tick=()=>{
+            if(!qa.running||qa.traceId!==traceId)return;
+            if(qa.frames.length<120)qa.frames.push({scrollY,top:document.querySelector(anchor).getBoundingClientRect().top});
+            requestAnimationFrame(tick);
+          };
+          requestAnimationFrame(tick);
+          return {scrollY,top:document.querySelector(anchor).getBoundingClientRect().top};
+        }''', anchor)
+
+    def after(label: str, prior: dict, anchor: str, *, exact_scroll: bool = True):
+        settled()
+        result = page.evaluate('''(anchor) => {
+          const qa=window.__affiliateQA;
+          qa.running=false;
+          const nodes=Object.fromEntries(Object.entries(qa.nodes).map(([selector,node])=>
+            [selector,!!node&&node.isConnected&&node===document.querySelector(selector)]));
+          const days=[...document.querySelectorAll('[data-dashboard-date]')];
+          return {scrollY,top:document.querySelector(anchor).getBoundingClientRect().top,
+            sameFocus:document.activeElement===qa.focus,
+            focus:document.activeElement?.outerHTML.slice(0,400),
+            sameDays:days.length>0&&days.every(node=>qa.days[node.dataset.dashboardDate]===node),
+            nodes,frames:qa.frames};
+        }''', anchor)
+        entry = {'step': label, 'before': prior, 'after': result}
+        records.append(entry)
+        (output / (name + '-interactions.json')).write_text(
+            json.dumps(records, ensure_ascii=False, indent=2), encoding='utf-8')
+        assert prior['scrollY'] > 20, (name, label, 'scenario must begin scrolled', prior)
+        assert result['scrollY'] > 20, (name, label, 'viewport jumped to the top', entry)
+        assert result['sameFocus'], (name, label, 'focus was stolen', entry)
+        assert all(result['nodes'].values()), (name, label, 'Dashboard or control was replaced', entry)
+        assert result['sameDays'], (name, label, 'unchanged calendar days were replaced', entry)
+        assert abs(result['top'] - prior['top']) <= 3, (name, label, 'visible anchor moved', entry)
+        if exact_scroll:
+            assert abs(result['scrollY'] - prior['scrollY']) <= 3, (name, label, 'scroll position changed', entry)
+            assert all(abs(frame['scrollY'] - prior['scrollY']) <= 3 for frame in result['frames']), (
+                name, label, 'viewport moved during an intermediate frame', entry)
+        return result
+
+    def analytics_response(response):
+        return urlsplit(response.url).path == API + 'analytics'
+
+    place('.af-dashboard-performance')
+    focus('[data-dashboard-metric="orders"]')
+    prior = before('.af-dashboard-performance')
+    page.locator('[data-dashboard-metric="orders"]').click()
+    assert page.locator('[data-dashboard-metric="orders"]').get_attribute('aria-pressed') == 'true'
+    after('scrolled-metric-click', prior, '.af-dashboard-performance')
+    page.screenshot(path=str(output / (name + '-interactions-chart.png')))
+
+    # The point is already visible, so Playwright needs no auto-scrolling.
+    focus('[data-dashboard-point="1"]')
+    prior = before('.af-dashboard-performance')
+    page.locator('[data-dashboard-point="1"]').click()
+    assert page.locator('[data-dashboard-point="1"]').get_attribute('aria-pressed') == 'true'
+    after('scrolled-chart-day', prior, '.af-dashboard-performance')
+
+    place('.af-dashboard-publications', 160)
+    focus('[data-dashboard-publications="recent"]')
+    prior = before('.af-dashboard-publications')
+    page.locator('[data-dashboard-publications="recent"]').click()
+    assert page.locator('.af-dashboard-job-list li').count() == 2
+    after('scrolled-publication-tab', prior, '.af-dashboard-publications')
+
+    # Keep header controls visible, but deliberately start above scrollY=0.
+    place('.af-dashboard-toolbar', 96)
+    focus('[data-dashboard-period="7d"]')
+    commission = page.locator('[data-dashboard-kpi="commission_cents"]').inner_text()
+    control['hold'] = True
+    prior = before('.af-dashboard-toolbar')
+    with page.expect_request(lambda request: urlsplit(request.url).path == API + 'analytics'):
+        page.locator('[data-dashboard-period="7d"]').click()
+    page.locator('.af-dashboard-overview[aria-busy="true"]').wait_for()
+    page.clock.fast_forward(1200)
+    assert control['held'], 'The slow analytics response must still be withheld'
+    assert page.locator('[data-dashboard-kpi="commission_cents"]').inner_text() == commission
+    assert page.locator('[data-dashboard-point]').count() == 25, 'Loading must not collapse the existing chart'
+    after('scrolled-period-loading', prior, '.af-dashboard-toolbar')
+
+    # The user keeps reading and focuses another control before HTTP completes.
+    place('.af-dashboard-performance')
+    focus('[data-dashboard-metric="orders"]')
+    prior = before('.af-dashboard-performance')
+    control['hold'] = False
+    held, control['held'] = control['held'], []
+    for route, payload in held:
+        route.fulfill(status=200, content_type='application/json', body=json.dumps(payload, ensure_ascii=False))
+    page.locator('.af-dashboard-overview[aria-busy="false"]').wait_for()
+    assert page.locator('[data-dashboard-period="7d"]').get_attribute('aria-pressed') == 'true'
+    assert page.locator('[data-dashboard-point]').count() == 7
+    after('slow-response-after-user-moved', prior, '.af-dashboard-performance', exact_scroll=False)
+
+    # The shipped refresh button starts the real syncing/polling lifecycle.
+    place('.af-dashboard-toolbar', 96)
+    control['sales_status'] = 'syncing'
+    with page.expect_response(analytics_response):
+        page.locator('.af-dashboard [data-act="refresh"]').click()
+    page.locator('.af-dashboard-overview[aria-busy="false"]').wait_for()
+    place('.af-dashboard-performance')
+    focus('[data-dashboard-metric="orders"]')
+    commission = page.locator('[data-dashboard-kpi="commission_cents"]').inner_text()
+    prior = before('.af-dashboard-performance')
+    requests_before = control['analytics_requests']
+    control['sales_status'] = 'ready'
+    control['commission_delta'] = 100
+    with page.expect_response(analytics_response):
+        page.clock.fast_forward(5100)
+    page.locator('.af-dashboard-overview[aria-busy="false"]').wait_for()
+    assert control['analytics_requests'] > requests_before
+    assert page.locator('[data-dashboard-kpi="commission_cents"]').inner_text() != commission
+    after('automatic-syncing-refresh', prior, '.af-dashboard-performance')
+    page.screenshot(path=str(output / (name + '-interactions-after-poll.png')))
+
+    # A failed background update adds an alert above the visible chart. Native
+    # scroll anchoring and the renderer must cooperate, without moving its point.
+    place('.af-dashboard-toolbar', 96)
+    control['sales_status'] = 'syncing'
+    with page.expect_response(analytics_response):
+        page.locator('.af-dashboard [data-act="refresh"]').click()
+    page.locator('.af-dashboard-overview[aria-busy="false"]').wait_for()
+    place('.af-dashboard-performance')
+    point = '[data-dashboard-date="2026-11-25"]'
+    focus(point)
+    prior = before(point)
+    control['sales_status'] = 'error'
+    with page.expect_response(analytics_response):
+        page.clock.fast_forward(5100)
+    page.locator('.af-dashboard-overview[aria-busy="false"]').wait_for()
+    page.locator('[data-dashboard-notice="analytics"]').wait_for()
+    after('automatic-error-inserts-alert-above-chart', prior, point, exact_scroll=False)
+
+    # A new access revision takes the real outer open(force, keepScroll) path.
+    for changed in (False, True):
+        if changed:
+            control['permission_revision'] += '-updated'
+        requests_before = control['permission_requests']
+        prior = before('.af-dashboard-performance')
+        with page.expect_response(lambda response: urlsplit(response.url).path.endswith('/management/permissions')):
+            page.clock.fast_forward(31000)
+        settled()
+        assert control['permission_requests'] > requests_before
+        after('shell-refresh-new-revision' if changed else 'shell-refresh-same-revision',
+              prior, '.af-dashboard-performance')
+
+    return records
+
+
 def run(context, width: int, theme: str, layout: str, state_name: str, engine: str, output: Path) -> dict:
     ready = state_name == 'ready'
-    sales_status = 'ready' if ready else 'unavailable'
+    control = {'sales_status': 'ready' if ready else 'unavailable', 'hold': False,
+               'held': [], 'commission_delta': 0, 'analytics_requests': 0,
+               'permission_revision': PERMISSIONS['revision'], 'permission_requests': 0}
+    check_interactions = ready and ((width in (320, 430) and theme == 'dark' and layout == 'app')
+                                   or (width == 1280 and theme == 'light' and layout == 'classic'))
     calls, errors, blocked = [], [], []
     page = context.new_page()
+    if check_interactions:
+        page.clock.install()
     page.on('pageerror', lambda error: errors.append(str(error)))
 
     def respond(route):
@@ -188,7 +383,8 @@ def run(context, width: int, theme: str, layout: str, state_name: str, engine: s
                      'businesses': [BUSINESS], 'invitations': [], 'tenant_id': TENANT,
                      'current_step': 'business'})
         elif path.endswith('/management/permissions'):
-            fulfill({'effective_plan': PERMISSIONS})
+            control['permission_requests'] += 1
+            fulfill({'effective_plan': {**PERMISSIONS, 'revision': control['permission_revision']}})
         elif path == '/api/v1/account/business-identity':
             fulfill({'name': BUSINESS['name']})
         elif path == API + 'state':
@@ -196,8 +392,15 @@ def run(context, width: int, theme: str, layout: str, state_name: str, engine: s
         elif path == API + 'analytics':
             period = parse_qs(url.query).get('period', ['month'])[0]
             payload = report(period, ready)
-            payload['sources']['sales']['status'] = sales_status
-            fulfill(payload)
+            control['analytics_requests'] += 1
+            payload['sources']['sales']['status'] = control['sales_status']
+            if ready:
+                payload['summary']['commission_cents'] += control['commission_delta']
+                payload['series'][-1]['commission_cents'] += control['commission_delta']
+            if control['hold']:
+                control['held'].append((route, payload))
+            else:
+                fulfill(payload)
         elif path.startswith('/api/v1/'):
             fulfill([])
         elif path in ('/favicon.ico', '/manifest.webmanifest') or path.startswith('/pwa/'):
@@ -222,6 +425,12 @@ def run(context, width: int, theme: str, layout: str, state_name: str, engine: s
     }''')
     assert page.locator('.af-dashboard h1').inner_text() == 'Dashboard'
     assert page.locator('#af-revenue-title').inner_text() == 'Comissão bruta estimada'
+    dashboard_text = page.locator('.af-dashboard').inner_text()
+    for removed in ('Relatório disponível', 'Dados de ',
+                    'Conta Shopee conectada · todos os links da conta', 'Fonte:',
+                    'Vendas geradas são o valor pago',
+                    'Cliques disponíveis no relatório da Shopee', 'Abrir relatório'):
+        assert removed not in dashboard_text, (width, theme, layout, state_name, removed)
     assert page.locator('[data-dashboard-period][aria-pressed="true"]').get_attribute('data-dashboard-period') == 'month'
     assert page.locator('#appView').evaluate('(node)=>node.classList.contains("os-layout-app")') == (layout == 'app')
     assert page.locator('#osAppDock').is_visible() == (layout == 'app')
@@ -229,12 +438,8 @@ def run(context, width: int, theme: str, layout: str, state_name: str, engine: s
     assert not blocked, (width, theme, layout, state_name, blocked)
 
     if ready:
-        assert 'Conta Shopee conectada' in page.locator('[data-dashboard-report-scope]').inner_text()
-        assert 'todos os links da conta' in page.locator('[data-dashboard-report-scope]').inner_text()
-        assert '10:30' in page.locator('[data-dashboard-report-updated]').inner_text()
-        assert 'Antes do repasse à rede (MCN)' in page.locator('.af-dashboard-revenue footer').inner_text()
         assert page.locator('[data-dashboard-kpi="validated_commission_cents"]').inner_text() == '—'
-        assert page.locator('[data-dashboard-kpi="clicks"]').inner_text().find('Na Shopee') != -1
+        assert page.locator('[data-dashboard-kpi="clicks"]').inner_text() == '—'
         assert page.locator('[data-dashboard-point]').count() == 25
         # Real browser focus/keyboard, beyond the DOM-only interaction suite.
         page.locator('[data-dashboard-point][tabindex="0"]').focus()
@@ -260,7 +465,7 @@ def run(context, width: int, theme: str, layout: str, state_name: str, engine: s
         kind:node.className,rect:rect(node),clientWidth:node.clientWidth,scrollWidth:node.scrollWidth
       }));
       const clippedText=[];
-      for(const node of root.querySelectorAll('.af-dashboard-revenue-value,.af-dashboard-revenue-validation strong,.af-dashboard-kpi>strong,.af-dashboard-chart-total strong,.af-dashboard-rank-value,.af-dashboard-revenue h2,.af-dashboard-revenue footer>span,.af-dashboard-chart-total small,.af-dashboard-report-status>span,.af-dashboard-report-status>small')){
+      for(const node of root.querySelectorAll('.af-dashboard-revenue-value,.af-dashboard-revenue-validation strong,.af-dashboard-kpi>strong,.af-dashboard-chart-total strong,.af-dashboard-rank-value,.af-dashboard-revenue h2,.af-dashboard-revenue footer>span,.af-dashboard-chart-total small')){
         const card=node.closest('.af-dashboard-revenue,.af-dashboard-kpi,.af-dashboard-panel') || root;
         const bounds=card.getBoundingClientRect();
         const range=document.createRange();range.selectNodeContents(node);
@@ -298,14 +503,16 @@ def run(context, width: int, theme: str, layout: str, state_name: str, engine: s
           await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
         }''')
         bottom = page.evaluate('''() => {
-          const link=document.querySelector('.af-dashboard-footnote a');
+          const end=document.querySelector('.af-dashboard').lastElementChild;
+          const link=[...end.querySelectorAll('a,button')].filter(node=>node.getClientRects().length&&!node.disabled).at(-1);
+          if(!link) throw new Error('The final Dashboard block needs a visible action for the dock check');
           const dock=document.querySelector('#osAppDock');
           const rect=node=>{const r=node.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,width:r.width,height:r.height};};
           const bounds=link.getBoundingClientRect(),dx=Math.min(2,bounds.width/4),dy=Math.min(2,bounds.height/4);
           const points=[[bounds.left+dx,bounds.top+dy],[bounds.right-dx,bounds.top+dy],
             [bounds.left+dx,bounds.bottom-dy],[bounds.right-dx,bounds.bottom-dy],
             [(bounds.left+bounds.right)/2,(bounds.top+bounds.bottom)/2]];
-          return {link:rect(link),dock:rect(dock),scrollY,
+          return {link:rect(link),end:rect(end),dock:rect(dock),scrollY,
             withinViewport:bounds.top>=0&&bounds.bottom<=innerHeight&&bounds.left>=0&&bounds.right<=innerWidth,
             hits:points.map(([x,y])=>{const target=document.elementFromPoint(x,y);return !!target&&(target===link||link.contains(target));})};
         }''')
@@ -314,42 +521,20 @@ def run(context, width: int, theme: str, layout: str, state_name: str, engine: s
         save_metrics()
         assert bottom['withinViewport'], (name, bottom)
         assert bottom['link']['bottom'] <= bottom['dock']['top'], (name, bottom)
+        assert bottom['end']['bottom'] <= bottom['dock']['top'], (name, bottom)
         assert all(bottom['hits']), (name, bottom)
         page.evaluate('''async () => {
           window.scrollTo(0,0);
           await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
         }''')
 
-    if ready and width in (320, 430):
-        # The initial sync may return cached account-wide values. Keep the
-        # numbers visible while verifying the longer live-status copy on mobile.
-        sales_status = 'syncing'
-        commission_before = page.locator('[data-dashboard-kpi="commission_cents"]').inner_text()
-        page.locator('.af-dashboard [data-act="refresh"]').click()
-        page.locator('[data-dashboard-report-status="syncing"]').wait_for()
-        page.locator('.af-dashboard-overview[aria-busy="false"]').wait_for()
-        assert page.locator('[data-dashboard-kpi="commission_cents"]').inner_text() == commission_before
-        assert 'automaticamente' in page.locator('[data-dashboard-report-status]').inner_text()
-        status_bounds = page.evaluate('''() => {
-          const root=document.querySelector('.af-dashboard').getBoundingClientRect();
-          const status=document.querySelector('[data-dashboard-report-status]');
-          const clipped=[];
-          for(const node of status.querySelectorAll('span,small')) {
-            const range=document.createRange(); range.selectNodeContents(node);
-            if([...range.getClientRects()].some(rect=>rect.left<root.left-1||rect.right>root.right+1))
-              clipped.push(node.textContent);
-          }
-          return {clipped,clientWidth:status.clientWidth,scrollWidth:status.scrollWidth};
-        }''')
-        assert not status_bounds['clipped'], (name, status_bounds)
-        assert status_bounds['scrollWidth'] <= status_bounds['clientWidth'] + 2, (name, status_bounds)
-        metrics['account_sync_status'] = status_bounds
-        page.evaluate('window.scrollTo(0,0)')
-        page.screenshot(path=str(output / (name + '-account-syncing.png')), full_page=True)
-        save_metrics()
-        sales_status = 'ready'
-        page.locator('.af-dashboard [data-act="refresh"]').click()
-        page.locator('[data-dashboard-report-status="ready"]').wait_for()
+    if check_interactions:
+        try:
+            metrics['interaction_checks'] = exercise_interactions(page, control, name, output)
+            save_metrics()
+        except Exception:
+            page.screenshot(path=str(output / (name + '-interaction-failure.png')))
+            raise
 
     if width == 430 and theme == 'light':
         if ready:
