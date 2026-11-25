@@ -14,7 +14,7 @@ import httpx
 import qrcode
 from cryptography.fernet import Fernet,InvalidToken
 from fastapi import APIRouter,Depends,HTTPException,Response
-from pydantic import BaseModel,ConfigDict,Field,StrictInt,model_validator
+from pydantic import BaseModel,ConfigDict,Field,StrictBool,StrictInt,model_validator
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -23,7 +23,7 @@ from app.tenant_access import resolve_site_access
 from app.cakto_api import cached_cakto_client,BASE,ORDER_ID
 from app.orion_direct_checkout import Payer
 from app.plan_catalog import CODES
-from app.plan_permissions import lock_plan
+from app.plan_permissions import _date,lock_plan,plan_state
 from app.plan_management import (_owner_account,_ensure_owner,
     _replayable_checkout_token,require_checkout_available)
 
@@ -47,6 +47,61 @@ def pix_environment_ready():
         and len(os.getenv("CAKTO_PIX_WEBHOOK_SECRET",""))>=32
         and bool(os.getenv("CAKTO_CLIENT_ID"))
         and bool(os.getenv("CAKTO_CLIENT_SECRET")))
+
+
+def manual_pix_anchor(state):
+    """The existing manual grant is the authority for a successor's start."""
+    manual = state.get("manual_assignment") or {}
+    code, start, end = manual.get("plan_code"), _date(manual.get("started_at")), _date(manual.get("expires_at"))
+    if code in CODES and start and end and start < end and not state.get("scheduled_manual_assignment"):
+        return code, start, end
+    return None
+
+
+async def manual_pix_options(db, tenant, effective, subscription, *, own_reservation=False):
+    anchor = manual_pix_anchor(effective)
+    if not anchor or effective.get("source") != "manual" or not effective.get("active") or subscription:
+        return None
+    row = (await db.execute(text("""
+        SELECT EXISTS(SELECT 1 FROM orion_prepaid_pix_orders o
+                   WHERE o.tenant_id=:tenant AND o.state IN ('reserved','created','needs_review')) AS pending_pix,
+            EXISTS(SELECT 1 FROM orion_cakto_checkout_intents i WHERE i.tenant_id=:tenant
+                   AND (i.state='needs_review' OR i.state='pending' AND i.expires_at>now())) AS pending_checkout,
+            a.plan_code,a.paid_until,o.manual_anchor_expires_at,o.paid_at,b.hold
+        FROM tenants t
+        LEFT JOIN orion_prepaid_pix_access a ON a.tenant_id=t.id AND a.paid_until>now()
+        LEFT JOIN orion_prepaid_pix_orders o ON o.tenant_id=t.id AND o.external_order_id=a.last_order_id
+            AND o.state='paid' AND o.manual_anchor_expires_at IS NOT NULL
+        LEFT JOIN orion_confirmed_billing_state b ON b.tenant_id=o.tenant_id AND b.order_id=o.external_order_id
+            AND b.payment_channel='pix_prepaid'
+        WHERE t.id=:tenant
+    """), {"tenant": tenant})).mappings().one()
+    _, _, start = anchor
+    used = effective["limits"]["active_professionals"]
+    upcoming = ({"plan_code": row["plan_code"],
+                 "starts_at": max(row["manual_anchor_expires_at"], row["paid_at"]),
+                 "ends_at": row["paid_until"]}
+                if row["manual_anchor_expires_at"] and row["paid_at"] and not row["hold"] else None)
+    return {"available": bool(pix_environment_ready() and os.getenv("ORION_BARBER_PLAN_CYCLE") == "1"
+                              and os.getenv("ORION_BARBER_MANUAL_PIX_ENABLED") == "1"
+                              and (own_reservation or not row["pending_pix"])
+                              and not row["pending_checkout"] and not row["paid_until"]),
+            "starts_at": start, "ends_at": start + timedelta(days=30), "upcoming": upcoming,
+            "blocked_plan_codes": [code for code, plan in CODES.items() if used > plan["max_professionals"]]}
+
+
+async def _require_manual_pix_option(db, tenant, state, code, *, own_reservation=False):
+    eligible = (await db.execute(text("""
+        SELECT EXISTS (SELECT 1 FROM business_onboarding
+            WHERE tenant_id=:tenant AND configuration->>'niche'='barbearia')
+          AND NOT EXISTS (SELECT 1 FROM subscriptions WHERE tenant_id=:tenant)
+    """), {"tenant": tenant})).scalar_one()
+    options = await manual_pix_options(db, tenant, state, None, own_reservation=own_reservation) if eligible else None
+    if not options or not options["available"]:
+        raise HTTPException(409, "A próxima vigência ainda não pode ser contratada. Confira seu plano atual.")
+    if code in options["blocked_plan_codes"]:
+        raise HTTPException(409, "Ajuste a quantidade de profissionais ativos para contratar este plano.")
+    return manual_pix_anchor(state)
 
 
 def cents(value):
@@ -144,10 +199,15 @@ class PixPurchase(BaseModel):
     payer:Payer
     consent_one_time:bool
     expected_cents:StrictInt|None=Field(default=None,gt=0)
+    manual_renewal:StrictBool=False
+    manual_expected_start:datetime|None=None
     @model_validator(mode="after")
     def validate(self):
         if self.plan_code not in CODES or not self.consent_one_time:
             raise ValueError("Confirme o plano e a cobrança Pix única.")
+        if self.manual_renewal != bool(_date(self.manual_expected_start)) or (
+                not self.manual_renewal and self.manual_expected_start is not None):
+            raise ValueError("Confira e confirme a data de início do próximo período.")
         return self
 
 
@@ -260,18 +320,39 @@ async def best_effort_attempt(order_id,state,external_id=None):
 
 
 @asynccontextmanager
-async def _pix_provider_start_guard(tenant_id,account):
+async def _pix_provider_start_guard(tenant_id,account,plan_code=None,manual_anchor=None,intent=None):
     # Keep the verified owner/manual-plan admission valid during the bounded
     # financial POST. Administrative changes wait until it has finished.
     async with support_session_factory()() as db:
         async with db.begin():
-            await require_checkout_available(db,tenant_id,account,channel="pix")
+            if manual_anchor:
+                state = await require_checkout_available(db,tenant_id,account,channel="pix",allow_manual_pix=True)
+                anchor = await _require_manual_pix_option(db,tenant_id,state,plan_code,own_reservation=True)
+                reserved = (await db.execute(text("""
+                    SELECT 1 FROM orion_prepaid_pix_orders
+                    WHERE id=:id AND tenant_id=:tenant AND account_id=:account
+                        AND plan_code=:plan AND state='reserved' AND expires_at>now()
+                """), {"id":intent,"tenant":tenant_id,"account":account,"plan":plan_code})).scalar_one_or_none()
+                if anchor != manual_anchor or reserved != 1:
+                    raise HTTPException(409, "A vigência mudou. Confira as novas datas antes de pagar.")
+            else:
+                await require_checkout_available(db,tenant_id,account,channel="pix")
             yield
 
 
 @router.get("/api/v1/tenants/{tenant_id}/management/plan-pix-config")
-async def pix_config(tenant_id:UUID,actor:Actor=Depends(authenticate)):
-    await owner(tenant_id,actor)
+async def pix_config(tenant_id:UUID,actor:Actor=Depends(authenticate),
+                     manual_renewal:bool=False,plan_code:str|None=None):
+    account=await owner(tenant_id,actor)
+    manual_window = {}
+    if manual_renewal:
+        if actor.maintenance or plan_code not in CODES:
+            raise HTTPException(403, "Somente o proprietário pode contratar a próxima vigência.")
+        async with support_session_factory()() as db:
+            async with db.begin():
+                state = await require_checkout_available(db,tenant_id,account,channel="pix",allow_manual_pix=True)
+                _, _, start = await _require_manual_pix_option(db,tenant_id,state,plan_code)
+        manual_window = {"starts_at":start, "ends_at":start+timedelta(days=30)}
     if not pix_environment_ready():
         return {"available":False,"methods":[],"mode":"manual_30_days"}
     try:
@@ -279,13 +360,15 @@ async def pix_config(tenant_id:UUID,actor:Actor=Depends(authenticate)):
         await verified_pix_catalog(cached_cakto_client())
     except HTTPException:
         return {"available":False,"methods":[],"mode":"manual_30_days"}
-    return {"available":True,"methods":["pix"],"mode":"manual_30_days"}
+    return {"available":True,"methods":["pix"],"mode":"manual_30_days",**manual_window}
 
 
 @router.post("/api/v1/tenants/{tenant_id}/management/plan-pix-charge",status_code=201)
 async def create_pix_charge(tenant_id:UUID,payload:PixPurchase,
                             actor:Actor=Depends(authenticate)):
     account=await owner(tenant_id,actor)
+    if payload.manual_renewal and actor.maintenance:
+        raise HTTPException(403,"Somente o proprietário pode contratar a próxima vigência.")
     cipher=pix_cipher()
     plan=CODES[payload.plan_code]
     if payload.expected_cents is not None and payload.expected_cents!=plan["price_cents"]:
@@ -299,7 +382,15 @@ async def create_pix_charge(tenant_id:UUID,payload:PixPurchase,
     async with support_session_factory()() as db:
         async with db.begin():
             await lock_plan(db,tenant_id,exclusive=True)
-            await require_checkout_available(db,tenant_id,account,channel="pix",lock="exclusive")
+            if payload.manual_renewal:
+                state = await require_checkout_available(db,tenant_id,account,channel="pix",lock="exclusive",
+                                                         allow_manual_pix=True)
+                manual_anchor = await _require_manual_pix_option(db,tenant_id,state,payload.plan_code)
+                if manual_anchor[2] != _date(payload.manual_expected_start):
+                    raise HTTPException(409, "A vigência mudou. Confira as novas datas antes de pagar.")
+            else:
+                await require_checkout_available(db,tenant_id,account,channel="pix",lock="exclusive")
+                manual_anchor = None
             ongoing=(await db.execute(text("""
               SELECT 1 FROM subscriptions WHERE tenant_id=:tenant
             """),{"tenant":tenant_id})).scalar_one_or_none()
@@ -318,18 +409,24 @@ async def create_pix_charge(tenant_id:UUID,payload:PixPurchase,
             """),{"tenant":tenant_id})).mappings().first()
             if grant and grant["paid_until"]>datetime.now(timezone.utc) and grant["plan_code"]!=payload.plan_code:
                 raise HTTPException(409,"Para trocar o plano durante o período pago, contate o suporte.")
+            anchor_code, anchor_start, anchor_end = manual_anchor or (None,None,None)
             await db.execute(text("""
               INSERT INTO orion_prepaid_pix_orders
-                (id,tenant_id,account_id,plan_code,offer_id,expected_cents,callback_hash,expires_at)
-              VALUES (:id,:tenant,:account,:plan,:offer,:cents,:hash,now()+interval '24 hours')
+                (id,tenant_id,account_id,plan_code,offer_id,expected_cents,callback_hash,expires_at,
+                 manual_anchor_code,manual_anchor_started_at,manual_anchor_expires_at)
+              VALUES (:id,:tenant,:account,:plan,:offer,:cents,:hash,now()+interval '24 hours',
+                      :anchor_code,:anchor_start,:anchor_end)
             """),{"id":intent,"tenant":tenant_id,"account":account,
                 "plan":payload.plan_code,"offer":offer_id,
-                "cents":plan["price_cents"],"hash":digest})
+                "cents":plan["price_cents"],"hash":digest,"anchor_code":anchor_code,
+                "anchor_start":anchor_start,"anchor_end":anchor_end})
     known_external=None
+    provider_started=False
     try:
         bearer=await client.token()
-        async with _pix_provider_start_guard(tenant_id,account):
+        async with _pix_provider_start_guard(tenant_id,account,payload.plan_code,manual_anchor,intent):
             async with httpx.AsyncClient(timeout=25,follow_redirects=False) as http:
+                provider_started=True
                 response=await http.post(BASE+"/payments/",
                     json=payment_request(offer_id,payload.payer,token),
                     headers={"Authorization":"Bearer "+bearer,
@@ -345,7 +442,8 @@ async def create_pix_charge(tenant_id:UUID,payload:PixPurchase,
         if not await set_attempt(intent,"created",charge["id"],pix_code_enc=encoded,pix_expires_at=expiry):
             raise HTTPException(502,"O Pix existente exige verificação. Não gere outro pagamento.")
     except HTTPException:
-        await best_effort_attempt(intent,"needs_review",known_external)
+        await best_effort_attempt(intent,"declined" if manual_anchor and not provider_started else "needs_review",
+                                  known_external)
         raise
     except httpx.HTTPStatusError as error:
         # Documented authentication/validation rejection is not an ambiguous
@@ -427,14 +525,17 @@ async def pix_current(tenant_id:UUID,actor:Actor=Depends(authenticate)):
             await lock_plan(db,tenant_id)
             await _ensure_owner(db,tenant_id,account)
             current=(await db.execute(text("""
-                SELECT state,external_order_id FROM orion_prepaid_pix_orders
-                WHERE id=:id AND tenant_id=:tenant AND account_id=:account
+                SELECT o.state,o.external_order_id,o.manual_anchor_expires_at,o.paid_at,b.hold
+                FROM orion_prepaid_pix_orders o
+                LEFT JOIN orion_confirmed_billing_state b ON b.tenant_id=o.tenant_id
+                    AND b.order_id=o.external_order_id AND b.payment_channel='pix_prepaid'
+                WHERE o.id=:id AND o.tenant_id=:tenant AND o.account_id=:account
             """),{"id":row["id"],"tenant":tenant_id,"account":account})).mappings().first()
             if not current or current["external_order_id"]!=row["external_order_id"]:
                 return result
             if current["state"]=="paid":
                 until=(await db.execute(text("SELECT paid_until FROM orion_prepaid_pix_access WHERE tenant_id=:tenant"),{"tenant":tenant_id})).scalar_one_or_none()
-                return {**result,"status":"active" if until and until>datetime.now(timezone.utc) else "expired","paid_until":until}
+                return {**result,**paid_pix_status(current,until)}
             if current["state"] in {"refunded","declined","expired"}:
                 return {**result,"status":current["state"]}
             if current["state"] not in {"created","needs_review"}:
@@ -473,8 +574,11 @@ async def pix_status(tenant_id:UUID,intent_id:UUID,
     account=await owner(tenant_id,actor)
     async with support_session_factory()() as db:
         row=(await db.execute(text("""
-          SELECT state FROM orion_prepaid_pix_orders
-          WHERE id=:id AND tenant_id=:tenant AND account_id=:account
+          SELECT o.state,o.manual_anchor_expires_at,o.paid_at,b.hold
+          FROM orion_prepaid_pix_orders o
+          LEFT JOIN orion_confirmed_billing_state b ON b.tenant_id=o.tenant_id
+              AND b.order_id=o.external_order_id AND b.payment_channel='pix_prepaid'
+          WHERE o.id=:id AND o.tenant_id=:tenant AND o.account_id=:account
         """),{"id":intent_id,"tenant":tenant_id,"account":account})).mappings().first()
         if not row:
             raise HTTPException(404,"Pagamento não encontrado")
@@ -483,7 +587,7 @@ async def pix_status(tenant_id:UUID,intent_id:UUID,
         """),{"tenant":tenant_id})).scalar_one_or_none()
     state=row["state"]
     if state=="paid":
-        return {"status":"active" if valid and valid>datetime.now(timezone.utc) else "expired","paid_until":valid}
+        return paid_pix_status(row,valid)
     if state=="refunded":
         return {"status":"refunded"}
     if state=="declined":
@@ -493,3 +597,16 @@ async def pix_status(tenant_id:UUID,intent_id:UUID,
     if state in ("reserved","needs_review"):
         return {"status":"review_required"}
     return {"status":"pending"}
+
+
+def paid_pix_status(row, paid_until):
+    now = datetime.now(timezone.utc)
+    starts_at = row.get("manual_anchor_expires_at")
+    if starts_at and row.get("paid_at"):
+        if row.get("hold"):
+            return {"status":"review_required"}
+        starts_at = max(starts_at, row["paid_at"])
+        # Use this receipt's confirmed term for the customer who bought it.
+        return {"status": "scheduled" if starts_at>now else "active" if starts_at+timedelta(days=30)>now else "expired",
+                "started_at": starts_at, "paid_until": starts_at+timedelta(days=30)}
+    return {"status": "active" if paid_until and paid_until>now else "expired","paid_until":paid_until}

@@ -1,12 +1,14 @@
 """Isolated PostgreSQL acceptance cases for Barbearia's subscription lifecycle."""
 import asyncio
 from datetime import datetime, timedelta, timezone
+import hashlib
+from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
 
 import pytest
 from sqlalchemy import text
 
-from app import confirmed_billing, orion_welcome, plan_trial_benefits
+from app import confirmed_billing, orion_welcome, plan_management, plan_trial_benefits
 from app.cakto_subscription_lifecycle import reconcile_existing_cakto_subscription
 from app.catalog_api import support_session_factory
 from app.manual_plan_terms import calendar_end
@@ -236,6 +238,125 @@ async def test_cakto_keeps_paid_days_and_restores_withdrawn_refund_of_current_or
         data = (await c.client.get(base)).json()
         assert data["effective_plan"]["active"] is True
         assert dt(data["effective_plan"]["valid_until"]) == first_paid + timedelta(days=60)
+    finally:
+        async with c.engine.begin() as db:
+            await db.execute(text("DELETE FROM orion_confirmed_billing_state WHERE tenant_id=:tenant"), keys)
+            await db.execute(text("DELETE FROM business_onboarding WHERE tenant_id=:tenant"), keys)
+
+
+@pytest.mark.asyncio
+async def test_checkout_after_canceled_paid_period_preserves_orders_and_ignores_late_old_events(manual_db, monkeypatch):
+    c = manual_db
+    monkeypatch.setenv("ORION_BARBER_PLAN_CYCLE", "1")
+    monkeypatch.setenv("ORION_BARBER_RECONTRACT_ENABLED", "1")
+    monkeypatch.setenv("INTEGRATION_FERNET_KEY", "isolated-checkout-hmac-key-" + "a" * 32)
+    monkeypatch.setattr(plan_management, "embedded_checkout_enabled", lambda: True)
+    checkout_url = plan_management.CODES["profissional"]["checkout_url"]
+    old_sub, old_order, old_offer, new_sub, new_order, new_offer = [str(uuid4()) for _ in range(6)]
+    now = datetime.now(timezone.utc)
+    old_paid = now - timedelta(days=40)
+    old_end = old_paid + timedelta(days=30)
+    keys = {"tenant": c.tenant, "account": c.account, "subscription": old_sub,
+            "order": old_order, "offer": old_offer, "paid": old_paid, "digest": c.tenant.hex * 2}
+    provider = {"id": old_sub, "parent_order": old_order, "offer": old_offer,
+                "status": "active", "amount": "29.90", "recurrence_period": 30}
+    provider_reads = []
+
+    class ReadOnlyCakto:
+        async def list_offers(self):
+            return [{"id": new_offer, "name": "Orion Profissional", "type": "subscription",
+                     "price": "89.90", "status": "active", "recurrence_period": 30}]
+
+        async def _get(self, path):
+            assert path == f"/subscriptions/{old_sub}/"
+            provider_reads.append(path)
+            return dict(provider)
+
+    cakto = ReadOnlyCakto()
+    monkeypatch.setattr(plan_management, "cached_cakto_client", lambda: cakto)
+
+    async def verify_embedded_checkout(client, offers):
+        assert client is cakto and offers[0]["id"] == new_offer
+
+    monkeypatch.setattr(plan_management, "verify_embedded_checkout", verify_embedded_checkout)
+    base = f"/api/v1/tenants/{c.tenant}/management/plan"
+    payload = {"embedded": True, "plan_code": "profissional", "expected_cents": 8990}
+    try:
+        async with c.engine.begin() as db:
+            await db.execute(text("""
+                INSERT INTO business_onboarding(tenant_id,created_by,configuration)
+                VALUES(:tenant,:account,'{"niche":"barbearia"}')
+            """), keys)
+            row_id = (await db.execute(text("""
+                INSERT INTO subscriptions(tenant_id,plan_id,external_subscription_id,status,last_verified_payment_at)
+                SELECT :tenant,id,:subscription,'active',:paid FROM plans WHERE code='orion_essencial' RETURNING id
+            """), keys)).scalar_one()
+            await db.execute(text("""
+                INSERT INTO orion_cakto_bindings(tenant_id,subscription_id,external_subscription_id,plan_code,last_order_id)
+                VALUES(:tenant,:id,:subscription,'essencial',:order)
+            """), {**keys, "id": row_id})
+            await db.execute(text("""
+                INSERT INTO orion_cakto_checkout_intents
+                  (tenant_id,account_id,plan_code,offer_id,expected_cents,callback_hash,
+                   state,verified_at,expires_at,external_order_id)
+                VALUES(:tenant,:account,'essencial',:offer,2990,:digest,'verified',:paid,now(),:order)
+            """), keys)
+            await confirmed_billing.record(db, c.tenant, old_order, "cakto", old_paid, 2990,
+                                           start=old_paid, end=old_end)
+
+        assert not (await c.client.get(base + "-overview")).json()["barbershop"]["can_recontract"]
+        assert (await c.client.post(base + "-checkout", json=payload)).status_code == 409
+        async with c.engine.begin() as db:
+            await db.execute(text("""
+                UPDATE subscriptions SET status='canceled',grace_until=:end WHERE tenant_id=:tenant
+            """), {**keys, "end": now + timedelta(days=2)})
+        assert not (await c.client.get(base + "-overview")).json()["barbershop"]["can_recontract"]
+        assert (await c.client.post(base + "-checkout", json=payload)).status_code == 409
+        assert provider_reads == []
+        async with c.engine.begin() as db:
+            await db.execute(text("""
+                UPDATE subscriptions SET grace_until=:end WHERE tenant_id=:tenant
+            """), {**keys, "end": old_end})
+        ended = (await c.client.get(base + "-overview")).json()["barbershop"]
+        assert ended["can_recontract"] and dt(ended["previous_period_ends_at"]) == old_end
+        assert (await c.client.post(base + "-checkout", json=payload)).status_code == 409
+        provider.update(status="canceled", parent_order=new_order)
+        assert (await c.client.post(base + "-checkout", json=payload)).status_code == 409
+        provider["parent_order"] = old_order
+        link = await c.client.post(base + "-checkout", json=payload)
+        assert link.status_code == 200, link.text
+        assert (await c.client.post(base + "-checkout", json=payload)).json() == link.json()
+
+        paid = datetime.now(timezone.utc)
+        callback = parse_qs(urlsplit(link.json()["checkout_url"]).query)["callback"][0]
+        event = {"event_type": "purchase_approved", "external_order_id": new_order,
+                 "external_subscription_id": new_sub, "external_offer_id": new_offer, "currency": "BRL",
+                 "amount_cents": 8990, "callback_hash": hashlib.sha256(callback.encode()).hexdigest()}
+        order = {"id": new_order, "subscription": new_sub, "offer": {"id": new_offer}, "status": "paid",
+                 "type": "subscription", "offer_type": "main", "checkoutUrl": checkout_url,
+                 "currency": "BRL", "amount": "89.90", "sck": callback, "paidAt": paid.isoformat()}
+        subscription = {"id": new_sub, "offer": new_offer, "recurrence_period": 30, "paymentMethod": "credit_card",
+                        "status": "active", "amount": "89.90", "parent_order": new_order}
+        provider["status"] = "active"
+        assert await plan_management.apply_verified_cakto_payment(event, order, subscription) == "manual_review"
+        provider["status"] = "canceled"
+        assert await plan_management.apply_verified_cakto_payment(event, order, subscription) == "activated"
+        assert await plan_management.apply_verified_cakto_payment(event, order, subscription) == "already_verified"
+        late_old = {"event_type": "subscription_canceled", "external_subscription_id": old_sub,
+                    "external_order_id": old_order, "external_offer_id": old_offer}
+        assert await reconcile_existing_cakto_subscription(late_old, {"subscription": old_sub}, cakto) == "unlinked"
+        result = (await c.client.get(base + "-overview")).json()
+        assert result["effective_plan"]["code"] == "profissional"
+        assert dt(result["effective_plan"]["valid_until"]) == paid + timedelta(days=30)
+        async with c.engine.connect() as db:
+            assert (await db.execute(text("""
+                SELECT external_subscription_id FROM subscriptions WHERE tenant_id=:tenant
+            """), keys)).scalar_one() == new_sub
+            preserved = (await db.execute(text("""
+                SELECT external_order_id FROM orion_cakto_checkout_intents
+                WHERE tenant_id=:tenant AND state='verified'
+            """), keys)).scalars().all()
+            assert set(preserved) == {old_order, new_order}
     finally:
         async with c.engine.begin() as db:
             await db.execute(text("DELETE FROM orion_confirmed_billing_state WHERE tenant_id=:tenant"), keys)

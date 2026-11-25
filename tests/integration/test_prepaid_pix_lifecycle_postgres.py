@@ -44,6 +44,8 @@ async def pix_db(manual_db,monkeypatch):
             """),{"a":c.tenant,"b":c.other})
             for table in ("orion_prepaid_pix_orders","orion_prepaid_pix_access"):
                 await db.execute(text(f"DELETE FROM {table} WHERE tenant_id IN (:a,:b)"),{"a":c.tenant,"b":c.other})
+            for table in ("orion_confirmed_billing_state","business_onboarding"):
+                await db.execute(text(f"DELETE FROM {table} WHERE tenant_id IN (:a,:b)"),{"a":c.tenant,"b":c.other})
 
 
 async def purchase(c,*,state="created",external=True):
@@ -309,6 +311,161 @@ def fake_creation(monkeypatch,c,*,failure=None,on_token=None,on_post=None):
     monkeypatch.setattr(api,"verified_pix_catalog",catalog)
     monkeypatch.setattr(api.httpx,"AsyncClient",Http)
     monkeypatch.setenv("INTEGRATION_FERNET_KEY",Fernet.generate_key().decode())
+
+
+async def prepare_manual_successor(c, monkeypatch, *, professionals=0, end=None):
+    fake_creation(monkeypatch,c)
+    for key,value in {"ORION_BARBER_PLAN_CYCLE":"1","ORION_BARBER_MANUAL_PIX_ENABLED":"1",
+                      "ORION_PIX_PREPAID_ENABLED":"1","CAKTO_PIX_WEBHOOK_SECRET":"x"*32,
+                      "CAKTO_CLIENT_ID":"synthetic","CAKTO_CLIENT_SECRET":"synthetic"}.items():
+        monkeypatch.setenv(key,value)
+    end=end or datetime.now(timezone.utc)+timedelta(days=18)
+    start=end-timedelta(days=30)
+    async with c.engine.begin() as db:
+        await db.execute(text("""
+            INSERT INTO business_onboarding(tenant_id,created_by,configuration)
+            VALUES (:tenant,:account,'{"niche":"barbearia"}')
+        """),{"tenant":c.tenant,"account":c.account})
+        await db.execute(text("""
+            INSERT INTO tenant_plan_controls(tenant_id,manual_plan_code,manual_started_at,
+                    manual_expires_at,manual_actor_id)
+            VALUES (:tenant,'elite',:start,:end,:actor)
+        """),{"tenant":c.tenant,"start":start,"end":end,"actor":c.operator})
+        for number in range(professionals):
+            await db.execute(text("INSERT INTO professionals(tenant_id,name) VALUES(:tenant,:name)"),
+                             {"tenant":c.tenant,"name":f"Equipe sintética {number}"})
+    return start,end
+
+
+def successor_payload(end):
+    return api.PixPurchase.model_validate({**charge_payload().model_dump(),
+        "manual_renewal":True,"manual_expected_start":end})
+
+
+@pytest.mark.asyncio
+async def test_manual_change_waits_for_exact_expiry_and_refund_preserves_existing_term(pix_db,monkeypatch):
+    from app.catalog_api import support_session_factory
+    from app.plan_permissions import plan_state
+
+    c=pix_db
+    start,end=await prepare_manual_successor(c,monkeypatch)
+    async with support_session_factory()() as db:
+        current=await plan_state(db,c.tenant)
+        quote=await api.manual_pix_options(db,c.tenant,current,None)
+    assert quote["available"] and quote["starts_at"]==end and quote["ends_at"]==end+timedelta(days=30)
+    with pytest.raises(HTTPException) as stale:
+        await api.create_pix_charge(c.tenant,successor_payload(end+timedelta(days=1)),c.actor)
+    assert stale.value.status_code==409 and c.posts==[]
+    result=await api.create_pix_charge(c.tenant,successor_payload(end),c.actor)
+    assert result["status"]=="pending_confirmation" and len(c.posts)==1
+    with pytest.raises(SQLAlchemyError):
+        async with c.engine.begin() as db:
+            await db.execute(text("""
+                UPDATE tenant_plan_controls SET manual_expires_at=manual_expires_at+interval '1 day'
+                WHERE tenant_id=:tenant
+            """),{"tenant":c.tenant})
+    async with c.engine.connect() as db:
+        receipt=(await db.execute(text("SELECT * FROM orion_prepaid_pix_orders WHERE tenant_id=:tenant"),
+                                  {"tenant":c.tenant})).mappings().one()
+    assert (receipt["manual_anchor_code"],receipt["manual_anchor_started_at"],
+            receipt["manual_anchor_expires_at"])==("elite",start,end)
+    tracking=c.posts[0]["json"]["metadata"]["sck"]
+    ref=receipt["external_order_id"]
+    order={"id":ref,"type":"unique","status":"paid","offer_type":"main",
+           "currency":"BRL","paymentMethod":"pix","sck":tracking,"amount":"29.90",
+           "paidAt":datetime.now(timezone.utc).isoformat(),"offer":{"id":receipt["offer_id"]}}
+    event={"event_type":"purchase_approved","external_order_id":ref,
+           "external_offer_id":receipt["offer_id"],"external_subscription_id":None,
+           "callback_hash":receipt["callback_hash"],"amount_cents":2990,"currency":"BRL"}
+    assert await reconcile.reconcile_prepaid_receipt(event,order)=="activated"
+    assert await reconcile.reconcile_prepaid_receipt(event,order)=="already_verified"
+    assert (await access(c))["paid_until"]==end+timedelta(days=30)
+    assert await api.pix_status(c.tenant,receipt["id"],c.actor)=={
+        "status":"scheduled","started_at":end,"paid_until":end+timedelta(days=30)}
+    with pytest.raises(SQLAlchemyError):
+        async with c.engine.begin() as db:
+            await db.execute(text("""
+                UPDATE tenant_plan_controls SET manual_expires_at=manual_expires_at+interval '1 day'
+                WHERE tenant_id=:tenant
+            """),{"tenant":c.tenant})
+    monkeypatch.setenv("ORION_BARBER_MANUAL_PIX_ENABLED","0")
+    async with support_session_factory()() as db:
+        current=await plan_state(db,c.tenant)
+        paid=await api.manual_pix_options(db,c.tenant,current,None)
+    assert current["source"]=="manual" and current["code"]=="elite"
+    assert not paid["available"] and paid["upcoming"]=={
+        "plan_code":"essencial","starts_at":end,"ends_at":end+timedelta(days=30)}
+    assert await reconcile.reconcile_prepaid_reversal(
+        {**event,"event_type":"refund_requested"},{**order,"status":"refund_requested"})=="reconciled"
+    assert await api.pix_status(c.tenant,receipt["id"],c.actor)=={"status":"review_required"}
+    async with support_session_factory()() as db:
+        current=await plan_state(db,c.tenant)
+        held=await api.manual_pix_options(db,c.tenant,current,None)
+    assert current["source"]=="manual" and not held["available"] and held["upcoming"] is None
+    assert await reconcile.reconcile_prepaid_reversal(
+        {**event,"event_type":"refund"},{**order,"status":"refunded"})=="reconciled"
+    async with support_session_factory()() as db:
+        current=await plan_state(db,c.tenant)
+    assert current["source"]=="manual" and current["code"]=="elite" and current["active"]
+
+
+@pytest.mark.asyncio
+async def test_manual_lower_tier_checks_staff_before_reserving_or_charging(pix_db,monkeypatch):
+    c=pix_db
+    _,end=await prepare_manual_successor(c,monkeypatch,professionals=3)
+    with pytest.raises(HTTPException) as config:
+        await api.pix_config(c.tenant,c.actor,manual_renewal=True,plan_code="essencial")
+    with pytest.raises(HTTPException) as charge:
+        await api.create_pix_charge(c.tenant,successor_payload(end),c.actor)
+    assert config.value.status_code==charge.value.status_code==409
+    assert "profissionais" in charge.value.detail and c.posts==[]
+    async with c.engine.connect() as db:
+        assert (await db.execute(text("""
+            SELECT count(*) FROM orion_prepaid_pix_orders WHERE tenant_id=:tenant
+        """),{"tenant":c.tenant})).scalar_one()==0
+
+
+@pytest.mark.asyncio
+async def test_manual_lower_tier_rechecks_new_staff_before_sending_the_cakto_request(pix_db,monkeypatch):
+    c=pix_db
+    _,end=await prepare_manual_successor(c,monkeypatch,professionals=2)
+
+    async def add_staff():
+        async with c.engine.begin() as db:
+            await db.execute(text("INSERT INTO professionals(tenant_id,name) VALUES(:tenant,'Nova pessoa sintética')"),
+                             {"tenant":c.tenant})
+
+    fake_creation(monkeypatch,c,on_token=add_staff)
+    with pytest.raises(HTTPException) as charge:
+        await api.create_pix_charge(c.tenant,successor_payload(end),c.actor)
+    assert charge.value.status_code==409 and c.posts==[]
+    async with c.engine.connect() as db:
+        state=(await db.execute(text("""
+            SELECT state FROM orion_prepaid_pix_orders WHERE tenant_id=:tenant
+        """),{"tenant":c.tenant})).scalar_one()
+    assert state=="declined"
+
+
+@pytest.mark.asyncio
+async def test_manual_order_approved_after_expiry_uses_the_confirmed_payment_as_the_start(pix_db,monkeypatch):
+    from app.catalog_api import support_session_factory
+    from app.plan_permissions import plan_state
+
+    c=pix_db
+    start,end=await prepare_manual_successor(c,monkeypatch,end=datetime.now(timezone.utc)-timedelta(seconds=20))
+    receipt,order,event=await purchase(c)
+    async with c.engine.begin() as db:
+        await db.execute(text("""
+            UPDATE orion_prepaid_pix_orders SET manual_anchor_code='elite',
+                manual_anchor_started_at=:start,manual_anchor_expires_at=:end WHERE id=:id
+        """),{"start":start,"end":end,"id":receipt["id"]})
+    assert await reconcile.reconcile_prepaid_receipt(event,order)=="activated"
+    starts_at=datetime.fromisoformat(order["paidAt"])
+    assert await api.pix_status(c.tenant,receipt["id"],c.actor)=={
+        "status":"active","started_at":starts_at,"paid_until":starts_at+timedelta(days=30)}
+    async with support_session_factory()() as db:
+        current=await plan_state(db,c.tenant)
+    assert current["source"]=="pix_prepaid" and current["code"]=="essencial" and current["active"]
 
 
 @pytest.mark.asyncio

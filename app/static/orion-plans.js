@@ -255,17 +255,22 @@ function checkoutDocumentData(field){
  return {kind,digits};
 }
 /* Pix único: cobrança voluntária, acesso de 30 dias, sem cartão/recorrência. */
-async function pixCheckout(root,code,ctx,data,{resumeOnly=false,renewal=false}={}){
+async function pixCheckout(root,code,ctx,data,{resumeOnly=false,renewal=false,manualRenewal=false}={}){
  const action=root.querySelector('[data-op-checkout="'+code+'"]');
  const selected=catalogPlan(data?.plans,code);
  if(!action||action.disabled||!selected||data?.can_manage_plan!==true||ctx.canManage!==true||root.querySelector('.op-checkout-dialog'))return;
  const modal=document.createElement('dialog');
  modal.className='os-dialog op-dialog op-checkout-dialog';
  modal.setAttribute('aria-label','Pagamento Pix único Orion');
+ const advanceOn=manualRenewal?barberDate(data.effective_plan?.manual_assignment?.expires_at,data.barbershop?.timezone):'';
+ const title=resumeOnly?'Acompanhar pagamento':manualRenewal&&canonical(data.effective_plan?.code)!==code?
+  'Mudar para '+selected.name.replace(/^Orion /,''):renewal?'Renovar '+selected.name.replace(/^Orion /,''):'Pagar 30 dias de acesso';
+ const terms=advanceOn?'Seu plano atual segue até '+advanceOn+'. O próximo período começa nessa data após a confirmação do pagamento.':
+  renewal?'Os próximos 30 dias são somados ao seu período atual.':'Pagamento único. Sem débito automático e sem cartão.';
  modal.innerHTML='<div class="op-payment-top">'
  +'<div class="op-payment-heading"><span class="op-payment-symbol">'+ic('shield')+'</span><div class="op-payment-heading-copy">'
- +(renewal?'':'<span class="op-eyebrow">ORION · PIX PRÉ-PAGO</span>')+'<h2>'+(resumeOnly?'Acompanhar pagamento':renewal?'Renovar '+escapeHTML(selected.name.replace(/^Orion /,'')):'Pagar 30 dias de acesso')+'</h2>'
- +'<p>'+(renewal?'Os próximos 30 dias são somados ao seu período atual.':'Pagamento único. Sem débito automático e sem cartão.')+'</p></div></div>'
+ +(renewal?'':'<span class="op-eyebrow">ORION · PIX PRÉ-PAGO</span>')+'<h2>'+escapeHTML(title)+'</h2>'
+ +'<p data-pix-terms>'+escapeHTML(terms)+'</p></div></div>'
  +'<button class="op-dialog-close" type="button" data-pix-close aria-label="Fechar pagamento">'+ic('close')+'</button></div>'
  +'<div class="op-payment-summary"><div class="op-payment-plan"><span>'+escapeHTML(selected.name)+'</span>'
  +'<small>Acesso por 30 dias · Renovação manual</small></div><strong>'+price(selected.monthly_cents)+'<small> / 30 dias</small></strong></div>'
@@ -294,7 +299,7 @@ async function pixCheckout(root,code,ctx,data,{resumeOnly=false,renewal=false}={
  form.elements.namedItem('name').value=ctx.user?.name||'';
  form.elements.namedItem('email').value=ctx.user?.email||'';
  form.elements.namedItem('phone').value=window.OrionFields?.phoneDisplay(ctx.user?.phone||ctx.tenant?.contact_phone||'')||'';
- let busy=false,finished=false,intent=null,ticker=null,ready=false;
+ let busy=false,finished=false,intent=null,ticker=null,ready=false,manualExpectedStart=null;
  const close=()=>{
   if(busy)return;
   if(ticker)window.clearInterval(ticker);
@@ -329,7 +334,8 @@ async function pixCheckout(root,code,ctx,data,{resumeOnly=false,renewal=false}={
  };
  const refreshAccess=async answer=>{
   finished=true;ready=false;form.hidden=true;if(ticker)window.clearInterval(ticker);
-  status.textContent='Pix confirmado! Seu plano está ativo.';
+  const scheduled=answer.status==='scheduled';
+  status.textContent=scheduled?'Pagamento confirmado. Seu próximo período está garantido.':'Pagamento confirmado. Seu plano está ativo.';
   resultBox.hidden=false;resultBox.innerHTML='<div class="op-payment-success">'+ic('check')+'<h3>Pagamento aprovado!</h3>'
     +'<p>Seu acesso vai até '+escapeHTML(localDate(answer.paid_until))+'. A renovação é manual.</p></div>';
   const fresh=await ctx.request('/plan-overview');
@@ -341,7 +347,7 @@ async function pixCheckout(root,code,ctx,data,{resumeOnly=false,renewal=false}={
   const existing=await ctx.request('/plan-pix-current');if(!modal.isConnected)return true;
   if(existing?.status==='none')return false;
   if(existing?.status==='pending_confirmation'){showPix(existing,true);return true;}
-  if(existing?.status==='active'){await refreshAccess(existing);return true;}
+  if(['active','scheduled'].includes(existing?.status)){await refreshAccess(existing);return true;}
   if(['review_required','declined','refunded','expired'].includes(existing?.status)){
    form.hidden=true;
    status.textContent=existing.status==='expired'?'Este período encerrou. Feche esta janela e confira as opções de renovação.':
@@ -356,7 +362,7 @@ async function pixCheckout(root,code,ctx,data,{resumeOnly=false,renewal=false}={
   try{
    const answer=await ctx.request('/plan-pix-status?intent_id='+encodeURIComponent(intent.intent_id));
    if(!modal.isConnected)return;
-   if(answer.status==='active'){
+   if(['active','scheduled'].includes(answer.status)){
     await refreshAccess(answer);
    }else if(answer.status==='review_required'){
     if(ticker)window.clearInterval(ticker);
@@ -404,7 +410,8 @@ async function pixCheckout(root,code,ctx,data,{resumeOnly=false,renewal=false}={
      doc_type:doc.kind,doc_number:doc.digits,
      fingerprint:'orion_'+(window.crypto?.randomUUID?.()||String(Date.now())+'_prepaid_pix_12345')};
    const result=await ctx.request('/plan-pix-charge','POST',{
-     plan_code:code,payer,consent_one_time:true,expected_cents:selected.monthly_cents
+     plan_code:code,payer,consent_one_time:true,expected_cents:selected.monthly_cents,
+     ...(manualRenewal?{manual_renewal:true,manual_expected_start:manualExpectedStart}:{})
    });
    if(result.status!=='pending_confirmation'||result.plan_code!==code
       ||result.monthly_cents!==selected.monthly_cents||!result.intent_id||!result.pix_code)
@@ -432,11 +439,17 @@ async function pixCheckout(root,code,ctx,data,{resumeOnly=false,renewal=false}={
  try{
   if(await recoverCurrent())return;
   if(resumeOnly){status.textContent='Este pagamento não está mais pendente. Atualize a página para conferir seus planos.';return;}
-  const config=await ctx.request('/plan-pix-config');
+  const config=await ctx.request(manualRenewal?'/plan-pix-config?manual_renewal=1&plan_code='+encodeURIComponent(code):'/plan-pix-config');
   if(!modal.isConnected)return;
   if(!config?.available||config.mode!=='manual_30_days'){
    status.textContent='Pix temporariamente indisponível. Nenhuma cobrança criada.';
    return;
+  }
+  if(manualRenewal){
+   const newStart=barberDate(config.starts_at,data.barbershop?.timezone);
+   if(!newStart){status.textContent='Não foi possível confirmar quando começa o novo período.';return;}
+   manualExpectedStart=config.starts_at;
+   modal.querySelector('[data-pix-terms]').textContent='Seu plano atual segue até '+newStart+'. O próximo período começa nessa data após a confirmação do pagamento.';
   }
   status.textContent=renewal?'Pagamento único por Pix.':'Pix comum: 30 dias de acesso, renovação manual.';
   ready=true;form.hidden=false;
@@ -514,6 +527,45 @@ function trialRemaining(detail){
  return days===1?'1 dia':days+' dias';
 }
 
+function barberDate(value,zone) {
+ if(!value)return '';
+ try{return new Intl.DateTimeFormat('pt-BR',{dateStyle:'medium',timeStyle:'short',timeZone:zone||timezone}).format(new Date(value));}
+ catch{return '';}
+}
+
+function openPlanChange(root, button, data) {
+ const plan=catalogPlan(data.plans,button.dataset.opChangePlan);
+ if(!plan||root.querySelector('.op-checkout-dialog'))return;
+ const state=data.effective_plan||{},detail=data.barbershop;
+ const end=barberDate(state.valid_until||detail.period_ends_at,detail.timezone);
+ const automatic=data.subscription&&state.commercial_subscription?.cakto_bound===true;
+ const over=Math.max(0,(state.limits?.active_professionals??0)-plan.max_professionals);
+ const notes=[];
+ if(end&&state.active)notes.push('Seu plano atual continua até '+end+'.');
+ if(over)notes.push('Para usar este plano, reduza a equipe para '+plan.max_professionals+' profissionais ativos.');
+ if(detail.maintenance)notes.push('A mudança pode ser concluída na conta do titular.');
+ else if(automatic&&data.subscription.status!=='canceled')
+  notes.push('Gerencie a renovação da assinatura atual na Cakto. Quando ela estiver encerrada e o período pago terminar, este plano poderá ser contratado aqui.');
+ else if(automatic)notes.push('O novo plano poderá ser contratado quando o período pago da assinatura atual terminar.');
+ else if(detail.manual_pix?.upcoming)notes.push('Já existe um próximo plano pago para esta empresa.');
+ else if(end&&!over)notes.push('Escolha este plano no fim do período atual.');
+ else if(!over)notes.push('A contratação deste plano ainda não está disponível para a empresa.');
+ const modal=document.createElement('dialog');
+ modal.className='os-dialog op-dialog op-checkout-dialog op-change-dialog';
+ modal.setAttribute('aria-label','Mudar para '+plan.name);
+ modal.innerHTML='<h2>Mudar para '+escapeHTML(plan.name.replace(/^Orion /,''))+'</h2><p>'+price(plan.monthly_cents)+' / 30 dias</p>'
+  +notes.map(note=>'<p>'+escapeHTML(note)+'</p>').join('')
+  +'<div class="op-payment-actions">'
+  +(automatic&&!detail.maintenance&&data.subscription.status!=='canceled'?
+    '<a class="op-btn op-btn-primary" href="https://assinatura.cakto.com.br/" target="_blank" rel="noopener noreferrer">Gerenciar assinatura na Cakto</a>':'')
+  +'<button type="button" class="op-btn op-btn-secondary" data-op-close-change>Voltar aos planos</button></div>';
+ const close=()=>{modal.remove();button.focus({preventScroll:true});};
+ mounted.closeCheckout=()=>modal.remove();
+ modal.addEventListener('cancel',event=>{event.preventDefault();close();});
+ modal.querySelector('[data-op-close-change]').addEventListener('click',close);
+ root.append(modal);modal.showModal();
+}
+
 function renderBarbershop(data, canManage) {
  const state=data.effective_plan||{}, sub=data.subscription, trial=data.trial, detail=data.barbershop;
  const source=state.source, limits=state.limits||{}, current=canonical(state.code);
@@ -521,13 +573,10 @@ function renderBarbershop(data, canManage) {
  const manual=source==='manual', prepaid=source==='pix_prepaid', evaluating=source==='trial';
  const endedManual=source==='none'&&state.manual_assignment?.expires_at&&!sub;
  const pending=detail.payment;
- const recurCanceled=automatic&&sub?.status==='canceled', locked=!!sub||manual||prepaid;
+ const recurCanceled=automatic&&sub?.status==='canceled';
+ const locked=(!!sub&&!detail.can_recontract)||manual||prepaid;
  const find=code=>catalogPlan(data.plans,code);
- const date=value=>{
-  if(!value)return '';
-  try{return new Intl.DateTimeFormat('pt-BR',{dateStyle:'medium',timeStyle:'short',timeZone:detail.timezone||timezone}).format(new Date(value));}
-  catch{return '';}
- };
+ const date=value=>barberDate(value,detail.timezone);
  const metric=(label,value)=>value===null||value===undefined||value===''?'':'<span><small>'+escapeHTML(label)+'</small><strong>'+escapeHTML(value)+'</strong></span>';
  let title=state.active?state.name:'Sem acesso ativo', status='Escolha um dos planos disponíveis para sua barbearia.';
  if(manual)status='Acesso liberado pela equipe Orion';
@@ -550,22 +599,24 @@ function renderBarbershop(data, canManage) {
   +metric(evaluating?'Início do teste':'Início do período',date(evaluating?trial?.started_at:detail.period_started_at))
   +metric(evaluating?'Fim do teste':'Acesso até',date(evaluating?trial?.ends_at:endedManual?state.manual_assignment.expires_at:state.valid_until))
   +metric('Troca programada',state.scheduled_manual_assignment?find(state.scheduled_manual_assignment.plan_code)?.name+' em '+date(state.scheduled_manual_assignment.started_at):'')
+  +metric('Próximo plano',detail.manual_pix?.upcoming?find(detail.manual_pix.upcoming.plan_code)?.name+' a partir de '+date(detail.manual_pix.upcoming.starts_at):'')
   +(evaluating&&remaining?'<span><small>Tempo restante</small><strong data-op-trial-remaining>'+escapeHTML(remaining)+'</strong></span>':'')
   +metric('Próxima cobrança',automatic&&!recurCanceled&&!hold?date(detail.next_payment_at):'')
   +metric('Valor do período',Number.isSafeInteger(cents)&&cents>0?price(cents):'')
   +'</div></section>';
  const paymentNotice=pending?.state==='needs_review'?'O pagamento precisa de revisão. Consulte o suporte para acompanhar a tentativa.':pending?.state==='declined'?'O pagamento anterior foi recusado. Escolha um plano para abrir o checkout.':pending?'Aguardando confirmação da contratação. Acompanhe o pagamento existente.':'';
- const notice=!canManage||detail.maintenance&&!manual?'Somente o proprietário pode contratar ou alterar o plano.'
+ const notice=!canManage||detail.maintenance?'Somente o proprietário pode contratar ou alterar o plano na própria conta.'
   :hold?'O acesso está suspenso. Use o suporte para acompanhar a análise e a regularização.'
-  :manual?''
+  :manual?(detail.manual_pix?.available?'Renove ou escolha o próximo plano antes do vencimento.':'')
+  :detail.can_recontract?'Escolha o plano que quer ativar.'
   :automatic?(state.active&&!recurCanceled?'Sua assinatura é renovada automaticamente na data da próxima cobrança.':'Consulte sua assinatura para regularizar o pagamento.')
   :prepaid?(data.checkout_enabled===true?'A renovação soma 30 dias ao seu acesso atual.':'A renovação está temporariamente indisponível.')
   :!data.embedded_checkout_enabled?'O checkout está temporariamente indisponível.'
   :evaluating?'Você pode contratar um plano agora. O acesso pago começa após a confirmação do pagamento.'
   :trial?.status==='expired'?'Seu teste terminou. Escolha um plano para voltar a usar a agenda e os demais recursos.':'';
- const manageLink=canManage&&automatic&&!detail.maintenance?'<a class="op-btn op-btn-secondary" href="https://assinatura.cakto.com.br/" target="_blank" rel="noopener noreferrer">'+(state.active&&!recurCanceled?'Gerenciar assinatura':'Regularizar assinatura')+'</a>':
-  canManage&&manual&&!hold?'<button type="button" class="op-btn op-btn-secondary" data-op-renew-request>Solicitar renovação</button><div class="op-renew-result" aria-live="polite"></div>':
-  '';
+ const manageLink=canManage&&automatic&&!detail.maintenance&&!detail.can_recontract&&(!recurCanceled||!state.active)?
+  '<a class="op-btn op-btn-secondary" href="https://assinatura.cakto.com.br/" target="_blank" rel="noopener noreferrer">'
+   +(state.active?'Gerenciar assinatura':'Regularizar assinatura')+'</a>':'';
  const catalog=['essencial','profissional','elite'].map(code=>{
   const plan=find(code);
   const name=plan?.name||'Plano indisponível';
@@ -576,11 +627,18 @@ function renderBarbershop(data, canManage) {
   const resumePix=existing&&!blocked&&!conflict&&pending.channel==='pix';
   const recurring=!locked&&!blocked&&!conflict&&(!existing||pending.channel==='cakto')&&data.embedded_checkout_enabled===true;
   const renew=prepaid&&active&&data.checkout_enabled===true&&!existing&&!blocked&&!conflict;
-  const allowed=canManage&&!detail.maintenance&&!!plan&&(recurring||resumePix||renew);
-  const action=allowed?'<button class="op-btn '+(plan.recommended||renew?'op-btn-primary':'op-btn-secondary')+'" type="button" data-op-checkout="'+code+'"'
-   +(resumePix?' data-op-resume-pix':renew?' data-op-renew-pix':' data-op-embedded')+'>'
-   +escapeHTML(renew?'Renovar antecipadamente':existing?'Acompanhar pagamento':'Assinar '+name.replace(/^Orion /,''))+'</button>'
-   :active?'<span class="op-plan-caption">Plano atual</span>':'';
+  const manualAdvance=manual&&detail.manual_pix?.available===true&&!existing&&!blocked&&!conflict&&
+   !detail.manual_pix.blocked_plan_codes?.includes(code);
+  const allowed=canManage&&!detail.maintenance&&!!plan&&(recurring||resumePix||renew||manualAdvance);
+  const shortName=name.replace(/^Orion /,'');
+  const oldPlan=canonical(sub?.code);
+  const label=existing?'Acompanhar pagamento':renew||manualAdvance&&active?'Renovar antecipadamente':manualAdvance?'Mudar para '+shortName:
+   detail.can_recontract?(code===oldPlan?'Renovar '+shortName:'Mudar para '+shortName):'Assinar '+shortName;
+  const action=allowed?'<button class="op-btn '+(plan.recommended||active?'op-btn-primary':'op-btn-secondary')+'" type="button" data-op-checkout="'+code+'"'
+   +(resumePix?' data-op-resume-pix':manualAdvance?' data-op-renew-pix data-op-manual-renewal':renew?' data-op-renew-pix':' data-op-embedded')+'>'
+   +escapeHTML(label)+'</button>':active?'<span class="op-plan-caption">Plano atual</span>':
+   canManage&&plan&&locked&&!existing&&!blocked&&!conflict?
+    '<button class="op-btn op-btn-secondary" type="button" data-op-change-plan="'+code+'">Mudar para '+escapeHTML(shortName)+'</button>':'';
   const features=(Array.isArray(plan?.benefits)?plan.benefits:[]).map(feature=>'<li>'+ic('check')+'<span>'+escapeHTML(feature)+'</span></li>').join('');
   return '<article class="op-plan op-'+code+(active?' op-current':'')+'"><header class="op-plan-head"><div class="op-plan-heading"><h3>'+escapeHTML(name)+'</h3>'
    +(plan?.recommended?'<span class="op-recommended">Recomendado</span>':'')+'</div><p>'+escapeHTML(plan?.description)+'</p></header>'
@@ -610,8 +668,7 @@ function renderBarbershop(data, canManage) {
 
 async function barberAction(root, ctx, button, trial) {
  const preference=button.dataset.opWelcome;
- const renewRequest=button.hasAttribute('data-op-renew-request');
- const feedback=trial||preference?root.querySelector('#opPlanFeedback'):root.querySelector(renewRequest?'.op-renew-result':'.op-support-result');
+ const feedback=trial||preference?root.querySelector('#opPlanFeedback'):root.querySelector('.op-support-result');
  if(!feedback)return;
  button.disabled=true;
  feedback.hidden=false;
@@ -627,7 +684,7 @@ async function barberAction(root, ctx, button, trial) {
    }
    return;
   }
-  const result=await ctx.request(renewRequest?'/plan-support?renewal=1':'/plan-support');
+  const result=await ctx.request('/plan-support');
   const url=result?.url;
   if(typeof url!=='string'||!(/^(https:\/\/wa\.me\/55\d{10,11}\?text=|mailto:[^?]+\?body=)/.test(url))){
    feedback.textContent='O suporte está temporariamente indisponível.';
@@ -638,8 +695,7 @@ async function barberAction(root, ctx, button, trial) {
   link.href=url;
   link.target='_blank';
   link.rel='noopener noreferrer';
-  link.textContent=renewRequest?(url.startsWith('mailto:')?'Continuar por e-mail':'Continuar pelo WhatsApp'):
-   (url.startsWith('mailto:')?'Abrir e-mail de suporte':'Abrir conversa no WhatsApp');
+  link.textContent=url.startsWith('mailto:')?'Abrir e-mail de suporte':'Abrir conversa no WhatsApp';
   feedback.replaceChildren(link);
   link.focus();
  }catch(error){
@@ -693,9 +749,11 @@ function mount(root,data,ctx){
   }catch{}
  },60000);
  root.addEventListener('click',root._orionPlansClick=async event=>{
-  const action=event.target.closest('[data-op-start-trial],[data-op-support],[data-op-renew-request],[data-op-welcome]');
+  const action=event.target.closest('[data-op-start-trial],[data-op-support],[data-op-welcome]');
   if(action&&!action.disabled){event.preventDefault();await barberAction(root,ctx,action,action.hasAttribute('data-op-start-trial'));return;}
   const trial=event.target.closest('[data-op-trial]'),checkoutButton=event.target.closest('[data-op-checkout]');
+  const change=event.target.closest('[data-op-change-plan]');
+  if(change){event.preventDefault();openPlanChange(root,change,mounted?.root===root?mounted.data:data);return;}
   if(trial&&!trial.disabled){event.preventDefault();renderTrialDialog(root,data,ctx);}
   if(checkoutButton&&!checkoutButton.disabled){
    event.preventDefault();
@@ -704,7 +762,8 @@ function mount(root,data,ctx){
    else if(!currentData.barbershop||checkoutButton.hasAttribute('data-op-resume-pix')||checkoutButton.hasAttribute('data-op-renew-pix'))
     await pixCheckout(root,checkoutButton.dataset.opCheckout,ctx,currentData,{
      resumeOnly:checkoutButton.hasAttribute('data-op-resume-pix'),
-     renewal:checkoutButton.hasAttribute('data-op-renew-pix')});
+     renewal:checkoutButton.hasAttribute('data-op-renew-pix'),
+     manualRenewal:checkoutButton.hasAttribute('data-op-manual-renewal')});
   }
  });
  root.addEventListener('change',root._orionPlansChange=event=>{

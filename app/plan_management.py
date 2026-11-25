@@ -26,7 +26,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.catalog_api import Actor, authenticate, support_session_factory
 from app.database import get_session_factory, tenant_transaction
-from app.cakto_api import cached_cakto_client, _subscription_id
+from app.cakto_api import ORDER_ID, cached_cakto_client, _subscription_id
 from app.account_business import account_membership_role
 from app.tenant_access import resolve_site_access
 from app.admin_accounts import require_platform_owner
@@ -137,8 +137,54 @@ async def prepaid_checkout_exists(db, tenant_id: UUID):
     """), {"tenant": tenant_id})).scalar_one_or_none() is not None
 
 
+async def _ended_cakto_contract(db, tenant_id: UUID, as_of: datetime):
+    """Require the exact paid period of a canceled Barbearia contract."""
+    if os.getenv("ORION_BARBER_PLAN_CYCLE", "0") != "1":
+        return None
+    return (await db.execute(text("""
+        SELECT s.id AS subscription_id,b.external_subscription_id,b.plan_code,p.period_ends_at
+        FROM subscriptions s
+        JOIN orion_cakto_bindings b ON b.tenant_id=s.tenant_id AND b.subscription_id=s.id
+            AND b.external_subscription_id=s.external_subscription_id
+        JOIN plans plan ON plan.id=s.plan_id AND plan.code='orion_'||b.plan_code
+        JOIN orion_confirmed_billing_state p ON p.tenant_id=s.tenant_id
+            AND p.payment_channel='cakto' AND p.order_id=b.last_order_id
+            AND p.paid_at=s.last_verified_payment_at
+        JOIN business_onboarding o ON o.tenant_id=s.tenant_id
+            AND o.configuration->>'niche'='barbearia'
+        WHERE s.tenant_id=:tenant AND s.status='canceled'
+            AND p.hold IS NULL AND p.paid_at<p.period_ends_at AND p.period_ends_at<=:as_of
+            AND (s.grace_until IS NULL OR s.grace_until<=:as_of)
+    """), {"tenant": tenant_id, "as_of": as_of})).mappings().one_or_none()
+
+
+async def _provider_cancellation_verified(db, tenant_id: UUID, candidate, client) -> bool:
+    """Confirm the same terminal provider contract and its original verified order."""
+    from app.cakto_subscription_lifecycle import amount_matches
+
+    external_id = candidate["external_subscription_id"]
+    if not isinstance(external_id, str) or not ORDER_ID.fullmatch(external_id):
+        return False
+    async with asyncio.timeout(7):
+        remote = await client._get("/subscriptions/" + external_id + "/")
+    if (not isinstance(remote, dict) or remote.get("id") != external_id
+            or remote.get("status") != "canceled"
+            or remote.get("recurrence_period") not in (30, "30")
+            or not isinstance(remote.get("parent_order"), str)
+            or not ORDER_ID.fullmatch(remote["parent_order"])
+            or not isinstance(remote.get("offer"), str) or not remote["offer"]):
+        return False
+    amount = (await db.execute(text("""
+        SELECT expected_cents FROM orion_cakto_checkout_intents
+        WHERE tenant_id=:tenant AND plan_code=:plan AND state='verified'
+            AND external_order_id=:order AND offer_id=:offer
+    """), {"tenant": tenant_id, "plan": candidate["plan_code"],
+           "order": remote["parent_order"], "offer": remote["offer"]})).scalar_one_or_none()
+    return amount is not None and amount_matches(remote.get("amount"), amount)
+
+
 async def require_checkout_available(db, tenant_id: UUID, account_id: UUID,
-                                     *, channel="recurring", lock="shared"):
+                                     *, channel="recurring", lock="shared", allow_manual_pix=False):
     """Serialize mutually exclusive purchase channels without changing grants."""
     if channel not in {"recurring", "pix"} or lock not in {"shared", "exclusive"}:
         raise ValueError("Invalid checkout admission context")
@@ -148,7 +194,8 @@ async def require_checkout_available(db, tenant_id: UUID, account_id: UUID,
     manual = state.get("manual_assignment")
     if (state.get("billing") or {}).get("hold") in {"refund_requested", "chargeback"}:
         raise HTTPException(409, "Existe uma análise financeira aberta para esta empresa. Consulte o suporte.")
-    if isinstance(manual, dict) and manual.get("active") is True:
+    if (isinstance(manual, dict) and manual.get("active") is True
+            and not (channel == "pix" and allow_manual_pix)):
         raise HTTPException(409, {"code": "MANUAL_PLAN_ACTIVE", "message":
             "Esta empresa possui uma atribuição manual ativa. Peça ao administrador do Orion para removê-la antes de contratar pela Cakto."})
     if channel == "recurring":
@@ -268,6 +315,18 @@ async def plan_overview(tenant_id: UUID, actor: Actor = Depends(authenticate), r
                 revised["maintenance"] = actor.maintenance
                 if actor.maintenance:
                     revised["trial_eligible"] = False
+                    revised.pop("manual_pix", None)
+                ended = None
+                if (embedded and can_manage and not actor.maintenance
+                        and os.getenv("ORION_BARBER_RECONTRACT_ENABLED", "0") == "1"
+                        and row and row["status"] == "canceled"
+                        and not (effective.get("manual_assignment") or {}).get("active")
+                        and not effective.get("scheduled_manual_assignment")
+                        and not await prepaid_checkout_exists(db, tenant_id)):
+                    ended = await _ended_cakto_contract(db, tenant_id, revised["server_now"])
+                revised["can_recontract"] = ended is not None
+                if ended:
+                    revised["previous_period_ends_at"] = ended["period_ends_at"]
     if trial and trial["status"] == "active" and trial["ends_at"] and (
         trial["ends_at"] <= datetime.now(timezone.utc)
     ):
@@ -333,10 +392,16 @@ async def barber_plan_details(db, tenant, access, can_manage, effective, subscri
             owner = await trial_benefits.verified_trial_owner(db, tenant, access.account_id)
             result["trial_eligible"] = await trial_benefits.eligible(db, tenant, access.account_id, owner)
     if (effective.get("manual_assignment") or {}).get("active"):
+        if can_manage:
+            from app.prepaid_pix_api import manual_pix_options
+
+            options = await manual_pix_options(db, tenant, effective, subscription)
+            if options is not None:
+                result["manual_pix"] = options
         return result
     if subscription and (effective.get("commercial_subscription") or {}).get("cakto_bound"):
         contract = (await db.execute(text("""
-            SELECT min(verified_at) FROM orion_cakto_checkout_intents
+            SELECT max(verified_at) FROM orion_cakto_checkout_intents
             WHERE tenant_id=:tenant AND state='verified'
         """), {"tenant": tenant})).scalar_one_or_none()
         verified_billing = effective.get("billing") or {}
@@ -413,12 +478,11 @@ async def activate_plan_trial(tenant_id: UUID, payload: TrialActivation,
 
 
 @router.get("/api/v1/tenants/{tenant_id}/management/plan-support")
-async def plan_support(tenant_id: UUID, response: Response, actor: Actor = Depends(authenticate),
-                       renewal: bool = False):
+async def plan_support(tenant_id: UUID, response: Response, actor: Actor = Depends(authenticate)):
     await resolve_site_access(actor, tenant_id)
     response.headers["Cache-Control"] = "no-store"
     from app.plan_support import support_url
-    return {"url": await support_url(renewal=renewal)}
+    return {"url": await support_url()}
 
 
 @router.put("/api/v1/tenants/{tenant_id}/management/plan-welcome")
@@ -563,13 +627,16 @@ async def admin_decide_trial(trial_id: UUID, decision: TrialDecision,
     return dict(result)
 
 
-def _replayable_checkout_token(tenant_id: UUID, intent_id: UUID, plan_code: str) -> str:
+def _replayable_checkout_token(tenant_id: UUID, intent_id: UUID, plan_code: str,
+                               *, replaces: str | None = None) -> str:
     """Domain-separated HMAC for repeatable checkout links; never stores the raw token."""
     key = os.getenv("INTEGRATION_FERNET_KEY", "")
     if len(key) < 32:
         raise HTTPException(503, "Proteção do checkout indisponível")
-    body = ("orion-cakto-v1:" + str(tenant_id) + ":" + str(intent_id) + ":" + plan_code).encode()
-    signature = hmac.new(key.encode(), body, hashlib.sha256).digest()
+    body = "orion-cakto-v1:" + str(tenant_id) + ":" + str(intent_id) + ":" + plan_code
+    if replaces is not None:
+        body += ":replace:" + replaces
+    signature = hmac.new(key.encode(), body.encode(), hashlib.sha256).digest()
     return "orion_" + base64.urlsafe_b64encode(signature).decode().rstrip("=")
 
 
@@ -646,7 +713,7 @@ async def start_plan_checkout(tenant_id: UUID, payload: CheckoutChoice,
         raise HTTPException(503, "Checkout seguro não configurado")
     async with support_session_factory()() as db:
         async with db.begin():
-            await require_checkout_available(db, tenant_id, account_id, lock="exclusive")
+            access_state = await require_checkout_available(db, tenant_id, account_id, lock="exclusive")
             if payload.embedded and not await _is_barbershop(db, tenant_id):
                 raise HTTPException(403, "O checkout integrado está disponível na Barbearia.")
             await db.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))"),
@@ -654,8 +721,21 @@ async def start_plan_checkout(tenant_id: UUID, payload: CheckoutChoice,
             subscription = (await db.execute(text("""
                 SELECT status FROM subscriptions WHERE tenant_id=:tenant
             """), {"tenant": tenant_id})).scalar_one_or_none()
+            replaces = None
             if subscription is not None:
-                raise HTTPException(409, "Esta empresa já possui um registro de assinatura. Regularização ou troca exige confirmação específica.")
+                ended = (await _ended_cakto_contract(db, tenant_id, datetime.now(timezone.utc))
+                         if (payload.embedded and subscription == "canceled"
+                             and os.getenv("ORION_BARBER_RECONTRACT_ENABLED", "0") == "1"
+                             and not access_state.get("scheduled_manual_assignment")) else None)
+                if ended is None:
+                    raise HTTPException(409, "A nova contratação fica disponível após o encerramento da assinatura e do período pago.")
+                try:
+                    confirmed = await _provider_cancellation_verified(db, tenant_id, ended, client)
+                except (TimeoutError, httpx.HTTPError, ValueError, RuntimeError):
+                    raise HTTPException(503, "Não foi possível confirmar o encerramento da assinatura agora.") from None
+                if not confirmed:
+                    raise HTTPException(409, "O encerramento da assinatura ainda precisa ser confirmado pela Cakto.")
+                replaces = ended["external_subscription_id"]
             previous = (await db.execute(text("""
                 SELECT id,account_id,plan_code,offer_id,expected_cents,callback_hash,
                        EXISTS(SELECT 1 FROM orion_direct_payment_attempts a WHERE a.intent_id=i.id) AS has_direct_attempt
@@ -671,13 +751,13 @@ async def start_plan_checkout(tenant_id: UUID, payload: CheckoutChoice,
                         or previous["expected_cents"] != plan["price_cents"]):
                     raise HTTPException(409, "Existe uma contratação diferente em andamento. Confirme com o suporte antes de trocar.")
                 intent_id = previous["id"]
-                token = _replayable_checkout_token(tenant_id, intent_id, payload.plan_code)
+                token = _replayable_checkout_token(tenant_id, intent_id, payload.plan_code, replaces=replaces)
                 if not secrets.compare_digest(hashlib.sha256(token.encode()).hexdigest(),
                                                previous["callback_hash"]):
                     raise HTTPException(409, "Uma tentativa anterior precisa de revisão. Entre em contato com o suporte.")
             else:
                 intent_id = uuid4()
-                token = _replayable_checkout_token(tenant_id, intent_id, payload.plan_code)
+                token = _replayable_checkout_token(tenant_id, intent_id, payload.plan_code, replaces=replaces)
                 digest = hashlib.sha256(token.encode()).hexdigest()
                 await db.execute(text("""
                     INSERT INTO orion_cakto_checkout_intents
@@ -862,29 +942,67 @@ async def apply_verified_cakto_payment(event: dict, order: dict,
                 SELECT id,status,external_subscription_id
                 FROM subscriptions WHERE tenant_id=:tenant FOR UPDATE
             """), {"tenant": intent["tenant_id"]})).mappings().first()
-            # Never overwrite a legacy Asaas subscription or another tenant's bill.
-            if current:
-                return "manual_review"
             db_code = CODES[intent["plan_code"]]["db_code"]
             plan_id = (await db.execute(text("""
                 SELECT id FROM plans WHERE code=:code AND active
             """), {"code": db_code})).scalar_one_or_none()
             if plan_id is None:
                 return "manual_review"
-            subscription_row = (await db.execute(text("""
-                INSERT INTO subscriptions
-                  (tenant_id,plan_id,external_subscription_id,status,last_verified_payment_at)
-                VALUES (:tenant,:plan,:external,'active',:paid_at)
-                RETURNING id
-            """), {"tenant": intent["tenant_id"], "plan": plan_id,
-                   "external": subscription_id, "paid_at": paid_at})).scalar_one()
-            await db.execute(text("""
-                INSERT INTO orion_cakto_bindings
-                  (tenant_id,subscription_id,external_subscription_id,plan_code,last_order_id)
-                VALUES (:tenant,:sub,:external,:plan,:order_id)
-            """), {"tenant": intent["tenant_id"], "sub": subscription_row,
-                   "external": subscription_id, "plan": intent["plan_code"],
-                   "order_id": order_id})
+            if current:
+                # Only a replacement-specific hosted intent may rotate the current
+                # projections. Direct payments and grants keep their existing precedence.
+                if direct_attempt or current["status"] != "canceled":
+                    return "manual_review"
+                ended = await _ended_cakto_contract(db, target, paid_at)
+                if ended is None or ended["subscription_id"] != current["id"]:
+                    return "manual_review"
+                token = _replayable_checkout_token(target, intent["id"], intent["plan_code"],
+                                                   replaces=ended["external_subscription_id"])
+                if not secrets.compare_digest(hashlib.sha256(token.encode()).hexdigest(), token_hash):
+                    return "manual_review"
+                try:
+                    access_state = await require_checkout_available(db, target, intent["account_id"],
+                                                                    lock="exclusive")
+                except HTTPException:
+                    return "manual_review"
+                if access_state.get("scheduled_manual_assignment"):
+                    return "manual_review"
+                try:
+                    confirmed = await _provider_cancellation_verified(db, target, ended, cached_cakto_client())
+                except (TimeoutError, httpx.HTTPError, ValueError, RuntimeError):
+                    return "retry_later"
+                if not confirmed:
+                    return "manual_review"
+                await db.execute(text("""
+                    UPDATE subscriptions SET plan_id=:plan,external_subscription_id=:external,
+                        status='active',last_verified_payment_at=:paid_at,trial_ends_at=NULL,
+                        grace_until=NULL,updated_at=now()
+                    WHERE id=:id AND tenant_id=:tenant
+                """), {"tenant": target, "id": current["id"], "plan": plan_id,
+                       "external": subscription_id, "paid_at": paid_at})
+                # A late event with the old external subscription ID no longer
+                # joins this binding. Its signed event and order intent are retained.
+                await db.execute(text("""
+                    UPDATE orion_cakto_bindings SET external_subscription_id=:external,
+                        plan_code=:plan,last_order_id=:order_id,last_verified_at=now(),
+                        provider_checked_at=NULL
+                    WHERE tenant_id=:tenant AND subscription_id=:id
+                """), {"tenant": target, "id": current["id"], "external": subscription_id,
+                       "plan": intent["plan_code"], "order_id": order_id})
+            else:
+                subscription_row = (await db.execute(text("""
+                    INSERT INTO subscriptions
+                      (tenant_id,plan_id,external_subscription_id,status,last_verified_payment_at)
+                    VALUES (:tenant,:plan,:external,'active',:paid_at)
+                    RETURNING id
+                """), {"tenant": target, "plan": plan_id, "external": subscription_id,
+                       "paid_at": paid_at})).scalar_one()
+                await db.execute(text("""
+                    INSERT INTO orion_cakto_bindings
+                      (tenant_id,subscription_id,external_subscription_id,plan_code,last_order_id)
+                    VALUES (:tenant,:sub,:external,:plan,:order_id)
+                """), {"tenant": target, "sub": subscription_row, "external": subscription_id,
+                       "plan": intent["plan_code"], "order_id": order_id})
             await db.execute(text("""
                 UPDATE orion_cakto_checkout_intents
                 SET state='verified',external_order_id=:order_id,verified_at=now()

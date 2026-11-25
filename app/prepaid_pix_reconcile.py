@@ -11,7 +11,7 @@ from sqlalchemy import text
 from app.catalog_api import support_session_factory
 from app.plan_catalog import CODES
 from app.plan_permissions import lock_plan
-from app.prepaid_pix_api import cents,verified_pix_order_binding
+from app.prepaid_pix_api import cents,manual_pix_anchor,verified_pix_order_binding
 from app.plan_management import _ensure_owner
 from fastapi import HTTPException
 
@@ -71,7 +71,8 @@ async def _record(db,order_id,lock=False):
     suffix=" FOR UPDATE" if lock else ""
     return (await db.execute(text("""
         SELECT id,tenant_id,account_id,plan_code,offer_id,expected_cents,
-               callback_hash,external_order_id,state,previous_paid_until,
+               callback_hash,external_order_id,state,previous_paid_until,paid_at,
+               manual_anchor_code,manual_anchor_started_at,manual_anchor_expires_at,
                created_at,expires_at
         FROM orion_prepaid_pix_orders WHERE external_order_id=:order
     """+suffix),{"order":order_id})).mappings().first()
@@ -114,7 +115,12 @@ async def reconcile_prepaid_receipt(event,order):
             # that became effective while a bank confirmation was in flight.
             from app.plan_permissions import plan_state
             effective = await plan_state(db, rec["tenant_id"], lock=None)
-            if (effective.get("manual_assignment") or {}).get("active"):
+            anchor = rec["manual_anchor_expires_at"]
+            if anchor:
+                expected = rec["manual_anchor_code"], rec["manual_anchor_started_at"], anchor
+                if manual_pix_anchor(effective) != expected:
+                    return "manual_review"
+            elif (effective.get("manual_assignment") or {}).get("active"):
                 return "manual_review"
             if (await db.execute(text("""
                 SELECT 1 FROM subscriptions WHERE tenant_id=:tenant
@@ -127,7 +133,11 @@ async def reconcile_prepaid_receipt(event,order):
             if grant and grant["paid_until"]>now and grant["plan_code"]!=rec["plan_code"]:
                 return "manual_review"
             previous=grant["paid_until"] if grant else None
+            if anchor and previous and previous>anchor:
+                return "manual_review"
             start=max(paid,previous) if previous else paid
+            if anchor:
+                start=max(start,anchor)
             end=start+timedelta(days=30)
             await db.execute(text("""
                 INSERT INTO orion_prepaid_pix_access

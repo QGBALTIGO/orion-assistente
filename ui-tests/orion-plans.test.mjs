@@ -33,13 +33,13 @@ function fixture(overrides={},options={}){
    if(path==='/plan-trial'){overview.trial={status:'pending',started_at:null,ends_at:null};return{status:'pending',message:'Solicitação recebida!'};}
    if(path==='/plan-trial/activate'&&options.activateTrial)return options.activateTrial(overview,data);
    if(path==='/plan-support'&&options.support)return options.support();
-   if(path==='/plan-support?renewal=1'&&options.renewalSupport)return options.renewalSupport();
    if(path==='/plan-overview')return overview;
    if(path==='/plan-checkout'&&options.embeddedReply)return await options.embeddedReply(data);
    if(path.startsWith('/plan-checkout?')&&options.embeddedStatus)return options.embeddedStatus;
 
    if(path==='/plan-pix-current'){if(options.currentUnavailable||options.currentUnavailableAfterCharge&&chargeAttempts)throw Error('synthetic current lookup unavailable');return current;}
-   if(path==='/plan-pix-config')return options.pixConfig||{available:false,methods:[],mode:'manual_30_days'};
+   if(path==='/plan-pix-config'||path.startsWith('/plan-pix-config?'))
+    return options.pixConfig||{available:false,methods:[],mode:'manual_30_days'};
    if(path==='/plan-pix-charge' && options.pixConfig?.available){
     const attempt=chargeAttempts++;
     if(attempt<(options.chargeRejections?.length||0)){
@@ -131,19 +131,79 @@ function embeddedReply(data,origin='https://pay.cakto.com.br'){
          plan_code:data.plan_code,monthly_cents:data.expected_cents,status:'pending_payment',intent_id:intent};
 }
 
-test('manual access offers a renewal request without checkout or a payment intent',async()=>{
+test('maintenance shows plan changes without ordering or opening e-mail',async()=>{
  const effective=planState('essencial',{source:'manual',active:true});
- const f=fixture({barbershop:{maintenance:true,period_days:30},effective_plan:effective,embedded_checkout_enabled:true},{
-  renewalSupport:()=>({url:'mailto:suporte@example.test?body=Renovar'})});
+ const f=fixture({barbershop:{maintenance:true,period_days:30},effective_plan:effective,embedded_checkout_enabled:true});
  try{
   assert.match(f.root.querySelector('.op-essencial').textContent,/Plano atual/);
   assert.equal(f.root.querySelector('[data-op-checkout]'),null);
   assert.doesNotMatch(f.root.textContent,/Ver checkout|Prévia/);
-  const button=f.root.querySelector('[data-op-renew-request]');
-  assert.equal(button.textContent,'Solicitar renovação');
+  const button=f.root.querySelector('[data-op-change-plan="elite"]');
+  assert.equal(button.textContent,'Mudar para Elite');
   button.click();await tick();
-  assert.equal(f.root.querySelector('.op-renew-result a').protocol,'mailto:');
-  assert.deepEqual(f.calls,[{path:'/plan-support?renewal=1',method:'GET',data:undefined}]);
+  const dialog=f.root.querySelector('dialog');
+  assert.match(dialog.textContent,/Mudar para Elite.*conta do titular/);
+  assert.equal(dialog.querySelector('a'),null);
+  assert.deepEqual(f.calls,[]);
+ }finally{f.close();}
+});
+
+test('a finite manual term can buy its next period or choose a different tier without opening email',async()=>{
+ const starts='2027-02-25T21:19:00Z';
+ const manual={plan_code:'profissional',active:true,expires_at:starts};
+ const effective=planState('profissional',{source:'manual',active:true,valid_until:starts,manual_assignment:manual,
+  limits:{active_professionals:4,max_professionals:6}});
+ const f=fixture({barbershop:{period_days:30,timezone:'America/Cuiaba',manual_pix:{available:true,blocked_plan_codes:['essencial']}},
+  effective_plan:effective,checkout_enabled:true,embedded_checkout_enabled:true},{
+  pixConfig:{available:true,methods:['pix'],mode:'manual_30_days',starts_at:starts}});
+ try{
+  assert.equal(f.root.querySelector('.op-profissional [data-op-manual-renewal]').textContent,'Renovar antecipadamente');
+  const lower=f.root.querySelector('[data-op-change-plan="essencial"]');
+  lower.click();await tick();
+  assert.match(f.root.querySelector('dialog').textContent,/reduza a equipe para 2 profissionais/);
+  f.root.querySelector('[data-op-close-change]').click();
+  const upper=f.root.querySelector('.op-elite [data-op-manual-renewal]');
+  assert.equal(upper.textContent,'Mudar para Elite');
+  upper.click();await tick();
+  const dialog=f.root.querySelector('dialog');
+  assert.match(dialog.querySelector('[data-pix-terms]').textContent,/25 de fev\. de 2027.*O próximo período começa/);
+  assert.deepEqual(f.calls.map(call=>call.path),['/plan-pix-current','/plan-pix-config?manual_renewal=1&plan_code=elite']);
+  fillPix(f,dialog);await tick();
+  assert.equal(f.calls[2].data.manual_renewal,true);
+  assert.equal(f.calls[2].data.manual_expected_start,starts);
+  assert.equal(f.calls[2].data.plan_code,'elite');
+  assert.equal(f.calls[2].data.expected_cents,13990);
+ }finally{f.close();}
+});
+
+test('a paid recurring subscription can compare plan changes without starting another contract',async()=>{
+ const sub={code:'orion_essencial',status:'active',monthly_cents:2990};
+ const state=planState('essencial',{source:'cakto',active:true,valid_until:'2027-03-01T12:00:00Z',
+  commercial_subscription:{cakto_bound:true}});
+ const f=fixture({barbershop:{period_days:30},subscription:sub,effective_plan:state,embedded_checkout_enabled:true});
+ try{
+  assert.equal(f.root.querySelector('[data-op-checkout]'),null);
+  f.root.querySelector('[data-op-change-plan="elite"]').click();
+  const dialog=f.root.querySelector('dialog');
+  assert.match(dialog.textContent,/período pago terminar/);
+  assert.equal(dialog.querySelector('a').hostname,'assinatura.cakto.com.br');
+  assert.deepEqual(f.calls,[]);
+ }finally{f.close();}
+});
+
+test('a confirmed ended recurrence opens a new checkout on a new tier inside Orion',async()=>{
+ const sub={code:'orion_essencial',status:'canceled',monthly_cents:2990};
+ const state=planState('none',{source:'none',active:false,commercial_subscription:{cakto_bound:true}});
+ const f=fixture({barbershop:{period_days:30,can_recontract:true},subscription:sub,effective_plan:state,
+  embedded_checkout_enabled:true},{embeddedReply});
+ try{
+  assert.equal(f.root.querySelector('.op-essencial [data-op-checkout]').textContent,'Renovar Essencial');
+  const upper=f.root.querySelector('.op-elite [data-op-checkout]');
+  assert.equal(upper.textContent,'Mudar para Elite');
+  upper.click();await tick();
+  assert.equal(new URL(f.root.querySelector('iframe').src).pathname,'/'+checkoutIds.elite);
+  assert.equal(f.calls.length,1);
+  assert.equal(f.calls[0].data.plan_code,'elite');
  }finally{f.close();}
 });
 

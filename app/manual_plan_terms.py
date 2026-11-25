@@ -59,8 +59,11 @@ async def preview(db, tenant_id, previous, plan_code, duration):
                 WHERE tenant_id=:tenant AND state IN ('reserved','created','needs_review'))
             OR EXISTS (SELECT 1 FROM orion_cakto_checkout_intents
                 WHERE tenant_id=:tenant AND (state='needs_review' OR state='pending' AND expires_at>now()))
+            OR (manual_plan_code IS NOT NULL AND manual_expires_at>now()
+                AND EXISTS (SELECT 1 FROM orion_prepaid_pix_access
+                    WHERE tenant_id=:tenant AND paid_until>now()))
             AS payment_in_progress
-        FROM tenants WHERE id=:tenant
+        FROM tenants LEFT JOIN tenant_plan_controls c ON c.tenant_id=tenants.id WHERE tenants.id=:tenant
     """), {"tenant": tenant_id})).mappings().one()
     if clock["payment_in_progress"]:
         raise HTTPException(409, "Confira a contratação que já está em andamento antes de liberar uma vigência manual.")

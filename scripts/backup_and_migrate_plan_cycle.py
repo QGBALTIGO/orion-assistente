@@ -18,7 +18,8 @@ from scripts.backup_and_migrate_subscription_audience import audience_contract, 
 
 
 SOURCE = "0093_dental_reception"
-TARGET = "0097_confirmed_billing_state"
+PREVIOUS = "0097_confirmed_billing_state"
+TARGET = "0098_manual_pix_successor"
 CONTRACT = """
 SELECT count(*)=3 AND bool_and(c.relrowsecurity AND c.relforcerowsecurity
     AND NOT has_table_privilege('app_runtime',c.oid,'SELECT,INSERT,UPDATE,DELETE')
@@ -26,6 +27,10 @@ SELECT count(*)=3 AND bool_and(c.relrowsecurity AND c.relforcerowsecurity
     AND NOT has_table_privilege('app_support',c.oid,'DELETE,TRUNCATE'))
     AND EXISTS (SELECT 1 FROM pg_trigger WHERE tgname='manual_term_required' AND tgenabled='O'
                 AND tgrelid='public.tenant_plan_controls'::regclass)
+    AND EXISTS (SELECT 1 FROM pg_trigger WHERE tgname='zz_preserve_manual_pix_term' AND tgenabled='O'
+                AND tgrelid='public.tenant_plan_controls'::regclass)
+    AND EXISTS (SELECT 1 FROM pg_constraint WHERE conname='ck_manual_pix_anchor' AND convalidated
+                AND conrelid='public.orion_prepaid_pix_orders'::regclass)
     AND coalesce(has_function_privilege('app_runtime',to_regprocedure('public.orion_manual_schedule(uuid)'),'EXECUTE'),false)
     AND coalesce(has_function_privilege('app_runtime',to_regprocedure('public.orion_confirmed_billing_snapshot(uuid)'),'EXECUTE'),false)
 FROM pg_class c WHERE c.oid IN (
@@ -98,18 +103,18 @@ def main():
             raise RuntimeError("plan_cycle_database_scope_mismatch")
         with release_lock(raw):
             current = migrated_version(raw)
-            if current not in {SOURCE, TARGET} or not preserved_contract(raw) or not audience_contract(raw):
+            if current not in {SOURCE, PREVIOUS, TARGET} or not preserved_contract(raw) or not audience_contract(raw):
                 raise RuntimeError("plan_cycle_unapproved_predecessor")
             baseline = aggregate_baseline(raw)
             print("orion_plan_cycle_baseline " + " ".join(f"{field}={count}" for field, count in baseline.items()), flush=True)
             if "--audit" in sys.argv:
                 return 0
-            if current == SOURCE:
+            if current != TARGET:
                 with tempfile.TemporaryDirectory(prefix="orion-plan-cycle-") as folder:
                     perform_backup(url, storage_values(), Path(folder) / "backup.dump",
-                                   backup_context="orion-barber-plan-cycle", schema_revision=SOURCE,
+                                   backup_context="orion-barber-plan-cycle", schema_revision=current,
                                    preserve_ownership=True)
-                if migrated_version(raw) != SOURCE:
+                if migrated_version(raw) != current:
                     raise RuntimeError("plan_cycle_predecessor_changed_after_backup")
                 subprocess.run([sys.executable, "-m", "alembic", "upgrade", TARGET],
                                env={**os.environ, "ORION_MIGRATION_SWITCH_ROLE": "1"},
@@ -117,6 +122,9 @@ def main():
             if migrated_version(raw) != TARGET or not read_contract(raw, CONTRACT):
                 raise RuntimeError("plan_cycle_schema_not_ready")
         print("orion_plan_cycle_schema_ready", flush=True)
+        if os.getenv("ORION_BARBER_MANUAL_PIX_ENABLED", "0") == "1":
+            subprocess.run([sys.executable, "-m", "scripts.probe_prepaid_pix_read_only"],
+                           timeout=60, check=True)
         return 0
     except Exception:
         print("orion_plan_cycle_predeploy_failed_closed", file=sys.stderr, flush=True)

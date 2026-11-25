@@ -336,18 +336,70 @@
  .op-payment-method,.op-checkout-dialog .op-payment-field input{transition:none}
 }
 
-.op-embedded-checkout {
-  width: min(920px, calc(100vw - 24px));
+.op-checkout-dialog.op-embedded-checkout {
+  position: fixed;
+  inset: 0;
+  width: min(1180px, calc(100% - 40px));
   max-width: none;
-  height: min(830px, calc(100dvh - 24px));
+  height: calc(100vh - 40px);
+  height: calc(100dvh - 40px);
   max-height: none;
-  padding: 16px;
+  padding: 0 !important;
   overflow: hidden;
 }
-.op-embedded-checkout[open] { display: flex; flex-direction: column; gap: 10px; }
-.op-embedded-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
-.op-embedded-header h2, .op-embedded-header p { margin: 0; }
-.op-embedded-header p { margin-top: 4px; }
-.op-embedded-checkout .op-payment-banner { margin: 0; }
+.op-embedded-checkout[open] { display: flex; flex-direction: column; }
+.op-embedded-header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--os-border);
+}
+.op-embedded-header > div { min-width: 0; }
+.op-embedded-header h2 {
+  margin: 0;
+  font: 650 19px/1.25 var(--os-display);
+  overflow-wrap: anywhere;
+}
+.op-embedded-header p { margin: 4px 0 0; color: var(--os-muted); font-size: 13px; line-height: 1.4; }
+.op-embedded-header [data-embedded-close] { flex: none; }
+.op-embedded-checkout .op-payment-banner { margin: 12px 20px; }
+.op-change-dialog { width: min(500px, calc(100% - 32px)); }
+.op-change-dialog h2 { margin: 0 0 8px; font: 650 22px/1.25 var(--os-display); }
+.op-change-dialog p { margin: 0 0 14px; color: var(--os-muted); line-height: 1.5; }
+.op-change-dialog .op-payment-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
 .op-embedded-checkout [hidden] { display: none; }
-.op-cakto-frame { width: 100%; min-height: 0; flex: 1; border: 0; border-radius: 12px; background: #fff; }
+.op-cakto-frame {
+  display: block;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  border: 0;
+  background: #fff;
+}
+@media (max-width: 767px), (max-height: 540px) {
+  .op-checkout-dialog.op-embedded-checkout {
+    width: 100%;
+    height: 100vh;
+    height: 100dvh;
+    border: 0;
+    border-radius: 0;
+  }
+  .op-embedded-header {
+    padding: max(8px, env(safe-area-inset-top, 0px))
+      max(12px, env(safe-area-inset-right, 0px)) 8px
+      max(12px, env(safe-area-inset-left, 0px));
+  }
+  .op-embedded-header h2 { font-size: 16px; }
+  .op-embedded-header p { font-size: 12px; }
+  .op-embedded-header [data-embedded-close] { padding-inline: 10px; }
+  .op-embedded-checkout .op-payment-banner { margin: 8px 12px; }
+  .op-cakto-frame {
+    width: auto;
+    margin: 0 env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+  }
+}
