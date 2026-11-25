@@ -52,13 +52,16 @@ RETAILERS = (
               shorts=("amzn.to", "a.co", "amzon.promo", "link.amazon", "amzlinks.in")),
     _retailer("mercado_livre", "Mercado Livre", "mercadolivre.com.br", "produto.mercadolivre.com.br",
               shorts=("mercadolivre.com", "www.mercadolivre.com", "meli.la", "meli.promo")),
-    _retailer("shopee", "Shopee", "shopee.com.br", "m.shopee.com.br", shorts=("s.shopee.com.br", "shope.ee")),
+    _retailer("shopee", "Shopee", "shopee.com.br", "m.shopee.com.br",
+              shorts=("s.shopee.com.br", "shope.ee", "shopee.promo")),
     _retailer("aliexpress", "AliExpress", "aliexpress.com", "pt.aliexpress.com", "m.aliexpress.com",
               "m.pt.aliexpress.com", shorts=("s.click.aliexpress.com", "a.aliexpress.com")),
     _retailer("magalu", "Magalu", "magazineluiza.com.br", "m.magazineluiza.com.br",
-              "magazinevoce.com.br", "www.magazinevoce.com.br"),
-    _retailer("shein", "SHEIN", "br.shein.com", "shein.com", "www.shein.com"),
-    _retailer("temu", "Temu", "temu.com"),
+              "magazinevoce.com.br", "www.magazinevoce.com.br",
+              shorts=("divulgador.magalu.com", "magalu.promo", "magazineluiza.onelink.me")),
+    _retailer("shein", "SHEIN", "br.shein.com", "shein.com", "www.shein.com", "m.shein.com",
+              shorts=("onelink.shein.com", "shein.top")),
+    _retailer("temu", "Temu", "temu.com", shorts=("share.temu.com", "temu.to")),
     _retailer("americanas", "Americanas", "americanas.com.br"),
     _retailer("casas_bahia", "Casas Bahia", "casasbahia.com.br"),
     _retailer("ponto", "Ponto", "pontofrio.com.br", "ponto.com.br", "www.ponto.com.br"),
@@ -84,7 +87,7 @@ RETAILERS = (
     _retailer("mobly", "Mobly", "mobly.com.br"),
     _retailer("leroy_merlin", "Leroy Merlin", "leroymerlin.com.br"),
     _retailer("webcontinental", "Webcontinental", "webcontinental.com.br"),
-    _retailer("natura", "Natura", "natura.com.br"),
+    _retailer("natura", "Natura", "natura.com.br", shorts=("natura.promo",)),
     _retailer("boticario", "O Boticário", "boticario.com.br"),
     _retailer("beleza_na_web", "Beleza na Web", "belezanaweb.com.br"),
     _retailer("petz", "Petz", "petz.com.br"),
@@ -92,7 +95,7 @@ RETAILERS = (
 )
 BY_ID = {retailer.id: retailer for retailer in RETAILERS}
 BY_HOST = {host: retailer for retailer in RETAILERS for host in retailer.hosts}
-AFFILIATE_NETWORK_HOSTS = frozenset({"awin1.com", "www.awin1.com", "tidd.ly"})
+AFFILIATE_NETWORK_HOSTS = frozenset({"awin1.com", "www.awin1.com", "tidd.ly", "ofertou.ai"})
 # C&A and Electrolux expose product JSON-LD in public pages around 6 MB.
 # Keep a finite bound, with a small concurrency ceiling for those storefronts.
 HTML_LIMIT = 8_000_000
@@ -284,7 +287,7 @@ async def _fetch_document(url: str, retailer: Retailer) -> Document:
                     return result(response, stop_reason="blocked")
         target = None
         if response.status in {301, 302, 303, 307, 308} and response.headers.get("location"):
-            target = urljoin(url, response.headers["location"])
+            target = _redirect_target(url, response.headers["location"], retailer.id)
         elif response.status == 200 and urlsplit(url).hostname in retailer.short_domains:
             content_type = response.headers.get("content-type", "").partition(";")[0].lower()
             if content_type in {"text/html", "application/xhtml+xml"}:
@@ -294,7 +297,7 @@ async def _fetch_document(url: str, retailer: Retailer) -> Document:
                 metadata = _Metadata()
                 metadata.feed(markup)
                 if metadata.refresh:
-                    target = urljoin(url, metadata.refresh)
+                    target = _redirect_target(url, metadata.refresh, retailer.id)
         if target:
             target = checked_product_url(target, retailer.id)
             stop_reason = _restricted_route(target)
@@ -341,6 +344,7 @@ class _Metadata(HTMLParser):
         self.scripts: list[str] = []
         self.canonical: str | None = None
         self.refresh: str | None = None
+        self.product_targets: list[str] = []
         self.title = ""
         self._title = False
         self._script: list[str] | None = None
@@ -359,6 +363,10 @@ class _Metadata(HTMLParser):
                     self.refresh = match[1]
         elif tag == "link" and "canonical" in (attrs.get("rel") or "").lower().split():
             self.canonical = attrs.get("href")
+        elif tag == "input" and attrs.get("id") == "url" and len(self.product_targets) < 2:
+            # A public SHEIN onelink landing declares its web destination here.
+            # Keep a second occurrence so ambiguous declarations are rejected.
+            self.product_targets.append((attrs.get("value") or "")[:4097])
         elif tag == "title":
             self._title = True
         elif tag == "script" and (attrs.get("type") or "").lower().partition(";")[0] == "application/ld+json":
@@ -407,11 +415,26 @@ def _restricted_route(url):
     path = urlsplit(url).path
     for _ in range(2):
         path = unquote(path)
-    if re.search(r"(?:^|/)(?:ap/(?:signin|cvf)|login|signin|sign-in|auth|captcha|challenge|webdevice|config)(?:/|;|$)", path, re.I):
+    if re.search(r"(?:^|/)(?:ap/(?:signin|cvf)|login|signin|sign-in|auth|captcha|challenge|webdevice|config|az-request-verify)(?:/|;|$)", path, re.I):
         return "blocked"
     if re.search(r"(?:^|/)(?:error|errors)(?:/|;|$)", path, re.I):
         return "unavailable"
     return None
+
+
+def _redirect_target(current: str, location: str, platform: str | None = None) -> str:
+    """Use a declared public web fallback, never execute an app intent.
+
+    https://developer.chrome.com/docs/android/intents documents the explicit
+    S.browser_fallback_url extra. The same strict destination and retailer
+    checks apply to it as to an ordinary HTTP redirect.
+    """
+    if location.startswith("intent:"):
+        from .link_input import intent_fallback_url
+        target = intent_fallback_url(location)
+    else:
+        target = _https_url(urljoin(current, location))
+    return checked_product_url(target, platform) if platform else target
 
 
 def _blocked_markup(markup, retailer, metadata=None, *, failed_response=False):
@@ -492,15 +515,23 @@ def _images(values, url):
     return result[:8]
 
 
+def _amazon_asin(url):
+    """Read the SKU from the public desktop, mobile and legacy product paths."""
+    match = re.search(r"/(?:dp|gp/product|gp/aw/d|exec/obidos/ASIN)/([A-Za-z0-9]{10})(?:/|$)",
+                      unquote(urlsplit(url).path), re.I)
+    return match[1].upper() if match else None
+
+
 def _identity(retailer: Retailer, url: str, product=None):
     parts = urlsplit(url)
     path = unquote(parts.path)
     if retailer.id == "shopee" and (ids := product_ids(url)):
         return f"shopee:{ids[0]}:{ids[1]}"
+    if retailer.id == "amazon" and (asin := _amazon_asin(url)):
+        return f"amazon:{asin}"
     patterns = {
-        "amazon": r"/(?:dp|gp/product)/([A-Za-z0-9]{10})(?:/|$)",
         "mercado_livre": r"\b(MLB-?\d+)\b", "aliexpress": r"/item/(\d+)\.html",
-        "shein": r"-p-(\d+)\.html", "temu": r"-g-(\d+)\.html",
+        "shein": r"-p-(\d+)(?:-cat-\d+)?\.html", "temu": r"-g-(\d+)\.html",
         "kabum": r"/produto/(\d+)(?:/|$)",
     }
     match = re.search(patterns.get(retailer.id, r"(?!)"), path, re.I)
@@ -538,37 +569,170 @@ def _types(node):
     return {value.rsplit("/", 1)[-1] for value in (values if isinstance(values, list) else [values]) if isinstance(value, str)}
 
 
-def _product_nodes(scripts):
-    products = []
+def _product_nodes(scripts, base_url=""):
+    """Expand references defined in this document, never fetch an @id/context.
+
+    Only page/graph roots are product candidates. Recommendations and ItemList
+    children are not traversed. Variant/Offer nodes may be referenced by the
+    selected product without becoming unrelated product candidates themselves.
+    """
+    roots, definitions, conflicts = [], {}, set()
+    containers = {"@graph", "mainEntity", "about"}
+    properties = {"offers", "hasVariant", "priceSpecification", "aggregateRating",
+                  "brand", "image", "seller", "itemOffered"}
+    remaining = 2000
+
+    def reference(value):
+        return urljoin(base_url, value) if isinstance(value, str) and 0 < len(value) <= 4096 else None
+
     for script in scripts:
         try:
             root = json.loads(script)
         except (ValueError, RecursionError):
             continue
-        stack = [(root, 0)]
-        count = 0
-        while stack and count < 2000:
-            node, depth = stack.pop()
-            count += 1
+        stack = [(root, 0, True)]
+        while stack and remaining > 0:
+            node, depth, candidate = stack.pop()
+            remaining -= 1
             if depth > 16:
                 continue
             if isinstance(node, list):
-                stack.extend((child, depth + 1) for child in node[:100])
+                stack.extend((child, depth + 1, candidate) for child in reversed(node[:100]))
             elif isinstance(node, dict):
-                if _types(node) & {"Product", "ProductGroup"}:
-                    products.append(node)
-                # Never treat a recommendation/carousel/list item as the main
-                # product. These are the standard page/graph containers.
-                for key in ("@graph", "mainEntity", "about"):
+                if candidate:
+                    roots.append(node)
+                ident = reference(node.get("@id"))
+                if ident and len(node) > 1 and ident not in conflicts:
+                    previous = definitions.get(ident, {})
+                    if any(previous[key] != node[key] for key in previous.keys() & node.keys()):
+                        conflicts.add(ident)
+                        definitions.pop(ident, None)
+                    else:
+                        definitions[ident] = {**previous, **node}
+                for key in containers | properties:
                     if key in node:
-                        stack.append((node[key], depth + 1))
+                        stack.append((node[key], depth + 1, key in containers))
+
+    budget = [5000]
+
+    def expand(node, seen=frozenset(), depth=0):
+        budget[0] -= 1
+        if budget[0] < 0 or depth > 16:
+            return None
+        if isinstance(node, list):
+            return [expand(child, seen, depth + 1) for child in node[:100]]
+        if not isinstance(node, dict):
+            return node
+        ident = reference(node.get("@id"))
+        if ident and (ident in seen or ident in conflicts):
+            return {"@id": node["@id"]}
+        if ident in definitions:
+            node = {**definitions[ident], **node}
+        result = dict(node)
+        branch = seen | {ident} if ident else seen
+        for key in containers | properties:
+            if key in result:
+                result[key] = expand(result[key], branch, depth + 1)
+        return result
+
+    products = []
+    for root in roots:
+        definition = definitions.get(reference(root.get("@id")), {})
+        if not (_types(root) | _types(definition)) & {"Product", "ProductGroup"}:
+            continue
+        node = expand(root)
+        if isinstance(node, dict) and _types(node) & {"Product", "ProductGroup"} and node not in products:
+            products.append(node)
     return products
+
+
+def _semantic_query(url):
+    return sorted((key, value) for key, value in parse_qsl(urlsplit(url).query, keep_blank_values=True, max_num_fields=100)
+                  if not key.lower().startswith(("utm_", "aff_", "matt_"))
+                  and key.lower() not in {"tag", "spm", "affiliate", "linkcode", "linkid", "ref", "ref_",
+                                          "promoter_id", "partner_id", "url_from", "onelink", "requestid", "campaign_id"})
+
+
+def _product_urls(product, base, retailer, *, graph_fragments=True):
+    for key in ("url", "mainEntityOfPage", "@id"):
+        value = product.get(key)
+        if isinstance(value, dict):
+            value = value.get("@id") or value.get("url")
+        if isinstance(value, str):
+            if not graph_fragments and key == "@id" and value.startswith("#"):
+                return []
+            try:
+                candidate = checked_product_url(urljoin(base, value), retailer.id)
+                # An explicit URL takes precedence over a symbolic graph @id;
+                # #red/#blue identify nodes, not the currently requested URL.
+                return [candidate]
+            except (ProviderError, ValueError):
+                return []
+    return []
+
+
+def _same_product_url(first, second):
+    a, b = urlsplit(first), urlsplit(second)
+    return (a.hostname.removeprefix("www."), unquote(a.path).rstrip("/"), _semantic_query(first)) == (
+        b.hostname.removeprefix("www."), unquote(b.path).rstrip("/"), _semantic_query(second))
+
+
+def _selected_variant(product, url, retailer, *, allow_selectors=True):
+    variants = product.get("hasVariant")
+    variants = [row for row in (variants if isinstance(variants, list) else [variants])[:100]
+                if isinstance(row, dict) and "Product" in _types(row)]
+    matches = [row for row in variants if any(_same_product_url(candidate, url)
+               for candidate in _product_urls(row, url, retailer, graph_fragments=False))]
+    selector_items = [(key.lower(), value) for key, value in _semantic_query(url)
+                      if key.lower() in {"skuid", "sku", "variant", "variantid", "productid"}]
+    selectors = dict(selector_items)
+    ambiguous = any(value != selectors[key] for key, value in selector_items)
+    fields = {"skuid": ("sku", "skuId"), "sku": ("sku",), "variant": ("sku", "productID", "variantId"),
+              "variantid": ("variantId", "sku", "productID"), "productid": ("productID", "sku")}
+    if not matches and selectors and allow_selectors and not ambiguous:
+        matches = [row for row in variants if all(any(isinstance(row.get(field), (str, int))
+                   and not isinstance(row.get(field), bool) and str(row[field]) == value for field in fields[key])
+                   for key, value in selectors.items())]
+    if len(matches) != 1:
+        return None
+    variant = matches[0]
+    # Price/image/availability are deliberately not inherited from the group:
+    # they can describe a different colour, size, seller or default variant.
+    common = {key: product[key] for key in ("name", "brand", "category", "description") if key in product}
+    selected = {**common, **variant}
+    selected["_selected_variant"] = {key: _text(variant.get(key), 120) for key in ("sku", "productID", "name", "color", "size")
+                                     if _text(variant.get(key), 120)}
+    return selected
+
+
+def _variant_requested(product, url):
+    """Recognize a selection, without mistaking arbitrary tracking for a SKU."""
+    if "ProductGroup" not in _types(product) or not product.get("hasVariant"):
+        return False
+    requested = {key.lower() for key, _ in _semantic_query(url)}
+    if requested & {"skuid", "sku", "variant", "variantid", "productid"}:
+        return True
+    variants = product.get("hasVariant")
+    retailer = retailer_for_url(url)
+    for variant in (variants if isinstance(variants, list) else [variants])[:100]:
+        if not isinstance(variant, dict):
+            continue
+        dimensions = {key for key in ("color", "size", "material", "pattern", "model") if variant.get(key) is not None}
+        for candidate in _product_urls(variant, url, retailer, graph_fragments=False):
+            dimensions.update(key.lower() for key, _ in _semantic_query(candidate))
+        if requested & dimensions:
+            return True
+    return False
 
 
 def _matching_product(products, urls, retailer):
     matching = []
     unlocated = []
-    targets = {_identity(retailer, url) for url in urls}
+    targets = [_identity(retailer, url) for url in urls]
+    if ":url:" not in targets[0]:
+        # A canonical parent/other SKU cannot authorize extracting that SKU's
+        # price when the requested URL already identifies a concrete product.
+        targets = [value for value in targets if value == targets[0]]
     # Carrefour's public page route identifies the SKU while its JSON-LD @id
     # uses a different product slug/ID. Match the explicit SKU, not any related
     # product merely because it is the only JSON-LD object on the page.
@@ -578,27 +742,51 @@ def _matching_product(products, urls, retailer):
             if match := re.fullmatch(r"/produto/[^/]+-(\d+)/?", urlsplit(url).path):
                 page_skus.add(match[1])
     for product in products:
-        candidate = product.get("url") or product.get("mainEntityOfPage") or product.get("@id")
-        if isinstance(candidate, dict):
-            candidate = candidate.get("@id") or candidate.get("url")
-        if isinstance(candidate, str):
-            try:
-                candidate = checked_product_url(urljoin(urls[0], candidate), retailer.id)
-                if _identity(retailer, candidate) in targets or str(product.get("sku")) in page_skus:
-                    matching.append(product)
-            except (ProviderError, ValueError):
-                continue
-        else:
+        candidates = _product_urls(product, urls[0], retailer)
+        associated = (any(_identity(retailer, candidate) in targets for candidate in candidates)
+                      or any(_same_product_url(urlunsplit(urlsplit(candidate)._replace(query="")),
+                                               urlunsplit(urlsplit(urls[0])._replace(query=""))) for candidate in candidates)
+                      or not candidates and len(products) == 1)
+        if variant := _selected_variant(product, urls[0], retailer, allow_selectors=associated):
+            matching.append((50, variant))
+        if candidates:
+            score = 0
+            for candidate in candidates:
+                if _same_product_url(candidate, urls[0]):
+                    score = max(score, 40)
+                elif _identity(retailer, candidate) == targets[0]:
+                    # An explicit contradictory selection is not the requested SKU.
+                    query, actual = dict(_semantic_query(candidate)), dict(_semantic_query(urls[0]))
+                    if not any(actual[key] != value for key, value in query.items() if key in actual):
+                        score = max(score, 30)
+                elif _identity(retailer, candidate) in targets[1:]:
+                    score = max(score, 20)
+            if str(product.get("sku")) in page_skus:
+                score = max(score, 30)
+            if score:
+                matching.append((score, product))
+        elif not any(product.get(key) for key in ("url", "mainEntityOfPage", "@id")):
             unlocated.append(product)
-    return matching[0] if matching else (unlocated[0] if len(products) == len(unlocated) == 1 else None)
+    if matching:
+        score = max(value[0] for value in matching)
+        winners = []
+        for priority, product in matching:
+            if priority == score and product not in winners:
+                winners.append(product)
+        return winners[0] if len(winners) == 1 else None
+    return unlocated[0] if len(products) == len(unlocated) == 1 else None
 
 
 def _price_fields(product, url=None):
     offers = product.get("offers")
+    if url and _variant_requested(product, url):
+        # A request for a concrete variant must not silently fall back to the
+        # cheapest price/range of the group when that variant was not resolved.
+        return {"price": None, "price_max": None, "currency": None, "availability": None}
     if not offers and "ProductGroup" in _types(product):
         variants = product.get("hasVariant")
         variants = variants if isinstance(variants, list) else []
-        selected = next((value for key, value in parse_qsl(urlsplit(url or "").query) if key == "skuId"), None)
+        selected = next((value for key, value in parse_qsl(urlsplit(url or "").query) if key.lower() in {"skuid", "sku", "variant", "variantid"}), None)
         offers = []
         for variant in variants[:100]:
             if not isinstance(variant, dict) or (selected is not None and str(variant.get("sku")) != selected):
@@ -613,8 +801,12 @@ def _price_fields(product, url=None):
     for offer in offers[:100]:
         if not isinstance(offer, dict):
             continue
+        if _types(offer) and not _types(offer) & {"Offer", "AggregateOffer"}:
+            continue
         specification = offer.get("priceSpecification")
         specification = specification if isinstance(specification, dict) else {}
+        if str(specification.get("priceType", "")).rsplit("/", 1)[-1] == "ListPrice":
+            specification = {}
         currency = _currency(offer.get("priceCurrency") or specification.get("priceCurrency"))
         if currency:
             currencies.add(currency)
@@ -686,15 +878,16 @@ class _AmazonProductDOM(HTMLParser):
                 frame[3]["text"] = (frame[3]["text"] + value)[:2000]
 
 
-def _amazon_fields(markup, url):
-    asin = re.search(r"/(?:dp|gp/product)/([A-Za-z0-9]{10})(?:/|$)", urlsplit(url).path)
+def _amazon_fields(markup, url, parser=None):
+    asin = _amazon_asin(url)
     if not asin:
         return {}
-    parser = _AmazonProductDOM()
-    parser.feed(markup)
+    if parser is None:
+        parser = _AmazonProductDOM()
+        parser.feed(markup)
     nodes = parser.nodes
     page_asin = nodes.get("ASIN", {}).get("attrs", {}).get("value")
-    if page_asin and page_asin.upper() != asin[1].upper():
+    if page_asin and page_asin.upper() != asin:
         return {}
     values = {}
     if title := _text(nodes.get("productTitle", {}).get("text")):
@@ -734,6 +927,22 @@ def _amazon_fields(markup, url):
     return values
 
 
+def _shein_landing_product(metadata, url, retailer):
+    if retailer.id != "shein" or urlsplit(url).hostname != "onelink.shein.com" or len(metadata.product_targets) != 1:
+        return None
+    target = metadata.product_targets[0]
+    try:
+        parts = urlsplit(target)
+        if parts.scheme == "http" and parts.netloc == "br.shein.com":
+            target = urlunsplit(parts._replace(scheme="https"))
+        target = checked_product_url(target, "shein")
+        if urlsplit(target).hostname == "br.shein.com" and re.fullmatch(r"shein:\d+", _identity(retailer, target)):
+            return target
+    except (ProviderError, ValueError):
+        pass
+    return None
+
+
 def parse_html_offer(markup: str, url: str, retailer: Retailer | None = None):
     url = checked_product_url(url)
     retailer = retailer or retailer_for_url(url)
@@ -742,18 +951,33 @@ def parse_html_offer(markup: str, url: str, retailer: Retailer | None = None):
     row = _base_offer(retailer, url)
     if _blocked_markup(markup, retailer, metadata):
         return _finish(row, "public_page", status="blocked", reason="A loja pediu login ou uma verificação de acesso. Preencha os dados do produto na revisão.", code="blocked")
-    canonical = metadata.canonical or metadata.first("og:url")
+    amazon_parser = None
+    if retailer.id == "amazon" and (requested_asin := _amazon_asin(url)):
+        amazon_parser = _AmazonProductDOM()
+        amazon_parser.feed(markup)
+        page_asin = amazon_parser.nodes.get("ASIN", {}).get("attrs", {}).get("value")
+        if page_asin and page_asin.upper() != requested_asin:
+            # Neither JSON-LD nor global OG metadata may override an explicit
+            # main-product SKU contradicting the requested product.
+            return _finish(row, "public_page", status="not_product",
+                           reason="A loja retornou um produto diferente desse link. Confira o endereço.", code="product_mismatch")
+    landing_product = _shein_landing_product(metadata, url, retailer)
+    canonical = landing_product or metadata.canonical or metadata.first("og:url")
     if canonical:
         try:
             canonical = checked_product_url(urljoin(url, canonical), retailer.id)
         except ProviderError:
             canonical = None
-    product = _matching_product(_product_nodes(metadata.scripts), [url, *([canonical] if canonical else [])], retailer)
+    product = _matching_product(_product_nodes(metadata.scripts, url), [url, *([canonical] if canonical else [])], retailer)
     method = "json_ld" if product else "open_graph"
+    selected_variant = product.get("_selected_variant") if product else None
+    unresolved_variant = bool(product and _variant_requested(product, url))
     if product:
         row.update(_price_fields(product, url))
         row["title"] = _text(product.get("name"))
-        row["images"] = _images(product.get("image"), url)
+        row["images"] = [] if unresolved_variant else _images(product.get("image"), url)
+        if selected_variant is not None:
+            row["variant"] = selected_variant
         rating = product.get("aggregateRating")
         if isinstance(rating, dict):
             scale = number_text(rating.get("bestRating", 5), maximum=100)
@@ -764,11 +988,11 @@ def parse_html_offer(markup: str, url: str, retailer: Retailer | None = None):
         row["sku"] = _text(product.get("sku") or product.get("productID"), 120)
         row["brand"] = _text(product.get("brand", {}).get("name") if isinstance(product.get("brand"), dict) else product.get("brand"), 120)
     row["title"] = row["title"] or _text(metadata.first("og:title", "twitter:title"))
-    if not row["images"]:
+    if not row["images"] and selected_variant is None and not unresolved_variant:
         row["images"] = _images([*metadata.meta.get("og:image:secure_url", []), *metadata.meta.get("og:image", []),
                                   *metadata.meta.get("twitter:image", [])], url)
     row["image"] = next(iter(row["images"]), None)
-    if row["price"] is None:
+    if row["price"] is None and selected_variant is None and not unresolved_variant:
         og_price = number_text(metadata.first("product:price:amount", "og:price:amount"))
         if og_price:
             row["price"] = row["price_max"] = og_price
@@ -776,7 +1000,7 @@ def parse_html_offer(markup: str, url: str, retailer: Retailer | None = None):
     elif row["currency"] is None:
         row["currency"] = _currency(metadata.first("product:price:currency", "og:price:currency"))
     if retailer.id == "amazon":
-        native = _amazon_fields(markup, url)
+        native = _amazon_fields(markup, url, amazon_parser)
         if native:
             for key, value in native.items():
                 if row.get(key) is None or row.get(key) == []:
@@ -784,13 +1008,18 @@ def parse_html_offer(markup: str, url: str, retailer: Retailer | None = None):
             method = "amazon_public_page"
     if canonical:
         # Canonical URLs often omit a selected variant. Preserve the actual
-        # product URL when its explicit SKU controls the extracted price.
-        has_variant = any(key in {"skuId", "sku", "variant", "variantId"} for key, _ in parse_qsl(urlsplit(url).query))
-        row["catalog_url"] = url if has_variant else canonical
+        # product URL when a query/path selection controls its price or image.
+        current_identity, canonical_identity = _identity(retailer, url), _identity(retailer, canonical)
+        explicit_product = ":url:" not in current_identity
+        preserve = (selected_variant is not None or bool(_semantic_query(url))
+                    or explicit_product and current_identity != canonical_identity)
+        row["catalog_url"] = canonical if landing_product else url if preserve else canonical
         row["identity"] = _identity(retailer, row["catalog_url"])
     if retailer.id == "shopee" and (ids := product_ids(row["catalog_url"])):
         row.update(shop=ids[0], item=ids[1], catalog_url=f"https://shopee.com.br/product/{ids[0]}/{ids[1]}")
-    return _finish(row, method, reason=None if row["title"] else "A página não informou os dados do produto. Você pode preenchê-los na revisão.")
+    reason = ("A variante solicitada não foi identificada. Confira os dados do produto." if unresolved_variant
+              else None if row["title"] else "A página não informou os dados do produto. Você pode preenchê-los na revisão.")
+    return _finish(row, method, reason=reason, code="variant_unresolved" if unresolved_variant else None)
 
 
 def parse_vtex_offer(data, url: str, *, currency=None):
@@ -862,16 +1091,20 @@ async def resolve_shopee_url(url: str) -> tuple[int, int]:
             visited = set()
             for _ in range(MAX_REDIRECTS + 1):
                 url = checked_product_url(url, "shopee")
+                if _restricted_route(url) == "blocked":
+                    raise ProviderError("blocked", "A Shopee pediu uma verificação. Abra o link e copie o endereço completo do produto.")
                 if ids := product_ids(url):
                     return ids
                 if wrapped := _shopee_wrapped_url(url):
                     return product_ids(wrapped)
+                if re.match(r"^/(?:universal-link/)?user/voucher-wallet(?:/|$)", urlsplit(url).path):
+                    raise ProviderError("not_product", "Esse link abre cupons da Shopee. Escolha o link do produto para preparar a oferta.")
                 if url in visited:
                     break
                 visited.add(url)
                 response = await _request_once(url, accept="text/html", limit=HTML_LIMIT)
                 if response.status in {301, 302, 303, 307, 308} and response.headers.get("location"):
-                    url = urljoin(url, response.headers["location"])
+                    url = _redirect_target(url, response.headers["location"], "shopee")
                     continue
                 if response.status in {401, 403, 429}:
                     raise ProviderError("blocked", "A Shopee pediu uma verificação. Abra o link e copie o endereço completo do produto.")
@@ -882,7 +1115,7 @@ async def resolve_shopee_url(url: str) -> tuple[int, int]:
                 target = metadata.refresh or metadata.canonical or metadata.first("og:url")
                 if not target:
                     break
-                url = urljoin(url, target)
+                url = _redirect_target(url, target, "shopee")
     except TimeoutError:
         raise ProviderError("network", "A Shopee demorou para abrir esse link. Cole o endereço completo do produto.") from None
     raise ProviderError("link", "Não consegui identificar o produto. Abra o link na Shopee e copie o endereço completo da página.")
@@ -905,6 +1138,9 @@ async def _public_offer(url, retailer):
             if social_page and response.status in {404, 410}:
                 return _finish(row, "public_page", status="not_product", reason="Esse link abre um perfil ou uma lista do Mercado Livre. Cole o link de um produto.", code="not_product")
             if response.stop_reason == "unavailable" or route_status == "unavailable" or response.status in {404, 410}:
+                if (response.status in {404, 410}
+                        and urlsplit(response.url).hostname in retailer.short_domains):
+                    return _finish(row, "public_page", status="unavailable", reason="O encurtador não disponibilizou o destino desse link para consulta. Abra o link e copie o endereço do produto na loja.", code="shortener_unavailable")
                 return _finish(row, "public_page", status="unavailable", reason="Esse link não está disponível ou expirou. Confira o endereço do produto.", code="unavailable")
             if response.status in {408, 425} or 500 <= response.status <= 599:
                 return _finish(row, "public_page", status="temporary", reason="A loja está indisponível no momento. Tente novamente em instantes.", code="temporary")
@@ -918,7 +1154,7 @@ async def _public_offer(url, retailer):
                 markup = '<script type="application/ld+json">' + markup + '</script>'
             row = parse_html_offer(markup, response.url, retailer)
             row.update(context)
-            if row["extraction"]["status"] == "blocked":
+            if row["extraction"]["status"] in {"blocked", "not_product"}:
                 return row
             if social_page:
                 # Some social landing pages embed an identifiable Product.
@@ -937,6 +1173,8 @@ async def _public_offer(url, retailer):
             # It is only consulted when the successful HTML identifies VTEX;
             # a 403/challenge never causes a different endpoint to be tried.
             if (not all(row.get(key) for key in ("title", "price", "image")) and row.get("availability") is not False
+                    and row.get("variant") is None
+                    and row["extraction"].get("code") != "variant_unresolved"
                     and re.search(r"(?:vtexassets\.com|vteximg\.com\.br|vtex\.render-runtime|__RUNTIME__)", markup)
                     and re.fullmatch(r"/[^/]+/p/?", urlsplit(response.url).path)):
                 slug = unquote(urlsplit(response.url).path).strip("/").removesuffix("/p")
@@ -1017,7 +1255,7 @@ async def _resolve_network_product(url):
             visited.add(url)
             response = await _request_once(url, accept="text/html", limit=HTML_LIMIT)
             if response.status in {301, 302, 303, 307, 308} and response.headers.get("location"):
-                url = urljoin(url, response.headers["location"])
+                url = _redirect_target(url, response.headers["location"])
                 continue
             break
     raise ProviderError("link", "Abra o link de afiliado e copie o endereço final do produto para buscar os dados.")

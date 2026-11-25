@@ -71,7 +71,7 @@ class Destination(Input):
 
 
 class OfferInput(Input):
-    url: str = Field(max_length=2048)
+    url: str = Field(max_length=8192)
     note: str = Field(default="", max_length=300)
     allow_manual: bool = False
 
@@ -531,11 +531,18 @@ def create_app(store=None, *, sending=None, origin=None, start_worker=True):
 
     @app.post("/api/offers")
     async def prepare(payload: OfferInput, user=User):
+        from .link_input import ProductLinkChoice, normalize_product_input
         from .marketplaces import extract_offer
+        try:
+            source_url = normalize_product_input(payload.url)
+        except ProductLinkChoice as exc:
+            raise HTTPException(422, detail={"code": "PRODUCT_LINK_AMBIGUOUS", "message": exc.message,
+                                             "candidates": exc.candidates}) from None
         company = user["id"]
         credentials, _ = app.state.store.credentials(company, "shopee")
         provider = app.state.engine.shopee(company)[0] if credentials else None
-        offer = await extract_offer(payload.url.strip(), shopee=provider)
+        offer = await extract_offer(source_url, shopee=provider)
+        offer = {**offer, "source_url": source_url}
         if not any(offer.get(field) for field in ("title", "price", "image")):
             extraction = dict(offer.get("extraction") or {})
             if not payload.allow_manual:
@@ -543,7 +550,7 @@ def create_app(store=None, *, sending=None, origin=None, start_worker=True):
                     "code": "PRODUCT_EXTRACTION_EMPTY",
                     "message": extraction.get("reason") or "Não foi possível ler os dados deste produto. Tente novamente.",
                     "extraction": extraction,
-                    "source_url": payload.url.strip(),
+                    "source_url": source_url,
                     "manual_available": True,
                 })
             offer["extraction"] = {**extraction, "manual_requested": True}

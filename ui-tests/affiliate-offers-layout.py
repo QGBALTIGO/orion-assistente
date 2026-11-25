@@ -36,6 +36,11 @@ OFFER = "a" * 32
 ALT = "b" * 32
 DEST = ["c" * 32, "d" * 32, "e" * 32, "f" * 32]
 EMPTY_PRODUCT_URL = "https://amzn.to/synthetic-unavailable-product"
+SHARED_MESSAGE = "Produto: https://amzn.to/synthetic-product · Cupom: https://meli.la/synthetic-coupon"
+SHARED_CHOICES = [
+    {"url": "https://amzn.to/synthetic-product", "retailer": "amazon", "retailer_name": "Amazon"},
+    {"url": "https://meli.la/synthetic-coupon", "retailer": "mercado_livre", "retailer_name": "Mercado Livre"},
+]
 PHRASES = [
     {"id": "one", "text": "Um toque de praticidade para a sua rotina.", "source": "fallback"},
     {"id": "two", "text": "Conheça os detalhes e escolha a sua versão favorita.", "source": "fallback"},
@@ -379,6 +384,30 @@ def exercise(page, control, data, name, output, send_calls):
     assert len(send_calls) == 2, "An explicit manual draft must never publish"
     records.append({"step": "empty-product-recovery-and-deliberate-manual-draft", "failure_layout": failure_layout,
                     "manual_layout": layout_metrics(page), "existing_offer_preserved": True})
+
+    # Shared posts often contain both a product and a coupon URL. The user
+    # chooses one locally; the app must not guess or replace the existing draft.
+    drafts_before_choices = copy.deepcopy(data["offer"])
+    page.locator("#af-offer-url").fill(SHARED_MESSAGE)
+    with page.expect_response(lambda response: response.url == ORIGIN + API + "offers") as ambiguous:
+        page.locator('[data-form="offer"] button[type="submit"]').click()
+    assert ambiguous.value.status == 422
+    page.locator("[data-offer-link-choices]").wait_for(state="visible")
+    assert page.locator("[data-offer-link-choice]").count() == 2
+    assert data["offer"] == drafts_before_choices
+    assert page.locator("#af-offer-url").input_value() == SHARED_MESSAGE
+    place("[data-offer-link-choices]", 160)
+    choices_layout = layout_metrics(page)
+    page.screenshot(path=str(output / (name + "-link-choices.png")), animations="disabled")
+    with page.expect_response(lambda response: response.url == ORIGIN + API + "offers") as selected:
+        page.locator('[data-offer-link-choice="0"]').click()
+    assert selected.value.request.post_data_json["url"] == SHARED_CHOICES[0]["url"]
+    assert "allow_manual" not in selected.value.request.post_data_json
+    page.locator('[data-offer-section="preview"][aria-busy="false"]').wait_for()
+    assert page.locator("#af-offer-url").input_value() == SHARED_CHOICES[0]["url"]
+    assert page.locator("[data-offer-link-choices]").count() == 0
+    assert len(send_calls) == 2, "Selecting a link must only prepare a preview"
+    records.append({"step": "shared-message-selects-one-link-without-publishing", "choices_layout": choices_layout})
     (output / (name + "-interactions.json")).write_text(json.dumps(records, ensure_ascii=False, indent=2))
     return records
 
@@ -448,6 +477,11 @@ def run(context, width, theme, layout, engine, output):
         elif path == API + "offers" and method == "POST":
             payload = request.post_data_json
             assert {"url", "note"} <= set(payload) <= {"url", "note", "allow_manual"}, payload
+            if payload["url"] == SHARED_MESSAGE:
+                fulfill({"detail": {"code": "PRODUCT_LINK_AMBIGUOUS",
+                                    "message": "Há mais de um link nesta mensagem. Escolha o produto para gerar a prévia.",
+                                    "candidates": SHARED_CHOICES}}, 422)
+                return
             if payload["url"] == EMPTY_PRODUCT_URL:
                 if payload.get("allow_manual") is not True:
                     fulfill({"detail": {"code": "PRODUCT_EXTRACTION_EMPTY",

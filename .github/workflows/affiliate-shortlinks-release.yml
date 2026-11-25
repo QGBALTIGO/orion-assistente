@@ -15,7 +15,7 @@ jobs:
       contents: read
       packages: write
     env:
-      API_BASE: ghcr.io/qgbaltigo/orion-assistente-api@sha256:0c15dd1213d65a6284bfb0663bf24b0bc4780ecf6cf4111a373c80426e25e1f7
+      API_BASE: ghcr.io/qgbaltigo/orion-assistente-api@sha256:3d1bdbf9f501f3797fa684a14e867ceb2d8adf42c43d01b6bd2299e450a8c8f5
       API_IMAGE: ghcr.io/qgbaltigo/orion-assistente-api:affiliate-shortlinks-${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
@@ -55,9 +55,9 @@ jobs:
           import hashlib
           from pathlib import Path
           expected = {
-            "orion-suite.js": "190b166c14dc02511cf3c7dfd065c9c24e0326099ebb46a8cdab1746acd458e2",
-            "orion-affiliate-workspace.js": "69dad3061798ebea22b4d8fd60108ec530de94909251528b22456be1ab26c7b8",
-            "orion-affiliate-workspace.css": "f9424bddb53613df3c161da88c1f9546a397c2563c4d022eea1cdc0607e063ed",
+            "orion-suite.js": "c3391d45b0a0f8e1db0114639ca2b75fbf0820997e3d4a802a5be4a9587801dc",
+            "orion-affiliate-workspace.js": "571a7781ba206b2cf0400850550dd0d0428b9524b98c45dedac7dfc97c8f30dd",
+            "orion-affiliate-workspace.css": "be417ddc5022f2b9246bf1478038a73bc5bff46b84c1a77ab94c1aacdb2b584f",
           }
           for name, digest in expected.items():
             assert hashlib.sha256(Path("app/static", name).read_bytes()).hexdigest() == digest, name

@@ -148,6 +148,8 @@ async function harness(t,{prepare=()=>offer(),getPreview,send,getBatch,initialOf
     get(selector){const node=host.querySelector(selector);assert.ok(node,'Missing '+selector);return node;},
     click(selector){this.get(selector).click();},
     input(selector,value){const node=this.get(selector);node.value=value;node.dispatchEvent(new window.Event('input',{bubbles:true}));return node;},
+    paste(selector,text){const node=this.get(selector),event=new window.Event('paste',{bubbles:true,cancelable:true});
+      Object.defineProperty(event,'clipboardData',{value:{getData:()=>text}});node.dispatchEvent(event);return node;},
     change(selector,value){const node=this.get(selector);node.value=value;node.dispatchEvent(new window.Event('change',{bubbles:true}));return node;},
     check(selector,checked=true){const node=this.get(selector);node.checked=checked;node.dispatchEvent(new window.Event('change',{bubbles:true}));return node;},
     submit(selector){const form=this.get(selector);form.dispatchEvent(new window.SubmitEvent('submit',{bubbles:true,cancelable:true,submitter:form.querySelector('[type="submit"]')}));},
@@ -165,7 +167,9 @@ test('Ofertas começa com entrada compacta e rascunhos recolhidos, sem solicitar
   assert.equal(h.get('[data-offer-section="composer"]').hidden,true);
   assert.equal(h.get('[data-offer-disclosure="drafts"]').open,false);
   assert.match(h.get('[data-form="offer"]').textContent,/Gerar prévia/);
-  assert.equal(h.get('#af-offer-url').placeholder,'Cole o link do produto');
+  assert.equal(h.get('#af-offer-url').placeholder,'Cole o link ou a mensagem da oferta');
+  assert.equal(h.get('#af-offer-url').type,'text');
+  assert.equal(h.get('#af-offer-url').maxLength,8192);
   assert.equal(h.get('[data-offer-disclosure="stores"] summary').textContent,'Links de 3 lojas');
   assert.equal(h.writes().length,0);
 });
@@ -361,6 +365,105 @@ test('Erro de um link anterior não autoriza preenchimento manual do endereço d
   assert.equal(h.host.querySelector('[data-act="offer-manual"]'),null);
   assert.equal(h.host.querySelector('[data-offer-notice="prepare"]'),null);
   assert.equal(h.data.offer.length,0);
+});
+
+test('Mensagem com vários links pede escolha sem perder edição, foco, cursor ou posição da tela',async t=>{
+  const amazon='https://amzn.to/synthetic?tag=owner%2B20+X',network='https://tidd.ly/synthetic';
+  const raw='Duas ofertas: '+amazon+' e '+network;
+  const candidates=[{url:amazon,retailer:'amazon',retailer_name:'Amazon'},
+    {url:network,retailer:null,retailer_name:'Link de oferta'}];
+  const h=await harness(t,{initialOffer:offer(),prepare:payload=>{
+    if (payload.url===raw) throw Object.assign(new Error('Escolha o produto para gerar a prévia.'),{status:422,
+      detail:{code:'PRODUCT_LINK_AMBIGUOUS',candidates}});
+    throw emptyProductError(payload.url);
+  }});
+  h.click('[data-act="open-offer"]');await flush();
+  const composer=h.get('[data-offer-section="composer"]');
+  const own=h.input('#af-offer-affiliate-edit','https://s.shopee.com.br/my-unsaved-link');
+  const phrase=h.input('#af-offer-phrase','Minha frase ainda em edição.');
+  h.input('#af-offer-note','Nota preservada');
+  const input=h.input('#af-offer-url',raw);input.focus();input.setSelectionRange(7,19);
+  Object.defineProperty(h.window,'scrollY',{value:340,writable:true});
+  let jumps=0;h.window.scrollTo=()=>{jumps++;};
+  h.window.HTMLElement.prototype.scrollIntoView=()=>{jumps++;};
+  h.submit('[data-form="offer"]');await flush();
+  assert.equal(h.document.activeElement,input);
+  assert.equal(input.selectionStart,7);assert.equal(input.selectionEnd,19);
+  assert.equal(input.value,raw);assert.equal(h.window.scrollY,340);assert.equal(jumps,0);
+  assert.equal(h.get('[data-offer-section="composer"]'),composer);
+  assert.equal(h.get('#af-offer-affiliate-edit'),own);
+  assert.equal(h.get('#af-offer-phrase'),phrase);
+  assert.equal(phrase.value,'Minha frase ainda em edição.');
+  assert.equal(h.host.querySelectorAll('[data-offer-link-choice]').length,2);
+  assert.match(h.get('[data-offer-link-choice="1"]').textContent,/Link de oferta/);
+  assert.equal(h.host.querySelector('[data-act="offer-manual"]'),null);
+  h.click('[data-offer-link-choice="1"]');await flush();
+  const attempts=h.calls.filter(call=>call.path===apiRoot+'offers');
+  assert.deepEqual(attempts.map(call=>call.payload.url),[raw,network]);
+  assert.ok(attempts.every(call=>call.payload.note==='Nota preservada'&&!call.payload.allow_manual));
+  assert.equal(h.get('#af-offer-url'),input);
+  assert.equal(input.value,network);
+  assert.equal(h.get('[data-offer-section="composer"]'),composer);
+  assert.equal(own.value,'https://s.shopee.com.br/my-unsaved-link');
+  assert.equal(h.data.offer.length,1);assert.equal(h.sends().length,0);assert.equal(jumps,0);
+});
+
+test('Escolhas de mensagem anterior são descartadas quando o campo muda durante a consulta',async t=>{
+  const pending=deferred(),first='Ofertas: amzn.to/first e meli.la/second',second='amzn.to/current';
+  const h=await harness(t,{prepare:()=>pending.promise});
+  h.input('#af-offer-url',first);h.submit('[data-form="offer"]');await flush();
+  const input=h.input('#af-offer-url',second);input.focus();input.setSelectionRange(5,9);
+  pending.reject(Object.assign(new Error('Escolha um produto.'),{detail:{code:'PRODUCT_LINK_AMBIGUOUS',
+    candidates:[{url:'https://amzn.to/first',retailer_name:'Amazon'}]}}));await flush();
+  assert.equal(input.value,second);assert.equal(h.document.activeElement,input);
+  assert.equal(input.selectionStart,5);assert.equal(input.selectionEnd,9);
+  assert.equal(h.host.querySelector('[data-offer-link-choices]'),null);
+  assert.equal(h.host.querySelector('[data-offer-notice="prepare"]'),null);
+  assert.equal(h.data.offer.length,0);assert.equal(h.sends().length,0);
+});
+
+test('Recuperação manual fica vinculada à mensagem original mesmo quando a API normaliza o URL',async t=>{
+  const source='https://amzn.to/normalized?tag=owner%2B20',raw='  Oferta: amzn.to/normalized?tag=owner%2B20  ';
+  const h=await harness(t,{prepare:payload=>{
+    if (!payload.allow_manual) throw emptyProductError(source);
+    return offer({source_url:source,title:null,price:null,image:null,currency:null,affiliate_url:null,
+      extraction:{manual_requested:true}});
+  }});
+  await h.prepare(raw);
+  assert.equal(h.get('#af-offer-url').value,raw);
+  assert.ok(h.get('[data-act="offer-manual"]'));
+  h.input('#af-offer-url',source);
+  assert.equal(h.host.querySelector('[data-act="offer-manual"]'),null);
+  h.input('#af-offer-url',raw);
+  assert.equal(h.host.querySelector('[data-act="offer-manual"]'),null);
+  await h.prepare(raw);
+  h.click('[data-act="offer-manual"]');await flush();
+  const manual=h.calls.filter(call=>call.payload?.allow_manual===true);
+  assert.equal(manual.length,1);assert.equal(manual[0].payload.url,raw);
+  assert.equal(h.data.offer[0].source_url,source);assert.equal(h.sends().length,0);
+});
+
+test('Colar mensagem multilinha mantém separadores e cursor; excesso de tamanho não trunca o link',async t=>{
+  const h=await harness(t);
+  const input=h.get('#af-offer-url');input.focus();
+  const message='Oferta de hoje\r\namzn.to/first\nhttps://t.me/group\rCupom: EXEMPLO';
+  h.paste('#af-offer-url',message);
+  const expected='Oferta de hoje amzn.to/first https://t.me/group Cupom: EXEMPLO';
+  assert.equal(input.value,expected);
+  assert.equal(input.selectionStart,expected.length);assert.equal(input.selectionEnd,expected.length);
+  assert.equal(input.validity.typeMismatch,false);
+  assert.equal(h.document.activeElement,input);assert.equal(h.writes().length,0);
+  input.setSelectionRange(8,12);
+  h.paste('#af-offer-url','x'.repeat(8193));
+  assert.equal(input.value,expected);assert.equal(input.selectionStart,8);assert.equal(input.selectionEnd,12);
+  assert.match(h.get('[data-offer-notice="prepare"]').textContent,/8\.192/);
+  assert.equal(h.document.activeElement,input);assert.equal(h.writes().length,0);
+  input.setSelectionRange(0,input.value.length);
+  const large='Oferta '+ 'x'.repeat(3000)+' amzn.to/first';
+  h.paste('#af-offer-url',large);
+  h.submit('[data-form="offer"]');await flush();
+  assert.equal(h.calls.find(call=>call.path===apiRoot+'offers').payload.url,large);
+  assert.equal(h.sends().length,0);
 });
 
 test('Avaliação ausente não gera aviso e imagem opcional some do aviso no template de texto',async t=>{

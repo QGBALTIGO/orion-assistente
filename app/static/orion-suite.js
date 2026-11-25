@@ -463,13 +463,13 @@
     if(window.OrionAffiliateWorkspace)return Promise.resolve(window.OrionAffiliateWorkspace);
     if(!affiliateAssets){
       const css=document.createElement('link');
-      css.rel='stylesheet';css.href='/api/v1/afiliados-assets/workspace.css?v=af-ofertas-links-20261125';
+      css.rel='stylesheet';css.href='/api/v1/afiliados-assets/workspace.css?v=af-ofertas-import-20261125';
       const styled=new Promise((resolve,reject)=>{
         css.onload=resolve;
         css.onerror=()=>reject(Error('O estilo de Afiliados não pôde ser carregado.'));
       });
       document.head.append(css);
-      affiliateAssets=Promise.all([import('/api/v1/afiliados-assets/workspace.js?v=af-ofertas-links-20261125'),styled])
+      affiliateAssets=Promise.all([import('/api/v1/afiliados-assets/workspace.js?v=af-ofertas-import-20261125'),styled])
         .then(([workspace])=>workspace).catch(error=>{affiliateAssets=null;css.remove();throw error;});
     }
     return affiliateAssets;

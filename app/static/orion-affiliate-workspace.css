@@ -404,6 +404,14 @@ a.af-dashboard-kpi:hover { background: color-mix(in srgb,var(--os-tint) 35%,var(
 .af-offer-recovery-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; margin-top: 10px; }
 .af-offer-recovery-actions > .os-button { min-height: 40px; font-size: 12px; }
 .af-offer-recovery-actions > [aria-disabled="true"] { opacity: .6; cursor: wait; }
+.af-offer-link-choices { display: grid; gap: 8px; max-height: 320px; overflow-y: auto; margin-top: 10px; }
+.af-offer-link-choice { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-width: 0; padding: 12px; text-align: left; border: 1px solid var(--os-border); border-radius: 10px; background: var(--os-card); color: var(--os-text); cursor: pointer; }
+.af-offer-link-choice > span { display: grid; gap: 4px; min-width: 0; }
+.af-offer-link-choice strong { font-size: 13px; }
+.af-offer-link-choice > span > span { color: var(--os-muted); font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
+.af-offer-link-choice > .os-icon { flex: 0 0 18px; color: var(--os-primary); }
+.af-offer-link-choice:hover, .af-offer-link-choice:focus-visible { border-color: var(--os-primary); }
+.af-offer-link-choice[aria-disabled="true"] { opacity: .6; cursor: wait; }
 .af-offer-composer-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
 .af-offer-text-button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 36px; border: 0; padding: 4px 0; background: transparent; color: var(--os-primary); font: 500 11px/1.4 var(--os-font); cursor: pointer; }
 .af-offer-text-button .os-icon { width: 15px; height: 15px; }

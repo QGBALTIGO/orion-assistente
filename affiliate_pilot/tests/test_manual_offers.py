@@ -192,6 +192,93 @@ def test_manual_choice_does_not_bypass_url_validation(store, monkeypatch):
         assert store.history(tenant) == []
 
 
+@pytest.mark.parametrize("raw,source", [
+    ("Oferta do dia!\namzn.to/synthetic-product?tag=owner%2B20+X\nCupom: EXEMPLO",
+     "https://amzn.to/synthetic-product?tag=owner%2B20+X"),
+    ("Confira http://ofertou.ai/synthetic-product?ref=A%2bB&ref=C", "https://ofertou.ai/synthetic-product?ref=A%2bB&ref=C"),
+    ("https://t.me/synthetic\nhttps://tidd.ly/synthetic-product\nhttps://chat.whatsapp.com/synthetic",
+     "https://tidd.ly/synthetic-product"),
+    ("Mensagem " + "x" * 6000 + "\nhttps://www.amazon.com.br/dp/B0C1234567?tag=owner#variant=blue",
+     "https://www.amazon.com.br/dp/B0C1234567?tag=owner#variant=blue"),
+])
+def test_prepare_human_message_stores_only_normalized_source_without_losing_tracking(store, monkeypatch, raw, source):
+    from affiliate_pilot import marketplaces
+    tenant = company(store)
+    calls = []
+
+    async def extract(url, *, shopee=None):
+        calls.append(url)
+        return prepared_offer(source_url="https://www.amazon.com.br/dp/B0C1234567")
+
+    monkeypatch.setattr(marketplaces, "extract_offer", extract)
+    with TestClient(create_app(store, origin=BASE, sending=False, start_worker=False)) as client:
+        login(client)
+        result = client.post("/api/offers", headers=ORIGIN, json={"url": raw, "note": "Minha observação"})
+        assert result.status_code == 200, result.text
+        assert calls == [source]
+        assert result.json()["source_url"] == source
+        assert result.json()["note"] == "Minha observação"
+        assert raw not in json.dumps(store.list(tenant, "offer"), ensure_ascii=False)
+        assert store.history(tenant) == []
+
+
+def test_ambiguous_message_returns_choices_before_extracting_and_only_selected_link_is_fetched(store, monkeypatch):
+    from affiliate_pilot import marketplaces
+    tenant = company(store)
+    records(store, tenant)
+    before = store.list(tenant, "offer")
+    first, second = "https://amzn.to/synthetic-product", "https://tidd.ly/synthetic-network"
+    calls = []
+
+    async def extract(url, *, shopee=None):
+        calls.append(url)
+        return prepared_offer()
+
+    monkeypatch.setattr(marketplaces, "extract_offer", extract)
+    with TestClient(create_app(store, origin=BASE, sending=False, start_worker=False)) as client:
+        login(client)
+        raw = f"Escolha seu produto\n{first}\n{second}\n{first}\nhttps://t.me/synthetic"
+        result = client.post("/api/offers", headers=ORIGIN, json={"url": raw})
+        assert result.status_code == 422
+        detail = result.json()["detail"]
+        assert detail["code"] == "PRODUCT_LINK_AMBIGUOUS"
+        assert [row["url"] for row in detail["candidates"]] == [first, second]
+        assert detail["candidates"][1] == {"url": second, "retailer": None, "retailer_name": "Link de oferta"}
+        assert calls == [] and store.list(tenant, "offer") == before
+        chosen = client.post("/api/offers", headers=ORIGIN, json={"url": second})
+        assert chosen.status_code == 200
+        assert chosen.json()["source_url"] == second
+        assert calls == [second]
+        assert store.get(tenant, "offer", OFFER) == before[0]
+        assert store.history(tenant) == []
+
+
+def test_empty_shared_message_has_normalized_recovery_source_and_manual_stores_no_prose(store, monkeypatch):
+    from affiliate_pilot import marketplaces
+    tenant = company(store)
+    source = "https://amzn.to/synthetic-product?tag=owner-20"
+    raw = "🔥 Oferta! " + source + "\nCupom: EXEMPLO"
+
+    async def extract(url, *, shopee=None):
+        assert url == source
+        return prepared_offer(title=None, price=None, image=None, affiliate_url=None,
+                              extraction={"reason": "A loja não disponibilizou a página.", "status": "unavailable"})
+
+    monkeypatch.setattr(marketplaces, "extract_offer", extract)
+    with TestClient(create_app(store, origin=BASE, sending=False, start_worker=False)) as client:
+        login(client)
+        result = client.post("/api/offers", headers=ORIGIN, json={"url": raw})
+        assert result.status_code == 422
+        assert result.json()["detail"]["source_url"] == source
+        assert result.json()["detail"]["manual_available"] is True
+        assert store.list(tenant, "offer") == []
+        manual = client.post("/api/offers", headers=ORIGIN, json={"url": raw, "allow_manual": True})
+        assert manual.status_code == 200
+        assert manual.json()["source_url"] == source
+        assert manual.json()["extraction"]["manual_requested"] is True
+        assert store.history(tenant) == []
+
+
 def test_batch_has_exact_selected_destinations_and_retries_keep_same_jobs(store):
     tenant = company(store)
     records(store, tenant)

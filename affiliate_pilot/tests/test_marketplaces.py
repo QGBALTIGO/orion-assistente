@@ -374,6 +374,207 @@ def test_invalid_json_and_foreign_canonical_cannot_replace_origin():
     assert offer["catalog_url"] == PRODUCT_URL and offer["title"] is None
 
 
+@pytest.mark.parametrize("path", ["/dp/B09ZXN77L2", "/gp/product/B09ZXN77L2",
+                                  "/gp/aw/d/B09ZXN77L2", "/exec/obidos/ASIN/B09ZXN77L2"])
+def test_amazon_public_paths_share_sku_and_do_not_replace_selected_asin_with_parent(path):
+    url = "https://www.amazon.com.br" + path + "?tag=fixture-owner-20"
+    page = AMAZON_HTML + '<link rel="canonical" href="https://www.amazon.com.br/dp/B000000000">'
+    offer = mp.parse_html_offer(page, url)
+    assert offer["identity"] == "amazon:B09ZXN77L2"
+    assert offer["title"] == "Produto principal" and offer["price"] == "399.00"
+    assert offer["image"] == "https://m.media-amazon.com/a-large.jpg"
+    assert offer["catalog_url"] == offer["source_url"] == url
+    assert offer["affiliate_url"] is None
+    mismatch = mp.parse_html_offer(page.replace('value="B09ZXN77L2"', 'value="B000000000"'), url)
+    assert mismatch["title"] is None and mismatch["price"] is None
+
+
+def test_jsonld_document_references_resolve_product_offer_image_and_rating_without_network():
+    nodes = [
+        {"@type": "WebPage", "@id": PRODUCT_URL, "mainEntity": {"@id": "#product"}},
+        {"@type": "Product", "@id": "#product", "url": PRODUCT_URL, "name": "Mouse do produto",
+         "offers": {"@id": "#offer"}, "image": {"@id": "#photo"}, "aggregateRating": {"@id": "#rating"}},
+        {"@type": "Offer", "@id": "#offer", "price": "139.90", "priceCurrency": "BRL"},
+        {"@type": "ImageObject", "@id": "#photo", "contentUrl": IMAGE_URL},
+        {"@type": "AggregateRating", "@id": "#rating", "ratingValue": "4.7", "reviewCount": "24"},
+        {"@type": "Offer", "@id": "#unrelated-offer", "price": "1.00", "priceCurrency": "BRL"},
+    ]
+    # Definitions may be in another JSON-LD script on the same page.
+    page = markup({"@graph": nodes[:2]}) + markup({"@graph": nodes[2:]})
+    offer = mp.parse_html_offer(page, PRODUCT_URL)
+    assert offer["title"] == "Mouse do produto" and offer["price"] == "139.90"
+    assert offer["image"] == IMAGE_URL and offer["rating"] == "4.7" and offer["review_count"] == 24
+    assert offer["affiliate_url"] is None and offer["extraction"]["method"] == "json_ld"
+
+
+def test_jsonld_conflicting_or_unresolved_offer_ids_never_borrow_another_price():
+    product = {**PRODUCT, "offers": {"@id": "#price"}}
+    conflict = {"@graph": [product,
+        {"@type": "Offer", "@id": "#price", "price": "10", "priceCurrency": "BRL"},
+        {"@type": "Offer", "@id": "#price", "price": "20", "priceCurrency": "BRL"}]}
+    assert mp.parse_html_offer(markup(conflict), PRODUCT_URL)["price"] is None
+    unresolved = {"@graph": [{**product, "offers": {"@id": "https://external.example/offer"}},
+                            {"@type": "Offer", "price": "1", "priceCurrency": "BRL"}]}
+    assert mp.parse_html_offer(markup(unresolved), PRODUCT_URL)["price"] is None
+    wrong_type = {"@graph": [product, {"@type": "Product", "@id": "#price", "price": "9", "priceCurrency": "BRL"}]}
+    assert mp.parse_html_offer(markup(wrong_type), PRODUCT_URL)["price"] is None
+
+
+def test_jsonld_cycles_and_recommendation_lists_cannot_supply_product_prices():
+    graph = {"@graph": [
+        {**PRODUCT, "@id": "#main", "offers": {"@id": "#cycle"}},
+        {"@type": "Offer", "@id": "#cycle", "priceSpecification": {"@id": "#cycle"}},
+        {"@type": "ItemList", "itemListElement": [{"item": {**PRODUCT, "offers": {"price": "1", "priceCurrency": "BRL"}}}]},
+    ]}
+    offer = mp.parse_html_offer(markup(graph), PRODUCT_URL)
+    assert offer["title"] == "Mouse RGB" and offer["price"] is None
+    assert mp.parse_html_offer(markup(graph["@graph"][-1]), PRODUCT_URL)["title"] is None
+
+
+def variant_graph():
+    base = "https://www.decathlon.com.br/garrafa/p"
+    group = {"@type": "ProductGroup", "@id": "#group", "url": base, "name": "Garrafa",
+             "image": "https://images.example.com/group-red.jpg", "hasVariant": [{"@id": "#red"}, {"@id": "#blue"}]}
+    return base, {"@graph": [group,
+        {"@type": "Product", "@id": "#red", "url": base + "?color=red", "sku": "sku-red", "color": "Vermelho",
+         "name": "Garrafa vermelha", "image": "https://images.example.com/red.jpg", "offers": {"@id": "#red-price"}},
+        {"@type": "Product", "@id": "#blue", "url": base + "?color=blue", "sku": "sku-blue", "color": "Azul",
+         "name": "Garrafa azul", "image": "https://images.example.com/blue.jpg", "offers": {"@id": "#blue-price"}},
+        {"@type": "Offer", "@id": "#red-price", "price": "10", "priceCurrency": "BRL"},
+        {"@type": "Offer", "@id": "#blue-price", "price": "20", "priceCurrency": "BRL"},
+    ]}
+
+
+@pytest.mark.parametrize("query", ["?color=blue", "?skuId=sku-blue", "?variantId=sku-blue"])
+def test_product_group_resolves_selected_variant_price_image_and_keeps_selection(query):
+    base, graph = variant_graph()
+    url = base + query
+    offer = mp.parse_html_offer(markup(graph, '<link rel="canonical" href="' + base + '">'), url)
+    assert offer["title"] == "Garrafa azul" and offer["price"] == offer["price_max"] == "20"
+    assert offer["image"] == "https://images.example.com/blue.jpg"
+    assert offer["variant"]["sku"] == "sku-blue" and offer["variant"]["color"] == "Azul"
+    assert offer["catalog_url"] == offer["source_url"] == url
+    assert offer["affiliate_url"] is None
+
+
+def test_unknown_variant_does_not_use_group_price_image_or_default_open_graph():
+    base, graph = variant_graph()
+    group = graph["@graph"][0]
+    group["offers"] = {"price": "10", "priceCurrency": "BRL"}
+    page = markup(graph, '<link rel="canonical" href="' + base + '"><meta property="product:price:amount" content="10">'
+                  '<meta property="product:price:currency" content="BRL"><meta property="og:image" content="https://images.example.com/red.jpg">')
+    offer = mp.parse_html_offer(page, base + "?color=green")
+    assert offer["price"] is None and offer["image"] is None
+    assert offer["catalog_url"] == base + "?color=green"
+    assert "variante" in offer["extraction"]["reason"]
+
+
+def test_variant_without_own_price_or_image_does_not_inherit_group_or_recommendations():
+    base, graph = variant_graph()
+    graph["@graph"][2].pop("offers")
+    graph["@graph"][2].pop("image")
+    offer = mp.parse_html_offer(markup(graph, '<link rel="canonical" href="' + base + '">'), base + "?color=blue")
+    assert offer["title"] == "Garrafa azul" and offer["variant"]["sku"] == "sku-blue"
+    assert offer["price"] is None and offer["image"] is None
+
+
+def test_canonical_cannot_authorize_the_price_of_another_explicit_amazon_asin():
+    url = "https://www.amazon.com.br/dp/B000000001"
+    other = "https://www.amazon.com.br/dp/B000000002"
+    product = {**PRODUCT, "url": other, "name": "Outro SKU", "offers": {"price": "500", "priceCurrency": "BRL"}}
+    offer = mp.parse_html_offer(markup(product, '<link rel="canonical" href="' + other + '">'), url)
+    assert offer["identity"] == "amazon:B000000001" and offer["catalog_url"] == url
+    assert offer["title"] is None and offer["price"] is None and offer["image"] is None
+
+
+def test_explicit_wrong_amazon_page_asin_rejects_all_metadata_including_open_graph():
+    url = "https://www.amazon.com.br/dp/B000000001"
+    page = (AMAZON_HTML.replace('value="B09ZXN77L2"', 'value="B000000002"')
+            + markup({**PRODUCT, "url": url, "offers": {"price": "500", "priceCurrency": "BRL"}})
+            + '<meta property="og:title" content="Outro SKU"><meta property="og:image" content="' + IMAGE_URL + '">'
+            '<meta property="product:price:amount" content="500"><meta property="product:price:currency" content="BRL">')
+    offer = mp.parse_html_offer(page, url)
+    assert offer["extraction"]["code"] == "product_mismatch"
+    assert all(offer[field] is None for field in ("title", "price", "image", "rating", "review_count"))
+    assert offer["identity"] == "amazon:B000000001" and offer["catalog_url"] == url
+
+
+def test_unknown_variant_never_falls_back_to_an_aggregate_vtex_product(monkeypatch):
+    base, graph = variant_graph()
+    page = markup(graph, '<link rel="canonical" href="' + base + '"><script src="https://assets.vtexassets.com/runtime.js"></script>')
+    calls = []
+
+    def handle(request):
+        calls.append(request.url.path)
+        assert request.url.path == "/garrafa/p", "An unresolved SKU must not consult the aggregate catalogue"
+        return httpx.Response(200, text=page, headers={"content-type": "text/html"})
+
+    mock_http(monkeypatch, handle)
+    offer = asyncio.run(mp.extract_offer(base + "?color=green"))
+    assert offer["extraction"]["code"] == "variant_unresolved"
+    assert offer["price"] is None and offer["image"] is None and calls == ["/garrafa/p"]
+
+
+def test_selected_variant_without_own_price_never_uses_aggregate_vtex_prices(monkeypatch):
+    base, graph = variant_graph()
+    graph["@graph"][2].pop("offers")
+    page = markup(graph, '<link rel="canonical" href="' + base + '"><script src="https://assets.vtexassets.com/runtime.js"></script>')
+    calls = []
+
+    def handle(request):
+        calls.append(request.url.path)
+        assert request.url.path == "/garrafa/p", "A selected variant must not consult aggregate catalogue prices"
+        return httpx.Response(200, text=page, headers={"content-type": "text/html"})
+
+    mock_http(monkeypatch, handle)
+    offer = asyncio.run(mp.extract_offer(base + "?color=blue"))
+    assert offer["variant"]["sku"] == "sku-blue" and offer["price"] is None
+    assert offer["image"] == "https://images.example.com/blue.jpg" and calls == ["/garrafa/p"]
+
+
+@pytest.mark.parametrize("query", ["?promoter_id=1799284&partner_id=3440",
+    "?onelink=4/fixture&requestId=synthetic&campaign_id=20&url_from=affiliate_fixture"])
+def test_attribution_parameters_do_not_turn_a_product_group_into_an_unknown_variant(query):
+    base = "https://www.magazineluiza.com.br/garrafa/p/1234/ud/garr"
+    group = {"@type": "ProductGroup", "url": base, "name": "Garrafa", "image": IMAGE_URL,
+             "offers": {"@type": "AggregateOffer", "lowPrice": "99.90", "highPrice": "129.90", "priceCurrency": "BRL"},
+             "hasVariant": [{"@type": "Product", "sku": "1"}, {"@type": "Product", "sku": "2"}]}
+    offer = mp.parse_html_offer(markup(group, '<link rel="canonical" href="' + base + '">'), base + query)
+    assert offer["price"] == "99.90" and offer["price_max"] == "129.90" and offer["image"] == IMAGE_URL
+    assert offer["source_url"] == base + query and offer["variant"] is None
+    assert offer["extraction"]["code"] is None
+
+
+def test_ambiguous_duplicate_variant_selectors_do_not_pick_one_value():
+    base, graph = variant_graph()
+    url = base + "?skuId=sku-red&skuId=sku-blue"
+    offer = mp.parse_html_offer(markup(graph, '<link rel="canonical" href="' + base + '">'), url)
+    assert offer["price"] is None and offer["image"] is None
+    assert offer["extraction"]["code"] == "variant_unresolved" and offer["catalog_url"] == url
+
+
+def test_a_product_list_price_specification_is_not_a_current_sale_price():
+    product = {**PRODUCT, "offers": {"@type": "Offer", "priceCurrency": "BRL", "price": 0,
+               "priceSpecification": {"@type": "UnitPriceSpecification", "priceType": "https://schema.org/ListPrice", "price": 200}}}
+    assert mp.parse_html_offer(markup(product), PRODUCT_URL)["price"] is None
+
+
+def test_shein_public_onelink_uses_unique_declared_web_product_without_executing_javascript():
+    short = "https://onelink.shein.com/4/fixture"
+    target = "http://br.shein.com/Women-Shorts-p-32211486-cat-1912.html?onelink=4/fixture&url_from=affiliate_fixture"
+    page = ('<meta property="og:title" content="Kit de shorts"><meta property="og:image" content="' + IMAGE_URL + '">'
+            '<input id="url" value="' + target.replace('&', '&amp;') + '" style="display:none">')
+    offer = mp.parse_html_offer(page, short)
+    assert offer["identity"] == "shein:32211486" and offer["catalog_url"] == target.replace("http:", "https:", 1)
+    assert offer["title"] == "Kit de shorts" and offer["image"] == IMAGE_URL
+    assert offer["price"] is None and offer["source_url"] == short and offer["affiliate_url"] is None
+    ambiguous = mp.parse_html_offer(page + '<input id="url" value="https://br.shein.com/Other-p-42.html">', short)
+    assert ambiguous["catalog_url"] == short
+    assert mp.parse_html_offer(page, "https://br.shein.com/other-page")["catalog_url"] == "https://br.shein.com/other-page"
+    malicious = mp.parse_html_offer(page.replace(target.replace('&', '&amp;'), 'http://br.shein.com@127.0.0.1/private'), short)
+    assert malicious["catalog_url"] == short
+
+
 def vtex_data(*, quantity=5, currency="BRL", price=89.9):
     return [{"productName": "Café", "productId": "123", "linkText": "cafe", "items": [
         {"itemId": "42", "images": [{"imageUrl": IMAGE_URL}], "sellers": [

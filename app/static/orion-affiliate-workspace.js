@@ -44,6 +44,7 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
   let offerBusy = false;
   let offerError = "";
   let offerFailure = null;
+  let offerLinkChoices = null;
   let offerPreviewBusy = false;
   let offerPreviewError = "";
   let offerPreviewRequest = null;
@@ -537,8 +538,12 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     ' aria-disabled="'+(busy||disabled)+'" aria-busy="'+busy+'">'+(busy?'<span class="os-spinner" aria-hidden="true"></span>':icon(glyph))+'<span>'+html(label)+'</span></button>';
 
   function offerPrepareFeedback() {
-    const failure=offerFailure?.url===offerInput.url.trim()?offerFailure:null;
+    const failure=offerFailure?.url===offerInput.url?offerFailure:null;
+    const choices=offerLinkChoices?.input===offerInput.url?offerLinkChoices.candidates:[];
     return '<div data-offer-prepare-feedback>'+offerAlert(offerError||(offerBusy?failure?.message:""),"prepare")+
+      (choices.length?'<div class="af-offer-link-choices" data-offer-link-choices role="group" aria-label="Escolha o link do produto">'+choices.map((row,index)=>
+        '<button type="button" class="af-offer-link-choice" data-offer-link-choice="'+index+'" data-act="offer-link-choice" data-value="'+index+'" aria-disabled="'+offerBusy+'">'+
+        '<span><strong>'+html(row.retailer_name||"Produto")+'</strong><span>'+html(row.url)+'</span></span>'+icon("arrow")+'</button>').join("")+'</div>':"")+
       (failure?'<div class="af-offer-recovery-actions"><button type="button" class="os-button os-outline" data-act="offer-retry" aria-disabled="'+offerBusy+'" aria-busy="'+offerBusy+'">'+icon("refresh")+'Tentar novamente</button>'+
         '<button type="button" class="af-offer-text-button" data-act="offer-manual" aria-disabled="'+offerBusy+'">'+icon("edit")+'Preencher manualmente</button></div>':"")+'</div>';
   }
@@ -577,8 +582,8 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
         '<button type="button" data-offer-tab="'+key+'" aria-pressed="'+(offerTab===key)+'" aria-controls="offer-'+key+'">'+icon(glyph)+html(label)+'</button>').join("")+
       '</div></div><div id="offer-link"'+(offerTab==="link"?"":" hidden")+'>'+
         '<form class="os-form af-form af-offer-link-form" data-form="offer" aria-busy="'+offerBusy+'">'+
-          '<label class="af-offer-url-label" for="af-offer-url"><span class="os-sr-only">Link do produto</span><span class="af-offer-input-icon" aria-hidden="true">'+icon("link")+'</span>'+
-          '<input id="af-offer-url" name="url" type="url" required maxlength="2048" inputmode="url" autocomplete="off" placeholder="Cole o link do produto" value="'+html(offerInput.url)+'" data-offer-input="url"></label>'+
+          '<label class="af-offer-url-label" for="af-offer-url"><span class="os-sr-only">Link ou mensagem com o produto</span><span class="af-offer-input-icon" aria-hidden="true">'+icon("link")+'</span>'+
+          '<input id="af-offer-url" name="url" type="text" required maxlength="8192" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Cole o link ou a mensagem da oferta" value="'+html(offerInput.url)+'" data-offer-input="url"></label>'+
           offerSubmit(offerBusy?"Preparando…":"Gerar prévia","arrow",offerBusy)+
         '</form>'+offerPrepareFeedback()+
         '<div class="af-offer-source-extra">'+
@@ -1339,12 +1344,15 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
 
   async function prepareOffer(url,note="",allowManual=false) {
     if (offerBusy) return;
-    const attempt={url:String(url||"").trim(),note:String(note||"").trim()};
+    // Keep the exact human input as the recovery binding. The API returns a
+    // normalised source_url, which can differ from a copied share message.
+    const attempt={url:String(url||""),note:String(note||"")};
     if (allowManual && offerFailure?.url!==attempt.url) return;
     const origin=viewVersion;
     const version=navVersion;
     offerInput={...attempt};
     if (offerFailure?.url!==attempt.url) offerFailure=null;
+    if (offerLinkChoices?.input!==attempt.url) offerLinkChoices=null;
     offerBusy=true;
     offerError="";
     render();
@@ -1352,15 +1360,18 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
       const saved=await api("offers","POST",{...attempt,...(allowManual?{allow_manual:true}:{})});
       if (!offerCurrent(version,origin)) return;
       saveOfferRow(saved);
-      if (offerInput.url.trim()!==attempt.url) return;
+      if (offerInput.url!==attempt.url) return;
       offerFailure=null;
+      offerLinkChoices=null;
       await openOffer(saved.id);
     } catch(error) {
-      if (offerCurrent(version,origin)&&offerInput.url.trim()===attempt.url) {
+      if (offerCurrent(version,origin)&&offerInput.url===attempt.url) {
         offerError=error.message||"Não foi possível preparar esta oferta.";
         const detail=error.detail;
-        offerFailure=detail?.code==="PRODUCT_EXTRACTION_EMPTY"&&detail.manual_available===true&&detail.source_url===attempt.url?
-          {url:attempt.url,message:offerError}:null;
+        offerFailure=detail?.code==="PRODUCT_EXTRACTION_EMPTY"&&detail.manual_available===true&&typeof detail.source_url==="string"?
+          {url:attempt.url,sourceUrl:detail.source_url,message:offerError}:null;
+        offerLinkChoices=detail?.code==="PRODUCT_LINK_AMBIGUOUS"&&Array.isArray(detail.candidates)?
+          {input:attempt.url,candidates:detail.candidates.filter(row=>typeof row?.url==="string"&&row.url.startsWith("https://"))}:null;
       }
     } finally {
       if (!controller.signal.aborted&&origin===viewVersion&&route==="ofertas") {
@@ -1597,11 +1608,16 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
       updateOffers('[data-offer-section="preview"]',offerPreview());
     },
     "offer-send": sendOffer,
+    "offer-link-choice": async index=>{
+      if (offerBusy||offerLinkChoices?.input!==offerInput.url) return;
+      const selected=offerLinkChoices.candidates[Number(index)];
+      if (selected) await prepareOffer(selected.url,offerInput.note);
+    },
     "offer-retry": async ()=>{
-      if (offerFailure?.url===offerInput.url.trim()) await prepareOffer(offerInput.url,offerInput.note);
+      if (offerFailure?.url===offerInput.url) await prepareOffer(offerInput.url,offerInput.note);
     },
     "offer-manual": async ()=>{
-      if (offerFailure?.url===offerInput.url.trim()) await prepareOffer(offerInput.url,offerInput.note,true);
+      if (offerFailure?.url===offerInput.url) await prepareOffer(offerInput.url,offerInput.note,true);
     },
     "offer-new": async ()=>{
       navVersion++;
@@ -1614,6 +1630,7 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
       offerInput={url:"",note:""};
       offerError="";
       offerFailure=null;
+      offerLinkChoices=null;
       offerDetailsError="";
       offerDetailsOpen=false;
       offerDetailsDirty=false;
@@ -1878,13 +1895,34 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     catch(error) { notify(error.message,true); }
   }, {signal: controller.signal});
 
+  content.addEventListener("paste",event=>{
+    const field=event.target;
+    if (!field.matches('[data-offer-input="url"]')) return;
+    const text=event.clipboardData?.getData("text/plain");
+    if (!text) return;
+    event.preventDefault();
+    // Text inputs otherwise remove line breaks and can join two separate URLs.
+    const pasted=text.replace(/\r\n?|\n/g," ");
+    const start=field.selectionStart??field.value.length,end=field.selectionEnd??start;
+    if (field.value.length-(end-start)+pasted.length>8192) {
+      offerError="A mensagem pode ter até 8.192 caracteres. Cole um trecho menor ou apenas o link.";
+      offerFailure=null;
+      offerLinkChoices=null;
+      updateOffers('[data-offer-prepare-feedback]',offerPrepareFeedback());
+      return;
+    }
+    field.setRangeText(pasted,start,end,"end");
+    field.dispatchEvent(new Event("input",{bubbles:true}));
+  }, {signal: controller.signal});
+
   content.addEventListener("input",event=>{
     const field=event.target;
     if (field.matches("[data-offer-input]")) {
       offerInput[field.dataset.offerInput]=field.value;
-      if (field.dataset.offerInput==="url" && (offerError||offerFailure)) {
+      if (field.dataset.offerInput==="url" && (offerError||offerFailure||offerLinkChoices)) {
         offerError="";
         offerFailure=null;
+        offerLinkChoices=null;
         updateOffers('[data-offer-prepare-feedback]',offerPrepareFeedback());
       }
       return;

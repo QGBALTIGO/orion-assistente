@@ -1,4 +1,4 @@
-ARG BASE_IMAGE=ghcr.io/qgbaltigo/orion-assistente-api@sha256:0c15dd1213d65a6284bfb0663bf24b0bc4780ecf6cf4111a373c80426e25e1f7
+ARG BASE_IMAGE=ghcr.io/qgbaltigo/orion-assistente-api@sha256:3d1bdbf9f501f3797fa684a14e867ceb2d8adf42c43d01b6bd2299e450a8c8f5
 FROM ${BASE_IMAGE}
 ARG ORION_RELEASE
 LABEL org.opencontainers.image.revision=$ORION_RELEASE
