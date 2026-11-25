@@ -1,0 +1,80 @@
+name: Orion - Fila e histórico de Afiliados
+on:
+  push:
+    branches: ['codex/afiliados-historico-20261125*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    env:
+      API_BASE: ghcr.io/qgbaltigo/orion-assistente-api@sha256:a3e896a13ad77fce175caf52648f009887a91eb1a5537599fd783aa84622eed3
+      API_IMAGE: ghcr.io/qgbaltigo/orion-assistente-api:affiliate-history-${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validar histórico e interações existentes de Afiliados
+        run: |
+          npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+          node --check app/static/orion-suite.js
+          node --input-type=module --check < app/static/orion-affiliate-workspace.js
+          node --test --test-reporter=spec ui-tests/affiliate-history.test.mjs ui-tests/affiliate-automations.test.mjs ui-tests/affiliate-offers.test.mjs ui-tests/affiliate-dashboard.test.mjs ui-tests/affiliate-dashboard-updates.test.mjs
+      - name: Conferir layout e navegação em Chromium e WebKit
+        run: |
+          python -m pip install playwright==1.58.0
+          python -m playwright install --with-deps chromium webkit
+          python ui-tests/affiliate-history-layout.py --engine chromium
+          python ui-tests/affiliate-history-layout.py --engine webkit --widths 320 430 --themes dark
+          python ui-tests/affiliate-history-layout.py --engine chromium --widths 430 --themes dark --layouts app --states empty
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: affiliate-history-browser
+          path: artifacts/affiliate-history/
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Conferir a base publicada
+        run: |
+          docker run --rm --entrypoint python "$API_BASE" -c '
+          import hashlib
+          from pathlib import Path
+          expected = {
+            "orion-suite.js": "5813a2b3faa8136b0d38dd8664fb19c6dbc91877510a711c47cd7be2efc52a3b",
+            "orion-affiliate-workspace.js": "fa0b884207c4dac4418f5410d4f87f230cc4a0b2fcb65bae14cb8af81b2f1bd8",
+            "orion-affiliate-workspace.css": "2fdc6a73e5f3d89103123a26815280c3fdde10919f687274ec4a52f9b646b31b",
+          }
+          for name, digest in expected.items():
+            assert hashlib.sha256(Path("app/static", name).read_bytes()).hexdigest() == digest, name
+          print("Base de produção conferida.")
+          '
+      - name: Construir e conferir a atualização da interface
+        run: |
+          docker build -f deploy/Dockerfile.affiliate-history --build-arg BASE_IMAGE="$API_BASE" --build-arg ORION_RELEASE="$GITHUB_SHA" -t "$API_IMAGE" .
+          docker run --rm --entrypoint python -v "$GITHUB_WORKSPACE/app/static:/review:ro" "$API_IMAGE" -c '
+          from pathlib import Path
+          for name in ("orion-suite.js", "orion-affiliate-workspace.js", "orion-affiliate-workspace.css"):
+            assert Path("app/static", name).read_bytes() == Path("/review", name).read_bytes(), name
+          print("Imagem corresponde ao código validado.")
+          '
+          docker push "$API_IMAGE"
+          docker image inspect "$API_IMAGE" --format '{{index .RepoDigests 0}}' > affiliate-history-api-image.txt
+          cat affiliate-history-api-image.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: affiliate-history-image
+          path: affiliate-history-api-image.txt

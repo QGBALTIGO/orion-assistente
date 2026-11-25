@@ -309,8 +309,8 @@ test('Histórico mantém recibo técnico fora da tela e preserva erro legível',
     {id:'4'.repeat(32),status:'failed',destination:DEST[0],due:now,changed:now,receipt,error:'A conexão precisa ser verificada.',
     doc:{offer:{title:'Oferta com falha'},rule:rule()}}];
   const h=await harness(t,{data});h.mounted.setView('fila');await flush();
-  assert.match(h.get('#history-table').textContent,/Envio confirmado pelo WhatsApp/);
-  assert.match(h.get('#history-table').textContent,/A conexão precisa ser verificada/);
-  assert.doesNotMatch(h.get('#history-table').textContent,/synthetic-internal-id|metadata|message_id/);
+  assert.match(h.get('#history-list').textContent,/Envio confirmado pelo WhatsApp/);
+  assert.match(h.get('#history-list').textContent,/A conexão precisa ser verificada/);
+  assert.doesNotMatch(h.get('#history-list').textContent,/synthetic-internal-id|metadata|message_id/);
   assert.equal(data.jobs[0].receipt,receipt);assert.equal(h.writes().length,0);
 });

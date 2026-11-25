@@ -76,6 +76,13 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
   let whatsappGroupsError = "";
   let historyFilter = "all";
   let historySearch = "";
+  let historyDestination = "";
+  let historyLimit = 20;
+  let historyRefreshBusy = false;
+  let historyError = "";
+  const historyExpanded = new Set();
+  const historyJobBusy = new Set();
+  const historyFailedImages = new Set();
   let editTemplate = "default";
   let editRule = null;
   const ruleSteps = [["products","Produtos"],["destinations","Destinos"],["schedule","Frequência"],["template","Modelo"]];
@@ -882,58 +889,117 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
       <section class="af-auto-panel af-auto-history" data-automation-section="history" aria-labelledby="af-auto-history-title"><header class="af-auto-section-head"><div><span class="af-auto-eyebrow">Acompanhamento</span><h2 id="af-auto-history-title">Últimas buscas</h2></div>${icon("activity")}</header>${decisions()}<a class="af-auto-text-button" href="#fila">Ver fila e publicações${icon("arrow")}</a></section></div></div>`;
   }
 
-  function history() {
-    const filters = [
+  function historyDestinations() {
+    const used=new Set(state.jobs.map(job=>job.destination));
+    return [...used].map(ident=>state.destination.find(row=>row.id===ident)||{id:ident,name:"Destino removido"});
+  }
+
+  function historyGroups() {
+    return [
       ["all","Todas",state.jobs.length],
       ["pending","Na fila",pending().length],
-      ["published","Publicadas",state.jobs.filter(job => job.status==="published").length],
-      ["attention","Com pendências",needingAttention().length],
+      ["published","Publicadas",state.jobs.filter(job=>job.status==="published").length],
+      ["attention","Atenção",needingAttention().length],
+      ["cancelled","Canceladas",state.jobs.filter(job=>job.status==="cancelled").length],
     ];
-    const rows = state.jobs.map(job=>{
-      const dest = state.destination.find(d=>d.id===job.destination);
-      const when = job.status==="published" ? job.changed : job.due;
-      const provider = dest?.mode?.startsWith("whatsapp")?"WhatsApp":"Telegram";
-      return `<tr data-history-status="${html(job.status)}" data-history-text="${html(normalize(job.doc.offer.title+" "+(dest?.name||"")))}">
-        <th scope="row"><strong>${html(job.doc.offer.title)}</strong><small>${html(dest?.name || "Destino removido")}</small></th>
-        <td>${jobPill(job)}${job.error||job.status==="published"&&job.receipt?`<small>${html(job.error || `Envio confirmado pelo ${provider}`)}</small>`:""}</td>
-        <td>${date(when,job.doc.rule?.timezone)}</td>
-        <td>${job.status==="approval"&&(job.doc?.automation?.mode==="review"||state.sending)?btn(job.doc?.automation?.mode==="review"?"Aprovar envio":"Aprovar teste","approve",job.id,true):""}
-          ${["approval","queued","paused","expired","failed"].includes(job.status)?btn("Cancelar","cancel-job",job.id):""}</td>
-      </tr>`;
-    }).join("");
-    return heading("Fila e histórico","Acompanhe os envios programados, publicações confirmadas e ocorrências.",btn("Atualizar","refresh")) +
-      card("Publicações",`
-        <div class="af-toolbar">
-          <div class="af-search">${icon("search")}<label class="os-sr-only" for="filter-history">Buscar oferta ou destino</label>
-            <input class="af-control" id="filter-history" type="search" placeholder="Buscar oferta ou destino" value="${html(historySearch)}"></div>
-          <div class="af-status-tabs" role="group" aria-label="Situação da publicação">
-            ${filters.map(([key,label,count])=>`<button class="os-button os-outline os-small" type="button" data-history-filter="${key}" aria-pressed="${key===historyFilter}">${label} · ${count}</button>`).join("")}</div>
-        </div>
-        <table class="af-table" id="history-table">
-          <thead><tr><th scope="col">Oferta</th><th scope="col">Situação</th><th scope="col">Horário</th><th scope="col">Ações</th></tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
-        <div id="history-empty" class="af-history-empty" hidden>${empty(state.jobs.length?"Nenhuma publicação encontrada":"Nenhuma publicação registrada",
-          state.jobs.length?"Limpe a busca ou selecione outra situação.":"As próximas ofertas preparadas aparecerão aqui.","fileCheck")}</div>
-        <span id="history-count" class="os-sr-only" role="status"></span>`,"fileCheck");
+  }
+
+  function historyJob(job) {
+    const offer=job.doc?.offer||{},rule=job.doc?.rule||{},template=job.doc?.template||{};
+    const destination=state.destination.find(row=>row.id===job.destination);
+    const provider=destination?.mode?.startsWith("whatsapp")?"WhatsApp":destination?.mode==="telegram"?"Telegram":null;
+    const glyph=provider==="WhatsApp"?"chat":provider==="Telegram"?"send":"link";
+    const title=offer.title||"Oferta sem título",destinationName=destination?.name||"Destino removido";
+    const waiting=pendingStates.includes(job.status);
+    const timestamp=job.status==="published"?(job.published_at||job.changed):waiting?job.due:job.changed||job.due;
+    const when=Number.isFinite(Number(timestamp))&&Number(timestamp)>0&&Number(timestamp)<8640000000000?Number(timestamp):null;
+    const whenLabel=job.status==="published"?"Publicada":job.status==="queued"?"Agendada":waiting?"Programada":"Atualizada";
+    const expanded=historyExpanded.has(job.id),busy=historyJobBusy.has(job.id);
+    const canApprove=job.status==="approval"&&(job.doc?.automation?.mode==="review"||state.sending);
+    const canCancel=["approval","queued","paused","expired","failed"].includes(job.status);
+    const description=job.error||({
+      approval:"Aguardando sua aprovação para enviar.",queued:"O envio acontecerá no horário programado.",
+      preparing:"Preparando o card e o link da publicação.",dispatching:"Enviando para o destino selecionado.",
+      published:job.receipt?`Envio confirmado${provider?" pelo "+provider:""}.`:"Publicação registrada no histórico.",
+      paused:"Publicação pausada.",failed:"Não foi possível concluir esta publicação.",
+      expired:"O prazo desta publicação terminou.",cancelled:"Esta publicação foi cancelada.",
+      unknown:"O destino ainda não confirmou o envio. Confira a publicação antes de tentar novamente.",
+    }[job.status]||"Confira os detalhes desta publicação.");
+    const imageUrl=typeof offer.image==="string"&&/^https:\/\//i.test(offer.image)&&!historyFailedImages.has(offer.image)?offer.image:null;
+    const action=(label,act,primary=false)=>`<button type="button" class="os-button${primary?"":" os-outline"}" data-act="${act}" data-value="${html(job.id)}" aria-disabled="${busy}" aria-busy="${busy}">${busy?'<span class="os-spinner" aria-hidden="true"></span>':icon(act==="approve"?"check":"close")}${label}</button>`;
+    return `<article class="af-history-item" data-history-job="${html(job.id)}" data-history-status="${html(job.status)}" data-history-destination="${html(job.destination)}" data-history-text="${html(normalize(title+" "+destinationName+" "+(provider||"")+" "+(rule.name||"")))}">
+      <div class="af-history-product"><span class="af-history-thumb" aria-hidden="true">${icon("box")}${imageUrl?`<img src="${html(imageUrl)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" data-history-image>`:""}</span><div><h3 title="${html(title)}">${html(title)}</h3><span class="af-history-destination">${icon(glyph)}<span>${html(destinationName)}</span></span></div></div>
+      <div class="af-history-state">${jobPill(job)}${job.status==="published"&&job.receipt?`<span class="af-history-confirmed">${icon("check")}Envio confirmado</span>`:job.status==="approval"?'<span>Aguardando aprovação</span>':""}</div>
+      <div class="af-history-time"><span>${whenLabel}</span><time${when?` datetime="${html(new Date(when*1000).toISOString())}"`:""}>${html(date(when,rule.timezone))}</time></div>
+      <div class="af-history-actions">${canApprove?action(job.doc?.automation?.mode==="review"?"Aprovar envio":"Aprovar teste","approve",true):""}${canCancel?action("Cancelar","cancel-job"):""}<button type="button" class="af-history-detail-button" data-history-details="${html(job.id)}" aria-expanded="${expanded}" aria-controls="af-history-detail-${html(job.id)}">${icon("eye")}${expanded?"Fechar detalhes":"Detalhes"}</button></div>
+      <div class="af-history-detail" id="af-history-detail-${html(job.id)}" data-history-detail="${html(job.id)}"${expanded?"":" hidden"}>
+        <p class="af-history-full-title">${html(title)}</p><p class="af-history-description${attentionStates.includes(job.status)?" is-warning":""}">${icon(attentionStates.includes(job.status)?"info":job.status==="published"?"check":"clock")}<span>${html(description)}</span></p>
+        ${provider||rule.name||template.name?`<dl>${provider?`<div><dt>Canal</dt><dd>${html(provider)}</dd></div>`:""}${rule.name?`<div><dt>Automação</dt><dd>${html(rule.name)}</dd></div>`:""}${template.name?`<div><dt>Modelo</dt><dd>${html(template.name)}</dd></div>`:""}</dl>`:""}
+      </div></article>`;
+  }
+
+  function history() {
+    const groups=historyGroups();
+    const destinations=historyDestinations();
+    const overview=[["pending","Na fila","clock"],["published","Publicadas","check"],["attention","Atenção","info"]];
+    return `<div class="af-history-workspace"><header class="af-history-heading"><div><span class="af-history-eyebrow">Afiliados</span><h1>Fila e histórico</h1><p>Suas publicações, do agendamento à entrega.</p></div><button type="button" class="os-icon-button" data-act="refresh-history" aria-label="Atualizar publicações" aria-busy="${historyRefreshBusy}" aria-disabled="${historyRefreshBusy}">${icon("refresh")}</button></header>
+      <div class="af-history-overview" aria-label="Resumo das publicações recentes">${overview.map(([key,label,glyph])=>`<div data-history-overview="${key}"><span>${icon(glyph)}${label}</span><strong>${groups.find(row=>row[0]===key)[2]}</strong></div>`).join("")}</div>
+      <div data-history-feedback>${historyError?`<p class="af-history-alert" role="alert">${icon("info")}<span>${html(historyError)}</span></p>`:""}</div>
+      <section class="af-history-panel" aria-labelledby="af-history-title"><header class="af-history-panel-heading"><h2 id="af-history-title">Publicações recentes <span>${state.jobs.length}</span></h2></header>
+        <div class="af-history-toolbar"><div class="af-history-search">${icon("search")}<label class="os-sr-only" for="filter-history">Buscar oferta ou destino</label><input id="filter-history" type="search" placeholder="Buscar oferta ou destino" autocomplete="off" value="${html(historySearch)}"></div>
+          <div class="af-history-destination-filter"><label class="os-sr-only" for="history-destination">Filtrar por destino</label><select id="history-destination" data-orion-field="native"><option value="">Todos os destinos</option>${destinations.map(row=>option(row.id,row.name,historyDestination)).join("")}</select></div></div>
+        <div class="af-history-filters" role="group" aria-label="Situação da publicação">${groups.map(([key,label,count])=>`<button type="button" data-history-filter="${key}" aria-pressed="${key===historyFilter}">${label}<span>${count}</span></button>`).join("")}</div>
+        <div id="history-list" class="af-history-list">${state.jobs.map(historyJob).join("")}</div>
+        <div id="history-empty" class="af-history-empty" hidden><span>${icon("fileCheck")}</span><h3>${state.jobs.length?"Nenhuma publicação encontrada":"Suas publicações aparecem aqui"}</h3><p>${state.jobs.length?"Tente outra busca ou escolha outros filtros.":"Prepare uma oferta ou ative uma automação para começar."}</p>${state.jobs.length?'<button type="button" class="af-history-detail-button" data-history-reset>Limpar filtros</button>':link("Preparar oferta","ofertas","plus",true)}</div>
+        <footer class="af-history-footer"><span id="history-count" role="status" aria-live="polite"></span><button type="button" class="os-button os-outline" data-history-more hidden>Ver mais publicações${icon("arrow")}</button></footer>
+      </section></div>`;
   }
 
   function filterHistory() {
-    const table = $("#history-table");
-    if (!table) return;
-    const allowed = {all:null,pending:pendingStates,published:["published"],attention:attentionStates}[historyFilter];
-    const keyword = normalize(historySearch);
-    let count = 0;
-    for (const row of table.tBodies[0].rows) {
-      row.hidden = !!(allowed && !allowed.includes(row.dataset.historyStatus)) || !row.dataset.historyText.includes(keyword);
-      if (!row.hidden) count++;
+    const list=$("#history-list");
+    if(!list)return;
+    const allowed={all:null,pending:pendingStates,published:["published"],attention:attentionStates,cancelled:["cancelled"]}[historyFilter];
+    const keyword=normalize(historySearch);
+    let matched=0,visible=0;
+    for(const row of list.querySelectorAll('[data-history-job]')){
+      const matches=!(allowed&&!allowed.includes(row.dataset.historyStatus))&&row.dataset.historyText.includes(keyword)&&(!historyDestination||row.dataset.historyDestination===historyDestination);
+      if(matches)matched++;
+      row.hidden=!matches||matched>historyLimit;
+      if(!row.hidden)visible++;
     }
-    table.hidden = count===0;
-    $("#history-empty").hidden = count>0;
-    $("#history-count").textContent = `${count} publicações exibidas`;
-    for (const control of content.querySelectorAll("[data-history-filter]")) {
-      control.setAttribute("aria-pressed",String(control.dataset.historyFilter===historyFilter));
+    list.hidden=visible===0;
+    $("#history-empty").hidden=visible>0;
+    $("#history-count").textContent=matched===0?"":`${visible}${matched>visible?" de "+matched:""} ${matched===1?"publicação":"publicações"}`;
+    const more=content.querySelector('[data-history-more]');
+    more.hidden=matched<=visible;
+    more.textContent=matched>visible?`Ver mais ${Math.min(20,matched-visible)} publicações`:"Ver mais publicações";
+    for(const control of content.querySelectorAll('[data-history-filter]'))control.setAttribute('aria-pressed',String(control.dataset.historyFilter===historyFilter));
+    const destination=$("#history-destination");
+    if(destination&&destination.value!==historyDestination)destination.value=historyDestination;
+  }
+
+  function updateHistory() {
+    const current=content.querySelector('.af-history-workspace');
+    if(!current)return;
+    const template=document.createElement('template');template.innerHTML=history();
+    const next=template.content.firstElementChild;
+    const focused=current.contains(document.activeElement)?document.activeElement:null;
+    const visible=node=>{const rect=node.getBoundingClientRect();return rect.height>0&&rect.bottom>56&&rect.top<window.innerHeight;};
+    const focusedItem=focused?.closest('[data-history-job]');
+    const anchor=focusedItem&&visible(focusedItem)?focusedItem:focused&&visible(focused)?focused:
+      [...current.querySelectorAll('[data-history-job]')].find(visible)||current.querySelector('.af-history-toolbar');
+    const top=anchor?.getBoundingClientRect().top,x=window.scrollX,y=window.scrollY;
+    const selection=focused&&typeof focused.selectionStart==='number'?[focused.selectionStart,focused.selectionEnd,focused.selectionDirection]:null;
+    patchDashboardNode(current,next);
+    const search=$("#filter-history");if(search&&search.value!==historySearch)search.value=historySearch;
+    filterHistory();
+    if(focused?.isConnected&&!focused.disabled){
+      if(document.activeElement!==focused)focused.focus({preventScroll:true});
+      if(selection)focused.setSelectionRange(...selection);
     }
+    const target=anchor?.isConnected&&!anchor.hidden?window.scrollY+anchor.getBoundingClientRect().top-top:y;
+    if(Math.abs(window.scrollY-target)>.5)window.scrollTo({left:x,top:target,behavior:'instant'});
+    window.OrionFields?.refresh(current);
   }
 
   const views = {dashboard,plataformas:platforms,conexoes:connections,ofertas:offers,templates:templatePage,automacoes:automations,fila:history};
@@ -942,7 +1008,7 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
   // chart dates and cards mounted during both user interactions and polling.
   function dashboardNodeKey(node) {
     if (node.nodeType!==1) return null;
-    for (const name of ["id","data-automation-section","data-automation-card","data-automation-decision","data-rule-panel","data-rule-step","data-rule-niche","data-rule-destination","data-rule-filter","data-rule-toggle","data-offer-section","data-offer-draft","data-offer-destination-row","data-offer-destination","data-offer-phrase","data-offer-tab","data-offer-product","data-offer-notice","data-offer-job","data-dashboard-date","data-dashboard-period","data-dashboard-metric","data-dashboard-publications","data-dashboard-card","data-dashboard-kpi","data-dashboard-step","data-dashboard-notice","data-act","aria-labelledby"]) {
+    for (const name of ["id","data-history-job","data-history-filter","data-history-details","data-history-detail","data-history-overview","data-automation-section","data-automation-card","data-automation-decision","data-rule-panel","data-rule-step","data-rule-niche","data-rule-destination","data-rule-filter","data-rule-toggle","data-offer-section","data-offer-draft","data-offer-destination-row","data-offer-destination","data-offer-phrase","data-offer-tab","data-offer-product","data-offer-notice","data-offer-job","data-dashboard-date","data-dashboard-period","data-dashboard-metric","data-dashboard-publications","data-dashboard-card","data-dashboard-kpi","data-dashboard-step","data-dashboard-notice","data-act","aria-labelledby"]) {
       if (node.hasAttribute(name)) return `${node.nodeName}:${name}:${node.getAttribute(name)}`;
     }
     const name = node.getAttribute("class")?.split(/\s+/)[0];
@@ -1355,6 +1421,10 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     if (!state || controller.signal.aborted) return;
     if (route==="dashboard" && content.querySelector(".af-dashboard")) {
       updateDashboard(".af-dashboard",dashboard());
+      return;
+    }
+    if (route==="fila" && content.querySelector(".af-history-workspace")) {
+      updateHistory();
       return;
     }
     if (route==="automacoes" && content.querySelector(".af-automations-workspace")) {
@@ -1907,6 +1977,12 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
       editRule=null;ruleDraft=null;ruleDraftKey=null;ruleError='';ruleEditorVersion++;
       render();content.querySelector('[data-act="new-rule"]')?.focus({preventScroll:true});
     },
+    "refresh-history": async ()=>{
+      if(historyRefreshBusy)return;
+      historyRefreshBusy=true;historyError="";render();
+      try{await reload();}catch(error){historyError=error.message||"Não foi possível atualizar as publicações.";}
+      finally{historyRefreshBusy=false;if(!controller.signal.aborted&&route==="fila")render();}
+    },
     "refresh-automations": async ()=>{
       if(ruleRefreshBusy)return;
       ruleRefreshBusy=true;ruleListError='';render();
@@ -1918,19 +1994,27 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     approve: async ident=>{
       const job=state.jobs.find(row=>row.id===ident);
       const recurringReview=job?.doc?.automation?.mode==="review";
-      if(!job||job.status!=="approval"||!recurringReview&&!state.sending)return;
-      const destination=state.destination.find(row=>row.id===job.destination);
-      const detail=recurringReview?`${job.doc.offer.title} entrará na fila de envio para ${destination?.name||"o destino desta publicação"}.`:"O teste será enviado ao destino escolhido para esta publicação.";
-      if (!await confirmAction(recurringReview?"Aprovar envio?":"Publicar teste?",detail,recurringReview?"Aprovar envio":"Publicar teste")) return;
-      await api("jobs/"+ident,"POST",{action:"approve",...(recurringReview?{}:{confirm_test:true})});
-      await reload();
-      notify("Publicação aprovada.");
+      if(!job||job.status!=="approval"||!recurringReview&&!state.sending||historyJobBusy.has(ident))return;
+      historyJobBusy.add(ident);historyError="";if(route==="fila")render();
+      try{
+        const destination=state.destination.find(row=>row.id===job.destination);
+        const detail=recurringReview?`${job.doc?.offer?.title||"Esta oferta"} entrará na fila de envio para ${destination?.name||"o destino desta publicação"}.`:"O teste será enviado ao destino escolhido para esta publicação.";
+        if(!await confirmAction(recurringReview?"Aprovar envio?":"Publicar teste?",detail,recurringReview?"Aprovar envio":"Publicar teste"))return;
+        await api("jobs/"+ident,"POST",{action:"approve",...(recurringReview?{}:{confirm_test:true})});
+        await reload();notify("Publicação aprovada.");
+      }catch(error){historyError=error.message||"Não foi possível aprovar esta publicação.";notify(historyError,true);}
+      finally{historyJobBusy.delete(ident);if(!controller.signal.aborted&&route==="fila")render();}
     },
     "cancel-job": async ident=>{
-      if (!await confirmAction("Cancelar publicação?","A publicação sairá da fila de envio.","Cancelar publicação",true)) return;
-      await api("jobs/"+ident,"POST",{action:"cancel"});
-      await reload();
-      notify("Publicação cancelada.");
+      const job=state.jobs.find(row=>row.id===ident);
+      if(!job||!["approval","queued","paused","expired","failed"].includes(job.status)||historyJobBusy.has(ident))return;
+      historyJobBusy.add(ident);historyError="";if(route==="fila")render();
+      try{
+        if(!await confirmAction("Cancelar publicação?","A publicação sairá da fila de envio.","Cancelar publicação",true))return;
+        await api("jobs/"+ident,"POST",{action:"cancel"});
+        await reload();notify("Publicação cancelada.");
+      }catch(error){historyError=error.message||"Não foi possível cancelar esta publicação.";notify(historyError,true);}
+      finally{historyJobBusy.delete(ident);if(!controller.signal.aborted&&route==="fila")render();}
     },
     token: async value=>{
       const textarea=content.querySelector("textarea[name=text]");
@@ -1951,8 +2035,8 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     if (!state || !Object.hasOwn(formActions,form.dataset.form)) return;
     event.preventDefault();
     const button=event.submitter;
-    const keepFocus=!!form.closest(".af-offers-workspace,.af-automations-workspace")&&document.activeElement===button;
-    if (button&&!form.closest(".af-offers-workspace,.af-automations-workspace")) button.disabled=true;
+    const keepFocus=!!form.closest(".af-offers-workspace,.af-automations-workspace,.af-history-workspace")&&document.activeElement===button;
+    if (button&&!form.closest(".af-offers-workspace,.af-automations-workspace,.af-history-workspace")) button.disabled=true;
     form.setAttribute("aria-busy","true");
     try { await formActions[form.dataset.form](new FormData(form),button); }
     catch(error){ notify(error.message,true); }
@@ -2034,11 +2118,26 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
       }
       return;
     }
-    if (filter) { historyFilter=filter.dataset.historyFilter;filterHistory();return; }
+    if (filter) { historyFilter=filter.dataset.historyFilter;historyLimit=20;filterHistory();return; }
+    const historyDetails=event.target.closest('[data-history-details]');
+    if(historyDetails){
+      const key=historyDetails.dataset.historyDetails;
+      if(historyExpanded.has(key))historyExpanded.delete(key);else historyExpanded.add(key);
+      historyDetails.setAttribute('aria-expanded',String(historyExpanded.has(key)));
+      historyDetails.innerHTML=icon("eye")+(historyExpanded.has(key)?"Fechar detalhes":"Detalhes");
+      const detail=document.getElementById('af-history-detail-'+key);
+      if(detail&&content.contains(detail))detail.hidden=!historyExpanded.has(key);
+      return;
+    }
+    if(event.target.closest('[data-history-more]')){historyLimit+=20;filterHistory();return;}
+    if(event.target.closest('[data-history-reset]')){
+      historySearch="";historyDestination="";historyFilter="all";historyLimit=20;
+      $("#filter-history").value="";filterHistory();$("#filter-history").focus({preventScroll:true});return;
+    }
     const button=event.target.closest("[data-act]");
     if (!button || !Object.hasOwn(actions,button.dataset.act)) return;
-    const keepFocus=!!button.closest(".af-offers-workspace,.af-automations-workspace")&&document.activeElement===button;
-    if (!button.closest(".af-offers-workspace,.af-automations-workspace")) button.disabled=true;
+    const keepFocus=!!button.closest(".af-offers-workspace,.af-automations-workspace,.af-history-workspace")&&document.activeElement===button;
+    if (!button.closest(".af-offers-workspace,.af-automations-workspace,.af-history-workspace")) button.disabled=true;
     try { await actions[button.dataset.act](button.dataset.value); }
     catch(error) { notify(error.message,true); }
     finally {
@@ -2048,6 +2147,10 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
       if (keepFocus&&document.activeElement===document.body) {
         if (button.isConnected&&!button.disabled) button.focus({preventScroll:true});
         else if (route==="ofertas") content.querySelector("[data-offer-send-result]")?.focus({preventScroll:true});
+        else if (route==="fila") {
+          const row=content.querySelector('[data-history-job="'+CSS.escape(button.dataset.value||"")+'"]:not([hidden])');
+          (row?.querySelector('[data-history-details]')||content.querySelector('[data-history-filter][aria-pressed="true"]'))?.focus({preventScroll:true});
+        }
       }
     }
   }, {signal: controller.signal});
@@ -2201,7 +2304,7 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
       syncOfferControls();
       return;
     }
-    if (field.id==="filter-history") { historySearch=field.value;filterHistory();return; }
+    if (field.id==="filter-history") { historySearch=field.value;historyLimit=20;filterHistory();return; }
     if (!field.matches("[data-niche-filter]")) return;
     const term=normalize(field.value);
     let visible=0;
@@ -2211,6 +2314,16 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     }
     field.form.querySelector("[data-niche-empty]").hidden=visible>0;
   }, {signal: controller.signal});
+  content.addEventListener("error",event=>{
+    if(event.target.matches?.('[data-history-image]')){
+      historyFailedImages.add(event.target.getAttribute('src'));event.target.hidden=true;
+    }
+  }, {capture:true,signal:controller.signal});
+  content.addEventListener("change",event=>{
+    if(event.target.id==="history-destination"){
+      historyDestination=event.target.value;historyLimit=20;filterHistory();
+    }
+  }, {signal:controller.signal});
   content.addEventListener("toggle",event=>{
     if(event.target.dataset?.ruleDisclosure==='advanced')ruleAdvancedOpen=event.target.open;
     const key=event.target.dataset?.offerDisclosure;
