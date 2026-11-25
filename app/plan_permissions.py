@@ -109,6 +109,9 @@ def derive_plan(snapshot, now=None):
     profile = workspace_profile(snapshot.get("niche"), platform=platform)
     if profile == AFFILIATE_WORKSPACE:
         features = sorted(AFFILIATE_WORKSPACE_FEATURES)
+        if snapshot.get("tenant_status") == "active":
+            features.append("devices.manage")
+            features.sort()
     elif profile == SUBSCRIPTION_WORKSPACE:
         # Keep commercial history intact. A grant never enables another
         # niche's operations while its own workspace is being prepared.

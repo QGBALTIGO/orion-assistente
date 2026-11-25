@@ -55,6 +55,7 @@
     const releaseFields=fields.bind(host);
     let pollTimer=null,expiryTimer=null,clockTimer=null,lastHTML='';
     host.classList.add('os-devices');
+    host.classList.toggle('os-devices-connection-only',bridge.connectionOnly===true);
     const base='/api/v1/tenants/'+encodeURIComponent(bridge.tenantId)+'/subscription-whatsapp/devices';
     const path=(id,suffix='')=>base+'/'+encodeURIComponent(id)+suffix;
     const request=(url,method='GET',payload)=>bridge.request(url,method,payload);
@@ -146,7 +147,7 @@
     function renderList(){
       const usage=state.usage,limit=usage?'<div class="os-devices-usage"><span class="os-badge os-neutral">'+count(usage.used)+' de '+count(usage.limit)+'</span><span>'+((usage.limit===1)?'dispositivo em uso':'dispositivos em uso')+'</span></div>':'';
       const create=canManage()?button('Criar dispositivo','create','','plus',!canWrite()?'disabled':''):'';
-      const header='<header class="os-title-row os-devices-header"><div><h1>Dispositivos</h1><p>Conecte e configure o WhatsApp da sua empresa.</p></div><div class="os-actions">'+button('Atualizar','refresh','os-outline','refresh',state.busy||state.loading?'disabled':'')+create+'</div></header>';
+      const header='<header class="os-title-row os-devices-header"><div><h1>'+(bridge.connectionOnly?'Conectar WhatsApp':'Dispositivos')+'</h1><p>'+(bridge.connectionOnly?'Vincule o aparelho desta empresa por QR Code ou código de conexão.':'Conecte e configure o WhatsApp da sua empresa.')+'</p></div><div class="os-actions">'+button('Atualizar','refresh','os-outline','refresh',state.busy||state.loading?'disabled':'')+create+'</div></header>';
       const body=!state.loaded?loading('Conferindo os dispositivos…'):state.items.length?'<div class="os-devices-list">'+state.items.map(card).join('')+'</div>':'<section class="os-card os-empty"><div class="os-square-icon">'+icon('phone')+'</div><h2>Nenhum dispositivo cadastrado</h2><p>Crie o dispositivo da sua empresa para começar a conexão com o WhatsApp.</p>'+(canManage()?button('Criar dispositivo','create','','plus',!canWrite()?'disabled':''):'')+'</section>';
       paint(header+limit+feedbackHTML()+pendingHTML()+body);
     }

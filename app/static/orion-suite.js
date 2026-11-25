@@ -133,7 +133,7 @@
   // The original Orion operator console is restricted to the authenticated
   // platform administrator. Business owners use the regular workspace.
   const platformAdminOnlyPages=new Set(['conversas','ai','empresa','catalogo','cadastros']);
-  const appPages=new Set([...Object.keys(routeNames),...Object.keys(affiliatePages),...routeAliases.keys()]);
+  const appPages=new Set([...Object.keys(routeNames),...Object.keys(affiliatePages),'afiliados-whatsapp',...routeAliases.keys()]);
   const routeFeatures={'verificador-numeros':'number_check.manage','link-whatsapp':'whatsapp_link.manage',contatos:'audience.manage','grupos-contatos':'audience.manage',dispositivos:'devices.manage',chatbot:'account.manage','testar-chatbot':'chatbot.manage',templates:'templates.manage','mensagens-enviadas':'sent_messages.manage',diagnosticos:'diagnostics.manage',campanhas:'campaigns.manage',programadas:'scheduled_messages.manage',massa:'bulk_messages.manage','enviar-mensagem':'direct_messages.manage',aquecimento:'whatsapp_guidance.view','evitar-banimento':'whatsapp_guidance.view','resolver-banimento':'whatsapp_guidance.view','extrator-contatos':'group_contacts.manage','adicionar-ao-grupo':'group_add.manage',dashboard:'dashboard.basic',agenda:'agenda.manage',clientes:'clients.manage',clinica:'clients.manage','pacientes-odonto':'clients.manage','proteses-odonto':'clients.manage','estoque-odonto':'clients.manage',inbox:'conversations.manual',servicos:'services.manage',funcionarios:'professionals.manage',financeiro:'finance.basic',desempenho:'performance.advanced',marketing:'marketing.ai',site:'site.manage',fidelizacao:'loyalty.manage',consultor:'consultant.ai',configuracoes:'settings.manage'};
   const platformWorkspace=()=>state.bridge.user?.role==='admin'&&!state.bridge.user?.maintenance?.active;
   const subscriptionRoutes=new Set(['dashboard','novidades','ajuda','member']);
@@ -142,6 +142,7 @@
   const affiliateWorkspace=()=>workspaceProfile()==='affiliate';
   const affiliateOwner=()=>state.bridge.user?.role==='member'&&!state.bridge.user?.maintenance?.active&&tenant()?.role==='owner'&&tenant()?.status==='active';
   const affiliatePanelRoute=route=>affiliateWorkspace()&&affiliateOwner()&&Object.hasOwn(affiliatePages,route);
+  const affiliateDevices=()=>affiliateWorkspace()&&affiliateOwner()&&permitted('devices.manage');
   // A niche comes from the server's verified entitlement, never from a URL or storage.
   const dentalWorkspace=()=>!platformWorkspace()&&!subscriptionWorkspace()&&state.entitlements?.business_niche==='odontologia';
   function barbershopHomeEligible(){
@@ -152,11 +153,11 @@
   }
   const homePreviewEnabled=()=>platformWorkspace()||barbershopHomeEligible();
   const dedicatedPatients=()=>dentalWorkspace()&&state.entitlements?.dental_clinical_enabled===true;
-  const routeLabel=route=>affiliateWorkspace()&&affiliateTitles[route]?affiliateTitles[route]:route==='dashboard'&&homePreviewEnabled()?'Início':dentalWorkspace()?({clientes:dedicatedPatients()?'Contatos da agenda':'Pacientes',servicos:'Procedimentos',funcionarios:'Profissionais',desempenho:'Relatórios',inbox:'Conversas',site:'Agendamento online'})[route]||routeNames[route]:subscriptionWorkspace()&&route==='dashboard'?'Início':routeNames[route];
+  const routeLabel=route=>route==='afiliados-whatsapp'?'Conectar WhatsApp':affiliateWorkspace()&&affiliateTitles[route]?affiliateTitles[route]:route==='dashboard'&&homePreviewEnabled()?'Início':dentalWorkspace()?({clientes:dedicatedPatients()?'Contatos da agenda':'Pacientes',servicos:'Procedimentos',funcionarios:'Profissionais',desempenho:'Relatórios',inbox:'Conversas',site:'Agendamento online'})[route]||routeNames[route]:subscriptionWorkspace()&&route==='dashboard'?'Início':routeNames[route];
   const fallbackRoute=()=>affiliateWorkspace()||subscriptionWorkspace()||dentalWorkspace()&&permitted('dashboard.basic')?'dashboard':'plano';
-  const permitted=feature=>!feature||platformWorkspace()||(!affiliateWorkspace()||['account.manage','business.setup'].includes(feature))&&(!subscriptionWorkspace()||['account.manage','business.setup','devices.manage','chatbot.manage','templates.manage','sent_messages.manage','diagnostics.manage','campaigns.manage','scheduled_messages.manage','bulk_messages.manage','direct_messages.manage','whatsapp_guidance.view','group_contacts.manage','group_add.manage','number_check.manage','whatsapp_link.manage','audience.manage'].includes(feature))&&state.entitlements?.permissions?.[feature]===true;
+  const permitted=feature=>!feature||platformWorkspace()||(!affiliateWorkspace()||['account.manage','business.setup','devices.manage'].includes(feature))&&(!subscriptionWorkspace()||['account.manage','business.setup','devices.manage','chatbot.manage','templates.manage','sent_messages.manage','diagnostics.manage','campaigns.manage','scheduled_messages.manage','bulk_messages.manage','direct_messages.manage','whatsapp_guidance.view','group_contacts.manage','group_add.manage','number_check.manage','whatsapp_link.manage','audience.manage'].includes(feature))&&state.entitlements?.permissions?.[feature]===true;
   const routePermitted=route=>{
-    if(affiliateWorkspace())return affiliatePanelRoute(route)||['novidades','ajuda','member'].includes(route)||
+    if(affiliateWorkspace())return affiliatePanelRoute(route)||route==='afiliados-whatsapp'&&affiliateDevices()||['novidades','ajuda','member'].includes(route)||
       route==='configuracoes'&&permitted('account.manage')||route==='perfil'&&appLayoutEnabled();
     if(route.startsWith('afiliados-'))return false;
     return route==='vendas-odonto'?dentalSettingsAllowed():route==='ajustes-odonto'?dentalWorkspace():(Object.hasOwn(dentalViews,route)||route==='pacientes-odonto')?(dentalWorkspace()&&state.entitlements?.dental_clinical_enabled===true&&state.bridge.user?.role==='member'&&!state.bridge.user?.maintenance?.active&&['owner','editor'].includes(tenant()?.role)&&permitted('clients.manage')):route==='perfil'?appLayoutEnabled():['aquecimento','evitar-banimento','resolver-banimento','extrator-contatos','adicionar-ao-grupo','verificador-numeros','link-whatsapp','contatos','grupos-contatos'].includes(route)?(subscriptionWorkspace()&&tenant()?.role==='owner'&&tenant()?.status==='active'&&permitted(routeFeatures[route])):['dispositivos','chatbot','testar-chatbot','templates','mensagens-enviadas','diagnosticos','campanhas','programadas','massa','enviar-mensagem'].includes(route)?(subscriptionWorkspace()&&permitted(routeFeatures[route])):subscriptionWorkspace()?(route==='configuracoes'?permitted('account.manage'):subscriptionRoutes.has(route)):route==='configuracoes'?(permitted('settings.manage')||permitted('business.setup')||permitted('account.manage')):permitted(routeFeatures[route]);
@@ -452,43 +453,48 @@
   function toast(message,error=false){const r=$('osToastRegion');if(!r)return;const n=document.createElement('div');n.className='os-toast'+(error?' os-error':'');n.innerHTML=icon(error?'info':'check')+'<span>'+esc(message)+'</span>';r.appendChild(n);setTimeout(()=>n.remove(),6000);}
   function title(titleText,subtitle,actions=''){return '<div class="os-title-row"><div><h1>'+esc(titleText)+'</h1>'+(subtitle?'<p>'+esc(subtitle)+'</p>':'')+'</div>'+(actions?'<div class="os-actions">'+actions+'</div>':'')+'</div>';}
   function bodyHTML(html){clearSiteLookups();window.OrionSubscriptionAudience?.unmount();window.OrionSubscriptionNumberCheck?.unmount();window.OrionSubscriptionWhatsappLink?.unmount();window.OrionSubscriptionGroupAdd?.unmount();window.OrionSubscriptionGroupContacts?.unmount();window.OrionSubscriptionDirectMessages?.unmount();window.OrionSubscriptionBulkMessages?.unmount();window.OrionSubscriptionScheduledMessages?.unmount();window.OrionSubscriptionCampaigns?.unmount();window.OrionSubscriptionDiagnostics?.unmount();window.OrionSubscriptionSentMessages?.unmount();window.OrionSubscriptionTemplates?.unmount();window.OrionSubscriptionChatbotTest?.unmount();window.OrionSubscriptionChatbot?.unmount();window.OrionSubscriptionDevices?.unmount();window.OrionSubscriptionDashboard?.unmount();window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionCommunication?.unmount();window.OrionInbox?.unmount();window.OrionDentalDirectory?.unmount();window.OrionDentalClinic?.unmount?.();const body=$('osPageBody');if(body){body.innerHTML=html;window.OrionFields?.refresh(body);}}
-  function pageHTML(html){$('page-suite').innerHTML=html;window.OrionFields?.refresh($('page-suite'));}
-  function sendAffiliateView(frame=$('osAffiliateView')){
-    if(!frame||!affiliatePanelRoute(state.route))return;
-    frame.contentWindow?.postMessage({
-      from:'orion-panel',view:affiliatePages[state.route],
-      theme:document.documentElement.dataset.theme
-    },location.origin);
+  function pageHTML(html){disposeAffiliate();$('page-suite').innerHTML=html;window.OrionFields?.refresh($('page-suite'));}
+  let affiliateAssets, affiliateMounted;
+  function disposeAffiliate(){
+    affiliateMounted?.controller.unmount();
+    affiliateMounted=null;
   }
-  function renderAffiliateView(){
-    const source='/api/v1/afiliados/'+encodeURIComponent(state.tenantId)+'?embed=1';
-    if($('osAffiliateView')?.dataset.source===source){sendAffiliateView();return;}
-    pageHTML('<iframe id="osAffiliateView" class="os-affiliate-view" title="Gestão de afiliados" height="460" data-source="'+esc(source)+'" src="'+esc(source+'#'+affiliatePages[state.route])+'"></iframe>');
-    $('osAffiliateView').addEventListener('load',event=>{
-      try {
-        if(event.currentTarget.contentWindow.location.pathname==='/painel')location.assign('/painel');
-      }catch{}
-    });
+  function loadAffiliateAssets(){
+    if(window.OrionAffiliateWorkspace)return Promise.resolve(window.OrionAffiliateWorkspace);
+    if(!affiliateAssets){
+      const css=document.createElement('link');
+      css.rel='stylesheet';css.href='/api/v1/afiliados-assets/workspace.css';
+      const styled=new Promise((resolve,reject)=>{
+        css.onload=resolve;
+        css.onerror=()=>reject(Error('O estilo de Afiliados não pôde ser carregado.'));
+      });
+      document.head.append(css);
+      affiliateAssets=Promise.all([import('/api/v1/afiliados-assets/workspace.js'),styled])
+        .then(([workspace])=>workspace).catch(error=>{affiliateAssets=null;css.remove();throw error;});
+    }
+    return affiliateAssets;
   }
-  function affiliateFrameMessage(event){
-    const frame=$('osAffiliateView'),message=event.data;
-    if(!frame||!affiliatePanelRoute(state.route)||event.origin!==location.origin||event.source!==frame.contentWindow||message?.from!=='orion-affiliates')return;
-    if(message.kind==='ready'){sendAffiliateView(frame);return;}
-    if(message.kind==='size'&&Number.isFinite(message.height)&&message.height>=0&&message.height<=100000){
-      frame.height=String(Math.max(360,Math.ceil(message.height)));
+  async function renderAffiliateView(){
+    const c=context(),view=affiliatePages[c.route],whatsappAvailable=affiliateDevices();
+    let host=$('osAffiliateView');
+    if(affiliateMounted&&affiliateMounted.host===host&&affiliateMounted.tenantId===c.tenantId&&
+        affiliateMounted.whatsappAvailable===whatsappAvailable){
+      affiliateMounted.controller.setView(view);
       return;
     }
-    if(message.kind==='dialog'&&Number.isFinite(message.offset)&&message.offset>=0&&message.offset<=Number(frame.height)){
-      const position=frame.getBoundingClientRect().top+message.offset;
-      if(position<80||position>innerHeight-200)window.scrollTo({top:Math.max(0,scrollY+position-100),behavior:'instant'});
-      return;
-    }
-    if(message.kind==='route'){
-      const route=Object.keys(affiliatePages).find(key=>affiliatePages[key]===message.view);
-      if(route&&route!==state.route)void open(route,{permissionsChecked:true});
+    pageHTML('<section id="osAffiliateView" aria-label="Gestão de afiliados">'+loading('Carregando Afiliados…')+'</section>');
+    host=$('osAffiliateView');
+    try{
+      const workspace=await loadAffiliateAssets();
+      if(!current(c)||host!==$('osAffiliateView'))return;
+      const controller=workspace.mount({host,tenantId:c.tenantId,view,request,icon,
+        open:target=>open(target==='dashboard'?'dashboard':'afiliados-'+target),
+        showNotice:toast,whatsappAvailable});
+      affiliateMounted={host,controller,tenantId:c.tenantId,whatsappAvailable};
+    }catch(error){
+      if(current(c)&&host===$('osAffiliateView'))host.innerHTML='<section class="os-card"><p class="os-notice os-error" role="alert">Não foi possível abrir Afiliados.</p>'+routeButton('Tentar novamente',c.route,'os-outline','refresh')+'</section>';
     }
   }
-  window.addEventListener('message',affiliateFrameMessage);
   function selectedNav(){
     let active=state.route==='cadastros'?'configuracoes':state.route;
     const channels=active==='configuracoes'&&state.filters.settingsTab==='whatsapp'&&!!document.querySelector('#osNav [data-os-action="managed-whatsapp"]');
@@ -602,7 +608,7 @@
     $('osNav').innerHTML=nav;selectedNav();applyPermissionDOM();
     if(previousFocus){const target=previousFocus.route?$('osNav').querySelector('[data-os-route="'+previousFocus.route+'"]'):$('osNav').querySelector('[data-os-action="'+previousFocus.action+'"]');(target||$('osNav').querySelector('[data-os-route="'+fallbackRoute()+'"]'))?.focus({preventScroll:true});}
   }
-  function applyThemeState(){sendAffiliateView();const pref=document.documentElement.dataset.themePreference||'auto',effective=document.documentElement.dataset.theme||'light';document.querySelectorAll('[data-os-theme]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.osTheme===pref)));const toggle=$('osThemeToggle');if(toggle)toggle.innerHTML=icon(effective==='dark'?'moon':'sun');document.querySelectorAll('.os-mobile-brand [data-orion-logo]').forEach(i=>i.src='/brand/orion-brand-'+effective+'.svg');}
+  function applyThemeState(){const pref=document.documentElement.dataset.themePreference||'auto',effective=document.documentElement.dataset.theme||'light';document.querySelectorAll('[data-os-theme]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.osTheme===pref)));const toggle=$('osThemeToggle');if(toggle)toggle.innerHTML=icon(effective==='dark'?'moon':'sun');document.querySelectorAll('.os-mobile-brand [data-orion-logo]').forEach(i=>i.src='/brand/orion-brand-'+effective+'.svg');}
   function setTheme(preference){const original=document.querySelector('.theme-choice[data-theme-choice="'+preference+'"]');if(original)original.click();else{document.documentElement.dataset.themePreference=preference;document.documentElement.dataset.theme=preference==='auto'?(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light'):preference;try{localStorage.setItem('orion-theme',preference);}catch{}}applyThemeState();$('osThemeMenu').classList.add('hidden');$('osThemeToggle').setAttribute('aria-expanded','false');}
 
   // Navigation is a presentation layer. All booking, finance and access logic stays shared.
@@ -890,7 +896,7 @@
     selectedNav();document.title=routeLabel(route)+' · Orion';
     try{const url=new URL(location.href);url.searchParams.set('aba',route);url.searchParams.delete('empresa');history.replaceState({...window.OrionSubscriptionSentMessages?.navigationState?.(),...window.OrionSubscriptionDiagnostics?.navigationState?.(),...window.OrionSubscriptionGroupAdd?.navigationState?.(),...window.OrionSubscriptionGroupContacts?.navigationState?.(),...window.OrionSubscriptionDirectMessages?.navigationState?.(),...window.OrionSubscriptionBulkMessages?.navigationState?.(),...window.OrionSubscriptionScheduledMessages?.navigationState?.(),...window.OrionSubscriptionCampaigns?.navigationState?.(),orionSuite:route},'',url.pathname+url.search);}catch{}
     if(!options.keepScroll)window.scrollTo({top:0,behavior:'instant'});
-    if(affiliatePanelRoute(route)){renderAffiliateView();return;}
+    if(affiliatePanelRoute(route)){await renderAffiliateView();return;}
     renderRoute(options);await loadRoute(options);
     if(route==='agenda'&&tenant()){
       const target=new URLSearchParams(location.search).get('agendamento');
@@ -904,6 +910,7 @@
     const f=state.filters,can=writable();$('appView').classList.toggle('os-tablet-mode',state.route==='agenda'&&f.agendaTablet);clearInterval(state.clockTimer);
     const readOnly=tenant()&&!can?'<div class="os-notice os-readonly">'+icon('lock')+'<p>Seu acesso a esta empresa é somente para consulta.</p></div>':'';
     let html='';
+    if(state.route==='afiliados-whatsapp')html='<div id="osPageBody">'+routeButton('Voltar a Conexões e destinos','afiliados-conexoes','os-ghost','left')+'<section id="osSubscriptionDevices"></section></div>';
     if(state.route==='dispositivos')html='<div id="osPageBody"><section id="osSubscriptionDevices"></section></div>';
     if(state.route==='verificador-numeros')html='<div id="osPageBody"><section id="osSubscriptionNumberCheck"></section></div>';
     if(state.route==='link-whatsapp')html='<div id="osPageBody"><section id="osSubscriptionWhatsappLink"></section></div>';
@@ -1053,7 +1060,8 @@
         const params=new URLSearchParams(location.search);
         await window.OrionSubscriptionChatbotTest.mount({host:$('osSubscriptionChatbotTest'),request,tenantId:state.tenantId,initialDeviceId:params.get('device_id'),initialRuleId:params.get('reply_id')});break;
       }
-      case 'dispositivos':if(!window.OrionSubscriptionDevices)throw Error('Não foi possível abrir Dispositivos. Atualize o painel.');await window.OrionSubscriptionDevices.mount({host:$('osSubscriptionDevices'),request,tenantId:state.tenantId});break;
+      case 'afiliados-whatsapp':
+      case 'dispositivos':if(!window.OrionSubscriptionDevices)throw Error('Não foi possível abrir Dispositivos. Atualize o painel.');await window.OrionSubscriptionDevices.mount({host:$('osSubscriptionDevices'),request,tenantId:state.tenantId,connectionOnly:state.route==='afiliados-whatsapp'});break;
       case 'dashboard':{
          if(!homePreviewEnabled())stopHomeLive();
          if(subscriptionWorkspace()){
@@ -3471,17 +3479,79 @@
       'Para disponibilizar uma avaliação ou um retorno no site, configure a publicação em Agendamento online.'
     ]]
   };
+  const affiliateHelpCategories=[
+    ['shopee','Shopee','box'],['ofertas','Ofertas','gift'],['canais','Canais e WhatsApp','link'],
+    ['templates','Templates','list'],['automacoes','Automações','repeat'],['conta','Conta e acesso','shield']
+  ];
+  const affiliateHelpArticles=[
+    ['af-shopee','shopee','Como conectar a Shopee','Valide as credenciais da sua conta de afiliados.','afiliados-plataformas',[
+      'Abra Plataformas e escolha Shopee. Preencha o App ID e a chave da API da sua conta de afiliados.',
+      'Ao salvar, a Orion testa se a conta consegue consultar ofertas. Se a validação falhar, confira as credenciais no Portal de Afiliados da Shopee e tente novamente.',
+      'Com a plataforma conectada, abra Ofertas para buscar produtos e preparar o link de afiliado.'
+    ]],
+    ['af-oferta','ofertas','Como preparar uma oferta com card e link','Busque um produto ou cole o link da Shopee e revise a publicação.','afiliados-ofertas',[
+      'Em Ofertas, cole um link da Shopee ou use a busca por categoria, palavra-chave e ordenação.',
+      'Abra a prévia, escolha o template e confira a foto, o valor, o desconto e o link de afiliado. A frase da oferta pode ser revisada na própria tela.',
+      'Copie a legenda e baixe o card para publicar manualmente. Se houver um destino autorizado na prévia, use a fila para preparar a publicação.'
+    ]],
+    ['af-whatsapp','canais','Como vincular um aparelho do WhatsApp','Use o mesmo fluxo de conexão da Orion, por QR Code ou código.','afiliados-whatsapp',[
+      'Abra Conexões e destinos, escolha Gerenciar WhatsApp e crie o dispositivo da empresa. Abra a conexão e escolha QR Code ou código, conforme as opções mostradas.',
+      'No celular, abra Aparelhos conectados no WhatsApp e conclua o vínculo. Volte à Orion e confira se a conexão aparece como Conectado.',
+      'O aparelho fica vinculado à empresa selecionada. Adicionar um canal em Destinos é uma etapa separada. A tela informa quando o destino ainda exige publicação assistida.'
+    ]],
+    ['af-destino','canais','Como cadastrar um canal ou grupo','Configure o destino e confira o estado da administração.','afiliados-conexoes',[
+      'Em Conexões e destinos, informe o nome do destino, selecione a plataforma e preencha a identificação ou o link solicitado.',
+      'Para Telegram, conecte um bot dedicado e torne a conta e o bot administradores do destino. Use o identificador exibido pelo canal ou grupo.',
+      'Confira o estado do destino após salvar. Em Publicação assistida, copie a legenda e baixe o card em Ofertas para postar no próprio canal ou grupo.'
+    ]],
+    ['af-template','templates','Como editar a legenda e o card','Altere o texto, o formato e a identidade visual da oferta.','afiliados-templates',[
+      'Abra Templates e edite um modelo existente ou crie um novo. Use as variáveis disponíveis para inserir título, preços, vendas e link da oferta.',
+      'Escolha a marca e o formato da imagem, salve e volte a Ofertas para conferir a prévia com um produto.',
+      'Para ver como as informações aparecem juntas, revise o card e a legenda antes de publicar.'
+    ]],
+    ['af-automacao','automacoes','Como configurar a frequência e as categorias','Escolha categorias da Shopee, horário, intervalo, template e destinos.','afiliados-automacoes',[
+      'Entre em Automações e escolha Nova automação. Defina o intervalo, os dias, a janela de publicação e o template usado.',
+      'Marque as categorias que deseja publicar ou use Selecionar todas. Escolha entre os destinos habilitados. A tela informa quando algum destino exige configuração adicional.',
+      'Revise a regra antes de ativar e acompanhe os estados em Fila e histórico.'
+    ]],
+    ['af-fila','automacoes','Como acompanhar a fila de publicações','Veja o que está em revisão, programado, publicado ou com erro.','afiliados-fila',[
+      'Abra Fila e histórico e use os filtros para encontrar as publicações pendentes, confirmadas ou que precisam de atenção.',
+      'Confira o destino, o horário e o detalhe de cada ocorrência. Use a revisão quando a publicação estiver aguardando aprovação.',
+      'Se um envio estiver sem confirmação, confira o canal antes de tentar publicar novamente.'
+    ]],
+    ['af-layout','conta','Como personalizar o painel de Afiliados','Escolha o tema, o layout e os atalhos desta conta.','configuracoes',[
+      'Abra Aparência para escolher Claro, Escuro ou Sistema. Em Layout de navegação, selecione Clássico ou Aplicativo.',
+      'No Aplicativo, personalize quatro atalhos e salve. Abra Perfil para encontrar as demais áreas, Minha conta e Sair com segurança.'
+    ]]
+  ];
+  const affiliateReleaseNotes=[
+    ['feature','Shopee em Plataformas','Conecte sua conta de afiliados no painel.',
+      ['Valide as credenciais da API e busque produtos por categoria ou link.'],'afiliados-plataformas'],
+    ['feature','Ofertas com prévia','Confira a legenda, o card e o link antes de publicar.',
+      ['Revise o desconto, a avaliação e as vendas quando esses dados estiverem disponíveis.'],'afiliados-ofertas'],
+    ['feature','Templates de publicação','Personalize os modelos de legenda e imagem.',
+      ['Use as variáveis do produto e confira o resultado na prévia da oferta.'],'afiliados-templates'],
+    ['feature','Automações por categoria','Escolha o que publicar e em quais horários.',
+      ['Selecione categorias da Shopee, destinos, template e frequência.','Confira as ocorrências em Fila e histórico.'],'afiliados-automacoes'],
+    ['improvement','Conexões e destinos','O WhatsApp usa a tela de dispositivos da Orion.',
+      ['Vincule o aparelho da empresa e confira o estado de cada destino.'],'afiliados-conexoes'],
+    ['fix','Carregamento dentro da Orion','As páginas de Afiliados abrem diretamente no painel.',
+      ['As telas usam o carregamento padrão da Orion e acompanham o tema e o layout escolhidos.'],'dashboard']
+  ];
+  const currentHelpCategories=()=>affiliateWorkspace()?affiliateHelpCategories:helpCategories;
+
   function currentHelpArticles(){
+    if(affiliateWorkspace())return affiliateHelpArticles;
     return dentalWorkspace()?helpArticles.map(article=>dentalHelpArticles[article[0]]||article):helpArticles;
   }
   const normalizedSearch=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('pt-BR');
-  function helpCategory(id){return helpCategories.find(item=>item[0]===id)||['','Orientação','book'];}
+  function helpCategory(id){return currentHelpCategories().find(item=>item[0]===id)||['','Orientação','book'];}
   function helpCard(article,featured=false){return '<button type="button" class="os-help-card '+(featured?'os-help-featured':'')+'" data-os-help-article="'+article[0]+'"><span class="os-badge os-neutral">'+helpCategory(article[1])[1]+'</span><h2>'+esc(article[2])+'</h2><p>'+esc(article[3])+'</p><span class="os-help-card-footer"><span>'+icon('clock')+'1 min de leitura</span><span>Ler '+icon('arrow')+'</span></span></button>';}
   function renderHelp(){
     const article=currentHelpArticles().find(item=>item[0]===state.filters.helpArticle);if(article){renderHelpArticle(article);return;}
-    bodyHTML('<header class="os-help-hero"><span class="os-badge os-help-count">'+icon('book')+helpArticles.length+' artigos disponíveis</span><h1>Base de conhecimento</h1><p>Guias práticos para configurar seu negócio e usar o Orion: agenda, equipe, clientes, financeiro e atendimento.</p><div class="os-search">'+icon('search')+'<input id="osHelpSearch" type="search" placeholder="O que você quer aprender?" value="'+esc(state.filters.helpQuery)+'" aria-label="Buscar artigos"></div></header><div class="os-help-categories" role="group" aria-label="Categorias de artigos">'+[['all','Todos','book'],...helpCategories].map(([id,label,symbol])=>'<button type="button" class="os-pill-tab" data-os-help-category="'+id+'" aria-pressed="'+(state.filters.helpCategory===id)+'">'+icon(symbol)+label+'</button>').join('')+'</div><div id="osHelpResults"></div>');renderHelpResults();
+    bodyHTML('<header class="os-help-hero"><span class="os-badge os-help-count">'+icon('book')+helpArticles.length+' artigos disponíveis</span><h1>Base de conhecimento</h1><p>'+(affiliateWorkspace()?'Aprenda a conectar a Shopee, preparar ofertas, cadastrar canais e agendar publicações.':'Guias práticos para configurar seu negócio e usar o Orion: agenda, equipe, clientes, financeiro e atendimento.')+'</p><div class="os-search">'+icon('search')+'<input id="osHelpSearch" type="search" placeholder="O que você quer aprender?" value="'+esc(state.filters.helpQuery)+'" aria-label="Buscar artigos"></div></header><div class="os-help-categories" role="group" aria-label="Categorias de artigos">'+[['all','Todos','book'],...currentHelpCategories()].map(([id,label,symbol])=>'<button type="button" class="os-pill-tab" data-os-help-category="'+id+'" aria-pressed="'+(state.filters.helpCategory===id)+'">'+icon(symbol)+label+'</button>').join('')+'</div><div id="osHelpResults"></div>');renderHelpResults();
   }
-  function renderHelpResults(){const query=normalizedSearch(state.filters.helpQuery),category=state.filters.helpCategory,articles=currentHelpArticles(),list=articles.filter(article=>(category==='all'||article[1]===category)&&(!query||normalizedSearch(article[2]+' '+article[3]+' '+article[5].join(' ')).includes(query))),featured=!query&&category==='all'?[articles.find(article=>article[0]==='bloquear'),articles[0]]:[];const target=$('osHelpResults');if(!target)return;target.innerHTML='<div class="os-help-results-heading"><p>'+list.length+' artigo'+(list.length===1?' encontrado':'s encontrados')+'</p></div>'+(featured.length?'<section class="os-help-featured-grid" aria-label="Artigos em destaque">'+featured.map(article=>helpCard(article,true)).join('')+'</section>':'')+(list.length?'<section class="os-help-grid" aria-label="Artigos">'+list.filter(article=>!featured.some(item=>item[0]===article[0])).map(article=>helpCard(article)).join('')+'</section>':'<section class="os-card">'+empty('search','Nenhum artigo encontrado','Tente buscar por outro termo ou escolha outra categoria.')+'</section>');}
+  function renderHelpResults(){const query=normalizedSearch(state.filters.helpQuery),category=state.filters.helpCategory,articles=currentHelpArticles(),list=articles.filter(article=>(category==='all'||article[1]===category)&&(!query||normalizedSearch(article[2]+' '+article[3]+' '+article[5].join(' ')).includes(query))),featured=!query&&category==='all'?affiliateWorkspace()?[articles[0],articles[1]]:[articles.find(article=>article[0]==='bloquear'),articles[0]]:[];const target=$('osHelpResults');if(!target)return;target.innerHTML='<div class="os-help-results-heading"><p>'+list.length+' artigo'+(list.length===1?' encontrado':'s encontrados')+'</p></div>'+(featured.length?'<section class="os-help-featured-grid" aria-label="Artigos em destaque">'+featured.map(article=>helpCard(article,true)).join('')+'</section>':'')+(list.length?'<section class="os-help-grid" aria-label="Artigos">'+list.filter(article=>!featured.some(item=>item[0]===article[0])).map(article=>helpCard(article)).join('')+'</section>':'<section class="os-card">'+empty('search','Nenhum artigo encontrado','Tente buscar por outro termo ou escolha outra categoria.')+'</section>');}
   function renderHelpArticle(article){const category=helpCategory(article[1]),articles=currentHelpArticles(),related=[...articles.filter(item=>item[0]!==article[0]&&item[1]===article[1]),...articles.filter(item=>item[0]!==article[0]&&item[1]!==article[1])].slice(0,3);bodyHTML('<article class="os-help-article">'+button('Voltar para a base','help-back','os-ghost','left')+'<header><span class="os-badge os-neutral">'+category[1]+'</span><h1>'+esc(article[2])+'</h1><p class="os-help-article-meta">'+icon('clock')+'1 min de leitura <span>Guia da gestão Orion</span></p></header><div class="os-help-prose">'+article[5].map(paragraph=>'<p>'+esc(paragraph)+'</p>').join('')+'</div><div class="os-form-actions">'+routeButton('Abrir '+routeLabel(article[4]),article[4],'os-outline',category[2])+'</div><section class="os-help-related"><h2>Continue lendo</h2><div>'+related.map(item=>'<button type="button" data-os-help-article="'+item[0]+'"><strong>'+esc(item[2])+'</strong><span>Ler '+icon('arrow')+'</span></button>').join('')+'</div></section><section class="os-card os-help-article-footer"><h3>Precisa consultar seus dados?</h3><p>Abra a área correspondente do painel para conferir os registros da sua empresa.</p>'+routeButton('Voltar ao painel','dashboard','os-outline os-small','dashboard')+'</section></article>');}
   function openHelpArticle(id){if(!currentHelpArticles().some(article=>article[0]===id))return;state.filters.helpArticle=id;renderHelp();window.scrollTo({top:0,behavior:'instant'});}
   const guidanceMeta=summary=>'<p class="os-help-article-meta"><span class="os-guidance-meta-summary">'+icon('book')+'<span>'+esc(summary)+'</span></span><span class="os-guidance-meta-scope">Serviços de assinaturas</span></p>';
@@ -3551,7 +3621,7 @@
       step(2,'Confirme a liberação e confira a conexão',paragraphs(['Depois que o WhatsApp confirmar a liberação, siga as instruções para verificar novamente o número no aplicativo oficial. Conclua somente as verificações solicitadas ali.','Se usava um aplicativo não oficial, consulte as instruções de migração, remova esse aplicativo e use o WhatsApp ou o WhatsApp Business oficial. A transferência do histórico de conversas de aplicativos não oficiais não é garantida.','Com o número liberado e funcionando no aplicativo, abra Meus Dispositivos e confira o estado da conexão no Orion. Se precisar reconectar, use “Abrir conexão” e siga as opções disponíveis para mostrar e ler o QR Code. A opção “Refazer vínculo” encerra o vínculo atual; use-a apenas quando necessário.'])+'<div class="os-form-actions">'+routeButton('Meus Dispositivos','dispositivos','os-outline','phone')+'</div>')+
       '<section class="os-help-related" aria-labelledby="osResolveBanOfficial"><h2 id="osResolveBanOfficial">Orientações oficiais</h2><ul>'+sources+'</ul></section></div></article>');
   }
-  function renderNews(){const labels={feature:'Novidade',improvement:'Melhoria',fix:'Correção'},filter=state.filters.newsFilter,list=releaseNotes.filter(note=>filter==='all'||note[0]===filter);bodyHTML('<section class="os-card os-news-toolbar"><div><h2>O que mudou no Orion</h2><p>Atualizações desta versão do painel.</p></div>'+routeButton('Base de conhecimento','ajuda','os-outline os-small','book')+'</section><div class="os-help-categories os-news-filters" role="tablist" aria-label="Tipo de atualização">'+[['all','Todos'],...Object.entries(labels)].map(([value,label])=>'<button type="button" role="tab" class="os-pill-tab" aria-selected="'+(filter===value)+'" data-os-news-filter="'+value+'">'+label+'</button>').join('')+'</div><div class="os-news-list">'+list.map(note=>'<article class="os-card os-news-card"><header><span class="os-badge '+(note[0]==='feature'?'os-success':note[0]==='fix'?'os-warning':'os-neutral')+'">'+labels[note[0]]+'</span><h2>'+esc(note[1])+'</h2><p>'+esc(note[2])+'</p></header><div><ul>'+note[3].map(text=>'<li>'+esc(text)+'</li>').join('')+'</ul>'+(subscriptionWorkspace()&&note[4]==='dashboard'?'':routeButton('Abrir '+routeNames[note[4]],note[4],'os-ghost os-small','arrow'))+'</div></article>').join('')+'</div>');}
+  function renderNews(){const labels={feature:'Novidade',improvement:'Melhoria',fix:'Correção'},filter=state.filters.newsFilter,list=(affiliateWorkspace()?affiliateReleaseNotes:releaseNotes).filter(note=>filter==='all'||note[0]===filter);bodyHTML('<section class="os-card os-news-toolbar"><div><h2>'+(affiliateWorkspace()?'O que mudou em Afiliados':'O que mudou no Orion')+'</h2><p>Atualizações desta versão do painel.</p></div>'+routeButton('Base de conhecimento','ajuda','os-outline os-small','book')+'</section><div class="os-help-categories os-news-filters" role="tablist" aria-label="Tipo de atualização">'+[['all','Todos'],...Object.entries(labels)].map(([value,label])=>'<button type="button" role="tab" class="os-pill-tab" aria-selected="'+(filter===value)+'" data-os-news-filter="'+value+'">'+label+'</button>').join('')+'</div><div class="os-news-list">'+list.map(note=>'<article class="os-card os-news-card"><header><span class="os-badge '+(note[0]==='feature'?'os-success':note[0]==='fix'?'os-warning':'os-neutral')+'">'+labels[note[0]]+'</span><h2>'+esc(note[1])+'</h2><p>'+esc(note[2])+'</p></header><div><ul>'+note[3].map(text=>'<li>'+esc(text)+'</li>').join('')+'</ul>'+(subscriptionWorkspace()&&note[4]==='dashboard'?'':routeButton('Abrir '+(affiliateWorkspace()?routeLabel(note[4]):routeNames[note[4]]),note[4],'os-ghost os-small','arrow'))+'</div></article>').join('')+'</div>');}
   function showDialog(type,titleText,content,meta={},wide=false){
     if(state.busy)return false;
     if(subscriptionWorkspace()){toast('Esta função ainda não está disponível para este tipo de negócio.',true);return false;}
@@ -6112,6 +6182,6 @@
     state.observer=new MutationObserver(()=>applyThemeState());state.observer.observe(document.documentElement,{attributes:true,attributeFilter:['data-theme','data-theme-preference']});
     const desired=bridge?.initialRoute||'dashboard';void open(appPages.has(desired)?desired:'dashboard');
   }
-  function destroy(){stopHomeLive();$('appView')?.classList.remove('os-dental-workspace');window.OrionDentalDirectory?.unmount();window.OrionDentalClinic?.unmount?.();window.OrionSubscriptionAudience?.clearContext();window.OrionSubscriptionNumberCheck?.clearContext();window.OrionSubscriptionWhatsappLink?.clearContext();window.OrionSubscriptionGroupAdd?.clearContext();window.OrionSubscriptionGroupContacts?.clearContext();window.OrionSubscriptionDirectMessages?.clearContext();window.OrionSubscriptionBulkMessages?.clearContext();window.OrionSubscriptionScheduledMessages?.clearContext();window.OrionSubscriptionCampaigns?.clearContext();window.OrionSubscriptionDiagnostics?.clearContext();window.OrionSubscriptionSentMessages?.clearContext();window.OrionSubscriptionAudience?.unmount();window.OrionSubscriptionNumberCheck?.unmount();window.OrionSubscriptionWhatsappLink?.unmount();window.OrionSubscriptionGroupAdd?.unmount();window.OrionSubscriptionGroupContacts?.unmount();window.OrionSubscriptionDirectMessages?.unmount();window.OrionSubscriptionBulkMessages?.unmount();window.OrionSubscriptionScheduledMessages?.unmount();window.OrionSubscriptionCampaigns?.unmount();window.OrionSubscriptionDiagnostics?.unmount();window.OrionSubscriptionSentMessages?.unmount();window.OrionSubscriptionTemplates?.unmount();window.OrionSubscriptionChatbotTest?.unmount();window.OrionSubscriptionChatbot?.unmount();window.OrionSubscriptionDevices?.unmount();window.OrionSubscriptionDashboard?.unmount();window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionCommunication?.unmount();window.OrionInbox?.unmount();state.mounted=false;clearInterval(state.clockTimer);clearInterval(state.liveRefreshTimer);state.epoch++;state.load++;state.busy=false;state.imageUploading=false;clearTimeout(state.searchTimer);clearTimeout(state.agendaSearchTimer);clearSiteLookups();closeDialog(true);state.data={};state.bridge={};state.tenantId='';state.workspaceProfile=null;state.filters=defaultFilters();state.appShortcutDraft=null;applyAppLayout();closeNotifications();$('osNotificationsPanel')?.replaceChildren();$('osNotificationDot')?.classList.add('hidden');clearTimeout(state.permissionExpiryTimer);state.permissionExpiryTimer=null;if(state.permissionChannel){state.permissionChannel.onmessage=null;state.permissionChannel.close();state.permissionChannel=null;}state.permissionObserver?.disconnect();state.permissionObserver=null;window.removeEventListener('focus',refreshAccess);document.removeEventListener('visibilitychange',refreshAccess);window.removeEventListener('orion:plan-changed',refreshAccess);state.entitlements=null;state.permissionPending=null;state.observer?.disconnect();state.observer=null;document.removeEventListener('click',handleClick);document.removeEventListener('change',handleChange);document.removeEventListener('input',handleInput);document.removeEventListener('focusout',handleSiteFocusOut);document.removeEventListener('compositionend',handleSiteCompositionEnd);document.removeEventListener('submit',submitForm);document.removeEventListener('keydown',handleKeydown);document.removeEventListener('pointerdown',handleServicePointerDown);document.removeEventListener('pointermove',handleServicePointerMove);document.removeEventListener('pointerup',handleServicePointerUp);document.removeEventListener('pointercancel',clearServiceDrag);clearServiceDrag();$('osDialog')?.removeEventListener('cancel',onDialogCancel);$('page-suite')?.replaceChildren();$('osNav')?.replaceChildren();$('osSidebarContext')?.replaceChildren();$('osToastRegion')?.replaceChildren();$('appView')?.classList.remove('os-menu-open','os-tablet-mode');}
+  function destroy(){disposeAffiliate();stopHomeLive();$('appView')?.classList.remove('os-dental-workspace');window.OrionDentalDirectory?.unmount();window.OrionDentalClinic?.unmount?.();window.OrionSubscriptionAudience?.clearContext();window.OrionSubscriptionNumberCheck?.clearContext();window.OrionSubscriptionWhatsappLink?.clearContext();window.OrionSubscriptionGroupAdd?.clearContext();window.OrionSubscriptionGroupContacts?.clearContext();window.OrionSubscriptionDirectMessages?.clearContext();window.OrionSubscriptionBulkMessages?.clearContext();window.OrionSubscriptionScheduledMessages?.clearContext();window.OrionSubscriptionCampaigns?.clearContext();window.OrionSubscriptionDiagnostics?.clearContext();window.OrionSubscriptionSentMessages?.clearContext();window.OrionSubscriptionAudience?.unmount();window.OrionSubscriptionNumberCheck?.unmount();window.OrionSubscriptionWhatsappLink?.unmount();window.OrionSubscriptionGroupAdd?.unmount();window.OrionSubscriptionGroupContacts?.unmount();window.OrionSubscriptionDirectMessages?.unmount();window.OrionSubscriptionBulkMessages?.unmount();window.OrionSubscriptionScheduledMessages?.unmount();window.OrionSubscriptionCampaigns?.unmount();window.OrionSubscriptionDiagnostics?.unmount();window.OrionSubscriptionSentMessages?.unmount();window.OrionSubscriptionTemplates?.unmount();window.OrionSubscriptionChatbotTest?.unmount();window.OrionSubscriptionChatbot?.unmount();window.OrionSubscriptionDevices?.unmount();window.OrionSubscriptionDashboard?.unmount();window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionCommunication?.unmount();window.OrionInbox?.unmount();state.mounted=false;clearInterval(state.clockTimer);clearInterval(state.liveRefreshTimer);state.epoch++;state.load++;state.busy=false;state.imageUploading=false;clearTimeout(state.searchTimer);clearTimeout(state.agendaSearchTimer);clearSiteLookups();closeDialog(true);state.data={};state.bridge={};state.tenantId='';state.workspaceProfile=null;state.filters=defaultFilters();state.appShortcutDraft=null;applyAppLayout();closeNotifications();$('osNotificationsPanel')?.replaceChildren();$('osNotificationDot')?.classList.add('hidden');clearTimeout(state.permissionExpiryTimer);state.permissionExpiryTimer=null;if(state.permissionChannel){state.permissionChannel.onmessage=null;state.permissionChannel.close();state.permissionChannel=null;}state.permissionObserver?.disconnect();state.permissionObserver=null;window.removeEventListener('focus',refreshAccess);document.removeEventListener('visibilitychange',refreshAccess);window.removeEventListener('orion:plan-changed',refreshAccess);state.entitlements=null;state.permissionPending=null;state.observer?.disconnect();state.observer=null;document.removeEventListener('click',handleClick);document.removeEventListener('change',handleChange);document.removeEventListener('input',handleInput);document.removeEventListener('focusout',handleSiteFocusOut);document.removeEventListener('compositionend',handleSiteCompositionEnd);document.removeEventListener('submit',submitForm);document.removeEventListener('keydown',handleKeydown);document.removeEventListener('pointerdown',handleServicePointerDown);document.removeEventListener('pointermove',handleServicePointerMove);document.removeEventListener('pointerup',handleServicePointerUp);document.removeEventListener('pointercancel',clearServiceDrag);clearServiceDrag();$('osDialog')?.removeEventListener('cancel',onDialogCancel);$('page-suite')?.replaceChildren();$('osNav')?.replaceChildren();$('osSidebarContext')?.replaceChildren();$('osToastRegion')?.replaceChildren();$('appView')?.classList.remove('os-menu-open','os-tablet-mode');}
   window.OrionSuite=Object.freeze({mount,sync,destroy,open,legacyOpened,workspaceProfile});
 })();

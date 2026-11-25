@@ -31,19 +31,14 @@ API_ACTIONS = {
     "DELETE": r"platforms/groq|connection/(?:shopee|telegram)|destinations/[a-f0-9]{32}",
 }
 ASSETS = {
-    "pilot.js": ("/assets/pilot.js", "text/javascript"),
-    "orion-icons.js": ("/assets/orion-icons.js", "text/javascript"),
-    "pilot.css": ("/assets/pilot.css", "text/css"),
-    **{f"design/{name}.css": (f"/design/{name}.css", "text/css")
-       for name in ("orion-suite", "orion-auth", "orion-subscription-dashboard")},
     **{f"brands/{name}": (f"/assets/brands/{name}", mime)
        for name, mime in (("shopee.png", "image/png"), ("amazon.png", "image/png"),
                           ("mercado-livre.png", "image/png"), ("telegram.png", "image/png"),
                           ("whatsapp.svg", "image/svg+xml"))},
 }
-EMBED_ASSETS = {
-    "embed.css": ("orion-affiliate-embed.css", "text/css"),
-    "embed.js": ("orion-affiliate-embed.js", "text/javascript"),
+LOCAL_ASSETS = {
+    "workspace.css": ("orion-affiliate-workspace.css", "text/css"),
+    "workspace.js": ("orion-affiliate-workspace.js", "text/javascript"),
 }
 
 
@@ -98,8 +93,8 @@ async def fetch_upstream(method, path, *, headers=None, params=None, body=None):
 
 @router.get("/afiliados-assets/{name:path}")
 async def assets(name: str):
-    if available() and name in EMBED_ASSETS:
-        filename, mime = EMBED_ASSETS[name]
+    if available() and name in LOCAL_ASSETS:
+        filename, mime = LOCAL_ASSETS[name]
         content = Path(__file__).with_name("static").joinpath(filename).read_bytes()
         return Response(content, media_type=mime, headers={**NO_STORE, "Cache-Control": "public, max-age=120"})
     asset = ASSETS.get(name)
@@ -107,33 +102,17 @@ async def assets(name: str):
         raise HTTPException(404)
     path, expected = asset
     status, mime, content = await fetch_upstream("GET", path)
-    if status != 200 or (mime != expected and (expected, mime) != ("text/javascript", "application/javascript")):
+    if status != 200 or mime != expected:
         raise HTTPException(502, "Componente do painel indisponível")
     return Response(content, media_type=expected, headers={**NO_STORE, "Cache-Control": "public, max-age=120"})
 
 
 @router.get("/afiliados/{tenant_id}")
-async def workspace_page(tenant_id: UUID, embed: bool = False, actor: Actor = Depends(authenticate)):
+async def workspace_page(tenant_id: UUID, actor: Actor = Depends(authenticate)):
     await affiliate_owner(actor, tenant_id)
     if not available():
         raise HTTPException(503, "O painel de Afiliados está indisponível no momento")
-    if not embed:
-        return Response(status_code=303, headers={**NO_STORE, "Location": "/painel?aba=dashboard"})
-    status, mime, content = await fetch_upstream("GET", "/")
-    if status != 200 or mime != "text/html" or b'id="appView"' not in content:
-        raise HTTPException(502, "Página de Afiliados indisponível")
-    prefix = f"/api/v1/afiliados/{tenant_id}/api/"
-    content = (content.replace(b'<head>', f'<head><meta name="orion-affiliate-api" content="{prefix}">'.encode(), 1)
-               .replace(b'href="/design/', b'href="/api/v1/afiliados-assets/design/')
-               .replace(b'href="/assets/', b'href="/api/v1/afiliados-assets/')
-               .replace(b'src="/assets/', b'src="/api/v1/afiliados-assets/'))
-    content = content.replace(b"</head>",
-        b'<link rel="stylesheet" href="/api/v1/afiliados-assets/embed.css">'
-        b'<script src="/api/v1/afiliados-assets/embed.js" defer></script></head>', 1)
-    headers = {**NO_STORE, "Referrer-Policy": "no-referrer", "X-Frame-Options": "SAMEORIGIN",
-               "Content-Security-Policy": "default-src 'self'; img-src 'self' data: blob:; "
-               "base-uri 'none'; frame-ancestors 'self'; form-action 'self'"}
-    return Response(content, media_type="text/html", headers=headers)
+    return Response(status_code=303, headers={**NO_STORE, "Location": "/painel?aba=dashboard"})
 
 
 @router.api_route("/afiliados/{tenant_id}/api/{path:path}", methods=list(API_ACTIONS), include_in_schema=False)

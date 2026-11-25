@@ -140,3 +140,7 @@
  .os-device-dialog .os-form-actions>.os-button{flex:1 1 auto}
 }
 @media(prefers-reduced-motion:reduce){.os-device-setting-section>summary>.os-icon{transition:none}}
+/* Affiliate devices only expose pairing and connection controls. */
+.os-devices-connection-only .os-device-metrics,
+.os-devices-connection-only .os-device-metrics-note,
+.os-devices-connection-only .os-device-features { display:none; }

@@ -15,7 +15,7 @@ jobs:
       contents: read
       packages: write
     env:
-      BASE_IMAGE: ghcr.io/qgbaltigo/orion-assistente-api@sha256:dd90220799706c522f6de3b933065162e78389ca0a857b162f24ccef1a682e77
+      BASE_IMAGE: ghcr.io/qgbaltigo/orion-assistente-api@sha256:1932dcbe0fb5017960faff8908795dd511f574e9a8eb98259ffca5c1242d041b
       IMAGE: ghcr.io/qgbaltigo/orion-assistente-api:afiliados-onboarding-${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
@@ -25,7 +25,7 @@ jobs:
       - name: Testar a criação de empresas e os nichos existentes
         run: |
           npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
-          node --test --test-reporter=dot ui-tests/onboarding-affiliates.test.mjs ui-tests/onboarding-subscription-niche.test.mjs ui-tests/onboarding-entry.test.mjs ui-tests/onboarding-save.test.mjs ui-tests/subscription-workspace.test.mjs ui-tests/barbershop-app-layout.test.mjs
+          node --test --test-reporter=dot ui-tests/onboarding-affiliates.test.mjs ui-tests/onboarding-subscription-niche.test.mjs ui-tests/onboarding-entry.test.mjs ui-tests/onboarding-save.test.mjs ui-tests/subscription-workspace.test.mjs ui-tests/subscription-devices.test.mjs ui-tests/barbershop-app-layout.test.mjs
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -37,8 +37,13 @@ jobs:
           import hashlib
           from pathlib import Path
           expected = {
-              "app/plan_permissions.py": "54eea5186b66365c39bfa3eec49f7b23f7c8d683",
-              "app/static/orion-suite.js": "5056042a58159ab4b66ce58b409f1e5316a65f69",
+              "app/affiliate_workspace.py": "86f0b8bad297151fa2b9d6c9b92aa78c2740de67",
+              "app/plan_permissions.py": "db3b6acc5762e968d67cc44852b50d328f5f6135",
+              "app/subscription_devices.py": "e34b3b28a8558979e7daa49c3b0f008e29de8ad3",
+              "app/static/orion-subscription-devices.css": "80231905e53117c45ff4704cf82f37922156131b",
+              "app/static/orion-subscription-devices.js": "933154c94d343acc31b814c6836b5b1f50bbeae3",
+              "app/static/orion-suite.js": "243e42eaf08190d20789f7812b2c00ad6a509914",
+              "app/static/panel.html": "03a3b5a34c803c5d15d9ec94ccce84550b43b440",
           }
           for name, digest in expected.items():
               data = Path(name).read_bytes()
@@ -55,10 +60,10 @@ jobs:
           from app.workspace_policy import workspace_profile
           assert workspace_profile("afiliados") == "affiliate"
           assert "/api/v1/afiliados/{tenant_id}" in app.openapi()["paths"]
-          assert Path("app/static/orion-affiliate-embed.js").is_file()
+          assert Path("app/static/orion-affiliate-workspace.js").is_file()
           plan = derive_plan({"niche": "afiliados", "tenant_status": "active"})
           assert plan["layout_modes"] == ["classic", "app"]
-          assert set(plan["features"]) == {"account.manage", "business.setup"}
+          assert set(plan["features"]) == {"account.manage", "business.setup", "devices.manage"}
           CreateBusiness(name="Afiliados", timezone="America/Cuiaba", niche="afiliados",
                          activity="products", affiliate_activity="offers", idempotency_key="synthetic-test")
           '

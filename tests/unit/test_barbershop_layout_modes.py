@@ -52,5 +52,6 @@ def test_affiliates_receive_app_layout_with_only_their_existing_permissions():
     result = derive_plan(snapshot("afiliados"))
     assert result["layout_modes"] == ["classic", "app"]
     assert result["workspace_profile"] == "affiliate"
-    assert set(result["features"]) == {"account.manage", "business.setup"}
+    assert set(result["features"]) == {"account.manage", "business.setup", "devices.manage"}
+    assert not derive_plan({**snapshot("afiliados"), "tenant_status": "paused"})["permissions"]["devices.manage"]
     assert derive_plan(snapshot("afiliados", platform=True))["layout_modes"] == ["classic"]

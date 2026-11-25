@@ -43,19 +43,26 @@ test('Afiliados cria um espaço com atividade própria e abre o painel correspon
 test('Afiliados usa o painel principal, as rotas do nicho e a área nativa da conta',async t=>{
   const business={id:tenantA,name:'Canal de Ofertas',role:'owner',status:'active',
     slug:'canal-de-ofertas',timezone:'America/Cuiaba',workspace_profile:'affiliate'};
-  const h=await makePanel({role:'member',initialRoute:'plano',permissions:planState('none',{
-    workspace_profile:'affiliate',layout_modes:['classic','app']
-  }),
+  const permissions=planState('none',{workspace_profile:'affiliate',layout_modes:['classic','app']});
+  permissions.permissions['devices.manage']=true;
+  const h=await makePanel({role:'member',initialRoute:'plano',permissions,
     respond(path){
       if(path==='/api/v1/account/businesses')return [business];
       if(path==='/api/v1/onboarding/entry')return entry({kind:'affiliate',create_allowed:false,businesses:[business]});
       if(path==='/api/v1/account/business-identity')return {name:business.name};
+      if(path==='/api/v1/afiliados/'+tenantA+'/api/state')return {company:business.name, jobs:[], niches:[], offer:[],
+        connection:[],destination:[],template:[],rule:[],decision:[],product_flag:[],sorts:{2:'Mais vendidos'}};
+      if(path.endsWith('/subscription-whatsapp/devices'))return {
+        items:[],usage:{used:0,limit:1},can_create:true,capabilities:{manage:true}
+      };
     },
   });
   t.after(()=>h.close());
   await flush();
   assert.equal(h.element('#orionSetup').hidden,true);
-  assert.equal(h.element('#osAffiliateView').getAttribute('src'),'/api/v1/afiliados/'+tenantA+'?embed=1#dashboard');
+  assert.equal(h.element('#osAffiliateView').tagName,'SECTION');
+  assert.ok(h.element('#osAffiliateView .af-overview'));
+  assert.equal(h.document.querySelector('iframe'),null);
   assert.equal(h.element('#sidebarAccountName').textContent,'Conta sintética');
   assert.equal(h.element('#sidebarAccountType').textContent,'Minha conta');
   assert.deepEqual([...h.document.querySelectorAll('#osNav [data-os-route]')].map(node=>node.dataset.osRoute),
@@ -72,6 +79,19 @@ test('Afiliados usa o painel principal, as rotas do nicho e a área nativa da co
   await flush();
   assert.equal(new URL(h.window.location.href).searchParams.get('aba'),'ajuda');
   assert.equal(h.document.querySelector('#osAffiliateView'),null);
+  assert.match(h.element('#osHelpResults').textContent,/Como conectar a Shopee/);
+  assert.doesNotMatch(h.element('#osHelpResults').textContent,/agendamento|atendimento/i);
+  h.click('[data-os-help-article=af-whatsapp]');
+  await flush();
+  assert.match(h.element('#osPageBody').textContent,/Aparelhos conectados/);
+  h.click('#osPageBody [data-os-route=afiliados-whatsapp]');
+  await flush();
+  assert.match(h.element('#osSubscriptionDevices').textContent,/QR Code ou código/);
+  assert.equal(h.element('#osSubscriptionDevices').classList.contains('os-devices-connection-only'),true);
+  h.click('#osNav [data-os-route=novidades]');
+  await flush();
+  assert.match(h.element('#osPageBody').textContent,/Automações por categoria/);
+  assert.doesNotMatch(h.element('#osPageBody').textContent,/agendamento|atendimento/i);
   h.click('#osNav [data-os-app-settings=appearance]');
   await flush();
   assert.equal(h.element('#osAppDock').hidden,true);
@@ -88,7 +108,7 @@ test('Afiliados usa o painel principal, as rotas do nicho e a área nativa da co
   assert.deepEqual(shortcuts(),['dashboard','afiliados-plataformas','afiliados-automacoes','afiliados-fila','perfil']);
   h.click('#osAppDock [data-os-app-tab=afiliados-plataformas]');
   await flush();
-  assert.equal(h.element('#osAffiliateView').getAttribute('src'),'/api/v1/afiliados/'+tenantA+'?embed=1#plataformas');
+  assert.match(h.element('#osAffiliateView').textContent,/Plataformas/);
   h.click('#osAppDock [data-os-app-tab=perfil]');
   await flush();
   assert.match(h.element('#osPageBody').textContent,/Plataformas.*Conexões e destinos.*Templates/);

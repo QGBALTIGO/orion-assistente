@@ -289,6 +289,33 @@ async def test_settings_revision_proxy_secret_preservation_and_stale_permit(devi
 
 
 @pytest.mark.asyncio
+async def test_affiliate_whatsapp_pairing_uses_isolated_device_without_inbound_effects(device_case):
+    c = device_case
+    async with c.ctx.migration.begin() as db:
+        await db.execute(text("""UPDATE business_onboarding
+            SET configuration=jsonb_set(configuration,'{niche}',to_jsonb(CAST(:niche AS text))) WHERE tenant_id=:t"""),
+            {"niche": "afiliados", "t": c.tenant})
+    await create(c)
+    assert not c.device["capabilities"]["settings"]
+    assert c.device["metrics"] == {"available": False}
+    assert (await c.client.get(c.prefix + f"/{c.device['id']}/settings")).status_code == 403
+    connected = await action(c, "connect")
+    assert connected["operation"]["status"] == "succeeded"
+    qr = await c.client.get(c.prefix + f"/{c.device['id']}/qr")
+    assert qr.status_code == 200 and qr.json()["image"].startswith("data:image/png;base64,")
+    paired = await c.client.post(c.prefix + f"/{c.device['id']}/pair",
+        json={"expected_revision": c.device["revision"], "phone": "5567999999901"})
+    assert paired.status_code == 200 and paired.json()["code"] == "ABCD-EFGH"
+    incoming = await event(c, text="Mensagem sintética", message_id="synthetic-affiliate-input")
+    assert incoming["effects"] == []
+    pending = await internal(c, "/effects/pending", method="GET")
+    assert pending.json() == {"effects": [], "reconcile": []}
+    async with c.ctx.migration.connect() as db:
+        assert (await db.execute(text("SELECT count(*) FROM subscription_device_events WHERE tenant_id=:t"),
+            {"t": c.tenant})).scalar_one() == 0
+
+
+@pytest.mark.asyncio
 async def test_control_replay_pair_and_lost_finish_remove_reconcile_keep_history(device_case):
     c = device_case
     await create(c)
