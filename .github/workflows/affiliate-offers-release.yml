@@ -1,7 +1,7 @@
 name: Orion - Ofertas e destinos de Afiliados
 on:
   push:
-    branches: [codex/afiliados-ofertas-multiloja-20261125]
+    branches: ['codex/afiliados-ofertas-multiloja-20261125*']
   workflow_dispatch:
 
 permissions:
