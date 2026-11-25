@@ -300,7 +300,7 @@ async def barber_plan_details(db, tenant, access, can_manage, effective, subscri
     now = company["server_now"]
     source = effective["source"]
     result = {"server_now": now, "timezone": company["timezone"],
-              "trial_hours": BARBERSHOP_CATALOG["trial_hours"], "trial_eligible": False,
+              "trial_days": BARBERSHOP_CATALOG["trial_days"], "trial_eligible": False,
               "period_days": BARBERSHOP_CATALOG["period_days"]}
     if can_manage and isinstance(access.account_id, UUID):
         pending = (await db.execute(text("""
@@ -384,7 +384,7 @@ async def activate_plan_trial(tenant_id: UUID, payload: TrialActivation,
             owner = await trial_benefits.verified_trial_owner(db, tenant_id, account_id)
             if not owner:
                 raise HTTPException(403, "O teste exige uma conta pessoal com e-mail confirmado e uma barbearia elegível")
-            duration = BARBERSHOP_CATALOG["trial_hours"]
+            duration = BARBERSHOP_CATALOG["trial_days"]
             replay = (await db.execute(text("""
                 SELECT id,started_at,ends_at FROM orion_plan_trial_requests
                 WHERE tenant_id=:tenant AND account_id=:account AND whatsapp_e164 IS NULL
@@ -396,13 +396,16 @@ async def activate_plan_trial(tenant_id: UUID, payload: TrialActivation,
             if not await trial_benefits.claim_benefit(db, trial_benefits.identity_digest(owner["email"])):
                 raise HTTPException(409, "A conta já utilizou o teste grátis")
             row = (await db.execute(text("""
-                WITH activation AS (SELECT clock_timestamp() AS started)
+                WITH activation AS (
+                    SELECT clock_timestamp() AS started, timezone FROM tenants WHERE id=:tenant
+                )
                 INSERT INTO orion_plan_trial_requests
                     (tenant_id,account_id,full_name,company_name,status,started_at,ends_at)
-                SELECT :tenant,:account,:name,:company,'active',started,started+make_interval(hours=>:hours)
+                SELECT :tenant,:account,:name,:company,'active',started,
+                       timezone(activation.timezone, timezone(activation.timezone, started)+make_interval(days=>:days))
                 FROM activation RETURNING id,started_at,ends_at
             """), {"tenant": tenant_id, "account": account_id, "name": owner["name"][:120],
-                   "company": owner["company_name"], "hours": duration})).mappings().one()
+                   "company": owner["company_name"], "days": duration})).mappings().one()
             return dict(row)
 
 

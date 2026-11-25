@@ -6,7 +6,7 @@
  PLAN_FEATURES = {"essencial": BASE_FEATURES, "profissional": PRO_FEATURES, "elite": ELITE_FEATURES}
 +BARBERSHOP_CATALOG = {
 +    "period_days": 30,
-+    "trial_hours": 168,
++    "trial_days": 7,
 +    "trial_plan": "essencial",
 +    "offers": {
 +        "essencial": {

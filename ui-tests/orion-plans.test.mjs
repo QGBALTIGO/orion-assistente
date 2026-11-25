@@ -62,26 +62,39 @@ function fixture(overrides={},options={}){
 }
 function tick(){return new Promise(resolve=>setImmediate(resolve));}
 
-test('Barbearia shows the server catalogue and one explicit 168-hour evaluation without comparison controls',async()=>{
+test('Barbearia shows the seven-day trial as a plan and opens the selected paid checkout',async()=>{
  const barbershop={trial_eligible:true,period_days:30,timezone:'America/Cuiaba'};
  const plans=base.plans.map(plan=>({...plan,description:'Recurso confirmado',benefits:['Agenda'],recommended:plan.code==='profissional',period_days:30}));
- const fixtureApp=fixture({barbershop,plans,embedded_checkout_enabled:true},{activateTrial(overview,input){
+ const fixtureApp=fixture({barbershop,plans,embedded_checkout_enabled:true,checkout_enabled:true},{embeddedReply,activateTrial(overview,input){
   assert.equal(input.confirmed,true);
   overview.trial={status:'active',started_at:'2026-11-25T18:30:00Z',ends_at:'2026-12-02T18:30:00Z'};
-  overview.barbershop={...barbershop,trial_eligible:false,trial_remaining_seconds:168*3600};
+  overview.barbershop={...barbershop,trial_eligible:false,trial_remaining_seconds:7*24*3600};
   overview.effective_plan=planState('essencial',{source:'trial',active:true});
  }});
  try{
-  assert.equal(fixtureApp.root.querySelectorAll('.op-plan').length,3);
+  const cards=[...fixtureApp.root.querySelectorAll('.op-plan')];
+  assert.equal(cards.length,4);
+  assert.ok(cards[0].matches('.op-trial-plan'));
+  assert.match(cards[0].textContent,/Teste grátis.*R\$\s*0.*7 dias/);
+  assert.doesNotMatch(cards[0].textContent,/\bhoras\b/);
+  for(const card of cards.slice(1)){
+   const buttons=card.querySelectorAll('.op-plan-bottom button');
+   assert.equal(buttons.length,1);
+   assert.ok(buttons[0].matches('[data-op-embedded]'));
+  }
   assert.equal(fixtureApp.root.querySelector('.op-compare,.op-matrix,[data-op-only-differences]'),null);
   assert.match(fixtureApp.root.querySelector('.op-profissional').textContent,/Recomendado.*89,90.*30 dias.*6 profissionais/);
   assert.equal(fixtureApp.calls.length,0);
   fixtureApp.root.querySelector('[data-op-start-trial]').click();
   await tick();await tick();
   assert.equal(fixtureApp.root.querySelector('[data-op-start-trial]'),null);
-  assert.match(fixtureApp.root.querySelector('[data-op-effective-plan]').textContent,/7 d 0 h 0 min/);
+  assert.equal(fixtureApp.root.querySelectorAll('.op-plan').length,3);
+  assert.match(fixtureApp.root.querySelector('[data-op-effective-plan]').textContent,/7 dias/);
   assert.equal(fixtureApp.root.querySelectorAll('[data-op-embedded]:enabled').length,3);
   assert.equal(fixtureApp.calls.filter(call=>call.method==='POST').length,1);
+  fixtureApp.root.querySelector('.op-profissional [data-op-embedded]').click();await tick();
+  assert.equal(new URL(fixtureApp.root.querySelector('iframe').src).pathname,'/'+checkoutIds.profissional);
+  assert.deepEqual(fixtureApp.calls.filter(call=>call.path.startsWith('/plan-pix')),[]);
  }finally{fixtureApp.close();}
 });
 

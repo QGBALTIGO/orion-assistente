@@ -111,10 +111,11 @@ async def test_automatic_trial_claim_and_welcome_consent_are_durable(manual_db, 
         assert all(trial.status_code == 200 for trial in trials), [trial.text for trial in trials]
         trial = trials[0].json()
         assert all(response.json() == trial for response in trials)
-        assert dt(trial["ends_at"])-dt(trial["started_at"]) == timedelta(hours=168)
+        assert dt(trial["ends_at"])-dt(trial["started_at"]) == timedelta(days=7)
         checked = (await c.client.get(base+"/plan-overview")).json()
         assert checked["effective_plan"]["source"] == "trial"
-        assert 0 < checked["barbershop"]["trial_remaining_seconds"] <= 168 * 60 * 60
+        assert checked["barbershop"]["trial_days"] == 7
+        assert 0 < checked["barbershop"]["trial_remaining_seconds"] <= timedelta(days=7).total_seconds()
         assert not checked["barbershop"]["trial_eligible"]
         async with support_session_factory()() as db:
             async with db.begin():
