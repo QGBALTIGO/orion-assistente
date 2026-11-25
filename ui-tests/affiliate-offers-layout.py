@@ -113,6 +113,13 @@ def layout_metrics(page):
     result = page.evaluate("""() => {
       const root=document.querySelector('.af-offers-workspace');
       const rect=node=>{const r=node.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,width:r.width,height:r.height}};
+      const input=root.querySelector('#af-offer-url'),icon=root.querySelector('.af-offer-input-icon .os-icon');
+      const inputBounds=input.getBoundingClientRect(),inputStyle=getComputedStyle(input);
+      const urlField={height:inputBounds.height,textLeft:inputBounds.left+parseFloat(inputStyle.borderLeftWidth)+parseFloat(inputStyle.paddingLeft),iconRight:icon.getBoundingClientRect().right};
+      const shell=Object.fromEntries(['#appView > .sidebar','#appView > .content','.os-main:has(.af-offers-workspace)','.af-native-content'].map(selector=>{
+        const node=document.querySelector(selector),style=getComputedStyle(node);
+        return [selector,{rect:rect(node),width:style.width,boxSizing:style.boxSizing,padding:style.padding,margin:style.margin,transform:style.transform,display:style.display}];
+      }));
       const cards=[...root.querySelectorAll('.af-offer-panel,.af-offer-preview,.af-offer-target')].filter(n=>n.getClientRects().length);
       const clipped=[];
       const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
@@ -125,13 +132,18 @@ def layout_metrics(page):
         for(const r of rects)if(r.left<root.getBoundingClientRect().left-2||r.right>root.getBoundingClientRect().right+2)
           clipped.push({text:node.nodeValue.trim().slice(0,80),left:r.left,right:r.right});
       }
-      return {viewport:innerWidth,documentWidth:document.documentElement.scrollWidth,root:rect(root),
+      const bounds=root.getBoundingClientRect(),contentBounds=document.querySelector('#appView > .content').getBoundingClientRect();
+      return {viewport:innerWidth,documentWidth:document.documentElement.scrollWidth,root:rect(root),urlField,shell,
+        gutter:{left:bounds.left-contentBounds.left,right:contentBounds.right-bounds.right},
         cards:cards.map(n=>({class:n.className,rect:rect(n),client:n.clientWidth,scroll:n.scrollWidth})),clipped};
     }""")
     assert result["documentWidth"] <= result["viewport"] + 1, result
     assert result["root"]["left"] >= -1 and result["root"]["right"] <= result["viewport"] + 1, result
     assert all(card["scroll"] <= card["client"] + 2 for card in result["cards"]), result
     assert not result["clipped"], result["clipped"]
+    assert result["urlField"]["height"] >= 47.9, result["urlField"]
+    assert result["urlField"]["textLeft"] >= result["urlField"]["iconRight"] + 6, result["urlField"]
+    assert min(result["gutter"].values()) >= 15.9, result["gutter"]
     return result
 
 
@@ -264,7 +276,7 @@ def exercise(page, control, data, name, output, send_calls):
     page.clock.fast_forward(31000)
     assert control["batch_reads"] == count, "Terminal unknown must stop polling and must never resend"
     assert len(send_calls) == 2
-    page.screenshot(path=str(output / (name + "-send-result.png")))
+    page.screenshot(path=str(output / (name + "-send-result.png")), animations="disabled")
 
     control["manual"] = True
     page.locator('[data-act="offer-new"]').click()
@@ -275,7 +287,7 @@ def exercise(page, control, data, name, output, send_calls):
     assert page.locator("#af-offer-price").input_value() == ""
     assert "US$" in page.locator(".af-offer-product-price").inner_text()
     assert page.locator('[data-offer-disclosure="details"]').get_attribute("open") is not None
-    page.screenshot(path=str(output / (name + "-manual-review.png")), full_page=True)
+    page.screenshot(path=str(output / (name + "-manual-review.png")), full_page=True, animations="disabled")
     page.locator("#af-offer-price").fill("189,90")
     page.locator('[data-form="offer-details"] button[type="submit"]').click()
     page.locator('[data-offer-section="preview"][aria-busy="false"]').wait_for()
@@ -440,7 +452,7 @@ def run(context, width, theme, layout, engine, output):
         assert page.locator('[data-offer-disclosure="drafts"]').get_attribute("open") is None
         assert str(len(retailer_options())) in page.locator('[data-offer-disclosure="stores"] summary').inner_text()
         initial = layout_metrics(page)
-        page.screenshot(path=str(output / (name + "-initial.png")), full_page=True)
+        page.screenshot(path=str(output / (name + "-initial.png")), full_page=True, animations="disabled")
         page.locator("#af-offer-url").fill("https://s.shopee.com.br/synthetic-short-link")
         page.locator('[data-form="offer"] button[type="submit"]').click()
         page.locator('[data-offer-section="preview"][aria-busy="false"]').wait_for()
@@ -451,8 +463,9 @@ def run(context, width, theme, layout, engine, output):
         assert page.locator(".af-offer-card-image").evaluate("(image)=>image.naturalWidth") > 500
         page.evaluate("scrollTo({top:0,behavior:'instant'})")
         prepared = layout_metrics(page)
-        page.screenshot(path=str(output / (name + "-prepared.png")), full_page=True)
+        page.screenshot(path=str(output / (name + "-prepared.png")), full_page=True, animations="disabled")
         if (width in (320, 430) and theme == "dark" and layout == "app") or (width == 1280 and theme == "light" and layout == "classic"):
+            page.screenshot(path=str(output / (name + "-prepared-viewport.png")), animations="disabled")
             steps = exercise(page, control, data, name, output, send_calls)
         else:
             steps = []
@@ -460,17 +473,19 @@ def run(context, width, theme, layout, engine, output):
         page.evaluate("() => new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))")
         bottom = page.evaluate("""()=>{
           const end=document.querySelector('.af-offer-drafts'),dock=document.querySelector('#osAppDock');
-          return {end:end.getBoundingClientRect().bottom,dock:dock?.getClientRects().length?dock.getBoundingClientRect().top:innerHeight};
+          const e=end.getBoundingClientRect(),d=dock?.getBoundingClientRect();
+          const overlaps=dock?.getClientRects().length&&d.height>0&&d.right>e.left&&d.left<e.right;
+          return {end:e.bottom,dock:overlaps?d.top:innerHeight,dockRect:d?{left:d.left,right:d.right,top:d.top,bottom:d.bottom}:null};
         }""")
         assert bottom["end"] <= bottom["dock"] + 2, (name, bottom)
-        page.screenshot(path=str(output / (name + "-bottom.png")))
+        page.screenshot(path=str(output / (name + "-bottom.png")), animations="disabled")
         assert not errors, (name, errors)
         assert not blocked, (name, blocked)
         return {"engine": engine, "width": width, "theme": theme, "layout": layout, "initial": initial,
                 "prepared": prepared, "bottom": bottom, "interactions": steps,
                 "synthetic_send_requests": len(send_calls)}
     except Exception:
-        page.screenshot(path=str(output / (name + "-failure.png")), full_page=True)
+        page.screenshot(path=str(output / (name + "-failure.png")), full_page=True, animations="disabled")
         raise
     finally:
         page.close()

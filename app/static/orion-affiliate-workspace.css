@@ -388,7 +388,7 @@ a.af-dashboard-kpi:hover { background: color-mix(in srgb,var(--os-tint) 35%,var(
 .af-offer-link-form { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: start; gap: 10px; }
 .af-offer-link-form .af-offer-url-label { position: relative; display: block; min-width: 0; }
 .af-offer-input-icon { position: absolute; inset: 0 auto 0 14px; display: flex; align-items: center; color: var(--os-primary); pointer-events: none; }
-.af-offer-link-form input { min-height: 48px; width: 100%; padding-left: 43px; font-size: 14px; border-radius: 11px; background: var(--os-card); }
+.af-offers-workspace #af-offer-url { min-height: 48px; width: 100%; padding-left: 43px; font-size: 16px; border-radius: 11px; background: var(--os-card); }
 .af-offer-link-form > .os-button { min-height: 48px; padding-inline: 19px; border-radius: 11px; }
 .af-offer-source-extra { display: flex; align-items: start; justify-content: space-between; flex-wrap: wrap; gap: 10px 24px; margin-top: 12px; }
 .af-offer-source-extra details { min-width: 0; color: var(--os-muted); font-size: 11px; }
