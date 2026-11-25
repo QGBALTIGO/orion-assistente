@@ -28,13 +28,13 @@ async def test_baltigoflix_fallback_answers_unknown_text_and_preserves_specific_
     effects = chat_effects(response)
     assert len(effects) == 1
     permission = await grant(case, effects[0])
-    assert permission["action"]["text"] == REPLY
+    assert permission["payload"]["action"]["text"] == REPLY
     await accepted(case, effects[0])
     response = await input_event(case, "Ainda é a mesma solicitação")
     assert chat_effects(response) == []
     menu = chat_effects(await input_event(case, "menu"))
     assert len(menu) == 1
-    assert (await grant(case, menu[0]))["action"]["text"] == "Aqui está o menu."
+    assert (await grant(case, menu[0]))["payload"]["action"]["text"] == "Aqui está o menu."
     async with case.ctx.migration.connect() as db:
         rows = (await db.execute(text("SELECT id FROM subscription_chatbot_rules WHERE tenant_id=:tenant"),
                                  {"tenant": case.tenant})).scalars().all()

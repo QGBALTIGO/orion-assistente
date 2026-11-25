@@ -6,7 +6,7 @@ from uuid import UUID
 
 from sqlalchemy import text
 
-from app.catalog_api import Actor, audit, support_session_factory
+from app.catalog_api import Actor, support_session_factory
 from app.subscription_chatbot import _write_rule, validate_definition
 from app.subscription_chatbot import rules_engine, schemas, store
 
@@ -72,9 +72,12 @@ async def _apply():
             definition = fallback_definition(device)
             definition["response"] = json.loads(store.encode(definition["response"]))
             await validate_definition(db, tenant, actor, RULE_ID, definition, graph=graph)
-            await _write_rule(db, tenant, actor, RULE_ID, definition)
+            job, replay = await store.request_job(db, tenant, actor, "create", RULE_ID,
+                {"source": "support_maintenance", "rule_id": RULE_ID, "rule": definition}, current)
+            assert not replay
+            saved = await _write_rule(db, tenant, actor, RULE_ID, definition)
             revision = await store.bump_revision(db, tenant)
-            await audit(db, tenant, "chatbot_fallback_installed_by_support", "subscription_chatbot_rules", RULE_ID)
+            await store.complete_job(db, job["id"], {"rule": store.rule_dto(saved), "chatbot_revision": revision})
             graph_after = await store.load_graph(db, tenant)
             rule = graph_after[0][str(RULE_ID)]
             assert eligible(rule) and rule["keyword"] == "*****"
