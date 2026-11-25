@@ -100,7 +100,7 @@
     periodontal:'periodontia-odonto',exams:'exames-odonto',budget:'orcamentos-odonto',insurance:'convenios-odonto'};
   const routeNames={'verificador-numeros':'Verificador de números WhatsApp','link-whatsapp':'Link e QR do WhatsApp',contatos:'Contatos','grupos-contatos':'Grupos de Contatos',...Object.fromEntries(Object.entries(dentalViews).map(([route,{label}])=>[route,label])),dispositivos:'Dispositivos',chatbot:'Chatbot','testar-chatbot':'Testar Chatbot',templates:'Templates','mensagens-enviadas':'Mensagens Enviadas',diagnosticos:'Diagnósticos',campanhas:'Campanhas',programadas:'Mensagens Programadas',massa:'Mensagem em Massa','enviar-mensagem':'Enviar Mensagem',aquecimento:'Aquecimento','evitar-banimento':'Evitar Banimento','resolver-banimento':'Resolver Banimento','extrator-contatos':'Extrator de contatos de grupos','adicionar-ao-grupo':'Adicionar contatos ao grupo',inbox:'Central de atendimento',dashboard:'Dashboard',perfil:'Perfil',agenda:'Agenda',clientes:'Clientes','pacientes-odonto':'Pacientes','vendas-odonto':'Vendas','ajustes-odonto':'Ajustes da clínica',servicos:'Serviços',funcionarios:'Funcionários',financeiro:'Financeiro',desempenho:'Meu desempenho',marketing:'Marketing IA',site:'Meu site',fidelizacao:'Fidelização',consultor:'Consultor IA',plano:'Plano',configuracoes:'Configurações',novidades:'Novidades',ajuda:'Base de conhecimento',dispositivo:'Conectar WhatsApp',conversas:'Conversas',ai:'Testar atendimento',empresa:'Configurar atendimento',catalogo:'Catálogo e pedidos',cadastros:'Administração do atendimento',member:'Minha conta'};
   const affiliateNavigation=[
-    ['Gestão',[['dashboard','Início','home'],['afiliados-ofertas','Ofertas','box'],['afiliados-automacoes','Automações','repeat'],['afiliados-fila','Fila e histórico','fileCheck']]],
+    ['Gestão',[['dashboard',routeNames.dashboard,'dashboard'],['afiliados-ofertas','Ofertas','box'],['afiliados-automacoes','Automações','repeat'],['afiliados-fila','Fila e histórico','fileCheck']]],
     ['Configuração',[['afiliados-plataformas','Plataformas','layers'],['afiliados-conexoes','Conexões e destinos','link'],['afiliados-templates','Templates','list']]],
   ];
   const affiliatePages=Object.fromEntries(affiliateNavigation.flatMap(([,items])=>items.map(([route])=>[route,route.replace(/^afiliados-/,'')])));
@@ -110,7 +110,7 @@
   const publicNavRoutes=['contatos','grupos-contatos'];
   const toolNavRoutes=['extrator-contatos','adicionar-ao-grupo','verificador-numeros','link-whatsapp','aquecimento','evitar-banimento','resolver-banimento'];
   const appShortcutChoices=[
-    ['dashboard','home','Início'],['agenda','calendar','Agenda'],['servicos','scissors','Serviços'],
+    ['dashboard','dashboard',routeNames.dashboard],['agenda','calendar','Agenda'],['servicos','scissors','Serviços'],
     ['hours','clock','Horários'],['clientes','users','Clientes'],['financeiro','wallet','Financeiro'],
     ['inbox','chat','Conversas'],['funcionarios','badgeUser','Equipe'],['desempenho','chart','Desempenho'],
     ['site','globe','Meu site'],['fidelizacao','gift','Fidelização'],
@@ -153,7 +153,7 @@
   }
   const homePreviewEnabled=()=>platformWorkspace()||barbershopHomeEligible();
   const dedicatedPatients=()=>dentalWorkspace()&&state.entitlements?.dental_clinical_enabled===true;
-  const routeLabel=route=>route==='afiliados-whatsapp'?'Conectar WhatsApp':affiliateWorkspace()&&affiliateTitles[route]?affiliateTitles[route]:route==='dashboard'&&homePreviewEnabled()?'Início':dentalWorkspace()?({clientes:dedicatedPatients()?'Contatos da agenda':'Pacientes',servicos:'Procedimentos',funcionarios:'Profissionais',desempenho:'Relatórios',inbox:'Conversas',site:'Agendamento online'})[route]||routeNames[route]:subscriptionWorkspace()&&route==='dashboard'?'Início':routeNames[route];
+  const routeLabel=route=>route==='dashboard'?routeNames.dashboard:route==='afiliados-whatsapp'?'Conectar WhatsApp':affiliateWorkspace()&&affiliateTitles[route]?affiliateTitles[route]:dentalWorkspace()?({clientes:dedicatedPatients()?'Contatos da agenda':'Pacientes',servicos:'Procedimentos',funcionarios:'Profissionais',desempenho:'Relatórios',inbox:'Conversas',site:'Agendamento online'})[route]||routeNames[route]:routeNames[route];
   const fallbackRoute=()=>affiliateWorkspace()||subscriptionWorkspace()||dentalWorkspace()&&permitted('dashboard.basic')?'dashboard':'plano';
   const permitted=feature=>!feature||platformWorkspace()||(!affiliateWorkspace()||['account.manage','business.setup','devices.manage'].includes(feature))&&(!subscriptionWorkspace()||['account.manage','business.setup','devices.manage','chatbot.manage','templates.manage','sent_messages.manage','diagnostics.manage','campaigns.manage','scheduled_messages.manage','bulk_messages.manage','direct_messages.manage','whatsapp_guidance.view','group_contacts.manage','group_add.manage','number_check.manage','whatsapp_link.manage','audience.manage'].includes(feature))&&state.entitlements?.permissions?.[feature]===true;
   const routePermitted=route=>{
@@ -469,7 +469,7 @@
         css.onerror=()=>reject(Error('O estilo de Afiliados não pôde ser carregado.'));
       });
       document.head.append(css);
-      affiliateAssets=Promise.all([import('/api/v1/afiliados-assets/workspace.js'),styled])
+      affiliateAssets=Promise.all([import('/api/v1/afiliados-assets/workspace.js?v=dashboard-20261125'),styled])
         .then(([workspace])=>workspace).catch(error=>{affiliateAssets=null;css.remove();throw error;});
     }
     return affiliateAssets;
@@ -770,13 +770,13 @@
       ...affiliateNavigation.map(([heading,items])=>[heading,items.map(([route,,symbol])=>[route,symbol])]),
       ['Ajuda e conta',[['novidades','bell'],['ajuda','book'],['member','user']]],
     ]:subscriptionWorkspace()?[
-      ['Visão geral',[['dashboard','home']]],
+      ['Visão geral',[['dashboard','dashboard']]],
       ['Atendimento e chatbot',[['dispositivos','phone'],['chatbot','bot'],['testar-chatbot','flask'],['templates','layers'],['mensagens-enviadas','fileCheck'],['diagnosticos','activity']]],
       ['Envios e campanhas',[['enviar-mensagem','send'],['programadas','calendarClock'],['campanhas','megaphone'],['massa','broadcast']]],
       ['Ferramentas',[['aquecimento','flame'],['evitar-banimento','shieldCheck'],['resolver-banimento','shieldAlert'],['extrator-contatos','usersSearch'],['adicionar-ao-grupo','userPlus']]],
       ['Configurações e conta',[['configuracoes','settings'],['novidades','bell'],['ajuda','book'],['member','user']]]
     ]:[
-      ['Agenda e operação',[['dashboard','home'],['agenda','calendar'],['servicos','scissors'],['hours','clock'],['clientes','users'],['funcionarios','badgeUser']]],
+      ['Agenda e operação',[['dashboard','dashboard'],['agenda','calendar'],['servicos','scissors'],['hours','clock'],['clientes','users'],['funcionarios','badgeUser']]],
       ['Gestão do negócio',[['financeiro','wallet'],['desempenho','chart']]],
       ['Atendimento e relacionamento',[['inbox','chat'],['fidelizacao','gift'],['marketing','sparkles'],['consultor','bot']]],
       ['Site e configurações',[['site','globe'],['configuracoes','settings'],['plano','credit']]],
@@ -1065,7 +1065,7 @@
       case 'dashboard':{
          if(!homePreviewEnabled())stopHomeLive();
          if(subscriptionWorkspace()){
-           if(!window.OrionSubscriptionDashboard)throw Error('Não foi possível abrir o Início. Atualize o painel.');
+           if(!window.OrionSubscriptionDashboard)throw Error('Não foi possível abrir o Dashboard. Atualize o painel.');
            await window.OrionSubscriptionDashboard.mount({host:$('osSubscriptionDashboard'),request,tenantId:state.tenantId,
              allowed:{devices:routePermitted('dispositivos'),chatbot:routePermitted('chatbot'),
                messages:routePermitted('mensagens-enviadas'),schedules:routePermitted('programadas'),
@@ -1341,7 +1341,7 @@
       quickActions=(writable()&&routePermitted('agenda')?quick('Novo agendamento','calendarPlus','data-os-action="new-appointment"'):'')+
         (writable()&&routePermitted('clientes')?quick('Novo cliente','userPlus','data-os-action="new-customer"'):'')+
         (routePermitted('site')?quick('Meu site','globe','data-os-route="site"'):'');
-    bodyHTML('<section class="os-home-preview" aria-label="Início do negócio"><header class="os-home-heading">'+
+    bodyHTML('<section class="os-home-preview" aria-label="Dashboard do negócio"><header class="os-home-heading">'+
       '<div class="os-home-greeting">'+
       (company||pilot?'<div class="os-home-identity">'+(company?'<p class="os-home-company">'+esc(company)+'</p>':'')+pilot+'</div>':'')+
       '<h1>'+greeting+(first?', '+esc(first):'')+'<span>.</span></h1><p class="os-home-date">'+esc(longDay(range.today))+'</p></div>'+

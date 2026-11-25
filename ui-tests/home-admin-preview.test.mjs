@@ -33,7 +33,7 @@ test('platform administrator sees the live-data Home pilot inside the original s
  const h=await setup();t.after(()=>h.close());await flush();
  assert.ok(h.document.querySelector('.os-home-preview'));
  assert.match(h.document.querySelector('.os-home-heading h1').textContent,/Kayky/);
- assert.equal(h.document.querySelector('#osNav [data-os-route=dashboard]').textContent,'Início');
+ assert.equal(h.document.querySelector('#osNav [data-os-route=dashboard]').textContent,'Dashboard');
  assert.match(h.document.querySelector('#osHomeRevenue').textContent,/430,00/);
  assert.deepEqual([...h.document.querySelectorAll('.os-home-metric>strong')].map(n=>n.textContent),['6 / 12','48','4','R$\u00a071,67']);
  assert.match(h.document.querySelector('.os-home-metrics').textContent,/carteira ativa da empresa/);
@@ -246,7 +246,7 @@ test('barbershop maintenance in App mode uses the new Home and the customer plan
 for(const code of ['essencial','profissional','elite'])test(`barbershop ${code} receives the approved Home with its plan's data`,async t=>{
  const h=await barberSetup({permissions:barberPlan(code),respond:path=>path.includes('/goals?')?homeGoal():respond(path)});t.after(()=>h.close());await flush();
  const home=h.document.querySelector('.os-home-preview');assert.ok(home);
- assert.equal(h.document.querySelector('#osNav [data-os-route=dashboard]').textContent,'Início');
+ assert.equal(h.document.querySelector('#osNav [data-os-route=dashboard]').textContent,'Dashboard');
  assert.doesNotMatch(home.textContent,/Prévia do administrador|Para acompanhar/);
  assert.equal(home.querySelectorAll('[data-os-action=new-appointment]').length,1);
  assert.match(home.querySelector('#osHomeRevenue').textContent,/430,00/);

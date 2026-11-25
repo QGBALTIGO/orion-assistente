@@ -1,0 +1,74 @@
+name: Orion - Dashboard padronizado em todos os nichos
+on:
+  push:
+    branches: [codex/dashboard-unificado-20261125]
+    paths:
+      - app/static/orion-suite.js
+      - app/static/orion-affiliate-workspace.js
+      - app/static/orion-subscription-dashboard.js
+      - app/static/panel.html
+      - ui-tests/home-admin-preview.test.mjs
+      - deploy/Dockerfile.dashboard-unificado
+      - .github/workflows/dashboard-unificado-release.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    env:
+      BASE_IMAGE: ghcr.io/qgbaltigo/orion-assistente-api@sha256:92bd9fad0dde5d5991a9c05f57f1ea529be0580f90e213f6e5e1b15b0a0b22b6
+      IMAGE: ghcr.io/qgbaltigo/orion-assistente-api:dashboard-unificado-${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verificar a navegação dos quatro nichos
+        run: |
+          npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+          node --check app/static/orion-suite.js
+          node --check app/static/orion-subscription-dashboard.js
+          node --input-type=module --check < app/static/orion-affiliate-workspace.js
+          node --test --test-reporter=dot ui-tests/dashboard-navigation.test.mjs ui-tests/home-admin-preview.test.mjs ui-tests/subscription-workspace.test.mjs ui-tests/subscription-app-layout.test.mjs ui-tests/barbershop-app-layout.test.mjs ui-tests/dental-workspace.test.mjs ui-tests/onboarding-affiliates.test.mjs
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Conferir os arquivos originais da imagem publicada
+        run: |
+          docker run --rm --entrypoint python "$BASE_IMAGE" -c '
+          import hashlib
+          from pathlib import Path
+          expected = {
+              "orion-suite.js": "d49a765816a2d82197b700ad9a3a7b20f977cebd9483653a11dc00b6f4b8e031",
+              "orion-affiliate-workspace.js": "dc394c8dedcfed3a934cf99a3358e0c869f21646e440955edd7172bbbfeffaa1",
+              "orion-subscription-dashboard.js": "45ae0a933ff49ef621e05cded9a810ec10762bb01e51b73c37e56083db9d29a7",
+              "panel.html": "73b6a4ecaa7caa3067470c30d627cb025b86f15c68d91e8acb063a350b8bd557",
+          }
+          for name, digest in expected.items():
+              assert hashlib.sha256(Path("app/static", name).read_bytes()).hexdigest() == digest, name
+          print("Os quatro arquivos correspondem à base de produção revisada.")
+          '
+      - name: Construir e conferir os quatro arquivos de interface
+        run: |
+          docker build -f deploy/Dockerfile.dashboard-unificado --build-arg ORION_RELEASE="$GITHUB_SHA" -t "$IMAGE" .
+          docker run --rm --entrypoint python -v "$GITHUB_WORKSPACE/app/static:/review:ro" "$IMAGE" -c '
+          from pathlib import Path
+          for name in ("orion-suite.js", "orion-affiliate-workspace.js", "orion-subscription-dashboard.js", "panel.html"):
+              assert Path("app/static", name).read_bytes() == Path("/review", name).read_bytes(), name
+          print("Os arquivos da imagem correspondem ao commit verificado.")
+          '
+          docker push "$IMAGE"
+          docker image inspect "$IMAGE" --format '{{index .RepoDigests 0}}' | tee dashboard-unificado-image.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-unificado-image
+          path: dashboard-unificado-image.txt

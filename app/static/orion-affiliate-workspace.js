@@ -134,7 +134,7 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     ];
     return `<div class="os-subdash af-overview">
       <header class="os-subdash-head">
-        <div><h1>Início</h1><p>Acompanhe as ofertas, os canais e as publicações programadas.</p></div>
+        <div><h1>Dashboard</h1><p>Acompanhe as ofertas, os canais e as publicações programadas.</p></div>
         <div class="af-heading-actions">${btn("Atualizar","refresh")}${link("Preparar oferta","ofertas","plus",true)}</div>
       </header>
       <div class="os-subdash-stats" aria-label="Indicadores de publicações">${metrics.map(([label,glyph,value,help])=>`

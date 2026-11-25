@@ -52,7 +52,7 @@
       '<span class="os-subdash-skeleton-line os-subdash-skeleton-value"></span>' +
       '<span class="os-subdash-skeleton-line os-subdash-skeleton-caption"></span></div>';
     return '<div class="os-subdash os-subdash-skeleton" role="status" aria-label="Carregando a visão geral da empresa">' +
-      '<div class="os-subdash-head"><div><p class="os-subdash-overline">VISÃO GERAL</p><h1>Início</h1>' +
+      '<div class="os-subdash-head"><div><p class="os-subdash-overline">VISÃO GERAL</p><h1>Dashboard</h1>' +
       '<p>Preparando os indicadores do seu atendimento…</p></div></div>' +
       '<div class="os-subdash-stats" aria-hidden="true">' + cell.repeat(4) + '</div>' +
       '<div class="os-subdash-panels" aria-hidden="true">' +
@@ -204,7 +204,7 @@
         '<button type="button" data-sd-period="' + key + '" aria-pressed="' + (view.period === key) +
         '">' + label + '</button>').join('') + '</div>' : '';
     view.host.innerHTML = '<div class="os-subdash"><div class="os-subdash-head">' +
-      '<div><p class="os-subdash-overline">VISÃO GERAL</p><h1 id="osSubdashTitle">Início</h1>' +
+      '<div><p class="os-subdash-overline">VISÃO GERAL</p><h1 id="osSubdashTitle">Dashboard</h1>' +
       '<p>Seus canais, automações e envios em um só lugar.</p></div>' +
       '<button class="os-button os-outline os-subdash-refresh" type="button" data-sd-action="refresh"' +
       (view.loading ? ' disabled' : '') + '>' + svg('refresh') + (view.loading ? 'Atualizando…' : 'Atualizar') + '</button></div>' +
