@@ -1,0 +1,90 @@
+name: Orion - Integra interface de Ofertas validada
+on:
+  push:
+    branches: ['codex/afiliados-ui-integracao-20261125*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  integrate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      packages: write
+    env:
+      API_BASE: ghcr.io/qgbaltigo/orion-assistente-api@sha256:54e307a0f8eab46b7adafc59ef30469f32ec950d1c75d3171746aad8204c6683
+      VERIFIED_IMAGE: ghcr.io/qgbaltigo/orion-assistente-api@sha256:80205de7d99c06ab3d3c1f0b3bdc0269f566a79f360daed1b9c31c1b0bc32b06
+      VERIFIED_COMMIT: 71fbf0d951d2c278337e36bab27b733e6b0857a1
+      API_IMAGE: ghcr.io/qgbaltigo/orion-assistente-api:affiliate-ui-integration-${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Exigir o CI aprovado do código imutável de Ofertas
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import json, os, urllib.request
+          url = 'https://api.github.com/repos/' + os.environ['GITHUB_REPOSITORY'] + '/actions/runs/45673436480'
+          request = urllib.request.Request(url, headers={
+              'Accept': 'application/vnd.github+json',
+              'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+          })
+          with urllib.request.urlopen(request, timeout=30) as response:
+              run = json.load(response)
+          assert run['head_sha'] == os.environ['VERIFIED_COMMIT']
+          assert run['status'] == 'completed' and run['conclusion'] == 'success'
+          assert run['path'] == '.github/workflows/affiliate-shortlinks-release.yml'
+          print('CI completo aprovado para o commit imutável de Ofertas.')
+          PY
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Conferir os assets e registrar os arquivos concorrentes
+        run: |
+          cat > /tmp/verify-offers-integration.py <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          mode = os.environ['ORION_VERIFY_MODE']
+          base = {
+              'orion-suite.js': 'c3391d45b0a0f8e1db0114639ca2b75fbf0820997e3d4a802a5be4a9587801dc',
+              'orion-affiliate-workspace.js': '571a7781ba206b2cf0400850550dd0d0428b9524b98c45dedac7dfc97c8f30dd',
+              'orion-affiliate-workspace.css': 'be417ddc5022f2b9246bf1478038a73bc5bff46b84c1a77ab94c1aacdb2b584f',
+          }
+          verified = {
+              'orion-suite.js': '41c4f0fa4961c89905abb6afb8692a1861e1e8e881a2777e3b2c9d259ef17563',
+              'orion-affiliate-workspace.js': '725a743ec5f2c095ea210abfeaafbd7f75a307757e26bf3ae712b9b0ad8fd8bb',
+              'orion-affiliate-workspace.css': 'f252d12e1f3517ea618e31eed269522c0a1bd617fc0df8afe1b42f276f557c7d',
+          }
+          expected = base if mode == 'base' else verified
+          for name, digest in expected.items():
+              assert hashlib.sha256(Path('app/static', name).read_bytes()).hexdigest() == digest, name
+          if mode in {'base', 'result'}:
+              paths = ('app/onboarding_service.py', 'app/static/orion-onboarding.js',
+                       'app/plan_management.py', 'app/static/orion-plans.js',
+                       'app/static/orion-plans.css', 'scripts/probe_barber_checkout_read_only.py')
+              print(json.dumps({path: hashlib.sha256(Path(path).read_bytes()).hexdigest()
+                                for path in paths}, sort_keys=True))
+          else:
+              print('Assets idênticos aos do código validado.')
+          PY
+          docker run --rm -i --entrypoint python -e ORION_VERIFY_MODE=base "$API_BASE" < /tmp/verify-offers-integration.py > base-preserved.json
+          docker run --rm -i --entrypoint python -e ORION_VERIFY_MODE=verified "$VERIFIED_IMAGE" < /tmp/verify-offers-integration.py
+      - name: Integrar somente os três assets já testados
+        run: |
+          docker build -f deploy/Dockerfile.affiliate-ui-integration --build-arg BASE_IMAGE="$API_BASE" --build-arg VERIFIED_IMAGE="$VERIFIED_IMAGE" --build-arg ORION_RELEASE="$GITHUB_SHA" -t "$API_IMAGE" .
+          docker run --rm -i --entrypoint python -e ORION_VERIFY_MODE=result "$API_IMAGE" < /tmp/verify-offers-integration.py > result-preserved.json
+          cmp base-preserved.json result-preserved.json
+          echo 'Assets de Ofertas conferidos; cadastro e checkout preservados byte a byte.'
+          docker push "$API_IMAGE"
+          docker image inspect "$API_IMAGE" --format '{{index .RepoDigests 0}}' > affiliate-ui-integration-image.txt
+          cat affiliate-ui-integration-image.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: affiliate-ui-integration-image
+          path: affiliate-ui-integration-image.txt

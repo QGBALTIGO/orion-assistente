@@ -1,0 +1,7 @@
+ARG BASE_IMAGE
+ARG VERIFIED_IMAGE
+FROM ${VERIFIED_IMAGE} AS verified_offers
+FROM ${BASE_IMAGE}
+ARG ORION_RELEASE
+LABEL org.opencontainers.image.revision=$ORION_RELEASE
+COPY --from=verified_offers --chown=appuser:appuser /srv/app/app/static/orion-affiliate-workspace.js /srv/app/app/static/orion-affiliate-workspace.css /srv/app/app/static/orion-suite.js /srv/app/app/static/
