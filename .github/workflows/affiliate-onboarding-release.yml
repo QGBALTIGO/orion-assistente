@@ -1,0 +1,70 @@
+name: Orion Afiliados - configuração inicial
+on:
+  push:
+    branches: [codex/orion-afiliados-onboarding-20261125]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    env:
+      BASE_IMAGE: ghcr.io/qgbaltigo/orion-assistente-api@sha256:8c19cfcec8a4f1dd26390c42a8e0ed993f37351d097a76beb3727525c46d2569
+      IMAGE: ghcr.io/qgbaltigo/orion-assistente-api:afiliados-onboarding-${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Testar a criação de empresas e os nichos existentes
+        run: |
+          npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+          node --test --test-reporter=dot ui-tests/onboarding-affiliates.test.mjs ui-tests/onboarding-subscription-niche.test.mjs ui-tests/onboarding-entry.test.mjs ui-tests/onboarding-save.test.mjs ui-tests/subscription-workspace.test.mjs ui-tests/barbershop-app-layout.test.mjs
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Conferir o código-base da imagem ativa
+        run: |
+          docker run --rm --entrypoint python "$BASE_IMAGE" -c '
+          import hashlib
+          from pathlib import Path
+          expected = {
+              "app/account_business.py": "5a758febe620081c7251f2ed12a0e8e2086d4e80",
+              "app/onboarding_api.py": "6b80746be59835de45100a74b89f7bb0864465f7",
+              "app/onboarding_schemas.py": "3f8570b6287a02c5c049a777e65deebca7860824",
+              "app/onboarding_service.py": "5d87d6bb619dd0f3003806455b7d341fa7938cad",
+              "app/plan_permissions.py": "4dce4c5d85d9b16157bef9fe4e24ea5dcb50dd30",
+              "app/static/orion-onboarding.js": "eda3193181506dafa477c68d4e815e0f733bf75d",
+              "app/static/panel.html": "367b5fad6e7955fa7dd745d2bd0febc6724e8f02",
+              "app/workspace_policy.py": "cfdb0b986cb036182c012fa7a1bffe2d197cd6ba",
+          }
+          for name, digest in expected.items():
+              data = Path(name).read_bytes()
+              assert hashlib.sha1(b"blob %d" % len(data) + bytes(1) + data).hexdigest() == digest, name
+          '
+      - name: Construir e verificar a API
+        run: |
+          docker build -f deploy/Dockerfile.affiliate-onboarding --build-arg ORION_RELEASE="$GITHUB_SHA" -t "$IMAGE" .
+          docker run --rm --entrypoint python "$IMAGE" -c '
+          from app.onboarding_schemas import CreateBusiness
+          from app.main import app
+          from app.workspace_policy import workspace_profile
+          assert workspace_profile("afiliados") == "affiliate"
+          assert "/api/v1/afiliados/{tenant_id}" in app.openapi()["paths"]
+          CreateBusiness(name="Afiliados", timezone="America/Cuiaba", niche="afiliados",
+                         activity="products", affiliate_activity="offers", idempotency_key="synthetic-test")
+          '
+          docker push "$IMAGE"
+          docker image inspect "$IMAGE" --format '{{index .RepoDigests 0}}' | tee affiliate-onboarding-image.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: affiliate-onboarding-image
+          path: affiliate-onboarding-image.txt

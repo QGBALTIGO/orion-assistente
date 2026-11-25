@@ -9,8 +9,10 @@ from pydantic import ValidationError
 from app.catalog_api import Actor, authenticate
 from app import onboarding_schemas as schemas
 from app import onboarding_service as service
+from app.affiliate_workspace import router as affiliate_router
 
 router = APIRouter(prefix="/api/v1", tags=["Configuração inicial"])
+router.include_router(affiliate_router)
 
 
 @router.get("/onboarding/entry")

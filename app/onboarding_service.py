@@ -27,7 +27,8 @@ from app.onboarding_timezone import timezone_from_address
 from app import business_profile_service as profiles
 from app.business_profile_schemas import BusinessProfile
 from app.http_json import ordinary_json_tree
-from app.workspace_policy import SUBSCRIPTION_NICHE
+from app.workspace_policy import AFFILIATE_NICHE, SUBSCRIPTION_NICHE
+from app.affiliate_workspace import available as affiliate_workspace_available
 from app.commercial_service import audit as commercial_audit
 from app.account_business import (
     account_membership_role, lock_account_business, ensure_can_create_business,
@@ -53,7 +54,7 @@ def require_enabled():
 
 
 async def _require_workspace_operation(db, tenant, configuration, feature=None):
-    if configuration.get("niche") != SUBSCRIPTION_NICHE:
+    if configuration.get("niche") not in {AFFILIATE_NICHE, SUBSCRIPTION_NICHE}:
         return
     # The effective resolver preserves the platform workspace exception. Do not
     # acquire a plan lock after metadata: tenant routes already hold theirs, and
@@ -459,6 +460,15 @@ async def _state(db, tenant, access):
     configuration = dict(meta["configuration"]) if meta else {}
     managed = meta["managed_ids"] if meta else {}
     channels = details["channels"]
+    if configuration.get("niche") == AFFILIATE_NICHE:
+        return _state_jsonable({
+            "enabled": enabled(), "tenant_id": tenant, "name": facts["business"]["name"],
+            "timezone": facts["business"]["timezone"], "version": meta["version"],
+            "status": "complete", "can_edit": False, "required": False, "current_step": "review",
+            "steps": [{"id": "business", "label": "Seu negócio", "required": True, "complete": True}],
+            "configuration": configuration, "operations": details["operations"],
+            "last_operation_key": details["operations"][0]["key"] if details["operations"] else None,
+        })
     if not meta:
         published = channels.get("published") or {}
         categories = published.get("categories") or []
@@ -563,7 +573,8 @@ async def entry(actor, tenant_id=None):
             raise HTTPException(401, "Conta indisponível")
         invitations = await _invitations(db, account)
         rows = [dict(r) for r in (await db.execute(text("""SELECT t.id,t.name,m.role,
-            coalesce(o.is_new AND o.completed_at IS NULL,false) AS required,coalesce(o.version,0) AS version,o.current_step
+            coalesce(o.is_new AND o.completed_at IS NULL,false) AS required,coalesce(o.version,0) AS version,o.current_step,
+            coalesce(o.configuration->>'niche'='afiliados',false) AS affiliate
             FROM tenant_memberships m JOIN tenants t ON t.id=m.tenant_id
             LEFT JOIN business_onboarding o ON o.tenant_id=t.id WHERE m.account_id=:a AND m.active ORDER BY t.name,t.id"""),
             {"a": actor.account_id})).mappings().all()]
@@ -575,6 +586,7 @@ async def entry(actor, tenant_id=None):
             "businesses": [], "invitations": [], "tenant_id": None, "current_step": None,
             "reason": "multiple_businesses" if len(rows) > 1 else "business_access_inactive",
             "message": MULTIPLE_BUSINESSES_MESSAGE if len(rows) > 1 else INACTIVE_BUSINESS_MESSAGE})
+    affiliates = {r["id"] for r in rows if r.pop("affiliate", False)}
     if actor.role in {"support", "admin"}:
         return jsonable_encoder({"enabled": True, "kind": "dashboard", "create_allowed": False,
             "businesses": rows, "invitations": [], "reason": "legacy_operator"})
@@ -582,7 +594,9 @@ async def entry(actor, tenant_id=None):
     if tenant_id and selected is None:
         raise HTTPException(403, "Empresa não vinculada à conta")
     kind = "invitation" if not rows and invitations else "onboarding" if not rows else "dashboard"
-    if selected and selected["role"] == "owner" and selected["required"]:
+    if selected and selected["id"] in affiliates:
+        kind = "affiliate" if selected["role"] == "owner" else "blocked"
+    elif selected and selected["role"] == "owner" and selected["required"]:
         kind = "onboarding"
     elif selected and selected["required"]:
         kind = "blocked"
@@ -598,7 +612,8 @@ async def entry(actor, tenant_id=None):
     return jsonable_encoder({"enabled": True, "kind": kind, "create_allowed": not rows and not invitations,
         "account": {"verified": bool(account["verified_at"]), "name": account["name"], "email": account["email"]},
         "businesses": rows, "invitations": invitations, "tenant_id": selected["id"] if selected else None,
-        "current_step": selected["current_step"] if selected else "business", "reason": "owner_setup_pending" if kind == "blocked" else None})
+        "current_step": selected["current_step"] if selected else "business", "reason": "owner_setup_pending" if kind == "blocked" else None,
+        **({"affiliate_available": True} if affiliate_workspace_available() else {})})
 
 
 async def create_business(actor, payload):
@@ -608,6 +623,7 @@ async def create_business(actor, payload):
     if os.getenv("BUSINESS_PROFILES_ENABLED", "0") != "1":
         raise HTTPException(423, "O acesso por empresa ainda não está habilitado")
     values = payload.model_dump(mode="json", exclude={"idempotency_key"})
+    affiliate = values["niche"] == AFFILIATE_NICHE
     fingerprint = digest({"account": actor.account_id, "data": values})
     async with support_session_factory()() as db:
         async with db.begin():
@@ -627,19 +643,26 @@ async def create_business(actor, payload):
             else:
                 # Preserve retries of older confirmed operations; require the
                 # WhatsApp only on new creation intents.
-                if payload.contact_phone is None:
+                if affiliate and not affiliate_workspace_available():
+                    raise HTTPException(503, "A criação de espaços de Afiliados está indisponível no momento")
+                if affiliate and (actor.role != "member" or not account["verified_at"]):
+                    raise HTTPException(403, "Use sua conta pessoal com e-mail confirmado para criar um espaço de Afiliados")
+                if not affiliate and payload.contact_phone is None:
                     raise HTTPException(422, "Informe o WhatsApp comercial")
                 await ensure_can_create_business(db, actor.account_id)
                 if await _invitations(db, account):
                     conflict("Conclua ou revise o convite pendente antes de criar outra empresa")
                 tenant = uuid4()
-                await db.execute(text("INSERT INTO tenants(id,name,slug,timezone,status) VALUES(:t,:name,:slug,:timezone,'paused')"),
-                                 {"t": tenant, "name": payload.name, "slug": "negocio-" + tenant.hex, "timezone": payload.timezone})
+                await db.execute(text("INSERT INTO tenants(id,name,slug,timezone,status) VALUES(:t,:name,:slug,:timezone,:status)"),
+                                 {"t": tenant, "name": payload.name, "slug": "negocio-" + tenant.hex, "timezone": payload.timezone,
+                                  "status": "active" if affiliate else "paused"})
                 await db.execute(text("INSERT INTO tenant_memberships(tenant_id,account_id,role) VALUES(:t,:a,'owner')"), {"t": tenant, "a": actor.account_id})
                 await db.execute(text("INSERT INTO tenant_membership_events(tenant_id,account_id,actor_account_id,role,active) VALUES(:t,:a,:a,'owner',true)"), {"t": tenant, "a": actor.account_id})
                 configuration = {k: v for k, v in values.items() if k not in {"name", "timezone"}}
-                await db.execute(text("""INSERT INTO business_onboarding(tenant_id,created_by,is_new,configuration,current_step,version)
-                    VALUES(:t,:a,true,CAST(:c AS jsonb),'location',1)"""), {"t": tenant, "a": actor.account_id, "c": json.dumps(configuration)})
+                await db.execute(text("""INSERT INTO business_onboarding(tenant_id,created_by,is_new,configuration,current_step,version,completed_at)
+                    VALUES(:t,:a,true,CAST(:c AS jsonb),:step,1,CASE WHEN :affiliate THEN now() ELSE NULL END)"""),
+                    {"t": tenant, "a": actor.account_id, "c": json.dumps(configuration),
+                     "step": "review" if affiliate else "location", "affiliate": affiliate})
                 await db.execute(text("INSERT INTO business_onboarding_creations(account_id,idempotency_key,fingerprint,tenant_id) VALUES(:a,:key,:fp,:t)"),
                                  {"t": tenant, "a": actor.account_id, "key": payload.idempotency_key, "fp": fingerprint})
                 await db.execute(text("""INSERT INTO business_onboarding_operations(tenant_id,idempotency_key,
@@ -804,6 +827,8 @@ async def _save_channels(db, tenant, data, access):
 async def _apply_step(db, tenant, meta, step, data, access):
     config = meta["configuration"]
     if step == "business":
+        if data.niche == AFFILIATE_NICHE:
+            conflict("Afiliados deve ser escolhido na criação do negócio")
         await db.execute(text("SELECT public.onboarding_update_identity(:t,:name,:tz)"), {"t": tenant, "name": data.name, "tz": data.timezone})
         if data.niche != schemas.SUBSCRIPTION_NICHE:
             config.pop("subscription_offering", None)
@@ -973,6 +998,8 @@ async def save_step(actor, tenant, step, payload):
                         from app.plan_permissions import lock_plan
                         await lock_plan(db, tenant, exclusive=True)
                     meta = await _lock_meta(db, tenant, actor)
+                    if meta["configuration"].get("niche") == AFFILIATE_NICHE:
+                        conflict("Gerencie seu negócio no painel de Afiliados")
                     if step in {"professionals", "catalog", "channels"}:
                         await _require_workspace_operation(db, tenant, meta["configuration"])
                     replay = await _replay(db, tenant, actor, payload.idempotency_key, fingerprint)
@@ -1019,6 +1046,8 @@ async def complete(actor, tenant, payload):
                 from app.plan_permissions import lock_plan
                 await lock_plan(db, tenant, exclusive=True)
                 meta = await _lock_meta(db, tenant, actor)
+                if meta["configuration"].get("niche") == AFFILIATE_NICHE:
+                    conflict("A configuração deste negócio já está disponível no painel de Afiliados")
                 if await _replay(db, tenant, actor, payload.idempotency_key, fingerprint):
                     return await _state(db, tenant, access)
                 if meta["version"] != payload.expected_version:

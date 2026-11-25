@@ -3,12 +3,17 @@ from fastapi import HTTPException
 
 
 SUBSCRIPTION_NICHE = "servico_assinaturas"
+AFFILIATE_NICHE = "afiliados"
 STANDARD_WORKSPACE = "standard"
 SUBSCRIPTION_WORKSPACE = "subscription_services"
+AFFILIATE_WORKSPACE = "affiliate"
+AFFILIATE_WORKSPACE_FEATURES = frozenset({"account.manage", "business.setup"})
 SUBSCRIPTION_WORKSPACE_FEATURES = frozenset({"account.manage", "business.setup", "devices.manage", "chatbot.manage", "templates.manage", "sent_messages.manage", "diagnostics.manage", "campaigns.manage", "scheduled_messages.manage", "bulk_messages.manage", "direct_messages.manage", "group_contacts.manage", "group_add.manage", "number_check.manage", "whatsapp_link.manage", "audience.manage", "whatsapp_guidance.view"})
 
 
 def workspace_profile(niche, *, platform=False):
+    if niche == AFFILIATE_NICHE and not platform:
+        return AFFILIATE_WORKSPACE
     return (SUBSCRIPTION_WORKSPACE if niche == SUBSCRIPTION_NICHE and not platform
             else STANDARD_WORKSPACE)
 
@@ -22,5 +27,8 @@ def workspace_unavailable(feature=None):
 
 
 def require_standard_workspace(state, feature=None):
+    if state and state.get("workspace_profile") == AFFILIATE_WORKSPACE:
+        raise HTTPException(403, {"code": "WORKSPACE_FEATURE_UNAVAILABLE",
+            "message": "Este recurso pertence aos outros nichos do Orion.", "feature": feature})
     if state and state.get("workspace_profile") == SUBSCRIPTION_WORKSPACE:
         raise workspace_unavailable(feature)

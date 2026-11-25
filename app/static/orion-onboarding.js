@@ -20,13 +20,15 @@
   const select = (name,label,choices,current='',attrs='') => '<div class="ob-field"><label for="ob-'+esc(name)+'">'+esc(label)+'</label><select id="ob-'+esc(name)+'" name="'+esc(name)+'" '+attrs+'>'+choices.map(([value,text])=>option(value,text,current,value===''&&String(text).startsWith('Selecione '))).join('')+'</select></div>';
   const check = (name,label,checked=false,help='',value='on') => '<label class="ob-check"><input type="checkbox" name="'+esc(name)+'" value="'+esc(value)+'"'+(checked?' checked':'')+'><span><strong>'+esc(label)+'</strong>'+(help?'<small>'+esc(help)+'</small>':'')+'</span></label>';
   const subscriptionNiche = 'servico_assinaturas';
-  const niches = [['','Selecione o nicho'],['barbearia','Barbearia'],['salao','Salão de beleza'],['odontologia','Odontologia'],['estetica','Estética'],['clinica','Clínica'],['pet_shop','Pet shop'],['aulas','Aulas'],[subscriptionNiche,'Serviço de assinaturas'],['outro','Outro']];
+  const affiliateNiche = 'afiliados';
+  const niches = [['','Selecione o nicho'],['barbearia','Barbearia'],['salao','Salão de beleza'],['odontologia','Odontologia'],['estetica','Estética'],['clinica','Clínica'],['pet_shop','Pet shop'],['aulas','Aulas'],[subscriptionNiche,'Serviço de assinaturas'],[affiliateNiche,'Afiliados'],['outro','Outro']];
   const activities = [['','Selecione a atividade'],['services','Serviços com agendamento'],['products','Produtos'],['both','Serviços e produtos']];
   const subscriptionOfferings = [['','Selecione a atividade'],['subscriptions','Assinaturas'],['one_time_sales','Vendas avulsas'],['both','Assinaturas e vendas avulsas']];
-  const activityChoices = niche => niche===subscriptionNiche?subscriptionOfferings:activities;
-  const activityGroup = niche => niche===subscriptionNiche?'subscriptions':'standard';
+  const affiliateActivities = [['','Selecione a atividade'],['offers','Ofertas e cupons'],['reviews','Resenhas e recomendações'],['both','Ofertas e recomendações']];
+  const activityChoices = niche => niche===affiliateNiche?affiliateActivities:niche===subscriptionNiche?subscriptionOfferings:activities;
+  const activityGroup = niche => niche===affiliateNiche?'affiliates':niche===subscriptionNiche?'subscriptions':'standard';
   const businessNicheLabel = c => ['outro','other'].includes(c.niche)?c.other_niche:niches.find(([value])=>value&&value===c.niche)?.[1]||c.niche;
-  const businessActivityValue = c => c.niche===subscriptionNiche?c.subscription_offering:c.activity;
+  const businessActivityValue = c => c.niche===affiliateNiche?c.affiliate_activity:c.niche===subscriptionNiche?c.subscription_offering:c.activity;
   const businessActivityLabel = c => activityChoices(c.niche).find(([value])=>value&&value===businessActivityValue(c))?.[1]||'Não informado';
   function syncBusinessActivity(form, restoredValue) {
     const niche=form.elements.niche,activity=form.elements.activity;
@@ -95,7 +97,8 @@
     function businessForm(create=false) {
       const c=state.data?.configuration||{},name=state.data?.name||'',
         currentNiche=String(c.niche||'').toLowerCase()==='other'?'outro':c.niche||'',
-        nicheChoices=niches.some(([value])=>value===currentNiche)?niches:[...niches,[currentNiche,currentNiche]],
+        availableNiches=niches.filter(([value])=>value!==affiliateNiche||(create&&state.entry?.affiliate_available)),
+        nicheChoices=availableNiches.some(([value])=>value===currentNiche)?availableNiches:[...availableNiches,[currentNiche,currentNiche]],
         choices=activityChoices(currentNiche),storedActivity=businessActivityValue(c),
         currentActivity=choices.some(([value])=>value===storedActivity)?storedActivity:'';
       return form('<div class="ob-fields ob-business-fields">'+
@@ -105,6 +108,12 @@
         select('activity','O que você oferece',choices,currentActivity,'required data-ob-activity-group="'+activityGroup(currentNiche)+'"')+
         field('contact_phone','WhatsApp comercial',c.contact_phone||'','type="tel" required autocomplete="tel" inputmode="tel" placeholder="(00) 00000-0000" data-orion-field="phone"')+
         '</div>',create?'Criar meu negócio':'Salvar e continuar',create?'create':'business');
+    }
+    function affiliateReady(tenant, name) {
+      const link='/api/v1/afiliados/'+encodeURIComponent(tenant);
+      setHTML(header('Seu espaço de Afiliados','Vincule a Shopee, adicione seus canais e prepare sua primeira oferta.')+
+        '<section class="ob-card">'+feedback()+'<h2>'+esc(name||'Afiliados')+'</h2><div class="ob-actions">'+
+        '<a class="ob-button" href="'+link+'">Abrir painel de Afiliados</a></div></section>');
     }
     function addressForm() {
       const c=state.data.configuration||{},address=c.private_address||{};
@@ -390,6 +399,9 @@
       return rows(state.data.steps).some(step=>step.id==='goals')?quickReview():legacyReview();
     }
     function render() {
+      if (state.data?.configuration?.niche===affiliateNiche&&state.data.status==='complete') {
+        affiliateReady(state.tenantId,state.data.name);return;
+      }
       if(!state.mounted)return;
       if(!state.data){renderEntry();return;}
       const titles=definitions[state.step]||definitions.review;
@@ -400,6 +412,10 @@
     const canCreate = () => state.entry?.enabled===true&&state.entry.kind==='onboarding'&&state.entry.create_allowed===true&&!state.entry.tenant_id&&!state.tenantId&&!state.data&&rows(state.entry.businesses).length===0;
     function renderEntry() {
       const entry=state.entry||{};let content='';state.create=canCreate();
+      if(entry.kind==='affiliate'&&uuid(entry.tenant_id)){
+        affiliateReady(entry.tenant_id, rows(entry.businesses).find(b=>b.id===entry.tenant_id)?.name);
+        return;
+      }
       if(state.create)content=businessForm(true);
       else if(entry.kind==='business_conflict'||entry.kind==='choose_business')content='<div class="ob-note ob-error" role="alert">'+esc(entry.message||'Sua conta está vinculada a mais de uma empresa. Entre em contato com o suporte para regularizar o vínculo.')+'</div><div class="ob-actions">'+button('Verificar novamente','refresh')+(bridge.logout?button('Entrar com outra conta','logout'):'')+'</div>';
       else if(entry.kind==='invitation')content='<p>Você tem um convite de acesso. Aceite ou acompanhe a aprovação para acessar a empresa.</p><div class="ob-list">'+rows(entry.invitations).map(item=>'<article class="ob-item"><div><strong>'+esc(item.business_name)+'</strong><p>'+esc({pending:'Aguardando aceite',accepted:'Aguardando aprovação',claimed:'Aguardando aprovação',approved:'Aprovado'}[item.status]||'Convite a verificar')+'</p></div></article>').join('')+'</div><a class="ob-button" href="/convite">Ver convite</a>';
@@ -462,7 +478,18 @@
       if(['street','neighborhood','city','state'].includes(element.name))element.dataset.obEdit=String(Number(element.dataset.obEdit||0)+1);
       if(element.name==='postal_code')queueCepLookup(element);
     }
-    function conditionalFields() {const form=host.querySelector('form');if(!form)return;syncBusinessActivity(form);const elements=form.elements,niche=host.querySelector('[data-ob-other-niche]');if(niche){niche.hidden=elements.niche?.value!=='outro';elements.other_niche.required=!niche.hidden;elements.other_niche.disabled=niche.hidden;}const address=host.querySelector('[data-ob-address]');if(address){address.hidden=!['onsite','hybrid'].includes(elements.modality?.value);for(const input of address.querySelectorAll('input,select'))input.disabled=address.hidden;for(const name of ['street','neighborhood','city','state'])if(elements[name])elements[name].required=!address.hidden;elements.number.disabled=address.hidden;elements.number.required=!address.hidden;}const pause=host.querySelector('[data-ob-break]');if(pause){pause.hidden=!elements.has_break?.checked;for(const input of pause.querySelectorAll('input')){input.disabled=pause.hidden;input.required=!pause.hidden;}}const price=host.querySelector('[data-ob-product-price]');if(price){price.hidden=!['fixed','from'].includes(elements.price_kind?.value);const input=price.querySelector('input');input.required=!price.hidden;input.disabled=price.hidden;input.dataset.fieldMin='0';if(price.hidden)fieldTools.clearError(input);}}
+    function syncAffiliateForm(form) {
+      if(form.dataset.obForm!=='create')return;
+      const affiliate=form.elements.niche?.value===affiliateNiche;
+      const name=form.elements.name,phone=form.elements.contact_phone;
+      host.querySelector('[data-ob-title]').textContent=affiliate?'Configure seu negócio de afiliados':'Vamos configurar seu negócio';
+      host.querySelector('.ob-heading h1 + p').textContent=affiliate?'Crie o espaço em que você vai organizar e publicar ofertas.':'Seus dados e permissões são conferidos pelo servidor.';
+      form.querySelector('label[for="ob-activity"]').textContent=affiliate?'Como você divulga?':'O que você oferece';
+      name.placeholder=affiliate?'Ex.: Minha Central de Ofertas':'Ex.: Barbearia Peixoto';
+      phone.disabled=affiliate;phone.required=!affiliate;phone.closest('.ob-field').hidden=affiliate;
+      form.querySelector('[type="submit"]').textContent=affiliate?'Criar espaço de Afiliados':'Criar meu negócio';
+    }
+    function conditionalFields() {const form=host.querySelector('form');if(!form)return;syncBusinessActivity(form);syncAffiliateForm(form);const elements=form.elements,niche=host.querySelector('[data-ob-other-niche]');if(niche){niche.hidden=elements.niche?.value!=='outro';elements.other_niche.required=!niche.hidden;elements.other_niche.disabled=niche.hidden;}const address=host.querySelector('[data-ob-address]');if(address){address.hidden=!['onsite','hybrid'].includes(elements.modality?.value);for(const input of address.querySelectorAll('input,select'))input.disabled=address.hidden;for(const name of ['street','neighborhood','city','state'])if(elements[name])elements[name].required=!address.hidden;elements.number.disabled=address.hidden;elements.number.required=!address.hidden;}const pause=host.querySelector('[data-ob-break]');if(pause){pause.hidden=!elements.has_break?.checked;for(const input of pause.querySelectorAll('input')){input.disabled=pause.hidden;input.required=!pause.hidden;}}const price=host.querySelector('[data-ob-product-price]');if(price){price.hidden=!['fixed','from'].includes(elements.price_kind?.value);const input=price.querySelector('input');input.required=!price.hidden;input.disabled=price.hidden;input.dataset.fieldMin='0';if(price.hidden)fieldTools.clearError(input);}}
     async function loadTenant(id,preferred,epoch=++state.epoch) {cancelCep();if(!uuid(id))throw Error('Selecione um negócio válido.');state.tenantId=id;state.data=null;state.editor=null;state.pending=null;state.conflict=false;state.feedback='';host.hidden=false;host.innerHTML='<div class="ob-loading" role="status">Conferindo a configuração do negócio…</div>';const data=await request('/api/v1/tenants/'+encodeURIComponent(id)+'/onboarding');if(!current(epoch))return null;accept(data,preferred);render();focus();await notify('onTenantChange',id,clone(data));return data;}
     async function resolveEntry({force=false}={}) {
       if(!state.mounted||!bridge.user||bridge.user.authenticated===false)return {kind:'blocked',reason:'authentication_required'};
@@ -471,7 +498,7 @@
       catch(error){if(current(epoch)){state.entry={kind:'blocked'};state.feedback=error.message||'Não foi possível conferir a configuração.';state.error=true;renderEntry();}throw error;}
     }
     function price(raw) {return fieldTools.parseMoney(raw,{required:true,min:0,max:100000000});}
-    function formData(form) {const data=Object.fromEntries(new FormData(form));const type=form.dataset.obForm;if(type==='business'||type==='create'){const result={name:businessNameValue(data.name),timezone:state.data?.timezone||startingTimezone,niche:data.niche,other_niche:data.niche==='outro'?data.other_niche?.trim()||null:null,activity:data.activity,contact_phone:fieldTools.phoneValue(data.contact_phone)};if(data.niche===subscriptionNiche){result.activity='products';result.subscription_offering=data.activity;}return result;}if(type==='location'){const result={modality:data.modality};if(['onsite','hybrid'].includes(data.modality))result.address={postal_code:fieldTools.postalCodeValue(data.postal_code),street:addressTextValue(data.street),number:addressNumberValue(data.number),no_number:false,complement:addressTextValue(data.complement)||null,neighborhood:addressTextValue(data.neighborhood),city:addressTextValue(data.city),state:data.state.trim().toUpperCase()};return result;}
+    function formData(form) {const data=Object.fromEntries(new FormData(form));const type=form.dataset.obForm;if(type==='business'||type==='create'){const result={name:businessNameValue(data.name),timezone:state.data?.timezone||startingTimezone,niche:data.niche,other_niche:data.niche==='outro'?data.other_niche?.trim()||null:null,activity:data.activity,contact_phone:fieldTools.phoneValue(data.contact_phone)};if(data.niche===subscriptionNiche){result.activity='products';result.subscription_offering=data.activity;}if(data.niche===affiliateNiche){result.activity='products';result.affiliate_activity=data.activity;result.contact_phone=null;}return result;}if(type==='location'){const result={modality:data.modality};if(['onsite','hybrid'].includes(data.modality))result.address={postal_code:fieldTools.postalCodeValue(data.postal_code),street:addressTextValue(data.street),number:addressNumberValue(data.number),no_number:false,complement:addressTextValue(data.complement)||null,neighborhood:addressTextValue(data.neighborhood),city:addressTextValue(data.city),state:data.state.trim().toUpperCase()};return result;}
       if(type==='profile')return Object.fromEntries(
         ['operating_age','team_size','monthly_revenue','monthly_volume'].map(name=>[name,data[name]])
       );

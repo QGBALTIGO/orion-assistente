@@ -9,7 +9,7 @@ from uuid import UUID
 
 from fastapi import HTTPException
 from sqlalchemy import text
-from app.workspace_policy import (SUBSCRIPTION_NICHE, SUBSCRIPTION_WORKSPACE,
+from app.workspace_policy import (AFFILIATE_NICHE, AFFILIATE_WORKSPACE, SUBSCRIPTION_NICHE, SUBSCRIPTION_WORKSPACE,
                                   STANDARD_WORKSPACE)
 
 
@@ -27,9 +27,11 @@ OPERATOR_CONTEXT_MESSAGE = (
     "Entre com a conta da empresa para continuar."
 )
 _MULTIPLE = "__multiple_businesses__"
-_WORKSPACE_COLUMN = f"""CASE WHEN (SELECT configuration->>'niche'
-    FROM business_onboarding WHERE tenant_id=t.id)='{SUBSCRIPTION_NICHE}'
-    THEN '{SUBSCRIPTION_WORKSPACE}' ELSE '{STANDARD_WORKSPACE}' END AS workspace_profile"""
+_WORKSPACE_COLUMN = f"""CASE (SELECT configuration->>'niche'
+    FROM business_onboarding WHERE tenant_id=t.id)
+    WHEN '{SUBSCRIPTION_NICHE}' THEN '{SUBSCRIPTION_WORKSPACE}'
+    WHEN '{AFFILIATE_NICHE}' THEN '{AFFILIATE_WORKSPACE}'
+    ELSE '{STANDARD_WORKSPACE}' END AS workspace_profile"""
 
 
 def reject_multiple_businesses():

@@ -1,0 +1,5 @@
+FROM ghcr.io/qgbaltigo/orion-assistente-api@sha256:8c19cfcec8a4f1dd26390c42a8e0ed993f37351d097a76beb3727525c46d2569
+ARG ORION_RELEASE
+LABEL org.opencontainers.image.revision=$ORION_RELEASE
+COPY --chown=appuser:appuser app/account_business.py app/affiliate_workspace.py app/onboarding_api.py app/onboarding_schemas.py app/onboarding_service.py app/plan_permissions.py app/workspace_policy.py /srv/app/app/
+COPY --chown=appuser:appuser app/static/panel.html app/static/orion-onboarding.js /srv/app/app/static/

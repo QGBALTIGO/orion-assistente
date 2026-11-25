@@ -1525,10 +1525,12 @@ let suiteUser=null,suiteTenantId="",businessContextReady=false,businessContextEr
 let setupController=null,setupResolving=0,setupGate=false,setupEntryReady=false;
 let setupPlanRequested=new URLSearchParams(location.search).get('aba')==='plano';
 function syncSetupAccess(profile){
- const subscription=!(suiteUser?.role==='admin'&&!suiteUser?.maintenance?.active)&&
-  (profile||window.OrionSuite?.workspaceProfile?.()||accountBusiness()?.workspace_profile)==='subscription_services';
+ const businessProfile=accountBusiness()?.workspace_profile;
+ const workspace=businessProfile==='affiliate'?'affiliate':profile||window.OrionSuite?.workspaceProfile?.()||businessProfile;
+ const restricted=!(suiteUser?.role==='admin'&&!suiteUser?.maintenance?.active)&&
+  (workspace==='subscription_services'||workspace==='affiliate');
  const plan=document.querySelector('#orionSetupAccess [data-setup-access="plano"]');
- if(plan)plan.hidden=subscription;
+ if(plan)plan.hidden=restricted;
 }
 function setSetupGate(value){
  setupGate=Boolean(value);
@@ -1606,7 +1608,7 @@ async function resolveSetup(options={}){
  try{const entry=await setupController.resolveEntry({force:options.force===true});
   if(epoch!==authEpoch||sequence!==setupResolving||!entry)return;
  if(entry.kind==="business_conflict"){blockBusinessContext(entry.message||"Sua conta está vinculada a mais de uma empresa. Entre em contato com o suporte para regularizar o vínculo.");return}
- if(setupPlanRequested&&accountBusiness()){setSetupGate(false);$("orionSetup").hidden=true;await window.OrionSuite?.open('plano',{force:true});return;}
+ if(setupPlanRequested&&accountBusiness()&&accountBusiness().workspace_profile!=="affiliate"){setSetupGate(false);$("orionSetup").hidden=true;await window.OrionSuite?.open('plano',{force:true});return;}
   setupEntryReady=true;setSetupGate(entry.kind!=="dashboard");
  }catch{if(epoch===authEpoch&&sequence===setupResolving){setupEntryReady=false;setSetupGate(true)}}
 }

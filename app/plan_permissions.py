@@ -18,7 +18,7 @@ from fastapi import HTTPException
 from sqlalchemy import text
 
 from app.plan_catalog import ALL_FEATURES, CODES, PLAN_FEATURES, RECOVERY_FEATURES
-from app.workspace_policy import (SUBSCRIPTION_WORKSPACE, SUBSCRIPTION_WORKSPACE_FEATURES,
+from app.workspace_policy import (AFFILIATE_WORKSPACE, AFFILIATE_WORKSPACE_FEATURES, SUBSCRIPTION_WORKSPACE, SUBSCRIPTION_WORKSPACE_FEATURES,
                                   require_standard_workspace, workspace_profile,
                                   workspace_unavailable)
 
@@ -107,7 +107,9 @@ def derive_plan(snapshot, now=None):
     features = sorted(ALL_FEATURES if platform and active else
                       (PLAN_FEATURES.get(code, frozenset()) if active else frozenset()) | RECOVERY_FEATURES)
     profile = workspace_profile(snapshot.get("niche"), platform=platform)
-    if profile == SUBSCRIPTION_WORKSPACE:
+    if profile == AFFILIATE_WORKSPACE:
+        features = sorted(AFFILIATE_WORKSPACE_FEATURES)
+    elif profile == SUBSCRIPTION_WORKSPACE:
         # Keep commercial history intact. A grant never enables another
         # niche's operations while its own workspace is being prepared.
         features = sorted(SUBSCRIPTION_WORKSPACE_FEATURES)
