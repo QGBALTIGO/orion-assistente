@@ -35,6 +35,7 @@ function fixture(overrides={},options={}){
    if(path==='/plan-support'&&options.support)return options.support();
    if(path==='/plan-overview')return overview;
    if(path==='/plan-checkout'&&options.embeddedReply)return await options.embeddedReply(data);
+   if(path.startsWith('/plan-checkout-preview?')&&options.previewReply)return options.previewReply;
    if(path.startsWith('/plan-checkout?')&&options.embeddedStatus)return options.embeddedStatus;
 
    if(path==='/plan-pix-current'){if(options.currentUnavailable||options.currentUnavailableAfterCharge&&chargeAttempts)throw Error('synthetic current lookup unavailable');return current;}
@@ -129,6 +130,25 @@ function embeddedReply(data,origin='https://pay.cakto.com.br'){
  return {checkout_url:origin+'/'+checkoutIds[data.plan_code]+'?callback='+tracker+'&sck='+tracker,
          plan_code:data.plan_code,monthly_cents:data.expected_cents,status:'pending_payment',intent_id:intent};
 }
+
+test('manual access shows the real checkout in a read-only iframe without a charge or intent',async()=>{
+ const effective=planState('essencial',{source:'manual',active:true});
+ const f=fixture({barbershop:{checkout_preview:true,period_days:30},effective_plan:effective,embedded_checkout_enabled:true},{
+  previewReply:{checkout_url:'https://pay.cakto.com.br/'+checkoutIds.elite,plan_code:'elite',monthly_cents:13990,provider_verified:true}});
+ try{
+  f.ctx.canPurchase=()=>false;
+  assert.equal(f.root.querySelector('.op-essencial [data-op-checkout]').disabled,true);
+  const button=f.root.querySelector('.op-elite [data-op-checkout-preview]');
+  assert.equal(button.textContent,'Ver checkout');
+  button.click();await tick();
+  const iframe=f.root.querySelector('iframe');
+  assert.equal(iframe.getAttribute('sandbox'),'allow-scripts allow-same-origin');
+  assert.ok(iframe.hasAttribute('inert'));
+  assert.equal(new URL(iframe.src).search,'');
+  assert.equal(f.root.querySelector('[data-embedded-check]').hidden,true);
+  assert.deepEqual(f.calls,[{path:'/plan-checkout-preview?plan_code=elite',method:'GET',data:undefined}]);
+ }finally{f.close();}
+});
 
 for(const plan of base.plans)test('the monthly checkout opens inside Orion for '+plan.code,async()=>{
  const f=fixture({embedded_checkout_enabled:true},{embeddedReply,embeddedStatus:{plan_code:plan.code,status:'pending_payment'}});

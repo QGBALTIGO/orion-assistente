@@ -42,6 +42,12 @@ async def support_url():
             return "https://wa.me/" + selected[1] + "?text=" + quote(message, safe="")
     except (HTTPException, httpx.HTTPError, OSError, TimeoutError, ValueError):
         pass
+    from app.appointment_confirmation import central_admin_phone, central_admin_whatsapp_enabled
+
+    if central_admin_whatsapp_enabled():
+        phone = await central_admin_phone()
+        if phone and re.fullmatch(r"55[1-9]\d{9,10}", phone):
+            return "https://wa.me/" + phone + "?text=" + quote(message, safe="")
     contact = os.getenv("ORION_SUPPORT_FALLBACK_EMAIL", "").strip()
     if re.fullmatch(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+", contact):
         return "mailto:" + quote(contact, safe="@") + "?body=" + quote(message, safe="")

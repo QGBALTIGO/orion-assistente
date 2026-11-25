@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from uuid import uuid4
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Response
 import pytest
 
 from app import plan_management as plans, orion_direct_checkout as direct
@@ -60,7 +60,8 @@ def checkout(monkeypatch):
     async def state(session,tenant,lock="shared"):
         assert session is db and tenant==db.tenant and lock in {"shared", "exclusive"}
         db.shared=lock=="shared"
-        return {"manual_assignment":{"plan_code":"essencial","active":True} if db.manual else None}
+        return {"manual_assignment":{"plan_code":"essencial","active":True} if db.manual else None,
+                "source": "manual" if db.manual else "none"}
     async def access(*_): return SimpleNamespace(role="owner",account_id=db.account)
     async def owner(*_): return db.account
     async def ensure(session,tenant,account):
@@ -108,6 +109,31 @@ def charge(db):
     return direct.DirectCharge(intent_id=db.intent_id,method="pix",confirmed_monthly=True,consent_to_processor=True,
         payer={"name":"Pessoa Sintética","email":"payer@example.test","phone":"67999999901","doc_type":"cpf",
                "doc_number":"11144477735","fingerprint":"synthetic-local-fingerprint"})
+
+
+@pytest.mark.asyncio
+async def test_maintenance_checkout_checks_provider_without_reserving_or_charging(checkout, monkeypatch):
+    db = checkout
+
+    async def barbershop(*_):
+        return True
+
+    async def verify(*_):
+        return None
+
+    monkeypatch.setattr(plans, "_is_barbershop", barbershop)
+    monkeypatch.setattr(plans, "embedded_checkout_enabled", lambda: True)
+    monkeypatch.setattr(plans, "verify_embedded_checkout", verify)
+    actor = Actor("member", account_id=db.account, maintenance=True)
+    response = Response()
+    result = await plans.preview_plan_checkout(db.tenant, "elite", response, actor)
+    assert result == {"checkout_url": plans.CODES["elite"]["checkout_url"], "plan_code": "elite",
+                      "monthly_cents": 13990, "provider_verified": True}
+    assert response.headers["Cache-Control"] == "no-store"
+    with pytest.raises(HTTPException) as exc:
+        await plans.start_plan_checkout(db.tenant, plans.CheckoutChoice(plan_code="elite"), actor)
+    assert exc.value.status_code == 403
+    assert db.provider_reads == 1 and db.provider_posts == 0 and not db.calls
 
 
 @pytest.mark.asyncio
