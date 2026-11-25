@@ -14,23 +14,55 @@ comissão, valor vendido e pedidos, o gráfico diário e o ranking de produtos.
 Os dias do gráfico podem ser consultados por toque ou teclado. Uma falha de
 consulta preserva o último relatório confirmado do mesmo período.
 
-## Disponibilidade dos dados nesta entrega
+## Relatórios reais da conta Shopee
 
-O serviço de Afiliados hoje fornece `state`, uma janela de até 120 registros,
-além de conexões, destinos e regras. Isso sustenta contagens operacionais atuais,
-mas não sustenta totais históricos por período. `changed` indica a última
-atividade do registro; não há comprovação de que seja a data de publicação.
+A integração usa a credencial já cifrada no serviço de Afiliados na VPS.
+`conversionReport` foi autorizado e validado com a conta conectada. O Dashboard
+agora mostra vendas geradas, pedidos, itens e comissão bruta estimada, além de
+séries diárias e produtos. O escopo é **todos os links da conta Shopee**.
+Resultados sem Sub_id conhecido não são atribuídos a uma publicação do Orion.
 
-Por isso, a ausência de um relatório financeiro produz valores `null`, sem
-gráficos inventados ou receita calculada a partir do preço de catálogo. O estado
-sem integração mostra as métricas operacionais e uma ação para preparar ofertas,
-além do acesso ao Portal de Afiliados Shopee. Não apresenta receita zero como se
-um relatório tivesse sido consultado com sucesso.
+`actualAmount` e `itemTotalCommission` são somados uma vez por linha elegível,
+com `Decimal`, sem multiplicar novamente pela quantidade. O total é convertido
+para centavos no final. O valor de reembolso não é descontado pela segunda vez:
+a semântica de `actualAmount` líquido de reembolso não está documentada.
+Pedidos pendentes e concluídos podem compor a estimativa; cancelados, não pagos,
+itens cancelados e fraude ficam fora. Valores ausentes ou que não conciliam
+continuam desconhecidos. A comissão dos itens é reconciliada com a conversão;
+divergência torna o relatório parcial, sem rateio inventado do teto.
 
-**A sincronização de vendas, comissões e cliques não é ativada por esta entrega.**
-O código e o acesso administrativo do serviço de Afiliados na VPS não estavam
-disponíveis nesta sessão. As credenciais Shopee já conectadas permanecem nesse
-serviço; não foi criada uma segunda cópia dessas credenciais na Orion.
+Concluído não significa comissão validada ou paga. A comissão validada permanece
+`null`, pois o relatório validado exige um identificador específico que a API
+pública não lista. Cliques também permanecem indisponíveis: o campo `clickTime`
+só identifica o clique que converteu, e não existe operação pública de total de
+cliques no schema consultado. Uma importação futura depende de um arquivo real
+exportado pelo Portal de Afiliados.
+
+O histórico de publicações tem agora `published_at` persistido no recebimento
+da confirmação. A migração aditiva recupera o instante dos registros já
+publicados: a revisão do worker comprovou que esse estado é terminal e que
+`changed` era escrito no recebimento da confirmação. Os totais e a série diária
+consultam o histórico completo, com índice por empresa e data. A fila e as
+falhas usam os totais atuais; cartões recentes continuam limitados a 120.
+
+### Sincronização e atribuição
+
+A consulta inicial aguarda até oito segundos. Se precisar de mais tempo,
+retorna a operação e o estado de sincronização; a interface faz consultas
+limitadas até o relatório ficar pronto. O cache dura cinco minutos, por empresa,
+fuso e versão da credencial. Períodos compartilham a mesma janela de cobertura.
+Uma nova sequência completa de páginas substitui o snapshot, atualizando
+cancelamentos e reembolsos sem duplicar conversões. Falhas preservam o último
+snapshot confirmado e sua data, com espera de 90 segundos antes de repetir.
+A interface identifica dados em atualização, parciais ou com falha.
+
+Os publicadores Telegram e PromoTech passam um Sub_id opaco por job, usando o
+link nativo da Shopee. `longLink` devolveu o `utm_content` desse identificador na
+validação real; guardamos o valor exato retornado, sem reconstruir separadores.
+O mapeamento financeiro exige igualdade exata, mesma empresa e versão de
+credencial. Links antigos e links cuja atribuição não possa ser confirmada
+continuam sem atribuição por destino. A autorização para enviar mensagens não
+é alterada por esta integração; os testes usam transportes simulados.
 
 ## Consulta e isolamento
 
@@ -38,7 +70,7 @@ serviço; não foi criada uma segunda cópia dessas credenciais na Orion.
 
 O acesso exige a mesma identidade verificada de proprietário, empresa ativa e
 nicho Afiliados utilizada pelo restante do módulo. A consulta ao provedor é
-assinada para a empresa, o método e o caminho específicos. O parâmetro de período
+assinada para a empresa, o método e o caminho específicos. O fuso é obtido do cadastro da empresa e encaminhado ao serviço. O parâmetro de período
 aceita somente `today`, `7d`, `30d` ou `month`.
 
 O proxy tenta obter `/api/analytics` no serviço de Afiliados. Apenas a ausência
@@ -49,8 +81,8 @@ somente os campos explicitamente permitidos. As respostas usam `no-store`.
 
 Os períodos são datas locais inclusivas: sete dias incluem hoje e os seis dias
 anteriores; trinta dias incluem hoje e os 29 anteriores. `month` começa no dia 1
-do mês local. A operação atual é independente desse período e está identificada
-como amostra das últimas 120 publicações.
+do mês local. A fila atual é independente desse período. O fallback para uma versão antiga
+do serviço continua identificando sua amostra de até 120 registros.
 
 ### Contrato do relatório
 
@@ -70,16 +102,17 @@ como amostra das últimas 120 publicações.
 | `products`, `destinations` | Rankings no nível de atribuição efetivamente disponível |
 | `upcoming`, `recent` | Campos públicos das publicações, sem recibos, tokens ou erros brutos |
 
-## Próxima integração com a Shopee
+## Contratos e limites da Shopee
 
 O Explorer oficial brasileiro foi consultado em 25/11/2026. A operação
 `conversionReport` permite consultar conversões, pedidos, itens, valores e
-comissões. A implementação deve usar as credenciais existentes no serviço de
-Afiliados e verificar a permissão real para relatórios. Uma conexão de catálogo
+comissões. A implementação usa as credenciais existentes no serviço de
+Afiliados; a permissão para relatórios foi confirmada em uma consulta real. Uma conexão de catálogo
 validada não comprova, por si só, acesso ao relatório financeiro.
 
-A sincronização precisa deduplicar conversões, pedidos e itens, atualizar
-cancelamentos/reembolsos e somar a comissão de cada conversão uma única vez.
+A sincronização deduplica conversões, pedidos e itens e substitui os snapshots
+para refletir cancelamentos/reembolsos; a comissão por item é conciliada com
+a conversão sem repetir o total por pedido.
 Valores monetários devem usar representação decimal no cálculo e centavos no
 contrato da interface. A semântica do valor efetivo de item deve ser conciliada
 com uma resposta real antes de qualquer multiplicação por quantidade.
@@ -97,7 +130,7 @@ O Portal Shopee permite exportar o relatório de cliques. O Explorer público
 consultado não possui uma operação de cliques totais. O clique que gerou uma
 conversão não equivale à audiência total de uma publicação. Uma futura importação
 deve partir de um arquivo oficial concreto e manter seu período e sua origem;
-esta entrega não insere um redirecionador nos links existentes.
+o fluxo usa os links nativos gerados pela Shopee.
 
 ## Verificação
 
@@ -116,3 +149,19 @@ tráfego externo, nas larguras 320, 360, 430, 768 e 1280 pixels, em ambos os tem
 - [Shopee: Sub_ids](https://help.shopee.com.br/portal/10/article/127556)
 - [Shopify: uso do dashboard de análise](https://help.shopify.com/en/manual/reports-and-analytics/shopify-reports/overview-dashboard/using-the-overview-dashboard)
 - [PartnerStack: medir o desempenho do programa](https://support.partnerstack.com/hc/en-us/articles/18957035815315-Measuring-program-performance)
+
+## Implantação e recuperação
+
+O código do piloto foi recuperado da versão ativa
+`b6ecf0f66e3e549529e7dd15fe50fa739a624b3d` e incluído neste repositório.
+A atualização da VPS copia essa versão e aplica os arquivos revisados do piloto
+mais `app/affiliate_analytics.py`, módulo puro compartilhado do contrato.
+O procedimento guarda um backup consistente SQLite, verifica hashes da base e
+da versão nova, compila e importa o app com a virtualenv da VPS antes de mudar
+o diretório do serviço. Só a API do piloto é reiniciada; o processo WhatsApp
+mantém a sessão existente. Em falha, o diretório anterior é restaurado; as
+adições compatíveis de schema são preservadas, evitando reverter atividade da fila.
+
+A imagem da API Orion deriva da imagem de produção observada no momento do
+build, com verificação de hashes dos arquivos de Afiliados substituídos.
+O shell geral `orion-suite.js` permanece o da base publicada.

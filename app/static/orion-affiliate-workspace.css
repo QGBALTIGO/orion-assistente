@@ -154,6 +154,13 @@
 .af-dashboard-periods button:hover:not([aria-pressed=true]) { background: var(--os-bg); color: var(--os-text); }
 .af-dashboard-freshness { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--os-muted); margin-left: auto; }
 .af-dashboard-freshness .os-icon-button { border: 1px solid var(--os-border); background: var(--os-card); color: var(--os-muted); }
+.af-dashboard-report-status { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 14px; margin-top: -8px; color: var(--os-muted); font-size: 10px; line-height: 1.5; }
+.af-dashboard-report-status > span { display: inline-flex; align-items: center; gap: 5px; }
+.af-dashboard-report-status .os-icon { width: 13px; height: 13px; }
+.af-dashboard-report-status strong { font-weight: 550; }
+.af-dashboard-report-status > small { flex-basis: 100%; font-size: 10px; }
+.af-dashboard-report-status[data-dashboard-report-status=syncing] > span:first-child { color: var(--os-primary); }
+.af-dashboard-report-status:is([data-dashboard-report-status=partial],[data-dashboard-report-status=error]) > span:first-child { color: var(--os-warning); }
 .af-dashboard-overview { display: grid; grid-template-columns: minmax(0,1fr); gap: 18px; align-items: stretch; min-width: 0; }
 .af-dashboard-revenue { display: flex; flex-direction: column; min-width: 0; overflow: hidden; padding: 21px 23px 0; border: 1px solid color-mix(in srgb,var(--os-primary) 70%,white); border-radius: var(--af-radius); color: white; background: radial-gradient(ellipse at 92% 5%,#ffffff20,transparent 63%),linear-gradient(125deg,var(--os-primary),var(--os-primary-hover)); box-shadow: 0 6px 18px color-mix(in srgb,var(--os-primary) 10%,transparent); }
 .af-dashboard-revenue > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }

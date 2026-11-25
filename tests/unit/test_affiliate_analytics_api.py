@@ -78,7 +78,7 @@ async def test_missing_report_uses_scoped_snapshot_without_inventing_revenue(con
     assert report["summary"]["published"] is None
     assert report["sources"]["publications"]["complete"] is False
     assert [call["path"] for call in context["calls"]] == ["/api/analytics", "/api/state"]
-    assert context["calls"][0]["params"] == {"period": "7d"}
+    assert context["calls"][0]["params"] == {"period": "7d", "timezone": "America/Campo_Grande"}
 
 
 async def test_confirmed_report_passes_through_without_loading_snapshot(context):

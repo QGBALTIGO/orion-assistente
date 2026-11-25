@@ -47,7 +47,7 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
   let navVersion = 0;
   const dashboardPeriods = {today:"Hoje", "7d":"7 dias", "30d":"30 dias", month:"Este mês"};
   const dashboardMetrics = {
-    commission_cents:{label:"Comissões", singular:"Comissão estimada", currency:true, glyph:"wallet"},
+    commission_cents:{label:"Comissões", singular:"Comissão bruta estimada", currency:true, glyph:"wallet"},
     orders:{label:"Pedidos", singular:"Pedidos", currency:false, glyph:"box"},
     published:{label:"Publicações", singular:"Publicações", currency:false, glyph:"send"},
   };
@@ -58,6 +58,9 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
   let analyticsLoading = false;
   let analyticsError = false;
   let analyticsVersion = 0;
+  const analyticsPollDelays = [5000,10000,15000,15000,20000,25000];
+  let analyticsPollTimer = null;
+  let analyticsPollAttempts = 0;
   let chartSelected = null;
   let publicationTab = "upcoming";
   let stateUpdatedAt = null;
@@ -142,6 +145,9 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     `<a class="af-dashboard-text-link" href="https://affiliate.shopee.com.br/" target="_blank" rel="noopener noreferrer">${html(label)}${icon("external")}</a>`;
   const dashboardEmpty = (title, detail, glyph="chart", action="") =>
     `<div class="af-dashboard-empty"><span class="af-dashboard-empty-icon" aria-hidden="true">${icon(glyph)}</span><strong>${html(title)}</strong><p>${html(detail)}</p>${action}</div>`;
+  const dashboardHasFinancialData = data => [data?.summary?.commission_cents,data?.summary?.sales_cents ?? data?.summary?.gross_sales_cents,data?.summary?.orders].some(value=>dashboardNumber(value)!==null);
+  const dashboardAccountScope = snapshot => snapshot.source.scope==="account";
+  const dashboardReportScope = snapshot => dashboardAccountScope(snapshot)?snapshot.source.status==="not_connected"?"Conta Shopee":"Conta Shopee conectada":"Relatório Shopee";
 
   function dashboardSnapshot() {
     const data = analyticsCache.get(analyticsPeriod);
@@ -152,12 +158,12 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     const failed = jobs.filter(job=>job.status==="failed").length;
     const source = data?.sources?.sales || {status:connected("shopee")?.status==="connected"?"unavailable":"not_connected"};
     const publications = data?.sources?.publications || {status:"partial",complete:false,scope:"latest_120"};
-    const financial = [summary.commission_cents,summary.sales_cents ?? summary.gross_sales_cents,summary.orders].some(value=>dashboardNumber(value)!==null);
+    const financial = dashboardHasFinancialData(data);
     return {
       data, summary, source, publications, financial,
       publishedSnapshot:dashboardNumber(data?.operation?.published_snapshot) ?? published,
-      pendingSnapshot:dashboardNumber(data?.operation?.pending_snapshot) ?? dashboardNumber(summary.pending) ?? pendingCount,
-      failedSnapshot:dashboardNumber(data?.operation?.failed_snapshot) ?? dashboardNumber(summary.failed) ?? failed,
+      pendingSnapshot:(publications.complete?dashboardNumber(summary.pending):null) ?? dashboardNumber(data?.operation?.pending_snapshot) ?? dashboardNumber(summary.pending) ?? pendingCount,
+      failedSnapshot:(publications.complete?dashboardNumber(summary.failed):null) ?? dashboardNumber(data?.operation?.failed_snapshot) ?? dashboardNumber(summary.failed) ?? failed,
       rules:dashboardNumber(summary.active_rules) ?? activeRules().length,
       verified:dashboardNumber(summary.verified_destinations) ?? state.destination.filter(row=>row.verified).length,
       sampleLimit:dashboardNumber(data?.operation?.sample_limit) ?? 120,
@@ -166,35 +172,47 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
 
   function dashboardSourceMessage(snapshot) {
     if (analyticsError && !snapshot.data) return "Não foi possível consultar os relatórios agora. Tente atualizar novamente.";
-    if (snapshot.financial && snapshot.source.status==="partial") return "Relatório parcial da Shopee. Os valores podem mudar.";
-    if (snapshot.financial && snapshot.source.status==="syncing") return "A Shopee está atualizando o relatório.";
-    if (snapshot.financial) return dashboardNumber(snapshot.summary.commission_cents)===null?"A comissão ainda não foi informada no relatório de vendas.":"Comissões informadas pela Shopee, sujeitas à validação e a cancelamentos.";
+    if (snapshot.source.status==="error") return snapshot.financial?"Não foi possível atualizar o relatório. Os últimos valores confirmados continuam disponíveis.":"Não foi possível consultar o relatório de vendas agora. Tente atualizar novamente.";
+    if (snapshot.source.status==="partial") return snapshot.financial?"Relatório parcial da Shopee. Os valores podem mudar.":"A Shopee retornou um relatório incompleto. Tente atualizar novamente.";
+    if (snapshot.source.status==="syncing") return analyticsPollAttempts>=analyticsPollDelays.length?"O relatório continua em atualização. Use Atualizar para consultar novamente.":snapshot.financial?"Atualizando o relatório. Mantivemos os últimos valores; esta tela será atualizada automaticamente.":"O primeiro relatório está sendo preparado. Esta tela será atualizada automaticamente.";
+    if (snapshot.financial) return dashboardNumber(snapshot.summary.commission_cents)===null?"A comissão ainda não foi informada no relatório de vendas.":"Comissão bruta estimada, antes do repasse à rede (MCN), sujeita à validação e a cancelamentos.";
     if (analyticsLoading) return "Consultando os resultados disponíveis…";
     if (snapshot.source.status==="not_connected") return "Conecte sua conta para preparar ofertas com seu link de afiliado.";
-    if (snapshot.source.status==="error") return "Não foi possível consultar o relatório de vendas agora.";
-    if (snapshot.source.status==="syncing") return "O primeiro relatório de vendas está sendo preparado.";
     return "Relatório de vendas ainda não integrado.";
   }
 
+  function dashboardReportStatus(snapshot) {
+    if (!snapshot.data && !analyticsError) return "";
+    const status = analyticsError?"error":snapshot.source.status;
+    const labels = {ready:"Relatório disponível",syncing:"Atualizando relatório",partial:"Relatório parcial",error:"Falha na atualização",not_connected:"Conta não conectada",unavailable:"Relatório indisponível"};
+    const updated = snapshot.source.updated_at;
+    return `<div class="af-dashboard-report-status" data-dashboard-report-status="${html(status)}" role="status">
+      <span>${icon(status==="syncing"?"refresh":status==="error"?"info":"fileCheck")}<strong>${html(labels[status] || "Relatório indisponível")}</strong></span>
+      ${updated?`<span data-dashboard-report-updated>Dados de ${html(dashboardTime(updated,undefined,snapshot.data?.period?.timezone))}</span>`:""}
+      ${dashboardAccountScope(snapshot)?`<span data-dashboard-report-scope>${html(dashboardReportScope(snapshot))} · todos os links da conta</span>`:""}
+      ${["syncing","partial"].includes(status)?`<small>${html(dashboardSourceMessage(snapshot))}</small>`:""}
+    </div>`;
+  }
+
   function dashboardHero(snapshot) {
-    const {summary,financial,source} = snapshot;
+    const {summary,financial} = snapshot;
     const commission = dashboardNumber(summary.commission_cents);
     const validated = dashboardNumber(summary.validated_commission_cents ?? summary.approved_commission_cents);
-    const first = snapshot.publishedSnapshot===0;
-    const status = financial ? source.status==="partial"?"Relatório parcial":"Shopee Afiliados" : "Seu negócio de afiliados";
+    const first = snapshot.publishedSnapshot===0 && !(dashboardNumber(summary.published)>0);
+    const status = financial ? dashboardReportScope(snapshot) : "Seu negócio de afiliados";
     return `<section class="af-dashboard-revenue" aria-labelledby="af-revenue-title">
       <header><span class="af-dashboard-eyebrow">${html(status)}</span><span class="af-dashboard-revenue-icon" aria-hidden="true">${icon("wallet")}</span></header>
       <div class="af-dashboard-revenue-main">
-        <h2 id="af-revenue-title">Comissão estimada</h2>
+        <h2 id="af-revenue-title">Comissão bruta estimada</h2>
         ${commission!==null?`<strong data-dashboard-kpi="commission_cents" class="af-dashboard-revenue-value${Math.abs(commission)>=1e9?" af-dashboard-long-value":""}">${dashboardMoney(commission)}</strong>
-          <p>${html(dashboardPeriods[analyticsPeriod])} · sua comissão sobre as vendas atribuídas</p>`:
+          <p>${html(dashboardPeriods[analyticsPeriod])} · ${dashboardAccountScope(snapshot)?"resultados de todos os links da conta":"comissões informadas pela Shopee"}</p>`:
           `<strong class="af-dashboard-revenue-intro">${first?"Uma boa oferta.<br>Seu próximo resultado.":"Cada oferta abre<br>uma nova oportunidade."}</strong>
           <p>${html(dashboardSourceMessage(snapshot))}</p>`}
       </div>
       ${commission!==null?`<div class="af-dashboard-revenue-validation"><span>Comissão validada</span><strong data-dashboard-kpi="validated_commission_cents">${dashboardMoney(validated)}</strong>
-        <small>${validated===null?"Ainda não informada pela Shopee":"Informada no relatório; não representa valor recebido."}</small></div>`:
+        <small>${validated===null?"Este relatório não informa validação ou pagamentos.":"Informada no relatório; não representa valor recebido."}</small></div>`:
         `<div class="af-dashboard-revenue-actions">${link(first?"Preparar primeira oferta":"Preparar oferta","ofertas","plus",true)}</div>`}
-      <footer><span>${icon("info")}${commission!==null?"Estimativa sujeita à validação":financial?"Comissão ainda não informada":"Vendas e comissões: consulte o relatório"}</span>${dashboardExternal("Ver na Shopee")}</footer>
+      <footer><span>${icon("info")}${commission!==null?"Antes do repasse à rede (MCN)":financial?"Comissão ainda não informada":"Vendas e comissões: consulte o relatório"}</span>${dashboardExternal("Ver na Shopee")}</footer>
     </section>`;
   }
 
@@ -204,12 +222,12 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     const publishedValue = scopedPublications ?? snapshot.publishedSnapshot;
     const publishedNote = scopedPublications!==null ? publications.complete?"Confirmadas no período":"Contagem parcial do período" : `Últimas ${snapshot.sampleLimit} publicações`;
     const metrics = financial ? [
-      {key:"sales_cents",label:"Vendas geradas",value:dashboardMoney(summary.sales_cents ?? summary.gross_sales_cents),note:"Valor dos pedidos atribuídos",glyph:"chart"},
-      {key:"orders",label:"Pedidos",value:dashboardCount(summary.orders),note:"Atribuídos pela Shopee",glyph:"box"},
+      {key:"sales_cents",label:"Vendas geradas",value:dashboardMoney(summary.sales_cents ?? summary.gross_sales_cents),note:"Valor pago informado pela Shopee",glyph:"chart"},
+      {key:"orders",label:"Pedidos",value:dashboardCount(summary.orders),note:dashboardAccountScope(snapshot)?"Vendas da conta conectada":"Atribuídos pela Shopee",glyph:"box"},
       {key:"published",label:"Publicações",value:dashboardCount(publishedValue),note:publishedNote,glyph:"send",href:"fila"},
       {key:"clicks",label:"Cliques",value:dashboardNumber(summary.clicks)!==null?dashboardCount(summary.clicks):"Na Shopee",note:dashboardNumber(summary.clicks)!==null?"Informados pela fonte":"Disponíveis no relatório da Shopee",glyph:"external",external:true},
     ] : [
-      {key:"published_snapshot",label:"Publicadas",value:dashboardCount(snapshot.publishedSnapshot),note:`Últimas ${snapshot.sampleLimit} publicações`,glyph:"send",href:"fila"},
+      {key:scopedPublications!==null?"published":"published_snapshot",label:"Publicadas",value:dashboardCount(publishedValue),note:publishedNote,glyph:"send",href:"fila"},
       {key:"pending",label:"Na fila",value:dashboardCount(snapshot.pendingSnapshot),note:"Programadas ou em revisão",glyph:"clock",href:"fila"},
       {key:"active_rules",label:"Automações",value:dashboardCount(snapshot.rules),note:"Regras ativas",glyph:"repeat",href:"automacoes"},
       {key:"verified_destinations",label:"Destinos",value:dashboardCount(snapshot.verified),note:"Verificados para publicar",glyph:"shieldCheck",href:"conexoes"},
@@ -281,7 +299,7 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     return `<section class="af-dashboard-panel af-dashboard-performance" aria-labelledby="af-performance-title"><header class="af-dashboard-panel-head"><div><h2 id="af-performance-title">Desempenho no período</h2><p>${html(dates)}${snapshot.source.status==="partial" && metric!=="published"?" · relatório parcial":""}</p></div>${total!==null?`<span class="af-dashboard-chart-total"><small>${html(config.singular)}</small><strong>${config.currency?dashboardMoney(total):dashboardCount(total)}</strong></span>`:""}</header>
       <div class="af-dashboard-metric-tabs" role="group" aria-label="Métrica do gráfico">${Object.entries(dashboardMetrics).map(([key,item])=>`<button type="button" data-dashboard-metric="${key}" aria-pressed="${key===metric}">${icon(item.glyph)}${html(item.label)}</button>`).join("")}</div>
       ${plot}
-      <p class="af-dashboard-source-note">${metric==="published"?(snapshot.publications.complete?"Fonte: publicações confirmadas pelo Orion.":"Histórico diário completo ainda indisponível."):"Fonte: relatório de afiliados Shopee. Comissão estimada não é valor recebido."}</p>
+      <p class="af-dashboard-source-note">${metric==="published"?(snapshot.publications.complete?"Fonte: publicações confirmadas pelo Orion.":"Histórico diário completo ainda indisponível."):dashboardAccountScope(snapshot)?"Fonte: conta Shopee conectada, incluindo todos os links. Comissão bruta estimada não é valor recebido.":"Fonte: relatório de afiliados Shopee. Comissão bruta estimada não é valor recebido."}</p>
     </section>`;
   }
 
@@ -304,7 +322,7 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
       (dashboardNumber(b.commission_cents)??dashboardNumber(b.orders)??0)-(dashboardNumber(a.commission_cents)??dashboardNumber(a.orders)??0)).slice(0,5);
     if (!snapshot.financial && !products.length) return "";
     const max = Math.max(1,...products.map(row=>dashboardNumber(row.commission_cents)??0));
-    return `<section class="af-dashboard-panel" aria-labelledby="af-products-title"><header class="af-dashboard-panel-head"><div><h2 id="af-products-title">Produtos em destaque</h2><p>Comissões atribuídas pela Shopee</p></div>${icon("box")}</header>
+    return `<section class="af-dashboard-panel" aria-labelledby="af-products-title"><header class="af-dashboard-panel-head"><div><h2 id="af-products-title">Produtos em destaque</h2><p>${dashboardAccountScope(snapshot)?"Comissões estimadas da conta Shopee":"Comissões atribuídas pela Shopee"}</p></div>${icon("box")}</header>
       ${products.length?`<ol class="af-dashboard-rank-list">${products.map((row,index)=>{
         const commission = dashboardNumber(row.commission_cents);
         const orders = dashboardNumber(row.orders);
@@ -348,18 +366,20 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     const products = dashboardProducts(snapshot);
     const updated = snapshot.data?.updated_at || stateUpdatedAt;
     const timeZone = snapshot.data?.period?.timezone || "America/Sao_Paulo";
-    const attention = needingAttention().length;
+    const completeFailures = snapshot.publications.complete && dashboardNumber(snapshot.summary.failed)>0;
+    const attention = completeFailures?snapshot.summary.failed:needingAttention().length;
     return `<div class="af-dashboard">
       <header class="af-dashboard-heading"><div><span class="af-dashboard-eyebrow">Afiliados</span><h1>Dashboard</h1></div><div class="af-dashboard-heading-actions">${link("Nova oferta","ofertas","plus",true)}</div><p>Suas ofertas, seus canais e seus próximos resultados.</p></header>
       <div class="af-dashboard-toolbar"><div class="af-dashboard-periods" role="group" aria-label="Período dos resultados">${Object.entries(dashboardPeriods).map(([key,label])=>`<button type="button" data-dashboard-period="${key}" aria-pressed="${key===analyticsPeriod}">${html(label)}</button>`).join("")}</div>
         <div class="af-dashboard-freshness"><span>${analyticsLoading?"Atualizando…":`Consultado ${dashboardTime(updated,{hour:"2-digit",minute:"2-digit"},timeZone)}`}</span><button class="os-icon-button" type="button" data-act="refresh" aria-label="Atualizar Dashboard" title="Atualizar os dados disponíveis"${analyticsLoading?" disabled":""}>${icon("refresh")}</button></div></div>
+      ${dashboardReportStatus(snapshot)}
       ${analyticsError?`<div class="af-dashboard-alert" role="status">${icon("info")}<p>${snapshot.data?"Não foi possível atualizar os resultados. Mantivemos os últimos dados confirmados deste período.":"Não foi possível consultar os relatórios agora. Tente atualizar novamente."}</p></div>`:""}
       <div class="af-dashboard-overview" aria-busy="${analyticsLoading}">${dashboardHero(snapshot)}${dashboardKpis(snapshot)}</div>
-      ${attention?`<a href="#fila" class="af-dashboard-alert af-dashboard-alert-warning">${icon("shieldAlert")}<p><strong>${attention} ${attention===1?"publicação precisa":"publicações precisam"} de atenção</strong><span>Revise as ocorrências entre as últimas ${snapshot.sampleLimit} publicações.</span></p>${icon("chevron")}</a>`:""}
+      ${attention?`<a href="#fila" class="af-dashboard-alert af-dashboard-alert-warning">${icon("shieldAlert")}<p><strong>${attention} ${completeFailures?(attention===1?"publicação com falha":"publicações com falha"):(attention===1?"publicação precisa de atenção":"publicações precisam de atenção")}</strong><span>${completeFailures?"Revise os envios com falha na fila.":`Revise as ocorrências entre as últimas ${snapshot.sampleLimit} publicações.`}</span></p>${icon("chevron")}</a>`:""}
       <div class="af-dashboard-workspace">${dashboardChart(snapshot)}${dashboardOperation(snapshot)}</div>
       <div class="af-dashboard-rankings${products?"":" af-dashboard-rankings-single"}">${products}${dashboardDestinations(snapshot)}</div>
       ${dashboardPublications(snapshot)}
-      <footer class="af-dashboard-footnote"><span>${icon("info")}Vendas geradas são o valor dos pedidos. Sua receita de afiliado é a comissão.</span><span>Cliques disponíveis no relatório da Shopee.${dashboardExternal("Abrir relatório")}</span></footer>
+      <footer class="af-dashboard-footnote"><span>${icon("info")}Vendas geradas são o valor pago informado pela Shopee. Comissão bruta estimada não é saldo disponível ou valor recebido.</span><span>Cliques disponíveis no relatório da Shopee.${dashboardExternal("Abrir relatório")}</span></footer>
     </div>`;
   }
 
@@ -700,8 +720,31 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     }
   }
 
-  async function loadAnalytics() {
+  function cancelAnalyticsPoll(reset=false) {
+    if (analyticsPollTimer!==null) window.clearTimeout(analyticsPollTimer);
+    analyticsPollTimer = null;
+    if (reset) analyticsPollAttempts = 0;
+  }
+
+  function scheduleAnalyticsPoll(version) {
+    cancelAnalyticsPoll();
+    if (controller.signal.aborted || route!=="dashboard" || document.hidden || version!==analyticsVersion || analyticsPollAttempts>=analyticsPollDelays.length) return;
+    if (analyticsCache.get(analyticsPeriod)?.sources?.sales?.status!=="syncing") return;
+    analyticsPollTimer = window.setTimeout(()=>{
+      analyticsPollTimer = null;
+      if (controller.signal.aborted || route!=="dashboard" || document.hidden || version!==analyticsVersion) return;
+      analyticsPollAttempts++;
+      void loadAnalytics({poll:true});
+    },analyticsPollDelays[analyticsPollAttempts]);
+  }
+
+  function retainAnalyticsValues(cached, incoming) {
+    return {...cached,sources:{...cached.sources,sales:{...cached.sources.sales,...incoming.sources.sales,updated_at:incoming.sources.sales.updated_at ?? cached.sources.sales.updated_at}}};
+  }
+
+  async function loadAnalytics({poll=false}={}) {
     if (!state || controller.signal.aborted) return;
+    cancelAnalyticsPoll(!poll);
     const period = analyticsPeriod;
     const version = ++analyticsVersion;
     analyticsLoading = true;
@@ -711,18 +754,21 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
       const result = await api("analytics?period="+encodeURIComponent(period));
       if (controller.signal.aborted || version!==analyticsVersion || period!==analyticsPeriod) return;
       if (!result || !result.summary || !result.sources || result.period?.key!==period) throw new Error("Relatório indisponível.");
-      if (result.sources.sales?.status==="error" && analyticsCache.has(period)) {
-        analyticsError = true;
-        return;
-      }
-      analyticsCache.set(period,result);
+      const cached = analyticsCache.get(period);
+      const status = result.sources.sales?.status;
+      const preserve = dashboardHasFinancialData(cached) && (status==="error" || ["syncing","partial"].includes(status) && !dashboardHasFinancialData(result));
+      analyticsCache.set(period,preserve?retainAnalyticsValues(cached,result):result);
+      analyticsError = status==="error";
     } catch (error) {
       if (controller.signal.aborted || version!==analyticsVersion || period!==analyticsPeriod) return;
       analyticsError = true;
+      const cached = analyticsCache.get(period);
+      if (cached) analyticsCache.set(period,retainAnalyticsValues(cached,{sources:{sales:{status:"error"}}}));
     } finally {
       if (!controller.signal.aborted && version===analyticsVersion && period===analyticsPeriod) {
         analyticsLoading = false;
         if (route==="dashboard") render();
+        scheduleAnalyticsPoll(version);
       }
     }
   }
@@ -749,6 +795,15 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
   async function reload() {
     const result = await api("state");
     if (controller.signal.aborted) return;
+    const identity = connection => JSON.stringify([connection?.status,connection?.version || connection?.account,connection?.verified]);
+    if (state && identity(connected("shopee"))!==identity(result.connection?.find(row=>row.id==="shopee"))) {
+      cancelAnalyticsPoll(true);
+      analyticsVersion++;
+      analyticsCache.clear();
+      analyticsError = false;
+      analyticsLoading = false;
+      chartSelected = null;
+    }
     state = result;
     stateUpdatedAt = Date.now();
     if (!chosenTemplate) chosenTemplate=state.deal_template || "default";
@@ -1044,6 +1099,11 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     selectDashboardPoint(next,true);
   }, {signal:controller.signal});
 
+  document.addEventListener("visibilitychange",()=>{
+    if (document.hidden) cancelAnalyticsPoll();
+    else if (route==="dashboard" && !analyticsLoading) scheduleAnalyticsPoll(analyticsVersion);
+  }, {signal:controller.signal});
+
   content.addEventListener("change",async event=>{
     if (event.target.matches("[data-select-niches],input[name=niches]")) {
       const form=event.target.form;
@@ -1093,12 +1153,17 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
   return {
     setView(next) {
       if (Object.hasOwn(views,next) && route!==next) {
+        cancelAnalyticsPoll(true);
+        analyticsVersion++;
+        analyticsLoading = false;
         route=next;
         render();
         if (route==="dashboard" && state) void loadAnalytics();
       }
     },
     unmount() {
+      cancelAnalyticsPoll(true);
+      analyticsVersion++;
       const dialog = $("#osAffiliateDialog");
       if (dialog?.open) dialog.close("cancel");
       controller.abort();

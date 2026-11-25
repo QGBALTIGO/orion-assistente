@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="pt-BR" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Orion | Afiliados</title>
+  <link rel="stylesheet" href="/design/orion-suite.css">
+  <link rel="stylesheet" href="/design/orion-auth.css">
+  <link rel="stylesheet" href="/design/orion-subscription-dashboard.css">
+  <link rel="stylesheet" href="/assets/pilot.css">
+  <script src="/assets/pilot.js" type="module"></script>
+</head>
+<body>
+  <main id="loginView" aria-label="Acesso ao Orion Afiliados">
+    <div class="auth-shell">
+      <aside class="auth-visual">
+        <div class="auth-visual-logo"><img data-orion-logo src="/brand/orion-brand-light.svg" alt="Orion" width="190" height="66"></div>
+        <div class="auth-hero">
+          <span class="auth-hero-kicker">Orion Afiliados</span>
+          <h1>Gerencie suas <span>ofertas de afiliado.</span></h1>
+          <p>Encontre ofertas da Shopee, prepare o card e programe as publicações para seus canais.</p>
+          <ul>
+            <li><span data-icon="search"></span> Busca por categoria e link do produto</li>
+            <li><span data-icon="layers"></span> Templates de cards e legendas</li>
+            <li><span data-icon="repeat"></span> Agenda e histórico de publicações</li>
+          </ul>
+        </div>
+        <span class="auth-visual-bottom">Orion Afiliados</span>
+      </aside>
+      <div class="auth-right">
+        <div class="auth-toolbar">
+          <a class="auth-site-link" href="https://orionagenda.pro/"><span data-icon="left"></span>Voltar ao site</a>
+          <div class="os-theme">
+            <button class="os-icon-button" type="button" data-theme-toggle aria-label="Escolher aparência" aria-expanded="false" aria-controls="auth-theme" data-icon="sun"></button>
+            <div id="auth-theme" class="os-theme-menu" aria-label="Aparência" hidden></div>
+          </div>
+        </div>
+        <div class="auth-card">
+          <div class="auth-mobile-brand"><img data-orion-logo src="/brand/orion-brand-light.svg" alt="Orion" width="166" height="58"></div>
+          <div class="auth-card-top">
+            <h2>Bem-vindo ao Orion</h2>
+            <p>Entre para acessar o seu espaço de afiliados.</p>
+          </div>
+          <form id="login" class="auth-form">
+            <label for="username">Usuário</label>
+            <input id="username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required maxlength="80" placeholder="Digite seu usuário">
+            <label for="password">Senha</label>
+            <div class="auth-secret-field">
+              <input id="password" name="password" type="password" autocomplete="current-password" required maxlength="180" placeholder="Digite sua senha" aria-describedby="login-feedback">
+              <button id="toggle-password" type="button" class="auth-eye os-icon-button" aria-controls="password" aria-label="Mostrar senha" aria-pressed="false" data-icon="eye"></button>
+            </div>
+            <button class="auth-primary os-button os-full" type="submit"><span>Entrar</span><span data-icon="arrow"></span></button>
+            <p id="login-feedback" class="auth-error" role="alert"></p>
+          </form>
+        </div>
+      </div>
+    </div>
+  </main>
+  <div class="app orion-suite-enabled" id="appView" hidden>
+    <aside class="sidebar" id="sidebar" aria-label="Menu lateral">
+      <div class="brand">
+        <img data-orion-logo src="/brand/orion-brand-light.svg" alt="Orion" width="132" height="46">
+        <button id="collapse" class="os-icon-button" type="button" aria-label="Recolher menu" aria-expanded="true" data-icon="left"></button>
+        <button id="drawer-close" class="os-icon-button os-menu-button" type="button" aria-label="Fechar menu" data-icon="close"></button>
+      </div>
+      <div class="os-sidebar-context os-sidebar-context--subscription">
+        <div class="os-overline">Meu negócio</div>
+        <div class="os-tenant-name" id="company"></div>
+        <div class="os-sidebar-badges"><span class="os-badge">Afiliados</span></div>
+      </div>
+      <nav class="os-nav" id="nav" aria-label="Navegação do Orion"></nav>
+      <div class="sidebar-bottom">
+        <button id="logout" class="os-button os-ghost" type="button"><span data-icon="logout"></span>Sair da conta</button>
+      </div>
+    </aside>
+    <div class="content" id="workspace">
+      <header class="os-header">
+        <button id="drawer" class="os-icon-button os-menu-button" type="button" aria-label="Abrir menu" aria-controls="sidebar" aria-expanded="false" data-icon="menu"></button>
+        <div class="os-mobile-brand"><img data-orion-logo src="/brand/orion-brand-light.svg" alt="Orion" width="104" height="32"></div>
+        <div class="af-breadcrumb"><span>Afiliados</span><span data-icon="chevron"></span><strong id="breadcrumb"></strong></div>
+        <span class="os-header-spacer"></span>
+        <div class="os-theme">
+          <button class="os-icon-button" type="button" data-theme-toggle aria-label="Escolher aparência" aria-expanded="false" aria-controls="workspace-theme" data-icon="sun"></button>
+          <div id="workspace-theme" class="os-theme-menu" aria-label="Aparência" hidden></div>
+        </div>
+      </header>
+      <main class="page os-main" id="page-suite" aria-label="Gestão de afiliados" tabindex="-1"></main>
+    </div>
+    <button class="os-scrim" id="scrim" type="button" aria-label="Fechar menu" tabindex="-1"></button>
+  </div>
+  <dialog class="os-dialog" id="dialog" aria-labelledby="confirm-title">
+    <h2 id="confirm-title"></h2>
+    <p id="confirm-detail"></p>
+    <form class="os-form-actions" method="dialog">
+      <button autofocus class="os-button os-outline" value="cancel">Voltar</button>
+      <button class="os-button" id="confirm-action" value="confirm">Confirmar</button>
+    </form>
+  </dialog>
+  <div class="os-toast-region"><div id="toast" class="os-toast" role="status" hidden></div></div>
+</body>
+</html>

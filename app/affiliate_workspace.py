@@ -142,13 +142,18 @@ async def workspace_analytics(
 
 
 async def _read_workspace_analytics(signer, tenant_id, company, period):
+    async with support_session_factory()() as db:
+        timezone = (await db.execute(text("SELECT timezone FROM tenants WHERE id=:tenant"),
+                                    {"tenant": tenant_id})).scalar_one_or_none()
+    timezone = timezone or "America/Campo_Grande"
+
     async def read(path, params=None):
         claim = json.dumps({"tenant": tenant_id.hex, "name": company,
                             "method": "GET", "path": path}).encode()
         headers = {"X-Orion-Affiliate-Access": signer.encrypt(claim).decode()}
         return await fetch_upstream("GET", path, headers=headers, params=params)
 
-    status, mime, content = await read("/api/analytics", {"period": period})
+    status, mime, content = await read("/api/analytics", {"period": period, "timezone": timezone})
     if status == 200:
         try:
             report = json.loads(content) if mime == "application/json" else None
@@ -174,11 +179,8 @@ async def _read_workspace_analytics(signer, tenant_id, company, period):
             raise ValueError
     except (ValueError, UnicodeError):
         raise HTTPException(502, "A atividade de Afiliados retornou uma resposta inesperada") from None
-    async with support_session_factory()() as db:
-        timezone = (await db.execute(text("SELECT timezone FROM tenants WHERE id=:tenant"),
-                                    {"tenant": tenant_id})).scalar_one_or_none()
     report = build_analytics_fallback(state, period=period,
-                                      timezone=timezone or "America/Campo_Grande")
+                                      timezone=timezone)
     return Response(json.dumps(report, ensure_ascii=False), media_type="application/json", headers=NO_STORE)
 
 

@@ -92,7 +92,9 @@ def report(period: str, ready: bool) -> dict:
                    'end_date': series[-1]['date'], 'timezone': BUSINESS['timezone']},
         'updated_at': '2026-11-25T15:00:00+00:00',
         'sources': {
-            'sales': {'status': 'ready' if ready else 'unavailable', 'updated_at': None,
+            'sales': {'status': 'ready' if ready else 'unavailable', 'scope': 'account',
+                      'commission_basis': 'estimated_before_mcn',
+                      'updated_at': '2026-11-25T14:30:00+00:00' if ready else None,
                       'reason': None if ready else 'O relatório de vendas ainda não foi integrado.'},
             'clicks': {'status': 'unavailable', 'updated_at': None,
                        'reason': 'Consulte o relatório de cliques da Shopee.'},
@@ -101,7 +103,7 @@ def report(period: str, ready: bool) -> dict:
         },
         'summary': {
             'commission_cents': sum(row['commission_cents'] for row in series) if ready else None,
-            'validated_commission_cents': 28400 if ready else None,
+            'validated_commission_cents': None,
             'sales_cents': sum(row['sales_cents'] for row in series) if ready else None,
             'orders': sum(row['orders'] for row in series) if ready else None,
             'items': None, 'clicks': None, 'conversion_rate': None,
@@ -116,8 +118,8 @@ def report(period: str, ready: bool) -> dict:
         'recent': [job for job in jobs if job['status'] == 'published'],
         'destinations': [{**destination, 'published': 39 if index == 0 else 17,
                           'published_snapshot': 1, 'pending_snapshot': 1 if index == 0 else 0,
-                          'failed_snapshot': 0, 'orders': 58 if index == 0 else 29,
-                          'commission_cents': 31000 if index == 0 else 15200}
+                          'failed_snapshot': 0, 'orders': None,
+                          'commission_cents': None}
                          for index, destination in enumerate(state['destination'])],
         'products': [] if not ready else [
             {'id': 'synthetic-product-a', 'title': 'Fone de ouvido sem fio com cancelamento de ruído',
@@ -132,6 +134,7 @@ def report(period: str, ready: bool) -> dict:
 
 def run(context, width: int, theme: str, layout: str, state_name: str, engine: str, output: Path) -> dict:
     ready = state_name == 'ready'
+    sales_status = 'ready' if ready else 'unavailable'
     calls, errors, blocked = [], [], []
     page = context.new_page()
     page.on('pageerror', lambda error: errors.append(str(error)))
@@ -192,7 +195,9 @@ def run(context, width: int, theme: str, layout: str, state_name: str, engine: s
             fulfill(workspace(empty=not ready))
         elif path == API + 'analytics':
             period = parse_qs(url.query).get('period', ['month'])[0]
-            fulfill(report(period, ready))
+            payload = report(period, ready)
+            payload['sources']['sales']['status'] = sales_status
+            fulfill(payload)
         elif path.startswith('/api/v1/'):
             fulfill([])
         elif path in ('/favicon.ico', '/manifest.webmanifest') or path.startswith('/pwa/'):
@@ -216,6 +221,7 @@ def run(context, width: int, theme: str, layout: str, state_name: str, engine: s
       await new Promise(resolve=>requestAnimationFrame(resolve));
     }''')
     assert page.locator('.af-dashboard h1').inner_text() == 'Dashboard'
+    assert page.locator('#af-revenue-title').inner_text() == 'Comissão bruta estimada'
     assert page.locator('[data-dashboard-period][aria-pressed="true"]').get_attribute('data-dashboard-period') == 'month'
     assert page.locator('#appView').evaluate('(node)=>node.classList.contains("os-layout-app")') == (layout == 'app')
     assert page.locator('#osAppDock').is_visible() == (layout == 'app')
@@ -223,6 +229,11 @@ def run(context, width: int, theme: str, layout: str, state_name: str, engine: s
     assert not blocked, (width, theme, layout, state_name, blocked)
 
     if ready:
+        assert 'Conta Shopee conectada' in page.locator('[data-dashboard-report-scope]').inner_text()
+        assert 'todos os links da conta' in page.locator('[data-dashboard-report-scope]').inner_text()
+        assert '10:30' in page.locator('[data-dashboard-report-updated]').inner_text()
+        assert 'Antes do repasse à rede (MCN)' in page.locator('.af-dashboard-revenue footer').inner_text()
+        assert page.locator('[data-dashboard-kpi="validated_commission_cents"]').inner_text() == '—'
         assert page.locator('[data-dashboard-kpi="clicks"]').inner_text().find('Na Shopee') != -1
         assert page.locator('[data-dashboard-point]').count() == 25
         # Real browser focus/keyboard, beyond the DOM-only interaction suite.
@@ -249,8 +260,8 @@ def run(context, width: int, theme: str, layout: str, state_name: str, engine: s
         kind:node.className,rect:rect(node),clientWidth:node.clientWidth,scrollWidth:node.scrollWidth
       }));
       const clippedText=[];
-      for(const node of root.querySelectorAll('.af-dashboard-revenue-value,.af-dashboard-revenue-validation strong,.af-dashboard-kpi>strong,.af-dashboard-chart-total strong,.af-dashboard-rank-value')){
-        const card=node.closest('.af-dashboard-revenue,.af-dashboard-kpi,.af-dashboard-panel');
+      for(const node of root.querySelectorAll('.af-dashboard-revenue-value,.af-dashboard-revenue-validation strong,.af-dashboard-kpi>strong,.af-dashboard-chart-total strong,.af-dashboard-rank-value,.af-dashboard-revenue h2,.af-dashboard-revenue footer>span,.af-dashboard-chart-total small,.af-dashboard-report-status>span,.af-dashboard-report-status>small')){
+        const card=node.closest('.af-dashboard-revenue,.af-dashboard-kpi,.af-dashboard-panel') || root;
         const bounds=card.getBoundingClientRect();
         const range=document.createRange();range.selectNodeContents(node);
         if([...range.getClientRects()].some(r=>r.left<bounds.left-1||r.right>bounds.right+1))
@@ -308,6 +319,37 @@ def run(context, width: int, theme: str, layout: str, state_name: str, engine: s
           window.scrollTo(0,0);
           await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
         }''')
+
+    if ready and width in (320, 430):
+        # The initial sync may return cached account-wide values. Keep the
+        # numbers visible while verifying the longer live-status copy on mobile.
+        sales_status = 'syncing'
+        commission_before = page.locator('[data-dashboard-kpi="commission_cents"]').inner_text()
+        page.locator('.af-dashboard [data-act="refresh"]').click()
+        page.locator('[data-dashboard-report-status="syncing"]').wait_for()
+        page.locator('.af-dashboard-overview[aria-busy="false"]').wait_for()
+        assert page.locator('[data-dashboard-kpi="commission_cents"]').inner_text() == commission_before
+        assert 'automaticamente' in page.locator('[data-dashboard-report-status]').inner_text()
+        status_bounds = page.evaluate('''() => {
+          const root=document.querySelector('.af-dashboard').getBoundingClientRect();
+          const status=document.querySelector('[data-dashboard-report-status]');
+          const clipped=[];
+          for(const node of status.querySelectorAll('span,small')) {
+            const range=document.createRange(); range.selectNodeContents(node);
+            if([...range.getClientRects()].some(rect=>rect.left<root.left-1||rect.right>root.right+1))
+              clipped.push(node.textContent);
+          }
+          return {clipped,clientWidth:status.clientWidth,scrollWidth:status.scrollWidth};
+        }''')
+        assert not status_bounds['clipped'], (name, status_bounds)
+        assert status_bounds['scrollWidth'] <= status_bounds['clientWidth'] + 2, (name, status_bounds)
+        metrics['account_sync_status'] = status_bounds
+        page.evaluate('window.scrollTo(0,0)')
+        page.screenshot(path=str(output / (name + '-account-syncing.png')), full_page=True)
+        save_metrics()
+        sales_status = 'ready'
+        page.locator('.af-dashboard [data-act="refresh"]').click()
+        page.locator('[data-dashboard-report-status="ready"]').wait_for()
 
     if width == 430 and theme == 'light':
         if ready:

@@ -3,6 +3,7 @@ on:
   push:
     branches: [codex/afiliados-dashboard-performance-20261125]
     paths:
+      - affiliate_pilot/**
       - app/affiliate_analytics.py
       - app/affiliate_workspace.py
       - app/static/orion-affiliate-workspace.js
@@ -26,7 +27,7 @@ jobs:
       contents: read
       packages: write
     env:
-      BASE_IMAGE: ghcr.io/qgbaltigo/orion-assistente-api@sha256:aee7d569662ce21521ad70e4e2959f448200802a5948c6aaaf1b0805a7d5b5ba
+      BASE_IMAGE: ghcr.io/qgbaltigo/orion-assistente-api@sha256:35c4c774ecb075d548bacc663c2fc472b5de3c4e9611e925e5ff73bea4d9c18b
       IMAGE: ghcr.io/qgbaltigo/orion-assistente-api:affiliate-dashboard-${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
@@ -44,6 +45,11 @@ jobs:
           node --check app/static/orion-suite.js
           node --input-type=module --check < app/static/orion-affiliate-workspace.js
           node --test --test-reporter=dot ui-tests/affiliate-dashboard.test.mjs ui-tests/dashboard-navigation.test.mjs ui-tests/home-admin-preview.test.mjs ui-tests/subscription-workspace.test.mjs ui-tests/subscription-app-layout.test.mjs ui-tests/barbershop-app-layout.test.mjs ui-tests/dental-workspace.test.mjs ui-tests/onboarding-affiliates.test.mjs
+      - name: Verificar o serviço de relatórios com as dependências da VPS
+        run: |
+          python -m venv /tmp/orion-affiliate-pilot-tests
+          /tmp/orion-affiliate-pilot-tests/bin/pip install -r affiliate_pilot/requirements.txt pytest pytest-asyncio
+          PYTHONPATH=. /tmp/orion-affiliate-pilot-tests/bin/python -m pytest -q affiliate_pilot/tests
       - name: Verificar o layout responsivo em navegador isolado
         run: |
           python -m pip install playwright==1.58.0
@@ -66,10 +72,9 @@ jobs:
           import hashlib
           from pathlib import Path
           expected = {
-              "app/affiliate_workspace.py": "4a4b2b9f105720378d880ef7c1c919296c1dbcc6a7554ccdd2d1b96e55d03083",
-              "app/static/orion-suite.js": "624902e41e90e9e919e2e0632f14ba7097fb153ff2d03dca6183e4c62e76c853",
-              "app/static/orion-affiliate-workspace.js": "a5fe10dbdaf485b306d88f0736e87579ec14f496fd0368ec9347b24375b20f51",
-              "app/static/orion-affiliate-workspace.css": "4216c3b6690fa3ea088223ce1151c17b9b6d6ad9453d69cb7e8c64ae0bd8c3ee",
+              "app/affiliate_workspace.py": "a3ff0e44e46a2f16f339ae27f0058f065d7033c007f02ec66fd06807c14c806a",
+              "app/static/orion-affiliate-workspace.js": "8048b34c56b9640d933ceea8cb2bc129d1ed20f59705bfe1b2ed8735f72556a5",
+              "app/static/orion-affiliate-workspace.css": "09f4b3d7158998c7d178962dfe69349295d1750d43bd2f2e72f5150bbf635b00",
           }
           for name, digest in expected.items():
               assert hashlib.sha256(Path(name).read_bytes()).hexdigest() == digest, name
@@ -80,7 +85,7 @@ jobs:
           docker build -f deploy/Dockerfile.affiliate-dashboard --build-arg BASE_IMAGE="$BASE_IMAGE" --build-arg ORION_RELEASE="$GITHUB_SHA" -t "$IMAGE" .
           docker run --rm --entrypoint python -v "$GITHUB_WORKSPACE/app:/review:ro" "$IMAGE" -c '
           from pathlib import Path
-          for name in ("affiliate_workspace.py", "affiliate_analytics.py", "static/orion-suite.js", "static/orion-affiliate-workspace.js", "static/orion-affiliate-workspace.css"):
+          for name in ("affiliate_workspace.py", "affiliate_analytics.py", "static/orion-affiliate-workspace.js", "static/orion-affiliate-workspace.css"):
               assert Path("app", name).read_bytes() == Path("/review", name).read_bytes(), name
           from app.affiliate_workspace import router
           assert any(route.path.endswith("/api/analytics") for route in router.routes)
