@@ -215,7 +215,9 @@ async def observe_presence(claimed):
     factory = support_session_factory()
     # Hold only the device's advisory lock during the read. The owner checks
     # use short transactions on the normal pool, even if that pool has one slot.
-    engine = create_async_engine(factory.kw["bind"].url, poolclass=NullPool)
+    engine = create_async_engine(
+        factory.kw["bind"].url, poolclass=NullPool, isolation_level="READ COMMITTED",
+    )
     try:
         async with engine.begin() as lane:
             if not await try_device_lane(lane, tenant, batch["device_id"]):
