@@ -78,6 +78,7 @@ function providerOutcome(value,phone,metadata){
 }
 
 export function createGroupAddSocket({client,isCurrent,isConnected,deviceSnapshot,assertMutationReady,mutationCurrent,
+  readParticipatingGroups=()=>client.groupFetchAllParticipating(),
   schedule=setTimeout,cancel=clearTimeout,timeoutMs=GROUP_ADD_LIMITS.timeout_ms,
   readTimeoutMs=GROUP_ADD_READ_TIMEOUT_MS}={}){
   if(!Number.isSafeInteger(timeoutMs)||timeoutMs<1||timeoutMs>GROUP_ADD_LIMITS.timeout_ms||
@@ -108,7 +109,8 @@ export function createGroupAddSocket({client,isCurrent,isConnected,deviceSnapsho
       try{
         await guard();
         if(typeof client?.groupFetchAllParticipating!=='function')throw error('group_unavailable');
-        const raw=await client.groupFetchAllParticipating();await guard();
+        const raw=await (action==='add'?client.groupFetchAllParticipating():readParticipatingGroups({beforeRetry:guard}));
+        await guard();
         let list;try{list=groupContactGroups(raw);}catch{throw error('group_unavailable');}
         if(action==='groups')return boundedGroupContacts({...scope(input),groups:list.groups.map(group=>
           ({...group,can_add:groupAddAdmin(raw[group.id],client.user)})),
@@ -118,7 +120,7 @@ export function createGroupAddSocket({client,isCurrent,isConnected,deviceSnapsho
         const group=completeMetadata(metadata,input.group_id),is_admin=groupAddAdmin(metadata,client.user);
         if(action==='members'){
           const output=boundedGroupContacts({...scope(input),group,...groupContactMembers(metadata),is_admin});
-          const final=await client.groupFetchAllParticipating();await guard();
+          const final=await readParticipatingGroups({beforeRetry:guard});await guard();
           if(!groupContactGroups(final).ids.has(input.group_id))throw error('group_unavailable');
           return output;
         }

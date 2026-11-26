@@ -95,7 +95,7 @@ export {label as groupContactLabel,pn as groupContactPhone,peer as groupContactP
   groupItem as groupContactGroup,participating as groupContactGroups,
   memberItems as groupContactMembers,bounded as boundedGroupContacts};
 
-export function createDeviceGroupContacts({client,isCurrent,isConnected,deviceSnapshot,
+export function createDeviceGroupContacts({client,isCurrent,isConnected,deviceSnapshot,readParticipatingGroups=()=>client.groupFetchAllParticipating(),
   schedule=setTimeout,cancel=clearTimeout,timeoutMs=GROUP_CONTACTS_READ_TIMEOUT_MS}={}){
   if(!Number.isSafeInteger(timeoutMs)||timeoutMs<1||timeoutMs>GROUP_CONTACTS_READ_TIMEOUT_MS)throw unavailable('invalid_request');
   let busy=false;
@@ -121,7 +121,7 @@ export function createDeviceGroupContacts({client,isCurrent,isConnected,deviceSn
       try{
         await guard();
         if(typeof client?.groupFetchAllParticipating!=='function'||action==='members'&&typeof client.groupMetadata!=='function')throw unavailable('provider_failed');
-        const initial=await client.groupFetchAllParticipating();
+        const initial=await readParticipatingGroups({beforeRetry:guard});
         await guard();
         let first;try{first=participating(initial);}catch{throw unavailable('invalid_metadata');}
         if(action==='groups')return bounded({...expected,groups:first.groups,
@@ -135,7 +135,7 @@ export function createDeviceGroupContacts({client,isCurrent,isConnected,deviceSn
         // A partial provider list cannot be presented as a complete extraction.
         if(group.member_count!==result.total)throw unavailable('invalid_metadata');
         let output;try{output=bounded({...expected,group,...result});}catch{throw unavailable('invalid_metadata');}
-        const final=await client.groupFetchAllParticipating();
+        const final=await readParticipatingGroups({beforeRetry:guard});
         await guard();
         let latest;try{latest=participating(final);}catch{throw unavailable('invalid_metadata');}
         if(!latest.ids.has(input.group_id))throw unavailable('context_changed');

@@ -1,0 +1,30 @@
+name: Orion - Leitura de grupos BaltigoFlix
+on:
+  push:
+    branches: [codex/orion-baltigoflix-groups-20261126]
+permissions:
+  contents: read
+  packages: write
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      BASE_IMAGE: ghcr.io/qgbaltigo/orion-assistente-qr-bridge@sha256:d8db80c8f3ef12de04d6215ca4731629ab8f8d3256e8c0bf3718c97e8f75110b
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Testar e publicar ponte WhatsApp
+        run: |
+          set -euo pipefail
+          image="ghcr.io/qgbaltigo/orion-assistente-qr-bridge:bflix-groups-$GITHUB_SHA"
+          docker build --platform linux/amd64 --build-arg BASE_IMAGE="$BASE_IMAGE" \
+            --build-arg RELEASE_REVISION="$GITHUB_SHA" -f deploy/Dockerfile.baltigoflix-group-catalog -t "$image" .
+          docker run --rm --network none -v "$PWD/qr-bridge/test:/srv/qr/test:ro" \
+            -v "$PWD/tests/fixtures:/srv/tests/fixtures:ro" --entrypoint node "$image" \
+            --test test/group-catalog-recovery.test.mjs test/device-group-contacts.test.mjs test/device-group-add.test.mjs
+          docker push "$image"

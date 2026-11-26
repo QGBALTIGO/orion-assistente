@@ -1,0 +1,10 @@
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+ARG RELEASE_REVISION
+LABEL org.opencontainers.image.revision=$RELEASE_REVISION
+RUN sha256sum -c <<'HASHES'
+6ae6f4bff6fce91eee0f873aa3f1aa6e7f9f76fbbc287189dfccd121fb2ccefd  /srv/qr/src/channel-session.mjs
+8d7aca7e879dca1ab75ad3e45d0c82627a2b96e442b24192fded2aa7d1a5baf4  /srv/qr/src/device-group-add.mjs
+8851745b81355d8bbf921af2785fc2420eba7c84d3c3893dcd7e8b70a157a31a  /srv/qr/src/device-group-contacts.mjs
+HASHES
+COPY qr-bridge/src/channel-session.mjs qr-bridge/src/device-group-add.mjs qr-bridge/src/device-group-contacts.mjs qr-bridge/src/group-catalog-recovery.mjs /srv/qr/src/
