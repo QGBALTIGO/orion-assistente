@@ -491,6 +491,99 @@ async def read_receipt(c, value):
     return await worker.process_subscription_group_add_receipt({}, c.tenant, UUID(value["members"][0]["id"]))
 
 
+async def age_receipt(c, value, age):
+    async with c.ctx.migration.begin() as db:
+        await db.execute(text("""UPDATE subscription_group_add_items
+            SET last_receipt_at=clock_timestamp()-CAST(:age AS interval)
+            WHERE tenant_id=:t AND id=:id"""),
+            {"t": c.tenant, "id": UUID(value["members"][0]["id"]), "age": age})
+
+
+async def test_settled_presence_reconciliation_waits_for_same_device_batch(group_add_case):
+    c = group_add_case
+    _, old = await make_unknown(c)
+    c.lookup_status, c.lookup_reason, c.lookup_settled = "uncertain", "provider_result_unverified", True
+    assert await read_receipt(c, old) == "unknown"
+    _, new = await admitted(c, phones=[SECOND])
+    c.present.add(PHONE)
+    await age_receipt(c, old, timedelta(minutes=16))
+
+    provider_calls = len(c.add_reads)
+    assert await read_receipt(c, old) == "unknown"
+    assert len(c.lookup_calls) == 2 and len(c.add_reads) == provider_calls
+    assert (await detail(c, old))["batch"]["progress"]["unknown"] == 1
+    assert await process(c, new) == "added"
+
+    await age_receipt(c, old, timedelta(minutes=16))
+    assert await read_receipt(c, old) == "already_member"
+    assert len(c.add_reads) == provider_calls + 1 and len(c.add_calls) == 2
+
+
+async def test_claim_defers_if_same_device_presence_read_started_while_idle(group_add_case):
+    c = group_add_case
+    _, old = await make_unknown(c)
+    c.lookup_status, c.lookup_reason, c.lookup_settled = "uncertain", "provider_result_unverified", True
+    assert await read_receipt(c, old) == "unknown"
+    new_preview = await preview(c)
+    c.present.add(PHONE)
+    await age_receipt(c, old, timedelta(minutes=16))
+    entered, release = asyncio.Event(), asyncio.Event()
+
+    async def hold_presence_read():
+        c.after_member_read = None
+        entered.set()
+        await release.wait()
+
+    c.after_member_read = hold_presence_read
+    receipt = asyncio.create_task(read_receipt(c, old))
+    try:
+        await asyncio.wait_for(entered.wait(), timeout=6)
+        _, new = await admitted(c, phones=[SECOND], value=new_preview)
+        assert await process(c, new) == "not_claimed"
+        pending = await detail(c, new)
+        assert pending["batch"]["status"] == "pending"
+        assert pending["members"][0]["started_at"] is None and len(c.sdk_calls) == 1
+    finally:
+        release.set()
+        reconciled = await receipt
+    assert reconciled == "already_member"
+    assert await process(c, new) == "added"
+    assert len(c.sdk_calls) == 2
+
+
+async def test_only_settled_receipt_jobs_back_off_after_thirty_seconds(group_add_case):
+    c = group_add_case
+    _, value = await make_unknown(c)
+
+    class Queue:
+        def __init__(self):
+            self.names = []
+
+        async def enqueue_job(self, name, tenant, item, **kwargs):
+            if tenant == str(c.tenant) and item == value["members"][0]["id"]:
+                self.names.append(name)
+
+    queue = Queue()
+    c.lookup_status, c.lookup_reason, c.lookup_settled = "uncertain", "provider_result_unverified", False
+    assert await read_receipt(c, value) == "unknown"
+    await age_receipt(c, value, timedelta(seconds=31))
+    await worker.scan_subscription_group_add({"redis": queue})
+    assert queue.names == ["process_subscription_group_add_receipt"]
+
+    c.lookup_settled = True
+    assert await read_receipt(c, value) == "unknown"
+    await age_receipt(c, value, timedelta(seconds=31))
+    queue.names.clear()
+    await worker.scan_subscription_group_add({"redis": queue})
+    assert queue.names == []
+    assert await read_receipt(c, value) == "not_due"
+
+    await age_receipt(c, value, timedelta(minutes=16))
+    await worker.scan_subscription_group_add({"redis": queue})
+    assert queue.names == ["process_subscription_group_add_receipt"]
+    assert await read_receipt(c, value) == "unknown"
+
+
 async def test_unsettled_unknown_blocks_device_and_cannot_be_released_by_time_or_read(group_add_case):
     c = group_add_case
     _, value = await make_unknown(c)

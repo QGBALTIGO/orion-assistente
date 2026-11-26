@@ -5,12 +5,21 @@ from uuid import UUID
 
 from fastapi import HTTPException
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.pool import NullPool
 
 from app.catalog_api import support_session_factory
 from app import subscription_group_add_store as store
 from app import subscription_group_add_schemas as schemas
 
 ACTIVE = ("pending", "running")
+RECEIPT_DUE = """(last_receipt_at IS NULL OR last_receipt_at < clock_timestamp() -
+    CASE WHEN provider_settled THEN interval '15 minutes' ELSE interval '30 seconds' END)"""
+
+
+async def try_device_lane(db, tenant, device):
+    return (await db.execute(text("SELECT pg_try_advisory_xact_lock(hashtextextended(:key,0))"),
+                             {"key": f"subscription-group-add:{tenant}:{device}"})).scalar_one()
 
 
 async def update_progress(db, batch, now, *, error=None):
@@ -54,6 +63,8 @@ async def claim(tenant, identity):
             if original is None or original["status"] not in ACTIVE:
                 return None
             original = dict(original)
+            if not await try_device_lane(db, tenant, original["device_id"]):
+                return None
             try:
                 _, transport = await store.owner_authority(db, original)
             except HTTPException:
@@ -201,23 +212,43 @@ async def observe_presence(claimed):
     from app.subscription_group_add import bridge_read
     tenant, batch = claimed["tenant"], claimed["batch"]
     actor = Actor("member", account_id=batch["owner_account_id"])
-    async with store.owner_transaction(tenant, actor) as db:
-        device, transport = await store.scope(db, tenant, batch["device_id"], actor)
-    members = await bridge_read(transport, device, batch["destination_group_id"])
-    async with store.owner_transaction(tenant, actor) as db:
-        current, _ = await store.scope(db, tenant, batch["device_id"], actor)
-        if store.contacts.device_version(device) != store.contacts.device_version(current):
-            return False
-    return any(member.phone == claimed["item"]["phone"] for member in members.members)
+    factory = support_session_factory()
+    # Hold only the device's advisory lock during the read. The owner checks
+    # use short transactions on the normal pool, even if that pool has one slot.
+    engine = create_async_engine(factory.kw["bind"].url, poolclass=NullPool)
+    try:
+        async with engine.begin() as lane:
+            if not await try_device_lane(lane, tenant, batch["device_id"]):
+                return False
+            active = (await lane.execute(text("""SELECT EXISTS(
+                SELECT 1 FROM subscription_group_add_batches
+                WHERE tenant_id=:t AND device_id=:d AND status IN ('pending','running')
+            ) OR EXISTS(
+                SELECT 1 FROM subscription_group_add_items
+                WHERE tenant_id=:t AND device_id=:d
+                  AND (status='running' OR status='unknown' AND NOT provider_settled)
+            )"""), {"t": tenant, "d": batch["device_id"]})).scalar_one()
+            if active:
+                return False
+            async with store.owner_transaction(tenant, actor) as db:
+                device, transport = await store.scope(db, tenant, batch["device_id"], actor)
+            members = await bridge_read(transport, device, batch["destination_group_id"])
+            async with store.owner_transaction(tenant, actor) as db:
+                current, _ = await store.scope(db, tenant, batch["device_id"], actor)
+                if store.contacts.device_version(device) != store.contacts.device_version(current):
+                    return False
+            return any(member.phone == claimed["item"]["phone"] for member in members.members)
+    finally:
+        await engine.dispose()
 
 
 async def process_subscription_group_add_receipt(ctx, tenant_id, item_id):
     tenant, identity = UUID(str(tenant_id)), UUID(str(item_id))
     async with support_session_factory()() as db:
         async with db.begin():
-            item = (await db.execute(text("""UPDATE subscription_group_add_items SET last_receipt_at=clock_timestamp()
+            item = (await db.execute(text(f"""UPDATE subscription_group_add_items SET last_receipt_at=clock_timestamp()
                 WHERE tenant_id=:t AND id=:id AND status='unknown'
-                  AND (last_receipt_at IS NULL OR last_receipt_at<clock_timestamp()-interval '30 seconds') RETURNING *"""),
+                  AND {RECEIPT_DUE} RETURNING *"""),
                 {"t": tenant, "id": identity})).mappings().one_or_none()
             if item is None:
                 return "not_due"
@@ -262,9 +293,9 @@ async def scan_subscription_group_add(ctx):
                 WHERE i.tenant_id=b.tenant_id AND i.device_id=b.device_id
                   AND (i.status='running' OR i.status='unknown' AND NOT i.provider_settled))
             ORDER BY b.next_item_at,b.id LIMIT 100"""))).mappings().all()
-        receipts = (await db.execute(text("""SELECT tenant_id,id FROM subscription_group_add_items
-            WHERE status='unknown' AND (last_receipt_at IS NULL OR last_receipt_at<clock_timestamp()-interval '30 seconds')
-            ORDER BY last_receipt_at NULLS FIRST,dispatch_at LIMIT 20"""))).mappings().all()
+        receipts = (await db.execute(text(f"""SELECT tenant_id,id FROM subscription_group_add_items
+            WHERE status='unknown' AND {RECEIPT_DUE}
+            ORDER BY provider_settled,last_receipt_at NULLS FIRST,dispatch_at LIMIT 20"""))).mappings().all()
     for row in rows:
         await ctx["redis"].enqueue_job("process_subscription_group_add", str(row["tenant_id"]), str(row["id"]),
                                       _job_id="group-add:" + str(row["id"]))

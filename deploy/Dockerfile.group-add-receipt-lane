@@ -1,0 +1,7 @@
+# syntax=docker/dockerfile:1
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+ARG RELEASE_REVISION
+LABEL org.opencontainers.image.revision=$RELEASE_REVISION
+RUN echo '19b24c63634cf56b324771712afce235d64b4f5c731d9752db2f48f92583e1ec  /srv/app/app/subscription_group_add_worker.py' | sha256sum -c -
+COPY --chown=appuser:appuser app/subscription_group_add_worker.py /srv/app/app/subscription_group_add_worker.py

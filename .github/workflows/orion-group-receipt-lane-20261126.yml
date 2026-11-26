@@ -1,0 +1,28 @@
+name: Orion - Prioridade de adicao a grupos
+on:
+  push:
+    branches: [codex/orion-group-receipt-lane-20261126]
+permissions:
+  contents: read
+  packages: write
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      BASE_IMAGE: ghcr.io/qgbaltigo/orion-assistente-api@sha256:fce7fcc8fcc5ee180c9b3e280ee04e52499cf87e2c6438efbf0a091c858ff2f4
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Validar e publicar worker
+        run: |
+          set -euo pipefail
+          image="ghcr.io/qgbaltigo/orion-assistente-api:bflix-group-worker-$GITHUB_SHA"
+          docker build --platform linux/amd64 --build-arg BASE_IMAGE="$BASE_IMAGE" \
+            --build-arg RELEASE_REVISION="$GITHUB_SHA" -f deploy/Dockerfile.group-add-receipt-lane -t "$image" .
+          docker run --rm --network none --entrypoint python "$image" -c 'from app.subscription_group_add_worker import RECEIPT_DUE,try_device_lane; assert "15 minutes" in RECEIPT_DUE and callable(try_device_lane)'
+          docker push "$image"
