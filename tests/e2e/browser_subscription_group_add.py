@@ -191,6 +191,73 @@ def test_group_add_lost_response_recovers_same_request_without_another_creation(
         context.close()
 
 
+@pytest.mark.parametrize("missing_code", ["GROUP_ADD_NOT_FOUND", "NOT_FOUND"])
+def test_group_add_missing_request_reopens_selection_without_creating_a_batch(browser, fixture_url, missing_code):
+    context, page, external, errors = setup_page(browser, fixture_url, (1440, 900), "dark")
+    try:
+        open_group_add(page, fixture_url)
+        load_preview(page)
+        attempted = []
+
+        def fail_before_creation(route):
+            attempted.append(route.request.post_data_json)
+            route.fulfill(status=503, json={"detail": {"code": "TEMPORARY_FAILURE"}})
+
+        page.route("**/group-add/batches", fail_before_creation)
+        if missing_code != "GROUP_ADD_NOT_FOUND":
+            page.route("**/group-add/requests/*", lambda route: route.fulfill(
+                status=404, json={"detail": {"code": missing_code}}))
+        action(page, "add").click()
+        expect(action(page, "recover")).to_be_enabled()
+        if missing_code == "GROUP_ADD_NOT_FOUND":
+            expect(action(page, "resume-selection")).to_be_visible()
+            action(page, "resume-selection").click()
+            expect(field(page, "device_id")).to_be_enabled()
+            expect(action(page, "add")).to_have_count(0)
+        else:
+            expect(action(page, "resume-selection")).to_have_count(0)
+            expect(field(page, "device_id")).to_have_count(0)
+        value = report(page, fixture_url)
+        assert len(attempted) == 1
+        assert not creates(value) and not value["batches"]
+        assert page.evaluate("history.state.orionGroupAddRecovery.idempotency_key") == attempted[0]["idempotency_key"]
+        assert_clean(external, errors)
+    finally:
+        context.close()
+
+
+def test_group_add_resume_uses_same_key_when_original_appears_late(browser, fixture_url):
+    context, page, external, errors = setup_page(browser, fixture_url, (1440, 900), "dark")
+    try:
+        open_group_add(page, fixture_url)
+        sample = load_preview(page)
+        control(page, fixture_url, "lost_batch")
+
+        def hide_first_recovery(route):
+            assert route.fetch().status == 503
+            route.fulfill(status=404, json={"detail": {"code": "GROUP_ADD_NOT_FOUND"}})
+
+        page.route("**/group-add/requests/*", hide_first_recovery, times=1)
+        action(page, "add").click()
+        expect(action(page, "resume-selection")).to_be_visible()
+        action(page, "resume-selection").click()
+        expect(field(page, "device_id")).to_be_enabled()
+        assert len(creates(report(page, fixture_url))) == 1
+
+        load_preview(page)
+        action(page, "add").click()
+        expect(page.get_by_role("heading", name="Adição concluída", exact=True)).to_be_visible()
+        value = report(page, fixture_url)
+        original, retried = [row["data"] for row in creates(value)]
+        assert original["idempotency_key"] == retried["idempotency_key"]
+        assert original["preview_token"] != retried["preview_token"]
+        assert len(value["creates"]) == len(value["batches"]) == 1
+        assert value["batches"][0]["batch"]["destination"]["id"] == sample["groups"]["items"][0]["id"]
+        assert_clean(external, errors)
+    finally:
+        context.close()
+
+
 @pytest.mark.parametrize("outcome,heading", [("partial", "Concluído com ocorrências"), ("unknown", "Resultado incerto")])
 def test_group_add_partial_or_unknown_result_is_reported_without_retry_or_invitation(browser, fixture_url, outcome, heading):
     size, theme = (390, 844), "dark"

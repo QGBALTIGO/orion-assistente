@@ -1,0 +1,32 @@
+name: Orion - Recuperacao de pedidos de adicao
+on:
+  push:
+    branches: [codex/orion-group-add-recovery-20261126]
+permissions:
+  contents: read
+  packages: write
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      BASE_IMAGE: ghcr.io/qgbaltigo/orion-assistente-api@sha256:0b15387edd066824d5bb615fe65b9c4fff3d34d59132131fb7b47fb051d152d2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Validar e publicar imagem
+        run: |
+          set -euo pipefail
+          asset=app/static/orion-subscription-group-add.js
+          node --check "$asset"
+          image="ghcr.io/qgbaltigo/orion-assistente-api:group-add-recovery-$GITHUB_SHA"
+          docker build --platform linux/amd64 --build-arg BASE_IMAGE="$BASE_IMAGE" \
+            --build-arg RELEASE_REVISION="$GITHUB_SHA" -f deploy/Dockerfile.group-add-recovery -t "$image" .
+          expected=$(sha256sum "$asset" | cut -d' ' -f1)
+          actual=$(docker run --rm --entrypoint sha256sum "$image" "/srv/app/$asset" | cut -d' ' -f1)
+          test "$actual" = "$expected"
+          docker push "$image"

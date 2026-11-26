@@ -82,18 +82,18 @@
     unmount();const host=bridge.host,base='/api/v1/tenants/'+bridge.tenantId+'/subscription-whatsapp/group-add';
     if(!host||!uuid(bridge.tenantId))throw Error('invalid_group_add_context');
     const emptyFilters=()=>({contact_group_id:'all',search:'',created_from:'',created_to:''});
-    const state={alive:true,revoked:false,epoch:0,scope:null,options:null,groups:[],unavailableGroups:0,deviceId:'',destinationId:'',source:'contacts',sourceGroupId:'',filters:emptyFilters(),preview:null,previewRequest:null,selected:new Set(),loading:'',busy:false,error:'',identityError:'',pending:null,batch:null,missing:false};
+    const state={alive:true,revoked:false,epoch:0,scope:null,options:null,groups:[],unavailableGroups:0,deviceId:'',destinationId:'',source:'contacts',sourceGroupId:'',filters:emptyFilters(),preview:null,previewRequest:null,selected:new Set(),loading:'',busy:false,error:'',identityError:'',pending:null,batch:null,missing:false,editingRecovery:false};
     const controllers=new Map();let expiryTimer=null,pollTimer=null,controller;
     const allowed=()=>{try{return bridge.canAccess?.()!==false;}catch{return false;}};
     const current=(epoch=state.epoch)=>state.alive&&!state.revoked&&active===controller&&host.isConnected&&allowed()&&epoch===state.epoch;
     const writable=()=>current()&&!!state.scope&&bridge.canWrite?.()!==false;
-    const editable=()=>current()&&!state.busy&&!state.pending;
+    const editable=()=>current()&&!state.busy&&(!state.pending||state.editingRecovery);
     const expired=()=>!state.preview?.expires_at||Date.parse(state.preview.expires_at)<=Date.now();
     function valid(epoch){if(current(epoch))return true;if(active===controller&&state.alive&&!allowed())revoke();return false;}
     function abortReads(){for(const abort of controllers.values())abort.abort();controllers.clear();}
     function clearPreview(){clearTimeout(expiryTimer);expiryTimer=null;state.preview=null;state.previewRequest=null;state.selected.clear();}
     function invalidate(){state.epoch++;abortReads();state.loading='';clearTimeout(expiryTimer);expiryTimer=null;if(state.preview)state.preview={...state.preview,preview_token:null,expires_at:null};state.previewRequest=null;}
-    function discard(){abortReads();clearTimeout(pollTimer);clearPreview();state.options=null;state.groups=[];state.unavailableGroups=0;state.deviceId='';state.destinationId='';state.sourceGroupId='';state.filters=emptyFilters();state.pending=null;state.batch=null;state.scope=null;}
+    function discard(){abortReads();clearTimeout(pollTimer);clearPreview();state.options=null;state.groups=[];state.unavailableGroups=0;state.deviceId='';state.destinationId='';state.sourceGroupId='';state.filters=emptyFilters();state.pending=null;state.batch=null;state.editingRecovery=false;state.scope=null;}
     function revoke(){if(state.revoked||!state.alive||active!==controller)return;state.revoked=true;state.epoch++;state.loading='';state.busy=false;discard();clearRecovery();host.setAttribute('aria-busy','false');host.innerHTML=notice('O acesso a esta empresa mudou. Abra o painel novamente para continuar.');}
     async function request(path,method='GET',payload,scope){
       if(!current()||method!=='GET'&&path!=='/preview'&&!writable())throw Object.assign(Error('Acesso indisponível'),{status:403});
@@ -131,11 +131,18 @@
       const {batch,members}=state.batch,processed=batch.total-batch.progress.pending-batch.progress.running;
       return '<section class="os-card os-form" data-ga-result><header class="os-card-header"><div><h2>'+esc(batchStatuses[batch.status])+'</h2><p>'+esc(batch.destination.name)+' · '+esc(batch.device.name)+'</p></div>'+button('Atualizar resultado','refresh',state.busy||!!state.loading)+'</header><progress max="'+batch.total+'" value="'+processed+'" aria-label="Progresso da adição"></progress><p data-ga-progress role="status">'+processed+' de '+batch.total+' contatos processados · '+batch.progress.added+' adicionados · '+batch.progress.not_added+' não adicionados · '+batch.progress.unknown+' incertos.</p><p class="os-help">O processamento continua depois de fechar esta página. Resultados incertos não são repetidos automaticamente; nenhum convite é enviado automaticamente.</p><div class="os-table-scroll"><table class="os-table"><thead><tr><th scope="col">WhatsApp</th><th scope="col">Nome</th><th scope="col">Status</th></tr></thead><tbody>'+[...members].sort((a,b)=>a.ordinal-b.ordinal).map(row=>'<tr data-ga-result-member="'+esc(row.id)+'"><td>'+esc(row.phone)+'</td><td>'+esc(row.name||'Não informado')+'</td><td><span class="os-badge">'+esc(memberStatuses[row.status])+'</span>'+(row.status==='unknown'?'<p class="os-help">O resultado desta tentativa não pôde ser confirmado.</p>':'')+'</td></tr>').join('')+'</tbody></table></div>'+(!running(batch.status)?'<div class="os-form-actions">'+button('Nova seleção','new',state.busy||!!state.loading,'')+'</div>':'')+'</section>';
     }
-    function pendingHTML(){return '<section class="os-card" data-ga-pending><header class="os-card-header"><div><h2>Consultar adição</h2><p>'+esc(state.missing?'O pedido ainda não foi localizado. Consulte novamente para acompanhar a mesma identificação.':'A confirmação ainda não está disponível. Consulte o resultado antes de iniciar outra adição.')+'</p></div></header><div class="os-actions">'+button('Consultar resultado','recover',state.busy||!!state.loading)+'</div></section>';}
+    function pendingHTML(){
+      const busy=state.busy||!!state.loading;
+      const message=state.missing
+        ? 'Você pode voltar à seleção. Se confirmar a adição depois, o Orion usará a mesma identificação do pedido.'
+        : 'A confirmação ainda não está disponível. Consulte o resultado antes de iniciar outra adição.';
+      return '<section class="os-card" data-ga-pending><header class="os-card-header"><div><h2>Consultar adição</h2><p>'+esc(message)+'</p></div></header><div class="os-actions">'+button('Consultar resultado','recover',busy)+(state.missing?button('Voltar à seleção','resume-selection',busy):'')+'</div></section>';
+    }
     function render(){
+      const checkingRecovery=state.pending&&!state.editingRecovery;
       if(!current())return;const previous=host.contains(document.activeElement)?document.activeElement:null,focus=previous?['gaField','gaMember','gaAction','gaSelectAll'].find(key=>Object.hasOwn(previous.dataset,key)):null,focusValue=focus?previous.dataset[focus]:null;
       host.setAttribute('aria-busy',String(!!state.loading||state.busy));
-      host.innerHTML='<div class="os-title-row"><div><h1 tabindex="-1">Adicionar contatos ao grupo</h1><p>Escolha contatos salvos no Orion ou membros de outro grupo do WhatsApp para adicionar ao destino.</p></div>'+(!state.pending?button('Atualizar','refresh',state.busy||state.loading==='options'):'')+'</div><div class="os-section-stack">'+(state.error||state.identityError?notice(state.error||state.identityError,true):'')+(state.batch?resultHTML():state.pending?pendingHTML():state.options?formHTML():notice(state.loading?'Carregando dispositivos e listas…':'Não foi possível carregar os dados. Use Atualizar para tentar novamente.'))+'</div>';
+      host.innerHTML='<div class="os-title-row"><div><h1 tabindex="-1">Adicionar contatos ao grupo</h1><p>Escolha contatos salvos no Orion ou membros de outro grupo do WhatsApp para adicionar ao destino.</p></div>'+(!checkingRecovery?button('Atualizar','refresh',state.busy||state.loading==='options'):'')+'</div><div class="os-section-stack">'+(state.error||state.identityError?notice(state.error||state.identityError,true):'')+(state.batch?resultHTML():checkingRecovery?pendingHTML():state.options?formHTML():notice(state.loading?'Carregando dispositivos e listas…':'Não foi possível carregar os dados. Use Atualizar para tentar novamente.'))+'</div>';
       const all=host.querySelector('[data-ga-select-all]');if(all){const count=state.preview?.counts.ready||0;all.checked=!!count&&state.selected.size===count;all.indeterminate=state.selected.size>0&&state.selected.size<count;}
       window.OrionFields?.refresh(host);
       if(focus){const next=[...host.querySelectorAll('[data-ga-field],[data-ga-member],[data-ga-action],[data-ga-select-all]')].find(node=>Object.hasOwn(node.dataset,focus)&&node.dataset[focus]===focusValue);if(next&&!next.disabled)next.focus({preventScroll:true});}
@@ -173,7 +180,7 @@
       catch(error){if(valid(epoch))readError(error);}finally{if(valid(epoch)){state.loading='';render();}}
     }
     function schedulePoll(){clearTimeout(pollTimer);if(current()&&state.batch&&running(state.batch.batch.status))pollTimer=setTimeout(()=>{if(current()&&!state.busy&&!state.loading)void loadBatch();},3000);}
-    function acceptBatch(value){state.batch=value;state.missing=false;state.error='';clearPreview();state.options=null;state.groups=[];state.unavailableGroups=0;state.filters=emptyFilters();schedulePoll();}
+    function acceptBatch(value){state.batch=value;state.missing=false;state.editingRecovery=false;state.error='';clearPreview();state.options=null;state.groups=[];state.unavailableGroups=0;state.filters=emptyFilters();schedulePoll();}
     async function loadBatch(){
       if(!current()||!state.pending||!state.batch||state.busy||state.loading)return;const epoch=state.epoch,intent=state.pending,id=state.batch.batch.id;state.loading='progress';state.error='';clearTimeout(pollTimer);render();
       try{const value=batchDTO(await request('/batches/'+id,'GET',undefined,'batch'),intent,state.batch);if(!valid(epoch)||state.pending!==intent)return;acceptBatch(value);}
@@ -181,19 +188,34 @@
     }
     function knownRejection(error){return [['GROUP_ADD_INVALID',422],['GROUP_ADD_LIMIT',422],['GROUP_ADD_LIMIT',413],['GROUP_ADD_PREVIEW_EXPIRED',410],['GROUP_ADD_CONTEXT_CHANGED',409],['GROUP_ADD_SOURCE_CHANGED',409],['GROUP_ADD_NO_ELIGIBLE',422],['GROUP_ADD_DEVICE_UNAVAILABLE',409],['GROUP_ADD_ADMIN_REQUIRED',409],['GROUP_ADD_BUSY',409],['GROUP_ADD_NOT_FOUND',404]].some(([code,status])=>errorCode(error)===code&&error?.status===status);}
     async function add(){
-      if(!canAdd())return;const phones=state.preview.members.filter(row=>row.status==='ready'&&state.selected.has(row.phone)).map(row=>row.phone).sort(),payload={idempotency_key:crypto.randomUUID(),preview_token:state.preview.preview_token,phones};
+      if(!canAdd())return;
+      const retryKey=state.editingRecovery?state.pending.idempotency_key:null;
+      const phones=state.preview.members.filter(row=>row.status==='ready'&&state.selected.has(row.phone)).map(row=>row.phone).sort();
+      const payload={idempotency_key:retryKey||crypto.randomUUID(),preview_token:state.preview.preview_token,phones};
       const intent={idempotency_key:payload.idempotency_key,expected:{device_id:state.deviceId,destination_group_id:state.destinationId,source:state.source,phones}};
       try{remember(intent);}catch{state.error='Não foi possível guardar a identificação deste pedido. Atualize o painel antes de adicionar contatos.';render();return;}
-      state.pending=intent;state.busy=true;state.error='';const epoch=state.epoch;render();let uncertain=false;
+      state.pending=intent;state.editingRecovery=false;state.missing=false;state.busy=true;state.error='';const epoch=state.epoch;render();let uncertain=false;
       try{const value=batchDTO(await request('/batches','POST',payload),intent);if(!valid(epoch)||state.pending!==intent)return;acceptBatch(value);}
-      catch(error){if(!valid(epoch)||state.pending!==intent)return;if([401,403].includes(error?.status)){revoke();return;}if(knownRejection(error)){state.pending=null;clearRecovery();clearPreview();state.error=errorText(error);}else{uncertain=true;state.error='Não foi possível confirmar a adição. A mesma identificação será consultada.';}}
+      catch(error){
+        if(!valid(epoch)||state.pending!==intent)return;
+        if([401,403].includes(error?.status)){revoke();return;}
+        // The original request can become visible after a 404, with its original selection.
+        if(retryKey)intent.expected=null;
+        if(knownRejection(error)){
+          if(retryKey)state.editingRecovery=true;
+          else{state.pending=null;clearRecovery();}
+          clearPreview();state.error=errorText(error);
+        }else{
+          uncertain=true;state.error='Não foi possível confirmar a adição. A mesma identificação será consultada.';
+        }
+      }
       finally{if(valid(epoch)){state.busy=false;render();}}
       if(uncertain&&current(epoch)&&state.pending===intent)await recover();
     }
     async function recover(){
-      const intent=state.pending;if(!intent||!current()||state.busy||state.loading)return;const epoch=state.epoch;state.busy=true;state.error='';render();
+      const intent=state.pending;if(!intent||!current()||state.busy||state.loading)return;const epoch=state.epoch;state.busy=true;state.missing=false;state.error='';render();
       try{const value=batchDTO(await request('/requests/'+intent.idempotency_key,'GET',undefined,'recover'),intent,state.batch);if(!valid(epoch)||state.pending!==intent)return;acceptBatch(value);}
-      catch(error){if(!valid(epoch)||state.pending!==intent)return;if([401,403].includes(error?.status)){revoke();return;}state.missing=error?.status===404;state.error=state.missing?'O pedido ainda não foi localizado. Nenhuma nova adição foi iniciada.':'Não foi possível confirmar o resultado. Consulte novamente a mesma adição.';}
+      catch(error){if(!valid(epoch)||state.pending!==intent)return;if([401,403].includes(error?.status)){revoke();return;}state.missing=error?.status===404&&errorCode(error)==='GROUP_ADD_NOT_FOUND';state.error=state.missing?'O pedido ainda não foi localizado.':'Não foi possível confirmar o resultado. Consulte novamente a mesma adição.';}
       finally{if(valid(epoch)&&state.pending===intent){state.busy=false;render();}}
     }
     async function change(event){
@@ -225,6 +247,10 @@
     async function click(event){
       const node=event.target.closest('[data-ga-action]');if(!node||!host.contains(node)||node.disabled)return;if(!current()){revoke();return;}const action=node.dataset.gaAction;
       if(action==='refresh'){if(state.batch)await loadBatch();else await loadOptions();}else if(action==='load')await loadPreview();else if(action==='add')await add();else if(action==='recover')await recover();
+      else if(action==='resume-selection'&&state.pending&&state.missing&&!state.batch&&!state.busy&&!state.loading){
+        state.editingRecovery=true;state.missing=false;
+        await loadOptions();host.querySelector('h1')?.focus();
+      }
       else if(action==='new'&&state.batch&&!running(state.batch.batch.status)&&!state.busy&&!state.loading){state.pending=null;state.batch=null;state.missing=false;clearRecovery();await loadOptions();host.querySelector('h1')?.focus();}
     }
     function submit(event){if(event.target.matches('[data-ga-form]'))event.preventDefault();}
