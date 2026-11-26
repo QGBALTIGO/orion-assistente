@@ -65,6 +65,12 @@ async def read_groups(tenant, actor, identity, *, selected_group=None):
         result = model.model_validate(raw)
     except HTTPException as exc:
         reason = exc.detail.get("group_read_reason") if isinstance(exc.detail, dict) else None
+        if reason == "provider_rate_limited":
+            failure = store.fail("GROUP_CONTACTS_PROVIDER_RATE_LIMITED", 429)
+            retry_after = (exc.headers or {}).get("Retry-After")
+            if retry_after:
+                failure.headers["Retry-After"] = retry_after
+            raise failure from None
         if reason in {"context_changed", "device_unavailable"}:
             raise store.fail("GROUP_CONTACTS_CONTEXT_CHANGED") from None
         if reason == "read_busy":

@@ -1,0 +1,16 @@
+# syntax=docker/dockerfile:1
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+ARG RELEASE_REVISION
+LABEL org.opencontainers.image.revision=$RELEASE_REVISION
+RUN sha256sum -c <<'HASHES'
+dfd7e2f2b52b737f425b618e3f61fbebb2caabcff000b65b4f2aed94e2c21dae  /srv/app/app/qr_channels.py
+a5b2bfbd96b89618f9e288ed2ebb1c5a3ed27766af6c94ad2ca5e44b73923f02  /srv/app/app/subscription_group_add.py
+daf5b3a258236ad4a2e5a16e9e21e3f608033f6ef9f0f45fe4e484f43ef8a28c  /srv/app/app/subscription_group_contacts.py
+29dc95d5d966ac07a56abafb67d88d3fea78794993d997471680c78508ac08eb  /srv/app/app/subscription_group_add_store.py
+1cb4f902fb9e47bb01976f8dba51841018dec480452d049af4bd97275014f3e6  /srv/app/app/subscription_group_contacts_store.py
+e57f8f5f150bb3c8a9f96ab0574a1607b0c6c630da90ba8482a6dcd04b61870e  /srv/app/app/static/orion-subscription-group-add.js
+7ca9bb86fe530ebda8bb445c2786ddeea0d64c974971363f56bb512b9a735c7f  /srv/app/app/static/orion-subscription-group-contacts.js
+HASHES
+COPY --chown=appuser:appuser app/qr_channels.py app/subscription_group_add.py app/subscription_group_contacts.py app/subscription_group_add_store.py app/subscription_group_contacts_store.py /srv/app/app/
+COPY --chown=appuser:appuser app/static/orion-subscription-group-add.js app/static/orion-subscription-group-contacts.js /srv/app/app/static/

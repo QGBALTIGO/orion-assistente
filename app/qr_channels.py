@@ -594,11 +594,11 @@ async def _bridge_control(row, action, method, payload=None):
     except (InvalidToken, UnicodeError, ValueError):
         raise HTTPException(503, "Credencial indisponível") from None
     try:
-        group_read = action in {
+        group_catalog_read = action in {
             "device/group-add/groups", "device/group-add/members",
             "device/group-contacts/groups", "device/group-contacts/members",
-            "device/number-check/check",
         }
+        group_read = group_catalog_read or action == "device/number-check/check"
         # Read-only group queries can take longer while WhatsApp synchronizes.
         # Every other control, especially group participant mutations, retains
         # its previous timeout.
@@ -618,6 +618,10 @@ async def _bridge_control(row, action, method, payload=None):
                     reason = failure.get("reason") if isinstance(failure, dict) else None
                 except (ValueError, TypeError):
                     reason = None
+                if group_catalog_read and reason == "provider_rate_limited":
+                    seconds = failure.get("retry_after_seconds")
+                    headers = {"Retry-After": str(seconds)} if type(seconds) is int and 1 <= seconds <= 3600 else None
+                    raise HTTPException(409, {"group_read_reason": reason}, headers=headers)
                 if isinstance(reason, str) and reason in {
                     "invalid_request", "read_busy", "provider_timeout", "provider_failed",
                     "invalid_metadata", "context_changed", "group_unavailable",

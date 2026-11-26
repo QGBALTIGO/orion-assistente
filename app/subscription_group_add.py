@@ -49,6 +49,12 @@ async def bridge_read(transport, device, group_id=None):
         value = model.model_validate(raw)
     except HTTPException as exc:
         reason = exc.detail.get("group_read_reason") if isinstance(exc.detail, dict) else None
+        if reason == "provider_rate_limited":
+            failure = store.fail("GROUP_ADD_PROVIDER_RATE_LIMITED", 429)
+            retry_after = (exc.headers or {}).get("Retry-After")
+            if retry_after:
+                failure.headers["Retry-After"] = retry_after
+            raise failure from None
         if reason in {"device_unavailable", "context_changed"}:
             raise store.fail("GROUP_ADD_DEVICE_UNAVAILABLE") from None
         if reason in {"device_busy", "read_busy"}:

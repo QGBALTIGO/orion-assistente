@@ -27,6 +27,7 @@ ERRORS = {
     "GROUP_ADD_ADMIN_REQUIRED": "Você precisa ser administrador do grupo de destino.",
     "GROUP_ADD_SOURCE_CHANGED": "A origem dos contatos mudou. Carregue os contatos novamente.",
     "GROUP_ADD_NO_ELIGIBLE": "Nenhum contato selecionado pode ser adicionado.",
+    "GROUP_ADD_PROVIDER_RATE_LIMITED": "O WhatsApp limitou temporariamente a consulta de grupos. Aguarde antes de tentar novamente.",
     "GROUP_ADD_BRIDGE_UNAVAILABLE": "O WhatsApp não respondeu à consulta de grupos. Confira a conexão.",
     "GROUP_ADD_BRIDGE_TIMEOUT": "A consulta de grupos demorou demais. Aguarde a sincronização do WhatsApp e atualize.",
     "GROUP_ADD_READ_BUSY": "Uma consulta anterior de grupos ainda está em andamento. Aguarde a conclusão.",

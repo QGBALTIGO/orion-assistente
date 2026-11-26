@@ -1,0 +1,30 @@
+name: Orion - Espera na leitura de grupos
+on:
+  push:
+    branches: [codex/orion-baltigoflix-groups-api-20261126]
+permissions:
+  contents: read
+  packages: write
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      BASE_IMAGE: ghcr.io/qgbaltigo/orion-assistente-api@sha256:e137945ef8d648ae398bd09417e20e6c8d49e65cd0c456237cfc3c744dd92e04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Validar e publicar API
+        run: |
+          set -euo pipefail
+          node --check app/static/orion-subscription-group-add.js
+          node --check app/static/orion-subscription-group-contacts.js
+          image="ghcr.io/qgbaltigo/orion-assistente-api:bflix-groups-$GITHUB_SHA"
+          docker build --platform linux/amd64 --build-arg BASE_IMAGE="$BASE_IMAGE" \
+            --build-arg RELEASE_REVISION="$GITHUB_SHA" -f deploy/Dockerfile.baltigoflix-group-rate-limit -t "$image" .
+          docker run --rm --network none --entrypoint python "$image" -c 'from app.subscription_group_add_store import ERRORS as add; from app.subscription_group_contacts_store import ERRORS as contacts; assert "GROUP_ADD_PROVIDER_RATE_LIMITED" in add and "GROUP_CONTACTS_PROVIDER_RATE_LIMITED" in contacts'
+          docker push "$image"
