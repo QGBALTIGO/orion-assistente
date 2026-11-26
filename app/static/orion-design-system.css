@@ -1,0 +1,181 @@
+/* Orion Design System — semantic UI primitives, based on the existing customer filters. */
+:root {
+  --os-ui-gap:8px;
+  --os-ui-section-gap:18px;
+  --os-ui-control-height:36px;
+  --os-ui-control-radius:10px;
+  --os-ui-control-padding:16px;
+  --os-ui-control-font:14px;
+  --os-ui-segment-height:32px;
+  --os-ui-segment-gap:4px;
+  --os-ui-segment-padding:4px;
+  --os-ui-segment-inline:14px;
+  --os-ui-segment-radius:100px;
+}
+@media(max-width:767px) {
+  :root {
+    --os-ui-control-height:40px;
+    --os-ui-control-padding:12px;
+    --os-ui-control-font:13px;
+    --os-ui-segment-height:36px;
+    --os-ui-segment-inline:12px;
+  }
+}
+@media(max-width:359px) {
+  :root { --os-ui-segment-inline:10px; }
+}
+.os-pill-tabs,
+:is(#page-member,#page-suite) .os-pill-tabs.os-ui-segments {
+  display:flex;
+  flex-direction:row;
+  flex-wrap:nowrap;
+  align-items:center;
+  justify-content:flex-start;
+  gap:var(--os-ui-segment-gap);
+  padding:var(--os-ui-segment-padding);
+  width:max-content;
+  max-width:100%;
+  min-width:0;
+  box-sizing:border-box;
+  overflow-x:auto;
+  overflow-y:hidden;
+  background:var(--os-soft);
+  border:0;
+  border-radius:var(--os-ui-segment-radius);
+  scrollbar-width:none;
+  overscroll-behavior-inline:contain;
+  scroll-padding-inline:var(--os-ui-segment-padding);
+}
+.os-pill-tabs::-webkit-scrollbar {display:none}
+.os-pill-tabs > .os-pill-tab,
+:is(#page-member,#page-suite) .os-pill-tabs.os-ui-segments > .os-pill-tab {
+  display:inline-flex;
+  flex:0 0 auto;
+  align-items:center;
+  justify-content:center;
+  gap:5px;
+  width:auto;
+  min-width:0;
+  max-width:none;
+  min-height:var(--os-ui-segment-height);
+  box-sizing:border-box;
+  padding:6px var(--os-ui-segment-inline);
+  margin:0;
+  border:0;
+  border-radius:var(--os-ui-segment-radius);
+  background:transparent;
+  color:var(--os-muted);
+  font:500 14px/20px var(--os-font);
+  white-space:nowrap;
+  text-align:center;
+  text-decoration:none;
+  box-shadow:none;
+  cursor:pointer;
+}
+.os-pill-tabs > .os-pill-tab:is([aria-selected=true],[aria-pressed=true],[aria-current=true]),
+:is(#page-member,#page-suite) .os-pill-tabs.os-ui-segments > .os-pill-tab:is([aria-selected=true],[aria-pressed=true],[aria-current=true]) {
+  background:var(--os-bg);
+  color:var(--os-text);
+  box-shadow:var(--os-shadow);
+}
+.os-pill-tabs > .os-pill-tab:focus-visible {
+  outline:2px solid var(--os-primary);
+  outline-offset:-2px;
+}
+.os-pill-tabs > .os-pill-tab .os-icon {width:14px;height:14px;flex-shrink:0}
+:is(#page-member,#page-suite) .os-ui-segments > .os-pill-tab > span:not(.os-icon) {
+  background:transparent;
+  color:inherit;
+  font-size:11px;
+  font-variant-numeric:tabular-nums;
+  padding:0;
+  min-width:0;
+}
+#page-suite .os-title-row.os-ui-heading {
+  display:flex;
+  flex-direction:row;
+  flex-wrap:wrap;
+  justify-content:space-between;
+  align-items:center;
+  gap:12px 16px;
+  min-width:0;
+}
+#page-suite .os-ui-heading > div:first-child {flex:1 1 180px;min-width:0}
+#page-suite .os-ui-heading h1 {
+  font:700 30px/36px var(--os-display);
+  letter-spacing:normal;
+  margin:0;
+  color:var(--os-text);
+}
+#page-suite .os-ui-heading p {
+  color:var(--os-muted);
+  font:400 14px/20px var(--os-font);
+  margin:4px 0 0;
+}
+#page-suite .os-ui-heading :is(.af-dashboard-eyebrow,.af-offers-eyebrow,.af-auto-eyebrow,.af-history-eyebrow) {display:none}
+#page-suite .os-ui-heading > .os-ui-actions {
+  display:flex;
+  flex:0 1 auto;
+  flex-direction:row;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+  align-self:center;
+  align-items:center;
+  gap:var(--os-ui-gap);
+  margin:0;
+  min-width:0;
+  max-width:100%;
+}
+#page-suite .os-ui-heading > .os-ui-actions:empty {display:none}
+#page-suite .os-ui-heading > :is(.os-button,.os-icon-button) {flex:0 0 auto;margin:0}
+#page-suite :is(.af-dashboard,.af-offers-workspace,.af-automations-workspace,.af-history-workspace) > .os-ui-heading {margin:0}
+#page-suite .af-native-content .os-button:not(.os-small):not(.os-large) {
+  min-height:var(--os-ui-control-height);
+  border-radius:var(--os-ui-control-radius);
+  font:500 var(--os-ui-control-font)/20px var(--os-font);
+  padding:7px var(--os-ui-control-padding);
+  gap:var(--os-ui-gap);
+  max-width:100%;
+  white-space:normal;
+}
+#page-suite .af-native-content .os-button .os-icon {width:16px;height:16px;flex-shrink:0}
+#page-suite .af-native-content .os-ui-heading .os-icon-button {
+  width:var(--os-ui-control-height);
+  height:var(--os-ui-control-height);
+  min-width:var(--os-ui-control-height);
+  flex:0 0 var(--os-ui-control-height);
+  border:1px solid var(--os-border);
+  border-radius:var(--os-ui-control-radius);
+  background:var(--os-card);
+  margin:0;
+}
+#page-suite .af-native-content .os-ui-heading .os-icon-button:hover {background:var(--os-soft)}
+#page-suite .af-native-content .af-offer-inline-actions {flex-wrap:wrap}
+#page-suite .af-native-content .af-item .af-row {flex-shrink:1;min-width:0;max-width:100%}
+#page-suite .af-native-content .af-history-filters.os-ui-segments {margin-bottom:16px}
+#page-suite .af-native-content .af-dashboard-metric-tabs.os-ui-segments {margin-bottom:14px}
+#page-suite .af-native-content .af-rule-presets.os-ui-segments {margin-top:0}
+#page-suite .af-native-content .af-dashboard-publication-tabs.os-ui-segments {margin-top:0}
+#page-suite .af-native-content .af-dashboard-toolbar {min-width:0}
+#page-suite .af-native-content .af-dashboard-periods.os-ui-segments {flex:0 1 auto}
+@media(max-width:767px) {
+  #page-suite .os-ui-heading h1 {font-size:26px;line-height:32px}
+  #page-suite .os-ui-heading > div:first-child {flex-basis:155px}
+  #page-suite .os-ui-heading > .os-ui-actions {margin-left:auto}
+  #page-suite .af-native-content .af-item {flex-wrap:wrap}
+}
+#page-member #osMemberAccount {
+  display:grid;
+  grid-template-columns:minmax(0,1fr);
+  align-items:start;
+  gap:var(--os-ui-section-gap);
+  min-width:0;
+}
+#page-member #osMemberAccount .os-account-menu {
+  position:static;
+  align-self:start;
+  justify-self:start;
+}
+#page-member #osMemberAccount .os-account-menu .os-pill-tab {min-height:var(--os-ui-segment-height)}
+#page-member #osMemberAccount .os-account-panel {min-width:0}
+#page-member #osMemberAccount .os-account-section-heading {margin:0 0 16px}
