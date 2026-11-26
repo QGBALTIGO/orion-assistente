@@ -586,22 +586,39 @@ class Store:
                 (company, *destinations, start),
             )]
 
-    def due_rules(self, now):
+    def repeated_products(self, company, destinations, occurrence, cutoff):
+        if not destinations:
+            return {}
+        placeholders = ",".join("?" for _ in destinations)
+        result = {}
+        with self.connect() as db:
+            rows = db.execute(
+                f"SELECT destination,product FROM job WHERE company=? AND destination IN ({placeholders}) "
+                "AND (occurrence=? OR (changed>=? AND status IN "
+                "('approval','queued','preparing','dispatching','published','unknown')))",
+                (company, *destinations, occurrence, cutoff),
+            )
+            for row in rows:
+                result.setdefault(row["destination"], set()).add(row["product"])
+        return result
+
+    def due_rules(self, now, *, limit=3):
         with self.connect() as db:
             rows = db.execute("""
                 SELECT company,id,doc FROM record WHERE kind='rule' AND
                   json_extract(doc,'$.active')=1 AND json_extract(doc,'$.next_at')<=?
-                ORDER BY json_extract(doc,'$.next_at') LIMIT 3
-            """, (now,)).fetchall()
+                ORDER BY json_extract(doc,'$.next_at'),company,id LIMIT ?
+            """, (now, max(1, min(int(limit), 100)))).fetchall()
         return [(row["company"], row["id"], json.loads(row["doc"])) for row in rows]
 
-    def advance_rule(self, company, id, expected, next_at, niche_cursor=0):
+    def advance_rule(self, company, id, expected, next_at, niche_cursor=0, *, expected_revision=None):
         with self.connect(True) as db:
             return bool(db.execute("""
                 UPDATE record SET doc=json_set(doc,'$.next_at',?,'$.niche_cursor',?),at=?
                  WHERE company=? AND kind='rule' AND id=?
                  AND json_extract(doc,'$.next_at')=? AND json_extract(doc,'$.active')=1
-            """, (next_at, niche_cursor, int(time.time()), company, id, expected)).rowcount)
+                 AND (? IS NULL OR json_extract(doc,'$.revision')=?)
+            """, (next_at, niche_cursor, int(time.time()), company, id, expected, expected_revision, expected_revision)).rowcount)
 
     def claim(self, telegram=True, promotech=None):
         now = int(time.time())

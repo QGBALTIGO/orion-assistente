@@ -129,7 +129,7 @@ class Plan(Input):
     closes: str = Field(pattern=r"^\d{2}:\d{2}$")
     timezone: str = Field(default="America/Campo_Grande", max_length=70)
     interval: int = Field(ge=10, le=1440)
-    daily: int = Field(ge=1, le=48)
+    daily: int = Field(ge=1, le=144)
     repeat_hours: int = Field(default=48, ge=1, le=720)
     min_price: float | None = Field(default=None, ge=0, le=100000)
     max_price: float | None = Field(default=None, ge=0, le=100000)
@@ -301,7 +301,8 @@ def create_app(store=None, *, sending=None, origin=None, start_worker=True):
     @app.get("/health")
     def health():
         engine = app.state.engine
-        return {"status": "ok", "worker": engine.last_tick > int(time.time()) - 300,
+        now=int(time.time())
+        return {"status": "ok", "worker": min(engine.last_tick, engine.last_dispatch_tick) > now - 180,
                 "external_sends_enabled": sending, "promotech_configured": bool(engine.promotech),
                 "database_schema": 1, "orion_workspace_configured": bridge is not None}
 
@@ -335,6 +336,7 @@ def create_app(store=None, *, sending=None, origin=None, start_worker=True):
                        app.state.engine.promotech.binding["company"] == company),
                   "whatsapp_link_available": bool(wa_token and wa_port and user["username"] == wa_owner)}
         result["image_templates_v1"] = True
+        result["automation_schedule_v2"] = True
         preferences=app.state.store.get(company,"preferences","templates") or {}
         preferred=preferences.get("default")
         if isinstance(preferred,str) and app.state.store.get(company,"template",preferred):

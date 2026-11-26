@@ -458,3 +458,128 @@ def test_recurring_telegram_card_requires_downloaded_photo_and_never_sends_place
         assert result["status"] == ("queued" if photo_result == "timeout" else "failed")
         assert not ctx["sent"] and not media_sent
         assert "foto" in result["error"].lower()
+
+
+def test_late_rule_keeps_its_original_ten_minute_grid(context):
+    ctx=context
+    original=ctx["clock"][0]
+    rule=save_rule(ctx, selected=[GROUP])
+    ctx["clock"][0]+=95
+    jobs=plan(ctx,rule)
+    assert len(jobs)==1 and jobs[0]["occurrence"]==original
+    assert ctx["store"].get(ctx["company"],"rule",RULE)["next_at"]==original+600
+
+
+def test_no_burst_of_missed_occurrences_after_outage(context):
+    ctx=context
+    original=ctx["clock"][0]
+    rule=save_rule(ctx,selected=[GROUP])
+    ctx["clock"][0]+=4*600+20
+    assert plan(ctx,rule)==[]
+    assert ctx["store"].get(ctx["company"],"rule",RULE)["next_at"]==original+5*600
+    assert ctx["store"].list(ctx["company"],"decision")[0]["status"]=="missed"
+
+
+def test_repeated_top_products_do_not_hide_a_new_candidate(context):
+    ctx=context
+    rule=save_rule(ctx,selected=[GROUP],niches=["esportes"])
+    provider,version=ctx["engine"].shopee(ctx["company"])
+    items=[{**ctx["fresh"],"item":i,"identity":f"shopee:11:{i}","categories":[100017]}
+           for i in range(8,15)]
+    prepared=[]
+    async def search(*args,**kwargs):
+        return items
+    async def ready(company,row):
+        prepared.append(row["identity"])
+        return {**row,"affiliate_url":"https://s.shopee.com.br/synthetic","link_version":version}
+    provider.search=search
+    ctx["engine"].shopee=lambda company:(provider,version)
+    ctx["engine"].ready_offer=ready
+    for item in items[:6]:
+        job,_=ctx["store"].enqueue(ctx["company"],GROUP,item,ctx["template"],
+                                    ctx["clock"][0]-600,approval=False)
+        with ctx["store"].connect(True) as db:
+            db.execute("UPDATE job SET status='published',published_at=? WHERE id=?",
+                       (ctx["clock"][0]-600,job))
+    # This test only controls the category search result; all eligibility,
+    # destination proof, repeat-window and enqueue logic remain real.
+    from unittest.mock import patch
+    with patch("affiliate_pilot.engine.search_niche",side_effect=search):
+        jobs=plan(ctx,rule)
+    queued=[j for j in jobs if j["status"]=="queued"]
+    assert len(queued)==1 and queued[0]["product"]==items[-1]["identity"]
+    assert prepared==[items[-1]["identity"]]
+
+
+@pytest.mark.asyncio
+async def test_thirty_due_rules_do_not_block_the_independent_publication_lane():
+    """Synthetic workload: no provider requests or actual messages."""
+    remaining={str(i):{} for i in range(30)}
+    started=asyncio.Event()
+    release=asyncio.Event()
+    sent=asyncio.Event()
+    completed=asyncio.Event()
+    planned=[]
+    active=0
+    peak=0
+
+    class Queue:
+        job={"id":"synthetic","company":"synthetic"}
+        def due_rules(self,now,*,limit=100):
+            return [("synthetic",key,rule) for key,rule in list(remaining.items())[:limit]]
+        def claim(self,**kwargs):
+            job,self.job=self.job,None
+            return job
+
+    engine=Engine(Queue(),sending=False)
+    async def plan_one(company,key,rule,now):
+        nonlocal active,peak
+        remaining.pop(key,None)
+        active+=1
+        peak=max(peak,active)
+        if peak==3:
+            started.set()
+        try:
+            await release.wait()
+            planned.append(key)
+            if len(planned)==30:
+                completed.set()
+        finally:
+            active-=1
+
+    async def dispatch_one(job):
+        sent.set()
+
+    engine.plan_rule=plan_one
+    engine.dispatch_job=dispatch_one
+    task=asyncio.create_task(engine.run())
+    try:
+        await asyncio.wait_for(started.wait(),2)
+        await asyncio.wait_for(sent.wait(),2)
+        assert planned==[] and active==3
+        release.set()
+        await asyncio.wait_for(completed.wait(),3)
+        assert len(set(planned))==30 and peak==3
+    finally:
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+
+@pytest.mark.asyncio
+async def test_shopee_rate_limit_shared_by_account_and_respected(monkeypatch):
+    from affiliate_pilot.providers import Shopee,ProviderError
+    requests=[]
+    class Reply:
+        async def __call__(self,query,variables):
+            requests.append(query)
+            raise ProviderError("rate","synthetic rate limit",retry_after=120)
+    a=Shopee("shared-synthetic","unused")
+    b=Shopee("shared-synthetic","unused")
+    monkeypatch.setattr(a,"_graphql",Reply())
+    monkeypatch.setattr(b,"_graphql",Reply())
+    for client in (a,b):
+        with pytest.raises(ProviderError) as caught:
+            await client.graphql("synthetic",{})
+        assert caught.value.code=="rate" and caught.value.retry_after>=119
+    assert len(requests)==1

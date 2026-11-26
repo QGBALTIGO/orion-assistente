@@ -29,6 +29,7 @@ class Engine:
         self.promotech = promotech
         self.manual_transport = manual_transport
         self.last_tick = 0
+        self.last_dispatch_tick = 0
 
     def shopee(self, company):
         secret, version = self.store.credentials(company, "shopee")
@@ -292,11 +293,14 @@ class Engine:
 
     async def plan_rule(self, company, rule_id, rule, now):
         due = rule["next_at"]
-        next_time = next_slot(rule, now + rule["interval"] * 60)
+        # Advance along the original schedule instead of drifting from processing time.
+        # Skip missed occurrences instead of sending a catch-up burst.
+        step = rule["interval"] * 60
+        next_time = next_slot(rule, due + max(1, (now - due) // step + 1) * step)
         niches = [key for key in rule.get("niches", ()) if key in NICHES]
         cursor = rule.get("niche_cursor", 0)
         niche = niches[cursor % len(niches)] if niches else None
-        if not self.store.advance_rule(company, rule_id, due, next_time, (cursor + 1) % len(niches) if niches else 0):
+        if not self.store.advance_rule(company, rule_id, due, next_time, (cursor + 1) % len(niches) if niches else 0, expected_revision=rule.get("revision")):
             return
         rule = {**rule, "id": rule_id}
         job_ids = []
@@ -352,8 +356,23 @@ class Engine:
             if not candidates:
                 raise ProviderError("filter", "Nenhuma oferta atendeu aos filtros desta execução.")
             missing_images = rejected_details = 0
-            for row in candidates[:4]:
+            detail_budget = 4
+            preparation_budget = 4
+            # Do not spend affiliate-link and AI calls on products already
+            # excluded by each destination's configured repeat window.
+            known = self.store.repeated_products(company, [d["id"] for d in destinations],
+                                                 due, now - rule["repeat_hours"] * 3600)
+            for row in candidates[:24]:
+                if preparation_budget <= 0:
+                    break
+                remaining = [d for d in destinations if d["id"] not in chosen
+                             and row["identity"] not in known.get(d["id"], set())]
+                if not remaining:
+                    continue
                 if scoped_automation and template["media"] == "card" and not row.get("image"):
+                    if detail_budget <= 0:
+                        continue
+                    detail_budget -= 1
                     try:
                         detailed = await connection.detail(row["shop"], row["item"])
                     except ProviderError as exc:
@@ -376,14 +395,13 @@ class Engine:
                         missing_images += 1
                         continue
                     row = detailed
+                preparation_budget -= 1
                 prepared = await self.ready_offer(company, row)
                 if niche:
                     prepared["niche"] = niche
                 if "{frase_ia}" in template["text"]:
                     prepared["phrase"], prepared["phrase_source"] = await self.phrase(company, prepared)
-                for destination in destinations:
-                    if destination["id"] in chosen:
-                        continue
+                for destination in remaining:
                     automation = self.automation_job_authorization(company, rule, destination) if scoped_automation else None
                     if scoped_automation and automation is None:
                         raise AutomationConflict("A autorização ou a conexão mudou. Salve e ative novamente a automação.")
@@ -392,7 +410,7 @@ class Engine:
                         if destination["mode"] == "whatsapp_channel"
                         else self.sending and rule["mode"] == "automatic"))
                     job_id, created = self.store.enqueue(
-                        company, destination["id"], prepared, template, now,
+                        company, destination["id"], prepared, template, due,
                         approval=not can_auto,
                         rule=rule, repeat_hours=rule["repeat_hours"], automation=automation,
                     )
@@ -414,6 +432,13 @@ class Engine:
         except ProviderError as exc:
             status = "empty" if exc.code == "filter" else "blocked" if exc.code in {"access", "permissions", "attribution"} else "failed"
             message = exc.message
+        except asyncio.CancelledError:
+            decision("prepared" if job_ids else "failed",
+                     "Execução interrompida; " + ("parte das ofertas foi preparada." if job_ids else "a próxima janela permanece programada."))
+            raise
+        except Exception as exc:
+            status, message = "failed", "Falha interna ao preparar ofertas. Consulte a próxima execução."
+            log.warning("Affiliate rule preparation failed: %s", type(exc).__name__)
         decision(status, message)
 
     async def dispatch_automation(self, job, destination):
@@ -660,27 +685,76 @@ class Engine:
             else:
                 self.store.finish(job, "failed", error=exc.message)
 
-    async def run(self):
-        while True:
-            try:
-                now = int(time.time())
-                self.last_tick = now
-                for company, rule_id, rule in self.store.due_rules(now):
+    async def _plan_one(self, company, rule_id, rule):
+        try:
+            await asyncio.wait_for(self.plan_rule(company, rule_id, rule, int(time.time())), 80)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            log.warning("Affiliate rule interrupted: %s", type(exc).__name__)
+
+    async def _planning_loop(self):
+        # Bounded rolling pool; same-account Shopee requests remain serialized.
+        pending = {}
+        try:
+            while True:
+                self.last_tick = int(time.time())
+                for key, task in list(pending.items()):
+                    if task.done():
+                        await task
+                        del pending[key]
+                capacity = 3 - len(pending)
+                if capacity:
                     try:
-                        await asyncio.wait_for(self.plan_rule(company, rule_id, rule, now), 80)
+                        for company, rule_id, rule in self.store.due_rules(int(time.time()), limit=100):
+                            key = (company, rule_id)
+                            if key in pending:
+                                continue
+                            pending[key] = asyncio.create_task(self._plan_one(company, rule_id, rule))
+                            capacity -= 1
+                            if not capacity:
+                                break
                     except Exception as exc:
-                        log.warning("Affiliate rule interrupted: %s", type(exc).__name__)
-                if job := self.store.claim(telegram=self.sending,
-                                           promotech=self.promotech.binding if self.promotech else None):
+                        log.warning("Affiliate planning queue interrupted: %s", type(exc).__name__)
+                if pending:
+                    await asyncio.wait(tuple(pending.values()), timeout=2,
+                                       return_when=asyncio.FIRST_COMPLETED)
+                else:
+                    await asyncio.sleep(2)
+        finally:
+            for task in pending.values():
+                task.cancel()
+            if pending:
+                await asyncio.gather(*pending.values(), return_exceptions=True)
+
+    async def _publication_loop(self):
+        # Keep a single publication lane with all existing safety checks.
+        while True:
+            self.last_dispatch_tick = int(time.time())
+            try:
+                job = self.store.claim(telegram=self.sending,
+                                       promotech=self.promotech.binding if self.promotech else None)
+                if job:
                     try:
                         await asyncio.wait_for(self.dispatch_job(job), 90)
+                    except asyncio.CancelledError:
+                        raise
                     except Exception as exc:
-                        # A lost response after the dispatch boundary is never a blind retry.
                         current = self.store.history(job["company"], job["id"])
                         possibly_sent = current and current[0]["status"] == "dispatching"
                         self.store.finish(job, "unknown" if possibly_sent else "failed",
                                           error="Operação interrompida. Confira o histórico.")
                         log.warning("Affiliate job interrupted: %s", type(exc).__name__)
             except Exception as exc:
-                log.warning("Affiliate worker interrupted: %s", type(exc).__name__)
+                log.warning("Affiliate publication queue interrupted: %s", type(exc).__name__)
             await asyncio.sleep(4)
+
+    async def run(self):
+        tasks = [asyncio.create_task(self._planning_loop()),
+                 asyncio.create_task(self._publication_loop())]
+        try:
+            await asyncio.gather(*tasks)
+        finally:
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)

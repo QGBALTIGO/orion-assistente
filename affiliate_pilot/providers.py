@@ -7,6 +7,8 @@ import json
 import re
 import socket
 import time
+import math
+import weakref
 from decimal import Decimal, InvalidOperation
 from urllib.parse import parse_qsl, unquote, urlsplit
 
@@ -130,11 +132,43 @@ def normalize_offer(node):
     }
 
 
+# Same-account requests share a lock and provider-directed cooldown.
+_SHOPEE_GATES = weakref.WeakKeyDictionary()
+
+
+class _ShopeeGate:
+    def __init__(self):
+        self.lock = asyncio.Lock()
+        self.cooldown_until = 0.0
+
+
+def _shopee_gate(app_id):
+    gates = _SHOPEE_GATES.setdefault(asyncio.get_running_loop(), {})
+    gate = gates.get(app_id)
+    if gate is None:
+        gate = gates[app_id] = _ShopeeGate()
+    return gate
+
+
 class Shopee:
     def __init__(self, app_id: str, secret: str):
         self.app_id, self.secret = app_id, secret
 
     async def graphql(self, query, variables):
+        gate = _shopee_gate(self.app_id)
+        async with gate.lock:
+            remaining = gate.cooldown_until - time.monotonic()
+            if remaining > 0:
+                raise ProviderError("rate", "A Shopee limitou as consultas. Aguarde a liberação.",
+                                    retry_after=math.ceil(remaining))
+            try:
+                return await self._graphql(query, variables)
+            except ProviderError as exc:
+                if exc.code == "rate":
+                    gate.cooldown_until = time.monotonic() + max(90, exc.retry_after or 90)
+                raise
+
+    async def _graphql(self, query, variables):
         body = json.dumps({"query": query, "variables": variables}, ensure_ascii=False, separators=(",", ":"))
         timestamp = int(time.time())
         signed = hashlib.sha256(f"{self.app_id}{timestamp}{body}{self.secret}".encode()).hexdigest()
@@ -148,7 +182,11 @@ class Shopee:
             if response.status_code in {401, 403}:
                 raise ProviderError("access", "A Shopee recusou o acesso. Confira as credenciais ou a permissão da conta.")
             if response.status_code == 429:
-                raise ProviderError("rate", "A Shopee limitou as consultas.", retry_after=90)
+                try:
+                    retry = max(90, int(response.headers.get("Retry-After", "90")))
+                except (ValueError, TypeError):
+                    retry = 90
+                raise ProviderError("rate", "A Shopee limitou as consultas.", retry_after=retry)
             response.raise_for_status()
             data = response.json()
         except (httpx.HTTPError, ValueError):

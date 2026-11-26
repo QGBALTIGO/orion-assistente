@@ -277,3 +277,14 @@ def test_rule_activity_counts_receipts_separately_from_preparation(workspace):
     assert state["activity"]["last_published_at"] is not None
     assert request("POST", f"/api/rules/{RULE}/activate", {"active": False}).is_success
     assert store.history(company, ident)[0]["status"] == "published"
+
+
+@pytest.mark.parametrize("daily", [84,144])
+def test_schedule_can_cover_a_full_ten_minute_window(workspace,daily):
+    store,company,_,request,_=workspace
+    saved=request("PUT",f"/api/rules/{RULE}",plan(opens="07:00",closes="21:00",
+                                                   timezone="America/Sao_Paulo",daily=daily))
+    assert saved.status_code==200,saved.text
+    assert store.get(company,"rule",RULE)["daily"]==daily
+    assert request("GET","/api/state").json()["automation_schedule_v2"] is True
+    assert request("PUT",f"/api/rules/{RULE}",plan(daily=145)).status_code==422

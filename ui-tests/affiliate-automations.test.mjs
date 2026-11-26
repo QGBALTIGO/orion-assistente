@@ -314,3 +314,20 @@ test('Histórico mantém recibo técnico fora da tela e preserva erro legível',
   assert.doesNotMatch(h.get('#history-list').textContent,/synthetic-internal-id|metadata|message_id/);
   assert.equal(data.jobs[0].receipt,receipt);assert.equal(h.writes().length,0);
 });
+
+
+test('Limite da janela sugere 84 publicações e só altera ao confirmar a escolha',async t=>{
+  const data=workspace();data.automation_schedule_v2=true;
+  data.rule[0]=rule({interval:10,daily:48,opens:'07:00',closes:'21:00',timezone:'America/Sao_Paulo'});
+  const h=await harness(t,{data});
+  h.click('[data-act=edit-rule]');h.click('[data-rule-step=schedule]');
+  assert.equal(h.get('#af-rule-daily').value,'48');
+  assert.equal(h.get('#af-rule-daily').max,'144');
+  assert.match(h.get('[data-rule-summary]').textContent,/84 oportunidades/);
+  h.click('[data-rule-fit-daily]');
+  assert.equal(h.get('#af-rule-daily').value,'84');
+  assert.equal(h.writes().length,0);
+  h.click('[data-rule-step=template]');h.submit();await flush();
+  assert.equal(h.writes()[0].payload.daily,84);
+  assert.equal(h.writes()[0].payload.interval,10);
+});

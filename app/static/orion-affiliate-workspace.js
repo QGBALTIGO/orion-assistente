@@ -922,6 +922,13 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
       `<div class="af-auto-empty"><span>${icon("activity")}</span><h3>As próximas buscas aparecem aqui</h3><p>Acompanhe os produtos encontrados e o resultado de cada execução.</p></div>`;
   }
 
+  function ruleWindowCapacity(rule) {
+    const parse=value=>/^\d{2}:\d{2}$/.test(String(value||""))?Number(value.slice(0,2))*60+Number(value.slice(3)):NaN;
+    const start=parse(rule.opens),end=parse(rule.closes),interval=Number(rule.interval);
+    const duration=start===0&&end===0?1440:end-start;
+    if(!Number.isFinite(duration)||duration<=0||!Number.isInteger(interval)||interval<10||interval>1440)return null;
+    return Math.min(144,Math.ceil(duration/interval));
+  }
   function ruleDraftSummary() {
     if (!ruleDraft) return "";
     const destinations=automationDestinations().filter(row=>ruleDraft.destinations.includes(row.id));
@@ -931,7 +938,7 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     return `<aside class="af-rule-summary" data-rule-summary aria-label="Resumo da automação"><span class="af-auto-eyebrow">Sua programação</span><h3>${html(ruleDraft.name||"Nova automação")}</h3>
       <dl><div><dt>${icon("box")}Produtos</dt><dd>${html(productText)}</dd></div>
       <div><dt>${icon("send")}Destinos</dt><dd>${html(destinations.map(row=>row.name).join(", ")||"Selecione os destinos")}</dd></div>
-      <div><dt>${icon("clock")}Frequência</dt><dd>A cada ${html(ruleDraft.interval||"—")} min · até ${html(ruleDraft.daily||"—")}/dia por destino</dd><dd>${html(ruleWindow(ruleDraft))} · ${ruleDraft.days.length} ${ruleDraft.days.length===1?"dia":"dias"}/semana</dd></div>
+      <div><dt>${icon("clock")}Frequência</dt><dd>A cada ${html(ruleDraft.interval||"—")} min · até ${html(ruleDraft.daily||"—")}/dia por destino</dd><dd>${html(ruleWindow(ruleDraft))} · ${ruleDraft.days.length} ${ruleDraft.days.length===1?"dia":"dias"}/semana</dd>${ruleWindowCapacity(ruleDraft)&&Number(ruleDraft.daily)<ruleWindowCapacity(ruleDraft)?`<dd class="af-auto-muted">O limite diário permite menos publicações que a janela de horário (${ruleWindowCapacity(ruleDraft)} oportunidades).</dd>`:""}</div>
       <div><dt>${icon("layers")}Publicação</dt><dd>${html(selectedTemplate?.name||"Selecione um modelo")}</dd><dd>${ruleDraft.mode==="automatic"?"Envio automático":"Revisão antes do envio"}</dd></div></dl>
       <p>${html(ruleDraft.timezone)}</p></aside>`;
   }
@@ -973,7 +980,8 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
           <div class="af-rule-destination-list">${available.map(row=>`<label class="af-rule-destination${row.eligible?"":" is-unavailable"}" data-rule-destination="${html(row.id)}"><input type="checkbox" name="destinations" data-rule-field value="${html(row.id)}"${rule.destinations.includes(row.id)?" checked":""}${row.eligible||rule.destinations.includes(row.id)?"":" disabled"}><span class="af-rule-destination-icon">${icon(row.mode==="telegram"?"send":"chat")}</span><span><strong>${html(row.name)}</strong><small>${html(defaultMedia(row.mode)||row.mode)}</small>${!row.eligible?`<small class="af-rule-destination-reason">${html(row.reason||"Verifique este destino em Conexões.")}</small>`:""}</span>${row.eligible?`<span class="af-rule-choice-check">${icon("check")}</span>`:""}</label>`).join("")||`<div class="af-auto-empty"><span>${icon("link")}</span><h3>Conecte seu primeiro destino</h3><p>Adicione um grupo ou canal do WhatsApp, ou um destino no Telegram.</p></div>`}</div>
           ${link("Gerenciar conexões","conexoes","link")}`)}
         ${panel("schedule",3,"Quando a automação deve funcionar?","Defina o ritmo das publicações e os horários permitidos.",`
-          <div class="af-rule-field-pair">${input("interval","Intervalo em minutos",'required min="10" max="1440" step="1"',"number")}${input("daily","Limite diário por destino",'required min="1" max="48" step="1"',"number")}</div>
+          <div class="af-rule-field-pair">${input("interval","Intervalo em minutos",'required min="10" max="1440" step="1"',"number")}${input("daily","Limite diário por destino",'required min="1" max="'+(state.automation_schedule_v2===true?144:48)+'" step="1"',"number")}</div>
+          ${state.automation_schedule_v2===true?'<div class="af-row"><button type="button" class="os-button os-outline os-small" data-rule-fit-daily>Usar limite da janela</button><small class="af-muted">Respeita o horário e o intervalo configurados.</small></div>':""}
           <div class="af-rule-presets" aria-label="Intervalos sugeridos">${[30,60,90,180].map(value=>`<button type="button" data-rule-interval="${value}" aria-pressed="${String(rule.interval)===String(value)}">${value<60?value+" min":value===90?"1h30":value/60+" h"}</button>`).join("")}</div>
           <fieldset class="af-rule-days"><legend>Dias da semana</legend><div>${days.map((day,position)=>`<label><input type="checkbox" name="days" data-rule-field value="${position}"${rule.days.includes(position)?" checked":""}><span>${day}</span></label>`).join("")}</div><div class="af-rule-day-actions"><button type="button" data-rule-days="all">Todos os dias</button><button type="button" data-rule-days="weekdays">Dias úteis</button></div></fieldset>
           <div class="af-rule-choice-head"><strong>Horário de funcionamento</strong><label class="os-check"><input type="checkbox" data-rule-all-day${allDay?" checked":""}> Dia inteiro</label></div>
@@ -2222,6 +2230,11 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
       const index=ruleSteps.findIndex(([key])=>key===ruleStep);
       const next=ruleNavigation.dataset.ruleStep||ruleSteps[index+(ruleNavigation.hasAttribute('data-rule-next')?1:-1)]?.[0];
       setRuleStep(next,ruleNavigation.hasAttribute('data-rule-next'));return;
+    }
+    if(event.target.closest('[data-rule-fit-daily]')&&ruleDraft&&state.automation_schedule_v2===true){
+      const capacity=ruleWindowCapacity(ruleDraft);
+      if(capacity){ruleDraft.daily=String(capacity);ruleDraftRevision++;ruleError="";render();}
+      return;
     }
     const rulePreset=event.target.closest('[data-rule-interval],[data-rule-days]');
     if(rulePreset&&ruleDraft){
