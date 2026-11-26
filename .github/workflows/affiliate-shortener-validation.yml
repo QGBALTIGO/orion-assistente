@@ -1,0 +1,31 @@
+name: Orion - Validação do encurtador universal
+on:
+  push:
+    branches: [codex/afiliados-encurtador-universal-20261126]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -c requirements.lock ".[test]"
+      - run: python -m py_compile app/affiliate_shortener.py app/affiliate_workspace.py scripts/patch_affiliate_shortener.py
+      - run: python -m pytest -q tests/unit/test_affiliate_shortener.py
+  interface:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+      - run: node --check app/static/orion-suite.js
+      - run: node --input-type=module --check < app/static/orion-affiliate-shortener.js
+      - run: node --test --test-reporter=spec ui-tests/affiliate-shortener.test.mjs
