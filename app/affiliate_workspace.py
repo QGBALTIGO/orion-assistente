@@ -17,6 +17,8 @@ from app.workspace_policy import AFFILIATE_NICHE
 
 
 router = APIRouter()
+from app.affiliate_shortener import router as shortener_router
+router.include_router(shortener_router)
 UPSTREAM = "https://orion-afiliados-piloto.187-77-255-164.sslip.io"
 NO_STORE = {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"}
 MAX_REQUEST = 64 * 1024
@@ -39,6 +41,7 @@ ASSETS = {
 LOCAL_ASSETS = {
     "workspace.css": ("orion-affiliate-workspace.css", "text/css"),
     "workspace.js": ("orion-affiliate-workspace.js", "text/javascript"),
+    "shortener.js": ("orion-affiliate-shortener.js", "text/javascript"),
 }
 
 

@@ -100,7 +100,7 @@
     periodontal:'periodontia-odonto',exams:'exames-odonto',budget:'orcamentos-odonto',insurance:'convenios-odonto'};
   const routeNames={'verificador-numeros':'Verificador de números WhatsApp','link-whatsapp':'Link e QR do WhatsApp',contatos:'Contatos','grupos-contatos':'Grupos de Contatos',...Object.fromEntries(Object.entries(dentalViews).map(([route,{label}])=>[route,label])),dispositivos:'Dispositivos',chatbot:'Chatbot','testar-chatbot':'Testar Chatbot',templates:'Templates','mensagens-enviadas':'Mensagens Enviadas',diagnosticos:'Diagnósticos',campanhas:'Campanhas',programadas:'Mensagens Programadas',massa:'Mensagem em Massa','enviar-mensagem':'Enviar Mensagem',aquecimento:'Aquecimento','evitar-banimento':'Evitar Banimento','resolver-banimento':'Resolver Banimento','extrator-contatos':'Extrator de contatos de grupos','adicionar-ao-grupo':'Adicionar contatos ao grupo',inbox:'Central de atendimento',dashboard:'Dashboard',perfil:'Perfil',agenda:'Agenda',clientes:'Clientes','pacientes-odonto':'Pacientes','vendas-odonto':'Vendas','ajustes-odonto':'Ajustes da clínica',servicos:'Serviços',funcionarios:'Funcionários',financeiro:'Financeiro',desempenho:'Meu desempenho',marketing:'Marketing IA',site:'Meu site',fidelizacao:'Fidelização',consultor:'Consultor IA',plano:'Plano',configuracoes:'Configurações',novidades:'Novidades',ajuda:'Base de conhecimento',dispositivo:'Conectar WhatsApp',conversas:'Conversas',ai:'Testar atendimento',empresa:'Configurar atendimento',catalogo:'Catálogo e pedidos',cadastros:'Administração do atendimento',member:'Minha conta'};
   const affiliateNavigation=[
-    ['Gestão',[['dashboard','Início','home'],['afiliados-ofertas','Ofertas','box']]],
+    ['Gestão',[['dashboard','Início','home'],['afiliados-ofertas','Ofertas','box'],['afiliados-links','Encurtador de links','link']]],
     ['Publicação',[['afiliados-automacoes','Automações','repeat'],['afiliados-fila','Fila e histórico','fileCheck']]],
     ['Configuração',[['afiliados-plataformas','Plataformas','layers'],['afiliados-conexoes','Conexões e destinos','link'],['afiliados-templates','Templates','list']]],
   ];
@@ -477,7 +477,7 @@
     if(window.OrionAffiliateWorkspace)return Promise.resolve(window.OrionAffiliateWorkspace);
     if(!affiliateAssets){
       const css=document.createElement('link');
-      css.rel='stylesheet';css.href='/api/v1/afiliados-assets/workspace.css';
+      css.rel='stylesheet';css.href='/api/v1/afiliados-assets/workspace.css?v=af-shortener-20261126';
       const styled=new Promise((resolve,reject)=>{
         css.onload=resolve;
         css.onerror=()=>reject(Error('O estilo de Afiliados não pôde ser carregado.'));
@@ -492,19 +492,22 @@
     const c=context(),view=affiliatePages[c.route],whatsappAvailable=affiliateDevices();
     let host=$('osAffiliateView');
     if(affiliateMounted&&affiliateMounted.host===host&&affiliateMounted.tenantId===c.tenantId&&
-        affiliateMounted.whatsappAvailable===whatsappAvailable){
+        affiliateMounted.whatsappAvailable===whatsappAvailable&&
+        (affiliateMounted.view==='links')===(view==='links')){
       affiliateMounted.controller.setView(view);
+      affiliateMounted.view=view;
       return;
     }
     pageHTML('<section id="osAffiliateView" aria-label="Gestão de afiliados">'+loading('Carregando Afiliados…')+'</section>');
     host=$('osAffiliateView');
     try{
-      const workspace=await loadAffiliateAssets();
+      const nativeWorkspace=await loadAffiliateAssets();
+      const workspace=view==='links'?await import('/api/v1/afiliados-assets/shortener.js?v=1'):nativeWorkspace;
       if(!current(c)||host!==$('osAffiliateView'))return;
       const controller=workspace.mount({host,tenantId:c.tenantId,view,request,icon,
         open:target=>open(target==='dashboard'?'dashboard':'afiliados-'+target),
         showNotice:toast,whatsappAvailable});
-      affiliateMounted={host,controller,tenantId:c.tenantId,whatsappAvailable};
+      affiliateMounted={host,controller,tenantId:c.tenantId,whatsappAvailable,view};
     }catch(error){
       if(current(c)&&host===$('osAffiliateView'))host.innerHTML='<section class="os-card"><p class="os-notice os-error" role="alert">Não foi possível abrir Afiliados.</p>'+routeButton('Tentar novamente',c.route,'os-outline','refresh')+'</section>';
     }

@@ -1,0 +1,9 @@
+# Preserve all previously published Orion niches and services.
+ARG BASE_IMAGE=ghcr.io/qgbaltigo/orion-assistente-api@sha256:8ddab344c7b5d564288d09edfc218374fcf2a6c31de6c7fd00bac149b32fc791
+FROM ${BASE_IMAGE}
+ARG ORION_RELEASE
+LABEL org.opencontainers.image.revision=$ORION_RELEASE
+COPY --chown=appuser:appuser app/affiliate_shortener.py /srv/app/app/
+COPY --chown=appuser:appuser app/static/orion-affiliate-shortener.js app/static/orion-affiliate-shortener.css /srv/app/app/static/
+COPY --chown=appuser:appuser scripts/patch_affiliate_shortener.py /srv/app/scripts/
+RUN python /srv/app/scripts/patch_affiliate_shortener.py /srv/app
