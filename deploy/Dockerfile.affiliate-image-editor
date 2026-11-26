@@ -4,6 +4,6 @@ ARG ORION_RELEASE
 LABEL org.opencontainers.image.revision=$ORION_RELEASE
 USER root
 COPY --chown=appuser:appuser app/static/orion-affiliate-workspace.js app/static/orion-affiliate-image-editor.css /tmp/affiliate-image-release/app/static/
-COPY --chown=appuser:appuser scripts/patch_affiliate_image_editor.py /tmp/affiliate-image-release/
+COPY --chown=appuser:appuser scripts/patch_affiliate_image_editor.py affiliate-workspace-baseline.js /tmp/affiliate-image-release/
 RUN python /tmp/affiliate-image-release/patch_affiliate_image_editor.py /srv/app /tmp/affiliate-image-release && rm -rf /tmp/affiliate-image-release
 USER appuser

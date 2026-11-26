@@ -12,10 +12,22 @@ def patch(root,source):
     root,source=Path(root),Path(source)
     static=root/"app/static"
     js=static/"orion-affiliate-workspace.js"
-    original=js.read_bytes()
-    blob=hashlib.sha1(b"blob "+str(len(original)).encode()+b"\0"+original).hexdigest()
-    if blob!="af7c841b1561a7fed4b2be23450ae4d6986cb742":
-        raise RuntimeError("Production affiliate UI changed; review and rebase the editor")
+    # Merge only reviewed changes into the shipped module. Both source versions
+    # are repository files, never generated from production state or secrets.
+    from difflib import SequenceMatcher
+    baseline=(source/"affiliate-workspace-baseline.js").read_text().splitlines(keepends=True)
+    replacement=(source/"app/static/orion-affiliate-workspace.js").read_text().splitlines(keepends=True)
+    live=js.read_text()
+    groups=SequenceMatcher(None,baseline,replacement,autojunk=False).get_grouped_opcodes(2)
+    for group in groups:
+        old="".join(baseline[group[0][1]:group[-1][2]])
+        new="".join(replacement[group[0][3]:group[-1][4]])
+        if old==new:
+            continue
+        if live.count(old)!=1:
+            # Only the non-sensitive frontend anchor is displayed for review.
+            raise RuntimeError("Production affiliate UI anchor changed: "+old[:240])
+        live=live.replace(old,new,1)
     suite=static/"orion-suite.js"
     s=suite.read_text()
     for asset in ("workspace.css","workspace.js"):
@@ -29,7 +41,7 @@ def patch(root,source):
     if p.count(old)!=1:
         raise RuntimeError("Production API allowlist changed")
     p=p.replace(old,'    "POST": (r"templates/preview-image|templates/(?:default|[a-f0-9]{32})/default|offers|offers/demo|',1)
-    js.write_bytes((source/"app/static/orion-affiliate-workspace.js").read_bytes())
+    js.write_text(live)
     css=static/"orion-affiliate-workspace.css"
     css.write_text(css.read_text().rstrip()+"\n\n"+(source/"app/static/orion-affiliate-image-editor.css").read_text())
     suite.write_text(s);proxy.write_text(p)

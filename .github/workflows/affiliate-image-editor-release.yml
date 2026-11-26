@@ -17,6 +17,8 @@ jobs:
       IMAGE: ghcr.io/qgbaltigo/orion-assistente-api:affiliate-image-editor-${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -39,10 +41,16 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Preparar imagem incremental do painel
         run: |
+          git show 094964bae84ae860cc4067aaa52fabec0ea128a8:app/static/orion-affiliate-workspace.js > affiliate-workspace-baseline.js
           docker pull "$BASE"
           docker build --build-arg BASE_IMAGE="$BASE" --build-arg ORION_RELEASE="$GITHUB_SHA" -f deploy/Dockerfile.affiliate-image-editor -t "$IMAGE" .
           test "$(docker image inspect --format '{{.Config.User}}' "$BASE")" = "$(docker image inspect --format '{{.Config.User}}' "$IMAGE")"
           test "$(docker image inspect --format '{{json .Config.Cmd}}' "$BASE")" = "$(docker image inspect --format '{{json .Config.Cmd}}' "$IMAGE")"
+          cid=$(docker create "$IMAGE")
+          docker cp "$cid:/srv/app/app/static/orion-affiliate-workspace.js" app/static/orion-affiliate-workspace.js
+          docker rm "$cid"
+          node --input-type=module --check < app/static/orion-affiliate-workspace.js
+          node --test --test-reporter=spec ui-tests/affiliate-image-editor.test.mjs ui-tests/affiliate-automations.test.mjs ui-tests/affiliate-offers.test.mjs ui-tests/affiliate-history.test.mjs
           docker push "$IMAGE"
           docker image inspect "$IMAGE" --format '{{index .RepoDigests 0}}' | tee affiliate-image-editor-image.txt
       - uses: actions/upload-artifact@v4
