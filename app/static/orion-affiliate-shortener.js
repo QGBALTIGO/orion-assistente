@@ -29,7 +29,7 @@ export function mount({host,tenantId,request,icon,showNotice}) {
     host.innerHTML='<div class="af-native-content af-page af-shortener">'+header()+
       '<section class="os-card af-card">'+cardHead("link","Spoo.me","Domínio genérico compartilhado, sem redirecionamento pela Orion.")+
       (available===null?'<div class="os-loading" role="status"><span class="os-spinner"></span>Conferindo disponibilidade…</div>':
-        available===false?notice("A ferramenta está preparada, mas ainda não foi liberada.")+btn("Verificar novamente","refresh",'data-shortener="check"'):
+        available===false?notice("O encurtamento dentro da Orion aguarda liberação do provedor. Por enquanto, você pode criar e gerenciar seus links diretamente no Spoo.me.")+'<div class="af-row">'+btn("Verificar novamente","refresh",'data-shortener="check"')+'<a class="os-button os-outline" href="https://spoo.me/" target="_blank" rel="noopener noreferrer">Abrir Spoo.me '+icon("external")+'</a></div>':
         connected?'<div class="af-row"><span class="os-badge os-success">Conectado nesta sessão</span>'+btn("Desconectar","close",'data-shortener="disconnect"')+'</div>':
         '<form class="os-form af-form" data-shortener-form="connect"><label for="shortener-key">Chave da sua conta Spoo.me<input id="shortener-key" type="password" name="key" required minlength="16" maxlength="256" autocomplete="off" spellcheck="false"></label>'+
         '<p class="af-muted">Use a chave da sua própria conta, com permissões para links e estatísticas. A chave é utilizada apenas nesta tela e não é gravada no banco ou armazenamento do navegador pela Orion. O histórico permanece na sua conta Spoo.me.</p>'+
@@ -145,7 +145,7 @@ export function mount({host,tenantId,request,icon,showNotice}) {
         if(!await confirmAction("Excluir link?","O endereço poderá parar de funcionar para todas as pessoas que o receberam."))return;
         if(signal.aborted)return;
         await call("delete",{id:row.id});if(signal.aborted)return;
-        stats=null;renderStats();notify("Link excluído.");await loadHistory();
+        stats=null;if(result?.short_url===row.short_url){result=null;renderResult();}renderStats();notify("Link excluído.");await loadHistory();
       }
     }catch(error){if(!signal.aborted)message(error.message||"Não foi possível concluir a operação.",true);}
     finally{if(!signal.aborted)setBusy(false);}

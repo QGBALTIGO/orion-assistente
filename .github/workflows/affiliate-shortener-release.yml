@@ -1,0 +1,68 @@
+name: Orion - Encurtador universal - publicação controlada
+on:
+  push:
+    branches: [codex/afiliados-encurtador-universal-20261126]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    env:
+      BASE: ghcr.io/qgbaltigo/orion-assistente-api@sha256:8ddab344c7b5d564288d09edfc218374fcf2a6c31de6c7fd00bac149b32fc791
+      IMAGE: ghcr.io/qgbaltigo/orion-assistente-api:affiliate-shortener-${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Construir sobre o digest de produção
+        run: |
+          docker pull "$BASE"
+          docker build --build-arg BASE_IMAGE="$BASE" --build-arg ORION_RELEASE="$GITHUB_SHA" -f deploy/Dockerfile.affiliate-shortener -t "$IMAGE" .
+          test "$(docker image inspect --format '{{.Config.User}}' "$BASE")" = "$(docker image inspect --format '{{.Config.User}}' "$IMAGE")"
+          test "$(docker image inspect --format '{{json .Config.Cmd}}' "$BASE")" = "$(docker image inspect --format '{{json .Config.Cmd}}' "$IMAGE")"
+      - name: Testar código no runtime real empacotado
+        run: |
+          docker run --rm --entrypoint python "$IMAGE" -c 'from app.main import app; from app.affiliate_shortener import enabled; from app.affiliate_workspace import router; assert not enabled(); assert any(r.path.endswith("/api/links/status") for r in router.routes); assert any(r.path.endswith("/api/links/{action}") for r in router.routes)'
+          docker run --rm -v "$GITHUB_WORKSPACE/tests/unit/test_affiliate_shortener.py:/tmp/test_affiliate_shortener.py:ro" --entrypoint python "$IMAGE" -m pytest -q /tmp/test_affiliate_shortener.py -o asyncio_mode=auto
+          mkdir -p packaged
+          cid=$(docker create "$IMAGE")
+          docker cp "$cid:/srv/app/app/static/." packaged/
+          docker rm "$cid"
+          node --check packaged/orion-suite.js
+          node --input-type=module --check < packaged/orion-affiliate-shortener.js
+          grep -Fq "['afiliados-links','Encurtador de links','link']" packaged/orion-suite.js
+      - name: Testes DOM e navegador
+        run: |
+          npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+          node --test --test-reporter=spec ui-tests/affiliate-shortener.test.mjs
+          python -m pip install playwright==1.58.0
+          python -m playwright install --with-deps chromium webkit
+          python ui-tests/affiliate-shortener-layout.py --engine chromium --assets packaged
+          python ui-tests/affiliate-shortener-layout.py --engine webkit --assets packaged
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: affiliate-shortener-browser
+          path: artifacts/affiliate-shortener/
+      - name: Publicar imagem validada no GHCR
+        run: |
+          docker push "$IMAGE"
+          docker image inspect "$IMAGE" --format '{{index .RepoDigests 0}}' | tee affiliate-shortener-image.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: affiliate-shortener-image
+          path: affiliate-shortener-image.txt

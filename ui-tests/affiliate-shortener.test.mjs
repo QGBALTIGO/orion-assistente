@@ -30,7 +30,7 @@ async function setup(enabled=true){
 }
 test('disabled tool never contacts provider',async()=>{
   const c=await setup(false);
-  try{assert.match(c.host.textContent,/ainda não foi liberada/);assert.equal(c.$('[data-shortener-form="connect"]'),null);assert.equal(c.calls.length,1);}
+  try{assert.match(c.host.textContent,/aguarda liberação do provedor/);assert.equal(c.$('[data-shortener-form="connect"]'),null);assert.equal(c.calls.length,1);}
   finally{c.close();}
 });
 test('connect, create, render real count, search, stats, disconnect',async()=>{
