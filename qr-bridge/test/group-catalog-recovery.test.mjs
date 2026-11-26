@@ -169,12 +169,16 @@ test('missing group envelope, all-invalid data and provider failures fail closed
 test('refuses recovery after an upstream refusal, missing query or stale authorization', async () => {
   const extractMetadata = () => assert.fail('unexpected parser call');
   const provider = fixture({
-    stock: () => {throw new Error('synthetic private provider refusal ' + participant);},
+    stock: () => {
+      throw Object.assign(new Error('synthetic private provider refusal ' + participant), {
+        isBoom: true, data: 403, output: {statusCode: 500},
+      });
+    },
     extractMetadata,
   });
   await assert.rejects(provider.read());
   assert.deepEqual(provider.calls, ['list']);
-  assert.ok(provider.events.some(event => event.stage === 'sdk' && event.kind === 'provider'));
+  assert.deepEqual(provider.events, [{stage: 'sdk', kind: 'provider', status: 403}]);
   assert.ok(!JSON.stringify(provider.events).includes(participant));
 
   const unsupported = fixture({stock: parserError, extractMetadata, queryAvailable: false});

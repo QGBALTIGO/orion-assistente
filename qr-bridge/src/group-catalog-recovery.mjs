@@ -1,6 +1,10 @@
 import {GROUP_CONTACTS_LIMITS,groupContactsId} from './device-group-contacts.mjs';
 
 function providerStatus(error) {
+  // Baileys stores the provider IQ error code in Boom.data while output
+  // carries its generic HTTP mapping. Never log provider messages or objects.
+  const iqCode=error?.isBoom===true?error.data:undefined;
+  if(Number.isInteger(iqCode)&&iqCode>=400&&iqCode<=599)return iqCode;
   const status=error?.output?.statusCode??error?.statusCode;
   return Number.isInteger(status)&&status>=400&&status<=599?status:undefined;
 }
