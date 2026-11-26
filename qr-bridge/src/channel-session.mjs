@@ -259,8 +259,13 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
   const close=()=>{if(closed)return;closed=true;state='stopped';qrValue=null;pairAttempt=null;cancel(pairTimer);cancel(noticeTimer);cancel(assistantTimer);assistantIngress?.abandon();abort.abort();health.stop();deviceRuntime?.close();proxyTransport?.close();outgoingPresence.close();for(const lease of typingLeases)lease.stop();typingLeases.clear();client.ev.removeAllListeners();try{client.end(undefined);}catch{}};
   const recoveryTenant=process.env.ORION_GROUP_CATALOG_RECOVERY_TENANT;
   const groupQuietUntil=Date.parse(process.env.ORION_GROUP_CATALOG_QUIET_UNTIL??'');
+  const groupScope=()=>{
+    const device=context.deviceSnapshot?.();
+    return current()&&device?JSON.stringify([device.id,device.generation,device.settings_revision]):null;
+  };
   const groupCatalog=recoveryTenant&&context.tenantId===recoveryTenant
     ?createGroupCatalogReader({client,now,cooldownMs:15*60_000,quietUntil:Number.isFinite(groupQuietUntil)?groupQuietUntil:0,
+      membershipScope:groupScope,
       onFailure:details=>console.warn(JSON.stringify({
       event:'orion_group_catalog_diagnostic',tenant_id:context.tenantId,...details
     }))}):undefined;
@@ -284,6 +289,10 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
   const groupAdd=createGroupAddSocket({...deviceOptions.groupAddOptions,client,isCurrent:current,
     isConnected:()=>state==='connected',deviceSnapshot:()=>context.deviceSnapshot?.(),schedule,cancel,
     readParticipatingGroups:groupCatalog,
+    verifyParticipatingGroup:groupCatalog?.confirmMembership,
+    onPreflightFailure:groupCatalog?details=>console.warn(JSON.stringify({
+      event:'orion_group_add_preflight_failed',tenant_id:context.tenantId,...details
+    })):undefined,
     assertMutationReady:async()=>{await guarded();if(!groupMutationReady())throw Error('group_add_unavailable');},
     mutationCurrent:groupMutationReady});
   async function relayText(phone,text,{isCurrent:operationCurrent=()=>true,maxTextChars=1200,device=false,source='automation',

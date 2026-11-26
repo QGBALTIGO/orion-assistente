@@ -1,4 +1,4 @@
-import {GROUP_CONTACTS_LIMITS,groupContactsId} from './device-group-contacts.mjs';
+import {GROUP_CONTACTS_LIMITS,groupContactGroups,groupContactsId} from './device-group-contacts.mjs';
 
 const MINUTE=60_000;
 const MAX_COOLDOWN=60*MINUTE;
@@ -45,15 +45,17 @@ function parseGroups(packet,extractMetadata) {
  * The caller still verifies the socket and lease before and after catalog reads.
  */
 export function createGroupCatalogReader({
-  client,extractMetadata,onFailure=()=>{},now=Date.now,cooldownMs=5*MINUTE,quietUntil=0
+  client,extractMetadata,onFailure=()=>{},now=Date.now,cooldownMs=5*MINUTE,quietUntil=0,
+  membershipScope=()=>null
 }) {
-  let pending,blockedUntil=quietUntil,delay=cooldownMs;
+  let pending,pendingScope,membership,blockedUntil=quietUntil,delay=cooldownMs;
   const limited=()=>Object.assign(Error('group_catalog_rate_limited'),{
     groupCatalogReason:'provider_rate_limited',
     retryAfterSeconds:Math.max(1,Math.ceil((blockedUntil-now())/1000))
   });
   const defer=()=>{
     blockedUntil=now()+delay;
+    membership=null;
     delay=Math.min(delay*2,MAX_COOLDOWN);
     return limited();
   };
@@ -92,14 +94,32 @@ export function createGroupCatalogReader({
     onFailure({stage:'recovered',kind:'parser',omitted:result.omitted});
     return result.groups;
   }
-  return async function read({beforeRetry}={}) {
+  async function read({beforeRetry}={}) {
     if(now()<blockedUntil)throw limited();
+    const startedIn=membershipScope();
+    if(pending&&pendingScope!==startedIn)throw Error('group_catalog_scope_changed');
     if(!pending){
+      pendingScope=startedIn;
       pending=fetchCatalog(beforeRetry).then(groups=>{
         delay=cooldownMs;
+        if(startedIn!==null&&startedIn===membershipScope()){
+          // Only the successful roster's group IDs are retained. Admin rights
+          // and participant membership are always checked in fresh metadata.
+          try{membership={scope:startedIn,ids:groupContactGroups(groups).ids,until:now()+2*MINUTE};}
+          catch{membership=null;}
+        }
         return groups;
-      }).finally(()=>{pending=null;});
+      }).finally(()=>{pending=null;pendingScope=null;});
     }
     return pending;
-  };
+  }
+  async function confirmMembership(groupId,options){
+    if(now()<blockedUntil)throw limited();
+    const currentScope=membershipScope();
+    if(membership&&membership.scope===currentScope&&now()<membership.until&&membership.ids.has(groupId))return true;
+    const groups=await read(options);
+    if(currentScope!==membershipScope())throw Error('group_catalog_scope_changed');
+    return groupContactGroups(groups).ids.has(groupId);
+  }
+  return Object.assign(read,{confirmMembership});
 }

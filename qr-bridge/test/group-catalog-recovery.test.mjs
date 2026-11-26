@@ -32,7 +32,7 @@ async function installedParser() {
   return extractGroupMetadata;
 }
 
-function fixture({stock, raw, extractMetadata, queryAvailable = true, now}) {
+function fixture({stock, raw, extractMetadata, queryAvailable = true, now, membershipScope}) {
   const calls = [];
   const events = [];
   const forbidden = name => async () => {
@@ -58,7 +58,9 @@ function fixture({stock, raw, extractMetadata, queryAvailable = true, now}) {
     groupInviteCode: forbidden('invite'),
     sendMessage: forbidden('message'),
   };
-  const read = createGroupCatalogReader({client, extractMetadata, now, onFailure: event => events.push(event)});
+  const read = createGroupCatalogReader({
+    client, extractMetadata, now, membershipScope, onFailure: event => events.push(event),
+  });
   return {read, client, calls, events};
 }
 
@@ -264,6 +266,135 @@ test('a rate limit from parser recovery only pauses that socket reader', async (
   assert.deepEqual(blocked.calls, ['list', 'read-iq']);
   assert.deepEqual(await unaffected.read(), {});
   assert.deepEqual(unaffected.calls, ['list']);
+});
+
+test('a participating group ID is reused within two minutes and looked up again at expiry', async () => {
+  const groupId = firstId + '@g.us';
+  let clock = 1_000_000;
+  let roster = {[groupId]: {id: groupId, subject: 'Fixture', size: 0}};
+  const d = fixture({
+    stock: () => roster,
+    now: () => clock,
+    membershipScope: () => 'device:generation:1',
+  });
+  await d.read();
+  roster = {};
+  clock += 119_999;
+  assert.equal(await d.read.confirmMembership(groupId), true);
+  assert.deepEqual(d.calls, ['list']);
+  clock++;
+  assert.equal(await d.read.confirmMembership(groupId), false);
+  assert.deepEqual(d.calls, ['list', 'list']);
+});
+
+test('a scope change refreshes participation and a scope without identity never reuses membership', async () => {
+  const groupId = firstId + '@g.us';
+  let scope = 'device:generation:1';
+  let roster = {[groupId]: {id: groupId, subject: 'Fixture', size: 0}};
+  const d = fixture({stock: () => roster, membershipScope: () => scope});
+  assert.equal(await d.read.confirmMembership(groupId), true);
+  scope = 'device:generation:2';
+  roster = {};
+  assert.equal(await d.read.confirmMembership(groupId), false);
+  scope = null;
+  roster = {[groupId]: {id: groupId, subject: 'Fixture', size: 0}};
+  assert.equal(await d.read.confirmMembership(groupId), true);
+  roster = {};
+  assert.equal(await d.read.confirmMembership(groupId), false);
+  assert.deepEqual(d.calls, ['list', 'list', 'list', 'list']);
+});
+
+test('a stale in-flight roster cannot prove participation for either scope after a scope change', async () => {
+  const groupId = firstId + '@g.us';
+  let scope = 'device:generation:1';
+  let finishPreviousRead;
+  const previousRead = new Promise(resolve => { finishPreviousRead = resolve; });
+  let firstRequest = true;
+  const d = fixture({
+    membershipScope: () => scope,
+    stock: () => {
+      if (!firstRequest) return {};
+      firstRequest = false;
+      return previousRead;
+    },
+  });
+  const originalRequest = assert.rejects(d.read.confirmMembership(groupId), /group_catalog_scope_changed/);
+  assert.deepEqual(d.calls, ['list']);
+  scope = 'device:generation:2';
+  await assert.rejects(d.read.confirmMembership(groupId), /group_catalog_scope_changed/);
+  assert.deepEqual(d.calls, ['list']);
+  finishPreviousRead({[groupId]: {id: groupId, subject: 'Fixture', size: 0}});
+  await originalRequest;
+  assert.equal(await d.read.confirmMembership(groupId), false);
+  assert.deepEqual(d.calls, ['list', 'list']);
+});
+
+test('cached participation is unavailable during provider cooldown', async () => {
+  const groupId = firstId + '@g.us';
+  let clock = 1_000_000;
+  let limited = false;
+  let roster = {[groupId]: {id: groupId, subject: 'Fixture', size: 0}};
+  const d = fixture({
+    now: () => clock,
+    membershipScope: () => 'device:generation:1',
+    stock: () => {
+      if (limited) throw Object.assign(new Error('synthetic limit'), {isBoom: true, data: 429});
+      return roster;
+    },
+  });
+  assert.equal(await d.read.confirmMembership(groupId), true);
+  limited = true;
+  const cooldown = {groupCatalogReason: 'provider_rate_limited', retryAfterSeconds: 300};
+  await assert.rejects(d.read(), cooldown);
+  await assert.rejects(d.read.confirmMembership(groupId), cooldown);
+  assert.deepEqual(d.calls, ['list', 'list']);
+  clock += 300_000;
+  limited = false;
+  roster = {};
+  assert.equal(await d.read.confirmMembership(groupId), false);
+  assert.deepEqual(d.calls, ['list', 'list', 'list']);
+});
+
+test('cached participation cannot authorize an add after the fresh destination loses self admin', async () => {
+  const groupId = firstId + '@g.us';
+  const catalogAdmin = {
+    id: groupId, subject: 'Fixture', size: 1, participants: [{id: participant, admin: 'admin'}],
+  };
+  const d = fixture({stock: () => ({[groupId]: catalogAdmin}), membershipScope: () => 'device:generation:1'});
+  await d.read();
+  d.client.user = {id: participant};
+  d.client.groupMetadata = async id => {
+    assert.equal(id, groupId);
+    d.calls.push('fresh-metadata');
+    return {...catalogAdmin, participants: [{id: participant, admin: null}]};
+  };
+  const input = {
+    device_id: '27b464f4-9ff9-4472-87ec-c055e9352412',
+    generation: '690c2416-2c6c-4a90-a85f-63a760873446',
+    settings_revision: 1,
+    group_id: groupId,
+    operation_id: '5fc95916-02b2-4e40-8ac4-fb0b63af1d72',
+    claim_token: '13c09517-431a-4ac1-8994-553a2d4ff55f',
+    phone: '+15559999900',
+  };
+  const preflight = [];
+  const groupAdd = createGroupAddSocket({
+    client: d.client,
+    isConnected: () => true,
+    isCurrent: () => true,
+    deviceSnapshot: () => ({id: input.device_id, generation: input.generation, settings_revision: input.settings_revision}),
+    assertMutationReady: async () => {},
+    mutationCurrent: () => true,
+    verifyParticipatingGroup: d.read.confirmMembership,
+    onPreflightFailure: event => preflight.push(event),
+  });
+  await assert.rejects(groupAdd('add', input, {
+    authorize: async () => {},
+    beforeAttempt: async () => assert.fail('no attempt may be reserved'),
+    onAttempt: () => assert.fail('no attempt may be marked'),
+  }), {groupAddReason: 'not_admin'});
+  assert.deepEqual(d.calls, ['list', 'fresh-metadata']);
+  assert.deepEqual(preflight, [{stage: 'destination_metadata', reason: 'not_admin'}]);
 });
 
 test('private catalog reads expose only bounded cooldown fields and hide them from mutation and receipt routes', async () => {

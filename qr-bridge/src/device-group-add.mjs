@@ -79,6 +79,12 @@ function providerOutcome(value,phone,metadata){
 
 export function createGroupAddSocket({client,isCurrent,isConnected,deviceSnapshot,assertMutationReady,mutationCurrent,
   readParticipatingGroups=()=>client.groupFetchAllParticipating(),
+  verifyParticipatingGroup=async groupId=>{
+    const raw=await client.groupFetchAllParticipating();
+    try{return groupContactGroups(raw).ids.has(groupId);}
+    catch{throw error('group_unavailable');}
+  },
+  onPreflightFailure=()=>{},
   schedule=setTimeout,cancel=clearTimeout,timeoutMs=GROUP_ADD_LIMITS.timeout_ms,
   readTimeoutMs=GROUP_ADD_READ_TIMEOUT_MS}={}){
   if(!Number.isSafeInteger(timeoutMs)||timeoutMs<1||timeoutMs>GROUP_ADD_LIMITS.timeout_ms||
@@ -87,7 +93,10 @@ export function createGroupAddSocket({client,isCurrent,isConnected,deviceSnapsho
   let busy=false;
   return async function run(action,input,{authorize,beforeAttempt,onAttempt,isExpired=()=>false}={}){
     if(!validGroupAddRequest(action,input)||action==='lookup'||typeof authorize!=='function')throw error('context_changed');
-    if(busy)throw error('device_busy');
+    if(busy){
+      if(action==='add')onPreflightFailure({stage:'device',reason:'device_busy'});
+      throw error('device_busy');
+    }
     let expired=false,timer;
     const current=()=>{
       const snapshot=deviceSnapshot?.();
@@ -106,16 +115,26 @@ export function createGroupAddSocket({client,isCurrent,isConnected,deviceSnapsho
     };
     busy=true;
     const work=(async()=>{
+      let stage='authorization',attempted=false;
       try{
         await guard();
+        stage='catalog';
         if(typeof client?.groupFetchAllParticipating!=='function')throw error('group_unavailable');
-        const raw=await (action==='add'?client.groupFetchAllParticipating():readParticipatingGroups({beforeRetry:guard}));
-        await guard();
-        let list;try{list=groupContactGroups(raw);}catch{throw error('group_unavailable');}
-        if(action==='groups')return boundedGroupContacts({...scope(input),groups:list.groups.map(group=>
-          ({...group,can_add:groupAddAdmin(raw[group.id],client.user)})),
-          ...(list.unavailable_groups?{unavailable_groups:list.unavailable_groups}:{})});
-        if(!list.ids.has(input.group_id)||typeof client.groupMetadata!=='function')throw error('group_unavailable');
+        if(action==='add'){
+          const present=await verifyParticipatingGroup(input.group_id,{beforeRetry:guard});
+          await guard();
+          if(!present)throw error('group_unavailable');
+        }else{
+          const raw=await readParticipatingGroups({beforeRetry:guard});
+          await guard();
+          let list;try{list=groupContactGroups(raw);}catch{throw error('group_unavailable');}
+          if(action==='groups')return boundedGroupContacts({...scope(input),groups:list.groups.map(group=>
+            ({...group,can_add:groupAddAdmin(raw[group.id],client.user)})),
+            ...(list.unavailable_groups?{unavailable_groups:list.unavailable_groups}:{})});
+          if(!list.ids.has(input.group_id))throw error('group_unavailable');
+        }
+        stage='destination_metadata';
+        if(typeof client.groupMetadata!=='function')throw error('group_unavailable');
         const metadata=await client.groupMetadata(input.group_id);await guard();
         const group=completeMetadata(metadata,input.group_id),is_admin=groupAddAdmin(metadata,client.user);
         if(action==='members'){
@@ -132,6 +151,7 @@ export function createGroupAddSocket({client,isCurrent,isConnected,deviceSnapsho
           return {status:'already_member',reason:null};
         if(typeof beforeAttempt!=='function'||typeof onAttempt!=='function'||typeof mutationCurrent!=='function'||
             typeof client.groupParticipantsUpdate!=='function')throw error('device_unavailable');
+        stage='final_authorization';
         await guard();await beforeAttempt();
         // The only participant mutation in this adapter. No invite/send fallback
         // is reachable, and a timed-out reservation is never dispatched again.
@@ -140,6 +160,7 @@ export function createGroupAddSocket({client,isCurrent,isConnected,deviceSnapsho
         // Synchronous persistence is the last boundary before invoking the SDK;
         // no broker await may consume part of the promised three-second gap.
         onAttempt();
+        attempted=true;
         const result=await client.groupParticipantsUpdate(input.group_id,[input.phone.slice(1)+'@s.whatsapp.net'],'add');
         await guard();
         const after=await client.groupMetadata(input.group_id);await guard();
@@ -148,6 +169,13 @@ export function createGroupAddSocket({client,isCurrent,isConnected,deviceSnapsho
         const outcome=providerOutcome(result,input.phone,after);
         return outcome?{status:outcome,reason:outcome==='not_added'?'provider_refused':null}:
           {status:'uncertain',reason:'provider_result_unverified'};
+      }catch(failure){
+        if(action==='add'&&!attempted){
+          const reason=failure?.groupCatalogReason==='provider_rate_limited'
+            ?'provider_rate_limited':reasonOf(failure);
+          onPreflightFailure({stage,reason});
+        }
+        throw failure;
       }finally{busy=false;}
     })();
     // Add has a controller-owned deadline so its durable receipt can distinguish
