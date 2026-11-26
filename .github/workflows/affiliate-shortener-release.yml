@@ -36,7 +36,7 @@ jobs:
           test "$(docker image inspect --format '{{json .Config.Cmd}}' "$BASE")" = "$(docker image inspect --format '{{json .Config.Cmd}}' "$IMAGE")"
       - name: Testar código no runtime real empacotado
         run: |
-          docker run --rm --entrypoint python "$IMAGE" -c 'from app.main import app; from app.affiliate_shortener import enabled; from app.affiliate_workspace import router; assert not enabled(); assert any(r.path.endswith("/api/links/status") for r in router.routes); assert any(r.path.endswith("/api/links/{action}") for r in router.routes)'
+          docker run --rm --entrypoint python "$IMAGE" -c 'from app.main import app; from app.affiliate_shortener import enabled, router; assert not enabled(); assert any(getattr(r,"path","").endswith("/api/links/status") for r in router.routes); assert any(getattr(r,"path","").endswith("/api/links/{action}") for r in router.routes)'
           docker run --rm -v "$GITHUB_WORKSPACE/tests/unit/test_affiliate_shortener.py:/tmp/test_affiliate_shortener.py:ro" --entrypoint python "$IMAGE" -m pytest -q /tmp/test_affiliate_shortener.py -o asyncio_mode=auto
           mkdir -p packaged
           cid=$(docker create "$IMAGE")
