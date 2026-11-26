@@ -1,0 +1,52 @@
+name: Orion - Minha conta unificada
+on:
+  push:
+    branches: [codex/minha-conta-unificada-20261126]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    env:
+      BASE: ghcr.io/qgbaltigo/orion-assistente-api@sha256:9620f3cbc7de13f31e151fd539d4a32b16f9d371ccd11ccb8012728604784e20
+      IMAGE: ghcr.io/qgbaltigo/orion-assistente-api:unified-account-${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Empacotar a mudança sobre produção
+        run: |
+          docker pull "$BASE"
+          docker build --build-arg BASE_IMAGE="$BASE" --build-arg ORION_RELEASE="$GITHUB_SHA" -f deploy/Dockerfile.unified-account -t "$IMAGE" .
+          test "$(docker image inspect --format '{{.Config.User}}' "$BASE")" = "$(docker image inspect --format '{{.Config.User}}' "$IMAGE")"
+          test "$(docker image inspect --format '{{json .Config.Cmd}}' "$BASE")" = "$(docker image inspect --format '{{json .Config.Cmd}}' "$IMAGE")"
+          cid=$(docker create "$IMAGE")
+          docker cp "$cid:/srv/app/app/static/." app/static/
+          docker rm "$cid"
+          node --check app/static/orion-suite.js
+      - name: Validar quatro nichos e preservar segurança da conta
+        run: |
+          npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+          node --test --test-reporter=spec ui-tests/unified-account.test.mjs ui-tests/member-account-settings.test.mjs ui-tests/admin-only-operator-navigation.test.mjs
+      - name: Publicar imagem validada no GHCR
+        run: |
+          docker push "$IMAGE"
+          docker image inspect "$IMAGE" --format '{{index .RepoDigests 0}}' | tee unified-account-image.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unified-account-image
+          path: unified-account-image.txt

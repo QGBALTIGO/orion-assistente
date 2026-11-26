@@ -1,0 +1,48 @@
+/* Minha conta — same section navigation as business settings, for every niche. */
+.os-personal-account #osHeader .os-theme { display:none; }
+.os-nav-link.os-nav-utility[aria-current=page] {color:#fff;}
+#page-member.os-admin-center-open #osMemberAccount {display:none!important;}
+#page-member.os-member-account:not(.os-admin-center-open) {box-sizing:border-box;min-width:0;width:100%;max-width:100%;font-family:var(--os-font);color:var(--os-text);}
+#page-member.os-member-account:not(.os-admin-center-open)>.header {margin-bottom:24px;}
+#page-member.os-member-account:not(.os-admin-center-open) #memberWelcome {font:550 clamp(25px,3vw,34px)/1.2 var(--os-display);letter-spacing:-.5px;color:var(--os-text);margin:4px 0;}
+#page-member.os-member-account:not(.os-admin-center-open)>.header .eyebrow {font:600 12px/1.5 var(--os-font);color:var(--os-muted);}
+#page-member.os-member-account:not(.os-admin-center-open)>.header .subhead {font:400 14px/1.5 var(--os-font);color:var(--os-muted);margin:8px 0 0;}
+.os-account-layout {min-width:0;}
+.os-account-panel,.os-account-panel #osAccountSections,.os-account-panel #osMemberAppearance {min-width:0;}
+.os-account-layout [hidden] {display:none!important;}
+.os-account-section-heading {margin:0 0 16px;}
+.os-account-section-heading h2 {font:600 19px/1.4 var(--os-font);color:var(--os-text);margin:0;}
+.os-account-section-heading p {font:400 13px/1.5 var(--os-font);color:var(--os-muted);margin:4px 0 0;}
+.os-account-layout .member-settings {max-width:none;width:100%;margin:0;gap:16px;}
+.os-account-layout .member-overview,.os-account-layout .member-settings-card {box-sizing:border-box;width:100%;max-width:none;min-width:0;background:var(--os-card);color:var(--os-text);border:1px solid var(--os-border);border-radius:18px;box-shadow:var(--os-shadow);padding:24px;margin:0;}
+.os-account-layout .member-overview h2,.os-account-layout .member-settings-heading h2 {color:var(--os-text);font:600 17px/1.4 var(--os-font);margin:0 0 8px;}
+.os-account-layout .member-detail {display:grid;grid-template-columns:minmax(80px,1fr) minmax(0,2fr);align-items:center;gap:12px;padding:14px 0;border-bottom:1px solid var(--os-border);min-width:0;}
+.os-account-layout .member-detail:last-child {border-bottom:0;}
+.os-account-layout .member-detail span,.os-account-layout .member-settings-heading p {color:var(--os-muted);font-size:14px;}
+.os-account-layout .member-detail strong {color:var(--os-text);text-align:right;overflow-wrap:anywhere;min-width:0;font-weight:600;}
+.os-account-layout .member-settings-form {margin-top:20px;gap:16px;}
+.os-account-layout .member-settings-field label {font-size:14px;font-weight:500;color:var(--os-text);}
+.os-account-layout .member-settings-field input {background:var(--os-card);border-color:var(--os-border);color:var(--os-text);font:400 16px/1.5 var(--os-font);min-height:44px;}
+.os-account-layout .member-settings-actions {border-color:var(--os-border);padding-top:16px;}
+.os-account-layout .member-settings-feedback {font-size:13px;color:var(--os-muted);}
+.os-account-layout .member-settings-feedback[data-error=true] {color:var(--os-danger);}
+.os-account-footer {display:flex;justify-content:flex-end;margin-top:20px;}
+.os-account-panel .os-appearance-options {min-width:0;}
+.os-account-panel .os-card {min-width:0;}
+@media(max-width:1023px) {
+ .os-account-layout {grid-template-columns:minmax(0,1fr);gap:18px;}
+ .os-account-layout .os-account-menu {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));position:static;gap:8px;}
+ .os-account-menu button {min-width:0;min-height:54px;gap:8px;padding:8px;border-color:var(--os-border);background:var(--os-card);}
+ .os-account-menu button>span:last-child {min-width:0;}
+ .os-account-menu strong {white-space:normal;font-size:13px;line-height:18px;}
+ .os-account-menu small {display:none;}
+ .os-account-menu .os-settings-icon {flex-shrink:0;}
+}
+@media(max-width:480px) {
+ #page-member.os-member-account:not(.os-admin-center-open)>.header {margin-bottom:18px;}
+ .os-account-layout .member-overview,.os-account-layout .member-settings-card {padding:16px;}
+ .os-account-layout .member-detail {grid-template-columns:minmax(0,1fr);gap:3px;}
+ .os-account-layout .member-detail strong {text-align:left;}
+ .os-account-panel .os-appearance-option {grid-template-columns:84px minmax(0,1fr);gap:0 10px;}
+ .os-account-footer .os-button {width:100%;min-height:44px;}
+}

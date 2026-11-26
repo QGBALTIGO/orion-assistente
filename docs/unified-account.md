@@ -1,0 +1,4 @@
+# Minha conta unificada
+Todos os nichos de cliente usam as mesmas quatro seções pessoais: Dados pessoais, Dados da empresa, Segurança e Aparência. A UI reaproveita os formulários de identidade e senha existentes, sem novas APIs nem alterações de permissões. Tema, layout e atalhos usam a mesma persistência e restrições anteriores (Odontologia permanece no layout Clássico). Links antigos de Aparência/Minha conta nas configurações são direcionados para a conta. A administração de clientes da plataforma permanece independente. Nenhuma alteração de banco, worker ou QR bridge.
+
+O release é uma camada sobre a imagem de produção confirmada, preservando alterações incrementais já publicadas. O script aplica alterações estritamente ancoradas no controlador e CSS existentes; as verificações usam os arquivos extraídos da imagem construída.

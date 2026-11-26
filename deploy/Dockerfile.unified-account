@@ -1,0 +1,9 @@
+ARG BASE_IMAGE=ghcr.io/qgbaltigo/orion-assistente-api@sha256:9620f3cbc7de13f31e151fd539d4a32b16f9d371ccd11ccb8012728604784e20
+FROM ${BASE_IMAGE}
+ARG ORION_RELEASE
+LABEL org.opencontainers.image.revision=$ORION_RELEASE
+USER root
+COPY --chown=appuser:appuser app/static/orion-account-unified.fragment.js app/static/orion-account-unified.css /srv/app/app/static/
+COPY --chown=appuser:appuser scripts/patch_unified_account.py /srv/app/scripts/
+RUN python /srv/app/scripts/patch_unified_account.py /srv/app
+USER appuser
