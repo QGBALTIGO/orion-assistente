@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
+import {Readable} from 'node:stream';
 import {test} from 'node:test';
+import {createChannelRoutes} from '../src/channel-routes.mjs';
 import {createDeviceGroupContacts, groupContactGroups} from '../src/device-group-contacts.mjs';
 import {createGroupAddSocket} from '../src/device-group-add.mjs';
 import {createGroupCatalogReader} from '../src/group-catalog-recovery.mjs';
@@ -30,7 +32,7 @@ async function installedParser() {
   return extractGroupMetadata;
 }
 
-function fixture({stock, raw, extractMetadata, queryAvailable = true}) {
+function fixture({stock, raw, extractMetadata, queryAvailable = true, now}) {
   const calls = [];
   const events = [];
   const forbidden = name => async () => {
@@ -56,7 +58,7 @@ function fixture({stock, raw, extractMetadata, queryAvailable = true}) {
     groupInviteCode: forbidden('invite'),
     sendMessage: forbidden('message'),
   };
-  const read = createGroupCatalogReader({client, extractMetadata, onFailure: event => events.push(event)});
+  const read = createGroupCatalogReader({client, extractMetadata, now, onFailure: event => events.push(event)});
   return {read, client, calls, events};
 }
 
@@ -193,4 +195,141 @@ test('refuses recovery after an upstream refusal, missing query or stale authori
   }}));
   assert.equal(rechecks, 1);
   assert.deepEqual(stale.calls, ['list']);
+});
+
+test('concurrent reads of the same socket scope share one provider request', async () => {
+  const stockResult = {[firstId + '@g.us']: {id: firstId + '@g.us', subject: 'Fixture', size: 0}};
+  let resolveStock;
+  const pending = new Promise(resolve => { resolveStock = resolve; });
+  const d = fixture({stock: () => pending, raw: () => assert.fail('unexpected fallback')});
+  const first = d.read();
+  const second = d.read();
+  resolveStock(stockResult);
+  assert.deepEqual(await Promise.all([first, second]), [stockResult, stockResult]);
+  assert.deepEqual(d.calls, ['list']);
+  assert.deepEqual(await d.read(), stockResult);
+  assert.deepEqual(d.calls, ['list', 'list']);
+});
+
+test('429 blocks new catalog reads with a doubled cooldown capped at one hour and resets after success', async () => {
+  const stockResult = {[firstId + '@g.us']: {id: firstId + '@g.us', subject: 'Fixture', size: 0}};
+  let clock = 1_000_000;
+  let limited = true;
+  const d = fixture({
+    now: () => clock,
+    stock: () => {
+      if (!limited) return stockResult;
+      throw Object.assign(new Error('synthetic private rate limit ' + participant), {
+        isBoom: true, data: 429, output: {statusCode: 500},
+      });
+    },
+    raw: () => assert.fail('rate limit must not trigger a fallback'),
+  });
+  const cooldown = seconds => error => {
+    assert.equal(error.groupCatalogReason, 'provider_rate_limited');
+    assert.equal(error.retryAfterSeconds, seconds);
+    return true;
+  };
+  let stockAttempts = 0;
+  for (const seconds of [300, 600, 1200, 2400, 3600, 3600]) {
+    await assert.rejects(d.read(), cooldown(seconds));
+    stockAttempts++;
+    assert.equal(d.calls.length, stockAttempts);
+    clock += seconds * 1000 - 1;
+    await assert.rejects(d.read(), cooldown(1));
+    assert.equal(d.calls.length, stockAttempts);
+    clock++;
+  }
+  limited = false;
+  assert.deepEqual(await d.read(), stockResult);
+  limited = true;
+  await assert.rejects(d.read(), cooldown(300));
+  assert.deepEqual(d.calls, Array(stockAttempts + 2).fill('list'));
+  assert.ok(!JSON.stringify(d.events).includes(participant));
+});
+
+test('a rate limit from parser recovery only pauses that socket reader', async () => {
+  const now = () => 1_000_000;
+  const blocked = fixture({
+    now,
+    stock: parserError,
+    raw: () => {
+      throw Object.assign(new Error('synthetic rate limit'), {isBoom: true, data: 429});
+    },
+  });
+  const unaffected = fixture({now, stock: () => ({})});
+  const limited = {groupCatalogReason: 'provider_rate_limited', retryAfterSeconds: 300};
+  await assert.rejects(blocked.read(), limited);
+  await assert.rejects(blocked.read(), limited);
+  assert.deepEqual(blocked.calls, ['list', 'read-iq']);
+  assert.deepEqual(await unaffected.read(), {});
+  assert.deepEqual(unaffected.calls, ['list']);
+});
+
+test('private catalog reads expose only bounded cooldown fields and hide them from mutation and receipt routes', async () => {
+  const scope = {
+    device_id: '27b464f4-9ff9-4472-87ec-c055e9352412',
+    generation: '690c2416-2c6c-4a90-a85f-63a760873446',
+    settings_revision: 1,
+  };
+  const memberScope = {...scope, group_id: firstId + '@g.us'};
+  const operation = {
+    ...memberScope,
+    operation_id: '5fc95916-02b2-4e40-8ac4-fb0b63af1d72',
+    claim_token: '13c09517-431a-4ac1-8994-553a2d4ff55f',
+    phone: '+15559999900',
+  };
+  let seconds = 300;
+  const managerCalls = [];
+  const refuse = tool => async (_id, _key, action) => {
+    managerCalls.push([tool, action]);
+    throw Object.assign(new Error('private provider data ' + participant), {
+      groupCatalogReason: 'provider_rate_limited',
+      retryAfterSeconds: seconds,
+    });
+  };
+  const route = createChannelRoutes({
+    env: {QR_CHANNELS_ENABLED: '1'},
+    brokerFactory: () => ({}),
+    sessionFactory: () => assert.fail('no socket or provider may be created'),
+    managerFactory: () => ({
+      deviceGroupAdd: refuse('group-add'),
+      deviceGroupContacts: refuse('group-contacts'),
+    }),
+  });
+  async function request(tool, action, input) {
+    const req = Readable.from([Buffer.from(JSON.stringify(input))]);
+    req.url = '/internal/channels/260eb770-da4d-45b1-8d9a-e37221548d12/device/' + tool + '/' + action;
+    req.method = 'POST';
+    req.headers = {'x-orion-channel-key': 'synthetic-key-'.repeat(3)};
+    const response = {};
+    const handled = await route(req, {
+      writeHead: (status, headers) => Object.assign(response, {status, headers}),
+      end: data => { response.body = JSON.parse(data); },
+    });
+    assert.equal(handled, true);
+    assert.equal(response.status, 409);
+    assert.equal(response.headers['Cache-Control'], 'no-store');
+    return response.body;
+  }
+  for (const [tool, code] of [['group-add', 'group_add_unavailable'], ['group-contacts', 'group_contacts_unavailable']]) {
+    for (const valid of [1, 300, 3600]) {
+      seconds = valid;
+      for (const [action, input] of [['groups', scope], ['members', memberScope]]) {
+        assert.deepEqual(await request(tool, action, input), {
+          error: code, reason: 'provider_rate_limited', retry_after_seconds: valid,
+        });
+      }
+    }
+    for (const invalid of [0, 3601, '300', 1.5, Infinity]) {
+      seconds = invalid;
+      assert.deepEqual(await request(tool, 'groups', scope), {error: code});
+    }
+  }
+  seconds = 300;
+  for (const action of ['add', 'lookup']) {
+    assert.deepEqual(await request('group-add', action, operation), {error: 'group_add_unavailable'});
+  }
+  assert.equal(managerCalls.length, 24);
+  assert.deepEqual(managerCalls.slice(-2), [['group-add', 'add'], ['group-add', 'lookup']]);
 });

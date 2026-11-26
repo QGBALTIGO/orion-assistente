@@ -5,17 +5,25 @@ import {createBaileysChannelSession} from './channel-session.mjs';
 import {createChannelResumeStore} from './channel-resume.mjs';
 import {validGroupContactsRequest,GROUP_CONTACTS_READ_REASONS} from './device-group-contacts.mjs';
 import {validGroupAddRequest,GROUP_ADD_REASONS} from './device-group-add.mjs';
+import {validNumberCheckRequest,NUMBER_CHECK_LIMITS,NUMBER_CHECK_REASONS} from './device-number-check.mjs';
+import {validAffiliateRequest} from './affiliate-offers.mjs';
 
 function response(res,status,data){
   res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store',
     'X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'});res.end(JSON.stringify(data));
 }
-async function body(req){
+async function body(req,maxBytes=8192){
   let size=0;const chunks=[];
-  for await(const chunk of req){size+=chunk.length;if(size>8192)throw Error('invalid_channel_request');chunks.push(chunk);}
+  for await(const chunk of req){size+=chunk.length;if(size>maxBytes)throw Error('invalid_channel_request');chunks.push(chunk);}
   const value=JSON.parse(Buffer.concat(chunks).toString());
   if(!value||typeof value!=='object'||Array.isArray(value))throw Error('invalid_channel_request');
   return value;
+}
+function groupCatalogRateLimit(error){
+  const seconds=error?.retryAfterSeconds;
+  if(error?.groupCatalogReason==='provider_rate_limited'&&Number.isInteger(seconds)&&seconds>=1&&seconds<=3600)
+    return {reason:'provider_rate_limited',retry_after_seconds:seconds};
+  return null;
 }
 export function createChannelRoutes({env=process.env,managerFactory=createChannelManager,brokerFactory=createChannelBroker,sessionFactory=createBaileysChannelSession,
   renderQr=async value=>(await import('qrcode')).default.toDataURL(value,{errorCorrectionLevel:'M',margin:2,width:370})}={}){
@@ -30,6 +38,33 @@ export function createChannelRoutes({env=process.env,managerFactory=createChanne
     const uri=new URL(req.url||'/','http://internal');
     if(!uri.pathname.startsWith('/internal/channels/'))return false;
     if(env.QR_CHANNELS_ENABLED!=='1'){response(res,423,{error:'channels_disabled'});return true;}
+    const affiliateMatch=uri.pathname.match(/^\/internal\/channels\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/affiliate\/(groups|verify|send)$/);
+    if(affiliateMatch&&!uri.search){
+      const [,id,action]=affiliateMatch,key=req.headers['x-orion-channel-key'];
+      if(typeof key!=='string'||key.length<32||key.length>256){response(res,401,{error:'channel_unauthorized'});return true;}
+      if(req.method!=='POST'){response(res,405,{error:'method_not_allowed'});return true;}
+      try{
+        const input=await body(req,action==='send'?1500000:8192);
+        if(!validAffiliateRequest(action,input))throw Error('affiliate_request_invalid');
+        response(res,200,await getManager().affiliateOffer(id,key,action,input));
+      }catch{response(res,409,{error:'affiliate_destination_unavailable'});}
+      return true;
+    }
+    const numberCheckMatch=uri.pathname.match(/^\/internal\/channels\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/device\/number-check\/check$/);
+    if(numberCheckMatch&&!uri.search){
+      const id=numberCheckMatch[1],key=req.headers['x-orion-channel-key'];
+      if(typeof key!=='string'||key.length<32||key.length>256){response(res,401,{error:'channel_unauthorized'});return true;}
+      if(req.method!=='POST'){response(res,405,{error:'method_not_allowed'});return true;}
+      try{
+        const input=await body(req,NUMBER_CHECK_LIMITS.request_bytes);
+        if(!validNumberCheckRequest(input))throw Object.assign(Error('number_check_unavailable'),{numberCheckReason:'invalid_request'});
+        response(res,200,await getManager().deviceNumberCheck(id,key,input));
+      }catch(failure){
+        const reason=NUMBER_CHECK_REASONS.includes(failure?.numberCheckReason)?failure.numberCheckReason:null;
+        response(res,409,{error:'number_check_unavailable',...(reason?{reason}:{})});
+      }
+      return true;
+    }
     const groupAddMatch=uri.pathname.match(/^\/internal\/channels\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/device\/group-add\/(groups|members|add|lookup)$/);
     if(groupAddMatch&&!uri.search){
       const [,id,action]=groupAddMatch,key=req.headers['x-orion-channel-key'];
@@ -40,6 +75,8 @@ export function createChannelRoutes({env=process.env,managerFactory=createChanne
         if(!validGroupAddRequest(action,input))throw Error('group_add_unavailable');
         response(res,200,await getManager().deviceGroupAdd(id,key,action,input));
       }catch(failure){
+        const limited=['groups','members'].includes(action)?groupCatalogRateLimit(failure):null;
+        if(limited){response(res,409,{error:'group_add_unavailable',...limited});return true;}
         const reason=['groups','members'].includes(action)&&
           GROUP_ADD_REASONS.includes(failure?.groupAddReason)
           ?failure.groupAddReason:null;
@@ -59,6 +96,8 @@ export function createChannelRoutes({env=process.env,managerFactory=createChanne
         if(!validGroupContactsRequest(action,input))throw Error('group_contacts_unavailable');
         response(res,200,await getManager().deviceGroupContacts(id,key,action,input));
       }catch(failure){
+        const limited=groupCatalogRateLimit(failure);
+        if(limited){response(res,409,{error:'group_contacts_unavailable',...limited});return true;}
         const reason=GROUP_CONTACTS_READ_REASONS.includes(failure?.groupContactsReason)
           ?failure.groupContactsReason:null;
         if(reason)console.warn(JSON.stringify({event:'orion_group_read_failed',tool:'group-contacts',action,reason}));

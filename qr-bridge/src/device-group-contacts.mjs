@@ -140,7 +140,10 @@ export function createDeviceGroupContacts({client,isCurrent,isConnected,deviceSn
         let latest;try{latest=participating(final);}catch{throw unavailable('invalid_metadata');}
         if(!latest.ids.has(input.group_id))throw unavailable('context_changed');
         return output;
-      }catch(error){throw unavailable(error?.groupContactsReason||'provider_failed');}
+      }catch(error){
+        if(error?.groupCatalogReason==='provider_rate_limited')throw error;
+        throw unavailable(error?.groupContactsReason||'provider_failed');
+      }
       finally{busy=false;}
     })();
     const deadline=new Promise((_,reject)=>{timer=schedule(()=>{expired=true;reject(unavailable('provider_timeout'));},timeoutMs);});

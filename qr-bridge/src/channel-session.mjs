@@ -258,8 +258,10 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
   const outgoingPresence=makeOutgoingPresence({socket:client,isConnected:()=>state==='connected'&&current(),typingFactory,now:presenceNow,schedule,cancel});
   const close=()=>{if(closed)return;closed=true;state='stopped';qrValue=null;pairAttempt=null;cancel(pairTimer);cancel(noticeTimer);cancel(assistantTimer);assistantIngress?.abandon();abort.abort();health.stop();deviceRuntime?.close();proxyTransport?.close();outgoingPresence.close();for(const lease of typingLeases)lease.stop();typingLeases.clear();client.ev.removeAllListeners();try{client.end(undefined);}catch{}};
   const recoveryTenant=process.env.ORION_GROUP_CATALOG_RECOVERY_TENANT;
+  const groupQuietUntil=Date.parse(process.env.ORION_GROUP_CATALOG_QUIET_UNTIL??'');
   const groupCatalog=recoveryTenant&&context.tenantId===recoveryTenant
-    ?createGroupCatalogReader({client,onFailure:details=>console.warn(JSON.stringify({
+    ?createGroupCatalogReader({client,now,cooldownMs:15*60_000,quietUntil:Number.isFinite(groupQuietUntil)?groupQuietUntil:0,
+      onFailure:details=>console.warn(JSON.stringify({
       event:'orion_group_catalog_diagnostic',tenant_id:context.tenantId,...details
     }))}):undefined;
   const groupContacts=createDeviceGroupContacts({...deviceOptions.groupContactsOptions,client,isCurrent:current,

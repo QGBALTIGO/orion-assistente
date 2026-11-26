@@ -1,5 +1,8 @@
 import {GROUP_CONTACTS_LIMITS,groupContactsId} from './device-group-contacts.mjs';
 
+const MINUTE=60_000;
+const MAX_COOLDOWN=60*MINUTE;
+
 function providerStatus(error) {
   // Baileys stores the provider IQ error code in Boom.data while output
   // carries its generic HTTP mapping. Never log provider messages or objects.
@@ -41,16 +44,29 @@ function parseGroups(packet,extractMetadata) {
 /** Recover an SDK parser failure with the same read-only participating-groups IQ.
  * The caller still verifies the socket and lease before and after catalog reads.
  */
-export function createGroupCatalogReader({client,extractMetadata,onFailure=()=>{}}) {
+export function createGroupCatalogReader({
+  client,extractMetadata,onFailure=()=>{},now=Date.now,cooldownMs=5*MINUTE,quietUntil=0
+}) {
+  let pending,blockedUntil=quietUntil,delay=cooldownMs;
+  const limited=()=>Object.assign(Error('group_catalog_rate_limited'),{
+    groupCatalogReason:'provider_rate_limited',
+    retryAfterSeconds:Math.max(1,Math.ceil((blockedUntil-now())/1000))
+  });
+  const defer=()=>{
+    blockedUntil=now()+delay;
+    delay=Math.min(delay*2,MAX_COOLDOWN);
+    return limited();
+  };
   const report=(stage,kind,error)=>{
     const status=providerStatus(error);
     onFailure({stage,kind,...(status===undefined?{}:{status})});
   };
-  return async function read({beforeRetry}={}) {
+  async function fetchCatalog(beforeRetry) {
     try{return await client.groupFetchAllParticipating();}
     catch(error){
       const parserError=error instanceof TypeError&&providerStatus(error)===undefined;
       report('sdk',parserError?'parser':'provider',error);
+      if(providerStatus(error)===429)throw defer();
       if(!parserError||typeof client.query!=='function')throw error;
     }
     await beforeRetry?.();
@@ -59,7 +75,11 @@ export function createGroupCatalogReader({client,extractMetadata,onFailure=()=>{
       packet=await client.query({tag:'iq',attrs:{to:'@g.us',xmlns:'w:g2',type:'get'},content:[
         {tag:'participating',attrs:{},content:[{tag:'participants',attrs:{}},{tag:'description',attrs:{}}]}
       ]});
-    }catch(error){report('fallback','provider',error);throw error;}
+    }catch(error){
+      report('fallback','provider',error);
+      if(providerStatus(error)===429)throw defer();
+      throw error;
+    }
     let result;
     try{
       let parser=extractMetadata;
@@ -71,5 +91,15 @@ export function createGroupCatalogReader({client,extractMetadata,onFailure=()=>{
     }catch(error){report('fallback','invalid_metadata',error);throw error;}
     onFailure({stage:'recovered',kind:'parser',omitted:result.omitted});
     return result.groups;
+  }
+  return async function read({beforeRetry}={}) {
+    if(now()<blockedUntil)throw limited();
+    if(!pending){
+      pending=fetchCatalog(beforeRetry).then(groups=>{
+        delay=cooldownMs;
+        return groups;
+      }).finally(()=>{pending=null;});
+    }
+    return pending;
   };
 }
