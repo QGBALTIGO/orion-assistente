@@ -14,6 +14,7 @@ from zoneinfo import ZoneInfo
 from PIL import Image, ImageDraw, ImageFont, ImageOps, UnidentifiedImageError
 
 from .niches import NICHES, niche_for_offer
+from .card_style import ImageStyle, decode_logo, palette
 from .providers import ProviderError, product_image
 
 
@@ -233,37 +234,72 @@ def wrap_card_text(draw, text, font, width, max_lines=3):
 
 
 def card_png(offer, template, raw_photo=None):
-    image = Image.new("RGB", (900, 970), "#f5f8fc")
+    # Keep the existing image dimensions/format and use one renderer for all
+    # transports. Previously stored templates have safe defaults.
+    try:
+        style = ImageStyle.model_validate(template.get("image_style") or {})
+    except ValueError:
+        style = ImageStyle()
+    colors = palette(template, style)
+    accent, surface, ink = colors["accent"], colors["surface"], colors["ink"]
+    image = Image.new("RGB", (900, 970), colors["background"])
     draw = ImageDraw.Draw(image)
-    accent = {"simple": "#2e7bf6", "discount": "#176e54", "coupon": "#6750bb"}[template["layout"]]
-    draw.rounded_rectangle((24, 24, 876, 946), radius=35, fill="#ffffff", outline="#dce3ee", width=3)
-    draw.rounded_rectangle((53, 52, 847, 128), radius=20, fill=accent)
-    brand, brand_font = fit_text(draw, (template.get("brand") or "Orion Afiliados")[:32], 748, 33, bold=True)
-    draw.text((76, 73), brand, font=brand_font, fill="#ffffff", anchor="lt")
+    radius = 16 if style.theme == "clean" else 35
+    draw.rounded_rectangle((24,24,876,946), radius=radius, fill=surface)
+    show_header = style.show_brand or bool(style.logo or style.handle)
+    if show_header:
+        draw.rounded_rectangle((53,52,847,128), radius=16, fill=accent)
+        start=76
+        logo=decode_logo(style.logo)
+        if logo:
+            logo.thumbnail((56,56),Image.Resampling.LANCZOS)
+            image.paste(logo,(66+(56-logo.width)//2,62+(56-logo.height)//2),logo)
+            start=136
+        brand = (template.get("brand") or "Orion Afiliados")[:32] if style.show_brand else ""
+        if brand:
+            brand, font=fit_text(draw,brand,820-start,31,bold=True)
+            draw.text((start,65 if style.handle else 74),brand,font=font,fill=colors["header_ink"],anchor="lt")
+        if style.handle:
+            handle,font=fit_text(draw,style.handle,820-start,20,minimum=14)
+            draw.text((start,101 if brand else 79),handle,font=font,fill=colors["header_ink"],anchor="lt")
     photo = safe_product_photo(raw_photo)
     if photo:
-        photo.thumbnail((760, 498))
-        image.paste(photo, ((900 - photo.width) // 2, 147 + (498 - photo.height) // 2))
+        photo.thumbnail((760,440),Image.Resampling.LANCZOS)
+        image.paste(photo,((900-photo.width)//2,147+(440-photo.height)//2))
     else:
-        draw.rounded_rectangle((53, 146, 847, 645), radius=24, fill="#eaf2ff")
-        draw.text((450, 395), "Imagem não disponível", anchor="mm", font=card_font(31), fill="#4e5a72")
-    title_font = card_font(32, True)
-    for index, line in enumerate(wrap_card_text(draw, offer["title"], title_font, 786)):
-        draw.text((57, 666 + index * 43), line, font=title_font, fill="#0f1b33", anchor="lt")
-    price, price_font = fit_text(draw, price_label(offer) or "Preço não confirmado", 786, 44, bold=True, minimum=28)
-    draw.text((57, 806), price, font=price_font, fill=accent, anchor="lt")
-    rate = discount_rate(offer)
-    badge = (f"{rate}% OFF" if template["layout"] == "discount" and rate
-             and not price_label(offer).startswith("A partir") else None)
-    if template["layout"] == "coupon" and offer.get("coupon"):
-        badge = "Cupom: " + offer["coupon"]["code"]
-    if badge:
-        badge, badge_font = fit_text(draw, badge, 786, 25)
-        draw.text((57, 877), badge, font=badge_font, fill="#0f1b33", anchor="lt")
-    footer, footer_font = fit_text(draw, "Demonstração" if offer.get("demo") else "Publicidade • " + retailer_label(offer), 786, 16, minimum=14)
-    draw.text((57, 917), footer, font=footer_font, fill="#4e5a72", anchor="lt")
-    saved = io.BytesIO()
-    image.save(saved, "PNG", optimize=False)
+        draw.rounded_rectangle((53,146,847,588),radius=20,fill=colors["background"])
+        from .card_style import ink as background_ink
+        draw.text((450,368),"Imagem do produto" if offer.get("demo") else "Imagem não disponível",
+                  anchor="mm",font=card_font(30),fill=background_ink(colors["background"]))
+    title_font=card_font(32,True)
+    for index,line in enumerate(wrap_card_text(draw,offer["title"],title_font,786)):
+        draw.text((57,610+index*43),line,font=title_font,fill=ink,anchor="lt")
+    price,price_font=fit_text(draw,price_label(offer) or "Preço não confirmado",786,44,bold=True,minimum=28)
+    draw.text((57,746),price,font=price_font,fill=colors["price"],anchor="lt")
+    details=[]
+    old=previous_price(offer)
+    if style.show_previous and old is not None:
+        details.append("De "+money(old,offer.get("currency") or "BRL"))
+    rate=discount_rate(offer)
+    if style.show_discount and template.get("layout")=="discount" and rate and not price_label(offer).startswith("A partir"):
+        details.append(f"{rate}% OFF")
+    if style.show_coupon and template.get("layout")=="coupon" and isinstance(offer.get("coupon"),dict) and offer["coupon"].get("code"):
+        details.append("Cupom: "+str(offer["coupon"]["code"]))
+    if details:
+        detail,font=fit_text(draw," • ".join(details),786,23,minimum=16)
+        draw.text((57,805),detail,font=font,fill=ink,anchor="lt")
+    if style.cta:
+        draw.rounded_rectangle((53,844,847,894),radius=12,fill=accent)
+        cta,font=fit_text(draw,style.cta,748,24,bold=True,minimum=16)
+        draw.text((450,869),cta,font=font,fill=colors["header_ink"],anchor="mm")
+    disclosure="Demonstração" if offer.get("demo") else "Publicidade"
+    if style.show_store and not offer.get("demo"):
+        disclosure+=" • "+retailer_label(offer)
+    footer=disclosure+(" • "+style.footer if style.footer else "")
+    footer,font=fit_text(draw,footer,786,16,minimum=14)
+    draw.text((57,914),footer,font=font,fill=ink,anchor="lt")
+    saved=io.BytesIO()
+    image.save(saved,"PNG",optimize=False)
     return saved.getvalue()
 
 

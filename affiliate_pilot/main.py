@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
 import json
 import os
@@ -24,6 +25,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, StringConstraints
 
 from .engine import DEMO, Engine
+from .card_style import ImageStyle
+from .offers import card_png
 from .analytics import Analytics
 from .niches import NICHES, PUBLIC_NICHES, SORTS, search_niche
 from .offers import caption, formatted_html, local_day_start, next_slot, render_card, validate_length, validate_template
@@ -102,6 +105,7 @@ class Template(Input):
     media: Literal["card", "text"] = "card"
     text: str = Field(min_length=1, max_length=1900)
     style: Literal["plain", "whatsapp"] = "plain"
+    image_style: ImageStyle = Field(default_factory=ImageStyle)
 
 
 class PhraseEdit(Input):
@@ -330,8 +334,23 @@ def create_app(store=None, *, sending=None, origin=None, start_worker=True):
                   "promotech_automation": bool(app.state.engine.promotech and
                        app.state.engine.promotech.binding["company"] == company),
                   "whatsapp_link_available": bool(wa_token and wa_port and user["username"] == wa_owner)}
+        result["image_templates_v1"] = True
+        preferences=app.state.store.get(company,"preferences","templates") or {}
+        preferred=preferences.get("default")
+        if isinstance(preferred,str) and app.state.store.get(company,"template",preferred):
+            result["deal_template"]=preferred
+        # Logos are only needed in the template editor and actual renderer,
+        # not in the history response (which can contain 120 job snapshots).
+        for job in result["jobs"]:
+            saved = (job.get("doc") or {}).get("template")
+            if isinstance(saved, dict) and isinstance(saved.get("image_style"), dict):
+                saved["image_style"] = {k:v for k,v in saved["image_style"].items() if k!="logo"}
         for kind in ("connection", "destination", "template", "offer", "rule", "decision", "product_flag"):
             result[kind] = app.state.store.list(company, kind, limit=40)
+        if not any(t["id"]==result["deal_template"] for t in result["template"]):
+            preferred=app.state.store.get(company,"template",result["deal_template"])
+            if preferred:
+                result["template"]=result["template"][:39]+[preferred]
         telegram = next((connection for connection in result["connection"] if connection["id"] == "telegram"), {})
         wa_version = None
         wa_connected = None
@@ -675,10 +694,38 @@ def create_app(store=None, *, sending=None, origin=None, start_worker=True):
             raise HTTPException(422, "Identificador de oferta desconhecido.")
         return app.state.store.put(user["id"], "product_flag", key, payload.model_dump())
 
+    def template_document(payload, user):
+        doc = payload.model_dump()
+        doc["brand"] = (" ".join(doc["brand"].split()) or " ".join(user["name"].split()) or "Orion Afiliados")[:32]
+        return doc
+
+    @app.post("/api/templates/preview-image")
+    async def template_preview_image(payload: Template, user=User):
+        # Never create offers, jobs or publications merely to preview an image.
+        # The same renderer is used by the manual and automated transports.
+        doc = template_document(payload, user)
+        sample = {**DEMO, "title":"Produto de exemplo • Prévia do template", "price":"79.90",
+                  "price_max":"79.90","previous_price":"99.90","retailer_name":"Loja de exemplo",
+                  "coupon":{"code":"EXEMPLO"}}
+        async with render_slots:
+            image = await asyncio.to_thread(card_png, sample, doc)
+        return {"image":"data:image/png;base64," + base64.b64encode(image).decode("ascii")}
+
     @app.put("/api/templates/{ident}")
     def save_template(ident: Identifier, payload: Template, user=User):
         validate_template(payload.text)
-        return app.state.store.put(user["id"], "template", ident, payload.model_dump())
+        doc=template_document(payload,user)
+        if "image_style" not in payload.model_fields_set:
+            previous=app.state.store.get(user["id"],"template",ident)
+            if previous and "image_style" in previous:
+                doc["image_style"]=previous["image_style"]
+        return app.state.store.put(user["id"], "template", ident, doc)
+
+    @app.post("/api/templates/{ident}/default")
+    def select_default_template(ident: Identifier, user=User):
+        required(user["id"],"template",ident)
+        app.state.store.put(user["id"],"preferences","templates",{"default":ident})
+        return {"ok":True,"default":ident}
 
     @app.get("/api/offers/{ident}/preview")
     def preview(ident: str, template: Identifier = "default", destination: Identifier | None = None, user=User):

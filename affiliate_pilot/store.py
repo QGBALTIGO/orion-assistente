@@ -36,7 +36,7 @@ DEFAULT_TEMPLATE = {
 }
 DEAL_TEMPLATE_ID = "ce66e4a4ea8a4ec2924d64077fa46860"
 DEAL_TEMPLATE = {
-    "name": "PromoTech com IA", "brand": "PromoTech", "layout": "discount", "media": "card", "style": "whatsapp",
+    "name": "Oferta com IA", "brand": "", "layout": "discount", "media": "card", "style": "whatsapp",
     "text": "🔥 *{produto}*\n\n_{frase_ia}_\n\n❌ De ~{preco_anterior}~\n✅ Por *{preco_destaque}*\n\n"
             "⭐ _{avaliacao_vendas}_\n🔗 {link}\n\n{hashtags}",
 }
@@ -140,7 +140,7 @@ class Store:
             created = db.execute("INSERT OR IGNORE INTO company VALUES(?,?,?,?,?)",
                                  (company, username, name, salt, secret_hash(password, salt))).rowcount
             if created:
-                self.put(company, "template", "default", DEFAULT_TEMPLATE, db=db)
+                self.put(company, "template", "default", {**DEFAULT_TEMPLATE, "brand": name[:32]}, db=db)
         return bool(created)
 
     def authenticate(self, username, password):
@@ -168,7 +168,7 @@ class Store:
             created = db.execute("INSERT OR IGNORE INTO company VALUES(?,?,?,?,?)",
                                  (ident, username, name, secrets.token_hex(16), secrets.token_hex(32))).rowcount
             if created:
-                self.put(ident, "template", "default", DEFAULT_TEMPLATE, db=db)
+                self.put(ident, "template", "default", {**DEFAULT_TEMPLATE, "brand": name[:32]}, db=db)
                 self.put(ident, "template", DEAL_TEMPLATE_ID, {
                     **DEAL_TEMPLATE, "name": "Oferta Shopee", "brand": name[:32],
                 }, db=db)
@@ -180,8 +180,26 @@ class Store:
         with self.connect(True) as db:
             db.execute("""
                 INSERT OR IGNORE INTO record(company,kind,id,doc,at)
-                SELECT id,'template',?,?,? FROM company
+                SELECT id,'template',?,json_set(?,'$.brand',substr(name,1,32)),? FROM company
             """, (DEAL_TEMPLATE_ID, encode(DEAL_TEMPLATE), int(time.time())))
+            # Correct the legacy seed for Orion tenants only. Explicitly edited
+            # templates (including a real PromoTech brand) are left alone.
+            # No approved/pending publication snapshots are rewritten.
+            db.execute("""
+                UPDATE record SET doc=json_set(doc,'$.brand',
+                    substr((SELECT name FROM company WHERE id=record.company),1,32),
+                    '$.name','Oferta com IA')
+                WHERE kind='template' AND id=? AND json_extract(doc,'$.brand')='PromoTech'
+                  AND json_extract(doc,'$.name')='PromoTech com IA'
+                  AND json_type(doc,'$.image_style') IS NULL
+                  AND EXISTS(SELECT 1 FROM company c WHERE c.id=record.company
+                    AND c.username LIKE 'orion-%' AND lower(trim(c.name))<>'promotech')
+            """, (DEAL_TEMPLATE_ID,))
+            db.execute("""
+                UPDATE record SET doc=json_set(doc,'$.brand',
+                    substr((SELECT name FROM company WHERE id=record.company),1,32))
+                WHERE kind='template' AND trim(coalesce(json_extract(doc,'$.brand'),''))=''
+            """)
             db.execute("""
                 UPDATE record SET doc=json_set(doc,'$.text',
                    replace(replace(json_extract(doc,'$.text'),?,''),?,''))

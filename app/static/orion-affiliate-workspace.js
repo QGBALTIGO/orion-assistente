@@ -83,7 +83,13 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
   const historyExpanded = new Set();
   const historyJobBusy = new Set();
   const historyFailedImages = new Set();
-  let editTemplate = "default";
+  let editTemplate = null;
+  let copiedTemplate = null;
+  let templateTab = "image";
+  let templatePreviewTimer = null;
+  let templatePreviewRequest = null;
+  let templatePreviewVersion = 0;
+  let templateLogoBusy = false;
   let editRule = null;
   const ruleSteps = [["products","Produtos"],["destinations","Destinos"],["schedule","Frequência"],["template","Modelo"]];
   const ruleNumberFields = ["interval","daily","repeat_hours","sort"];
@@ -748,29 +754,158 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
       offerSource()+offerComposer()+offerDrafts()+'</div>';
   }
 
+  function templatePayload(form, isPreview=false) {
+    const value = Object.fromEntries(form);
+    const payload = {name:String(value.name||"").trim() || (isPreview?"Prévia do modelo":""),
+      brand:String(value.brand||"").trim(),layout:value.layout||"simple",media:value.media||"card",
+      style:value.style||"plain",text:value.text || (isPreview?"{produto}\n{link}":"")};
+    if(state.image_templates_v1===true){
+      const custom=form.has("custom_colors");
+      payload.image_style={theme:value.visual_theme||"classic",accent:custom?value.visual_accent:null,
+        background:custom?value.visual_background:null,surface:custom?value.visual_surface:null,
+        price:custom?value.visual_price:null,handle:value.visual_handle||"",footer:value.visual_footer||"",
+        cta:value.visual_cta||"",logo:value.visual_logo||"",show_brand:form.has("show_brand"),
+        show_discount:form.has("show_discount"),show_previous:form.has("show_previous"),
+        show_store:form.has("show_store"),show_coupon:form.has("show_coupon")};
+    }
+    return payload;
+  }
+
+  function cancelTemplatePreview(){
+    if(templatePreviewTimer!==null)window.clearTimeout(templatePreviewTimer);
+    templatePreviewTimer=null;templatePreviewRequest?.abort();templatePreviewRequest=null;
+    templatePreviewVersion++;
+  }
+  function templatePreviewFeedback(form, message, error=false) {
+    const status=form.querySelector("[data-template-preview-status]");
+    if(status){status.textContent=message;status.classList.toggle("os-error",error);status.setAttribute("role",error?"alert":"status");}
+  }
+  function scheduleTemplatePreview(delay=350) {
+    cancelTemplatePreview();
+    if(route!=="templates"||state?.image_templates_v1!==true||controller.signal.aborted||templateLogoBusy)return;
+    const form=content.querySelector('[data-form="template"]');
+    if(!form||templateTab!=="image")return;
+    const version=templatePreviewVersion;
+    templatePreviewFeedback(form,"Atualizando prévia…");
+    form.querySelector("[data-template-preview]")?.setAttribute("aria-busy","true");
+    templatePreviewTimer=window.setTimeout(async()=>{
+      templatePreviewTimer=null;
+      if(!form.isConnected||version!==templatePreviewVersion||route!=="templates")return;
+      const req=new AbortController();templatePreviewRequest=req;
+      try{
+        const result=await api("templates/preview-image","POST",templatePayload(new FormData(form),true),req.signal);
+        if(!form.isConnected||version!==templatePreviewVersion||controller.signal.aborted||route!=="templates")return;
+        if(typeof result?.image!=="string"||result.image.length>3500000||!/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(result.image))
+          throw Error("O servidor não confirmou uma imagem válida.");
+        const img=form.querySelector("[data-template-preview-image]");
+        img.src=result.image;img.hidden=false;templatePreviewFeedback(form,"Imagem de exemplo gerada pelo mesmo motor dos envios.");
+      }catch(error){
+        if(version===templatePreviewVersion&&form.isConnected&&!req.signal.aborted)
+          templatePreviewFeedback(form,error.message||"Não foi possível gerar a prévia. Confira os campos e tente novamente.",true);
+      }finally{
+        if(version===templatePreviewVersion&&form.isConnected)form.querySelector("[data-template-preview]")?.setAttribute("aria-busy","false");
+      }
+    },delay);
+  }
+
+  function setTemplateTab(tab,focus=false){
+    if(!["image","caption"].includes(tab))return;
+    templateTab=tab;
+    const form=content.querySelector('[data-form="template"]');if(!form)return;
+    form.querySelectorAll("[data-template-tab]").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.templateTab===tab)));
+    form.querySelectorAll("[data-template-panel]").forEach(p=>p.hidden=p.dataset.templatePanel!==tab);
+    if(focus)form.querySelector('[data-template-tab="'+tab+'"]')?.focus({preventScroll:true});
+    if(tab==="image")scheduleTemplatePreview(0);else cancelTemplatePreview();
+  }
+  function syncTemplateColors(form){
+    const controls=form.querySelector("[data-template-colors]");
+    if(!controls)return;
+    const enabled=form.elements.custom_colors.checked;
+    controls.disabled=!enabled;
+    if(!enabled){
+      const theme=form.elements.visual_theme.value,layout=form.elements.layout.value;
+      const accent=({simple:"#2e7bf6",discount:"#176e54",coupon:"#6750bb"})[layout]||"#2e7bf6";
+      form.elements.visual_accent.value=accent;form.elements.visual_price.value=accent;
+      form.elements.visual_background.value=theme==="dark"?"#101318":theme==="clean"?"#ffffff":"#f5f8fc";
+      form.elements.visual_surface.value=theme==="dark"?"#1e222a":"#ffffff";
+    }
+  }
+  async function readTemplateLogo(field){
+    const form=field.form,file=field.files?.[0];if(!file||!form||templateLogoBusy)return;
+    const status=form.querySelector("[data-template-logo-status]");
+    const save=form.querySelector("button[type=submit]");
+    templateLogoBusy=true;save.disabled=true;cancelTemplatePreview();
+    let objectUrl;
+    try{
+      if(!["image/png","image/jpeg","image/webp"].includes(file.type)||file.size>3*1024*1024)
+        throw Error("Escolha uma imagem PNG, JPEG ou WebP de até 3 MB.");
+      objectUrl=URL.createObjectURL(file);
+      const img=new Image();img.src=objectUrl;await img.decode();
+      if(!img.naturalWidth||!img.naturalHeight||img.naturalWidth*img.naturalHeight>16000000)
+        throw Error("Imagem muito grande. Use um logo menor.");
+      const canvas=document.createElement("canvas"),scale=Math.min(1,160/Math.max(img.naturalWidth,img.naturalHeight));
+      canvas.width=Math.max(1,Math.round(img.naturalWidth*scale));canvas.height=Math.max(1,Math.round(img.naturalHeight*scale));
+      const ctx=canvas.getContext("2d");ctx.drawImage(img,0,0,canvas.width,canvas.height);
+      let logo=canvas.toDataURL("image/png");
+      if(logo.length>16500){
+        ctx.globalCompositeOperation="destination-over";ctx.fillStyle="#ffffff";ctx.fillRect(0,0,canvas.width,canvas.height);
+        logo=canvas.toDataURL("image/jpeg",.78);
+      }
+      if(logo.length>16500)throw Error("Não foi possível reduzir o logo. Escolha uma imagem mais simples.");
+      if(!form.isConnected||route!=="templates")return;
+      form.elements.visual_logo.value=logo;status.textContent="Logo pronto para salvar.";
+      form.querySelector("[data-template-logo-image]").src=logo;
+      form.querySelector("[data-template-logo-image]").hidden=false;
+    }catch(error){if(form.isConnected)status.textContent=error.message||"Não foi possível preparar o logo.";}
+    finally{if(objectUrl)URL.revokeObjectURL(objectUrl);templateLogoBusy=false;if(form.isConnected){save.disabled=false;field.value="";}if(route==="templates")scheduleTemplatePreview(0);}
+  }
+  function templateImageFields(template) {
+    const visual=template.image_style||{},color=v=>/^#[0-9a-fA-F]{6}$/.test(v||"")?v:"#2e7bf6";
+    const defaults=visual.theme==="dark"?{background:"#101318",surface:"#1e222a"}:{background:visual.theme==="clean"?"#ffffff":"#f5f8fc",surface:"#ffffff"};
+    const accent=({simple:"#2e7bf6",discount:"#176e54",coupon:"#6750bb"})[template.layout]||"#2e7bf6";
+    const check=(name,label,checked)=>'<label class="os-check"><input type="checkbox" name="'+name+'"'+(checked?' checked':'')+'><span>'+html(label)+'</span></label>';
+    const picker=(name,label,value)=>'<label>'+html(label)+'<input data-orion-field="native" type="color" name="visual_'+name+'" value="'+color(value)+'"></label>';
+    const logo=/^data:image\/(?:png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(visual.logo||"")?visual.logo:"";
+    return '<div class="af-template-image-grid"><div class="af-template-fields">'+
+      '<label>Marca na imagem<input name="brand" maxlength="32" placeholder="'+html(state.company||"Nome da sua empresa")+'" value="'+html(template.brand||"")+'"><small>Em branco, utiliza o nome da empresa.</small></label>'+
+      '<label>Identificação / @perfil<input name="visual_handle" maxlength="40" placeholder="@minhasofertas" value="'+html(visual.handle||"")+'"></label>'+
+      '<div class="af-template-logo"><label>Logo da marca<input type="file" accept="image/png,image/jpeg,image/webp" data-template-logo></label>'+
+      '<input type="hidden" name="visual_logo" value="'+html(logo)+'"><div class="os-actions"><img data-template-logo-image width="48" height="48" alt="Logo selecionado"'+(logo?' src="'+html(logo)+'"':' hidden')+'><button type="button" class="os-button os-outline os-small" data-template-clear-logo>Remover logo</button></div><small data-template-logo-status role="status">PNG, JPEG ou WebP · até 3 MB. A imagem será reduzida.</small></div>'+
+      selectField("Estilo visual","visual_theme",["classic","clean","dark"].map((key,i)=>option(key,["Clássico","Clean","Escuro"][i],visual.theme||"classic")).join(""),"af-visual-theme")+
+      selectField("Layout da imagem","layout",["simple","discount","coupon"].map((key,i)=>option(key,["Oferta simples","Com desconto confirmado","Com cupom"][i],template.layout||"simple")).join(""),"af-image-layout")+
+      check("custom_colors","Personalizar cores",Boolean(visual.accent||visual.background||visual.surface||visual.price))+
+      '<fieldset class="af-template-colors" data-template-colors><legend class="os-sr-only">Cores personalizadas</legend>'+
+      picker("accent","Destaque",visual.accent||accent)+picker("background","Fundo",visual.background||defaults.background)+picker("surface","Card",visual.surface||defaults.surface)+picker("price","Preço",visual.price||accent)+'</fieldset>'+
+      '<label>Chamada (opcional)<input name="visual_cta" maxlength="40" placeholder="Aproveite a oferta" value="'+html(visual.cta||"")+'"></label>'+
+      '<label>Rodapé (opcional)<input name="visual_footer" maxlength="64" placeholder="Ofertas selecionadas diariamente" value="'+html(visual.footer||"")+'"></label>'+
+      '<fieldset class="af-template-visible"><legend>Elementos da imagem</legend>'+
+      check("show_brand","Nome da marca",visual.show_brand!==false)+check("show_discount","Percentual de desconto",visual.show_discount!==false)+check("show_previous","Preço anterior confirmado",visual.show_previous===true)+check("show_coupon","Cupom disponível",visual.show_coupon!==false)+check("show_store","Nome da loja",visual.show_store!==false)+'</fieldset>'+
+      '<small class="af-muted">A indicação de publicidade e o preço confirmado são preservados.</small></div>'+
+      '<section class="af-template-preview" data-template-preview aria-busy="false" aria-labelledby="af-image-preview-title"><h3 id="af-image-preview-title">Prévia da imagem</h3>'+
+      '<img data-template-preview-image class="af-card-image" width="900" height="970" alt="Imagem de demonstração do seu modelo" hidden>'+
+      '<p class="os-help" data-template-preview-status role="status">Preparando a prévia…</p><button type="button" class="os-button os-outline os-small" data-template-refresh>Atualizar prévia</button></section></div>';
+  }
+
   function templatePage() {
-    const template = state.template.find(t=>t.id===editTemplate) || state.template.find(t=>t.id===state.deal_template) || state.template[0];
-    const name = editTemplate === "new" ? "" : template.name;
-    const variables = ["produto","frase_ia","preco_destaque","preco","loja","preco_anterior","avaliacao_vendas","hashtags","desconto","cupom","condicoes","canal","observacao","link","publicidade"];
-    return heading("Templates","Personalize a legenda e escolha o formato da imagem das suas ofertas.",
-      btn("Novo template","new-template","",true)) + `<div class="af-sheet">
-      ${card("Modelos salvos",`<div class="af-list">${state.template.map(t=>`<div class="af-item"><div><strong>${html(t.name)}</strong>
-        <small>${t.media==="text"?"Somente texto":"Card e legenda"}</small></div>
-        ${btn(t.id===editTemplate?"Selecionado":"Editar","edit-template",t.id)}</div>`).join("")}</div>
-        <div class="af-row af-action-strip">${link("Ver prévia em Ofertas","ofertas","eye")}</div>`,"layers")}
-      ${card(editTemplate==="new"?"Novo template":"Editor de template",`
-        <form class="os-form af-form" data-form="template">
-          <label>Nome do template <input name="name" required maxlength="80" value="${html(name)}"></label>
-          <label>Marca no card <input name="brand" maxlength="32" placeholder="Ex.: PromoTech" value="${html(template.brand)}"></label>
-          <div class="af-cols">${selectField("Layout da imagem","layout",`${["simple","discount","coupon"].map((key,i)=>option(key,["Oferta simples","Com desconto confirmado","Com cupom"][i],template.layout)).join("")}`)}
-          ${selectField("Formato","media",`${option("card","Card e legenda",template.media)}${option("text","Somente texto",template.media)}`)}</div>
-          ${selectField("Formatação","style",`${option("plain","Texto simples",template.style || "plain")}${option("whatsapp","Negrito, itálico e riscado",template.style)}`)}
-          <label>Legenda da oferta <textarea name="text" required maxlength="1900">${html(template.text)}</textarea></label>
-          <div><p class="af-copy">Toque em um campo para inserir na legenda. Linhas com dados indisponíveis saem automaticamente.</p>
-          <div class="af-row af-template-tokens af-subtext">${variables.map(token=>btn("{"+token+"}","token",token)).join("")}</div></div>
-          <div class="os-form-actions">${submit("Salvar template")}</div>
-        </form>`,"edit","","af-rule-editor")}
-    </div>`;
+    const saved=state.template.find(t=>t.id===editTemplate)||state.template.find(t=>t.id===state.deal_template)||state.template[0]||{id:"default",name:"Oferta",text:"{produto}\n{link}",media:"card",layout:"simple"};
+    const template=editTemplate==="new"?{...saved,...(copiedTemplate||{brand:String(state.company||"").slice(0,32),image_style:{}}),name:copiedTemplate?.name||""}:saved;
+    if(editTemplate!=="new")editTemplate=saved.id;
+    const name=template.name||"",supported=state.image_templates_v1===true;
+    const variables=["produto","frase_ia","preco_destaque","preco","loja","preco_anterior","avaliacao_vendas","hashtags","desconto","cupom","condicoes","canal","observacao","link","publicidade"];
+    const captionFields=selectField("Formatação","style",option("plain","Texto simples",template.style||"plain")+option("whatsapp","Negrito, itálico e riscado",template.style),"af-template-style")+
+      '<label>Legenda da oferta<textarea name="text" required maxlength="1900">'+html(template.text)+'</textarea></label><p class="os-help">Toque em uma variável para inserir na legenda. Campos indisponíveis saem automaticamente.</p><div class="os-actions af-template-tokens">'+variables.map(token=>btn("{"+token+"}","token",token)).join("")+'</div>';
+    const basicImage='<label>Marca na imagem<input name="brand" maxlength="32" placeholder="'+html(state.company||"Sua marca")+'" value="'+html(template.brand||"")+'"></label>'+
+      selectField("Layout da imagem","layout",["simple","discount","coupon"].map((key,i)=>option(key,["Oferta simples","Com desconto confirmado","Com cupom"][i],template.layout)).join(""),"af-image-layout");
+    const list='<div class="af-list">'+state.template.map(t=>'<div class="af-item"><div><strong>'+html(t.name)+'</strong><small>'+html(t.media==="text"?"Somente texto":"Card e legenda")+(t.id===state.deal_template?" · Padrão":"")+'</small></div><div class="os-actions">'+
+      btn(t.id===editTemplate?"Selecionado":"Editar","edit-template",t.id)+btn("Duplicar","duplicate-template",t.id)+(supported&&t.id!==state.deal_template?btn("Definir padrão","default-template",t.id):"")+'</div></div>').join("")+'</div>';
+    const form='<form class="os-form af-form" data-form="template" novalidate><label>Nome do template<input name="name" required maxlength="80" value="'+html(name)+'"></label>'+
+      selectField("Formato da publicação","media",option("card","Imagem e legenda",template.media)+option("text","Somente texto",template.media),"af-template-media")+
+      '<div class="os-pill-tabs" role="group" aria-label="Editar template"><button type="button" class="os-pill-tab" data-template-tab="image" aria-pressed="'+(templateTab==="image")+'">Imagem</button><button type="button" class="os-pill-tab" data-template-tab="caption" aria-pressed="'+(templateTab==="caption")+'">Legenda</button></div>'+
+      '<div class="af-template-section" data-template-panel="image"'+(templateTab!=="image"?" hidden":"")+'>'+(supported?templateImageFields(template):basicImage)+'</div>'+
+      '<div class="af-template-section" data-template-panel="caption"'+(templateTab!=="caption"?" hidden":"")+'>'+captionFields+'</div>'+
+      '<div class="os-form-actions">'+submit("Salvar template")+'</div></form>';
+    return heading("Templates","Personalize a identidade das imagens e a legenda das suas ofertas.",btn("Novo template","new-template","",true))+
+      '<div class="af-template-workspace">'+card("Modelos salvos",list,"layers")+card(editTemplate==="new"?"Novo template":"Editar template",form,"edit")+'</div>';
   }
 
   function ruleExecution(rule) {
@@ -1438,6 +1573,10 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     content.innerHTML = views[route]();
     if (route==="ofertas") syncOfferControls();
     if (route==="automacoes") syncRuleControls();
+    if(route==="templates"){
+      const form=content.querySelector('[data-form="template"]');
+      if(form&&state.image_templates_v1===true){syncTemplateColors(form);scheduleTemplatePreview(0);}
+    }
     const all = $("[data-select-niches]");
     if (all) all.indeterminate = !all.checked && !!all.form.querySelector("input[name=niches]:checked");
     filterHistory();
@@ -1808,8 +1947,12 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
     phrase: async form=>applyOfferPhrase(form.get("text")),
     template: async form=>{
       const key=editTemplate==="new"?id():editTemplate;
-      await api("templates/"+key,"PUT",Object.fromEntries(form));
-      editTemplate=key;
+      if(templateLogoBusy)throw Error("Aguarde a preparação do logo.");
+      const payload=templatePayload(form);
+      if(!payload.name){content.querySelector('[data-form="template"] [name=name]')?.focus();throw Error("Informe o nome do modelo.");}
+      if(!payload.text.trim()){setTemplateTab("caption");content.querySelector('[data-form="template"] [name=text]')?.focus();throw Error("Informe a legenda da oferta.");}
+      await api("templates/"+key,"PUT",payload);
+      editTemplate=key;copiedTemplate=null;
       await reload();
       notify("Template salvo.");
     },
@@ -1968,8 +2111,10 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
       await reload();
       notify("Destino removido.");
     },
-    "new-template": async ()=>{ editTemplate="new"; render(); focusSection(".af-rule-editor"); },
-    "edit-template": async ident=>{ editTemplate=ident; render(); focusSection(".af-rule-editor"); },
+    "new-template": async ()=>{cancelTemplatePreview();editTemplate="new";copiedTemplate=null;templateTab="image";render();content.querySelector('[data-form="template"] [name=name]')?.focus();},
+    "edit-template": async ident=>{cancelTemplatePreview();editTemplate=ident;copiedTemplate=null;templateTab="image";render();content.querySelector('[data-form="template"] [name=name]')?.focus();},
+    "duplicate-template": async ident=>{const source=state.template.find(t=>t.id===ident);if(!source)return;cancelTemplatePreview();copiedTemplate={...source,name:(source.name+" (cópia)").slice(0,80)};editTemplate="new";templateTab="image";render();content.querySelector('[data-form="template"] [name=name]')?.focus();},
+    "default-template": async ident=>{if(state.image_templates_v1!==true||!state.template.some(t=>t.id===ident))return;await api("templates/"+encodeURIComponent(ident)+"/default","POST",{});chosenTemplate=ident;await reload();notify("Modelo padrão atualizado.");},
     "new-rule": async ()=>openRuleEditor('new'),
     "edit-rule": async ident=>openRuleEditor(ident),
     "close-rule": async ()=>{
@@ -2060,6 +2205,18 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
       return;
     }
     if (!state) return;
+    const templateControl=event.target.closest("[data-template-tab],[data-template-refresh],[data-template-clear-logo]");
+    if(templateControl&&route==="templates"){
+      event.preventDefault();
+      if(templateControl.hasAttribute("data-template-tab"))setTemplateTab(templateControl.dataset.templateTab,true);
+      else if(templateControl.hasAttribute("data-template-refresh"))scheduleTemplatePreview(0);
+      else if(!templateLogoBusy){
+        const form=templateControl.form||templateControl.closest("form");
+        form.elements.visual_logo.value="";
+        const image=form.querySelector("[data-template-logo-image]");image.removeAttribute("src");image.hidden=true;
+        form.querySelector("[data-template-logo-status]").textContent="Logo removido.";scheduleTemplatePreview(0);
+      }return;
+    }
     const ruleNavigation=event.target.closest('[data-rule-step],[data-rule-next],[data-rule-back]');
     if(ruleNavigation&&ruleDraft){
       const index=ruleSteps.findIndex(([key])=>key===ruleStep);
@@ -2176,6 +2333,12 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
   }, {signal:controller.signal});
 
   content.addEventListener("change",async event=>{
+    const templateForm=event.target.closest('[data-form="template"]');
+    if(templateForm&&route==="templates"){
+      if(event.target.hasAttribute("data-template-logo")){await readTemplateLogo(event.target);return;}
+      if(["visual_theme","layout","custom_colors"].includes(event.target.name))syncTemplateColors(templateForm);
+      scheduleTemplatePreview();return;
+    }
     if(event.target.closest('[data-form="rule"]')&&ruleDraft){
       const field=event.target;
       if(field.hasAttribute('data-select-niches')){ruleDraft.niches=field.checked?state.niches.map(row=>row.id):[];ruleDraftRevision++;}
@@ -2270,6 +2433,9 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
 
   content.addEventListener("input",event=>{
     const field=event.target;
+    if(field.closest('[data-form="template"]')&&route==="templates"){
+      if(field.type!=="file")scheduleTemplatePreview();return;
+    }
     if(field.closest('[data-form="rule"]')&&ruleDraft){
       if(field.hasAttribute('data-niche-filter')){ruleNicheFilter=field.value;syncRuleControls();}
       else if(!['checkbox','radio'].includes(field.type))changeRuleDraft(field);
@@ -2337,6 +2503,7 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
   return {
     setView(next) {
       if (Object.hasOwn(views,next) && route!==next) {
+        cancelTemplatePreview();
         viewVersion++;
         navVersion++;
         offerPreviewRequest?.abort();
@@ -2361,6 +2528,7 @@ export function mount({host, tenantId, view, request, icon, open, showNotice, wh
       }
     },
     unmount() {
+      cancelTemplatePreview();
       viewVersion++;
       navVersion++;
       offerPreviewRequest?.abort();

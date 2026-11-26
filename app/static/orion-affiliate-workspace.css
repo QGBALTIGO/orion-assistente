@@ -926,3 +926,28 @@ a.af-dashboard-kpi:hover { background: color-mix(in srgb,var(--os-tint) 35%,var(
 @media (prefers-reduced-motion: reduce) {
   .af-history-workspace *, .af-history-workspace *::before, .af-history-workspace *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+
+/* Image editor: use Orion's existing cards, pill-tabs and form controls. */
+.af-template-workspace {display:grid;grid-template-columns:minmax(0,1fr);gap:16px;min-width:0}
+.af-template-workspace .af-item {flex-wrap:wrap;min-width:0}
+.af-template-workspace .af-item .os-actions {max-width:100%}
+.af-template-section {display:grid;gap:16px;min-width:0}
+.af-template-section[hidden],.af-template-workspace [hidden] {display:none!important}
+.af-template-image-grid {display:grid;grid-template-columns:minmax(0,1fr) minmax(240px,0.85fr);align-items:start;gap:20px;min-width:0}
+.af-template-fields,.af-template-preview,.af-template-logo {display:grid;gap:14px;min-width:0}
+.af-template-logo img {object-fit:contain;border:1px solid var(--os-border);border-radius:10px;background:var(--os-bg)}
+.af-template-colors,.af-template-visible {display:grid;gap:12px;min-width:0;margin:0;padding:12px;border:1px solid var(--os-border);border-radius:12px}
+.af-template-colors {grid-template-columns:repeat(2,minmax(0,1fr))}
+.af-template-colors input[type=color] {width:100%;min-height:40px;padding:4px;cursor:pointer}
+.af-template-colors:disabled {opacity:.65}
+.af-template-preview {padding:16px;border:1px solid var(--os-border);border-radius:14px;background:var(--os-bg);align-content:start}
+.af-template-preview .af-card-image {margin:0;width:100%;max-width:410px;height:auto;justify-self:center}
+.af-template-preview .os-button {justify-self:start}
+.af-template-visible .os-check {align-items:center}
+.af-template-workspace .af-template-tokens {flex-wrap:wrap}
+.af-template-workspace .os-pill-tabs {flex-wrap:nowrap;overflow-x:auto;max-width:100%}
+.af-template-workspace .os-pill-tab[aria-pressed=true] {background:var(--os-bg);color:var(--os-text);box-shadow:var(--os-shadow)}
+.af-template-workspace input[type=file] {min-width:0;max-width:100%}
+@media(max-width:900px){.af-template-image-grid{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:480px){.af-template-preview{padding:12px}.af-template-colors{gap:8px}.af-template-workspace .os-form-actions .os-button{width:100%}}
