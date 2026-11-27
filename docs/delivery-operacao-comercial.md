@@ -20,7 +20,7 @@ Atualizado em 27 de novembro de 2026. Responsáveis pela operação comercial de
 | Fase | Estado verificável | Trabalho para aceite comercial |
 | --- | --- | --- |
 | 1. Fundação | Nicho e cinco atividades, fluxo de conta e permissões de avaliação existentes. Auditoria inicial de código e infraestrutura nesta revisão. | Onboarding operacional em sete etapas, perfis granulares e comprovação regulatória. |
-| 2. Gestão comercial | Catálogo, estoque, vasilhames e CRM na versão de avaliação. Endereços nomeados por cliente, mínimo, frete grátis e prazo por bairro em homologação. | Fornecedores e compras com conta a pagar, perdas, inventário por local/veículo, caução e geocobertura. |
+| 2. Gestão comercial | Catálogo, estoque, vasilhames e CRM na versão de avaliação. Em homologação entram endereços nomeados, regras por bairro e recebimento de compras de fornecedores com entrada física e despesa. | Ordens de reposição, devolução ao fornecedor, perdas, inventário por local/veículo, caução e geocobertura. |
 | 3. Pedidos | Balcão, retirada, entrega, checkout opt-in, reserva atômica, troco da loja e código privado de acompanhamento. | Estados independentes completos, Kanban, edição, duplicação, PDV misto e histórico do consumidor com verificação de identidade. |
 | 4. Atendimento e pagamentos | Recebimentos manuais e vendas a prazo operacionais. | Credenciais sandbox da distribuidora, webhook real, conciliação, eventos fora de ordem, expiração da reserva, adaptadores, notificações e atendimento autorizado. |
 | 5. Logística | Cobertura por bairro, agenda, entregador manual, ausência e reagendamento. | Expediente autenticado do motorista, aplicativo, carga, aceite/recusa, elegibilidade, rastreamento consentido e roteirização. |
@@ -29,6 +29,9 @@ Atualizado em 27 de novembro de 2026. Responsáveis pela operação comercial de
 | 8. Validação | A última revisão publicada tem ensaio PostgreSQL/Redis, navegador e regressão. A nova revisão segue o workflow de homologação. | Dois cenários integrais com app do motorista, comprovante de PSP sandbox, estoque, financeiro, histórico, rastreamento e regressão. |
 
 ## Alterações de banco e operação
+
+- `0114_delivery_purchases` liga fornecedores por empresa, documentos de entrada, itens e despesas do Financeiro. O proprietário registra quantidades e custos de cada variação, uma data de vencimento ou o meio já pago. O recebimento grava estoque e despesa na mesma transação. Outra tentativa com o mesmo documento não cria uma segunda despesa. A baixa de uma conta a pagar usa o Financeiro. O custo efetivo da compra fica no documento, e o cadastro mantém o custo de referência do produto.
+- A primeira imagem com endereços, regras por bairro, consulta ANP e novos campos do PDV passou na [homologação 46049683833](https://github.com/QGBALTIGO/orion-assistente/actions/runs/46049683833) e no [empacotamento 46049848694](https://github.com/QGBALTIGO/orion-assistente/actions/runs/46049848694). Esses registros demonstram o resultado do CI e da montagem da imagem.
 
 - `0111_delivery_customer_addresses` adiciona endereços nomeados com FK composta até o cliente, RLS forçada e revisões. O operador escolhe e confirma o endereço no pedido. A exclusão apaga o conteúdo pessoal, conserva o identificador contra reenvio tardio e preserva a fotografia dos pedidos anteriores.
 - `0112_delivery_area_terms` armazena as condições adicionais em coluna separada, preservando o formato do documento de cobertura das imagens anteriores. O orçamento usa o subtotal real dos produtos. O checkout recalcula sob a reserva de estoque. Retirada continua independente de bairro. O prazo é informado pela distribuidora.

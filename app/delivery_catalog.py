@@ -229,13 +229,14 @@ async def locked_inventory(db, tenant, variant_id):
     return row
 
 
-async def record_count(db, tenant, access, current, quantity, movement, moved, note=None):
+async def record_count(db, tenant, access, current, quantity, movement, moved, note=None, *, related_purchase=None):
     stamp = commerce.now_utc()
     observation = StockObservation(mode="tracked", quantity_on_hand=quantity, observed_at=stamp,
                                    valid_until=stamp + timedelta(hours=24), source="delivery_panel")
     return await commerce.write_stock(db, tenant, current, observation, access, event_details={
         "movement": movement, "quantity": moved, "before": current["quantity_on_hand"],
         "after": quantity, "note": note,
+        **({"purchase_id":str(related_purchase)} if related_purchase else {}),
     })
 
 

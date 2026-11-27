@@ -81,6 +81,33 @@ test('catalogue uses the product page, saves the model and opens stock history i
   assert.deepEqual(h.errors,[]);
 });
 
+test('supplier purchase editor submits a valued item and payable through the inventory entry point',async t=>{
+  const vendor='54000000-0000-4000-8000-000000000003';
+  const h=await makeSuite({initialRoute:'produtos-delivery',permissions:preview,
+    configureWindow:w=>w.eval(moduleSource),respond:(url,method)=>{
+      const page={items:[],offset:0,limit:25,has_more:false};
+      if (url.includes('/delivery/catalog')) return {...page,categories:[],items:url.includes('state=active')?
+        [{variant_id:variant,name:'Água',variant_name:'20 L'}]:[]};
+      if (url.includes('/delivery/suppliers')) return {...page,items:[{id:vendor,name:'Fonte',revision:1,active:true}]};
+      if (url.includes('/delivery/purchases')) return method==='POST'?{id:product}:page;
+      return defaultResponse(url);
+    }});
+  t.after(()=>h.close());await flush();
+  h.click('[data-delivery-tab=suppliers]');await flush();
+  assert.match(h.document.querySelector('#osDeliveryResults').textContent,/Fonte/);
+  h.click('[data-delivery-tab=purchases]');await flush();h.click('[data-os-action=delivery-purchase]');await flush();
+  const form=h.document.querySelector('#osDialog form');
+  form.elements.selected_supplier.value=vendor;form.elements.selected_product.value=variant;
+  h.fill('#osDialog [name=purchase_reference]','NF 157');
+  h.fill('#osDialog [name=line_quantity]','3');h.fill('#osDialog [name=line_cost]','4,25');
+  h.click('[data-purchase-add]');assert.match(form.querySelector('[data-purchase-lines]').textContent,/12,75/);
+  h.fill('#osDialog [name=purchase_due]','2027-01-15');form.querySelector('[type=submit]').click();await flush();
+  const sent=h.calls.find(x=>x.method==='POST'&&x.path.includes('/purchases'));
+  assert.equal(sent?.data.reference,'NF 157');assert.equal(sent.data.due_on,'2027-01-15');
+  assert.deepEqual(structuredClone(sent.data.items),[{variant_id:variant,quantity:3,unit_cost_cents:425}]);
+  assert.ok(sent.data.idempotency_key);assert.deepEqual(h.errors,[]);
+});
+
 test('delivery requires a server entitlement and viewers get read-only navigation',async t=>{
   const unopened=await makeSuite({initialRoute:'produtos-delivery'});
   t.after(()=>unopened.close());

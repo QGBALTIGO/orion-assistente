@@ -62,6 +62,66 @@ async def complete_delivery_setup(ctx, tenant):
         """), {"t":tenant})
 
 
+async def test_supplier_receipt_retries_and_updates_stock_and_payable_atomically(onboarding_db, monkeypatch):
+    ctx = onboarding_db
+    tenant, actor = await business(ctx, monkeypatch)
+    await complete_delivery_setup(ctx, tenant)
+    root = f"/api/v1/tenants/{tenant}/delivery"
+    async with client(actor) as http:
+        vendor = {"name":"Fornecedor de avaliação","brands":"Mineral","idempotency_key":uuid4().hex}
+        response = await http.post(root+"/suppliers",json=vendor)
+        assert response.status_code == 201, response.text
+        supplier = response.json()["id"]
+        assert (await http.post(root+"/suppliers",json=vendor)).json()["id"] == supplier
+        record = (await http.get(root+"/suppliers",params={"search":"mineral"})).json()["items"][0]
+        edit = {"name":record["name"],"expected_revision":1,"active":False}
+        assert (await http.put(root+"/suppliers/"+supplier,json=edit)).status_code == 200
+        assert (await http.put(root+"/suppliers/"+supplier,json=edit)).status_code == 409
+        variant = (await http.post(root+"/catalog",json=new_product())).json()["variant_id"]
+        line = {"variant_id":variant,"quantity":4,"unit_cost_cents":325}
+        receipt = {"reference":"Entrada 1","supplier_id":supplier,"items":[line],"due_on":"2027-01-15",
+                   "idempotency_key":uuid4().hex}
+        assert (await http.post(root+"/purchases",json=receipt)).status_code == 404
+        assert (await http.put(root+"/suppliers/"+supplier,json={**edit,"active":True,"expected_revision":2})).status_code == 200
+        bad = {**receipt,"items":[line,{**line,"variant_id":"ffffffff-ffff-4fff-8fff-ffffffffffff"}]}
+        assert (await http.post(root+"/purchases",json=bad)).status_code == 404
+        assert (await http.get(root+"/purchases")).json()["items"] == []
+        assert (await http.get(root+"/catalog")).json()["items"][0]["quantity_on_hand"] == 5
+        one,two = await asyncio.gather(http.post(root+"/purchases",json=receipt),http.post(root+"/purchases",json=receipt))
+        assert one.status_code == two.status_code == 201, (one.text,two.text)
+        assert one.json() == two.json() and one.json()["amount_cents"] == 1300
+        duplicate = {**receipt,"reference":"entrada 1","idempotency_key":uuid4().hex}
+        assert (await http.post(root+"/purchases",json=duplicate)).status_code == 409
+        assert (await http.get(root+"/catalog")).json()["items"][0]["quantity_on_hand"] == 9
+        history = (await http.get(root+"/catalog/history")).json()["items"]
+        assert history[0]["details"]["purchase_id"] == one.json()["id"]
+        purchase = (await http.get(root+"/purchases",params={"search":"Entrada 1"})).json()["items"][0]
+        assert purchase["payment_status"] == "pending" and purchase["due_on"] == "2027-01-15"
+        assert purchase["items"][0]["unit_cost_cents"] == 325
+        async with ctx.migration.begin() as db:
+            rows = (await db.execute(text("SELECT amount_cents,status,kind FROM financial_entries WHERE tenant_id=:t"),
+                                     {"t":tenant})).all()
+            assert rows == [(1300,"pending","expense")]
+            await db.execute(text("INSERT INTO tenant_memberships(tenant_id,account_id,role) VALUES(:t,:a,'viewer')"),
+                             {"t":tenant,"a":ctx.other})
+        from app.management_models import update_row
+        from app.database import tenant_transaction
+        from fastapi import HTTPException
+        entry = UUID(one.json()["financial_entry_id"])
+        async with ctx.runtime() as db:
+            async with tenant_transaction(db,tenant):
+                with pytest.raises(HTTPException) as denied:
+                    await update_row(db,tenant,"financial_entries",entry,1,{"amount_cents":1})
+                assert denied.value.status_code == 409
+                await update_row(db,tenant,"financial_entries",entry,1,{"status":"paid","payment_method":"pix"})
+        assert (await http.get(root+"/purchases")).json()["items"][0]["payment_status"] == "paid"
+    async with client(Actor("member",account_id=ctx.other)) as viewer:
+        assert (await viewer.get(root+"/purchases")).status_code == 403
+        assert (await viewer.post(root+"/purchases",json=receipt)).status_code == 403
+    async with client(ctx.actor) as outsider:
+        assert (await outsider.get(root+"/suppliers")).status_code == 403
+
+
 async def test_catalog_and_ledger_roundtrip(onboarding_db, monkeypatch):
     tenant, actor = await business(onboarding_db, monkeypatch)
     root = f"/api/v1/tenants/{tenant}/delivery/catalog"

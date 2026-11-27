@@ -142,6 +142,17 @@ async def update_row(db, tenant_id, table, identity, version, values):
                 AND operation IN ('delivery_order_receipt','delivery_order_refund') AND entity_id=:id)
         """), {"t":tenant_id,"id":identity})).scalar_one():
             raise HTTPException(409, "Este recebimento está vinculado a um pedido de Delivery")
+        if previous.get("category") == "Compras de distribuição" and (await db.execute(text("""
+            SELECT EXISTS(SELECT 1 FROM management_requests WHERE tenant_id=:t
+                AND operation='delivery_supplier_purchase' AND entity_id=:id)
+        """), {"t":tenant_id,"id":identity})).scalar_one():
+            changed = {key for key, value in values.items() if value != previous.get(key)}
+            if changed - {"status", "payment_method", "notes"}:
+                raise HTTPException(409, "O valor e a origem são definidos pelo recebimento da compra")
+            if "status" in changed and (previous["status"], values["status"]) != ("pending", "paid"):
+                raise HTTPException(409, "A compra só permite baixar a despesa pendente")
+            if "payment_method" in changed and "status" not in changed:
+                raise HTTPException(409, "Informe a forma de pagamento no momento da baixa")
         await ensure_editable_entry(db, tenant_id, identity)
         from app.service_receipts import prepare_edit
         values = await prepare_edit(db, tenant_id, previous, values)

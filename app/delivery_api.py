@@ -17,6 +17,7 @@ from app import delivery_payments as payments
 from app import delivery_reports as reports
 from app import delivery_reports_ops
 from app import delivery_registry
+from app import delivery_purchasing as purchasing
 from app.catalog_api import Actor, authenticate
 from app.database import get_session_factory, tenant_transaction
 from app.http_json import json_response
@@ -69,6 +70,34 @@ async def delivery_postal_code(tenant_id: UUID, cep: str, request: Request, acto
     response = json_response(await delivery_address.lookup(cep))
     response.headers["Cache-Control"] = "no-store"
     return response
+
+
+@router.get("/suppliers")
+async def list_suppliers(tenant_id: UUID, search: str = Query(default="", max_length=120),
+                         offset: int = Query(default=0, ge=0, le=100_000), active_only: bool = False,
+                         actor: Actor = Depends(authenticate)):
+    return await run(actor, tenant_id, purchasing.suppliers, search=search, offset=offset, active_only=active_only, publish=True)
+
+
+@router.post("/suppliers", status_code=201)
+async def create_supplier(tenant_id: UUID, payload: purchasing.SupplierCreate, actor: Actor = Depends(authenticate)):
+    return await run(actor, tenant_id, purchasing.add_supplier, payload, write=True, publish=True, response_status=201)
+
+
+@router.put("/suppliers/{identity}")
+async def change_supplier(tenant_id: UUID, identity: UUID, payload: purchasing.SupplierUpdate, actor: Actor = Depends(authenticate)):
+    return await run(actor, tenant_id, purchasing.update_supplier, identity, payload, write=True, publish=True)
+
+
+@router.get("/purchases")
+async def list_purchases(tenant_id: UUID, search: str = Query(default="", max_length=120),
+                         offset: int = Query(default=0, ge=0, le=100_000), actor: Actor = Depends(authenticate)):
+    return await run(actor, tenant_id, purchasing.purchases, search=search, offset=offset, publish=True)
+
+
+@router.post("/purchases", status_code=201)
+async def receive_purchase(tenant_id: UUID, payload: purchasing.Purchase, actor: Actor = Depends(authenticate)):
+    return await run(actor, tenant_id, purchasing.receive, payload, write=True, publish=True, response_status=201)
 
 
 @router.get("/catalog")

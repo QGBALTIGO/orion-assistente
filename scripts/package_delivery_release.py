@@ -33,7 +33,7 @@ SHARED = frozenset({
 DELIVERY_CODE = re.compile(
     r"(?:app/delivery_[a-z0-9_]+\.py|app/static/(?:orion-delivery|delivery)[-_.a-z0-9]+\.(?:js|css|html|svg|json|webmanifest)|"
     r"app/static/delivery-products/[a-z0-9-]+\.webp|"
-    r"alembic/versions/(?:0099|010[0-9]|011[0-3])_delivery_[a-z0-9_]+\.py|scripts/backup_and_migrate_delivery\.py)"
+    r"alembic/versions/(?:0099|010[0-9]|011[0-4])_delivery_[a-z0-9_]+\.py|scripts/backup_and_migrate_delivery\.py)"
 )
 REQUIRED = frozenset({"app/delivery_api.py", "alembic/versions/0104_delivery_returns.py",
                       "scripts/backup_and_migrate_delivery.py", *INHERITED_MIGRATIONS})
