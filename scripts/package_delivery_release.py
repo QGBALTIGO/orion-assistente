@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from difflib import SequenceMatcher
 import hashlib
 import json
 from pathlib import Path
@@ -70,6 +71,7 @@ def prepare_overlay(container, release, stage, changes):
     manifest = {}
     for path, status in changes.items():
         source = git("cat-file", "blob", f"{release}:{path}")
+        source_hash = sha256(source)
         destination = overlay / path
         destination.parent.mkdir(parents=True, exist_ok=True)
         if status == "A":
@@ -85,8 +87,7 @@ def prepare_overlay(container, release, stage, changes):
             if live != predecessor:
                 source = merge_live_delta(path, destination, predecessor, source, stage)
             destination.write_bytes(source)
-        manifest[path].update(live_after=sha256(source),
-                              source_after=sha256(git("cat-file", "blob", f"{release}:{path}")))
+        manifest[path].update(live_after=sha256(source), source_after=source_hash)
 
     return {"base_image": BASE_IMAGE, "base_source": BASE_SOURCE, "release": release, "files": manifest}
 
@@ -102,14 +103,47 @@ def merge_live_delta(path, live_file, predecessor, desired, stage):
         ["git", "merge-file", "--stdout", "--diff3", str(live_file), str(before), str(after)],
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
     )
-    if result.returncode != 0:
-        raise RuntimeError(
-            f"Live and Delivery changes overlap in {path}; need a reviewed merge "
-            f"(live={sha256(live_file.read_bytes())}, baseline={sha256(predecessor)}, "
-            f"delivery={sha256(desired)}, status={result.returncode})"
-        )
-    print(f"Merged Delivery without replacing the existing live delta in {path}", flush=True)
-    return result.stdout
+    live = live_file.read_bytes()
+    merged = result.stdout if result.returncode == 0 else merge_disjoint_lines(predecessor, live, desired)
+    if merged is not None:
+        print(f"Merged Delivery without replacing the existing live delta in {path}", flush=True)
+        return merged
+    if path == "app/static/orion-suite.js":
+        # Only this browser-delivered source is eligible for a bounded conflict
+        # excerpt. Do not expose arbitrary image files or environment values.
+        conflicts = re.findall(rb"^<{7} .*?^>{7} [^\n]*$", result.stdout, re.MULTILINE | re.DOTALL)
+        for line in b"\n".join(conflicts).decode("utf-8", "replace").splitlines()[:80]:
+            print("Static browser source conflict: " + line[:500], flush=True)
+    raise RuntimeError(
+        f"Live and Delivery changes overlap in {path}; need a reviewed merge "
+        f"(live={sha256(live)}, baseline={sha256(predecessor)}, "
+        f"delivery={sha256(desired)}, status={result.returncode})"
+    )
+
+
+def merge_disjoint_lines(predecessor, live, desired):
+    """Join strictly disjoint edits, including adjacent lines Git treats as a conflict."""
+    base_lines = predecessor.splitlines(keepends=True)
+
+    def changes(source):
+        lines = source.splitlines(keepends=True)
+        diff = SequenceMatcher(None, base_lines, lines, autojunk=False)
+        return {(start, end, tuple(lines[first:last]))
+                for action, start, end, first, last in diff.get_opcodes() if action != "equal"}
+
+    cursor = 0
+    insertions = set()
+    selected = []
+    for start, end, replacements in sorted(changes(live) | changes(desired)):
+        if start < cursor or (start == end and start in insertions):
+            return None
+        if start == end:
+            insertions.add(start)
+        selected.extend(base_lines[cursor:start])
+        selected.extend(replacements)
+        cursor = end
+    selected.extend(base_lines[cursor:])
+    return b"".join(selected)
 
 
 def build(release, manifest_path):
