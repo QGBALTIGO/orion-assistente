@@ -93,5 +93,25 @@ test('delivery requires a server entitlement and viewers get read-only navigatio
   t.after(()=>viewer.close());
   await flush();
   assert.ok(viewer.document.querySelector('#osNav [data-os-route=produtos-delivery]'));
+  // Delivery uses its own semantic icons instead of shared list/send/gear glyphs.
+  const expectedDeliveryIcons = {
+    "pedidos-delivery": "M5 3l2 2 2-2 3 2 3-2 2 2 2-2v18l-2-2-2 2-3-2-3 2-2-2-2 2V3ZM8 9h8M8 13h8M8 17h5",
+    "entregas-delivery": "M3 5h12v13H9M3 5v13h2M15 9h4l3 4v5h-2M15 18h1M9 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0ZM20 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0Z",
+    "vasilhames-delivery": "M9 3h6v3H9zM9 6v1l-2 2a4 4 0 0 0-2 3v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7a4 4 0 0 0-2-3l-2-2V6M5 13h14M5 17h14",
+    "loja-delivery": "M3 9l2-5h14l2 5v2a3 3 0 0 1-6 0 3 3 0 0 1-6 0 3 3 0 0 1-6 0V9ZM3 9h18M5 14v7h14v-7M9 21v-5h6v5",
+    "vendas-prazo-delivery": "M13 21H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h9l5 5v3M14 3v5h5M8 9h3M8 13h4M8 17h2M22 17a5 5 0 1 1-10 0 5 5 0 0 1 10 0ZM17 14v3l2 1",
+    "logistica-delivery": "M8 18h7a3.5 3.5 0 0 0 0-7H9a2.5 2.5 0 0 1 0-5h7M8 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0ZM22 6a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"
+  };
+  const actualPaths=[];
+  for (const [route,expectedPath] of Object.entries(expectedDeliveryIcons)) {
+    const svg=viewer.document.querySelector('#osNav [data-os-route="'+route+'"] svg');
+    assert.ok(svg,route);
+    assert.equal(svg.getAttribute('viewBox'),'0 0 24 24');
+    assert.equal(svg.getAttribute('aria-hidden'),'true');
+    const path=svg.querySelector('path').getAttribute('d');
+    assert.equal(path,expectedPath,route);
+    actualPaths.push(path);
+  }
+  assert.equal(new Set(actualPaths).size,actualPaths.length);
   assert.equal(viewer.document.querySelector('[data-os-action=delivery-create]'),null);
 });

@@ -10,6 +10,12 @@
   const $ = id => document.getElementById(id);
   const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
   const paths = {
+    deliveryReceipt:'M5 3l2 2 2-2 3 2 3-2 2 2 2-2v18l-2-2-2 2-3-2-3 2-2-2-2 2V3ZM8 9h8M8 13h8M8 17h5',
+    deliveryTruck:'M3 5h12v13H9M3 5v13h2M15 9h4l3 4v5h-2M15 18h1M9 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0ZM20 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0Z',
+    deliveryVessel:'M9 3h6v3H9zM9 6v1l-2 2a4 4 0 0 0-2 3v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7a4 4 0 0 0-2-3l-2-2V6M5 13h14M5 17h14',
+    deliveryStorefront:'M3 9l2-5h14l2 5v2a3 3 0 0 1-6 0 3 3 0 0 1-6 0 3 3 0 0 1-6 0V9ZM3 9h18M5 14v7h14v-7M9 21v-5h6v5',
+    deliveryDeferred:'M13 21H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h9l5 5v3M14 3v5h5M8 9h3M8 13h4M8 17h2M22 17a5 5 0 1 1-10 0 5 5 0 0 1 10 0ZM17 14v3l2 1',
+    deliveryRoute:'M8 18h7a3.5 3.5 0 0 0 0-7H9a2.5 2.5 0 0 1 0-5h7M8 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0ZM22 6a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z',
     menu:'M4 6h16M4 12h16M4 18h16', close:'m6 6 12 12M6 18 18 6',
     chevron:'m9 5 7 7-7 7', left:'m15 5-7 7 7 7', down:'m6 9 6 6 6-6',
     arrow:'M5 12h14m-5-5 5 5-5 5', external:'M15 3h6v6m0-6-9 9M9 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-4',
@@ -631,10 +637,10 @@
       const icons=new Map(mainNav);
       for(const [heading,routes] of subscriptionNavigation)nav+=navGroup(heading,routes.map(route=>[route,icons.get(route)]));
     }else if(delivery){
-      nav+=navGroup('Gestão',[[deliveryDashboardRoute,'dashboard'],[deliveryOrdersRoute,'list'],[deliveryDispatchRoute,'send'],[deliveryCatalogRoute,'box'],[deliveryContainersRoute,'layers'],['clientes','users']]);
-      nav+=navGroup('Atendimento',[[deliveryStoreRoute,'globe'],['inbox','chat']]);
-      nav+=navGroup('Financeiro',[[deliveryCreditRoute,'credit'],['financeiro','wallet'],[deliveryReportRoute,'chart']]);
-      nav+=navGroup('Administração',[[deliveryLogisticsRoute,'settings'],['configuracoes','settings']]);
+      nav+=navGroup('Gestão',[[deliveryDashboardRoute,'dashboard'],[deliveryOrdersRoute,'deliveryReceipt'],[deliveryDispatchRoute,'deliveryTruck'],[deliveryCatalogRoute,'box'],[deliveryContainersRoute,'deliveryVessel'],['clientes','users']]);
+      nav+=navGroup('Atendimento',[[deliveryStoreRoute,'deliveryStorefront'],['inbox','chat']]);
+      nav+=navGroup('Financeiro',[[deliveryCreditRoute,'deliveryDeferred'],['financeiro','wallet'],[deliveryReportRoute,'chart']]);
+      nav+=navGroup('Administração',[[deliveryLogisticsRoute,'deliveryRoute'],['configuracoes','settings']]);
     }else if(barbershop){
       for(const [heading,items] of barbershopNavigation)nav+=navGroup(heading,items,route=>routeNames[route]);
     }else{
