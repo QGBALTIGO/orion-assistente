@@ -352,6 +352,92 @@ async def test_delivery_whatsapp_connection_is_preview_owner_only_and_has_no_aut
 
 
 @pytest.mark.asyncio
+async def test_delivery_whatsapp_connection_checkout_with_same_device_and_explicit_confirmation(device_case, monkeypatch):
+    """The real broker, checkout, and database are used. No WhatsApp I/O."""
+    from app import delivery_catalog as catalog, delivery_storefront as store
+    from app.tenant_access import TenantAccess
+    from test_delivery_catalog_postgres import new_product, complete_delivery_setup
+    c=device_case
+    async with c.ctx.migration.begin() as db:
+        await db.execute(text("""UPDATE business_onboarding SET configuration=configuration ||
+          '{"niche":"delivery_distribuicao","delivery_offering":"gas_agua","activity":"products","modality":"online"}'::jsonb
+          WHERE tenant_id=:t"""),{"t":c.tenant})
+    monkeypatch.setenv("ORION_DELIVERY_PREVIEW_TENANTS",str(c.tenant))
+    monkeypatch.setenv("PUBLIC_SITE_SIGNING_KEY",uuid4().hex+uuid4().hex)
+    await complete_delivery_setup(c.ctx,c.tenant)
+    await create(c)
+    assert (await action(c,"connect"))["operation"]["status"]=="succeeded"
+    config=c.prefix+"/delivery-assistant"
+    status=(await c.client.get(config)).json()
+    assert status["enabled"] is False and status["eligible_products"]==0
+    assert (await c.client.put(config,json={"enabled":True,"expected_revision":status["revision"]})).status_code==409
+    access=TenantAccess("owner",c.ctx.actor.account_id)
+    async with c.ctx.runtime() as db:
+        async with tenant_transaction(db,c.tenant):
+            created=await catalog.create_item(db,c.tenant,access,catalog.ProductCreate.model_validate(new_product("Água mineral 20 L")))
+            items=(await store.operator_items(db,c.tenant,"",0))["items"]
+            selected=next(x for x in items if str(x["variant_id"])==str(created["variant_id"]))
+            await store.save_store(db,c.tenant,access,store.Storefront(
+                revision=0,slug="wa-"+uuid4().hex[:12],title="Distribuidora teste",enabled=False,
+                allow_pickup=True,pickup_details="Depósito",payment_methods=["cash","pix"],
+                items=[store.PublicItem(variant_id=selected["variant_id"],product_revision=selected["product_revision"],
+                    variant_revision=selected["variant_revision"],label="Água mineral 20 L",kind="water")]))
+    status=(await c.client.get(config)).json()
+    assert status["eligible_products"]==1
+    activated=await c.client.put(config,json={"enabled":True,"expected_revision":status["revision"]})
+    assert activated.status_code==200,activated.text
+    c.device["revision"]=activated.json()["revision"]
+    assert activated.json()["enabled"] is True
+    phone="5567999999902"
+
+    async def talk(body, *, contact=phone, message=None, accepted=True):
+        result=await event(c,phone=contact,text=body,message_id=message or uuid4().hex)
+        assert len(result["effects"])==1,result
+        effect=result["effects"][0]
+        grant=await permit(c,effect)
+        assert grant["authorized"] and grant["payload"]["phone"]==contact,grant
+        if accepted:
+            await finish(c,effect,"accepted",provider_id=uuid4().hex)
+        return grant["payload"]["text"]
+
+    async def orders():
+        async with c.ctx.migration.connect() as db:
+            return (await db.execute(text("""SELECT d.intake_channel,q.total_cents,o.status
+                FROM delivery_order_details d JOIN commercial_orders o ON (o.tenant_id,o.id)=(d.tenant_id,d.order_id)
+                JOIN commercial_quotes q ON (q.tenant_id,q.id)=(o.tenant_id,o.quote_id) WHERE d.tenant_id=:t"""),
+                {"t":c.tenant})).all()
+
+    assert "restritos" in await talk("Quero gás P13")
+    assert "nome" in (await talk("Quero duas águas")).lower()
+    assert "retirada" in await talk("Cliente de teste")
+    assert "pagar" in await talk("retirada")
+    assert "troco" in await talk("dinheiro")
+    summary=await talk("sem troco")
+    assert "R$ 25,00" in summary and "CONFIRMO" in summary,summary
+    assert await orders()==[]
+    assert "Nenhum" not in await talk("confirmo",contact="5567999999903") or await orders()==[]
+    assert await orders()==[]
+    identity=uuid4().hex
+    assert "registrado" in await talk("confirmo",message=identity)
+    assert await orders()==[("whatsapp",2500,"confirmed")]
+    repeated=await event(c,phone=phone,text="confirmo",message_id=identity)
+    assert repeated["duplicate"] and repeated["effects"]==[]
+    assert await orders()==[("whatsapp",2500,"confirmed")]
+    async with c.ctx.migration.connect() as db:
+        inventory=(await db.execute(text("""SELECT quantity_on_hand,reserved_quantity FROM commercial_inventory
+            WHERE tenant_id=:t AND variant_id=:v"""),{"t":c.tenant,"v":created["variant_id"]})).one()
+        assert inventory==(5,2)
+    assert "aguardando atendimento" in await talk("meu pedido")
+    assert "Pausei" in await talk("atendente")
+    silent=await event(c,phone=phone,text="oi",message_id=uuid4().hex)
+    assert silent["effects"]==[]
+    paused=await c.client.put(config,json={"enabled":False,"expected_revision":c.device["revision"]})
+    assert paused.status_code==200,paused.text
+    c.device["revision"]=paused.json()["revision"]
+    assert (await event(c,phone=phone,text="Quero água",message_id=uuid4().hex))["effects"]==[]
+
+
+@pytest.mark.asyncio
 async def test_control_replay_pair_and_lost_finish_remove_reconcile_keep_history(device_case):
     c = device_case
     await create(c)

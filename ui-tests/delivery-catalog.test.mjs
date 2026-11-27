@@ -204,12 +204,23 @@ test('Delivery owner opens the connection-only WhatsApp device module, not subsc
   const features=[...base.features,'clients.manage','finance.basic','devices.manage'];
   const plan={...base,features,permissions:Object.fromEntries(features.map(x=>[x,true]))};
   const mounts=[];
+  let assistant={device_id:'54000000-0000-4000-8000-000000000003',revision:1,enabled:false,eligible_products:1};
   const owner=await makeSuite({initialRoute:'whatsapp-delivery',permissions:plan,
+    respond:(path,method,data)=>{
+      if(path.endsWith('/devices/delivery-assistant')){
+        if(method==='PUT'){assert.equal(data.expected_revision,assistant.revision);assistant={...assistant,enabled:data.enabled,revision:assistant.revision+1};}
+        return assistant;
+      }
+      return defaultResponse(path);
+    },
     configureWindow:window=>{window.OrionSubscriptionDevices={mount:args=>mounts.push({host:args.host.id,connectionOnly:args.connectionOnly}),unmount(){}};}});
   t.after(()=>owner.close());await flush();
   assert.ok(owner.document.querySelector('#osNav [data-os-route=whatsapp-delivery]'));
   assert.deepEqual(mounts,[{host:'osSubscriptionDevices',connectionOnly:true}]);
-  assert.match(owner.document.querySelector('#osPageBody').textContent,/importação de pedidos.*ainda não estão habilitadas/);
+  assert.match(owner.document.querySelector('#osDeliveryAssistant').textContent,/Atendente virtual/);
+  owner.click('[data-delivery-assistant-toggle]');await flush();
+  assert.equal(assistant.enabled,true);
+  assert.match(owner.document.querySelector('#osDeliveryAssistant').textContent,/Pausar atendente/);
   assert.equal(owner.document.querySelector('#osNav [data-os-route=chatbot]'),null);
   const viewer=await makeSuite({initialRoute:'whatsapp-delivery',role:'viewer',permissions:plan});
   t.after(()=>viewer.close());await flush();

@@ -58,9 +58,9 @@ def affirmative(body):
 
 
 def forbidden(body):
-    value = re.sub(r"\baguas?\s+(?:com|sem)\s+gas\b", "agua", norm(body))
+    value = re.sub(r"\baguas?(?:\s+miner(?:al|ais))?\s+(?:com|sem)\s+gas\b", "agua", norm(body))
     return bool(store.RESTRICTED.search(value) or re.search(
-        r"\b(?:glp|buj[aã]o|botij\w*|gas(?:es)?|combustivel|querosene|gasolina|etanol|diesel|fogos|explosiv\w*|alcool|veneno|solvente|acido)\b", value))
+        r"\b(?:glp|buj[aã]o|botij\w*|gas(?:es)?|combustivel|querosene|gasolina|etanol|diesel|fogos|explosiv\w*|alcool|veneno|solvente|acido|sanitaria|oxigenada|cloro|desinfetante|detergente|limpeza|pesticida|inseticida)\b", value))
 
 
 def eligible_water(shop, row):
@@ -369,6 +369,9 @@ async def record_event(db, device, payload):
     except ValueError:
         return {"effects":[],"duplicate":False}
     params={"t":device["tenant_id"],"d":device["id"],"g":device["generation"],"phone":payload.phone}
+    if await db.scalar(text("""SELECT COALESCE((SELECT revoked FROM subscription_campaign_permissions
+        WHERE tenant_id=:t AND phone=:phone),false)"""),params):
+        return {"effects":[],"duplicate":False,"ignored":"contact_optout"}
     duplicate=await db.scalar(text("""SELECT id FROM subscription_device_events
         WHERE tenant_id=:t AND device_id=:d AND (provider_event_id=:event OR
         (generation=:g AND payload->>'message_id'=:message AND payload->>'delivery'='true')) LIMIT 1"""),

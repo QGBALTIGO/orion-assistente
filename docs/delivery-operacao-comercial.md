@@ -1,3 +1,7 @@
+## Atendente WhatsApp do Delivery — nova revisão em homologação
+
+O novo piloto reutiliza o dispositivo QR já vinculado, o interpretador comercial/confirmatório existente e a cotação, reserva, checkout e Pix manual da Loja rápida. O proprietário ativa ou pausa o atendente no painel. A aprovação de produtos é a seleção salva da Loja rápida, sem obrigar a publicação do site. A primeira versão atende somente produtos elegíveis de água, por texto, não importa automaticamente gás/GLP, não executa automação de marketing e não usa outro dispositivo. Aceite explícito de resumo recente, permissões por empresa, idempotência e origem WhatsApp são requisitos de gravação. Atendimento humano: a palavra atendente pausa as respostas daquele contato. Áudio, recuperação automática de endereços e IA generativa livre não estão incluídos. O uso da ponte QR existente não implica homologação oficial pela Meta.
+
 # Delivery e Distribuição — acompanhamento da implementação
 Atualizado em 27 de novembro de 2026. Responsáveis pela operação comercial devem conseguir identificar se um recurso foi publicado, se está em homologação ou se ainda depende de desenvolvimento.
 
