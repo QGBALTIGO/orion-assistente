@@ -44,6 +44,7 @@ LABELS = {"business": "Empresa", "location": "Atendimento e endereço",
           "profile": "Perfil da empresa", "hours": "Expediente", "goals": "Desafios e objetivos", "review": "Revisão"}
 
 AVAILABLE_NICHES = ("barbearia", "odontologia", SUBSCRIPTION_NICHE, AFFILIATE_NICHE, schemas.DELIVERY_NICHE)
+DELIVERY_OFFERING_REQUIRED = "Escolha o que sua empresa oferece em Delivery e Distribuição"
 
 
 def enabled():
@@ -651,6 +652,8 @@ async def create_business(actor, payload):
                 # WhatsApp only on new creation intents.
                 if payload.niche not in AVAILABLE_NICHES:
                     raise HTTPException(422, "Esse nicho está temporariamente indisponível para novos negócios")
+                if payload.niche == schemas.DELIVERY_NICHE and payload.delivery_offering is None:
+                    raise HTTPException(422, DELIVERY_OFFERING_REQUIRED)
                 if affiliate and not affiliate_workspace_available():
                     raise HTTPException(503, "A criação de espaços de Afiliados está indisponível no momento")
                 if affiliate and (actor.role != "member" or not account["verified_at"]):
@@ -842,9 +845,14 @@ async def _apply_step(db, tenant, meta, step, data, access):
     if step == "business":
         if data.niche == AFFILIATE_NICHE:
             conflict("Afiliados deve ser escolhido na criação do negócio")
+        if (data.niche == schemas.DELIVERY_NICHE and config.get("niche") != schemas.DELIVERY_NICHE
+                and data.delivery_offering is None):
+            raise HTTPException(422, DELIVERY_OFFERING_REQUIRED)
         await db.execute(text("SELECT public.onboarding_update_identity(:t,:name,:tz)"), {"t": tenant, "name": data.name, "tz": data.timezone})
         if data.niche != schemas.SUBSCRIPTION_NICHE:
             config.pop("subscription_offering", None)
+        if data.niche != schemas.DELIVERY_NICHE:
+            config.pop("delivery_offering", None)
         config.update(data.model_dump(mode="json", exclude={"name", "timezone"}))
     elif step == "location":
         config.update(modality=data.modality, private_address=data.address.model_dump(mode="json") if data.address else None)

@@ -71,19 +71,27 @@ def test_other_niche_and_activities_are_data_not_hardcoded_trade(activity):
     assert value.activity == activity
 
 
-def test_delivery_uses_product_onboarding():
+@pytest.mark.parametrize("offering", ["gas_agua", "galeteria", "mercado", "distribuidora", "outros"])
+def test_delivery_uses_product_onboarding_and_serializes_its_offering(offering):
     value = schemas.CreateBusiness(
         **identity(niche="delivery_distribuicao", activity="products"),
-        contact_phone="67999999901", idempotency_key="delivery-create",
+        delivery_offering=offering, contact_phone="67999999901", idempotency_key="delivery-create",
     )
     assert value.niche in service.AVAILABLE_NICHES
-    assert value.model_dump(mode="json")["activity"] == "products"
+    saved = value.model_dump(mode="json")
+    assert saved["activity"] == "products"
+    assert saved["delivery_offering"] == offering
 
 
 @pytest.mark.parametrize("activity", ["services", "both"])
 def test_delivery_rejects_appointment_activity(activity):
-    with pytest.raises(ValidationError, match="Produtos para entrega"):
+    with pytest.raises(ValidationError, match="atividade de produtos"):
         schemas.Identity.model_validate(identity(niche="delivery_distribuicao", activity=activity))
+
+
+def test_delivery_choice_is_restricted_to_delivery():
+    with pytest.raises(ValidationError, match="nicho Delivery e Distribuição"):
+        schemas.Identity.model_validate(identity(delivery_offering="gas_agua"))
 
 
 @pytest.mark.parametrize("mode,needs_address", [("onsite", True), ("hybrid", True), ("online", False), ("client_address", False)])

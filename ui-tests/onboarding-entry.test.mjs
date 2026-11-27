@@ -29,13 +29,14 @@ test('o cadastro oferece somente os nichos liberados pelo servidor',async t=>{
   assert.equal(h.document.querySelector('[name=other_niche]'),null);
 });
 
-test('Delivery e Distribuição cadastra um negócio de produtos e abre a etapa de endereço',async t=>{
+test('Delivery e Distribuição salva e restaura a opção escolhida no cadastro',async t=>{
   const h=await makeOnboarding({
     decision:entry({tenant_id:null,businesses:[]}),
     respond:(path,method,payload)=>{
       if(path==='/api/v1/onboarding/businesses'&&method==='POST'){
         const data=fullState({current_step:'location',name:payload.name});
-        return {...data,configuration:{...data.configuration,niche:payload.niche,activity:payload.activity}};
+        return {...data,configuration:{...data.configuration,niche:payload.niche,
+          activity:payload.activity,delivery_offering:payload.delivery_offering}};
       }
     },
   });
@@ -44,8 +45,12 @@ test('Delivery e Distribuição cadastra um negócio de produtos e abre a etapa 
   h.change('[name=activity]','services');
   h.change('[name=niche]','delivery_distribuicao');
   const activity=h.element('[name=activity]');
-  assert.equal(activity.value,'products');
-  assert.equal(activity.selectedOptions[0].textContent,'Produtos para entrega');
+  assert.equal(activity.value,'');
+  assert.equal(activity.checkValidity(),false);
+  assert.deepEqual(Array.from(activity.options).filter(o=>o.value).map(o=>o.textContent),[
+    'Gás e Água','Galeteria','Mercado','Distribuidora','Outros',
+  ]);
+  h.change('[name=activity]','gas_agua');
   h.fill('[name=name]','Distribuidora Central');
   h.fill('[name=contact_phone]','(67) 99999-9901');
   h.submit();
@@ -54,7 +59,12 @@ test('Delivery e Distribuição cadastra um negócio de produtos e abre a etapa 
   assert.equal(creation.path,'/api/v1/onboarding/businesses');
   assert.equal(creation.data.niche,'delivery_distribuicao');
   assert.equal(creation.data.activity,'products');
+  assert.equal(creation.data.delivery_offering,'gas_agua');
   assert.equal(h.controller.getState().step,'location');
+  h.click('[data-ob-step=business]');
+  assert.equal(h.element('[name=activity]').value,'gas_agua');
+  h.click('[data-ob-step=review]');
+  assert.match(h.element('#setup').textContent,/Gás e Água/);
 });
 
 test('um negócio existente mantém seu nicho antigo e pode editar os demais dados',async t=>{

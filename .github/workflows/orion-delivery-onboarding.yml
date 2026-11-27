@@ -10,8 +10,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     env:
-      BASE_IMAGE: ghcr.io/qgbaltigo/orion-assistente-api@sha256:55f6a10679ef054b18602e3154c906cd8fc21dfd0c8969b8c41f190aea9e0bd6
-      BASE_SOURCE: 3ad7d8b87c8f02f445033c51d16b1bff74891dd6
+      BASE_IMAGE: ghcr.io/qgbaltigo/orion-assistente-api@sha256:fcbbc2cd5707f5aff8bb9f9c667effe7ef859110dee50bed5b7de179f1d968b3
+      BASE_SOURCE: 2a252d7b706572c698ae97184cd957e180b99a00
     steps:
       - uses: actions/checkout@v4
         with:
@@ -56,8 +56,10 @@ jobs:
           from app.onboarding_schemas import CreateBusiness, DELIVERY_NICHE
           from app.onboarding_service import AVAILABLE_NICHES
           business = CreateBusiness(name="Distribuidora sintética", timezone="America/Cuiaba",
-              niche=DELIVERY_NICHE, activity="products", contact_phone="67999999901",
+              niche=DELIVERY_NICHE, activity="products", delivery_offering="gas_agua",
+              contact_phone="67999999901",
               idempotency_key="delivery-image-smoke")
           assert business.niche in AVAILABLE_NICHES and business.activity == "products"
+          assert business.model_dump(mode="json")["delivery_offering"] == "gas_agua"
           '
           docker push "$image"

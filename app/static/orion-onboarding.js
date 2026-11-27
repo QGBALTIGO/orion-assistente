@@ -28,7 +28,14 @@
     standard:[['','Selecione a atividade'],['services','Serviços com agendamento'],['products','Produtos'],['both','Serviços e produtos']],
     subscriptions:[['','Selecione a atividade'],['subscriptions','Assinaturas'],['one_time_sales','Vendas avulsas'],['both','Assinaturas e vendas avulsas']],
     affiliates:[['','Selecione a atividade'],['offers','Ofertas e cupons'],['reviews','Resenhas e recomendações'],['both','Ofertas e recomendações']],
-    delivery:[['products','Produtos para entrega']],
+    delivery:[
+      ['','Selecione a atividade'],
+      ['gas_agua','Gás e Água'],
+      ['galeteria','Galeteria'],
+      ['mercado','Mercado'],
+      ['distribuidora','Distribuidora'],
+      ['outros','Outros'],
+    ],
   };
   const activityGroupsByNiche = new Map([
     [subscriptionNiche,'subscriptions'],[affiliateNiche,'affiliates'],[deliveryNiche,'delivery'],
@@ -36,7 +43,12 @@
   const activityGroup = niche => activityGroupsByNiche.get(niche)||'standard';
   const activityChoices = niche => activitiesByGroup[activityGroup(niche)];
   const businessNicheLabel = c => ['outro','other'].includes(c.niche)?c.other_niche:niches.find(([value])=>value&&value===c.niche)?.[1]||c.niche;
-  const businessActivityValue = c => c.niche===affiliateNiche?c.affiliate_activity:c.niche===subscriptionNiche?c.subscription_offering:c.activity;
+  function businessActivityValue(c) {
+    if(c.niche===affiliateNiche)return c.affiliate_activity;
+    if(c.niche===subscriptionNiche)return c.subscription_offering;
+    if(c.niche===deliveryNiche)return c.delivery_offering;
+    return c.activity;
+  }
   const businessActivityLabel = c => activityChoices(c.niche).find(([value])=>value&&value===businessActivityValue(c))?.[1]||'Não informado';
   function syncBusinessActivity(form, restoredValue) {
     const niche=form.elements.niche,activity=form.elements.activity;
@@ -511,7 +523,23 @@
       catch(error){if(current(epoch)){state.entry={kind:'blocked'};state.feedback=error.message||'Não foi possível conferir a configuração.';state.error=true;renderEntry();}throw error;}
     }
     function price(raw) {return fieldTools.parseMoney(raw,{required:true,min:0,max:100000000});}
-    function formData(form) {const data=Object.fromEntries(new FormData(form));const type=form.dataset.obForm;if(type==='business'||type==='create'){const result={name:businessNameValue(data.name),timezone:state.data?.timezone||startingTimezone,niche:data.niche,other_niche:data.niche==='outro'?data.other_niche?.trim()||null:null,activity:data.activity,contact_phone:fieldTools.phoneValue(data.contact_phone)};if(data.niche===subscriptionNiche){result.activity='products';result.subscription_offering=data.activity;}if(data.niche===affiliateNiche){result.activity='products';result.affiliate_activity=data.activity;result.contact_phone=null;}return result;}if(type==='location'){const result={modality:data.modality};if(['onsite','hybrid'].includes(data.modality))result.address={postal_code:fieldTools.postalCodeValue(data.postal_code),street:addressTextValue(data.street),number:addressNumberValue(data.number),no_number:false,complement:addressTextValue(data.complement)||null,neighborhood:addressTextValue(data.neighborhood),city:addressTextValue(data.city),state:data.state.trim().toUpperCase()};return result;}
+    function formData(form) {
+      const data=Object.fromEntries(new FormData(form)),type=form.dataset.obForm;
+      if(type==='business'||type==='create'){
+        const result={
+          name:businessNameValue(data.name),
+          timezone:state.data?.timezone||startingTimezone,
+          niche:data.niche,
+          other_niche:data.niche==='outro'?data.other_niche?.trim()||null:null,
+          activity:data.activity,
+          contact_phone:fieldTools.phoneValue(data.contact_phone),
+        };
+        if(data.niche===subscriptionNiche){result.activity='products';result.subscription_offering=data.activity;}
+        if(data.niche===affiliateNiche){result.activity='products';result.affiliate_activity=data.activity;result.contact_phone=null;}
+        if(data.niche===deliveryNiche){result.activity='products';result.delivery_offering=data.activity;}
+        return result;
+      }
+      if(type==='location'){const result={modality:data.modality};if(['onsite','hybrid'].includes(data.modality))result.address={postal_code:fieldTools.postalCodeValue(data.postal_code),street:addressTextValue(data.street),number:addressNumberValue(data.number),no_number:false,complement:addressTextValue(data.complement)||null,neighborhood:addressTextValue(data.neighborhood),city:addressTextValue(data.city),state:data.state.trim().toUpperCase()};return result;}
       if(type==='profile')return Object.fromEntries(
         ['operating_age','team_size','monthly_revenue','monthly_volume'].map(name=>[name,data[name]])
       );

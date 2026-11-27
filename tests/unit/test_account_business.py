@@ -174,16 +174,20 @@ async def test_administrative_identity_cannot_register_a_personal_business(monke
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("replay", [False, True])
-async def test_closed_niches_reject_new_creation_and_preserve_saved_operations(monkeypatch, replay):
+@pytest.mark.parametrize("niche,activity,detail", [
+    ("salao", "services", "temporariamente indisponível"),
+    ("delivery_distribuicao", "products", "Escolha o que sua empresa oferece"),
+])
+async def test_creation_validates_new_requests_and_preserves_saved_operations(monkeypatch, replay, niche, activity, detail):
     account, tenant = uuid4(), uuid4()
     actor = Actor("member", account_id=account)
     payload = onboarding_schemas.CreateBusiness(
-        name="Salão sintético", niche="salao", activity="services",
+        name="Empresa sintética", niche=niche, activity=activity,
         timezone="America/Cuiaba", contact_phone="+5567999999901", idempotency_key=str(uuid4()),
     )
-    fingerprint = onboarding_service.digest({
-        "account": account, "data": payload.model_dump(mode="json", exclude={"idempotency_key"}),
-    })
+    values = payload.model_dump(mode="json", exclude={"idempotency_key"})
+    assert "delivery_offering" not in values
+    fingerprint = onboarding_service.digest({"account": account, "data": values})
     history = [{"tenant_id": tenant, "fingerprint": fingerprint}] if replay else []
     db = DB(None, [{"personal_account": True, "verified_at": True}], history)
     monkeypatch.setenv("ONBOARDING_ENABLED", "1")
@@ -201,6 +205,6 @@ async def test_closed_niches_reject_new_creation_and_preserve_saved_operations(m
         with pytest.raises(HTTPException) as denied:
             await onboarding_service.create_business(actor, payload)
         assert denied.value.status_code == 422
-        assert "temporariamente indisponível" in denied.value.detail
+        assert detail in denied.value.detail
     assert len(db.calls) == 3 and not db.results
     assert all("INSERT " not in sql and "UPDATE " not in sql and "DELETE " not in sql for sql, _ in db.calls)
