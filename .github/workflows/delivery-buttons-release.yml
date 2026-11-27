@@ -1,0 +1,75 @@
+name: Orion - Empacotar botões Delivery sobre produção
+on:
+  push:
+    branches: [codex/delivery-buttons-release-20261127]
+permissions:
+  contents: read
+  packages: write
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - surface: api
+            repository: orion-assistente-api
+          - surface: qr
+            repository: orion-assistente-qr-bridge
+    env:
+      IMAGE: ghcr.io/qgbaltigo/${{ matrix.repository }}:delivery-buttons-${{ github.sha }}
+      SURFACE: ${{ matrix.surface }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Aplicar somente o patch revisado
+        run: python scripts/package_delivery_buttons.py "$SURFACE" "$IMAGE"
+      - name: Validar protocolo e código da imagem
+        run: |
+          set -euo pipefail
+          if [ "$SURFACE" = api ]; then
+            docker run --rm --network none --entrypoint python "$IMAGE" -m compileall -q app/delivery_whatsapp.py app/subscription_devices.py
+            docker run --rm --network none --entrypoint python "$IMAGE" -c 'from app import delivery_whatsapp as w; s={"stage":"confirm","summary":"Resumo"+w.CONFIRMATION_FALLBACK}; p=w.confirmation_presentation(s["summary"],s); assert w.confirmation_selection(s,p["action"]["buttons"][0]["id"],"provider","provider")=="confirmo"; assert w.cash_change_from_message("dinheiro, troco pra 50 reais")== (True,5000)'
+          else
+            docker run --rm --network none --entrypoint node "$IMAGE" --check src/channel-session.mjs
+            docker run --rm --network none --entrypoint node "$IMAGE" --check src/device-runtime.mjs
+            docker run --rm --network none --entrypoint node "$IMAGE" --input-type=module -e '
+              import assert from "node:assert/strict";
+              import * as sdk from "@whiskeysockets/baileys";
+              import {buildAssistantPresentation} from "./src/assistant-presentation.mjs";
+              import {deliveryPresentationFromPermit} from "./src/delivery-confirmation.mjs";
+              import {normalizeChatbotInput} from "./src/chatbot-input.mjs";
+              await import("./src/channel-session.mjs");
+              await import("./src/device-runtime.mjs");
+              const id="a".repeat(32),text="Resumo de teste",p={version:1,id,action:{type:"reply_buttons",text,buttons:[{id:"oa1_"+id+"_0",title:"Confirmar pedido"},{id:"oa1_"+id+"_1",title:"Cancelar"}]}};
+              const fallback=text+"\nResponda *CONFIRMO* para registrar o pedido ou *NÃO* para cancelar o resumo.";
+              const permit={authorized:true,type:"send_text",purpose:"delivery_reply",payload:{phone:"5567999999901",text:fallback,delivery_presentation:p}};
+              assert.deepEqual(deliveryPresentationFromPermit(permit,{capabilities:{delivery_reply_buttons:1}}),p);
+              assert.equal(deliveryPresentationFromPermit(permit,{capabilities:{}}),null);
+              const built=await buildAssistantPresentation(p,{sdk,interactiveMode:"native"});
+              const wire=sdk.proto.Message.decode(sdk.proto.Message.encode(built.content).finish());
+              assert.deepEqual(wire.interactiveMessage.nativeFlowMessage.buttons.map(b=>JSON.parse(b.buttonParamsJson).display_text),["Confirmar pedido","Cancelar"]);
+              const selection=normalizeChatbotInput({key:{id:"synthetic",fromMe:false},message:{interactiveResponseMessage:{nativeFlowResponseMessage:{name:"quick_reply",paramsJson:JSON.stringify({id:p.action.buttons[0].id})},contextInfo:{stanzaId:"provider"}}}});
+              assert.equal(selection.selection_id,p.action.buttons[0].id);assert.equal(selection.quoted_message_id,"provider");
+              built.dispose();'
+          fi
+      - name: Publicar artefato sem atualizar o Railway
+        run: |
+          set -euo pipefail
+          docker push "$IMAGE"
+          digest="$(docker image inspect "$IMAGE" --format '{{index .RepoDigests 0}}')"
+          [[ "$digest" =~ ^ghcr\.io/qgbaltigo/orion-assistente-(api|qr-bridge)@sha256:[a-f0-9]{64}$ ]]
+          printf 'RepoDigest=%s\n' "$digest" | tee delivery-buttons-image.txt
+          printf '### %s\n\n`%s`\n' "$SURFACE" "$digest" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: delivery-buttons-${{ matrix.surface }}
+          path: delivery-buttons-image.txt
