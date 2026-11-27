@@ -30,3 +30,13 @@ Não declarar missão integralmente concluída sem evidência. Cada ciclo deve p
 - Memória de endereços: branch `codex/delivery-memory-20261127`, revisão `9c29a29` aprovada em CI 46081391406; revisão `282cbfb` acrescenta teste de gravação após checkout confirmado, CI 46081927436. Não implantada.
 - Piloto áudio: branch `codex/delivery-audio-20261127`, revisão `fa1361a`, CI 46081789930 aprovado integralmente (review e validation). Reutiliza ASR existente, escopo por tenant, quotas e fallback; confirmação final por texto/botão. Não implantado, sem teste de áudio real.
 - Matriz em `docs/delivery-whatsapp-qa-matrix.csv`: 500 cenários planejados e quatro evidências históricas reais. Os testes automatizados são registrados separadamente; não equivalem automaticamente a cenários individuais aprovados.
+
+## QA integrado — 27/11/2026
+- Branch de trabalho `codex/delivery-integrated-qa-20261127`; revisão integrada `5ede92a`. Reúne os ramos de memória, áudio e botões em ambiente separado; não altera produção.
+- Testes novos de conversação: execução inicial 14 aprovados e 11 reprovados em 25 casos. Causas: alterações de pagamento, troco e recebimento após resumo não atualizavam o pedido; respostas informais e dados de pagamento eram aceitos como nome.
+- Corrigidos os 11 casos e adicionados testes de pagamento ambíguo, endereço alterado, modalidade não disponível, troco insuficiente e seleção antiga. Resultado local: 59 aprovados (26 casos prévios + 33 novos).
+- CI direcionada 46083013473: 59 testes de conversação, 7 testes PostgreSQL/broker/isolamento e 4 testes Node de confirmação, todos aprovados. Novo cenário simula cinco contatos distintos, cada qual com nome e resumo próprios, disputando a última unidade; apenas um pedido/cliente foi persistido, estoque físico 1 e reserva 1.
+- Regressão local do conector: 135 testes aprovados com dependências fixadas, abrangendo runtime, entrada de áudio e apresentações interativas. Outros 11 testes locais de decodificação/admissão de áudio e eventos passaram. A primeira execução de um arquivo Node foi bloqueada pela dependência ausente; a instalação isolada resolveu e o arquivo foi incluído nos 135.
+- Regressão local do motor reutilizado: 261 aprovados; 3 testes de decodificação real ficaram bloqueados pela ausência de ffmpeg/ffprobe no Windows. Nenhum serviço/conta real foi acionado.
+- CI ampla 46083013437 ainda em execução no momento do checkpoint. Revisão integrada não publicada.
+- A transcrição no teste do broker é simulada; não houve envio de áudio, imagem, localização nem ligação pelo WhatsApp real neste ciclo. Gás continua encaminhado à equipe conforme política de elegibilidade.

@@ -1,0 +1,36 @@
+name: Orion - QA interno de mídia Delivery
+on:
+  push:
+    branches: [codex/delivery-integrated-qa-20261127]
+    paths:
+      - '.github/workflows/delivery-media-qa.yml'
+permissions:
+  contents: read
+jobs:
+  media:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Preparar decodificadores e dependências fixadas
+        run: |
+          if ! command -v ffmpeg >/dev/null || ! command -v ffprobe >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends ffmpeg
+          fi
+          ffmpeg -version
+          ffprobe -version
+          python -m pip install -c requirements.lock ".[test]"
+          npm ci --prefix qr-bridge --ignore-scripts --no-audit --no-fund
+      - name: Validar ASR, decodificação, limites e interpretação sem provedores pagos
+        run: |
+          pytest -q -ra tests/unit/test_qr_audio_quality.py tests/unit/test_qr_commerce.py tests/unit/test_qr_commerce_information.py tests/unit/test_qr_dialogue.py tests/unit/test_subscription_device_audio.py tests/unit/test_subscription_device_rules.py
+      - name: Validar protocolo de entrada, envio, áudio e seleção
+        run: |
+          node --test --test-reporter=dot qr-bridge/test/device-audio.test.mjs qr-bridge/test/inbound-event.test.mjs qr-bridge/test/audio-inbound-routing.test.mjs qr-bridge/test/device-runtime.test.mjs qr-bridge/test/assistant-presentation.test.mjs qr-bridge/test/delivery-confirmation.test.mjs
