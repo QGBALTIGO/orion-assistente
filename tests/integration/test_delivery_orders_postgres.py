@@ -41,6 +41,49 @@ async def receipts(ctx, tenant):
         """), {"t": tenant})).mappings().all()
 
 
+async def test_private_named_addresses_concurrent_edits_erasure_and_order_snapshot(onboarding_db, monkeypatch):
+    ctx = onboarding_db
+    tenant, actor = await business(ctx, monkeypatch)
+    await complete_delivery_setup(ctx, tenant)
+    root = f"/api/v1/tenants/{tenant}/delivery"
+    addr = {"street": "Rua do Teste", "number": "15", "neighborhood": "Centro", "city": "Campo Grande", "state": "MS"}
+    values = {"label": "Casa", "address": addr, "expected_revision": 0}
+    async with client(actor) as http:
+        customer = (await http.post(root + "/order-customers", json={
+            "name": "Pessoa sintética", "idempotency_key": uuid4().hex})).json()["id"]
+        book = f"{root}/order-customers/{customer}/addresses"
+        home, work = [f"{book}/{uuid4()}" for _ in range(2)]
+        assert (await http.get(book)).json() == {"items": []}
+        first, retry = await asyncio.gather(*[http.put(home, json=values) for _ in range(2)])
+        assert first.status_code == retry.status_code == 200, first.text
+        assert first.json() == retry.json() and first.json()["revision"] == 1
+        assert (await http.put(work, json={**values, "label": "casa"})).status_code == 409
+        assert (await http.put(work, json={**values, "label": "Trabalho"})).status_code == 200
+        assert [a["label"] for a in (await http.get(book)).json()["items"]] == ["Casa", "Trabalho"]
+        variant = (await http.post(root + "/catalog", json=new_product())).json()["variant_id"]
+        order = await order_payload(http, root, variant, 1, mode="delivery", customer_id=customer, address=addr)
+        created = await http.post(root + "/orders", json=order)
+        assert created.status_code == 201, created.text
+        changes = await asyncio.gather(*[http.put(home, json={
+            **values, "expected_revision": 1, "address": {**addr, "number": n}}) for n in ("16", "17")])
+        assert sorted(r.status_code for r in changes) == [200, 409]
+        assert (await http.delete(home, params={"revision": 1})).status_code == 409
+        assert (await http.delete(home, params={"revision": 2})).status_code == 200
+        assert (await http.delete(home, params={"revision": 2})).status_code == 200
+        assert (await http.put(home, json=values)).status_code == 409
+        assert [a["label"] for a in (await http.get(book)).json()["items"]] == ["Trabalho"]
+        detail = await http.get(root + "/orders/" + created.json()["id"])
+        assert detail.json()["address"]["number"] == "15"
+        assert (await http.get(f"{root}/order-customers/{uuid4()}/addresses")).status_code == 404
+    async with client(Actor("member", account_id=ctx.other)) as foreign:
+        assert (await foreign.get(book)).status_code == 403
+        assert (await foreign.put(work, json=values)).status_code == 403
+    async with ctx.runtime() as session:
+        async with tenant_transaction(session, ctx.a):
+            assert not (await session.execute(text("SELECT 1 FROM delivery_customer_addresses WHERE customer_id=:c"),
+                                              {"c": UUID(customer)})).first()
+
+
 async def test_pickup_payment_and_stock_are_recorded_exactly_once(onboarding_db, monkeypatch):
     ctx = onboarding_db
     tenant, actor = await business(ctx, monkeypatch)

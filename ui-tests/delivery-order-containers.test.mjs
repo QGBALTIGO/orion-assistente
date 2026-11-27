@@ -19,6 +19,35 @@ async function waitForField(document, selector) {
   assert.ok(document.querySelector(selector), 'O editor deve carregar o campo '+selector);
 }
 
+test('delivery operator explicitly selects a saved address and switching customer clears it',async t=>{
+  const person='51000000-0000-4000-8000-000000000001', other='51000000-0000-4000-8000-000000000002';
+  const home={id:orderId,label:'Casa',revision:1,address:{number:'18',street:'Rua A',city:'Campo Grande',neighborhood:'Centro',state:'MS'}};
+  const h=await makeSuite({initialRoute:'pedidos-delivery',permissions:preview,configureWindow:win=>win.eval(ordersSource),
+    respond(path) {
+      if(path.includes('/order-customers?')) return {items:[{name:'Ana',id:person},{name:'Bia',id:other}]};
+      if(path.endsWith('/addresses')) return {items:[home]};
+      if(path.includes('/delivery/orders?')) return {items:[],offset:0,limit:25,has_more:false};
+      return defaultResponse(path);
+    }});
+  t.after(()=>h.close());
+  await flush();
+  const action=name=>'[data-os-action="delivery-'+name+'"]';
+  h.click(action('new-order'));
+  h.fill('[name=mode]','delivery').dispatchEvent(new h.window.Event('change',{bubbles:true}));
+  h.fill('[name=customer_search]','Ana');
+  h.click(action('choose-customer'));await flush();
+  h.click('[data-delivery-match="'+person+'"]');
+  h.click(action('address-book'));await flush();
+  assert.equal(h.document.querySelector('[name=address_street]').value,'');
+  h.fill('[name=saved_address]',home.id).dispatchEvent(new h.window.Event('change',{bubbles:true}));
+  assert.equal(h.document.querySelector('[name=address_street]').value,'Rua A');
+  h.click(action('choose-customer'));await flush();
+  h.click('[data-delivery-match="'+other+'"]');
+  assert.equal(h.document.querySelector('[name=address_street]').value,'');
+  assert.ok(h.document.querySelector('[data-delivery-address-book]').hidden);
+  assert.deepEqual(h.errors,[]);
+});
+
 test('order editor keeps a vasilhame exchange and requests physical confirmation',async t=>{
   let order=null;
   const h=await makeSuite({

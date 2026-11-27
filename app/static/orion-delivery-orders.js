@@ -28,7 +28,13 @@
     const addressFields='<fieldset data-delivery-address hidden disabled class="os-form">'+
       '<legend>Endereço de entrega</legend>'+
       '<div class="os-actions hidden" data-delivery-previous-control hidden>'+
-      command(button,'Usar último endereço','delivery-use-address','left')+'</div>'+
+      command(button,'Usar último endereço','delivery-use-address','left')+
+      command(button,'Endereços do cliente','delivery-address-book','users')+'</div>'+
+      '<div class="os-form hidden" data-delivery-address-book hidden>'+
+      selectField('Endereço salvo','saved_address',[['','Novo endereço']],'')+
+      field('Identificação do endereço','address_label','text','','maxlength="60" placeholder="Casa ou Trabalho"')+
+      '<div class="os-actions">'+command(button,'Salvar endereço','delivery-address-save','check')+
+      command(button,'Excluir endereço','delivery-address-remove','trash')+'</div></div>'+
       '<p data-delivery-address-status class="os-help" aria-live="polite"></p><div class="os-form-grid">'+
       field('CEP','address_postal','text','','data-orion-field="postal-code" inputmode="numeric" autocomplete="postal-code"')+
       '<div class="os-actions">'+command(button,'Buscar CEP','delivery-lookup-cep','search')+'</div>'+
@@ -92,6 +98,10 @@
       const addressBox=form.querySelector('[data-delivery-address]');
       const previous=form.querySelector('[data-delivery-previous-control]');
       const addressStatus=form.querySelector('[data-delivery-address-status]');
+      const book=form.querySelector('[data-delivery-address-book]');
+      const bookChoice=form.elements.saved_address, labelField=form.elements.address_label;
+      const removeAddress=book.querySelector('[data-os-action="delivery-address-remove"]');
+      let savedAddresses=[], bookVersion=0, unsavedId, deletionPending=false;
       const quick=form.querySelector('[data-delivery-quick-customer]');
       const feedback=form.querySelector('[data-delivery-customer-feedback]');
       const addressNames=['street','number','neighborhood','city','state','complement'];
@@ -100,6 +110,36 @@
       const invalidate = () => {quoteVersion++;estimate=null;quote.replaceChildren();};
       packaging=containerUi?.bind(form,{call,ui,current:dialogActive});
       const scheduleBox=form.querySelector('[data-delivery-schedule-box]');
+      function resetAddressBook() {
+        bookVersion++;
+        book.hidden=true;
+        book.classList.add('hidden');
+        savedAddresses=[];
+        bookChoice.replaceChildren(new Option('Novo endereço',''));
+        labelField.value='';
+        unsavedId=null;
+        deletionPending=false;
+        removeAddress.hidden=true;
+      }
+      function selectBookEntry(row) {
+        unsavedId=null;
+        deletionPending=false;
+        removeAddress.hidden=!row;
+        labelField.value=row?.label||'';
+        addressStatus.textContent='';
+        if (row) fillAddress(row.address);
+      }
+      function fillAddress(address) {
+        addressVersion++;
+        addressOwner=customer?.id;
+        form.elements.address_postal.value=address.postal_code||'';
+        for (const name of addressNames) form.elements['address_'+name].value=address[name]||'';
+        form.elements.address_no_number.checked=!!address.no_number;
+        updateAddress();
+        invalidate();
+        window.OrionFields.refresh(addressBox);
+        addressStatus.textContent='Confira o endereço antes de confirmar.';
+      }
       function updateAddress() {
         addressBox.hidden=addressBox.disabled=form.elements.mode.value!=='delivery';
         addressBox.classList.toggle('hidden',addressBox.hidden);
@@ -112,7 +152,11 @@
         form.elements.delivery_schedule.disabled=scheduleBox.hidden;
       }
       function setCustomer(next) {
-        if (addressOwner&&addressOwner!==next?.id) {
+        if (customer?.id!==next?.id) {
+          addressVersion++;
+          resetAddressBook();
+        }
+        if ((customer||addressOwner)&&customer?.id!==next?.id) {
           addressOwner=null;
           form.elements.address_postal.value='';
           for (const name of addressNames) form.elements['address_'+name].value='';
@@ -146,7 +190,8 @@
         updateAddress();
       }).catch(()=>{});
       form.addEventListener('change',event=>{
-        if (event.target.name==='mode') {addressVersion++;updateAddress();invalidate();products=[];matches.replaceChildren();}
+        if (event.target.name==='mode') {addressVersion++;resetAddressBook();updateAddress();invalidate();products=[];matches.replaceChildren();}
+        if (event.target===bookChoice) {bookVersion++;selectBookEntry(savedAddresses.find(row=>row.id===bookChoice.value));}
         if (event.target.name==='address_no_number') {addressVersion++;updateAddress();invalidate();}
       });
       form.addEventListener('input',event=>{
@@ -204,19 +249,59 @@
             const result=await call('/order-customers/'+encodeURIComponent(selected)+'/previous-address');
             if (!dialogActive()||selected!==customer?.id||addressVersion!==version) return;
             const address=result.address;
-            if (address) {
-              addressOwner=selected;
-              form.elements.address_postal.value=address.postal_code||'';
-              for (const fieldName of addressNames) {
-                form.elements['address_'+fieldName].value=address[fieldName]||'';
-              }
-              form.elements.address_no_number.checked=address.no_number;
-              updateAddress();
-              invalidate();
-              window.OrionFields.refresh(addressBox);
-            }
+            if (address) {resetAddressBook();fillAddress(address);}
             addressStatus.textContent=address?'Confira o endereço antes de confirmar.':'Nenhum endereço de entrega concluída.';
           } catch (error) {if (dialogActive()&&selected===customer?.id&&addressVersion===version) addressStatus.textContent=error.message;}
+          finally {node.disabled=false;}
+          return;
+        }
+        if (['delivery-address-book','delivery-address-save','delivery-address-remove'].includes(action)&&customer) {
+          const owner=customer.id, path='/order-customers/'+encodeURIComponent(owner)+'/addresses';
+          const version=++bookVersion;
+          const active=()=>dialogActive()&&customer?.id===owner&&version===bookVersion;
+          const row=savedAddresses.find(entry=>entry.id===bookChoice.value);
+          if (action==='delivery-address-book'&&!book.hidden) {resetAddressBook();return;}
+          node.disabled=true;
+          try {
+            if (action==='delivery-address-book') {
+              const result=await call(path);
+              if (!active()) return;
+              savedAddresses=result.items;
+              bookChoice.replaceChildren(new Option('Novo endereço',''),...savedAddresses.map(entry=>new Option(entry.label,entry.id)));
+              book.hidden=false;
+              book.classList.remove('hidden');
+              selectBookEntry(null);
+              bookChoice.focus();
+            } else if (action==='delivery-address-save') {
+              const inputVersion=addressVersion;
+              const v=form.elements;
+              if (!labelField.value.trim()) {labelField.focus();throw Error('Informe um nome para o endereço.');}
+              const address={postal_code:window.OrionFields.postalCodeValue(v.address_postal.value),no_number:v.address_no_number.checked};
+              for (const name of addressNames) address[name]=v['address_'+name].value.trim()||null;
+              if (address.no_number) address.number=null;
+              if (!address.street||!address.city||!address.state||!address.neighborhood||!(address.number||address.no_number))
+                throw Error('Preencha rua, número, bairro, cidade e UF antes de salvar.');
+              unsavedId ||= crypto.randomUUID();
+              const saved=await call(path+'/'+encodeURIComponent(row?.id||unsavedId),'PUT',
+                {label:labelField.value.trim(),address,expected_revision:row?.revision||0});
+              if (!active()) return;
+              savedAddresses=savedAddresses.filter(entry=>entry.id!==saved.id).concat(saved);
+              bookChoice.replaceChildren(new Option('Novo endereço',''),...savedAddresses.map(entry=>new Option(entry.label,entry.id)));
+              bookChoice.value=saved.id;
+              if (inputVersion===addressVersion) selectBookEntry(saved);
+              else {removeAddress.hidden=false;deletionPending=false;}
+              addressStatus.textContent='Endereço salvo no cadastro do cliente.';
+            } else if (row) {
+              if (!deletionPending) {deletionPending=true;addressStatus.textContent='Para confirmar a exclusão de '+row.label+', toque em Excluir endereço novamente.';return;}
+              await call(path+'/'+encodeURIComponent(row.id)+'?revision='+row.revision,'DELETE');
+              if (!active()) return;
+              savedAddresses=savedAddresses.filter(entry=>entry.id!==row.id);
+              bookChoice.selectedOptions[0]?.remove();
+              bookChoice.value='';
+              selectBookEntry(null);
+              addressStatus.textContent='Endereço excluído do cadastro.';
+            }
+          } catch(error) {if(active())addressStatus.textContent=error.message;}
           finally {node.disabled=false;}
           return;
         }
@@ -256,7 +341,8 @@
             if (!result.confirmation_requirements_met) throw Error('Confira o preço e o estoque dos itens selecionados.');
             estimate={version:result.estimate_version,key};
             quote.innerHTML=(input.mode==='delivery'?'<p>Produtos '+money(result.subtotal_cents)+
-              ' · Taxa '+money(result.delivery_fee_cents)+'</p>':'')+'<p><strong>Total</strong> '+money(result.total_cents)+'</p>';
+              ' · Taxa '+money(result.delivery_fee_cents)+'</p>':'')+'<p><strong>Total</strong> '+money(result.total_cents)+'</p>'+
+              (result.eta_minutes?'<p>Prazo estimado para o bairro: '+esc(String(result.eta_minutes))+' min.</p>':'');
           } catch(error) {if (latest()) quote.innerHTML=err(error);}
           return;
         }

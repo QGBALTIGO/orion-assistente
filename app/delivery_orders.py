@@ -330,7 +330,13 @@ def priced_order(lines, payload, now, *, delivery=None):
     quote = commerce.calculate(lines, now)
     fee = delivery["delivery_fee_cents"] if delivery is not None else payload.delivery_fee_cents
     subtotal = quote["total_cents"]
+    area = (delivery or {}).get("area") or {}
     if subtotal is not None:
+        if subtotal < area.get("minimum_cents", 0):
+            minimum = area["minimum_cents"]
+            raise HTTPException(422, f"Pedido mínimo para este bairro: R$ {minimum // 100},{minimum % 100:02d} em produtos")
+        if area.get("free_from_cents") and subtotal >= area["free_from_cents"]:
+            fee = 0
         quote["total_cents"] += fee
     if quote["minimum_total_cents"] is not None:
         quote["minimum_total_cents"] += fee
@@ -340,7 +346,8 @@ def priced_order(lines, payload, now, *, delivery=None):
     if delivery and (delivery["policy_revision"] or delivery["scheduled_at"]):
         signed.append(jsonable_encoder(delivery))
     version = hashlib.sha256(json.dumps(signed).encode()).hexdigest()
-    return {**quote,"subtotal_cents":subtotal,"delivery_fee_cents":fee,"estimate_version":version}
+    return {**quote,"subtotal_cents":subtotal,"delivery_fee_cents":fee,"estimate_version":version,
+            "eta_minutes":area.get("eta_minutes")}
 
 
 async def create(db, tenant, access, payload):
@@ -380,7 +387,7 @@ async def create(db, tenant, access, payload):
         """), {"t":tenant,"id":order_id,"mode":payload.mode,"c":payload.customer_id,
                 "address":payload.address.model_dump_json() if payload.address else None,
                 "fee":quote["delivery_fee_cents"],"scheduled":delivery["scheduled_at"] if delivery else None,
-                "logistics":json.dumps(jsonable_encoder(delivery)) if delivery else None})
+                "logistics":json.dumps(jsonable_encoder({**delivery, "delivery_fee_cents":quote["delivery_fee_cents"]})) if delivery else None})
         await commerce.reserve_stock(db, tenant, access, order_id, lines)
         await packaging.save_plan(db, tenant, order_id, payload.customer_id, lines,
                                   packaging.required_exchanges(lines, payload.container_plan))

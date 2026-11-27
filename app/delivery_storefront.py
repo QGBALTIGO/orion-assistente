@@ -588,8 +588,11 @@ async def prepare_checkout(db, tenant, shop, payload, *, lock=False):
         commerce.conflict("Um produto está indisponível na loja. Confira seu carrinho.")
     if any(line["exchange_container_id"] is not None for line in lines) and not payload.accept_exchange:
         raise HTTPException(422, "Confirme a devolução dos vasilhames vazios selecionados")
-    estimate = priced_order(lines, OrderEstimate(mode=payload.mode, items=payload.items,
-                                                delivery_fee_cents=logistics["delivery_fee_cents"]), now)
+    pricing_input = OrderEstimate(mode=payload.mode, items=payload.items, delivery_fee_cents=logistics["delivery_fee_cents"])
+    area = logistics["area"] or {}
+    has_area_terms = any(area.get(key) for key in ("minimum_cents", "free_from_cents", "eta_minutes"))
+    estimate = priced_order(lines, pricing_input, now, delivery=logistics if has_area_terms else None)
+    logistics["delivery_fee_cents"] = estimate["delivery_fee_cents"]
     if not estimate["confirmation_requirements_met"]:
         commerce.conflict("O estoque ou o preço mudou. Confira seu carrinho.")
     if estimate["total_cents"] > MAX_MONEY:
@@ -616,6 +619,7 @@ async def public_quote(slug: str, payload: CheckoutDraft, request: Request):
     return public_json({
         "quote": f"{expires}.{signature}", "subtotal_cents": estimate["subtotal_cents"],
         "delivery_fee_cents": estimate["delivery_fee_cents"], "total_cents": estimate["total_cents"],
+        "eta_minutes": estimate["eta_minutes"],
         "change_cents": None if payload.change_for_cents is None else payload.change_for_cents - estimate["total_cents"],
         "items": [{key: item[key] for key in ("variant_id", "product_name", "quantity", "unit_price_cents", "total_cents")}
                   for item in estimate["items"]],

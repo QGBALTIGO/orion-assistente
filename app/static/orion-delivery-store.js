@@ -241,6 +241,7 @@
       const fee = element('div', 'store-line');
       fee.append(element('span', '', 'Taxa de entrega'), element('strong', '', money(value.delivery_fee_cents)));
       rows.push(fee);
+      if (value.eta_minutes) rows.push(element('p', '', 'Prazo estimado para o bairro: '+value.eta_minutes+' min.'));
     }
     const total = element('div', 'store-total');
     total.append(element('span', '', 'Total no recebimento'), element('strong', '', money(value.total_cents)));

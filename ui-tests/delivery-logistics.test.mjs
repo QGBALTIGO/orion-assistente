@@ -47,8 +47,14 @@ test('configures coverage and windows and adds a courier in Orion dialogs',async
   h.fill('#osDialog [name=logistics_state]','MS');
   h.fill('#osDialog [name=logistics_neighborhood]','Vila São João');
   h.fill('#osDialog [name=logistics_fee]','7,50');
+    h.fill('#osDialog [name=logistics_minimum]','10,00');
+    h.fill('#osDialog [name=logistics_free_from]','30,00');
+    h.fill('#osDialog [name=logistics_eta]','25');
   await submit();
   assert.equal(config.areas[0]?.fee_cents,750);
+    assert.equal(config.areas[0].minimum_cents,1000);
+    assert.equal(config.areas[0].free_from_cents,3000);
+    assert.equal(config.areas[0].eta_minutes,25);
   assert.match(h.document.querySelector('#osDeliveryLogisticsSections').textContent,/Vila São João/);
   click('logistics-coverage');
   h.fill('#osDialog [name=logistics_mode]','areas');

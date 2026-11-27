@@ -69,8 +69,11 @@ PHASES = (
     "0108_delivery_payments",
     "0109_delivery_catalog_editor",
     "0110_delivery_checkout_options",
+    "0111_delivery_customer_addresses",
+    "0112_delivery_area_terms",
 )
 TABLES = {
+    "0111_delivery_customer_addresses": ("delivery_customer_addresses",),
     "0099_delivery_catalog": ("delivery_variant_details", "delivery_catalog_operations"),
     "0100_delivery_orders": ("delivery_order_details",),
     "0102_delivery_containers": ("delivery_containers", "delivery_container_movements"),
@@ -81,6 +84,7 @@ TABLES = {
     "0109_delivery_catalog_editor": ("delivery_product_profiles",),
 }
 COLUMNS = {
+    "0112_delivery_area_terms": (("delivery_logistics_policies", "area_terms"),),
     "0100_delivery_orders": (("commercial_orders", "origin"),),
     "0101_delivery_dispatch": (
         ("delivery_order_details", "address"), ("delivery_order_details", "courier_name"),

@@ -26,7 +26,7 @@
     const output=host.querySelector('#osDeliveryLogisticsSections');
 
     function table(columns,rows) {
-      return '<div class="os-table-scroll" tabindex="0" role="region" aria-label="Tabela de dados"><table class="os-table"><thead><tr>'+
+      return '<div class="os-table-scroll"><table class="os-table"><thead><tr>'+
         columns.map(label=>'<th scope="col">'+esc(label)+'</th>').join('')+'</tr></thead><tbody>'+
         rows.map(cells=>'<tr>'+cells.map((cell,index)=>'<td data-label="'+esc(columns[index])+'">'+cell+'</td>').join('')+'</tr>').join('')+
         '</tbody></table></div>';
@@ -41,7 +41,9 @@
         const key=nameAttr('area',index);
         const included=area.kind==='included';
         const values=[esc(area.neighborhood),esc(area.city+' / '+area.state),badge(included?'active':'inactive',included?'Atendido':'Excluído'),
-          included?esc(money(area.fee_cents)):'—'];
+          included?[esc(money(area.fee_cents)),area.minimum_cents?'Mínimo '+esc(money(area.minimum_cents)):'',
+            area.free_from_cents?'Grátis a partir de '+esc(money(area.free_from_cents)):'',
+            area.eta_minutes?'Prazo de '+esc(String(area.eta_minutes))+' min':''].filter(Boolean).join('<br>'):'—'];
         if (canManagePolicy()) values.push(writableActions([['Editar','logistics-edit-area','edit',key],['Remover','logistics-remove-area','trash',key]],canManagePolicy));
         return values;
       });
@@ -50,7 +52,7 @@
       return '<section class="os-card os-section-gap"><div class="os-card-header"><div><h2>Cobertura e taxas</h2>'+
         '<p>'+esc(policy.coverage_mode==='areas'?'Taxa calculada pelo bairro.':'Taxa informada pelo operador.')+'</p></div>'+
         writableActions([['Configurar cobertura','logistics-coverage','settings'],['Novo bairro','logistics-new-area','plus']],canManagePolicy)+
-        '</div>'+(rows.length?table(columns,rows):empty('deliveryRoute','Nenhum bairro cadastrado','Cadastre os bairros que a empresa atende.'))+'</section>';
+        '</div>'+(rows.length?table(columns,rows):empty('map','Nenhum bairro cadastrado','Cadastre os bairros que a empresa atende.'))+'</section>';
     }
 
     function scheduling() {
@@ -128,11 +130,19 @@
         selectField('UF','logistics_state',[['','Selecione'],...states],area?.state||'','required')+
         field('Bairro','logistics_neighborhood','text',area?.neighborhood||'','required maxlength="120"')+
         selectField('Cobertura','logistics_kind',kinds,area?.kind||'included')+
-        moneyField('Taxa de entrega','logistics_fee','text',window.OrionFields.moneyDisplay(area?.fee_cents??0))+'</div>';
+        moneyField('Taxa de entrega','logistics_fee','text',window.OrionFields.moneyDisplay(area?.fee_cents??0))+
+        moneyField('Pedido mínimo em produtos','logistics_minimum','text',window.OrionFields.moneyDisplay(area?.minimum_cents??0))+
+        moneyField('Entrega grátis a partir de','logistics_free_from','text',area?.free_from_cents?window.OrionFields.moneyDisplay(area.free_from_cents):'')+
+        field('Prazo estimado em minutos','logistics_eta','number',area?.eta_minutes||'','min="1" max="1440" step="1"')+'</div>';
       openEditor(area?'Editar bairro':'Novo bairro',content,async(form,values)=>{
         const kind=values.logistics_kind;
         const data={city:values.logistics_city, state:values.logistics_state, neighborhood:values.logistics_neighborhood,
           kind, fee_cents:kind==='excluded'?0:window.OrionFields.parseMoney(values.logistics_fee,{required:true,min:0,max:currencyLimit})};
+        if (kind==='included') {
+          data.minimum_cents=window.OrionFields.parseMoney(values.logistics_minimum,{min:0,max:currencyLimit})||0;
+          data.free_from_cents=window.OrionFields.parseMoney(values.logistics_free_from,{min:0,max:currencyLimit})||null;
+          data.eta_minutes=values.logistics_eta?number(values.logistics_eta,1,1440):null;
+        }
         const areas=[...policy.areas];
         if (area) areas[index]=data;
         else areas.push(data);
@@ -140,9 +150,11 @@
       },'Bairro salvo.',{bind:dialog=>{
         const form=dialog.querySelector('form'), toggle=()=>{
           const hidden=form.elements.logistics_kind.value==='excluded';
-          const fee=form.elements.logistics_fee;
-          fee.closest('[data-field-wrapper]').hidden=hidden;
-          fee.disabled=hidden;
+          for (const name of ['logistics_fee','logistics_minimum','logistics_free_from','logistics_eta']) {
+            const input=form.elements[name];
+            input.closest('[data-field-wrapper]').hidden=hidden;
+            input.disabled=hidden;
+          }
         };
         form.elements.logistics_kind.addEventListener('change',toggle);
         toggle();

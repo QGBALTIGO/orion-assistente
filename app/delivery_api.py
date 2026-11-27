@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app import delivery_catalog as catalog
 from app import delivery_address
+from app import delivery_customer_addresses as address_book
 from app import delivery_containers as containers
 from app import delivery_logistics as logistics
 from app import delivery_orders as orders
@@ -143,6 +144,23 @@ async def add_order_customer(tenant_id: UUID, payload: orders.QuickCustomer, act
 @router.get("/order-customers/{customer_id}/previous-address")
 async def address_from_previous_delivery(tenant_id: UUID, customer_id: UUID, actor: Actor = Depends(authenticate)):
     return await run(actor, tenant_id, orders.previous_address, customer_id)
+
+
+@router.get("/order-customers/{customer_id}/addresses")
+async def customer_addresses(tenant_id: UUID, customer_id: UUID, actor: Actor = Depends(authenticate)):
+    return await run(actor, tenant_id, address_book.list_addresses, customer_id)
+
+
+@router.put("/order-customers/{customer_id}/addresses/{address_id}")
+async def save_customer_address(tenant_id: UUID, customer_id: UUID, address_id: UUID,
+                                payload: address_book.AddressEdit, actor: Actor = Depends(authenticate)):
+    return await run(actor, tenant_id, address_book.save_address, customer_id, address_id, payload, write=True)
+
+
+@router.delete("/order-customers/{customer_id}/addresses/{address_id}")
+async def remove_customer_address(tenant_id: UUID, customer_id: UUID, address_id: UUID,
+                                  revision: int = Query(ge=1), actor: Actor = Depends(authenticate)):
+    return await run(actor, tenant_id, address_book.remove_address, customer_id, address_id, revision, write=True)
 
 
 @router.post("/orders/estimate")

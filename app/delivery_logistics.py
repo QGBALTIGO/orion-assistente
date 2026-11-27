@@ -37,6 +37,9 @@ class Area(ProfileModel):
     neighborhood: str = Field(min_length=1, max_length=120)
     kind: Literal["included", "excluded"] = "included"
     fee_cents: StrictInt = Field(default=0, ge=0, le=MAX_MONEY)
+    minimum_cents: StrictInt = Field(default=0, ge=0, le=MAX_MONEY)
+    free_from_cents: StrictInt | None = Field(default=None, gt=0, le=MAX_MONEY)
+    eta_minutes: StrictInt | None = Field(default=None, ge=1, le=1440)
 
     _state = field_validator("state", mode="before")(normalize_state)
 
@@ -44,8 +47,8 @@ class Area(ProfileModel):
     def validate_area(self):
         if not all(place_key(self)):
             raise ValueError("Informe a cidade, a UF e o bairro da área")
-        if self.kind == "excluded" and self.fee_cents:
-            raise ValueError("Bairros excluídos não têm taxa de entrega")
+        if self.kind == "excluded" and any((self.fee_cents, self.minimum_cents, self.free_from_cents, self.eta_minutes)):
+            raise ValueError("Remova as taxas e condições do bairro excluído")
         return self
 
 
@@ -112,13 +115,16 @@ async def lock_policy(db, tenant, *, exclusive=False):
 
 async def get_policy(db, tenant):
     row = (await db.execute(text("""
-        SELECT t.timezone,p.configuration,coalesce(p.revision,0) AS revision
+        SELECT t.timezone,p.configuration,p.area_terms,coalesce(p.revision,0) AS revision
         FROM tenants t LEFT JOIN delivery_logistics_policies p ON p.tenant_id=t.id
         WHERE t.id=:tenant
     """), {"tenant": tenant})).mappings().first()
     if row is None:
         raise HTTPException(404, "Estabelecimento indisponível")
-    return {**LogisticsPolicy.model_validate(row["configuration"] or {}).model_dump(),
+    config = dict(row["configuration"] or {})
+    terms = {tuple(item["key"]): item["terms"] for item in row["area_terms"] or []}
+    config["areas"] = [{**area, **terms.get(place_key(Area.model_validate(area)), {})} for area in config.get("areas", [])]
+    return {**LogisticsPolicy.model_validate(config).model_dump(),
             "revision": row["revision"], "timezone": row["timezone"]}
 
 
@@ -130,13 +136,18 @@ async def save_policy(db, tenant, access, payload):
     config = payload.model_dump(exclude={"expected_revision"})
     if existing["revision"] and all(existing[key] == value for key, value in config.items()):
         return existing
+    term_fields = {"minimum_cents", "free_from_cents", "eta_minutes"}
+    legacy_config = {**config, "areas": [area.model_dump(exclude=term_fields) for area in payload.areas]}
+    terms = [{"key": place_key(area), "terms": area.model_dump(include=term_fields, exclude_defaults=True)}
+             for area in payload.areas if area.minimum_cents or area.free_from_cents or area.eta_minutes]
     revision = (await db.execute(text("""
-        INSERT INTO delivery_logistics_policies (tenant_id,configuration,revision)
-        VALUES (:tenant,CAST(:configuration AS jsonb),1)
+        INSERT INTO delivery_logistics_policies (tenant_id,configuration,area_terms,revision)
+        VALUES (:tenant,CAST(:configuration AS jsonb),CAST(:terms AS jsonb),1)
         ON CONFLICT (tenant_id) DO UPDATE SET configuration=EXCLUDED.configuration,
+            area_terms=EXCLUDED.area_terms,
             revision=delivery_logistics_policies.revision+1,updated_at=now()
         RETURNING revision
-    """), {"tenant": tenant, "configuration": payload.model_dump_json(exclude={"expected_revision"})})).scalar_one()
+    """), {"tenant": tenant, "configuration": json.dumps(legacy_config), "terms": json.dumps(terms)})).scalar_one()
     await audit(db, tenant, "delivery_logistics_updated", "delivery_logistics", tenant)
     return {**config, "revision": revision, "timezone": existing["timezone"]}
 
@@ -189,7 +200,9 @@ async def quote_delivery(db, tenant, address: Address | None, scheduled_at: date
     return {
         "delivery_fee_cents": fee,
         "policy_revision": policy["revision"],
-        "area": selection.model_dump() if selection else None,
+        "area": ({**selection.model_dump(exclude={"minimum_cents", "free_from_cents", "eta_minutes"}),
+                  **selection.model_dump(include={"minimum_cents", "free_from_cents", "eta_minutes"}, exclude_defaults=True)}
+                 if selection else None),
         "scheduled_at": check_schedule(policy, scheduled_at, now or commerce.now_utc()),
     }
 

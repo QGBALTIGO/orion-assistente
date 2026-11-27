@@ -240,6 +240,25 @@ async def test_public_delivery_uses_current_coverage_and_server_price(storefront
             routed = (await db.execute(text("SELECT delivery_fee_cents,logistics_snapshot FROM delivery_order_details WHERE tenant_id=:t"),
                                        {"t": tenant})).mappings().one()
         assert routed["delivery_fee_cents"] == 500 and routed["logistics_snapshot"]["area"]["neighborhood"] == "Centro"
+        area.update(minimum_cents=1500, free_from_cents=2500, eta_minutes=35)
+        policy["expected_revision"] = changed.json()["revision"]
+        assert (await http.put(admin + "/logistics", json=policy)).status_code == 200
+        small = [{**intent["items"][0], "quantity": 1}]
+        public_small = await http.post(public + "/quote", json={**intent, "items": small})
+        assert public_small.status_code == 422 and "15,00" in public_small.text
+        admin_intent = {k: v for k, v in intent.items() if k != "payment_preference"}
+        assert (await http.post(admin + "/orders/estimate", json={**admin_intent, "items": small})).status_code == 422
+        public_free = (await http.post(public + "/quote", json=intent)).json()
+        internal_free = (await http.post(admin + "/orders/estimate", json=admin_intent)).json()
+        for quoted in (public_free, internal_free):
+            assert quoted["delivery_fee_cents"] == 0 and quoted["total_cents"] == 2500 and quoted["eta_minutes"] == 35
+        created_free = await http.post(public + "/orders", json={**receipt, "quote": public_free["quote"],
+            "idempotency_key": uuid4().hex})
+        assert created_free.status_code == 201, created_free.text
+        async with ctx.migration.begin() as db:
+            snapshot = (await db.execute(text("""SELECT logistics_snapshot FROM delivery_order_details
+                WHERE tenant_id=:t AND delivery_fee_cents=0"""), {"t": tenant})).scalar_one()
+        assert snapshot["delivery_fee_cents"] == 0 and snapshot["area"]["fee_cents"] == 500
 
 
 async def test_store_pause_minimum_and_exchange_flow(storefront_setup):
