@@ -171,3 +171,8 @@ button.os-delivery-dashboard-row:hover { background: var(--os-tint); }
     bottom: calc(73px + env(safe-area-inset-bottom, 0px));
   }
 }
+.os-delivery-dashboard [data-period-dates][hidden] { display: none; }
+.os-delivery-dashboard [data-delivery-performance] { flex-wrap: wrap; align-items: end; }
+.os-delivery-dashboard [data-period-dates] { min-width: 0; padding: 0; border: 0; flex-wrap: wrap; }
+.os-delivery-dashboard .os-delivery-period-comparison { margin-top: 1rem; }
+.os-delivery-dashboard .os-delivery-period-comparison summary { cursor: pointer; }

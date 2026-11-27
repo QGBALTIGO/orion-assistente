@@ -72,12 +72,25 @@ async def test_split_at_counter_posts_each_method_once_and_refunds_exact_total(o
         assert detail["collected_cents"] == 1250 and detail["outstanding_cents"] == 0
         assert detail["history"][-1]["details"]["tenders"] == tenders
         assert (await http.get(root+"/overview")).json()["metrics"]["paid_cents"] == 1250
+        perf = await http.get(root+"/overview/performance",params={"period":"today"})
+        assert perf.status_code == 200,perf.text
+        day=perf.json()
+        assert day["granularity"]=="hour" and [r["hour"] for r in day["series"]]==list(range(24))
+        assert day["current"]["orders"]==day["current"]["fulfilled"]==1
+        assert day["current"]["average_ticket_cents"]==day["current"]["income_cents"]==day["current"]["sales_cents"]==1250
+        assert sum(r["income_cents"] for r in day["series"])==1250 and day["previous"]["income_cents"]==0
+        assert (await http.get(root+"/overview/performance",params={"period":"custom","start":day["start"]})).status_code==422
+        month=(await http.get(root+"/overview/performance",params={"period":"30d"})).json()
+        assert len(month["series"])==30 and month["granularity"]=="day" and month["current"]["fulfilled"]==1
         returned = await http.post(url,json={"action":"return","expected_revision":2,"returned_to_stock":True,
                                              "refunded":True,"idempotency_key":uuid4().hex})
         assert returned.status_code == 200,returned.text
         assert await stock(http,root) == (5,0)
         expenses = [r for r in await receipts(ctx,tenant) if r["kind"]=="expense"]
         assert len(expenses)==1 and expenses[0]["amount_cents"]==1250
+        custom=(await http.get(root+"/overview/performance",params={"period":"custom","start":day["start"],"end":day["end"]})).json()
+        assert custom["current"]["refunded_cents"]==1250 and custom["current"]["cancelled"]==1
+        assert custom["current"]["sales_cents"]==1250
 
 
 def pix_collection(amount_cents=400):

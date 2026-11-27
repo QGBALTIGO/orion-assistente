@@ -24,11 +24,13 @@ Atualizado em 27 de novembro de 2026. Responsáveis pela operação comercial de
 | 3. Pedidos | Balcão, retirada, entrega, checkout opt-in, reserva atômica, instruções de troco, pagamento misto na conclusão e código privado de acompanhamento. | Estados independentes completos, Kanban, edição, duplicação e histórico do consumidor com verificação de identidade. |
 | 4. Atendimento e pagamentos | Recebimentos manuais e vendas a prazo operacionais. | Credenciais sandbox da distribuidora, webhook real, conciliação, eventos fora de ordem, expiração da reserva, adaptadores, notificações e atendimento autorizado. |
 | 5. Logística | Cobertura por bairro, agenda, entregador manual, ausência e reagendamento. | Expediente autenticado do motorista, aplicativo, carga, aceite/recusa, elegibilidade, rastreamento consentido e roteirização. |
-| 6. Gestão avançada | Dashboard do dia, recebimentos, alertas de estoque e relatórios por produto, cliente, estoque e financeiro. | Fechamento de turno, acerto do entregador, comparativos, recompra, fidelização e campanhas com consentimento. |
+| 6. Gestão avançada | Dashboard operacional diário e relatórios. No desempenho de vendas há Hoje, Ontem, 7, 30, 90 dias e datas personalizadas, com horas locais e comparação ao intervalo anterior. | Fechamento de turno, acerto do entregador, margem com custos históricos, recompra, fidelização e campanhas com consentimento. |
 | 7. Comercialização | Reutilizar planos, liberação manual com vencimento e Cakto. | Aprovar preço após medição. NF-e e NFC-e dependem do emitente, UF, credenciamento, certificados e ensaios. |
 | 8. Validação | A última revisão publicada tem ensaio PostgreSQL/Redis, navegador e regressão. A nova revisão segue o workflow de homologação. | Dois cenários integrais com app do motorista, comprovante de PSP sandbox, estoque, financeiro, histórico, rastreamento e regressão. |
 
 ## Alterações de banco e operação
+
+- O Dashboard usa o fuso da empresa e eventos persistidos de criação, conclusão, cancelamento, devolução e recebimento. O desempenho conserva o faturamento bruto na data da conclusão e mostra o estorno na data do movimento. O ticket médio só aparece quando o período tem conclusão. A troca de período atualiza o gráfico e seus indicadores no mesmo painel.
 
 - A conclusão do pedido aceita até quatro meios recebidos. O operador confirma a divisão entre dinheiro, Pix conferido manualmente, débito e crédito. O servidor exige a soma exata e registra cada valor no Financeiro com o respectivo meio. O relatório contabiliza um único pedido. A devolução considera todas as parcelas recebidas. Essa alteração usa a estrutura existente de vínculos de recebimentos e dispensa outra migration.
 

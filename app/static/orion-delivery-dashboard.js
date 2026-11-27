@@ -8,7 +8,10 @@
     const {openOrderEditor,showOrderDetail,code,modeLabel,statusBadge}=window.OrionDeliveryOrders;
     const current=()=>allowed()&&host.isConnected;
     let today=dateKey(), selected=filters.day||today, revision=0, detailRevision=0;
-    let visibleOrders=new Set();
+    let visibleOrders=new Set(),performanceRevision=0;
+    const periods=[['today','Hoje'],['yesterday','Ontem'],['7d','Últimos 7 dias'],['30d','Últimos 30 dias'],
+      ['90d','Últimos 90 dias'],['custom','Personalizado']];
+    filters.performancePeriod??='7d';
 
     const newOrder=(className='')=>canWrite()?button('Novo pedido','delivery-dashboard-new',className,'plus'):'';
     const shortcut=(label,route,symbol,className='',scope='')=>
@@ -80,13 +83,55 @@
         '</strong><small>disponíveis</small></span></li>').join('')+'</ul>';
     }
 
-    function weeklyChart(daily) {
+    function performanceChart(daily,hourly) {
       if (!daily.some(day=>day.sales_cents||day.income_cents)) return emptyMessage('chart','Sem vendas concluídas ou recebimentos no período.');
-      return seriesChart(daily,[['sales_cents','Faturado','primary'],['income_cents','Recebido','success']])+
-        '<details class="os-delivery-dashboard-values"><summary>Valores por dia</summary><table><thead><tr><th scope="col">Dia</th>'+
+      const keys=[['sales_cents','Faturado','primary'],['income_cents','Recebido','success']];
+      const label=row=>hourly?String(row.hour).padStart(2,'0')+'h':fmtDate(row.date).slice(0,5);
+      const max=Math.max(1,...daily.flatMap(row=>[row.sales_cents,row.income_cents]));
+      const chart=hourly?'<div class="os-chart-legend">'+keys.map(([,name,color])=>'<span><i style="background:var(--os-'+color+')"></i>'+name+'</span>').join('')+'</div>'+
+        '<div class="os-series-scroll"><div class="os-series-chart" style="--os-series-count:24">'+daily.map(row=>
+          '<div class="os-series-column">'+keys.map(([key,name,color])=>'<div class="os-series-bar" title="'+esc(label(row)+' · '+name+' '+money(row[key]))+
+            '" style="height:'+row[key]*100/max+'%;background:var(--os-'+color+')"></div>').join('')+'<span>'+label(row)+'</span></div>').join('')+'</div></div>':
+        seriesChart(daily,keys);
+      return chart+'<details class="os-delivery-dashboard-values"><summary>Valores por '+(hourly?'hora':'dia')+'</summary><table><thead><tr><th scope="col">'+(hourly?'Hora':'Dia')+'</th>'+
         '<th scope="col">Faturado</th><th scope="col">Recebido</th></tr></thead><tbody>'+daily.map(day=>
-        '<tr><th scope="row">'+esc(fmtDate(day.date).slice(0,5))+'</th><td>'+money(day.sales_cents)+'</td><td>'+money(day.income_cents)+'</td></tr>'
+        '<tr><th scope="row">'+esc(label(day))+'</th><td>'+money(day.sales_cents)+'</td><td>'+money(day.income_cents)+'</td></tr>'
         ).join('')+'</tbody></table></details>';
+    }
+
+    function periodForm(){
+      return '<form data-delivery-performance class="os-filter-row">'+
+        ui.selectField('Período do desempenho','performance_period',periods,filters.performancePeriod)+
+        '<fieldset class="os-filter-row" data-period-dates '+(filters.performancePeriod==='custom'?'':'hidden disabled')+'>'+
+        ui.field('Início','performance_start','date',filters.performanceStart||selected,'required min="1900-01-01" max="2100-12-31"')+
+        ui.field('Fim','performance_end','date',filters.performanceEnd||selected,'required min="1900-01-01" max="2100-12-31"')+
+        '<button class="os-button os-outline" type="submit">Aplicar período</button></fieldset></form>'+
+        '<div aria-live="polite" data-performance-results></div>';
+    }
+
+    async function loadPerformance(){
+      const target=content.querySelector('[data-performance-results]'),attempt=++performanceRevision;
+      if(!target)return;
+      const params={period:filters.performancePeriod};
+      if(params.period==='custom')Object.assign(params,{start:filters.performanceStart||selected,end:filters.performanceEnd||selected});
+      target.setAttribute('aria-busy','true');
+      try{
+        const data=await call('/overview/performance?'+query(params));
+        if(!current()||attempt!==performanceRevision||!target.isConnected)return;
+        const metrics=[['Pedidos','orders'],['Concluídos','fulfilled'],['Cancelados ou devolvidos','cancelled'],
+          ['Faturamento bruto','sales_cents'],['Recebido bruto','income_cents'],['Estornos','refunded_cents'],['Ticket médio','average_ticket_cents']];
+        const display=(value,key)=>value==null?'—':key.endsWith('_cents')?money(value):String(value);
+        target.innerHTML='<p class="os-help">'+esc(fmtDate(data.start)+' a '+fmtDate(data.end))+'</p>'+
+          performanceChart(data.series,data.granularity==='hour')+
+          '<details class="os-delivery-period-comparison"><summary>Comparar indicadores</summary><p class="os-help">Período anterior de '+
+          esc(fmtDate(data.previous_start)+' a '+fmtDate(data.previous_end))+'</p><div class="os-table-scroll"><table class="os-table">'+
+          '<thead><tr><th>Indicador</th><th>Período</th><th>Anterior</th></tr></thead><tbody>'+
+          metrics.map(([label,key])=>'<tr><th scope="row">'+label+'</th><td>'+esc(display(data.current[key],key))+'</td><td>'+
+            esc(display(data.previous[key],key))+'</td></tr>').join('')+'</tbody></table></div></details>';
+      }catch(error){
+        if(current()&&attempt===performanceRevision&&target.isConnected)target.innerHTML='<p role="alert">'+esc(error.message)+'</p>'+
+          button('Tentar novamente','delivery-performance-retry','os-outline');
+      }finally{if(attempt===performanceRevision)target.removeAttribute('aria-busy');}
     }
 
     function render(data) {
@@ -100,8 +145,7 @@
         '<div class="os-delivery-dashboard-grid">'+
         section('orders','Pedidos do dia',orderRows(data.recent),shortcut('Ver pedidos','orders','chevron','os-ghost os-small','day'))+
         section('deliveries','Entregas do dia',orderRows(data.deliveries,true),shortcut('Ver entregas','deliveries','chevron','os-ghost os-small','day'))+
-        section('week','Faturamento dos últimos 7 dias',weeklyChart(data.daily),'',
-          esc(fmtDate(data.daily[0].date)+' a '+fmtDate(data.date)))+
+        section('week','Desempenho de vendas',periodForm())+
         section('credit','Clientes com vendas a prazo',creditRows(data.credit_customers),shortcut('Ver saldos','credit','chevron','os-ghost os-small'),'Saldos em aberto')+
         section('stock','Estoque baixo',stockRows(data.low_stock),shortcut('Ver estoque','stock','chevron','os-ghost os-small','low'))+'</div>';
     }
@@ -121,6 +165,7 @@
         selected=picker.value=data.date;
         todayButton.hidden=selected===today;
         render(data);
+        void loadPerformance();
       } catch (error) {
         if (latest()) content.innerHTML='<div class="os-notice os-error" role="alert"><p>'+esc(error.message)+'</p>'+
           button('Tentar novamente','delivery-dashboard-retry','os-outline','refresh')+'</div>';
@@ -132,7 +177,24 @@
     picker.addEventListener('change',()=>{
       if (!current()||!picker.reportValidity()) return;
       selected=filters.day=picker.value;
+      filters.performancePeriod='custom';filters.performanceStart=selected;filters.performanceEnd=selected;
       void read();
+    });
+
+    host.addEventListener('change',event=>{
+      if(event.target.name!=='performance_period'||!current())return;
+      const custom=event.target.value==='custom', dates=event.target.form.querySelector('[data-period-dates]');
+      dates.hidden=dates.disabled=!custom;
+      filters.performancePeriod=event.target.value;
+      if(!custom)void loadPerformance();
+    });
+    host.addEventListener('submit',event=>{
+      if(!event.target.matches('[data-delivery-performance]'))return;
+      event.preventDefault();
+      const {performance_start:start,performance_end:end}=event.target.elements;
+      if(start.value>end.value){end.setCustomValidity('O fim deve ser igual ou posterior ao início.');end.reportValidity();end.setCustomValidity('');return;}
+      filters.performanceStart=start.value;filters.performanceEnd=end.value;
+      void loadPerformance();
     });
 
     host.addEventListener('click',event=>{
@@ -141,9 +203,12 @@
       const {osAction,deliveryPage,deliveryScope,deliveryDashboardOrder}=target.dataset;
       if (osAction==='delivery-dashboard-new'&&canWrite()) {
         openOrderEditor({call,current,ui,openEditor,onCreated:()=>{filters.day='';}});
+      } else if (osAction==='delivery-performance-retry'){
+        void loadPerformance();
       } else if (osAction==='delivery-dashboard-today') {
         selected=picker.value=today;
         filters.day='';
+        filters.performancePeriod='today';
         void read();
       } else if (osAction==='delivery-dashboard-retry') {
         void read();

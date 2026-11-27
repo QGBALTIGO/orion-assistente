@@ -17,6 +17,7 @@ from app import delivery_payments as payments
 from app import delivery_reports as reports
 from app import delivery_reports_ops
 from app import delivery_registry
+from app import delivery_performance
 from app import delivery_purchasing as purchasing
 from app.catalog_api import Actor, authenticate
 from app.database import get_session_factory, tenant_transaction
@@ -149,6 +150,13 @@ async def order_list(tenant_id: UUID, search: str = Query(default="", max_length
                      offset: int = Query(default=0, ge=0, le=100_000), actor: Actor = Depends(authenticate)):
     return await run(actor, tenant_id, orders.list_orders, search=search, state=state, mode=mode,
                      start=start, end=end, offset=offset, by_delivery_date=by_delivery_date)
+
+
+@router.get("/overview/performance")
+async def delivery_period_performance(tenant_id: UUID, period: delivery_performance.Period = "today",
+                                      start: date | None = None, end: date | None = None,
+                                      actor: Actor = Depends(authenticate)):
+    return await run(actor, tenant_id, delivery_performance.performance, preset=period, start=start, end=end)
 
 
 @router.get("/overview")
