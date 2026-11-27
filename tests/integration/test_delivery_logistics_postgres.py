@@ -33,34 +33,61 @@ async def test_driver_offer_refusal_retry_cash_delivery_and_location_visibility(
     from fastapi import FastAPI
     from app.delivery_driver_api import router as driver_router
     from app.panel_auth import panel_actor
+    from app import delivery_storefront
+    from test_delivery_storefront_postgres import client as shop_client
     ctx=onboarding_db
     tenant,actor=await business(ctx,monkeypatch)
     await complete_delivery_setup(ctx,tenant)
     base=f"/api/v1/tenants/{tenant}/delivery"
+    monkeypatch.setenv("ORION_DELIVERY_PUBLIC_TENANTS",str(tenant))
+    monkeypatch.setenv("PUBLIC_SITE_SIGNING_KEY",uuid4().hex+uuid4().hex)
+    async def test_limit(*args,**kwargs):
+        return None
+    monkeypatch.setattr(delivery_storefront,"public_limit",test_limit)
     driver_base=f"/api/v1/entregador/{tenant}"
     portal=FastAPI()
     portal.include_router(driver_router)
     email="motorista@example.test"
     claims={"role":"member","account_id":str(ctx.other),"email":email,"email_verified":False}
     portal.dependency_overrides[panel_actor]=lambda:claims
-    async with client(actor) as admin,httpx.AsyncClient(transport=httpx.ASGITransport(app=portal),base_url="https://orion.test") as driver:
-        customer=(await admin.post(base+"/order-customers",json={"name":"Cliente de ensaio","phone":"67900000001",
-            "idempotency_key":uuid4().hex})).json()["id"]
-        variant=(await admin.post(base+"/catalog",json=new_product())).json()["variant_id"]
+    async with shop_client(actor) as admin,httpx.AsyncClient(transport=httpx.ASGITransport(app=portal),base_url="https://orion.test") as driver:
+        container=(await admin.post(base+"/containers",json={"name":"Garrafão 20 L","kind":"jug","quantity":0,
+                        "idempotency_key":uuid4().hex})).json()["id"]
+        new=new_product()
+        new["details"]["exchange_container_id"]=container
+        variant=(await admin.post(base+"/catalog",json=new)).json()["variant_id"]
         courier=(await admin.post(base+"/logistics/couriers",json={"name":"Entregadora de teste","idempotency_key":uuid4().hex})).json()["id"]
         grant=base+"/logistics/couriers/"+courier+"/portal"
         assert (await admin.put(grant,json={"email":email,"expected_revision":0})).status_code==200
         assert (await driver.get(driver_base+"/queue")).status_code==403
         claims["email_verified"]=True
         assert (await driver.get(driver_base+"/queue")).json()["state"]=="off"
-        draft={"mode":"delivery","address":ADDRESS,"items":[{"variant_id":variant,"quantity":1}],"delivery_fee_cents":100}
-        estimate=(await admin.post(base+"/orders/estimate",json=draft)).json()
-        order=(await admin.post(base+"/orders",json={**draft,"customer_id":customer,"estimate_version":estimate["estimate_version"],
-            "idempotency_key":uuid4().hex,"tender_preference":"cash","change_for_cents":2000})).json()["id"]
+        second_courier=(await admin.post(base+"/logistics/couriers",json={"name":"Entregador fora do expediente","idempotency_key":uuid4().hex})).json()["id"]
+        area={"city":ADDRESS["city"],"state":"MS","neighborhood":ADDRESS["neighborhood"],"fee_cents":100}
+        assert (await admin.put(base+"/logistics",json={"expected_revision":0,"coverage_mode":"areas","areas":[area]})).status_code==200
+        product=(await admin.get(base+"/storefront/items")).json()["items"][0]
+        listing={k:product[k] for k in ("variant_id","variant_revision","product_revision")}
+        slug="ensaio-"+uuid4().hex[:12]
+        store={"revision":0,"slug":slug,"title":"Distribuidora de homologação","pickup_details":"Depósito de teste",
+               "enabled":True,"confirm_catalogue":True,"allow_delivery":True,"payment_methods":["cash"],
+               "items":[{**listing,"label":"Água mineral 20 L","kind":"water"}]}
+        published=await admin.put(base+"/storefront",json=store)
+        assert published.status_code==200,published.text
+        shop="/api/v1/delivery-store/"+slug
+        draft={"mode":"delivery","address":ADDRESS,"items":[{"variant_id":variant,"quantity":1}],
+               "payment_preference":"cash","change_for_cents":2000,"accept_exchange":True}
+        quote=await admin.post(shop+"/quote",json=draft)
+        assert quote.status_code==200,quote.text
+        checkout=await admin.post(shop+"/orders",json={**draft,"quote":quote.json()["quote"],"customer_name":"Pessoa de avaliação",
+            "customer_phone":"67999990000","confirmed":True,"idempotency_key":str(uuid4())})
+        assert checkout.status_code==201,checkout.text
+        tracking={"tracking_code":checkout.json()["tracking_code"],"include_delivery":True}
+        order=(await admin.get(base+"/orders")).json()["items"][0]["id"]
         offr={"action":"offer","courier_id":courier,"expected_revision":1,"idempotency_key":uuid4().hex}
         route=base+"/orders/"+order+"/transitions"
         assert (await admin.post(route,json=offr)).status_code==409
         assert (await driver.put(driver_base+"/shift",json={"state":"available"})).status_code==200
+        assert (await admin.post(route,json={**offr,"courier_id":second_courier,"idempotency_key":uuid4().hex})).status_code==409
         key=(await driver.post(driver_base+"/location")).json()["sharing_key"]
         point={"sharing_key":key,"latitude":-20.45,"longitude":-54.6,"observed_at":datetime.now(timezone.utc).isoformat()}
         pos=await driver.put(driver_base+"/location",json=point)
@@ -91,7 +118,8 @@ async def test_driver_offer_refusal_retry_cash_delivery_and_location_visibility(
         assert queue[0]["address"]["street"]==ADDRESS["street"] and queue[0]["change_for_cents"]==2000
         reached=await driver.post(actions,json={"action":"arrive","expected_revision":5,"idempotency_key":uuid4().hex})
         assert reached.status_code==200,reached.text
-        finish={"action":"complete","expected_revision":6,"received":True,"payment_method":"cash","idempotency_key":uuid4().hex}
+        assert (await admin.post(shop+"/status",json=tracking)).json()["delivery_stage"]=="arrived"
+        finish={"action":"complete","expected_revision":6,"received":True,"payment_method":"cash","containers_confirmed":True,"idempotency_key":uuid4().hex}
         assert (await driver.post(actions,json={**finish,"received":False})).status_code==422
         completed=await driver.post(actions,json=finish)
         assert completed.status_code==200,completed.text
@@ -99,6 +127,12 @@ async def test_driver_offer_refusal_retry_cash_delivery_and_location_visibility(
         assert not (await driver.get(driver_base+"/queue")).json()["orders"]
         assert await stock(admin,base)==(4,0)
         assert (await admin.get(base+"/orders/"+order)).json()["collected_cents"]==1350
+        assert (await admin.get(base+"/orders/"+order)).json()["customer_id"]
+        assert (await admin.get(base+"/containers")).json()["items"][0]["empty_quantity"]==1
+        assert (await admin.get(base+"/reports/sales")).json()["summary"]["paid_cents"]==1350
+        public_status=(await admin.post(shop+"/status",json=tracking)).json()
+        assert public_status["delivery_stage"]=="delivered" and public_status["payment_status"]=="received"
+        assert not ({"phone","address","courier_name","courier_id","customer_name","latitude"} & public_status.keys())
         assert (await driver.put(driver_base+"/shift",json={"state":"off"})).status_code==200
         assert not (await admin.get(base+"/logistics/positions")).json()["items"]
         assert (await admin.put(grant,json={"email":None,"expected_revision":1})).status_code==200

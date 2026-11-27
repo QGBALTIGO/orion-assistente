@@ -30,6 +30,8 @@ Atualizado em 27 de novembro de 2026. Responsáveis pela operação comercial de
 
 ## Alterações de banco e operação
 
+- O acompanhamento público da loja distingue espera por despacho, solicitação de aceite, rota, chegada ao endereço e entrega. O código privado expira trinta dias após a última atualização operacional ou o agendamento, o que ocorrer por último. O retorno público contém apenas o andamento daquele pedido, seu total, pagamento e eventual agendamento.
+
 - `0115_delivery_driver_portal` guarda autorização individual, expediente, última posição voluntária e atribuições por empresa e pedido. Em Logística, o proprietário vincula o e-mail verificado ao entregador e obtém o endereço do aplicativo. O vínculo não cria participação no painel administrativo. Em Pedidos, o operador escolhe o despacho manual ou solicita aceite a um entregador disponível. A oferta expira em cinco minutos. O aceite registra a entrada em rota. Na conclusão, valor, estoque e vasilhames usam a transação do pedido. A posição só é enviada com consentimento e a página visível. O botão de parada e o encerramento do expediente apagam a coordenada. A tela sem conexão solicita reconexão. Pedidos e dados de clientes não são gravados no cache offline.
 - Compras, pagamento misto, desempenho e Kanban passaram na [homologação 46052214299](https://github.com/QGBALTIGO/orion-assistente/actions/runs/46052214299) e no [ensaio da imagem 46053162055](https://github.com/QGBALTIGO/orion-assistente/actions/runs/46053162055).
 

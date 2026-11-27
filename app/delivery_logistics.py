@@ -288,6 +288,7 @@ async def create_courier(db, tenant, access, payload):
 
 
 async def update_courier(db, tenant, access, courier_id, payload):
+    await lock_policy(db,tenant,exclusive=True)
     row = (await db.execute(text(f"""
         UPDATE delivery_couriers SET name=:name,phone=:phone,active=:active,revision=revision+1,updated_at=now()
         WHERE tenant_id=:tenant AND id=:id AND revision=:expected_revision

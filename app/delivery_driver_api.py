@@ -25,8 +25,7 @@ async def run(tenant,claims,operation,*args):
         async with get_session_factory()() as db:
             async with tenant_transaction(db,tenant):
                 await lock_plan(db,tenant)
-                if operation is driver.order_action:
-                    await logistics.lock_policy(db,tenant,exclusive=True)
+                await logistics.lock_policy(db,tenant,exclusive=operation is driver.order_action)
                 person=await driver.identity(db,tenant,claims)
                 result=await operation(db,tenant,person,*args)
     except IntegrityError:

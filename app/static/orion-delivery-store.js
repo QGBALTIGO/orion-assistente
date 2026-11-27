@@ -374,9 +374,12 @@
     submit.disabled = true;
     message(trackingFeedback, 'Consultando pedido…');
     try {
-      const result = await request('/status', {tracking_code: trackingForm.elements.tracking_code.value.trim()});
+      const result = await request('/status', {tracking_code: trackingForm.elements.tracking_code.value.trim(),include_delivery:true});
+      const progress={awaiting_dispatch:'Aguardando despacho',awaiting_acceptance:'Aguardando aceite do entregador',
+        in_transit:'Em rota',arrived:'Entregador no endereço',delivered:'Entregue',cancelled:'Cancelada'};
       message(trackingFeedback, 'Pedido ' + result.order_code + ' · ' + flow[result.status] +
-        '\nTotal ' + money(result.total_cents) + '\nPagamento: ' + paymentStatus[result.payment_status]);
+        '\nTotal ' + money(result.total_cents) + '\nPagamento: ' + paymentStatus[result.payment_status]+
+        (result.delivery_stage?'\nEntrega: '+progress[result.delivery_stage]:''));
     } catch (error) {
       message(trackingFeedback, error.message, true);
     } finally {

@@ -179,6 +179,7 @@ class Checkout(CheckoutDraft):
 
 class Tracking(ProfileModel):
     tracking_code: str = Field(pattern=r"^[a-zA-Z0-9_-]{43}$")
+    include_delivery: StrictBool = False
 
 
 def configured_public(tenant, niche):
@@ -701,7 +702,8 @@ async def public_progress(slug: str, payload: Tracking, request: Request):
     await rate(request, slug, "status", 45)
     async with public_session(slug) as (db, tenant, _):
         row = (await db.execute(text("""
-            SELECT o.id,o.status,q.total_cents,
+            SELECT o.id,o.status,q.total_cents,d.mode,d.scheduled_at,a.status AS assignment,
+                a.expires_at>now() AS offer_current,
                 CASE WHEN d.return_financial_entry_id IS NOT NULL THEN 'refunded'
                      WHEN f.status='paid' THEN 'received' ELSE 'not_verified' END AS payment_status
             FROM delivery_storefront_orders s
@@ -709,12 +711,21 @@ async def public_progress(slug: str, payload: Tracking, request: Request):
             JOIN delivery_order_details d ON (d.tenant_id,d.order_id)=(s.tenant_id,s.order_id)
             JOIN commercial_quotes q ON (q.tenant_id,q.id)=(o.tenant_id,o.quote_id)
             LEFT JOIN financial_entries f ON (f.tenant_id,f.id)=(d.tenant_id,d.financial_entry_id)
+            LEFT JOIN delivery_driver_assignments a ON (a.tenant_id,a.order_id)=(d.tenant_id,d.order_id)
             WHERE s.tenant_id=:tenant AND s.tracking_digest=:digest
+                AND greatest(o.updated_at,coalesce(d.scheduled_at,o.created_at))>=now()-interval '30 days'
         """), {"tenant": tenant, "digest": hashlib.sha256(payload.tracking_code.encode()).hexdigest()})).mappings().one_or_none()
     if row is None:
         raise HTTPException(404, "Pedido indisponível", headers=HEADERS)
-    return public_json({"order_code": str(row["id"])[:8].upper(),
-                        **{key: row[key] for key in ("status", "total_cents", "payment_status")}})
+    result={"order_code": str(row["id"])[:8].upper(),**{key: row[key] for key in ("status", "total_cents", "payment_status")}}
+    if payload.include_delivery and row["mode"]=="delivery":
+        stage={"cancelled":"cancelled","fulfilled":"delivered","dispatched":"in_transit"}.get(row["status"],"awaiting_dispatch")
+        if stage=="in_transit" and row["assignment"]=="arrived":
+            stage="arrived"
+        elif stage=="awaiting_dispatch" and row["assignment"]=="offered" and row["offer_current"]:
+            stage="awaiting_acceptance"
+        result.update(delivery_stage=stage,scheduled_at=row["scheduled_at"])
+    return public_json(result)
 
 
 def render_page(title, slug="", preview=""):

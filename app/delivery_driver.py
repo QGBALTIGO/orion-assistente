@@ -94,6 +94,7 @@ async def grant_state(db,tenant,courier):
 
 
 async def set_grant(db,tenant,access,courier,payload):
+    await logistics.lock_policy(db,tenant,exclusive=True)
     await logistics.active_courier(db,tenant,courier,lock=True)
     args={"t":tenant,"c":courier,"email":payload.email,"actor":access.account_id,"rev":payload.expected_revision}
     if payload.expected_revision==0:
@@ -162,7 +163,8 @@ async def dashboard(db,tenant,person):
     rows=[]
     if person['shift_started_at']:
         rows=(await db.execute(text("""SELECT a.order_id AS id,a.status,a.expires_at,o.revision,q.total_cents,
-            q.customer_name,CASE WHEN a.status='offered' THEN jsonb_build_object('neighborhood',d.address->>'neighborhood')
+            CASE WHEN a.status!='offered' THEN q.customer_name END AS customer_name,
+            CASE WHEN a.status='offered' THEN jsonb_build_object('neighborhood',d.address->>'neighborhood')
                 ELSE d.address END AS address,
             CASE WHEN a.status!='offered' THEN coalesce(q.contact_e164,c.whatsapp_e164) END AS phone,
             coalesce(s.payment_preference,d.tender_preference) AS payment_preference,
