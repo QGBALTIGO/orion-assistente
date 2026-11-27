@@ -719,3 +719,35 @@ async def test_platform_operator_device_binding_is_readonly_and_current_with_rea
     with pytest.raises(HTTPException) as expired:
         await review._device_binding(device_id)
     assert expired.value.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_delivery_whatsapp_connection_address_memory_is_contact_scoped(device_case):
+    """Real PostgreSQL address book; no transport and no third-party messages."""
+    from app import delivery_whatsapp as wa, delivery_customer_addresses as book
+    from app.customer_identity import resolve_customer
+    from app.tenant_access import TenantAccess
+    from app.onboarding_schemas import Address
+    c=device_case
+    phone="+5567999999902"
+    other="+5567999999903"
+    address=Address(street="Rua sintética",number="12",neighborhood="Centro",city="Campo Grande",state="MS")
+    second=Address(street="Avenida de teste",number="45",neighborhood="Centro",city="Campo Grande",state="MS")
+    access=TenantAccess("owner",c.ctx.actor.account_id)
+    async with c.ctx.runtime() as db:
+        async with tenant_transaction(db,c.tenant):
+            customer,created=await resolve_customer(db,c.tenant,phone,"Cliente de teste")
+            assert created
+            for label, item in (("Casa",address),("Trabalho",second)):
+                await book.save_address(db,c.tenant,access,customer["id"],uuid4(),
+                    book.AddressEdit(label=label,address=item,expected_revision=0))
+    async with c.ctx.runtime() as db:
+        async with tenant_transaction(db,c.tenant):
+            state={"customer_name":"Cliente de teste"}
+            assert await wa.recover_saved_address(db,c.tenant,phone,state,("label","casa"))==address.model_dump(mode="json")
+            assert await wa.recover_saved_address(db,c.tenant,phone,state,("label","trabalho"))==second.model_dump(mode="json")
+            assert await wa.recover_saved_address(db,c.tenant,other,state,("label","casa")) is None
+            assert await wa.recover_saved_address(db,c.tenant,phone,{"customer_name":"Pessoa diferente"},("label","casa")) is None
+            assert await wa.recover_saved_address(db,c.tenant,phone,state,("label","inexistente")) is None
+            assert "primeiro confirme" in await wa.save_last_delivery_address(db,c.tenant,phone,{}, "Outro")
+            assert len((await book.list_addresses(db,c.tenant,customer["id"]))["items"])==2

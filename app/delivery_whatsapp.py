@@ -92,6 +92,97 @@ async def previous_verified_name(db, tenant, phone):
     return names[0] if len(names)==1 else None
 
 
+def saved_address_request(body):
+    """An explicit request, never an inferred address from unrelated prose."""
+    value = clean(body)
+    if value in {"mesmo endereco", "no mesmo endereco", "o mesmo endereco",
+                 "mesmo endereco da ultima entrega", "no mesmo endereco da ultima entrega",
+                 "mesmo endereco da ultima vez", "manda no mesmo endereco"}:
+        return ("previous", None)
+    match = re.fullmatch(r"(?:usar|use|entregar no|entrega no|manda no|quero usar)\s+(?:o\s+)?endereco\s+(?:salvo\s+)?(.{1,60})", value)
+    if match:
+        return ("label", match.group(1).strip())
+    return None
+
+
+def save_address_request(body):
+    match = re.fullmatch(r"(?:salvar|salve|guardar|guarde)\s+(?:o\s+)?endere[cç]o\s+como\s+([^?\r\n]{1,60})", body.strip(), re.IGNORECASE)
+    if match and not any(ord(c)<32 for c in match.group(1)):
+        label = " ".join(match.group(1).split())
+        if label and label not in {"*", "_", "~"}:
+            return label
+    return None
+
+
+def verified_customer(customer, state):
+    return (customer is not None and customer["active"] and customer["deleted_at"] is None
+            and (not state.get("customer_name") or
+                 clean(customer["name"]) == clean(state["customer_name"])))
+
+
+async def recover_saved_address(db, tenant, phone, state, request):
+    """Reuse only the verified contact's exact named address or fulfilled delivery."""
+    from app import delivery_customer_addresses as book, delivery_orders as orders
+    customer = await customer_for_phone(db,tenant,phone)
+    if not verified_customer(customer,state):
+        return None
+    kind, label = request
+    if kind == "previous":
+        record = await orders.previous_address(db,tenant,customer["id"])
+        raw = record.get("address")
+    else:
+        result = await book.list_addresses(db,tenant,customer["id"])
+        matches = [entry["address"] for entry in result["items"] if clean(entry["label"])==label]
+        raw = matches[0] if len(matches)==1 else None
+    if raw is None:
+        return None
+    try:
+        return Address.model_validate(raw).model_dump(mode="json")
+    except ValidationError:
+        return None
+
+
+async def save_last_delivery_address(db, tenant, phone, state, label):
+    """Explicit opt-in to store a recently confirmed address under a new label.
+
+    No draft, arbitrary order ID, other phone, or different recipient can
+    write the address book. Existing labels are not silently overwritten.
+    """
+    from app import delivery_customer_addresses as book
+    from app.delivery_storefront import PUBLIC_ACTOR
+    code = state.get("last_order")
+    if state.get("stage") or not isinstance(code,str) or not re.fullmatch(r"[A-F0-9]{8}",code):
+        return "Para guardar um endereço, primeiro confirme um pedido de entrega por aqui."
+    customer = await customer_for_phone(db,tenant,phone)
+    if not verified_customer(customer,state):
+        return "Não consegui verificar seu cadastro para guardar esse endereço. " + HELP
+    await book.require_customer(db,tenant,customer["id"],lock=True)
+    rows = (await db.execute(text("""SELECT d.address,q.customer_name FROM delivery_order_details d
+        JOIN commercial_orders o ON (o.tenant_id,o.id)=(d.tenant_id,d.order_id)
+        JOIN commercial_quotes q ON (q.tenant_id,q.id)=(o.tenant_id,o.quote_id)
+        WHERE d.tenant_id=:t AND d.customer_id=:customer AND q.contact_e164=:phone
+          AND d.intake_channel='whatsapp' AND d.mode='delivery'
+          AND o.origin='delivery' AND o.status IN ('confirmed','dispatched','fulfilled')
+          AND upper(left(o.id::text,8))=:code
+          AND o.created_at>=now()-interval '30 minutes' LIMIT 2"""),
+        {"t":tenant,"customer":customer["id"],"phone":phone,"code":code})).mappings().all()
+    if len(rows)!=1 or clean(rows[0]["customer_name"] or "")!=clean(customer["name"]):
+        return "Não consegui localizar um endereço deste pedido para guardar. " + HELP
+    try:
+        address = Address.model_validate(rows[0]["address"])
+        current = await book.list_addresses(db,tenant,customer["id"])
+        matching = [entry for entry in current["items"] if clean(entry["label"])==clean(label)]
+        if matching:
+            if len(matching)==1 and Address.model_validate(matching[0]["address"])==address:
+                return "📍 Esse endereço já está salvo como *" + label + "*."
+            return "Já existe um endereço com esse nome. Escolha outro nome para não substituir o anterior."
+        await book.save_address(db,tenant,PUBLIC_ACTOR,customer["id"],uuid4(),
+            book.AddressEdit(label=label,address=address,expected_revision=0))
+    except (ValidationError, HTTPException):
+        return "Não consegui guardar o endereço agora. " + HELP
+    return "📍 Endereço salvo como *" + label + "*! Na próxima entrega, você pode dizer _usar endereço " + label + "_."
+
+
 def forbidden(body):
     from app import delivery_storefront as store
     value = re.sub(r"\baguas?(?:\s+miner(?:al|ais))?\s+(?:com|sem)\s+gas\b", "agua", norm(body))
@@ -283,7 +374,7 @@ def state_question(stage, state, shop, items):
             return "No momento, nenhuma forma de recebimento está disponível. " + HELP
         return "Você prefere receber em casa ou retirar aqui com a gente? 😊"
     if stage == "address":
-        return ADDRESS_PROMPT
+        return ADDRESS_PROMPT + "\n\nSe já tiver um endereço salvo, diga *usar endereço Casa*, por exemplo."
     if stage == "exchange":
         return "Você tem os vasilhames vazios para devolver na troca?"
     if stage == "payment":
@@ -428,7 +519,7 @@ async def next_step(db, tenant, shop, items, state, phone):
         return state_question("mode",state,shop,items),state
     if state["mode"] == "delivery" and not state.get("address"):
         state["stage"] = "address"
-        return ADDRESS_PROMPT,state
+        return state_question("address",state,shop,items),state
     if any(chosen[line["variant_id"]]["exchange_container_id"] is not None for line in state["items"]) and not state.get("accept_exchange"):
         state["stage"] = "exchange"
         return state_question("exchange",state,shop,items),state
@@ -483,6 +574,9 @@ async def answer(db, tenant, phone, body, state, summary_delivered):
         state = {}
     if value in {"atendente","humano","falar com atendente","falar com humano","parar","pare","sair","stop","cancelar atendimento"}:
         return "Pausei o atendimento automático. Aguarde uma pessoa da empresa responder. Para voltar, escreva retomar atendimento.",{"paused":True}
+    label = save_address_request(body)
+    if label is not None:
+        return await save_last_delivery_address(db,tenant,phone,state,label),state
     if forbidden(body):
         return ("Por aqui, consigo ajudar com pedidos de água. Para consultar gás ou outros produtos, "
                 "precisamos da nossa equipe. Não registrei nenhum item novo. " + HELP),{}
@@ -559,6 +653,8 @@ async def answer(db, tenant, phone, body, state, summary_delivered):
                      f"Total: *{money(result['total_cents'])}*\n\nObrigada! 😊")
             if proposal.payment_preference=="pix":
                 reply += " O Pix depende da conferência manual do pagamento pela empresa."
+            if proposal.mode == "delivery":
+                reply += "\n\nSe quiser guardar este endereço para a próxima entrega, diga *salvar endereço como Casa*."
             if shop["enabled"] and store.configured_public(tenant,shop["niche"]):
                 from app.public_origins import canonical_public_origin
                 # The public store accepts a private tracking code; do not
@@ -581,9 +677,15 @@ async def answer(db, tenant, phone, body, state, summary_delivered):
             return state_question("mode",state,shop,items),state
         state["mode"]=mode
     elif stage=="address":
-        addr=parse_address(body)
+        request=saved_address_request(body)
+        if request:
+            addr=await recover_saved_address(db,tenant,phone,state,request)
+            if addr is None:
+                return "Não consegui localizar esse endereço com segurança. Vamos informar o endereço desta entrega?\n\n"+ADDRESS_PROMPT,state
+        else:
+            addr=parse_address(body)
         if addr is None:
-            return ADDRESS_PROMPT,state
+            return state_question("address",state,shop,items),state
         state["address"]=addr
     elif stage=="exchange":
         if not affirmative(body):

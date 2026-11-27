@@ -1,7 +1,7 @@
 name: Orion - Homologação de Delivery e Distribuição
 on:
   push:
-    branches: [codex/delivery-operacao-20261127]
+    branches: [codex/delivery-operacao-20261127, codex/delivery-memory-20261127]
     paths:
       - 'app/**'
       - 'alembic/**'
