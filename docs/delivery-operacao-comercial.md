@@ -1,7 +1,9 @@
 # Delivery e Distribuição — acompanhamento da implementação
 Atualizado em 27 de novembro de 2026. Responsáveis pela operação comercial devem conseguir identificar se um recurso foi publicado, se está em homologação ou se ainda depende de desenvolvimento.
 
-## Incremento WhatsApp — em homologação
+## Incremento WhatsApp — publicado em produção
+
+Commit `449df8bb`, deploy Railway `ba0776dc-ba90-4077-9def-6852f77b3ab6` SUCCESS. Validação: 71 testes de integração, 3 testes específicos de pareamento e isolamento, 79 testes adicionais e regressão de interfaces aprovados. O domínio serve a rota e a entrada de menu novas; API saudável. [Homologação](https://github.com/QGBALTIGO/orion-assistente/actions/runs/46064770370). Pareamento com número real depende da autorização no celular; não foi realizado nesta sessão.
 
 O Delivery reutiliza o controle de dispositivo QR/código de conexão já existente em Serviços por assinatura, com uma conexão por empresa de avaliação. Somente o proprietário autenticado pode acessar o menu Atendimento → Conectar WhatsApp, e apenas enquanto a empresa estiver ativa e autorizada na avaliação. O perfil da sessão é exclusivamente de conexão: nenhuma automação, importação de mensagens, chatbot, transcrição, webhook comercial ou efeito de envio é autorizado. A conexão por QR reutilizada é a ponte existente, não uma homologação oficial da Cloud API da Meta. A integração de solicitações e pedidos para produtos elegíveis será uma etapa separada, com permissões e confirmação explícitas; GLP permanece bloqueado para comércio pelo canal até confirmação de elegibilidade. Não foi feita nova conexão real sem a autorização no aparelho do proprietário.
 
