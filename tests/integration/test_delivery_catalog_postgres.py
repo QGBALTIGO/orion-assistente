@@ -423,7 +423,7 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                 panels = (
                     ("dashboard-delivery", "Dashboard", None, "Pedidos do dia"),
                     ("clientes", "Clientes", "button", "Novo cliente"),
-                    ("financeiro", "Financeiro", "button", "Vendas a prazo"),
+                    ("financeiro", "Financeiro", None, "Ticket médio"),
                     ("pedidos-delivery", "Pedidos", "button", "Novo pedido"),
                     ("entregas-delivery", "Entregas", "button", "Novo pedido"),
                     ("vasilhames-delivery", "Vasilhames", "button", "Novo vasilhame"),
