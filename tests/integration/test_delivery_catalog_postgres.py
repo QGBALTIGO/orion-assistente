@@ -50,6 +50,15 @@ def new_product(name="Água de avaliação"):
             "initial_quantity": 5, "idempotency_key": uuid4().hex}
 
 
+async def complete_delivery_setup(ctx, tenant):
+    async with ctx.migration.begin() as db:
+        await db.execute(text("UPDATE tenants SET status='active' WHERE id=:t"), {"t":tenant})
+        await db.execute(text("""
+            UPDATE business_onboarding SET completed_at=now(),
+                configuration=configuration || '{"modality":"online"}'::jsonb WHERE tenant_id=:t
+        """), {"t":tenant})
+
+
 async def test_catalog_and_ledger_roundtrip(onboarding_db, monkeypatch):
     tenant, actor = await business(onboarding_db, monkeypatch)
     root = f"/api/v1/tenants/{tenant}/delivery/catalog"
@@ -139,7 +148,7 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
     async with ctx.migration.begin() as db:
         await db.execute(text("UPDATE panel_accounts SET verified_at=now(),password_hash=:password WHERE id=:a"),
                          {"a":actor.account_id,"password":PasswordHasher().hash(password)})
-        await db.execute(text("UPDATE business_onboarding SET completed_at=now() WHERE tenant_id=:t"), {"t":tenant})
+    await complete_delivery_setup(ctx, tenant)
 
     listener = socket.socket()
     listener.bind(("127.0.0.1", 0))
@@ -185,7 +194,7 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                     await dialog.get_by_label("Nome do produto").fill("Água de homologação")
                     await dialog.get_by_label("Variação", exact=True).fill("Unidade")
                     await dialog.get_by_label("Preço de venda").fill("12,50")
-                    await dialog.get_by_label("Categoria",exact=True).fill("Água")
+                    await dialog.get_by_label("Categoria").fill("Água")
                     await dialog.get_by_label("Estoque inicial").fill("5")
                     await dialog.get_by_role("button",name="Salvar").click()
                     await expect(dialog).to_be_hidden()
@@ -209,6 +218,26 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                 await page.get_by_role("tab", name="Movimentações").click()
                 await expect(page.get_by_role("cell", name="Saldo inicial")).to_be_visible()
                 await expect(page.get_by_role("cell", name="Entrada", exact=True)).to_be_visible()
+                if theme == "dark":
+                    await page.goto(origin+"/painel?aba=pedidos-delivery")
+                    await expect(page.get_by_role("heading", name="Pedidos", exact=True)).to_be_visible()
+                    await page.set_viewport_size({"width":390,"height":844})
+                    await page.get_by_role("button",name="Novo pedido").click()
+                    dialog = page.get_by_role("dialog")
+                    await dialog.get_by_role("button",name="Buscar produtos").click()
+                    await dialog.get_by_role("button",name="Água de homologação · Unidade").click()
+                    await dialog.get_by_role("button",name="Conferir total").click()
+                    await expect(dialog.get_by_text("Total",exact=True)).to_be_visible()
+                    await page.screenshot(path=artifacts/"pedido-dark-390.png", animations="disabled")
+                    await dialog.get_by_role("button",name="Confirmar pedido").click()
+                    await expect(dialog).to_be_hidden()
+                    await expect(page.get_by_text("Reservado",exact=True)).to_be_visible()
+                    await page.get_by_role("button",name="Concluir",exact=True).click()
+                    await dialog.get_by_label("Forma recebida").select_option("cash")
+                    await dialog.get_by_label("Confirmo que recebi o pagamento").check()
+                    await dialog.get_by_role("button",name="Concluir pedido").click()
+                    await expect(dialog).to_be_hidden()
+                    await expect(page.get_by_text("Concluído",exact=True)).to_be_visible()
                 await context.close()
             await browser.close()
         assert errors == []

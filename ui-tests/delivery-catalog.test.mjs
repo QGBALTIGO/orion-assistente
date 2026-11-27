@@ -40,7 +40,7 @@ test('catalogue uses Orion dialogs, stores the command, filters and opens moveme
   h.fill('#osDialog [name=name]','Água de avaliação');
   h.fill('#osDialog [name=variant_name]','Unidade');
   h.fill('#osDialog [name=price]','12,50');
-  h.fill('#osDialog [name=category]','Água');
+  h.fill('#osDialog [name=product_category]','Água');
   h.fill('#osDialog [name=initial]','5');
   h.document.querySelector('#osDialog button[type=submit]').click();
   await flush();

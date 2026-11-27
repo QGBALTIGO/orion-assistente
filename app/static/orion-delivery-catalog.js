@@ -4,7 +4,7 @@
 
   const prices = [['fixed','Preço fixo'],['from','A partir de'],['on_request','Sob consulta'],['custom','Personalizado']];
   const movements = [['purchase','Entrada'],['out','Saída'],['count','Contagem de estoque']];
-  const movementLabels = Object.fromEntries([...movements,['initial','Saldo inicial'],['reserved','Reserva'],['released','Liberação']]);
+  const movementLabels = Object.fromEntries([...movements,['initial','Saldo inicial'],['reserved','Reserva'],['released','Liberação'],['sold','Venda concluída']]);
   const cap = 10000000;
   const formatInput = value => value == null ? '' : new Intl.NumberFormat('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}).format(value/100);
 
@@ -120,7 +120,7 @@
         selectField('Tipo de preço','price_kind',prices,variant?.price_kind||'fixed')+
         moneyField('Preço de venda','price','text',formatInput(variant?.unit_price_cents),'data-field-max="100000000"')+
         moneyField('Custo de compra','cost','text',formatInput(variant?.purchase_cost_cents),'data-field-max="100000000"')+
-        field('Categoria','category','text',item?.category||'','required maxlength="80"')+
+        field('Categoria','product_category','text',item?.category||'','required maxlength="80"')+
         field('Unidade','unit','text',item?.unit||'un','required maxlength="24"')+
         field('Código de barras','barcode','text',variant?.barcode||'','pattern="[0-9]{1,32}" maxlength="32" inputmode="numeric"')+
         field('Estoque mínimo','minimum','number',variant?.minimum_quantity??0,'required min="0" max="10000000" step="1"')+
@@ -136,7 +136,7 @@
         const priced=['fixed','from'].includes(values.price_kind);
         const payload={variant:{name:values.variant_name,sku:values.sku.trim()||null,attributes:variant?.attributes||{},
           price_kind:values.price_kind,unit_price_cents:priced?parseMoney(values.price,true):null,active:form.elements.variant_active.checked},
-          details:{category:values.category,unit:values.unit,purchase_cost_cents:parseMoney(values.cost,false),
+          details:{category:values.product_category,unit:values.unit,purchase_cost_cents:parseMoney(values.cost,false),
             minimum_quantity:quantity(values.minimum),barcode:values.barcode.trim()||null}};
         if (!addVariant) payload.product={name:values.name,description:values.description.trim()||null,
           active:form.elements.product_active.checked,synonyms:item?.synonyms||[],faqs:item?.faqs||[],official_benefits:item?.official_benefits||[]};

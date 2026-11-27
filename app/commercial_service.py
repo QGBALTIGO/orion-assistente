@@ -262,29 +262,35 @@ async def create_quote(db, tenant, payload, access):
         contract = await fulfillment.resolve(db, tenant, payload.contact_e164, payload.fulfillment, lock=True)
         result = fulfillment.apply(result, contract)
         expires = now + timedelta(minutes=payload.validity_minutes)
-        inserted = (await db.execute(text("""
-            INSERT INTO commercial_quotes (id,tenant_id,contact_e164,customer_name,total_cents,minimum_total_cents,
-                confirmation_digest,expires_at,created_by,fulfillment_mode,pickup_appointment_id,fulfillment_snapshot)
-            SELECT :id,:t,:contact,:name,:total,:minimum,:digest,:expires,:actor,
-                :fulfillment_mode,:pickup_appointment_id,CAST(:fulfillment_snapshot AS jsonb)
-            WHERE """ + fulfillment.WRITE_GUARD + " RETURNING id"),
-            {"id": quote_id, "t": tenant, "contact": payload.contact_e164, "name": payload.customer_name,
-               "total": result["total_cents"], "minimum": result["minimum_total_cents"],
-               "digest": hashlib.sha256(token.encode()).hexdigest(), "expires": expires, "actor": access.account_id,
-               **fulfillment.insert_params(contract), **fulfillment.guard_params(contract, payload.contact_e164)})).scalar_one_or_none()
-        if inserted is None:
-            fulfillment.conflict()
-        for index, line in enumerate(result["items"]):
-            await db.execute(text("""
-                INSERT INTO commercial_quote_items (tenant_id,quote_id,variant_id,product_id,item_order,quantity,
-                    product_revision,variant_revision,inventory_revision,snapshot)
-                VALUES (:t,:q,:v,:p,:position,:quantity,:pr,:vr,:ir,CAST(:snapshot AS jsonb))
-            """), {"t": tenant, "q": quote_id, "v": UUID(line["variant_id"]), "p": UUID(line["product_id"]),
-                   "position": index, "quantity": line["quantity"], "pr": line["product_revision"],
-                   "vr": line["variant_revision"], "ir": line["inventory_revision"], "snapshot": json.dumps(jsonable_encoder(line))})
-        await audit(db, tenant, access, "quote", quote_id, "created", {"line_count": len(lines)})
+        await write_quote(db, tenant, access, quote_id, token, payload.contact_e164,
+                          payload.customer_name, result, contract, expires)
     return {"id": quote_id, "kind": "quote", "expires_at": expires, "confirmation_token": token,
             "contact_e164": payload.contact_e164, "customer_name": payload.customer_name, **result}
+
+
+async def write_quote(db, tenant, access, quote_id, token, contact, customer, result, contract, expires):
+    """Persist the quote and immutable line snapshots in the caller transaction."""
+    inserted = (await db.execute(text("""
+        INSERT INTO commercial_quotes (id,tenant_id,contact_e164,customer_name,total_cents,minimum_total_cents,
+            confirmation_digest,expires_at,created_by,fulfillment_mode,pickup_appointment_id,fulfillment_snapshot)
+        SELECT :id,:t,:contact,:name,:total,:minimum,:digest,:expires,:actor,
+            :fulfillment_mode,:pickup_appointment_id,CAST(:fulfillment_snapshot AS jsonb)
+        WHERE """ + fulfillment.WRITE_GUARD + " RETURNING id"),
+        {"id": quote_id, "t": tenant, "contact": contact, "name": customer,
+           "total": result["total_cents"], "minimum": result["minimum_total_cents"],
+           "digest": hashlib.sha256(token.encode()).hexdigest(), "expires": expires, "actor": access.account_id,
+           **fulfillment.insert_params(contract), **fulfillment.guard_params(contract, contact)})).scalar_one_or_none()
+    if inserted is None:
+        fulfillment.conflict()
+    for index, line in enumerate(result["items"]):
+        await db.execute(text("""
+            INSERT INTO commercial_quote_items (tenant_id,quote_id,variant_id,product_id,item_order,quantity,
+                product_revision,variant_revision,inventory_revision,snapshot)
+            VALUES (:t,:q,:v,:p,:position,:quantity,:pr,:vr,:ir,CAST(:snapshot AS jsonb))
+        """), {"t": tenant, "q": quote_id, "v": UUID(line["variant_id"]), "p": UUID(line["product_id"]),
+               "position": index, "quantity": line["quantity"], "pr": line["product_revision"],
+               "vr": line["variant_revision"], "ir": line["inventory_revision"], "snapshot": json.dumps(jsonable_encoder(line))})
+    await audit(db, tenant, access, "quote", quote_id, "created", {"line_count": len(result["items"])})
 
 
 async def _quote(db, tenant, quote_id):
@@ -400,12 +406,7 @@ async def confirm_order(db, tenant, order_id, payload, access):
         if not result["confirmation_requirements_met"] or result["total_cents"] != quote["total_cents"]:
             conflict("Preço ou disponibilidade exige revisão humana; nenhum pedido foi confirmado")
         await fulfillment.fence(db, tenant, quote["contact_e164"], contract)
-        for line in sorted(lines, key=lambda item: item["variant_id"]):
-            await db.execute(text("""
-                UPDATE commercial_inventory SET reserved_quantity=reserved_quantity+:quantity,
-                    revision=revision+1,updated_at=now() WHERE tenant_id=:t AND variant_id=:v
-            """), {"t": tenant, "v": line["variant_id"], "quantity": line["quantity"]})
-            await audit(db, tenant, access, "stock", line["variant_id"], "reserved", {"order_id": order_id, "quantity": line["quantity"]})
+        await reserve_stock(db, tenant, access, order_id, lines)
         changed = (await db.execute(text("UPDATE commercial_orders SET status='confirmed',revision=revision+1,updated_at=now() WHERE tenant_id=:t AND id=:id AND " +
             fulfillment.WRITE_GUARD + " RETURNING id"), {"t": tenant, "id": order_id,
             **fulfillment.guard_params(contract, quote["contact_e164"])})).scalar_one_or_none()
@@ -419,21 +420,41 @@ async def cancel_order(db, tenant, order_id, payload, access):
     check_access(access.role, "draft")
     async with tenant_transaction(db, tenant):
         order = await _order(db, tenant, order_id, lock=True)
+        source = (await db.execute(text("""
+            SELECT to_jsonb(o)->>'origin' FROM commercial_orders o WHERE tenant_id=:t AND id=:id
+        """), {"t": tenant, "id": order_id})).scalar_one()
+        if source == "delivery":
+            conflict("Cancele este pedido em Delivery e Distribuição")
         if order["status"] == "cancelled":
             return order
         if order["revision"] != payload.expected_revision:
             conflict("Pedido alterado. Revise antes de cancelar")
         if order["status"] == "confirmed":
             quote = await _quote(db, tenant, order["quote_id"])
-            for item in sorted(quote["items"], key=lambda line: line["variant_id"]):
-                row = (await db.execute(text("""
-                    UPDATE commercial_inventory SET reserved_quantity=reserved_quantity-:quantity,
-                        revision=revision+1,updated_at=now()
-                    WHERE tenant_id=:t AND variant_id=:v AND reserved_quantity>=:quantity RETURNING variant_id
-                """), {"t": tenant, "v": UUID(item["variant_id"]), "quantity": item["quantity"]})).scalar_one_or_none()
-                if row is None:
-                    conflict("Reserva de estoque inconsistente; solicite revisão humana")
-                await audit(db, tenant, access, "stock", row, "released", {"order_id": order_id, "quantity": item["quantity"]})
+            await release_stock(db, tenant, access, order_id, quote["items"])
         await db.execute(text("UPDATE commercial_orders SET status='cancelled',revision=revision+1,updated_at=now() WHERE tenant_id=:t AND id=:id"), {"t": tenant, "id": order_id})
         await audit(db, tenant, access, "order", order_id, "cancelled")
         return await _order(db, tenant, order_id)
+
+
+async def reserve_stock(db, tenant, access, order_id, lines):
+    """Reserve stock after the caller locks and verifies the commercial lines."""
+    for line in sorted(lines, key=lambda item: item["variant_id"]):
+        await db.execute(text("""
+            UPDATE commercial_inventory SET reserved_quantity=reserved_quantity+:quantity,
+                revision=revision+1,updated_at=now() WHERE tenant_id=:t AND variant_id=:v
+        """), {"t": tenant, "v": line["variant_id"], "quantity": line["quantity"]})
+        await audit(db, tenant, access, "stock", line["variant_id"], "reserved", {"order_id": order_id, "quantity": line["quantity"]})
+
+
+async def release_stock(db, tenant, access, order_id, items):
+    """Release exactly the frozen item quantities inside the cancellation transaction."""
+    for item in sorted(items, key=lambda line: line["variant_id"]):
+        row = (await db.execute(text("""
+            UPDATE commercial_inventory SET reserved_quantity=reserved_quantity-:quantity,
+                revision=revision+1,updated_at=now()
+            WHERE tenant_id=:t AND variant_id=:v AND reserved_quantity>=:quantity RETURNING variant_id
+        """), {"t": tenant, "v": UUID(item["variant_id"]), "quantity": item["quantity"]})).scalar_one_or_none()
+        if row is None:
+            conflict("Reserva de estoque inconsistente; solicite revisão humana")
+        await audit(db, tenant, access, "stock", row, "released", {"order_id": order_id, "quantity": item["quantity"]})
