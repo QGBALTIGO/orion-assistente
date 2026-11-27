@@ -17,7 +17,7 @@ from fastapi.encoders import jsonable_encoder
 from pydantic import StrictBool, StrictInt, Field, ValidationError
 from sqlalchemy import text
 
-from app import delivery_storefront as store, qr_channels as channels
+from app import qr_channels as channels
 from app.business_profile_schemas import ProfileModel
 from app.database import get_session_factory, tenant_transaction
 from app.management_schemas import normalize_phone, MAX_MONEY
@@ -58,12 +58,14 @@ def affirmative(body):
 
 
 def forbidden(body):
+    from app import delivery_storefront as store
     value = re.sub(r"\baguas?(?:\s+miner(?:al|ais))?\s+(?:com|sem)\s+gas\b", "agua", norm(body))
     return bool(store.RESTRICTED.search(value) or re.search(
         r"\b(?:glp|buj[aã]o|botij\w*|gas(?:es)?|combustivel|querosene|gasolina|etanol|diesel|fogos|explosiv\w*|alcool|veneno|solvente|acido|sanitaria|oxigenada|cloro|desinfetante|detergente|limpeza|pesticida|inseticida)\b", value))
 
 
 def eligible_water(shop, row):
+    from app import delivery_storefront as store
     # Explicit storefront approval plus positive, narrow classification.
     # A label alone cannot make a fuel or another restricted item eligible.
     names = " ".join(store.normalized_text(row.get(k)) for k in
@@ -73,6 +75,7 @@ def eligible_water(shop, row):
 
 
 async def shop_and_items(db, tenant, *, lock=False):
+    from app import delivery_storefront as store
     company = await store.business(db, tenant)
     if company["status"] != "active" or not delivery_preview_enabled(tenant, company["niche"]):
         raise HTTPException(403, "Atendimento indisponível.")
@@ -189,6 +192,7 @@ def state_question(stage, state, shop, items):
 
 
 async def next_step(db, tenant, shop, items, state, phone):
+    from app import delivery_storefront as store
     chosen = {str(row["variant_id"]):row for row in items}
     if not state.get("items") or any(line["variant_id"] not in chosen for line in state["items"]):
         return list_products(items, datetime.now(timezone.utc)), {}
@@ -244,6 +248,7 @@ async def next_step(db, tenant, shop, items, state, phone):
 
 
 async def answer(db, tenant, phone, body, state, summary_delivered):
+    from app import delivery_storefront as store
     value = clean(body)
     # Never process an emergency or a restricted sale as a water purchase.
     if re.search(r"\b(?:vazamento|cheiro de gas|incendio|pegando fogo|explosao)\b", value):
