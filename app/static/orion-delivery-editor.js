@@ -67,19 +67,20 @@
         ...models.map(([key,label])=>[key,label])],'')+'</div>' : '';
     const gallery = images.map(([key,label]) => '<button type="button" class="os-service-option" data-delivery-image="' + key +
       '" aria-pressed="false">' + picture(imagePath(key),esc,'os-delivery-preset-image') + '<span>' + esc(label) + '</span></button>').join('');
+    const brand = field('Marca','brand','text',item?.brand||'','maxlength="100"');
     const information = addVariant ? grid(categorySelect+newCategory) :
       grid(field('Nome do produto','name','text',item?.name||'','required maxlength="160"')+categorySelect+newCategory+
-        field('Marca','brand','text',item?.brand||'','maxlength="100"')) +
+        (item?'<div class="os-wide">'+brand+'</div>':brand+modelEntry)) +
       textField('Descrição','description',item?.description||'','maxlength="2000" rows="3"');
     const imagePanel = addVariant ? '' : '<aside class="os-delivery-editor-side">' + section('Imagem do produto',
-      '<div class="os-delivery-image-preview" data-delivery-image-preview></div>'+
+      '<div class="os-delivery-image-preview" data-delivery-image-preview hidden></div>'+
       '<div class="os-delivery-image-grid" role="group" aria-label="Imagens da biblioteca">'+gallery+'</div>'+
       imageUploadField('Foto do produto','photo_url',item?.photo_url||'', 'product')) + '</aside>';
 
     host.innerHTML = title(heading,addVariant ? item.name : '',back) +
       '<form id="osDeliveryProductForm" class="os-form os-delivery-product-form">' +
       '<div class="os-delivery-editor-layout' + (addVariant?' os-delivery-editor-single':'') +'"><div class="os-form">' +
-      section('Dados do produto',modelEntry+information)+
+      section('Dados do produto',information)+
       section('Preços',grid(moneyField('Preço de venda','price','text',moneyInput(variant?.unit_price_cents),'data-field-max="100000000"')+
         moneyField('Custo de compra','cost','text',moneyInput(variant?.purchase_cost_cents),'data-field-max="100000000"')))+
       section('Estoque',grid(field('Unidade','unit','text',item?.unit||'un','required maxlength="24"')+
@@ -106,8 +107,10 @@
     function showImage() {
       if (addVariant) return;
       const own = elements.photo_url.value;
-      form.querySelector('[data-delivery-image-preview]').innerHTML =
-        picture(own || (picked && imagePath(picked)),esc,'os-delivery-current-image') || icon('box');
+      const selected = picture(own || (picked && imagePath(picked)),esc,'os-delivery-current-image');
+      const preview=form.querySelector('[data-delivery-image-preview]');
+      preview.hidden=!selected;
+      preview.innerHTML=selected;
       form.querySelectorAll('[data-delivery-image]').forEach(control => {
         control.setAttribute('aria-pressed',String(!own&&picked===control.dataset.deliveryImage));
       });

@@ -311,6 +311,33 @@
     message(checkoutFeedback, '');
     updateDeliveryFields();
   });
+  byId('store-lookup-cep').addEventListener('click', async event => {
+    const button=event.currentTarget;
+    const target=byId('store-cep-feedback');
+    const form=checkoutForm.elements;
+    let cep;
+    try {cep=window.OrionFields.postalCodeValue(form.postal_code.value,{required:true});}
+    catch(error) {message(target,error.message,true);return;}
+    if (!cep) {message(target,'Informe o CEP com oito dígitos.',true);return;}
+    const stamp=ticket;
+    button.disabled=true;
+    message(target,'Consultando CEP…');
+    try {
+      const address=await request('/cep/'+encodeURIComponent(cep));
+      if (!checkout.open || stamp!==ticket || form.mode.value!=='delivery') {
+        message(target,'');
+        return;
+      }
+      if (address.street) form.street.value=address.street;
+      const area=store.delivery_areas.findIndex(item=>item.state===address.state&&
+        normalized(item.city)===normalized(address.city)&&normalized(item.neighborhood)===normalized(address.neighborhood));
+      form.coverage_area.value=area<0?'':String(area);
+      invalidate();
+      message(target,area<0?'Escolha seu bairro entre as áreas atendidas.':'Endereço encontrado. Confira e informe o número.');
+    } catch(error) {
+      message(target,stamp===ticket?error.message:'',stamp===ticket);
+    } finally {button.disabled=false;}
+  });
   checkout.addEventListener('cancel', event => {
     if (busy) event.preventDefault();
   });

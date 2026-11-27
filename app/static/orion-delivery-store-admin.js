@@ -53,8 +53,8 @@
 
     function storefrontHeader() {
       const status = state.public_url ? 'Publicada' : 'Despublicada';
-      const ordering = state.open ? 'Aceitando pedidos' :
-        state.accepting_orders === false ? 'Pedidos pausados' : 'Fora do horário';
+      const ordering = state.accepting_orders === false ? 'Pedidos pausados' :
+        !state.public_url ? 'Atendimento configurado' : state.open ? 'Aceitando pedidos' : 'Fora do horário';
       const preview = state.preview_url ?
         '<a class="os-button os-outline" href="'+esc(state.preview_url)+'" target="_blank" rel="noopener">'+icon('eye')+'Prévia da loja</a>' : '';
       const publicActions = state.public_url ?
@@ -329,6 +329,7 @@
       }
       if (action==='store-settings') {showTab('settings',true);return;}
       if (action==='store-copy' && state.public_url) {
+        if (!navigator.clipboard?.writeText) {notify('Selecione e copie o link da loja.',true);return;}
         void navigator.clipboard.writeText(state.public_url).then(()=>notify('Link copiado.'),
           ()=>notify('Selecione e copie o link da loja.',true));return;
       }

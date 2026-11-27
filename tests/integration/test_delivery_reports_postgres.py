@@ -43,7 +43,8 @@ async def test_report_products_customers_and_stock_use_fulfilled_orders(onboardi
     root = f"/api/v1/tenants/{tenant}/delivery"
     reports = root + "/reports/operational"
     async with client(actor) as http:
-        product = await http.post(root + "/catalog", json=new_product("Água do relatório"))
+        product = await http.post(root + "/catalog", json={**new_product("Água do relatório"),
+            "profile":{"preset_image":"agua-20l"}})
         assert product.status_code == 201, product.text
         variant = product.json()["variant_id"]
         command = await order_payload(http, root, variant, 2, mode="pickup", customer_id=contact)
@@ -65,6 +66,7 @@ async def test_report_products_customers_and_stock_use_fulfilled_orders(onboardi
         output = response.json()
         assert len(output["items"]) == 1
         assert output["items"][0]["quantity"] == 2 and output["items"][0]["revenue_cents"] == 2500
+        assert output["items"][0]["image_url"].endswith("agua-20l.webp")
         assert metrics(output) == {"Variações vendidas":1,"Unidades vendidas":2,"Subtotal dos itens":2500}
         exported, = rows(await http.get(reports + "/products/csv", params=period))
         assert exported["Produto"] == output["items"][0]["product"]
@@ -93,6 +95,13 @@ async def test_report_products_customers_and_stock_use_fulfilled_orders(onboardi
         assert [(r["movement"],r["quantity"],r["balance"]) for r in moves["items"]] == [("Venda",2,3)]
         exported, = rows(await http.get(reports + "/movements/csv", params=moves_filter))
         assert (exported["Movimento"],exported["Saldo contado"]) == ("Venda","3")
+        activity_filter={"status":"orders","search":reserved.json()["id"][:8]}
+        trace=(await http.get(reports+"/activity",params=activity_filter)).json()
+        assert {x["action"] for x in trace["items"]}=={"Pedido reservado","Pedido concluído"}
+        assert metrics(trace)["Atividades"]==2
+        exported=rows(await http.get(reports+"/activity/csv",params=activity_filter))
+        assert {x["Área"] for x in exported}=={"Pedidos"}
+        assert {x["Ação"] for x in exported}=={"Pedido reservado","Pedido concluído"}
 
 
 async def test_report_credit_vessels_and_read_permission(onboarding_db, monkeypatch):

@@ -100,6 +100,7 @@
           <label class="store-field">CEP
             <input name="postal_code" autocomplete="postal-code" inputmode="numeric" data-orion-field="postal-code" maxlength="9">
           </label>
+          <button type="button" class="outline" id="store-lookup-cep">Buscar CEP</button>
           <label class="store-field">Rua
             <input name="street" autocomplete="address-line1" maxlength="160" required>
           </label>
@@ -117,6 +118,7 @@
           </label>
           <label class="store-check"><input name="no_number" type="checkbox"> Sem número</label>
         </div>
+        <p id="store-cep-feedback" class="store-status" role="status" aria-live="polite"></p>
       </fieldset>
       <fieldset id="store-cash" hidden disabled>
         <legend>Dinheiro</legend>

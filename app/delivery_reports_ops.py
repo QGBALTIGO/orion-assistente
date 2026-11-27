@@ -13,11 +13,12 @@ from app.csv_export import csv_document
 from app.delivery_catalog import ITEMS_FROM, LIMIT
 from app.delivery_containers import LOAN_DELTA
 from app.delivery_orders import ORDERS
+from app.delivery_product_media import image_url
 from app.delivery_reports import MAX_EXPORT_ROWS, amount_label
 from app.management_models import period_for, report_period
 
 
-ReportKind = Literal["products", "customers", "inventory", "movements", "credit", "containers"]
+ReportKind = Literal["products", "customers", "inventory", "movements", "credit", "containers", "activity"]
 OrderMode = Literal["all", "counter", "pickup", "delivery"]
 
 PERIOD_ORDERS = ORDERS + """
@@ -26,15 +27,16 @@ PERIOD_ORDERS = ORDERS + """
 """
 PRODUCTS = f"""
     WITH sales AS ({PERIOD_ORDERS})
-    SELECT CAST(l.variant_id AS text) AS row_id,p.name AS product,v.name AS variant,
+    SELECT CAST(l.variant_id AS text) AS row_id,p.name AS product,v.name AS variant,m.preset_image,m.photo_url,
         v.sku,count(*) AS orders,sum(l.quantity) AS quantity,
         CAST(sum(CAST(l.snapshot->>'total_cents' AS bigint)) AS bigint) AS revenue_cents
     FROM sales
     JOIN commercial_quote_items l ON l.tenant_id=:t AND l.quote_id=sales.quote_id
     JOIN commercial_variants v ON (v.tenant_id,v.id)=(l.tenant_id,l.variant_id)
     JOIN commercial_products p ON (p.tenant_id,p.id)=(l.tenant_id,l.product_id)
+    LEFT JOIN delivery_product_profiles m ON (m.tenant_id,m.product_id)=(p.tenant_id,p.id)
     WHERE position(lower(:search) in lower(concat_ws(' ',p.name,v.name,v.sku)))>0
-    GROUP BY l.variant_id,p.name,v.name,v.sku
+    GROUP BY l.variant_id,p.name,v.name,v.sku,m.preset_image,m.photo_url
 """
 CUSTOMERS = f"""
     WITH sales AS ({PERIOD_ORDERS}), customer_sales AS (
@@ -51,7 +53,7 @@ CUSTOMERS = f"""
 """
 INVENTORY = f"""
     WITH inventory AS (
-      SELECT cast(v.id AS text) AS row_id,p.name AS product,v.name AS variant,v.sku,d.category,
+      SELECT cast(v.id AS text) AS row_id,p.name AS product,v.name AS variant,v.sku,d.category,m.preset_image,m.photo_url,
           coalesce(d.unit,'un') AS unit,(p.active AND v.active) AS active,
           i.quantity_on_hand,i.reserved_quantity,
           CASE WHEN i.mode='tracked' AND i.observed_at<=now() AND i.valid_until>now()
@@ -72,6 +74,7 @@ INVENTORY = f"""
 MOVEMENTS = """
     WITH ledger AS (
       SELECT CAST(e.id AS text) AS row_id,e.created_at,p.name AS product,v.name AS variant,v.sku,
+          m.preset_image,m.photo_url,
           coalesce(e.details->>'movement',e.action) AS movement,
           CASE WHEN jsonb_typeof(e.details->'quantity')='number'
             THEN CAST(e.details->>'quantity' AS bigint) END AS quantity,
@@ -81,6 +84,7 @@ MOVEMENTS = """
       FROM commercial_events e
       JOIN commercial_variants v ON (v.tenant_id,v.id)=(e.tenant_id,e.entity_id)
       JOIN commercial_products p ON (p.tenant_id,p.id)=(v.tenant_id,v.product_id)
+      LEFT JOIN delivery_product_profiles m ON (m.tenant_id,m.product_id)=(p.tenant_id,p.id)
       WHERE e.tenant_id=:t AND e.entity='stock'
         AND (e.details ? 'movement' OR e.action IN ('reserved','released'))
         AND e.created_at>=:lower AND e.created_at<:upper
@@ -121,6 +125,29 @@ CONTAINERS = f"""
     WHERE c.tenant_id=:t AND (:status='all' OR c.kind=:status)
         AND position(lower(:search) in lower(c.name))>0
 """
+ACTIVITY = """
+    WITH events AS (
+      SELECT CAST(e.id AS text) AS row_id,e.created_at,'orders' AS module,
+          upper(left(CAST(o.id AS text),8)) AS reference,e.action,e.actor_role
+      FROM commercial_events e
+      JOIN commercial_orders o ON (o.tenant_id,o.id)=(e.tenant_id,e.entity_id) AND o.origin='delivery'
+      WHERE e.tenant_id=:t AND e.entity='order' AND e.created_at>=:lower AND e.created_at<:upper
+      UNION ALL
+      SELECT CAST(e.id AS text),e.created_at,CASE WHEN e.entity='stock' THEN 'stock' ELSE 'catalog' END,
+          concat_ws(' · ',p.name,v.name),coalesce(e.details->>'movement',e.action),e.actor_role
+      FROM commercial_events e
+      LEFT JOIN commercial_variants v ON (v.tenant_id,v.id)=(e.tenant_id,e.entity_id) AND e.entity IN ('variant','stock')
+      JOIN commercial_products p ON p.tenant_id=e.tenant_id AND p.id=coalesce(v.product_id,e.entity_id)
+      WHERE e.tenant_id=:t AND e.entity IN ('product','variant','stock') AND e.created_at>=:lower AND e.created_at<:upper
+      UNION ALL
+      SELECT CAST(m.id AS text),m.occurred_at,'packaging',c.name,m.kind,'staff'
+      FROM delivery_container_movements m
+      JOIN delivery_containers c ON (c.tenant_id,c.id)=(m.tenant_id,m.container_id)
+      WHERE m.tenant_id=:t AND m.occurred_at>=:lower AND m.occurred_at<:upper
+    )
+    SELECT * FROM events WHERE (:status='all' OR module=:status)
+      AND position(lower(:search) in lower(concat_ws(' ',reference,action)))>0
+"""
 
 MOVEMENT_LABELS = {
     "initial": "Saldo inicial", "purchase": "Entrada", "count": "Contagem", "out": "Saída",
@@ -137,6 +164,14 @@ CELL_LABELS = {
     "stock_status": {"tracked": "Atualizado", "low": "Estoque baixo", "stale": "Contagem vencida", "unknown": "Sem contagem"},
     "container_kind": {"cylinder": "Botijão", "jug": "Garrafão"},
     "active": {True: "Ativo", False: "Inativo"},
+    "module": {"orders":"Pedidos","catalog":"Catálogo","stock":"Estoque","packaging":"Vasilhames"},
+    "action": {**MOVEMENT_LABELS, "created":"Cadastro criado", "updated":"Cadastro atualizado",
+        "confirmed":"Pedido reservado", "dispatched":"Pedido em rota", "fulfilled":"Pedido concluído",
+        "cancelled":"Pedido cancelado", "returned":"Pedido devolvido", "received":"Recebimento",
+        "partially_received":"Recebimento parcial", "delivery_rescheduled":"Entrega reagendada",
+        "delivery_recipient_absent":"Cliente ausente", "observed":"Contagem",
+        "in":"Entrada", "lend":"Comodato", "return":"Devolução de vasilhame"},
+    "actor_role": {"owner":"Proprietário","editor":"Equipe","staff":"Equipe","customer":"Loja rápida"},
 }
 
 
@@ -204,6 +239,14 @@ REPORTS = {
         ("empty_quantity","Vazios em estoque","number","list","sum(empty_quantity)"),
         ("loaned","Com clientes","number","users","sum(loaned)"),
     ), frozenset(("cylinder","jug")), dated=False),
+    "activity": Report(ACTIVITY, "created_at DESC, row_id DESC", (
+        ("created_at","Data","datetime"),("module","Área","text"),("reference","Registro","text"),
+        ("action","Ação","text"),("actor_role","Origem","text"),
+    ), (
+        ("events","Atividades","number","list","count(*)"),
+        ("orders","Eventos de pedidos","number","check","count(*) FILTER (WHERE module='orders')"),
+        ("stock","Eventos de estoque","number","box","count(*) FILTER (WHERE module='stock')"),
+    ), frozenset(CELL_LABELS["module"])),
 }
 
 
@@ -269,7 +312,9 @@ async def view(db, tenant, *, kind: ReportKind, start=None, end=None, search="",
         "period": period,
         "columns": [{"key": key, "label": label, "style": style} for key, label, style in report.columns],
         "items": [
-            {key: label_cell(key, row[key]) for key, _, _ in report.columns}
+            {**{key: label_cell(key, row[key]) for key, _, _ in report.columns},
+             **({"image_url": image_url(tenant, row["preset_image"], row["photo_url"])}
+                if "preset_image" in row else {})}
             for row in packed["rows"][:LIMIT]
         ],
         "summary": [

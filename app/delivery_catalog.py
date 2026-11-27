@@ -135,10 +135,11 @@ async def list_items(db, tenant, *, search, category, status_filter, low_stock, 
 
 async def history(db, tenant, *, start: date | None, end: date | None, offset):
     rows = (await db.execute(text("""
-        SELECT e.id,e.created_at,p.name AS name,v.name AS variant_name,e.action,e.details
+        SELECT e.id,e.created_at,p.name AS name,v.name AS variant_name,e.action,e.details,m.preset_image,m.photo_url
         FROM commercial_events e JOIN commercial_variants v
             ON (v.tenant_id,v.id)=(e.tenant_id,e.entity_id)
         JOIN commercial_products p ON (p.tenant_id,p.id)=(v.tenant_id,v.product_id)
+        LEFT JOIN delivery_product_profiles m ON (m.tenant_id,m.product_id)=(p.tenant_id,p.id)
         JOIN tenants t ON t.id=e.tenant_id
         WHERE e.tenant_id=:t AND e.entity='stock'
           AND (e.details ? 'movement' OR e.action IN ('reserved','released'))
@@ -146,7 +147,8 @@ async def history(db, tenant, *, start: date | None, end: date | None, offset):
           AND (CAST(:end AS date) IS NULL OR e.created_at<(CAST(:end AS date)+1)::timestamp AT TIME ZONE t.timezone)
         ORDER BY e.created_at DESC,e.id DESC LIMIT :limit OFFSET :offset
     """), {"t": tenant, "start": start, "end": end, "limit": LIMIT + 1, "offset": offset})).mappings().all()
-    return {"items": [dict(row) for row in rows[:LIMIT]], "limit": LIMIT,
+    return {"items": [{**row,"image_url":image_url(tenant,row["preset_image"],row["photo_url"])}
+                      for row in rows[:LIMIT]], "limit": LIMIT,
             "offset": offset, "has_more": len(rows) > LIMIT}
 
 

@@ -61,5 +61,13 @@ test('report tabs preserve criteria and export the filtered set without paginati
   h.click('[data-delivery-report-tab="products"]');
   await flush();
   assert.equal(h.document.querySelector('#osDeliveryReportPanel [name="search"]').value,'<Caixa de teste>');
+  h.click('[data-delivery-report-tab="activity"]');
+  await flush();
+  assert.match(h.document.querySelector('#osDeliveryReportPanel h1').textContent,/Rastro de atividades/);
+  h.fill('#osDeliveryReportPanel [name="status"]','orders');
+  h.submit('#osDeliveryReportPanel form');
+  await flush();
+  const activity=h.document.querySelector('#osDeliveryReportPanel a[download]');
+  assert.equal(new URL(activity.href).searchParams.get('status'),'orders');
   assert.deepEqual(h.errors,[]);
 });

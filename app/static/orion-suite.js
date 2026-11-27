@@ -130,7 +130,7 @@
   routeNames[deliveryCreditRoute]='Vendas a prazo';
   routeNames[deliveryReportRoute]='Relatórios';
   routeNames[deliveryLogisticsRoute]='Logística';
-  routeNames[deliveryStoreRoute]='Loja Delivery';
+  routeNames[deliveryStoreRoute]='Loja rápida';
   routeNames[deliveryDashboardRoute]='Dashboard';
   const deliveryRoutes=[deliveryDashboardRoute,deliveryCatalogRoute,deliveryOrdersRoute,deliveryDispatchRoute,deliveryContainersRoute,deliveryCreditRoute,deliveryReportRoute,deliveryLogisticsRoute,deliveryStoreRoute];
   const mainNav=[['verificador-numeros','check'],['link-whatsapp','link'],['contatos','users'],['grupos-contatos','list'],['dispositivos','phone'],['chatbot','bot'],['testar-chatbot','flask'],['templates','layers'],['mensagens-enviadas','fileCheck'],['diagnosticos','activity'],['campanhas','megaphone'],['programadas','calendarClock'],['massa','broadcast'],['enviar-mensagem','send'],['aquecimento','flame'],['evitar-banimento','shieldCheck'],['resolver-banimento','shieldAlert'],['extrator-contatos','usersSearch'],['adicionar-ao-grupo','userPlus'],['dashboard','dashboard'],['agenda','calendar'],['clientes','users'],['clinica','tooth'],['pacientes-odonto','users'],['proteses-odonto','prosthesis'],['estoque-odonto','box'],['vendas-odonto','layers'],['ajustes-odonto','settings'],['inbox','chat'],['servicos','scissors'],['funcionarios','badgeUser'],['financeiro','wallet'],['desempenho','chart'],['marketing','sparkles'],['site','globe'],['fidelizacao','gift'],['consultor','brain'],['plano','credit'],['configuracoes','settings']];

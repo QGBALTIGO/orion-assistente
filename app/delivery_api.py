@@ -3,11 +3,12 @@ from datetime import date
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from app import delivery_catalog as catalog
+from app import delivery_address
 from app import delivery_containers as containers
 from app import delivery_logistics as logistics
 from app import delivery_orders as orders
@@ -19,6 +20,7 @@ from app.database import get_session_factory, tenant_transaction
 from app.http_json import json_response
 from app.onboarding_service import access_session
 from app.plan_permissions import lock_plan
+from app.public_site_api import public_limit
 from app.tenant_access import check_access
 from app.workspace_policy import delivery_preview_enabled
 
@@ -47,6 +49,18 @@ async def run(actor, tenant, operation, *args, write=False, publish=False, respo
     except IntegrityError:
         raise HTTPException(409, "Os dados já foram usados ou mudaram. Atualize a tela e confira.") from None
     response = result if isinstance(result, Response) else json_response(result, status_code=response_status)
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@router.get("/cep/{cep}")
+async def delivery_postal_code(tenant_id: UUID, cep: str, request: Request, actor: Actor = Depends(authenticate)):
+    async def check_scope(_db, _tenant):
+        return {}
+
+    await run(actor, tenant_id, check_scope)
+    await public_limit(request, str(tenant_id), "delivery-admin-cep", 30, 300, subject=str(actor.account_id))
+    response = json_response(await delivery_address.lookup(cep))
     response.headers["Cache-Control"] = "no-store"
     return response
 

@@ -13,7 +13,7 @@ import pytest
 from fastapi import FastAPI
 from sqlalchemy import text
 
-from app import delivery_storefront as storefront
+from app import delivery_address, delivery_api, delivery_storefront as storefront
 from app.catalog_api import Actor, authenticate
 from app.delivery_api import router as delivery_router
 from test_delivery_catalog_postgres import business, complete_delivery_setup, new_product
@@ -181,10 +181,26 @@ async def test_checkout_reserves_only_once_without_claiming_payment_or_crm_ident
         assert finished["customer_id"] and finished["items"][0]["image_url"].endswith("agua-20l.webp")
 
 
-async def test_public_delivery_uses_current_coverage_and_server_price(storefront_setup):
+async def test_public_delivery_uses_current_coverage_and_server_price(storefront_setup, monkeypatch):
     ctx, tenant, actor = storefront_setup
     slug = "entrega-" + uuid4().hex[:10]
     public = "/api/v1/delivery-store/" + slug
+    lookups = []
+
+    def provider(request):
+        lookups.append(request.url.path)
+        assert request.url.host == "viacep.com.br"
+        if request.url.path == "/ws/99999999/json/":
+            return httpx.Response(200, json={"erro":True})
+        return httpx.Response(200,json={"cep":"78005-000","logradouro":"Rua de teste",
+                                        "bairro":"Centro","localidade":"Cuiabá","uf":"MT"})
+
+    async def local_limit(*_args, **_kwargs):
+        pass
+
+    monkeypatch.setattr(delivery_api,"public_limit",local_limit)
+    monkeypatch.setattr(delivery_address,"AsyncClient",lambda **opts: httpx.AsyncClient(
+        transport=httpx.MockTransport(provider),**opts))
     async with client(actor) as http:
         admin, payload, _, _ = await set_up_items(http, tenant, slug)
         settings = {**payload, "allow_delivery": True, "allow_pickup": False}
@@ -195,6 +211,14 @@ async def test_public_delivery_uses_current_coverage_and_server_price(storefront
         assert saved.status_code == 200, saved.text
         live = await http.put(admin + "/storefront", json=settings)
         assert live.status_code == 200, live.text
+        postcode = (await http.get(public+"/cep/78005000")).json()
+        assert postcode == {"postal_code":"78005-000","street":"Rua de teste","neighborhood":"Centro","city":"Cuiabá","state":"MT"}
+        assert (await http.get(admin+"/cep/78005-000")).json() == postcode
+        assert (await http.get(public+"/cep/99999999")).status_code == 404
+        assert (await http.get(public+"/cep/invalido")).status_code == 422
+        async with client(Actor("member",account_id=ctx.other)) as outsider:
+            assert (await outsider.get(admin+"/cep/78005000")).status_code == 403
+        assert lookups == ["/ws/78005000/json/","/ws/78005000/json/","/ws/99999999/json/"]
         address = {"street": "Rua de teste", "number": "12", "state": "MT", "city": "Cuiaba", "neighborhood": "Centro"}
         intent = {"items": [{"variant_id": payload["items"][0]["variant_id"], "quantity": 2}],
                   "mode": "delivery", "address": address, "payment_preference": "cash"}

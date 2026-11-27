@@ -20,7 +20,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import AwareDatetime, Field, StrictBool, StrictInt, field_validator, model_validator
 from sqlalchemy import text
 
-from app import commercial_service as commerce, delivery_container_orders as packaging
+from app import commercial_service as commerce, delivery_address, delivery_container_orders as packaging
 from app.catalog_api import Actor, authenticate
 from app.database import get_session_factory, tenant_transaction
 from app.delivery_api import run
@@ -265,7 +265,12 @@ async def store_state(db, tenant):
         LEFT JOIN delivery_product_profiles m ON (m.tenant_id,m.product_id)=(p.tenant_id,p.id)
         WHERE s.tenant_id=:tenant ORDER BY s.sort_order,lower(s.label),s.variant_id
     """), {"tenant": tenant})).mappings().all()
-    defaults = {**STORE_OPTIONS, "slug": shop["slug"], "enabled": False, "revision": 0, "title": shop["name"],
+    slug = shop["slug"]
+    if re.fullmatch(r"negocio-[a-f0-9]{32}", slug):
+        label = re.sub(r"[^a-z0-9]+", "-", normalized_text(shop["name"])).strip("-")[:70].rstrip("-")
+        if len(label) >= 3:
+            slug = label
+    defaults = {**STORE_OPTIONS, "slug": slug, "enabled": False, "revision": 0, "title": shop["name"],
                 "description": None, "allow_pickup": True, "allow_delivery": False, "pickup_details": None,
                 "opening_hours": [], "payment_methods": ["cash"], "max_open_orders": 30}
     current = {**defaults, **row["settings"], **{key: row[key] for key in ("slug", "enabled", "revision")}} if row else defaults
@@ -335,7 +340,7 @@ async def save_store(db, tenant, access, payload):
                 continue  # Keep an unchanged, hidden selection while repairing another one.
             commerce.conflict("Um produto foi alterado ou ficou indisponível. Selecione novamente a variação.")
         if not eligible(shop["offering"], item, source["name"], source["variant_name"],
-                        source["product_description"], source["category"]):
+                        source["product_description"], source["category"], source["brand"]):
             raise HTTPException(422, "A loja pública aceita somente as categorias de produtos autorizadas")
     await db.execute(text("""
         INSERT INTO delivery_storefronts (tenant_id,slug,enabled,revision,settings)
@@ -445,7 +450,7 @@ def is_open(shop, now):
 def available_item(shop, row):
     return eligible(shop["offering"], PublicItem.model_validate(
         {key: row[key] for key in PublicItem.model_fields}),
-        row["name"], row["variant_name"], row["product_description"], row["category"])
+        row["name"], row["variant_name"], row["product_description"], row["category"], row["brand"])
 
 
 def public_json(value, status=200):
@@ -469,6 +474,15 @@ async def public_catalogue(slug: str, request: Request):
     await rate(request, slug, "catalogue")
     async with public_session(slug) as (db, tenant, shop):
         return public_json(await catalogue(db, tenant, shop))
+
+
+@router.get(PUBLIC_PATH + "/cep/{cep}")
+async def public_postal_code(slug: str, cep: str, request: Request):
+    await rate(request, slug, "cep", 20)
+    async with public_session(slug) as (_, _, shop):
+        if not shop["allow_delivery"]:
+            raise HTTPException(404, "A loja atende somente por retirada", headers=HEADERS)
+    return public_json(await delivery_address.lookup(cep))
 
 
 def schedule_options(policy, shop, now):
@@ -503,12 +517,21 @@ async def catalogue(db, tenant, shop):
     rows = (await db.execute(text(ITEMS + " ORDER BY s.sort_order,lower(s.label),s.variant_id"),
                              {"tenant": tenant})).mappings().all()
     now = commerce.now_utc()
+    areas, upcoming = [], []
+    if shop["allow_delivery"]:
+        from app.delivery_logistics import get_policy
+        policy = await get_policy(db, tenant)
+        if policy["coverage_mode"] == "areas":
+            areas = [{key: area[key] for key in ("city", "state", "neighborhood", "fee_cents")}
+                     for area in policy["areas"] if area["kind"] == "included"]
+            upcoming = schedule_options(policy, shop, now)
     items = []
     for row in rows:
         if not available_item(shop, row):
             continue
-        stock = (row["quantity_on_hand"] - row["reserved_quantity"]
-                 if row["mode"] == "tracked" and row["observed_at"] <= now < row["valid_until"] else 0)
+        eligible_mode = (shop["allow_pickup"] and row["allow_pickup"]) or (areas and row["allow_delivery"])
+        stock = (row["quantity_on_hand"] - row["reserved_quantity"] if eligible_mode
+                 and row["mode"] == "tracked" and row["observed_at"] <= now < row["valid_until"] else 0)
         if stock <= 0 and shop.get("hide_unavailable"):
             continue
         items.append({
@@ -518,14 +541,6 @@ async def catalogue(db, tenant, shop):
             "requires_exchange": row["exchange_container_id"] is not None,
             "image_url": image_url(tenant, row["preset_image"], row["photo_url"]),
         })
-    areas, upcoming = [], []
-    if shop["allow_delivery"]:
-        from app.delivery_logistics import get_policy
-        policy = await get_policy(db, tenant)
-        if policy["coverage_mode"] == "areas":
-            areas = [{key: area[key] for key in ("city", "state", "neighborhood", "fee_cents")}
-                     for area in policy["areas"] if area["kind"] == "included"]
-            upcoming = schedule_options(policy, shop, now)
     options = ("brand_color", "logo_url", "cover_url", "layout", "public_phone", "minimum_subtotal_cents",
                "closed_message", "estimate_min_minutes", "estimate_max_minutes")
     return {**{key: shop[key] for key in ("title", "description", "allow_pickup", "pickup_details",

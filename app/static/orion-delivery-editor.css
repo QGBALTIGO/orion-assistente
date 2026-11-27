@@ -32,6 +32,10 @@
   border-radius: 12px;
 }
 
+.os-delivery-image-preview[hidden] {
+  display: none;
+}
+
 .os-delivery-current-image {
   width: 116px;
   height: 116px;
@@ -94,6 +98,13 @@
 
 .os-delivery-shop-form .os-check {
   max-width: 100%;
+}
+
+.os-delivery-shop-form input[type="color"] {
+  cursor: pointer;
+  width: 56px;
+  min-height: 36px;
+  padding: 4px 6px;
 }
 
 .os-delivery-shop-status {

@@ -72,7 +72,8 @@
       return '<div class="os-card os-no-pad"><div class="os-table-scroll"><table class="os-table">'+
         '<thead><tr><th>Data</th><th>Produto</th><th>Movimento</th><th>Quantidade</th><th>Saldo</th><th>Observação</th></tr></thead><tbody>'+
         items.map(item=>'<tr><td>'+esc(fmtDate(dateKey(new Date(item.created_at)))+' '+timeLabel(item.created_at))+'</td>'+
-          '<td>'+esc([item.name,item.variant_name].filter(Boolean).join(' · '))+'</td><td>'+esc(movementLabels[item.details.movement||item.action])+'</td>'+
+          '<td><span class="os-delivery-shop-item-name">'+(window.OrionDeliveryEditor?.picture(item.image_url,esc)||'')+
+          esc([item.name,item.variant_name].filter(Boolean).join(' · '))+'</span></td><td>'+esc(movementLabels[item.details.movement||item.action])+'</td>'+
           '<td>'+esc(item.details.quantity??'—')+'</td><td>'+esc(item.details.after??'—')+'</td><td>'+esc(item.details.note||'—')+'</td></tr>').join('')+
         '</tbody></table></div></div>';
     }

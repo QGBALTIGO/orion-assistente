@@ -16,6 +16,8 @@
       statuses:[['pending','A receber'],['overdue','Em atraso'],['paid','Recebidos'],['refunded','Estornados'],['cancelled','Cancelados']]},
     containers:{label:'Vasilhames', heading:'Saldos de vasilhames', description:'Vazios no estoque e unidades com clientes no momento da consulta',
       search:'Nome do vasilhame', statusLabel:'Tipo', statuses:[['cylinder','Botijão'],['jug','Garrafão']]},
+    activity:{label:'Atividades', heading:'Rastro de atividades', dated:true, search:'Produto, vasilhame ou código do pedido',
+      statusLabel:'Área', statuses:[['orders','Pedidos'],['catalog','Catálogo'],['stock','Estoque'],['packaging','Vasilhames']]},
   };
   const names=Object.keys(tabs);
   const numbers=new Intl.NumberFormat('pt-BR');
@@ -60,7 +62,7 @@
         return query(selected);
       };
       work.innerHTML=title(view.heading,view.description)+
-        '<form class="os-filter-row" aria-label="'+esc('Filtrar '+view.label.toLowerCase())+'">'+
+        '<form class="os-filter-row os-delivery-filters" aria-label="'+esc('Filtrar '+view.label.toLowerCase())+'">'+
         (view.dated?field('De','start','date',values.start||'')+field('Até','end','date',values.end||''):'')+
         field('Buscar','search','search',values.search||'','maxlength="120" placeholder="'+esc(view.search)+'"')+
         (view.mode?selectField('Atendimento','mode',modes,values.mode||'all'):'')+
@@ -73,7 +75,11 @@
       function table(columns,items) {
         return '<div class="os-table-scroll"><table class="os-table"><thead><tr>'+
           columns.map(({label})=>'<th scope="col">'+esc(label)+'</th>').join('')+'</tr></thead><tbody>'+
-          items.map(row=>'<tr>'+columns.map(({key,label,style})=>'<td data-label="'+esc(label)+'">'+esc(cell(style,row[key]))+'</td>').join('')+'</tr>').join('')+
+          items.map(row=>'<tr>'+columns.map(({key,label,style})=>{
+            const value=esc(cell(style,row[key]));
+            const photo=key==='product' && window.OrionDeliveryEditor?.picture(row.image_url,esc);
+            return '<td data-label="'+esc(label)+'">'+(photo?'<span class="os-delivery-shop-item-name">'+photo+value+'</span>':value)+'</td>';
+          }).join('')+'</tr>').join('')+
           '</tbody></table></div>';
       }
       async function read() {

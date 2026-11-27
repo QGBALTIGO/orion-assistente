@@ -223,6 +223,7 @@
         command(button,'Usar último endereço','delivery-use-address','left')+'</div>'+
         '<p data-delivery-address-status class="os-help" aria-live="polite"></p><div class="os-form-grid">'+
         field('CEP','address_postal','text','','data-orion-field="postal-code" inputmode="numeric" autocomplete="postal-code"')+
+        '<div class="os-actions">'+command(button,'Buscar CEP','delivery-lookup-cep','search')+'</div>'+
         field('Rua','address_street','text','','required maxlength="160"')+
         field('Número','address_number','text','','required maxlength="30"')+checkField('Sem número','address_no_number')+
         field('Bairro','address_neighborhood','text','','required maxlength="120"')+
@@ -337,7 +338,7 @@
           updateAddress();
         }).catch(()=>{});
         form.addEventListener('change',event=>{
-          if (event.target.name==='mode') {updateAddress();invalidate();products=[];matches.replaceChildren();}
+          if (event.target.name==='mode') {addressVersion++;updateAddress();invalidate();products=[];matches.replaceChildren();}
           if (event.target.name==='address_no_number') {addressVersion++;updateAddress();invalidate();}
         });
         form.addEventListener('input',event=>{
@@ -411,6 +412,28 @@
             finally {node.disabled=false;}
             return;
           }
+          if (action==='delivery-lookup-cep') {
+            let cep;
+            try {cep=window.OrionFields.postalCodeValue(form.elements.address_postal.value,{required:true});}
+            catch(error) {addressStatus.textContent=error.message;return;}
+            if (!cep) {addressStatus.textContent='Informe o CEP com oito dígitos.';return;}
+            const version=++addressVersion;
+            node.disabled=true;
+            addressStatus.textContent='Consultando CEP…';
+            try {
+              const address=await call('/cep/'+encodeURIComponent(cep));
+              if (!dialogActive()||addressVersion!==version) return;
+              for (const name of ['street','neighborhood','city','state']) {
+                if (address[name]) form.elements['address_'+name].value=address[name];
+              }
+              addressOwner=null;
+              invalidate();
+              window.OrionFields.refresh(addressBox);
+              addressStatus.textContent='Confira o endereço e informe o número.';
+            } catch(error) {if(dialogActive()&&addressVersion===version) addressStatus.textContent=error.message;}
+            finally {node.disabled=false;}
+            return;
+          }
           if (action==='delivery-estimate') {
             invalidate();
             let input;
@@ -435,10 +458,10 @@
           matches.innerHTML=loading('Buscando…');
           try {
             if (action==='delivery-choose-items') {
-                const mode=form.elements.mode.value;
-                const result=await call('/catalog?'+query({state:'active',sale_mode:mode,search:form.elements.product_search.value}));
+              const mode=form.elements.mode.value;
+              const result=await call('/catalog?'+query({state:'active',sale_mode:mode,search:form.elements.product_search.value}));
               if (!latest()) return;
-                if (mode!==form.elements.mode.value) return;
+              if (mode!==form.elements.mode.value) return;
               products=result.items;
               matches.innerHTML=products.length?'<div class="os-actions">'+products.map(item=>
                   '<div class="os-delivery-shop-item-name">'+picture(item,esc)+
