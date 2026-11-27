@@ -49,6 +49,12 @@ As referências comerciais abaixo descrevem processos anunciados pelos fornecedo
 
 ## Tecnologias examinadas
 
+### Incrementos em homologação
+
+O painel de Logística oferece consulta ao cadastro GLP da ANP para o proprietário de uma empresa de Gás e Água. A consulta usa o CNPJ armazenado em Configurações, confere os identificadores de todos os registros e mostra fonte cadastral, data, autorização, vínculo, classe e situação informada pelo SIGAF. Uma resposta inesperada ou indisponível não comprova a situação do estabelecimento. O teste de contrato usa o formato oficial com transporte HTTP controlado. O acesso externo ao Swagger retornou 403 nesta sessão, portanto a integração ao vivo continua pendente de verificação.
+
+A migração `0113_delivery_order_intake` acrescenta ao pedido interno origem, forma combinada, troco e observação. Balcão, telefone e atendimento humano podem ser identificados no PDV. Loja pública é determinada pela compra na vitrine e pedidos históricos internos aparecem como Painel. A origem pode ser filtrada no relatório e no CSV. No despacho o operador vê o troco ou a necessidade de maquininha. A baixa financeira exige o recebimento efetivo. Foram acrescentados modelos editáveis de P20, água de 5 L e regulador, sem preencher preço ou estoque.
+
 O campo de atividade é a data do último push retornado pelo GitHub, não uma avaliação da qualidade ou da continuidade de manutenção. Esta revisão não incorpora código desses projetos. Para inclusão futura, revisar tag, dependências transitivas, licença e avisos do artefato efetivamente distribuído.
 
 | Repositório | Último push consultado | Identificação da licença | Aplicação e dependências |

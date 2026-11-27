@@ -93,9 +93,16 @@ test('order editor keeps a vasilhame exchange and requests physical confirmation
   h.fill('[name=container-order-exchange-'+variant+']','1');
   h.click('[data-os-action=delivery-estimate]');
   await flush();
+  h.fill('[name=intake_channel]','phone');
+  h.fill('[name=tender_preference]','cash').dispatchEvent(new h.window.Event('change',{bubbles:true}));
+  h.fill('[name=cash_change]','20,00');
+  h.fill('[name=operator_note]','Portaria');
   h.click('#osDialog button[type=submit]');
   await flush();
   const created=h.calls.find(call=>call.path.endsWith('/delivery/orders')&&call.method==='POST');
+  assert.equal(created?.data.change_for_cents,2000);
+  assert.equal(created?.data.intake_channel,'phone');
+  assert.equal(created?.data.operator_note,'Portaria');
   assert.deepEqual(JSON.parse(JSON.stringify(created?.data.container_plan)), [
     {variant_id:variant,container_id:container,exchange_quantity:1,loan_quantity:0},
   ]);

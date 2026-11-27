@@ -143,6 +143,35 @@ async def test_pickup_payment_and_stock_are_recorded_exactly_once(onboarding_db,
         assert (await foreign.get(path)).status_code == 403
 
 
+async def test_phone_sale_change_is_instruction_until_actual_receipt(onboarding_db, monkeypatch):
+    ctx = onboarding_db
+    tenant, actor = await business(ctx, monkeypatch)
+    await complete_delivery_setup(ctx, tenant)
+    root = f"/api/v1/tenants/{tenant}/delivery"
+    async with client(actor) as http:
+        variant = (await http.post(root+"/catalog", json=new_product())).json()["variant_id"]
+        base = await order_payload(http, root, variant, 2, mode="counter", intake_channel="phone",
+            tender_preference="cash", change_for_cents=5000, operator_note="Retirada pelo responsável")
+        assert (await http.post(root+"/orders", json={**base, "change_for_cents":2499})).status_code == 422
+        assert (await http.post(root+"/orders", json={**base, "tender_preference":"pix"})).status_code == 422
+        created = await http.post(root+"/orders", json=base)
+        assert created.status_code == 201, created.text
+        assert (await http.post(root+"/orders", json=base)).json() == created.json()
+        detail = (await http.get(root+"/orders/"+created.json()["id"])).json()
+        assert detail["tender_preference"] == "cash" and detail["sales_channel"] == "phone"
+        assert detail["change_for_cents"] - detail["total_cents"] == 2500
+        assert detail["operator_note"] == base["operator_note"] and detail["financial_entry_id"] is None
+        assert await receipts(ctx, tenant) == []
+        sales = (await http.get(root+"/reports/sales", params={"channel":"phone"})).json()
+        assert sales["summary"]["orders"] == 1 and sales["items"][0]["id"] == detail["id"]
+        assert (await http.get(root+"/reports/sales", params={"channel":"storefront"})).json()["items"] == []
+        archive = await http.get(root+"/reports/sales.csv", params={"channel":"phone"})
+        assert list(csv.DictReader(StringIO(archive.content.decode("utf-8-sig")), delimiter=";"))[0]["Origem"] == "Telefone"
+        day = await http.post(root+"/orders/"+detail["id"]+"/transitions", json={
+            "action":"fulfill", "payment_method":"debit_card", "expected_revision":1, "idempotency_key":uuid4().hex})
+        assert day.status_code == 200 and (await receipts(ctx, tenant))[0]["payment_method"] == "debit_card"
+
+
 async def test_last_stock_cannot_be_reserved_twice_and_cancel_releases(onboarding_db, monkeypatch):
     ctx = onboarding_db
     tenant, actor = await business(ctx, monkeypatch)
@@ -300,7 +329,7 @@ async def test_on_account_stays_pending_until_manual_receipt(onboarding_db, monk
         assert archive.headers["content-disposition"] == 'attachment; filename="orion-delivery-vendas.csv"'
         exported = list(csv.reader(StringIO(archive.content.decode("utf-8-sig")),delimiter=";"))
         assert exported[1][0] == created.json()["id"]
-        assert exported[1][2:] == ["'+Pessoa a prazo","Retirada","Concluído","A receber","12,50","0,00"]
+        assert exported[1][2:] == ["'+Pessoa a prazo","Retirada","Concluído","A receber","12,50","0,00","Painel"]
         async with ctx.migration.begin() as db:
             await db.execute(text("""
                 UPDATE delivery_order_details SET payment_due_date=:due WHERE tenant_id=:t AND order_id=:o

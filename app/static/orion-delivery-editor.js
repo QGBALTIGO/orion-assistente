@@ -13,6 +13,8 @@
   const models = [
     ['agua-20l', 'Água mineral 20 L', 'Água'], ['agua-10l', 'Água mineral 10 L', 'Água'],
     ['gas-p13', 'Gás P13', 'Gás'], ['gas-p45', 'Gás P45', 'Gás'],
+    ['gas-p20', 'Gás P20', 'Gás', 'un', ''], ['agua-5l', 'Água mineral 5 L', 'Água', 'un', ''],
+    ['registro-gas', 'Regulador de gás', 'Acessórios'],
     ['fardo-agua', 'Fardo de água', 'Água', 'fardo'], ['gelo', 'Gelo', 'Gelo', 'saco'],
     ['bebidas', 'Bebida', 'Bebidas'], ['carvao', 'Carvão', 'Carvão', 'saco'],
     ['mercearia', 'Produto de mercearia', 'Mercearia'],
@@ -186,12 +188,12 @@
       if (name !== 'product_model') return;
       const model = models.find(([key]) => key === event.target.value);
       if (!model) return;
-      const [key,label,category,unit='un'] = model;
+      const [key,label,category,unit='un',image=key] = model;
       elements.name.value = label;
       elements.editor_category.value = category;
       elements.unit.value = unit;
       if (elements.photo_url.value) form.querySelector('[data-os-action=image-remove]').click();
-      picked = key;
+      picked = image;
       refreshCategory();
       showImage();
     });

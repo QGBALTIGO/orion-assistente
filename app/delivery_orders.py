@@ -61,6 +61,10 @@ class OrderEstimate(OrderItems):
 
 
 class ManualOrder(OrderEstimate):
+    intake_channel: Literal["pos", "phone", "attendant"] | None = None
+    tender_preference: Literal["cash", "pix", "debit_card", "credit_card"] | None = None
+    change_for_cents: StrictInt | None = Field(default=None, ge=1, le=MAX_MONEY)
+    operator_note: str | None = Field(default=None, min_length=1, max_length=300)
     customer_id: UUID | None = None
     container_plan: list[packaging.ContainerOrderItem] = Field(default_factory=list, max_length=30)
     estimate_version: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -68,6 +72,8 @@ class ManualOrder(OrderEstimate):
 
     @model_validator(mode="after")
     def receiving_requirements(self):
+        if self.change_for_cents is not None and self.tender_preference != "cash":
+            raise ValueError("Troco se aplica somente ao pagamento em dinheiro")
         if self.mode != "counter" and self.customer_id is None:
             raise ValueError("Selecione um cliente para a retirada ou entrega")
         if (self.mode == "delivery") != (self.address is not None):
@@ -117,8 +123,12 @@ class Transition(ProfileModel):
 
 RECEIPT_STATUS = "CASE WHEN d.return_financial_entry_id IS NOT NULL THEN 'refunded' ELSE f.status END"
 DELIVERY_DATE = "coalesce(d.scheduled_at,o.created_at)"
+SALES_CHANNEL = "CASE WHEN shop.order_id IS NOT NULL THEN 'storefront' ELSE coalesce(d.intake_channel,'manual') END"
 ORDERS = f"""
     SELECT o.id,o.quote_id,o.status,o.revision,o.created_at,d.mode,d.customer_id,
+        {SALES_CHANNEL} AS sales_channel,
+        coalesce(shop.payment_preference,d.tender_preference) AS tender_preference,
+        coalesce(shop.change_for_cents,d.change_for_cents) AS change_for_cents,
         d.financial_entry_id,q.customer_name,q.total_cents,d.delivery_fee_cents,d.courier_name,d.dispatched_at,
         d.payment_due_date,d.return_financial_entry_id,f.payment_method,{RECEIPT_STATUS} AS receipt_status,
         d.scheduled_at,d.courier_id,{payments.COLLECTED_CENTS} AS collected_cents,
@@ -127,6 +137,7 @@ ORDERS = f"""
                 WHERE p.tenant_id=o.tenant_id AND p.order_id=o.id) AS has_container_plan
     FROM commercial_orders o JOIN delivery_order_details d ON (d.tenant_id,d.order_id)=(o.tenant_id,o.id)
     JOIN commercial_quotes q ON (q.tenant_id,q.id)=(o.tenant_id,o.quote_id)
+    LEFT JOIN delivery_storefront_orders shop ON (shop.tenant_id,shop.order_id)=(o.tenant_id,o.id)
     LEFT JOIN financial_entries f ON (f.tenant_id,f.id)=(d.tenant_id,d.financial_entry_id)
     {payments.COLLECTION_TOTAL_JOIN}
     WHERE o.tenant_id=:t AND o.origin='delivery'
@@ -258,9 +269,9 @@ async def detail(db, tenant, order_id):
         SELECT action,created_at,details FROM commercial_events
         WHERE tenant_id=:t AND entity='order' AND entity_id=:o ORDER BY created_at,id
     """), {"t":tenant,"o":order_id})).mappings().all()
-    address = (await db.execute(text("""
-        SELECT address FROM delivery_order_details WHERE tenant_id=:t AND order_id=:o
-    """), {"t":tenant,"o":order_id})).scalar_one()
+    instructions = (await db.execute(text("""
+        SELECT address,operator_note FROM delivery_order_details WHERE tenant_id=:t AND order_id=:o
+    """), {"t":tenant,"o":order_id})).mappings().one()
     products = [UUID(item["product_id"]) for item in quote["items"]]
     media = (await db.execute(text("""
         SELECT product_id,preset_image,photo_url FROM delivery_product_profiles
@@ -269,7 +280,7 @@ async def detail(db, tenant, order_id):
     images = {str(item["product_id"]): image_url(tenant, item["preset_image"], item["photo_url"]) for item in media}
     for item in quote["items"]:
         item["image_url"] = images.get(item["product_id"])
-    return {**row,"address":address,"items":quote["items"],"history":[dict(event) for event in events],
+    return {**row,**instructions,"items":quote["items"],"history":[dict(event) for event in events],
             "container_plan": await packaging.get_plan(db, tenant, order_id),
             "storefront": await order_contact(db, tenant, order_id)}
 
@@ -370,6 +381,8 @@ async def create(db, tenant, access, payload):
             commerce.conflict("Confira o preço e o estoque de todos os itens antes de criar o pedido.")
         if quote["estimate_version"] != payload.estimate_version:
             commerce.conflict("Preço ou estoque mudou. Calcule o total novamente.")
+        if payload.change_for_cents is not None and payload.change_for_cents < quote["total_cents"]:
+            raise HTTPException(422, "O valor para troco deve cobrir o total do pedido.")
         if quote["total_cents"] > MAX_MONEY:
             raise HTTPException(422, "O total excede o limite do Financeiro")
         quote_id, order_id = uuid4(), uuid4()
@@ -382,11 +395,15 @@ async def create(db, tenant, access, payload):
         """), {"id":order_id,"t":tenant,"q":quote_id,"key":f"delivery:{order_id}"})
         await db.execute(text("""
             INSERT INTO delivery_order_details
-                (tenant_id,order_id,mode,customer_id,address,delivery_fee_cents,scheduled_at,logistics_snapshot)
-            VALUES (:t,:id,:mode,:c,CAST(:address AS jsonb),:fee,:scheduled,CAST(:logistics AS jsonb))
+                (tenant_id,order_id,mode,customer_id,address,delivery_fee_cents,scheduled_at,logistics_snapshot,
+                 intake_channel,tender_preference,change_for_cents,operator_note)
+            VALUES (:t,:id,:mode,:c,CAST(:address AS jsonb),:fee,:scheduled,CAST(:logistics AS jsonb),
+                    :channel,:tender,:change,:note)
         """), {"t":tenant,"id":order_id,"mode":payload.mode,"c":payload.customer_id,
                 "address":payload.address.model_dump_json() if payload.address else None,
                 "fee":quote["delivery_fee_cents"],"scheduled":delivery["scheduled_at"] if delivery else None,
+                "channel":payload.intake_channel,"tender":payload.tender_preference,
+                "change":payload.change_for_cents,"note":payload.operator_note,
                 "logistics":json.dumps(jsonable_encoder({**delivery, "delivery_fee_cents":quote["delivery_fee_cents"]})) if delivery else None})
         await commerce.reserve_stock(db, tenant, access, order_id, lines)
         await packaging.save_plan(db, tenant, order_id, payload.customer_id, lines,
@@ -395,7 +412,8 @@ async def create(db, tenant, access, payload):
         return {"id":order_id,"status":"confirmed","revision":1,"total_cents":quote["total_cents"]}
 
     return await run_once(db, tenant, payload, "order_create", None, write,
-                          optional_defaults={"scheduled_at":None,"container_plan":[]})
+                          optional_defaults={"scheduled_at":None,"container_plan":[],"intake_channel":None,
+                                             "tender_preference":None,"change_for_cents":None,"operator_note":None})
 
 
 async def fulfill(db, tenant, access, row, items, method, due_date):

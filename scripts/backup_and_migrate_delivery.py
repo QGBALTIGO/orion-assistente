@@ -71,6 +71,7 @@ PHASES = (
     "0110_delivery_checkout_options",
     "0111_delivery_customer_addresses",
     "0112_delivery_area_terms",
+    "0113_delivery_order_intake",
 )
 TABLES = {
     "0111_delivery_customer_addresses": ("delivery_customer_addresses",),
@@ -84,6 +85,8 @@ TABLES = {
     "0109_delivery_catalog_editor": ("delivery_product_profiles",),
 }
 COLUMNS = {
+    "0113_delivery_order_intake": tuple(("delivery_order_details", key) for key in
+        ("intake_channel", "tender_preference", "change_for_cents", "operator_note")),
     "0112_delivery_area_terms": (("delivery_logistics_policies", "area_terms"),),
     "0100_delivery_orders": (("commercial_orders", "origin"),),
     "0101_delivery_dispatch": (

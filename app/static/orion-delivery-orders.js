@@ -6,6 +6,16 @@
   const modes=[['counter','Balcão'],['pickup','Retirada'],['delivery','Entrega']];
   const payments=[['','Selecione'],['cash','Dinheiro'],['pix','Pix confirmado'],['debit_card','Cartão de débito'],['credit_card','Cartão de crédito']];
   const storefrontPaymentLabels={cash:'Dinheiro',debit_card:'Cartão de débito',credit_card:'Cartão de crédito',pix:'Pix na entrega'};
+  const intakeChannels=[['pos','Ponto de venda'],['phone','Telefone'],['attendant','Atendimento humano']];
+  const salesChannels={...Object.fromEntries(intakeChannels),storefront:'Loja pública',manual:'Painel'};
+  function paymentInstructions(order,money) {
+    const method=order.tender_preference||order.storefront?.payment_preference;
+    const change=order.change_for_cents??order.storefront?.change_for_cents;
+    if (!method) return '';
+    return '<p>Preferência de pagamento: '+storefrontPaymentLabels[method]+
+      (['debit_card','credit_card'].includes(method)&&order.mode==='delivery'?' · Levar maquininha':'')+'</p>'+
+      (method==='cash'&&change!=null?'<p>Troco para '+money(change)+' · Troco previsto '+money(change-order.total_cents)+'</p>':'');
+  }
   const creditStatuses=[['all','Todos'],['pending','Pendentes'],['overdue','Em atraso'],['paid','Recebidos']];
   const command = (button,label,action,symbol,extra='') => button(label,action,'os-outline os-small',symbol,extra);
   const code = order => order.id.slice(0,8).toUpperCase();
@@ -65,6 +75,11 @@
       '<h3>Itens do pedido</h3><div class="os-form" data-delivery-cart></div>'+
       (containerUi?.fields()||'')+
       addressFields+
+      '<details class="os-more-fields"><summary>Origem, pagamento e observações</summary><div class="os-form-grid">'+
+      selectField('Origem do pedido','intake_channel',[['','Painel'],...intakeChannels],'')+
+      selectField('Pagamento combinado','tender_preference',[['','A combinar'],...Object.entries(storefrontPaymentLabels)],'')+
+      '<div hidden data-delivery-cash-change>'+moneyField('Troco para','cash_change','text','')+'</div>'+
+      field('Observação do pedido','operator_note','text','','maxlength="300"')+'</div></details>'+
       '<div class="os-actions">'+command(button,'Conferir total','delivery-estimate','check')+'</div>'+
       '<div data-delivery-estimate aria-live="polite"></div>';
     const items=()=>[...cart].map(([id,item])=>({variant_id:id,quantity:window.OrionFields.parseDecimal(item.quantity,{required:true,scale:0,min:1,max:1000})}));
@@ -88,6 +103,16 @@
       if (!estimate||estimate.key!==JSON.stringify(quoted)) throw Error('Confira o total antes de confirmar o pedido.');
       const payload={...quoted,customer_id:customer?.id||null,estimate_version:estimate.version,
         container_plan:packaging?.collect(quoted.items,customer?.id)||[]};
+      if (values.intake_channel) payload.intake_channel=values.intake_channel;
+      if (values.tender_preference) payload.tender_preference=values.tender_preference;
+      if (values.operator_note?.trim()) payload.operator_note=values.operator_note.trim();
+      if (values.tender_preference==='cash'&&values.cash_change) {
+        const change=window.OrionFields.parseMoney(values.cash_change,{min:0,max:1000000000});
+        if(change) {
+          if(change<estimate.total)throw Error('O valor para troco deve cobrir o total do pedido.');
+          payload.change_for_cents=change;
+        }
+      }
       const saved=await call('/orders','POST',{...payload,idempotency_key:key(payload)});
       if (saved?.status!=='confirmed') throw Error('Não foi possível confirmar a reserva.');
       onCreated?.();
@@ -190,6 +215,11 @@
         updateAddress();
       }).catch(()=>{});
       form.addEventListener('change',event=>{
+        if (event.target.name==='tender_preference') {
+          const hide=event.target.value!=='cash';
+          form.querySelector('[data-delivery-cash-change]').hidden=hide;
+          if(hide)form.elements.cash_change.value='';
+        }
         if (event.target.name==='mode') {addressVersion++;resetAddressBook();updateAddress();invalidate();products=[];matches.replaceChildren();}
         if (event.target===bookChoice) {bookVersion++;selectBookEntry(savedAddresses.find(row=>row.id===bookChoice.value));}
         if (event.target.name==='address_no_number') {addressVersion++;updateAddress();invalidate();}
@@ -339,7 +369,7 @@
             const result=await call('/orders/estimate','POST',input);
             if (!latest()) return;
             if (!result.confirmation_requirements_met) throw Error('Confira o preço e o estoque dos itens selecionados.');
-            estimate={version:result.estimate_version,key};
+            estimate={version:result.estimate_version,total:result.total_cents,key};
             quote.innerHTML=(input.mode==='delivery'?'<p>Produtos '+money(result.subtotal_cents)+
               ' · Taxa '+money(result.delivery_fee_cents)+'</p>':'')+'<p><strong>Total</strong> '+money(result.total_cents)+'</p>'+
               (result.eta_minutes?'<p>Prazo estimado para o bairro: '+esc(String(result.eta_minutes))+' min.</p>':'');
@@ -392,14 +422,11 @@
       ].filter(Boolean).join(' · '))+'</p><p>Taxa '+money(result.delivery_fee_cents)+'</p>'+
       (result.scheduled_at?'<p>Agendado para '+esc(when(result.scheduled_at))+'</p>':'')+
       (result.courier_name?'<p>Entregador: '+esc(result.courier_name)+'</p>':'')+'</div>':'';
-      const storeText=result.storefront?'<p>Pedido pela loja · '+esc(result.storefront.customer_name||'')+' · '+
-        esc(result.storefront.contact_e164||'')+
-        (result.storefront.payment_preference?'<br>Preferência de pagamento: '+
-          esc(storefrontPaymentLabels[result.storefront.payment_preference]||'A combinar'):'')+'</p>'+
-        (result.storefront.change_for_cents!=null?'<p>Troco para '+money(result.storefront.change_for_cents)+
-          ' · Troco previsto '+money(result.storefront.change_for_cents-result.total_cents)+'</p>':'')+
-        (result.storefront.buyer_note?'<p>Observação do cliente: '+esc(result.storefront.buyer_note)+'</p>':''):'';
-      openDetails('Pedido '+code({id}),'<p>'+statusBadge(result.status,badge)+' · '+money(result.total_cents)+'</p>'+storeText+addressText+
+      const sourceText=result.storefront?'<p>Pedido pela loja · '+esc(result.storefront.customer_name||'')+' · '+
+        esc(result.storefront.contact_e164||'')+'</p>':'<p>Origem: '+esc(salesChannels[result.sales_channel]||'Painel')+'</p>';
+      const note=result.storefront?.buyer_note||result.operator_note;
+      openDetails('Pedido '+code({id}),'<p>'+statusBadge(result.status,badge)+' · '+money(result.total_cents)+'</p>'+
+        sourceText+paymentInstructions(result,money)+(note?'<p>Observação: '+esc(note)+'</p>':'')+addressText+
         '<ul class="os-delivery-order-items">'+result.items.map(item=>
         '<li>'+picture(item,esc)+esc(item.quantity+' × '+item.product_name+' · '+item.variant_name)+' · '+money(item.total_cents)+'</li>').join('')+
         '</ul>'+(containerUi?.summary(result.container_plan,ui)||'')+'<h3>Histórico</h3><ul>'+result.history.map(event=>
@@ -417,12 +444,14 @@
     filters.mode ??= 'all';
     filters.state ??= 'all';
     filters.receipt ??= 'all';
+    filters.channel ??= 'all';
     filters.offset ??= 0;
     const paymentsByStatus={pending:'A receber',paid:'Recebido',refunded:'Estornado',cancelled:'Cancelado'};
     host.innerHTML=title('Relatório de vendas','Pedidos criados no período')+
       '<form id="osDeliverySalesFilters" class="os-filter-row">'+
       field('De','start','date',filters.start)+field('Até','end','date',filters.end)+
       selectField('Atendimento','mode',[['all','Todos'],...modes],filters.mode)+
+      selectField('Origem','channel',[['all','Todas'],...Object.entries(salesChannels)],filters.channel)+
       selectField('Status','state',[['all','Todos'],...Object.entries(statusLabels)],filters.state)+
       selectField('Recebimento','receipt',[['all','Todos'],['paid','Recebidos'],['pending','A receber'],['refunded','Estornados'],['none','Sem recebimento']],filters.receipt)+
       '<button type="submit" class="os-button os-outline">Filtrar</button></form>'+
@@ -431,11 +460,11 @@
     const form=host.querySelector('form'), panel=host.querySelector('[data-delivery-report]');
     let version=0, result;
     function rows(items) {
-      const columns=['Pedido','Data','Cliente','Atendimento','Status','Recebimento','Total'];
+      const columns=['Pedido','Data','Cliente','Atendimento','Origem','Status','Recebimento','Total'];
       return '<div class="os-table-scroll" tabindex="0" role="region" aria-label="Tabela de dados"><table class="os-table"><thead><tr>'+
         columns.map(column=>'<th>'+column+'</th>').join('')+'</tr></thead><tbody>'+items.map(order=>'<tr>'+
         [code(order),fmtDate(dateKey(new Date(order.created_at)))+' '+timeLabel(order.created_at),
-          order.customer_name||'Venda avulsa',modeLabel(order),statusLabels[order.status],
+          order.customer_name||'Venda avulsa',modeLabel(order),salesChannels[order.sales_channel]||'Painel',statusLabels[order.status],
           paymentsByStatus[order.receipt_status]||'Sem recebimento',money(order.total_cents)]
           .map((value,i)=>'<td data-label="'+columns[i]+'">'+esc(value)+'</td>').join('')+'</tr>').join('')+'</tbody></table></div>';
     }
@@ -450,7 +479,7 @@
         form.elements.start.value=filters.start=data.period.start_date;
         form.elements.end.value=filters.end=data.period.end_date;
         const {offset,limit,summary}=data;
-        const csv=exportPath+'?'+query({start:filters.start,end:filters.end,mode:filters.mode,state:filters.state,receipt:filters.receipt});
+        const csv=exportPath+'?'+query({start:filters.start,end:filters.end,mode:filters.mode,state:filters.state,receipt:filters.receipt,channel:filters.channel});
         panel.innerHTML='<div class="os-metrics">'+metric('Pedidos',summary.orders,'deliveryReceipt')+
           metric('Cancelados',summary.cancelled,'close')+metric('Recebido',money(summary.paid_cents),'wallet')+
           metric('A receber',money(summary.pending_cents),'clock')+'</div>'+
@@ -590,6 +619,7 @@
         field('Vencimento','payment_due_date','date',dateKey(),'required min="'+dateKey()+'" max="2100-12-31"')+
         checkField('Confirmo que o valor ficará a receber','confirmed_credit')+'</fieldset>':'';
       const content='<p>Pedido '+esc(code(order))+' · '+money(order.total_cents)+'</p>'+
+        ((dispatch||complete)?paymentInstructions(order,money):'')+
         ((complete&&hasAmount)||settle?selectField('Forma de pagamento','payment_method',methods,'','required')+
           (settle?moneyField('Valor recebido','received_cents','text',window.OrionFields.moneyDisplay(order.outstanding_cents??order.total_cents)):'')+
           '<fieldset data-delivery-received>'+checkField('Confirmo que recebi o pagamento','received')+'</fieldset>'+deferred:

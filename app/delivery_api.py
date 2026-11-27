@@ -220,18 +220,19 @@ async def container_loans(tenant_id: UUID, container_id: UUID, offset: int = Que
 @router.get("/reports/sales")
 async def sales_report(tenant_id: UUID, start: date | None = None, end: date | None = None,
                        state: orders.OrderState = "all", mode: Literal["all", "counter", "pickup", "delivery"] = "all",
-                       receipt: reports.ReceiptFilter = "all", offset: int = Query(default=0, ge=0, le=100_000),
+                       receipt: reports.ReceiptFilter = "all", channel: reports.ChannelFilter = "all",
+                       offset: int = Query(default=0, ge=0, le=100_000),
                        actor: Actor = Depends(authenticate)):
     return await run(actor, tenant_id, reports.sales, start=start, end=end, state=state, mode=mode,
-                     receipt=receipt, offset=offset)
+                     receipt=receipt, channel=channel, offset=offset)
 
 
 @router.get("/reports/sales.csv")
 async def sales_export(tenant_id: UUID, start: date | None = None, end: date | None = None,
                        state: orders.OrderState = "all", mode: Literal["all", "counter", "pickup", "delivery"] = "all",
-                       receipt: reports.ReceiptFilter = "all", actor: Actor = Depends(authenticate)):
+                       receipt: reports.ReceiptFilter = "all", channel: reports.ChannelFilter = "all", actor: Actor = Depends(authenticate)):
     return await run(actor, tenant_id, reports.sales, start=start, end=end, state=state, mode=mode,
-                     receipt=receipt, export=True)
+                     receipt=receipt, channel=channel, export=True)
 
 
 @router.post("/orders/{order_id}/payment-receipts")
