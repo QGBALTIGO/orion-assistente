@@ -128,3 +128,25 @@ def test_gas_risk_interrupts_commercial_flow(body):
 @pytest.mark.parametrize("body", ["Tem água com gás?", "Qual o preço da água?", "Quero retirar meu pedido"])
 def test_normal_questions_do_not_trigger_emergency(body):
     assert not wa.emergency(body)
+
+
+@pytest.mark.parametrize("body,expected", [
+    ("mesmo endereço", ("previous", None)),
+    ("manda no mesmo endereço", ("previous", None)),
+    ("usar endereço Casa", ("label", "casa")),
+    ("entregar no endereço salvo Trabalho", ("label", "trabalho")),
+    ("Qual meu endereço?", None),
+    ("Me mostra o endereço do vizinho", None),
+])
+def test_address_reuse_requires_explicit_request(body, expected):
+    assert wa.saved_address_request(body)==expected
+
+
+def test_address_save_is_explicit_and_shared_number_is_conservative():
+    assert wa.save_address_request("salvar endereço como Casa")=="Casa"
+    assert wa.save_address_request("Hoje entrega na casa da minha mãe") is None
+    assert wa.save_address_request("salvar endereço como Casa?") is None
+    customer={"name":"Cliente QA", "active":True,"deleted_at":None}
+    assert wa.verified_customer(customer,{"customer_name":"Cliente QA"})
+    assert not wa.verified_customer(customer,{"customer_name":"Outra pessoa"})
+    assert not wa.verified_customer({**customer,"active":False},{})

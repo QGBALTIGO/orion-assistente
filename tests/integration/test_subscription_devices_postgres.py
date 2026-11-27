@@ -467,6 +467,59 @@ async def test_delivery_whatsapp_connection_checkout_with_same_device_and_explic
     async with c.ctx.migration.connect() as db:
         assert await db.scalar(text("""SELECT count(*) FROM customers WHERE tenant_id=:t
             AND whatsapp_e164=:phone"""),{"t":c.tenant,"phone":"+"+phone})==1
+    # Disabled ASR must respond to a real audio event without a provider call.
+    disabled_audio=await event(c,kind="audio",phone=phone,message_id=uuid4().hex,
+        audio={"seconds":3,"size":10,"media_type":"audio/ogg"})
+    assert disabled_audio["delivery_audio_skipped"] is True
+    fallback,=disabled_audio["effects"]
+    assert "Recebi seu áudio" in (await permit(c,fallback))["payload"]["text"]
+    await finish(c,fallback,"accepted",provider_id=uuid4().hex)
+
+    # Pilot reuses the authenticated ASR endpoint and actual durable quota.
+    from app import subscription_devices, subscription_device_audio
+    monkeypatch.setenv("ORION_DELIVERY_AUDIO_PREVIEW_TENANTS",str(c.tenant))
+    monkeypatch.setattr(subscription_devices,"audio_capable",lambda:True)
+    spoken=["Quero uma água para retirar","confirmo"]
+    async def synthetic_audio(request, *, max_minutes, authorize):
+        assert max_minutes==2
+        await authorize(3,phase="before_provider")
+        phrase=spoken.pop(0)
+        await authorize(3,phase="after_provider")
+        return {"text":phrase,"duration_seconds":3}
+    monkeypatch.setattr(subscription_device_audio,"transcribe_audio",synthetic_audio)
+
+    async def speak():
+        admitted=await event(c,kind="audio",phone=phone,message_id=uuid4().hex,
+            audio={"seconds":3,"size":10,"media_type":"audio/ogg"})
+        asr,=admitted["effects"]
+        grant=await permit(c,asr)
+        assert grant["authorized"] and grant["type"]=="transcribe"
+        headers={**c.bridge.headers(c.row,live=True),"Content-Type":"audio/ogg",
+            "X-Orion-Device-Id":c.device["id"],"X-Orion-Device-Generation":str(c.saved["generation"]),
+            "X-Orion-Device-Revision":str(c.device["revision"]),"X-Orion-Device-Effect":asr["operation_id"]}
+        endpoint=f"/internal/qr/channels/{c.row['id']}/device/audio"
+        response=await c.private.post(endpoint,headers=headers,content=b"synthetic")
+        assert response.status_code==200,response.text
+        child,=response.json()["effects"]
+        reply=(await permit(c,child))["payload"]["text"]
+        await finish(c,child,"accepted",provider_id=uuid4().hex)
+        assert (await c.private.post(endpoint,headers=headers,content=b"duplicate")).status_code==409
+        return reply
+
+    assert "pagar" in await speak()
+    assert "CONFIRMO" in await talk("dinheiro, sem troco")
+    assert "pelo botão ou por texto" in await speak()
+    assert await orders()==[("whatsapp",2500,"confirmed")]
+    assert "Cancelei o resumo" in await talk("não")
+    failed=(await event(c,kind="audio",phone=phone,message_id=uuid4().hex,
+        audio={"seconds":3,"size":10,"media_type":"audio/ogg"}))["effects"][0]
+    assert (await permit(c,failed))["authorized"]
+    terminal=await finish(c,failed,"not_sent",error_code="DEVICE_AUDIO_FAILED")
+    assert terminal["delivery_audio_handled"] is True
+    fallback,=terminal["effects"]
+    assert "Recebi seu áudio" in (await permit(c,fallback))["payload"]["text"]
+    await finish(c,fallback,"accepted",provider_id=uuid4().hex)
+    assert await orders()==[("whatsapp",2500,"confirmed")]
     danger=await talk("Meu gás está vazando")
     assert "193" in danger and "local seguro" in danger
     assert await orders()==[("whatsapp",2500,"confirmed")]
@@ -719,3 +772,191 @@ async def test_platform_operator_device_binding_is_readonly_and_current_with_rea
     with pytest.raises(HTTPException) as expired:
         await review._device_binding(device_id)
     assert expired.value.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_delivery_whatsapp_connection_address_memory_is_contact_scoped(device_case):
+    """Real PostgreSQL address book; no transport and no third-party messages."""
+    from app import delivery_whatsapp as wa, delivery_customer_addresses as book
+    from app.customer_identity import resolve_customer
+    from app.tenant_access import TenantAccess
+    from app.onboarding_schemas import Address
+    c=device_case
+    phone="+5567999999902"
+    other="+5567999999903"
+    address=Address(street="Rua sintética",number="12",neighborhood="Centro",city="Campo Grande",state="MS")
+    second=Address(street="Avenida de teste",number="45",neighborhood="Centro",city="Campo Grande",state="MS")
+    access=TenantAccess("owner",c.ctx.actor.account_id)
+    async with c.ctx.runtime() as db:
+        async with tenant_transaction(db,c.tenant):
+            customer,created=await resolve_customer(db,c.tenant,phone,"Cliente de teste")
+            assert created
+            for label, item in (("Casa",address),("Trabalho",second)):
+                await book.save_address(db,c.tenant,access,customer["id"],uuid4(),
+                    book.AddressEdit(label=label,address=item,expected_revision=0))
+    async with c.ctx.runtime() as db:
+        async with tenant_transaction(db,c.tenant):
+            state={"customer_name":"Cliente de teste"}
+            assert await wa.recover_saved_address(db,c.tenant,phone,state,("label","casa"))==address.model_dump(mode="json")
+            assert await wa.recover_saved_address(db,c.tenant,phone,state,("label","trabalho"))==second.model_dump(mode="json")
+            assert await wa.recover_saved_address(db,c.tenant,other,state,("label","casa")) is None
+            assert await wa.recover_saved_address(db,c.tenant,phone,{"customer_name":"Pessoa diferente"},("label","casa")) is None
+            assert await wa.recover_saved_address(db,c.tenant,phone,state,("label","inexistente")) is None
+            assert "primeiro confirme" in await wa.save_last_delivery_address(db,c.tenant,phone,{}, "Outro")
+            assert len((await book.list_addresses(db,c.tenant,customer["id"]))["items"])==2
+
+
+@pytest.mark.asyncio
+async def test_delivery_whatsapp_connection_save_confirmed_delivery_address(device_case, monkeypatch):
+    """The complete confirmed Delivery checkout and address book, on disposable DB."""
+    from app import delivery_whatsapp as wa, delivery_customer_addresses as book
+    from app import delivery_catalog as catalog, delivery_storefront as store, delivery_logistics as logistics
+    from app.customer_identity import resolve_customer
+    from app.tenant_access import TenantAccess
+    from app.onboarding_schemas import Address
+    from test_delivery_catalog_postgres import new_product, complete_delivery_setup
+    c=device_case
+    phone="+5567999999902"
+    other="+5567999999903"
+    address=Address(street="Rua sintética",number="12",neighborhood="Centro",city="Campo Grande",state="MS")
+    second=Address(street="Avenida de teste",number="45",neighborhood="Centro",city="Campo Grande",state="MS")
+    access=TenantAccess("owner",c.ctx.actor.account_id)
+    async with c.ctx.migration.begin() as db:
+        await db.execute(text("""UPDATE business_onboarding SET configuration=configuration ||
+            '{"niche":"delivery_distribuicao","delivery_offering":"gas_agua","activity":"products","modality":"online"}'::jsonb
+            WHERE tenant_id=:t"""),{"t":c.tenant})
+    monkeypatch.setenv("ORION_DELIVERY_PREVIEW_TENANTS",str(c.tenant))
+    monkeypatch.setenv("PUBLIC_SITE_SIGNING_KEY",uuid4().hex+uuid4().hex)
+    await complete_delivery_setup(c.ctx,c.tenant)
+    async with c.ctx.runtime() as db:
+        async with tenant_transaction(db,c.tenant):
+            customer,created=await resolve_customer(db,c.tenant,phone,"Cliente de teste")
+            assert created
+            await book.save_address(db,c.tenant,access,customer["id"],uuid4(),
+                book.AddressEdit(label="Trabalho",address=second,expected_revision=0))
+            await logistics.save_policy(db,c.tenant,access,logistics.PolicyUpdate(
+                expected_revision=0,coverage_mode="areas",areas=[
+                    logistics.Area(city="Campo Grande",state="MS",neighborhood="Centro",fee_cents=450)]))
+            item=await catalog.create_item(db,c.tenant,access,catalog.ProductCreate.model_validate(new_product("Água mineral 20 L")))
+            rows=(await store.operator_items(db,c.tenant,"",0))["items"]
+            selected=next(x for x in rows if str(x["variant_id"])==str(item["variant_id"]))
+            await store.save_store(db,c.tenant,access,store.Storefront(
+                revision=0,slug="memory-"+uuid4().hex[:12],title="Distribuidora sintética",enabled=False,
+                allow_delivery=True,allow_pickup=True,pickup_details="Depósito",payment_methods=["cash"],
+                items=[store.PublicItem(variant_id=selected["variant_id"],product_revision=selected["product_revision"],
+                    variant_revision=selected["variant_revision"],label="Água mineral 20 L",kind="water")]))
+
+    async def talk(body,state,delivered=False):
+        async with c.ctx.runtime() as db:
+            async with tenant_transaction(db,c.tenant):
+                return await wa.answer(db,c.tenant,phone,body,state,delivered)
+
+    _,state=await talk("Quero uma água para entrega",{})
+    assert state["stage"]=="address" and state["customer_name"]=="Cliente de teste"
+    _,state=await talk("Rua sintética, 12, Centro, Campo Grande, MS",state)
+    assert state["stage"]=="payment"
+    review,state=await talk("dinheiro, troco pra 50 reais",state)
+    assert "R$ 17,00" in review and "Troco previsto: R$ 33,00" in review
+    response,state=await talk("confirmo",state,True)
+    assert "registrado" in response and "salvar endereço como Casa" in response and state.get("last_order")
+    async with c.ctx.runtime() as db:
+        async with tenant_transaction(db,c.tenant):
+            assert len((await book.list_addresses(db,c.tenant,customer["id"]))["items"])==1
+    response,state=await talk("salvar endereço como Trabalho",state)
+    assert "Escolha outro nome" in response
+    response,state=await talk("salvar endereço como Casa",state)
+    assert "Endereço salvo" in response
+    response,state=await talk("salvar endereço como Casa",state)
+    assert "já está salvo" in response
+    async with c.ctx.runtime() as db:
+        async with tenant_transaction(db,c.tenant):
+            saved=(await book.list_addresses(db,c.tenant,customer["id"]))["items"]
+            assert len(saved)==2
+            assert next(r for r in saved if r["label"]=="Trabalho")["address"]["street"]==second.street
+            assert await wa.recover_saved_address(db,c.tenant,phone,{"customer_name":"Cliente de teste"},("label","casa"))==address.model_dump(mode="json")
+            assert "verificar seu cadastro" in await wa.save_last_delivery_address(db,c.tenant,other,state,"Invasão")
+            # The original order retains its address even if a label is edited.
+            original=(await db.execute(text("""SELECT address FROM delivery_order_details
+                WHERE tenant_id=:t AND customer_id=:c AND intake_channel='whatsapp'"""),
+                {"t":c.tenant,"c":customer["id"]})).scalar_one()
+            assert original["street"]==address.street
+    _,second_state=await talk("Quero uma água para entrega",{})
+    assert second_state["stage"]=="address"
+    _,second_state=await talk("usar endereço Casa",second_state)
+    assert second_state["address"]["street"]==address.street and second_state["stage"]=="payment"
+
+
+@pytest.mark.asyncio
+async def test_delivery_whatsapp_connection_five_contacts_compete_for_last_unit(device_case, monkeypatch):
+    """Five independent WhatsApp contacts, real Postgres, one remaining unit."""
+    from app import delivery_catalog as catalog, delivery_storefront as store
+    from app.tenant_access import TenantAccess
+    from test_delivery_catalog_postgres import new_product, complete_delivery_setup
+    c=device_case
+    async with c.ctx.migration.begin() as db:
+        await db.execute(text("""UPDATE business_onboarding SET configuration=configuration ||
+            '{"niche":"delivery_distribuicao","delivery_offering":"gas_agua","activity":"products","modality":"online"}'::jsonb
+            WHERE tenant_id=:t"""),{"t":c.tenant})
+    monkeypatch.setenv("ORION_DELIVERY_PREVIEW_TENANTS",str(c.tenant))
+    monkeypatch.setenv("PUBLIC_SITE_SIGNING_KEY",uuid4().hex+uuid4().hex)
+    await complete_delivery_setup(c.ctx,c.tenant)
+    await create(c)
+    assert (await action(c,"connect"))["operation"]["status"]=="succeeded"
+    access=TenantAccess("owner",c.ctx.actor.account_id)
+    async with c.ctx.runtime() as db:
+        async with tenant_transaction(db,c.tenant):
+            body=new_product("Água mineral 20 L")
+            body["initial_quantity"]=1
+            product=await catalog.create_item(db,c.tenant,access,catalog.ProductCreate.model_validate(body))
+            selected=next(row for row in (await store.operator_items(db,c.tenant,"",0))["items"]
+                          if str(row["variant_id"])==str(product["variant_id"]))
+            await store.save_store(db,c.tenant,access,store.Storefront(
+                revision=0,slug="race-"+uuid4().hex[:12],title="Distribuidora sintética",enabled=False,
+                allow_pickup=True,pickup_details="Depósito",payment_methods=["cash","pix"],
+                items=[store.PublicItem(variant_id=selected["variant_id"],product_revision=selected["product_revision"],
+                    variant_revision=selected["variant_revision"],label="Água mineral 20 L",kind="water")]))
+    config=c.prefix+"/delivery-assistant"
+    status=(await c.client.get(config)).json()
+    response=await c.client.put(config,json={"enabled":True,"expected_revision":status["revision"]})
+    assert response.status_code==200,response.text
+    c.device["revision"]=response.json()["revision"]
+    contacts=[(f"55679999999{index:02d}",name) for index,name in enumerate(
+        ["Alice","Bruno","Carla","Davi","Elisa"],start=11)]
+
+    async def talk(contact,body):
+        result=await event(c,phone=contact,text=body,message_id=uuid4().hex)
+        effect,=result["effects"]
+        grant=await permit(c,effect)
+        assert grant["authorized"] and grant["payload"]["phone"]==contact,grant
+        await finish(c,effect,"accepted",provider_id=uuid4().hex)
+        return grant["payload"]["text"]
+
+    replies=await asyncio.gather(*(talk(phone,"Quero uma água para retirar") for phone,_ in contacts))
+    assert all("nome" in reply.lower() for reply in replies)
+    replies=await asyncio.gather(*(talk(phone,name) for phone,name in contacts))
+    assert all("pagar" in reply.lower() for reply in replies)
+    replies=await asyncio.gather(*(talk(phone,"dinheiro, troco pra 50 reais") for phone,_ in contacts))
+    for (_,name),reply in zip(contacts,replies):
+        assert name in reply and "R$ 12,50" in reply and "R$ 37,50" in reply and "CONFIRMO" in reply
+        assert all(other not in reply for _,other in contacts if other!=name)
+    async with c.ctx.migration.connect() as db:
+        assert await db.scalar(text("SELECT count(*) FROM delivery_order_details WHERE tenant_id=:t"),
+                               {"t":c.tenant})==0
+
+    outcomes=await asyncio.gather(*(talk(phone,"confirmo") for phone,_ in contacts))
+    winners=[i for i,reply in enumerate(outcomes) if "registrado!*" in reply]
+    assert len(winners)==1,outcomes
+    winner_phone,winner_name=contacts[winners[0]]
+    async with c.ctx.migration.connect() as db:
+        rows=(await db.execute(text("""SELECT d.customer_id,q.contact_e164,q.customer_name,q.total_cents,o.status
+            FROM delivery_order_details d
+            JOIN commercial_orders o ON (o.tenant_id,o.id)=(d.tenant_id,d.order_id)
+            JOIN commercial_quotes q ON (q.tenant_id,q.id)=(o.tenant_id,o.quote_id)
+            WHERE d.tenant_id=:t"""),{"t":c.tenant})).mappings().all()
+        row,=rows
+        assert row["contact_e164"]=="+"+winner_phone and row["customer_name"]==winner_name
+        assert row["total_cents"]==1250 and row["status"]=="confirmed" and row["customer_id"]
+        assert await db.scalar(text("""SELECT count(*) FROM customers WHERE tenant_id=:t"""),{"t":c.tenant})==1
+        inventory=(await db.execute(text("""SELECT quantity_on_hand,reserved_quantity FROM commercial_inventory
+            WHERE tenant_id=:t AND variant_id=:v"""),{"t":c.tenant,"v":product["variant_id"]})).one()
+        assert inventory==(1,1)

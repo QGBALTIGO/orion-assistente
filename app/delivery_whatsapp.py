@@ -8,6 +8,7 @@ No external send, language-model call or provider I/O runs in a transaction.
 from datetime import datetime, timezone
 from decimal import Decimal
 import json
+import os
 import re
 from uuid import uuid4
 
@@ -28,6 +29,11 @@ from app.workspace_policy import delivery_preview_enabled
 
 PURPOSE = "delivery_reply"
 STATE_TTL = 1800
+AUDIO_MINUTES = 2
+AUDIO_BYTES = 25_000_000
+AUDIO_FALLBACK = ("Recebi seu áudio, mas não consegui entender com segurança. "
+                  "Pode enviar uma mensagem escrita ou gravar novamente? "
+                  "Não alterei nem confirmei nenhum pedido.")
 CONFIRMATION_FALLBACK = "\nResponda *CONFIRMO* para registrar o pedido ou *NÃO* para cancelar o resumo."
 CONFIRMATION_STALE = "Esse botão não corresponde ao resumo atual. Nenhum novo pedido foi registrado."
 PAYMENTS = {"cash": "dinheiro", "pix": "Pix manual", "debit_card": "cartão de débito",
@@ -45,6 +51,12 @@ class Settings(ProfileModel):
 
 def enabled(device):
     return device["settings"].get("delivery_assistant_enabled") is True
+
+
+def audio_enabled(device):
+    # An isolated pilot, independent of subscription niche settings.
+    allowed = {value.strip() for value in os.getenv("ORION_DELIVERY_AUDIO_PREVIEW_TENANTS", "").split(",") if value.strip()}
+    return enabled(device) and str(device["tenant_id"]) in allowed
 
 
 def money(cents):
@@ -90,6 +102,97 @@ async def previous_verified_name(db, tenant, phone):
           AND q.customer_name IS NOT NULL AND btrim(q.customer_name)<>''
         LIMIT 2"""),{"t":tenant,"phone":phone})).scalars().all()
     return names[0] if len(names)==1 else None
+
+
+def saved_address_request(body):
+    """An explicit request, never an inferred address from unrelated prose."""
+    value = clean(body)
+    if value in {"mesmo endereco", "no mesmo endereco", "o mesmo endereco",
+                 "mesmo endereco da ultima entrega", "no mesmo endereco da ultima entrega",
+                 "mesmo endereco da ultima vez", "manda no mesmo endereco"}:
+        return ("previous", None)
+    match = re.fullmatch(r"(?:usar|use|entregar no|entrega no|manda no|quero usar)\s+(?:o\s+)?endereco\s+(?:salvo\s+)?(.{1,60})", value)
+    if match:
+        return ("label", match.group(1).strip())
+    return None
+
+
+def save_address_request(body):
+    match = re.fullmatch(r"(?:salvar|salve|guardar|guarde)\s+(?:o\s+)?endere[cç]o\s+como\s+([^?\r\n]{1,60})", body.strip(), re.IGNORECASE)
+    if match and not any(ord(c)<32 for c in match.group(1)):
+        label = " ".join(match.group(1).split())
+        if label and label not in {"*", "_", "~"}:
+            return label
+    return None
+
+
+def verified_customer(customer, state):
+    return (customer is not None and customer["active"] and customer["deleted_at"] is None
+            and (not state.get("customer_name") or
+                 clean(customer["name"]) == clean(state["customer_name"])))
+
+
+async def recover_saved_address(db, tenant, phone, state, request):
+    """Reuse only the verified contact's exact named address or fulfilled delivery."""
+    from app import delivery_customer_addresses as book, delivery_orders as orders
+    customer = await customer_for_phone(db,tenant,phone)
+    if not verified_customer(customer,state):
+        return None
+    kind, label = request
+    if kind == "previous":
+        record = await orders.previous_address(db,tenant,customer["id"])
+        raw = record.get("address")
+    else:
+        result = await book.list_addresses(db,tenant,customer["id"])
+        matches = [entry["address"] for entry in result["items"] if clean(entry["label"])==label]
+        raw = matches[0] if len(matches)==1 else None
+    if raw is None:
+        return None
+    try:
+        return Address.model_validate(raw).model_dump(mode="json")
+    except ValidationError:
+        return None
+
+
+async def save_last_delivery_address(db, tenant, phone, state, label):
+    """Explicit opt-in to store a recently confirmed address under a new label.
+
+    No draft, arbitrary order ID, other phone, or different recipient can
+    write the address book. Existing labels are not silently overwritten.
+    """
+    from app import delivery_customer_addresses as book
+    from app.delivery_storefront import PUBLIC_ACTOR
+    code = state.get("last_order")
+    if state.get("stage") or not isinstance(code,str) or not re.fullmatch(r"[A-F0-9]{8}",code):
+        return "Para guardar um endereço, primeiro confirme um pedido de entrega por aqui."
+    customer = await customer_for_phone(db,tenant,phone)
+    if not verified_customer(customer,state):
+        return "Não consegui verificar seu cadastro para guardar esse endereço. " + HELP
+    await book.require_customer(db,tenant,customer["id"],lock=True)
+    rows = (await db.execute(text("""SELECT d.address,q.customer_name FROM delivery_order_details d
+        JOIN commercial_orders o ON (o.tenant_id,o.id)=(d.tenant_id,d.order_id)
+        JOIN commercial_quotes q ON (q.tenant_id,q.id)=(o.tenant_id,o.quote_id)
+        WHERE d.tenant_id=:t AND d.customer_id=:customer AND q.contact_e164=:phone
+          AND d.intake_channel='whatsapp' AND d.mode='delivery'
+          AND o.origin='delivery' AND o.status IN ('confirmed','dispatched','fulfilled')
+          AND upper(left(o.id::text,8))=:code
+          AND o.created_at>=now()-interval '30 minutes' LIMIT 2"""),
+        {"t":tenant,"customer":customer["id"],"phone":phone,"code":code})).mappings().all()
+    if len(rows)!=1 or clean(rows[0]["customer_name"] or "")!=clean(customer["name"]):
+        return "Não consegui localizar um endereço deste pedido para guardar. " + HELP
+    try:
+        address = Address.model_validate(rows[0]["address"])
+        current = await book.list_addresses(db,tenant,customer["id"])
+        matching = [entry for entry in current["items"] if clean(entry["label"])==clean(label)]
+        if matching:
+            if len(matching)==1 and Address.model_validate(matching[0]["address"])==address:
+                return "📍 Esse endereço já está salvo como *" + label + "*."
+            return "Já existe um endereço com esse nome. Escolha outro nome para não substituir o anterior."
+        await book.save_address(db,tenant,PUBLIC_ACTOR,customer["id"],uuid4(),
+            book.AddressEdit(label=label,address=address,expected_revision=0))
+    except (ValidationError, HTTPException):
+        return "Não consegui guardar o endereço agora. " + HELP
+    return "📍 Endereço salvo como *" + label + "*! Na próxima entrega, você pode dizer _usar endereço " + label + "_."
 
 
 def forbidden(body):
@@ -182,15 +285,75 @@ def parse_address(body):
 
 def payment(body):
     value = clean(body)
-    if "pix" in value:
-        return "pix"
-    if "dinheiro" in value or "especie" in value:
-        return "cash"
-    if "debito" in value:
-        return "debit_card"
-    if "credito" in value:
-        return "credit_card"
+    # Never arbitrarily choose the first of two methods or treat a negated
+    # payment method as authorization. Split tender needs its own workflow.
+    if re.search(r"\b(?:nao (?:vou |quero |posso )?(?:pagar|usar)|sem (?:pix|dinheiro|cartao|credito|debito))\b",value):
+        return None
+    methods = {
+        key for key, pattern in (
+            ("pix",r"\bpix\b"), ("cash",r"\b(?:dinheiro|especie)\b"),
+            ("debit_card",r"\bdebito\b"), ("credit_card",r"\bcredito\b"))
+        if re.search(pattern,value)
+    }
+    if len(methods)!=1:
+        return None
+    method=next(iter(methods))
+    if method!="cash" and re.search(r"\btroco\s+(?:para|pra|de)\s+\d",value):
+        return None
+    return method
+
+
+def payment_instruction(body):
+    """Separate an explicit instruction from a question about methods."""
+    if "?" in body:
+        return False
+    value = clean(body)
+    value = re.sub(r"^(?:(?:na verdade|dessa vez|agora|melhor)[, ]+)", "", value)
+    return bool(
+        re.fullmatch(r"(?:pix|dinheiro|em dinheiro|especie|cartao(?: de (?:credito|debito))?|credito|debito)(?:[, ]+(?:troco\b.*|sem troco|valor (?:certo|exato)))?", value)
+        or re.match(r"^(?:vou pagar|quero pagar|prefiro pagar|pago|pagamento|pagar)\b",value)
+        or re.fullmatch(r"prefiro (?:pix|dinheiro|especie|cartao(?: de (?:credito|debito))?|credito|debito)",value)
+        or re.fullmatch(r"troca (?:o )?pagamento (?:para|pra|por) .+",value)
+    )
+
+
+def mode_instruction(body):
+    if "?" in body:
+        return None
+    value=clean(body)
+    value=re.sub(r"^(?:(?:na verdade|dessa vez|agora|melhor)[, ]+)","",value)
+    if re.fullmatch(r"(?:(?:quero|prefiro|vou|pode|vamos de) )?(?:retirada|retirar(?: ai| no local)?|buscar(?: ai| no local)?|pegar ai|balcao)",value):
+        return "pickup"
+    if re.fullmatch(r"(?:(?:quero|prefiro|pode|vamos de) )?(?:entrega|entregar(?: em casa)?|receber em casa|em casa|a domicilio)",value):
+        return "delivery"
     return None
+
+
+def customer_name_from_reply(body):
+    """Conservatively accept a name, not a command, greeting or question."""
+    raw=" ".join(body.split())
+    if "?" in raw:
+        return None
+    name=re.sub(r"^(?:meu nome (?:é|e)|me chamo|pode me chamar de|sou)\s+","",raw,flags=re.IGNORECASE)
+    value=clean(name)
+    if not 2<=len(name)<=120 or not any(c.isalpha() for c in name):
+        return None
+    if not all(c.isalpha() or c in " '-.’" for c in name):
+        return None
+    if (value in {"sim","s","nao","oi","ola","opa","ok","okay","tudo bem","td bem",
+                  "tudo bom","beleza","bom dia","boa tarde","boa noite","nao sei","isso","isso mesmo",
+                  "confirmo","confirmar","fechou","pode ser","pode mandar","manda","combinado",
+                  "certinho","certo","obrigado","obrigada","pera ai","espera","deixa pra la"}
+        or re.fullmatch(r"[kh]+",value)
+        or re.match(r"^(?:quero|manda|mandar|pode|vou|prefiro|preciso|aceita|quanto|qual|onde|como|tem|troco|entrega|retirada|nao)\b",value)
+        or payment_instruction(name) or mode_instruction(name)):
+        return None
+    return name
+
+
+def invalidate_review(state):
+    for key in ("proposal","summary","delivery_presentation_id","stage"):
+        state.pop(key,None)
 
 
 def change(body):
@@ -283,7 +446,7 @@ def state_question(stage, state, shop, items):
             return "No momento, nenhuma forma de recebimento está disponível. " + HELP
         return "Você prefere receber em casa ou retirar aqui com a gente? 😊"
     if stage == "address":
-        return ADDRESS_PROMPT
+        return ADDRESS_PROMPT + "\n\nSe já tiver um endereço salvo, diga *usar endereço Casa*, por exemplo."
     if stage == "exchange":
         return "Você tem os vasilhames vazios para devolver na troca?"
     if stage == "payment":
@@ -428,7 +591,7 @@ async def next_step(db, tenant, shop, items, state, phone):
         return state_question("mode",state,shop,items),state
     if state["mode"] == "delivery" and not state.get("address"):
         state["stage"] = "address"
-        return ADDRESS_PROMPT,state
+        return state_question("address",state,shop,items),state
     if any(chosen[line["variant_id"]]["exchange_container_id"] is not None for line in state["items"]) and not state.get("accept_exchange"):
         state["stage"] = "exchange"
         return state_question("exchange",state,shop,items),state
@@ -466,7 +629,7 @@ async def next_step(db, tenant, shop, items, state, phone):
     return summary,state
 
 
-async def answer(db, tenant, phone, body, state, summary_delivered):
+async def answer(db, tenant, phone, body, state, summary_delivered, *, allow_confirmation=True):
     from app import delivery_storefront as store
     value = clean(body)
     # Never process an emergency or a restricted sale as a water purchase.
@@ -483,6 +646,9 @@ async def answer(db, tenant, phone, body, state, summary_delivered):
         state = {}
     if value in {"atendente","humano","falar com atendente","falar com humano","parar","pare","sair","stop","cancelar atendimento"}:
         return "Pausei o atendimento automático. Aguarde uma pessoa da empresa responder. Para voltar, escreva retomar atendimento.",{"paused":True}
+    label = save_address_request(body)
+    if label is not None:
+        return await save_last_delivery_address(db,tenant,phone,state,label),state
     if forbidden(body):
         return ("Por aqui, consigo ajudar com pedidos de água. Para consultar gás ou outros produtos, "
                 "precisamos da nossa equipe. Não registrei nenhum item novo. " + HELP),{}
@@ -512,6 +678,43 @@ async def answer(db, tenant, phone, body, state, summary_delivered):
         return (info + "\n\n" if info else "") + closed + "\n\n" + HELP,state
     if info:
         return info,state
+    if state.get("items"):
+        if payment_instruction(body):
+            method=payment(body)
+            invalidate_review(state)
+            if method not in shop["payment_methods"]:
+                state.pop("payment_preference",None)
+                state.pop("change_for_cents",None)
+                # Preserve missing-name/address ordering; do not keep an old quote.
+                reply,state=await next_step(db,tenant,shop,items,state,phone)
+                return "Me confirma qual forma de pagamento você prefere?\n\n"+reply,state
+            set_payment(state,body,method)
+            return await next_step(db,tenant,shop,items,state,phone)
+        if stage=="confirm" and state.get("payment_preference")=="cash":
+            supplied,amount=cash_change_from_message(body)
+            if supplied:
+                invalidate_review(state)
+                state["change_for_cents"]=amount
+                return await next_step(db,tenant,shop,items,state,phone)
+        mode=mode_instruction(body)
+        if mode is not None:
+            invalidate_review(state)
+            if state.get("mode")!=mode:
+                state.pop("address",None)
+                state.pop("scheduled_at",None)
+            if not shop.get("allow_"+mode):
+                state.pop("mode",None)
+                state.pop("address",None)
+                state.pop("scheduled_at",None)
+                reply,state=await next_step(db,tenant,shop,items,state,phone)
+                return "Essa opção não está disponível no momento.\n\n"+reply,state
+            state["mode"]=mode
+            return await next_step(db,tenant,shop,items,state,phone)
+        if (state.get("mode")=="delivery" and
+                re.fullmatch(r"(?:(?:na verdade|agora)[, ]+)?(?:mudei de endereco|troca(?:r)? (?:o )?endereco|muda(?:r)? (?:o )?endereco|outro endereco)",value)):
+            invalidate_review(state)
+            state.pop("address",None)
+            return await next_step(db,tenant,shop,items,state,phone)
     edits = revised_items(body, items, state, now)
     if edits == "ambiguous":
         return "Claro, posso ajustar! Me diz exatamente quais produtos e quantidades você quer manter.",state
@@ -530,19 +733,24 @@ async def answer(db, tenant, phone, body, state, summary_delivered):
                 "Posso te ajudar com valores, disponibilidade e pedidos de água.\n\n"
                 "Me conta o que você precisa!"),{}
     if stage=="confirm":
-        corrected_name = re.fullmatch(r"(?:meu nome (?:é|e)|me chamo|pode me chamar de)\s+([^?\n\r]{2,120})", body.strip(), re.IGNORECASE)
-        if corrected_name and any(c.isalpha() for c in corrected_name.group(1)) and not re.search(r"\d", corrected_name.group(1)):
+        corrected_name = re.match(r"^(?:meu nome (?:é|e)|me chamo|pode me chamar de)\s+",body.strip(),re.IGNORECASE)
+        if corrected_name:
+            name=customer_name_from_reply(body)
+            if name is None:
+                return "Me informa apenas o nome que deve constar no pedido? 😊",state
             # The current order can name a different recipient on a shared
             # number. The permanent CRM identity is not silently overwritten.
-            state["customer_name"] = " ".join(corrected_name.group(1).split())
-            state.pop("proposal", None)
-            state.pop("summary", None)
+            state["customer_name"]=name
+            invalidate_review(state)
             return await next_step(db,tenant,shop,items,state,phone)
         if value in {"nao","não","cancelar","desistir","nao confirmo"}:
             return "Tudo bem! 😊 Cancelei o resumo. Nenhum pedido novo foi registrado.",{}
         if value in {"ver resumo","rever resumo","como ficou","mostra de novo"}:
             return state["summary"],state
         if value in {"confirmo","confirmar","pode confirmar","sim","s","sm","isso mesmo","fechou","de acordo","tudo certo","pode ser","combinado","ok pode confirmar"} and affirmative(body):
+            if not allow_confirmation:
+                return ("Entendi seu áudio! Para evitar enganos, revise o resumo e confirme pelo botão ou por texto.\n\n"
+                        +state["summary"]),state
             if not summary_delivered:
                 return state["summary"],state
             proposal = store.Checkout.model_validate(state["proposal"])
@@ -559,6 +767,8 @@ async def answer(db, tenant, phone, body, state, summary_delivered):
                      f"Total: *{money(result['total_cents'])}*\n\nObrigada! 😊")
             if proposal.payment_preference=="pix":
                 reply += " O Pix depende da conferência manual do pagamento pela empresa."
+            if proposal.mode == "delivery":
+                reply += "\n\nSe quiser guardar este endereço para a próxima entrega, diga *salvar endereço como Casa*."
             if shop["enabled"] and store.configured_public(tenant,shop["niche"]):
                 from app.public_origins import canonical_public_origin
                 # The public store accepts a private tracking code; do not
@@ -567,10 +777,9 @@ async def answer(db, tenant, phone, body, state, summary_delivered):
             return reply,{"last_order":result["order_code"]}
         return "Ainda não confirmei o pedido. Se quiser mudar algo, pode me dizer.\n\n"+state["summary"],state
     if stage=="name":
-        name = " ".join(body.split())
-        name = re.sub(r"^(?:meu nome (?:é|e)|me chamo|pode me chamar de|sou)\s+", "", name, flags=re.IGNORECASE)
-        if "?" in name or not 2<=len(name)<=120 or not any(c.isalpha() for c in name) or re.search(r"\d",name):
-            return "Informe apenas seu nome, por favor.",state
+        name=customer_name_from_reply(body)
+        if name is None:
+            return "Só falta me dizer como posso te chamar. 😊",state
         state["customer_name"]=name
     elif stage=="mode":
         mode = "delivery" if re.search(r"\b(?:entrega|entregar|em casa|a domicilio)\b",value) else "pickup" if re.search(r"\b(?:retirada|retirar|buscar|balcao|pegar ai)\b",value) else None
@@ -581,9 +790,15 @@ async def answer(db, tenant, phone, body, state, summary_delivered):
             return state_question("mode",state,shop,items),state
         state["mode"]=mode
     elif stage=="address":
-        addr=parse_address(body)
+        request=saved_address_request(body)
+        if request:
+            addr=await recover_saved_address(db,tenant,phone,state,request)
+            if addr is None:
+                return "Não consegui localizar esse endereço com segurança. Vamos informar o endereço desta entrega?\n\n"+ADDRESS_PROMPT,state
+        else:
+            addr=parse_address(body)
         if addr is None:
-            return ADDRESS_PROMPT,state
+            return state_question("address",state,shop,items),state
         state["address"]=addr
     elif stage=="exchange":
         if not affirmative(body):
@@ -628,9 +843,94 @@ async def answer(db, tenant, phone, body, state, summary_delivered):
     return await next_step(db,tenant,shop,items,state,phone)
 
 
-async def record_event(db, device, payload):
-    if (not enabled(device) or payload.kind!="text" or payload.origin!="contact" or not payload.message_id
-            or not (payload.text or payload.selection_id)):
+async def record_audio(db, device, payload):
+    """Admit a real audio event once; the existing ASR broker owns the grant."""
+    from app.subscription_devices import _insert_effect, audio_capable
+    skipped={"effects":[],"duplicate":False,"delivery_audio_skipped":True}
+    if not enabled(device) or payload.origin!="contact" or not payload.phone or not payload.message_id or payload.audio is None:
+        return skipped
+    try:
+        if not normalize_phone("+"+payload.phone):
+            return skipped
+    except ValueError:
+        return skipped
+    params={"t":device["tenant_id"],"d":device["id"],"g":device["generation"],"phone":payload.phone}
+    if await db.scalar(text("""SELECT COALESCE((SELECT revoked FROM subscription_campaign_permissions
+        WHERE tenant_id=:t AND phone=:phone),false)"""),params):
+        return skipped
+    duplicate=await db.scalar(text("""SELECT id FROM subscription_device_events
+        WHERE tenant_id=:t AND device_id=:d AND (provider_event_id=:event OR
+        (generation=:g AND payload->>'message_id'=:message AND payload->>'delivery_audio'='true')) LIMIT 1"""),
+        {**params,"event":payload.event_id,"message":payload.message_id})
+    if duplicate:
+        return {"effects":[],"duplicate":True}
+    data={"delivery_audio":True,"phone":payload.phone,"message_id":payload.message_id,
+          "settings_revision":device["revision"],"audio":payload.audio.model_dump(mode="json")}
+    event_id=(await db.execute(text("""INSERT INTO subscription_device_events
+        (tenant_id,device_id,generation,provider_event_id,kind,occurred_at,payload)
+        VALUES(:t,:d,:g,:event,'audio',:at,CAST(:data AS jsonb))
+        ON CONFLICT DO NOTHING RETURNING id"""),
+        {**params,"event":payload.event_id,"at":payload.occurred_at,"data":json.dumps(data)})).scalar_one_or_none()
+    if event_id is None:
+        return {"effects":[],"duplicate":True}
+    last=(await db.execute(text("""SELECT payload FROM subscription_device_events
+        WHERE tenant_id=:t AND device_id=:d AND generation=:g AND payload->>'phone'=:phone
+          AND payload->>'delivery'='true' ORDER BY received_at DESC,id DESC LIMIT 1"""),params)).scalar_one_or_none()
+    if last and last.get("delivery_paused") is True:
+        return skipped
+    meta=payload.audio
+    if (not audio_enabled(device) or not audio_capable() or
+            meta.seconds is not None and meta.seconds>AUDIO_MINUTES*60 or
+            meta.size is not None and meta.size>AUDIO_BYTES):
+        reply=await complete_audio(db,device,event_id,None)
+        return {**skipped,"effects":reply["effects"]}
+    effect_id=await _insert_effect(db,device,event_id,"delivery-transcribe",
+        {"type":"transcribe","purpose":PURPOSE,"payload":{"phone":payload.phone,
+         "message_id":payload.message_id,"max_seconds":AUDIO_MINUTES*60,"max_bytes":AUDIO_BYTES}})
+    return {"effects":[{"operation_id":str(effect_id),"type":"transcribe"}],"duplicate":False}
+
+
+async def complete_audio(db, device, event_id, transcript):
+    """Consume an authorized source once without storing the raw transcript.
+
+    Newer admitted text (including cancellation/control) supersedes an older
+    audio; the old transcript cannot change the newer conversation.
+    """
+    from app.subscription_device_schemas import DeviceEvent
+    row=(await db.execute(text("""SELECT id,provider_event_id,occurred_at,received_at,payload
+        FROM subscription_device_events WHERE tenant_id=:t AND device_id=:d AND generation=:g
+          AND id=:event AND kind='audio' AND payload->>'delivery_audio'='true'"""),
+        {"t":device["tenant_id"],"d":device["id"],"g":device["generation"],"event":event_id})).mappings().one_or_none()
+    if not row or row["payload"].get("settings_revision")!=device["revision"] or not enabled(device):
+        return {"effects":[],"duplicate":False,"delivery_audio_handled":False}
+    old=row["payload"]
+    if old.get("delivery") or old.get("delivery_audio_outcome"):
+        return {"effects":[],"duplicate":True,"delivery_audio_handled":True}
+    newer=await db.scalar(text("""SELECT 1 FROM subscription_device_events
+        WHERE tenant_id=:t AND device_id=:d AND generation=:g AND payload->>'phone'=:phone
+          AND payload->>'delivery'='true' AND (received_at,id)>(:received,:event) LIMIT 1"""),
+        {"t":device["tenant_id"],"d":device["id"],"g":device["generation"],
+         "phone":old["phone"],"received":row["received_at"],"event":event_id})
+    if newer:
+        await db.execute(text("""UPDATE subscription_device_events
+            SET payload=payload||'{"delivery_audio_outcome":"superseded"}'::jsonb
+            WHERE tenant_id=:t AND id=:event"""),{"t":device["tenant_id"],"event":event_id})
+        return {"effects":[],"duplicate":False,"delivery_audio_handled":True}
+    valid=isinstance(transcript,str) and bool(transcript.strip()) and len(transcript)<=1500
+    payload=DeviceEvent(device_id=device["id"],generation=device["generation"],
+        settings_revision=device["revision"],event_id=row["provider_event_id"],kind="audio",
+        occurred_at=row["occurred_at"],phone=old["phone"],message_id=old["message_id"],
+        text=transcript.strip() if valid else None,audio=old["audio"])
+    result=await record_event(db,device,payload,audio_event=event_id,
+                              fallback=None if valid else AUDIO_FALLBACK)
+    return {"effects":result["effects"],"duplicate":result["duplicate"],"delivery_audio_handled":True}
+
+
+async def record_event(db, device, payload, *, audio_event=None, fallback=None):
+    if payload.kind=="audio" and audio_event is None:
+        return await record_audio(db,device,payload)
+    if (not enabled(device) or (payload.kind!="text" and audio_event is None) or payload.origin!="contact" or not payload.message_id
+            or not (payload.text or payload.selection_id or fallback)):
         return {"effects":[],"duplicate":False}
     if payload.text and len(payload.text)>1500:
         return {"effects":[],"duplicate":False}
@@ -642,12 +942,13 @@ async def record_event(db, device, payload):
     if await db.scalar(text("""SELECT COALESCE((SELECT revoked FROM subscription_campaign_permissions
         WHERE tenant_id=:t AND phone=:phone),false)"""),params):
         return {"effects":[],"duplicate":False,"ignored":"contact_optout"}
-    duplicate=await db.scalar(text("""SELECT id FROM subscription_device_events
-        WHERE tenant_id=:t AND device_id=:d AND (provider_event_id=:event OR
-        (generation=:g AND payload->>'message_id'=:message AND payload->>'delivery'='true')) LIMIT 1"""),
-        {**params,"event":payload.event_id,"message":payload.message_id})
-    if duplicate:
-        return {"effects":[],"duplicate":True}
+    if audio_event is None:
+        duplicate=await db.scalar(text("""SELECT id FROM subscription_device_events
+            WHERE tenant_id=:t AND device_id=:d AND (provider_event_id=:event OR
+            (generation=:g AND payload->>'message_id'=:message AND payload->>'delivery'='true')) LIMIT 1"""),
+            {**params,"event":payload.event_id,"message":payload.message_id})
+        if duplicate:
+            return {"effects":[],"duplicate":True}
     last=(await db.execute(text("""SELECT id,payload,occurred_at FROM subscription_device_events
         WHERE tenant_id=:t AND device_id=:d AND generation=:g AND payload->>'phone'=:phone
           AND payload->>'delivery'='true' ORDER BY received_at DESC,id DESC LIMIT 1"""),params)).mappings().one_or_none()
@@ -669,7 +970,7 @@ async def record_event(db, device, payload):
         if old.get("delivery_summary") is True:
             accepted=(await db.execute(text("""SELECT provider_id FROM subscription_device_effects
                 WHERE tenant_id=:t AND device_id=:d AND generation=:g AND event_id=:event
-                  AND purpose=:purpose AND status='accepted' AND settings_revision=:revision
+                  AND purpose=:purpose AND type='send_text' AND status='accepted' AND settings_revision=:revision
                   AND payload->>'phone'=:phone"""),
                 {**params,"event":last["id"],"purpose":PURPOSE,"revision":device["revision"]})).mappings().one_or_none()
             delivered=accepted is not None
@@ -679,10 +980,13 @@ async def record_event(db, device, payload):
     body = payload.text
     if payload.selection_id:
         body = confirmation_selection(state, payload.selection_id, payload.quoted_message_id, accepted_provider_id)
-    if body:
+    if fallback is not None:
+        reply=None if state.get("paused") else fallback
+    elif body:
         async with get_session_factory()() as runtime:
             async with tenant_transaction(runtime,device["tenant_id"]):
-                reply,state=await answer(runtime,device["tenant_id"],phone,body,state,delivered)
+                reply,state=await answer(runtime,device["tenant_id"],phone,body,state,delivered,
+                                         allow_confirmation=audio_event is None)
     elif state.get("paused"):
         reply = None
     else:
@@ -696,10 +1000,17 @@ async def record_event(db, device, payload):
                                    and state.get("summary") and state["summary"] in reply)}
     if state and not state.get("paused"):
         data["delivery_state"]=channels._cipher().encrypt(json.dumps(jsonable_encoder(state),ensure_ascii=False).encode()).decode()
-    event_id=(await db.execute(text("""INSERT INTO subscription_device_events
-        (tenant_id,device_id,generation,provider_event_id,kind,occurred_at,payload)
-        VALUES(:t,:d,:g,:event,'text',:at,CAST(:data AS jsonb)) ON CONFLICT DO NOTHING RETURNING id"""),
-        {**params,"event":payload.event_id,"at":payload.occurred_at,"data":json.dumps(data)})).scalar_one_or_none()
+    if audio_event is not None:
+        data["delivery_audio_outcome"]="fallback" if fallback else "transcribed"
+        event_id=(await db.execute(text("""UPDATE subscription_device_events SET payload=payload||CAST(:data AS jsonb)
+            WHERE tenant_id=:t AND device_id=:d AND generation=:g AND id=:event
+              AND payload->>'delivery_audio'='true' AND NOT (payload ? 'delivery_audio_outcome') RETURNING id"""),
+            {**params,"event":audio_event,"data":json.dumps(data)})).scalar_one_or_none()
+    else:
+        event_id=(await db.execute(text("""INSERT INTO subscription_device_events
+            (tenant_id,device_id,generation,provider_event_id,kind,occurred_at,payload)
+            VALUES(:t,:d,:g,:event,'text',:at,CAST(:data AS jsonb)) ON CONFLICT DO NOTHING RETURNING id"""),
+            {**params,"event":payload.event_id,"at":payload.occurred_at,"data":json.dumps(data)})).scalar_one_or_none()
     if event_id is None:
         return {"effects":[],"duplicate":True}
     if last:
@@ -713,7 +1024,7 @@ async def record_event(db, device, payload):
     # Suppress any older unsent reply to this contact.
     await db.execute(text("""UPDATE subscription_device_effects SET status='not_sent',finished_at=clock_timestamp(),
         error_code='newer_delivery_input' WHERE tenant_id=:t AND device_id=:d AND purpose=:purpose
-        AND payload->>'phone'=:phone AND status='pending'"""),{**params,"purpose":PURPOSE})
+        AND payload->>'phone'=:phone AND type='send_text' AND status='pending'"""),{**params,"purpose":PURPOSE})
     if not reply:
         return {"effects":[],"duplicate":False}
     from app.subscription_devices import _insert_effect
@@ -726,7 +1037,22 @@ async def record_event(db, device, payload):
 
 
 async def permits(db, device, effect):
-    if not enabled(device) or effect["purpose"]!=PURPOSE or effect["type"]!="send_text":
+    if not enabled(device) or effect["purpose"]!=PURPOSE:
+        return False
+    if effect["type"]=="transcribe":
+        from app.subscription_devices import audio_capable
+        if not audio_enabled(device) or not audio_capable():
+            return False
+        return bool(await db.scalar(text("""SELECT 1 FROM subscription_device_events e
+            WHERE e.tenant_id=:t AND e.device_id=:d AND e.generation=:g AND e.id=:event AND e.kind='audio'
+              AND e.payload->>'delivery_audio'='true' AND NOT (e.payload ? 'delivery_audio_outcome')
+              AND e.payload->>'phone'=:phone AND e.payload->>'message_id'=:message
+              AND e.occurred_at>clock_timestamp()-interval '5 minutes'
+              AND NOT COALESCE((SELECT revoked FROM subscription_campaign_permissions
+                WHERE tenant_id=:t AND phone=:phone),false)"""),
+            {"t":device["tenant_id"],"d":device["id"],"g":device["generation"],
+             "event":effect["event_id"],"phone":effect["payload"]["phone"],"message":effect["payload"]["message_id"]}))
+    if effect["type"]!="send_text":
         return False
     return bool(await db.scalar(text("""SELECT 1 FROM subscription_device_events e
         WHERE e.tenant_id=:t AND e.device_id=:d AND e.generation=:g AND e.id=:event

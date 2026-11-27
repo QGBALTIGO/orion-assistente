@@ -1,7 +1,7 @@
 name: Orion - Homologação de Delivery e Distribuição
 on:
   push:
-    branches: [codex/delivery-operacao-20261127]
+    branches: [codex/delivery-operacao-20261127, codex/delivery-memory-20261127, codex/delivery-audio-20261127, codex/delivery-integrated-qa-20261127]
     paths:
       - 'app/**'
       - 'alembic/**'
@@ -62,7 +62,7 @@ jobs:
             tests/integration/test_delivery_containers_postgres.py \
             tests/integration/test_delivery_logistics_postgres.py tests/integration/test_delivery_order_containers_postgres.py \
             tests/integration/test_delivery_payments_postgres.py tests/integration/test_delivery_reports_postgres.py \
-            tests/integration/test_delivery_storefront_postgres.py tests/unit/test_delivery_container_orders.py tests/unit/test_delivery_whatsapp_dialogue.py \
+            tests/integration/test_delivery_storefront_postgres.py tests/unit/test_delivery_container_orders.py tests/unit/test_delivery_whatsapp_dialogue.py tests/unit/test_delivery_whatsapp_scenarios.py \
             tests/integration/test_commercial_catalog_postgres.py tests/integration/test_commercial_fulfillment_postgres.py
       - name: Pareamento WhatsApp e isolamento entre nichos
         run: |

@@ -686,10 +686,14 @@ async def device_lease_snapshot(db, transport):
     # proxy credentials, or webhooks into the Delivery connection.
     settings = DeviceSettings(name=row["name"]).model_dump(mode="json") if delivery else {
         key:value for key,value in row["settings"].items() if key!="delivery_assistant_enabled"}
+    delivery_audio=delivery and delivery_whatsapp.audio_enabled(row) and audio_capable()
+    if delivery_audio:
+        settings["transcription"].update(enabled=True,max_minutes=delivery_whatsapp.AUDIO_MINUTES,reply_enabled=False)
     return jsonable_encoder({"id": row["id"], "generation": row["generation"], "settings_revision": row["revision"],
         "settings": settings, "proxy_secret": None if delivery else secret, "restart_required": row["restart_required"],
         "chatbot": None if db.info.get("orion_device_profile") in CONNECTION_ONLY_PROFILES else await chatbot.snapshot(db, row["tenant_id"]),
-        "capabilities": {"transcription_available": not delivery and audio_capable(), "transcription_max_bytes": 25000000,
+        "capabilities": {"transcription_available": delivery_audio or (not delivery and audio_capable()), "transcription_max_bytes": 25000000,
+            **({"delivery_audio": 1} if delivery else {}),
             **({"delivery_reply_buttons": 1} if delivery and delivery_whatsapp.enabled(row) else {}),
             "transcription_max_seconds": 1800, "transcription_max_text_chars": 120000,
             "proxy": True, "webhook": True}})
@@ -1067,7 +1071,7 @@ async def authorize_effect(channel_id: UUID, payload: EffectRequest, request: Re
         effect = await _effect(db, row, payload.operation_id)
         if (profile == DELIVERY_CONNECTION_PROFILE) != (effect["purpose"] == delivery_whatsapp.PURPOSE):
             raise fail("WORKSPACE_FEATURE_UNAVAILABLE", 403)
-        if profile == DELIVERY_CONNECTION_PROFILE and effect["type"] != "send_text":
+        if profile == DELIVERY_CONNECTION_PROFILE and effect["type"] not in {"send_text","transcribe"}:
             raise fail("WORKSPACE_FEATURE_UNAVAILABLE", 403)
         if effect["type"] == "bulk_action":
             from app.subscription_bulk_runtime import authorize_bulk_effect
@@ -1172,6 +1176,9 @@ async def finish_effect(channel_id: UUID, payload: EffectFinish, request: Reques
                         updated_at=clock_timestamp() WHERE id=:d"""), {"d": row["id"]})
         if effect["purpose"] == delivery_whatsapp.PURPOSE:
             children = []
+            if effect["type"]=="transcribe" and state in {"not_sent","uncertain","failed"} and _current_effect(row,effect):
+                result=await delivery_whatsapp.complete_audio(db,row,effect["event_id"],None)
+                return jsonable_encoder({"operation_id":effect["id"],"state":state,**result})
         elif effect["type"] == "bulk_action":
             from app.subscription_bulk_runtime import after_bulk_effect_finish
             children = await after_bulk_effect_finish(db, row, effect, state)
@@ -1188,10 +1195,14 @@ async def finish_effect(channel_id: UUID, payload: EffectFinish, request: Reques
 
 async def _audio_authorize(request, device_id, generation, revision, operation_id, seconds, *, phase):
     async with _private_transaction(request, device_id=device_id) as (db, row, _, owner, fence):
-        if db.info.get("orion_device_profile") in CONNECTION_ONLY_PROFILES:
+        profile=db.info.get("orion_device_profile")
+        delivery=profile==DELIVERY_CONNECTION_PROFILE
+        if profile in CONNECTION_ONLY_PROFILES and not delivery:
             raise fail("WORKSPACE_FEATURE_UNAVAILABLE", 403)
         _same_snapshot(row, device_id, generation, revision)
         effect = await _effect(db, row, operation_id)
+        if delivery != (effect["purpose"]==delivery_whatsapp.PURPOSE):
+            raise fail("WORKSPACE_FEATURE_UNAVAILABLE", 403)
         if (effect["type"] != "transcribe" or effect["status"] != "running" or not _current_effect(row, effect)
                 or effect["claimed_owner"] != owner or effect["claimed_fence"] != fence
                 or not await _policy_still_allows(db, row, effect)):
@@ -1202,7 +1213,8 @@ async def _audio_authorize(request, device_id, generation, revision, operation_i
             return
         if phase != "before_provider" or effect["audio_reserved_seconds"] or not audio_capable():
             raise fail("DEVICE_CAPABILITY_UNAVAILABLE")
-        if not math.isfinite(seconds) or not 0 < seconds <= row["settings"]["transcription"]["max_minutes"] * 60:
+        minutes=delivery_whatsapp.AUDIO_MINUTES if delivery else row["settings"]["transcription"]["max_minutes"]
+        if not math.isfinite(seconds) or not 0 < seconds <= minutes * 60:
             raise fail("DEVICE_CAPABILITY_UNAVAILABLE")
         # Provider minimum is ten seconds per request. This is a technical
         # reservation, never a customer invoice, credit or subscription grant.
@@ -1247,7 +1259,10 @@ async def device_audio(channel_id: UUID, request: Request):
                 or effect["claimed_owner"] != owner or effect["claimed_fence"] != fence
                 or not _current_effect(row, effect) or not await _policy_still_allows(db, row, effect)):
             raise fail("DEVICE_CONFLICT")
-        minutes = row["settings"]["transcription"]["max_minutes"]
+        delivery=db.info.get("orion_device_profile")==DELIVERY_CONNECTION_PROFILE
+        if delivery != (effect["purpose"]==delivery_whatsapp.PURPOSE):
+            raise fail("WORKSPACE_FEATURE_UNAVAILABLE", 403)
+        minutes = delivery_whatsapp.AUDIO_MINUTES if delivery else row["settings"]["transcription"]["max_minutes"]
     from app.subscription_device_audio import transcribe_audio
     async def authorize(seconds, *, phase):
         await _audio_authorize(request, device_id, generation, revision, operation_id, seconds, phase=phase)
@@ -1267,6 +1282,11 @@ async def device_audio(channel_id: UUID, request: Request):
         await db.execute(text("""UPDATE subscription_device_effects SET status='accepted',finished_at=clock_timestamp(),
             audio_duration_seconds=:duration,audio_completed_at=clock_timestamp() WHERE id=:o"""),
             {"o": operation_id, "duration": duration})
+        if effect["purpose"]==delivery_whatsapp.PURPOSE:
+            completed=await delivery_whatsapp.complete_audio(db,row,effect["event_id"],result["text"])
+            if not completed["delivery_audio_handled"]:
+                raise fail("DEVICE_CONFLICT")
+            return jsonable_encoder({**result,"truncated":False,"effects":completed["effects"]})
         if event.get("origin") == "contact":
             from app.subscription_campaigns import record_campaign_optout
             await record_campaign_optout(db, row, {**event, "kind": "text", "text": result["text"]}, effect["event_id"])
