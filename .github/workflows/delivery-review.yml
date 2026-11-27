@@ -62,12 +62,15 @@ jobs:
             tests/integration/test_commercial_catalog_postgres.py tests/integration/test_commercial_fulfillment_postgres.py
       - name: Regressão das interfaces da Orion
         run: |
+          python -m compileall -q app
           npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
           node --check app/static/orion-delivery-catalog.js
           node --check app/static/orion-delivery-orders.js
           node --check app/static/orion-delivery-containers.js
           node --test --test-reporter=dot ui-tests/delivery-catalog.test.mjs ui-tests/dashboard-navigation.test.mjs \
-            ui-tests/plan-permissions.test.mjs ui-tests/onboarding-entry.test.mjs ui-tests/subscription-workspace.test.mjs
+            ui-tests/plan-permissions.test.mjs ui-tests/onboarding-entry.test.mjs ui-tests/subscription-workspace.test.mjs \
+            ui-tests/barbershop-app-layout.test.mjs ui-tests/dashboard-finance-goals.test.mjs ui-tests/dental-workspace.test.mjs \
+            ui-tests/onboarding-affiliates.test.mjs ui-tests/orion-finance-mobile.test.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:

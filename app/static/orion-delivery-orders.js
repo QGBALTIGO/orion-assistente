@@ -56,6 +56,77 @@
     await read();
   }
 
+  async function salesReport({host,filters,call,allowed,ui,exportPath}) {
+    const {esc,loading,field,selectField,title,metric,money,fmtDate,dateKey,timeLabel,query,button}=ui;
+    if (!host||!allowed()) return;
+    filters.start ??= '';
+    filters.end ??= '';
+    filters.mode ??= 'all';
+    filters.state ??= 'all';
+    filters.receipt ??= 'all';
+    filters.offset ??= 0;
+    const paymentsByStatus={pending:'A receber',paid:'Recebido'};
+    host.innerHTML=title('Relatório de vendas','Pedidos criados no período')+
+      '<form id="osDeliverySalesFilters" class="os-filter-row">'+
+      field('De','start','date',filters.start)+field('Até','end','date',filters.end)+
+      selectField('Atendimento','mode',[['all','Todos'],...modes],filters.mode)+
+      selectField('Status','state',[['all','Todos'],...Object.entries(statusLabels)],filters.state)+
+      selectField('Recebimento','receipt',[['all','Todos'],['paid','Recebidos'],['pending','A receber'],['none','Sem recebimento']],filters.receipt)+
+      '<button type="submit" class="os-button os-outline">Filtrar</button></form>'+
+      '<div data-delivery-report aria-live="polite"></div>';
+    window.OrionFields.refresh(host);
+    const form=host.querySelector('form'), panel=host.querySelector('[data-delivery-report]');
+    let version=0, result;
+    function rows(items) {
+      const columns=['Pedido','Data','Cliente','Atendimento','Status','Recebimento','Total'];
+      return '<div class="os-table-scroll"><table class="os-table"><thead><tr>'+
+        columns.map(column=>'<th>'+column+'</th>').join('')+'</tr></thead><tbody>'+items.map(order=>'<tr>'+
+        [code(order),fmtDate(dateKey(new Date(order.created_at)))+' '+timeLabel(order.created_at),
+          order.customer_name||'Venda avulsa',modeLabel(order),statusLabels[order.status],
+          paymentsByStatus[order.receipt_status]||'Sem recebimento',money(order.total_cents)]
+          .map((value,i)=>'<td data-label="'+columns[i]+'">'+esc(value)+'</td>').join('')+'</tr>').join('')+'</tbody></table></div>';
+    }
+    async function read() {
+      const attempt=++version;
+      const current=()=>allowed()&&host.isConnected&&attempt===version;
+      panel.innerHTML=loading('Carregando vendas…');
+      try {
+        const data=await call('/reports/sales?'+query(filters));
+        if (!current()) return;
+        result=data;
+        form.elements.start.value=filters.start=data.period.start_date;
+        form.elements.end.value=filters.end=data.period.end_date;
+        const {offset,limit,summary}=data;
+        const csv=exportPath+'?'+query({start:filters.start,end:filters.end,mode:filters.mode,state:filters.state,receipt:filters.receipt});
+        panel.innerHTML='<div class="os-metrics">'+metric('Pedidos',summary.orders,'list')+
+          metric('Cancelados',summary.cancelled,'close')+metric('Recebido',money(summary.paid_cents),'wallet')+
+          metric('A receber',money(summary.pending_cents),'clock')+'</div>'+
+          '<section class="os-card os-section-gap"><div class="os-card-header"><h2>Vendas</h2>'+
+          '<a class="os-button os-outline os-small" href="'+esc(csv)+'" download>Exportar CSV</a></div>'+
+          (data.items.length?rows(data.items):'<p class="os-help">Nenhuma venda encontrada para esses filtros.</p>')+
+          '</section>'+
+          (offset||data.has_more?'<div class="os-pagination"><span>Página '+(offset/limit+1)+'</span><div class="os-actions">'+
+            command(button,'Anterior','delivery-report-prev','left',offset?'':'disabled')+
+            command(button,'Próxima','delivery-report-next','chevron',data.has_more?'':'disabled')+'</div></div>':'');
+      } catch (error) {
+        if (current()) panel.innerHTML='<div class="os-notice os-error" role="alert"><p>'+esc(error.message)+'</p></div>';
+      }
+    }
+    form.addEventListener('submit',event=>{
+      event.preventDefault();
+      Object.assign(filters,Object.fromEntries(new FormData(form)),{offset:0});
+      void read();
+    });
+    panel.addEventListener('click',event=>{
+      const action=event.target.closest('button')?.dataset.osAction;
+      if (!['delivery-report-prev','delivery-report-next'].includes(action)||!allowed()) return;
+      event.stopPropagation();
+      filters.offset=Math.max(0,result.offset+(action==='delivery-report-next'?result.limit:-result.limit));
+      void read();
+    });
+    await read();
+  }
+
   async function mount({host,filters,call,allowed,canWrite,ui,openDetails,openEditor,deliveryOnly=false,creditOnly=false}) {
     if (!host || !allowed()) return;
     const {esc,loading,empty,field,moneyField,selectField,checkField,button,title,money,badge,fmtDate,dateKey,timeLabel,query,brazilianStates,metric,routeButton}=ui;
@@ -362,5 +433,5 @@
     });
     await load();
   }
-  window.OrionDeliveryOrders=Object.freeze({mount,dashboard});
+  window.OrionDeliveryOrders=Object.freeze({mount,dashboard,salesReport});
 })();

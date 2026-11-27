@@ -2,6 +2,7 @@
 import asyncio
 import os
 from pathlib import Path
+import re
 import socket
 from urllib.parse import urlsplit
 from uuid import UUID, uuid4
@@ -277,6 +278,14 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                     await dialog.get_by_role("button", name="Registrar recebimento", exact=True).click()
                     await expect(dialog).to_be_hidden()
                     await expect(orders.get_by_text("Recebido", exact=True)).to_be_visible()
+                    await page.goto(origin+"/painel?aba=relatorio-delivery")
+                    await expect(page.get_by_role("heading", name="Relatório de vendas", exact=True)).to_be_visible()
+                    await page.get_by_label("Recebimento", exact=True).select_option("paid")
+                    await page.get_by_role("button", name="Filtrar", exact=True).click()
+                    await expect(page.get_by_role("link", name="Exportar CSV")).to_have_attribute("href", re.compile("receipt=paid"))
+                    async with page.expect_download() as download:
+                        await page.get_by_role("link", name="Exportar CSV").click()
+                    assert (await download.value).suggested_filename == "orion-delivery-vendas.csv"
                     await page.goto(origin+"/painel?aba=vasilhames-delivery")
                     await page.get_by_role("button", name="Novo vasilhame").click()
                     await dialog.get_by_label("Tipo").select_option("jug")
@@ -305,13 +314,15 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                     await expect(page.get_by_role("cell", name="Devolução", exact=True)).to_be_visible()
                 for route, heading in (("dashboard-delivery","Dashboard"),("pedidos-delivery","Pedidos"),
                                        ("entregas-delivery","Entregas"),("vasilhames-delivery","Vasilhames"),
-                                       ("vendas-prazo-delivery","Vendas a prazo")):
+                                       ("vendas-prazo-delivery","Vendas a prazo"),("relatorio-delivery","Relatório de vendas")):
                     await page.goto(origin+"/painel?aba="+route)
                     await expect(page.get_by_role("heading",name=heading,exact=True)).to_be_visible()
                     if route == "dashboard-delivery":
                         await expect(page.get_by_text("Pedidos do dia",exact=True)).to_be_visible()
                     elif route == "vendas-prazo-delivery":
                         await expect(page.get_by_role("button",name="Ver pedidos")).to_be_visible()
+                    elif route == "relatorio-delivery":
+                        await expect(page.get_by_role("link",name="Exportar CSV")).to_be_visible()
                     elif route != "vasilhames-delivery":
                         await expect(page.get_by_role("button",name="Novo pedido")).to_be_visible()
                     else:

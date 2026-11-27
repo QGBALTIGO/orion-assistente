@@ -1,6 +1,8 @@
 """Resolve manual orders against the shared stock, CRM and Finance in Postgres."""
 import asyncio
+import csv
 from datetime import datetime, timedelta
+from io import StringIO
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
@@ -192,7 +194,7 @@ async def test_on_account_stays_pending_until_manual_receipt(onboarding_db, monk
     await complete_delivery_setup(ctx, tenant)
     customer = uuid4()
     async with ctx.migration.begin() as db:
-        await db.execute(text("INSERT INTO customers(id,tenant_id,name) VALUES(:c,:t,'Pessoa a prazo')"),
+        await db.execute(text("INSERT INTO customers(id,tenant_id,name) VALUES(:c,:t,'+Pessoa a prazo')"),
                          {"c":customer,"t":tenant})
     today = datetime.now(ZoneInfo("America/Cuiaba")).date()
     async with client(actor) as http:
@@ -211,6 +213,17 @@ async def test_on_account_stays_pending_until_manual_receipt(onboarding_db, monk
         assert (await http.get(root+"/overview")).json()["metrics"]["paid_cents"] == 0
         credit = (await http.get(root+"/credit",params={"status":"pending","search":"prazo"})).json()
         assert len(credit["items"]) == 1 and credit["summary"] == {"open_cents":1250,"overdue_cents":0}
+        filters = {"start":str(today),"end":str(today),"mode":"pickup","receipt":"pending"}
+        reports = root+"/reports/sales"
+        pending = (await http.get(reports,params=filters)).json()
+        assert pending["summary"] == {"orders":1,"cancelled":0,"paid_cents":0,"pending_cents":1250}
+        assert [row["id"] for row in pending["items"]] == [created.json()["id"]]
+        archive = await http.get(reports+".csv",params=filters)
+        assert archive.status_code == 200 and archive.headers["cache-control"] == "no-store"
+        assert archive.headers["content-disposition"] == 'attachment; filename="orion-delivery-vendas.csv"'
+        exported = list(csv.reader(StringIO(archive.content.decode("utf-8-sig")),delimiter=";"))
+        assert exported[1][0] == created.json()["id"]
+        assert exported[1][2:] == ["'+Pessoa a prazo","Retirada","Concluído","A receber","12,50","0,00"]
         async with ctx.migration.begin() as db:
             await db.execute(text("""
                 UPDATE delivery_order_details SET payment_due_date=:due WHERE tenant_id=:t AND order_id=:o
@@ -229,6 +242,10 @@ async def test_on_account_stays_pending_until_manual_receipt(onboarding_db, monk
         assert (await http.get(root+"/overview")).json()["metrics"]["paid_cents"] == 1250
         assert (await http.get(root+"/credit",params={"status":"pending"})).json()["items"] == []
         assert (await http.get(root+"/credit",params={"status":"paid"})).json()["items"][0]["receipt_status"] == "paid"
+        assert (await http.get(reports,params=filters)).json()["items"] == []
+        settled_report = (await http.get(reports,params={**filters,"receipt":"paid"})).json()
+        assert settled_report["summary"]["paid_cents"] == 1250 and settled_report["summary"]["pending_cents"] == 0
+        assert (await http.get(reports,params={**filters,"mode":"delivery"})).json()["summary"]["orders"] == 0
         history = (await http.get(endpoint)).json()["history"]
         assert [event["action"] for event in history] == ["confirmed","fulfilled","received"]
     ledger, = await receipts(ctx,tenant)

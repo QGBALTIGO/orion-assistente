@@ -120,13 +120,15 @@
   const deliveryDispatchRoute='entregas-delivery';
   const deliveryContainersRoute='vasilhames-delivery';
   const deliveryCreditRoute='vendas-prazo-delivery';
+  const deliveryReportRoute='relatorio-delivery';
   routeNames[deliveryCatalogRoute]='Produtos e estoque';
   routeNames[deliveryOrdersRoute]='Pedidos';
   routeNames[deliveryDispatchRoute]='Entregas';
   routeNames[deliveryContainersRoute]='Vasilhames';
   routeNames[deliveryCreditRoute]='Vendas a prazo';
+  routeNames[deliveryReportRoute]='Relatórios';
   routeNames[deliveryDashboardRoute]='Dashboard';
-  const deliveryRoutes=[deliveryDashboardRoute,deliveryCatalogRoute,deliveryOrdersRoute,deliveryDispatchRoute,deliveryContainersRoute,deliveryCreditRoute];
+  const deliveryRoutes=[deliveryDashboardRoute,deliveryCatalogRoute,deliveryOrdersRoute,deliveryDispatchRoute,deliveryContainersRoute,deliveryCreditRoute,deliveryReportRoute];
   const mainNav=[['verificador-numeros','check'],['link-whatsapp','link'],['contatos','users'],['grupos-contatos','list'],['dispositivos','phone'],['chatbot','bot'],['testar-chatbot','flask'],['templates','layers'],['mensagens-enviadas','fileCheck'],['diagnosticos','activity'],['campanhas','megaphone'],['programadas','calendarClock'],['massa','broadcast'],['enviar-mensagem','send'],['aquecimento','flame'],['evitar-banimento','shieldCheck'],['resolver-banimento','shieldAlert'],['extrator-contatos','usersSearch'],['adicionar-ao-grupo','userPlus'],['dashboard','dashboard'],['agenda','calendar'],['clientes','users'],['clinica','tooth'],['pacientes-odonto','users'],['proteses-odonto','prosthesis'],['estoque-odonto','box'],['vendas-odonto','layers'],['ajustes-odonto','settings'],['inbox','chat'],['servicos','scissors'],['funcionarios','badgeUser'],['financeiro','wallet'],['desempenho','chart'],['marketing','sparkles'],['site','globe'],['fidelizacao','gift'],['consultor','brain'],['plano','credit'],['configuracoes','settings']];
   const subscriptionNavigation=[
     ['Gestão',['dashboard']],
@@ -627,7 +629,7 @@
     }else if(delivery){
       nav+=navGroup('Gestão',[[deliveryDashboardRoute,'dashboard'],[deliveryOrdersRoute,'list'],[deliveryDispatchRoute,'send'],[deliveryCatalogRoute,'box'],[deliveryContainersRoute,'layers'],['clientes','users']]);
       nav+=navGroup('Atendimento',[['inbox','chat']]);
-      nav+=navGroup('Financeiro',[[deliveryCreditRoute,'credit'],['financeiro','wallet']]);
+      nav+=navGroup('Financeiro',[[deliveryCreditRoute,'credit'],['financeiro','wallet'],[deliveryReportRoute,'chart']]);
       nav+=navGroup('Administração',[['configuracoes','settings']]);
     }else if(barbershop){
       for(const [heading,items] of barbershopNavigation)nav+=navGroup(heading,items,route=>routeNames[route]);
@@ -956,6 +958,7 @@
     if(state.route===deliveryDashboardRoute)html='<div id="osPageBody">'+loading('Carregando o dashboard…')+'</div>';
     if(state.route===deliveryContainersRoute)html='<div id="osPageBody">'+loading('Carregando vasilhames…')+'</div>';
     if(state.route===deliveryCreditRoute)html='<div id="osPageBody">'+loading('Carregando vendas a prazo…')+'</div>';
+    if(state.route===deliveryReportRoute)html='<div id="osPageBody">'+loading('Carregando o relatório…')+'</div>';
     if([deliveryOrdersRoute,deliveryDispatchRoute].includes(state.route))html='<div id="osPageBody">'+loading('Carregando pedidos…')+'</div>';
     if(state.route==='afiliados-whatsapp')html='<div id="osPageBody">'+routeButton('Voltar a Conexões e destinos','afiliados-conexoes','os-ghost','left')+'<section id="osSubscriptionDevices"></section></div>';
     if(state.route==='dispositivos')html='<div id="osPageBody"><section id="osSubscriptionDevices"></section></div>';
@@ -1073,6 +1076,13 @@
           host:$('osPageBody'),filters:state.filters.deliveryDashboard??={},
           call:path=>request(apiPath('/delivery'+path)),
           allowed:()=>current(c)&&deliveryPreview(),ui:{esc,loading,field,title,money,metric,seriesChart,routeButton,dateKey,query},
+        });
+        break;
+      case deliveryReportRoute:
+        await window.OrionDeliveryOrders.salesReport({
+          host:$('osPageBody'),filters:state.filters.deliveryReport??={},
+          call:path=>request(apiPath('/delivery'+path)),exportPath:apiPath('/delivery/reports/sales.csv'),
+          allowed:()=>current(c)&&deliveryPreview(),ui:{esc,loading,field,selectField,title,metric,money,fmtDate,dateKey,timeLabel,query,button},
         });
         break;
       case deliveryCatalogRoute:

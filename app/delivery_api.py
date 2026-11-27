@@ -3,13 +3,14 @@ from datetime import date
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from app import delivery_catalog as catalog
 from app import delivery_containers as containers
 from app import delivery_orders as orders
+from app import delivery_reports as reports
 from app.catalog_api import Actor, authenticate
 from app.database import get_session_factory, tenant_transaction
 from app.http_json import json_response
@@ -42,7 +43,7 @@ async def run(actor, tenant, operation, *args, write=False, response_status=200,
                     result = await operation(db, tenant, *args, **kwargs)
     except IntegrityError:
         raise HTTPException(409, "Os dados já foram usados ou mudaram. Atualize a tela e confira.") from None
-    response = json_response(result, status_code=response_status)
+    response = result if isinstance(result, Response) else json_response(result, status_code=response_status)
     response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -163,3 +164,20 @@ async def container_history(tenant_id: UUID, container_id: UUID, offset: int = Q
 async def container_loans(tenant_id: UUID, container_id: UUID, offset: int = Query(default=0, ge=0, le=100_000),
                           actor: Actor = Depends(authenticate)):
     return await run(actor, tenant_id, containers.loans, container_id, offset=offset)
+
+
+@router.get("/reports/sales")
+async def sales_report(tenant_id: UUID, start: date | None = None, end: date | None = None,
+                       state: orders.OrderState = "all", mode: Literal["all", "counter", "pickup", "delivery"] = "all",
+                       receipt: reports.ReceiptFilter = "all", offset: int = Query(default=0, ge=0, le=100_000),
+                       actor: Actor = Depends(authenticate)):
+    return await run(actor, tenant_id, reports.sales, start=start, end=end, state=state, mode=mode,
+                     receipt=receipt, offset=offset)
+
+
+@router.get("/reports/sales.csv")
+async def sales_export(tenant_id: UUID, start: date | None = None, end: date | None = None,
+                       state: orders.OrderState = "all", mode: Literal["all", "counter", "pickup", "delivery"] = "all",
+                       receipt: reports.ReceiptFilter = "all", actor: Actor = Depends(authenticate)):
+    return await run(actor, tenant_id, reports.sales, start=start, end=end, state=state, mode=mode,
+                     receipt=receipt, export=True)
