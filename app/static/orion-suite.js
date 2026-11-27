@@ -979,7 +979,7 @@
     if([deliveryOrdersRoute,deliveryDispatchRoute].includes(state.route))html='<div id="osPageBody">'+loading('Carregando pedidos…')+'</div>';
     if(state.route==='afiliados-whatsapp')html='<div id="osPageBody">'+routeButton('Voltar a Conexões e destinos','afiliados-conexoes','os-ghost','left')+'<section id="osSubscriptionDevices"></section></div>';
     if(state.route==='dispositivos')html='<div id="osPageBody"><section id="osSubscriptionDevices"></section></div>';
-    if(state.route===deliveryWhatsAppRoute)html='<div id="osPageBody"><section id="osSubscriptionDevices"></section><section class="os-card os-section-gap"><div class="os-card-header"><h2>Pedidos pelo WhatsApp</h2></div><p>Conecte o número comercial para preparar o canal de atendimento. A importação de pedidos e as respostas automáticas ainda não estão habilitadas. A venda de produtos restritos exige confirmação de elegibilidade do canal.</p><div class="os-actions">'+routeButton('Abrir pedidos',deliveryOrdersRoute,'os-outline','deliveryReceipt')+'</div></section></div>';
+    if(state.route===deliveryWhatsAppRoute)html='<div id="osPageBody"><section id="osSubscriptionDevices"></section><section id="osDeliveryAssistant" class="os-card os-section-gap">'+loading('Carregando atendente…')+'</section></div>';
     if(state.route==='verificador-numeros')html='<div id="osPageBody"><section id="osSubscriptionNumberCheck"></section></div>';
     if(state.route==='link-whatsapp')html='<div id="osPageBody"><section id="osSubscriptionWhatsappLink"></section></div>';
     if(state.route==='contatos')html='<div id="osPageBody"><section id="osSubscriptionAudience"></section></div>';
@@ -1101,6 +1101,35 @@
       returnToDirectory:()=>open('pacientes-odonto'),
       canAccess:()=>current(c)&&routePermitted(route)});
   }
+  async function loadDeliveryAssistant(c){
+    const host=$('osDeliveryAssistant');
+    if(!host)return;
+    const path=apiPath('/subscription-whatsapp/devices/delivery-assistant');
+    const valid=()=>current(c)&&state.route===deliveryWhatsAppRoute&&host.isConnected;
+    let busy=false;
+    async function read(){
+      if(!valid())return;
+      try{
+        const item=await request(path);
+        if(!valid())return;
+        host.innerHTML='<div class="os-card-header"><div><h2>Atendente virtual</h2><p>Pedidos de água pelo mesmo WhatsApp conectado.</p></div>'+badge(item.enabled?'completed':'pending',item.enabled?'Ativo':'Pausado')+'</div>'+
+          '<p class="os-help">'+(item.device_id?item.eligible_products+' produto(s) elegível(is) do catálogo da Loja rápida.':'Crie ou conecte o dispositivo acima.')+'</p>'+
+          '<p>O atendente interpreta os produtos, confere endereço, estoque, frete e pagamento, envia o resumo e registra o pedido somente após confirmação. Para falar com uma pessoa, o cliente pode escrever “atendente”.</p>'+
+          '<p class="os-help">Nesta etapa: mensagens de texto e produtos de água autorizados. O Pix continua manual. Não é necessário publicar a loja.</p>'+
+          '<div class="os-actions">'+(item.device_id?'<button type="button" class="os-button '+(item.enabled?'os-outline':'')+'" data-delivery-assistant-toggle '+(!item.enabled&&!item.eligible_products?'disabled':'')+'>'+ (item.enabled?'Pausar atendente':'Ativar atendente')+'</button>':'')+
+          routeButton('Configurar catálogo',deliveryStoreRoute,'os-outline','deliveryStorefront')+routeButton('Abrir pedidos',deliveryOrdersRoute,'os-outline','deliveryReceipt')+'</div><div data-delivery-assistant-feedback aria-live="polite"></div>';
+        const toggle=host.querySelector('[data-delivery-assistant-toggle]');
+        if(toggle)toggle.addEventListener('click',async()=>{
+          if(busy||!valid())return;
+          busy=true;toggle.disabled=true;
+          try{await request(path,'PUT',{enabled:!item.enabled,expected_revision:item.revision});if(valid()){toast(item.enabled?'Atendente pausado.':'Atendente ativado.');await read();}}
+          catch(ex){if(valid()){host.querySelector('[data-delivery-assistant-feedback]').textContent=ex.message;toggle.disabled=false;}}
+          finally{busy=false;}
+        });
+      }catch(ex){if(valid())host.innerHTML='<div class="os-notice os-error" role="alert">'+esc(ex.message||'Não foi possível carregar o atendente.')+'</div><button type="button" class="os-button os-outline" data-assistant-retry>Tentar novamente</button>';host.querySelector('[data-assistant-retry]')?.addEventListener('click',()=>void read());}
+    }
+    await read();
+  }
   function deliveryView(c,canWrite=writable){
     return {
       host:$('osPageBody'),call:(path,method,data)=>request(apiPath('/delivery'+path),method,data),
@@ -1206,7 +1235,7 @@
       }
       case deliveryWhatsAppRoute:
       case 'afiliados-whatsapp':
-      case 'dispositivos':if(!window.OrionSubscriptionDevices)throw Error('Não foi possível abrir Dispositivos. Atualize o painel.');await window.OrionSubscriptionDevices.mount({host:$('osSubscriptionDevices'),request,tenantId:state.tenantId,connectionOnly:state.route==='afiliados-whatsapp'||state.route===deliveryWhatsAppRoute});break;
+      case 'dispositivos':if(!window.OrionSubscriptionDevices)throw Error('Não foi possível abrir Dispositivos. Atualize o painel.');await window.OrionSubscriptionDevices.mount({host:$('osSubscriptionDevices'),request,tenantId:state.tenantId,connectionOnly:state.route==='afiliados-whatsapp'||state.route===deliveryWhatsAppRoute});if(state.route===deliveryWhatsAppRoute)await loadDeliveryAssistant(c);break;
       case 'dashboard':{
          if(!homePreviewEnabled())stopHomeLive();
          if(subscriptionWorkspace()){
@@ -3963,7 +3992,7 @@
     let version=0,offset=0;
     const labels={confirmed:'Reservado',dispatched:'Em rota',fulfilled:'Concluído',cancelled:'Cancelado'};
     const modes={counter:'Balcão',pickup:'Retirada',delivery:'Entrega'};
-    const channels={pos:'Ponto de venda',phone:'Telefone',attendant:'Atendimento humano',storefront:'Loja pública',manual:'Painel'};
+    const channels={pos:'Ponto de venda',phone:'Telefone',attendant:'Atendimento humano',storefront:'Loja pública',manual:'Painel',whatsapp:'WhatsApp'};
     const valid=()=>state.dialog===opened&&deliveryPreview()&&panel.isConnected;
     const control=(name,action,disabled=false)=>'<button type="button" class="os-button os-outline os-small" data-delivery-customer-page="'+action+'" '+(disabled?'disabled':'')+'>'+name+'</button>';
     const row=(name,value)=>'<div class="os-summary-row"><span>'+esc(name)+'</span><strong>'+esc(value)+'</strong></div>';

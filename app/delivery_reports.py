@@ -12,9 +12,9 @@ from app.management_models import period_for
 
 
 ReceiptFilter = Literal["all", "pending", "paid", "refunded", "none"]
-ChannelFilter = Literal["all", "pos", "phone", "attendant", "storefront", "manual"]
+ChannelFilter = Literal["all", "pos", "phone", "attendant", "storefront", "manual", "whatsapp"]
 CHANNEL_LABELS = {"pos":"Ponto de venda","phone":"Telefone","attendant":"Atendimento humano",
-                  "storefront":"Loja pública","manual":"Painel"}
+                  "storefront":"Loja pública","manual":"Painel","whatsapp":"WhatsApp"}
 MAX_EXPORT_ROWS = 20_000
 FILTER = f"""
     AND o.created_at>=:lower AND o.created_at<:upper

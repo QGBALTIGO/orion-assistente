@@ -75,6 +75,7 @@ PHASES = (
     "0114_delivery_purchases",
     "0115_delivery_driver_portal",
     "0116_delivery_manual_pix",
+    "0117_delivery_whatsapp_intake",
 )
 TABLES = {
     "0116_delivery_manual_pix": ("delivery_pix_settings", "delivery_pix_orders"),
@@ -183,6 +184,13 @@ def delivery_schema_ready(raw, phases):
                     WHERE a.grantee=0 AND a.privilege_type='EXECUTE'
                 )
         )
+    """):
+        return False
+    if "0117_delivery_whatsapp_intake" in phases and not read_contract(raw, """
+        SELECT EXISTS (SELECT 1 FROM pg_constraint
+          WHERE conrelid=to_regclass('public.delivery_order_details')
+            AND conname='delivery_order_details_intake_channel_check'
+            AND contype='c' AND convalidated AND pg_get_constraintdef(oid) LIKE '%whatsapp%')
     """):
         return False
     columns = [column for phase in phases for column in COLUMNS.get(phase, ())]

@@ -568,7 +568,7 @@ def quote_signature(tenant, shop, payload, estimate, policy_revision, expires):
     return hmac.new(signing_key(), json.dumps(facts, sort_keys=True).encode(), hashlib.sha256).hexdigest()
 
 
-async def prepare_checkout(db, tenant, shop, payload, *, lock=False):
+async def prepare_checkout(db, tenant, shop, payload, *, lock=False, source="storefront"):
     now = commerce.now_utc()
     if not is_open(shop, now):
         raise HTTPException(409, "A loja está fechada. Consulte os horários disponíveis.")
@@ -584,7 +584,11 @@ async def prepare_checkout(db, tenant, shop, payload, *, lock=False):
     lines = await order_lines(db, tenant, payload.items, payload.mode, storefront=True, lock=lock)
     approved = (await db.execute(text(ITEMS + " AND s.variant_id=ANY(:ids)"),
                                  {"tenant": tenant, "ids": [item.variant_id for item in payload.items]})).mappings().all()
-    visible = {row["variant_id"]: row for row in approved if available_item(shop, row)}
+    if source == "whatsapp":
+        from app.delivery_whatsapp import eligible_water
+        visible = {row["variant_id"]: row for row in approved if eligible_water(shop, row)}
+    else:
+        visible = {row["variant_id"]: row for row in approved if available_item(shop, row)}
     if len(visible) != len(lines):
         commerce.conflict("Um produto está indisponível na loja. Confira seu carrinho.")
     if any(line["exchange_container_id"] is not None for line in lines) and not payload.accept_exchange:
@@ -627,7 +631,7 @@ async def public_quote(slug: str, payload: CheckoutDraft, request: Request):
     })
 
 
-async def save_checkout(db, tenant, shop, payload):
+async def save_checkout(db, tenant, shop, payload, *, source="storefront"):
     from app import delivery_manual_pix as manual_pix
     async def write():
         # The public backlog cap and stock rows are checked in the same commit.
@@ -647,7 +651,7 @@ async def save_checkout(db, tenant, shop, payload):
         now = commerce.now_utc()
         if not int(now.timestamp()) < expires <= int(now.timestamp()) + 600:
             commerce.conflict("O resumo expirou. Confira novamente o seu pedido.")
-        estimate, lines, logistics = await prepare_checkout(db, tenant, shop, payload, lock=True)
+        estimate, lines, logistics = await prepare_checkout(db, tenant, shop, payload, lock=True, source=source)
         expected = quote_signature(tenant, shop, payload, estimate, logistics["policy_revision"], expires)
         if not hmac.compare_digest(expected, signature):
             commerce.conflict("O carrinho, o estoque ou os dados da entrega mudaram. Confira novamente o resumo.")
@@ -660,11 +664,11 @@ async def save_checkout(db, tenant, shop, payload):
             VALUES (:id,:tenant,:quote_id,:key,'confirmed','delivery')
         """), {"id": order_id, "tenant": tenant, "quote_id": quote_id, "key": f"delivery-store:{order_id}"})
         await db.execute(text("""
-            INSERT INTO delivery_order_details (tenant_id,order_id,mode,address,delivery_fee_cents)
-            VALUES (:tenant,:id,:mode,CAST(:address AS jsonb),:fee)
+            INSERT INTO delivery_order_details (tenant_id,order_id,mode,address,delivery_fee_cents,intake_channel)
+            VALUES (:tenant,:id,:mode,CAST(:address AS jsonb),:fee,:intake_channel)
         """), {"tenant": tenant, "id": order_id, "mode": payload.mode,
                 "address": payload.address.model_dump_json() if payload.address else None,
-                "fee": estimate["delivery_fee_cents"]})
+                "fee": estimate["delivery_fee_cents"], "intake_channel": "whatsapp" if source == "whatsapp" else None})
         if payload.mode == "delivery":
             from app.delivery_logistics import save_order_logistics
             await save_order_logistics(db, tenant, order_id, logistics)
@@ -680,11 +684,11 @@ async def save_checkout(db, tenant, shop, payload):
         await commerce.reserve_stock(db, tenant, PUBLIC_ACTOR, order_id, lines)
         await packaging.save_plan(db, tenant, order_id, None, lines, packaging.required_exchanges(lines))
         await commerce.audit(db, tenant, PUBLIC_ACTOR, "order", order_id, "confirmed",
-                             {"total_cents": estimate["total_cents"], "mode": payload.mode, "source": "storefront"})
+                             {"total_cents": estimate["total_cents"], "mode": payload.mode, "source": source})
         return {"order_code": str(order_id)[:8].upper(), "status": "confirmed",
                 "total_cents": estimate["total_cents"], "tracking_code": tracking}
 
-    result = await run_once(db, tenant, payload, "storefront_checkout", shop["slug"], write,
+    result = await run_once(db, tenant, payload, "whatsapp_checkout" if source == "whatsapp" else "storefront_checkout", shop["slug"], write,
                           optional_defaults={"buyer_note": None, "change_for_cents": None, "accept_exchange": False})
     if payload.payment_preference == "pix":
         details = await manual_pix.instructions(db, tenant, hashlib.sha256(result["tracking_code"].encode()).hexdigest())

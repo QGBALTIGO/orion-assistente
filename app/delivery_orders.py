@@ -135,7 +135,7 @@ class Transition(ProfileModel):
 
 RECEIPT_STATUS = "CASE WHEN d.return_financial_entry_id IS NOT NULL THEN 'refunded' ELSE f.status END"
 DELIVERY_DATE = "coalesce(d.scheduled_at,o.created_at)"
-SALES_CHANNEL = "CASE WHEN shop.order_id IS NOT NULL THEN 'storefront' ELSE coalesce(d.intake_channel,'manual') END"
+SALES_CHANNEL = "coalesce(d.intake_channel, CASE WHEN shop.order_id IS NOT NULL THEN 'storefront' ELSE 'manual' END)"
 ORDERS = f"""
     SELECT o.id,o.quote_id,o.status,o.revision,o.created_at,d.mode,d.customer_id,
         CASE WHEN assignment.status='offered' AND assignment.expires_at<=now() THEN 'expired'

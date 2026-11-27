@@ -29,6 +29,7 @@ from app.subscription_device_schemas import (CreateDevice, DeviceAction, DeviceE
     ControlRequest, ControlFinish)
 from app.subscription_device_rules import business_state, effects_for_event, transcription_parts
 from app.workspace_policy import AFFILIATE_WORKSPACE, SUBSCRIPTION_WORKSPACE
+from app import delivery_whatsapp
 
 
 BASE = "/api/v1/tenants/{tenant_id}/subscription-whatsapp/devices"
@@ -120,6 +121,7 @@ async def _device(db, tenant_id, device_id, *, actor=None, revision=None, remove
 
 def public_settings(row):
     settings = json.loads(_json(row["settings"]))
+    settings.pop("delivery_assistant_enabled", None)
     settings["proxy"]["password_configured"] = bool(row["proxy_secret_encrypted"])
     return settings
 
@@ -263,8 +265,8 @@ async def device_dto(db, row):
         "connected_at": runtime["connected_at"], "last_seen_at": runtime["last_seen_at"],
         "connection_health": health,
         "metrics": {"available": False} if affiliate else await _metrics(db, row),
-        "features": {"transcription": row["settings"]["transcription"]["enabled"],
-                     "call_blocking": row["settings"]["calls"]["reject_enabled"]},
+        "features": {"transcription": not affiliate and row["settings"]["transcription"]["enabled"],
+                     "call_blocking": not affiliate and row["settings"]["calls"]["reject_enabled"]},
         "capabilities": {"connect": idle and not current, "qr": idle and status in {"starting", "connecting", "qr_ready", "qr_delayed", "qr_expired", "pairing"},
             "pair": idle and status == "qr_ready", "restart": idle and status != "disabled" and not outbound_degraded,
             "relink": idle and status != "disabled" and not outbound_degraded, "remove": idle, "settings": idle and not affiliate, "diagnostics": True},
@@ -352,6 +354,57 @@ async def create_device(tenant_id: UUID, payload: CreateDevice, response: Respon
             {"t": tenant_id, "c": transport["id"], "a": actor.account_id, "name": payload.name,
              "settings": _json(settings), "key": payload.idempotency_key, "fingerprint": fingerprint})).mappings().one()
         return jsonable_encoder({"device": await device_dto(db, row)})
+
+
+
+async def delivery_assistant_state(db, tenant_id):
+    if db.info.get("orion_device_profile") != DELIVERY_CONNECTION_PROFILE:
+        raise fail("WORKSPACE_FEATURE_UNAVAILABLE", 403)
+    row = (await db.execute(text("""SELECT * FROM subscription_devices
+        WHERE tenant_id=:t AND removed_at IS NULL FOR UPDATE"""),{"t":tenant_id})).mappings().one_or_none()
+    count = await delivery_whatsapp.catalogue_ready(tenant_id)
+    return row, {"device_id": str(row["id"]) if row else None, "revision":row["revision"] if row else None,
+                 "enabled":bool(row and delivery_whatsapp.enabled(row)), "eligible_products":count}
+
+
+@router.get(BASE + "/delivery-assistant")
+async def get_delivery_assistant(tenant_id: UUID, response: Response, actor: Actor = Depends(authenticate)):
+    response.headers["Cache-Control"] = "no-store"
+    async with _owner_transaction(tenant_id,actor) as db:
+        _, result = await delivery_assistant_state(db,tenant_id)
+        return result
+
+
+@router.put(BASE + "/delivery-assistant")
+async def set_delivery_assistant(tenant_id: UUID, payload: delivery_whatsapp.Settings, response: Response,
+                                 actor: Actor = Depends(authenticate)):
+    response.headers["Cache-Control"] = "no-store"
+    async with _owner_transaction(tenant_id,actor) as db:
+        row, result = await delivery_assistant_state(db,tenant_id)
+        if not row or row["revision"]!=payload.expected_revision or row["owner_account_id"]!=actor.account_id:
+            raise fail("DEVICE_CONFLICT")
+        if payload.enabled:
+            if not result["eligible_products"]:
+                raise HTTPException(409,"Salve um produto de água elegível no catálogo da Loja rápida. Não é necessário publicar a loja.")
+            if row["status"] in {"disabled","removing","removed"}:
+                raise fail("DEVICE_CAPABILITY_UNAVAILABLE")
+        pending=await db.scalar(text("""SELECT id FROM subscription_device_operations
+            WHERE tenant_id=:t AND device_id=:d AND status IN ('pending','running','uncertain') LIMIT 1"""),
+            {"t":tenant_id,"d":row["id"]})
+        if pending:
+            raise fail("DEVICE_CONFLICT")
+        if delivery_whatsapp.enabled(row)==payload.enabled:
+            return result
+        revision=await db.scalar(text("""UPDATE subscription_devices SET
+            settings=jsonb_set(settings,'{delivery_assistant_enabled}',to_jsonb(CAST(:enabled AS boolean))),
+            revision=revision+1,updated_at=clock_timestamp()
+            WHERE tenant_id=:t AND id=:d RETURNING revision"""),
+            {"t":tenant_id,"d":row["id"],"enabled":payload.enabled})
+        await db.execute(text("""UPDATE subscription_device_effects SET status='not_sent',
+            finished_at=clock_timestamp(),error_code='delivery_assistant_changed'
+            WHERE tenant_id=:t AND device_id=:d AND purpose=:purpose AND status='pending'"""),
+            {"t":tenant_id,"d":row["id"],"purpose":delivery_whatsapp.PURPOSE})
+        return {**result,"revision":revision,"enabled":payload.enabled}
 
 
 @router.get(BASE + "/{device_id}")
@@ -631,7 +684,8 @@ async def device_lease_snapshot(db, transport):
     delivery = db.info.get("orion_device_profile") == DELIVERY_CONNECTION_PROFILE
     # A tenant changing niche must not bring previously saved automation,
     # proxy credentials, or webhooks into the Delivery connection.
-    settings = DeviceSettings(name=row["name"]).model_dump(mode="json") if delivery else row["settings"]
+    settings = DeviceSettings(name=row["name"]).model_dump(mode="json") if delivery else {
+        key:value for key,value in row["settings"].items() if key!="delivery_assistant_enabled"}
     return jsonable_encoder({"id": row["id"], "generation": row["generation"], "settings_revision": row["revision"],
         "settings": settings, "proxy_secret": None if delivery else secret, "restart_required": row["restart_required"],
         "chatbot": None if db.info.get("orion_device_profile") in CONNECTION_ONLY_PROFILES else await chatbot.snapshot(db, row["tenant_id"]),
@@ -657,7 +711,10 @@ async def _private_transaction(request, *, live=True, device_id=None, allow_remo
                 raise HTTPException(401, "Canal não autorizado")
             await _workspace(db, tenant)
             await channels._lock_membership(db, channel_id)
-            await db.execute(text("SELECT id FROM tenants WHERE id=:t FOR UPDATE"), {"t": tenant})
+            # Delivery uses a second, RLS-bound runtime transaction for the
+            # canonical checkout. KEY SHARE FK locks must remain compatible.
+            tenant_lock = " FOR NO KEY UPDATE" if db.info["orion_device_profile"] == DELIVERY_CONNECTION_PROFILE else " FOR UPDATE"
+            await db.execute(text("SELECT id FROM tenants WHERE id=:t"+tenant_lock), {"t": tenant})
             transport = await channels._channel(db, channel_id, request.headers.get("x-orion-channel-key"), receipt_only=not live)
             if live:
                 channels._current(transport, owner, fence)
@@ -791,6 +848,8 @@ async def device_event(channel_id: UUID, payload: DeviceEvent, request: Request)
             if payload.kind == "status":
                 status_data = _event_runtime(payload)
                 await _store_runtime(db, row, status_data)
+            elif db.info.get("orion_device_profile") == DELIVERY_CONNECTION_PROFILE:
+                return await delivery_whatsapp.record_event(db,row,payload)
             return {"effects": [], "duplicate": False}
         data = payload.model_dump(mode="json")
         event_id = (await db.execute(text("""INSERT INTO subscription_device_events
@@ -867,6 +926,8 @@ async def pending_effects(channel_id: UUID, request: Request):
     from app.subscription_schedule_runtime import after_schedule_effect_finish
     from app.subscription_bulk_runtime import after_bulk_effect_finish
     async with _private_transaction(request) as (db, row, _, _, _):
+        if db.info.get("orion_device_profile") == DELIVERY_CONNECTION_PROFILE:
+            return await delivery_whatsapp.pending(db,row)
         if db.info.get("orion_device_profile") in CONNECTION_ONLY_PROFILES:
             return {"effects": [], "reconcile": []}
         # This negotiates transport support after the existing authentication;
@@ -955,6 +1016,9 @@ def _current_effect(row, effect):
 
 
 async def _policy_still_allows(db, row, effect):
+    if effect["purpose"] == delivery_whatsapp.PURPOSE:
+        return (db.info.get("orion_device_profile") == DELIVERY_CONNECTION_PROFILE
+                and await delivery_whatsapp.permits(db,row,effect))
     if effect["type"] == "chatbot_action":
         from app.subscription_chatbot_engine import policy_allows
         return await policy_allows(db, row, effect)
@@ -994,11 +1058,16 @@ async def _reserve_cooldown(db, row, effect):
 @router.post(INTERNAL + "/effects/authorize")
 async def authorize_effect(channel_id: UUID, payload: EffectRequest, request: Request):
     async with _private_transaction(request) as (db, row, _, owner, fence):
-        if db.info.get("orion_device_profile") in CONNECTION_ONLY_PROFILES:
+        profile=db.info.get("orion_device_profile")
+        if profile == AFFILIATE_WORKSPACE:
             raise fail("WORKSPACE_FEATURE_UNAVAILABLE", 403)
         if payload.device_id is not None:
             _same_snapshot(row, payload.device_id, payload.generation, payload.settings_revision)
         effect = await _effect(db, row, payload.operation_id)
+        if (profile == DELIVERY_CONNECTION_PROFILE) != (effect["purpose"] == delivery_whatsapp.PURPOSE):
+            raise fail("WORKSPACE_FEATURE_UNAVAILABLE", 403)
+        if profile == DELIVERY_CONNECTION_PROFILE and effect["type"] != "send_text":
+            raise fail("WORKSPACE_FEATURE_UNAVAILABLE", 403)
         if effect["type"] == "bulk_action":
             from app.subscription_bulk_runtime import authorize_bulk_effect
             return await authorize_bulk_effect(db, row, effect, owner, fence, payload)
@@ -1062,9 +1131,10 @@ async def authorize_effect(channel_id: UUID, payload: EffectRequest, request: Re
 async def finish_effect(channel_id: UUID, payload: EffectFinish, request: Request):
     from app.subscription_chatbot_engine import after_effect_finish
     async with _private_transaction(request) as (db, row, _, owner, fence):
-        if db.info.get("orion_device_profile") == DELIVERY_CONNECTION_PROFILE:
-            raise fail("WORKSPACE_FEATURE_UNAVAILABLE", 403)
+        profile=db.info.get("orion_device_profile")
         effect = await _effect(db, row, payload.operation_id)
+        if (profile == DELIVERY_CONNECTION_PROFILE) != (effect["purpose"] == delivery_whatsapp.PURPOSE):
+            raise fail("WORKSPACE_FEATURE_UNAVAILABLE", 403)
         if payload.device_id is not None and (payload.device_id != row["id"]
                 or payload.generation != effect["generation"] or payload.settings_revision != effect["settings_revision"]):
             raise fail("DEVICE_CONFLICT")
@@ -1097,7 +1167,9 @@ async def finish_effect(channel_id: UUID, payload: EffectFinish, request: Reques
                     await db.execute(text("""UPDATE subscription_devices SET
                         settings=jsonb_set(settings,'{webhook,enabled}','false'::jsonb),revision=revision+1,
                         updated_at=clock_timestamp() WHERE id=:d"""), {"d": row["id"]})
-        if effect["type"] == "bulk_action":
+        if effect["purpose"] == delivery_whatsapp.PURPOSE:
+            children = []
+        elif effect["type"] == "bulk_action":
             from app.subscription_bulk_runtime import after_bulk_effect_finish
             children = await after_bulk_effect_finish(db, row, effect, state)
         elif effect["type"] == "scheduled_action":

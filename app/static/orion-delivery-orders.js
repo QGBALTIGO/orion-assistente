@@ -7,7 +7,7 @@
   const payments=[['','Selecione'],['cash','Dinheiro'],['pix','Pix confirmado'],['debit_card','Cartão de débito'],['credit_card','Cartão de crédito']];
   const storefrontPaymentLabels={cash:'Dinheiro',debit_card:'Cartão de débito',credit_card:'Cartão de crédito',pix:'Pix na entrega'};
   const intakeChannels=[['pos','Ponto de venda'],['phone','Telefone'],['attendant','Atendimento humano']];
-  const salesChannels={...Object.fromEntries(intakeChannels),storefront:'Loja pública',manual:'Painel'};
+  const salesChannels={...Object.fromEntries(intakeChannels),storefront:'Loja pública',manual:'Painel',whatsapp:'WhatsApp'};
   function paymentInstructions(order,money) {
     const method=order.tender_preference||order.storefront?.payment_preference;
     const change=order.change_for_cents??order.storefront?.change_for_cents;
@@ -428,7 +428,7 @@
       ].filter(Boolean).join(' · '))+'</p><p>Taxa '+money(result.delivery_fee_cents)+'</p>'+
       (result.scheduled_at?'<p>Agendado para '+esc(when(result.scheduled_at))+'</p>':'')+
       (result.courier_name?'<p>Entregador: '+esc(result.courier_name)+'</p>':'')+'</div>':'';
-      const sourceText=result.storefront?'<p>Pedido pela loja · '+esc(result.storefront.customer_name||'')+' · '+
+      const sourceText=result.storefront?'<p>'+esc(result.sales_channel==='whatsapp'?'Pedido pelo WhatsApp':'Pedido pela loja')+' · '+esc(result.storefront.customer_name||'')+' · '+
         esc(result.storefront.contact_e164||'')+'</p>':'<p>Origem: '+esc(salesChannels[result.sales_channel]||'Painel')+'</p>';
       const note=result.storefront?.buyer_note||result.operator_note;
       openDetails('Pedido '+code({id}),'<p>'+statusBadge(result.status,badge)+' · '+money(result.total_cents)+'</p>'+

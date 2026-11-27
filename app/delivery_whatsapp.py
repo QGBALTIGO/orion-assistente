@@ -216,9 +216,9 @@ async def next_step(db, tenant, shop, items, state, phone):
     if state["payment_preference"] == "cash" and "change_for_cents" not in state:
         state["stage"] = "change"
         return state_question("change",state,shop,items),state
-    draft = store.CheckoutDraft.model_validate({key:state[key] for key in store.CheckoutDraft.model_fields if key in state})
     try:
-        estimate, _, logistics = await store.prepare_checkout(db,tenant,shop,draft)
+        draft = store.CheckoutDraft.model_validate({key:state[key] for key in store.CheckoutDraft.model_fields if key in state})
+        estimate, _, logistics = await store.prepare_checkout(db,tenant,shop,draft,source="whatsapp")
     except (HTTPException, ValidationError):
         return "Não consegui validar preço, estoque, endereço ou troco. Nenhum pedido foi registrado. Informe o produto novamente ou escreva atendente.",{}
     expires = int(datetime.now(timezone.utc).timestamp())+600
@@ -275,6 +275,8 @@ async def answer(db, tenant, phone, body, state, summary_delivered):
     if not store.is_open(shop, datetime.now(timezone.utc)):
         return "O atendimento comercial está fechado no momento. "+HELP,{}
     stage = state.get("stage")
+    if not stage and value in {"oi","ola","bom dia","boa tarde","boa noite","menu","catalogo","retomar atendimento","voltar atendimento","voltar ao bot"}:
+        return "Olá! Sou o atendente virtual da empresa. Posso ajudar com seus pedidos de água. "+list_products(items,datetime.now(timezone.utc))+" "+HELP,{}
     if stage=="confirm":
         if value in {"nao","não","cancelar","desistir","nao confirmo"}:
             return "Resumo cancelado. Nenhum pedido novo foi registrado.",{}
@@ -287,7 +289,8 @@ async def answer(db, tenant, phone, body, state, summary_delivered):
             # The same persisted proposal key makes replay safe even if the
             # runtime committed before the device acknowledgement was stored.
             try:
-                result = await store.save_checkout(db,tenant,shop,proposal,source="whatsapp")
+                async with db.begin_nested():
+                    result = await store.save_checkout(db,tenant,shop,proposal,source="whatsapp")
             except (HTTPException, ValidationError):
                 return "O resumo mudou ou expirou. Não confirmei um novo pedido. Confira os itens novamente ou escreva atendente.",{}
             reply = f"Pedido {result['order_code']} registrado! Total: {money(result['total_cents'])}."
