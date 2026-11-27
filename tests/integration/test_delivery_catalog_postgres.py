@@ -261,7 +261,7 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                     await dialog.get_by_role("button", name="Confirmar pedido").click()
                     await expect(dialog).to_be_hidden()
                     await page.get_by_role("button", name="Despachar", exact=True).click()
-                    await dialog.get_by_label("Entregador").fill("Entregador de avaliação")
+                    await dialog.get_by_label("Entregador", exact=True).fill("Entregador de avaliação")
                     await dialog.get_by_role("button", name="Despachar pedido").click()
                     await expect(dialog).to_be_hidden()
                     await expect(orders.get_by_text("Em rota", exact=True)).to_be_visible()
@@ -328,21 +328,22 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                     await expect(client_balances).to_have_text("0")
                     await page.get_by_role("button", name="Histórico", exact=True).click()
                     await expect(page.get_by_role("cell", name="Devolução", exact=True)).to_be_visible()
-                for route, heading in (("dashboard-delivery","Dashboard"),("pedidos-delivery","Pedidos"),
-                                       ("entregas-delivery","Entregas"),("vasilhames-delivery","Vasilhames"),
-                                       ("vendas-prazo-delivery","Vendas a prazo"),("relatorio-delivery","Relatório de vendas")):
+                panels = (
+                    ("dashboard-delivery", "Dashboard", None, "Pedidos do dia"),
+                    ("pedidos-delivery", "Pedidos", "button", "Novo pedido"),
+                    ("entregas-delivery", "Entregas", "button", "Novo pedido"),
+                    ("vasilhames-delivery", "Vasilhames", "button", "Novo vasilhame"),
+                    ("vendas-prazo-delivery", "Vendas a prazo", "button", "Ver pedidos"),
+                    ("relatorio-delivery", "Relatório de vendas", "link", "Exportar CSV"),
+                    ("logistica-delivery", "Logística", "heading", "Cobertura e taxas"),
+                    ("loja-delivery", "Loja rápida", "heading", "Produtos na vitrine"),
+                )
+                for route, heading, ready_role, ready_name in panels:
                     await page.goto(origin+"/painel?aba="+route)
-                    await expect(page.get_by_role("heading",name=heading,exact=True)).to_be_visible()
-                    if route == "dashboard-delivery":
-                        await expect(page.get_by_text("Pedidos do dia",exact=True)).to_be_visible()
-                    elif route == "vendas-prazo-delivery":
-                        await expect(page.get_by_role("button",name="Ver pedidos")).to_be_visible()
-                    elif route == "relatorio-delivery":
-                        await expect(page.get_by_role("link",name="Exportar CSV")).to_be_visible()
-                    elif route != "vasilhames-delivery":
-                        await expect(page.get_by_role("button",name="Novo pedido")).to_be_visible()
-                    else:
-                        await expect(page.get_by_role("button",name="Novo vasilhame")).to_be_visible()
+                    await expect(page.get_by_role("heading", name=heading, exact=True)).to_be_visible()
+                    ready = (page.get_by_role(ready_role, name=ready_name, exact=True) if ready_role
+                             else page.get_by_text(ready_name, exact=True))
+                    await expect(ready).to_be_visible()
                     for width in widths:
                         await page.set_viewport_size({"width":width,"height":900})
                         assert await page.evaluate("() => document.documentElement.scrollWidth <= innerWidth + 1"), (route,theme,width)

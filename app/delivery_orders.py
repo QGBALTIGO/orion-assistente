@@ -9,12 +9,14 @@ from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
-from pydantic import Field, StrictBool, StrictInt, field_validator, model_validator
+from fastapi.encoders import jsonable_encoder
+from pydantic import AwareDatetime, Field, StrictBool, StrictInt, field_validator, model_validator
 from sqlalchemy import text
 
 from app import commercial_service as commerce, management_models as management
 from app.business_profile_schemas import ProfileModel
 from app.commercial_schemas import IdempotencyKey, QuoteLineRequest
+from app import delivery_container_orders as packaging, delivery_logistics as logistics, delivery_payments as payments
 from app.delivery_catalog import LIMIT, MAX_QUANTITY, list_items, run_once
 from app.management_schemas import MAX_MONEY, normalize_phone
 from app.onboarding_schemas import Address
@@ -47,17 +49,19 @@ class OrderItems(ProfileModel):
 class OrderEstimate(OrderItems):
     mode: OrderMode = "counter"
     delivery_fee_cents: StrictInt = Field(default=0, ge=0, le=MAX_MONEY)
+    address: Address | None = None
+    scheduled_at: AwareDatetime | None = None
 
     @model_validator(mode="after")
     def delivery_fee_for_delivery(self):
-        if self.mode != "delivery" and self.delivery_fee_cents:
-            raise ValueError("A taxa é usada em pedidos para entrega")
+        if self.mode != "delivery" and (self.delivery_fee_cents or self.address or self.scheduled_at):
+            raise ValueError("A taxa, o endereço e o agendamento são usados em pedidos para entrega")
         return self
 
 
 class ManualOrder(OrderEstimate):
     customer_id: UUID | None = None
-    address: Address | None = None
+    container_plan: list[packaging.ContainerOrderItem] = Field(default_factory=list, max_length=30)
     estimate_version: str = Field(pattern=r"^[0-9a-f]{64}$")
     idempotency_key: IdempotencyKey
 
@@ -71,13 +75,17 @@ class ManualOrder(OrderEstimate):
 
 
 class Transition(ProfileModel):
-    action: Literal["dispatch", "fulfill", "cancel", "settle", "return"]
+    action: Literal["dispatch", "fulfill", "cancel", "settle", "return", "reschedule", "recipient_absent"]
     expected_revision: StrictInt = Field(ge=1)
-    payment_method: Literal["cash", "debit_card", "credit_card", "on_account"] | None = None
+    payment_method: Literal["cash", "debit_card", "credit_card", "pix", "on_account"] | None = None
     payment_due_date: date | None = None
     courier_name: str | None = Field(default=None, min_length=1, max_length=120)
+    courier_id: UUID | None = None
     returned_to_stock: StrictBool = False
     refunded: StrictBool = False
+    containers_confirmed: StrictBool = False
+    scheduled_at: AwareDatetime | None = None
+    note: str | None = Field(default=None, max_length=300)
     idempotency_key: IdempotencyKey
 
     @model_validator(mode="after")
@@ -90,10 +98,17 @@ class Transition(ProfileModel):
             raise ValueError("Informe o vencimento para pedidos a prazo")
         if self.payment_due_date is not None and self.payment_due_date.year > 2100:
             raise ValueError("Use vencimento até o ano de 2100")
-        if (self.action == "dispatch") != (self.courier_name is not None):
+        if (self.action == "dispatch") != bool(self.courier_name or self.courier_id):
             raise ValueError("Informe o entregador ao despachar")
-        if self.action not in {"cancel","return"} and self.returned_to_stock:
+        if self.courier_id and self.courier_name:
+            raise ValueError("Use o entregador cadastrado ou digite o nome")
+        if self.containers_confirmed and self.action not in {"fulfill", "return"}:
+            raise ValueError("Confira os vasilhames na conclusão ou devolução do pedido")
+        if self.action not in {"cancel","return","reschedule","recipient_absent"} and self.returned_to_stock:
             raise ValueError("Confirme o retorno dos itens ao cancelar uma entrega")
+        if ((self.scheduled_at is not None or self.note is not None) and self.action not in {"reschedule","recipient_absent"}
+                or self.action == "reschedule" and self.scheduled_at is None):
+            raise ValueError("Informe a data e a hora para reagendar a entrega")
         if self.action != "return" and self.refunded:
             raise ValueError("Confirme o estorno junto com a devolução")
         return self
@@ -103,10 +118,15 @@ RECEIPT_STATUS = "CASE WHEN d.return_financial_entry_id IS NOT NULL THEN 'refund
 ORDERS = f"""
     SELECT o.id,o.quote_id,o.status,o.revision,o.created_at,d.mode,d.customer_id,
         d.financial_entry_id,q.customer_name,q.total_cents,d.delivery_fee_cents,d.courier_name,d.dispatched_at,
-        d.payment_due_date,d.return_financial_entry_id,f.payment_method,{RECEIPT_STATUS} AS receipt_status
+        d.payment_due_date,d.return_financial_entry_id,f.payment_method,{RECEIPT_STATUS} AS receipt_status,
+        d.scheduled_at,d.courier_id,{payments.COLLECTED_CENTS} AS collected_cents,
+        {payments.OUTSTANDING_CENTS} AS outstanding_cents,
+        EXISTS (SELECT 1 FROM delivery_order_container_plans p
+                WHERE p.tenant_id=o.tenant_id AND p.order_id=o.id) AS has_container_plan
     FROM commercial_orders o JOIN delivery_order_details d ON (d.tenant_id,d.order_id)=(o.tenant_id,o.id)
     JOIN commercial_quotes q ON (q.tenant_id,q.id)=(o.tenant_id,o.quote_id)
     LEFT JOIN financial_entries f ON (f.tenant_id,f.id)=(d.tenant_id,d.financial_entry_id)
+    {payments.COLLECTION_TOTAL_JOIN}
     WHERE o.tenant_id=:t AND o.origin='delivery'
 """
 
@@ -161,10 +181,10 @@ async def overview(db, tenant, day):
         JOIN delivery_order_details d ON (d.tenant_id,d.order_id)=(o.tenant_id,o.id)
         WHERE o.tenant_id=:t AND o.origin='delivery' AND o.created_at>=:start AND o.created_at<:end
     """), {"t":tenant,"start":day_start,"end":end})).mappings().one()
-    series = (await db.execute(text("""
-        WITH receipts AS (
+    series = (await db.execute(text(f"""
+        WITH payment_links AS ({payments.RECEIPT_LINKS}), receipts AS (
             SELECT CAST(coalesce(f.received_at,f.occurred_at) AT TIME ZONE :zone AS date) AS day, sum(f.amount_cents) AS income_cents
-            FROM financial_entries f JOIN delivery_order_details d
+            FROM financial_entries f JOIN payment_links d
                 ON (d.tenant_id,d.financial_entry_id)=(f.tenant_id,f.id)
             WHERE f.tenant_id=:t AND f.status='paid'
                 AND coalesce(f.received_at,f.occurred_at)>=:start AND coalesce(f.received_at,f.occurred_at)<:end
@@ -191,6 +211,8 @@ async def one_order(db, tenant, order_id, *, lock=False):
 
 
 async def detail(db, tenant, order_id):
+    from app.delivery_storefront import order_contact
+
     row = await one_order(db, tenant, order_id)
     quote = await commerce._quote(db, tenant, row["quote_id"])
     events = (await db.execute(text("""
@@ -200,7 +222,9 @@ async def detail(db, tenant, order_id):
     address = (await db.execute(text("""
         SELECT address FROM delivery_order_details WHERE tenant_id=:t AND order_id=:o
     """), {"t":tenant,"o":order_id})).scalar_one()
-    return {**row,"address":address,"items":quote["items"],"history":[dict(event) for event in events]}
+    return {**row,"address":address,"items":quote["items"],"history":[dict(event) for event in events],
+            "container_plan": await packaging.get_plan(db, tenant, order_id),
+            "storefront": await order_contact(db, tenant, order_id)}
 
 
 async def lookup_customers(db, tenant, *, search):
@@ -245,12 +269,19 @@ async def previous_address(db, tenant, customer):
 
 async def estimate(db, tenant, payload):
     lines = await commerce._load_lines(db, tenant, payload.items)
-    return priced_order(lines, payload, commerce.now_utc())
+    now = commerce.now_utc()
+    delivery = await delivery_terms(db, tenant, payload, now=now)
+    return priced_order(lines, payload, now, delivery=delivery)
 
+async def delivery_terms(db, tenant, payload, *, now, lock=False):
+    if payload.mode != "delivery":
+        return None
+    return await logistics.quote_delivery(db, tenant, payload.address, payload.scheduled_at,
+        requested_fee_cents=payload.delivery_fee_cents, lock=lock, now=now)
 
-def priced_order(lines, payload, now):
+def priced_order(lines, payload, now, *, delivery=None):
     quote = commerce.calculate(lines, now)
-    fee = payload.delivery_fee_cents
+    fee = delivery["delivery_fee_cents"] if delivery is not None else payload.delivery_fee_cents
     subtotal = quote["total_cents"]
     if subtotal is not None:
         quote["total_cents"] += fee
@@ -259,6 +290,8 @@ def priced_order(lines, payload, now):
     keys = ("variant_id","quantity","product_revision","variant_revision","inventory_revision")
     facts = [[item[key] for key in keys] for item in quote["items"]]
     signed = [payload.mode, fee, quote["total_cents"], facts]
+    if delivery and (delivery["policy_revision"] or delivery["scheduled_at"]):
+        signed.append(jsonable_encoder(delivery))
     version = hashlib.sha256(json.dumps(signed).encode()).hexdigest()
     return {**quote,"subtotal_cents":subtotal,"delivery_fee_cents":fee,"estimate_version":version}
 
@@ -275,9 +308,10 @@ async def create(db, tenant, access, payload):
             """), {"t":tenant,"c":payload.customer_id})).mappings().first()
             if customer is None:
                 raise HTTPException(404, "Cliente ativo não encontrado")
-        lines = await commerce._load_lines(db, tenant, payload.items, lock=True)
         now = commerce.now_utc()
-        quote = priced_order(lines, payload, now)
+        delivery = await delivery_terms(db, tenant, payload, now=now, lock=True)
+        lines = await commerce._load_lines(db, tenant, payload.items, lock=True)
+        quote = priced_order(lines, payload, now, delivery=delivery)
         if not quote["confirmation_requirements_met"]:
             commerce.conflict("Confira o preço e o estoque de todos os itens antes de criar o pedido.")
         if quote["estimate_version"] != payload.estimate_version:
@@ -293,15 +327,21 @@ async def create(db, tenant, access, payload):
             VALUES (:id,:t,:q,:key,'confirmed','delivery')
         """), {"id":order_id,"t":tenant,"q":quote_id,"key":f"delivery:{order_id}"})
         await db.execute(text("""
-            INSERT INTO delivery_order_details (tenant_id,order_id,mode,customer_id,address,delivery_fee_cents)
-            VALUES (:t,:id,:mode,:c,CAST(:address AS jsonb),:fee)
+            INSERT INTO delivery_order_details
+                (tenant_id,order_id,mode,customer_id,address,delivery_fee_cents,scheduled_at,logistics_snapshot)
+            VALUES (:t,:id,:mode,:c,CAST(:address AS jsonb),:fee,:scheduled,CAST(:logistics AS jsonb))
         """), {"t":tenant,"id":order_id,"mode":payload.mode,"c":payload.customer_id,
-                "address":payload.address.model_dump_json() if payload.address else None,"fee":payload.delivery_fee_cents})
+                "address":payload.address.model_dump_json() if payload.address else None,
+                "fee":quote["delivery_fee_cents"],"scheduled":delivery["scheduled_at"] if delivery else None,
+                "logistics":json.dumps(jsonable_encoder(delivery)) if delivery else None})
         await commerce.reserve_stock(db, tenant, access, order_id, lines)
+        if payload.container_plan:
+            await packaging.save_plan(db, tenant, order_id, payload.customer_id, lines, payload.container_plan)
         await commerce.audit(db, tenant, access, "order", order_id, "confirmed", {"total_cents":quote["total_cents"],"mode":payload.mode})
         return {"id":order_id,"status":"confirmed","revision":1,"total_cents":quote["total_cents"]}
 
-    return await run_once(db, tenant, payload, "order_create", None, write)
+    return await run_once(db, tenant, payload, "order_create", None, write,
+                          optional_defaults={"scheduled_at":None,"container_plan":[]})
 
 
 async def fulfill(db, tenant, access, row, items, method, due_date):
@@ -341,27 +381,9 @@ async def fulfill(db, tenant, access, row, items, method, due_date):
     return receipt
 
 
-async def settle_credit(db, tenant, access, order, method):
-    if order["status"] != "fulfilled" or not order["payment_due_date"] or order["receipt_status"] != "pending":
-        commerce.conflict("Somente pedidos a prazo com recebimento pendente podem ser baixados")
-    receipt = (await db.execute(text("""
-        UPDATE financial_entries SET status='paid',received_at=now(),payment_method=:method,
-            receipt_recorded_at=now(),receipt_source='manual',receipt_actor_id=:actor,
-            updated_at=now(),version=version+1
-        WHERE tenant_id=:t AND id=:id AND status='pending' RETURNING id
-    """), {"t":tenant,"id":order["financial_entry_id"],"method":method,"actor":access.account_id})).scalar_one_or_none()
-    if receipt is None:
-        commerce.conflict("O recebimento foi alterado. Confira o lançamento.")
-    await management.audit(db, tenant, "management_updated", "financial_entries", receipt)
-    return {"id":receipt}
-
-
 async def return_order(db, tenant, access, row, items, payload):
     if not payload.returned_to_stock:
         raise HTTPException(422, "Confirme que todos os itens voltaram ao estoque")
-    paid = row["receipt_status"] == "paid"
-    if paid != payload.refunded:
-        raise HTTPException(422, "Confirme o estorno realizado" if paid else "Este pedido não tem pagamento recebido")
     for item in sorted(items,key=lambda item:item["variant_id"]):
         variant=UUID(item["variant_id"])
         amount=item["quantity"]
@@ -376,25 +398,7 @@ async def return_order(db, tenant, access, row, items, payload):
             commerce.conflict("Confira o saldo e o limite de estoque antes de registrar a devolução.")
         await commerce.audit(db,tenant,access,"stock",variant,"sale_returned",
             {"order_id":row["id"],"quantity":amount,"after":after,"movement":"sale_returned"})
-    if paid:
-        refund=await management.insert_row(db,tenant,"financial_entries",{
-            "kind":"expense","description":f"Estorno do pedido {str(row['id'])[:8].upper()}",
-            "amount_cents":row["total_cents"],"category":"Delivery","payment_method":row["payment_method"],
-            "status":"paid","occurred_at":commerce.now_utc(),"customer_id":row["customer_id"],
-        },str(row["id"]),operation="delivery_order_refund")
-        await db.execute(text("""
-            UPDATE delivery_order_details SET return_financial_entry_id=:f WHERE tenant_id=:t AND order_id=:o
-        """), {"t":tenant,"o":row["id"],"f":refund["id"]})
-        return refund["id"]
-    if row["receipt_status"] == "pending":
-        receipt = (await db.execute(text("""
-            UPDATE financial_entries SET status='cancelled',updated_at=now(),version=version+1
-            WHERE tenant_id=:t AND id=:id AND status='pending' RETURNING id
-        """), {"t":tenant,"id":row["financial_entry_id"]})).scalar_one_or_none()
-        if receipt is None:
-            commerce.conflict("O lançamento a receber mudou. Confira a venda antes da devolução.")
-        await management.audit(db,tenant,"management_updated","financial_entries",receipt)
-    return None
+    return await payments.return_payment(db, tenant, access, row, refunded=payload.refunded)
 
 
 async def transition(db, tenant, access, order_id, payload):
@@ -405,22 +409,33 @@ async def transition(db, tenant, access, order_id, payload):
             commerce.conflict("O pedido foi alterado ou encerrado. Confira o histórico.")
         receipt = None
         return_entry = None
+        event_details = {}
         if payload.action == "settle":
-            receipt = await settle_credit(db,tenant,access,row,payload.payment_method)
+            receipt = await payments.apply_collection(db,tenant,access,row,payload.payment_method)
             status = "fulfilled"
         elif payload.action == "dispatch":
             if row["mode"] != "delivery" or row["status"] != "confirmed":
                 commerce.conflict("O pedido precisa estar aguardando despacho")
             await commerce.tenant_exists(db, tenant, active=True)
+            courier_name = payload.courier_name
+            if payload.courier_id is not None:
+                courier = await logistics.active_courier(db, tenant, payload.courier_id, lock=True)
+                courier_name = courier["name"]
             await db.execute(text("""
-                UPDATE delivery_order_details SET courier_name=:courier,dispatched_at=now()
+                UPDATE delivery_order_details SET courier_name=:courier,courier_id=:courier_id,dispatched_at=now()
                 WHERE tenant_id=:t AND order_id=:o
-            """), {"t":tenant,"o":order_id,"courier":payload.courier_name})
+            """), {"t":tenant,"o":order_id,"courier":courier_name,"courier_id":payload.courier_id})
             status = "dispatched"
+        elif payload.action in {"reschedule", "recipient_absent"}:
+            event_details = await logistics.reschedule_delivery(db, tenant, row, payload.scheduled_at,
+                returned_to_stock=payload.returned_to_stock,
+                recipient_absent=payload.action == "recipient_absent", note=payload.note)
+            status = "confirmed"
         else:
             quote = await commerce._quote(db, tenant, row["quote_id"])
             if payload.action == "return":
                 return_entry = await return_order(db,tenant,access,row,quote["items"],payload)
+                await packaging.apply(db, tenant, access, order_id, row["customer_id"], payload.containers_confirmed, reverse=True)
                 status = "cancelled"
             elif payload.action == "cancel":
                 if row["status"] == "dispatched" and not payload.returned_to_stock:
@@ -431,18 +446,21 @@ async def transition(db, tenant, access, order_id, payload):
                 if row["mode"] == "delivery" and row["status"] != "dispatched":
                     commerce.conflict("Despache o pedido antes de registrar a entrega")
                 receipt = await fulfill(db, tenant, access, row, quote["items"], payload.payment_method, payload.payment_due_date)
+                await packaging.apply(db, tenant, access, order_id, row["customer_id"], payload.containers_confirmed)
                 status = "fulfilled"
         revision = (await db.execute(text("""
             UPDATE commercial_orders SET status=:status,revision=revision+1,updated_at=now()
             WHERE tenant_id=:t AND id=:o RETURNING revision
         """), {"status":status,"t":tenant,"o":order_id})).scalar_one()
         receipt_id=receipt["id"] if receipt else None
-        action = {"settle":"received","return":"returned"}.get(payload.action,status)
+        action = {"settle":"received","return":"returned","reschedule":"delivery_rescheduled",
+                  "recipient_absent":"delivery_recipient_absent"}.get(payload.action,status)
         await commerce.audit(db, tenant, access, "order", order_id, action,
                              {"financial_entry_id":receipt_id,"payment_method":payload.payment_method,
                               "returned_to_stock":payload.returned_to_stock,"payment_due_date":payload.payment_due_date,
-                              "return_financial_entry_id":return_entry})
+                              "return_financial_entry_id":return_entry, **event_details})
         return {"id":order_id,"status":status,"revision":revision,"financial_entry_id":receipt_id,
                 "return_financial_entry_id":return_entry}
 
-    return await run_once(db, tenant, payload, "order_transition", order_id, write)
+    return await run_once(db, tenant, payload, "order_transition", order_id, write,
+                          optional_defaults={"courier_id":None,"containers_confirmed":False,"scheduled_at":None,"note":None})

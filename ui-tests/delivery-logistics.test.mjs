@@ -1,0 +1,94 @@
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import test from 'node:test';
+import {defaultResponse, flush, makeSuite, planState} from './harness.mjs';
+
+const moduleSource=await readFile(new URL('../app/static/orion-delivery-logistics.js',import.meta.url),'utf8');
+const preview=planState('none',{delivery_catalog_preview:true});
+const revisionZero=()=>({revision:0,timezone:'America/Cuiaba',coverage_mode:'manual',areas:[],windows:[],
+  scheduling_enabled:false,lead_minutes:60,horizon_days:7});
+
+test('configures coverage and windows and adds a courier in Orion dialogs',async t=>{
+  let config=revisionZero();
+  let couriers=[];
+  const h=await makeSuite({initialRoute:'logistica-delivery',permissions:preview,
+    configureWindow:window=>window.eval(moduleSource),
+    respond:(url,method,data)=>{
+      if (url.includes('/delivery/logistics/couriers')) {
+        if (method==='POST') {
+          const newCourier={id:'23000000-0000-4000-8000-000000000001',name:data.name,
+            active:data.active,phone:data.phone,revision:1};
+          couriers=[newCourier];
+          return newCourier;
+        }
+        return {items:couriers,offset:0,limit:25,has_more:false};
+      }
+      if (url.endsWith('/delivery/logistics')) {
+        if (method==='PUT') {
+          assert.equal(data.expected_revision,config.revision);
+          const {expected_revision,...settings}=data;
+          config={...settings,revision:expected_revision+1,timezone:'America/Cuiaba'};
+        }
+        return config;
+      }
+      return defaultResponse(url);
+    },
+  });
+  t.after(()=>h.close());
+  await flush();
+  const click=action=>h.click('[data-os-action='+action+']');
+  const submit=async()=>{
+    h.document.querySelector('#osDialog button[type=submit]').click();
+    await flush();
+  };
+  assert.ok(h.document.querySelector('#osNav [data-os-route=logistica-delivery]'));
+  click('logistics-new-area');
+  h.fill('#osDialog [name=logistics_city]','Campo Grande');
+  h.fill('#osDialog [name=logistics_state]','MS');
+  h.fill('#osDialog [name=logistics_neighborhood]','Vila São João');
+  h.fill('#osDialog [name=logistics_fee]','7,50');
+  await submit();
+  assert.equal(config.areas[0]?.fee_cents,750);
+  assert.match(h.document.querySelector('#osDeliveryLogisticsSections').textContent,/Vila São João/);
+  click('logistics-coverage');
+  h.fill('#osDialog [name=logistics_mode]','areas');
+  await submit();
+  assert.equal(config.coverage_mode,'areas');
+  click('logistics-new-window');
+  h.fill('#osDialog [name=logistics_weekday]','5');
+  h.fill('#osDialog [name=logistics_start]','08:30');
+  h.fill('#osDialog [name=logistics_end]','14:30');
+  await submit();
+  assert.equal(config.windows[0]?.weekday,5);
+  assert.match(h.document.querySelector('#osDeliveryLogisticsSections').textContent,/Sábado/);
+  click('logistics-new-courier');
+  h.fill('#osDialog [name=logistics_courier_name]','Entregadora de teste');
+  await submit();
+  assert.equal(couriers[0]?.name,'Entregadora de teste');
+  assert.match(h.document.querySelector('#osDeliveryLogisticsSections').textContent,/Entregadora de teste/);
+  assert.deepEqual(h.errors,[]);
+});
+
+test('a viewer can read Delivery logistics without editing settings or couriers',async t=>{
+  const h=await makeSuite({initialRoute:'logistica-delivery',role:'viewer',permissions:preview,
+    configureWindow:window=>window.eval(moduleSource),
+    respond:url=>url.includes('/delivery/logistics/couriers')?{items:[],offset:0,limit:25,has_more:false}:
+      url.endsWith('/delivery/logistics')?revisionZero():defaultResponse(url)});
+  t.after(()=>h.close());
+  await flush();
+  assert.match(h.document.querySelector('#osDeliveryLogisticsSections').textContent,/Entregadores/);
+  assert.equal(h.document.querySelector('[data-os-action=logistics-new-area]'),null);
+  assert.equal(h.document.querySelector('[data-os-action=logistics-new-courier]'),null);
+});
+
+test('an editor can manage the courier roster while the owner controls public rates and windows',async t=>{
+  const h=await makeSuite({initialRoute:'logistica-delivery',role:'editor',permissions:preview,
+    configureWindow:window=>window.eval(moduleSource),
+    respond:url=>url.includes('/delivery/logistics/couriers')?{items:[],offset:0,limit:25,has_more:false}:
+      url.endsWith('/delivery/logistics')?revisionZero():defaultResponse(url)});
+  t.after(()=>h.close());
+  await flush();
+  assert.ok(h.document.querySelector('[data-os-action=logistics-new-courier]'));
+  assert.equal(h.document.querySelector('[data-os-action=logistics-new-area]'),null);
+  assert.equal(h.document.querySelector('[data-os-action=logistics-schedule]'),null);
+});

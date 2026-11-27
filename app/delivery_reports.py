@@ -46,8 +46,8 @@ async def sales(db, tenant, *, start, end, state, mode, receipt, offset=0, expor
         WITH filtered AS (""" + scope + """),
         page AS (SELECT * FROM filtered ORDER BY created_at DESC,id DESC LIMIT :limit OFFSET :offset)
         SELECT count(*) AS orders, count(*) FILTER (WHERE status='cancelled') AS cancelled,
-            coalesce(sum(total_cents) FILTER (WHERE receipt_status='paid'),0) AS paid_cents,
-            coalesce(sum(total_cents) FILTER (WHERE receipt_status='pending'),0) AS pending_cents,
+            coalesce(sum(collected_cents) FILTER (WHERE receipt_status IN ('paid','pending')),0) AS paid_cents,
+            coalesce(sum(outstanding_cents),0) AS pending_cents,
             coalesce((SELECT jsonb_agg(to_jsonb(page) ORDER BY created_at DESC,id DESC) FROM page),'[]') AS items
         FROM filtered
     """), {**params,"limit":LIMIT+1})).mappings().one()

@@ -9,8 +9,11 @@ from sqlalchemy.exc import IntegrityError
 
 from app import delivery_catalog as catalog
 from app import delivery_containers as containers
+from app import delivery_logistics as logistics
 from app import delivery_orders as orders
+from app import delivery_payments as payments
 from app import delivery_reports as reports
+from app import delivery_reports_ops
 from app.catalog_api import Actor, authenticate
 from app.database import get_session_factory, tenant_transaction
 from app.http_json import json_response
@@ -23,12 +26,12 @@ from app.workspace_policy import delivery_preview_enabled
 router = APIRouter(prefix="/api/v1/tenants/{tenant_id}/delivery", tags=["Delivery e Distribuição"])
 
 
-async def run(actor, tenant, operation, *args, write=False, response_status=200, **kwargs):
+async def run(actor, tenant, operation, *args, write=False, publish=False, response_status=200, **kwargs):
     if actor.role != "member" or actor.maintenance or not isinstance(actor.account_id, UUID):
         raise HTTPException(403, "Use a conta vinculada à empresa de homologação")
     try:
         async with access_session(actor, tenant) as access:
-            check_access(access.role, "draft" if write else "read")
+            check_access(access.role, "publish" if publish else "draft" if write else "read")
             async with get_session_factory()() as db:
                 async with tenant_transaction(db, tenant):
                     # Onboarding takes the exclusive lock when changing a niche.
@@ -191,3 +194,39 @@ async def sales_export(tenant_id: UUID, start: date | None = None, end: date | N
                        receipt: reports.ReceiptFilter = "all", actor: Actor = Depends(authenticate)):
     return await run(actor, tenant_id, reports.sales, start=start, end=end, state=state, mode=mode,
                      receipt=receipt, export=True)
+
+
+@router.post("/orders/{order_id}/payment-receipts")
+async def register_credit_receipt(tenant_id: UUID, order_id: UUID, payload: payments.CreditPayment,
+                                  actor: Actor = Depends(authenticate)):
+    return await run(actor, tenant_id, payments.collect, order_id, payload, write=True)
+
+
+@router.get("/logistics")
+async def logistics_policy(tenant_id: UUID, actor: Actor = Depends(authenticate)):
+    return await run(actor, tenant_id, logistics.get_policy)
+
+
+@router.put("/logistics")
+async def update_logistics(tenant_id: UUID, payload: logistics.PolicyUpdate, actor: Actor = Depends(authenticate)):
+    return await run(actor, tenant_id, logistics.save_policy, payload, write=True, publish=True)
+
+
+@router.get("/logistics/couriers")
+async def couriers(tenant_id: UUID, search: str = Query(default="", max_length=120), active_only: bool = False,
+                   offset: int = Query(default=0, ge=0, le=100_000), actor: Actor = Depends(authenticate)):
+    return await run(actor, tenant_id, logistics.list_couriers, search=search, active_only=active_only, offset=offset)
+
+
+@router.post("/logistics/couriers", status_code=201)
+async def add_courier(tenant_id: UUID, payload: logistics.CourierCreate, actor: Actor = Depends(authenticate)):
+    return await run(actor, tenant_id, logistics.create_courier, payload, write=True, response_status=201)
+
+
+@router.put("/logistics/couriers/{courier_id}")
+async def change_courier(tenant_id: UUID, courier_id: UUID, payload: logistics.CourierUpdate,
+                          actor: Actor = Depends(authenticate)):
+    return await run(actor, tenant_id, logistics.update_courier, courier_id, payload, write=True)
+
+
+delivery_reports_ops.register(router, run)

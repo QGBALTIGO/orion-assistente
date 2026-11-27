@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#2e7bf6">
+  <title>__STORE_TITLE__ · Orion</title>
+  <script src="/public-assets/orion-public-theme.js"></script>
+  <link rel="stylesheet" href="/public-assets/orion-public.css">
+  <link rel="stylesheet" href="/public-assets/orion-fields.css">
+  <link rel="stylesheet" href="/delivery-store-assets/orion-delivery-store.css">
+  <script defer src="/public-assets/orion-fields.js"></script>
+  <script defer src="/delivery-store-assets/orion-delivery-store.js"></script>
+</head>
+<body data-store-slug="__STORE_SLUG__">
+  <a href="#catalogo" class="skip">Ir para o catálogo</a>
+  <header class="store-top">
+    <div class="store-container store-nav">
+      <span class="store-brand">
+        <img class="store-brand-light" src="/brand/orion-brand-light.svg" alt="Orion" width="98" height="34">
+        <img class="store-brand-dark" src="/brand/orion-brand-dark.svg" alt="Orion" width="98" height="34">
+      </span>
+      <div class="store-actions">
+        <button type="button" class="outline" id="store-track-menu">Acompanhar pedido</button>
+        <button type="button" class="appearance-trigger" id="public-theme-toggle" aria-label="Alternar tema do site">
+          <svg class="appearance-symbol appearance-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></svg>
+          <svg class="appearance-symbol appearance-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M20.5 14.4A8.5 8.5 0 0 1 9.6 3.5 8.5 8.5 0 1 0 20.5 14.4Z"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+  <main class="store-container store-main">
+    <section class="identity-card store-identity" aria-labelledby="store-title">
+      <div>
+        <h1 id="store-title">__STORE_TITLE__</h1>
+        <p id="store-description" class="preserve-lines muted" hidden></p>
+      </div>
+      <p id="store-hours" class="small muted preserve-lines" hidden></p>
+    </section>
+    <div id="store-feedback" class="store-status" role="status" aria-live="polite">Carregando a loja…</div>
+    <section class="store-grid" id="store-content" hidden>
+      <div id="catalogo" tabindex="-1">
+        <div class="section-heading">
+          <h2>Produtos</h2>
+        </div>
+        <label class="search-wrap">
+          <span class="store-sr">Buscar produto</span>
+          <input id="store-search" type="search" maxlength="120" placeholder="Buscar produto">
+        </label>
+        <div id="store-categories" class="categories" role="group" aria-label="Categorias"></div>
+        <div id="store-products" class="services-grid"></div>
+      </div>
+      <aside id="store-cart-section" class="info-card store-order" aria-labelledby="store-cart-title">
+        <h2 id="store-cart-title">Seu pedido</h2>
+        <div id="store-cart" aria-live="polite"></div>
+        <div id="store-subtotal" class="store-total"></div>
+        <button type="button" class="primary" id="store-checkout-menu" disabled>Continuar pedido</button>
+      </aside>
+    </section>
+  </main>
+  <a class="primary store-mobile-cart" id="store-mobile-cart" href="#store-cart-section" hidden></a>
+
+  <dialog id="store-checkout" class="store-dialog" aria-labelledby="store-checkout-title">
+    <form id="store-checkout-form" class="store-form">
+      <header class="store-dialog-header">
+        <h2 id="store-checkout-title">Revisar pedido</h2>
+        <button type="button" class="outline" data-store-close>Voltar</button>
+      </header>
+      <div class="store-form-grid">
+        <label class="store-field">Nome
+          <input name="customer_name" autocomplete="name" maxlength="120" required>
+        </label>
+        <label class="store-field">Telefone com DDD
+          <input name="customer_phone" autocomplete="tel" inputmode="tel" type="tel" data-orion-field="phone" maxlength="40" required>
+        </label>
+        <label class="store-field">Como quer receber?
+          <select name="mode" required></select>
+        </label>
+        <label class="store-field">Pagamento no recebimento
+          <select name="payment_preference" required></select>
+        </label>
+      </div>
+      <p id="store-pickup" class="muted preserve-lines" hidden></p>
+      <fieldset name="delivery_address" id="store-address" hidden disabled>
+        <legend>Endereço de entrega</legend>
+        <div class="store-form-grid">
+          <label class="store-field">CEP
+            <input name="postal_code" autocomplete="postal-code" inputmode="numeric" data-orion-field="postal-code" maxlength="9">
+          </label>
+          <label class="store-field">Rua
+            <input name="street" autocomplete="address-line1" maxlength="160" required>
+          </label>
+          <label class="store-field">Número
+            <input name="number" maxlength="30" required>
+          </label>
+          <label class="store-field">Complemento
+            <input name="complement" autocomplete="address-line2" maxlength="160">
+          </label>
+          <label class="store-field">Bairro atendido
+            <select name="coverage_area" required></select>
+          </label>
+          <label class="store-check"><input name="no_number" type="checkbox"> Sem número</label>
+        </div>
+      </fieldset>
+      <div id="store-order-summary" class="store-summary" hidden></div>
+      <p id="store-checkout-feedback" class="store-status" role="status" aria-live="polite"></p>
+      <button type="submit" class="primary" id="store-checkout-submit">Conferir valor</button>
+    </form>
+    <section id="store-confirmed" class="store-form" hidden>
+      <h2 id="store-confirmed-title">Pedido recebido</h2>
+      <p id="store-confirmed-details"></p>
+      <p class="muted">Guarde o link para acompanhar. O pagamento é feito no recebimento.</p>
+      <div class="store-actions">
+        <button type="button" class="primary" id="store-copy-link">Copiar link</button>
+        <button type="button" class="outline" id="store-confirmed-track">Acompanhar pedido</button>
+        <button type="button" class="outline" data-store-close>Fechar</button>
+      </div>
+      <p id="store-copy-feedback" class="store-status" role="status" aria-live="polite"></p>
+    </section>
+  </dialog>
+  <dialog id="store-tracking" class="store-dialog" aria-labelledby="store-tracking-title">
+    <form id="store-tracking-form" class="store-form">
+      <header class="store-dialog-header">
+        <h2 id="store-tracking-title">Acompanhar pedido</h2>
+        <button type="button" class="outline" data-store-close>Fechar</button>
+      </header>
+      <label class="store-field">Código de acompanhamento
+        <input name="tracking_code" autocapitalize="off" autocomplete="off" spellcheck="false" required maxlength="43" pattern="[a-zA-Z0-9_\-]{43}">
+      </label>
+      <button type="submit" class="primary">Consultar</button>
+      <p id="store-tracking-feedback" class="store-status preserve-lines" role="status" aria-live="polite"></p>
+    </form>
+  </dialog>
+</body>
+</html>

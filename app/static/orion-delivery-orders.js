@@ -4,7 +4,8 @@
 
   const statusLabels={confirmed:'Reservado',dispatched:'Em rota',fulfilled:'Concluído',cancelled:'Cancelado'};
   const modes=[['counter','Balcão'],['pickup','Retirada'],['delivery','Entrega']];
-  const payments=[['','Selecione'],['cash','Dinheiro'],['debit_card','Cartão de débito'],['credit_card','Cartão de crédito']];
+  const payments=[['','Selecione'],['cash','Dinheiro'],['pix','Pix confirmado'],['debit_card','Cartão de débito'],['credit_card','Cartão de crédito']];
+  const storefrontPaymentLabels={cash:'Dinheiro',card:'Cartão',pix:'Pix na entrega'};
   const creditStatuses=[['all','Todos'],['pending','Pendentes'],['overdue','Em atraso'],['paid','Recebidos']];
   const command = (button,label,action,symbol,extra='') => button(label,action,'os-outline os-small',symbol,extra);
   const code = order => order.id.slice(0,8).toUpperCase();
@@ -129,7 +130,8 @@
 
   async function mount({host,filters,call,allowed,canWrite,ui,openDetails,openEditor,deliveryOnly=false,creditOnly=false}) {
     if (!host || !allowed()) return;
-    const {esc,loading,empty,field,moneyField,selectField,checkField,button,title,money,badge,fmtDate,dateKey,timeLabel,query,brazilianStates,metric,routeButton,requestKey}=ui;
+    const {esc,loading,empty,field,moneyField,selectField,textField,checkField,button,title,money,badge,fmtDate,dateKey,timeLabel,query,brazilianStates,metric,routeButton,requestKey,localISO}=ui;
+    const containerUi=window.OrionDeliveryOrderContainers;
     filters.search ??= '';
     filters.state ??= 'all';
     filters.start ??= '';
@@ -161,6 +163,9 @@
         controls+=order.mode==='delivery'&&order.status==='confirmed'
           ?command(button,'Despachar','delivery-order-dispatch','send',actions)
           :command(button,'Concluir','delivery-order-fulfill','check',actions);
+        if(order.mode==='delivery')controls+=order.status==='dispatched'
+          ?command(button,'Cliente ausente','delivery-order-absent','users',actions)
+          :command(button,'Reagendar','delivery-order-reschedule','calendar',actions);
         controls+=button('Cancelar pedido','delivery-order-cancel','os-ghost os-small','close',actions);
       }
       const pending=order.receipt_status==='pending';
@@ -178,8 +183,9 @@
       return '<article class="os-card os-item-card"><h3>Pedido '+esc(code(order))+'</h3><p class="os-help">'+
         esc([order.customer_name||'Venda avulsa',modeLabel(order),when(order.created_at)].join(' · '))+'</p>'+
         (order.courier_name?'<p class="os-help">Entregador: '+esc(order.courier_name)+'</p>':'')+
+        (order.scheduled_at?'<p class="os-help">Agendado para '+esc(when(order.scheduled_at))+'</p>':'')+
         '<div class="os-actions">'+badgeFor(order.status)+' <strong>'+money(order.total_cents)+'</strong></div>'+
-        payment+
+        payment+(pending?'<p class="os-help">Saldo a receber '+money(order.outstanding_cents??order.total_cents)+'</p>':'')+
         '<div class="os-actions">'+controls+'</div></article>';
     }
 
@@ -209,6 +215,7 @@
     function editor() {
       const cart=new Map();
       let customer=null, estimate=null, customerSaving=false;
+      let packaging, policy;
       const addressFields='<fieldset data-delivery-address hidden disabled class="os-form">'+
         '<legend>Endereço de entrega</legend>'+
         '<div class="os-actions hidden" data-delivery-previous-control hidden>'+
@@ -222,6 +229,9 @@
         selectField('UF','address_state',[['','Selecione'],...brazilianStates.map(state=>[state,state])],'','required')+
         field('Complemento ou referência','address_complement','text','','maxlength="160"')+
         moneyField('Taxa de entrega','delivery_fee','text',window.OrionFields.moneyDisplay(0))+
+        '<div class="hidden" data-delivery-schedule-box hidden>'+
+        field('Agendar para','delivery_schedule','datetime-local','','aria-describedby="osDeliveryScheduleHint"')+
+        '<p id="osDeliveryScheduleHint" class="os-help">Horário da empresa</p></div>'+
         '</div></fieldset>';
       const quickCustomer='<fieldset data-delivery-quick-customer hidden disabled class="os-form hidden">'+
         '<legend>Novo cliente</legend><div class="os-form-grid">'+
@@ -237,27 +247,31 @@
         command(button,'Novo cliente','delivery-new-customer','userPlus')+'</div>'+quickCustomer+
         '<div data-delivery-search-results aria-live="polite"></div><div data-delivery-customer aria-live="polite"></div>'+
         '<h3>Itens do pedido</h3><div class="os-form" data-delivery-cart></div>'+
+        (containerUi?.fields()||'')+
         addressFields+
         '<div class="os-actions">'+command(button,'Conferir total','delivery-estimate','check')+'</div>'+
         '<div data-delivery-estimate aria-live="polite"></div>';
       const items=()=>[...cart].map(([id,item])=>({variant_id:id,quantity:window.OrionFields.parseDecimal(item.quantity,{required:true,scale:0,min:1,max:1000})}));
       const estimateInput=form=>{
         const mode=form.elements.mode.value;
-        return {mode,items:items(),delivery_fee_cents:mode==='delivery'?
-          window.OrionFields.parseMoney(form.elements.delivery_fee.value,{required:true,min:0,max:1000000000}):0};
+        const base={mode,items:items(),delivery_fee_cents:0};
+        if(mode!=='delivery')return base;
+        const values=form.elements, [day,time]=(values.delivery_schedule.value||'').split('T');
+        return {...base,delivery_fee_cents:policy?.coverage_mode==='areas'?0:
+          window.OrionFields.parseMoney(values.delivery_fee.value,{required:true,min:0,max:1000000000}),
+          address:{postal_code:window.OrionFields.postalCodeValue(values.address_postal.value),
+            street:values.address_street.value,number:values.address_no_number.checked?null:values.address_number.value||null,
+            no_number:values.address_no_number.checked,neighborhood:values.address_neighborhood.value,
+            city:values.address_city.value,state:values.address_state.value,complement:values.address_complement.value||null},
+          scheduled_at:day?localISO(day,time):null};
       };
       openEditor('Novo pedido',content,async(form,values,key)=>{
         if (customerSaving) throw Error('Aguarde o cadastro do cliente.');
         const quoted=estimateInput(form);
         if (quoted.mode!=='counter'&&!customer) throw Error('Selecione um cliente para a retirada ou entrega.');
         if (!estimate||estimate.key!==JSON.stringify(quoted)) throw Error('Confira o total antes de confirmar o pedido.');
-        const address=quoted.mode==='delivery'?{
-          postal_code:window.OrionFields.postalCodeValue(values.address_postal),
-          street:values.address_street,number:values.address_number||null,no_number:form.elements.address_no_number.checked,
-          neighborhood:values.address_neighborhood,city:values.address_city,state:values.address_state,
-          complement:values.address_complement||null,
-        }:null;
-        const payload={...quoted,address,customer_id:customer?.id||null,estimate_version:estimate.version};
+        const payload={...quoted,customer_id:customer?.id||null,estimate_version:estimate.version,
+          container_plan:packaging?.collect(quoted.items,customer?.id)||[]};
         const saved=await call('/orders','POST',{...payload,idempotency_key:key(payload)});
         if (saved?.status!=='confirmed') throw Error('Não foi possível confirmar a reserva.');
         filters.offset=0;
@@ -274,12 +288,18 @@
         let products=[], customers=[], searchVersion=0, quoteVersion=0, addressVersion=0, addressOwner=null;
         const dialogActive = () => current()&&dialog.open&&form.isConnected;
         const invalidate = () => {quoteVersion++;estimate=null;quote.replaceChildren();};
+        packaging=containerUi?.bind(form,{call,ui,current:dialogActive});
+        const scheduleBox=form.querySelector('[data-delivery-schedule-box]');
         function updateAddress() {
           addressBox.hidden=addressBox.disabled=form.elements.mode.value!=='delivery';
           addressBox.classList.toggle('hidden',addressBox.hidden);
           previous.hidden=!customer;
           previous.classList.toggle('hidden',previous.hidden);
           form.elements.address_number.disabled=form.elements.address_no_number.checked;
+          form.elements.delivery_fee.readOnly=policy?.coverage_mode==='areas';
+          scheduleBox.hidden=!policy?.scheduling_enabled;
+          scheduleBox.classList.toggle('hidden',scheduleBox.hidden);
+          form.elements.delivery_schedule.disabled=scheduleBox.hidden;
         }
         function setCustomer(next) {
           if (addressOwner&&addressOwner!==next?.id) {
@@ -291,6 +311,7 @@
           customer=next;
           customerInfo.textContent=customer?'Cliente: '+customer.name:'';
           addressStatus.textContent='';
+          invalidate();
           updateAddress();
         }
         function toggleQuick(show) {
@@ -305,16 +326,22 @@
             '<div class="os-actions">'+command(button,'Remover','delivery-remove-item','close',itemAttr('match',id))+'</div></div>').join(''):
             '<p class="os-help">Busque um produto para adicionar itens.</p>';
           window.OrionFields.refresh(basket);
+          packaging?.render(cart);
         }
         showCart();
         updateAddress();
+        void call('/logistics').then(value=>{
+          if(!dialogActive())return;
+          policy=value;
+          updateAddress();
+        }).catch(()=>{});
         form.addEventListener('change',event=>{
           if (event.target.name==='mode') {updateAddress();invalidate();}
-          if (event.target.name==='address_no_number') {addressVersion++;updateAddress();}
+          if (event.target.name==='address_no_number') {addressVersion++;updateAddress();invalidate();}
         });
         form.addEventListener('input',event=>{
-          if (event.target.name?.startsWith('address_')) {addressVersion++;addressStatus.textContent='';}
-          if (event.target.name==='delivery_fee') invalidate();
+          if (event.target.name?.startsWith('address_')) {addressVersion++;addressStatus.textContent='';invalidate();}
+          if (['delivery_fee','delivery_schedule'].includes(event.target.name)) invalidate();
           const id=event.target.dataset.deliveryQuantity;
           if (!id||!cart.has(id)) return;
           cart.get(id).quantity=event.target.value;
@@ -374,6 +401,7 @@
                 }
                 form.elements.address_no_number.checked=address.no_number;
                 updateAddress();
+                invalidate();
                 window.OrionFields.refresh(addressBox);
               }
               addressStatus.textContent=address?'Confira o endereço antes de confirmar.':'Nenhum endereço de entrega concluída.';
@@ -427,39 +455,71 @@
       }});
     }
 
-    function move(order, action) {
+    async function move(order, action) {
       const complete=action==='fulfill';
       const settle=action==='settle';
       const dispatch=action==='dispatch';
+      const absent=action==='recipient_absent';
+      const reschedule=action==='reschedule';
+      const changeDate=absent||reschedule;
       const fullReturn=action==='return';
-      const refunded=fullReturn&&order.receipt_status==='paid';
-      const returning=action==='cancel'&&order.status==='dispatched';
+      const refunded=fullReturn&&(order.collected_cents??(order.receipt_status==='paid'?order.total_cents:0))>0;
+      const returning=(action==='cancel'||changeDate)&&order.status==='dispatched';
       const hasAmount=order.total_cents>0;
       const methods=complete&&order.customer_id?[...payments,['on_account','A prazo']]:payments;
+      let couriers=[];
+      if(dispatch) {
+        try {couriers=(await call('/logistics/couriers?active_only=true')).items||[];}
+        catch {if(!current())return;}
+        if(!current())return;
+      }
+      const courierFields=(couriers.length?
+        selectField('Entregador cadastrado','courier_id',[['','Digitar o nome'],...couriers.map(person=>[person.id,person.name])],''):'')+
+        field('Entregador','courier_name','text','','required maxlength="120"');
       const deferred=complete&&order.customer_id?
         '<fieldset class="hidden" data-delivery-due hidden disabled>'+
         field('Vencimento','payment_due_date','date',dateKey(),'required min="'+dateKey()+'" max="2100-12-31"')+
         checkField('Confirmo que o valor ficará a receber','confirmed_credit')+'</fieldset>':'';
       const content='<p>Pedido '+esc(code(order))+' · '+money(order.total_cents)+'</p>'+
         ((complete&&hasAmount)||settle?selectField('Forma de pagamento','payment_method',methods,'','required')+
+          (settle?moneyField('Valor recebido','received_cents','text',window.OrionFields.moneyDisplay(order.outstanding_cents??order.total_cents)):'')+
           '<fieldset data-delivery-received>'+checkField('Confirmo que recebi o pagamento','received')+'</fieldset>'+deferred:
           complete?'<p>Confirme que o cliente recebeu os itens.</p>':
-          dispatch?field('Entregador','courier_name','text','','required maxlength="120"'):
+          dispatch?courierFields:
+          changeDate?field('Nova data e hora','reschedule_at','datetime-local','',reschedule?'required':'')+
+            '<p class="os-help">Horário da empresa</p>'+textField('Observação','note','','maxlength="300"')+
+            (returning?checkField('Confirmo que os itens voltaram ao estoque','returned_to_stock'):''):
           fullReturn?checkField('Confirmo que todos os itens voltaram ao estoque','returned_to_stock')+
             (refunded?checkField('Confirmo que já devolvi o valor ao cliente','refunded'):''):
           returning?checkField('Confirmo que os itens voltaram ao estoque','returned_to_stock'):
-          '<p>O estoque reservado será liberado.</p>');
+          '<p>O estoque reservado será liberado.</p>')+(containerUi?.confirmation(order.has_container_plan,action,ui)||'');
       const label=complete?'Concluir pedido':settle?'Registrar recebimento':dispatch?'Despachar pedido':
-        fullReturn?'Registrar devolução':'Cancelar pedido';
+        fullReturn?'Registrar devolução':absent?'Registrar cliente ausente':reschedule?'Reagendar entrega':'Cancelar pedido';
       openEditor(label,content,async(form,values,key)=>{
         const credit=values.payment_method==='on_account';
         if ((complete&&hasAmount)||settle) {
           const checked=credit?form.elements.confirmed_credit.checked:form.elements.received.checked;
           if (!checked) throw Error(credit?'Confirme a venda a prazo.':'Confirme que recebeu o pagamento.');
         }
+        if(settle){
+          const amount_cents=window.OrionFields.parseMoney(values.received_cents,{required:true,min:1,max:order.outstanding_cents??order.total_cents});
+          const receipt={amount_cents,payment_method:values.payment_method,expected_revision:order.revision,received:true};
+          const saved=await call('/orders/'+encodeURIComponent(order.id)+'/payment-receipts','POST',{...receipt,idempotency_key:key(receipt)});
+          if(saved?.status!=='fulfilled')throw Error('Confira o saldo antes de repetir.');
+          return;
+        }
         const payload={action,expected_revision:order.revision,payment_method:values.payment_method||null};
+        if(containerUi?.confirmed(form))payload.containers_confirmed=true;
         if (credit) payload.payment_due_date=values.payment_due_date;
-        if (dispatch) payload.courier_name=values.courier_name;
+        if (dispatch) {
+          if(values.courier_id)payload.courier_id=values.courier_id;
+          else payload.courier_name=values.courier_name;
+        }
+        if(changeDate){
+          const [day,time]=(values.reschedule_at||'').split('T');
+          payload.scheduled_at=day?localISO(day,time):null;
+          payload.note=values.note?.trim()||null;
+        }
         if (returning||fullReturn) {
           if (!form.elements.returned_to_stock.checked) throw Error('Confirme a devolução antes de liberar o estoque.');
           payload.returned_to_stock=true;
@@ -469,12 +529,16 @@
           payload.refunded=true;
         }
         const saved=await call('/orders/'+encodeURIComponent(order.id)+'/transitions','POST',{...payload,idempotency_key:key(payload)});
-        if (saved?.status!==((complete||settle)?'fulfilled':dispatch?'dispatched':'cancelled')) throw Error('Confira o estado do pedido antes de repetir.');
+        if (saved?.status!==((complete||settle)?'fulfilled':dispatch?'dispatched':changeDate?'confirmed':'cancelled')) throw Error('Confira o estado do pedido antes de repetir.');
       },complete?'Pedido concluído.':settle?'Recebimento registrado.':dispatch?'Pedido em rota.':
-        fullReturn?'Devolução registrada.':'Pedido cancelado.',{label,bind:dialog=>{
+        fullReturn?'Devolução registrada.':absent?'A entrega voltou para a fila.':reschedule?'Entrega reagendada.':'Pedido cancelado.',{label,bind:dialog=>{
+        const form=dialog.querySelector('form');
+        form.elements.courier_id?.addEventListener('change',()=>{
+          form.elements.courier_name.disabled=Boolean(form.elements.courier_id.value);
+        });
         const due=dialog.querySelector('[data-delivery-due]');
         if (!due) return;
-        const form=dialog.querySelector('form'), received=dialog.querySelector('[data-delivery-received]');
+        const received=dialog.querySelector('[data-delivery-received]');
         form.elements.payment_method.addEventListener('change',()=>{
           const credit=form.elements.payment_method.value==='on_account';
           due.hidden=due.disabled=!credit;
@@ -514,11 +578,17 @@
             address.street+(address.number?', '+address.number:' (sem número)'),address.neighborhood,address.city+' - '+address.state,
             address.postal_code,address.complement,
           ].filter(Boolean).join(' · '))+'</p><p>Taxa '+money(result.delivery_fee_cents)+'</p>'+
+          (result.scheduled_at?'<p>Agendado para '+esc(when(result.scheduled_at))+'</p>':'')+
           (result.courier_name?'<p>Entregador: '+esc(result.courier_name)+'</p>':'')+'</div>':'';
-          openDetails('Pedido '+code(order),'<p>'+badgeFor(result.status)+' · '+money(result.total_cents)+'</p>'+addressText+'<ul>'+result.items.map(item=>
+          const storeText=result.storefront?'<p>Pedido pela loja · '+esc(result.storefront.customer_name||'')+' · '+
+            esc(result.storefront.contact_e164||'')+
+            (result.storefront.payment_preference?'<br>Preferência de pagamento: '+
+              esc(storefrontPaymentLabels[result.storefront.payment_preference]||'A combinar'):'')+'</p>':'';
+          openDetails('Pedido '+code(order),'<p>'+badgeFor(result.status)+' · '+money(result.total_cents)+'</p>'+storeText+addressText+'<ul>'+result.items.map(item=>
             '<li>'+esc(item.quantity+' × '+item.product_name+' · '+item.variant_name)+' · '+money(item.total_cents)+'</li>').join('')+
-            '</ul><h3>Histórico</h3><ul>'+result.history.map(event=>
-              '<li>'+esc((({received:'Recebimento registrado',returned:'Devolução registrada'})[event.action]||
+            '</ul>'+(containerUi?.summary(result.container_plan,ui)||'')+'<h3>Histórico</h3><ul>'+result.history.map(event=>
+              '<li>'+esc((({received:'Recebimento registrado',partially_received:'Recebimento parcial',returned:'Devolução registrada',
+                delivery_rescheduled:'Entrega reagendada',delivery_recipient_absent:'Cliente ausente'})[event.action]||
                 statusLabels[event.action]||event.action)+' · '+when(event.created_at))+'</li>').join('')+'</ul>');
         } catch(error) {if (current()) openDetails('Pedido '+code(order),err(error));}
       } else if (action==='delivery-order-return'&&canWrite()&&order.status==='fulfilled') {
@@ -526,7 +596,8 @@
       } else if (action==='delivery-order-settle'&&canWrite()&&order.receipt_status==='pending') {
         move(order,'settle');
       } else if (canWrite()&&['confirmed','dispatched'].includes(order.status)) {
-        const transition={'delivery-order-fulfill':'fulfill','delivery-order-dispatch':'dispatch','delivery-order-cancel':'cancel'}[action];
+        const transition={'delivery-order-fulfill':'fulfill','delivery-order-dispatch':'dispatch','delivery-order-cancel':'cancel',
+          'delivery-order-reschedule':'reschedule','delivery-order-absent':'recipient_absent'}[action];
         if (transition) move(order,transition);
       }
     });

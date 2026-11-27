@@ -123,11 +123,15 @@ async def store_details(db, tenant, variant_id, details):
     """), {"t": tenant, "v": variant_id, **details.model_dump()})
 
 
-async def run_once(db, tenant, payload, operation, target, write):
+async def run_once(db, tenant, payload, operation, target, write, *, optional_defaults=None):
     key = payload.idempotency_key
     scope = f"delivery-catalog:{tenant}:{key}"
     await db.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:scope,0))"), {"scope": scope})
-    signature = json.dumps([operation, str(target), payload.model_dump(mode="json")], sort_keys=True)
+    fields = payload.model_dump(mode="json")
+    for name, default in (optional_defaults or {}).items():
+        if fields.get(name) == default:
+            fields.pop(name, None)
+    signature = json.dumps([operation, str(target), fields], sort_keys=True)
     fingerprint = hashlib.sha256(signature.encode()).hexdigest()
     previous = (await db.execute(text("""
         SELECT fingerprint,result FROM delivery_catalog_operations WHERE tenant_id=:t AND operation_key=:key
