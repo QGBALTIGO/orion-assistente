@@ -47,4 +47,6 @@ Executada localmente contra os normalizadores reais do conector, com mensagens s
 - Foto com legenda/comprovante: apenas a legenda pode chegar como texto. Não há leitura de pixels ou comprovação de pagamento. Não classificar como interpretação de imagens.
 - Áudio sintético de formato/tamanho/duração compatível: classificado como áudio; metadados acima de 25 MB são rejeitados pelo normalizador e hoje não geram conteúdo útil para o Delivery. Transcrição em produção e aviso de mídia rejeitada continuam pendentes.
 - Evento de chamada individual: normalizador legado reconhece o tipo chamada. O fluxo Delivery não produz resposta conversacional a esse evento. Não confundir detecção com atendimento de voz.
-- Workflow 46083201758 executa os testes de mídia/decodificação em Linux com ffmpeg e ffprobe; nenhuma conexão real ou provedor pago. Estado: aguardando resultado.
+- Workflow 46083201758 executa os testes de mídia/decodificação em Linux com ffmpeg e ffprobe; nenhuma conexão real ou provedor pago. Estado: aprovado integralmente (workflow 46083201758). FFmpeg/ffprobe 6.1.1 no Linux; 264 testes Python aprovados e etapa de testes Node aprovada. Os 3 bloqueios locais por ausência de FFmpeg foram resolvidos no runner descartável.
+
+- Matriz atualizada com 31 cenários que possuem evidência interna delimitada e 4 bloqueios multimodais observados; preservadas quatro evidências históricas reais. Outros casos continuam sem execução individual comprovada.
