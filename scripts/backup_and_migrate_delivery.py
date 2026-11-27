@@ -4,6 +4,7 @@ from __future__ import annotations
 from itertools import pairwise
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -20,6 +21,18 @@ from scripts.backup_and_migrate_subscription_audience import audience_contract, 
 
 
 BASE_REVISION = "0098_manual_pix_successor"
+SAFE_REASONS = frozenset({
+    "migration_database_scope_missing", "migration_database_scope_mismatch", "migration_database_url_invalid",
+    "delivery_database_scope_mismatch", "exceptional_overlap_migration_busy", "delivery_revision_chain_not_approved",
+    "delivery_source_revision_not_approved", "delivery_preserved_clinic_contract_invalid",
+    "delivery_preserved_audience_contract_invalid", "delivery_preserved_plan_cycle_contract_invalid",
+    "delivery_predecessor_contract_invalid", "delivery_predecessor_changed_after_backup",
+    "delivery_target_revision_not_applied", "delivery_target_contract_invalid",
+    "private_backup_storage_missing", "private_backup_bucket_mismatch", "private_backup_endpoint_must_be_https",
+    "private_backup_region_invalid", "private_backup_url_style_invalid", "private_database_dump_failed",
+    "private_database_backup_archive_invalid", "private_database_backup_remote_verification_failed",
+    "private_database_backup_readback_checksum_failed",
+})
 PHASES = (
     "0099_delivery_catalog",
     "0100_delivery_orders",
@@ -77,8 +90,13 @@ def approved_chain():
     return chain
 
 
-def existing_contracts_ready(raw):
-    return preserved_contract(raw) and audience_contract(raw) and read_contract(raw, PLAN_CYCLE_CONTRACT)
+def require_existing_contracts(raw):
+    if not preserved_contract(raw):
+        raise RuntimeError("delivery_preserved_clinic_contract_invalid")
+    if not audience_contract(raw):
+        raise RuntimeError("delivery_preserved_audience_contract_invalid")
+    if not read_contract(raw, PLAN_CYCLE_CONTRACT):
+        raise RuntimeError("delivery_preserved_plan_cycle_contract_invalid")
 
 
 def delivery_schema_ready(raw, phases):
@@ -134,22 +152,28 @@ def delivery_schema_ready(raw, phases):
 
 
 def main(*, audit=False):
-    stage = "preflight"
+    stage = "image_chain"
     try:
         chain = approved_chain()
         target = chain[-1]
+        stage = "database_configuration"
         raw, url = connection_values()
         runtime = make_url(os.environ["APP_DATABASE_URL"])
         if (runtime.host, runtime.port or 5432, runtime.database) != (url.host, url.port or 5432, url.database):
             raise ValueError("delivery_database_scope_mismatch")
 
+        stage = "migration_lock"
         with release_lock(raw):
+            stage = "database_revision"
             current = migrated_version(raw)
-            if current not in chain or not existing_contracts_ready(raw):
-                raise RuntimeError("delivery_predecessor_not_approved")
+            label = current if isinstance(current, str) and re.fullmatch(r"[0-9]{4}_[a-z0-9_]{2,48}", current) else "unknown"
+            print(f"orion_delivery_release current={label} target={target}", flush=True)
+            if current not in chain:
+                raise RuntimeError("delivery_source_revision_not_approved")
+            stage = "predecessor_contracts"
+            require_existing_contracts(raw)
             if not delivery_schema_ready(raw, chain[1 : chain.index(current) + 1]):
                 raise RuntimeError("delivery_predecessor_contract_invalid")
-            print(f"orion_delivery_release current={current} target={target}", flush=True)
             if audit:
                 return 0
 
@@ -159,8 +183,9 @@ def main(*, audit=False):
                     perform_backup(url, storage_values(), Path(folder) / "backup.dump",
                                    backup_context="orion-delivery", schema_revision=current,
                                    preserve_ownership=True)
-                if migrated_version(raw) != current or not existing_contracts_ready(raw):
+                if migrated_version(raw) != current:
                     raise RuntimeError("delivery_predecessor_changed_after_backup")
+                require_existing_contracts(raw)
                 stage = "migrate"
                 subprocess.run(
                     [sys.executable, "-m", "alembic", "upgrade", target],
@@ -168,14 +193,28 @@ def main(*, audit=False):
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=600, check=True,
                 )
             stage = "verify"
-            if migrated_version(raw) != target or not existing_contracts_ready(raw):
-                raise RuntimeError("delivery_predecessor_contract_invalid")
+            if migrated_version(raw) != target:
+                raise RuntimeError("delivery_target_revision_not_applied")
+            require_existing_contracts(raw)
             if not delivery_schema_ready(raw, chain[1:]):
                 raise RuntimeError("delivery_target_contract_invalid")
         print(f"orion_delivery_schema_ready revision={target}", flush=True)
         return 0
-    except Exception:
-        print(f"orion_delivery_predeploy_failed_closed stage={stage}", file=sys.stderr, flush=True)
+    except Exception as exc:
+        candidate = exc.args[0] if len(exc.args) == 1 and isinstance(exc.args[0], str) else None
+        if candidate in SAFE_REASONS:
+            reason = candidate
+        elif isinstance(exc, KeyError):
+            reason = "missing_environment"
+        elif isinstance(exc, subprocess.TimeoutExpired):
+            reason = "timed_out"
+        elif isinstance(exc, subprocess.CalledProcessError):
+            reason = "command_failed"
+        else:
+            reason = "invalid_or_unavailable"
+        sqlstate = getattr(getattr(exc, "orig", exc), "sqlstate", None)
+        safe_sqlstate = f" sqlstate={sqlstate}" if isinstance(sqlstate, str) and re.fullmatch(r"[0-9A-Z]{5}", sqlstate) else ""
+        print(f"orion_delivery_predeploy_failed_closed stage={stage} reason={reason}{safe_sqlstate}", file=sys.stderr, flush=True)
         return 3
 
 
