@@ -69,7 +69,7 @@
     }
 
     function movementTable(items) {
-      return '<div class="os-card os-no-pad"><div class="os-table-scroll"><table class="os-table">'+
+      return '<div class="os-card os-no-pad"><div class="os-table-scroll" tabindex="0" role="region" aria-label="Tabela de dados"><table class="os-table">'+
         '<thead><tr><th>Data</th><th>Produto</th><th>Movimento</th><th>Quantidade</th><th>Saldo</th><th>Observação</th></tr></thead><tbody>'+
         items.map(item=>'<tr><td>'+esc(fmtDate(dateKey(new Date(item.created_at)))+' '+timeLabel(item.created_at))+'</td>'+
           '<td><span class="os-delivery-shop-item-name">'+(window.OrionDeliveryEditor?.picture(item.image_url,esc)||'')+

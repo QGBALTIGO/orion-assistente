@@ -26,7 +26,7 @@
     const output=host.querySelector('#osDeliveryLogisticsSections');
 
     function table(columns,rows) {
-      return '<div class="os-table-scroll"><table class="os-table"><thead><tr>'+
+      return '<div class="os-table-scroll" tabindex="0" role="region" aria-label="Tabela de dados"><table class="os-table"><thead><tr>'+
         columns.map(label=>'<th scope="col">'+esc(label)+'</th>').join('')+'</tr></thead><tbody>'+
         rows.map(cells=>'<tr>'+cells.map((cell,index)=>'<td data-label="'+esc(columns[index])+'">'+cell+'</td>').join('')+'</tr>').join('')+
         '</tbody></table></div>';
@@ -50,7 +50,7 @@
       return '<section class="os-card os-section-gap"><div class="os-card-header"><div><h2>Cobertura e taxas</h2>'+
         '<p>'+esc(policy.coverage_mode==='areas'?'Taxa calculada pelo bairro.':'Taxa informada pelo operador.')+'</p></div>'+
         writableActions([['Configurar cobertura','logistics-coverage','settings'],['Novo bairro','logistics-new-area','plus']],canManagePolicy)+
-        '</div>'+(rows.length?table(columns,rows):empty('map','Nenhum bairro cadastrado','Cadastre os bairros que a empresa atende.'))+'</section>';
+        '</div>'+(rows.length?table(columns,rows):empty('deliveryRoute','Nenhum bairro cadastrado','Cadastre os bairros que a empresa atende.'))+'</section>';
     }
 
     function scheduling() {

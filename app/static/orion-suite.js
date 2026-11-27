@@ -10,6 +10,7 @@
   const $ = id => document.getElementById(id);
   const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
   const paths = {
+    deliveryPause:'M9 5H5v14h4zM19 5h-4v14h4z',
     deliveryReceipt:'M5 3l2 2 2-2 3 2 3-2 2 2 2-2v18l-2-2-2 2-3-2-3 2-2-2-2 2V3ZM8 9h8M8 13h8M8 17h5',
     deliveryTruck:'M3 5h12v13H9M3 5v13h2M15 9h4l3 4v5h-2M15 18h1M9 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0ZM20 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0Z',
     deliveryVessel:'M9 3h6v3H9zM9 6v1l-2 2a4 4 0 0 0-2 3v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7a4 4 0 0 0-2-3l-2-2V6M5 13h14M5 17h14',
@@ -3734,7 +3735,7 @@
     if(!permitted(dialogFeature(type))){toast('Seu plano não inclui este recurso.',true);return false;}
     closeDialog();const d=$('osDialog');
     state.dialog={type,requiredFeature:dialogFeature(type),epoch:state.epoch,tenantId:state.tenantId,trigger:document.activeElement,key:crypto.randomUUID(),...meta};
-    d.className='os-dialog'+(wide?' os-dialog-wide':'')+(meta.drawer?' os-sheet':'')+(type==='customer'?' os-customer-dialog':'')+(meta.agendaSheet?' os-appointment-sheet':'');
+    d.className='os-dialog'+(wide?' os-dialog-wide':'')+(meta.drawer?' os-sheet':'')+(type==='customer'?' os-customer-dialog':'')+(meta.agendaSheet?' os-appointment-sheet':'')+(type==='delivery-editor'||type==='delivery-details'?' os-delivery-dialog':'');
     d.innerHTML='<button type="button" class="os-icon-button os-close" data-os-action="close-dialog" aria-label="Fechar">'+icon('close')+'</button><h2 id="osDialogTitle">'+esc(titleText)+'</h2>'+content;
     window.OrionFields?.refresh(d);d.showModal();const opened=state.dialog;setTimeout(()=>{if(state.dialog!==opened)return;if(meta.focusTitle)$('osDialogTitle')?.focus({preventScroll:true});else if(meta.agendaSheet)$('osDialogTitle')?.focus();else d.querySelector('input:not([disabled]),select:not([disabled]),textarea:not([disabled]),button:not(.os-close):not([disabled])')?.focus();},0);return true;
   }

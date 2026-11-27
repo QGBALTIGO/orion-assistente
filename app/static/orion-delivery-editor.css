@@ -141,3 +141,102 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+
+/* Delivery only. Keep native WebKit date/time controls from expanding their
+   grid tracks; the same spacing and sizing contract applies to every route. */
+:is(#page-suite[data-os-current-route$="-delivery"], #osDialog.os-delivery-dialog) :is(#osPageBody,.os-form,.os-field,.os-form-grid,fieldset,.os-card,.os-title-row,.os-actions,.os-card-header,[role="tabpanel"],.os-item-top) {
+  box-sizing:border-box; min-inline-size:0; max-inline-size:100%;
+}
+#page-suite[data-os-current-route$="-delivery"] .os-filter-row {
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(min(152px,100%),1fr));
+  align-items:end; gap:12px; margin:0 0 20px; min-width:0;
+}
+#page-suite[data-os-current-route$="-delivery"] .os-filter-row[hidden], #page-suite[data-os-current-route$="-delivery"] [role="tabpanel"][hidden] {display:none!important}
+#page-suite[data-os-current-route$="-delivery"] .os-filter-row > * {min-width:0;max-width:100%;margin:0}
+#page-suite[data-os-current-route$="-delivery"] .os-filter-row > .os-button {width:100%;min-height:44px;align-self:end}
+#page-suite[data-os-current-route$="-delivery"] .os-filter-row > .os-check {min-height:44px;align-self:end}
+#page-suite[data-os-current-route="dashboard-delivery"] .os-filter-row, #page-suite[data-os-current-route="loja-delivery"] #osStoreFilters {
+  grid-template-columns:minmax(0,1fr) minmax(112px,.55fr);max-width:520px;
+}
+:is(#page-suite[data-os-current-route$="-delivery"], #osDialog.os-delivery-dialog) :is(input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="hidden"]), select, textarea) {box-sizing:border-box;min-width:0;min-inline-size:0;width:100%;max-width:100%}
+:is(#page-suite[data-os-current-route$="-delivery"], #osDialog.os-delivery-dialog) :is(input[type="date"], input[type="time"], input[type="month"], input[type="datetime-local"]) {
+  -webkit-appearance:none;appearance:none;display:block;inline-size:100%;
+  min-inline-size:0;text-align:start;height:44px;
+}
+:is(#page-suite[data-os-current-route$="-delivery"], #osDialog.os-delivery-dialog) :is(input[type="date"], input[type="time"], input[type="month"], input[type="datetime-local"])::-webkit-date-and-time-value {text-align:start;min-height:1.25em;min-width:0}
+:is(#page-suite[data-os-current-route$="-delivery"], #osDialog.os-delivery-dialog) :is(.os-field,.os-field-unit) {width:100%;min-width:0}
+:is(#page-suite[data-os-current-route$="-delivery"], #osDialog.os-delivery-dialog) :is(.os-field label,.os-check,legend) {overflow-wrap:anywhere}
+:is(#page-suite[data-os-current-route$="-delivery"], #osDialog.os-delivery-dialog) :is(input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="file"]):not([type="hidden"]),select) {min-height:44px;line-height:22px}
+:is(#page-suite[data-os-current-route$="-delivery"], #osDialog.os-delivery-dialog) .os-form {gap:16px}
+:is(#page-suite[data-os-current-route$="-delivery"], #osDialog.os-delivery-dialog) .os-form-grid {gap:12px}
+:is(#page-suite[data-os-current-route$="-delivery"], #osDialog.os-delivery-dialog) .os-button:not(.os-table .os-button) {box-sizing:border-box;min-height:40px;min-width:0;overflow-wrap:anywhere}
+#page-suite[data-os-current-route$="-delivery"] .os-card-header {gap:12px;margin-bottom:16px}
+#page-suite[data-os-current-route$="-delivery"] .os-form > .os-card-header {margin-bottom:0}
+#page-suite[data-os-current-route$="-delivery"] .os-pill-tabs {box-sizing:border-box;min-width:0;max-width:100%;margin-bottom:16px;flex-wrap:wrap;border-radius:16px;overflow:visible}
+#page-suite[data-os-current-route$="-delivery"] .os-pill-tab {flex:0 1 auto;min-width:0;min-height:38px;white-space:normal;justify-content:center;text-align:center;overflow-wrap:anywhere}
+#page-suite[data-os-current-route$="-delivery"] .os-metric-head > span {min-width:0;overflow-wrap:anywhere}
+#page-suite[data-os-current-route$="-delivery"] .os-metrics {grid-template-columns:repeat(auto-fit,minmax(min(190px,100%),1fr));gap:12px;margin:0 0 20px}
+#page-suite[data-os-current-route$="-delivery"] .os-metric {display:flex;flex-direction:column}
+#page-suite[data-os-current-route$="-delivery"] .os-metric > strong {margin-top:auto;font-variant-numeric:tabular-nums}
+:is(#page-suite[data-os-current-route$="-delivery"], #osDialog.os-delivery-dialog) .os-summary-row {flex-wrap:wrap;align-items:center;gap:8px}
+:is(#page-suite[data-os-current-route$="-delivery"], #osDialog.os-delivery-dialog) .os-summary-row > * {min-width:0;max-width:100%;overflow-wrap:anywhere}
+:is(#page-suite[data-os-current-route$="-delivery"], #osDialog.os-delivery-dialog) .os-table-scroll {box-sizing:border-box;width:100%;max-width:100%;min-width:0;overflow-x:auto;-webkit-overflow-scrolling:touch}
+:is(#page-suite[data-os-current-route$="-delivery"], #osDialog.os-delivery-dialog) .os-table-scroll:focus-visible {outline:2px solid var(--os-primary);outline-offset:2px}
+#page-suite[data-os-current-route$="-delivery"] .os-item-card {gap:10px}
+#page-suite[data-os-current-route$="-delivery"] .os-item-card > .os-actions:last-child {margin-top:auto;padding-top:8px}
+#page-suite[data-os-current-route$="-delivery"] .os-item-top {margin-bottom:0}
+#page-suite[data-os-current-route$="-delivery"] .os-pagination {flex-wrap:wrap;gap:8px}
+#osDialog.os-delivery-dialog {box-sizing:border-box;width:min(680px,calc(100vw - 32px));max-width:calc(100vw - 32px);max-height:calc(100dvh - 32px);margin:auto;padding:24px;border-radius:16px;overflow-x:hidden;overscroll-behavior:contain}
+#osDialog.os-delivery-dialog .os-close {width:36px;height:36px}
+#osDialog.os-delivery-dialog #osDialogTitle {margin-right:40px;overflow-wrap:anywhere}
+#osDialog.os-delivery-dialog fieldset > legend {max-width:100%;padding:0}
+#osDialog.os-delivery-dialog .os-delivery-shop-item-name > .os-field {flex:1 1 0}
+#osDialog.os-delivery-dialog .os-delivery-order-items {overflow-wrap:anywhere}
+#osDialog.os-delivery-dialog .os-form-actions {border-top:1px solid var(--os-border);padding-top:12px}
+.os-delivery-shop-status .os-card-header {align-items:flex-start}
+.os-delivery-shop-status .os-card-header > .os-actions {flex:0 1 auto}
+.os-delivery-shop-status .os-badge {white-space:normal;overflow-wrap:anywhere}
+.os-delivery-hours-row > *, .os-delivery-hours-date > * {min-width:0;max-width:100%}
+.os-delivery-hours-row > .os-button, .os-delivery-hours-date > .os-button {min-height:44px}
+@media(max-width:767px){
+  #page-suite[data-os-current-route$="-delivery"] .os-filter-row {grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  #page-suite[data-os-current-route$="-delivery"] .os-filter-row > .os-button {grid-column:1/-1}
+  #page-suite[data-os-current-route="dashboard-delivery"] .os-filter-row, #page-suite[data-os-current-route="loja-delivery"] #osStoreFilters {grid-template-columns:minmax(0,1fr) minmax(100px,.6fr)}
+  #page-suite[data-os-current-route="dashboard-delivery"] .os-filter-row > .os-button, #page-suite[data-os-current-route="loja-delivery"] #osStoreFilters > .os-button {grid-column:auto}
+  #page-suite[data-os-current-route$="-delivery"] .os-filter-row > .os-field:has(input[type="search"]) {grid-column:1/-1}
+  #page-suite[data-os-current-route="loja-delivery"] #osStoreFilters > .os-field:has(input[type="search"]) {grid-column:auto}
+  #page-suite[data-os-current-route$="-delivery"] .os-filter-row > .os-check {grid-column:1/-1;min-height:36px}
+  #page-suite[data-os-current-route$="-delivery"] .os-pill-tabs {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:100%;gap:4px}
+  #page-suite[data-os-current-route="relatorio-delivery"] .os-pill-tabs {grid-template-columns:repeat(3,minmax(0,1fr))}
+  #page-suite[data-os-current-route$="-delivery"] .os-pill-tab {font-size:13px;padding:7px 6px;min-height:44px}
+  #page-suite[data-os-current-route$="-delivery"] .os-metrics {grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  #page-suite[data-os-current-route$="-delivery"] .os-metric {padding:14px}
+  #page-suite[data-os-current-route$="-delivery"] .os-metric > strong {font-size:clamp(18px,5.1vw,24px);line-height:1.3}
+  #page-suite[data-os-current-route$="-delivery"] .os-card:not(.os-no-pad):not(.os-metric) {padding:16px}
+  #page-suite[data-os-current-route$="-delivery"] .os-card-header h2 {font-size:17px;line-height:24px}
+  #page-suite[data-os-current-route$="-delivery"] .os-empty {padding:28px 8px}
+  #page-suite[data-os-current-route$="-delivery"] .os-empty > .os-square-icon {width:44px;height:44px;margin-bottom:12px}
+  #page-suite[data-os-current-route$="-delivery"] .os-empty h3 {font-size:16px;line-height:23px}
+  #page-suite[data-os-current-route$="-delivery"] .os-empty p {font-size:13px;line-height:20px}
+  #page-suite[data-os-current-route$="-delivery"] .os-title-row {margin-bottom:16px}
+  #page-suite[data-os-current-route$="-delivery"] .os-title-row > .os-actions {width:100%}
+  #page-suite[data-os-current-route$="-delivery"] .os-title-row > .os-actions > .os-button {flex:1 1 100%}
+  #page-suite[data-os-current-route$="-delivery"] .os-delivery-shop-status .os-card-header {flex-direction:column;gap:8px}
+  #page-suite[data-os-current-route$="-delivery"] .os-delivery-shop-status .os-card-header > h2 {flex:0 1 auto}
+  :is(#page-suite[data-os-current-route$="-delivery"], #osDialog.os-delivery-dialog) .os-button:not(.os-table .os-button) {min-height:44px}
+  :is(#page-suite[data-os-current-route$="-delivery"], #osDialog.os-delivery-dialog) .os-form-grid {grid-template-columns:minmax(0,1fr)}
+  :is(#page-suite[data-os-current-route$="-delivery"], #osDialog.os-delivery-dialog) :is(input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="hidden"]), select, textarea) {font-size:16px}
+  #osDialog.os-delivery-dialog {width:calc(100vw - 24px);max-width:calc(100vw - 24px);max-height:calc(100dvh - 24px);padding:16px}
+  #osDialog.os-delivery-dialog .os-form-actions > .os-button {flex:1 1 120px}
+  #osDialog.os-delivery-dialog .os-close {width:44px;height:44px;top:6px;right:6px}
+  #osDialog.os-delivery-dialog #osDialogTitle {margin-right:44px}
+  #page-suite[data-os-current-route$="-delivery"] .os-delivery-hours-row {grid-template-columns:repeat(2,minmax(0,1fr))}
+  #page-suite[data-os-current-route$="-delivery"] .os-delivery-hours-row > :first-child, #page-suite[data-os-current-route$="-delivery"] .os-delivery-hours-row > .os-button {grid-column:1/-1}
+}
+@media(max-width:374px){
+  #page-suite[data-os-current-route$="-delivery"] .os-filter-row {grid-template-columns:minmax(0,1fr)!important}
+  #page-suite[data-os-current-route$="-delivery"] .os-filter-row > * {grid-column:1/-1!important}
+  #page-suite[data-os-current-route="relatorio-delivery"] .os-pill-tabs {grid-template-columns:repeat(2,minmax(0,1fr))}
+  #page-suite[data-os-current-route$="-delivery"] .os-metric {padding:12px}
+}

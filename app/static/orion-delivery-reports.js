@@ -73,7 +73,7 @@
       const form=work.querySelector('form'), panel=work.querySelector('[data-delivery-operational-result]');
       let request=0, result;
       function table(columns,items) {
-        return '<div class="os-table-scroll"><table class="os-table"><thead><tr>'+
+        return '<div class="os-table-scroll" tabindex="0" role="region" aria-label="Tabela de dados"><table class="os-table"><thead><tr>'+
           columns.map(({label})=>'<th scope="col">'+esc(label)+'</th>').join('')+'</tr></thead><tbody>'+
           items.map(row=>'<tr>'+columns.map(({key,label,style})=>{
             const value=esc(cell(style,row[key]));

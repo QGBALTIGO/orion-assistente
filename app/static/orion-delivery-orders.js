@@ -32,8 +32,8 @@
         if (!current()) return;
         form.elements.delivery_day.value=data.date;
         const {orders,fulfilled,open_deliveries,paid_cents}=data.metrics;
-        const summaries='<div class="os-metrics">'+metric('Pedidos do dia',orders,'list')+
-          metric('Concluídos',fulfilled,'check')+metric('Entregas pendentes',open_deliveries,'send')+
+        const summaries='<div class="os-metrics">'+metric('Pedidos do dia',orders,'deliveryReceipt')+
+          metric('Concluídos',fulfilled,'check')+metric('Entregas pendentes',open_deliveries,'deliveryTruck')+
           metric('Recebimentos brutos',money(paid_cents),'wallet')+'</div>';
         const listSection=(heading,rows,noRows,action)=>'<section class="os-card os-section-gap">'+
           '<div class="os-card-header"><h2>'+heading+'</h2>'+action+'</div>'+
@@ -44,7 +44,7 @@
           '</span><strong>'+esc((item.quantity_on_hand-item.reserved_quantity)+' '+item.unit+' disponíveis')+'</strong></div>');
         panel.innerHTML=summaries+'<section class="os-card os-section-gap"><h2>Recebimentos nos últimos 7 dias</h2>'+
           seriesChart(data.daily,[['income_cents','Recebido','success']])+'</section>'+
-          listSection('Pedidos recentes',recent,'Nenhum pedido nesta data.',routeButton('Ver pedidos','pedidos-delivery','os-outline os-small','list'))+
+          listSection('Pedidos recentes',recent,'Nenhum pedido nesta data.',routeButton('Ver pedidos','pedidos-delivery','os-outline os-small','deliveryReceipt'))+
           listSection('Estoque baixo',stock,'Nenhum alerta de reposição.',routeButton('Ver estoque','produtos-delivery','os-outline os-small','box'));
       } catch (error) {
         if (current()) panel.innerHTML='<div class="os-notice os-error" role="alert"><p>'+esc(error.message)+'</p></div>';
@@ -81,7 +81,7 @@
     let version=0, result;
     function rows(items) {
       const columns=['Pedido','Data','Cliente','Atendimento','Status','Recebimento','Total'];
-      return '<div class="os-table-scroll"><table class="os-table"><thead><tr>'+
+      return '<div class="os-table-scroll" tabindex="0" role="region" aria-label="Tabela de dados"><table class="os-table"><thead><tr>'+
         columns.map(column=>'<th>'+column+'</th>').join('')+'</tr></thead><tbody>'+items.map(order=>'<tr>'+
         [code(order),fmtDate(dateKey(new Date(order.created_at)))+' '+timeLabel(order.created_at),
           order.customer_name||'Venda avulsa',modeLabel(order),statusLabels[order.status],
@@ -100,7 +100,7 @@
         form.elements.end.value=filters.end=data.period.end_date;
         const {offset,limit,summary}=data;
         const csv=exportPath+'?'+query({start:filters.start,end:filters.end,mode:filters.mode,state:filters.state,receipt:filters.receipt});
-        panel.innerHTML='<div class="os-metrics">'+metric('Pedidos',summary.orders,'list')+
+        panel.innerHTML='<div class="os-metrics">'+metric('Pedidos',summary.orders,'deliveryReceipt')+
           metric('Cancelados',summary.cancelled,'close')+metric('Recebido',money(summary.paid_cents),'wallet')+
           metric('A receber',money(summary.pending_cents),'clock')+'</div>'+
           '<section class="os-card os-section-gap"><div class="os-card-header"><h2>Vendas</h2>'+
@@ -147,7 +147,7 @@
 
     host.innerHTML=title(creditOnly?'Vendas a prazo':deliveryOnly?'Entregas':'Pedidos',
       creditOnly?'Vencimentos e recebimentos':deliveryOnly?'Despacho e acompanhamento':'Balcão, retirada e entrega',
-      creditOnly?routeButton('Ver pedidos','pedidos-delivery','os-outline os-small','list'):
+      creditOnly?routeButton('Ver pedidos','pedidos-delivery','os-outline os-small','deliveryReceipt'):
       canWrite()?button('Novo pedido','delivery-new-order','','plus'):'')+
       '<form id="osDeliveryOrderFilters" class="os-filter-row">'+
       field('Buscar','search','search',filters.search,'maxlength="120" placeholder="Número ou cliente"')+
@@ -162,7 +162,7 @@
       let controls=command(button,'Detalhes','delivery-order-detail','list',actions);
       if (canWrite()&&['confirmed','dispatched'].includes(order.status)) {
         controls+=order.mode==='delivery'&&order.status==='confirmed'
-          ?command(button,'Despachar','delivery-order-dispatch','send',actions)
+          ?command(button,'Despachar','delivery-order-dispatch','deliveryTruck',actions)
           :command(button,'Concluir','delivery-order-fulfill','check',actions);
         if(order.mode==='delivery')controls+=order.status==='dispatched'
           ?command(button,'Cliente ausente','delivery-order-absent','users',actions)
@@ -200,7 +200,7 @@
         if (!current()||sequence!==stamp) return;
         data=response;
         let html=data.items.length?'<div class="os-cards-grid">'+data.items.map(orderCard).join('')+'</div>':
-          '<div class="os-card">'+empty('list',creditOnly?'Nenhuma venda a prazo encontrada':'Nenhum pedido encontrado',
+          '<div class="os-card">'+empty(creditOnly?'deliveryDeferred':deliveryOnly?'deliveryTruck':'deliveryReceipt',creditOnly?'Nenhuma venda a prazo encontrada':deliveryOnly?'Nenhuma entrega encontrada':'Nenhum pedido encontrado',
             creditOnly?'Confira os filtros de cliente e vencimento.':'Confira o filtro ou registre um novo pedido.')+'</div>';
         if(creditOnly) html='<div class="os-metrics">'+metric('A receber',money(data.summary.open_cents),'wallet')+
           metric('Em atraso',money(data.summary.overdue_cents),'clock')+'</div>'+html;

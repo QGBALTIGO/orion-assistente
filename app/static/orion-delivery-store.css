@@ -73,3 +73,17 @@
   .store-product{column-gap:8px}
   .store-product-photo{width:46px;height:46px}
 }
+
+/* The customer-facing store and checkout must also contain native controls. */
+.store-container,.store-dialog,.store-field,.store-form fieldset,.store-product {box-sizing:border-box;min-width:0}
+.store-field > :is(input,select,textarea) {box-sizing:border-box;min-width:0;min-inline-size:0;max-width:100%;width:100%}
+.store-field > :is(input[type=date],input[type=time],input[type=datetime-local]) {-webkit-appearance:none;appearance:none;display:block;text-align:start;min-height:44px}
+.store-field > :is(input[type=date],input[type=time])::-webkit-date-and-time-value {min-width:0;text-align:start}
+.store-identity-meta > *, .store-line > *, .store-product > * {min-width:0;overflow-wrap:anywhere}
+.store-product button {white-space:normal}
+@media(max-width:400px){
+  .store-product {grid-template-columns:auto minmax(0,1fr)}
+  .store-product > div:first-child {grid-column:1/-1}
+  .store-product > :last-child {grid-column:1/-1;justify-self:stretch}
+  .store-product > :last-child button {min-height:44px}
+}

@@ -20,7 +20,7 @@
     const error=message=>'<div class="os-notice os-error" role="alert"><p>'+esc(message)+'</p></div>';
     const quantity=(value,min=0)=>window.OrionFields.parseDecimal(value,{required:true,scale:0,min,max:cap});
     const when=value=>fmtDate(dateKey(new Date(value)))+' '+timeLabel(value);
-    host.innerHTML=title('Vasilhames','Estoque vazio e empréstimos',
+    host.innerHTML=title('Vasilhames','Controle de vasilhames e empréstimos',
       canWrite()?button('Novo vasilhame','container-add','','plus'):'')+
       '<form id="osContainerFilters" class="os-filter-row">'+
       field('Buscar','container_search','search',filters.search,'maxlength="120" placeholder="Nome do vasilhame"')+
@@ -46,7 +46,7 @@
         '</span><div class="os-actions"><strong>'+row.quantity+' un</strong>'+
         (canWrite()?cmd('Devolver','container-return','check',itemId(row.customer_id)):'')+'</div></div>').join('');
       const columns=['Data','Movimento','Quantidade','Saldo anterior','Saldo final','Cliente','Observação'];
-      return '<div class="os-table-scroll"><table class="os-table"><thead><tr>'+columns.map(c=>'<th>'+c+'</th>').join('')+
+      return '<div class="os-table-scroll" tabindex="0" role="region" aria-label="Tabela de dados"><table class="os-table"><thead><tr>'+columns.map(c=>'<th>'+c+'</th>').join('')+
         '</tr></thead><tbody>'+items.map(row=>'<tr>'+[
           when(row.occurred_at),labels[row.kind],row.quantity,row.balance_before,row.balance_after,row.customer_name||'—',row.note||'—',
         ].map((v,i)=>'<td data-label="'+columns[i]+'">'+esc(v)+'</td>').join('')+'</tr>').join('')+'</tbody></table></div>';
@@ -66,7 +66,7 @@
         let html;
         if (view==='list') {
           html=result.items.length?'<div class="os-cards-grid">'+result.items.map(card).join('')+'</div>':
-            '<div class="os-card">'+empty('box','Nenhum vasilhame encontrado','Confira os filtros ou cadastre um tipo de vasilhame.')+'</div>';
+            '<div class="os-card">'+empty('deliveryVessel','Nenhum vasilhame encontrado','Confira os filtros ou cadastre um tipo de vasilhame.')+'</div>';
         } else {
           const label=view==='history'?'Histórico':'Com clientes';
           html='<section class="os-card">'+heading(selected.name+' · '+label,cmd('Voltar','container-back','left'))+

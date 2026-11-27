@@ -58,17 +58,17 @@
       const preview = state.preview_url ?
         '<a class="os-button os-outline" href="'+esc(state.preview_url)+'" target="_blank" rel="noopener">'+icon('eye')+'Prévia da loja</a>' : '';
       const publicActions = state.public_url ?
-        '<a class="os-button os-outline" href="'+esc(state.public_url)+'" target="_blank" rel="noopener">'+icon('globe')+'Abrir loja</a>'+
+        '<a class="os-button os-outline" href="'+esc(state.public_url)+'" target="_blank" rel="noopener">'+icon('deliveryStorefront')+'Abrir loja</a>'+
         button('Copiar link','store-copy','os-outline','copy') : '';
       const publish = !canWrite() ? '' : state.enabled ? button('Despublicar','store-unpublish','os-outline','close') :
-        state.publication_available ? button('Publicar loja','store-publish','','globe') : '';
+        state.publication_available ? button('Publicar loja','store-publish','','deliveryStorefront') : '';
       return '<section class="os-card os-form os-delivery-shop-status"><div class="os-card-header"><h2>'+esc(state.title)+'</h2>'+
         '<div class="os-actions"><span class="os-badge">'+status+'</span><span class="os-badge os-neutral">'+ordering+'</span></div></div>'+
         (state.public_url?'<a href="'+esc(state.public_url)+'" target="_blank" rel="noopener">'+esc(state.public_url)+'</a>':'')+
         (!state.publication_available?'<p class="os-help">Nesta empresa, a loja está em modo de avaliação. A prévia é acessível pelo painel.</p>':'')+
         '<div class="os-actions">'+preview+publicActions+publish+'</div>'+
         (state.public_url&&canWrite()?'<div class="os-actions">'+smallButton(state.accepting_orders?'Pausar pedidos':'Retomar pedidos',
-          'store-pause',state.accepting_orders?'pause':'check')+'</div>':'')+'</section>';
+          'store-pause',state.accepting_orders?'deliveryPause':'check')+'</div>':'')+'</section>';
     }
 
     function hour(row={}) {
@@ -128,7 +128,7 @@
 
     function itemTable(list, selected) {
       const actionTitle = canWrite() ? '<th scope="col">Ações</th>' : '';
-      return '<div class="os-table-scroll"><table class="os-table os-delivery-shop-item-table"><thead><tr>'+
+      return '<div class="os-table-scroll" tabindex="0" role="region" aria-label="Tabela de dados"><table class="os-table os-delivery-shop-item-table"><thead><tr>'+
         '<th scope="col">Produto</th><th scope="col">'+(selected?'Situação':'Preço')+'</th>'+actionTitle+'</tr></thead><tbody>'+
         list.map((item,index)=>{
           const entry = selected?item:state.items.find(row=>row.variant_id===item.variant_id);
