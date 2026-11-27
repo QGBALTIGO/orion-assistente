@@ -40,3 +40,11 @@ Não declarar missão integralmente concluída sem evidência. Cada ciclo deve p
 - Regressão local do motor reutilizado: 261 aprovados; 3 testes de decodificação real ficaram bloqueados pela ausência de ffmpeg/ffprobe no Windows. Nenhum serviço/conta real foi acionado.
 - CI ampla 46083013437 ainda em execução no momento do checkpoint. Revisão integrada não publicada.
 - A transcrição no teste do broker é simulada; não houve envio de áudio, imagem, localização nem ligação pelo WhatsApp real neste ciclo. Gás continua encaminhado à equipe conforme política de elegibilidade.
+
+### Auditoria da entrada multimodal
+Executada localmente contra os normalizadores reais do conector, com mensagens sintéticas (sem rede do WhatsApp).
+- Foto sem legenda, documento, localização fixa e localização ao vivo: chegam ao caminho de dispositivo sem conteúdo útil; a localização fixa é reconhecida no normalizador legado, mas não é encaminhada com coordenadas no caminho Delivery. Localização ao vivo não é reconhecida no normalizador legado.
+- Foto com legenda/comprovante: apenas a legenda pode chegar como texto. Não há leitura de pixels ou comprovação de pagamento. Não classificar como interpretação de imagens.
+- Áudio sintético de formato/tamanho/duração compatível: classificado como áudio; metadados acima de 25 MB são rejeitados pelo normalizador e hoje não geram conteúdo útil para o Delivery. Transcrição em produção e aviso de mídia rejeitada continuam pendentes.
+- Evento de chamada individual: normalizador legado reconhece o tipo chamada. O fluxo Delivery não produz resposta conversacional a esse evento. Não confundir detecção com atendimento de voz.
+- Workflow 46083201758 executa os testes de mídia/decodificação em Linux com ffmpeg e ffprobe; nenhuma conexão real ou provedor pago. Estado: aguardando resultado.
