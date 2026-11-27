@@ -47,52 +47,62 @@ def product_values(product):
 
 async def save_product(db, tenant, product, access, *, product_id=None, expected_revision=None):
     check_access(access.role, "draft")
-    values = product_values(product)
     async with tenant_transaction(db, tenant):
         await tenant_exists(db, tenant)
-        if product_id is None:
-            product_id = uuid4()
-            row = (await db.execute(text("""
-                INSERT INTO commercial_products (id,tenant_id,name,description,synonyms,faqs,official_benefits,active)
-                VALUES (:id,:t,:name,:description,CAST(:synonyms AS jsonb),CAST(:faqs AS jsonb),CAST(:official_benefits AS jsonb),:active)
-                RETURNING *
-            """), {"id": product_id, "t": tenant, **values})).mappings().one()
-        else:
-            row = (await db.execute(text("""
-                UPDATE commercial_products SET name=:name,description=:description,
-                    synonyms=CAST(:synonyms AS jsonb),faqs=CAST(:faqs AS jsonb),official_benefits=CAST(:official_benefits AS jsonb),
-                    active=:active,revision=revision+1,updated_at=now()
-                WHERE tenant_id=:t AND id=:id AND revision=:expected RETURNING *
-            """), {"id": product_id, "t": tenant, "expected": expected_revision, **values})).mappings().first()
-            if row is None:
-                conflict("Produto não encontrado ou alterado. Atualize o catálogo")
-        await audit(db, tenant, access, "product", product_id, "saved", {"revision": row["revision"], "product": product.model_dump()})
-        return dict(row)
+        return await write_product(db, tenant, product, access, product_id=product_id, expected_revision=expected_revision)
+
+
+async def write_product(db, tenant, product, access, *, product_id=None, expected_revision=None):
+    """Write in a transaction with the tenant and its access already verified."""
+    values = product_values(product)
+    if product_id is None:
+        product_id = uuid4()
+        row = (await db.execute(text("""
+            INSERT INTO commercial_products (id,tenant_id,name,description,synonyms,faqs,official_benefits,active)
+            VALUES (:id,:t,:name,:description,CAST(:synonyms AS jsonb),CAST(:faqs AS jsonb),CAST(:official_benefits AS jsonb),:active)
+            RETURNING *
+        """), {"id": product_id, "t": tenant, **values})).mappings().one()
+    else:
+        row = (await db.execute(text("""
+            UPDATE commercial_products SET name=:name,description=:description,
+                synonyms=CAST(:synonyms AS jsonb),faqs=CAST(:faqs AS jsonb),official_benefits=CAST(:official_benefits AS jsonb),
+                active=:active,revision=revision+1,updated_at=now()
+            WHERE tenant_id=:t AND id=:id AND revision=:expected RETURNING *
+        """), {"id": product_id, "t": tenant, "expected": expected_revision, **values})).mappings().first()
+        if row is None:
+            conflict("Produto não encontrado ou alterado. Atualize o catálogo")
+    await audit(db, tenant, access, "product", product_id, "saved", {"revision": row["revision"], "product": product.model_dump()})
+    return dict(row)
 
 
 async def save_variant(db, tenant, product_id, variant, access, *, variant_id=None, expected_revision=None):
     check_access(access.role, "draft")
-    values = {**variant.model_dump(), "attributes": json.dumps(variant.attributes)}
     async with tenant_transaction(db, tenant):
         await tenant_exists(db, tenant)
-        if variant_id is None:
-            variant_id = uuid4()
-            row = (await db.execute(text("""
-                INSERT INTO commercial_variants (id,tenant_id,product_id,name,sku,attributes,price_kind,unit_price_cents,active)
-                VALUES (:id,:t,:product,:name,:sku,CAST(:attributes AS jsonb),:price_kind,:unit_price_cents,:active)
-                RETURNING *
-            """), {"id": variant_id, "t": tenant, "product": product_id, **values})).mappings().one()
-            await db.execute(text("INSERT INTO commercial_inventory (tenant_id,variant_id) VALUES (:t,:id)"), {"t": tenant, "id": variant_id})
-        else:
-            row = (await db.execute(text("""
-                UPDATE commercial_variants SET name=:name,sku=:sku,attributes=CAST(:attributes AS jsonb),
-                    price_kind=:price_kind,unit_price_cents=:unit_price_cents,active=:active,revision=revision+1,updated_at=now()
-                WHERE tenant_id=:t AND id=:id AND product_id=:product AND revision=:expected RETURNING *
-            """), {"id": variant_id, "t": tenant, "product": product_id, "expected": expected_revision, **values})).mappings().first()
-            if row is None:
-                conflict("Variante não encontrada ou alterada. Atualize o catálogo")
-        await audit(db, tenant, access, "variant", variant_id, "saved", {"revision": row["revision"], "variant": variant.model_dump()})
-        return dict(row)
+        return await write_variant(db, tenant, product_id, variant, access, variant_id=variant_id, expected_revision=expected_revision)
+
+
+async def write_variant(db, tenant, product_id, variant, access, *, variant_id=None, expected_revision=None):
+    """Write in a transaction with the tenant and its access already verified."""
+    values = {**variant.model_dump(), "attributes": json.dumps(variant.attributes)}
+    if variant_id is None:
+        variant_id = uuid4()
+        row = (await db.execute(text("""
+            INSERT INTO commercial_variants (id,tenant_id,product_id,name,sku,attributes,price_kind,unit_price_cents,active)
+            VALUES (:id,:t,:product,:name,:sku,CAST(:attributes AS jsonb),:price_kind,:unit_price_cents,:active)
+            RETURNING *
+        """), {"id": variant_id, "t": tenant, "product": product_id, **values})).mappings().one()
+        await db.execute(text("INSERT INTO commercial_inventory (tenant_id,variant_id) VALUES (:t,:id)"), {"t": tenant, "id": variant_id})
+    else:
+        row = (await db.execute(text("""
+            UPDATE commercial_variants SET name=:name,sku=:sku,attributes=CAST(:attributes AS jsonb),
+                price_kind=:price_kind,unit_price_cents=:unit_price_cents,active=:active,revision=revision+1,updated_at=now()
+            WHERE tenant_id=:t AND id=:id AND product_id=:product AND revision=:expected RETURNING *
+        """), {"id": variant_id, "t": tenant, "product": product_id, "expected": expected_revision, **values})).mappings().first()
+        if row is None:
+            conflict("Variante não encontrada ou alterada. Atualize o catálogo")
+    await audit(db, tenant, access, "variant", variant_id, "saved", {"revision": row["revision"], "variant": variant.model_dump()})
+    return dict(row)
 
 
 async def observe_stock(db, tenant, variant_id, payload, access):
@@ -106,16 +116,22 @@ async def observe_stock(db, tenant, variant_id, payload, access):
         """), {"t": tenant, "id": variant_id})).mappings().first()
         if current is None or current["revision"] != payload.expected_revision:
             conflict("Estoque não encontrado ou alterado. Atualize antes de registrar a contagem")
-        if stock.mode == "tracked" and stock.quantity_on_hand < current["reserved_quantity"]:
-            conflict("A contagem não pode ficar abaixo das unidades já reservadas")
-        row = (await db.execute(text("""
-            UPDATE commercial_inventory SET mode=:mode,quantity_on_hand=:quantity_on_hand,
-                observed_at=:observed_at,source=:source,valid_until=:valid_until,revision=revision+1,updated_at=now()
-            WHERE tenant_id=:t AND variant_id=:id RETURNING *
-        """), {"t": tenant, "id": variant_id, **stock.model_dump()})).mappings().one()
-        await audit(db, tenant, access, "stock", variant_id, "observed", {
-            "revision": row["revision"], "stock": stock.model_dump(), "reserved_quantity": row["reserved_quantity"]})
-        return dict(row)
+        return await write_stock(db, tenant, current, stock, access)
+
+
+async def write_stock(db, tenant, current, stock, access, *, event_details=None):
+    """Record a count and audit event while the inventory row is locked."""
+    if stock.mode == "tracked" and stock.quantity_on_hand < current["reserved_quantity"]:
+        conflict("A contagem não pode ficar abaixo das unidades já reservadas")
+    row = (await db.execute(text("""
+        UPDATE commercial_inventory SET mode=:mode,quantity_on_hand=:quantity_on_hand,
+            observed_at=:observed_at,source=:source,valid_until=:valid_until,revision=revision+1,updated_at=now()
+        WHERE tenant_id=:t AND variant_id=:id RETURNING *
+    """), {"t": tenant, "id": current["variant_id"], **stock.model_dump()})).mappings().one()
+    await audit(db, tenant, access, "stock", current["variant_id"], "observed", {
+        "revision": row["revision"], "stock": stock.model_dump(), "reserved_quantity": row["reserved_quantity"],
+        **(event_details or {})})
+    return dict(row)
 
 
 async def save_complement(db, tenant, source_id, payload, access):

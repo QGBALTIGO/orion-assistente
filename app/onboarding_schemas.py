@@ -10,12 +10,11 @@ from app.brazilian_fields import normalize_postal_code, normalize_state
 from app.catalog_schemas import Business, Professional, Service
 from app.commercial_schemas import Product, Variant, IdempotencyKey
 from app.management_schemas import normalize_phone
-from app.workspace_policy import AFFILIATE_NICHE, SUBSCRIPTION_NICHE
+from app.workspace_policy import AFFILIATE_NICHE, DELIVERY_NICHE, SUBSCRIPTION_NICHE
 
 
 SubscriptionOffering = Literal["subscriptions", "one_time_sales", "both"]
 SUBSCRIPTION_OFFERINGS = ("subscriptions", "one_time_sales", "both")
-DELIVERY_NICHE = "delivery_distribuicao"
 DeliveryOffering = Literal["gas_agua", "galeteria", "mercado", "distribuidora", "outros"]
 
 

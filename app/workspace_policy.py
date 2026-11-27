@@ -1,14 +1,22 @@
-"""Persisted business niche selects its available workspace, not a billing grant."""
+"""Resolve the workspace from the persisted business niche."""
+import os
+
 from fastapi import HTTPException
 
 
 SUBSCRIPTION_NICHE = "servico_assinaturas"
 AFFILIATE_NICHE = "afiliados"
+DELIVERY_NICHE = "delivery_distribuicao"
 STANDARD_WORKSPACE = "standard"
 SUBSCRIPTION_WORKSPACE = "subscription_services"
 AFFILIATE_WORKSPACE = "affiliate"
 AFFILIATE_WORKSPACE_FEATURES = frozenset({"account.manage", "business.setup"})
 SUBSCRIPTION_WORKSPACE_FEATURES = frozenset({"account.manage", "business.setup", "devices.manage", "chatbot.manage", "templates.manage", "sent_messages.manage", "diagnostics.manage", "campaigns.manage", "scheduled_messages.manage", "bulk_messages.manage", "direct_messages.manage", "group_contacts.manage", "group_add.manage", "number_check.manage", "whatsapp_link.manage", "audience.manage", "whatsapp_guidance.view"})
+
+
+def delivery_preview_enabled(tenant_id, niche):
+    allowed = os.getenv("ORION_DELIVERY_PREVIEW_TENANTS", "").split(",")
+    return niche == DELIVERY_NICHE and str(tenant_id) in {value.strip() for value in allowed if value.strip()}
 
 
 def workspace_profile(niche, *, platform=False):

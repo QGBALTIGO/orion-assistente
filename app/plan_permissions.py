@@ -19,7 +19,7 @@ from sqlalchemy import text
 
 from app.plan_catalog import ALL_FEATURES, CODES, PLAN_FEATURES, RECOVERY_FEATURES
 from app.workspace_policy import (AFFILIATE_WORKSPACE, AFFILIATE_WORKSPACE_FEATURES, SUBSCRIPTION_WORKSPACE, SUBSCRIPTION_WORKSPACE_FEATURES,
-                                  require_standard_workspace, workspace_profile,
+                                  delivery_preview_enabled, require_standard_workspace, workspace_profile,
                                   workspace_unavailable)
 
 LOCK_PREFIX = "orion-plan-v1:"
@@ -147,6 +147,8 @@ def derive_plan(snapshot, now=None):
         "limits": {"max_professionals": maximum, "active_professionals": used,
                    "excess_professionals": max(0, used - maximum) if maximum is not None else 0},
         "manual_assignment": manual_view, "commercial_subscription": commercial, "trial": trial}
+    if not platform and delivery_preview_enabled(snapshot.get("tenant_id"), snapshot.get("niche")):
+        result["delivery_catalog_preview"] = True
     if scheduled is not None:
         result["scheduled_manual_assignment"] = scheduled
     if billing:
