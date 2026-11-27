@@ -8,6 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from app import delivery_catalog as catalog
+from app import delivery_containers as containers
 from app import delivery_orders as orders
 from app.catalog_api import Actor, authenticate
 from app.database import get_session_factory, tenant_transaction
@@ -126,3 +127,32 @@ async def new_order(tenant_id: UUID, payload: orders.ManualOrder, actor: Actor =
 @router.post("/orders/{order_id}/transitions")
 async def change_order(tenant_id: UUID, order_id: UUID, payload: orders.Transition, actor: Actor = Depends(authenticate)):
     return await run(actor, tenant_id, orders.transition, order_id, payload, write=True)
+
+
+@router.get("/containers")
+async def container_list(tenant_id: UUID, kind: containers.ContainerFilter = "all",
+                         search: str = Query(default="", max_length=120),
+                         offset: int = Query(default=0, ge=0, le=100_000), actor: Actor = Depends(authenticate)):
+    return await run(actor, tenant_id, containers.list_containers, kind=kind, search=search, offset=offset)
+
+
+@router.post("/containers", status_code=201)
+async def new_container(tenant_id: UUID, payload: containers.ContainerCreate, actor: Actor = Depends(authenticate)):
+    return await run(actor, tenant_id, containers.create, payload, write=True, status=201)
+
+
+@router.post("/containers/{container_id}/movements")
+async def move_container(tenant_id: UUID, container_id: UUID, payload: containers.Movement, actor: Actor = Depends(authenticate)):
+    return await run(actor, tenant_id, containers.adjust, container_id, payload, write=True)
+
+
+@router.get("/containers/{container_id}/movements")
+async def container_history(tenant_id: UUID, container_id: UUID, offset: int = Query(default=0, ge=0, le=100_000),
+                            actor: Actor = Depends(authenticate)):
+    return await run(actor, tenant_id, containers.history, container_id, offset=offset)
+
+
+@router.get("/containers/{container_id}/loans")
+async def container_loans(tenant_id: UUID, container_id: UUID, offset: int = Query(default=0, ge=0, le=100_000),
+                          actor: Actor = Depends(authenticate)):
+    return await run(actor, tenant_id, containers.loans, container_id, offset=offset)

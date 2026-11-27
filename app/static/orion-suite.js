@@ -118,11 +118,13 @@
   const deliveryCatalogRoute='produtos-delivery';
   const deliveryOrdersRoute='pedidos-delivery';
   const deliveryDispatchRoute='entregas-delivery';
+  const deliveryContainersRoute='vasilhames-delivery';
   routeNames[deliveryCatalogRoute]='Produtos e estoque';
   routeNames[deliveryOrdersRoute]='Pedidos';
   routeNames[deliveryDispatchRoute]='Entregas';
+  routeNames[deliveryContainersRoute]='Vasilhames';
   routeNames[deliveryDashboardRoute]='Dashboard';
-  const deliveryRoutes=[deliveryDashboardRoute,deliveryCatalogRoute,deliveryOrdersRoute,deliveryDispatchRoute];
+  const deliveryRoutes=[deliveryDashboardRoute,deliveryCatalogRoute,deliveryOrdersRoute,deliveryDispatchRoute,deliveryContainersRoute];
   const mainNav=[['verificador-numeros','check'],['link-whatsapp','link'],['contatos','users'],['grupos-contatos','list'],['dispositivos','phone'],['chatbot','bot'],['testar-chatbot','flask'],['templates','layers'],['mensagens-enviadas','fileCheck'],['diagnosticos','activity'],['campanhas','megaphone'],['programadas','calendarClock'],['massa','broadcast'],['enviar-mensagem','send'],['aquecimento','flame'],['evitar-banimento','shieldCheck'],['resolver-banimento','shieldAlert'],['extrator-contatos','usersSearch'],['adicionar-ao-grupo','userPlus'],['dashboard','dashboard'],['agenda','calendar'],['clientes','users'],['clinica','tooth'],['pacientes-odonto','users'],['proteses-odonto','prosthesis'],['estoque-odonto','box'],['vendas-odonto','layers'],['ajustes-odonto','settings'],['inbox','chat'],['servicos','scissors'],['funcionarios','badgeUser'],['financeiro','wallet'],['desempenho','chart'],['marketing','sparkles'],['site','globe'],['fidelizacao','gift'],['consultor','brain'],['plano','credit'],['configuracoes','settings']];
   const subscriptionNavigation=[
     ['Gestão',['dashboard']],
@@ -621,7 +623,7 @@
       const icons=new Map(mainNav);
       for(const [heading,routes] of subscriptionNavigation)nav+=navGroup(heading,routes.map(route=>[route,icons.get(route)]));
     }else if(delivery){
-      nav+=navGroup('Gestão',[[deliveryDashboardRoute,'dashboard'],[deliveryOrdersRoute,'list'],[deliveryDispatchRoute,'send'],[deliveryCatalogRoute,'box'],['clientes','users']]);
+      nav+=navGroup('Gestão',[[deliveryDashboardRoute,'dashboard'],[deliveryOrdersRoute,'list'],[deliveryDispatchRoute,'send'],[deliveryCatalogRoute,'box'],[deliveryContainersRoute,'layers'],['clientes','users']]);
       nav+=navGroup('Atendimento',[['inbox','chat']]);
       nav+=navGroup('Financeiro',[['financeiro','wallet']]);
       nav+=navGroup('Administração',[['configuracoes','settings']]);
@@ -950,6 +952,7 @@
     let html='';
     if(state.route===deliveryCatalogRoute)html='<div id="osPageBody">'+loading('Carregando o catálogo…')+'</div>';
     if(state.route===deliveryDashboardRoute)html='<div id="osPageBody">'+loading('Carregando o dashboard…')+'</div>';
+    if(state.route===deliveryContainersRoute)html='<div id="osPageBody">'+loading('Carregando vasilhames…')+'</div>';
     if([deliveryOrdersRoute,deliveryDispatchRoute].includes(state.route))html='<div id="osPageBody">'+loading('Carregando pedidos…')+'</div>';
     if(state.route==='afiliados-whatsapp')html='<div id="osPageBody">'+routeButton('Voltar a Conexões e destinos','afiliados-conexoes','os-ghost','left')+'<section id="osSubscriptionDevices"></section></div>';
     if(state.route==='dispositivos')html='<div id="osPageBody"><section id="osSubscriptionDevices"></section></div>';
@@ -1071,11 +1074,13 @@
         break;
       case deliveryCatalogRoute:
       case deliveryOrdersRoute:
+      case deliveryContainersRoute:
       case deliveryDispatchRoute:{
         const catalog=state.route===deliveryCatalogRoute;
-        const module=catalog?window.OrionDeliveryCatalog:window.OrionDeliveryOrders;
         const deliveryOnly=state.route===deliveryDispatchRoute;
-        const key=catalog?'deliveryCatalog':deliveryOnly?'deliveryDispatch':'deliveryOrders';
+        const containers=state.route===deliveryContainersRoute;
+        const module=catalog?window.OrionDeliveryCatalog:containers?window.OrionDeliveryContainers:window.OrionDeliveryOrders;
+        const key=catalog?'deliveryCatalog':containers?'deliveryContainers':deliveryOnly?'deliveryDispatch':'deliveryOrders';
         await module.mount({
           host:$('osPageBody'), filters:state.filters[key]??={}, deliveryOnly,
           call:(path,method,data)=>request(apiPath('/delivery'+path),method,data),

@@ -264,13 +264,39 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                     await expect(dialog).to_be_hidden()
                     await expect(orders.get_by_text("Em rota", exact=True)).to_be_visible()
                     await page.screenshot(path=artifacts/"entregas-dark-390.png", animations="disabled")
-                for route, heading in (("dashboard-delivery","Dashboard"),("pedidos-delivery","Pedidos"),("entregas-delivery","Entregas")):
+                    await page.goto(origin+"/painel?aba=vasilhames-delivery")
+                    await page.get_by_role("button", name="Novo vasilhame").click()
+                    await dialog.get_by_label("Tipo").select_option("jug")
+                    await dialog.get_by_label("Nome do vasilhame").fill("Garrafão 20 L de avaliação")
+                    await dialog.get_by_label("Saldo inicial de vazios").fill("2")
+                    await dialog.get_by_role("button", name="Salvar").click()
+                    await expect(dialog).to_be_hidden()
+                    await page.get_by_role("button", name="Movimentar").click()
+                    await dialog.get_by_label("Movimento").select_option("lend")
+                    await dialog.get_by_label("Buscar cliente").fill("homologação")
+                    await dialog.get_by_role("button", name="Buscar clientes").click()
+                    await dialog.get_by_role("button", name="Cliente de homologação").click()
+                    await dialog.get_by_label("Quantidade").fill("1")
+                    await dialog.get_by_role("button", name="Salvar").click()
+                    await expect(dialog).to_be_hidden()
+                    await page.get_by_role("button", name="Com clientes", exact=True).click()
+                    await expect(page.get_by_text("Cliente de homologação", exact=True)).to_be_visible()
+                    await page.screenshot(path=artifacts/"vasilhames-clientes-dark-390.png", animations="disabled")
+                    await page.get_by_role("button", name="Devolver", exact=True).click()
+                    await dialog.get_by_role("button", name="Salvar").click()
+                    await expect(dialog).to_be_hidden()
+                    await page.get_by_role("button", name="Histórico", exact=True).click()
+                    await expect(page.get_by_role("cell", name="Devolução", exact=True)).to_be_visible()
+                for route, heading in (("dashboard-delivery","Dashboard"),("pedidos-delivery","Pedidos"),
+                                       ("entregas-delivery","Entregas"),("vasilhames-delivery","Vasilhames")):
                     await page.goto(origin+"/painel?aba="+route)
                     await expect(page.get_by_role("heading",name=heading,exact=True)).to_be_visible()
                     if route == "dashboard-delivery":
                         await expect(page.get_by_text("Pedidos do dia",exact=True)).to_be_visible()
-                    else:
+                    elif route != "vasilhames-delivery":
                         await expect(page.get_by_role("button",name="Novo pedido")).to_be_visible()
+                    else:
+                        await expect(page.get_by_role("button",name="Novo vasilhame")).to_be_visible()
                     for width in widths:
                         await page.set_viewport_size({"width":width,"height":900})
                         assert await page.evaluate("() => document.documentElement.scrollWidth <= innerWidth + 1"), (route,theme,width)
