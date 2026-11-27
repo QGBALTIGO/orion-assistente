@@ -68,35 +68,48 @@ def prepare_overlay(container, release, stage, changes):
     overlay = stage / "overlay"
     overlay.mkdir()
     manifest = {}
-    existing = [path for path, status in changes.items() if status == "M"]
-    for path in existing:
-        destination = overlay / path
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        subprocess.run(["docker", "cp", f"{container}:{APP_ROOT}/{path}", str(destination)], check=True)
-        if not destination.is_file() or destination.is_symlink():
-            raise ValueError(f"Unexpected base-image file: {path}")
-        live_hash = sha256(destination.read_bytes())
-        source_hash = sha256(git("cat-file", "blob", f"{BASE_SOURCE}:{path}"))
-        manifest[path] = {"live_before": live_hash, "source_before": source_hash}
-        if live_hash != source_hash:
-            print(f"Applying only Delivery patch over the existing live delta in {path}", flush=True)
-
-    if existing:
-        patch = git("diff", "--no-ext-diff", "--no-textconv", "--binary", BASE_SOURCE, release, "--", *existing)
-        for flags in (["--check"], []):
-            subprocess.run(["git", "apply", "--whitespace=nowarn", *flags, "-"],
-                           cwd=overlay, input=patch, check=True)
-
     for path, status in changes.items():
         source = git("cat-file", "blob", f"{release}:{path}")
         destination = overlay / path
+        destination.parent.mkdir(parents=True, exist_ok=True)
         if status == "A":
-            destination.parent.mkdir(parents=True, exist_ok=True)
             destination.write_bytes(source)
             manifest[path] = {"live_before": None, "source_before": None}
-        manifest[path].update(live_after=sha256(destination.read_bytes()), source_after=sha256(source))
+        else:
+            subprocess.run(["docker", "cp", f"{container}:{APP_ROOT}/{path}", str(destination)], check=True)
+            if not destination.is_file() or destination.is_symlink():
+                raise ValueError(f"Unexpected base-image file: {path}")
+            predecessor = git("cat-file", "blob", f"{BASE_SOURCE}:{path}")
+            live = destination.read_bytes()
+            manifest[path] = {"live_before": sha256(live), "source_before": sha256(predecessor)}
+            if live != predecessor:
+                source = merge_live_delta(path, destination, predecessor, source, stage)
+            destination.write_bytes(source)
+        manifest[path].update(live_after=sha256(source),
+                              source_after=sha256(git("cat-file", "blob", f"{release}:{path}")))
 
     return {"base_image": BASE_IMAGE, "base_source": BASE_SOURCE, "release": release, "files": manifest}
+
+
+def merge_live_delta(path, live_file, predecessor, desired, stage):
+    before = stage / "merge-predecessor"
+    after = stage / "merge-delivery"
+    before.write_bytes(predecessor)
+    after.write_bytes(desired)
+    # The pinned production file is the current side. A clean three-way
+    # merge permits adjacent edits and preserves independent live changes.
+    result = subprocess.run(
+        ["git", "merge-file", "--stdout", "--diff3", str(live_file), str(before), str(after)],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"Live and Delivery changes overlap in {path}; need a reviewed merge "
+            f"(live={sha256(live_file.read_bytes())}, baseline={sha256(predecessor)}, "
+            f"delivery={sha256(desired)}, status={result.returncode})"
+        )
+    print(f"Merged Delivery without replacing the existing live delta in {path}", flush=True)
+    return result.stdout
 
 
 def build(release, manifest_path):

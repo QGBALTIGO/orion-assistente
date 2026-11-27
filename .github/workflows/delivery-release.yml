@@ -25,7 +25,7 @@ jobs:
     env:
       IMAGE: ghcr.io/qgbaltigo/orion-assistente-api:delivery-${{ github.sha }}
       APP_DATABASE_URL: postgresql+asyncpg://app_runtime:ci-runtime-only@127.0.0.1:5432/orion_delivery_release_ci
-      MIGRATION_DATABASE_URL: postgresql+psycopg://app_migrator:ci-migrator-only@127.0.0.1:5432/orion_delivery_release_ci
+      MIGRATION_DATABASE_URL: postgresql+psycopg://postgres:ci-postgres-only@127.0.0.1:5432/orion_delivery_release_ci
       SUPPORT_DATABASE_URL: postgresql+asyncpg://app_support:ci-support-only@127.0.0.1:5432/orion_delivery_release_ci
       ORION_EXPECTED_DATABASE_HOST: 127.0.0.1
       ORION_EXPECTED_DATABASE_NAME: orion_delivery_release_ci
@@ -65,7 +65,7 @@ jobs:
             -v db_name=orion_delivery_release_ci -v runtime_password=ci-runtime-only \
             -v migrator_password=ci-migrator-only -v support_password=ci-support-only \
             -f infra/postgres/init/001-roles.sql
-          docker run --rm --network host --entrypoint python -e MIGRATION_DATABASE_URL \
+          docker run --rm --network host --entrypoint python -e MIGRATION_DATABASE_URL -e ORION_MIGRATION_SWITCH_ROLE=1 \
             "$base" -m alembic upgrade 0098_manual_pix_successor
           docker run --rm --network host --entrypoint python \
             -e APP_DATABASE_URL -e MIGRATION_DATABASE_URL -e SUPPORT_DATABASE_URL \
