@@ -18,7 +18,8 @@ pytestmark = pytest.mark.integration
 
 async def order_payload(http, root, variant, quantity, **fields):
     lines = {"items": [{"variant_id": variant, "quantity": quantity}]}
-    estimate = await http.post(root + "/orders/estimate", json=lines)
+    pricing = {key:value for key,value in fields.items() if key in {"mode","delivery_fee_cents"}}
+    estimate = await http.post(root + "/orders/estimate", json={**lines,**pricing})
     assert estimate.status_code == 200, estimate.text
     return {**lines, **fields, "estimate_version":estimate.json()["estimate_version"], "idempotency_key":uuid4().hex}
 
@@ -121,3 +122,62 @@ async def test_last_stock_cannot_be_reserved_twice_and_cancel_releases(onboardin
         history = (await http.get(root+"/orders/"+order["id"])).json()["history"]
         assert [event["action"] for event in history] == ["confirmed","cancelled"]
     assert not await receipts(ctx, tenant)
+
+
+async def test_delivery_fee_dispatch_payment_and_safe_return(onboarding_db, monkeypatch):
+    ctx = onboarding_db
+    tenant, actor = await business(ctx, monkeypatch)
+    root = f"/api/v1/tenants/{tenant}/delivery"
+    await complete_delivery_setup(ctx, tenant)
+    customer = uuid4()
+    address = {"street":"Rua da homologação", "number":"15", "neighborhood":"Bairro de teste",
+               "city":"Campo Grande", "state":"MS", "postal_code":"79000-000"}
+    async with ctx.migration.begin() as db:
+        await db.execute(text("INSERT INTO customers(id,tenant_id,name) VALUES(:c,:t,'Pessoa de teste')"),
+                         {"c":customer,"t":tenant})
+    async with client(actor) as http:
+        variant = (await http.post(root+"/catalog",json=new_product())).json()["variant_id"]
+        args = await order_payload(http,root,variant,1,mode="delivery",delivery_fee_cents=500,
+                                   customer_id=str(customer),address=address)
+        assert (await http.post(root+"/orders",json={**args,"address":None})).status_code == 422
+        assert (await http.post(root+"/orders",json={**args,"delivery_fee_cents":600})).status_code == 409
+        created = await http.post(root+"/orders",json=args)
+        assert created.status_code == 201, created.text
+        assert created.json()["total_cents"] == 1750
+        path = root+"/orders/"+created.json()["id"]
+        assert await stock(http,root) == (5,1)
+        assert (await http.get(root+"/orders",params={"mode":"counter"})).json()["items"] == []
+        listing = (await http.get(root+"/orders",params={"mode":"delivery"})).json()
+        assert len(listing["items"]) == 1 and "address" not in listing["items"][0]
+        assert (await http.get(path)).json()["address"]["street"] == address["street"]
+        payment = {"action":"fulfill","payment_method":"cash","expected_revision":1,"idempotency_key":uuid4().hex}
+        assert (await http.post(path+"/transitions",json=payment)).status_code == 409
+        dispatch = {"action":"dispatch","expected_revision":1,"idempotency_key":uuid4().hex,"courier_name":"Entregador de teste"}
+        dispatched = await http.post(path+"/transitions",json=dispatch)
+        assert dispatched.status_code == 200 and dispatched.json()["status"] == "dispatched", dispatched.text
+        assert await stock(http,root) == (5,1) and not await receipts(ctx, tenant)
+        overview = await http.get(root+"/overview")
+        assert overview.status_code == 200, overview.text
+        assert overview.json()["metrics"] == {"orders":1,"fulfilled":0,"open_deliveries":1,"paid_cents":0}
+        assert (await http.get(path)).json()["courier_name"] == "Entregador de teste"
+        cancel = {"action":"cancel","expected_revision":2,"idempotency_key":uuid4().hex}
+        assert (await http.post(path+"/transitions",json=cancel)).status_code == 422
+        completed = await http.post(path+"/transitions",json={**payment,"expected_revision":2})
+        assert completed.status_code == 200, completed.text
+        assert await stock(http,root) == (4,0)
+        receipt, = await receipts(ctx, tenant)
+        assert receipt["amount_cents"] == 1750
+
+        second_args = await order_payload(http,root,variant,2,mode="delivery",customer_id=str(customer),address=address)
+        second_response = await http.post(root+"/orders",json=second_args)
+        assert second_response.status_code == 201, second_response.text
+        second = root+"/orders/"+second_response.json()["id"]
+        assert (await http.post(second+"/transitions",json={**dispatch,"idempotency_key":uuid4().hex})).status_code == 200
+        stopped = await http.post(second+"/transitions",json={**cancel,"returned_to_stock":True})
+        assert stopped.status_code == 200 and stopped.json()["status"] == "cancelled", stopped.text
+        assert await stock(http,root) == (4,0)
+        assert len(await receipts(ctx, tenant)) == 1
+        overview = (await http.get(root+"/overview")).json()
+        assert overview["metrics"] == {"orders":2,"fulfilled":1,"open_deliveries":0,"paid_cents":1750}
+        assert len(overview["daily"]) == 7 and overview["daily"][-1]["income_cents"] == 1750
+        assert len(overview["recent"]) == 2

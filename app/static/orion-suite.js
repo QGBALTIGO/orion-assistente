@@ -114,10 +114,15 @@
   const affiliatePages=Object.fromEntries(affiliateNavigation.flatMap(([,items])=>items.map(([route])=>[route,route.replace(/^afiliados-/,'')])));
   const affiliateTitles=Object.fromEntries(affiliateNavigation.flatMap(([,items])=>items.map(([route,label])=>[route,label])));
   const routeAliases=new Map([['acelerar','dashboard']]);
+  const deliveryDashboardRoute='dashboard-delivery';
   const deliveryCatalogRoute='produtos-delivery';
   const deliveryOrdersRoute='pedidos-delivery';
+  const deliveryDispatchRoute='entregas-delivery';
   routeNames[deliveryCatalogRoute]='Produtos e estoque';
   routeNames[deliveryOrdersRoute]='Pedidos';
+  routeNames[deliveryDispatchRoute]='Entregas';
+  routeNames[deliveryDashboardRoute]='Dashboard';
+  const deliveryRoutes=[deliveryDashboardRoute,deliveryCatalogRoute,deliveryOrdersRoute,deliveryDispatchRoute];
   const mainNav=[['verificador-numeros','check'],['link-whatsapp','link'],['contatos','users'],['grupos-contatos','list'],['dispositivos','phone'],['chatbot','bot'],['testar-chatbot','flask'],['templates','layers'],['mensagens-enviadas','fileCheck'],['diagnosticos','activity'],['campanhas','megaphone'],['programadas','calendarClock'],['massa','broadcast'],['enviar-mensagem','send'],['aquecimento','flame'],['evitar-banimento','shieldCheck'],['resolver-banimento','shieldAlert'],['extrator-contatos','usersSearch'],['adicionar-ao-grupo','userPlus'],['dashboard','dashboard'],['agenda','calendar'],['clientes','users'],['clinica','tooth'],['pacientes-odonto','users'],['proteses-odonto','prosthesis'],['estoque-odonto','box'],['vendas-odonto','layers'],['ajustes-odonto','settings'],['inbox','chat'],['servicos','scissors'],['funcionarios','badgeUser'],['financeiro','wallet'],['desempenho','chart'],['marketing','sparkles'],['site','globe'],['fidelizacao','gift'],['consultor','brain'],['plano','credit'],['configuracoes','settings']];
   const subscriptionNavigation=[
     ['Gestão',['dashboard']],
@@ -175,12 +180,12 @@
   const dedicatedPatients=()=>dentalWorkspace()&&state.entitlements?.dental_clinical_enabled===true;
   const routeLabel=route=>route==='afiliados-whatsapp'?'Conectar WhatsApp':affiliateWorkspace()&&affiliateTitles[route]?affiliateTitles[route]:route==='dashboard'&&homePreviewEnabled()?'Início':dentalWorkspace()?({clientes:dedicatedPatients()?'Contatos da agenda':'Pacientes',servicos:'Procedimentos',funcionarios:'Profissionais',desempenho:'Relatórios',inbox:'Conversas',site:'Agendamento online'})[route]||routeNames[route]:subscriptionWorkspace()&&route==='dashboard'?'Início':routeNames[route];
   const fallbackRoute=()=>{
-    if(deliveryPreview())return deliveryCatalogRoute;
+    if(deliveryPreview())return deliveryDashboardRoute;
     return affiliateWorkspace()||subscriptionWorkspace()||dentalWorkspace()&&permitted('dashboard.basic')?'dashboard':'plano';
   };
   const permitted=feature=>!feature||platformWorkspace()||(!affiliateWorkspace()||['account.manage','business.setup','devices.manage'].includes(feature))&&(!subscriptionWorkspace()||['account.manage','business.setup','devices.manage','chatbot.manage','templates.manage','sent_messages.manage','diagnostics.manage','campaigns.manage','scheduled_messages.manage','bulk_messages.manage','direct_messages.manage','whatsapp_guidance.view','group_contacts.manage','group_add.manage','number_check.manage','whatsapp_link.manage','audience.manage'].includes(feature))&&state.entitlements?.permissions?.[feature]===true;
   const routePermitted=route=>{
-    if(route===deliveryCatalogRoute||route===deliveryOrdersRoute)return deliveryPreview();
+    if(deliveryRoutes.includes(route))return deliveryPreview();
     if(affiliateWorkspace())return affiliatePanelRoute(route)||route==='afiliados-whatsapp'&&affiliateDevices()||['novidades','ajuda','member'].includes(route)||
       route==='configuracoes'&&permitted('account.manage')||route==='perfil'&&appLayoutEnabled();
     if(route.startsWith('afiliados-'))return false;
@@ -616,7 +621,7 @@
       const icons=new Map(mainNav);
       for(const [heading,routes] of subscriptionNavigation)nav+=navGroup(heading,routes.map(route=>[route,icons.get(route)]));
     }else if(delivery){
-      nav+=navGroup('Gestão',[[deliveryOrdersRoute,'list'],[deliveryCatalogRoute,'box'],['clientes','users']]);
+      nav+=navGroup('Gestão',[[deliveryDashboardRoute,'dashboard'],[deliveryOrdersRoute,'list'],[deliveryDispatchRoute,'send'],[deliveryCatalogRoute,'box'],['clientes','users']]);
       nav+=navGroup('Atendimento',[['inbox','chat']]);
       nav+=navGroup('Financeiro',[['financeiro','wallet']]);
       nav+=navGroup('Administração',[['configuracoes','settings']]);
@@ -900,7 +905,7 @@
       await refreshPermissions();
       if(!state.mounted||permissionEpoch!==state.epoch||permissionTenant!==state.tenantId||navigationRead!==state.navigationRead)return;
     }
-    if(deliveryPreview()&&route==='dashboard')route=deliveryCatalogRoute;
+    if(deliveryPreview()&&route==='dashboard')route=deliveryDashboardRoute;
     if(!routePermitted(route))route=fallbackRoute();
     if(route!=='enviar-mensagem'){
       try{const url=new URL(location.href);if(state.route==='enviar-mensagem'||url.searchParams.get('aba')==='enviar-mensagem'){url.searchParams.delete('message_id');history.replaceState(history.state,'',url.pathname+url.search);}}catch{}
@@ -944,7 +949,8 @@
     const readOnly=tenant()&&!can?'<div class="os-notice os-readonly">'+icon('lock')+'<p>Seu acesso a esta empresa é somente para consulta.</p></div>':'';
     let html='';
     if(state.route===deliveryCatalogRoute)html='<div id="osPageBody">'+loading('Carregando o catálogo…')+'</div>';
-    if(state.route===deliveryOrdersRoute)html='<div id="osPageBody">'+loading('Carregando pedidos…')+'</div>';
+    if(state.route===deliveryDashboardRoute)html='<div id="osPageBody">'+loading('Carregando o dashboard…')+'</div>';
+    if([deliveryOrdersRoute,deliveryDispatchRoute].includes(state.route))html='<div id="osPageBody">'+loading('Carregando pedidos…')+'</div>';
     if(state.route==='afiliados-whatsapp')html='<div id="osPageBody">'+routeButton('Voltar a Conexões e destinos','afiliados-conexoes','os-ghost','left')+'<section id="osSubscriptionDevices"></section></div>';
     if(state.route==='dispositivos')html='<div id="osPageBody"><section id="osSubscriptionDevices"></section></div>';
     if(state.route==='verificador-numeros')html='<div id="osPageBody"><section id="osSubscriptionNumberCheck"></section></div>';
@@ -1056,16 +1062,25 @@
   async function loadRoute(options={}){if(affiliatePanelRoute(state.route))return;const c=context();try{
     if(Object.hasOwn(dentalViews,state.route)){await loadDentalView(dentalViews[state.route],c,options);return;}
     switch(state.route){
+      case deliveryDashboardRoute:
+        await window.OrionDeliveryOrders.dashboard({
+          host:$('osPageBody'),filters:state.filters.deliveryDashboard??={},
+          call:path=>request(apiPath('/delivery'+path)),
+          allowed:()=>current(c)&&deliveryPreview(),ui:{esc,loading,field,title,money,metric,seriesChart,routeButton,dateKey,query},
+        });
+        break;
       case deliveryCatalogRoute:
-      case deliveryOrdersRoute:{
+      case deliveryOrdersRoute:
+      case deliveryDispatchRoute:{
         const catalog=state.route===deliveryCatalogRoute;
         const module=catalog?window.OrionDeliveryCatalog:window.OrionDeliveryOrders;
-        const key=catalog?'deliveryCatalog':'deliveryOrders';
+        const deliveryOnly=state.route===deliveryDispatchRoute;
+        const key=catalog?'deliveryCatalog':deliveryOnly?'deliveryDispatch':'deliveryOrders';
         await module.mount({
-          host:$('osPageBody'), filters:state.filters[key]??={},
+          host:$('osPageBody'), filters:state.filters[key]??={}, deliveryOnly,
           call:(path,method,data)=>request(apiPath('/delivery'+path),method,data),
           allowed:()=>current(c)&&deliveryPreview(), canWrite:writable,
-          ui:{esc,icon,title,button,field,moneyField,selectField,textField,checkField,empty,loading,badge,money,fmtDate,dateKey,timeLabel,query},
+          ui:{esc,icon,title,button,field,moneyField,selectField,textField,checkField,empty,loading,badge,money,fmtDate,dateKey,timeLabel,query,brazilianStates},
           openDetails:(heading,content)=>showDialog('delivery-details',heading,content),
           openEditor:(heading,content,submit,message,{label='Salvar',bind}={})=>{
             if(showDialog('delivery-editor',heading,dialogForm('delivery-editor',content,label),
@@ -5324,7 +5339,7 @@
     const d=state.dialog,f=getValues(form);if(!['site','business-preferences','receipt-settings','automations','loyalty-inline','loyalty-ideas','ai-campaign','ai-consultant'].includes(kind)&&(!d||d.epoch!==state.epoch||d.tenantId!==state.tenantId))return;
     try{
       if(kind==='delivery-editor'){
-        if(!deliveryPreview()||![deliveryCatalogRoute,deliveryOrdersRoute].includes(state.route)||d.type!==kind)return;
+        if(!deliveryPreview()||!deliveryRoutes.includes(state.route)||d.type!==kind)return;
         await saveForm(form,()=>d.deliverySubmit(form,f,payload=>requestKey(form,payload)),d.deliveryMessage);
         return;
       }
