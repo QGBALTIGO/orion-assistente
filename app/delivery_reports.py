@@ -60,5 +60,9 @@ async def sales(db, tenant, *, start, end, state, mode, receipt, channel="all", 
 
 
 def amount_label(cents):
-    reais, centavos = divmod(cents, 100)
-    return f"{reais},{centavos:02d}"
+    # PostgreSQL SUM(bigint) is Decimal, while the ledger stores exact cents.
+    # Format the magnitude so a negative net balance keeps its correct sign.
+    amount = int(cents)
+    sign = "-" if amount < 0 else ""
+    reais, centavos = divmod(abs(amount), 100)
+    return f"{sign}{reais},{centavos:02d}"

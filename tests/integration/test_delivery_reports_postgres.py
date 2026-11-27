@@ -1,5 +1,6 @@
 """Verify operational reports against real tenant data and filter-matched CSV."""
 import csv
+from decimal import Decimal
 from datetime import datetime, timedelta
 from io import StringIO
 from uuid import uuid4
@@ -15,6 +16,13 @@ from test_onboarding_postgres import onboarding_db  # noqa: F401
 
 
 pytestmark = pytest.mark.integration
+
+
+def test_amount_label_accepts_decimal_and_negative_net():
+    from app.delivery_reports import amount_label
+    assert amount_label(Decimal("2500")) == "25,00"
+    assert amount_label(Decimal("-155")) == "-1,55"
+    assert amount_label(0) == "0,00"
 
 
 def rows(response):
