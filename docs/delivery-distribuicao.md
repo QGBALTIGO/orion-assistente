@@ -45,6 +45,21 @@ O painel de Barbearia define os padrões de navegação, formulários, botões e
 | [Cobrança a prazo](https://fazpedido.pro/app/venda-a-prazo) | O formulário observado oferece chave Pix, modelo de mensagem, prévia e variáveis de cliente, saldo e atraso. A lista vazia permite filtrar atraso. | A Orion registra saldo, vencimento, baixas parciais e estorno. O modelo de cobrança e os envios pelo WhatsApp ainda precisam de configuração e integração autorizada. |
 | Fornecedores, compras e integrações | Fornecedores e compras dedicados não apareceram no menu observado. Integrações de pagamento e mensagens não foram acionadas. | Estoque registra entradas de compra. Cadastro de fornecedor, compras com conta a pagar, aplicativo do entregador, impressão, automações, Pix dinâmico e WhatsApp transacional seguem pendentes de implementação ou credenciais aplicáveis. |
 
+### Dimensões observadas na biblioteca de referência
+
+As 15 imagens são servidas em WebP pelo próprio domínio do FazPedidoPro. As dimensões são as naturais, lidas no formulário autenticado. A origem autoral e uma licença de redistribuição não foram identificadas. A Orion usa um conjunto original de imagens com fundo transparente.
+
+| Imagem | Dimensões | Imagem | Dimensões |
+| --- | ---: | --- | ---: |
+| Garrafão 20 L | 640 × 1142 | Gás P13 | 469 × 667 |
+| Gás P45 | 235 × 652 | Fardo de água | 640 × 467 |
+| Água pequena | 243 × 655 | Garrafa 2 L | 253 × 682 |
+| Bebidas | 467 × 654 | Gelo | 525 × 649 |
+| Lata | 359 × 652 | Mangueira de gás | 652 × 398 |
+| Mercearia | 655 × 650 | Registro de gás | 649 × 495 |
+| Carvão | 450 × 660 | Descartáveis | 634 × 650 |
+| Outros | 608 × 655 | | |
+
 ## Banco de dados e homologação
 
 | Migrações | Alterações |
