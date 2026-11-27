@@ -4,7 +4,7 @@
 
   const prices = [['fixed','Preço fixo'],['from','A partir de'],['on_request','Sob consulta'],['custom','Personalizado']];
   const movements = [['purchase','Entrada'],['out','Saída'],['count','Contagem de estoque']];
-  const movementLabels = Object.fromEntries([...movements,['initial','Saldo inicial'],['reserved','Reserva'],['released','Liberação'],['sold','Venda concluída']]);
+  const movementLabels = Object.fromEntries([...movements,['initial','Saldo inicial'],['reserved','Reserva'],['released','Liberação'],['sold','Venda concluída'],['sale_returned','Devolução de pedido']]);
   const cap = 10000000;
   const formatInput = value => value == null ? '' : new Intl.NumberFormat('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}).format(value/100);
 

@@ -36,7 +36,7 @@ async def stock(http, root):
 async def receipts(ctx, tenant):
     async with ctx.migration.begin() as db:
         return (await db.execute(text("""
-            SELECT id,amount_cents,customer_id,payment_method,status,version
+            SELECT id,kind,amount_cents,customer_id,payment_method,status,version
             FROM financial_entries WHERE tenant_id=:t
         """), {"t": tenant})).mappings().all()
 
@@ -250,3 +250,53 @@ async def test_on_account_stays_pending_until_manual_receipt(onboarding_db, monk
         assert [event["action"] for event in history] == ["confirmed","fulfilled","received"]
     ledger, = await receipts(ctx,tenant)
     assert ledger["status"] == "paid" and ledger["version"] == 2 and ledger["payment_method"] == "cash"
+
+
+@pytest.mark.parametrize("payment_method", ["cash","on_account"])
+async def test_full_return_restores_stock_and_reverses_financial_effect(onboarding_db, monkeypatch, payment_method):
+    ctx = onboarding_db
+    tenant, actor = await business(ctx, monkeypatch)
+    root = f"/api/v1/tenants/{tenant}/delivery"
+    await complete_delivery_setup(ctx, tenant)
+    customer = uuid4()
+    async with ctx.migration.begin() as db:
+        await db.execute(text("INSERT INTO customers(id,tenant_id,name) VALUES(:c,:t,'Cliente sintético')"),
+                         {"c":customer,"t":tenant})
+    async with client(actor) as http:
+        variant = (await http.post(root+"/catalog",json=new_product())).json()["variant_id"]
+        args = await order_payload(http,root,variant,2,mode="pickup",customer_id=str(customer))
+        order = await http.post(root+"/orders",json=args)
+        assert order.status_code == 201, order.text
+        endpoint = root+"/orders/"+order.json()["id"]
+        payload = {"action":"fulfill","expected_revision":1,"payment_method":payment_method,"idempotency_key":uuid4().hex}
+        paid = payment_method == "cash"
+        if not paid:
+            payload["payment_due_date"] = str(datetime.now(ZoneInfo("America/Cuiaba")).date())
+        completed = await http.post(endpoint+"/transitions",json=payload)
+        assert completed.status_code == 200, completed.text
+        assert await stock(http,root) == (3,0)
+        restoring = {"action":"return","expected_revision":2,"refunded":paid,"idempotency_key":uuid4().hex}
+        assert (await http.post(endpoint+"/transitions",json=restoring)).status_code == 422
+        assert (await http.post(endpoint+"/transitions",json={**restoring,"returned_to_stock":True,"refunded":not paid})).status_code == 422
+        assert await stock(http,root) == (3,0)
+        command = {**restoring,"returned_to_stock":True}
+        reversed_order, replay = await asyncio.gather(*[http.post(endpoint+"/transitions",json=command) for _ in range(2)])
+        assert reversed_order.status_code == replay.status_code == 200, reversed_order.text
+        assert reversed_order.json() == replay.json() and reversed_order.json()["status"] == "cancelled"
+        assert await stock(http,root) == (5,0)
+        detail = (await http.get(endpoint)).json()
+        assert detail["receipt_status"] == ("refunded" if paid else "cancelled")
+        assert detail["history"][-1]["action"] == "returned"
+        assert (await http.get(root+"/credit",params={"status":"pending"})).json()["summary"]["open_cents"] == 0
+        history = (await http.get(root+"/catalog/history")).json()["items"]
+        assert history[0]["details"]["movement"] == "sale_returned"
+        assert (await http.get(root+"/reports/sales")).json()["summary"] == {
+            "orders":1,"cancelled":1,"paid_cents":0,"pending_cents":0,
+        }
+    finances = {entry["kind"]:entry for entry in await receipts(ctx,tenant)}
+    if paid:
+        assert finances["income"]["status"] == finances["expense"]["status"] == "paid"
+        assert finances["income"]["amount_cents"] == finances["expense"]["amount_cents"] == 2500
+        assert finances["expense"]["id"] == UUID(reversed_order.json()["return_financial_entry_id"])
+    else:
+        assert set(finances) == {"income"} and finances["income"]["status"] == "cancelled"

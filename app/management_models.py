@@ -139,7 +139,7 @@ async def update_row(db, tenant_id, table, identity, version, values):
         previous = await get_row(db, tenant_id, table, identity, lock=True)
         if previous.get("category") == "Delivery" and (await db.execute(text("""
             SELECT EXISTS(SELECT 1 FROM management_requests WHERE tenant_id=:t
-                AND operation='delivery_order_receipt' AND entity_id=:id)
+                AND operation IN ('delivery_order_receipt','delivery_order_refund') AND entity_id=:id)
         """), {"t":tenant_id,"id":identity})).scalar_one():
             raise HTTPException(409, "Este recebimento está vinculado a um pedido de Delivery")
         await ensure_editable_entry(db, tenant_id, identity)

@@ -286,6 +286,13 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                     async with page.expect_download() as download:
                         await page.get_by_role("link", name="Exportar CSV").click()
                     assert (await download.value).suggested_filename == "orion-delivery-vendas.csv"
+                    await page.goto(origin+"/painel?aba=entregas-delivery")
+                    await page.get_by_role("button", name="Registrar devolução", exact=True).click()
+                    await dialog.get_by_label("Confirmo que todos os itens voltaram ao estoque").check()
+                    await dialog.get_by_label("Confirmo que já devolvi o valor ao cliente").check()
+                    await dialog.get_by_role("button", name="Registrar devolução", exact=True).click()
+                    await expect(dialog).to_be_hidden()
+                    await expect(orders.get_by_text("Estornado", exact=True)).to_be_visible()
                     await page.goto(origin+"/painel?aba=vasilhames-delivery")
                     await page.get_by_role("button", name="Novo vasilhame").click()
                     await dialog.get_by_label("Tipo").select_option("jug")

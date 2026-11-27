@@ -14,7 +14,7 @@ from sqlalchemy import text
 from app import commercial_service as commerce, management_models as management
 from app.business_profile_schemas import ProfileModel
 from app.commercial_schemas import IdempotencyKey, QuoteLineRequest
-from app.delivery_catalog import LIMIT, list_items, run_once
+from app.delivery_catalog import LIMIT, MAX_QUANTITY, list_items, run_once
 from app.management_schemas import MAX_MONEY
 from app.onboarding_schemas import Address
 from app.onboarding_service import require_operational_ready
@@ -62,12 +62,13 @@ class ManualOrder(OrderEstimate):
 
 
 class Transition(ProfileModel):
-    action: Literal["dispatch", "fulfill", "cancel", "settle"]
+    action: Literal["dispatch", "fulfill", "cancel", "settle", "return"]
     expected_revision: StrictInt = Field(ge=1)
     payment_method: Literal["cash", "debit_card", "credit_card", "on_account"] | None = None
     payment_due_date: date | None = None
     courier_name: str | None = Field(default=None, min_length=1, max_length=120)
     returned_to_stock: StrictBool = False
+    refunded: StrictBool = False
     idempotency_key: IdempotencyKey
 
     @model_validator(mode="after")
@@ -82,15 +83,18 @@ class Transition(ProfileModel):
             raise ValueError("Use vencimento até o ano de 2100")
         if (self.action == "dispatch") != (self.courier_name is not None):
             raise ValueError("Informe o entregador ao despachar")
-        if self.action != "cancel" and self.returned_to_stock:
+        if self.action not in {"cancel","return"} and self.returned_to_stock:
             raise ValueError("Confirme o retorno dos itens ao cancelar uma entrega")
+        if self.action != "return" and self.refunded:
+            raise ValueError("Confirme o estorno junto com a devolução")
         return self
 
 
-ORDERS = """
+RECEIPT_STATUS = "CASE WHEN d.return_financial_entry_id IS NOT NULL THEN 'refunded' ELSE f.status END"
+ORDERS = f"""
     SELECT o.id,o.quote_id,o.status,o.revision,o.created_at,d.mode,d.customer_id,
         d.financial_entry_id,q.customer_name,q.total_cents,d.delivery_fee_cents,d.courier_name,d.dispatched_at,
-        d.payment_due_date,f.status AS receipt_status
+        d.payment_due_date,d.return_financial_entry_id,f.payment_method,{RECEIPT_STATUS} AS receipt_status
     FROM commercial_orders o JOIN delivery_order_details d ON (d.tenant_id,d.order_id)=(o.tenant_id,o.id)
     JOIN commercial_quotes q ON (q.tenant_id,q.id)=(o.tenant_id,o.quote_id)
     LEFT JOIN financial_entries f ON (f.tenant_id,f.id)=(d.tenant_id,d.financial_entry_id)
@@ -117,9 +121,9 @@ async def list_orders(db, tenant, *, search, state, mode, start, end, offset):
 async def list_credit(db, tenant, *, search, status, offset):
     period, _, _ = await management.period_for(db, tenant)
     today = period["end_date"]
-    rows = (await db.execute(text(ORDERS + """
+    rows = (await db.execute(text(ORDERS + f"""
         AND d.payment_due_date IS NOT NULL
-        AND (:status='all' OR f.status=:status OR
+        AND (:status='all' OR ({RECEIPT_STATUS})=:status OR
             (:status='overdue' AND f.status='pending' AND d.payment_due_date<:today))
         AND (:search='' OR position(lower(:search) in lower(concat_ws(' ',q.customer_name,cast(o.id as text))))>0)
         ORDER BY d.payment_due_date ASC,o.id LIMIT :limit OFFSET :offset
@@ -316,13 +320,55 @@ async def settle_credit(db, tenant, access, order, method):
     return {"id":receipt}
 
 
+async def return_order(db, tenant, access, row, items, payload):
+    if not payload.returned_to_stock:
+        raise HTTPException(422, "Confirme que todos os itens voltaram ao estoque")
+    paid = row["receipt_status"] == "paid"
+    if paid != payload.refunded:
+        raise HTTPException(422, "Confirme o estorno realizado" if paid else "Este pedido não tem pagamento recebido")
+    for item in sorted(items,key=lambda item:item["variant_id"]):
+        variant=UUID(item["variant_id"])
+        amount=item["quantity"]
+        after=(await db.execute(text("""
+            UPDATE commercial_inventory SET quantity_on_hand=quantity_on_hand+:quantity,
+                revision=revision+1,updated_at=now()
+            WHERE tenant_id=:t AND variant_id=:v AND mode='tracked'
+              AND quantity_on_hand<=:cap-:quantity
+            RETURNING quantity_on_hand
+        """), {"t":tenant,"v":variant,"quantity":amount,"cap":MAX_QUANTITY})).scalar_one_or_none()
+        if after is None:
+            commerce.conflict("Confira o saldo e o limite de estoque antes de registrar a devolução.")
+        await commerce.audit(db,tenant,access,"stock",variant,"sale_returned",
+            {"order_id":row["id"],"quantity":amount,"after":after,"movement":"sale_returned"})
+    if paid:
+        refund=await management.insert_row(db,tenant,"financial_entries",{
+            "kind":"expense","description":f"Estorno do pedido {str(row['id'])[:8].upper()}",
+            "amount_cents":row["total_cents"],"category":"Delivery","payment_method":row["payment_method"],
+            "status":"paid","occurred_at":commerce.now_utc(),"customer_id":row["customer_id"],
+        },str(row["id"]),operation="delivery_order_refund")
+        await db.execute(text("""
+            UPDATE delivery_order_details SET return_financial_entry_id=:f WHERE tenant_id=:t AND order_id=:o
+        """), {"t":tenant,"o":row["id"],"f":refund["id"]})
+        return refund["id"]
+    if row["receipt_status"] == "pending":
+        receipt = (await db.execute(text("""
+            UPDATE financial_entries SET status='cancelled',updated_at=now(),version=version+1
+            WHERE tenant_id=:t AND id=:id AND status='pending' RETURNING id
+        """), {"t":tenant,"id":row["financial_entry_id"]})).scalar_one_or_none()
+        if receipt is None:
+            commerce.conflict("O lançamento a receber mudou. Confira a venda antes da devolução.")
+        await management.audit(db,tenant,"management_updated","financial_entries",receipt)
+    return None
+
+
 async def transition(db, tenant, access, order_id, payload):
     async def write():
         row = await one_order(db, tenant, order_id, lock=True)
-        permitted = {"fulfilled"} if payload.action == "settle" else {"confirmed","dispatched"}
+        permitted = {"fulfilled"} if payload.action in {"settle","return"} else {"confirmed","dispatched"}
         if row["status"] not in permitted or row["revision"] != payload.expected_revision:
             commerce.conflict("O pedido foi alterado ou encerrado. Confira o histórico.")
         receipt = None
+        return_entry = None
         if payload.action == "settle":
             receipt = await settle_credit(db,tenant,access,row,payload.payment_method)
             status = "fulfilled"
@@ -337,7 +383,10 @@ async def transition(db, tenant, access, order_id, payload):
             status = "dispatched"
         else:
             quote = await commerce._quote(db, tenant, row["quote_id"])
-            if payload.action == "cancel":
+            if payload.action == "return":
+                return_entry = await return_order(db,tenant,access,row,quote["items"],payload)
+                status = "cancelled"
+            elif payload.action == "cancel":
                 if row["status"] == "dispatched" and not payload.returned_to_stock:
                     raise HTTPException(422, "Confirme que os itens voltaram ao estoque")
                 await commerce.release_stock(db, tenant, access, order_id, quote["items"])
@@ -352,10 +401,12 @@ async def transition(db, tenant, access, order_id, payload):
             WHERE tenant_id=:t AND id=:o RETURNING revision
         """), {"status":status,"t":tenant,"o":order_id})).scalar_one()
         receipt_id=receipt["id"] if receipt else None
-        action = "received" if payload.action == "settle" else status
+        action = {"settle":"received","return":"returned"}.get(payload.action,status)
         await commerce.audit(db, tenant, access, "order", order_id, action,
                              {"financial_entry_id":receipt_id,"payment_method":payload.payment_method,
-                              "returned_to_stock":payload.returned_to_stock,"payment_due_date":payload.payment_due_date})
-        return {"id":order_id,"status":status,"revision":revision,"financial_entry_id":receipt_id}
+                              "returned_to_stock":payload.returned_to_stock,"payment_due_date":payload.payment_due_date,
+                              "return_financial_entry_id":return_entry})
+        return {"id":order_id,"status":status,"revision":revision,"financial_entry_id":receipt_id,
+                "return_financial_entry_id":return_entry}
 
     return await run_once(db, tenant, payload, "order_transition", order_id, write)

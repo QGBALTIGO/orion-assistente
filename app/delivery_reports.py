@@ -7,21 +7,21 @@ from sqlalchemy import text
 
 from app.csv_export import csv_document
 from app.delivery_catalog import LIMIT
-from app.delivery_orders import ORDERS
+from app.delivery_orders import ORDERS, RECEIPT_STATUS
 from app.management_models import period_for
 
 
-ReceiptFilter = Literal["all", "pending", "paid", "none"]
+ReceiptFilter = Literal["all", "pending", "paid", "refunded", "none"]
 MAX_EXPORT_ROWS = 20_000
-FILTER = """
+FILTER = f"""
     AND o.created_at>=:lower AND o.created_at<:upper
     AND (:state='all' OR o.status=:state)
     AND (:mode='all' OR d.mode=:mode)
-    AND (:receipt='all' OR coalesce(f.status,'none')=:receipt)
+    AND (:receipt='all' OR coalesce(({RECEIPT_STATUS}),'none')=:receipt)
 """
 STATE_LABELS = {"confirmed":"Reservado","dispatched":"Em rota","fulfilled":"Concluído","cancelled":"Cancelado"}
 MODE_LABELS = {"counter":"Balcão","pickup":"Retirada","delivery":"Entrega"}
-RECEIPT_LABELS = {"paid":"Recebido","pending":"A receber"}
+RECEIPT_LABELS = {"paid":"Recebido","pending":"A receber","refunded":"Estornado","cancelled":"Cancelado"}
 
 
 async def sales(db, tenant, *, start, end, state, mode, receipt, offset=0, export=False):
