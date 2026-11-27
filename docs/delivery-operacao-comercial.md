@@ -1,6 +1,18 @@
 # Delivery e Distribuição — acompanhamento da implementação
 Atualizado em 27 de novembro de 2026. Responsáveis pela operação comercial devem conseguir identificar se um recurso foi publicado, se está em homologação ou se ainda depende de desenvolvimento.
 
+## Publicação confirmada — 27/11/2026, 16h29 (MS)
+
+**Produção:** commit `4dccb9bae34bcffbf3ea0a512529233e17b5f690`, deployment Railway `78f4ee6b-d637-451a-80d1-30b4e7631bac`, SUCCESS. Imagem `sha256:3d8553547cb9941f3eb1a1c31ede81e9b7cc6266071ebf08abe276edaa35f5cc`. API /health retornou status ok. Assets públicos confirmam abas Recebimentos e Recompra. Schema de produção validado em `0116_delivery_manual_pix`, sem migração adicional. Esta confirmação substitui estados históricos de publicação relatados abaixo.
+
+- Ficha CRM comercial integrada a pedidos, compras, crédito, endereços e vasilhames reais; validada por testes automatizados. Não houve criação de clientes fictícios no ambiente comercial.
+- Central operacional em Logística: despacho pendente, aceite, rota, agendamentos, expediente, carga de trabalho e alertas. Atualização opcional em 20 segundos enquanto visível; localização voluntária em primeiro plano, sem simular GPS. Consultar operação foi conferido na sessão autenticada real após o deploy intermediário `6175f1c5-4358-4ef6-b7a2-85b855b843fd` (SUCCESS).
+- Recebimentos por forma efetiva de pagamento, líquidos, estornos, pagamentos mistos e parciais; filtros e CSV. Corrigida formatação de totais Decimal e valores negativos na exportação.
+- Recompra por produto/variação e cliente, com mínimo de três datas distintas de compra nos últimos 365 dias, intervalo médio e previsão; sugestões não disparam mensagens automaticamente.
+- Homologação final: 71 testes de integração/navegador e 79 testes adicionais de regressão aprovados; trabalhos review e validation concluídos com sucesso, incluindo testes de interface, lint e verificações de dependências. [Homologação](https://github.com/QGBALTIGO/orion-assistente/actions/runs/46063433498) · [Empacotamento](https://github.com/QGBALTIGO/orion-assistente/actions/runs/46063437168) · [Commit](https://github.com/QGBALTIGO/orion-assistente/commit/4dccb9bae34bcffbf3ea0a512529233e17b5f690).
+
+**Próximas pendências:** estoque por veículo, cargas e acerto por expediente, elegibilidade para despacho inteligente, permissões granulares, mapa agregado e rotas reais, notificações/IA autorizadas, homologação fiscal e regras comerciais definitivas. Pix permanece manual conforme decisão do proprietário; integração automática de PSP não foi contratada. Não foram realizadas cobranças reais nem envios externos. A missão completa ainda não está concluída. Nenhum novo serviço pago provisionado; consumo variável não medido nesta etapa.
+
 ## Retomada em 27 de novembro
 
 O trabalho foi recuperado da branch `codex/delivery-operacao-20261127`. A revisão de origem `323e5657` inclui endereços nomeados, regras de entrega por bairro, compras de fornecedores, pagamento misto, Kanban, aplicativo do entregador e Pix manual. A cadeia de migrações até `0116_delivery_manual_pix` foi aplicada em um PostgreSQL descartável. [Branch de homologação](https://github.com/QGBALTIGO/orion-assistente/tree/codex/delivery-operacao-20261127)
