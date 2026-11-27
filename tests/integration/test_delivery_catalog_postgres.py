@@ -585,7 +585,7 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                         await page.locator("#osDialog .os-close").click()
                     if route == "relatorio-delivery":
                         await page.set_viewport_size({"width":390,"height":844})
-                        for tab in ("Vendas","Produtos","Clientes","Estoque","Movimentações","A receber","Vasilhames","Atividades"):
+                        for tab in ("Vendas","Produtos","Clientes","Recebimentos","Recompra","Estoque","Movimentações","A receber","Vasilhames","Atividades"):
                             await page.get_by_role("tab",name=tab,exact=True).click()
                             await expect(page.locator("#osDeliveryReportPanel a[download]")).to_be_visible()
                             await assert_delivery_layout(page, (route,tab,theme,390))

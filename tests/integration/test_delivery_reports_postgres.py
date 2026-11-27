@@ -60,6 +60,13 @@ async def test_report_products_customers_and_stock_use_fulfilled_orders(onboardi
         paid = await http.post(endpoint, json={"action":"fulfill","expected_revision":1,"payment_method":"cash",
                                                "idempotency_key":uuid4().hex})
         assert paid.status_code == 200, paid.text
+        payment = await http.get(reports + "/payments", params={"status":"cash","search":"cliente sintético"})
+        assert payment.status_code == 200, payment.text
+        assert metrics(payment.json()) == {"Recebido confirmado":2500,"Estornado":0,"Recebimentos líquidos":2500}
+        assert payment.json()["items"][0]["payment_method"] == "Dinheiro"
+        exported_payment, = rows(await http.get(reports + "/payments/csv", params={"status":"cash"}))
+        assert exported_payment["Recebido"] == "25,00"
+        assert rows(await http.get(reports + "/payments/csv", params={"status":"pix"})) == []
 
         response = await http.get(reports + "/products", params=period)
         assert response.status_code == 200, response.text
@@ -155,3 +162,46 @@ async def test_report_credit_vessels_and_read_permission(onboarding_db, monkeypa
     async with client(Actor("member",account_id=ctx.other)) as foreign:
         assert (await foreign.get(reports + "/credit")).status_code == 403
         assert (await foreign.get(reports + "/containers/csv")).status_code == 403
+
+
+async def test_reorder_uses_three_distinct_days_and_mixed_receipts_are_not_double_counted(onboarding_db, monkeypatch):
+    ctx = onboarding_db
+    tenant, actor = await business(ctx, monkeypatch)
+    await complete_delivery_setup(ctx, tenant)
+    contact = await customer(ctx, tenant, "Cliente recorrente")
+    root = f"/api/v1/tenants/{tenant}/delivery"
+    reports = root + "/reports/operational"
+    async with client(actor) as http:
+        product = await http.post(root+"/catalog",json=new_product())
+        assert product.status_code == 201, product.text
+        variant = product.json()["variant_id"]
+        for index, days in enumerate((14,7,0)):
+            args=await order_payload(http,root,variant,1,mode="pickup",customer_id=contact)
+            created=await http.post(root+"/orders",json=args)
+            assert created.status_code==201,created.text
+            identity=created.json()["id"]
+            paid=await http.post(root+"/orders/"+identity+"/transitions",json={
+                "action":"fulfill","expected_revision":1,"idempotency_key":uuid4().hex,
+                "tenders":[{"method":"cash","amount_cents":500},{"method":"debit_card","amount_cents":750}]})
+            assert paid.status_code==200,paid.text
+            async with ctx.migration.begin() as db:
+                await db.execute(text("UPDATE commercial_orders SET created_at=now()-(:days * interval '1 day') WHERE tenant_id=:t AND id=:o"),
+                    {"days":days,"t":tenant,"o":identity})
+            data=await http.get(reports+"/reorder")
+            assert data.status_code==200,data.text
+            if index<2:
+                assert data.json()["items"]==[]
+        row,=data.json()["items"]
+        assert row["purchase_days"]==3 and row["interval_days"]==7 and row["units"]==3
+        assert row["reorder_status"]=="Mais adiante"
+        assert rows(await http.get(reports+"/reorder/csv",params={"status":"due"}))==[]
+        exported,=rows(await http.get(reports+"/reorder/csv"))
+        assert exported["Cliente"]=="Cliente recorrente"
+        payments=await http.get(reports+"/payments")
+        assert payments.status_code==200,payments.text
+        assert metrics(payments.json())["Recebido confirmado"]==3750
+        amounts={r["payment_method"]:r["received_cents"] for r in payments.json()["items"]}
+        assert amounts=={"Dinheiro":1500,"Cartão de débito":2250}
+        async with ctx.migration.begin() as db:
+            await db.execute(text("UPDATE customers SET active=false WHERE tenant_id=:t AND id=:c"),{"t":tenant,"c":contact})
+        assert (await http.get(reports+"/reorder")).json()["items"]==[]

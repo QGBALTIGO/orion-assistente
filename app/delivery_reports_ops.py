@@ -18,7 +18,7 @@ from app.delivery_reports import MAX_EXPORT_ROWS, amount_label
 from app.management_models import period_for, report_period
 
 
-ReportKind = Literal["products", "customers", "inventory", "movements", "credit", "containers", "activity"]
+ReportKind = Literal["products", "customers", "inventory", "movements", "credit", "containers", "activity", "payments", "reorder"]
 OrderMode = Literal["all", "counter", "pickup", "delivery"]
 
 PERIOD_ORDERS = ORDERS + """
@@ -149,6 +149,86 @@ ACTIVITY = """
       AND position(lower(:search) in lower(concat_ws(' ',reference,action)))>0
 """
 
+# Payment methods are taken from the actual financial entries, not from the
+# preference at checkout. Separate refunds, including mixed refunds recorded as
+# "other", so that we do not invent a split between payment methods.
+PAYMENTS = """
+    WITH linked AS (
+        SELECT tenant_id,order_id,financial_entry_id,'receipt' AS movement
+        FROM delivery_order_details WHERE tenant_id=:t AND financial_entry_id IS NOT NULL
+        UNION
+        SELECT tenant_id,order_id,financial_entry_id,'receipt'
+        FROM delivery_credit_collections WHERE tenant_id=:t
+        UNION
+        SELECT tenant_id,order_id,return_financial_entry_id,'refund'
+        FROM delivery_order_details WHERE tenant_id=:t AND return_financial_entry_id IS NOT NULL
+    ), entries AS (
+        SELECT l.order_id,l.movement,coalesce(f.payment_method,'other') AS payment_method,
+            f.amount_cents
+        FROM linked l JOIN financial_entries f ON (f.tenant_id,f.id)=(l.tenant_id,l.financial_entry_id)
+        JOIN commercial_orders o ON (o.tenant_id,o.id)=(l.tenant_id,l.order_id)
+        JOIN commercial_quotes q ON (q.tenant_id,q.id)=(o.tenant_id,o.quote_id)
+        WHERE l.tenant_id=:t AND o.origin='delivery' AND f.status='paid'
+          AND ((l.movement='receipt' AND f.kind='income') OR (l.movement='refund' AND f.kind='expense'))
+          AND coalesce(f.received_at,f.occurred_at)>=:lower
+          AND coalesce(f.received_at,f.occurred_at)<:upper
+          AND position(lower(:search) in lower(concat_ws(' ',q.customer_name,cast(o.id as text))))>0
+          AND (:status='all' OR coalesce(f.payment_method,'other')=:status)
+    )
+    SELECT payment_method AS row_id,payment_method,
+        count(*) FILTER (WHERE movement='receipt') AS receipts,
+        count(*) FILTER (WHERE movement='refund') AS refunds,
+        coalesce(sum(amount_cents) FILTER (WHERE movement='receipt'),0) AS received_cents,
+        coalesce(sum(amount_cents) FILTER (WHERE movement='refund'),0) AS refunded_cents,
+        coalesce(sum(CASE WHEN movement='receipt' THEN amount_cents ELSE -amount_cents END),0) AS net_cents
+    FROM entries GROUP BY payment_method
+"""
+
+# At least three distinct purchase days for a specific variant, in the last
+# 365 local calendar days. This is a descriptive cadence, not a demand forecast.
+REORDER = """
+    WITH clock AS (
+        SELECT timezone,(now() AT TIME ZONE timezone)::date AS today
+        FROM tenants WHERE id=:t
+    ), purchase_days AS (
+        SELECT d.customer_id,i.variant_id,
+            (o.created_at AT TIME ZONE clock.timezone)::date AS purchase_day,
+            sum(i.quantity) AS quantity
+        FROM delivery_order_details d
+        JOIN commercial_orders o ON (o.tenant_id,o.id)=(d.tenant_id,d.order_id)
+        JOIN commercial_quote_items i ON (i.tenant_id,i.quote_id)=(o.tenant_id,o.quote_id)
+        CROSS JOIN clock
+        WHERE d.tenant_id=:t AND d.customer_id IS NOT NULL AND o.origin='delivery'
+            AND o.status='fulfilled'
+            AND (o.created_at AT TIME ZONE clock.timezone)::date BETWEEN clock.today-364 AND clock.today
+        GROUP BY d.customer_id,i.variant_id,3
+    ), intervals AS (
+        SELECT *,purchase_day-lag(purchase_day) OVER (
+            PARTITION BY customer_id,variant_id ORDER BY purchase_day) AS gap
+        FROM purchase_days
+    ), cadence AS (
+        SELECT customer_id,variant_id,count(*) AS purchase_days,max(purchase_day) AS last_purchase,
+            greatest(1,round(avg(gap)))::int AS interval_days,sum(quantity) AS units
+        FROM intervals GROUP BY customer_id,variant_id HAVING count(*)>=3
+    ), opportunities AS (
+        SELECT concat(c.id::text,':',v.id::text) AS row_id,c.name AS customer,
+            p.name AS product,v.name AS variant,ca.purchase_days,ca.units,ca.last_purchase,ca.interval_days,
+            ca.last_purchase+ca.interval_days AS suggested_date,
+            CASE WHEN ca.last_purchase+ca.interval_days<=clock.today THEN 'due'
+                 WHEN ca.last_purchase+ca.interval_days<=clock.today+2 THEN 'soon' ELSE 'later' END AS reorder_status
+        FROM cadence ca JOIN customers c ON c.tenant_id=:t AND c.id=ca.customer_id
+        JOIN commercial_variants v ON v.tenant_id=:t AND v.id=ca.variant_id
+        JOIN commercial_products p ON (p.tenant_id,p.id)=(v.tenant_id,v.product_id)
+        CROSS JOIN clock
+        WHERE c.active AND c.deleted_at IS NULL AND p.active AND v.active
+          AND position(lower(:search) in lower(concat_ws(' ',c.name,p.name,v.name)))>0
+    )
+    SELECT * FROM opportunities WHERE :status='all' OR reorder_status=:status
+"""
+PAYMENT_LABELS = {"cash":"Dinheiro","pix":"Pix","debit_card":"Cartão de débito",
+                  "credit_card":"Cartão de crédito","other":"Outros / estorno misto"}
+REORDER_LABELS = {"due":"Na janela de recompra","soon":"Nos próximos 2 dias","later":"Mais adiante"}
+
 MOVEMENT_LABELS = {
     "initial": "Saldo inicial", "purchase": "Entrada", "count": "Contagem", "out": "Saída",
     "reserved": "Reserva", "released": "Liberação", "sold": "Venda",
@@ -160,6 +240,8 @@ CREDIT_LABELS = {
 }
 CELL_LABELS = {
     "movement": MOVEMENT_LABELS,
+    "payment_method": PAYMENT_LABELS,
+    "reorder_status": REORDER_LABELS,
     "credit_status": CREDIT_LABELS,
     "stock_status": {"tracked": "Atualizado", "low": "Estoque baixo", "stale": "Contagem vencida", "unknown": "Sem contagem"},
     "container_kind": {"cylinder": "Botijão", "jug": "Garrafão"},
@@ -202,6 +284,25 @@ REPORTS = {
         ("orders","Pedidos concluídos","number","list","sum(orders)"),
         ("revenue_cents","Valor dos pedidos","money","wallet","sum(revenue_cents)"),
     )),
+    "payments": Report(PAYMENTS, "received_cents DESC, payment_method", (
+        ("payment_method","Meio de pagamento","text"),("receipts","Recebimentos","number"),
+        ("received_cents","Recebido","money"),("refunds","Estornos","number"),
+        ("refunded_cents","Estornado","money"),("net_cents","Saldo líquido","money"),
+    ), (
+        ("received_cents","Recebido confirmado","money","wallet","sum(received_cents)"),
+        ("refunded_cents","Estornado","money","deliveryDeferred","sum(refunded_cents)"),
+        ("net_cents","Recebimentos líquidos","money","chart","sum(net_cents)"),
+    ), frozenset(PAYMENT_LABELS)),
+    "reorder": Report(REORDER, "suggested_date, customer, product, variant, row_id", (
+        ("customer","Cliente","text"),("product","Produto","text"),("variant","Variação","text"),
+        ("purchase_days","Dias com compras","number"),("units","Unidades compradas","number"),
+        ("last_purchase","Última compra","date"),("interval_days","Intervalo médio (dias)","number"),
+        ("suggested_date","Data sugerida","date"),("reorder_status","Oportunidade","text"),
+    ), (
+        ("opportunities","Oportunidades","number","users","count(*)"),
+        ("due","Na janela de recompra","number","calendar","count(*) FILTER (WHERE reorder_status='due')"),
+        ("soon","Nos próximos 2 dias","number","clock","count(*) FILTER (WHERE reorder_status='soon')"),
+    ), frozenset(REORDER_LABELS), dated=False),
     "inventory": Report(INVENTORY, "product, variant, row_id", PRODUCT_COLUMNS + (
         ("category","Categoria","text"),("unit","Unidade","text"),("quantity_on_hand","Saldo contado","number"),
         ("reserved_quantity","Reservado","number"),("available","Disponível","number"),

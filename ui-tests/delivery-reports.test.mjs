@@ -21,7 +21,7 @@ test('report tabs preserve criteria and export the filtered set without paginati
         const params=new URL(path,'https://orion.test').searchParams;
         const offset=Number(params.get('offset')||0);
         return {
-          period,columns:[{key:'product',label:'Produto',style:'text'}],
+          period:path.includes('/reorder?')?null:period,columns:[{key:'product',label:'Produto',style:'text'}],
           items:[{product:params.get('search')||'Água sintética'}],
           summary:[{label:'Variações vendidas',style:'number',value:1,icon:'box'}],
           limit:25,offset,has_more:offset===0,
@@ -69,5 +69,11 @@ test('report tabs preserve criteria and export the filtered set without paginati
   await flush();
   const activity=h.document.querySelector('#osDeliveryReportPanel a[download]');
   assert.equal(new URL(activity.href).searchParams.get('status'),'orders');
+  h.click('[data-delivery-report-tab="payments"]');await flush();
+  assert.match(h.document.querySelector('#osDeliveryReportPanel h1').textContent,/Recebimentos/);
+  h.fill('#osDeliveryReportPanel [name=status]','cash');h.submit('#osDeliveryReportPanel form');await flush();
+  assert.equal(new URL(h.document.querySelector('#osDeliveryReportPanel a[download]').href).searchParams.get('status'),'cash');
+  h.click('[data-delivery-report-tab="reorder"]');await flush();
+  assert.match(h.document.querySelector('#osDeliveryReportPanel h1').textContent,/recompra/);
   assert.deepEqual(h.errors,[]);
 });
