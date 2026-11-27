@@ -8,6 +8,7 @@ No external send, language-model call or provider I/O runs in a transaction.
 from datetime import datetime, timezone
 from decimal import Decimal
 import json
+import os
 import re
 from uuid import uuid4
 
@@ -28,6 +29,11 @@ from app.workspace_policy import delivery_preview_enabled
 
 PURPOSE = "delivery_reply"
 STATE_TTL = 1800
+AUDIO_MINUTES = 2
+AUDIO_BYTES = 25_000_000
+AUDIO_FALLBACK = ("Recebi seu áudio, mas não consegui entender com segurança. "
+                  "Pode enviar uma mensagem escrita ou gravar novamente? "
+                  "Não alterei nem confirmei nenhum pedido.")
 CONFIRMATION_FALLBACK = "\nResponda *CONFIRMO* para registrar o pedido ou *NÃO* para cancelar o resumo."
 CONFIRMATION_STALE = "Esse botão não corresponde ao resumo atual. Nenhum novo pedido foi registrado."
 PAYMENTS = {"cash": "dinheiro", "pix": "Pix manual", "debit_card": "cartão de débito",
@@ -45,6 +51,12 @@ class Settings(ProfileModel):
 
 def enabled(device):
     return device["settings"].get("delivery_assistant_enabled") is True
+
+
+def audio_enabled(device):
+    # An isolated pilot, independent of subscription niche settings.
+    allowed = {value.strip() for value in os.getenv("ORION_DELIVERY_AUDIO_PREVIEW_TENANTS", "").split(",") if value.strip()}
+    return enabled(device) and str(device["tenant_id"]) in allowed
 
 
 def money(cents):
@@ -466,7 +478,7 @@ async def next_step(db, tenant, shop, items, state, phone):
     return summary,state
 
 
-async def answer(db, tenant, phone, body, state, summary_delivered):
+async def answer(db, tenant, phone, body, state, summary_delivered, *, allow_confirmation=True):
     from app import delivery_storefront as store
     value = clean(body)
     # Never process an emergency or a restricted sale as a water purchase.
@@ -543,6 +555,9 @@ async def answer(db, tenant, phone, body, state, summary_delivered):
         if value in {"ver resumo","rever resumo","como ficou","mostra de novo"}:
             return state["summary"],state
         if value in {"confirmo","confirmar","pode confirmar","sim","s","sm","isso mesmo","fechou","de acordo","tudo certo","pode ser","combinado","ok pode confirmar"} and affirmative(body):
+            if not allow_confirmation:
+                return ("Entendi seu áudio! Para evitar enganos, revise o resumo e confirme pelo botão ou por texto.\n\n"
+                        +state["summary"]),state
             if not summary_delivered:
                 return state["summary"],state
             proposal = store.Checkout.model_validate(state["proposal"])
@@ -628,9 +643,94 @@ async def answer(db, tenant, phone, body, state, summary_delivered):
     return await next_step(db,tenant,shop,items,state,phone)
 
 
-async def record_event(db, device, payload):
-    if (not enabled(device) or payload.kind!="text" or payload.origin!="contact" or not payload.message_id
-            or not (payload.text or payload.selection_id)):
+async def record_audio(db, device, payload):
+    """Admit a real audio event once; the existing ASR broker owns the grant."""
+    from app.subscription_devices import _insert_effect, audio_capable
+    skipped={"effects":[],"duplicate":False,"delivery_audio_skipped":True}
+    if not enabled(device) or payload.origin!="contact" or not payload.phone or not payload.message_id or payload.audio is None:
+        return skipped
+    try:
+        if not normalize_phone("+"+payload.phone):
+            return skipped
+    except ValueError:
+        return skipped
+    params={"t":device["tenant_id"],"d":device["id"],"g":device["generation"],"phone":payload.phone}
+    if await db.scalar(text("""SELECT COALESCE((SELECT revoked FROM subscription_campaign_permissions
+        WHERE tenant_id=:t AND phone=:phone),false)"""),params):
+        return skipped
+    duplicate=await db.scalar(text("""SELECT id FROM subscription_device_events
+        WHERE tenant_id=:t AND device_id=:d AND (provider_event_id=:event OR
+        (generation=:g AND payload->>'message_id'=:message AND payload->>'delivery_audio'='true')) LIMIT 1"""),
+        {**params,"event":payload.event_id,"message":payload.message_id})
+    if duplicate:
+        return {"effects":[],"duplicate":True}
+    data={"delivery_audio":True,"phone":payload.phone,"message_id":payload.message_id,
+          "settings_revision":device["revision"],"audio":payload.audio.model_dump(mode="json")}
+    event_id=(await db.execute(text("""INSERT INTO subscription_device_events
+        (tenant_id,device_id,generation,provider_event_id,kind,occurred_at,payload)
+        VALUES(:t,:d,:g,:event,'audio',:at,CAST(:data AS jsonb))
+        ON CONFLICT DO NOTHING RETURNING id"""),
+        {**params,"event":payload.event_id,"at":payload.occurred_at,"data":json.dumps(data)})).scalar_one_or_none()
+    if event_id is None:
+        return {"effects":[],"duplicate":True}
+    last=(await db.execute(text("""SELECT payload FROM subscription_device_events
+        WHERE tenant_id=:t AND device_id=:d AND generation=:g AND payload->>'phone'=:phone
+          AND payload->>'delivery'='true' ORDER BY received_at DESC,id DESC LIMIT 1"""),params)).scalar_one_or_none()
+    if last and last.get("delivery_paused") is True:
+        return skipped
+    meta=payload.audio
+    if (not audio_enabled(device) or not audio_capable() or
+            meta.seconds is not None and meta.seconds>AUDIO_MINUTES*60 or
+            meta.size is not None and meta.size>AUDIO_BYTES):
+        reply=await complete_audio(db,device,event_id,None)
+        return {**skipped,"effects":reply["effects"]}
+    effect_id=await _insert_effect(db,device,event_id,"delivery-transcribe",
+        {"type":"transcribe","purpose":PURPOSE,"payload":{"phone":payload.phone,
+         "message_id":payload.message_id,"max_seconds":AUDIO_MINUTES*60,"max_bytes":AUDIO_BYTES}})
+    return {"effects":[{"operation_id":str(effect_id),"type":"transcribe"}],"duplicate":False}
+
+
+async def complete_audio(db, device, event_id, transcript):
+    """Consume an authorized source once without storing the raw transcript.
+
+    Newer admitted text (including cancellation/control) supersedes an older
+    audio; the old transcript cannot change the newer conversation.
+    """
+    from app.subscription_device_schemas import DeviceEvent
+    row=(await db.execute(text("""SELECT id,provider_event_id,occurred_at,received_at,payload
+        FROM subscription_device_events WHERE tenant_id=:t AND device_id=:d AND generation=:g
+          AND id=:event AND kind='audio' AND payload->>'delivery_audio'='true'"""),
+        {"t":device["tenant_id"],"d":device["id"],"g":device["generation"],"event":event_id})).mappings().one_or_none()
+    if not row or row["payload"].get("settings_revision")!=device["revision"] or not enabled(device):
+        return {"effects":[],"duplicate":False,"delivery_audio_handled":False}
+    old=row["payload"]
+    if old.get("delivery") or old.get("delivery_audio_outcome"):
+        return {"effects":[],"duplicate":True,"delivery_audio_handled":True}
+    newer=await db.scalar(text("""SELECT 1 FROM subscription_device_events
+        WHERE tenant_id=:t AND device_id=:d AND generation=:g AND payload->>'phone'=:phone
+          AND payload->>'delivery'='true' AND (received_at,id)>(:received,:event) LIMIT 1"""),
+        {"t":device["tenant_id"],"d":device["id"],"g":device["generation"],
+         "phone":old["phone"],"received":row["received_at"],"event":event_id})
+    if newer:
+        await db.execute(text("""UPDATE subscription_device_events
+            SET payload=payload||'{"delivery_audio_outcome":"superseded"}'::jsonb
+            WHERE tenant_id=:t AND id=:event"""),{"t":device["tenant_id"],"event":event_id})
+        return {"effects":[],"duplicate":False,"delivery_audio_handled":True}
+    valid=isinstance(transcript,str) and bool(transcript.strip()) and len(transcript)<=1500
+    payload=DeviceEvent(device_id=device["id"],generation=device["generation"],
+        settings_revision=device["revision"],event_id=row["provider_event_id"],kind="audio",
+        occurred_at=row["occurred_at"],phone=old["phone"],message_id=old["message_id"],
+        text=transcript.strip() if valid else None,audio=old["audio"])
+    result=await record_event(db,device,payload,audio_event=event_id,
+                              fallback=None if valid else AUDIO_FALLBACK)
+    return {"effects":result["effects"],"duplicate":result["duplicate"],"delivery_audio_handled":True}
+
+
+async def record_event(db, device, payload, *, audio_event=None, fallback=None):
+    if payload.kind=="audio" and audio_event is None:
+        return await record_audio(db,device,payload)
+    if (not enabled(device) or (payload.kind!="text" and audio_event is None) or payload.origin!="contact" or not payload.message_id
+            or not (payload.text or payload.selection_id or fallback)):
         return {"effects":[],"duplicate":False}
     if payload.text and len(payload.text)>1500:
         return {"effects":[],"duplicate":False}
@@ -642,12 +742,13 @@ async def record_event(db, device, payload):
     if await db.scalar(text("""SELECT COALESCE((SELECT revoked FROM subscription_campaign_permissions
         WHERE tenant_id=:t AND phone=:phone),false)"""),params):
         return {"effects":[],"duplicate":False,"ignored":"contact_optout"}
-    duplicate=await db.scalar(text("""SELECT id FROM subscription_device_events
-        WHERE tenant_id=:t AND device_id=:d AND (provider_event_id=:event OR
-        (generation=:g AND payload->>'message_id'=:message AND payload->>'delivery'='true')) LIMIT 1"""),
-        {**params,"event":payload.event_id,"message":payload.message_id})
-    if duplicate:
-        return {"effects":[],"duplicate":True}
+    if audio_event is None:
+        duplicate=await db.scalar(text("""SELECT id FROM subscription_device_events
+            WHERE tenant_id=:t AND device_id=:d AND (provider_event_id=:event OR
+            (generation=:g AND payload->>'message_id'=:message AND payload->>'delivery'='true')) LIMIT 1"""),
+            {**params,"event":payload.event_id,"message":payload.message_id})
+        if duplicate:
+            return {"effects":[],"duplicate":True}
     last=(await db.execute(text("""SELECT id,payload,occurred_at FROM subscription_device_events
         WHERE tenant_id=:t AND device_id=:d AND generation=:g AND payload->>'phone'=:phone
           AND payload->>'delivery'='true' ORDER BY received_at DESC,id DESC LIMIT 1"""),params)).mappings().one_or_none()
@@ -669,7 +770,7 @@ async def record_event(db, device, payload):
         if old.get("delivery_summary") is True:
             accepted=(await db.execute(text("""SELECT provider_id FROM subscription_device_effects
                 WHERE tenant_id=:t AND device_id=:d AND generation=:g AND event_id=:event
-                  AND purpose=:purpose AND status='accepted' AND settings_revision=:revision
+                  AND purpose=:purpose AND type='send_text' AND status='accepted' AND settings_revision=:revision
                   AND payload->>'phone'=:phone"""),
                 {**params,"event":last["id"],"purpose":PURPOSE,"revision":device["revision"]})).mappings().one_or_none()
             delivered=accepted is not None
@@ -679,10 +780,13 @@ async def record_event(db, device, payload):
     body = payload.text
     if payload.selection_id:
         body = confirmation_selection(state, payload.selection_id, payload.quoted_message_id, accepted_provider_id)
-    if body:
+    if fallback is not None:
+        reply=None if state.get("paused") else fallback
+    elif body:
         async with get_session_factory()() as runtime:
             async with tenant_transaction(runtime,device["tenant_id"]):
-                reply,state=await answer(runtime,device["tenant_id"],phone,body,state,delivered)
+                reply,state=await answer(runtime,device["tenant_id"],phone,body,state,delivered,
+                                         allow_confirmation=audio_event is None)
     elif state.get("paused"):
         reply = None
     else:
@@ -696,10 +800,17 @@ async def record_event(db, device, payload):
                                    and state.get("summary") and state["summary"] in reply)}
     if state and not state.get("paused"):
         data["delivery_state"]=channels._cipher().encrypt(json.dumps(jsonable_encoder(state),ensure_ascii=False).encode()).decode()
-    event_id=(await db.execute(text("""INSERT INTO subscription_device_events
-        (tenant_id,device_id,generation,provider_event_id,kind,occurred_at,payload)
-        VALUES(:t,:d,:g,:event,'text',:at,CAST(:data AS jsonb)) ON CONFLICT DO NOTHING RETURNING id"""),
-        {**params,"event":payload.event_id,"at":payload.occurred_at,"data":json.dumps(data)})).scalar_one_or_none()
+    if audio_event is not None:
+        data["delivery_audio_outcome"]="fallback" if fallback else "transcribed"
+        event_id=(await db.execute(text("""UPDATE subscription_device_events SET payload=payload||CAST(:data AS jsonb)
+            WHERE tenant_id=:t AND device_id=:d AND generation=:g AND id=:event
+              AND payload->>'delivery_audio'='true' AND NOT (payload ? 'delivery_audio_outcome') RETURNING id"""),
+            {**params,"event":audio_event,"data":json.dumps(data)})).scalar_one_or_none()
+    else:
+        event_id=(await db.execute(text("""INSERT INTO subscription_device_events
+            (tenant_id,device_id,generation,provider_event_id,kind,occurred_at,payload)
+            VALUES(:t,:d,:g,:event,'text',:at,CAST(:data AS jsonb)) ON CONFLICT DO NOTHING RETURNING id"""),
+            {**params,"event":payload.event_id,"at":payload.occurred_at,"data":json.dumps(data)})).scalar_one_or_none()
     if event_id is None:
         return {"effects":[],"duplicate":True}
     if last:
@@ -713,7 +824,7 @@ async def record_event(db, device, payload):
     # Suppress any older unsent reply to this contact.
     await db.execute(text("""UPDATE subscription_device_effects SET status='not_sent',finished_at=clock_timestamp(),
         error_code='newer_delivery_input' WHERE tenant_id=:t AND device_id=:d AND purpose=:purpose
-        AND payload->>'phone'=:phone AND status='pending'"""),{**params,"purpose":PURPOSE})
+        AND payload->>'phone'=:phone AND type='send_text' AND status='pending'"""),{**params,"purpose":PURPOSE})
     if not reply:
         return {"effects":[],"duplicate":False}
     from app.subscription_devices import _insert_effect
@@ -726,7 +837,22 @@ async def record_event(db, device, payload):
 
 
 async def permits(db, device, effect):
-    if not enabled(device) or effect["purpose"]!=PURPOSE or effect["type"]!="send_text":
+    if not enabled(device) or effect["purpose"]!=PURPOSE:
+        return False
+    if effect["type"]=="transcribe":
+        from app.subscription_devices import audio_capable
+        if not audio_enabled(device) or not audio_capable():
+            return False
+        return bool(await db.scalar(text("""SELECT 1 FROM subscription_device_events e
+            WHERE e.tenant_id=:t AND e.device_id=:d AND e.generation=:g AND e.id=:event AND e.kind='audio'
+              AND e.payload->>'delivery_audio'='true' AND NOT (e.payload ? 'delivery_audio_outcome')
+              AND e.payload->>'phone'=:phone AND e.payload->>'message_id'=:message
+              AND e.occurred_at>clock_timestamp()-interval '5 minutes'
+              AND NOT COALESCE((SELECT revoked FROM subscription_campaign_permissions
+                WHERE tenant_id=:t AND phone=:phone),false)"""),
+            {"t":device["tenant_id"],"d":device["id"],"g":device["generation"],
+             "event":effect["event_id"],"phone":effect["payload"]["phone"],"message":effect["payload"]["message_id"]}))
+    if effect["type"]!="send_text":
         return False
     return bool(await db.scalar(text("""SELECT 1 FROM subscription_device_events e
         WHERE e.tenant_id=:t AND e.device_id=:d AND e.generation=:g AND e.id=:event

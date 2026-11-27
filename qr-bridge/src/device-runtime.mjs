@@ -68,7 +68,7 @@ export function createDeviceRuntime(context,{client,downloadMediaMessage,logger,
   function releaseController(abort){for(const entry of controllers)if(entry.abort===abort)controllers.delete(entry);}
   function sync(){for(const entry of controllers)if(!effectCurrent(entry.expected))entry.abort.abort();chatbot.sync();campaigns.sync();schedules.sync();bulk.sync();wakeReplay();pumpIngress();}
   async function finish(expected,operation_id,state,extra={}){
-    try{await context.deviceEffectFinish({...scope(expected),operation_id,state,...extra});}catch{/* The durable grant stays conservative if acknowledgement is lost. */}
+    try{return await context.deviceEffectFinish({...scope(expected),operation_id,state,...extra});}catch{/* The durable grant stays conservative if acknowledgement is lost. */}
   }
   async function event(expected,data,sourceMessage,onAdmitted,deferEffects=false){
     await guard(expected);
@@ -218,7 +218,13 @@ export function createDeviceRuntime(context,{client,downloadMediaMessage,logger,
       if(permit?.authorized===true){
         // HTTP delivery is at-least-once and may be retried by its SQL outbox.
         // WhatsApp sends/rejections and paid ASR never retry an ambiguous attempt.
-        await finish(expected,id,item.type==='webhook'?'failed':state,{error_code});
+        const outcome=await finish(expected,id,item.type==='webhook'?'failed':state,{error_code});
+        if(item.type==='transcribe'&&permit.purpose==='delivery_reply'&&
+            expected.capabilities.delivery_audio===1&&outcome?.delivery_audio_handled===true&&
+            Array.isArray(outcome.effects)&&outcome.effects.length<=32){
+          await effects(outcome.effects,{expected});
+          return {source_consumed:true};
+        }
       }
     }finally{
       if(abort){abort.abort();releaseController(abort);}inflight.delete(id);
@@ -332,7 +338,9 @@ export function createDeviceRuntime(context,{client,downloadMediaMessage,logger,
       if(backlog.pending>0){await waitForAdmission();continue;}
       const outcome=await effects(items,{expected,message});
       const asrExpected=expected.settings.transcription?.enabled===true&&expected.capabilities.transcription_available===true;
-      if(outcome.source_consumed===true||!asrExpected){
+      const deliverySkipped=expected.capabilities.delivery_audio===1&&result.delivery_audio_skipped===true&&
+        items.every(item=>item.type!=='transcribe');
+      if(outcome.source_consumed===true||!asrExpected||deliverySkipped){
         try{if(ingressJournal.complete(entry.id)!==true)throw Error('incoming_audio_completion_missing');completed=true;}
         catch(error){journalFailure(error);}return;
       }

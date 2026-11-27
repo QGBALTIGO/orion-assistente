@@ -467,6 +467,59 @@ async def test_delivery_whatsapp_connection_checkout_with_same_device_and_explic
     async with c.ctx.migration.connect() as db:
         assert await db.scalar(text("""SELECT count(*) FROM customers WHERE tenant_id=:t
             AND whatsapp_e164=:phone"""),{"t":c.tenant,"phone":"+"+phone})==1
+    # Disabled ASR must respond to a real audio event without a provider call.
+    disabled_audio=await event(c,kind="audio",phone=phone,message_id=uuid4().hex,
+        audio={"seconds":3,"size":10,"media_type":"audio/ogg"})
+    assert disabled_audio["delivery_audio_skipped"] is True
+    fallback,=disabled_audio["effects"]
+    assert "Recebi seu áudio" in (await permit(c,fallback))["payload"]["text"]
+    await finish(c,fallback,"accepted",provider_id=uuid4().hex)
+
+    # Pilot reuses the authenticated ASR endpoint and actual durable quota.
+    from app import subscription_devices, subscription_device_audio
+    monkeypatch.setenv("ORION_DELIVERY_AUDIO_PREVIEW_TENANTS",str(c.tenant))
+    monkeypatch.setattr(subscription_devices,"audio_capable",lambda:True)
+    spoken=["Quero uma água para retirar","confirmo"]
+    async def synthetic_audio(request, *, max_minutes, authorize):
+        assert max_minutes==2
+        await authorize(3,phase="before_provider")
+        phrase=spoken.pop(0)
+        await authorize(3,phase="after_provider")
+        return {"text":phrase,"duration_seconds":3}
+    monkeypatch.setattr(subscription_device_audio,"transcribe_audio",synthetic_audio)
+
+    async def speak():
+        admitted=await event(c,kind="audio",phone=phone,message_id=uuid4().hex,
+            audio={"seconds":3,"size":10,"media_type":"audio/ogg"})
+        asr,=admitted["effects"]
+        grant=await permit(c,asr)
+        assert grant["authorized"] and grant["type"]=="transcribe"
+        headers={**c.bridge.headers(c.row,live=True),"Content-Type":"audio/ogg",
+            "X-Orion-Device-Id":c.device["id"],"X-Orion-Device-Generation":str(c.saved["generation"]),
+            "X-Orion-Device-Revision":str(c.device["revision"]),"X-Orion-Device-Effect":asr["operation_id"]}
+        endpoint=f"/internal/qr/channels/{c.row['id']}/device/audio"
+        response=await c.private.post(endpoint,headers=headers,content=b"synthetic")
+        assert response.status_code==200,response.text
+        child,=response.json()["effects"]
+        reply=(await permit(c,child))["payload"]["text"]
+        await finish(c,child,"accepted",provider_id=uuid4().hex)
+        assert (await c.private.post(endpoint,headers=headers,content=b"duplicate")).status_code==409
+        return reply
+
+    assert "pagar" in await speak()
+    assert "CONFIRMO" in await talk("dinheiro, sem troco")
+    assert "pelo botão ou por texto" in await speak()
+    assert await orders()==[("whatsapp",2500,"confirmed")]
+    assert "Cancelei o resumo" in await talk("não")
+    failed=(await event(c,kind="audio",phone=phone,message_id=uuid4().hex,
+        audio={"seconds":3,"size":10,"media_type":"audio/ogg"}))["effects"][0]
+    assert (await permit(c,failed))["authorized"]
+    terminal=await finish(c,failed,"not_sent",error_code="DEVICE_AUDIO_FAILED")
+    assert terminal["delivery_audio_handled"] is True
+    fallback,=terminal["effects"]
+    assert "Recebi seu áudio" in (await permit(c,fallback))["payload"]["text"]
+    await finish(c,fallback,"accepted",provider_id=uuid4().hex)
+    assert await orders()==[("whatsapp",2500,"confirmed")]
     danger=await talk("Meu gás está vazando")
     assert "193" in danger and "local seguro" in danger
     assert await orders()==[("whatsapp",2500,"confirmed")]
