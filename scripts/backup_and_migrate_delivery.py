@@ -63,9 +63,13 @@ COLUMNS = {
 def approved_chain():
     script = ScriptDirectory.from_config(Config("alembic.ini"))
     heads = script.get_heads()
-    if len(heads) != 1 or heads[0] not in PHASES:
-        raise ValueError("delivery_revision_head_not_approved")
-    chain = (BASE_REVISION, *PHASES[: PHASES.index(heads[0]) + 1])
+    delivery_heads = [head for head in heads if head in PHASES]
+    # Historical releases can have unused migration files on separate branches.
+    # The production database is fenced independently to one approved revision,
+    # and the command upgrades only the explicit Delivery target below.
+    if len(delivery_heads) != 1:
+        raise ValueError(f"delivery_revision_head_not_approved heads={','.join(sorted(heads))}")
+    chain = (BASE_REVISION, *PHASES[: PHASES.index(delivery_heads[0]) + 1])
     for previous, successor in pairwise(chain):
         revision = script.get_revision(successor)
         if revision.down_revision != previous or revision.dependencies:
