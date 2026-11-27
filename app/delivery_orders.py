@@ -1,5 +1,5 @@
 """Manual sales with the shared commercial reservation and financial ledgers."""
-from datetime import timedelta
+from datetime import date, timedelta
 import hashlib
 import json
 import secrets
@@ -22,6 +22,7 @@ from app.onboarding_service import require_operational_ready
 
 OrderMode = Literal["counter", "pickup", "delivery"]
 OrderState = Literal["all", "confirmed", "dispatched", "fulfilled", "cancelled"]
+CreditStatus = Literal["all", "pending", "overdue", "paid"]
 
 
 class OrderItems(ProfileModel):
@@ -61,17 +62,24 @@ class ManualOrder(OrderEstimate):
 
 
 class Transition(ProfileModel):
-    action: Literal["dispatch", "fulfill", "cancel"]
+    action: Literal["dispatch", "fulfill", "cancel", "settle"]
     expected_revision: StrictInt = Field(ge=1)
-    payment_method: Literal["cash", "debit_card", "credit_card"] | None = None
+    payment_method: Literal["cash", "debit_card", "credit_card", "on_account"] | None = None
+    payment_due_date: date | None = None
     courier_name: str | None = Field(default=None, min_length=1, max_length=120)
     returned_to_stock: StrictBool = False
     idempotency_key: IdempotencyKey
 
     @model_validator(mode="after")
     def payment_at_completion(self):
-        if self.action != "fulfill" and self.payment_method is not None:
+        if self.action not in {"fulfill","settle"} and self.payment_method is not None:
             raise ValueError("Registre o pagamento na conclusão do pedido")
+        if self.action == "settle" and self.payment_method in {None,"on_account"}:
+            raise ValueError("Informe a forma de pagamento recebida")
+        if (self.payment_method == "on_account") != (self.payment_due_date is not None):
+            raise ValueError("Informe o vencimento para pedidos a prazo")
+        if self.payment_due_date is not None and self.payment_due_date.year > 2100:
+            raise ValueError("Use vencimento até o ano de 2100")
         if (self.action == "dispatch") != (self.courier_name is not None):
             raise ValueError("Informe o entregador ao despachar")
         if self.action != "cancel" and self.returned_to_stock:
@@ -81,9 +89,11 @@ class Transition(ProfileModel):
 
 ORDERS = """
     SELECT o.id,o.quote_id,o.status,o.revision,o.created_at,d.mode,d.customer_id,
-        d.financial_entry_id,q.customer_name,q.total_cents,d.delivery_fee_cents,d.courier_name,d.dispatched_at
+        d.financial_entry_id,q.customer_name,q.total_cents,d.delivery_fee_cents,d.courier_name,d.dispatched_at,
+        d.payment_due_date,f.status AS receipt_status
     FROM commercial_orders o JOIN delivery_order_details d ON (d.tenant_id,d.order_id)=(o.tenant_id,o.id)
     JOIN commercial_quotes q ON (q.tenant_id,q.id)=(o.tenant_id,o.quote_id)
+    LEFT JOIN financial_entries f ON (f.tenant_id,f.id)=(d.tenant_id,d.financial_entry_id)
     WHERE o.tenant_id=:t AND o.origin='delivery'
 """
 
@@ -104,6 +114,27 @@ async def list_orders(db, tenant, *, search, state, mode, start, end, offset):
     return {"items":[dict(row) for row in rows[:LIMIT]],"limit":LIMIT,"offset":offset,"has_more":len(rows)>LIMIT}
 
 
+async def list_credit(db, tenant, *, search, status, offset):
+    period, _, _ = await management.period_for(db, tenant)
+    today = period["end_date"]
+    rows = (await db.execute(text(ORDERS + """
+        AND d.payment_due_date IS NOT NULL
+        AND (:status='all' OR f.status=:status OR
+            (:status='overdue' AND f.status='pending' AND d.payment_due_date<:today))
+        AND (:search='' OR position(lower(:search) in lower(concat_ws(' ',q.customer_name,cast(o.id as text))))>0)
+        ORDER BY d.payment_due_date ASC,o.id LIMIT :limit OFFSET :offset
+    """), {"t":tenant,"status":status,"today":today,"search":search.strip(),"limit":LIMIT+1,"offset":offset})).mappings().all()
+    sums = (await db.execute(text("""
+        SELECT coalesce(sum(f.amount_cents),0) AS open_cents,
+            coalesce(sum(f.amount_cents) FILTER (WHERE d.payment_due_date<:today),0) AS overdue_cents
+        FROM delivery_order_details d JOIN financial_entries f
+            ON (f.tenant_id,f.id)=(d.tenant_id,d.financial_entry_id)
+        WHERE d.tenant_id=:t AND d.payment_due_date IS NOT NULL AND f.status='pending'
+    """), {"t":tenant,"today":today})).mappings().one()
+    return {"items":[dict(row) for row in rows[:LIMIT]],"limit":LIMIT,"offset":offset,"has_more":len(rows)>LIMIT,
+            "summary":dict(sums),"today":today}
+
+
 async def overview(db, tenant, day):
     timezone = (await db.execute(text("SELECT timezone FROM tenants WHERE id=:t"), {"t":tenant})).scalar_one()
     selected = day or commerce.now_utc().astimezone(ZoneInfo(timezone)).date()
@@ -119,10 +150,11 @@ async def overview(db, tenant, day):
     """), {"t":tenant,"start":day_start,"end":end})).mappings().one()
     series = (await db.execute(text("""
         WITH receipts AS (
-            SELECT CAST(f.occurred_at AT TIME ZONE :zone AS date) AS day, sum(f.amount_cents) AS income_cents
+            SELECT CAST(coalesce(f.received_at,f.occurred_at) AT TIME ZONE :zone AS date) AS day, sum(f.amount_cents) AS income_cents
             FROM financial_entries f JOIN delivery_order_details d
                 ON (d.tenant_id,d.financial_entry_id)=(f.tenant_id,f.id)
-            WHERE f.tenant_id=:t AND f.status='paid' AND f.occurred_at>=:start AND f.occurred_at<:end
+            WHERE f.tenant_id=:t AND f.status='paid'
+                AND coalesce(f.received_at,f.occurred_at)>=:start AND coalesce(f.received_at,f.occurred_at)<:end
             GROUP BY 1
         )
         SELECT CAST(:first AS date) + n AS date, coalesce(receipts.income_cents,0) AS income_cents
@@ -232,12 +264,18 @@ async def create(db, tenant, access, payload):
     return await run_once(db, tenant, payload, "order_create", None, write)
 
 
-async def fulfill(db, tenant, access, row, items, method):
+async def fulfill(db, tenant, access, row, items, method, due_date):
     await commerce.tenant_exists(db, tenant, active=True)
     if row["total_cents"] and not method:
         raise HTTPException(422, "Informe a forma de pagamento recebida")
     if not row["total_cents"] and method:
         raise HTTPException(422, "Não há valor a receber neste pedido")
+    if due_date is not None:
+        period, _, _ = await management.period_for(db, tenant)
+        if not row["customer_id"]:
+            raise HTTPException(422, "Venda a prazo exige um cliente vinculado ao pedido")
+        if due_date < period["end_date"]:
+            raise HTTPException(422, "O vencimento deve ser igual ou posterior à data de hoje")
     for item in sorted(items,key=lambda item:item["variant_id"]):
         variant_id=UUID(item["variant_id"])
         updated = (await db.execute(text("""
@@ -254,22 +292,41 @@ async def fulfill(db, tenant, access, row, items, method):
     if row["total_cents"]:
         receipt = await management.insert_row(db, tenant, "financial_entries", {
             "kind":"income","description":f"Pedido {str(row['id'])[:8].upper()}",
-            "amount_cents":row["total_cents"],"category":"Delivery","payment_method":method,
-            "status":"paid","occurred_at":commerce.now_utc(),"customer_id":row["customer_id"],
+            "amount_cents":row["total_cents"],"category":"Delivery","payment_method":method if due_date is None else "other",
+            "status":"paid" if due_date is None else "pending","occurred_at":commerce.now_utc(),"customer_id":row["customer_id"],
         }, str(row["id"]), operation="delivery_order_receipt")
         await db.execute(text("""
-            UPDATE delivery_order_details SET financial_entry_id=:f WHERE tenant_id=:t AND order_id=:o
-        """), {"t":tenant,"o":row["id"],"f":receipt["id"]})
+            UPDATE delivery_order_details SET financial_entry_id=:f,payment_due_date=:due WHERE tenant_id=:t AND order_id=:o
+        """), {"t":tenant,"o":row["id"],"f":receipt["id"],"due":due_date})
     return receipt
+
+
+async def settle_credit(db, tenant, access, order, method):
+    if order["status"] != "fulfilled" or not order["payment_due_date"] or order["receipt_status"] != "pending":
+        commerce.conflict("Somente pedidos a prazo com recebimento pendente podem ser baixados")
+    receipt = (await db.execute(text("""
+        UPDATE financial_entries SET status='paid',received_at=now(),payment_method=:method,
+            receipt_recorded_at=now(),receipt_source='manual',receipt_actor_id=:actor,
+            updated_at=now(),version=version+1
+        WHERE tenant_id=:t AND id=:id AND status='pending' RETURNING id
+    """), {"t":tenant,"id":order["financial_entry_id"],"method":method,"actor":access.account_id})).scalar_one_or_none()
+    if receipt is None:
+        commerce.conflict("O recebimento foi alterado. Confira o lançamento.")
+    await management.audit(db, tenant, "management_updated", "financial_entries", receipt)
+    return {"id":receipt}
 
 
 async def transition(db, tenant, access, order_id, payload):
     async def write():
         row = await one_order(db, tenant, order_id, lock=True)
-        if row["status"] not in {"confirmed","dispatched"} or row["revision"] != payload.expected_revision:
+        permitted = {"fulfilled"} if payload.action == "settle" else {"confirmed","dispatched"}
+        if row["status"] not in permitted or row["revision"] != payload.expected_revision:
             commerce.conflict("O pedido foi alterado ou encerrado. Confira o histórico.")
         receipt = None
-        if payload.action == "dispatch":
+        if payload.action == "settle":
+            receipt = await settle_credit(db,tenant,access,row,payload.payment_method)
+            status = "fulfilled"
+        elif payload.action == "dispatch":
             if row["mode"] != "delivery" or row["status"] != "confirmed":
                 commerce.conflict("O pedido precisa estar aguardando despacho")
             await commerce.tenant_exists(db, tenant, active=True)
@@ -288,16 +345,17 @@ async def transition(db, tenant, access, order_id, payload):
             else:
                 if row["mode"] == "delivery" and row["status"] != "dispatched":
                     commerce.conflict("Despache o pedido antes de registrar a entrega")
-                receipt = await fulfill(db, tenant, access, row, quote["items"], payload.payment_method)
+                receipt = await fulfill(db, tenant, access, row, quote["items"], payload.payment_method, payload.payment_due_date)
                 status = "fulfilled"
         revision = (await db.execute(text("""
             UPDATE commercial_orders SET status=:status,revision=revision+1,updated_at=now()
             WHERE tenant_id=:t AND id=:o RETURNING revision
         """), {"status":status,"t":tenant,"o":order_id})).scalar_one()
         receipt_id=receipt["id"] if receipt else None
-        await commerce.audit(db, tenant, access, "order", order_id, status,
+        action = "received" if payload.action == "settle" else status
+        await commerce.audit(db, tenant, access, "order", order_id, action,
                              {"financial_entry_id":receipt_id,"payment_method":payload.payment_method,
-                              "returned_to_stock":payload.returned_to_stock})
+                              "returned_to_stock":payload.returned_to_stock,"payment_due_date":payload.payment_due_date})
         return {"id":order_id,"status":status,"revision":revision,"financial_entry_id":receipt_id}
 
     return await run_once(db, tenant, payload, "order_transition", order_id, write)

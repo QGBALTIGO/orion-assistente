@@ -104,6 +104,13 @@ async def delivery_overview(tenant_id: UUID, day: date | None = None, actor: Act
     return await run(actor, tenant_id, orders.overview, day)
 
 
+@router.get("/credit")
+async def delivery_credit(tenant_id: UUID, search: str = Query(default="", max_length=120),
+                          status: orders.CreditStatus = "all", offset: int = Query(default=0, ge=0, le=100_000),
+                          actor: Actor = Depends(authenticate)):
+    return await run(actor, tenant_id, orders.list_credit, search=search, status=status, offset=offset)
+
+
 @router.get("/order-customers")
 async def order_customers(tenant_id: UUID, search: str = Query(max_length=120), actor: Actor = Depends(authenticate)):
     return await run(actor, tenant_id, orders.lookup_customers, search=search)

@@ -5,6 +5,7 @@
   const statusLabels={confirmed:'Reservado',dispatched:'Em rota',fulfilled:'Concluído',cancelled:'Cancelado'};
   const modes=[['counter','Balcão'],['pickup','Retirada'],['delivery','Entrega']];
   const payments=[['','Selecione'],['cash','Dinheiro'],['debit_card','Cartão de débito'],['credit_card','Cartão de crédito']];
+  const creditStatuses=[['all','Todos'],['pending','Pendentes'],['overdue','Em atraso'],['paid','Recebidos']];
   const command = (button,label,action,symbol,extra='') => button(label,action,'os-outline os-small',symbol,extra);
   const code = order => order.id.slice(0,8).toUpperCase();
   const modeLabel = order => modes.find(([key])=>key===order.mode)?.[1];
@@ -55,9 +56,9 @@
     await read();
   }
 
-  async function mount({host,filters,call,allowed,canWrite,ui,openDetails,openEditor,deliveryOnly=false}) {
+  async function mount({host,filters,call,allowed,canWrite,ui,openDetails,openEditor,deliveryOnly=false,creditOnly=false}) {
     if (!host || !allowed()) return;
-    const {esc,loading,empty,field,moneyField,selectField,checkField,button,title,money,badge,fmtDate,dateKey,timeLabel,query,brazilianStates}=ui;
+    const {esc,loading,empty,field,moneyField,selectField,checkField,button,title,money,badge,fmtDate,dateKey,timeLabel,query,brazilianStates,metric,routeButton}=ui;
     filters.search ??= '';
     filters.state ??= 'all';
     filters.start ??= '';
@@ -70,12 +71,14 @@
     const itemAttr = (fieldName, id) => 'data-delivery-'+fieldName+'="'+esc(id)+'"';
     const err = error => '<div class="os-notice os-error" role="alert"><p>'+esc(error.message || 'Não foi possível concluir a ação.')+'</p></div>';
 
-    host.innerHTML=title(deliveryOnly?'Entregas':'Pedidos',deliveryOnly?'Despacho e acompanhamento':'Balcão, retirada e entrega',
+    host.innerHTML=title(creditOnly?'Vendas a prazo':deliveryOnly?'Entregas':'Pedidos',
+      creditOnly?'Vencimentos e recebimentos':deliveryOnly?'Despacho e acompanhamento':'Balcão, retirada e entrega',
+      creditOnly?routeButton('Ver pedidos','pedidos-delivery','os-outline os-small','list'):
       canWrite()?button('Novo pedido','delivery-new-order','','plus'):'')+
       '<form id="osDeliveryOrderFilters" class="os-filter-row">'+
       field('Buscar','search','search',filters.search,'maxlength="120" placeholder="Número ou cliente"')+
-      selectField('Status','state',[['all','Todos'],...Object.entries(statusLabels)],filters.state)+
-      field('De','start','date',filters.start)+field('Até','end','date',filters.end)+
+      selectField('Status','state',creditOnly?creditStatuses:[['all','Todos'],...Object.entries(statusLabels)],filters.state)+
+      (creditOnly?'':field('De','start','date',filters.start)+field('Até','end','date',filters.end))+
       '<button type="submit" class="os-button os-outline">Filtrar</button></form><div id="osDeliveryOrderList" aria-live="polite"></div>';
     window.OrionFields.refresh(host);
     const list=host.querySelector('#osDeliveryOrderList');
@@ -89,10 +92,18 @@
           :command(button,'Concluir','delivery-order-fulfill','check',actions);
         controls+=button('Cancelar pedido','delivery-order-cancel','os-ghost os-small','close',actions);
       }
+      const pending=order.receipt_status==='pending';
+      const late=pending&&order.payment_due_date<dateKey();
+      if (canWrite()&&order.payment_due_date&&pending) {
+        controls+=command(button,'Registrar recebimento','delivery-order-settle','wallet',actions);
+      }
+      const payment=order.payment_due_date?'<p class="os-help">Vencimento '+fmtDate(order.payment_due_date)+'</p>'+
+        badge(pending?(late?'expired':'pending'):'paid',pending?(late?'Em atraso':'A receber'):'Recebido'):'';
       return '<article class="os-card os-item-card"><h3>Pedido '+esc(code(order))+'</h3><p class="os-help">'+
         esc([order.customer_name||'Venda avulsa',modeLabel(order),when(order.created_at)].join(' · '))+'</p>'+
         (order.courier_name?'<p class="os-help">Entregador: '+esc(order.courier_name)+'</p>':'')+
         '<div class="os-actions">'+badgeFor(order.status)+' <strong>'+money(order.total_cents)+'</strong></div>'+
+        payment+
         '<div class="os-actions">'+controls+'</div></article>';
     }
 
@@ -100,11 +111,16 @@
       const sequence=++stamp;
       list.innerHTML=loading('Carregando pedidos…');
       try {
-        const response=await call('/orders?'+query({...filters,mode:deliveryOnly?'delivery':'all'}));
+        const suffix=creditOnly?'/credit?'+query({search:filters.search,status:filters.state,offset:filters.offset}):
+          '/orders?'+query({...filters,mode:deliveryOnly?'delivery':'all'});
+        const response=await call(suffix);
         if (!current()||sequence!==stamp) return;
         data=response;
         let html=data.items.length?'<div class="os-cards-grid">'+data.items.map(orderCard).join('')+'</div>':
-          '<div class="os-card">'+empty('list','Nenhum pedido encontrado','Confira o filtro ou registre um novo pedido.')+'</div>';
+          '<div class="os-card">'+empty('list',creditOnly?'Nenhuma venda a prazo encontrada':'Nenhum pedido encontrado',
+            creditOnly?'Confira os filtros de cliente e vencimento.':'Confira o filtro ou registre um novo pedido.')+'</div>';
+        if(creditOnly) html='<div class="os-metrics">'+metric('A receber',money(data.summary.open_cents),'wallet')+
+          metric('Em atraso',money(data.summary.overdue_cents),'clock')+'</div>'+html;
         if (data.offset>0||data.has_more) html+='<div class="os-pagination"><span>Página '+(data.offset/data.limit+1)+'</span><div class="os-actions">'+
           command(button,'Anterior','delivery-order-prev','left',data.offset?'':'disabled')+
           command(button,'Próxima','delivery-order-next','chevron',data.has_more?'':'disabled')+'</div></div>';
@@ -256,28 +272,52 @@
 
     function move(order, action) {
       const complete=action==='fulfill';
+      const settle=action==='settle';
       const dispatch=action==='dispatch';
       const returning=action==='cancel'&&order.status==='dispatched';
       const hasAmount=order.total_cents>0;
+      const methods=complete&&order.customer_id?[...payments,['on_account','A prazo']]:payments;
+      const deferred=complete&&order.customer_id?
+        '<fieldset class="hidden" data-delivery-due hidden disabled>'+
+        field('Vencimento','payment_due_date','date',dateKey(),'required min="'+dateKey()+'" max="2100-12-31"')+
+        checkField('Confirmo que o valor ficará a receber','confirmed_credit')+'</fieldset>':'';
       const content='<p>Pedido '+esc(code(order))+' · '+money(order.total_cents)+'</p>'+
-        (complete&&hasAmount?selectField('Forma recebida','payment_method',payments,'','required')+
-          checkField('Confirmo que recebi o pagamento','received'):
+        ((complete&&hasAmount)||settle?selectField('Forma de pagamento','payment_method',methods,'','required')+
+          '<fieldset data-delivery-received>'+checkField('Confirmo que recebi o pagamento','received')+'</fieldset>'+deferred:
           complete?'<p>Confirme que o cliente recebeu os itens.</p>':
           dispatch?field('Entregador','courier_name','text','','required maxlength="120"'):
           returning?checkField('Confirmo que os itens voltaram ao estoque','returned_to_stock'):
           '<p>O estoque reservado será liberado.</p>');
-      const label=complete?'Concluir pedido':dispatch?'Despachar pedido':'Cancelar pedido';
+      const label=complete?'Concluir pedido':settle?'Registrar recebimento':dispatch?'Despachar pedido':'Cancelar pedido';
       openEditor(label,content,async(form,values,key)=>{
-        if (complete&&hasAmount&&!form.elements.received.checked) throw Error('Confirme o recebimento para concluir o pedido.');
-        const payload={action,expected_revision:order.revision,payment_method:complete&&hasAmount?values.payment_method:null};
+        const credit=values.payment_method==='on_account';
+        if ((complete&&hasAmount)||settle) {
+          const checked=credit?form.elements.confirmed_credit.checked:form.elements.received.checked;
+          if (!checked) throw Error(credit?'Confirme a venda a prazo.':'Confirme que recebeu o pagamento.');
+        }
+        const payload={action,expected_revision:order.revision,payment_method:values.payment_method||null};
+        if (credit) payload.payment_due_date=values.payment_due_date;
         if (dispatch) payload.courier_name=values.courier_name;
         if (returning) {
           if (!form.elements.returned_to_stock.checked) throw Error('Confirme a devolução antes de liberar o estoque.');
           payload.returned_to_stock=true;
         }
         const saved=await call('/orders/'+encodeURIComponent(order.id)+'/transitions','POST',{...payload,idempotency_key:key(payload)});
-        if (saved?.status!==(complete?'fulfilled':dispatch?'dispatched':'cancelled')) throw Error('Confira o estado do pedido antes de repetir.');
-      },complete?'Pedido concluído.':dispatch?'Pedido em rota.':'Pedido cancelado.',{label});
+        if (saved?.status!==((complete||settle)?'fulfilled':dispatch?'dispatched':'cancelled')) throw Error('Confira o estado do pedido antes de repetir.');
+      },complete?'Pedido concluído.':settle?'Recebimento registrado.':dispatch?'Pedido em rota.':'Pedido cancelado.',{label,bind:dialog=>{
+        const due=dialog.querySelector('[data-delivery-due]');
+        if (!due) return;
+        const form=dialog.querySelector('form'), received=dialog.querySelector('[data-delivery-received]');
+        form.elements.payment_method.addEventListener('change',()=>{
+          const credit=form.elements.payment_method.value==='on_account';
+          due.hidden=due.disabled=!credit;
+          due.classList.toggle('hidden',!credit);
+          received.hidden=received.disabled=credit;
+          received.classList.toggle('hidden',credit);
+          form.elements.received.checked=false;
+          form.elements.confirmed_credit.checked=false;
+        });
+      }});
     }
 
     host.addEventListener('submit',event=>{
@@ -311,8 +351,10 @@
           openDetails('Pedido '+code(order),'<p>'+badgeFor(result.status)+' · '+money(result.total_cents)+'</p>'+addressText+'<ul>'+result.items.map(item=>
             '<li>'+esc(item.quantity+' × '+item.product_name+' · '+item.variant_name)+' · '+money(item.total_cents)+'</li>').join('')+
             '</ul><h3>Histórico</h3><ul>'+result.history.map(event=>
-              '<li>'+esc((statusLabels[event.action]||event.action)+' · '+when(event.created_at))+'</li>').join('')+'</ul>');
+              '<li>'+esc((event.action==='received'?'Recebimento registrado':statusLabels[event.action]||event.action)+' · '+when(event.created_at))+'</li>').join('')+'</ul>');
         } catch(error) {if (current()) openDetails('Pedido '+code(order),err(error));}
+      } else if (action==='delivery-order-settle'&&canWrite()&&order.receipt_status==='pending') {
+        move(order,'settle');
       } else if (canWrite()&&['confirmed','dispatched'].includes(order.status)) {
         const transition={'delivery-order-fulfill':'fulfill','delivery-order-dispatch':'dispatch','delivery-order-cancel':'cancel'}[action];
         if (transition) move(order,transition);

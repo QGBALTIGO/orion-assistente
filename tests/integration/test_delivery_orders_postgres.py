@@ -1,6 +1,8 @@
 """Resolve manual orders against the shared stock, CRM and Finance in Postgres."""
 import asyncio
+from datetime import datetime, timedelta
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
 import pytest
@@ -181,3 +183,53 @@ async def test_delivery_fee_dispatch_payment_and_safe_return(onboarding_db, monk
         assert overview["metrics"] == {"orders":2,"fulfilled":1,"open_deliveries":0,"paid_cents":1750}
         assert len(overview["daily"]) == 7 and overview["daily"][-1]["income_cents"] == 1750
         assert len(overview["recent"]) == 2
+
+
+async def test_on_account_stays_pending_until_manual_receipt(onboarding_db, monkeypatch):
+    ctx = onboarding_db
+    tenant, actor = await business(ctx, monkeypatch)
+    root = f"/api/v1/tenants/{tenant}/delivery"
+    await complete_delivery_setup(ctx, tenant)
+    customer = uuid4()
+    async with ctx.migration.begin() as db:
+        await db.execute(text("INSERT INTO customers(id,tenant_id,name) VALUES(:c,:t,'Pessoa a prazo')"),
+                         {"c":customer,"t":tenant})
+    today = datetime.now(ZoneInfo("America/Cuiaba")).date()
+    async with client(actor) as http:
+        variant = (await http.post(root+"/catalog",json=new_product())).json()["variant_id"]
+        args = await order_payload(http,root,variant,1,mode="pickup",customer_id=str(customer))
+        created = await http.post(root+"/orders",json=args)
+        assert created.status_code == 201, created.text
+        endpoint = root+"/orders/"+created.json()["id"]
+        payment = {"action":"fulfill","expected_revision":1,"payment_method":"on_account",
+                   "idempotency_key":uuid4().hex}
+        assert (await http.post(endpoint+"/transitions",json=payment)).status_code == 422
+        assert (await http.post(endpoint+"/transitions",json={**payment,"payment_due_date":str(today-timedelta(days=1))})).status_code == 422
+        completed = await http.post(endpoint+"/transitions",json={**payment,"payment_due_date":str(today)})
+        assert completed.status_code == 200, completed.text
+        assert await stock(http,root) == (4,0)
+        assert (await http.get(root+"/overview")).json()["metrics"]["paid_cents"] == 0
+        credit = (await http.get(root+"/credit",params={"status":"pending","search":"prazo"})).json()
+        assert len(credit["items"]) == 1 and credit["summary"] == {"open_cents":1250,"overdue_cents":0}
+        async with ctx.migration.begin() as db:
+            await db.execute(text("""
+                UPDATE delivery_order_details SET payment_due_date=:due WHERE tenant_id=:t AND order_id=:o
+            """), {"t":tenant,"o":UUID(created.json()["id"]),"due":today-timedelta(days=1)})
+            await db.execute(text("""
+                UPDATE financial_entries SET occurred_at=occurred_at-interval '24 hours' WHERE tenant_id=:t
+            """), {"t":tenant})
+        due = (await http.get(root+"/credit",params={"status":"overdue"})).json()
+        assert due["items"][0]["receipt_status"] == "pending" and due["summary"]["overdue_cents"] == 1250
+        received = {"action":"settle","payment_method":"cash","expected_revision":2,"idempotency_key":uuid4().hex}
+        first, repeated = await asyncio.gather(*[http.post(endpoint+"/transitions",json=received) for _ in range(2)])
+        assert first.status_code == repeated.status_code == 200, first.text
+        assert first.json() == repeated.json()
+        assert first.json()["financial_entry_id"] == completed.json()["financial_entry_id"]
+        assert (await http.post(endpoint+"/transitions",json={**received,"idempotency_key":uuid4().hex})).status_code == 409
+        assert (await http.get(root+"/overview")).json()["metrics"]["paid_cents"] == 1250
+        assert (await http.get(root+"/credit",params={"status":"pending"})).json()["items"] == []
+        assert (await http.get(root+"/credit",params={"status":"paid"})).json()["items"][0]["receipt_status"] == "paid"
+        history = (await http.get(endpoint)).json()["history"]
+        assert [event["action"] for event in history] == ["confirmed","fulfilled","received"]
+    ledger, = await receipts(ctx,tenant)
+    assert ledger["status"] == "paid" and ledger["version"] == 2 and ledger["payment_method"] == "cash"
