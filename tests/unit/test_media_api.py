@@ -10,6 +10,7 @@ from pydantic import ValidationError
 
 from app import media_api as media
 from app.catalog_api import Actor, authenticate
+from app.plan_routing import include_plan_router
 from app.catalog_schemas import Professional, Service
 from app.management_schemas import SitePreferences
 from app.media_paths import is_media_url, media_key
@@ -92,7 +93,7 @@ def server(monkeypatch):
         return None
     monkeypatch.setattr(media, "_upload_limit", quota)
     app=FastAPI()
-    app.include_router(media.router)
+    include_plan_router(app, media.router)
     app.dependency_overrides[authenticate] = lambda: Actor("support")
     media._get_cached.cache_clear()
     media._get_thumbnail_cached.cache_clear()
@@ -128,10 +129,16 @@ async def test_auth_upload_writes_opaque_tenant_prefix_and_serves_webp(server):
 
 
 @pytest.mark.asyncio
-async def test_readonly_role_cannot_upload_even_with_valid_image(server):
-    app,bucket=server
-    tenant=uuid4()
-    app.dependency_overrides[authenticate]=lambda:Actor("viewer", tenant)
+async def test_readonly_role_cannot_upload_even_with_valid_image(server, monkeypatch):
+    app, bucket = server
+    tenant = uuid4()
+
+    async def active_site_feature(tenant_id, feature):
+        assert tenant_id == tenant and feature == "site.manage"
+        return {"workspace_profile": "standard"}
+
+    monkeypatch.setattr("app.plan_routing.require_tenant_feature", active_site_feature)
+    app.dependency_overrides[authenticate] = lambda: Actor("viewer", tenant)
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url="https://orion.test") as client:
         response=await client.post(f"/api/v1/tenants/{tenant}/media",content=photo(),
                                    headers={"content-type":"image/png","x-orion-image-kind":"logo"})

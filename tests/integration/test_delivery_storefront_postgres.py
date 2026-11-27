@@ -206,7 +206,7 @@ async def test_pix_requires_owner_confirmation_once_and_key_is_optional(storefro
         draft = {"items":[{"variant_id":store["items"][0]["variant_id"], "quantity":1}], "mode":"pickup","payment_preference":"pix"}
         quote = (await http.post(shop+"/quote",json=draft)).json()
         order = await http.post(shop+"/orders", json={**draft,"quote":quote["quote"],"confirmed":True,
-            "customer_name":"Cliente de teste","customer_phone":"+5567999999919","idempotency_key":uuid4().hex})
+            "customer_name":"Cliente de teste","customer_phone":"+5567999999919","idempotency_key":str(uuid4())})
         assert order.status_code == 201, order.text
         track = {"tracking_code":order.json()["tracking_code"],"include_delivery":True}
         expected = {"key": key if configure_key else None, "holder":"Titular de teste" if configure_key else None}

@@ -347,8 +347,11 @@ async def test_on_account_stays_pending_until_manual_receipt(onboarding_db, monk
         assert (await http.post(endpoint+"/transitions",json={**received,"idempotency_key":uuid4().hex})).status_code == 409
         dashboard = (await http.get(root+"/overview")).json()
         assert dashboard["metrics"]["paid_cents"] == 1250
-        assert dashboard["metrics"]["sales_cents"] == dashboard["metrics"]["credit_cents"] == 0
-        assert dashboard["daily"][-2]["sales_cents"] == 1250
+        # Changing the accounting entry date must not move the sale out of its completion day.
+        assert dashboard["metrics"]["sales_cents"] == dashboard["metrics"]["credit_cents"] == 1250
+        assert dashboard["daily"][-1]["sales_cents"] == 1250
+        assert dashboard["daily"][-1]["income_cents"] == 1250
+        assert dashboard["daily"][-2]["sales_cents"] == 0
         assert dashboard["credit_customers"] == []
         assert (await http.get(root+"/credit",params={"status":"pending"})).json()["items"] == []
         assert (await http.get(root+"/credit",params={"status":"paid"})).json()["items"][0]["receipt_status"] == "paid"

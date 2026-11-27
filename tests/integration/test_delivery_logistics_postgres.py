@@ -69,9 +69,10 @@ async def test_driver_offer_refusal_retry_delivery_and_location_visibility(onboa
         product=(await admin.get(base+"/storefront/items")).json()["items"][0]
         listing={k:product[k] for k in ("variant_id","variant_revision","product_revision")}
         slug="ensaio-"+uuid4().hex[:12]
+        public_item_label = "Água mineral 20 L"
         store={"revision":0,"slug":slug,"title":"Distribuidora de homologação","pickup_details":"Depósito de teste",
                "enabled":True,"confirm_catalogue":True,"allow_delivery":True,"payment_methods":[method],
-               "items":[{**listing,"label":"Água mineral 20 L","kind":"water"}]}
+               "items":[{**listing,"label":public_item_label,"kind":"water"}]}
         published=await admin.put(base+"/storefront",json=store)
         assert published.status_code==200,published.text
         shop="/api/v1/delivery-store/"+slug
@@ -100,7 +101,8 @@ async def test_driver_offer_refusal_retry_delivery_and_location_visibility(onboa
         assert first.status_code==200,first.text
         queue=(await driver.get(driver_base+"/queue")).json()["orders"]
         assert len(queue)==1 and queue[0]["status"]=="offered" and "street" not in queue[0]["address"]
-        assert queue[0]["items"][0]["name"]==new["product"]["name"] and queue[0]["phone"] is None
+        assert queue[0]["items"][0]["name"] == public_item_label
+        assert queue[0]["items"][0]["quantity"] == 1 and queue[0]["phone"] is None
         other_claims={**claims,"email":"outra-pessoa@example.test"}
         portal.dependency_overrides[panel_actor]=lambda:other_claims
         assert (await driver.get(driver_base+"/queue")).status_code==403

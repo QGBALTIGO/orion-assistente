@@ -238,6 +238,7 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
     from argon2 import PasswordHasher
     from playwright.async_api import async_playwright, expect
     from app.main import app
+    from test_delivery_orders_postgres import order_payload
 
     ctx = onboarding_db
     redis = urlsplit(os.environ["REDIS_URL"])
@@ -251,7 +252,9 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
     async with ctx.migration.begin() as db:
         await db.execute(text("UPDATE panel_accounts SET verified_at=now(),password_hash=:password WHERE id=:a"),
                          {"a":actor.account_id,"password":PasswordHasher().hash(password)})
-        await db.execute(text("INSERT INTO customers(tenant_id,name) VALUES(:t,'Cliente de homologação')"), {"t":tenant})
+        customer = await db.scalar(text(
+            "INSERT INTO customers(tenant_id,name) VALUES(:t,'Cliente de homologação') RETURNING id"
+        ), {"t": tenant})
         await db.execute(text("UPDATE panel_accounts SET verified_at=now(),password_hash=:password WHERE id=:a"),
                          {"a":ctx.other,"password":PasswordHasher().hash(driver_password)})
     await complete_delivery_setup(ctx, tenant)
@@ -603,22 +606,74 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                             await page.screenshot(path=artifacts/f"loja-configuracoes-{theme}-{width}.png", animations="disabled")
                 await context.close()
             async with client(actor) as manager:
-                root=f"/api/v1/tenants/{tenant}/delivery/logistics/couriers"
-                courier=(await manager.post(root,json={"name":"Entregadora de homologação","idempotency_key":uuid4().hex})).json()
-                grant=await manager.put(root+"/"+courier["id"]+"/portal",json={"email":driver_email,"expected_revision":0})
-                assert grant.status_code==200,grant.text
-            mobile=await browser.new_context(viewport={"width":375,"height":812},locale="pt-BR",color_scheme="dark",
-                                             ignore_https_errors=True,service_workers="block")
+                delivery_root = f"/api/v1/tenants/{tenant}/delivery"
+                couriers_path = delivery_root + "/logistics/couriers"
+                courier = await manager.post(couriers_path, json={
+                    "name": "Entregadora de homologação", "idempotency_key": uuid4().hex,
+                })
+                assert courier.status_code == 201, courier.text
+                courier_id = courier.json()["id"]
+                grant = await manager.put(couriers_path + "/" + courier_id + "/portal", json={
+                    "email": driver_email, "expected_revision": 0,
+                })
+                assert grant.status_code == 200, grant.text
+                product = new_product("Água da entrega de homologação")
+                product["variant"]["sku"] = "browser-entrega-" + uuid4().hex[:12]
+                created = await manager.post(delivery_root + "/catalog", json=product)
+                assert created.status_code == 201, created.text
+                draft = await order_payload(
+                    manager, delivery_root, created.json()["variant_id"], 1, mode="delivery",
+                    customer_id=str(customer), delivery_fee_cents=100,
+                    address={"street": "Rua da entrega de homologação", "number": "12",
+                             "city": "Cuiabá", "state": "MT", "neighborhood": "Centro"},
+                    tender_preference="cash", change_for_cents=2000,
+                )
+                order = await manager.post(delivery_root + "/orders", json=draft)
+                assert order.status_code == 201, order.text
+                order_path = delivery_root + "/orders/" + order.json()["id"]
+            mobile = await browser.new_context(
+                viewport={"width": 375, "height": 812}, locale="pt-BR", color_scheme="dark",
+                is_mobile=True, has_touch=True, ignore_https_errors=True, service_workers="block",
+            )
             await mobile.route("**/*",safe_route)
             portal=await mobile.new_page()
+            portal.on("pageerror", lambda error: errors.append(str(error)))
             await portal.goto(origin+grant.json()["portal_path"]+"/")
             await portal.get_by_label("E-mail da conta").fill(driver_email)
             await portal.get_by_label("Senha",exact=True).fill(driver_password)
             await portal.get_by_role("button",name="Entrar",exact=True).click()
             await portal.get_by_role("button",name="Iniciar expediente").click()
             await expect(portal.get_by_text("Disponível para pedidos",exact=True)).to_be_visible()
+            async with client(actor) as manager:
+                offer = await manager.post(order_path + "/transitions", json={
+                    "action": "offer", "courier_id": courier_id, "expected_revision": order.json()["revision"],
+                    "idempotency_key": uuid4().hex,
+                })
+                assert offer.status_code == 200, offer.text
+            await portal.reload()
+            delivery = portal.locator("#queue article")
+            await expect(delivery.get_by_text("Aguardando seu aceite")).to_be_visible()
+            await expect(delivery.get_by_text("Rua da entrega de homologação", exact=False)).to_have_count(0)
+            await delivery.get_by_role("button", name="Aceitar", exact=True).click()
+            await expect(delivery.get_by_text("Em rota", exact=True)).to_be_visible()
+            await expect(delivery.get_by_text("Rua da entrega de homologação", exact=False)).to_be_visible()
+            await expect(delivery.get_by_text("de troco para", exact=False)).to_be_visible()
+            await expect(delivery.get_by_role("link", name="Abrir rota")).to_be_visible()
+            await delivery.get_by_role("button", name="Informar chegada", exact=True).click()
+            await expect(delivery.get_by_text("No endereço", exact=True)).to_be_visible()
+            await delivery.get_by_text("Concluir entrega", exact=True).first.click()
+            confirmation = delivery.locator("form[data-delivery-confirm]")
+            await confirmation.get_by_label("Forma recebida").select_option("cash")
+            await confirmation.get_by_label("Confirmo o recebimento de", exact=False).check()
             assert await portal.evaluate("document.documentElement.scrollWidth <= innerWidth")
             await portal.screenshot(path=artifacts/"entregador-mobile-375.png")
+            await confirmation.get_by_role("button", name="Concluir entrega", exact=True).click()
+            await expect(portal.get_by_text("Nenhuma entrega atribuída.")).to_be_visible()
+            async with client(actor) as manager:
+                finished = await manager.get(order_path)
+                assert finished.status_code == 200, finished.text
+                assert finished.json()["status"] == "fulfilled"
+                assert finished.json()["collected_cents"] == 1350
             await portal.get_by_role("button",name="Encerrar expediente").click()
             await expect(portal.get_by_text("Fora do expediente",exact=True)).to_be_visible()
             await mobile.close()

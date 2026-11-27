@@ -101,6 +101,12 @@ jobs:
           python-version: '3.12'
       - name: Instalar verificadores somente no ambiente de testes
         run: |
+          if ! command -v ffmpeg >/dev/null || ! command -v ffprobe >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends ffmpeg
+          fi
+          ffmpeg -version
+          ffprobe -version
           python -m pip install -c requirements.lock ".[test]"
           python -m venv /tmp/orion-analysis
           /tmp/orion-analysis/bin/pip install ruff==0.12.12 mypy==1.18.2 pip-audit==2.9.0
