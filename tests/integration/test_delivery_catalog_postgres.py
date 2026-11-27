@@ -199,6 +199,44 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
     artifacts = Path(os.getenv("DELIVERY_EVIDENCE_DIR", "artifacts/delivery-browser"))
     artifacts.mkdir(parents=True, exist_ok=True)
     errors = []
+
+    async def assert_delivery_layout(page, label):
+        # Width alone misses intersecting controls in a responsive grid.
+        issues = await page.evaluate("""async () => {
+          await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          const failures = [];
+          const roots = [...document.querySelectorAll('#page-suite[data-os-current-route$="-delivery"], #osDialog.os-delivery-dialog[open]')];
+          const visible = el => !!el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden';
+          const rect = el => el.getBoundingClientRect();
+          const name = el => el.id || el.getAttribute('name') || el.textContent.trim().slice(0, 40);
+          for (const root of roots) {
+            for (const grid of root.querySelectorAll('.os-filter-row,.os-form-grid,.os-pill-tabs,.os-delivery-hours-row,.os-delivery-hours-date')) {
+              if (!visible(grid) || grid.closest('.os-table-scroll')) continue;
+              const items = [...grid.children].filter(visible);
+              const bounds = rect(grid);
+              for (let i = 0; i < items.length; i++) {
+                const a = rect(items[i]);
+                if (a.left < bounds.left - 2 || a.right > bounds.right + 2)
+                  failures.push('Outside grid: ' + name(items[i]));
+                for (let j = i + 1; j < items.length; j++) {
+                  const b = rect(items[j]);
+                  if (Math.min(a.right,b.right)-Math.max(a.left,b.left)>2 &&
+                      Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top)>2)
+                    failures.push('Overlap: ' + name(items[i]) + ' / ' + name(items[j]));
+                }
+              }
+            }
+            for (const el of root.querySelectorAll('.os-field input:not([type=hidden]):not([type=checkbox]):not([type=radio]),.os-field select,.os-field textarea')) {
+              if (!visible(el) || el.closest('.os-table-scroll')) continue;
+              const a = rect(el), b = rect(el.closest('.os-field'));
+              if (a.left < b.left - 2 || a.right > b.right + 2)
+                failures.push('Field outside wrapper: ' + name(el));
+            }
+          }
+          if (document.documentElement.scrollWidth > innerWidth + 2) failures.push('Page overflow');
+          return failures;
+        }""")
+        assert not issues, (label, issues)
     try:
         async with asyncio.timeout(20):
             while not server.started:
@@ -246,12 +284,13 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                 for width in widths:
                     await page.set_viewport_size({"width":width,"height":900})
                     await expect(page.get_by_role("heading",name="Água de homologação")).to_be_visible()
-                    assert await page.evaluate("() => document.documentElement.scrollWidth <= innerWidth + 1"), (theme,width)
+                    await assert_delivery_layout(page, (theme,width))
                     await page.get_by_role("button",name="Ajustar estoque").click()
                     dialog = page.get_by_role("dialog")
                     await expect(dialog).to_be_visible()
                     bounds = await dialog.bounding_box()
                     assert bounds and bounds["x"] >= 0 and bounds["x"]+bounds["width"] <= width+1, (theme,width,bounds)
+                    await assert_delivery_layout(page, ("stock dialog",theme,width))
                     await page.keyboard.press("Escape")
                     await expect(dialog).to_be_hidden()
                     if width in (390,1440):
@@ -259,7 +298,7 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                         await page.get_by_role("button",name="Editar",exact=True).click()
                         await expect(page.get_by_role("heading",name="Editar produto",exact=True)).to_be_visible()
                         await expect(page.locator(".os-delivery-current-image")).to_have_attribute("src",re.compile("agua-20l.webp$"))
-                        assert await page.evaluate("() => document.documentElement.scrollWidth <= innerWidth + 1"), (theme,width)
+                        await assert_delivery_layout(page, (theme,width))
                         await page.screenshot(path=artifacts/f"produto-editor-{theme}-{width}.png", animations="disabled")
                         await page.get_by_role("button",name="Voltar para produtos",exact=True).click()
                         await expect(page.get_by_role("heading",name="Água de homologação")).to_be_visible()
@@ -392,9 +431,15 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                     await expect(ready).to_be_visible()
                     for width in widths:
                         await page.set_viewport_size({"width":width,"height":900})
-                        assert await page.evaluate("() => document.documentElement.scrollWidth <= innerWidth + 1"), (route,theme,width)
+                        await assert_delivery_layout(page, (route,theme,width))
                         if width in (390,1440):
                             await page.screenshot(path=artifacts/f"{route}-{theme}-{width}.png", animations="disabled")
+                    if route == "relatorio-delivery":
+                        await page.set_viewport_size({"width":390,"height":844})
+                        for tab in ("Vendas","Produtos","Clientes","Estoque","Movimentações","A receber","Vasilhames","Atividades"):
+                            await page.get_by_role("tab",name=tab,exact=True).click()
+                            await expect(page.locator("#osDeliveryReportPanel a[download]")).to_be_visible()
+                            await assert_delivery_layout(page, (route,tab,theme,390))
                     if route == "loja-delivery":
                         await page.get_by_role("button",name="Configurar loja",exact=True).click()
                         settings = page.locator("#osDeliveryShopSettings")
@@ -413,10 +458,43 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                             await preview.close()
                         for width in (390,1440):
                             await page.set_viewport_size({"width":width,"height":900})
-                            assert await page.evaluate("() => document.documentElement.scrollWidth <= innerWidth + 1"), (route,theme,width)
+                            await assert_delivery_layout(page, (route,theme,width))
                             await page.screenshot(path=artifacts/f"loja-configuracoes-{theme}-{width}.png", animations="disabled")
                 await context.close()
             await browser.close()
+            if os.getenv("ORION_DELIVERY_WEBKIT_TEST") == "1":
+                webkit = await playwright.webkit.launch()
+                context = await webkit.new_context(locale="pt-BR", color_scheme="dark",
+                    viewport={"width":390,"height":844}, is_mobile=True, has_touch=True)
+                await context.route("**/*", safe_route)
+                await context.add_init_script('localStorage.setItem("orion-theme", "dark");')
+                login = await context.request.post(origin+"/auth/login", data={"username":email,"password":password})
+                assert login.status == 200
+                page = await context.new_page()
+                page.on("pageerror", lambda error: errors.append(str(error)))
+                for route, heading, ready_role, ready_name in (
+                    ("produtos-delivery","Produtos e estoque","button","Novo produto"), *panels):
+                    await page.goto(origin+"/painel?aba="+route)
+                    await expect(page.get_by_role("heading",name=heading,exact=True)).to_be_visible()
+                    ready = (page.get_by_role(ready_role,name=ready_name,exact=True) if ready_role
+                             else page.get_by_text(ready_name,exact=True))
+                    await expect(ready).to_be_visible()
+                    for width in (320,375,390,430,768,1280):
+                        await page.set_viewport_size({"width":width,"height":900})
+                        await assert_delivery_layout(page, ("WebKit",route,width))
+                    await page.set_viewport_size({"width":390,"height":844})
+                    await page.screenshot(path=artifacts/f"webkit-{route}-390.png", animations="disabled")
+                    if route == "pedidos-delivery":
+                        await page.get_by_role("button",name="Novo pedido",exact=True).click()
+                        await expect(page.locator("#osDialog")).to_be_visible()
+                        await assert_delivery_layout(page, ("WebKit",route,"new order",390))
+                        await page.locator("#osDialog .os-close").click()
+                    if route == "loja-delivery":
+                        await page.get_by_role("button",name="Configurar loja",exact=True).click()
+                        await expect(page.locator("#osDeliveryShopSettings")).to_be_visible()
+                        await assert_delivery_layout(page, ("WebKit","store settings",390))
+                await context.close()
+                await webkit.close()
         assert errors == []
     finally:
         server.should_exit = True

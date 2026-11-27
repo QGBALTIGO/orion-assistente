@@ -240,3 +240,15 @@
   #page-suite[data-os-current-route="relatorio-delivery"] .os-pill-tabs {grid-template-columns:repeat(2,minmax(0,1fr))}
   #page-suite[data-os-current-route$="-delivery"] .os-metric {padding:12px}
 }
+
+/* Preserve the search/status and start/end pairs. */
+#page-suite[data-os-current-route$="-delivery"] .os-filter-row > .os-button {min-height:44px}
+@media(min-width:768px) {
+  #page-suite[data-os-current-route="relatorio-delivery"] #osDeliverySalesFilters {grid-template-columns:repeat(3,minmax(0,1fr))}
+  #page-suite[data-os-current-route$="-delivery"] #osDeliveryOrderFilters:has(input[type=date]) {grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+@media(min-width:375px) and (max-width:767px) {
+  #page-suite[data-os-current-route$="-delivery"] #osDeliveryOrderFilters > .os-field:has(input[type="search"]),
+  #page-suite[data-os-current-route$="-delivery"] #osContainerFilters > .os-field:has(input[type="search"]),
+  #page-suite[data-os-current-route$="-delivery"] #osDeliveryCouriersFilter > .os-field:has(input[type="search"]) {grid-column:auto}
+}
