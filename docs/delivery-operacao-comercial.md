@@ -1,6 +1,20 @@
 # Delivery e Distribuição — acompanhamento da implementação
 Atualizado em 27 de novembro de 2026. Responsáveis pela operação comercial devem conseguir identificar se um recurso foi publicado, se está em homologação ou se ainda depende de desenvolvimento.
 
+## Retomada em 27 de novembro
+
+O trabalho foi recuperado da branch `codex/delivery-operacao-20261127`. A revisão de origem `323e5657` inclui endereços nomeados, regras de entrega por bairro, compras de fornecedores, pagamento misto, Kanban, aplicativo do entregador e Pix manual. A cadeia de migrações até `0116_delivery_manual_pix` foi aplicada em um PostgreSQL descartável. [Branch de homologação](https://github.com/QGBALTIGO/orion-assistente/tree/codex/delivery-operacao-20261127)
+
+O arquivo de pedidos servido por orionagenda.pro corresponde ao arquivo da revisão `cbf4ba9a`. O domínio respondeu ao teste de saúde e o portal do entregador retornou HTTP 404. A revisão `a4884b40` tem imagem no registro e antecede as mudanças do entregador e Pix. A existência dessa imagem, por si, não comprova sua implantação. [Arquivo de pedidos servido](https://orionagenda.pro/panel-assets/orion-delivery-orders.js) · [Empacotamento anterior](https://github.com/QGBALTIGO/orion-assistente/actions/runs/46053162055)
+
+A homologação anterior falhou em asserções de data de faturamento, nome publicado do produto, formato da chave de idempotência e pré-requisitos de testes de mídia. A retomada corrigiu essas verificações. Também corrigiu a largura do filtro e da tabela de produtos na Loja rápida em telas estreitas e testou o painel com um produto disponível para a vitrine. [Execução que detectou o problema de largura](https://github.com/QGBALTIGO/orion-assistente/actions/runs/46058481715) · [Homologação da revisão `a066a09c`](https://github.com/QGBALTIGO/orion-assistente/actions/runs/46059906620)
+
+A revisão `a066a09c` passou nos dois trabalhos de homologação. Foram 69 testes do fluxo comercial, com PostgreSQL e navegador, e 79 de regressão de mídia e PWA. Os 156 testes de interface também passaram. A Loja rápida foi verificada no WebKit com 320 px e tabela carregada. [Resultado e capturas](https://github.com/QGBALTIGO/orion-assistente/actions/runs/46059906620)
+
+O ensaio do entregador usa um pedido fictício de R$ 13,50 e confere login com conta vinculada, abertura de expediente, aceite, endereço liberado após o aceite, chegada, R$ 6,50 de troco e conclusão com confirmação de recebimento. Os testes no banco cobrem também recusa, acompanhamento privado, isolamento entre empresas, estoque e bloqueio da conclusão com Pix pendente de conferência pelo proprietário.
+
+A liberação em produção depende de aprovação após a homologação. O ensaio em aparelho físico e a validação regulatória seguem pendentes. Despacho automático, controle de carga por veículo, acerto de turno e teste com provedor em sandbox continuam previstos na missão.
+
 ## Infraestrutura e reutilização
 
 | Componente | Constatação | Decisão |
@@ -26,7 +40,7 @@ Atualizado em 27 de novembro de 2026. Responsáveis pela operação comercial de
 | 5. Logística | Cobertura por bairro, agenda, despacho manual, solicitação de aceite, recusa, chegada, conclusão e ausência. Área do entregador com vínculo a e-mail verificado, expediente e compartilhamento voluntário da última posição em primeiro plano. | Carga por veículo, despacho automático com elegibilidade, mapa agregado, sequência otimizada de paradas e acerto financeiro de turno. |
 | 6. Gestão avançada | Dashboard operacional diário e relatórios. No desempenho de vendas há Hoje, Ontem, 7, 30, 90 dias e datas personalizadas, com horas locais e comparação ao intervalo anterior. | Fechamento de turno, acerto do entregador, margem com custos históricos, recompra, fidelização e campanhas com consentimento. |
 | 7. Comercialização | Reutilizar planos, liberação manual com vencimento e Cakto. | Aprovar preço após medição. NF-e e NFC-e dependem do emitente, UF, credenciamento, certificados e ensaios. |
-| 8. Validação | A última revisão publicada tem ensaio PostgreSQL/Redis, navegador e regressão. A nova revisão segue o workflow de homologação. | Dois cenários integrais com app do motorista, comprovante de PSP sandbox, estoque, financeiro, histórico, rastreamento e regressão. |
+| 8. Validação | A revisão `a066a09c` passou em PostgreSQL, Chromium, WebKit e regressão das interfaces da Orion. | Cenários de campo com app do entregador em aparelho físico, comprovante de provedor sandbox, estoque, financeiro, histórico e rastreamento. |
 
 ## Alterações de banco e operação
 
