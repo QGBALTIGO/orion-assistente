@@ -85,5 +85,5 @@
   .store-product {grid-template-columns:auto minmax(0,1fr)}
   .store-product > div:first-child {grid-column:1/-1}
   .store-product > :last-child {grid-column:1/-1;justify-self:stretch}
-  .store-product > :last-child button {min-height:44px}
+  .store-product > button:last-child {min-height:44px}
 }

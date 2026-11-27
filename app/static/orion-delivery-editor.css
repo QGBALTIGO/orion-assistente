@@ -243,9 +243,20 @@
 
 /* Preserve the search/status and start/end pairs. */
 #page-suite[data-os-current-route$="-delivery"] .os-filter-row > .os-button {min-height:44px}
+#page-suite[data-os-current-route$="-delivery"] .os-item-card > .os-badge {align-self:flex-start;max-width:100%}
 @media(min-width:768px) {
   #page-suite[data-os-current-route="relatorio-delivery"] #osDeliverySalesFilters {grid-template-columns:repeat(3,minmax(0,1fr))}
-  #page-suite[data-os-current-route$="-delivery"] #osDeliveryOrderFilters:has(input[type=date]) {grid-template-columns:repeat(3,minmax(0,1fr))}
+  #page-suite[data-os-current-route$="-delivery"] #osDeliveryOrderFilters:has(input[type=date]) {grid-template-columns:repeat(2,minmax(0,1fr))}
+  #page-suite[data-os-current-route$="-delivery"] #osDeliveryOrderFilters:has(input[type=date]) > .os-button {grid-column:1/-1}
+}
+@media(min-width:1280px) {
+  #page-suite[data-os-current-route$="-delivery"] #osDeliveryOrderFilters:has(input[type=date]) {
+    grid-template-columns:minmax(0,1.3fr) repeat(3,minmax(0,1fr)) minmax(100px,.7fr);
+  }
+  #page-suite[data-os-current-route$="-delivery"] #osDeliveryOrderFilters:has(input[type=date]) > .os-button {grid-column:auto}
+}
+@media(min-width:375px) and (max-width:767px) {
+  #page-suite[data-os-current-route="relatorio-delivery"] #osDeliverySalesFilters > .os-button {grid-column:auto}
 }
 @media(min-width:375px) and (max-width:767px) {
   #page-suite[data-os-current-route$="-delivery"] #osDeliveryOrderFilters > .os-field:has(input[type="search"]),
