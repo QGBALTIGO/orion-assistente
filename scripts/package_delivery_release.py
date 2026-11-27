@@ -28,6 +28,7 @@ SHARED = frozenset({
     "app/management_models.py",
     "app/onboarding_schemas.py",
     "app/plan_permissions.py",
+    "app/subscription_devices.py",
     "app/static/orion-suite.js",
     "app/static/panel.html",
     "app/workspace_policy.py",

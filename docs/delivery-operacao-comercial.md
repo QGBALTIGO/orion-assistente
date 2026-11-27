@@ -1,6 +1,10 @@
 # Delivery e Distribuição — acompanhamento da implementação
 Atualizado em 27 de novembro de 2026. Responsáveis pela operação comercial devem conseguir identificar se um recurso foi publicado, se está em homologação ou se ainda depende de desenvolvimento.
 
+## Incremento WhatsApp — em homologação
+
+O Delivery reutiliza o controle de dispositivo QR/código de conexão já existente em Serviços por assinatura, com uma conexão por empresa de avaliação. Somente o proprietário autenticado pode acessar o menu Atendimento → Conectar WhatsApp, e apenas enquanto a empresa estiver ativa e autorizada na avaliação. O perfil da sessão é exclusivamente de conexão: nenhuma automação, importação de mensagens, chatbot, transcrição, webhook comercial ou efeito de envio é autorizado. A conexão por QR reutilizada é a ponte existente, não uma homologação oficial da Cloud API da Meta. A integração de solicitações e pedidos para produtos elegíveis será uma etapa separada, com permissões e confirmação explícitas; GLP permanece bloqueado para comércio pelo canal até confirmação de elegibilidade. Não foi feita nova conexão real sem a autorização no aparelho do proprietário.
+
 ## Publicação confirmada — 27/11/2026, 16h29 (MS)
 
 **Produção:** commit `4dccb9bae34bcffbf3ea0a512529233e17b5f690`, deployment Railway `78f4ee6b-d637-451a-80d1-30b4e7631bac`, SUCCESS. Imagem `sha256:3d8553547cb9941f3eb1a1c31ede81e9b7cc6266071ebf08abe276edaa35f5cc`. API /health retornou status ok. Assets públicos confirmam abas Recebimentos e Recompra. Ambas as abas foram abertas também na sessão autenticada real: indicadores, filtros, exportação CSV disponível e estado vazio válido, sem gravação de dados comerciais. A exportação com valores foi exercitada na homologação, não na conta real. Schema de produção validado em `0116_delivery_manual_pix`, sem migração adicional. Esta confirmação substitui estados históricos de publicação relatados abaixo.

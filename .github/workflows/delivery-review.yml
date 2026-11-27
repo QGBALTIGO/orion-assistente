@@ -64,6 +64,9 @@ jobs:
             tests/integration/test_delivery_payments_postgres.py tests/integration/test_delivery_reports_postgres.py \
             tests/integration/test_delivery_storefront_postgres.py tests/unit/test_delivery_container_orders.py \
             tests/integration/test_commercial_catalog_postgres.py tests/integration/test_commercial_fulfillment_postgres.py
+      - name: Pareamento WhatsApp e isolamento entre nichos
+        run: |
+          pytest -q -ra tests/integration/test_subscription_devices_postgres.py -k "delivery_whatsapp_connection or affiliate_whatsapp_pairing or real_auth_csrf_membership_niche"
       - name: Regressão das interfaces da Orion
         run: |
           python -m compileall -q app

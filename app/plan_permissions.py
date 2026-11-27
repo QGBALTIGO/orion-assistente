@@ -135,7 +135,7 @@ def derive_plan(snapshot, now=None):
             features = [feature for feature in features if feature in {"account.manage", "business.setup"}]
     delivery_preview = not platform and delivery_preview_enabled(snapshot.get("tenant_id"), snapshot.get("niche"))
     if delivery_preview and snapshot.get("tenant_status") == "active" and not financial_hold:
-        features = sorted(set(features) | {"clients.manage", "finance.basic"})
+        features = sorted(set(features) | {"clients.manage", "finance.basic", "devices.manage"})
     maximum = CODES[code]["max_professionals"] if code else None
     result = {"code": code, "name": "Administração Orion" if platform else CODES[code]["name"] if code else "Sem plano ativo",
         "source": source, "status": status, "active": active, "valid_until": until,

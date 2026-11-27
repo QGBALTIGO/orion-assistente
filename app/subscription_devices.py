@@ -34,6 +34,8 @@ from app.workspace_policy import AFFILIATE_WORKSPACE, SUBSCRIPTION_WORKSPACE
 BASE = "/api/v1/tenants/{tenant_id}/subscription-whatsapp/devices"
 INTERNAL = "/internal/qr/channels/{channel_id}/device"
 router = APIRouter(tags=["Dispositivos de assinaturas"], dependencies=[Depends(channels.enabled)])
+DELIVERY_CONNECTION_PROFILE = "delivery_connection"
+CONNECTION_ONLY_PROFILES = frozenset({AFFILIATE_WORKSPACE, DELIVERY_CONNECTION_PROFILE})
 TERMINAL = {"succeeded", "failed"}
 LIVE_CONTROL = {"pending", "running", "uncertain"}
 ERROR_MESSAGES = {
@@ -78,10 +80,11 @@ async def _workspace(db, tenant_id, *, subscription_only=False):
     # No admin/support bypass: the module is scoped to this tenant's persisted
     # niche even when called by an administrator in a maintenance session.
     profile = state.get("workspace_profile")
-    allowed = profile == SUBSCRIPTION_WORKSPACE or not subscription_only and profile == AFFILIATE_WORKSPACE
+    delivery = state.get("delivery_catalog_preview") is True
+    allowed = profile == SUBSCRIPTION_WORKSPACE or not subscription_only and (profile == AFFILIATE_WORKSPACE or delivery)
     if not allowed or not state.get("permissions", {}).get("devices.manage"):
         raise fail("WORKSPACE_FEATURE_UNAVAILABLE", 403)
-    db.info["orion_device_profile"] = profile
+    db.info["orion_device_profile"] = DELIVERY_CONNECTION_PROFILE if delivery else profile
     return state
 
 
@@ -90,6 +93,8 @@ async def _owner_transaction(tenant_id, actor, *, subscription_only=False):
     async with support_session_factory()() as db:
         async with db.begin():
             await _workspace(db, tenant_id, subscription_only=subscription_only)
+            if db.info["orion_device_profile"] == DELIVERY_CONNECTION_PROFILE and (actor.role != "member" or actor.maintenance):
+                raise fail("WORKSPACE_FEATURE_UNAVAILABLE", 403)
             await channels._owner(db, tenant_id, actor)
             tenant = (await db.execute(text("SELECT status FROM tenants WHERE id=:t FOR UPDATE"),
                                        {"t": tenant_id})).scalar_one_or_none()
@@ -232,7 +237,7 @@ def _safe_runtime(data):
 
 
 async def device_dto(db, row):
-    affiliate = db.info.get("orion_device_profile") == AFFILIATE_WORKSPACE
+    affiliate = db.info.get("orion_device_profile") in CONNECTION_ONLY_PROFILES
     runtime = _safe_runtime(row["runtime"])
     status = row["status"]
     if status not in {"disabled", "removing", "removed"}:
@@ -623,10 +628,14 @@ async def device_lease_snapshot(db, transport):
             secret = {"password": channels._cipher().decrypt(row["proxy_secret_encrypted"].encode()).decode()}
         except (InvalidToken, UnicodeError):
             raise fail("DEVICE_CAPABILITY_UNAVAILABLE") from None
+    delivery = db.info.get("orion_device_profile") == DELIVERY_CONNECTION_PROFILE
+    # A tenant changing niche must not bring previously saved automation,
+    # proxy credentials, or webhooks into the Delivery connection.
+    settings = DeviceSettings(name=row["name"]).model_dump(mode="json") if delivery else row["settings"]
     return jsonable_encoder({"id": row["id"], "generation": row["generation"], "settings_revision": row["revision"],
-        "settings": row["settings"], "proxy_secret": secret, "restart_required": row["restart_required"],
-        "chatbot": None if db.info.get("orion_device_profile") == AFFILIATE_WORKSPACE else await chatbot.snapshot(db, row["tenant_id"]),
-        "capabilities": {"transcription_available": audio_capable(), "transcription_max_bytes": 25000000,
+        "settings": settings, "proxy_secret": None if delivery else secret, "restart_required": row["restart_required"],
+        "chatbot": None if db.info.get("orion_device_profile") in CONNECTION_ONLY_PROFILES else await chatbot.snapshot(db, row["tenant_id"]),
+        "capabilities": {"transcription_available": not delivery and audio_capable(), "transcription_max_bytes": 25000000,
             "transcription_max_seconds": 1800, "transcription_max_text_chars": 120000,
             "proxy": True, "webhook": True}})
 
@@ -778,7 +787,7 @@ async def device_event(channel_id: UUID, payload: DeviceEvent, request: Request)
         now = datetime.now(timezone.utc)
         if not now-timedelta(minutes=5) <= payload.occurred_at <= now+timedelta(seconds=30):
             return {"effects": [], "duplicate": False, "ignored": "stale_event"}
-        if db.info.get("orion_device_profile") == AFFILIATE_WORKSPACE:
+        if db.info.get("orion_device_profile") in CONNECTION_ONLY_PROFILES:
             if payload.kind == "status":
                 status_data = _event_runtime(payload)
                 await _store_runtime(db, row, status_data)
@@ -858,7 +867,7 @@ async def pending_effects(channel_id: UUID, request: Request):
     from app.subscription_schedule_runtime import after_schedule_effect_finish
     from app.subscription_bulk_runtime import after_bulk_effect_finish
     async with _private_transaction(request) as (db, row, _, _, _):
-        if db.info.get("orion_device_profile") == AFFILIATE_WORKSPACE:
+        if db.info.get("orion_device_profile") in CONNECTION_ONLY_PROFILES:
             return {"effects": [], "reconcile": []}
         # This negotiates transport support after the existing authentication;
         # it never grants authority to send. Missing, unknown or repeated
@@ -985,7 +994,7 @@ async def _reserve_cooldown(db, row, effect):
 @router.post(INTERNAL + "/effects/authorize")
 async def authorize_effect(channel_id: UUID, payload: EffectRequest, request: Request):
     async with _private_transaction(request) as (db, row, _, owner, fence):
-        if db.info.get("orion_device_profile") == AFFILIATE_WORKSPACE:
+        if db.info.get("orion_device_profile") in CONNECTION_ONLY_PROFILES:
             raise fail("WORKSPACE_FEATURE_UNAVAILABLE", 403)
         if payload.device_id is not None:
             _same_snapshot(row, payload.device_id, payload.generation, payload.settings_revision)
@@ -1053,6 +1062,8 @@ async def authorize_effect(channel_id: UUID, payload: EffectRequest, request: Re
 async def finish_effect(channel_id: UUID, payload: EffectFinish, request: Request):
     from app.subscription_chatbot_engine import after_effect_finish
     async with _private_transaction(request) as (db, row, _, owner, fence):
+        if db.info.get("orion_device_profile") == DELIVERY_CONNECTION_PROFILE:
+            raise fail("WORKSPACE_FEATURE_UNAVAILABLE", 403)
         effect = await _effect(db, row, payload.operation_id)
         if payload.device_id is not None and (payload.device_id != row["id"]
                 or payload.generation != effect["generation"] or payload.settings_revision != effect["settings_revision"]):
@@ -1102,7 +1113,7 @@ async def finish_effect(channel_id: UUID, payload: EffectFinish, request: Reques
 
 async def _audio_authorize(request, device_id, generation, revision, operation_id, seconds, *, phase):
     async with _private_transaction(request, device_id=device_id) as (db, row, _, owner, fence):
-        if db.info.get("orion_device_profile") == AFFILIATE_WORKSPACE:
+        if db.info.get("orion_device_profile") in CONNECTION_ONLY_PROFILES:
             raise fail("WORKSPACE_FEATURE_UNAVAILABLE", 403)
         _same_snapshot(row, device_id, generation, revision)
         effect = await _effect(db, row, operation_id)

@@ -198,3 +198,21 @@ test('Delivery customer opens a commercial history without scheduling permission
   assert.equal(h.calls.some(x=>x.path.includes('/appointments')),false);
   assert.deepEqual(h.errors,[]);
 });
+
+test('Delivery owner opens the connection-only WhatsApp device module, not subscription automation',async t=>{
+  const base=planState('none',{delivery_catalog_preview:true});
+  const features=[...base.features,'clients.manage','finance.basic','devices.manage'];
+  const plan={...base,features,permissions:Object.fromEntries(features.map(x=>[x,true]))};
+  const mounts=[];
+  const owner=await makeSuite({initialRoute:'whatsapp-delivery',permissions:plan,
+    configureWindow:window=>{window.OrionSubscriptionDevices={mount:args=>mounts.push({host:args.host.id,connectionOnly:args.connectionOnly}),unmount(){}};}});
+  t.after(()=>owner.close());await flush();
+  assert.ok(owner.document.querySelector('#osNav [data-os-route=whatsapp-delivery]'));
+  assert.deepEqual(mounts,[{host:'osSubscriptionDevices',connectionOnly:true}]);
+  assert.match(owner.document.querySelector('#osPageBody').textContent,/importação de pedidos.*ainda não estão habilitadas/);
+  assert.equal(owner.document.querySelector('#osNav [data-os-route=chatbot]'),null);
+  const viewer=await makeSuite({initialRoute:'whatsapp-delivery',role:'viewer',permissions:plan});
+  t.after(()=>viewer.close());await flush();
+  assert.equal(viewer.document.querySelector('#osNav [data-os-route=whatsapp-delivery]'),null);
+  assert.deepEqual(owner.errors,[]);
+});

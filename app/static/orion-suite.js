@@ -130,6 +130,7 @@
   const deliveryReportRoute='relatorio-delivery';
   const deliveryLogisticsRoute='logistica-delivery';
   const deliveryStoreRoute='loja-delivery';
+  const deliveryWhatsAppRoute='whatsapp-delivery';
   routeNames[deliveryCatalogRoute]='Produtos e estoque';
   routeNames[deliveryOrdersRoute]='Pedidos';
   routeNames[deliveryDispatchRoute]='Entregas';
@@ -138,8 +139,9 @@
   routeNames[deliveryReportRoute]='Relatórios';
   routeNames[deliveryLogisticsRoute]='Logística';
   routeNames[deliveryStoreRoute]='Loja rápida';
+  routeNames[deliveryWhatsAppRoute]='Conectar WhatsApp';
   routeNames[deliveryDashboardRoute]='Dashboard';
-  const deliveryRoutes=[deliveryDashboardRoute,deliveryCatalogRoute,deliveryOrdersRoute,deliveryDispatchRoute,deliveryContainersRoute,deliveryCreditRoute,deliveryReportRoute,deliveryLogisticsRoute,deliveryStoreRoute];
+  const deliveryRoutes=[deliveryDashboardRoute,deliveryCatalogRoute,deliveryOrdersRoute,deliveryDispatchRoute,deliveryContainersRoute,deliveryCreditRoute,deliveryReportRoute,deliveryLogisticsRoute,deliveryStoreRoute,deliveryWhatsAppRoute];
   const mainNav=[['verificador-numeros','check'],['link-whatsapp','link'],['contatos','users'],['grupos-contatos','list'],['dispositivos','phone'],['chatbot','bot'],['testar-chatbot','flask'],['templates','layers'],['mensagens-enviadas','fileCheck'],['diagnosticos','activity'],['campanhas','megaphone'],['programadas','calendarClock'],['massa','broadcast'],['enviar-mensagem','send'],['aquecimento','flame'],['evitar-banimento','shieldCheck'],['resolver-banimento','shieldAlert'],['extrator-contatos','usersSearch'],['adicionar-ao-grupo','userPlus'],['dashboard','dashboard'],['agenda','calendar'],['clientes','users'],['clinica','tooth'],['pacientes-odonto','users'],['proteses-odonto','prosthesis'],['estoque-odonto','box'],['vendas-odonto','layers'],['ajustes-odonto','settings'],['inbox','chat'],['servicos','scissors'],['funcionarios','badgeUser'],['financeiro','wallet'],['desempenho','chart'],['marketing','sparkles'],['site','globe'],['fidelizacao','gift'],['consultor','brain'],['plano','credit'],['configuracoes','settings']];
   const subscriptionNavigation=[
     ['Gestão',['dashboard']],
@@ -202,6 +204,7 @@
   };
   const permitted=feature=>!feature||platformWorkspace()||(!affiliateWorkspace()||['account.manage','business.setup','devices.manage'].includes(feature))&&(!subscriptionWorkspace()||['account.manage','business.setup','devices.manage','chatbot.manage','templates.manage','sent_messages.manage','diagnostics.manage','campaigns.manage','scheduled_messages.manage','bulk_messages.manage','direct_messages.manage','whatsapp_guidance.view','group_contacts.manage','group_add.manage','number_check.manage','whatsapp_link.manage','audience.manage'].includes(feature))&&state.entitlements?.permissions?.[feature]===true;
   const routePermitted=route=>{
+    if(route===deliveryWhatsAppRoute)return deliveryPreview()&&tenant()?.role==='owner'&&state.bridge.user?.role==='member'&&!state.bridge.user?.maintenance?.active&&permitted('devices.manage');
     if(deliveryRoutes.includes(route))return deliveryPreview();
     if(affiliateWorkspace())return affiliatePanelRoute(route)||route==='afiliados-whatsapp'&&affiliateDevices()||['novidades','ajuda','member'].includes(route)||
       route==='configuracoes'&&permitted('account.manage')||route==='perfil'&&appLayoutEnabled();
@@ -639,7 +642,7 @@
       for(const [heading,routes] of subscriptionNavigation)nav+=navGroup(heading,routes.map(route=>[route,icons.get(route)]));
     }else if(delivery){
       nav+=navGroup('Gestão',[[deliveryDashboardRoute,'dashboard'],[deliveryOrdersRoute,'deliveryReceipt'],[deliveryDispatchRoute,'deliveryTruck'],[deliveryCatalogRoute,'box'],[deliveryContainersRoute,'deliveryVessel'],['clientes','users']]);
-      nav+=navGroup('Atendimento',[[deliveryStoreRoute,'deliveryStorefront'],['inbox','chat']]);
+      nav+=navGroup('Atendimento',[[deliveryStoreRoute,'deliveryStorefront'],[deliveryWhatsAppRoute,'phone'],['inbox','chat']]);
       nav+=navGroup('Financeiro',[[deliveryCreditRoute,'deliveryDeferred'],['financeiro','wallet'],[deliveryReportRoute,'chart']]);
       nav+=navGroup('Administração',[[deliveryLogisticsRoute,'deliveryRoute'],['configuracoes','settings']]);
     }else if(barbershop){
@@ -976,6 +979,7 @@
     if([deliveryOrdersRoute,deliveryDispatchRoute].includes(state.route))html='<div id="osPageBody">'+loading('Carregando pedidos…')+'</div>';
     if(state.route==='afiliados-whatsapp')html='<div id="osPageBody">'+routeButton('Voltar a Conexões e destinos','afiliados-conexoes','os-ghost','left')+'<section id="osSubscriptionDevices"></section></div>';
     if(state.route==='dispositivos')html='<div id="osPageBody"><section id="osSubscriptionDevices"></section></div>';
+    if(state.route===deliveryWhatsAppRoute)html='<div id="osPageBody"><section id="osSubscriptionDevices"></section><section class="os-card os-section-gap"><div class="os-card-header"><h2>Pedidos pelo WhatsApp</h2></div><p>Conecte o número comercial para preparar o canal de atendimento. A importação de pedidos e as respostas automáticas ainda não estão habilitadas. A venda de produtos restritos exige confirmação de elegibilidade do canal.</p><div class="os-actions">'+routeButton('Abrir pedidos',deliveryOrdersRoute,'os-outline','deliveryReceipt')+'</div></section></div>';
     if(state.route==='verificador-numeros')html='<div id="osPageBody"><section id="osSubscriptionNumberCheck"></section></div>';
     if(state.route==='link-whatsapp')html='<div id="osPageBody"><section id="osSubscriptionWhatsappLink"></section></div>';
     if(state.route==='contatos')html='<div id="osPageBody"><section id="osSubscriptionAudience"></section></div>';
@@ -1200,8 +1204,9 @@
         const params=new URLSearchParams(location.search);
         await window.OrionSubscriptionChatbotTest.mount({host:$('osSubscriptionChatbotTest'),request,tenantId:state.tenantId,initialDeviceId:params.get('device_id'),initialRuleId:params.get('reply_id')});break;
       }
+      case deliveryWhatsAppRoute:
       case 'afiliados-whatsapp':
-      case 'dispositivos':if(!window.OrionSubscriptionDevices)throw Error('Não foi possível abrir Dispositivos. Atualize o painel.');await window.OrionSubscriptionDevices.mount({host:$('osSubscriptionDevices'),request,tenantId:state.tenantId,connectionOnly:state.route==='afiliados-whatsapp'});break;
+      case 'dispositivos':if(!window.OrionSubscriptionDevices)throw Error('Não foi possível abrir Dispositivos. Atualize o painel.');await window.OrionSubscriptionDevices.mount({host:$('osSubscriptionDevices'),request,tenantId:state.tenantId,connectionOnly:state.route==='afiliados-whatsapp'||state.route===deliveryWhatsAppRoute});break;
       case 'dashboard':{
          if(!homePreviewEnabled())stopHomeLive();
          if(subscriptionWorkspace()){
