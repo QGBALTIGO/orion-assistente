@@ -30,9 +30,10 @@ PURPOSE = "delivery_reply"
 STATE_TTL = 1800
 PAYMENTS = {"cash": "dinheiro", "pix": "Pix manual", "debit_card": "cartão de débito",
             "credit_card": "cartão de crédito"}
-HELP = "Se preferir falar com uma pessoa, escreva atendente."
-ADDRESS_PROMPT = ("Qual o endereço de entrega? Informe rua, número, bairro, cidade e UF. "
-                  "Pode separar por vírgulas e acrescentar o complemento no final.")
+HELP = "Se quiser falar com nossa equipe, é só escrever *atendente*."
+ADDRESS_PROMPT = ("📍 Me passa o endereço de entrega, por favor?\n\n"
+                  "Rua, número, bairro, cidade e estado. Se tiver complemento ou ponto de referência, pode mandar também.\n\n"
+                  "_Ex.: Rua das Flores, 123, Centro, Cidade, MS_")
 
 
 class Settings(ProfileModel):
@@ -125,10 +126,10 @@ def in_stock(row, now, quantity=1):
 def list_products(items, now):
     if not items:
         return "Ainda não há produtos liberados para este atendimento. " + HELP
-    lines = [f"{row['label']} — {money(row['unit_price_cents'])}" +
-             ("" if in_stock(row, now) else " (indisponível)") for row in items[:10]]
-    suffix = "\nHá mais opções; informe o nome do produto." if len(items)>10 else ""
-    return "Produtos disponíveis para consulta:\n" + "\n".join(lines) + suffix + "\nQual você deseja?"
+    lines = [f"• {row['label']} — *{money(row['unit_price_cents'])}*" +
+             ("" if in_stock(row, now) else " _(indisponível no momento)_") for row in items[:10]]
+    suffix = "\nHá mais opções; pode me dizer o nome do produto." if len(items)>10 else ""
+    return "💧 *Nosso catálogo*\n\n" + "\n".join(lines) + suffix + "\n\nQual você gostaria de pedir?"
 
 
 def parse_address(body):
@@ -162,7 +163,7 @@ def change(body):
     value = clean(body)
     if value in {"nao", "sem troco", "valor certo", "nao preciso", "nao precisa"}:
         return None
-    match = re.fullmatch(r"(?:troco\s+(?:para|pra|de)\s+)?(?:r\$\s*)?(\d{1,7}(?:[.,]\d{1,2})?)", value)
+    match = re.fullmatch(r"(?:(?:troco\s+)?(?:para|pra|de)\s+)?(?:r\$\s*)?(\d{1,7}(?:[.,]\d{1,2})?)(?:\s+reais?)?", value)
     if not match:
         raise ValueError("valor")
     amount = int(Decimal(match.group(1).replace(",", "."))*100)
@@ -173,22 +174,140 @@ def change(body):
 
 def state_question(stage, state, shop, items):
     if stage == "name":
-        return "Qual é o seu nome?"
+        return "Combinado! 😊 Qual é o seu nome?"
     if stage == "mode":
         choices = [label for key,label in (("pickup","retirada"),("delivery","entrega")) if shop.get("allow_"+key)]
-        return "Você prefere " + " ou ".join(choices) + "?"
+        if choices == ["retirada"]:
+            return "Por aqui, estamos atendendo com *retirada no local*. Você consegue retirar?"
+        if choices == ["entrega"]:
+            return "Vamos de *entrega*? Me confirma, por favor."
+        if not choices:
+            return "No momento, nenhuma forma de recebimento está disponível. " + HELP
+        return "Você prefere receber em casa ou retirar aqui com a gente? 😊"
     if stage == "address":
         return ADDRESS_PROMPT
     if stage == "exchange":
-        return "Você confirma que tem os vasilhames vazios correspondentes aos itens do pedido para trocar?"
+        return "Você tem os vasilhames vazios para devolver na troca?"
     if stage == "payment":
         choices = [PAYMENTS[key] for key in shop["payment_methods"]]
-        return "Como prefere pagar? " + ", ".join(choices) + "."
+        return "💳 Como prefere pagar?\n\n" + "\n".join("• " + choice.capitalize() for choice in choices)
     if stage == "change":
-        return "Precisa de troco? Informe o valor para o qual precisa de troco ou diga sem troco."
+        return "Precisa de troco? 😊\n\nSe precisar, me diz para quanto. Se não, pode responder *sem troco*."
     if stage == "offer":
-        return "Deseja fazer o pedido?"
+        return "Quer que eu prepare seu pedido?"
     return state.get("summary") or list_products(items, datetime.now(timezone.utc))
+
+
+def information_reply(body, shop, items, state, now):
+    """Answer grounded FAQs without discarding a draft or accepting a sale."""
+    value = clean(body)
+    question = "?" in body or bool(re.search(
+        r"\b(?:quanto\w*|qual|quais|como|onde|quando|posso|pode|voces tem|tem desconto|aceita\w*)\b", value))
+    # Never reinterpret a direct order as a question merely because the
+    # customer says "pode mandar".
+    if not question or (re.search(r"\b(?:pode mandar|pode enviar|pode trazer)\b", value) and "?" not in body
+                        and not re.search(r"\b(?:quanto|qual|onde|como|quando)\b", value)):
+        return None
+    answers = []
+    if re.search(r"\b(?:desconto|promoc\w*|cupom|mais barato|abatimento)\b", value):
+        answers.append("Sobre desconto: não tenho nenhuma condição especial cadastrada para te oferecer agora. Posso encaminhar à equipe se você quiser negociar.")
+    if re.search(r"\b(?:retirada|retirar|buscar|balcao|pegar ai|pegar no local)\b", value):
+        if shop.get("allow_pickup"):
+            reply = "Sim, você pode *retirar no local*!"
+            if shop.get("pickup_details"):
+                reply += "\n📍 " + shop["pickup_details"]
+            else:
+                reply += " O endereço de retirada ainda não está disponível aqui; posso te encaminhar à equipe."
+            answers.append(reply)
+        else:
+            answers.append("Por enquanto, a retirada no local não está disponível.")
+    delivery = bool(re.search(r"\b(?:entrega\w*|domicilio|em casa|frete|taxa)\b", value))
+    duration = bool(re.search(r"\b(?:tempo|demora\w*|prazo|minutos?|horas?|chega\w*)\b", value))
+    fee = bool(re.search(r"\b(?:frete|taxa|valor|quanto custa|quanto fica|gratis|gratuit\w*)\b", value))
+    if delivery or duration:
+        if not shop.get("allow_delivery"):
+            answers.append("No momento, não estamos fazendo entregas." +
+                           (" Você pode retirar no local." if shop.get("allow_pickup") else ""))
+        else:
+            if duration:
+                low, high = shop.get("estimate_min_minutes"), shop.get("estimate_max_minutes")
+                if low is not None and high is not None:
+                    estimate = f"{low} a {high} min" if low != high else f"{low} min"
+                    answers.append(f"⏱️ Nossa previsão geral é de *{estimate}*, mas o prazo pode variar conforme o endereço.")
+                else:
+                    answers.append("Ainda não tenho uma previsão confirmada para a sua região. Posso consultar a entrega com o endereço.")
+            if fee:
+                answers.append("🛵 O valor da entrega depende do endereço e dos bairros atendidos. A taxa é calculada com o endereço completo na preparação do pedido.")
+            if not duration and not fee:
+                answers.append("Fazemos entrega nas áreas atendidas pela empresa. Posso preparar seu pedido e verificar a cobertura pelo endereço.")
+    if re.search(r"\b(?:endereco|localizacao|onde fica|onde voces ficam)\b", value) and not delivery and not any("📍" in a for a in answers):
+        answers.append("📍 " + (shop.get("pickup_details") or "O endereço de retirada ainda não está cadastrado no atendimento. Posso encaminhar à equipe."))
+    if re.search(r"\b(?:pix|cartao|credito|debito|dinheiro|pagamento|pagar|pagam)\b", value):
+        methods = [PAYMENTS[k].capitalize() for k in shop.get("payment_methods", []) if k in PAYMENTS]
+        answers.append("💳 *Formas de pagamento*\n" + ("\n".join("• " + method for method in methods) if methods else
+                       "Ainda não tenho uma forma de pagamento cadastrada."))
+        if "pix" in value and "pix" in shop.get("payment_methods", []):
+            answers.append("_O Pix é conferido manualmente pela equipe._")
+    if re.search(r"\b(?:funciona\w*|abre|fecha|aberto|fechado|horario\w*)\b", value) and not duration:
+        from app.delivery_storefront import is_open
+        opened = is_open(shop, now)
+        answers.append("Estamos *atendendo agora*. 😊" if opened else "Estamos fora do horário de atendimento no momento.")
+    if (answers or state.get("items")) and re.search(r"\b(?:preco|valor|quanto custa|quanto fica|custa)\b", value) and not (delivery and fee):
+        plan = interpret(body, selected_catalog(items), previous=state.get("items", []))
+        selected = plan.items if not plan.invalid_quantity and not plan.ambiguous_products else []
+        indexed = {str(row["variant_id"]): row for row in items}
+        if not selected and not plan.ambiguous_products and not plan.invalid_quantity:
+            selected = state.get("items", [])
+        if selected and all(line["variant_id"] in indexed for line in selected):
+            answers.append("\n".join(f"💧 {indexed[line['variant_id']]['label']} — *{money(indexed[line['variant_id']]['unit_price_cents'])}* por unidade"
+                                     for line in selected))
+    if not answers:
+        return None
+    stage = state.get("stage")
+    if stage == "confirm":
+        answers.append("Seu pedido ainda está aguardando confirmação.\n\n" + state["summary"])
+    elif stage and stage != "offer":
+        answers.append(state_question(stage, state, shop, items))
+    elif stage == "offer":
+        answers.append("Quer que eu continue com o seu pedido?")
+    return "\n\n".join(answers)
+
+
+def revised_items(body, items, state, now):
+    """Resolve only explicit changes to a pending cart; never confirm it."""
+    if not state.get("items"):
+        return None
+    value = clean(body)
+    if not re.search(r"\b(?:na verdade|melhor|troca|troque|muda|tira|retire|remove|remova|adiciona|adicione|inclui|inclua|coloca|coloque|so quero|apenas)\b", value):
+        return None
+    plan = interpret(body, selected_catalog(items), previous=state["items"])
+    if plan.invalid_quantity or plan.ambiguous_products:
+        return "ambiguous"
+    previous = {str(line["variant_id"]): dict(line) for line in state["items"]}
+    if plan.selection_mode == "remove":
+        if not plan.removed_variants:
+            return "ambiguous"
+        for identity in plan.removed_variants:
+            previous.pop(identity, None)
+        chosen = list(previous.values())
+    elif plan.selection_mode == "add":
+        if not plan.items:
+            return "ambiguous"
+        for line in plan.items:
+            identity = line["variant_id"]
+            quantity = previous.get(identity, {}).get("quantity", 0) + line["quantity"]
+            previous[identity] = {"variant_id": identity, "quantity": quantity}
+        chosen = list(previous.values())
+    elif plan.items:
+        chosen = plan.items
+    else:
+        return None
+    indexed = {str(row["variant_id"]): row for row in items}
+    if sum(line["quantity"] for line in chosen) > 100 or any(
+        line["variant_id"] not in indexed or not in_stock(indexed[line["variant_id"]], now, line["quantity"]) for line in chosen
+    ):
+        return "unavailable"
+    return chosen
 
 
 async def next_step(db, tenant, shop, items, state, phone):
@@ -229,20 +348,20 @@ async def next_step(db, tenant, shop, items, state, phone):
     signature = store.quote_signature(tenant,shop,draft,estimate,logistics["policy_revision"],expires)
     proposal = store.Checkout(**draft.model_dump(), customer_name=state["customer_name"],customer_phone=phone,
                               confirmed=True, quote=f"{expires}.{signature}", idempotency_key=str(uuid4()))
-    lines = [f"{line['quantity']} × {line['product_name']} — {money(line['total_cents'])}" for line in estimate["items"]]
+    lines = [f"• {line['quantity']} × {line['product_name']} — {money(line['total_cents'])}" for line in estimate["items"]]
     address = draft.address
     destination = (f"{address.street}, {address.number or 's/n'}, {address.neighborhood}, {address.city}/{address.state}" +
                    (f" — {address.complement}" if address.complement else "")) if address else (shop.get("pickup_details") or "Retirada no estabelecimento")
-    summary = ("Confira o pedido antes de confirmar:\n" + "\n".join(lines) +
-               f"\n{'Entrega' if address else 'Retirada'}: {destination}\nTaxa: {money(estimate['delivery_fee_cents'])}"
-               f"\nTotal: {money(estimate['total_cents'])}\nPagamento: {PAYMENTS[draft.payment_preference]}")
+    summary = ("📝 *Seu pedido*\n\n" + "\n".join(lines) +
+               f"\n\n📍 *{'Entrega' if address else 'Retirada'}:* {destination}\nTaxa: {money(estimate['delivery_fee_cents'])}"
+               f"\n\n💰 *Total: {money(estimate['total_cents'])}*\nPagamento: {PAYMENTS[draft.payment_preference]}")
     if estimate.get("eta_minutes") is not None:
         summary += f"\nPrevisão estimada: {estimate['eta_minutes']} min."
     if draft.accept_exchange:
         summary += "\nCom devolução dos vasilhames vazios."
     if draft.change_for_cents is not None:
         summary += "\nTroco previsto: "+money(draft.change_for_cents-estimate["total_cents"])
-    summary += "\nResponda CONFIRMO para registrar o pedido, ou NÃO para cancelar o resumo."
+    summary += "\n\nEstá tudo certinho? 😊\nResponda *CONFIRMO* para registrar o pedido ou *NÃO* para cancelar o resumo."
     state.update(stage="confirm",proposal=proposal.model_dump(mode="json"),summary=summary)
     return summary,state
 
@@ -260,10 +379,11 @@ async def answer(db, tenant, phone, body, state, summary_delivered):
     if value in {"atendente","humano","falar com atendente","falar com humano","parar","pare","sair","stop","cancelar atendimento"}:
         return "Pausei o atendimento automático. Aguarde uma pessoa da empresa responder. Para voltar, escreva retomar atendimento.",{"paused":True}
     if forbidden(body):
-        return "Não realizo cotação ou comercialização de produtos restritos neste canal.",{}
+        return ("Por aqui, consigo ajudar com pedidos de água. Para consultar gás ou outros produtos, "
+                "precisamos da nossa equipe. Não registrei nenhum item novo. " + HELP),{}
     shop, items = await shop_and_items(db,tenant,lock=state.get("stage")=="confirm")
     if not shop or not items:
-        return "O catálogo deste atendimento ainda não está configurado. "+HELP,{}
+        return "Ainda não tenho o catálogo disponível por aqui. 😊\n\n"+HELP,{}
     if value in {"meu pedido","status do pedido","cadê meu pedido","cade meu pedido","acompanhar pedido"}:
         row = (await db.execute(text("""SELECT o.id,o.status FROM commercial_orders o
             JOIN commercial_quotes q ON (q.tenant_id,q.id)=(o.tenant_id,o.quote_id)
@@ -276,16 +396,40 @@ async def answer(db, tenant, phone, body, state, summary_delivered):
             return f"Pedido {str(row['id'])[:8].upper()}: {labels.get(row['status'],'em análise')}.",state
         return "Não encontrei pedido recente deste número pelo WhatsApp. "+HELP,state
     if value in {"cancelar pedido","cancela meu pedido","quero cancelar"}:
-        return "Pausei o atendimento automático para a equipe conferir seu pedido. Nenhum pedido foi cancelado automaticamente.",{"paused":True}
-    if not store.is_open(shop, datetime.now(timezone.utc)):
-        return "O atendimento comercial está fechado no momento. "+HELP,{}
+        return "Entendi! Vou pausar as respostas automáticas para nossa equipe conferir seu pedido.\n\n⚠️ _O cancelamento ainda não foi efetuado._",{"paused":True}
+    now = datetime.now(timezone.utc)
     stage = state.get("stage")
-    if not stage and value in {"oi","ola","bom dia","boa tarde","boa noite","menu","catalogo","retomar atendimento","voltar atendimento","voltar ao bot"}:
-        return "Olá! Sou o atendente virtual da empresa. Posso ajudar com seus pedidos de água. "+list_products(items,datetime.now(timezone.utc))+" "+HELP,{}
+    if stage and value in {"cancelar", "desistir", "nao quero mais", "deixa pra la", "cancela tudo", "nao vou querer"}:
+        return "Tudo bem! 😊 Cancelei o resumo. Nenhum novo pedido foi registrado.",{}
+    info = information_reply(body, shop, items, state, now)
+    if not store.is_open(shop, now):
+        closed = shop.get("closed_message") or "No momento estamos fora do horário de atendimento."
+        return (info + "\n\n" if info else "") + closed + "\n\n" + HELP,state
+    if info:
+        return info,state
+    edits = revised_items(body, items, state, now)
+    if edits == "ambiguous":
+        return "Claro, posso ajustar! Me diz exatamente quais produtos e quantidades você quer manter.",state
+    if edits == "unavailable":
+        return "Não consegui encontrar essa quantidade no estoque. Quer escolher outra quantidade?",state
+    if isinstance(edits, list):
+        if not edits:
+            return "Pronto, retirei os itens do resumo. Nenhum novo pedido foi registrado.",{}
+        state = {k:v for k,v in state.items() if k not in {"proposal","summary","change_for_cents","accept_exchange","stage"}}
+        state["items"] = edits
+        reply, state = await next_step(db,tenant,shop,items,state,phone)
+        return "Combinado, ajustei o seu pedido!\n\n" + reply,state
+    if not stage and (value in {"menu","catalogo","retomar atendimento","voltar atendimento","voltar ao bot"} or
+                      re.fullmatch(r"(?:oi+|ola|opa|e ai|bom dia|boa tarde|boa noite)(?:[,! ]+(?:tudo bem|td bem|tudo bom|beleza))?", value)):
+        return (f"Oi! Tudo bem? 😊\n\nSou a atendente virtual da *{shop['title']}*. "
+                "Posso te ajudar com valores, disponibilidade e pedidos de água.\n\n"
+                "Me conta o que você precisa!"),{}
     if stage=="confirm":
         if value in {"nao","não","cancelar","desistir","nao confirmo"}:
-            return "Resumo cancelado. Nenhum pedido novo foi registrado.",{}
-        if value in {"confirmo","confirmar","pode confirmar","sim","isso mesmo","fechou","de acordo","tudo certo"} and affirmative(body):
+            return "Tudo bem! 😊 Cancelei o resumo. Nenhum pedido novo foi registrado.",{}
+        if value in {"ver resumo","rever resumo","como ficou","mostra de novo"}:
+            return state["summary"],state
+        if value in {"confirmo","confirmar","pode confirmar","sim","s","sm","isso mesmo","fechou","de acordo","tudo certo","pode ser","combinado","ok pode confirmar"} and affirmative(body):
             if not summary_delivered:
                 return state["summary"],state
             proposal = store.Checkout.model_validate(state["proposal"])
@@ -298,7 +442,8 @@ async def answer(db, tenant, phone, body, state, summary_delivered):
                     result = await store.save_checkout(db,tenant,shop,proposal,source="whatsapp")
             except (HTTPException, ValidationError):
                 return "O resumo mudou ou expirou. Não confirmei um novo pedido. Confira os itens novamente ou escreva atendente.",{}
-            reply = f"Pedido {result['order_code']} registrado! Total: {money(result['total_cents'])}."
+            reply = (f"✅ *Pedido {result['order_code']} registrado!*\n\n"
+                     f"Total: *{money(result['total_cents'])}*\n\nObrigada! 😊")
             if proposal.payment_preference=="pix":
                 reply += " O Pix depende da conferência manual do pagamento pela empresa."
             if shop["enabled"] and store.configured_public(tenant,shop["niche"]):
@@ -307,14 +452,18 @@ async def answer(db, tenant, phone, body, state, summary_delivered):
                 # reveal another customer's address or order history.
                 reply += f"\nAcompanhe em {canonical_public_origin()}/loja/{shop['slug']}. Código: {result['tracking_code']}"
             return reply,{"last_order":result["order_code"]}
-        return "Nenhuma alteração foi registrada. "+state["summary"],state
+        return "Ainda não confirmei o pedido. Se quiser mudar algo, pode me dizer.\n\n"+state["summary"],state
     if stage=="name":
         name = " ".join(body.split())
-        if not 2<=len(name)<=120 or not any(c.isalpha() for c in name) or re.search(r"\d{4,}",name):
+        name = re.sub(r"^(?:meu nome (?:é|e)|me chamo|pode me chamar de|sou)\s+", "", name, flags=re.IGNORECASE)
+        if "?" in name or not 2<=len(name)<=120 or not any(c.isalpha() for c in name) or re.search(r"\d",name):
             return "Informe apenas seu nome, por favor.",state
         state["customer_name"]=name
     elif stage=="mode":
-        mode = "delivery" if re.search(r"\b(?:entrega|entregar|em casa|a domicilio)\b",value) else "pickup" if re.search(r"\b(?:retirada|retirar|buscar|balcao)\b",value) else None
+        mode = "delivery" if re.search(r"\b(?:entrega|entregar|em casa|a domicilio)\b",value) else "pickup" if re.search(r"\b(?:retirada|retirar|buscar|balcao|pegar ai)\b",value) else None
+        if mode is None and affirmative(body):
+            modes = [key for key in ("pickup", "delivery") if shop.get("allow_"+key)]
+            mode = modes[0] if len(modes)==1 else None
         if not mode or not shop.get("allow_"+mode):
             return state_question("mode",state,shop,items),state
         state["mode"]=mode
@@ -353,7 +502,8 @@ async def answer(db, tenant, phone, body, state, summary_delivered):
         state={"items":plan.items}
         if plan.intent in {"price","stock","catalog"}:
             state["stage"]="offer"
-            return "\n".join(f"{indexed[line['variant_id']]['label']} — {money(indexed[line['variant_id']]['unit_price_cents'])} por unidade" for line in plan.items)+"\nDeseja fazer o pedido?",state
+            return ("\n".join(f"💧 {indexed[line['variant_id']]['label']} — *{money(indexed[line['variant_id']]['unit_price_cents'])}* por unidade" for line in plan.items)
+                    +"\n\nQuer que eu prepare seu pedido? 😊"),state
         if re.search(r"\b(?:entrega|entregar|em casa)\b",value) and shop.get("allow_delivery"):
             state["mode"]="delivery"
         elif re.search(r"\b(?:retirada|retirar|buscar)\b",value) and shop.get("allow_pickup"):
@@ -400,7 +550,7 @@ async def record_event(db, device, payload):
                 state=json.loads(decoded)
             except (InvalidToken,ValueError,TypeError):
                 pass
-        delivered=bool(await db.scalar(text("""SELECT 1 FROM subscription_device_effects
+        delivered=bool(old.get("delivery_summary") is True and await db.scalar(text("""SELECT 1 FROM subscription_device_effects
             WHERE tenant_id=:t AND device_id=:d AND event_id=:event AND purpose=:purpose AND status='accepted'"""),
             {**params,"event":last["id"],"purpose":PURPOSE}))
     # Savepoint avoids retaining half an order after a business rejection. The
@@ -409,7 +559,9 @@ async def record_event(db, device, payload):
         async with tenant_transaction(runtime,device["tenant_id"]):
             reply,state=await answer(runtime,device["tenant_id"],phone,payload.text,state,delivered)
     data={"delivery":True,"phone":payload.phone,"message_id":payload.message_id,
-          "settings_revision":device["revision"],"delivery_paused":state.get("paused") is True}
+          "settings_revision":device["revision"],"delivery_paused":state.get("paused") is True,
+          "delivery_summary": bool(reply and state.get("stage")=="confirm"
+                                   and state.get("summary") and state["summary"] in reply)}
     if state and not state.get("paused"):
         data["delivery_state"]=channels._cipher().encrypt(json.dumps(jsonable_encoder(state),ensure_ascii=False).encode()).decode()
     event_id=(await db.execute(text("""INSERT INTO subscription_device_events

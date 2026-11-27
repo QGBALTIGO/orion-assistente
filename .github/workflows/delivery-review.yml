@@ -62,7 +62,7 @@ jobs:
             tests/integration/test_delivery_containers_postgres.py \
             tests/integration/test_delivery_logistics_postgres.py tests/integration/test_delivery_order_containers_postgres.py \
             tests/integration/test_delivery_payments_postgres.py tests/integration/test_delivery_reports_postgres.py \
-            tests/integration/test_delivery_storefront_postgres.py tests/unit/test_delivery_container_orders.py \
+            tests/integration/test_delivery_storefront_postgres.py tests/unit/test_delivery_container_orders.py tests/unit/test_delivery_whatsapp_dialogue.py \
             tests/integration/test_commercial_catalog_postgres.py tests/integration/test_commercial_fulfillment_postgres.py
       - name: Pareamento WhatsApp e isolamento entre nichos
         run: |

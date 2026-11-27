@@ -1,0 +1,83 @@
+"""Tests for customer-facing Delivery conversation without WhatsApp I/O."""
+from datetime import datetime, timedelta, timezone
+
+import pytest
+
+from app import delivery_whatsapp as wa
+
+
+NOW = datetime(2026, 11, 27, 22, 0, tzinfo=timezone.utc)
+SHOP = {
+    "title": "Distribuidora QA",
+    "allow_pickup": True, "allow_delivery": False,
+    "pickup_details": "Rua de Teste, 1",
+    "payment_methods": ["cash", "pix"],
+    "opening_hours": [], "closed_dates": [], "timezone": "America/Campo_Grande",
+    "accepting_orders": True,
+}
+WATER = {
+    "variant_id": "00000000-0000-0000-0000-000000000001",
+    "label": "Água mineral 20 L", "name": "Água mineral 20 L",
+    "unit_price_cents": 1000, "mode": "tracked",
+    "observed_at": NOW - timedelta(hours=1),
+    "valid_until": NOW + timedelta(hours=1),
+    "quantity_on_hand": 5, "reserved_quantity": 0,
+}
+CART = {"items": [{"variant_id": WATER["variant_id"], "quantity": 2}]}
+
+
+def test_questions_have_real_answers_not_catalog_fallback():
+    result = wa.information_reply("Tem desconto? Posso retirar?", SHOP, [WATER], {}, NOW)
+    assert "desconto" in result and "*retirar no local*" in result
+    assert "\n\n" in result
+    assert "Rua de Teste, 1" in result
+    assert "não estamos fazendo entregas" in wa.information_reply(
+        "Quanto tempo leva a entrega?", SHOP, [WATER], {}, NOW
+    )
+    assert "💳" in wa.information_reply("Aceita pix?", SHOP, [WATER], {}, NOW)
+    assert "atendendo agora" in wa.information_reply("Qual é o horário?", SHOP, [WATER], {}, NOW)
+
+
+def test_delivery_does_not_invent_time_or_freight():
+    shop = {**SHOP, "allow_delivery": True}
+    reply = wa.information_reply("Quanto tempo leva a entrega?", shop, [WATER], {}, NOW)
+    assert "Ainda não tenho uma previsão" in reply
+    reply = wa.information_reply("Quanto é o frete?", shop, [WATER], {}, NOW)
+    assert "depende do endereço" in reply
+    shop.update(estimate_min_minutes=20, estimate_max_minutes=40)
+    assert "*20 a 40 min*" in wa.information_reply("Quanto tempo leva a entrega?", shop, [WATER], {}, NOW)
+
+
+def test_questions_preserve_confirmation_and_quote():
+    state = {**CART, "stage": "confirm", "summary": "📝 *Seu pedido*\n\n*CONFIRMO*"}
+    result = wa.information_reply("Aceita Pix?", SHOP, [WATER], state, NOW)
+    assert state["summary"] in result
+    assert state["items"][0]["quantity"] == 2
+    assert wa.information_reply("Confirmo", SHOP, [WATER], state, NOW) is None
+
+
+def test_pure_price_query_stays_on_original_offer_flow():
+    assert wa.information_reply("Quanto custa uma água?", SHOP, [WATER], {}, NOW) is None
+    assert "*R$ 10,00*" in wa.information_reply("Qual o preço?", SHOP, [WATER], CART, NOW)
+
+
+def test_cart_edit_and_stock_guard():
+    assert wa.revised_items("melhor uma água", [WATER], CART, NOW) == [
+        {"variant_id": WATER["variant_id"], "quantity": 1}
+    ]
+    assert wa.revised_items("adiciona uma água", [WATER], CART, NOW) == [
+        {"variant_id": WATER["variant_id"], "quantity": 3}
+    ]
+    assert wa.revised_items("melhor seis águas", [WATER], CART, NOW) == "unavailable"
+    assert wa.revised_items("tira a água", [WATER], CART, NOW) == []
+    assert CART["items"][0]["quantity"] == 2
+
+
+def test_natural_cash_and_layout():
+    assert wa.change("troco pra 50 reais") == 5000
+    assert wa.change("para 20") == 2000
+    assert wa.change("sem troco") is None
+    with pytest.raises(ValueError):
+        wa.change("qualquer valor")
+    assert "*R$ 10,00*" in wa.list_products([WATER], NOW)
+    assert "\n\n" in wa.state_question("payment", {}, SHOP, [WATER])

@@ -407,13 +407,20 @@ async def test_delivery_whatsapp_connection_checkout_with_same_device_and_explic
                 JOIN commercial_quotes q ON (q.tenant_id,q.id)=(o.tenant_id,o.quote_id) WHERE d.tenant_id=:t"""),
                 {"t":c.tenant})).all()
 
-    assert "restritos" in await talk("Quero gás P13")
+    assert "equipe" in await talk("Quero gás P13")
+    assert "desconto" in (await talk("Tem desconto? Posso retirar?")).lower()
+    assert "retirar" in (await talk("Posso retirar?")).lower()
+    assert "não estamos fazendo entregas" in (await talk("Quanto tempo leva a entrega?")).lower()
+    assert "R$ 12,50" in await talk("Quanto custa a água?")
     assert "nome" in (await talk("Quero duas águas")).lower()
     assert "retirada" in await talk("Cliente de teste")
     assert "pagar" in await talk("retirada")
     assert "troco" in await talk("dinheiro")
     summary=await talk("sem troco")
     assert "R$ 25,00" in summary and "CONFIRMO" in summary,summary
+    assert await orders()==[]
+    questions = await talk("Aceita Pix?")
+    assert "Formas de pagamento" in questions and "CONFIRMO" in questions
     assert await orders()==[]
     assert "Nenhum" not in await talk("confirmo",contact="5567999999903") or await orders()==[]
     assert await orders()==[]
