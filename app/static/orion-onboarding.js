@@ -21,13 +21,20 @@
   const check = (name,label,checked=false,help='',value='on') => '<label class="ob-check"><input type="checkbox" name="'+esc(name)+'" value="'+esc(value)+'"'+(checked?' checked':'')+'><span><strong>'+esc(label)+'</strong>'+(help?'<small>'+esc(help)+'</small>':'')+'</span></label>';
   const subscriptionNiche = 'servico_assinaturas';
   const affiliateNiche = 'afiliados';
-  const defaultAvailableNiches = ['barbearia','odontologia',subscriptionNiche,affiliateNiche];
-  const niches = [['','Selecione o nicho'],['barbearia','Barbearia'],['salao','Salão de beleza'],['odontologia','Odontologia'],['estetica','Estética'],['clinica','Clínica'],['pet_shop','Pet shop'],['aulas','Aulas'],[subscriptionNiche,'Serviço de assinaturas'],[affiliateNiche,'Afiliados'],['outro','Outro']];
-  const activities = [['','Selecione a atividade'],['services','Serviços com agendamento'],['products','Produtos'],['both','Serviços e produtos']];
-  const subscriptionOfferings = [['','Selecione a atividade'],['subscriptions','Assinaturas'],['one_time_sales','Vendas avulsas'],['both','Assinaturas e vendas avulsas']];
-  const affiliateActivities = [['','Selecione a atividade'],['offers','Ofertas e cupons'],['reviews','Resenhas e recomendações'],['both','Ofertas e recomendações']];
-  const activityChoices = niche => niche===affiliateNiche?affiliateActivities:niche===subscriptionNiche?subscriptionOfferings:activities;
-  const activityGroup = niche => niche===affiliateNiche?'affiliates':niche===subscriptionNiche?'subscriptions':'standard';
+  const deliveryNiche = 'delivery_distribuicao';
+  const defaultAvailableNiches = ['barbearia','odontologia',subscriptionNiche,affiliateNiche,deliveryNiche];
+  const niches = [['','Selecione o nicho'],['barbearia','Barbearia'],['salao','Salão de beleza'],['odontologia','Odontologia'],['estetica','Estética'],['clinica','Clínica'],['pet_shop','Pet shop'],['aulas','Aulas'],[subscriptionNiche,'Serviço de assinaturas'],[affiliateNiche,'Afiliados'],[deliveryNiche,'Delivery e Distribuição'],['outro','Outro']];
+  const activitiesByGroup = {
+    standard:[['','Selecione a atividade'],['services','Serviços com agendamento'],['products','Produtos'],['both','Serviços e produtos']],
+    subscriptions:[['','Selecione a atividade'],['subscriptions','Assinaturas'],['one_time_sales','Vendas avulsas'],['both','Assinaturas e vendas avulsas']],
+    affiliates:[['','Selecione a atividade'],['offers','Ofertas e cupons'],['reviews','Resenhas e recomendações'],['both','Ofertas e recomendações']],
+    delivery:[['products','Produtos para entrega']],
+  };
+  const activityGroupsByNiche = new Map([
+    [subscriptionNiche,'subscriptions'],[affiliateNiche,'affiliates'],[deliveryNiche,'delivery'],
+  ]);
+  const activityGroup = niche => activityGroupsByNiche.get(niche)||'standard';
+  const activityChoices = niche => activitiesByGroup[activityGroup(niche)];
   const businessNicheLabel = c => ['outro','other'].includes(c.niche)?c.other_niche:niches.find(([value])=>value&&value===c.niche)?.[1]||c.niche;
   const businessActivityValue = c => c.niche===affiliateNiche?c.affiliate_activity:c.niche===subscriptionNiche?c.subscription_offering:c.activity;
   const businessActivityLabel = c => activityChoices(c.niche).find(([value])=>value&&value===businessActivityValue(c))?.[1]||'Não informado';
@@ -491,6 +498,7 @@
       host.querySelector('.ob-heading h1 + p').textContent=affiliate?'Crie o espaço em que você vai organizar e publicar ofertas.':'Seus dados e permissões são conferidos pelo servidor.';
       form.querySelector('label[for="ob-activity"]').textContent=affiliate?'Como você divulga?':'O que você oferece';
       name.placeholder=affiliate?'Ex.: Minha Central de Ofertas':'Ex.: Barbearia Peixoto';
+      if(form.elements.niche?.value===deliveryNiche)name.placeholder='Ex.: Distribuidora Central';
       phone.disabled=affiliate;phone.required=!affiliate;phone.closest('.ob-field').hidden=affiliate;
       form.querySelector('[type="submit"]').textContent=affiliate?'Criar espaço de Afiliados':'Criar meu negócio';
     }

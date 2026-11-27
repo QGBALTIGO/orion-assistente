@@ -15,6 +15,7 @@ from app.workspace_policy import AFFILIATE_NICHE, SUBSCRIPTION_NICHE
 
 SubscriptionOffering = Literal["subscriptions", "one_time_sales", "both"]
 SUBSCRIPTION_OFFERINGS = ("subscriptions", "one_time_sales", "both")
+DELIVERY_NICHE = "delivery_distribuicao"
 
 
 class Identity(ProfileModel):
@@ -57,6 +58,8 @@ class Identity(ProfileModel):
                 raise ValueError("Escolha como você divulga produtos como afiliado")
         elif self.affiliate_activity is not None:
             raise ValueError("A atividade de divulgação se aplica ao nicho Afiliados")
+        if self.niche == DELIVERY_NICHE and self.activity != "products":
+            raise ValueError("Selecione Produtos para entrega no nicho Delivery e Distribuição")
         return self
 
 

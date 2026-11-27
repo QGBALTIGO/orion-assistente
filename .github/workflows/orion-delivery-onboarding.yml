@@ -1,0 +1,63 @@
+name: Orion - Cadastro de Delivery e Distribuição
+on:
+  push:
+    branches: [codex/orion-delivery-distribuicao-20261127]
+permissions:
+  contents: read
+  packages: write
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      BASE_IMAGE: ghcr.io/qgbaltigo/orion-assistente-api@sha256:55f6a10679ef054b18602e3154c906cd8fc21dfd0c8969b8c41f190aea9e0bd6
+      BASE_SOURCE: 3ad7d8b87c8f02f445033c51d16b1bff74891dd6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+      - run: node --test --test-reporter=dot ui-tests/onboarding-entry.test.mjs ui-tests/onboarding-affiliates.test.mjs ui-tests/onboarding-subscription-niche.test.mjs ui-tests/onboarding-save.test.mjs ui-tests/onboarding-completion-access.test.mjs
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Aplicar a alteração à imagem publicada e validar o cadastro
+        shell: bash
+        run: |
+          set -euo pipefail
+          stage="$(mktemp -d)"
+          docker pull "$BASE_IMAGE"
+          container="$(docker create "$BASE_IMAGE")"
+          trap 'docker rm "$container" >/dev/null' EXIT
+          paths=(app/onboarding_schemas.py app/onboarding_service.py app/static/orion-onboarding.js)
+          mkdir -p "$stage/app/static"
+          git diff "$BASE_SOURCE" HEAD -- "${paths[@]}" > "$stage/onboarding.patch"
+          for path in "${paths[@]}"; do
+            docker cp "$container:/srv/app/$path" "$stage/$path"
+          done
+          (cd "$stage" && git apply --check onboarding.patch && git apply onboarding.patch)
+          node --check "$stage/app/static/orion-onboarding.js"
+          image="ghcr.io/qgbaltigo/orion-assistente-api:delivery-onboarding-$GITHUB_SHA"
+          docker build --platform linux/amd64 --build-arg BASE_IMAGE="$BASE_IMAGE" \
+            --build-arg RELEASE_REVISION="$GITHUB_SHA" -t "$image" -f - "$stage" <<'DOCKERFILE'
+          ARG BASE_IMAGE
+          FROM ${BASE_IMAGE}
+          ARG RELEASE_REVISION
+          LABEL org.opencontainers.image.revision=$RELEASE_REVISION
+          COPY --chown=appuser:appuser app/onboarding_schemas.py app/onboarding_service.py /srv/app/app/
+          COPY --chown=appuser:appuser app/static/orion-onboarding.js /srv/app/app/static/
+          DOCKERFILE
+          docker run --rm --network none --entrypoint python "$image" -c '
+          from app.onboarding_schemas import CreateBusiness, DELIVERY_NICHE
+          from app.onboarding_service import AVAILABLE_NICHES
+          business = CreateBusiness(name="Distribuidora sintética", timezone="America/Cuiaba",
+              niche=DELIVERY_NICHE, activity="products", contact_phone="67999999901",
+              idempotency_key="delivery-image-smoke")
+          assert business.niche in AVAILABLE_NICHES and business.activity == "products"
+          '
+          docker push "$image"

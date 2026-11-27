@@ -16,16 +16,45 @@ test('new member sees required WhatsApp without a timezone picker or footer and 
   assert.match(h.element('[name=contact_phone]').getAttribute('placeholder'),/\(00\)/);
   assert.doesNotMatch(h.element('#setup').textContent,/Os dados confirmados ficam salvos neste negócio/);assert.deepEqual(h.calls.filter(c=>c.method!=='GET'),[]);assert.equal(h.document.activeElement,h.element('[data-ob-title]'));
 });
-test('o cadastro oferece só os quatro nichos disponíveis',async t=>{
+test('o cadastro oferece somente os nichos liberados pelo servidor',async t=>{
   const h=await makeOnboarding({decision:entry({tenant_id:null,businesses:[],
-    affiliate_available:true,available_niches:['barbearia','odontologia','servico_assinaturas','afiliados']})});
+    affiliate_available:true,available_niches:['barbearia','odontologia','servico_assinaturas','afiliados','delivery_distribuicao']})});
   t.after(()=>h.close());
   const select=h.element('[name=niche]');
   assert.deepEqual(Array.from(select.options).filter(o=>o.value).map(o=>[o.value,o.textContent]),[
     ['barbearia','Barbearia'],['odontologia','Odontologia'],
     ['servico_assinaturas','Serviço de assinaturas'],['afiliados','Afiliados'],
+    ['delivery_distribuicao','Delivery e Distribuição'],
   ]);
   assert.equal(h.document.querySelector('[name=other_niche]'),null);
+});
+
+test('Delivery e Distribuição cadastra um negócio de produtos e abre a etapa de endereço',async t=>{
+  const h=await makeOnboarding({
+    decision:entry({tenant_id:null,businesses:[]}),
+    respond:(path,method,payload)=>{
+      if(path==='/api/v1/onboarding/businesses'&&method==='POST'){
+        const data=fullState({current_step:'location',name:payload.name});
+        return {...data,configuration:{...data.configuration,niche:payload.niche,activity:payload.activity}};
+      }
+    },
+  });
+  t.after(()=>h.close());
+  h.change('[name=niche]','barbearia');
+  h.change('[name=activity]','services');
+  h.change('[name=niche]','delivery_distribuicao');
+  const activity=h.element('[name=activity]');
+  assert.equal(activity.value,'products');
+  assert.equal(activity.selectedOptions[0].textContent,'Produtos para entrega');
+  h.fill('[name=name]','Distribuidora Central');
+  h.fill('[name=contact_phone]','(67) 99999-9901');
+  h.submit();
+  await flush();
+  const [creation]=h.calls.filter(call=>call.method==='POST');
+  assert.equal(creation.path,'/api/v1/onboarding/businesses');
+  assert.equal(creation.data.niche,'delivery_distribuicao');
+  assert.equal(creation.data.activity,'products');
+  assert.equal(h.controller.getState().step,'location');
 });
 
 test('um negócio existente mantém seu nicho antigo e pode editar os demais dados',async t=>{

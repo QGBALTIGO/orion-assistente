@@ -71,6 +71,21 @@ def test_other_niche_and_activities_are_data_not_hardcoded_trade(activity):
     assert value.activity == activity
 
 
+def test_delivery_uses_product_onboarding():
+    value = schemas.CreateBusiness(
+        **identity(niche="delivery_distribuicao", activity="products"),
+        contact_phone="67999999901", idempotency_key="delivery-create",
+    )
+    assert value.niche in service.AVAILABLE_NICHES
+    assert value.model_dump(mode="json")["activity"] == "products"
+
+
+@pytest.mark.parametrize("activity", ["services", "both"])
+def test_delivery_rejects_appointment_activity(activity):
+    with pytest.raises(ValidationError, match="Produtos para entrega"):
+        schemas.Identity.model_validate(identity(niche="delivery_distribuicao", activity=activity))
+
+
 @pytest.mark.parametrize("mode,needs_address", [("onsite", True), ("hybrid", True), ("online", False), ("client_address", False)])
 def test_private_address_requirement_follows_modality(mode, needs_address):
     if needs_address:

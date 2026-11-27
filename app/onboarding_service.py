@@ -43,7 +43,7 @@ LEGACY_LABELS = {"business": "Empresa", "location": "Atendimento e endereço", "
 LABELS = {"business": "Empresa", "location": "Atendimento e endereço",
           "profile": "Perfil da empresa", "hours": "Expediente", "goals": "Desafios e objetivos", "review": "Revisão"}
 
-AVAILABLE_NICHES = ("barbearia", "odontologia", SUBSCRIPTION_NICHE, AFFILIATE_NICHE)
+AVAILABLE_NICHES = ("barbearia", "odontologia", SUBSCRIPTION_NICHE, AFFILIATE_NICHE, schemas.DELIVERY_NICHE)
 
 
 def enabled():
