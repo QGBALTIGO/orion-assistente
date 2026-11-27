@@ -77,7 +77,11 @@
       const rows=couriers.items.map(courier=>{
         const values=[esc(courier.name),courier.phone?esc(window.OrionFields.phoneDisplay(courier.phone)):'—',
           badge(courier.active?'active':'inactive',courier.active?'Ativo':'Inativo')];
-        if (canWrite()) values.push(writableActions([['Editar','logistics-edit-courier','edit',nameAttr('courier',courier.id)]]));
+        if (canWrite()) {
+          const actions=[['Editar','logistics-edit-courier','edit',nameAttr('courier',courier.id)]];
+          if(courier.active&&canManagePolicy())actions.push(['Acesso ao aplicativo','logistics-driver-access','user',nameAttr('courier',courier.id)]);
+          values.push(writableActions(actions));
+        }
         return values;
       });
       const columns=['Nome','Telefone','Situação'];
@@ -101,6 +105,8 @@
         if (!current()||ticket!==version) return;
         [policy,couriers]=responses;
         output.innerHTML=coverage()+scheduling()+courierList()+
+          (canManagePolicy()?'<section class="os-card os-section-gap"><div class="os-card-header"><h2>Entregadores em expediente</h2>'+
+            command('Consultar posições','logistics-positions','pin')+'</div><div data-logistics-positions aria-live="polite"></div></section>':'')+
           (canManagePolicy()&&policy.offering==='gas_agua'?'<section class="os-card os-section-gap"><div class="os-card-header">'+
             '<h2>Cadastro da revenda de GLP</h2>'+command('Consultar ANP','logistics-registry','search')+
             '</div><div data-logistics-registry aria-live="polite"></div></section>':'');
@@ -223,6 +229,35 @@
       if (!action?.startsWith('logistics-')||!current()) return;
       event.stopPropagation();
       if (action==='logistics-retry') {void read();return;}
+      if(action==='logistics-driver-access'&&canManagePolicy()){
+        const path='/logistics/couriers/'+encodeURIComponent(node.dataset.osLogisticsCourier)+'/portal';
+        node.disabled=true;
+        void call(path).then(grant=>{
+          if(!current()||!node.isConnected)return;
+          const link=new URL(grant.portal_path,location.origin);
+          const content=field('E-mail verificado do entregador','driver_email','email',grant.email||'','maxlength="254"')+
+            '<p class="os-help">Para revogar o acesso, apague o e-mail e salve. O entregador entra com a própria conta Orion.</p>'+
+            field('Link do aplicativo','driver_portal','text',link.href,'readonly')+
+            '<a class="os-button os-outline" href="'+esc(link.pathname)+'/" target="_blank" rel="noreferrer">Abrir aplicativo</a>';
+          openEditor('Acesso do entregador',content,async(form,values)=>{
+            const email=values.driver_email.trim().toLowerCase()||null;
+            if(email!==grant.email)await call(path,'PUT',{email,expected_revision:grant.revision});
+          },'Acesso do entregador salvo.');
+        }).catch(ex=>{if(current())node.insertAdjacentHTML('afterend',error(ex.message));}).finally(()=>{node.disabled=false;});
+        return;
+      }
+      if(action==='logistics-positions'&&canManagePolicy()){
+        const region=output.querySelector('[data-logistics-positions]');node.disabled=true;
+        void call('/logistics/positions').then(result=>{
+          if(!current()||!region.isConnected)return;
+          region.innerHTML=result.items.length?table(['Entregador','Situação','Última posição'],result.items.map(row=>[
+            esc(row.name),esc(row.available?'Disponível':'Indisponível'),row.location_at?
+              '<a rel="noreferrer" target="_blank" href="https://www.openstreetmap.org/?mlat='+encodeURIComponent(row.latitude)+'&amp;mlon='+encodeURIComponent(row.longitude)+'">'+
+              esc((row.stale?'Desatualizada · ':'')+new Date(row.location_at).toLocaleString('pt-BR'))+'</a>':'Sem localização compartilhada'])):
+            '<p class="os-help">Nenhum entregador em expediente.</p>';
+        }).catch(ex=>{if(current()&&region.isConnected)region.innerHTML=error(ex.message);}).finally(()=>{node.disabled=false;});
+        return;
+      }
       if (action==='logistics-registry'&&canManagePolicy()) {
         const panel=output.querySelector('[data-logistics-registry]');
         node.disabled=true;

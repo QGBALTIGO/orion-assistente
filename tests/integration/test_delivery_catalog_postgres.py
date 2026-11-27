@@ -244,12 +244,16 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
     assert redis.hostname in {"127.0.0.1", "localhost"} and redis.path == "/15"
     tenant, actor = await business(ctx, monkeypatch)
     password = uuid4().hex
+    driver_password = uuid4().hex
+    driver_email = f"onboarding-{ctx.other}@example.test"
     email = f"onboarding-{actor.account_id}@example.test"
     monkeypatch.setenv("PANEL_ADMIN_PASSWORD_HASH", "disabled-in-browser-fixture")
     async with ctx.migration.begin() as db:
         await db.execute(text("UPDATE panel_accounts SET verified_at=now(),password_hash=:password WHERE id=:a"),
                          {"a":actor.account_id,"password":PasswordHasher().hash(password)})
         await db.execute(text("INSERT INTO customers(tenant_id,name) VALUES(:t,'Cliente de homologação')"), {"t":tenant})
+        await db.execute(text("UPDATE panel_accounts SET verified_at=now(),password_hash=:password WHERE id=:a"),
+                         {"a":ctx.other,"password":PasswordHasher().hash(driver_password)})
     await complete_delivery_setup(ctx, tenant)
 
     listener = socket.socket()
@@ -598,6 +602,26 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                             await assert_delivery_layout(page, (route,theme,width))
                             await page.screenshot(path=artifacts/f"loja-configuracoes-{theme}-{width}.png", animations="disabled")
                 await context.close()
+            async with client(actor) as manager:
+                root=f"/api/v1/tenants/{tenant}/delivery/logistics/couriers"
+                courier=(await manager.post(root,json={"name":"Entregadora de homologação","idempotency_key":uuid4().hex})).json()
+                grant=await manager.put(root+"/"+courier["id"]+"/portal",json={"email":driver_email,"expected_revision":0})
+                assert grant.status_code==200,grant.text
+            mobile=await browser.new_context(viewport={"width":375,"height":812},locale="pt-BR",color_scheme="dark",
+                                             ignore_https_errors=True,service_workers="block")
+            await mobile.route("**/*",safe_route)
+            portal=await mobile.new_page()
+            await portal.goto(origin+grant.json()["portal_path"]+"/")
+            await portal.get_by_label("E-mail da conta").fill(driver_email)
+            await portal.get_by_label("Senha",exact=True).fill(driver_password)
+            await portal.get_by_role("button",name="Entrar",exact=True).click()
+            await portal.get_by_role("button",name="Iniciar expediente").click()
+            await expect(portal.get_by_text("Disponível para pedidos",exact=True)).to_be_visible()
+            assert await portal.evaluate("document.documentElement.scrollWidth <= innerWidth")
+            await portal.screenshot(path=artifacts/"entregador-mobile-375.png")
+            await portal.get_by_role("button",name="Encerrar expediente").click()
+            await expect(portal.get_by_text("Fora do expediente",exact=True)).to_be_visible()
+            await mobile.close()
             await browser.close()
             if os.getenv("ORION_DELIVERY_WEBKIT_TEST") == "1":
                 webkit = await playwright.webkit.launch()

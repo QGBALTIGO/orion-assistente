@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="pt-BR"><head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0b0b0c"><meta name="referrer" content="no-referrer">
+  <title>Entregador · Orion</title><link rel="icon" href="/brand/orion-symbol.svg">
+  <link rel="stylesheet" href="/panel-assets/orion-delivery-driver.css">
+  <script defer src="/panel-assets/orion-delivery-driver.js"></script>
+</head><body><main>
+  <header><img width="36" height="36" src="/brand/orion-symbol.svg" alt="Orion"><h1>Entregador</h1>
+    <button id="logout" class="secondary" hidden>Sair</button></header>
+  <p id="notice" role="status" aria-live="polite">Abrindo suas entregas…</p>
+  <form id="login" hidden><h2>Entrar na Orion</h2>
+    <label>E-mail da conta<input name="username" type="email" autocomplete="username" required></label>
+    <label>Senha<input name="password" type="password" autocomplete="current-password" required></label>
+    <button>Entrar</button><a href="/painel">Acessar cadastro e recuperação de conta</a>
+  </form>
+  <section id="workspace" hidden><section class="card"><h2 id="person"></h2>
+    <p id="shift-state"></p><div id="shift-actions" class="actions"></div>
+    <div id="geo" hidden><button type="button" class="secondary" id="geo-button">Compartilhar localização</button>
+      <p id="geo-status">Compartilha sua última posição com a distribuidora enquanto esta tela estiver aberta.</p></div>
+    </section><h2>Minhas entregas</h2><div id="queue"></div></section>
+  <button type="button" id="retry" hidden>Tentar novamente</button>
+</main></body></html>

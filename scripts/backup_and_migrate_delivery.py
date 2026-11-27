@@ -73,9 +73,11 @@ PHASES = (
     "0112_delivery_area_terms",
     "0113_delivery_order_intake",
     "0114_delivery_purchases",
+    "0115_delivery_driver_portal",
 )
 TABLES = {
     "0114_delivery_purchases": ("delivery_suppliers", "delivery_purchases", "delivery_purchase_items"),
+    "0115_delivery_driver_portal": ("delivery_driver_access", "delivery_driver_assignments"),
     "0111_delivery_customer_addresses": ("delivery_customer_addresses",),
     "0099_delivery_catalog": ("delivery_variant_details", "delivery_catalog_operations"),
     "0100_delivery_orders": ("delivery_order_details",),

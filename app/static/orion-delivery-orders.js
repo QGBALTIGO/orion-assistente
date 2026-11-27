@@ -554,7 +554,8 @@
       let controls=command(button,'Detalhes','delivery-order-detail','list',actions);
       if (canWrite()&&['confirmed','dispatched'].includes(order.status)) {
         controls+=order.mode==='delivery'&&order.status==='confirmed'
-          ?command(button,'Despachar','delivery-order-dispatch','deliveryTruck',actions)
+          ?(order.assignment_status==='offered'?command(button,'Retirar solicitação','delivery-order-withdraw','close',actions):
+            command(button,'Despachar','delivery-order-dispatch','deliveryTruck',actions))
           :command(button,'Concluir','delivery-order-fulfill','check',actions);
         if(order.mode==='delivery')controls+=order.status==='dispatched'
           ?command(button,'Cliente ausente','delivery-order-absent','users',actions)
@@ -577,6 +578,8 @@
       return '<article class="os-card os-item-card"><h3>Pedido '+esc(code(order))+'</h3><p class="os-help">'+
         esc([order.customer_name||'Venda avulsa',modeLabel(order),when(order.created_at)].join(' · '))+'</p>'+
         (order.courier_name?'<p class="os-help">Entregador: '+esc(order.courier_name)+'</p>':'')+
+        (['offered','arrived','refused','expired'].includes(order.assignment_status)?'<p class="os-help">'+
+          esc(({offered:'Aguardando aceite',arrived:'Entregador no endereço',refused:'Solicitação recusada',expired:'Prazo de aceite encerrado'})[order.assignment_status])+'</p>':'')+
         (order.scheduled_at?'<p class="os-help">Agendado para '+esc(when(order.scheduled_at))+'</p>':'')+
         '<div class="os-actions">'+statusBadge(order.status,badge)+' <strong>'+money(order.total_cents)+'</strong></div>'+
         payment+(pending?'<p class="os-help">Saldo a receber '+money(order.outstanding_cents??order.total_cents)+'</p>':'')+
@@ -652,7 +655,7 @@
         catch {if(!current())return;}
         if(!current())return;
       }
-      const courierFields=(couriers.length?
+      const courierFields=(couriers.length?selectField('Tipo de despacho','dispatch_kind',[['manual','Despacho manual'],['offer','Solicitar aceite pelo aplicativo']],'manual'):'')+(couriers.length?
         selectField('Entregador cadastrado','courier_id',[['','Digitar o nome'],...couriers.map(person=>[person.id,person.name])],''):'')+
         field('Entregador','courier_name','text','','required maxlength="120"');
       const deferred=complete&&order.customer_id?
@@ -700,6 +703,10 @@
         if(containerUi?.confirmed(form))payload.containers_confirmed=true;
         if (credit) payload.payment_due_date=values.payment_due_date;
         if (dispatch) {
+          if(values.dispatch_kind==='offer'){
+            if(!values.courier_id)throw Error('Selecione o entregador que receberá a solicitação.');
+            payload.action='offer';
+          }
           if(values.courier_id)payload.courier_id=values.courier_id;
           else payload.courier_name=values.courier_name;
         }
@@ -717,8 +724,8 @@
           payload.refunded=true;
         }
         const saved=await call('/orders/'+encodeURIComponent(order.id)+'/transitions','POST',{...payload,idempotency_key:key(payload)});
-        if (saved?.status!==((complete||settle)?'fulfilled':dispatch?'dispatched':changeDate?'confirmed':'cancelled')) throw Error('Confira o estado do pedido antes de repetir.');
-      },complete?'Pedido concluído.':settle?'Recebimento registrado.':dispatch?'Pedido em rota.':
+        if (saved?.status!==((complete||settle)?'fulfilled':payload.action==='offer'?'confirmed':dispatch?'dispatched':changeDate?'confirmed':'cancelled')) throw Error('Confira o estado do pedido antes de repetir.');
+      },complete?'Pedido concluído.':settle?'Recebimento registrado.':dispatch?'Despacho atualizado.':
         fullReturn?'Devolução registrada.':absent?'A entrega voltou para a fila.':reschedule?'Entrega reagendada.':'Pedido cancelado.',{label,bind:dialog=>{
         const form=dialog.querySelector('form');
         form.elements.courier_id?.addEventListener('change',()=>{
@@ -776,6 +783,11 @@
       if (!order) return;
       if (action==='delivery-order-detail') {
         await showOrderDetail({id:order.id,call,current,openDetails,ui});
+      } else if(action==='delivery-order-withdraw'&&canWrite()){
+        openEditor('Retirar solicitação','<p>O entregador deixará de poder aceitar este pedido.</p>',async(form,values,key)=>{
+          const payload={action:'withdraw_offer',expected_revision:order.revision};
+          await call('/orders/'+encodeURIComponent(order.id)+'/transitions','POST',{...payload,idempotency_key:key(payload)});
+        },'Solicitação retirada.',{label:'Retirar solicitação'});
       } else if(action==='delivery-order-repeat'&&canWrite()){
         el.disabled=true;
         try {

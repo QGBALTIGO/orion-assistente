@@ -1,0 +1,20 @@
+@font-face{font-family:Figtree;src:url('/brand/figtree-latin.woff2') format('woff2');font-weight:300 900;font-display:swap;}
+@font-face{font-family:Outfit;src:url('/brand/outfit-latin.woff2') format('woff2');font-weight:300 900;font-display:swap;}
+:root { color-scheme:light dark; --bg:#f5f6f8; --card:#fff; --line:#d4d8e0; --text:#17202c; --muted:#505b69; --brand:#195dc9; }
+@media(prefers-color-scheme:dark) { :root {--bg:#09090b;--card:#151618;--line:#34373d;--text:#f1f4f9;--muted:#b7bec9;--brand:#216ce5;} }
+* {box-sizing:border-box;} [hidden] {display:none!important;}
+body {margin:0;background:var(--bg);color:var(--text);font:1rem/1.5 Figtree,system-ui,sans-serif;}
+h1,h2{font-family:Outfit,Figtree,system-ui,sans-serif;}
+main {width:min(100%,44rem);margin:auto;padding:1rem 1rem max(2rem,env(safe-area-inset-bottom));}
+header,.actions {display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;} header h1{font-size:1.5rem;margin-right:auto;}
+h2{font-size:1.14rem;margin:.4rem 0 .75rem;} p{margin:.5rem 0 .8rem;}
+.card,form#login,article {background:var(--card);border:1px solid var(--line);border-radius:1rem;padding:1rem;margin:.75rem 0;}
+input,select,button,.actions a{font:inherit;max-width:100%;border-radius:.6rem;padding:.6rem .8rem;min-height:44px;}
+label{display:block;font-weight:600;margin:.6rem 0;} input:not([type=checkbox]),select{display:block;width:100%;border:1px solid var(--line);background:var(--bg);color:var(--text);}
+input[type=checkbox]{min-height:0;width:1.2rem;height:1.2rem;vertical-align:middle;} 
+button,.actions a {border:1px solid transparent;background:var(--brand);color:white;font-weight:600;cursor:pointer;}
+button.secondary,.actions a{border-color:var(--line);background:var(--card);color:var(--text);text-decoration:none;}
+button:disabled{opacity:.6;} :focus-visible{outline:3px solid #3784fc;outline-offset:2px;}
+article{overflow-wrap:anywhere;} article li{margin:.2rem 0;} #login a{display:block;margin-top:1rem;} 
+#notice,#geo-status,#shift-state{color:var(--muted);} #geo{border-top:1px solid var(--line);margin-top:1rem;padding-top:1rem;}
+form[data-delivery-confirm],details {margin-top:.75rem;} summary{cursor:pointer;min-height:44px;display:flex;align-items:center;font-weight:600;}

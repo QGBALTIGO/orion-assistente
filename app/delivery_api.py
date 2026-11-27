@@ -18,6 +18,7 @@ from app import delivery_reports as reports
 from app import delivery_reports_ops
 from app import delivery_registry
 from app import delivery_performance
+from app import delivery_driver
 from app import delivery_purchasing as purchasing
 from app.catalog_api import Actor, authenticate
 from app.database import get_session_factory, tenant_transaction
@@ -303,6 +304,21 @@ async def update_logistics(tenant_id: UUID, payload: logistics.PolicyUpdate, act
 async def couriers(tenant_id: UUID, search: str = Query(default="", max_length=120), active_only: bool = False,
                    offset: int = Query(default=0, ge=0, le=100_000), actor: Actor = Depends(authenticate)):
     return await run(actor, tenant_id, logistics.list_couriers, search=search, active_only=active_only, offset=offset)
+
+
+@router.get("/logistics/couriers/{courier_id}/portal")
+async def driver_access(tenant_id: UUID,courier_id: UUID,actor: Actor = Depends(authenticate)):
+    return await run(actor,tenant_id,delivery_driver.grant_state,courier_id,publish=True)
+
+
+@router.get("/logistics/positions")
+async def driver_positions(tenant_id: UUID,actor: Actor = Depends(authenticate)):
+    return await run(actor,tenant_id,delivery_driver.positions,publish=True)
+
+
+@router.put("/logistics/couriers/{courier_id}/portal")
+async def save_driver_access(tenant_id: UUID,courier_id: UUID,payload: delivery_driver.Grant,actor: Actor = Depends(authenticate)):
+    return await run(actor,tenant_id,delivery_driver.set_grant,courier_id,payload,publish=True,write=True)
 
 
 @router.post("/logistics/couriers", status_code=201)

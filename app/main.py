@@ -34,6 +34,7 @@ from app.central_appointment_reply import router as central_appointment_reply_ro
 from app.business_profile_api import router as business_profile_router, account_router as account_business_router
 from app.commercial_api import router as commercial_router
 from app.delivery_api import router as delivery_router
+from app.delivery_driver_api import router as delivery_driver_router
 from app.delivery_storefront import router as delivery_storefront_router
 from app.management_api import router as management_router
 from app.management_blocks import router as management_blocks_router
@@ -201,6 +202,7 @@ include_plan_router(app, start_policies_router)
 include_plan_router(app, onboarding_router)
 include_plan_router(app, commercial_router)
 app.include_router(delivery_router)
+app.include_router(delivery_driver_router)
 app.include_router(delivery_storefront_router)
 include_plan_router(app, whatsapp_router)
 include_plan_router(app, integrations_router)
@@ -317,6 +319,7 @@ async def panel_asset(asset: str) -> FileResponse:
                "orion-delivery-catalog.js": "text/javascript", "orion-delivery-orders.js": "text/javascript",
                "orion-delivery-dashboard.js": "text/javascript", "orion-delivery-dashboard.css": "text/css",
                "orion-delivery-editor.js": "text/javascript", "orion-delivery-editor.css": "text/css",
+               "orion-delivery-driver.js": "text/javascript", "orion-delivery-driver.css": "text/css",
                "orion-delivery-containers.js": "text/javascript", "orion-delivery-order-containers.js": "text/javascript",
                "orion-delivery-logistics.js": "text/javascript", "orion-delivery-reports.js": "text/javascript",
                "orion-delivery-store-admin.js": "text/javascript",

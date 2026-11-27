@@ -17,6 +17,7 @@ from app import commercial_service as commerce, management_models as management
 from app.business_profile_schemas import ProfileModel
 from app.commercial_schemas import IdempotencyKey, QuoteLineRequest
 from app import delivery_container_orders as packaging, delivery_logistics as logistics, delivery_payments as payments
+from app import delivery_driver as driver
 from app.delivery_catalog import LIMIT, MAX_QUANTITY, list_items, order_lines, run_once
 from app.delivery_product_media import image_url
 from app.management_schemas import MAX_MONEY, normalize_phone
@@ -82,7 +83,7 @@ class ManualOrder(OrderEstimate):
 
 
 class Transition(ProfileModel):
-    action: Literal["dispatch", "fulfill", "cancel", "settle", "return", "reschedule", "recipient_absent"]
+    action: Literal["dispatch", "offer", "withdraw_offer", "fulfill", "cancel", "settle", "return", "reschedule", "recipient_absent"]
     expected_revision: StrictInt = Field(ge=1)
     payment_method: Literal["cash", "debit_card", "credit_card", "pix", "on_account"] | None = None
     tenders: list[payments.Tender] = Field(default_factory=list, max_length=4)
@@ -111,8 +112,10 @@ class Transition(ProfileModel):
             raise ValueError("Informe o vencimento para pedidos a prazo")
         if self.payment_due_date is not None and self.payment_due_date.year > 2100:
             raise ValueError("Use vencimento até o ano de 2100")
-        if (self.action == "dispatch") != bool(self.courier_name or self.courier_id):
+        if (self.action in {"dispatch","offer"}) != bool(self.courier_name or self.courier_id):
             raise ValueError("Informe o entregador ao despachar")
+        if self.action=="offer" and not self.courier_id:
+            raise ValueError("Selecione um entregador cadastrado para solicitar aceite")
         if self.courier_id and self.courier_name:
             raise ValueError("Use o entregador cadastrado ou digite o nome")
         if self.containers_confirmed and self.action not in {"fulfill", "return"}:
@@ -132,6 +135,8 @@ DELIVERY_DATE = "coalesce(d.scheduled_at,o.created_at)"
 SALES_CHANNEL = "CASE WHEN shop.order_id IS NOT NULL THEN 'storefront' ELSE coalesce(d.intake_channel,'manual') END"
 ORDERS = f"""
     SELECT o.id,o.quote_id,o.status,o.revision,o.created_at,d.mode,d.customer_id,
+        CASE WHEN assignment.status='offered' AND assignment.expires_at<=now() THEN 'expired'
+            ELSE assignment.status END AS assignment_status,
         {SALES_CHANNEL} AS sales_channel,
         coalesce(shop.payment_preference,d.tender_preference) AS tender_preference,
         coalesce(shop.change_for_cents,d.change_for_cents) AS change_for_cents,
@@ -144,6 +149,7 @@ ORDERS = f"""
     FROM commercial_orders o JOIN delivery_order_details d ON (d.tenant_id,d.order_id)=(o.tenant_id,o.id)
     JOIN commercial_quotes q ON (q.tenant_id,q.id)=(o.tenant_id,o.quote_id)
     LEFT JOIN delivery_storefront_orders shop ON (shop.tenant_id,shop.order_id)=(o.tenant_id,o.id)
+    LEFT JOIN delivery_driver_assignments assignment ON (assignment.tenant_id,assignment.order_id)=(o.tenant_id,o.id)
     LEFT JOIN financial_entries f ON (f.tenant_id,f.id)=(d.tenant_id,d.financial_entry_id)
     {payments.COLLECTION_TOTAL_JOIN}
     WHERE o.tenant_id=:t AND o.origin='delivery'
@@ -491,6 +497,8 @@ async def return_order(db, tenant, access, row, items, payload):
 
 
 async def transition(db, tenant, access, order_id, payload):
+    if payload.action in {"offer","dispatch","withdraw_offer"}:
+        await logistics.lock_policy(db,tenant,exclusive=True)
     async def write():
         row = await one_order(db, tenant, order_id, lock=True)
         permitted = {"fulfilled"} if payload.action in {"settle","return"} else {"confirmed","dispatched"}
@@ -502,9 +510,20 @@ async def transition(db, tenant, access, order_id, payload):
         if payload.action == "settle":
             receipt = await payments.apply_collection(db,tenant,access,row,payload.payment_method)
             status = "fulfilled"
+        elif payload.action in {"offer","withdraw_offer"}:
+            if row["mode"]!="delivery" or row["status"]!="confirmed":
+                commerce.conflict("O pedido precisa estar aguardando despacho")
+            if payload.action=="withdraw_offer":
+                await driver.release(db,tenant,order_id,require_offer=True)
+            else:
+                expires=await driver.offer(db,tenant,order_id,payload.courier_id)
+                event_details={"courier_id":payload.courier_id,"expires_at":expires}
+            status="confirmed"
         elif payload.action == "dispatch":
             if row["mode"] != "delivery" or row["status"] != "confirmed":
                 commerce.conflict("O pedido precisa estar aguardando despacho")
+            if row["assignment_status"]=="offered" and access.role!="courier":
+                commerce.conflict("Retire a solicitação de aceite antes do despacho manual.")
             await commerce.tenant_exists(db, tenant, active=True)
             courier_name = payload.courier_name
             if payload.courier_id is not None:
@@ -539,12 +558,14 @@ async def transition(db, tenant, access, order_id, payload):
                     event_details["tenders"] = [t.model_dump() for t in payload.tenders]
                 await packaging.apply(db, tenant, access, order_id, row["customer_id"], payload.containers_confirmed)
                 status = "fulfilled"
+        if access.role!="courier" and row["assignment_status"] in {"offered","accepted","arrived","expired"} and payload.action in {"cancel","reschedule","recipient_absent","fulfill","dispatch"}:
+            await driver.release(db,tenant,order_id)
         revision = (await db.execute(text("""
             UPDATE commercial_orders SET status=:status,revision=revision+1,updated_at=now()
             WHERE tenant_id=:t AND id=:o RETURNING revision
         """), {"status":status,"t":tenant,"o":order_id})).scalar_one()
         receipt_id=receipt["id"] if receipt else None
-        action = {"settle":"received","return":"returned","reschedule":"delivery_rescheduled",
+        action = {"settle":"received","return":"returned","offer":"driver_offered","withdraw_offer":"driver_offer_withdrawn","reschedule":"delivery_rescheduled",
                   "recipient_absent":"delivery_recipient_absent"}.get(payload.action,status)
         await commerce.audit(db, tenant, access, "order", order_id, action,
                              {"financial_entry_id":receipt_id,"payment_method":payload.payment_method,

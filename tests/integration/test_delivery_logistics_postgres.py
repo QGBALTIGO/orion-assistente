@@ -29,6 +29,82 @@ AREAS = [
 ]
 
 
+async def test_driver_offer_refusal_retry_cash_delivery_and_location_visibility(onboarding_db,monkeypatch):
+    from fastapi import FastAPI
+    from app.delivery_driver_api import router as driver_router
+    from app.panel_auth import panel_actor
+    ctx=onboarding_db
+    tenant,actor=await business(ctx,monkeypatch)
+    await complete_delivery_setup(ctx,tenant)
+    base=f"/api/v1/tenants/{tenant}/delivery"
+    driver_base=f"/api/v1/entregador/{tenant}"
+    portal=FastAPI()
+    portal.include_router(driver_router)
+    email="motorista@example.test"
+    claims={"role":"member","account_id":str(ctx.other),"email":email,"email_verified":False}
+    portal.dependency_overrides[panel_actor]=lambda:claims
+    async with client(actor) as admin,httpx.AsyncClient(transport=httpx.ASGITransport(app=portal),base_url="https://orion.test") as driver:
+        customer=(await admin.post(base+"/order-customers",json={"name":"Cliente de ensaio","phone":"67900000001",
+            "idempotency_key":uuid4().hex})).json()["id"]
+        variant=(await admin.post(base+"/catalog",json=new_product())).json()["variant_id"]
+        courier=(await admin.post(base+"/logistics/couriers",json={"name":"Entregadora de teste","idempotency_key":uuid4().hex})).json()["id"]
+        grant=base+"/logistics/couriers/"+courier+"/portal"
+        assert (await admin.put(grant,json={"email":email,"expected_revision":0})).status_code==200
+        assert (await driver.get(driver_base+"/queue")).status_code==403
+        claims["email_verified"]=True
+        assert (await driver.get(driver_base+"/queue")).json()["state"]=="off"
+        draft={"mode":"delivery","address":ADDRESS,"items":[{"variant_id":variant,"quantity":1}],"delivery_fee_cents":100}
+        estimate=(await admin.post(base+"/orders/estimate",json=draft)).json()
+        order=(await admin.post(base+"/orders",json={**draft,"customer_id":customer,"estimate_version":estimate["estimate_version"],
+            "idempotency_key":uuid4().hex,"tender_preference":"cash","change_for_cents":2000})).json()["id"]
+        offr={"action":"offer","courier_id":courier,"expected_revision":1,"idempotency_key":uuid4().hex}
+        route=base+"/orders/"+order+"/transitions"
+        assert (await admin.post(route,json=offr)).status_code==409
+        assert (await driver.put(driver_base+"/shift",json={"state":"available"})).status_code==200
+        key=(await driver.post(driver_base+"/location")).json()["sharing_key"]
+        point={"sharing_key":key,"latitude":-20.45,"longitude":-54.6,"observed_at":datetime.now(timezone.utc).isoformat()}
+        pos=await driver.put(driver_base+"/location",json=point)
+        assert pos.status_code==200,pos.text
+        assert (await admin.get(base+"/logistics/positions")).json()["items"][0]["latitude"]==-20.45
+        await driver.delete(driver_base+"/location")
+        assert (await driver.put(driver_base+"/location",json=point)).status_code==409
+        first=await admin.post(route,json=offr)
+        assert first.status_code==200,first.text
+        queue=(await driver.get(driver_base+"/queue")).json()["orders"]
+        assert len(queue)==1 and queue[0]["status"]=="offered" and "street" not in queue[0]["address"]
+        assert queue[0]["items"][0]["name"]=="Água de avaliação" and queue[0]["phone"] is None
+        other_claims={**claims,"email":"outra-pessoa@example.test"}
+        portal.dependency_overrides[panel_actor]=lambda:other_claims
+        assert (await driver.get(driver_base+"/queue")).status_code==403
+        portal.dependency_overrides[panel_actor]=lambda:claims
+        actions=driver_base+"/orders/"+order+"/actions"
+        refused=await driver.post(actions,json={"action":"refuse","expected_revision":2,"idempotency_key":uuid4().hex})
+        assert refused.status_code==200,refused.text
+        assert not (await driver.get(driver_base+"/queue")).json()["orders"]
+        second=await admin.post(route,json={**offr,"expected_revision":3,"idempotency_key":uuid4().hex})
+        assert second.status_code==200,second.text
+        accept={"action":"accept","expected_revision":4,"idempotency_key":uuid4().hex}
+        one,two=await asyncio.gather(driver.post(actions,json=accept),driver.post(actions,json=accept))
+        assert one.status_code==two.status_code==200,(one.text,two.text)
+        assert one.json()==two.json()
+        queue=(await driver.get(driver_base+"/queue")).json()["orders"]
+        assert queue[0]["address"]["street"]==ADDRESS["street"] and queue[0]["change_for_cents"]==2000
+        reached=await driver.post(actions,json={"action":"arrive","expected_revision":5,"idempotency_key":uuid4().hex})
+        assert reached.status_code==200,reached.text
+        finish={"action":"complete","expected_revision":6,"received":True,"payment_method":"cash","idempotency_key":uuid4().hex}
+        assert (await driver.post(actions,json={**finish,"received":False})).status_code==422
+        completed=await driver.post(actions,json=finish)
+        assert completed.status_code==200,completed.text
+        assert (await driver.post(actions,json=finish)).json()==completed.json()
+        assert not (await driver.get(driver_base+"/queue")).json()["orders"]
+        assert await stock(admin,base)==(4,0)
+        assert (await admin.get(base+"/orders/"+order)).json()["collected_cents"]==1350
+        assert (await driver.put(driver_base+"/shift",json={"state":"off"})).status_code==200
+        assert not (await admin.get(base+"/logistics/positions")).json()["items"]
+        assert (await admin.put(grant,json={"email":None,"expected_revision":1})).status_code==200
+        assert (await driver.get(driver_base+"/queue")).status_code==403
+
+
 async def test_anp_uses_only_registered_company_and_exposes_unavailability(onboarding_db, monkeypatch):
     ctx = onboarding_db
     tenant, actor = await business(ctx, monkeypatch)

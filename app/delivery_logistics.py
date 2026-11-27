@@ -299,5 +299,9 @@ async def update_courier(db, tenant, access, courier_id, payload):
         if current is None:
             raise HTTPException(404, "Entregador não encontrado")
         commerce.conflict("O cadastro do entregador mudou. Atualize a tela e confira.")
+    if not row["active"]:
+        await db.execute(text("""UPDATE delivery_driver_access SET shift_started_at=NULL,available=false,
+            latitude=NULL,longitude=NULL,location_at=NULL,sharing_key=NULL,revision=revision+1
+            WHERE tenant_id=:tenant AND courier_id=:id"""),{"tenant":tenant,"id":courier_id})
     await audit(db, tenant, "delivery_courier_updated", "delivery_courier", row["id"])
     return dict(row)
