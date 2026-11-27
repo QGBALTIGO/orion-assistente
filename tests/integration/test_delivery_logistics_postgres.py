@@ -94,11 +94,20 @@ async def test_driver_offer_refusal_retry_delivery_and_location_visibility(onboa
         point={"sharing_key":key,"latitude":-20.45,"longitude":-54.6,"observed_at":datetime.now(timezone.utc).isoformat()}
         pos=await driver.put(driver_base+"/location",json=point)
         assert pos.status_code==200,pos.text
-        assert (await admin.get(base+"/logistics/positions")).json()["items"][0]["latitude"]==-20.45
+        operations=(await admin.get(base+"/logistics/positions")).json()
+        assert operations["items"][0]["latitude"]==-20.45
+        assert operations["summary"]["waiting_dispatch"]==1
+        assert operations["summary"]["available"]==1
+        assert operations["summary"]["fresh_positions"]==1
+        assert operations["summary"]["on_route"]==0
         await driver.delete(driver_base+"/location")
         assert (await driver.put(driver_base+"/location",json=point)).status_code==409
         first=await admin.post(route,json=offr)
         assert first.status_code==200,first.text
+        operations=(await admin.get(base+"/logistics/positions")).json()
+        assert operations["summary"]["waiting_dispatch"]==0
+        assert operations["summary"]["waiting_acceptance"]==1
+        assert operations["items"][0]["waiting_acceptance"]==1
         queue=(await driver.get(driver_base+"/queue")).json()["orders"]
         assert len(queue)==1 and queue[0]["status"]=="offered" and "street" not in queue[0]["address"]
         assert queue[0]["items"][0]["name"] == public_item_label
@@ -117,6 +126,10 @@ async def test_driver_offer_refusal_retry_delivery_and_location_visibility(onboa
         one,two=await asyncio.gather(driver.post(actions,json=accept),driver.post(actions,json=accept))
         assert one.status_code==two.status_code==200,(one.text,two.text)
         assert one.json()==two.json()
+        operations=(await admin.get(base+"/logistics/positions")).json()
+        assert operations["summary"]["on_route"]==1
+        assert operations["items"][0]["on_route"]==1
+        assert operations["summary"]["waiting_acceptance"]==0
         queue=(await driver.get(driver_base+"/queue")).json()["orders"]
         assert queue[0]["address"]["street"]==ADDRESS["street"] and queue[0]["change_for_cents"]==draft["change_for_cents"]
         reached=await driver.post(actions,json={"action":"arrive","expected_revision":5,"idempotency_key":uuid4().hex})
@@ -146,7 +159,10 @@ async def test_driver_offer_refusal_retry_delivery_and_location_visibility(onboa
         assert public_status["delivery_stage"]=="delivered" and public_status["payment_status"]=="received"
         assert not ({"phone","address","courier_name","courier_id","customer_name","latitude"} & public_status.keys())
         assert (await driver.put(driver_base+"/shift",json={"state":"off"})).status_code==200
-        assert not (await admin.get(base+"/logistics/positions")).json()["items"]
+        operations=(await admin.get(base+"/logistics/positions")).json()
+        assert not operations["items"]
+        assert operations["summary"]["on_route"]==0
+        assert operations["summary"]["in_shift"]==0
         assert (await admin.put(grant,json={"email":None,"expected_revision":1})).status_code==200
         assert (await driver.get(driver_base+"/queue")).status_code==403
 

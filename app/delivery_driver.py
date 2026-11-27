@@ -68,11 +68,51 @@ async def clear_position(db,tenant,person):
 
 
 async def positions(db,tenant):
-    rows=(await db.execute(text("""SELECT c.name,a.courier_id,a.available,a.latitude,a.longitude,a.location_at,
-        a.location_at<now()-interval '3 minutes' AS stale FROM delivery_driver_access a JOIN delivery_couriers c
-        ON (c.tenant_id,c.id)=(a.tenant_id,a.courier_id) WHERE a.tenant_id=:t AND c.active AND a.shift_started_at IS NOT NULL
-        ORDER BY lower(c.name),c.id"""),{"t":tenant})).mappings().all()
-    return {"items":[dict(r) for r in rows]}
+    # This is an operational snapshot, not a GPS provider or a distance estimate.
+    # Include only orders and locations belonging to this company.
+    queue = """
+        SELECT o.id,o.status,d.courier_id,d.scheduled_at,
+            CASE WHEN a.status='offered' AND a.expires_at>now() AND o.status='confirmed'
+                THEN a.courier_id END AS offered_to
+        FROM commercial_orders o
+        JOIN delivery_order_details d ON (d.tenant_id,d.order_id)=(o.tenant_id,o.id)
+        LEFT JOIN delivery_driver_assignments a ON (a.tenant_id,a.order_id)=(o.tenant_id,o.id)
+        WHERE o.tenant_id=:t AND o.origin='delivery' AND d.mode='delivery'
+            AND o.status IN ('confirmed','dispatched')
+    """
+    counts=(await db.execute(text(f"""
+        WITH queue AS ({queue})
+        SELECT count(*) FILTER (WHERE status='confirmed' AND offered_to IS NULL
+                    AND (scheduled_at IS NULL OR scheduled_at<=now())) AS waiting_dispatch,
+            count(*) FILTER (WHERE offered_to IS NOT NULL) AS waiting_acceptance,
+            count(*) FILTER (WHERE status='dispatched') AS on_route,
+            count(*) FILTER (WHERE status='confirmed' AND scheduled_at>now()) AS scheduled,
+            count(*) FILTER (WHERE scheduled_at<now()) AS scheduled_past_due,
+            count(*) FILTER (WHERE status='dispatched' AND courier_id IS NULL) AS unlinked_on_route,
+            now() AS observed_at
+        FROM queue
+    """),{"t":tenant})).mappings().one()
+    rows=(await db.execute(text(f"""
+        WITH queue AS ({queue}), workloads AS (
+            SELECT courier_id,count(*) AS on_route FROM queue
+            WHERE status='dispatched' AND courier_id IS NOT NULL GROUP BY courier_id
+        ), offers AS (
+            SELECT offered_to AS courier_id,count(*) AS waiting_acceptance FROM queue
+            WHERE offered_to IS NOT NULL GROUP BY offered_to
+        )
+        SELECT c.name,a.courier_id,a.available,a.shift_started_at,a.latitude,a.longitude,a.location_at,
+            a.location_at<now()-interval '3 minutes' AS stale,
+            coalesce(w.on_route,0) AS on_route,coalesce(f.waiting_acceptance,0) AS waiting_acceptance
+        FROM delivery_driver_access a JOIN delivery_couriers c
+            ON (c.tenant_id,c.id)=(a.tenant_id,a.courier_id)
+        LEFT JOIN workloads w ON w.courier_id=a.courier_id
+        LEFT JOIN offers f ON f.courier_id=a.courier_id
+        WHERE a.tenant_id=:t AND c.active AND a.shift_started_at IS NOT NULL
+        ORDER BY a.available DESC,coalesce(w.on_route,0)+coalesce(f.waiting_acceptance,0),lower(c.name),c.id
+    """),{"t":tenant})).mappings().all()
+    return {"items":[dict(r) for r in rows],"summary":{**dict(counts),
+        "in_shift":len(rows),"available":sum(bool(r["available"]) for r in rows),
+        "fresh_positions":sum(r["location_at"] is not None and r["stale"] is False for r in rows)}}
 
 
 class Action(ProfileModel):

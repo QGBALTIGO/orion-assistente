@@ -10,14 +10,15 @@
 
   async function mount({host,filters,call,allowed,canWrite,canManagePolicy=canWrite,ui,openEditor}) {
     if (!host||!allowed()) return;
-    const {esc,loading,button,title,field,moneyField,selectField,checkField,empty,money,badge,query,brazilianStates}=ui;
+    const {esc,loading,button,title,field,moneyField,selectField,checkField,empty,money,badge,query,brazilianStates,routeButton}=ui;
     const current=()=>allowed()&&host.isConnected;
     const command=(label,action,icon,attrs='')=>button(label,action,'os-outline os-small',icon,attrs);
     const error=message=>'<div class="os-notice os-error" role="alert"><p>'+esc(message)+'</p></div>';
     const states=brazilianStates.map(state=>[state,state]);
     const nameAttr=(kind,id)=>'data-os-logistics-'+kind+'="'+esc(id)+'"';
     const number=(value,min,max)=>window.OrionFields.parseDecimal(value,{required:true,scale:0,min,max});
-    let policy,couriers,version=0;
+    let policy,couriers,version=0,monitorTimer,monitorRead=0;
+    const stopMonitor=()=>{clearTimeout(monitorTimer);monitorRead++;};
     filters.search ??= '';
     filters.offset ??= 0;
     filters.active_only ??= false;
@@ -99,14 +100,17 @@
 
     async function read() {
       const ticket=++version;
+      stopMonitor();
       output.innerHTML=loading('Carregando logística…');
       try {
         const responses=await Promise.all([call('/logistics?include_offering=true'),call('/logistics/couriers?'+query(filters))]);
         if (!current()||ticket!==version) return;
         [policy,couriers]=responses;
         output.innerHTML=coverage()+scheduling()+courierList()+
-          (canManagePolicy()?'<section class="os-card os-section-gap"><div class="os-card-header"><h2>Entregadores em expediente</h2>'+
-            command('Consultar posições','logistics-positions','pin')+'</div><div data-logistics-positions aria-live="polite"></div></section>':'')+
+          (canManagePolicy()?'<section class="os-card os-section-gap os-delivery-monitor"><div class="os-card-header"><div><h2>Central operacional</h2><p>Pedidos em andamento e última posição compartilhada pelos entregadores.</p></div>'+
+            command('Consultar operação','logistics-positions','pin')+'</div>'+
+            '<label class="os-check"><input type="checkbox" data-logistics-auto> Atualizar a cada 20 segundos enquanto esta tela estiver aberta</label>'+
+            '<div data-logistics-positions aria-live="polite"><p class="os-help">Consulte a operação para acompanhar a fila e os entregadores em expediente.</p></div></section>':'')+
           (canManagePolicy()&&policy.offering==='gas_agua'?'<section class="os-card os-section-gap"><div class="os-card-header">'+
             '<h2>Cadastro da revenda de GLP</h2>'+command('Consultar ANP','logistics-registry','search')+
             '</div><div data-logistics-registry aria-live="polite"></div></section>':'');
@@ -114,6 +118,55 @@
       } catch (ex) {
         if (current()&&ticket===version) {
           output.innerHTML=error(ex.message)+command('Tentar novamente','logistics-retry','refresh');
+        }
+      }
+    }
+
+    async function readMonitor(region){
+      clearTimeout(monitorTimer);
+      if(!current()||!region?.isConnected||!canManagePolicy())return;
+      const token=++monitorRead,section=region.closest('.os-delivery-monitor');
+      const refresh=section.querySelector('[data-os-action=logistics-positions]');
+      const auto=section.querySelector('[data-logistics-auto]');
+      const valid=()=>current()&&region.isConnected&&canManagePolicy()&&token===monitorRead;
+      refresh.disabled=true;
+      region.setAttribute('aria-busy','true');
+      if(!region.dataset.loaded)region.innerHTML=loading('Consultando operação…');
+      const n=value=>new Intl.NumberFormat('pt-BR').format(value);
+      const stamp=value=>new Date(value).toLocaleString('pt-BR',{timeZone:policy.timezone});
+      try{
+        const result=await call('/logistics/positions');
+        if(!valid())return;
+        const a=result.summary;
+        const indicators=[['Aguardando despacho',a.waiting_dispatch],['Aguardando aceite',a.waiting_acceptance],
+          ['Em rota',a.on_route],['Agendadas para depois',a.scheduled],['Em expediente',a.in_shift],['Disponíveis',a.available]];
+        region.innerHTML='<div class="os-delivery-monitor-metrics">'+indicators.map(([label,value])=>
+          '<div class="os-card os-metric"><div class="os-metric-head"><span>'+esc(label)+'</span></div><strong>'+esc(n(value))+'</strong></div>').join('')+'</div>'+
+          (a.scheduled_past_due?'<p class="os-help">Atenção: '+esc(n(a.scheduled_past_due))+' entrega(s) agendada(s) com horário passado e ainda em aberto.</p>':'')+
+          (a.unlinked_on_route?'<p class="os-help">'+esc(n(a.unlinked_on_route))+' entrega(s) em rota sem entregador cadastrado vinculado.</p>':'')+
+          '<p class="os-help">Consulta em '+esc(stamp(a.observed_at))+' · '+esc(n(a.fresh_positions))+' posição(ões) recente(s).</p>'+
+          (result.items.length?table(['Entregador','Disponibilidade','Em rota','Aguardando aceite','Última posição'],result.items.map(row=>[
+            esc(row.name)+'<br><small>Expediente desde '+esc(stamp(row.shift_started_at))+'</small>',
+            esc(row.available?'Disponível':'Indisponível'),esc(n(row.on_route)),esc(n(row.waiting_acceptance)),
+            row.location_at&&Number.isFinite(row.latitude)&&Number.isFinite(row.longitude)?
+              '<span>'+esc((row.stale?'Desatualizada · ':'')+stamp(row.location_at))+'</span><br><a rel="noreferrer" target="_blank" href="https://www.openstreetmap.org/?mlat='+encodeURIComponent(row.latitude)+'&amp;mlon='+encodeURIComponent(row.longitude)+'">Ver posição no mapa</a>':
+              'Sem localização compartilhada'])):'<p class="os-help">Nenhum entregador em expediente.</p>')+
+          '<p class="os-help">A posição depende do compartilhamento voluntário com o aplicativo aberto. A partir de 3 minutos, é sinalizada como desatualizada. Disponibilidade não comprova estoque ou capacidade do veículo.</p>'+
+          (routeButton?'<div class="os-actions">'+routeButton('Ver entregas','entregas-delivery','os-outline os-small','deliveryTruck')+'</div>':'');
+        region.dataset.loaded='true';
+      }catch(ex){
+        if(valid())region.innerHTML=error(ex.message||'Não foi possível consultar a operação.');
+      }finally{
+        if(valid()){
+          region.removeAttribute('aria-busy');refresh.disabled=false;
+          if(auto.checked){
+            const tick=()=>{
+              if(!current()||!region.isConnected||!auto.checked||!canManagePolicy())return;
+              if(document.visibilityState==='hidden'){monitorTimer=setTimeout(tick,20000);return;}
+              void readMonitor(region);
+            };
+            monitorTimer=setTimeout(tick,20000);
+          }
         }
       }
     }
@@ -224,6 +277,11 @@
       Object.assign(filters,{search:names.logistics_courier_search.value.trim(),offset:0,active_only:names.logistics_courier_status.value==='active'});
       void read();
     });
+    host.addEventListener('change',event=>{
+      if(!event.target.matches('[data-logistics-auto]')||!current()||!canManagePolicy())return;
+      clearTimeout(monitorTimer);
+      if(event.target.checked)void readMonitor(output.querySelector('[data-logistics-positions]'));
+    });
     host.addEventListener('click',event=>{
       const node=event.target.closest('button'),action=node?.dataset.osAction;
       if (!action?.startsWith('logistics-')||!current()) return;
@@ -247,15 +305,7 @@
         return;
       }
       if(action==='logistics-positions'&&canManagePolicy()){
-        const region=output.querySelector('[data-logistics-positions]');node.disabled=true;
-        void call('/logistics/positions').then(result=>{
-          if(!current()||!region.isConnected)return;
-          region.innerHTML=result.items.length?table(['Entregador','Situação','Última posição'],result.items.map(row=>[
-            esc(row.name),esc(row.available?'Disponível':'Indisponível'),row.location_at?
-              '<a rel="noreferrer" target="_blank" href="https://www.openstreetmap.org/?mlat='+encodeURIComponent(row.latitude)+'&amp;mlon='+encodeURIComponent(row.longitude)+'">'+
-              esc((row.stale?'Desatualizada · ':'')+new Date(row.location_at).toLocaleString('pt-BR'))+'</a>':'Sem localização compartilhada'])):
-            '<p class="os-help">Nenhum entregador em expediente.</p>';
-        }).catch(ex=>{if(current()&&region.isConnected)region.innerHTML=error(ex.message);}).finally(()=>{node.disabled=false;});
+        void readMonitor(output.querySelector('[data-logistics-positions]'));
         return;
       }
       if (action==='logistics-registry'&&canManagePolicy()) {

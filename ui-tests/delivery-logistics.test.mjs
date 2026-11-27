@@ -98,3 +98,27 @@ test('an editor can manage the courier roster while the owner controls public ra
   assert.equal(h.document.querySelector('[data-os-action=logistics-new-area]'),null);
   assert.equal(h.document.querySelector('[data-os-action=logistics-schedule]'),null);
 });
+
+test('owner sees real dispatch counts and stale position only on demand',async t=>{
+  const h=await makeSuite({initialRoute:'logistica-delivery',permissions:preview,
+    configureWindow:window=>window.eval(moduleSource),
+    respond:url=>{
+      if(url.endsWith('/delivery/logistics/positions'))return {summary:{waiting_dispatch:2,waiting_acceptance:1,on_route:1,
+        scheduled:3,scheduled_past_due:1,unlinked_on_route:0,in_shift:1,available:1,fresh_positions:0,
+        observed_at:'2026-11-27T19:00:00Z'},items:[{name:'Entregador teste',available:true,on_route:1,waiting_acceptance:1,
+        shift_started_at:'2026-11-27T17:00:00Z',location_at:'2026-11-27T18:45:00Z',stale:true,latitude:-20.4,longitude:-55.7}]};
+      if(url.includes('/delivery/logistics/couriers'))return {items:[],offset:0,limit:25,has_more:false};
+      if(url.split('?')[0].endsWith('/delivery/logistics'))return revisionZero();
+      return defaultResponse(url);
+    }});
+  t.after(()=>h.close());await flush();
+  assert.equal(h.calls.some(x=>x.path.endsWith('/logistics/positions')),false);
+  h.click('[data-os-action=logistics-positions]');await flush();
+  const region=h.document.querySelector('[data-logistics-positions]');
+  assert.match(region.textContent,/Aguardando despacho/);
+  assert.match(region.textContent,/Desatualizada/);
+  assert.match(region.textContent,/Entregador teste/);
+  assert.equal(region.querySelector('a[href^="https://www.openstreetmap.org"]').getAttribute('href'),
+    'https://www.openstreetmap.org/?mlat=-20.4&mlon=-55.7');
+  assert.deepEqual(h.errors,[]);
+});

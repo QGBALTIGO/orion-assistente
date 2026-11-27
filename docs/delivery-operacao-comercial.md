@@ -15,6 +15,12 @@ O ensaio do entregador usa um pedido fictício de R$ 13,50 e confere login com c
 
 A liberação em produção depende de aprovação após a homologação. O ensaio em aparelho físico e a validação regulatória seguem pendentes. Despacho automático, controle de carga por veículo, acerto de turno e teste com provedor em sandbox continuam previstos na missão.
 
+## Incremento após a retomada
+
+- O histórico comercial na ficha de Clientes consulta pedidos reais por empresa e cliente, vendas concluídas (excluindo devoluções), recebimentos, saldo a prazo, ticket médio, intervalo médio entre compras, produtos mais comprados, saldo de vasilhames e nomes de endereços salvos. A lista é paginada. A média não é uma previsão de consumo; nenhum lembrete é enviado automaticamente.
+- A Central operacional em Logística apresenta pedidos aguardando despacho, aceite, rota e agendamento, além de alertas de horário agendado passado, pedidos em rota sem entregador vinculado, expedientes, disponibilidade e carga de pedidos por entregador. A atualização opcional usa consulta incremental a cada 20 segundos enquanto a tela está visível. A posição só existe quando compartilhada pelo entregador, com indicação de desatualização após três minutos.
+- Estes incrementos não introduzem migrações nem dependências externas. Continuam pendentes a carga física por veículo, validação de capacidade/regulação, mapa agregado, otimização e despacho automático, fechamento de turno, permissões granulares e automações de canais elegíveis. Pix permanece exclusivamente manual.
+
 ## Infraestrutura e reutilização
 
 | Componente | Constatação | Decisão |
