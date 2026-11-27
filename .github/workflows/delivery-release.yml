@@ -1,0 +1,94 @@
+name: Orion - Imagem de publicação de Delivery
+on:
+  push:
+    branches: [codex/delivery-release-20261127]
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 24
+    permissions:
+      contents: read
+      packages: write
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: orion_delivery_release_ci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-postgres-only
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U postgres -d orion_delivery_release_ci" --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      IMAGE: ghcr.io/qgbaltigo/orion-assistente-api:delivery-${{ github.sha }}
+      APP_DATABASE_URL: postgresql+asyncpg://app_runtime:ci-runtime-only@127.0.0.1:5432/orion_delivery_release_ci
+      MIGRATION_DATABASE_URL: postgresql+psycopg://app_migrator:ci-migrator-only@127.0.0.1:5432/orion_delivery_release_ci
+      SUPPORT_DATABASE_URL: postgresql+asyncpg://app_support:ci-support-only@127.0.0.1:5432/orion_delivery_release_ci
+      ORION_EXPECTED_DATABASE_HOST: 127.0.0.1
+      ORION_EXPECTED_DATABASE_NAME: orion_delivery_release_ci
+      ORION_BACKUP_S3_ENDPOINT: https://delivery-backup.invalid
+      ORION_BACKUP_S3_BUCKET: delivery-release-ci
+      ORION_BACKUP_EXPECTED_BUCKET: delivery-release-ci
+      ORION_BACKUP_S3_REGION: iad
+      ORION_BACKUP_S3_ACCESS_KEY_ID: ci-archive-key-only
+      ORION_BACKUP_S3_SECRET_ACCESS_KEY: ci-archive-secret-only
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Empacotar somente as mudanças de Delivery
+        run: python3 scripts/package_delivery_release.py "$GITHUB_SHA" delivery-release.json
+      - name: Validar o código empacotado
+        run: |
+          docker run --rm --network none --entrypoint python "$IMAGE" -c '
+          from app.main import app
+          from scripts.backup_and_migrate_delivery import approved_chain, BASE_REVISION
+          assert approved_chain()[0] == BASE_REVISION
+          assert "/api/v1/tenants/{tenant_id}/delivery/catalog" in app.openapi()["paths"]
+          '
+      - name: Ensaiar migração e reversão de imagem em PostgreSQL descartável
+        env:
+          PGPASSWORD: ci-postgres-only
+        run: |
+          set -euo pipefail
+          base="$(python3 -c 'import json; print(json.load(open("delivery-release.json"))["base_image"])')"
+          psql -h 127.0.0.1 -U postgres -d orion_delivery_release_ci -v ON_ERROR_STOP=1 \
+            -v db_name=orion_delivery_release_ci -v runtime_password=ci-runtime-only \
+            -v migrator_password=ci-migrator-only -v support_password=ci-support-only \
+            -f infra/postgres/init/001-roles.sql
+          docker run --rm --network host --entrypoint python -e MIGRATION_DATABASE_URL \
+            "$base" -m alembic upgrade 0098_manual_pix_successor
+          docker run --rm --network host --entrypoint python \
+            -e APP_DATABASE_URL -e MIGRATION_DATABASE_URL -e SUPPORT_DATABASE_URL \
+            -e ORION_EXPECTED_DATABASE_HOST -e ORION_EXPECTED_DATABASE_NAME \
+            -e ORION_BACKUP_S3_ENDPOINT -e ORION_BACKUP_S3_BUCKET -e ORION_BACKUP_EXPECTED_BUCKET \
+            -e ORION_BACKUP_S3_REGION -e ORION_BACKUP_S3_ACCESS_KEY_ID -e ORION_BACKUP_S3_SECRET_ACCESS_KEY \
+            -v "$GITHUB_WORKSPACE/tests/integration/delivery_release_rehearsal.py:/tmp/orion-rehearsal.py:ro" \
+            "$IMAGE" -c 'import runpy; runpy.run_path("/tmp/orion-rehearsal.py", run_name="__main__")'
+          docker run --rm --network host --entrypoint python -e APP_DATABASE_URL \
+            "$base" -m scripts.wait_for_commercial_demos_schema
+          docker run --rm --network host --entrypoint python -e APP_DATABASE_URL \
+            "$base" -m scripts.wait_for_exceptional_overlap_schema
+      - name: Publicar o artefato e registrar o digest imutável
+        run: |
+          set -euo pipefail
+          docker push "$IMAGE"
+          digest="$(docker image inspect "$IMAGE" --format '{{index .RepoDigests 0}}')"
+          [[ "$digest" =~ ^ghcr\.io/qgbaltigo/orion-assistente-api@sha256:[a-f0-9]{64}$ ]]
+          printf 'RepoDigest=%s\n' "$digest" | tee delivery-image-digest.txt
+          printf '### Imagem de Delivery\n\n`%s`\n' "$digest" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: orion-delivery-release
+          path: |
+            delivery-release.json
+            delivery-image-digest.txt

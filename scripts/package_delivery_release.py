@@ -1,0 +1,136 @@
+"""Build a verified Delivery overlay without replacing unrelated live Orion code."""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+from pathlib import Path
+import re
+import subprocess
+from tempfile import TemporaryDirectory
+
+
+ROOT = Path(__file__).resolve().parents[1]
+BASE_IMAGE = "ghcr.io/qgbaltigo/orion-assistente-api@sha256:cd81d0a800ee331a6d9841b072d8dfdd5b88f458f85229badaad11b8d3147dd2"
+BASE_SOURCE = "591fc0c57271880dc67aab616e0094b7a647a60e"
+IMAGE_REPOSITORY = "ghcr.io/qgbaltigo/orion-assistente-api"
+APP_ROOT = "/srv/app"
+SHARED = frozenset({
+    "app/commercial_service.py",
+    "app/main.py",
+    "app/management_models.py",
+    "app/onboarding_schemas.py",
+    "app/plan_permissions.py",
+    "app/static/orion-suite.js",
+    "app/static/panel.html",
+    "app/workspace_policy.py",
+})
+DELIVERY_CODE = re.compile(
+    r"(?:app/delivery_[a-z0-9_]+\.py|app/static/(?:orion-delivery|delivery)[-_.a-z0-9]+\.(?:js|css|html|svg|json|webmanifest)|"
+    r"alembic/versions/(?:0099|010[0-8])_delivery_[a-z0-9_]+\.py|scripts/backup_and_migrate_delivery\.py)"
+)
+REQUIRED = frozenset({"app/delivery_api.py", "alembic/versions/0104_delivery_returns.py",
+                      "scripts/backup_and_migrate_delivery.py"})
+
+
+def git(*args):
+    return subprocess.check_output(["git", *args], cwd=ROOT)
+
+
+def runtime_changes(release):
+    if not re.fullmatch(r"[0-9a-f]{40}", release):
+        raise ValueError("Use the full Git revision of the tested commit")
+    subprocess.run(["git", "merge-base", "--is-ancestor", BASE_SOURCE, release], cwd=ROOT, check=True)
+    tokens = git("diff", "--name-status", "--no-renames", "-z", BASE_SOURCE, release).decode().split("\0")
+    if len(tokens) % 2 != 1 or tokens.pop() != "":
+        raise ValueError("Unexpected Git change list")
+    changes = {}
+    # Preserve the image's dependency lock, infrastructure, entrypoints and assets.
+    for status, path in zip(tokens[::2], tokens[1::2], strict=True):
+        if path.startswith((".github/", "deploy/", "docs/", "tests/", "ui-tests/")) or path == "scripts/package_delivery_release.py":
+            continue
+        if not ((status == "M" and path in SHARED) or (status == "A" and DELIVERY_CODE.fullmatch(path))):
+            raise ValueError(f"Release path needs explicit review: {status} {path}")
+        mode = git("ls-tree", "--full-tree", "--format=%(objectmode)", release, "--", path).decode().strip()
+        if mode != "100644":
+            raise ValueError(f"Expected a regular source file: {path}")
+        changes[path] = status
+    if not REQUIRED <= changes.keys():
+        raise ValueError("Incomplete Delivery release")
+    return changes
+
+
+def sha256(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def prepare_overlay(container, release, stage, changes):
+    overlay = stage / "overlay"
+    overlay.mkdir()
+    manifest = {}
+    existing = [path for path, status in changes.items() if status == "M"]
+    for path in existing:
+        destination = overlay / path
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run(["docker", "cp", f"{container}:{APP_ROOT}/{path}", str(destination)], check=True)
+        if not destination.is_file() or destination.is_symlink():
+            raise ValueError(f"Unexpected base-image file: {path}")
+        live_hash = sha256(destination.read_bytes())
+        source_hash = sha256(git("cat-file", "blob", f"{BASE_SOURCE}:{path}"))
+        manifest[path] = {"live_before": live_hash, "source_before": source_hash}
+        if live_hash != source_hash:
+            print(f"Applying only Delivery patch over the existing live delta in {path}", flush=True)
+
+    if existing:
+        patch = git("diff", "--no-ext-diff", "--no-textconv", "--binary", BASE_SOURCE, release, "--", *existing)
+        for flags in (["--check"], []):
+            subprocess.run(["git", "apply", "--whitespace=nowarn", *flags, "-"],
+                           cwd=overlay, input=patch, check=True)
+
+    for path, status in changes.items():
+        source = git("cat-file", "blob", f"{release}:{path}")
+        destination = overlay / path
+        if status == "A":
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(source)
+            manifest[path] = {"live_before": None, "source_before": None}
+        manifest[path].update(live_after=sha256(destination.read_bytes()), source_after=sha256(source))
+
+    return {"base_image": BASE_IMAGE, "base_source": BASE_SOURCE, "release": release, "files": manifest}
+
+
+def build(release, manifest_path):
+    tag = f"{IMAGE_REPOSITORY}:delivery-{release}"
+    changes = runtime_changes(release)
+    subprocess.run(["docker", "pull", "--platform", "linux/amd64", BASE_IMAGE], check=True)
+    container = subprocess.check_output(
+        ["docker", "create", "--platform", "linux/amd64", BASE_IMAGE], text=True,
+    ).strip()
+    try:
+        workdir = subprocess.check_output(
+            ["docker", "inspect", "--format", "{{.Config.WorkingDir}}", container], text=True,
+        ).strip()
+        if workdir != APP_ROOT:
+            raise ValueError("Unexpected working directory for the live Orion image")
+        with TemporaryDirectory(prefix="orion-delivery-image-") as directory:
+            stage = Path(directory)
+            manifest = prepare_overlay(container, release, stage, changes)
+            encoded = json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+            (stage / "delivery-release.json").write_text(encoded, encoding="utf-8")
+            subprocess.run([
+                "docker", "build", "--platform", "linux/amd64", "--file", str(ROOT / "deploy/Dockerfile.delivery-release"),
+                "--build-arg", f"BASE_IMAGE={BASE_IMAGE}", "--build-arg", f"RELEASE_REVISION={release}",
+                "--tag", tag, str(stage),
+            ], check=True)
+        manifest_path.write_text(encoded, encoding="utf-8")
+    finally:
+        subprocess.run(["docker", "rm", container], stdout=subprocess.DEVNULL, check=True)
+    print(tag, flush=True)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("revision")
+    parser.add_argument("manifest", type=Path)
+    args = parser.parse_args()
+    build(args.revision, args.manifest)

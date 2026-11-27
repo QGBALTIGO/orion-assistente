@@ -1,0 +1,40 @@
+# syntax=docker/dockerfile:1
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+ARG BASE_IMAGE
+ARG RELEASE_REVISION
+LABEL org.opencontainers.image.revision=$RELEASE_REVISION \
+      org.opencontainers.image.base.name=$BASE_IMAGE
+
+COPY delivery-release.json /tmp/orion-delivery-release.json
+RUN python - <<'PY'
+from hashlib import sha256
+import json
+import os
+from pathlib import Path
+
+manifest = json.loads(Path("/tmp/orion-delivery-release.json").read_bytes())
+assert manifest["base_image"] == os.environ["BASE_IMAGE"]
+assert manifest["release"] == os.environ["RELEASE_REVISION"]
+root = Path("/srv/app")
+for name, versions in manifest["files"].items():
+    path = root / name
+    assert path.resolve().is_relative_to(root), name
+    expected = versions["live_before"]
+    if expected is None:
+        assert not path.exists() and not path.is_symlink(), name
+    else:
+        assert path.is_file() and not path.is_symlink(), name
+        assert sha256(path.read_bytes()).hexdigest() == expected, name
+PY
+COPY --chown=appuser:appuser overlay/ /srv/app/
+RUN python - <<'PY'
+from hashlib import sha256
+import json
+from pathlib import Path
+
+manifest = json.loads(Path("/tmp/orion-delivery-release.json").read_bytes())
+for name, versions in manifest["files"].items():
+    data = (Path("/srv/app") / name).read_bytes()
+    assert sha256(data).hexdigest() == versions["live_after"], name
+PY
