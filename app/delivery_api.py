@@ -22,7 +22,7 @@ from app.workspace_policy import delivery_preview_enabled
 router = APIRouter(prefix="/api/v1/tenants/{tenant_id}/delivery", tags=["Delivery e Distribuição"])
 
 
-async def run(actor, tenant, operation, *args, write=False, status=200, **kwargs):
+async def run(actor, tenant, operation, *args, write=False, response_status=200, **kwargs):
     if actor.role != "member" or actor.maintenance or not isinstance(actor.account_id, UUID):
         raise HTTPException(403, "Use a conta vinculada à empresa de homologação")
     try:
@@ -42,7 +42,7 @@ async def run(actor, tenant, operation, *args, write=False, status=200, **kwargs
                     result = await operation(db, tenant, *args, **kwargs)
     except IntegrityError:
         raise HTTPException(409, "Os dados já foram usados ou mudaram. Atualize a tela e confira.") from None
-    response = json_response(result, status_code=status)
+    response = json_response(result, status_code=response_status)
     response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -69,13 +69,13 @@ async def movements(tenant_id: UUID, start: date | None = None, end: date | None
 
 @router.post("/catalog", status_code=201)
 async def create_product(tenant_id: UUID, payload: catalog.ProductCreate, actor: Actor = Depends(authenticate)):
-    return await run(actor, tenant_id, catalog.create_item, payload, write=True, status=201)
+    return await run(actor, tenant_id, catalog.create_item, payload, write=True, response_status=201)
 
 
 @router.post("/catalog/products/{product_id}/variants", status_code=201)
 async def create_variant(tenant_id: UUID, product_id: UUID, payload: catalog.VariantCreate,
                          actor: Actor = Depends(authenticate)):
-    return await run(actor, tenant_id, catalog.create_item, payload, product_id=product_id, write=True, status=201)
+    return await run(actor, tenant_id, catalog.create_item, payload, product_id=product_id, write=True, response_status=201)
 
 
 @router.put("/catalog/variants/{variant_id}")
@@ -128,7 +128,7 @@ async def order_detail(tenant_id: UUID, order_id: UUID, actor: Actor = Depends(a
 
 @router.post("/orders", status_code=201)
 async def new_order(tenant_id: UUID, payload: orders.ManualOrder, actor: Actor = Depends(authenticate)):
-    return await run(actor, tenant_id, orders.create, payload, write=True, status=201)
+    return await run(actor, tenant_id, orders.create, payload, write=True, response_status=201)
 
 
 @router.post("/orders/{order_id}/transitions")
@@ -145,7 +145,7 @@ async def container_list(tenant_id: UUID, kind: containers.ContainerFilter = "al
 
 @router.post("/containers", status_code=201)
 async def new_container(tenant_id: UUID, payload: containers.ContainerCreate, actor: Actor = Depends(authenticate)):
-    return await run(actor, tenant_id, containers.create, payload, write=True, status=201)
+    return await run(actor, tenant_id, containers.create, payload, write=True, response_status=201)
 
 
 @router.post("/containers/{container_id}/movements")
