@@ -253,7 +253,7 @@ async def test_public_delivery_uses_current_coverage_and_server_price(storefront
         for quoted in (public_free, internal_free):
             assert quoted["delivery_fee_cents"] == 0 and quoted["total_cents"] == 2500 and quoted["eta_minutes"] == 35
         created_free = await http.post(public + "/orders", json={**receipt, "quote": public_free["quote"],
-            "idempotency_key": uuid4().hex})
+            "idempotency_key": str(uuid4())})
         assert created_free.status_code == 201, created_free.text
         async with ctx.migration.begin() as db:
             snapshot = (await db.execute(text("""SELECT logistics_snapshot FROM delivery_order_details

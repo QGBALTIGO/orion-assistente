@@ -4,11 +4,13 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException
+import httpx
 import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
 from app import delivery_logistics as logistics
+from app import delivery_registry
 from app.catalog_api import Actor
 from app.database import tenant_transaction
 from app.onboarding_schemas import Address
@@ -25,6 +27,41 @@ AREAS = [
     {"city":"Campo Grande", "state":"MS", "neighborhood":"Vila São João", "kind":"included", "fee_cents":650},
     {"city":"Campo Grande", "state":"MS", "neighborhood":"Centro", "kind":"excluded", "fee_cents":0},
 ]
+
+
+async def test_anp_uses_only_registered_company_and_exposes_unavailability(onboarding_db, monkeypatch):
+    ctx = onboarding_db
+    tenant, actor = await business(ctx, monkeypatch)
+    base = f"/api/v1/tenants/{tenant}/delivery/logistics/anp"
+    async def limit(*args, **kwargs):
+        pass
+    from app import delivery_api
+    monkeypatch.setattr(delivery_api, "public_limit", limit)
+    async with client(actor) as http:
+        assert (await http.get(base)).status_code == 404
+        async with ctx.migration.begin() as db:
+            await db.execute(text("""UPDATE business_onboarding SET configuration=
+                configuration || '{"delivery_offering":"gas_agua"}'::jsonb WHERE tenant_id=:t"""), {"t": tenant})
+        assert (await http.get(base)).status_code == 422
+        async with ctx.migration.begin() as db:
+            await db.execute(text("""INSERT INTO management_preferences (tenant_id,preferences) VALUES
+                (:t,'{"business":{"tax_document_kind":"cnpj","tax_document":"11222333000181"}}'::jsonb)"""), {"t": tenant})
+        http_client = httpx.AsyncClient
+        replies = [{"succeeded":True,"data":[{"cnpj":"11222333000181","autorizacao":"TESTE","classe":"Teste"}]},
+                   {"succeeded":True,"data":[{"cnpj":"00000000000191","autorizacao":"OUTRA"}]},
+                   {"succeeded":True,"data":[]}, {"succeeded":False,"data":[]}]
+        def agency(request):
+            assert str(request.url).startswith(delivery_registry.REGISTRY+"?")
+            assert request.url.params["cnpj"] == "11222333000181"
+            return httpx.Response(200, json=replies.pop(0))
+        monkeypatch.setattr(delivery_registry.httpx, "AsyncClient",
+                            lambda **kwargs: http_client(transport=httpx.MockTransport(agency), **kwargs))
+        found = await http.get(base)
+        assert found.status_code == 200 and found.json()["records"][0]["authorization"] == "TESTE"
+        assert found.headers["cache-control"] == "no-store"
+        assert (await http.get(base)).status_code == 503
+        assert (await http.get(base)).json()["records"] == []
+        assert (await http.get(base)).status_code == 503
 
 
 def schedule_payload():

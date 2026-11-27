@@ -23,7 +23,7 @@ test('configures coverage and windows and adds a courier in Orion dialogs',async
         }
         return {items:couriers,offset:0,limit:25,has_more:false};
       }
-      if (url.endsWith('/delivery/logistics')) {
+      if (url.split('?')[0].endsWith('/delivery/logistics')) {
         if (method==='PUT') {
           assert.equal(data.expected_revision,config.revision);
           const {expected_revision,...settings}=data;
@@ -79,7 +79,7 @@ test('a viewer can read Delivery logistics without editing settings or couriers'
   const h=await makeSuite({initialRoute:'logistica-delivery',role:'viewer',permissions:preview,
     configureWindow:window=>window.eval(moduleSource),
     respond:url=>url.includes('/delivery/logistics/couriers')?{items:[],offset:0,limit:25,has_more:false}:
-      url.endsWith('/delivery/logistics')?revisionZero():defaultResponse(url)});
+      url.split('?')[0].endsWith('/delivery/logistics')?revisionZero():defaultResponse(url)});
   t.after(()=>h.close());
   await flush();
   assert.match(h.document.querySelector('#osDeliveryLogisticsSections').textContent,/Entregadores/);
@@ -91,7 +91,7 @@ test('an editor can manage the courier roster while the owner controls public ra
   const h=await makeSuite({initialRoute:'logistica-delivery',role:'editor',permissions:preview,
     configureWindow:window=>window.eval(moduleSource),
     respond:url=>url.includes('/delivery/logistics/couriers')?{items:[],offset:0,limit:25,has_more:false}:
-      url.endsWith('/delivery/logistics')?revisionZero():defaultResponse(url)});
+      url.split('?')[0].endsWith('/delivery/logistics')?revisionZero():defaultResponse(url)});
   t.after(()=>h.close());
   await flush();
   assert.ok(h.document.querySelector('[data-os-action=logistics-new-courier]'));

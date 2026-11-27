@@ -97,10 +97,13 @@
       const ticket=++version;
       output.innerHTML=loading('Carregando logística…');
       try {
-        const responses=await Promise.all([call('/logistics'),call('/logistics/couriers?'+query(filters))]);
+        const responses=await Promise.all([call('/logistics?include_offering=true'),call('/logistics/couriers?'+query(filters))]);
         if (!current()||ticket!==version) return;
         [policy,couriers]=responses;
-        output.innerHTML=coverage()+scheduling()+courierList();
+        output.innerHTML=coverage()+scheduling()+courierList()+
+          (canManagePolicy()&&policy.offering==='gas_agua'?'<section class="os-card os-section-gap"><div class="os-card-header">'+
+            '<h2>Cadastro da revenda de GLP</h2>'+command('Consultar ANP','logistics-registry','search')+
+            '</div><div data-logistics-registry aria-live="polite"></div></section>':'');
         window.OrionFields.refresh(output);
       } catch (ex) {
         if (current()&&ticket===version) {
@@ -110,7 +113,7 @@
     }
 
     async function savePolicy(changes) {
-      const {revision,timezone,...settings}=policy;
+      const {revision,timezone,offering,...settings}=policy;
       const saved=await call('/logistics','PUT',{...settings,...changes,expected_revision:revision});
       if (!saved?.revision) throw Error('Confira a configuração antes de repetir.');
     }
@@ -220,6 +223,23 @@
       if (!action?.startsWith('logistics-')||!current()) return;
       event.stopPropagation();
       if (action==='logistics-retry') {void read();return;}
+      if (action==='logistics-registry'&&canManagePolicy()) {
+        const panel=output.querySelector('[data-logistics-registry]');
+        node.disabled=true;
+        panel.innerHTML=loading('Consultando o CNPJ da empresa…');
+        void call('/logistics/anp').then(result=>{
+          if (!current()||!panel.isConnected) return;
+          const labels={company:'Razão social',authorization:'Autorização',published_on:'Publicação',
+            distributor:'Distribuidora',storage_class:'Classe de armazenamento',sigaf:'Situação SIGAF'};
+          const stamp=new Date(result.checked_at).toLocaleString('pt-BR',{timeZone:policy.timezone});
+          panel.innerHTML='<p>Consulta em '+esc(stamp)+' · CNPJ '+esc(result.cnpj)+'</p>'+
+            (result.records.length?result.records.map(row=>'<dl>'+Object.entries(labels).map(([key,label])=>
+              '<dt>'+label+'</dt><dd>'+esc(row[key]||'Sem informação na resposta')+'</dd>').join('')+'</dl>').join(''):
+              '<p>Nenhum registro retornado pela ANP para este CNPJ.</p>');
+        }).catch(ex=>{if(current()&&panel.isConnected)panel.innerHTML=error(ex.message);})
+          .finally(()=>{node.disabled=false;});
+        return;
+      }
       if (action==='logistics-courier-prev'||action==='logistics-courier-next') {
         filters.offset=Math.max(0,couriers.offset+(action==='logistics-courier-next'?couriers.limit:-couriers.limit));
         void read();return;

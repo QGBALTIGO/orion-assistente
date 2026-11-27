@@ -16,6 +16,7 @@ from app import delivery_orders as orders
 from app import delivery_payments as payments
 from app import delivery_reports as reports
 from app import delivery_reports_ops
+from app import delivery_registry
 from app.catalog_api import Actor, authenticate
 from app.database import get_session_factory, tenant_transaction
 from app.http_json import json_response
@@ -29,7 +30,7 @@ from app.workspace_policy import delivery_preview_enabled
 router = APIRouter(prefix="/api/v1/tenants/{tenant_id}/delivery", tags=["Delivery e Distribuição"])
 
 
-async def run(actor, tenant, operation, *args, write=False, publish=False, response_status=200, **kwargs):
+async def scoped_operation(actor, tenant, operation, *args, write=False, publish=False, **kwargs):
     if actor.role != "member" or actor.maintenance or not isinstance(actor.account_id, UUID):
         raise HTTPException(403, "Use a conta vinculada à empresa de homologação")
     try:
@@ -46,9 +47,13 @@ async def run(actor, tenant, operation, *args, write=False, publish=False, respo
                         raise HTTPException(403, "Delivery e Distribuição ainda está em homologação")
                     if write:
                         args = (access, *args)
-                    result = await operation(db, tenant, *args, **kwargs)
+                    return await operation(db, tenant, *args, **kwargs)
     except IntegrityError:
         raise HTTPException(409, "Os dados já foram usados ou mudaram. Atualize a tela e confira.") from None
+
+
+async def run(actor, tenant, operation, *args, response_status=200, **kwargs):
+    result = await scoped_operation(actor, tenant, operation, *args, **kwargs)
     response = result if isinstance(result, Response) else json_response(result, status_code=response_status)
     response.headers["Cache-Control"] = "no-store"
     return response
@@ -236,8 +241,19 @@ async def register_credit_receipt(tenant_id: UUID, order_id: UUID, payload: paym
 
 
 @router.get("/logistics")
-async def logistics_policy(tenant_id: UUID, actor: Actor = Depends(authenticate)):
-    return await run(actor, tenant_id, logistics.get_policy)
+async def logistics_policy(tenant_id: UUID, include_offering: bool = False, actor: Actor = Depends(authenticate)):
+    return await run(actor, tenant_id, logistics.get_policy, include_offering=include_offering)
+
+
+@router.get("/logistics/anp")
+async def merchant_registry(tenant_id: UUID, request: Request, actor: Actor = Depends(authenticate)):
+    company = await scoped_operation(actor, tenant_id, delivery_registry.merchant, publish=True)
+    await public_limit(request, str(tenant_id), "delivery-registry", 6, 300)
+    # The network request runs after releasing the database and plan locks.
+    result = await delivery_registry.lookup(company["cnpj"])
+    response = json_response(result)
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @router.put("/logistics")

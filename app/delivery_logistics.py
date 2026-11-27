@@ -113,10 +113,12 @@ async def lock_policy(db, tenant, *, exclusive=False):
     await db.execute(text(f"SELECT {function}(hashtextextended(:scope,0))"), {"scope": f"delivery-logistics:{tenant}"})
 
 
-async def get_policy(db, tenant):
+async def get_policy(db, tenant, *, include_offering=False):
     row = (await db.execute(text("""
-        SELECT t.timezone,p.configuration,p.area_terms,coalesce(p.revision,0) AS revision
+        SELECT t.timezone,p.configuration,p.area_terms,coalesce(p.revision,0) AS revision,
+               b.configuration->>'delivery_offering' AS offering
         FROM tenants t LEFT JOIN delivery_logistics_policies p ON p.tenant_id=t.id
+        LEFT JOIN business_onboarding b ON b.tenant_id=t.id
         WHERE t.id=:tenant
     """), {"tenant": tenant})).mappings().first()
     if row is None:
@@ -125,7 +127,8 @@ async def get_policy(db, tenant):
     terms = {tuple(item["key"]): item["terms"] for item in row["area_terms"] or []}
     config["areas"] = [{**area, **terms.get(place_key(Area.model_validate(area)), {})} for area in config.get("areas", [])]
     return {**LogisticsPolicy.model_validate(config).model_dump(),
-            "revision": row["revision"], "timezone": row["timezone"]}
+            "revision": row["revision"], "timezone": row["timezone"],
+            **({"offering": row["offering"]} if include_offering else {})}
 
 
 async def save_policy(db, tenant, access, payload):
