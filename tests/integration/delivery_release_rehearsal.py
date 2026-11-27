@@ -19,7 +19,7 @@ class MemoryArchive:
 
     def upload_file(self, filename, bucket, key, ExtraArgs):
         assert bucket == "delivery-release-ci"
-        assert key.startswith("production/orion-delivery/pre-schema-0098_manual_pix_successor-")
+        assert key.startswith(f"production/orion-delivery/pre-schema-{delivery.BASE_REVISION}-")
         self.body = Path(filename).read_bytes()
         assert self.body.startswith(b"PGDMP")
         self.meta = ExtraArgs["Metadata"]

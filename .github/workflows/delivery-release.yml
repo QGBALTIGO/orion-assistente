@@ -66,7 +66,7 @@ jobs:
             -v migrator_password=ci-migrator-only -v support_password=ci-support-only \
             -f infra/postgres/init/001-roles.sql
           docker run --rm --network host --entrypoint python -e MIGRATION_DATABASE_URL -e ORION_MIGRATION_SWITCH_ROLE=1 \
-            "$base" -m alembic upgrade 0098_manual_pix_successor
+            "$base" -m alembic upgrade 0099_admin_personal_password
           docker run --rm --network host --entrypoint python \
             -e APP_DATABASE_URL -e MIGRATION_DATABASE_URL -e SUPPORT_DATABASE_URL \
             -e ORION_EXPECTED_DATABASE_HOST -e ORION_EXPECTED_DATABASE_NAME \

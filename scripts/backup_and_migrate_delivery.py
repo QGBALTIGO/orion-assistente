@@ -20,12 +20,35 @@ from scripts.backup_and_migrate_plan_cycle import CONTRACT as PLAN_CYCLE_CONTRAC
 from scripts.backup_and_migrate_subscription_audience import audience_contract, preserved_contract, read_contract
 
 
-BASE_REVISION = "0098_manual_pix_successor"
+BASE_REVISION = "0099_admin_personal_password"
+BASE_PREDECESSOR = "0098_manual_pix_successor"
+# Preserve the already-deployed administrator release's table and access contract.
+ADMIN_PASSWORD_CONTRACT = """
+    SELECT COALESCE((
+        SELECT c.relrowsecurity AND c.relforcerowsecurity
+            AND has_table_privilege('app_support', c.oid, 'SELECT')
+            AND has_table_privilege('app_support', c.oid, 'INSERT')
+            AND has_table_privilege('app_support', c.oid, 'UPDATE')
+            AND NOT has_table_privilege('app_support', c.oid, 'DELETE,TRUNCATE')
+            AND NOT has_table_privilege('app_runtime', c.oid, 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE')
+            AND NOT EXISTS (
+                SELECT 1 FROM aclexplode(COALESCE(c.relacl, acldefault('r', c.relowner))) AS a
+                WHERE a.grantee = 0
+            )
+            AND EXISTS (
+                SELECT 1 FROM pg_policy p JOIN pg_roles r ON r.oid = ANY(p.polroles)
+                WHERE p.polrelid = c.oid AND p.polname = 'admin_personal_password_support'
+                    AND r.rolname = 'app_support'
+            )
+        FROM pg_class c WHERE c.oid = to_regclass('public.orion_legacy_admin_passwords')
+    ), false)
+"""
 SAFE_REASONS = frozenset({
     "migration_database_scope_missing", "migration_database_scope_mismatch", "migration_database_url_invalid",
     "delivery_database_scope_mismatch", "exceptional_overlap_migration_busy", "delivery_revision_chain_not_approved",
     "delivery_source_revision_not_approved", "delivery_preserved_clinic_contract_invalid",
     "delivery_preserved_audience_contract_invalid", "delivery_preserved_plan_cycle_contract_invalid",
+    "delivery_preserved_admin_password_contract_invalid",
     "delivery_predecessor_contract_invalid", "delivery_predecessor_changed_after_backup",
     "delivery_target_revision_not_applied", "delivery_target_contract_invalid",
     "private_backup_storage_missing", "private_backup_bucket_mismatch", "private_backup_endpoint_must_be_https",
@@ -81,9 +104,9 @@ def approved_chain():
     # The production database is fenced independently to one approved revision,
     # and the command upgrades only the explicit Delivery target below.
     if len(delivery_heads) != 1:
-        raise ValueError(f"delivery_revision_head_not_approved heads={','.join(sorted(heads))}")
+        raise ValueError("delivery_revision_chain_not_approved")
     chain = (BASE_REVISION, *PHASES[: PHASES.index(delivery_heads[0]) + 1])
-    for previous, successor in pairwise(chain):
+    for previous, successor in pairwise((BASE_PREDECESSOR, *chain)):
         revision = script.get_revision(successor)
         if revision.down_revision != previous or revision.dependencies:
             raise ValueError("delivery_revision_chain_not_approved")
@@ -97,6 +120,8 @@ def require_existing_contracts(raw):
         raise RuntimeError("delivery_preserved_audience_contract_invalid")
     if not read_contract(raw, PLAN_CYCLE_CONTRACT):
         raise RuntimeError("delivery_preserved_plan_cycle_contract_invalid")
+    if not read_contract(raw, ADMIN_PASSWORD_CONTRACT):
+        raise RuntimeError("delivery_preserved_admin_password_contract_invalid")
 
 
 def delivery_schema_ready(raw, phases):

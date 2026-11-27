@@ -3,7 +3,7 @@ from alembic import op
 
 
 revision = "0099_delivery_catalog"
-down_revision = "0098_manual_pix_successor"
+down_revision = "0099_admin_personal_password"
 branch_labels = None
 depends_on = None
 

@@ -16,6 +16,9 @@ BASE_IMAGE = "ghcr.io/qgbaltigo/orion-assistente-api@sha256:cd81d0a800ee331a6d98
 BASE_SOURCE = "591fc0c57271880dc67aab616e0094b7a647a60e"
 IMAGE_REPOSITORY = "ghcr.io/qgbaltigo/orion-assistente-api"
 APP_ROOT = "/srv/app"
+INHERITED_MIGRATIONS = {
+    "alembic/versions/0099_admin_personal_password.py": "05ebee0f38b81acbdd7c363b3f30cf8184e98f61",
+}
 SHARED = frozenset({
     "app/commercial_service.py",
     "app/main.py",
@@ -31,7 +34,7 @@ DELIVERY_CODE = re.compile(
     r"alembic/versions/(?:0099|010[0-8])_delivery_[a-z0-9_]+\.py|scripts/backup_and_migrate_delivery\.py)"
 )
 REQUIRED = frozenset({"app/delivery_api.py", "alembic/versions/0104_delivery_returns.py",
-                      "scripts/backup_and_migrate_delivery.py"})
+                      "scripts/backup_and_migrate_delivery.py", *INHERITED_MIGRATIONS})
 
 
 def git(*args):
@@ -50,7 +53,8 @@ def runtime_changes(release):
     for status, path in zip(tokens[::2], tokens[1::2], strict=True):
         if path.startswith((".github/", "deploy/", "docs/", "tests/", "ui-tests/")) or path == "scripts/package_delivery_release.py":
             continue
-        if not ((status == "M" and path in SHARED) or (status == "A" and DELIVERY_CODE.fullmatch(path))):
+        if not ((status == "M" and path in SHARED)
+                or (status == "A" and (DELIVERY_CODE.fullmatch(path) or path in INHERITED_MIGRATIONS))):
             raise ValueError(f"Release path needs explicit review: {status} {path}")
         mode = git("ls-tree", "--full-tree", "--format=%(objectmode)", release, "--", path).decode().strip()
         if mode != "100644":
@@ -74,7 +78,19 @@ def prepare_overlay(container, release, stage, changes):
         source_hash = sha256(source)
         destination = overlay / path
         destination.parent.mkdir(parents=True, exist_ok=True)
-        if status == "A":
+        if path in INHERITED_MIGRATIONS:
+            # The image already contains this production migration. Guard its
+            # identity on both sides without copying over the live file.
+            blob = git("ls-tree", "--full-tree", "--format=%(objectname)", release, "--", path).decode().strip()
+            if blob != INHERITED_MIGRATIONS[path]:
+                raise ValueError(f"Unexpected inherited migration blob: {path}")
+            inherited = stage / "inherited-migration"
+            subprocess.run(["docker", "cp", f"{container}:{APP_ROOT}/{path}", str(inherited)], check=True)
+            if inherited.is_symlink() or not inherited.is_file() or inherited.read_bytes() != source:
+                raise ValueError(f"Inherited migration differs from the pinned production image: {path}")
+            inherited.unlink()
+            manifest[path] = {"live_before": source_hash, "source_before": source_hash}
+        elif status == "A":
             destination.write_bytes(source)
             manifest[path] = {"live_before": None, "source_before": None}
         else:
