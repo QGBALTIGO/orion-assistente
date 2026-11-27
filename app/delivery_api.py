@@ -117,6 +117,16 @@ async def order_customers(tenant_id: UUID, search: str = Query(max_length=120), 
     return await run(actor, tenant_id, orders.lookup_customers, search=search)
 
 
+@router.post("/order-customers", status_code=201)
+async def add_order_customer(tenant_id: UUID, payload: orders.QuickCustomer, actor: Actor = Depends(authenticate)):
+    return await run(actor, tenant_id, orders.create_customer, payload, write=True, response_status=201)
+
+
+@router.get("/order-customers/{customer_id}/previous-address")
+async def address_from_previous_delivery(tenant_id: UUID, customer_id: UUID, actor: Actor = Depends(authenticate)):
+    return await run(actor, tenant_id, orders.previous_address, customer_id)
+
+
 @router.post("/orders/estimate")
 async def estimate_order(tenant_id: UUID, payload: orders.OrderEstimate, actor: Actor = Depends(authenticate)):
     return await run(actor, tenant_id, orders.estimate, payload)

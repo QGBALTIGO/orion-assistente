@@ -129,7 +129,7 @@
 
   async function mount({host,filters,call,allowed,canWrite,ui,openDetails,openEditor,deliveryOnly=false,creditOnly=false}) {
     if (!host || !allowed()) return;
-    const {esc,loading,empty,field,moneyField,selectField,checkField,button,title,money,badge,fmtDate,dateKey,timeLabel,query,brazilianStates,metric,routeButton}=ui;
+    const {esc,loading,empty,field,moneyField,selectField,checkField,button,title,money,badge,fmtDate,dateKey,timeLabel,query,brazilianStates,metric,routeButton,requestKey}=ui;
     filters.search ??= '';
     filters.state ??= 'all';
     filters.start ??= '';
@@ -208,9 +208,12 @@
 
     function editor() {
       const cart=new Map();
-      let customer=null, estimate=null;
+      let customer=null, estimate=null, customerSaving=false;
       const addressFields='<fieldset data-delivery-address hidden disabled class="os-form">'+
-        '<legend>Endereço de entrega</legend><div class="os-form-grid">'+
+        '<legend>Endereço de entrega</legend>'+
+        '<div class="os-actions hidden" data-delivery-previous-control hidden>'+
+        command(button,'Usar último endereço','delivery-use-address','left')+'</div>'+
+        '<p data-delivery-address-status class="os-help" aria-live="polite"></p><div class="os-form-grid">'+
         field('CEP','address_postal','text','','data-orion-field="postal-code" inputmode="numeric" autocomplete="postal-code"')+
         field('Rua','address_street','text','','required maxlength="160"')+
         field('Número','address_number','text','','required maxlength="30"')+checkField('Sem número','address_no_number')+
@@ -220,11 +223,18 @@
         field('Complemento ou referência','address_complement','text','','maxlength="160"')+
         moneyField('Taxa de entrega','delivery_fee','text',window.OrionFields.moneyDisplay(0))+
         '</div></fieldset>';
+      const quickCustomer='<fieldset data-delivery-quick-customer hidden disabled class="os-form hidden">'+
+        '<legend>Novo cliente</legend><div class="os-form-grid">'+
+        field('Nome do cliente','new_customer_name','text','','maxlength="120"')+
+        field('Telefone do cliente','customer_phone','tel','','maxlength="40"')+'</div>'+
+        '<div data-delivery-customer-feedback aria-live="polite"></div><div class="os-actions">'+
+        command(button,'Salvar cliente','delivery-save-customer','check')+'</div></fieldset>';
       const content=selectField('Recebimento','mode',deliveryOnly?modes.slice(2):modes,deliveryOnly?'delivery':'counter')+
         '<div class="os-form-grid">'+field('Buscar produto','product_search','search','','maxlength="120"')+
         field('Buscar cliente','customer_search','search','','maxlength="120" placeholder="Nome ou telefone"')+'</div>'+
         '<div class="os-actions">'+command(button,'Buscar produtos','delivery-choose-items','box')+
-        command(button,'Buscar clientes','delivery-choose-customer','users')+'</div>'+
+        command(button,'Buscar clientes','delivery-choose-customer','users')+
+        command(button,'Novo cliente','delivery-new-customer','userPlus')+'</div>'+quickCustomer+
         '<div data-delivery-search-results aria-live="polite"></div><div data-delivery-customer aria-live="polite"></div>'+
         '<h3>Itens do pedido</h3><div class="os-form" data-delivery-cart></div>'+
         addressFields+
@@ -237,6 +247,7 @@
           window.OrionFields.parseMoney(form.elements.delivery_fee.value,{required:true,min:0,max:1000000000}):0};
       };
       openEditor('Novo pedido',content,async(form,values,key)=>{
+        if (customerSaving) throw Error('Aguarde o cadastro do cliente.');
         const quoted=estimateInput(form);
         if (quoted.mode!=='counter'&&!customer) throw Error('Selecione um cliente para a retirada ou entrega.');
         if (!estimate||estimate.key!==JSON.stringify(quoted)) throw Error('Confira o total antes de confirmar o pedido.');
@@ -255,12 +266,37 @@
         const quote=form.querySelector('[data-delivery-estimate]'), basket=form.querySelector('[data-delivery-cart]');
         const customerInfo=form.querySelector('[data-delivery-customer]');
         const addressBox=form.querySelector('[data-delivery-address]');
-        let products=[], customers=[], searchVersion=0, quoteVersion=0;
+        const previous=form.querySelector('[data-delivery-previous-control]');
+        const addressStatus=form.querySelector('[data-delivery-address-status]');
+        const quick=form.querySelector('[data-delivery-quick-customer]');
+        const feedback=form.querySelector('[data-delivery-customer-feedback]');
+        const addressNames=['street','number','neighborhood','city','state','complement'];
+        let products=[], customers=[], searchVersion=0, quoteVersion=0, addressVersion=0, addressOwner=null;
         const dialogActive = () => current()&&dialog.open&&form.isConnected;
         const invalidate = () => {quoteVersion++;estimate=null;quote.replaceChildren();};
         function updateAddress() {
           addressBox.hidden=addressBox.disabled=form.elements.mode.value!=='delivery';
+          addressBox.classList.toggle('hidden',addressBox.hidden);
+          previous.hidden=!customer;
+          previous.classList.toggle('hidden',previous.hidden);
           form.elements.address_number.disabled=form.elements.address_no_number.checked;
+        }
+        function setCustomer(next) {
+          if (addressOwner&&addressOwner!==next?.id) {
+            addressOwner=null;
+            form.elements.address_postal.value='';
+            for (const name of addressNames) form.elements['address_'+name].value='';
+            form.elements.address_no_number.checked=false;
+          }
+          customer=next;
+          customerInfo.textContent=customer?'Cliente: '+customer.name:'';
+          addressStatus.textContent='';
+          updateAddress();
+        }
+        function toggleQuick(show) {
+          quick.hidden=quick.disabled=!show;
+          quick.classList.toggle('hidden',!show);
+          if (show) form.elements.new_customer_name.focus();
         }
         function showCart() {
           basket.innerHTML=cart.size?Array.from(cart,([id,row])=>
@@ -274,9 +310,10 @@
         updateAddress();
         form.addEventListener('change',event=>{
           if (event.target.name==='mode') {updateAddress();invalidate();}
-          if (event.target.name==='address_no_number') updateAddress();
+          if (event.target.name==='address_no_number') {addressVersion++;updateAddress();}
         });
         form.addEventListener('input',event=>{
+          if (event.target.name?.startsWith('address_')) {addressVersion++;addressStatus.textContent='';}
           if (event.target.name==='delivery_fee') invalidate();
           const id=event.target.dataset.deliveryQuantity;
           if (!id||!cart.has(id)) return;
@@ -296,9 +333,53 @@
             invalidate();showCart();basket.querySelector('[data-delivery-quantity="'+id+'"]')?.focus();return;
           }
           if (action==='delivery-pick-customer') {
-            customer=customers.find(c=>c.id===id)||null;
-            customerInfo.textContent=customer?'Cliente: '+customer.name:'';
+            setCustomer(customers.find(c=>c.id===id)||null);
             matches.replaceChildren();return;
+          }
+          if (action==='delivery-new-customer') {toggleQuick(quick.hidden);return;}
+          if (action==='delivery-save-customer'&&!customerSaving) {
+            feedback.replaceChildren();
+            try {
+              const name=form.elements.new_customer_name.value.trim();
+              if (!name) throw Error('Informe o nome do cliente.');
+              const phone=window.OrionFields.phoneValue(form.elements.customer_phone.value,{allowInternational:true})||null;
+              const input={name,phone};
+              customerSaving=node.disabled=true;
+              feedback.innerHTML=loading('Salvando cliente…');
+              const created=await call('/order-customers','POST',{...input,idempotency_key:requestKey(form,input)});
+              if (!dialogActive()) return;
+              if (!created?.id) throw Error('Confira o cadastro antes de repetir.');
+              setCustomer(created);
+              feedback.replaceChildren();
+              form.elements.new_customer_name.value=form.elements.customer_phone.value='';
+              toggleQuick(false);
+            } catch (error) {if (dialogActive()) feedback.innerHTML=err(error);}
+            finally {customerSaving=node.disabled=false;}
+            return;
+          }
+          if (action==='delivery-use-address'&&customer) {
+            const selected=customer.id;
+            const version=++addressVersion;
+            node.disabled=true;
+            addressStatus.textContent='Buscando o endereço…';
+            try {
+              const result=await call('/order-customers/'+encodeURIComponent(selected)+'/previous-address');
+              if (!dialogActive()||selected!==customer?.id||addressVersion!==version) return;
+              const address=result.address;
+              if (address) {
+                addressOwner=selected;
+                form.elements.address_postal.value=address.postal_code||'';
+                for (const fieldName of addressNames) {
+                  form.elements['address_'+fieldName].value=address[fieldName]||'';
+                }
+                form.elements.address_no_number.checked=address.no_number;
+                updateAddress();
+                window.OrionFields.refresh(addressBox);
+              }
+              addressStatus.textContent=address?'Confira o endereço antes de confirmar.':'Nenhum endereço de entrega concluída.';
+            } catch (error) {if (dialogActive()&&selected===customer?.id&&addressVersion===version) addressStatus.textContent=error.message;}
+            finally {node.disabled=false;}
+            return;
           }
           if (action==='delivery-estimate') {
             invalidate();

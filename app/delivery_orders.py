@@ -2,20 +2,21 @@
 from datetime import date, timedelta
 import hashlib
 import json
+import re
 import secrets
 from typing import Literal
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
-from pydantic import Field, StrictBool, StrictInt, model_validator
+from pydantic import Field, StrictBool, StrictInt, field_validator, model_validator
 from sqlalchemy import text
 
 from app import commercial_service as commerce, management_models as management
 from app.business_profile_schemas import ProfileModel
 from app.commercial_schemas import IdempotencyKey, QuoteLineRequest
 from app.delivery_catalog import LIMIT, MAX_QUANTITY, list_items, run_once
-from app.management_schemas import MAX_MONEY
+from app.management_schemas import MAX_MONEY, normalize_phone
 from app.onboarding_schemas import Address
 from app.onboarding_service import require_operational_ready
 
@@ -23,6 +24,14 @@ from app.onboarding_service import require_operational_ready
 OrderMode = Literal["counter", "pickup", "delivery"]
 OrderState = Literal["all", "confirmed", "dispatched", "fulfilled", "cancelled"]
 CreditStatus = Literal["all", "pending", "overdue", "paid"]
+
+
+class QuickCustomer(ProfileModel):
+    name: str = Field(min_length=1, max_length=120)
+    phone: str | None = Field(default=None, max_length=40)
+    idempotency_key: IdempotencyKey
+
+    _phone = field_validator("phone")(normalize_phone)
 
 
 class OrderItems(ProfileModel):
@@ -198,13 +207,40 @@ async def lookup_customers(db, tenant, *, search):
     q = search.strip()
     if len(q) < 2:
         return {"items":[]}
+    digits = re.sub(r"\D", "", q) if re.fullmatch(r"[+0-9 ().-]+", q) else ""
     rows = (await db.execute(text("""
         SELECT id,name,whatsapp_e164 FROM customers
         WHERE tenant_id=:t AND active AND deleted_at IS NULL
-          AND position(lower(:q) in lower(concat_ws(' ',name,whatsapp_e164)))>0
+          AND (position(lower(:q) in lower(concat_ws(' ',name,whatsapp_e164)))>0
+            OR (length(:digits)>1 AND position(:digits in coalesce(whatsapp_e164,''))>0))
         ORDER BY lower(name),id LIMIT 20
-    """), {"t":tenant,"q":q})).mappings().all()
+    """), {"t":tenant,"q":q,"digits":digits})).mappings().all()
     return {"items":[dict(row) for row in rows]}
+
+
+async def create_customer(db, tenant, access, payload):
+    async def write():
+        await commerce.tenant_exists(db, tenant, active=True)
+        db.info["management_actor_account_id"] = access.account_id
+        row = await management.insert_row(db,tenant,"customers",{
+            "name":payload.name,"whatsapp_e164":payload.phone,"active":True,
+        },payload.idempotency_key,operation="delivery_customer")
+        if not row["active"]:
+            commerce.conflict("Este telefone já está vinculado a um cliente inativo. Confira no cadastro de clientes.")
+        return {key:row[key] for key in ("id","name","whatsapp_e164")}
+    return await run_once(db, tenant, payload, "customer_create", None, write)
+
+
+async def previous_address(db, tenant, customer):
+    address = (await db.execute(text("""
+        SELECT d.address FROM delivery_order_details d
+        JOIN commercial_orders o ON (d.tenant_id,d.order_id)=(o.tenant_id,o.id)
+        JOIN customers c ON (d.tenant_id,d.customer_id)=(c.tenant_id,c.id)
+        WHERE d.tenant_id=:t AND c.id=:c AND c.active AND c.deleted_at IS NULL
+            AND d.mode='delivery' AND o.origin='delivery' AND o.status='fulfilled'
+        ORDER BY o.created_at DESC,o.id DESC LIMIT 1
+    """), {"t":tenant,"c":customer})).scalar_one_or_none()
+    return {"address":address}
 
 
 async def estimate(db, tenant, payload):
@@ -333,9 +369,9 @@ async def return_order(db, tenant, access, row, items, payload):
             UPDATE commercial_inventory SET quantity_on_hand=quantity_on_hand+:quantity,
                 revision=revision+1,updated_at=now()
             WHERE tenant_id=:t AND variant_id=:v AND mode='tracked'
-              AND quantity_on_hand<=:cap-:quantity
+              AND quantity_on_hand<=:room
             RETURNING quantity_on_hand
-        """), {"t":tenant,"v":variant,"quantity":amount,"cap":MAX_QUANTITY})).scalar_one_or_none()
+        """), {"t":tenant,"v":variant,"quantity":amount,"room":MAX_QUANTITY-amount})).scalar_one_or_none()
         if after is None:
             commerce.conflict("Confira o saldo e o limite de estoque antes de registrar a devolução.")
         await commerce.audit(db,tenant,access,"stock",variant,"sale_returned",

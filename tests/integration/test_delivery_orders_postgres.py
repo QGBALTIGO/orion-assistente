@@ -133,13 +133,22 @@ async def test_delivery_fee_dispatch_payment_and_safe_return(onboarding_db, monk
     tenant, actor = await business(ctx, monkeypatch)
     root = f"/api/v1/tenants/{tenant}/delivery"
     await complete_delivery_setup(ctx, tenant)
-    customer = uuid4()
     address = {"street":"Rua da homologação", "number":"15", "neighborhood":"Bairro de teste",
                "city":"Campo Grande", "state":"MS", "postal_code":"79000-000"}
-    async with ctx.migration.begin() as db:
-        await db.execute(text("INSERT INTO customers(id,tenant_id,name) VALUES(:c,:t,'Pessoa de teste')"),
-                         {"c":customer,"t":tenant})
     async with client(actor) as http:
+        new_customer = {"name":"Pessoa de teste","phone":"(67) 99999-9909","idempotency_key":uuid4().hex}
+        first = await http.post(root+"/order-customers",json=new_customer)
+        assert first.status_code == 201, first.text
+        person = first.json()
+        again = await http.post(root+"/order-customers",json=new_customer)
+        assert again.json() == person
+        original = await http.post(root+"/order-customers",json={**new_customer,"name":"Nome alternativo","idempotency_key":uuid4().hex})
+        assert original.json() == person
+        result = await http.get(root+"/order-customers",params={"search":"(67) 99999-9909"})
+        assert result.json()["items"] == [person]
+        customer = person["id"]
+        address_path = root+"/order-customers/"+customer+"/previous-address"
+        assert (await http.get(address_path)).json() == {"address":None}
         variant = (await http.post(root+"/catalog",json=new_product())).json()["variant_id"]
         args = await order_payload(http,root,variant,1,mode="delivery",delivery_fee_cents=500,
                                    customer_id=str(customer),address=address)
@@ -169,6 +178,7 @@ async def test_delivery_fee_dispatch_payment_and_safe_return(onboarding_db, monk
         completed = await http.post(path+"/transitions",json={**payment,"expected_revision":2})
         assert completed.status_code == 200, completed.text
         assert await stock(http,root) == (4,0)
+        assert (await http.get(address_path)).json()["address"]["street"] == address["street"]
         receipt, = await receipts(ctx, tenant)
         assert receipt["amount_cents"] == 1750
 
