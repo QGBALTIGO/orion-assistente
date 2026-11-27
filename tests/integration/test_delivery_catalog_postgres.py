@@ -487,7 +487,8 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                         await page.get_by_role("tab",name="Ativos",exact=True).click()
                         await page.get_by_role("button",name="Novo cliente",exact=True).click()
                         await expect(page.locator("#osDialog [data-os-form=customer]")).to_be_visible()
-                        await page.locator("#osDialog .os-close").click()
+                        await page.keyboard.press("Escape")
+                        await expect(page.get_by_role("dialog")).to_be_hidden()
                     if route == "financeiro":
                         await expect(page.locator(".os-finance-metrics")).to_be_visible()
                         await page.get_by_role("button",name="Novo lançamento",exact=True).click()
