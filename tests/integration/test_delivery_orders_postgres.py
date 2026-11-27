@@ -124,6 +124,17 @@ async def test_pickup_payment_and_stock_are_recorded_exactly_once(onboarding_db,
         detail = (await http.get(path)).json()
         assert detail["status"] == "fulfilled" and detail["items"][0]["quantity"] == 2
         assert detail["mode"] == "pickup" and detail["customer_name"] == "Cliente sintético"
+        profile = await http.get(root + f"/order-customers/{customer}/profile")
+        assert profile.status_code == 200, profile.text
+        customer_profile = profile.json()
+        assert customer_profile["summary"]["completed"] == 1
+        assert customer_profile["summary"]["purchased_cents"] == 2500
+        assert customer_profile["summary"]["received_cents"] == 2500
+        assert customer_profile["summary"]["average_ticket_cents"] == 2500
+        assert customer_profile["summary"]["average_interval_days"] is None
+        assert customer_profile["items"][0]["id"] == order["id"]
+        assert customer_profile["favorites"][0]["quantity"] == 2
+        assert (await http.get(root + f"/order-customers/{outsider_customer}/profile")).status_code == 404
         assert [event["action"] for event in detail["history"]] == ["confirmed","fulfilled"]
         assert (await http.get(root+"/orders",params={"state":"cancelled"})).json()["items"] == []
         assert (await http.get(root+"/orders",params={"start":"2000-01-01","end":"2000-01-02"})).json()["items"] == []

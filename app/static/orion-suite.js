@@ -3952,6 +3952,60 @@
       '<div class="os-stat"><strong>'+money(record.total_spent_cents)+'</strong><small>Valor dos atendimentos</small></div>'+
       '</div><p class="os-client-hint">Último atendimento: '+esc(last)+'. Dados administrativos provenientes da agenda e do financeiro do Orion, não de um prontuário clínico.</p></div></details>';
   }
+  function mountDeliveryCustomerProfile(record,opened){
+    const panel=$('osDeliveryCustomerProfile');
+    if(!panel)return;
+    let version=0,offset=0;
+    const labels={confirmed:'Reservado',dispatched:'Em rota',fulfilled:'Concluído',cancelled:'Cancelado'};
+    const modes={counter:'Balcão',pickup:'Retirada',delivery:'Entrega'};
+    const channels={pos:'Ponto de venda',phone:'Telefone',attendant:'Atendimento humano',storefront:'Loja pública',manual:'Painel'};
+    const valid=()=>state.dialog===opened&&deliveryPreview()&&panel.isConnected;
+    const control=(name,action,disabled=false)=>'<button type="button" class="os-button os-outline os-small" data-delivery-customer-page="'+action+'" '+(disabled?'disabled':'')+'>'+name+'</button>';
+    const row=(name,value)=>'<div class="os-summary-row"><span>'+esc(name)+'</span><strong>'+esc(value)+'</strong></div>';
+    async function read(){
+      const stamp=++version;
+      panel.setAttribute('aria-busy','true');
+      panel.innerHTML=loading('Carregando histórico de compras…');
+      try{
+        const data=await request(apiPath('/delivery/order-customers/'+encodeURIComponent(record.id)+'/profile?'+query({offset})));
+        if(!valid()||stamp!==version)return;
+        const s=data.summary;
+        const stats='<div class="os-delivery-customer-metrics">'+[
+          ['Compras concluídas',number(s.completed)],['Total comprado',money(s.purchased_cents)],
+          ['Recebido em vendas concluídas',money(s.received_cents)],['Saldo a prazo',money(s.outstanding_cents)]
+        ].map(([label,value])=>'<div class="os-card os-metric"><div class="os-metric-head"><span>'+esc(label)+'</span></div><strong>'+esc(value)+'</strong></div>').join('')+'</div>';
+        const details=row('Ticket médio',s.average_ticket_cents==null?'—':money(s.average_ticket_cents))+
+          row('Última compra',s.last_purchase_at?fmtDate(dateKey(new Date(s.last_purchase_at))):'—')+
+          row('Intervalo médio entre compras',s.average_interval_days==null?'Sem histórico suficiente':new Intl.NumberFormat('pt-BR',{maximumFractionDigits:1}).format(s.average_interval_days)+' dias')+
+          row('Pedidos em aberto',number(s.open_orders));
+        const list=(heading,items,format,emptyText)=>'<section class="os-delivery-customer-section"><h3>'+heading+'</h3>'+
+          (items.length?items.map(format).join(''):'<p class="os-help">'+emptyText+'</p>')+'</section>';
+        const history=list('Histórico de pedidos',data.items,item=>'<article class="os-delivery-customer-order">'+
+          '<div class="os-summary-row"><strong>Pedido '+esc(item.id.slice(0,8).toUpperCase())+'</strong><strong>'+esc(money(item.total_cents))+'</strong></div>'+
+          '<p class="os-help">'+esc(fmtDate(dateKey(new Date(item.created_at)))+' · '+(modes[item.mode]||'—')+' · '+(channels[item.sales_channel]||'Painel'))+'</p>'+
+          '<div class="os-summary-row"><span>'+esc(labels[item.status]||item.status)+'</span><span>'+esc(item.receipt_status==='refunded'?'Estornado':item.outstanding_cents>0?'A receber '+money(item.outstanding_cents):item.receipt_status==='paid'?'Recebido':item.pix_state==='pending'?'Pix a conferir':'')+'</span></div></article>',
+          'Nenhum pedido vinculado ao cliente.');
+        panel.innerHTML=stats+'<div class="os-delivery-customer-section">'+details+'</div>'+
+          list('Produtos mais comprados',data.favorites,x=>row([x.product,x.variant].filter(Boolean).join(' · '),number(x.quantity)+' un.'),'Sem compras concluídas.')+
+          list('Vasilhames com o cliente',data.containers,x=>row(x.name,number(x.quantity)+' un.'),'Nenhum vasilhame pendente.')+
+          list('Endereços salvos',data.address_labels,x=>row(x,'Cadastrado'),'Nenhum endereço salvo.')+
+          history+(data.offset||data.has_more?'<div class="os-pagination"><span>Página '+(data.offset/data.limit+1)+'</span><div class="os-actions">'+control('Anterior','previous',!data.offset)+control('Próxima','next',!data.has_more)+'</div></div>':'');
+        panel.dataset.pageSize=String(data.limit);
+      }catch(error){
+        if(valid()&&stamp===version)panel.innerHTML='<div class="os-notice os-error" role="alert"><p>'+esc(error.message||'Não foi possível consultar o histórico.')+'</p>'+control('Tentar novamente','retry')+'</div>';
+      }finally{if(valid()&&stamp===version)panel.removeAttribute('aria-busy');}
+    }
+    panel.addEventListener('click',event=>{
+      const action=event.target.closest('[data-delivery-customer-page]')?.dataset.deliveryCustomerPage;
+      if(!action||!valid())return;
+      event.stopPropagation();
+      const size=Number(panel.dataset.pageSize)||25;
+      if(action==='next')offset+=size;
+      if(action==='previous')offset=Math.max(0,offset-size);
+      void read();
+    });
+    void read();
+  }
   function showCustomer(record=null){
     const c=record||{};
     const hasExtra=!!(record&&(c.email||c.birth_date||c.birth_day||c.neighborhood||c.city));
@@ -3981,10 +4035,11 @@
       (record?checkField(dedicatedPatients()?'Contato ativo':dentalWorkspace()?'Paciente ativo':'Cliente ativo','active',c.active!==false):'');
     if(record&&!deliveryPreview())content+='<div class="os-stats os-client-stats"><div class="os-stat os-client-stat-total"><strong>'+money(c.total_spent_cents)+'</strong><small>Total atendido na Orion</small></div><div class="os-stat"><strong>'+number(c.total_appointments)+'</strong><small>Agendamentos na Orion</small></div><div class="os-stat"><strong>'+number(c.loyalty_points)+'</strong><small>Pontos</small></div></div>'+
       (number(c.legacy_appointments)>0?'<p class="os-client-hint">Agenda antiga: '+number(c.legacy_appointments)+' agendamentos e '+money(c.legacy_spent_cents)+' informados pela origem. Consulte os detalhes abaixo.</p>':'');
-    const afterFields=record&&!deliveryPreview()?(dedicatedPatients()?'':dentalPatientJourney(c))+customerHistoryPanel(c)+customerLegacyHistoryPanel():'';
+    const afterFields=record?(deliveryPreview()?'<section class="os-delivery-customer-history"><h2>Histórico comercial</h2><div id="osDeliveryCustomerProfile" aria-live="polite"></div></section>':(dedicatedPatients()?'':dentalPatientJourney(c))+customerHistoryPanel(c)+customerLegacyHistoryPanel()):'';
     if(!showDialog('customer',record?(dedicatedPatients()?(writable()?'Editar contato':'Contato'):dentalWorkspace()?(writable()?'Editar paciente':'Paciente'):(writable()?'Editar cliente':'Cliente')):(dedicatedPatients()?'Novo contato':dentalWorkspace()?'Novo paciente':'Novo cliente'),
       dialogForm('customer',content,record?'Salvar alterações':'Cadastrar cliente',
         record&&writable()?button('Excluir','delete-customer','os-ghost','trash'):'',afterFields),{record}))return;
+    if(record&&deliveryPreview()){mountDeliveryCustomerProfile(c,state.dialog);return;}
     if(record){
       const opened=state.dialog,history=$('osCustomerServiceHistory');
       const startHistory=()=>{

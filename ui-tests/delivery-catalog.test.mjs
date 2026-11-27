@@ -169,3 +169,32 @@ test('Delivery CRM and ledger work with only their basic entitlements, without a
   assert.ok(h.document.querySelector('#osDialog[open] [data-os-form=finance]'));
   assert.deepEqual(h.errors,[]);
 });
+
+test('Delivery customer opens a commercial history without scheduling permissions',async t=>{
+  const base=planState('none',{delivery_catalog_preview:true});
+  const features=[...base.features,'clients.manage','finance.basic'];
+  const plan={...base,features,permissions:Object.fromEntries(features.map(x=>[x,true]))};
+  const id='54000000-0000-4000-8000-000000000003';
+  const record={id,name:'Cliente de teste',active:true,version:1,created_at:'2026-11-27T10:00:00Z'};
+  const profile={summary:{completed:1,purchased_cents:2000,received_cents:1000,outstanding_cents:1000,
+    average_ticket_cents:2000,last_purchase_at:'2026-11-27T12:00:00Z',average_interval_days:null,open_orders:0},
+    items:[{id,created_at:'2026-11-27T12:00:00Z',status:'fulfilled',mode:'pickup',sales_channel:'phone',total_cents:2000,
+      outstanding_cents:1000,receipt_status:'pending'}],offset:0,limit:25,has_more:false,
+    favorites:[{product:'Água',variant:'20 L',quantity:2}],containers:[{name:'Garrafão',quantity:1}],address_labels:['Casa']};
+  const h=await makeSuite({initialRoute:'clientes',permissions:plan,respond:path=>{
+    if(path.includes('/delivery/order-customers/')&&path.includes('/profile?'))return profile;
+    if(path.endsWith('/management/customers/'+id))return record;
+    if(path.includes('/management/customers?'))return {items:[record],total:1};
+    return defaultResponse(path);
+  }});
+  t.after(()=>h.close());await flush();
+  h.click('[data-os-customer="'+id+'"]');await flush();
+  const panel=h.document.querySelector('#osDeliveryCustomerProfile');
+  assert.ok(panel);
+  assert.match(panel.textContent,/Histórico de pedidos/);
+  assert.match(panel.textContent,/Garrafão/);
+  assert.match(panel.textContent,/Casa/);
+  assert.match(panel.textContent,/Saldo a prazo/);
+  assert.equal(h.calls.some(x=>x.path.includes('/appointments')),false);
+  assert.deepEqual(h.errors,[]);
+});

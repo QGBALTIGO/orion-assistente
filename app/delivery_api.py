@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from app import delivery_catalog as catalog
 from app import delivery_address
 from app import delivery_customer_addresses as address_book
+from app import delivery_crm
 from app import delivery_containers as containers
 from app import delivery_logistics as logistics
 from app import delivery_orders as orders
@@ -198,6 +199,13 @@ async def order_customers(tenant_id: UUID, search: str = Query(max_length=120), 
 @router.post("/order-customers", status_code=201)
 async def add_order_customer(tenant_id: UUID, payload: orders.QuickCustomer, actor: Actor = Depends(authenticate)):
     return await run(actor, tenant_id, orders.create_customer, payload, write=True, response_status=201)
+
+
+@router.get("/order-customers/{customer_id}/profile")
+async def customer_profile(tenant_id: UUID, customer_id: UUID,
+                           offset: int = Query(default=0, ge=0, le=100_000),
+                           actor: Actor = Depends(authenticate)):
+    return await run(actor, tenant_id, delivery_crm.profile, customer_id, offset=offset)
 
 
 @router.get("/order-customers/{customer_id}/previous-address")
