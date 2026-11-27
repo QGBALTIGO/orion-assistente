@@ -96,6 +96,10 @@
   gap: 6px;
 }
 
+.os-delivery-shop-product-list {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .os-delivery-shop-form .os-check {
   max-width: 100%;
 }

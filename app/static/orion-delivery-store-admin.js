@@ -129,7 +129,9 @@
 
     function itemTable(list, selected) {
       const actionTitle = canWrite() ? '<th scope="col">Ações</th>' : '';
-      return '<div class="os-table-scroll"><table class="os-table os-delivery-shop-item-table"><thead><tr>'+
+      const region = selected ? 'Produtos na vitrine' : 'Produtos disponíveis para a vitrine';
+      return '<div class="os-table-scroll" tabindex="0" role="region" aria-label="'+region+'">'+
+        '<table class="os-table os-delivery-shop-item-table"><thead><tr>'+
         '<th scope="col">Produto</th><th scope="col">'+(selected?'Situação':'Preço')+'</th>'+actionTitle+'</tr></thead><tbody>'+
         list.map((item,index)=>{
           const entry = selected?item:state.items.find(row=>row.variant_id===item.variant_id);
@@ -148,9 +150,9 @@
     }
 
     function productPanel() {
-      return '<section class="os-card os-form"><h2>Produtos na vitrine</h2>'+
+      return '<section class="os-card os-form os-delivery-shop-product-list"><h2>Produtos na vitrine</h2>'+
         (state.items.length?itemTable(state.items,true):'<p class="os-help">Selecione os produtos que deseja exibir na loja.</p>')+
-        '</section><section class="os-card os-section-gap os-form"><h2>Selecionar produtos</h2>'+
+        '</section><section class="os-card os-section-gap os-form os-delivery-shop-product-list"><h2>Selecionar produtos</h2>'+
         '<form id="osStoreFilters" class="os-filter-row os-delivery-filters">'+
         field('Buscar produto','store_search','search',filters.search||'','maxlength="120" placeholder="Nome do produto"')+
         '<button type="submit" class="os-button os-outline">Filtrar</button></form>'+

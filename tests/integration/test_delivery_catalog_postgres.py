@@ -549,6 +549,8 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                     ready = (page.get_by_role(ready_role, name=ready_name, exact=True) if ready_role
                              else page.get_by_text(ready_name, exact=True))
                     await expect(ready).to_be_visible()
+                    if route == "loja-delivery":
+                        await expect(page.locator("#osStoreItems table")).to_be_visible()
                     for width in widths:
                         await page.set_viewport_size({"width":width,"height":900})
                         await assert_delivery_layout(page, (route,theme,width))
@@ -696,6 +698,8 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                     ready = (page.get_by_role(ready_role,name=ready_name,exact=True) if ready_role
                              else page.get_by_text(ready_name,exact=True))
                     await expect(ready).to_be_visible()
+                    if route == "loja-delivery":
+                        await expect(page.locator("#osStoreItems table")).to_be_visible()
                     for width in (320,375,390,430,768,1280):
                         await page.set_viewport_size({"width":width,"height":900})
                         await assert_delivery_layout(page, ("WebKit",route,width))
