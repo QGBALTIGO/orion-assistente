@@ -422,6 +422,8 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                     await expect(page.get_by_role("cell", name="Devolução", exact=True)).to_be_visible()
                 panels = (
                     ("dashboard-delivery", "Dashboard", None, "Pedidos do dia"),
+                    ("clientes", "Clientes", "button", "Novo cliente"),
+                    ("financeiro", "Financeiro", "button", "Vendas a prazo"),
                     ("pedidos-delivery", "Pedidos", "button", "Novo pedido"),
                     ("entregas-delivery", "Entregas", "button", "Novo pedido"),
                     ("vasilhames-delivery", "Vasilhames", "button", "Novo vasilhame"),
@@ -441,6 +443,21 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                         await assert_delivery_layout(page, (route,theme,width))
                         if width in (390,1440):
                             await page.screenshot(path=artifacts/f"{route}-{theme}-{width}.png", animations="disabled")
+                    if route == "clientes":
+                        await expect(page.locator("#osCustomersCount")).to_contain_text("ativo")
+                        await expect(page.get_by_role("tab",name="Fixos",exact=True)).to_have_count(0)
+                        await expect(page.get_by_role("tab",name="Em risco",exact=True)).to_have_count(0)
+                        await page.get_by_role("tab",name="Inativos",exact=True).click()
+                        await expect(page.locator("#osPageBody")).to_contain_text("Nenhum cliente inativo")
+                        await page.get_by_role("tab",name="Ativos",exact=True).click()
+                        await page.get_by_role("button",name="Novo cliente",exact=True).click()
+                        await expect(page.locator("#osDialog [data-os-form=customer]")).to_be_visible()
+                        await page.locator("#osDialog .os-close").click()
+                    if route == "financeiro":
+                        await expect(page.locator(".os-finance-metrics")).to_be_visible()
+                        await page.get_by_role("button",name="Novo lançamento",exact=True).click()
+                        await expect(page.locator("#osDialog [data-os-form=finance]")).to_be_visible()
+                        await page.locator("#osDialog .os-close").click()
                     if route == "relatorio-delivery":
                         await page.set_viewport_size({"width":390,"height":844})
                         for tab in ("Vendas","Produtos","Clientes","Estoque","Movimentações","A receber","Vasilhames","Atividades"):

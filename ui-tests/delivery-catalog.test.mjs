@@ -115,3 +115,30 @@ test('delivery requires a server entitlement and viewers get read-only navigatio
   assert.equal(new Set(actualPaths).size,actualPaths.length);
   assert.equal(viewer.document.querySelector('[data-os-action=delivery-create]'),null);
 });
+
+test('Delivery CRM and ledger work with only their basic entitlements, without agenda or staff permissions',async t=>{
+  const base=planState('none',{delivery_catalog_preview:true});
+  const features=[...base.features,'clients.manage','finance.basic'];
+  const plan={...base,features,permissions:Object.fromEntries(features.map(x=>[x,true]))};
+  const h=await makeSuite({initialRoute:'clientes',permissions:plan,respond:(path)=>{
+    if(path.includes('/management/customers'))return {items:[],total:0};
+    if(path.includes('/management/finance/summary'))return {summary:{income_cents:0,expense_cents:0,count:0}};
+    if(path.includes('/management/finance?'))return {items:[],total:0};
+    if(path.includes('/professionals')||path.includes('/appointments/series')||path.includes('/finance/receipts'))throw Error('Unexpected agenda or professional dependency');
+    return defaultResponse(path);
+  }});
+  t.after(()=>h.close());await flush();
+  assert.ok(h.document.querySelector('[data-os-action=new-customer]'));
+  assert.equal(h.document.querySelector('[data-os-customer-status=fixed]'),null);
+  assert.equal(h.document.querySelector('[data-os-customer-status=at_risk]'),null);
+  h.click('[data-os-customer-status=inactive]');await flush();
+  assert.match(h.document.querySelector('#osPageBody').textContent,/Nenhum cliente inativo/);
+  h.click('#osNav [data-os-route=financeiro]');await flush();
+  assert.ok(h.document.querySelector('.os-finance-metrics'));
+  assert.ok(h.document.querySelector('#osPageBody [data-os-route=vendas-prazo-delivery]'));
+  assert.equal(h.document.querySelector('[data-os-action=receipt-settings]'),null);
+  assert.equal(h.calls.some(x=>/\/professionals|\/appointments\/series|\/finance\/receipts/.test(x.path)),false);
+  h.click('[data-os-action=new-expense]');await flush();
+  assert.ok(h.document.querySelector('#osDialog[open] [data-os-form=finance]'));
+  assert.deepEqual(h.errors,[]);
+});
