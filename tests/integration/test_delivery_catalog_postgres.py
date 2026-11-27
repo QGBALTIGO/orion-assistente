@@ -267,8 +267,10 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                     "-subj","/CN=127.0.0.1","-addext","subjectAltName=IP:127.0.0.1",
                     "-keyout",str(key),"-out",str(cert)], check=True, capture_output=True)
     origin = f"https://127.0.0.1:{listener.getsockname()[1]}"
-    server = uvicorn.Server(uvicorn.Config(app, log_level="warning", access_log=False,
-                                          ssl_keyfile=str(key), ssl_certfile=str(cert)))
+    server = uvicorn.Server(uvicorn.Config(
+        app, log_level="warning", access_log=False, ssl_keyfile=str(key), ssl_certfile=str(cert),
+        timeout_graceful_shutdown=5,
+    ))
     server_task = asyncio.create_task(server.serve(sockets=[listener]))
     widths = (320, 375, 390, 430, 768, 1024, 1280, 1440, 1920)
     artifacts = Path(os.getenv("DELIVERY_EVIDENCE_DIR", "artifacts/delivery-browser"))
@@ -349,6 +351,7 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                     await product_form.get_by_label("Nome do produto").fill("Água de homologação")
                     await product_form.get_by_label("Preço de venda").fill("12,50")
                     await product_form.get_by_label("Estoque inicial").fill("5")
+                    await product_form.locator('input[name="allow_storefront"]').check()
                     await product_form.get_by_role("button",name="Salvar produto").click()
                     await expect(product_form).to_be_hidden()
                     await page.get_by_role("button",name="Ajustar estoque").click()
@@ -703,6 +706,8 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                     for width in (320,375,390,430,768,1280):
                         await page.set_viewport_size({"width":width,"height":900})
                         await assert_delivery_layout(page, ("WebKit",route,width))
+                        if route == "loja-delivery" and width == 320:
+                            await page.screenshot(path=artifacts/"webkit-loja-delivery-320.png", animations="disabled")
                     await page.set_viewport_size({"width":390,"height":844})
                     await page.screenshot(path=artifacts/f"webkit-{route}-390.png", animations="disabled")
                     if route == "pedidos-delivery":
@@ -719,5 +724,7 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
         assert errors == []
     finally:
         server.should_exit = True
-        await asyncio.wait_for(server_task, timeout=10)
-        listener.close()
+        try:
+            await asyncio.wait_for(server_task, timeout=10)
+        finally:
+            listener.close()
