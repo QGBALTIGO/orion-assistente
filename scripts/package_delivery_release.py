@@ -20,6 +20,8 @@ INHERITED_MIGRATIONS = {
     "alembic/versions/0099_admin_personal_password.py": "05ebee0f38b81acbdd7c363b3f30cf8184e98f61",
 }
 SHARED = frozenset({
+    "pyproject.toml",
+    "requirements.lock",
     "app/commercial_service.py",
     "app/main.py",
     "app/media_api.py",
@@ -51,7 +53,7 @@ def runtime_changes(release):
     if len(tokens) % 2 != 1 or tokens.pop() != "":
         raise ValueError("Unexpected Git change list")
     changes = {}
-    # Preserve the image's dependency lock, infrastructure, entrypoints and assets.
+    # Merge the reviewed security pins while preserving other live changes.
     for status, path in zip(tokens[::2], tokens[1::2], strict=True):
         if path.startswith((".github/", "deploy/", "docs/", "tests/", "ui-tests/")) or path == "scripts/package_delivery_release.py":
             continue

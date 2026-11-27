@@ -29,7 +29,8 @@ AREAS = [
 ]
 
 
-async def test_driver_offer_refusal_retry_cash_delivery_and_location_visibility(onboarding_db,monkeypatch):
+@pytest.mark.parametrize("method", ["cash","pix"])
+async def test_driver_offer_refusal_retry_delivery_and_location_visibility(onboarding_db,monkeypatch,method):
     from fastapi import FastAPI
     from app.delivery_driver_api import router as driver_router
     from app.panel_auth import panel_actor
@@ -69,13 +70,13 @@ async def test_driver_offer_refusal_retry_cash_delivery_and_location_visibility(
         listing={k:product[k] for k in ("variant_id","variant_revision","product_revision")}
         slug="ensaio-"+uuid4().hex[:12]
         store={"revision":0,"slug":slug,"title":"Distribuidora de homologação","pickup_details":"Depósito de teste",
-               "enabled":True,"confirm_catalogue":True,"allow_delivery":True,"payment_methods":["cash"],
+               "enabled":True,"confirm_catalogue":True,"allow_delivery":True,"payment_methods":[method],
                "items":[{**listing,"label":"Água mineral 20 L","kind":"water"}]}
         published=await admin.put(base+"/storefront",json=store)
         assert published.status_code==200,published.text
         shop="/api/v1/delivery-store/"+slug
         draft={"mode":"delivery","address":ADDRESS,"items":[{"variant_id":variant,"quantity":1}],
-               "payment_preference":"cash","change_for_cents":2000,"accept_exchange":True}
+               "payment_preference":method,"change_for_cents":2000 if method=="cash" else None,"accept_exchange":True}
         quote=await admin.post(shop+"/quote",json=draft)
         assert quote.status_code==200,quote.text
         checkout=await admin.post(shop+"/orders",json={**draft,"quote":quote.json()["quote"],"customer_name":"Pessoa de avaliação",
@@ -115,12 +116,21 @@ async def test_driver_offer_refusal_retry_cash_delivery_and_location_visibility(
         assert one.status_code==two.status_code==200,(one.text,two.text)
         assert one.json()==two.json()
         queue=(await driver.get(driver_base+"/queue")).json()["orders"]
-        assert queue[0]["address"]["street"]==ADDRESS["street"] and queue[0]["change_for_cents"]==2000
+        assert queue[0]["address"]["street"]==ADDRESS["street"] and queue[0]["change_for_cents"]==draft["change_for_cents"]
         reached=await driver.post(actions,json={"action":"arrive","expected_revision":5,"idempotency_key":uuid4().hex})
         assert reached.status_code==200,reached.text
         assert (await admin.post(shop+"/status",json=tracking)).json()["delivery_stage"]=="arrived"
         finish={"action":"complete","expected_revision":6,"received":True,"payment_method":"cash","containers_confirmed":True,"idempotency_key":uuid4().hex}
-        assert (await driver.post(actions,json={**finish,"received":False})).status_code==422
+        if method=="cash":
+            assert (await driver.post(actions,json={**finish,"received":False})).status_code==422
+        else:
+            assert queue[0]["pix_state"]=="pending"
+            assert (await driver.post(actions,json={**finish,"payment_method":"pix"})).status_code==409
+            confirmation=await admin.post(base+"/orders/"+order+"/pix/confirm",json={
+                "received":True,"expected_revision":6,"idempotency_key":uuid4().hex})
+            assert confirmation.status_code==200,confirmation.text
+            assert (await driver.get(driver_base+"/queue")).json()["orders"][0]["pix_state"]=="confirmed"
+            finish.update(expected_revision=confirmation.json()["revision"],received=False,payment_method=None)
         completed=await driver.post(actions,json=finish)
         assert completed.status_code==200,completed.text
         assert (await driver.post(actions,json=finish)).json()==completed.json()

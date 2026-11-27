@@ -399,7 +399,9 @@ async def test_store_pause_minimum_and_exchange_flow(storefront_setup):
 
 
 @pytest.mark.skipif(os.getenv("ORION_DELIVERY_BROWSER_TEST") != "1", reason="Requires isolated Redis and Chromium")
-async def test_public_store_at_required_widths_and_checkout_in_browser(storefront_setup, monkeypatch):
+@pytest.mark.parametrize("method", ["cash","pix"])
+async def test_public_store_at_required_widths_and_checkout_in_browser(storefront_setup, monkeypatch, method):
+    from cryptography.fernet import Fernet
     import uvicorn
     from playwright.async_api import async_playwright, expect
     from app.main import app
@@ -412,7 +414,13 @@ async def test_public_store_at_required_widths_and_checkout_in_browser(storefron
     slug = "loja-browser-" + uuid4().hex[:10]
     async with client(actor) as http:
         admin, payload, _, _ = await set_up_items(http, tenant, slug)
-        saved = await http.put(admin + "/storefront", json={**payload,"brand_color":"#14514c"})
+        pix_key = str(uuid4())
+        if method=="pix":
+            monkeypatch.setenv("INTEGRATION_FERNET_KEY",Fernet.generate_key().decode())
+            configured = await http.put(admin+"/payments/pix",json={"expected_revision":0,"key_type":"random",
+                                       "key":pix_key,"holder":"Distribuidora de homologação"})
+            assert configured.status_code==200,configured.text
+        saved = await http.put(admin + "/storefront", json={**payload,"brand_color":"#14514c","payment_methods":[method]})
         assert saved.status_code == 200, saved.text
 
     listener = socket.socket()
@@ -458,16 +466,25 @@ async def test_public_store_at_required_widths_and_checkout_in_browser(storefron
             await page.get_by_role("button", name="Continuar pedido").click()
             await page.get_by_label("Nome", exact=True).fill("Pessoa sintética")
             await page.get_by_label("Telefone com DDD").fill("67999999903")
-            await page.get_by_label("Preciso de troco").check()
-            await page.get_by_label("Troco para").fill("20,00")
+            if method=="cash":
+                await page.get_by_label("Preciso de troco").check()
+                await page.get_by_label("Troco para").fill("20,00")
             await page.get_by_label("Observação para a loja").fill("Deixar na recepção")
             await page.get_by_role("button", name="Conferir valor").click()
-            await expect(page.get_by_text("Total no recebimento")).to_be_visible()
-            await expect(page.get_by_text("Troco previsto:")).to_be_visible()
+            await expect(page.locator("#store-order-summary").get_by_text("Total do pedido")).to_be_visible()
+            if method=="cash":
+                await expect(page.get_by_text("Troco previsto:")).to_be_visible()
             await page.get_by_role("button", name="Confirmar pedido").click()
             await expect(page.get_by_role("heading", name="Pedido recebido")).to_be_visible()
+            if method=="pix":
+                await expect(page.get_by_role("dialog").get_by_label("Chave Pix da loja")).to_have_value(pix_key)
+                await expect(page.get_by_role("dialog").get_by_role("button",name="Copiar chave Pix")).to_be_visible()
             await page.get_by_role("dialog").get_by_role("button", name="Acompanhar pedido").click()
             await expect(page.get_by_text("Pagamento: A confirmar pela loja", exact=False)).to_be_visible()
+            if method=="pix":
+                await expect(page.get_by_role("dialog").get_by_label("Chave Pix da loja")).to_have_value(pix_key)
+                assert await page.evaluate("() => document.querySelector('dialog[open]').scrollWidth <= innerWidth")
+                await page.screenshot(path=evidence / "loja-delivery-390-pix-manual.png",animations="disabled")
             await page.get_by_role("dialog").get_by_role("button", name="Fechar").click()
             await page.get_by_role("button", name="Ativar modo escuro", exact=False).click()
             await expect(page.locator("html")).to_have_attribute("data-theme", "dark")

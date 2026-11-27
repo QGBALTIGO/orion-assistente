@@ -227,15 +227,19 @@ async def overview(db, tenant, day):
                 AND coalesce(f.received_at,f.occurred_at)>=:start AND coalesce(f.received_at,f.occurred_at)<:end
             GROUP BY 1
         ), sales AS (
-            SELECT CAST(f.occurred_at AT TIME ZONE :zone AS date) AS day,
+            SELECT CAST(coalesce(done.created_at,f.occurred_at) AT TIME ZONE :zone AS date) AS day,
                 sum(q.total_cents) AS sales_cents,
                 sum(q.total_cents) FILTER (WHERE d.payment_due_date IS NOT NULL) AS credit_cents
             FROM delivery_order_details d
             JOIN commercial_orders o ON (o.tenant_id,o.id)=(d.tenant_id,d.order_id)
             JOIN commercial_quotes q ON (q.tenant_id,q.id)=(o.tenant_id,o.quote_id)
             JOIN financial_entries f ON (f.tenant_id,f.id)=(d.tenant_id,d.financial_entry_id)
+            LEFT JOIN LATERAL (
+                SELECT e.created_at FROM commercial_events e WHERE e.tenant_id=o.tenant_id AND e.entity='order'
+                    AND e.entity_id=o.id AND e.action='fulfilled' ORDER BY e.created_at LIMIT 1
+            ) done ON true
             WHERE d.tenant_id=:t AND o.origin='delivery' AND o.status='fulfilled'
-                AND f.kind='income' AND f.occurred_at>=:start AND f.occurred_at<:end
+                AND f.kind='income' AND coalesce(done.created_at,f.occurred_at)>=:start AND coalesce(done.created_at,f.occurred_at)<:end
             GROUP BY 1
         )
         SELECT CAST(:first AS date) + n AS date, coalesce(receipts.income_cents,0) AS income_cents,

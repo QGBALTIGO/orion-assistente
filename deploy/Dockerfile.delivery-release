@@ -28,6 +28,11 @@ for name, versions in manifest["files"].items():
         assert sha256(path.read_bytes()).hexdigest() == expected, name
 PY
 COPY --chown=appuser:appuser overlay/ /srv/app/
+USER root
+RUN python -m pip install --no-deps --only-binary=:all: -c requirements.lock cryptography==50.0.0 Pillow==13.0.0 opentelemetry-api==1.45.2 \
+    && python -m pip install --no-deps --force-reinstall . \
+    && python -m pip check
+USER appuser
 RUN python - <<'PY'
 from hashlib import sha256
 import json

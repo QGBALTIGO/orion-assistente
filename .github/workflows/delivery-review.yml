@@ -106,6 +106,8 @@ jobs:
           /tmp/orion-analysis/bin/pip install ruff==0.12.12 mypy==1.18.2 pip-audit==2.9.0
       - name: Verificar os módulos da distribuição
         run: |
+          python -m pip check
+          pytest -q tests/unit/test_media_api.py tests/unit/test_orion_pwa_push.py tests/unit/test_subscription_chatbot_media.py tests/unit/test_subscription_template_pdf.py
           /tmp/orion-analysis/bin/ruff check --select E9,F63,F7,F82 app/delivery_*.py
           /tmp/orion-analysis/bin/mypy --python-executable "$(which python)" --check-untyped-defs --follow-imports=silent --ignore-missing-imports app/delivery_driver_api.py app/delivery_purchasing.py app/delivery_performance.py
       - name: Consultar avisos de segurança das versões fixadas
