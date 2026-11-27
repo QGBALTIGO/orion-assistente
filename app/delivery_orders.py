@@ -116,6 +116,7 @@ class Transition(ProfileModel):
 
 
 RECEIPT_STATUS = "CASE WHEN d.return_financial_entry_id IS NOT NULL THEN 'refunded' ELSE f.status END"
+DELIVERY_DATE = "coalesce(d.scheduled_at,o.created_at)"
 ORDERS = f"""
     SELECT o.id,o.quote_id,o.status,o.revision,o.created_at,d.mode,d.customer_id,
         d.financial_entry_id,q.customer_name,q.total_cents,d.delivery_fee_cents,d.courier_name,d.dispatched_at,
@@ -132,16 +133,17 @@ ORDERS = f"""
 """
 
 
-async def list_orders(db, tenant, *, search, state, mode, start, end, offset):
+async def list_orders(db, tenant, *, search, state, mode, start, end, offset, by_delivery_date=False):
     lower, upper = None, None
     if start is not None or end is not None:
         _, lower, upper = await management.period_for(db, tenant, start, end)
-    rows = (await db.execute(text(ORDERS + """
+    date_column = DELIVERY_DATE if by_delivery_date and mode == "delivery" else "o.created_at"
+    rows = (await db.execute(text(ORDERS + f"""
         AND (:state='all' OR o.status=:state)
         AND (:mode='all' OR d.mode=:mode)
         AND (:search='' OR position(lower(:search) in lower(concat_ws(' ',q.customer_name,cast(o.id as text))))>0)
-        AND (CAST(:lower AS timestamptz) IS NULL OR o.created_at>=:lower)
-        AND (CAST(:upper AS timestamptz) IS NULL OR o.created_at<:upper)
+        AND (CAST(:lower AS timestamptz) IS NULL OR {date_column}>=:lower)
+        AND (CAST(:upper AS timestamptz) IS NULL OR {date_column}<:upper)
         ORDER BY o.created_at DESC,o.id DESC LIMIT :limit OFFSET :offset
     """), {"t":tenant,"state":state,"mode":mode,"search":search.strip(),"lower":lower,"upper":upper,
             "limit":LIMIT+1,"offset":offset})).mappings().all()
@@ -171,16 +173,21 @@ async def list_credit(db, tenant, *, search, status, offset):
 
 async def overview(db, tenant, day):
     timezone = (await db.execute(text("SELECT timezone FROM tenants WHERE id=:t"), {"t":tenant})).scalar_one()
-    selected = day or commerce.now_utc().astimezone(ZoneInfo(timezone)).date()
+    today = commerce.now_utc().astimezone(ZoneInfo(timezone)).date()
+    selected = day or today
     first = selected - timedelta(days=6)
     _, start, end = management.report_period(first, selected, timezone)
     _, day_start, _ = management.report_period(selected, selected, timezone)
-    metrics = (await db.execute(text("""
-        SELECT count(*) AS orders, count(*) FILTER (WHERE o.status='fulfilled') AS fulfilled,
-            count(*) FILTER (WHERE d.mode='delivery' AND o.status IN ('confirmed','dispatched')) AS open_deliveries
+    metrics = (await db.execute(text(f"""
+        SELECT count(*) FILTER (WHERE o.created_at>=:start AND o.created_at<:end) AS orders,
+            count(*) FILTER (WHERE o.created_at>=:start AND o.created_at<:end AND o.status='fulfilled') AS fulfilled,
+            count(*) FILTER (WHERE d.mode='delivery' AND o.status IN ('confirmed','dispatched')
+                AND {DELIVERY_DATE}>=:start AND {DELIVERY_DATE}<:end) AS open_deliveries
         FROM commercial_orders o
         JOIN delivery_order_details d ON (d.tenant_id,d.order_id)=(o.tenant_id,o.id)
-        WHERE o.tenant_id=:t AND o.origin='delivery' AND o.created_at>=:start AND o.created_at<:end
+        WHERE o.tenant_id=:t AND o.origin='delivery'
+            AND ((o.created_at>=:start AND o.created_at<:end)
+              OR (d.mode='delivery' AND {DELIVERY_DATE}>=:start AND {DELIVERY_DATE}<:end))
     """), {"t":tenant,"start":day_start,"end":end})).mappings().one()
     series = (await db.execute(text(f"""
         WITH payment_links AS ({payments.RECEIPT_LINKS}), receipts AS (
@@ -190,15 +197,46 @@ async def overview(db, tenant, day):
             WHERE f.tenant_id=:t AND f.status='paid'
                 AND coalesce(f.received_at,f.occurred_at)>=:start AND coalesce(f.received_at,f.occurred_at)<:end
             GROUP BY 1
+        ), sales AS (
+            SELECT CAST(f.occurred_at AT TIME ZONE :zone AS date) AS day,
+                sum(q.total_cents) AS sales_cents,
+                sum(q.total_cents) FILTER (WHERE d.payment_due_date IS NOT NULL) AS credit_cents
+            FROM delivery_order_details d
+            JOIN commercial_orders o ON (o.tenant_id,o.id)=(d.tenant_id,d.order_id)
+            JOIN commercial_quotes q ON (q.tenant_id,q.id)=(o.tenant_id,o.quote_id)
+            JOIN financial_entries f ON (f.tenant_id,f.id)=(d.tenant_id,d.financial_entry_id)
+            WHERE d.tenant_id=:t AND o.origin='delivery' AND o.status='fulfilled'
+                AND f.kind='income' AND f.occurred_at>=:start AND f.occurred_at<:end
+            GROUP BY 1
         )
-        SELECT CAST(:first AS date) + n AS date, coalesce(receipts.income_cents,0) AS income_cents
+        SELECT CAST(:first AS date) + n AS date, coalesce(receipts.income_cents,0) AS income_cents,
+            coalesce(sales.sales_cents,0) AS sales_cents, coalesce(sales.credit_cents,0) AS credit_cents
         FROM generate_series(0,6) AS n
-        LEFT JOIN receipts ON receipts.day=CAST(:first AS date) + n ORDER BY n
+        LEFT JOIN receipts ON receipts.day=CAST(:first AS date) + n
+        LEFT JOIN sales ON sales.day=CAST(:first AS date) + n
+        ORDER BY n
     """), {"t":tenant,"zone":timezone,"start":start,"end":end,"first":first})).mappings().all()
     recent = await list_orders(db, tenant, search="", state="all", mode="all", start=selected, end=selected, offset=0)
+    deliveries = await list_orders(db, tenant, search="", state="all", mode="delivery", start=selected,
+                                   end=selected, offset=0, by_delivery_date=True)
+    credit_customers = (await db.execute(text("""
+        SELECT c.name, count(*) AS orders, sum(f.amount_cents) AS outstanding_cents,
+            coalesce(sum(f.amount_cents) FILTER (WHERE d.payment_due_date<:today),0) AS overdue_cents
+        FROM delivery_order_details d
+        JOIN financial_entries f ON (f.tenant_id,f.id)=(d.tenant_id,d.financial_entry_id)
+        JOIN customers c ON (c.tenant_id,c.id)=(d.tenant_id,d.customer_id)
+        WHERE d.tenant_id=:t AND d.payment_due_date IS NOT NULL AND f.kind='income' AND f.status='pending'
+            AND f.amount_cents>0
+        GROUP BY c.id,c.name
+        ORDER BY overdue_cents DESC,outstanding_cents DESC,c.id
+        LIMIT 5
+    """), {"t":tenant,"today":today})).mappings().all()
     low = await list_items(db,tenant,search="",category="",status_filter="active",low_stock=True,offset=0)
-    return {"date":selected,"metrics":{**dict(metrics),"paid_cents":series[-1]["income_cents"]},
+    last = series[-1]
+    return {"date":selected,"today":today,"metrics":{**dict(metrics),"paid_cents":last["income_cents"],
+            "sales_cents":last["sales_cents"],"credit_cents":last["credit_cents"]},
             "daily":[dict(row) for row in series],"recent":recent["items"][:5],
+            "deliveries":deliveries["items"][:5],"credit_customers":[dict(row) for row in credit_customers],
             "low_stock":[{key:item[key] for key in ("name","variant_name","quantity_on_hand","reserved_quantity","unit")}
                          for item in low["items"][:5]]}
 

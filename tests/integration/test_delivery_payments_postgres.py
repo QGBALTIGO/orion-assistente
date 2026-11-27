@@ -87,7 +87,10 @@ async def test_partial_pix_credits_cash_and_prevents_duplicate_receipts(sale):
     partial_event = detail["history"][-1]
     assert partial_event["action"] == "partially_received" and partial_event["details"]["amount_cents"] == 400
     assert (await http.get(root + "/credit")).json()["summary"]["open_cents"] == 850
-    assert (await http.get(root + "/overview")).json()["metrics"]["paid_cents"] == 400
+    dashboard = (await http.get(root + "/overview")).json()
+    assert dashboard["metrics"]["paid_cents"] == 400
+    assert dashboard["metrics"]["sales_cents"] == dashboard["metrics"]["credit_cents"] == 1250
+    assert dashboard["credit_customers"][0]["outstanding_cents"] == 850
     summary = (await http.get(root + "/reports/sales")).json()["summary"]
     assert summary["paid_cents"] == 400 and summary["pending_cents"] == 850
 

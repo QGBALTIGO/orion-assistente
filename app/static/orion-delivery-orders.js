@@ -12,50 +12,315 @@
   const modeLabel = order => modes.find(([key])=>key===order.mode)?.[1];
   const picture = (item,esc) => window.OrionDeliveryEditor?.picture(item.image_url,esc)||'';
 
-  async function dashboard({host,filters,call,allowed,ui}) {
-    const {esc,loading,field,title,money,metric,seriesChart,routeButton,dateKey,query}=ui;
-    if (!host || !allowed()) return;
-    filters.day ??= '';
-    host.innerHTML=title('Dashboard','Delivery e Distribuição')+
-      '<form class="os-filter-row">'+field('Data','delivery_day','date',filters.day||dateKey(),'required min="1900-01-01" max="2100-12-31"')+
-      '<button type="submit" class="os-button os-outline">Filtrar</button></form>'+
-      '<div data-delivery-overview aria-live="polite"></div>';
-    window.OrionFields.refresh(host);
-    const form=host.querySelector('form'), panel=host.querySelector('[data-delivery-overview]');
-    let revision=0;
-    async function read() {
-      const attempt=++revision;
-      const current = () => allowed()&&host.isConnected&&attempt===revision;
-      panel.innerHTML=loading('Carregando indicadores…');
-      try {
-        const data=await call('/overview?'+query({day:filters.day}));
-        if (!current()) return;
-        form.elements.delivery_day.value=data.date;
-        const {orders,fulfilled,open_deliveries,paid_cents}=data.metrics;
-        const summaries='<div class="os-metrics">'+metric('Pedidos do dia',orders,'deliveryReceipt')+
-          metric('Concluídos',fulfilled,'check')+metric('Entregas pendentes',open_deliveries,'deliveryTruck')+
-          metric('Recebimentos brutos',money(paid_cents),'wallet')+'</div>';
-        const listSection=(heading,rows,noRows,action)=>'<section class="os-card os-section-gap">'+
-          '<div class="os-card-header"><h2>'+heading+'</h2>'+action+'</div>'+
-          (rows.length?rows.join(''):'<p class="os-help">'+noRows+'</p>')+'</section>';
-        const recent=data.recent.map(order=>'<div class="os-summary-row"><span>'+esc('Pedido '+code(order)+' · '+
-          modeLabel(order)+' · '+statusLabels[order.status])+'</span><strong>'+money(order.total_cents)+'</strong></div>');
-        const stock=data.low_stock.map(item=>'<div class="os-summary-row"><span>'+esc(item.name+' · '+item.variant_name)+
-          '</span><strong>'+esc((item.quantity_on_hand-item.reserved_quantity)+' '+item.unit+' disponíveis')+'</strong></div>');
-        panel.innerHTML=summaries+'<section class="os-card os-section-gap"><h2>Recebimentos nos últimos 7 dias</h2>'+
-          seriesChart(data.daily,[['income_cents','Recebido','success']])+'</section>'+
-          listSection('Pedidos recentes',recent,'Nenhum pedido nesta data.',routeButton('Ver pedidos','pedidos-delivery','os-outline os-small','deliveryReceipt'))+
-          listSection('Estoque baixo',stock,'Nenhum alerta de reposição.',routeButton('Ver estoque','produtos-delivery','os-outline os-small','box'));
-      } catch (error) {
-        if (current()) panel.innerHTML='<div class="os-notice os-error" role="alert"><p>'+esc(error.message)+'</p></div>';
+  const orderDateTime=(value,{fmtDate,dateKey,timeLabel})=>fmtDate(dateKey(new Date(value)))+' '+timeLabel(value);
+  const statusBadge=(state,badge)=>badge(state==='fulfilled'?'completed':['confirmed','dispatched'].includes(state)?'pending':state,statusLabels[state]);
+  const orderAttribute=(name,id,esc)=>'data-delivery-'+name+'="'+esc(id)+'"';
+  const orderError=(error,esc)=>'<div class="os-notice os-error" role="alert"><p>'+esc(error.message || 'Não foi possível concluir a ação.')+'</p></div>';
+
+  function openOrderEditor({call,current,ui,openEditor,deliveryOnly=false,onCreated}) {
+    const {esc,loading,field,moneyField,selectField,checkField,button,money,query,brazilianStates,requestKey,localISO}=ui;
+    const containerUi=window.OrionDeliveryOrderContainers;
+    const itemAttr=(name,id)=>orderAttribute(name,id,esc);
+    const err=error=>orderError(error,esc);
+    const cart=new Map();
+    let customer=null, estimate=null, customerSaving=false;
+    let packaging, policy;
+    const addressFields='<fieldset data-delivery-address hidden disabled class="os-form">'+
+      '<legend>Endereço de entrega</legend>'+
+      '<div class="os-actions hidden" data-delivery-previous-control hidden>'+
+      command(button,'Usar último endereço','delivery-use-address','left')+'</div>'+
+      '<p data-delivery-address-status class="os-help" aria-live="polite"></p><div class="os-form-grid">'+
+      field('CEP','address_postal','text','','data-orion-field="postal-code" inputmode="numeric" autocomplete="postal-code"')+
+      '<div class="os-actions">'+command(button,'Buscar CEP','delivery-lookup-cep','search')+'</div>'+
+      field('Rua','address_street','text','','required maxlength="160"')+
+      field('Número','address_number','text','','required maxlength="30"')+checkField('Sem número','address_no_number')+
+      field('Bairro','address_neighborhood','text','','required maxlength="120"')+
+      field('Cidade','address_city','text','','required maxlength="120"')+
+      selectField('UF','address_state',[['','Selecione'],...brazilianStates.map(state=>[state,state])],'','required')+
+      field('Complemento ou referência','address_complement','text','','maxlength="160"')+
+      moneyField('Taxa de entrega','delivery_fee','text',window.OrionFields.moneyDisplay(0))+
+      '<div class="hidden" data-delivery-schedule-box hidden>'+
+      field('Agendar para','delivery_schedule','datetime-local','','aria-describedby="osDeliveryScheduleHint"')+
+      '<p id="osDeliveryScheduleHint" class="os-help">Horário da empresa</p></div>'+
+      '</div></fieldset>';
+    const quickCustomer='<fieldset data-delivery-quick-customer hidden disabled class="os-form hidden">'+
+      '<legend>Novo cliente</legend><div class="os-form-grid">'+
+      field('Nome do cliente','new_customer_name','text','','maxlength="120"')+
+      field('Telefone do cliente','customer_phone','tel','','maxlength="40"')+'</div>'+
+      '<div data-delivery-customer-feedback aria-live="polite"></div><div class="os-actions">'+
+      command(button,'Salvar cliente','delivery-save-customer','check')+'</div></fieldset>';
+    const content=selectField('Recebimento','mode',deliveryOnly?modes.slice(2):modes,deliveryOnly?'delivery':'counter')+
+      '<div class="os-form-grid">'+field('Buscar produto','product_search','search','','maxlength="120"')+
+      field('Buscar cliente','customer_search','search','','maxlength="120" placeholder="Nome ou telefone"')+'</div>'+
+      '<div class="os-actions">'+command(button,'Buscar produtos','delivery-choose-items','box')+
+      command(button,'Buscar clientes','delivery-choose-customer','users')+
+      command(button,'Novo cliente','delivery-new-customer','userPlus')+'</div>'+quickCustomer+
+      '<div data-delivery-search-results aria-live="polite"></div><div data-delivery-customer aria-live="polite"></div>'+
+      '<h3>Itens do pedido</h3><div class="os-form" data-delivery-cart></div>'+
+      (containerUi?.fields()||'')+
+      addressFields+
+      '<div class="os-actions">'+command(button,'Conferir total','delivery-estimate','check')+'</div>'+
+      '<div data-delivery-estimate aria-live="polite"></div>';
+    const items=()=>[...cart].map(([id,item])=>({variant_id:id,quantity:window.OrionFields.parseDecimal(item.quantity,{required:true,scale:0,min:1,max:1000})}));
+    const estimateInput=form=>{
+      const mode=form.elements.mode.value;
+      const base={mode,items:items(),delivery_fee_cents:0};
+      if(mode!=='delivery')return base;
+      const values=form.elements, [day,time]=(values.delivery_schedule.value||'').split('T');
+      return {...base,delivery_fee_cents:policy?.coverage_mode==='areas'?0:
+        window.OrionFields.parseMoney(values.delivery_fee.value,{required:true,min:0,max:1000000000}),
+        address:{postal_code:window.OrionFields.postalCodeValue(values.address_postal.value),
+          street:values.address_street.value,number:values.address_no_number.checked?null:values.address_number.value||null,
+          no_number:values.address_no_number.checked,neighborhood:values.address_neighborhood.value,
+          city:values.address_city.value,state:values.address_state.value,complement:values.address_complement.value||null},
+        scheduled_at:day?localISO(day,time):null};
+    };
+    openEditor('Novo pedido',content,async(form,values,key)=>{
+      if (customerSaving) throw Error('Aguarde o cadastro do cliente.');
+      const quoted=estimateInput(form);
+      if (quoted.mode!=='counter'&&!customer) throw Error('Selecione um cliente para a retirada ou entrega.');
+      if (!estimate||estimate.key!==JSON.stringify(quoted)) throw Error('Confira o total antes de confirmar o pedido.');
+      const payload={...quoted,customer_id:customer?.id||null,estimate_version:estimate.version,
+        container_plan:packaging?.collect(quoted.items,customer?.id)||[]};
+      const saved=await call('/orders','POST',{...payload,idempotency_key:key(payload)});
+      if (saved?.status!=='confirmed') throw Error('Não foi possível confirmar a reserva.');
+      onCreated?.();
+    },'Pedido reservado.',{label:'Confirmar pedido',bind:dialog=>{
+      const form=dialog.querySelector('form'), matches=form.querySelector('[data-delivery-search-results]');
+      const quote=form.querySelector('[data-delivery-estimate]'), basket=form.querySelector('[data-delivery-cart]');
+      const customerInfo=form.querySelector('[data-delivery-customer]');
+      const addressBox=form.querySelector('[data-delivery-address]');
+      const previous=form.querySelector('[data-delivery-previous-control]');
+      const addressStatus=form.querySelector('[data-delivery-address-status]');
+      const quick=form.querySelector('[data-delivery-quick-customer]');
+      const feedback=form.querySelector('[data-delivery-customer-feedback]');
+      const addressNames=['street','number','neighborhood','city','state','complement'];
+      let products=[], customers=[], searchVersion=0, quoteVersion=0, addressVersion=0, addressOwner=null;
+      const dialogActive = () => current()&&dialog.open&&form.isConnected;
+      const invalidate = () => {quoteVersion++;estimate=null;quote.replaceChildren();};
+      packaging=containerUi?.bind(form,{call,ui,current:dialogActive});
+      const scheduleBox=form.querySelector('[data-delivery-schedule-box]');
+      function updateAddress() {
+        addressBox.hidden=addressBox.disabled=form.elements.mode.value!=='delivery';
+        addressBox.classList.toggle('hidden',addressBox.hidden);
+        previous.hidden=!customer;
+        previous.classList.toggle('hidden',previous.hidden);
+        form.elements.address_number.disabled=form.elements.address_no_number.checked;
+        form.elements.delivery_fee.readOnly=policy?.coverage_mode==='areas';
+        scheduleBox.hidden=!policy?.scheduling_enabled;
+        scheduleBox.classList.toggle('hidden',scheduleBox.hidden);
+        form.elements.delivery_schedule.disabled=scheduleBox.hidden;
       }
-    }
-    form.addEventListener('submit',event=>{
-      event.preventDefault();
-      filters.day=form.elements.delivery_day.value;
-      void read();
-    });
-    await read();
+      function setCustomer(next) {
+        if (addressOwner&&addressOwner!==next?.id) {
+          addressOwner=null;
+          form.elements.address_postal.value='';
+          for (const name of addressNames) form.elements['address_'+name].value='';
+          form.elements.address_no_number.checked=false;
+        }
+        customer=next;
+        customerInfo.textContent=customer?'Cliente: '+customer.name:'';
+        addressStatus.textContent='';
+        invalidate();
+        updateAddress();
+      }
+      function toggleQuick(show) {
+        quick.hidden=quick.disabled=!show;
+        quick.classList.toggle('hidden',!show);
+        if (show) form.elements.new_customer_name.focus();
+      }
+      function showCart() {
+        basket.innerHTML=cart.size?Array.from(cart,([id,row])=>
+          '<div class="os-form-grid"><div class="os-delivery-shop-item-name">'+picture(row,esc)+field(row.label,'qty-'+id,'number',row.quantity,
+            'required min="1" max="1000" step="1" '+itemAttr('quantity',id))+
+          '</div><div class="os-actions">'+command(button,'Remover','delivery-remove-item','close',itemAttr('match',id))+'</div></div>').join(''):
+          '<p class="os-help">Busque um produto para adicionar itens.</p>';
+        window.OrionFields.refresh(basket);
+        packaging?.render(cart);
+      }
+      showCart();
+      updateAddress();
+      void call('/logistics').then(value=>{
+        if(!dialogActive())return;
+        policy=value;
+        updateAddress();
+      }).catch(()=>{});
+      form.addEventListener('change',event=>{
+        if (event.target.name==='mode') {addressVersion++;updateAddress();invalidate();products=[];matches.replaceChildren();}
+        if (event.target.name==='address_no_number') {addressVersion++;updateAddress();invalidate();}
+      });
+      form.addEventListener('input',event=>{
+        if (event.target.name?.startsWith('address_')) {addressVersion++;addressStatus.textContent='';invalidate();}
+        if (['delivery_fee','delivery_schedule'].includes(event.target.name)) invalidate();
+        const id=event.target.dataset.deliveryQuantity;
+        if (!id||!cart.has(id)) return;
+        cart.get(id).quantity=event.target.value;
+        invalidate();
+      });
+      form.addEventListener('click',async event=>{
+        const node=event.target.closest('button'), action=node?.dataset.osAction;
+        if (!action?.startsWith('delivery-')||!current()) return;
+        event.stopPropagation();
+        const id=node.dataset.deliveryMatch;
+        if (action==='delivery-remove-item') {cart.delete(id);invalidate();showCart();return;}
+        if (action==='delivery-add-item') {
+          const item=products.find(p=>p.variant_id===id);
+          if (!item||(!cart.has(id)&&cart.size>=30)) return;
+          cart.set(id,{label:item.name+' · '+item.variant_name,quantity:cart.get(id)?.quantity||'1',
+            image_url:item.image_url,exchange_container_id:item.exchange_container_id,exchange_container_name:item.exchange_container_name});
+          invalidate();showCart();basket.querySelector('[data-delivery-quantity="'+id+'"]')?.focus();return;
+        }
+        if (action==='delivery-pick-customer') {
+          setCustomer(customers.find(c=>c.id===id)||null);
+          matches.replaceChildren();return;
+        }
+        if (action==='delivery-new-customer') {toggleQuick(quick.hidden);return;}
+        if (action==='delivery-save-customer'&&!customerSaving) {
+          feedback.replaceChildren();
+          try {
+            const name=form.elements.new_customer_name.value.trim();
+            if (!name) throw Error('Informe o nome do cliente.');
+            const phone=window.OrionFields.phoneValue(form.elements.customer_phone.value,{allowInternational:true})||null;
+            const input={name,phone};
+            customerSaving=node.disabled=true;
+            feedback.innerHTML=loading('Salvando cliente…');
+            const created=await call('/order-customers','POST',{...input,idempotency_key:requestKey(form,input)});
+            if (!dialogActive()) return;
+            if (!created?.id) throw Error('Confira o cadastro antes de repetir.');
+            setCustomer(created);
+            feedback.replaceChildren();
+            form.elements.new_customer_name.value=form.elements.customer_phone.value='';
+            toggleQuick(false);
+          } catch (error) {if (dialogActive()) feedback.innerHTML=err(error);}
+          finally {customerSaving=node.disabled=false;}
+          return;
+        }
+        if (action==='delivery-use-address'&&customer) {
+          const selected=customer.id;
+          const version=++addressVersion;
+          node.disabled=true;
+          addressStatus.textContent='Buscando o endereço…';
+          try {
+            const result=await call('/order-customers/'+encodeURIComponent(selected)+'/previous-address');
+            if (!dialogActive()||selected!==customer?.id||addressVersion!==version) return;
+            const address=result.address;
+            if (address) {
+              addressOwner=selected;
+              form.elements.address_postal.value=address.postal_code||'';
+              for (const fieldName of addressNames) {
+                form.elements['address_'+fieldName].value=address[fieldName]||'';
+              }
+              form.elements.address_no_number.checked=address.no_number;
+              updateAddress();
+              invalidate();
+              window.OrionFields.refresh(addressBox);
+            }
+            addressStatus.textContent=address?'Confira o endereço antes de confirmar.':'Nenhum endereço de entrega concluída.';
+          } catch (error) {if (dialogActive()&&selected===customer?.id&&addressVersion===version) addressStatus.textContent=error.message;}
+          finally {node.disabled=false;}
+          return;
+        }
+        if (action==='delivery-lookup-cep') {
+          let cep;
+          try {cep=window.OrionFields.postalCodeValue(form.elements.address_postal.value,{required:true});}
+          catch(error) {addressStatus.textContent=error.message;return;}
+          if (!cep) {addressStatus.textContent='Informe o CEP com oito dígitos.';return;}
+          const version=++addressVersion;
+          node.disabled=true;
+          addressStatus.textContent='Consultando CEP…';
+          try {
+            const address=await call('/cep/'+encodeURIComponent(cep));
+            if (!dialogActive()||addressVersion!==version) return;
+            for (const name of ['street','neighborhood','city','state']) {
+              if (address[name]) form.elements['address_'+name].value=address[name];
+            }
+            addressOwner=null;
+            invalidate();
+            window.OrionFields.refresh(addressBox);
+            addressStatus.textContent='Confira o endereço e informe o número.';
+          } catch(error) {if(dialogActive()&&addressVersion===version) addressStatus.textContent=error.message;}
+          finally {node.disabled=false;}
+          return;
+        }
+        if (action==='delivery-estimate') {
+          invalidate();
+          let input;
+          try {input=estimateInput(form);} catch(error) {quote.innerHTML=err(error);return;}
+          if (!input.items.length) {quote.innerHTML=err(Error('Adicione pelo menos um produto.'));return;}
+          const key=JSON.stringify(input), sequence=quoteVersion;
+          const latest = () => dialogActive()&&sequence===quoteVersion;
+          quote.innerHTML=loading('Conferindo o total…');
+          try {
+            const result=await call('/orders/estimate','POST',input);
+            if (!latest()) return;
+            if (!result.confirmation_requirements_met) throw Error('Confira o preço e o estoque dos itens selecionados.');
+            estimate={version:result.estimate_version,key};
+            quote.innerHTML=(input.mode==='delivery'?'<p>Produtos '+money(result.subtotal_cents)+
+              ' · Taxa '+money(result.delivery_fee_cents)+'</p>':'')+'<p><strong>Total</strong> '+money(result.total_cents)+'</p>';
+          } catch(error) {if (latest()) quote.innerHTML=err(error);}
+          return;
+        }
+        if (!['delivery-choose-items','delivery-choose-customer'].includes(action)) return;
+        const sequence=++searchVersion;
+        const latest = () => dialogActive()&&sequence===searchVersion;
+        matches.innerHTML=loading('Buscando…');
+        try {
+          if (action==='delivery-choose-items') {
+            const mode=form.elements.mode.value;
+            const result=await call('/catalog?'+query({state:'active',sale_mode:mode,search:form.elements.product_search.value}));
+            if (!latest()) return;
+            if (mode!==form.elements.mode.value) return;
+            products=result.items;
+            matches.innerHTML=products.length?'<div class="os-actions">'+products.map(item=>
+                '<div class="os-delivery-shop-item-name">'+picture(item,esc)+
+                command(button,item.name+' · '+item.variant_name,'delivery-add-item',item.image_url?'':'plus',
+                  itemAttr('match',item.variant_id))+'</div>').join('')+'</div>':
+              '<p class="os-help">Nenhum produto encontrado.</p>';
+            if (result.has_more) matches.insertAdjacentHTML('beforeend','<p class="os-help">Refine a busca para ver outros produtos.</p>');
+          } else {
+            const search=form.elements.customer_search.value.trim();
+            if (search.length<2) throw Error('Digite ao menos dois caracteres para buscar o cliente.');
+            const result=await call('/order-customers?'+query({search}));
+            if (!latest()) return;
+            customers=result.items;
+            matches.innerHTML=customers.length?'<div class="os-actions">'+customers.map(c=>
+              command(button,[c.name,c.whatsapp_e164].filter(Boolean).join(' · '),'delivery-pick-customer','user',itemAttr('match',c.id))).join('')+'</div>':
+              '<p class="os-help">Nenhum cliente encontrado.</p>';
+          }
+        } catch(error) {if (latest()) matches.innerHTML=err(error);}
+      });
+    }});
+  }
+
+  async function showOrderDetail({id,call,current,openDetails,ui}) {
+    const {esc,money,badge}=ui;
+    const containerUi=window.OrionDeliveryOrderContainers;
+    const when=value=>orderDateTime(value,ui);
+    try {
+      const result=await call('/orders/'+encodeURIComponent(id));
+      if (!current()) return;
+      const address=result.address;
+      const addressText=address?'<div class="os-card"><h3>Entrega</h3><p>'+esc([
+        address.street+(address.number?', '+address.number:' (sem número)'),address.neighborhood,address.city+' - '+address.state,
+        address.postal_code,address.complement,
+      ].filter(Boolean).join(' · '))+'</p><p>Taxa '+money(result.delivery_fee_cents)+'</p>'+
+      (result.scheduled_at?'<p>Agendado para '+esc(when(result.scheduled_at))+'</p>':'')+
+      (result.courier_name?'<p>Entregador: '+esc(result.courier_name)+'</p>':'')+'</div>':'';
+      const storeText=result.storefront?'<p>Pedido pela loja · '+esc(result.storefront.customer_name||'')+' · '+
+        esc(result.storefront.contact_e164||'')+
+        (result.storefront.payment_preference?'<br>Preferência de pagamento: '+
+          esc(storefrontPaymentLabels[result.storefront.payment_preference]||'A combinar'):'')+'</p>'+
+        (result.storefront.change_for_cents!=null?'<p>Troco para '+money(result.storefront.change_for_cents)+
+          ' · Troco previsto '+money(result.storefront.change_for_cents-result.total_cents)+'</p>':'')+
+        (result.storefront.buyer_note?'<p>Observação do cliente: '+esc(result.storefront.buyer_note)+'</p>':''):'';
+      openDetails('Pedido '+code({id}),'<p>'+statusBadge(result.status,badge)+' · '+money(result.total_cents)+'</p>'+storeText+addressText+
+        '<ul class="os-delivery-order-items">'+result.items.map(item=>
+        '<li>'+picture(item,esc)+esc(item.quantity+' × '+item.product_name+' · '+item.variant_name)+' · '+money(item.total_cents)+'</li>').join('')+
+        '</ul>'+(containerUi?.summary(result.container_plan,ui)||'')+'<h3>Histórico</h3><ul>'+result.history.map(event=>
+          '<li>'+esc((({received:'Recebimento registrado',partially_received:'Recebimento parcial',returned:'Devolução registrada',
+            delivery_rescheduled:'Entrega reagendada',delivery_recipient_absent:'Cliente ausente'})[event.action]||
+            statusLabels[event.action]||event.action)+' · '+when(event.created_at))+'</li>').join('')+'</ul>');
+    } catch(error) {if (current()) openDetails('Pedido '+code({id}),orderError(error,esc));}
   }
 
   async function salesReport({host,filters,call,allowed,ui,exportPath}) {
@@ -131,7 +396,7 @@
 
   async function mount({host,filters,call,allowed,canWrite,ui,openDetails,openEditor,deliveryOnly=false,creditOnly=false}) {
     if (!host || !allowed()) return;
-    const {esc,loading,empty,field,moneyField,selectField,textField,checkField,button,title,money,badge,fmtDate,dateKey,timeLabel,query,brazilianStates,metric,routeButton,requestKey,localISO}=ui;
+    const {esc,loading,empty,field,moneyField,selectField,textField,checkField,button,title,money,badge,fmtDate,dateKey,query,metric,routeButton,localISO}=ui;
     const containerUi=window.OrionDeliveryOrderContainers;
     filters.search ??= '';
     filters.state ??= 'all';
@@ -140,10 +405,9 @@
     filters.offset ??= 0;
     let data, stamp=0;
     const current = () => allowed() && host.isConnected;
-    const when = value => fmtDate(dateKey(new Date(value)))+' '+timeLabel(value);
-    const badgeFor = state => badge(state==='fulfilled'?'completed':['confirmed','dispatched'].includes(state)?'pending':state,statusLabels[state]);
-    const itemAttr = (fieldName, id) => 'data-delivery-'+fieldName+'="'+esc(id)+'"';
-    const err = error => '<div class="os-notice os-error" role="alert"><p>'+esc(error.message || 'Não foi possível concluir a ação.')+'</p></div>';
+    const when=value=>orderDateTime(value,ui);
+    const itemAttr=(name,id)=>orderAttribute(name,id,esc);
+    const err=error=>orderError(error,esc);
 
     host.innerHTML=title(creditOnly?'Vendas a prazo':deliveryOnly?'Entregas':'Pedidos',
       creditOnly?'Vencimentos e recebimentos':deliveryOnly?'Despacho e acompanhamento':'Balcão, retirada e entrega',
@@ -152,7 +416,8 @@
       '<form id="osDeliveryOrderFilters" class="os-filter-row">'+
       field('Buscar','search','search',filters.search,'maxlength="120" placeholder="Número ou cliente"')+
       selectField('Status','state',creditOnly?creditStatuses:[['all','Todos'],...Object.entries(statusLabels)],filters.state)+
-      (creditOnly?'':field('De','start','date',filters.start)+field('Até','end','date',filters.end))+
+      (creditOnly?'':field(deliveryOnly?'Entrega de':'De','start','date',filters.start)+
+        field(deliveryOnly?'Entrega até':'Até','end','date',filters.end))+
       '<button type="submit" class="os-button os-outline">Filtrar</button></form><div id="osDeliveryOrderList" aria-live="polite"></div>';
     window.OrionFields.refresh(host);
     const list=host.querySelector('#osDeliveryOrderList');
@@ -185,7 +450,7 @@
         esc([order.customer_name||'Venda avulsa',modeLabel(order),when(order.created_at)].join(' · '))+'</p>'+
         (order.courier_name?'<p class="os-help">Entregador: '+esc(order.courier_name)+'</p>':'')+
         (order.scheduled_at?'<p class="os-help">Agendado para '+esc(when(order.scheduled_at))+'</p>':'')+
-        '<div class="os-actions">'+badgeFor(order.status)+' <strong>'+money(order.total_cents)+'</strong></div>'+
+        '<div class="os-actions">'+statusBadge(order.status,badge)+' <strong>'+money(order.total_cents)+'</strong></div>'+
         payment+(pending?'<p class="os-help">Saldo a receber '+money(order.outstanding_cents??order.total_cents)+'</p>':'')+
         '<div class="os-actions">'+controls+'</div></article>';
     }
@@ -195,7 +460,7 @@
       list.innerHTML=loading('Carregando pedidos…');
       try {
         const suffix=creditOnly?'/credit?'+query({search:filters.search,status:filters.state,offset:filters.offset}):
-          '/orders?'+query({...filters,mode:deliveryOnly?'delivery':'all'});
+          '/orders?'+query({...filters,mode:deliveryOnly?'delivery':'all',by_delivery_date:deliveryOnly||null});
         const response=await call(suffix);
         if (!current()||sequence!==stamp) return;
         data=response;
@@ -211,277 +476,6 @@
       } catch (error) {
         if (current()&&sequence===stamp) list.innerHTML=err(error)+command(button,'Tentar novamente','delivery-order-retry','refresh');
       }
-    }
-
-    function editor() {
-      const cart=new Map();
-      let customer=null, estimate=null, customerSaving=false;
-      let packaging, policy;
-      const addressFields='<fieldset data-delivery-address hidden disabled class="os-form">'+
-        '<legend>Endereço de entrega</legend>'+
-        '<div class="os-actions hidden" data-delivery-previous-control hidden>'+
-        command(button,'Usar último endereço','delivery-use-address','left')+'</div>'+
-        '<p data-delivery-address-status class="os-help" aria-live="polite"></p><div class="os-form-grid">'+
-        field('CEP','address_postal','text','','data-orion-field="postal-code" inputmode="numeric" autocomplete="postal-code"')+
-        '<div class="os-actions">'+command(button,'Buscar CEP','delivery-lookup-cep','search')+'</div>'+
-        field('Rua','address_street','text','','required maxlength="160"')+
-        field('Número','address_number','text','','required maxlength="30"')+checkField('Sem número','address_no_number')+
-        field('Bairro','address_neighborhood','text','','required maxlength="120"')+
-        field('Cidade','address_city','text','','required maxlength="120"')+
-        selectField('UF','address_state',[['','Selecione'],...brazilianStates.map(state=>[state,state])],'','required')+
-        field('Complemento ou referência','address_complement','text','','maxlength="160"')+
-        moneyField('Taxa de entrega','delivery_fee','text',window.OrionFields.moneyDisplay(0))+
-        '<div class="hidden" data-delivery-schedule-box hidden>'+
-        field('Agendar para','delivery_schedule','datetime-local','','aria-describedby="osDeliveryScheduleHint"')+
-        '<p id="osDeliveryScheduleHint" class="os-help">Horário da empresa</p></div>'+
-        '</div></fieldset>';
-      const quickCustomer='<fieldset data-delivery-quick-customer hidden disabled class="os-form hidden">'+
-        '<legend>Novo cliente</legend><div class="os-form-grid">'+
-        field('Nome do cliente','new_customer_name','text','','maxlength="120"')+
-        field('Telefone do cliente','customer_phone','tel','','maxlength="40"')+'</div>'+
-        '<div data-delivery-customer-feedback aria-live="polite"></div><div class="os-actions">'+
-        command(button,'Salvar cliente','delivery-save-customer','check')+'</div></fieldset>';
-      const content=selectField('Recebimento','mode',deliveryOnly?modes.slice(2):modes,deliveryOnly?'delivery':'counter')+
-        '<div class="os-form-grid">'+field('Buscar produto','product_search','search','','maxlength="120"')+
-        field('Buscar cliente','customer_search','search','','maxlength="120" placeholder="Nome ou telefone"')+'</div>'+
-        '<div class="os-actions">'+command(button,'Buscar produtos','delivery-choose-items','box')+
-        command(button,'Buscar clientes','delivery-choose-customer','users')+
-        command(button,'Novo cliente','delivery-new-customer','userPlus')+'</div>'+quickCustomer+
-        '<div data-delivery-search-results aria-live="polite"></div><div data-delivery-customer aria-live="polite"></div>'+
-        '<h3>Itens do pedido</h3><div class="os-form" data-delivery-cart></div>'+
-        (containerUi?.fields()||'')+
-        addressFields+
-        '<div class="os-actions">'+command(button,'Conferir total','delivery-estimate','check')+'</div>'+
-        '<div data-delivery-estimate aria-live="polite"></div>';
-      const items=()=>[...cart].map(([id,item])=>({variant_id:id,quantity:window.OrionFields.parseDecimal(item.quantity,{required:true,scale:0,min:1,max:1000})}));
-      const estimateInput=form=>{
-        const mode=form.elements.mode.value;
-        const base={mode,items:items(),delivery_fee_cents:0};
-        if(mode!=='delivery')return base;
-        const values=form.elements, [day,time]=(values.delivery_schedule.value||'').split('T');
-        return {...base,delivery_fee_cents:policy?.coverage_mode==='areas'?0:
-          window.OrionFields.parseMoney(values.delivery_fee.value,{required:true,min:0,max:1000000000}),
-          address:{postal_code:window.OrionFields.postalCodeValue(values.address_postal.value),
-            street:values.address_street.value,number:values.address_no_number.checked?null:values.address_number.value||null,
-            no_number:values.address_no_number.checked,neighborhood:values.address_neighborhood.value,
-            city:values.address_city.value,state:values.address_state.value,complement:values.address_complement.value||null},
-          scheduled_at:day?localISO(day,time):null};
-      };
-      openEditor('Novo pedido',content,async(form,values,key)=>{
-        if (customerSaving) throw Error('Aguarde o cadastro do cliente.');
-        const quoted=estimateInput(form);
-        if (quoted.mode!=='counter'&&!customer) throw Error('Selecione um cliente para a retirada ou entrega.');
-        if (!estimate||estimate.key!==JSON.stringify(quoted)) throw Error('Confira o total antes de confirmar o pedido.');
-        const payload={...quoted,customer_id:customer?.id||null,estimate_version:estimate.version,
-          container_plan:packaging?.collect(quoted.items,customer?.id)||[]};
-        const saved=await call('/orders','POST',{...payload,idempotency_key:key(payload)});
-        if (saved?.status!=='confirmed') throw Error('Não foi possível confirmar a reserva.');
-        filters.offset=0;
-      },'Pedido reservado.',{label:'Confirmar pedido',bind:dialog=>{
-        const form=dialog.querySelector('form'), matches=form.querySelector('[data-delivery-search-results]');
-        const quote=form.querySelector('[data-delivery-estimate]'), basket=form.querySelector('[data-delivery-cart]');
-        const customerInfo=form.querySelector('[data-delivery-customer]');
-        const addressBox=form.querySelector('[data-delivery-address]');
-        const previous=form.querySelector('[data-delivery-previous-control]');
-        const addressStatus=form.querySelector('[data-delivery-address-status]');
-        const quick=form.querySelector('[data-delivery-quick-customer]');
-        const feedback=form.querySelector('[data-delivery-customer-feedback]');
-        const addressNames=['street','number','neighborhood','city','state','complement'];
-        let products=[], customers=[], searchVersion=0, quoteVersion=0, addressVersion=0, addressOwner=null;
-        const dialogActive = () => current()&&dialog.open&&form.isConnected;
-        const invalidate = () => {quoteVersion++;estimate=null;quote.replaceChildren();};
-        packaging=containerUi?.bind(form,{call,ui,current:dialogActive});
-        const scheduleBox=form.querySelector('[data-delivery-schedule-box]');
-        function updateAddress() {
-          addressBox.hidden=addressBox.disabled=form.elements.mode.value!=='delivery';
-          addressBox.classList.toggle('hidden',addressBox.hidden);
-          previous.hidden=!customer;
-          previous.classList.toggle('hidden',previous.hidden);
-          form.elements.address_number.disabled=form.elements.address_no_number.checked;
-          form.elements.delivery_fee.readOnly=policy?.coverage_mode==='areas';
-          scheduleBox.hidden=!policy?.scheduling_enabled;
-          scheduleBox.classList.toggle('hidden',scheduleBox.hidden);
-          form.elements.delivery_schedule.disabled=scheduleBox.hidden;
-        }
-        function setCustomer(next) {
-          if (addressOwner&&addressOwner!==next?.id) {
-            addressOwner=null;
-            form.elements.address_postal.value='';
-            for (const name of addressNames) form.elements['address_'+name].value='';
-            form.elements.address_no_number.checked=false;
-          }
-          customer=next;
-          customerInfo.textContent=customer?'Cliente: '+customer.name:'';
-          addressStatus.textContent='';
-          invalidate();
-          updateAddress();
-        }
-        function toggleQuick(show) {
-          quick.hidden=quick.disabled=!show;
-          quick.classList.toggle('hidden',!show);
-          if (show) form.elements.new_customer_name.focus();
-        }
-        function showCart() {
-          basket.innerHTML=cart.size?Array.from(cart,([id,row])=>
-            '<div class="os-form-grid"><div class="os-delivery-shop-item-name">'+picture(row,esc)+field(row.label,'qty-'+id,'number',row.quantity,
-              'required min="1" max="1000" step="1" '+itemAttr('quantity',id))+
-            '</div><div class="os-actions">'+command(button,'Remover','delivery-remove-item','close',itemAttr('match',id))+'</div></div>').join(''):
-            '<p class="os-help">Busque um produto para adicionar itens.</p>';
-          window.OrionFields.refresh(basket);
-          packaging?.render(cart);
-        }
-        showCart();
-        updateAddress();
-        void call('/logistics').then(value=>{
-          if(!dialogActive())return;
-          policy=value;
-          updateAddress();
-        }).catch(()=>{});
-        form.addEventListener('change',event=>{
-          if (event.target.name==='mode') {addressVersion++;updateAddress();invalidate();products=[];matches.replaceChildren();}
-          if (event.target.name==='address_no_number') {addressVersion++;updateAddress();invalidate();}
-        });
-        form.addEventListener('input',event=>{
-          if (event.target.name?.startsWith('address_')) {addressVersion++;addressStatus.textContent='';invalidate();}
-          if (['delivery_fee','delivery_schedule'].includes(event.target.name)) invalidate();
-          const id=event.target.dataset.deliveryQuantity;
-          if (!id||!cart.has(id)) return;
-          cart.get(id).quantity=event.target.value;
-          invalidate();
-        });
-        form.addEventListener('click',async event=>{
-          const node=event.target.closest('button'), action=node?.dataset.osAction;
-          if (!action?.startsWith('delivery-')||!current()) return;
-          event.stopPropagation();
-          const id=node.dataset.deliveryMatch;
-          if (action==='delivery-remove-item') {cart.delete(id);invalidate();showCart();return;}
-          if (action==='delivery-add-item') {
-            const item=products.find(p=>p.variant_id===id);
-            if (!item||(!cart.has(id)&&cart.size>=30)) return;
-            cart.set(id,{label:item.name+' · '+item.variant_name,quantity:cart.get(id)?.quantity||'1',
-              image_url:item.image_url,exchange_container_id:item.exchange_container_id,exchange_container_name:item.exchange_container_name});
-            invalidate();showCart();basket.querySelector('[data-delivery-quantity="'+id+'"]')?.focus();return;
-          }
-          if (action==='delivery-pick-customer') {
-            setCustomer(customers.find(c=>c.id===id)||null);
-            matches.replaceChildren();return;
-          }
-          if (action==='delivery-new-customer') {toggleQuick(quick.hidden);return;}
-          if (action==='delivery-save-customer'&&!customerSaving) {
-            feedback.replaceChildren();
-            try {
-              const name=form.elements.new_customer_name.value.trim();
-              if (!name) throw Error('Informe o nome do cliente.');
-              const phone=window.OrionFields.phoneValue(form.elements.customer_phone.value,{allowInternational:true})||null;
-              const input={name,phone};
-              customerSaving=node.disabled=true;
-              feedback.innerHTML=loading('Salvando cliente…');
-              const created=await call('/order-customers','POST',{...input,idempotency_key:requestKey(form,input)});
-              if (!dialogActive()) return;
-              if (!created?.id) throw Error('Confira o cadastro antes de repetir.');
-              setCustomer(created);
-              feedback.replaceChildren();
-              form.elements.new_customer_name.value=form.elements.customer_phone.value='';
-              toggleQuick(false);
-            } catch (error) {if (dialogActive()) feedback.innerHTML=err(error);}
-            finally {customerSaving=node.disabled=false;}
-            return;
-          }
-          if (action==='delivery-use-address'&&customer) {
-            const selected=customer.id;
-            const version=++addressVersion;
-            node.disabled=true;
-            addressStatus.textContent='Buscando o endereço…';
-            try {
-              const result=await call('/order-customers/'+encodeURIComponent(selected)+'/previous-address');
-              if (!dialogActive()||selected!==customer?.id||addressVersion!==version) return;
-              const address=result.address;
-              if (address) {
-                addressOwner=selected;
-                form.elements.address_postal.value=address.postal_code||'';
-                for (const fieldName of addressNames) {
-                  form.elements['address_'+fieldName].value=address[fieldName]||'';
-                }
-                form.elements.address_no_number.checked=address.no_number;
-                updateAddress();
-                invalidate();
-                window.OrionFields.refresh(addressBox);
-              }
-              addressStatus.textContent=address?'Confira o endereço antes de confirmar.':'Nenhum endereço de entrega concluída.';
-            } catch (error) {if (dialogActive()&&selected===customer?.id&&addressVersion===version) addressStatus.textContent=error.message;}
-            finally {node.disabled=false;}
-            return;
-          }
-          if (action==='delivery-lookup-cep') {
-            let cep;
-            try {cep=window.OrionFields.postalCodeValue(form.elements.address_postal.value,{required:true});}
-            catch(error) {addressStatus.textContent=error.message;return;}
-            if (!cep) {addressStatus.textContent='Informe o CEP com oito dígitos.';return;}
-            const version=++addressVersion;
-            node.disabled=true;
-            addressStatus.textContent='Consultando CEP…';
-            try {
-              const address=await call('/cep/'+encodeURIComponent(cep));
-              if (!dialogActive()||addressVersion!==version) return;
-              for (const name of ['street','neighborhood','city','state']) {
-                if (address[name]) form.elements['address_'+name].value=address[name];
-              }
-              addressOwner=null;
-              invalidate();
-              window.OrionFields.refresh(addressBox);
-              addressStatus.textContent='Confira o endereço e informe o número.';
-            } catch(error) {if(dialogActive()&&addressVersion===version) addressStatus.textContent=error.message;}
-            finally {node.disabled=false;}
-            return;
-          }
-          if (action==='delivery-estimate') {
-            invalidate();
-            let input;
-            try {input=estimateInput(form);} catch(error) {quote.innerHTML=err(error);return;}
-            if (!input.items.length) {quote.innerHTML=err(Error('Adicione pelo menos um produto.'));return;}
-            const key=JSON.stringify(input), sequence=quoteVersion;
-            const latest = () => dialogActive()&&sequence===quoteVersion;
-            quote.innerHTML=loading('Conferindo o total…');
-            try {
-              const result=await call('/orders/estimate','POST',input);
-              if (!latest()) return;
-              if (!result.confirmation_requirements_met) throw Error('Confira o preço e o estoque dos itens selecionados.');
-              estimate={version:result.estimate_version,key};
-              quote.innerHTML=(input.mode==='delivery'?'<p>Produtos '+money(result.subtotal_cents)+
-                ' · Taxa '+money(result.delivery_fee_cents)+'</p>':'')+'<p><strong>Total</strong> '+money(result.total_cents)+'</p>';
-            } catch(error) {if (latest()) quote.innerHTML=err(error);}
-            return;
-          }
-          if (!['delivery-choose-items','delivery-choose-customer'].includes(action)) return;
-          const sequence=++searchVersion;
-          const latest = () => dialogActive()&&sequence===searchVersion;
-          matches.innerHTML=loading('Buscando…');
-          try {
-            if (action==='delivery-choose-items') {
-              const mode=form.elements.mode.value;
-              const result=await call('/catalog?'+query({state:'active',sale_mode:mode,search:form.elements.product_search.value}));
-              if (!latest()) return;
-              if (mode!==form.elements.mode.value) return;
-              products=result.items;
-              matches.innerHTML=products.length?'<div class="os-actions">'+products.map(item=>
-                  '<div class="os-delivery-shop-item-name">'+picture(item,esc)+
-                  command(button,item.name+' · '+item.variant_name,'delivery-add-item',item.image_url?'':'plus',
-                    itemAttr('match',item.variant_id))+'</div>').join('')+'</div>':
-                '<p class="os-help">Nenhum produto encontrado.</p>';
-              if (result.has_more) matches.insertAdjacentHTML('beforeend','<p class="os-help">Refine a busca para ver outros produtos.</p>');
-            } else {
-              const search=form.elements.customer_search.value.trim();
-              if (search.length<2) throw Error('Digite ao menos dois caracteres para buscar o cliente.');
-              const result=await call('/order-customers?'+query({search}));
-              if (!latest()) return;
-              customers=result.items;
-              matches.innerHTML=customers.length?'<div class="os-actions">'+customers.map(c=>
-                command(button,[c.name,c.whatsapp_e164].filter(Boolean).join(' · '),'delivery-pick-customer','user',itemAttr('match',c.id))).join('')+'</div>':
-                '<p class="os-help">Nenhum cliente encontrado.</p>';
-            }
-          } catch(error) {if (latest()) matches.innerHTML=err(error);}
-        });
-      }});
     }
 
     async function move(order, action) {
@@ -595,35 +589,14 @@
         filters.offset=Math.max(0,data.offset+(action==='delivery-order-next'?data.limit:-data.limit));
         await load();return;
       }
-      if (action==='delivery-new-order'&&canWrite()) {editor();return;}
+      if (action==='delivery-new-order'&&canWrite()) {
+        openOrderEditor({call,current,ui,openEditor,deliveryOnly,onCreated:()=>{filters.offset=0;}});
+        return;
+      }
       const order=data?.items?.find(item=>item.id===el.dataset.deliveryOrder);
       if (!order) return;
       if (action==='delivery-order-detail') {
-        try {
-          const result=await call('/orders/'+encodeURIComponent(order.id));
-          if (!current()) return;
-          const address=result.address;
-          const addressText=address?'<div class="os-card"><h3>Entrega</h3><p>'+esc([
-            address.street+(address.number?', '+address.number:' (sem número)'),address.neighborhood,address.city+' - '+address.state,
-            address.postal_code,address.complement,
-          ].filter(Boolean).join(' · '))+'</p><p>Taxa '+money(result.delivery_fee_cents)+'</p>'+
-          (result.scheduled_at?'<p>Agendado para '+esc(when(result.scheduled_at))+'</p>':'')+
-          (result.courier_name?'<p>Entregador: '+esc(result.courier_name)+'</p>':'')+'</div>':'';
-          const storeText=result.storefront?'<p>Pedido pela loja · '+esc(result.storefront.customer_name||'')+' · '+
-            esc(result.storefront.contact_e164||'')+
-            (result.storefront.payment_preference?'<br>Preferência de pagamento: '+
-              esc(storefrontPaymentLabels[result.storefront.payment_preference]||'A combinar'):'')+'</p>'+
-            (result.storefront.change_for_cents!=null?'<p>Troco para '+money(result.storefront.change_for_cents)+
-              ' · Troco previsto '+money(result.storefront.change_for_cents-result.total_cents)+'</p>':'')+
-            (result.storefront.buyer_note?'<p>Observação do cliente: '+esc(result.storefront.buyer_note)+'</p>':''):'';
-          openDetails('Pedido '+code(order),'<p>'+badgeFor(result.status)+' · '+money(result.total_cents)+'</p>'+storeText+addressText+
-            '<ul class="os-delivery-order-items">'+result.items.map(item=>
-            '<li>'+picture(item,esc)+esc(item.quantity+' × '+item.product_name+' · '+item.variant_name)+' · '+money(item.total_cents)+'</li>').join('')+
-            '</ul>'+(containerUi?.summary(result.container_plan,ui)||'')+'<h3>Histórico</h3><ul>'+result.history.map(event=>
-              '<li>'+esc((({received:'Recebimento registrado',partially_received:'Recebimento parcial',returned:'Devolução registrada',
-                delivery_rescheduled:'Entrega reagendada',delivery_recipient_absent:'Cliente ausente'})[event.action]||
-                statusLabels[event.action]||event.action)+' · '+when(event.created_at))+'</li>').join('')+'</ul>');
-        } catch(error) {if (current()) openDetails('Pedido '+code(order),err(error));}
+        await showOrderDetail({id:order.id,call,current,openDetails,ui});
       } else if (action==='delivery-order-return'&&canWrite()&&order.status==='fulfilled') {
         move(order,'return');
       } else if (action==='delivery-order-settle'&&canWrite()&&order.receipt_status==='pending') {
@@ -636,5 +609,5 @@
     });
     await load();
   }
-  window.OrionDeliveryOrders=Object.freeze({mount,dashboard,salesReport});
+  window.OrionDeliveryOrders=Object.freeze({mount,salesReport,openOrderEditor,showOrderDetail,code,modeLabel,statusBadge});
 })();

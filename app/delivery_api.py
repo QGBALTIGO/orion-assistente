@@ -110,10 +110,10 @@ async def adjust_stock(tenant_id: UUID, variant_id: UUID, payload: catalog.Adjus
 @router.get("/orders")
 async def order_list(tenant_id: UUID, search: str = Query(default="", max_length=120),
                      state: orders.OrderState = "all", mode: Literal["all", "counter", "pickup", "delivery"] = "all",
-                     start: date | None = None, end: date | None = None,
+                     start: date | None = None, end: date | None = None, by_delivery_date: bool = False,
                      offset: int = Query(default=0, ge=0, le=100_000), actor: Actor = Depends(authenticate)):
     return await run(actor, tenant_id, orders.list_orders, search=search, state=state, mode=mode,
-                     start=start, end=end, offset=offset)
+                     start=start, end=end, offset=offset, by_delivery_date=by_delivery_date)
 
 
 @router.get("/overview")

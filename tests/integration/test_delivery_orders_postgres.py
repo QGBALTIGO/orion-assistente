@@ -171,7 +171,26 @@ async def test_delivery_fee_dispatch_payment_and_safe_return(onboarding_db, monk
         assert await stock(http,root) == (5,1) and not await receipts(ctx, tenant)
         overview = await http.get(root+"/overview")
         assert overview.status_code == 200, overview.text
-        assert overview.json()["metrics"] == {"orders":1,"fulfilled":0,"open_deliveries":1,"paid_cents":0}
+        dashboard = overview.json()
+        assert dashboard["metrics"] == {"orders":1,"fulfilled":0,"open_deliveries":1,"paid_cents":0,
+                                        "sales_cents":0,"credit_cents":0}
+        assert [item["id"] for item in dashboard["deliveries"]] == [created.json()["id"]]
+        scheduled_for = datetime.fromisoformat(dashboard["date"]).replace(tzinfo=ZoneInfo("America/Cuiaba"), hour=12)
+        scheduled_for += timedelta(days=1)
+        async with ctx.migration.begin() as db:
+            await db.execute(text("""
+                UPDATE delivery_order_details SET scheduled_at=:scheduled
+                WHERE tenant_id=:t AND order_id=:o
+            """), {"t":tenant,"o":UUID(created.json()["id"]),"scheduled":scheduled_for})
+        scheduled_day = scheduled_for.date().isoformat()
+        scheduled_dashboard = (await http.get(root+"/overview", params={"day":scheduled_day})).json()
+        assert scheduled_dashboard["metrics"]["orders"] == 0
+        assert scheduled_dashboard["metrics"]["open_deliveries"] == 1
+        scheduled_queue = (await http.get(root+"/orders", params={
+            "mode":"delivery","by_delivery_date":True,"start":scheduled_day,"end":scheduled_day,
+        })).json()
+        assert [item["id"] for item in scheduled_queue["items"]] == [created.json()["id"]]
+        assert scheduled_dashboard["deliveries"] == scheduled_queue["items"]
         assert (await http.get(path)).json()["courier_name"] == "Entregador de teste"
         cancel = {"action":"cancel","expected_revision":2,"idempotency_key":uuid4().hex}
         assert (await http.post(path+"/transitions",json=cancel)).status_code == 422
@@ -192,8 +211,10 @@ async def test_delivery_fee_dispatch_payment_and_safe_return(onboarding_db, monk
         assert await stock(http,root) == (4,0)
         assert len(await receipts(ctx, tenant)) == 1
         overview = (await http.get(root+"/overview")).json()
-        assert overview["metrics"] == {"orders":2,"fulfilled":1,"open_deliveries":0,"paid_cents":1750}
-        assert len(overview["daily"]) == 7 and overview["daily"][-1]["income_cents"] == 1750
+        assert overview["metrics"] == {"orders":2,"fulfilled":1,"open_deliveries":0,"paid_cents":1750,
+                                       "sales_cents":1750,"credit_cents":0}
+        assert len(overview["daily"]) == 7
+        assert overview["daily"][-1] == {"date":overview["date"],"income_cents":1750,"sales_cents":1750,"credit_cents":0}
         assert len(overview["recent"]) == 2
 
 
@@ -220,7 +241,10 @@ async def test_on_account_stays_pending_until_manual_receipt(onboarding_db, monk
         completed = await http.post(endpoint+"/transitions",json={**payment,"payment_due_date":str(today)})
         assert completed.status_code == 200, completed.text
         assert await stock(http,root) == (4,0)
-        assert (await http.get(root+"/overview")).json()["metrics"]["paid_cents"] == 0
+        dashboard = (await http.get(root+"/overview")).json()
+        assert dashboard["metrics"]["paid_cents"] == 0
+        assert dashboard["metrics"]["sales_cents"] == dashboard["metrics"]["credit_cents"] == 1250
+        assert dashboard["credit_customers"] == [{"name":"+Pessoa a prazo","orders":1,"outstanding_cents":1250,"overdue_cents":0}]
         credit = (await http.get(root+"/credit",params={"status":"pending","search":"prazo"})).json()
         assert len(credit["items"]) == 1 and credit["summary"] == {"open_cents":1250,"overdue_cents":0}
         filters = {"start":str(today),"end":str(today),"mode":"pickup","receipt":"pending"}
@@ -249,7 +273,11 @@ async def test_on_account_stays_pending_until_manual_receipt(onboarding_db, monk
         assert first.json() == repeated.json()
         assert first.json()["financial_entry_id"] == completed.json()["financial_entry_id"]
         assert (await http.post(endpoint+"/transitions",json={**received,"idempotency_key":uuid4().hex})).status_code == 409
-        assert (await http.get(root+"/overview")).json()["metrics"]["paid_cents"] == 1250
+        dashboard = (await http.get(root+"/overview")).json()
+        assert dashboard["metrics"]["paid_cents"] == 1250
+        assert dashboard["metrics"]["sales_cents"] == dashboard["metrics"]["credit_cents"] == 0
+        assert dashboard["daily"][-2]["sales_cents"] == 1250
+        assert dashboard["credit_customers"] == []
         assert (await http.get(root+"/credit",params={"status":"pending"})).json()["items"] == []
         assert (await http.get(root+"/credit",params={"status":"paid"})).json()["items"][0]["receipt_status"] == "paid"
         assert (await http.get(reports,params=filters)).json()["items"] == []

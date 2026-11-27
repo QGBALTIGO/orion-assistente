@@ -1,0 +1,173 @@
+.os-delivery-dashboard,
+.os-delivery-dashboard > [data-delivery-dashboard-content] {
+  display: grid;
+  gap: 22px;
+  min-width: 0;
+}
+
+.os-delivery-dashboard-header,
+.os-delivery-dashboard-toolbar,
+.os-delivery-dashboard-date {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.os-delivery-dashboard-header { justify-content: space-between; }
+.os-delivery-dashboard-header > div { min-width: 0; }
+.os-delivery-dashboard-header h1 { overflow-wrap: anywhere; }
+.os-delivery-dashboard-header p { margin-top: 3px; overflow-wrap: anywhere; }
+.os-delivery-dashboard-toolbar .os-button { min-height: 44px; }
+.os-delivery-dashboard-date label { color: var(--os-muted); font-size: 13px; font-weight: 600; }
+
+.os-delivery-dashboard-date input {
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 44px;
+  width: 154px;
+  padding: 8px 10px;
+  border: 1px solid var(--os-border);
+  border-radius: 10px;
+  background: var(--os-card);
+  color: var(--os-text);
+  font: 500 16px/22px var(--os-font);
+}
+
+.os-delivery-dashboard :is(input, summary, .os-delivery-dashboard-row):focus-visible {
+  outline: 2px solid var(--os-primary);
+  outline-offset: 2px;
+}
+
+.os-delivery-dashboard-date [hidden],
+.os-delivery-dashboard-dock { display: none; }
+
+.os-delivery-dashboard-metrics,
+.os-delivery-dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.os-delivery-dashboard-metric.os-card { display: grid; align-content: start; gap: 5px; padding: 16px; }
+.os-delivery-dashboard-metric-label { display: flex; align-items: center; gap: 8px; color: var(--os-muted); font-weight: 600; font-size: 13px; line-height: 18px; }
+.os-delivery-dashboard-metric .os-square-icon { width: 32px; height: 32px; border-radius: 10px; }
+.os-delivery-dashboard-metric .os-icon { width: 17px; height: 17px; }
+.os-delivery-dashboard-metric[data-tone="success"] .os-square-icon { color: var(--os-success); background: var(--os-success-bg); }
+.os-delivery-dashboard-metric[data-tone="warning"] .os-square-icon { color: var(--os-warning); background: var(--os-warning-bg); }
+.os-delivery-dashboard-metric > strong { font: 650 clamp(20px, 2.4vw, 30px)/1.18 var(--os-display); overflow-wrap: anywhere; }
+.os-delivery-dashboard-metric p { font-size: 12px; line-height: 17px; }
+
+.os-delivery-dashboard-grid { align-items: start; }
+.os-delivery-dashboard-panel.os-card { padding: 18px; }
+.os-delivery-dashboard-panel > header { display: flex; align-items: center; justify-content: space-between; gap: 6px 12px; }
+.os-delivery-dashboard-panel > header > div { min-width: 0; }
+.os-delivery-dashboard-panel h2 { font-size: 17px; line-height: 23px; letter-spacing: 0; }
+.os-delivery-dashboard-panel > header p { margin-top: 3px; font-size: 12px; line-height: 17px; }
+.os-delivery-dashboard-panel > header .os-button { min-height: 44px; gap: 2px; flex: 0 0 auto; padding-inline: 8px; }
+.os-delivery-dashboard-panel > header .os-button .os-icon { order: 1; }
+.os-delivery-dashboard-panel[data-delivery-section="stock"] { grid-column: 1 / -1; }
+
+.os-delivery-dashboard-empty {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 19px 0 3px;
+  font-size: 14px;
+}
+
+.os-delivery-dashboard-empty .os-icon { flex: 0 0 19px; color: var(--os-primary); }
+.os-delivery-dashboard-rows { margin: 10px 0 0; padding: 0; list-style: none; }
+.os-delivery-dashboard-rows > li { border-top: 1px solid var(--os-border); }
+.os-delivery-dashboard-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, auto);
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 54px;
+  padding: 9px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--os-text);
+  text-align: left;
+  font: 500 14px/20px var(--os-font);
+  overflow-wrap: anywhere;
+}
+
+button.os-delivery-dashboard-row { grid-template-columns: minmax(0, 1fr) minmax(0, auto) 14px; cursor: pointer; }
+button.os-delivery-dashboard-row:hover { background: var(--os-tint); }
+.os-delivery-dashboard-row > .os-icon { width: 14px; height: 14px; color: var(--os-muted); }
+.os-delivery-dashboard-row-copy,
+.os-delivery-dashboard-row-amount { display: grid; min-width: 0; gap: 3px; }
+.os-delivery-dashboard-row-amount { justify-items: end; text-align: end; }
+.os-delivery-dashboard-row small { font-size: 12px; line-height: 16px; color: var(--os-muted); }
+.os-delivery-dashboard-row .os-badge { padding: 2px 7px; font-size: 11px; line-height: 16px; white-space: normal; }
+.os-delivery-dashboard .os-chart-legend { margin-top: 12px; }
+.os-delivery-dashboard .os-series-chart { height: 138px; min-width: 0; }
+.os-delivery-dashboard-values { font-size: 13px; line-height: 20px; }
+.os-delivery-dashboard-values summary { min-height: 44px; padding-block: 12px; box-sizing: border-box; cursor: pointer; color: var(--os-text); }
+.os-delivery-dashboard-values table { width: 100%; border-collapse: collapse; text-align: end; }
+.os-delivery-dashboard-values :is(td, th) { padding: 7px 2px; border-top: 1px solid var(--os-border); overflow-wrap: anywhere; }
+.os-delivery-dashboard-values th:first-child { text-align: start; }
+
+@media (min-width: 1060px) {
+  .os-delivery-dashboard-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+@media (max-width: 1059px) {
+  .os-delivery-dashboard-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 767px) {
+  #appView:not(.os-layout-app) #page-suite[data-os-current-route="dashboard-delivery"] {
+    padding: 14px 12px calc(84px + env(safe-area-inset-bottom, 0px));
+  }
+  #appView.orion-suite-enabled:not(.os-menu-open):has(.os-delivery-dashboard) > .sidebar {
+    visibility: hidden;
+    transition-delay: 0s;
+  }
+  .os-delivery-dashboard,
+  .os-delivery-dashboard > [data-delivery-dashboard-content] { gap: 14px; }
+  .os-delivery-dashboard-header { gap: 12px; }
+  .os-delivery-dashboard-header h1 { font-size: 26px; line-height: 32px; }
+  .os-delivery-dashboard-header p { font-size: 14px; }
+  .os-delivery-dashboard-toolbar { width: 100%; }
+  .os-delivery-dashboard-date { flex: 1; gap: 6px; }
+  .os-delivery-dashboard-date input { width: min(154px, 100%); }
+  .os-delivery-dashboard-date .os-button { padding-inline: 8px; }
+  .os-delivery-dashboard-metrics,
+  .os-delivery-dashboard-grid { gap: 8px; }
+  .os-delivery-dashboard-metric.os-card,
+  .os-delivery-dashboard-panel.os-card { padding: 12px; border-radius: 15px; }
+  .os-delivery-dashboard-metric-label { gap: 6px; font-size: 12px; line-height: 16px; min-height: 32px; }
+  .os-delivery-dashboard-metric .os-square-icon { width: 26px; height: 26px; border-radius: 8px; }
+  .os-delivery-dashboard-metric .os-icon { width: 15px; height: 15px; }
+  .os-delivery-dashboard-panel h2 { font-size: 16px; line-height: 21px; }
+  .os-delivery-dashboard-panel > header .os-button { padding-inline: 4px; font-size: 12px; }
+  .os-delivery-dashboard-empty { padding-top: 9px; }
+  .os-delivery-dashboard .os-series-chart { height: 116px; }
+
+  #appView:not(.os-layout-app) .os-delivery-dashboard-new { display: none; }
+  #appView:not(.os-layout-app) .os-delivery-dashboard-dock {
+    position: fixed;
+    z-index: 32;
+    inset: auto 0 0;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px max(8px, env(safe-area-inset-right, 0px)) calc(6px + env(safe-area-inset-bottom, 0px)) max(8px, env(safe-area-inset-left, 0px));
+    border-top: 1px solid var(--os-border);
+    background: var(--os-card);
+    box-shadow: 0 -8px 22px color-mix(in srgb, var(--os-text) 8%, transparent);
+  }
+  .os-delivery-dashboard-dock .os-button { min-height: 48px; min-width: 44px; padding-inline: 6px; line-height: 16px; }
+  .os-delivery-dashboard-dock .os-ghost { flex: 1 1 0; flex-direction: column; gap: 3px; font-size: 11px; }
+  .os-delivery-dashboard-dock .os-icon { width: 17px; height: 17px; }
+  .os-delivery-dashboard-dock .os-delivery-dashboard-dock-new { flex: 1.25 0 auto; gap: 5px; font-size: 12px; }
+  body:has(#appView:not(.os-layout-app) .os-delivery-dashboard) .os-toast-region {
+    bottom: calc(73px + env(safe-area-inset-bottom, 0px));
+  }
+}

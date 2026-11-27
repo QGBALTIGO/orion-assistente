@@ -1097,14 +1097,40 @@
       returnToDirectory:()=>open('pacientes-odonto'),
       canAccess:()=>current(c)&&routePermitted(route)});
   }
+  function deliveryView(c,canWrite=writable){
+    return {
+      host:$('osPageBody'),call:(path,method,data)=>request(apiPath('/delivery'+path),method,data),
+      allowed:()=>current(c)&&deliveryPreview(),canWrite,canManagePolicy:()=>writable(true),notify:toast,
+      ui:{esc,icon,title,button,field,moneyField,selectField,textField,checkField,empty,loading,badge,money,fmtDate,dateKey,timeLabel,query,brazilianStates,metric,seriesChart,routeButton,requestKey,localISO,imageUploadField},
+      openDetails:(heading,content)=>showDialog('delivery-details',heading,content),
+      openEditor:(heading,content,submit,message,{label='Salvar',bind}={})=>{
+        if(showDialog('delivery-editor',heading,dialogForm('delivery-editor',content,label),
+          {deliverySubmit:submit,deliveryMessage:message}))bind?.($('osDialog'));
+      },
+    };
+  }
+
+  function openFromDeliveryDashboard(page,{day='',lowStock=false}={}){
+    const destinations={orders:deliveryOrdersRoute,deliveries:deliveryDispatchRoute,credit:deliveryCreditRoute,
+      stock:deliveryCatalogRoute,store:deliveryStoreRoute};
+    const route=destinations[page];
+    if(!route||!routePermitted(route))return;
+    if(page==='orders'||page==='deliveries'){
+      const key=page==='orders'?'deliveryOrders':'deliveryDispatch';
+      Object.assign(state.filters[key]??={},{start:day,end:day,offset:0,search:'',state:'all'});
+    }
+    if(page==='credit')Object.assign(state.filters.deliveryCredit??={},{offset:0,search:'',state:'pending'});
+    if(page==='stock')Object.assign(state.filters.deliveryCatalog??={},{tab:'catalog',offset:0,search:'',category:'',state:'active',low_stock:lowStock});
+    return open(route);
+  }
+
   async function loadRoute(options={}){if(affiliatePanelRoute(state.route))return;const c=context();try{
     if(Object.hasOwn(dentalViews,state.route)){await loadDentalView(dentalViews[state.route],c,options);return;}
     switch(state.route){
       case deliveryDashboardRoute:
-        await window.OrionDeliveryOrders.dashboard({
-          host:$('osPageBody'),filters:state.filters.deliveryDashboard??={},
-          call:path=>request(apiPath('/delivery'+path)),
-          allowed:()=>current(c)&&deliveryPreview(),ui:{esc,loading,field,title,money,metric,seriesChart,routeButton,dateKey,query},
+        await window.OrionDeliveryDashboard.mount({
+          ...deliveryView(c),filters:state.filters.deliveryDashboard??={},company:tenant()?.name,
+          openPage:openFromDeliveryDashboard,
         });
         break;
       case deliveryReportRoute:
@@ -1131,16 +1157,7 @@
         if(!module)throw Error('Atualize o painel para carregar esta área de Delivery.');
         const key=store?'deliveryStore':logistics?'deliveryLogistics':catalog?'deliveryCatalog':containers?'deliveryContainers':creditOnly?'deliveryCredit':deliveryOnly?'deliveryDispatch':'deliveryOrders';
         await module.mount({
-          host:$('osPageBody'), filters:state.filters[key]??={}, deliveryOnly, creditOnly,
-          call:(path,method,data)=>request(apiPath('/delivery'+path),method,data),
-          allowed:()=>current(c)&&deliveryPreview(), canWrite:store?()=>writable(true):writable,canManagePolicy:()=>writable(true),
-          ui:{esc,icon,title,button,field,moneyField,selectField,textField,checkField,empty,loading,badge,money,fmtDate,dateKey,timeLabel,query,brazilianStates,metric,routeButton,requestKey,localISO,imageUploadField},
-          notify:toast,
-          openDetails:(heading,content)=>showDialog('delivery-details',heading,content),
-          openEditor:(heading,content,submit,message,{label='Salvar',bind}={})=>{
-            if(showDialog('delivery-editor',heading,dialogForm('delivery-editor',content,label),
-              {deliverySubmit:submit,deliveryMessage:message}))bind?.($('osDialog'));
-          },
+          ...deliveryView(c,store?()=>writable(true):writable),filters:state.filters[key]??={},deliveryOnly,creditOnly,
         });
         break;
       }

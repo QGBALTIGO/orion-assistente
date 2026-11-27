@@ -1,5 +1,6 @@
 """Exercise the authorized delivery API against the real Postgres role and RLS."""
 import asyncio
+from datetime import date, timedelta
 import os
 from pathlib import Path
 import re
@@ -217,7 +218,7 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
           const rect = el => el.getBoundingClientRect();
           const name = el => el.id || el.getAttribute('name') || el.textContent.trim().slice(0, 40);
           for (const root of roots) {
-            for (const grid of root.querySelectorAll('.os-filter-row,.os-form-grid,.os-pill-tabs,.os-delivery-hours-row,.os-delivery-hours-date')) {
+            for (const grid of root.querySelectorAll('.os-filter-row,.os-form-grid,.os-pill-tabs,.os-delivery-hours-row,.os-delivery-hours-date,.os-delivery-dashboard-metrics,.os-delivery-dashboard-grid,.os-delivery-dashboard-dock,.os-delivery-dashboard-toolbar')) {
               if (!visible(grid) || grid.closest('.os-table-scroll')) continue;
               const items = [...grid.children].filter(visible);
               const bounds = rect(grid);
@@ -313,10 +314,17 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                 await expect(page.get_by_role("cell", name="Saldo inicial")).to_be_visible()
                 await expect(page.get_by_role("cell", name="Entrada", exact=True)).to_be_visible()
                 if theme == "dark":
-                    await page.goto(origin+"/painel?aba=pedidos-delivery")
-                    await expect(page.get_by_role("heading", name="Pedidos", exact=True)).to_be_visible()
+                    await page.goto(origin+"/painel?aba=dashboard-delivery")
                     await page.set_viewport_size({"width":390,"height":844})
-                    await page.get_by_role("button",name="Novo pedido").click()
+                    await expect(page.get_by_text("Nenhum pedido para esta data.")).to_be_visible()
+                    day = page.get_by_label("Data", exact=True)
+                    today = await day.input_value()
+                    yesterday = (date.fromisoformat(today)-timedelta(days=1)).isoformat()
+                    await day.fill(yesterday)
+                    await expect(page.get_by_role("button", name="Hoje", exact=True)).to_be_visible()
+                    await expect(page.get_by_text("Nenhum pedido para esta data.")).to_be_visible()
+                    dock = page.get_by_role("navigation", name="Atalhos de Delivery")
+                    await dock.get_by_role("button", name="Novo pedido", exact=True).click()
                     dialog = page.get_by_role("dialog")
                     await dialog.get_by_role("button",name="Buscar produtos").click()
                     await dialog.get_by_role("button",name="Água de homologação · Unidade").click()
@@ -325,6 +333,17 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                     await page.screenshot(path=artifacts/"pedido-dark-390.png", animations="disabled")
                     await dialog.get_by_role("button",name="Confirmar pedido").click()
                     await expect(dialog).to_be_hidden()
+                    await expect(day).to_have_value(today)
+                    order_on_dashboard = page.locator('[data-delivery-section="orders"] [data-delivery-dashboard-order]')
+                    await expect(order_on_dashboard).to_contain_text("Reservado")
+                    await order_on_dashboard.click()
+                    await expect(dialog.get_by_text(re.compile("Água de homologação"))).to_be_visible()
+                    await page.keyboard.press("Escape")
+                    await expect(dialog).to_be_hidden()
+                    await page.get_by_role("button", name="Ver pedidos", exact=True).click()
+                    await expect(page.get_by_role("heading", name="Pedidos", exact=True)).to_be_visible()
+                    await expect(page.get_by_label("De", exact=True)).to_have_value(today)
+                    await expect(page.get_by_label("Até", exact=True)).to_have_value(today)
                     orders = page.locator("#osDeliveryOrderList")
                     await expect(orders.get_by_text("Reservado",exact=True)).to_be_visible()
                     await page.get_by_role("button",name="Concluir",exact=True).click()
@@ -364,7 +383,15 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                     await dialog.get_by_role("button", name="Concluir pedido").click()
                     await expect(dialog).to_be_hidden()
                     await expect(orders.get_by_text("A receber", exact=True)).to_be_visible()
-                    await page.goto(origin+"/painel?aba=vendas-prazo-delivery")
+                    await page.goto(origin+"/painel?aba=dashboard-delivery")
+                    credit = page.locator('[data-delivery-section="credit"]')
+                    await expect(credit.get_by_text("Cliente novo de avaliação", exact=True)).to_be_visible()
+                    await expect(credit.get_by_text(re.compile(r"17,50"))).to_be_visible()
+                    await page.get_by_text("Valores por dia", exact=True).click()
+                    weekly_values = page.locator(".os-delivery-dashboard-values tbody tr")
+                    await expect(weekly_values).to_have_count(7)
+                    await expect(weekly_values.last).to_contain_text(re.compile(r"30,00.*12,50"))
+                    await page.get_by_role("button", name="Ver saldos", exact=True).click()
                     await page.get_by_role("button", name="Registrar recebimento", exact=True).click()
                     await dialog.get_by_label("Forma de pagamento").select_option("cash")
                     await dialog.get_by_label("Confirmo que recebi o pagamento").check()
@@ -421,7 +448,7 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                     await page.get_by_role("button", name="Histórico", exact=True).click()
                     await expect(page.get_by_role("cell", name="Devolução", exact=True)).to_be_visible()
                 panels = (
-                    ("dashboard-delivery", "Dashboard", None, "Pedidos do dia"),
+                    ("dashboard-delivery", "Dashboard", "heading", "Pedidos do dia"),
                     ("clientes", "Clientes", "button", "Novo cliente"),
                     ("financeiro", "Financeiro", None, "Ticket médio"),
                     ("pedidos-delivery", "Pedidos", "button", "Novo pedido"),
@@ -441,6 +468,14 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                     for width in widths:
                         await page.set_viewport_size({"width":width,"height":900})
                         await assert_delivery_layout(page, (route,theme,width))
+                        if route == "dashboard-delivery":
+                            shortcuts = page.get_by_role("navigation", name="Atalhos de Delivery")
+                            if width < 768:
+                                await expect(shortcuts).to_be_visible()
+                                assert (await shortcuts.bounding_box())["y"] > 810
+                            else:
+                                await expect(shortcuts).to_be_hidden()
+                            await expect(page.get_by_role("button", name="Novo pedido", exact=True)).to_be_visible()
                         if width in (390,1440):
                             await page.screenshot(path=artifacts/f"{route}-{theme}-{width}.png", animations="disabled")
                     if route == "clientes":
