@@ -11,12 +11,13 @@ from tempfile import TemporaryDirectory
 
 ROOT = Path(__file__).resolve().parents[1]
 BEFORE = "4879bf3e061a23c9889ef46ed350430ec75208ec"
-REVIEW = "be952d3b9f8e7dc8f535f2ee15a1a3cca65d3893"
+REVIEW = "f7ebcbbf47446e77f11d3aebadd581f9b0c634f0"
 SURFACES = {
     "api": {
         "base": "ghcr.io/qgbaltigo/orion-assistente-api@sha256:6bec942197e7db9d265e35d735f21c0fb631088041014b66c80b96d4f9c2827d",
         "workdir": "/srv/app",
-        "files": {"app/delivery_whatsapp.py": "M", "app/subscription_devices.py": "M"},
+        "files": {"app/delivery_whatsapp.py": "M", "app/subscription_devices.py": "M",
+                  "app/delivery_storefront.py": "M"},
         "prefix": "",
     },
     "qr": {
