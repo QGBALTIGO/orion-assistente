@@ -81,3 +81,36 @@ def test_natural_cash_and_layout():
         wa.change("qualquer valor")
     assert "*R$ 10,00*" in wa.list_products([WATER], NOW)
     assert "\n\n" in wa.state_question("payment", {}, SHOP, [WATER])
+
+
+def test_cash_change_uses_combined_message_without_reasking():
+    state = {}
+    wa.set_payment(state, "Dinheiro, troco pra 50 reais", "cash")
+    assert state == {"payment_preference": "cash", "change_for_cents": 5000}
+    wa.set_payment(state, "Pix", "pix")
+    assert state == {"payment_preference": "pix"}
+    wa.set_payment(state, "Dinheiro, sem troco", "cash")
+    assert state == {"payment_preference": "cash", "change_for_cents": None}
+    assert wa.cash_change_from_message("dinheiro, troco pra algum valor") == (False, None)
+    assert wa.cash_change_from_message("dinheiro, troco pra 50 ou 100") == (False, None)
+
+
+def test_confirmation_buttons_bind_current_summary_and_receipt():
+    text = "📝 *Seu pedido*\n\nTotal: *R$ 10,00*" + wa.CONFIRMATION_FALLBACK
+    state = {"stage": "confirm", "summary": text}
+    presentation = wa.confirmation_presentation(text, state)
+    buttons = presentation["action"]["buttons"]
+    assert presentation["action"]["text"] + wa.CONFIRMATION_FALLBACK == text
+    assert [b["title"] for b in buttons] == ["Confirmar pedido", "Cancelar"]
+    assert wa.confirmation_selection(state, buttons[0]["id"], "provider1", "provider1") == "confirmo"
+    assert wa.confirmation_selection(state, buttons[1]["id"], "provider1", "provider1") == "nao"
+    assert wa.confirmation_selection(state, buttons[0]["id"], "old-provider", "provider1") is None
+    assert wa.confirmation_selection(state, buttons[0]["id"], "provider1", None) is None
+    assert wa.confirmation_selection({}, buttons[0]["id"], "provider1", "provider1") is None
+    updated = wa.confirmation_presentation(text, state)
+    assert updated["id"] != presentation["id"]
+    assert wa.confirmation_selection(state, buttons[0]["id"], "provider1", "provider1") is None
+    assert wa.confirmation_presentation("Seu pedido mudou.", state) is None
+    assert "delivery_presentation_id" not in state
+    long_text = "🙂" * 600 + wa.CONFIRMATION_FALLBACK
+    assert wa.confirmation_presentation(long_text, {"stage":"confirm","summary":long_text}) is None

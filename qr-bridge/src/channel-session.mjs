@@ -41,7 +41,7 @@ import {createGroupAddSocket} from './device-group-add.mjs';
 import {classifyPairedAuth} from './paired-auth-state.mjs';
 import {chatbotInteractiveMode} from './interactive-mode.mjs';
 import {lookupRecipient} from './recipient-lookup.mjs';
-import {createAssistantPresentationStore,relayAssistantPresentation,assistantNativeMode,ASSISTANT_SELECTION_TEXT} from './assistant-presentation.mjs';
+import {createAssistantPresentationStore,relayAssistantPresentation,buildAssistantPresentation,assistantNativeMode,ASSISTANT_SELECTION_TEXT} from './assistant-presentation.mjs';
 import {disconnectEvidence} from './disconnect-evidence.mjs';
 
 export async function createBaileysChannelSession(context,{loadBaileys=()=>import('@whiskeysockets/baileys'),selectVersion=selectWaWebVersion,now=Date.now,presenceNow=()=>performance.now(),typingFactory=makeAssistantTyping,intakeOptions={},schedule=setTimeout,cancel=clearTimeout,deviceOptions={}}={}){
@@ -267,8 +267,15 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
     assertMutationReady:async()=>{await guarded();if(!groupMutationReady())throw Error('group_add_unavailable');},
     mutationCurrent:groupMutationReady});
   async function relayText(phone,text,{isCurrent:operationCurrent=()=>true,maxTextChars=1200,device=false,source='automation',
-    diagnostic=null,assertAuthorized,onRelayAttempt,pacing=true,presentation,deferPresentationAck=false,presentationProvenance}={}){
+    diagnostic=null,assertAuthorized,onRelayAttempt,pacing=true,presentation,deferPresentationAck=false,presentationProvenance,deliveryPresentation}={}){
     if(presentation&&(device||source!=='assistant'))throw Error('assistant_presentation_denied');
+    if(deliveryPresentation&&(!device||presentation||diagnostic||typeof assertAuthorized!=='function'||
+        typeof onRelayAttempt!=='function'||context.deviceSnapshot?.()?.capabilities?.delivery_reply_buttons!==1))
+      throw Error('delivery_presentation_denied');
+    // Native reply buttons are canaried independently of appointment buttons.
+    // Every other recipient gets the exact existing text with explicit choices.
+    const nativeDelivery=deliveryPresentation&&assistantNativeMode({tenantId:context.tenantId,channelId:context.channelId,phone,
+      env:{QR_ASSISTANT_NATIVE_SCOPES:process.env.QR_DELIVERY_NATIVE_SCOPES}})==='native'?deliveryPresentation:null;
     await guarded();const self=normalizeFromJid(client.user?.id);
     let authorized=true;
     const sendCurrent=()=>{try{return authorized&&current()&&operationCurrent()===true&&
@@ -298,7 +305,7 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
     const proof=await resolvePilotRecipient({phone,pilotPhone:phone,enabled:!(diagnostic&&phone===self)&&context.verifiedLid?.()===true,
       socket:client,deviceCache,isCurrent:sendCurrent,lookupResults:exists,schedule,cancel}).catch(error=>{if(!diagnostic)outboundFailure('recipient_proof',error,sendCurrent);throw error;});await authorize();
     let preparationStage='presence';
-    try{const result=await outgoingPresence.run({phone,chatJid:proof.jid,isCurrent:sendCurrent,assertAuthorized:authorize,action:presentation?.action||{type:'text',text},pacing},async({beforeSend})=>{
+    try{const result=await outgoingPresence.run({phone,chatJid:proof.jid,isCurrent:sendCurrent,assertAuthorized:authorize,action:nativeDelivery?.action||presentation?.action||{type:'text',text},pacing},async({beforeSend})=>{
     if(presentation){
       preparationStage='message_generation';
       const sent=await relayAssistantPresentation({presentation,provenance:presentationProvenance,sdk:{...mod,userJid:client.user.id},jid:proof.jid,recipientProof:proof,phone,
@@ -310,6 +317,23 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
         },
         interactiveMode:assistantNativeMode({tenantId:context.tenantId,channelId:context.channelId,phone})});
       return {id:sent.key.id,...(typeof sent.acknowledgePresentation==='function'?{acknowledgePresentation:sent.acknowledgePresentation}:{})};
+    }
+    if(nativeDelivery){
+      preparationStage='message_generation';
+      let built;
+      try{
+        const sent=await sendStoredProtocol({jid:proof.jid,recipientProof:proof,store:retryStore,isCurrent:sendCurrent,
+          assertAuthorized:authorize,onRelayAttempt:()=>{preparationStage='relay_attempt';onRelayAttempt();},
+          makeMessage:async jid=>{
+            built=await buildAssistantPresentation(nativeDelivery,{sdk:mod,interactiveMode:'native',
+              assertCurrent:authorize,isCurrent:sendCurrent});
+            await beforeSend();
+            return mod.generateWAMessageFromContent(jid,built.content,{userJid:client.user.id,
+              messageId:mod.generateMessageIDV2(client.user.id),timestamp:new Date(now())});
+          },
+          relay:async(jid,body,options)=>{await authorize();return client.relayMessage(jid,body,{...options,...built?.relayOptions});}});
+        return {id:sent.key.id};
+      }finally{built?.dispose();}
     }
     preparationStage='pacing';await beforeSend();
     preparationStage='message_generation';

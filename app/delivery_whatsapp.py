@@ -28,6 +28,8 @@ from app.workspace_policy import delivery_preview_enabled
 
 PURPOSE = "delivery_reply"
 STATE_TTL = 1800
+CONFIRMATION_FALLBACK = "\nResponda *CONFIRMO* para registrar o pedido ou *NÃO* para cancelar o resumo."
+CONFIRMATION_STALE = "Esse botão não corresponde ao resumo atual. Nenhum novo pedido foi registrado."
 PAYMENTS = {"cash": "dinheiro", "pix": "Pix manual", "debit_card": "cartão de débito",
             "credit_card": "cartão de crédito"}
 HELP = "Se quiser falar com nossa equipe, é só escrever *atendente*."
@@ -170,6 +172,70 @@ def change(body):
     if not 0 < amount <= MAX_MONEY:
         raise ValueError("valor")
     return amount
+
+
+def cash_change_from_message(body):
+    """Extract only an explicit, complete cash-change instruction."""
+    value = clean(body)
+    if re.search(r"\b(?:sem troco|nao (?:preciso|precisa) de troco|valor (?:certo|exato))$", value):
+        return True, None
+    match = re.search(r"\btroco\s+(?:(?:para|pra|de)\s+)?(?:r\$\s*)?\d{1,7}(?:[.,]\d{1,2})?(?:\s+reais?)?$", value)
+    if match:
+        try:
+            return True, change(match.group())
+        except ValueError:
+            pass
+    return False, None
+
+
+def set_payment(state, body, method):
+    if state.get("payment_preference") != method:
+        state.pop("change_for_cents", None)
+    state["payment_preference"] = method
+    if method == "cash":
+        supplied, amount = cash_change_from_message(body)
+        if supplied:
+            state["change_for_cents"] = amount
+
+
+def confirmation_presentation(reply, state):
+    """Only a complete, freshly reviewed server summary may carry buttons.
+
+    Text remains the canonical fallback for an older or unsupported bridge.
+    The opaque ID lives in the encrypted contact-scoped conversation, not in
+    the product, model prompt, or an untrusted display label.
+    """
+    state.pop("delivery_presentation_id", None)
+    summary = state.get("summary")
+    if (not isinstance(reply, str) or state.get("stage") != "confirm" or
+            not isinstance(summary, str) or not reply.endswith(summary) or
+            not reply.endswith(CONFIRMATION_FALLBACK)):
+        return None
+    native_text = reply[:-len(CONFIRMATION_FALLBACK)]
+    if not native_text.strip() or len(native_text.encode("utf-16-le")) // 2 > 1024:
+        return None
+    identity = uuid4().hex
+    state["delivery_presentation_id"] = identity
+    return {"version": 1, "id": identity, "action": {
+        "type": "reply_buttons", "text": native_text, "buttons": [
+            {"id": f"oa1_{identity}_0", "title": "Confirmar pedido"},
+            {"id": f"oa1_{identity}_1", "title": "Cancelar"},
+        ]}}
+
+
+def confirmation_selection(state, selection_id, quoted_message_id, accepted_provider_id):
+    """An exact current summary, accepted receipt and contact are required.
+
+    The caller already resolves the last encrypted state by tenant/device/
+    generation/phone. A forged label, old summary or duplicate click never
+    becomes a new order.
+    """
+    identity = state.get("delivery_presentation_id")
+    if (state.get("stage") != "confirm" or not isinstance(identity, str) or
+            not re.fullmatch(r"[a-f0-9]{32}", identity) or not accepted_provider_id or
+            quoted_message_id != accepted_provider_id):
+        return None
+    return {f"oa1_{identity}_0": "confirmo", f"oa1_{identity}_1": "nao"}.get(selection_id)
 
 
 def state_question(stage, state, shop, items):
@@ -361,7 +427,7 @@ async def next_step(db, tenant, shop, items, state, phone):
         summary += "\nCom devolução dos vasilhames vazios."
     if draft.change_for_cents is not None:
         summary += "\nTroco previsto: "+money(draft.change_for_cents-estimate["total_cents"])
-    summary += "\n\nEstá tudo certinho? 😊\nResponda *CONFIRMO* para registrar o pedido ou *NÃO* para cancelar o resumo."
+    summary += "\n\nEstá tudo certinho? 😊" + CONFIRMATION_FALLBACK
     state.update(stage="confirm",proposal=proposal.model_dump(mode="json"),summary=summary)
     return summary,state
 
@@ -482,10 +548,11 @@ async def answer(db, tenant, phone, body, state, summary_delivered):
         method=payment(body)
         if method not in shop["payment_methods"]:
             return state_question("payment",state,shop,items),state
-        state["payment_preference"]=method
+        set_payment(state, body, method)
     elif stage=="change":
         try:
-            state["change_for_cents"]=change(body)
+            supplied, amount = cash_change_from_message(body)
+            state["change_for_cents"]=amount if supplied else change(body)
         except ValueError:
             return state_question("change",state,shop,items),state
     elif stage=="offer" and affirmative(body):
@@ -510,14 +577,15 @@ async def answer(db, tenant, phone, body, state, summary_delivered):
             state["mode"]="pickup"
         method=payment(body)
         if method in shop["payment_methods"]:
-            state["payment_preference"]=method
+            set_payment(state, body, method)
     return await next_step(db,tenant,shop,items,state,phone)
 
 
 async def record_event(db, device, payload):
-    if not enabled(device) or payload.kind!="text" or payload.origin!="contact" or not payload.message_id or not payload.text:
+    if (not enabled(device) or payload.kind!="text" or payload.origin!="contact" or not payload.message_id
+            or not (payload.text or payload.selection_id)):
         return {"effects":[],"duplicate":False}
-    if len(payload.text)>1500:
+    if payload.text and len(payload.text)>1500:
         return {"effects":[],"duplicate":False}
     try:
         phone=normalize_phone("+"+payload.phone)
@@ -538,6 +606,7 @@ async def record_event(db, device, payload):
           AND payload->>'delivery'='true' ORDER BY received_at DESC,id DESC LIMIT 1"""),params)).mappings().one_or_none()
     state={}
     delivered=False
+    accepted_provider_id=None
     if last:
         if payload.occurred_at<last["occurred_at"]:
             return {"effects":[],"duplicate":False,"ignored":"out_of_order"}
@@ -550,14 +619,30 @@ async def record_event(db, device, payload):
                 state=json.loads(decoded)
             except (InvalidToken,ValueError,TypeError):
                 pass
-        delivered=bool(old.get("delivery_summary") is True and await db.scalar(text("""SELECT 1 FROM subscription_device_effects
-            WHERE tenant_id=:t AND device_id=:d AND event_id=:event AND purpose=:purpose AND status='accepted'"""),
-            {**params,"event":last["id"],"purpose":PURPOSE}))
+        if old.get("delivery_summary") is True:
+            accepted=(await db.execute(text("""SELECT provider_id FROM subscription_device_effects
+                WHERE tenant_id=:t AND device_id=:d AND generation=:g AND event_id=:event
+                  AND purpose=:purpose AND status='accepted' AND settings_revision=:revision
+                  AND payload->>'phone'=:phone"""),
+                {**params,"event":last["id"],"purpose":PURPOSE,"revision":device["revision"]})).mappings().one_or_none()
+            delivered=accepted is not None
+            accepted_provider_id=accepted["provider_id"] if accepted else None
     # Savepoint avoids retaining half an order after a business rejection. The
     # checkout's own idempotency key is reused across delivery retries.
-    async with get_session_factory()() as runtime:
-        async with tenant_transaction(runtime,device["tenant_id"]):
-            reply,state=await answer(runtime,device["tenant_id"],phone,payload.text,state,delivered)
+    body = payload.text
+    if payload.selection_id:
+        body = confirmation_selection(state, payload.selection_id, payload.quoted_message_id, accepted_provider_id)
+    if body:
+        async with get_session_factory()() as runtime:
+            async with tenant_transaction(runtime,device["tenant_id"]):
+                reply,state=await answer(runtime,device["tenant_id"],phone,body,state,delivered)
+    elif state.get("paused"):
+        reply = None
+    else:
+        reply = CONFIRMATION_STALE
+        if state.get("stage") == "confirm" and state.get("summary"):
+            reply += "\n\n" + state["summary"]
+    presentation = confirmation_presentation(reply, state)
     data={"delivery":True,"phone":payload.phone,"message_id":payload.message_id,
           "settings_revision":device["revision"],"delivery_paused":state.get("paused") is True,
           "delivery_summary": bool(reply and state.get("stage")=="confirm"
@@ -585,8 +670,11 @@ async def record_event(db, device, payload):
     if not reply:
         return {"effects":[],"duplicate":False}
     from app.subscription_devices import _insert_effect
+    effect_payload={"phone":payload.phone,"text":reply}
+    if presentation is not None:
+        effect_payload["delivery_presentation"]=presentation
     effect_id=await _insert_effect(db,device,event_id,"delivery-reply",
-        {"type":"send_text","purpose":PURPOSE,"payload":{"phone":payload.phone,"text":reply}})
+        {"type":"send_text","purpose":PURPOSE,"payload":effect_payload})
     return {"effects":[{"operation_id":str(effect_id),"type":"send_text"}],"duplicate":False}
 
 

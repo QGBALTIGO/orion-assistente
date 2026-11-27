@@ -390,15 +390,17 @@ async def test_delivery_whatsapp_connection_checkout_with_same_device_and_explic
     assert activated.json()["enabled"] is True
     phone="5567999999902"
 
-    async def talk(body, *, contact=phone, message=None, accepted=True):
-        result=await event(c,phone=contact,text=body,message_id=message or uuid4().hex)
+    async def talk(body=None, *, contact=phone, message=None, accepted=True, selection=None, quoted=None, full=False):
+        data={"text":body} if selection is None else {"selection_id":selection,"quoted_message_id":quoted}
+        result=await event(c,phone=contact,message_id=message or uuid4().hex,**data)
         assert len(result["effects"])==1,result
         effect=result["effects"][0]
         grant=await permit(c,effect)
         assert grant["authorized"] and grant["payload"]["phone"]==contact,grant
+        provider_id=uuid4().hex
         if accepted:
-            await finish(c,effect,"accepted",provider_id=uuid4().hex)
-        return grant["payload"]["text"]
+            await finish(c,effect,"accepted",provider_id=provider_id)
+        return (grant["payload"],provider_id) if full else grant["payload"]["text"]
 
     async def orders():
         async with c.ctx.migration.connect() as db:
@@ -415,17 +417,25 @@ async def test_delivery_whatsapp_connection_checkout_with_same_device_and_explic
     assert "nome" in (await talk("Quero duas águas")).lower()
     assert "retirada" in await talk("Cliente de teste")
     assert "pagar" in await talk("retirada")
-    assert "troco" in await talk("dinheiro")
-    summary=await talk("sem troco")
-    assert "R$ 25,00" in summary and "CONFIRMO" in summary,summary
+    summary, first_provider=await talk("dinheiro, troco pra 50 reais",full=True)
+    assert "R$ 25,00" in summary["text"] and "CONFIRMO" in summary["text"],summary
+    assert "Troco previsto: R$ 25,00" in summary["text"]
+    first_buttons=summary["delivery_presentation"]["action"]["buttons"]
+    assert [b["title"] for b in first_buttons]==["Confirmar pedido","Cancelar"]
     assert await orders()==[]
-    questions = await talk("Aceita Pix?")
-    assert "Formas de pagamento" in questions and "CONFIRMO" in questions
+    questions, second_provider = await talk("Aceita Pix?",full=True)
+    assert "Formas de pagamento" in questions["text"] and "CONFIRMO" in questions["text"]
     assert await orders()==[]
-    assert "Nenhum" not in await talk("confirmo",contact="5567999999903") or await orders()==[]
+    assert "não corresponde" in await talk(selection=first_buttons[0]["id"],quoted=first_provider,contact="5567999999903")
     assert await orders()==[]
+    stale, current_provider=await talk(selection=first_buttons[0]["id"],quoted=first_provider,full=True)
+    assert "não corresponde" in stale["text"] and "CONFIRMO" in stale["text"]
+    assert await orders()==[]
+    current_buttons=stale["delivery_presentation"]["action"]["buttons"]
+    assert current_buttons[0]["id"]!=questions["delivery_presentation"]["action"]["buttons"][0]["id"]
     identity=uuid4().hex
-    assert "registrado" in await talk("confirmo",message=identity)
+    assert "registrado" in await talk(selection=current_buttons[0]["id"],quoted=current_provider,message=identity)
+    assert "não corresponde" in await talk(selection=current_buttons[0]["id"],quoted=current_provider)
     assert await orders()==[("whatsapp",2500,"confirmed")]
     repeated=await event(c,phone=phone,text="confirmo",message_id=identity)
     assert repeated["duplicate"] and repeated["effects"]==[]
@@ -435,6 +445,12 @@ async def test_delivery_whatsapp_connection_checkout_with_same_device_and_explic
             WHERE tenant_id=:t AND variant_id=:v"""),{"t":c.tenant,"v":created["variant_id"]})).one()
         assert inventory==(5,2)
     assert "aguardando atendimento" in await talk("meu pedido")
+    assert "retirada" in await talk("Quero uma água")
+    assert "pagar" in await talk("retirada")
+    draft, provider=await talk("dinheiro, sem troco",full=True)
+    cancel=draft["delivery_presentation"]["action"]["buttons"][1]["id"]
+    assert "Cancelei o resumo" in await talk(selection=cancel,quoted=provider)
+    assert await orders()==[("whatsapp",2500,"confirmed")]
     assert "Pausei" in await talk("atendente")
     silent=await event(c,phone=phone,text="oi",message_id=uuid4().hex)
     assert silent["effects"]==[]

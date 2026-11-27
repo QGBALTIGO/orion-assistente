@@ -71,6 +71,9 @@ jobs:
         run: |
           python -m compileall -q app
           npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+          node --check qr-bridge/src/channel-session.mjs
+          node --check qr-bridge/src/device-runtime.mjs
+          node --test qr-bridge/test/delivery-confirmation.test.mjs
           node --check app/static/orion-delivery-catalog.js
           node --check app/static/orion-delivery-dashboard.js
           node --check app/static/orion-delivery-editor.js

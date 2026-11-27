@@ -690,6 +690,7 @@ async def device_lease_snapshot(db, transport):
         "settings": settings, "proxy_secret": None if delivery else secret, "restart_required": row["restart_required"],
         "chatbot": None if db.info.get("orion_device_profile") in CONNECTION_ONLY_PROFILES else await chatbot.snapshot(db, row["tenant_id"]),
         "capabilities": {"transcription_available": not delivery and audio_capable(), "transcription_max_bytes": 25000000,
+            **({"delivery_reply_buttons": 1} if delivery and delivery_whatsapp.enabled(row) else {}),
             "transcription_max_seconds": 1800, "transcription_max_text_chars": 120000,
             "proxy": True, "webhook": True}})
 
@@ -1115,7 +1116,8 @@ async def authorize_effect(channel_id: UUID, payload: EffectRequest, request: Re
                 return denied
             return jsonable_encoder({"authorized": True, "operation_id": effect["id"], "type": effect["type"],
                 "device_id": row["id"], "generation": row["generation"], "settings_revision": row["revision"],
-                "payload": effect["payload"]})
+                "payload": effect["payload"],
+                **({"purpose": delivery_whatsapp.PURPOSE} if effect["purpose"] == delivery_whatsapp.PURPOSE else {})})
         if not await _reserve_cooldown(db, row, effect):
             await db.execute(text("UPDATE subscription_device_effects SET status='not_sent',finished_at=clock_timestamp(),error_code='notice_cooldown' WHERE id=:o"), {"o": effect["id"]})
             return denied
@@ -1124,7 +1126,8 @@ async def authorize_effect(channel_id: UUID, payload: EffectRequest, request: Re
             {"o": effect["id"], "owner": owner, "fence": fence})
         return jsonable_encoder({"authorized": True, "operation_id": effect["id"], "type": effect["type"],
             "device_id": row["id"], "generation": row["generation"], "settings_revision": row["revision"],
-            "payload": effect["payload"]})
+            "payload": effect["payload"],
+            **({"purpose": delivery_whatsapp.PURPOSE} if effect["purpose"] == delivery_whatsapp.PURPOSE else {})})
 
 
 @router.post(INTERNAL + "/effects/finish")

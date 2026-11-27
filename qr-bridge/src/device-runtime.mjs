@@ -14,6 +14,7 @@ import {createChatbotRuntime,isChatbotEffect} from './chatbot-runtime.mjs';
 import {normalizeChatbotInput,createOrderedIngress} from './chatbot-input.mjs';
 import {knownMessagePreflight,messageFailureCode,safeMessageFailureCode} from './device-message-failure.mjs';
 import {diagnosticMessagePermit} from './device-diagnostic-message.mjs';
+import {deliveryPresentationFromPermit} from './delivery-confirmation.mjs';
 import {createCampaignRuntime,isCampaignEffect} from './campaign-runtime.mjs';
 import {createScheduledRuntime,isScheduledEffect} from './scheduled-runtime.mjs';
 import {createBulkRuntime,isBulkEffect} from './bulk-runtime.mjs';
@@ -159,6 +160,7 @@ export function createDeviceRuntime(context,{client,downloadMediaMessage,logger,
       if(item.type==='send_text'){
         if(!phonePattern.test(data.phone)||typeof data.text!=='string'||!data.text.trim()||data.text.length>DEVICE_TEXT_MAX_CHARS)throw Error('device_effect_invalid');
         const canRecheck=diagnostic!==null||context.supportsSendRecheck?.()===true;
+        const deliveryPresentation=canRecheck?deliveryPresentationFromPermit(permit,expected):null;
         const recheck=async()=>{
           await guardEffect(expected);
           if(!diagnostic&&context.supportsSendRecheck?.()!==true)throw Error('device_effect_refused');
@@ -172,6 +174,7 @@ export function createDeviceRuntime(context,{client,downloadMediaMessage,logger,
         await guardEffect(expected);if(!canRecheck)attempted=true;
         const result=await sendText(data.phone,data.text,{isCurrent:()=>effectCurrent(expected)&&!abort.signal.aborted,maxTextChars:DEVICE_TEXT_MAX_CHARS,
           pacing:canRecheck,...(diagnostic?{diagnostic}:{}),
+          ...(deliveryPresentation?{deliveryPresentation}:{}),
           ...(canRecheck?{assertAuthorized:recheck,onRelayAttempt:()=>{attempted=true;}}:{})});
         if(!messageId(result?.id))throw Error('device_send_unknown');
         ledger.save(id,{...reserved.record,state:'accepted',accepted:true,provider_id:result.id});
