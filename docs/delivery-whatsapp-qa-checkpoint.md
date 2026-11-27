@@ -22,3 +22,11 @@ Missão ativa: atendimento WhatsApp, CRM persistente, laboratório de homologaç
 8. Matriz de 500 cenários distintos: registrar cenários reais, simulados, reprovados e bloqueados separadamente, com evidências. Não contar cenários planejados como executados.
 
 Não declarar missão integralmente concluída sem evidência. Cada ciclo deve preservar os resultados e os bloqueios, e os commits/builds não substituem validação real.
+
+## Checkpoint atualizado — CRM, memória e áudio
+- Revisão `f7ebcbb`: integração CRM corrigida e emergência priorizada; CI 46081166451 aprovado, com 90 + 4 + 79 testes Python e 4 testes Node explicitamente contados nos logs (177 execuções, não 177 cenários distintos da matriz). Imagens API/QR no workflow 46081189864 aprovadas.
+- Produção: deploy API `91c79671-1b46-4dd1-a160-891f42374dd3`, digest `ca9b8be591f7d180f69b6cc158991266eded13cf8a3aaeaed400b305b121dee9`, SUCCESS. QR bridge e worker preservados. Reteste conversacional real da nova API pendente.
+- Botões nativos: código e transporte aprovados em homologação; conector de produção não atualizado, pois o escopo exato do canal de teste não pôde ser confirmado. Alternativa textual ativa.
+- Memória de endereços: branch `codex/delivery-memory-20261127`, revisão `9c29a29` aprovada em CI 46081391406; revisão `282cbfb` acrescenta teste de gravação após checkout confirmado, CI 46081927436. Não implantada.
+- Piloto áudio: branch `codex/delivery-audio-20261127`, revisão `fa1361a`, CI 46081789930. Reutiliza ASR existente, escopo por tenant, quotas e fallback; confirmação final por texto/botão. Não implantado, sem teste de áudio real.
+- Matriz em `docs/delivery-whatsapp-qa-matrix.csv`: 500 cenários planejados e quatro evidências históricas reais. Os testes automatizados são registrados separadamente; não equivalem automaticamente a cenários individuais aprovados.
