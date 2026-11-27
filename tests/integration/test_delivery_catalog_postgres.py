@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import re
 import socket
+import subprocess
 from urllib.parse import urlsplit
 from uuid import UUID, uuid4
 
@@ -169,7 +170,7 @@ async def test_product_profile_and_channel_flags_are_tenant_scoped(onboarding_db
         assert denied.status_code == 409, denied.text
 
 
-async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypatch):
+async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypatch, tmp_path):
     if os.getenv("ORION_DELIVERY_BROWSER_TEST") != "1":
         pytest.skip("Requires an isolated Redis and a Chromium browser")
     import uvicorn
@@ -192,8 +193,14 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
 
     listener = socket.socket()
     listener.bind(("127.0.0.1", 0))
-    origin = f"http://127.0.0.1:{listener.getsockname()[1]}"
-    server = uvicorn.Server(uvicorn.Config(app, log_level="warning", access_log=False))
+    # Match the production transport for the isolated loopback browser fixture.
+    key, cert = tmp_path/"localhost-key.pem", tmp_path/"localhost-cert.pem"
+    subprocess.run(["openssl","req","-x509","-newkey","rsa:2048","-nodes","-days","1",
+                    "-subj","/CN=127.0.0.1","-addext","subjectAltName=IP:127.0.0.1",
+                    "-keyout",str(key),"-out",str(cert)], check=True, capture_output=True)
+    origin = f"https://127.0.0.1:{listener.getsockname()[1]}"
+    server = uvicorn.Server(uvicorn.Config(app, log_level="warning", access_log=False,
+                                          ssl_keyfile=str(key), ssl_certfile=str(cert)))
     server_task = asyncio.create_task(server.serve(sockets=[listener]))
     widths = (320, 375, 390, 430, 768, 1024, 1280, 1440, 1920)
     artifacts = Path(os.getenv("DELIVERY_EVIDENCE_DIR", "artifacts/delivery-browser"))
@@ -248,7 +255,7 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
             browser = await playwright.chromium.launch()
             for theme in ("light", "dark", "system"):
                 context = await browser.new_context(locale="pt-BR", color_scheme="dark" if theme=="system" else theme,
-                                                    service_workers="block")
+                                                    service_workers="block", ignore_https_errors=True)
 
                 async def safe_route(route):
                     if urlsplit(route.request.url).netloc == urlsplit(origin).netloc:
@@ -465,7 +472,8 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
             if os.getenv("ORION_DELIVERY_WEBKIT_TEST") == "1":
                 webkit = await playwright.webkit.launch()
                 context = await webkit.new_context(locale="pt-BR", color_scheme="dark",
-                    viewport={"width":390,"height":844}, is_mobile=True, has_touch=True)
+                    viewport={"width":390,"height":844}, is_mobile=True, has_touch=True,
+                    ignore_https_errors=True)
                 await context.route("**/*", safe_route)
                 await context.add_init_script('localStorage.setItem("orion-theme", "dark");')
                 login = await context.request.post(origin+"/auth/login", data={"username":email,"password":password})
