@@ -263,3 +263,8 @@
   #page-suite[data-os-current-route$="-delivery"] #osContainerFilters > .os-field:has(input[type="search"]),
   #page-suite[data-os-current-route$="-delivery"] #osDeliveryCouriersFilter > .os-field:has(input[type="search"]) {grid-column:auto}
 }
+.os-delivery-board { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,15rem),1fr)); gap:1rem; align-items:start; }
+.os-delivery-board-lane { min-width:0; display:grid; gap:.65rem; }
+.os-delivery-board-lane h2 { font-size:1rem; margin:.6rem 0; }
+.os-delivery-board-lane .os-card { min-width:0; overflow-wrap:anywhere; }
+.os-delivery-board-lane .os-actions { flex-wrap:wrap; }

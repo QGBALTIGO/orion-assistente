@@ -19,6 +19,30 @@ async function waitForField(document, selector) {
   assert.ok(document.querySelector(selector), 'O editor deve carregar o campo '+selector);
 }
 
+test('Kanban pages a single lane and repeating an order opens a new unquoted cart',async t=>{
+  const row={id:orderId,mode:'delivery',status:'fulfilled',revision:2,total_cents:1250,created_at:new Date().toISOString()};
+  const h=await makeSuite({initialRoute:'pedidos-delivery',permissions:preview,configureWindow:w=>w.eval(ordersSource),
+    respond:p=>{
+      if(p.includes('/delivery/orders?')){
+        const params=new URL(p,'https://orion.test').searchParams,state=params.get('state'),offset=Number(params.get('offset'));
+        return {items:state==='fulfilled'||state==='all'?[row]:[],offset,limit:25,has_more:state==='fulfilled'&&offset===0};
+      }
+      if(p.endsWith('/orders/'+orderId))return {...row,address:{street:'Antiga'},items:[{variant_id:variant,product_name:'Água',variant_name:'20L',quantity:2}]};
+      return defaultResponse(p);
+    }});
+  t.after(()=>h.close());await flush();
+  h.fill('[name=orderView]','board').dispatchEvent(new h.window.Event('change',{bubbles:true}));await flush();
+  assert.equal(h.document.querySelectorAll('.os-delivery-board-lane').length,4);
+  h.click('[data-os-action=delivery-board-next]');await flush();
+  assert.ok(h.calls.some(c=>c.path.includes('state=fulfilled')&&c.path.includes('offset=25')));
+  assert.equal(h.calls.some(c=>c.path.includes('state=confirmed')&&c.path.includes('offset=25')),false);
+  h.click('[data-os-action=delivery-order-repeat]');await flush();
+  assert.equal(h.document.querySelector('[data-delivery-quantity]').value,'2');
+  assert.equal(h.document.querySelector('[name=address_street]').value,'');
+  assert.equal(h.calls.some(c=>c.method==='POST'),false);
+  assert.deepEqual(h.errors,[]);
+});
+
 test('cash and Pix can be confirmed together on a counter sale without a linked customer',async t=>{
   const row={id:orderId,mode:'counter',status:'confirmed',revision:1,total_cents:1250,created_at:new Date().toISOString()};
   const h=await makeSuite({initialRoute:'pedidos-delivery',permissions:preview,configureWindow:w=>w.eval(ordersSource),

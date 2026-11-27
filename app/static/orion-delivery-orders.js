@@ -27,7 +27,7 @@
   const orderAttribute=(name,id,esc)=>'data-delivery-'+name+'="'+esc(id)+'"';
   const orderError=(error,esc)=>'<div class="os-notice os-error" role="alert"><p>'+esc(error.message || 'Não foi possível concluir a ação.')+'</p></div>';
 
-  function openOrderEditor({call,current,ui,openEditor,deliveryOnly=false,onCreated}) {
+  function openOrderEditor({call,current,ui,openEditor,deliveryOnly=false,onCreated,repeat=null}) {
     const {esc,loading,field,moneyField,selectField,checkField,button,money,query,brazilianStates,requestKey,localISO}=ui;
     const containerUi=window.OrionDeliveryOrderContainers;
     const itemAttr=(name,id)=>orderAttribute(name,id,esc);
@@ -65,7 +65,7 @@
       field('Telefone do cliente','customer_phone','tel','','maxlength="40"')+'</div>'+
       '<div data-delivery-customer-feedback aria-live="polite"></div><div class="os-actions">'+
       command(button,'Salvar cliente','delivery-save-customer','check')+'</div></fieldset>';
-    const content=selectField('Recebimento','mode',deliveryOnly?modes.slice(2):modes,deliveryOnly?'delivery':'counter')+
+    const content=selectField('Recebimento','mode',deliveryOnly?modes.slice(2):modes,repeat?.mode||(deliveryOnly?'delivery':'counter'))+
       '<div class="os-form-grid">'+field('Buscar produto','product_search','search','','maxlength="120"')+
       field('Buscar cliente','customer_search','search','','maxlength="120" placeholder="Nome ou telefone"')+'</div>'+
       '<div class="os-actions">'+command(button,'Buscar produtos','delivery-choose-items','box')+
@@ -96,7 +96,7 @@
           city:values.address_city.value,state:values.address_state.value,complement:values.address_complement.value||null},
         scheduled_at:day?localISO(day,time):null};
     };
-    openEditor('Novo pedido',content,async(form,values,key)=>{
+    openEditor(repeat?'Repetir pedido':'Novo pedido',content,async(form,values,key)=>{
       if (customerSaving) throw Error('Aguarde o cadastro do cliente.');
       const quoted=estimateInput(form);
       if (quoted.mode!=='counter'&&!customer) throw Error('Selecione um cliente para a retirada ou entrega.');
@@ -206,6 +206,12 @@
           '<p class="os-help">Busque um produto para adicionar itens.</p>';
         window.OrionFields.refresh(basket);
         packaging?.render(cart);
+      }
+      if (repeat) {
+        for (const item of repeat.items) {
+          cart.set(item.variant_id,{quantity:item.quantity,label:item.product_name+' · '+item.variant_name,image_url:item.image_url});
+        }
+        if (repeat.customer_id) setCustomer({id:repeat.customer_id,name:repeat.customer_name||'Cliente do pedido'});
       }
       showCart();
       updateAddress();
@@ -520,7 +526,10 @@
     filters.start ??= '';
     filters.end ??= '';
     filters.offset ??= 0;
-    let data, stamp=0;
+    let data, stamp=0, lanes={};
+    const boardEnabled=!creditOnly&&!deliveryOnly;
+    filters.orderView??='list';
+    const offsets=filters.boardOffsets??={};
     const current = () => allowed() && host.isConnected;
     const when=value=>orderDateTime(value,ui);
     const itemAttr=(name,id)=>orderAttribute(name,id,esc);
@@ -531,6 +540,7 @@
       creditOnly?routeButton('Ver pedidos','pedidos-delivery','os-outline os-small','deliveryReceipt'):
       canWrite()?button('Novo pedido','delivery-new-order','','plus'):'')+
       '<form id="osDeliveryOrderFilters" class="os-filter-row">'+
+      (boardEnabled?selectField('Visualização','orderView',[['list','Lista'],['board','Kanban']],filters.orderView):'')+
       field('Buscar','search','search',filters.search,'maxlength="120" placeholder="Número ou cliente"')+
       selectField('Status','state',creditOnly?creditStatuses:[['all','Todos'],...Object.entries(statusLabels)],filters.state)+
       (creditOnly?'':field(deliveryOnly?'Entrega de':'De','start','date',filters.start)+
@@ -559,6 +569,7 @@
       if (canWrite()&&order.status==='fulfilled'&&!creditOnly) {
         controls+=button('Registrar devolução','delivery-order-return','os-ghost os-small','left',actions);
       }
+      if (canWrite()&&!creditOnly) controls+=button('Repetir pedido','delivery-order-repeat','os-ghost os-small','plus',actions);
       const resolution=order.receipt_status==='refunded'?'Estornado':order.receipt_status==='cancelled'?'Recebimento cancelado':'';
       const payment=(order.payment_due_date?'<p class="os-help">Vencimento '+fmtDate(order.payment_due_date)+'</p>':'')+
         (resolution?badge('cancelled',resolution):order.payment_due_date?
@@ -572,12 +583,33 @@
         '<div class="os-actions">'+controls+'</div></article>';
     }
 
+    function boardColumn(state,result) {
+      return '<section class="os-delivery-board-lane" aria-labelledby="deliveryLane-'+state+'">'+
+        '<h2 id="deliveryLane-'+state+'">'+esc(statusLabels[state])+'</h2>'+
+        (result.items.length?result.items.map(orderCard).join(''):'<p class="os-help">Nenhum pedido.</p>')+
+        (result.offset||result.has_more?'<div class="os-actions">'+
+          button('Anterior','delivery-board-prev','os-outline os-small','left','data-order-lane="'+state+'" '+(result.offset?'':'disabled'))+
+          button('Próxima','delivery-board-next','os-outline os-small','chevron','data-order-lane="'+state+'" '+(result.has_more?'':'disabled'))+
+          '</div>':'')+'</section>';
+    }
+
     async function load() {
       const sequence=++stamp;
-      list.innerHTML=loading('Carregando pedidos…');
+      if (!list.firstChild) list.innerHTML=loading('Carregando pedidos…');
+      list.setAttribute('aria-busy','true');
       try {
+        const {search,state,start,end,offset}=filters;
+        if(boardEnabled&&filters.orderView==='board'){
+          const states=state==='all'?Object.keys(statusLabels):[state];
+          const pages=await Promise.all(states.map(lane=>call('/orders?'+query({search,state:lane,start,end,mode:'all',offset:offsets[lane]||0}))));
+          if(!current()||sequence!==stamp)return;
+          lanes=Object.fromEntries(states.map((lane,i)=>[lane,pages[i]]));
+          data={items:pages.flatMap(page=>page.items)};
+          list.innerHTML='<div class="os-delivery-board">'+states.map(lane=>boardColumn(lane,lanes[lane])).join('')+'</div>';
+          return;
+        }
         const suffix=creditOnly?'/credit?'+query({search:filters.search,status:filters.state,offset:filters.offset}):
-          '/orders?'+query({...filters,mode:deliveryOnly?'delivery':'all',by_delivery_date:deliveryOnly||null});
+          '/orders?'+query({search,state,start,end,offset,mode:deliveryOnly?'delivery':'all',by_delivery_date:deliveryOnly||null});
         const response=await call(suffix);
         if (!current()||sequence!==stamp) return;
         data=response;
@@ -592,6 +624,8 @@
         list.innerHTML=html;
       } catch (error) {
         if (current()&&sequence===stamp) list.innerHTML=err(error)+command(button,'Tentar novamente','delivery-order-retry','refresh');
+      } finally {
+        if(current()&&sequence===stamp)list.removeAttribute('aria-busy');
       }
     }
 
@@ -706,9 +740,16 @@
       }});
     }
 
+    host.addEventListener('change',event=>{
+      if(boardEnabled&&event.target.name==='orderView'&&current()){
+        filters.orderView=event.target.value;
+        void load();
+      }
+    });
     host.addEventListener('submit',event=>{
       if (event.target.id!=='osDeliveryOrderFilters') return;
       event.preventDefault();
+      for(const lane of Object.keys(offsets))delete offsets[lane];
       Object.assign(filters,Object.fromEntries(new FormData(event.target)),{offset:0});
       void load();
     });
@@ -717,6 +758,12 @@
       if (!action?.startsWith('delivery-')||!current()) return;
       event.stopPropagation();
       if (action==='delivery-order-retry') {await load();return;}
+      if(action==='delivery-board-prev'||action==='delivery-board-next'){
+        const key=el.dataset.orderLane,lane=lanes[key];
+        if(!lane||list.getAttribute('aria-busy')==='true')return;
+        offsets[key]=Math.max(0,lane.offset+(action==='delivery-board-next'?lane.limit:-lane.limit));
+        await load();return;
+      }
       if (action==='delivery-order-prev'||action==='delivery-order-next') {
         filters.offset=Math.max(0,data.offset+(action==='delivery-order-next'?data.limit:-data.limit));
         await load();return;
@@ -729,6 +776,13 @@
       if (!order) return;
       if (action==='delivery-order-detail') {
         await showOrderDetail({id:order.id,call,current,openDetails,ui});
+      } else if(action==='delivery-order-repeat'&&canWrite()){
+        el.disabled=true;
+        try {
+          const original=await call('/orders/'+encodeURIComponent(order.id));
+          if(current()&&el.isConnected)openOrderEditor({call,current,ui,openEditor,deliveryOnly,repeat:original,onCreated:()=>{filters.offset=0;}});
+        } catch(error) {if(current())openDetails('Repetir pedido',err(error));}
+        finally {el.disabled=false;}
       } else if (action==='delivery-order-return'&&canWrite()&&order.status==='fulfilled') {
         move(order,'return');
       } else if (action==='delivery-order-settle'&&canWrite()&&order.receipt_status==='pending') {
