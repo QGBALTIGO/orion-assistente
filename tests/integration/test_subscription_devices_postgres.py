@@ -751,3 +751,83 @@ async def test_delivery_whatsapp_connection_address_memory_is_contact_scoped(dev
             assert await wa.recover_saved_address(db,c.tenant,phone,state,("label","inexistente")) is None
             assert "primeiro confirme" in await wa.save_last_delivery_address(db,c.tenant,phone,{}, "Outro")
             assert len((await book.list_addresses(db,c.tenant,customer["id"]))["items"])==2
+
+
+@pytest.mark.asyncio
+async def test_delivery_whatsapp_connection_save_confirmed_delivery_address(device_case, monkeypatch):
+    """The complete confirmed Delivery checkout and address book, on disposable DB."""
+    from app import delivery_whatsapp as wa, delivery_customer_addresses as book
+    from app import delivery_catalog as catalog, delivery_storefront as store, delivery_logistics as logistics
+    from app.customer_identity import resolve_customer
+    from app.tenant_access import TenantAccess
+    from app.onboarding_schemas import Address
+    from test_delivery_catalog_postgres import new_product, complete_delivery_setup
+    c=device_case
+    phone="+5567999999902"
+    other="+5567999999903"
+    address=Address(street="Rua sintética",number="12",neighborhood="Centro",city="Campo Grande",state="MS")
+    second=Address(street="Avenida de teste",number="45",neighborhood="Centro",city="Campo Grande",state="MS")
+    access=TenantAccess("owner",c.ctx.actor.account_id)
+    async with c.ctx.migration.begin() as db:
+        await db.execute(text("""UPDATE business_onboarding SET configuration=configuration ||
+            '{"niche":"delivery_distribuicao","delivery_offering":"gas_agua","activity":"products","modality":"online"}'::jsonb
+            WHERE tenant_id=:t"""),{"t":c.tenant})
+    monkeypatch.setenv("ORION_DELIVERY_PREVIEW_TENANTS",str(c.tenant))
+    monkeypatch.setenv("PUBLIC_SITE_SIGNING_KEY",uuid4().hex+uuid4().hex)
+    await complete_delivery_setup(c.ctx,c.tenant)
+    async with c.ctx.runtime() as db:
+        async with tenant_transaction(db,c.tenant):
+            customer,created=await resolve_customer(db,c.tenant,phone,"Cliente de teste")
+            assert created
+            await book.save_address(db,c.tenant,access,customer["id"],uuid4(),
+                book.AddressEdit(label="Trabalho",address=second,expected_revision=0))
+            await logistics.save_policy(db,c.tenant,access,logistics.PolicyUpdate(
+                expected_revision=0,coverage_mode="areas",areas=[
+                    logistics.Area(city="Campo Grande",state="MS",neighborhood="Centro",fee_cents=450)]))
+            item=await catalog.create_item(db,c.tenant,access,catalog.ProductCreate.model_validate(new_product("Água mineral 20 L")))
+            rows=(await store.operator_items(db,c.tenant,"",0))["items"]
+            selected=next(x for x in rows if str(x["variant_id"])==str(item["variant_id"]))
+            await store.save_store(db,c.tenant,access,store.Storefront(
+                revision=0,slug="memory-"+uuid4().hex[:12],title="Distribuidora sintética",enabled=False,
+                allow_delivery=True,allow_pickup=True,pickup_details="Depósito",payment_methods=["cash"],
+                items=[store.PublicItem(variant_id=selected["variant_id"],product_revision=selected["product_revision"],
+                    variant_revision=selected["variant_revision"],label="Água mineral 20 L",kind="water")]))
+
+    async def talk(body,state,delivered=False):
+        async with c.ctx.runtime() as db:
+            async with tenant_transaction(db,c.tenant):
+                return await wa.answer(db,c.tenant,phone,body,state,delivered)
+
+    _,state=await talk("Quero uma água para entrega",{})
+    assert state["stage"]=="address" and state["customer_name"]=="Cliente de teste"
+    _,state=await talk("Rua sintética, 12, Centro, Campo Grande, MS",state)
+    assert state["stage"]=="payment"
+    review,state=await talk("dinheiro, troco pra 50 reais",state)
+    assert "R$ 17,00" in review and "Troco previsto: R$ 33,00" in review
+    response,state=await talk("confirmo",state,True)
+    assert "registrado" in response and "salvar endereço como Casa" in response and state.get("last_order")
+    async with c.ctx.runtime() as db:
+        async with tenant_transaction(db,c.tenant):
+            assert len((await book.list_addresses(db,c.tenant,customer["id"]))["items"])==1
+    response,state=await talk("salvar endereço como Trabalho",state)
+    assert "Escolha outro nome" in response
+    response,state=await talk("salvar endereço como Casa",state)
+    assert "Endereço salvo" in response
+    response,state=await talk("salvar endereço como Casa",state)
+    assert "já está salvo" in response
+    async with c.ctx.runtime() as db:
+        async with tenant_transaction(db,c.tenant):
+            saved=(await book.list_addresses(db,c.tenant,customer["id"]))["items"]
+            assert len(saved)==2
+            assert next(r for r in saved if r["label"]=="Trabalho")["address"]["street"]==second.street
+            assert await wa.recover_saved_address(db,c.tenant,phone,{"customer_name":"Cliente de teste"},("label","casa"))==address.model_dump(mode="json")
+            assert "verificar seu cadastro" in await wa.save_last_delivery_address(db,c.tenant,other,state,"Invasão")
+            # The original order retains its address even if a label is edited.
+            original=(await db.execute(text("""SELECT address FROM delivery_order_details
+                WHERE tenant_id=:t AND customer_id=:c AND intake_channel='whatsapp'"""),
+                {"t":c.tenant,"c":customer["id"]})).scalar_one()
+            assert original["street"]==address.street
+    _,second_state=await talk("Quero uma água para entrega",{})
+    assert second_state["stage"]=="address"
+    _,second_state=await talk("usar endereço Casa",second_state)
+    assert second_state["address"]["street"]==address.street and second_state["stage"]=="payment"
