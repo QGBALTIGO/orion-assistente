@@ -19,6 +19,22 @@ async function waitForField(document, selector) {
   assert.ok(document.querySelector(selector), 'O editor deve carregar o campo '+selector);
 }
 
+test('cash and Pix can be confirmed together on a counter sale without a linked customer',async t=>{
+  const row={id:orderId,mode:'counter',status:'confirmed',revision:1,total_cents:1250,created_at:new Date().toISOString()};
+  const h=await makeSuite({initialRoute:'pedidos-delivery',permissions:preview,configureWindow:w=>w.eval(ordersSource),
+    respond:(p,m)=>p.includes('/delivery/orders?')?{items:[row],offset:0,limit:25}:
+      p.endsWith('/transitions')&&m==='POST'?{id:orderId,status:'fulfilled'}:defaultResponse(p)});
+  t.after(()=>h.close());await flush();
+  h.click('[data-os-action=delivery-order-fulfill]');
+  h.fill('[name=payment_method]','split').dispatchEvent(new h.window.Event('change',{bubbles:true}));
+  assert.equal(h.document.querySelector('[data-delivery-split]').disabled,false);
+  h.fill('[name=split_cash]','8,50');h.fill('[name=split_pix]','4,00');
+  h.click('[name=received]');h.click('#osDialog button[type=submit]');await flush();
+  const sent=h.calls.find(c=>c.path.endsWith('/transitions'));
+  assert.deepEqual(structuredClone(sent?.data.tenders),[{method:'cash',amount_cents:850},{method:'pix',amount_cents:400}]);
+  assert.equal(sent.data.payment_method,null);assert.deepEqual(h.errors,[]);
+});
+
 test('delivery operator explicitly selects a saved address and switching customer clears it',async t=>{
   const person='51000000-0000-4000-8000-000000000001', other='51000000-0000-4000-8000-000000000002';
   const home={id:orderId,label:'Casa',revision:1,address:{number:'18',street:'Rua A',city:'Campo Grande',neighborhood:'Centro',state:'MS'}};

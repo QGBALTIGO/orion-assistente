@@ -432,7 +432,9 @@
         '</ul>'+(containerUi?.summary(result.container_plan,ui)||'')+'<h3>Histórico</h3><ul>'+result.history.map(event=>
           '<li>'+esc((({received:'Recebimento registrado',partially_received:'Recebimento parcial',returned:'Devolução registrada',
             delivery_rescheduled:'Entrega reagendada',delivery_recipient_absent:'Cliente ausente'})[event.action]||
-            statusLabels[event.action]||event.action)+' · '+when(event.created_at))+'</li>').join('')+'</ul>');
+            statusLabels[event.action]||event.action)+' · '+when(event.created_at))+
+            (event.details?.tenders?.length?'<ul>'+event.details.tenders.map(t=>'<li>'+esc(payments.find(([key])=>key===t.method)?.[1]||t.method)+' · '+money(t.amount_cents)+'</li>').join('')+'</ul>':'')+
+            '</li>').join('')+'</ul>');
     } catch(error) {if (current()) openDetails('Pedido '+code({id}),orderError(error,esc));}
   }
 
@@ -604,7 +606,12 @@
       const refunded=fullReturn&&(order.collected_cents??(order.receipt_status==='paid'?order.total_cents:0))>0;
       const returning=(action==='cancel'||changeDate)&&order.status==='dispatched';
       const hasAmount=order.total_cents>0;
-      const methods=complete&&order.customer_id?[...payments,['on_account','A prazo']]:payments;
+      const methods=[...payments];
+      if (complete && order.total_cents>=2) methods.push(['split','Pagamento misto']);
+      if (complete && order.customer_id) methods.push(['on_account','A prazo']);
+      const splitFields=complete&&order.total_cents>=2?'<fieldset hidden disabled data-delivery-split><legend>Valor recebido por forma de pagamento</legend>'+
+        '<div class="os-form-grid">'+payments.filter(([key])=>key).map(([key,name])=>moneyField(name,'split_'+key,'text','')).join('')+
+        '</div></fieldset>':'';
       let couriers=[];
       if(dispatch) {
         try {couriers=(await call('/logistics/couriers?active_only=true')).items||[];}
@@ -622,7 +629,7 @@
         ((dispatch||complete)?paymentInstructions(order,money):'')+
         ((complete&&hasAmount)||settle?selectField('Forma de pagamento','payment_method',methods,'','required')+
           (settle?moneyField('Valor recebido','received_cents','text',window.OrionFields.moneyDisplay(order.outstanding_cents??order.total_cents)):'')+
-          '<fieldset data-delivery-received>'+checkField('Confirmo que recebi o pagamento','received')+'</fieldset>'+deferred:
+          splitFields+'<fieldset data-delivery-received>'+checkField('Confirmo que recebi o pagamento','received')+'</fieldset>'+deferred:
           complete?'<p>Confirme que o cliente recebeu os itens.</p>':
           dispatch?courierFields:
           changeDate?field('Nova data e hora','reschedule_at','datetime-local','',reschedule?'required':'')+
@@ -648,6 +655,14 @@
           return;
         }
         const payload={action,expected_revision:order.revision,payment_method:values.payment_method||null};
+        if (values.payment_method==='split') {
+          payload.payment_method=null;
+          payload.tenders=payments.filter(([method])=>method).map(([method])=>({method,
+            amount_cents:window.OrionFields.parseMoney(values['split_'+method],{required:false,min:0,max:order.total_cents})||0
+          })).filter(t=>t.amount_cents>0);
+          if(payload.tenders.length<2)throw Error('Informe os valores de pelo menos duas formas de pagamento.');
+          if(payload.tenders.reduce((sum,t)=>sum+t.amount_cents,0)!==order.total_cents)throw Error('A soma dos pagamentos deve corresponder ao total do pedido.');
+        }
         if(containerUi?.confirmed(form))payload.containers_confirmed=true;
         if (credit) payload.payment_due_date=values.payment_due_date;
         if (dispatch) {
@@ -676,16 +691,17 @@
           form.elements.courier_name.disabled=Boolean(form.elements.courier_id.value);
         });
         const due=dialog.querySelector('[data-delivery-due]');
-        if (!due) return;
+        const split=dialog.querySelector('[data-delivery-split]');
+        if (!due&&!split) return;
         const received=dialog.querySelector('[data-delivery-received]');
         form.elements.payment_method.addEventListener('change',()=>{
           const credit=form.elements.payment_method.value==='on_account';
-          due.hidden=due.disabled=!credit;
-          due.classList.toggle('hidden',!credit);
+          if(due){due.hidden=due.disabled=!credit;due.classList.toggle('hidden',!credit);}
+          if(split)split.hidden=split.disabled=form.elements.payment_method.value!=='split';
           received.hidden=received.disabled=credit;
           received.classList.toggle('hidden',credit);
           form.elements.received.checked=false;
-          form.elements.confirmed_credit.checked=false;
+          if(form.elements.confirmed_credit)form.elements.confirmed_credit.checked=false;
         });
       }});
     }

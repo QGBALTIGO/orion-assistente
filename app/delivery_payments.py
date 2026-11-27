@@ -32,6 +32,11 @@ RECEIPT_LINKS = """
 """
 
 
+class Tender(ProfileModel):
+    method: ReceivedMethod
+    amount_cents: StrictInt = Field(ge=1, le=MAX_MONEY)
+
+
 class CreditPayment(ProfileModel):
     amount_cents: StrictInt = Field(gt=0, le=MAX_MONEY)
     expected_revision: StrictInt = Field(ge=1)
@@ -45,6 +50,30 @@ class CreditPayment(ProfileModel):
         if not value:
             raise ValueError("Confirme que o valor foi recebido antes de registrar")
         return value
+
+
+async def record_completion(db, tenant, order, method, due_date, tenders):
+    """Post each confirmed tender to Finance. Store one primary link and any additional receipts."""
+    amounts = [(t.method, t.amount_cents) for t in tenders] or [(method, order["total_cents"])]
+    primary = None
+    stamp = commerce.now_utc()
+    for index, (tender_method, amount) in enumerate(amounts):
+        receipt = await management.insert_row(db, tenant, "financial_entries", {
+            "kind":"income", "description":f"Pedido {str(order['id'])[:8].upper()}",
+            "amount_cents":amount, "category":"Delivery", "payment_method":"other" if due_date else tender_method,
+            "status":"pending" if due_date else "paid", "occurred_at":stamp, "customer_id":order["customer_id"],
+        }, str(order["id"]) if index == 0 else f"split:{order['id']}:{tender_method}", operation="delivery_order_receipt")
+        if index == 0:
+            primary = receipt
+            await db.execute(text("""
+                UPDATE delivery_order_details SET financial_entry_id=:f,payment_due_date=:due
+                WHERE tenant_id=:t AND order_id=:o
+            """), {"t":tenant, "o":order["id"], "f":receipt["id"], "due":due_date})
+        else:
+            await db.execute(text("""
+                INSERT INTO delivery_credit_collections(tenant_id,order_id,financial_entry_id) VALUES (:t,:o,:f)
+            """), {"t":tenant, "o":order["id"], "f":receipt["id"]})
+    return primary
 
 
 async def apply_collection(db, tenant, access, order, method, *, amount_cents=None):

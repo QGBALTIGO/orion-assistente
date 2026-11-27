@@ -48,6 +48,38 @@ async def sale(onboarding_db, monkeypatch):
         yield ctx, tenant, http, root, order, payload
 
 
+async def test_split_at_counter_posts_each_method_once_and_refunds_exact_total(onboarding_db, monkeypatch):
+    ctx = onboarding_db
+    tenant, actor = await business(ctx,monkeypatch)
+    await complete_delivery_setup(ctx,tenant)
+    root = f"/api/v1/tenants/{tenant}/delivery"
+    async with client(actor) as http:
+        variant = (await http.post(root+"/catalog",json=new_product())).json()["variant_id"]
+        draft = await order_payload(http,root,variant,1,mode="counter")
+        order = (await http.post(root+"/orders",json=draft)).json()["id"]
+        url = root+"/orders/"+order+"/transitions"
+        tenders = [{"method":"pix","amount_cents":400},{"method":"cash","amount_cents":850}]
+        payload = {"action":"fulfill","expected_revision":1,"tenders":tenders,"idempotency_key":uuid4().hex}
+        assert (await http.post(url,json={**payload,"tenders":[tenders[0],tenders[0]]})).status_code == 422
+        assert (await http.post(url,json={**payload,"tenders":[tenders[0],{"method":"cash","amount_cents":851}]})).status_code == 422
+        assert await stock(http,root) == (5,1)
+        assert not await receipts(ctx,tenant)
+        a,b = await asyncio.gather(http.post(url,json=payload),http.post(url,json=payload))
+        assert a.status_code == b.status_code == 200, (a.text,b.text)
+        assert a.json() == b.json()
+        assert sorted((r["payment_method"],r["amount_cents"]) for r in await receipts(ctx,tenant)) == [("cash",850),("pix",400)]
+        detail = (await http.get(root+"/orders/"+order)).json()
+        assert detail["collected_cents"] == 1250 and detail["outstanding_cents"] == 0
+        assert detail["history"][-1]["details"]["tenders"] == tenders
+        assert (await http.get(root+"/overview")).json()["metrics"]["paid_cents"] == 1250
+        returned = await http.post(url,json={"action":"return","expected_revision":2,"returned_to_stock":True,
+                                             "refunded":True,"idempotency_key":uuid4().hex})
+        assert returned.status_code == 200,returned.text
+        assert await stock(http,root) == (5,0)
+        expenses = [r for r in await receipts(ctx,tenant) if r["kind"]=="expense"]
+        assert len(expenses)==1 and expenses[0]["amount_cents"]==1250
+
+
 def pix_collection(amount_cents=400):
     return {
         "amount_cents": amount_cents, "expected_revision": 2, "payment_method": "pix",

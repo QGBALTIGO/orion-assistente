@@ -85,6 +85,7 @@ class Transition(ProfileModel):
     action: Literal["dispatch", "fulfill", "cancel", "settle", "return", "reschedule", "recipient_absent"]
     expected_revision: StrictInt = Field(ge=1)
     payment_method: Literal["cash", "debit_card", "credit_card", "pix", "on_account"] | None = None
+    tenders: list[payments.Tender] = Field(default_factory=list, max_length=4)
     payment_due_date: date | None = None
     courier_name: str | None = Field(default=None, min_length=1, max_length=120)
     courier_id: UUID | None = None
@@ -97,6 +98,11 @@ class Transition(ProfileModel):
 
     @model_validator(mode="after")
     def payment_at_completion(self):
+        if self.tenders:
+            if self.action != "fulfill" or self.payment_method is not None or self.payment_due_date is not None:
+                raise ValueError("Informe os valores por meio de pagamento apenas na conclusão à vista")
+            if len(self.tenders) < 2 or len({t.method for t in self.tenders}) != len(self.tenders):
+                raise ValueError("Escolha pelo menos duas formas de pagamento diferentes")
         if self.action not in {"fulfill","settle"} and self.payment_method is not None:
             raise ValueError("Registre o pagamento na conclusão do pedido")
         if self.action == "settle" and self.payment_method in {None,"on_account"}:
@@ -416,9 +422,11 @@ async def create(db, tenant, access, payload):
                                              "tender_preference":None,"change_for_cents":None,"operator_note":None})
 
 
-async def fulfill(db, tenant, access, row, items, method, due_date):
+async def fulfill(db, tenant, access, row, items, method, due_date, tenders=()):
     await commerce.tenant_exists(db, tenant, active=True)
-    if row["total_cents"] and not method:
+    if tenders and sum(t.amount_cents for t in tenders) != row["total_cents"]:
+        raise HTTPException(422, "A soma dos pagamentos deve corresponder ao total do pedido")
+    if row["total_cents"] and not method and not tenders:
         raise HTTPException(422, "Informe a forma de pagamento recebida")
     if not row["total_cents"] and method:
         raise HTTPException(422, "Não há valor a receber neste pedido")
@@ -442,17 +450,9 @@ async def fulfill(db, tenant, access, row, items, method, due_date):
             commerce.conflict("A contagem ou reserva do estoque precisa de revisão antes da baixa.")
         await commerce.audit(db,tenant,access,"stock",variant_id,"sold",
             {"order_id":row["id"],"quantity":item["quantity"],"after":updated,"movement":"sold"})
-    receipt = None
     if row["total_cents"]:
-        receipt = await management.insert_row(db, tenant, "financial_entries", {
-            "kind":"income","description":f"Pedido {str(row['id'])[:8].upper()}",
-            "amount_cents":row["total_cents"],"category":"Delivery","payment_method":method if due_date is None else "other",
-            "status":"paid" if due_date is None else "pending","occurred_at":commerce.now_utc(),"customer_id":row["customer_id"],
-        }, str(row["id"]), operation="delivery_order_receipt")
-        await db.execute(text("""
-            UPDATE delivery_order_details SET financial_entry_id=:f,payment_due_date=:due WHERE tenant_id=:t AND order_id=:o
-        """), {"t":tenant,"o":row["id"],"f":receipt["id"],"due":due_date})
-    return receipt
+        return await payments.record_completion(db, tenant, row, method, due_date, tenders)
+    return None
 
 
 async def link_completed_guest(db, tenant, row):
@@ -534,7 +534,9 @@ async def transition(db, tenant, access, order_id, payload):
             else:
                 if row["mode"] == "delivery" and row["status"] != "dispatched":
                     commerce.conflict("Despache o pedido antes de registrar a entrega")
-                receipt = await fulfill(db, tenant, access, row, quote["items"], payload.payment_method, payload.payment_due_date)
+                receipt = await fulfill(db, tenant, access, row, quote["items"], payload.payment_method, payload.payment_due_date, payload.tenders)
+                if payload.tenders:
+                    event_details["tenders"] = [t.model_dump() for t in payload.tenders]
                 await packaging.apply(db, tenant, access, order_id, row["customer_id"], payload.containers_confirmed)
                 status = "fulfilled"
         revision = (await db.execute(text("""
@@ -552,4 +554,4 @@ async def transition(db, tenant, access, order_id, payload):
                 "return_financial_entry_id":return_entry}
 
     return await run_once(db, tenant, payload, "order_transition", order_id, write,
-                          optional_defaults={"courier_id":None,"containers_confirmed":False,"scheduled_at":None,"note":None})
+                          optional_defaults={"courier_id":None,"containers_confirmed":False,"scheduled_at":None,"note":None,"tenders":[]})
