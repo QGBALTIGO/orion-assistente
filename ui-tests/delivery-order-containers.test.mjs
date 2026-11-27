@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import test from 'node:test';
+import {setTimeout as sleep} from 'node:timers/promises';
 import {defaultResponse,flush,makeSuite,planState} from './harness.mjs';
 
 const ordersSource=await readFile(new URL('../app/static/orion-delivery-orders.js',import.meta.url),'utf8');
@@ -9,6 +10,14 @@ const preview=planState('none',{delivery_catalog_preview:true});
 const variant='54000000-0000-4000-8000-000000000011';
 const container='54000000-0000-4000-8000-000000000012';
 const orderId='54000000-0000-4000-8000-000000000013';
+
+async function waitForField(document, selector) {
+  const deadline=Date.now()+3000;
+  while (!document.querySelector(selector) && Date.now()<deadline) {
+    await sleep(10);
+  }
+  assert.ok(document.querySelector(selector), 'O editor deve carregar o campo '+selector);
+}
 
 test('order editor keeps a vasilhame exchange and requests physical confirmation',async t=>{
   let order=null;
@@ -49,8 +58,9 @@ test('order editor keeps a vasilhame exchange and requests physical confirmation
   await flush();
   h.click('[data-os-action=delivery-add-item]');
   h.click('[data-container-order] summary');
-  await flush();
-  h.fill('[name=container-order-id-'+variant+']',container);
+  const containerSelect='[name=container-order-id-'+variant+']';
+  await waitForField(h.document,containerSelect+' option[value="'+container+'"]');
+  h.fill(containerSelect,container);
   h.fill('[name=container-order-exchange-'+variant+']','1');
   h.click('[data-os-action=delivery-estimate]');
   await flush();
