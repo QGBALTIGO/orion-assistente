@@ -114,3 +114,17 @@ def test_confirmation_buttons_bind_current_summary_and_receipt():
     assert "delivery_presentation_id" not in state
     long_text = "🙂" * 600 + wa.CONFIRMATION_FALLBACK
     assert wa.confirmation_presentation(long_text, {"stage":"confirm","summary":long_text}) is None
+
+
+@pytest.mark.parametrize("body", [
+    "Meu gás está vazando", "Está com cheiro forte de gás", "O botijão pegou fogo",
+    "A mangueira está vazando", "O registro não fecha", "O gás tá escapando",
+    "Meu botijão caiu", "O botijão está danificado",
+])
+def test_gas_risk_interrupts_commercial_flow(body):
+    assert wa.emergency(body)
+
+
+@pytest.mark.parametrize("body", ["Tem água com gás?", "Qual o preço da água?", "Quero retirar meu pedido"])
+def test_normal_questions_do_not_trigger_emergency(body):
+    assert not wa.emergency(body)

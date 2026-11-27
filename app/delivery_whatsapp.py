@@ -60,6 +60,38 @@ def affirmative(body):
     return contextual_response(body, awaiting_confirmation=True, confirmation_action="order").kind == "affirm"
 
 
+def emergency(body):
+    """Recognize immediate gas/fire risk before any commercial interpretation."""
+    value = clean(body)
+    return bool(re.search(r"\b(?:vazamento|incendio|peg(?:ando|ou) fogo|explosao|"
+        r"cheiro (?:forte )?de gas|gas (?:esta |ta )?(?:vazando|escapando)|"
+        r"(?:botijao|mangueira|registro|valvula) (?:esta |ta )?vazando|"
+        r"registro nao fecha|botijao (?:caiu|danificado)|"
+        r"(?:botijao|mangueira|registro) (?:esta |ta )?(?:danificado|danificada|com defeito))\b", value))
+
+
+async def customer_for_phone(db, tenant, phone):
+    """Use the canonical tenant/phone identity, never a provider display name."""
+    row = (await db.execute(text("""SELECT id,name,active,deleted_at FROM customers
+        WHERE tenant_id=:t AND whatsapp_e164=:phone"""),
+        {"t":tenant,"phone":phone})).mappings().one_or_none()
+    return dict(row) if row is not None else None
+
+
+async def previous_verified_name(db, tenant, phone):
+    # Older WhatsApp checkouts retained the verified phone in the immutable
+    # quote but did not link the CRM until fulfillment. Use the name only
+    # when that contact has one unambiguous name, and show it in the review.
+    names = (await db.execute(text("""SELECT DISTINCT q.customer_name FROM commercial_orders o
+        JOIN commercial_quotes q ON (q.tenant_id,q.id)=(o.tenant_id,o.quote_id)
+        JOIN delivery_order_details d ON (d.tenant_id,d.order_id)=(o.tenant_id,o.id)
+        WHERE o.tenant_id=:t AND o.origin='delivery' AND q.contact_e164=:phone
+          AND d.intake_channel='whatsapp' AND o.status IN ('confirmed','dispatched','fulfilled')
+          AND q.customer_name IS NOT NULL AND btrim(q.customer_name)<>''
+        LIMIT 2"""),{"t":tenant,"phone":phone})).scalars().all()
+    return names[0] if len(names)==1 else None
+
+
 def forbidden(body):
     from app import delivery_storefront as store
     value = re.sub(r"\baguas?(?:\s+miner(?:al|ais))?\s+(?:com|sem)\s+gas\b", "agua", norm(body))
@@ -382,11 +414,12 @@ async def next_step(db, tenant, shop, items, state, phone):
     if not state.get("items") or any(line["variant_id"] not in chosen for line in state["items"]):
         return list_products(items, datetime.now(timezone.utc)), {}
     if not state.get("customer_name"):
-        name = (await db.execute(text("""SELECT name FROM customers WHERE tenant_id=:t
-            AND whatsapp_e164=:phone AND active AND deleted_at IS NULL ORDER BY id LIMIT 2"""),
-            {"t":tenant,"phone":phone})).scalars().all()
-        if len(name) == 1:
-            state["customer_name"] = name[0]
+        customer = await customer_for_phone(db,tenant,phone)
+        if customer is not None and (not customer["active"] or customer["deleted_at"] is not None):
+            return "Seu cadastro precisa de uma revisão pela equipe antes de um novo pedido. " + HELP, {}
+        name = customer["name"] if customer else await previous_verified_name(db,tenant,phone)
+        if name:
+            state["customer_name"] = name
         else:
             state["stage"] = "name"
             return state_question("name",state,shop,items),state
@@ -419,6 +452,7 @@ async def next_step(db, tenant, shop, items, state, phone):
     destination = (f"{address.street}, {address.number or 's/n'}, {address.neighborhood}, {address.city}/{address.state}" +
                    (f" — {address.complement}" if address.complement else "")) if address else (shop.get("pickup_details") or "Retirada no estabelecimento")
     summary = ("📝 *Seu pedido*\n\n" + "\n".join(lines) +
+               f"\n\n👤 *Nome:* {state['customer_name']}" +
                f"\n\n📍 *{'Entrega' if address else 'Retirada'}:* {destination}\nTaxa: {money(estimate['delivery_fee_cents'])}"
                f"\n\n💰 *Total: {money(estimate['total_cents'])}*\nPagamento: {PAYMENTS[draft.payment_preference]}")
     if estimate.get("eta_minutes") is not None:
@@ -436,8 +470,13 @@ async def answer(db, tenant, phone, body, state, summary_delivered):
     from app import delivery_storefront as store
     value = clean(body)
     # Never process an emergency or a restricted sale as a water purchase.
-    if re.search(r"\b(?:vazamento|cheiro de gas|incendio|pegando fogo|explosao)\b", value):
-        return "Em caso de risco imediato, afaste-se do local e ligue 193. Interrompi o atendimento automático.",{"paused":True}
+    if emergency(body):
+        return ("⚠️ *Sua segurança vem primeiro.*\n\n"
+                "Afaste-se da área de risco e mantenha outras pessoas afastadas. "
+                "Não acenda chamas nem acione interruptores ou aparelhos elétricos na área afetada.\n\n"
+                "Em caso de emergência, ligue *193 (Corpo de Bombeiros)* a partir de um local seguro. "
+                "Não tente reparar o equipamento.\n\n"
+                "Interrompi o atendimento automático."),{"paused":True}
     if state.get("paused"):
         if value not in {"retomar atendimento","voltar atendimento","voltar ao bot"}:
             return None,state
@@ -491,6 +530,14 @@ async def answer(db, tenant, phone, body, state, summary_delivered):
                 "Posso te ajudar com valores, disponibilidade e pedidos de água.\n\n"
                 "Me conta o que você precisa!"),{}
     if stage=="confirm":
+        corrected_name = re.fullmatch(r"(?:meu nome (?:é|e)|me chamo|pode me chamar de)\s+([^?\n\r]{2,120})", body.strip(), re.IGNORECASE)
+        if corrected_name and any(c.isalpha() for c in corrected_name.group(1)) and not re.search(r"\d", corrected_name.group(1)):
+            # The current order can name a different recipient on a shared
+            # number. The permanent CRM identity is not silently overwritten.
+            state["customer_name"] = " ".join(corrected_name.group(1).split())
+            state.pop("proposal", None)
+            state.pop("summary", None)
+            return await next_step(db,tenant,shop,items,state,phone)
         if value in {"nao","não","cancelar","desistir","nao confirmo"}:
             return "Tudo bem! 😊 Cancelei o resumo. Nenhum pedido novo foi registrado.",{}
         if value in {"ver resumo","rever resumo","como ficou","mostra de novo"}:

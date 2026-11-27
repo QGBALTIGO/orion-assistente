@@ -441,9 +441,22 @@ async def test_delivery_whatsapp_connection_checkout_with_same_device_and_explic
     assert repeated["duplicate"] and repeated["effects"]==[]
     assert await orders()==[("whatsapp",2500,"confirmed")]
     async with c.ctx.migration.connect() as db:
+        # CRM identity and open history must exist before fulfillment.
+        customer=(await db.execute(text("""SELECT id,name FROM customers
+            WHERE tenant_id=:t AND whatsapp_e164=:phone AND active AND deleted_at IS NULL"""),
+            {"t":c.tenant,"phone":"+"+phone})).mappings().one()
+        assert customer["name"]=="Cliente de teste"
+        linked=await db.scalar(text("""SELECT customer_id FROM delivery_order_details
+            WHERE tenant_id=:t AND intake_channel='whatsapp'"""),{"t":c.tenant})
+        assert linked==customer["id"]
         inventory=(await db.execute(text("""SELECT quantity_on_hand,reserved_quantity FROM commercial_inventory
             WHERE tenant_id=:t AND variant_id=:v"""),{"t":c.tenant,"v":created["variant_id"]})).one()
         assert inventory==(5,2)
+    async with c.ctx.runtime() as db:
+        async with tenant_transaction(db,c.tenant):
+            from app import delivery_crm
+            profile=await delivery_crm.profile(db,c.tenant,customer["id"])
+            assert profile["summary"]["orders"]==1 and profile["summary"]["open_orders"]==1
     assert "aguardando atendimento" in await talk("meu pedido")
     assert "retirada" in await talk("Quero uma água")
     assert "pagar" in await talk("retirada")
@@ -451,6 +464,14 @@ async def test_delivery_whatsapp_connection_checkout_with_same_device_and_explic
     cancel=draft["delivery_presentation"]["action"]["buttons"][1]["id"]
     assert "Cancelei o resumo" in await talk(selection=cancel,quoted=provider)
     assert await orders()==[("whatsapp",2500,"confirmed")]
+    async with c.ctx.migration.connect() as db:
+        assert await db.scalar(text("""SELECT count(*) FROM customers WHERE tenant_id=:t
+            AND whatsapp_e164=:phone"""),{"t":c.tenant,"phone":"+"+phone})==1
+    danger=await talk("Meu gás está vazando")
+    assert "193" in danger and "local seguro" in danger
+    assert await orders()==[("whatsapp",2500,"confirmed")]
+    assert (await event(c,phone=phone,text="oi",message_id=uuid4().hex))["effects"]==[]
+    await talk("retomar atendimento")
     assert "Pausei" in await talk("atendente")
     silent=await event(c,phone=phone,text="oi",message_id=uuid4().hex)
     assert silent["effects"]==[]

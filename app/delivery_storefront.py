@@ -655,6 +655,17 @@ async def save_checkout(db, tenant, shop, payload, *, source="storefront"):
         expected = quote_signature(tenant, shop, payload, estimate, logistics["policy_revision"], expires)
         if not hmac.compare_digest(expected, signature):
             commerce.conflict("O carrinho, o estoque ou os dados da entrega mudaram. Confira novamente o resumo.")
+        # The authenticated WhatsApp flow has a verified, normalized phone.
+        # Link the CRM identity at confirmation, in this same transaction.
+        # Anonymous public storefront guests retain the existing completion path.
+        customer_id = None
+        if source == "whatsapp":
+            from app.customer_identity import resolve_customer
+            customer, _ = await resolve_customer(
+                db, tenant, payload.customer_phone, payload.customer_name, lock=True)
+            if not customer or not customer["active"] or customer["deleted_at"] is not None:
+                commerce.conflict("O cadastro deste telefone precisa de revisão pela equipe.")
+            customer_id = customer["id"]
         quote_id, order_id = uuid4(), uuid4()
         await commerce.write_quote(db, tenant, PUBLIC_ACTOR, quote_id, secrets.token_urlsafe(32),
                                     payload.customer_phone, payload.customer_name, estimate,
@@ -664,9 +675,9 @@ async def save_checkout(db, tenant, shop, payload, *, source="storefront"):
             VALUES (:id,:tenant,:quote_id,:key,'confirmed','delivery')
         """), {"id": order_id, "tenant": tenant, "quote_id": quote_id, "key": f"delivery-store:{order_id}"})
         await db.execute(text("""
-            INSERT INTO delivery_order_details (tenant_id,order_id,mode,address,delivery_fee_cents,intake_channel)
-            VALUES (:tenant,:id,:mode,CAST(:address AS jsonb),:fee,:intake_channel)
-        """), {"tenant": tenant, "id": order_id, "mode": payload.mode,
+            INSERT INTO delivery_order_details (tenant_id,order_id,mode,customer_id,address,delivery_fee_cents,intake_channel)
+            VALUES (:tenant,:id,:mode,:customer_id,CAST(:address AS jsonb),:fee,:intake_channel)
+        """), {"tenant": tenant, "id": order_id, "mode": payload.mode, "customer_id": customer_id,
                 "address": payload.address.model_dump_json() if payload.address else None,
                 "fee": estimate["delivery_fee_cents"], "intake_channel": "whatsapp" if source == "whatsapp" else None})
         if payload.mode == "delivery":
@@ -682,7 +693,7 @@ async def save_checkout(db, tenant, shop, payload, *, source="storefront"):
         if payload.payment_preference == "pix" and estimate["total_cents"] > 0:
             await manual_pix.attach(db, tenant, order_id)
         await commerce.reserve_stock(db, tenant, PUBLIC_ACTOR, order_id, lines)
-        await packaging.save_plan(db, tenant, order_id, None, lines, packaging.required_exchanges(lines))
+        await packaging.save_plan(db, tenant, order_id, customer_id, lines, packaging.required_exchanges(lines))
         await commerce.audit(db, tenant, PUBLIC_ACTOR, "order", order_id, "confirmed",
                              {"total_cents": estimate["total_cents"], "mode": payload.mode, "source": source})
         return {"order_code": str(order_id)[:8].upper(), "status": "confirmed",
