@@ -8,16 +8,32 @@
 .store-brand-dark,:root[data-theme=dark] .store-brand-light{display:none}
 :root[data-theme=dark] .store-brand-dark{display:block}
 .store-main{padding-block:24px 48px}
-.store-identity{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:24px}
+.store-identity{border-top:3px solid var(--store-brand-accent,var(--primary));display:grid;gap:12px;margin-bottom:24px}
 .store-identity h1{font-size:clamp(24px,4vw,34px)}
 .store-identity p{margin-top:4px}
+.store-cover{border-radius:12px;width:100%;height:clamp(110px,22vw,225px);object-fit:cover}
+.store-identity-heading,.store-identity-meta{display:flex;align-items:center;gap:12px;min-width:0}
+.store-identity-content{display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px}
+.store-identity-heading>div{min-width:0;overflow-wrap:anywhere}
+.store-identity-heading img{width:60px;height:60px;object-fit:contain;border-radius:10px}
+.store-identity-meta{flex-wrap:wrap}
+.store-open-label,.store-exchange-tag,.store-preview-label{font-size:13px;font-weight:600}
+.store-open-label,.store-preview-label{padding:6px 10px;border:1px solid var(--border);border-radius:10px}
+.store-open-label[data-open=true]{border-color:var(--store-brand-accent,var(--border))}
+.store-preview-label{width:max-content;margin:0 0 12px}
+.store-exchange-tag{color:var(--muted)}
 .store-grid{display:grid;gap:24px;grid-template-columns:minmax(0,1fr) minmax(280px,.5fr);align-items:start}
 .store-order{position:sticky;top:12px}
 .store-order>.primary{width:100%;margin-top:12px}
 .store-line,.store-total,.store-product{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .store-line{padding-block:8px;border-bottom:1px solid var(--border);font-size:14px}
 .store-line>span:first-child,.store-product>div{min-width:0;overflow-wrap:anywhere}
-.store-product{min-height:84px}
+.store-product{min-height:84px;display:grid;grid-template-columns:auto minmax(0,1fr) auto}
+.store-product>div:first-child{grid-column:1/3}
+.store-product-photo{width:64px;height:64px;object-fit:contain}
+.store-product-list{grid-template-columns:minmax(0,1fr)!important}
+.store-cart-product{display:flex;align-items:center;gap:6px}
+.store-cart-photo{width:28px;height:28px;flex:0 0 28px;object-fit:contain}
 .store-product:hover{box-shadow:none;border-color:var(--border)}
 .store-product button{white-space:nowrap}
 .store-quantity{display:flex;align-items:center;gap:6px}
@@ -29,7 +45,9 @@
 .store-form-grid{display:grid;gap:12px;grid-template-columns:repeat(2,minmax(0,1fr))}
 .store-form fieldset{margin:0;padding:12px;border:1px solid var(--border);border-radius:12px;min-width:0}
 .store-field{display:grid;gap:5px;min-width:0;font-size:14px;font-weight:500}
-.store-field>input,.store-field>select{width:100%;min-width:0;min-height:44px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--bg);color:var(--text);font-size:16px}
+.store-field>input,.store-field>select,.store-field>textarea{width:100%;min-width:0;min-height:44px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--bg);color:var(--text);font-size:16px}
+.store-field>textarea{resize:vertical}
+#store-cash .store-field{margin-top:8px}
 .store-check{display:flex;align-items:center;gap:7px;font-size:14px}
 .store-check input{width:18px;height:18px}
 .store-summary,.store-status[data-error=true]{padding:10px 12px;border:1px solid var(--border);border-radius:12px;background:var(--bg)}
@@ -38,10 +56,11 @@
 .store-status[data-error=true]{border-color:#c95c5c;color:var(--text)}
 .store-sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
 .store-mobile-cart{display:none}
+[hidden]{display:none!important}
 @media(max-width:700px){
   .store-grid{grid-template-columns:minmax(0,1fr)}
   .store-order{position:static}
-  .store-identity{flex-direction:column;gap:6px}
+  .store-identity{gap:8px}
   .store-main{padding-bottom:92px}
   .store-mobile-cart{display:flex;position:fixed;inset:auto 16px max(12px,env(safe-area-inset-bottom));z-index:2}
 }
@@ -51,4 +70,6 @@
   .store-dialog{padding:14px}
   .store-nav .outline{padding-inline:8px}
   .store-line{flex-wrap:wrap}
+  .store-product{column-gap:8px}
+  .store-product-photo{width:46px;height:46px}
 }

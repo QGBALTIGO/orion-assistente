@@ -1,216 +1,350 @@
-/* Publication controls for verified Delivery and Distribution workspaces. */
+/* Settings, publication and product order for the Orion Delivery storefront. */
 (() => {
   'use strict';
 
   const paymentOptions = [
     ['cash', 'Dinheiro'], ['debit_card', 'Cartão de débito'],
-    ['credit_card', 'Cartão de crédito'], ['pix', 'Pix'],
+    ['credit_card', 'Cartão de crédito'], ['pix', 'Pix na entrega'],
   ];
-  const allKinds = [
-    ['water', 'Água'], ['prepared_food', 'Comida pronta'],
-    ['grocery', 'Mercado'], ['household', 'Utilidades'],
+  const publicKinds = [
+    ['water','Água'],['prepared_food','Comida pronta'],['grocery','Mercado'],['household','Utilidades'],
   ];
   const weekdays = ['Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado','Domingo'];
+  const itemFields = ['variant_id','product_revision','variant_revision','label','description','kind'];
+  const settingsFields = ['revision','slug','title','description','enabled','accepting_orders','closed_message',
+    'logo_url','cover_url','brand_color','public_phone','layout','hide_unavailable','minimum_subtotal_cents',
+    'estimate_min_minutes','estimate_max_minutes','closed_dates','allow_pickup','allow_delivery',
+    'pickup_details','opening_hours','payment_methods','max_open_orders'];
+  const pick = (source, keys) => Object.fromEntries(keys.map(key => [key, source[key]]));
+  const moneyInput = cents => cents == null ? '' :
+    new Intl.NumberFormat('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}).format(cents/100);
+  const root = '/storefront';
 
-  async function mount({host, call, allowed, canWrite, ui, openEditor}) {
-    const {esc, loading, button, title, field, selectField, textField, checkField, empty, money, query} = ui;
+  async function mount({host, filters, call, allowed, canWrite, ui, openEditor, notify}) {
+    const {esc,icon,loading,button,title,field,moneyField,selectField,textField,checkField,empty,
+      imageUploadField,money,query,routeButton} = ui;
     if (!host || !allowed()) return;
-    let state;
-    let results;
-    let offset = 0;
-    let requestSequence = 0;
-    const root = '/storefront';
+    let state, results = [], requestSequence = 0;
+    let offset = 0, busy = false, hourId = 0;
     const current = () => allowed() && host.isConnected;
-    const error = message => '<p class="os-notice os-error" role="alert">' + esc(message) + '</p>';
-    const smallButton = (text, action, icon, extra = '') => button(text, action, 'os-outline os-small', icon, extra);
-    const controls = () => canWrite() && state;
+    const writeAllowed = () => canWrite() && current() && !busy;
+    const statusError = message => '<div class="os-notice os-error" role="alert">' + esc(message) + '</div>';
+    const smallButton = (label,action,symbol,extra = '') => button(label,action,'os-outline os-small',symbol,extra);
     const targetAttr = id => 'data-store-variant="' + esc(id) + '"';
-    const kinds = () => state.offering === 'gas_agua' ? allKinds.slice(0, 1) : allKinds;
+    const tags = [['products','Vitrine'],['settings','Configurações']];
+    const grid = inner => '<div class="os-form-grid">'+inner+'</div>';
+    const group = (heading,inner) => '<section class="os-card os-form"><h2>'+heading+'</h2>'+inner+'</section>';
+    const valueOrNull = v => v.trim() || null;
+    const thumbnail = value => window.OrionDeliveryEditor?.picture(value,esc)||'';
 
-    host.innerHTML = title('Loja rápida', 'Catálogo público de Delivery', '') + loading('Carregando loja…');
-    try {
-      state = await call(root);
-    } catch (ex) {
-      if (current()) host.innerHTML = title('Loja rápida', '', '') + error(ex.message);
-      return;
-    }
-    if (!current()) return;
-    host.innerHTML = title('Loja rápida', 'Catálogo público de Delivery',
-      controls() ? button('Configurar loja', 'store-settings', '', 'settings') : '') +
-      '<section class="os-card"><div class="os-card-header"><h2>' + esc(state.title) + '</h2>' +
-      '<span class="os-badge">' + (state.public_url ? 'Publicada' : 'Despublicada') + '</span></div>' +
-      '<div class="os-actions">' +
-      (state.public_url ? '<a class="os-button os-outline" target="_blank" rel="noopener" href="' +
-        esc(state.public_url) + '">Abrir loja</a>' : '') +
-      (state.enabled && controls() ? smallButton('Despublicar', 'store-close', 'x') : '') + '</div>' +
-      (!state.publication_available ? '<p class="os-help">Publicação pendente de liberação para esta empresa.</p>' : '') +
-      '</section><section class="os-card os-section-gap"><div class="os-card-header"><h2>Produtos na vitrine</h2></div>' +
-      (state.items.length ? '<div class="os-summary-list">' + state.items.map(item =>
-        '<div class="os-summary-row"><span>' + esc(item.label) + '</span>' +
-        (controls() ? smallButton('Retirar', 'store-remove', 'x', targetAttr(item.variant_id)) : '') +
-        '</div>').join('') + '</div>' : '<p class="os-help">Selecione os produtos que deseja exibir na loja.</p>') +
-      '</section><section class="os-card os-section-gap"><div class="os-card-header"><h2>Selecionar produtos</h2></div>' +
-      '<form id="osStoreFilters" class="os-filter-row">' +
-      field('Buscar produto', 'store_search', 'search', '', 'maxlength="120"') +
-      '<button type="submit" class="os-button os-outline">Filtrar</button></form><div id="osStoreItems" aria-live="polite"></div></section>';
-    window.OrionFields.refresh(host);
-
-    const searchForm = host.querySelector('#osStoreFilters');
-    const output = host.querySelector('#osStoreItems');
-
-    function payload(patch) {
-      const {revision, slug, title, description, enabled, allow_pickup, allow_delivery, pickup_details,
-        opening_hours, payment_methods, max_open_orders, items} = state;
-      return {revision, slug, title, description, enabled, allow_pickup, allow_delivery, pickup_details,
-        opening_hours, payment_methods, max_open_orders, items, ...patch};
+    function endpointPayload(patch) {
+      return {...pick(state,settingsFields),items:state.items.map(item=>pick(item,itemFields)),...patch};
     }
 
-    async function submit(patch) {
-      const result = await call(root, 'PUT', payload(patch));
-      if (!result || typeof result.revision !== 'number') throw Error('Confira a situação da loja antes de tentar novamente.');
+    async function save(patch) {
+      const result = await call(root,'PUT',endpointPayload(patch));
+      if (typeof result?.revision !== 'number') throw Error('Não foi possível confirmar as alterações da loja.');
+      return result;
     }
 
-    const confirmation = form => !!form.elements.store_confirm?.checked;
-    function confirmField() {
-      return checkField('Confirmo a publicação e a seleção de produtos permitidos', 'store_confirm', false,
-        'A loja pública mostra apenas os produtos selecionados. O recebimento é confirmado pelo operador.');
+    const confirmField = () => checkField('Confirmo a publicação dos produtos selecionados','store_confirm',false,
+      'A loja recebe pedidos com pagamento no recebimento.');
+    const confirmed = form => !!form.elements.store_confirm?.checked;
+
+    function storefrontHeader() {
+      const status = state.public_url ? 'Publicada' : 'Despublicada';
+      const ordering = state.open ? 'Aceitando pedidos' :
+        state.accepting_orders === false ? 'Pedidos pausados' : 'Fora do horário';
+      const preview = state.preview_url ?
+        '<a class="os-button os-outline" href="'+esc(state.preview_url)+'" target="_blank" rel="noopener">'+icon('eye')+'Prévia da loja</a>' : '';
+      const publicActions = state.public_url ?
+        '<a class="os-button os-outline" href="'+esc(state.public_url)+'" target="_blank" rel="noopener">'+icon('globe')+'Abrir loja</a>'+
+        button('Copiar link','store-copy','os-outline','copy') : '';
+      const publish = !canWrite() ? '' : state.enabled ? button('Despublicar','store-unpublish','os-outline','close') :
+        state.publication_available ? button('Publicar loja','store-publish','','globe') : '';
+      return '<section class="os-card os-form os-delivery-shop-status"><div class="os-card-header"><h2>'+esc(state.title)+'</h2>'+
+        '<div class="os-actions"><span class="os-badge">'+status+'</span><span class="os-badge os-neutral">'+ordering+'</span></div></div>'+
+        (state.public_url?'<a href="'+esc(state.public_url)+'" target="_blank" rel="noopener">'+esc(state.public_url)+'</a>':'')+
+        (!state.publication_available?'<p class="os-help">Nesta empresa, a loja está em modo de avaliação. A prévia é acessível pelo painel.</p>':'')+
+        '<div class="os-actions">'+preview+publicActions+publish+'</div>'+
+        (state.public_url&&canWrite()?'<div class="os-actions">'+smallButton(state.accepting_orders?'Pausar pedidos':'Retomar pedidos',
+          'store-pause',state.accepting_orders?'pause':'check')+'</div>':'')+'</section>';
     }
 
-    function hour(index, row = {}) {
-      return '<fieldset data-store-hour class="os-action-panel"><div class="os-form-grid">' +
-        selectField('Dia da semana', 'weekday_' + index, weekdays.map((day, n) => [String(n), day]), String(row.weekday ?? 0)) +
-        field('Abre', 'opens_' + index, 'time', (row.opens || '').slice(0, 5), 'required') +
-        field('Fecha', 'closes_' + index, 'time', (row.closes || '').slice(0, 5), 'required') +
-        '</div><button type="button" class="os-button os-outline os-small" data-store-remove-hour>Remover horário</button></fieldset>';
+    function hour(row={}) {
+      const index=hourId++;
+      return '<div data-store-hour class="os-delivery-hours-row">'+
+        selectField('Dia da semana','weekday_'+index,weekdays.map((label,n)=>[String(n),label]),String(row.weekday??0))+
+        field('Abre','opens_'+index,'time',(row.opens||'').slice(0,5),'required')+
+        field('Fecha','closes_'+index,'time',(row.closes||'').slice(0,5),'required')+
+        '<button type="button" class="os-button os-outline os-small" data-store-remove-hour>Remover horário</button></div>';
+    }
+
+    function closedDay(date='') {
+      return '<div class="os-delivery-hours-date" data-store-closed-day>'+
+        field('Data sem atendimento','closed_'+hourId++,'date',date,'required')+
+        '<button type="button" class="os-button os-outline os-small" data-store-remove-date>Remover data</button></div>';
     }
 
     function settings() {
-      const content = '<div class="os-form-grid">' +
-        field('Nome público', 'store_title', 'text', state.title, 'required maxlength="160"') +
-        field('Endereço na web', 'store_slug', 'text', state.slug, 'required minlength="3" maxlength="80" pattern="[a-z0-9]+(?:-[a-z0-9]+)*"') +
-        field('Pedidos públicos simultâneos', 'max_open_orders', 'number', state.max_open_orders, 'required min="1" max="300" step="1"') +
-        textField('Descrição pública', 'store_description', state.description || '', 'maxlength="600"') +
-        textField('Endereço público para retirada', 'pickup_details', state.pickup_details || '', 'maxlength="300"') +
-        '</div><div class="os-form-grid">' +
-        checkField('Aceitar retirada', 'allow_pickup', state.allow_pickup) +
-        checkField('Aceitar entrega pela área cadastrada', 'allow_delivery', state.allow_delivery) + '</div>' +
-        '<section><h3>Pagamento no recebimento</h3><div class="os-form-grid">' +
-        paymentOptions.map(([key, label]) => checkField(label, 'method_' + key, state.payment_methods.includes(key))).join('') +
-        '</div></section><section><h3>Horários</h3><p class="os-help">Sem horários cadastrados, a loja aceita pedidos a qualquer hora.</p>' +
-        '<div data-store-hours>' + state.opening_hours.map((row, i) => hour(i, row)).join('') + '</div>' +
-        '<button type="button" class="os-button os-outline os-small" data-store-add-hour>Adicionar horário</button></section>' +
-        checkField('Publicar loja', 'store_enabled', state.enabled) + confirmField();
-      openEditor('Configurar loja', content, async (form, values) => {
-        const enabled = form.elements.store_enabled.checked;
-        if (enabled && !state.publication_available) throw Error('A publicação ainda não foi liberada para esta empresa.');
-        const list = [...form.querySelectorAll('[data-store-hour]')].map(node => ({
-          weekday: Number(node.querySelector('[name^="weekday_"]').value),
-          opens: node.querySelector('[name^="opens_"]').value,
-          closes: node.querySelector('[name^="closes_"]').value,
-        }));
-        await submit({
-          slug: values.store_slug.trim(), title: values.store_title.trim(), description: values.store_description.trim() || null,
-          enabled, allow_pickup: form.elements.allow_pickup.checked, allow_delivery: form.elements.allow_delivery.checked,
-          pickup_details: values.pickup_details.trim() || null, max_open_orders: Number(values.max_open_orders),
-          opening_hours: list, confirm_catalogue: confirmation(form),
-          payment_methods: paymentOptions.filter(([key]) => form.elements['method_' + key].checked).map(([key]) => key),
-        });
-      }, 'Configuração da loja salva.', {bind: dialog => {
-        let rowIndex = state.opening_hours.length;
-        dialog.addEventListener('click', event => {
-          if (event.target.closest('[data-store-add-hour]')) {
-            const rows = dialog.querySelector('[data-store-hours]');
-            if (rows.children.length < 28) rows.insertAdjacentHTML('beforeend', hour(rowIndex++));
-            window.OrionFields.refresh(rows);
-          } else {
-            event.target.closest('[data-store-remove-hour]')?.closest('[data-store-hour]')?.remove();
-          }
-        });
-      }});
+      if (!canWrite()) return '<div class="os-card os-help">O proprietário gerencia as configurações da loja.</div>';
+      hourId=0;
+      return '<form class="os-form os-delivery-shop-form" id="osDeliveryShopSettings">' +
+        group('Identificação e marca',grid(
+          field('Nome da loja','store_title','text',state.title,'required maxlength="160"')+
+          field('Endereço do link','store_slug','text',state.slug,'required minlength="3" maxlength="80" pattern="[a-z0-9]+(?:-[a-z0-9]+)*"')+
+          field('WhatsApp da loja','public_phone','tel',state.public_phone||'','data-orion-field="phone" maxlength="40"')+
+          field('Cor principal','brand_color','color',state.brand_color||'#2e7bf6'))+
+          textField('Descrição da loja','store_description',state.description||'','maxlength="600"')+
+          grid(imageUploadField('Logotipo','logo_url',state.logo_url||'','logo')+
+            imageUploadField('Capa da loja','cover_url',state.cover_url||'','cover')))+
+        group('Horários e funcionamento',checkField('Aceitar novos pedidos','accepting_orders',state.accepting_orders??true)+
+          textField('Mensagem quando fechada','closed_message',state.closed_message||'','maxlength="300"')+
+          '<div class="os-form"><h3>Horários de atendimento</h3>'+
+          '<p class="os-help">Sem horários cadastrados, a loja fica aberta enquanto aceitar pedidos.</p>'+
+          '<div class="os-form" data-store-hours>'+state.opening_hours.map(hour).join('')+'</div>'+
+          '<div class="os-actions"><button type="button" class="os-button os-outline os-small" data-store-add-hour>'+
+            icon('plus')+'Adicionar horário</button></div></div>'+
+          '<div class="os-form"><h3>Feriados e dias sem atendimento</h3><div class="os-form" data-store-dates>'+
+            (state.closed_dates||[]).map(closedDay).join('')+'</div><div class="os-actions">'+
+            '<button type="button" class="os-button os-outline os-small" data-store-add-date>'+icon('plus')+
+            'Adicionar data</button></div></div>')+
+        group('Entrega e retirada',grid(checkField('Aceitar retirada no local','allow_pickup',state.allow_pickup)+
+          checkField('Aceitar entrega','allow_delivery',state.allow_delivery))+
+          textField('Endereço de retirada','pickup_details',state.pickup_details||'','maxlength="300"')+
+          grid(field('Previsão mínima em minutos','estimate_min','number',state.estimate_min_minutes??'','min="5" max="1440" step="1"')+
+            field('Previsão máxima em minutos','estimate_max','number',state.estimate_max_minutes??'','min="5" max="1440" step="1"'))+
+          '<div class="os-actions">'+routeButton('Bairros, taxas e agendamentos','logistica-delivery','os-outline os-small')+'</div>')+
+        group('Pagamento e checkout','<h3>Pagamento no recebimento</h3>'+grid(
+          paymentOptions.map(([key,label])=>checkField(label,'method_'+key,state.payment_methods.includes(key))).join(''))+
+          grid(moneyField('Pedido mínimo','minimum_subtotal','text',moneyInput(state.minimum_subtotal_cents))+
+            field('Limite de pedidos em aberto','max_open_orders','number',state.max_open_orders,'required min="1" max="300" step="1"')))+
+        group('Exibição da vitrine',grid(selectField('Exibição dos produtos','layout',[['grid','Grade'],['list','Lista']],state.layout||'grid')+
+          checkField('Ocultar produtos sem estoque','hide_unavailable',!!state.hide_unavailable)))+
+        '<div class="os-form-message" role="alert" data-store-settings-error></div>'+
+        '<div class="os-form-actions"><button type="submit" class="os-button">'+icon('check')+
+          'Salvar configurações</button></div></form>';
+    }
+
+    function itemTable(list, selected) {
+      const actionTitle = canWrite() ? '<th scope="col">Ações</th>' : '';
+      return '<div class="os-table-scroll"><table class="os-table os-delivery-shop-item-table"><thead><tr>'+
+        '<th scope="col">Produto</th><th scope="col">'+(selected?'Situação':'Preço')+'</th>'+actionTitle+'</tr></thead><tbody>'+
+        list.map((item,index)=>{
+          const entry = selected?item:state.items.find(row=>row.variant_id===item.variant_id);
+          const label = selected?item.label:[item.name,item.variant_name==='Unidade'?'':item.variant_name].filter(Boolean).join(' · ');
+          const attr = targetAttr(item.variant_id);
+          const actions = selected ?
+            smallButton('Subir','store-up','arrowUp',attr+(index===0?' disabled':''))+
+            smallButton('Descer','store-down','down',attr+(index===list.length-1?' disabled':''))+
+            smallButton('Retirar','store-remove','close',attr) :
+            smallButton(entry?(entry.selection_valid?'Editar exibição':'Revisar e atualizar'):'Selecionar',
+              'store-add',entry?'edit':'plus',attr);
+          return '<tr><td><div class="os-delivery-shop-item-name">'+thumbnail(item.image_url)+esc(label)+'</div></td><td>'+
+            (selected?(item.selection_valid===false?'Revisar alterações':'Selecionado'):esc(money(item.unit_price_cents)))+
+            '</td>'+(canWrite()?'<td><div class="os-actions">'+actions+'</div></td>':'')+'</tr>';
+        }).join('')+'</tbody></table></div>';
+    }
+
+    function productPanel() {
+      return '<section class="os-card os-form"><h2>Produtos na vitrine</h2>'+
+        (state.items.length?itemTable(state.items,true):'<p class="os-help">Selecione os produtos que deseja exibir na loja.</p>')+
+        '</section><section class="os-card os-section-gap os-form"><h2>Selecionar produtos</h2>'+
+        '<form id="osStoreFilters" class="os-filter-row os-delivery-filters">'+
+        field('Buscar produto','store_search','search',filters.search||'','maxlength="120" placeholder="Nome do produto"')+
+        '<button type="submit" class="os-button os-outline">Filtrar</button></form>'+
+        '<div id="osStoreItems" aria-live="polite"></div></section>';
+    }
+
+    function showTab(key, focus) {
+      filters.tab=key;
+      for (const control of host.querySelectorAll('[data-store-tab]')) {
+        const selected=control.dataset.storeTab===key;
+        control.setAttribute('aria-selected',String(selected));
+        control.tabIndex=selected?0:-1;
+        if (selected && focus) control.focus();
+      }
+      for (const panel of host.querySelectorAll('[data-store-panel]')) panel.hidden=panel.dataset.storePanel!==key;
+    }
+
+    function render() {
+      host.innerHTML=title('Loja rápida','',canWrite()?button('Configurar loja','store-settings','','settings'):'')+
+        storefrontHeader()+'<div class="os-pill-tabs os-delivery-editor-tabs" role="tablist" aria-label="Loja rápida">'+
+        tags.map(([key,label])=>'<button type="button" role="tab" class="os-pill-tab" id="osStoreTab-'+key+
+          '" data-store-tab="'+key+'" aria-controls="osStore-'+key+'">'+label+'</button>').join('')+'</div>'+
+        tags.map(([key])=>'<section id="osStore-'+key+'" role="tabpanel" data-store-panel="'+key+
+          '" aria-labelledby="osStoreTab-'+key+'">'+(key==='products'?productPanel():settings())+'</section>').join('');
+      showTab(filters.tab||'products',false);
+      window.OrionFields.refresh(host);
+      void readItems();
+    }
+
+    function changeShop(kind) {
+      if (kind==='pause') {
+        const next=!state.accepting_orders;
+        openEditor(next?'Retomar pedidos':'Pausar pedidos',
+          '<p class="os-help">'+(next?'A loja volta a aceitar pedidos dentro dos horários configurados.':
+            'O link continua disponível e novos pedidos ficam pausados.')+'</p>',
+          () => save({accepting_orders:next,replace_items:false}),next?'Pedidos retomados.':'Pedidos pausados.',
+          {label:next?'Retomar pedidos':'Pausar pedidos'});
+        return;
+      }
+      if (kind==='unpublish') {
+        openEditor('Despublicar loja','<p class="os-help">O endereço público ficará indisponível. A configuração será preservada.</p>',
+          () => call(root+'/unpublish','POST',{revision:state.revision}),'Loja despublicada.',{label:'Despublicar'});
+        return;
+      }
+      openEditor('Publicar loja',confirmField(),form=>save({enabled:true,confirm_catalogue:confirmed(form)}),
+        'Loja publicada.',{label:'Publicar loja'});
     }
 
     function editItem(source) {
-      const entry = state.items.find(item => item.variant_id === source.variant_id);
-      const kindOptions = kinds();
-      const content = field('Nome na loja', 'store_label', 'text',
-        entry?.label || (source.name + ' · ' + source.variant_name).slice(0, 160), 'required maxlength="160"') +
-        textField('Descrição na loja', 'store_item_description', entry?.description || '', 'maxlength="600"') +
-        selectField('Categoria pública', 'store_item_kind', kindOptions, entry?.kind || kindOptions[0][0]) +
-        (state.enabled ? confirmField() : '');
-      openEditor(entry ? 'Atualizar publicação do produto' : 'Selecionar produto para a loja', content,
-        async (form, values) => {
-          const {variant_id, product_revision, variant_revision} = source;
-          const item = {variant_id, product_revision, variant_revision, label: values.store_label.trim(),
-            kind: values.store_item_kind, description: values.store_item_description.trim() || null};
-          await submit({items: [...state.items.filter(row => row.variant_id !== variant_id), item],
-            confirm_catalogue: confirmation(form)});
-        }, 'Produto da loja salvo.');
+      if (!source) return;
+      const entry = state.items.find(item=>item.variant_id===source.variant_id);
+      const kinds = state.offering==='gas_agua'?publicKinds.slice(0,1):publicKinds;
+      const kind = entry?.kind || (source.category==='Água'?'water':
+        source.category==='Alimentos preparados'?'prepared_food':kinds[0][0]);
+      const label = source.variant_name==='Unidade'?source.name:source.name+' · '+source.variant_name;
+      openEditor(entry?'Editar exibição do produto':'Selecionar produto para a loja',
+        field('Nome na loja','store_label','text',entry?.label||label.slice(0,160),'required maxlength="160"')+
+        textField('Descrição na loja','store_item_description',entry?.description||source.product_description?.slice(0,600)||'','maxlength="600"')+
+        selectField('Categoria pública','store_item_kind',kinds,kind),
+        async (form,values)=>{
+          const next={...pick(source,itemFields.slice(0,3)),label:values.store_label.trim(),
+            kind:values.store_item_kind,description:valueOrNull(values.store_item_description)};
+          const items=state.items.map(row=>row.variant_id===next.variant_id?next:pick(row,itemFields));
+          if (!entry) items.push(next);
+          await save({items,confirm_catalogue:state.enabled});
+        },'Vitrine atualizada.');
     }
 
     function removeItem(item) {
-      const remaining = state.items.filter(row => row.variant_id !== item.variant_id);
-      const enabled = state.enabled && remaining.length > 0;
-      const description = '<p class="os-help">Retirar ' + esc(item.label) + ' da loja.' +
-        (state.enabled && !remaining.length ? ' A loja será despublicada ao retirar o último produto.' : '') + '</p>';
-      openEditor('Retirar produto da loja', description + (enabled ? confirmField() : ''),
-        async form => { await submit({items: remaining, enabled, confirm_catalogue: confirmation(form)}); },
-        'Produto retirado da loja.', {label: 'Retirar da loja'});
+      if (!item) return;
+      const items=state.items.filter(row=>row.variant_id!==item.variant_id).map(row=>pick(row,itemFields));
+      const enabled=state.enabled&&items.length>0;
+      openEditor('Retirar produto da loja','<p class="os-help">Retirar '+esc(item.label)+' da vitrine.'+
+        (state.enabled&&!enabled?' A loja será despublicada ao retirar o último produto.':'')+'</p>',
+        ()=>save({items,enabled,confirm_catalogue:enabled}),'Produto retirado da loja.',{label:'Retirar'});
     }
 
-    function closeStore() {
-      openEditor('Despublicar loja', '<p class="os-help">O link ficará indisponível para novos pedidos.</p>',
-        async () => {
-          const result = await call(root + '/unpublish', 'POST', {revision: state.revision});
-          if (result?.enabled !== false) throw Error('Confira a situação da loja antes de tentar novamente.');
-        }, 'Loja despublicada.', {label:'Despublicar'});
+    async function moveItem(id, direction) {
+      const items=state.items.map(item=>pick(item,itemFields));
+      const from=items.findIndex(item=>item.variant_id===id);
+      const to=from+direction;
+      if (from<0 || to<0 || to>=items.length) return;
+      [items[from],items[to]]=[items[to],items[from]];
+      busy=true;
+      try {
+        const next=await save({items,confirm_catalogue:state.enabled});
+        if (current()) {state=next;render();notify('Ordem da vitrine salva.');}
+      } catch(ex) {if (current()) notify(ex.message,true);}
+      finally {busy=false;}
     }
 
     async function readItems() {
-      const sequence = ++requestSequence;
-      output.innerHTML = loading('Buscando produtos…');
+      const output=host.querySelector('#osStoreItems');
+      const sequence=++requestSequence;
+      output.innerHTML=loading('Buscando produtos…');
       try {
-        const response = await call(root + '/items?' + query({search:searchForm.elements.store_search.value.trim(), offset}));
-        if (!current() || sequence !== requestSequence) return;
-        results = response.items;
-        output.innerHTML = (results.length ? '<div class="os-cards-grid">' + results.map(item => {
-          const entry = state.items.find(row => row.variant_id === item.variant_id);
-          const changed = entry && (entry.product_revision !== item.product_revision || entry.variant_revision !== item.variant_revision);
-          return '<article class="os-card os-item-card"><h3>' + esc(item.name) + '</h3><p class="os-help">' +
-            esc(item.variant_name + ' · ' + money(item.unit_price_cents)) + '</p>' +
-            (changed ? '<p class="os-help">Atualize a publicação para exibir a variação após a mudança.</p>' : '') +
-            (controls() ? '<div class="os-actions">' + smallButton(entry ? 'Editar publicação' : 'Selecionar', 'store-add',
-              entry ? 'edit' : 'plus', targetAttr(item.variant_id)) + '</div>' : '') + '</article>';
-        }).join('') + '</div>' : empty('box', 'Nenhuma variação encontrada', 'Cadastre ou procure produtos ativos com preço fixo.')) +
-          (offset > 0 || response.has_more ? '<div class="os-pagination"><div class="os-actions">' +
-            smallButton('Anterior', 'store-prev', 'left', offset ? '' : 'disabled') +
-            smallButton('Próxima', 'store-next', 'chevron', response.has_more ? '' : 'disabled') + '</div></div>' : '');
-      } catch (ex) {
-        if (current() && sequence === requestSequence) output.innerHTML = error(ex.message);
-      }
+        const response=await call(root+'/items?'+query({search:filters.search||'',offset}));
+        if (!current() || sequence!==requestSequence) return;
+        results=response.items;
+        output.innerHTML=(results.length?itemTable(results,false):
+          empty('box','Nenhuma variação disponível','Ative o preço fixo e a disponibilidade para a Loja rápida no cadastro do produto.',
+            routeButton('Ver produtos','produtos-delivery','os-outline os-small')))+
+          (offset||response.has_more?'<div class="os-pagination"><div class="os-actions">'+
+            smallButton('Anterior','store-prev','left',offset?'':'disabled')+
+            smallButton('Próxima','store-next','chevron',response.has_more?'':'disabled')+'</div></div>':'');
+      } catch(ex) {if (current() && sequence===requestSequence) output.innerHTML=statusError(ex.message);}
     }
 
-    searchForm.addEventListener('submit', event => {
+    function settingsValues(form) {
+      const e=form.elements;
+      const optionalNumber=field=>field.value===''?null:Number(field.value);
+      return {replace_items:false,slug:e.store_slug.value.trim(),title:e.store_title.value.trim(),
+        description:valueOrNull(e.store_description.value),accepting_orders:e.accepting_orders.checked,
+        closed_message:valueOrNull(e.closed_message.value),logo_url:valueOrNull(e.logo_url.value),cover_url:valueOrNull(e.cover_url.value),
+        public_phone:valueOrNull(e.public_phone.value),brand_color:e.brand_color.value,layout:e.layout.value,
+        hide_unavailable:e.hide_unavailable.checked,allow_pickup:e.allow_pickup.checked,allow_delivery:e.allow_delivery.checked,
+        pickup_details:valueOrNull(e.pickup_details.value),estimate_min_minutes:optionalNumber(e.estimate_min),
+        estimate_max_minutes:optionalNumber(e.estimate_max),max_open_orders:Number(e.max_open_orders.value),
+        minimum_subtotal_cents:window.OrionFields.parseMoney(e.minimum_subtotal.value,{required:false,min:0,max:1000000000})||0,
+        closed_dates:[...form.querySelectorAll('[data-store-closed-day] input')].map(input=>input.value),
+        opening_hours:[...form.querySelectorAll('[data-store-hour]')].map(row=>({
+          weekday:Number(row.querySelector('select').value),opens:row.querySelector('[name^=opens_]').value,
+          closes:row.querySelector('[name^=closes_]').value})),
+        payment_methods:paymentOptions.filter(([key])=>e['method_'+key].checked).map(([key])=>key),
+      };
+    }
+
+    host.addEventListener('submit',async event=>{
+      const form=event.target;
+      if (!['osStoreFilters','osDeliveryShopSettings'].includes(form.id)) return;
       event.preventDefault();
-      offset = 0;
-      void readItems();
-    });
-    host.addEventListener('click', event => {
-      const control = event.target.closest('[data-os-action^="store-"]');
-      if (!control || !current()) return;
-      event.stopPropagation();
-      const action = control.dataset.osAction;
-      if (action === 'store-prev' || action === 'store-next') {
-        offset += action === 'store-next' ? 25 : -25;
-        void readItems();
-      } else if (controls()) {
-        const id = control.dataset.storeVariant;
-        if (action === 'store-settings') settings();
-        if (action === 'store-close') closeStore();
-        if (action === 'store-add' && results) editItem(results.find(item => item.variant_id === id));
-        if (action === 'store-remove') removeItem(state.items.find(item => item.variant_id === id));
+      if (form.id==='osStoreFilters') {
+        filters.search=form.elements.store_search.value.trim();
+        offset=0;void readItems();return;
       }
+      if (!writeAllowed() || form.querySelector('[data-os-uploading=true]')) return;
+      const error=form.querySelector('[data-store-settings-error]');
+      const submit=form.querySelector('[type=submit]');
+      busy=true;submit.disabled=true;error.textContent='';
+      try {
+        const next=await save(settingsValues(form));
+        if (current()) {state=next;render();notify('Configurações salvas.');}
+      } catch(ex) {if(current()) error.textContent=ex.message||'Não foi possível salvar as configurações.';}
+      finally {busy=false;submit.disabled=false;}
     });
-    await readItems();
+
+    host.addEventListener('keydown',event=>{
+      if (!event.target.dataset.storeTab||!['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return;
+      event.preventDefault();
+      showTab(event.key==='Home'?'products':event.key==='End'?'settings':
+        filters.tab==='products'?'settings':'products',true);
+    });
+
+    host.addEventListener('click',event=>{
+      if (!current()) return;
+      const control=event.target.closest('button');
+      if (!control) return;
+      if (control.dataset.storeTab) {showTab(control.dataset.storeTab,true);return;}
+      if (control.matches('[data-store-add-hour],[data-store-add-date],[data-store-remove-hour],[data-store-remove-date]')) {
+        if (!writeAllowed()) return;
+        if (control.matches('[data-store-remove-hour],[data-store-remove-date]')) {
+          control.closest('[data-store-hour],[data-store-closed-day]')?.remove();return;
+        }
+        const addHour=control.hasAttribute('data-store-add-hour');
+        const rows=host.querySelector(addHour?'[data-store-hours]':'[data-store-dates]');
+        if (rows.children.length>=(addHour?28:60)) {notify('Limite de registros atingido.',true);return;}
+        rows.insertAdjacentHTML('beforeend',addHour?hour():closedDay());
+        window.OrionFields.refresh(rows);
+        rows.lastElementChild.querySelector('select,input')?.focus();
+        return;
+      }
+      const action=control.dataset.osAction;
+      if (!action?.startsWith('store-')) return;
+      event.stopPropagation();
+      if (action==='store-prev'||action==='store-next') {
+        offset=Math.max(0,offset+(action==='store-next'?25:-25));void readItems();return;
+      }
+      if (action==='store-settings') {showTab('settings',true);return;}
+      if (action==='store-copy' && state.public_url) {
+        void navigator.clipboard.writeText(state.public_url).then(()=>notify('Link copiado.'),
+          ()=>notify('Selecione e copie o link da loja.',true));return;
+      }
+      if (!writeAllowed()) return;
+      if (action==='store-pause'||action==='store-publish'||action==='store-unpublish') changeShop(action.slice(6));
+      const id=control.dataset.storeVariant;
+      if (action==='store-add') editItem(results.find(item=>item.variant_id===id));
+      if (action==='store-remove') removeItem(state.items.find(item=>item.variant_id===id));
+      if (action==='store-up'||action==='store-down') void moveItem(id,action==='store-up'?-1:1);
+    });
+
+    host.innerHTML=title('Loja rápida','')+loading('Carregando loja…');
+    try {
+      state=await call(root);
+      if (current()) render();
+    } catch(ex) {if (current()) host.innerHTML=title('Loja rápida','')+statusError(ex.message);}
   }
 
   window.OrionDeliveryStorefront = Object.freeze({mount});

@@ -56,9 +56,10 @@ async def catalog_items(tenant_id: UUID, search: str = Query(default="", max_len
                         category: str = Query(default="", max_length=80),
                         state: Literal["all", "active", "inactive"] = "all",
                         low_stock: bool = False, offset: int = Query(default=0, ge=0, le=100_000),
+                        sale_mode: orders.OrderMode | None = None,
                         actor: Actor = Depends(authenticate)):
     return await run(actor, tenant_id, catalog.list_items, search=search, category=category,
-                     status_filter=state, low_stock=low_stock, offset=offset)
+                     status_filter=state, low_stock=low_stock, offset=offset, sale_mode=sale_mode)
 
 
 @router.get("/catalog/history")

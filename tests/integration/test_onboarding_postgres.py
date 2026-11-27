@@ -66,7 +66,8 @@ async def onboarding_db(monkeypatch):
                 for table in ("business_onboarding_operations", "business_onboarding_creations", "business_onboarding",
                     "business_profile_events", "business_profile_state", "business_profile_versions", "tenant_membership_events",
                     "management_team_invitations", "tenant_memberships", "commercial_orders", "commercial_quote_items",
-                    "commercial_quotes", "financial_entries", "delivery_containers", "customers", "management_requests", "commercial_events", "commercial_inventory",
+                    "commercial_quotes", "financial_entries", "delivery_variant_details", "delivery_containers",
+                    "customers", "management_requests", "commercial_events", "commercial_inventory",
                     "commercial_variants", "commercial_products", "working_breaks", "working_hours", "professional_services",
                     "services", "professionals", "tenant_audit", "platform_audit", "orion_plan_trial_requests"):
                     await db.execute(text(f"DELETE FROM {table} WHERE tenant_id=:t"), {"t": tenant})

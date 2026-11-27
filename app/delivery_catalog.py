@@ -7,12 +7,13 @@ from uuid import UUID
 
 from fastapi import HTTPException
 from fastapi.encoders import jsonable_encoder
-from pydantic import Field, StrictInt, model_validator
+from pydantic import Field, StrictBool, StrictInt, field_validator, model_validator
 from sqlalchemy import text
 
 from app import commercial_service as commerce
 from app.business_profile_schemas import ProfileModel, ShortText
 from app.commercial_schemas import IdempotencyKey, Product, StockObservation, Variant
+from app.delivery_product_media import PRODUCT_IMAGES, image_url, tenant_photo
 
 
 LIMIT = 25
@@ -26,6 +27,30 @@ class VariantDetails(ProfileModel):
     purchase_cost_cents: StrictInt | None = Field(default=None, ge=0, le=100_000_000)
     minimum_quantity: StrictInt = Field(default=0, ge=0, le=MAX_QUANTITY)
     barcode: str | None = Field(default=None, pattern=r"^[0-9]{1,32}$")
+    sell_internally: StrictBool = True
+    allow_delivery: StrictBool = True
+    allow_pickup: StrictBool = True
+    allow_storefront: StrictBool = True
+    exchange_container_id: UUID | None = None
+
+
+class ProductProfile(ProfileModel):
+    brand: str | None = Field(default=None, min_length=1, max_length=100)
+    preset_image: str | None = None
+    photo_url: str | None = Field(default=None, max_length=140)
+
+    @field_validator("preset_image")
+    @classmethod
+    def known_preset(cls, value):
+        if value is not None and value not in PRODUCT_IMAGES:
+            raise ValueError("Selecione uma imagem da biblioteca Orion")
+        return value
+
+    @model_validator(mode="after")
+    def one_image(self):
+        if self.preset_image and self.photo_url:
+            raise ValueError("Escolha uma imagem da biblioteca ou uma foto própria")
+        return self
 
 
 class VariantCreate(ProfileModel):
@@ -37,10 +62,12 @@ class VariantCreate(ProfileModel):
 
 class ProductCreate(VariantCreate):
     product: Product
+    profile: ProductProfile | None = None
 
 
 class ItemUpdate(ProfileModel):
     product: Product
+    profile: ProductProfile | None = None
     variant: Variant
     details: VariantDetails
     product_revision: StrictInt = Field(ge=1)
@@ -66,10 +93,12 @@ ITEMS_FROM = """
     JOIN commercial_products p ON (p.tenant_id,p.id)=(v.tenant_id,v.product_id)
     JOIN commercial_inventory i ON (i.tenant_id,i.variant_id)=(v.tenant_id,v.id)
     LEFT JOIN delivery_variant_details d ON (d.tenant_id,d.variant_id)=(v.tenant_id,v.id)
+    LEFT JOIN delivery_product_profiles m ON (m.tenant_id,m.product_id)=(p.tenant_id,p.id)
+    LEFT JOIN delivery_containers w ON (w.tenant_id,w.id)=(v.tenant_id,d.exchange_container_id)
 """
 
 
-async def list_items(db, tenant, *, search, category, status_filter, low_stock, offset):
+async def list_items(db, tenant, *, search, category, status_filter, low_stock, offset, sale_mode=None):
     rows = (await db.execute(text("""
         SELECT v.id AS variant_id, v.name AS variant_name, v.sku, v.attributes,
             v.price_kind, v.unit_price_cents, v.active AS variant_active, v.revision AS variant_revision,
@@ -77,21 +106,30 @@ async def list_items(db, tenant, *, search, category, status_filter, low_stock, 
             p.synonyms,p.faqs,p.official_benefits,p.revision AS product_revision,
             i.mode,i.quantity_on_hand,i.reserved_quantity,i.valid_until,i.revision AS inventory_revision,
             d.category,COALESCE(d.unit,'un') AS unit,d.purchase_cost_cents,
-            COALESCE(d.minimum_quantity,0) AS minimum_quantity,d.barcode
+            COALESCE(d.minimum_quantity,0) AS minimum_quantity,d.barcode,
+            COALESCE(d.sell_internally,true) AS sell_internally,
+            COALESCE(d.allow_delivery,true) AS allow_delivery,COALESCE(d.allow_pickup,true) AS allow_pickup,
+            COALESCE(d.allow_storefront,true) AS allow_storefront,d.exchange_container_id,w.name AS exchange_container_name,
+            m.brand,m.preset_image,m.photo_url
         """ + ITEMS_FROM + """
         WHERE v.tenant_id=:t
-          AND (:search='' OR position(lower(:search) in lower(concat_ws(' ',p.name,v.name,v.sku,d.barcode)))>0)
+          AND (:search='' OR position(lower(:search) in lower(concat_ws(' ',p.name,v.name,v.sku,d.barcode,m.brand)))>0)
           AND (:category='' OR d.category=:category)
           AND (:status='all' OR (p.active AND v.active)=(:status='active'))
+          AND (CAST(:sale_mode AS text) IS NULL OR (p.active AND v.active
+               AND COALESCE(d.sell_internally,true)
+               AND (:sale_mode<>'delivery' OR COALESCE(d.allow_delivery,true))
+               AND (:sale_mode<>'pickup' OR COALESCE(d.allow_pickup,true))))
           AND (NOT :low OR (p.active AND v.active AND i.mode='tracked' AND i.valid_until>now()
                             AND i.quantity_on_hand-i.reserved_quantity<=COALESCE(d.minimum_quantity,0)))
         ORDER BY lower(p.name), lower(v.name),v.id LIMIT :limit OFFSET :offset
     """), {"t": tenant, "search": search.strip(), "category": category, "status": status_filter,
-            "low": low_stock, "limit": LIMIT + 1, "offset": offset})).mappings().all()
+            "low": low_stock, "limit": LIMIT + 1, "offset": offset, "sale_mode": sale_mode})).mappings().all()
     categories = (await db.execute(text("""
         SELECT DISTINCT category FROM delivery_variant_details WHERE tenant_id=:t ORDER BY category
     """), {"t": tenant})).scalars().all()
-    return {"items": [dict(row) for row in rows[:LIMIT]], "categories": categories,
+    return {"items": [{**row, "image_url": image_url(tenant, row["preset_image"], row["photo_url"])}
+                      for row in rows[:LIMIT]], "categories": categories,
             "limit": LIMIT, "offset": offset, "has_more": len(rows) > LIMIT}
 
 
@@ -113,14 +151,43 @@ async def history(db, tenant, *, start: date | None, end: date | None, offset):
 
 
 async def store_details(db, tenant, variant_id, details):
+    if details.exchange_container_id is not None:
+        from app.delivery_containers import get_container
+        await get_container(db, tenant, details.exchange_container_id)
+    # Older editors omit channel controls. Keep previously saved controls in that case.
+    channel_fields = ("sell_internally", "allow_delivery", "allow_pickup", "allow_storefront",
+                      "exchange_container_id")
+    fields = set(details.model_fields_set)
     await db.execute(text("""
         INSERT INTO delivery_variant_details
-            (tenant_id,variant_id,category,unit,purchase_cost_cents,minimum_quantity,barcode)
-        VALUES (:t,:v,:category,:unit,:purchase_cost_cents,:minimum_quantity,:barcode)
+            (tenant_id,variant_id,category,unit,purchase_cost_cents,minimum_quantity,barcode,
+             sell_internally,allow_delivery,allow_pickup,allow_storefront,exchange_container_id)
+        VALUES (:t,:v,:category,:unit,:purchase_cost_cents,:minimum_quantity,:barcode,
+                :sell_internally,:allow_delivery,:allow_pickup,:allow_storefront,:exchange_container_id)
         ON CONFLICT (tenant_id,variant_id) DO UPDATE SET category=EXCLUDED.category,
             unit=EXCLUDED.unit,purchase_cost_cents=EXCLUDED.purchase_cost_cents,
-            minimum_quantity=EXCLUDED.minimum_quantity,barcode=EXCLUDED.barcode
-    """), {"t": tenant, "v": variant_id, **details.model_dump()})
+            minimum_quantity=EXCLUDED.minimum_quantity,barcode=EXCLUDED.barcode,
+            sell_internally=CASE WHEN :update_sell_internally THEN EXCLUDED.sell_internally ELSE delivery_variant_details.sell_internally END,
+            allow_delivery=CASE WHEN :update_allow_delivery THEN EXCLUDED.allow_delivery ELSE delivery_variant_details.allow_delivery END,
+            allow_pickup=CASE WHEN :update_allow_pickup THEN EXCLUDED.allow_pickup ELSE delivery_variant_details.allow_pickup END,
+            allow_storefront=CASE WHEN :update_allow_storefront THEN EXCLUDED.allow_storefront ELSE delivery_variant_details.allow_storefront END,
+            exchange_container_id=CASE WHEN :update_exchange_container_id THEN EXCLUDED.exchange_container_id
+                ELSE delivery_variant_details.exchange_container_id END
+    """), {"t": tenant, "v": variant_id, **details.model_dump(),
+            **{f"update_{field}": field in fields for field in channel_fields}})
+
+
+async def store_profile(db, tenant, product, profile):
+    if profile is None:
+        return
+    if profile.photo_url is not None and not tenant_photo(tenant, profile.photo_url):
+        raise HTTPException(422, "Use uma imagem enviada pela sua empresa")
+    await db.execute(text("""
+        INSERT INTO delivery_product_profiles (tenant_id,product_id,brand,preset_image,photo_url)
+        VALUES (:t,:id,:brand,:preset_image,:photo_url)
+        ON CONFLICT (tenant_id,product_id) DO UPDATE SET brand=EXCLUDED.brand,
+            preset_image=EXCLUDED.preset_image,photo_url=EXCLUDED.photo_url
+    """), {"t": tenant, "id": product, **profile.model_dump()})
 
 
 async def run_once(db, tenant, payload, operation, target, write, *, optional_defaults=None):
@@ -128,9 +195,11 @@ async def run_once(db, tenant, payload, operation, target, write, *, optional_de
     scope = f"delivery-catalog:{tenant}:{key}"
     await db.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:scope,0))"), {"scope": scope})
     fields = payload.model_dump(mode="json")
-    for name, default in (optional_defaults or {}).items():
-        if fields.get(name) == default:
-            fields.pop(name, None)
+    for path, default in (optional_defaults or {}).items():
+        parent, _, name = path.rpartition(".")
+        target_fields = fields.get(parent, {}) if parent else fields
+        if target_fields.get(name) == default:
+            target_fields.pop(name, None)
     signature = json.dumps([operation, str(target), fields], sort_keys=True)
     fingerprint = hashlib.sha256(signature.encode()).hexdigest()
     previous = (await db.execute(text("""
@@ -173,6 +242,7 @@ async def create_item(db, tenant, access, payload, product_id=None):
         target = product_id
         if target is None:
             target = (await commerce.write_product(db, tenant, payload.product, access))["id"]
+            await store_profile(db, tenant, target, payload.profile)
         elif not (await db.execute(text("""
             SELECT id FROM commercial_products WHERE tenant_id=:t AND id=:p FOR SHARE
         """), {"t": tenant, "p": target})).scalar_one_or_none():
@@ -185,7 +255,10 @@ async def create_item(db, tenant, access, payload, product_id=None):
                            "initial", payload.initial_quantity)
         return {"product_id": target, "variant_id": variant_id}
 
-    return await run_once(db, tenant, payload, "create", product_id, write)
+    return await run_once(db, tenant, payload, "create", product_id, write, optional_defaults={
+        "profile": None, "details.sell_internally": True, "details.allow_delivery": True,
+        "details.allow_pickup": True, "details.allow_storefront": True, "details.exchange_container_id": None,
+    })
 
 
 async def update_item(db, tenant, access, variant_id, payload):
@@ -198,8 +271,29 @@ async def update_item(db, tenant, access, variant_id, payload):
                                  product_id=product_id, expected_revision=payload.product_revision)
     await commerce.write_variant(db, tenant, product_id, payload.variant, access,
                                  variant_id=variant_id, expected_revision=payload.variant_revision)
+    await store_profile(db, tenant, product_id, payload.profile)
     await store_details(db, tenant, variant_id, payload.details)
     return {"product_id": product_id, "variant_id": variant_id}
+
+
+async def order_lines(db, tenant, items, mode, *, storefront=False, lock=False):
+    lines = await commerce._load_lines(db, tenant, items, lock=lock)
+    refs = (await db.execute(text("""
+        SELECT v.id,d.sell_internally,d.allow_delivery,d.allow_pickup,d.allow_storefront,d.exchange_container_id
+        FROM commercial_variants v LEFT JOIN delivery_variant_details d
+            ON (d.tenant_id,d.variant_id)=(v.tenant_id,v.id)
+        WHERE v.tenant_id=:t AND v.id=ANY(:ids)
+    """), {"t": tenant, "ids": [item.variant_id for item in items]})).mappings().all()
+    by_id = {row["id"]: row for row in refs}
+    channel = {"delivery": "allow_delivery", "pickup": "allow_pickup"}.get(mode)
+    for line in lines:
+        flags = by_id.get(line["variant_id"])
+        if flags is None or flags["allow_storefront" if storefront else "sell_internally"] is False:
+            commerce.conflict("Há um produto indisponível para este canal de venda.")
+        if channel is not None and flags[channel] is False:
+            commerce.conflict("Há um produto indisponível para a forma de atendimento escolhida.")
+        line["exchange_container_id"] = flags["exchange_container_id"]
+    return lines
 
 
 async def adjust(db, tenant, access, variant_id, payload):

@@ -131,6 +131,44 @@ async def test_concurrent_adjustments_preserve_reservations_and_tenant_scope(onb
         assert (await disabled.get(root)).status_code == 403
 
 
+async def test_product_profile_and_channel_flags_are_tenant_scoped(onboarding_db, monkeypatch):
+    tenant, actor = await business(onboarding_db, monkeypatch)
+    await complete_delivery_setup(onboarding_db, tenant)
+    entitlement = await resolve_plan(tenant)
+    assert entitlement["source"] == "none"
+    assert entitlement["permissions"]["clients.manage"] and entitlement["permissions"]["finance.basic"]
+    assert not entitlement["permissions"]["reception.ai"]
+    base = f"/api/v1/tenants/{tenant}/delivery"
+    root = base + "/catalog"
+    payload = new_product()
+    payload["profile"] = {"brand": "Marca de homologação", "preset_image": "agua-20l"}
+    flags = {"sell_internally": True, "allow_storefront": False, "allow_delivery": False}
+    old_details = payload["details"].copy()
+    payload["details"].update(flags)
+    async with client(actor) as http:
+        remote_photo = {"photo_url": f"/media/{onboarding_db.a}/{uuid4()}.webp"}
+        assert (await http.post(root, json={**payload, "profile": remote_photo})).status_code == 422
+        created = await http.post(root, json=payload)
+        assert created.status_code == 201, created.text
+        variant = created.json()["variant_id"]
+        assert (await http.get(root, params={"sale_mode":"delivery"})).json()["items"] == []
+        items = (await http.get(root, params={"sale_mode":"counter", "search":"Marca de homologação"})).json()["items"]
+        row, = items
+        assert row["brand"] == "Marca de homologação"
+        assert row["image_url"].endswith("/agua-20l.webp")
+        update = {"product": payload["product"], "variant": payload["variant"], "details": old_details,
+                  "product_revision": row["product_revision"], "variant_revision": row["variant_revision"]}
+        edited = await http.put(root+f"/variants/{variant}", json=update)
+        assert edited.status_code == 200, edited.text
+        preserved = (await http.get(root)).json()["items"][0]
+        assert {key: preserved[key] for key in flags} == flags
+        assert preserved["preset_image"] == "agua-20l"
+        delivery = {"mode": "delivery", "items": [{"variant_id": variant, "quantity": 1}],
+                    "address": {"street":"Rua de homologação", "number":"2","neighborhood":"Centro","city":"Cuiabá","state":"MT"}}
+        denied = await http.post(base+"/orders/estimate", json=delivery)
+        assert denied.status_code == 409, denied.text
+
+
 async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypatch):
     if os.getenv("ORION_DELIVERY_BROWSER_TEST") != "1":
         pytest.skip("Requires an isolated Redis and a Chromium browser")
@@ -192,15 +230,16 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                 if theme == "light":
                     await page.set_viewport_size({"width":390,"height":844})
                     await page.get_by_role("button", name="Novo produto").click()
-                    dialog = page.get_by_role("dialog")
-                    await dialog.get_by_label("Nome do produto").fill("Água de homologação")
-                    await dialog.get_by_label("Variação", exact=True).fill("Unidade")
-                    await dialog.get_by_label("Preço de venda").fill("12,50")
-                    await dialog.get_by_label("Categoria").fill("Água")
-                    await dialog.get_by_label("Estoque inicial").fill("5")
-                    await dialog.get_by_role("button",name="Salvar").click()
-                    await expect(dialog).to_be_hidden()
+                    product_form = page.locator("#osDeliveryProductForm")
+                    await product_form.get_by_label("Preencher com um modelo").select_option("agua-20l")
+                    await expect(product_form.get_by_label("Nome do produto")).to_have_value("Água mineral 20 L")
+                    await product_form.get_by_label("Nome do produto").fill("Água de homologação")
+                    await product_form.get_by_label("Preço de venda").fill("12,50")
+                    await product_form.get_by_label("Estoque inicial").fill("5")
+                    await product_form.get_by_role("button",name="Salvar produto").click()
+                    await expect(product_form).to_be_hidden()
                     await page.get_by_role("button",name="Ajustar estoque").click()
+                    dialog = page.get_by_role("dialog")
                     await dialog.get_by_label("Quantidade").fill("2")
                     await dialog.get_by_role("button",name="Salvar").click()
                     await expect(page.get_by_text("7 un em estoque",exact=False)).to_be_visible()
@@ -217,6 +256,13 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                     await expect(dialog).to_be_hidden()
                     if width in (390,1440):
                         await page.screenshot(path=artifacts/f"catalogo-{theme}-{width}.png", animations="disabled")
+                        await page.get_by_role("button",name="Editar",exact=True).click()
+                        await expect(page.get_by_role("heading",name="Editar produto",exact=True)).to_be_visible()
+                        await expect(page.locator(".os-delivery-current-image")).to_have_attribute("src",re.compile("agua-20l.webp$"))
+                        assert await page.evaluate("() => document.documentElement.scrollWidth <= innerWidth + 1"), (theme,width)
+                        await page.screenshot(path=artifacts/f"produto-editor-{theme}-{width}.png", animations="disabled")
+                        await page.get_by_role("button",name="Voltar para produtos",exact=True).click()
+                        await expect(page.get_by_role("heading",name="Água de homologação")).to_be_visible()
                 await page.get_by_role("tab", name="Movimentações").click()
                 await expect(page.get_by_role("cell", name="Saldo inicial")).to_be_visible()
                 await expect(page.get_by_role("cell", name="Entrada", exact=True)).to_be_visible()
@@ -349,6 +395,26 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                         assert await page.evaluate("() => document.documentElement.scrollWidth <= innerWidth + 1"), (route,theme,width)
                         if width in (390,1440):
                             await page.screenshot(path=artifacts/f"{route}-{theme}-{width}.png", animations="disabled")
+                    if route == "loja-delivery":
+                        await page.get_by_role("button",name="Configurar loja",exact=True).click()
+                        settings = page.locator("#osDeliveryShopSettings")
+                        await expect(settings.get_by_role("heading",name="Identificação e marca",exact=True)).to_be_visible()
+                        if theme == "light":
+                            await settings.get_by_label("Nome da loja",exact=True).fill("Loja de homologação")
+                            await settings.get_by_label("Mensagem quando fechada").fill("Voltamos no próximo horário.")
+                            await settings.get_by_role("button",name="Salvar configurações",exact=True).click()
+                            await expect(page.get_by_role("heading",name="Loja de homologação",exact=True)).to_be_visible()
+                            async with context.expect_page() as open_preview:
+                                await page.get_by_role("link",name="Prévia da loja",exact=True).click()
+                            preview = await open_preview.value
+                            await expect(preview.get_by_role("heading",name="Loja de homologação",exact=True)).to_be_visible()
+                            await expect(preview.get_by_text("Prévia da loja",exact=True)).to_be_visible()
+                            await expect(preview.get_by_role("button",name="Continuar pedido")).to_have_count(0)
+                            await preview.close()
+                        for width in (390,1440):
+                            await page.set_viewport_size({"width":width,"height":900})
+                            assert await page.evaluate("() => document.documentElement.scrollWidth <= innerWidth + 1"), (route,theme,width)
+                            await page.screenshot(path=artifacts/f"loja-configuracoes-{theme}-{width}.png", animations="disabled")
                 await context.close()
             await browser.close()
         assert errors == []

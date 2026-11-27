@@ -4,15 +4,16 @@ import test from 'node:test';
 import {defaultResponse, flush, makeSuite, planState} from './harness.mjs';
 
 const moduleSource=await readFile(new URL('../app/static/orion-delivery-catalog.js',import.meta.url),'utf8');
+const editorSource=await readFile(new URL('../app/static/orion-delivery-editor.js',import.meta.url),'utf8');
 const preview=planState('none',{delivery_catalog_preview:true});
 const variant='54000000-0000-4000-8000-000000000001';
 const product='54000000-0000-4000-8000-000000000002';
 
-test('catalogue uses Orion dialogs, stores the command, filters and opens movement history in-place',async t=>{
+test('catalogue uses the product page, saves the model and opens stock history in-place',async t=>{
   let saved=null;
   const plan=preview;
   const h=await makeSuite({initialRoute:'produtos-delivery',permissions:plan,
-    configureWindow:window=>window.eval(moduleSource),
+    configureWindow:window=>{window.eval(editorSource);window.eval(moduleSource);},
     respond:(url,method,payload)=>{
       if (!url.includes('/delivery/catalog')) return defaultResponse(url);
       if (method==='POST'&&url.endsWith('/adjustments')) {
@@ -36,17 +37,27 @@ test('catalogue uses Orion dialogs, stores the command, filters and opens moveme
   assert.ok(h.document.querySelector('#osNav [data-os-route=produtos-delivery]'));
   assert.match(h.document.querySelector('#osDeliveryResults').textContent,/Nenhum produto/);
   h.click('[data-os-action=delivery-create]');
-  assert.equal(h.document.querySelector('#osDialogTitle').textContent,'Novo produto');
-  h.fill('#osDialog [name=name]','Água de avaliação');
-  h.fill('#osDialog [name=variant_name]','Unidade');
-  h.fill('#osDialog [name=price]','12,50');
-  h.fill('#osDialog [name=product_category]','Água');
-  h.fill('#osDialog [name=initial]','5');
-  h.document.querySelector('#osDialog button[type=submit]').click();
+  const form=h.document.querySelector('#osDeliveryProductForm');
+  assert.equal(h.document.querySelector('#osPageBody h1').textContent,'Novo produto');
+  assert.equal(form.querySelector('details').open,false);
+  form.elements.product_model.value='agua-20l';
+  form.elements.product_model.dispatchEvent(new h.window.Event('change',{bubbles:true}));
+  assert.equal(form.elements.name.value,'Água mineral 20 L');
+  assert.equal(form.elements.editor_category.value,'Água');
+  assert.equal(form.elements.price.value,'');
+  assert.equal(form.querySelector('[data-delivery-image=agua-20l]').getAttribute('aria-pressed'),'true');
+  h.fill('#osDeliveryProductForm [name=name]','Água de avaliação');
+  h.fill('#osDeliveryProductForm [name=price]','12,50');
+  h.fill('#osDeliveryProductForm [name=initial]','5');
+  h.click('#osDeliveryProductForm [name=allow_storefront]');
+  form.querySelector('button[type=submit]').click();
   await flush();
   const created=h.calls.find(x=>x.method==='POST');
   assert.equal(created.data.product.name,'Água de avaliação');
   assert.equal(created.data.variant.unit_price_cents,1250);
+  assert.equal(created.data.variant.name,'Unidade');
+  assert.equal(created.data.profile.preset_image,'agua-20l');
+  assert.equal(created.data.details.allow_storefront,true);
   assert.equal(created.data.initial_quantity,5);
   assert.ok(created.data.idempotency_key);
   h.click('[data-os-action=delivery-adjust]');

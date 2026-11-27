@@ -1,0 +1,132 @@
+.os-delivery-editor-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 20px;
+}
+
+.os-delivery-editor-layout.os-delivery-editor-single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.os-delivery-product-form h2,
+.os-delivery-shop-form h2 {
+  margin: 0;
+}
+
+.os-delivery-editor-side,
+.os-delivery-editor-layout > .os-form {
+  min-width: 0;
+}
+
+.os-delivery-models {
+  max-width: 320px;
+}
+
+.os-delivery-image-preview {
+  min-height: 116px;
+  display: grid;
+  place-items: center;
+  color: var(--os-muted);
+  background: var(--os-soft);
+  border-radius: 12px;
+}
+
+.os-delivery-current-image {
+  width: 116px;
+  height: 116px;
+  object-fit: contain;
+}
+
+.os-delivery-image-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(82px, 100%), 1fr));
+  gap: 8px;
+}
+
+.os-delivery-image-grid .os-service-option {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 8px 4px;
+  text-align: center;
+  line-height: 1.2;
+  font-size: 12px;
+}
+
+.os-delivery-preset-image {
+  width: 52px;
+  height: 52px;
+  object-fit: contain;
+}
+
+.os-product-thumbnail {
+  height: 48px;
+  width: 48px;
+  flex: 0 0 48px;
+  object-fit: contain;
+}
+
+.os-delivery-order-items {
+  list-style: none;
+  padding: 0;
+}
+
+.os-delivery-order-items li,
+.os-delivery-shop-item-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.os-delivery-editor-tabs {
+  margin-bottom: 16px;
+}
+
+.os-delivery-filters {
+  align-items: end;
+  margin-top: 16px;
+}
+
+.os-delivery-shop-item-table .os-actions {
+  gap: 6px;
+}
+
+.os-delivery-shop-form .os-check {
+  max-width: 100%;
+}
+
+.os-delivery-shop-status {
+  margin-bottom: 16px;
+}
+
+.os-delivery-shop-status .os-actions,
+.os-delivery-shop-status a {
+  overflow-wrap: anywhere;
+}
+
+.os-delivery-hours-row,
+.os-delivery-hours-date {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 12px;
+}
+
+.os-delivery-hours-date {
+  grid-template-columns: minmax(0, 220px) auto;
+  justify-content: start;
+}
+
+@media (max-width: 860px) {
+  .os-delivery-editor-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 560px) {
+  .os-delivery-hours-row,
+  .os-delivery-hours-date {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

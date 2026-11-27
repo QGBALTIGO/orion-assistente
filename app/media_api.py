@@ -30,9 +30,9 @@ MAX_RESULT = 1_500_000
 MAX_PIXELS = 18_000_000
 UPLOAD_PER_TENANT_PER_HOUR = 80
 VALID_MIMES = {"image/jpeg", "image/png", "image/webp", "image/heic", "image/heif", "application/octet-stream"}
-KINDS = {"service", "professional", "package", "logo", "cover"}
+KINDS = {"service", "professional", "package", "logo", "cover", "product"}
 LIMITS = {"service": (1200, 1200), "professional": (1200, 1200),
-          "package": (1200, 1200), "logo": (900, 900), "cover": (2000, 1200)}
+          "package": (1200, 1200), "logo": (900, 900), "cover": (2000, 1200), "product": (1200, 1200)}
 Image.MAX_IMAGE_PIXELS = MAX_PIXELS
 register_heif_opener()
 _gate = asyncio.Semaphore(3)

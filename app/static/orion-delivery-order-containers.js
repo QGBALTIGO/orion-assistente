@@ -21,6 +21,10 @@
       }
       const options=[['','Nenhum'],...choices.map(row=>[row.id,row.name])];
       lines.innerHTML=[...cart.entries()].map(([id,item])=>{
+        if (item.exchange_container_id) {
+          return '<p class="os-help">'+ui.esc(item.label+' · Troca obrigatória de um '+(item.exchange_container_name||'vasilhame')+
+            ' por unidade. A equipe confirma os vazios na conclusão.')+'</p>';
+        }
         const saved=draft.get(id)||{};
         return '<fieldset><legend>'+ui.esc(item.label)+'</legend><div class="os-form-grid">'+
           ui.selectField('Tipo de vasilhame','container-order-id-'+id,options,saved.container_id||'', 'data-container-input="type"')+

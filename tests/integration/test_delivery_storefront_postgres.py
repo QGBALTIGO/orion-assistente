@@ -1,6 +1,7 @@
 """Verify opt-in store visibility, delivery quotes and atomic checkout in Postgres."""
 
 import asyncio
+from datetime import datetime, timedelta
 import os
 from pathlib import Path
 import socket
@@ -50,6 +51,8 @@ async def set_up_items(http, tenant, slug):
     admin = f"/api/v1/tenants/{tenant}/delivery"
     for i, product in enumerate(("Água de avaliação", "Estoque privado", "Botijão GLP P-13")):
         body = new_product(product)
+        if i == 0:
+            body["profile"] = {"brand": "Marca sintética", "preset_image": "agua-20l"}
         if i:
             body["variant"]["sku"] += str(i)
             body["details"]["barcode"] += str(i)
@@ -88,6 +91,19 @@ async def test_owner_publication_filters_draft_and_restricted_products(storefron
             assert (await editor.put(mutation, json=payload)).status_code == 403
         monkeypatch.delenv("ORION_DELIVERY_PUBLIC_TENANTS")
         assert (await http.put(mutation, json=payload)).status_code == 403
+        draft = await http.put(mutation, json={**payload, "enabled": False})
+        assert draft.status_code == 200, draft.text
+        payload["revision"] = draft.json()["revision"]
+        preview = draft.json()["preview_url"]
+        assert (await http.get(preview)).status_code == 200
+        assert (await http.get(preview + "/catalogo")).json()["items"][0]["image_url"].endswith("agua-20l.webp")
+        async with client(Actor("member", account_id=ctx.other)) as editor:
+            assert (await editor.get(preview + "/catalogo")).status_code == 200
+        async with client(Actor("member", account_id=uuid4())) as outsider:
+            forbidden = await outsider.get(preview + "/catalogo")
+            assert forbidden.status_code == 403, forbidden.text
+        assert (await http.get("/delivery-store-assets/products/agua-20l.webp")).status_code == 200
+        assert (await http.get("/delivery-store-assets/products/invalid.webp")).status_code == 404
         monkeypatch.setenv("ORION_DELIVERY_PUBLIC_TENANTS", str(tenant))
         assert (await http.put(mutation, json={**payload, "items": [restricted]})).status_code == 422
         approved = await http.put(mutation, json=payload)
@@ -96,8 +112,10 @@ async def test_owner_publication_filters_draft_and_restricted_products(storefron
         assert (await http.put(mutation, json=payload)).status_code == 409
         view = (await http.get(public)).json()
         item, = view["items"]
-        assert item == {"variant_id": payload["items"][0]["variant_id"], "label": "Água de avaliação",
-                        "description": None, "kind": "water", "unit_price_cents": 1250, "available": True}
+        assert item["variant_id"] == payload["items"][0]["variant_id"] and item["label"] == "Água de avaliação"
+        assert item["kind"] == "water" and item["unit_price_cents"] == 1250
+        assert item["available"] and item["available_quantity"] == 5
+        assert item["image_url"].endswith("agua-20l.webp") and item["brand"] == "Marca sintética"
         assert "tenant_id" not in view and "max_open_orders" not in view
         page = await http.get("/loja/" + slug)
         assert page.status_code == 200 and "Loja sintética &amp; Cia" in page.text
@@ -118,10 +136,13 @@ async def test_checkout_reserves_only_once_without_claiming_payment_or_crm_ident
         approved = await http.put(admin + "/storefront", json={**payload, "max_open_orders": 1})
         assert approved.status_code == 200, approved.text
         line = {"variant_id": payload["items"][0]["variant_id"], "quantity": 2}
-        intent = {"items": [line], "mode": "pickup", "payment_preference": "cash"}
+        intent = {"items": [line], "mode": "pickup", "payment_preference": "cash", "change_for_cents": 3000}
+        assert (await http.post(public+"/quote", json={**intent,"change_for_cents":2400})).status_code == 422
         quote = await http.post(public + "/quote", json=intent)
         assert quote.status_code == 200, quote.text
+        assert quote.json()["change_cents"] == 500
         confirm = {**intent, "customer_name": "Pessoa sintética", "customer_phone": "+5567999999902",
+                   "buyer_note": "Pedido de homologação",
                    "confirmed": True, "quote": quote.json()["quote"], "idempotency_key": str(uuid4())}
         tampered = {**confirm, "items": [{**line, "quantity": 1}]}
         assert (await http.post(public + "/orders", json=tampered)).status_code == 409
@@ -144,7 +165,8 @@ async def test_checkout_reserves_only_once_without_claiming_payment_or_crm_ident
         assert len(orders) == 1 and orders[0]["customer_id"] is None
         order_path = admin + "/orders/" + orders[0]["id"]
         contact = await http.get(admin + "/storefront/orders/" + orders[0]["id"])
-        assert contact.json() == {"customer_name": "Pessoa sintética", "contact_e164": "+5567999999902", "payment_preference": "cash"}
+        assert contact.json() == {"customer_name": "Pessoa sintética", "contact_e164": "+5567999999902",
+                                  "payment_preference": "cash","change_for_cents":3000,"buyer_note":"Pedido de homologação"}
         async with client(Actor("member", account_id=ctx.other)) as outsider:
             assert (await outsider.get(admin + "/storefront/orders/" + orders[0]["id"])).status_code == 403
         async with ctx.migration.begin() as db:
@@ -155,6 +177,8 @@ async def test_checkout_reserves_only_once_without_claiming_payment_or_crm_ident
         assert done.status_code == 200, done.text
         update = await http.post(public + "/status", json={"tracking_code": order["tracking_code"]})
         assert update.json()["payment_status"] == "received"
+        finished = (await http.get(order_path)).json()
+        assert finished["customer_id"] and finished["items"][0]["image_url"].endswith("agua-20l.webp")
 
 
 async def test_public_delivery_uses_current_coverage_and_server_price(storefront_setup):
@@ -194,6 +218,79 @@ async def test_public_delivery_uses_current_coverage_and_server_price(storefront
         assert routed["delivery_fee_cents"] == 500 and routed["logistics_snapshot"]["area"]["neighborhood"] == "Centro"
 
 
+async def test_store_pause_minimum_and_exchange_flow(storefront_setup):
+    ctx, tenant, actor = storefront_setup
+    slug = "troca-" + uuid4().hex[:12]
+    public = "/api/v1/delivery-store/" + slug
+    admin = f"/api/v1/tenants/{tenant}/delivery"
+    async with client(actor) as http:
+        packaging = await http.post(admin+"/containers", json={
+            "name":"Garrafão de teste 20 L","kind":"jug","quantity":0,"idempotency_key":uuid4().hex,
+        })
+        assert packaging.status_code == 201, packaging.text
+        container = packaging.json()["id"]
+        product = new_product()
+        product["variant"]["name"] = "Com troca"
+        product["details"]["exchange_container_id"] = container
+        created = await http.post(admin+"/catalog", json=product)
+        assert created.status_code == 201, created.text
+        candidate = (await http.get(admin+"/storefront/items")).json()["items"][0]
+        listing = {**{key:candidate[key] for key in ("variant_id","product_revision","variant_revision")},
+                   "label":"Água com troca","kind":"water"}
+        store = {"revision":0,"slug":slug,"title":"Loja de troca","pickup_details":"Balcão de avaliação",
+                 "enabled":True,"confirm_catalogue":True,"accepting_orders":False,"minimum_subtotal_cents":2000,
+                 "items":[listing],"payment_methods":["cash"],"allow_delivery":True}
+        now = storefront.commerce.now_utc()
+        local = now.astimezone(storefront.ZoneInfo("America/Cuiaba"))
+        day = local.date() + timedelta(days=1)
+        another_day = day + timedelta(days=1)
+        policy = {"expected_revision":0,"coverage_mode":"areas",
+                  "areas":[{"city":"Cuiabá","state":"MT","neighborhood":"Centro","fee_cents":450}],
+                  "scheduling_enabled":True,"windows":[
+                      {"weekday":when.weekday(),"start":"09:00","end":"10:00"} for when in (day,another_day)]}
+        response = await http.put(admin+"/logistics", json=policy)
+        assert response.status_code==200, response.text
+        store["closed_dates"]=[day.isoformat()]
+        saved = await http.put(admin+"/storefront", json=store)
+        assert saved.status_code == 200, saved.text
+        assert saved.json()["public_url"] and not saved.json()["open"]
+        intent = {"mode":"pickup","payment_preference":"cash","items":[{"variant_id":listing["variant_id"],"quantity":2}]}
+        assert (await http.post(public+"/quote", json=intent)).status_code == 409
+        store["revision"]=saved.json()["revision"]
+        saved = await http.put(admin+"/storefront", json={**store,"accepting_orders":True,"replace_items":False})
+        assert saved.status_code == 200, saved.text
+        view = (await http.get(public)).json()
+        assert view["items"][0]["requires_exchange"]
+        assert [datetime.fromisoformat(slot["when"]).astimezone(local.tzinfo).date()
+                for slot in view["schedule_options"]] == [another_day,another_day]
+        assert (await http.post(public+"/quote", json=intent)).status_code == 422
+        below_minimum = {**intent,"accept_exchange":True,"items":[{**intent["items"][0],"quantity":1}]}
+        assert (await http.post(public+"/quote", json=below_minimum)).status_code == 422
+        intent["accept_exchange"]=True
+        quote = await http.post(public+"/quote", json=intent)
+        assert quote.status_code == 200, quote.text
+        confirmed = await http.post(public+"/orders", json={
+            **intent,"quote":quote.json()["quote"],"confirmed":True,"customer_name":"Pessoa sintética",
+            "customer_phone":"67999999904","idempotency_key":str(uuid4()),
+        })
+        assert confirmed.status_code == 201, confirmed.text
+        order, = (await http.get(admin+"/orders")).json()["items"]
+        target = admin+"/orders/"+order["id"]
+        details = (await http.get(target)).json()
+        exchange, = details["container_plan"]
+        assert exchange["container_id"] == container and exchange["exchange_quantity"] == 2
+        action = {"action":"fulfill","expected_revision":1,"payment_method":"cash","idempotency_key":uuid4().hex}
+        assert (await http.post(target+"/transitions", json=action)).status_code == 422
+        done = await http.post(target+"/transitions", json={**action,"containers_confirmed":True})
+        assert done.status_code == 200, done.text
+        row, = (await http.get(admin+"/containers")).json()["items"]
+        assert row["empty_quantity"] == 2
+        async with ctx.migration.begin() as db:
+            stock = (await db.execute(text("SELECT quantity_on_hand,reserved_quantity FROM commercial_inventory WHERE tenant_id=:t"),
+                                      {"t":tenant})).one()
+        assert tuple(stock) == (3,0)
+
+
 @pytest.mark.skipif(os.getenv("ORION_DELIVERY_BROWSER_TEST") != "1", reason="Requires isolated Redis and Chromium")
 async def test_public_store_at_required_widths_and_checkout_in_browser(storefront_setup, monkeypatch):
     import uvicorn
@@ -208,7 +305,7 @@ async def test_public_store_at_required_widths_and_checkout_in_browser(storefron
     slug = "loja-browser-" + uuid4().hex[:10]
     async with client(actor) as http:
         admin, payload, _, _ = await set_up_items(http, tenant, slug)
-        saved = await http.put(admin + "/storefront", json=payload)
+        saved = await http.put(admin + "/storefront", json={**payload,"brand_color":"#14514c"})
         assert saved.status_code == 200, saved.text
 
     listener = socket.socket()
@@ -239,6 +336,8 @@ async def test_public_store_at_required_widths_and_checkout_in_browser(storefron
             page.on("pageerror", lambda error: errors.append(str(error)))
             await page.goto(origin + "/loja/" + slug)
             await expect(page.get_by_role("heading", name="Água de avaliação")).to_be_visible()
+            await expect(page.locator(".store-product-photo")).to_have_attribute("src","/delivery-store-assets/products/agua-20l.webp")
+            await page.locator(".store-product-photo").evaluate("(image) => image.decode()")
             evidence = Path(os.getenv("DELIVERY_EVIDENCE_DIR", "artifacts/delivery-browser"))
             evidence.mkdir(parents=True, exist_ok=True)
             for width in (320, 375, 390, 430, 768, 1024, 1280, 1440, 1920):
@@ -252,8 +351,12 @@ async def test_public_store_at_required_widths_and_checkout_in_browser(storefron
             await page.get_by_role("button", name="Continuar pedido").click()
             await page.get_by_label("Nome", exact=True).fill("Pessoa sintética")
             await page.get_by_label("Telefone com DDD").fill("67999999903")
+            await page.get_by_label("Preciso de troco").check()
+            await page.get_by_label("Troco para").fill("20,00")
+            await page.get_by_label("Observação para a loja").fill("Deixar na recepção")
             await page.get_by_role("button", name="Conferir valor").click()
             await expect(page.get_by_text("Total no recebimento")).to_be_visible()
+            await expect(page.get_by_text("Troco previsto:")).to_be_visible()
             await page.get_by_role("button", name="Confirmar pedido").click()
             await expect(page.get_by_role("heading", name="Pedido recebido")).to_be_visible()
             await page.get_by_role("dialog").get_by_role("button", name="Acompanhar pedido").click()

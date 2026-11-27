@@ -133,6 +133,9 @@ def derive_plan(snapshot, now=None):
             # New subscription modules must also close when the company stops
             # being active; only account recovery and setup remain available.
             features = [feature for feature in features if feature in {"account.manage", "business.setup"}]
+    delivery_preview = not platform and delivery_preview_enabled(snapshot.get("tenant_id"), snapshot.get("niche"))
+    if delivery_preview and snapshot.get("tenant_status") == "active" and not financial_hold:
+        features = sorted(set(features) | {"clients.manage", "finance.basic"})
     maximum = CODES[code]["max_professionals"] if code else None
     result = {"code": code, "name": "Administração Orion" if platform else CODES[code]["name"] if code else "Sem plano ativo",
         "source": source, "status": status, "active": active, "valid_until": until,
@@ -147,7 +150,7 @@ def derive_plan(snapshot, now=None):
         "limits": {"max_professionals": maximum, "active_professionals": used,
                    "excess_professionals": max(0, used - maximum) if maximum is not None else 0},
         "manual_assignment": manual_view, "commercial_subscription": commercial, "trial": trial}
-    if not platform and delivery_preview_enabled(snapshot.get("tenant_id"), snapshot.get("niche")):
+    if delivery_preview:
         result["delivery_catalog_preview"] = True
     if scheduled is not None:
         result["scheduled_manual_assignment"] = scheduled

@@ -5,11 +5,12 @@
   const statusLabels={confirmed:'Reservado',dispatched:'Em rota',fulfilled:'Concluído',cancelled:'Cancelado'};
   const modes=[['counter','Balcão'],['pickup','Retirada'],['delivery','Entrega']];
   const payments=[['','Selecione'],['cash','Dinheiro'],['pix','Pix confirmado'],['debit_card','Cartão de débito'],['credit_card','Cartão de crédito']];
-  const storefrontPaymentLabels={cash:'Dinheiro',card:'Cartão',pix:'Pix na entrega'};
+  const storefrontPaymentLabels={cash:'Dinheiro',debit_card:'Cartão de débito',credit_card:'Cartão de crédito',pix:'Pix na entrega'};
   const creditStatuses=[['all','Todos'],['pending','Pendentes'],['overdue','Em atraso'],['paid','Recebidos']];
   const command = (button,label,action,symbol,extra='') => button(label,action,'os-outline os-small',symbol,extra);
   const code = order => order.id.slice(0,8).toUpperCase();
   const modeLabel = order => modes.find(([key])=>key===order.mode)?.[1];
+  const picture = (item,esc) => window.OrionDeliveryEditor?.picture(item.image_url,esc)||'';
 
   async function dashboard({host,filters,call,allowed,ui}) {
     const {esc,loading,field,title,money,metric,seriesChart,routeButton,dateKey,query}=ui;
@@ -321,9 +322,9 @@
         }
         function showCart() {
           basket.innerHTML=cart.size?Array.from(cart,([id,row])=>
-            '<div class="os-form-grid">'+field(row.label,'qty-'+id,'number',row.quantity,
+            '<div class="os-form-grid"><div class="os-delivery-shop-item-name">'+picture(row,esc)+field(row.label,'qty-'+id,'number',row.quantity,
               'required min="1" max="1000" step="1" '+itemAttr('quantity',id))+
-            '<div class="os-actions">'+command(button,'Remover','delivery-remove-item','close',itemAttr('match',id))+'</div></div>').join(''):
+            '</div><div class="os-actions">'+command(button,'Remover','delivery-remove-item','close',itemAttr('match',id))+'</div></div>').join(''):
             '<p class="os-help">Busque um produto para adicionar itens.</p>';
           window.OrionFields.refresh(basket);
           packaging?.render(cart);
@@ -336,7 +337,7 @@
           updateAddress();
         }).catch(()=>{});
         form.addEventListener('change',event=>{
-          if (event.target.name==='mode') {updateAddress();invalidate();}
+          if (event.target.name==='mode') {updateAddress();invalidate();products=[];matches.replaceChildren();}
           if (event.target.name==='address_no_number') {addressVersion++;updateAddress();invalidate();}
         });
         form.addEventListener('input',event=>{
@@ -356,7 +357,8 @@
           if (action==='delivery-add-item') {
             const item=products.find(p=>p.variant_id===id);
             if (!item||(!cart.has(id)&&cart.size>=30)) return;
-            cart.set(id,{label:item.name+' · '+item.variant_name,quantity:cart.get(id)?.quantity||'1'});
+            cart.set(id,{label:item.name+' · '+item.variant_name,quantity:cart.get(id)?.quantity||'1',
+              image_url:item.image_url,exchange_container_id:item.exchange_container_id,exchange_container_name:item.exchange_container_name});
             invalidate();showCart();basket.querySelector('[data-delivery-quantity="'+id+'"]')?.focus();return;
           }
           if (action==='delivery-pick-customer') {
@@ -433,11 +435,15 @@
           matches.innerHTML=loading('Buscando…');
           try {
             if (action==='delivery-choose-items') {
-              const result=await call('/catalog?'+query({state:'active',search:form.elements.product_search.value}));
+                const mode=form.elements.mode.value;
+                const result=await call('/catalog?'+query({state:'active',sale_mode:mode,search:form.elements.product_search.value}));
               if (!latest()) return;
+                if (mode!==form.elements.mode.value) return;
               products=result.items;
               matches.innerHTML=products.length?'<div class="os-actions">'+products.map(item=>
-                command(button,item.name+' · '+item.variant_name,'delivery-add-item','plus',itemAttr('match',item.variant_id))).join('')+'</div>':
+                  '<div class="os-delivery-shop-item-name">'+picture(item,esc)+
+                  command(button,item.name+' · '+item.variant_name,'delivery-add-item',item.image_url?'':'plus',
+                    itemAttr('match',item.variant_id))+'</div>').join('')+'</div>':
                 '<p class="os-help">Nenhum produto encontrado.</p>';
               if (result.has_more) matches.insertAdjacentHTML('beforeend','<p class="os-help">Refine a busca para ver outros produtos.</p>');
             } else {
@@ -583,9 +589,13 @@
           const storeText=result.storefront?'<p>Pedido pela loja · '+esc(result.storefront.customer_name||'')+' · '+
             esc(result.storefront.contact_e164||'')+
             (result.storefront.payment_preference?'<br>Preferência de pagamento: '+
-              esc(storefrontPaymentLabels[result.storefront.payment_preference]||'A combinar'):'')+'</p>':'';
-          openDetails('Pedido '+code(order),'<p>'+badgeFor(result.status)+' · '+money(result.total_cents)+'</p>'+storeText+addressText+'<ul>'+result.items.map(item=>
-            '<li>'+esc(item.quantity+' × '+item.product_name+' · '+item.variant_name)+' · '+money(item.total_cents)+'</li>').join('')+
+              esc(storefrontPaymentLabels[result.storefront.payment_preference]||'A combinar'):'')+'</p>'+
+            (result.storefront.change_for_cents!=null?'<p>Troco para '+money(result.storefront.change_for_cents)+
+              ' · Troco previsto '+money(result.storefront.change_for_cents-result.total_cents)+'</p>':'')+
+            (result.storefront.buyer_note?'<p>Observação do cliente: '+esc(result.storefront.buyer_note)+'</p>':''):'';
+          openDetails('Pedido '+code(order),'<p>'+badgeFor(result.status)+' · '+money(result.total_cents)+'</p>'+storeText+addressText+
+            '<ul class="os-delivery-order-items">'+result.items.map(item=>
+            '<li>'+picture(item,esc)+esc(item.quantity+' × '+item.product_name+' · '+item.variant_name)+' · '+money(item.total_cents)+'</li>').join('')+
             '</ul>'+(containerUi?.summary(result.container_plan,ui)||'')+'<h3>Histórico</h3><ul>'+result.history.map(event=>
               '<li>'+esc((({received:'Recebimento registrado',partially_received:'Recebimento parcial',returned:'Devolução registrada',
                 delivery_rescheduled:'Entrega reagendada',delivery_recipient_absent:'Cliente ausente'})[event.action]||

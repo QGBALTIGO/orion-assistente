@@ -67,6 +67,8 @@ PHASES = (
     "0106_delivery_storefront",
     "0107_delivery_order_containers",
     "0108_delivery_payments",
+    "0109_delivery_catalog_editor",
+    "0110_delivery_checkout_options",
 )
 TABLES = {
     "0099_delivery_catalog": ("delivery_variant_details", "delivery_catalog_operations"),
@@ -76,6 +78,7 @@ TABLES = {
     "0106_delivery_storefront": ("delivery_storefronts", "delivery_storefront_items", "delivery_storefront_orders"),
     "0107_delivery_order_containers": ("delivery_order_container_plans",),
     "0108_delivery_payments": ("delivery_credit_collections",),
+    "0109_delivery_catalog_editor": ("delivery_product_profiles",),
 }
 COLUMNS = {
     "0100_delivery_orders": (("commercial_orders", "origin"),),
@@ -92,6 +95,15 @@ COLUMNS = {
     "0107_delivery_order_containers": (
         ("delivery_container_movements", "ledger_sequence"), ("delivery_container_movements", "order_id"),
         ("delivery_container_movements", "order_phase"),
+    ),
+    "0109_delivery_catalog_editor": (
+        ("delivery_variant_details", "sell_internally"), ("delivery_variant_details", "allow_delivery"),
+        ("delivery_variant_details", "allow_pickup"), ("delivery_variant_details", "allow_storefront"),
+        ("delivery_variant_details", "exchange_container_id"),
+    ),
+    "0110_delivery_checkout_options": (
+        ("delivery_storefront_orders", "buyer_note"), ("delivery_storefront_orders", "change_for_cents"),
+        ("delivery_storefront_items", "sort_order"),
     ),
 }
 

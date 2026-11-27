@@ -1111,7 +1111,8 @@
           host:$('osPageBody'), filters:state.filters[key]??={}, deliveryOnly, creditOnly,
           call:(path,method,data)=>request(apiPath('/delivery'+path),method,data),
           allowed:()=>current(c)&&deliveryPreview(), canWrite:store?()=>writable(true):writable,canManagePolicy:()=>writable(true),
-          ui:{esc,icon,title,button,field,moneyField,selectField,textField,checkField,empty,loading,badge,money,fmtDate,dateKey,timeLabel,query,brazilianStates,metric,routeButton,requestKey,localISO},
+          ui:{esc,icon,title,button,field,moneyField,selectField,textField,checkField,empty,loading,badge,money,fmtDate,dateKey,timeLabel,query,brazilianStates,metric,routeButton,requestKey,localISO,imageUploadField},
+          notify:toast,
           openDetails:(heading,content)=>showDialog('delivery-details',heading,content),
           openEditor:(heading,content,submit,message,{label='Salvar',bind}={})=>{
             if(showDialog('delivery-editor',heading,dialogForm('delivery-editor',content,label),

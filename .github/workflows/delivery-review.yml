@@ -68,6 +68,7 @@ jobs:
           python -m compileall -q app
           npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
           node --check app/static/orion-delivery-catalog.js
+          node --check app/static/orion-delivery-editor.js
           node --check app/static/orion-delivery-orders.js
           node --check app/static/orion-delivery-containers.js
           node --check app/static/orion-delivery-order-containers.js

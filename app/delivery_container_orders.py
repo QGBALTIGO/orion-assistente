@@ -23,6 +23,22 @@ class ContainerOrderItem(ProfileModel):
         return self
 
 
+def required_exchanges(lines, selections=()):
+    indexed = {entry.variant_id: entry for entry in selections}
+    if len(indexed) != len(selections):
+        raise HTTPException(422, "Agrupe os vasilhames de cada variação em uma única linha")
+    for line in lines:
+        container = line.get("exchange_container_id")
+        if container is None:
+            continue
+        variant = line["variant_id"]
+        expected = ContainerOrderItem(variant_id=variant, container_id=container, exchange_quantity=line["quantity"])
+        if variant in indexed and indexed[variant] != expected:
+            raise HTTPException(422, "A variação selecionada exige a troca de um vasilhame por unidade")
+        indexed[variant] = expected
+    return list(indexed.values())
+
+
 async def save_plan(db, tenant, order_id, customer_id, lines, plans):
     if not plans:
         return

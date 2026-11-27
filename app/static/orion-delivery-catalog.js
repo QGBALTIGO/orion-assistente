@@ -1,4 +1,4 @@
-/* Admin catalog using the same controls and dialogs as the Orion workspace. */
+/* Admin catalog and stock history in the Orion workspace. */
 (function () {
   'use strict';
 
@@ -6,11 +6,10 @@
   const movements = [['purchase','Entrada'],['out','Saída'],['count','Contagem de estoque']];
   const movementLabels = Object.fromEntries([...movements,['initial','Saldo inicial'],['reserved','Reserva'],['released','Liberação'],['sold','Venda concluída'],['sale_returned','Devolução de pedido']]);
   const cap = 10000000;
-  const formatInput = value => value == null ? '' : new Intl.NumberFormat('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}).format(value/100);
 
-  async function mount({host, filters, call, allowed, canWrite, ui, openEditor}) {
+  async function mount({host, filters, call, allowed, canWrite, ui, openEditor, notify}) {
     if (!host || !allowed()) return;
-    const {esc,icon,title,button,field,moneyField,selectField,textField,checkField,empty,loading,badge,money,fmtDate,dateKey,timeLabel,query} = ui;
+    const {esc,icon,title,button,field,selectField,textField,empty,loading,badge,money,fmtDate,dateKey,timeLabel,query} = ui;
     const fallbackFilters = {tab:'catalog',search:'',category:'',state:'all',low_stock:false,offset:0,start:'',end:''};
     for (const [key,value] of Object.entries(fallbackFilters)) if (filters[key] == null) filters[key] = value;
     let result, read = 0;
@@ -37,7 +36,7 @@
           [['catalog','Produtos'],['history','Movimentações']].map(([key,label])=>
             '<button type="button" class="os-pill-tab" role="tab" id="osDeliveryTab-'+key+'" aria-controls="osDeliveryPanel" aria-selected="'+(filters.tab===key)+'" tabindex="'+(filters.tab===key?'0':'-1')+'" data-delivery-tab="'+key+'">'+label+'</button>').join('')+
         '</div><section id="osDeliveryPanel" role="tabpanel" aria-labelledby="osDeliveryTab-'+filters.tab+'">'+
-          '<form id="osDeliveryFilters" class="os-filter-row">'+renderFilters()+
+          '<form id="osDeliveryFilters" class="os-filter-row os-delivery-filters">'+renderFilters()+
             '<button type="submit" class="os-button os-outline">Filtrar</button></form>'+
           '<div id="osDeliveryResults" aria-live="polite"></div></section>';
       window.OrionFields.refresh(host);
@@ -57,13 +56,14 @@
           prices.find(([key])=>key===item.price_kind)?.[1];
       const balance=item.quantity_on_hand == null?'Sem saldo registrado':
         `${item.quantity_on_hand} ${item.unit} em estoque · ${item.reserved_quantity} reservado(s)`;
+      const presentation=window.OrionDeliveryEditor?.picture(item.image_url,esc)||'<div class="os-square-icon">'+icon('box')+'</div>';
       const actions=canWrite()?'<div class="os-actions">'+
         control('Editar','delivery-edit','os-ghost os-small','edit',id)+
         control('Ajustar estoque','delivery-adjust','os-outline os-small','box',id)+
         control('Nova variação','delivery-variant','os-ghost os-small','plus',id)+'</div>':'';
       return '<article class="os-card os-item-card"><div class="os-item-top">'+
-        '<div class="os-square-icon">'+icon('box')+'</div><div><h3>'+esc(item.name)+'</h3>'+
-        '<p class="os-help">'+esc([item.variant_name,item.category,price].filter(Boolean).join(' · '))+'</p>'+
+        presentation+'<div><h3>'+esc(item.name)+'</h3>'+
+        '<p class="os-help">'+esc([item.variant_name,item.brand,item.category,price].filter(Boolean).join(' · '))+'</p>'+
         '<p>'+esc(balance)+'</p><div class="os-actions">'+badge(active?'active':'inactive')+stockLabel(item)+'</div>'+
         '</div></div>'+actions+'</article>';
     }
@@ -114,43 +114,15 @@
     }
 
     function productEditor(item, addVariant = false) {
-      const variant = addVariant ? null : item;
-      const variantFields=field('Variação','variant_name','text',variant?.variant_name||'','required maxlength="120"')+
-        field('SKU','sku','text',variant?.sku||'','maxlength="80"')+
-        selectField('Tipo de preço','price_kind',prices,variant?.price_kind||'fixed')+
-        moneyField('Preço de venda','price','text',formatInput(variant?.unit_price_cents),'data-field-max="100000000"')+
-        moneyField('Custo de compra','cost','text',formatInput(variant?.purchase_cost_cents),'data-field-max="100000000"')+
-        field('Categoria','product_category','text',item?.category||'','required maxlength="80"')+
-        field('Unidade','unit','text',item?.unit||'un','required maxlength="24"')+
-        field('Código de barras','barcode','text',variant?.barcode||'','pattern="[0-9]{1,32}" maxlength="32" inputmode="numeric"')+
-        field('Estoque mínimo','minimum','number',variant?.minimum_quantity??0,'required min="0" max="10000000" step="1"')+
-        (!variant?field('Estoque inicial','initial','number',0,'required min="0" max="10000000" step="1"'):'');
-      const productFields=addVariant?'':field('Nome do produto','name','text',item?.name||'','required maxlength="160"')+
-        textField('Descrição','description',item?.description||'','maxlength="2000"');
-      const content='<div class="os-form-grid">'+productFields+variantFields+'</div>'+
-        (addVariant?'':checkField('Produto ativo','product_active',item?.product_active??true))+
-        checkField('Variação ativa','variant_active',variant?.variant_active??true);
-      openEditor(addVariant?'Nova variação':item?'Editar produto':'Novo produto',content,async(form,values,key)=>{
-        const parseMoney=(value,required)=>window.OrionFields.parseMoney(value,{required,min:0,max:100000000});
-        const quantity=value=>window.OrionFields.parseDecimal(value,{required:true,scale:0,min:0,max:cap});
-        const priced=['fixed','from'].includes(values.price_kind);
-        const payload={variant:{name:values.variant_name,sku:values.sku.trim()||null,attributes:variant?.attributes||{},
-          price_kind:values.price_kind,unit_price_cents:priced?parseMoney(values.price,true):null,active:form.elements.variant_active.checked},
-          details:{category:values.product_category,unit:values.unit,purchase_cost_cents:parseMoney(values.cost,false),
-            minimum_quantity:quantity(values.minimum),barcode:values.barcode.trim()||null}};
-        if (!addVariant) payload.product={name:values.name,description:values.description.trim()||null,
-          active:form.elements.product_active.checked,synonyms:item?.synonyms||[],faqs:item?.faqs||[],official_benefits:item?.official_benefits||[]};
-        let saved;
-        if (variant) {
-          Object.assign(payload,{product_revision:item.product_revision,variant_revision:item.variant_revision});
-          saved=await call('/catalog/variants/'+encodeURIComponent(item.variant_id),'PUT',payload);
-        } else {
-          payload.initial_quantity=quantity(values.initial);
-          const endpoint=addVariant?'/catalog/products/'+encodeURIComponent(item.product_id)+'/variants':'/catalog';
-          saved=await call(endpoint,'POST',{...payload,idempotency_key:key(payload)});
-        }
-        if (!saved?.variant_id) throw Error('Não foi possível confirmar o cadastro.');
-      },addVariant?'Variação salva.':'Produto salvo.');
+      if (!window.OrionDeliveryEditor) { notify('Atualize a página para abrir o cadastro de produtos.',true); return; }
+      read++;
+      const back = () => {
+        renderShell();
+        host.querySelector('[data-os-action=delivery-create]')?.focus();
+        void readPage();
+      };
+      window.OrionDeliveryEditor.mount({host,item,addVariant,categories:result?.categories||[],
+        call,allowed,canWrite,ui,onBack:back,onSaved:message=>{notify(message);back();}});
     }
 
     function stockEditor(item) {

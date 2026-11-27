@@ -17,7 +17,8 @@ from app import commercial_service as commerce, management_models as management
 from app.business_profile_schemas import ProfileModel
 from app.commercial_schemas import IdempotencyKey, QuoteLineRequest
 from app import delivery_container_orders as packaging, delivery_logistics as logistics, delivery_payments as payments
-from app.delivery_catalog import LIMIT, MAX_QUANTITY, list_items, run_once
+from app.delivery_catalog import LIMIT, MAX_QUANTITY, list_items, order_lines, run_once
+from app.delivery_product_media import image_url
 from app.management_schemas import MAX_MONEY, normalize_phone
 from app.onboarding_schemas import Address
 from app.onboarding_service import require_operational_ready
@@ -222,6 +223,14 @@ async def detail(db, tenant, order_id):
     address = (await db.execute(text("""
         SELECT address FROM delivery_order_details WHERE tenant_id=:t AND order_id=:o
     """), {"t":tenant,"o":order_id})).scalar_one()
+    products = [UUID(item["product_id"]) for item in quote["items"]]
+    media = (await db.execute(text("""
+        SELECT product_id,preset_image,photo_url FROM delivery_product_profiles
+        WHERE tenant_id=:t AND product_id=ANY(:ids)
+    """), {"t": tenant, "ids": products})).mappings().all()
+    images = {str(item["product_id"]): image_url(tenant, item["preset_image"], item["photo_url"]) for item in media}
+    for item in quote["items"]:
+        item["image_url"] = images.get(item["product_id"])
     return {**row,"address":address,"items":quote["items"],"history":[dict(event) for event in events],
             "container_plan": await packaging.get_plan(db, tenant, order_id),
             "storefront": await order_contact(db, tenant, order_id)}
@@ -268,7 +277,7 @@ async def previous_address(db, tenant, customer):
 
 
 async def estimate(db, tenant, payload):
-    lines = await commerce._load_lines(db, tenant, payload.items)
+    lines = await order_lines(db, tenant, payload.items, payload.mode)
     now = commerce.now_utc()
     delivery = await delivery_terms(db, tenant, payload, now=now)
     return priced_order(lines, payload, now, delivery=delivery)
@@ -310,7 +319,7 @@ async def create(db, tenant, access, payload):
                 raise HTTPException(404, "Cliente ativo não encontrado")
         now = commerce.now_utc()
         delivery = await delivery_terms(db, tenant, payload, now=now, lock=True)
-        lines = await commerce._load_lines(db, tenant, payload.items, lock=True)
+        lines = await order_lines(db, tenant, payload.items, payload.mode, lock=True)
         quote = priced_order(lines, payload, now, delivery=delivery)
         if not quote["confirmation_requirements_met"]:
             commerce.conflict("Confira o preço e o estoque de todos os itens antes de criar o pedido.")
@@ -335,8 +344,8 @@ async def create(db, tenant, access, payload):
                 "fee":quote["delivery_fee_cents"],"scheduled":delivery["scheduled_at"] if delivery else None,
                 "logistics":json.dumps(jsonable_encoder(delivery)) if delivery else None})
         await commerce.reserve_stock(db, tenant, access, order_id, lines)
-        if payload.container_plan:
-            await packaging.save_plan(db, tenant, order_id, payload.customer_id, lines, payload.container_plan)
+        await packaging.save_plan(db, tenant, order_id, payload.customer_id, lines,
+                                  packaging.required_exchanges(lines, payload.container_plan))
         await commerce.audit(db, tenant, access, "order", order_id, "confirmed", {"total_cents":quote["total_cents"],"mode":payload.mode})
         return {"id":order_id,"status":"confirmed","revision":1,"total_cents":quote["total_cents"]}
 
@@ -350,6 +359,8 @@ async def fulfill(db, tenant, access, row, items, method, due_date):
         raise HTTPException(422, "Informe a forma de pagamento recebida")
     if not row["total_cents"] and method:
         raise HTTPException(422, "Não há valor a receber neste pedido")
+    if row["customer_id"] is None:
+        await link_completed_guest(db, tenant, row)
     if due_date is not None:
         period, _, _ = await management.period_for(db, tenant)
         if not row["customer_id"]:
@@ -379,6 +390,21 @@ async def fulfill(db, tenant, access, row, items, method, due_date):
             UPDATE delivery_order_details SET financial_entry_id=:f,payment_due_date=:due WHERE tenant_id=:t AND order_id=:o
         """), {"t":tenant,"o":row["id"],"f":receipt["id"],"due":due_date})
     return receipt
+
+
+async def link_completed_guest(db, tenant, row):
+    from app.customer_identity import resolve_customer
+    from app.delivery_storefront import order_contact
+
+    contact = await order_contact(db, tenant, row["id"])
+    if not contact:
+        return
+    customer, _ = await resolve_customer(db, tenant, contact["contact_e164"], contact["customer_name"])
+    if customer["active"] and customer["deleted_at"] is None:
+        await db.execute(text("""
+            UPDATE delivery_order_details SET customer_id=:customer WHERE tenant_id=:t AND order_id=:id
+        """), {"customer": customer["id"], "t": tenant, "id": row["id"]})
+        row["customer_id"] = customer["id"]
 
 
 async def return_order(db, tenant, access, row, items, payload):

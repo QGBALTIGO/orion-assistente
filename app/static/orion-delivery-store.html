@@ -12,7 +12,7 @@
   <script defer src="/public-assets/orion-fields.js"></script>
   <script defer src="/delivery-store-assets/orion-delivery-store.js"></script>
 </head>
-<body data-store-slug="__STORE_SLUG__">
+<body data-store-slug="__STORE_SLUG__" data-store-preview="__STORE_PREVIEW__">
   <a href="#catalogo" class="skip">Ir para o catálogo</a>
   <header class="store-top">
     <div class="store-container store-nav">
@@ -30,10 +30,22 @@
     </div>
   </header>
   <main class="store-container store-main">
+    <p class="store-preview-label" id="store-preview-label" hidden>Prévia da loja</p>
     <section class="identity-card store-identity" aria-labelledby="store-title">
-      <div>
-        <h1 id="store-title">__STORE_TITLE__</h1>
-        <p id="store-description" class="preserve-lines muted" hidden></p>
+      <img id="store-cover" class="store-cover" alt="" hidden>
+      <div class="store-identity-content">
+        <div class="store-identity-heading">
+          <img id="store-logo" alt="" hidden>
+          <div>
+            <h1 id="store-title">__STORE_TITLE__</h1>
+            <p id="store-description" class="preserve-lines muted" hidden></p>
+          </div>
+        </div>
+        <div class="store-identity-meta">
+          <p id="store-open-label" class="store-open-label" hidden></p>
+          <p id="store-eta" class="small muted" hidden></p>
+          <a class="outline" id="store-contact" target="_blank" rel="noopener noreferrer" hidden>WhatsApp</a>
+        </div>
       </div>
       <p id="store-hours" class="small muted preserve-lines" hidden></p>
     </section>
@@ -54,6 +66,7 @@
         <h2 id="store-cart-title">Seu pedido</h2>
         <div id="store-cart" aria-live="polite"></div>
         <div id="store-subtotal" class="store-total"></div>
+        <p id="store-cart-feedback" class="store-status" role="status" aria-live="polite"></p>
         <button type="button" class="primary" id="store-checkout-menu" disabled>Continuar pedido</button>
       </aside>
     </section>
@@ -99,9 +112,25 @@
           <label class="store-field">Bairro atendido
             <select name="coverage_area" required></select>
           </label>
+          <label class="store-field" id="store-schedule-field" hidden>Horário da entrega
+            <select name="scheduled_at"></select>
+          </label>
           <label class="store-check"><input name="no_number" type="checkbox"> Sem número</label>
         </div>
       </fieldset>
+      <fieldset id="store-cash" hidden disabled>
+        <legend>Dinheiro</legend>
+        <label class="store-check"><input name="need_change" type="checkbox"> Preciso de troco</label>
+        <label class="store-field" id="store-change-field" hidden>Troco para
+          <input name="change_for" data-orion-field="money" inputmode="decimal" maxlength="25">
+        </label>
+      </fieldset>
+      <label class="store-check" id="store-exchange" hidden>
+        <input type="checkbox" name="accept_exchange"> Vou entregar os vasilhames vazios correspondentes aos produtos com troca.
+      </label>
+      <label class="store-field">Observação para a loja
+        <textarea name="buyer_note" rows="2" maxlength="300"></textarea>
+      </label>
       <div id="store-order-summary" class="store-summary" hidden></div>
       <p id="store-checkout-feedback" class="store-status" role="status" aria-live="polite"></p>
       <button type="submit" class="primary" id="store-checkout-submit">Conferir valor</button>
