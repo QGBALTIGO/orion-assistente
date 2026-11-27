@@ -34,11 +34,12 @@
       (address?'<a rel="noreferrer" target="_blank" href="https://www.google.com/maps/dir/?api=1&amp;destination='+encodeURIComponent(address)+'">Abrir rota</a>':'')+
       (o.phone?'<a href="tel:'+esc(o.phone)+'">Ligar para o cliente</a>':'');
     const complete='<details><summary>Concluir entrega</summary><form data-delivery-confirm>'+
-      (total?'<label>Forma recebida<select name="payment" required><option value="">Selecione</option>'+
-        Object.entries(methods).map(([key,label])=>'<option value="'+key+'">'+label+'</option>').join('')+'</select></label>'+
+      (o.pix_state?'<p>'+ (o.pix_state==='confirmed'?'Pix conferido pelo proprietário.':'Aguardando o proprietário conferir o Pix.')+'</p>':
+        total?'<label>Forma recebida<select name="payment" required><option value="">Selecione</option>'+
+        Object.entries(methods).filter(([key])=>key!=='pix').map(([key,label])=>'<option value="'+key+'">'+label+'</option>').join('')+'</select></label>'+
         '<label><input type="checkbox" name="received" required> Confirmo o recebimento de '+money(total)+'</label>':'')+
       (o.containers?'<label><input type="checkbox" name="containers" required> Conferi a troca ou o empréstimo dos vasilhames listados</label>':'')+
-      '<button>Concluir entrega</button></form></details>'+
+      '<button'+(o.pix_state==='pending'?' disabled':'')+'>Concluir entrega</button></form></details>'+
       '<details><summary>Cliente ausente</summary><form data-absent>'+
       '<label><input type="checkbox" required> Os produtos retornaram ao estoque</label><button class="secondary">Registrar tentativa</button></form></details>';
     return '<article data-id="'+esc(o.id)+'"><h2>Pedido '+esc(o.id.slice(0,8).toUpperCase())+'</h2><p>'+esc(labels[o.status])+'</p>'+

@@ -117,3 +117,14 @@ jobs:
         with:
           name: delivery-dependency-audit
           path: delivery-dependency-audit.json
+      - name: Listar pacotes com avisos no relatório
+        if: always() && hashFiles('delivery-dependency-audit.json') != ''
+        run: |
+          python - <<'PY'
+          import json
+          for pkg in json.load(open('delivery-dependency-audit.json'))['dependencies']:
+              alerts = pkg.get('vulns', [])
+              if alerts:
+                  fixes = sorted({version for alert in alerts for version in alert['fix_versions']})
+                  print(pkg['name'], pkg['version'], len(alerts), 'correções publicadas', ', '.join(fixes))
+          PY

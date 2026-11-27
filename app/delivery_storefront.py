@@ -628,6 +628,7 @@ async def public_quote(slug: str, payload: CheckoutDraft, request: Request):
 
 
 async def save_checkout(db, tenant, shop, payload):
+    from app import delivery_manual_pix as manual_pix
     async def write():
         # The public backlog cap and stock rows are checked in the same commit.
         await db.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:scope,0))"),
@@ -674,6 +675,8 @@ async def save_checkout(db, tenant, shop, payload):
             VALUES (:tenant,:id,:digest,:method,:note,:change_for)
         """), {"tenant": tenant, "id": order_id, "digest": hashlib.sha256(tracking.encode()).hexdigest(),
                 "method": payload.payment_preference, "note": payload.buyer_note, "change_for": payload.change_for_cents})
+        if payload.payment_preference == "pix" and estimate["total_cents"] > 0:
+            await manual_pix.attach(db, tenant, order_id)
         await commerce.reserve_stock(db, tenant, PUBLIC_ACTOR, order_id, lines)
         await packaging.save_plan(db, tenant, order_id, None, lines, packaging.required_exchanges(lines))
         await commerce.audit(db, tenant, PUBLIC_ACTOR, "order", order_id, "confirmed",
@@ -681,8 +684,13 @@ async def save_checkout(db, tenant, shop, payload):
         return {"order_code": str(order_id)[:8].upper(), "status": "confirmed",
                 "total_cents": estimate["total_cents"], "tracking_code": tracking}
 
-    return await run_once(db, tenant, payload, "storefront_checkout", shop["slug"], write,
+    result = await run_once(db, tenant, payload, "storefront_checkout", shop["slug"], write,
                           optional_defaults={"buyer_note": None, "change_for_cents": None, "accept_exchange": False})
+    if payload.payment_preference == "pix":
+        details = await manual_pix.instructions(db, tenant, hashlib.sha256(result["tracking_code"].encode()).hexdigest())
+        if details:
+            return {**result, "manual_pix": details}
+    return result
 
 
 @router.post(PUBLIC_PATH + "/orders", status_code=201)
@@ -698,6 +706,7 @@ async def public_checkout(slug: str, payload: Checkout, request: Request):
 
 @router.post(PUBLIC_PATH + "/status")
 async def public_progress(slug: str, payload: Tracking, request: Request):
+    from app import delivery_manual_pix as manual_pix
     _same_origin(request)
     await rate(request, slug, "status", 45)
     async with public_session(slug) as (db, tenant, _):
@@ -715,9 +724,14 @@ async def public_progress(slug: str, payload: Tracking, request: Request):
             WHERE s.tenant_id=:tenant AND s.tracking_digest=:digest
                 AND greatest(o.updated_at,coalesce(d.scheduled_at,o.created_at))>=now()-interval '30 days'
         """), {"tenant": tenant, "digest": hashlib.sha256(payload.tracking_code.encode()).hexdigest()})).mappings().one_or_none()
+        details = None
+        if row and payload.include_delivery and row["status"] in {"confirmed","dispatched"} and row["payment_status"] == "not_verified":
+            details = await manual_pix.instructions(db, tenant, hashlib.sha256(payload.tracking_code.encode()).hexdigest())
     if row is None:
         raise HTTPException(404, "Pedido indisponível", headers=HEADERS)
     result={"order_code": str(row["id"])[:8].upper(),**{key: row[key] for key in ("status", "total_cents", "payment_status")}}
+    if details:
+        result["manual_pix"] = details
     if payload.include_delivery and row["mode"]=="delivery":
         stage={"cancelled":"cancelled","fulfilled":"delivered","dispatched":"in_transit"}.get(row["status"],"awaiting_dispatch")
         if stage=="in_transit" and row["assignment"]=="arrived":

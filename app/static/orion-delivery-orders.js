@@ -517,7 +517,7 @@
     await read();
   }
 
-  async function mount({host,filters,call,allowed,canWrite,ui,openDetails,openEditor,deliveryOnly=false,creditOnly=false}) {
+  async function mount({host,filters,call,allowed,canWrite,canManagePolicy=()=>false,ui,openDetails,openEditor,deliveryOnly=false,creditOnly=false}) {
     if (!host || !allowed()) return;
     const {esc,loading,empty,field,moneyField,selectField,textField,checkField,button,title,money,badge,fmtDate,dateKey,query,metric,routeButton,localISO}=ui;
     const containerUi=window.OrionDeliveryOrderContainers;
@@ -556,7 +556,8 @@
         controls+=order.mode==='delivery'&&order.status==='confirmed'
           ?(order.assignment_status==='offered'?command(button,'Retirar solicitação','delivery-order-withdraw','close',actions):
             command(button,'Despachar','delivery-order-dispatch','deliveryTruck',actions))
-          :command(button,'Concluir','delivery-order-fulfill','check',actions);
+          :order.pix_state==='pending'?'':command(button,'Concluir','delivery-order-fulfill','check',actions);
+        if(order.pix_state==='pending'&&canManagePolicy())controls+=command(button,'Conferir Pix','delivery-order-pix','wallet',actions);
         if(order.mode==='delivery')controls+=order.status==='dispatched'
           ?command(button,'Cliente ausente','delivery-order-absent','users',actions)
           :command(button,'Reagendar','delivery-order-reschedule','calendar',actions);
@@ -577,6 +578,7 @@
           badge(pending?(late?'expired':'pending'):'paid',pending?(late?'Em atraso':'A receber'):'Recebido'):'');
       return '<article class="os-card os-item-card"><h3>Pedido '+esc(code(order))+'</h3><p class="os-help">'+
         esc([order.customer_name||'Venda avulsa',modeLabel(order),when(order.created_at)].join(' · '))+'</p>'+
+        (order.pix_state&&order.status!=='cancelled'?'<p>'+ (order.pix_state==='confirmed'?'Pix conferido pelo proprietário':'Pix aguardando conferência')+'</p>':'')+
         (order.courier_name?'<p class="os-help">Entregador: '+esc(order.courier_name)+'</p>':'')+
         (['offered','arrived','refused','expired'].includes(order.assignment_status)?'<p class="os-help">'+
           esc(({offered:'Aguardando aceite',arrived:'Entregador no endereço',refused:'Solicitação recusada',expired:'Prazo de aceite encerrado'})[order.assignment_status])+'</p>':'')+
@@ -640,14 +642,15 @@
       const reschedule=action==='reschedule';
       const changeDate=absent||reschedule;
       const fullReturn=action==='return';
-      const refunded=fullReturn&&(order.collected_cents??(order.receipt_status==='paid'?order.total_cents:0))>0;
+      const paidCancellation=action==='cancel'&&order.pix_state==='confirmed';
+      const refunded=(fullReturn||paidCancellation)&&(order.collected_cents??(order.receipt_status==='paid'?order.total_cents:0))>0;
       const returning=(action==='cancel'||changeDate)&&order.status==='dispatched';
-      const hasAmount=order.total_cents>0;
-      const methods=[...payments];
+      const hasAmount=order.total_cents>0&&order.pix_state!=='confirmed';
+      const methods=payments.filter(([key])=>key!=='pix'||canManagePolicy());
       if (complete && order.total_cents>=2) methods.push(['split','Pagamento misto']);
       if (complete && order.customer_id) methods.push(['on_account','A prazo']);
       const splitFields=complete&&order.total_cents>=2?'<fieldset hidden disabled data-delivery-split><legend>Valor recebido por forma de pagamento</legend>'+
-        '<div class="os-form-grid">'+payments.filter(([key])=>key).map(([key,name])=>moneyField(name,'split_'+key,'text','')).join('')+
+        '<div class="os-form-grid">'+methods.filter(([key])=>key&&!['split','on_account'].includes(key)).map(([key,name])=>moneyField(name,'split_'+key,'text','')).join('')+
         '</div></fieldset>':'';
       let couriers=[];
       if(dispatch) {
@@ -675,7 +678,8 @@
           fullReturn?checkField('Confirmo que todos os itens voltaram ao estoque','returned_to_stock')+
             (refunded?checkField('Confirmo que já devolvi o valor ao cliente','refunded'):''):
           returning?checkField('Confirmo que os itens voltaram ao estoque','returned_to_stock'):
-          '<p>O estoque reservado será liberado.</p>')+(containerUi?.confirmation(order.has_container_plan,action,ui)||'');
+          '<p>O estoque reservado será liberado.</p>')+(paidCancellation?checkField('Confirmo que já devolvi o Pix ao cliente','refunded'):'')+
+          (containerUi?.confirmation(order.has_container_plan,action,ui)||'');
       const label=complete?'Concluir pedido':settle?'Registrar recebimento':dispatch?'Despachar pedido':
         fullReturn?'Registrar devolução':absent?'Registrar cliente ausente':reschedule?'Reagendar entrega':'Cancelar pedido';
       openEditor(label,content,async(form,values,key)=>{
@@ -783,6 +787,14 @@
       if (!order) return;
       if (action==='delivery-order-detail') {
         await showOrderDetail({id:order.id,call,current,openDetails,ui});
+      } else if(action==='delivery-order-pix'&&canManagePolicy()&&order.pix_state==='pending'){
+        openEditor('Conferir Pix','<p>Pedido '+esc(code(order))+' · '+money(order.total_cents)+'</p>'+
+          checkField('Conferi no extrato que o valor integral entrou na conta da distribuidora','pix_received'),
+          async (form,values,key)=>{
+            if(!form.elements.pix_received.checked)throw Error('Confira o extrato antes de registrar o Pix.');
+            const payload={expected_revision:order.revision,received:true};
+            await call('/orders/'+encodeURIComponent(order.id)+'/pix/confirm','POST',{...payload,idempotency_key:key(payload)});
+          },'Pix registrado no Financeiro.',{label:'Confirmar recebimento'});
       } else if(action==='delivery-order-withdraw'&&canWrite()){
         openEditor('Retirar solicitação','<p>O entregador deixará de poder aceitar este pedido.</p>',async(form,values,key)=>{
           const payload={action:'withdraw_offer',expected_revision:order.revision};

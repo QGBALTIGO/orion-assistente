@@ -89,7 +89,7 @@
         <label class="store-field">Como quer receber?
           <select name="mode" required></select>
         </label>
-        <label class="store-field">Pagamento no recebimento
+        <label class="store-field">Forma de pagamento
           <select name="payment_preference" required></select>
         </label>
       </div>
@@ -140,7 +140,8 @@
     <section id="store-confirmed" class="store-form" hidden>
       <h2 id="store-confirmed-title">Pedido recebido</h2>
       <p id="store-confirmed-details"></p>
-      <p class="muted">Guarde o link para acompanhar. O pagamento é feito no recebimento.</p>
+      <p class="muted">Guarde o link para acompanhar o pedido e o pagamento.</p>
+      <div id="store-receipt-pix" hidden></div>
       <div class="store-actions">
         <button type="button" class="primary" id="store-copy-link">Copiar link</button>
         <button type="button" class="outline" id="store-confirmed-track">Acompanhar pedido</button>
@@ -160,6 +161,7 @@
       </label>
       <button type="submit" class="primary">Consultar</button>
       <p id="store-tracking-feedback" class="store-status preserve-lines" role="status" aria-live="polite"></p>
+      <div id="store-tracking-pix" hidden></div>
     </form>
   </dialog>
 </body>

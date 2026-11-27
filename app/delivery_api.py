@@ -14,6 +14,7 @@ from app import delivery_containers as containers
 from app import delivery_logistics as logistics
 from app import delivery_orders as orders
 from app import delivery_payments as payments
+from app import delivery_manual_pix as manual_pix
 from app import delivery_reports as reports
 from app import delivery_reports_ops
 from app import delivery_registry
@@ -60,6 +61,21 @@ async def run(actor, tenant, operation, *args, response_status=200, **kwargs):
     response = result if isinstance(result, Response) else json_response(result, status_code=response_status)
     response.headers["Cache-Control"] = "no-store"
     return response
+
+
+@router.get("/payments/pix")
+async def pix_settings(tenant_id: UUID, actor: Actor = Depends(authenticate)):
+    return await run(actor, tenant_id, manual_pix.settings, publish=True)
+
+
+@router.put("/payments/pix")
+async def set_pix_settings(tenant_id: UUID, payload: manual_pix.Settings, actor: Actor = Depends(authenticate)):
+    return await run(actor, tenant_id, manual_pix.save_settings, payload, write=True, publish=True)
+
+
+@router.post("/orders/{order_id}/pix/confirm")
+async def confirm_pix(tenant_id: UUID, order_id: UUID, payload: manual_pix.Confirmation, actor: Actor = Depends(authenticate)):
+    return await run(actor, tenant_id, manual_pix.confirm, order_id, payload, write=True, publish=True)
 
 
 @router.get("/cep/{cep}")

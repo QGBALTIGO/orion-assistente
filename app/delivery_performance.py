@@ -74,11 +74,11 @@ async def performance(db, tenant, *, preset: Period, start: date | None, end: da
             totals[key] += amount
             if row["current_period"]:
                 series[row["hour"] if hourly else (row["day"]-start).days][key] += amount
-    for row in (current,prior):
-        row["average_ticket_cents"] = (row["sales_cents"]+row["fulfilled"]//2)//row["fulfilled"] if row["fulfilled"] else None
-    for index, item in enumerate(series):
-        item["date"] = start if hourly else start+timedelta(days=index)
-        if hourly:
-            item["hour"] = index
+    def with_ticket(totals):
+        count = totals["fulfilled"]
+        return {**totals, "average_ticket_cents": (totals["sales_cents"]+count//2)//count if count else None}
+
+    points = [{**item, "date":start if hourly else start+timedelta(days=index), **({"hour":index} if hourly else {})}
+              for index,item in enumerate(series)]
     return {"start":start,"end":end,"previous_start":previous,"previous_end":start-timedelta(days=1),
-            "timezone":timezone,"granularity":"hour" if hourly else "day","current":current,"previous":prior,"series":series}
+            "timezone":timezone,"granularity":"hour" if hourly else "day","current":with_ticket(current),"previous":with_ticket(prior),"series":points}

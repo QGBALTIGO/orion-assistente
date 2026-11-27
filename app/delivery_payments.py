@@ -78,6 +78,9 @@ async def record_completion(db, tenant, order, method, due_date, tenders):
 
 async def apply_collection(db, tenant, access, order, method, *, amount_cents=None):
     """The caller holds the order lock throughout the credit transition."""
+    if method == "pix":
+        from app.delivery_manual_pix import owner
+        owner(access)
     if order["status"] != "fulfilled" or order["payment_due_date"] is None or order["financial_entry_id"] is None:
         commerce.conflict("Somente pedidos a prazo com recebimento pendente podem ser baixados")
     receivable = await management.get_row(db, tenant, "financial_entries", order["financial_entry_id"], lock=True)

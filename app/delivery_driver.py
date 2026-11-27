@@ -163,6 +163,8 @@ async def dashboard(db,tenant,person):
     rows=[]
     if person['shift_started_at']:
         rows=(await db.execute(text("""SELECT a.order_id AS id,a.status,a.expires_at,o.revision,q.total_cents,
+            (SELECT CASE WHEN p.confirmed_at IS NULL THEN 'pending' ELSE 'confirmed' END
+             FROM delivery_pix_orders p WHERE (p.tenant_id,p.order_id)=(a.tenant_id,a.order_id)) AS pix_state,
             CASE WHEN a.status!='offered' THEN q.customer_name END AS customer_name,
             CASE WHEN a.status='offered' THEN jsonb_build_object('neighborhood',d.address->>'neighborhood')
                 ELSE d.address END AS address,
@@ -213,7 +215,9 @@ async def order_action(db,tenant,person,order,payload):
             if action=="accept":
                 fields.update(action="dispatch",courier_id=person["courier_id"])
             elif action=="complete":
-                if row["total_cents"] and not (payload.received and payload.payment_method):
+                if row["pix_state"] == "pending":
+                    raise HTTPException(409, "Aguardando conferência do Pix pelo proprietário.")
+                if row["total_cents"] and row["pix_state"] != "confirmed" and not (payload.received and payload.payment_method):
                     raise HTTPException(422,"Confirme o recebimento e a forma de pagamento.")
                 fields.update(action="fulfill",payment_method=payload.payment_method,containers_confirmed=payload.containers_confirmed)
             else:

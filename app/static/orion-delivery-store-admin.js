@@ -4,7 +4,7 @@
 
   const paymentOptions = [
     ['cash', 'Dinheiro'], ['debit_card', 'Cartão de débito'],
-    ['credit_card', 'Cartão de crédito'], ['pix', 'Pix na entrega'],
+    ['credit_card', 'Cartão de crédito'], ['pix', 'Pix com conferência manual'],
   ];
   const publicKinds = [
     ['water','Água'],['prepared_food','Comida pronta'],['grocery','Mercado'],['household','Utilidades'],
@@ -48,7 +48,7 @@
     }
 
     const confirmField = () => checkField('Confirmo a publicação dos produtos selecionados','store_confirm',false,
-      'A loja recebe pedidos com pagamento no recebimento.');
+      'Os meios de pagamento selecionados serão oferecidos aos clientes.');
     const confirmed = form => !!form.elements.store_confirm?.checked;
 
     function storefrontHeader() {
@@ -58,17 +58,17 @@
       const preview = state.preview_url ?
         '<a class="os-button os-outline" href="'+esc(state.preview_url)+'" target="_blank" rel="noopener">'+icon('eye')+'Prévia da loja</a>' : '';
       const publicActions = state.public_url ?
-        '<a class="os-button os-outline" href="'+esc(state.public_url)+'" target="_blank" rel="noopener">'+icon('deliveryStorefront')+'Abrir loja</a>'+
+        '<a class="os-button os-outline" href="'+esc(state.public_url)+'" target="_blank" rel="noopener">'+icon('globe')+'Abrir loja</a>'+
         button('Copiar link','store-copy','os-outline','copy') : '';
       const publish = !canWrite() ? '' : state.enabled ? button('Despublicar','store-unpublish','os-outline','close') :
-        state.publication_available ? button('Publicar loja','store-publish','','deliveryStorefront') : '';
+        state.publication_available ? button('Publicar loja','store-publish','','globe') : '';
       return '<section class="os-card os-form os-delivery-shop-status"><div class="os-card-header"><h2>'+esc(state.title)+'</h2>'+
         '<div class="os-actions"><span class="os-badge">'+status+'</span><span class="os-badge os-neutral">'+ordering+'</span></div></div>'+
         (state.public_url?'<a href="'+esc(state.public_url)+'" target="_blank" rel="noopener">'+esc(state.public_url)+'</a>':'')+
         (!state.publication_available?'<p class="os-help">Nesta empresa, a loja está em modo de avaliação. A prévia é acessível pelo painel.</p>':'')+
         '<div class="os-actions">'+preview+publicActions+publish+'</div>'+
         (state.public_url&&canWrite()?'<div class="os-actions">'+smallButton(state.accepting_orders?'Pausar pedidos':'Retomar pedidos',
-          'store-pause',state.accepting_orders?'deliveryPause':'check')+'</div>':'')+'</section>';
+          'store-pause',state.accepting_orders?'pause':'check')+'</div>':'')+'</section>';
     }
 
     function hour(row={}) {
@@ -115,8 +115,9 @@
           grid(field('Previsão mínima em minutos','estimate_min','number',state.estimate_min_minutes??'','min="5" max="1440" step="1"')+
             field('Previsão máxima em minutos','estimate_max','number',state.estimate_max_minutes??'','min="5" max="1440" step="1"'))+
           '<div class="os-actions">'+routeButton('Bairros, taxas e agendamentos','logistica-delivery','os-outline os-small')+'</div>')+
-        group('Pagamento e checkout','<h3>Pagamento no recebimento</h3>'+grid(
+        group('Pagamento e checkout',grid(
           paymentOptions.map(([key,label])=>checkField(label,'method_'+key,state.payment_methods.includes(key))).join(''))+
+          '<div class="os-actions">'+smallButton('Chave Pix da distribuidora','store-pix','wallet')+'</div>'+
           grid(moneyField('Pedido mínimo','minimum_subtotal','text',moneyInput(state.minimum_subtotal_cents))+
             field('Limite de pedidos em aberto','max_open_orders','number',state.max_open_orders,'required min="1" max="300" step="1"')))+
         group('Exibição da vitrine',grid(selectField('Exibição dos produtos','layout',[['grid','Grade'],['list','Lista']],state.layout||'grid')+
@@ -128,7 +129,7 @@
 
     function itemTable(list, selected) {
       const actionTitle = canWrite() ? '<th scope="col">Ações</th>' : '';
-      return '<div class="os-table-scroll" tabindex="0" role="region" aria-label="Tabela de dados"><table class="os-table os-delivery-shop-item-table"><thead><tr>'+
+      return '<div class="os-table-scroll"><table class="os-table os-delivery-shop-item-table"><thead><tr>'+
         '<th scope="col">Produto</th><th scope="col">'+(selected?'Situação':'Preço')+'</th>'+actionTitle+'</tr></thead><tbody>'+
         list.map((item,index)=>{
           const entry = selected?item:state.items.find(row=>row.variant_id===item.variant_id);
@@ -334,12 +335,38 @@
           ()=>notify('Selecione e copie o link da loja.',true));return;
       }
       if (!writeAllowed()) return;
+      if (action==='store-pix') {
+        void editPix();
+        return;
+      }
       if (action==='store-pause'||action==='store-publish'||action==='store-unpublish') changeShop(action.slice(6));
       const id=control.dataset.storeVariant;
       if (action==='store-add') editItem(results.find(item=>item.variant_id===id));
       if (action==='store-remove') removeItem(state.items.find(item=>item.variant_id===id));
       if (action==='store-up'||action==='store-down') void moveItem(id,action==='store-up'?-1:1);
     });
+
+    async function editPix() {
+      try {
+        const saved=await call('/payments/pix');
+        if (!current()) return;
+        const types=[['random','Chave aleatória'],['email','E-mail'],['phone','Telefone'],['cpf','CPF'],['cnpj','CNPJ']];
+        const instructions=saved.suffix?'Chave atual com final '+esc(saved.suffix)+' · '+esc(saved.holder):
+          'Nenhuma chave cadastrada. Você pode usar a Orion sem cadastrar uma chave.';
+        const remove=saved.suffix?checkField('Remover a chave para novos pedidos','remove_pix',false):'';
+        openEditor('Chave Pix da distribuidora','<p>'+instructions+'</p>'+
+          '<p class="os-help">O cliente verá a chave no pedido. Confira o crédito no extrato antes de registrar o recebimento.</p>'+
+          selectField('Tipo de chave','pix_type',types,saved.key_type||'random')+
+          field('Chave Pix','pix_key','text','','maxlength="100" autocomplete="off"')+
+          field('Nome do titular no banco','pix_holder','text',saved.holder||'','maxlength="120"')+remove,
+          async(form,values)=>{
+            const removeKey=!!form.elements.remove_pix?.checked;
+            if(!removeKey&&(!values.pix_key.trim()||!values.pix_holder.trim()))throw Error('Preencha a chave Pix e o titular.');
+            await call('/payments/pix','PUT',{expected_revision:saved.revision,...(removeKey?{remove:true}:
+              {key_type:values.pix_type,key:values.pix_key.trim(),holder:values.pix_holder.trim()})});
+          },'Configuração de Pix salva.',{label:'Salvar'});
+      } catch(error){if(current())notify(error.message,true);}
+    }
 
     host.innerHTML=title('Loja rápida','')+loading('Carregando loja…');
     try {

@@ -99,7 +99,7 @@ async def test_driver_offer_refusal_retry_cash_delivery_and_location_visibility(
         assert first.status_code==200,first.text
         queue=(await driver.get(driver_base+"/queue")).json()["orders"]
         assert len(queue)==1 and queue[0]["status"]=="offered" and "street" not in queue[0]["address"]
-        assert queue[0]["items"][0]["name"]=="Água de avaliação" and queue[0]["phone"] is None
+        assert queue[0]["items"][0]["name"]==new["product"]["name"] and queue[0]["phone"] is None
         other_claims={**claims,"email":"outra-pessoa@example.test"}
         portal.dependency_overrides[panel_actor]=lambda:other_claims
         assert (await driver.get(driver_base+"/queue")).status_code==403

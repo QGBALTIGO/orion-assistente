@@ -30,6 +30,9 @@ OrderState = Literal["all", "confirmed", "dispatched", "fulfilled", "cancelled"]
 CreditStatus = Literal["all", "pending", "overdue", "paid"]
 
 
+from app import delivery_manual_pix as manual_pix
+
+
 class QuickCustomer(ProfileModel):
     name: str = Field(min_length=1, max_length=120)
     phone: str | None = Field(default=None, max_length=40)
@@ -125,7 +128,7 @@ class Transition(ProfileModel):
         if ((self.scheduled_at is not None or self.note is not None) and self.action not in {"reschedule","recipient_absent"}
                 or self.action == "reschedule" and self.scheduled_at is None):
             raise ValueError("Informe a data e a hora para reagendar a entrega")
-        if self.action != "return" and self.refunded:
+        if self.action not in {"return","cancel"} and self.refunded:
             raise ValueError("Confirme o estorno junto com a devolução")
         return self
 
@@ -139,6 +142,8 @@ ORDERS = f"""
             ELSE assignment.status END AS assignment_status,
         {SALES_CHANNEL} AS sales_channel,
         coalesce(shop.payment_preference,d.tender_preference) AS tender_preference,
+        CASE WHEN pix.confirmed_at IS NOT NULL THEN 'confirmed'
+            WHEN pix.order_id IS NOT NULL AND o.status IN ('confirmed','dispatched') THEN 'pending' END AS pix_state,
         coalesce(shop.change_for_cents,d.change_for_cents) AS change_for_cents,
         d.financial_entry_id,q.customer_name,q.total_cents,d.delivery_fee_cents,d.courier_name,d.dispatched_at,
         d.payment_due_date,d.return_financial_entry_id,f.payment_method,{RECEIPT_STATUS} AS receipt_status,
@@ -150,6 +155,7 @@ ORDERS = f"""
     JOIN commercial_quotes q ON (q.tenant_id,q.id)=(o.tenant_id,o.quote_id)
     LEFT JOIN delivery_storefront_orders shop ON (shop.tenant_id,shop.order_id)=(o.tenant_id,o.id)
     LEFT JOIN delivery_driver_assignments assignment ON (assignment.tenant_id,assignment.order_id)=(o.tenant_id,o.id)
+    LEFT JOIN delivery_pix_orders pix ON (pix.tenant_id,pix.order_id)=(o.tenant_id,o.id)
     LEFT JOIN financial_entries f ON (f.tenant_id,f.id)=(d.tenant_id,d.financial_entry_id)
     {payments.COLLECTION_TOTAL_JOIN}
     WHERE o.tenant_id=:t AND o.origin='delivery'
@@ -417,6 +423,8 @@ async def create(db, tenant, access, payload):
                 "channel":payload.intake_channel,"tender":payload.tender_preference,
                 "change":payload.change_for_cents,"note":payload.operator_note,
                 "logistics":json.dumps(jsonable_encoder({**delivery, "delivery_fee_cents":quote["delivery_fee_cents"]})) if delivery else None})
+        if payload.tender_preference == "pix" and quote["total_cents"] > 0:
+            await manual_pix.attach(db, tenant, order_id)
         await commerce.reserve_stock(db, tenant, access, order_id, lines)
         await packaging.save_plan(db, tenant, order_id, payload.customer_id, lines,
                                   packaging.required_exchanges(lines, payload.container_plan))
@@ -430,9 +438,16 @@ async def create(db, tenant, access, payload):
 
 async def fulfill(db, tenant, access, row, items, method, due_date, tenders=()):
     await commerce.tenant_exists(db, tenant, active=True)
+    verified = row["pix_state"] == "confirmed"
+    if verified and (method or due_date or tenders):
+        commerce.conflict("O Pix deste pedido já foi conferido pelo proprietário.")
+    if row["pix_state"] == "pending":
+        commerce.conflict("O proprietário precisa conferir o Pix do pedido antes da conclusão.")
+    if method == "pix" or any(t.method == "pix" for t in tenders):
+        manual_pix.owner(access)
     if tenders and sum(t.amount_cents for t in tenders) != row["total_cents"]:
         raise HTTPException(422, "A soma dos pagamentos deve corresponder ao total do pedido")
-    if row["total_cents"] and not method and not tenders:
+    if row["total_cents"] and not method and not tenders and not verified:
         raise HTTPException(422, "Informe a forma de pagamento recebida")
     if not row["total_cents"] and method:
         raise HTTPException(422, "Não há valor a receber neste pedido")
@@ -456,6 +471,12 @@ async def fulfill(db, tenant, access, row, items, method, due_date, tenders=()):
             commerce.conflict("A contagem ou reserva do estoque precisa de revisão antes da baixa.")
         await commerce.audit(db,tenant,access,"stock",variant_id,"sold",
             {"order_id":row["id"],"quantity":item["quantity"],"after":updated,"movement":"sold"})
+    if verified:
+        if row["customer_id"]:
+            await db.execute(text("""UPDATE financial_entries SET customer_id=:customer
+                WHERE tenant_id=:t AND id=:f AND customer_id IS NULL"""),
+                {"customer":row["customer_id"], "t":tenant, "f":row["financial_entry_id"]})
+        return {"id": row["financial_entry_id"]}
     if row["total_cents"]:
         return await payments.record_completion(db, tenant, row, method, due_date, tenders)
     return None
@@ -546,6 +567,11 @@ async def transition(db, tenant, access, order_id, payload):
                 await packaging.apply(db, tenant, access, order_id, row["customer_id"], payload.containers_confirmed, reverse=True)
                 status = "cancelled"
             elif payload.action == "cancel":
+                if row["pix_state"] == "confirmed":
+                    manual_pix.owner(access)
+                    return_entry = await payments.return_payment(db,tenant,access,row,refunded=payload.refunded)
+                elif payload.refunded:
+                    raise HTTPException(422, "Não há um Pix conferido para estornar.")
                 if row["status"] == "dispatched" and not payload.returned_to_stock:
                     raise HTTPException(422, "Confirme que os itens voltaram ao estoque")
                 await commerce.release_stock(db, tenant, access, order_id, quote["items"])

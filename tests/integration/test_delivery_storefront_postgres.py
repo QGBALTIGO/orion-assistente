@@ -181,6 +181,70 @@ async def test_checkout_reserves_only_once_without_claiming_payment_or_crm_ident
         assert finished["customer_id"] and finished["items"][0]["image_url"].endswith("agua-20l.webp")
 
 
+@pytest.mark.parametrize("configure_key", [True, False])
+async def test_pix_requires_owner_confirmation_once_and_key_is_optional(storefront_setup, monkeypatch, configure_key):
+    from cryptography.fernet import Fernet
+    ctx, tenant, actor = storefront_setup
+    monkeypatch.setenv("INTEGRATION_FERNET_KEY", Fernet.generate_key().decode())
+    slug = "pix-" + uuid4().hex[:10]
+    shop = "/api/v1/delivery-store/" + slug
+    key = str(uuid4())
+    async with client(actor) as http, client(Actor("member", account_id=ctx.other)) as outsider:
+        admin, store, _, _ = await set_up_items(http, tenant, slug)
+        settings = admin + "/payments/pix"
+        assert (await http.get(settings)).json()["key_type"] is None
+        value = {"expected_revision":0, "key":key, "holder":"Titular de teste", "key_type":"random"}
+        assert (await outsider.put(settings, json=value)).status_code == 403
+        assert (await http.put(settings, json={**value,"key":"inválida"})).status_code == 422
+        if configure_key:
+            saved = await http.put(settings, json=value)
+            assert saved.status_code == 200 and saved.json()["suffix"] == key[-4:] and key not in saved.text
+            assert (await http.put(settings, json=value)).status_code == 409
+        opened = await http.put(admin + "/storefront", json={**store, "payment_methods":["pix"]})
+        assert opened.status_code == 200, opened.text
+        assert key not in (await http.get(shop)).text
+        draft = {"items":[{"variant_id":store["items"][0]["variant_id"], "quantity":1}], "mode":"pickup","payment_preference":"pix"}
+        quote = (await http.post(shop+"/quote",json=draft)).json()
+        order = await http.post(shop+"/orders", json={**draft,"quote":quote["quote"],"confirmed":True,
+            "customer_name":"Cliente de teste","customer_phone":"+5567999999919","idempotency_key":uuid4().hex})
+        assert order.status_code == 201, order.text
+        track = {"tracking_code":order.json()["tracking_code"],"include_delivery":True}
+        expected = {"key": key if configure_key else None, "holder":"Titular de teste" if configure_key else None}
+        assert order.json()["manual_pix"] == expected
+        if configure_key:
+            assert (await http.put(settings,json={"expected_revision":1,"remove":True})).status_code == 200
+        status = (await http.post(shop+"/status",json=track)).json()
+        assert status["manual_pix"] == expected and status["payment_status"] == "not_verified"
+        record, = (await http.get(admin+"/orders")).json()["items"]
+        assert record["pix_state"] == "pending" and record["collected_cents"] == 0
+        path = admin + "/orders/" + record["id"]
+        finish = {"action":"fulfill","expected_revision":1,"idempotency_key":uuid4().hex}
+        assert (await http.post(path+"/transitions",json={**finish,"payment_method":"pix"})).status_code == 409
+        receipt = {"received":True,"expected_revision":1,"idempotency_key":uuid4().hex}
+        assert (await outsider.post(path+"/pix/confirm",json=receipt)).status_code == 403
+        assert (await http.post(path+"/pix/confirm",json={**receipt,"received":False})).status_code == 422
+        first, retry = await asyncio.gather(*(http.post(path+"/pix/confirm",json=receipt) for _ in range(2)))
+        assert first.status_code == retry.status_code == 200, (first.text,retry.text)
+        assert first.json() == retry.json()
+        assert (await http.post(path+"/pix/confirm",json={**receipt,"idempotency_key":uuid4().hex})).status_code == 409
+        status = (await http.post(shop+"/status",json=track)).json()
+        assert status["payment_status"] == "received" and "manual_pix" not in status
+        if configure_key:
+            result = await http.post(path+"/transitions",json={**finish,"expected_revision":2})
+            assert result.status_code == 200 and result.json()["financial_entry_id"] == first.json()["financial_entry_id"]
+        else:
+            cancel = {"action":"cancel","expected_revision":2,"idempotency_key":uuid4().hex}
+            assert (await http.post(path+"/transitions",json=cancel)).status_code == 422
+            assert (await http.post(path+"/transitions",json={**cancel,"refunded":True})).status_code == 200
+            assert (await http.post(shop+"/status",json=track)).json()["payment_status"] == "refunded"
+        async with ctx.migration.begin() as db:
+            rows = (await db.execute(text("""SELECT amount_cents,payment_method FROM financial_entries
+                WHERE tenant_id=:t AND kind='income'"""),{"t":tenant})).all()
+            assert rows == [(1250,"pix")]
+            assert not await db.scalar(text("SELECT count(*) FROM delivery_catalog_operations WHERE tenant_id=:t AND result::text LIKE :k"),
+                                       {"t":tenant,"k":"%"+key+"%"})
+
+
 async def test_public_delivery_uses_current_coverage_and_server_price(storefront_setup, monkeypatch):
     ctx, tenant, actor = storefront_setup
     slug = "entrega-" + uuid4().hex[:10]

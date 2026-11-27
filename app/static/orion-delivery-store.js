@@ -18,7 +18,7 @@
   const trackingFeedback = byId('store-tracking-feedback');
   const cart = new Map();
   const kinds = { water: 'Água', prepared_food: 'Comida pronta', grocery: 'Mercado', household: 'Utilidades' };
-  const methods = { cash: 'Dinheiro', debit_card: 'Cartão de débito', credit_card: 'Cartão de crédito', pix: 'Pix na entrega' };
+  const methods = { cash: 'Dinheiro', debit_card: 'Cartão de débito', credit_card: 'Cartão de crédito', pix: 'Pix com conferência pela loja' };
   const days = ['Segunda','Terça','Quarta','Quinta','Sexta','Sábado','Domingo'];
   const flow = { confirmed: 'Recebido', dispatched: 'Em rota', fulfilled: 'Concluído', cancelled: 'Cancelado' };
   const paymentStatus = { received: 'Recebido', not_verified: 'A confirmar pela loja', refunded: 'Estornado' };
@@ -244,11 +244,32 @@
       if (value.eta_minutes) rows.push(element('p', '', 'Prazo estimado para o bairro: '+value.eta_minutes+' min.'));
     }
     const total = element('div', 'store-total');
-    total.append(element('span', '', 'Total no recebimento'), element('strong', '', money(value.total_cents)));
+    total.append(element('span', '', 'Total do pedido'), element('strong', '', money(value.total_cents)));
     const change = value.change_cents == null ? [] : [element('p','small muted','Troco previsto: '+money(value.change_cents))];
     summary.replaceChildren(...rows, total, ...change);
     summary.hidden = false;
     checkoutButton.textContent = 'Confirmar pedido';
+  }
+
+  function showPix(id,result) {
+    const box=byId(id),pix=result?.manual_pix;
+    box.replaceChildren();
+    box.hidden=!pix;
+    if(!pix)return;
+    box.append(element('strong','','Pix · '+money(result.total_cents)));
+    if(pix.key){
+      box.append(element('p','','Titular: '+pix.holder));
+      const key=element('input');
+      key.readOnly=true;key.value=pix.key;key.setAttribute('aria-label','Chave Pix da loja');
+      const copy=element('button','','Copiar chave Pix');
+      copy.type='button';
+      copy.addEventListener('click',async()=>{
+        try{await navigator.clipboard.writeText(key.value);copy.textContent='Chave copiada';}
+        catch{key.focus();key.select();copy.textContent='Selecione e copie a chave';}
+      });
+      box.append(key,copy);
+    } else box.append(element('p','','Combine o pagamento diretamente com a loja.'));
+    box.append(element('p','muted','O proprietário confirma o pagamento depois de conferir o extrato.'));
   }
 
   function confirmed(result) {
@@ -261,6 +282,7 @@
     byId('store-confirmed').hidden = false;
     checkout.setAttribute('aria-labelledby', 'store-confirmed-title');
     byId('store-confirmed-details').textContent = 'Pedido ' + result.order_code + ' · ' + money(result.total_cents);
+    showPix('store-receipt-pix',result);
     message(byId('store-copy-feedback'), '');
   }
 
@@ -360,6 +382,7 @@
   }
 
   function openTracking(code = '') {
+    showPix('store-tracking-pix',null);
     if (preview) return;
     trackingForm.elements.tracking_code.value = code;
     message(trackingFeedback, '');
@@ -373,8 +396,10 @@
     if (submit.disabled) return;
     submit.disabled = true;
     message(trackingFeedback, 'Consultando pedido…');
+    showPix('store-tracking-pix',null);
     try {
       const result = await request('/status', {tracking_code: trackingForm.elements.tracking_code.value.trim(),include_delivery:true});
+      showPix('store-tracking-pix',result);
       const progress={awaiting_dispatch:'Aguardando despacho',awaiting_acceptance:'Aguardando aceite do entregador',
         in_transit:'Em rota',arrived:'Entregador no endereço',delivered:'Entregue',cancelled:'Cancelada'};
       message(trackingFeedback, 'Pedido ' + result.order_code + ' · ' + flow[result.status] +
