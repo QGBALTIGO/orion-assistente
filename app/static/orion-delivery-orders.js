@@ -547,7 +547,7 @@
       '<form id="osDeliveryOrderFilters" class="os-filter-row od-compact-filters">'+
       '<div class="od-search-line">'+field('Buscar','search','search',filters.search,'maxlength="120" placeholder="Número ou cliente"')+
       '<button type="submit" class="os-button os-outline">'+ui.icon('search')+'Filtrar</button></div>'+
-      '<details class="od-advanced"'+(filters.advancedOpen||filters.state!=='all'||filters.channel!=='all'?' open':'')+'><summary>'+ui.icon('filter')+'<span>Filtros e visualização</span>'+ui.icon('chevron')+'</summary><div class="od-advanced-grid">'+
+      '<details class="od-advanced"'+(filters.advancedOpen||filters.state!=='all'||filters.channel!=='all'?' open':'')+'><summary><svg class="os-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" data-delivery-filter-icon><path d="M3 5h18M6 12h12M10 19h4"/></svg><span>Filtros e visualização</span>'+ui.icon('chevron')+'</summary><div class="od-advanced-grid">'+
       (boardEnabled?selectField('Visualização','orderView',[['list','Lista'],['board','Kanban']],filters.orderView):'')+
       selectField('Status','state',creditOnly?creditStatuses:[['all','Todos'],...Object.entries(statusLabels)],filters.state)+
       (creditOnly?'':selectField('Origem','channel',[['all','Todas'],...Object.entries(salesChannels)],filters.channel))+

@@ -32,7 +32,7 @@
       }
       return '<div class="od-search-line">'+field('Buscar','search','search',filters.search,'maxlength="120" placeholder="Nome ou código"')+
         '<button type="submit" class="os-button os-outline">'+icon('search')+'Filtrar</button></div>'+
-        '<details class="od-advanced"'+(filters.category||filters.state!=='all'||filters.low_stock?' open':'')+'><summary>'+icon('filter')+'<span>Categoria, situação e estoque</span>'+icon('chevron')+'</summary><div class="od-advanced-grid">'+
+        '<details class="od-advanced"'+(filters.category||filters.state!=='all'||filters.low_stock?' open':'')+'><summary><svg class="os-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" data-delivery-filter-icon><path d="M3 5h18M6 12h12M10 19h4"/></svg><span>Categoria, situação e estoque</span>'+icon('chevron')+'</summary><div class="od-advanced-grid">'+
         selectField('Categoria','category',[['','Todas'],...(result?.categories || []).map(x=>[x,x])],filters.category)+
         selectField('Status','state',[['all','Todos'],['active','Ativos'],['inactive','Inativos']],filters.state)+
         '<label class="os-check"><input type="checkbox" name="low_stock" '+(filters.low_stock?'checked':'')+'> Estoque baixo</label></div>'+

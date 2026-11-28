@@ -287,6 +287,33 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
           const rect = el => el.getBoundingClientRect();
           const name = el => el.id || el.getAttribute('name') || el.textContent.trim().slice(0, 40);
           for (const root of roots) {
+            for (const form of root.querySelectorAll('.od-compact-filters')) {
+              if (!visible(form)) continue;
+              const bounds = rect(form), style = getComputedStyle(form);
+              const left = bounds.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft);
+              const right = bounds.right - parseFloat(style.borderRightWidth) - parseFloat(style.paddingRight);
+              const full = (el,label) => {
+                if(!el || !visible(el)) { failures.push('Missing compact filter: '+label); return; }
+                const r = rect(el);
+                if(Math.abs(r.left-left)>2 || Math.abs(r.right-right)>2)
+                  failures.push('Compact filter not aligned: '+label+' '+[r.left,r.right,left,right].join(','));
+              };
+              const search = form.querySelector('.od-search-line'), advanced = form.querySelector('.od-advanced');
+              const input = search?.querySelector('input[type=search]'), button = search?.querySelector('button[type=submit]');
+              const summary = advanced?.querySelector('summary'), filterIcon = summary?.querySelector('[data-delivery-filter-icon]');
+              full(search,'search row'); full(advanced,'advanced section'); full(summary,'advanced summary');
+              if(input&&button) {
+                const a=rect(input), b=rect(button);
+                if(Math.abs(a.left-left)>2 || Math.abs(b.right-right)>2 ||
+                    Math.abs(a.top-b.top)>2 || Math.abs(a.bottom-b.bottom)>2 ||
+                    a.right>b.left+1 || a.width<60)
+                  failures.push('Misaligned input or filter button');
+              }else failures.push('Missing search input or button');
+              if(!filterIcon||filterIcon.querySelector('path')?.getAttribute('d')!=='M3 5h18M6 12h12M10 19h4')
+                failures.push('Incorrect filter icon');
+              else if(Math.abs(rect(filterIcon).left-left)>2)
+                failures.push('Filter icon not aligned to the left');
+            }
             for (const grid of root.querySelectorAll('.os-filter-row,.os-form-grid,.os-pill-tabs,.os-delivery-hours-row,.os-delivery-hours-date,.os-delivery-dashboard-metrics,.os-delivery-dashboard-grid,.os-delivery-dashboard-dock,.os-delivery-dashboard-toolbar')) {
               if (!visible(grid) || grid.closest('.os-table-scroll')) continue;
               const items = [...grid.children].filter(visible);
@@ -380,6 +407,12 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                     await page.set_viewport_size({"width":width,"height":900})
                     await expect(page.get_by_role("heading",name="Água de homologação")).to_be_visible()
                     await assert_delivery_layout(page, (theme,width))
+                    advanced = page.locator(".od-advanced")
+                    was_open = await advanced.evaluate("(el) => el.open")
+                    await advanced.locator("summary").click()
+                    await assert_delivery_layout(page, ("catalog filters",theme,width,"expanded/collapsed"))
+                    await advanced.locator("summary").click()
+                    assert await advanced.evaluate("(el) => el.open")==was_open
                     await page.get_by_role("button",name="Ajustar estoque").click()
                     dialog = page.get_by_role("dialog")
                     await expect(dialog).to_be_visible()
@@ -580,7 +613,13 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                         await expect(page.locator("#appView")).to_have_class(re.compile("os-delivery-workspace"))
                         if route in ("pedidos-delivery","entregas-delivery","vendas-prazo-delivery"):
                             await expect(page.locator(".od-search-line input")).to_be_visible()
-                            assert await page.locator(".od-advanced").count()==1
+                            advanced = page.locator(".od-advanced")
+                            assert await advanced.count()==1
+                            was_open = await advanced.evaluate("(el) => el.open")
+                            await advanced.locator("summary").click()
+                            await assert_delivery_layout(page, (route,theme,width,"expanded/collapsed"))
+                            await advanced.locator("summary").click()
+                            assert await advanced.evaluate("(el) => el.open")==was_open
                         if route == "dashboard-delivery":
                             shortcuts = page.get_by_role("navigation", name="Atalhos de Delivery")
                             await expect(shortcuts).to_have_count(0)
