@@ -50,12 +50,17 @@
     const host=typeof bridge?.host==='string'?document.querySelector(bridge.host):bridge?.host;
     if(!host||typeof bridge?.request!=='function'||!uuid(bridge.tenantId))throw Error('Não foi possível confirmar a empresa deste dispositivo.');
     const fields=window.OrionFields,connectView=window.OrionConnectView;
+    // Only Delivery uses the direct connection screen. Subscription and
+    // affiliate device-management contracts remain unchanged.
+    const simple=bridge.connectionOnly===true&&!!host.closest('[data-os-current-route="whatsapp-delivery"]');
     if(!fields||!connectView)throw Error('Atualize o painel para abrir Dispositivos.');
     const state={mounted:true,epoch:1,read:0,view:'list',id:null,items:[],usage:null,capabilities:{},loaded:false,loading:false,busy:false,feedback:'',error:false,dialog:null,pending:null,operation:null,settings:null,settingsRevision:null,settingsCapabilities:{},settingsStale:false,formFingerprint:null,method:'qr',phoneDraft:'',qr:null,pair:null,pairHidden:false};
     const releaseFields=fields.bind(host);
     let pollTimer=null,expiryTimer=null,clockTimer=null,lastHTML='';
     host.classList.add('os-devices');
     host.classList.toggle('os-devices-connection-only',bridge.connectionOnly===true);
+    host.classList.toggle('os-devices-simple-connect',simple);
+    let qrFailures=0;
     const base='/api/v1/tenants/'+encodeURIComponent(bridge.tenantId)+'/subscription-whatsapp/devices';
     const path=(id,suffix='')=>base+'/'+encodeURIComponent(id)+suffix;
     const request=(url,method='GET',payload)=>bridge.request(url,method,payload);
@@ -106,6 +111,10 @@
     function pendingHTML(){
       if(!state.pending)return '';
       const retry=['create','action'].includes(state.pending.kind)&&!state.operation;
+      if(simple){
+        if(!retry)return '<div class="os-sd-simple-progress" role="status">'+loading('Preparando a conexão…')+'</div>';
+        return '<div class="os-notice os-devices-feedback"><p>Confirmando a solicitação. Se necessário, retome a mesma tentativa.</p><div class="os-actions">'+button('Tentar novamente','retry-pending')+'</div></div>';
+      }
       return '<section class="os-notice os-devices-feedback"><div><strong>Resultado ainda não confirmado</strong><p>Confira o estado antes de repetir a ação. Nenhum novo comando será enviado automaticamente.</p><div class="os-actions">'+button('Conferir estado','reconcile')+(retry?button('Retomar a mesma solicitação','retry-pending','os-ghost'):'')+'</div></div></section>';
     }
     function hasRetainedMessages(item){
@@ -145,6 +154,13 @@
       return '<article class="os-card os-device-card" data-sd-card="'+item.id+'"><div class="os-device-card-top"><div class="os-device-identity"><div class="os-device-avatar">'+(avatar?'<img src="'+esc(avatar)+'" alt="" loading="lazy" referrerpolicy="no-referrer">':icon('phone'))+'</div><div><h2>'+esc(item.name)+'</h2><div class="os-device-status-line">'+badge+'</div>'+(verifiedPhone?'<p class="os-device-phone">'+esc(verifiedPhone)+'</p>':'')+'</div></div><details class="os-device-menu" data-sd-device="'+item.id+'"><summary class="os-button os-outline" aria-label="Opções de '+esc(item.name)+'">'+icon('more')+'<span>Opções</span></summary><div>'+menu+'</div></details></div><div class="os-device-metrics" aria-label="Mensagens registradas">'+[['today','Hoje'],['last_7_days','7 dias'],['last_30_days','30 dias'],['total','Total']].map(([key,label])=>'<div class="os-device-metric"><strong>'+count(stats.available===true?stats[key]:null)+'</strong><span>'+label+'</span></div>').join('')+'</div><p class="os-help os-device-metrics-note">'+(stats.available===true?'Mensagens registradas pelo Orion'+(tracking?' desde '+esc(tracking):'')+'.':'As métricas ainda não estão disponíveis.')+'</p>'+health+'<div class="os-device-card-actions">'+button(linked?'Ver conexão':'Conectar','open-connect','', 'link',attr)+(caps.settings?button('Configurações','settings','os-outline','settings',attr):'')+'</div>'+features+'</article>';
     }
     function renderList(){
+      if(simple){
+        const body=!state.loaded?loading('Carregando a conexão…'):
+          !canManage()?'<p>Seu acesso não permite conectar o WhatsApp.</p>':
+          '<section class="os-card os-sd-simple-card"><h2>Vincule seu WhatsApp</h2><p>Escolha como deseja conectar.</p>'+simpleMethods()+
+          '<div class="os-sd-simple-actions">'+button('Conectar WhatsApp','create','','link',canWrite()&&!state.loading?'':'disabled')+'</div></section>';
+        paint(feedbackHTML()+pendingHTML()+body);return;
+      }
       const usage=state.usage,limit=usage?'<div class="os-devices-usage"><span class="os-badge os-neutral">'+count(usage.used)+' de '+count(usage.limit)+'</span><span>'+((usage.limit===1)?'dispositivo em uso':'dispositivos em uso')+'</span></div>':'';
       const create=canManage()?button('Criar dispositivo','create','','plus',!canWrite()?'disabled':''):'';
       const header='<header class="os-title-row os-devices-header"><div><h1>'+(bridge.connectionOnly?'Conectar WhatsApp':'Dispositivos')+'</h1><p>'+(bridge.connectionOnly?'Vincule o aparelho desta empresa por QR Code ou código de conexão.':'Conecte e configure o WhatsApp da sua empresa.')+'</p></div><div class="os-actions">'+button('Atualizar','refresh','os-outline','refresh',state.busy||state.loading?'disabled':'')+create+'</div></header>';
@@ -177,8 +193,52 @@
       }
       return connectView.heading(codeVisible)+methods+'<section class="wizard-card">'+connectView.instructions(mode)+content+'</section>';
     }
+    function simpleMethods(){
+      return '<div class="os-sd-simple-methods" role="group" aria-label="Forma de conexão">'+
+        ['qr','code'].map(method=>'<button type="button" data-sd-method="'+method+'" aria-pressed="'+(state.method===method)+'" '+(!canWrite()||state.loading?'disabled':'')+'>'+
+          (method==='qr'?'QR Code':'Código pelo número')+'</button>').join('')+'</div>';
+    }
+    const preparedStatus=item=>['starting','connecting','reconnecting','qr_ready','qr_delayed','qr_expired','pair_expired','pairing'].includes(item?.status);
+    const reviewRequired=item=>hasRetainedMessages(item)||['inspect_provider_restriction','inspect_client_compatibility','inspect_session_ownership','inspect_session_state'].includes(item?.connection_health?.action);
+    function simpleConnectionBody(item){
+      if(item.status==='connected'){
+        return '<section class="os-card os-device-connected"><div class="os-square-icon">'+icon('check')+'</div><h2>WhatsApp conectado</h2>'+
+          '<p>'+(item.phone?esc(fields.phoneDisplay('+'+item.phone,{allowInternational:true})):'Conexão confirmada pelo WhatsApp.')+'</p>'+
+          connectionHealth(item)+(item.capabilities.relink&&!reviewRequired(item)?'<details class="os-sd-simple-options"><summary>Opções da conexão</summary>'+
+          button('Trocar número','switch-number','os-outline','link',canWrite()?'':'disabled')+'</details>':'')+'</section>';
+      }
+      if(reviewRequired(item)||['degraded','needs_attention'].includes(item.status)&&!needsRelink(item)){
+        return '<section class="os-card os-sd-simple-card"><h2>'+esc(statuses[item.status])+'</h2>'+connectionHealth(item)+
+          '<div class="os-sd-simple-actions">'+button('Tentar novamente','refresh','os-outline','refresh',state.busy?'disabled':'')+'</div></section>';
+      }
+      if(needsRelink(item))return '<section class="os-card os-sd-simple-card"><h2>Conecte novamente</h2><p>O WhatsApp desvinculou este aparelho.</p>'+
+        simpleMethods()+'<div class="os-sd-simple-actions">'+(item.capabilities.relink?button('Vincular novamente','relink','','link',canWrite()?'':'disabled'):'')+'</div></section>';
+      const methods=simpleMethods();
+      if(!preparedStatus(item)&&!state.pending){
+        return '<section class="os-card os-sd-simple-card"><h2>Vincule seu WhatsApp</h2>'+methods+
+          '<div class="os-sd-simple-actions">'+(item.capabilities.connect?button('Conectar WhatsApp','connect','','link',canWrite()?'':'disabled'):
+            button('Tentar novamente','refresh','os-outline','refresh',state.busy?'disabled':''))+'</div>'+connectionHealth(item)+'</section>';
+      }
+      let body;
+      if(state.method==='qr'){
+        body=state.qr?'<div data-sd-qr class="os-sd-simple-qr"><div class="wizard-qr-wrap"><img src="'+esc(state.qr.image)+'" alt="QR Code temporário para conectar o WhatsApp" width="240" height="240"></div><p class="wizard-qr-time">Atualização automática · <strong data-sd-expiry>—</strong></p></div>':
+          '<div class="os-sd-simple-qr-wait" role="status">'+loading('Gerando QR Code…')+'</div>';
+        if(item.status==='pairing'&&!state.qr)body='<p>Conclua a vinculação pelo código no WhatsApp ou aguarde a expiração.</p>';
+      }else if(state.pair){
+        body='<section class="wizard-code-result" data-sd-pair><h3>Digite este código no WhatsApp</h3><output class="code-box" data-sd-code>'+esc(state.pair.code)+'</output><p class="wizard-qr-time">Expira em <strong data-sd-expiry>—</strong></p><div class="os-sd-simple-actions">'+button('Copiar código','copy-code','','copy')+'</div></section>';
+      }else{
+        const enabled=canDevice('pair',item)&&item.status==='qr_ready';
+        body='<form class="os-form os-sd-simple-phone" data-sd-form="pair">'+input('Número do WhatsApp','pair_phone',state.phoneDraft,'tel','data-orion-field="phone" data-orion-international="true" inputmode="tel" autocomplete="tel" required placeholder="(67) 99999-9999"')+
+          '<button type="submit" class="os-button"'+(enabled?'':' disabled')+'>Gerar código</button>'+
+          (!enabled?'<p class="os-help" role="status">'+(item.status==='pairing'?'Aguardando a confirmação do WhatsApp…':'Preparando a conexão…')+'</p>':'')+'</form>';
+      }
+      return '<section class="os-card os-sd-simple-card">'+methods+body+connectView.instructions(state.method)+
+        '<p class="os-sd-simple-caption" role="status">A conexão será confirmada automaticamente.</p>'+
+        (state.error&&!state.pending?'<div class="os-sd-simple-actions">'+button('Tentar novamente','refresh','os-outline','refresh',state.busy?'disabled':'')+'</div>':'')+'</section>';
+    }
     function renderConnection(){
       const item=device();if(!item){paint(feedbackHTML()+loading('Conferindo a conexão…'));return;}
+      if(simple){paint('<div class="os-device-connection os-sd-simple">'+feedbackHTML()+pendingHTML()+simpleConnectionBody(item)+'</div>');return;}
       const header=button('Dispositivos','back','os-ghost os-device-back','left')+'<div class="os-device-connection-heading"><div><h1>'+esc(item.name)+'</h1><p><span class="os-badge '+(item.status==='connected'?'os-success':'os-neutral')+'" data-sd-status>'+esc(statuses[item.status])+'</span></p></div>'+button('Atualizar estado','refresh','os-outline','refresh',state.busy?'disabled':'')+'</div>';
       paint('<div class="os-device-connection os-connect">'+header+feedbackHTML()+pendingHTML()+connectionBody(item)+'</div>');
     }
@@ -231,10 +291,10 @@
       const submit=host.querySelector('[data-sd-form="settings"] button[type="submit"]');
       if(submit&&!value)submit.disabled=!canWrite()||state.settingsStale;
     }
-    function schedule(delay=5000){
+    function schedule(delay=simple?2500:5000){
       clearTimeout(pollTimer);pollTimer=null;
       if(!visible()||state.busy||state.loading||state.dialog||state.view==='settings')return;
-      if(state.pending&&!state.operation&&state.pending.kind!=='pair')return;
+      if(state.pending&&!state.operation&&state.pending.kind!=='pair'&&!simple)return;
       pollTimer=setTimeout(()=>{pollTimer=null;if(state.operation)void pollOperation();else if(state.view==='connect')void loadDetail();else void loadList(true);},delay);
     }
     async function loadList(quiet=false){
@@ -251,10 +311,12 @@
         state.items=items;state.usage=copy(result.usage);state.capabilities=copy(result.capabilities);state.canCreate=result.can_create;state.loaded=true;state.stale=false;
         for(const item of items)adoptOperation(item);
         if(state.capabilities.manage!==true){clearCredentials();closeDialog(true);}
-        if(state.pending?.kind==='create'&&items.length){state.pending=null;feedback('O dispositivo está cadastrado. Confira a conexão antes de continuar.');}
+        if(state.pending?.kind==='create'&&items.length){state.pending=null;feedback(simple?'':'O dispositivo está cadastrado. Confira a conexão antes de continuar.');}
+        if(simple&&items.length){state.view='connect';state.id=items[0].id;}
         if(!quiet&&!state.pending)feedback('');
       }catch(error){if(current(epoch,read)){state.stale=true;feedback(errorMessage(error),true);}}
       finally{if(current(epoch,read)){state.loading=false;render();schedule();}}
+      if(simple&&current(epoch,read)&&state.view==='connect'&&!state.operation)await loadDetail(true);
     }
     async function loadDetail(opening=false){
       if(!visible()||state.busy||state.loading||!state.id)return;
@@ -265,17 +327,20 @@
         if(result?.device?.id!==id)throw Error('foreign_device_response');
         const item=updateDevice(result.device);state.stale=false;
         if(state.pending?.kind==='pair'&&!['pairing','pair_failed','connecting','reconnecting'].includes(item.status)){state.pending=null;feedback('Estado conferido. Continue pela ação disponível.');}
+        if(simple&&state.pending?.kind==='action'&&!state.operation&&!item.pending_operation&&['qr_ready','connected','qr_delayed','pairing'].includes(item.status)){state.pending=null;feedback('');}
         if(previous!=='connected'&&item.status==='connected')feedback('');
       }catch(error){if(current(epoch,read)){state.stale=true;feedback(errorMessage(error),true);}}
       finally{if(current(epoch,read)){state.loading=false;render();schedule();}}
-      if(current(epoch,read)&&state.method==='qr'&&(opening||previous!=='qr_ready')&&device()?.status==='qr_ready')await showQR();
+      if(current(epoch,read)&&state.method==='qr'&&(simple||opening||previous!=='qr_ready')&&device()?.status==='qr_ready'&&!state.qr)await showQR();
     }
     function navigate(view,id=null){
       pause();state.epoch++;state.view=view;state.id=id;state.loading=false;state.stale=false;state.method='qr';state.phoneDraft='';state.settings=null;state.settingsRevision=null;state.settingsStale=false;state.formFingerprint=null;lastHTML='';closeDialog(true);feedback('');
     }
     async function openConnection(id){
       if(!state.items.some(item=>item.id===id))return;
-      navigate('connect',id);render();await loadDetail(true);
+      const method=state.method;
+      navigate('connect',id);if(simple)state.method=method;
+      render();if(!simple||!state.operation)await loadDetail(true);
     }
     async function back(){
       if(state.busy)return;
@@ -401,9 +466,14 @@
       try{
         const result=await request(base,'POST',{name,idempotency_key:key});if(!current(epoch))return;
         const item=deviceDTO(result?.device);state.pending=null;updateDevice(item);state.usage={used:1,limit:1};state.canCreate=false;setBusy(false);closeDialog(true);await openConnection(item.id);
+        // This POST sequence is authorized by the single explicit Connect click.
+        // Never start a new connection simply because a screen was rendered.
+        const next=device();
+        if(simple&&visible()&&next?.id===item.id&&!preparedStatus(next)&&!needsRelink(next)&&!reviewRequired(next)&&canDevice('connect',next))
+          await performAction('connect',next.id,next.revision,crypto.randomUUID());
       }catch(error){
-        if(current(epoch)){setBusy(false);if(uncertain(error)){state.pending=operation;closeDialog(true);feedback('Não foi possível confirmar a criação. Confira a lista antes de tentar novamente.',true);render();}else if(state.dialog){state.dialog.element.querySelector('.os-form-message').textContent=errorMessage(error);}else feedback(errorMessage(error),true);}
-      }finally{if(current(epoch))setBusy(false);}
+        if(current(epoch)){setBusy(false);if(uncertain(error)){state.pending=operation;closeDialog(true);feedback(simple?'Confirmando o cadastro do WhatsApp…':'Não foi possível confirmar a criação. Confira a lista antes de tentar novamente.',!simple);render();}else if(state.dialog){state.dialog.element.querySelector('.os-form-message').textContent=errorMessage(error);}else{feedback(errorMessage(error),true);if(simple&&Number(error.status)===409){state.pending=null;await loadList(true);}}}
+      }finally{if(current(epoch)){setBusy(false);if(simple){render();schedule();}}}
     }
     function operationDTO(result,id,action){
       const op=result?.operation;
@@ -422,11 +492,11 @@
           state.items=state.items.filter(item=>item.id!==id);state.usage={used:state.items.length,limit:1};state.canCreate=true;clearCredentials();state.view='list';state.id=null;
           feedback('Dispositivo excluído.');return;
         }
-        feedback(action==='pair'?'Solicitação de vínculo confirmada. Acompanhe o estado do WhatsApp.':action==='restart'?'Conexão reiniciada. Acompanhe o estado do WhatsApp.':action==='relink'?'Conexão atualizada. Vincule o WhatsApp novamente.':'Conexão preparada. Escolha como vincular o WhatsApp.');
+        feedback(simple?'':action==='pair'?'Solicitação de vínculo confirmada. Acompanhe o estado do WhatsApp.':action==='restart'?'Conexão reiniciada. Acompanhe o estado do WhatsApp.':action==='relink'?'Conexão atualizada. Vincule o WhatsApp novamente.':'Conexão preparada. Escolha como vincular o WhatsApp.');
       }else if(op.status==='failed'){
         state.pending=null;state.operation=null;feedback(typeof op.error==='string'?op.error:op.error?.message||'A ação não foi concluída. Confira o estado antes de tentar novamente.',true);
-      }else if(op.status==='uncertain')feedback('O resultado da ação ainda não foi confirmado. Use Conferir estado antes de continuar.',true);
-      else feedback('A solicitação está em andamento. Aguardando confirmação.');
+      }else if(op.status==='uncertain')feedback(simple?'':'O resultado da ação ainda não foi confirmado. Use Conferir estado antes de continuar.',!simple);
+      else feedback(simple?'':'A solicitação está em andamento. Aguardando confirmação.');
     }
     async function performAction(action,id,revision,key){
       const retry=state.pending?.kind==='action'&&state.pending.key===key;
@@ -440,7 +510,7 @@
         setBusy(false);closeDialog(true);
         if(action==='connect'||action==='relink'){state.view='connect';state.id=id;}
       }catch(error){if(current(epoch)){if(!uncertain(error))state.pending=null;state.stale=Number(error.status)===409;setBusy(false);closeDialog(true);feedback(errorMessage(error),true);}}
-      finally{if(current(epoch)){setBusy(false);render();schedule(state.operation?2000:5000);}}
+      finally{if(current(epoch)){setBusy(false);render();schedule(state.operation?2000:simple?2500:5000);}}
       if(current(epoch)&&state.id===id&&['connect','relink'].includes(action)&&device()?.status==='qr_ready')await showQR();
     }
     async function pollOperation(){
@@ -452,7 +522,7 @@
         await acceptOperation(result,op.device_id,op.action,op.id);
         ready=result.operation.status==='succeeded'&&['connect','relink'].includes(op.action);
       }catch(error){if(current(epoch)){feedback(errorMessage(error),true);}}
-      finally{if(current(epoch)){state.loading=false;render();if(state.operation?.status!=='uncertain')schedule(state.operation?2000:5000);}}
+      finally{if(current(epoch)){state.loading=false;render();if(simple||state.operation?.status!=='uncertain')schedule(state.operation?.status==='uncertain'?4000:state.operation?2000:simple?2500:5000);}}
       if(current(epoch)&&ready&&state.id===op.device_id&&device()?.status==='qr_ready')await showQR();
     }
     async function reconcile(){
@@ -483,10 +553,13 @@
       try{
         const result=await request(path(id,'/qr'));
         if(!current(epoch,read)||device()?.id!==id||device()?.revision!==revision||!visible())return;
+        // A QR may rotate between the status read and image rendering. A
+        // scoped null result is normal, not a failed connection.
+        if(simple&&result?.device_id===id&&result.revision===revision&&result.image===null&&result.expires_in_ms===0){feedback('');return;}
         if(result?.device_id!==id||result.revision!==revision||typeof result.expires_in_ms!=='number'||!Number.isFinite(result.expires_in_ms)||result.expires_in_ms<=0||result.expires_in_ms>45000||typeof result.image!=='string'||result.image.length>240000||!/^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/.test(result.image))throw Error('invalid_qr_response');
-        state.qr={image:result.image,expiresAt:Date.now()+result.expires_in_ms};feedback('');
-        expiryTimer=setTimeout(()=>{clearCredentials();if(current(epoch)&&state.id===id){feedback('Este QR Code expirou. Confira o estado antes de mostrar outro.');render();}},result.expires_in_ms);
-      }catch(error){if(current(epoch,read)){clearCredentials();feedback(Number(error.status)?errorMessage(error):'Não há um QR Code válido disponível. Atualize o estado da conexão.',true);}}
+        state.qr={image:result.image,expiresAt:Date.now()+result.expires_in_ms};qrFailures=0;feedback('');
+        expiryTimer=setTimeout(()=>{clearCredentials();if(current(epoch)&&state.id===id){feedback(simple?'':'Este QR Code expirou. Confira o estado antes de mostrar outro.');render();if(simple)schedule(0);}},result.expires_in_ms);
+      }catch(error){if(current(epoch,read)){clearCredentials();qrFailures++;feedback(simple&&qrFailures<3?'':Number(error.status)?errorMessage(error):'Não há um QR Code válido disponível. Atualize o estado da conexão.',!simple||qrFailures>=3);}}
       finally{if(current(epoch)){setBusy(false);render();schedule();}}
     }
     async function pair(form){
@@ -539,7 +612,9 @@
       if(action==='close-dialog'){closeDialog();return;}
       if(state.busy)return;
       if(target.dataset.sdMethod){
-        if(state.view!=='connect'||!canWrite())return;
+        if((state.view!=='connect'&&!(simple&&state.view==='list'))||!canWrite())return;
+        if(simple&&state.pair)return;
+        if(simple&&target.dataset.sdMethod!==state.method)clearCredentials();
         state.method=target.dataset.sdMethod==='code'?'code':'qr';render();schedule();
         if(state.method==='qr'&&device()?.status==='qr_ready')await showQR();
         else host.querySelector('#sd-pair-phone')?.focus({preventScroll:true});
@@ -569,6 +644,7 @@
       if(action==='create'){
         if(!canWrite())return;
         if(!state.canCreate||state.usage?.used>=state.usage?.limit){feedback('Sua empresa já utiliza o limite de '+state.usage.limit+' dispositivo. Gerencie o dispositivo existente.');return;}
+        if(simple){await createDevice('WhatsApp',crypto.randomUUID());return;}
         openDialog('create','Criar dispositivo','<p>Escolha um nome para identificar o WhatsApp da sua empresa.</p>'+input('Nome do dispositivo','new_name','WhatsApp','text','required maxlength="100"'));
         return;
       }
@@ -578,7 +654,7 @@
       }
       if(action==='connect'){
         const item=device();
-        if(item&&canDevice('connect',item)&&!needsRelink(item)){
+        if(item&&canDevice('connect',item)&&!needsRelink(item)&&(!simple||!reviewRequired(item))){
           await performAction('connect',item.id,item.revision,crypto.randomUUID());
         }
         return;
@@ -646,7 +722,7 @@
     const observer=new MutationObserver(visibility);for(let node=host;node;node=node.parentElement)observer.observe(node,{attributes:true,attributeFilter:['hidden','class','style','aria-hidden']});
     const controller={
       load:()=>state.view==='connect'?loadDetail():loadList(),
-      unmount(){if(!state.mounted)return;pause();state.epoch++;state.busy=false;state.mounted=false;closeDialog(true);releaseFields();observer.disconnect();host.removeEventListener('click',click);host.removeEventListener('submit',submit);host.removeEventListener('change',change);host.removeEventListener('input',inputChanged);host.removeEventListener('error',imageError,true);document.removeEventListener('visibilitychange',visibility);host.replaceChildren();host.classList.remove('os-devices');host.removeAttribute('aria-busy');state.settings=null;state.pending=null;state.operation=null;state.items=[];},
+      unmount(){if(!state.mounted)return;pause();state.epoch++;state.busy=false;state.mounted=false;closeDialog(true);releaseFields();observer.disconnect();host.removeEventListener('click',click);host.removeEventListener('submit',submit);host.removeEventListener('change',change);host.removeEventListener('input',inputChanged);host.removeEventListener('error',imageError,true);document.removeEventListener('visibilitychange',visibility);host.replaceChildren();host.classList.remove('os-devices','os-devices-simple-connect');host.removeAttribute('aria-busy');state.settings=null;state.pending=null;state.operation=null;state.items=[];},
       getState:()=>({view:state.view,deviceId:state.id,loaded:state.loaded,busy:state.busy,pending:state.pending?.kind||null,operationStatus:state.operation?.status||null,hasQR:!!state.qr,hasPair:!!state.pair,method:state.method})
     };
     active=controller;render();void loadList();return controller;

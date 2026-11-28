@@ -406,3 +406,64 @@ test('um botão antigo de reinício também é rejeitado quando a fila ficou blo
   assert.match(h.element('[data-sd-feedback]').textContent,/Reiniciar não remove mensagens/);
   assert.deepEqual(h.errors,[]);
 });
+
+test('Delivery starts with a single explicit click, creates once, and automatically shows a delayed and renewed QR',async t=>{
+  let qrReads=0,polls=0;
+  const h=await makeDevices({simple:true,data:listing([]),respond(path,method,payload,server){
+    if(path===base&&method==='POST'){server.data=listing([device()]);return {device:device()};}
+    if(path.endsWith('/actions')&&method==='POST'){server.data=listing([ready({status:'connecting'})]);return operation('connect',server.data.items[0],'pending');}
+    if(path.endsWith('/operations/'+operationId)){polls++;server.data=listing([ready()]);return operation('connect',ready(),'succeeded');}
+    if(path.endsWith('/qr')){qrReads++;if(qrReads===1)return {device_id:deviceId,revision:1,image:null,expires_in_ms:0};
+      return {device_id:deviceId,revision:1,image:'data:image/png;base64,AAAA',expires_in_ms:3000};}
+  }});
+  t.after(()=>h.close());
+  assert.equal(h.calls.filter(c=>c.method==='POST').length,0);
+  assert.equal(h.document.querySelectorAll('[data-sd-action="create"]').length,1);
+  h.click('[data-sd-action="create"]');await flush();
+  assert.equal(h.document.querySelector('dialog'),null);
+  assert.deepEqual(h.calls.filter(c=>c.method==='POST').map(c=>c.path),[base,base+'/'+deviceId+'/actions']);
+  await h.tick(2000);assert.equal(polls,1);assert.equal(qrReads,1);
+  assert.equal(h.document.querySelector('[data-sd-qr]'),null);
+  assert.doesNotMatch(h.document.querySelector('[data-sd-feedback]').textContent,/Não há um QR/);
+  await h.tick(2500);assert.ok(h.document.querySelector('[data-sd-qr] img'));
+  await h.tick(3000);assert.ok(qrReads>=3);
+  assert.equal(h.calls.filter(c=>c.method==='POST').length,2);
+  h.server.data=listing([ready({status:'connected',phone_verified:true,phone:'5567999999901'})]);
+  await h.tick(3000);
+  assert.equal(h.document.querySelector('[data-sd-qr]'),null);
+  assert.equal(h.element('.os-device-connected h2').textContent,'WhatsApp conectado');
+  assert.deepEqual(h.errors,[]);
+});
+test('Delivery code method survives creation, uses one pairing command, and clears the code when linked',async t=>{
+  const h=await makeDevices({simple:true,data:listing([]),respond(path,method,payload,server){
+    if(path===base&&method==='POST'){server.data=listing([device()]);return {device:device()};}
+    if(path.endsWith('/actions')&&method==='POST'){server.data=listing([ready()]);return operation('connect',ready(),'succeeded');}
+    if(path.endsWith('/pair')&&method==='POST'){assert.equal(payload.phone,'5567999999901');
+      server.data=listing([ready({status:'pairing'})]);return copy(contract.pair_response);}
+  }});
+  t.after(()=>h.close());
+  h.click('[data-sd-method=code]');h.click('[data-sd-action=create]');await flush();
+  assert.equal(h.controller.getState().method,'code');
+  assert.equal(h.calls.some(c=>c.path.endsWith('/qr')),false);
+  h.fill('[data-sd-field=pair_phone]','(67) 99999-9901');h.submit('[data-sd-form=pair]');await flush();
+  assert.ok(h.document.querySelector('[data-sd-code]'));
+  h.server.data=listing([ready({status:'connected'})]);await h.tick(2500);
+  assert.equal(h.document.querySelector('[data-sd-code]'),null);
+  assert.equal(h.calls.filter(c=>c.path.endsWith('/pair')).length,1);
+  assert.deepEqual(h.errors,[]);
+});
+test('Delivery opens existing sessions directly without restarting; hides credentials on navigation',async t=>{
+  const h=await makeDevices({simple:true,data:listing([ready()])});t.after(()=>h.close());
+  assert.equal(h.controller.getState().view,'connect');assert.ok(h.document.querySelector('[data-sd-qr] img'));
+  assert.equal(h.calls.some(c=>c.method==='POST'),false);
+  await h.visibility(true);assert.equal(h.document.querySelector('[data-sd-qr]'),null);
+  const before=h.calls.length;await h.tick(60000);assert.equal(h.calls.length,before);
+  await h.visibility(false);assert.ok(h.document.querySelector('[data-sd-qr] img'));
+  assert.equal(h.calls.some(c=>c.method==='POST'),false);
+});
+test('Delivery does not restart or relink a connected session with retained messages',async t=>{
+  const item=ready({status:'needs_attention',connection_health:{state:'needs_attention',reason:'ingress_review_required',ingress_blocked:2,action:'review_incoming_messages'}});
+  const h=await makeDevices({simple:true,data:listing([item])});t.after(()=>h.close());
+  assert.equal(h.document.querySelector('[data-sd-action=connect],[data-sd-action=restart],[data-sd-action=relink]'),null);
+  await h.tick(10000);assert.equal(h.calls.some(c=>c.method==='POST'),false);
+});

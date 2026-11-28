@@ -29,7 +29,7 @@ export function operation(action,item=device(),status='pending',extra={}){
   return {operation:{id:operationId,device_id:item?.id||deviceId,action,status,error:null,...extra},device:item};
 }
 
-export async function makeDevices({data=listing(),configuration=settings(),respond}={}){
+export async function makeDevices({data=listing(),configuration=settings(),respond,simple=false}={}){
   const errors=[],calls=[],copied=[],timers=new Map(),console=new VirtualConsole();
   console.on('jsdomError',error=>errors.push(error));
   const dom=new JSDOM('<!doctype html><html lang="pt-BR" data-theme="light"><body><main class="os-main"><section id="devices"></section></main></body></html>',{url:'https://orion.test/painel?aba=dispositivos',runScripts:'outside-only',pretendToBeVisual:true,virtualConsole:console});
@@ -48,7 +48,8 @@ export async function makeDevices({data=listing(),configuration=settings(),respo
   window.setTimeout=(fn,delay=0)=>{const id=++timerId;timers.set(id,{fn,at:now+delay});return id;};
   window.clearTimeout=id=>timers.delete(id);
   const server={data:copy(data),settings:copy(configuration)};
-  const bridge={host:document.getElementById('devices'),tenantId:tenantA,
+  if(simple)document.querySelector('main').dataset.osCurrentRoute='whatsapp-delivery';
+  const bridge={host:document.getElementById('devices'),tenantId:tenantA,connectionOnly:simple,
     async request(path,method='GET',payload){
       calls.push({path,method,data:copy(payload??null)});
       const result=await respond?.(path,method,payload,server);

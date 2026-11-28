@@ -144,3 +144,35 @@
 .os-devices-connection-only .os-device-metrics,
 .os-devices-connection-only .os-device-metrics-note,
 .os-devices-connection-only .os-device-features { display:none; }
+
+/* Delivery: connection first, no device-management intermediate screens. */
+#page-suite[data-os-current-route="whatsapp-delivery"] #osPageBody{display:flex;flex-direction:column;gap:16px;min-width:0}
+#page-suite[data-os-current-route="whatsapp-delivery"] #osSubscriptionDevices{order:-1}
+#page-suite[data-os-current-route="whatsapp-delivery"] #osDeliveryAssistant{margin:0}
+.os-devices-simple-connect{max-width:640px;margin-inline:auto}
+.os-devices-simple-connect .os-sd-simple-card{display:grid;justify-items:stretch;gap:18px;max-width:100%;min-width:0;padding:24px;border-radius:16px}
+.os-devices-simple-connect .os-sd-simple-card h2,.os-devices-simple-connect .os-sd-simple-card h3,.os-devices-simple-connect .os-sd-simple-card p{margin:0;overflow-wrap:anywhere}
+.os-devices-simple-connect .os-sd-simple-card h2{font:650 20px/1.4 var(--os-display);text-align:center}
+.os-devices-simple-connect .os-sd-simple-card>p{text-align:center;color:var(--os-muted);font-size:13px}
+.os-sd-simple-methods{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;border:1px solid var(--os-border);border-radius:12px;background:var(--os-bg);padding:4px;min-width:0}
+.os-sd-simple-methods button{min-width:0;min-height:44px;border:0;border-radius:9px;background:transparent;color:var(--os-muted);font:600 13px/1.3 var(--os-font);padding:6px;cursor:pointer;text-align:center;overflow-wrap:anywhere}
+.os-sd-simple-methods button[aria-pressed=true]{background:var(--os-card);color:var(--os-primary);box-shadow:0 1px 4px color-mix(in srgb,var(--os-text) 8%,transparent)}
+.os-sd-simple-methods button:disabled{opacity:.65;cursor:not-allowed}
+.os-sd-simple-methods button:focus-visible{outline:2px solid var(--os-primary);outline-offset:2px}
+.os-sd-simple-actions{display:flex;justify-content:center;gap:8px;min-width:0}
+.os-sd-simple-actions>.os-button,.os-sd-simple-phone>.os-button{width:100%;min-height:44px;max-width:320px}
+.os-sd-simple-qr,.os-sd-simple-qr-wait{min-width:0;display:grid;justify-items:center;align-content:center;gap:10px;min-height:274px}
+.os-sd-simple-qr .wizard-qr-wrap{background:white;border:1px solid var(--os-border);border-radius:14px;box-sizing:border-box;width:min(264px,100%);padding:12px;aspect-ratio:1}
+.os-sd-simple-qr .wizard-qr-wrap img{display:block;width:100%;height:auto;aspect-ratio:1;object-fit:contain}
+.os-sd-simple-qr-wait{background:var(--os-bg);border-radius:12px}
+.os-sd-simple-phone{margin:0!important;gap:12px}
+.os-sd-simple-phone>.os-button{justify-self:center}
+.os-sd-simple-card .os-connect-steps{font-size:13px;line-height:1.6;text-align:center;color:var(--os-muted)}
+.os-sd-simple-card .os-sd-simple-caption{font-size:12px;color:var(--os-muted)}
+.os-sd-simple-progress{margin-bottom:10px}
+.os-devices-simple-connect .os-device-health{margin:0;color:var(--os-muted)}
+.os-devices-simple-connect .os-device-health[data-error=true]{color:var(--os-danger)}
+.os-sd-simple-options{font-size:12px;color:var(--os-muted);text-align:center}
+.os-sd-simple-options summary{cursor:pointer;padding:8px}
+.os-sd-simple-options>.os-button{margin-top:8px}
+@media(max-width:767px){.os-devices-simple-connect .os-sd-simple-card{padding:16px;gap:14px}.os-sd-simple-qr,.os-sd-simple-qr-wait{min-height:242px}}
