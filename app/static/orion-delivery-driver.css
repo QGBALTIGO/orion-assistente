@@ -18,3 +18,15 @@ button:disabled{opacity:.6;} :focus-visible{outline:3px solid #3784fc;outline-of
 article{overflow-wrap:anywhere;} article li{margin:.2rem 0;} #login a{display:block;margin-top:1rem;} 
 #notice,#geo-status,#shift-state{color:var(--muted);} #geo{border-top:1px solid var(--line);margin-top:1rem;padding-top:1rem;}
 form[data-delivery-confirm],details {margin-top:.75rem;} summary{cursor:pointer;min-height:44px;display:flex;align-items:center;font-weight:600;}
+
+/* Pilot route foundation: touch-friendly compact selection and load checks. */
+#batch-workspace{display:grid;gap:.5rem}
+#batch-workspace h2{margin:1rem 0 .3rem}
+#batch-workspace form{background:var(--card);border:1px solid var(--line);border-radius:1rem;padding:.8rem}
+.claim-row,.load-line{display:flex;gap:.8rem;align-items:center;border-bottom:1px solid var(--line);padding:.75rem 0;margin:0;min-height:48px}
+.claim-row>span,.load-line>span{flex:1;min-width:0;overflow-wrap:anywhere}
+.claim-row input{flex:none;width:22px;height:22px}
+.claim-row small,.load-line small{display:block;color:var(--muted);font-size:.8rem;font-weight:400}
+.load-line input{width:90px!important;text-align:center}
+#claim-button,#load-form>button{width:100%;min-height:48px}
+@media(max-width:380px){.claim-row{gap:.5rem}.claim-row>strong{font-size:.85rem}}

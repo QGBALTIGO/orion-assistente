@@ -8,9 +8,9 @@
   const money=n=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(n/100);
   const methods={cash:'Dinheiro',pix:'Pix',credit_card:'Cartão de crédito',debit_card:'Cartão de débito'};
   const states={off:'Fora do expediente',available:'Disponível para pedidos',unavailable:'Indisponível para novos pedidos'};
-  const labels={offered:'Aguardando seu aceite',accepted:'Em rota',arrived:'No endereço'};
+  const labels={offered:'Aguardando seu aceite',reserved:'Separado · aguardando conferência',accepted:'Em rota',arrived:'No endereço'};
   let csrf='',personId='',model=null,busy=false,sequence=0,watch=null,lastUpload=0,lastShape='',sharing=0;
-  const actionKeys=new Map();
+  const actionKeys=new Map(), selected=new Set();
   async function request(path,method='GET',body){
     const response=await fetch(path,{method,credentials:'same-origin',cache:'no-store',headers:{
       'Content-Type':'application/json','X-Orion-CSRF':csrf},body:body===undefined?undefined:JSON.stringify(body)});
@@ -29,7 +29,8 @@
     const a=o.address||{},offered=o.status==='offered';
     const address=[a.street,a.no_number?'sem número':a.number,a.neighborhood,a.city,a.state,a.complement].filter(Boolean).join(', ');
     const total=Number(o.total_cents),change=o.change_for_cents;
-    const controls=offered?actionButton('Aceitar','accept')+actionButton('Recusar','refuse',true):
+    const reserved=o.status==='reserved';
+    const controls=reserved?actionButton('Liberar pedido','release',true):offered?actionButton(model?.route_v2?'Separar pedido':'Aceitar','accept')+actionButton('Recusar','refuse',true):
       (o.status==='accepted'?actionButton('Informar chegada','arrive'):'')+
       (address?'<a rel="noreferrer" target="_blank" href="https://www.google.com/maps/dir/?api=1&amp;destination='+encodeURIComponent(address)+'">Abrir rota</a>':'')+
       (o.phone?'<a href="tel:'+esc(o.phone)+'">Ligar para o cliente</a>':'');
@@ -49,8 +50,55 @@
       '<p><strong>'+money(total)+'</strong> · '+esc(methods[o.payment_preference]||'Pagamento a combinar')+'</p>'+
       (change!=null?'<p>Levar '+money(Math.max(0,change-total))+' de troco para '+money(change)+'.</p>':'')+
       (['debit_card','credit_card'].includes(o.payment_preference)?'<p>Levar maquininha.</p>':'')+
-      '<div class="actions">'+controls+'</div>'+(offered?'':complete)+'</article>';
+      '<div class="actions">'+controls+'</div>'+(offered||reserved?'':complete)+'</article>';
   }
+  function renderBatch(){
+    el('batch-workspace').hidden=!model.route_v2;
+    if(!model.route_v2){el('available-orders').replaceChildren();el('route-load').replaceChildren();return;}
+    const list=model.available_orders||[], reserved=model.orders.filter(o=>o.status==='reserved'),
+          onRoute=model.orders.some(o=>['accepted','arrived'].includes(o.status));
+    for(const id of selected)if(!list.some(o=>o.id===id))selected.delete(id);
+    const open=model.orders.filter(o=>['reserved','accepted','arrived'].includes(o.status)).length;
+    const allowance=Math.max(0,model.max_stops-open);
+    el('available-orders').innerHTML=list.length?'<p>Selecione até '+allowance+' pedidos. Os endereços completos ficam disponíveis após a reserva.</p><div class="actions">'+actionButton('Sugerir por bairro','suggest',true)+'</div>'+
+      '<form id="claim-form">'+list.map(o=>'<label class="claim-row"><input type="checkbox" name="pick" value="'+esc(o.id)+'" '+(selected.has(o.id)?'checked ':'')+(allowance?'':'disabled ')+
+      '><span><strong>'+esc([o.address?.neighborhood,o.address?.city].filter(Boolean).join(' · ')||'Localização a conferir')+'</strong><small>'+esc((o.items||[]).map(i=>i.quantity+' × '+i.name).join(' · '))+'</small></span><strong>'+money(o.total_cents)+'</strong></label>').join('')+
+      '<p id="selection-summary" role="status"></p><button type="submit" id="claim-button" disabled>Assumir selecionados</button></form>':'<p>Nenhum pedido disponível agora.</p>';
+    const totals=new Map();
+    for(const o of reserved)for(const i of o.items||[]){
+      const key=i.variant_id, prev=totals.get(key);totals.set(key,{name:[i.name,i.variant].filter(Boolean).join(' · '),quantity:(prev?.quantity||0)+i.quantity});
+    }
+    el('route-load').innerHTML=reserved.length?'<div class="card"><p>'+reserved.length+' pedido(s) separados. Confirme a quantidade efetivamente carregada.</p>'+
+      (onRoute?'<p>Conclua a rota em andamento antes de iniciar outra.</p>':'')+
+      '<form id="load-form"><ol>'+reserved.map(o=>'<li>'+esc(o.customer_name||'Cliente')+' · '+esc(o.address?.neighborhood||'')+'</li>').join('')+'</ol>'+
+      [...totals].map(([id,i])=>'<label class="load-line"><span>'+esc(i.name)+'<small>Esperado: '+i.quantity+'</small></span><input aria-label="Quantidade carregada de '+esc(i.name)+'" name="load" data-variant="'+esc(id)+'" type="number" min="1" step="1" inputmode="numeric" required></label>').join('')+
+      '<label><input type="checkbox" name="checked" required> Conferi fisicamente todos os produtos e a capacidade do veículo.</label><button '+(onRoute?'disabled':'')+'>Iniciar rota</button></form></div>':'<p>Nenhuma carga aguardando saída.</p>';
+    updateSelection();
+  }
+  function updateSelection(){
+    const f=el('claim-form');if(!f)return;
+    const list=(model.available_orders||[]).filter(o=>selected.has(o.id));
+    const open=model.orders.filter(o=>['reserved','accepted','arrived'].includes(o.status)).length;
+    el('selection-summary').textContent=list.length+' selecionado(s) · '+money(list.reduce((n,o)=>n+Number(o.total_cents),0));
+    el('claim-button').disabled=!list.length||open+list.length>model.max_stops||!navigator.onLine;
+  }
+  function suggest(){
+    const list=model?.available_orders||[],open=model.orders.filter(o=>['reserved','accepted','arrived'].includes(o.status)).length;
+    const n=Math.max(0,model.max_stops-open);if(!list.length||!n)return;
+    // The server orders by waiting time. Group near the oldest request by known neighborhood.
+    // No fabricated GPS, driving distance or vehicle weight.
+    const first=list[0],same=o=>o.address?.neighborhood===first.address?.neighborhood&&o.address?.city===first.address?.city&&o.address?.state===first.address?.state;
+    selected.clear();
+    [...list.filter(same),...list.filter(o=>!same(o))].slice(0,n).forEach(o=>selected.add(o.id));
+    el('claim-form')?.querySelectorAll('input[name=pick]').forEach(i=>i.checked=selected.has(i.value));
+    updateSelection();notice('Sugestão por bairro e tempo de espera. Confira antes de assumir.');
+  }
+  async function batchRequest(path,data){
+    const signature=JSON.stringify([tenant,personId,path,data]);
+    if(!actionKeys.has(signature))actionKeys.set(signature,crypto.randomUUID());
+    await request(api+path,'POST',{...data,idempotency_key:actionKeys.get(signature)});
+  }
+  const ref=o=>({order_id:o.id,expected_revision:o.revision});
   async function refresh(){
     const attempt=++sequence;
     const data=await request(api+'/queue');
@@ -61,16 +109,16 @@
       actionButton(data.state==='available'?'Ficar indisponível':'Ficar disponível',data.state==='available'?'unavailable':'available',true)+
       actionButton('Encerrar expediente','off',true));
     el('geo').hidden=data.state==='off';if(data.state==='off')stopWatch();
-    const shape=JSON.stringify(data.orders);
+    const shape=JSON.stringify([data.orders,data.available_orders,data.route_v2,data.state]);
     if(shape!==lastShape){
       el('queue').innerHTML=data.orders.length?data.orders.map(orderMarkup).join(''):'<p>Nenhuma entrega atribuída.</p>';
-      lastShape=shape;
+      renderBatch();lastShape=shape;
     }
   }
   function fault(error){
     notice(error.message||'Sem conexão. Tente novamente.');
     if([401,403].includes(error.status)){
-      stopWatch();model=null;lastShape='';el('queue').replaceChildren();el('workspace').hidden=true;
+      stopWatch();model=null;lastShape='';el('queue').replaceChildren();el('available-orders').replaceChildren();el('route-load').replaceChildren();selected.clear();el('workspace').hidden=true;
       if(error.status===401){csrf='';el('login').hidden=false;el('logout').hidden=true;}
     }
     el('retry').hidden=false;
@@ -104,7 +152,26 @@
   el('workspace').addEventListener('click',event=>{
     const btn=event.target.closest('[data-action]');if(!btn)return;
     const action=btn.dataset.action,article=btn.closest('article');
+    if(action==='suggest'){suggest();return;}
+    if(action==='release'&&article){const o=model?.orders.find(r=>r.id===article.dataset.id);if(o)void perform(()=>batchRequest('/reservations/release',{orders:[ref(o)]}));return;}
     void perform(()=>article?orderAction(article,action):request(api+'/shift','PUT',{state:action}));
+  });
+  el('batch-workspace').addEventListener('change',event=>{
+    const input=event.target;if(input.name!=='pick')return;
+    if(input.checked)selected.add(input.value);else selected.delete(input.value);updateSelection();
+  });
+  el('batch-workspace').addEventListener('submit',event=>{
+    event.preventDefault();const f=event.target;
+    if(!model||!navigator.onLine)return;
+    if(f.id==='claim-form'){
+      const orders=model.available_orders.filter(o=>selected.has(o.id)).map(ref);
+      if(!orders.length||el('claim-button').disabled)return;
+      void perform(async()=>{await batchRequest('/reservations',{orders});selected.clear();});
+    }else if(f.id==='load-form'){
+      const orders=model.orders.filter(o=>o.status==='reserved').map(ref);
+      const load=[...f.querySelectorAll('input[name=load]')].map(i=>({variant_id:i.dataset.variant,quantity:Number(i.value)}));
+      void perform(()=>batchRequest('/routes/start',{orders,load,checked:!!f.elements.checked.checked}));
+    }
   });
   el('queue').addEventListener('submit',event=>{
     event.preventDefault();const f=event.target,o=f.closest('article');if(!o)return;
@@ -134,7 +201,7 @@
     el('geo-button').textContent='Parar compartilhamento';
   };
   window.addEventListener('online',()=>{if(csrf&&!busy)void refresh().catch(fault);});
-  window.addEventListener('offline',()=>notice('Sem conexão. Confira a fila ao reconectar.'));
+  window.addEventListener('offline',()=>{notice('Sem conexão. Confira a fila ao reconectar.');updateSelection();});
   window.addEventListener('pagehide',stopWatch);
   window.setInterval(()=>{if(!busy&&model&&!document.hidden&&navigator.onLine)void refresh().catch(fault);},30000);
   void start();

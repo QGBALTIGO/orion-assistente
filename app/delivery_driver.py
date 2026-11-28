@@ -9,6 +9,7 @@ from pydantic import AwareDatetime, Field, StrictBool, StrictInt, field_validato
 from sqlalchemy import text
 
 from app import commercial_service as commerce, delivery_catalog as catalog, delivery_logistics as logistics
+from app import delivery_route_batches as route_batches
 from app.business_profile_schemas import ProfileModel
 from app.commercial_schemas import IdempotencyKey
 from app.delivery_payments import ReceivedMethod
@@ -73,7 +74,8 @@ async def positions(db,tenant):
     queue = """
         SELECT o.id,o.status,d.courier_id,d.scheduled_at,
             CASE WHEN a.status='offered' AND a.expires_at>now() AND o.status='confirmed'
-                THEN a.courier_id END AS offered_to
+                THEN a.courier_id END AS offered_to,
+            CASE WHEN a.status='reserved' AND o.status='confirmed' THEN a.courier_id END AS reserved_to
         FROM commercial_orders o
         JOIN delivery_order_details d ON (d.tenant_id,d.order_id)=(o.tenant_id,o.id)
         LEFT JOIN delivery_driver_assignments a ON (a.tenant_id,a.order_id)=(o.tenant_id,o.id)
@@ -82,9 +84,10 @@ async def positions(db,tenant):
     """
     counts=(await db.execute(text(f"""
         WITH queue AS ({queue})
-        SELECT count(*) FILTER (WHERE status='confirmed' AND offered_to IS NULL
+        SELECT count(*) FILTER (WHERE status='confirmed' AND offered_to IS NULL AND reserved_to IS NULL
                     AND (scheduled_at IS NULL OR scheduled_at<=now())) AS waiting_dispatch,
             count(*) FILTER (WHERE offered_to IS NOT NULL) AS waiting_acceptance,
+            count(*) FILTER (WHERE reserved_to IS NOT NULL) AS waiting_load,
             count(*) FILTER (WHERE status='dispatched') AS on_route,
             count(*) FILTER (WHERE status='confirmed' AND scheduled_at>now()) AS scheduled,
             count(*) FILTER (WHERE scheduled_at<now()) AS scheduled_past_due,
@@ -136,6 +139,7 @@ async def grant_state(db,tenant,courier):
 async def set_grant(db,tenant,access,courier,payload):
     await logistics.lock_policy(db,tenant,exclusive=True)
     await logistics.active_courier(db,tenant,courier,lock=True)
+    await route_batches.release_reservations(db,tenant,courier)
     args={"t":tenant,"c":courier,"email":payload.email,"actor":access.account_id,"rev":payload.expected_revision}
     if payload.expected_revision==0:
         revision=await db.scalar(text("""INSERT INTO delivery_driver_access(tenant_id,courier_id,email,updated_by)
@@ -167,6 +171,9 @@ async def identity(db,tenant,claims):
 
 async def shift(db,tenant,person,payload):
     active=payload.state!="off"
+    if not active and (route_batches.enabled(tenant) or await db.scalar(text("SELECT 1 FROM delivery_driver_assignments WHERE tenant_id=:t AND courier_id=:c AND status='reserved' LIMIT 1"),{"t":tenant,"c":person['courier_id']})):
+        if await route_batches.active_count(db,tenant,person):
+            raise HTTPException(409,"Conclua ou libere os pedidos antes de encerrar o expediente.")
     await db.execute(text("""UPDATE delivery_driver_access SET account_id=:account,
         shift_started_at=CASE WHEN :active THEN coalesce(shift_started_at,now()) ELSE NULL END,available=:available,
         latitude=CASE WHEN :active THEN latitude END,longitude=CASE WHEN :active THEN longitude END,
@@ -185,7 +192,8 @@ async def offer(db,tenant,order,courier):
     expires=await db.scalar(text("""INSERT INTO delivery_driver_assignments(tenant_id,order_id,courier_id,access_revision,status,expires_at)
         VALUES (:t,:o,:c,:rev,'offered',now()+interval '5 minutes')
         ON CONFLICT(tenant_id,order_id) DO UPDATE SET courier_id=excluded.courier_id,status='offered',
-            access_revision=excluded.access_revision,offered_at=now(),updated_at=now(),expires_at=excluded.expires_at
+            access_revision=excluded.access_revision,offered_at=now(),updated_at=now(),expires_at=excluded.expires_at,
+            route_batch_id=NULL,route_position=NULL
         WHERE delivery_driver_assignments.status IN ('refused','released') OR
             (delivery_driver_assignments.status='offered' AND delivery_driver_assignments.expires_at<=now())
         RETURNING expires_at"""),{"t":tenant,"o":order,"c":courier,"rev":ready})
@@ -195,14 +203,14 @@ async def offer(db,tenant,order,courier):
 
 async def release(db,tenant,order,*,require_offer=False):
     status=await db.scalar(text("""UPDATE delivery_driver_assignments SET status='released',updated_at=now()
-        WHERE tenant_id=:t AND order_id=:o AND status IN ('offered','accepted','arrived') RETURNING status"""),{"t":tenant,"o":order})
+        WHERE tenant_id=:t AND order_id=:o AND status IN ('offered','reserved','accepted','arrived') RETURNING status"""),{"t":tenant,"o":order})
     if require_offer and not status: raise HTTPException(409,"Não há solicitação de aceite para retirar.")
 
 
 async def dashboard(db,tenant,person):
     rows=[]
     if person['shift_started_at']:
-        rows=(await db.execute(text("""SELECT a.order_id AS id,a.status,a.expires_at,o.revision,q.total_cents,
+        rows=(await db.execute(text("""SELECT a.order_id AS id,a.status,a.expires_at,a.route_batch_id,a.route_position,o.revision,q.total_cents,
             (SELECT CASE WHEN p.confirmed_at IS NULL THEN 'pending' ELSE 'confirmed' END
              FROM delivery_pix_orders p WHERE (p.tenant_id,p.order_id)=(a.tenant_id,a.order_id)) AS pix_state,
             CASE WHEN a.status!='offered' THEN q.customer_name END AS customer_name,
@@ -215,7 +223,7 @@ async def dashboard(db,tenant,person):
             (SELECT jsonb_agg(jsonb_build_object('name',v.name,'exchange',cp.exchange_quantity,'loan',cp.loan_quantity)
                 ORDER BY v.name,cp.variant_id) FROM delivery_order_container_plans cp JOIN delivery_containers v
                 ON (v.tenant_id,v.id)=(cp.tenant_id,cp.container_id) WHERE cp.tenant_id=a.tenant_id AND cp.order_id=a.order_id) AS container_items,
-            (SELECT jsonb_agg(jsonb_build_object('name',i.snapshot->>'product_name','variant',i.snapshot->>'variant_name','quantity',i.quantity)
+            (SELECT jsonb_agg(jsonb_build_object('variant_id',i.variant_id,'name',i.snapshot->>'product_name','variant',i.snapshot->>'variant_name','quantity',i.quantity)
                 ORDER BY i.item_order) FROM commercial_quote_items i WHERE i.tenant_id=o.tenant_id AND i.quote_id=o.quote_id) AS items
             FROM delivery_driver_assignments a JOIN commercial_orders o ON (o.tenant_id,o.id)=(a.tenant_id,a.order_id)
             JOIN commercial_quotes q ON (q.tenant_id,q.id)=(o.tenant_id,o.quote_id)
@@ -223,10 +231,13 @@ async def dashboard(db,tenant,person):
             LEFT JOIN delivery_storefront_orders s ON (s.tenant_id,s.order_id)=(o.tenant_id,o.id)
             LEFT JOIN customers c ON (c.tenant_id,c.id)=(d.tenant_id,d.customer_id) AND c.deleted_at IS NULL
             WHERE a.tenant_id=:t AND a.courier_id=:c AND a.access_revision=:rev AND ((a.status='offered' AND a.expires_at>now() AND o.status='confirmed')
+                OR (a.status='reserved' AND o.status='confirmed')
                 OR (a.status IN ('accepted','arrived') AND o.status='dispatched'))
-            ORDER BY a.offered_at,a.order_id"""),{"t":tenant,"c":person["courier_id"],"rev":person["revision"]})).mappings().all()
+            ORDER BY a.route_position NULLS LAST,a.offered_at,a.order_id"""),{"t":tenant,"c":person["courier_id"],"rev":person["revision"]})).mappings().all()
     return {"name":person["name"],"state":"off" if not person["shift_started_at"] else "available" if person["available"] else "unavailable",
-            "shift_started_at":person["shift_started_at"],"orders":[dict(r) for r in rows]}
+            "shift_started_at":person["shift_started_at"],"orders":[dict(r) for r in rows],
+            "route_v2":route_batches.enabled(tenant) or any(r['status']=='reserved' for r in rows),
+            "available_orders":await route_batches.available(db,tenant,person),"max_stops":route_batches.MAX_STOPS}
 
 
 async def order_action(db,tenant,person,order,payload):
@@ -244,6 +255,9 @@ async def order_action(db,tenant,person,order,payload):
             if item["status"]!="offered" or not item["fresh"] or row["status"]!="confirmed":
                 raise HTTPException(409,"Esta solicitação de aceite já encerrou.")
             if action=="accept" and not person["available"]: raise HTTPException(409,"Marque-se como disponível para aceitar.")
+            if action=="accept" and route_batches.enabled(tenant):
+                result=await route_batches.reserve_locked(db,tenant,person,route_batches.OrderRef(order_id=order,expected_revision=payload.expected_revision),offered=True)
+                return {"status":result["status"],"revision":result["revision"]}
             status="accepted" if action=="accept" else "refused"
         else:
             if item["status"] not in {"accepted","arrived"} or row["status"]!="dispatched" or row["courier_id"]!=person["courier_id"]:

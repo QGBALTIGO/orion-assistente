@@ -7,6 +7,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.exc import IntegrityError
 
 from app import delivery_driver as driver
+from app import delivery_route_batches as route_batches
 from app import delivery_logistics as logistics
 from app.database import get_session_factory, tenant_transaction
 from app.http_json import json_response
@@ -25,7 +26,7 @@ async def run(tenant,claims,operation,*args):
         async with get_session_factory()() as db:
             async with tenant_transaction(db,tenant):
                 await lock_plan(db,tenant)
-                await logistics.lock_policy(db,tenant,exclusive=operation is driver.order_action)
+                await logistics.lock_policy(db,tenant,exclusive=operation in {driver.order_action,driver.shift,route_batches.reserve,route_batches.release_one,route_batches.start_route})
                 person=await driver.identity(db,tenant,claims)
                 result=await operation(db,tenant,person,*args)
     except IntegrityError:
@@ -63,6 +64,21 @@ async def stop_position(tenant_id: UUID,claims: dict=Depends(panel_actor)):
 @router.post(prefix+"/orders/{order_id}/actions")
 async def action(tenant_id: UUID,order_id: UUID,payload: driver.Action,claims: dict=Depends(panel_actor)):
     return await run(tenant_id,claims,driver.order_action,order_id,payload)
+
+
+@router.post(prefix+"/reservations")
+async def reserve_orders(tenant_id: UUID,payload: route_batches.Selection,claims: dict=Depends(panel_actor)):
+    return await run(tenant_id,claims,route_batches.reserve,payload)
+
+
+@router.post(prefix+"/reservations/release")
+async def release_reservation(tenant_id: UUID,payload: route_batches.Selection,claims: dict=Depends(panel_actor)):
+    return await run(tenant_id,claims,route_batches.release_one,payload)
+
+
+@router.post(prefix+"/routes/start")
+async def start_route(tenant_id: UUID,payload: route_batches.StartRoute,claims: dict=Depends(panel_actor)):
+    return await run(tenant_id,claims,route_batches.start_route,payload)
 
 
 @router.get("/entregador/{tenant_id}/sw.js",include_in_schema=False)

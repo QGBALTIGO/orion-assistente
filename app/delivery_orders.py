@@ -557,8 +557,8 @@ async def return_order(db, tenant, access, row, items, payload):
 
 
 async def transition(db, tenant, access, order_id, payload):
-    if payload.action in {"offer","dispatch","withdraw_offer"}:
-        await logistics.lock_policy(db,tenant,exclusive=True)
+    # Same lock ordering as the driver reservation and load transactions.
+    await logistics.lock_policy(db,tenant,exclusive=True)
     async def write():
         row = await one_order(db, tenant, order_id, lock=True)
         permitted = {"fulfilled"} if payload.action in {"settle","return"} else {"confirmed","dispatched"}
@@ -582,8 +582,8 @@ async def transition(db, tenant, access, order_id, payload):
         elif payload.action == "dispatch":
             if row["mode"] != "delivery" or row["status"] != "confirmed":
                 commerce.conflict("O pedido precisa estar aguardando despacho")
-            if row["assignment_status"]=="offered" and access.role!="courier":
-                commerce.conflict("Retire a solicitação de aceite antes do despacho manual.")
+            if row["assignment_status"] in {"offered","reserved"} and access.role!="courier":
+                commerce.conflict("Retire a solicitação de aceite ou libere a reserva antes do despacho manual.")
             await commerce.tenant_exists(db, tenant, active=True)
             courier_name = payload.courier_name
             if payload.courier_id is not None:
@@ -623,7 +623,7 @@ async def transition(db, tenant, access, order_id, payload):
                     event_details["tenders"] = [t.model_dump() for t in payload.tenders]
                 await packaging.apply(db, tenant, access, order_id, row["customer_id"], payload.containers_confirmed)
                 status = "fulfilled"
-        if access.role!="courier" and row["assignment_status"] in {"offered","accepted","arrived","expired"} and payload.action in {"cancel","reschedule","recipient_absent","fulfill","dispatch"}:
+        if access.role!="courier" and row["assignment_status"] in {"offered","reserved","accepted","arrived","expired"} and payload.action in {"cancel","reschedule","recipient_absent","fulfill","dispatch"}:
             await driver.release(db,tenant,order_id)
         revision = (await db.execute(text("""
             UPDATE commercial_orders SET status=:status,revision=revision+1,updated_at=now()
