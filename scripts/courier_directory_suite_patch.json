@@ -1,0 +1,42 @@
+[
+  [
+    "  const deliveryLogisticsRoute='logistica-delivery';",
+    "  const deliveryLogisticsRoute='logistica-delivery';\n  const deliveryCouriersRoute='entregadores-delivery';"
+  ],
+  [
+    "  routeNames[deliveryLogisticsRoute]='Logística';",
+    "  routeNames[deliveryLogisticsRoute]='Logística';\n  routeNames[deliveryCouriersRoute]='Entregadores';"
+  ],
+  [
+    "deliveryReportRoute,deliveryLogisticsRoute,deliveryStoreRoute,deliveryWhatsAppRoute];",
+    "deliveryReportRoute,deliveryLogisticsRoute,deliveryCouriersRoute,deliveryStoreRoute,deliveryWhatsAppRoute];"
+  ],
+  [
+    "'logistica-delivery':'deliveryRoute','loja-delivery'",
+    "'logistica-delivery':'deliveryRoute','entregadores-delivery':'users','loja-delivery'"
+  ],
+  [
+    "[deliveryDispatchRoute,'deliveryTruck'],[deliveryCatalogRoute,'box']",
+    "[deliveryDispatchRoute,'deliveryTruck'],[deliveryCouriersRoute,'users'],[deliveryCatalogRoute,'box']"
+  ],
+  [
+    "    if(state.route===deliveryLogisticsRoute)html='<div id=\"osPageBody\">'+loading('Carregando logística…')+'</div>';",
+    "    if(state.route===deliveryLogisticsRoute)html='<div id=\"osPageBody\">'+loading('Carregando logística…')+'</div>';\n    if(state.route===deliveryCouriersRoute)html='<div id=\"osPageBody\">'+loading('Carregando entregadores…')+'</div>';"
+  ],
+  [
+    "      case deliveryLogisticsRoute:\n      case deliveryStoreRoute:",
+    "      case deliveryLogisticsRoute:\n      case deliveryCouriersRoute:\n      case deliveryStoreRoute:"
+  ],
+  [
+    "        const logistics=state.route===deliveryLogisticsRoute;",
+    "        const couriersOnly=state.route===deliveryCouriersRoute;\n        const logistics=state.route===deliveryLogisticsRoute||couriersOnly;"
+  ],
+  [
+    "const key=store?'deliveryStore':logistics?'deliveryLogistics':",
+    "const key=store?'deliveryStore':couriersOnly?'deliveryCouriers':logistics?'deliveryLogistics':"
+  ],
+  [
+    "filters:state.filters[key]??={},deliveryOnly,creditOnly,",
+    "filters:state.filters[key]??={},deliveryOnly,creditOnly,couriersOnly,"
+  ]
+]

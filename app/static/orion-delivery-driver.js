@@ -16,7 +16,7 @@
     const response=await fetch(path,{method,credentials:'same-origin',cache:'no-store',headers:{
       'Content-Type':'application/json','X-Orion-CSRF':csrf},body:body===undefined?undefined:JSON.stringify(body)});
     const result=await response.json().catch(()=>({}));
-    if(!response.ok){const err=new Error(typeof result.detail==='string'?result.detail:'Não foi possível concluir a operação.');err.status=response.status;throw err;}
+    if(!response.ok){const err=new Error(typeof result.detail==='string'?result.detail:result.detail?.message||'Não foi possível concluir a operação.');err.status=response.status;err.detail=result.detail;throw err;}
     return result;
   }
   function stopWatch(){
@@ -139,13 +139,13 @@
     notice(error.message||'Sem conexão. Tente novamente.');
     if([401,403].includes(error.status)){
       stopWatch();model=null;historySequence++;historyData=null;focusId=null;lastShape='';lastQueueShape='';lastOfferShape='';lastFocusShape='';lastLoadShape='';selected.clear();loadOrder=[];actionKeys.clear();for(const id of ['queue','available-orders','route-load','offers','focus-content','history-content','cash-content','stats','next-delivery','home-shortcuts'])el(id).replaceChildren();el('workspace').hidden=true;viewName='home';document.body.classList.remove('focus-mode');
-      if(error.status===401){csrf='';el('login').hidden=false;el('logout').hidden=true;}
+      csrf='';el('login').hidden=false;el('activation').hidden=true;el('logout').hidden=true;
     }
     el('retry').hidden=false;
   }
   async function start(){
     try{const me=await request('/auth/me');csrf=me.csrf;personId=me.account_id||me.email||'';el('logout').hidden=false;
-      el('login').hidden=true;await refresh();showView('home');void refreshHistory();notice('');}catch(error){fault(error);}
+      el('login').hidden=true;el('activation').hidden=true;await refresh();showView('home');void refreshHistory();notice('');}catch(error){fault(error);}
   }
   async function perform(task){
     if(busy)return;busy=true;sequence++;
@@ -159,10 +159,44 @@
     if(!actionKeys.has(signature))actionKeys.set(signature,crypto.randomUUID());
     await request(api+'/orders/'+row.id+'/actions','POST',{...data,idempotency_key:actionKeys.get(signature)});
   }
+  const inviteMode=new URLSearchParams(location.search).get('primeiro-acesso')==='1';
+  el('activate-link').hidden=!inviteMode;
+  function showActivation(verifyEmail=''){
+    el('login').hidden=true;el('activation').hidden=false;el('retry').hidden=true;
+    el('activate-form').hidden=!!verifyEmail;el('activate-verify').hidden=!verifyEmail;
+    if(verifyEmail)el('activate-verify').elements.email.value=verifyEmail;
+    notice('');
+  }
+  el('activate-link').onclick=async()=>{
+    try{const info=await request('/auth/features');if(!info.registration){notice('A criação de conta está temporariamente indisponível. Use uma conta Orion existente ou fale com a distribuidora.');return}showActivation()}
+    catch(error){notice(error.message);}
+  };
+  el('activate-back').onclick=()=>{el('activation').hidden=true;el('login').hidden=false;notice('');};
+  let activating=false;
+  el('activate-form').addEventListener('submit',async event=>{
+    event.preventDefault();if(activating)return;const f=event.target;activating=true;
+    try{const email=f.elements.email.value.trim().toLowerCase();
+      await request('/auth/register','POST',{name:f.elements.name.value,email,password:f.elements.password.value});
+      f.elements.password.value='';showActivation(email);notice('Confirme o código enviado ao seu e-mail.');
+    }catch(error){notice(error.message);}finally{activating=false}
+  });
+  el('activate-verify').addEventListener('submit',async event=>{
+    event.preventDefault();if(activating)return;activating=true;const f=event.target;
+    try{const email=f.elements.email.value.trim().toLowerCase();
+      await request('/auth/verify','POST',{email,code:f.elements.code.value});
+      f.elements.code.value='';el('activation').hidden=true;el('login').hidden=false;el('login').elements.username.value=email;
+      notice('E-mail confirmado. Entre com sua senha para acessar as entregas.');
+    }catch(error){notice(error.message);}finally{activating=false}
+  });
+  el('activate-resend').onclick=async()=>{
+    if(activating)return;const f=el('activate-verify');if(!f.elements.email.reportValidity())return;activating=true;
+    try{await request('/auth/verify/resend','POST',{email:f.elements.email.value.trim().toLowerCase()});notice('Solicitação recebida. Confira o e-mail.');}
+    catch(error){notice(error.message);}finally{activating=false}
+  };
   el('login').addEventListener('submit',async event=>{
     event.preventDefault();const form=event.target;
     try{await request('/auth/login','POST',{username:form.username.value,password:form.password.value});form.password.value='';await start();}
-    catch(error){fault(error);}
+    catch(error){if(error.detail?.code==='email_confirmation_required'){showActivation(form.username.value.trim().toLowerCase());notice('Confirme seu e-mail para entrar.')}else fault(error);}
   });
   el('retry').onclick=start;
   el('logout').onclick=async()=>{

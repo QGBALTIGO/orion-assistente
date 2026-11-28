@@ -13,7 +13,11 @@
 <form id="login" hidden><h1>Bem-vindo à Orion</h1><p>Acesse sua conta de entregador vinculada à distribuidora.</p>
 <label>E-mail da conta<input name="username" type="email" autocomplete="username" required></label>
 <label>Senha<input name="password" type="password" autocomplete="current-password" required></label>
-<button>Entrar</button><a href="/painel">Recuperar acesso na Orion</a></form>
+<button>Entrar</button><button id="activate-link" type="button" class="secondary" hidden>Primeiro acesso · Criar minha senha</button><a href="/painel">Recuperar acesso na Orion</a></form>
+<section id="activation" class="card activation" hidden><h1>Primeiro acesso</h1><p>Use o e-mail que a sua distribuidora autorizou. Este cadastro cria apenas a sua conta pessoal; não cria uma empresa.</p>
+<form id="activate-form"><label>Seu nome<input name="name" autocomplete="name" minlength="2" maxlength="120" required></label><label>E-mail autorizado<input name="email" type="email" autocomplete="email" required></label><label>Crie sua senha<input name="password" type="password" autocomplete="new-password" minlength="8" maxlength="128" required></label><button>Criar conta e confirmar e-mail</button></form>
+<form id="activate-verify" hidden><p>Digite o código de seis dígitos enviado ao seu e-mail.</p><label>E-mail<input name="email" type="email" autocomplete="email" required></label><label>Código de confirmação<input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required></label><button>Confirmar e-mail</button><button type="button" class="secondary" id="activate-resend">Reenviar código</button></form>
+<button class="secondary" id="activate-back" type="button">Voltar para entrar</button><a href="/painel">Já tem conta ou precisa recuperar a senha?</a></section>
 <section id="workspace" hidden>
 <nav class="nav" aria-label="Navegação do entregador">
 <button data-view="home" aria-current="page" type="button"><span data-icon="home"></span>Dashboard</button>

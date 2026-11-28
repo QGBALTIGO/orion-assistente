@@ -31,6 +31,18 @@ class Grant(ProfileModel):
         return value
 
 
+class Enroll(logistics.CourierCreate):
+    email: str = Field(min_length=5,max_length=254)
+
+    @field_validator("email")
+    @classmethod
+    def enrollment_email(cls,value):
+        value=Grant.valid_email(value)
+        if not re.fullmatch(r"[a-z0-9.!#$%&'*+/=?^_\x60{|}~-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+",value):
+            raise ValueError("Informe um e-mail válido")
+        return value
+
+
 class Shift(ProfileModel):
     state: Literal["available","unavailable","off"]
 
@@ -334,3 +346,47 @@ async def history(db,tenant,person):
             method=pay["method"] or "other"
             totals[method]=totals.get(method,0)+pay["amount_cents"]
     return {"items":items,"totals":totals,"has_more":len(rows)>100,"window_days":7}
+
+
+async def access_directory(db,tenant,*,search="",active_only=False,offset=0):
+    """Owner-only directory: no passwords, tokens or personal account records."""
+    limit=25
+    params={"t":tenant,"search":search.strip(),"active":active_only,"limit":limit+1,"offset":offset}
+    rows=(await db.execute(text("""
+        SELECT c.id,c.name,c.phone,c.active,c.revision,a.email,
+            coalesce(a.revision,0) AS access_revision,a.account_id IS NOT NULL AS linked,
+            a.shift_started_at,coalesce(a.available,false) AS available,
+            (SELECT count(*) FROM delivery_driver_assignments x JOIN commercial_orders o
+              ON (o.tenant_id,o.id)=(x.tenant_id,x.order_id)
+              WHERE x.tenant_id=:t AND x.courier_id=c.id AND
+                ((x.status='reserved' AND o.status='confirmed') OR
+                 (x.status IN ('accepted','arrived') AND o.status='dispatched'))) AS open_orders
+        FROM delivery_couriers c LEFT JOIN delivery_driver_access a
+          ON (a.tenant_id,a.courier_id)=(c.tenant_id,c.id)
+        WHERE c.tenant_id=:t AND (NOT :active OR c.active)
+          AND (:search='' OR position(lower(:search) IN lower(concat_ws(' ',c.name,c.phone,a.email)))>0)
+        ORDER BY lower(c.name),c.id LIMIT :limit OFFSET :offset
+    """),params)).mappings().all()
+    summary=(await db.execute(text("""
+        SELECT count(*) AS total,count(*) FILTER (WHERE c.active) AS active,
+          count(*) FILTER (WHERE c.active AND a.email IS NOT NULL) AS authorized,
+          count(*) FILTER (WHERE c.active AND a.shift_started_at IS NOT NULL) AS in_shift
+        FROM delivery_couriers c LEFT JOIN delivery_driver_access a
+          ON (a.tenant_id,a.courier_id)=(c.tenant_id,c.id) WHERE c.tenant_id=:t
+    """),params)).mappings().one()
+    return {"items":[dict(r) for r in rows[:limit]],"limit":limit,"offset":offset,
+            "has_more":len(rows)>limit,"summary":dict(summary),"portal_path":f"/entregador/{tenant}/"}
+
+
+async def enroll(db,tenant,access,payload):
+    """Create the roster record and its verified-email authorization atomically."""
+    await logistics.lock_policy(db,tenant,exclusive=True)
+    async def write():
+        if not payload.active:
+            raise HTTPException(422,"Ative o entregador antes de liberar seu acesso.")
+        key=str(uuid5(NAMESPACE_URL,f"orion:courier-enroll:{tenant}:{payload.idempotency_key}"))
+        courier=await logistics.create_courier(db,tenant,access,logistics.CourierCreate(
+            name=payload.name,phone=payload.phone,active=True,idempotency_key=key))
+        grant=await set_grant(db,tenant,access,courier["id"],Grant(email=payload.email,expected_revision=0))
+        return {**courier,"email":grant["email"],"access_revision":grant["revision"],"portal_path":grant["portal_path"]}
+    return await catalog.run_once(db,tenant,payload,"courier_enroll",None,write)

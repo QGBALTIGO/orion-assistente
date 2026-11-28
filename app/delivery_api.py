@@ -333,6 +333,18 @@ async def couriers(tenant_id: UUID, search: str = Query(default="", max_length=1
     return await run(actor, tenant_id, logistics.list_couriers, search=search, active_only=active_only, offset=offset)
 
 
+@router.get("/logistics/couriers/access-directory")
+async def courier_directory(tenant_id: UUID,search: str=Query(default="",max_length=120),
+                            active_only: bool=False,offset: int=Query(default=0,ge=0,le=100_000),
+                            actor: Actor=Depends(authenticate)):
+    return await run(actor,tenant_id,delivery_driver.access_directory,search=search,active_only=active_only,offset=offset,publish=True)
+
+
+@router.post("/logistics/couriers/enroll",status_code=201)
+async def enroll_courier(tenant_id: UUID,payload: delivery_driver.Enroll,actor: Actor=Depends(authenticate)):
+    return await run(actor,tenant_id,delivery_driver.enroll,payload,write=True,publish=True,response_status=201)
+
+
 @router.get("/logistics/couriers/{courier_id}/portal")
 async def driver_access(tenant_id: UUID,courier_id: UUID,actor: Actor = Depends(authenticate)):
     return await run(actor,tenant_id,delivery_driver.grant_state,courier_id,publish=True)

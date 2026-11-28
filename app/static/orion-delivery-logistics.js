@@ -8,7 +8,7 @@
   const weekdays=days.map((name,index)=>[index,name]);
   const currencyLimit=1000000000;
 
-  async function mount({host,filters,call,allowed,canWrite,canManagePolicy=canWrite,ui,openEditor}) {
+  async function mount({host,filters,call,allowed,canWrite,canManagePolicy=canWrite,ui,openEditor,couriersOnly=false}) {
     if (!host||!allowed()) return;
     const {esc,loading,button,title,field,moneyField,selectField,checkField,empty,money,badge,query,brazilianStates,routeButton,icon}=ui;
     const current=()=>allowed()&&host.isConnected;
@@ -22,7 +22,7 @@
     filters.search ??= '';
     filters.offset ??= 0;
     filters.active_only ??= false;
-    host.innerHTML=title('Logística','Acompanhe a operação, organize as rotas e configure as entregas.',routeButton('Ver entregas','entregas-delivery','os-outline','deliveryTruck'))+
+    host.innerHTML=(couriersOnly?title('Entregadores','Cadastre sua equipe, libere acessos e acompanhe a disponibilidade.',routeButton('Ver entregas','entregas-delivery','os-outline','deliveryTruck')):title('Logística','Acompanhe a operação, organize as rotas e configure as entregas.',routeButton('Ver entregadores','entregadores-delivery','os-outline','users')))+
       '<div id="osDeliveryLogisticsSections" aria-live="polite"></div>';
     const output=host.querySelector('#osDeliveryLogisticsSections');
 
@@ -98,11 +98,42 @@
           command('Próxima','logistics-courier-next','chevron',couriers.has_more?'':'disabled')+'</div></div>':'')+'</section>';
     }
 
+    function courierDirectory(){
+      const sum=couriers.summary;
+      const authorized=canManagePolicy();
+      const rows=couriers.items.map(c=>{
+        const status=!c.active?'Inativo':c.shift_started_at?(c.available?'Disponível':'Indisponível'):'Fora do expediente';
+        const access=!c.active?'Acesso bloqueado':!c.email?'Sem acesso':c.linked?'Conta vinculada':'Acesso liberado · primeiro acesso';
+        const actions=[];
+        if(canWrite())actions.push(['Editar','logistics-edit-courier','edit',nameAttr('courier',c.id)]);
+        if(authorized&&c.active)actions.push([c.email?'Gerenciar acesso':'Criar acesso','logistics-driver-access','user',nameAttr('courier',c.id)]);
+        return '<article class="os-card os-item-card os-delivery-order-card"><div class="os-delivery-order-head"><div class="od-order-identity"><span class="os-square-icon">'+icon('users')+'</span><div><h3>'+esc(c.name)+'</h3><p class="os-help">'+esc(c.phone?window.OrionFields.phoneDisplay(c.phone):'Telefone não informado')+'</p></div></div>'+badge(c.active?'active':'inactive',status)+'</div>'+
+          (authorized?'<p><strong>'+esc(access)+'</strong>'+(c.email?'<br><small>'+esc(c.email)+'</small>':'')+'</p><p class="os-help">'+esc(String(c.open_orders||0))+' pedido(s) sob responsabilidade</p>':'')+
+          writableActions(actions)+'</article>';
+      });
+      const portal=couriers.portal_path;
+      return (sum?'<div class="od-logistics-overview">'+[['Equipe',sum.total,'users'],['Ativos',sum.active,'check'],['Acessos liberados',sum.authorized,'user'],['Em expediente',sum.in_shift,'clock']].map(([label,value,symbol])=>'<div class="os-card"><span class="os-square-icon">'+icon(symbol)+'</span><div><small>'+esc(label)+'</small><strong>'+esc(String(value))+'</strong></div></div>').join('')+'</div>':'')+
+        '<section class="os-card os-section-gap"><div class="os-card-header"><div><h2>Equipe de entregas</h2><p>O acesso é individual e restrito a esta empresa.</p></div>'+
+        (canWrite()?button('Novo entregador','logistics-new-courier','', 'plus'):'')+'</div>'+
+        (portal?'<div class="os-actions"><a class="os-button os-outline" href="'+esc(portal)+'" target="_blank" rel="noopener noreferrer">Abrir Central do Entregador</a></div>':'')+
+        '<form id="osDeliveryCouriersFilter" class="os-filter-row">'+field('Buscar','logistics_courier_search','search',filters.search,'maxlength="120"')+
+        selectField('Situação','logistics_courier_status',[['all','Todos'],['active','Ativos']],filters.active_only?'active':'all')+
+        '<button type="submit" class="os-button os-outline">Filtrar</button></form></section>'+
+        '<div class="os-delivery-courier-directory">'+(rows.length?rows.join(''):empty('users','Nenhum entregador encontrado','Cadastre sua equipe para começar.'))+'</div>'+
+        ((couriers.offset||couriers.has_more)?'<div class="os-pagination"><span>Página '+(couriers.offset/couriers.limit+1)+'</span><div class="os-actions">'+command('Anterior','logistics-courier-prev','left',couriers.offset?'':'disabled')+command('Próxima','logistics-courier-next','chevron',couriers.has_more?'':'disabled')+'</div></div>':'')+
+        (authorized?'<section class="os-card os-section-gap"><h2>Como funciona o primeiro acesso</h2><p>1. Cadastre o entregador e informe o e-mail dele.</p><p>2. Em Gerenciar acesso, copie o convite e envie ao entregador.</p><p>3. O entregador cria sua própria senha e confirma o e-mail, ou entra com sua conta Orion existente. Não é necessário criar outra empresa nem assinar outro plano.</p></section>':'');
+    }
+
     async function read() {
       const ticket=++version;
       stopMonitor();
-      output.innerHTML=loading('Carregando logística…');
+      output.innerHTML=loading(couriersOnly?'Carregando entregadores…':'Carregando logística…');
       try {
+        if(couriersOnly){
+          couriers=await call('/logistics/couriers'+(canManagePolicy()?'/access-directory':'')+'?'+query(filters));
+          if(!current()||ticket!==version)return;
+          output.innerHTML=courierDirectory();window.OrionFields.refresh(output);return;
+        }
         const responses=await Promise.all([call('/logistics?include_offering=true'),call('/logistics/couriers?'+query(filters))]);
         if (!current()||ticket!==version) return;
         [policy,couriers]=responses;
@@ -263,12 +294,16 @@
     function editCourier(courier) {
       const content='<div class="os-form-grid">'+field('Nome','logistics_courier_name','text',courier?.name||'','required maxlength="120"')+
         field('Telefone','logistics_courier_phone','tel',courier?.phone||'','autocomplete="tel" maxlength="40"')+'</div>'+
-        checkField('Entregador ativo','logistics_courier_active',courier?.active??true);
+        checkField('Entregador ativo','logistics_courier_active',courier?.active??true)+
+        (!courier&&couriersOnly&&canManagePolicy()?'<div class="os-section-gap"><h3>Acesso à Central do Entregador</h3>'+field('E-mail do entregador','driver_email','email','','maxlength="254" autocomplete="off"')+'<p class="os-help">Preencha para liberar o acesso junto com o cadastro. Ele definirá a própria senha e confirmará o e-mail. Deixe vazio para cadastrar sem liberar acesso.</p></div>':'');
       openEditor(courier?'Editar entregador':'Novo entregador',content,async(form,values,key)=>{
         const data={name:values.logistics_courier_name,phone:values.logistics_courier_phone||null,
           active:form.elements.logistics_courier_active.checked};
+        const email=values.driver_email?.trim().toLowerCase();
+        if(email&&!data.active)throw Error('Ative o entregador para liberar o acesso.');
+        const enrollment={...data,email};
         const saved=courier?await call('/logistics/couriers/'+encodeURIComponent(courier.id),'PUT',
-          {...data,expected_revision:courier.revision}):await call('/logistics/couriers','POST',{...data,idempotency_key:key(data)});
+          {...data,expected_revision:courier.revision}):email?await call('/logistics/couriers/enroll','POST',{...enrollment,idempotency_key:key(enrollment)}):await call('/logistics/couriers','POST',{...data,idempotency_key:key(data)});
         if (!saved?.id) throw Error('Confira o cadastro antes de repetir.');
         if (!courier) Object.assign(filters,{search:'',offset:0,active_only:false});
       },'Entregador salvo.');
@@ -296,15 +331,26 @@
         node.disabled=true;
         void call(path).then(grant=>{
           if(!current()||!node.isConnected)return;
-          const link=new URL(grant.portal_path,location.origin);
-          const content=field('E-mail verificado do entregador','driver_email','email',grant.email||'','maxlength="254"')+
-            '<p class="os-help">Para revogar o acesso, apague o e-mail e salve. O entregador entra com a própria conta Orion.</p>'+
-            field('Link do aplicativo','driver_portal','text',link.href,'readonly')+
-            '<a class="os-button os-outline" href="'+esc(link.pathname)+'/" target="_blank" rel="noreferrer">Abrir aplicativo</a>';
+          const link=new URL(grant.portal_path.replace(/\/$/,'')+'/',location.origin),invite=new URL(link.href);
+          invite.searchParams.set('primeiro-acesso','1');
+          const content=field('E-mail do entregador','driver_email','email',grant.email||'','maxlength="254" autocomplete="off"')+
+            '<p class="os-help">Salve para autorizar este e-mail. A conta será confirmada pelo próprio entregador. Apague o e-mail e salve para revogar a autorização.</p>'+
+            field('Link de primeiro acesso','driver_portal','text',invite.href,'readonly')+
+            '<div class="os-actions"><button class="os-button os-outline" type="button" data-copy-driver>Copiar convite</button><a class="os-button os-outline" href="'+esc(link.href)+'" target="_blank" rel="noopener noreferrer">Abrir aplicativo</a></div>'+
+            '<p class="os-help" data-driver-copy-status aria-live="polite">'+(grant.email?'Convite disponível para o e-mail autorizado.':'Salve o e-mail antes de compartilhar o convite.')+'</p>';
           openEditor('Acesso do entregador',content,async(form,values)=>{
             const email=values.driver_email.trim().toLowerCase()||null;
             if(email!==grant.email)await call(path,'PUT',{email,expected_revision:grant.revision});
-          },'Acesso do entregador salvo.');
+          },'Acesso do entregador salvo.',{label:'Salvar acesso',bind:dialog=>{
+            const form=dialog.querySelector('form'),copy=dialog.querySelector('[data-copy-driver]'),status=dialog.querySelector('[data-driver-copy-status]');
+            const sync=()=>{copy.disabled=!grant.email||form.elements.driver_email.value.trim().toLowerCase()!==grant.email;};
+            form.elements.driver_email.addEventListener('input',sync);sync();
+            copy.addEventListener('click',async()=>{
+              const message='Seu acesso à Central do Entregador Orion foi liberado. Use o e-mail '+grant.email+' para entrar ou criar sua senha e confirmar o e-mail: '+invite.href;
+              try{await navigator.clipboard.writeText(message);status.textContent='Convite copiado. Envie ao entregador.';}
+              catch{form.elements.driver_portal.focus();form.elements.driver_portal.select();status.textContent='Copie o link selecionado e informe ao entregador o e-mail autorizado.';}
+            });
+          }});
         }).catch(ex=>{if(current())node.insertAdjacentHTML('afterend',error(ex.message));}).finally(()=>{node.disabled=false;});
         return;
       }

@@ -129,6 +129,7 @@
   const deliveryCreditRoute='vendas-prazo-delivery';
   const deliveryReportRoute='relatorio-delivery';
   const deliveryLogisticsRoute='logistica-delivery';
+  const deliveryCouriersRoute='entregadores-delivery';
   const deliveryStoreRoute='loja-delivery';
   const deliveryWhatsAppRoute='whatsapp-delivery';
   routeNames[deliveryCatalogRoute]='Produtos e estoque';
@@ -138,10 +139,11 @@
   routeNames[deliveryCreditRoute]='Vendas a prazo';
   routeNames[deliveryReportRoute]='Relatórios';
   routeNames[deliveryLogisticsRoute]='Logística';
+  routeNames[deliveryCouriersRoute]='Entregadores';
   routeNames[deliveryStoreRoute]='Loja rápida';
   routeNames[deliveryWhatsAppRoute]='Conectar WhatsApp';
   routeNames[deliveryDashboardRoute]='Dashboard';
-  const deliveryRoutes=[deliveryDashboardRoute,deliveryCatalogRoute,deliveryOrdersRoute,deliveryDispatchRoute,deliveryContainersRoute,deliveryCreditRoute,deliveryReportRoute,deliveryLogisticsRoute,deliveryStoreRoute,deliveryWhatsAppRoute];
+  const deliveryRoutes=[deliveryDashboardRoute,deliveryCatalogRoute,deliveryOrdersRoute,deliveryDispatchRoute,deliveryContainersRoute,deliveryCreditRoute,deliveryReportRoute,deliveryLogisticsRoute,deliveryCouriersRoute,deliveryStoreRoute,deliveryWhatsAppRoute];
   const mainNav=[['verificador-numeros','check'],['link-whatsapp','link'],['contatos','users'],['grupos-contatos','list'],['dispositivos','phone'],['chatbot','bot'],['testar-chatbot','flask'],['templates','layers'],['mensagens-enviadas','fileCheck'],['diagnosticos','activity'],['campanhas','megaphone'],['programadas','calendarClock'],['massa','broadcast'],['enviar-mensagem','send'],['aquecimento','flame'],['evitar-banimento','shieldCheck'],['resolver-banimento','shieldAlert'],['extrator-contatos','usersSearch'],['adicionar-ao-grupo','userPlus'],['dashboard','dashboard'],['agenda','calendar'],['clientes','users'],['clinica','tooth'],['pacientes-odonto','users'],['proteses-odonto','prosthesis'],['estoque-odonto','box'],['vendas-odonto','layers'],['ajustes-odonto','settings'],['inbox','chat'],['servicos','scissors'],['funcionarios','badgeUser'],['financeiro','wallet'],['desempenho','chart'],['marketing','sparkles'],['site','globe'],['fidelizacao','gift'],['consultor','brain'],['plano','credit'],['configuracoes','settings']];
   const subscriptionNavigation=[
     ['Gestão',['dashboard']],
@@ -504,7 +506,7 @@
     const delivery=deliveryPreview()&&state.route!=='dashboard-delivery';
     const symbols={'pedidos-delivery':'deliveryReceipt','entregas-delivery':'deliveryTruck','produtos-delivery':'box',
       'vasilhames-delivery':'deliveryVessel','vendas-prazo-delivery':'deliveryDeferred','relatorio-delivery':'chart',
-      'logistica-delivery':'deliveryRoute','loja-delivery':'deliveryStorefront','whatsapp-delivery':'phone',
+      'logistica-delivery':'deliveryRoute','entregadores-delivery':'users','loja-delivery':'deliveryStorefront','whatsapp-delivery':'phone',
       clientes:'users',financeiro:'wallet',inbox:'chat',configuracoes:'settings'};
     const symbol=delivery?symbols[state.route]:null;
     return '<div class="os-title-row'+(symbol?' os-delivery-title':'')+'"><div>'+
@@ -653,7 +655,7 @@
       const icons=new Map(mainNav);
       for(const [heading,routes] of subscriptionNavigation)nav+=navGroup(heading,routes.map(route=>[route,icons.get(route)]));
     }else if(delivery){
-      nav+=navGroup('Gestão',[[deliveryDashboardRoute,'dashboard'],[deliveryOrdersRoute,'deliveryReceipt'],[deliveryDispatchRoute,'deliveryTruck'],[deliveryCatalogRoute,'box'],[deliveryContainersRoute,'deliveryVessel'],['clientes','users']]);
+      nav+=navGroup('Gestão',[[deliveryDashboardRoute,'dashboard'],[deliveryOrdersRoute,'deliveryReceipt'],[deliveryDispatchRoute,'deliveryTruck'],[deliveryCouriersRoute,'users'],[deliveryCatalogRoute,'box'],[deliveryContainersRoute,'deliveryVessel'],['clientes','users']]);
       nav+=navGroup('Atendimento',[[deliveryStoreRoute,'deliveryStorefront'],[deliveryWhatsAppRoute,'phone'],['inbox','chat']]);
       nav+=navGroup('Financeiro',[[deliveryCreditRoute,'deliveryDeferred'],['financeiro','wallet'],[deliveryReportRoute,'chart']]);
       nav+=navGroup('Administração',[[deliveryLogisticsRoute,'deliveryRoute'],['configuracoes','settings']]);
@@ -987,6 +989,7 @@
     if(state.route===deliveryCreditRoute)html='<div id="osPageBody">'+loading('Carregando vendas a prazo…')+'</div>';
     if(state.route===deliveryReportRoute)html='<div id="osPageBody">'+loading('Carregando o relatório…')+'</div>';
     if(state.route===deliveryLogisticsRoute)html='<div id="osPageBody">'+loading('Carregando logística…')+'</div>';
+    if(state.route===deliveryCouriersRoute)html='<div id="osPageBody">'+loading('Carregando entregadores…')+'</div>';
     if(state.route===deliveryStoreRoute)html='<div id="osPageBody">'+loading('Carregando loja…')+'</div>';
     if([deliveryOrdersRoute,deliveryDispatchRoute].includes(state.route))html='<div id="osPageBody">'+loading('Carregando pedidos…')+'</div>';
     if(state.route==='afiliados-whatsapp')html='<div id="osPageBody">'+routeButton('Voltar a Conexões e destinos','afiliados-conexoes','os-ghost','left')+'<section id="osSubscriptionDevices"></section></div>';
@@ -1194,19 +1197,21 @@
       case deliveryContainersRoute:
       case deliveryCreditRoute:
       case deliveryLogisticsRoute:
+      case deliveryCouriersRoute:
       case deliveryStoreRoute:
       case deliveryDispatchRoute:{
         const catalog=state.route===deliveryCatalogRoute;
         const deliveryOnly=state.route===deliveryDispatchRoute;
         const creditOnly=state.route===deliveryCreditRoute;
         const containers=state.route===deliveryContainersRoute;
-        const logistics=state.route===deliveryLogisticsRoute;
+        const couriersOnly=state.route===deliveryCouriersRoute;
+        const logistics=state.route===deliveryLogisticsRoute||couriersOnly;
         const store=state.route===deliveryStoreRoute;
         const module=store?window.OrionDeliveryStorefront:logistics?window.OrionDeliveryLogistics:catalog?window.OrionDeliveryCatalog:containers?window.OrionDeliveryContainers:window.OrionDeliveryOrders;
         if(!module)throw Error('Atualize o painel para carregar esta área de Delivery.');
-        const key=store?'deliveryStore':logistics?'deliveryLogistics':catalog?'deliveryCatalog':containers?'deliveryContainers':creditOnly?'deliveryCredit':deliveryOnly?'deliveryDispatch':'deliveryOrders';
+        const key=store?'deliveryStore':couriersOnly?'deliveryCouriers':logistics?'deliveryLogistics':catalog?'deliveryCatalog':containers?'deliveryContainers':creditOnly?'deliveryCredit':deliveryOnly?'deliveryDispatch':'deliveryOrders';
         await module.mount({
-          ...deliveryView(c,store?()=>writable(true):writable),filters:state.filters[key]??={},deliveryOnly,creditOnly,
+          ...deliveryView(c,store?()=>writable(true):writable),filters:state.filters[key]??={},deliveryOnly,creditOnly,couriersOnly,
         });
         break;
       }

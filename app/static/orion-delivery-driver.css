@@ -18,3 +18,5 @@ article{display:grid;gap:10px;padding:16px;border-radius:16px}article h3{font-si
 
 .receipt-row .actions{flex-wrap:nowrap;flex:none}.receipt-row .actions button{flex:none;width:48px;padding:6px;font-size:20px}.focus-actions form{gap:12px}.focus-actions:has(form){position:static}.focus-actions:not(:has(form)) button{width:100%}
 @media(max-width:355px){.nav button{font-size:9px}.claim-row>strong{font-size:13px}.stat{padding:9px 6px}.stat small{font-size:10px}.cash-amount strong{font-size:18px}}
+
+.activation{width:min(100%,460px);margin:8vh auto}.activation a{color:var(--brand);font-size:13px;text-align:center}.activation form{gap:12px}
