@@ -467,7 +467,8 @@ body:has(.os-delivery-workspace) #osDialog.os-delivery-dialog .os-button:not(.os
 .od-advanced-grid .os-field{min-width:0;margin:0}
 .od-filter-footer{display:flex;justify-content:flex-end;gap:7px;flex-wrap:wrap}
 .os-delivery-workspace #page-suite .od-tab-strip{
-  display:flex;flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-inline:contain;scrollbar-width:thin;
+  display:flex;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;overscroll-behavior-inline:contain;scrollbar-width:thin;
+  scroll-behavior:auto;scroll-padding-inline:4px;
   gap:4px;min-width:0;max-width:100%;justify-content:flex-start;padding:4px
 }
 .os-delivery-workspace #page-suite .od-tab-strip>.os-pill-tab{

@@ -128,6 +128,15 @@
       return read();
     }
 
+    function revealActiveTab(tab) {
+      const bar=tab?.closest('.od-tab-strip');
+      if(!bar||bar.scrollWidth<=bar.clientWidth)return;
+      const viewport=bar.getBoundingClientRect(),item=tab.getBoundingClientRect();
+      const left=viewport.left+bar.clientLeft,right=left+bar.clientWidth;
+      if(item.left<left)bar.scrollLeft+=item.left-left;
+      else if(item.right>right)bar.scrollLeft+=item.right-right;
+    }
+
     async function show(name,focus=false) {
       if (!Object.hasOwn(tabs,name)||!current()) return;
       const token=++revision;
@@ -136,7 +145,10 @@
         const selected=tab.dataset.deliveryReportTab===name;
         tab.setAttribute('aria-selected',String(selected));
         tab.tabIndex=selected?0:-1;
-        if (selected&&focus) tab.focus();
+        if(selected){
+          if(focus)tab.focus({preventScroll:true});
+          revealActiveTab(tab);
+        }
       }
       shell.setAttribute('aria-labelledby','osDeliveryReportTab-'+name);
       const work=document.createElement('div');

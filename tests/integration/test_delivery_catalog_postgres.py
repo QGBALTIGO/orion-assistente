@@ -291,9 +291,26 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
               if (!visible(grid) || grid.closest('.os-table-scroll')) continue;
               const items = [...grid.children].filter(visible);
               const bounds = rect(grid);
+              // These named tab strips intentionally scroll horizontally. Test
+              // every tab's reachability, not just the currently clipped view.
+              const strip = grid.classList.contains('od-tab-strip');
+              const scrollable = strip && ['auto','scroll'].includes(getComputedStyle(grid).overflowX);
+              if (scrollable) {
+                const initial = grid.scrollLeft;
+                const left = bounds.left + grid.clientLeft, right = left + grid.clientWidth;
+                for (const item of items) {
+                  const a = rect(item);
+                  if (a.width > grid.clientWidth + 2) failures.push('Oversized tab: ' + name(item));
+                  grid.scrollLeft += a.left - left;
+                  const reached = rect(item);
+                  if (reached.left < left - 2 || reached.right > right + 2)
+                    failures.push('Unreachable tab: ' + name(item));
+                }
+                grid.scrollLeft = initial;
+              }
               for (let i = 0; i < items.length; i++) {
                 const a = rect(items[i]);
-                if (a.left < bounds.left - 2 || a.right > bounds.right + 2)
+                if (!scrollable && (a.left < bounds.left - 2 || a.right > bounds.right + 2))
                   failures.push('Outside grid: ' + name(items[i]));
                 for (let j = i + 1; j < items.length; j++) {
                   const b = rect(items[j]);

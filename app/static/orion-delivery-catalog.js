@@ -39,6 +39,15 @@
         '<div class="od-filter-footer"><button type="submit" class="os-button">Aplicar filtros</button></div></details>';
     }
 
+    function revealActiveTab(tab) {
+      const bar=tab?.closest('.od-tab-strip');
+      if(!bar||bar.scrollWidth<=bar.clientWidth)return;
+      const viewport=bar.getBoundingClientRect(),item=tab.getBoundingClientRect();
+      const left=viewport.left+bar.clientLeft,right=left+bar.clientWidth;
+      if(item.left<left)bar.scrollLeft+=item.left-left;
+      else if(item.right>right)bar.scrollLeft+=item.right-right;
+    }
+
     function renderShell() {
       const newButton=filters.tab==='suppliers'?button('Novo fornecedor','delivery-supplier','','plus'):
         filters.tab==='purchases'?button('Receber compra','delivery-purchase','','plus'):button('Novo produto','delivery-create','','plus');
@@ -52,6 +61,7 @@
             (catalogTab()?'':'<button type="submit" class="os-button os-outline">Filtrar</button>')+'</form>'+
           '<div id="osDeliveryResults" aria-live="polite"></div></section>';
       window.OrionFields.refresh(host);
+      revealActiveTab(byId('osDeliveryTab-'+filters.tab));
     }
 
     function stockLabel(item) {
