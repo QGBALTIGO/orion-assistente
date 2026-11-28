@@ -87,14 +87,15 @@ button.os-delivery-dashboard-row:hover{background:var(--os-tint)}
 .os-delivery-dashboard-row .os-badge{padding:2px 7px;font-size:11px;line-height:16px;white-space:normal}
 /* A single container-responsive period control and a full-width interactive chart. */
 .os-delivery-dashboard-panel[data-delivery-section="week"]{container:odd-performance / inline-size}
-.odd-period-form{display:grid;gap:12px;margin:18px 0 0;min-width:0;max-width:100%}
+.odd-period-form{display:block;margin:14px 0 0;min-width:0;max-width:100%}
 .odd-period-quick,.odd-segments{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:3px;min-width:0;border:1px solid var(--odd-line);padding:4px;border-radius:11px;background:var(--os-bg)}
+.odd-period-quick{grid-template-columns:repeat(4,minmax(0,1fr));grid-template-rows:1fr;gap:2px;width:100%;max-width:100%;box-sizing:border-box;padding:3px;border-radius:10px}
 .odd-period-quick button,.odd-segments button{appearance:none;border:0;background:transparent;color:var(--os-muted);border-radius:8px;font:600 12px/1.3 var(--os-font);min-width:0;min-height:40px;padding:8px 4px;text-align:center;white-space:normal;overflow-wrap:anywhere;cursor:pointer}
 .odd-period-quick button[aria-pressed=true],.odd-segments button[aria-pressed=true]{background:var(--os-card);color:var(--os-primary);box-shadow:0 1px 4px color-mix(in srgb,var(--os-text) 9%,transparent)}
 .odd-period-quick button:hover,.odd-segments button:hover{color:var(--os-primary)}
-.odd-period-dates{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:end;gap:10px;margin:0;border:0;padding:0;min-width:0;max-width:100%}
-.odd-period-dates>*{min-width:0;max-width:100%}
-.odd-period-dates .os-button{grid-column:1/-1;min-height:42px;justify-self:end;width:auto}
+.odd-period-quick button{min-height:36px;padding:6px 2px;white-space:nowrap;overflow-wrap:normal;font-size:12px;line-height:1.3}
+.odd-period-quick button[aria-pressed=true]{box-shadow:0 1px 3px color-mix(in srgb,var(--os-text) 7%,transparent)}
+@container odd-performance (max-width:265px){.odd-period-quick button{font-size:11px;padding-inline:1px}}
 .odd-period-date{display:flex;align-items:center;gap:7px;color:var(--os-muted);font:500 12px/1.4 var(--os-font);margin:16px 0 12px!important}
 .odd-period-date>.os-icon{width:15px;height:15px;flex:none}
 .odd-period-stats{display:grid;grid-template-columns:minmax(0,1fr);gap:0;margin-bottom:18px;min-width:0;border:1px solid var(--odd-line);border-radius:12px;background:var(--os-bg);overflow:hidden}
@@ -137,9 +138,6 @@ button.os-delivery-dashboard-row:hover{background:var(--os-tint)}
 .odd-x-labels span{white-space:nowrap}
 .odd-no-movement{position:absolute;left:50%;top:47%;transform:translate(-50%,-50%);width:max-content;max-width:90%;padding:6px 9px;text-align:center;border-radius:8px;background:var(--os-card);font:500 12px/1.4 var(--os-font);color:var(--os-muted);pointer-events:none}
 @container odd-performance (min-width:570px){
-  .odd-period-quick{grid-template-columns:repeat(6,minmax(0,1fr))}
-  .odd-period-dates{grid-template-columns:repeat(2,minmax(0,1fr)) auto}
-  .odd-period-dates .os-button{grid-column:auto}
   .odd-period-stats{grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;border:0;background:transparent;overflow:visible}
   .odd-period-stat,.odd-period-stat+.odd-period-stat{grid-template-columns:minmax(0,1fr);gap:6px;border:1px solid var(--odd-line);border-radius:12px;background:var(--os-bg);padding:14px}
   .odd-period-stat>strong{text-align:start;font-size:24px}
@@ -154,8 +152,6 @@ button.os-delivery-dashboard-row:hover{background:var(--os-tint)}
   .odd-chart-axis [data-axis-edge=middle]:nth-child(2),.odd-chart-axis [data-axis-edge=middle]:nth-child(4){display:none}
 }
 @container odd-performance (max-width:290px){
-  .odd-period-quick{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .odd-period-dates{grid-template-columns:minmax(0,1fr)}
   .odd-period-stat{grid-template-columns:minmax(0,1fr);gap:3px}
   .odd-period-stat>strong{text-align:start}
   .odd-y-labels{width:57px;font-size:9px}
@@ -254,7 +250,8 @@ button.os-delivery-dashboard-row:hover{background:var(--os-tint)}
   .os-delivery-dashboard-panel.os-card{padding:13px;border-radius:15px}
   .os-delivery-dashboard-panel h2{font-size:16px}
   .odd-period-form{margin-top:14px}
-  .odd-period-quick button,.odd-segments button{min-height:42px}
+  .odd-period-quick button{min-height:40px}
+  .odd-segments button{min-height:42px}
   .odd-analysis-panel{padding:12px}
   .odd-analysis-panel h3{font-size:14px}
   .odd-plot{--odd-plot-height:166px}
