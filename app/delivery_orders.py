@@ -141,6 +141,7 @@ ORDERS = f"""
     SELECT o.id,o.quote_id,o.status,o.revision,o.created_at,d.mode,d.customer_id,
         CASE WHEN assignment.status='offered' AND assignment.expires_at<=now() THEN 'expired'
             ELSE assignment.status END AS assignment_status,
+        assigned.name AS assignment_courier_name,
         {SALES_CHANNEL} AS sales_channel,
         coalesce(shop.payment_preference,d.tender_preference) AS tender_preference,
         CASE WHEN pix.confirmed_at IS NOT NULL THEN 'confirmed'
@@ -156,6 +157,7 @@ ORDERS = f"""
     JOIN commercial_quotes q ON (q.tenant_id,q.id)=(o.tenant_id,o.quote_id)
     LEFT JOIN delivery_storefront_orders shop ON (shop.tenant_id,shop.order_id)=(o.tenant_id,o.id)
     LEFT JOIN delivery_driver_assignments assignment ON (assignment.tenant_id,assignment.order_id)=(o.tenant_id,o.id)
+    LEFT JOIN delivery_couriers assigned ON (assigned.tenant_id,assigned.id)=(assignment.tenant_id,assignment.courier_id)
     LEFT JOIN delivery_pix_orders pix ON (pix.tenant_id,pix.order_id)=(o.tenant_id,o.id)
     LEFT JOIN financial_entries f ON (f.tenant_id,f.id)=(d.tenant_id,d.financial_entry_id)
     {payments.COLLECTION_TOTAL_JOIN}

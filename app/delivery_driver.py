@@ -102,14 +102,19 @@ async def positions(db,tenant):
         ), offers AS (
             SELECT offered_to AS courier_id,count(*) AS waiting_acceptance FROM queue
             WHERE offered_to IS NOT NULL GROUP BY offered_to
+        ), loads AS (
+            SELECT reserved_to AS courier_id,count(*) AS waiting_load FROM queue
+            WHERE reserved_to IS NOT NULL GROUP BY reserved_to
         )
         SELECT c.name,a.courier_id,a.available,a.shift_started_at,a.latitude,a.longitude,a.location_at,
             a.location_at<now()-interval '3 minutes' AS stale,
-            coalesce(w.on_route,0) AS on_route,coalesce(f.waiting_acceptance,0) AS waiting_acceptance
+            coalesce(w.on_route,0) AS on_route,coalesce(f.waiting_acceptance,0) AS waiting_acceptance,
+            coalesce(l.waiting_load,0) AS waiting_load
         FROM delivery_driver_access a JOIN delivery_couriers c
             ON (c.tenant_id,c.id)=(a.tenant_id,a.courier_id)
         LEFT JOIN workloads w ON w.courier_id=a.courier_id
         LEFT JOIN offers f ON f.courier_id=a.courier_id
+        LEFT JOIN loads l ON l.courier_id=a.courier_id
         WHERE a.tenant_id=:t AND c.active AND a.shift_started_at IS NOT NULL
         ORDER BY a.available DESC,coalesce(w.on_route,0)+coalesce(f.waiting_acceptance,0),lower(c.name),c.id
     """),{"t":tenant})).mappings().all()

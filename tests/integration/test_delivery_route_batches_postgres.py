@@ -70,13 +70,19 @@ async def test_reserve_batch_exclusive_loading_and_legacy_stock(onboarding_db,mo
         reserved=(await d1.get(root+"/queue")).json()["orders"]
         assert len(reserved)==2 and all(o["status"]=="reserved" for o in reserved)
         assert not (await d2.get(root+"/queue")).json()["available_orders"]
-        assert (await admin.get(base+"/orders/"+reserved[0]["id"])).json()["status"]=="confirmed"
+        detail=(await admin.get(base+"/orders/"+reserved[0]["id"])).json()
+        assert detail["status"]=="confirmed" and detail["assignment_status"]=="reserved"
+        assert detail["assignment_courier_name"]==c1["email"]
+        ops=(await admin.get(base+"/logistics/positions")).json()
+        assert ops["summary"]["waiting_load"]==2 and ops["summary"]["on_route"]==0
+        assert sum(row["waiting_load"] for row in ops["items"])==2
         assert await stock(admin,base)==(5,2)
         assert (await d1.put(root+"/shift",json={"state":"off"})).status_code==409
         bad=request([ref(o) for o in reserved],load=[{"variant_id":variant,"quantity":1}],checked=True)
         assert (await d1.post(root+"/routes/start",json=bad)).status_code==422
         assert all(o["status"]=="reserved" for o in (await d1.get(root+"/queue")).json()["orders"])
         good=request([ref(o) for o in reserved],load=[{"variant_id":variant,"quantity":2}],checked=True)
+        assert (await d2.post(root+"/routes/start",json={**good,"idempotency_key":uuid4().hex})).status_code==409
         start=await d1.post(root+"/routes/start",json=good)
         assert start.status_code==200,start.text
         assert (await d1.post(root+"/routes/start",json=good)).json()==start.json()

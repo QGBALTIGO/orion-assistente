@@ -568,7 +568,7 @@
       const primary=(label,action,symbol)=>button(label,action,'os-small od-order-primary',symbol,actions);
       if (canWrite()&&['confirmed','dispatched'].includes(order.status)) {
         controls+=order.mode==='delivery'&&order.status==='confirmed'
-          ?(order.assignment_status==='offered'?command(button,'Retirar solicitação','delivery-order-withdraw','close',actions):
+          ?(order.assignment_status==='reserved'?command(button,'Liberar reserva','delivery-order-withdraw','close',actions):order.assignment_status==='offered'?command(button,'Retirar solicitação','delivery-order-withdraw','close',actions):
             primary('Despachar','delivery-order-dispatch','deliveryTruck'))
           :order.pix_state==='pending'?'':primary('Concluir','delivery-order-fulfill','check');
         if(order.pix_state==='pending'&&canManagePolicy()){
@@ -600,9 +600,9 @@
         ui.icon(channel==='whatsapp'?'phone':channel==='storefront'?'deliveryStorefront':'deliveryReceipt')+esc(salesChannels[channel]||'Painel')+'</span>'+
         '<span>'+esc(modeLabel(order)||'')+'</span><span>'+esc(when(order.created_at))+'</span></div>'+
         (order.pix_state&&order.status!=='cancelled'?'<p>'+ (order.pix_state==='confirmed'?'Pix conferido pelo proprietário':'Pix aguardando conferência')+'</p>':'')+
-        (order.courier_name?'<p class="os-help">Entregador: '+esc(order.courier_name)+'</p>':'')+
-        (['offered','arrived','refused','expired'].includes(order.assignment_status)?'<p class="os-help">'+
-          esc(({offered:'Aguardando aceite',arrived:'Entregador no endereço',refused:'Solicitação recusada',expired:'Prazo de aceite encerrado'})[order.assignment_status])+'</p>':'')+
+        (order.courier_name||order.assignment_status==='reserved'&&order.assignment_courier_name?'<p class="os-help">Entregador: '+esc(order.courier_name||order.assignment_courier_name)+'</p>':'')+
+        (['offered','reserved','arrived','refused','expired'].includes(order.assignment_status)?'<p class="os-help">'+
+          esc(({offered:'Aguardando aceite',reserved:'Separado · aguardando conferência da carga',arrived:'Entregador no endereço',refused:'Solicitação recusada',expired:'Prazo de aceite encerrado'})[order.assignment_status])+'</p>':'')+
         (order.scheduled_at?'<p class="os-help">Agendado para '+esc(when(order.scheduled_at))+'</p>':'')+
         '<div class="os-delivery-order-value"><span>Total do pedido</span><strong>'+money(order.total_cents)+'</strong></div>'+
         payment+(pending?'<p class="os-help">Saldo a receber '+money(order.outstanding_cents??order.total_cents)+'</p>':'')+
@@ -831,10 +831,11 @@
             await call('/orders/'+encodeURIComponent(order.id)+'/pix/confirm','POST',{...payload,idempotency_key:key(payload)});
           },'Pix registrado no Financeiro.',{label:'Confirmar recebimento'});
       } else if(action==='delivery-order-withdraw'&&canWrite()){
-        openEditor('Retirar solicitação','<p>O entregador deixará de poder aceitar este pedido.</p>',async(form,values,key)=>{
+        const reserved=order.assignment_status==='reserved';
+        openEditor(reserved?'Liberar reserva':'Retirar solicitação',reserved?'<p>Confirme que o pedido ainda está no depósito. Ele voltará à fila disponível sem cancelar a venda.</p>':'<p>O entregador deixará de poder aceitar este pedido.</p>',async(form,values,key)=>{
           const payload={action:'withdraw_offer',expected_revision:order.revision};
           await call('/orders/'+encodeURIComponent(order.id)+'/transitions','POST',{...payload,idempotency_key:key(payload)});
-        },'Solicitação retirada.',{label:'Retirar solicitação'});
+        },reserved?'Reserva liberada.':'Solicitação retirada.',{label:reserved?'Liberar reserva':'Retirar solicitação'});
       } else if(action==='delivery-order-repeat'&&canWrite()){
         el.disabled=true;
         try {

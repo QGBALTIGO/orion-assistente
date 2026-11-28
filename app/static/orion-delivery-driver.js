@@ -11,6 +11,7 @@
   const labels={offered:'Aguardando seu aceite',reserved:'Separado · aguardando conferência',accepted:'Em rota',arrived:'No endereço'};
   let csrf='',personId='',model=null,busy=false,sequence=0,watch=null,lastUpload=0,lastShape='',sharing=0;
   const actionKeys=new Map(), selected=new Set();
+  let lastLoadShape='';
   async function request(path,method='GET',body){
     const response=await fetch(path,{method,credentials:'same-origin',cache:'no-store',headers:{
       'Content-Type':'application/json','X-Orion-CSRF':csrf},body:body===undefined?undefined:JSON.stringify(body)});
@@ -43,7 +44,7 @@
       '<button'+(o.pix_state==='pending'?' disabled':'')+'>Concluir entrega</button></form></details>'+
       '<details><summary>Cliente ausente</summary><form data-absent>'+
       '<label><input type="checkbox" required> Os produtos retornaram ao estoque</label><button class="secondary">Registrar tentativa</button></form></details>';
-    return '<article data-id="'+esc(o.id)+'"><h2>Pedido '+esc(o.id.slice(0,8).toUpperCase())+'</h2><p>'+esc(labels[o.status])+'</p>'+
+    return '<article data-id="'+esc(o.id)+'"><h2>'+(o.route_position?'Parada '+esc(o.route_position)+' · ':'')+'Pedido '+esc(o.id.slice(0,8).toUpperCase())+'</h2><p>'+esc(labels[o.status])+'</p>'+
       '<p>'+esc(o.customer_name||'Cliente')+(address?' · '+esc(address):'')+'</p>'+
       '<ul>'+(o.items||[]).map(i=>'<li>'+esc(i.quantity+' × '+[i.name,i.variant].filter(Boolean).join(' · '))+'</li>').join('')+'</ul>'+
       (o.container_items?.length?'<p>Vasilhames</p><ul>'+o.container_items.map(i=>'<li>'+esc(i.name+' · '+i.exchange+' em troca · '+i.loan+' em empréstimo')+'</li>').join('')+'</ul>':'')+
@@ -54,7 +55,7 @@
   }
   function renderBatch(){
     el('batch-workspace').hidden=!model.route_v2;
-    if(!model.route_v2){el('available-orders').replaceChildren();el('route-load').replaceChildren();return;}
+    if(!model.route_v2){el('available-orders').replaceChildren();el('route-load').replaceChildren();lastLoadShape='';return;}
     const list=model.available_orders||[], reserved=model.orders.filter(o=>o.status==='reserved'),
           onRoute=model.orders.some(o=>['accepted','arrived'].includes(o.status));
     for(const id of selected)if(!list.some(o=>o.id===id))selected.delete(id);
@@ -68,11 +69,15 @@
     for(const o of reserved)for(const i of o.items||[]){
       const key=i.variant_id, prev=totals.get(key);totals.set(key,{name:[i.name,i.variant].filter(Boolean).join(' · '),quantity:(prev?.quantity||0)+i.quantity});
     }
+    const loadShape=JSON.stringify([reserved,onRoute]);
+    if(loadShape!==lastLoadShape){
     el('route-load').innerHTML=reserved.length?'<div class="card"><p>'+reserved.length+' pedido(s) separados. Confirme a quantidade efetivamente carregada.</p>'+
       (onRoute?'<p>Conclua a rota em andamento antes de iniciar outra.</p>':'')+
       '<form id="load-form"><ol>'+reserved.map(o=>'<li>'+esc(o.customer_name||'Cliente')+' · '+esc(o.address?.neighborhood||'')+'</li>').join('')+'</ol>'+
       [...totals].map(([id,i])=>'<label class="load-line"><span>'+esc(i.name)+'<small>Esperado: '+i.quantity+'</small></span><input aria-label="Quantidade carregada de '+esc(i.name)+'" name="load" data-variant="'+esc(id)+'" type="number" min="1" step="1" inputmode="numeric" required></label>').join('')+
       '<label><input type="checkbox" name="checked" required> Conferi fisicamente todos os produtos e a capacidade do veículo.</label><button '+(onRoute?'disabled':'')+'>Iniciar rota</button></form></div>':'<p>Nenhuma carga aguardando saída.</p>';
+    lastLoadShape=loadShape;
+    }
     updateSelection();
   }
   function updateSelection(){
@@ -118,7 +123,7 @@
   function fault(error){
     notice(error.message||'Sem conexão. Tente novamente.');
     if([401,403].includes(error.status)){
-      stopWatch();model=null;lastShape='';el('queue').replaceChildren();el('available-orders').replaceChildren();el('route-load').replaceChildren();selected.clear();el('workspace').hidden=true;
+      stopWatch();model=null;lastShape='';el('queue').replaceChildren();el('available-orders').replaceChildren();el('route-load').replaceChildren();selected.clear();lastLoadShape='';el('workspace').hidden=true;
       if(error.status===401){csrf='';el('login').hidden=false;el('logout').hidden=true;}
     }
     el('retry').hidden=false;

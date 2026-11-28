@@ -143,15 +143,15 @@
         if(!valid())return;
         const a=result.summary;
         const indicators=[['Aguardando despacho',a.waiting_dispatch,'deliveryReceipt'],['Aguardando aceite',a.waiting_acceptance,'clock'],
-          ['Em rota',a.on_route,'deliveryTruck'],['Agendadas para depois',a.scheduled,'calendar'],['Em expediente',a.in_shift,'users'],['Disponíveis',a.available,'check']];
+          ['Aguardando carga',a.waiting_load??0,'deliveryReceipt'],['Em rota',a.on_route,'deliveryTruck'],['Agendadas para depois',a.scheduled,'calendar'],['Em expediente',a.in_shift,'users'],['Disponíveis',a.available,'check']];
         region.innerHTML='<div class="os-delivery-monitor-metrics">'+indicators.map(([label,value,symbol])=>
           '<div class="os-card os-metric"><div class="os-metric-head"><span>'+esc(label)+'</span>'+icon(symbol)+'</div><strong>'+esc(n(value))+'</strong></div>').join('')+'</div>'+
           (a.scheduled_past_due?'<p class="os-help">Atenção: '+esc(n(a.scheduled_past_due))+' entrega(s) agendada(s) com horário passado e ainda em aberto.</p>':'')+
           (a.unlinked_on_route?'<p class="os-help">'+esc(n(a.unlinked_on_route))+' entrega(s) em rota sem entregador cadastrado vinculado.</p>':'')+
           '<p class="os-help">Consulta em '+esc(stamp(a.observed_at))+' · '+esc(n(a.fresh_positions))+' posição(ões) recente(s).</p>'+
-          (result.items.length?table(['Entregador','Disponibilidade','Em rota','Aguardando aceite','Última posição'],result.items.map(row=>[
+          (result.items.length?table(['Entregador','Disponibilidade','Em rota','Aguardando aceite','Aguardando carga','Última posição'],result.items.map(row=>[
             esc(row.name)+'<br><small>Expediente desde '+esc(stamp(row.shift_started_at))+'</small>',
-            esc(row.available?'Disponível':'Indisponível'),esc(n(row.on_route)),esc(n(row.waiting_acceptance)),
+            esc(row.available?'Disponível':'Indisponível'),esc(n(row.on_route)),esc(n(row.waiting_acceptance)),esc(n(row.waiting_load??0)),
             row.location_at&&Number.isFinite(row.latitude)&&Number.isFinite(row.longitude)?
               '<span>'+esc((row.stale?'Desatualizada · ':'')+stamp(row.location_at))+'</span><br><a rel="noreferrer" target="_blank" href="https://www.openstreetmap.org/?mlat='+encodeURIComponent(row.latitude)+'&amp;mlon='+encodeURIComponent(row.longitude)+'">Ver posição no mapa</a>':
               'Sem localização compartilhada'])):'<p class="os-help">Nenhum entregador em expediente.</p>')+
