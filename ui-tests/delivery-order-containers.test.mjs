@@ -82,6 +82,7 @@ test('delivery operator explicitly selects a saved address and switching custome
   assert.equal(h.document.querySelector('[name=address_street]').value,'');
   h.fill('[name=saved_address]',home.id).dispatchEvent(new h.window.Event('change',{bubbles:true}));
   assert.equal(h.document.querySelector('[name=address_street]').value,'Rua A');
+  h.fill('[name=customer_search]','Bia');
   h.click(action('choose-customer'));await flush();
   h.click('[data-delivery-match="'+other+'"]');
   assert.equal(h.document.querySelector('[name=address_street]').value,'');
