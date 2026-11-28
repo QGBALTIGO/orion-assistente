@@ -658,6 +658,10 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                                 const bounds=el.getBoundingClientRect(),buttons=Array.from(el.querySelectorAll("button"));
                                 return buttons.every(b=>{const r=b.getBoundingClientRect();return r.left>=bounds.left-1 && r.right<=bounds.right+1 && r.width>0 && b.scrollWidth<=b.clientWidth+1 && b.scrollHeight<=b.clientHeight+1;});
                             }"""), (route,width,"period filter overflow")
+                            assert await page.locator(".odd-chart-axis").evaluate("""el => {
+                                const labels=Array.from(el.querySelectorAll("span")).filter(n=>getComputedStyle(n).display!=="none").map(n=>n.getBoundingClientRect()).sort((a,b)=>a.left-b.left);
+                                return labels.every((r,i)=>!i || labels[i-1].right<=r.left+1);
+                            }"""), (route,width,"chart axis labels overlap")
                             title_layout = await page.locator(".odd-heading h1").evaluate("""el => {
                                 const title = el.getBoundingClientRect();
                                 const header = el.closest("header");

@@ -243,7 +243,7 @@
       const peak=rows.reduce((best,row)=>numeric(row.orders)>numeric(best.orders)?row:best,rows[0]);
       const fmt=row=>String(row.hour).padStart(2,'0')+'h';
       return '<div class="odd-peak-head"><strong>'+esc(peak.orders?fmt(peak):'—')+'</strong><span>'+esc(peak.orders?formatInt(peak.orders)+' pedidos na hora de pico':'Sem pedidos no período')+'</span></div>'+
-        '<div class="odd-hour-bars" role="img" aria-label="Quantidade de pedidos por hora da empresa">'+rows.map(row=>'<div><span style="height:'+
+        '<div class="odd-hour-bars'+(!peak.orders?' is-empty':'')+'" role="img" aria-label="Quantidade de pedidos por hora da empresa">'+rows.map(row=>'<div><span style="height:'+
           (numeric(row.orders)/max*100)+'%" title="'+esc(fmt(row)+' · '+formatInt(row.orders)+' pedidos')+'"'+(row.orders&&row.hour===peak.hour?' class="is-peak"':'')+'></span></div>').join('')+'</div>'+
         '<div class="odd-x-labels"><span>00h</span><span>06h</span><span>12h</span><span>18h</span><span>23h</span></div>'+
         '<details class="odd-hour-values">'+detailSummary('Pedidos por horário','24 horários')+'<div class="odd-detail-body"><table><thead><tr><th>Hora</th><th>Pedidos</th></tr></thead><tbody>'+
