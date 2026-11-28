@@ -233,3 +233,7 @@ button.os-delivery-dashboard-row:hover{background:var(--os-tint)}
   .os-delivery-dashboard-panel>header .os-button{font-size:11px;padding-inline:3px}
 }
 @media(prefers-reduced-motion:reduce){.os-delivery-dashboard *{animation-duration:.001ms!important;transition-duration:.001ms!important}}
+
+:root[data-theme=dark] .os-delivery-dashboard-toolbar .os-button{background:#2469d7;color:#fff}
+:root[data-theme=dark] .os-delivery-dashboard-toolbar .os-button:hover{background:#1c58be}
+@media(min-width:768px) and (max-width:1199px){.odd-hero-art{opacity:.4}}

@@ -17,11 +17,11 @@ jobs:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: ci-postgres-only
         ports: ['5432:5432']
-        options: --health-cmd 'pg_isready -U postgres -d barber_saas' --health-interval 5s --health-timeout 3s --health-retries 20
+        options: --health-cmd "pg_isready -U postgres -d barber_saas" --health-interval 5s --health-timeout 3s --health-retries 20
       redis:
         image: redis:7-alpine
         ports: ['6379:6379']
-        options: --health-cmd 'redis-cli ping' --health-interval 5s --health-timeout 3s --health-retries 20
+        options: --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 20
     env:
       APP_DATABASE_URL: postgresql+asyncpg://app_runtime:ci-runtime-only@localhost:5432/barber_saas
       MIGRATION_DATABASE_URL: postgresql+psycopg://app_migrator:ci-migrator-only@localhost:5432/barber_saas

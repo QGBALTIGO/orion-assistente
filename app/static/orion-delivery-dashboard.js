@@ -121,13 +121,18 @@
         esc(changeLabel(value,previous,key))+'</small></div>';
     }
 
+    function plotScale(values,key) {
+      const minimum=key==='orders'?1:100,max=Math.max(minimum,...values);
+      const target=max/3,power=Math.pow(10,Math.floor(Math.log10(target)));
+      const unit=([1,2,5,10].find(value=>value*power>=target)||10)*power;
+      return 3*Math.max(minimum,unit);
+    }
+
     function performanceChart(data) {
       const hourly=data.granularity==='hour',rows=data.series||[];
       const key=Object.hasOwn(chartMetrics,filters.dashboardMetric)?filters.dashboardMetric:'sales_cents';
       const values=rows.map(row=>numeric(row[key]));
-      const max=Math.max(key==='orders'?1:100,...values);
-      const step=Math.pow(10,Math.floor(Math.log10(max/3)));
-      const ceiling=Math.max(1,Math.ceil(max/(step||1))*(step||1));
+      const ceiling=plotScale(values,key);
       const top=12,bottom=190,left=12,right=588;
       const x=i=>values.length<=1?300:left+i*(right-left)/(values.length-1);
       const y=v=>bottom-v/ceiling*(bottom-top);
@@ -178,8 +183,7 @@
       if(lastPerformance.granularity==='hour'){
         plot.querySelectorAll('.odd-plot-bar').forEach((bar,i)=>bar.classList.toggle('is-selected',i===chartIndex));
       }else{
-        const values=rows.map(row=>numeric(row[key])),max=Math.max(key==='orders'?1:100,...values);
-        const step=Math.pow(10,Math.floor(Math.log10(max/3))),ceiling=Math.max(1,Math.ceil(max/(step||1))*(step||1));
+        const values=rows.map(row=>numeric(row[key])),ceiling=plotScale(values,key);
         const x=rows.length<=1?300:12+chartIndex*576/(rows.length-1),y=190-values[chartIndex]/ceiling*178;
         const line=plot.querySelector('.odd-plot-marker'),dot=plot.querySelector('.odd-plot-dot');
         if(line){line.setAttribute('x1',x);line.setAttribute('x2',x);}
