@@ -30,6 +30,11 @@ const perfCalls=h=>h.calls.filter(c=>c.path.includes('/delivery/overview/perform
 test('dashboard renders real KPIs, ranking, and status without duplicate navigation',async t=>{
   const h=await load(t,()=>structuredClone(basePerf));await flush();
   assert.equal(h.document.querySelectorAll('.os-delivery-dashboard-metric').length,6);
+  assert.equal(h.document.querySelector('.os-delivery-dashboard-header').nextElementSibling,h.document.querySelector('[data-delivery-dashboard-content]'));
+  assert.equal(h.document.querySelector('.odd-day-toolbar, #osDeliveryDashboardDay, [data-os-action="delivery-dashboard-today"]'),null);
+  assert.equal(h.calls.filter(c=>c.path.includes('/delivery/overview?')).length,1);
+  assert.equal(new URL(h.calls.find(c=>c.path.includes('/delivery/overview?')).path,'https://orion.test').searchParams.has('day'),false);
+  assert.ok(h.document.querySelector('[name="performance_period"]'));
   assert.equal(h.document.querySelectorAll('.os-delivery-dashboard-dock').length,0);
   assert.equal(h.document.querySelectorAll('[data-os-action="delivery-dashboard-new"]').length,1);
   assert.match(h.document.querySelector('.odd-ring').textContent,/3Pedidos/);
@@ -62,6 +67,7 @@ test('period shortcuts refresh only analytics; late response cannot overwrite th
   h.click('[data-dashboard-period="today"]');await flush();
   assert.equal(h.document.querySelectorAll('.odd-plot-bar').length,24);
   assert.equal(h.document.querySelector('[data-dashboard-period="today"]').getAttribute('aria-pressed'),'true');
+  assert.equal(h.calls.filter(c=>c.path.includes('/delivery/overview?')).length,1);
   old.resolve(structuredClone(basePerf));await flush();
   assert.equal(h.document.querySelectorAll('.odd-plot-bar').length,24);
   assert.equal(heading,h.document.querySelector('.odd-heading h1'));

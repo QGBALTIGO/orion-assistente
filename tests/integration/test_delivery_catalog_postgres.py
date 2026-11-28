@@ -626,6 +626,9 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                             await expect(shortcuts).to_have_count(0)
                             await expect(page.locator(".odd-heading h1")).to_have_text(company_name)
                             await expect(page.locator(".odd-eyebrow")).to_have_text("Dashboard")
+                            await expect(page.locator(".odd-day-toolbar, #osDeliveryDashboardDay")).to_have_count(0)
+                            await expect(page.locator(".os-delivery-dashboard-header + [data-delivery-dashboard-content] > .os-delivery-dashboard-metrics")).to_be_visible()
+                            await expect(page.locator('[name="performance_period"]')).to_be_visible()
                             title_layout = await page.locator(".odd-heading h1").evaluate("""el => {
                                 const title = el.getBoundingClientRect();
                                 const header = el.closest("header");
@@ -782,6 +785,10 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                     for width in (320,375,390,430,768,1280):
                         await page.set_viewport_size({"width":width,"height":900})
                         await assert_delivery_layout(page, ("WebKit",route,width))
+                        if route == "dashboard-delivery":
+                            await expect(page.locator(".odd-day-toolbar, #osDeliveryDashboardDay")).to_have_count(0)
+                            await expect(page.locator(".os-delivery-dashboard-header + [data-delivery-dashboard-content] > .os-delivery-dashboard-metrics")).to_be_visible()
+                            await expect(page.locator('[name="performance_period"]')).to_be_visible()
                         if route == "loja-delivery" and width == 320:
                             await page.screenshot(path=artifacts/"webkit-loja-delivery-320.png", animations="disabled")
                     await page.set_viewport_size({"width":390,"height":844})

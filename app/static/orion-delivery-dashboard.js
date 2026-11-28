@@ -7,7 +7,7 @@
     const {esc,icon,button,loading,money,fmtDate,dateKey,timeLabel,query,badge,seriesChart}=ui;
     const {openOrderEditor,showOrderDetail,code,modeLabel,statusBadge}=window.OrionDeliveryOrders;
     const current=()=>allowed()&&host.isConnected;
-    let today=dateKey(), selected=filters.day||today, revision=0, detailRevision=0;
+    let operatingDay=dateKey(), revision=0, detailRevision=0;
     let visibleOrders=new Set(),performanceRevision=0,lastPerformance=null,chartIndex=null;
     const chartMetrics={sales_cents:'Faturado',income_cents:'Recebido',orders:'Pedidos'};
     const formatInt=n=>new Intl.NumberFormat('pt-BR').format(n);
@@ -40,14 +40,8 @@
       '<span class="odd-eyebrow">'+icon('deliveryStorefront')+' Dashboard</span>'+
       '<h1>'+esc(companyName)+'</h1><p>Vendas, pedidos e entregas em um só lugar.</p></div>'+
       heroArt+'<div class="os-delivery-dashboard-toolbar">'+newOrder('os-delivery-dashboard-new')+'</div></header>'+
-      '<div class="odd-day-toolbar"><div><h2>Operação do dia</h2><p>Indicadores e atividades da data selecionada</p></div>'+
-      '<div class="os-delivery-dashboard-date"><label for="osDeliveryDashboardDay">Data</label>'+
-      '<div class="odd-date-input">'+icon('calendar')+'<input id="osDeliveryDashboardDay" type="date" lang="pt-BR" min="1900-01-01" max="2100-12-31" required value="'+esc(selected)+'"></div>'+
-      button('Hoje','delivery-dashboard-today','os-outline')+'</div></div>'+
       '<div data-delivery-dashboard-content></div></div>';
 
-    const picker=host.querySelector('#osDeliveryDashboardDay');
-    const todayButton=host.querySelector('[data-os-action="delivery-dashboard-today"]');
     const content=host.querySelector('[data-delivery-dashboard-content]');
     const orderTime=(order,delivery)=>{
       if (delivery&&order.scheduled_at) return 'Agendada às '+timeLabel(order.scheduled_at);
@@ -240,8 +234,8 @@
           '<button type="button" data-dashboard-period="'+key+'" aria-label="'+label+' (desempenho)" aria-pressed="'+(filters.performancePeriod===key)+'">'+label+'</button>').join('')+'</div>'+
         ui.selectField('Período do desempenho','performance_period',periods,filters.performancePeriod)+
         '<fieldset class="os-filter-row" data-period-dates '+(filters.performancePeriod==='custom'?'':'hidden disabled')+'>'+
-        ui.field('Início','performance_start','date',filters.performanceStart||selected,'required min="1900-01-01" max="2100-12-31"')+
-        ui.field('Fim','performance_end','date',filters.performanceEnd||selected,'required min="1900-01-01" max="2100-12-31"')+
+        ui.field('Início','performance_start','date',filters.performanceStart||operatingDay,'required min="1900-01-01" max="2100-12-31"')+
+        ui.field('Fim','performance_end','date',filters.performanceEnd||operatingDay,'required min="1900-01-01" max="2100-12-31"')+
         '<button class="os-button os-outline" type="submit">Aplicar período</button></fieldset></form>'+
         '<div aria-live="polite" data-performance-results></div>';
     }
@@ -250,7 +244,7 @@
       const target=content.querySelector('[data-performance-results]'),attempt=++performanceRevision;
       if(!target)return;
       const params={period:filters.performancePeriod};
-      if(params.period==='custom')Object.assign(params,{start:filters.performanceStart||selected,end:filters.performanceEnd||selected});
+      if(params.period==='custom')Object.assign(params,{start:filters.performanceStart||operatingDay,end:filters.performanceEnd||operatingDay});
       target.setAttribute('aria-busy','true');
       lastPerformance=null;chartIndex=null;
       target.innerHTML=loading('Carregando desempenho…');
@@ -305,15 +299,14 @@
       const latest=()=>current()&&attempt===revision;
       detailRevision++;performanceRevision++;lastPerformance=null;
       visibleOrders.clear();
-      todayButton.hidden=selected===today;
       content.setAttribute('aria-busy','true');
       content.innerHTML=loading('Carregando indicadores…');
       try {
-        const data=await call('/overview?'+query({day:filters.day}));
+        // The API resolves today in the company's timezone. Historical filters
+        // belong to the independent sales performance section.
+        const data=await call('/overview?');
         if (!latest()) return;
-        today=data.today;
-        selected=picker.value=data.date;
-        todayButton.hidden=selected===today;
+        operatingDay=data.date;
         render(data);
         void loadPerformance();
       } catch (error) {
@@ -323,13 +316,6 @@
         if (latest()) content.removeAttribute('aria-busy');
       }
     }
-
-    picker.addEventListener('change',()=>{
-      if (!current()||!picker.reportValidity()) return;
-      selected=filters.day=picker.value;
-      filters.performancePeriod='custom';filters.performanceStart=selected;filters.performanceEnd=selected;
-      void read();
-    });
 
     host.addEventListener('input',event=>{
       if(event.target.matches('[data-dashboard-scrub]')&&current())updateChart(Number(event.target.value));
@@ -375,18 +361,13 @@
           chart.querySelector('[data-dashboard-metric="'+filters.dashboardMetric+'"]')?.focus({preventScroll:true});
         }
       }else if (osAction==='delivery-dashboard-new'&&canWrite()) {
-        openOrderEditor({call,current,ui,openEditor,onCreated:()=>{filters.day='';}});
+        openOrderEditor({call,current,ui,openEditor});
       } else if (osAction==='delivery-performance-retry'){
         void loadPerformance();
-      } else if (osAction==='delivery-dashboard-today') {
-        selected=picker.value=today;
-        filters.day='';
-        filters.performancePeriod='today';
-        void read();
       } else if (osAction==='delivery-dashboard-retry') {
         void read();
       } else if (deliveryPage) {
-        openPage(deliveryPage,{day:deliveryScope==='day'?selected:'',lowStock:deliveryScope==='low'});
+        openPage(deliveryPage,{day:deliveryScope==='day'?operatingDay:'',lowStock:deliveryScope==='low'});
       } else if (visibleOrders.has(deliveryDashboardOrder)) {
         const attempt=++detailRevision;
         void showOrderDetail({id:deliveryDashboardOrder,call,current:()=>current()&&attempt===detailRevision,openDetails,ui});
