@@ -6,18 +6,78 @@
 <title>Orion Entregas</title><link rel="icon" href="/brand/orion-symbol.svg">
 <link rel="stylesheet" href="/panel-assets/orion-delivery-driver.css">
 <script defer src="/panel-assets/orion-delivery-driver.js"></script>
-</head><body>
-<header class="topbar"><div class="brand"><img class="logo light" src="/brand/orion-brand-dark.svg" alt="Orion"><img class="logo dark" src="/brand/orion-brand-light.svg" alt="Orion"><span>ENTREGAS</span></div><button id="theme" class="secondary icon-only" type="button" aria-label="Alterar aparência">Aparência</button></header>
+</head><body class="auth-mode">
+<header class="topbar"><div class="brand"><img class="logo light" src="/brand/orion-brand-light.svg" alt="Orion" width="800" height="275"><img class="logo dark" src="/brand/orion-brand-dark.svg" alt="Orion" width="800" height="275"><span class="brand-divider" aria-hidden="true"></span><span class="brand-product">Entregas</span></div><button id="theme" class="secondary icon-only" type="button" aria-label="Alterar aparência">Aparência</button></header>
 <main>
-<p id="notice" role="status" aria-live="polite">Abrindo suas entregas…</p>
-<form id="login" hidden><h1>Bem-vindo à Orion</h1><p>Acesse sua conta de entregador vinculada à distribuidora.</p>
-<label>E-mail da conta<input name="username" type="email" autocomplete="username" required></label>
-<label>Senha<input name="password" type="password" autocomplete="current-password" required></label>
-<button>Entrar</button><button id="activate-link" type="button" class="secondary" hidden>Primeiro acesso · Criar minha senha</button><a href="/painel">Recuperar acesso na Orion</a></form>
-<section id="activation" class="card activation" hidden><h1>Primeiro acesso</h1><p>Use o e-mail que a sua distribuidora autorizou. Este cadastro cria apenas a sua conta pessoal; não cria uma empresa.</p>
-<form id="activate-form"><label>Seu nome<input name="name" autocomplete="name" minlength="2" maxlength="120" required></label><label>E-mail autorizado<input name="email" type="email" autocomplete="email" required></label><label>Crie sua senha<input name="password" type="password" autocomplete="new-password" minlength="8" maxlength="128" required></label><button>Criar conta e confirmar e-mail</button></form>
-<form id="activate-verify" hidden><p>Digite o código de seis dígitos enviado ao seu e-mail.</p><label>E-mail<input name="email" type="email" autocomplete="email" required></label><label>Código de confirmação<input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required></label><button>Confirmar e-mail</button><button type="button" class="secondary" id="activate-resend">Reenviar código</button></form>
-<button class="secondary" id="activate-back" type="button">Voltar para entrar</button><a href="/painel">Já tem conta ou precisa recuperar a senha?</a></section>
+<p id="notice" role="status" aria-live="polite"></p>
+<section id="driver-auth" aria-label="Acesso à Central do Entregador">
+  <aside class="driver-auth-visual" aria-label="Orion Entregas">
+    <div class="driver-hero-copy">
+      <p class="driver-auth-kicker"><span></span> DELIVERY E DISTRIBUIÇÃO</p>
+      <h2>Uma rota mais<br> <em>inteligente.</em></h2>
+      <p class="driver-hero-lead">Seus pedidos e entregas, em uma única operação conectada à sua distribuidora.</p>
+      <div class="driver-hero-features">
+        <div><span data-icon="orders"></span><span>Receba e organize seus pedidos.</span></div>
+        <div><span data-icon="route"></span><span>Confira a carga e siga sua rota.</span></div>
+        <div><span data-icon="check"></span><span>Finalize cada entrega com segurança.</span></div>
+      </div>
+    </div>
+    <div class="driver-route-art" aria-hidden="true">
+      <svg viewBox="0 0 440 164" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <g class="art-grid" stroke="currentColor" stroke-width="1"><path d="M0 36h440M0 82h440M0 128h440M55 0v164M165 0v164M275 0v164M385 0v164"/><path d="M0 0 164 164M165 0l164 164M275 0l164 164"/></g>
+        <path d="M38 119h107c15 0 22-8 22-22V71c0-15 8-22 22-22h99c15 0 22 8 22 22v17c0 15 8 22 22 22h68" stroke="#2e7bf6" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="38" cy="119" r="12" class="art-node" stroke="#2e7bf6" stroke-width="2"/><circle cx="38" cy="119" r="4" fill="#2e7bf6"/>
+        <circle cx="167" cy="83" r="6" fill="#2e7bf6" stroke="var(--card)" stroke-width="2"/>
+        <circle cx="310" cy="82" r="6" fill="#2e7bf6" stroke="var(--card)" stroke-width="2"/>
+        <circle cx="400" cy="110" r="19" class="art-node" stroke="#2e7bf6" stroke-width="2"/>
+        <path d="m393 110 5 5 9-10" stroke="#2e7bf6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="199" y="28" width="62" height="42" rx="12" class="art-node" stroke="var(--line)"/>
+        <path d="M211 42h23v15h-23zM234 46h9l6 6v5h-15" stroke="#2e7bf6" stroke-width="1.8" stroke-linejoin="round"/><circle cx="217" cy="58" r="3" fill="#2e7bf6"/><circle cx="242" cy="58" r="3" fill="#2e7bf6"/>
+      </svg>
+    </div>
+    <p class="driver-hero-footer">ORION · CENTRAL DO ENTREGADOR</p>
+  </aside>
+  <div class="driver-auth-panel">
+    <div class="driver-auth-stack">
+      <div class="driver-auth-card">
+        <div id="auth-loading" class="auth-loading" role="status"><span class="auth-spinner" aria-hidden="true"></span> Verificando acesso…</div>
+        <form id="login" class="driver-auth-form" autocomplete="on" hidden>
+          <div class="driver-auth-heading"><span class="driver-auth-symbol" data-icon="route" aria-hidden="true"></span><h1>Central do Entregador</h1><p>Entre com o e-mail autorizado pela sua distribuidora.</p></div>
+          <div class="driver-auth-fields">
+            <div class="auth-field"><label for="driver-email">E-mail</label><input id="driver-email" name="username" type="email" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="nome@email.com" maxlength="254" required></div>
+            <div class="auth-field"><div class="auth-label-row"><label for="driver-password">Senha</label><button id="forgot-link" class="auth-link" type="button">Esqueci minha senha</button></div><div class="auth-secret"><input id="driver-password" name="password" type="password" autocomplete="current-password" placeholder="Digite sua senha" maxlength="200" required><button class="auth-eye" type="button" data-password-toggle="driver-password" aria-label="Mostrar senha" aria-controls="driver-password" aria-pressed="false"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button></div></div>
+          </div>
+          <button class="auth-primary" type="submit"><span>Entrar</span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button>
+          <div id="first-access" class="auth-first-access" hidden><div><strong>Primeiro acesso?</strong><p>Crie sua senha com o e-mail liberado pela empresa.</p></div><button id="activate-link" class="auth-link auth-invite-link" type="button">Criar minha senha <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button></div>
+        </form>
+        <section id="activation" class="driver-auth-form" hidden>
+          <button class="auth-link auth-back" id="activate-back" type="button"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 5-7 7 7 7M5 12h14"/></svg> Voltar para entrar</button>
+          <div class="driver-auth-heading"><span class="driver-auth-symbol" data-icon="check" aria-hidden="true"></span><h1>Primeiro acesso</h1><p>Ative sua conta pessoal usando o e-mail autorizado pela distribuidora.</p></div>
+          <form id="activate-form" class="driver-auth-fields">
+            <div class="auth-field"><label for="activate-name">Seu nome</label><input id="activate-name" name="name" autocomplete="name" placeholder="Nome completo" minlength="2" maxlength="120" required></div>
+            <div class="auth-field"><label for="activate-email">E-mail autorizado</label><input id="activate-email" name="email" type="email" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" placeholder="nome@email.com" maxlength="254" required></div>
+            <div class="auth-field"><label for="activate-password">Crie sua senha <small>mínimo de 8 caracteres</small></label><div class="auth-secret"><input id="activate-password" name="password" type="password" autocomplete="new-password" placeholder="Crie uma senha forte" minlength="8" maxlength="128" required><button class="auth-eye" type="button" data-password-toggle="activate-password" aria-label="Mostrar senha" aria-controls="activate-password" aria-pressed="false"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button></div></div>
+            <button class="auth-primary" type="submit"><span>Criar conta e confirmar e-mail</span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button>
+          </form>
+          <form id="activate-verify" class="driver-auth-fields" hidden><p class="auth-step">Digite o código de seis dígitos enviado ao seu e-mail.</p><div class="auth-field"><label for="verify-email">E-mail</label><input id="verify-email" name="email" type="email" autocomplete="email" autocapitalize="none" required></div><div class="auth-field"><label for="verify-code">Código de confirmação</label><input id="verify-code" class="auth-otp" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" placeholder="000000" required></div><button class="auth-primary" type="submit"><span>Confirmar e-mail</span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button><button type="button" class="auth-link" id="activate-resend">Reenviar código</button></form>
+        </section>
+        <section id="recovery" class="driver-auth-form" hidden>
+          <button class="auth-link auth-back" id="recovery-back" type="button"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 5-7 7 7 7M5 12h14"/></svg> Voltar para entrar</button>
+          <div class="driver-auth-heading"><span class="driver-auth-symbol" data-icon="check" aria-hidden="true"></span><h1>Recuperar senha</h1><p>Redefina a senha da sua conta Orion sem sair da Central do Entregador.</p></div>
+          <form id="recovery-form" class="driver-auth-fields">
+            <div class="auth-field"><label for="recovery-email">E-mail da conta</label><input id="recovery-email" name="email" type="email" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" maxlength="254" placeholder="nome@email.com" required></div>
+            <button class="auth-primary" type="submit"><span>Enviar código</span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button>
+          </form>
+          <form id="recovery-reset" class="driver-auth-fields" hidden><p class="auth-step">Se o e-mail estiver cadastrado, você receberá um código.</p><div class="auth-field"><label for="reset-email">E-mail da conta</label><input id="reset-email" name="email" type="email" autocomplete="email" required></div><div class="auth-field"><label for="reset-code">Código de recuperação</label><input id="reset-code" class="auth-otp" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" placeholder="000000" required></div><div class="auth-field"><label for="reset-password">Nova senha <small>mínimo de 8 caracteres</small></label><div class="auth-secret"><input id="reset-password" name="password" type="password" autocomplete="new-password" minlength="8" maxlength="128" placeholder="Crie sua nova senha" required><button class="auth-eye" type="button" data-password-toggle="reset-password" aria-label="Mostrar senha" aria-controls="reset-password" aria-pressed="false"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button></div></div><button class="auth-primary" type="submit"><span>Redefinir senha</span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button><button id="recovery-resend" class="auth-link" type="button">Reenviar código</button></form>
+        </section>
+        <p id="auth-feedback" class="auth-feedback" role="status" aria-live="polite"></p>
+        <button type="button" id="auth-retry" class="secondary auth-retry" hidden>Tentar novamente</button>
+        <div class="auth-privacy"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4 6v6c0 4.6 4.1 7.4 8 9 3.9-1.6 8-4.4 8-9V6l-8-3Z"/><path d="m9 12 2 2 4-4"/></svg><span>Acesso individual, autorizado pela sua empresa.</span></div>
+      </div>
+      <footer class="driver-auth-footer"><span>Orion Entregas</span><span aria-hidden="true">·</span><span>Delivery e Distribuição</span></footer>
+    </div>
+  </div>
+</section>
 <section id="workspace" hidden>
 <nav class="nav" aria-label="Navegação do entregador">
 <button data-view="home" aria-current="page" type="button"><span data-icon="home"></span>Dashboard</button>

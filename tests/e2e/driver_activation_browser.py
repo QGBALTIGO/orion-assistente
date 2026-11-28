@@ -57,7 +57,7 @@ def run(browser,width,height):
     expect(page.locator("#login")).to_be_visible()
     expect(page.locator("#activate-link")).to_be_hidden()
     page.goto(BASE+"/entregador/"+TENANT+"/?primeiro-acesso=1")
-    page.get_by_role("button",name="Primeiro acesso · Criar minha senha").click()
+    page.get_by_role("button",name="Criar minha senha").click()
     expect(page.get_by_role("heading",name="Primeiro acesso")).to_be_visible()
     page.get_by_label("Seu nome").fill("Entregador teste")
     page.get_by_label("E-mail autorizado").fill("motorista@example.test")

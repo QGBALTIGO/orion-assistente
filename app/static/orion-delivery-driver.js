@@ -3,7 +3,7 @@
   const root=location.pathname.replace(/\/$/,''),tenant=root.split('/').pop(),api='/api/v1/entregador/'+encodeURIComponent(tenant);
   const manifest=document.createElement('link');manifest.rel='manifest';manifest.href=root+'/manifest.webmanifest';document.head.append(manifest);
   if('serviceWorker' in navigator) navigator.serviceWorker.register(root+'/sw.js',{scope:root+'/'}).catch(()=>{});
-  const el=id=>document.getElementById(id), notice=msg=>{el('notice').textContent=msg;};
+  const el=id=>document.getElementById(id), notice=(msg,tone='info')=>{const auth=!el('driver-auth').hidden;const target=el(auth?'auth-feedback':'notice');target.textContent=msg;target.dataset.tone=tone;};
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const money=n=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(n/100);
   const methods={cash:'Dinheiro',pix:'Pix',credit_card:'Cartão de crédito',debit_card:'Cartão de débito'};
@@ -123,7 +123,7 @@
     const attempt=++sequence;
     const data=await request(api+'/queue');
     if(attempt!==sequence)return;
-    model=data;el('login').hidden=true;el('workspace').hidden=false;el('logout').hidden=false;el('retry').hidden=true;
+    model=data;el('driver-auth').hidden=true;document.body.classList.remove('auth-mode');el('login').hidden=true;el('activation').hidden=true;el('recovery').hidden=true;el('auth-feedback').textContent='';el('workspace').hidden=false;el('logout').hidden=false;el('retry').hidden=true;
     el('person').textContent='Olá, '+data.name.split(' ')[0]+'!';el('shift-state').textContent=states[data.state];
     el('shift-actions').innerHTML=(data.state==='off'?actionButton('Iniciar expediente','available'):
       actionButton(data.state==='available'?'Ficar indisponível':'Ficar disponível',data.state==='available'?'unavailable':'available',true)+
@@ -135,17 +135,29 @@
     }
     if(viewName==='focus')renderFocus();
   }
-  function fault(error){
-    notice(error.message||'Sem conexão. Tente novamente.');
-    if([401,403].includes(error.status)){
-      stopWatch();model=null;historySequence++;historyData=null;focusId=null;lastShape='';lastQueueShape='';lastOfferShape='';lastFocusShape='';lastLoadShape='';selected.clear();loadOrder=[];actionKeys.clear();for(const id of ['queue','available-orders','route-load','offers','focus-content','history-content','cash-content','stats','next-delivery','home-shortcuts'])el(id).replaceChildren();el('workspace').hidden=true;viewName='home';document.body.classList.remove('focus-mode');
-      csrf='';el('login').hidden=false;el('activation').hidden=true;el('logout').hidden=true;
-    }
-    el('retry').hidden=false;
+  function showAuth(view='login'){
+    el('driver-auth').hidden=false;document.body.classList.add('auth-mode');
+    el('workspace').hidden=true;el('auth-loading').hidden=true;
+    for(const name of ['login','activation','recovery'])el(name).hidden=name!==view;
+    el('notice').textContent='';el('retry').hidden=true;el('auth-retry').hidden=true;
+    notice('');
   }
-  async function start(){
-    try{const me=await request('/auth/me');csrf=me.csrf;personId=me.account_id||me.email||'';el('logout').hidden=false;
-      el('login').hidden=true;el('activation').hidden=true;await refresh();showView('home');void refreshHistory();notice('');}catch(error){fault(error);}
+  function fault(error,{quiet=false,sessionProbe=false}={}){
+    if([401,403].includes(error.status)){
+      stopWatch();model=null;historySequence++;historyData=null;focusId=null;lastShape='';lastQueueShape='';lastOfferShape='';lastFocusShape='';lastLoadShape='';selected.clear();loadOrder=[];actionKeys.clear();
+      for(const id of ['queue','available-orders','route-load','offers','focus-content','history-content','cash-content','stats','next-delivery','home-shortcuts'])el(id).replaceChildren();
+      viewName='home';document.body.classList.remove('focus-mode');csrf='';showAuth('login');el('logout').hidden=true;
+      if(!(quiet&&sessionProbe&&error.status===401))notice(error.message||'Não foi possível acessar suas entregas.','error');
+      return;
+    }
+    if(!model){showAuth('login');notice(error.message||'Não foi possível conectar. Tente novamente.','error');el('auth-retry').hidden=false;}
+    else{notice(error.message||'Sem conexão. Tente novamente.','error');el('retry').hidden=false;}
+  }
+  async function start({quiet=false}={}){
+    let sessionProbe=true;
+    try{const me=await request('/auth/me');sessionProbe=false;csrf=me.csrf;personId=me.account_id||me.email||'';el('logout').hidden=false;
+      await refresh();showView('home');void refreshHistory();notice('');
+    }catch(error){fault(error,{quiet,sessionProbe});}
   }
   async function perform(task){
     if(busy)return;busy=true;sequence++;
@@ -160,45 +172,96 @@
     await request(api+'/orders/'+row.id+'/actions','POST',{...data,idempotency_key:actionKeys.get(signature)});
   }
   const inviteMode=new URLSearchParams(location.search).get('primeiro-acesso')==='1';
-  el('activate-link').hidden=!inviteMode;
-  function showActivation(verifyEmail=''){
-    el('login').hidden=true;el('activation').hidden=false;el('retry').hidden=true;
-    el('activate-form').hidden=!!verifyEmail;el('activate-verify').hidden=!verifyEmail;
-    if(verifyEmail)el('activate-verify').elements.email.value=verifyEmail;
-    notice('');
+  el('first-access').hidden=!inviteMode;
+  function passwordVisibility(button,visible){
+    const field=el(button.dataset.passwordToggle);if(!field)return;
+    field.type=visible?'text':'password';button.setAttribute('aria-pressed',String(visible));button.setAttribute('aria-label',visible?'Ocultar senha':'Mostrar senha');
+    button.innerHTML=visible?'<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 3 18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.5 5.2A11.5 11.5 0 0 1 12 5c6 0 10 7 10 7a17 17 0 0 1-3.5 4.2M6 6C3.5 8.2 2 12 2 12s4 7 10 7a10 10 0 0 0 4-1"/></svg>':'<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>';
   }
-  el('activate-link').onclick=async()=>{
-    try{const info=await request('/auth/features');if(!info.registration){notice('A criação de conta está temporariamente indisponível. Use uma conta Orion existente ou fale com a distribuidora.');return}showActivation()}
-    catch(error){notice(error.message);}
-  };
-  el('activate-back').onclick=()=>{el('activation').hidden=true;el('login').hidden=false;notice('');};
-  let activating=false;
-  el('activate-form').addEventListener('submit',async event=>{
-    event.preventDefault();if(activating)return;const f=event.target;activating=true;
-    try{const email=f.elements.email.value.trim().toLowerCase();
+  document.querySelectorAll('[data-password-toggle]').forEach(button=>button.addEventListener('click',()=>passwordVisibility(button,el(button.dataset.passwordToggle).type==='password')));
+  function clearPasswords(){
+    document.querySelectorAll('#driver-auth [data-password-toggle]').forEach(button=>{el(button.dataset.passwordToggle).value='';passwordVisibility(button,false);});
+  }
+  function showActivation(verifyEmail=''){
+    showAuth('activation');el('activate-form').hidden=!!verifyEmail;el('activate-verify').hidden=!verifyEmail;
+    if(verifyEmail)el('activate-verify').elements.email.value=verifyEmail;
+  }
+  function showRecovery(email='',reset=false){
+    showAuth('recovery');el('recovery-form').hidden=reset;el('recovery-reset').hidden=!reset;
+    el(reset?'recovery-reset':'recovery-form').elements.email.value=email;
+  }
+  let authBusy=false;
+  async function authTask(control,task){
+    if(authBusy)return;authBusy=true;const buttons=[...el('driver-auth').querySelectorAll('button')].filter(b=>!b.disabled);
+    buttons.forEach(b=>b.disabled=true);
+    if(control)control.setAttribute('aria-busy','true');
+    notice('');
+    try{await task()}catch(error){notice(error.message||'Não foi possível concluir. Tente novamente.','error');}
+    finally{authBusy=false;buttons.forEach(b=>b.disabled=false);if(control)control.removeAttribute('aria-busy');}
+  }
+  el('activate-link').onclick=()=>authTask(el('activate-link'),async()=>{
+    const info=await request('/auth/features');
+    if(!info.registration){notice('A criação de conta está temporariamente indisponível. Use uma conta Orion existente ou fale com a distribuidora.','error');return}
+    const email=el('login').elements.username.value.trim();clearPasswords();showActivation();el('activate-form').elements.email.value=email;
+  });
+  el('activate-back').onclick=()=>{clearPasswords();showAuth('login');};
+  el('forgot-link').onclick=()=>authTask(el('forgot-link'),async()=>{
+    const info=await request('/auth/features');
+    if(!info.passwordRecovery){notice('A recuperação de senha está temporariamente indisponível. Tente novamente mais tarde.','error');return}
+    const email=el('login').elements.username.value.trim();clearPasswords();showRecovery(email);
+  });
+  el('recovery-back').onclick=()=>{clearPasswords();showAuth('login');};
+  el('activate-form').addEventListener('submit',event=>{
+    event.preventDefault();const f=event.target;
+    void authTask(f.querySelector('button[type=submit]'),async()=>{
+      const email=f.elements.email.value.trim().toLowerCase();
       await request('/auth/register','POST',{name:f.elements.name.value,email,password:f.elements.password.value});
-      f.elements.password.value='';showActivation(email);notice('Confirme o código enviado ao seu e-mail.');
-    }catch(error){notice(error.message);}finally{activating=false}
+      clearPasswords();showActivation(email);notice('Confirme o código enviado ao seu e-mail.','success');
+    });
   });
-  el('activate-verify').addEventListener('submit',async event=>{
-    event.preventDefault();if(activating)return;activating=true;const f=event.target;
-    try{const email=f.elements.email.value.trim().toLowerCase();
+  el('activate-verify').addEventListener('submit',event=>{
+    event.preventDefault();const f=event.target;
+    void authTask(f.querySelector('button[type=submit]'),async()=>{
+      const email=f.elements.email.value.trim().toLowerCase();
       await request('/auth/verify','POST',{email,code:f.elements.code.value});
-      f.elements.code.value='';el('activation').hidden=true;el('login').hidden=false;el('login').elements.username.value=email;
-      notice('E-mail confirmado. Entre com sua senha para acessar as entregas.');
-    }catch(error){notice(error.message);}finally{activating=false}
+      f.elements.code.value='';clearPasswords();showAuth('login');el('login').elements.username.value=email;
+      notice('E-mail confirmado. Entre com sua senha.','success');
+    });
   });
-  el('activate-resend').onclick=async()=>{
-    if(activating)return;const f=el('activate-verify');if(!f.elements.email.reportValidity())return;activating=true;
-    try{await request('/auth/verify/resend','POST',{email:f.elements.email.value.trim().toLowerCase()});notice('Solicitação recebida. Confira o e-mail.');}
-    catch(error){notice(error.message);}finally{activating=false}
+  el('activate-resend').onclick=()=>{
+    const f=el('activate-verify');if(!f.elements.email.reportValidity())return;
+    void authTask(el('activate-resend'),async()=>{await request('/auth/verify/resend','POST',{email:f.elements.email.value.trim().toLowerCase()});notice('Solicitação recebida. Confira o e-mail.','success');});
   };
-  el('login').addEventListener('submit',async event=>{
-    event.preventDefault();const form=event.target;
-    try{await request('/auth/login','POST',{username:form.username.value,password:form.password.value});form.password.value='';await start();}
-    catch(error){if(error.detail?.code==='email_confirmation_required'){showActivation(form.username.value.trim().toLowerCase());notice('Confirme seu e-mail para entrar.')}else fault(error);}
+  el('recovery-form').addEventListener('submit',event=>{
+    event.preventDefault();const f=event.target;
+    void authTask(f.querySelector('button[type=submit]'),async()=>{
+      const email=f.elements.email.value.trim().toLowerCase();
+      await request('/auth/password/forgot','POST',{email});showRecovery(email,true);
+      notice('Se o e-mail estiver cadastrado, você receberá um código.','success');
+    });
   });
-  el('retry').onclick=start;
+  el('recovery-resend').onclick=()=>{
+    const f=el('recovery-reset');if(!f.elements.email.reportValidity())return;
+    void authTask(el('recovery-resend'),async()=>{await request('/auth/password/forgot','POST',{email:f.elements.email.value.trim().toLowerCase()});notice('Se o e-mail estiver cadastrado, você receberá um código.','success');});
+  };
+  el('recovery-reset').addEventListener('submit',event=>{
+    event.preventDefault();const f=event.target;
+    void authTask(f.querySelector('button[type=submit]'),async()=>{
+      const email=f.elements.email.value.trim().toLowerCase();
+      await request('/auth/password/reset','POST',{email,code:f.elements.code.value,password:f.elements.password.value});
+      f.elements.code.value='';clearPasswords();showAuth('login');el('login').elements.username.value=email;
+      notice('Senha atualizada. Entre novamente.','success');
+    });
+  });
+  el('login').addEventListener('submit',event=>{
+    event.preventDefault();const form=event.target;
+    void authTask(form.querySelector('button[type=submit]'),async()=>{
+      try{await request('/auth/login','POST',{username:form.username.value,password:form.password.value});clearPasswords();await start();}
+      catch(error){if(error.detail?.code==='email_confirmation_required'){clearPasswords();showActivation(form.username.value.trim().toLowerCase());notice('Confirme seu e-mail para entrar.');}else throw error;}
+    });
+  });
+  el('retry').onclick=()=>start();
+  el('auth-retry').onclick=()=>start({quiet:true});
   el('logout').onclick=async()=>{
     try{stopWatch();if(model&&model.state!=='off'&&!active().length&&!reserved().length)await request(api+'/shift','PUT',{state:'off'});
       await request('/auth/logout','POST');location.reload();}catch(error){fault(error);}
@@ -265,5 +328,5 @@
   window.addEventListener('offline',()=>{notice('Sem conexão. Consulte apenas a tela já carregada e reconecte para confirmar.');updateSelection();checkLoad();});
   window.addEventListener('pagehide',stopWatch);
   window.setInterval(()=>{if(!busy&&model&&!document.hidden&&navigator.onLine)void refresh().catch(fault);},15000);
-  void start();
+  void start({quiet:true});
 })();
