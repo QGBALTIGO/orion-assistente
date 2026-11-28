@@ -173,11 +173,11 @@ button.os-delivery-dashboard-row:hover{background:var(--os-tint)}
 .odd-rank-total{text-align:right}
 .odd-rank-track{height:4px;display:block;background:var(--os-soft);border-radius:8px;overflow:hidden}
 .odd-rank-track>i{display:block;height:100%;background:var(--os-primary);border-radius:8px}
-.os-delivery-dashboard-values,.os-delivery-period-comparison{font-size:12px;line-height:1.5;margin-top:10px;min-width:0}
-.os-delivery-dashboard-values summary,.os-delivery-period-comparison summary{min-height:40px;padding:10px 0;box-sizing:border-box;cursor:pointer;color:var(--os-primary);font-weight:600}
-.os-delivery-dashboard-values table{width:100%;border-collapse:collapse;text-align:end;font-variant-numeric:tabular-nums}
-.os-delivery-dashboard-values :is(td,th){padding:7px 3px;border-top:1px solid var(--odd-line);overflow-wrap:anywhere;font-size:11px}
-.os-delivery-dashboard-values th:first-child{text-align:start}
+.os-delivery-dashboard-values,.odd-hour-values,.os-delivery-period-comparison{font-size:12px;line-height:1.5;margin-top:10px;min-width:0}
+.os-delivery-dashboard-values summary,.odd-hour-values summary,.os-delivery-period-comparison summary{min-height:40px;padding:10px 0;box-sizing:border-box;cursor:pointer;color:var(--os-primary);font-weight:600}
+.os-delivery-dashboard-values table,.odd-hour-values table{width:100%;border-collapse:collapse;text-align:end;font-variant-numeric:tabular-nums}
+.os-delivery-dashboard-values :is(td,th),.odd-hour-values :is(td,th){padding:7px 3px;border-top:1px solid var(--odd-line);overflow-wrap:anywhere;font-size:11px}
+.os-delivery-dashboard-values th:first-child,.odd-hour-values th:first-child{text-align:start}
 .os-delivery-period-comparison .os-table-scroll{margin-top:8px}
 .os-delivery-dashboard [aria-busy=true]{min-width:0}
 @media(min-width:1000px){.os-delivery-dashboard-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}}

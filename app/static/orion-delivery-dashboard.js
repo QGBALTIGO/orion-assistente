@@ -219,7 +219,7 @@
         '<div class="odd-hour-bars" role="img" aria-label="Quantidade de pedidos por hora da empresa">'+rows.map(row=>'<div><span style="height:'+
           (numeric(row.orders)/max*100)+'%" title="'+esc(fmt(row)+' · '+formatInt(row.orders)+' pedidos')+'"'+(row.orders&&row.hour===peak.hour?' class="is-peak"':'')+'></span></div>').join('')+'</div>'+
         '<div class="odd-x-labels"><span>00h</span><span>06h</span><span>12h</span><span>18h</span><span>23h</span></div>'+
-        '<details class="os-delivery-dashboard-values"><summary>Pedidos por horário</summary><table><thead><tr><th>Hora</th><th>Pedidos</th></tr></thead><tbody>'+
+        '<details class="odd-hour-values"><summary>Pedidos por horário</summary><table><thead><tr><th>Hora</th><th>Pedidos</th></tr></thead><tbody>'+
         rows.map(row=>'<tr><th scope="row">'+fmt(row)+'</th><td>'+formatInt(row.orders)+'</td></tr>').join('')+'</tbody></table></details>';
     }
 
