@@ -29,9 +29,13 @@ async def test_lifetime_delivery_performance(onboarding_db, monkeypatch):
         assert data["current"]["orders"] == 0 and len(data["series"]) == 1
         assert (await http.get(endpoint, params={"period":"all","start":"2024-01-01"})).status_code == 422
         variant = (await http.post(root+"/catalog",json=new_product())).json()["variant_id"]
+        customer = uuid4()
+        async with ctx.migration.begin() as db:
+            await db.execute(text("INSERT INTO customers(id,tenant_id,name) VALUES(:c,:t,'Cliente sintético')"),
+                             {"c":customer,"t":tenant})
         created = []
         for qty in (1,2):
-            res = await http.post(root+"/orders",json=await order_payload(http,root,variant,qty,mode="pickup"))
+            res = await http.post(root+"/orders",json=await order_payload(http,root,variant,qty,mode="pickup",customer_id=str(customer)))
             assert res.status_code == 201, res.text
             created.append(res.json())
         paid = await http.post(root+"/orders/"+created[1]["id"]+"/transitions",
