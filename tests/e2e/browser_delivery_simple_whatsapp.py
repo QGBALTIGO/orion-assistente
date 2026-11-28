@@ -15,7 +15,10 @@ PNG="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQ
 
 def run(browser,width,method,theme):
     page=browser.new_page(viewport={"width":width,"height":844},is_mobile=width<768,has_touch=width<768)
-    page.set_content('<!doctype html><html lang="pt-BR" data-theme="'+theme+'"><body><main class="os-main" id="page-suite" data-os-current-route="whatsapp-delivery"><div id="osPageBody"><section id="osSubscriptionDevices"></section></div></main></body></html>')
+    html='<!doctype html><html lang="pt-BR" data-theme="'+theme+'"><body><main class="os-main" id="page-suite" data-os-current-route="whatsapp-delivery"><div id="osPageBody"><section id="osSubscriptionDevices"></section></div></main></body></html>'
+    page.route("https://orion.test/**",lambda route: route.fulfill(status=200,content_type="text/html",body=html) if route.request.is_navigation_request() else route.abort())
+    page.goto("https://orion.test/painel?aba=whatsapp-delivery")
+    assert page.evaluate("isSecureContext && typeof crypto.randomUUID === 'function'")
     page.add_style_tag(path=STATIC/"orion-suite.css")
     page.add_style_tag(path=STATIC/"orion-subscription-devices.css")
     page.add_style_tag(content="body{margin:0;padding:12px;box-sizing:border-box} #page-suite{max-width:100%;padding:0}")
