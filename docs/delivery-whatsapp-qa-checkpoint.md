@@ -50,3 +50,14 @@ Executada localmente contra os normalizadores reais do conector, com mensagens s
 - Workflow 46083201758 executa os testes de mídia/decodificação em Linux com ffmpeg e ffprobe; nenhuma conexão real ou provedor pago. Estado: aprovado integralmente (workflow 46083201758). FFmpeg/ffprobe 6.1.1 no Linux; 264 testes Python aprovados e etapa de testes Node aprovada. Os 3 bloqueios locais por ausência de FFmpeg foram resolvidos no runner descartável.
 
 - Matriz atualizada com 31 cenários que possuem evidência interna delimitada e 4 bloqueios multimodais observados; preservadas quatro evidências históricas reais. Outros casos continuam sem execução individual comprovada.
+
+## Homologação multimodal — 27/11/2026
+
+- Código: `41520942dc5461e8d79ff922ebbe629b21cf264f`, branch `codex/delivery-multimodal-qa-20261127`.
+- CI direcionada [46086012006](https://github.com/QGBALTIGO/orion-assistente/actions/runs/46086012006): **success**. 106 testes unitários Python, 8 testes de integração PostgreSQL (10 desmarcados), migração Alembic, suíte Node do conector selecionada e verificações de sintaxe aprovadas.
+- Foto: decodificação real, resposta do modelo simulada; classificação de recipiente/volume e comprovante, reserva única de análise, limites de mídia e validação de saída. Provedor externo e precisão real ainda não validados.
+- Localização fixa: recepção por evento autenticado sintético e persistência das coordenadas no endereço do pedido, com link de mapa.
+- Localização ao vivo: eventos simulados com sequência; somente o ponto mais recente válido antes da confirmação integra o pedido. Atualizações posteriores não modificam a versão confirmada. Não é acompanhamento contínuo após a confirmação.
+- Chamadas: oferta verificada dispara resposta textual; chamadas repetidas dentro de 5 minutos não duplicam resposta. Não há atendimento de voz.
+- Regressão geral [46086011985](https://github.com/QGBALTIGO/orion-assistente/actions/runs/46086011985): validação estática concluída com sucesso; job de revisão em andamento no momento deste registro.
+- Matriz atualizada somente nos cenários com evidências específicas; outros cenários permanecem planejados. Nenhum teste em WhatsApp real, nenhuma chamada ao provedor visual pago e nenhuma publicação em produção nesta etapa.
