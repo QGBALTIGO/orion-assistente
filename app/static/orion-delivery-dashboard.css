@@ -25,20 +25,20 @@
 }
 .os-delivery-dashboard [hidden]{display:none!important}
 .os-delivery-dashboard-header {
-  display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:18px;
+  display:grid;grid-template-columns:minmax(0,1fr) minmax(0,min(18%,180px)) auto;align-items:center;gap:18px;
   position:relative;overflow:hidden;isolation:isolate;min-height:112px;
   padding:22px 24px;border:1px solid var(--odd-line);border-radius:20px;
   background:linear-gradient(115deg,var(--odd-surface) 35%,color-mix(in srgb,var(--os-tint) 70%,var(--odd-surface)));
   box-shadow:var(--odd-shadow);
 }
 .odd-heading{position:relative;z-index:1;min-width:0}
-.odd-heading h1{font:680 clamp(26px,3vw,36px)/1.15 var(--os-display);letter-spacing:-.035em}
+.odd-heading h1{font:680 clamp(26px,3vw,36px)/1.15 var(--os-display);letter-spacing:-.035em;max-width:100%;min-width:0;white-space:normal;overflow-wrap:anywhere;word-break:normal}
 .odd-heading p{margin-top:7px;font-size:14px;line-height:1.5;color:var(--os-muted)}
 .odd-eyebrow{display:inline-flex;align-items:center;gap:6px;max-width:100%;margin-bottom:9px;
   color:var(--os-primary);font:600 12px/1.4 var(--os-font);overflow-wrap:anywhere}
 .odd-eyebrow .os-icon{width:15px;height:15px;flex:none}
-.odd-hero-art{position:absolute;right:13%;bottom:0;width:min(31%,240px);height:auto;color:var(--os-primary);pointer-events:none;z-index:0}
-.os-delivery-dashboard-toolbar{position:relative;z-index:1;display:flex;align-items:center;justify-content:flex-end;min-width:0}
+.odd-hero-art{grid-column:2;grid-row:1;justify-self:end;align-self:center;width:100%;max-width:180px;height:auto;color:var(--os-primary);pointer-events:none;z-index:0}
+.os-delivery-dashboard-toolbar{grid-column:3;grid-row:1;position:relative;z-index:1;display:flex;align-items:center;justify-content:flex-end;min-width:0}
 .os-delivery-dashboard-toolbar .os-button{min-height:44px;white-space:nowrap;padding:10px 16px;box-shadow:0 3px 10px #2469d726}
 .odd-day-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;min-width:0}
 .odd-day-toolbar h2{font:650 18px/1.3 var(--os-display)}
@@ -184,15 +184,19 @@ button.os-delivery-dashboard-row:hover{background:var(--os-tint)}
 @media(min-width:1650px){.os-delivery-dashboard-metrics{grid-template-columns:repeat(6,minmax(0,1fr))}.os-delivery-dashboard-metric.os-card{padding:14px;min-height:124px}}
 @media(max-width:1160px){.odd-status-content{grid-template-columns:minmax(0,1fr);justify-items:center}.odd-status-legend{width:100%;max-width:240px}.odd-ring{max-width:134px}}
 @media(max-width:900px){.odd-analytics-grid,.os-delivery-dashboard-grid{grid-template-columns:minmax(0,1fr)}.odd-status-content{grid-template-columns:minmax(0,130px) minmax(0,1fr);justify-items:stretch}.odd-status-legend{max-width:none}}
+@media(max-width:1199px){
+  .os-delivery-dashboard-header{grid-template-columns:minmax(0,1fr) minmax(0,min(30%,115px));gap:12px}
+  .odd-heading{grid-column:1/-1;grid-row:1;max-width:100%}
+  .odd-hero-art{grid-column:2;grid-row:2;max-width:115px;opacity:.64}
+  .os-delivery-dashboard-toolbar{grid-column:1;grid-row:2;justify-content:flex-start}
+}
 @media(max-width:767px){
   #appView:not(.os-layout-app) #page-suite[data-os-current-route="dashboard-delivery"]{padding:12px 12px calc(20px + env(safe-area-inset-bottom,0px))}
   #appView.orion-suite-enabled:not(.os-menu-open):has(.os-delivery-dashboard)>.sidebar{visibility:hidden;transition-delay:0s}
   .os-delivery-dashboard,.os-delivery-dashboard>[data-delivery-dashboard-content]{gap:15px}
-  .os-delivery-dashboard-header{padding:16px;gap:12px;border-radius:15px;grid-template-columns:minmax(0,1fr);min-height:0}
-  .odd-heading{max-width:80%}
-  .odd-heading h1{font-size:28px}
-  .odd-heading p{font-size:12px;max-width:240px}
-  .odd-hero-art{width:115px;right:6px;bottom:36px;opacity:.64}
+  .os-delivery-dashboard-header{padding:16px;border-radius:15px;min-height:0}
+  .odd-heading h1{font-size:clamp(22px,6.8vw,28px)}
+  .odd-heading p{font-size:12px;max-width:100%}
   .os-delivery-dashboard-toolbar{justify-content:flex-start}
   .os-delivery-dashboard-toolbar .os-button{min-height:42px;font-size:13px;padding:8px 13px}
   .odd-day-toolbar{gap:8px}
@@ -225,7 +229,7 @@ button.os-delivery-dashboard-row:hover{background:var(--os-tint)}
   .os-delivery-dashboard-row{gap:6px;font-size:13px}
 }
 @media(max-width:360px){
-  .odd-hero-art{opacity:.3;width:94px}
+  .odd-hero-art{opacity:.4;max-width:94px}
   .odd-heading{max-width:100%}
   .odd-status-content{grid-template-columns:minmax(0,102px) minmax(0,1fr)}
   .odd-status-legend li{gap:5px;font-size:11px}

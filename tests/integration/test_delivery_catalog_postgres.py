@@ -25,10 +25,10 @@ from test_onboarding_postgres import onboarding_db  # noqa: F401
 pytestmark = pytest.mark.integration
 
 
-async def business(ctx, monkeypatch):
+async def business(ctx, monkeypatch, name="Distribuidora de avaliação"):
     actor = ctx.new_actor
     state = await create_business(actor, CreateBusiness(
-        name="Distribuidora de avaliação", timezone="America/Cuiaba", niche="delivery_distribuicao",
+        name=name, timezone="America/Cuiaba", niche="delivery_distribuicao",
         activity="products", delivery_offering="distribuidora", contact_phone="67999999901",
         idempotency_key=uuid4().hex,
     ))
@@ -243,7 +243,8 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
     ctx = onboarding_db
     redis = urlsplit(os.environ["REDIS_URL"])
     assert redis.hostname in {"127.0.0.1", "localhost"} and redis.path == "/15"
-    tenant, actor = await business(ctx, monkeypatch)
+    company_name = "Distribuidora de Água e Gás São José Comércio e Distribuição de Bebidas e Produtos para toda a Região Metropolitana"
+    tenant, actor = await business(ctx, monkeypatch, name=company_name)
     password = uuid4().hex
     driver_password = uuid4().hex
     driver_email = f"onboarding-{ctx.other}@example.test"
@@ -588,7 +589,7 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                     await page.get_by_role("button", name="Histórico", exact=True).click()
                     await expect(page.get_by_role("cell", name="Devolução", exact=True)).to_be_visible()
                 panels = (
-                    ("dashboard-delivery", "Dashboard", "heading", "Pedidos do dia"),
+                    ("dashboard-delivery", company_name, "heading", "Pedidos do dia"),
                     ("clientes", "Clientes", "button", "Novo cliente"),
                     ("financeiro", "Financeiro", None, "Ticket médio"),
                     ("pedidos-delivery", "Pedidos", "button", "Novo pedido"),
@@ -623,6 +624,15 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                         if route == "dashboard-delivery":
                             shortcuts = page.get_by_role("navigation", name="Atalhos de Delivery")
                             await expect(shortcuts).to_have_count(0)
+                            await expect(page.locator(".odd-heading h1")).to_have_text(company_name)
+                            await expect(page.locator(".odd-eyebrow")).to_have_text("Dashboard")
+                            assert await page.locator(".odd-heading h1").evaluate("""el => {
+                                const title = el.getBoundingClientRect();
+                                const art = el.closest("header").querySelector(".odd-hero-art").getBoundingClientRect();
+                                const button = el.closest("header").querySelector(".os-delivery-dashboard-toolbar").getBoundingClientRect();
+                                const overlaps = r => Math.min(title.right,r.right)-Math.max(title.left,r.left)>2 && Math.min(title.bottom,r.bottom)-Math.max(title.top,r.top)>2;
+                                return el.scrollWidth<=el.clientWidth+1 && el.scrollHeight<=el.clientHeight+1 && !overlaps(art) && !overlaps(button);
+                            }""")
                             await expect(page.locator(".os-delivery-dashboard-metrics")).to_be_visible()
                             await expect(page.get_by_role("button", name="Novo pedido", exact=True)).to_be_visible()
                         if width in (390,1440):

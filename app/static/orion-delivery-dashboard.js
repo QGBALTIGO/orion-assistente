@@ -17,6 +17,7 @@
       ['90d','Últimos 90 dias'],['custom','Personalizado']];
     filters.performancePeriod??='7d';
 
+    const companyName=typeof company==='string'&&company.trim()?company.trim():'Minha empresa';
     const newOrder=(className='')=>canWrite()?button('Novo pedido','delivery-dashboard-new',className,'plus'):'';
     const shortcut=(label,route,symbol,className='',scope='')=>
       '<button type="button" class="os-button '+className+'" data-delivery-page="'+route+'"'+
@@ -36,8 +37,8 @@
       '<path d="M188 15a12 12 0 0 1 12 12c0 8-12 19-12 19s-12-11-12-19a12 12 0 0 1 12-12Z" fill="currentColor" opacity=".8"/><circle cx="188" cy="27" r="4" fill="var(--os-card)"/></svg>';
     host.innerHTML='<div class="os-delivery-dashboard">'+
       '<header class="os-delivery-dashboard-header"><div class="odd-heading">'+
-      '<span class="odd-eyebrow">'+icon('deliveryStorefront')+' '+esc(company||'Delivery e Distribuição')+'</span>'+
-      '<h1>Dashboard</h1><p>Vendas, pedidos e entregas em um só lugar.</p></div>'+
+      '<span class="odd-eyebrow">'+icon('deliveryStorefront')+' Dashboard</span>'+
+      '<h1>'+esc(companyName)+'</h1><p>Vendas, pedidos e entregas em um só lugar.</p></div>'+
       heroArt+'<div class="os-delivery-dashboard-toolbar">'+newOrder('os-delivery-dashboard-new')+'</div></header>'+
       '<div class="odd-day-toolbar"><div><h2>Operação do dia</h2><p>Indicadores e atividades da data selecionada</p></div>'+
       '<div class="os-delivery-dashboard-date"><label for="osDeliveryDashboardDay">Data</label>'+

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {makeSuite,defaultResponse,planState,flush,deferred} from './harness.mjs';
+import {makeSuite,defaultResponse,planState,flush,deferred,tenantA} from './harness.mjs';
 
 const sources=await Promise.all(['orion-delivery-orders.js','orion-delivery-dashboard.js'].map(file=>
   readFile(new URL('../app/static/'+file,import.meta.url),'utf8')));
@@ -20,7 +20,8 @@ const basePerf={start:'2026-11-22',end:day,previous_start:'2026-11-15',previous_
   top_products:[{id:'variant',product:'<Água>',variant:'20 L',quantity:1,revenue_cents:1250}]};
 const single={...basePerf,start:day,end:day,granularity:'hour',
   series:Array.from({length:24},(_,hour)=>({date:day,hour,orders:hour===14?3:0,sales_cents:hour===14?1750:0,income_cents:hour===14?1250:0}))};
-const load=(t,respond,role='owner')=>makeSuite({initialRoute:'dashboard-delivery',permissions,role,configureWindow:w=>sources.forEach(s=>w.eval(s)),respond:path=>{
+const load=(t,respond,role='owner',name='Empresa A')=>makeSuite({initialRoute:'dashboard-delivery',permissions,role,
+  bridge:{tenants:[{id:tenantA,name,slug:'empresa-a',timezone:'America/Sao_Paulo',role}]},configureWindow:w=>sources.forEach(s=>w.eval(s)),respond:path=>{
   if(path.includes('/delivery/overview/performance?'))return respond(path);
   if(path.includes('/delivery/overview?'))return structuredClone(daily);
   return defaultResponse(path);
@@ -40,6 +41,8 @@ test('dashboard renders real KPIs, ranking, and status without duplicate navigat
   assert.match(h.document.querySelector('.odd-period-stats').textContent,/Sem base no período anterior/);
   assert.equal(perfCalls(h).length,1);
   const heading=h.document.querySelector('.odd-heading h1');
+  assert.equal(heading.textContent,'Empresa A');
+  assert.equal(h.document.querySelector('.odd-eyebrow').textContent.trim(),'Dashboard');
   h.click('[data-dashboard-metric="orders"]');
   assert.match(h.document.querySelector('[data-chart-readout]').textContent,/3/);
   assert.equal(perfCalls(h).length,1);
@@ -76,4 +79,17 @@ test('no activity produces an honest zero chart and neutral status ring; viewer 
   assert.match(h.document.querySelector('.odd-analytics-grid').textContent,/Nenhum produto vendido/);
   assert.equal(h.document.querySelectorAll('[data-os-action="delivery-dashboard-new"]').length,0);
   assert.equal(h.errors.length,0);
+});
+
+test('dashboard shows the entire long company name as escaped text and uses a fallback when absent',async t=>{
+  const name='Distribuidora de Água & Gás São José <Filial> '+('X'.repeat(100));
+  const h=await load(t,()=>structuredClone(basePerf),'owner',name);await flush();
+  const title=h.document.querySelector('.odd-heading h1');
+  assert.equal(title.textContent,name);
+  assert.equal(title.children.length,0);
+  assert.equal(h.document.querySelector('.odd-eyebrow').textContent.trim(),'Dashboard');
+  const empty=await load(t,()=>structuredClone(basePerf),'owner','   ');await flush();
+  assert.equal(empty.document.querySelector('.odd-heading h1').textContent,'Minha empresa');
+  assert.equal(h.errors.length,0);
+  assert.equal(empty.errors.length,0);
 });
