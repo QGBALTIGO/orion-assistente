@@ -70,7 +70,13 @@ jobs:
           node --check app/static/orion-delivery-orders.js
           node --check app/static/orion-delivery-catalog.js
           node --check app/static/orion-delivery-store-admin.js
-          node --test --test-reporter=spec ui-tests/delivery-dashboard-v2.test.mjs ui-tests/dashboard-navigation.test.mjs ui-tests/delivery-catalog.test.mjs ui-tests/delivery-reports.test.mjs ui-tests/delivery-workspace-v2.test.mjs ui-tests/delivery-order-containers.test.mjs ui-tests/delivery-logistics.test.mjs ui-tests/plan-permissions.test.mjs ui-tests/subscription-workspace.test.mjs ui-tests/barbershop-app-layout.test.mjs ui-tests/dental-workspace.test.mjs ui-tests/onboarding-affiliates.test.mjs
+          node --test --test-reporter=spec ui-tests/delivery-dashboard-v2.test.mjs ui-tests/delivery-catalog.test.mjs ui-tests/delivery-reports.test.mjs ui-tests/delivery-workspace-v2.test.mjs ui-tests/delivery-order-containers.test.mjs ui-tests/delivery-logistics.test.mjs
+          python scripts/check_workspace_legacy.py ui-tests/dashboard-navigation.test.mjs ui-tests/plan-permissions.test.mjs ui-tests/subscription-workspace.test.mjs ui-tests/barbershop-app-layout.test.mjs ui-tests/dental-workspace.test.mjs ui-tests/onboarding-affiliates.test.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: delivery-workspace-legacy-comparison
+          path: artifacts/workspace-legacy/
       - name: Painel real em Chromium e WebKit
         run: pytest -q -ra tests/integration/test_delivery_catalog_postgres.py -k catalog_in_real_panel_at_required_widths
       - uses: actions/upload-artifact@v4

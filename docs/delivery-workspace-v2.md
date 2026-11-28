@@ -21,3 +21,6 @@ A aprovação dos testes internos não substitui a validação do WhatsApp real.
 
 ## Revisão v3
 A revisão v2 passou em QA, mas a publicação foi bloqueada por divergência da imagem em produção. A v3 concilia os arquivos com a imagem imutável antes dos testes; conflitos impedem a publicação. O pacote usa exclusivamente os arquivos homologados, conferidos por SHA-256. A interface v3 revisa individualmente as telas operacionais, com filtros expansíveis, ações prioritárias, lista de pedidos, catálogo, vasilhames, logística, relatórios, CRM e financeiro. A integração WhatsApp ainda exige validação real e publicação das revisões multimodais separadas; esta revisão não altera o motor do WhatsApp.
+
+### Comparação dos demais nichos
+A base publicada contém alterações de Aparência e Afiliados não presentes na versão histórica do Git. Os testes de outros nichos passam a executar contra a imagem publicada original e contra a revisão reconciliada, com comparação de falhas por teste e erro. Nenhuma falha nova ou alterada é aceita. Incompatibilidades preexistentes continuam visíveis no artefato; não são classificadas como testes aprovados.

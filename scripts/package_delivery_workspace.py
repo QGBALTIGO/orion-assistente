@@ -47,6 +47,9 @@ def prepare():
                 live,base,review=(folder/f"{i}.{kind}" for kind in ("live","base","review"))
                 call("docker","cp",f"{container}:/srv/app/{file}",str(live))
                 assert live.is_file() and not live.is_symlink()
+                original=ROOT/"workspace-production-baseline"/file
+                original.parent.mkdir(parents=True,exist_ok=True)
+                original.write_bytes(live.read_bytes())
                 base.write_bytes(git_bytes(BEFORE,file))
                 review.write_bytes(git_bytes(head,file))
                 assert review.read_bytes()!=base.read_bytes(),file
