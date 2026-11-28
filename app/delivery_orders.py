@@ -211,7 +211,9 @@ async def overview(db, tenant, day):
         SELECT count(*) FILTER (WHERE o.created_at>=:start AND o.created_at<:end) AS orders,
             count(*) FILTER (WHERE o.created_at>=:start AND o.created_at<:end AND o.status='fulfilled') AS fulfilled,
             count(*) FILTER (WHERE d.mode='delivery' AND o.status IN ('confirmed','dispatched')
-                AND {DELIVERY_DATE}>=:start AND {DELIVERY_DATE}<:end) AS open_deliveries
+                AND {DELIVERY_DATE}>=:start AND {DELIVERY_DATE}<:end) AS open_deliveries,
+            count(*) FILTER (WHERE d.mode='delivery' AND o.status='dispatched'
+                AND {DELIVERY_DATE}>=:start AND {DELIVERY_DATE}<:end) AS in_route
         FROM commercial_orders o
         JOIN delivery_order_details d ON (d.tenant_id,d.order_id)=(o.tenant_id,o.id)
         WHERE o.tenant_id=:t AND o.origin='delivery'
@@ -229,6 +231,7 @@ async def overview(db, tenant, day):
         ), sales AS (
             SELECT CAST(coalesce(done.created_at,f.occurred_at) AT TIME ZONE :zone AS date) AS day,
                 sum(q.total_cents) AS sales_cents,
+                count(*) AS completed_sales,
                 sum(q.total_cents) FILTER (WHERE d.payment_due_date IS NOT NULL) AS credit_cents
             FROM delivery_order_details d
             JOIN commercial_orders o ON (o.tenant_id,o.id)=(d.tenant_id,d.order_id)
@@ -243,7 +246,8 @@ async def overview(db, tenant, day):
             GROUP BY 1
         )
         SELECT CAST(:first AS date) + n AS date, coalesce(receipts.income_cents,0) AS income_cents,
-            coalesce(sales.sales_cents,0) AS sales_cents, coalesce(sales.credit_cents,0) AS credit_cents
+            coalesce(sales.sales_cents,0) AS sales_cents, coalesce(sales.credit_cents,0) AS credit_cents,
+            coalesce(sales.completed_sales,0) AS completed_sales
         FROM generate_series(0,6) AS n
         LEFT JOIN receipts ON receipts.day=CAST(:first AS date) + n
         LEFT JOIN sales ON sales.day=CAST(:first AS date) + n
@@ -266,9 +270,16 @@ async def overview(db, tenant, day):
     """), {"t":tenant,"today":today})).mappings().all()
     low = await list_items(db,tenant,search="",category="",status_filter="active",low_stock=True,offset=0)
     last = series[-1]
-    return {"date":selected,"today":today,"metrics":{**dict(metrics),"paid_cents":last["income_cents"],
-            "sales_cents":last["sales_cents"],"credit_cents":last["credit_cents"]},
-            "daily":[dict(row) for row in series],"recent":recent["items"][:5],
+    # Preserve the existing daily-series and metric contracts. Additional
+    # operational KPIs are derived from the same selected date and SQL ledger.
+    completed_sales = int(last["completed_sales"])
+    return {"date":selected,"today":today,"metrics":{key:metrics[key] for key in ("orders","fulfilled","open_deliveries")} |
+            {"paid_cents":last["income_cents"],"sales_cents":last["sales_cents"],"credit_cents":last["credit_cents"]},
+            "operations":{"in_route":int(metrics["in_route"]),
+                "awaiting_dispatch":int(metrics["open_deliveries"]-metrics["in_route"]),
+                "average_ticket_cents":(int(last["sales_cents"])+completed_sales//2)//completed_sales if completed_sales else None},
+            "daily":[{key:row[key] for key in ("date","income_cents","sales_cents","credit_cents")} for row in series],
+            "recent":recent["items"][:5],
             "deliveries":deliveries["items"][:5],"credit_customers":[dict(row) for row in credit_customers],
             "low_stock":[{key:item[key] for key in ("name","variant_name","quantity_on_hand","reserved_quantity","unit")}
                          for item in low["items"][:5]]}

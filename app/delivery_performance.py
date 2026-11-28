@@ -80,5 +80,45 @@ async def performance(db, tenant, *, preset: Period, start: date | None, end: da
 
     points = [{**item, "date":start if hourly else start+timedelta(days=index), **({"hour":index} if hourly else {})}
               for index,item in enumerate(series)]
+    # Status is the current state of orders created within the selected
+    # cohort, not a subtraction of completion/cancellation events that
+    # may belong to orders created in another period.
+    cohort = (await db.execute(text("""
+        SELECT o.status,extract(hour FROM o.created_at AT TIME ZONE :zone)::int AS hour,
+            count(*) AS total
+        FROM commercial_orders o
+        JOIN delivery_order_details d ON (d.tenant_id,d.order_id)=(o.tenant_id,o.id)
+        WHERE o.tenant_id=:t AND o.origin='delivery'
+          AND o.created_at>=:lower AND o.created_at<:upper
+        GROUP BY o.status,2
+    """),{"t":tenant,"zone":timezone,"lower":lower,"upper":upper})).mappings().all()
+    statuses = dict.fromkeys(("confirmed","dispatched","fulfilled","cancelled","other"),0)
+    hourly_orders = [{"hour":hour,"orders":0} for hour in range(24)]
+    for row in cohort:
+        status = row["status"] if row["status"] in statuses else "other"
+        statuses[status] += int(row["total"])
+        hourly_orders[row["hour"]]["orders"] += int(row["total"])
+    # Gross product sales use the immutable quote lines, and the completion
+    # timestamp (same basis as gross revenue), not today's catalog prices.
+    # EXISTS avoids multiplying a quote's items by historical event rows.
+    products = (await db.execute(text("""
+        SELECT CAST(i.variant_id AS text) AS id,
+            max(i.snapshot->>'product_name') AS product,
+            max(i.snapshot->>'variant_name') AS variant,
+            sum(i.quantity) AS quantity,
+            sum(CAST(i.snapshot->>'total_cents' AS bigint)) AS revenue_cents
+        FROM commercial_orders o
+        JOIN delivery_order_details d ON (d.tenant_id,d.order_id)=(o.tenant_id,o.id)
+        JOIN commercial_quote_items i ON (i.tenant_id,i.quote_id)=(o.tenant_id,o.quote_id)
+        WHERE o.tenant_id=:t AND o.origin='delivery'
+          AND EXISTS(SELECT 1 FROM commercial_events e WHERE e.tenant_id=o.tenant_id
+             AND e.entity='order' AND e.entity_id=o.id AND e.action='fulfilled'
+             AND e.created_at>=:lower AND e.created_at<:upper)
+        GROUP BY i.variant_id
+        ORDER BY quantity DESC,revenue_cents DESC,i.variant_id LIMIT 5
+    """),{"t":tenant,"lower":lower,"upper":upper})).mappings().all()
     return {"start":start,"end":end,"previous_start":previous,"previous_end":start-timedelta(days=1),
-            "timezone":timezone,"granularity":"hour" if hourly else "day","current":with_ticket(current),"previous":with_ticket(prior),"series":points}
+            "timezone":timezone,"granularity":"hour" if hourly else "day","current":with_ticket(current),"previous":with_ticket(prior),"series":points,
+            "order_status":statuses,"hourly_orders":hourly_orders,
+            "top_products":[{"id":row["id"],"product":row["product"],"variant":row["variant"],
+                "quantity":int(row["quantity"]),"revenue_cents":int(row["revenue_cents"])} for row in products]}

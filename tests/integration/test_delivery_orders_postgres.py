@@ -257,6 +257,7 @@ async def test_delivery_fee_dispatch_payment_and_safe_return(onboarding_db, monk
         dashboard = overview.json()
         assert dashboard["metrics"] == {"orders":1,"fulfilled":0,"open_deliveries":1,"paid_cents":0,
                                         "sales_cents":0,"credit_cents":0}
+        assert dashboard["operations"] == {"in_route":1,"awaiting_dispatch":0,"average_ticket_cents":None}
         assert [item["id"] for item in dashboard["deliveries"]] == [created.json()["id"]]
         scheduled_for = datetime.fromisoformat(dashboard["date"]).replace(tzinfo=ZoneInfo("America/Cuiaba"), hour=12)
         scheduled_for += timedelta(days=1)
@@ -299,6 +300,16 @@ async def test_delivery_fee_dispatch_payment_and_safe_return(onboarding_db, monk
         assert len(overview["daily"]) == 7
         assert overview["daily"][-1] == {"date":overview["date"],"income_cents":1750,"sales_cents":1750,"credit_cents":0}
         assert len(overview["recent"]) == 2
+        assert overview["operations"] == {"in_route":0,"awaiting_dispatch":0,"average_ticket_cents":1750}
+        performance = (await http.get(root+"/overview/performance",params={"period":"today"})).json()
+        assert performance["order_status"] == {"confirmed":0,"dispatched":0,"fulfilled":1,"cancelled":1,"other":0}
+        assert len(performance["hourly_orders"]) == 24
+        assert sum(row["orders"] for row in performance["hourly_orders"]) == 2
+        assert performance["current"]["orders"] == 2
+        product, = performance["top_products"]
+        assert product["quantity"] == 1
+        assert product["revenue_cents"] == 1250
+        assert performance["current"]["sales_cents"] == 1750
 
 
 async def test_on_account_stays_pending_until_manual_receipt(onboarding_db, monkeypatch):

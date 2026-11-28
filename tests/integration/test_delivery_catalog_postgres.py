@@ -398,8 +398,8 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                     await day.fill(yesterday)
                     await expect(page.get_by_role("button", name="Hoje", exact=True)).to_be_visible()
                     await expect(page.get_by_text("Nenhum pedido para esta data.")).to_be_visible()
-                    dock = page.get_by_role("navigation", name="Atalhos de Delivery")
-                    await dock.get_by_role("button", name="Novo pedido", exact=True).click()
+                    await expect(page.get_by_role("navigation", name="Atalhos de Delivery")).to_have_count(0)
+                    await page.get_by_role("button", name="Novo pedido", exact=True).click()
                     dialog = page.get_by_role("dialog")
                     await dialog.get_by_role("button",name="Buscar produtos").click()
                     await dialog.get_by_role("button",name="Água de homologação · Unidade").click()
@@ -559,11 +559,8 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                         await assert_delivery_layout(page, (route,theme,width))
                         if route == "dashboard-delivery":
                             shortcuts = page.get_by_role("navigation", name="Atalhos de Delivery")
-                            if width < 768:
-                                await expect(shortcuts).to_be_visible()
-                                assert (await shortcuts.bounding_box())["y"] > 810
-                            else:
-                                await expect(shortcuts).to_be_hidden()
+                            await expect(shortcuts).to_have_count(0)
+                            await expect(page.locator(".os-delivery-dashboard-metrics")).to_be_visible()
                             await expect(page.get_by_role("button", name="Novo pedido", exact=True)).to_be_visible()
                         if width in (390,1440):
                             await page.screenshot(path=artifacts/f"{route}-{theme}-{width}.png", animations="disabled")
