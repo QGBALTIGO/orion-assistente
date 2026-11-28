@@ -500,7 +500,18 @@
   const loading=(text='Carregando…')=>'<div class="os-loading" role="status"><span class="os-spinner" aria-hidden="true"></span>'+esc(text)+'</div>';
   function errorHTML(error){return '<div class="os-notice os-error" role="alert">'+icon('info')+'<p>'+esc(error?.message||'Não foi possível consultar os dados. Tente novamente.')+'</p>'+button('Tentar novamente','reload','os-ghost os-small','refresh')+'</div>';}
   function toast(message,error=false){const r=$('osToastRegion');if(!r)return;const n=document.createElement('div');n.className='os-toast'+(error?' os-error':'');n.innerHTML=icon(error?'info':'check')+'<span>'+esc(message)+'</span>';r.appendChild(n);setTimeout(()=>n.remove(),6000);}
-  function title(titleText,subtitle,actions=''){return '<div class="os-title-row"><div><h1>'+esc(titleText)+'</h1>'+(subtitle?'<p>'+esc(subtitle)+'</p>':'')+'</div>'+(actions?'<div class="os-actions">'+actions+'</div>':'')+'</div>';}
+  function title(titleText,subtitle,actions=''){
+    const delivery=deliveryPreview()&&state.route!=='dashboard-delivery';
+    const symbols={'pedidos-delivery':'deliveryReceipt','entregas-delivery':'deliveryTruck','produtos-delivery':'box',
+      'vasilhames-delivery':'deliveryVessel','vendas-prazo-delivery':'deliveryDeferred','relatorio-delivery':'chart',
+      'logistica-delivery':'deliveryRoute','loja-delivery':'deliveryStorefront','whatsapp-delivery':'phone',
+      clientes:'users',financeiro:'wallet',inbox:'chat',configuracoes:'settings'};
+    const symbol=delivery?symbols[state.route]:null;
+    return '<div class="os-title-row'+(symbol?' os-delivery-title':'')+'"><div>'+
+      (symbol?'<span class="os-delivery-kicker">'+icon(symbol)+' Delivery e Distribuição</span>':'')+
+      '<h1>'+esc(titleText)+'</h1>'+(subtitle?'<p>'+esc(subtitle)+'</p>':'')+'</div>'+
+      (actions?'<div class="os-actions">'+actions+'</div>':'')+'</div>';
+  }
   function bodyHTML(html){clearSiteLookups();window.OrionSubscriptionAudience?.unmount();window.OrionSubscriptionNumberCheck?.unmount();window.OrionSubscriptionWhatsappLink?.unmount();window.OrionSubscriptionGroupAdd?.unmount();window.OrionSubscriptionGroupContacts?.unmount();window.OrionSubscriptionDirectMessages?.unmount();window.OrionSubscriptionBulkMessages?.unmount();window.OrionSubscriptionScheduledMessages?.unmount();window.OrionSubscriptionCampaigns?.unmount();window.OrionSubscriptionDiagnostics?.unmount();window.OrionSubscriptionSentMessages?.unmount();window.OrionSubscriptionTemplates?.unmount();window.OrionSubscriptionChatbotTest?.unmount();window.OrionSubscriptionChatbot?.unmount();window.OrionSubscriptionDevices?.unmount();window.OrionSubscriptionDashboard?.unmount();window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionCommunication?.unmount();window.OrionInbox?.unmount();window.OrionDentalDirectory?.unmount();window.OrionDentalClinic?.unmount?.();const body=$('osPageBody');if(body){body.innerHTML=html;window.OrionFields?.refresh(body);}}
   function pageHTML(html){disposeAffiliate();$('page-suite').innerHTML=html;window.OrionFields?.refresh($('page-suite'));}
   let affiliateAssets, affiliateMounted;
@@ -624,6 +635,7 @@
     const delivery=deliveryPreview();
     const structured=barbershop||dental||subscription||affiliate||delivery;
     $('appView')?.classList.toggle('os-dental-workspace',dental);
+    $('appView')?.classList.toggle('os-delivery-workspace',delivery);
     $('appView')?.classList.toggle('os-structured-workspace',structured);
     $('osSidebarContext').classList.toggle('os-sidebar-context--subscription',subscription||affiliate);
     $('osSidebarContext').innerHTML='<div class="os-overline">Meu negócio</div><div class="os-tenant-name">'+esc(t?.name||(businessAccessError()?'Acesso pendente':state.bridge.businessContextReady===false?'Conferindo empresa…':'Sua empresa'))+'</div><div class="os-sidebar-badges"><span class="os-badge">'+esc(affiliate?'Afiliados':isAdmin?'Administração':t?.role==='viewer'?'Consulta':t?.role==='editor'?'Equipe':'Minha empresa')+'</span></div>'+(t&&!structured?'<button type="button" class="os-side-site" data-os-route="site">meu site '+icon('external')+'</button>':'');
@@ -979,7 +991,8 @@
     if([deliveryOrdersRoute,deliveryDispatchRoute].includes(state.route))html='<div id="osPageBody">'+loading('Carregando pedidos…')+'</div>';
     if(state.route==='afiliados-whatsapp')html='<div id="osPageBody">'+routeButton('Voltar a Conexões e destinos','afiliados-conexoes','os-ghost','left')+'<section id="osSubscriptionDevices"></section></div>';
     if(state.route==='dispositivos')html='<div id="osPageBody"><section id="osSubscriptionDevices"></section></div>';
-    if(state.route===deliveryWhatsAppRoute)html='<div id="osPageBody"><section id="osSubscriptionDevices"></section><section id="osDeliveryAssistant" class="os-card os-section-gap">'+loading('Carregando atendente…')+'</section></div>';
+    if(state.route===deliveryWhatsAppRoute)html=title('Conectar WhatsApp','Gerencie a conexão e o atendimento automático dos pedidos.')+
+      '<div id="osPageBody"><section id="osDeliveryAssistant" class="os-card os-section-gap">'+loading('Carregando atendente…')+'</section><section id="osSubscriptionDevices"></section></div>';
     if(state.route==='verificador-numeros')html='<div id="osPageBody"><section id="osSubscriptionNumberCheck"></section></div>';
     if(state.route==='link-whatsapp')html='<div id="osPageBody"><section id="osSubscriptionWhatsappLink"></section></div>';
     if(state.route==='contatos')html='<div id="osPageBody"><section id="osSubscriptionAudience"></section></div>';
@@ -1113,9 +1126,11 @@
         const item=await request(path);
         if(!valid())return;
         host.innerHTML='<div class="os-card-header"><div><h2>Atendente virtual</h2><p>Pedidos de água pelo mesmo WhatsApp conectado.</p></div>'+badge(item.enabled?'completed':'pending',item.enabled?'Ativo':'Pausado')+'</div>'+
-          '<p class="os-help">'+(item.device_id?item.eligible_products+' produto(s) elegível(is) do catálogo da Loja rápida.':'Crie ou conecte o dispositivo acima.')+'</p>'+
-          '<p>O atendente interpreta os produtos, confere endereço, estoque, frete e pagamento, envia o resumo e registra o pedido somente após confirmação. Para falar com uma pessoa, o cliente pode escrever “atendente”.</p>'+
-          '<p class="os-help">Nesta etapa: mensagens de texto e produtos de água autorizados. O Pix continua manual. Não é necessário publicar a loja.</p>'+
+          '<div class="os-delivery-connection-grid"><div class="os-delivery-connection-step"><span class="os-square-icon">'+icon('phone')+'</span><div><strong>Dispositivo</strong><p>'+ (item.device_id?'Cadastrado · confira a conexão abaixo':'Ainda não cadastrado')+'</p></div></div>'+
+          '<div class="os-delivery-connection-step"><span class="os-square-icon">'+icon('box')+'</span><div><strong>'+esc(String(item.eligible_products??0))+' produtos elegíveis</strong><p>Catálogo aprovado para atendimento</p></div></div>'+
+          '<div class="os-delivery-connection-step"><span class="os-square-icon">'+icon('wallet')+'</span><div><strong>Pix manual</strong><p>Conferência pelo proprietário</p></div></div></div>'+
+          (!item.eligible_products?'<div class="os-notice"><p>Selecione e revise produtos na Loja rápida antes de ativar o atendimento. Não é necessário publicar a loja.</p></div>':'')+
+          '<p class="os-help">Pedidos de água autorizados por texto. A atendente consulta o catálogo, estoque e frete, pede confirmação e registra o pedido no painel. Para atendimento humano, o cliente pode escrever “atendente”.</p>'+
           '<div class="os-actions">'+(item.device_id?'<button type="button" class="os-button '+(item.enabled?'os-outline':'')+'" data-delivery-assistant-toggle '+(!item.enabled&&!item.eligible_products?'disabled':'')+'>'+ (item.enabled?'Pausar atendente':'Ativar atendente')+'</button>':'')+
           routeButton('Configurar catálogo',deliveryStoreRoute,'os-outline','deliveryStorefront')+routeButton('Abrir pedidos',deliveryOrdersRoute,'os-outline','deliveryReceipt')+'</div><div data-delivery-assistant-feedback aria-live="polite"></div>';
         const toggle=host.querySelector('[data-delivery-assistant-toggle]');
@@ -1150,7 +1165,7 @@
     if(!route||!routePermitted(route))return;
     if(page==='orders'||page==='deliveries'){
       const key=page==='orders'?'deliveryOrders':'deliveryDispatch';
-      Object.assign(state.filters[key]??={},{start:day,end:day,offset:0,search:'',state:'all'});
+      Object.assign(state.filters[key]??={},{start:day,end:day,offset:0,search:'',state:'all',channel:'all'});
     }
     if(page==='credit')Object.assign(state.filters.deliveryCredit??={},{offset:0,search:'',state:'pending'});
     if(page==='stock')Object.assign(state.filters.deliveryCatalog??={},{tab:'catalog',offset:0,search:'',category:'',state:'active',low_stock:lowStock});

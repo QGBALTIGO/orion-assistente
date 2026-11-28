@@ -98,7 +98,8 @@ ITEMS_FROM = """
 """
 
 
-async def list_items(db, tenant, *, search, category, status_filter, low_stock, offset, sale_mode=None):
+async def list_items(db, tenant, *, search, category, status_filter, low_stock, offset, sale_mode=None,
+                     include_channels=False):
     rows = (await db.execute(text("""
         SELECT v.id AS variant_id, v.name AS variant_name, v.sku, v.attributes,
             v.price_kind, v.unit_price_cents, v.active AS variant_active, v.revision AS variant_revision,
@@ -128,9 +129,53 @@ async def list_items(db, tenant, *, search, category, status_filter, low_stock, 
     categories = (await db.execute(text("""
         SELECT DISTINCT category FROM delivery_variant_details WHERE tenant_id=:t ORDER BY category
     """), {"t": tenant})).scalars().all()
-    return {"items": [{**row, "image_url": image_url(tenant, row["preset_image"], row["photo_url"])}
-                      for row in rows[:LIMIT]], "categories": categories,
+    items = [{**row, "image_url": image_url(tenant, row["preset_image"], row["photo_url"])}
+             for row in rows[:LIMIT]]
+    if include_channels and items:
+        await annotate_whatsapp_channels(db,tenant,items)
+    return {"items":items,"categories":categories,
             "limit": LIMIT, "offset": offset, "has_more": len(rows) > LIMIT}
+
+
+async def annotate_whatsapp_channels(db,tenant,items):
+    """Read the SAME eligibility predicate as the live WhatsApp attendant.
+    Selection is distinct from stock, opening hours and device connectivity.
+    No catalogue approval or product flags are changed by this read.
+    """
+    from app import delivery_whatsapp as wa
+    selections=(await db.execute(text("""
+        SELECT variant_id,product_revision,variant_revision FROM delivery_storefront_items
+        WHERE tenant_id=:t AND variant_id=ANY(:ids)
+    """),{"t":tenant,"ids":[row["variant_id"] for row in items]})).mappings().all()
+    selected={row["variant_id"]:row for row in selections}
+    try:
+        shop,eligible=await wa.shop_and_items(db,tenant)
+    except HTTPException as exc:
+        if exc.status_code!=403:
+            raise
+        shop,eligible=None,[]
+    approved={row["variant_id"]:row for row in eligible}
+    now=commerce.now_utc()
+    for item in items:
+        identity=item["variant_id"]
+        entry=selected.get(identity)
+        allowed=approved.get(identity)
+        if not item["product_active"] or not item["variant_active"] or not item["allow_storefront"]:
+            status="disabled"
+        elif item["price_kind"]!="fixed":
+            status="price_required"
+        elif entry is None:
+            status="not_selected"
+        elif entry["product_revision"]!=item["product_revision"] or entry["variant_revision"]!=item["variant_revision"]:
+            status="review"
+        elif allowed is None:
+            status="not_eligible"
+        elif not ((shop["allow_pickup"] and allowed["allow_pickup"]) or
+                  (shop["allow_delivery"] and allowed["allow_delivery"])):
+            status="no_mode"
+        else:
+            status="ready" if wa.in_stock(allowed,now) else "stock_unavailable"
+        item["whatsapp_catalogue_status"]=status
 
 
 async def history(db, tenant, *, start: date | None, end: date | None, offset):

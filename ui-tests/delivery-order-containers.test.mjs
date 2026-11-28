@@ -36,6 +36,7 @@ test('Kanban pages a single lane and repeating an order opens a new unquoted car
   h.click('[data-os-action=delivery-board-next]');await flush();
   assert.ok(h.calls.some(c=>c.path.includes('state=fulfilled')&&c.path.includes('offset=25')));
   assert.equal(h.calls.some(c=>c.path.includes('state=confirmed')&&c.path.includes('offset=25')),false);
+  h.click('.os-delivery-extra-actions summary');
   h.click('[data-os-action=delivery-order-repeat]');await flush();
   assert.equal(h.document.querySelector('[data-delivery-quantity]').value,'2');
   assert.equal(h.document.querySelector('[name=address_street]').value,'');

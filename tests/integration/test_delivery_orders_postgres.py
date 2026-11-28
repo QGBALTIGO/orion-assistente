@@ -300,6 +300,12 @@ async def test_delivery_fee_dispatch_payment_and_safe_return(onboarding_db, monk
         assert len(overview["daily"]) == 7
         assert overview["daily"][-1] == {"date":overview["date"],"income_cents":1750,"sales_cents":1750,"credit_cents":0}
         assert len(overview["recent"]) == 2
+        filtered=await http.get(root+"/orders",params={"channel":"manual","include_summary":True})
+        assert filtered.status_code==200,filtered.text
+        assert filtered.json()["summary"]=={"orders":2,"whatsapp":0,"confirmed":0,"dispatched":0,"fulfilled":1,"cancelled":1}
+        no_whatsapp=(await http.get(root+"/orders",params={"channel":"whatsapp","include_summary":True})).json()
+        assert no_whatsapp["items"]==[] and no_whatsapp["summary"]["orders"]==0
+        assert (await http.get(root+"/orders",params={"channel":"invalid"})).status_code==422
         assert overview["operations"] == {"in_route":0,"awaiting_dispatch":0,"average_ticket_cents":1750}
         performance = (await http.get(root+"/overview/performance",params={"period":"today"})).json()
         assert performance["order_status"] == {"confirmed":0,"dispatched":0,"fulfilled":1,"cancelled":1,"other":0}

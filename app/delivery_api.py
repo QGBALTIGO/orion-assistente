@@ -124,10 +124,11 @@ async def catalog_items(tenant_id: UUID, search: str = Query(default="", max_len
                         category: str = Query(default="", max_length=80),
                         state: Literal["all", "active", "inactive"] = "all",
                         low_stock: bool = False, offset: int = Query(default=0, ge=0, le=100_000),
-                        sale_mode: orders.OrderMode | None = None,
+                        sale_mode: orders.OrderMode | None = None, include_channels: bool = False,
                         actor: Actor = Depends(authenticate)):
     return await run(actor, tenant_id, catalog.list_items, search=search, category=category,
-                     status_filter=state, low_stock=low_stock, offset=offset, sale_mode=sale_mode)
+                     status_filter=state, low_stock=low_stock, offset=offset, sale_mode=sale_mode,
+                     include_channels=include_channels)
 
 
 @router.get("/catalog/history")
@@ -165,9 +166,11 @@ async def adjust_stock(tenant_id: UUID, variant_id: UUID, payload: catalog.Adjus
 async def order_list(tenant_id: UUID, search: str = Query(default="", max_length=120),
                      state: orders.OrderState = "all", mode: Literal["all", "counter", "pickup", "delivery"] = "all",
                      start: date | None = None, end: date | None = None, by_delivery_date: bool = False,
+                     channel: orders.OrderChannel = "all", include_summary: bool = False,
                      offset: int = Query(default=0, ge=0, le=100_000), actor: Actor = Depends(authenticate)):
     return await run(actor, tenant_id, orders.list_orders, search=search, state=state, mode=mode,
-                     start=start, end=end, offset=offset, by_delivery_date=by_delivery_date)
+                     start=start, end=end, offset=offset, by_delivery_date=by_delivery_date,
+                     channel=channel, include_summary=include_summary)
 
 
 @router.get("/overview/performance")

@@ -150,7 +150,9 @@
     }
 
     function productPanel() {
-      return '<section class="os-card os-form os-delivery-shop-product-list"><h2>Produtos na vitrine</h2>'+
+      return '<section class="os-card os-form os-delivery-shop-product-list"><div class="os-card-header"><div><h2>Produtos na vitrine</h2>'+
+        '<p>Esta seleção também é consultada pela atendente do WhatsApp.</p></div>'+routeButton('Ver estoque','produtos-delivery','os-outline','box')+'</div>'+
+        '<div class="os-notice"><p>Não é necessário publicar a loja para atender pelo WhatsApp. Depois de alterar um produto, revise a seleção; o atendimento também verifica elegibilidade e estoque.</p></div>'+
         (state.items.length?itemTable(state.items,true):'<p class="os-help">Selecione os produtos que deseja exibir na loja.</p>')+
         '</section><section class="os-card os-section-gap os-form os-delivery-shop-product-list"><h2>Selecionar produtos</h2>'+
         '<form id="osStoreFilters" class="os-filter-row os-delivery-filters">'+
@@ -171,7 +173,7 @@
     }
 
     function render() {
-      host.innerHTML=title('Loja rápida','',canWrite()?button('Configurar loja','store-settings','','settings'):'')+
+      host.innerHTML=title('Loja rápida','Gerencie sua vitrine e o catálogo usado pelo atendimento.',canWrite()?button('Configurar loja','store-settings','','settings'):'')+
         storefrontHeader()+'<div class="os-pill-tabs os-delivery-editor-tabs" role="tablist" aria-label="Loja rápida">'+
         tags.map(([key,label])=>'<button type="button" role="tab" class="os-pill-tab" id="osStoreTab-'+key+
           '" data-store-tab="'+key+'" aria-controls="osStore-'+key+'">'+label+'</button>').join('')+'</div>'+

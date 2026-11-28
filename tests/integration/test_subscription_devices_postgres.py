@@ -354,7 +354,7 @@ async def test_delivery_whatsapp_connection_is_preview_owner_only_and_has_no_aut
 @pytest.mark.asyncio
 async def test_delivery_whatsapp_connection_checkout_with_same_device_and_explicit_confirmation(device_case, monkeypatch):
     """The real broker, checkout, and database are used. No WhatsApp I/O."""
-    from app import delivery_catalog as catalog, delivery_storefront as store
+    from app import delivery_catalog as catalog, delivery_storefront as store, delivery_orders as order_service
     from app.tenant_access import TenantAccess
     from test_delivery_catalog_postgres import new_product, complete_delivery_setup
     c=device_case
@@ -375,6 +375,9 @@ async def test_delivery_whatsapp_connection_checkout_with_same_device_and_explic
     async with c.ctx.runtime() as db:
         async with tenant_transaction(db,c.tenant):
             created=await catalog.create_item(db,c.tenant,access,catalog.ProductCreate.model_validate(new_product("Água mineral 20 L")))
+            draft_catalogue=await catalog.list_items(db,c.tenant,search="",category="",status_filter="all",
+                low_stock=False,offset=0,include_channels=True)
+            assert draft_catalogue["items"][0]["whatsapp_catalogue_status"]=="not_selected"
             items=(await store.operator_items(db,c.tenant,"",0))["items"]
             selected=next(x for x in items if str(x["variant_id"])==str(created["variant_id"]))
             await store.save_store(db,c.tenant,access,store.Storefront(
@@ -384,6 +387,11 @@ async def test_delivery_whatsapp_connection_checkout_with_same_device_and_explic
                     variant_revision=selected["variant_revision"],label="Água mineral 20 L",kind="water")]))
     status=(await c.client.get(config)).json()
     assert status["eligible_products"]==1
+    async with c.ctx.runtime() as db:
+        async with tenant_transaction(db,c.tenant):
+            catalogue=await catalog.list_items(db,c.tenant,search="",category="",status_filter="all",
+                low_stock=False,offset=0,include_channels=True)
+            assert catalogue["items"][0]["whatsapp_catalogue_status"]=="ready"
     activated=await c.client.put(config,json={"enabled":True,"expected_revision":status["revision"]})
     assert activated.status_code==200,activated.text
     c.device["revision"]=activated.json()["revision"]
@@ -457,6 +465,12 @@ async def test_delivery_whatsapp_connection_checkout_with_same_device_and_explic
             from app import delivery_crm
             profile=await delivery_crm.profile(db,c.tenant,customer["id"])
             assert profile["summary"]["orders"]==1 and profile["summary"]["open_orders"]==1
+            args=dict(search="",state="all",mode="all",start=None,end=None,offset=0,include_summary=True)
+            whatsapp=await order_service.list_orders(db,c.tenant,channel="whatsapp",**args)
+            assert whatsapp["summary"]=={"orders":1,"whatsapp":1,"confirmed":1,"dispatched":0,"fulfilled":0,"cancelled":0}
+            assert whatsapp["items"][0]["sales_channel"]=="whatsapp"
+            manual=await order_service.list_orders(db,c.tenant,channel="manual",**args)
+            assert manual["items"]==[] and manual["summary"]["orders"]==0
     assert "aguardando atendimento" in await talk("meu pedido")
     assert "retirada" in await talk("Quero uma água")
     assert "pagar" in await talk("retirada")

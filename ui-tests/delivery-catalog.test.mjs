@@ -64,7 +64,9 @@ test('catalogue uses the product page, saves the model and opens stock history i
   h.fill('#osDialog [name=quantity]','3');
   h.document.querySelector('#osDialog button[type=submit]').click();
   await flush();
-  assert.match(h.document.querySelector('#osDeliveryResults').textContent,/8 un em estoque/);
+  assert.equal(h.document.querySelector('.os-delivery-stock-grid > div > strong').textContent,'8');
+  assert.ok(h.calls.some(call=>call.path.includes('include_channels=true')));
+  assert.ok(h.document.querySelector('#appView').classList.contains('os-delivery-workspace'));
   const host=h.document.getElementById('osPageBody');
   h.fill('#osDeliveryFilters [name=search]','Inexistente');
   h.click('#osDeliveryFilters button[type=submit]');

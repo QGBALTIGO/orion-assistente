@@ -27,6 +27,7 @@ from app.onboarding_service import require_operational_ready
 
 OrderMode = Literal["counter", "pickup", "delivery"]
 OrderState = Literal["all", "confirmed", "dispatched", "fulfilled", "cancelled"]
+OrderChannel = Literal["all", "pos", "phone", "attendant", "storefront", "manual", "whatsapp"]
 CreditStatus = Literal["all", "pending", "overdue", "paid"]
 
 
@@ -162,20 +163,43 @@ ORDERS = f"""
 """
 
 
-async def list_orders(db, tenant, *, search, state, mode, start, end, offset, by_delivery_date=False):
+async def list_orders(db, tenant, *, search, state, mode, start, end, offset, by_delivery_date=False,
+                      channel="all", include_summary=False):
     lower, upper = None, None
     if start is not None or end is not None:
         _, lower, upper = await management.period_for(db, tenant, start, end)
     date_column = DELIVERY_DATE if by_delivery_date and mode == "delivery" else "o.created_at"
-    rows = (await db.execute(text(ORDERS + f"""
+    scope = ORDERS + f"""
         AND (:state='all' OR o.status=:state)
         AND (:mode='all' OR d.mode=:mode)
+        AND (:channel='all' OR ({SALES_CHANNEL})=:channel)
         AND (:search='' OR position(lower(:search) in lower(concat_ws(' ',q.customer_name,cast(o.id as text))))>0)
         AND (CAST(:lower AS timestamptz) IS NULL OR {date_column}>=:lower)
         AND (CAST(:upper AS timestamptz) IS NULL OR {date_column}<:upper)
+    """
+    params = {"t":tenant,"state":state,"mode":mode,"channel":channel,"search":search.strip(),
+              "lower":lower,"upper":upper,"limit":LIMIT+1,"offset":offset}
+    if include_summary:
+        # One statement, one snapshot, and totals over the entire filtered
+        # set rather than the current page or the visible Kanban cards.
+        result = (await db.execute(text("""
+            WITH filtered AS (""" + scope + """),
+            page AS (SELECT * FROM filtered ORDER BY created_at DESC,id DESC LIMIT :limit OFFSET :offset)
+            SELECT count(*) AS orders,
+                count(*) FILTER (WHERE sales_channel='whatsapp') AS whatsapp,
+                count(*) FILTER (WHERE status='confirmed') AS confirmed,
+                count(*) FILTER (WHERE status='dispatched') AS dispatched,
+                count(*) FILTER (WHERE status='fulfilled') AS fulfilled,
+                count(*) FILTER (WHERE status='cancelled') AS cancelled,
+                coalesce((SELECT jsonb_agg(to_jsonb(page) ORDER BY created_at DESC,id DESC) FROM page),'[]') AS items
+            FROM filtered
+        """),params)).mappings().one()
+        return {"items":result["items"][:LIMIT],"limit":LIMIT,"offset":offset,
+                "has_more":len(result["items"])>LIMIT,
+                "summary":{key:int(result[key]) for key in ("orders","whatsapp","confirmed","dispatched","fulfilled","cancelled")}}
+    rows = (await db.execute(text(scope+"""
         ORDER BY o.created_at DESC,o.id DESC LIMIT :limit OFFSET :offset
-    """), {"t":tenant,"state":state,"mode":mode,"search":search.strip(),"lower":lower,"upper":upper,
-            "limit":LIMIT+1,"offset":offset})).mappings().all()
+    """), params)).mappings().all()
     return {"items":[dict(row) for row in rows[:LIMIT]],"limit":LIMIT,"offset":offset,"has_more":len(rows)>LIMIT}
 
 

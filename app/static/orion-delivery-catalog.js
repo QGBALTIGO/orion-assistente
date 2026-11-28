@@ -39,7 +39,8 @@
     function renderShell() {
       const newButton=filters.tab==='suppliers'?button('Novo fornecedor','delivery-supplier','','plus'):
         filters.tab==='purchases'?button('Receber compra','delivery-purchase','','plus'):button('Novo produto','delivery-create','','plus');
-      host.innerHTML = title('Produtos e estoque','',canWrite() ? newButton : '')+
+      host.innerHTML = title('Produtos e estoque','Gerencie o catálogo, as reservas e os produtos oferecidos no atendimento.',(canWrite() ? newButton : '')+
+        (catalogTab()&&ui.routeButton?ui.routeButton('Vitrine do atendimento','loja-delivery','os-outline','deliveryStorefront'):''))+
         '<div class="os-pill-tabs" role="tablist" aria-label="Estoque">'+
           tabs.map(([key,label])=>
             '<button type="button" class="os-pill-tab" role="tab" id="osDeliveryTab-'+key+'" aria-controls="osDeliveryPanel" aria-selected="'+(filters.tab===key)+'" tabindex="'+(filters.tab===key?'0':'-1')+'" data-delivery-tab="'+key+'">'+label+'</button>').join('')+
@@ -62,18 +63,25 @@
       const price=item.price_kind==='from'?'A partir de '+money(item.unit_price_cents):
         item.price_kind==='fixed'?money(item.unit_price_cents):
           prices.find(([key])=>key===item.price_kind)?.[1];
-      const balance=item.quantity_on_hand == null?'Sem saldo registrado':
-        `${item.quantity_on_hand} ${item.unit} em estoque · ${item.reserved_quantity} reservado(s)`;
+      const available=item.quantity_on_hand==null?null:item.quantity_on_hand-(item.reserved_quantity||0);
+      const channelLabels={ready:['Apto no catálogo','success'],stock_unavailable:['Sem estoque válido','warning'],review:['Revisar aprovação','warning'],
+        not_selected:['Não selecionado','neutral'],disabled:['Canal desabilitado','neutral'],price_required:['Requer preço fixo','neutral'],
+        not_eligible:['Não elegível para a atendente','neutral'],no_mode:['Sem modalidade compatível','warning']};
+      const channel=channelLabels[item.whatsapp_catalogue_status];
+      const channelStatus=channel?'<div class="os-delivery-catalog-channel"><span>'+icon('phone')+' WhatsApp</span><strong data-channel-tone="'+channel[1]+'">'+channel[0]+'</strong></div>':'';
       const presentation=window.OrionDeliveryEditor?.picture(item.image_url,esc)||'<div class="os-square-icon">'+icon('box')+'</div>';
       const actions=canWrite()?'<div class="os-actions">'+
         control('Editar','delivery-edit','os-ghost os-small','edit',id)+
         control('Ajustar estoque','delivery-adjust','os-outline os-small','box',id)+
         control('Nova variação','delivery-variant','os-ghost os-small','plus',id)+'</div>':'';
-      return '<article class="os-card os-item-card"><div class="os-item-top">'+
+      return '<article class="os-card os-item-card os-delivery-product-card"><div class="os-item-top">'+
         presentation+'<div><h3>'+esc(item.name)+'</h3>'+
-        '<p class="os-help">'+esc([item.variant_name,item.brand,item.category,price].filter(Boolean).join(' · '))+'</p>'+
-        '<p>'+esc(balance)+'</p><div class="os-actions">'+badge(active?'active':'inactive')+stockLabel(item)+'</div>'+
-        '</div></div>'+actions+'</article>';
+        '<p class="os-help">'+esc([item.variant_name,item.brand,item.category].filter(Boolean).join(' · '))+'</p>'+
+        '<strong class="os-delivery-product-price">'+esc(price||'Sob consulta')+'</strong><div class="os-actions">'+badge(active?'active':'inactive')+stockLabel(item)+'</div>'+
+        '</div></div><div class="os-delivery-stock-grid"><div><small>Saldo</small><strong>'+esc(item.quantity_on_hand??'—')+'</strong></div>'+
+        '<div><small>Reservado</small><strong>'+esc(item.reserved_quantity??'—')+'</strong></div>'+
+        '<div><small>Disponível*</small><strong>'+esc(available??'—')+'</strong></div></div>'+
+        '<p class="os-help">*Saldo menos reservas · '+esc(item.unit||'un')+'</p>'+channelStatus+actions+'</article>';
     }
 
     function movementTable(items) {
@@ -117,7 +125,7 @@
       output.setAttribute('aria-busy','true');
       output.innerHTML = loading('Carregando '+tabs.find(([key])=>key===filters.tab)[1].toLowerCase()+'…');
       const {search,category,state,offset,start,end,low_stock}=filters;
-      const params = catalog ? {search,category,state,low_stock,offset} : {start,end,offset};
+      const params = catalog ? {search,category,state,low_stock,offset,include_channels:true} : {start,end,offset};
       try {
         const response = await call(purchasing()?'/'+filters.tab+'?'+query({search:filters[filters.tab+'_search']||'',offset}):
           '/catalog'+(catalog?'':'/history')+'?'+query(params));

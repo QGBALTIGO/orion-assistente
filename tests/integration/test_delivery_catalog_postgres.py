@@ -358,7 +358,7 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                     dialog = page.get_by_role("dialog")
                     await dialog.get_by_label("Quantidade").fill("2")
                     await dialog.get_by_role("button",name="Salvar").click()
-                    await expect(page.get_by_text("7 un em estoque",exact=False)).to_be_visible()
+                    await expect(page.locator(".os-delivery-stock-grid > div").first).to_contain_text("7")
                 for width in widths:
                     await page.set_viewport_size({"width":width,"height":900})
                     await expect(page.get_by_role("heading",name="Água de homologação")).to_be_visible()
@@ -502,6 +502,7 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                     await expect(dialog.get_by_label("Rua", exact=True)).to_have_value("Rua de homologação")
                     await page.keyboard.press("Escape")
                     await expect(dialog).to_be_hidden()
+                    await page.get_by_text("Mais ações",exact=True).first.click()
                     await page.get_by_role("button", name="Registrar devolução", exact=True).click()
                     await dialog.get_by_label("Confirmo que todos os itens voltaram ao estoque").check()
                     await dialog.get_by_label("Confirmo que já devolvi o valor ao cliente").check()
