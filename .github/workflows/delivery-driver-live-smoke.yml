@@ -1,0 +1,42 @@
+name: Orion Entregas - verificacao publica apos publicacao
+on:
+  push:
+    branches: [codex/driver-routes-live-smoke-20261128]
+permissions:
+  contents: read
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Verificar exclusivamente arquivos publicos e protecao de sessao
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://orionagenda.pro
+          TENANT=00000000-0000-4000-8000-000000000001
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"' EXIT
+          check() {
+            curl -fsS --max-time 12 "$BASE/health" -o "$work/health" &&
+            curl -fsS --max-time 12 "$BASE/entregador/$TENANT/" -o "$work/portal" &&
+            curl -fsS --max-time 12 "$BASE/panel-assets/orion-delivery-driver.css?release=c202588" -o "$work/css" &&
+            curl -fsS --max-time 12 "$BASE/panel-assets/orion-delivery-driver.js?release=c202588" -o "$work/js" &&
+            cmp -s "$work/portal" app/static/orion-delivery-driver.html &&
+            cmp -s "$work/css" app/static/orion-delivery-driver.css &&
+            cmp -s "$work/js" app/static/orion-delivery-driver.js
+          }
+          ready=0
+          for i in $(seq 1 24); do
+            if check; then ready=1; break; fi
+            sleep 5
+          done
+          test "$ready" = 1
+          status="$(curl -sS --max-time 12 -o /dev/null -w '%{http_code}' "$BASE/api/v1/entregador/$TENANT/queue")"
+          case "$status" in 401|403) ;; *) echo "Unexpected unauthenticated status: $status"; exit 1;; esac
+          echo "Public health, portal HTML, CSS and JavaScript match the tested revision."
+          echo "Unauthenticated queue: HTTP $status. No customer or order data accessed."
+          sha256sum "$work/portal" "$work/css" "$work/js"
