@@ -164,3 +164,42 @@ test('order editor keeps a vasilhame exchange and requests physical confirmation
   assert.match(h.document.getElementById('osDeliveryOrderList').textContent,/Concluído/u);
   assert.deepEqual(h.errors,[]);
 });
+
+test('compact order editor keeps independent searches, quote and quantity controls',async t=>{
+  const h=await makeSuite({initialRoute:'pedidos-delivery',permissions:preview,configureWindow:w=>w.eval(ordersSource),
+    respond:(p,m,d)=>{
+      if(p.includes('/delivery/orders?'))return {items:[],offset:0,limit:25,has_more:false};
+      if(p.includes('/delivery/catalog?'))return {items:[{variant_id:variant,name:'Água',variant_name:'20 L',price_kind:'fixed',unit_price_cents:1250}],has_more:false};
+      if(p.includes('/order-customers?'))return {items:[{id:orderId,name:'Pessoa teste'}]};
+      if(p.endsWith('/orders/estimate'))return {confirmation_requirements_met:true,estimate_version:'a'.repeat(64),subtotal_cents:d.items[0].quantity*1250,total_cents:d.items[0].quantity*1250,delivery_fee_cents:0};
+      return defaultResponse(p);
+    }});
+  t.after(()=>h.close());await flush();h.click('[data-os-action=delivery-new-order]');
+  assert.ok(h.document.querySelector('#osDialog.os-delivery-order-editor .odo-footer [type=submit]'));
+  assert.equal(h.document.querySelector('#osDialog [type=submit]').disabled,true);
+  assert.equal(h.document.querySelectorAll('.odo-search-row input[name=product_search]').length,1);
+  assert.equal(h.document.querySelectorAll('.odo-search-row input[name=customer_search]').length,1);
+  h.click('[data-os-action=delivery-choose-items]');await flush();
+  assert.ok(h.document.querySelector('[data-delivery-product-results] [data-delivery-match]'));
+  h.click('[data-os-action=delivery-add-item]');
+  assert.equal(h.document.querySelector('[data-delivery-product-results]').textContent,'');
+  assert.equal(h.document.querySelector('[data-delivery-item-count]').textContent,'1 item');
+  h.click('[data-os-action=delivery-estimate]');await flush();
+  assert.equal(h.document.querySelector('#osDialog [type=submit]').disabled,false);
+  assert.match(h.document.querySelector('[data-delivery-total-value]').textContent,/12,50/);
+  h.click('[data-os-action=delivery-quantity-plus]');
+  assert.equal(h.document.querySelector('[data-delivery-quantity]').value,'2');
+  assert.equal(h.document.querySelector('#osDialog [type=submit]').disabled,true);
+  h.click('[data-os-action=delivery-estimate]');await flush();
+  assert.match(h.document.querySelector('[data-delivery-total-value]').textContent,/25,00/);
+  h.fill('[name=customer_search]','Pessoa');h.click('[data-os-action=delivery-choose-customer]');await flush();
+  assert.ok(h.document.querySelector('[data-delivery-customer-results] [data-delivery-match]'));
+  h.click('[data-os-action=delivery-pick-customer]');
+  assert.match(h.document.querySelector('[data-delivery-customer]').textContent,/Pessoa teste/);
+  h.click('[data-os-action=delivery-clear-customer]');
+  assert.equal(h.document.querySelector('[data-delivery-customer]').hidden,true);
+  h.click('[data-os-action=delivery-remove-item]');
+  assert.equal(h.document.querySelector('[data-delivery-item-count]').textContent,'0 itens');
+  assert.equal(h.document.querySelector('#osDialog [type=submit]').disabled,true);
+  assert.equal(h.errors.length,0);
+});

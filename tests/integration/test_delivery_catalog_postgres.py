@@ -454,10 +454,20 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                     await expect(page.get_by_role("navigation", name="Atalhos de Delivery")).to_have_count(0)
                     await page.get_by_role("button", name="Novo pedido", exact=True).click()
                     dialog = page.get_by_role("dialog")
+                    await expect(dialog.locator(".odo-footer [type=submit]")).to_be_disabled()
+                    for width in (320, 390, 430, 768, 1440):
+                        await page.set_viewport_size({"width":width,"height":844})
+                        await assert_delivery_layout(page, ("order editor",width))
+                        assert await dialog.locator(".odo-footer").evaluate("""el => {
+                            const r=el.getBoundingClientRect(), d=el.closest("dialog").getBoundingClientRect();
+                            return r.bottom<=d.bottom+1 && r.right<=d.right+1 && r.left>=d.left-1;
+                        }""")
+                    await page.set_viewport_size({"width":390,"height":844})
+                    await dialog.screenshot(path=artifacts/"pedido-vazio-dark-390.png",animations="disabled")
                     await dialog.get_by_role("button",name="Buscar produtos").click()
                     await dialog.get_by_role("button",name="Água de homologação · Unidade").click()
-                    await dialog.get_by_role("button",name="Conferir total").click()
-                    await expect(dialog.get_by_text("Total",exact=True)).to_be_visible()
+                    await expect(dialog.locator("[data-delivery-total-value]")).to_have_text(re.compile("12,50"))
+                    await expect(dialog.locator(".odo-footer [type=submit]")).to_be_enabled()
                     await page.screenshot(path=artifacts/"pedido-dark-390.png", animations="disabled")
                     await dialog.get_by_role("button",name="Confirmar pedido").click()
                     await expect(dialog).to_be_hidden()
@@ -500,8 +510,9 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                     await dialog.get_by_label("Cidade", exact=True).fill("Campo Grande")
                     await dialog.get_by_label("UF", exact=True).select_option("MS")
                     await dialog.get_by_label("Taxa de entrega").fill("5,00")
-                    await dialog.get_by_role("button", name="Conferir total").click()
-                    await expect(dialog.get_by_text("Total", exact=True)).to_be_visible()
+                    await expect(dialog.locator("[data-delivery-total-value]")).to_have_text(re.compile("17,50"))
+                    await expect(dialog.locator(".odo-footer [type=submit]")).to_be_enabled()
+                    await dialog.screenshot(path=artifacts/"pedido-entrega-dark-390.png",animations="disabled")
                     await dialog.get_by_role("button", name="Confirmar pedido").click()
                     await expect(dialog).to_be_hidden()
                     await page.get_by_role("button", name="Despachar", exact=True).click()
@@ -877,8 +888,16 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                     await page.screenshot(path=artifacts/f"webkit-{route}-390.png", animations="disabled")
                     if route == "pedidos-delivery":
                         await page.get_by_role("button",name="Novo pedido",exact=True).click()
-                        await expect(page.locator("#osDialog")).to_be_visible()
-                        await assert_delivery_layout(page, ("WebKit",route,"new order",390))
+                        await expect(page.locator("#osDialog.os-delivery-order-editor")).to_be_visible()
+                        for order_width in (320,375,390,430,768,1280):
+                            await page.set_viewport_size({"width":order_width,"height":844})
+                            await assert_delivery_layout(page, ("WebKit",route,"new order",order_width))
+                            assert await page.locator("#osDialog .odo-footer").evaluate("""el => {
+                                const r=el.getBoundingClientRect(),d=el.closest("dialog").getBoundingClientRect();
+                                return r.bottom<=d.bottom+1 && r.right<=d.right+1 && r.left>=d.left-1;
+                            }""")
+                        await page.set_viewport_size({"width":390,"height":844})
+                        await page.locator("#osDialog").screenshot(path=artifacts/"pedido-webkit-390.png",animations="disabled")
                         await page.locator("#osDialog .os-close").click()
                     if route == "loja-delivery":
                         await page.get_by_role("button",name="Configurar loja",exact=True).click()

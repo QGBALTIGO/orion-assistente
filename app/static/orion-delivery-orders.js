@@ -28,14 +28,20 @@
   const orderError=(error,esc)=>'<div class="os-notice os-error" role="alert"><p>'+esc(error.message || 'Não foi possível concluir a ação.')+'</p></div>';
 
   function openOrderEditor({call,current,ui,openEditor,deliveryOnly=false,onCreated,repeat=null}) {
-    const {esc,loading,field,moneyField,selectField,checkField,button,money,query,brazilianStates,requestKey,localISO}=ui;
+    const {esc,icon,loading,field,moneyField,selectField,checkField,button,money,query,brazilianStates,requestKey,localISO}=ui;
     const containerUi=window.OrionDeliveryOrderContainers;
     const itemAttr=(name,id)=>orderAttribute(name,id,esc);
     const err=error=>orderError(error,esc);
     const cart=new Map();
     let customer=null, estimate=null, customerSaving=false;
     let packaging, policy;
-    const addressFields='<fieldset data-delivery-address hidden disabled class="os-form">'+
+    const smallAction=(label,action,symbol,extra='')=>'<button type="button" class="odo-icon-action" data-os-action="'+action+'" aria-label="'+esc(label)+'" title="'+esc(label)+'" '+extra+'>'+icon(symbol)+'</button>';
+    const searchRow=(label,name,placeholder,action,actionLabel)=>'<div class="odo-search-row">'+
+      field(label,name,'search','','maxlength="120" autocomplete="off" placeholder="'+esc(placeholder)+'"')+
+      smallAction(actionLabel,action,'search')+'</div>';
+    const thumb=item=>picture(item,esc)||'<span class="odo-item-icon" aria-hidden="true">'+icon('box')+'</span>';
+    const fixedPrice=item=>item.price_kind==='fixed'&&Number.isSafeInteger(item.unit_price_cents)?item.unit_price_cents:null;
+    const addressFields='<fieldset data-delivery-address hidden disabled class="os-form odo-section odo-address">'+
       '<legend>Endereço de entrega</legend>'+
       '<div class="os-actions hidden" data-delivery-previous-control hidden>'+
       command(button,'Usar último endereço','delivery-use-address','left')+
@@ -45,43 +51,48 @@
       field('Identificação do endereço','address_label','text','','maxlength="60" placeholder="Casa ou Trabalho"')+
       '<div class="os-actions">'+command(button,'Salvar endereço','delivery-address-save','check')+
       command(button,'Excluir endereço','delivery-address-remove','trash')+'</div></div>'+
-      '<p data-delivery-address-status class="os-help" aria-live="polite"></p><div class="os-form-grid">'+
-      field('CEP','address_postal','text','','data-orion-field="postal-code" inputmode="numeric" autocomplete="postal-code"')+
-      '<div class="os-actions">'+command(button,'Buscar CEP','delivery-lookup-cep','search')+'</div>'+
-      field('Rua','address_street','text','','required maxlength="160"')+
-      field('Número','address_number','text','','required maxlength="30"')+checkField('Sem número','address_no_number')+
+      '<p data-delivery-address-status class="os-help" aria-live="polite"></p><div class="os-form-grid odo-address-grid">'+
+      '<div class="odo-wide odo-search-row">'+field('CEP','address_postal','text','','data-orion-field="postal-code" inputmode="numeric" autocomplete="postal-code" placeholder="00000-000"')+
+      smallAction('Buscar CEP','delivery-lookup-cep','search')+'</div>'+
+      '<div class="odo-wide">'+field('Rua','address_street','text','','required maxlength="160"')+'</div>'+
+      '<div class="odo-number-field">'+field('Número','address_number','text','','required maxlength="30"')+checkField('Sem número','address_no_number')+'</div>'+
       field('Bairro','address_neighborhood','text','','required maxlength="120"')+
       field('Cidade','address_city','text','','required maxlength="120"')+
       selectField('UF','address_state',[['','Selecione'],...brazilianStates.map(state=>[state,state])],'','required')+
-      field('Complemento ou referência','address_complement','text','','maxlength="160"')+
+      '<div class="odo-wide">'+field('Complemento ou referência','address_complement','text','','maxlength="160"')+'</div>'+
       moneyField('Taxa de entrega','delivery_fee','text',window.OrionFields.moneyDisplay(0))+
-      '<div class="hidden" data-delivery-schedule-box hidden>'+
+      '<div class="hidden odo-wide" data-delivery-schedule-box hidden>'+
       field('Agendar para','delivery_schedule','datetime-local','','aria-describedby="osDeliveryScheduleHint"')+
       '<p id="osDeliveryScheduleHint" class="os-help">Horário da empresa</p></div>'+
       '</div></fieldset>';
-    const quickCustomer='<fieldset data-delivery-quick-customer hidden disabled class="os-form hidden">'+
+    const quickCustomer='<fieldset data-delivery-quick-customer hidden disabled class="os-form hidden odo-quick-customer">'+
       '<legend>Novo cliente</legend><div class="os-form-grid">'+
       field('Nome do cliente','new_customer_name','text','','maxlength="120"')+
       field('Telefone do cliente','customer_phone','tel','','maxlength="40"')+'</div>'+
       '<div data-delivery-customer-feedback aria-live="polite"></div><div class="os-actions">'+
       command(button,'Salvar cliente','delivery-save-customer','check')+'</div></fieldset>';
-    const content=selectField('Recebimento','mode',deliveryOnly?modes.slice(2):modes,repeat?.mode||(deliveryOnly?'delivery':'counter'))+
-      '<div class="os-form-grid">'+field('Buscar produto','product_search','search','','maxlength="120"')+
-      field('Buscar cliente','customer_search','search','','maxlength="120" placeholder="Nome ou telefone"')+'</div>'+
-      '<div class="os-actions">'+command(button,'Buscar produtos','delivery-choose-items','box')+
-      command(button,'Buscar clientes','delivery-choose-customer','users')+
-      command(button,'Novo cliente','delivery-new-customer','userPlus')+'</div>'+quickCustomer+
-      '<div data-delivery-search-results aria-live="polite"></div><div data-delivery-customer aria-live="polite"></div>'+
-      '<h3>Itens do pedido</h3><div class="os-form" data-delivery-cart></div>'+
-      (containerUi?.fields()||'')+
+    const content='<section class="odo-section odo-mode">'+
+      selectField('Tipo de pedido','mode',deliveryOnly?modes.slice(2):modes,repeat?.mode||(deliveryOnly?'delivery':'counter'))+'</section>'+
+      '<section class="odo-section odo-products"><div class="odo-section-head"><h3>Produtos</h3><span data-delivery-item-count class="odo-muted">0 itens</span></div>'+
+      searchRow('Buscar produto','product_search','Nome ou código do produto','delivery-choose-items','Buscar produtos')+
+      '<div class="odo-search-results" data-delivery-product-results aria-live="polite"></div>'+
+      '<div data-delivery-cart class="odo-cart"></div></section>'+
+      '<section class="odo-section odo-customer"><div class="odo-section-head"><div><h3>Cliente</h3><span data-delivery-customer-requirement class="odo-muted">Opcional no balcão</span></div>'+
+      '<button type="button" class="odo-text-action" data-os-action="delivery-new-customer" aria-expanded="false">'+icon('userPlus')+'<span>Novo cliente</span></button></div>'+
+      '<div data-delivery-customer class="odo-selected-customer" hidden aria-live="polite"></div>'+
+      searchRow('Buscar cliente','customer_search','Nome ou telefone','delivery-choose-customer','Buscar clientes')+
+      '<div class="odo-search-results" data-delivery-customer-results aria-live="polite"></div>'+quickCustomer+'</section>'+
       addressFields+
-      '<details class="os-more-fields"><summary>Origem, pagamento e observações</summary><div class="os-form-grid">'+
+      '<section class="odo-section odo-payment"><h3>Pagamento</h3>'+
+      selectField('Forma combinada','tender_preference',[['','A combinar'],...Object.entries(storefrontPaymentLabels)],'')+
+      '<div hidden data-delivery-cash-change>'+moneyField('Troco para','cash_change','text','')+'</div></section>'+
+      (containerUi?.fields()||'')+
+      '<details class="os-more-fields odo-more"><summary>'+icon('info')+'<span class="os-disclosure-label">Mais informações</span></summary><div class="os-disclosure-body os-form-grid">'+
       selectField('Origem do pedido','intake_channel',[['','Painel'],...intakeChannels],'')+
-      selectField('Pagamento combinado','tender_preference',[['','A combinar'],...Object.entries(storefrontPaymentLabels)],'')+
-      '<div hidden data-delivery-cash-change>'+moneyField('Troco para','cash_change','text','')+'</div>'+
-      field('Observação do pedido','operator_note','text','','maxlength="300"')+'</div></details>'+
-      '<div class="os-actions">'+command(button,'Conferir total','delivery-estimate','check')+'</div>'+
-      '<div data-delivery-estimate aria-live="polite"></div>';
+      field('Observação do pedido','operator_note','text','','maxlength="300" placeholder="Ex.: entregar na portaria"')+'</div></details>'+
+      '<section class="odo-total"><div class="odo-total-head"><div><span>Total do pedido</span><strong data-delivery-total-value>—</strong></div>'+
+      '<button type="button" class="odo-text-action" data-os-action="delivery-estimate">'+icon('refresh')+'<span>Conferir total</span></button></div>'+
+      '<div data-delivery-estimate aria-live="polite"></div></section>';
     const items=()=>[...cart].map(([id,item])=>({variant_id:id,quantity:window.OrionFields.parseDecimal(item.quantity,{required:true,scale:0,min:1,max:1000})}));
     const estimateInput=form=>{
       const mode=form.elements.mode.value;
@@ -117,8 +128,19 @@
       if (saved?.status!=='confirmed') throw Error('Não foi possível confirmar a reserva.');
       onCreated?.();
     },'Pedido reservado.',{label:'Confirmar pedido',bind:dialog=>{
-      const form=dialog.querySelector('form'), matches=form.querySelector('[data-delivery-search-results]');
+      const form=dialog.querySelector('form'), productMatches=form.querySelector('[data-delivery-product-results]'), customerMatches=form.querySelector('[data-delivery-customer-results]');
       const quote=form.querySelector('[data-delivery-estimate]'), basket=form.querySelector('[data-delivery-cart]');
+      const productSearch=form.elements.product_search,customerSearch=form.elements.customer_search;
+      const confirm=form.querySelector('button[type=submit]'),totalValue=form.querySelector('[data-delivery-total-value]');
+      const quoteButton=form.querySelector('[data-os-action="delivery-estimate"]');
+      const count=form.querySelector('[data-delivery-item-count]');
+      const formBody=form.querySelector('fieldset'), actions=form.querySelector('.os-form-actions');
+      dialog.classList.add('os-delivery-order-editor');
+      form.classList.add('odo-form');formBody.classList.add('odo-body');
+      const footer=document.createElement('div');footer.className='odo-footer';
+      actions.before(footer);footer.append(form.querySelector('.odo-total'),actions);
+      const newCustomerButton=form.querySelector('[data-os-action="delivery-new-customer"]');
+      let quoteTimer=0,searchTimer=0,quotePending=null;
       const customerInfo=form.querySelector('[data-delivery-customer]');
       const addressBox=form.querySelector('[data-delivery-address]');
       const previous=form.querySelector('[data-delivery-previous-control]');
@@ -132,7 +154,52 @@
       const addressNames=['street','number','neighborhood','city','state','complement'];
       let products=[], customers=[], searchVersion=0, quoteVersion=0, addressVersion=0, addressOwner=null;
       const dialogActive = () => current()&&dialog.open&&form.isConnected;
-      const invalidate = () => {quoteVersion++;estimate=null;quote.replaceChildren();};
+      function refreshConfirmation(){
+        const needsCustomer=form.elements.mode.value!=='counter'&&!customer;
+        if(form.getAttribute('aria-busy')!=='true')confirm.disabled=!estimate||needsCustomer||customerSaving;
+        quoteButton.disabled=!cart.size||!!quotePending;
+      }
+      function quoteHint(){
+        if(!cart.size)return 'Adicione produtos para calcular o total.';
+        if(form.elements.mode.value==='delivery'&&!addressReady())return 'Complete o endereço para calcular a entrega.';
+        if(form.elements.mode.value!=='counter'&&!customer)return 'Selecione o cliente para confirmar o pedido.';
+        return 'O total é conferido com os preços e o estoque atuais.';
+      }
+      function addressReady(){
+        const v=form.elements;
+        return ['street','neighborhood','city','state'].every(key=>v['address_'+key].value.trim())&&
+          (v.address_no_number.checked||v.address_number.value.trim());
+      }
+      function invalidate(){
+        quoteVersion++;estimate=null;quotePending=null;clearTimeout(quoteTimer);
+        totalValue.textContent='—';quote.textContent=quoteHint();refreshConfirmation();
+        if(cart.size&&(form.elements.mode.value!=='delivery'||addressReady())){
+          quoteTimer=setTimeout(()=>{if(dialogActive())void requestEstimate(false);},280);
+        }
+      }
+      async function requestEstimate(manual){
+        clearTimeout(quoteTimer);
+        let input;
+        try {input=estimateInput(form);}catch(error){if(manual)quote.innerHTML=err(error);return;}
+        if(!input.items.length||input.mode==='delivery'&&!addressReady()){if(manual)quote.textContent=quoteHint();return;}
+        const key=JSON.stringify(input);
+        if(estimate?.key===key||quotePending===key)return;
+        const sequence=++quoteVersion,latest=()=>dialogActive()&&sequence===quoteVersion;
+        estimate=null;quotePending=key;totalValue.textContent='—';refreshConfirmation();
+        quote.textContent='Calculando total…';
+        try{
+          const result=await call('/orders/estimate','POST',input);
+          if(!latest())return;
+          if(!result.confirmation_requirements_met)throw Error('Confira o preço e o estoque dos itens selecionados.');
+          estimate={version:result.estimate_version,total:result.total_cents,key};
+          totalValue.textContent=money(result.total_cents);
+          quote.innerHTML='<span class="odo-sr-only">Total</span>'+
+            (input.mode==='delivery'?'<span>Produtos '+esc(money(result.subtotal_cents))+' · Entrega '+esc(money(result.delivery_fee_cents))+'</span>':'<span>Preço e estoque conferidos.</span>')+
+            (result.eta_minutes?'<span>Prazo estimado: '+esc(String(result.eta_minutes))+' min.</span>':'')+
+            (input.mode!=='counter'&&!customer?'<span>Selecione o cliente para confirmar.</span>':'');
+        }catch(error){if(latest())quote.innerHTML=err(error);}
+        finally{if(latest()){quotePending=null;refreshConfirmation();}}
+      }
       packaging=containerUi?.bind(form,{call,ui,current:dialogActive});
       const scheduleBox=form.querySelector('[data-delivery-schedule-box]');
       function resetAddressBook() {
@@ -168,6 +235,7 @@
       function updateAddress() {
         addressBox.hidden=addressBox.disabled=form.elements.mode.value!=='delivery';
         addressBox.classList.toggle('hidden',addressBox.hidden);
+        form.querySelector('[data-delivery-customer-requirement]').textContent=form.elements.mode.value==='counter'?'Opcional no balcão':'Obrigatório para este pedido';
         previous.hidden=!customer;
         previous.classList.toggle('hidden',previous.hidden);
         form.elements.address_number.disabled=form.elements.address_no_number.checked;
@@ -188,7 +256,9 @@
           form.elements.address_no_number.checked=false;
         }
         customer=next;
-        customerInfo.textContent=customer?'Cliente: '+customer.name:'';
+        customerInfo.hidden=!customer;
+        customerInfo.innerHTML=customer?'<span class="odo-item-icon">'+icon('users')+'</span><div class="odo-customer-copy"><strong>Cliente: '+esc(customer.name)+'</strong>'+
+          (customer.whatsapp_e164?'<small>'+esc(customer.whatsapp_e164)+'</small>':'')+'</div>'+smallAction('Remover cliente','delivery-clear-customer','close'):'';
         addressStatus.textContent='';
         invalidate();
         updateAddress();
@@ -196,16 +266,54 @@
       function toggleQuick(show) {
         quick.hidden=quick.disabled=!show;
         quick.classList.toggle('hidden',!show);
-        if (show) form.elements.new_customer_name.focus();
+        newCustomerButton.setAttribute('aria-expanded',String(show));
+        if(show){searchVersion++;clearTimeout(searchTimer);customerMatches.replaceChildren();form.elements.new_customer_name.focus();}
       }
       function showCart() {
+        count.textContent=cart.size+' '+(cart.size===1?'item':'itens');
         basket.innerHTML=cart.size?Array.from(cart,([id,row])=>
-          '<div class="os-form-grid"><div class="os-delivery-shop-item-name">'+picture(row,esc)+field(row.label,'qty-'+id,'number',row.quantity,
-            'required min="1" max="1000" step="1" '+itemAttr('quantity',id))+
-          '</div><div class="os-actions">'+command(button,'Remover','delivery-remove-item','close',itemAttr('match',id))+'</div></div>').join(''):
-          '<p class="os-help">Busque um produto para adicionar itens.</p>';
+          '<div class="odo-cart-row"><div class="odo-cart-copy">'+thumb(row)+'<div><strong>'+esc(row.label)+'</strong>'+
+          (row.price!=null?'<small>'+esc(money(row.price))+' / un.</small>':'')+'</div></div>'+
+          '<div class="odo-cart-controls"><div class="odo-stepper">'+
+          '<button type="button" data-os-action="delivery-quantity-minus" '+itemAttr('match',id)+' aria-label="Diminuir quantidade">−</button>'+
+          '<input type="number" inputmode="numeric" name="qty-'+esc(id)+'" aria-label="'+esc('Quantidade de '+row.label)+'" required min="1" max="1000" step="1" value="'+esc(row.quantity)+'" '+itemAttr('quantity',id)+'>'+
+          '<button type="button" data-os-action="delivery-quantity-plus" '+itemAttr('match',id)+' aria-label="Aumentar quantidade">+</button></div>'+
+          smallAction('Remover '+row.label,'delivery-remove-item','close',itemAttr('match',id))+'</div></div>').join(''):
+          '<div class="odo-cart-empty">'+icon('box')+'<span>Nenhum produto adicionado</span></div>';
         window.OrionFields.refresh(basket);
         packaging?.render(cart);
+      }
+      async function search(kind,manual=false){
+        clearTimeout(searchTimer);
+        const isProduct=kind==='product',target=isProduct?productMatches:customerMatches;
+        const input=isProduct?productSearch:customerSearch,value=input.value.trim(),sequence=++searchVersion;
+        const latest=()=>dialogActive()&&sequence===searchVersion;
+        (isProduct?customerMatches:productMatches).replaceChildren();
+        if(!isProduct&&value.length<2){target.textContent=manual?'Digite ao menos dois caracteres para buscar.':'';return;}
+        target.innerHTML=loading('Buscando…');
+        try{
+          if(isProduct){
+            const mode=form.elements.mode.value;
+            const result=await call('/catalog?'+query({state:'active',sale_mode:mode,search:value}));
+            if(!latest()||mode!==form.elements.mode.value)return;
+            products=result.items||[];
+            target.innerHTML=products.length?'<div class="odo-result-list">'+products.map(item=>{
+              const label=item.name+' · '+item.variant_name,price=fixedPrice(item);
+              return '<button type="button" class="odo-result-row" data-os-action="delivery-add-item" '+itemAttr('match',item.variant_id)+' aria-label="'+esc(label)+'">'+thumb(item)+
+                '<span class="odo-result-copy"><strong>'+esc(item.name)+'</strong><small>'+esc(item.variant_name)+(price!=null?' · '+esc(money(price)):'')+'</small></span>'+
+                '<span class="odo-result-add">'+icon('plus')+'</span></button>';
+            }).join('')+'</div>':'<p class="os-help">Nenhum produto encontrado.</p>';
+            if(result.has_more)target.insertAdjacentHTML('beforeend','<p class="os-help">Refine a busca para ver outros produtos.</p>');
+          }else{
+            const result=await call('/order-customers?'+query({search:value}));
+            if(!latest())return;
+            customers=result.items||[];
+            target.innerHTML=customers.length?'<div class="odo-result-list">'+customers.map(c=>
+              '<button type="button" class="odo-result-row" data-os-action="delivery-pick-customer" '+itemAttr('match',c.id)+' aria-label="'+esc([c.name,c.whatsapp_e164].filter(Boolean).join(' · '))+'">'+
+              '<span class="odo-item-icon">'+icon('users')+'</span><span class="odo-result-copy"><strong>'+esc(c.name)+'</strong>'+
+              (c.whatsapp_e164?'<small>'+esc(c.whatsapp_e164)+'</small>':'')+'</span>'+icon('chevron')+'</button>').join('')+'</div>':'<p class="os-help">Nenhum cliente encontrado.</p>';
+          }
+        }catch(error){if(latest())target.innerHTML=err(error);}
       }
       if (repeat) {
         for (const item of repeat.items) {
@@ -214,11 +322,11 @@
         if (repeat.customer_id) setCustomer({id:repeat.customer_id,name:repeat.customer_name||'Cliente do pedido'});
       }
       showCart();
-      updateAddress();
+      updateAddress();invalidate();
       void call('/logistics').then(value=>{
         if(!dialogActive())return;
         policy=value;
-        updateAddress();
+        updateAddress();invalidate();
       }).catch(()=>{});
       form.addEventListener('change',event=>{
         if (event.target.name==='tender_preference') {
@@ -226,11 +334,23 @@
           form.querySelector('[data-delivery-cash-change]').hidden=hide;
           if(hide)form.elements.cash_change.value='';
         }
-        if (event.target.name==='mode') {addressVersion++;resetAddressBook();updateAddress();invalidate();products=[];matches.replaceChildren();}
+        if (event.target.name==='mode') {addressVersion++;searchVersion++;clearTimeout(searchTimer);resetAddressBook();updateAddress();invalidate();products=[];productMatches.replaceChildren();customerMatches.replaceChildren();}
         if (event.target===bookChoice) {bookVersion++;selectBookEntry(savedAddresses.find(row=>row.id===bookChoice.value));}
         if (event.target.name==='address_no_number') {addressVersion++;updateAddress();invalidate();}
       });
+      form.addEventListener('keydown',event=>{
+        if(event.key==='Enter'&&[productSearch,customerSearch].includes(event.target)){
+          event.preventDefault();void search(event.target===productSearch?'product':'customer',true);
+        }
+      });
       form.addEventListener('input',event=>{
+        if([productSearch,customerSearch].includes(event.target)){
+          const isProduct=event.target===productSearch;
+          searchVersion++;clearTimeout(searchTimer);
+          (isProduct?productMatches:customerMatches).replaceChildren();
+          if(event.target.value.trim().length>=2)searchTimer=setTimeout(()=>{if(dialogActive())void search(isProduct?'product':'customer');},240);
+          return;
+        }
         if (event.target.name?.startsWith('address_')) {addressVersion++;addressStatus.textContent='';invalidate();}
         if (['delivery_fee','delivery_schedule'].includes(event.target.name)) invalidate();
         const id=event.target.dataset.deliveryQuantity;
@@ -243,18 +363,26 @@
         if (!action?.startsWith('delivery-')||!current()) return;
         event.stopPropagation();
         const id=node.dataset.deliveryMatch;
-        if (action==='delivery-remove-item') {cart.delete(id);invalidate();showCart();return;}
+        if(action==='delivery-quantity-minus'||action==='delivery-quantity-plus'){
+          const row=cart.get(id);if(!row)return;
+          const qty=Math.max(1,Math.min(1000,(Number(row.quantity)||1)+(action.endsWith('plus')?1:-1)));
+          row.quantity=String(qty);const input=basket.querySelector('[data-delivery-quantity="'+id+'"]');if(input)input.value=qty;
+          invalidate();packaging?.render(cart);return;
+        }
+        if (action==='delivery-remove-item') {cart.delete(id);showCart();invalidate();return;}
         if (action==='delivery-add-item') {
           const item=products.find(p=>p.variant_id===id);
           if (!item||(!cart.has(id)&&cart.size>=30)) return;
-          cart.set(id,{label:item.name+' · '+item.variant_name,quantity:cart.get(id)?.quantity||'1',
-            image_url:item.image_url,exchange_container_id:item.exchange_container_id,exchange_container_name:item.exchange_container_name});
-          invalidate();showCart();basket.querySelector('[data-delivery-quantity="'+id+'"]')?.focus();return;
+          cart.set(id,{label:item.name+' · '+item.variant_name,quantity:String(Math.min(1000,(Number(cart.get(id)?.quantity)||0)+1)),
+            price:fixedPrice(item),image_url:item.image_url,exchange_container_id:item.exchange_container_id,exchange_container_name:item.exchange_container_name});
+          searchVersion++;clearTimeout(searchTimer);productMatches.replaceChildren();productSearch.value='';
+          showCart();invalidate();return;
         }
         if (action==='delivery-pick-customer') {
           setCustomer(customers.find(c=>c.id===id)||null);
-          matches.replaceChildren();return;
+          searchVersion++;clearTimeout(searchTimer);customerMatches.replaceChildren();customerSearch.value='';toggleQuick(false);return;
         }
+        if(action==='delivery-clear-customer'){setCustomer(null);return;}
         if (action==='delivery-new-customer') {toggleQuick(quick.hidden);return;}
         if (action==='delivery-save-customer'&&!customerSaving) {
           feedback.replaceChildren();
@@ -263,7 +391,7 @@
             if (!name) throw Error('Informe o nome do cliente.');
             const phone=window.OrionFields.phoneValue(form.elements.customer_phone.value,{allowInternational:true})||null;
             const input={name,phone};
-            customerSaving=node.disabled=true;
+            customerSaving=node.disabled=true;refreshConfirmation();
             feedback.innerHTML=loading('Salvando cliente…');
             const created=await call('/order-customers','POST',{...input,idempotency_key:requestKey(form,input)});
             if (!dialogActive()) return;
@@ -273,7 +401,7 @@
             form.elements.new_customer_name.value=form.elements.customer_phone.value='';
             toggleQuick(false);
           } catch (error) {if (dialogActive()) feedback.innerHTML=err(error);}
-          finally {customerSaving=node.disabled=false;}
+          finally {customerSaving=node.disabled=false;refreshConfirmation();}
           return;
         }
         if (action==='delivery-use-address'&&customer) {
@@ -363,53 +491,10 @@
           finally {node.disabled=false;}
           return;
         }
-        if (action==='delivery-estimate') {
-          invalidate();
-          let input;
-          try {input=estimateInput(form);} catch(error) {quote.innerHTML=err(error);return;}
-          if (!input.items.length) {quote.innerHTML=err(Error('Adicione pelo menos um produto.'));return;}
-          const key=JSON.stringify(input), sequence=quoteVersion;
-          const latest = () => dialogActive()&&sequence===quoteVersion;
-          quote.innerHTML=loading('Conferindo o total…');
-          try {
-            const result=await call('/orders/estimate','POST',input);
-            if (!latest()) return;
-            if (!result.confirmation_requirements_met) throw Error('Confira o preço e o estoque dos itens selecionados.');
-            estimate={version:result.estimate_version,total:result.total_cents,key};
-            quote.innerHTML=(input.mode==='delivery'?'<p>Produtos '+money(result.subtotal_cents)+
-              ' · Taxa '+money(result.delivery_fee_cents)+'</p>':'')+'<p><strong>Total</strong> '+money(result.total_cents)+'</p>'+
-              (result.eta_minutes?'<p>Prazo estimado para o bairro: '+esc(String(result.eta_minutes))+' min.</p>':'');
-          } catch(error) {if (latest()) quote.innerHTML=err(error);}
-          return;
+        if(action==='delivery-estimate'){await requestEstimate(true);return;}
+        if(action==='delivery-choose-items'||action==='delivery-choose-customer'){
+          await search(action==='delivery-choose-items'?'product':'customer',true);
         }
-        if (!['delivery-choose-items','delivery-choose-customer'].includes(action)) return;
-        const sequence=++searchVersion;
-        const latest = () => dialogActive()&&sequence===searchVersion;
-        matches.innerHTML=loading('Buscando…');
-        try {
-          if (action==='delivery-choose-items') {
-            const mode=form.elements.mode.value;
-            const result=await call('/catalog?'+query({state:'active',sale_mode:mode,search:form.elements.product_search.value}));
-            if (!latest()) return;
-            if (mode!==form.elements.mode.value) return;
-            products=result.items;
-            matches.innerHTML=products.length?'<div class="os-actions">'+products.map(item=>
-                '<div class="os-delivery-shop-item-name">'+picture(item,esc)+
-                command(button,item.name+' · '+item.variant_name,'delivery-add-item',item.image_url?'':'plus',
-                  itemAttr('match',item.variant_id))+'</div>').join('')+'</div>':
-              '<p class="os-help">Nenhum produto encontrado.</p>';
-            if (result.has_more) matches.insertAdjacentHTML('beforeend','<p class="os-help">Refine a busca para ver outros produtos.</p>');
-          } else {
-            const search=form.elements.customer_search.value.trim();
-            if (search.length<2) throw Error('Digite ao menos dois caracteres para buscar o cliente.');
-            const result=await call('/order-customers?'+query({search}));
-            if (!latest()) return;
-            customers=result.items;
-            matches.innerHTML=customers.length?'<div class="os-actions">'+customers.map(c=>
-              command(button,[c.name,c.whatsapp_e164].filter(Boolean).join(' · '),'delivery-pick-customer','user',itemAttr('match',c.id))).join('')+'</div>':
-              '<p class="os-help">Nenhum cliente encontrado.</p>';
-          }
-        } catch(error) {if (latest()) matches.innerHTML=err(error);}
       });
     }});
   }
