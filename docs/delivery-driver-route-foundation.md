@@ -16,3 +16,6 @@ Este commit não ativa o piloto nem altera dados reais.
 
 ## Publicação
 Validar a migração e todos os testes numa base isolada; comparar os arquivos alterados com a imagem publicada e construir sobre a base imutável correta. Não ligar o piloto em produção sem homologação. Não reverter a migração caso haja registros de reservas ou rotas. Para contenção: desligar novas reservas e drenar os pedidos existentes com a versão compatível; preservar o banco e os outros nichos.
+
+## Interface e release v2
+A interface usa Figtree/Outfit e os componentes visuais Orion. Navegação em cinco áreas, modo entrega com avanço, filtro e seleção, sequência manual e agrupamento por bairro, conferência, histórico individual, pagamentos mistos sem Pix e tema escuro/alto contraste. O caixa é uma consulta de recebimentos confirmados dos últimos 7 dias (até 100 pedidos), não uma conciliação de dinheiro em espécie. O modo offline permanece somente leitura da tela em memória; ações críticas exigem servidor. O roteamento não calcula distância rodoviária; não há capacidade de peso cadastrada. A flag aceita também @preview, sempre limitada aos tenants já autorizados no piloto Delivery. O script de publicação usa a imagem imutável atualmente ativa e a migração existente com backup privado, preservando os demais nichos.

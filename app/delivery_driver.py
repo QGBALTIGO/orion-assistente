@@ -224,7 +224,7 @@ async def release(db,tenant,order,*,require_offer=False):
 async def dashboard(db,tenant,person):
     rows=[]
     if person['shift_started_at']:
-        rows=(await db.execute(text("""SELECT a.order_id AS id,a.status,a.expires_at,a.route_batch_id,a.route_position,o.revision,q.total_cents,d.operator_note,d.scheduled_at,
+        rows=(await db.execute(text("""SELECT a.order_id AS id,a.status,a.expires_at,a.route_batch_id,a.route_position,o.revision,q.total_cents,CASE WHEN a.status!='offered' THEN d.operator_note END AS operator_note,d.scheduled_at,
             (SELECT CASE WHEN p.confirmed_at IS NULL THEN 'pending' ELSE 'confirmed' END
              FROM delivery_pix_orders p WHERE (p.tenant_id,p.order_id)=(a.tenant_id,a.order_id)) AS pix_state,
             CASE WHEN a.status!='offered' THEN q.customer_name END AS customer_name,

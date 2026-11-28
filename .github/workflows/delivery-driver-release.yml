@@ -1,0 +1,96 @@
+name: Orion Entregas - QA e imagem de publicacao
+on:
+  push:
+    branches: [codex/driver-routes-foundation-20261128]
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: write
+concurrency:
+  group: orion-driver-release
+  cancel-in-progress: true
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: barber_saas
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-postgres-only
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U postgres -d barber_saas" --health-interval 5s --health-timeout 3s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      APP_DATABASE_URL: postgresql+asyncpg://app_runtime:ci-runtime-only@localhost:5432/barber_saas
+      MIGRATION_DATABASE_URL: postgresql+psycopg://app_migrator:ci-migrator-only@localhost:5432/barber_saas
+      SUPPORT_DATABASE_URL: postgresql+asyncpg://app_support:ci-support-only@localhost:5432/barber_saas
+      REDIS_URL: redis://localhost:6379/15
+      SUPPORT_API_TOKEN: synthetic-route-test-token-never-use-in-production
+      REQUIRE_POSTGRES_TESTS: '1'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Conciliar com a imagem publicada
+        run: python scripts/package_driver_route_release.py prepare
+      - name: Banco de homologacao e navegadores
+        env:
+          PGPASSWORD: ci-postgres-only
+        run: |
+          python -m pip install -c requirements.lock '.[test]' -r tests/e2e/requirements.txt
+          python -m pip check
+          psql -h localhost -U postgres -d barber_saas -v ON_ERROR_STOP=1 -v db_name=barber_saas -v runtime_password=ci-runtime-only -v migrator_password=ci-migrator-only -v support_password=ci-support-only -f infra/postgres/init/001-roles.sql
+          alembic upgrade head
+          python -m playwright install --with-deps chromium webkit
+          npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+      - name: PostgreSQL real - reservas, pagamentos e regressao
+        run: |
+          python -m compileall -q app
+          pytest -q -ra tests/integration/test_delivery_route_batches_postgres.py tests/integration/test_delivery_logistics_postgres.py tests/integration/test_delivery_orders_postgres.py tests/integration/test_delivery_payments_postgres.py tests/integration/test_delivery_order_containers_postgres.py tests/integration/test_delivery_storefront_postgres.py tests/integration/test_delivery_reports_postgres.py tests/unit/test_delivery_whatsapp_dialogue.py
+      - name: Portal responsivo em Chromium e WebKit
+        run: |
+          node --check app/static/orion-delivery-driver.js
+          python tests/e2e/driver_route_portal_browser.py
+      - name: Regressao visual Delivery
+        run: |
+          node --test --test-reporter=spec ui-tests/delivery-workspace-v2.test.mjs ui-tests/delivery-logistics.test.mjs ui-tests/delivery-order-containers.test.mjs ui-tests/delivery-dashboard-v2.test.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: driver-portal-browser
+          path: driver-portal-*.png
+      - name: Construir exatamente os arquivos homologados
+        env:
+          IMAGE: ghcr.io/qgbaltigo/orion-assistente-api:driver-routes-${{ github.sha }}
+        run: python scripts/package_driver_route_release.py "$IMAGE" "$GITHUB_SHA"
+      - name: Publicar imagem imutavel, sem alterar Railway
+        env:
+          IMAGE: ghcr.io/qgbaltigo/orion-assistente-api:driver-routes-${{ github.sha }}
+        run: |
+          set -euo pipefail
+          docker push "$IMAGE"
+          digest="$(docker image inspect "$IMAGE" --format '{{index .RepoDigests 0}}')"
+          [[ "$digest" =~ ^ghcr\.io/qgbaltigo/orion-assistente-api@sha256:[a-f0-9]{64}$ ]]
+          printf 'RepoDigest=%s\n' "$digest" | tee driver-route-image.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: driver-route-image
+          path: driver-route-image.txt
