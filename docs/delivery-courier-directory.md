@@ -1,0 +1,5 @@
+# Entregadores — cadastro e acesso
+
+Rota exclusiva do nicho Delivery: /painel?aba=entregadores-delivery. Reutiliza o cadastro de logística e o vínculo verificado por e-mail; não cria outra empresa nem associação ao painel administrativo. Proprietário pode cadastrar e liberar em uma transação, listar autorizações e expediente, editar, revogar e copiar convite. Editor mantém cadastro sem concessão; consulta não recebe e-mails de acesso. A ativação pelo link da empresa exige o e-mail autorizado e reutiliza registro/verificação de conta existente. O convite não contém senha nem token de autorização: a autorização é conferida no servidor após autenticação. Envio do convite é manual. O registro depende do serviço de e-mail e da configuração de cadastro de contas já existentes. Nenhuma migração adicional. Cadastro de veículos, peso e permissões individuais adicionais ficam fora desta revisão.
+
+Publicação: sobre a imagem imutável fba4b0b1, aplicando apenas os arquivos Delivery e os pontos exatos de navegação sobre o suite real. Testes de PostgreSQL e navegador com dados sintéticos; não enviar e-mails a usuários reais.
