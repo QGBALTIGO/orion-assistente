@@ -1,6 +1,7 @@
 /** Only fixed private API paths; no destination is taken from a request/model. */
 import {channelId} from './channel-storage.mjs';
 import {DEVICE_AUDIO_MEDIA_TYPES} from './device-audio.mjs';
+import {IMAGE_MAX_BYTES,IMAGE_TYPES} from './delivery-media.mjs';
 import {validGroupAddRequest} from './device-group-add.mjs';
 
 async function readPrivateAsset(response,{size,mime},signal){
@@ -27,14 +28,17 @@ export function createChannelBroker({apiUrl,fetchImpl=fetch,env=process.env}){
       base.username||base.password||base.search||base.hash||base.pathname!=='/')throw Error('unsafe_channel_broker');
   async function request(id,key,operation,body,{owner,fence,signal,phone,mediaType,device,method='POST',binary,cardIndex}={}){
     if(!channelId(id)||typeof key!=='string'||key.length<32||key.length>256)throw Error('invalid_channel');
-    const deviceAudio=operation==='device/audio',audio=operation==='audio'||deviceAudio;
-    const carouselImage=operation==='device/chatbot/carousel-image',chatbot=operation.startsWith('device/chatbot/'),campaign=operation.startsWith('device/campaigns/'),scheduled=operation.startsWith('device/scheduled/'),bulk=operation.startsWith('device/bulk/'),raw=audio||carouselImage;
+    const deviceAudio=operation==='device/audio',deviceImage=operation==='device/image',audio=operation==='audio'||deviceAudio;
+    const carouselImage=operation==='device/chatbot/carousel-image',chatbot=operation.startsWith('device/chatbot/'),campaign=operation.startsWith('device/campaigns/'),scheduled=operation.startsWith('device/scheduled/'),bulk=operation.startsWith('device/bulk/'),raw=audio||deviceImage||carouselImage;
     if(audio&&((!deviceAudio&&env.QR_AI_AUDIO_ENABLED!=='1')||!channelId(owner)||!Number.isSafeInteger(fence)||fence<1||
         !(deviceAudio?/^[1-9]\d{7,14}$/:/^55[1-9]\d(?:9\d{8}|[2-5]\d{7})$/).test(phone)||!Buffer.isBuffer(body)||body.length<1||body.length>(deviceAudio?25_000_000:2_000_000)||
         !(deviceAudio?DEVICE_AUDIO_MEDIA_TYPES:['audio/ogg','audio/webm']).includes(mediaType)))throw Error('channel_audio_disabled_or_invalid');
+    if(deviceImage&&(!channelId(owner)||!Number.isSafeInteger(fence)||fence<1||
+        !/^[1-9]\d{7,14}$/.test(phone)||!Buffer.isBuffer(body)||body.length<1||body.length>IMAGE_MAX_BYTES||
+        !IMAGE_TYPES.includes(mediaType)))throw Error('invalid_delivery_image');
     if(device&&(!channelId(device.device_id)||!channelId(device.generation)||!Number.isSafeInteger(device.settings_revision)||device.settings_revision<1||
-      (deviceAudio&&!channelId(device.operation_id))))throw Error('invalid_device_request');
-    if(deviceAudio&&!device)throw Error('invalid_device_request');
+      ((deviceAudio||deviceImage)&&!channelId(device.operation_id))))throw Error('invalid_device_request');
+    if((deviceAudio||deviceImage)&&!device)throw Error('invalid_device_request');
     if(chatbot&&operation!=='device/chatbot/http-result'&&(!device||!channelId(device.operation_id)||
         !Number.isSafeInteger(device.chatbot_revision)||device.chatbot_revision<1||!channelId(owner)||!Number.isSafeInteger(fence)||fence<1))throw Error('invalid_chatbot_request');
     if(campaign&&(!device||!channelId(device.operation_id)||device.chatbot_revision!==undefined||
@@ -47,14 +51,14 @@ export function createChannelBroker({apiUrl,fetchImpl=fetch,env=process.env}){
     if(binary&&(!Number.isSafeInteger(binary.size)||binary.size<1||binary.size>16_000_000||typeof binary.mime!=='string'||binary.mime.length>80))throw Error('invalid_chatbot_asset');
     if(signal?.aborted)throw Error('channel_request_aborted');
     const target=new URL(`/internal/qr/channels/${id}/${operation}`,base);
-    const controller=new AbortController(),abort=()=>controller.abort(),timer=setTimeout(abort,deviceAudio?125000:audio?35000:chatbot||campaign||scheduled||bulk?30000:operation==='ai/reply'?19000:5000);
+    const controller=new AbortController(),abort=()=>controller.abort(),timer=setTimeout(abort,deviceImage?65000:deviceAudio?125000:audio?35000:chatbot||campaign||scheduled||bulk?30000:operation==='ai/reply'?19000:5000);
     signal?.addEventListener('abort',abort,{once:true});
     try{
       const response=await fetchImpl(target,{method,redirect:'error',signal:controller.signal,
-        headers:{'Content-Type':audio?mediaType:carouselImage?'application/octet-stream':'application/json','X-Orion-Channel-Key':key,
+        headers:{'Content-Type':audio||deviceImage?mediaType:carouselImage?'application/octet-stream':'application/json','X-Orion-Channel-Key':key,
           ...(owner?{'X-Orion-Channel-Owner':owner,'X-Orion-Channel-Fence':String(fence)}:{}),
           ...(operation==='device/effects/pending'?{'X-Orion-Bulk-Protocol':'1'}:{}),
-          ...(audio?{'X-Orion-Phone':phone}:{}),
+          ...(audio||deviceImage?{'X-Orion-Phone':phone}:{}),
           ...(device?{'X-Orion-Device-Id':device.device_id,'X-Orion-Device-Generation':device.generation,
             'X-Orion-Device-Revision':String(device.settings_revision),...(device.operation_id?{'X-Orion-Device-Effect':device.operation_id}:{}),
             ...(device.chatbot_revision?{'X-Orion-Chatbot-Revision':String(device.chatbot_revision)}:{})}:{}),
@@ -79,6 +83,7 @@ export function createChannelBroker({apiUrl,fetchImpl=fetch,env=process.env}){
     deviceEffectAuthorize:(id,key,lease,payload)=>request(id,key,'device/effects/authorize',payload,lease),
     deviceEffectFinish:(id,key,lease,payload)=>request(id,key,'device/effects/finish',payload,lease),
     deviceTranscribe:(id,key,lease,{phone,buffer,mediaType,signal,...device})=>request(id,key,'device/audio',buffer,{...lease,phone,mediaType,signal,device}),
+    deviceAnalyzeImage:(id,key,lease,{phone,buffer,mediaType,signal,...device})=>request(id,key,'device/image',buffer,{...lease,phone,mediaType,signal,device}),
     deviceChatbotAsset:(id,key,lease,{asset,variant='original',signal,...device})=>{
       if(!channelId(asset?.id)||!['original','thumbnail'].includes(variant))throw Error('invalid_chatbot_asset');
       const meta=variant==='thumbnail'?asset.thumbnail:asset;if(!meta)throw Error('invalid_chatbot_asset');

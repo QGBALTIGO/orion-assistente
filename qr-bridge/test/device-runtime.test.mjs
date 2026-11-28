@@ -672,3 +672,58 @@ test('lost diagnostic finish ACK reconciles an accepted receipt without another 
   await f.poll();assert.equal(f.authorizations.length,count);assert.equal(f.sends.length,1);
   assert.equal(f.finished.at(-1).state,'accepted');assert.equal(f.finished.at(-1).reconcile,true);
 });
+
+
+test('Delivery photo has a source-bound analysis grant and never enters text confirmation',async t=>{
+  const f=await fixture(t),images=[];
+  f.update({capabilities:{...f.snapshot.capabilities,delivery_media:1,delivery_vision_available:true}});
+  const photo=f.effect('analyze_image',{phone,message_id:'qa-photo',max_bytes:8_000_000},{purpose:'delivery_reply'});
+  const reply=f.effect('send_text',{phone,text:'Foto reconhecida; confirme o tamanho.'},{purpose:'delivery_reply'});
+  f.context.deviceAnalyzeImage=async payload=>{
+    assert.equal(payload.phone,phone);assert.equal(payload.operation_id,photo.operation_id);
+    assert.equal(payload.mediaType,'image/png');assert.ok(Buffer.isBuffer(payload.buffer));
+    images.push(payload.buffer);return {analyzed:true,effects:[reply]};
+  };
+  f.behavior.event=async e=>e.delivery_media?.kind==='image'?[photo]:[];
+  f.receive('qa-photo',{imageMessage:{mimetype:'image/png',fileLength:100,caption:'confirmo'}});
+  await until(()=>f.finished.some(e=>e.operation_id===reply.operation_id));
+  const e=f.events.find(e=>e.message_id==='qa-photo');
+  assert.deepEqual(e.delivery_media,{kind:'image',size:100,media_type:'image/png'});
+  assert.equal(e.text,'confirmo');assert.equal(e.kind,'text');
+  assert.equal(images.length,1);assert.ok(images[0].every(byte=>byte===0),'source bytes must be wiped');
+  assert.deepEqual(f.sends.map(v=>v.text),['Foto reconhecida; confirme o tamanho.']);
+  assert.equal(f.session.deviceDiagnostics().ingress.pending,0);
+});
+
+test('Delivery fixed and live coordinates use structured metadata, distinct sequences and no downloads',async t=>{
+  const f=await fixture(t);
+  f.update({capabilities:{...f.snapshot.capabilities,delivery_media:1,delivery_vision_available:false}});
+  const key={id:'live-source',fromMe:false,remoteJid:phone+'@s.whatsapp.net'};
+  f.receive('fixed-point',{locationMessage:{degreesLatitude:-20.5,degreesLongitude:-55.1}});
+  await until(()=>f.events.some(e=>e.message_id==='fixed-point'));
+  assert.deepEqual(f.events.find(e=>e.message_id==='fixed-point').delivery_media,
+    {kind:'location',latitude:-20.5,longitude:-55.1});
+  f.receive(key.id,{liveLocationMessage:{degreesLatitude:-20.1,degreesLongitude:-55.1,sequenceNumber:1}});
+  await until(()=>f.events.some(e=>e.delivery_media?.sequence===1));
+  const update={key,update:{message:{liveLocationMessage:{degreesLatitude:-20.2,degreesLongitude:-55.1,sequenceNumber:2}}}};
+  f.client.ev.emit('messages.update',[update]);await until(()=>f.events.some(e=>e.delivery_media?.sequence===2));
+  f.client.ev.emit('messages.update',[update]);await tick();await tick();
+  const live=f.events.filter(e=>e.delivery_media?.kind==='live_location');
+  assert.equal(live.length,2);assert.notEqual(live[0].event_id,live[1].event_id);
+  assert.equal(live[1].delivery_media.source_id,key.id);assert.equal(live[1].delivery_media.update,true);
+  assert.equal(live[1].delivery_media.latitude,-20.2);assert.equal(f.downloads.length,0);
+});
+
+test('Delivery call offer is verified and mapped to text-only broker response',async t=>{
+  const f=await fixture(t);
+  f.update({capabilities:{...f.snapshot.capabilities,delivery_media:1}});
+  const reply=f.effect('send_text',{phone,text:'Vi sua ligação. Como posso ajudar?'},{purpose:'delivery_reply'});
+  f.behavior.event=async e=>e.kind==='call'&&e.phone===phone?[reply]:[];
+  const call={status:'offer',id:'qa-call',from:phone+'@s.whatsapp.net',isGroup:false};
+  f.client.ev.emit('call',[call]);await until(()=>f.finished.some(e=>e.operation_id===reply.operation_id));
+  f.client.ev.emit('call',[call,{...call,id:'qa-group',isGroup:true}]);await tick();await tick();
+  const incoming=f.events.filter(e=>e.kind==='call');
+  assert.equal(incoming.length,1);assert.equal(incoming[0].phone,phone);
+  assert.equal(incoming[0].call_from,call.from);
+  assert.equal(f.sends.length,1);assert.equal(f.rejections.length,0);
+});

@@ -30,7 +30,7 @@ from app.delivery_orders import OrderEstimate, OrderItems, priced_order
 from app.business_profile_schemas import BusinessHours, ProfileModel
 from app.http_json import json_response
 from app.management_schemas import MAX_MONEY, normalize_phone
-from app.onboarding_schemas import Address
+from app.delivery_whatsapp_media import DeliveryAddress as Address
 from app.onboarding_service import require_operational_ready
 from app.panel_auth import _same_origin
 from app.plan_permissions import lock_plan

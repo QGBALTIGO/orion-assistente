@@ -7,6 +7,7 @@ No external send, language-model call or provider I/O runs in a transaction.
 """
 from datetime import datetime, timezone
 from decimal import Decimal
+import hashlib
 import json
 import os
 import re
@@ -22,7 +23,10 @@ from app import qr_channels as channels
 from app.business_profile_schemas import ProfileModel
 from app.database import get_session_factory, tenant_transaction
 from app.management_schemas import normalize_phone, MAX_MONEY
-from app.onboarding_schemas import Address
+from app.delivery_whatsapp_media import (
+    DeliveryAddress as Address, DeliveryPin, CALL_REPLY, PHOTO_FALLBACK, RECEIPT_REPLY, FALLBACKS,
+)
+from app import delivery_whatsapp_vision as vision
 from app.qr_commerce_understanding import interpret, norm
 from app.qr_dialogue import contextual_response
 from app.workspace_policy import delivery_preview_enabled
@@ -182,6 +186,9 @@ async def save_last_delivery_address(db, tenant, phone, state, label):
         return "Não consegui localizar um endereço deste pedido para guardar. " + HELP
     try:
         address = Address.model_validate(rows[0]["address"])
+        if address.location and address.location.kind=="live_location":
+            # Explicit save stores a fixed destination, never a tracking grant.
+            address=address.model_copy(update={"location":address.location.model_copy(update={"kind":"location"})})
         current = await book.list_addresses(db,tenant,customer["id"])
         matching = [entry for entry in current["items"] if clean(entry["label"])==clean(label)]
         if matching:
@@ -592,6 +599,8 @@ async def next_step(db, tenant, shop, items, state, phone):
     if state["mode"] == "delivery" and not state.get("address"):
         state["stage"] = "address"
         return state_question("address",state,shop,items),state
+    if state["mode"] == "delivery" and state.get("pending_pin"):
+        state["address"]={**state["address"],"location":state["pending_pin"]["point"]}
     if any(chosen[line["variant_id"]]["exchange_container_id"] is not None for line in state["items"]) and not state.get("accept_exchange"):
         state["stage"] = "exchange"
         return state_question("exchange",state,shop,items),state
@@ -614,6 +623,9 @@ async def next_step(db, tenant, shop, items, state, phone):
     address = draft.address
     destination = (f"{address.street}, {address.number or 's/n'}, {address.neighborhood}, {address.city}/{address.state}" +
                    (f" — {address.complement}" if address.complement else "")) if address else (shop.get("pickup_details") or "Retirada no estabelecimento")
+    if address and address.location:
+        point=address.location
+        destination += "\n📌 " + ("Último ponto recebido ao vivo: " if point.kind=="live_location" else "Localização enviada: ") + point.map_url()
     summary = ("📝 *Seu pedido*\n\n" + "\n".join(lines) +
                f"\n\n👤 *Nome:* {state['customer_name']}" +
                f"\n\n📍 *{'Entrega' if address else 'Retirada'}:* {destination}\nTaxa: {money(estimate['delivery_fee_cents'])}"
@@ -702,6 +714,8 @@ async def answer(db, tenant, phone, body, state, summary_delivered, *, allow_con
             if state.get("mode")!=mode:
                 state.pop("address",None)
                 state.pop("scheduled_at",None)
+            if mode=="pickup":
+                state.pop("pending_pin",None)
             if not shop.get("allow_"+mode):
                 state.pop("mode",None)
                 state.pop("address",None)
@@ -714,7 +728,10 @@ async def answer(db, tenant, phone, body, state, summary_delivered, *, allow_con
                 re.fullmatch(r"(?:(?:na verdade|agora)[, ]+)?(?:mudei de endereco|troca(?:r)? (?:o )?endereco|muda(?:r)? (?:o )?endereco|outro endereco)",value)):
             invalidate_review(state)
             state.pop("address",None)
+            state.pop("pending_pin",None)
             return await next_step(db,tenant,shop,items,state,phone)
+    if stage=="media_review" and (affirmative(body) or value in {"ver resumo","rever resumo","como ficou","mostra de novo"}):
+        return await next_step(db,tenant,shop,items,state,phone)
     edits = revised_items(body, items, state, now)
     if edits == "ambiguous":
         return "Claro, posso ajustar! Me diz exatamente quais produtos e quantidades você quer manter.",state
@@ -793,6 +810,8 @@ async def answer(db, tenant, phone, body, state, summary_delivered, *, allow_con
         request=saved_address_request(body)
         if request:
             addr=await recover_saved_address(db,tenant,phone,state,request)
+            if addr is not None:
+                state.pop("pending_pin",None)
             if addr is None:
                 return "Não consegui localizar esse endereço com segurança. Vamos informar o endereço desta entrega?\n\n"+ADDRESS_PROMPT,state
         else:
@@ -828,7 +847,10 @@ async def answer(db, tenant, phone, body, state, summary_delivered, *, allow_con
         indexed={str(row["variant_id"]):row for row in items}
         if sum(line["quantity"] for line in plan.items)>100 or any(not in_stock(indexed[line["variant_id"]],datetime.now(timezone.utc),line["quantity"]) for line in plan.items):
             return "A quantidade solicitada não está disponível. Confira o catálogo ou fale com um atendente.",{}
+        pending_pin=state.get("pending_pin")
         state={"items":plan.items}
+        if pending_pin:
+            state["pending_pin"]=pending_pin
         if plan.intent in {"price","stock","catalog"}:
             state["stage"]="offer"
             return ("\n".join(f"💧 {indexed[line['variant_id']]['label']} — *{money(indexed[line['variant_id']]['unit_price_cents'])}* por unidade" for line in plan.items)
@@ -837,10 +859,183 @@ async def answer(db, tenant, phone, body, state, summary_delivered, *, allow_con
             state["mode"]="delivery"
         elif re.search(r"\b(?:retirada|retirar|buscar)\b",value) and shop.get("allow_pickup"):
             state["mode"]="pickup"
+            state.pop("pending_pin",None)
         method=payment(body)
         if method in shop["payment_methods"]:
             set_payment(state, body, method)
     return await next_step(db,tenant,shop,items,state,phone)
+
+
+def media_review(state):
+    if state.get("stage")=="confirm":
+        invalidate_review(state)
+        state["stage"]="media_review"
+
+
+def photo_reply(analysis):
+    if analysis is None or analysis.category=="unclear":
+        return PHOTO_FALLBACK
+    if analysis.category=="receipt":
+        return RECEIPT_REPLY
+    if analysis.category=="water":
+        if analysis.volume_ml is not None:
+            volume=Decimal(analysis.volume_ml)/1000
+            return (f"💧 Pela foto, parece ser um recipiente de água de *{volume.normalize():f} L*.\n\n"
+                    "É esse tamanho mesmo? Me diga a quantidade que você precisa.")
+        return "💧 Parece ser um recipiente de água. Me confirma o tamanho e a quantidade, por favor?"
+    if analysis.category=="gas_container":
+        return ("A foto parece mostrar um botijão ou recipiente de gás.\n\n"
+                "Para identificar o tamanho e consultar as condições, vou precisar da nossa equipe. " + HELP)
+    if analysis.category=="address":
+        if analysis.address:
+            a=analysis.address
+            # OCR/vision output is untrusted, even if it is shaped like an address.
+            fields=[a.street,a.number or "s/n",a.neighborhood,a.city,a.state]
+            if a.complement:
+                fields.append(a.complement)
+            def clean_field(value):
+                return " ".join(re.sub(r"[*_\`~<>\\]", "",value).split())
+            address=", ".join(clean_field(value) for value in fields)
+            return ("📍 Parece que o endereço na foto é:\n\n"+address+
+                    "\n\nConfere? Se for para entrega, envie esse endereço por escrito ou corrija os dados.")
+        return "📍 Parece ser uma foto de endereço. Pode me informar rua, número, bairro, cidade e estado por escrito?"
+    if analysis.category=="damaged_product":
+        return "Recebi uma foto que parece mostrar um produto danificado. " + HELP
+    return "Recebi a foto! 😊 Me conta o que você precisa saber sobre ela para eu te ajudar."
+
+
+async def handle_media(db, tenant, phone, state, media, occurred_at, *, analysis=None):
+    """Process validated metadata without accepting a sale or inventing coverage."""
+    if state.get("paused"):
+        return None,state,False
+    if media.kind in {"location","live_location"}:
+        previous=state.get("pending_pin") or {}
+        if media.kind=="live_location":
+            if media.update and (previous.get("source_id")!=media.source_id or not previous):
+                # No new tracking session may be created by a late update.
+                return None,state,True
+            if previous.get("source_id")==media.source_id and media.sequence<=previous.get("sequence",-1):
+                return None,state,True
+        pin=media.pin(occurred_at)
+        state["pending_pin"]={"point":pin.model_dump(mode="json"),"source_id":media.source_id,
+                              "sequence":media.sequence}
+        update=media.kind=="live_location" and previous.get("source_id")==media.source_id and bool(previous)
+        if not state.get("items"):
+            if update:
+                return None,state,False
+            return ("📍 Recebi " + ("a localização em tempo real" if media.kind=="live_location" else "sua localização")+
+                    "! Vou usar o ponto recebido se você fizer um pedido de entrega. O que você precisa?"),state,False
+        shop,items=await shop_and_items(db,tenant,lock=state.get("stage")=="confirm")
+        if not shop or not items:
+            media_review(state)
+            return "Recebi o ponto. No momento o catálogo não está disponível. " + HELP,state,False
+        if not shop.get("allow_delivery"):
+            media_review(state)
+            state.pop("pending_pin",None)
+            return "📍 Recebi a localização, mas não estamos fazendo entregas neste momento.",state,False
+        if state.get("mode")=="pickup":
+            invalidate_review(state)
+            state.pop("mode",None)
+            state["stage"]="mode"
+            return "📍 Recebi o ponto. Você quer mudar seu pedido para entrega ou prefere retirar?",state,False
+        state["mode"]="delivery"
+        if state.get("address"):
+            state["address"]={**state["address"],"location":pin.model_dump(mode="json")}
+            media_review(state)
+            if update:
+                # Refresh only the draft point. Do not spam on every movement.
+                # A later confirmation must review the refreshed snapshot.
+                return None,state,False
+            reply,state=await next_step(db,tenant,shop,items,state,phone)
+            return "📍 Localização recebida! Confira se o endereço do pedido está correto.\n\n"+reply,state,False
+        media_review(state)
+        if update:
+            return None,state,False
+        reply,state=await next_step(db,tenant,shop,items,state,phone)
+        return ("📍 Recebi seu ponto no mapa!\n\n"
+                "Para calcular a entrega corretamente, ainda preciso confirmar o endereço.\n\n"+reply),state,False
+    media_review(state)
+    if media.kind=="image":
+        return photo_reply(analysis),state,False
+    return FALLBACKS.get(media.kind,PHOTO_FALLBACK),state,False
+
+
+async def record_image(db,device,payload):
+    """Admit the photo before any download or provider call."""
+    from app.subscription_devices import _insert_effect
+    skipped={"effects":[],"duplicate":False}
+    if not enabled(device) or payload.origin!="contact" or not payload.phone or not payload.message_id:
+        return skipped
+    try:
+        if not normalize_phone("+"+payload.phone):
+            return skipped
+    except ValueError:
+        return skipped
+    params={"t":device["tenant_id"],"d":device["id"],"g":device["generation"],"phone":payload.phone}
+    if await db.scalar(text("""SELECT COALESCE((SELECT revoked FROM subscription_campaign_permissions
+        WHERE tenant_id=:t AND phone=:phone),false)"""),params):
+        return skipped
+    duplicate=await db.scalar(text("""SELECT id FROM subscription_device_events
+        WHERE tenant_id=:t AND device_id=:d AND (provider_event_id=:event OR
+        (generation=:g AND payload->>'message_id'=:message AND (payload->>'delivery_image'='true'
+         OR payload->>'delivery'='true'))) LIMIT 1"""),{**params,"event":payload.event_id,"message":payload.message_id})
+    if duplicate:
+        return {"effects":[],"duplicate":True}
+    last=(await db.execute(text("""SELECT payload FROM subscription_device_events
+        WHERE tenant_id=:t AND device_id=:d AND generation=:g AND payload->>'phone'=:phone
+          AND payload->>'delivery'='true' ORDER BY received_at DESC,id DESC LIMIT 1"""),params)).scalar_one_or_none()
+    if last and last.get("delivery_paused") is True:
+        return skipped
+    # A clearly labeled receipt needs manual verification, not a vision call.
+    receipt=bool(payload.text and re.search(r"\bcomprovante\b",clean(payload.text)))
+    if payload.text and emergency(payload.text):
+        return await record_event(db,device,payload,skip_image=True)
+    if receipt or not vision.available(device):
+        return await record_event(db,device,payload,skip_image=True,
+                                  fallback=RECEIPT_REPLY if receipt else PHOTO_FALLBACK)
+    data={"delivery_image":True,"phone":payload.phone,"message_id":payload.message_id,
+          "settings_revision":device["revision"],"media":payload.delivery_media.model_dump(mode="json")}
+    event_id=(await db.execute(text("""INSERT INTO subscription_device_events
+        (tenant_id,device_id,generation,provider_event_id,kind,occurred_at,payload)
+        VALUES(:t,:d,:g,:event,'text',:at,CAST(:data AS jsonb))
+        ON CONFLICT DO NOTHING RETURNING id"""),
+        {**params,"event":payload.event_id,"at":payload.occurred_at,"data":json.dumps(data)})).scalar_one_or_none()
+    if event_id is None:
+        return {"effects":[],"duplicate":True}
+    effect_id=await _insert_effect(db,device,event_id,"delivery-vision",
+        {"type":"analyze_image","purpose":PURPOSE,"payload":{"phone":payload.phone,
+         "message_id":payload.message_id,"max_bytes":vision.MAX_BYTES}})
+    return {"effects":[{"operation_id":str(effect_id),"type":"analyze_image"}],"duplicate":False}
+
+
+async def complete_image(db,device,event_id,analysis):
+    from app.subscription_device_schemas import DeviceEvent
+    row=(await db.execute(text("""SELECT id,provider_event_id,occurred_at,received_at,payload
+        FROM subscription_device_events WHERE tenant_id=:t AND device_id=:d AND generation=:g
+          AND id=:event AND payload->>'delivery_image'='true'"""),
+        {"t":device["tenant_id"],"d":device["id"],"g":device["generation"],"event":event_id})).mappings().one_or_none()
+    if not row or row["payload"].get("settings_revision")!=device["revision"] or not enabled(device):
+        return {"effects":[],"duplicate":False,"delivery_image_handled":False}
+    old=row["payload"]
+    if old.get("delivery_image_outcome"):
+        return {"effects":[],"duplicate":True,"delivery_image_handled":True}
+    newer=await db.scalar(text("""SELECT 1 FROM subscription_device_events
+        WHERE tenant_id=:t AND device_id=:d AND generation=:g AND payload->>'phone'=:phone
+          AND (payload->>'delivery'='true' OR payload->>'delivery_image'='true' OR payload->>'delivery_audio'='true')
+          AND (received_at,id)>(:received,:event) LIMIT 1"""),
+        {"t":device["tenant_id"],"d":device["id"],"g":device["generation"],"phone":old["phone"],
+         "received":row["received_at"],"event":event_id})
+    if newer:
+        await db.execute(text("""UPDATE subscription_device_events
+            SET payload=payload||'{"delivery_image_outcome":"superseded"}'::jsonb
+            WHERE tenant_id=:t AND id=:event"""),{"t":device["tenant_id"],"event":event_id})
+        return {"effects":[],"duplicate":False,"delivery_image_handled":True}
+    payload=DeviceEvent(device_id=device["id"],generation=device["generation"],
+        settings_revision=device["revision"],event_id=row["provider_event_id"],kind="text",
+        occurred_at=row["occurred_at"],phone=old["phone"],message_id=old["message_id"],
+        delivery_media=old["media"])
+    result=await record_event(db,device,payload,image_event=event_id,analysis=analysis)
+    return {"effects":result["effects"],"duplicate":result["duplicate"],"delivery_image_handled":True}
 
 
 async def record_audio(db, device, payload):
@@ -926,13 +1121,23 @@ async def complete_audio(db, device, event_id, transcript):
     return {"effects":result["effects"],"duplicate":result["duplicate"],"delivery_audio_handled":True}
 
 
-async def record_event(db, device, payload, *, audio_event=None, fallback=None):
+async def record_event(db, device, payload, *, audio_event=None, fallback=None,
+                       image_event=None, analysis=None, skip_image=False):
     if payload.kind=="audio" and audio_event is None:
         return await record_audio(db,device,payload)
-    if (not enabled(device) or (payload.kind!="text" and audio_event is None) or payload.origin!="contact" or not payload.message_id
-            or not (payload.text or payload.selection_id or fallback)):
+    media=payload.delivery_media
+    if media and media.kind=="image" and image_event is None and not skip_image:
+        return await record_image(db,device,payload)
+    call=payload.kind=="call"
+    if call and payload.phone:
+        # Only the existing authenticated call-offer event is accepted.
+        message_id="call:"+hashlib.sha256((payload.call_id+":"+payload.call_from).encode()).hexdigest()[:40]
+        payload=payload.model_copy(update={"message_id":message_id})
+    if (not enabled(device) or (payload.kind not in {"text","call"} and audio_event is None)
+            or payload.origin!="contact" or not payload.phone or not payload.message_id
+            or not (payload.text or payload.selection_id or fallback or media or call)):
         return {"effects":[],"duplicate":False}
-    if payload.text and len(payload.text)>1500:
+    if payload.text and len(payload.text)>1500 and not media:
         return {"effects":[],"duplicate":False}
     try:
         phone=normalize_phone("+"+payload.phone)
@@ -942,7 +1147,11 @@ async def record_event(db, device, payload, *, audio_event=None, fallback=None):
     if await db.scalar(text("""SELECT COALESCE((SELECT revoked FROM subscription_campaign_permissions
         WHERE tenant_id=:t AND phone=:phone),false)"""),params):
         return {"effects":[],"duplicate":False,"ignored":"contact_optout"}
-    if audio_event is None:
+    if call and await db.scalar(text("""SELECT 1 FROM subscription_device_events
+        WHERE tenant_id=:t AND device_id=:d AND generation=:g AND payload->>'phone'=:phone
+          AND payload->>'delivery_call'='true' AND received_at>clock_timestamp()-interval '5 minutes' LIMIT 1"""),params):
+        return {"effects":[],"duplicate":True}
+    if audio_event is None and image_event is None:
         duplicate=await db.scalar(text("""SELECT id FROM subscription_device_events
             WHERE tenant_id=:t AND device_id=:d AND (provider_event_id=:event OR
             (generation=:g AND payload->>'message_id'=:message AND payload->>'delivery'='true')) LIMIT 1"""),
@@ -957,7 +1166,7 @@ async def record_event(db, device, payload, *, audio_event=None, fallback=None):
     accepted_provider_id=None
     if last:
         if payload.occurred_at<last["occurred_at"]:
-            return {"effects":[],"duplicate":False,"ignored":"out_of_order"}
+            return {"effects":[],"duplicate":False} if media or call else {"effects":[],"duplicate":False,"ignored":"out_of_order"}
         old=last["payload"]
         if old.get("delivery_paused") is True:
             state={"paused":True}
@@ -975,13 +1184,48 @@ async def record_event(db, device, payload, *, audio_event=None, fallback=None):
                 {**params,"event":last["id"],"purpose":PURPOSE,"revision":device["revision"]})).mappings().one_or_none()
             delivered=accepted is not None
             accepted_provider_id=accepted["provider_id"] if accepted else None
+    if media and media.kind=="live_location" and (state.get("pending_pin") or {}).get("source_id")!=media.source_id:
+        # Never resume a previously consumed or expired share from a replayed
+        # upsert. A new location share must have a new provider identity.
+        live_source=hashlib.sha256(media.source_id.encode()).hexdigest()
+        if media.update or await db.scalar(text("""SELECT 1 FROM subscription_device_events
+            WHERE tenant_id=:t AND device_id=:d AND generation=:g AND payload->>'phone'=:phone
+              AND payload->>'delivery_live_source'=:source LIMIT 1"""),{**params,"source":live_source}):
+            return {"effects":[],"duplicate":False}
     # Savepoint avoids retaining half an order after a business rejection. The
     # checkout's own idempotency key is reused across delivery retries.
     body = payload.text
     if payload.selection_id:
         body = confirmation_selection(state, payload.selection_id, payload.quoted_message_id, accepted_provider_id)
-    if fallback is not None:
+    if state.get("stage")=="confirm" and image_event is None and last:
+        # An admitted but unprocessed photo can invalidate the prior quote.
+        outstanding=await db.scalar(text("""SELECT 1 FROM subscription_device_events
+            WHERE tenant_id=:t AND device_id=:d AND generation=:g AND payload->>'phone'=:phone
+              AND payload->>'delivery_image'='true' AND NOT (payload ? 'delivery_image_outcome')
+              AND received_at>(SELECT received_at FROM subscription_device_events WHERE id=:last)
+              LIMIT 1"""),{**params,"last":last["id"]})
+        if outstanding:
+            media_review(state)
+            delivered=False
+    if media and payload.text and emergency(payload.text):
+        async with get_session_factory()() as runtime:
+            async with tenant_transaction(runtime,device["tenant_id"]):
+                reply,state=await answer(runtime,device["tenant_id"],phone,payload.text,state,False)
+    elif call:
+        if state.get("paused"):
+            return {"effects":[],"duplicate":False}
+        media_review(state)
+        reply=CALL_REPLY
+    elif fallback is not None:
+        if media:
+            media_review(state)
         reply=None if state.get("paused") else fallback
+    elif media:
+        async with get_session_factory()() as runtime:
+            async with tenant_transaction(runtime,device["tenant_id"]):
+                reply,state,ignored=await handle_media(runtime,device["tenant_id"],phone,state,media,payload.occurred_at,analysis=analysis)
+        if ignored:
+            return {"effects":[],"duplicate":False}
     elif body:
         async with get_session_factory()() as runtime:
             async with tenant_transaction(runtime,device["tenant_id"]):
@@ -998,6 +1242,14 @@ async def record_event(db, device, payload, *, audio_event=None, fallback=None):
           "settings_revision":device["revision"],"delivery_paused":state.get("paused") is True,
           "delivery_summary": bool(reply and state.get("stage")=="confirm"
                                    and state.get("summary") and state["summary"] in reply)}
+    if call:
+        data["delivery_call"]=True
+    if media:
+        # The event metadata contains no raw coordinates. The encrypted
+        # draft and confirmed address retain the point; replies remain scoped.
+        data["delivery_media_kind"]=media.kind
+        if media.kind=="live_location":
+            data["delivery_live_source"]=hashlib.sha256(media.source_id.encode()).hexdigest()
     if state and not state.get("paused"):
         data["delivery_state"]=channels._cipher().encrypt(json.dumps(jsonable_encoder(state),ensure_ascii=False).encode()).decode()
     if audio_event is not None:
@@ -1006,11 +1258,17 @@ async def record_event(db, device, payload, *, audio_event=None, fallback=None):
             WHERE tenant_id=:t AND device_id=:d AND generation=:g AND id=:event
               AND payload->>'delivery_audio'='true' AND NOT (payload ? 'delivery_audio_outcome') RETURNING id"""),
             {**params,"event":audio_event,"data":json.dumps(data)})).scalar_one_or_none()
+    elif image_event is not None:
+        data["delivery_image_outcome"]="analyzed" if analysis is not None else "fallback"
+        event_id=(await db.execute(text("""UPDATE subscription_device_events SET payload=(payload-'media')||CAST(:data AS jsonb)
+            WHERE tenant_id=:t AND device_id=:d AND generation=:g AND id=:event
+              AND payload->>'delivery_image'='true' AND NOT (payload ? 'delivery_image_outcome') RETURNING id"""),
+            {**params,"event":image_event,"data":json.dumps(data)})).scalar_one_or_none()
     else:
         event_id=(await db.execute(text("""INSERT INTO subscription_device_events
             (tenant_id,device_id,generation,provider_event_id,kind,occurred_at,payload)
-            VALUES(:t,:d,:g,:event,'text',:at,CAST(:data AS jsonb)) ON CONFLICT DO NOTHING RETURNING id"""),
-            {**params,"event":payload.event_id,"at":payload.occurred_at,"data":json.dumps(data)})).scalar_one_or_none()
+            VALUES(:t,:d,:g,:event,:kind,:at,CAST(:data AS jsonb)) ON CONFLICT DO NOTHING RETURNING id"""),
+            {**params,"event":payload.event_id,"kind":"call" if call else "text","at":payload.occurred_at,"data":json.dumps(data)})).scalar_one_or_none()
     if event_id is None:
         return {"effects":[],"duplicate":True}
     if last:
@@ -1039,6 +1297,22 @@ async def record_event(db, device, payload, *, audio_event=None, fallback=None):
 async def permits(db, device, effect):
     if not enabled(device) or effect["purpose"]!=PURPOSE:
         return False
+    if effect["type"]=="analyze_image":
+        if not vision.available(device):
+            return False
+        return bool(await db.scalar(text("""SELECT 1 FROM subscription_device_events e
+            WHERE e.tenant_id=:t AND e.device_id=:d AND e.generation=:g AND e.id=:event
+              AND e.payload->>'delivery_image'='true' AND NOT (e.payload ? 'delivery_image_outcome')
+              AND e.payload->>'phone'=:phone AND e.payload->>'message_id'=:message
+              AND e.occurred_at>clock_timestamp()-interval '5 minutes'
+              AND NOT EXISTS(SELECT 1 FROM subscription_device_events newer WHERE newer.tenant_id=e.tenant_id
+                AND newer.device_id=e.device_id AND newer.generation=e.generation AND newer.payload->>'phone'=:phone
+                AND (newer.payload->>'delivery'='true' OR newer.payload->>'delivery_image'='true' OR newer.payload->>'delivery_audio'='true')
+                AND (newer.received_at,newer.id)>(e.received_at,e.id))
+              AND NOT COALESCE((SELECT revoked FROM subscription_campaign_permissions
+                WHERE tenant_id=:t AND phone=:phone),false)"""),
+            {"t":device["tenant_id"],"d":device["id"],"g":device["generation"],"event":effect["event_id"],
+             "phone":effect["payload"]["phone"],"message":effect["payload"]["message_id"]}))
     if effect["type"]=="transcribe":
         from app.subscription_devices import audio_capable
         if not audio_enabled(device) or not audio_capable():
@@ -1060,7 +1334,8 @@ async def permits(db, device, effect):
           AND e.occurred_at>clock_timestamp()-interval '24 hours'
           AND NOT EXISTS(SELECT 1 FROM subscription_device_events newer WHERE newer.tenant_id=e.tenant_id
             AND newer.device_id=e.device_id AND newer.generation=e.generation
-            AND newer.payload->>'delivery'='true' AND newer.payload->>'phone'=:phone
+            AND (newer.payload->>'delivery'='true' OR newer.payload->>'delivery_image'='true')
+            AND newer.payload->>'phone'=:phone
             AND (newer.received_at,newer.id)>(e.received_at,e.id))
           AND NOT COALESCE((SELECT revoked FROM subscription_campaign_permissions WHERE tenant_id=:t AND phone=:phone),false)
     """),{"t":device["tenant_id"],"d":device["id"],"g":device["generation"],
@@ -1075,6 +1350,17 @@ async def pending(db, device):
     await db.execute(text("""UPDATE subscription_device_effects SET status='not_sent',finished_at=clock_timestamp(),
         error_code='delivery_reply_expired' WHERE tenant_id=:t AND device_id=:d AND purpose=:purpose
           AND status='pending' AND (expires_at<=clock_timestamp() OR settings_revision<>:r)"""),params)
+    # A timed-out image attempt cannot be retried against the provider.
+    # When still current, emit one safe fallback (or suppress it if superseded).
+    if enabled(device):
+        expired=(await db.execute(text("""SELECT f.event_id FROM subscription_device_effects f
+            JOIN subscription_device_events e ON (e.tenant_id,e.id)=(f.tenant_id,f.event_id)
+            WHERE f.tenant_id=:t AND f.device_id=:d AND f.generation=:g AND f.settings_revision=:r
+              AND f.purpose=:purpose AND f.type='analyze_image'
+              AND f.status IN ('uncertain','not_sent','failed')
+              AND NOT (e.payload ? 'delivery_image_outcome') LIMIT 10"""),params)).scalars().all()
+        for event_id in expired:
+            await complete_image(db,device,event_id,None)
     rows=(await db.execute(text("""SELECT id AS operation_id,type FROM subscription_device_effects
         WHERE tenant_id=:t AND device_id=:d AND generation=:g AND settings_revision=:r
           AND purpose=:purpose AND type='send_text' AND status='pending'

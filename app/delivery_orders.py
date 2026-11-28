@@ -21,7 +21,7 @@ from app import delivery_driver as driver
 from app.delivery_catalog import LIMIT, MAX_QUANTITY, list_items, order_lines, run_once
 from app.delivery_product_media import image_url
 from app.management_schemas import MAX_MONEY, normalize_phone
-from app.onboarding_schemas import Address
+from app.delivery_whatsapp_media import DeliveryAddress as Address
 from app.onboarding_service import require_operational_ready
 
 

@@ -15,6 +15,7 @@ import {normalizeChatbotInput,createOrderedIngress} from './chatbot-input.mjs';
 import {knownMessagePreflight,messageFailureCode,safeMessageFailureCode} from './device-message-failure.mjs';
 import {diagnosticMessagePermit} from './device-diagnostic-message.mjs';
 import {deliveryPresentationFromPermit} from './delivery-confirmation.mjs';
+import {deliveryMedia,deliveryLiveUpdate,withDeliveryImage,IMAGE_MAX_BYTES} from './delivery-media.mjs';
 import {createCampaignRuntime,isCampaignEffect} from './campaign-runtime.mjs';
 import {createScheduledRuntime,isScheduledEffect} from './scheduled-runtime.mjs';
 import {createBulkRuntime,isBulkEffect} from './bulk-runtime.mjs';
@@ -25,7 +26,8 @@ const messageId=value=>typeof value==='string'&&/^[a-zA-Z0-9._:-]{1,160}$/.test(
 const name=value=>typeof value==='string'?Array.from(value.replace(/[\u0000-\u001f\u007f]/g,'').trim()).slice(0,100).join(''):null;
 const scope=snapshot=>({device_id:snapshot.id,generation:snapshot.generation,settings_revision:snapshot.settings_revision});
 const same=(a,b)=>a&&b&&a.id===b.id&&a.generation===b.generation&&a.settings_revision===b.settings_revision;
-const knownEffect=value=>isChatbotEffect(value)||isCampaignEffect(value)||isScheduledEffect(value)||isBulkEffect(value)||(value&&channelId(value.operation_id)&&['send_text','reject_call','transcribe','webhook'].includes(value.type));
+const sourceEffect=value=>['transcribe','analyze_image'].includes(value?.type);
+const knownEffect=value=>isChatbotEffect(value)||isCampaignEffect(value)||isScheduledEffect(value)||isBulkEffect(value)||(value&&channelId(value.operation_id)&&['send_text','reject_call','transcribe','analyze_image','webhook'].includes(value.type));
 
 export function validDeviceSnapshot(value){
   return !!(value&&typeof value==='object'&&!Array.isArray(value)&&channelId(value.id)&&channelId(value.generation)&&
@@ -90,7 +92,7 @@ export function createDeviceRuntime(context,{client,downloadMediaMessage,logger,
     let consumed=false,deferred=false;
     for(const item of items||[]){
       if(!knownEffect(item))continue;
-      if(!effectCurrent(expected)){if(item.type==='transcribe'&&current(expected)&&ingressJournal.diagnostics().pending>0)deferred=true;continue;}
+      if(!effectCurrent(expected)){if(sourceEffect(item)&&current(expected)&&ingressJournal.diagnostics().pending>0)deferred=true;continue;}
       const result=await execute(item,{expected,message});if(result?.source_consumed===true)consumed=true;if(result?.source_deferred===true)deferred=true;
     }
     return {source_consumed:consumed,source_deferred:deferred};
@@ -122,11 +124,11 @@ export function createDeviceRuntime(context,{client,downloadMediaMessage,logger,
     const id=item.operation_id;if(inflight.has(id))return;
     // Pending reconciliation has no original encrypted media message. It may
     // never claim an ASR effect before the live event's own callback consumes it.
-    if(item.type==='transcribe'&&!message)return;
+    if(sourceEffect(item)&&!message)return;
     if(item.type==='webhook'&&webhookBusy)return;
     inflight.add(id);if(item.type==='webhook')webhookBusy=true;
     let permit,abort,attempted=false,reserved,releaseAudio;
-    if(item.type==='transcribe'){
+    if(sourceEffect(item)){
       const previous=audioTail;audioTail=new Promise(resolve=>{releaseAudio=resolve;});
       await previous;audioBusy=true;
     }
@@ -138,6 +140,10 @@ export function createDeviceRuntime(context,{client,downloadMediaMessage,logger,
       await guardEffect(expected);
       permit=await context.deviceEffectAuthorize({...scope(expected),operation_id:id});
       await guardEffect(expected);
+      if(item.type==='analyze_image'&&permit?.authorized===false&&permit.operation_id===id&&
+          permit.delivery_image_handled===true&&Array.isArray(permit.effects)&&permit.effects.length<=32){
+        await effects(permit.effects,{expected});return {source_consumed:true};
+      }
       if(permit?.authorized!==true||permit.operation_id!==id||permit.type!==item.type||
           permit.device_id!==expected.id||permit.generation!==expected.generation||permit.settings_revision!==expected.settings_revision||
           !permit.payload||typeof permit.payload!=='object'||Array.isArray(permit.payload))throw Error('device_effect_refused');
@@ -153,7 +159,7 @@ export function createDeviceRuntime(context,{client,downloadMediaMessage,logger,
           await finish(expected,id,old.accepted?'accepted':old.state==='refused'?'not_sent':'uncertain',
             {...(old.provider_id?{provider_id:old.provider_id}:{}),
               ...(!old.accepted&&safeMessageFailureCode(old.error_code)?{error_code:old.error_code}:{})});
-          return {source_consumed:item.type==='transcribe'&&old.accepted===true};
+          return {source_consumed:sourceEffect(item)&&old.accepted===true};
         }
       }
       abort=controller(expected);
@@ -184,6 +190,21 @@ export function createDeviceRuntime(context,{client,downloadMediaMessage,logger,
         if(!messageId(data.call_id)||typeof data.call_from!=='string'||!privateJid.test(data.call_from)||typeof client.rejectCall!=='function')throw Error('device_effect_invalid');
         await guardEffect(expected);attempted=true;await client.rejectCall(data.call_id,data.call_from);
         ledger.save(id,{...reserved.record,state:'accepted',accepted:true});await finish(expected,id,'accepted');
+      }else if(item.type==='analyze_image'){
+        if(permit.purpose!=='delivery_reply'||expected.capabilities.delivery_media!==1||
+            expected.capabilities.delivery_vision_available!==true||typeof context.deviceAnalyzeImage!=='function'||
+            !message||data.message_id!==message.key?.id||!phonePattern.test(data.phone)||
+            !Number.isSafeInteger(data.max_bytes)||data.max_bytes<1||data.max_bytes>IMAGE_MAX_BYTES)
+          throw Error('device_image_unavailable');
+        const result=await withDeliveryImage(message,{client,downloadMediaMessage,logger,signal:abort.signal,downloadOptions,
+          maxBytes:data.max_bytes,assertCurrent:()=>guardEffect(expected)},async payload=>{
+          await guardEffect(expected);attempted=true;
+          return context.deviceAnalyzeImage({...scope(expected),operation_id:id,phone:data.phone,...payload});
+        });
+        if(result?.analyzed!==true||!Array.isArray(result.effects)||result.effects.length>32)throw Error('device_image_unavailable');
+        await guardEffect(expected);ledger.save(id,{...reserved.record,state:'accepted',accepted:true});
+        await finish(expected,id,'accepted');await effects(result.effects,{expected});
+        return {source_consumed:true};
       }else if(item.type==='transcribe'){
         if(!message||data.message_id!==message.key?.id||!phonePattern.test(data.phone)||expected.settings.transcription?.enabled!==true||
             expected.capabilities.transcription_available!==true||data.max_seconds>expected.settings.transcription.max_minutes*60||
@@ -209,7 +230,7 @@ export function createDeviceRuntime(context,{client,downloadMediaMessage,logger,
         await finish(expected,id,'accepted');
       }
     }catch(error){
-      if(item.type==='transcribe'&&!permit&&current(expected)&&!ingressError&&ingressJournal.diagnostics().pending>0&&ingressJournal.diagnostics().blocked===0)return {source_deferred:true};
+      if(sourceEffect(item)&&!permit&&current(expected)&&!ingressError&&ingressJournal.diagnostics().pending>0&&ingressJournal.diagnostics().blocked===0)return {source_deferred:true};
       const definitelyUnsent=!attempted||item.type==='send_text'&&knownMessagePreflight(error)!==null;
       const state=definitelyUnsent?'not_sent':'uncertain';
       const error_code=item.type==='send_text'?messageFailureCode(error,{beforeSend:definitelyUnsent,current:current(expected)}):
@@ -219,8 +240,9 @@ export function createDeviceRuntime(context,{client,downloadMediaMessage,logger,
         // HTTP delivery is at-least-once and may be retried by its SQL outbox.
         // WhatsApp sends/rejections and paid ASR never retry an ambiguous attempt.
         const outcome=await finish(expected,id,item.type==='webhook'?'failed':state,{error_code});
-        if(item.type==='transcribe'&&permit.purpose==='delivery_reply'&&
-            expected.capabilities.delivery_audio===1&&outcome?.delivery_audio_handled===true&&
+        if(sourceEffect(item)&&permit.purpose==='delivery_reply'&&
+            ((item.type==='transcribe'&&expected.capabilities.delivery_audio===1&&outcome?.delivery_audio_handled===true)||
+             (item.type==='analyze_image'&&expected.capabilities.delivery_media===1&&outcome?.delivery_image_handled===true))&&
             Array.isArray(outcome.effects)&&outcome.effects.length<=32){
           await effects(outcome.effects,{expected});
           return {source_consumed:true};
@@ -228,7 +250,7 @@ export function createDeviceRuntime(context,{client,downloadMediaMessage,logger,
       }
     }finally{
       if(abort){abort.abort();releaseController(abort);}inflight.delete(id);
-      if(item.type==='transcribe'){audioBusy=false;releaseAudio?.();}if(item.type==='webhook')webhookBusy=false;
+      if(sourceEffect(item)){audioBusy=false;releaseAudio?.();}if(item.type==='webhook')webhookBusy=false;
     }
   }
   function nextPoll(){
@@ -252,8 +274,18 @@ export function createDeviceRuntime(context,{client,downloadMediaMessage,logger,
   }
   function receive({messages=[],type}={}){
     if(!['notify','append'].includes(type))return;
-    for(const message of messages){
-      const key=message?.key,at=timestampMs(message?.messageTimestamp),expected=context.deviceSnapshot();
+    for(const original of messages){
+      let message=original;const expected=context.deviceSnapshot();
+      if(expected?.capabilities?.delivery_media===1){
+        const point=deliveryMedia(message);
+        if(point?.kind==='live_location'){
+          // The same provider message may carry several live coordinates.
+          // Sequence-scoped IDs make updates idempotent while preserving origin.
+          message={...message,key:{...message.key,id:'live:'+digest(point.source_id+':'+point.sequence).slice(0,40)},
+            orionDeliveryLiveSource:point.source_id};
+        }
+      }
+      const key=message?.key,at=timestampMs(message?.messageTimestamp);
       if(!current(expected)||![false,true].includes(key?.fromMe)||!messageId(key?.id)||!privateJid.test(key?.remoteJid||'')||
           !at||(type!=='append'&&at<openedAt-1000)||at<now()-300000||at>now()+60000)continue;
       const input=normalizeChatbotInput(message,{isGeneratedMessage});
@@ -292,12 +324,17 @@ export function createDeviceRuntime(context,{client,downloadMediaMessage,logger,
         if(at<now()-300000){journalBlock(entry.id,'expired');return;}
         try{
           await guard(expected);const audio=input.origin==='contact'?deviceAudioMetadata(message):null;
-          const resolved=input.origin==='contact'&&!input.selection_id?resolveSelection(message,phone)||input:input;
-          const result=await event(expected,{event_id:'msg:'+digest(message.key.id).slice(0,40),kind:audio?'audio':'text',occurred_at:new Date(at).toISOString(),
+          const media=input.origin==='contact'&&expected.capabilities.delivery_media===1?deliveryMedia(message,{audio}):null;
+          const resolved=media?{origin:'contact',...(media.kind==='image'&&input.text?{text:input.text}:{})}:
+            input.origin==='contact'&&!input.selection_id?resolveSelection(message,phone)||input:input;
+          const sourceMedia=!!audio||media?.kind==='image';
+          const result=await event(expected,{event_id:'msg:'+digest(message.key.id).slice(0,40),kind:audio&&!media?'audio':'text',occurred_at:new Date(at).toISOString(),
             phone,message_id:message.key.id,name:name(message.pushName),...resolved,ingress_order:order,
-            ...(Number.isSafeInteger(expected.chatbot?.revision)?{chatbot_revision:expected.chatbot.revision}:{}),...(audio?{audio}:{})},message,response=>{
+            ...(Number.isSafeInteger(expected.chatbot?.revision)?{chatbot_revision:expected.chatbot.revision}:{}),
+            ...(audio&&!media?{audio}:{}),...(media?{delivery_media:media}:{})},message,response=>{
               try{
-                if(audio){
+                if((audio&&!media)||response.effects.some(sourceEffect)||
+                    (media?.kind==='image'&&response.duplicate===true&&expected.capabilities.delivery_vision_available===true)){
                   // A duplicate confirms SQL admission, but its empty effects
                   // cannot recover the source-dependent ASR grant. Preserve
                   // source for review rather than inventing an ASR retry.
@@ -308,12 +345,12 @@ export function createDeviceRuntime(context,{client,downloadMediaMessage,logger,
                 admitted=true;
               }
               catch(error){journalFailure(error);throw error;}
-            },!!audio);
+            },sourceMedia);
           if(audioActive){
             // Keep admission ordering independent from source-consuming ASR.
             // A following control must reach SQL before any automatic effect.
-            audioActive=false;void consumeAudio(entry,expected,message,result).catch(()=>{});
-          }
+            audioActive=false;void consumeMedia(entry,expected,message,result).catch(()=>{});
+          }else if(sourceMedia){await effects(result.effects,{expected});}
           return;
         }catch(error){
           if(admitted||!current(expected)||ingressError)return;
@@ -330,7 +367,7 @@ export function createDeviceRuntime(context,{client,downloadMediaMessage,logger,
         incoming.delete(entry.id);wakeAdmission();pumpIngress();
       }
     }});
-  async function consumeAudio(entry,expected,message,result){
+  async function consumeMedia(entry,expected,message,result){
     let completed=false,items=result.effects;
     try{while(current(expected)&&connected&&!ingressError){
       const backlog=ingressJournal.diagnostics();
@@ -340,11 +377,12 @@ export function createDeviceRuntime(context,{client,downloadMediaMessage,logger,
       const asrExpected=expected.settings.transcription?.enabled===true&&expected.capabilities.transcription_available===true;
       const deliverySkipped=expected.capabilities.delivery_audio===1&&result.delivery_audio_skipped===true&&
         items.every(item=>item.type!=='transcribe');
-      if(outcome.source_consumed===true||!asrExpected||deliverySkipped){
+      const photoExpected=items.some(item=>item.type==='analyze_image');
+      if(outcome.source_consumed===true||(!photoExpected&&(!asrExpected||deliverySkipped))){
         try{if(ingressJournal.complete(entry.id)!==true)throw Error('incoming_audio_completion_missing');completed=true;}
         catch(error){journalFailure(error);}return;
       }
-      if(outcome.source_deferred===true){items=items.filter(item=>item.type==='transcribe');continue;}
+      if(outcome.source_deferred===true){items=items.filter(sourceEffect);continue;}
       return;
     }}finally{if(!completed&&current(expected))journalBlock(entry.id,'business_started');wakeAdmission();}
   }
@@ -390,6 +428,9 @@ export function createDeviceRuntime(context,{client,downloadMediaMessage,logger,
   }
   function receipts(updates){
     for(const item of (Array.isArray(updates)?updates:[]).slice(0,100)){
+      if(context.deviceSnapshot()?.capabilities?.delivery_media===1){
+        const update=deliveryLiveUpdate(item,now());if(update)receive({messages:[update],type:'notify'});
+      }
       const known=sent.get(item.key?.id),ack=Number(item.update?.status);if(!known||ack<3||ack>5)continue;
       const expected=context.deviceSnapshot();queue(()=>event(expected,{event_id:'receipt:'+digest(item.key.id+':'+ack).slice(0,40),kind:'outbound',
         occurred_at:new Date(now()).toISOString(),phone:known.phone,message_id:item.key.id,state:ack>=4?'read':'delivered'}));

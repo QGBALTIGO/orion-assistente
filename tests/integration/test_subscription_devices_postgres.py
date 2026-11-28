@@ -960,3 +960,146 @@ async def test_delivery_whatsapp_connection_five_contacts_compete_for_last_unit(
         inventory=(await db.execute(text("""SELECT quantity_on_hand,reserved_quantity FROM commercial_inventory
             WHERE tenant_id=:t AND variant_id=:v"""),{"t":c.tenant,"v":product["variant_id"]})).one()
         assert inventory==(1,1)
+
+
+@pytest.mark.asyncio
+async def test_delivery_whatsapp_connection_multimodal_scoped_media_and_checkout(device_case,monkeypatch):
+    """Real broker, migration, encrypted state, media decode and orders; provider is synthetic."""
+    import io
+    from PIL import Image,ImageDraw
+    from app import delivery_catalog as catalog,delivery_storefront as store,delivery_logistics as logistics
+    from app import delivery_whatsapp_vision as vision
+    from app.tenant_access import TenantAccess
+    from test_delivery_catalog_postgres import new_product,complete_delivery_setup
+    c=device_case
+    async with c.ctx.migration.begin() as db:
+        await db.execute(text("""UPDATE business_onboarding SET configuration=configuration ||
+            '{"niche":"delivery_distribuicao","delivery_offering":"gas_agua","activity":"products","modality":"online"}'::jsonb
+            WHERE tenant_id=:t"""),{"t":c.tenant})
+    monkeypatch.setenv("ORION_DELIVERY_PREVIEW_TENANTS",str(c.tenant))
+    monkeypatch.setenv("ORION_DELIVERY_VISION_PREVIEW_TENANTS",str(c.tenant))
+    monkeypatch.setenv("GROQ_API_KEY","synthetic-test-key")
+    monkeypatch.setenv("PUBLIC_SITE_SIGNING_KEY",uuid4().hex+uuid4().hex)
+    await complete_delivery_setup(c.ctx,c.tenant)
+    await create(c)
+    assert (await action(c,"connect"))["operation"]["status"]=="succeeded"
+    access=TenantAccess("owner",c.ctx.actor.account_id)
+    async with c.ctx.runtime() as db:
+        async with tenant_transaction(db,c.tenant):
+            await logistics.save_policy(db,c.tenant,access,logistics.PolicyUpdate(
+                expected_revision=0,coverage_mode="areas",areas=[
+                    logistics.Area(city="Campo Grande",state="MS",neighborhood="Centro",fee_cents=450)]))
+            created=await catalog.create_item(db,c.tenant,access,catalog.ProductCreate.model_validate(new_product("Água mineral 20 L")))
+            selected=next(row for row in (await store.operator_items(db,c.tenant,"",0))["items"]
+                          if str(row["variant_id"])==str(created["variant_id"]))
+            await store.save_store(db,c.tenant,access,store.Storefront(
+                revision=0,slug="media-"+uuid4().hex[:12],title="Distribuidora sintética",enabled=False,
+                allow_delivery=True,allow_pickup=True,pickup_details="Depósito",payment_methods=["cash","pix"],
+                items=[store.PublicItem(variant_id=selected["variant_id"],product_revision=selected["product_revision"],
+                    variant_revision=selected["variant_revision"],label="Água mineral 20 L",kind="water")]))
+    config=c.prefix+"/delivery-assistant"
+    status=(await c.client.get(config)).json()
+    response=await c.client.put(config,json={"enabled":True,"expected_revision":status["revision"]})
+    assert response.status_code==200,response.text
+    c.device["revision"]=response.json()["revision"]
+    phone="5567999999902"
+    other="5567999999903"
+
+    async def talk(body=None, *, contact=phone, **kwargs):
+        result=await event(c,phone=contact,message_id=uuid4().hex,text=body,**kwargs)
+        if not result["effects"]:
+            return None,result
+        effect,=result["effects"]
+        assert effect["type"]=="send_text",effect
+        grant=await permit(c,effect)
+        assert grant["authorized"] and grant["payload"]["phone"]==contact
+        await finish(c,effect,"accepted",provider_id=uuid4().hex)
+        return grant["payload"]["text"],result
+
+    # Calls are replied to by text, once per cooldown, and only for a verified contact.
+    call={"kind":"call","call_id":"qa-call1","call_from":phone+"@s.whatsapp.net"}
+    notice=await event(c,phone=phone,**call)
+    effect,=notice["effects"]
+    grant=await permit(c,effect)
+    assert grant["authorized"] and "Vi sua ligação" in grant["payload"]["text"]
+    await finish(c,effect,"accepted",provider_id=uuid4().hex)
+    assert not (await event(c,phone=phone,**{**call,"call_id":"qa-call2"}))["effects"]
+    assert not (await event(c,phone=None,**{**call,"call_id":"qa-hidden"}))["effects"]
+
+    # Real PNG decoding before the synthetic vision boundary. One grant, one provider call.
+    image=Image.new("RGB",(200,200),"white")
+    draw=ImageDraw.Draw(image)
+    draw.rectangle((55,40,145,185),fill="lightblue")
+    draw.text((80,100),"20 L",fill="black")
+    stream=io.BytesIO();image.save(stream,format="PNG");raw=stream.getvalue()
+    calls=[]
+    async def recognize(jpeg):
+        with Image.open(io.BytesIO(jpeg)) as decoded:
+            assert decoded.format=="JPEG" and decoded.size==(200,200)
+        calls.append("provider")
+        return vision.PhotoAnalysis(category="water",volume_ml=20000)
+    monkeypatch.setattr(vision,"provider_analysis",recognize)
+    media={"kind":"image","size":len(raw),"media_type":"image/png"}
+    incoming=await event(c,phone=phone,message_id="qa-photo",delivery_media=media)
+    photo,=incoming["effects"]
+    assert photo["type"]=="analyze_image"
+    assert (await permit(c,photo))["authorized"]
+    headers={**c.bridge.headers(c.row,live=True),"Content-Type":"image/png",
+        "X-Orion-Phone":phone,"X-Orion-Device-Id":c.device["id"],"X-Orion-Device-Generation":str(c.saved["generation"]),
+        "X-Orion-Device-Revision":str(c.device["revision"]),"X-Orion-Device-Effect":photo["operation_id"]}
+    endpoint=f"/internal/qr/channels/{c.row['id']}/device/image"
+    denied=await c.private.post(endpoint,headers={**headers,"X-Orion-Phone":other},content=raw)
+    assert denied.status_code==409 and not calls
+    analyzed=await c.private.post(endpoint,headers=headers,content=raw)
+    assert analyzed.status_code==200,analyzed.text
+    child,=analyzed.json()["effects"]
+    grant=await permit(c,child)
+    assert grant["authorized"] and "20 L" in grant["payload"]["text"]
+    await finish(c,child,"accepted",provider_id=uuid4().hex)
+    assert calls==["provider"]
+    assert (await c.private.post(endpoint,headers=headers,content=raw)).status_code==409
+    duplicate=await event(c,phone=phone,message_id="qa-photo",delivery_media=media)
+    assert duplicate["duplicate"] and not duplicate["effects"] and calls==["provider"]
+    receipt,_=await talk("Comprovante Pix",delivery_media=media)
+    assert "não" in receipt.lower() and "conferido" in receipt and calls==["provider"]
+
+    # The location is part of the order's immutable address snapshot.
+    pin={"kind":"location","latitude":-20.123456,"longitude":-55.123456}
+    text_reply,_=await talk(delivery_media=pin)
+    assert "localização" in text_reply
+    await talk("Quero uma água para entrega")
+    await talk("Mariana")
+    await talk("Rua Teste, 12, Centro, Campo Grande, MS")
+    summary,_=await talk("dinheiro, sem troco")
+    assert "R$ 17,00" in summary and "-20.123456%2C-55.123456" in summary
+    assert "registrado" in (await talk("confirmo"))[0]
+    async with c.ctx.migration.connect() as db:
+        row=(await db.execute(text("""SELECT address FROM delivery_order_details
+            WHERE tenant_id=:t AND intake_channel='whatsapp'"""),{"t":c.tenant})).scalar_one()
+        assert row["location"]["kind"]=="location" and row["location"]["latitude"]==-20.123456
+
+    # Independent contact and live updates. The first confirmation after an
+    # update is a review, not an automatic second order or destination change.
+    await talk("Quero uma água para entrega",contact=other)
+    await talk("Alice",contact=other)
+    live={"kind":"live_location","source_id":"qa-live","sequence":1,"latitude":-20.2,"longitude":-55.2}
+    assert "ponto" in (await talk(contact=other,delivery_media=live))[0]
+    await talk("Rua Teste, 34, Centro, Campo Grande, MS",contact=other)
+    summary,_=await talk("dinheiro, sem troco",contact=other)
+    assert "Último ponto recebido ao vivo" in summary
+    updated={**live,"sequence":2,"latitude":-20.3,"update":True}
+    assert (await talk(contact=other,delivery_media=updated))[0] is None
+    assert (await talk(contact=other,delivery_media={**live,"update":True}))[0] is None
+    assert (await talk(contact=other,delivery_media={**updated,"source_id":"other-live"}))[0] is None
+    review,_=await talk("confirmo",contact=other)
+    assert "-20.300000%2C-55.200000" in review
+    async with c.ctx.migration.connect() as db:
+        assert await db.scalar(text("SELECT count(*) FROM delivery_order_details WHERE tenant_id=:t"),{"t":c.tenant})==1
+    assert "registrado" in (await talk("confirmo",contact=other))[0]
+    assert (await talk(contact=other,delivery_media={**updated,"sequence":3,"latitude":-20.4}))[0] is None
+    async with c.ctx.migration.connect() as db:
+        rows=(await db.execute(text("""SELECT address FROM delivery_order_details
+            WHERE tenant_id=:t AND intake_channel='whatsapp'"""),{"t":c.tenant})).scalars().all()
+        assert {a["location"]["latitude"] for a in rows}=={-20.123456,-20.3}
+        assert await db.scalar(text("""SELECT count(*) FROM subscription_device_effects
+            WHERE tenant_id=:t AND type='analyze_image' AND image_started_at IS NOT NULL"""),{"t":c.tenant})==1

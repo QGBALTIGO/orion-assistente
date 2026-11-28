@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import Field, field_validator, model_validator
 
 from app.catalog_schemas import StrictModel
+from app.delivery_whatsapp_media import DeliveryMedia
 
 
 def phone(value):
@@ -263,6 +264,7 @@ class DeviceEvent(StrictModel):
     call_id: str | None = Field(default=None, max_length=200)
     call_from: str | None = Field(default=None, max_length=200)
     audio: AudioMetadata | None = None
+    delivery_media: DeliveryMedia | None = Field(default=None, exclude_if=lambda value: value is None)
     state: dict | str | None = None
     avatar_url: str | None = Field(default=None, max_length=2048)
     chatbot_revision: int | None = Field(default=None, strict=True, ge=1)
@@ -294,6 +296,9 @@ class DeviceEvent(StrictModel):
             raise ValueError("Seleção exige a identidade da mensagem original")
         if self.selection_id is not None and (self.kind != "text" or self.origin != "contact"):
             raise ValueError("Seleção individual inválida")
+        if self.delivery_media is not None and (self.kind != "text" or self.origin != "contact"
+                or not self.message_id or self.selection_id is not None or self.audio is not None):
+            raise ValueError("Mídia Delivery exige evento de contato individual")
         if self.origin == "owner_command" and (self.kind != "text" or not (self.text or "").startswith("!")):
             raise ValueError("Comando do aparelho inválido")
         return self

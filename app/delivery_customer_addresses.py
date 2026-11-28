@@ -5,7 +5,7 @@ from sqlalchemy import text
 
 from app.business_profile_schemas import ProfileModel
 from app.catalog_api import audit
-from app.onboarding_schemas import Address
+from app.delivery_whatsapp_media import DeliveryAddress as Address
 
 
 class AddressEdit(ProfileModel):

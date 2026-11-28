@@ -269,3 +269,86 @@ async def test_gas_inquiry_does_not_create_water_order(chat):
     reply=await chat.say("quero gás industrial")
     assert "equipe" in reply
     assert not chat.state.get("proposal") and not chat.calls
+
+
+@pytest.mark.asyncio
+async def test_fixed_pin_preserves_coordinates_and_requires_complete_address(chat):
+    from app.delivery_whatsapp_media import DeliveryMedia
+    media=DeliveryMedia(kind="location",latitude=-20.12345678,longitude=-55.23456789)
+    reply,chat.state,ignored=await wa.handle_media(FakeDB(),TENANT,PHONE,chat.state,media,datetime.now(timezone.utc))
+    assert not ignored and "localização" in reply and not chat.calls
+    await chat.say("Quero uma água para entrega")
+    await chat.say("Mariana")
+    assert chat.state["stage"]=="address"
+    await chat.say("Rua Teste, 12, Centro, Campo Grande, MS")
+    await chat.say("Pix")
+    assert chat.state["stage"]=="confirm"
+    assert chat.state["proposal"]["address"]["location"]["latitude"]==-20.123457
+    assert "%2C" in chat.response and "Localização enviada" in chat.response
+    assert "R$ 17,00" in chat.response and not chat.calls
+    await chat.say("confirmo")
+    assert len(chat.calls)==1
+    assert chat.calls[0]["address"]["location"]["longitude"]==-55.234568
+
+
+@pytest.mark.asyncio
+async def test_live_updates_refresh_unconfirmed_point_without_creating_or_changing_order(chat):
+    from app.delivery_whatsapp_media import DeliveryMedia
+    async def point(sequence,lat,source="live-test",update=False):
+        m=DeliveryMedia(kind="live_location",source_id=source,sequence=sequence,latitude=lat,longitude=-55.2,update=update)
+        result,chat.state,ignored=await wa.handle_media(FakeDB(),TENANT,PHONE,chat.state,m,datetime.now(timezone.utc))
+        return result,ignored
+    await chat.say("Quero uma água para entrega")
+    await chat.say("Mariana")
+    response,ignored=await point(1,-20.1)
+    assert response and not ignored and "endereço" in response
+    await chat.say("Rua Teste, 12, Centro, Campo Grande, MS")
+    await chat.say("Pix")
+    assert "Último ponto recebido ao vivo" in chat.response
+    old=deepcopy(chat.state["proposal"])
+    response,ignored=await point(2,-20.2,update=True)
+    assert response is None and not ignored
+    assert chat.state["stage"]=="media_review" and "proposal" not in chat.state
+    _,ignored=await point(1,-20.3,update=True)
+    assert ignored and chat.state["pending_pin"]["point"]["latitude"]==-20.2
+    _,ignored=await point(99,-20.4,source="other-source",update=True)
+    assert ignored
+    await chat.say("confirmo")
+    assert not chat.calls and chat.state["proposal"]["idempotency_key"]!=old["idempotency_key"]
+    assert chat.state["proposal"]["address"]["location"]["latitude"]==-20.2
+    await chat.say("confirmo")
+    assert len(chat.calls)==1 and chat.calls[0]["address"]["location"]["latitude"]==-20.2
+    _,ignored=await point(3,-20.3,update=True)
+    assert ignored and len(chat.calls)==1 and "pending_pin" not in chat.state
+
+
+@pytest.mark.asyncio
+async def test_photo_does_not_use_caption_as_confirmation_or_change_payment(chat):
+    from app.delivery_whatsapp_media import DeliveryMedia
+    from app.delivery_whatsapp_vision import PhotoAnalysis
+    await chat.pickup()
+    old=deepcopy(chat.state["proposal"])
+    media=DeliveryMedia(kind="image",size=123,media_type="image/jpeg")
+    reply,chat.state,ignored=await wa.handle_media(FakeDB(),TENANT,PHONE,chat.state,media,datetime.now(timezone.utc),
+        analysis=PhotoAnalysis(category="water",volume_ml=20000))
+    assert "20 L" in reply and "quantidade" in reply and not ignored
+    assert chat.state["stage"]=="media_review" and "proposal" not in chat.state and not chat.calls
+    await chat.say("confirmo")
+    assert not chat.calls and chat.state["proposal"]["idempotency_key"]!=old["idempotency_key"]
+    reply,chat.state,ignored=await wa.handle_media(FakeDB(),TENANT,PHONE,chat.state,media,datetime.now(timezone.utc),
+        analysis=PhotoAnalysis(category="receipt"))
+    assert "conferido pela equipe" in reply and "Não vou marcar" in reply
+    assert not chat.calls and chat.state["payment_preference"]=="cash"
+
+
+@pytest.mark.asyncio
+async def test_location_sent_for_pickup_requires_explicit_mode_change(chat):
+    from app.delivery_whatsapp_media import DeliveryMedia
+    await chat.pickup()
+    response,chat.state,ignored=await wa.handle_media(FakeDB(),TENANT,PHONE,chat.state,
+        DeliveryMedia(kind="location",latitude=-20.1,longitude=-55.1),datetime.now(timezone.utc))
+    assert "mudar" in response and chat.state["stage"]=="mode" and not chat.calls
+    assert "proposal" not in chat.state
+    await chat.say("retirada")
+    assert chat.state["stage"]=="confirm" and not chat.state.get("pending_pin")
+    assert not chat.state["proposal"].get("address")

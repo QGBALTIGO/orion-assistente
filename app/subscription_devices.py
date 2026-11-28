@@ -693,6 +693,7 @@ async def device_lease_snapshot(db, transport):
         "settings": settings, "proxy_secret": None if delivery else secret, "restart_required": row["restart_required"],
         "chatbot": None if db.info.get("orion_device_profile") in CONNECTION_ONLY_PROFILES else await chatbot.snapshot(db, row["tenant_id"]),
         "capabilities": {"transcription_available": delivery_audio or (not delivery and audio_capable()), "transcription_max_bytes": 25000000,
+            **({"delivery_media":1,"delivery_vision_available":delivery_whatsapp.vision.available(row)} if delivery else {}),
             **({"delivery_audio": 1} if delivery else {}),
             **({"delivery_reply_buttons": 1} if delivery and delivery_whatsapp.enabled(row) else {}),
             "transcription_max_seconds": 1800, "transcription_max_text_chars": 120000,
@@ -856,6 +857,8 @@ async def device_event(channel_id: UUID, payload: DeviceEvent, request: Request)
             elif db.info.get("orion_device_profile") == DELIVERY_CONNECTION_PROFILE:
                 return await delivery_whatsapp.record_event(db,row,payload)
             return {"effects": [], "duplicate": False}
+        if payload.delivery_media is not None:
+            raise fail("WORKSPACE_FEATURE_UNAVAILABLE",403)
         data = payload.model_dump(mode="json")
         event_id = (await db.execute(text("""INSERT INTO subscription_device_events
             (tenant_id,device_id,generation,provider_event_id,kind,occurred_at,payload)
@@ -1071,7 +1074,7 @@ async def authorize_effect(channel_id: UUID, payload: EffectRequest, request: Re
         effect = await _effect(db, row, payload.operation_id)
         if (profile == DELIVERY_CONNECTION_PROFILE) != (effect["purpose"] == delivery_whatsapp.PURPOSE):
             raise fail("WORKSPACE_FEATURE_UNAVAILABLE", 403)
-        if profile == DELIVERY_CONNECTION_PROFILE and effect["type"] not in {"send_text","transcribe"}:
+        if profile == DELIVERY_CONNECTION_PROFILE and effect["type"] not in {"send_text","transcribe","analyze_image"}:
             raise fail("WORKSPACE_FEATURE_UNAVAILABLE", 403)
         if effect["type"] == "bulk_action":
             from app.subscription_bulk_runtime import authorize_bulk_effect
@@ -1106,6 +1109,9 @@ async def authorize_effect(channel_id: UUID, payload: EffectRequest, request: Re
         if not _current_effect(row, effect) or not await _policy_still_allows(db, row, effect):
             if not recheck:
                 await db.execute(text("UPDATE subscription_device_effects SET status='not_sent',finished_at=clock_timestamp(),error_code='policy_changed' WHERE id=:o"), {"o": effect["id"]})
+                if effect["type"]=="analyze_image" and profile==DELIVERY_CONNECTION_PROFILE:
+                    result=await delivery_whatsapp.complete_image(db,row,effect["event_id"],None)
+                    return jsonable_encoder({**denied,**result})
             return denied
         if effect["previous_effect"]:
             previous = (await db.execute(text("SELECT status FROM subscription_device_effects WHERE id=:o AND tenant_id=:t"),
@@ -1154,8 +1160,8 @@ async def finish_effect(channel_id: UUID, payload: EffectFinish, request: Reques
                    and payload.state in {"accepted", "not_sent", "uncertain"})
         if not receipt and (effect["status"] != "running" or effect["claimed_owner"] != owner or effect["claimed_fence"] != fence):
             raise fail("DEVICE_CONFLICT")
-        if effect["type"] == "transcribe" and payload.state == "accepted":
-            raise fail("DEVICE_CONFLICT")  # Only the authenticated audio handler can complete ASR.
+        if effect["type"] in {"transcribe","analyze_image"} and payload.state == "accepted":
+            raise fail("DEVICE_CONFLICT")  # Only the authenticated media handler can complete analysis.
         if effect["type"] == "chatbot_action" and effect["payload"]["action"]["type"] == "http" and payload.state == "accepted":
             raise fail("DEVICE_CONFLICT")  # Its result must pass the canonical result/child-effect handler.
         retry = effect["type"] == "webhook" and payload.state in {"failed", "uncertain"} and effect["attempts"] < 3
@@ -1176,6 +1182,9 @@ async def finish_effect(channel_id: UUID, payload: EffectFinish, request: Reques
                         updated_at=clock_timestamp() WHERE id=:d"""), {"d": row["id"]})
         if effect["purpose"] == delivery_whatsapp.PURPOSE:
             children = []
+            if effect["type"]=="analyze_image" and state in {"not_sent","uncertain","failed"} and _current_effect(row,effect):
+                result=await delivery_whatsapp.complete_image(db,row,effect["event_id"],None)
+                return jsonable_encoder({"operation_id":effect["id"],"state":state,**result})
             if effect["type"]=="transcribe" and state in {"not_sent","uncertain","failed"} and _current_effect(row,effect):
                 result=await delivery_whatsapp.complete_audio(db,row,effect["event_id"],None)
                 return jsonable_encoder({"operation_id":effect["id"],"state":state,**result})
@@ -1300,3 +1309,75 @@ async def device_audio(channel_id: UUID, request: Request):
         from app.subscription_chatbot_engine import complete_transcript
         await complete_transcript(db, row, effect["event_id"], result["text"], predecessor=previous)
         return jsonable_encoder({**result, "truncated": False, "effects": await _event_effects(db, row["id"], effect["event_id"])})
+
+
+
+async def _image_effect(db,row,effect_id,owner,fence,phone):
+    if db.info.get("orion_device_profile")!=DELIVERY_CONNECTION_PROFILE:
+        raise fail("WORKSPACE_FEATURE_UNAVAILABLE",403)
+    effect=await _effect(db,row,effect_id)
+    if (effect["type"]!="analyze_image" or effect["purpose"]!=delivery_whatsapp.PURPOSE
+            or effect["status"]!="running" or not _current_effect(row,effect)
+            or effect["claimed_owner"]!=owner or effect["claimed_fence"]!=fence
+            or effect["payload"].get("phone")!=phone
+            or not await delivery_whatsapp.permits(db,row,effect)):
+        raise fail("DEVICE_CONFLICT")
+    return effect
+
+
+@router.post(INTERNAL + "/image")
+async def device_image(channel_id: UUID,request: Request):
+    try:
+        device_id=UUID(request.headers["x-orion-device-id"])
+        generation=UUID(request.headers["x-orion-device-generation"])
+        revision=int(request.headers["x-orion-device-revision"])
+        operation_id=UUID(request.headers["x-orion-device-effect"])
+        phone=request.headers["x-orion-phone"]
+        if not re.fullmatch(r"[1-9][0-9]{7,14}",phone):
+            raise ValueError()
+    except (KeyError,ValueError,TypeError):
+        raise HTTPException(401,"Imagem não autorizada") from None
+    async with _private_transaction(request,device_id=device_id) as (db,row,_,owner,fence):
+        _same_snapshot(row,device_id,generation,revision)
+        effect=await _image_effect(db,row,operation_id,owner,fence,phone)
+        if effect["image_started_at"] is not None:
+            raise fail("DEVICE_CONFLICT")
+    async def authorize(phase):
+        async with _private_transaction(request,device_id=device_id) as (db,row,_,owner,fence):
+            _same_snapshot(row,device_id,generation,revision)
+            effect=await _image_effect(db,row,operation_id,owner,fence,phone)
+            if phase=="after_provider":
+                if effect["image_started_at"] is None:
+                    raise fail("DEVICE_CONFLICT")
+                return
+            if phase!="before_provider" or effect["image_started_at"] is not None:
+                raise fail("DEVICE_CONFLICT")
+            # Serialize the quota reservation only, not image decoding or network I/O.
+            await db.execute(text("SELECT pg_advisory_xact_lock(hashtextextended('delivery-image-quota-v1',0))"))
+            usage=(await db.execute(text("""SELECT count(*) AS total,
+                count(*) FILTER(WHERE tenant_id=:t) AS tenant
+                FROM subscription_device_effects WHERE image_started_at>=
+                    date_trunc('day',clock_timestamp() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'"""),
+                {"t":row["tenant_id"]})).mappings().one()
+            if usage["tenant"]>=50 or usage["total"]>=200:
+                raise HTTPException(429,"Limite diário de análise de fotos atingido")
+            busy=await db.scalar(text("""SELECT 1 FROM subscription_device_effects WHERE tenant_id=:t
+                AND type='analyze_image' AND status='running' AND image_started_at IS NOT NULL
+                AND image_started_at>clock_timestamp()-interval '90 seconds' LIMIT 1"""),{"t":row["tenant_id"]})
+            if busy:
+                raise HTTPException(429,"Já existe uma foto em análise")
+            await db.execute(text("UPDATE subscription_device_effects SET image_started_at=clock_timestamp() WHERE id=:o"),
+                             {"o":operation_id})
+    result=await delivery_whatsapp.vision.analyze_image(request,authorize=authorize)
+    async with _private_transaction(request,device_id=device_id) as (db,row,_,owner,fence):
+        _same_snapshot(row,device_id,generation,revision)
+        effect=await _image_effect(db,row,operation_id,owner,fence,phone)
+        if effect["image_started_at"] is None:
+            raise fail("DEVICE_CONFLICT")
+        await db.execute(text("""UPDATE subscription_device_effects SET status='accepted',finished_at=clock_timestamp()
+            WHERE id=:o"""),{"o":operation_id})
+        completed=await delivery_whatsapp.complete_image(db,row,effect["event_id"],result)
+        if not completed["delivery_image_handled"]:
+            raise fail("DEVICE_CONFLICT")
+        # The connector receives only child effects, not extracted address data.
+        return jsonable_encoder({"analyzed":True,"effects":completed["effects"]})

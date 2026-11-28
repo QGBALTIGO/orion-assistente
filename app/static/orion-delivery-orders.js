@@ -422,10 +422,14 @@
       const result=await call('/orders/'+encodeURIComponent(id));
       if (!current()) return;
       const address=result.address;
+      const pin=address?.location,point=pin&&typeof pin.latitude==='number'&&typeof pin.longitude==='number'&&
+        Number.isFinite(pin.latitude)&&Number.isFinite(pin.longitude)&&Math.abs(pin.latitude)<=90&&Math.abs(pin.longitude)<=180?
+        pin.latitude+','+pin.longitude:null;
       const addressText=address?'<div class="os-card"><h3>Entrega</h3><p>'+esc([
         address.street+(address.number?', '+address.number:' (sem número)'),address.neighborhood,address.city+' - '+address.state,
         address.postal_code,address.complement,
-      ].filter(Boolean).join(' · '))+'</p><p>Taxa '+money(result.delivery_fee_cents)+'</p>'+
+      ].filter(Boolean).join(' · '))+'</p>'+(point?'<p><a target="_blank" rel="noopener noreferrer" href="https://www.google.com/maps/search/?api=1&amp;query='+encodeURIComponent(point)+'">Ver ponto enviado pelo cliente</a>'+
+        (pin.kind==='live_location'?' · Último ponto recebido antes da confirmação':'')+'</p>':'')+'<p>Taxa '+money(result.delivery_fee_cents)+'</p>'+
       (result.scheduled_at?'<p>Agendado para '+esc(when(result.scheduled_at))+'</p>':'')+
       (result.courier_name?'<p>Entregador: '+esc(result.courier_name)+'</p>':'')+'</div>':'';
       const sourceText=result.storefront?'<p>'+esc(result.sales_channel==='whatsapp'?'Pedido pelo WhatsApp':'Pedido pela loja')+' · '+esc(result.storefront.customer_name||'')+' · '+

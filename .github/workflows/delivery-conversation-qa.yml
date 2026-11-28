@@ -1,7 +1,7 @@
 name: Orion - QA integrado da conversa Delivery
 on:
   push:
-    branches: [codex/delivery-integrated-qa-20261127]
+    branches: [codex/delivery-integrated-qa-20261127, codex/delivery-multimodal-qa-20261127]
     paths:
       - 'app/**'
       - 'tests/**'
@@ -53,8 +53,9 @@ jobs:
           alembic upgrade head
       - name: Conversas realistas, CRM, áudio e concorrência isolada
         run: |
-          pytest -q -ra tests/unit/test_delivery_whatsapp_dialogue.py tests/unit/test_delivery_whatsapp_scenarios.py
+          pytest -q -ra tests/unit/test_delivery_whatsapp_dialogue.py tests/unit/test_delivery_whatsapp_scenarios.py tests/unit/test_delivery_whatsapp_media.py tests/unit/test_subscription_devices.py
           pytest -q -ra tests/integration/test_subscription_devices_postgres.py -k "delivery_whatsapp_connection or affiliate_whatsapp_pairing or real_auth_csrf_membership_niche"
-          node --test qr-bridge/test/delivery-confirmation.test.mjs
+          npm ci --prefix qr-bridge --ignore-scripts --no-audit --no-fund
+          node --test --test-reporter=dot qr-bridge/test/delivery-confirmation.test.mjs qr-bridge/test/delivery-media.test.mjs qr-bridge/test/device-runtime.test.mjs
           node --check qr-bridge/src/channel-session.mjs
           node --check qr-bridge/src/device-runtime.mjs

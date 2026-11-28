@@ -76,6 +76,7 @@ PHASES = (
     "0115_delivery_driver_portal",
     "0116_delivery_manual_pix",
     "0117_delivery_whatsapp_intake",
+    "0118_delivery_whatsapp_media",
 )
 TABLES = {
     "0116_delivery_manual_pix": ("delivery_pix_settings", "delivery_pix_orders"),
@@ -92,6 +93,7 @@ TABLES = {
     "0109_delivery_catalog_editor": ("delivery_product_profiles",),
 }
 COLUMNS = {
+    "0118_delivery_whatsapp_media": (("subscription_device_effects","image_started_at"),),
     "0113_delivery_order_intake": tuple(("delivery_order_details", key) for key in
         ("intake_channel", "tender_preference", "change_for_cents", "operator_note")),
     "0112_delivery_area_terms": (("delivery_logistics_policies", "area_terms"),),
@@ -191,6 +193,16 @@ def delivery_schema_ready(raw, phases):
           WHERE conrelid=to_regclass('public.delivery_order_details')
             AND conname='delivery_order_details_intake_channel_check'
             AND contype='c' AND convalidated AND pg_get_constraintdef(oid) LIKE '%whatsapp%')
+    """):
+        return False
+    if "0118_delivery_whatsapp_media" in phases and not read_contract(raw, """
+        SELECT EXISTS (SELECT 1 FROM pg_constraint
+          WHERE conrelid=to_regclass('public.subscription_device_effects')
+            AND conname='subscription_device_effects_type_check'
+            AND contype='c' AND convalidated AND pg_get_constraintdef(oid) LIKE '%analyze_image%')
+          AND EXISTS (SELECT 1 FROM pg_constraint
+          WHERE conrelid=to_regclass('public.subscription_device_effects')
+            AND conname='ck_delivery_image_scope' AND convalidated)
     """):
         return False
     columns = [column for phase in phases for column in COLUMNS.get(phase, ())]

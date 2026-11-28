@@ -28,10 +28,13 @@
   function orderMarkup(o){
     const a=o.address||{},offered=o.status==='offered';
     const address=[a.street,a.no_number?'sem número':a.number,a.neighborhood,a.city,a.state,a.complement].filter(Boolean).join(', ');
+    const pin=a.location,point=!offered&&pin&&typeof pin.latitude==='number'&&typeof pin.longitude==='number'&&
+      Number.isFinite(pin.latitude)&&Number.isFinite(pin.longitude)&&Math.abs(pin.latitude)<=90&&Math.abs(pin.longitude)<=180?
+      pin.latitude+','+pin.longitude:null;
     const total=Number(o.total_cents),change=o.change_for_cents;
     const controls=offered?actionButton('Aceitar','accept')+actionButton('Recusar','refuse',true):
       (o.status==='accepted'?actionButton('Informar chegada','arrive'):'')+
-      (address?'<a rel="noreferrer" target="_blank" href="https://www.google.com/maps/dir/?api=1&amp;destination='+encodeURIComponent(address)+'">Abrir rota</a>':'')+
+      (address?'<a rel="noreferrer" target="_blank" href="https://www.google.com/maps/dir/?api=1&amp;destination='+encodeURIComponent(point||address)+'">Abrir rota</a>':'')+
       (o.phone?'<a href="tel:'+esc(o.phone)+'">Ligar para o cliente</a>':'');
     const complete='<details><summary>Concluir entrega</summary><form data-delivery-confirm>'+
       (o.pix_state?'<p>'+ (o.pix_state==='confirmed'?'Pix conferido pelo proprietário.':'Aguardando o proprietário conferir o Pix.')+'</p>':

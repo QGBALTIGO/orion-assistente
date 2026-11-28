@@ -183,6 +183,7 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
         },
         deviceEffectsPending:payload=>deviceRequest('deviceEffectsPending',payload),
         deviceTranscribe:payload=>deviceRequest('deviceTranscribe',payload),
+        deviceAnalyzeImage:payload=>deviceRequest('deviceAnalyzeImage',payload),
         deviceChatbotAsset:payload=>deviceRequest('deviceChatbotAsset',payload),
         deviceCampaignAsset:payload=>deviceRequest('deviceCampaignAsset',payload),
         deviceScheduledAsset:payload=>deviceRequest('deviceScheduledAsset',payload),
