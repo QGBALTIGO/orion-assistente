@@ -1,6 +1,5 @@
 """Exercise the authorized delivery API against the real Postgres role and RLS."""
 import asyncio
-from datetime import date, timedelta
 import os
 from pathlib import Path
 import re
@@ -443,11 +442,14 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                     await expect(notifications.get_by_text("Sem notificações", exact=True)).to_be_visible()
                     await expect(notifications).not_to_contain_text("agendamentos")
                     await notifications.get_by_role("button", name="Fechar notificações").click()
-                    day = page.get_by_label("Data", exact=True)
-                    today = await day.input_value()
-                    yesterday = (date.fromisoformat(today)-timedelta(days=1)).isoformat()
-                    await day.fill(yesterday)
-                    await expect(page.get_by_role("button", name="Hoje", exact=True)).to_be_visible()
+                    async with client(actor) as api:
+                        overview = await api.get(f"/api/v1/tenants/{tenant}/delivery/overview")
+                        assert overview.status_code == 200, overview.text
+                        today = overview.json()["today"]
+                        assert overview.json()["date"] == today
+                    await expect(page.locator(".odd-day-toolbar, #osDeliveryDashboardDay")).to_have_count(0)
+                    await page.locator('[data-dashboard-period="yesterday"]').click()
+                    await expect(page.locator('[name="performance_period"]')).to_have_value("yesterday")
                     await expect(page.get_by_text("Nenhum pedido para esta data.")).to_be_visible()
                     await expect(page.get_by_role("navigation", name="Atalhos de Delivery")).to_have_count(0)
                     await page.get_by_role("button", name="Novo pedido", exact=True).click()
@@ -459,7 +461,8 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                     await page.screenshot(path=artifacts/"pedido-dark-390.png", animations="disabled")
                     await dialog.get_by_role("button",name="Confirmar pedido").click()
                     await expect(dialog).to_be_hidden()
-                    await expect(day).to_have_value(today)
+                    await expect(page.locator(".odd-day-toolbar, #osDeliveryDashboardDay")).to_have_count(0)
+                    await expect(page.locator('[name="performance_period"]')).to_have_value("yesterday")
                     order_on_dashboard = page.locator('[data-delivery-section="orders"] [data-delivery-dashboard-order]')
                     await expect(order_on_dashboard).to_contain_text("Reservado")
                     await order_on_dashboard.click()
