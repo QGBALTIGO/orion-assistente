@@ -684,6 +684,10 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                         await page.get_by_role("tab",name="Inativos",exact=True).click()
                         await expect(page.locator("#osPageBody")).to_contain_text("Nenhum cliente inativo")
                         await page.get_by_role("tab",name="Ativos",exact=True).click()
+                        # Wait for the async permission refresh and active customer render.
+                        await expect(page.get_by_role("tab",name="Ativos",exact=True)).to_have_attribute("aria-selected","true")
+                        await expect(page.locator("#osPageBody")).not_to_contain_text("Nenhum cliente inativo")
+                        await expect(page.locator("#osCustomersCount")).to_have_text(re.compile(r"^\d+ ativ(?:o|os)$"))
                         await page.get_by_role("button",name="Novo cliente",exact=True).click()
                         await expect(page.locator("#osDialog [data-os-form=customer]")).to_be_visible()
                         await page.keyboard.press("Escape")
