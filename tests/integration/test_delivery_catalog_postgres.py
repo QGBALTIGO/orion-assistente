@@ -587,7 +587,7 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                     assert (await download.value).suggested_filename == "orion-delivery-vendas.csv"
                     await page.goto(origin+"/painel?aba=entregas-delivery")
                     await page.get_by_role("button", name="Novo pedido").click()
-                    await dialog.get_by_label("Buscar cliente").fill("Cliente novo")
+                    await dialog.get_by_role("searchbox",name="Buscar cliente",exact=True).fill("Cliente novo")
                     await dialog.get_by_role("button", name="Buscar clientes").click()
                     await dialog.get_by_role("button", name="Cliente novo de avaliação").click()
                     await dialog.get_by_role("button", name="Usar último endereço").click()
