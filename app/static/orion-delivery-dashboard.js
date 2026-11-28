@@ -13,8 +13,7 @@
     const formatInt=n=>new Intl.NumberFormat('pt-BR').format(n);
     const numeric=n=>Number.isFinite(Number(n))?Math.max(0,Number(n)):0;
     const metricValue=(n,key)=>key==='orders'?formatInt(n):money(n);
-    const periods=[['today','Hoje'],['yesterday','Ontem'],['7d','7 dias'],['30d','30 dias'],
-      ['90d','90 dias'],['custom','Personalizado']];
+    const periods=[['today','Hoje'],['7d','7 dias'],['30d','30 dias'],['all','Sempre']];
     if(!periods.some(([id])=>id===filters.performancePeriod))filters.performancePeriod='7d';
 
     const companyName=typeof company==='string'&&company.trim()?company.trim():'Minha empresa';
@@ -96,8 +95,13 @@
         '</strong><small>disponíveis</small></span></li>').join('')+'</ul>';
     }
 
-    function pointLabel(row,hourly) {
-      return hourly?String(row.hour).padStart(2,'0')+'h':fmtDate(row.date).slice(0,5);
+    function pointLabel(row,granularity,compact=false) {
+      if(granularity==='hour')return String(row.hour).padStart(2,'0')+'h';
+      if(granularity==='month'){
+        const date=fmtDate(row.date);
+        return compact?date.slice(3,5)+'/'+date.slice(-2):date.slice(3);
+      }
+      return fmtDate(row.date).slice(0,5);
     }
 
     function changeLabel(value,previous,key) {
@@ -109,11 +113,11 @@
     }
 
     function periodStat(data,key,label) {
-      const value=data.current[key],previous=data.previous[key];
+      const value=data.current[key],previous=data.previous?.[key];
       const shown=value==null?'—':metricValue(numeric(value),key);
       const tone=value!=null&&previous>0&&value!==previous?(value>previous?'up':'down'):'neutral';
-      return '<div class="odd-period-stat"><span>'+label+'</span><strong>'+esc(shown)+'</strong><small data-delta="'+tone+'">'+
-        esc(changeLabel(value,previous,key))+'</small></div>';
+      return '<div class="odd-period-stat"><span>'+label+'</span><strong>'+esc(shown)+'</strong>'+
+        (data.previous?'<small data-delta="'+tone+'">'+esc(changeLabel(value,previous,key))+'</small>':'')+'</div>';
     }
 
     function plotScale(values,key) {
@@ -142,12 +146,13 @@
         (meta?'<small>'+esc(meta)+'</small>':'')+'</span>'+icon('chevron')+'</summary>';
     }
 
-    function performanceDetails(rows,hourly){
-      const meta=formatInt(rows.length)+' '+(hourly?'horários':rows.length===1?'dia':'dias');
+    function performanceDetails(rows,granularity){
+      const hourly=granularity==='hour',monthly=granularity==='month';
+      const meta=formatInt(rows.length)+' '+(hourly?'horários':monthly?(rows.length===1?'mês':'meses'):rows.length===1?'dia':'dias');
       return '<details class="os-delivery-dashboard-values">'+detailSummary('Detalhamento do período',meta)+
-        '<div class="odd-detail-body"><table aria-label="Detalhamento do desempenho por '+(hourly?'hora':'dia')+'" role="table">'+
-        '<thead role="rowgroup"><tr role="row"><th scope="col" role="columnheader">'+(hourly?'Hora':'Data')+'</th><th scope="col" role="columnheader">Faturado</th><th scope="col" role="columnheader">Recebido</th><th scope="col" role="columnheader">Pedidos</th></tr></thead><tbody role="rowgroup">'+
-        rows.map(row=>'<tr role="row"><th scope="row" role="rowheader">'+esc(pointLabel(row,hourly))+
+        '<div class="odd-detail-body"><table aria-label="Detalhamento do desempenho por '+(hourly?'hora':monthly?'mês':'dia')+'" role="table">'+
+        '<thead role="rowgroup"><tr role="row"><th scope="col" role="columnheader">'+(hourly?'Hora':monthly?'Mês':'Data')+'</th><th scope="col" role="columnheader">Faturado</th><th scope="col" role="columnheader">Recebido</th><th scope="col" role="columnheader">Pedidos</th></tr></thead><tbody role="rowgroup">'+
+        rows.map(row=>'<tr role="row"><th scope="row" role="rowheader">'+esc(pointLabel(row,granularity))+
         '</th><td role="cell" data-label="Faturado">'+esc(money(row.sales_cents))+'</td><td role="cell" data-label="Recebido">'+esc(money(row.income_cents))+
         '</td><td role="cell" data-label="Pedidos">'+esc(formatInt(row.orders))+'</td></tr>').join('')+'</tbody></table></div></details>';
     }
@@ -176,18 +181,18 @@
       return '<div class="odd-chart-controls"><div class="odd-segments" role="group" aria-label="Indicador do gráfico">'+
         Object.entries(chartMetrics).map(([id,label])=>'<button type="button" data-dashboard-metric="'+id+'" aria-pressed="'+(id===key)+'">'+label+'</button>').join('')+'</div></div>'+
         '<div class="odd-chart-readout" id="oddChartReadout" data-chart-readout aria-live="polite" aria-atomic="true"><span data-chart-date>'+
-        esc(currentRow?pointLabel(currentRow,hourly):'Sem dados')+'</span><strong data-chart-value>'+esc(currentRow?metricValue(values[selectedIndex],key):'—')+'</strong></div>'+
+        esc(currentRow?pointLabel(currentRow,data.granularity):'Sem dados')+'</span><strong data-chart-value>'+esc(currentRow?metricValue(values[selectedIndex],key):'—')+'</strong></div>'+
         '<div class="odd-plot"><div class="odd-y-labels" aria-hidden="true">'+ticks.map((label,i)=>'<span style="top:'+((top+(bottom-top)*i/3)/202*100)+'%">'+esc(label)+'</span>').join('')+'</div>'+
         '<div class="odd-plot-main"><div class="odd-plot-stage"><svg data-dashboard-plot tabindex="0" viewBox="0 0 600 202" preserveAspectRatio="none" role="img" aria-label="'+
-        esc(chartMetrics[key]+' por '+(hourly?'hora':'dia')+'. Use as setas para explorar os valores.')+'" aria-describedby="oddChartReadout">'+
+        esc(chartMetrics[key]+' por '+(hourly?'hora':data.granularity==='month'?'mês':'dia')+'. Use as setas para explorar os valores.')+'" aria-describedby="oddChartReadout">'+
         '<defs><linearGradient id="oddChartFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="var(--os-primary)" stop-opacity=".16"/>'+
         '<stop offset="1" stop-color="var(--os-primary)" stop-opacity=".015"/></linearGradient></defs><g class="odd-plot-grid">'+grid+'</g>'+
         (hourly?bars:'<path d="'+area+'" fill="url(#oddChartFill)"/><path d="'+line+'" class="odd-plot-line'+(!hasMovement?' is-empty':'')+'"/>')+
         (rows.length?'<g data-chart-marker><line x1="'+marker[0]+'" x2="'+marker[0]+'" y1="'+top+'" y2="'+bottom+'" class="odd-plot-marker"/></g>':'')+'</svg>'+
         (!hourly&&rows.length?'<span class="odd-plot-dot" aria-hidden="true" style="left:'+marker[0]/6+'%;top:'+marker[1]/202*100+'%"></span>':'')+
         (!hasMovement?'<p class="odd-no-movement">Nenhum movimento no período.</p>':'')+'</div>'+
-        '<div class="odd-chart-axis" aria-hidden="true">'+indexes.map((i,j)=>'<span data-axis-edge="'+(j===0?'first':j===indexes.length-1?'last':'middle')+'" style="left:'+x(i)/6+'%">'+esc(pointLabel(rows[i],hourly))+'</span>').join('')+'</div></div></div>'+
-        performanceDetails(rows,hourly);
+        '<div class="odd-chart-axis" aria-hidden="true">'+indexes.map((i,j)=>'<span data-axis-edge="'+(j===0?'first':j===indexes.length-1?'last':'middle')+'" style="left:'+x(i)/6+'%">'+esc(pointLabel(rows[i],data.granularity,true))+'</span>').join('')+'</div></div></div>'+
+        performanceDetails(rows,data.granularity);
     }
 
     function updateChart(index) {
@@ -199,7 +204,7 @@
       if(next===chartIndex)return;
       chartIndex=next;
       const date=content.querySelector('[data-chart-date]'),value=content.querySelector('[data-chart-value]');
-      if(date)date.textContent=pointLabel(rows[next],hourly);
+      if(date)date.textContent=pointLabel(rows[next],lastPerformance.granularity);
       if(value)value.textContent=metricValue(values[next],key);
       const plot=content.querySelector('[data-dashboard-plot]');
       if(!plot)return;
@@ -261,24 +266,15 @@
     }
 
     function periodForm(){
-      return '<form data-delivery-performance class="odd-period-form">'+
+      return '<div data-delivery-performance class="odd-period-form">'+
         '<div class="odd-period-quick" role="group" aria-label="Período do desempenho">'+periods.map(([key,label])=>
-          '<button type="button" data-dashboard-period="'+key+'" aria-pressed="'+(filters.performancePeriod===key)+'">'+esc(label)+'</button>').join('')+'</div>'+
-        '<fieldset class="odd-period-dates" data-period-dates '+(filters.performancePeriod==='custom'?'':'hidden disabled')+'>'+
-        ui.field('Início','performance_start','date',filters.performanceStart||operatingDay,'required min="1900-01-01" max="2100-12-31"')+
-        ui.field('Fim','performance_end','date',filters.performanceEnd||operatingDay,'required min="1900-01-01" max="2100-12-31"')+
-        '<button class="os-button os-outline" type="submit">Aplicar período</button></fieldset></form>'+
+          '<button type="button" data-dashboard-period="'+key+'" aria-pressed="'+(filters.performancePeriod===key)+'">'+esc(label)+'</button>').join('')+'</div></div>'+
         '<div data-performance-results></div>';
     }
 
-    function selectPeriod(form,period){
+    function selectPeriod(group,period){
       if(!periods.some(([id])=>id===period))return;
-      const dates=form.querySelector('[data-period-dates]'),custom=period==='custom';
-      dates.hidden=dates.disabled=!custom;
-      form.querySelectorAll('[data-dashboard-period]').forEach(el=>el.setAttribute('aria-pressed',String(el.dataset.dashboardPeriod===period)));
-      // A custom range remains a draft until applied. Keep the current result
-      // and its actual date caption visible, including during a pending request.
-      if(custom)return;
+      group.querySelectorAll('[data-dashboard-period]').forEach(el=>el.setAttribute('aria-pressed',String(el.dataset.dashboardPeriod===period)));
       if(filters.performancePeriod!==period){
         filters.performancePeriod=period;
         void loadPerformance();
@@ -289,7 +285,6 @@
       const target=content.querySelector('[data-performance-results]'),attempt=++performanceRevision;
       if(!target)return;
       const params={period:filters.performancePeriod};
-      if(params.period==='custom')Object.assign(params,{start:filters.performanceStart||operatingDay,end:filters.performanceEnd||operatingDay});
       target.setAttribute('aria-busy','true');
       lastPerformance=null;chartIndex=null;
       target.innerHTML=loading('Carregando desempenho…');
@@ -300,18 +295,18 @@
           ['Faturamento bruto','sales_cents'],['Recebido bruto','income_cents'],['Estornos','refunded_cents'],['Ticket médio','average_ticket_cents']];
         const display=(value,key)=>value==null?'—':key.endsWith('_cents')?money(value):String(value);
         lastPerformance=data;
-        target.innerHTML='<p class="odd-period-date">'+icon('calendar')+' '+esc(data.start===data.end?fmtDate(data.start):fmtDate(data.start)+' a '+fmtDate(data.end))+'</p>'+
+        target.innerHTML='<p class="odd-period-date">'+icon('calendar')+' '+esc((params.period==='all'?'Todo o histórico · ':'')+(data.start===data.end?fmtDate(data.start):fmtDate(data.start)+' a '+fmtDate(data.end)))+'</p>'+
           '<div class="odd-period-stats">'+periodStat(data,'sales_cents','Faturamento bruto')+periodStat(data,'income_cents','Recebido bruto')+
           periodStat(data,'orders','Pedidos criados')+'</div>'+
           '<div class="odd-analytics-grid"><section class="odd-analysis-panel odd-main-chart"><h3>Evolução do desempenho</h3><div data-dashboard-chart>'+performanceChart(data)+'</div></section>'+
           '<section class="odd-analysis-panel"><h3>Status dos pedidos</h3>'+statusChart(data)+'</section>'+
           '<section class="odd-analysis-panel"><h3>Horários de maior movimento</h3>'+peakHours(data)+'</section>'+
           '<section class="odd-analysis-panel"><h3>Produtos mais vendidos</h3>'+productRanking(data)+'</section></div>'+
-          '<details class="os-delivery-period-comparison">'+detailSummary('Comparar indicadores')+'<p class="odd-comparison-caption">Período anterior de '+
+          (data.previous?'<details class="os-delivery-period-comparison">'+detailSummary('Comparar indicadores')+'<p class="odd-comparison-caption">Período anterior de '+
           esc(fmtDate(data.previous_start)+' a '+fmtDate(data.previous_end))+'</p><div class="os-table-scroll"><table class="os-table">'+
           '<thead><tr><th>Indicador</th><th>Período</th><th>Anterior</th></tr></thead><tbody>'+
           metrics.map(([label,key])=>'<tr><th scope="row">'+label+'</th><td>'+esc(display(data.current[key],key))+'</td><td>'+
-            esc(display(data.previous[key],key))+'</td></tr>').join('')+'</tbody></table></div></details>';
+            esc(display(data.previous[key],key))+'</td></tr>').join('')+'</tbody></table></div></details>':'');
       }catch(error){
         if(current()&&attempt===performanceRevision&&target.isConnected)target.innerHTML='<p role="alert">'+esc(error.message)+'</p>'+
           button('Tentar novamente','delivery-performance-retry','os-outline');
@@ -373,17 +368,6 @@
       event.preventDefault();
       updateChart(target);
     });
-    host.addEventListener('submit',event=>{
-      if(!event.target.matches('[data-delivery-performance]'))return;
-      event.preventDefault();
-      const form=event.target,dates=form.querySelector('[data-period-dates]');
-      if(dates.disabled||!form.reportValidity())return;
-      const {performance_start:start,performance_end:end}=form.elements;
-      if(start.value>end.value){end.setCustomValidity('O fim deve ser igual ou posterior ao início.');end.reportValidity();end.setCustomValidity('');return;}
-      filters.performancePeriod='custom';filters.performanceStart=start.value;filters.performanceEnd=end.value;
-      void loadPerformance();
-    });
-
     host.addEventListener('click',event=>{
       const target=event.target.closest('button');
       if (!target||!current()) return;

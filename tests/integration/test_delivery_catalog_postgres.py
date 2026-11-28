@@ -448,8 +448,8 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                         today = overview.json()["today"]
                         assert overview.json()["date"] == today
                     await expect(page.locator(".odd-day-toolbar, #osDeliveryDashboardDay")).to_have_count(0)
-                    await page.locator('[data-dashboard-period="yesterday"]').click()
-                    await expect(page.locator('[data-dashboard-period="yesterday"]')).to_have_attribute("aria-pressed","true")
+                    await page.locator('[data-dashboard-period="30d"]').click()
+                    await expect(page.locator('[data-dashboard-period="30d"]')).to_have_attribute("aria-pressed","true")
                     await expect(page.get_by_text("Nenhum pedido para esta data.")).to_be_visible()
                     await expect(page.get_by_role("navigation", name="Atalhos de Delivery")).to_have_count(0)
                     await page.get_by_role("button", name="Novo pedido", exact=True).click()
@@ -462,7 +462,7 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                     await dialog.get_by_role("button",name="Confirmar pedido").click()
                     await expect(dialog).to_be_hidden()
                     await expect(page.locator(".odd-day-toolbar, #osDeliveryDashboardDay")).to_have_count(0)
-                    await expect(page.locator('[data-dashboard-period="yesterday"]')).to_have_attribute("aria-pressed","true")
+                    await expect(page.locator('[data-dashboard-period="30d"]')).to_have_attribute("aria-pressed","true")
                     order_on_dashboard = page.locator('[data-delivery-section="orders"] [data-delivery-dashboard-order]')
                     await expect(order_on_dashboard).to_contain_text("Reservado")
                     await order_on_dashboard.click()
@@ -537,15 +537,14 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                     await expect(page.locator("[data-chart-value]")).to_have_text(re.compile(r"0,00"))
                     await plot.press("End")
                     await expect(page.locator("[data-chart-value]")).to_have_text(re.compile(r"30,00"))
-                    await page.locator('[data-dashboard-period="custom"]').click()
-                    await expect(page.locator("[data-period-dates]")).to_be_visible()
-                    await page.locator('[name="performance_start"]').fill(today)
-                    await page.locator('[name="performance_end"]').fill(today)
-                    await page.get_by_role("button",name="Aplicar período",exact=True).click()
-                    await expect(weekly_values).to_have_count(24)
-                    await expect(page.locator('[data-dashboard-period="custom"]')).to_have_attribute("aria-pressed","true")
+                    await page.locator('[data-dashboard-period="all"]').click()
+                    await expect(page.locator('[data-dashboard-period="all"]')).to_have_attribute("aria-pressed","true")
+                    await expect(page.locator(".odd-period-date")).to_contain_text("Todo o histórico")
+                    await expect(page.locator(".os-delivery-period-comparison")).to_have_count(0)
+                    await expect(weekly_values).to_have_count(1)
+                    await expect(weekly_values.first).to_contain_text(re.compile(r"30,00.*12,50"))
                     await page.locator('[data-dashboard-period="today"]').click()
-                    await expect(page.locator("[data-period-dates]")).to_be_hidden()
+                    await expect(page.locator("[data-period-dates]")).to_have_count(0)
                     await expect(weekly_values).to_have_count(24)
                     await details.locator("summary").click()
                     await page.get_by_text("Comparar indicadores", exact=True).click()
@@ -652,11 +651,12 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                             await expect(page.locator(".odd-eyebrow")).to_have_text("Dashboard")
                             await expect(page.locator(".odd-day-toolbar, #osDeliveryDashboardDay")).to_have_count(0)
                             await expect(page.locator(".os-delivery-dashboard-header + [data-delivery-dashboard-content] > .os-delivery-dashboard-metrics")).to_be_visible()
-                            await expect(page.locator('[data-dashboard-period]')).to_have_count(6)
+                            await expect(page.locator('[data-dashboard-period]')).to_have_text(["Hoje","7 dias","30 dias","Sempre"])
                             await expect(page.locator('[name="performance_period"],[data-dashboard-scrub]')).to_have_count(0)
                             assert await page.locator(".odd-period-quick").evaluate("""el => {
                                 const bounds=el.getBoundingClientRect(),buttons=Array.from(el.querySelectorAll("button"));
-                                return buttons.every(b=>{const r=b.getBoundingClientRect();return r.left>=bounds.left-1 && r.right<=bounds.right+1 && r.width>0 && b.scrollWidth<=b.clientWidth+1 && b.scrollHeight<=b.clientHeight+1;});
+                                const first=buttons[0].getBoundingClientRect();
+                                return buttons.length===4 && buttons.every(b=>{const r=b.getBoundingClientRect();return Math.abs(r.top-first.top)<1 && Math.abs(r.width-first.width)<1 && r.left>=bounds.left-1 && r.right<=bounds.right+1 && r.width>0 && b.scrollWidth<=b.clientWidth+1 && b.scrollHeight<=b.clientHeight+1;});
                             }"""), (route,width,"period filter overflow")
                             assert await page.locator(".odd-chart-axis").evaluate("""el => {
                                 const labels=Array.from(el.querySelectorAll("span")).filter(n=>getComputedStyle(n).display!=="none").map(n=>n.getBoundingClientRect()).sort((a,b)=>a.left-b.left);
@@ -765,8 +765,8 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
             portal=await mobile.new_page()
             portal.on("pageerror", lambda error: errors.append(str(error)))
             await portal.goto(origin+grant.json()["portal_path"]+"/")
-            await portal.get_by_label("E-mail da conta").fill(driver_email)
-            await portal.get_by_label("Senha",exact=True).fill(driver_password)
+            await portal.locator('#login [name="username"]').fill(driver_email)
+            await portal.locator('#login [name="password"]').fill(driver_password)
             await portal.get_by_role("button",name="Entrar",exact=True).click()
             await portal.get_by_role("button",name="Expediente",exact=True).click()
             await portal.get_by_role("button",name="Iniciar expediente",exact=True).click()
@@ -851,11 +851,12 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                         if route == "dashboard-delivery":
                             await expect(page.locator(".odd-day-toolbar, #osDeliveryDashboardDay")).to_have_count(0)
                             await expect(page.locator(".os-delivery-dashboard-header + [data-delivery-dashboard-content] > .os-delivery-dashboard-metrics")).to_be_visible()
-                            await expect(page.locator('[data-dashboard-period]')).to_have_count(6)
+                            await expect(page.locator('[data-dashboard-period]')).to_have_text(["Hoje","7 dias","30 dias","Sempre"])
                             await expect(page.locator('[name="performance_period"],[data-dashboard-scrub]')).to_have_count(0)
                             assert await page.locator(".odd-period-quick").evaluate("""el => {
                                 const bounds=el.getBoundingClientRect(),buttons=Array.from(el.querySelectorAll("button"));
-                                return buttons.every(b=>{const r=b.getBoundingClientRect();return r.left>=bounds.left-1 && r.right<=bounds.right+1 && r.width>0 && b.scrollWidth<=b.clientWidth+1 && b.scrollHeight<=b.clientHeight+1;});
+                                const first=buttons[0].getBoundingClientRect();
+                                return buttons.length===4 && buttons.every(b=>{const r=b.getBoundingClientRect();return Math.abs(r.top-first.top)<1 && Math.abs(r.width-first.width)<1 && r.left>=bounds.left-1 && r.right<=bounds.right+1 && r.width>0 && b.scrollWidth<=b.clientWidth+1 && b.scrollHeight<=b.clientHeight+1;});
                             }"""), (route,width,"period filter overflow")
                             if width == 390:
                                 plot = page.locator("[data-dashboard-plot]")

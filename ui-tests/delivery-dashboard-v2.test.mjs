@@ -35,8 +35,8 @@ test('dashboard renders real KPIs, ranking, and status without duplicate navigat
   assert.equal(h.calls.filter(c=>c.path.includes('/delivery/overview?')).length,1);
   assert.equal(new URL(h.calls.find(c=>c.path.includes('/delivery/overview?')).path,'https://orion.test').searchParams.has('day'),false);
   assert.equal(h.document.querySelector('[name="performance_period"],[data-dashboard-scrub]'),null);
-  assert.equal(h.document.querySelectorAll('[data-dashboard-period]').length,6);
-  assert.equal(h.document.querySelector('[data-period-dates]').hidden,true);
+  assert.deepEqual([...h.document.querySelectorAll('[data-dashboard-period]')].map(el=>el.textContent),['Hoje','7 dias','30 dias','Sempre']);
+  assert.equal(h.document.querySelector('[data-period-dates]'),null);
   assert.equal(h.document.querySelector('.os-delivery-dashboard-values summary strong').textContent,'Detalhamento do período');
   assert.equal(h.document.querySelectorAll('.os-delivery-dashboard-dock').length,0);
   assert.equal(h.document.querySelectorAll('[data-os-action="delivery-dashboard-new"]').length,1);
@@ -111,26 +111,26 @@ test('dashboard shows the entire long company name as escaped text and uses a fa
   assert.equal(empty.errors.length,0);
 });
 
-test('single period control supports 90 days and drafts custom dates without an extra request',async t=>{
-  const h=await load(t,()=>structuredClone(basePerf));await flush();
-  h.click('[data-dashboard-period="90d"]');await flush();
-  assert.equal(new URL(perfCalls(h).at(-1).path,'https://orion.test').searchParams.get('period'),'90d');
-  const before=perfCalls(h).length,dates=h.document.querySelector('[data-period-dates]');
-  h.click('[data-dashboard-period="custom"]');await flush();
-  assert.equal(dates.hidden,false);assert.equal(dates.disabled,false);
-  assert.equal(perfCalls(h).length,before);
-  h.fill('[name="performance_start"]','2026-11-27');
-  h.fill('[name="performance_end"]','2026-11-26');
-  h.submit('[data-delivery-performance]');await flush();
-  assert.equal(perfCalls(h).length,before);
-  h.fill('[name="performance_end"]','2026-11-28');
-  h.submit('[data-delivery-performance]');await flush();
-  const params=new URL(perfCalls(h).at(-1).path,'https://orion.test').searchParams;
-  assert.equal(params.get('period'),'custom');assert.equal(params.get('start'),'2026-11-27');assert.equal(params.get('end'),'2026-11-28');
+test('four period buttons include true lifetime history, without stale comparison or date fields',async t=>{
+  const lifetime={...basePerf,start:'2024-01-15',end:day,previous_start:null,previous_end:null,previous:null,granularity:'month',
+    series:[{date:'2024-01-01',orders:2,sales_cents:2500,income_cents:2500},{date:'2026-11-01',orders:3,sales_cents:1750,income_cents:1250}]};
+  const h=await load(t,path=>structuredClone(new URL(path,'https://orion.test').searchParams.get('period')==='all'?lifetime:basePerf));await flush();
+  const params=()=>new URL(perfCalls(h).at(-1).path,'https://orion.test').searchParams;
+  const dailyBlock=h.document.querySelector('.os-delivery-dashboard-metrics');
+  h.click('[data-dashboard-period="30d"]');await flush();
+  assert.equal(params().get('period'),'30d');
+  h.click('[data-dashboard-period="all"]');await flush();
+  assert.equal(params().get('period'),'all');assert.equal(params().has('start'),false);
+  assert.equal(h.document.querySelector('[data-dashboard-period="all"]').getAttribute('aria-pressed'),'true');
+  assert.match(h.document.querySelector('.odd-period-date').textContent,/Todo o histórico/);
+  assert.equal(h.document.querySelector('.os-delivery-period-comparison'),null);
+  assert.equal(h.document.querySelector('.odd-period-stat small'),null);
+  assert.deepEqual([...h.document.querySelectorAll('.os-delivery-dashboard-values tbody th')].map(el=>el.textContent),['01/2024','11/2026']);
+  h.document.querySelector('[data-dashboard-plot]').dispatchEvent(new h.window.KeyboardEvent('keydown',{bubbles:true,key:'Home'}));
+  assert.equal(h.document.querySelector('[data-chart-date]').textContent,'01/2024');
   h.click('[data-dashboard-period="today"]');await flush();
-  assert.equal(dates.hidden,true);assert.equal(dates.disabled,true);
-  const latest=new URL(perfCalls(h).at(-1).path,'https://orion.test').searchParams;
-  assert.equal(latest.get('period'),'today');assert.equal(latest.has('start'),false);
+  assert.equal(params().get('period'),'today');assert.ok(h.document.querySelector('.os-delivery-period-comparison'));
+  assert.equal(h.document.querySelector('.os-delivery-dashboard-metrics'),dailyBlock);
   assert.equal(h.calls.filter(c=>c.path.includes('/delivery/overview?')).length,1);
   assert.equal(h.errors.length,0);
 });
