@@ -303,7 +303,8 @@
 #osDialog.os-delivery-order-editor>#osDialogTitle{flex:none;margin:0;padding:18px 60px 16px var(--odo-pad);border-bottom:1px solid var(--os-border);font:680 19px/1.35 var(--os-display);letter-spacing:-.025em}
 #osDialog.os-delivery-order-editor>.os-close{top:9px;right:10px}
 #osDialog.os-delivery-order-editor>.odo-form{display:flex;flex-direction:column;gap:0;min-height:0;overflow:hidden;flex:1 1 auto}
-#osDialog.os-delivery-order-editor .odo-body{display:grid;align-content:start;gap:16px;min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;padding:16px var(--odo-pad);flex:1 1 auto}
+#osDialog.os-delivery-order-editor .odo-scroll{flex:1 1 auto;min-height:0;min-width:0;max-width:100%;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;scrollbar-width:thin;scroll-padding-block:12px}
+#osDialog.os-delivery-order-editor .odo-body{display:grid;align-content:start;gap:16px;min-height:0;min-width:0;max-width:100%;overflow:visible;padding:16px var(--odo-pad);margin:0}
 #osDialog.os-delivery-order-editor .odo-section{display:grid;gap:10px;min-width:0;margin:0;border:0;border-top:1px solid var(--os-border);padding:15px 0 0}
 #osDialog.os-delivery-order-editor .odo-mode{border:0;padding:0}
 #osDialog.os-delivery-order-editor .odo-section h3,#osDialog.os-delivery-order-editor .odo-section legend{margin:0;color:var(--os-text);font:650 15px/1.4 var(--os-display);letter-spacing:-.015em}
@@ -365,7 +366,7 @@
 #osDialog.os-delivery-order-editor [data-container-order]{padding:10px 12px}
 #osDialog.os-delivery-order-editor [data-container-order]>summary{cursor:pointer;font:600 13px/1.4 var(--os-font);padding:4px 0}
 #osDialog.os-delivery-order-editor [data-container-order][open]>summary{margin-bottom:10px}
-#osDialog.os-delivery-order-editor .odo-footer{flex:none;display:grid;gap:10px;padding:12px var(--odo-pad) max(12px,env(safe-area-inset-bottom));background:var(--os-card);border-top:1px solid var(--os-border);box-shadow:0 -4px 16px color-mix(in srgb,var(--os-text) 4%,transparent)}
+#osDialog.os-delivery-order-editor .odo-footer{flex:none;position:relative;z-index:1;display:grid;gap:10px;padding:12px var(--odo-pad) max(12px,env(safe-area-inset-bottom));background:var(--os-card);border-top:1px solid var(--os-border);box-shadow:0 -4px 16px color-mix(in srgb,var(--os-text) 4%,transparent)}
 #osDialog.os-delivery-order-editor .odo-total{display:grid;gap:4px;min-width:0}
 #osDialog.os-delivery-order-editor .odo-total-head{display:flex;align-items:center;justify-content:space-between;gap:6px;min-width:0}
 #osDialog.os-delivery-order-editor .odo-total-head>div{display:grid;gap:2px;min-width:0}

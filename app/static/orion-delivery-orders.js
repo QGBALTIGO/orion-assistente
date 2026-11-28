@@ -137,6 +137,8 @@
       const formBody=form.querySelector('fieldset'), actions=form.querySelector('.os-form-actions');
       dialog.classList.add('os-delivery-order-editor');
       form.classList.add('odo-form');formBody.classList.add('odo-body');
+      const scrollBody=document.createElement('div');scrollBody.className='odo-scroll';
+      formBody.before(scrollBody);scrollBody.append(formBody);
       const footer=document.createElement('div');footer.className='odo-footer';
       actions.before(footer);footer.append(form.querySelector('.odo-total'),actions);
       const newCustomerButton=form.querySelector('[data-os-action="delivery-new-customer"]');

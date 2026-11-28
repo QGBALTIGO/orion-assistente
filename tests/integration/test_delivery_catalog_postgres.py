@@ -500,6 +500,11 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                     await page.get_by_role("button", name="Novo pedido").click()
                     await dialog.get_by_role("button", name="Novo cliente", exact=True).click()
                     await dialog.get_by_label("Nome do cliente").fill("Cliente novo de avaliação")
+                    await dialog.get_by_role("button", name="Salvar cliente").scroll_into_view_if_needed()
+                    assert await dialog.locator(".odo-scroll").evaluate("""el => {
+                        const r=el.getBoundingClientRect(), footer=el.closest("form").querySelector(".odo-footer").getBoundingClientRect();
+                        return r.bottom<=footer.top+1 && el.clientHeight>0 && el.scrollHeight>=el.clientHeight;
+                    }""")
                     await dialog.get_by_role("button", name="Salvar cliente").click()
                     await expect(dialog.get_by_text("Cliente: Cliente novo de avaliação", exact=True)).to_be_visible()
                     await dialog.get_by_role("button", name="Buscar produtos").click()
