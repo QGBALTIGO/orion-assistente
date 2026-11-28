@@ -6,8 +6,8 @@ import sys
 from tempfile import TemporaryDirectory
 
 ROOT=Path(__file__).resolve().parents[1]
-BEFORE="cb02ce983b6a27a586ff162377c9eab122c8967a"
-BASE="ghcr.io/qgbaltigo/orion-assistente-api@sha256:5b416c05c61f2284b5301a951d93a6ddb6aad07fd740816009729912478f0b37"
+BEFORE="0787eb2340944836c37bcd4eab74bac0991c4851"
+BASE="ghcr.io/qgbaltigo/orion-assistente-api@sha256:d32b7260a64fc8bb73f027bf26f99a02088cf3f3efaacb6af24a565f9e90ec15"
 FILES=(
     "app/delivery_driver.py","app/delivery_driver_api.py","app/delivery_logistics.py",
     "app/delivery_orders.py","app/delivery_route_batches.py",
