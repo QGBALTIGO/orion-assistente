@@ -449,7 +449,7 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                         assert overview.json()["date"] == today
                     await expect(page.locator(".odd-day-toolbar, #osDeliveryDashboardDay")).to_have_count(0)
                     await page.locator('[data-dashboard-period="yesterday"]').click()
-                    await expect(page.locator('[name="performance_period"]')).to_have_value("yesterday")
+                    await expect(page.locator('[data-dashboard-period="yesterday"]')).to_have_attribute("aria-pressed","true")
                     await expect(page.get_by_text("Nenhum pedido para esta data.")).to_be_visible()
                     await expect(page.get_by_role("navigation", name="Atalhos de Delivery")).to_have_count(0)
                     await page.get_by_role("button", name="Novo pedido", exact=True).click()
@@ -462,7 +462,7 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                     await dialog.get_by_role("button",name="Confirmar pedido").click()
                     await expect(dialog).to_be_hidden()
                     await expect(page.locator(".odd-day-toolbar, #osDeliveryDashboardDay")).to_have_count(0)
-                    await expect(page.locator('[name="performance_period"]')).to_have_value("yesterday")
+                    await expect(page.locator('[data-dashboard-period="yesterday"]')).to_have_attribute("aria-pressed","true")
                     order_on_dashboard = page.locator('[data-delivery-section="orders"] [data-delivery-dashboard-order]')
                     await expect(order_on_dashboard).to_contain_text("Reservado")
                     await order_on_dashboard.click()
@@ -520,13 +520,34 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                     credit = page.locator('[data-delivery-section="credit"]')
                     await expect(credit.get_by_text("Cliente novo de avaliação", exact=True)).to_be_visible()
                     await expect(credit.get_by_text(re.compile(r"17,50"))).to_be_visible()
-                    await page.get_by_text("Valores por dia", exact=True).click()
-                    weekly_values = page.locator(".os-delivery-dashboard-values tbody tr")
+                    details = page.locator(".os-delivery-dashboard-values")
+                    weekly_values = details.locator("tbody tr")
                     await expect(weekly_values).to_have_count(7)
+                    await expect(details).not_to_have_attribute("open","")
+                    await details.locator("summary").click()
                     await expect(weekly_values.last).to_contain_text(re.compile(r"30,00.*12,50"))
-                    await page.get_by_label("Período do desempenho").select_option("today")
-                    await page.get_by_text("Valores por hora", exact=True).click()
+                    await details.locator("summary").click()
+                    plot = page.locator("[data-dashboard-plot]")
+                    await plot.scroll_into_view_if_needed()
+                    box = await plot.bounding_box()
+                    await plot.hover(position={"x":box["width"]*.98,"y":box["height"]*.5})
+                    await expect(page.locator("[data-chart-value]")).to_have_text(re.compile(r"30,00"))
+                    await plot.focus()
+                    await plot.press("Home")
+                    await expect(page.locator("[data-chart-value]")).to_have_text(re.compile(r"0,00"))
+                    await plot.press("End")
+                    await expect(page.locator("[data-chart-value]")).to_have_text(re.compile(r"30,00"))
+                    await page.locator('[data-dashboard-period="custom"]').click()
+                    await expect(page.locator("[data-period-dates]")).to_be_visible()
+                    await page.locator('[name="performance_start"]').fill(today)
+                    await page.locator('[name="performance_end"]').fill(today)
+                    await page.get_by_role("button",name="Aplicar período",exact=True).click()
                     await expect(weekly_values).to_have_count(24)
+                    await expect(page.locator('[data-dashboard-period="custom"]')).to_have_attribute("aria-pressed","true")
+                    await page.locator('[data-dashboard-period="today"]').click()
+                    await expect(page.locator("[data-period-dates]")).to_be_hidden()
+                    await expect(weekly_values).to_have_count(24)
+                    await details.locator("summary").click()
                     await page.get_by_text("Comparar indicadores", exact=True).click()
                     await expect(page.get_by_role("row",name=re.compile("Ticket médio"))).to_be_visible()
                     await page.get_by_role("button", name="Ver saldos", exact=True).click()
@@ -631,7 +652,12 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                             await expect(page.locator(".odd-eyebrow")).to_have_text("Dashboard")
                             await expect(page.locator(".odd-day-toolbar, #osDeliveryDashboardDay")).to_have_count(0)
                             await expect(page.locator(".os-delivery-dashboard-header + [data-delivery-dashboard-content] > .os-delivery-dashboard-metrics")).to_be_visible()
-                            await expect(page.locator('[name="performance_period"]')).to_be_visible()
+                            await expect(page.locator('[data-dashboard-period]')).to_have_count(6)
+                            await expect(page.locator('[name="performance_period"],[data-dashboard-scrub]')).to_have_count(0)
+                            assert await page.locator(".odd-period-quick").evaluate("""el => {
+                                const bounds=el.getBoundingClientRect(),buttons=Array.from(el.querySelectorAll("button"));
+                                return buttons.every(b=>{const r=b.getBoundingClientRect();return r.left>=bounds.left-1 && r.right<=bounds.right+1 && r.width>0 && b.scrollWidth<=b.clientWidth+1 && b.scrollHeight<=b.clientHeight+1;});
+                            }"""), (route,width,"period filter overflow")
                             title_layout = await page.locator(".odd-heading h1").evaluate("""el => {
                                 const title = el.getBoundingClientRect();
                                 const header = el.closest("header");
@@ -791,7 +817,12 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                         if route == "dashboard-delivery":
                             await expect(page.locator(".odd-day-toolbar, #osDeliveryDashboardDay")).to_have_count(0)
                             await expect(page.locator(".os-delivery-dashboard-header + [data-delivery-dashboard-content] > .os-delivery-dashboard-metrics")).to_be_visible()
-                            await expect(page.locator('[name="performance_period"]')).to_be_visible()
+                            await expect(page.locator('[data-dashboard-period]')).to_have_count(6)
+                            await expect(page.locator('[name="performance_period"],[data-dashboard-scrub]')).to_have_count(0)
+                            assert await page.locator(".odd-period-quick").evaluate("""el => {
+                                const bounds=el.getBoundingClientRect(),buttons=Array.from(el.querySelectorAll("button"));
+                                return buttons.every(b=>{const r=b.getBoundingClientRect();return r.left>=bounds.left-1 && r.right<=bounds.right+1 && r.width>0 && b.scrollWidth<=b.clientWidth+1 && b.scrollHeight<=b.clientHeight+1;});
+                            }"""), (route,width,"period filter overflow")
                         if route == "loja-delivery" and width == 320:
                             await page.screenshot(path=artifacts/"webkit-loja-delivery-320.png", animations="disabled")
                     await page.set_viewport_size({"width":390,"height":844})

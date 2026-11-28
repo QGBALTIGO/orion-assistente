@@ -13,9 +13,9 @@
     const formatInt=n=>new Intl.NumberFormat('pt-BR').format(n);
     const numeric=n=>Number.isFinite(Number(n))?Math.max(0,Number(n)):0;
     const metricValue=(n,key)=>key==='orders'?formatInt(n):money(n);
-    const periods=[['today','Hoje'],['yesterday','Ontem'],['7d','Últimos 7 dias'],['30d','Últimos 30 dias'],
-      ['90d','Últimos 90 dias'],['custom','Personalizado']];
-    filters.performancePeriod??='7d';
+    const periods=[['today','Hoje'],['yesterday','Ontem'],['7d','7 dias'],['30d','30 dias'],
+      ['90d','90 dias'],['custom','Personalizado']];
+    if(!periods.some(([id])=>id===filters.performancePeriod))filters.performancePeriod='7d';
 
     const companyName=typeof company==='string'&&company.trim()?company.trim():'Minha empresa';
     const newOrder=(className='')=>canWrite()?button('Novo pedido','delivery-dashboard-new',className,'plus'):'';
@@ -102,7 +102,7 @@
 
     function changeLabel(value,previous,key) {
       if(value==null||previous==null)return 'Sem base de comparação';
-      if(!previous)return value?'Sem base no período anterior':'Sem movimento nos dois períodos';
+      if(!previous)return value?'Sem base no período anterior':'Sem movimento no período';
       const change=(value-previous)/previous*100;
       const rounded=new Intl.NumberFormat('pt-BR',{maximumFractionDigits:1,signDisplay:'exceptZero'}).format(change);
       return rounded+'% vs. anterior';
@@ -123,67 +123,99 @@
       return 3*Math.max(minimum,unit);
     }
 
-    function performanceChart(data) {
-      const hourly=data.granularity==='hour',rows=data.series||[];
-      const key=Object.hasOwn(chartMetrics,filters.dashboardMetric)?filters.dashboardMetric:'sales_cents';
-      const values=rows.map(row=>numeric(row[key]));
-      const ceiling=plotScale(values,key);
-      const top=12,bottom=190,left=12,right=588;
-      const x=i=>values.length<=1?300:left+i*(right-left)/(values.length-1);
+    function axisValue(value,key){
+      const compact=new Intl.NumberFormat('pt-BR',{notation:'compact',maximumFractionDigits:1});
+      if(key==='orders')return value<10000?formatInt(value):compact.format(value);
+      return value<100000?money(value):'R$ '+compact.format(value/100);
+    }
+
+    function plotGeometry(data,key){
+      const rows=data.series||[],hourly=data.granularity==='hour',values=rows.map(row=>numeric(row[key]));
+      const ceiling=plotScale(values,key),left=12,right=588,top=12,bottom=190,span=right-left;
+      const x=i=>hourly?left+(i+.5)*span/Math.max(1,rows.length):rows.length<=1?300:left+i*span/(rows.length-1);
       const y=v=>bottom-v/ceiling*(bottom-top);
+      return {rows,hourly,values,ceiling,left,right,top,bottom,span,x,y};
+    }
+
+    function detailSummary(label,meta=''){
+      return '<summary><span class="odd-disclosure-copy"><strong>'+esc(label)+'</strong>'+
+        (meta?'<small>'+esc(meta)+'</small>':'')+'</span>'+icon('chevron')+'</summary>';
+    }
+
+    function performanceDetails(rows,hourly){
+      const meta=formatInt(rows.length)+' '+(hourly?'horários':rows.length===1?'dia':'dias');
+      return '<details class="os-delivery-dashboard-values">'+detailSummary('Detalhamento do período',meta)+
+        '<div class="odd-detail-body"><table aria-label="Detalhamento do desempenho por '+(hourly?'hora':'dia')+'" role="table">'+
+        '<thead role="rowgroup"><tr role="row"><th scope="col" role="columnheader">'+(hourly?'Hora':'Data')+'</th><th scope="col" role="columnheader">Faturado</th><th scope="col" role="columnheader">Recebido</th><th scope="col" role="columnheader">Pedidos</th></tr></thead><tbody role="rowgroup">'+
+        rows.map(row=>'<tr role="row"><th scope="row" role="rowheader">'+esc(pointLabel(row,hourly))+
+        '</th><td role="cell" data-label="Faturado">'+esc(money(row.sales_cents))+'</td><td role="cell" data-label="Recebido">'+esc(money(row.income_cents))+
+        '</td><td role="cell" data-label="Pedidos">'+esc(formatInt(row.orders))+'</td></tr>').join('')+'</tbody></table></div></details>';
+    }
+
+    function performanceChart(data) {
+      const key=Object.hasOwn(chartMetrics,filters.dashboardMetric)?filters.dashboardMetric:'sales_cents';
+      const {rows,hourly,values,ceiling,top,bottom,span,x,y}=plotGeometry(data,key);
+      const hasMovement=values.some(Boolean);
       const xy=values.map((v,i)=>[x(i),y(v)]);
       const line=xy.map(([a,b],i)=>(i?'L':'M')+a.toFixed(2)+' '+b.toFixed(2)).join(' ');
       const area=xy.length?line+' L'+xy.at(-1)[0]+' '+bottom+' L'+xy[0][0]+' '+bottom+' Z':'';
       const grid=[0,1,2,3].map(i=>'<line x1="0" x2="600" y1="'+(top+(bottom-top)*i/3)+'" y2="'+(top+(bottom-top)*i/3)+'"/>').join('');
-      const ticks=[0,1,2,3].map(i=>metricValue(Math.round(ceiling*(3-i)/3),key));
-      const indexes=[...new Set(Array.from({length:Math.min(hourly?5:6,rows.length)},(_,i)=>
-        Math.round(i*(rows.length-1)/Math.max(1,Math.min(hourly?5:6,rows.length)-1))))];
-      const selectedIndex=Math.max(0,Math.min(rows.length-1,chartIndex??Math.max(0,values.findLastIndex(v=>v>0))));
+      const ticks=[0,1,2,3].map(i=>hasMovement||i===3?axisValue(Math.round(ceiling*(3-i)/3),key):'');
+      const count=Math.min(5,rows.length);
+      const indexes=[...new Set(Array.from({length:count},(_,i)=>Math.round(i*(rows.length-1)/Math.max(1,count-1))))];
+      const lastActive=values.findLastIndex(v=>v>0);
+      const selectedIndex=rows.length?Math.max(0,Math.min(rows.length-1,chartIndex??(lastActive>=0?lastActive:rows.length-1))):0;
       chartIndex=selectedIndex;
       const marker=xy[selectedIndex]||[300,bottom];
       const bars=hourly?values.map((v,i)=>{
-        const barWidth=576/Math.max(1,values.length);
-        return '<rect x="'+(12+i*barWidth+barWidth*.15).toFixed(2)+'" y="'+y(v).toFixed(2)+'" width="'+(barWidth*.7).toFixed(2)+
+        const barWidth=span/Math.max(1,values.length);
+        return '<rect x="'+(x(i)-barWidth*.34).toFixed(2)+'" y="'+y(v).toFixed(2)+'" width="'+(barWidth*.68).toFixed(2)+
           '" height="'+Math.max(0,bottom-y(v)).toFixed(2)+'" rx="2" class="odd-plot-bar'+(i===selectedIndex?' is-selected':'')+'"/>';
       }).join(''):'';
+      const currentRow=rows[selectedIndex];
       return '<div class="odd-chart-controls"><div class="odd-segments" role="group" aria-label="Indicador do gráfico">'+
-        Object.entries(chartMetrics).map(([id,label])=>'<button type="button" data-dashboard-metric="'+id+'" aria-pressed="'+(id===key)+'">'+label+'</button>').join('')+'</div>'+
-        '<p class="odd-chart-readout" data-chart-readout aria-live="polite">'+esc(rows[selectedIndex]?pointLabel(rows[selectedIndex],hourly)+' · '+metricValue(values[selectedIndex],key):'Sem dados')+'</p></div>'+
-        '<div class="odd-plot"><div class="odd-y-labels" aria-hidden="true">'+ticks.map(label=>'<span>'+esc(label)+'</span>').join('')+'</div>'+
-        '<div class="odd-plot-main"><svg data-dashboard-plot viewBox="0 0 600 202" preserveAspectRatio="none" role="img" aria-label="'+esc(chartMetrics[key]+' por '+(hourly?'hora':'dia'))+'">'+
-        '<defs><linearGradient id="oddChartFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="var(--os-primary)" stop-opacity=".23"/>'+
-        '<stop offset="1" stop-color="var(--os-primary)" stop-opacity=".025"/></linearGradient></defs><g class="odd-plot-grid">'+grid+'</g>'+
-        (hourly?bars:'<path d="'+area+'" fill="url(#oddChartFill)"/><path d="'+line+'" class="odd-plot-line"/>')+
-        (!hourly&&xy.length?'<g data-chart-marker><line x1="'+marker[0]+'" x2="'+marker[0]+'" y1="'+top+'" y2="'+bottom+'" class="odd-plot-marker"/>'+
-        '<circle cx="'+marker[0]+'" cy="'+marker[1]+'" r="4.5" class="odd-plot-dot"/></g>':'')+'</svg>'+
-        '<div class="odd-x-labels">'+indexes.map(i=>'<span>'+esc(pointLabel(rows[i],hourly))+'</span>').join('')+'</div></div></div>'+
-        (rows.length>1?'<label class="odd-scrubber"><span>Explorar '+(hourly?'horas':'datas')+'</span><input type="range" min="0" max="'+(rows.length-1)+'" value="'+selectedIndex+'" data-dashboard-scrub aria-label="Ponto do gráfico"></label>':'')+
-        (!values.some(Boolean)?'<p class="odd-no-movement">Nenhum movimento para este indicador no período.</p>':'')+
-        '<details class="os-delivery-dashboard-values"><summary>Valores por '+(hourly?'hora':'dia')+'</summary><div class="os-table-scroll"><table><thead><tr><th scope="col">'+(hourly?'Hora':'Dia')+'</th>'+
-        '<th scope="col">Faturado</th><th scope="col">Recebido</th><th scope="col">Pedidos</th></tr></thead><tbody>'+rows.map(row=>
-        '<tr><th scope="row">'+esc(pointLabel(row,hourly))+'</th><td>'+money(row.sales_cents)+'</td><td>'+money(row.income_cents)+'</td><td>'+formatInt(row.orders)+'</td></tr>'
-        ).join('')+'</tbody></table></div></details>';
+        Object.entries(chartMetrics).map(([id,label])=>'<button type="button" data-dashboard-metric="'+id+'" aria-pressed="'+(id===key)+'">'+label+'</button>').join('')+'</div></div>'+
+        '<div class="odd-chart-readout" id="oddChartReadout" data-chart-readout aria-live="polite" aria-atomic="true"><span data-chart-date>'+
+        esc(currentRow?pointLabel(currentRow,hourly):'Sem dados')+'</span><strong data-chart-value>'+esc(currentRow?metricValue(values[selectedIndex],key):'—')+'</strong></div>'+
+        '<div class="odd-plot"><div class="odd-y-labels" aria-hidden="true">'+ticks.map((label,i)=>'<span style="top:'+((top+(bottom-top)*i/3)/202*100)+'%">'+esc(label)+'</span>').join('')+'</div>'+
+        '<div class="odd-plot-main"><div class="odd-plot-stage"><svg data-dashboard-plot tabindex="0" viewBox="0 0 600 202" preserveAspectRatio="none" role="img" aria-label="'+
+        esc(chartMetrics[key]+' por '+(hourly?'hora':'dia')+'. Use as setas para explorar os valores.')+'" aria-describedby="oddChartReadout">'+
+        '<defs><linearGradient id="oddChartFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="var(--os-primary)" stop-opacity=".16"/>'+
+        '<stop offset="1" stop-color="var(--os-primary)" stop-opacity=".015"/></linearGradient></defs><g class="odd-plot-grid">'+grid+'</g>'+
+        (hourly?bars:'<path d="'+area+'" fill="url(#oddChartFill)"/><path d="'+line+'" class="odd-plot-line'+(!hasMovement?' is-empty':'')+'"/>')+
+        (rows.length?'<g data-chart-marker><line x1="'+marker[0]+'" x2="'+marker[0]+'" y1="'+top+'" y2="'+bottom+'" class="odd-plot-marker"/></g>':'')+'</svg>'+
+        (!hourly&&rows.length?'<span class="odd-plot-dot" aria-hidden="true" style="left:'+marker[0]/6+'%;top:'+marker[1]/202*100+'%"></span>':'')+
+        (!hasMovement?'<p class="odd-no-movement">Nenhum movimento no período.</p>':'')+'</div>'+
+        '<div class="odd-chart-axis" aria-hidden="true">'+indexes.map((i,j)=>'<span data-axis-edge="'+(j===0?'first':j===indexes.length-1?'last':'middle')+'" style="left:'+x(i)/6+'%">'+esc(pointLabel(rows[i],hourly))+'</span>').join('')+'</div></div></div>'+
+        performanceDetails(rows,hourly);
     }
 
     function updateChart(index) {
       if(!lastPerformance)return;
-      const rows=lastPerformance.series||[],key=Object.hasOwn(chartMetrics,filters.dashboardMetric)?filters.dashboardMetric:'sales_cents';
-      if(!rows.length)return;
-      chartIndex=Math.max(0,Math.min(rows.length-1,Math.round(index)));
-      const target=content.querySelector('[data-chart-readout]'),slider=content.querySelector('[data-dashboard-scrub]');
-      if(target)target.textContent=pointLabel(rows[chartIndex],lastPerformance.granularity==='hour')+' · '+metricValue(numeric(rows[chartIndex][key]),key);
-      if(slider)slider.value=String(chartIndex);
+      const key=Object.hasOwn(chartMetrics,filters.dashboardMetric)?filters.dashboardMetric:'sales_cents';
+      const {rows,hourly,values,x,y}=plotGeometry(lastPerformance,key);
+      if(!rows.length||!Number.isFinite(index))return;
+      const next=Math.max(0,Math.min(rows.length-1,Math.round(index)));
+      if(next===chartIndex)return;
+      chartIndex=next;
+      const date=content.querySelector('[data-chart-date]'),value=content.querySelector('[data-chart-value]');
+      if(date)date.textContent=pointLabel(rows[next],hourly);
+      if(value)value.textContent=metricValue(values[next],key);
       const plot=content.querySelector('[data-dashboard-plot]');
       if(!plot)return;
-      if(lastPerformance.granularity==='hour'){
-        plot.querySelectorAll('.odd-plot-bar').forEach((bar,i)=>bar.classList.toggle('is-selected',i===chartIndex));
-      }else{
-        const values=rows.map(row=>numeric(row[key])),ceiling=plotScale(values,key);
-        const x=rows.length<=1?300:12+chartIndex*576/(rows.length-1),y=190-values[chartIndex]/ceiling*178;
-        const line=plot.querySelector('.odd-plot-marker'),dot=plot.querySelector('.odd-plot-dot');
-        if(line){line.setAttribute('x1',x);line.setAttribute('x2',x);}
-        if(dot){dot.setAttribute('cx',x);dot.setAttribute('cy',y);}
-      }
+      if(hourly)plot.querySelectorAll('.odd-plot-bar').forEach((bar,i)=>bar.classList.toggle('is-selected',i===next));
+      const marker=plot.querySelector('.odd-plot-marker'),dot=plot.parentElement.querySelector('.odd-plot-dot');
+      if(marker){marker.setAttribute('x1',x(next));marker.setAttribute('x2',x(next));}
+      if(dot){dot.style.left=x(next)/6+'%';dot.style.top=y(values[next])/202*100+'%';}
+    }
+
+    function pointFromEvent(event){
+      const plot=event.target.closest('[data-dashboard-plot]');
+      if(!plot||!current()||!lastPerformance)return;
+      const rect=plot.getBoundingClientRect(),n=lastPerformance.series.length;
+      if(!rect.width||!n)return;
+      const ratio=Math.max(0,Math.min(1,((event.clientX-rect.left)/rect.width*600-12)/576));
+      updateChart(lastPerformance.granularity==='hour'?Math.min(n-1,Math.floor(ratio*n)):ratio*(n-1));
     }
 
     function statusChart(data) {
@@ -214,8 +246,8 @@
         '<div class="odd-hour-bars" role="img" aria-label="Quantidade de pedidos por hora da empresa">'+rows.map(row=>'<div><span style="height:'+
           (numeric(row.orders)/max*100)+'%" title="'+esc(fmt(row)+' · '+formatInt(row.orders)+' pedidos')+'"'+(row.orders&&row.hour===peak.hour?' class="is-peak"':'')+'></span></div>').join('')+'</div>'+
         '<div class="odd-x-labels"><span>00h</span><span>06h</span><span>12h</span><span>18h</span><span>23h</span></div>'+
-        '<details class="odd-hour-values"><summary>Pedidos por horário</summary><table><thead><tr><th>Hora</th><th>Pedidos</th></tr></thead><tbody>'+
-        rows.map(row=>'<tr><th scope="row">'+fmt(row)+'</th><td>'+formatInt(row.orders)+'</td></tr>').join('')+'</tbody></table></details>';
+        '<details class="odd-hour-values">'+detailSummary('Pedidos por horário','24 horários')+'<div class="odd-detail-body"><table><thead><tr><th>Hora</th><th>Pedidos</th></tr></thead><tbody>'+
+        rows.map(row=>'<tr><th scope="row">'+fmt(row)+'</th><td>'+formatInt(row.orders)+'</td></tr>').join('')+'</tbody></table></div></details>';
     }
 
     function productRanking(data) {
@@ -229,15 +261,28 @@
     }
 
     function periodForm(){
-      return '<form data-delivery-performance class="os-filter-row odd-period-form">'+
-        '<div class="odd-period-quick" role="group" aria-label="Períodos rápidos">'+[['today','Hoje'],['yesterday','Ontem'],['7d','7 dias'],['30d','30 dias']].map(([key,label])=>
-          '<button type="button" data-dashboard-period="'+key+'" aria-label="'+label+' (desempenho)" aria-pressed="'+(filters.performancePeriod===key)+'">'+label+'</button>').join('')+'</div>'+
-        ui.selectField('Período do desempenho','performance_period',periods,filters.performancePeriod)+
-        '<fieldset class="os-filter-row" data-period-dates '+(filters.performancePeriod==='custom'?'':'hidden disabled')+'>'+
+      return '<form data-delivery-performance class="odd-period-form">'+
+        '<div class="odd-period-quick" role="group" aria-label="Período do desempenho">'+periods.map(([key,label])=>
+          '<button type="button" data-dashboard-period="'+key+'" aria-pressed="'+(filters.performancePeriod===key)+'">'+esc(label)+'</button>').join('')+'</div>'+
+        '<fieldset class="odd-period-dates" data-period-dates '+(filters.performancePeriod==='custom'?'':'hidden disabled')+'>'+
         ui.field('Início','performance_start','date',filters.performanceStart||operatingDay,'required min="1900-01-01" max="2100-12-31"')+
         ui.field('Fim','performance_end','date',filters.performanceEnd||operatingDay,'required min="1900-01-01" max="2100-12-31"')+
         '<button class="os-button os-outline" type="submit">Aplicar período</button></fieldset></form>'+
-        '<div aria-live="polite" data-performance-results></div>';
+        '<div data-performance-results></div>';
+    }
+
+    function selectPeriod(form,period){
+      if(!periods.some(([id])=>id===period))return;
+      const dates=form.querySelector('[data-period-dates]'),custom=period==='custom';
+      dates.hidden=dates.disabled=!custom;
+      form.querySelectorAll('[data-dashboard-period]').forEach(el=>el.setAttribute('aria-pressed',String(el.dataset.dashboardPeriod===period)));
+      // A custom range remains a draft until applied. Keep the current result
+      // and its actual date caption visible, including during a pending request.
+      if(custom)return;
+      if(filters.performancePeriod!==period){
+        filters.performancePeriod=period;
+        void loadPerformance();
+      }
     }
 
     async function loadPerformance(){
@@ -255,14 +300,14 @@
           ['Faturamento bruto','sales_cents'],['Recebido bruto','income_cents'],['Estornos','refunded_cents'],['Ticket médio','average_ticket_cents']];
         const display=(value,key)=>value==null?'—':key.endsWith('_cents')?money(value):String(value);
         lastPerformance=data;
-        target.innerHTML='<p class="odd-period-date">'+icon('calendar')+' '+esc(fmtDate(data.start)+' a '+fmtDate(data.end))+'</p>'+
+        target.innerHTML='<p class="odd-period-date">'+icon('calendar')+' '+esc(data.start===data.end?fmtDate(data.start):fmtDate(data.start)+' a '+fmtDate(data.end))+'</p>'+
           '<div class="odd-period-stats">'+periodStat(data,'sales_cents','Faturamento bruto')+periodStat(data,'income_cents','Recebido bruto')+
           periodStat(data,'orders','Pedidos criados')+'</div>'+
           '<div class="odd-analytics-grid"><section class="odd-analysis-panel odd-main-chart"><h3>Evolução do desempenho</h3><div data-dashboard-chart>'+performanceChart(data)+'</div></section>'+
           '<section class="odd-analysis-panel"><h3>Status dos pedidos</h3>'+statusChart(data)+'</section>'+
           '<section class="odd-analysis-panel"><h3>Horários de maior movimento</h3>'+peakHours(data)+'</section>'+
           '<section class="odd-analysis-panel"><h3>Produtos mais vendidos</h3>'+productRanking(data)+'</section></div>'+
-          '<details class="os-delivery-period-comparison"><summary>Comparar indicadores</summary><p class="os-help">Período anterior de '+
+          '<details class="os-delivery-period-comparison">'+detailSummary('Comparar indicadores')+'<p class="odd-comparison-caption">Período anterior de '+
           esc(fmtDate(data.previous_start)+' a '+fmtDate(data.previous_end))+'</p><div class="os-table-scroll"><table class="os-table">'+
           '<thead><tr><th>Indicador</th><th>Período</th><th>Anterior</th></tr></thead><tbody>'+
           metrics.map(([label,key])=>'<tr><th scope="row">'+label+'</th><td>'+esc(display(data.current[key],key))+'</td><td>'+
@@ -287,7 +332,7 @@
         metric('Vendas a prazo',money(credit_cents),'deliveryDeferred','primary','Geradas no dia')+
         metric('Ticket médio',ticket,'box','violet',operations.average_ticket_cents==null?'Sem vendas concluídas':'Por venda concluída')+'</div>'+
         '<div class="os-delivery-dashboard-grid">'+
-        section('week','Desempenho de vendas',periodForm(),'','Resultados por período, com comparação anterior')+
+        section('week','Desempenho de vendas',periodForm())+
         section('orders','Pedidos do dia',orderRows(data.recent),shortcut('Ver pedidos','orders','chevron','os-ghost os-small','day'))+
         section('deliveries','Entregas do dia',orderRows(data.deliveries,true),shortcut('Ver entregas','deliveries','chevron','os-ghost os-small','day'))+
         section('credit','Clientes com vendas a prazo',creditRows(data.credit_customers),shortcut('Ver saldos','credit','chevron','os-ghost os-small'),'Saldos em aberto')+
@@ -317,32 +362,25 @@
       }
     }
 
-    host.addEventListener('input',event=>{
-      if(event.target.matches('[data-dashboard-scrub]')&&current())updateChart(Number(event.target.value));
-    });
-    host.addEventListener('click',event=>{
-      const plot=event.target.closest('[data-dashboard-plot]');
-      if(!plot||!current()||!lastPerformance)return;
-      const rect=plot.getBoundingClientRect();
-      if(!rect.width)return;
-      const ratio=Math.max(0,Math.min(1,((event.clientX-rect.left)/rect.width*600-12)/576));
+    host.addEventListener('pointermove',event=>pointFromEvent(event));
+    host.addEventListener('pointerdown',event=>pointFromEvent(event));
+    host.addEventListener('click',event=>pointFromEvent(event));
+    host.addEventListener('keydown',event=>{
+      if(!event.target.matches('[data-dashboard-plot]')||!current()||!lastPerformance)return;
       const n=lastPerformance.series.length;
-      updateChart(lastPerformance.granularity==='hour'?Math.min(n-1,Math.floor(ratio*n)):ratio*(n-1));
-    });
-    host.addEventListener('change',event=>{
-      if(event.target.name!=='performance_period'||!current())return;
-      const custom=event.target.value==='custom', dates=event.target.form.querySelector('[data-period-dates]');
-      dates.hidden=dates.disabled=!custom;
-      filters.performancePeriod=event.target.value;
-      content.querySelectorAll('[data-dashboard-period]').forEach(el=>el.setAttribute('aria-pressed',String(el.dataset.dashboardPeriod===filters.performancePeriod)));
-      if(!custom)void loadPerformance();
+      const target={ArrowLeft:(chartIndex??0)-1,ArrowRight:(chartIndex??0)+1,Home:0,End:n-1}[event.key];
+      if(target===undefined)return;
+      event.preventDefault();
+      updateChart(target);
     });
     host.addEventListener('submit',event=>{
       if(!event.target.matches('[data-delivery-performance]'))return;
       event.preventDefault();
-      const {performance_start:start,performance_end:end}=event.target.elements;
+      const form=event.target,dates=form.querySelector('[data-period-dates]');
+      if(dates.disabled||!form.reportValidity())return;
+      const {performance_start:start,performance_end:end}=form.elements;
       if(start.value>end.value){end.setCustomValidity('O fim deve ser igual ou posterior ao início.');end.reportValidity();end.setCustomValidity('');return;}
-      filters.performanceStart=start.value;filters.performanceEnd=end.value;
+      filters.performancePeriod='custom';filters.performanceStart=start.value;filters.performanceEnd=end.value;
       void loadPerformance();
     });
 
@@ -351,8 +389,8 @@
       if (!target||!current()) return;
       const {osAction,deliveryPage,deliveryScope,deliveryDashboardOrder}=target.dataset;
       if(target.dataset.dashboardPeriod){
-        const select=content.querySelector('[name="performance_period"]');
-        if(select){select.value=target.dataset.dashboardPeriod;select.dispatchEvent(new Event('change',{bubbles:true}));}
+        const form=target.closest('[data-delivery-performance]');
+        if(form)selectPeriod(form,target.dataset.dashboardPeriod);
       }else if(target.dataset.dashboardMetric&&lastPerformance&&Object.hasOwn(chartMetrics,target.dataset.dashboardMetric)){
         filters.dashboardMetric=target.dataset.dashboardMetric;
         const chart=content.querySelector('[data-dashboard-chart]');
