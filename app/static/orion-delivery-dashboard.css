@@ -436,3 +436,125 @@ body:has(.os-delivery-workspace) #osDialog.os-delivery-dialog .os-button:not(.os
   .os-delivery-workspace #page-suite:not([data-os-current-route="dashboard-delivery"]) .os-metric-head .os-icon{width:26px;height:26px;flex-basis:26px;padding:5px}
 }
 @media(prefers-reduced-motion:reduce){.os-delivery-workspace #page-suite *{animation-duration:.001ms!important;transition-duration:.001ms!important}}
+
+/* Operational screens v3. Keep the approved Dashboard unchanged.
+   Search first, data second, advanced controls on demand. */
+.os-delivery-workspace #page-suite:not([data-os-current-route="dashboard-delivery"]){
+  --od-radius:14px;--od-space:12px;--od-shadow:0 2px 8px color-mix(in srgb,var(--os-text) 3%,transparent)
+}
+.os-delivery-workspace .os-delivery-title{
+  min-height:0;padding:18px 20px;border-radius:16px;margin-bottom:14px;gap:12px;
+  background:var(--os-card);border-left:3px solid var(--os-primary)
+}
+.os-delivery-workspace .os-delivery-title:after{display:none}
+.os-delivery-workspace .os-delivery-title h1{font-size:clamp(23px,2.4vw,30px)}
+.os-delivery-workspace .os-delivery-title p{max-width:60ch}
+.os-delivery-workspace .os-delivery-kicker{margin-bottom:5px}
+.os-delivery-workspace #page-suite .od-compact-filters{
+  display:flex;flex-direction:column;align-items:stretch;gap:8px;padding:11px 13px
+}
+.od-search-line{display:flex;align-items:flex-end;gap:9px;min-width:0}
+.od-search-line>.os-field{flex:1 1 160px;min-width:0;margin:0}
+.od-search-line>button{flex:0 0 auto}
+.od-advanced{min-width:0;max-width:100%;border-top:1px solid var(--os-border)}
+.od-advanced>summary{display:flex;align-items:center;gap:7px;padding:9px 0 0;min-height:34px;
+  box-sizing:border-box;list-style:none;font:600 12px/1.4 var(--os-font);color:var(--os-muted);cursor:pointer}
+.od-advanced>summary::-webkit-details-marker{display:none}
+.od-advanced>summary>.os-icon{width:15px;height:15px;flex:none;color:var(--os-primary)}
+.od-advanced>summary>.os-icon:last-child{margin-left:auto;color:var(--os-muted)}
+.od-advanced[open]>summary>.os-icon:last-child{transform:rotate(90deg)}
+.od-advanced-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(155px,100%),1fr));gap:10px;margin:10px 0;min-width:0;align-items:end}
+.od-advanced-grid .os-field{min-width:0;margin:0}
+.od-filter-footer{display:flex;justify-content:flex-end;gap:7px;flex-wrap:wrap}
+.os-delivery-workspace #page-suite .od-tab-strip{
+  display:flex;flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-inline:contain;scrollbar-width:thin;
+  gap:4px;min-width:0;max-width:100%;justify-content:flex-start;padding:4px
+}
+.os-delivery-workspace #page-suite .od-tab-strip>.os-pill-tab{
+  display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;
+  min-width:0;width:auto;padding:8px 13px;min-height:36px;white-space:nowrap
+}
+.od-results-label{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:15px 0 9px;min-width:0}
+.od-results-label h2,.od-report-heading h2{font:650 17px/1.3 var(--os-display);margin:0}
+.od-results-label span,.od-report-heading p{font-size:12px;color:var(--os-muted)}
+.od-report-heading{margin:0 0 12px;min-width:0}
+.od-report-heading p{margin-top:4px;line-height:1.4}
+.od-order-list{display:grid;gap:9px;min-width:0}
+.os-delivery-workspace .od-order-list .os-delivery-order-card{
+  display:grid;grid-template-columns:minmax(0,1fr);gap:8px;padding:13px 15px
+}
+.od-order-identity{display:flex;align-items:center;gap:9px;min-width:0}
+.od-order-identity>div{min-width:0}
+.od-order-identity>.os-square-icon{width:35px;height:35px;flex:0 0 35px;border-radius:11px}
+.od-order-identity .os-icon{width:18px;height:18px}
+.od-order-identity h3{font:650 16px/1.3 var(--os-display);overflow-wrap:anywhere}
+.os-delivery-order-head{align-items:center}
+.os-delivery-workspace .od-order-list .os-delivery-order-card p.os-help{font-size:12px;line-height:1.35;margin:0}
+.os-delivery-order-value{padding-top:8px;margin-top:0}
+.os-delivery-order-actions{margin:0;gap:8px}
+.os-delivery-order-actions>.od-order-primary{min-width:105px}
+.os-delivery-extra-actions summary{padding:7px 0;min-height:32px}
+.od-product-list{align-items:stretch}
+.os-delivery-workspace .od-product-list .os-delivery-product-card .os-item-top{align-items:flex-start}
+.od-product-list .os-item-top>img{object-fit:contain;width:68px;height:68px;border-radius:11px;background:var(--os-bg)}
+.od-product-list .os-item-top>div.os-square-icon{width:54px;height:54px;flex:0 0 54px}
+.od-product-list .od-available-stock{background:var(--os-tint);border-color:color-mix(in srgb,var(--os-primary) 18%,var(--os-border))}
+.od-product-list .od-available-stock>strong{color:var(--os-primary)}
+.od-vessel-stock{grid-template-columns:repeat(2,minmax(0,1fr))}
+.od-logistics-overview{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:12px;min-width:0}
+.od-logistics-overview>.os-card{display:flex;align-items:center;gap:10px;padding:12px;min-width:0}
+.od-logistics-overview>.os-card>div:last-child{min-width:0;display:grid;gap:4px}
+.od-logistics-overview small{font:500 11px/1.3 var(--os-font);color:var(--os-muted)}
+.od-logistics-overview strong{font:650 16px/1.3 var(--os-display);overflow-wrap:anywhere}
+.od-logistics-overview .os-square-icon{width:34px;height:34px;flex:0 0 34px;border-radius:10px}
+.od-crm-contact{margin:8px 0 14px}
+.os-delivery-workspace .os-client-heading{margin-bottom:12px}
+.os-delivery-workspace .os-finance-heading.os-delivery-title .os-finance-title-line{min-width:0;display:block}
+.os-delivery-workspace .os-finance-heading.os-delivery-title{flex-wrap:wrap}
+body:has(.os-delivery-workspace) #osDialog.os-delivery-dialog .os-delivery-customer-section{
+  background:var(--os-card);border:1px solid var(--os-border);border-radius:12px;padding:12px;margin-top:9px
+}
+body:has(.os-delivery-workspace) #osDialog.os-delivery-dialog .os-delivery-customer-order{
+  padding:10px 0;border-bottom:1px solid var(--os-border)
+}
+body:has(.os-delivery-workspace) #osDialog.os-delivery-dialog .os-delivery-customer-order:last-child{border-bottom:0}
+@media(min-width:1100px){
+  .os-delivery-workspace .od-order-list .os-delivery-order-card{
+    grid-template-columns:minmax(240px,1.6fr) minmax(130px,1fr) minmax(170px,1.05fr);
+    align-items:center;gap:10px 16px
+  }
+  .od-order-list .os-delivery-order-head{grid-column:1/3}
+  .od-order-list .os-delivery-order-meta{grid-column:1/3}
+  .od-order-list .os-delivery-order-value{grid-column:3;grid-row:1;border:0;padding:0;justify-self:end}
+  .od-order-list .os-delivery-order-actions{grid-column:3;grid-row:2/4;justify-content:flex-end;align-self:start}
+  .od-order-list .os-delivery-extra-actions{grid-column:1/-1}
+  .od-order-list .os-delivery-order-card>p,.od-order-list .os-delivery-order-card>.os-badge{grid-column:1/3}
+  .od-order-list .os-delivery-order-value>span{font-size:11px}
+}
+@media(max-width:767px){
+  .os-delivery-workspace .os-delivery-title{padding:13px 14px;gap:10px}
+  .os-delivery-workspace .os-delivery-title h1{font-size:25px}
+  .os-delivery-workspace .os-delivery-title>.os-actions{width:auto;max-width:100%}
+  .os-delivery-workspace .os-delivery-title>.os-actions>.os-button{width:auto;min-height:40px;flex:0 1 auto}
+  .os-delivery-workspace #page-suite .od-compact-filters{padding:9px 10px}
+  .od-advanced-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+  .od-advanced-grid>.os-check{grid-column:1/-1}
+  .od-search-line>.os-button{min-height:42px;padding-inline:11px}
+  .os-delivery-list-summary .os-metric{min-height:78px;padding:10px!important}
+  .os-delivery-list-summary .os-metric-head{margin-bottom:6px!important}
+  .od-order-list .os-delivery-order-card{padding:12px!important}
+  .od-order-identity>.os-square-icon{width:31px;height:31px;flex-basis:31px;border-radius:9px}
+  .od-logistics-overview{grid-template-columns:minmax(0,1fr);gap:7px}
+  .od-logistics-overview>.os-card{padding:10px}
+  .od-logistics-overview>.os-card>div:last-child{display:flex;justify-content:space-between;align-items:center;gap:10px;flex:1}
+  .od-logistics-overview strong{text-align:right}
+  .od-results-label{margin-top:12px}
+  .od-results-label h2,.od-report-heading h2{font-size:16px}
+}
+@media(max-width:360px){
+  .od-search-line{gap:5px}
+  .od-search-line>.os-button{padding-inline:8px}
+  .od-search-line>.os-button .os-icon{display:none}
+  .od-advanced-grid{grid-template-columns:minmax(0,1fr)}
+  .od-order-identity>.os-square-icon{display:none}
+}

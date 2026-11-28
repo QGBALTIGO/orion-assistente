@@ -8,7 +8,7 @@
   const cap=10000000;
 
   async function mount({host,filters,call,allowed,canWrite,ui,openEditor}) {
-    const {esc,loading,button,title,field,selectField,textField,empty,fmtDate,dateKey,timeLabel,query}=ui;
+    const {esc,loading,button,title,field,selectField,textField,empty,fmtDate,dateKey,timeLabel,query,icon}=ui;
     if (!host||!allowed()) return;
     filters.kind ??= 'all';
     filters.search ??= '';
@@ -33,10 +33,10 @@
 
     function card(item) {
       const id=itemId(item.id);
-      return '<article class="os-card os-item-card"><h3>'+esc(item.name)+'</h3>'+
-        '<p class="os-help">'+esc(labels[item.kind])+'</p>'+
-        '<div class="os-summary-row"><span>Vazios em estoque</span><strong>'+item.empty_quantity+'</strong></div>'+
-        '<div class="os-summary-row"><span>Com clientes</span><strong>'+item.loaned+'</strong></div>'+
+      return '<article class="os-card os-item-card od-vessel-card"><div class="od-order-identity"><span class="os-square-icon">'+icon('deliveryVessel')+'</span><div><h3>'+esc(item.name)+'</h3>'+
+        '<p class="os-help">'+esc(labels[item.kind])+'</p></div></div>'+
+        '<div class="os-delivery-stock-grid od-vessel-stock"><div><small>Vazios em estoque</small><strong>'+esc(item.empty_quantity)+'</strong></div>'+
+        '<div><small>Com clientes</small><strong>'+esc(item.loaned)+'</strong></div></div>'+
         '<div class="os-actions">'+(canWrite()?cmd('Movimentar','container-move','plus',id):'')+
         cmd('Com clientes','container-loans','users',id)+cmd('Histórico','container-history','list',id)+'</div></article>';
     }

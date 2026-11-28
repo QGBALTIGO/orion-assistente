@@ -30,10 +30,13 @@
       if (!catalogTab()) {
         return field('De','start','date',filters.start)+field('Até','end','date',filters.end);
       }
-      return field('Buscar','search','search',filters.search,'maxlength="120" placeholder="Nome ou código"')+
+      return '<div class="od-search-line">'+field('Buscar','search','search',filters.search,'maxlength="120" placeholder="Nome ou código"')+
+        '<button type="submit" class="os-button os-outline">'+icon('search')+'Filtrar</button></div>'+
+        '<details class="od-advanced"'+(filters.category||filters.state!=='all'||filters.low_stock?' open':'')+'><summary>'+icon('filter')+'<span>Categoria, situação e estoque</span>'+icon('chevron')+'</summary><div class="od-advanced-grid">'+
         selectField('Categoria','category',[['','Todas'],...(result?.categories || []).map(x=>[x,x])],filters.category)+
         selectField('Status','state',[['all','Todos'],['active','Ativos'],['inactive','Inativos']],filters.state)+
-        '<label class="os-check"><input type="checkbox" name="low_stock" '+(filters.low_stock?'checked':'')+'> Estoque baixo</label>';
+        '<label class="os-check"><input type="checkbox" name="low_stock" '+(filters.low_stock?'checked':'')+'> Estoque baixo</label></div>'+
+        '<div class="od-filter-footer"><button type="submit" class="os-button">Aplicar filtros</button></div></details>';
     }
 
     function renderShell() {
@@ -41,12 +44,12 @@
         filters.tab==='purchases'?button('Receber compra','delivery-purchase','','plus'):button('Novo produto','delivery-create','','plus');
       host.innerHTML = title('Produtos e estoque','Gerencie o catálogo, as reservas e os produtos oferecidos no atendimento.',(canWrite() ? newButton : '')+
         (catalogTab()&&ui.routeButton?ui.routeButton('Vitrine do atendimento','loja-delivery','os-outline','deliveryStorefront'):''))+
-        '<div class="os-pill-tabs" role="tablist" aria-label="Estoque">'+
+        '<div class="os-pill-tabs od-tab-strip" role="tablist" aria-label="Estoque">'+
           tabs.map(([key,label])=>
             '<button type="button" class="os-pill-tab" role="tab" id="osDeliveryTab-'+key+'" aria-controls="osDeliveryPanel" aria-selected="'+(filters.tab===key)+'" tabindex="'+(filters.tab===key?'0':'-1')+'" data-delivery-tab="'+key+'">'+label+'</button>').join('')+
         '</div><section id="osDeliveryPanel" role="tabpanel" aria-labelledby="osDeliveryTab-'+filters.tab+'">'+
-          '<form id="osDeliveryFilters" class="os-filter-row os-delivery-filters">'+renderFilters()+
-            '<button type="submit" class="os-button os-outline">Filtrar</button></form>'+
+          '<form id="osDeliveryFilters" class="os-filter-row os-delivery-filters'+(catalogTab()?' od-compact-filters':'')+'">'+renderFilters()+
+            (catalogTab()?'':'<button type="submit" class="os-button os-outline">Filtrar</button>')+'</form>'+
           '<div id="osDeliveryResults" aria-live="polite"></div></section>';
       window.OrionFields.refresh(host);
     }
@@ -64,6 +67,7 @@
         item.price_kind==='fixed'?money(item.unit_price_cents):
           prices.find(([key])=>key===item.price_kind)?.[1];
       const available=item.quantity_on_hand==null?null:item.quantity_on_hand-(item.reserved_quantity||0);
+      const tracked=item.mode==='tracked'&&Date.parse(item.valid_until)>Date.now();
       const channelLabels={ready:['Apto no catálogo','success'],stock_unavailable:['Sem estoque válido','warning'],review:['Revisar aprovação','warning'],
         not_selected:['Não selecionado','neutral'],disabled:['Canal desabilitado','neutral'],price_required:['Requer preço fixo','neutral'],
         not_eligible:['Não elegível para a atendente','neutral'],no_mode:['Sem modalidade compatível','warning']};
@@ -80,8 +84,8 @@
         '<strong class="os-delivery-product-price">'+esc(price||'Sob consulta')+'</strong><div class="os-actions">'+badge(active?'active':'inactive')+stockLabel(item)+'</div>'+
         '</div></div><div class="os-delivery-stock-grid"><div><small>Saldo</small><strong>'+esc(item.quantity_on_hand??'—')+'</strong></div>'+
         '<div><small>Reservado</small><strong>'+esc(item.reserved_quantity??'—')+'</strong></div>'+
-        '<div><small>Disponível*</small><strong>'+esc(available??'—')+'</strong></div></div>'+
-        '<p class="os-help">*Saldo menos reservas · '+esc(item.unit||'un')+'</p>'+channelStatus+actions+'</article>';
+        '<div class="od-available-stock"><small>Disponível</small><strong>'+esc(tracked?(available??'—'):'—')+'</strong></div></div>'+
+        (!tracked?'<p class="os-help">Atualize a contagem para liberar o saldo disponível.</p>':'')+channelStatus+actions+'</article>';
     }
 
     function movementTable(items) {
@@ -110,7 +114,7 @@
           '<div class="os-card">'+empty('box',supplier?'Nenhum fornecedor encontrado':'Nenhuma compra encontrada',
             supplier?'Cadastre um fornecedor ou ajuste a busca.':'Registre o recebimento de mercadorias ou ajuste a busca.')+'</div>';
       }
-      else if (items.length) html = catalogTab() ? '<div class="os-cards-grid os-services-grid">'+items.map(productCard).join('')+'</div>' : movementTable(items);
+      else if (items.length) html = catalogTab() ? '<div class="od-results-label"><h2>Catálogo</h2><span>'+items.length+' nesta página</span></div><div class="os-cards-grid os-services-grid od-product-list">'+items.map(productCard).join('')+'</div>' : movementTable(items);
       else html = '<div class="os-card">'+(catalogTab()
         ? empty('box','Nenhum produto encontrado','Cadastre um produto ou confira os filtros.')
         : empty('list','Nenhuma movimentação neste período','Os ajustes e as reservas de estoque aparecem aqui.'))+'</div>';

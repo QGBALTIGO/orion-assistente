@@ -459,7 +459,7 @@
     filters.channel ??= 'all';
     filters.offset ??= 0;
     const paymentsByStatus={pending:'A receber',paid:'Recebido',refunded:'Estornado',cancelled:'Cancelado'};
-    host.innerHTML=title('Relatório de vendas','Pedidos criados no período')+
+    host.innerHTML='<div class="od-report-heading"><h2>Relatório de vendas</h2><p>Pedidos criados no período</p></div>'+
       '<form id="osDeliverySalesFilters" class="os-filter-row">'+
       field('De','start','date',filters.start)+field('Até','end','date',filters.end)+
       selectField('Atendimento','mode',[['all','Todos'],...modes],filters.mode)+
@@ -544,26 +544,37 @@
       creditOnly?'Controle os vencimentos e os recebimentos confirmados.':deliveryOnly?'Organize os despachos e acompanhe suas entregas.':'Gerencie os pedidos de balcão, retirada, loja e WhatsApp.',
       creditOnly?routeButton('Ver pedidos','pedidos-delivery','os-outline os-small','deliveryReceipt'):
       canWrite()?button('Novo pedido','delivery-new-order','','plus'):'')+
-      '<form id="osDeliveryOrderFilters" class="os-filter-row">'+
+      '<form id="osDeliveryOrderFilters" class="os-filter-row od-compact-filters">'+
+      '<div class="od-search-line">'+field('Buscar','search','search',filters.search,'maxlength="120" placeholder="Número ou cliente"')+
+      '<button type="submit" class="os-button os-outline">'+ui.icon('search')+'Filtrar</button></div>'+
+      '<details class="od-advanced"'+(filters.advancedOpen||filters.state!=='all'||filters.channel!=='all'?' open':'')+'><summary>'+ui.icon('filter')+'<span>Filtros e visualização</span>'+ui.icon('chevron')+'</summary><div class="od-advanced-grid">'+
       (boardEnabled?selectField('Visualização','orderView',[['list','Lista'],['board','Kanban']],filters.orderView):'')+
-      field('Buscar','search','search',filters.search,'maxlength="120" placeholder="Número ou cliente"')+
       selectField('Status','state',creditOnly?creditStatuses:[['all','Todos'],...Object.entries(statusLabels)],filters.state)+
       (creditOnly?'':selectField('Origem','channel',[['all','Todas'],...Object.entries(salesChannels)],filters.channel))+
       (creditOnly?'':field(deliveryOnly?'Entrega de':'De','start','date',filters.start)+
         field(deliveryOnly?'Entrega até':'Até','end','date',filters.end))+
-      '<button type="submit" class="os-button os-outline">Filtrar</button></form><div id="osDeliveryOrderList" aria-live="polite"></div>';
+      '</div><div class="od-filter-footer"><button type="button" class="os-button os-ghost" data-os-action="delivery-order-clear">Limpar filtros</button><button type="submit" class="os-button">Aplicar filtros</button></div></details></form>'+
+      '<div id="osDeliveryOrderList" aria-live="polite"></div>';
     window.OrionFields.refresh(host);
     const list=host.querySelector('#osDeliveryOrderList');
+    const form=host.querySelector('#osDeliveryOrderFilters');
+    const advanced=form.querySelector('.od-advanced');
+    advanced.addEventListener('toggle',()=>{filters.advancedOpen=advanced.open;});
 
     function orderCard(order) {
       const actions = itemAttr('order',order.id);
-      let controls=command(button,'Detalhes','delivery-order-detail','list',actions),secondary='';
+      let controls='',secondary='';
+      const details=command(button,'Detalhes','delivery-order-detail','list',actions);
+      const primary=(label,action,symbol)=>button(label,action,'os-small od-order-primary',symbol,actions);
       if (canWrite()&&['confirmed','dispatched'].includes(order.status)) {
         controls+=order.mode==='delivery'&&order.status==='confirmed'
           ?(order.assignment_status==='offered'?command(button,'Retirar solicitação','delivery-order-withdraw','close',actions):
-            command(button,'Despachar','delivery-order-dispatch','deliveryTruck',actions))
-          :order.pix_state==='pending'?'':command(button,'Concluir','delivery-order-fulfill','check',actions);
-        if(order.pix_state==='pending'&&canManagePolicy())controls+=command(button,'Conferir Pix','delivery-order-pix','wallet',actions);
+            primary('Despachar','delivery-order-dispatch','deliveryTruck'))
+          :order.pix_state==='pending'?'':primary('Concluir','delivery-order-fulfill','check');
+        if(order.pix_state==='pending'&&canManagePolicy()){
+          if(controls)secondary+=command(button,'Conferir Pix','delivery-order-pix','wallet',actions);
+          else controls+=primary('Conferir Pix','delivery-order-pix','wallet');
+        }
         if(order.mode==='delivery')secondary+=order.status==='dispatched'
           ?command(button,'Cliente ausente','delivery-order-absent','users',actions)
           :command(button,'Reagendar','delivery-order-reschedule','calendar',actions);
@@ -572,7 +583,7 @@
       const pending=order.receipt_status==='pending';
       const late=pending&&order.payment_due_date<dateKey();
       if (canWrite()&&order.payment_due_date&&pending) {
-        controls+=command(button,'Registrar recebimento','delivery-order-settle','wallet',actions);
+        controls+=primary('Registrar recebimento','delivery-order-settle','wallet');
       }
       if (canWrite()&&order.status==='fulfilled'&&!creditOnly) {
         secondary+=button('Registrar devolução','delivery-order-return','os-ghost os-small','left',actions);
@@ -584,7 +595,7 @@
           badge(pending?(late?'expired':'pending'):'paid',pending?(late?'Em atraso':'A receber'):'Recebido'):'');
       const channel=order.sales_channel||'manual';
       return '<article class="os-card os-item-card os-delivery-order-card" data-order-channel="'+esc(channel)+'"><div class="os-delivery-order-head">'+
-        '<div><p class="os-delivery-order-code">Pedido '+esc(code(order))+'</p><h3>'+esc(order.customer_name||'Venda avulsa')+'</h3></div>'+
+        '<div class="od-order-identity"><span class="os-square-icon">'+ui.icon(order.mode==='delivery'?'deliveryTruck':'deliveryReceipt')+'</span><div><p class="os-delivery-order-code">Pedido '+esc(code(order))+'</p><h3>'+esc(order.customer_name||'Venda avulsa')+'</h3></div></div>'+
         statusBadge(order.status,badge)+'</div><div class="os-delivery-order-meta"><span class="os-delivery-channel" data-channel="'+esc(channel)+'">'+
         ui.icon(channel==='whatsapp'?'phone':channel==='storefront'?'deliveryStorefront':'deliveryReceipt')+esc(salesChannels[channel]||'Painel')+'</span>'+
         '<span>'+esc(modeLabel(order)||'')+'</span><span>'+esc(when(order.created_at))+'</span></div>'+
@@ -595,7 +606,7 @@
         (order.scheduled_at?'<p class="os-help">Agendado para '+esc(when(order.scheduled_at))+'</p>':'')+
         '<div class="os-delivery-order-value"><span>Total do pedido</span><strong>'+money(order.total_cents)+'</strong></div>'+
         payment+(pending?'<p class="os-help">Saldo a receber '+money(order.outstanding_cents??order.total_cents)+'</p>':'')+
-        '<div class="os-actions os-delivery-order-actions">'+controls+'</div>'+
+        '<div class="os-actions os-delivery-order-actions">'+controls+details+'</div>'+
         (secondary?'<details class="os-delivery-extra-actions"><summary>Mais ações</summary><div class="os-actions">'+secondary+'</div></details>':'')+'</article>';
     }
 
@@ -629,7 +640,7 @@
         const response=await call(suffix);
         if (!current()||sequence!==stamp) return;
         data=response;
-        let html=data.items.length?'<div class="os-cards-grid">'+data.items.map(orderCard).join('')+'</div>':
+        let html=data.items.length?'<div class="od-results-label"><h2>'+ (creditOnly?'Recebimentos':deliveryOnly?'Lista de entregas':'Lista de pedidos')+'</h2><span>'+esc(String(data.items.length))+' nesta página</span></div><div class="od-order-list">'+data.items.map(orderCard).join('')+'</div>':
           '<div class="os-card">'+empty(creditOnly?'deliveryDeferred':deliveryOnly?'deliveryTruck':'deliveryReceipt',creditOnly?'Nenhuma venda a prazo encontrada':deliveryOnly?'Nenhuma entrega encontrada':'Nenhum pedido encontrado',
             creditOnly?'Confira os filtros de cliente e vencimento.':'Confira o filtro ou registre um novo pedido.')+'</div>';
         if(creditOnly) html='<div class="os-metrics">'+metric('A receber',money(data.summary.open_cents),'wallet')+
@@ -639,7 +650,8 @@
           metric('Via WhatsApp',data.summary.whatsapp,'phone')+
           metric(deliveryOnly?'A despachar':'Reservados',data.summary.confirmed,'clock')+
           metric('Em rota',data.summary.dispatched,'deliveryTruck')+
-          metric('Concluídos',data.summary.fulfilled,'check')+'</div>'+html;
+          metric('Concluídos',data.summary.fulfilled,'check')+
+          metric('Cancelados',data.summary.cancelled,'close')+'</div>'+html;
         if (data.offset>0||data.has_more) html+='<div class="os-pagination"><span>Página '+(data.offset/data.limit+1)+'</span><div class="os-actions">'+
           command(button,'Anterior','delivery-order-prev','left',data.offset?'':'disabled')+
           command(button,'Próxima','delivery-order-next','chevron',data.has_more?'':'disabled')+'</div></div>';
@@ -786,6 +798,12 @@
       if (!action?.startsWith('delivery-')||!current()) return;
       event.stopPropagation();
       if (action==='delivery-order-retry') {await load();return;}
+      if (action==='delivery-order-clear'){
+        Object.assign(filters,{search:'',state:'all',channel:'all',start:'',end:'',offset:0});
+        for(const lane of Object.keys(offsets))delete offsets[lane];
+        for(const name of ['search','state','channel','start','end'])if(form.elements[name])form.elements[name].value=filters[name];
+        advanced.open=false;await load();return;
+      }
       if(action==='delivery-board-prev'||action==='delivery-board-next'){
         const key=el.dataset.orderLane,lane=lanes[key];
         if(!lane||list.getAttribute('aria-busy')==='true')return;

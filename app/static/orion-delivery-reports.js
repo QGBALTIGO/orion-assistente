@@ -35,7 +35,8 @@
       filters.views.sales=Object.fromEntries(['start','end','mode','state','receipt','offset']
         .filter(key=>Object.hasOwn(filters,key)).map(key=>[key,filters[key]]));
     }
-    host.innerHTML='<div class="os-pill-tabs" role="tablist" aria-label="Relatórios de Delivery">'+names.map(name=>{
+    host.innerHTML=title('Relatórios','Analise vendas, recebimentos e estoque com os mesmos dados da operação.')+
+      '<div class="os-pill-tabs od-tab-strip" role="tablist" aria-label="Relatórios de Delivery">'+names.map(name=>{
       const selected=name===filters.tab;
       return '<button type="button" class="os-pill-tab" id="osDeliveryReportTab-'+name+'" role="tab" aria-controls="osDeliveryReportPanel" '+
         'aria-selected="'+selected+'" tabindex="'+(selected?'0':'-1')+'" data-delivery-report-tab="'+name+'">'+esc(tabs[name].label)+'</button>';
@@ -65,7 +66,7 @@
         if (offset) selected.offset=values.offset;
         return query(selected);
       };
-      work.innerHTML=title(view.heading,view.description)+
+      work.innerHTML='<div class="od-report-heading"><h2>'+esc(view.heading)+'</h2><p>'+esc(view.description||'')+'</p></div>'+
         '<form class="os-filter-row os-delivery-filters" aria-label="'+esc('Filtrar '+view.label.toLowerCase())+'">'+
         (view.dated?field('De','start','date',values.start||'')+field('Até','end','date',values.end||''):'')+
         field('Buscar','search','search',values.search||'','maxlength="120" placeholder="'+esc(view.search)+'"')+

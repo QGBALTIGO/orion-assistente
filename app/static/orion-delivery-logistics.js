@@ -10,7 +10,7 @@
 
   async function mount({host,filters,call,allowed,canWrite,canManagePolicy=canWrite,ui,openEditor}) {
     if (!host||!allowed()) return;
-    const {esc,loading,button,title,field,moneyField,selectField,checkField,empty,money,badge,query,brazilianStates,routeButton}=ui;
+    const {esc,loading,button,title,field,moneyField,selectField,checkField,empty,money,badge,query,brazilianStates,routeButton,icon}=ui;
     const current=()=>allowed()&&host.isConnected;
     const command=(label,action,icon,attrs='')=>button(label,action,'os-outline os-small',icon,attrs);
     const error=message=>'<div class="os-notice os-error" role="alert"><p>'+esc(message)+'</p></div>';
@@ -22,7 +22,7 @@
     filters.search ??= '';
     filters.offset ??= 0;
     filters.active_only ??= false;
-    host.innerHTML=title('Logística','Configure cobertura, agendamentos e entregadores.')+
+    host.innerHTML=title('Logística','Acompanhe a operação, organize as rotas e configure as entregas.',routeButton('Ver entregas','entregas-delivery','os-outline','deliveryTruck'))+
       '<div id="osDeliveryLogisticsSections" aria-live="polite"></div>';
     const output=host.querySelector('#osDeliveryLogisticsSections');
 
@@ -106,7 +106,11 @@
         const responses=await Promise.all([call('/logistics?include_offering=true'),call('/logistics/couriers?'+query(filters))]);
         if (!current()||ticket!==version) return;
         [policy,couriers]=responses;
-        output.innerHTML=coverage()+scheduling()+courierList()+
+        output.innerHTML='<div class="od-logistics-overview">'+
+          '<div class="os-card"><span class="os-square-icon">'+icon('map')+'</span><div><small>Cobertura cadastrada</small><strong>'+esc(String(policy.areas.filter(a=>a.kind==='included').length))+' bairros</strong></div></div>'+
+          '<div class="os-card"><span class="os-square-icon">'+icon('calendar')+'</span><div><small>Agendamento</small><strong>'+(policy.scheduling_enabled?'Ativo':'Desativado')+'</strong></div></div>'+
+          '<div class="os-card"><span class="os-square-icon">'+icon('users')+'</span><div><small>Entregadores nesta página</small><strong>'+esc(String(couriers.items.length))+'</strong></div></div></div>'+
+          coverage()+scheduling()+courierList()+
           (canManagePolicy()?'<section class="os-card os-section-gap os-delivery-monitor"><div class="os-card-header"><div><h2>Central operacional</h2><p>Pedidos em andamento e última posição compartilhada pelos entregadores.</p></div>'+
             command('Consultar operação','logistics-positions','pin')+'</div>'+
             '<label class="os-check"><input type="checkbox" data-logistics-auto> Atualizar a cada 20 segundos enquanto esta tela estiver aberta</label>'+
@@ -138,10 +142,10 @@
         const result=await call('/logistics/positions');
         if(!valid())return;
         const a=result.summary;
-        const indicators=[['Aguardando despacho',a.waiting_dispatch],['Aguardando aceite',a.waiting_acceptance],
-          ['Em rota',a.on_route],['Agendadas para depois',a.scheduled],['Em expediente',a.in_shift],['Disponíveis',a.available]];
-        region.innerHTML='<div class="os-delivery-monitor-metrics">'+indicators.map(([label,value])=>
-          '<div class="os-card os-metric"><div class="os-metric-head"><span>'+esc(label)+'</span></div><strong>'+esc(n(value))+'</strong></div>').join('')+'</div>'+
+        const indicators=[['Aguardando despacho',a.waiting_dispatch,'deliveryReceipt'],['Aguardando aceite',a.waiting_acceptance,'clock'],
+          ['Em rota',a.on_route,'deliveryTruck'],['Agendadas para depois',a.scheduled,'calendar'],['Em expediente',a.in_shift,'users'],['Disponíveis',a.available,'check']];
+        region.innerHTML='<div class="os-delivery-monitor-metrics">'+indicators.map(([label,value,symbol])=>
+          '<div class="os-card os-metric"><div class="os-metric-head"><span>'+esc(label)+'</span>'+icon(symbol)+'</div><strong>'+esc(n(value))+'</strong></div>').join('')+'</div>'+
           (a.scheduled_past_due?'<p class="os-help">Atenção: '+esc(n(a.scheduled_past_due))+' entrega(s) agendada(s) com horário passado e ainda em aberto.</p>':'')+
           (a.unlinked_on_route?'<p class="os-help">'+esc(n(a.unlinked_on_route))+' entrega(s) em rota sem entregador cadastrado vinculado.</p>':'')+
           '<p class="os-help">Consulta em '+esc(stamp(a.observed_at))+' · '+esc(n(a.fresh_positions))+' posição(ões) recente(s).</p>'+

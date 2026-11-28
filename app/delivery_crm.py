@@ -24,6 +24,7 @@ async def profile(db, tenant, customer, *, offset=0):
             FROM sales WHERE status='fulfilled'
         )
         SELECT (SELECT count(*) FROM sales) AS orders,
+            (SELECT count(*) FROM sales WHERE sales_channel='whatsapp') AS whatsapp_orders,
             (SELECT count(*) FROM purchases) AS completed,
             (SELECT count(*) FROM sales WHERE status IN ('confirmed','dispatched')) AS open_orders,
             (SELECT coalesce(sum(outstanding_cents),0) FROM sales
