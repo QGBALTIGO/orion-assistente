@@ -1,0 +1,43 @@
+name: Orion Entregas - verificar redesign publicado
+on:
+  push:
+    branches: [codex/orion-driver-auth-smoke-20261128]
+permissions:
+  contents: read
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Verificar arquivos publicados e acesso protegido
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://orionagenda.pro
+          T=00000000-0000-4000-8000-000000000001
+          w="$(mktemp -d)"
+          trap 'rm -rf "$w"' EXIT
+          check() {
+            curl -fsS --max-time 12 "$BASE/health" -o "$w/health" &&
+            curl -fsS --max-time 12 "$BASE/entregador/$T/?primeiro-acesso=1" -o "$w/portal" &&
+            curl -fsS --max-time 12 "$BASE/panel-assets/orion-delivery-driver.js?release=53a8bfa" -o "$w/driver" &&
+            curl -fsS --max-time 12 "$BASE/panel-assets/orion-delivery-driver.css?release=53a8bfa" -o "$w/css" &&
+            cmp -s "$w/portal" app/static/orion-delivery-driver.html &&
+            cmp -s "$w/driver" app/static/orion-delivery-driver.js &&
+            cmp -s "$w/css" app/static/orion-delivery-driver.css
+          }
+          ready=0
+          for i in $(seq 1 24); do
+            if check; then ready=1; break; fi
+            sleep 5
+          done
+          test "$ready" = 1
+          status="$(curl -sS --max-time 12 -o /dev/null -w '%{http_code}' "$BASE/api/v1/entregador/$T/queue")"
+          case "$status" in 401|403) ;; *) echo "Unexpected unauthenticated status: $status"; exit 1;; esac
+          curl -fsS --max-time 12 "$BASE/auth/features" -o "$w/features"
+          python -c 'import json,sys; d=json.load(open(sys.argv[1])); print("Public registration enabled:",d.get("registration") is True); print("Password recovery enabled:",d.get("passwordRecovery") is True)' "$w/features"
+          echo "Published health, login HTML, CSS and JavaScript match homologated files."
+          echo "Unauthenticated courier queue: HTTP $status."
