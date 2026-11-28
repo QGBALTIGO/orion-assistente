@@ -482,6 +482,8 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                     await dialog.get_by_role("button", name="Registrar recebimento", exact=True).click()
                     await expect(dialog).to_be_hidden()
                     await expect(orders.get_by_text("Nenhuma venda a prazo encontrada", exact=True)).to_be_visible()
+                    if not await order_filters.locator(".od-advanced").evaluate("(el) => el.open"):
+                        await order_filters.locator(".od-advanced summary").click()
                     await order_filters.get_by_label("Status", exact=True).select_option("paid")
                     await order_filters.get_by_role("button",name="Filtrar",exact=True).click()
                     await expect(orders.get_by_text("Recebido", exact=True)).to_be_visible()
@@ -524,7 +526,7 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                     await dialog.get_by_label("Quantidade").fill("1")
                     await dialog.get_by_role("button", name="Salvar").click()
                     await expect(dialog).to_be_hidden()
-                    client_balances = page.locator("#osContainerResults .os-item-card .os-summary-row").nth(1).locator("strong")
+                    client_balances = page.locator("#osContainerResults .od-vessel-stock > div").nth(1).locator("strong")
                     await expect(client_balances).to_have_text("1")
                     await page.get_by_role("button", name="Com clientes", exact=True).click()
                     await expect(page.get_by_text("Cliente de homologação", exact=True)).to_be_visible()
@@ -543,7 +545,7 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                     ("entregas-delivery", "Entregas", "button", "Novo pedido"),
                     ("vasilhames-delivery", "Vasilhames", "button", "Novo vasilhame"),
                     ("vendas-prazo-delivery", "Vendas a prazo", "button", "Ver pedidos"),
-                    ("relatorio-delivery", "Relatório de vendas", "link", "Exportar CSV"),
+                    ("relatorio-delivery", "Relatórios", "link", "Exportar CSV"),
                     ("logistica-delivery", "Logística", "heading", "Cobertura e taxas"),
                     ("loja-delivery", "Loja rápida", "heading", "Produtos na vitrine"),
                 )
@@ -558,6 +560,10 @@ async def test_catalog_in_real_panel_at_required_widths(onboarding_db, monkeypat
                     for width in widths:
                         await page.set_viewport_size({"width":width,"height":900})
                         await assert_delivery_layout(page, (route,theme,width))
+                        await expect(page.locator("#appView")).to_have_class(re.compile("os-delivery-workspace"))
+                        if route in ("pedidos-delivery","entregas-delivery","vendas-prazo-delivery"):
+                            await expect(page.locator(".od-search-line input")).to_be_visible()
+                            assert await page.locator(".od-advanced").count()==1
                         if route == "dashboard-delivery":
                             shortcuts = page.get_by_role("navigation", name="Atalhos de Delivery")
                             await expect(shortcuts).to_have_count(0)

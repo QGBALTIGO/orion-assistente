@@ -465,6 +465,7 @@ async def test_delivery_whatsapp_connection_checkout_with_same_device_and_explic
             from app import delivery_crm
             profile=await delivery_crm.profile(db,c.tenant,customer["id"])
             assert profile["summary"]["orders"]==1 and profile["summary"]["open_orders"]==1
+            assert profile["summary"]["whatsapp_orders"]==1
             args=dict(search="",state="all",mode="all",start=None,end=None,offset=0,include_summary=True)
             whatsapp=await order_service.list_orders(db,c.tenant,channel="whatsapp",**args)
             assert whatsapp["summary"]=={"orders":1,"whatsapp":1,"confirmed":1,"dispatched":0,"fulfilled":0,"cancelled":0}

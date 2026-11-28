@@ -1,4 +1,4 @@
-name: Orion - Padronização do workspace Delivery v2
+name: Orion - Padronização do workspace Delivery v3
 on:
   push:
     branches: [codex/delivery-workspace-v2-20261128]
@@ -33,12 +33,22 @@ jobs:
       ORION_DELIVERY_WEBKIT_TEST: '1'
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Conciliar mudanças com a imagem real de produção
+        run: python scripts/package_delivery_workspace.py prepare
       - name: Preparar banco descartável e navegadores
         env:
           PGPASSWORD: ci-postgres-only
@@ -66,8 +76,26 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: delivery-workspace-v2-browser
+          name: delivery-workspace-v3-browser
           path: artifacts/delivery-browser/*.png
+      - uses: actions/upload-artifact@v4
+        with:
+          name: delivery-workspace-validated-source
+          path: |
+            workspace-qa-manifest.txt
+            app/delivery_orders.py
+            app/delivery_api.py
+            app/delivery_catalog.py
+            app/delivery_crm.py
+            app/static/orion-delivery-orders.js
+            app/static/orion-delivery-catalog.js
+            app/static/orion-delivery-store-admin.js
+            app/static/orion-delivery-containers.js
+            app/static/orion-delivery-reports.js
+            app/static/orion-delivery-logistics.js
+            app/static/orion-suite.js
+            app/static/orion-delivery-dashboard.css
+          if-no-files-found: error
   package:
     needs: qa
     runs-on: ubuntu-24.04
@@ -84,7 +112,11 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Empacotar somente os arquivos autorizados sobre produção
+      - uses: actions/download-artifact@v4
+        with:
+          name: delivery-workspace-validated-source
+          path: .
+      - name: Empacotar somente os arquivos homologados sobre produção
         run: python scripts/package_delivery_workspace.py "$IMAGE" "$GITHUB_SHA"
       - name: Publicar imagem revisada sem alterar o Railway
         run: |

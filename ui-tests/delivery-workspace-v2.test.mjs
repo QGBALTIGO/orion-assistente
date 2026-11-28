@@ -25,9 +25,16 @@ test('orders show real channel, filtered totals, safe contact and preserved seco
   assert.equal(h.document.querySelector('.os-delivery-extra-actions').open,true);
   assert.ok(h.document.querySelector('[data-os-action=delivery-order-cancel]'));
   const host=h.document.querySelector('#osPageBody');
+  assert.equal(h.document.querySelector('#osDeliveryOrderFilters .od-advanced').open,false);
+  h.click('#osDeliveryOrderFilters .od-advanced summary');
+  assert.equal(h.document.querySelector('#osDeliveryOrderFilters .od-advanced').open,true);
   h.fill('[name=channel]','whatsapp');h.submit('#osDeliveryOrderFilters');await flush();
   assert.equal(host,h.document.querySelector('#osPageBody'));
   assert.ok(h.calls.some(c=>c.path.includes('channel=whatsapp')&&c.path.includes('include_summary=true')));
+  h.click('[data-os-action=delivery-order-clear]');await flush();
+  assert.equal(h.document.querySelector('[name=channel]').value,'all');
+  assert.equal(h.document.querySelector('.od-advanced').open,false);
+  assert.ok(h.calls.at(-1).path.includes('include_summary=true'));
   h.click('[data-os-action=delivery-order-detail]');await flush();
   const link=h.document.querySelector('#osDialog .os-delivery-contact a');
   assert.equal(link.href,'https://wa.me/5567999999902');

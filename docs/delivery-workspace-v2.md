@@ -18,3 +18,6 @@ Base publicada: Dashboard v2 (662b396be508df1bc7235e45dbe788e5132b0406). O objet
 5. Validar o ciclo de ponta a ponta com a conversa de teste autorizada Astra, sem utilizar clientes reais para homologação.
 
 A aprovação dos testes internos não substitui a validação do WhatsApp real. Não declarar 100% concluído até que cada fluxo tenha evidência. Preservar o Dashboard publicado, o banco e os demais nichos.
+
+## Revisão v3
+A revisão v2 passou em QA, mas a publicação foi bloqueada por divergência da imagem em produção. A v3 concilia os arquivos com a imagem imutável antes dos testes; conflitos impedem a publicação. O pacote usa exclusivamente os arquivos homologados, conferidos por SHA-256. A interface v3 revisa individualmente as telas operacionais, com filtros expansíveis, ações prioritárias, lista de pedidos, catálogo, vasilhames, logística, relatórios, CRM e financeiro. A integração WhatsApp ainda exige validação real e publicação das revisões multimodais separadas; esta revisão não altera o motor do WhatsApp.
