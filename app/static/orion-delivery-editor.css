@@ -395,3 +395,19 @@
   #osDialog.os-delivery-order-editor .odo-address-grid{grid-template-columns:minmax(0,1fr)}
   #osDialog.os-delivery-order-editor .odo-total-head .odo-text-action{font-size:11px}
 }
+
+#osDialog.os-delivery-order-editor .odo-layout{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;min-width:0;align-items:start}
+#osDialog.os-delivery-order-editor :is(.odo-main,.odo-side){display:grid;align-content:start;gap:14px;min-width:0}
+@media(min-width:768px){
+  #osDialog.os-delivery-order-editor .odo-layout{grid-template-columns:minmax(0,1.08fr) minmax(0,1fr);gap:20px}
+  #osDialog.os-delivery-order-editor .odo-side{border-left:1px solid var(--os-border);padding-left:20px}
+  #osDialog.os-delivery-order-editor .odo-products,#osDialog.os-delivery-order-editor .odo-customer{border:0;padding-top:0}
+  #osDialog.os-delivery-order-editor .odo-mode{padding-bottom:14px;border-bottom:1px solid var(--os-border)}
+  #osDialog.os-delivery-order-editor .odo-mode>.os-field{max-width:340px}
+  #osDialog.os-delivery-order-editor .odo-cart-row{grid-template-columns:minmax(0,1fr);gap:6px}
+}
+@media(min-width:361px) and (max-width:767px){
+  #osDialog.os-delivery-order-editor .odo-cart-row{grid-template-columns:minmax(0,1fr) auto}
+  #osDialog.os-delivery-order-editor .odo-stepper{grid-template-columns:34px 40px 34px}
+  #osDialog.os-delivery-order-editor .odo-cart-controls>.odo-icon-action{width:38px}
+}

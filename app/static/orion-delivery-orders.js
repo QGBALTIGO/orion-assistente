@@ -73,10 +73,11 @@
       command(button,'Salvar cliente','delivery-save-customer','check')+'</div></fieldset>';
     const content='<section class="odo-section odo-mode">'+
       selectField('Tipo de pedido','mode',deliveryOnly?modes.slice(2):modes,repeat?.mode||(deliveryOnly?'delivery':'counter'))+'</section>'+
-      '<section class="odo-section odo-products"><div class="odo-section-head"><h3>Produtos</h3><span data-delivery-item-count class="odo-muted">0 itens</span></div>'+
+      '<div class="odo-layout"><div class="odo-main"><section class="odo-section odo-products"><div class="odo-section-head"><h3>Produtos</h3><span data-delivery-item-count class="odo-muted">0 itens</span></div>'+
       searchRow('Buscar produto','product_search','Nome ou código do produto','delivery-choose-items','Buscar produtos')+
       '<div class="odo-search-results" data-delivery-product-results aria-live="polite"></div>'+
       '<div data-delivery-cart class="odo-cart"></div></section>'+
+      (containerUi?.fields()||'')+'</div><div class="odo-side">'+
       '<section class="odo-section odo-customer"><div class="odo-section-head"><div><h3>Cliente</h3><span data-delivery-customer-requirement class="odo-muted">Opcional no balcão</span></div>'+
       '<button type="button" class="odo-text-action" data-os-action="delivery-new-customer" aria-expanded="false">'+icon('userPlus')+'<span>Novo cliente</span></button></div>'+
       '<div data-delivery-customer class="odo-selected-customer" hidden aria-live="polite"></div>'+
@@ -86,10 +87,9 @@
       '<section class="odo-section odo-payment"><h3>Pagamento</h3>'+
       selectField('Forma combinada','tender_preference',[['','A combinar'],...Object.entries(storefrontPaymentLabels)],'')+
       '<div hidden data-delivery-cash-change>'+moneyField('Troco para','cash_change','text','')+'</div></section>'+
-      (containerUi?.fields()||'')+
       '<details class="os-more-fields odo-more"><summary>'+icon('info')+'<span class="os-disclosure-label">Mais informações</span></summary><div class="os-disclosure-body os-form-grid">'+
       selectField('Origem do pedido','intake_channel',[['','Painel'],...intakeChannels],'')+
-      field('Observação do pedido','operator_note','text','','maxlength="300" placeholder="Ex.: entregar na portaria"')+'</div></details>'+
+      field('Observação do pedido','operator_note','text','','maxlength="300" placeholder="Ex.: entregar na portaria"')+'</div></details></div></div>'+
       '<section class="odo-total"><div class="odo-total-head"><div><span>Total do pedido</span><strong data-delivery-total-value>—</strong></div>'+
       '<button type="button" class="odo-text-action" data-os-action="delivery-estimate">'+icon('refresh')+'<span>Conferir total</span></button></div>'+
       '<div data-delivery-estimate aria-live="polite"></div></section>';
@@ -157,6 +157,7 @@
       function refreshConfirmation(){
         const needsCustomer=form.elements.mode.value!=='counter'&&!customer;
         if(form.getAttribute('aria-busy')!=='true')confirm.disabled=!estimate||needsCustomer||customerSaving;
+        quoteButton.hidden=!cart.size||!!estimate||!!quotePending||(form.elements.mode.value==='delivery'&&!addressReady());
         quoteButton.disabled=!cart.size||!!quotePending;
       }
       function quoteHint(){
@@ -357,6 +358,7 @@
         if (!id||!cart.has(id)) return;
         cart.get(id).quantity=event.target.value;
         invalidate();
+        packaging?.render(cart);
       });
       form.addEventListener('click',async event=>{
         const node=event.target.closest('button'), action=node?.dataset.osAction;

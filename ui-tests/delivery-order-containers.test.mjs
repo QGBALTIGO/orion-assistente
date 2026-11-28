@@ -187,6 +187,7 @@ test('compact order editor keeps independent searches, quote and quantity contro
   assert.equal(h.document.querySelector('[data-delivery-item-count]').textContent,'1 item');
   h.click('[data-os-action=delivery-estimate]');await flush();
   assert.equal(h.document.querySelector('#osDialog [type=submit]').disabled,false);
+  assert.equal(h.document.querySelector('[data-os-action=delivery-estimate]').hidden,true);
   assert.match(h.document.querySelector('[data-delivery-total-value]').textContent,/12,50/);
   h.click('[data-os-action=delivery-quantity-plus]');
   assert.equal(h.document.querySelector('[data-delivery-quantity]').value,'2');
