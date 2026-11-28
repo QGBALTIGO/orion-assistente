@@ -97,3 +97,14 @@ async def test_reserve_batch_exclusive_loading_and_legacy_stock(onboarding_db,mo
         assert (await d1.post(root+"/orders/"+route[0]["id"]+"/actions",json=complete)).json()==done.json()
         assert await stock(admin,base)==(4,1)
         assert (await admin.get(base+"/orders/"+route[0]["id"])).json()["collected_cents"]==1250
+        history=(await d1.get(root+"/history")).json()
+        assert len(history["items"])==1 and history["totals"]=={"cash":1250}
+        assert not (await d2.get(root+"/history")).json()["items"]
+        split={"action":"complete","expected_revision":route[1]["revision"],"received":True,"tenders":[{"method":"cash","amount_cents":500},{"method":"debit_card","amount_cents":750}],"idempotency_key":uuid4().hex}
+        rejected={**split,"idempotency_key":uuid4().hex,"tenders":[{"method":"pix","amount_cents":500},{"method":"debit_card","amount_cents":750}]}
+        assert (await d1.post(root+"/orders/"+route[1]["id"]+"/actions",json=rejected)).status_code==422
+        response=await d1.post(root+"/orders/"+route[1]["id"]+"/actions",json=split)
+        assert response.status_code==200,response.text
+        assert (await d1.post(root+"/orders/"+route[1]["id"]+"/actions",json=split)).json()==response.json()
+        assert await stock(admin,base)==(3,0)
+        assert (await d1.get(root+"/history")).json()["totals"]=={"cash":1750,"debit_card":750}

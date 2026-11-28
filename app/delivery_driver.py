@@ -5,14 +5,14 @@ from uuid import UUID, uuid4, uuid5, NAMESPACE_URL
 from typing import Literal
 
 from fastapi import HTTPException
-from pydantic import AwareDatetime, Field, StrictBool, StrictInt, field_validator
+from pydantic import AwareDatetime, Field, StrictBool, StrictInt, field_validator, model_validator
 from sqlalchemy import text
 
 from app import commercial_service as commerce, delivery_catalog as catalog, delivery_logistics as logistics
 from app import delivery_route_batches as route_batches
 from app.business_profile_schemas import ProfileModel
 from app.commercial_schemas import IdempotencyKey
-from app.delivery_payments import ReceivedMethod
+from app.delivery_payments import ReceivedMethod, Tender
 from app.management_models import audit
 from app.tenant_access import TenantAccess
 
@@ -127,10 +127,19 @@ class Action(ProfileModel):
     action: Literal["accept","refuse","arrive","complete","absent"]
     expected_revision: StrictInt = Field(ge=1)
     payment_method: ReceivedMethod | None = None
+    tenders: list[Tender] = Field(default_factory=list, max_length=3)
     received: StrictBool = False
     containers_confirmed: StrictBool = False
     returned_to_stock: StrictBool = False
     idempotency_key: IdempotencyKey
+
+    @model_validator(mode='after')
+    def validate_tenders(self):
+        if self.tenders and (self.action!='complete' or not self.received or self.payment_method is not None or len(self.tenders)<2 or len({t.method for t in self.tenders})!=len(self.tenders)):
+            raise ValueError('Confirme duas ou mais formas distintas de pagamento na conclusão.')
+        if any(t.method=='pix' for t in self.tenders):
+            raise ValueError('Pix exige conferência do proprietário; não registre Pix misto pelo entregador.')
+        return self
 
 
 async def grant_state(db,tenant,courier):
@@ -215,7 +224,7 @@ async def release(db,tenant,order,*,require_offer=False):
 async def dashboard(db,tenant,person):
     rows=[]
     if person['shift_started_at']:
-        rows=(await db.execute(text("""SELECT a.order_id AS id,a.status,a.expires_at,a.route_batch_id,a.route_position,o.revision,q.total_cents,
+        rows=(await db.execute(text("""SELECT a.order_id AS id,a.status,a.expires_at,a.route_batch_id,a.route_position,o.revision,q.total_cents,d.operator_note,d.scheduled_at,
             (SELECT CASE WHEN p.confirmed_at IS NULL THEN 'pending' ELSE 'confirmed' END
              FROM delivery_pix_orders p WHERE (p.tenant_id,p.order_id)=(a.tenant_id,a.order_id)) AS pix_state,
             CASE WHEN a.status!='offered' THEN q.customer_name END AS customer_name,
@@ -276,9 +285,9 @@ async def order_action(db,tenant,person,order,payload):
             elif action=="complete":
                 if row["pix_state"] == "pending":
                     raise HTTPException(409, "Aguardando conferência do Pix pelo proprietário.")
-                if row["total_cents"] and row["pix_state"] != "confirmed" and not (payload.received and payload.payment_method):
+                if row["total_cents"] and row["pix_state"] != "confirmed" and not (payload.received and (payload.payment_method or payload.tenders)):
                     raise HTTPException(422,"Confirme o recebimento e a forma de pagamento.")
-                fields.update(action="fulfill",payment_method=payload.payment_method,containers_confirmed=payload.containers_confirmed)
+                fields.update(action="fulfill",payment_method=payload.payment_method,tenders=payload.tenders,containers_confirmed=payload.containers_confirmed)
             else:
                 fields.update(action="recipient_absent",returned_to_stock=payload.returned_to_stock)
             result=await orders.transition(db,tenant,access,order,orders.Transition(**fields))
@@ -290,4 +299,38 @@ async def order_action(db,tenant,person,order,payload):
             WHERE tenant_id=:t AND order_id=:o"""),{"t":tenant,"o":order,"s":status})
         await commerce.audit(db,tenant,access,"order",order,"driver_"+action,{"courier_id":person["courier_id"]})
         return {"status":status,"revision":revision}
-    return await catalog.run_once(db,tenant,payload,"driver_"+str(person["account_id"]),order,write)
+    return await catalog.run_once(db,tenant,payload,"driver_"+str(person["account_id"]),order,write,optional_defaults={"tenders":[]})
+
+
+async def history(db,tenant,person):
+    """Only the current verified courier's recent completions, not tenant-wide finance.
+
+    Receipts are not a cash settlement; Pix preconfirmed by the owner is shown
+    separately from cash and card registered at delivery.
+    """
+    rows=(await db.execute(text("""
+        SELECT a.order_id AS id,a.updated_at AS completed_at,q.total_cents,
+          coalesce((SELECT jsonb_agg(jsonb_build_object('method',e.payment_method,
+              'amount_cents',e.amount_cents) ORDER BY e.id)
+            FROM financial_entries e
+            WHERE e.tenant_id=:t AND e.kind='income' AND e.status='paid'
+              AND (e.id=d.financial_entry_id OR EXISTS (
+                SELECT 1 FROM delivery_credit_collections cc WHERE cc.tenant_id=:t
+                  AND cc.order_id=a.order_id AND cc.financial_entry_id=e.id))
+          ),'[]'::jsonb) AS payments
+        FROM delivery_driver_assignments a
+        JOIN commercial_orders o ON (o.tenant_id,o.id)=(a.tenant_id,a.order_id)
+        JOIN delivery_order_details d ON (d.tenant_id,d.order_id)=(a.tenant_id,a.order_id)
+        JOIN commercial_quotes q ON (q.tenant_id,q.id)=(o.tenant_id,o.quote_id)
+        WHERE a.tenant_id=:t AND a.courier_id=:c AND a.access_revision=:rev
+          AND a.status='fulfilled' AND o.status='fulfilled'
+          AND a.updated_at>=now()-interval '7 days'
+        ORDER BY a.updated_at DESC,a.order_id LIMIT 101
+    """),{"t":tenant,"c":person["courier_id"],"rev":person["revision"]})).mappings().all()
+    items=[dict(r) for r in rows[:100]]
+    totals={}
+    for row in items:
+        for pay in row["payments"]:
+            method=pay["method"] or "other"
+            totals[method]=totals.get(method,0)+pay["amount_cents"]
+    return {"items":items,"totals":totals,"has_more":len(rows)>100,"window_days":7}

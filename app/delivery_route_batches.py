@@ -21,7 +21,9 @@ QUEUE_LIMIT = 100
 
 
 def enabled(tenant):
-    return str(tenant) in {v.strip() for v in os.getenv("ORION_DELIVERY_ROUTE_V2_TENANTS", "").split(",") if v.strip()}
+    allowed = {v.strip() for v in os.getenv("ORION_DELIVERY_ROUTE_V2_TENANTS", "").split(",") if v.strip()}
+    preview = {v.strip() for v in os.getenv("ORION_DELIVERY_PREVIEW_TENANTS", "").split(",") if v.strip()}
+    return str(tenant) in allowed or ("@preview" in allowed and str(tenant) in preview)
 
 
 class OrderRef(ProfileModel):

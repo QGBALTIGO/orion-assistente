@@ -1,23 +1,30 @@
 <!doctype html>
 <html lang="pt-BR"><head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#0b0b0c"><meta name="referrer" content="no-referrer">
-  <title>Entregador · Orion</title><link rel="icon" href="/brand/orion-symbol.svg">
-  <link rel="stylesheet" href="/panel-assets/orion-delivery-driver.css">
-  <script defer src="/panel-assets/orion-delivery-driver.js"></script>
-</head><body><main>
-  <header><img width="36" height="36" src="/brand/orion-symbol.svg" alt="Orion"><h1>Entregador</h1>
-    <button id="logout" class="secondary" hidden>Sair</button></header>
-  <p id="notice" role="status" aria-live="polite">Abrindo suas entregas…</p>
-  <form id="login" hidden><h2>Entrar na Orion</h2>
-    <label>E-mail da conta<input name="username" type="email" autocomplete="username" required></label>
-    <label>Senha<input name="password" type="password" autocomplete="current-password" required></label>
-    <button>Entrar</button><a href="/painel">Acessar cadastro e recuperação de conta</a>
-  </form>
-  <section id="workspace" hidden><section class="card"><h2 id="person"></h2>
-    <p id="shift-state"></p><div id="shift-actions" class="actions"></div>
-    <div id="geo" hidden><button type="button" class="secondary" id="geo-button">Compartilhar localização</button>
-      <p id="geo-status">Compartilha sua última posição com a distribuidora enquanto esta tela estiver aberta.</p></div>
-    </section><section id="batch-workspace" hidden><h2>Pedidos disponíveis</h2><div id="available-orders"></div><h2>Conferir carga</h2><div id="route-load"></div></section><h2>Minhas entregas</h2><div id="queue"></div></section>
-  <button type="button" id="retry" hidden>Tentar novamente</button>
-</main></body></html>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#f5f8fc"><meta name="referrer" content="no-referrer">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Orion Entregas">
+<title>Orion Entregas</title><link rel="icon" href="/brand/orion-symbol.svg">
+<link rel="stylesheet" href="/panel-assets/orion-delivery-driver.css">
+<script defer src="/panel-assets/orion-delivery-driver.js"></script>
+</head><body>
+<header class="topbar"><div class="brand"><img class="logo light" src="/brand/orion-brand-dark.svg" alt="Orion"><img class="logo dark" src="/brand/orion-brand-light.svg" alt="Orion"><span>ENTREGAS</span></div><button id="theme" class="secondary icon-only" type="button" aria-label="Alterar aparência">Aparência</button></header>
+<main>
+<p id="notice" role="status" aria-live="polite">Abrindo suas entregas…</p>
+<form id="login" hidden><h1>Bem-vindo à Orion</h1><p>Acesse sua conta de entregador vinculada à distribuidora.</p>
+<label>E-mail da conta<input name="username" type="email" autocomplete="username" required></label>
+<label>Senha<input name="password" type="password" autocomplete="current-password" required></label>
+<button>Entrar</button><a href="/painel">Recuperar acesso na Orion</a></form>
+<section id="workspace" hidden>
+<nav class="nav" aria-label="Navegação do entregador">
+<button data-view="home" aria-current="page" type="button"><span data-icon="home"></span>Dashboard</button>
+<button data-view="orders" type="button"><span data-icon="orders"></span>Pedidos</button>
+<button data-view="route" type="button"><span data-icon="route"></span>Em rota</button>
+<button data-view="cash" type="button"><span data-icon="cash"></span>Caixa</button>
+<button data-view="more" type="button"><span data-icon="more"></span>Mais</button></nav>
+<div id="view-home" class="view"><div class="greeting"><div><p class="eyebrow">CENTRAL DO ENTREGADOR</p><h1 id="person"></h1><p id="shift-state"></p></div><button class="secondary" data-view="more" type="button">Expediente</button></div><div id="stats" class="stats"></div><div id="next-delivery"></div><div id="home-shortcuts"></div></div>
+<div id="view-orders" class="view" hidden><h1>Pedidos</h1><p class="subtitle">Selecione e organize suas próximas entregas.</p><div id="offers"></div><section id="batch-workspace" hidden><h2>Pedidos disponíveis</h2><div id="available-orders"></div></section><p id="orders-legacy" hidden>A distribuidora atribui seus pedidos diretamente.</p></div>
+<div id="view-route" class="view" hidden><div class="heading-row"><div><h1>Minha rota</h1><p class="subtitle">Confira a carga e acompanhe suas paradas.</p></div><button id="focus-button" data-action="focus" type="button" hidden>Modo entrega</button></div><div id="route-load"></div><div id="route-toolbar"></div><div id="queue"></div></div>
+<div id="view-focus" class="view" hidden><button class="secondary" data-view="route" type="button">Voltar à rota</button><div id="focus-content"></div></div>
+<div id="view-cash" class="view" hidden><h1>Meu caixa</h1><p class="subtitle">Recebimentos registrados nas suas entregas nos últimos 7 dias.</p><div id="cash-content"></div></div>
+<div id="view-more" class="view" hidden><h1>Mais opções</h1><section class="card"><h2>Meu expediente</h2><div id="shift-actions" class="actions"></div><div id="geo" hidden><button type="button" class="secondary" id="geo-button">Compartilhar localização</button><p id="geo-status">Compartilhe sua última posição somente durante o expediente, com esta tela aberta.</p></div></section><section class="card"><h2>Aparência</h2><div class="actions themes"><button class="secondary" data-theme-choice="light" type="button">Claro</button><button class="secondary" data-theme-choice="dark" type="button">Escuro</button><button class="secondary" data-theme-choice="auto" type="button">Sistema</button><button class="secondary" id="contrast" type="button" aria-pressed="false">Alto contraste</button></div></section><section class="card"><h2>Histórico de entregas</h2><div id="history-content"></div></section><button id="logout" class="secondary" type="button" hidden>Sair da conta</button></div>
+</section><button type="button" id="retry" class="secondary" hidden>Tentar novamente</button></main></body></html>

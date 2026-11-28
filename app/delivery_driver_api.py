@@ -41,6 +41,11 @@ async def queue(tenant_id: UUID,claims: dict=Depends(panel_actor)):
     return await run(tenant_id,claims,driver.dashboard)
 
 
+@router.get(prefix+"/history")
+async def history(tenant_id: UUID,claims: dict=Depends(panel_actor)):
+    return await run(tenant_id,claims,driver.history)
+
+
 @router.put(prefix+"/shift")
 async def shift(tenant_id: UUID,payload: driver.Shift,claims: dict=Depends(panel_actor)):
     return await run(tenant_id,claims,driver.shift,payload)
