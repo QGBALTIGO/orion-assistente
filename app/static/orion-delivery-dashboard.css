@@ -85,47 +85,81 @@ button.os-delivery-dashboard-row:hover{background:var(--os-tint)}
 .os-delivery-dashboard-row-amount{justify-items:end;text-align:end;max-width:100%}
 .os-delivery-dashboard-row small{font-size:12px;line-height:1.35;color:var(--os-muted);overflow-wrap:anywhere}
 .os-delivery-dashboard-row .os-badge{padding:2px 7px;font-size:11px;line-height:16px;white-space:normal}
-.odd-period-form{margin:16px 0 0;display:flex;align-items:flex-end;flex-wrap:wrap;gap:10px;min-width:0;max-width:100%}
-.odd-period-quick,.odd-segments{display:flex;align-items:center;flex-wrap:wrap;gap:3px;min-width:0;border:1px solid var(--odd-line);
-  padding:3px;border-radius:10px;background:var(--os-bg)}
-.odd-period-quick button,.odd-segments button{appearance:none;border:0;background:transparent;color:var(--os-muted);border-radius:7px;
-  font:600 12px/1.2 var(--os-font);min-height:34px;padding:7px 10px;cursor:pointer;flex:1 1 auto}
-.odd-period-quick button[aria-pressed=true],.odd-segments button[aria-pressed=true]{background:var(--os-card);color:var(--os-primary);box-shadow:var(--odd-shadow)}
-.odd-period-form [data-period-dates]{display:flex;flex-wrap:wrap;gap:10px;border:0;padding:0;min-width:0;max-width:100%;flex:1 1 100%}
-.odd-period-form [data-period-dates]>*{min-width:0;flex:1 1 120px}
-.odd-period-form select{min-height:40px!important}
-.odd-period-date{display:flex;align-items:center;gap:6px;color:var(--os-muted);font-size:12px;margin:16px 0 10px!important}
-.odd-period-date>.os-icon{width:15px;height:15px}
-.odd-period-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:14px;min-width:0}
-.odd-period-stat{display:grid;align-content:start;gap:4px;min-width:0;padding:12px 13px;background:var(--os-bg);
-  border:1px solid var(--odd-line);border-radius:12px;color:var(--os-text)}
-.odd-period-stat>span{font-size:12px;color:var(--os-muted);font-weight:550}
-.odd-period-stat>strong{font:650 clamp(18px,2vw,24px)/1.2 var(--os-display);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
-.odd-period-stat>small{font-size:11px;line-height:1.35;color:var(--os-muted);overflow-wrap:anywhere}
+/* A single container-responsive period control and a full-width interactive chart. */
+.os-delivery-dashboard-panel[data-delivery-section="week"]{container:odd-performance / inline-size}
+.odd-period-form{display:grid;gap:12px;margin:18px 0 0;min-width:0;max-width:100%}
+.odd-period-quick,.odd-segments{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:3px;min-width:0;border:1px solid var(--odd-line);padding:4px;border-radius:11px;background:var(--os-bg)}
+.odd-period-quick button,.odd-segments button{appearance:none;border:0;background:transparent;color:var(--os-muted);border-radius:8px;font:600 12px/1.3 var(--os-font);min-width:0;min-height:40px;padding:8px 4px;text-align:center;white-space:normal;overflow-wrap:anywhere;cursor:pointer}
+.odd-period-quick button[aria-pressed=true],.odd-segments button[aria-pressed=true]{background:var(--os-card);color:var(--os-primary);box-shadow:0 1px 4px color-mix(in srgb,var(--os-text) 9%,transparent)}
+.odd-period-quick button:hover,.odd-segments button:hover{color:var(--os-primary)}
+.odd-period-dates{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:end;gap:10px;margin:0;border:0;padding:0;min-width:0;max-width:100%}
+.odd-period-dates>*{min-width:0;max-width:100%}
+.odd-period-dates .os-button{grid-column:1/-1;min-height:42px;justify-self:end;width:auto}
+.odd-period-date{display:flex;align-items:center;gap:7px;color:var(--os-muted);font:500 12px/1.4 var(--os-font);margin:16px 0 12px!important}
+.odd-period-date>.os-icon{width:15px;height:15px;flex:none}
+.odd-period-stats{display:grid;grid-template-columns:minmax(0,1fr);gap:0;margin-bottom:18px;min-width:0;border:1px solid var(--odd-line);border-radius:12px;background:var(--os-bg);overflow:hidden}
+.odd-period-stat{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,auto);align-items:baseline;column-gap:8px;row-gap:4px;min-width:0;padding:12px 13px;color:var(--os-text)}
+.odd-period-stat+.odd-period-stat{border-top:1px solid var(--odd-line)}
+.odd-period-stat>span{font:550 12px/1.35 var(--os-font);color:var(--os-muted);overflow-wrap:anywhere}
+.odd-period-stat>strong{font:680 clamp(17px,4.4vw,25px)/1.2 var(--os-display);font-variant-numeric:tabular-nums;letter-spacing:-.025em;text-align:end;overflow-wrap:anywhere}
+.odd-period-stat>small{grid-column:1/-1;font:400 11px/1.4 var(--os-font);color:var(--os-muted);overflow-wrap:anywhere}
 .odd-period-stat>small[data-delta=up]{color:var(--os-success)}
 .odd-period-stat>small[data-delta=down]{color:var(--os-danger)}
-.odd-analytics-grid{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);gap:12px;align-items:stretch;min-width:0}
+.odd-analytics-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;align-items:start;min-width:0}
 .odd-analysis-panel{display:flex;flex-direction:column;min-width:0;padding:15px;border:1px solid var(--odd-line);border-radius:14px;background:var(--os-card)}
-.odd-analysis-panel h3{font:650 15px/1.4 var(--os-display);margin:0 0 13px;color:var(--os-text)}
-.odd-chart-controls{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:9px;margin-bottom:15px;min-width:0}
-.odd-chart-readout{color:var(--os-text)!important;font:600 12px/1.4 var(--os-font);font-variant-numeric:tabular-nums}
-.odd-plot{display:grid;grid-template-columns:minmax(0,auto) minmax(0,1fr);gap:8px;min-width:0}
-.odd-y-labels{height:176px;display:flex;flex-direction:column;justify-content:space-between;align-items:flex-end;gap:2px;padding-top:3px;padding-bottom:6px;
-  box-sizing:border-box;font:400 10px/1.1 var(--os-font);color:var(--os-muted);font-variant-numeric:tabular-nums;max-width:94px;overflow-wrap:anywhere}
+.odd-analysis-panel h3{font:650 15px/1.4 var(--os-display);margin:0 0 14px;color:var(--os-text)}
+.odd-main-chart{grid-column:1/-1}
+.odd-chart-controls{display:grid;gap:8px;margin-bottom:14px;min-width:0}
+.odd-chart-controls .odd-segments{width:100%}
+.odd-chart-readout{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 12px;min-width:0;margin-bottom:10px;font-variant-numeric:tabular-nums}
+.odd-chart-readout>span{font:500 12px/1.4 var(--os-font);color:var(--os-muted)}
+.odd-chart-readout>strong{font:680 19px/1.2 var(--os-display);color:var(--os-text);overflow-wrap:anywhere}
+.odd-plot{--odd-plot-height:clamp(156px,25vw,235px);display:grid;grid-template-columns:minmax(0,auto) minmax(0,1fr);gap:7px;min-width:0}
+.odd-y-labels{height:var(--odd-plot-height);position:relative;width:66px;box-sizing:border-box;font:400 10px/1.1 var(--os-font);color:var(--os-muted);font-variant-numeric:tabular-nums}
+.odd-y-labels>span{position:absolute;right:0;transform:translateY(-50%);white-space:nowrap;text-align:right}
 .odd-plot-main{min-width:0}
-.odd-plot-main svg{display:block;width:100%;height:176px;overflow:visible;cursor:crosshair;touch-action:pan-y}
-.odd-plot-grid{stroke:var(--odd-line);stroke-width:1;vector-effect:non-scaling-stroke}
+.odd-plot-stage{position:relative;height:var(--odd-plot-height);min-width:0}
+.odd-plot-stage svg{display:block;width:100%;height:100%;overflow:visible;cursor:crosshair;touch-action:pan-y}
+.odd-plot-stage svg:focus-visible{outline:2px solid var(--os-primary);outline-offset:3px;border-radius:4px}
+.odd-plot-grid{stroke:var(--odd-line);stroke-width:1}
 .odd-plot-grid line{vector-effect:non-scaling-stroke}
-.odd-plot-line{fill:none;stroke:var(--os-primary);stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}
-.odd-plot-marker{stroke:var(--os-muted);stroke-width:1;stroke-dasharray:3 3;opacity:.6;vector-effect:non-scaling-stroke}
-.odd-plot-dot{fill:var(--os-primary);stroke:var(--os-card);stroke-width:2;vector-effect:non-scaling-stroke}
-.odd-plot-bar{fill:color-mix(in srgb,var(--os-primary) 50%,transparent)}
+.odd-plot-line{fill:none;stroke:var(--os-primary);stroke-width:2;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}
+.odd-plot-line.is-empty{stroke:var(--os-muted);opacity:.32}
+.odd-plot-marker{stroke:var(--os-muted);stroke-width:1;stroke-dasharray:3 3;opacity:.55;vector-effect:non-scaling-stroke}
+.odd-plot-dot{position:absolute;width:9px;height:9px;transform:translate(-50%,-50%);border:2px solid var(--os-card);box-sizing:border-box;border-radius:50%;background:var(--os-primary);pointer-events:none}
+.odd-plot-bar{fill:color-mix(in srgb,var(--os-primary) 44%,transparent)}
 .odd-plot-bar.is-selected{fill:var(--os-primary)}
+.odd-chart-axis{position:relative;height:21px;margin-top:5px;color:var(--os-muted);font:400 10px/1.2 var(--os-font);font-variant-numeric:tabular-nums}
+.odd-chart-axis span{position:absolute;white-space:nowrap;transform:translateX(-50%)}
+.odd-chart-axis [data-axis-edge=first]{transform:none}
+.odd-chart-axis [data-axis-edge=last]{transform:translateX(-100%)}
 .odd-x-labels{display:flex;justify-content:space-between;gap:3px;min-width:0;color:var(--os-muted);font:400 10px/1.2 var(--os-font);padding-top:6px}
 .odd-x-labels span{white-space:nowrap}
-.odd-scrubber{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:11px;color:var(--os-muted)!important}
-#osPageBody .odd-scrubber input[type=range]{width:100%;min-width:50px;min-height:30px;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none;accent-color:var(--os-primary);cursor:pointer}
-.odd-no-movement{font-size:12px;line-height:1.4;margin-top:7px!important;color:var(--os-muted)}
+.odd-no-movement{position:absolute;left:50%;top:47%;transform:translate(-50%,-50%);width:max-content;max-width:90%;padding:6px 9px;text-align:center;border-radius:8px;background:var(--os-card);font:500 12px/1.4 var(--os-font);color:var(--os-muted);pointer-events:none}
+@container odd-performance (min-width:570px){
+  .odd-period-quick{grid-template-columns:repeat(6,minmax(0,1fr))}
+  .odd-period-dates{grid-template-columns:repeat(2,minmax(0,1fr)) auto}
+  .odd-period-dates .os-button{grid-column:auto}
+  .odd-period-stats{grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;border:0;background:transparent;overflow:visible}
+  .odd-period-stat,.odd-period-stat+.odd-period-stat{grid-template-columns:minmax(0,1fr);gap:6px;border:1px solid var(--odd-line);border-radius:12px;background:var(--os-bg);padding:14px}
+  .odd-period-stat>strong{text-align:start;font-size:24px}
+  .odd-analytics-grid{grid-template-columns:repeat(2,minmax(0,1fr));align-items:stretch}
+}
+@container odd-performance (min-width:900px){
+  .odd-analytics-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .odd-chart-controls .odd-segments{width:min(100%,400px)}
+  .odd-analysis-panel{padding:19px}
+}
+@container odd-performance (max-width:480px){
+  .odd-chart-axis [data-axis-edge=middle]:nth-child(2),.odd-chart-axis [data-axis-edge=middle]:nth-child(4){display:none}
+}
+@container odd-performance (max-width:290px){
+  .odd-period-quick{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .odd-period-dates{grid-template-columns:minmax(0,1fr)}
+  .odd-period-stat{grid-template-columns:minmax(0,1fr);gap:3px}
+  .odd-period-stat>strong{text-align:start}
+  .odd-y-labels{width:57px;font-size:9px}
+}
 .odd-status-content{display:grid;grid-template-columns:minmax(0,130px) minmax(0,1fr);gap:10px;align-items:center;flex:1;min-width:0}
 .odd-ring{position:relative;width:100%;max-width:160px;aspect-ratio:1;align-self:center;justify-self:center}
 .odd-ring>svg{display:block;width:100%;height:100%;fill:none;stroke-width:15}
@@ -150,6 +184,7 @@ button.os-delivery-dashboard-row:hover{background:var(--os-tint)}
 .odd-peak-head strong{font:650 25px/1.15 var(--os-display)}
 .odd-peak-head span{font-size:12px;color:var(--os-muted)}
 .odd-hour-bars{display:grid;grid-template-columns:repeat(24,minmax(0,1fr));align-items:end;gap:3px;height:104px;padding-bottom:1px;border-bottom:1px solid var(--odd-line)}
+.odd-hour-bars.is-empty{height:32px}
 .odd-hour-bars>div{height:100%;display:flex;align-items:end}
 .odd-hour-bars span{display:block;width:100%;min-height:0;background:color-mix(in srgb,var(--os-primary) 44%,transparent);border-radius:3px 3px 0 0}
 .odd-hour-bars .is-peak{background:var(--os-primary)}
@@ -163,17 +198,38 @@ button.os-delivery-dashboard-row:hover{background:var(--os-tint)}
 .odd-rank-total{text-align:right}
 .odd-rank-track{height:4px;display:block;background:var(--os-soft);border-radius:8px;overflow:hidden}
 .odd-rank-track>i{display:block;height:100%;background:var(--os-primary);border-radius:8px}
-.os-delivery-dashboard-values,.odd-hour-values,.os-delivery-period-comparison{font-size:12px;line-height:1.5;margin-top:10px;min-width:0}
-.os-delivery-dashboard-values summary,.odd-hour-values summary,.os-delivery-period-comparison summary{min-height:40px;padding:10px 0;box-sizing:border-box;cursor:pointer;color:var(--os-primary);font-weight:600}
-.os-delivery-dashboard-values table,.odd-hour-values table{width:100%;border-collapse:collapse;text-align:end;font-variant-numeric:tabular-nums}
-.os-delivery-dashboard-values :is(td,th),.odd-hour-values :is(td,th){padding:7px 3px;border-top:1px solid var(--odd-line);overflow-wrap:anywhere;font-size:11px}
+.os-delivery-dashboard-values,.odd-hour-values,.os-delivery-period-comparison{font:400 12px/1.5 var(--os-font);margin-top:12px;min-width:0;border:1px solid var(--odd-line);border-radius:10px;background:var(--os-card)}
+.os-delivery-dashboard-values summary,.odd-hour-values summary,.os-delivery-period-comparison summary{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:48px;padding:10px 12px;box-sizing:border-box;cursor:pointer;color:var(--os-text);list-style:none;min-width:0}
+.os-delivery-dashboard :is(.os-delivery-dashboard-values,.odd-hour-values,.os-delivery-period-comparison) summary::-webkit-details-marker{display:none}
+.os-delivery-dashboard :is(.os-delivery-dashboard-values,.odd-hour-values,.os-delivery-period-comparison) summary::marker{content:''}
+.odd-disclosure-copy{display:grid;gap:2px;min-width:0}
+.odd-disclosure-copy strong{font:600 13px/1.35 var(--os-font)}
+.odd-disclosure-copy small{font:400 11px/1.35 var(--os-font);color:var(--os-muted)}
+.os-delivery-dashboard :is(.os-delivery-dashboard-values,.odd-hour-values,.os-delivery-period-comparison) summary>.os-icon{width:15px;height:15px;color:var(--os-muted);flex:none;transition:transform .15s}
+.os-delivery-dashboard :is(.os-delivery-dashboard-values,.odd-hour-values,.os-delivery-period-comparison)[open] summary{border-bottom:1px solid var(--odd-line)}
+.os-delivery-dashboard :is(.os-delivery-dashboard-values,.odd-hour-values,.os-delivery-period-comparison)[open] summary>.os-icon{transform:rotate(90deg)}
+.odd-detail-body{max-height:320px;overflow:auto;min-width:0;overscroll-behavior:contain;padding:0 12px 6px}
+.os-delivery-dashboard-values table,.odd-hour-values table{width:100%;border-collapse:collapse;text-align:end;table-layout:fixed;font-variant-numeric:tabular-nums}
+.os-delivery-dashboard-values :is(td,th),.odd-hour-values :is(td,th){padding:10px 6px;border-bottom:1px solid var(--odd-line);overflow-wrap:anywhere;font-size:12px}
 .os-delivery-dashboard-values th:first-child,.odd-hour-values th:first-child{text-align:start}
-.os-delivery-period-comparison .os-table-scroll{margin-top:8px}
+.os-delivery-dashboard-values thead th,.odd-hour-values thead th{color:var(--os-muted);font-weight:550;background:var(--os-card);position:sticky;top:0;z-index:1}
+.os-delivery-dashboard-values tbody tr:last-child>*,.odd-hour-values tbody tr:last-child>*{border-bottom:0}
+.odd-comparison-caption{padding:12px 12px 0;color:var(--os-muted);font-size:12px}
+.os-delivery-period-comparison .os-table-scroll{margin:8px 12px 12px}
+@container odd-performance (max-width:480px){
+  .os-delivery-dashboard-values table,.os-delivery-dashboard-values tbody{display:block;width:100%}
+  .os-delivery-dashboard-values thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+  .os-delivery-dashboard-values tbody tr{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px 8px;border-bottom:1px solid var(--odd-line);padding:10px 0}
+  .os-delivery-dashboard-values tbody tr:last-child{border:0}
+  .os-delivery-dashboard-values tbody tr>*{display:block;border:0;padding:0;text-align:start;min-width:0;font-size:12px;line-height:1.4}
+  .os-delivery-dashboard-values tbody tr>th{grid-column:1/-1;font-weight:650}
+  .os-delivery-dashboard-values tbody td::before{content:attr(data-label);display:block;font-size:10px;color:var(--os-muted);margin-bottom:3px}
+}
 .os-delivery-dashboard [aria-busy=true]{min-width:0}
 @media(min-width:1000px){.os-delivery-dashboard-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(min-width:1650px){.os-delivery-dashboard-metrics{grid-template-columns:repeat(6,minmax(0,1fr))}.os-delivery-dashboard-metric.os-card{padding:14px;min-height:124px}}
 @media(max-width:1160px){.odd-status-content{grid-template-columns:minmax(0,1fr);justify-items:center}.odd-status-legend{width:100%;max-width:240px}.odd-ring{max-width:134px}}
-@media(max-width:900px){.odd-analytics-grid,.os-delivery-dashboard-grid{grid-template-columns:minmax(0,1fr)}.odd-status-content{grid-template-columns:minmax(0,130px) minmax(0,1fr);justify-items:stretch}.odd-status-legend{max-width:none}}
+@media(max-width:900px){.os-delivery-dashboard-grid{grid-template-columns:minmax(0,1fr)}.odd-status-content{grid-template-columns:minmax(0,130px) minmax(0,1fr);justify-items:stretch}.odd-status-legend{max-width:none}}
 @media(max-width:1199px){
   .os-delivery-dashboard-header{grid-template-columns:minmax(0,1fr) minmax(0,28%);grid-template-areas:'heading heading' 'actions art';gap:12px}
   .odd-hero-art{max-width:115px;opacity:.64}
@@ -197,20 +253,13 @@ button.os-delivery-dashboard-row:hover{background:var(--os-tint)}
   .os-delivery-dashboard-metric p{font-size:11px}
   .os-delivery-dashboard-panel.os-card{padding:13px;border-radius:15px}
   .os-delivery-dashboard-panel h2{font-size:16px}
-  .odd-period-form{margin-top:12px}
-  .odd-period-quick{width:100%}
-  .odd-period-quick button{min-height:38px;padding:6px 5px}
-  .odd-period-form>label,.odd-period-form>.os-field{flex:1 1 100%;min-width:0}
-  .odd-period-stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
-  .odd-period-stat:first-child{grid-column:1/-1}
-  .odd-period-stat{padding:10px}
+  .odd-period-form{margin-top:14px}
+  .odd-period-quick button,.odd-segments button{min-height:42px}
   .odd-analysis-panel{padding:12px}
   .odd-analysis-panel h3{font-size:14px}
-  .odd-chart-controls{gap:7px}
-  .odd-chart-controls .odd-segments{width:100%}
-  .odd-plot-main svg,.odd-y-labels{height:158px}
-  .odd-y-labels{max-width:72px;font-size:9px}
-  .odd-x-labels{font-size:9px}
+  .odd-plot{--odd-plot-height:166px}
+  .odd-y-labels{width:57px;font-size:9px}
+  .odd-chart-axis,.odd-x-labels{font-size:9px}
   .os-delivery-dashboard-row{gap:6px;font-size:13px}
 }
 @media(max-width:360px){

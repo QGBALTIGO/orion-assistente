@@ -6,8 +6,8 @@ import sys
 from tempfile import TemporaryDirectory
 
 ROOT=Path(__file__).resolve().parents[1]
-BEFORE="28a8f54b91b9cf85b79ec84a70c00dfba378bc91"
-BASE="ghcr.io/qgbaltigo/orion-assistente-api@sha256:b6405fc717f7ce30d97dfb90840a049a97c1d8072454e4c39ba38f70adb038a5"
+BEFORE="c3e850a2ec6b76a45d1dc81a6e5a18e89c126ba8"
+BASE="ghcr.io/qgbaltigo/orion-assistente-api@sha256:60fd165ca08d309b6194a3abe271b0fa5916694941e01b7f06cb2424c135bb4e"
 FILES=("app/static/orion-delivery-driver.html","app/static/orion-delivery-driver.css","app/static/orion-delivery-driver.js")
 def call(*args):subprocess.run(args,cwd=ROOT,check=True)
 def out(*args):return subprocess.check_output(args,cwd=ROOT,text=True).strip()
